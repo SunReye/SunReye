@@ -16,7 +16,7 @@
 		soc
 	}: {
 		node: GraphNode;
-		/** Battery/vehicle state-of-charge (0..100); renders the circular gauge when set. */
+		/** Battery/vehicle state-of-charge (0..100); renders the square gauge when set. */
 		soc?: number;
 	} = $props();
 
@@ -36,12 +36,14 @@
 	// The ring renders battery SoC — and vehicle SoC on the EV charger node.
 	const hasSoc = $derived((node.kind === 'battery' || node.kind === 'charger') && soc !== undefined);
 
-	// SOC ring geometry: drawn inside the node circle (viewBox 56×56, scaled with
-	// the circle) so the battery keeps the same footprint as every other node.
-	const SOC_R = 26;
-	const SOC_C = 2 * Math.PI * SOC_R;
+	// SOC ring geometry: a square gauge traced just inside the node box (viewBox
+	// 56×56, scaled with the box) so the battery keeps the same footprint as every
+	// other node. Perimeter drives the dash fill like a circumference would.
+	const SOC_INSET = 2;
+	const SOC_SIZE = 56 - SOC_INSET * 2;
+	const SOC_PERIMETER = SOC_SIZE * 4;
 
-	/** Node circle treatment: accent ring + tint + soft glow while power moves. */
+	/** Node box treatment: accent ring + tint + soft glow while power moves. */
 	const circleStyle = $derived.by(() => {
 		const border = hasSoc ? 'transparent' : active ? node.accent : 'var(--border)';
 		if (!active) return `border-color:${border};background:var(--background)`;
@@ -60,7 +62,7 @@
 >
 	<div class="relative size-14 sm:size-16 2xl:size-20">
 		<div
-			class="flex size-full items-center justify-center rounded-full border-2 transition-[box-shadow,border-color,background] duration-500"
+			class="flex size-full items-center justify-center border-2 transition-[box-shadow,border-color,background] duration-500"
 			style={circleStyle}
 		>
 			<Icon
@@ -70,33 +72,34 @@
 			/>
 		</div>
 		{#if hasSoc && soc !== undefined}
-			<!-- Circular SOC gauge inset to the circle edge so the battery keeps the
-			     same footprint as the other nodes. -->
-			<svg class="absolute inset-0 size-full -rotate-90" viewBox="0 0 56 56" aria-hidden="true">
-				<circle
+			<!-- Square SOC gauge inset to the box edge so the battery keeps the same
+			     footprint as the other nodes. -->
+			<svg class="absolute inset-0 size-full" viewBox="0 0 56 56" aria-hidden="true">
+				<rect
 					class="text-border"
-					cx="28"
-					cy="28"
-					r={SOC_R}
+					x={SOC_INSET}
+					y={SOC_INSET}
+					width={SOC_SIZE}
+					height={SOC_SIZE}
 					fill="none"
 					stroke="currentColor"
 					stroke-width="2.5"
 				/>
-				<circle
-					cx="28"
-					cy="28"
-					r={SOC_R}
+				<rect
+					x={SOC_INSET}
+					y={SOC_INSET}
+					width={SOC_SIZE}
+					height={SOC_SIZE}
 					fill="none"
 					stroke={socColor(soc)}
 					stroke-width="2.5"
-					stroke-linecap="round"
-					stroke-dasharray={SOC_C}
-					stroke-dashoffset={SOC_C * (1 - soc / 100)}
+					stroke-dasharray={SOC_PERIMETER}
+					stroke-dashoffset={SOC_PERIMETER * (1 - soc / 100)}
 					style="transition:stroke-dashoffset 500ms linear, stroke 500ms linear"
 				/>
 			</svg>
 			<span
-				class="absolute bottom-0 left-1/2 -translate-x-1/2 translate-y-1/2 rounded-full border border-border bg-background px-1.5 text-[0.62rem] font-semibold tabular-nums leading-tight"
+				class="absolute bottom-0 left-1/2 -translate-x-1/2 translate-y-1/2 border border-border bg-background px-1.5 text-[0.62rem] font-semibold tabular-nums leading-tight"
 				style={`color:${socColor(soc)}`}
 			>
 				{Math.round(soc)}%

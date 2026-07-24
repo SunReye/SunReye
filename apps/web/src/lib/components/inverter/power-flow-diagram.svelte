@@ -32,7 +32,7 @@
 	const selfUse = $derived(power('inverter.power'));
 	const efficiency = $derived(power('inverter.efficiency'));
 
-	// Battery state-of-charge (0..100) drives the circular gauge on the battery node.
+	// Battery state-of-charge (0..100) drives the square gauge on the battery node.
 	const batterySoc = $derived.by(() => {
 		const m = inverter.byRole('battery.soc');
 		const v = m ? inverter.value(m.key) : undefined;
@@ -157,7 +157,7 @@
 		</svg>
 	{/if}
 
-	<!-- Inverter hub. Only the circle is centred on the anchor; the metric pill
+	<!-- Inverter hub. Only the box is centred on the anchor; the metric pill
 	     floats above it on a translucent backdrop so connector rails can pass
 	     underneath without colliding with text. -->
 	<div
@@ -192,10 +192,10 @@
 			</div>
 		{/if}
 		<div
-			class="relative flex size-14 items-center justify-center rounded-full border-2 border-primary bg-background sm:size-16 2xl:size-20"
+			class="relative flex size-14 items-center justify-center border-2 border-primary bg-background sm:size-16 2xl:size-20"
 			style="box-shadow:0 0 40px -8px color-mix(in oklab, var(--primary) 55%, transparent)"
 		>
-			<span class="hub-ring absolute -inset-1 rounded-full border border-primary/50"></span>
+			<span class="hub-ring absolute -inset-1 border border-primary/50"></span>
 			<CpuIcon class="size-7 text-primary sm:size-8 2xl:size-10" weight="duotone" />
 		</div>
 	</div>
