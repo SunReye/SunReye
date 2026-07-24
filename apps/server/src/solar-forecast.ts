@@ -24,9 +24,12 @@ export interface PlaneOfArray {
   azimuth: number;
 }
 
-/** What a provider delivers: aligned hourly series for the requested planes. */
+/** What a provider delivers: aligned time series for the requested planes. */
 export interface IrradianceForecast {
-  /** Hour-start timestamps in the plant's local time (`YYYY-MM-DDTHH:mm`). */
+  /**
+   * Sample timestamps in the plant's local time (`YYYY-MM-DDTHH:mm`), on a
+   * regular grid of at most one hour (15-minute steps for Open-Meteo).
+   */
   times: string[];
   /** Offset of those local times from UTC, in seconds. */
   utcOffsetSeconds: number;
@@ -37,7 +40,7 @@ export interface IrradianceForecast {
   /**
    * *Instantaneous* global tilted irradiance at each timestamp, W/m², per
    * requested plane. buildSolarForecast integrates consecutive samples into
-   * per-hour average power, so the value is a point sample, not an hour mean.
+   * per-step average power, so the value is a point sample, not a step mean.
    */
   gti: number[][];
   /**
@@ -66,11 +69,13 @@ const PROVIDERS: Record<string, SolarIrradianceProvider> = {
   [openMeteoIrradiance.id]: openMeteoIrradiance,
 };
 
-export interface SolarForecastHour {
-  /** Hour start, plant-local time. */
+export interface SolarForecastPoint {
+  /** Slot start, plant-local time. */
   time: string;
-  /** Expected plant AC output over that hour, W. */
+  /** Expected average plant AC output over the slot, W. */
   watts: number;
+  /** Estimated peak AC output within the slot, W (≥ `watts`). */
+  peakWatts: number;
 }
 
 /** Near-term projection over the 15 minutes following `now`. */
@@ -83,7 +88,9 @@ export interface SolarForecastNext15 {
 
 export interface SolarForecast {
   provider: string;
-  hourly: SolarForecastHour[];
+  /** Slot width of `series` in minutes (15 for Open-Meteo). */
+  stepMinutes: number;
+  series: SolarForecastPoint[];
   /** Expected production for the local calendar day, kWh. */
   todayKwh: number;
   /** Expected production from now to local midnight, kWh (running hour prorated). */
@@ -205,23 +212,27 @@ export function pvPowerW(
 }
 
 /**
- * One hour of the plant's energy flow, in the self-consumption priority order:
+ * One slot of the plant's energy flow, in the self-consumption priority order:
  * PV serves the house load, then charges the battery (bounded by charge rate
  * and remaining headroom), then exports up to the feed-in cap — and whatever
  * is left has nowhere to go and is **curtailed**. On a PV deficit the battery
  * discharges to cover the shortfall (down to its reserve), which reclaims
- * headroom for later hours and, crucially, overnight for the next day.
+ * headroom for later slots and, crucially, overnight for the next day.
+ *
+ * `dtH` is the slot width in hours; power bounds (charge rate, feed-in cap)
+ * apply as-is while battery energy moves by power × dtH.
  *
  * Returns the *usable* AC output (raw PV minus curtailment) and the battery's
- * new energy content, so the caller can carry state to the next hour.
+ * new energy content, so the caller can carry state to the next slot.
  */
-function simulateHour(
+function simulateStep(
   pvW: number,
   loadW: number,
   socKwh: number,
   caps: ClipCaps,
+  dtH: number,
 ): { usefulW: number; socKwh: number } {
-  const pv = Math.max(0, pvW); // Wh over this 1-hour step
+  const pv = Math.max(0, pvW);
   const load = Math.max(0, loadW);
   const pvToLoad = Math.min(pv, load);
   let surplus = pv - pvToLoad;
@@ -230,15 +241,16 @@ function simulateHour(
   let curtailed = 0;
 
   if (surplus > 0) {
-    const headroomWh = Math.max(0, caps.batteryCapKwh - soc) * 1000;
-    const charged = Math.min(surplus, caps.batteryMaxChargeW, headroomWh);
-    soc += charged / 1000;
+    // Headroom expressed as the power that would fill it within this slot.
+    const headroomW = (Math.max(0, caps.batteryCapKwh - soc) * 1000) / dtH;
+    const charged = Math.min(surplus, caps.batteryMaxChargeW, headroomW);
+    soc += (charged * dtH) / 1000;
     surplus -= charged;
     const exported = Math.min(surplus, caps.maxOutputW);
     curtailed = surplus - exported;
   } else if (deficit > 0) {
-    const availableWh = Math.max(0, soc - caps.batteryMinKwh) * 1000;
-    soc -= Math.min(deficit, availableWh) / 1000;
+    const availableW = (Math.max(0, soc - caps.batteryMinKwh) * 1000) / dtH;
+    soc -= (Math.min(deficit, availableW) * dtH) / 1000;
   }
 
   return { usefulW: pv - curtailed, socKwh: soc };
@@ -246,36 +258,38 @@ function simulateHour(
 
 /**
  * Peak power and energy over the 15 minutes after `now`, from the (already
- * clipped) hourly curve. Each hour's watts is its average power, so the window
- * spans at most two hour buckets; energy is the time-weighted sum and the peak
- * is the larger of the touched hours.
+ * clipped) series. Energy is the time-weighted sum of the slots the window
+ * overlaps; the peak is the largest per-slot peak among them.
  */
 function computeNext15(
-  hourly: SolarForecastHour[],
+  series: SolarForecastPoint[],
+  startMs: number[],
+  widthMs: number[],
   nowMs: number,
-  utcOffsetSeconds: number,
 ): SolarForecastNext15 {
-  const byHour = new Map(hourly.map((h) => [h.time.slice(0, 13), h.watts]));
-  const start = new Date(nowMs + utcOffsetSeconds * 1000);
-  const end = new Date(nowMs + utcOffsetSeconds * 1000 + 15 * 60 * 1000);
-  const wStart = byHour.get(start.toISOString().slice(0, 13)) ?? 0;
-  const minInto = start.getUTCMinutes() + start.getUTCSeconds() / 60;
-  const minsInFirst = Math.min(15, 60 - minInto);
-  const wEnd = byHour.get(end.toISOString().slice(0, 13)) ?? 0;
-  const minsInSecond = 15 - minsInFirst;
-  const energyKwh = (wStart * minsInFirst + wEnd * minsInSecond) / 60 / 1000;
-  const maxPowerW = Math.max(wStart, minsInSecond > 0 ? wEnd : 0);
+  const endMs = nowMs + 15 * 60 * 1000;
+  let energyKwh = 0;
+  let maxPowerW = 0;
+  series.forEach((p, i) => {
+    const s = startMs[i] ?? 0;
+    const overlapMs = Math.min(s + (widthMs[i] ?? 0), endMs) - Math.max(s, nowMs);
+    if (overlapMs <= 0) return;
+    energyKwh += (p.watts * overlapMs) / 3_600_000 / 1000;
+    maxPowerW = Math.max(maxPowerW, p.peakWatts);
+  });
   return { maxPowerW, energyKwh };
 }
 
 /**
- * Combine a provider's irradiance series with the plant config into hourly AC
- * watts and daily kWh sums. Pure — `nowMs`/`sim` are injectable for tests.
+ * Combine a provider's irradiance series with the plant config into per-slot
+ * AC watts and daily kWh sums. Pure — `nowMs`/`sim` are injectable for tests.
+ * The slot width follows the provider's sample grid (15 min for Open-Meteo,
+ * capped at one hour); sparse/gappy series degrade to hour-wide point samples.
  *
- * When a feed-in cap and/or battery is configured, hours from the current one
- * forward are run through {@link simulateHour} so `watts` reflects *usable*
+ * When a feed-in cap and/or battery is configured, slots from the current one
+ * forward are run through {@link simulateStep} so `watts` reflects *usable*
  * output after clipping (battery seeded from live SOC, then carried across the
- * day boundary). Past hours keep the raw PV estimate — there is no SOC history
+ * day boundary). Past slots keep the raw PV estimate — there is no SOC history
  * to reconstruct them, and they are already measured elsewhere anyway.
  */
 export function buildSolarForecast(
@@ -307,29 +321,40 @@ export function buildSolarForecast(
     return watts;
   });
 
-  // Average power over each clock hour [tᵢ, tᵢ₊₁), via the trapezoid of its
-  // endpoints. This is what makes the forecast bar for an hour line up with the
-  // energy actually accumulated during that same hour: sampling a single
-  // endpoint instead biases the steep limbs — over-reporting the sunset ramp
-  // and under-reporting the sunrise ramp. Only integrate genuinely adjacent
-  // (one-hour-apart) samples; anything else (a gap, a DST seam) falls back to
-  // the point sample.
+  // Slot geometry. Each sample opens the slot [tᵢ, tᵢ₊₁); its width is the gap
+  // to the next sample, capped at one hour so sparse/gappy series (a DST seam,
+  // a provider hiccup) degrade to hour-wide point samples instead of smearing
+  // one sample across the gap. The last sample inherits the preceding width.
   const HOUR_MS = 3_600_000;
-  const rawWatts = instW.map((w, i) => {
-    const next = instW[i + 1];
-    if (next === undefined) return w;
-    const dt = Date.parse(`${data.times[i + 1]}:00Z`) - Date.parse(`${data.times[i]}:00Z`);
-    return dt === HOUR_MS ? (w + next) / 2 : w;
+  const startMs = data.times.map((t) => Date.parse(`${t}:00Z`) - data.utcOffsetSeconds * 1000);
+  const widthMs = startMs.map((s, i) => {
+    const next = startMs[i + 1];
+    if (next !== undefined) return Math.min(Math.max(1, next - s), HOUR_MS);
+    return i > 0
+      ? Math.min(Math.max(1, (startMs[i] ?? 0) - (startMs[i - 1] ?? 0)), HOUR_MS)
+      : HOUR_MS;
   });
 
+  // Average power over each slot [tᵢ, tᵢ₊₁), via the trapezoid of its
+  // endpoints. This is what makes a forecast bar line up with the energy
+  // actually accumulated during that same slot: sampling a single endpoint
+  // instead biases the steep limbs — over-reporting the sunset ramp and
+  // under-reporting the sunrise ramp. Only integrate genuinely adjacent
+  // samples (gap within the hour cap); anything else falls back to the point
+  // sample. The per-slot peak is the larger endpoint — what the UI reports as
+  // "max power" for the slot.
+  const adjacent = (i: number) => {
+    const next = startMs[i + 1];
+    return next !== undefined && next - (startMs[i] ?? 0) <= HOUR_MS;
+  };
+  const rawWatts = instW.map((w, i) => (adjacent(i) ? (w + (instW[i + 1] ?? w)) / 2 : w));
+  const rawPeakW = instW.map((w, i) => (adjacent(i) ? Math.max(w, instW[i + 1] ?? w) : w));
+
   // Bucket by the plant's local calendar day. "Remaining" includes the running
-  // hour prorated by the fraction of it still ahead, so an 11:30 view counts
-  // half of the 11:00 slot instead of the whole hour.
-  const shifted = new Date(nowMs + data.utcOffsetSeconds * 1000);
-  const localNow = shifted.toISOString();
+  // slot prorated by the fraction of it still ahead, so an 11:30 view with
+  // hourly slots counts half of the 11:00 slot instead of the whole hour.
+  const localNow = new Date(nowMs + data.utcOffsetSeconds * 1000).toISOString();
   const today = localNow.slice(0, 10);
-  const nowHour = localNow.slice(0, 13);
-  const hourLeft = 1 - (shifted.getUTCMinutes() * 60 + shifted.getUTCSeconds()) / 3600;
   const tomorrow = new Date(nowMs + data.utcOffsetSeconds * 1000 + 24 * 3600 * 1000)
     .toISOString()
     .slice(0, 10);
@@ -344,28 +369,40 @@ export function buildSolarForecast(
   const startPct = sim?.startSocPct ?? config.battery?.minSoc ?? 0;
   let socKwh = caps.batteryCapKwh * (startPct / 100);
 
-  const hourly: SolarForecastHour[] = data.times.map((time, i) => {
+  const series: SolarForecastPoint[] = data.times.map((time, i) => {
     const raw = rawWatts[i] ?? 0;
-    if (!clippingOn || time.slice(0, 13) < nowHour) return { time, watts: raw };
-    const step = simulateHour(raw, loadW, socKwh, caps);
+    const peak = rawPeakW[i] ?? 0;
+    const width = widthMs[i] ?? HOUR_MS;
+    // Simulate the running slot and everything after it; fully past slots keep
+    // the raw estimate.
+    if (!clippingOn || (startMs[i] ?? 0) + width <= nowMs) {
+      return { time, watts: raw, peakWatts: peak };
+    }
+    const step = simulateStep(raw, loadW, socKwh, caps, width / HOUR_MS);
     socKwh = step.socKwh;
-    return { time, watts: step.usefulW };
+    // Clipping caps the instantaneous output too: scale the peak by the slot's
+    // usable share so it never reports curtailed power.
+    const peakWatts = raw > 0 ? peak * (step.usefulW / raw) : step.usefulW;
+    return { time, watts: step.usefulW, peakWatts };
   });
 
-  const kwh = (hours: SolarForecastHour[]) => hours.reduce((s, h) => s + h.watts / 1000, 0);
+  const slotKwh = (i: number) => ((series[i]?.watts ?? 0) * (widthMs[i] ?? 0)) / HOUR_MS / 1000;
+  const dayKwh = (day: string) =>
+    series.reduce((s, p, i) => (p.time.startsWith(day) ? s + slotKwh(i) : s), 0);
 
   return {
     provider,
-    hourly,
-    todayKwh: kwh(hourly.filter((h) => h.time.startsWith(today))),
-    remainingTodayKwh: hourly.reduce((s, h) => {
-      if (!h.time.startsWith(today)) return s;
-      const hour = h.time.slice(0, 13);
-      if (hour < nowHour) return s;
-      return s + (h.watts / 1000) * (hour === nowHour ? hourLeft : 1);
+    stepMinutes: Math.round(Math.min(...widthMs, HOUR_MS) / 60_000),
+    series,
+    todayKwh: dayKwh(today),
+    remainingTodayKwh: series.reduce((s, p, i) => {
+      if (!p.time.startsWith(today)) return s;
+      const width = widthMs[i] ?? 0;
+      const left = Math.min((startMs[i] ?? 0) + width - nowMs, width);
+      return left <= 0 ? s : s + slotKwh(i) * (left / width);
     }, 0),
-    tomorrowKwh: kwh(hourly.filter((h) => h.time.startsWith(tomorrow))),
-    next15: computeNext15(hourly, nowMs, data.utcOffsetSeconds),
+    tomorrowKwh: dayKwh(tomorrow),
+    next15: computeNext15(series, startMs, widthMs, nowMs),
   };
 }
 

@@ -5,17 +5,22 @@
  * so each distinct panel orientation costs one call; identical orientations
  * are deduplicated. The plane-independent extras (temperature, direct-normal
  * irradiance, wind) ride along on the first request.
+ *
+ * The series is requested at 15-minute resolution (`minutely_15`): natively
+ * modelled in central Europe / North America and interpolated from the hourly
+ * model elsewhere, so it is available for any location and lets the forecast
+ * chart resolve cloud edges the hourly series smears.
  */
 
 import type { IrradianceForecast, PlaneOfArray, SolarIrradianceProvider } from "../solar-forecast";
 
-interface OpenMeteoHourly {
+interface OpenMeteoSeries {
   time?: string[];
   temperature_2m?: (number | null)[];
   // Instantaneous GTI at each timestamp. The non-`_instant` variable is a
-  // preceding-hour *mean*, which — sampled onto the hour it's stamped at —
-  // shifts the curve half-to-one hour and over-reports the steep sunset limb;
-  // the instantaneous series is integrated per hour in buildSolarForecast.
+  // preceding-interval *mean*, which — sampled onto the step it's stamped at —
+  // shifts the curve and over-reports the steep sunset limb; the instantaneous
+  // series is integrated per step in buildSolarForecast.
   global_tilted_irradiance_instant?: (number | null)[];
   // Beam component for the model's incidence-angle (IAM) split.
   direct_normal_irradiance_instant?: (number | null)[];
@@ -25,7 +30,7 @@ interface OpenMeteoHourly {
 
 interface OpenMeteoResponse {
   utc_offset_seconds?: number;
-  hourly?: OpenMeteoHourly;
+  minutely_15?: OpenMeteoSeries;
 }
 
 const BASE = "https://api.open-meteo.com/v1/forecast";
@@ -42,7 +47,7 @@ async function fetchPlane(
     : "global_tilted_irradiance_instant";
   const url =
     `${BASE}?latitude=${location.latitude}&longitude=${location.longitude}` +
-    `&hourly=${vars}&tilt=${plane.tilt}&azimuth=${plane.azimuth}` +
+    `&minutely_15=${vars}&tilt=${plane.tilt}&azimuth=${plane.azimuth}` +
     "&wind_speed_unit=ms&timezone=auto&forecast_days=2";
   const res = await fetch(url, { signal: AbortSignal.timeout(TIMEOUT_MS) });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -61,9 +66,9 @@ export const openMeteoIrradiance: SolarIrradianceProvider = {
       entries.map(([, plane], i) => fetchPlane(location, plane, i === 0)),
     );
 
-    const first = responses[0]?.hourly;
+    const first = responses[0]?.minutely_15;
     const times = first?.time;
-    if (!times || !first.temperature_2m) throw new Error("missing hourly fields");
+    if (!times || !first.temperature_2m) throw new Error("missing minutely_15 fields");
     const byKey = new Map(entries.map(([key], i) => [key, responses[i]]));
 
     return {
@@ -72,7 +77,7 @@ export const openMeteoIrradiance: SolarIrradianceProvider = {
       location,
       temperature: first.temperature_2m.map((t) => t ?? 0),
       gti: planes.map((p) => {
-        const series = byKey.get(`${p.tilt}/${p.azimuth}`)?.hourly
+        const series = byKey.get(`${p.tilt}/${p.azimuth}`)?.minutely_15
           ?.global_tilted_irradiance_instant;
         if (!series || series.length !== times.length) {
           throw new Error("missing irradiance series");

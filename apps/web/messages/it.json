@@ -303,6 +303,7 @@
   "weather_forecast_today": "Oggi",
   "weather_forecast_tomorrow": "Domani",
   "weather_forecast_next15": "Prossimi 15 min",
+  "weather_forecast_max": "max",
   "danger_zone_title": "Zona pericolosa",
   "danger_restart_desc": "Riavvia il processo del server per applicare le modifiche all'avvio — principalmente un profilo inverter appena attivato, che ridefinisce l'API, il manifest e i topic creati all'avvio. Il polling e i dati in tempo reale si interrompono brevemente durante il ripristino.",
   "danger_reset_title": "Reimposta tutti i dati",

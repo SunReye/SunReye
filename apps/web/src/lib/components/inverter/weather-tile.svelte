@@ -14,8 +14,10 @@
 
 	type SolarForecast = {
 		provider: string;
-		/** Expected AC power per hour, plant-local (`YYYY-MM-DDTHH:mm`). */
-		hourly: { time: string; watts: number }[];
+		/** Slot width of `series` in minutes (15 for Open-Meteo). */
+		stepMinutes: number;
+		/** Expected avg/peak AC power per slot, plant-local (`YYYY-MM-DDTHH:mm`). */
+		series: { time: string; watts: number; peakWatts: number }[];
 		todayKwh: number;
 		remainingTodayKwh: number;
 		tomorrowKwh: number;
@@ -68,7 +70,7 @@
 	// Only offer the solar-forecast detail dialog when the plant is configured and
 	// the provider returned an hourly series to chart.
 	const forecast = $derived(weather?.forecast ?? null);
-	const hasForecastChart = $derived((forecast?.hourly?.length ?? 0) > 0);
+	const hasForecastChart = $derived((forecast?.series?.length ?? 0) > 0);
 
 	// Card surface, shared by the interactive (dialog trigger) and static variants.
 	const CARD_BASE =
@@ -144,7 +146,8 @@
 {#if weather && Icon}
 	{#if hasForecastChart && forecast}
 		<SolarForecastDialog
-			hourly={forecast.hourly}
+			series={forecast.series}
+			stepMinutes={forecast.stepMinutes}
 			todayKwh={forecast.todayKwh}
 			remainingTodayKwh={forecast.remainingTodayKwh}
 			next15={forecast.next15}
