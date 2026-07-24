@@ -86,10 +86,11 @@ export interface SolarForecastNext15 {
   energyKwh: number;
 }
 
-export interface SolarForecast {
-  provider: string;
-  /** Slot width of `series` in minutes (15 for Open-Meteo). */
-  stepMinutes: number;
+/**
+ * One power projection over the series: the per-slot curve plus its daily/near-term
+ * sums. The forecast carries two of these — see {@link SolarForecast}.
+ */
+export interface ForecastView {
   series: SolarForecastPoint[];
   /** Expected production for the local calendar day, kWh. */
   todayKwh: number;
@@ -98,6 +99,36 @@ export interface SolarForecast {
   tomorrowKwh: number;
   /** Peak power and energy expected over the next 15 minutes. */
   next15: SolarForecastNext15;
+}
+
+export interface SolarForecast extends ForecastView {
+  provider: string;
+  /** Slot width of `series` in minutes (15 for Open-Meteo). */
+  stepMinutes: number;
+  /** Offset of the `series` local times from UTC, seconds — for offset-aware export. */
+  utcOffsetSeconds: number;
+  /**
+   * The top-level view is the **usable** output: raw PV after the feed-in cap and
+   * battery model curtail it (what the plant can actually use/export). `raw` is the
+   * **uncurtailed** PV potential — equal to the usable view when nothing clips. The
+   * dashboard tile shows the usable view; external consumers usually want `raw` so
+   * they can see production *above* the feed-in limit and act on it.
+   */
+  raw: ForecastView;
+}
+
+/**
+ * A single {@link ForecastView} shaped for external consumers (MQTT + the
+ * `/api/forecast*` endpoints): view fields + forecast metadata + a `detailedForecast`
+ * curve shaped like Solcast / Forecast.Solar so Home Assistant PV blueprints consume
+ * it unmodified. Built per variant (raw vs usable) by {@link toForecastExport}.
+ */
+export interface SolarForecastExport extends ForecastView {
+  provider: string;
+  stepMinutes: number;
+  utcOffsetSeconds: number;
+  /** Solcast-compatible detailed curve: one offset-aware timestamp + AC watts per slot. */
+  detailedForecast: { period_start: string; watts: number }[];
 }
 
 /**
@@ -369,40 +400,91 @@ export function buildSolarForecast(
   const startPct = sim?.startSocPct ?? config.battery?.minSoc ?? 0;
   let socKwh = caps.batteryCapKwh * (startPct / 100);
 
-  const series: SolarForecastPoint[] = data.times.map((time, i) => {
-    const raw = rawWatts[i] ?? 0;
-    const peak = rawPeakW[i] ?? 0;
+  // The raw (uncurtailed) PV potential, straight from the power model.
+  const rawSeries: SolarForecastPoint[] = data.times.map((time, i) => ({
+    time,
+    watts: rawWatts[i] ?? 0,
+    peakWatts: rawPeakW[i] ?? 0,
+  }));
+
+  // The usable view: raw PV with the feed-in cap + battery model curtailing the
+  // surplus. Identical to raw when nothing clips; past slots keep the raw estimate.
+  const usableSeries: SolarForecastPoint[] = rawSeries.map((point, i) => {
     const width = widthMs[i] ?? HOUR_MS;
-    // Simulate the running slot and everything after it; fully past slots keep
-    // the raw estimate.
-    if (!clippingOn || (startMs[i] ?? 0) + width <= nowMs) {
-      return { time, watts: raw, peakWatts: peak };
-    }
-    const step = simulateStep(raw, loadW, socKwh, caps, width / HOUR_MS);
+    if (!clippingOn || (startMs[i] ?? 0) + width <= nowMs) return point;
+    const step = simulateStep(point.watts, loadW, socKwh, caps, width / HOUR_MS);
     socKwh = step.socKwh;
     // Clipping caps the instantaneous output too: scale the peak by the slot's
     // usable share so it never reports curtailed power.
-    const peakWatts = raw > 0 ? peak * (step.usefulW / raw) : step.usefulW;
-    return { time, watts: step.usefulW, peakWatts };
+    const peakWatts =
+      point.watts > 0 ? point.peakWatts * (step.usefulW / point.watts) : step.usefulW;
+    return { time: point.time, watts: step.usefulW, peakWatts };
   });
 
-  const slotKwh = (i: number) => ((series[i]?.watts ?? 0) * (widthMs[i] ?? 0)) / HOUR_MS / 1000;
-  const dayKwh = (day: string) =>
-    series.reduce((s, p, i) => (p.time.startsWith(day) ? s + slotKwh(i) : s), 0);
+  // Daily/near-term sums for one series, bucketed by the plant's local day.
+  // "Remaining" includes the running slot prorated by the fraction still ahead.
+  const viewOf = (series: SolarForecastPoint[]): ForecastView => {
+    const slotKwh = (i: number) => ((series[i]?.watts ?? 0) * (widthMs[i] ?? 0)) / HOUR_MS / 1000;
+    const dayKwh = (day: string) =>
+      series.reduce((s, p, i) => (p.time.startsWith(day) ? s + slotKwh(i) : s), 0);
+    return {
+      series,
+      todayKwh: dayKwh(today),
+      remainingTodayKwh: series.reduce((s, p, i) => {
+        if (!p.time.startsWith(today)) return s;
+        const width = widthMs[i] ?? 0;
+        const left = Math.min((startMs[i] ?? 0) + width - nowMs, width);
+        return left <= 0 ? s : s + slotKwh(i) * (left / width);
+      }, 0),
+      tomorrowKwh: dayKwh(tomorrow),
+      next15: computeNext15(series, startMs, widthMs, nowMs),
+    };
+  };
 
   return {
     provider,
     stepMinutes: Math.round(Math.min(...widthMs, HOUR_MS) / 60_000),
-    series,
-    todayKwh: dayKwh(today),
-    remainingTodayKwh: series.reduce((s, p, i) => {
-      if (!p.time.startsWith(today)) return s;
-      const width = widthMs[i] ?? 0;
-      const left = Math.min((startMs[i] ?? 0) + width - nowMs, width);
-      return left <= 0 ? s : s + slotKwh(i) * (left / width);
-    }, 0),
-    tomorrowKwh: dayKwh(tomorrow),
-    next15: computeNext15(series, startMs, widthMs, nowMs),
+    utcOffsetSeconds: data.utcOffsetSeconds,
+    ...viewOf(usableSeries),
+    raw: viewOf(rawSeries),
+  };
+}
+
+/** Format a UTC offset in seconds as an ISO-8601 designator (`+02:00`, `Z`). */
+function isoOffset(seconds: number): string {
+  if (seconds === 0) return "Z";
+  const sign = seconds < 0 ? "-" : "+";
+  const abs = Math.abs(seconds);
+  const hh = String(Math.floor(abs / 3600)).padStart(2, "0");
+  const mm = String(Math.floor((abs % 3600) / 60)).padStart(2, "0");
+  return `${sign}${hh}:${mm}`;
+}
+
+/** Which power view to export: `"raw"` PV potential or `"usable"` post-clipping output. */
+export type ForecastVariant = "raw" | "usable";
+
+/**
+ * Shape one view of a {@link SolarForecast} for external export: pick the `raw`
+ * (uncurtailed) or `usable` (post-clipping) view, then append the Solcast-style
+ * `detailedForecast`, turning each slot's plant-local `YYYY-MM-DDTHH:mm` into a
+ * full offset-aware ISO timestamp (e.g. `2026-07-24T11:15:00+02:00`).
+ */
+export function toForecastExport(
+  forecast: SolarForecast,
+  variant: ForecastVariant,
+): SolarForecastExport {
+  const { provider, stepMinutes, utcOffsetSeconds, raw, ...usable } = forecast;
+  const view: ForecastView = variant === "raw" ? raw : usable;
+  const offset = isoOffset(utcOffsetSeconds);
+  return {
+    provider,
+    stepMinutes,
+    utcOffsetSeconds,
+    ...view,
+    detailedForecast: view.series.map((p) => ({
+      period_start: `${p.time}:00${offset}`,
+      watts: p.watts,
+    })),
   };
 }
 

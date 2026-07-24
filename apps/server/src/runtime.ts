@@ -27,7 +27,9 @@ import {
 } from "./inverter";
 import { log } from "./logging";
 import { type MqttBridge, startMqttBridge } from "./mqtt";
+import { fetchSolarForecast, toForecastExport } from "./solar-forecast";
 import { liveState } from "./state";
+import { getWeatherConfig } from "./weather-settings";
 
 const logger = log("runtime");
 
@@ -39,6 +41,26 @@ let pollTimer: ReturnType<typeof setInterval> | null = null;
 let bridge: MqttBridge | null = null;
 let onSample: SampleListener = () => {};
 let polling = false;
+let forecastTimer: ReturnType<typeof setInterval> | null = null;
+
+// The PV forecast changes slowly (provider cache is 30 min) and its topics are
+// retained, so re-publishing every 5 minutes keeps HA fresh without churn.
+const FORECAST_PUBLISH_INTERVAL_MS = 5 * 60_000;
+
+/** Fetch the current forecast and hand it to the MQTT bridge (no-op if disabled). */
+async function publishForecastNow(): Promise<void> {
+  if (!bridge) return;
+  try {
+    const forecast = await fetchSolarForecast(await getWeatherConfig());
+    bridge.publishForecast(
+      forecast
+        ? { raw: toForecastExport(forecast, "raw"), usable: toForecastExport(forecast, "usable") }
+        : null,
+    );
+  } catch (error) {
+    logger.warn("forecast publish failed: {error}", { error });
+  }
+}
 
 // --- History write buffer --------------------------------------------------
 // The DB is purely the history store — live monitoring is served from
@@ -177,6 +199,9 @@ async function rebuildBridge(config: MqttConfig): Promise<void> {
   const previous = bridge;
   bridge = startMqttBridge(config, { ctx: context(), write });
   if (previous) await previous.close();
+  // Seed a fresh bridge with the current forecast instead of waiting a full
+  // interval; harmless when the forecast is disabled (publishes null → no-op).
+  void publishForecastNow();
 }
 
 /** Boot the controller: build the source + bridge and start polling. */
@@ -185,6 +210,9 @@ export async function start(listener: SampleListener, profileCtx: ProfileContext
   onSample = listener;
   if (!flushTimer) {
     flushTimer = setInterval(() => void flushPending(), env.HISTORY_FLUSH_INTERVAL_MS);
+  }
+  if (!forecastTimer) {
+    forecastTimer = setInterval(() => void publishForecastNow(), FORECAST_PUBLISH_INTERVAL_MS);
   }
   await rebuildInverter(await getInverterConfig());
   await rebuildBridge(await getMqttConfig());
@@ -315,6 +343,8 @@ export async function stop(): Promise<void> {
   pollTimer = null;
   if (flushTimer) clearInterval(flushTimer);
   flushTimer = null;
+  if (forecastTimer) clearInterval(forecastTimer);
+  forecastTimer = null;
   // Persist whatever is buffered so a clean shutdown never drops history.
   await flushPending();
   await bridge?.close();

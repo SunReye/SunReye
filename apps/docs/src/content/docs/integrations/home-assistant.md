@@ -43,6 +43,18 @@ energy, V → voltage, A → current, Hz → frequency, °C → temperature, and
 the battery SoC entity. `state_class` follows the metric kind — cumulative →
 `total_increasing`, measurement → `measurement`.
 
+### Production forecast
+
+When the [PV production forecast](/use/settings/) is configured, **two** forecast sensors are
+discovered alongside the entities (kWh, today's expected production):
+`sensor.sunreye_forecast` (**raw**, uncurtailed potential) and
+`sensor.sunreye_forecast_usable` (**usable**, after the feed-in cap + battery model). Their
+**attributes** carry the full forecast, including a Solcast-style `detailedForecast` array — a
+per-15-minute `{ period_start, watts }` curve — so PV-automation blueprints consume it
+unmodified. For automations that act on production above your feed-in limit, read the **raw**
+sensor (the usable one is already capped at that limit). See
+[MQTT → Production forecast](/integrations/mqtt/).
+
 ### Device grouping
 
 All entities are grouped under a single Home Assistant **device**, identified by

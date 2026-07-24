@@ -14,7 +14,7 @@ import { evccSnapshot, rebuildEvcc } from "../evcc";
 import { getEvccConfig, setEvccConfig } from "../evcc-settings";
 import * as runtime from "../runtime";
 import { getTariff, setTariff } from "../settings";
-import { fetchSolarForecast } from "../solar-forecast";
+import { fetchSolarForecast, toForecastExport } from "../solar-forecast";
 import { getUiPrefs, setUiPrefs } from "../ui-prefs-settings";
 import { fetchWeather } from "../weather";
 import { getWeatherConfig, setWeatherConfig } from "../weather-settings";
@@ -197,6 +197,28 @@ export const settingsRoutes = new Elysia({ name: "settings-routes" })
         fetchSolarForecast(config),
       ]);
       return reading ? { ...reading, forecast } : null;
+    },
+    { requireSession: true },
+  )
+  // The PV production forecast on its own, in the canonical export shape also
+  // published to MQTT (native fields + a Solcast-style `detailedForecast` for HA
+  // blueprints). `/api/forecast` is the **raw** uncurtailed PV potential (what a
+  // blueprint needs to see production above the feed-in limit); `/api/forecast/usable`
+  // is the post-clipping output the dashboard tile shows. Both `null` when the
+  // forecast is disabled/unconfigured or the upstream fetch fails with no cache.
+  .get(
+    "/api/forecast",
+    async () => {
+      const forecast = await fetchSolarForecast(await getWeatherConfig());
+      return forecast ? toForecastExport(forecast, "raw") : null;
+    },
+    { requireSession: true },
+  )
+  .get(
+    "/api/forecast/usable",
+    async () => {
+      const forecast = await fetchSolarForecast(await getWeatherConfig());
+      return forecast ? toForecastExport(forecast, "usable") : null;
     },
     { requireSession: true },
   );

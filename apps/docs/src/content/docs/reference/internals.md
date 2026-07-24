@@ -82,9 +82,11 @@ the active profile, which is restart-scoped).
 
 Separate from the stable `/api/v1` surface, the dashboard uses `/api/*` routes (session
 auth; mutations admin-only): the manifest (`/api/profile`), the live WebSocket
-(`/ws/metrics`), history and rollup endpoints, cost/energy, and the settings CRUD +
-test/status endpoints that back the [Settings](/use/settings/) screen. These are internal —
-integrations should use [`/api/v1`](/integrations/rest-api/).
+(`/ws/metrics`), history and rollup endpoints, cost/energy, weather (`/api/weather`), the PV
+production forecast (`/api/forecast` for the raw potential and `/api/forecast/usable` for the
+post-clipping output — the same canonical shapes published to [MQTT](/integrations/mqtt/)),
+and the settings CRUD + test/status endpoints that back the [Settings](/use/settings/) screen. These are internal — integrations should use
+[`/api/v1`](/integrations/rest-api/).
 
 ## Packages at a glance
 

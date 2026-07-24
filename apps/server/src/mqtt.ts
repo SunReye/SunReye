@@ -24,6 +24,7 @@ import mqtt from "mqtt";
 import type { MqttClient } from "mqtt";
 import type { ProfileContext } from "./inverter";
 import { log } from "./logging";
+import type { ForecastVariant, SolarForecastExport } from "./solar-forecast";
 
 const logger = log("mqtt");
 
@@ -41,6 +42,10 @@ function topicsFor(prefix: string, profileId: string) {
     availability: `${base}/status`,
     state: (m: ManifestMetric): string => `${base}/${m.topic}`,
     command: (m: ManifestMetric): string => `${base}/${m.topic}/set`,
+    // PV production forecast, per variant (`raw` potential vs `usable` post-clipping):
+    // a scalar state (today's kWh) plus the full forecast as retained JSON attributes.
+    forecastState: (v: ForecastVariant): string => `${base}/forecast/${v}`,
+    forecastAttrs: (v: ForecastVariant): string => `${base}/forecast/${v}/attributes`,
   };
 }
 type Topics = ReturnType<typeof topicsFor>;
@@ -166,6 +171,47 @@ function discoveryConfig(
   };
 }
 
+/** Human-readable suffix per forecast variant, for the HA sensor name. */
+const FORECAST_VARIANT_LABEL: Record<ForecastVariant, string> = {
+  raw: "Solar forecast",
+  usable: "Solar forecast (usable)",
+};
+
+/**
+ * HA discovery config for a PV production forecast sensor (one per variant: `raw`
+ * potential and `usable` post-clipping output). State is today's expected kWh; the
+ * full forecast — including the Solcast-style `detailedForecast` curve — rides
+ * `json_attributes_topic` so blueprints read it via `state_attr`.
+ */
+export function forecastDiscoveryConfig(
+  topics: Topics,
+  profileId: string,
+  haDevice: HaDevice,
+  variant: ForecastVariant,
+): Discovery {
+  const key = variant === "raw" ? "forecast" : `forecast_${variant}`;
+  return {
+    component: "sensor",
+    config: {
+      name: FORECAST_VARIANT_LABEL[variant],
+      unique_id: `sunreye_${profileId}_${key}`,
+      default_entity_id: `sensor.sunreye_${profileId}_${key}`,
+      state_topic: topics.forecastState(variant),
+      json_attributes_topic: topics.forecastAttrs(variant),
+      availability_topic: topics.availability,
+      unit_of_measurement: "kWh",
+      device_class: "energy",
+      // A forecast, not a meter reading: it revises up and down as the provider
+      // updates, so it's a measurement, not a monotonic `total_increasing`.
+      state_class: "measurement",
+      device: haDevice,
+    },
+  };
+}
+
+/** The two forecast variants published/discovered, in a stable order. */
+const FORECAST_VARIANTS: ForecastVariant[] = ["raw", "usable"];
+
 export interface MqttStatus {
   connected: boolean;
   lastError: string | null;
@@ -174,6 +220,8 @@ export interface MqttStatus {
 export interface MqttBridge {
   /** Publish every metric in a sample to its retained state topic. */
   publishSample(sample: InverterSample): void;
+  /** Publish both PV forecast variants (retained); `null` is a no-op. */
+  publishForecast(forecast: Record<ForecastVariant, SolarForecastExport> | null): void;
   status(): MqttStatus;
   close(): Promise<void>;
 }
@@ -203,6 +251,18 @@ export function startMqttBridge(config: MqttConfig, deps: MqttBridgeDeps): MqttB
   const topics = topicsFor(config.topicPrefix, profile.id);
   let connected = false;
   let lastError: string | null = null;
+  // Latest forecast (both variants), kept so a reconnect can restore its retained
+  // topics promptly (the runtime otherwise only re-publishes on its slow interval).
+  let lastForecast: Record<ForecastVariant, SolarForecastExport> | null = null;
+
+  /** Publish both forecast variants to their retained state + attributes topics. */
+  function emitForecast(forecast: Record<ForecastVariant, SolarForecastExport>): void {
+    for (const variant of FORECAST_VARIANTS) {
+      const view = forecast[variant];
+      client.publish(topics.forecastState(variant), String(view.todayKwh), { retain: true });
+      client.publish(topics.forecastAttrs(variant), JSON.stringify(view), { retain: true });
+    }
+  }
 
   const client: MqttClient = mqtt.connect(config.brokerUrl, {
     username: config.username,
@@ -244,10 +304,22 @@ export function startMqttBridge(config: MqttConfig, deps: MqttBridgeDeps): MqttB
         const topic = `${config.haDiscoveryPrefix}/${component}/sunreye_${profile.id}/${slug(m.key)}/config`;
         client.publish(topic, JSON.stringify(cfg), { retain: true });
       }
+      for (const variant of FORECAST_VARIANTS) {
+        const disc = forecastDiscoveryConfig(topics, profile.id, haDevice, variant);
+        const objectId = variant === "raw" ? "forecast" : `forecast_${variant}`;
+        client.publish(
+          `${config.haDiscoveryPrefix}/${disc.component}/sunreye_${profile.id}/${objectId}/config`,
+          JSON.stringify(disc.config),
+          { retain: true },
+        );
+      }
       logger.info("published HA discovery for {count} entities", {
         count: manifest.metrics.length,
       });
     }
+
+    // Restore the retained forecast topics on (re)connect.
+    if (lastForecast) emitForecast(lastForecast);
 
     logger.info('connected to {brokerUrl} (prefix "{prefix}")', {
       brokerUrl: config.brokerUrl,
@@ -297,6 +369,13 @@ export function startMqttBridge(config: MqttConfig, deps: MqttBridgeDeps): MqttB
         if (value === undefined) continue;
         client.publish(topics.state(m), String(value), { retain: true });
       }
+    },
+    publishForecast(forecast) {
+      if (!forecast) return;
+      // Remember it for reconnect restore even while offline; only hit the wire
+      // when connected (topics are retained "latest", nothing to queue).
+      lastForecast = forecast;
+      if (client.connected) emitForecast(forecast);
     },
     status() {
       return { connected, lastError };

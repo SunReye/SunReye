@@ -1,6 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import { solarForecastConfigSchema } from "@SunReye/db/weather";
-import { type IrradianceForecast, buildSolarForecast, pvPowerW } from "./solar-forecast";
+import {
+  type IrradianceForecast,
+  buildSolarForecast,
+  pvPowerW,
+  toForecastExport,
+} from "./solar-forecast";
 
 const config = (over: object = {}) =>
   solarForecastConfigSchema.parse({
@@ -328,5 +333,58 @@ describe("buildSolarForecast clipping", () => {
     expect(f.series[1]?.watts).toBe(0); // dark hour, all load from battery
     expect(f.series[3]?.watts ?? 0).toBeGreaterThan(3000 + 2000);
     expect(f.series[3]?.watts ?? 0).toBeLessThanOrEqual(rawNoon + 1e-6);
+  });
+});
+
+describe("toForecastExport", () => {
+  const data: IrradianceForecast = {
+    times: ["2026-07-18T08:00", "2026-07-18T12:00", "2026-07-19T12:00"],
+    utcOffsetSeconds: 7200,
+    location: { latitude: 48, longitude: 9 },
+    temperature: [20, 25, 25],
+    gti: [[100, 800, 400]],
+  };
+  const nowMs = Date.parse("2026-07-18T10:00:00Z");
+
+  test("mirrors the series into an offset-aware Solcast-style curve", () => {
+    const f = buildSolarForecast(config(), data, "test", nowMs);
+    const exported = toForecastExport(f, "raw");
+    expect(exported.detailedForecast).toHaveLength(f.raw.series.length);
+    expect(exported.detailedForecast[0]).toEqual({
+      period_start: "2026-07-18T08:00:00+02:00",
+      watts: f.raw.series[0]?.watts ?? -1,
+    });
+    // Native fields pass through untouched.
+    expect(exported.todayKwh).toBe(f.raw.todayKwh);
+    expect(exported.provider).toBe("test");
+    // The export carries no nested `raw` — it is one flat view.
+    expect("raw" in exported).toBe(false);
+  });
+
+  test("emits Z for a UTC plant and a negative offset west of UTC", () => {
+    const utc = toForecastExport(
+      buildSolarForecast(config(), { ...data, utcOffsetSeconds: 0 }, "t", nowMs),
+      "raw",
+    );
+    expect(utc.detailedForecast[0]?.period_start).toBe("2026-07-18T08:00:00Z");
+    const west = toForecastExport(
+      buildSolarForecast(config(), { ...data, utcOffsetSeconds: -18_000 }, "t", nowMs),
+      "raw",
+    );
+    expect(west.detailedForecast[0]?.period_start).toBe("2026-07-18T08:00:00-05:00");
+  });
+
+  test("raw exceeds a feed-in cap that usable clips away", () => {
+    // 10 kWp plant, 3 kW export cap, no battery, no house load: the sunny slot's
+    // raw potential sits well above 3 kW, but the usable view is curtailed to it.
+    const capped = config({ maxOutputW: 3000 });
+    const f = buildSolarForecast(capped, data, "test", nowMs, { startSocPct: null, houseLoadW: 0 });
+    const raw = toForecastExport(f, "raw");
+    const usable = toForecastExport(f, "usable");
+    const noonRaw = raw.detailedForecast[1]?.watts ?? 0;
+    const noonUsable = usable.detailedForecast[1]?.watts ?? 0;
+    expect(noonRaw).toBeGreaterThan(3000);
+    expect(noonUsable).toBeLessThanOrEqual(3000 + 1e-6);
+    expect(raw.todayKwh).toBeGreaterThan(usable.todayKwh);
   });
 });
