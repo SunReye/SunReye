@@ -11,7 +11,11 @@ import type { IrradianceForecast, PlaneOfArray, SolarIrradianceProvider } from "
 interface OpenMeteoHourly {
   time?: string[];
   temperature_2m?: (number | null)[];
-  global_tilted_irradiance?: (number | null)[];
+  // Instantaneous GTI at each timestamp. The non-`_instant` variable is a
+  // preceding-hour *mean*, which — sampled onto the hour it's stamped at —
+  // shifts the curve half-to-one hour and over-reports the steep sunset limb;
+  // the instantaneous series is integrated per hour in buildSolarForecast.
+  global_tilted_irradiance_instant?: (number | null)[];
 }
 
 interface OpenMeteoResponse {
@@ -28,8 +32,8 @@ async function fetchPlane(
   withTemperature: boolean,
 ): Promise<OpenMeteoResponse> {
   const vars = withTemperature
-    ? "global_tilted_irradiance,temperature_2m"
-    : "global_tilted_irradiance";
+    ? "global_tilted_irradiance_instant,temperature_2m"
+    : "global_tilted_irradiance_instant";
   const url =
     `${BASE}?latitude=${location.latitude}&longitude=${location.longitude}` +
     `&hourly=${vars}&tilt=${plane.tilt}&azimuth=${plane.azimuth}` +
@@ -61,7 +65,8 @@ export const openMeteoIrradiance: SolarIrradianceProvider = {
       utcOffsetSeconds: responses[0]?.utc_offset_seconds ?? 0,
       temperature: first.temperature_2m.map((t) => t ?? 0),
       gti: planes.map((p) => {
-        const series = byKey.get(`${p.tilt}/${p.azimuth}`)?.hourly?.global_tilted_irradiance;
+        const series = byKey.get(`${p.tilt}/${p.azimuth}`)?.hourly
+          ?.global_tilted_irradiance_instant;
         if (!series || series.length !== times.length) {
           throw new Error("missing irradiance series");
         }

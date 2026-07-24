@@ -98,6 +98,35 @@ describe("buildSolarForecast", () => {
     expect(f.next15.maxPowerW).toBeCloseTo(noon, 6);
     expect(f.next15.energyKwh).toBeCloseTo(noon / 1000 / 4, 6);
   });
+
+  test("integrates consecutive hours as a trapezoid, taming the sunset ramp", () => {
+    // A declining evening limb of instantaneous irradiance on consecutive hours.
+    const ramp: IrradianceForecast = {
+      times: ["2026-07-18T16:00", "2026-07-18T17:00", "2026-07-18T18:00", "2026-07-18T19:00"],
+      utcOffsetSeconds: 7200,
+      temperature: [25, 25, 25, 25],
+      gti: [[800, 400, 100, 0]],
+    };
+    const before = Date.parse("2026-07-18T13:00:00Z"); // local 15:00, ahead of the limb
+    const f = buildSolarForecast(config(), ramp, "test", before);
+    const p = (g: number) => pvPowerW(g, 25, 10, -0.4, 14);
+    // Each hour is the mean of its two endpoints; the last has no successor.
+    expect(f.hourly[0]?.watts).toBeCloseTo((p(800) + p(400)) / 2, 6);
+    expect(f.hourly[1]?.watts).toBeCloseTo((p(400) + p(100)) / 2, 6);
+    expect(f.hourly[2]?.watts).toBeCloseTo((p(100) + p(0)) / 2, 6);
+    expect(f.hourly[3]?.watts).toBeCloseTo(p(0), 6);
+    // The whole point: the 16:00 bar is pulled below its start-of-hour sample,
+    // instead of over-reporting the descending limb.
+    expect(f.hourly[0]?.watts ?? Infinity).toBeLessThan(p(800));
+  });
+
+  test("non-adjacent samples are not averaged across the gap", () => {
+    // The default `data` fixture is sparse (4 h / 24 h gaps): each hour must keep
+    // its own instantaneous estimate rather than trapezoid across the gap.
+    const f = buildSolarForecast(config(), data, "test", nowMs);
+    const p = (g: number, t: number) => pvPowerW(g, t, 10, -0.4, 14);
+    expect(f.hourly[1]?.watts).toBeCloseTo(p(800, 25), 6);
+  });
 });
 
 describe("buildSolarForecast clipping", () => {

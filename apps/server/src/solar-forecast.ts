@@ -29,9 +29,13 @@ export interface IrradianceForecast {
   times: string[];
   /** Offset of those local times from UTC, in seconds. */
   utcOffsetSeconds: number;
-  /** Ambient 2 m temperature per hour, °C. */
+  /** Ambient 2 m temperature at each timestamp, °C. */
   temperature: number[];
-  /** Global tilted irradiance per requested plane, W/m² per hour. */
+  /**
+   * *Instantaneous* global tilted irradiance at each timestamp, W/m², per
+   * requested plane. buildSolarForecast integrates consecutive samples into
+   * per-hour average power, so the value is a point sample, not an hour mean.
+   */
   gti: number[][];
 }
 
@@ -215,7 +219,8 @@ export function buildSolarForecast(
   nowMs = Date.now(),
   sim?: ForecastSimInputs,
 ): SolarForecast {
-  const rawWatts = data.times.map((_time, i) => {
+  // Instantaneous AC power at each timestamp.
+  const instW = data.times.map((_time, i) => {
     let watts = 0;
     config.arrays.forEach((arr, a) => {
       watts += pvPowerW(
@@ -227,6 +232,21 @@ export function buildSolarForecast(
       );
     });
     return watts;
+  });
+
+  // Average power over each clock hour [tᵢ, tᵢ₊₁), via the trapezoid of its
+  // endpoints. This is what makes the forecast bar for an hour line up with the
+  // energy actually accumulated during that same hour: sampling a single
+  // endpoint instead biases the steep limbs — over-reporting the sunset ramp
+  // and under-reporting the sunrise ramp. Only integrate genuinely adjacent
+  // (one-hour-apart) samples; anything else (a gap, a DST seam) falls back to
+  // the point sample.
+  const HOUR_MS = 3_600_000;
+  const rawWatts = instW.map((w, i) => {
+    const next = instW[i + 1];
+    if (next === undefined) return w;
+    const dt = Date.parse(`${data.times[i + 1]}:00Z`) - Date.parse(`${data.times[i]}:00Z`);
+    return dt === HOUR_MS ? (w + next) / 2 : w;
   });
 
   // Bucket by the plant's local calendar day. "Remaining" includes the running
