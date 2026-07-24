@@ -487,5 +487,16 @@
   "overview_detail_production": "Production (today)",
   "overview_detail_feed_in": "Feed-in (today)",
   "overview_detail_purchase": "Grid purchase (today)",
-  "overview_no_data_today": "No data yet today"
+  "overview_no_data_today": "No data yet today",
+  "settings_tab_logs": "Logs",
+  "logs_title": "Server logs",
+  "logs_desc": "Live server log stream. Pause to inspect the current output, or export it as a text file.",
+  "logs_pause": "Pause",
+  "logs_resume": "Resume",
+  "logs_export": "Export .txt",
+  "logs_clear": "Clear",
+  "logs_empty": "Waiting for logs…",
+  "logs_status_live": "Live",
+  "logs_status_paused": "Paused",
+  "logs_status_offline": "Reconnecting…"
 }

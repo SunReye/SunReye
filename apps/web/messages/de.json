@@ -487,5 +487,16 @@
   "overview_detail_production": "Produktion (heute)",
   "overview_detail_feed_in": "Einspeisung (heute)",
   "overview_detail_purchase": "Netzbezug (heute)",
-  "overview_no_data_today": "Heute noch keine Daten"
+  "overview_no_data_today": "Heute noch keine Daten",
+  "settings_tab_logs": "Protokolle",
+  "logs_title": "Server-Protokolle",
+  "logs_desc": "Live-Protokollstream des Servers. Pausieren, um die aktuelle Ausgabe zu prüfen, oder als Textdatei exportieren.",
+  "logs_pause": "Pausieren",
+  "logs_resume": "Fortsetzen",
+  "logs_export": ".txt exportieren",
+  "logs_clear": "Leeren",
+  "logs_empty": "Warte auf Protokolle…",
+  "logs_status_live": "Live",
+  "logs_status_paused": "Pausiert",
+  "logs_status_offline": "Neu verbinden…"
 }

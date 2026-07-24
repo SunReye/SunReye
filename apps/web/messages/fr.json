@@ -487,5 +487,16 @@
   "overview_detail_production": "Production (aujourd'hui)",
   "overview_detail_feed_in": "Injection (aujourd'hui)",
   "overview_detail_purchase": "Achat réseau (aujourd'hui)",
-  "overview_no_data_today": "Pas encore de données aujourd'hui"
+  "overview_no_data_today": "Pas encore de données aujourd'hui",
+  "settings_tab_logs": "Journaux",
+  "logs_title": "Journaux du serveur",
+  "logs_desc": "Flux de journaux du serveur en direct. Mettez en pause pour inspecter la sortie actuelle ou exportez-la dans un fichier texte.",
+  "logs_pause": "Pause",
+  "logs_resume": "Reprendre",
+  "logs_export": "Exporter .txt",
+  "logs_clear": "Effacer",
+  "logs_empty": "En attente de journaux…",
+  "logs_status_live": "En direct",
+  "logs_status_paused": "En pause",
+  "logs_status_offline": "Reconnexion…"
 }

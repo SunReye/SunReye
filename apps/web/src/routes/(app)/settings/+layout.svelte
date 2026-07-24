@@ -20,6 +20,7 @@
 	import StackIcon from 'phosphor-svelte/lib/Stack';
 	import UsersIcon from 'phosphor-svelte/lib/Users';
 	import KeyIcon from 'phosphor-svelte/lib/Key';
+	import TerminalWindowIcon from 'phosphor-svelte/lib/TerminalWindow';
 	import WarningIcon from 'phosphor-svelte/lib/Warning';
 
 	const { children } = $props();
@@ -62,6 +63,7 @@
 							{ href: '/settings/profiles', label: m.settings_tab_profiles(), icon: StackIcon },
 							{ href: '/settings/users', label: m.settings_tab_users(), icon: UsersIcon },
 							{ href: '/settings/api-keys', label: m.settings_tab_apikeys(), icon: KeyIcon },
+							{ href: '/settings/logs', label: m.settings_tab_logs(), icon: TerminalWindowIcon },
 							{ href: '/settings/danger', label: m.settings_tab_danger(), icon: WarningIcon }
 						]
 					} satisfies NavGroup

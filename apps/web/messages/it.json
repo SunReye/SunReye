@@ -487,5 +487,16 @@
   "overview_detail_production": "Produzione (oggi)",
   "overview_detail_feed_in": "Immissione (oggi)",
   "overview_detail_purchase": "Acquisto dalla rete (oggi)",
-  "overview_no_data_today": "Ancora nessun dato oggi"
+  "overview_no_data_today": "Ancora nessun dato oggi",
+  "settings_tab_logs": "Log",
+  "logs_title": "Log del server",
+  "logs_desc": "Flusso di log del server in tempo reale. Metti in pausa per esaminare l'output corrente o esportalo come file di testo.",
+  "logs_pause": "Pausa",
+  "logs_resume": "Riprendi",
+  "logs_export": "Esporta .txt",
+  "logs_clear": "Cancella",
+  "logs_empty": "In attesa di log…",
+  "logs_status_live": "In diretta",
+  "logs_status_paused": "In pausa",
+  "logs_status_offline": "Riconnessione…"
 }

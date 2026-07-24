@@ -15,7 +15,7 @@ import { evccControl, evccSnapshot, rebuildEvcc, setEvccListener, stopEvcc } fro
 import { queryRollup } from "./history";
 import { isPublicDashboard } from "./access-settings";
 import { buildProfileContext, initProfiles } from "./inverter";
-import { log, setupLogging } from "./logging";
+import { type LogEntry, log, recentLogs, setLogListener, setupLogging } from "./logging";
 import { adminRoutes } from "./routes/admin";
 import { adminGuard, dashboardReadAllowed } from "./routes/admin-guard";
 import { customChartsRoutes } from "./routes/custom-charts";
@@ -97,6 +97,7 @@ const SampleSchema = t.Object({
 
 const METRICS_TOPIC = "metrics";
 const EVCC_TOPIC = "evcc";
+const LOG_TOPIC = "logs";
 
 const app = new Elysia()
   // Structured HTTP request logging (category ["elysia"]). Health/liveness
@@ -235,6 +236,26 @@ const app = new Elysia()
       ws.subscribe(EVCC_TOPIC);
       const snap = evccSnapshot();
       if (snap) ws.send(JSON.stringify(snap));
+    },
+  })
+  // Live server log stream for the admin Logs panel. Admin-only (logs can carry
+  // config values, hostnames, and error internals), so unlike the dashboard
+  // streams this never rides the public-dashboard exemption. Every message is a
+  // JSON array of log lines: on open we replay the recent ring buffer so the
+  // viewer opens with context; live lines are pushed (coalesced) below via
+  // setLogListener. The `open` re-checks the admin session as a belt-and-braces
+  // guard on top of the `requireAdmin` upgrade macro.
+  .ws("/ws/logs", {
+    requireAdmin: true,
+    async open(ws) {
+      const session = await auth.api.getSession({ headers: ws.data.request.headers });
+      if (session?.user.role !== "admin") {
+        ws.close();
+        return;
+      }
+      ws.subscribe(LOG_TOPIC);
+      const recent = recentLogs();
+      if (recent.length > 0) ws.send(JSON.stringify(recent));
     },
   })
   // Historical data (long form). Filter by metric / inverter; rollups live in
@@ -467,6 +488,21 @@ startUpdateChecks();
 // get the current snapshot from the socket's `open` handler instead.
 setEvccListener((state) => app.server?.publish(EVCC_TOPIC, JSON.stringify(state)));
 void rebuildEvcc();
+
+// Broadcast log lines to `/ws/logs` subscribers, coalescing bursts (startup and
+// error storms emit many lines at once) into one array message every 250ms so a
+// viewer isn't hammered with a message per line.
+const logQueue: LogEntry[] = [];
+let logFlushTimer: ReturnType<typeof setTimeout> | null = null;
+setLogListener((entry) => {
+  logQueue.push(entry);
+  if (logFlushTimer) return;
+  logFlushTimer = setTimeout(() => {
+    logFlushTimer = null;
+    const batch = logQueue.splice(0);
+    if (batch.length > 0) app.server?.publish(LOG_TOPIC, JSON.stringify(batch));
+  }, 250);
+});
 
 // Graceful shutdown: stop polling and release the transport + broker.
 for (const signal of ["SIGINT", "SIGTERM"] as const) {

@@ -487,5 +487,16 @@
   "overview_detail_production": "Producción (hoy)",
   "overview_detail_feed_in": "Inyección (hoy)",
   "overview_detail_purchase": "Compra de red (hoy)",
-  "overview_no_data_today": "Aún no hay datos de hoy"
+  "overview_no_data_today": "Aún no hay datos de hoy",
+  "settings_tab_logs": "Registros",
+  "logs_title": "Registros del servidor",
+  "logs_desc": "Flujo de registros del servidor en vivo. Pausa para inspeccionar la salida actual o expórtalo como archivo de texto.",
+  "logs_pause": "Pausar",
+  "logs_resume": "Reanudar",
+  "logs_export": "Exportar .txt",
+  "logs_clear": "Borrar",
+  "logs_empty": "Esperando registros…",
+  "logs_status_live": "En vivo",
+  "logs_status_paused": "Pausado",
+  "logs_status_offline": "Reconectando…"
 }
