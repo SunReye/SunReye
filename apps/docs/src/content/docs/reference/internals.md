@@ -66,6 +66,18 @@ Entities are transport-neutral: each metric yields a constraint (bounds, enum, w
 
 Adding a metric extends all three with no route/topic/UI code.
 
+## Polling & reads
+
+One poll loop reads the whole register map per tick and swaps the result in as a single atomic
+snapshot, so no transport ever sees a half-updated sample. Under the hood a read is several
+Modbus transactions — the map is planned into contiguous blocks (`planReads`), split on address
+gaps and the 125-register per-read cap. Because those blocks are sampled milliseconds apart, the
+planner groups the raw registers feeding each computed metric into **one spanning block**, so
+derived values (efficiency, self-consumption) are computed from registers captured at the same
+instant. Groups that exceed the cap, or a device that rejects the spanning read, fall back to
+split reads. See [Profiles → Authoring](/profiles/authoring/#compute-expressions) for the
+120-register constraint this places on a computed metric's inputs.
+
 ## Storage
 
 Telemetry is stored **narrow** — one row per metric per tick, keyed by `inverterId` and

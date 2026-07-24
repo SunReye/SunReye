@@ -80,6 +80,16 @@ Derived metrics use a small **closed** set — never arbitrary code:
 Referenced keys are resolved from the live sample at compute time; a **missing key reads as
 0**. A computed metric may only reference metrics defined **earlier** (no forward references).
 
+:::tip[Keep a computed metric's inputs close together]
+The engine samples all the raw registers feeding a `computeExpr` (resolved transitively) in
+**one Modbus read**, so a derived value like efficiency never mixes registers read milliseconds
+apart. This only works when those inputs fit within a **120-register window** (the per-read cap).
+Inputs spread wider than that can't share a transaction and the computed value can spike on fast
+power transients — declare a `range` so the engine at least clamps it. The single read also spans
+any unmapped registers between the inputs, so the device must tolerate reading them (those that
+don't fall back to split reads automatically, with the same transient-spike caveat).
+:::
+
 ### Deferred aggregates: `sumOf`
 
 A hand-listed `sum` drifts the moment a model adds or drops a member. `sumOf` lets you

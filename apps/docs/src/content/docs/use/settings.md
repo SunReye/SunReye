@@ -8,7 +8,7 @@ most of it without touching `.env` or restarting. The whole screen is **admin-on
 live status poll keeps the connection badges fresh.
 
 Tabs: **Inverter**, **MQTT & Home Assistant**, **Tariff**, **Date & Time** (any admin), plus
-**Profiles**, **Users**, and **API Keys** (admin).
+**Profiles**, **Users**, **API Keys**, and **Logs** (admin).
 
 <img class="sr-shot sr-light" src="/SunReye/screenshots/settings-light.png" alt="Settings → Inverter: Modbus connection fields with a live status badge and Test connection." />
 <img class="sr-shot sr-dark" src="/SunReye/screenshots/settings-dark.png" alt="Settings → Inverter: Modbus connection fields with a live status badge and Test connection." />
@@ -84,6 +84,21 @@ Keys are stored hashed and work alongside the static `API_KEYS`
 [environment variable](/reference/environment/). See
 [REST API → Authentication](/integrations/rest-api/#authentication) for how they're presented
 on requests.
+
+## Logs
+
+A live view of the server log stream (`/settings/logs`, admin only), streamed over a WebSocket:
+
+- **Live feed** — auto-follows the tail; scroll up to pause following, **Pause**/**Resume** to
+  freeze the view while lines keep arriving (the resume button shows how many are waiting).
+  **Export** saves the current view as a `.txt` file; **Clear** empties the panel.
+- **View filters** — the **level** and **source** dropdowns narrow what the panel renders (and
+  what Export saves). They are client-side only; the server keeps emitting everything. Sources are
+  the log categories in view (e.g. `server.mqtt`, `server.http`, `inverter-core.driver`).
+- **Server level** — sets the lowest severity the *server itself* emits, persisted and applied
+  immediately (no restart). **Default** follows the [`LOG_LEVEL`](/reference/environment/) boot
+  value; the MQTT transport can be pinned separately with `LOG_LEVEL_MQTT`. Raising this to
+  `debug` surfaces per-poll Modbus read timing and other detail; lower it back to keep logs quiet.
 
 :::note
 Client-side admin gating is UX only — every mutation is enforced on the server.
