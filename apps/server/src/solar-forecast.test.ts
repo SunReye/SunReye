@@ -91,4 +91,94 @@ describe("buildSolarForecast", () => {
     const f = buildSolarForecast(config(), sparse, "test", nowMs);
     expect(f.todayKwh).toBe(0);
   });
+
+  test("next15 reports the running hour's power and its quarter-hour energy", () => {
+    const f = buildSolarForecast(config(), data, "test", nowMs);
+    const noon = f.hourly[1]?.watts ?? 0;
+    expect(f.next15.maxPowerW).toBeCloseTo(noon, 6);
+    expect(f.next15.energyKwh).toBeCloseTo(noon / 1000 / 4, 6);
+  });
+});
+
+describe("buildSolarForecast clipping", () => {
+  // Four consecutive full-sun hours on one local day (UTC+2), so a small feed-in
+  // cap + battery must curtail once the battery fills. Now = local 10:00, so all
+  // four hours are simulated.
+  const sun: IrradianceForecast = {
+    times: ["2026-07-18T10:00", "2026-07-18T11:00", "2026-07-18T12:00", "2026-07-18T13:00"],
+    utcOffsetSeconds: 7200,
+    temperature: [25, 25, 25, 25],
+    gti: [[1000, 1000, 1000, 1000]],
+  };
+  const now = Date.parse("2026-07-18T08:00:00Z"); // local 10:00
+  const raw = buildSolarForecast(config(), sun, "test", now).hourly.map((h) => h.watts);
+
+  test("no clipping config leaves output identical to the raw estimate", () => {
+    const f = buildSolarForecast(config(), sun, "test", now, {
+      startSocPct: 40,
+      houseLoadW: 500,
+    });
+    expect(f.hourly.map((h) => h.watts)).toEqual(raw);
+  });
+
+  test("battery soaks up surplus, then output clips to the feed-in cap", () => {
+    const clip = config({ maxOutputW: 3000, battery: { usableKwh: 5, minSoc: 0 } });
+    const f = buildSolarForecast(clip, sun, "test", now, { startSocPct: 0, houseLoadW: 0 });
+    // Hour 1: 5 kWh headroom absorbs the above-cap surplus → no curtailment.
+    expect(f.hourly[0]?.watts).toBeCloseTo(raw[0] ?? 0, 6);
+    // Battery now full + no load → later hours clip to the 3 kW export cap.
+    expect(f.hourly[1]?.watts).toBeCloseTo(3000, 6);
+    expect(f.hourly[2]?.watts).toBeCloseTo(3000, 6);
+    expect(f.todayKwh).toBeLessThan(buildSolarForecast(config(), sun, "test", now).todayKwh);
+  });
+
+  test("a bigger battery curtails less (more headroom for surplus)", () => {
+    const small = buildSolarForecast(
+      config({ maxOutputW: 3000, battery: { usableKwh: 3, minSoc: 0 } }),
+      sun,
+      "test",
+      now,
+      { startSocPct: 0, houseLoadW: 0 },
+    );
+    const big = buildSolarForecast(
+      config({ maxOutputW: 3000, battery: { usableKwh: 15, minSoc: 0 } }),
+      sun,
+      "test",
+      now,
+      { startSocPct: 0, houseLoadW: 0 },
+    );
+    expect(big.todayKwh).toBeGreaterThan(small.todayKwh);
+  });
+
+  test("house load is served before the cap, lifting usable output", () => {
+    const clip = config({ maxOutputW: 3000, battery: { usableKwh: 5, minSoc: 0 } });
+    const noLoad = buildSolarForecast(clip, sun, "test", now, { startSocPct: 100, houseLoadW: 0 });
+    const withLoad = buildSolarForecast(clip, sun, "test", now, {
+      startSocPct: 100, // battery starts full → clipping bites immediately
+      houseLoadW: 2000,
+    });
+    // Battery full from the start, so hour 1 clips; load consumes 2 kW behind the
+    // cap that would otherwise be curtailed.
+    expect(withLoad.hourly[0]?.watts ?? 0).toBeGreaterThan(noLoad.hourly[0]?.watts ?? 0);
+    expect(withLoad.hourly[0]?.watts).toBeCloseTo(3000 + 2000, 6);
+  });
+
+  test("overnight discharge reclaims headroom so the next day isn't over-curtailed", () => {
+    // Sunny noon, then two dark high-load hours, then a sunny noon the next day.
+    const twoDay: IrradianceForecast = {
+      times: ["2026-07-18T12:00", "2026-07-18T20:00", "2026-07-19T04:00", "2026-07-19T12:00"],
+      utcOffsetSeconds: 7200,
+      temperature: [25, 25, 25, 25],
+      gti: [[1000, 0, 0, 1000]],
+    };
+    const at = Date.parse("2026-07-18T10:00:00Z"); // local noon on day 1
+    const clip = config({ maxOutputW: 3000, battery: { usableKwh: 5, minSoc: 0 } });
+    const f = buildSolarForecast(clip, twoDay, "test", at, { startSocPct: 100, houseLoadW: 2000 });
+    const rawNoon = buildSolarForecast(config(), twoDay, "test", at).hourly[3]?.watts ?? 0;
+    // Battery started full but 4 kWh drained overnight, so day-2 noon has headroom
+    // again and its usable output beats a full-battery (immediately clipping) day.
+    expect(f.hourly[1]?.watts).toBe(0); // dark hour, all load from battery
+    expect(f.hourly[3]?.watts ?? 0).toBeGreaterThan(3000 + 2000);
+    expect(f.hourly[3]?.watts ?? 0).toBeLessThanOrEqual(rawNoon + 1e-6);
+  });
 });

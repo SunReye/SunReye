@@ -63,6 +63,29 @@ export async function queryRollup(
   }));
 }
 
+/**
+ * Median of an hourly rollup's average values for one metric over the last
+ * `days`, or `null` when there is no data. Used to infer a representative house
+ * load for the solar-forecast clipping model — the median shrugs off EV-charge
+ * spikes and idle nights that a mean would smear.
+ */
+export async function queryMedianHourlyAvg(
+  metric: string,
+  inverterId: string,
+  days: number,
+): Promise<number | null> {
+  const since = new Date(Date.now() - days * 24 * 3600 * 1000);
+  const result = await db.execute<{ median: number | null }>(sql`
+    select percentile_cont(0.5) within group (order by avg_value) as median
+    from hourly_rollups
+    where metric = ${metric}
+      and inverter_id = ${inverterId}
+      and bucket >= ${since}
+  `);
+  const median = result.rows[0]?.median;
+  return median == null ? null : Number(median);
+}
+
 /** Raw samples for one metric, most-recent-first. */
 export async function queryRawHistory(
   q: HistoryQuery,

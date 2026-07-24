@@ -16,6 +16,7 @@
 	const isAdmin = $derived($session.data?.user.role === 'admin');
 
 	type PvArray = { kwp: number; tilt: number; azimuth: number };
+	type ForecastBattery = { usableKwh: number; maxChargeW: number | null; minSoc: number };
 	type WeatherConfig = {
 		enabled: boolean;
 		latitude: number | null;
@@ -27,6 +28,9 @@
 			arrays: PvArray[];
 			tempCoefficient: number;
 			systemLoss: number;
+			maxOutputW: number | null;
+			battery: ForecastBattery | null;
+			houseLoadW: number | null;
 		};
 	};
 
@@ -39,6 +43,13 @@
 	let tempCoeffText = $state('');
 	let lossText = $state('');
 	let arrayTexts = $state<ArrayFields[]>([]);
+	// Power fields are shown in kW (friendlier than the schema's watts) and
+	// converted on load/save.
+	let maxOutputText = $state('');
+	let houseLoadText = $state('');
+	let battUsableText = $state('');
+	let battChargeText = $state('');
+	let battReserveText = $state('');
 
 	onMount(async () => {
 		const { data } = await api.api.settings.weather.get();
@@ -53,6 +64,12 @@
 				tilt: a.tilt.toString(),
 				azimuth: a.azimuth.toString()
 			}));
+			const wToKw = (w: number | null) => (w == null ? '' : (w / 1000).toString());
+			maxOutputText = wToKw(draft.forecast.maxOutputW);
+			houseLoadText = wToKw(draft.forecast.houseLoadW);
+			battUsableText = draft.forecast.battery ? draft.forecast.battery.usableKwh.toString() : '';
+			battChargeText = wToKw(draft.forecast.battery?.maxChargeW ?? null);
+			battReserveText = draft.forecast.battery ? draft.forecast.battery.minSoc.toString() : '';
 		}
 	});
 
@@ -63,8 +80,24 @@
 		return Number.isFinite(n) ? n : null;
 	}
 
+	type ForecastFields = {
+		arrays: PvArray[];
+		tempCoefficient: number;
+		systemLoss: number;
+		maxOutputW: number | null;
+		battery: ForecastBattery | null;
+		houseLoadW: number | null;
+	};
+
+	/** A blank field is a valid "unset"; a filled-but-unparseable one is not. */
+	function parseOptionalKw(text: string): { ok: boolean; watts: number | null } {
+		if (text.trim() === '') return { ok: true, watts: null };
+		const kw = parseNum(text);
+		return kw === null ? { ok: false, watts: null } : { ok: true, watts: kw * 1000 };
+	}
+
 	/** Parse the forecast inputs, or null (with a toast) when any is invalid. */
-	function parseForecast(): { arrays: PvArray[]; tempCoefficient: number; systemLoss: number } | null {
+	function parseForecast(): ForecastFields | null {
 		const arrays: PvArray[] = [];
 		for (const t of arrayTexts) {
 			const kwp = parseNum(t.kwp);
@@ -76,7 +109,31 @@
 		const tempCoefficient = parseNum(tempCoeffText);
 		const systemLoss = parseNum(lossText);
 		if (tempCoefficient === null || systemLoss === null) return null;
-		return { arrays, tempCoefficient, systemLoss };
+
+		const maxOut = parseOptionalKw(maxOutputText);
+		const load = parseOptionalKw(houseLoadText);
+		const charge = parseOptionalKw(battChargeText);
+		if (!maxOut.ok || !load.ok || !charge.ok) return null;
+
+		// The battery block exists only when a usable capacity is given; the reserve
+		// then defaults to 10% and the charge cap is optional.
+		let battery: ForecastBattery | null = null;
+		if (battUsableText.trim() !== '') {
+			const usableKwh = parseNum(battUsableText);
+			if (usableKwh === null) return null;
+			const minSoc = battReserveText.trim() === '' ? 10 : parseNum(battReserveText);
+			if (minSoc === null) return null;
+			battery = { usableKwh, maxChargeW: charge.watts, minSoc };
+		}
+
+		return {
+			arrays,
+			tempCoefficient,
+			systemLoss,
+			maxOutputW: maxOut.watts,
+			battery,
+			houseLoadW: load.watts
+		};
 	}
 
 	async function save() {
@@ -188,6 +245,11 @@
 				bind:arrays={arrayTexts}
 				bind:tempCoeff={tempCoeffText}
 				bind:loss={lossText}
+				bind:maxOutput={maxOutputText}
+				bind:houseLoad={houseLoadText}
+				bind:battUsable={battUsableText}
+				bind:battCharge={battChargeText}
+				bind:battReserve={battReserveText}
 				disabled={!isAdmin || saving}
 			/>
 		{/if}

@@ -27,6 +27,25 @@ export const pvArraySchema = z.object({
 });
 export type PvArray = z.infer<typeof pvArraySchema>;
 
+/**
+ * Battery parameters for the forecast's clipping model. Present only when the
+ * plant has storage the forecast should account for; `usableKwh` drives how
+ * much above-cap surplus the battery can soak up before the rest is curtailed.
+ */
+export const forecastBatterySchema = z.object({
+  /** Usable (not nominal) battery energy in kWh — the DoD-limited window. */
+  usableKwh: z.number().positive().max(10_000),
+  /**
+   * Max charge power in W, or `null` for "unbounded within the hour" (the daily
+   * kWh total is dominated by total headroom vs surplus, not the intra-hour
+   * rate, so `null` is a fine default).
+   */
+  maxChargeW: z.number().positive().max(10_000_000).nullable().default(null),
+  /** Reserve floor in % the battery is not discharged below (overnight drain). */
+  minSoc: z.number().min(0).max(100).default(10),
+});
+export type ForecastBattery = z.infer<typeof forecastBatterySchema>;
+
 /** Production-forecast settings for the plant (provider-agnostic PV model). */
 export const solarForecastConfigSchema = z.object({
   /** Enable the production forecast on the weather tile. */
@@ -44,6 +63,20 @@ export const solarForecastConfigSchema = z.object({
    * PVWatts' default assumption is 14.
    */
   systemLoss: z.number().min(0).max(90).default(14),
+  /**
+   * Max power the plant can feed to the grid in W (the inverter's "solar sell" /
+   * feed-in cap), or `null` to model no export limit. Once the battery is full,
+   * PV beyond `load + this` has nowhere to go and is curtailed — the correction
+   * that stops the forecast overstating output on bright, full-battery hours.
+   */
+  maxOutputW: z.number().positive().max(10_000_000).nullable().default(null),
+  /** Battery storage for the clipping model, or `null` for no buffer. */
+  battery: forecastBatterySchema.nullable().default(null),
+  /**
+   * Average house load in W used by the clipping model (PV serves load before
+   * it can be curtailed). `null` means infer it from recent history.
+   */
+  houseLoadW: z.number().min(0).max(10_000_000).nullable().default(null),
 });
 export type SolarForecastConfig = z.infer<typeof solarForecastConfigSchema>;
 

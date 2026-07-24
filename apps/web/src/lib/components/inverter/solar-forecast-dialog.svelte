@@ -15,12 +15,15 @@
 		hourly,
 		todayKwh,
 		remainingTodayKwh,
+		next15,
 		triggerClass,
 		trigger
 	}: {
 		hourly: ForecastHour[];
 		todayKwh: number;
 		remainingTodayKwh: number;
+		/** Peak power (W) and energy (kWh) expected over the next 15 minutes. */
+		next15: { maxPowerW: number; energyKwh: number };
 		/** Weather-tile classes — the whole tile becomes the dialog trigger button. */
 		triggerClass: string;
 		/** Weather-tile content, rendered inside the trigger button. */
@@ -28,6 +31,7 @@
 	} = $props();
 
 	const kwh = (v: number) => v.toLocaleString(undefined, { maximumFractionDigits: 1 });
+	const kw = (w: number) => (w / 1000).toLocaleString(undefined, { maximumFractionDigits: 1 });
 
 	let open = $state(false);
 	// Actual hourly production for today (kWh/hour); null until the first fetch
@@ -148,6 +152,12 @@
 					{m.weather_forecast_remaining()}
 					<span class="font-semibold tabular-nums text-foreground">
 						{kwh(remainingTodayKwh)} kWh
+					</span>
+				</span>
+				<span>
+					{m.weather_forecast_next15()}
+					<span class="font-semibold tabular-nums text-foreground">
+						{kw(next15.maxPowerW)} kW · {kwh(next15.energyKwh)} kWh
 					</span>
 				</span>
 			</div>

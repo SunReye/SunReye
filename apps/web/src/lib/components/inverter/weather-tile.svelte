@@ -19,6 +19,7 @@
 		todayKwh: number;
 		remainingTodayKwh: number;
 		tomorrowKwh: number;
+		next15: { maxPowerW: number; energyKwh: number };
 	};
 
 	type Weather = {
@@ -146,6 +147,7 @@
 			hourly={forecast.hourly}
 			todayKwh={forecast.todayKwh}
 			remainingTodayKwh={forecast.remainingTodayKwh}
+			next15={forecast.next15}
 			triggerClass={TRIGGER_CLASS}
 		>
 			{#snippet trigger()}
