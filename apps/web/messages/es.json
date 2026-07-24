@@ -134,6 +134,7 @@
   "settings_tab_apikeys": "Claves API",
   "settings_tab_danger": "Zona de peligro",
   "settings_tab_sensors": "Sensores",
+  "settings_tab_weather": "Clima y pronóstico",
   "settings_sensors_title": "Visibilidad de sensores",
   "settings_sensors_desc": "Oculta del panel los sensores que no usas. Los sensores ocultos se siguen registrando y publicando en MQTT y la API; solo desaparecen de la aplicación web.",
   "settings_sensors_group_hidden": "Grupo completo oculto",

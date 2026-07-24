@@ -51,7 +51,7 @@
 			items: [
 				{ href: '/settings/display', label: m.settings_tab_display(), icon: MonitorIcon },
 				{ href: '/settings/tariff', label: m.settings_tab_tariff(), icon: ReceiptIcon },
-				{ href: '/settings/weather', label: m.weather_title(), icon: CloudSunIcon }
+				{ href: '/settings/weather', label: m.settings_tab_weather(), icon: CloudSunIcon }
 			]
 		},
 		...(isAdmin

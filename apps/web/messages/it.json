@@ -134,6 +134,7 @@
   "settings_tab_apikeys": "Chiavi API",
   "settings_tab_danger": "Zona pericolosa",
   "settings_tab_sensors": "Sensori",
+  "settings_tab_weather": "Meteo e previsioni",
   "settings_sensors_title": "Visibilità dei sensori",
   "settings_sensors_desc": "Nascondi dalla dashboard i sensori che non usi. I sensori nascosti continuano a essere registrati e pubblicati su MQTT e sull'API; scompaiono solo dall'app web.",
   "settings_sensors_group_hidden": "Intero gruppo nascosto",

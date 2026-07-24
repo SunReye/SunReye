@@ -134,6 +134,7 @@
   "settings_tab_apikeys": "API-Schlüssel",
   "settings_tab_danger": "Gefahrenbereich",
   "settings_tab_sensors": "Sensoren",
+  "settings_tab_weather": "Wetter & Prognose",
   "settings_sensors_title": "Sensor-Sichtbarkeit",
   "settings_sensors_desc": "Blende Sensoren, die du nicht nutzt, aus diesem Dashboard aus. Ausgeblendete Sensoren werden weiterhin aufgezeichnet und an MQTT und die API veröffentlicht – sie verschwinden nur aus der Web-App.",
   "settings_sensors_group_hidden": "Gesamte Gruppe ausgeblendet",

@@ -134,6 +134,7 @@
   "settings_tab_apikeys": "Clés API",
   "settings_tab_danger": "Zone de danger",
   "settings_tab_sensors": "Capteurs",
+  "settings_tab_weather": "Météo et prévisions",
   "settings_sensors_title": "Visibilité des capteurs",
   "settings_sensors_desc": "Masquez du tableau de bord les capteurs que vous n'utilisez pas. Les capteurs masqués continuent d'être enregistrés et publiés sur MQTT et l'API ; ils disparaissent uniquement de l'application web.",
   "settings_sensors_group_hidden": "Groupe entier masqué",
