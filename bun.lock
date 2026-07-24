@@ -59,7 +59,7 @@
     },
     "apps/web": {
       "name": "web",
-      "version": "1.0.1",
+      "version": "1.2.0",
       "dependencies": {
         "@SunReye/inverter-core": "workspace:*",
         "@elysiajs/eden": "^1.4.1",
@@ -155,8 +155,9 @@
     },
     "packages/inverter-core": {
       "name": "@SunReye/inverter-core",
-      "version": "0.0.0",
+      "version": "1.0.0",
       "dependencies": {
+        "@logtape/logtape": "^2.2.3",
         "modbus-serial": "^8.0.21",
         "zod": "catalog:",
       },
@@ -168,7 +169,7 @@
     },
     "packages/profile-sdk": {
       "name": "@sunreye/profile-sdk",
-      "version": "2.0.0",
+      "version": "2.0.1",
       "bin": {
         "profile": "./dist/cli.mjs",
       },

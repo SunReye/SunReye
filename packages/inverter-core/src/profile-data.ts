@@ -133,6 +133,20 @@ export interface MetricDataDef {
   flow?: MetricFlow;
 }
 
+/**
+ * Metric keys a {@link ComputeExpr} reads. Kept alongside the compiled closure
+ * (as {@link MetricDef.computeInputs}) so the read planner can group a computed
+ * metric's raw registers into one atomic Modbus read.
+ */
+export function computeExprInputs(expr: ComputeExpr): string[] {
+  if ("sum" in expr) return [...expr.sum];
+  if ("diff" in expr) return [...expr.diff];
+  if ("scale" in expr) return [expr.scale[0]];
+  if ("combine" in expr) return [...expr.combine.add, ...(expr.combine.sub ?? [])];
+  if ("clamp" in expr) return [expr.clamp.key];
+  return [...expr.ratio.num, ...expr.ratio.den];
+}
+
 /** Compile a {@link ComputeExpr} into the `compute` closure the engine runs. */
 export function compileComputeExpr(expr: ComputeExpr): (values: MetricValues) => number {
   if ("sum" in expr) {
@@ -172,7 +186,13 @@ function toMetricDef(m: MetricDataDef): MetricDef {
   // `computeAggregate` is author-time only; resolution strips it, but drop it
   // here too so a stray token can never leak into the runtime metric.
   const { computeExpr, computeAggregate: _computeAggregate, ...rest } = m;
-  return computeExpr ? { ...rest, compute: compileComputeExpr(computeExpr) } : rest;
+  return computeExpr
+    ? {
+        ...rest,
+        compute: compileComputeExpr(computeExpr),
+        computeInputs: computeExprInputs(computeExpr),
+      }
+    : rest;
 }
 
 /**

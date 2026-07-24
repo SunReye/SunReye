@@ -99,6 +99,12 @@ export interface MetricDef {
    */
   compute?: (values: MetricValues) => number;
   /**
+   * Metric keys `compute` reads, derived from the declarative expression at
+   * parse time (never serialized). Lets the read planner resolve a computed
+   * metric's raw registers and sample them in one atomic Modbus transaction.
+   */
+  computeInputs?: string[];
+  /**
    * Composite control — writing to this metric runs the declarative
    * {@link ControlExpr} instead of a raw register write. Addressless (no wire
    * read/write of its own); the runtime interprets it and dispatches to the

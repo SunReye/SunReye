@@ -11,6 +11,7 @@
     "test": "bun test src"
   },
   "dependencies": {
+    "@logtape/logtape": "^2.2.3",
     "modbus-serial": "^8.0.21",
     "zod": "catalog:"
   },
