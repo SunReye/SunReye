@@ -4,8 +4,10 @@
 	import DownloadSimpleIcon from 'phosphor-svelte/lib/DownloadSimple';
 	import TrashIcon from 'phosphor-svelte/lib/Trash';
 	import { Button } from '$lib/components/ui/button';
+	import { api } from '$lib/api';
 	import { downloadText } from '$lib/utils';
 	import { logs, type LogEntry } from '$lib/logs/store.svelte';
+	import OptionSelect from './option-select.svelte';
 	import SettingsSection from './settings-section.svelte';
 	import * as m from '$lib/paraglide/messages';
 
@@ -26,8 +28,8 @@
 
 	$effect(() => {
 		// Reading the length registers the dependency so this runs on each new
-		// line; scroll after the DOM has painted it.
-		const lineCount = logs.lines.length;
+		// (visible) line; scroll after the DOM has painted it.
+		const lineCount = filtered.length;
 		if (lineCount > 0 && follow && !logs.paused && viewport) {
 			viewport.scrollTop = viewport.scrollHeight;
 		}
@@ -42,6 +44,61 @@
 		fatal: 'text-red-500'
 	};
 
+	// Client-side view filters — the stream (and the export of what's on screen)
+	// always carries every line; these only narrow what is rendered.
+	let levelFilter = $state('all');
+	let sourceFilter = $state('all');
+
+	const levelItems = [
+		{ value: 'all', label: m.logs_all_levels() },
+		...(Object.keys(LEVEL_CLASS) as LogEntry['level'][]).map((l) => ({ value: l, label: l }))
+	];
+
+	// Sources observed in the buffer; keep a vanished selection (e.g. after
+	// Clear) listed so the trigger doesn't fall back to the placeholder.
+	const sourceItems = $derived.by(() => {
+		const seen = new Set(logs.lines.map((l) => l.category));
+		if (sourceFilter !== 'all') seen.add(sourceFilter);
+		return [
+			{ value: 'all', label: m.logs_all_sources() },
+			...[...seen].sort().map((c) => ({ value: c, label: c }))
+		];
+	});
+
+	const filtered = $derived(
+		logs.lines.filter(
+			(l) =>
+				(levelFilter === 'all' || l.level === levelFilter) &&
+				(sourceFilter === 'all' || l.category === sourceFilter)
+		)
+	);
+
+	// Server-side level (what the server emits at all) — persisted and
+	// hot-applied over /api/settings/logging, unlike the view filters above
+	// which only narrow what this panel renders.
+	let serverLevel = $state<string | null | undefined>(undefined); // undefined = not loaded yet
+	let serverDefault = $state('info');
+
+	$effect(() => {
+		void api.api.settings.logging.get().then(({ data }) => {
+			if (!data) return;
+			serverLevel = data.level;
+			serverDefault = data.default;
+		});
+	});
+
+	const serverLevelItems = $derived([
+		{ value: 'default', label: `${m.logs_level_default()} (${serverDefault})` },
+		...(Object.keys(LEVEL_CLASS) as LogEntry['level'][]).map((l) => ({ value: l, label: l }))
+	]);
+
+	async function changeServerLevel(v: string): Promise<void> {
+		const { data } = await api.api.settings.logging.put({ level: v === 'default' ? null : v });
+		if (!data) return;
+		serverLevel = data.level;
+		serverDefault = data.default;
+	}
+
 	function fmtTime(ms: number): string {
 		const d = new Date(ms);
 		const p = (n: number, w = 2) => String(n).padStart(w, '0');
@@ -49,8 +106,9 @@
 	}
 
 	function exportLogs(): void {
+		// Exports the filtered view — what you see is what you save.
 		const text =
-			logs.lines
+			filtered
 				.map(
 					(l) =>
 						`${new Date(l.time).toISOString()} ${l.level.toUpperCase().padEnd(7)} ${l.category} ${l.message}`
@@ -90,12 +148,7 @@
 					{m.logs_pause()}
 				{/if}
 			</Button>
-			<Button
-				variant="outline"
-				size="sm"
-				onclick={exportLogs}
-				disabled={logs.lines.length === 0}
-			>
+			<Button variant="outline" size="sm" onclick={exportLogs} disabled={filtered.length === 0}>
 				<DownloadSimpleIcon class="size-4" />
 				{m.logs_export()}
 			</Button>
@@ -108,6 +161,32 @@
 
 	<p class="text-sm text-muted-foreground">{m.logs_desc()}</p>
 
+	<div class="flex flex-wrap items-center gap-2">
+		<OptionSelect
+			value={levelFilter}
+			items={levelItems}
+			onchange={(v) => (levelFilter = v)}
+			triggerClass="h-8 w-36 text-xs"
+		/>
+		<OptionSelect
+			value={sourceFilter}
+			items={sourceItems}
+			onchange={(v) => (sourceFilter = v)}
+			triggerClass="h-8 w-48 text-xs"
+		/>
+		{#if serverLevel !== undefined}
+			<div class="ml-auto flex items-center gap-2">
+				<span class="text-xs text-muted-foreground">{m.logs_server_level()}</span>
+				<OptionSelect
+					value={serverLevel ?? 'default'}
+					items={serverLevelItems}
+					onchange={(v) => void changeServerLevel(v)}
+					triggerClass="h-8 w-36 text-xs"
+				/>
+			</div>
+		{/if}
+	</div>
+
 	<div
 		bind:this={viewport}
 		onscroll={onScroll}
@@ -117,8 +196,12 @@
 			<div class="flex h-full items-center justify-center text-muted-foreground">
 				{m.logs_empty()}
 			</div>
+		{:else if filtered.length === 0}
+			<div class="flex h-full items-center justify-center text-muted-foreground">
+				{m.logs_no_match()}
+			</div>
 		{:else}
-			{#each logs.lines as line, i (i)}
+			{#each filtered as line, i (i)}
 				<div class="flex gap-2 px-2 py-0.5 hover:bg-muted/50">
 					<span class="shrink-0 text-muted-foreground">{fmtTime(line.time)}</span>
 					<span class="w-14 shrink-0 uppercase {LEVEL_CLASS[line.level]}">{line.level}</span>

@@ -507,6 +507,11 @@
   "logs_export": "Export .txt",
   "logs_clear": "Clear",
   "logs_empty": "Waiting for logs…",
+  "logs_all_levels": "All levels",
+  "logs_all_sources": "All sources",
+  "logs_no_match": "No lines match the current filters.",
+  "logs_server_level": "Server level",
+  "logs_level_default": "Default",
   "logs_status_live": "Live",
   "logs_status_paused": "Paused",
   "logs_status_offline": "Reconnecting…"
