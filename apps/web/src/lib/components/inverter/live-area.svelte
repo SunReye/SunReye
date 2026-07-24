@@ -54,19 +54,22 @@
 
 	// A real-time cursor that drifts continuously toward the newest sample instead of
 	// snapping to it once a second. Mirrors AnimatedNumber: stretch every transition
-	// across the real gap since the previous sample and ease it linearly, so the plot
-	// glides rather than updating on a visible once-a-second cadence. Only the marks'
-	// translate (below) reads `cursor` — never `data`/`xDomain` — so the chart itself
-	// does NOT re-render per animation frame.
+	// across the feed's own sample spacing (`interval`, measured from the points, so
+	// it's correct for any source) and ease it linearly, so the plot glides rather
+	// than updating on a visible per-sample cadence. The small overshoot keeps the
+	// cursor gently trailing so it never reaches the target and freezes between
+	// samples — the old wall-clock gap capped at 2s did exactly that on slow feeds.
+	// `interval` is itself clamped to 5s, a deliberate ceiling: past that the chart
+	// steps rather than scrolling a barely-moving cursor across a 2-min window. Only
+	// the marks' translate (below) reads `cursor` — never `data`/`xDomain` — so the
+	// chart itself does NOT re-render per animation frame.
 	const cursor = new Tween(untrack(() => lastT) ?? 0);
-	let lastAt = performance.now();
 	$effect(() => {
-		const t = lastT; // track live updates
+		const t = lastT; // track live updates only
 		if (t === undefined) return;
-		const now = performance.now();
-		const gap = now - lastAt;
-		lastAt = now;
-		void cursor.set(t, { duration: Math.min(2000, Math.max(300, gap)), easing: linear });
+		// Untracked: `interval` changes in lockstep with `lastT`, and only a new
+		// sample should drive a new glide.
+		void cursor.set(t, { duration: Math.max(300, untrack(() => interval) * 1.15), easing: linear });
 	});
 
 	// The chart renders with a FIXED window anchored to the newest sample, so `data`
