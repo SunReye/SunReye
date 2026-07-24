@@ -100,7 +100,7 @@
 			if (id !== seq) return;
 			const sum = Array.from({ length: slotsPerDay }, () => 0);
 			const count = Array.from({ length: slotsPerDay }, () => 0);
-			const peakW = Array.from<number | null>({ length: slotsPerDay }, () => null);
+			const peakW = Array.from({ length: slotsPerDay }, (): number | null => null);
 			for (const r of (data ?? []) as { time: string; avg: number; max: number }[]) {
 				const d = new Date(r.time);
 				const i = slotIndex(d.getHours(), d.getMinutes());
@@ -118,7 +118,7 @@
 				query: { from: from.toISOString(), to: now.toISOString(), bucket: 'hour' }
 			});
 			if (id !== seq) return;
-			const avgW = Array.from<number | null>({ length: slotsPerDay }, () => null);
+			const avgW = Array.from({ length: slotsPerDay }, (): number | null => null);
 			for (const p of (data ?? []) as Period[]) {
 				const h = Number(p.bucket.slice(11, 13));
 				if (Number.isNaN(h)) continue;
@@ -127,7 +127,10 @@
 				const first = slotIndex(h, 0);
 				for (let i = first; i < first + 60 / step && i <= nowIdx; i++) avgW[i] = p.productionKwh * 1000;
 			}
-			actual = { avgW, peakW: Array.from<number | null>({ length: slotsPerDay }, () => null) };
+			actual = {
+				avgW,
+				peakW: Array.from({ length: slotsPerDay }, (): number | null => null)
+			};
 		}
 	}
 
