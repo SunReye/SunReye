@@ -16,6 +16,7 @@ import { queryRollup } from "./history";
 import { isPublicDashboard } from "./access-settings";
 import { buildProfileContext, initProfiles } from "./inverter";
 import { type LogEntry, log, recentLogs, setLogListener, setupLogging } from "./logging";
+import { initLogLevel } from "./logging-settings";
 import { adminRoutes } from "./routes/admin";
 import { adminGuard, dashboardReadAllowed } from "./routes/admin-guard";
 import { customChartsRoutes } from "./routes/custom-charts";
@@ -55,6 +56,9 @@ if (process.argv.includes("--healthcheck")) {
 // Wire LogTape before anything logs (Elysia's request logger and the app
 // loggers below both flow through the sinks configured here).
 await setupLogging();
+// Apply the persisted runtime log level now that the database is reachable;
+// everything before this line logs at the boot default.
+await initLogLevel();
 const serverLog = log();
 
 /**
@@ -100,9 +104,16 @@ const EVCC_TOPIC = "evcc";
 const LOG_TOPIC = "logs";
 
 const app = new Elysia()
-  // Structured HTTP request logging (category ["elysia"]). Health/liveness
-  // probes are noisy and uninteresting, so skip them.
-  .use(elysiaLogger({ skip: (ctx) => ctx.path === "/" || ctx.path === "/healthz" }))
+  // Structured HTTP request logging. Health/liveness probes are noisy and
+  // uninteresting, so skip them.
+  .use(
+    elysiaLogger({
+      // Log under the app root (as `server.http`) instead of the plugin's
+      // default `elysia` category, so HTTP lines read like every other source.
+      category: ["server", "http"],
+      skip: (ctx) => ctx.path === "/" || ctx.path === "/healthz",
+    }),
+  )
   .use(
     cors({
       // In dev the web app may be served on any localhost port (Vite fallback,

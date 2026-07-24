@@ -43,6 +43,10 @@ export const env = createEnv({
     // Lowest LogTape severity that reaches the console sink. Unset defaults to
     // "debug" in development and "info" otherwise (resolved in the logging setup).
     LOG_LEVEL: z.enum(["trace", "debug", "info", "warning", "error", "fatal"]).optional(),
+    // Per-category override for the MQTT transport (`server.mqtt`) — turn MQTT
+    // logging up (debug) or down (warning) without touching the rest. Unset
+    // inherits LOG_LEVEL.
+    LOG_LEVEL_MQTT: z.enum(["trace", "debug", "info", "warning", "error", "fatal"]).optional(),
 
     // Inverter connection settings are optional at boot: they only *seed* the
     // DB-backed, UI-editable config on first run (see apps/server/src/config.ts

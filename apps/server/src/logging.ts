@@ -4,8 +4,9 @@
  * flow through the sinks configured here.
  *
  * Category tree:
- *   ["server", ...]  — app logs (mqtt, runtime, api)
- *   ["elysia"]       — HTTP request logs from `@logtape/elysia`
+ *   ["server", ...]        — app logs (mqtt, runtime, api, and the HTTP
+ *                            request logger mounted as ["server", "http"])
+ *   ["inverter-core", ...] — Modbus engine library logs (read plan, fallbacks)
  */
 
 import { env } from "@SunReye/env/server";
@@ -100,10 +101,47 @@ const streamSink: Sink = (record: LogRecord) => {
 };
 
 /**
- * Lowest severity that reaches the console. Explicit `LOG_LEVEL` wins; otherwise
- * verbose in development, quiet elsewhere.
+ * Boot-time default severity. Explicit `LOG_LEVEL` wins; otherwise verbose in
+ * development, quiet elsewhere. The *effective* level is {@link runtimeLevel},
+ * which starts here and can be moved at runtime (Settings → Logs).
  */
-const lowestLevel: LogLevel = env.LOG_LEVEL ?? (env.NODE_ENV === "development" ? "debug" : "info");
+const defaultLevel: LogLevel = env.LOG_LEVEL ?? (env.NODE_ENV === "development" ? "debug" : "info");
+
+/**
+ * The live severity floor. Loggers are configured with `lowestLevel: "trace"`
+ * and gated through filters that read this variable per record, so changing it
+ * takes effect instantly — LogTape's `lowestLevel` itself is fixed at
+ * `configure()` time and would need a full reconfigure.
+ */
+let runtimeLevel: LogLevel = defaultLevel;
+
+/** The effective server log level right now. */
+export function currentLogLevel(): LogLevel {
+  return runtimeLevel;
+}
+
+/** The boot default the runtime level falls back to when unset. */
+export function defaultLogLevel(): LogLevel {
+  return defaultLevel;
+}
+
+/** Move the live severity floor; `null` returns to the boot default. */
+export function applyLogLevel(level: LogLevel | null): void {
+  runtimeLevel = level ?? defaultLevel;
+}
+
+const LEVEL_PRIORITY: Record<LogLevel, number> = {
+  trace: 0,
+  debug: 1,
+  info: 2,
+  warning: 3,
+  error: 4,
+  fatal: 5,
+};
+
+/** Filter passing records at or above a (lazily read) severity floor. */
+const atLeast = (floor: () => LogLevel) => (record: LogRecord) =>
+  LEVEL_PRIORITY[record.level] >= LEVEL_PRIORITY[floor()];
 
 let configured = false;
 
@@ -122,9 +160,38 @@ export async function setupLogging(): Promise<void> {
       // Fan every record into the ring buffer + live listener for `/ws/logs`.
       stream: streamSink,
     },
+    filters: {
+      // The runtime-adjustable floor (Settings → Logs / applyLogLevel).
+      runtime: atLeast(() => runtimeLevel),
+      // MQTT keeps its env knob when set, else follows the runtime floor.
+      mqtt: atLeast(() => env.LOG_LEVEL_MQTT ?? runtimeLevel),
+    },
+    // `lowestLevel: "trace"` everywhere — the filters above do the real gating
+    // so the level can move at runtime without reconfiguring LogTape.
     loggers: [
-      { category: [ROOT], sinks: ["console", "stream"], lowestLevel },
-      { category: ["elysia"], sinks: ["console", "stream"], lowestLevel },
+      {
+        category: [ROOT],
+        sinks: ["console", "stream"],
+        filters: ["runtime"],
+        lowestLevel: "trace",
+      },
+      // MQTT gets its own level knob (LOG_LEVEL_MQTT). `parentSinks: "override"`
+      // detaches it from the [ROOT] sinks — without it every record would hit
+      // the inherited sinks too and print twice.
+      {
+        category: [ROOT, "mqtt"],
+        sinks: ["console", "stream"],
+        parentSinks: "override",
+        filters: ["mqtt"],
+        lowestLevel: "trace",
+      },
+      // Library logs from the Modbus engine (read plan, atomic-read fallbacks).
+      {
+        category: ["inverter-core"],
+        sinks: ["console", "stream"],
+        filters: ["runtime"],
+        lowestLevel: "trace",
+      },
       // Silence LogTape's own meta warnings below "warning".
       { category: ["logtape", "meta"], sinks: ["console", "stream"], lowestLevel: "warning" },
     ],

@@ -10,6 +10,7 @@ import {
 } from "../config";
 import { getAccess, setAccess } from "../access-settings";
 import { getDisplay, setDisplay } from "../display-settings";
+import { getLoggingConfig, setLoggingConfig } from "../logging-settings";
 import { evccSnapshot, rebuildEvcc } from "../evcc";
 import { getEvccConfig, setEvccConfig } from "../evcc-settings";
 import * as runtime from "../runtime";
@@ -148,6 +149,21 @@ export const settingsRoutes = new Elysia({ name: "settings-routes" })
         return await setAccess(body);
       } catch (error) {
         return status(400, { error: error instanceof Error ? error.message : "Invalid access" });
+      }
+    },
+    { requireAdmin: true, body: t.Unknown() },
+  )
+  // Runtime log level for the log viewer — persisted and hot-applied, no
+  // restart. `level: null` follows the boot default; the response carries the
+  // `effective` and `default` levels so the UI can label the fallback.
+  .get("/api/settings/logging", () => getLoggingConfig(), { requireAdmin: true })
+  .put(
+    "/api/settings/logging",
+    async ({ body, status }) => {
+      try {
+        return await setLoggingConfig(body);
+      } catch (error) {
+        return status(400, { error: error instanceof Error ? error.message : "Invalid level" });
       }
     },
     { requireAdmin: true, body: t.Unknown() },
