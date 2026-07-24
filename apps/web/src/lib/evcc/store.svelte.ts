@@ -36,6 +36,18 @@ class EvccStore {
   /** True once the first snapshot (fetch or socket) has arrived. */
   loaded = $state(false);
 
+  /**
+   * Exponentially-smoothed gap between live EVCC pushes (ms). EVCC publishes on
+   * change rather than on a fixed poll, so this is measured from arrival
+   * wall-clock and seeds at 1 s. `AnimatedNumber` stretches its glide across it
+   * so EVCC-fed numbers (charge power, session energy) drift continuously
+   * between pushes instead of snapping and freezing — same treatment the
+   * inverter feed gets, but keyed to EVCC's own cadence. See {@link cadenceMs}.
+   */
+  cadenceMs = $state(1000);
+  /** Arrival time of the previous live push; drives the cadence estimate. */
+  #lastPushAt: number | null = null;
+
   #leases = 0;
   #ws: EvccSocket | null = null;
   #reconnectTimer: ReturnType<typeof setTimeout> | null = null;
@@ -85,9 +97,20 @@ class EvccStore {
 
   #openSocket(): void {
     this.#teardownSocket();
+    // Fresh connection: don't measure a gap against a pre-reconnect timestamp.
+    this.#lastPushAt = null;
     const ws = api.ws.evcc.subscribe();
     ws.subscribe((message: { data: unknown }) => {
       if (this.#ws !== ws) return; // superseded socket flushing late
+      // Track spacing between pushes (arrival wall-clock — EVCC has no per-sample
+      // poll timestamp). EMA (α=0.3) so a bursty push doesn't whip it; clamp to a
+      // sane display range so a long quiet spell doesn't stretch the glide forever.
+      const now = performance.now();
+      if (this.#lastPushAt !== null) {
+        const clamped = Math.min(10_000, Math.max(500, now - this.#lastPushAt));
+        this.cadenceMs = this.cadenceMs * 0.7 + clamped * 0.3;
+      }
+      this.#lastPushAt = now;
       const raw = message.data;
       this.#apply((typeof raw === "string" ? JSON.parse(raw) : raw) as EvccState | null);
     });

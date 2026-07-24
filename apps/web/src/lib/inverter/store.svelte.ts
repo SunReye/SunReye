@@ -35,6 +35,17 @@ class InverterStore {
   latest = $state<LiveSample | null>(null);
   status = $state<Status>("idle");
 
+  /**
+   * Exponentially-smoothed interval between live samples (ms). Seeds at the
+   * nominal 1 Hz and adapts to the server's real poll cadence, which the user
+   * can set anywhere from 1 s to 1 h. Consumers (`AnimatedNumber`, the live
+   * chart cursor) stretch their per-frame glide across this so values drift
+   * continuously between samples instead of snapping and freezing.
+   */
+  cadenceMs = $state(1000);
+  /** Sample time of the previous live message; drives the cadence estimate. */
+  #lastSampleT: number | null = null;
+
   // Reactive map: metric key → recent points. Plain `Map` in `$state` is NOT
   // reactive on get/set — SvelteMap tracks per-key mutations so sparklines
   // update the instant a new point lands.
@@ -194,6 +205,9 @@ class InverterStore {
     // reconnect from a superseded connection).
     this.#teardownSocket();
     this.status = "connecting";
+    // Fresh connection: don't let the first sample's delta (measured against a
+    // pre-reconnect timestamp) whip the cadence estimate.
+    this.#lastSampleT = null;
     const ws = api.ws.metrics.subscribe();
     ws.subscribe((message: { data: unknown }) => {
       if (this.#ws !== ws) return; // superseded socket flushing late
@@ -201,6 +215,18 @@ class InverterStore {
       this.latest = sample;
       this.status = "live";
       const t = new Date(sample.time).getTime();
+      // Track the real spacing between samples so consumers can size their glide
+      // to the live feed. EMA (α=0.3) so one late/early sample nudges rather than
+      // whips it; clamp to the config's allowed poll range to reject backfill
+      // jumps and clock skew.
+      if (this.#lastSampleT !== null) {
+        const delta = t - this.#lastSampleT;
+        if (delta > 0) {
+          const clamped = Math.min(3_600_000, Math.max(1000, delta));
+          this.cadenceMs = this.cadenceMs * 0.7 + clamped * 0.3;
+        }
+      }
+      this.#lastSampleT = t;
       const cutoff = t - WINDOW_MS;
       for (const [key, v] of Object.entries(sample.metrics)) {
         // One copy per metric per tick (new reference so consumers re-render):

@@ -41,7 +41,7 @@
 	     unit the daily-energy tiles lead with, so the whole strip reads as one row
 	     of kWh figures. The live charge power moves down into the status line. -->
 	<span class="text-2xl font-semibold tabular-nums leading-none xl:text-3xl">
-		<AnimatedNumber value={(lp.sessionEnergy ?? 0) / 1000} unit="kWh" />
+		<AnimatedNumber value={(lp.sessionEnergy ?? 0) / 1000} unit="kWh" intervalMs={evcc.cadenceMs} />
 		<span class="ml-1 text-sm font-normal text-muted-foreground 2xl:text-base">kWh</span>
 	</span>
 	<span class="flex items-center justify-between gap-2 text-xs text-muted-foreground">
@@ -50,7 +50,7 @@
 			{#if lp.charging}
 				<span aria-hidden="true" class="text-muted-foreground/50">·</span>
 				<span class="tabular-nums text-foreground/80">
-					<AnimatedNumber value={lp.chargePower / 1000} unit="kW" /> kW
+					<AnimatedNumber value={lp.chargePower / 1000} unit="kW" intervalMs={evcc.cadenceMs} /> kW
 				</span>
 			{/if}
 		</span>

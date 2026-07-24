@@ -3,31 +3,41 @@
 	import { Tween } from 'svelte/motion';
 	import { linear } from 'svelte/easing';
 	import { configuredDecimals } from '$lib/inverter/format';
+	import { inverter } from '$lib/inverter/store.svelte';
 
 	let {
 		value,
 		unit = null,
-		class: className = ''
+		class: className = '',
+		intervalMs
 	}: {
 		value: number;
 		/** Drives decimal precision via the per-unit config (e.g. `W` → no decimals). */
 		unit?: string | null;
 		class?: string;
+		/**
+		 * Sample cadence (ms) of the feed behind `value` — the glide is stretched
+		 * across it so the number keeps drifting between samples. Defaults to the
+		 * inverter feed's measured cadence; pass a source's own cadence when the
+		 * value comes from elsewhere (e.g. `evcc.cadenceMs` for the EV card).
+		 */
+		intervalMs?: number;
 	} = $props();
 
 	// Seed at the first value (untracked), then continuously interpolate toward
 	// each new live value. To read as a continuous realtime feed rather than a
-	// once-a-second step, every transition is stretched to span the gap since the
-	// previous update and eased linearly — so the number is always gently drifting
-	// instead of snapping to the target and freezing until the next sample lands.
+	// periodic step, every transition is stretched across the feed's actual sample
+	// cadence and eased linearly. The small overshoot factor means the number is
+	// still gently drifting toward its target when the next sample lands — instead
+	// of arriving early and freezing until the feed ticks again, which is what made
+	// a slow feed look like it stopped-then-jumped.
 	const tween = new Tween(untrack(() => value));
-	let lastAt = performance.now();
 	$effect(() => {
-		const v = value; // track live updates
-		const now = performance.now();
-		const gap = now - lastAt;
-		lastAt = now;
-		void tween.set(v, { duration: Math.min(2000, Math.max(300, gap)), easing: linear });
+		const v = value; // track live updates only
+		// Read the cadence untracked so its per-sample EMA nudging doesn't retrigger
+		// this effect on its own — a new `value` is what should drive a new glide.
+		const cadence = untrack(() => intervalMs ?? inverter.cadenceMs);
+		void tween.set(v, { duration: Math.max(300, cadence * 1.15), easing: linear });
 	});
 
 	// Decimal places locked to a single count so the digit shape stays fixed

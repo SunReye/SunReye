@@ -204,6 +204,7 @@
 		<PowerFlowNode
 			node={n}
 			soc={n.kind === 'battery' ? batterySoc : n.kind === 'charger' ? vehicleSoc : undefined}
+			intervalMs={n.kind === 'charger' ? evcc.cadenceMs : undefined}
 		/>
 	{/each}
 	</div>

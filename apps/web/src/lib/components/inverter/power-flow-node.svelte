@@ -13,11 +13,16 @@
 
 	let {
 		node,
-		soc
+		soc,
+		intervalMs
 	}: {
 		node: GraphNode;
 		/** Battery/vehicle state-of-charge (0..100); renders the square gauge when set. */
 		soc?: number;
+		/** Sample cadence (ms) of the feed behind `node.value`; forwarded to the
+		 *  animated readout so, e.g., the EVCC charger node glides at EVCC's rate
+		 *  rather than the inverter feed's. Falls back to the inverter cadence. */
+		intervalMs?: number;
 	} = $props();
 
 	// Node kind → icon; the graph builder stays a pure module without component
@@ -122,7 +127,7 @@
 			{#if node.value === undefined}
 				—
 			{:else}
-				<AnimatedNumber value={Math.abs(node.value)} unit="W" />
+				<AnimatedNumber value={Math.abs(node.value)} unit="W" {intervalMs} />
 			{/if}
 			<span class="text-[0.6rem] font-normal text-muted-foreground 2xl:text-xs">W</span>
 		</span>
