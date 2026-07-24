@@ -13,25 +13,64 @@ const config = (over: object = {}) =>
 
 describe("pvPowerW", () => {
   test("zero at night and never negative", () => {
-    expect(pvPowerW(0, 15, 10, -0.4, 14)).toBe(0);
-    expect(pvPowerW(-5, 15, 10, -0.4, 14)).toBe(0);
+    expect(pvPowerW({ gtiWm2: 0, ambientC: 15 }, 10, -0.4, 14)).toBe(0);
+    expect(pvPowerW({ gtiWm2: -5, ambientC: 15 }, 10, -0.4, 14)).toBe(0);
   });
 
   test("STC-ish conditions yield roughly kWp minus losses", () => {
     // 1000 W/m² with cells at exactly 25 °C (ambient 25 - rise 31.25 ≈ -6.25).
-    const w = pvPowerW(1000, 25 - (1000 * 25) / 800, 10, -0.4, 14);
+    const w = pvPowerW({ gtiWm2: 1000, ambientC: 25 - (1000 * 25) / 800 }, 10, -0.4, 14);
     expect(w).toBeCloseTo(10 * 1000 * 0.86, 0);
   });
 
   test("hot cells produce less than cool cells at equal irradiance", () => {
-    const cool = pvPowerW(800, 5, 10, -0.4, 14);
-    const hot = pvPowerW(800, 35, 10, -0.4, 14);
+    const cool = pvPowerW({ gtiWm2: 800, ambientC: 5 }, 10, -0.4, 14);
+    const hot = pvPowerW({ gtiWm2: 800, ambientC: 35 }, 10, -0.4, 14);
     expect(hot).toBeLessThan(cool);
   });
 
   test("temperature coefficient of zero disables derating", () => {
-    const w = pvPowerW(500, 40, 10, 0, 0);
+    const w = pvPowerW({ gtiWm2: 500, ambientC: 40 }, 10, 0, 0);
     expect(w).toBeCloseTo(5000, 5);
+  });
+
+  test("normal-incidence beam loses nothing to the IAM", () => {
+    // All 300 W/m² arrives as beam straight onto the glass: IAM(1) = 1, no
+    // diffuse remainder — identical to the model without the split.
+    const withIam = pvPowerW({ gtiWm2: 300, ambientC: 20, dniWm2: 400, cosAoi: 1 }, 10, -0.4, 14);
+    const legacy = pvPowerW({ gtiWm2: 300, ambientC: 20 }, 10, -0.4, 14);
+    expect(withIam).toBeCloseTo(legacy, 6);
+  });
+
+  test("glancing beam is derated harder than the flat system loss", () => {
+    const glancing = pvPowerW(
+      { gtiWm2: 300, ambientC: 20, dniWm2: 600, cosAoi: 0.15 },
+      10,
+      -0.4,
+      14,
+    );
+    const legacy = pvPowerW({ gtiWm2: 300, ambientC: 20 }, 10, -0.4, 14);
+    expect(glancing).toBeLessThan(legacy);
+  });
+
+  test("sun behind the plane leaves only diffuse light", () => {
+    // Temp coefficient zeroed: cells heat with the *full* incident GTI, not the
+    // post-IAM effective irradiance, so only the optical path is compared here.
+    const behind = pvPowerW({ gtiWm2: 100, ambientC: 20, dniWm2: 500, cosAoi: -0.3 }, 10, 0, 14);
+    const allDiffuse = pvPowerW({ gtiWm2: 100 * 0.95, ambientC: 20 }, 10, 0, 14);
+    expect(behind).toBeCloseTo(allDiffuse, 6);
+  });
+
+  test("wind cools the cells and lifts output (Faiman)", () => {
+    const calm = pvPowerW({ gtiWm2: 800, ambientC: 30, windMs: 0.5 }, 10, -0.4, 14);
+    const windy = pvPowerW({ gtiWm2: 800, ambientC: 30, windMs: 6 }, 10, -0.4, 14);
+    expect(windy).toBeGreaterThan(calm);
+  });
+
+  test("~1 m/s wind matches the NOCT fallback within a few percent", () => {
+    const faiman = pvPowerW({ gtiWm2: 1000, ambientC: 25, windMs: 1 }, 10, -0.4, 14);
+    const noct = pvPowerW({ gtiWm2: 1000, ambientC: 25 }, 10, -0.4, 14);
+    expect(Math.abs(faiman - noct) / noct).toBeLessThan(0.02);
   });
 });
 
@@ -40,6 +79,7 @@ describe("buildSolarForecast", () => {
   const data: IrradianceForecast = {
     times: ["2026-07-18T08:00", "2026-07-18T12:00", "2026-07-19T12:00"],
     utcOffsetSeconds: 7200,
+    location: { latitude: 48, longitude: 9 },
     temperature: [20, 25, 25],
     gti: [[100, 800, 400]],
   };
@@ -104,12 +144,13 @@ describe("buildSolarForecast", () => {
     const ramp: IrradianceForecast = {
       times: ["2026-07-18T16:00", "2026-07-18T17:00", "2026-07-18T18:00", "2026-07-18T19:00"],
       utcOffsetSeconds: 7200,
+      location: { latitude: 48, longitude: 9 },
       temperature: [25, 25, 25, 25],
       gti: [[800, 400, 100, 0]],
     };
     const before = Date.parse("2026-07-18T13:00:00Z"); // local 15:00, ahead of the limb
     const f = buildSolarForecast(config(), ramp, "test", before);
-    const p = (g: number) => pvPowerW(g, 25, 10, -0.4, 14);
+    const p = (g: number) => pvPowerW({ gtiWm2: g, ambientC: 25 }, 10, -0.4, 14);
     // Each hour is the mean of its two endpoints; the last has no successor.
     expect(f.hourly[0]?.watts).toBeCloseTo((p(800) + p(400)) / 2, 6);
     expect(f.hourly[1]?.watts).toBeCloseTo((p(400) + p(100)) / 2, 6);
@@ -124,8 +165,35 @@ describe("buildSolarForecast", () => {
     // The default `data` fixture is sparse (4 h / 24 h gaps): each hour must keep
     // its own instantaneous estimate rather than trapezoid across the gap.
     const f = buildSolarForecast(config(), data, "test", nowMs);
-    const p = (g: number, t: number) => pvPowerW(g, t, 10, -0.4, 14);
+    const p = (g: number, t: number) => pvPowerW({ gtiWm2: g, ambientC: t }, 10, -0.4, 14);
     expect(f.hourly[1]?.watts).toBeCloseTo(p(800, 25), 6);
+  });
+
+  test("DNI series activates the IAM: evening beam on a south panel is cut", () => {
+    // Local 19:00 in July at 48°N: sun low in the west, badly off a south-
+    // facing panel's normal — the beam share must lose more than diffuse.
+    const evening: IrradianceForecast = {
+      times: ["2026-07-18T19:00"],
+      utcOffsetSeconds: 7200,
+      location: { latitude: 48, longitude: 9 },
+      temperature: [25],
+      gti: [[300]],
+    };
+    const at = Date.parse("2026-07-18T16:00:00Z"); // local 18:00, hour is ahead
+    const plain = buildSolarForecast(config(), evening, "test", at);
+    const withDni = buildSolarForecast(config(), { ...evening, dni: [500] }, "test", at);
+    expect(withDni.hourly[0]?.watts ?? Infinity).toBeLessThan(plain.hourly[0]?.watts ?? 0);
+  });
+
+  test("wind series activates Faiman cooling: a windy hour outproduces a calm one", () => {
+    const calm = buildSolarForecast(
+      config(),
+      { ...data, windSpeed: [0.5, 0.5, 0.5] },
+      "test",
+      nowMs,
+    );
+    const windy = buildSolarForecast(config(), { ...data, windSpeed: [8, 8, 8] }, "test", nowMs);
+    expect(windy.hourly[1]?.watts ?? 0).toBeGreaterThan(calm.hourly[1]?.watts ?? Infinity);
   });
 });
 
@@ -136,6 +204,7 @@ describe("buildSolarForecast clipping", () => {
   const sun: IrradianceForecast = {
     times: ["2026-07-18T10:00", "2026-07-18T11:00", "2026-07-18T12:00", "2026-07-18T13:00"],
     utcOffsetSeconds: 7200,
+    location: { latitude: 48, longitude: 9 },
     temperature: [25, 25, 25, 25],
     gti: [[1000, 1000, 1000, 1000]],
   };
@@ -197,6 +266,7 @@ describe("buildSolarForecast clipping", () => {
     const twoDay: IrradianceForecast = {
       times: ["2026-07-18T12:00", "2026-07-18T20:00", "2026-07-19T04:00", "2026-07-19T12:00"],
       utcOffsetSeconds: 7200,
+      location: { latitude: 48, longitude: 9 },
       temperature: [25, 25, 25, 25],
       gti: [[1000, 0, 0, 1000]],
     };

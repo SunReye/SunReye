@@ -11,6 +11,7 @@
 
 import { type WeatherConfig, forecastReady } from "@SunReye/db/weather";
 import { log } from "./logging";
+import { cosAoi, sunPosition } from "./solar-geometry";
 import { openMeteoIrradiance } from "./solar-providers/open-meteo";
 
 const logger = log("solar-forecast");
@@ -29,6 +30,8 @@ export interface IrradianceForecast {
   times: string[];
   /** Offset of those local times from UTC, in seconds. */
   utcOffsetSeconds: number;
+  /** Location the series was resolved for — drives the sun-position geometry. */
+  location: { latitude: number; longitude: number };
   /** Ambient 2 m temperature at each timestamp, °C. */
   temperature: number[];
   /**
@@ -37,6 +40,17 @@ export interface IrradianceForecast {
    * per-hour average power, so the value is a point sample, not an hour mean.
    */
   gti: number[][];
+  /**
+   * Instantaneous direct-normal irradiance, W/m². Optional: when present it
+   * enables the beam/diffuse split behind the incidence-angle (IAM) loss;
+   * providers that can't deliver it fall back to the flat system loss alone.
+   */
+  dni?: number[];
+  /**
+   * 10 m wind speed, m/s. Optional: enables the Faiman cell-temperature model
+   * (wind cools cells); absent, cells follow the static NOCT rise.
+   */
+  windSpeed?: number[];
 }
 
 export interface SolarIrradianceProvider {
@@ -113,28 +127,80 @@ function clipCaps(config: WeatherConfig["forecast"]): ClipCaps {
   };
 }
 
-// Cell-temperature model (NOCT): cells run ~25 °C above ambient at 800 W/m²,
-// scaling linearly with irradiance.
+// Cell-temperature models. Fallback (NOCT): cells run ~25 °C above ambient at
+// 800 W/m², scaling linearly with irradiance. With wind data, Faiman
+// (IEC 61853-2 open-rack coefficients, W/m²K): the same sun heats cells less
+// when wind carries the heat away — at ~1 m/s both models agree.
 const CELL_TEMP_RISE_PER_WM2 = 25 / 800;
 const STC_CELL_TEMP_C = 25;
+const FAIMAN_U0 = 25;
+const FAIMAN_U1 = 6.84;
+
+// Incidence-angle modifier (Martin & Ruiz 2001): panel glass reflects a
+// growing share of the *beam* as the sun hits it at ever more glancing angles
+// — the physical loss behind low-sun (morning/evening) over-forecasts that a
+// flat system-loss percentage cannot capture. Diffuse light arrives from the
+// whole sky dome, so its integrated modifier is roughly constant.
+const MARTIN_RUIZ_AR = 0.16;
+const IAM_DIFFUSE = 0.95;
+
+function iamMartinRuiz(cosTheta: number): number {
+  if (cosTheta <= 0) return 0;
+  return (1 - Math.exp(-cosTheta / MARTIN_RUIZ_AR)) / (1 - Math.exp(-1 / MARTIN_RUIZ_AR));
+}
+
+/** One timestamp's environment for a single array. Optional fields unlock the
+ * finer physics; without them the model degrades to its simpler forms. */
+export interface PvSample {
+  /** Plane-of-array (tilted) irradiance, W/m². */
+  gtiWm2: number;
+  /** Ambient 2 m temperature, °C. */
+  ambientC: number;
+  /** Direct-normal irradiance, W/m² — with `cosAoi`, enables the IAM split. */
+  dniWm2?: number;
+  /** Cosine of the sun→panel angle of incidence (≤ 0 = sun behind the plane). */
+  cosAoi?: number;
+  /** 10 m wind speed, m/s — enables Faiman convective cooling. */
+  windMs?: number;
+}
 
 /**
- * Expected AC power of one array at a given plane-of-array irradiance.
- * DC = kWp scaled by irradiance relative to STC (1000 W/m²), derated by the
+ * The irradiance that reaches the cells after reflection: the beam share
+ * (DNI projected onto the plane, capped by the GTI itself) is derated by the
+ * Martin–Ruiz IAM at the current incidence angle, the diffuse remainder by a
+ * constant sky-dome factor. Without a beam/diffuse split, applying a beam IAM
+ * to the total would over-penalise cloudy hours — so it falls back to raw GTI.
+ */
+function effectiveIrradianceWm2(sample: PvSample): number {
+  if (sample.dniWm2 === undefined || sample.cosAoi === undefined) return sample.gtiWm2;
+  const beam = Math.min(sample.gtiWm2, sample.dniWm2 * Math.max(0, sample.cosAoi));
+  const diffuse = sample.gtiWm2 - beam;
+  return beam * iamMartinRuiz(sample.cosAoi) + diffuse * IAM_DIFFUSE;
+}
+
+/** Cell temperature heats with the *full* incident irradiance (reflected or
+ * not, the plane sits in the same sun), cooled by wind when known. */
+function cellTempC(sample: PvSample): number {
+  if (sample.windMs === undefined) return sample.ambientC + sample.gtiWm2 * CELL_TEMP_RISE_PER_WM2;
+  return sample.ambientC + sample.gtiWm2 / (FAIMAN_U0 + FAIMAN_U1 * sample.windMs);
+}
+
+/**
+ * Expected AC power of one array for a sample. DC = kWp scaled by the
+ * IAM-effective irradiance relative to STC (1000 W/m²), derated by the
  * datasheet temperature coefficient at the estimated cell temperature; AC
  * applies the static system-loss percentage.
  */
 export function pvPowerW(
-  gtiWm2: number,
-  ambientC: number,
+  sample: PvSample,
   kwp: number,
   tempCoefficientPctPerC: number,
   systemLossPct: number,
 ): number {
-  if (gtiWm2 <= 0) return 0;
-  const cellC = ambientC + gtiWm2 * CELL_TEMP_RISE_PER_WM2;
-  const derate = 1 + (tempCoefficientPctPerC / 100) * (cellC - STC_CELL_TEMP_C);
-  const dcW = kwp * gtiWm2 * Math.max(0, derate); // kwp * 1000 * (gti / 1000)
+  const effectiveWm2 = effectiveIrradianceWm2(sample);
+  if (effectiveWm2 <= 0) return 0;
+  const derate = 1 + (tempCoefficientPctPerC / 100) * (cellTempC(sample) - STC_CELL_TEMP_C);
+  const dcW = kwp * effectiveWm2 * Math.max(0, derate); // kwp * 1000 * (eff / 1000)
   return Math.max(0, dcW * (1 - systemLossPct / 100));
 }
 
@@ -219,13 +285,20 @@ export function buildSolarForecast(
   nowMs = Date.now(),
   sim?: ForecastSimInputs,
 ): SolarForecast {
-  // Instantaneous AC power at each timestamp.
-  const instW = data.times.map((_time, i) => {
+  // Instantaneous AC power at each timestamp: sun position feeds the per-array
+  // incidence angle so the IAM split (when DNI is available) can bite.
+  const instW = data.times.map((time, i) => {
+    const atMs = Date.parse(`${time}:00Z`) - data.utcOffsetSeconds * 1000;
+    const sun = sunPosition(data.location.latitude, data.location.longitude, atMs);
+    const env = {
+      ambientC: data.temperature[i] ?? STC_CELL_TEMP_C,
+      dniWm2: data.dni?.[i],
+      windMs: data.windSpeed?.[i],
+    };
     let watts = 0;
     config.arrays.forEach((arr, a) => {
       watts += pvPowerW(
-        data.gti[a]?.[i] ?? 0,
-        data.temperature[i] ?? STC_CELL_TEMP_C,
+        { ...env, gtiWm2: data.gti[a]?.[i] ?? 0, cosAoi: cosAoi(sun, arr.tilt, arr.azimuth) },
         arr.kwp,
         config.tempCoefficient,
         config.systemLoss,
