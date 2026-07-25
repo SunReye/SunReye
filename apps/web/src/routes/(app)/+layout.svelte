@@ -105,7 +105,9 @@
 		<Sidebar.Inset>
 			<!-- Persistent top header on every viewport: sidebar trigger + the active
 			     page's title/subtitle (set by each page via the page-header store). -->
-			<header class="flex h-14 shrink-0 items-center gap-3 border-b border-border px-4">
+			<header
+				class="sticky top-0 z-10 flex h-14 shrink-0 items-center gap-3 border-b border-border bg-background px-4"
+			>
 				<Sidebar.Trigger />
 				<div class="flex min-w-0 flex-col">
 					<h1 class="truncate text-base font-semibold leading-tight">{pageHeader.title}</h1>
