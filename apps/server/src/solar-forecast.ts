@@ -142,6 +142,13 @@ export interface ForecastSimInputs {
   startSocPct: number | null;
   /** Average house load, W, fed to the clipping model; `null` → treated as 0. */
   houseLoadW: number | null;
+  /**
+   * Measured battery SOC at the series' first slot (plant-local midnight), %;
+   * `null`/absent when no rollup covers that hour. Unlocks clipping of *past*
+   * slots: the sim runs from the day's start instead of only from `nowMs`, so
+   * the usable view has no raw→clipped seam at the current slot.
+   */
+  dayStartSocPct?: number | null;
 }
 
 /** Resolved per-hour clipping limits (null config → non-binding sentinels). */
@@ -318,11 +325,13 @@ function computeNext15(
  * The slot width follows the provider's sample grid (15 min for Open-Meteo,
  * capped at one hour); sparse/gappy series degrade to hour-wide point samples.
  *
- * When a feed-in cap and/or battery is configured, slots from the current one
- * forward are run through {@link simulateStep} so `watts` reflects *usable*
- * output after clipping (battery seeded from live SOC, then carried across the
- * day boundary). Past slots keep the raw PV estimate — there is no SOC history
- * to reconstruct them, and they are already measured elsewhere anyway.
+ * When a feed-in cap and/or battery is configured, slots are run through
+ * {@link simulateStep} so `watts` reflects *usable* output after clipping.
+ * Past slots are simulated too when the battery state at the series start is
+ * known (`sim.dayStartSocPct`) or irrelevant (no battery); at the current slot
+ * the simulated SOC yields to the measured live one, which is truth for
+ * everything still ahead. Without a day-start SOC, past slots keep the raw PV
+ * estimate — clipping them would rest on state we can't justify.
  *
  * A learned {@link CorrectionModel} (optional) scales each sample by its
  * `(month, hour)` factor *before* slot integration and clipping, so the site
@@ -405,7 +414,12 @@ export function buildSolarForecast(
   // Unknown SOC → assume the battery sits at its reserve (full headroom), so we
   // never invent curtailment we can't justify.
   const startPct = sim?.startSocPct ?? config.battery?.minSoc ?? 0;
-  let socKwh = caps.batteryCapKwh * (startPct / 100);
+  // Past slots are simulated only when the battery state at the series start is
+  // known (measured day-start SOC) or irrelevant (no battery — the cap alone
+  // clips); otherwise they keep the raw estimate.
+  const simPast = clippingOn && (caps.batteryCapKwh === 0 || sim?.dayStartSocPct != null);
+  let socKwh =
+    caps.batteryCapKwh * ((simPast ? (sim?.dayStartSocPct ?? startPct) : startPct) / 100);
 
   // The raw (uncurtailed) PV potential, straight from the power model.
   const rawSeries: SolarForecastPoint[] = data.times.map((time, i) => ({
@@ -415,10 +429,20 @@ export function buildSolarForecast(
   }));
 
   // The usable view: raw PV with the feed-in cap + battery model curtailing the
-  // surplus. Identical to raw when nothing clips; past slots keep the raw estimate.
+  // surplus. Identical to raw when nothing clips; past slots keep the raw
+  // estimate unless the day-start SOC lets the sim reconstruct them.
+  let reseeded = false;
   const usableSeries: SolarForecastPoint[] = rawSeries.map((point, i) => {
     const width = widthMs[i] ?? HOUR_MS;
-    if (!clippingOn || (startMs[i] ?? 0) + width <= nowMs) return point;
+    const isPast = (startMs[i] ?? 0) + width <= nowMs;
+    if (!clippingOn || (isPast && !simPast)) return point;
+    // At the past→future seam the simulated SOC yields to the measured one:
+    // forecast weather drifts from what actually fell, and the live reading is
+    // truth for everything still ahead.
+    if (simPast && !isPast && !reseeded) {
+      reseeded = true;
+      if (sim?.startSocPct != null) socKwh = caps.batteryCapKwh * (sim.startSocPct / 100);
+    }
     const step = simulateStep(point.watts, loadW, socKwh, caps, width / HOUR_MS);
     socKwh = step.socKwh;
     // Clipping caps the instantaneous output too: scale the peak by the slot's
@@ -545,6 +569,33 @@ async function resolveSimInputs(config: WeatherConfig): Promise<ForecastSimInput
 }
 
 /**
+ * Measured battery SOC at the series' first slot (plant-local midnight), read
+ * from the hourly rollups — lets the clipping sim reconstruct the *past* part
+ * of the day instead of leaving it uncurtailed. `null` when the plant maps no
+ * SOC metric or no rollup covers that hour.
+ */
+async function resolveDayStartSoc(data: IrradianceForecast): Promise<number | null> {
+  const [{ getActiveProfileOrNull }, { liveState }, { queryHourlyAvgRange }] = await Promise.all([
+    import("./inverter"),
+    import("./state"),
+    import("./history"),
+  ]);
+  const profile = getActiveProfileOrNull();
+  const socKey = profile?.metrics.find((m) => m.role === "battery.soc")?.key;
+  const startLocal = data.times[0];
+  if (!profile || !socKey || startLocal === undefined) return null;
+  const startMs = Date.parse(`${startLocal}:00Z`) - data.utcOffsetSeconds * 1000;
+  const rows = await queryHourlyAvgRange(
+    socKey,
+    liveState.latest?.inverterId ?? profile.id,
+    new Date(startMs),
+    new Date(startMs + 3_600_000),
+  );
+  const avg = rows[0]?.avg;
+  return typeof avg === "number" && Number.isFinite(avg) ? avg : null;
+}
+
+/**
  * The learned correction model to apply, or `undefined` when correction is
  * disabled, no profile is active, or nothing has been learned yet. Lazily
  * imported (like the sim inputs) so this pure model file stays free of the
@@ -594,16 +645,20 @@ export async function fetchSolarForecast(config: WeatherConfig): Promise<SolarFo
     resolveCorrection(config),
   ]);
 
+  // Day-start SOC needs the series' own time base, so it resolves per build
+  // (one indexed rollup row) once the irradiance data is at hand; it only
+  // matters when a battery participates in the clipping sim.
+  const build = async (data: IrradianceForecast, providerId: string): Promise<SolarForecast> => {
+    const simInputs =
+      sim && config.forecast.battery != null
+        ? { ...sim, dayStartSocPct: await resolveDayStartSoc(data) }
+        : sim;
+    return buildSolarForecast(config.forecast, data, providerId, Date.now(), simInputs, correction);
+  };
+
   const key = JSON.stringify([config.latitude, config.longitude, config.forecast]);
   if (cache !== null && cache.key === key && Date.now() - cache.at < CACHE_TTL_MS) {
-    return buildSolarForecast(
-      config.forecast,
-      cache.data,
-      cache.provider,
-      Date.now(),
-      sim,
-      correction,
-    );
+    return build(cache.data, cache.provider);
   }
 
   try {
@@ -612,11 +667,9 @@ export async function fetchSolarForecast(config: WeatherConfig): Promise<SolarFo
       config.forecast.arrays.map(({ tilt, azimuth }) => ({ tilt, azimuth })),
     );
     cache = { key, at: Date.now(), data, provider: provider.id };
-    return buildSolarForecast(config.forecast, data, provider.id, Date.now(), sim, correction);
+    return build(data, provider.id);
   } catch (err) {
     logger.warn("fetch failed: {error}", { error: err instanceof Error ? err.message : err });
-    return cache?.key === key
-      ? buildSolarForecast(config.forecast, cache.data, cache.provider, Date.now(), sim, correction)
-      : null;
+    return cache?.key === key ? build(cache.data, cache.provider) : null;
   }
 }

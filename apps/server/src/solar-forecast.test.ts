@@ -316,6 +316,51 @@ describe("buildSolarForecast clipping", () => {
     expect(withLoad.series[0]?.watts).toBeCloseTo(3000 + 2000, 6);
   });
 
+  // Local 12:00 — the 10:00 and 11:00 slots are past, 12:00 is running.
+  const laterNow = Date.parse("2026-07-18T10:00:00Z");
+
+  test("without a day-start SOC, past slots keep the raw estimate", () => {
+    const clip = config({ maxOutputW: 3000, battery: { usableKwh: 5, minSoc: 0 } });
+    const f = buildSolarForecast(clip, sun, "test", laterNow, {
+      startSocPct: 100,
+      houseLoadW: 0,
+    });
+    expect(f.series[0]?.watts).toBeCloseTo(raw[0] ?? 0, 6); // past — unclipped
+    expect(f.series[2]?.watts).toBeCloseTo(3000, 6); // future — battery full → cap
+  });
+
+  test("a day-start SOC lets the sim clip past slots too (no seam at now)", () => {
+    const clip = config({ maxOutputW: 3000, battery: { usableKwh: 5, minSoc: 0 } });
+    const f = buildSolarForecast(clip, sun, "test", laterNow, {
+      startSocPct: 100,
+      houseLoadW: 0,
+      dayStartSocPct: 100,
+    });
+    // Battery already full at the series start → every hour clips, past included.
+    for (const h of f.series) expect(h.watts).toBeCloseTo(3000, 6);
+  });
+
+  test("the measured live SOC overrides the simulated one at the seam", () => {
+    // Huge battery from empty: the sim alone would never fill it today, but the
+    // live reading says it is full now — future slots must clip immediately.
+    const clip = config({ maxOutputW: 3000, battery: { usableKwh: 50, minSoc: 0 } });
+    const f = buildSolarForecast(clip, sun, "test", laterNow, {
+      startSocPct: 100,
+      houseLoadW: 0,
+      dayStartSocPct: 0,
+    });
+    expect(f.series[0]?.watts).toBeCloseTo(raw[0] ?? 0, 6); // past: headroom, no clip
+    expect(f.series[2]?.watts).toBeCloseTo(3000, 6); // future: full per live SOC
+  });
+
+  test("a cap-only plant clips past slots without any SOC", () => {
+    const f = buildSolarForecast(config({ maxOutputW: 3000 }), sun, "test", laterNow, {
+      startSocPct: null,
+      houseLoadW: 0,
+    });
+    for (const h of f.series) expect(h.watts).toBeCloseTo(3000, 6);
+  });
+
   test("overnight discharge reclaims headroom so the next day isn't over-curtailed", () => {
     // Sunny noon, then two dark high-load hours, then a sunny noon the next day.
     const twoDay: IrradianceForecast = {
