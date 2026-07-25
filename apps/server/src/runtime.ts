@@ -18,6 +18,7 @@ import mqtt from "mqtt";
 import { getInverterConfig, getMqttConfig } from "./config";
 import { executeControl, injectControlValues } from "./control-expr";
 import { dbControlStore } from "./control-store";
+import { evccOnLoadSample } from "./evcc";
 import {
   buildProfileContext,
   buildSource,
@@ -138,6 +139,24 @@ const inverterStatus = {
   lastSampleAt: null as string | null,
 };
 
+// The `load.power` metric key of the active profile, memoized per context (the
+// lookup is a linear scan; the poll loop runs at 1 Hz forever).
+let loadKeyCache: { ctx: ProfileContext; key: string | null } | null = null;
+
+/** The house-load value (W) of a sample, or null when the profile has no load role. */
+function loadPowerOf(sample: InverterSample): number | null {
+  const current = context();
+  if (loadKeyCache?.ctx !== current) {
+    loadKeyCache = {
+      ctx: current,
+      key: current.profile.metrics.find((m) => m.role === "load.power")?.key ?? null,
+    };
+  }
+  if (!loadKeyCache.key) return null;
+  const value = sample.metrics[loadKeyCache.key];
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
 /** One poll: read, cache, persist, fan out to WebSocket + MQTT. */
 async function pollOnce(): Promise<void> {
   // Skip if the previous poll is still running (a slow/reconnecting source must
@@ -154,6 +173,9 @@ async function pollOnce(): Promise<void> {
     // into the sample so every downstream surface sees it.
     await injectControlValues(sample, context(), dbControlStore);
     liveState.set(sample);
+    // The EV charge-power estimator refines its estimate from the 1 Hz house
+    // load — between EVCC's much slower publishes (no-op when EVCC is off).
+    evccOnLoadSample(loadPowerOf(sample));
     const rows = Object.entries(sample.metrics).map(([metric, value]) => ({
       time: new Date(sample.time),
       inverterId: sample.inverterId,

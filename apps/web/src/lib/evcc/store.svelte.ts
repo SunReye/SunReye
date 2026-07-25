@@ -76,9 +76,13 @@ class EvccStore {
     return this.state?.loadpoints ?? [];
   }
 
-  /** Total charge power across loadpoints (W) — the diagram's charger node. */
+  /**
+   * Total charge power across loadpoints (W) — the diagram's charger node.
+   * Uses the server's live estimate (feed-forward + house-load residual), which
+   * moves at the inverter's 1 Hz cadence instead of EVCC's slow publish loop.
+   */
   get chargePower(): number {
-    return this.loadpoints.reduce((sum, lp) => sum + lp.chargePower, 0);
+    return this.loadpoints.reduce((sum, lp) => sum + lp.chargePowerLive, 0);
   }
 
   #apply(next: EvccState | null): void {

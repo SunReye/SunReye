@@ -50,7 +50,7 @@
 			{#if lp.charging}
 				<span aria-hidden="true" class="text-muted-foreground/50">·</span>
 				<span class="tabular-nums text-foreground/80">
-					<AnimatedNumber value={lp.chargePower / 1000} unit="kW" intervalMs={evcc.cadenceMs} /> kW
+					<AnimatedNumber value={lp.chargePowerLive / 1000} unit="kW" intervalMs={evcc.cadenceMs} /> kW
 				</span>
 			{/if}
 		</span>

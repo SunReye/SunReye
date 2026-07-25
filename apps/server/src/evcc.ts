@@ -25,6 +25,11 @@ import { evccReady } from "@SunReye/db/evcc-config";
 import mqtt from "mqtt";
 import type { MqttClient } from "mqtt";
 import { getMqttConfig } from "./config";
+import {
+  createEvPowerEstimator,
+  type ChargePowerSource,
+  type LiveChargePower,
+} from "./ev-power-estimator";
 import { getEvccConfig } from "./evcc-settings";
 import { log } from "./logging";
 
@@ -41,8 +46,16 @@ export interface EvccLoadpoint {
   title: string | null;
   /** Charge mode: `off` | `pv` | `minpv` | `now`. */
   mode: string | null;
-  /** Current charge power in W. */
+  /** Current charge power in W, as last reported by EVCC. */
   chargePower: number;
+  /**
+   * Live charge power in W — the estimator's view, updated between EVCC's
+   * publishes from command feed-forward and the 1 Hz house-load residual.
+   * Equals {@link chargePower} whenever the last word was EVCC's own.
+   */
+  chargePowerLive: number;
+  /** Provenance of {@link chargePowerLive} (freshness/confidence hint). */
+  chargePowerSource: ChargePowerSource;
   charging: boolean;
   /** Vehicle plugged in. */
   connected: boolean;
@@ -111,12 +124,19 @@ const str = (v: EvccValue | undefined): string | null => (typeof v === "string" 
 const bool = (v: EvccValue | undefined): boolean => v === true;
 
 /** Assemble the API snapshot for one loadpoint from its flat topic map. */
-function toLoadpoint(index: number, values: Map<string, EvccValue>): EvccLoadpoint {
+function toLoadpoint(
+  index: number,
+  values: Map<string, EvccValue>,
+  live: LiveChargePower | null,
+): EvccLoadpoint {
+  const chargePower = num(values.get("chargePower")) ?? 0;
   return {
     index,
     title: str(values.get("title")),
     mode: str(values.get("mode")),
-    chargePower: num(values.get("chargePower")) ?? 0,
+    chargePower,
+    chargePowerLive: live?.watts ?? chargePower,
+    chargePowerSource: live?.source ?? "measured",
     charging: bool(values.get("charging")),
     connected: bool(values.get("connected")),
     vehicleSoc: num(values.get("vehicleSoc")),
@@ -136,6 +156,7 @@ let connected = false;
 /** Last value of `<root>/status` ("online"/"offline"); null until seen. */
 let evccStatus: string | null = null;
 const loadpoints = new Map<number, Map<string, EvccValue>>();
+const estimator = createEvPowerEstimator();
 
 /** Notified with the fresh snapshot whenever state changes (wired to the WS). */
 type EvccListener = (state: EvccState) => void;
@@ -166,6 +187,20 @@ function scheduleEmit(): void {
   }, EMIT_DEBOUNCE_MS);
 }
 
+/**
+ * Emit synchronously, superseding any debounced emit. Used for feed-forward
+ * predictions, where the whole point is sub-poll latency — a command's
+ * expected effect should paint immediately, not 200 ms later.
+ */
+function emitNow(): void {
+  if (emitTimer) {
+    clearTimeout(emitTimer);
+    emitTimer = null;
+  }
+  const snap = evccSnapshot();
+  if (snap) listener(snap);
+}
+
 /** Current EVCC state for `GET /api/evcc` and WS pushes, or `null` when off. */
 export function evccSnapshot(): EvccState | null {
   if (!client) return null;
@@ -173,7 +208,7 @@ export function evccSnapshot(): EvccState | null {
     reachable: connected && evccStatus === "online",
     loadpoints: [...loadpoints.entries()]
       .sort(([a], [b]) => a - b)
-      .map(([index, values]) => toLoadpoint(index, values)),
+      .map(([index, values]) => toLoadpoint(index, values, estimator.live(index))),
     subtractFromHome,
   };
 }
@@ -187,10 +222,44 @@ export function evccControl(loadpoint: number, action: EvccAction, value: string
   client.publish(`${topicRoot}/loadpoints/${loadpoint}/${action}/set`, value);
 }
 
+/** Mirror the estimator-relevant state keys into it as they stream in. */
+function trackEstimator(index: number, key: string, value: EvccValue): void {
+  switch (key) {
+    case "chargePower":
+      if (typeof value === "number") estimator.anchorPower(index, value);
+      break;
+    case "charging":
+      estimator.updateParams(index, { charging: value === true });
+      break;
+    case "connected":
+      estimator.updateParams(index, { connected: value === true });
+      break;
+    case "mode":
+      estimator.updateParams(index, { mode: typeof value === "string" ? value : null });
+      break;
+    case "phasesActive":
+      estimator.updateParams(index, { phasesActive: typeof value === "number" ? value : null });
+      break;
+    case "effectiveMaxCurrent":
+      estimator.updateParams(index, { maxCurrentA: typeof value === "number" ? value : null });
+      break;
+  }
+}
+
 function handleMessage(topic: string, payload: Buffer): void {
   if (topic === `${topicRoot}/status`) {
     evccStatus = payload.toString().trim();
     scheduleEmit(); // reachability changed
+    return;
+  }
+  // `.../set` command echoes (our own writes and any external controller's on
+  // this broker) are the feed-forward signal: the expected effect is known now,
+  // one EVCC loop before its state topics confirm it.
+  if (topic.endsWith("/set")) {
+    const command = parseLoadpointTopic(topicRoot, topic.slice(0, -"/set".length));
+    if (command && estimator.feedForward(command.index, command.key, payload.toString().trim())) {
+      emitNow();
+    }
     return;
   }
   const parsed = parseLoadpointTopic(topicRoot, topic);
@@ -204,7 +273,20 @@ function handleMessage(topic: string, payload: Buffer): void {
   // An empty retained payload is MQTT's "topic deleted" signal.
   if (value === null && payload.length === 0) values.delete(parsed.key);
   else values.set(parsed.key, value);
+  trackEstimator(parsed.index, parsed.key, value);
   scheduleEmit();
+}
+
+/**
+ * Feed one house-load sample (W) from the inverter poll loop into the charge-
+ * power estimator; `null` when the load metric is unavailable. Gated on the
+ * `subtractFromHome` flag: it asserts the charger sits behind the house-load
+ * meter, which is exactly the precondition for residual attribution — without
+ * it the charger never shows in the load signal and steps would be misread.
+ */
+export function evccOnLoadSample(loadW: number | null): void {
+  if (!client || !subtractFromHome) return;
+  if (estimator.onLoadSample(loadW)) scheduleEmit();
 }
 
 async function stopClient(): Promise<void> {
@@ -213,6 +295,7 @@ async function stopClient(): Promise<void> {
   connected = false;
   evccStatus = null;
   loadpoints.clear();
+  estimator.reset();
   if (emitTimer) {
     clearTimeout(emitTimer);
     emitTimer = null;
