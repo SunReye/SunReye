@@ -1,14 +1,14 @@
 ---
 title: Settings
-description: Configure the inverter connection, MQTT, tariff, profiles, and users from the UI.
+description: Configure the inverter connection, MQTT, tariff, weather/forecast, profiles, and users from the UI.
 ---
 
 The **Settings** screen (`/settings`) is where the deployment is configured at runtime —
 most of it without touching `.env` or restarting. The whole screen is **admin-only**. A
 live status poll keeps the connection badges fresh.
 
-Tabs: **Inverter**, **MQTT & Home Assistant**, **Tariff**, **Date & Time** (any admin), plus
-**Profiles**, **Users**, **API Keys**, and **Logs** (admin).
+Tabs: **Inverter**, **MQTT & Home Assistant**, **Tariff**, **Weather & Forecast**, **Date &
+Time** (any admin), plus **Profiles**, **Users**, **API Keys**, and **Logs** (admin).
 
 <img class="sr-shot sr-light" src="/SunReye/screenshots/settings-light.png" alt="Settings → Inverter: Modbus connection fields with a live status badge and Test connection." />
 <img class="sr-shot sr-dark" src="/SunReye/screenshots/settings-dark.png" alt="Settings → Inverter: Modbus connection fields with a live status badge and Test connection." />
@@ -39,6 +39,42 @@ connection** button. Saving applies live.
 Configure pricing for the [Costs](/use/costs/) screen: currency, standing charge, feed-in
 rate, a default import price, and **time-of-use bands** (name, price, hour range, weekday
 selection). Add or remove bands and **Save tariff**.
+
+## Weather & Forecast
+
+Show current weather on the dashboard and, optionally, a **PV production forecast** — both
+from [Open-Meteo](https://open-meteo.com/) (keyless, server-proxied). Set the plant
+**location** (latitude / longitude + a display name) to enable the weather tile.
+
+Turn on **Solar production forecast** and describe the plant so SunReye can turn the
+irradiance forecast into expected output:
+
+- **PV arrays** — one row per orientation (**kWp**, **tilt**, **azimuth**; 0° = south,
+  −90° = east, 90° = west). Add a row per string group facing a different way.
+- **Temp. coefficient** and **System losses** — from the panel datasheet and install.
+- **Clipping** — feed-in limit, usable battery, max charge power, and reserve, plus an
+  average **house load** (blank = inferred from history). These curtail the forecast so it
+  doesn't overstate output once the battery is full and export is capped.
+
+The forecast is also published to [MQTT / Home Assistant](/integrations/mqtt/) and the
+[REST API](/integrations/rest-api/), not just the dashboard tile.
+
+### Learned correction
+
+**Apply learned correction** enables *site adaptation*: SunReye runs reanalysis weather
+through the same PV model to get the output your plant *should* have made, compares it against
+your measured production, and learns a per-**month × hour** multiplier for the plant's
+systematic bias — horizon shading, soiling, snow, degradation, or an over-pessimistic
+system-loss figure. It corrects that repeatable error; it can't fix day-ahead cloud misses,
+which are irreducible.
+
+- Learning runs **in the background** whenever the forecast is configured. The toggle only
+  controls whether the learned factor is **applied**, so you can inspect it first.
+- The panel shows the measured **error reduction**, sample count, last-learned day, and a
+  heatmap of the applied factors (amber = trimmed below the model, green = boosted above it).
+- Factors fill in over the first weeks — it needs a little production history plus settled
+  reanalysis (a few days' lag). Clearing time-series data (Danger Zone) also resets what has
+  been learned.
 
 ## Date & Time
 
