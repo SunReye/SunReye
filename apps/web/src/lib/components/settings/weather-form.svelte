@@ -8,6 +8,7 @@
 	import SettingsSection from './settings-section.svelte';
 	import SaveBar from './save-bar.svelte';
 	import SolarForecastFields, { type ArrayFields } from './solar-forecast-fields.svelte';
+	import ForecastCorrectionPanel from './forecast-correction-panel.svelte';
 	import { api } from '$lib/api';
 	import { useAppSession } from '$lib/session';
 	import * as m from '$lib/paraglide/messages';
@@ -31,6 +32,7 @@
 			maxOutputW: number | null;
 			battery: ForecastBattery | null;
 			houseLoadW: number | null;
+			correction: { enabled: boolean };
 		};
 	};
 
@@ -159,6 +161,7 @@
 			forecast: {
 				enabled: draft.forecast.enabled,
 				provider: draft.forecast.provider,
+				correction: draft.forecast.correction,
 				...forecast
 			}
 		});
@@ -252,6 +255,23 @@
 				bind:battReserve={battReserveText}
 				disabled={!isAdmin || saving}
 			/>
+
+			<Separator />
+
+			<div class="flex flex-col gap-1">
+				<div class="flex items-center justify-between gap-4">
+					<Label for="correction-enabled">{m.weather_forecast_correction()}</Label>
+					<Switch
+						id="correction-enabled"
+						checked={draft.forecast.correction.enabled}
+						disabled={!isAdmin || saving}
+						onCheckedChange={(v) => draft && (draft.forecast.correction.enabled = v)}
+					/>
+				</div>
+				<p class="text-sm text-muted-foreground">{m.weather_forecast_correction_desc()}</p>
+			</div>
+
+			<ForecastCorrectionPanel />
 		{/if}
 	{/if}
 </SettingsSection>
