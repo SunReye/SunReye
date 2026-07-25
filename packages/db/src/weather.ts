@@ -46,6 +46,19 @@ export const forecastBatterySchema = z.object({
 });
 export type ForecastBattery = z.infer<typeof forecastBatterySchema>;
 
+/**
+ * Learned bias-correction ("site adaptation") settings. The correction *learns*
+ * in the background whenever the forecast is configured; this flag only gates
+ * whether the learned multiplier is *applied* to the live forecast — so the
+ * operator can inspect the learned factors and measured skill before trusting
+ * them. The learning math (half-life, clamp, shrinkage) is not user-tunable.
+ */
+export const forecastCorrectionConfigSchema = z.object({
+  /** Apply the learned correction to the forecast (off = learn but don't apply). */
+  enabled: z.boolean().default(false),
+});
+export type ForecastCorrectionConfig = z.infer<typeof forecastCorrectionConfigSchema>;
+
 /** Production-forecast settings for the plant (provider-agnostic PV model). */
 export const solarForecastConfigSchema = z.object({
   /** Enable the production forecast on the weather tile. */
@@ -77,6 +90,8 @@ export const solarForecastConfigSchema = z.object({
    * it can be curtailed). `null` means infer it from recent history.
    */
   houseLoadW: z.number().min(0).max(10_000_000).nullable().default(null),
+  /** Learned bias-correction; learns in the background, applied only when enabled. */
+  correction: forecastCorrectionConfigSchema.default(forecastCorrectionConfigSchema.parse({})),
 });
 export type SolarForecastConfig = z.infer<typeof solarForecastConfigSchema>;
 

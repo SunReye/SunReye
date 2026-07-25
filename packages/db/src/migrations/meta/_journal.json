@@ -15,6 +15,13 @@
       "when": 1783956595918,
       "tag": "0001_magenta_the_initiative",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1784963031631,
+      "tag": "0002_melodic_hitman",
+      "breakpoints": true
     }
   ]
 }
