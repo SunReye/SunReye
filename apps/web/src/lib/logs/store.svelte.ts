@@ -1,13 +1,8 @@
 import type { LogEntry } from "server/src/logging";
 import { api } from "$lib/api";
+import { ReconnectingSocket } from "$lib/ws/reconnecting-socket";
 
 export type { LogEntry };
-
-type LogSocket = ReturnType<typeof api.ws.logs.subscribe>;
-
-/** Reconnect backoff after an unexpected socket drop. */
-const RECONNECT_BASE_MS = 1000;
-const RECONNECT_MAX_MS = 15_000;
 
 /**
  * How many lines to keep in the viewer. The server retains a smaller ring
@@ -17,10 +12,11 @@ const RECONNECT_MAX_MS = 15_000;
 const MAX_LINES = 2000;
 
 /**
- * Server log stream on the client (admin-only, over `/ws/logs`). Mirrors the
- * EVCC store: a single WebSocket is shared via a ref-counted {@link connect}
- * lease and reopened with exponential backoff on drops. The server replays its
- * recent ring buffer on open, then pushes coalesced batches of new lines.
+ * Server log stream on the client (admin-only, over `/ws/logs`). Like the EVCC
+ * store, the single WebSocket is shared via a ref-counted {@link connect} lease
+ * and reopened with exponential backoff on drops ({@link ReconnectingSocket}).
+ * The server replays its recent ring buffer on open, then pushes coalesced
+ * batches of new lines.
  *
  * `paused` freezes the visible feed so an operator can read/scroll without the
  * tail jumping. Incoming lines keep arriving while paused — they're held aside
@@ -38,20 +34,27 @@ class LogStore {
   pendingCount = $state(0);
 
   #held: LogEntry[] = [];
-  #leases = 0;
-  #ws: LogSocket | null = null;
-  #reconnectTimer: ReturnType<typeof setTimeout> | null = null;
-  #reconnectAttempts = 0;
+
+  #socket = new ReconnectingSocket({
+    create: () => api.ws.logs.subscribe(),
+    onMessage: (raw) => {
+      const parsed = typeof raw === "string" ? JSON.parse(raw) : raw;
+      if (Array.isArray(parsed)) this.#ingest(parsed as LogEntry[]);
+    },
+    onOpen: () => {
+      this.connected = true;
+    },
+    onDrop: () => {
+      this.connected = false;
+    },
+  });
 
   /**
    * Lease the live stream from a component `$effect`; returns the cleanup. The
    * socket opens with the first lease and closes with the last.
    */
   connect(): () => void {
-    if (this.#leases++ === 0) this.#openSocket();
-    return () => {
-      if (--this.#leases === 0) this.#teardown();
-    };
+    return this.#socket.connect();
   }
 
   pause(): void {
@@ -88,58 +91,6 @@ class LogStore {
   #appendVisible(batch: LogEntry[]): void {
     const next = this.lines.concat(batch);
     this.lines = next.length > MAX_LINES ? next.slice(next.length - MAX_LINES) : next;
-  }
-
-  #openSocket(): void {
-    this.#teardownSocket();
-    const ws = api.ws.logs.subscribe();
-    ws.subscribe((message: { data: unknown }) => {
-      if (this.#ws !== ws) return; // superseded socket flushing late
-      const raw = message.data;
-      const parsed = typeof raw === "string" ? JSON.parse(raw) : raw;
-      if (Array.isArray(parsed)) this.#ingest(parsed as LogEntry[]);
-    });
-    ws.on("open", () => {
-      if (this.#ws !== ws) return;
-      this.connected = true;
-      this.#reconnectAttempts = 0; // healthy connection resets backoff
-    });
-    ws.on("close", () => {
-      if (this.#ws !== ws) return; // intentional/superseded close — don't retry
-      this.#ws = null;
-      this.connected = false;
-      this.#scheduleReconnect();
-    });
-    // Surface transport errors as a close so the single reconnect path handles them.
-    ws.on("error", () => ws.close());
-    this.#ws = ws;
-  }
-
-  #scheduleReconnect(): void {
-    if (this.#reconnectTimer !== null || this.#leases === 0) return;
-    const delay = Math.min(RECONNECT_MAX_MS, RECONNECT_BASE_MS * 2 ** this.#reconnectAttempts);
-    this.#reconnectAttempts += 1;
-    this.#reconnectTimer = setTimeout(() => {
-      this.#reconnectTimer = null;
-      if (this.#leases === 0) return;
-      this.#openSocket();
-    }, delay);
-  }
-
-  #teardownSocket(): void {
-    const ws = this.#ws;
-    this.#ws = null; // drop identity first so its handlers become no-ops
-    ws?.close();
-  }
-
-  #teardown(): void {
-    if (this.#reconnectTimer !== null) {
-      clearTimeout(this.#reconnectTimer);
-      this.#reconnectTimer = null;
-    }
-    this.#reconnectAttempts = 0;
-    this.connected = false;
-    this.#teardownSocket();
   }
 }
 
