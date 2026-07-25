@@ -54,7 +54,10 @@ irradiance forecast into expected output:
 - **Temp. coefficient** and **System losses** — from the panel datasheet and install.
 - **Clipping** — feed-in limit, usable battery, max charge power, and reserve, plus an
   average **house load** (blank = inferred from history). These curtail the forecast so it
-  doesn't overstate output once the battery is full and export is capped.
+  doesn't overstate output once the battery is full and export is capped. Past hours are
+  reconstructed from the measured battery state at the start of the day (falling back to
+  the uncurtailed estimate when none is recorded), so the curve has no artificial step at
+  "now".
 
 The forecast is also published to [MQTT / Home Assistant](/integrations/mqtt/) and the
 [REST API](/integrations/rest-api/), not just the dashboard tile.
