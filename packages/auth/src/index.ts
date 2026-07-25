@@ -59,6 +59,15 @@ export function createAuth() {
     emailAndPassword: {
       enabled: true,
     },
+    session: {
+      // Long session lifetime so a "keep me signed in" login stays valid
+      // effectively indefinitely: the default `updateAge` (1 day) rolls the
+      // expiry forward on each visit, so an active user is never logged out.
+      // Persistence is opt-in per login via the sign-in `rememberMe` flag — an
+      // un-remembered session still uses a browser-session cookie and ends when
+      // the browser closes, regardless of this server-side expiry.
+      expiresIn: 60 * 60 * 24 * 365, // 1 year (seconds)
+    },
     secret: env.BETTER_AUTH_SECRET,
     baseURL: env.BETTER_AUTH_URL,
     advanced: {

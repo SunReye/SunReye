@@ -90,6 +90,7 @@
   "auth_create_account": "Konto erstellen",
   "auth_creating_account": "Konto wird erstellt…",
   "auth_signing_in": "Anmeldung…",
+  "auth_keep_signed_in": "Angemeldet bleiben",
   "onboarding_title": "Willkommen bei SunReye",
   "onboarding_subtitle": "Richten Sie Ihre Instanz ein",
   "onboarding_create_admin": "Administrator erstellen",

@@ -4,6 +4,7 @@
 	import { goto } from '$app/navigation';
 	import { resolve } from '$lib/resolve';
 	import { Button } from '$lib/components/ui/button';
+	import { Checkbox } from '$lib/components/ui/checkbox';
 	import * as m from '$lib/paraglide/messages';
 	import AuthField from './AuthField.svelte';
 
@@ -25,6 +26,10 @@
 	let name = $state('');
 	let email = $state('');
 	let password = $state('');
+	// Persist the session across browser restarts (paired with the server's long
+	// session lifetime). When unchecked the session cookie is browser-scoped and
+	// ends when the browser closes. Sign-in only; irrelevant to sign-up.
+	let rememberMe = $state(true);
 	let errors = $state<{ name?: string; email?: string; password?: string }>({});
 	let formError = $state('');
 	let submitting = $state(false);
@@ -43,7 +48,7 @@
 		const { error } =
 			mode === 'signup'
 				? await authClient.signUp.email({ name, email, password })
-				: await authClient.signIn.email({ email, password });
+				: await authClient.signIn.email({ email, password, rememberMe });
 		if (error) {
 			formError = error.message || m.auth_error_generic();
 			submitting = false;
@@ -110,6 +115,13 @@
 		error={errors.password}
 		bind:value={password}
 	/>
+
+	{#if mode === 'signin'}
+		<label class="flex cursor-pointer items-center gap-2 text-sm">
+			<Checkbox bind:checked={rememberMe} />
+			<span>{m.auth_keep_signed_in()}</span>
+		</label>
+	{/if}
 
 	{#if formError}
 		<p class="text-sm text-destructive" role="alert">{formError}</p>
