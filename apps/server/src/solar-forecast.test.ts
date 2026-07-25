@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { solarForecastConfigSchema } from "@SunReye/db/weather";
+import { type CorrectionModel, correctionFactor } from "./forecast-correction";
 import {
   type IrradianceForecast,
   buildSolarForecast,
@@ -386,5 +387,37 @@ describe("toForecastExport", () => {
     expect(noonRaw).toBeGreaterThan(3000);
     expect(noonUsable).toBeLessThanOrEqual(3000 + 1e-6);
     expect(raw.todayKwh).toBeGreaterThan(usable.todayKwh);
+  });
+});
+
+describe("buildSolarForecast correction", () => {
+  // Local times: hour 8 on the 18th, then noon on the 18th and 19th (UTC+2).
+  const data: IrradianceForecast = {
+    times: ["2026-07-18T08:00", "2026-07-18T12:00", "2026-07-19T12:00"],
+    utcOffsetSeconds: 7200,
+    location: { latitude: 48, longitude: 9 },
+    temperature: [20, 25, 25],
+    gti: [[100, 800, 400]],
+  };
+  const nowMs = Date.parse("2026-07-18T10:00:00Z");
+  const baseline = buildSolarForecast(config(), data, "test", nowMs).series.map((s) => s.watts);
+
+  test("an empty model leaves the forecast identical", () => {
+    const empty: CorrectionModel = new Map();
+    const f = buildSolarForecast(config(), data, "test", nowMs, undefined, empty);
+    expect(f.series.map((s) => s.watts)).toEqual(baseline);
+  });
+
+  test("a learned cell scales only its own (month, hour) slots", () => {
+    const model: CorrectionModel = new Map([["7:12", { ratio: 1.4, weight: 100 }]]);
+    const factor = correctionFactor(model, 7, 12);
+    expect(factor).toBeGreaterThan(1);
+
+    const f = buildSolarForecast(config(), data, "test", nowMs, undefined, model);
+    // The 08:00 slot has no matching cell → untouched.
+    expect(f.series[0]?.watts).toBeCloseTo(baseline[0] ?? -1, 6);
+    // Both noon slots (month 7, hour 12) scale by the applied factor.
+    expect(f.series[1]?.watts).toBeCloseTo((baseline[1] ?? 0) * factor, 6);
+    expect(f.series[2]?.watts).toBeCloseTo((baseline[2] ?? 0) * factor, 6);
   });
 });

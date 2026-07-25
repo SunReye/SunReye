@@ -1,8 +1,9 @@
 /**
  * Destructive maintenance. Wipes all recorded measurements so the instance can
- * start fresh — clears the raw hypertable and every continuous-aggregate rollup
- * built from it. Accounts, settings, tariff, profiles, and API keys are left
- * untouched; only time-series data is dropped. There is no undo.
+ * start fresh — clears the raw hypertable, every continuous-aggregate rollup
+ * built from it, and the forecast correction learned from that history. Accounts,
+ * settings, tariff, profiles, and API keys are left untouched; only time-series
+ * (and its derived state) is dropped. There is no undo.
  */
 
 import { db } from "@SunReye/db";
@@ -17,6 +18,9 @@ export const RESET_DATA_CONFIRM = "DELETE ALL DATA";
 
 /** Continuous aggregates fed from `metrics_raw`, cleared alongside the raw table. */
 const ROLLUP_VIEWS = ["minute_rollups", "hourly_rollups", "daily_rollups"] as const;
+
+/** Derived-from-history tables cleared with the measurements they were learned from. */
+const DERIVED_TABLES = ["forecast_correction_cells", "forecast_correction_state"] as const;
 
 export interface ResetResult {
   /** Views + tables that were truncated, in the order they were cleared. */
@@ -39,6 +43,10 @@ export async function resetTimeseries(): Promise<ResetResult> {
     // `view` is a fixed internal literal (not user input) → safe raw identifier.
     await db.execute(sql`TRUNCATE ${sql.raw(view)}`);
     cleared.push(view);
+  }
+  for (const table of DERIVED_TABLES) {
+    await db.execute(sql`TRUNCATE ${sql.raw(table)}`);
+    cleared.push(table);
   }
   return { cleared };
 }

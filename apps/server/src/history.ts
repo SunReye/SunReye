@@ -86,6 +86,33 @@ export async function queryMedianHourlyAvg(
   return median == null ? null : Number(median);
 }
 
+/**
+ * Hourly average of one metric over `[from, to)`, as `{ bucketMs, avg }` sorted
+ * ascending — the measured-actual side of the forecast correction's learning.
+ * `bucketMs` is the UTC epoch ms of each hour bucket, so the caller can match it
+ * to the reanalysis series by instant regardless of local offset.
+ */
+export async function queryHourlyAvgRange(
+  metric: string,
+  inverterId: string,
+  from: Date,
+  to: Date,
+): Promise<Array<{ bucketMs: number; avg: number }>> {
+  const result = await db.execute<{ bucket: string; avg_value: number }>(sql`
+    select bucket, avg_value
+    from hourly_rollups
+    where metric = ${metric}
+      and inverter_id = ${inverterId}
+      and bucket >= ${from}
+      and bucket < ${to}
+    order by bucket asc
+  `);
+  return result.rows.map((r) => ({
+    bucketMs: new Date(r.bucket).getTime(),
+    avg: Number(r.avg_value),
+  }));
+}
+
 /** Raw samples for one metric, most-recent-first. */
 export async function queryRawHistory(
   q: HistoryQuery,

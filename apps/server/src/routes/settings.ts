@@ -13,6 +13,7 @@ import { getDisplay, setDisplay } from "../display-settings";
 import { getLoggingConfig, setLoggingConfig } from "../logging-settings";
 import { evccSnapshot, rebuildEvcc } from "../evcc";
 import { getEvccConfig, setEvccConfig } from "../evcc-settings";
+import { getCorrectionView } from "../forecast-correction-job";
 import * as runtime from "../runtime";
 import { getTariff, setTariff } from "../settings";
 import { fetchSolarForecast, toForecastExport } from "../solar-forecast";
@@ -237,4 +238,10 @@ export const settingsRoutes = new Elysia({ name: "settings-routes" })
       return forecast ? toForecastExport(forecast, "usable") : null;
     },
     { requireSession: true },
-  );
+  )
+  // The learned bias-correction: state (enabled + last-learned day), the grid of
+  // applied `(month, hour)` factors, and the measured error improvement — for the
+  // weather-settings panel. The apply toggle itself saves via the weather config.
+  .get("/api/forecast/correction", () => getWeatherConfig().then(getCorrectionView), {
+    requireSession: true,
+  });

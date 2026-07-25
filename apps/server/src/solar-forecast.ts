@@ -10,6 +10,7 @@
  */
 
 import { type WeatherConfig, forecastReady } from "@SunReye/db/weather";
+import { type CorrectionModel, correctionFactor, hourOf, monthOf } from "./forecast-correction";
 import { log } from "./logging";
 import { cosAoi, sunPosition } from "./solar-geometry";
 import { openMeteoIrradiance } from "./solar-providers/open-meteo";
@@ -322,6 +323,10 @@ function computeNext15(
  * output after clipping (battery seeded from live SOC, then carried across the
  * day boundary). Past slots keep the raw PV estimate — there is no SOC history
  * to reconstruct them, and they are already measured elsewhere anyway.
+ *
+ * A learned {@link CorrectionModel} (optional) scales each sample by its
+ * `(month, hour)` factor *before* slot integration and clipping, so the site
+ * bias fix flows into both views and curtailment is computed on corrected PV.
  */
 export function buildSolarForecast(
   config: WeatherConfig["forecast"],
@@ -329,9 +334,11 @@ export function buildSolarForecast(
   provider: string,
   nowMs = Date.now(),
   sim?: ForecastSimInputs,
+  correction?: CorrectionModel,
 ): SolarForecast {
   // Instantaneous AC power at each timestamp: sun position feeds the per-array
-  // incidence angle so the IAM split (when DNI is available) can bite.
+  // incidence angle so the IAM split (when DNI is available) can bite. A learned
+  // correction (when supplied) then scales the sample by its (month, hour) factor.
   const instW = data.times.map((time, i) => {
     const atMs = Date.parse(`${time}:00Z`) - data.utcOffsetSeconds * 1000;
     const sun = sunPosition(data.location.latitude, data.location.longitude, atMs);
@@ -349,7 +356,7 @@ export function buildSolarForecast(
         config.systemLoss,
       );
     });
-    return watts;
+    return correction ? watts * correctionFactor(correction, monthOf(time), hourOf(time)) : watts;
   });
 
   // Slot geometry. Each sample opens the slot [tᵢ, tᵢ₊₁); its width is the gap
@@ -537,6 +544,25 @@ async function resolveSimInputs(config: WeatherConfig): Promise<ForecastSimInput
   return { startSocPct, houseLoadW: houseLoadW ?? null };
 }
 
+/**
+ * The learned correction model to apply, or `undefined` when correction is
+ * disabled, no profile is active, or nothing has been learned yet. Lazily
+ * imported (like the sim inputs) so this pure model file stays free of the
+ * DB/env at import time.
+ */
+async function resolveCorrection(config: WeatherConfig): Promise<CorrectionModel | undefined> {
+  if (!config.forecast.correction.enabled) return undefined;
+  const [{ getActiveProfileOrNull }, { liveState }, { loadCorrectionModel }] = await Promise.all([
+    import("./inverter"),
+    import("./state"),
+    import("./forecast-correction-store"),
+  ]);
+  const profile = getActiveProfileOrNull();
+  if (!profile) return undefined;
+  const model = await loadCorrectionModel(liveState.latest?.inverterId ?? profile.id);
+  return model.size > 0 ? model : undefined;
+}
+
 /** How long fetched irradiance is reused before hitting the provider again. */
 const CACHE_TTL_MS = 30 * 60 * 1000;
 
@@ -562,11 +588,22 @@ export async function fetchSolarForecast(config: WeatherConfig): Promise<SolarFo
 
   // Live SOC + house load for the clipping model, resolved fresh each call (SOC
   // moves constantly); skipped entirely when no clipping limit is configured.
-  const sim = clippingConfigured(config.forecast) ? await resolveSimInputs(config) : undefined;
+  // The learned correction (when enabled) rides alongside it.
+  const [sim, correction] = await Promise.all([
+    clippingConfigured(config.forecast) ? resolveSimInputs(config) : undefined,
+    resolveCorrection(config),
+  ]);
 
   const key = JSON.stringify([config.latitude, config.longitude, config.forecast]);
   if (cache !== null && cache.key === key && Date.now() - cache.at < CACHE_TTL_MS) {
-    return buildSolarForecast(config.forecast, cache.data, cache.provider, Date.now(), sim);
+    return buildSolarForecast(
+      config.forecast,
+      cache.data,
+      cache.provider,
+      Date.now(),
+      sim,
+      correction,
+    );
   }
 
   try {
@@ -575,11 +612,11 @@ export async function fetchSolarForecast(config: WeatherConfig): Promise<SolarFo
       config.forecast.arrays.map(({ tilt, azimuth }) => ({ tilt, azimuth })),
     );
     cache = { key, at: Date.now(), data, provider: provider.id };
-    return buildSolarForecast(config.forecast, data, provider.id, Date.now(), sim);
+    return buildSolarForecast(config.forecast, data, provider.id, Date.now(), sim, correction);
   } catch (err) {
     logger.warn("fetch failed: {error}", { error: err instanceof Error ? err.message : err });
     return cache?.key === key
-      ? buildSolarForecast(config.forecast, cache.data, cache.provider, Date.now(), sim)
+      ? buildSolarForecast(config.forecast, cache.data, cache.provider, Date.now(), sim, correction)
       : null;
   }
 }

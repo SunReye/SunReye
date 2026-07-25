@@ -25,6 +25,7 @@ import {
   resolveProfileById,
   type ProfileContext,
 } from "./inverter";
+import { runForecastCorrectionLearn } from "./forecast-correction-job";
 import { log } from "./logging";
 import { type MqttBridge, startMqttBridge } from "./mqtt";
 import { fetchSolarForecast, toForecastExport } from "./solar-forecast";
@@ -42,10 +43,18 @@ let bridge: MqttBridge | null = null;
 let onSample: SampleListener = () => {};
 let polling = false;
 let forecastTimer: ReturnType<typeof setInterval> | null = null;
+let learnTimer: ReturnType<typeof setInterval> | null = null;
+let learnKickTimer: ReturnType<typeof setTimeout> | null = null;
 
 // The PV forecast changes slowly (provider cache is 30 min) and its topics are
 // retained, so re-publishing every 5 minutes keeps HA fresh without churn.
 const FORECAST_PUBLISH_INTERVAL_MS = 5 * 60_000;
+
+// The correction learns from newly-*settled* reanalysis days, so there's at most
+// one new day to fold in per day — twice-daily is ample, with a short post-boot
+// kick so a fresh install backfills without waiting a full interval.
+const LEARN_INTERVAL_MS = 12 * 3600_000;
+const LEARN_KICK_DELAY_MS = 2 * 60_000;
 
 /** Fetch the current forecast and hand it to the MQTT bridge (no-op if disabled). */
 async function publishForecastNow(): Promise<void> {
@@ -59,6 +68,15 @@ async function publishForecastNow(): Promise<void> {
     );
   } catch (error) {
     logger.warn("forecast publish failed: {error}", { error });
+  }
+}
+
+/** Fold newly-settled days into the forecast correction grid (no-op if disabled). */
+async function learnCorrectionNow(): Promise<void> {
+  try {
+    await runForecastCorrectionLearn(await getWeatherConfig());
+  } catch (error) {
+    logger.warn("forecast correction learn failed: {error}", { error });
   }
 }
 
@@ -214,6 +232,10 @@ export async function start(listener: SampleListener, profileCtx: ProfileContext
   if (!forecastTimer) {
     forecastTimer = setInterval(() => void publishForecastNow(), FORECAST_PUBLISH_INTERVAL_MS);
   }
+  if (!learnTimer) {
+    learnTimer = setInterval(() => void learnCorrectionNow(), LEARN_INTERVAL_MS);
+    learnKickTimer = setTimeout(() => void learnCorrectionNow(), LEARN_KICK_DELAY_MS);
+  }
   await rebuildInverter(await getInverterConfig());
   await rebuildBridge(await getMqttConfig());
 }
@@ -345,6 +367,10 @@ export async function stop(): Promise<void> {
   flushTimer = null;
   if (forecastTimer) clearInterval(forecastTimer);
   forecastTimer = null;
+  if (learnTimer) clearInterval(learnTimer);
+  learnTimer = null;
+  if (learnKickTimer) clearTimeout(learnKickTimer);
+  learnKickTimer = null;
   // Persist whatever is buffered so a clean shutdown never drops history.
   await flushPending();
   await bridge?.close();
