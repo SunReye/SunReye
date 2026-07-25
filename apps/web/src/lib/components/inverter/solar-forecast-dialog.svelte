@@ -13,6 +13,7 @@
 
 	let {
 		series,
+		rawSeries = [],
 		stepMinutes,
 		todayKwh,
 		remainingTodayKwh,
@@ -21,6 +22,8 @@
 		trigger
 	}: {
 		series: ForecastPoint[];
+		/** Uncurtailed PV potential over the same slots; equals `series` when nothing clips. */
+		rawSeries?: ForecastPoint[];
 		/** Forecast slot width in minutes (15 for Open-Meteo). */
 		stepMinutes: number;
 		todayKwh: number;
@@ -156,15 +159,30 @@
 			label: slotLabel(i),
 			predictedW: 0,
 			predictedPeakW: 0,
+			predictedRawW: 0,
+			predictedRawPeakW: 0,
 			actualW: actual?.avgW[i] ?? null,
 			actualPeakW: actual?.peakW[i] ?? null
 		}));
+		const slotOf = (p: ForecastPoint) =>
+			p.time.startsWith(today)
+				? out[slotIndex(Number(p.time.slice(11, 13)), Number(p.time.slice(14, 16)))]
+				: undefined;
 		for (const p of series) {
-			if (!p.time.startsWith(today)) continue;
-			const slot = out[slotIndex(Number(p.time.slice(11, 13)), Number(p.time.slice(14, 16)))];
+			const slot = slotOf(p);
 			if (!slot) continue;
 			slot.predictedW = p.watts;
 			slot.predictedPeakW = p.peakWatts;
+			// The raw view falls back to the usable one so a missing series
+			// simply hides the uncapped split instead of drawing zeros.
+			slot.predictedRawW = p.watts;
+			slot.predictedRawPeakW = p.peakWatts;
+		}
+		for (const p of rawSeries) {
+			const slot = slotOf(p);
+			if (!slot) continue;
+			slot.predictedRawW = p.watts;
+			slot.predictedRawPeakW = p.peakWatts;
 		}
 		return out;
 	});

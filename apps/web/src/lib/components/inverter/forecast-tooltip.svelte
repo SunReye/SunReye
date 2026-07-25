@@ -36,6 +36,17 @@
 				avgW: slot.predictedW
 			}
 		];
+		// Only slots where clipping actually bites get the uncapped row — on an
+		// unclipped slot it would duplicate the predicted numbers.
+		if (slot.predictedRawW > slot.predictedW + 1) {
+			out.push({
+				key: 'uncapped',
+				name: m.weather_forecast_uncapped(),
+				color: 'var(--color-energy-selfused)',
+				peakW: slot.predictedRawPeakW,
+				avgW: slot.predictedRawW
+			});
+		}
 		if (slot.actualW !== null) {
 			out.push({
 				key: 'actual',

@@ -502,6 +502,7 @@
   "weather_forecast_remaining": "Restant",
   "weather_forecast_actual": "Réel",
   "weather_forecast_predicted": "Prévu",
+  "weather_forecast_uncapped": "Non bridé",
   "overview_detail_consumption": "Consommation par source (aujourd'hui)",
   "overview_detail_production": "Production (aujourd'hui)",
   "overview_detail_feed_in": "Injection (aujourd'hui)",

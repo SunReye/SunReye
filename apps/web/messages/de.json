@@ -502,6 +502,7 @@
   "weather_forecast_remaining": "Verbleibend",
   "weather_forecast_actual": "Ist",
   "weather_forecast_predicted": "Prognose",
+  "weather_forecast_uncapped": "Ungedrosselt",
   "overview_detail_consumption": "Verbrauch nach Quelle (heute)",
   "overview_detail_production": "Produktion (heute)",
   "overview_detail_feed_in": "Einspeisung (heute)",

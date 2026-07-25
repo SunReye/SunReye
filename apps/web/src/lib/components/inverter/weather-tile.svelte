@@ -18,6 +18,8 @@
 		stepMinutes: number;
 		/** Expected avg/peak AC power per slot, plant-local (`YYYY-MM-DDTHH:mm`). */
 		series: { time: string; watts: number; peakWatts: number }[];
+		/** Uncurtailed PV potential over the same slots; equals `series` when nothing clips. */
+		raw?: { series: { time: string; watts: number; peakWatts: number }[] };
 		todayKwh: number;
 		remainingTodayKwh: number;
 		tomorrowKwh: number;
@@ -147,6 +149,7 @@
 	{#if hasForecastChart && forecast}
 		<SolarForecastDialog
 			series={forecast.series}
+			rawSeries={forecast.raw?.series ?? []}
 			stepMinutes={forecast.stepMinutes}
 			todayKwh={forecast.todayKwh}
 			remainingTodayKwh={forecast.remainingTodayKwh}

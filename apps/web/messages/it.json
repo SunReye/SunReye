@@ -502,6 +502,7 @@
   "weather_forecast_remaining": "Rimanente",
   "weather_forecast_actual": "Effettivo",
   "weather_forecast_predicted": "Previsto",
+  "weather_forecast_uncapped": "Non limitato",
   "overview_detail_consumption": "Consumo per fonte (oggi)",
   "overview_detail_production": "Produzione (oggi)",
   "overview_detail_feed_in": "Immissione (oggi)",

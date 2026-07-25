@@ -7,10 +7,14 @@
 	export type ForecastSlot = {
 		/** Slot start as a plant-local clock label, e.g. "13:15". */
 		label: string;
-		/** Forecast average AC power over the slot, W. */
+		/** Forecast average AC power over the slot, W (usable, after clipping). */
 		predictedW: number;
-		/** Forecast peak AC power within the slot, W. */
+		/** Forecast peak AC power within the slot, W (usable, after clipping). */
 		predictedPeakW: number;
+		/** Uncurtailed forecast average, W; equals `predictedW` when nothing clips. */
+		predictedRawW: number;
+		/** Uncurtailed forecast peak, W. */
+		predictedRawPeakW: number;
 		/** Measured average AC power over the slot, W; null when not yet measured. */
 		actualW: number | null;
 		/** Measured peak AC power within the slot, W; null when unavailable. */
@@ -58,15 +62,25 @@
 		return slots.slice(from, to);
 	});
 
-	// Overlaid on the same band: the translucent forecast behind (drawn first)
-	// and the solid measured bar in front. Actual only exists up to now, so past
-	// slots compare the two and future slots show the forecast alone. Values are
-	// average kW per slot — directly comparable across the two series.
+	// Overlaid on the same band, back to front: the full uncapped potential,
+	// the (opaque) usable forecast covering its lower part — leaving the
+	// curtailed slice visible as a split top — and the solid measured bar in
+	// front. Actual only exists up to now, so past slots compare the series and
+	// future slots show the forecast alone. Values are average kW per slot —
+	// directly comparable across the series.
 	const series = [
+		{
+			key: 'uncapped',
+			label: m.weather_forecast_uncapped(),
+			color: 'color-mix(in srgb, var(--color-energy-selfused) 45%, transparent)',
+			value: (d: ForecastSlot) => Math.max(d.predictedRawW, d.predictedW) / 1000
+		},
 		{
 			key: 'predicted',
 			label: m.weather_forecast_predicted(),
-			color: 'color-mix(in srgb, var(--color-energy-export) 35%, transparent)',
+			// Mixed with the background rather than transparent so it occludes
+			// the uncapped bar behind it up to the usable level.
+			color: 'color-mix(in srgb, var(--color-energy-export) 35%, var(--background))',
 			value: (d: ForecastSlot) => d.predictedW / 1000
 		},
 		{
@@ -76,12 +90,24 @@
 			value: (d: ForecastSlot) => (d.actualW ?? 0) / 1000
 		}
 	];
-	// Legend swatches keep the solid series hue (the 35% mix is a rendering
+	// Whether clipping visibly bites anywhere in the plotted window — gates the
+	// uncapped legend entry so unclipped days keep the familiar two-swatch row.
+	const hasClipping = $derived(view.some((s) => s.predictedRawW > s.predictedW + 1));
+	// Legend swatches keep the solid series hue (the mixes are a rendering
 	// nicety, not a different identity).
-	const legend = [
+	const legend = $derived([
+		...(hasClipping
+			? [
+					{
+						key: 'uncapped',
+						label: m.weather_forecast_uncapped(),
+						color: 'var(--color-energy-selfused)'
+					}
+				]
+			: []),
 		{ key: 'predicted', label: m.weather_forecast_predicted(), color: 'var(--color-energy-export)' },
 		{ key: 'actual', label: m.weather_forecast_actual(), color: 'var(--color-energy-solar)' }
-	];
+	]);
 
 	const config: Chart.ChartConfig = Object.fromEntries(
 		series.map((s) => [s.key, { label: s.label, color: s.color }])
