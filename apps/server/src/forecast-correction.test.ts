@@ -78,6 +78,32 @@ describe("learn — exclusions", () => {
     expect(result.touched.size).toBe(0);
   });
 
+  test("a feed-in cap below the nameplate fraction lowers the ceiling", () => {
+    // 10 kW plant with a 6 kW export cap: hours at/above the cap are likely
+    // curtailed even though they sit well under 85% of nameplate.
+    const model: CorrectionModel = new Map();
+    const atCap = learn(model, emptySkill, stream(7, 13, 1.0, 30, 6500), 10_000, 6000);
+    expect(atCap.touched.size).toBe(0);
+
+    // Same hours learn fine when no cap is configured…
+    const uncapped: CorrectionModel = new Map();
+    expect(learn(uncapped, emptySkill, stream(7, 13, 1.0, 30, 6500), 10_000).touched.size).toBe(1);
+
+    // …and hours under the cap still learn with it.
+    const under: CorrectionModel = new Map();
+    expect(learn(under, emptySkill, stream(7, 13, 1.0, 30, 5000), 10_000, 6000).touched.size).toBe(
+      1,
+    );
+  });
+
+  test("actuals pinned at the cap are treated as curtailed", () => {
+    const model: CorrectionModel = new Map();
+    // Model expects 5.5 kW, plant reads 6.1 kW — above the 6 kW cap, so the
+    // hour is battery/export bound, not a model signal.
+    const obs: Observation[] = [{ localTime: "2026-07-01T13:00", expectedW: 5500, actualW: 6100 }];
+    expect(learn(model, emptySkill, obs, 10_000, 6000).touched.size).toBe(0);
+  });
+
   test("negative actuals are ignored", () => {
     const model: CorrectionModel = new Map();
     const bad: Observation[] = [{ localTime: "2026-07-01T13:00", expectedW: 5000, actualW: -10 }];

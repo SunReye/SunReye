@@ -75,6 +75,9 @@ which are irreducible.
 - Factors fill in over the first weeks — it needs a little production history plus settled
   reanalysis (a few days' lag). Clearing time-series data (Danger Zone) also resets what has
   been learned.
+- Hours near the plant's limits — very dim ones, and ones at the feed-in limit or close to
+  nameplate — are excluded from learning, so curtailment (full battery, capped export) isn't
+  mistaken for model bias.
 
 ## Date & Time
 

@@ -239,6 +239,16 @@ export async function runForecastCorrectionLearn(config: WeatherConfig): Promise
 
   const observations = await collectObservations(config, source, window.startDate, window.endDate);
   if (observations === null) return unchanged; // fetch failed — retry next run
+  if (observations.length === 0) {
+    // No measured hour overlaps the window (fresh install, rollup lag, inverter
+    // offline). Keep the cursor so those days are retried once history exists,
+    // instead of being consumed with nothing learned.
+    logger.info("no measured hours in {start}…{end} — cursor kept", {
+      start: window.startDate,
+      end: window.endDate,
+    });
+    return unchanged;
+  }
 
   const model = await loadCorrectionModel(source.inverterId);
   const skill: SkillStats = {
@@ -247,13 +257,23 @@ export async function runForecastCorrectionLearn(config: WeatherConfig): Promise
     samples: state?.samples ?? 0,
   };
   const nameplateW = config.forecast.arrays.reduce((sum, a) => sum + a.kwp, 0) * 1000;
-  const result = learn(model, skill, observations, nameplateW);
+  const result = learn(
+    model,
+    skill,
+    observations,
+    nameplateW,
+    config.forecast.maxOutputW ?? undefined,
+  );
 
-  await persistLearned(source.inverterId, model, result, window.endDate);
+  // Advance only through the last day that actually had measured hours: a
+  // trailing gap (rollups not settled yet, inverter down) is retried next run
+  // rather than skipped forever.
+  const learnedThrough = observations.at(-1)?.localTime.slice(0, 10) ?? window.endDate;
+  await persistLearned(source.inverterId, model, result, learnedThrough);
   logger.info("learned {n} hours through {end} ({cells} cells)", {
     n: observations.length,
-    end: window.endDate,
+    end: learnedThrough,
     cells: result.touched.size,
   });
-  return { learned: observations.length, learnedThrough: window.endDate };
+  return { learned: observations.length, learnedThrough };
 }

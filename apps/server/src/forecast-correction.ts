@@ -86,6 +86,9 @@ const EXPECTED_FLOOR_FRAC = 0.03;
  * Fraction of nameplate above which an hour is dropped as likely **curtailed**
  * (feed-in cap or full battery): production is limited by the plant, not the
  * model, so learning from it would mislabel clipping as model over-prediction.
+ * A configured feed-in cap below this fraction lowers the ceiling further —
+ * curtailment starts at the cap, not at a nameplate fraction (a 60%-rule plant
+ * clips well under 85% of nameplate).
  */
 const SATURATION_FRAC = 0.85;
 
@@ -144,16 +147,20 @@ export interface LearnResult {
  * corrected error uses the factor as it stood *before* that hour updated the cell.
  *
  * `nameplateW` is the plant's total DC nameplate (Σ kWp × 1000), the reference
- * for the dim/curtailed fractions.
+ * for the dim/curtailed fractions. `exportCapW` is the configured feed-in limit
+ * (when any): hours where the model or the plant reach it are treated as
+ * curtailed, since production there is bounded by the cap — battery-full
+ * afternoons at the cap would otherwise be learned as a false low bias.
  */
 export function learn(
   model: CorrectionModel,
   skill: SkillStats,
   observations: readonly Observation[],
   nameplateW: number,
+  exportCapW?: number,
 ): LearnResult {
   const floor = Math.max(1, nameplateW * EXPECTED_FLOOR_FRAC);
-  const ceiling = nameplateW * SATURATION_FRAC;
+  const ceiling = Math.min(nameplateW * SATURATION_FRAC, exportCapW ?? Number.POSITIVE_INFINITY);
   const touched = new Set<string>();
   let nextSkill = skill;
 
