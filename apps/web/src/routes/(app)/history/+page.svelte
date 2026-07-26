@@ -1,13 +1,11 @@
 <script lang="ts">
-	import CaretDown from 'phosphor-svelte/lib/CaretDown';
 	import MagnifyingGlass from 'phosphor-svelte/lib/MagnifyingGlass';
 	import { inverter } from '$lib/inverter/store.svelte';
 	import * as m from '$lib/paraglide/messages';
 	import { Input } from '$lib/components/ui/input';
-	import * as Collapsible from '$lib/components/ui/collapsible';
 	import DateRangePicker from '$lib/components/inverter/date-range-picker.svelte';
-	import EntityHistoryCard from '$lib/components/inverter/entity-history-card.svelte';
 	import CustomChartSection from '$lib/components/inverter/custom-chart-section.svelte';
+	import MetricGroup from './metric-group.svelte';
 	import { setPageHeader } from '$lib/page-header.svelte';
 	import {
 		filterMetrics,
@@ -25,7 +23,17 @@
 	const chartable = $derived(inverter.metrics.filter(isChartable));
 	const groups = $derived(groupByCategory(filterMetrics(chartable, search)));
 
-	const accentFor = (i: number) => `var(--color-chart-${(i % 5) + 1})`;
+	const hasChartable = $derived(chartable.length > 0);
+	// Groups default open (undefined → true).
+	const isOpen = (category: string) => !collapsed[category];
+
+	// Why there is nothing to list: no profile data yet, or the search excluded
+	// everything. Null once there are groups to render.
+	const emptyMessage = $derived.by(() => {
+		if (chartable.length === 0) return m.history_waiting_profile();
+		if (groups.length === 0) return m.history_no_match({ query: search });
+		return null;
+	});
 
 	$effect(() => setPageHeader(m.nav_history(), m.history_subtitle()));
 </script>
@@ -42,45 +50,25 @@
 		<Input placeholder={m.history_search_placeholder()} bind:value={search} class="pl-9" />
 	</div>
 
-	{#if chartable.length > 0}
+	{#if hasChartable}
 		<CustomChartSection {range} />
 	{/if}
 
-	{#if chartable.length === 0}
+	{#if emptyMessage}
 		<div
 			class="flex h-40 items-center justify-center border border-border text-sm text-muted-foreground"
 		>
-			{m.history_waiting_profile()}
-		</div>
-	{:else if groups.length === 0}
-		<div
-			class="flex h-40 items-center justify-center border border-border text-sm text-muted-foreground"
-		>
-			{m.history_no_match({ query: search })}
+			{emptyMessage}
 		</div>
 	{:else}
 		{#each groups as [category, metrics] (category)}
-			<Collapsible.Root
-				open={!collapsed[category]}
+			<MetricGroup
+				{category}
+				{metrics}
+				{range}
+				open={isOpen(category)}
 				onOpenChange={(v) => (collapsed[category] = !v)}
-			>
-				<Collapsible.Trigger
-					class="group flex w-full items-center gap-2 border-b border-border py-2 text-left text-sm font-medium"
-				>
-					<CaretDown
-						class="size-4 text-muted-foreground transition-transform group-data-[state=closed]:-rotate-90"
-					/>
-					{category}
-					<span class="text-xs text-muted-foreground">({metrics.length})</span>
-				</Collapsible.Trigger>
-				<Collapsible.Content>
-					<div class="grid gap-4 pt-4 lg:grid-cols-2 xl:grid-cols-3">
-						{#each metrics as metric, i (metric.key)}
-							<EntityHistoryCard {metric} {range} accent={accentFor(i)} />
-						{/each}
-					</div>
-				</Collapsible.Content>
-			</Collapsible.Root>
+			/>
 		{/each}
 	{/if}
 </div>
