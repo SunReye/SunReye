@@ -21,6 +21,30 @@ const RECONNECT_MAX_MS = 30_000;
 
 type Status = "idle" | "connecting" | "live" | "closed";
 
+/**
+ * Index of the first point still inside the trailing window, also enforcing the
+ * hard cap so a buffer can never grow past {@link MAX_POINTS}.
+ */
+function firstLiveIndex(points: LivePoint[], cutoff: number): number {
+  let start = 0;
+  while (start < points.length && points[start]!.t < cutoff) start++;
+  if (points.length - start >= MAX_POINTS) return points.length - MAX_POINTS + 1;
+  return start;
+}
+
+/** Group raw history rows into per-metric point lists, in row order. */
+function groupRows(
+  rows: readonly { metric: string; time: string; value: number }[],
+): Map<string, LivePoint[]> {
+  const byMetric = new Map<string, LivePoint[]>();
+  for (const row of rows) {
+    const points = byMetric.get(row.metric) ?? [];
+    points.push({ t: new Date(row.time).getTime(), v: row.value });
+    byMetric.set(row.metric, points);
+  }
+  return byMetric;
+}
+
 /** The live-metrics socket handle (Eden `EdenWS`). */
 type MetricsSocket = ReturnType<typeof api.ws.metrics.subscribe>;
 
@@ -125,11 +149,17 @@ class InverterStore {
     if (document.visibilityState === "hidden") {
       this.#teardownSocket();
       this.status = "idle";
-    } else if (this.#started && this.#ws === null) {
-      this.#clearReconnectTimer();
-      this.#reconnectAttempts = 0;
-      void this.#reconnect();
+      return;
     }
+    this.#resumeStream();
+  }
+
+  /** Reopen immediately on return, dropping any pending backoff delay. */
+  #resumeStream(): void {
+    if (!this.#started || this.#ws !== null) return;
+    this.#clearReconnectTimer();
+    this.#reconnectAttempts = 0;
+    void this.#reconnect();
   }
 
   async #init(): Promise<void> {
@@ -159,17 +189,13 @@ class InverterStore {
       query: { seconds: WINDOW_MS / 1000, limit: 200000 },
     });
     if (!data) return;
-    const byMetric = new Map<string, LivePoint[]>();
-    for (const row of data) {
-      const points = byMetric.get(row.metric) ?? [];
-      points.push({ t: new Date(row.time).getTime(), v: row.value });
-      byMetric.set(row.metric, points);
-    }
-    for (const [key, points] of byMetric) {
-      // Rows arrive newest-first; sort ascending and keep the trailing window.
-      points.sort((a, b) => a.t - b.t);
-      this.#series.set(key, this.#trim(this.#downsampleToHz(points)));
-    }
+    for (const [key, points] of groupRows(data)) this.#seedSeries(key, points);
+  }
+
+  /** Rows arrive newest-first; sort ascending and keep the trailing window. */
+  #seedSeries(key: string, points: LivePoint[]): void {
+    points.sort((a, b) => a.t - b.t);
+    this.#series.set(key, this.#trim(this.#downsampleToHz(points)));
   }
 
   /**
@@ -215,32 +241,10 @@ class InverterStore {
       this.latest = sample;
       this.status = "live";
       const t = new Date(sample.time).getTime();
-      // Track the real spacing between samples so consumers can size their glide
-      // to the live feed. EMA (α=0.3) so one late/early sample nudges rather than
-      // whips it; clamp to the config's allowed poll range to reject backfill
-      // jumps and clock skew.
-      if (this.#lastSampleT !== null) {
-        const delta = t - this.#lastSampleT;
-        if (delta > 0) {
-          const clamped = Math.min(3_600_000, Math.max(1000, delta));
-          this.cadenceMs = this.cadenceMs * 0.7 + clamped * 0.3;
-        }
-      }
-      this.#lastSampleT = t;
+      this.#trackCadence(t);
       const cutoff = t - WINDOW_MS;
       for (const [key, v] of Object.entries(sample.metrics)) {
-        // One copy per metric per tick (new reference so consumers re-render):
-        // slice off expired points from the front and append the new one. At a
-        // 1 Hz feed this runs every second for every metric, so the old
-        // spread + filter pair (two full copies each) was the main source of
-        // GC pressure — periodic collection pauses showed up as animation hiccups.
-        const prev = this.#series.get(key) ?? [];
-        let start = 0;
-        while (start < prev.length && prev[start]!.t < cutoff) start++;
-        if (prev.length - start >= MAX_POINTS) start = prev.length - MAX_POINTS + 1;
-        const next = prev.slice(start);
-        next.push({ t, v });
-        this.#series.set(key, next);
+        this.#appendPoint(key, { t, v }, cutoff);
       }
     });
     ws.on("open", () => {
@@ -256,6 +260,36 @@ class InverterStore {
     // Surface transport errors as a close so the single reconnect path handles them.
     ws.on("error", () => ws.close());
     this.#ws = ws;
+  }
+
+  /**
+   * Track the real spacing between samples so consumers can size their glide to
+   * the live feed. EMA (α=0.3) so one late/early sample nudges rather than whips
+   * it; clamp to the config's allowed poll range to reject backfill jumps and
+   * clock skew.
+   */
+  #trackCadence(t: number): void {
+    const last = this.#lastSampleT;
+    this.#lastSampleT = t;
+    if (last === null) return;
+    const delta = t - last;
+    if (delta <= 0) return;
+    const clamped = Math.min(3_600_000, Math.max(1000, delta));
+    this.cadenceMs = this.cadenceMs * 0.7 + clamped * 0.3;
+  }
+
+  /**
+   * Append one metric's new sample and drop what fell out of the window. One copy
+   * per metric per tick (new reference so consumers re-render): slice off expired
+   * points from the front, then append. At a 1 Hz feed this runs every second for
+   * every metric, so the old spread + filter pair (two full copies each) was the
+   * main source of GC pressure — collection pauses showed up as animation hiccups.
+   */
+  #appendPoint(key: string, point: LivePoint, cutoff: number): void {
+    const prev = this.#series.get(key) ?? [];
+    const next = prev.slice(firstLiveIndex(prev, cutoff));
+    next.push(point);
+    this.#series.set(key, next);
   }
 
   /** Reconnect after an unexpected drop: backfill the gap, then reopen the stream. */
