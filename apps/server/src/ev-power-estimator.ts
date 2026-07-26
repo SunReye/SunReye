@@ -164,22 +164,28 @@ export function createEvPowerEstimator(nowFn: () => number = () => Date.now()): 
     Object.assign(getOrCreate(index).params, params);
   }
 
+  /**
+   * The power a `mode` command implies, or null when it implies nothing:
+   * `pv`/`minpv` ramp gradually (the residual tracker's job), and `now` without
+   * the vehicle or phase facts would be a wild max-power guess — skip it and
+   * let the next anchor catch up.
+   */
+  function expectedWattsForMode(lp: LoadpointState, mode: string): number | null {
+    if (mode === "off") return 0;
+    if (mode !== "now") return null;
+    if (!lp.params.connected || lp.params.phasesActive === null) return null;
+    return lp.params.phasesActive * VOLTS * (lp.params.maxCurrentA ?? DEFAULT_MAX_CURRENT_A);
+  }
+
+  /** Already sitting at the target with nothing in flight → nothing to predict. */
+  const settledAt = (lp: LoadpointState, expectW: number): boolean =>
+    lp.estimate === expectW && lp.pending === null && lp.source === "measured";
+
   function feedForward(index: number, key: string, value: string): boolean {
     if (key !== "mode") return false;
     const lp = getOrCreate(index);
-    let expectW: number;
-    if (value === "off") {
-      expectW = 0;
-    } else if (value === "now") {
-      // Without the vehicle or phase facts the max-power guess would be wild —
-      // skip and let the next anchor catch up.
-      if (!lp.params.connected || lp.params.phasesActive === null) return false;
-      expectW = lp.params.phasesActive * VOLTS * (lp.params.maxCurrentA ?? DEFAULT_MAX_CURRENT_A);
-    } else {
-      return false; // pv/minpv ramp gradually — residual tracker's job
-    }
-    // Already sitting at the target with nothing in flight → nothing to predict.
-    if (lp.estimate === expectW && lp.pending === null && lp.source === "measured") return false;
+    const expectW = expectedWattsForMode(lp, value);
+    if (expectW === null || settledAt(lp, expectW)) return false;
     const changed = lp.estimate !== expectW || lp.source !== "feedforward";
     lp.pending = { expectW, deadline: nowFn() + FEEDFORWARD_TIMEOUT_MS };
     lp.estimate = expectW;

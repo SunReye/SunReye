@@ -41,6 +41,35 @@ const seriesArgs = (q: { from: string; to: string; bucket: CostBucket; inverterI
   inverterId: q.inverterId,
 });
 
+/** Default span of a rollup read without an explicit window, hours (one week). */
+const ROLLUP_DEFAULT_HOURS = 168;
+
+/**
+ * The window a history read covers: an explicit `[from, to)` when the custom
+ * date-range picker sent both bounds (a range ending in the past can't be
+ * expressed as an hours-ago offset), else the open-ended hours-ago offset.
+ */
+function historyWindow(q: { from?: string; to?: string; hours?: number }) {
+  if (q.from && q.to) return { from: new Date(q.from), to: new Date(q.to) };
+  return { since: new Date(Date.now() - (q.hours ?? ROLLUP_DEFAULT_HOURS) * 60 * 60 * 1000) };
+}
+
+/** The `[from, to)` a cost read covers: an explicit window, else a named range. */
+function costWindow(q: { from?: string; to?: string; range?: "today" | "month" | "year" }) {
+  if (q.from && q.to) return { from: new Date(q.from), to: new Date(q.to) };
+  return resolveRange(q.range ?? "month");
+}
+
+/** Charge modes EVCC accepts on a `mode/set` command. */
+const EVCC_MODES = ["off", "pv", "minpv", "now"];
+
+/** Whether a relayed EVCC command carries a mode EVCC would reject. */
+const unknownEvccMode = (body: { action: string; value: string | number }): boolean =>
+  body.action === "mode" && !EVCC_MODES.includes(String(body.value));
+
+/** Best-effort message for an unknown throw. */
+const messageOf = (err: unknown): string => (err instanceof Error ? err.message : String(err));
+
 // Container healthcheck self-probe: the runtime image is distroless (no shell,
 // no curl), so orchestrators exec the server binary itself with --healthcheck.
 // It probes the sibling server process over HTTP and exits 0/1 before any of
@@ -92,6 +121,8 @@ const ctx = profile ? buildProfileContext(profile) : null;
 const manifest = ctx?.manifest ?? null;
 // 503 payload for a profile-dependent surface hit before onboarding is done.
 const ONBOARDING_REQUIRED = { error: "No active inverter profile — onboarding required" } as const;
+// Default inverter id for history reads that don't name one; null until onboarded.
+const activeInverterId = profile?.id ?? null;
 
 // Live sample: arbitrary metric keys → numeric values, defined by the profile.
 const SampleSchema = t.Object({
@@ -304,7 +335,7 @@ const app = new Elysia()
   .get(
     "/api/history/recent",
     async ({ query, status }) => {
-      const inverterId = query.inverterId ?? profile?.id;
+      const inverterId = query.inverterId ?? activeInverterId;
       if (!inverterId) return status(503, ONBOARDING_REQUIRED);
       const since = new Date(Date.now() - query.seconds * 1000);
       // Most-recent-first so a capped result keeps the latest samples (the
@@ -335,20 +366,14 @@ const app = new Elysia()
   .get(
     "/api/history/rollup",
     async ({ query, status }) => {
-      const inverterId = query.inverterId ?? profile?.id;
+      const inverterId = query.inverterId ?? activeInverterId;
       if (!inverterId) return status(503, ONBOARDING_REQUIRED);
-      // Explicit [from, to) window (custom date-range picker) takes precedence;
-      // otherwise fall back to the open-ended hours-ago offset.
-      const window =
-        query.from && query.to
-          ? { from: new Date(query.from), to: new Date(query.to) }
-          : { since: new Date(Date.now() - (query.hours ?? 168) * 60 * 60 * 1000) };
       return queryRollup({
         metric: query.metric,
         inverterId,
         limit: query.limit,
         bucket: query.bucket ?? "hour",
-        ...window,
+        ...historyWindow(query),
       });
     },
     {
@@ -398,13 +423,11 @@ const app = new Elysia()
   .post(
     "/api/commands/evcc",
     ({ body, status }) => {
-      if (body.action === "mode" && !["off", "pv", "minpv", "now"].includes(String(body.value))) {
-        return status(400, { error: `Invalid mode "${body.value}"` });
-      }
+      if (unknownEvccMode(body)) return status(400, { error: `Invalid mode "${body.value}"` });
       try {
         evccControl(body.loadpoint, body.action, String(body.value));
       } catch (err) {
-        return status(503, { error: err instanceof Error ? err.message : String(err) });
+        return status(503, { error: messageOf(err) });
       }
       return { ok: true };
     },
@@ -434,10 +457,7 @@ const app = new Elysia()
     "/api/cost",
     ({ query, status }) => {
       if (!profile) return status(503, ONBOARDING_REQUIRED);
-      const { from, to } =
-        query.from && query.to
-          ? { from: new Date(query.from), to: new Date(query.to) }
-          : resolveRange(query.range ?? "month");
+      const { from, to } = costWindow(query);
       return computeCost(profile, { from, to, inverterId: query.inverterId });
     },
     {

@@ -2,11 +2,20 @@ import type { CanonicalRole, InverterProfile, InverterSample } from "@SunReye/in
 import { describe, expect, mock, test } from "bun:test";
 
 // cost.ts imports the DB singleton (which eagerly validates server env). Mock it
-// so the pure, DB-free guard logic can be imported and exercised without a
-// database or a populated .env — mirroring inverter.test.ts's approach.
+// so the DB-free guard logic can be imported and exercised without a database or
+// a populated .env — mirroring inverter.test.ts's approach. The live sample is an
+// injectable argument, so the poll cache needs no stand-in.
 mock.module("@SunReye/db", () => ({ db: {} }));
 
-const { resolveLiveTodayTotals } = await import("./cost");
+const { liveTodayTotals } = await import("./cost");
+
+/** The live overlay for `inverterId` at `now`, given the poll cache's `sample`. */
+const overlayFor = (
+  profile: InverterProfile,
+  sample: InverterSample | null,
+  inverterId: string,
+  now: Date,
+) => liveTodayTotals(profile, inverterId, now, sample);
 
 /** Minimal profile mapping the given canonical roles → metric keys. */
 const profileWith = (roleKeys: Partial<Record<CanonicalRole, string>>): InverterProfile =>
@@ -42,24 +51,24 @@ const yesterday = new Date(2024, 5, 14, 23, 59, 0);
 
 const liveMetrics = { imp: 1.1, exp: 2.2, load: 8.6, prod: 5.5 };
 
-describe("resolveLiveTodayTotals", () => {
+describe("liveTodayTotals", () => {
   test("null live sample → empty (no override)", () => {
-    expect(resolveLiveTodayTotals(fullProfile, null, "inv-1", now)).toEqual({});
+    expect(overlayFor(fullProfile, null, "inv-1", now)).toEqual({});
   });
 
   test("inverterId mismatch → empty (no override)", () => {
     const s = sample(today, liveMetrics, "other-inverter");
-    expect(resolveLiveTodayTotals(fullProfile, s, "inv-1", now)).toEqual({});
+    expect(overlayFor(fullProfile, s, "inv-1", now)).toEqual({});
   });
 
   test("stale sample from a previous local day → empty (no override across midnight)", () => {
     const s = sample(yesterday, liveMetrics);
-    expect(resolveLiveTodayTotals(fullProfile, s, "inv-1", now)).toEqual({});
+    expect(overlayFor(fullProfile, s, "inv-1", now)).toEqual({});
   });
 
   test("all guards pass → every mapped, finite field is returned", () => {
     const s = sample(today, liveMetrics);
-    expect(resolveLiveTodayTotals(fullProfile, s, "inv-1", now)).toEqual({
+    expect(overlayFor(fullProfile, s, "inv-1", now)).toEqual({
       importKwh: 1.1,
       exportKwh: 2.2,
       loadKwh: 8.6,
@@ -74,7 +83,7 @@ describe("resolveLiveTodayTotals", () => {
       "production.today": "prod",
     });
     const s = sample(today, liveMetrics);
-    expect(resolveLiveTodayTotals(partial, s, "inv-1", now)).toEqual({
+    expect(overlayFor(partial, s, "inv-1", now)).toEqual({
       loadKwh: 8.6,
       productionKwh: 5.5,
     });
@@ -83,12 +92,12 @@ describe("resolveLiveTodayTotals", () => {
   test("mapped role missing / non-finite in the sample → that field is skipped", () => {
     // `imp` absent, `exp` NaN, `prod` Infinity → only the finite `load` survives.
     const s = sample(today, { load: 8.6, exp: Number.NaN, prod: Number.POSITIVE_INFINITY });
-    expect(resolveLiveTodayTotals(fullProfile, s, "inv-1", now)).toEqual({ loadKwh: 8.6 });
+    expect(overlayFor(fullProfile, s, "inv-1", now)).toEqual({ loadKwh: 8.6 });
   });
 
   test("an explicit zero is a valid override (finite, not skipped)", () => {
     const s = sample(today, { imp: 0, exp: 0, load: 0, prod: 0 });
-    expect(resolveLiveTodayTotals(fullProfile, s, "inv-1", now)).toEqual({
+    expect(overlayFor(fullProfile, s, "inv-1", now)).toEqual({
       importKwh: 0,
       exportKwh: 0,
       loadKwh: 0,

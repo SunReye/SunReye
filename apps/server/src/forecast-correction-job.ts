@@ -41,7 +41,7 @@ import {
 import { loadCorrectionModel } from "./forecast-correction-store";
 import { getActiveProfileOrNull } from "./inverter";
 import { queryHourlyAvgRange } from "./history";
-import { buildSolarForecast } from "./solar-forecast";
+import { type SolarForecastPoint, buildSolarForecast } from "./solar-forecast";
 import { fetchHistoricalIrradiance } from "./solar-providers/open-meteo-archive";
 import { liveState } from "./state";
 import { log } from "./logging";
@@ -79,17 +79,28 @@ export interface ForecastCorrectionView {
   cells: CorrectionCellView[];
 }
 
+/** The persisted correction row shape both the view and the learn run read. */
+type CorrectionStateRow = Awaited<ReturnType<typeof getCorrectionState>>;
+
+/** Measured skill carried on the state row (zeroed before the first run). */
+const skillOf = (state: CorrectionStateRow): SkillStats => ({
+  maeRaw: state?.maeRaw ?? 0,
+  maeCorrected: state?.maeCorrected ?? 0,
+  samples: state?.samples ?? 0,
+});
+
 /** Assemble the settings-panel view: the learned grid, applied factors, and skill. */
 export async function getCorrectionView(config: WeatherConfig): Promise<ForecastCorrectionView> {
   const enabled = config.forecast.correction.enabled;
-  const empty: ForecastCorrectionView = {
-    enabled,
-    learnedThrough: null,
-    skill: { maeRaw: 0, maeCorrected: 0, improvementPct: 0, samples: 0 },
-    cells: [],
-  };
   const source = resolvePvSource();
-  if (!source) return empty;
+  if (!source) {
+    return {
+      enabled,
+      learnedThrough: null,
+      skill: { ...skillOf(null), improvementPct: 0 },
+      cells: [],
+    };
+  }
 
   const [rows, state] = await Promise.all([
     getCorrectionCells(source.inverterId),
@@ -98,11 +109,7 @@ export async function getCorrectionView(config: WeatherConfig): Promise<Forecast
   const model: CorrectionModel = new Map(
     rows.map((r) => [cellKey(r.month, r.hour), { ratio: r.ratio, weight: r.weight }]),
   );
-  const skill: SkillStats = {
-    maeRaw: state?.maeRaw ?? 0,
-    maeCorrected: state?.maeCorrected ?? 0,
-    samples: state?.samples ?? 0,
-  };
+  const skill = skillOf(state);
   return {
     enabled,
     learnedThrough: state?.learnedThrough ?? null,
@@ -139,6 +146,50 @@ function learnWindow(learnedThrough: string | null): { startDate: string; endDat
   return startDate > endDate ? null : { startDate, endDate };
 }
 
+type ArchiveData = Awaited<ReturnType<typeof fetchHistoricalIrradiance>>;
+
+/** Reanalysis irradiance for the window, or null when the archive call fails. */
+async function fetchArchive(
+  config: WeatherConfig & { latitude: number; longitude: number },
+  startDate: string,
+  endDate: string,
+): Promise<ArchiveData | null> {
+  try {
+    return await fetchHistoricalIrradiance(
+      { latitude: config.latitude, longitude: config.longitude },
+      config.forecast.arrays.map(({ tilt, azimuth }) => ({ tilt, azimuth })),
+      startDate,
+      endDate,
+    );
+  } catch (err) {
+    logger.warn("archive fetch failed ({start}…{end}): {error}", {
+      start: startDate,
+      end: endDate,
+      error: err instanceof Error ? err.message : err,
+    });
+    return null;
+  }
+}
+
+/**
+ * Measured hourly PV averages spanning `expected`, keyed by UTC bucket instant
+ * so a local-time forecast slot can be matched to them by instant.
+ */
+async function measuredByMs(
+  source: { inverterId: string; pvKey: string },
+  expected: SolarForecastPoint[],
+  toUtcMs: (localTime: string) => number,
+  fallbackTime: string,
+): Promise<Map<number, number>> {
+  const rows = await queryHourlyAvgRange(
+    source.pvKey,
+    source.inverterId,
+    new Date(toUtcMs(expected[0]?.time ?? fallbackTime)),
+    new Date(toUtcMs(expected.at(-1)?.time ?? fallbackTime) + HOUR_MS),
+  );
+  return new Map(rows.map((r) => [r.bucketMs, r.avg]));
+}
+
 /**
  * Matched `(expected, actual)` hours for the window: reanalysis run through the
  * uncurtailed PV model, lined up by UTC instant with the measured hourly average.
@@ -151,37 +202,15 @@ async function collectObservations(
   startDate: string,
   endDate: string,
 ): Promise<Observation[] | null> {
-  const planes = config.forecast.arrays.map(({ tilt, azimuth }) => ({ tilt, azimuth }));
-  let data: Awaited<ReturnType<typeof fetchHistoricalIrradiance>>;
-  try {
-    data = await fetchHistoricalIrradiance(
-      { latitude: config.latitude, longitude: config.longitude },
-      planes,
-      startDate,
-      endDate,
-    );
-  } catch (err) {
-    logger.warn("archive fetch failed ({start}…{end}): {error}", {
-      start: startDate,
-      end: endDate,
-      error: err instanceof Error ? err.message : err,
-    });
-    return null;
-  }
+  const data = await fetchArchive(config, startDate, endDate);
+  if (!data) return null; // fetch failed — the caller retries without advancing
 
   const expected = buildSolarForecast(config.forecast, data, "open-meteo-archive").raw.series;
   if (expected.length === 0) return [];
 
-  // Measured hourly averages over the same UTC span, keyed by bucket instant.
   const toUtcMs = (localTime: string): number =>
     Date.parse(`${localTime}:00Z`) - data.utcOffsetSeconds * 1000;
-  const actualRows = await queryHourlyAvgRange(
-    source.pvKey,
-    source.inverterId,
-    new Date(toUtcMs(expected[0]?.time ?? endDate)),
-    new Date(toUtcMs(expected.at(-1)?.time ?? endDate) + HOUR_MS),
-  );
-  const actualByMs = new Map(actualRows.map((r) => [r.bucketMs, r.avg]));
+  const actualByMs = await measuredByMs(source, expected, toUtcMs, endDate);
 
   const observations: Observation[] = [];
   for (const point of expected) {
@@ -228,6 +257,7 @@ async function persistLearned(
  * the plant maps no total-PV metric, or there's nothing new to learn.
  */
 export async function runForecastCorrectionLearn(config: WeatherConfig): Promise<LearnRunResult> {
+  // `forecastReady` also narrows the config's location to non-null.
   if (!forecastReady(config)) return { learned: 0, learnedThrough: null };
   const source = resolvePvSource();
   if (!source) return { learned: 0, learnedThrough: null };
@@ -250,26 +280,34 @@ export async function runForecastCorrectionLearn(config: WeatherConfig): Promise
     return unchanged;
   }
 
-  const model = await loadCorrectionModel(source.inverterId);
-  const skill: SkillStats = {
-    maeRaw: state?.maeRaw ?? 0,
-    maeCorrected: state?.maeCorrected ?? 0,
-    samples: state?.samples ?? 0,
-  };
+  return await foldObservations(config, source.inverterId, state, observations, window.endDate);
+}
+
+/**
+ * Fold matched observations into the grid and persist the result. Advances the
+ * cursor only through the last day that actually had measured hours: a trailing
+ * gap (rollups not settled yet, inverter down) is retried next run rather than
+ * skipped forever.
+ */
+async function foldObservations(
+  config: WeatherConfig,
+  inverterId: string,
+  state: CorrectionStateRow,
+  observations: Observation[],
+  windowEnd: string,
+): Promise<LearnRunResult> {
+  const model = await loadCorrectionModel(inverterId);
   const nameplateW = config.forecast.arrays.reduce((sum, a) => sum + a.kwp, 0) * 1000;
   const result = learn(
     model,
-    skill,
+    skillOf(state),
     observations,
     nameplateW,
     config.forecast.maxOutputW ?? undefined,
   );
 
-  // Advance only through the last day that actually had measured hours: a
-  // trailing gap (rollups not settled yet, inverter down) is retried next run
-  // rather than skipped forever.
-  const learnedThrough = observations.at(-1)?.localTime.slice(0, 10) ?? window.endDate;
-  await persistLearned(source.inverterId, model, result, learnedThrough);
+  const learnedThrough = observations.at(-1)?.localTime.slice(0, 10) ?? windowEnd;
+  await persistLearned(inverterId, model, result, learnedThrough);
   logger.info("learned {n} hours through {end} ({cells} cells)", {
     n: observations.length,
     end: learnedThrough,

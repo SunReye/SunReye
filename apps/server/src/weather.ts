@@ -71,13 +71,27 @@ interface OpenMeteoResponse {
   daily?: { shortwave_radiation_sum?: (number | null)[] };
 }
 
-/** Parse an Open-Meteo response into a reading, or throw on missing fields. */
-function toReading(data: OpenMeteoResponse, config: WeatherConfig): WeatherReading {
-  const current = data.current;
-  if (!current || current.temperature_2m === undefined || current.weather_code === undefined) {
+/** The `current` block with the two fields a reading can't do without. */
+type CurrentBlock = { temperature_2m: number; weather_code: number };
+
+/** Narrow the response's `current` block, or throw when it can't be read. */
+function requireCurrent(data: OpenMeteoResponse): CurrentBlock {
+  const c = data.current;
+  if (!c || c.temperature_2m === undefined || c.weather_code === undefined) {
     throw new Error("missing current fields");
   }
-  const daily = data.daily?.shortwave_radiation_sum;
+  return { temperature_2m: c.temperature_2m, weather_code: c.weather_code };
+}
+
+/** Today's radiation sum (the first daily entry), or null when absent/null. */
+function radiationSum(daily: (number | null)[] | undefined): number | null {
+  if (!daily || daily.length === 0) return null;
+  return daily[0] ?? null;
+}
+
+/** Parse an Open-Meteo response into a reading, or throw on missing fields. */
+function toReading(data: OpenMeteoResponse, config: WeatherConfig): WeatherReading {
+  const current = requireCurrent(data);
   const { condition, icon } = interpret(current.weather_code);
   return {
     temperature: current.temperature_2m,
@@ -85,7 +99,7 @@ function toReading(data: OpenMeteoResponse, config: WeatherConfig): WeatherReadi
     code: current.weather_code,
     condition,
     icon,
-    solarRadiationSum: daily && daily.length > 0 ? (daily[0] ?? null) : null,
+    solarRadiationSum: radiationSum(data.daily?.shortwave_radiation_sum),
     label: config.label,
   };
 }
@@ -93,6 +107,26 @@ function toReading(data: OpenMeteoResponse, config: WeatherConfig): WeatherReadi
 let cache: { key: string; at: number; reading: WeatherReading } | null = null;
 const fresh = (key: string): boolean =>
   cache !== null && cache.key === key && Date.now() - cache.at < CACHE_TTL_MS;
+
+/** The keyless current-weather query for one location. */
+const weatherUrl = (config: WeatherConfig): string =>
+  "https://api.open-meteo.com/v1/forecast" +
+  `?latitude=${config.latitude}&longitude=${config.longitude}` +
+  "&current=temperature_2m,weather_code&daily=shortwave_radiation_sum" +
+  "&timezone=auto&forecast_days=1";
+
+/** Fetch + parse one reading, throwing on a non-2xx or unreadable response. */
+async function requestReading(config: WeatherConfig): Promise<WeatherReading> {
+  const res = await fetch(weatherUrl(config), { signal: AbortSignal.timeout(8000) });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return toReading((await res.json()) as OpenMeteoResponse, config);
+}
+
+/** Log a failed fetch and serve a stale reading for the same location, if any. */
+function staleAfterFailure(key: string, err: unknown): WeatherReading | null {
+  logger.warn("fetch failed: {error}", { error: err instanceof Error ? err.message : err });
+  return cache?.key === key ? cache.reading : null;
+}
 
 /**
  * Current weather for the configured location, or `null` when weather is
@@ -105,21 +139,11 @@ export async function fetchWeather(config: WeatherConfig): Promise<WeatherReadin
   const key = `${config.latitude},${config.longitude}`;
   if (fresh(key)) return cache!.reading;
 
-  const url =
-    "https://api.open-meteo.com/v1/forecast" +
-    `?latitude=${config.latitude}&longitude=${config.longitude}` +
-    "&current=temperature_2m,weather_code&daily=shortwave_radiation_sum" +
-    "&timezone=auto&forecast_days=1";
-
   try {
-    const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const reading = toReading((await res.json()) as OpenMeteoResponse, config);
+    const reading = await requestReading(config);
     cache = { key, at: Date.now(), reading };
     return reading;
   } catch (err) {
-    logger.warn("fetch failed: {error}", { error: err instanceof Error ? err.message : err });
-    // Serve a stale reading for the same location if we have one.
-    return cache?.key === key ? cache.reading : null;
+    return staleAfterFailure(key, err);
   }
 }
