@@ -55,11 +55,8 @@ bunx fallow dupes --format json
 
 ## Working under `audit.gate: "all"`
 
-Pre-commit (`lint-staged` → `bunx fallow audit --gate new-only --quiet`) still passes its own
-`--gate` flag, which **overrides the config**. Decide one:
-
-- **Recommended:** drop `--gate new-only` from the lint-staged entry so config `gate: "all"` applies.
-- Or keep the flag and rely on config only in CI.
+Done: the lint-staged entry is now `bunx fallow audit --quiet` with no `--gate` flag, so the config's
+`gate: "all"` is in force (a CLI `--gate` would override the config).
 
 With `gate: all` active, a commit touching any of the 78 health-finding files fails until that file
 is clean. Consequences to plan around:
@@ -180,23 +177,46 @@ Three real clusters plus schema boilerplate:
 
 Verify: `bunx fallow dupes` → 0 groups.
 
-## Phase 5 — wire real coverage (unblocks honest CRAP)
+## Phase 5 — wire real coverage: SPIKED AND REJECTED (2026-07-26)
 
 `health.coverage` needs Istanbul `coverage-final.json`. `bun test --coverage` emits **lcov only**,
-and fallow rejects `coverage/lcov.info` (`failed to parse coverage data`). Bun's lcov also has no
-`FN:`/`FNDA:` records, so there is no function-level data to hand over directly.
+fallow rejects `coverage/lcov.info` (`failed to parse coverage data`), and bun's lcov carries no
+`FN:`/`FNDA:` records — so there is no function-level data to convert.
 
-1. Spike `scripts/lcov-to-istanbul.mjs`: parse `DA:` line hits from `coverage/lcov.info` into an
-   Istanbul map (`statementMap` + `s` per file, empty `fnMap`/`branchMap`), then check whether
-   fallow derives per-function coverage from statement ranges — validate on one well-covered file
-   (`packages/inverter-core`, `packages/db` have the most coverage today).
-2. If line-derived coverage is accepted: add `health.coverage: "coverage/coverage-final.json"` +
-   `coverageRoot`, generate it in `test:coverage`, and CI publishes it before `bunx fallow`.
-3. If not accepted: keep `maxCrap 30` but treat the CRAP-only tail as the de-facto
-   cyclomatic-5 policy, or set `maxCrap` to the no-coverage equivalent of the intended cyclomatic
-   ceiling (`cyc² + cyc`: 12 → 156, 10 → 110) and document why.
-4. Coverage is thin today (60 files in lcov, mostly `inverter-core`/`db`/`server`). Real tests for
-   Phase 1-3 refactors are what actually lower CRAP.
+An lcov→Istanbul converter was written, measured, and **deleted**. Result: statement-only Istanbul
+data does not produce honest per-function CRAP. Loading any parseable Istanbul file relaxes every
+function that fallow's *static* estimator had already tiered `partial`/`high` to effectively 100%
+coverage (`crap == cyclomatic`), whether the hit counts are real or all zeroed — 2234 of 2236
+functions scored byte-identical between real and zeroed input. `coverage_source` still reports
+`estimated`, so nothing in the output admits the data was ignored. The converter would have made
+fallow silently report coverage that does not exist.
+
+Fallow *does* compute real per-function coverage, but only for functions it can anchor in `fnMap`
+(then `coverage_source` flips to `istanbul` and CRAP tracks the statement hits — verified on
+`inverter-core/src/driver.ts:94 resolveAtomicGroups`: 9 when covered, 90 when zeroed). The blocker
+is bun's reporter having no `FN:` records. Ways forward, all out of scope for now:
+
+- an Istanbul-native coverage reporter for bun,
+- fallow ingesting lcov `DA:` ranges directly (upstream ask),
+- a two-pass bootstrap synthesising `fnMap` from fallow's own `health --format json` function list.
+
+**Consequence:** `maxCrap 30` stays a de-facto cyclomatic-5 policy, and the 77-item CRAP-only tail is
+real work rather than something coverage will dissolve. If that trade stops being worth it, the
+one-line alternative is `maxCrap: 170` — at zero coverage CRAP is `cyc² + cyc` and fires on `>=`, so
+170 fires only at cyclomatic ≥ 13, i.e. never before `maxCyclomatic: 12` does. That drops the
+burn-down to **41 findings** (29 web / 7 server / 5 inverter-core, zero CRAP-only) and keeps CRAP
+useful for later. `156` would be off by one — it fires at cyclomatic 12, which `maxCyclomatic: 12`
+itself permits.
+
+Not reproduced: the claim that a stale `coverage/` directory shifts the count via lcov
+auto-discovery. Measured in the real checkout with `--no-cache`, with and without `coverage/`:
+118 findings both ways. The relaxation above needs a parseable *Istanbul* file, which nothing
+generates now.
+
+Coverage is thin regardless: 69 files in lcov, 78 of 247 runtime files covered (31.6%);
+`automation.ts`, `runtime.ts`, `history.ts`, `profiles.ts`, `weather.ts`, `energy.ts` and
+`entities.ts` have none. Real tests written alongside the Phase 1-3 refactors are what would
+actually lower CRAP.
 
 ## Phase 6 — remaining ratchets (after the repo is green)
 
@@ -206,6 +226,13 @@ and fallow rejects `coverage/lcov.info` (`failed to parse coverage data`). Bun's
 - `boundaries.coverage` policy so new files must belong to a zone; `boundaries.calls` to ban
   direct DB access outside `packages/db`.
 - Tighten `health` to `10 / 10` (+22 findings at today's code) once coverage is real.
+- Wire fallow into CI: nothing runs it today (`grep -rn fallow .github/` is empty across 8
+  workflows) — it only runs pre-commit via lint-staged. Cheapest home is the existing `quality` job
+  in `.github/workflows/ci.yml` (already does `bun install --frozen-lockfile`,
+  `SKIP_ENV_VALIDATION: "1"`), running `bunx fallow audit --gate all` after install, or
+  `bunx fallow --report-only` until the burn-down finishes. Fallow needs `node_modules` present or
+  it degrades with warnings. Do not run it in the `test` job after `bun run test:coverage` while a
+  parseable Istanbul coverage file could exist — see Phase 5.
 - Shrink `ignorePatterns`: `apps/web/src/lib/components/ui/**` + `hooks/**` + `utils.ts` are vendored
   shadcn-svelte and currently hide 260 findings — keep ignored while they stay vendored, revisit if
   they get hand-edited.
