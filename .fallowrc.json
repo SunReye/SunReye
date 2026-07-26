@@ -20,41 +20,63 @@
   ],
   "dynamicallyLoaded": ["apps/docs/src/styles/theme.css"],
   "usedClassMembers": [{ "implements": "InverterSource", "members": ["read"] }],
+  "production": { "deadCode": true },
+  "audit": { "gate": "all" },
+  "boundaries": {
+    "zones": [
+      { "name": "web", "patterns": ["apps/web/**"] },
+      { "name": "server", "patterns": ["apps/server/**"] },
+      { "name": "docs", "patterns": ["apps/docs/**"] },
+      { "name": "db", "patterns": ["packages/db/**"] },
+      { "name": "auth", "patterns": ["packages/auth/**"] },
+      { "name": "env", "patterns": ["packages/env/**"] },
+      { "name": "inverter-core", "patterns": ["packages/inverter-core/**"] },
+      { "name": "profile-sdk", "patterns": ["packages/profile-sdk/**"] }
+    ],
+    "rules": [
+      {
+        "from": "web",
+        "allow": ["env", "auth", "inverter-core"],
+        "allowTypeOnly": ["server"]
+      },
+      { "from": "server", "allow": ["db", "auth", "env", "inverter-core", "profile-sdk"] },
+      { "from": "db", "allow": ["env"] },
+      { "from": "auth", "allow": ["db", "env"] },
+      { "from": "inverter-core", "allow": [] },
+      { "from": "profile-sdk", "allow": ["inverter-core"] },
+      { "from": "env", "allow": [] },
+      { "from": "docs", "allow": [] }
+    ]
+  },
   "rules": {
-    "unused-dependencies": "warn",
-    "unused-dev-dependencies": "warn"
+    "private-type-leaks": "error",
+    "unused-dev-dependencies": "error",
+    "unused-optional-dependencies": "error",
+    "unused-store-members": "error",
+    "unused-svelte-events": "error",
+    "unused-load-data-keys": "error",
+    "type-only-dependencies": "error",
+    "test-only-dependencies": "error",
+    "re-export-cycle": "error",
+    "stale-suppressions": "error",
+    "require-suppression-reason": "error",
+    "unused-catalog-entries": "error",
+    "empty-catalog-groups": "error",
+    "unused-dependency-overrides": "error",
+    "policy-violation": "error",
+    "invalid-client-export": "error",
+    "mixed-client-server-barrel": "error",
+    "misplaced-directive": "error",
+    "security-client-server-leak": "error",
+    "security-sink": "error"
   },
   "health": {
-    "thresholdOverrides": [
-      {
-        "files": ["packages/inverter-core/**"],
-        "maxCyclomatic": 15,
-        "maxCognitive": 20,
-        "maxCrap": 200,
-        "reason": "WIP inverter integration scaffold; CRAP scores are inflated estimates while test coverage is absent. Tighten once these modules stabilize and are covered."
-      },
-      {
-        "files": [
-          "apps/web/src/routes/(app)/**",
-          "apps/web/src/routes/setup/**",
-          "apps/web/src/lib/components/inverter/**",
-          "apps/web/src/lib/components/settings/**",
-          "apps/web/src/lib/components/setup/**",
-          "apps/web/src/lib/components/app-sidebar.svelte",
-          "apps/web/src/lib/inverter/**",
-          "apps/web/src/lib/cost/**",
-          "apps/web/src/components/**"
-        ],
-        "maxCyclomatic": 25,
-        "maxCognitive": 30,
-        "maxCrap": 700,
-        "reason": "Manifest-driven dashboard UI: high CRAP is inflated by presentational template branching over the metric catalog with no unit-test coverage. Tighten once the render layer stabilizes and is covered."
-      },
-      {
-        "files": ["apps/server/src/**"],
-        "maxCrap": 120,
-        "reason": "CRAP is estimated without coverage data; the DB-bound modules (cost, energy, inverter routes) have no unit coverage yet, so small functions with cyclomatic 5-9 estimate above the default 30. Tighten once coverage reporting is wired into fallow."
-      }
-    ]
+    "maxCyclomatic": 12,
+    "maxCognitive": 12,
+    "maxCrap": 30
+  },
+  "duplicates": {
+    "minTokens": 40,
+    "minLines": 5
   }
 }
