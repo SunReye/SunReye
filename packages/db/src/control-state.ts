@@ -19,6 +19,9 @@ const controlLockSchema = z.object({
   lockedAt: z.string(),
 });
 
+/** One engaged lock as stored, consumed by the server's snapshot-toggle helpers. */
+export type ControlLock = z.infer<typeof controlLockSchema>;
+
 /** Map of `${profileId}:${metricKey}` → engaged lock. Absent key = released. */
 export const controlStateSchema = z.record(z.string(), controlLockSchema);
 export type ControlState = z.infer<typeof controlStateSchema>;
