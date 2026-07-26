@@ -15,6 +15,7 @@ import { metricsRaw } from "@SunReye/db/schema/metrics";
 import { env } from "@SunReye/env/server";
 import type { InverterSample, InverterSource } from "@SunReye/inverter-core";
 import mqtt from "mqtt";
+import { startAutomations, stopAutomations } from "./automation";
 import { getInverterConfig, getMqttConfig } from "./config";
 import { executeControl, injectControlValues } from "./control-expr";
 import { dbControlStore } from "./control-store";
@@ -260,6 +261,9 @@ export async function start(listener: SampleListener, profileCtx: ProfileContext
   }
   await rebuildInverter(await getInverterConfig());
   await rebuildBridge(await getMqttConfig());
+  // Automations write through the same funnel as every other path; they only
+  // run while a profile is active (this function is never called without one).
+  await startAutomations({ ctx: profileCtx, write });
 }
 
 /**
@@ -383,6 +387,9 @@ export function testMqtt(config: MqttConfig): Promise<{ ok: boolean; error?: str
 
 /** Stop polling and release the source + bridge (graceful shutdown). */
 export async function stop(): Promise<void> {
+  // Stops the tick only — deliberately no register restore, so a reboot with
+  // the automation enabled resumes seamlessly (its snapshot is persisted).
+  await stopAutomations();
   if (pollTimer) clearInterval(pollTimer);
   pollTimer = null;
   if (flushTimer) clearInterval(flushTimer);

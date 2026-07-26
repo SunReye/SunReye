@@ -21,6 +21,7 @@
 	import UsersIcon from 'phosphor-svelte/lib/Users';
 	import KeyIcon from 'phosphor-svelte/lib/Key';
 	import TerminalWindowIcon from 'phosphor-svelte/lib/TerminalWindow';
+	import RobotIcon from 'phosphor-svelte/lib/Robot';
 	import WarningIcon from 'phosphor-svelte/lib/Warning';
 
 	const { children } = $props();
@@ -60,6 +61,11 @@
 						label: m.settings_group_admin(),
 						items: [
 							{ href: '/settings/access', label: m.settings_tab_access(), icon: ShieldCheckIcon },
+							{
+								href: '/settings/automations',
+								label: m.settings_tab_automations(),
+								icon: RobotIcon
+							},
 							{ href: '/settings/profiles', label: m.settings_tab_profiles(), icon: StackIcon },
 							{ href: '/settings/users', label: m.settings_tab_users(), icon: UsersIcon },
 							{ href: '/settings/api-keys', label: m.settings_tab_apikeys(), icon: KeyIcon },

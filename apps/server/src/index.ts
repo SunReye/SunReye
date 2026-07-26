@@ -22,6 +22,7 @@ import { adminGuard, dashboardReadAllowed } from "./routes/admin-guard";
 import { customChartsRoutes } from "./routes/custom-charts";
 import { startUpdateChecks, stopUpdateChecks } from "./profiles";
 import { profileRoutes } from "./routes/profiles";
+import { automationRoutes } from "./routes/automations";
 import { settingsRoutes } from "./routes/settings";
 import * as runtime from "./runtime";
 
@@ -425,6 +426,8 @@ const app = new Elysia()
   )
   // Runtime configuration (tariff, inverter, MQTT) + connection status.
   .use(settingsRoutes)
+  // Automations config + live engine status (peak shaving).
+  .use(automationRoutes)
   // Cost breakdown over a named range (today / month-to-date / year-to-date) or
   // an explicit [from, to) window. Prices stored energy with the active tariff.
   .get(

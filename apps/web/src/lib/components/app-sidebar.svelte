@@ -14,6 +14,7 @@
 	import CpuIcon from 'phosphor-svelte/lib/Cpu';
 	import ChartLineIcon from 'phosphor-svelte/lib/ChartLine';
 	import SlidersIcon from 'phosphor-svelte/lib/SlidersHorizontal';
+	import RobotIcon from 'phosphor-svelte/lib/Robot';
 	import CoinsIcon from 'phosphor-svelte/lib/Coins';
 	import GearIcon from 'phosphor-svelte/lib/Gear';
 	import SignOutIcon from 'phosphor-svelte/lib/SignOut';
@@ -41,6 +42,9 @@
 		{ href: '/costs', label: m.nav_costs(), icon: CoinsIcon },
 		...(isAdmin && (inverter.capabilities?.controls.length ?? 0) > 0
 			? ([{ href: '/controls', label: m.nav_controls(), icon: SlidersIcon }] satisfies NavItem[])
+			: []),
+		...(isAdmin
+			? ([{ href: '/automations', label: m.nav_automations(), icon: RobotIcon }] satisfies NavItem[])
 			: [])
 	]);
 

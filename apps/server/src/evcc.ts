@@ -66,6 +66,8 @@ export interface EvccLoadpoint {
   vehicleTitle: string | null;
   /** Energy added this charging session in Wh. */
   sessionEnergy: number | null;
+  /** Energy still needed to reach the charge limit in Wh (EVCC's estimate). */
+  chargeRemainingEnergy: number | null;
   /** Charge limit in % (0 = no limit). */
   limitSoc: number | null;
   phasesActive: number | null;
@@ -143,6 +145,7 @@ function toLoadpoint(
     vehicleRange: num(values.get("vehicleRange")),
     vehicleTitle: str(values.get("vehicleTitle")) ?? str(values.get("vehicleName")),
     sessionEnergy: num(values.get("sessionEnergy")),
+    chargeRemainingEnergy: num(values.get("chargeRemainingEnergy")),
     limitSoc: num(values.get("limitSoc")),
     phasesActive: num(values.get("phasesActive")),
   };
