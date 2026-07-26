@@ -36,6 +36,17 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
+      # Dead code, duplication, complexity and architecture boundaries, per
+      # .fallowrc.json (audit.gate is config-owned — do not pass --gate here).
+      # Full-repo run rather than `fallow audit`: it needs no git history, so
+      # the default fetch-depth: 1 above is enough and no stale base ref can
+      # weaken it. Must stay after install — without node_modules fallow
+      # degrades and reports findings that do not exist. Do not move this into
+      # the `test` job: `test:coverage` leaves a parseable Istanbul file, which
+      # relaxes CRAP scores for statically test-reachable functions.
+      - name: Code health gate
+        run: bunx fallow --quiet
+
       - name: Lint
         run: bunx oxlint
 
