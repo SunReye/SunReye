@@ -137,6 +137,8 @@ export interface MetricDataDef {
  * Metric keys a {@link ComputeExpr} reads. Kept alongside the compiled closure
  * (as {@link MetricDef.computeInputs}) so the read planner can group a computed
  * metric's raw registers into one atomic Modbus read.
+ *
+ * @internal
  */
 export function computeExprInputs(expr: ComputeExpr): string[] {
   if ("sum" in expr) return [...expr.sum];

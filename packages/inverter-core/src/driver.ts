@@ -22,7 +22,8 @@ const log = getLogger(["inverter-core", "driver"]);
 /** Modbus caps a single read at 125 registers; stay under it. */
 const MAX_BLOCK = 120;
 
-interface ReadBlock {
+/** One planned Modbus read: `count` registers starting at `start`. */
+export interface ReadBlock {
   start: number;
   count: number;
   /**
@@ -158,6 +159,8 @@ export function planReads(metrics: MetricDef[]): ReadBlock[] {
  * Re-plan a spanning group block into the plain gap-split blocks of the
  * profile addresses it covers — the fallback when a device rejects reading the
  * unmapped registers inside the span.
+ *
+ * @internal
  */
 export function splitBlock(block: ReadBlock, metrics: MetricDef[]): ReadBlock[] {
   const addrs = [...readableAddresses(metrics)]

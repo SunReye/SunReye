@@ -21,7 +21,7 @@ import type { MetricAccess, MetricFlow, MetricKind, MetricRange, RegisterType } 
  */
 
 /** Fields every metric shares, independent of role. */
-interface BaseMetricOpts {
+export interface BaseMetricOpts {
   label: string;
   group: string;
   /** Single address, `[low, high]` for `U_DWORD`, N words for `RAW`. Omit for computed. */
@@ -43,10 +43,19 @@ interface BaseMetricOpts {
   flow?: MetricFlow;
 }
 
-type RoleEntry<R extends CanonicalRole> = (typeof ROLE_CATALOG)[R];
+/**
+ * The {@link ROLE_CATALOG} entry for one role.
+ *
+ * @internal
+ */
+export type RoleEntry<R extends CanonicalRole> = (typeof ROLE_CATALOG)[R];
 
-/** Companions a role forces, read from its {@link ROLE_CATALOG} shape flags. */
-type RoleRequirements<R extends CanonicalRole> = (RoleEntry<R> extends { indexed: true }
+/**
+ * Companions a role forces, read from its {@link ROLE_CATALOG} shape flags.
+ *
+ * @internal
+ */
+export type RoleRequirements<R extends CanonicalRole> = (RoleEntry<R> extends { indexed: true }
   ? { index: number }
   : { index?: number }) &
   (RoleEntry<R> extends { needsEnumLabels: true }
@@ -55,12 +64,12 @@ type RoleRequirements<R extends CanonicalRole> = (RoleEntry<R> extends { indexed
   (RoleEntry<R> extends { writable: true } ? { access: "rw" } : object);
 
 /** Options when a role is supplied: base + the role + its required companions. */
-type RoledMetricOpts = {
+export type RoledMetricOpts = {
   [R in CanonicalRole]: BaseMetricOpts & { role: R } & RoleRequirements<R>;
 }[CanonicalRole];
 
 /** Options for a plain, unmapped metric — valid, just not rendered by role. */
-type UnroledMetricOpts = BaseMetricOpts & {
+export type UnroledMetricOpts = BaseMetricOpts & {
   role?: undefined;
   index?: number;
   enumLabels?: Record<number, string>;
@@ -133,7 +142,7 @@ export function metric<const T extends string>(
 }
 
 /** Options for a composite control built by {@link control}. */
-interface ControlOpts<K extends string> {
+export interface ControlOpts<K extends string> {
   label: string;
   group: string;
   /** The declarative action; every `target` is constrained to a profile key `K`. */
