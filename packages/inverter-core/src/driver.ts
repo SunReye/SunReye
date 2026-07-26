@@ -82,34 +82,38 @@ function collectRawAddresses(
   for (const a of addressesOf(def)) out.add(a);
 }
 
+/** The address span one or more computed metrics need sampled together. */
+interface AtomicRange {
+  min: number;
+  max: number;
+  /** Computed metrics whose inputs this span covers (for the warning message). */
+  keys: string[];
+}
+
 /**
- * One spanning {@link ReadBlock} per atomic compute group: the transitive raw
- * inputs of each computed metric, so they are all sampled in a single Modbus
- * transaction. Groups whose address ranges intersect are merged — a register
- * read twice would take the later transaction's value and silently un-sync the
- * first group. A group spanning more than {@link MAX_BLOCK} registers cannot
- * fit one transaction (Modbus per-read cap); it is dropped with a warning and
- * its inputs are read split, ms apart — the computed value can show transient
- * skew on fast power swings (its declared `range` clamp is the only guard).
+ * The span of every computed metric with two or more raw inputs, ascending by
+ * start address. A single input register is already atomic, so it is skipped.
  */
-function resolveAtomicGroups(metrics: MetricDef[]): ReadBlock[] {
+function atomicRanges(metrics: MetricDef[]): AtomicRange[] {
   const byKey = new Map(metrics.map((m) => [m.key, m]));
-  interface Range {
-    min: number;
-    max: number;
-    keys: string[];
-  }
-  const ranges: Range[] = [];
+  const ranges: AtomicRange[] = [];
   for (const def of metrics) {
     if (!def.computeInputs) continue;
     const addrs = new Set<number>();
     collectRawAddresses(def, byKey, addrs, new Set());
-    if (addrs.size < 2) continue; // a single register is atomic by itself
+    if (addrs.size < 2) continue;
     ranges.push({ min: Math.min(...addrs), max: Math.max(...addrs), keys: [def.key] });
   }
+  return ranges.sort((a, b) => a.min - b.min);
+}
 
-  ranges.sort((a, b) => a.min - b.min);
-  const merged: Range[] = [];
+/**
+ * Fold intersecting spans (given ascending) into one: a register read twice
+ * would take the later transaction's value and silently un-sync the first
+ * group. Returns fresh ranges; the input is not mutated.
+ */
+function mergeRanges(ranges: AtomicRange[]): AtomicRange[] {
+  const merged: AtomicRange[] = [];
   for (const r of ranges) {
     const last = merged[merged.length - 1];
     if (last && r.min <= last.max) {
@@ -119,20 +123,37 @@ function resolveAtomicGroups(metrics: MetricDef[]): ReadBlock[] {
       merged.push({ min: r.min, max: r.max, keys: [...r.keys] });
     }
   }
+  return merged;
+}
 
-  const blocks: ReadBlock[] = [];
-  for (const r of merged) {
-    const span = r.max - r.min + 1;
-    if (span > MAX_BLOCK) {
-      log.warn(
-        `atomic read group for ${r.keys.join(", ")} spans ${span} registers (cap ${MAX_BLOCK}); ` +
-          `reading split — these computed values may show transient skew on fast power swings`,
-      );
-      continue;
-    }
-    blocks.push({ start: r.min, count: span, grouped: true });
+/**
+ * One spanning block for a merged range, or `undefined` when it exceeds the
+ * Modbus per-read cap and therefore cannot share a transaction at all: it is
+ * dropped with a warning and its inputs are read split, ms apart — the computed
+ * value can show transient skew on fast power swings (its declared `range`
+ * clamp is the only guard).
+ */
+function groupedBlock(r: AtomicRange): ReadBlock | undefined {
+  const span = r.max - r.min + 1;
+  if (span > MAX_BLOCK) {
+    log.warn(
+      `atomic read group for ${r.keys.join(", ")} spans ${span} registers (cap ${MAX_BLOCK}); ` +
+        `reading split — these computed values may show transient skew on fast power swings`,
+    );
+    return undefined;
   }
-  return blocks;
+  return { start: r.min, count: span, grouped: true };
+}
+
+/**
+ * One spanning {@link ReadBlock} per atomic compute group: the transitive raw
+ * inputs of each computed metric, so they are all sampled in a single Modbus
+ * transaction.
+ */
+function resolveAtomicGroups(metrics: MetricDef[]): ReadBlock[] {
+  return mergeRanges(atomicRanges(metrics))
+    .map(groupedBlock)
+    .filter((b): b is ReadBlock => b !== undefined);
 }
 
 /**
