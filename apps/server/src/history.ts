@@ -15,7 +15,8 @@ export type RollupBucket = "minute" | "hour" | "day";
 const viewFor = (bucket: RollupBucket): string =>
   bucket === "day" ? "daily_rollups" : bucket === "minute" ? "minute_rollups" : "hourly_rollups";
 
-interface HistoryQuery {
+/** The window one entity's time-series read is bounded by. */
+export interface HistoryQuery {
   metric: string;
   inverterId: string;
   since: Date;

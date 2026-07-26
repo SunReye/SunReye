@@ -4,15 +4,13 @@ import type { AutomationState } from "@SunReye/db/automation-state";
 import { type WeatherConfig, weatherConfigSchema } from "@SunReye/db/weather";
 import type { InverterProfile, InverterSample, MetricDef } from "@SunReye/inverter-core";
 import {
-  type AutomationIO,
   type ForecastSlice,
-  createPeakShavingEngine,
   decideTargetA,
   evccAutomationInputs,
   resolvePeakShavingBlockers,
-  surplusAboveKwh,
   validateAutomationEnable,
-} from "./automation";
+} from "./peak-shaving";
+import { type AutomationIO, createPeakShavingEngine } from "./peak-shaving-engine";
 import type { EvccLoadpoint, EvccState } from "./evcc";
 import { buildProfileContext } from "./inverter";
 import type { SolarForecast } from "./solar-forecast";
@@ -161,20 +159,29 @@ const evccState = (loadpoints: EvccLoadpoint[], reachable = true): EvccState => 
   subtractFromHome: true,
 });
 
-// --- surplusAboveKwh -------------------------------------------------------------
+// --- remaining-today surplus -------------------------------------------------------
+//
+// The slot math is internal to decideTargetA; it is observed through the
+// `surplusAboveLimitKwh` it reports (energy above `exportLimitW` still ahead
+// today), which is exactly what the engine surfaces in the automation status.
 
-describe("surplusAboveKwh", () => {
+/** Remaining-today surplus above `thresholdW`, as the decision computes it. */
+const surplusAbove = (view: ForecastSlice, thresholdW: number, nowMs: number): number | null =>
+  decideTargetA({ ...baseInputs, forecast: view, exportLimitW: thresholdW, nowMs })
+    .surplusAboveLimitKwh;
+
+describe("remaining-today surplus above the export limit", () => {
   test("sums only the energy above the threshold", () => {
     // Four future 15-min slots: 1000 W above the limit for one full hour.
     const view = slice(13, [9000, 9000, 9000, 9000]);
-    expect(surplusAboveKwh(view, 8000, NOON)).toBeCloseTo(1, 6);
-    expect(surplusAboveKwh(view, 9000, NOON)).toBe(0);
+    expect(surplusAbove(view, 8000, NOON)).toBeCloseTo(1, 6);
+    expect(surplusAbove(view, 9000, NOON)).toBe(0);
   });
 
   test("prorates the running slot by the fraction still ahead", () => {
     const view = slice(12, [9000]); // 12:00–12:15, 1000 W above
     const halfway = NOON + 7.5 * 60_000;
-    expect(surplusAboveKwh(view, 8000, halfway)).toBeCloseTo(0.125, 6);
+    expect(surplusAbove(view, 8000, halfway)).toBeCloseTo(0.125, 6);
   });
 
   test("ignores past slots and other days", () => {
@@ -186,7 +193,7 @@ describe("surplusAboveKwh", () => {
         { time: "2026-07-26T12:00", watts: 20_000, peakWatts: 20_000 }, // tomorrow
       ],
     };
-    expect(surplusAboveKwh(view, 0, NOON)).toBe(0);
+    expect(surplusAbove(view, 0, NOON)).toBe(0);
   });
 
   test("respects the plant's UTC offset when bucketing the local day", () => {
@@ -195,7 +202,7 @@ describe("surplusAboveKwh", () => {
     const view = slice(23, [9000], 2 * 3600);
     view.series[0]!.time = "2026-07-25T23:45";
     const nowMs = Date.parse("2026-07-25T21:00:00Z");
-    expect(surplusAboveKwh(view, 8000, nowMs)).toBeCloseTo(0.25, 6);
+    expect(surplusAbove(view, 8000, nowMs)).toBeCloseTo(0.25, 6);
   });
 });
 
@@ -285,7 +292,7 @@ describe("decideTargetA — grid-friendly", () => {
     const inputs = { ...baseInputs, mode: "grid-friendly" as const, socPct: 70, forecast: bell };
     const d = decideTargetA(inputs);
     expect(d.thresholdW).toBeLessThan(inputs.exportLimitW);
-    expect(surplusAboveKwh(bell, d.thresholdW, NOON)).toBeCloseTo(4.5, 1);
+    expect(surplusAbove(bell, d.thresholdW, NOON)).toBeCloseTo(4.5, 1);
   });
 
   test("classic shave when the peak alone overfills the battery", () => {
@@ -391,7 +398,7 @@ describe("decideTargetA — EV interplay", () => {
     const withEv = decideTargetA({ ...inputs, evRemainingKwh: 1.5 });
     // Battery headroom AND the car must fill from above the threshold.
     expect(withEv.thresholdW).toBeLessThan(without.thresholdW);
-    expect(surplusAboveKwh(bell, withEv.thresholdW, NOON)).toBeCloseTo(4.5 + 1.5, 1);
+    expect(surplusAbove(bell, withEv.thresholdW, NOON)).toBeCloseTo(4.5 + 1.5, 1);
   });
 
   test("grid-friendly EV demand can turn a classic shave into a bisect", () => {

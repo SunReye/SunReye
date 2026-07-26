@@ -1,8 +1,9 @@
 import { automationConfigSchema } from "@SunReye/db/automation-config";
 import { Elysia, t } from "elysia";
-import { automationStatus, applyAutomationConfig, validateAutomationEnable } from "../automation";
+import { automationStatus, applyAutomationConfig } from "../automation";
 import { getAutomationConfig, setAutomationConfig } from "../automation-settings";
 import { getActiveProfileOrNull } from "../inverter";
+import { validateAutomationEnable } from "../peak-shaving";
 import { getWeatherConfig } from "../weather-settings";
 import { adminGuard } from "./admin-guard";
 

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { coercePayload, parseLoadpointTopic } from "./evcc";
+import { coercePayload, parseLoadpointTopic } from "./evcc-topics";
 
 describe("parseLoadpointTopic", () => {
   test("parses a simple leaf into index + key", () => {

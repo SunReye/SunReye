@@ -19,6 +19,9 @@
  *   camelCase there too (`limitSoc/set`, unlike the REST API's lowercase path).
  * - live updates arrive with `retain=false`; only the snapshot on subscribe
  *   carries the retain flag, so it must never be filtered on.
+ *
+ * The topic grammar and payload coercion those notes describe live in
+ * {@link ./evcc-topics}, which is pure and unit-tested.
  */
 
 import { evccReady } from "@SunReye/db/evcc-config";
@@ -29,14 +32,13 @@ import {
   createEvPowerEstimator,
   type ChargePowerSource,
   type LiveChargePower,
+  type LoadpointParams,
 } from "./ev-power-estimator";
+import { type EvccValue, coercePayload, parseLoadpointTopic } from "./evcc-topics";
 import { getEvccConfig } from "./evcc-settings";
 import { log } from "./logging";
 
 const logger = log("evcc");
-
-/** A coerced EVCC topic payload (leaf values are JSON-ish primitives). */
-export type EvccValue = string | number | boolean | null;
 
 /** The per-loadpoint fields the web app renders (subset of EVCC's topics). */
 export interface EvccLoadpoint {
@@ -87,40 +89,6 @@ export interface EvccState {
 /** Writable loadpoint commands exposed to the web app. */
 export type EvccAction = "mode" | "limitSoc";
 
-/**
- * Parse a loadpoint state topic into its 1-based index and (possibly nested)
- * key. Returns `null` for anything else under the root — including the
- * retained `<root>/loadpoints` count topic and `.../set` command echoes.
- */
-export function parseLoadpointTopic(
-  topicRoot: string,
-  topic: string,
-): { index: number; key: string } | null {
-  const prefix = `${topicRoot}/loadpoints/`;
-  if (!topic.startsWith(prefix)) return null;
-  const [head, ...rest] = topic.slice(prefix.length).split("/");
-  const index = Number(head);
-  if (!Number.isInteger(index) || index < 1 || rest.length === 0) return null;
-  if (rest[rest.length - 1] === "set") return null;
-  return { index, key: rest.join("/") };
-}
-
-/**
- * Coerce a raw payload string into a primitive: numbers and booleans become
- * typed, `null`/empty become null, everything else stays a string (JSON
- * blobs like plan arrays are kept verbatim — the snapshot ignores them).
- */
-export function coercePayload(raw: string): EvccValue {
-  const s = raw.trim();
-  if (s === "" || s === "null") return null;
-  if (s === "true") return true;
-  if (s === "false") return false;
-  // Number() accepts "" (handled above) and whitespace, but not "1x" — exactly
-  // the numeric-or-not test needed here.
-  const n = Number(s);
-  return Number.isNaN(n) ? s : n;
-}
-
 const num = (v: EvccValue | undefined): number | null => (typeof v === "number" ? v : null);
 const str = (v: EvccValue | undefined): string | null => (typeof v === "string" ? v : null);
 const bool = (v: EvccValue | undefined): boolean => v === true;
@@ -162,7 +130,7 @@ const loadpoints = new Map<number, Map<string, EvccValue>>();
 const estimator = createEvPowerEstimator();
 
 /** Notified with the fresh snapshot whenever state changes (wired to the WS). */
-type EvccListener = (state: EvccState) => void;
+export type EvccListener = (state: EvccState) => void;
 let listener: EvccListener = () => {};
 let emitTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -225,28 +193,27 @@ export function evccControl(loadpoint: number, action: EvccAction, value: string
   client.publish(`${topicRoot}/loadpoints/${loadpoint}/${action}/set`, value);
 }
 
+/**
+ * The loadpoint state topics the estimator mirrors, and the parameter each one
+ * sets. Keys not listed here don't affect the estimate.
+ */
+const ESTIMATOR_PARAM_BY_KEY: Record<string, (value: EvccValue) => Partial<LoadpointParams>> = {
+  charging: (v) => ({ charging: v === true }),
+  connected: (v) => ({ connected: v === true }),
+  mode: (v) => ({ mode: typeof v === "string" ? v : null }),
+  phasesActive: (v) => ({ phasesActive: num(v) }),
+  effectiveMaxCurrent: (v) => ({ maxCurrentA: num(v) }),
+};
+
 /** Mirror the estimator-relevant state keys into it as they stream in. */
 function trackEstimator(index: number, key: string, value: EvccValue): void {
-  switch (key) {
-    case "chargePower":
-      if (typeof value === "number") estimator.anchorPower(index, value);
-      break;
-    case "charging":
-      estimator.updateParams(index, { charging: value === true });
-      break;
-    case "connected":
-      estimator.updateParams(index, { connected: value === true });
-      break;
-    case "mode":
-      estimator.updateParams(index, { mode: typeof value === "string" ? value : null });
-      break;
-    case "phasesActive":
-      estimator.updateParams(index, { phasesActive: typeof value === "number" ? value : null });
-      break;
-    case "effectiveMaxCurrent":
-      estimator.updateParams(index, { maxCurrentA: typeof value === "number" ? value : null });
-      break;
+  // `chargePower` is EVCC's own measurement, not a parameter — it re-anchors.
+  if (key === "chargePower") {
+    if (typeof value === "number") estimator.anchorPower(index, value);
+    return;
   }
+  const toParams = ESTIMATOR_PARAM_BY_KEY[key];
+  if (toParams) estimator.updateParams(index, toParams(value));
 }
 
 function handleMessage(topic: string, payload: Buffer): void {

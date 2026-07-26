@@ -36,7 +36,8 @@ import { getWeatherConfig } from "./weather-settings";
 
 const logger = log("runtime");
 
-type SampleListener = (sample: InverterSample) => void;
+/** Notified with each fresh poll sample (the server fans it out to the WS). */
+export type SampleListener = (sample: InverterSample) => void;
 
 let ctx: ProfileContext | null = null;
 let source: InverterSource | null = null;

@@ -191,5 +191,5 @@ export function buildProfileContext(profile: InverterProfile): ProfileContext {
   return { profile, manifest, defByKey, metaByKey, validateWrite };
 }
 
-// fallow-ignore-next-line unused-type
+// fallow-ignore-next-line unused-type -- re-exported for downstream consumers (web/tests import the sample shape from here); no in-file reference
 export type { InverterSample };
