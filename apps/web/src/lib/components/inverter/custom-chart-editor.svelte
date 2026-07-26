@@ -5,8 +5,8 @@
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
 	import { Label } from '$lib/components/ui/label';
-	import { Checkbox } from '$lib/components/ui/checkbox';
 	import { ScrollArea } from '$lib/components/ui/scroll-area';
+	import MetricPickerList from '$lib/components/inverter/_shared/metric-picker-list.svelte';
 	import * as m from '$lib/paraglide/messages';
 	import { inverter } from '$lib/inverter/store.svelte';
 	import {
@@ -36,12 +36,17 @@
 	let error = $state<string | null>(null);
 	let saving = $state(false);
 
+	const BLANK_DRAFT = { name: '', metrics: [] as string[] };
+	/** The chart under edit, or blanks when creating a new one. */
+	const draftOf = (c: CustomChart | null) => c ?? BLANK_DRAFT;
+
 	// Reset the form each time the dialog opens (create → blank, edit → prefill).
 	$effect(() => {
 		if (!open) return;
-		name = chart?.name ?? '';
+		const draft = draftOf(chart);
+		name = draft.name;
 		selected.clear();
-		for (const key of chart?.metrics ?? []) selected.add(key);
+		for (const key of draft.metrics) selected.add(key);
 		search = '';
 		error = null;
 	});
@@ -57,6 +62,10 @@
 	}
 
 	const canSave = $derived(name.trim().length > 0 && selected.size > 0 && !saving);
+
+	const title = $derived(chart ? m.chart_edit_chart() : m.chart_new_chart());
+	const saveLabel = $derived(saving ? m.action_saving() : m.action_save());
+	const isSelected = (key: string) => selected.has(key);
 
 	async function save() {
 		if (!canSave) return;
@@ -78,7 +87,7 @@
 <Dialog.Root bind:open>
 	<Dialog.Content class="max-h-[90vh] gap-0 overflow-hidden sm:max-w-lg">
 		<Dialog.Header>
-			<Dialog.Title>{chart ? m.chart_edit_chart() : m.chart_new_chart()}</Dialog.Title>
+			<Dialog.Title>{title}</Dialog.Title>
 			<Dialog.Description>
 				{m.chart_editor_desc({ count: MAX_CHART_METRICS })}
 			</Dialog.Description>
@@ -102,35 +111,13 @@
 					<Input placeholder={m.chart_search_metrics()} bind:value={search} class="pl-9" />
 				</div>
 				<ScrollArea class="h-64 border border-border">
-					<div class="flex flex-col p-1">
-						{#each groups as [category, metrics] (category)}
-							<div
-								class="px-2 pb-1 pt-2 text-xs font-medium uppercase tracking-wide text-muted-foreground"
-							>
-								{category}
-							</div>
-							{#each metrics as metric (metric.key)}
-								{@const checked = selected.has(metric.key)}
-								<label
-									class="flex cursor-pointer items-center gap-2 rounded-xs px-2 py-1.5 text-sm hover:bg-muted/50 has-disabled:cursor-not-allowed has-disabled:opacity-50"
-								>
-									<Checkbox
-										{checked}
-										disabled={!checked && atLimit}
-										onCheckedChange={() => toggle(metric.key)}
-									/>
-									<span class="truncate">{metric.label}</span>
-									{#if metric.unit}
-										<span class="ml-auto shrink-0 text-xs text-muted-foreground">{metric.unit}</span>
-									{/if}
-								</label>
-							{/each}
-						{:else}
-							<div class="px-2 py-6 text-center text-sm text-muted-foreground">
-								{m.chart_no_metrics_match({ query: search })}
-							</div>
-						{/each}
-					</div>
+					<MetricPickerList
+						{groups}
+						{isSelected}
+						{atLimit}
+						onToggle={toggle}
+						emptyQuery={search}
+					/>
 				</ScrollArea>
 			</div>
 
@@ -141,7 +128,7 @@
 
 		<Dialog.Footer>
 			<Button variant="outline" onclick={() => (open = false)}>{m.action_cancel()}</Button>
-			<Button disabled={!canSave} onclick={save}>{saving ? m.action_saving() : m.action_save()}</Button>
+			<Button disabled={!canSave} onclick={save}>{saveLabel}</Button>
 		</Dialog.Footer>
 	</Dialog.Content>
 </Dialog.Root>
