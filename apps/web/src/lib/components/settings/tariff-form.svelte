@@ -7,6 +7,7 @@
 	import { Label } from '$lib/components/ui/label';
 	import SettingsSection from './settings-section.svelte';
 	import ActionBar from './action-bar.svelte';
+	import TariffBandDays from './tariff-band-days.svelte';
 	import PlusIcon from 'phosphor-svelte/lib/Plus';
 	import TrashIcon from 'phosphor-svelte/lib/Trash';
 	import * as m from '$lib/paraglide/messages';
@@ -24,40 +25,53 @@
 		import: { defaultPricePerKwh: number; bands: Band[] };
 		export: { feedInPerKwh: number };
 	};
+	type TariffResponse = NonNullable<
+		Awaited<ReturnType<typeof api.api.settings.tariff.get>>['data']
+	>;
 
-	const WEEKDAYS = [
-		{ n: 1, label: m.tariff_day_mon() },
-		{ n: 2, label: m.tariff_day_tue() },
-		{ n: 3, label: m.tariff_day_wed() },
-		{ n: 4, label: m.tariff_day_thu() },
-		{ n: 5, label: m.tariff_day_fri() },
-		{ n: 6, label: m.tariff_day_sat() },
-		{ n: 7, label: m.tariff_day_sun() }
-	];
+	const ALL_DAYS = [1, 2, 3, 4, 5, 6, 7];
 
+	// `null` until the config has loaded — there is no other empty state.
 	let tariff = $state<Tariff | null>(null);
-	let loading = $state(true);
 	let saving = $state(false);
+
+	// Bands may omit `days` (= every day); normalize to a full array for editing.
+	const toBand = (b: TariffResponse['import']['bands'][number]): Band => ({
+		name: b.name,
+		pricePerKwh: b.pricePerKwh,
+		startHour: b.startHour,
+		endHour: b.endHour,
+		days: b.days ?? ALL_DAYS
+	});
+
+	function toGeneral(data: TariffResponse | null | undefined) {
+		if (!data) return { currency: 'EUR', standingChargeMonthly: 0 };
+		return {
+			currency: data.currency ?? 'EUR',
+			standingChargeMonthly: data.standingChargeMonthly ?? 0
+		};
+	}
+
+	function toImport(data: TariffResponse | null | undefined): Tariff['import'] {
+		if (!data) return { defaultPricePerKwh: 0, bands: [] };
+		return {
+			defaultPricePerKwh: data.import.defaultPricePerKwh ?? 0,
+			bands: (data.import.bands ?? []).map(toBand)
+		};
+	}
+
+	/** A missing or partial response falls back to a flat zero-price tariff. */
+	function toTariff(data: TariffResponse | null | undefined): Tariff {
+		return {
+			...toGeneral(data),
+			import: toImport(data),
+			export: { feedInPerKwh: data?.export.feedInPerKwh ?? 0 }
+		};
+	}
 
 	onMount(async () => {
 		const { data } = await api.api.settings.tariff.get();
-		// Bands may omit `days` (= every day); normalize to a full array for editing.
-		tariff = {
-			currency: data?.currency ?? 'EUR',
-			standingChargeMonthly: data?.standingChargeMonthly ?? 0,
-			import: {
-				defaultPricePerKwh: data?.import.defaultPricePerKwh ?? 0,
-				bands: (data?.import.bands ?? []).map((b) => ({
-					name: b.name,
-					pricePerKwh: b.pricePerKwh,
-					startHour: b.startHour,
-					endHour: b.endHour,
-					days: b.days ?? [1, 2, 3, 4, 5, 6, 7]
-				}))
-			},
-			export: { feedInPerKwh: data?.export.feedInPerKwh ?? 0 }
-		};
-		loading = false;
+		tariff = toTariff(data);
 	});
 
 	function addBand() {
@@ -74,9 +88,7 @@
 		tariff?.import.bands.splice(i, 1);
 	}
 
-	function toggleDay(band: Band, n: number) {
-		band.days = band.days.includes(n) ? band.days.filter((d) => d !== n) : [...band.days, n].sort();
-	}
+	const saveLabel = $derived(saving ? m.action_saving() : m.tariff_save());
 
 	async function save() {
 		if (!tariff) return;
@@ -102,14 +114,14 @@
 	}
 </script>
 
-{#if loading || !tariff}
+{#if !tariff}
 	<div class="flex h-40 items-center justify-center border border-border text-sm text-muted-foreground">
 		{m.tariff_loading()}
 	</div>
 {:else}
 	<ActionBar>
 		<Button onclick={save} disabled={saving}>
-			{saving ? m.action_saving() : m.tariff_save()}
+			{saveLabel}
 		</Button>
 	</ActionBar>
 
@@ -180,17 +192,7 @@
 						<TrashIcon class="size-4" />
 					</Button>
 				</div>
-				<div class="flex flex-wrap gap-1">
-					{#each WEEKDAYS as d (d.n)}
-						<Button
-							variant={band.days.includes(d.n) ? 'default' : 'outline'}
-							size="sm"
-							onclick={() => toggleDay(band, d.n)}
-						>
-							{d.label}
-						</Button>
-					{/each}
-				</div>
+				<TariffBandDays bind:days={band.days} />
 			</div>
 		{/each}
 	</SettingsSection>
