@@ -2,7 +2,6 @@
 	import { onMount } from 'svelte';
 	import { toast } from 'svelte-sonner';
 	import { authClient } from '$lib/auth-client';
-	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
 	import { Label } from '$lib/components/ui/label';
 	import * as Table from '$lib/components/ui/table';
