@@ -566,3 +566,82 @@ describe("defineVariant — dependency-aware removal", () => {
     expect(metrics).toEqual(before);
   });
 });
+
+// deriveMetrics resolves removals and value-carrying entries in two independent
+// passes over the overlay, so neither the mix of entry kinds nor their order in
+// the object literal may change the outcome.
+describe("defineVariant — mixed overlay entries", () => {
+  test("one overlay can remove, patch and add at the same time", () => {
+    const v = defineVariant(base(), {
+      id: "acme-mixed",
+      metrics: {
+        "dc.pv2.voltage": null,
+        "dc.pv1.power": { addr: 690 },
+        "dc.pv3.power": {
+          label: "PV3 Power",
+          unit: "W",
+          group: "solar",
+          addr: 674,
+          role: "pv.string.power",
+          index: 3,
+        },
+      },
+    });
+    expect(byKey(v, "dc.pv2.voltage")).toBeUndefined();
+    expect(byKey(v, "dc.pv1.power")?.addresses).toEqual([690]);
+    expect(byKey(v, "dc.pv3.power")?.label).toBe("PV3 Power");
+  });
+
+  test("a removal listed after an add still applies (entry order is irrelevant)", () => {
+    const added = {
+      label: "PV3 Power",
+      unit: "W",
+      group: "solar",
+      addr: 674,
+      role: "pv.string.power",
+      index: 3,
+    } as const;
+    const addFirst = defineVariant(base(), {
+      id: "acme-a",
+      metrics: { "dc.pv3.power": added, "dc.pv2.voltage": null },
+    });
+    const removeFirst = defineVariant(base(), {
+      id: "acme-a",
+      metrics: { "dc.pv2.voltage": null, "dc.pv3.power": added },
+    });
+    expect(addFirst.metrics).toEqual(removeFirst.metrics);
+    expect(byKey(addFirst, "dc.pv2.voltage")).toBeUndefined();
+    expect(byKey(addFirst, "dc.pv3.power")).toBeDefined();
+  });
+
+  test("an entry set to undefined is ignored rather than treated as a removal", () => {
+    const v = defineVariant(base(), {
+      id: "acme-u",
+      metrics: { "dc.pv2.voltage": undefined },
+    });
+    expect(byKey(v, "dc.pv2.voltage")?.addresses).toEqual([678]);
+    expect(v.metrics).toEqual(base().metrics);
+  });
+
+  test("a wildcard removal and an add under the same prefix both land", () => {
+    const v = defineVariant(base(), {
+      id: "acme-w",
+      metrics: {
+        "dc.pv2.*": null,
+        "dc.pv2.current": {
+          label: "PV2 Current",
+          unit: "A",
+          group: "solar",
+          addr: 679,
+          role: "pv.string.current",
+          index: 2,
+        },
+      },
+    });
+    expect(byKey(v, "dc.pv2.power")).toBeUndefined();
+    expect(byKey(v, "dc.pv2.voltage")).toBeUndefined();
+    expect(byKey(v, "dc.pv2.current")?.addresses).toEqual([679]);
+    // The removed string is pruned out of the surviving PV total.
+    expect(byKey(v, "dc.total_power")?.computeExpr).toEqual({ sum: ["dc.pv1.power"] });
+  });
+});
