@@ -54,27 +54,52 @@
 	let battChargeText = $state('');
 	let battReserveText = $state('');
 
+	const fieldsDisabled = $derived(!isAdmin || saving);
+
+	// --- Loading: config → input text ---------------------------------------
+
+	/** Watts as kW text; blank when unset. */
+	const wToKw = (w: number | null) => (w == null ? '' : (w / 1000).toString());
+	const numText = (n: number | null) => n?.toString() ?? '';
+	const arrayText = (a: PvArray): ArrayFields => ({
+		kwp: a.kwp.toString(),
+		tilt: a.tilt.toString(),
+		azimuth: a.azimuth.toString()
+	});
+
+	/** Blank fields when the forecast carries no battery model. */
+	function batteryTexts(b: ForecastBattery | null) {
+		if (!b) return { usable: '', charge: '', reserve: '' };
+		return {
+			usable: b.usableKwh.toString(),
+			charge: wToKw(b.maxChargeW),
+			reserve: b.minSoc.toString()
+		};
+	}
+
+	function loadTexts(config: WeatherConfig) {
+		const f = config.forecast;
+		const battery = batteryTexts(f.battery);
+		latText = numText(config.latitude);
+		lonText = numText(config.longitude);
+		tempCoeffText = f.tempCoefficient.toString();
+		lossText = f.systemLoss.toString();
+		arrayTexts = f.arrays.map(arrayText);
+		maxOutputText = wToKw(f.maxOutputW);
+		houseLoadText = wToKw(f.houseLoadW);
+		battUsableText = battery.usable;
+		battChargeText = battery.charge;
+		battReserveText = battery.reserve;
+	}
+
 	onMount(async () => {
 		const { data } = await api.api.settings.weather.get();
-		if (data) {
-			draft = data as WeatherConfig;
-			latText = draft.latitude?.toString() ?? '';
-			lonText = draft.longitude?.toString() ?? '';
-			tempCoeffText = draft.forecast.tempCoefficient.toString();
-			lossText = draft.forecast.systemLoss.toString();
-			arrayTexts = draft.forecast.arrays.map((a) => ({
-				kwp: a.kwp.toString(),
-				tilt: a.tilt.toString(),
-				azimuth: a.azimuth.toString()
-			}));
-			const wToKw = (w: number | null) => (w == null ? '' : (w / 1000).toString());
-			maxOutputText = wToKw(draft.forecast.maxOutputW);
-			houseLoadText = wToKw(draft.forecast.houseLoadW);
-			battUsableText = draft.forecast.battery ? draft.forecast.battery.usableKwh.toString() : '';
-			battChargeText = wToKw(draft.forecast.battery?.maxChargeW ?? null);
-			battReserveText = draft.forecast.battery ? draft.forecast.battery.minSoc.toString() : '';
-		}
+		if (!data) return;
+		draft = data as WeatherConfig;
+		loadTexts(draft);
 	});
+
+	// --- Saving: input text → config ----------------------------------------
 
 	type ForecastFields = {
 		arrays: PvArray[];
@@ -92,60 +117,80 @@
 		return kw === null ? { ok: false, watts: null } : { ok: true, watts: kw * 1000 };
 	}
 
-	/** Parse the forecast inputs, or null (with a toast) when any is invalid. */
-	function parseForecast(): ForecastFields | null {
+	function parseArray(t: ArrayFields): PvArray | null {
+		const kwp = parseNum(t.kwp);
+		const tilt = parseNum(t.tilt);
+		const azimuth = parseNum(t.azimuth);
+		if (kwp === null || tilt === null || azimuth === null) return null;
+		return { kwp, tilt, azimuth };
+	}
+
+	function parseArrays(): PvArray[] | null {
 		const arrays: PvArray[] = [];
 		for (const t of arrayTexts) {
-			const kwp = parseNum(t.kwp);
-			const tilt = parseNum(t.tilt);
-			const azimuth = parseNum(t.azimuth);
-			if (kwp === null || tilt === null || azimuth === null) return null;
-			arrays.push({ kwp, tilt, azimuth });
+			const parsed = parseArray(t);
+			if (parsed === null) return null;
+			arrays.push(parsed);
 		}
+		return arrays;
+	}
+
+	/** The array geometry plus the two loss coefficients; null if any is invalid. */
+	function parseArrayFields() {
+		const arrays = parseArrays();
 		const tempCoefficient = parseNum(tempCoeffText);
 		const systemLoss = parseNum(lossText);
-		if (tempCoefficient === null || systemLoss === null) return null;
+		if (arrays === null || tempCoefficient === null || systemLoss === null) return null;
+		return { arrays, tempCoefficient, systemLoss };
+	}
 
+	/** The blank-allowed power fields in watts; null if any is filled but invalid. */
+	function parsePowerFields() {
 		const maxOut = parseOptionalKw(maxOutputText);
 		const load = parseOptionalKw(houseLoadText);
 		const charge = parseOptionalKw(battChargeText);
-		if (!maxOut.ok || !load.ok || !charge.ok) return null;
+		if (![maxOut, load, charge].every((f) => f.ok)) return null;
+		return { maxOutputW: maxOut.watts, houseLoadW: load.watts, maxChargeW: charge.watts };
+	}
 
-		// The battery block exists only when a usable capacity is given; the reserve
-		// then defaults to 10% and the charge cap is optional.
-		let battery: ForecastBattery | null = null;
-		if (battUsableText.trim() !== '') {
-			const usableKwh = parseNum(battUsableText);
-			if (usableKwh === null) return null;
-			const minSoc = battReserveText.trim() === '' ? 10 : parseNum(battReserveText);
-			if (minSoc === null) return null;
-			battery = { usableKwh, maxChargeW: charge.watts, minSoc };
-		}
+	/** Reserve floor, defaulting to 10% when left blank. */
+	function parseReserve(): number | null {
+		if (battReserveText.trim() === '') return 10;
+		return parseNum(battReserveText);
+	}
 
+	// The battery block exists only when a usable capacity is given; the reserve
+	// then defaults to 10% and the charge cap is optional.
+	function parseBattery(maxChargeW: number | null): { ok: boolean; battery: ForecastBattery | null } {
+		if (battUsableText.trim() === '') return { ok: true, battery: null };
+		const usableKwh = parseNum(battUsableText);
+		const minSoc = parseReserve();
+		if (usableKwh === null || minSoc === null) return { ok: false, battery: null };
+		return { ok: true, battery: { usableKwh, maxChargeW, minSoc } };
+	}
+
+	/** Parse the forecast inputs, or null when any is invalid. */
+	function parseForecast(): ForecastFields | null {
+		const fields = parseArrayFields();
+		const power = parsePowerFields();
+		if (fields === null || power === null) return null;
+		const battery = parseBattery(power.maxChargeW);
+		if (!battery.ok) return null;
 		return {
-			arrays,
-			tempCoefficient,
-			systemLoss,
-			maxOutputW: maxOut.watts,
-			battery,
-			houseLoadW: load.watts
+			...fields,
+			maxOutputW: power.maxOutputW,
+			houseLoadW: power.houseLoadW,
+			battery: battery.battery
 		};
 	}
 
-	async function save() {
-		if (!draft) return;
-		const latitude = parseNum(latText);
-		const longitude = parseNum(lonText);
-		if (draft.enabled && (latitude === null || longitude === null)) {
-			toast.error(m.weather_toast_invalid_coords());
-			return;
-		}
-		const forecast = parseForecast();
-		if (!forecast) {
-			toast.error(m.weather_forecast_toast_invalid());
-			return;
-		}
+	/** Coordinates only have to parse once the tile is switched on. */
+	function coordsInvalid(enabled: boolean, latitude: number | null, longitude: number | null) {
+		return enabled && (latitude === null || longitude === null);
+	}
 
+	async function put(latitude: number | null, longitude: number | null, forecast: ForecastFields) {
+		if (!draft) return;
 		saving = true;
 		const { data, error } = await api.api.settings.weather.put({
 			enabled: draft.enabled,
@@ -166,6 +211,34 @@
 			toast.success(m.weather_toast_saved());
 		}
 	}
+
+	async function save() {
+		if (!draft) return;
+		const latitude = parseNum(latText);
+		const longitude = parseNum(lonText);
+		if (coordsInvalid(draft.enabled, latitude, longitude)) {
+			toast.error(m.weather_toast_invalid_coords());
+			return;
+		}
+		const forecast = parseForecast();
+		if (!forecast) {
+			toast.error(m.weather_forecast_toast_invalid());
+			return;
+		}
+		await put(latitude, longitude, forecast);
+	}
+
+	// Switches write through the draft; the guard keeps the handlers callable
+	// before the config has loaded.
+	function setEnabled(v: boolean) {
+		if (draft) draft.enabled = v;
+	}
+	function setForecastEnabled(v: boolean) {
+		if (draft) draft.forecast.enabled = v;
+	}
+	function setCorrectionEnabled(v: boolean) {
+		if (draft) draft.forecast.correction.enabled = v;
+	}
 </script>
 
 <SaveBar {isAdmin} {saving} disabled={!draft} onsave={save} />
@@ -183,8 +256,8 @@
 			<Switch
 				id="weather-enabled"
 				checked={draft.enabled}
-				disabled={!isAdmin || saving}
-				onCheckedChange={(v) => draft && (draft.enabled = v)}
+				disabled={fieldsDisabled}
+				onCheckedChange={setEnabled}
 			/>
 		</div>
 
@@ -194,7 +267,7 @@
 				<Input
 					id="weather-lat"
 					bind:value={latText}
-					disabled={!isAdmin || saving}
+					disabled={fieldsDisabled}
 					inputmode="decimal"
 					placeholder="50.39"
 				/>
@@ -204,7 +277,7 @@
 				<Input
 					id="weather-lon"
 					bind:value={lonText}
-					disabled={!isAdmin || saving}
+					disabled={fieldsDisabled}
 					inputmode="decimal"
 					placeholder="8.06"
 				/>
@@ -216,7 +289,7 @@
 			<Input
 				id="weather-label"
 				bind:value={draft.label}
-				disabled={!isAdmin || saving}
+				disabled={fieldsDisabled}
 				placeholder="Limburg-Weilburg"
 				maxlength={120}
 			/>
@@ -230,8 +303,8 @@
 				<Switch
 					id="forecast-enabled"
 					checked={draft.forecast.enabled}
-					disabled={!isAdmin || saving}
-					onCheckedChange={(v) => draft && (draft.forecast.enabled = v)}
+					disabled={fieldsDisabled}
+					onCheckedChange={setForecastEnabled}
 				/>
 			</div>
 			<p class="text-sm text-muted-foreground">{m.weather_forecast_desc()}</p>
@@ -247,7 +320,7 @@
 				bind:battUsable={battUsableText}
 				bind:battCharge={battChargeText}
 				bind:battReserve={battReserveText}
-				disabled={!isAdmin || saving}
+				disabled={fieldsDisabled}
 			/>
 
 			<Separator />
@@ -258,8 +331,8 @@
 					<Switch
 						id="correction-enabled"
 						checked={draft.forecast.correction.enabled}
-						disabled={!isAdmin || saving}
-						onCheckedChange={(v) => draft && (draft.forecast.correction.enabled = v)}
+						disabled={fieldsDisabled}
+						onCheckedChange={setCorrectionEnabled}
 					/>
 				</div>
 				<p class="text-sm text-muted-foreground">{m.weather_forecast_correction_desc()}</p>

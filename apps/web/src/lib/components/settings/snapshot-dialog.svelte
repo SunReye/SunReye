@@ -2,24 +2,21 @@
 	import * as Dialog from "$lib/components/ui/dialog";
 	import { ScrollArea } from "$lib/components/ui/scroll-area";
 	import * as Table from "$lib/components/ui/table";
+	import type { TestResult } from "./inverter-types";
 	import * as msg from "$lib/paraglide/messages";
-
-	type SnapshotMetric = {
-		key: string;
-		label: string;
-		unit: string | null;
-		group: string;
-		value: number;
-		display?: string;
-	};
 
 	let {
 		open = $bindable(false),
 		result
 	}: {
 		open?: boolean;
-		result: { metricCount?: number; durationMs?: number; metrics?: SnapshotMetric[] } | null;
+		result: TestResult | null;
 	} = $props();
+
+	const description = $derived(
+		msg.snapshot_desc({ count: result?.metricCount ?? 0, ms: result?.durationMs ?? 0 })
+	);
+	const metrics = $derived(result?.metrics ?? []);
 
 	// Raw register reads can be long floats (e.g. -33.629999999999995); round to a
 	// readable precision so the value column doesn't overflow on narrow screens.
@@ -34,7 +31,7 @@
 		<Dialog.Header>
 			<Dialog.Title>{msg.snapshot_title()}</Dialog.Title>
 			<Dialog.Description>
-				{msg.snapshot_desc({ count: result?.metricCount ?? 0, ms: result?.durationMs ?? 0 })}
+				{description}
 			</Dialog.Description>
 		</Dialog.Header>
 		<ScrollArea class="h-[60vh] w-full min-w-0 pr-3">
@@ -47,7 +44,7 @@
 					</Table.Row>
 				</Table.Header>
 				<Table.Body>
-					{#each result?.metrics ?? [] as m (m.key)}
+					{#each metrics as m (m.key)}
 						<Table.Row>
 							<Table.Cell class="font-medium whitespace-normal">{m.label}</Table.Cell>
 							<Table.Cell class="hidden text-muted-foreground sm:table-cell">{m.group}</Table.Cell>

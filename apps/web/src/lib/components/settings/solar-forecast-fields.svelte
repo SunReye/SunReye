@@ -5,10 +5,10 @@
 
 <script lang="ts">
 	import PlusIcon from 'phosphor-svelte/lib/Plus';
-	import TrashIcon from 'phosphor-svelte/lib/Trash';
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
 	import { Label } from '$lib/components/ui/label';
+	import PvArrayRow from './pv-array-row.svelte';
 	import * as m from '$lib/paraglide/messages';
 
 	let {
@@ -45,6 +45,10 @@
 	function removeArray(index: number) {
 		arrays = arrays.filter((_, i) => i !== index);
 	}
+
+	const addDisabled = $derived(disabled || arrays.length >= 8);
+	// The charge cap and reserve only apply once a usable capacity is given.
+	const battDisabled = $derived(disabled || battUsable.trim() === '');
 </script>
 
 <div class="flex flex-col gap-2">
@@ -53,51 +57,19 @@
 		<p class="text-sm text-muted-foreground">{m.weather_forecast_arrays_empty()}</p>
 	{/if}
 	{#each arrays as arr, i (i)}
-		<div class="grid grid-cols-[1fr_1fr_1fr_auto] items-end gap-2">
-			<div class="flex flex-col gap-1.5">
-				{#if i === 0}<Label for={`array-kwp-${i}`}>{m.weather_forecast_kwp()}</Label>{/if}
-				<Input
-					id={`array-kwp-${i}`}
-					bind:value={arr.kwp}
-					{disabled}
-					inputmode="decimal"
-					placeholder="9.6"
-				/>
-			</div>
-			<div class="flex flex-col gap-1.5">
-				{#if i === 0}<Label for={`array-tilt-${i}`}>{m.weather_forecast_tilt()}</Label>{/if}
-				<Input
-					id={`array-tilt-${i}`}
-					bind:value={arr.tilt}
-					{disabled}
-					inputmode="decimal"
-					placeholder="30"
-				/>
-			</div>
-			<div class="flex flex-col gap-1.5">
-				{#if i === 0}<Label for={`array-azimuth-${i}`}>{m.weather_forecast_azimuth()}</Label>{/if}
-				<Input
-					id={`array-azimuth-${i}`}
-					bind:value={arr.azimuth}
-					{disabled}
-					inputmode="decimal"
-					placeholder="0"
-				/>
-			</div>
-			<Button
-				variant="ghost"
-				size="icon"
-				onclick={() => removeArray(i)}
-				{disabled}
-				aria-label={m.weather_forecast_remove()}
-			>
-				<TrashIcon class="size-4" />
-			</Button>
-		</div>
+		<PvArrayRow
+			bind:kwp={arr.kwp}
+			bind:tilt={arr.tilt}
+			bind:azimuth={arr.azimuth}
+			index={i}
+			labelled={i === 0}
+			{disabled}
+			onremove={() => removeArray(i)}
+		/>
 	{/each}
 	<p class="text-xs text-muted-foreground">{m.weather_forecast_azimuth_hint()}</p>
 	<div>
-		<Button variant="outline" size="sm" onclick={addArray} disabled={disabled || arrays.length >= 8}>
+		<Button variant="outline" size="sm" onclick={addArray} disabled={addDisabled}>
 			<PlusIcon class="size-4" />
 			{m.weather_forecast_add_array()}
 		</Button>
@@ -160,7 +132,7 @@
 			<Input
 				id="forecast-batt-charge"
 				bind:value={battCharge}
-				disabled={disabled || battUsable.trim() === ''}
+				disabled={battDisabled}
 				inputmode="decimal"
 				placeholder="5"
 			/>
@@ -170,7 +142,7 @@
 			<Input
 				id="forecast-batt-reserve"
 				bind:value={battReserve}
-				disabled={disabled || battUsable.trim() === ''}
+				disabled={battDisabled}
 				inputmode="decimal"
 				placeholder="10"
 			/>

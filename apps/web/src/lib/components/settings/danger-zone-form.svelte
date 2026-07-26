@@ -6,6 +6,7 @@
 	import { Input } from '$lib/components/ui/input';
 	import { Label } from '$lib/components/ui/label';
 	import RestartButton from './restart-button.svelte';
+	import { apiErrorText } from './api-error';
 	import WarningIcon from 'phosphor-svelte/lib/Warning';
 	import * as m from '$lib/paraglide/messages';
 
@@ -25,9 +26,7 @@
 		const { error } = await api.api.admin['reset-data'].post({ confirm: phrase.trim() });
 		busy = false;
 		if (error) {
-			toast.error(
-				(error.value as { error?: string })?.error ?? m.danger_toast_reset_error()
-			);
+			toast.error(apiErrorText(error.value, m.danger_toast_reset_error()));
 			return;
 		}
 		toast.success(m.danger_toast_reset_success());

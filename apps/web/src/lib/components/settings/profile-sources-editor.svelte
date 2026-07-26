@@ -3,7 +3,7 @@
 	import { Button } from "$lib/components/ui/button";
 	import { Input } from "$lib/components/ui/input";
 	import { Label } from "$lib/components/ui/label";
-	import { Switch } from "$lib/components/ui/switch";
+	import ProfileSourceRow from "./profile-source-row.svelte";
 	import SettingsSection from "./settings-section.svelte";
 	import type { Source } from "./profile-types";
 	import * as m from "$lib/paraglide/messages";
@@ -47,35 +47,16 @@
 		onAdd(url);
 		newUrl = "";
 	}
+
+	function onKeydown(e: KeyboardEvent) {
+		if (e.key === "Enter") add();
+	}
 </script>
 
 <SettingsSection title={m.sources_title()}>
 	<div class="flex flex-col divide-y divide-border">
 		{#each sources as s (s.url)}
-			<div class="flex items-center justify-between gap-4 py-2.5">
-				<div class="flex min-w-0 flex-col">
-					<span class="truncate text-sm">{s.label ?? s.url}</span>
-					{#if s.label}
-						<span class="truncate text-xs text-muted-foreground">{s.url}</span>
-					{/if}
-				</div>
-				<div class="flex shrink-0 items-center gap-3">
-					<Switch
-						checked={s.enabled}
-						disabled={saving}
-						onCheckedChange={(checked) => onToggle(s.url, checked)}
-						aria-label={m.label_enabled()}
-					/>
-					{#if s.official}
-						<!-- Protected: the official source can be disabled but not removed. -->
-						<span class="text-xs uppercase tracking-wide text-muted-foreground">{m.sources_default()}</span>
-					{:else}
-						<Button variant="ghost" size="sm" disabled={saving} onclick={() => onRemove(s.url)}>
-							{m.action_remove()}
-						</Button>
-					{/if}
-				</div>
-			</div>
+			<ProfileSourceRow source={s} {saving} {onRemove} {onToggle} />
 		{/each}
 		{#if sources.length === 0}
 			<p class="py-2.5 text-sm text-muted-foreground">{m.sources_none()}</p>
@@ -89,7 +70,7 @@
 				bind:value={newUrl}
 				disabled={saving}
 				placeholder="https://github.com/org/inverter-profiles.git"
-				onkeydown={(e) => e.key === "Enter" && add()}
+				onkeydown={onKeydown}
 			/>
 		</div>
 		<Button variant="outline" class="w-full sm:w-auto" disabled={saving} onclick={add}>{m.action_add()}</Button>

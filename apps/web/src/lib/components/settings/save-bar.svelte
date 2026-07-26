@@ -18,13 +18,16 @@
 		disabled?: boolean;
 		onsave: () => void;
 	} = $props();
+
+	const blocked = $derived(!isAdmin || saving || disabled);
+	const label = $derived(saving ? m.action_saving() : m.action_save());
 </script>
 
 <ActionBar>
 	{#snippet info()}
 		{#if !isAdmin}<span class="text-xs text-muted-foreground">{m.settings_admin_only()}</span>{/if}
 	{/snippet}
-	<Button onclick={onsave} disabled={!isAdmin || saving || disabled}>
-		{saving ? m.action_saving() : m.action_save()}
+	<Button onclick={onsave} disabled={blocked}>
+		{label}
 	</Button>
 </ActionBar>

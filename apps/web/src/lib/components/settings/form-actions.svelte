@@ -25,19 +25,25 @@
 		onsave: () => void;
 		children?: Snippet;
 	} = $props();
+
+	const resultClass = $derived(result?.ok ? 'text-emerald-500' : 'text-destructive');
+	const testBlocked = $derived(disabled || testing);
+	const testLabel = $derived(testing ? m.conn_testing() : m.conn_test());
+	const saveBlocked = $derived(disabled || saving);
+	const saveLabel = $derived(saving ? m.action_saving() : m.action_save());
 </script>
 
 <ActionBar>
 	{#snippet info()}
 		{#if result}
-			<span class={result.ok ? 'text-emerald-500' : 'text-destructive'}>{result.message}</span>
+			<span class={resultClass}>{result.message}</span>
 		{/if}
 	{/snippet}
 	{#if children}{@render children()}{/if}
-	<Button variant="outline" onclick={ontest} disabled={disabled || testing}>
-		{testing ? m.conn_testing() : m.conn_test()}
+	<Button variant="outline" onclick={ontest} disabled={testBlocked}>
+		{testLabel}
 	</Button>
-	<Button onclick={onsave} disabled={disabled || saving}>
-		{saving ? m.action_saving() : m.action_save()}
+	<Button onclick={onsave} disabled={saveBlocked}>
+		{saveLabel}
 	</Button>
 </ActionBar>

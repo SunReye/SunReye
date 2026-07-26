@@ -7,6 +7,7 @@
 	import * as Dialog from '$lib/components/ui/dialog';
 	import SettingsSection from './settings-section.svelte';
 	import SaveBar from './save-bar.svelte';
+	import { apiErrorText } from './api-error';
 	import { api } from '$lib/api';
 	import { useAppSession } from '$lib/session';
 	import * as m from '$lib/paraglide/messages';
@@ -49,8 +50,7 @@
 		const { data, error } = await api.api.settings.automations.put(draft);
 		saving = false;
 		if (error) {
-			const detail = (error.value as { error?: string } | null)?.error;
-			toast.error(detail ?? m.automations_toast_error());
+			toast.error(apiErrorText(error.value, m.automations_toast_error()));
 		} else {
 			draft = data as AutomationConfig;
 			toast.success(m.automations_toast_saved());
