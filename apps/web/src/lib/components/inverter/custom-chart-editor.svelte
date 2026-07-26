@@ -9,7 +9,10 @@
 	import { ScrollArea } from '$lib/components/ui/scroll-area';
 	import * as m from '$lib/paraglide/messages';
 	import { inverter } from '$lib/inverter/store.svelte';
-	import { filterMetrics, groupByCategory, isChartable } from '$lib/inverter/ranges';
+	import {
+		chartableMetrics,
+		searchedGroups
+	} from '$lib/components/inverter/_shared/metric-catalog';
 	import {
 		MAX_CHART_METRICS,
 		type CustomChart,
@@ -43,8 +46,8 @@
 		error = null;
 	});
 
-	const chartable = $derived(inverter.metrics.filter(isChartable));
-	const groups = $derived(groupByCategory(filterMetrics(chartable, search)));
+	const chartable = $derived(chartableMetrics(inverter.metrics));
+	const groups = $derived(searchedGroups(chartable, search));
 
 	const atLimit = $derived(selected.size >= MAX_CHART_METRICS);
 

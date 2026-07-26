@@ -7,10 +7,10 @@
 	import LiveArea from '$lib/components/inverter/live-area.svelte';
 	import DivergingArea from '$lib/components/inverter/diverging-area.svelte';
 	import AnimatedNumber from '$lib/components/inverter/animated-number.svelte';
+	import MetricTooltipRow from '$lib/components/inverter/_shared/metric-tooltip-row.svelte';
 	import { api } from '$lib/api';
 	import * as m from '$lib/paraglide/messages';
 	import { inverter } from '$lib/inverter/store.svelte';
-	import { fractionDigits } from '$lib/inverter/format';
 	import { inView } from '$lib/actions/in-view';
 	import { tooltipLabel, xTick } from '$lib/inverter/chart-format';
 	import type { HistoryRange } from '$lib/inverter/ranges';
@@ -155,8 +155,5 @@
 </div>
 
 {#snippet tooltipValue({ value }: { value: unknown })}
-	<span class="text-muted-foreground">{metric.label}</span>
-	<span class="ml-auto font-mono font-medium tabular-nums text-foreground">
-		{Number(value).toLocaleString(undefined, fractionDigits(unit))}{unit ? ` ${unit}` : ''}
-	</span>
+	<MetricTooltipRow label={metric.label} {value} {unit} />
 {/snippet}

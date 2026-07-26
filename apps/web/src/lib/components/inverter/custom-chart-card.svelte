@@ -10,12 +10,13 @@
 	import * as msg from '$lib/paraglide/messages';
 	import ChartLegend from '$lib/components/inverter/chart-legend.svelte';
 	import CustomLiveChart from '$lib/components/inverter/custom-live-chart.svelte';
-	import ChartYAxes from '$lib/components/inverter/chart-y-axes.svelte';
+	import DualYAxes from '$lib/components/inverter/_shared/dual-y-axes.svelte';
 	import CustomChartTooltip from '$lib/components/inverter/custom-chart-tooltip.svelte';
 	import { api } from '$lib/api';
 	import { inverter } from '$lib/inverter/store.svelte';
 	import { tooltipLabel, xTick } from '$lib/inverter/chart-format';
-	import { groupSeriesByUnit, domainFor, normalizeSeries, type Datum } from '$lib/inverter/chart-axes';
+	import { resolveAxes, seriesConfig } from '$lib/components/inverter/_shared/chart-series';
+	import type { Datum } from '$lib/inverter/chart-axes';
 	import type { CustomChart } from '$lib/inverter/custom-charts.svelte';
 	import type { HistoryRange } from '$lib/inverter/ranges';
 	import type { ManifestMetric } from '$lib/inverter/types';
@@ -56,11 +57,7 @@
 			value: (d: Datum) => (d[m.key] as number | undefined) ?? null
 		}))
 	);
-	const config = $derived(
-		Object.fromEntries(
-			series.map((s) => [s.key, { label: s.label, color: s.color }])
-		) as Chart.ChartConfig
-	);
+	const config = $derived(seriesConfig(series));
 	const legendItems = $derived(series.map((s) => ({ key: s.key, label: s.label, color: s.color })));
 
 	// Merge per-metric point lists into one row per timestamp: { date, [key]: v }.
@@ -132,17 +129,7 @@
 	// Mixed units get independent left/right axes; series then plot on a normalized
 	// [0,1] scale so a small-magnitude metric (efficiency) isn't drowned by a large
 	// one (power). Single-unit charts keep the plain filled area on one axis.
-	const grouping = $derived(groupSeriesByUnit(series));
-	const leftDomain = $derived(domainFor(historical, grouping.left));
-	const rightDomain = $derived(grouping.dualAxis ? domainFor(historical, grouping.right) : null);
-	const plotSeries = $derived(
-		grouping.dualAxis
-			? [
-					...normalizeSeries(grouping.left, leftDomain),
-					...normalizeSeries(grouping.right, rightDomain ?? [0, 1])
-				]
-			: series
-	);
+	const axes = $derived(resolveAxes(historical, series));
 
 	// AreaChart's `marks` context isn't exposed in the public types; type just the
 	// fields the dual-axis marks snippet reads.
@@ -181,12 +168,12 @@
 			<div class="h-full w-full" in:fade={{ duration: 300 }}>
 				{#if range.live}
 					<CustomLiveChart data={chartData} {series} {config} labelFormatter={labelFmt} />
-				{:else if grouping.dualAxis}
+				{:else if axes.grouping.dualAxis}
 					<Chart.Container {config} class="aspect-auto h-full w-full">
 						<AreaChart
 							data={chartData}
 							x="date"
-							series={plotSeries}
+							series={axes.plotSeries}
 							{xDomain}
 							yDomain={[0, 1]}
 							seriesLayout="overlap"
@@ -197,13 +184,7 @@
 							props={{ xAxis: { format: xTickFormat, ticks: 4 } }}
 						>
 							{#snippet marks({ context }: MarksContext)}
-								<ChartYAxes
-									height={context.height}
-									left={leftDomain}
-									right={rightDomain}
-									leftUnit={grouping.leftUnit}
-									rightUnit={grouping.rightUnit}
-								/>
+								<DualYAxes height={context.height} {axes} />
 								{#each context.series.visibleSeries as s (s.key)}
 									<Area
 										seriesKey={s.key}
