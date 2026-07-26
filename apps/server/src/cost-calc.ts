@@ -147,10 +147,14 @@ export function allocateCost(
   };
 }
 
-/** Named reporting ranges, resolved to [from, now) in local time. */
-export type CostRange = "today" | "month" | "year";
+/**
+ * Named reporting ranges, resolved to [from, now) in local time. Named with the
+ * `Key` suffix to stay distinct from the web app's `CostRange` window object,
+ * which the Costs page type-imports from this module's neighbours.
+ */
+export type CostRangeKey = "today" | "month" | "year";
 
-export function resolveRange(range: CostRange, now = new Date()): { from: Date; to: Date } {
+export function resolveRange(range: CostRangeKey, now = new Date()): { from: Date; to: Date } {
   const from = new Date(now);
   from.setHours(0, 0, 0, 0);
   if (range === "month") from.setDate(1);
