@@ -31,7 +31,7 @@ function baseAbsoluteLinks() {
     hooks: {
       "astro:build:done": async ({ dir, logger }) => {
         let count = 0;
-        // fallow-ignore-next-line complexity
+        // fallow-ignore-next-line complexity -- recursive directory walk: the dir/.html/changed branches are the whole algorithm; splitting them into helpers would only move the same branching behind extra indirection in build-time config code
         const walk = async (d) => {
           for (const entry of await readdir(d, { withFileTypes: true })) {
             const p = join(d, entry.name);
