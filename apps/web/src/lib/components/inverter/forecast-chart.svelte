@@ -45,18 +45,21 @@
 		empty: string;
 	} = $props();
 
-	const hasData = $derived(slots.some((s) => s.predictedW > 0 || (s.actualW ?? 0) > 0));
+	// A slot carries data when either the forecast or the measured series is above
+	// zero; `actualW` is null for slots in the future.
+	const slotW = (s: ForecastSlot) => Math.max(s.predictedW, s.actualW ?? 0);
+	const isLive = (s: ForecastSlot | undefined) => s !== undefined && slotW(s) > 0;
+
+	const hasData = $derived(slots.some(isLive));
 
 	// Crop to daylight, padded by an hour each side and snapped to full hours so
 	// the axis ticks stay on round times.
 	const view = $derived.by(() => {
 		const perHour = Math.max(1, Math.round(60 / stepMinutes));
-		const live = (s: ForecastSlot | undefined) =>
-			(s?.predictedW ?? 0) > 0 || (s?.actualW ?? 0) > 0;
-		const first = slots.findIndex((s) => live(s));
+		const first = slots.findIndex(isLive);
 		if (first === -1) return slots;
 		let last = slots.length - 1;
-		while (last > first && !live(slots[last])) last--;
+		while (last > first && !isLive(slots[last])) last--;
 		const from = Math.floor(Math.max(0, first - perHour) / perHour) * perHour;
 		const to = Math.min(slots.length, Math.ceil((last + 1 + perHour) / perHour) * perHour);
 		return slots.slice(from, to);

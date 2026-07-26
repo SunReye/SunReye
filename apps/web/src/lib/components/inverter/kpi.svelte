@@ -1,5 +1,5 @@
 <script lang="ts">
-	import AnimatedNumber from './animated-number.svelte';
+	import KpiValue from './_shared/kpi-value.svelte';
 	import LiveArea from './live-area.svelte';
 	import type { LivePoint } from '$lib/inverter/types';
 
@@ -25,8 +25,6 @@
 		diverging?: boolean;
 		sub?: string | null;
 	} = $props();
-
-	const animate = $derived(value !== undefined && Number.isFinite(value));
 </script>
 
 <div class="flex flex-col gap-2 px-4 py-3">
@@ -34,11 +32,7 @@
 		{label}
 	</span>
 	<div class="flex items-baseline gap-1.5">
-		{#if animate}
-			<AnimatedNumber value={value as number} {unit} class="text-2xl font-semibold tabular-nums leading-none" />
-		{:else}
-			<span class="text-2xl font-semibold tabular-nums leading-none">{text}</span>
-		{/if}
+		<KpiValue {value} {text} {unit} />
 		{#if unit}<span class="text-xs text-muted-foreground">{unit}</span>{/if}
 	</div>
 	{#if sub}

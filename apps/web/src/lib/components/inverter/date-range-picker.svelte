@@ -28,7 +28,10 @@
 		'6mo': m.range_6mo,
 		'12mo': m.range_12mo
 	};
-	const presets = $derived(PRESETS.map((p) => ({ id: p.id, label: LABELS[p.id]?.() ?? p.label })));
+	/** Localized label for a preset id, falling back to the range's own label. */
+	const presetLabel = (id: string, fallback: string) => LABELS[id]?.() ?? fallback;
+
+	const presets = $derived(PRESETS.map((p) => ({ id: p.id, label: presetLabel(p.id, p.label) })));
 
 	const DAY_MS = 86_400_000;
 	const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
@@ -60,10 +63,13 @@
 
 	// While a single day is active, show a friendly relative label; otherwise the
 	// preset/custom label. Relative label honours the configured time zone.
+	const dayLabel = (daysAgo: number, day: Date) =>
+		daysAgo === 0 ? m.range_today() : daysAgo === 1 ? m.range_yesterday() : display.day(day);
+
 	const triggerLabel = $derived.by(() => {
-		if (range.id !== 'day') return LABELS[range.id]?.() ?? range.label;
+		if (range.id !== 'day') return presetLabel(range.id, range.label);
 		const daysAgo = Math.round((today.getTime() - startOfDay(range.from).getTime()) / DAY_MS);
-		return daysAgo === 0 ? m.range_today() : daysAgo === 1 ? m.range_yesterday() : display.day(range.from);
+		return dayLabel(daysAgo, range.from);
 	});
 </script>
 
