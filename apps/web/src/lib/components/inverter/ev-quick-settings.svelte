@@ -13,9 +13,21 @@
 
 	const kwh = (wh: number) => (wh / 1000).toLocaleString(undefined, { maximumFractionDigits: 1 });
 
+	/**
+	 * A committed write is held on screen for one worst-case EVCC publish loop.
+	 * Dropping the pending position the moment the POST resolves would snap the
+	 * thumb back to the pre-write value until EVCC's next tick republishes.
+	 */
+	const LIMIT_SETTLE_MS = 30_000;
+
 	let busy = $state(false);
-	// The slider's uncommitted position; the live limit wins until the user drags.
+	/**
+	 * The slider's own position while dragging and through the settle window after
+	 * a commit; `null` hands ownership back to live EVCC state.
+	 */
 	let pendingLimit = $state<number | null>(null);
+	let settleTimer: ReturnType<typeof setTimeout> | null = null;
+
 	const limit = $derived(pendingLimit ?? displayLimitSoc(lp));
 	// EVCC treats a limit of 0 as "charge without a target".
 	const limitLabel = $derived(limit === 0 ? m.evcc_limit_none() : `${limit}%`);
@@ -26,11 +38,33 @@
 	const modeVariant = (mode: string): 'default' | 'secondary' =>
 		lp.mode === mode ? 'default' : 'secondary';
 
-	async function send(action: Promise<string | null>) {
+	/** Give the slider back to live EVCC state once the write has settled. */
+	function releasePending(delayMs: number) {
+		if (settleTimer) clearTimeout(settleTimer);
+		settleTimer = setTimeout(() => {
+			settleTimer = null;
+			pendingLimit = null;
+		}, delayMs);
+	}
+
+	$effect(() => () => {
+		if (settleTimer) clearTimeout(settleTimer);
+	});
+
+	async function send(action: Promise<string | null>): Promise<string | null> {
 		busy = true;
 		const error = await action;
 		busy = false;
 		if (error) toast.error(m.evcc_command_error({ error }));
+		return error;
+	}
+
+	async function commitLimit(value: number) {
+		pendingLimit = value;
+		const error = await send(evcc.setLimitSoc(lp.index, value));
+		// Rejected: the pending position is a phantom, drop it now so live state
+		// (still the truth) paints. Accepted: hold it until EVCC republishes.
+		releasePending(error ? 0 : LIMIT_SETTLE_MS);
 	}
 </script>
 
@@ -72,7 +106,7 @@
 			step={5}
 			disabled={busy}
 			onValueChange={(v) => (pendingLimit = v)}
-			onValueCommit={(v) => send(evcc.setLimitSoc(lp.index, v))}
+			onValueCommit={(v) => commitLimit(v)}
 		/>
 	</div>
 
