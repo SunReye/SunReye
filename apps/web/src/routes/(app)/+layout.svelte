@@ -11,7 +11,7 @@
 	import { inverter } from '$lib/inverter/store.svelte';
 	import { display } from '$lib/display.svelte';
 	import { pageHeader } from '$lib/page-header.svelte';
-	import * as m from '$lib/paraglide/messages';
+	import { resolveView } from './app-view';
 
 	const { children } = $props();
 
@@ -36,20 +36,24 @@
 	let anonAllowed = $state<boolean | null>(null);
 	const isAnon = $derived(!$sessionQuery.isPending && !$sessionQuery.data && anonAllowed === true);
 
+	/** A logged-out visitor the public dashboard does not cover belongs at login. */
+	function applyAnonDecision(allowed: boolean): void {
+		if (!allowed) goto(resolve('/login'));
+	}
+
 	$effect(() => {
 		if ($sessionQuery.isPending || $sessionQuery.data) return;
 		// Logged out. Decide read-only dashboard vs login.
-		if (anonAllowed === false) {
-			goto(resolve('/login'));
+		if (anonAllowed !== null) {
+			applyAnonDecision(anonAllowed);
 			return;
 		}
-		if (anonAllowed !== null) return;
 		publicDashboardEnabled().then((ok) => {
 			// A session may have arrived mid-probe (e.g. we just signed in) — defer to
 			// the authenticated path rather than treating the visitor as anonymous.
 			if ($sessionQuery.data) return;
 			anonAllowed = ok;
-			if (!ok) goto(resolve('/login'));
+			applyAnonDecision(ok);
 		});
 	});
 
@@ -73,12 +77,12 @@
 	// viewers alike — who reaches the page by direct URL. The nav hides these
 	// entries too (app-sidebar.svelte).
 	const ADMIN_ONLY = ['/settings', '/controls'];
+	// Skip while a logged-out visitor is still being classified (login vs anon); the
+	// access effect above sends unauthorised anonymous users to /login.
+	const accessSettled = $derived(Boolean($sessionQuery.data) || anonAllowed === true);
+	const guardAdminOnly = $derived(!$sessionQuery.isPending && !isAdmin && accessSettled);
 	$effect(() => {
-		if ($sessionQuery.isPending || isAdmin) return;
-		// Skip while a logged-out visitor is still being classified (login vs anon);
-		// the access effect above sends unauthorised anonymous users to /login.
-		if (!$sessionQuery.data && anonAllowed !== true) return;
-		if (ADMIN_ONLY.includes(topSegment)) goto(resolve('/'));
+		if (guardAdminOnly && ADMIN_ONLY.includes(topSegment)) goto(resolve('/'));
 	});
 
 	// Open the manifest + live stream once the instance is fully configured
@@ -97,6 +101,16 @@
 	// content cross-fades up on each navigation. Honour reduced-motion.
 	const reduceMotion = new MediaQuery('prefers-reduced-motion: reduce');
 	const contentIn = $derived(reduceMotion.current ? { duration: 0 } : { duration: 200 });
+
+	// Workspace vs status message, in access-then-gate precedence order.
+	const view = $derived(
+		resolveView({
+			pending: $sessionQuery.isPending,
+			authed: Boolean($sessionQuery.data),
+			anonAllowed,
+			gate
+		})
+	);
 </script>
 
 {#snippet shell()}
@@ -129,20 +143,8 @@
 	</Sidebar.Provider>
 {/snippet}
 
-{#if $sessionQuery.isPending}
-	<div class="grid h-svh place-items-center text-muted-foreground">{m.app_loading()}</div>
-{:else if !$sessionQuery.data}
-	{#if anonAllowed === null}
-		<div class="grid h-svh place-items-center text-muted-foreground">{m.app_loading()}</div>
-	{:else if anonAllowed}
-		{@render shell()}
-	{:else}
-		<div class="grid h-svh place-items-center text-muted-foreground">{m.app_redirecting_login()}</div>
-	{/if}
-{:else if gate === null}
-	<div class="grid h-svh place-items-center text-muted-foreground">{m.app_loading()}</div>
-{:else if gate !== 'ready'}
-	<div class="grid h-svh place-items-center text-muted-foreground">{m.app_redirecting()}</div>
-{:else}
+{#if view.kind === 'shell'}
 	{@render shell()}
+{:else}
+	<div class="grid h-svh place-items-center text-muted-foreground">{view.text()}</div>
 {/if}

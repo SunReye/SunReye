@@ -64,6 +64,21 @@ describe("domainFor", () => {
   it("falls back to [0,1] with no finite values", () => {
     expect(domainFor([], [s("eff", "%")])).toEqual([0, 1]);
   });
+
+  it("skips non-finite readings instead of poisoning the domain", () => {
+    const withGaps = [
+      { date: new Date(0), eff: NaN },
+      { date: new Date(1), eff: 50 },
+    ];
+    expect(domainFor(withGaps, [s("eff", "%")])).toEqual([0, 55.00000000000001]);
+  });
+
+  it("gives a flat series a band from zero, by sign", () => {
+    const flat = (v: number) => [{ date: new Date(0), eff: v }];
+    expect(domainFor(flat(40), [s("eff", "%")])).toEqual([0, 44]);
+    expect(domainFor(flat(-40), [s("eff", "%")])).toEqual([-44, 0]);
+    expect(domainFor(flat(0), [s("eff", "%")])).toEqual([0, 1]);
+  });
 });
 
 describe("normalizeSeries", () => {
