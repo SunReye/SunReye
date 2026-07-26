@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { coercePayload, parseLoadpointTopic } from "./evcc-topics";
+import { coercePayload, parseLoadpointTopic, parseVehicleTopic } from "./evcc-topics";
 
 describe("parseLoadpointTopic", () => {
   test("parses a simple leaf into index + key", () => {
@@ -41,6 +41,41 @@ describe("parseLoadpointTopic", () => {
       key: "mode",
     });
     expect(parseLoadpointTopic("my/evcc", "evcc/loadpoints/1/mode")).toBeNull();
+  });
+});
+
+describe("parseVehicleTopic", () => {
+  test("parses a leaf into the config name + key", () => {
+    expect(parseVehicleTopic("evcc", "evcc/vehicles/tesla_ble/limitSoc")).toEqual({
+      name: "tesla_ble",
+      key: "limitSoc",
+    });
+  });
+
+  test("joins nested keys (multi-segment remainder)", () => {
+    expect(parseVehicleTopic("evcc", "evcc/vehicles/tesla_ble/planSoc/0/soc")).toEqual({
+      name: "tesla_ble",
+      key: "planSoc/0/soc",
+    });
+  });
+
+  test("ignores the count topic, bare names and non-vehicle topics", () => {
+    expect(parseVehicleTopic("evcc", "evcc/vehicles")).toBeNull();
+    expect(parseVehicleTopic("evcc", "evcc/vehicles/tesla_ble")).toBeNull();
+    expect(parseVehicleTopic("evcc", "evcc/loadpoints/1/limitSoc")).toBeNull();
+    expect(parseVehicleTopic("evcc", "evcc/status")).toBeNull();
+  });
+
+  test("ignores command echoes — our own vehicle limit writes land here", () => {
+    expect(parseVehicleTopic("evcc", "evcc/vehicles/tesla_ble/limitSoc/set")).toBeNull();
+  });
+
+  test("honors a custom topic root", () => {
+    expect(parseVehicleTopic("my/evcc", "my/evcc/vehicles/vw/limitSoc")).toEqual({
+      name: "vw",
+      key: "limitSoc",
+    });
+    expect(parseVehicleTopic("my/evcc", "evcc/vehicles/vw/limitSoc")).toBeNull();
   });
 });
 

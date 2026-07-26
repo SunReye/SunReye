@@ -146,9 +146,12 @@ const loadpoint = (over: Partial<EvccLoadpoint> = {}): EvccLoadpoint => ({
   vehicleSoc: null,
   vehicleRange: null,
   vehicleTitle: null,
+  vehicleName: null,
   sessionEnergy: null,
   chargeRemainingEnergy: null,
   limitSoc: null,
+  effectiveLimitSoc: null,
+  vehicleLimitSoc: null,
   phasesActive: null,
   ...over,
 });

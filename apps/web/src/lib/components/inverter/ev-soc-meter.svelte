@@ -1,5 +1,5 @@
 <script lang="ts">
-	import type { EvccLoadpoint } from '$lib/evcc/store.svelte';
+	import { displayLimitSoc, type EvccLoadpoint } from '$lib/evcc/store.svelte';
 	import { socColor } from '$lib/inverter/power-graph';
 
 	// State-of-charge meter for one loadpoint, mirroring the ratio meters on the
@@ -9,8 +9,9 @@
 	let { lp }: { lp: EvccLoadpoint } = $props();
 
 	const soc = $derived(Math.round(lp.vehicleSoc ?? 0));
-	// limitSoc is a %, with 0 meaning "no limit"; only mark it when it sits inside the bar.
-	const showLimit = $derived(lp.limitSoc !== null && lp.limitSoc > 0 && lp.limitSoc < 100);
+	// The limit is a %, with 0 meaning "no limit"; only mark it when it sits inside the bar.
+	const limit = $derived(displayLimitSoc(lp));
+	const showLimit = $derived(limit > 0 && limit < 100);
 </script>
 
 <span class="flex flex-col gap-1 border-t border-border/40 pt-2">
@@ -29,7 +30,7 @@
 			style={`width:${soc}%;background:${socColor(soc)};transition:width 700ms ease`}
 		></span>
 		{#if showLimit}
-			<span class="absolute top-0 h-full w-px bg-foreground/60" style={`left:${lp.limitSoc}%`}></span>
+			<span class="absolute top-0 h-full w-px bg-foreground/60" style={`left:${limit}%`}></span>
 		{/if}
 	</span>
 </span>

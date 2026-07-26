@@ -64,7 +64,7 @@ transiently negative Home is clamped to 0.
 - **EV card** (one per loadpoint): status (charging / plugged in / disconnected), charge
   power, vehicle name, SoC and range, session energy, and the active charge mode.
 - **Quick-settings** (admins only, tap the card): the four EVCC charge modes — Off, Solar,
-  Min + Solar, Fast — and a charge-limit slider (`limitSoc`, 0 = no limit). Commands are
+  Min + Solar, Fast — and a charge-limit slider (0 = no limit). Commands are
   published to EVCC's `/set` topics; the card reflects the new state as soon as EVCC
   republishes it (typically ~2 s).
 
@@ -76,8 +76,27 @@ SunReye runs a dedicated MQTT client (independent of the inverter bridge) subscr
 | --- | --- |
 | `<root>/status` | EVCC's own online/offline (Last-Will) — drives reachability. |
 | `<root>/loadpoints/#` | Retained per-loadpoint state (`chargePower`, `vehicleSoc`, …). |
+| `<root>/vehicles/#` | Retained per-vehicle state — which cars EVCC knows, for the charge-limit write. |
 
-Commands go to `<root>/loadpoints/<n>/mode/set` and `<root>/loadpoints/<n>/limitSoc/set`.
+Mode commands go to `<root>/loadpoints/<n>/mode/set`.
+
+### The charge limit
+
+EVCC stores the limit in three places, and SunReye follows its lead:
+
+| Topic | Meaning |
+| --- | --- |
+| `<root>/vehicles/<name>/limitSoc` | The car's **configured** limit — durable, survives unplug and restart. |
+| `<root>/loadpoints/<n>/limitSoc` | A per-**session** override. `0` means "no override", not "no limit"; EVCC clears it when the session ends. |
+| `<root>/loadpoints/<n>/effectiveLimitSoc` | EVCC's resolution of the two — the value its own UI shows. |
+
+SunReye **displays** `effectiveLimitSoc` and **writes** to
+`<root>/vehicles/<name>/limitSoc/set` whenever the loadpoint reports a vehicle EVCC knows,
+so the limit sticks. If no vehicle is identified (a guest car, or none configured), it
+writes the session override at `<root>/loadpoints/<n>/limitSoc/set` instead.
+
+The loadpoint's `vehicleLimitSoc` — the limit read *from the car* — is informational and
+takes no part in this.
 
 Because EVCC retains its state topics, SunReye has a complete snapshot within a second of
 connecting. If the broker drops or EVCC's status flips to `offline`, the dashboard hides
