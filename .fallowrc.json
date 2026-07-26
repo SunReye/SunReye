@@ -6,32 +6,34 @@
     "apps/web/src/lib/utils.ts",
     "packages/backend/data/**"
   ],
-  "ignoreDependencies": [
-    "bits-ui",
-    "tailwind-variants",
-    "svelte-sonner",
-    "mode-watcher",
-    "@internationalized/date",
-    "phosphor-svelte",
-    "sharp",
-    "clsx",
-    "tailwind-merge",
-    "zod"
-  ],
+  "ignoreDependencies": ["sharp", "zod"],
   "dynamicallyLoaded": ["apps/docs/src/styles/theme.css"],
   "usedClassMembers": [{ "implements": "InverterSource", "members": ["read"] }],
   "production": { "deadCode": true },
   "audit": { "gate": "all" },
+  "includeEntryExports": true,
+  "publicPackages": ["@sunreye/profile-sdk", "@SunReye/inverter-core"],
+  "ignoreExports": [
+    { "file": "apps/docs/astro.config.mjs", "exports": ["*"] },
+    { "file": "apps/server/tsdown.config.ts", "exports": ["*"] },
+    { "file": "apps/web/svelte.config.js", "exports": ["*"] },
+    { "file": "packages/db/drizzle.config.ts", "exports": ["*"] },
+    { "file": "packages/profile-sdk/tsdown.config.ts", "exports": ["*"] }
+  ],
   "boundaries": {
     "zones": [
-      { "name": "web", "patterns": ["apps/web/**"] },
-      { "name": "server", "patterns": ["apps/server/**"] },
-      { "name": "docs", "patterns": ["apps/docs/**"] },
-      { "name": "db", "patterns": ["packages/db/**"] },
-      { "name": "auth", "patterns": ["packages/auth/**"] },
-      { "name": "env", "patterns": ["packages/env/**"] },
-      { "name": "inverter-core", "patterns": ["packages/inverter-core/**"] },
-      { "name": "profile-sdk", "patterns": ["packages/profile-sdk/**"] }
+      { "name": "web", "patterns": ["apps/web/src/**"] },
+      { "name": "server", "patterns": ["apps/server/src/**"] },
+      { "name": "docs", "patterns": ["apps/docs/src/**"] },
+      { "name": "db", "patterns": ["packages/db/src/**"] },
+      { "name": "auth", "patterns": ["packages/auth/src/**"] },
+      { "name": "env", "patterns": ["packages/env/src/**"] },
+      { "name": "inverter-core", "patterns": ["packages/inverter-core/src/**"] },
+      { "name": "profile-sdk", "patterns": ["packages/profile-sdk/src/**"] },
+      {
+        "name": "tooling",
+        "patterns": ["scripts/**", "apps/*/scripts/**", "packages/*/scripts/**", "**/*.config.*"]
+      }
     ],
     "rules": [
       {
@@ -45,8 +47,22 @@
       { "from": "inverter-core", "allow": [] },
       { "from": "profile-sdk", "allow": ["inverter-core"] },
       { "from": "env", "allow": [] },
-      { "from": "docs", "allow": [] }
-    ]
+      { "from": "docs", "allow": [] },
+      {
+        "from": "tooling",
+        "allow": ["web", "server", "docs", "db", "auth", "env", "inverter-core", "profile-sdk"]
+      }
+    ],
+    "coverage": { "requireAllFiles": true },
+    "calls": {
+      "forbidden": [
+        { "from": "web", "callee": ["fs.*", "node:fs.*", "child_process.*", "eval"] },
+        { "from": "inverter-core", "callee": ["fetch", "fs.*", "node:fs.*", "child_process.*"] },
+        { "from": "db", "callee": ["fetch", "child_process.*"] },
+        { "from": "env", "callee": ["fetch", "child_process.*"] },
+        { "from": "server", "callee": ["eval"] }
+      ]
+    }
   },
   "rules": {
     "private-type-leaks": "error",
@@ -71,8 +87,8 @@
     "security-sink": "error"
   },
   "health": {
-    "maxCyclomatic": 12,
-    "maxCognitive": 12,
+    "maxCyclomatic": 10,
+    "maxCognitive": 10,
     "maxCrap": 30
   },
   "duplicates": {
