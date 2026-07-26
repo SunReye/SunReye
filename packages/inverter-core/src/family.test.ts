@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 
 import { deriveCapabilities } from "./capabilities";
 import { control, defineFamily, defineProfile, defineVariant, metric, sumOf } from "./define";
-import { hydrateProfile, type ProfileData } from "./profile-data";
+import { hydrateProfile, type MetricDataDef, type ProfileData } from "./profile-data";
 import { safeParseProfileData } from "./schema";
 
 /** A base with 2 PV strings, a ranged writable setting, and a computed PV total. */
@@ -416,6 +416,87 @@ describe("defineVariant — dependency-aware removal", () => {
     expect(() => defineVariant(fixedArityBase(), { id: "x", metrics: { "b.y": null } })).toThrow(
       /fixed-arity diff/,
     );
+  });
+
+  /** A base whose computed metrics cover every remaining `ComputeExpr` kind. */
+  function exprBase(computed: MetricDataDef[]): ProfileData {
+    return defineProfile({
+      id: "acme-expr",
+      name: "x",
+      manufacturer: "x",
+      version: "1.0.0",
+      metrics: [
+        metric("a/x", { label: "A", unit: "W", group: "g", addr: 1 }),
+        metric("b/y", { label: "B", unit: "W", group: "g", addr: 2 }),
+        metric("c/z", { label: "C", unit: "W", group: "g", addr: 3 }),
+        ...computed,
+      ],
+    });
+  }
+
+  const derived = (key: string, computeExpr: MetricDataDef["computeExpr"]) =>
+    metric(key, { label: key, unit: "W", group: "g", computeExpr });
+
+  test("removing a scale's operand throws", () => {
+    const p = exprBase([derived("scaled", { scale: ["a.x", 0.1] })]);
+    expect(() => defineVariant(p, { id: "x", metrics: { "a.x": null } })).toThrow(
+      /fixed-arity scale/,
+    );
+  });
+
+  test("removing a clamp's key throws", () => {
+    const p = exprBase([derived("clamped", { clamp: { key: "a.x", min: 0 } })]);
+    expect(() => defineVariant(p, { id: "x", metrics: { "a.x": null } })).toThrow(
+      /single-key clamp/,
+    );
+  });
+
+  test("combine prunes both add and sub, dropping an emptied sub", () => {
+    const p = exprBase([derived("net", { combine: { add: ["a.x", "b.y"], sub: ["c.z"] } })]);
+    const v = defineVariant(p, { id: "x", metrics: { "b.y": null, "c.z": null } });
+    expect(byKey(v, "net")?.computeExpr).toEqual({ combine: { add: ["a.x"] } });
+  });
+
+  test("combine keeps a surviving sub operand", () => {
+    const p = exprBase([derived("net", { combine: { add: ["a.x", "b.y"], sub: ["c.z"] } })]);
+    const v = defineVariant(p, { id: "x", metrics: { "b.y": null } });
+    expect(byKey(v, "net")?.computeExpr).toEqual({ combine: { add: ["a.x"], sub: ["c.z"] } });
+  });
+
+  test("emptying combine.add throws", () => {
+    const p = exprBase([derived("net", { combine: { add: ["a.x"], sub: ["c.z"] } })]);
+    expect(() => defineVariant(p, { id: "x", metrics: { "a.x": null } })).toThrow(
+      /empties combine\.add/,
+    );
+  });
+
+  test("ratio prunes num and den, preserving an explicit scale", () => {
+    const p = exprBase([
+      derived("eff", { ratio: { num: ["a.x", "b.y"], den: ["b.y", "c.z"], scale: 100 } }),
+    ]);
+    const v = defineVariant(p, { id: "x", metrics: { "b.y": null } });
+    expect(byKey(v, "eff")?.computeExpr).toEqual({
+      ratio: { num: ["a.x"], den: ["c.z"], scale: 100 },
+    });
+  });
+
+  test("ratio without a scale prunes to a bare num/den", () => {
+    const p = exprBase([derived("eff", { ratio: { num: ["a.x", "b.y"], den: ["c.z"] } })]);
+    const v = defineVariant(p, { id: "x", metrics: { "b.y": null } });
+    expect(byKey(v, "eff")?.computeExpr).toEqual({ ratio: { num: ["a.x"], den: ["c.z"] } });
+  });
+
+  test("emptying ratio.den throws", () => {
+    const p = exprBase([derived("eff", { ratio: { num: ["a.x"], den: ["c.z"] } })]);
+    expect(() => defineVariant(p, { id: "x", metrics: { "c.z": null } })).toThrow(
+      /empties ratio\.den/,
+    );
+  });
+
+  test("an expr untouched by the removal keeps its original operands", () => {
+    const p = exprBase([derived("net", { combine: { add: ["a.x"], sub: ["b.y"] } })]);
+    const v = defineVariant(p, { id: "x", metrics: { "c.z": null } });
+    expect(byKey(v, "net")?.computeExpr).toEqual({ combine: { add: ["a.x"], sub: ["b.y"] } });
   });
 
   test("removing a control's target throws", () => {
