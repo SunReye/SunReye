@@ -650,6 +650,34 @@ const CACHE_TTL_MS = 30 * 60 * 1000;
 // (cheap — 48 hours × arrays) instead of being frozen for the TTL.
 let cache: { key: string; at: number; data: IrradianceForecast; provider: string } | null = null;
 
+/** A cache hit: the provider's raw irradiance plus which provider produced it. */
+type CachedIrradiance = { data: IrradianceForecast; provider: string };
+
+/** The cached irradiance for `key` while still inside the TTL, else `null`. */
+function freshCache(key: string, nowMs: number): CachedIrradiance | null {
+  if (cache === null || cache.key !== key || nowMs - cache.at >= CACHE_TTL_MS) return null;
+  return cache;
+}
+
+/**
+ * Assemble the finished forecast from raw irradiance. Day-start SOC needs the
+ * series' own time base, so it resolves here (one indexed rollup row) rather
+ * than with the other sim inputs; it only matters when a battery participates
+ * in the clipping sim.
+ */
+async function buildWithDayStartSoc(
+  config: WeatherConfig,
+  { data, provider }: CachedIrradiance,
+  sim: ForecastSimInputs | undefined,
+  correction: CorrectionModel | undefined,
+): Promise<SolarForecast> {
+  const simInputs =
+    sim && config.forecast.battery != null
+      ? { ...sim, dayStartSocPct: await resolveDayStartSoc(data) }
+      : sim;
+  return buildSolarForecast(config.forecast, data, provider, Date.now(), simInputs, correction);
+}
+
 /**
  * Production forecast for the configured plant, or `null` when the forecast is
  * disabled/unconfigured, the provider is unknown, or the fetch fails with no
@@ -672,22 +700,11 @@ export async function fetchSolarForecast(config: WeatherConfig): Promise<SolarFo
     clippingConfigured(config.forecast) ? resolveSimInputs(config) : undefined,
     resolveCorrection(config),
   ]);
-
-  // Day-start SOC needs the series' own time base, so it resolves per build
-  // (one indexed rollup row) once the irradiance data is at hand; it only
-  // matters when a battery participates in the clipping sim.
-  const build = async (data: IrradianceForecast, providerId: string): Promise<SolarForecast> => {
-    const simInputs =
-      sim && config.forecast.battery != null
-        ? { ...sim, dayStartSocPct: await resolveDayStartSoc(data) }
-        : sim;
-    return buildSolarForecast(config.forecast, data, providerId, Date.now(), simInputs, correction);
-  };
+  const build = (hit: CachedIrradiance) => buildWithDayStartSoc(config, hit, sim, correction);
 
   const key = JSON.stringify([config.latitude, config.longitude, config.forecast]);
-  if (cache !== null && cache.key === key && Date.now() - cache.at < CACHE_TTL_MS) {
-    return build(cache.data, cache.provider);
-  }
+  const cached = freshCache(key, Date.now());
+  if (cached) return build(cached);
 
   try {
     const data = await provider.fetch(
@@ -695,9 +712,10 @@ export async function fetchSolarForecast(config: WeatherConfig): Promise<SolarFo
       config.forecast.arrays.map(({ tilt, azimuth }) => ({ tilt, azimuth })),
     );
     cache = { key, at: Date.now(), data, provider: provider.id };
-    return build(data, provider.id);
+    return build({ data, provider: provider.id });
   } catch (err) {
     logger.warn("fetch failed: {error}", { error: err instanceof Error ? err.message : err });
-    return cache?.key === key ? build(cache.data, cache.provider) : null;
+    // A stale entry for this same key still beats no forecast at all.
+    return cache?.key === key ? build(cache) : null;
   }
 }
