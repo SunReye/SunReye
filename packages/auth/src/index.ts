@@ -25,7 +25,12 @@ function proxiedRequestOrigin(request: Request | undefined): string[] {
   return origin ? [origin] : [];
 }
 
-export function createAuth() {
+/**
+ * Build the Better Auth instance. Not exported: the package's public surface is
+ * the singleton {@link auth} below, and a second instance would open a second
+ * connection pool against the same database.
+ */
+function createAuth() {
   const db = createDb();
 
   /** Row count of the `user` table — drives first-run admin + closed signup. */
