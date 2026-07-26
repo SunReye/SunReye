@@ -11,10 +11,10 @@ import { z } from "zod";
 export const DISPLAY_KEY = "display";
 
 /** `"auto"` sentinel = follow the viewer's system time zone. */
-export const TIME_ZONE_AUTO = "auto";
+const TIME_ZONE_AUTO = "auto";
 
 /** True when `tz` is a time zone the runtime's Intl implementation accepts. */
-export function isValidTimeZone(tz: string): boolean {
+function isValidTimeZone(tz: string): boolean {
   try {
     // Constructing with an unknown zone throws a RangeError.
     new Intl.DateTimeFormat(undefined, { timeZone: tz });

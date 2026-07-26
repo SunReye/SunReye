@@ -16,11 +16,10 @@ import { z } from "zod";
 export const AUTOMATION_STATE_KEY = "automationState";
 
 /** One held register: the value to restore, and when it was captured. */
-export const automationSnapshotSchema = z.object({
+const automationSnapshotSchema = z.object({
   previousValue: z.number(),
   capturedAt: z.string(),
 });
-export type AutomationSnapshot = z.infer<typeof automationSnapshotSchema>;
 
 /** Map of `${profileId}:${automationId}` → snapshot. Absent key = released. */
 export const automationStateSchema = z.record(z.string(), automationSnapshotSchema);
