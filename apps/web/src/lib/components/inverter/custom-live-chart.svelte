@@ -80,18 +80,20 @@
 	);
 
 	// A real-time cursor that drifts continuously toward the newest sample instead of
-	// snapping to it once a second. Only the marks' translate (below) reads `cursor` —
-	// never `data`/`xDomain` — so the chart itself does NOT re-render per frame. Mirrors
-	// live-area.svelte; here the marks group holds every overlaid series.
+	// snapping to it once a second. Stretch every transition across the feed's own
+	// sample spacing (`interval`, the same value `glideOffset` scrolls by, so the
+	// cursor's speed matches the distance it has to cover) with a small overshoot, so
+	// it gently trails and never reaches the target and freezes between samples. Only
+	// the marks' translate (below) reads `cursor` — never `data`/`xDomain` — so the
+	// chart itself does NOT re-render per frame. Mirrors live-area.svelte; here the
+	// marks group holds every overlaid series.
 	const cursor = new Tween(untrack(() => lastT) ?? 0);
-	let lastAt = performance.now();
 	$effect(() => {
-		const t = lastT; // track live updates
+		const t = lastT; // track live updates only
 		if (t === undefined) return;
-		const now = performance.now();
-		const gap = now - lastAt;
-		lastAt = now;
-		void cursor.set(t, { duration: Math.min(2000, Math.max(300, gap)), easing: linear });
+		// Untracked: `interval` changes in lockstep with `lastT`, and only a new
+		// sample should drive a new glide.
+		void cursor.set(t, { duration: Math.max(300, untrack(() => interval) * 1.15), easing: linear });
 	});
 
 	// Keep the right axis gutter opaque too when a second axis is present.
