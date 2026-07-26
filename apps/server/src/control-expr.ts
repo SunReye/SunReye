@@ -11,7 +11,7 @@
  * the live source.
  */
 
-import { type ControlState, controlStateKey } from "@SunReye/db/control-state";
+import { type ControlLock, type ControlState, controlStateKey } from "@SunReye/db/control-state";
 import type { InverterSample, MetricDef } from "@SunReye/inverter-core";
 import type { ProfileContext } from "./inverter";
 
@@ -51,6 +51,61 @@ export async function executeControl(def: MetricDef, value: number, io: ControlI
   throw new Error(`unsupported controlExpr: ${JSON.stringify(_exhaustive)}`);
 }
 
+/** The state a single snapshotToggle transition operates on. */
+interface ToggleCtx {
+  def: MetricDef;
+  /** The real register the control locks. */
+  target: string;
+  /** This control's slot in {@link ControlState}. */
+  stateKey: string;
+  /** The whole state as read at the start of the transition. */
+  state: ControlState;
+  io: ControlIO;
+}
+
+/**
+ * Lock: capture the target's live value, persist it, then write `lockedValue`.
+ * Persisting first means the captured value is never lost; a failed device write
+ * rolls the snapshot back so the device stays unchanged.
+ */
+async function engageSnapshot(
+  { def, target, stateKey, state, io }: ToggleCtx,
+  lockedValue: number,
+): Promise<void> {
+  const current = io.readLive(target);
+  if (current === undefined) {
+    throw new Error(
+      `cannot lock ${def.key}: current value of "${target}" is unknown (inverter offline?)`,
+    );
+  }
+  await io.store.set({
+    ...state,
+    [stateKey]: { previousValue: current, lockedAt: new Date().toISOString() },
+  });
+  try {
+    await io.write(target, lockedValue);
+  } catch (err) {
+    await io.store.set(state);
+    throw err;
+  }
+}
+
+/**
+ * Unlock: restore the captured value on the device first and only clear the
+ * snapshot once that write lands, so a failed restore stays retryable.
+ */
+async function releaseSnapshot(
+  { def, target, stateKey, state, io }: ToggleCtx,
+  engaged: ControlLock,
+): Promise<void> {
+  const invalid = io.ctx.validateWrite(target, engaged.previousValue);
+  if (invalid) throw new Error(`cannot unlock ${def.key}: ${invalid}`);
+  await io.write(target, engaged.previousValue);
+  const rest = { ...state };
+  delete rest[stateKey];
+  await io.store.set(rest);
+}
+
 async function snapshotToggle(
   def: MetricDef,
   { target, lockedValue }: { target: string; lockedValue: number },
@@ -60,40 +115,16 @@ async function snapshotToggle(
   const stateKey = controlStateKey(io.ctx.profile.id, def.key);
   const state = await io.store.get();
   const engaged = state[stateKey];
+  const ctx: ToggleCtx = { def, target, stateKey, state, io };
 
+  // Both transitions are idempotent: re-locking must never re-snapshot (it would
+  // capture the override), and unlocking a released control is a no-op.
   if (value === 1) {
-    if (engaged) return; // already locked — never re-snapshot (would capture the override)
-    const current = io.readLive(target);
-    if (current === undefined) {
-      throw new Error(
-        `cannot lock ${def.key}: current value of "${target}" is unknown (inverter offline?)`,
-      );
-    }
-    // Persist first so the captured value is never lost, then write the device;
-    // roll back the snapshot if the device write fails (device stays unchanged).
-    await io.store.set({
-      ...state,
-      [stateKey]: { previousValue: current, lockedAt: new Date().toISOString() },
-    });
-    try {
-      await io.write(target, lockedValue);
-    } catch (err) {
-      await io.store.set(state);
-      throw err;
-    }
+    if (!engaged) await engageSnapshot(ctx, lockedValue);
     return;
   }
-
   if (value === 0) {
-    if (!engaged) return; // already unlocked
-    const invalid = io.ctx.validateWrite(target, engaged.previousValue);
-    if (invalid) throw new Error(`cannot unlock ${def.key}: ${invalid}`);
-    // Restore the device first; only clear the snapshot once the write lands so
-    // a failed restore stays retryable.
-    await io.write(target, engaged.previousValue);
-    const rest = { ...state };
-    delete rest[stateKey];
-    await io.store.set(rest);
+    if (engaged) await releaseSnapshot(ctx, engaged);
     return;
   }
 

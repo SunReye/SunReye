@@ -60,6 +60,21 @@ export function recentLogs(): LogEntry[] {
 }
 
 /**
+ * Render one interpolated value: strings verbatim, everything else as JSON.
+ * `JSON.stringify` yields `undefined` for functions and `undefined` itself, and
+ * `String()` reproduces the plain concatenation that would have coerced it.
+ * Circular structures throw, and fall back to `String(value)`.
+ */
+function renderValue(value: unknown): string {
+  if (typeof value === "string") return value;
+  try {
+    return String(JSON.stringify(value));
+  } catch {
+    return String(value);
+  }
+}
+
+/**
  * Render a LogTape message template to a plain string. The message array
  * alternates string literals (even indices) with interpolated values (odd),
  * e.g. `["write failed: ", err, ""]`.
@@ -67,18 +82,7 @@ export function recentLogs(): LogEntry[] {
 function renderMessage(message: readonly unknown[]): string {
   let out = "";
   for (let i = 0; i < message.length; i++) {
-    const part = message[i];
-    if (i % 2 === 0) {
-      out += typeof part === "string" ? part : String(part);
-    } else if (typeof part === "string") {
-      out += part;
-    } else {
-      try {
-        out += JSON.stringify(part);
-      } catch {
-        out += String(part);
-      }
-    }
+    out += i % 2 === 0 ? String(message[i]) : renderValue(message[i]);
   }
   return out;
 }

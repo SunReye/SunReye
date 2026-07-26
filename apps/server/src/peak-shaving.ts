@@ -165,6 +165,22 @@ export interface Decision {
 }
 
 /**
+ * Width of the slot starting at `startMs`, ms: the gap to the next slot's local
+ * time, but never wider than an hour — a series gap (e.g. a day boundary) must
+ * not stretch a slot across it. Falls back to the nominal step at the tail.
+ */
+function slotWidthMs(
+  startMs: number,
+  nextTime: string | undefined,
+  offsetMs: number,
+  fallbackWidthMs: number,
+): number {
+  if (nextTime === undefined) return fallbackWidthMs;
+  const gap = Date.parse(`${nextTime}:00Z`) - offsetMs - startMs;
+  return gap > 0 && gap <= HOUR_MS ? gap : fallbackWidthMs;
+}
+
+/**
  * Remaining-today energy above `thresholdW` in the raw series, kWh. Future
  * slots of the plant-local calendar day only, with the running slot prorated
  * by the fraction still ahead (mirrors `remainingTodayKwh` in solar-forecast).
@@ -175,15 +191,11 @@ function surplusAboveKwh(view: ForecastSlice, thresholdW: number, nowMs: number)
   const today = new Date(nowMs + offsetMs).toISOString().slice(0, 10);
   const fallbackWidth = view.stepMinutes * 60_000;
   let kwh = 0;
-  for (let i = 0; i < view.series.length; i++) {
-    const point = view.series[i];
-    if (!point || !point.time.startsWith(today)) continue;
+  for (const [i, point] of view.series.entries()) {
+    if (!point.time.startsWith(today)) continue;
     const startMs = Date.parse(`${point.time}:00Z`) - offsetMs;
-    const next = view.series[i + 1];
-    // Slot width from the gap to the next slot, but never wider than an hour —
-    // a series gap (e.g. day boundary) must not stretch a slot across it.
-    const gap = next ? Date.parse(`${next.time}:00Z`) - offsetMs - startMs : 0;
-    const width = gap > 0 && gap <= HOUR_MS ? gap : fallbackWidth;
+    const width = slotWidthMs(startMs, view.series[i + 1]?.time, offsetMs, fallbackWidth);
+    // Only the part of the slot still ahead of `now` counts.
     const left = Math.min(startMs + width - nowMs, width);
     if (left <= 0) continue;
     kwh += (Math.max(0, point.watts - thresholdW) * (left / HOUR_MS)) / 1000;
