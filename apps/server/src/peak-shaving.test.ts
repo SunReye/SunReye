@@ -196,6 +196,21 @@ describe("remaining-today surplus above the export limit", () => {
     expect(surplusAbove(view, 0, NOON)).toBe(0);
   });
 
+  test("a series gap wider than an hour falls back to the nominal step", () => {
+    // 13:00 then 15:00: the 2 h gap must not stretch the 13:00 slot across it,
+    // so both slots count as one nominal 15-min step — 0.25 kWh above the limit
+    // each. Stretching would report 2.25 kWh.
+    const view: ForecastSlice = {
+      stepMinutes: 15,
+      utcOffsetSeconds: 0,
+      series: [
+        { time: "2026-07-25T13:00", watts: 9000, peakWatts: 9000 },
+        { time: "2026-07-25T15:00", watts: 9000, peakWatts: 9000 },
+      ],
+    };
+    expect(surplusAbove(view, 8000, NOON)).toBeCloseTo(0.5, 6);
+  });
+
   test("respects the plant's UTC offset when bucketing the local day", () => {
     // Plant at UTC+2: local 23:45 of the 25th is 21:45 UTC. At 21:00 UTC the
     // slot is still "today" locally and future — it must count.
