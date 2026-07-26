@@ -10,6 +10,7 @@
 	import SolarForecastFields, { type ArrayFields } from './solar-forecast-fields.svelte';
 	import ForecastCorrectionPanel from './forecast-correction-panel.svelte';
 	import { api } from '$lib/api';
+	import { parseNum } from '$lib/parse-num';
 	import { useAppSession } from '$lib/session';
 	import * as m from '$lib/paraglide/messages';
 
@@ -74,13 +75,6 @@
 			battReserveText = draft.forecast.battery ? draft.forecast.battery.minSoc.toString() : '';
 		}
 	});
-
-	function parseNum(text: string): number | null {
-		const t = text.trim();
-		if (t === '') return null;
-		const n = Number(t);
-		return Number.isFinite(n) ? n : null;
-	}
 
 	type ForecastFields = {
 		arrays: PvArray[];
