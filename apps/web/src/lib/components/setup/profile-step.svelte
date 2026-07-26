@@ -7,7 +7,7 @@
 	import * as Collapsible from '$lib/components/ui/collapsible';
 	import ExternalProfilesManager from '$lib/components/settings/external-profiles-manager.svelte';
 	import GroupedProfileList from '$lib/components/settings/grouped-profile-list.svelte';
-	import StatusBadge from '$lib/components/settings/status-badge.svelte';
+	import ProfileRow from '$lib/components/settings/profile-row.svelte';
 	import type { RegisteredProfile } from '$lib/components/settings/profile-types';
 	import * as m from '$lib/paraglide/messages';
 
@@ -24,36 +24,26 @@
 	} = $props();
 
 	let showSources = $state(false);
+
+	const sourcesLabel = $derived(showSources ? m.setup_hide_sources() : m.setup_add_source());
+	const checkIn = $derived({ duration: prefersReducedMotion.current ? 0 : 150, start: 0.4 });
+	const selectVariant = (selected: boolean) => (selected ? 'default' : 'outline');
 </script>
 
 {#snippet profileRow(p: RegisteredProfile)}
 	{@const selected = p.id === selectedId}
-	<div class="flex flex-col gap-3 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
-		<div class="flex min-w-0 flex-col gap-1">
-			<span class="flex flex-wrap items-center gap-1.5 text-sm font-medium">
-				<span class="wrap-break-word">{p.name}</span>
-				{#if p.builtin}
-					<StatusBadge label={m.badge_builtin()} />
-				{/if}
-			</span>
-			<span class="text-xs text-muted-foreground">
-				{p.manufacturer}{p.version ? ` · v${p.version}` : ''}
-			</span>
-		</div>
-		<div class="flex shrink-0 items-center gap-2">
+	<ProfileRow profile={p}>
+		{#snippet actions()}
 			<!-- Same element across states so the outline→solid colour change tweens. -->
 			<Button
-				variant={selected ? 'default' : 'outline'}
+				variant={selectVariant(selected)}
 				size="sm"
 				class="min-w-24 flex-1 sm:flex-none"
 				aria-pressed={selected}
 				onclick={() => (selectedId = p.id)}
 			>
 				{#if selected}
-					<span
-						in:scale={{ duration: prefersReducedMotion.current ? 0 : 150, start: 0.4 }}
-						class="flex items-center"
-					>
+					<span in:scale={checkIn} class="flex items-center">
 						<Check class="size-4" weight="bold" />
 					</span>
 					{m.profile_selected()}
@@ -61,8 +51,8 @@
 					{m.profile_select()}
 				{/if}
 			</Button>
-		</div>
-	</div>
+		{/snippet}
+	</ProfileRow>
 {/snippet}
 
 <section class="flex flex-col gap-4 border border-border p-4">
@@ -82,7 +72,7 @@
 				{#snippet child({ props })}
 					<Button variant="outline" size="sm" class="w-full sm:w-auto" {...props}>
 						<Plus class="size-4" />
-						{showSources ? m.setup_hide_sources() : m.setup_add_source()}
+						{sourcesLabel}
 					</Button>
 				{/snippet}
 			</Collapsible.Trigger>
