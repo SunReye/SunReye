@@ -1,17 +1,12 @@
 <script lang="ts">
-	import { AreaChart, Area, Highlight } from 'layerchart';
 	import { fade } from 'svelte/transition';
-	import { curveCatmullRom } from 'd3-shape';
 	import PencilSimple from 'phosphor-svelte/lib/PencilSimple';
 	import Trash from 'phosphor-svelte/lib/Trash';
 	import { Button } from '$lib/components/ui/button';
-	import * as Chart from '$lib/components/ui/chart';
-	import { Skeleton } from '$lib/components/ui/skeleton';
 	import * as msg from '$lib/paraglide/messages';
 	import ChartLegend from '$lib/components/inverter/chart-legend.svelte';
-	import CustomLiveChart from '$lib/components/inverter/custom-live-chart.svelte';
-	import DualYAxes from '$lib/components/inverter/_shared/dual-y-axes.svelte';
-	import CustomChartTooltip from '$lib/components/inverter/custom-chart-tooltip.svelte';
+	import CustomChartPlot from '$lib/components/inverter/_shared/custom-chart-plot.svelte';
+	import ChartStateView from '$lib/components/inverter/_shared/chart-state-view.svelte';
 	import { api } from '$lib/api';
 	import { inverter } from '$lib/inverter/store.svelte';
 	import { tooltipLabel, xTick } from '$lib/inverter/chart-format';
@@ -131,11 +126,20 @@
 	// one (power). Single-unit charts keep the plain filled area on one axis.
 	const axes = $derived(resolveAxes(historical, series));
 
-	// AreaChart's `marks` context isn't exposed in the public types; type just the
-	// fields the dual-axis marks snippet reads.
-	type MarksContext = {
-		context: { height: number; series: { visibleSeries: { key: string }[] } };
-	};
+	// A historical query is in flight (live mode streams instead of fetching).
+	const fetching = $derived(!range.live && loading);
+	/** True once there is actually something to plot. */
+	const plottable = $derived(resolved.length > 0 && !fetching && chartData.length > 0);
+	// Why there's no plot: no saved metric resolved at all, or the range is empty.
+	const emptyMessage = $derived(
+		resolved.length === 0 ? msg.chart_none_available() : msg.chart_no_data()
+	);
+
+	const missingNote = $derived(
+		missing.length === 1
+			? msg.chart_metrics_unavailable_one({ count: missing.length })
+			: msg.chart_metrics_unavailable_other({ count: missing.length })
+	);
 </script>
 
 <section class="flex flex-col gap-3 border border-border p-4">
@@ -143,10 +147,10 @@
 		<h3 class="truncate text-sm font-medium">{chart.name}</h3>
 		{#if isAdmin}
 			<div class="flex items-center gap-1">
-				<Button variant="ghost" size="icon" aria-label={msg.chart_edit_chart()} onclick={() => onEdit?.()}>
+				<Button variant="ghost" size="icon" aria-label={msg.chart_edit_chart()} onclick={onEdit}>
 					<PencilSimple class="size-4" />
 				</Button>
-				<Button variant="ghost" size="icon" aria-label={msg.chart_delete_chart()} onclick={() => onDelete?.()}>
+				<Button variant="ghost" size="icon" aria-label={msg.chart_delete_chart()} onclick={onDelete}>
 					<Trash class="size-4" />
 				</Button>
 			</div>
@@ -154,85 +158,27 @@
 	</div>
 
 	<div class="h-64 w-full">
-		{#if resolved.length === 0}
-			<div class="flex h-full items-center justify-center text-sm text-muted-foreground">
-				{msg.chart_none_available()}
-			</div>
-		{:else if !range.live && loading}
-			<Skeleton class="h-full w-full" />
-		{:else if chartData.length === 0}
-			<div class="flex h-full items-center justify-center text-sm text-muted-foreground">
-				{msg.chart_no_data()}
+		{#if plottable}
+			<div class="h-full w-full" in:fade={{ duration: 300 }}>
+				<CustomChartPlot
+					live={range.live}
+					data={chartData}
+					{series}
+					{config}
+					{axes}
+					{xDomain}
+					labelFormatter={labelFmt}
+					{xTickFormat}
+				/>
 			</div>
 		{:else}
-			<div class="h-full w-full" in:fade={{ duration: 300 }}>
-				{#if range.live}
-					<CustomLiveChart data={chartData} {series} {config} labelFormatter={labelFmt} />
-				{:else if axes.grouping.dualAxis}
-					<Chart.Container {config} class="aspect-auto h-full w-full">
-						<AreaChart
-							data={chartData}
-							x="date"
-							series={axes.plotSeries}
-							{xDomain}
-							yDomain={[0, 1]}
-							seriesLayout="overlap"
-							axis="x"
-							grid={false}
-							highlight={false}
-							padding={{ top: 8, right: 44, bottom: 28, left: 44 }}
-							props={{ xAxis: { format: xTickFormat, ticks: 4 } }}
-						>
-							{#snippet marks({ context }: MarksContext)}
-								<DualYAxes height={context.height} {axes} />
-								{#each context.series.visibleSeries as s (s.key)}
-									<Area
-										seriesKey={s.key}
-										curve={curveCatmullRom}
-										fillOpacity={0}
-										line={{ 'stroke-width': 1.5 }}
-									/>
-								{/each}
-								<Highlight points lines />
-							{/snippet}
-							{#snippet tooltip()}
-								<CustomChartTooltip {series} labelFormatter={labelFmt} />
-							{/snippet}
-						</AreaChart>
-					</Chart.Container>
-				{:else}
-					<Chart.Container {config} class="aspect-auto h-full w-full">
-						<AreaChart
-							data={chartData}
-							x="date"
-							{series}
-							{xDomain}
-							seriesLayout="overlap"
-							axis
-							grid
-							padding={{ top: 8, right: 8, bottom: 28, left: 44 }}
-							props={{
-								area: { curve: curveCatmullRom, fillOpacity: 0.2, line: { 'stroke-width': 1.5 } },
-								xAxis: { format: xTickFormat, ticks: 4 }
-							}}
-						>
-							{#snippet tooltip()}
-								<CustomChartTooltip {series} labelFormatter={labelFmt} />
-							{/snippet}
-						</AreaChart>
-					</Chart.Container>
-				{/if}
-			</div>
+			<ChartStateView loading={fetching} message={emptyMessage} />
 		{/if}
 	</div>
 
 	<ChartLegend items={legendItems} />
 
 	{#if missing.length > 0}
-		<p class="text-xs text-muted-foreground">
-			{missing.length === 1
-				? msg.chart_metrics_unavailable_one({ count: missing.length })
-				: msg.chart_metrics_unavailable_other({ count: missing.length })}
-		</p>
+		<p class="text-xs text-muted-foreground">{missingNote}</p>
 	{/if}
 </section>

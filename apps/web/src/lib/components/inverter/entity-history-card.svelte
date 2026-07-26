@@ -1,13 +1,11 @@
 <script lang="ts">
-	import { AreaChart, Area, LinearGradient } from 'layerchart';
 	import { fade } from 'svelte/transition';
-	import { curveCatmullRom } from 'd3-shape';
-	import * as Chart from '$lib/components/ui/chart';
 	import { Skeleton } from '$lib/components/ui/skeleton';
 	import LiveArea from '$lib/components/inverter/live-area.svelte';
-	import DivergingArea from '$lib/components/inverter/diverging-area.svelte';
-	import AnimatedNumber from '$lib/components/inverter/animated-number.svelte';
 	import MetricTooltipRow from '$lib/components/inverter/_shared/metric-tooltip-row.svelte';
+	import MetricReadout from '$lib/components/inverter/_shared/metric-readout.svelte';
+	import MetricHistoryChart from '$lib/components/inverter/_shared/metric-history-chart.svelte';
+	import ChartStateView from '$lib/components/inverter/_shared/chart-state-view.svelte';
 	import { api } from '$lib/api';
 	import * as m from '$lib/paraglide/messages';
 	import { inverter } from '$lib/inverter/store.svelte';
@@ -71,24 +69,21 @@
 	const labelFmt = (value: unknown) => tooltipLabel(range, value);
 	const xTickFormat = (value: unknown) => xTick(range, value);
 
-	type MarksContext = {
-		context: { yScale: (v: number) => number; height: number; padding: { bottom: number } };
-	};
+	const xDomain = $derived<[Date, Date]>([range.from, range.to]);
+	/** True once the historical query has landed with rows to draw. */
+	const plottable = $derived(!loading && chartData.length > 0);
+
+	const enter = () => (visible = true);
+	const leave = () => (visible = false);
 </script>
 
 <div
 	class="flex flex-col gap-3 border border-border p-4"
-	use:inView={{ onEnter: () => (visible = true), onLeave: () => (visible = false) }}
+	use:inView={{ onEnter: enter, onLeave: leave }}
 >
 	<div class="flex items-baseline justify-between gap-2">
 		<h3 class="truncate text-sm font-medium">{metric.label}</h3>
-		<span class="shrink-0 font-mono text-sm tabular-nums text-foreground">
-			{#if current === undefined}
-				—
-			{:else}
-				<AnimatedNumber value={current} {unit} />{unit ? ` ${unit}` : ''}
-			{/if}
-		</span>
+		<MetricReadout value={current} {unit} />
 	</div>
 
 	{#if !visible}
@@ -106,49 +101,19 @@
 					{diverging}
 					height="h-full"
 				/>
-			{:else if loading}
-				<Skeleton class="h-full w-full" />
-			{:else if chartData.length === 0}
-				<div class="flex h-full items-center justify-center text-sm text-muted-foreground">
-					{m.chart_no_data()}
-				</div>
+			{:else if plottable}
+				<MetricHistoryChart
+					data={chartData}
+					label={metric.label}
+					{accent}
+					{diverging}
+					{xDomain}
+					{xTickFormat}
+					labelFormatter={labelFmt}
+					{tooltipValue}
+				/>
 			{:else}
-				<Chart.Container
-					config={{ avg: { label: metric.label, color: accent } }}
-					class="aspect-auto h-full w-full"
-					style="--color-primary: {accent}"
-				>
-					<AreaChart
-						data={chartData}
-						x="date"
-						y="avg"
-						axis
-						grid
-						padding={{ top: 8, right: 8, bottom: 28, left: 44 }}
-						xDomain={[range.from, range.to]}
-						props={{ xAxis: { format: xTickFormat, ticks: 4 } }}
-					>
-						{#snippet marks({ context }: MarksContext)}
-							{#if diverging}
-								<DivergingArea {context} />
-							{:else}
-								<LinearGradient vertical stops={[[0, accent], [1, 'transparent']]}>
-									{#snippet children({ gradient })}
-										<Area
-											curve={curveCatmullRom}
-											line={{ stroke: accent, 'stroke-width': 1.5 }}
-											fill={gradient}
-											fillOpacity={0.9}
-										/>
-									{/snippet}
-								</LinearGradient>
-							{/if}
-						{/snippet}
-						{#snippet tooltip()}
-							<Chart.Tooltip labelFormatter={labelFmt} formatter={tooltipValue} />
-						{/snippet}
-					</AreaChart>
-				</Chart.Container>
+				<ChartStateView {loading} message={m.chart_no_data()} />
 			{/if}
 		</div>
 	{/if}
