@@ -1,5 +1,9 @@
 <script lang="ts">
-	import TouSlotEditor from './tou-slot-editor.svelte';
+	import TouSlotPanel from './_shared/tou-slot-panel.svelte';
+	import TouClockChrome from './_shared/tou-clock-chrome.svelte';
+	import TouPeriodBlock from './_shared/tou-period-block.svelte';
+	import TouSlotChip from './_shared/tou-slot-chip.svelte';
+	import TouHourAxis from './_shared/tou-hour-axis.svelte';
 	import * as msg from '$lib/paraglide/messages';
 	import {
 		hhmmToMinutes,
@@ -211,6 +215,13 @@
 		});
 	});
 
+	/** Index of the selected slot, for the block/chip highlight. */
+	const selectedIdx = $derived(selected?.index ?? null);
+	const barHeightNote = $derived(
+		mode === 'voltage' ? msg.tou_bar_height_voltage() : msg.tou_bar_height_soc()
+	);
+	const select = (index: number) => () => (selectedIndex = index);
+
 	const chips = $derived(
 		slots.map((s) => ({
 			slot: s,
@@ -224,73 +235,23 @@
 	<!-- 24-hour timeline -->
 	<div class="flex flex-col gap-1.5">
 		<div class="relative h-24 w-full">
-			{#if layout.realAxis}
-				<!-- hour gridlines -->
-				{#each HOUR_TICKS as h (h)}
-					<div
-						class="absolute inset-y-0 w-px bg-border/60"
-						style="left: {(h / 24) * 100}%"
-					></div>
-				{/each}
-			{/if}
+			<TouClockChrome
+				show={layout.realAxis}
+				hourTicks={HOUR_TICKS}
+				{nowMin}
+				minutesPerDay={MIN_PER_DAY}
+			/>
 
 			{#each renderPieces as piece, i (i)}
-				<button
-					type="button"
-					onclick={() => (selectedIndex = piece.slot.index)}
-					title={piece.title}
-					class="group absolute inset-y-0 flex flex-col justify-between overflow-hidden rounded-sm border p-1.5 text-left transition-colors {piece.blockClass} {selected?.index ===
-					piece.slot.index
-						? 'ring-2 ring-primary ring-offset-1 ring-offset-background'
-						: ''}"
-					style="left: {piece.leftPct}%; width: calc({piece.widthPct}% - 2px);"
-				>
-					<!-- SOC target fill: bar height maps to the battery target for this period -->
-					<div
-						class="absolute inset-x-0 bottom-0 {piece.fillClass}"
-						style="height: {piece.fillHeight}%"
-					></div>
-
-					<div class="relative flex items-center gap-1">
-						{#if piece.grid}
-							<!-- lightning bolt = grid charging enabled this period -->
-							<svg viewBox="0 0 24 24" class="size-3 shrink-0 text-amber-600 dark:text-amber-400" fill="currentColor" aria-hidden="true">
-								<path d="M13 2 3 14h7l-1 8 10-12h-7l1-8z" />
-							</svg>
-						{/if}
-						{#if piece.showLabel}
-							<span class="truncate text-[10px] font-medium text-muted-foreground">{piece.label}</span>
-						{/if}
-					</div>
-					{#if piece.showTarget}
-						<span class="relative text-xs font-semibold tabular-nums">{piece.target}{piece.unit}</span>
-					{/if}
-				</button>
+				<TouPeriodBlock
+					{piece}
+					selected={selectedIdx === piece.slot.index}
+					onSelect={select(piece.slot.index)}
+				/>
 			{/each}
-
-			{#if layout.realAxis}
-				<!-- now marker -->
-				<div
-					class="pointer-events-none absolute inset-y-0 z-10 w-0.5 bg-foreground/70"
-					style="left: {(nowMin / MIN_PER_DAY) * 100}%"
-				>
-					<span class="absolute -top-0.5 left-1/2 size-1.5 -translate-x-1/2 rounded-full bg-foreground/70"></span>
-				</div>
-			{/if}
 		</div>
 
-		{#if layout.realAxis}
-			<div class="relative h-4 text-[10px] text-muted-foreground">
-				{#each HOUR_TICKS as h (h)}
-					<span
-						class="absolute -translate-x-1/2 tabular-nums first:translate-x-0 last:-translate-x-full"
-						style="left: {(h / 24) * 100}%"
-					>
-						{String(h).padStart(2, '0')}:00
-					</span>
-				{/each}
-			</div>
-		{/if}
+		<TouHourAxis show={layout.realAxis} hourTicks={HOUR_TICKS} />
 
 		<!-- legend -->
 		<div class="flex flex-wrap items-center gap-x-4 gap-y-1 pt-1 text-xs text-muted-foreground">
@@ -306,7 +267,7 @@
 				<span class="h-2.5 w-0.5 bg-foreground/70"></span>
 				{msg.tou_now()}
 			</span>
-			<span>{mode === 'voltage' ? msg.tou_bar_height_voltage() : msg.tou_bar_height_soc()}</span>
+			<span>{barHeightNote}</span>
 		</div>
 	</div>
 
@@ -314,28 +275,16 @@
 		 collapsed (duplicate start times), which the timeline can't guarantee. -->
 	<div class="flex flex-wrap gap-1.5">
 		{#each chips as chip (chip.slot.index)}
-			<button
-				type="button"
-				onclick={() => (selectedIndex = chip.slot.index)}
-				class="flex items-center gap-1.5 rounded-md border px-2 py-1 text-xs transition-colors {selected?.index ===
-				chip.slot.index
-					? 'border-primary bg-primary/10 font-medium'
-					: 'border-border hover:bg-muted'}"
-			>
-				<span class="size-2 rounded-full {chip.grid ? 'bg-amber-500' : 'bg-sky-500'}"></span>
-				<span>{msg.tou_slot_n({ index: chip.slot.index })}</span>
-				<span class="tabular-nums text-muted-foreground">{chip.time}</span>
-				{#if activeIndex === chip.slot.index}
-					<span class="text-[10px] font-medium text-primary">{msg.tou_now_short()}</span>
-				{/if}
-			</button>
+			<TouSlotChip
+				index={chip.slot.index}
+				time={chip.time}
+				grid={chip.grid}
+				selected={selectedIdx === chip.slot.index}
+				active={activeIndex === chip.slot.index}
+				onSelect={select(chip.slot.index)}
+			/>
 		{/each}
 	</div>
 
-	<!-- Editor for the selected slot; keyed so its SOC draft resets per slot. -->
-	{#if selected}
-		{#key selected.index}
-			<TouSlotEditor {controller} slot={selected} range={selectedRange} slotCount={slots.length} />
-		{/key}
-	{/if}
+	<TouSlotPanel {controller} slot={selected} range={selectedRange} slotCount={slots.length} />
 </div>
