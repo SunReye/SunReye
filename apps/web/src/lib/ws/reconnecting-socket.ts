@@ -1,5 +1,5 @@
 /** Minimal shape of an Eden Treaty WS subscription this helper drives. */
-interface SocketLike {
+export interface SocketLike {
   subscribe(handler: (message: { data: unknown }) => void): void;
   on(event: "open" | "close" | "error", handler: () => void): void;
   close(): void;

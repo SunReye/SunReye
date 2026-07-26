@@ -17,7 +17,8 @@ export type HistoryRange = {
   bucket: RollupBucket;
 };
 
-type Preset = { id: string; label: string; live?: boolean; hours?: number };
+/** A selectable entry in {@link PRESETS}; `live` and `hours` are mutually exclusive. */
+export type Preset = { id: string; label: string; live?: boolean; hours?: number };
 
 const HOUR = 3_600_000;
 const DAY = 24 * HOUR;

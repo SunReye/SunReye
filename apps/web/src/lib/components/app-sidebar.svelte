@@ -54,6 +54,18 @@
 		sidebar.setOpenMobile(false);
 	}
 
+	// Identifies the connected inverter until the manifest lands.
+	const subtitle = $derived(
+		inverter.manifest
+			? `${inverter.manifest.manufacturer} · ${inverter.manifest.name}`
+			: m.app_loading()
+	);
+
+	// Settings has subroutes (one per panel); any of them keeps the entry active.
+	const settingsActive = $derived(
+		current === '/settings' || current.startsWith('/settings/')
+	);
+
 	const userName = $derived(
 		$sessionQuery.data?.user?.name ||
 			$sessionQuery.data?.user?.email?.split('@')[0] ||
@@ -71,11 +83,7 @@
 			<Logo class="size-8 shrink-0 text-primary" />
 			<div class="flex min-w-0 flex-col group-data-[collapsible=icon]:hidden">
 				<span class="text-sm font-semibold leading-tight">SunReye</span>
-				<span class="truncate text-xs text-muted-foreground">
-					{inverter.manifest
-						? `${inverter.manifest.manufacturer} · ${inverter.manifest.name}`
-						: m.app_loading()}
-				</span>
+				<span class="truncate text-xs text-muted-foreground">{subtitle}</span>
 			</div>
 		</div>
 	</Sidebar.Header>
@@ -107,7 +115,7 @@
 		<Sidebar.Menu>
 			{#if isAdmin}
 				<Sidebar.MenuItem>
-					<Sidebar.MenuButton isActive={current === '/settings' || current.startsWith('/settings/')}>
+					<Sidebar.MenuButton isActive={settingsActive}>
 						{#snippet child({ props })}
 							<a href={resolve('/settings')} onclick={closeSidebar} {...props}>
 								<GearIcon class="size-4" />

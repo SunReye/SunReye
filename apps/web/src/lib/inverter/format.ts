@@ -38,13 +38,19 @@ function formatNumber(v: number, unit?: string | null): string {
 }
 
 /**
+ * A status metric's enum label for the raw code `v`, falling back to the code
+ * itself. Undefined for anything that is not an enum-labelled status metric.
+ */
+function statusLabel(metric: ManifestMetric, v: number): string | undefined {
+  if (metric.kind !== "status" || !metric.enumLabels) return undefined;
+  return metric.enumLabels[v] ?? String(v);
+}
+
+/**
  * Render-ready value for a metric: status metrics resolve through their enum
  * labels, everything else is a formatted number. Missing → em dash.
  */
 export function formatValue(metric: ManifestMetric, v: number | undefined): string {
   if (v === undefined) return "—";
-  if (metric.kind === "status" && metric.enumLabels) {
-    return metric.enumLabels[v] ?? String(v);
-  }
-  return formatNumber(v, metric.unit);
+  return statusLabel(metric, v) ?? formatNumber(v, metric.unit);
 }

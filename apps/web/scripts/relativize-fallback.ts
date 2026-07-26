@@ -15,7 +15,7 @@ import { fileURLToPath } from "node:url";
 
 // Runtime path into the build output, not a module import; the file only
 // exists after `vite build`.
-// fallow-ignore-next-line unresolved-import
+// fallow-ignore-next-line unresolved-import -- build artifact, only exists after `vite build`
 const page = fileURLToPath(new URL("../build/index.html", import.meta.url));
 
 const html = readFileSync(page, "utf8")

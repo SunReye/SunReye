@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { buildPowerGraph, flowColor, gridColor, sense, socColor } from "./power-graph";
+import { buildPowerGraph, socColor } from "./power-graph";
 import type { CanonicalRole, InverterCapabilities } from "$lib/inverter/types";
 
 const caps = (over: Partial<InverterCapabilities>): InverterCapabilities =>
@@ -236,6 +236,21 @@ describe("buildPowerGraph", () => {
     expect(charger?.flow).toBe("idle");
   });
 
+  test("a lone landscape PV string sits on the hub row, so its rail runs straight", () => {
+    const g = buildPowerGraph(caps({ pvStrings: 1 }), powerFrom({ "pv.string.power#1": 500 }));
+    expect(g.nodes[0].at.y).toBe(g.hub.y);
+    expect(g.segments[0].pts).toHaveLength(2);
+  });
+
+  test("a lone portrait sink node is centred rather than pinned to the left edge", () => {
+    const g = buildPowerGraph(
+      caps({ backupLoad: true }),
+      powerFrom({ "load.power": 900 }),
+      "portrait",
+    );
+    expect(g.nodes.find((n) => n.id === "load")?.at.x).toBe(0.5);
+  });
+
   test("no visible PV metric at all yields no PV node", () => {
     const g = buildPowerGraph(
       caps({ pvStrings: 1 }),
@@ -248,20 +263,28 @@ describe("buildPowerGraph", () => {
 });
 
 describe("helpers", () => {
-  test("sense treats |v| <= 0.5 as idle", () => {
-    const pos = { flow: "in", state: "On" } as const;
-    const neg = { flow: "out", state: "Off" } as const;
-    expect(sense(0.4, pos, neg).flow).toBe("idle");
-    expect(sense(0.6, pos, neg)).toEqual(pos);
-    expect(sense(-0.6, pos, neg)).toEqual(neg);
-    expect(sense(undefined, pos, neg).flow).toBe("idle");
+  // The direction/colour helpers are module-private; drive them through the graph
+  // the battery node produces (signed reading → flow, state and hue).
+  const batteryAt = (watts: number | undefined) =>
+    buildPowerGraph(caps({ battery: true }), powerFrom({ "battery.power": watts })).nodes.find(
+      (n) => n.id === "battery",
+    );
+
+  test("a signed reading within ±0.5 W reads as idle", () => {
+    expect(batteryAt(0.4)?.flow).toBe("idle");
+    expect(batteryAt(-0.4)?.flow).toBe("idle");
+    expect(batteryAt(0.6)?.flow).toBe("in");
+    expect(batteryAt(-0.6)?.flow).toBe("out");
+    expect(batteryAt(undefined)?.flow).toBe("idle");
   });
 
-  test("flowColor / gridColor map directions to hues", () => {
-    expect(flowColor("in")).toBe("text-emerald-500");
-    expect(flowColor("out")).toBe("text-amber-500");
-    expect(flowColor("idle")).toBe("text-border");
-    expect(gridColor(undefined)).toBe("text-border");
+  test("flow hues: arriving green, leaving amber, idle the rail colour", () => {
+    expect(batteryAt(800)?.color).toBe("text-emerald-500");
+    expect(batteryAt(-800)?.color).toBe("text-amber-500");
+    expect(batteryAt(0)?.color).toBe("text-border");
+    // Grid uses cost colours; an unknown reading falls back to the rail colour.
+    const grid = buildPowerGraph(caps({ grid: true }), () => undefined);
+    expect(grid.nodes.find((n) => n.id === "grid")?.color).toBe("text-border");
   });
 
   test("socColor interpolates across the 0/30/60 stops and clamps", () => {

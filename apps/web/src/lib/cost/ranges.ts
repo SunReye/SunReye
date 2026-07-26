@@ -71,51 +71,61 @@ function trailing12Months(now: Date): CostRange["chart"] {
   };
 }
 
+/** "month" (this month) — what an unknown preset id falls back to. */
+function thisMonth(now: Date): CostRange {
+  const from = startOfMonth(now);
+  return {
+    id: "month",
+    label: "This month",
+    from,
+    to: now,
+    chart: { from, to: now, bucket: "day", caption: "This month, by day" },
+  };
+}
+
+/** Selectable presets: id → concrete range anchored at `now`. */
+const PRESET_BUILDERS: Record<string, (now: Date) => CostRange> = {
+  today: (now) => {
+    const from = startOfDay(now);
+    return {
+      id: "today",
+      label: "Today",
+      from,
+      to: now,
+      chart: { from, to: now, bucket: "hour", caption: "Today, by hour" },
+    };
+  },
+  // Today plus the six prior days = a rolling 7-day window.
+  "7d": (now) => {
+    const from = startOfDay(new Date(now.getTime() - 6 * DAY));
+    return {
+      id: "7d",
+      label: "Last 7 days",
+      from,
+      to: now,
+      chart: { from, to: now, bucket: "day", caption: "Last 7 days, by day" },
+    };
+  },
+  lastMonth: (now) => ({
+    id: "lastMonth",
+    label: "Last month",
+    from: new Date(now.getFullYear(), now.getMonth() - 1, 1),
+    to: startOfMonth(now), // exclusive: first of this month
+    chart: trailing12Months(now),
+  }),
+  year: (now) => ({
+    id: "year",
+    label: "This year",
+    from: new Date(now.getFullYear(), 0, 1),
+    to: now,
+    chart: trailing12Months(now),
+  }),
+  month: thisMonth,
+};
+
 /** Resolve a preset id into a concrete range anchored at `now`. */
 export function resolveCostPreset(id: string, now: Date = new Date()): CostRange {
-  switch (id) {
-    case "today": {
-      const from = startOfDay(now);
-      return {
-        id,
-        label: "Today",
-        from,
-        to: now,
-        chart: { from, to: now, bucket: "hour", caption: "Today, by hour" },
-      };
-    }
-    case "7d": {
-      // Today plus the six prior days = a rolling 7-day window.
-      const from = startOfDay(new Date(now.getTime() - 6 * DAY));
-      return {
-        id,
-        label: "Last 7 days",
-        from,
-        to: now,
-        chart: { from, to: now, bucket: "day", caption: "Last 7 days, by day" },
-      };
-    }
-    case "lastMonth": {
-      const to = startOfMonth(now); // exclusive: first of this month
-      const from = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-      return { id, label: "Last month", from, to, chart: trailing12Months(now) };
-    }
-    case "year": {
-      const from = new Date(now.getFullYear(), 0, 1);
-      return { id, label: "This year", from, to: now, chart: trailing12Months(now) };
-    }
-    default: {
-      // "month" (this month) — the default.
-      const from = startOfMonth(now);
-      return {
-        id: "month",
-        label: "This month",
-        from,
-        to: now,
-        chart: { from, to: now, bucket: "day", caption: "This month, by day" },
-      };
-    }
-  }
+  return (PRESET_BUILDERS[id] ?? thisMonth)(now);
 }
 
 const dateFmt = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" });
