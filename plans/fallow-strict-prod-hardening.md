@@ -1,9 +1,10 @@
 # Fallow strict mode — prod hardening burn-down
 
-Status: **complete** — repo is green under the strict config as of 2026-07-26 (`bunx fallow` exits 0:
-0 dead-code, 0 clone groups, 0 functions above threshold, maintainability 92.4). Phases 0-4 were
-burned down by six parallel agents in separate worktrees; Phase 5 was spiked and rejected; Phase 6
-is still open. Kept as the record of what the thresholds mean and what is left.
+Status: **Phase 6 in flight.** Phases 0-4 were burned down by six parallel agents in separate
+worktrees and the repo reached `bunx fallow` exit 0 at `d38865c`; Phase 5 was spiked and rejected.
+`98b034f` then landed the Phase 6 ratchets, which **deliberately re-reds the repo** with 27 unused
+exports/types (internal packages only) + 9 complexity findings at the new 10/10 thresholds. CI wiring
+is blocked until those are cleared — a gate added now would fail every PR.
 Config: [.fallowrc.json](../.fallowrc.json) · verify with `bunx fallow`, gate with `bunx fallow audit`.
 
 ## What the config change did
@@ -262,13 +263,25 @@ tests in `apps/web`. Pick one.
 - `boundaries.coverage` policy so new files must belong to a zone; `boundaries.calls` to ban
   direct DB access outside `packages/db`.
 - Tighten `health` to `10 / 10` (+22 findings at today's code) once coverage is real.
-- Wire fallow into CI: nothing runs it today (`grep -rn fallow .github/` is empty across 8
-  workflows) — it only runs pre-commit via lint-staged. Cheapest home is the existing `quality` job
-  in `.github/workflows/ci.yml` (already does `bun install --frozen-lockfile`,
-  `SKIP_ENV_VALIDATION: "1"`), running `bunx fallow audit --gate all` after install, or
-  `bunx fallow --report-only` until the burn-down finishes. Fallow needs `node_modules` present or
-  it degrades with warnings. Do not run it in the `test` job after `bun run test:coverage` while a
-  parseable Istanbul coverage file could exist — see Phase 5.
+- Wire fallow into CI — **researched, blocked on the Phase 6 burn-down finishing.** Nothing runs it
+  today (`grep -rn fallow .github/` is empty across 8 workflows); it only runs pre-commit via
+  lint-staged. Land it as a step in the existing `quality` job of `.github/workflows/ci.yml`
+  (already does `bun install --frozen-lockfile`, `SKIP_ENV_VALIDATION: "1"`), placed **after**
+  `Install dependencies` — running fallow before install invents findings (31 vs 27: two
+  unused-dependency plus one unresolved-import). Never in the `test` job, which runs
+  `test:coverage` → the Phase 5 CRAP-relaxation hazard.
+  - Use the **full-repo `bunx fallow`**, not `fallow audit`: the full run is history-independent, so
+    `actions/checkout`'s default `fetch-depth: 1` is fine (a shallow clone only degrades hotspot
+    analysis, verified). `fallow audit` would need `fetch-depth: 0` or a pinned `FALLOW_AUDIT_BASE`.
+    Cost is ~1s of analysis.
+  - No SARIF upload: `ci.yml` declares `permissions: contents: read`, SARIF needs
+    `security-events: write`, and that token is not granted on fork PRs, so the step would fail
+    there. Note `--ci` is an alias for `--format sarif --fail-on-issues --quiet`, not just "CI mode".
+  - The `concurrency` group cancels superseded runs but cannot skip a step, and `push`/`pull_request`
+    carry no path filters, so a fallow failure cannot be silently skipped.
+  - If a gate is ever wanted *before* a burn-down is finished, the honest mechanism is
+    `--fail-on-regression` against a committed `--regression-baseline` (ratchets down, hides
+    nothing), not `--report-only` or `continue-on-error`.
 - Shrink `ignorePatterns`: `apps/web/src/lib/components/ui/**` + `hooks/**` + `utils.ts` are vendored
   shadcn-svelte and currently hide 260 findings — keep ignored while they stay vendored, revisit if
   they get hand-edited.
