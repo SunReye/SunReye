@@ -16,6 +16,9 @@
 		onActivate: () => void;
 		onBack: () => void;
 	} = $props();
+
+	const displayName = $derived(profileName ?? '');
+	const activateLabel = $derived(activating ? m.setup_activating() : m.setup_activate_title());
 </script>
 
 <section class="flex flex-col gap-4 border border-border p-4">
@@ -29,7 +32,7 @@
 		>
 			<span class="mt-1.5 inline-block size-2 shrink-0 rounded-full bg-amber-500"></span>
 			<div class="flex flex-col gap-1">
-				<span class="font-medium">{m.setup_activated_msg({ name: profileName ?? '' })}</span>
+				<span class="font-medium">{m.setup_activated_msg({ name: displayName })}</span>
 				<span>{m.setup_activated_desc()}</span>
 			</div>
 		</div>
@@ -38,11 +41,11 @@
 			<RestartButton label={m.setup_restart_now()} />
 		</div>
 	{:else}
-		<p class="text-sm text-muted-foreground">{m.setup_activate_desc({ name: profileName ?? '' })}</p>
+		<p class="text-sm text-muted-foreground">{m.setup_activate_desc({ name: displayName })}</p>
 		<div class="flex justify-between">
 			<Button variant="ghost" onclick={onBack}>{m.action_back()}</Button>
 			<Button disabled={activating} onclick={onActivate}>
-				{activating ? m.setup_activating() : m.setup_activate_title()}
+				{activateLabel}
 			</Button>
 		</div>
 	{/if}
