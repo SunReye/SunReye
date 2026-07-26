@@ -83,6 +83,47 @@ const metricDataSchema = z.strictObject({
   flow: z.strictObject({ positive: z.string(), negative: z.string() }).optional(),
 });
 
+/** A semantic-lint failure: which field of a metric, and why. */
+interface FieldIssue {
+  field: string;
+  message: string;
+}
+
+/**
+ * Register-width rules a plain schema can't express: controls and computed
+ * metrics own no register at all, `RAW` needs at least one word, and the
+ * fixed-width types need exactly the count their encoding implies. A metric that
+ * is *both* a control and computed reports that plus any stray addresses.
+ */
+function widthIssues(m: z.infer<typeof metricDataSchema>): FieldIssue[] {
+  const stray = (what: string): FieldIssue[] =>
+    m.addresses.length === 0
+      ? []
+      : [{ field: "addresses", message: `${what} must have no addresses` }];
+
+  if (m.controlExpr) {
+    const alsoComputed: FieldIssue[] = m.computeExpr
+      ? [{ field: "controlExpr", message: "metric cannot be both a control and computed" }]
+      : [];
+    return [...alsoComputed, ...stray("control metric")];
+  }
+  if (m.computeExpr) return stray("computed metric");
+  if (m.type === "RAW") {
+    return m.addresses.length >= 1
+      ? []
+      : [{ field: "addresses", message: "RAW metric needs at least one address" }];
+  }
+  const want = m.type === "U_DWORD" ? 2 : 1;
+  return m.addresses.length === want
+    ? []
+    : [
+        {
+          field: "addresses",
+          message: `${m.type} needs ${want} address(es), got ${m.addresses.length}`,
+        },
+      ];
+}
+
 function computeRefs(expr: ComputeExpr): string[] {
   if ("sum" in expr) return expr.sum;
   if ("diff" in expr) return expr.diff;
@@ -135,23 +176,7 @@ export const profileDataSchema = z
 
     // --- register width matches type ---
     metrics.forEach((m, i) => {
-      if (m.controlExpr) {
-        if (m.computeExpr) at(i, "controlExpr", "metric cannot be both a control and computed");
-        if (m.addresses.length !== 0) at(i, "addresses", "control metric must have no addresses");
-        return;
-      }
-      if (m.computeExpr) {
-        if (m.addresses.length !== 0) at(i, "addresses", "computed metric must have no addresses");
-        return;
-      }
-      if (m.type === "RAW") {
-        if (m.addresses.length < 1) at(i, "addresses", "RAW metric needs at least one address");
-        return;
-      }
-      const want = m.type === "U_DWORD" ? 2 : 1;
-      if (m.addresses.length !== want) {
-        at(i, "addresses", `${m.type} needs ${want} address(es), got ${m.addresses.length}`);
-      }
+      for (const issue of widthIssues(m)) at(i, issue.field, issue.message);
     });
 
     // --- role-shape rules from the catalog ---
