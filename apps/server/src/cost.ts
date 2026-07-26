@@ -70,8 +70,9 @@ const ENERGY_TODAY_FIELDS = {
   batteryDischarge: "battery.energy.discharged.today",
 } as const satisfies Record<EnergyField, CanonicalRole>;
 
-/** {@link EnergyField} → the {@link EnergyTotals} kWh key it feeds. */
-const TODAY_TOTALS_FIELD = {
+/** {@link EnergyField} → the {@link EnergyTotals} kWh key it feeds. Shared with
+ *  the energy-split accumulator in {@link ./energy}. */
+export const TOTALS_KEY_BY_FIELD = {
   import: "importKwh",
   export: "exportKwh",
   load: "loadKwh",
@@ -89,11 +90,12 @@ function isSameLocalDay(a: Date, b: Date): boolean {
 }
 
 /**
- * The live current-day energy totals from an explicit sample, as a partial
- * {@link EnergyTotals} carrying only the fields safe to trust. Pure and DB-free
- * (no singleton read) so its guards are unit-testable — see {@link
- * ./cost.test}. Returns `{}` (no override) unless ALL hold:
- *  - `sample` is non-null;
+ * The live current-day energy totals, as a partial {@link EnergyTotals} carrying
+ * only the fields safe to trust. `now` and `sample` default to the live clock and
+ * the poll cache, and are injectable so the guards below are unit-testable
+ * without a running poll loop (see cost.test.ts). Returns `{}` (no override)
+ * unless ALL hold:
+ *  - a sample exists;
  *  - `sample.inverterId` matches the query's effective `inverterId`;
  *  - the sample is from TODAY in server-local time — a stale sample carried
  *    across midnight must not override the fresh day.
@@ -101,11 +103,11 @@ function isSameLocalDay(a: Date, b: Date): boolean {
  * AND the sample carries a finite value for that role's metric key; every other
  * field is left to the caller's `*.total`-delta value.
  */
-export function resolveLiveTodayTotals(
+export function liveTodayTotals(
   profile: InverterProfile,
-  sample: InverterSample | null,
   inverterId: string,
-  now: Date,
+  now: Date = new Date(),
+  sample: InverterSample | null = liveState.latest,
 ): Partial<EnergyTotals> {
   if (!sample) return {};
   if (sample.inverterId !== inverterId) return {};
@@ -117,23 +119,10 @@ export function resolveLiveTodayTotals(
     if (!key) continue; // profile doesn't map this today-twin → keep the delta value
     const value = sample.metrics[key];
     if (typeof value === "number" && Number.isFinite(value)) {
-      out[TODAY_TOTALS_FIELD[field]] = value;
+      out[TOTALS_KEY_BY_FIELD[field]] = value;
     }
   }
   return out;
-}
-
-/**
- * Runtime reader: {@link resolveLiveTodayTotals} against the in-memory live
- * sample ({@link liveState}). The only layer that touches the singleton; the
- * decision logic stays in the pure function above.
- */
-export function liveTodayTotals(
-  profile: InverterProfile,
-  inverterId: string,
-  now: Date = new Date(),
-): Partial<EnergyTotals> {
-  return resolveLiveTodayTotals(profile, liveState.latest, inverterId, now);
 }
 
 /**

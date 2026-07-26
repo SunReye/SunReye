@@ -1,12 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { solarForecastConfigSchema } from "@SunReye/db/weather";
 import { type CorrectionModel, correctionFactor } from "./forecast-correction";
-import {
-  type IrradianceForecast,
-  buildSolarForecast,
-  pvPowerW,
-  toForecastExport,
-} from "./solar-forecast";
+import { pvPowerW } from "./pv-model";
+import { type IrradianceForecast, buildSolarForecast, toForecastExport } from "./solar-forecast";
 
 const config = (over: object = {}) =>
   solarForecastConfigSchema.parse({

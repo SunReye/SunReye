@@ -21,9 +21,15 @@ import { getUiPrefs, setUiPrefs } from "../ui-prefs-settings";
 import { fetchWeather } from "../weather";
 import { getWeatherConfig, setWeatherConfig } from "../weather-settings";
 import { adminGuard } from "./admin-guard";
+import { attempt } from "./write-attempt";
+
+/** Shared route options for an admin write of an unvalidated (schema-checked) body. */
+const adminWrite = { requireAdmin: true, body: t.Unknown() } as const;
 
 // Runtime configuration (tariff, inverter, MQTT), editable from the UI. Saving
-// persists and hot-applies via the runtime controller; no restart needed.
+// persists and hot-applies via the runtime controller; no restart needed. Every
+// write funnels through `attempt` so a rejected body becomes a 400 with its
+// reason instead of a 500 — see ./write-attempt.
 export const settingsRoutes = new Elysia({ name: "settings-routes" })
   .use(adminGuard)
   // Tariff config for the web app: read the active economic model, or replace
@@ -33,13 +39,10 @@ export const settingsRoutes = new Elysia({ name: "settings-routes" })
   .put(
     "/api/settings/tariff",
     async ({ body, status }) => {
-      try {
-        return await setTariff(body);
-      } catch (error) {
-        return status(400, { error: error instanceof Error ? error.message : "Invalid tariff" });
-      }
+      const saved = await attempt(() => setTariff(body), "Invalid tariff");
+      return saved.ok ? saved.value : status(400, { error: saved.error });
     },
-    { requireAdmin: true, body: t.Unknown() },
+    adminWrite,
   )
   // Display preferences (clock format + time zone) for the web app. A shared,
   // instance-wide render setting the dashboard needs to format timestamps, so it
@@ -49,13 +52,10 @@ export const settingsRoutes = new Elysia({ name: "settings-routes" })
   .put(
     "/api/settings/display",
     async ({ body, status }) => {
-      try {
-        return await setDisplay(body);
-      } catch (error) {
-        return status(400, { error: error instanceof Error ? error.message : "Invalid display" });
-      }
+      const saved = await attempt(() => setDisplay(body), "Invalid display");
+      return saved.ok ? saved.value : status(400, { error: saved.error });
     },
-    { requireAdmin: true, body: t.Unknown() },
+    adminWrite,
   )
   // Dashboard visibility preferences (which metrics/groups are hidden). Rides
   // the dashboard read policy so the kiosk/public view filters the same way;
@@ -65,29 +65,23 @@ export const settingsRoutes = new Elysia({ name: "settings-routes" })
   .put(
     "/api/settings/ui",
     async ({ body, status }) => {
-      try {
-        return await setUiPrefs(body);
-      } catch (error) {
-        return status(400, {
-          error: error instanceof Error ? error.message : "Invalid preferences",
-        });
-      }
+      const saved = await attempt(() => setUiPrefs(body), "Invalid preferences");
+      return saved.ok ? saved.value : status(400, { error: saved.error });
     },
-    { requireAdmin: true, body: t.Unknown() },
+    adminWrite,
   )
   .get("/api/settings/inverter", () => getInverterConfig(), { requireAdmin: true })
   .put(
     "/api/settings/inverter",
     async ({ body, status }) => {
-      try {
+      const saved = await attempt(async () => {
         const config = await setInverterConfig(body);
         await runtime.applyInverterConfig(config);
         return config;
-      } catch (error) {
-        return status(400, { error: error instanceof Error ? error.message : "Invalid config" });
-      }
+      }, "Invalid config");
+      return saved.ok ? saved.value : status(400, { error: saved.error });
     },
-    { requireAdmin: true, body: t.Unknown() },
+    adminWrite,
   )
   // Test a connection against a *chosen* profile (onboarding passes the profile
   // being set up; the settings page omits it and falls back to the active one).
@@ -96,15 +90,16 @@ export const settingsRoutes = new Elysia({ name: "settings-routes" })
   .post(
     "/api/settings/inverter/test",
     async ({ body, status }) => {
-      try {
-        const raw = body as { profileId?: unknown };
-        const profileId = typeof raw?.profileId === "string" ? raw.profileId : null;
-        return await runtime.testInverter(profileId, inverterConfigSchema.parse(body));
-      } catch (error) {
-        return status(400, { error: error instanceof Error ? error.message : "Invalid config" });
-      }
+      const tested = await attempt(() => {
+        const profileId = (body as { profileId?: unknown }).profileId;
+        return runtime.testInverter(
+          typeof profileId === "string" ? profileId : null,
+          inverterConfigSchema.parse(body),
+        );
+      }, "Invalid config");
+      return tested.ok ? tested.value : status(400, { error: tested.error });
     },
-    { requireAdmin: true, body: t.Unknown() },
+    adminWrite,
   )
   // MQTT config: the password is masked on read and preserved on write when the
   // client omits it (write-only secret).
@@ -114,29 +109,28 @@ export const settingsRoutes = new Elysia({ name: "settings-routes" })
   .put(
     "/api/settings/mqtt",
     async ({ body, status }) => {
-      try {
+      const saved = await attempt(async () => {
         const config = await setMqttConfig(body);
         await runtime.applyMqttConfig(config);
         // The EVCC ingest dials the same broker on its own client, so a broker
         // change must rebuild it too.
         await rebuildEvcc();
         return maskMqttConfig(config);
-      } catch (error) {
-        return status(400, { error: error instanceof Error ? error.message : "Invalid config" });
-      }
+      }, "Invalid config");
+      return saved.ok ? saved.value : status(400, { error: saved.error });
     },
-    { requireAdmin: true, body: t.Unknown() },
+    adminWrite,
   )
   .post(
     "/api/settings/mqtt/test",
     async ({ body, status }) => {
-      try {
-        return await runtime.testMqtt(await mergeMqttConfig(body));
-      } catch (error) {
-        return status(400, { error: error instanceof Error ? error.message : "Invalid config" });
-      }
+      const tested = await attempt(
+        async () => runtime.testMqtt(await mergeMqttConfig(body)),
+        "Invalid config",
+      );
+      return tested.ok ? tested.value : status(400, { error: tested.error });
     },
-    { requireAdmin: true, body: t.Unknown() },
+    adminWrite,
   )
   // Live connection health (inverter + MQTT) for the settings dashboard.
   .get("/api/status", () => runtime.status(), { requireAdmin: true })
@@ -146,13 +140,10 @@ export const settingsRoutes = new Elysia({ name: "settings-routes" })
   .put(
     "/api/settings/access",
     async ({ body, status }) => {
-      try {
-        return await setAccess(body);
-      } catch (error) {
-        return status(400, { error: error instanceof Error ? error.message : "Invalid access" });
-      }
+      const saved = await attempt(() => setAccess(body), "Invalid access");
+      return saved.ok ? saved.value : status(400, { error: saved.error });
     },
-    { requireAdmin: true, body: t.Unknown() },
+    adminWrite,
   )
   // Runtime log level for the log viewer — persisted and hot-applied, no
   // restart. `level: null` follows the boot default; the response carries the
@@ -161,26 +152,20 @@ export const settingsRoutes = new Elysia({ name: "settings-routes" })
   .put(
     "/api/settings/logging",
     async ({ body, status }) => {
-      try {
-        return await setLoggingConfig(body);
-      } catch (error) {
-        return status(400, { error: error instanceof Error ? error.message : "Invalid level" });
-      }
+      const saved = await attempt(() => setLoggingConfig(body), "Invalid level");
+      return saved.ok ? saved.value : status(400, { error: saved.error });
     },
-    { requireAdmin: true, body: t.Unknown() },
+    adminWrite,
   )
   // Weather config (location for the dashboard tile) — admin read + write.
   .get("/api/settings/weather", () => getWeatherConfig(), { requireAdmin: true })
   .put(
     "/api/settings/weather",
     async ({ body, status }) => {
-      try {
-        return await setWeatherConfig(body);
-      } catch (error) {
-        return status(400, { error: error instanceof Error ? error.message : "Invalid weather" });
-      }
+      const saved = await attempt(() => setWeatherConfig(body), "Invalid weather");
+      return saved.ok ? saved.value : status(400, { error: saved.error });
     },
-    { requireAdmin: true, body: t.Unknown() },
+    adminWrite,
   )
   // EVCC integration config (enable + topic root; broker comes from the MQTT
   // config above) — admin read + write. Saving hot-rebuilds the subscriber.
@@ -188,15 +173,14 @@ export const settingsRoutes = new Elysia({ name: "settings-routes" })
   .put(
     "/api/settings/evcc",
     async ({ body, status }) => {
-      try {
+      const saved = await attempt(async () => {
         const config = await setEvccConfig(body);
         await rebuildEvcc();
         return config;
-      } catch (error) {
-        return status(400, { error: error instanceof Error ? error.message : "Invalid config" });
-      }
+      }, "Invalid config");
+      return saved.ok ? saved.value : status(400, { error: saved.error });
     },
-    { requireAdmin: true, body: t.Unknown() },
+    adminWrite,
   )
   // Live EVCC loadpoint state (assembled from its retained MQTT topics). Rides
   // the dashboard read policy like weather; `null` while the ingest is disabled.

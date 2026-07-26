@@ -22,8 +22,23 @@ export interface OpenMeteoSeries {
 }
 
 /** Plane-independent extras, requested alongside GTI on the first plane only. */
-export const OPEN_METEO_EXTRA_VARS =
-  "direct_normal_irradiance_instant,temperature_2m,wind_speed_10m";
+const OPEN_METEO_EXTRA_VARS = "direct_normal_irradiance_instant,temperature_2m,wind_speed_10m";
+
+/**
+ * The variable list one plane's request asks for: GTI always, plus the
+ * plane-independent extras on the first plane (they'd be identical on the rest).
+ */
+export const planeVars = (withExtras: boolean): string =>
+  withExtras
+    ? `global_tilted_irradiance_instant,${OPEN_METEO_EXTRA_VARS}`
+    : "global_tilted_irradiance_instant";
+
+/** GET one Open-Meteo URL as JSON, failing loudly on a non-2xx response. */
+export async function fetchOpenMeteo<T>(url: string, timeoutMs: number): Promise<T> {
+  const res = await fetch(url, { signal: AbortSignal.timeout(timeoutMs) });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return (await res.json()) as T;
+}
 
 /** Distinct orientations, keyed `tilt/azimuth` — identical planes reuse one request. */
 export function uniquePlanes(planes: PlaneOfArray[]): [string, PlaneOfArray][] {

@@ -3,6 +3,7 @@ import { Elysia, t } from "elysia";
 import { createChart, deleteChart, listCharts, updateChart } from "../custom-charts";
 import type { ProfileContext } from "../inverter";
 import { adminGuard } from "./admin-guard";
+import { errorMessage } from "./write-attempt";
 
 // 503 payload for a write attempted before a profile is active (can't validate
 // metric keys without a manifest).
@@ -31,14 +32,9 @@ function validateChart(ctx: ProfileContext | null, body: unknown): ChartValidati
   try {
     const input = customChartInputSchema.parse(body);
     const bad = unknownMetric(ctx, input.metrics);
-    if (bad) return { ok: false, status: 400, error: bad };
-    return { ok: true, input };
+    return bad ? { ok: false, status: 400, error: bad } : { ok: true, input };
   } catch (error) {
-    return {
-      ok: false,
-      status: 400,
-      error: error instanceof Error ? error.message : "Invalid chart",
-    };
+    return { ok: false, status: 400, error: errorMessage(error, "Invalid chart") };
   }
 }
 

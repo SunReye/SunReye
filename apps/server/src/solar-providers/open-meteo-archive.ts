@@ -13,9 +13,10 @@
 
 import type { IrradianceForecast, PlaneOfArray } from "../solar-forecast";
 import {
-  OPEN_METEO_EXTRA_VARS,
   type OpenMeteoSeries,
   assembleForecast,
+  fetchOpenMeteo,
+  planeVars,
   uniquePlanes,
 } from "./open-meteo-shared";
 
@@ -34,17 +35,12 @@ async function fetchPlane(
   endDate: string,
   withExtras: boolean,
 ): Promise<ArchiveResponse> {
-  const vars = withExtras
-    ? `global_tilted_irradiance_instant,${OPEN_METEO_EXTRA_VARS}`
-    : "global_tilted_irradiance_instant";
   const url =
     `${BASE}?latitude=${location.latitude}&longitude=${location.longitude}` +
     `&start_date=${startDate}&end_date=${endDate}` +
-    `&hourly=${vars}&tilt=${plane.tilt}&azimuth=${plane.azimuth}` +
+    `&hourly=${planeVars(withExtras)}&tilt=${plane.tilt}&azimuth=${plane.azimuth}` +
     "&wind_speed_unit=ms&timezone=auto";
-  const res = await fetch(url, { signal: AbortSignal.timeout(TIMEOUT_MS) });
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return (await res.json()) as ArchiveResponse;
+  return fetchOpenMeteo<ArchiveResponse>(url, TIMEOUT_MS);
 }
 
 /**

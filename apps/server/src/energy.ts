@@ -11,6 +11,7 @@ import {
   type CostBucket,
   type CounterDeltaRow,
   type EnergyField,
+  TOTALS_KEY_BY_FIELD,
   currentPeriodKey,
   fetchCounterDeltaMatrix,
   liveTodayTotals,
@@ -41,15 +42,12 @@ function accumulateTotals(
 ): Map<string, EnergyTotals> {
   const totals = new Map<string, EnergyTotals>(periods.map((p) => [p, emptyTotals()]));
   for (const r of rows) {
+    // A row for a metric this profile doesn't map to an energy field, or one
+    // outside the requested periods, contributes nothing.
     const field = fieldByKey.get(r.metric);
-    const t = field && totals.get(r.period);
-    if (!t) continue;
-    const kwh = Number(r.kwh);
-    if (field === "import") t.importKwh += kwh;
-    else if (field === "export") t.exportKwh += kwh;
-    else if (field === "load") t.loadKwh += kwh;
-    else if (field === "production") t.productionKwh += kwh;
-    else if (field === "batteryDischarge") t.batteryDischargeKwh += kwh;
+    if (field === undefined) continue;
+    const t = totals.get(r.period);
+    if (t) t[TOTALS_KEY_BY_FIELD[field]] += Number(r.kwh);
   }
   return totals;
 }

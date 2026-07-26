@@ -13,26 +13,15 @@
 
 import { auth } from "@SunReye/auth";
 import { env } from "@SunReye/env/server";
-import type { EntityConstraint } from "@SunReye/inverter-core";
 import { entityConstraint, writableMetrics } from "@SunReye/inverter-core";
 import { Elysia, t } from "elysia";
+import { rangeNote, valueSchema } from "./entity-schema";
 import { queryRawHistory, queryRollup } from "./history";
 import type { ProfileContext } from "./inverter";
 import { log } from "./logging";
 import { liveState } from "./state";
 
 const logger = log("api");
-
-/** TypeBox validator for a writable entity's value, from its constraint. */
-function valueSchema(c: EntityConstraint) {
-  if (c.valueType === "enum" && c.enumValues && c.enumValues.length > 0) {
-    return t.Union(c.enumValues.map((v) => t.Literal(v)));
-  }
-  const bounds: { minimum?: number; maximum?: number } = {};
-  if (c.min !== undefined) bounds.minimum = c.min;
-  if (c.max !== undefined) bounds.maximum = c.max;
-  return t.Number(bounds);
-}
 
 /** Extract the presented key from either `Authorization: Bearer` or `x-api-key`. */
 function extractApiKey(request: Request): string | undefined {
@@ -41,38 +30,48 @@ function extractApiKey(request: Request): string | undefined {
   return bearer ?? request.headers.get("x-api-key") ?? undefined;
 }
 
+/** Dev convenience: with no static keys configured, the surface is open. */
+const openInDevelopment = (keys: readonly string[]): boolean =>
+  keys.length === 0 && env.NODE_ENV !== "production";
+
+/**
+ * Whether the presented key authorizes the request: the static `API_KEYS`
+ * allow-list, or a managed (DB-backed) key issued through the Better Auth API
+ * Key plugin. `verifyApiKey` never throws for an unknown key, but adapter/DB
+ * errors are caught too so a transient failure can't accidentally authorize.
+ */
+async function keyAccepted(provided: string, keys: readonly string[]): Promise<boolean> {
+  if (keys.includes(provided)) return true;
+  const res = await auth.api.verifyApiKey({ body: { key: provided } }).catch(() => null);
+  return res?.valid === true;
+}
+
+/**
+ * Why a request was rejected. With neither static keys nor a presented
+ * credential the operator simply hasn't configured static access (managed keys
+ * are still accepted above); anything else is a bad or missing key.
+ */
+function denial(keys: readonly string[], provided: string | undefined) {
+  const unconfigured = keys.length === 0 && provided === undefined;
+  return {
+    status: 401,
+    error: unconfigured ? "API access is not configured" : "Invalid or missing API key",
+  };
+}
+
 /**
  * Reject requests without a valid API key. Two credential sources are accepted:
- * the static `API_KEYS` env allow-list, and admin-issued keys managed by the
- * Better Auth API Key plugin (validated via `auth.api.verifyApiKey`, which also
- * enforces expiry/enabled and bumps the key's usage counters). Empty `API_KEYS`
- * stays open in development (local convenience) but fails closed in production
- * so the public surface is never accidentally unauthenticated.
+ * the static `API_KEYS` env allow-list and admin-issued managed keys (see
+ * {@link keyAccepted}). Empty `API_KEYS` stays open in development (local
+ * convenience) but fails closed in production, so the public surface is never
+ * accidentally unauthenticated.
  */
 async function checkApiKey(request: Request): Promise<{ status: number; error: string } | null> {
   const keys = env.API_KEYS;
-
-  // Dev convenience: with no static keys configured, the surface is open.
-  if (keys.length === 0 && env.NODE_ENV !== "production") {
-    return null;
-  }
-
   const provided = extractApiKey(request);
-  if (provided) {
-    if (keys.includes(provided)) return null;
-    // Fall back to a managed (DB-backed) key. verifyApiKey never throws for an
-    // unknown key, but guard against adapter/DB errors so a transient failure
-    // can't accidentally authorize a request.
-    const res = await auth.api.verifyApiKey({ body: { key: provided } }).catch(() => null);
-    if (res?.valid) return null;
-  }
-
-  // Production with no static keys and no presented credential: the operator
-  // hasn't configured static access (managed keys are still accepted above).
-  if (keys.length === 0 && !provided) {
-    return { status: 401, error: "API access is not configured" };
-  }
-  return { status: 401, error: "Invalid or missing API key" };
+  if (openInDevelopment(keys)) return null;
+  if (provided !== undefined && (await keyAccepted(provided, keys))) return null;
+  return denial(keys, provided);
 }
 
 /** Injected transport dependencies (keeps this module free of the singleton). */
@@ -217,12 +216,7 @@ export function entitiesApi(deps: EntitiesApiDeps) {
   return writableMetrics(profile).reduce<Elysia>(
     (acc, metric) => {
       const constraint = entityConstraint(metric);
-      const rangeNote =
-        constraint.valueType === "enum"
-          ? `Allowed values: ${constraint.enumValues?.join(", ")}.`
-          : constraint.min !== undefined || constraint.max !== undefined
-            ? `Range: ${constraint.min ?? "-∞"}..${constraint.max ?? "∞"}${metric.unit ? ` ${metric.unit}` : ""}.`
-            : "Unbounded numeric value.";
+      const accepts = rangeNote(constraint, metric.unit);
       return acc.put(
         `/entities/${metric.key}`,
         async ({ body }: { body: { value: number } }) => {
@@ -234,7 +228,7 @@ export function entitiesApi(deps: EntitiesApiDeps) {
           detail: {
             tags: ["Commands"],
             summary: `Set ${metric.label}`,
-            description: `Write the "${metric.key}" setting. ${rangeNote}`,
+            description: `Write the "${metric.key}" setting. ${accepts}`,
           },
         },
       ) as unknown as Elysia;

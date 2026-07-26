@@ -3,19 +3,31 @@
  *
  * Split so new data sources stay cheap to add: a {@link SolarIrradianceProvider}
  * only delivers hourly plane-of-array irradiance + ambient temperature for the
- * plant's location; the PV power model here (orientation-aware arrays, cell
- * temperature derating, static system losses) is provider-agnostic and turns
- * any provider's series into expected AC watts and daily kWh sums. Open-Meteo
- * is the default provider; register additions in {@link PROVIDERS}.
+ * plant's location; the per-array power model ({@link ./pv-model}) is
+ * provider-agnostic, and the assembly here turns any provider's series into
+ * per-slot AC watts, the feed-in/battery clipping pass, and daily kWh sums.
+ * Open-Meteo is the default provider; register additions in {@link PROVIDERS}.
  */
 
 import { type WeatherConfig, forecastReady } from "@SunReye/db/weather";
+import type { CanonicalRole, InverterProfile, InverterSample } from "@SunReye/inverter-core";
 import { type CorrectionModel, correctionFactor, hourOf, monthOf } from "./forecast-correction";
 import { log } from "./logging";
+import { STC_CELL_TEMP_C, pvPowerW } from "./pv-model";
 import { cosAoi, sunPosition } from "./solar-geometry";
 import { openMeteoIrradiance } from "./solar-providers/open-meteo";
 
 const logger = log("solar-forecast");
+
+const HOUR_MS = 3_600_000;
+
+/** `v` when it is a usable number, else null. */
+const finiteOrNull = (v: unknown): number | null =>
+  typeof v === "number" && Number.isFinite(v) ? v : null;
+
+/** The active profile's metric key for a canonical role; undefined when unmapped. */
+const roleKey = (profile: InverterProfile | null, role: CanonicalRole): string | undefined =>
+  profile?.metrics.find((m) => m.role === role)?.key;
 
 /** One panel orientation a provider must resolve irradiance for. */
 export interface PlaneOfArray {
@@ -173,83 +185,6 @@ function clipCaps(config: WeatherConfig["forecast"]): ClipCaps {
   };
 }
 
-// Cell-temperature models. Fallback (NOCT): cells run ~25 °C above ambient at
-// 800 W/m², scaling linearly with irradiance. With wind data, Faiman
-// (IEC 61853-2 open-rack coefficients, W/m²K): the same sun heats cells less
-// when wind carries the heat away — at ~1 m/s both models agree.
-const CELL_TEMP_RISE_PER_WM2 = 25 / 800;
-const STC_CELL_TEMP_C = 25;
-const FAIMAN_U0 = 25;
-const FAIMAN_U1 = 6.84;
-
-// Incidence-angle modifier (Martin & Ruiz 2001): panel glass reflects a
-// growing share of the *beam* as the sun hits it at ever more glancing angles
-// — the physical loss behind low-sun (morning/evening) over-forecasts that a
-// flat system-loss percentage cannot capture. Diffuse light arrives from the
-// whole sky dome, so its integrated modifier is roughly constant.
-const MARTIN_RUIZ_AR = 0.16;
-const IAM_DIFFUSE = 0.95;
-
-function iamMartinRuiz(cosTheta: number): number {
-  if (cosTheta <= 0) return 0;
-  return (1 - Math.exp(-cosTheta / MARTIN_RUIZ_AR)) / (1 - Math.exp(-1 / MARTIN_RUIZ_AR));
-}
-
-/** One timestamp's environment for a single array. Optional fields unlock the
- * finer physics; without them the model degrades to its simpler forms. */
-export interface PvSample {
-  /** Plane-of-array (tilted) irradiance, W/m². */
-  gtiWm2: number;
-  /** Ambient 2 m temperature, °C. */
-  ambientC: number;
-  /** Direct-normal irradiance, W/m² — with `cosAoi`, enables the IAM split. */
-  dniWm2?: number;
-  /** Cosine of the sun→panel angle of incidence (≤ 0 = sun behind the plane). */
-  cosAoi?: number;
-  /** 10 m wind speed, m/s — enables Faiman convective cooling. */
-  windMs?: number;
-}
-
-/**
- * The irradiance that reaches the cells after reflection: the beam share
- * (DNI projected onto the plane, capped by the GTI itself) is derated by the
- * Martin–Ruiz IAM at the current incidence angle, the diffuse remainder by a
- * constant sky-dome factor. Without a beam/diffuse split, applying a beam IAM
- * to the total would over-penalise cloudy hours — so it falls back to raw GTI.
- */
-function effectiveIrradianceWm2(sample: PvSample): number {
-  if (sample.dniWm2 === undefined || sample.cosAoi === undefined) return sample.gtiWm2;
-  const beam = Math.min(sample.gtiWm2, sample.dniWm2 * Math.max(0, sample.cosAoi));
-  const diffuse = sample.gtiWm2 - beam;
-  return beam * iamMartinRuiz(sample.cosAoi) + diffuse * IAM_DIFFUSE;
-}
-
-/** Cell temperature heats with the *full* incident irradiance (reflected or
- * not, the plane sits in the same sun), cooled by wind when known. */
-function cellTempC(sample: PvSample): number {
-  if (sample.windMs === undefined) return sample.ambientC + sample.gtiWm2 * CELL_TEMP_RISE_PER_WM2;
-  return sample.ambientC + sample.gtiWm2 / (FAIMAN_U0 + FAIMAN_U1 * sample.windMs);
-}
-
-/**
- * Expected AC power of one array for a sample. DC = kWp scaled by the
- * IAM-effective irradiance relative to STC (1000 W/m²), derated by the
- * datasheet temperature coefficient at the estimated cell temperature; AC
- * applies the static system-loss percentage.
- */
-export function pvPowerW(
-  sample: PvSample,
-  kwp: number,
-  tempCoefficientPctPerC: number,
-  systemLossPct: number,
-): number {
-  const effectiveWm2 = effectiveIrradianceWm2(sample);
-  if (effectiveWm2 <= 0) return 0;
-  const derate = 1 + (tempCoefficientPctPerC / 100) * (cellTempC(sample) - STC_CELL_TEMP_C);
-  const dcW = kwp * effectiveWm2 * Math.max(0, derate); // kwp * 1000 * (eff / 1000)
-  return Math.max(0, dcW * (1 - systemLossPct / 100));
-}
-
 /**
  * One slot of the plant's energy flow, in the self-consumption priority order:
  * PV serves the house load, then charges the battery (bounded by charge rate
@@ -319,6 +254,210 @@ function computeNext15(
   return { maxPowerW, energyKwh };
 }
 
+/** Slot geometry for a series: each sample's start instant and the slot it opens. */
+interface SlotGrid {
+  startMs: number[];
+  widthMs: number[];
+}
+
+/**
+ * Each sample opens the slot [tᵢ, tᵢ₊₁); its width is the gap to the next
+ * sample, capped at one hour so sparse/gappy series (a DST seam, a provider
+ * hiccup) degrade to hour-wide point samples instead of smearing one sample
+ * across the gap. The last sample inherits the preceding width.
+ */
+function slotGrid(times: string[], utcOffsetSeconds: number): SlotGrid {
+  const startMs = times.map((t) => Date.parse(`${t}:00Z`) - utcOffsetSeconds * 1000);
+  const widthMs = startMs.map((s, i) => {
+    const next = startMs[i + 1];
+    if (next !== undefined) return Math.min(Math.max(1, next - s), HOUR_MS);
+    const previous = startMs[i - 1];
+    return previous === undefined ? HOUR_MS : Math.min(Math.max(1, s - previous), HOUR_MS);
+  });
+  return { startMs, widthMs };
+}
+
+/**
+ * Instantaneous AC power at each timestamp, summed over the configured arrays:
+ * sun position feeds the per-array incidence angle so the IAM split (when DNI is
+ * available) can bite. A learned correction (when supplied) then scales the
+ * sample by its (month, hour) factor.
+ */
+function instantPowerW(
+  config: WeatherConfig["forecast"],
+  data: IrradianceForecast,
+  correction?: CorrectionModel,
+): number[] {
+  return data.times.map((time, i) => {
+    const atMs = Date.parse(`${time}:00Z`) - data.utcOffsetSeconds * 1000;
+    const sun = sunPosition(data.location.latitude, data.location.longitude, atMs);
+    const env = {
+      ambientC: data.temperature[i] ?? STC_CELL_TEMP_C,
+      dniWm2: data.dni?.[i],
+      windMs: data.windSpeed?.[i],
+    };
+    let watts = 0;
+    config.arrays.forEach((arr, a) => {
+      watts += pvPowerW(
+        { ...env, gtiWm2: data.gti[a]?.[i] ?? 0, cosAoi: cosAoi(sun, arr.tilt, arr.azimuth) },
+        arr.kwp,
+        config.tempCoefficient,
+        config.systemLoss,
+      );
+    });
+    return correction ? watts * correctionFactor(correction, monthOf(time), hourOf(time)) : watts;
+  });
+}
+
+/**
+ * Average power over each slot [tᵢ, tᵢ₊₁), via the trapezoid of its endpoints.
+ * This is what makes a forecast bar line up with the energy actually accumulated
+ * during that same slot: sampling a single endpoint instead biases the steep
+ * limbs — over-reporting the sunset ramp and under-reporting the sunrise ramp.
+ * Only genuinely adjacent samples (gap within the hour cap) are integrated;
+ * anything else falls back to the point sample. The per-slot peak is the larger
+ * endpoint — what the UI reports as "max power" for the slot.
+ */
+function integrateSlots(times: string[], instW: number[], grid: SlotGrid): SolarForecastPoint[] {
+  const adjacent = (i: number): boolean => {
+    const next = grid.startMs[i + 1];
+    return next !== undefined && next - (grid.startMs[i] ?? 0) <= HOUR_MS;
+  };
+  return times.map((time, i) => {
+    const w = instW[i] ?? 0;
+    const paired = adjacent(i);
+    const nextW = paired ? (instW[i + 1] ?? w) : w;
+    return { time, watts: paired ? (w + nextW) / 2 : w, peakWatts: Math.max(w, nextW) };
+  });
+}
+
+/** What the clipping pass needs beyond the raw series and its slot grid. */
+interface ClipRun {
+  caps: ClipCaps;
+  loadW: number;
+  /** Battery energy the sim starts the series from, kWh. */
+  socKwh: number;
+  /** Past slots participate (day-start SOC known, or no battery to model). */
+  simPast: boolean;
+  /** Measured live SOC to re-seed with at the past→future seam, %; null keeps the sim's. */
+  reseedSocPct: number | null;
+  nowMs: number;
+}
+
+/** Whether past slots can be simulated: their battery state is known (measured
+ *  day-start SOC) or irrelevant (no battery — the feed-in cap alone clips). */
+const simulatesPast = (caps: ClipCaps, sim?: ForecastSimInputs): boolean =>
+  caps.batteryCapKwh === 0 || sim?.dayStartSocPct != null;
+
+/** SOC the sim starts the series from, %. Unknown → the battery's reserve floor
+ *  (full headroom), so we never invent curtailment we can't justify. */
+function seedSocPct(
+  config: WeatherConfig["forecast"],
+  sim: ForecastSimInputs | undefined,
+  simPast: boolean,
+): number {
+  const live = sim?.startSocPct ?? config.battery?.minSoc ?? 0;
+  return simPast ? (sim?.dayStartSocPct ?? live) : live;
+}
+
+/** Seed the clipping pass from the plant config and the live/measured SOC inputs. */
+function clipRun(
+  config: WeatherConfig["forecast"],
+  caps: ClipCaps,
+  sim: ForecastSimInputs | undefined,
+  nowMs: number,
+): ClipRun {
+  const simPast = simulatesPast(caps, sim);
+  return {
+    caps,
+    loadW: sim?.houseLoadW ?? 0,
+    socKwh: caps.batteryCapKwh * (seedSocPct(config, sim, simPast) / 100),
+    simPast,
+    // Without a reconstructed past there is nothing to re-seed — the sim already
+    // started from the live reading.
+    reseedSocPct: simPast ? (sim?.startSocPct ?? null) : null,
+    nowMs,
+  };
+}
+
+/** Clipping caps instantaneous output too: scale the slot peak by its usable share. */
+const clippedPeakW = (point: SolarForecastPoint, usefulW: number): number =>
+  point.watts > 0 ? point.peakWatts * (usefulW / point.watts) : usefulW;
+
+/**
+ * The usable view: raw PV with the feed-in cap + battery model curtailing the
+ * surplus. Past slots keep the raw estimate unless {@link ClipRun.simPast} lets
+ * the sim reconstruct them. At the past→future seam the simulated SOC yields to
+ * the measured one — forecast weather drifts from what actually fell, and the
+ * live reading is truth for everything still ahead.
+ */
+function clipSeries(raw: SolarForecastPoint[], grid: SlotGrid, run: ClipRun): SolarForecastPoint[] {
+  let socKwh = run.socKwh;
+  let reseeded = false;
+  return raw.map((point, i) => {
+    const width = grid.widthMs[i] ?? HOUR_MS;
+    const isPast = (grid.startMs[i] ?? 0) + width <= run.nowMs;
+    if (isPast && !run.simPast) return point;
+    if (!isPast && !reseeded) {
+      reseeded = true;
+      if (run.reseedSocPct !== null) socKwh = run.caps.batteryCapKwh * (run.reseedSocPct / 100);
+    }
+    const step = simulateStep(point.watts, run.loadW, socKwh, run.caps, width / HOUR_MS);
+    socKwh = step.socKwh;
+    return { time: point.time, watts: step.usefulW, peakWatts: clippedPeakW(point, step.usefulW) };
+  });
+}
+
+/** Energy in slot `i` of `series`, kWh. */
+const slotKwh = (series: SolarForecastPoint[], grid: SlotGrid, i: number): number =>
+  ((series[i]?.watts ?? 0) * (grid.widthMs[i] ?? 0)) / HOUR_MS / 1000;
+
+/** The plant-local calendar days the daily sums bucket into. */
+interface LocalDays {
+  today: string;
+  tomorrow: string;
+}
+
+/** The plant-local `today`/`tomorrow` date keys at `nowMs`. */
+function localDays(nowMs: number, utcOffsetSeconds: number): LocalDays {
+  const localMs = nowMs + utcOffsetSeconds * 1000;
+  return {
+    today: new Date(localMs).toISOString().slice(0, 10),
+    tomorrow: new Date(localMs + 24 * HOUR_MS).toISOString().slice(0, 10),
+  };
+}
+
+/**
+ * Daily/near-term sums for one series, bucketed by the plant's local day.
+ * "Remaining" includes the running slot prorated by the fraction of it still
+ * ahead, so an 11:30 view with hourly slots counts half of the 11:00 slot
+ * instead of the whole hour.
+ */
+function viewOf(
+  series: SolarForecastPoint[],
+  grid: SlotGrid,
+  nowMs: number,
+  days: LocalDays,
+): ForecastView {
+  const dayKwh = (day: string): number =>
+    series.reduce(
+      (sum, p, i) => (p.time.startsWith(day) ? sum + slotKwh(series, grid, i) : sum),
+      0,
+    );
+  return {
+    series,
+    todayKwh: dayKwh(days.today),
+    remainingTodayKwh: series.reduce((sum, p, i) => {
+      if (!p.time.startsWith(days.today)) return sum;
+      const width = grid.widthMs[i] ?? 0;
+      const left = Math.min((grid.startMs[i] ?? 0) + width - nowMs, width);
+      return left <= 0 ? sum : sum + slotKwh(series, grid, i) * (left / width);
+    }, 0),
+    tomorrowKwh: dayKwh(days.tomorrow),
+    next15: computeNext15(series, grid.startMs, grid.widthMs, nowMs),
+  };
+}
+
 /**
  * Combine a provider's irradiance series with the plant config into per-slot
  * AC watts and daily kWh sums. Pure — `nowMs`/`sim` are injectable for tests.
@@ -345,139 +484,25 @@ export function buildSolarForecast(
   sim?: ForecastSimInputs,
   correction?: CorrectionModel,
 ): SolarForecast {
-  // Instantaneous AC power at each timestamp: sun position feeds the per-array
-  // incidence angle so the IAM split (when DNI is available) can bite. A learned
-  // correction (when supplied) then scales the sample by its (month, hour) factor.
-  const instW = data.times.map((time, i) => {
-    const atMs = Date.parse(`${time}:00Z`) - data.utcOffsetSeconds * 1000;
-    const sun = sunPosition(data.location.latitude, data.location.longitude, atMs);
-    const env = {
-      ambientC: data.temperature[i] ?? STC_CELL_TEMP_C,
-      dniWm2: data.dni?.[i],
-      windMs: data.windSpeed?.[i],
-    };
-    let watts = 0;
-    config.arrays.forEach((arr, a) => {
-      watts += pvPowerW(
-        { ...env, gtiWm2: data.gti[a]?.[i] ?? 0, cosAoi: cosAoi(sun, arr.tilt, arr.azimuth) },
-        arr.kwp,
-        config.tempCoefficient,
-        config.systemLoss,
-      );
-    });
-    return correction ? watts * correctionFactor(correction, monthOf(time), hourOf(time)) : watts;
-  });
-
-  // Slot geometry. Each sample opens the slot [tᵢ, tᵢ₊₁); its width is the gap
-  // to the next sample, capped at one hour so sparse/gappy series (a DST seam,
-  // a provider hiccup) degrade to hour-wide point samples instead of smearing
-  // one sample across the gap. The last sample inherits the preceding width.
-  const HOUR_MS = 3_600_000;
-  const startMs = data.times.map((t) => Date.parse(`${t}:00Z`) - data.utcOffsetSeconds * 1000);
-  const widthMs = startMs.map((s, i) => {
-    const next = startMs[i + 1];
-    if (next !== undefined) return Math.min(Math.max(1, next - s), HOUR_MS);
-    return i > 0
-      ? Math.min(Math.max(1, (startMs[i] ?? 0) - (startMs[i - 1] ?? 0)), HOUR_MS)
-      : HOUR_MS;
-  });
-
-  // Average power over each slot [tᵢ, tᵢ₊₁), via the trapezoid of its
-  // endpoints. This is what makes a forecast bar line up with the energy
-  // actually accumulated during that same slot: sampling a single endpoint
-  // instead biases the steep limbs — over-reporting the sunset ramp and
-  // under-reporting the sunrise ramp. Only integrate genuinely adjacent
-  // samples (gap within the hour cap); anything else falls back to the point
-  // sample. The per-slot peak is the larger endpoint — what the UI reports as
-  // "max power" for the slot.
-  const adjacent = (i: number) => {
-    const next = startMs[i + 1];
-    return next !== undefined && next - (startMs[i] ?? 0) <= HOUR_MS;
-  };
-  const rawWatts = instW.map((w, i) => (adjacent(i) ? (w + (instW[i + 1] ?? w)) / 2 : w));
-  const rawPeakW = instW.map((w, i) => (adjacent(i) ? Math.max(w, instW[i + 1] ?? w) : w));
-
-  // Bucket by the plant's local calendar day. "Remaining" includes the running
-  // slot prorated by the fraction of it still ahead, so an 11:30 view with
-  // hourly slots counts half of the 11:00 slot instead of the whole hour.
-  const localNow = new Date(nowMs + data.utcOffsetSeconds * 1000).toISOString();
-  const today = localNow.slice(0, 10);
-  const tomorrow = new Date(nowMs + data.utcOffsetSeconds * 1000 + 24 * 3600 * 1000)
-    .toISOString()
-    .slice(0, 10);
+  const grid = slotGrid(data.times, data.utcOffsetSeconds);
+  // The raw (uncurtailed) PV potential, straight from the power model.
+  const rawSeries = integrateSlots(data.times, instantPowerW(config, data, correction), grid);
 
   // Run the clipping model only when something can actually clip; otherwise the
   // forecast is the raw PV estimate, identical to before this feature.
   const caps = clipCaps(config);
   const clippingOn = caps.maxOutputW < Number.POSITIVE_INFINITY || caps.batteryCapKwh > 0;
-  const loadW = sim?.houseLoadW ?? 0;
-  // Unknown SOC → assume the battery sits at its reserve (full headroom), so we
-  // never invent curtailment we can't justify.
-  const startPct = sim?.startSocPct ?? config.battery?.minSoc ?? 0;
-  // Past slots are simulated only when the battery state at the series start is
-  // known (measured day-start SOC) or irrelevant (no battery — the cap alone
-  // clips); otherwise they keep the raw estimate.
-  const simPast = clippingOn && (caps.batteryCapKwh === 0 || sim?.dayStartSocPct != null);
-  let socKwh =
-    caps.batteryCapKwh * ((simPast ? (sim?.dayStartSocPct ?? startPct) : startPct) / 100);
+  const usableSeries = clippingOn
+    ? clipSeries(rawSeries, grid, clipRun(config, caps, sim, nowMs))
+    : rawSeries;
 
-  // The raw (uncurtailed) PV potential, straight from the power model.
-  const rawSeries: SolarForecastPoint[] = data.times.map((time, i) => ({
-    time,
-    watts: rawWatts[i] ?? 0,
-    peakWatts: rawPeakW[i] ?? 0,
-  }));
-
-  // The usable view: raw PV with the feed-in cap + battery model curtailing the
-  // surplus. Identical to raw when nothing clips; past slots keep the raw
-  // estimate unless the day-start SOC lets the sim reconstruct them.
-  let reseeded = false;
-  const usableSeries: SolarForecastPoint[] = rawSeries.map((point, i) => {
-    const width = widthMs[i] ?? HOUR_MS;
-    const isPast = (startMs[i] ?? 0) + width <= nowMs;
-    if (!clippingOn || (isPast && !simPast)) return point;
-    // At the past→future seam the simulated SOC yields to the measured one:
-    // forecast weather drifts from what actually fell, and the live reading is
-    // truth for everything still ahead.
-    if (simPast && !isPast && !reseeded) {
-      reseeded = true;
-      if (sim?.startSocPct != null) socKwh = caps.batteryCapKwh * (sim.startSocPct / 100);
-    }
-    const step = simulateStep(point.watts, loadW, socKwh, caps, width / HOUR_MS);
-    socKwh = step.socKwh;
-    // Clipping caps the instantaneous output too: scale the peak by the slot's
-    // usable share so it never reports curtailed power.
-    const peakWatts =
-      point.watts > 0 ? point.peakWatts * (step.usefulW / point.watts) : step.usefulW;
-    return { time: point.time, watts: step.usefulW, peakWatts };
-  });
-
-  // Daily/near-term sums for one series, bucketed by the plant's local day.
-  // "Remaining" includes the running slot prorated by the fraction still ahead.
-  const viewOf = (series: SolarForecastPoint[]): ForecastView => {
-    const slotKwh = (i: number) => ((series[i]?.watts ?? 0) * (widthMs[i] ?? 0)) / HOUR_MS / 1000;
-    const dayKwh = (day: string) =>
-      series.reduce((s, p, i) => (p.time.startsWith(day) ? s + slotKwh(i) : s), 0);
-    return {
-      series,
-      todayKwh: dayKwh(today),
-      remainingTodayKwh: series.reduce((s, p, i) => {
-        if (!p.time.startsWith(today)) return s;
-        const width = widthMs[i] ?? 0;
-        const left = Math.min((startMs[i] ?? 0) + width - nowMs, width);
-        return left <= 0 ? s : s + slotKwh(i) * (left / width);
-      }, 0),
-      tomorrowKwh: dayKwh(tomorrow),
-      next15: computeNext15(series, startMs, widthMs, nowMs),
-    };
-  };
-
+  const days = localDays(nowMs, data.utcOffsetSeconds);
   return {
     provider,
-    stepMinutes: Math.round(Math.min(...widthMs, HOUR_MS) / 60_000),
+    stepMinutes: Math.round(Math.min(...grid.widthMs, HOUR_MS) / 60_000),
     utcOffsetSeconds: data.utcOffsetSeconds,
-    ...viewOf(usableSeries),
-    raw: viewOf(rawSeries),
+    ...viewOf(usableSeries, grid, nowMs, days),
+    raw: viewOf(rawSeries, grid, nowMs, days),
   };
 }
 
@@ -530,6 +555,29 @@ const LOAD_MEDIAN_TTL_MS = 6 * 3600 * 1000;
 const LOAD_MEDIAN_DAYS = 14;
 let loadCache: { at: number; watts: number | null } | null = null;
 
+/** Live battery SOC from the poll cache, %; null when unmapped or unavailable. */
+function liveSocPct(profile: InverterProfile | null, sample: InverterSample | null): number | null {
+  const key = roleKey(profile, "battery.soc");
+  return finiteOrNull(key ? sample?.metrics[key] : undefined);
+}
+
+/**
+ * A representative house load, W: the cached 14-day median of the load metric,
+ * recomputed once past its (long) TTL. `null` when the plant maps no load
+ * metric or the rollups have nothing yet.
+ */
+async function medianHouseLoadW(
+  profile: InverterProfile,
+  inverterId: string,
+): Promise<number | null> {
+  if (loadCache && Date.now() - loadCache.at < LOAD_MEDIAN_TTL_MS) return loadCache.watts;
+  const loadKey = roleKey(profile, "load.power");
+  const { queryMedianHourlyAvg } = await import("./history");
+  const watts = loadKey ? await queryMedianHourlyAvg(loadKey, inverterId, LOAD_MEDIAN_DAYS) : null;
+  loadCache = { at: Date.now(), watts };
+  return watts;
+}
+
 /**
  * Live SOC + house load for the clipping model (a config load override wins).
  * The `./inverter`, `./state` and `./history` deps are imported lazily so this
@@ -542,30 +590,11 @@ async function resolveSimInputs(config: WeatherConfig): Promise<ForecastSimInput
     import("./state"),
   ]);
   const profile = getActiveProfileOrNull();
-  const keyFor = (role: "battery.soc" | "load.power") =>
-    profile?.metrics.find((m) => m.role === role)?.key;
-
-  const socKey = keyFor("battery.soc");
-  const soc = socKey ? liveState.latest?.metrics[socKey] : undefined;
-  const startSocPct = typeof soc === "number" && Number.isFinite(soc) ? soc : null;
-
-  let houseLoadW = config.forecast.houseLoadW;
-  if (houseLoadW == null && profile) {
-    if (loadCache && Date.now() - loadCache.at < LOAD_MEDIAN_TTL_MS) {
-      houseLoadW = loadCache.watts;
-    } else {
-      const loadKey = keyFor("load.power");
-      const inverterId = liveState.latest?.inverterId ?? profile.id;
-      const { queryMedianHourlyAvg } = await import("./history");
-      const watts = loadKey
-        ? await queryMedianHourlyAvg(loadKey, inverterId, LOAD_MEDIAN_DAYS)
-        : null;
-      loadCache = { at: Date.now(), watts };
-      houseLoadW = watts;
-    }
-  }
-
-  return { startSocPct, houseLoadW: houseLoadW ?? null };
+  const sample = liveState.latest;
+  const load =
+    config.forecast.houseLoadW ??
+    (profile ? await medianHouseLoadW(profile, sample?.inverterId ?? profile.id) : null);
+  return { startSocPct: liveSocPct(profile, sample), houseLoadW: load ?? null };
 }
 
 /**
@@ -581,7 +610,7 @@ async function resolveDayStartSoc(data: IrradianceForecast): Promise<number | nu
     import("./history"),
   ]);
   const profile = getActiveProfileOrNull();
-  const socKey = profile?.metrics.find((m) => m.role === "battery.soc")?.key;
+  const socKey = roleKey(profile, "battery.soc");
   const startLocal = data.times[0];
   if (!profile || !socKey || startLocal === undefined) return null;
   const startMs = Date.parse(`${startLocal}:00Z`) - data.utcOffsetSeconds * 1000;
@@ -589,10 +618,9 @@ async function resolveDayStartSoc(data: IrradianceForecast): Promise<number | nu
     socKey,
     liveState.latest?.inverterId ?? profile.id,
     new Date(startMs),
-    new Date(startMs + 3_600_000),
+    new Date(startMs + HOUR_MS),
   );
-  const avg = rows[0]?.avg;
-  return typeof avg === "number" && Number.isFinite(avg) ? avg : null;
+  return finiteOrNull(rows[0]?.avg);
 }
 
 /**

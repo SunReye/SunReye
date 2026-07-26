@@ -43,7 +43,7 @@ const BUFFER_MAX = 500;
 const buffer: LogEntry[] = [];
 
 /** Notified with each new line (the server wires this to the WS broadcast). */
-type LogListener = (entry: LogEntry) => void;
+export type LogListener = (entry: LogEntry) => void;
 let listener: LogListener | null = null;
 
 /**
