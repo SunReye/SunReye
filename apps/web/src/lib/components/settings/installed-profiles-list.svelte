@@ -52,18 +52,16 @@
 {/snippet}
 
 <SettingsSection title={m.profiles_installed_title()}>
+	<!-- The active profile is pinned above the list, so search never hides it. -->
+	{#if activeProfile}
+		<div class="border border-border bg-muted/40 px-3">
+			{@render profileRow(activeProfile)}
+		</div>
+	{/if}
 	<GroupedProfileList
 		{profiles}
 		row={profileRow}
 		exclude={(p) => p.active}
 		emptyLabel={m.profiles_none_other()}
-	>
-		{#snippet pinned()}
-			{#if activeProfile}
-				<div class="border border-border bg-muted/40 px-3">
-					{@render profileRow(activeProfile)}
-				</div>
-			{/if}
-		{/snippet}
-	</GroupedProfileList>
+	/>
 </SettingsSection>

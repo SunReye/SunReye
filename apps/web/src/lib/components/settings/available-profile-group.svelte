@@ -2,7 +2,12 @@
 	import CaretDown from "phosphor-svelte/lib/CaretDown";
 	import * as Collapsible from "$lib/components/ui/collapsible";
 	import AvailableProfileRow from "./available-profile-row.svelte";
-	import type { AvailableProfile, ManufacturerGroup, Source } from "./profile-types";
+	import type {
+		AvailableProfile,
+		FamilyGroup,
+		ManufacturerGroup,
+		Source
+	} from "./profile-types";
 
 	let {
 		group,
@@ -19,6 +24,14 @@
 	/** Families the user has manually collapsed (keyed by family key). */
 	let collapsedFamilies = $state<Record<string, boolean>>({});
 </script>
+
+{#snippet familyRows(family: FamilyGroup)}
+	<div class="flex flex-col divide-y divide-border">
+		{#each family.profiles as p (p.source + p.id)}
+			<AvailableProfileRow profile={p} {sources} {busyId} {onInstall} />
+		{/each}
+	</div>
+{/snippet}
 
 <Collapsible.Root>
 	<Collapsible.Trigger
@@ -48,19 +61,11 @@
 							<span>({f.profiles.length})</span>
 						</Collapsible.Trigger>
 						<Collapsible.Content>
-							<div class="flex flex-col divide-y divide-border">
-								{#each f.profiles as p (p.source + p.id)}
-									<AvailableProfileRow profile={p} {sources} {busyId} {onInstall} />
-								{/each}
-							</div>
+							{@render familyRows(f)}
 						</Collapsible.Content>
 					</Collapsible.Root>
 				{:else}
-					<div class="flex flex-col divide-y divide-border">
-						{#each f.profiles as p (p.source + p.id)}
-							<AvailableProfileRow profile={p} {sources} {busyId} {onInstall} />
-						{/each}
-					</div>
+					{@render familyRows(f)}
 				{/if}
 			{/each}
 		</div>

@@ -18,6 +18,11 @@
 	} = $props();
 
 	const source = $derived(repoLabel(profile.source, sources));
+	const description = $derived(profile.description ? ` · ${profile.description}` : "");
+	const installedLabel = $derived(
+		m.profiles_installed_v({ version: profile.installedVersion ?? "" })
+	);
+	const busy = $derived(busyId === profile.id);
 </script>
 
 <div class="flex items-center justify-between gap-4 py-2.5">
@@ -25,22 +30,20 @@
 		<span class="wrap-break-word text-sm font-medium">{profile.name}</span>
 		<div class="flex min-w-0 flex-col text-xs text-muted-foreground sm:flex-row sm:gap-1">
 			<span class="truncate">
-				{profile.manufacturer} · v{profile.version}{profile.description
-					? ` · ${profile.description}`
-					: ""}
+				{profile.manufacturer} · v{profile.version}{description}
 			</span>
 			<span class="truncate sm:before:mr-1 sm:before:content-['·']">{source}</span>
 		</div>
 	</div>
 	<div class="shrink-0">
 		{#if profile.updateAvailable}
-			<Button size="sm" disabled={busyId === profile.id} onclick={() => onInstall(profile)}>
+			<Button size="sm" disabled={busy} onclick={() => onInstall(profile)}>
 				{m.profiles_update_to({ version: profile.version })}
 			</Button>
 		{:else if profile.installed}
-			<StatusBadge ok label={m.profiles_installed_v({ version: profile.installedVersion ?? "" })} />
+			<StatusBadge ok label={installedLabel} />
 		{:else}
-			<Button size="sm" disabled={busyId === profile.id} onclick={() => onInstall(profile)}>
+			<Button size="sm" disabled={busy} onclick={() => onInstall(profile)}>
 				{m.profiles_download()}
 			</Button>
 		{/if}

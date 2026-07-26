@@ -38,24 +38,29 @@
 		return true;
 	};
 
+	type Family = { base: AvailableProfile; tokens: Set<string>; profiles: AvailableProfile[] };
+
+	/** The most specific family whose id tokens are all contained in `tokens`. */
+	function bestBase(families: Family[], tokens: Set<string>): Family | null {
+		const bases = families.filter((f) => isSubset(f.tokens, tokens));
+		return bases.reduce<Family | null>(
+			(best, f) => (best && best.tokens.size >= f.tokens.size ? best : f),
+			null
+		);
+	}
+
 	function clusterFamilies(profiles: AvailableProfile[]): FamilyGroup[] {
 		// Fewest tokens first so a base is always seen before its models; the base
 		// then seeds the family and every superset id attaches to it.
 		const ordered = [...profiles].sort(
 			(a, b) => a.id.split("-").length - b.id.split("-").length || collator.compare(a.name, b.name)
 		);
-		const families: { base: AvailableProfile; tokens: Set<string>; profiles: AvailableProfile[] }[] =
-			[];
+		const families: Family[] = [];
 		for (const p of ordered) {
 			const tokens = tokenSet(p.id);
-			// Attach to the most specific base whose tokens this id contains; if none
-			// match, this id is itself a new family base.
-			let best: (typeof families)[number] | null = null;
-			for (const f of families) {
-				if (isSubset(f.tokens, tokens) && (best === null || f.tokens.size > best.tokens.size)) {
-					best = f;
-				}
-			}
+			// Attach to the most specific matching base; if none match, this id is
+			// itself a new family base.
+			const best = bestBase(families, tokens);
 			if (best) best.profiles.push(p);
 			else families.push({ base: p, tokens, profiles: [p] });
 		}
@@ -68,26 +73,39 @@
 			.sort((a, b) => collator.compare(a.label, b.label));
 	}
 
-	const groups = $derived.by((): ManufacturerGroup[] => {
-		const byManufacturer: Record<string, AvailableProfile[]> = {};
-		for (const p of available ?? []) {
-			const manufacturer = p.manufacturer || "Other";
-			(byManufacturer[manufacturer] ??= []).push(p);
-		}
-		return Object.entries(byManufacturer)
-			.map(([manufacturer, profiles]) => {
-				const families = clusterFamilies(profiles);
-				const count = families.reduce((n, f) => n + f.profiles.length, 0);
-				return { manufacturer, families, count };
-			})
-			.sort((a, b) => collator.compare(a.manufacturer, b.manufacturer));
-	});
+	/** Buckets profiles by manufacturer, with a catch-all for a blank one. */
+	function bucketByManufacturer(profiles: AvailableProfile[]): Record<string, AvailableProfile[]> {
+		const buckets: Record<string, AvailableProfile[]> = {};
+		for (const p of profiles) (buckets[p.manufacturer || "Other"] ??= []).push(p);
+		return buckets;
+	}
+
+	function toGroup([manufacturer, profiles]: [string, AvailableProfile[]]): ManufacturerGroup {
+		const families = clusterFamilies(profiles);
+		return { manufacturer, families, count: families.reduce((n, f) => n + f.profiles.length, 0) };
+	}
+
+	const groups = $derived.by((): ManufacturerGroup[] =>
+		Object.entries(bucketByManufacturer(available ?? []))
+			.map(toGroup)
+			.sort((a, b) => collator.compare(a.manufacturer, b.manufacturer))
+	);
+
+	const browseLabel = $derived(browsing ? m.profiles_browsing() : m.profiles_browse());
+	// `null` = never browsed (show the hint); empty = browsed but nothing found.
+	const emptyMessage = $derived(
+		available === null
+			? m.profiles_browse_hint()
+			: available.length === 0
+				? m.profiles_none_found()
+				: null
+	);
 </script>
 
 <SettingsSection title={m.profiles_available_title()}>
 	{#snippet actions()}
 		<Button variant="outline" size="sm" disabled={browsing} onclick={onBrowse}>
-			{browsing ? m.profiles_browsing() : m.profiles_browse()}
+			{browseLabel}
 		</Button>
 	{/snippet}
 
@@ -95,12 +113,8 @@
 		<p class="text-xs text-destructive">{m.profiles_browse_error({ source: e.source, error: e.error })}</p>
 	{/each}
 
-	{#if available === null}
-		<p class="text-sm text-muted-foreground">
-			{m.profiles_browse_hint()}
-		</p>
-	{:else if available.length === 0}
-		<p class="text-sm text-muted-foreground">{m.profiles_none_found()}</p>
+	{#if emptyMessage !== null}
+		<p class="text-sm text-muted-foreground">{emptyMessage}</p>
 	{:else}
 		<div class="flex flex-col gap-1">
 			{#each groups as g (g.manufacturer)}
