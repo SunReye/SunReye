@@ -1,6 +1,8 @@
 import { relations } from "drizzle-orm";
 import { pgTable, text, timestamp, boolean, integer, index } from "drizzle-orm/pg-core";
 
+import { createdAt, timestamps } from "./columns";
+
 export const user = pgTable("user", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
@@ -12,11 +14,7 @@ export const user = pgTable("user", {
   banned: boolean("banned").default(false).notNull(),
   banReason: text("ban_reason"),
   banExpires: timestamp("ban_expires"),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-  updatedAt: timestamp("updated_at")
-    .defaultNow()
-    .$onUpdate(() => /* @__PURE__ */ new Date())
-    .notNull(),
+  ...timestamps(),
 });
 
 export const session = pgTable(
@@ -25,7 +23,10 @@ export const session = pgTable(
     id: text("id").primaryKey(),
     expiresAt: timestamp("expires_at").notNull(),
     token: text("token").notNull().unique(),
-    createdAt: timestamp("created_at").defaultNow().notNull(),
+    createdAt: createdAt(),
+    // No insert default here (unlike every other table): Better Auth always
+    // supplies `updatedAt` when it creates a session, and the committed
+    // migration declares the column without one.
     updatedAt: timestamp("updated_at")
       .$onUpdate(() => /* @__PURE__ */ new Date())
       .notNull(),
@@ -56,7 +57,8 @@ export const account = pgTable(
     refreshTokenExpiresAt: timestamp("refresh_token_expires_at"),
     scope: text("scope"),
     password: text("password"),
-    createdAt: timestamp("created_at").defaultNow().notNull(),
+    createdAt: createdAt(),
+    // See `session.updatedAt`: no insert default, matching the migration.
     updatedAt: timestamp("updated_at")
       .$onUpdate(() => /* @__PURE__ */ new Date())
       .notNull(),
@@ -71,11 +73,7 @@ export const verification = pgTable(
     identifier: text("identifier").notNull(),
     value: text("value").notNull(),
     expiresAt: timestamp("expires_at").notNull(),
-    createdAt: timestamp("created_at").defaultNow().notNull(),
-    updatedAt: timestamp("updated_at")
-      .defaultNow()
-      .$onUpdate(() => /* @__PURE__ */ new Date())
-      .notNull(),
+    ...timestamps(),
   },
   (table) => [index("verification_identifier_idx").on(table.identifier)],
 );
@@ -108,11 +106,7 @@ export const apikey = pgTable(
     remaining: integer("remaining"),
     lastRequest: timestamp("last_request"),
     expiresAt: timestamp("expires_at"),
-    createdAt: timestamp("created_at").defaultNow().notNull(),
-    updatedAt: timestamp("updated_at")
-      .defaultNow()
-      .$onUpdate(() => /* @__PURE__ */ new Date())
-      .notNull(),
+    ...timestamps(),
     permissions: text("permissions"),
     metadata: text("metadata"),
   },

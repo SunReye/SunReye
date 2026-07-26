@@ -1,4 +1,6 @@
-import { jsonb, pgTable, text, timestamp } from "drizzle-orm/pg-core";
+import { jsonb, pgTable, text } from "drizzle-orm/pg-core";
+
+import { createdAtTz, updatedAtTz } from "./columns";
 
 /**
  * User-defined "custom charts" for the history page: a named selection of
@@ -15,11 +17,8 @@ export const customCharts = pgTable("custom_charts", {
   name: text("name").notNull(),
   /** The validated `CustomChartConfig` blob (metrics + chart type). */
   data: jsonb("data").notNull(),
-  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-  updatedAt: timestamp("updated_at", { withTimezone: true })
-    .defaultNow()
-    .$onUpdate(() => /* @__PURE__ */ new Date())
-    .notNull(),
+  createdAt: createdAtTz(),
+  updatedAt: updatedAtTz(),
 });
 
 export type CustomChartRow = typeof customCharts.$inferSelect;
