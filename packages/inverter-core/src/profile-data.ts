@@ -1,15 +1,5 @@
 import type { CanonicalRole } from "./roles";
-import type {
-  InverterProfile,
-  MetricAccess,
-  MetricDef,
-  MetricFlow,
-  MetricKind,
-  MetricRange,
-  MetricValues,
-  RegisterType,
-  SimulateFn,
-} from "./types";
+import type { InverterProfile, MetricBase, MetricDef, MetricValues, SimulateFn } from "./types";
 
 /**
  * Serializable inverter profile — the downloadable artifact and DB row. It is a
@@ -102,19 +92,11 @@ export type TopicToKey<T extends string> = T extends `${infer H}/${infer R}`
   ? `${H}.${TopicToKey<R>}`
   : T;
 
-/** {@link MetricDef} without runtime-only fields: `compute` → `computeExpr`. */
-export interface MetricDataDef {
-  key: string;
-  topic: string;
-  label: string;
-  unit: string | null;
-  group: string;
-  type: RegisterType;
-  addresses: number[];
-  scale: number;
-  /** Post-scale additive offset (`raw * scale + offset`); 0 when absent. */
-  offset?: number;
-  access: MetricAccess;
+/**
+ * {@link MetricDef} without runtime-only fields: `compute` → `computeExpr`.
+ * Everything else is shared, so it comes from {@link MetricBase}.
+ */
+export interface MetricDataDef extends MetricBase {
   /** Declarative derived value; mutually exclusive with reading from the wire. */
   computeExpr?: ComputeExpr;
   /**
@@ -123,14 +105,6 @@ export interface MetricDataDef {
    * profile is emitted. Never present in a validated profile.
    */
   computeAggregate?: AggregateExpr;
-  /** Declarative composite control; mutually exclusive with a register + `computeExpr`. */
-  controlExpr?: ControlExpr;
-  role?: CanonicalRole;
-  index?: number;
-  kind?: MetricKind;
-  range?: MetricRange;
-  enumLabels?: Record<number, string>;
-  flow?: MetricFlow;
 }
 
 /**
