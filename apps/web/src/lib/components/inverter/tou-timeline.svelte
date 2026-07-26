@@ -34,64 +34,96 @@
 		return m ? controller.value(m.key) : undefined;
 	}
 
-	// Lay the six slots out on a real 00:00→24:00 axis. A period runs from its
-	// start until the *next start in clock order* (not slot-index order) — so the
-	// blocks always tile the day without overlap even when the times aren't in
-	// ascending index order, and duplicate/unused starts collapse to zero width
-	// instead of ballooning to a full day. The block that crosses midnight is
-	// drawn as two pieces. When starts aren't all known yet, or every slot shares
-	// one start, the axis is meaningless — fall back to equal-width index blocks.
-	const layout = $derived.by(() => {
-		const entries = slots.map((slot) => {
+	type Start = { slot: TouSlot; startMin: number };
+	type Piece = { slot: TouSlot; startMin: number; lenMin: number; leftPct: number; widthPct: number };
+
+	const pct = (min: number) => (min / MIN_PER_DAY) * 100;
+
+	/** Each slot's start minute, or null while its register is still unread. */
+	function slotStarts() {
+		return slots.map((slot) => {
 			const v = fieldVal(slot, 'time');
 			return { slot, startMin: v === undefined ? null : hhmmToMinutes(v) };
 		});
-		const known = entries.filter(
-			(e): e is { slot: TouSlot; startMin: number } => e.startMin !== null
-		);
-		const realAxis = known.length === slots.length && new Set(known.map((e) => e.startMin)).size > 1;
+	}
 
-		type Piece = { slot: TouSlot; startMin: number; lenMin: number; leftPct: number; widthPct: number };
-		const pieces: Piece[] = [];
+	/** Equal-width index blocks, for when a clock axis would be meaningless. */
+	function equalWidthPieces(): Piece[] {
+		const w = slots.length ? 100 / slots.length : 100;
+		return slots.map((slot, i) => ({
+			slot,
+			startMin: 0,
+			lenMin: 0,
+			leftPct: i * w,
+			widthPct: w
+		}));
+	}
 
-		if (!realAxis) {
-			const w = slots.length ? 100 / slots.length : 100;
-			slots.forEach((slot, i) => {
-				pieces.push({ slot, startMin: 0, lenMin: 0, leftPct: i * w, widthPct: w });
-			});
-			return { realAxis, pieces };
+	/** Append one period, split into two pieces when it crosses midnight. */
+	function pushPeriod(pieces: Piece[], slot: TouSlot, startMin: number, lenMin: number) {
+		const end = startMin + lenMin;
+		if (end <= MIN_PER_DAY) {
+			pieces.push({ slot, startMin, lenMin, leftPct: pct(startMin), widthPct: pct(lenMin) });
+			return;
 		}
+		const beforeMidnight = MIN_PER_DAY - startMin;
+		const afterMidnight = end - MIN_PER_DAY;
+		pieces.push({
+			slot,
+			startMin,
+			lenMin: beforeMidnight,
+			leftPct: pct(startMin),
+			widthPct: pct(beforeMidnight)
+		});
+		pieces.push({
+			slot,
+			startMin: 0,
+			lenMin: afterMidnight,
+			leftPct: 0,
+			widthPct: pct(afterMidnight)
+		});
+	}
 
+	/**
+	 * One block per period, running from its start until the *next start in clock
+	 * order* (not slot-index order), so the blocks always tile the day without
+	 * overlap even when the times aren't in ascending index order.
+	 */
+	function clockPieces(sorted: Start[]): Piece[] {
+		const pieces: Piece[] = [];
+		for (let i = 0; i < sorted.length; i++) {
+			const cur = sorted[i].startMin;
+			// The last block wraps to the first start of the next day.
+			const next =
+				i + 1 < sorted.length ? sorted[i + 1].startMin : sorted[0].startMin + MIN_PER_DAY;
+			const lenMin = next - cur;
+			// A duplicate start is a zero-length period — nothing to draw.
+			if (lenMin <= 0) continue;
+			pushPeriod(pieces, sorted[i].slot, cur, lenMin);
+		}
+		return pieces;
+	}
+
+	// Lay the six slots out on a real 00:00→24:00 axis when every start is known and
+	// they aren't all identical; otherwise fall back to equal-width index blocks.
+	const layout = $derived.by(() => {
+		const known = slotStarts().filter((e): e is Start => e.startMin !== null);
+		const realAxis =
+			known.length === slots.length && new Set(known.map((e) => e.startMin)).size > 1;
+		if (!realAxis) return { realAxis, pieces: equalWidthPieces() };
 		// Clock order, ties broken by slot index for stability.
 		const sorted = [...known].sort((a, b) => a.startMin - b.startMin || a.slot.index - b.slot.index);
-		const n = sorted.length;
-		const pct = (min: number) => (min / MIN_PER_DAY) * 100;
-		for (let i = 0; i < n; i++) {
-			const cur = sorted[i].startMin;
-			// Last block wraps to the first start of the next day.
-			const next = i + 1 < n ? sorted[i + 1].startMin : sorted[0].startMin + MIN_PER_DAY;
-			const dur = next - cur;
-			if (dur <= 0) continue; // duplicate start → zero-length period, nothing to draw
-			const slot = sorted[i].slot;
-			const end = cur + dur;
-			if (end <= MIN_PER_DAY) {
-				pieces.push({ slot, startMin: cur, lenMin: dur, leftPct: pct(cur), widthPct: pct(dur) });
-			} else {
-				const first = MIN_PER_DAY - cur;
-				pieces.push({ slot, startMin: cur, lenMin: first, leftPct: pct(cur), widthPct: pct(first) });
-				pieces.push({ slot, startMin: 0, lenMin: end - MIN_PER_DAY, leftPct: 0, widthPct: pct(end - MIN_PER_DAY) });
-			}
-		}
-		return { realAxis, pieces };
+		return { realAxis, pieces: clockPieces(sorted) };
 	});
+
+	/** Fallback selection when no period covers "now". */
+	const firstIndex = $derived(slots[0]?.index ?? null);
+	const covers = (p: Piece, min: number) => min >= p.startMin && min < p.startMin + p.lenMin;
 
 	// The slot whose period contains "now", used as the default selection.
 	const activeIndex = $derived.by(() => {
-		if (!layout.realAxis) return slots[0]?.index ?? null;
-		for (const p of layout.pieces) {
-			if (nowMin >= p.startMin && nowMin < p.startMin + p.lenMin) return p.slot.index;
-		}
-		return slots[0]?.index ?? null;
+		if (!layout.realAxis) return firstIndex;
+		return layout.pieces.find((p) => covers(p, nowMin))?.slot.index ?? firstIndex;
 	});
 
 	let selectedIndex = $state<number | null>(null);
@@ -104,23 +136,57 @@
 
 	// The inverter stores only a start time per slot; a period ends where the
 	// next slot begins (the manual shows this derived end as a second column).
+
+	/** `[start, end]` hhmm of a slot's period, or null while either is unread. */
+	function periodBounds(slot: TouSlot): [number, number] | null {
+		const pos = slots.findIndex((s) => s.index === slot.index);
+		const start = fieldVal(slot, 'time');
+		const end = fieldVal(slots[(pos + 1) % slots.length], 'time');
+		return start === undefined || end === undefined ? null : [start, end];
+	}
+
 	const selectedRange = $derived.by(() => {
 		if (!selected || slots.length < 2) return null;
-		const pos = slots.findIndex((s) => s.index === selected.index);
-		const next = slots[(pos + 1) % slots.length];
-		const startV = selected.metrics.time ? controller.value(selected.metrics.time.key) : undefined;
-		const endV = next.metrics.time ? controller.value(next.metrics.time.key) : undefined;
-		if (startV === undefined || endV === undefined) return null;
-		return `${hhmmToLabel(startV)} → ${hhmmToLabel(endV)}`;
+		const bounds = periodBounds(selected);
+		return bounds ? `${hhmmToLabel(bounds[0])} → ${hhmmToLabel(bounds[1])}` : null;
 	});
+
+	// Grid-charge periods are amber, discharge periods sky.
+	const blockClassOf = (grid: boolean) =>
+		grid
+			? 'border-amber-500/40 bg-amber-500/10 hover:bg-amber-500/20'
+			: 'border-sky-500/40 bg-sky-500/10 hover:bg-sky-500/20';
+	const fillClassOf = (grid: boolean) => (grid ? 'bg-amber-500/25' : 'bg-sky-500/25');
+
+	/**
+	 * Bar height as a percentage. Voltage targets have no natural 0–100 range, so
+	 * they normalize across the slots' own min–max span (a single distinct value
+	 * sits mid-height); SOC maps straight to a percentage.
+	 */
+	function fillHeightOf(target: number, useVoltage: boolean, min: number, span: number) {
+		if (!useVoltage) return Math.max(0, Math.min(100, target));
+		return span > 0 ? ((target - min) / span) * 100 : 50;
+	}
+
+	/** Block caption: the period's clock start, or its slot number off-axis. */
+	const labelOf = (p: Piece) =>
+		layout.realAxis ? minutesToLabel(p.startMin) : msg.tou_slot_n({ index: p.slot.index });
+
+	/** Hover title: slot number, clock range on a real axis, target, grid flag. */
+	function titleOf(p: Piece, target: number, unit: string, grid: boolean, useVoltage: boolean) {
+		const range = layout.realAxis
+			? ` · ${minutesToLabel(p.startMin)}–${minutesToLabel(p.startMin + p.lenMin)}`
+			: '';
+		const kind = useVoltage ? msg.tou_target_label() : 'SOC';
+		const gridNote = grid ? ` · ${msg.tou_grid_charge_lower()}` : '';
+		return `${msg.tou_slot_n({ index: p.slot.index })}${range} · ${kind} ${target}${unit}${gridNote}`;
+	}
 
 	// Precompute everything the timeline blocks and picker chips render, so the
 	// markup below stays branch-free (keeps the template's complexity in budget).
 	const renderPieces = $derived.by(() => {
-		// Voltage targets have no natural 0–100 range, so normalize the bar height
-		// across the slots' min–max span; SOC maps directly to a percentage.
 		const useVoltage = mode === 'voltage';
-		const targetOf = (p: (typeof layout.pieces)[number]) =>
+		const targetOf = (p: Piece) =>
 			(useVoltage ? fieldVal(p.slot, 'voltage') : fieldVal(p.slot, 'soc')) ?? 0;
 		const vals = layout.pieces.map(targetOf);
 		const min = Math.min(...vals);
@@ -129,27 +195,18 @@
 		return layout.pieces.map((p) => {
 			const target = targetOf(p);
 			const grid = fieldVal(p.slot, 'enabled') === 1;
-			const range = layout.realAxis
-				? ` · ${minutesToLabel(p.startMin)}–${minutesToLabel(p.startMin + p.lenMin)}`
-				: '';
 			return {
 				...p,
 				target,
 				unit,
 				grid,
-				fillHeight: useVoltage
-					? span > 0
-						? ((target - min) / span) * 100
-						: 50
-					: Math.max(0, Math.min(100, target)),
-				blockClass: grid
-					? 'border-amber-500/40 bg-amber-500/10 hover:bg-amber-500/20'
-					: 'border-sky-500/40 bg-sky-500/10 hover:bg-sky-500/20',
-				fillClass: grid ? 'bg-amber-500/25' : 'bg-sky-500/25',
-				label: layout.realAxis ? minutesToLabel(p.startMin) : msg.tou_slot_n({ index: p.slot.index }),
+				fillHeight: fillHeightOf(target, useVoltage, min, span),
+				blockClass: blockClassOf(grid),
+				fillClass: fillClassOf(grid),
+				label: labelOf(p),
 				showLabel: p.widthPct > 10,
 				showTarget: p.widthPct > 7,
-				title: `${msg.tou_slot_n({ index: p.slot.index })}${range} · ${useVoltage ? msg.tou_target_label() : 'SOC'} ${target}${unit}${grid ? ` · ${msg.tou_grid_charge_lower()}` : ''}`
+				title: titleOf(p, target, unit, grid, useVoltage)
 			};
 		});
 	});
