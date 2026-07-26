@@ -465,29 +465,62 @@ function resolveAggregates(metrics: MetricDataDef[], profileId: string): MetricD
   return metrics;
 }
 
+/**
+ * Base keys the overlay's `null` entries delete, with every trailing-`.*`
+ * wildcard already expanded to the subtree it matches.
+ */
+function collectRemovals(
+  overlay: MetricsOverlay,
+  baseMetrics: MetricDataDef[],
+  baseId: string,
+): Set<string> {
+  const removed = new Set<string>();
+  for (const [rawKey, value] of Object.entries(overlay)) {
+    if (value !== null) continue;
+    for (const key of resolveRemoval(rawKey, baseMetrics, baseId)) removed.add(key);
+  }
+  return removed;
+}
+
+/** The two ways a value-carrying overlay entry lands: over a base metric, or beside it. */
+interface OverlayUpserts {
+  /** Derived replacements for metrics the base already has, keyed by base key. */
+  patched: Map<string, MetricDataDef>;
+  /** Metrics the overlay introduces, in overlay order. */
+  added: MetricDataDef[];
+}
+
+/**
+ * Resolve the overlay's value-carrying entries into patches of existing base
+ * metrics and brand-new additions. An entry set to `undefined` is skipped, so an
+ * optional overlay key spread in as `undefined` reads as "not mentioned".
+ */
+function collectUpserts(
+  overlay: MetricsOverlay,
+  baseMetrics: MetricDataDef[],
+  baseId: string,
+): OverlayUpserts {
+  const byKey = new Map(baseMetrics.map((m) => [m.key, m]));
+  const patched = new Map<string, MetricDataDef>();
+  const added: MetricDataDef[] = [];
+  for (const [rawKey, value] of Object.entries(overlay)) {
+    if (value === null || value === undefined) continue;
+    const existing = byKey.get(rawKey);
+    const derived = resolveUpsert(rawKey, value, existing, baseId);
+    if (existing) patched.set(rawKey, derived);
+    else added.push(derived);
+  }
+  return { patched, added };
+}
+
 /** Apply a keyed overlay over a clone of `baseMetrics`, returning fresh metrics. */
 function deriveMetrics(
   baseMetrics: MetricDataDef[],
   overlay: MetricsOverlay,
   baseId: string,
 ): MetricDataDef[] {
-  const byKey = new Map(baseMetrics.map((m) => [m.key, m]));
-  const removed = new Set<string>();
-  const patched = new Map<string, MetricDataDef>();
-  const added: MetricDataDef[] = [];
-
-  for (const [rawKey, value] of Object.entries(overlay)) {
-    if (value === undefined) continue;
-    if (value === null) {
-      for (const key of resolveRemoval(rawKey, baseMetrics, baseId)) removed.add(key);
-      continue;
-    }
-    const existing = byKey.get(rawKey);
-    const derived = resolveUpsert(rawKey, value, existing, baseId);
-    if (existing) patched.set(rawKey, derived);
-    else added.push(derived);
-  }
-
+  const removed = collectRemovals(overlay, baseMetrics, baseId);
+  const { patched, added } = collectUpserts(overlay, baseMetrics, baseId);
   const kept = baseMetrics
     .filter((m) => !removed.has(m.key))
     .map((m) => patched.get(m.key) ?? { ...m });
