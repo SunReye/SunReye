@@ -193,6 +193,59 @@ describe("profileDataSchema", () => {
   });
 });
 
+/** Every issue message the parse produced, so a rule is pinned to its wording. */
+const issues = (p: unknown): string[] => {
+  const r = safeParseProfileData(p);
+  return r.success ? [] : r.error.issues.map((i) => i.message);
+};
+
+describe("profileDataSchema — register width", () => {
+  test("a computed metric carrying addresses is rejected by name", () => {
+    const p = goodProfile();
+    p.metrics[5]!.addresses = [700];
+    expect(issues(p)).toContain("computed metric must have no addresses");
+  });
+
+  test("RAW needs at least one address", () => {
+    const p = goodProfile();
+    p.metrics[2]!.type = "RAW";
+    expect(issues(p)).toEqual([]);
+    p.metrics[2]!.addresses = [];
+    expect(issues(p)).toContain("RAW metric needs at least one address");
+  });
+
+  test("RAW accepts an arbitrary word count", () => {
+    const p = goodProfile();
+    p.metrics[2]!.type = "RAW";
+    p.metrics[2]!.addresses = [700, 701, 702];
+    expect(issues(p)).toEqual([]);
+  });
+
+  test("a single-word type reports the count it wanted and got", () => {
+    const p = goodProfile();
+    p.metrics[2]!.addresses = [700, 701];
+    expect(issues(p)).toContain("U_WORD needs 1 address(es), got 2");
+  });
+
+  test("U_DWORD wants exactly two addresses", () => {
+    const p = goodProfile();
+    p.metrics[2]!.type = "U_DWORD";
+    expect(issues(p)).toContain("U_DWORD needs 2 address(es), got 1");
+    p.metrics[2]!.addresses = [700, 701];
+    expect(issues(p)).toEqual([]);
+  });
+
+  test("a control that is also computed and addressed reports both faults", () => {
+    const p = controlProfile();
+    p.metrics[1]!.computeExpr = { sum: ["settings.max_discharge"] };
+    p.metrics[1]!.addresses = [200];
+    expect(issues(p)).toEqual([
+      "metric cannot be both a control and computed",
+      "control metric must have no addresses",
+    ]);
+  });
+});
+
 /** A profile with a writable target + a composite control that toggles it. */
 function controlProfile(): ProfileData {
   return defineProfile({

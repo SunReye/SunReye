@@ -74,8 +74,10 @@ export function scaffoldProject(opts: InitOptions): Record<string, string> {
  *   only overwritten with `--force`.
  * - `ensure-import` — we only need the file to *contain* our content (the
  *   `CLAUDE.md` → `@AGENTS.md` import); a richer user file is left untouched.
+ *
+ * @internal
  */
-interface GuideFile {
+export interface GuideFile {
   path: string;
   contents: string;
   mode: "managed" | "ensure-import";
@@ -137,7 +139,11 @@ export function planUpgrade(
   });
 }
 
-/** Derive a safe JS identifier from a profile id, e.g. `acme-hybrid` → `acmeHybrid`. */
+/**
+ * Derive a safe JS identifier from a profile id, e.g. `acme-hybrid` → `acmeHybrid`.
+ *
+ * @internal
+ */
 export function toIdentifier(id: string): string {
   const parts = id.split(/[^a-zA-Z0-9]+/).filter(Boolean);
   if (parts.length === 0) return "profile";

@@ -21,7 +21,7 @@ import type { MetricAccess, MetricFlow, MetricKind, MetricRange, RegisterType } 
  */
 
 /** Fields every metric shares, independent of role. */
-interface BaseMetricOpts {
+export interface BaseMetricOpts {
   label: string;
   group: string;
   /** Single address, `[low, high]` for `U_DWORD`, N words for `RAW`. Omit for computed. */
@@ -43,10 +43,19 @@ interface BaseMetricOpts {
   flow?: MetricFlow;
 }
 
-type RoleEntry<R extends CanonicalRole> = (typeof ROLE_CATALOG)[R];
+/**
+ * The {@link ROLE_CATALOG} entry for one role.
+ *
+ * @internal
+ */
+export type RoleEntry<R extends CanonicalRole> = (typeof ROLE_CATALOG)[R];
 
-/** Companions a role forces, read from its {@link ROLE_CATALOG} shape flags. */
-type RoleRequirements<R extends CanonicalRole> = (RoleEntry<R> extends { indexed: true }
+/**
+ * Companions a role forces, read from its {@link ROLE_CATALOG} shape flags.
+ *
+ * @internal
+ */
+export type RoleRequirements<R extends CanonicalRole> = (RoleEntry<R> extends { indexed: true }
   ? { index: number }
   : { index?: number }) &
   (RoleEntry<R> extends { needsEnumLabels: true }
@@ -55,12 +64,12 @@ type RoleRequirements<R extends CanonicalRole> = (RoleEntry<R> extends { indexed
   (RoleEntry<R> extends { writable: true } ? { access: "rw" } : object);
 
 /** Options when a role is supplied: base + the role + its required companions. */
-type RoledMetricOpts = {
+export type RoledMetricOpts = {
   [R in CanonicalRole]: BaseMetricOpts & { role: R } & RoleRequirements<R>;
 }[CanonicalRole];
 
 /** Options for a plain, unmapped metric — valid, just not rendered by role. */
-type UnroledMetricOpts = BaseMetricOpts & {
+export type UnroledMetricOpts = BaseMetricOpts & {
   role?: undefined;
   index?: number;
   enumLabels?: Record<number, string>;
@@ -133,7 +142,7 @@ export function metric<const T extends string>(
 }
 
 /** Options for a composite control built by {@link control}. */
-interface ControlOpts<K extends string> {
+export interface ControlOpts<K extends string> {
   label: string;
   group: string;
   /** The declarative action; every `target` is constrained to a profile key `K`. */
@@ -308,6 +317,71 @@ function controlRefs(expr: ControlExpr): string[] {
     : expr.preset.writes.map((w) => w.target);
 }
 
+/** The one error shape every un-prunable reference reports. */
+function refStillNeeded(metricKey: string, ref: string, why: string): never {
+  throw new Error(
+    `overlay removed "${ref}" but computed metric "${metricKey}" still needs it (${why}); ` +
+      `patch its computeExpr or remove "${metricKey}" too`,
+  );
+}
+
+/** Drop `removed` from a variadic operand list; emptying it entirely throws. */
+function shrinkOperands(
+  keys: string[],
+  removed: Set<string>,
+  metricKey: string,
+  why: string,
+): string[] {
+  const kept = keys.filter((k) => !removed.has(k));
+  if (kept.length === 0) refStillNeeded(metricKey, keys.find((k) => removed.has(k))!, why);
+  return kept;
+}
+
+/** True when any of `keys` was removed — i.e. this expr needs rewriting at all. */
+function anyRemoved(keys: string[], removed: Set<string>): boolean {
+  return keys.some((k) => removed.has(k));
+}
+
+/**
+ * The operands of a *fixed-arity* expr (`diff`, `scale`, `clamp`) plus the label
+ * used when one of them was removed; `undefined` for the variadic kinds.
+ */
+function fixedArityOperands(
+  expr: ComputeExpr,
+): { refs: readonly string[]; why: string } | undefined {
+  if ("diff" in expr) return { refs: expr.diff, why: "fixed-arity diff" };
+  if ("scale" in expr) return { refs: [expr.scale[0]], why: "fixed-arity scale" };
+  if ("clamp" in expr) return { refs: [expr.clamp.key], why: "single-key clamp" };
+  return undefined;
+}
+
+/** Prune a `combine`: `add` must keep an operand, `sub` may empty out. */
+function pruneCombine(
+  expr: { combine: { add: string[]; sub?: string[] } },
+  removed: Set<string>,
+  metricKey: string,
+): ComputeExpr {
+  const sub = expr.combine.sub ?? [];
+  if (!anyRemoved([...expr.combine.add, ...sub], removed)) return expr;
+  const add = shrinkOperands(expr.combine.add, removed, metricKey, "empties combine.add");
+  const keptSub = sub.filter((k) => !removed.has(k));
+  return { combine: keptSub.length > 0 ? { add, sub: keptSub } : { add } };
+}
+
+/** Prune a `ratio`: both `num` and `den` must keep at least one operand. */
+function pruneRatio(
+  expr: { ratio: { num: string[]; den: string[]; scale?: number } },
+  removed: Set<string>,
+  metricKey: string,
+): ComputeExpr {
+  const { num, den, scale } = expr.ratio;
+  if (!anyRemoved([...num, ...den], removed)) return expr;
+  const keptNum = shrinkOperands(num, removed, metricKey, "empties ratio.num");
+  const keptDen = shrinkOperands(den, removed, metricKey, "empties ratio.den");
+  const pruned = { num: keptNum, den: keptDen };
+  return { ratio: scale !== undefined ? { ...pruned, scale } : pruned };
+}
+
 /**
  * Rewrite one concrete {@link ComputeExpr} with `removed` keys dropped. A
  * removed key in a *variadic* list (`sum`, `combine.add/sub`, `ratio.num/den`)
@@ -319,44 +393,17 @@ function controlRefs(expr: ControlExpr): string[] {
  * changes; the original (base-owned) object is never mutated.
  */
 function pruneComputeExpr(expr: ComputeExpr, removed: Set<string>, metricKey: string): ComputeExpr {
-  const fail = (ref: string, why: string): never => {
-    throw new Error(
-      `overlay removed "${ref}" but computed metric "${metricKey}" still needs it (${why}); ` +
-        `patch its computeExpr or remove "${metricKey}" too`,
-    );
-  };
-  const shrink = (keys: string[], why: string): string[] => {
-    const kept = keys.filter((k) => !removed.has(k));
-    if (kept.length === 0) fail(keys.find((k) => removed.has(k))!, why);
-    return kept;
-  };
-
   if ("sum" in expr) {
-    return expr.sum.some((k) => removed.has(k)) ? { sum: shrink(expr.sum, "empties a sum") } : expr;
+    if (!anyRemoved(expr.sum, removed)) return expr;
+    return { sum: shrinkOperands(expr.sum, removed, metricKey, "empties a sum") };
   }
-  if ("diff" in expr) {
-    const hit = expr.diff.find((k) => removed.has(k));
-    return hit ? fail(hit, "fixed-arity diff") : expr;
-  }
-  if ("scale" in expr) {
-    return removed.has(expr.scale[0]) ? fail(expr.scale[0], "fixed-arity scale") : expr;
-  }
-  if ("clamp" in expr) {
-    return removed.has(expr.clamp.key) ? fail(expr.clamp.key, "single-key clamp") : expr;
-  }
-  if ("combine" in expr) {
-    const sub = expr.combine.sub ?? [];
-    if (![...expr.combine.add, ...sub].some((k) => removed.has(k))) return expr;
-    const add = shrink(expr.combine.add, "empties combine.add");
-    const keptSub = sub.filter((k) => !removed.has(k));
-    return { combine: keptSub.length ? { add, sub: keptSub } : { add } };
-  }
-  if (![...expr.ratio.num, ...expr.ratio.den].some((k) => removed.has(k))) return expr;
-  const num = shrink(expr.ratio.num, "empties ratio.num");
-  const den = shrink(expr.ratio.den, "empties ratio.den");
-  return {
-    ratio: expr.ratio.scale !== undefined ? { num, den, scale: expr.ratio.scale } : { num, den },
-  };
+  if ("combine" in expr) return pruneCombine(expr, removed, metricKey);
+  if ("ratio" in expr) return pruneRatio(expr, removed, metricKey);
+  // Only the fixed-arity kinds are left, so this is always defined.
+  const { refs, why } = fixedArityOperands(expr)!;
+  const hit = refs.find((k) => removed.has(k));
+  if (hit !== undefined) refStillNeeded(metricKey, hit, why);
+  return expr;
 }
 
 /**

@@ -66,7 +66,16 @@ export interface MetricFlow {
   negative: string;
 }
 
-export interface MetricDef {
+/**
+ * Everything the runtime {@link MetricDef} and its serializable mirror
+ * (`MetricDataDef` in `./profile-data`) agree on: identity, wire encoding, the
+ * composite-control expression, and the render metadata the UI contracts on.
+ *
+ * The two shapes differ *only* in how a derived value is carried — a compiled
+ * closure (`compute`) vs. a declarative expression (`computeExpr`) — so they
+ * share this base rather than restating twenty fields twice.
+ */
+export interface MetricBase {
   /** Canonical key, dotted form of the MQTT topic, e.g. `dc.pv1.power`. */
   key: string;
   /** MQTT topic suffix from the vendor docs, e.g. `dc/pv1/power`. */
@@ -94,17 +103,6 @@ export interface MetricDef {
   offset?: number;
   access: MetricAccess;
   /**
-   * Derived metric — computed from other decoded values instead of read from
-   * Modbus. Applied both on real reads and in simulation.
-   */
-  compute?: (values: MetricValues) => number;
-  /**
-   * Metric keys `compute` reads, derived from the declarative expression at
-   * parse time (never serialized). Lets the read planner resolve a computed
-   * metric's raw registers and sample them in one atomic Modbus transaction.
-   */
-  computeInputs?: string[];
-  /**
    * Composite control — writing to this metric runs the declarative
    * {@link ControlExpr} instead of a raw register write. Addressless (no wire
    * read/write of its own); the runtime interprets it and dispatches to the
@@ -125,6 +123,21 @@ export interface MetricDef {
   enumLabels?: Record<number, string>;
   /** Direction labels for signed measurements. */
   flow?: MetricFlow;
+}
+
+/** Runtime metric: {@link MetricBase} with the compiled derived value. */
+export interface MetricDef extends MetricBase {
+  /**
+   * Derived metric — computed from other decoded values instead of read from
+   * Modbus. Applied both on real reads and in simulation.
+   */
+  compute?: (values: MetricValues) => number;
+  /**
+   * Metric keys `compute` reads, derived from the declarative expression at
+   * parse time (never serialized). Lets the read planner resolve a computed
+   * metric's raw registers and sample them in one atomic Modbus transaction.
+   */
+  computeInputs?: string[];
 }
 
 /** Persistent, profile-owned simulation state (SoC, energy counters, ...). */

@@ -1,6 +1,7 @@
 export * from "./types";
 export { decode, encodeWord, registerWidth } from "./codec";
 export { ModbusInverter, planReads } from "./driver";
+export type { ReadBlock } from "./driver";
 export { applyComputed } from "./computed";
 export { SimulatedInverter } from "./simulator";
 export { genericSimulate } from "./generic-sim";
@@ -19,7 +20,17 @@ export type { EntityConstraint, EntityValueType } from "./entities";
 export { ROLE_CATALOG, ROLE_NAMES } from "./roles";
 export type { CanonicalRole, RoleSpec } from "./roles";
 export { control, defineFamily, defineProfile, defineVariant, metric, sumOf } from "./define";
-export type { MetricAdd, MetricOpts, MetricPatch, MetricsOverlay, ModelOverrides } from "./define";
+export type {
+  BaseMetricOpts,
+  ControlOpts,
+  MetricAdd,
+  MetricOpts,
+  MetricPatch,
+  MetricsOverlay,
+  ModelOverrides,
+  RoledMetricOpts,
+  UnroledMetricOpts,
+} from "./define";
 export { compileComputeExpr, hydrateProfile } from "./profile-data";
 export type {
   AggregateExpr,

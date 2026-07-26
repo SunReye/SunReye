@@ -1,11 +1,6 @@
-import {
-  doublePrecision,
-  integer,
-  pgTable,
-  primaryKey,
-  text,
-  timestamp,
-} from "drizzle-orm/pg-core";
+import { doublePrecision, integer, pgTable, primaryKey, text } from "drizzle-orm/pg-core";
+
+import { updatedAtTz } from "./columns";
 
 /**
  * Learned PV-forecast correction ("site adaptation" / Model Output Statistics).
@@ -40,10 +35,7 @@ export const forecastCorrectionCells = pgTable(
     ratio: doublePrecision("ratio").notNull(),
     /** Effective sample count (decays with the EWMA) — drives shrinkage. */
     weight: doublePrecision("weight").notNull(),
-    updatedAt: timestamp("updated_at", { withTimezone: true })
-      .defaultNow()
-      .$onUpdate(() => /* @__PURE__ */ new Date())
-      .notNull(),
+    updatedAt: updatedAtTz(),
   },
   (t) => [primaryKey({ columns: [t.inverterId, t.month, t.hour] })],
 );
@@ -67,10 +59,7 @@ export const forecastCorrectionState = pgTable("forecast_correction_state", {
   maeCorrected: doublePrecision("mae_corrected").notNull().default(0),
   /** Effective sample count behind the skill stats. */
   samples: doublePrecision("samples").notNull().default(0),
-  updatedAt: timestamp("updated_at", { withTimezone: true })
-    .defaultNow()
-    .$onUpdate(() => /* @__PURE__ */ new Date())
-    .notNull(),
+  updatedAt: updatedAtTz(),
 });
 
 export type ForecastCorrectionStateRow = typeof forecastCorrectionState.$inferSelect;
