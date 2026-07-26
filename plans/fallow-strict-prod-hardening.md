@@ -23,7 +23,10 @@ rules, `security-sink`, `security-client-server-leak`, `policy-violation`.
 ## The CRAP caveat (read before refactoring)
 
 No coverage data is wired, so fallow estimates coverage. At zero coverage CRAP collapses to
-`cyclomatic² + cyclomatic`. `maxCrap 30` therefore behaves as a **hard cyclomatic ceiling of 5**,
+`cyclomatic² + cyclomatic`, and fallow fires on `>=`. At cyclomatic 5 that is exactly 30, so
+`maxCrap 30` behaves as a **hard ceiling of cyclomatic 4** — anything at 5 or above fails
+(confirmed empirically: the lowest cyclomatic among the findings is 5, and no cyclomatic-4 function
+is flagged),
 stricter than the declared `maxCyclomatic 12`:
 
 - 118 health findings total
@@ -200,7 +203,7 @@ is bun's reporter having no `FN:` records. Ways forward, all out of scope for no
 - fallow ingesting lcov `DA:` ranges directly (upstream ask),
 - a two-pass bootstrap synthesising `fnMap` from fallow's own `health --format json` function list.
 
-**Consequence:** `maxCrap 30` stays a de-facto cyclomatic-5 policy, and the 77-item CRAP-only tail is
+**Consequence:** `maxCrap 30` stays a de-facto cyclomatic-4 policy, and the CRAP-only tail is
 real work rather than something coverage will dissolve. If that trade stops being worth it, the
 one-line alternative is `maxCrap: 170` — at zero coverage CRAP is `cyc² + cyc` and fires on `>=`, so
 170 fires only at cyclomatic ≥ 13, i.e. never before `maxCyclomatic: 12` does. That drops the
