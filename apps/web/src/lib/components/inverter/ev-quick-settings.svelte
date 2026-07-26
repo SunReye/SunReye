@@ -14,18 +14,23 @@
 	const kwh = (wh: number) => (wh / 1000).toLocaleString(undefined, { maximumFractionDigits: 1 });
 
 	/**
-	 * A committed write is held on screen for one worst-case EVCC publish loop.
-	 * Dropping the pending position the moment the POST resolves would snap the
-	 * thumb back to the pre-write value until EVCC's next tick republishes.
+	 * Ceiling on holding a committed position that EVCC never confirms (dropped
+	 * write, EVCC restart). Normally the confirmation arrives first — see the
+	 * convergence `$effect`.
 	 */
-	const LIMIT_SETTLE_MS = 30_000;
+	const LIMIT_SETTLE_MS = 10_000;
 
 	let busy = $state(false);
 	/**
-	 * The slider's own position while dragging and through the settle window after
-	 * a commit; `null` hands ownership back to live EVCC state.
+	 * The slider's own position while dragging and until a committed write is
+	 * confirmed; `null` hands ownership back to live EVCC state.
 	 */
 	let pendingLimit = $state<number | null>(null);
+	/**
+	 * Value of the write in flight, awaiting EVCC's republish. Deliberately not
+	 * `$state`: only the arrival of live state should re-run the check below.
+	 */
+	let committedLimit: number | null = null;
 	let settleTimer: ReturnType<typeof setTimeout> | null = null;
 
 	const limit = $derived(pendingLimit ?? displayLimitSoc(lp));
@@ -38,14 +43,20 @@
 	const modeVariant = (mode: string): 'default' | 'secondary' =>
 		lp.mode === mode ? 'default' : 'secondary';
 
-	/** Give the slider back to live EVCC state once the write has settled. */
-	function releasePending(delayMs: number) {
+	/** Hand the slider back to live EVCC state. */
+	function releasePending() {
 		if (settleTimer) clearTimeout(settleTimer);
-		settleTimer = setTimeout(() => {
-			settleTimer = null;
-			pendingLimit = null;
-		}, delayMs);
+		settleTimer = null;
+		committedLimit = null;
+		pendingLimit = null;
 	}
+
+	// Live state reclaims the slider the moment EVCC republishes the committed
+	// value, so a limit EVCC clamped or rejected paints at its next tick instead
+	// of after the ceiling.
+	$effect(() => {
+		if (committedLimit !== null && displayLimitSoc(lp) === committedLimit) releasePending();
+	});
 
 	$effect(() => () => {
 		if (settleTimer) clearTimeout(settleTimer);
@@ -61,10 +72,15 @@
 
 	async function commitLimit(value: number) {
 		pendingLimit = value;
+		committedLimit = value;
 		const error = await send(evcc.setLimitSoc(lp.index, value));
-		// Rejected: the pending position is a phantom, drop it now so live state
-		// (still the truth) paints. Accepted: hold it until EVCC republishes.
-		releasePending(error ? 0 : LIMIT_SETTLE_MS);
+		if (error) {
+			releasePending(); // phantom position — live state is still the truth
+			return;
+		}
+		// Accepted: hold the position until EVCC republishes it, and no longer.
+		if (settleTimer) clearTimeout(settleTimer);
+		settleTimer = setTimeout(releasePending, LIMIT_SETTLE_MS);
 	}
 </script>
 

@@ -336,8 +336,11 @@ function handleMessage(topic: string, payload: Buffer): void {
   }
   const vehicle = parseVehicleTopic(topicRoot, topic);
   if (!vehicle) return;
+  // No emit: vehicle state is write-routing input only (see the vehicles map),
+  // never part of the snapshot, so a push here would repeat the last one. EVCC
+  // mirrors every limit change onto the loadpoint's own topics anyway, and that
+  // branch above emits.
   storeValue(vehicles, vehicle.name, vehicle.key, payload);
-  scheduleEmit();
 }
 
 /**

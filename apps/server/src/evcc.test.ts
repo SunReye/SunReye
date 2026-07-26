@@ -37,7 +37,11 @@ mock.module("./evcc-settings", () => ({
   getEvccConfig: async () => ({ enabled: true, topicRoot: "evcc", subtractFromHome: false }),
 }));
 
-const { evccControl, evccSnapshot, rebuildEvcc, stopEvcc } = await import("./evcc");
+const { evccControl, evccSnapshot, rebuildEvcc, setEvccListener, stopEvcc } =
+  await import("./evcc");
+
+/** Comfortably past the ingest's emit debounce, so a due push has landed. */
+const EMIT_WAIT_MS = 300;
 
 /** Build the subscriber against a fresh fake client and complete its handshake. */
 async function connectEvcc(): Promise<void> {
@@ -184,6 +188,30 @@ describe("limit write path", () => {
     await connectEvcc();
     fake.emit("close");
     expect(() => evccControl(1, "limitSoc", "80")).toThrow("EVCC MQTT is not connected");
+  });
+});
+
+describe("pushes", () => {
+  test("vehicle state alone pushes nothing; loadpoint state still does", async () => {
+    await connectEvcc();
+    await Bun.sleep(EMIT_WAIT_MS); // let the connect/status push drain
+    let pushes = 0;
+    setEvccListener(() => {
+      pushes += 1;
+    });
+    try {
+      // Vehicle state is write-routing input only, never in the snapshot, so
+      // pushing on it would just repeat the previous snapshot to every client.
+      send("evcc/vehicles/tesla_ble/limitSoc", "80");
+      await Bun.sleep(EMIT_WAIT_MS);
+      expect(pushes).toBe(0);
+      // EVCC mirrors the change onto the loadpoint, and that is what reaches the UI.
+      send("evcc/loadpoints/1/effectiveLimitSoc", "80");
+      await Bun.sleep(EMIT_WAIT_MS);
+      expect(pushes).toBe(1);
+    } finally {
+      setEvccListener(() => {});
+    }
   });
 });
 
