@@ -16,7 +16,7 @@ export const TARIFF_KEY = "tariff";
  * restricts it to given ISO weekdays (1=Mon … 7=Sun); omitted = every day.
  * Hours not covered by any band fall back to `import.defaultPricePerKwh`.
  */
-export const tariffBandSchema = z.object({
+const tariffBandSchema = z.object({
   name: z.string().min(1),
   pricePerKwh: z.number().nonnegative(),
   startHour: z.number().int().min(0).max(23),

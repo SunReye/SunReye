@@ -8,8 +8,13 @@
 
 import { z } from "zod";
 
-/** How many metrics one chart may overlay (bounded to keep charts legible). */
-export const MAX_CHART_METRICS = 8;
+/**
+ * How many metrics one chart may overlay (bounded to keep charts legible).
+ * Enforced here on write; the editor form mirrors the value locally (see
+ * `apps/web/src/lib/inverter/custom-charts.svelte.ts`) because the web app
+ * can't import from this package.
+ */
+const MAX_CHART_METRICS = 8;
 
 /**
  * The `data` JSONB blob: the config that isn't already a column. Render style

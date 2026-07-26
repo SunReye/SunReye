@@ -11,8 +11,7 @@ import { z } from "zod";
 export const LOGGING_KEY = "logging";
 
 /** LogTape severities, lowest first (mirrors LogTape's `LogLevel`). */
-export const LOG_LEVELS = ["trace", "debug", "info", "warning", "error", "fatal"] as const;
-export type StoredLogLevel = (typeof LOG_LEVELS)[number];
+const LOG_LEVELS = ["trace", "debug", "info", "warning", "error", "fatal"] as const;
 
 export const loggingConfigSchema = z.object({
   /**

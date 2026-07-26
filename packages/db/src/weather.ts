@@ -14,7 +14,7 @@ export const WEATHER_KEY = "weather";
  * One PV array (a group of panels sharing an orientation). Plants with strings
  * facing different directions add one entry per orientation.
  */
-export const pvArraySchema = z.object({
+const pvArraySchema = z.object({
   /** Peak DC power of this array in kWp. */
   kwp: z.number().positive().max(100_000),
   /** Panel tilt from horizontal in degrees (0 = flat, 90 = vertical). */
@@ -25,14 +25,13 @@ export const pvArraySchema = z.object({
    */
   azimuth: z.number().min(-180).max(180),
 });
-export type PvArray = z.infer<typeof pvArraySchema>;
 
 /**
  * Battery parameters for the forecast's clipping model. Present only when the
  * plant has storage the forecast should account for; `usableKwh` drives how
  * much above-cap surplus the battery can soak up before the rest is curtailed.
  */
-export const forecastBatterySchema = z.object({
+const forecastBatterySchema = z.object({
   /** Usable (not nominal) battery energy in kWh — the DoD-limited window. */
   usableKwh: z.number().positive().max(10_000),
   /**
@@ -44,7 +43,6 @@ export const forecastBatterySchema = z.object({
   /** Reserve floor in % the battery is not discharged below (overnight drain). */
   minSoc: z.number().min(0).max(100).default(10),
 });
-export type ForecastBattery = z.infer<typeof forecastBatterySchema>;
 
 /**
  * Learned bias-correction ("site adaptation") settings. The correction *learns*
@@ -53,13 +51,19 @@ export type ForecastBattery = z.infer<typeof forecastBatterySchema>;
  * operator can inspect the learned factors and measured skill before trusting
  * them. The learning math (half-life, clamp, shrinkage) is not user-tunable.
  */
-export const forecastCorrectionConfigSchema = z.object({
+const forecastCorrectionConfigSchema = z.object({
   /** Apply the learned correction to the forecast (off = learn but don't apply). */
   enabled: z.boolean().default(false),
 });
-export type ForecastCorrectionConfig = z.infer<typeof forecastCorrectionConfigSchema>;
 
-/** Production-forecast settings for the plant (provider-agnostic PV model). */
+/**
+ * Production-forecast settings for the plant (provider-agnostic PV model).
+ *
+ * Reached in production through {@link weatherConfigSchema}; exported only so
+ * `apps/server/src/solar-forecast.test.ts` can build a forecast config directly.
+ *
+ * @internal
+ */
 export const solarForecastConfigSchema = z.object({
   /** Enable the production forecast on the weather tile. */
   enabled: z.boolean().default(false),
@@ -93,7 +97,6 @@ export const solarForecastConfigSchema = z.object({
   /** Learned bias-correction; learns in the background, applied only when enabled. */
   correction: forecastCorrectionConfigSchema.default(forecastCorrectionConfigSchema.parse({})),
 });
-export type SolarForecastConfig = z.infer<typeof solarForecastConfigSchema>;
 
 export const weatherConfigSchema = z.object({
   /** Enable the weather tile + Open-Meteo fetch. Off until a location is set. */

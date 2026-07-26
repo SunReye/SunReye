@@ -15,10 +15,10 @@ import { z } from "zod";
 /** `app_settings.key` under which the automations config is stored. */
 export const AUTOMATION_KEY = "automations";
 
-export const peakShavingModeSchema = z.enum(["maximize-exports", "grid-friendly"]);
+const peakShavingModeSchema = z.enum(["maximize-exports", "grid-friendly"]);
 export type PeakShavingMode = z.infer<typeof peakShavingModeSchema>;
 
-export const peakShavingConfigSchema = z.object({
+const peakShavingConfigSchema = z.object({
   /** Run the peak-shaving loop. Requires the master `enabled` gate too. */
   enabled: z.boolean().default(false),
   /**
@@ -43,7 +43,6 @@ export const peakShavingConfigSchema = z.object({
   /** Battery voltage for W→A when no `battery.voltage` metric is mapped, V. */
   nominalBatteryV: z.number().positive().max(1_500).default(51.2),
 });
-export type PeakShavingConfig = z.infer<typeof peakShavingConfigSchema>;
 
 export const automationConfigSchema = z.object({
   /**
