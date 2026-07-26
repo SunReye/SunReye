@@ -1,10 +1,12 @@
 # Fallow strict mode — prod hardening burn-down
 
-Status: **Phase 6 in flight.** Phases 0-4 were burned down by six parallel agents in separate
-worktrees and the repo reached `bunx fallow` exit 0 at `d38865c`; Phase 5 was spiked and rejected.
-`98b034f` then landed the Phase 6 ratchets, which **deliberately re-reds the repo** with 27 unused
-exports/types (internal packages only) + 9 complexity findings at the new 10/10 thresholds. CI wiring
-is blocked until those are cleared — a gate added now would fail every PR.
+Status: **complete.** Phases 0-4 were burned down by six parallel agents in separate worktrees and
+the repo reached `bunx fallow` exit 0 at `d38865c`; Phase 5 was spiked and rejected. `98b034f` landed
+the Phase 6 ratchets (`includeEntryExports`, health `10/10`, boundary coverage + forbidden calls),
+which deliberately re-redded the repo with 27 unused exports/types + 9 complexity findings; those
+were cleared in code — not by weakening the config — and fallow is now wired into CI. Green under the
+strict config at `3ab4c86`: 0 dead-code, 0 clone groups, 0 above threshold, maintainability 92.4.
+Two standing follow-ups remain, both deliberately deferred (see Phase 6).
 Config: [.fallowrc.json](../.fallowrc.json) · verify with `bunx fallow`, gate with `bunx fallow audit`.
 
 ## What the config change did
@@ -255,7 +257,11 @@ Convention left inconsistent on purpose, worth settling: test-only exports were 
 `@internal` JSDoc (which fallow honours) in `packages/**`, and genuine un-exporting plus rewritten
 tests in `apps/web`. Pick one.
 
-## Phase 6 — remaining ratchets (repo is now green, so these are the next steps)
+## Phase 6 — ratchets (landed) and standing follow-ups
+
+The first four items below **landed** (config in `98b034f`, the findings they exposed cleared in code,
+CI gate wired). The last two are intentionally open. Findings counts are what each ratchet exposed at
+the time it was flipped, kept as the record of what it cost.
 
 - `includeEntryExports: true` → **+113 findings** (55 unused exports, 36 unused types, mostly
   `packages/profile-sdk` 48, `packages/db` 23, `packages/inverter-core` 15). This is unused public
@@ -263,17 +269,22 @@ tests in `apps/web`. Pick one.
 - `boundaries.coverage` policy so new files must belong to a zone; `boundaries.calls` to ban
   direct DB access outside `packages/db`.
 - Tighten `health` to `10 / 10` (+22 findings at today's code) once coverage is real.
-- Wire fallow into CI — **researched, blocked on the Phase 6 burn-down finishing.** Nothing runs it
-  today (`grep -rn fallow .github/` is empty across 8 workflows); it only runs pre-commit via
-  lint-staged. Land it as a step in the existing `quality` job of `.github/workflows/ci.yml`
-  (already does `bun install --frozen-lockfile`, `SKIP_ENV_VALIDATION: "1"`), placed **after**
-  `Install dependencies` — running fallow before install invents findings (31 vs 27: two
-  unused-dependency plus one unresolved-import). Never in the `test` job, which runs
+- Wire fallow into CI — **landed.** Fallow used to run only pre-commit via lint-staged; it is now
+  also a `Code health gate` step (`bunx fallow --quiet`) in the `quality` job of
+  `.github/workflows/ci.yml`, so it runs on every `push` to `master` and every `pull_request`. The
+  step sits **directly after** `Install dependencies` and inherits the job's
+  `SKIP_ENV_VALIDATION: "1"` — running fallow before install invents findings (31 vs 27: two
+  unused-dependency plus one unresolved-import). Never move it into the `test` job, which runs
   `test:coverage` → the Phase 5 CRAP-relaxation hazard.
-  - Use the **full-repo `bunx fallow`**, not `fallow audit`: the full run is history-independent, so
-    `actions/checkout`'s default `fetch-depth: 1` is fine (a shallow clone only degrades hotspot
-    analysis, verified). `fallow audit` would need `fetch-depth: 0` or a pinned `FALLOW_AUDIT_BASE`.
-    Cost is ~1s of analysis.
+  - It runs the **full-repo `bunx fallow`**, not `fallow audit`: the full run is history-independent,
+    so `actions/checkout`'s default `fetch-depth: 1` is fine (a shallow clone only degrades hotspot
+    analysis, verified) and no stale base ref can weaken it. `fallow audit` would need
+    `fetch-depth: 0` or a pinned `FALLOW_AUDIT_BASE`. Cost is ~1s of analysis.
+  - No `--gate` flag: a CLI `--gate` overrides the config, and `audit.gate: "all"` is config-owned.
+    `--quiet` only drops progress/spinner output, meaningless in a non-TTY log; the full ~440-line
+    report is kept so a failure is debuggable from the log alone. `--format compact` was measured and
+    rejected — it is a machine format that emits a `file-score` line per file (55KB here), and
+    `--summary` gives counts with no file/line.
   - No SARIF upload: `ci.yml` declares `permissions: contents: read`, SARIF needs
     `security-events: write`, and that token is not granted on fork PRs, so the step would fail
     there. Note `--ci` is an alias for `--format sarif --fail-on-issues --quiet`, not just "CI mode".
