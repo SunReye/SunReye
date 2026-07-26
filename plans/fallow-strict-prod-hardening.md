@@ -1,6 +1,9 @@
 # Fallow strict mode — prod hardening burn-down
 
-Status: config landed, remediation not started.
+Status: **complete** — repo is green under the strict config as of 2026-07-26 (`bunx fallow` exits 0:
+0 dead-code, 0 clone groups, 0 functions above threshold, maintainability 92.4). Phases 0-4 were
+burned down by six parallel agents in separate worktrees; Phase 5 was spiked and rejected; Phase 6
+is still open. Kept as the record of what the thresholds mean and what is left.
 Config: [.fallowrc.json](../.fallowrc.json) · verify with `bunx fallow`, gate with `bunx fallow audit`.
 
 ## What the config change did
@@ -144,10 +147,15 @@ Then `<template>` findings (49). A synthetic `<template>` function accumulates e
 `{#each}`, `{:else if}` and inline ternary in markup, so under the CRAP ceiling a component with
 ~6 branches fails. Order of preference:
 
-1. Move conditional *value* computation into named `$derived`/helper functions in `<script>` (each
-   helper stays small; template branching drops).
-2. Split genuinely multi-state components into subcomponents or `{#snippet}`s per state.
-3. Only where neither applies (manifest-driven metric rendering), suppress with a reason.
+1. Move conditional *value* computation into named `$derived`/helper functions in `<script>`. This
+   genuinely works: branch count leaves the `<template>` rather than being re-attributed (verified).
+2. Split genuinely multi-state components into **real subcomponents**. `{#snippet}`s do **not** help
+   — fallow folds snippet bodies and inline arrow bodies into the parent's synthetic `<template>`
+   function. Measured on `tou-timeline.svelte`: hoisting markup into a top-level snippet left
+   cyclomatic at 20 and pushed cognitive 27 → 29. Only a separate component file moves the branches.
+   `{#key}` blocks count as a branch too.
+3. Only where neither applies (manifest-driven metric rendering), suppress with a reason. In practice
+   this was never needed: all 118 findings were resolved by decomposition with **zero** suppressions.
 
 Worst offenders: `tou-timeline.svelte` (5 findings), `weather-form.svelte` (4),
 `solar-forecast-dialog.svelte`, `control-row.svelte`, `(app)/+layout.svelte`,
@@ -221,7 +229,32 @@ Coverage is thin regardless: 69 files in lcov, 78 of 247 runtime files covered (
 `entities.ts` have none. Real tests written alongside the Phase 1-3 refactors are what would
 actually lower CRAP.
 
-## Phase 6 — remaining ratchets (after the repo is green)
+## Outcome (2026-07-26)
+
+Burned down in parallel: six agents, one git worktree each, split by directory (`apps/server`,
+`packages/**`, web settings+setup, web `lib/components/inverter`, web routes+client-libs, tooling),
+merged back into `feat/1.3.0` without a single conflict. ~50 commits.
+
+- **118 → 0** health findings, **38 → 0** dead-code, **23 → 0** clone groups, 0 boundary violations.
+- **Zero suppressions used** across the whole burn-down (budget was 2 per agent) and zero refactors
+  declined. Maintainability 91.9 → 92.4 over ~4600 more analysed lines.
+- Tests: 393 pass / 9 fail, the 9 being the pre-existing `git-source` env-TDZ + `initProfiles` set.
+  `svelte-check` 4049 files 0 errors, `check-types` clean, `oxlint` clean.
+- The real pre-commit gate (`fallow audit` with `gate: "all"`) now passes on a normal commit.
+
+Two cross-scope findings emerged only after merging, neither attributable to one agent:
+
+- `private-type-leaks` is **transitive** — exporting a leaked type can surface fresh leaks in the
+  types it references (hit in `inverter-core`).
+- `duplicate-exports` fires across *apps* once a type-only import links them into one graph: web's
+  rich `CostRange` object collided with the server's pre-existing `CostRange` string union, which
+  had sat unnoticed because nothing bridged the two graphs. Renamed to `CostRangeKey`.
+
+Convention left inconsistent on purpose, worth settling: test-only exports were resolved two ways —
+`@internal` JSDoc (which fallow honours) in `packages/**`, and genuine un-exporting plus rewritten
+tests in `apps/web`. Pick one.
+
+## Phase 6 — remaining ratchets (repo is now green, so these are the next steps)
 
 - `includeEntryExports: true` → **+113 findings** (55 unused exports, 36 unused types, mostly
   `packages/profile-sdk` 48, `packages/db` 23, `packages/inverter-core` 15). This is unused public
