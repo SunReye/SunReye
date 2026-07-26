@@ -6,10 +6,11 @@
 	import { Input } from '$lib/components/ui/input';
 	import { Label } from '$lib/components/ui/label';
 	import * as Table from '$lib/components/ui/table';
+	import CreateRowForm from './create-row-form.svelte';
+	import DataTable from './data-table.svelte';
 	import OptionSelect from './option-select.svelte';
+	import RowRemoveButton from './row-remove-button.svelte';
 	import SettingsSection from './settings-section.svelte';
-	import PlusIcon from 'phosphor-svelte/lib/Plus';
-	import TrashIcon from 'phosphor-svelte/lib/Trash';
 	import * as m from '$lib/paraglide/messages';
 
 	type Role = 'user' | 'admin';
@@ -19,6 +20,14 @@
 		{ value: 'user', label: m.users_role_user() },
 		{ value: 'admin', label: m.users_role_admin() }
 	];
+	const COLUMNS = [
+		{ label: m.auth_field_name() },
+		{ label: m.auth_field_email() },
+		{ label: m.users_role(), class: 'w-32' },
+		{ label: '', class: 'w-12' }
+	];
+	const roleOf = (u: Row) => u.role ?? 'user';
+
 	let users = $state<Row[]>([]);
 	let loading = $state(true);
 
@@ -28,6 +37,8 @@
 	let password = $state('');
 	let role = $state<Role>('user');
 	let creating = $state(false);
+
+	const createLabel = $derived(creating ? m.users_adding() : m.action_add());
 
 	async function load() {
 		loading = true;
@@ -74,84 +85,67 @@
 	}
 </script>
 
-<SettingsSection title={m.users_add_title()}>
-	<form class="grid items-end gap-3 sm:grid-cols-[1fr_1fr_1fr_auto_auto]" onsubmit={create}>
-		<div class="flex flex-col gap-1.5">
-			<Label for="u-name">{m.auth_field_name()}</Label>
-			<Input id="u-name" bind:value={name} required />
-		</div>
-		<div class="flex flex-col gap-1.5">
-			<Label for="u-email">{m.auth_field_email()}</Label>
-			<Input id="u-email" type="email" autocomplete="off" bind:value={email} required />
-		</div>
-		<div class="flex flex-col gap-1.5">
-			<Label for="u-password">{m.auth_field_password()}</Label>
-			<Input
-				id="u-password"
-				type="password"
-				autocomplete="new-password"
-				minlength={8}
-				bind:value={password}
-				required
-			/>
-		</div>
-		<div class="flex flex-col gap-1.5">
-			<Label>{m.users_role()}</Label>
-			<OptionSelect
-				value={role}
-				items={ROLES}
-				onchange={(v) => (role = v as Role)}
-				placeholder={m.users_role_user()}
-				triggerClass="w-28"
-			/>
-		</div>
-		<Button type="submit" disabled={creating}>
-			<PlusIcon class="size-4" />
-			{creating ? m.users_adding() : m.action_add()}
-		</Button>
-	</form>
-</SettingsSection>
+<CreateRowForm
+	title={m.users_add_title()}
+	gridClass="sm:grid-cols-[1fr_1fr_1fr_auto_auto]"
+	submitLabel={createLabel}
+	busy={creating}
+	onsubmit={create}
+>
+	<div class="flex flex-col gap-1.5">
+		<Label for="u-name">{m.auth_field_name()}</Label>
+		<Input id="u-name" bind:value={name} required />
+	</div>
+	<div class="flex flex-col gap-1.5">
+		<Label for="u-email">{m.auth_field_email()}</Label>
+		<Input id="u-email" type="email" autocomplete="off" bind:value={email} required />
+	</div>
+	<div class="flex flex-col gap-1.5">
+		<Label for="u-password">{m.auth_field_password()}</Label>
+		<Input
+			id="u-password"
+			type="password"
+			autocomplete="new-password"
+			minlength={8}
+			bind:value={password}
+			required
+		/>
+	</div>
+	<div class="flex flex-col gap-1.5">
+		<Label>{m.users_role()}</Label>
+		<OptionSelect
+			value={role}
+			items={ROLES}
+			onchange={(v) => (role = v as Role)}
+			placeholder={m.users_role_user()}
+			triggerClass="w-28"
+		/>
+	</div>
+</CreateRowForm>
+
+{#snippet userCells(u: Row)}
+	<Table.Cell class="font-medium">{u.name}</Table.Cell>
+	<Table.Cell class="text-muted-foreground">{u.email}</Table.Cell>
+	<Table.Cell>
+		<OptionSelect
+			value={roleOf(u)}
+			items={ROLES}
+			onchange={(v) => setRole(u.id, v as Role)}
+			placeholder="User"
+			triggerClass="w-28"
+		/>
+	</Table.Cell>
+	<Table.Cell>
+		<RowRemoveButton label={m.users_remove_aria()} onclick={() => remove(u.id, u.email)} />
+	</Table.Cell>
+{/snippet}
 
 <SettingsSection title={m.settings_tab_users()}>
-	{#if loading}
-		<p class="text-sm text-muted-foreground">{m.users_loading()}</p>
-	{:else}
-		<Table.Root>
-			<Table.Header>
-				<Table.Row>
-					<Table.Head>{m.auth_field_name()}</Table.Head>
-					<Table.Head>{m.auth_field_email()}</Table.Head>
-					<Table.Head class="w-32">{m.users_role()}</Table.Head>
-					<Table.Head class="w-12"></Table.Head>
-				</Table.Row>
-			</Table.Header>
-			<Table.Body>
-				{#each users as u (u.id)}
-					<Table.Row>
-						<Table.Cell class="font-medium">{u.name}</Table.Cell>
-						<Table.Cell class="text-muted-foreground">{u.email}</Table.Cell>
-						<Table.Cell>
-							<OptionSelect
-								value={u.role ?? 'user'}
-								items={ROLES}
-								onchange={(v) => setRole(u.id, v as Role)}
-								placeholder="User"
-								triggerClass="w-28"
-							/>
-						</Table.Cell>
-						<Table.Cell>
-							<Button
-								variant="ghost"
-								size="icon"
-								onclick={() => remove(u.id, u.email)}
-								aria-label={m.users_remove_aria()}
-							>
-								<TrashIcon class="size-4" />
-							</Button>
-						</Table.Cell>
-					</Table.Row>
-				{/each}
-			</Table.Body>
-		</Table.Root>
-	{/if}
+	<DataTable
+		{loading}
+		loadingLabel={m.users_loading()}
+		columns={COLUMNS}
+		rows={users}
+		cells={userCells}
+	/>
 </SettingsSection>
