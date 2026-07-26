@@ -250,6 +250,21 @@
   * {
     @apply border-border outline-ring/50;
   }
+  /* Scrollbars are never painted app-wide; scrolling itself stays intact
+     (wheel, touch, keyboard, and programmatic scroll all still work). */
+  * {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  *::-webkit-scrollbar {
+    display: none;
+    width: 0;
+    height: 0;
+  }
+  /* Same for the bits-ui ScrollArea's custom scrollbar track/thumb. */
+  [data-slot="scroll-area-scrollbar"] {
+    display: none;
+  }
   body {
     @apply bg-background text-foreground;
   }
