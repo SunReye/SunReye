@@ -9,7 +9,8 @@
 	import ArrowDown from 'phosphor-svelte/lib/ArrowDown';
 	import ArrowUp from 'phosphor-svelte/lib/ArrowUp';
 	import AnimatedNumber from './animated-number.svelte';
-	import { socColor, type GraphNode, type NodeKind } from '$lib/inverter/power-graph';
+	import SocGauge from './_shared/soc-gauge.svelte';
+	import type { GraphNode, NodeKind } from '$lib/inverter/power-graph';
 
 	let {
 		node,
@@ -39,14 +40,23 @@
 
 	const active = $derived(node.flow !== 'idle');
 	// The ring renders battery SoC — and vehicle SoC on the EV charger node.
-	const hasSoc = $derived((node.kind === 'battery' || node.kind === 'charger') && soc !== undefined);
+	const gauged = $derived(node.kind === 'battery' || node.kind === 'charger');
+	const hasSoc = $derived(gauged && soc !== undefined);
+	/** SoC handed to the gauge: `undefined` on nodes that don't show one. */
+	const ringSoc = $derived(gauged ? soc : undefined);
 
-	// SOC ring geometry: a square gauge traced just inside the node box (viewBox
-	// 56×56, scaled with the box) so the battery keeps the same footprint as every
-	// other node. Perimeter drives the dash fill like a circumference would.
-	const SOC_INSET = 2;
-	const SOC_SIZE = 56 - SOC_INSET * 2;
-	const SOC_PERIMETER = SOC_SIZE * 4;
+	const iconColor = $derived(active ? node.accent : 'var(--muted-foreground)');
+
+	// Direction chevron beside the state caption; idle nodes show none.
+	const FlowIcon = $derived(
+		node.flow === 'in' ? ArrowDown : node.flow === 'out' ? ArrowUp : undefined
+	);
+
+	// The caption stack sits above or below the box depending on the node's place in
+	// the diagram, flipping the flex order so label/value keep their reading order.
+	const labelBoxClass = $derived(
+		node.labelSide === 'above' ? 'bottom-full mb-2 flex-col-reverse' : 'top-full mt-2'
+	);
 
 	/** Node box treatment: accent ring + tint + soft glow while power moves. */
 	const circleStyle = $derived.by(() => {
@@ -70,51 +80,12 @@
 			class="flex size-full items-center justify-center border-2 transition-[box-shadow,border-color,background] duration-500"
 			style={circleStyle}
 		>
-			<Icon
-				class="size-7 sm:size-8 2xl:size-10"
-				weight="duotone"
-				style={`color:${active ? node.accent : 'var(--muted-foreground)'}`}
-			/>
+			<Icon class="size-7 sm:size-8 2xl:size-10" weight="duotone" style={`color:${iconColor}`} />
 		</div>
-		{#if hasSoc && soc !== undefined}
-			<!-- Square SOC gauge inset to the box edge so the battery keeps the same
-			     footprint as the other nodes. -->
-			<svg class="absolute inset-0 size-full" viewBox="0 0 56 56" aria-hidden="true">
-				<rect
-					class="text-border"
-					x={SOC_INSET}
-					y={SOC_INSET}
-					width={SOC_SIZE}
-					height={SOC_SIZE}
-					fill="none"
-					stroke="currentColor"
-					stroke-width="2.5"
-				/>
-				<rect
-					x={SOC_INSET}
-					y={SOC_INSET}
-					width={SOC_SIZE}
-					height={SOC_SIZE}
-					fill="none"
-					stroke={socColor(soc)}
-					stroke-width="2.5"
-					stroke-dasharray={SOC_PERIMETER}
-					stroke-dashoffset={SOC_PERIMETER * (1 - soc / 100)}
-					style="transition:stroke-dashoffset 500ms linear, stroke 500ms linear"
-				/>
-			</svg>
-			<span
-				class="absolute bottom-0 left-1/2 -translate-x-1/2 translate-y-1/2 border border-border bg-background px-1.5 text-[0.62rem] font-semibold tabular-nums leading-tight"
-				style={`color:${socColor(soc)}`}
-			>
-				{Math.round(soc)}%
-			</span>
-		{/if}
+		<SocGauge soc={ringSoc} />
 	</div>
 	<div
-		class={`absolute left-1/2 flex w-24 -translate-x-1/2 flex-col items-center gap-0.5 leading-tight 2xl:w-32 ${
-			node.labelSide === 'above' ? 'bottom-full mb-2 flex-col-reverse' : 'top-full mt-2'
-		}`}
+		class={`absolute left-1/2 flex w-24 -translate-x-1/2 flex-col items-center gap-0.5 leading-tight 2xl:w-32 ${labelBoxClass}`}
 	>
 		<span
 			class="text-[0.65rem] font-medium uppercase tracking-wide text-muted-foreground sm:text-xs 2xl:text-sm"
@@ -134,10 +105,8 @@
 		<span
 			class={`flex items-center gap-0.5 text-[0.6rem] uppercase tracking-wide 2xl:text-xs ${node.color}`}
 		>
-			{#if node.flow === 'in'}
-				<ArrowDown class="size-2.5" />
-			{:else if node.flow === 'out'}
-				<ArrowUp class="size-2.5" />
+			{#if FlowIcon}
+				<FlowIcon class="size-2.5" />
 			{/if}
 			{node.state}
 		</span>

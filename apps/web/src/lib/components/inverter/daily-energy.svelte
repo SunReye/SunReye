@@ -4,13 +4,14 @@
 	import House from 'phosphor-svelte/lib/House';
 	import ArrowLineUp from 'phosphor-svelte/lib/ArrowLineUp';
 	import ArrowLineDown from 'phosphor-svelte/lib/ArrowLineDown';
-	import type { CanonicalRole } from '$lib/inverter/types';
+	import type { CanonicalRole, ManifestMetric } from '$lib/inverter/types';
 	import { inverter } from '$lib/inverter/store.svelte';
 	import { api } from '$lib/api';
 	import * as m from '$lib/paraglide/messages';
-	import { Skeleton } from '$lib/components/ui/skeleton';
-	import AnimatedNumber from './animated-number.svelte';
 	import EnergyDetailDialog from './energy-detail-dialog.svelte';
+	import EnergyHeadline from './_shared/energy-headline.svelte';
+	import KpiSlotRow from './_shared/kpi-slot-row.svelte';
+	import KpiMeter from './_shared/kpi-meter.svelte';
 
 	// Per-card detail dialog: which stacked-bar chart the tile opens, plus its
 	// title. Keyed by role; only the four energy roles map a variant.
@@ -80,45 +81,41 @@
 		money?: { label: () => string; text: string; color: string };
 	};
 
-	function kpisFor(role: CanonicalRole, cost: CostToday): CardKpis {
-		switch (role) {
-			case 'production.today':
-				return cost.selfConsumption === null
-					? {}
-					: { ratio: { label: m.energy_self_consumption, value: cost.selfConsumption } };
-			case 'load.energy.today':
-				return {
-					ratio:
-						cost.selfSufficiency === null
-							? undefined
-							: { label: m.energy_autarky, value: cost.selfSufficiency },
-					// What buying the self-consumed energy would have cost instead.
-					money: {
-						label: m.energy_saved,
-						text: `+${money(cost.solarSavings, cost.currency)}`,
-						color: 'text-emerald-500'
-					}
-				};
-			case 'grid.energy.exported.today':
-				return {
-					money: {
-						label: m.energy_earned,
-						text: `+${money(cost.exportEarnings, cost.currency)}`,
-						color: 'text-emerald-500'
-					}
-				};
-			case 'grid.energy.imported.today':
-				return {
-					money: {
-						label: m.energy_spent,
-						text: `−${money(cost.importCost, cost.currency)}`,
-						color: 'text-red-500'
-					}
-				};
-			default:
-				return {};
-		}
-	}
+	/** A ratio KPI, or nothing when the server couldn't derive the ratio. */
+	const ratioKpi = (label: () => string, value: number | null) =>
+		value === null ? undefined : { label, value };
+
+	// Secondary KPIs per role, table-driven like DETAIL/SLOTS below.
+	const KPIS: Record<string, (c: CostToday) => CardKpis> = {
+		'production.today': (c) => ({
+			ratio: ratioKpi(m.energy_self_consumption, c.selfConsumption)
+		}),
+		'load.energy.today': (c) => ({
+			ratio: ratioKpi(m.energy_autarky, c.selfSufficiency),
+			// What buying the self-consumed energy would have cost instead.
+			money: {
+				label: m.energy_saved,
+				text: `+${money(c.solarSavings, c.currency)}`,
+				color: 'text-emerald-500'
+			}
+		}),
+		'grid.energy.exported.today': (c) => ({
+			money: {
+				label: m.energy_earned,
+				text: `+${money(c.exportEarnings, c.currency)}`,
+				color: 'text-emerald-500'
+			}
+		}),
+		'grid.energy.imported.today': (c) => ({
+			money: {
+				label: m.energy_spent,
+				text: `−${money(c.importCost, c.currency)}`,
+				color: 'text-red-500'
+			}
+		})
+	};
+
+	const kpisFor = (role: CanonicalRole, cost: CostToday): CardKpis => KPIS[role]?.(cost) ?? {};
 
 	const DEFS: {
 		role: CanonicalRole;
@@ -137,18 +134,82 @@
 	// Which secondary slots each role can ever fill, independent of data. Used to
 	// shape the loading skeleton and to reserve matching slot heights on every
 	// card so the ratio and money rows line up across the whole strip.
-	const SLOTS: Record<string, { ratio: boolean; money: boolean }> = {
+	type SlotShape = { ratio: boolean; money: boolean };
+	const NO_SLOTS: SlotShape = { ratio: false, money: false };
+	const SLOTS: Record<string, SlotShape> = {
 		'production.today': { ratio: true, money: false },
 		'load.energy.today': { ratio: true, money: true },
 		'grid.energy.exported.today': { ratio: false, money: true },
 		'grid.energy.imported.today': { ratio: false, money: true }
 	};
 
+	/** The ratio row: percentage of the card's own ratio KPI. */
+	function ratioRow(kpis: CardKpis | null, slots: SlotShape) {
+		const ratio = kpis?.ratio;
+		if (!ratio) {
+			return {
+				loading: kpis === null && slots.ratio,
+				label: undefined,
+				value: undefined,
+				valueClass: ''
+			};
+		}
+		return { loading: false, label: ratio.label(), value: `${percent(ratio.value)}%`, valueClass: '' };
+	}
+
+	/** The money row: a signed currency figure in its own colour. */
+	function moneyRow(kpis: CardKpis | null, slots: SlotShape) {
+		const cash = kpis?.money;
+		if (!cash) {
+			return {
+				loading: kpis === null && slots.money,
+				label: undefined,
+				value: undefined,
+				valueClass: ''
+			};
+		}
+		return { loading: false, label: cash.label(), value: cash.text, valueClass: cash.color };
+	}
+
+	/** The meter between the rows, tracking the same ratio. */
+	function meterRow(ratio: CardKpis['ratio'], loading: boolean, reserved: boolean) {
+		return {
+			loading,
+			// Only cards that can ever fill the ratio slot show a track.
+			trackClass: reserved ? 'bg-border/60' : '',
+			fillPercent: ratio === undefined ? undefined : percent(ratio.value)
+		};
+	}
+
+	/** All three fixed secondary slots of one card. */
+	function rowsFor(kpis: CardKpis | null, slots: SlotShape) {
+		const ratio = ratioRow(kpis, slots);
+		return {
+			ratio,
+			meter: meterRow(kpis?.ratio, ratio.loading, slots.ratio),
+			money: moneyRow(kpis, slots)
+		};
+	}
+
+	type Tile = (typeof DEFS)[number] & { metric: ManifestMetric };
+
+	/** Everything one card renders, so its markup stays branch-free. */
+	function decorate(t: Tile) {
+		const slots = SLOTS[t.role] ?? NO_SLOTS;
+		const kpis = cost ? kpisFor(t.role, cost) : null;
+		return {
+			...t,
+			hasSlots: slots.ratio || slots.money,
+			detail: DETAIL[t.role],
+			rows: rowsFor(kpis, slots)
+		};
+	}
+
 	// Only tiles whose role the active profile actually maps.
 	const tiles = $derived(
-		DEFS.map((d) => ({ ...d, metric: inverter.byRole(d.role) })).filter(
-			(t): t is typeof t & { metric: NonNullable<typeof t.metric> } => t.metric !== undefined
-		)
+		DEFS.map((d) => ({ ...d, metric: inverter.byRole(d.role) }))
+			.filter((t): t is Tile => t.metric !== undefined)
+			.map(decorate)
 	);
 </script>
 
@@ -160,12 +221,12 @@
 	     empty space falls below the cards instead of inflating them. -->
 	<div class="grid grid-cols-2 gap-3 sm:gap-4">
 		{#each tiles as t (t.role)}
-			{@const value = inverter.value(t.metric.key)}
 			{@const Icon = t.icon}
-			{@const slots = SLOTS[t.role] ?? { ratio: false, money: false }}
-			{@const kpis = cost ? kpisFor(t.role, cost) : null}
-			{@const detail = DETAIL[t.role]}
-			<EnergyDetailDialog variant={detail.variant} title={detail.title()} triggerClass={CARD_CLASS}>
+			<EnergyDetailDialog
+				variant={t.detail.variant}
+				title={t.detail.title()}
+				triggerClass={CARD_CLASS}
+			>
 				{#snippet trigger()}
 					<span class="flex items-start justify-between gap-2">
 						<span
@@ -179,64 +240,14 @@
 							<Icon class="size-4.5 {t.accent} 2xl:size-5" weight="duotone" />
 						</span>
 					</span>
-					<span class="text-2xl font-semibold tabular-nums leading-none xl:text-3xl">
-						{#if value === undefined}
-							<Skeleton class="h-7 w-20 rounded xl:h-8" />
-						{:else}
-							<AnimatedNumber {value} unit={t.metric.unit ?? ''} />
-							<span class="ml-1 text-sm font-normal text-muted-foreground 2xl:text-base">
-								{t.metric.unit ?? ''}
-							</span>
-						{/if}
-					</span>
+					<EnergyHeadline value={inverter.value(t.metric.key)} unit={t.metric.unit} />
 					<!-- Fixed slots (ratio row · meter · money row): every card reserves
 					     the same heights so rows align, even when a slot is empty. -->
-					{#if slots.ratio || slots.money}
+					{#if t.hasSlots}
 						<span class="flex flex-col gap-1">
-							<span class="flex min-h-3.5 items-baseline justify-between gap-2 2xl:min-h-4">
-								{#if kpis === null && slots.ratio}
-									<Skeleton class="h-2.5 w-24 rounded" />
-									<Skeleton class="h-2.5 w-8 rounded" />
-								{:else if kpis?.ratio}
-									<span
-										class="min-w-0 truncate text-[0.6rem] uppercase tracking-wide text-muted-foreground 2xl:text-xs"
-									>
-										{kpis.ratio.label()}
-									</span>
-									<span class="shrink-0 whitespace-nowrap text-xs font-semibold tabular-nums 2xl:text-sm">
-										{percent(kpis.ratio.value)}%
-									</span>
-								{/if}
-							</span>
-							<span
-								class="block h-1 overflow-hidden rounded-full {slots.ratio ? 'bg-border/60' : ''}"
-							>
-								{#if kpis === null && slots.ratio}
-									<Skeleton class="h-full w-full rounded-full" />
-								{:else if kpis?.ratio}
-									<span
-										class={`block h-full rounded-full ${t.bar}`}
-										style={`width:${percent(kpis.ratio.value)}%;transition:width 700ms ease`}
-									></span>
-								{/if}
-							</span>
-							<span class="flex min-h-3.5 items-baseline justify-between gap-2 2xl:min-h-4">
-								{#if kpis === null && slots.money}
-									<Skeleton class="h-2.5 w-24 rounded" />
-									<Skeleton class="h-2.5 w-10 rounded" />
-								{:else if kpis?.money}
-									<span
-										class="min-w-0 truncate text-[0.6rem] uppercase tracking-wide text-muted-foreground 2xl:text-xs"
-									>
-										{kpis.money.label()}
-									</span>
-									<span
-									class={`shrink-0 whitespace-nowrap text-xs font-semibold tabular-nums 2xl:text-sm ${kpis.money.color}`}
-								>
-										{kpis.money.text}
-									</span>
-								{/if}
-							</span>
+							<KpiSlotRow {...t.rows.ratio} skeletonValueWidth="w-8" />
+							<KpiMeter {...t.rows.meter} barClass={t.bar} />
+							<KpiSlotRow {...t.rows.money} skeletonValueWidth="w-10" />
 						</span>
 					{/if}
 				{/snippet}

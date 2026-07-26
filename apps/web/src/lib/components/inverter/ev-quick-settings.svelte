@@ -17,6 +17,14 @@
 	// The slider's uncommitted position; live limitSoc wins until the user drags.
 	let pendingLimit = $state<number | null>(null);
 	const limit = $derived(pendingLimit ?? lp.limitSoc ?? 0);
+	// EVCC treats limitSoc 0 as "charge without a target".
+	const limitLabel = $derived(limit === 0 ? m.evcc_limit_none() : `${limit}%`);
+	const sessionLabel = $derived(
+		lp.sessionEnergy === null ? '—' : `${kwh(lp.sessionEnergy)} kWh`
+	);
+	/** Only the loadpoint's current mode is filled. */
+	const modeVariant = (mode: string): 'default' | 'secondary' =>
+		lp.mode === mode ? 'default' : 'secondary';
 
 	async function send(action: Promise<string | null>) {
 		busy = true;
@@ -36,7 +44,7 @@
 			{#each EVCC_MODES as { value, label } (value)}
 				<Button
 					size="sm"
-					variant={lp.mode === value ? 'default' : 'secondary'}
+					variant={modeVariant(value)}
 					disabled={busy}
 					onclick={() => send(evcc.setMode(lp.index, value))}
 				>
@@ -53,7 +61,7 @@
 				{m.evcc_limit()}
 			</span>
 			<span class="text-xs tabular-nums text-muted-foreground">
-				{limit === 0 ? m.evcc_limit_none() : `${limit}%`}
+				{limitLabel}
 			</span>
 		</div>
 		<Slider
@@ -73,7 +81,7 @@
 		<div class="flex items-center gap-2">
 			<BatteryCharging class="size-4 text-muted-foreground" weight="duotone" />
 			<span class="tabular-nums">
-				{lp.sessionEnergy === null ? '—' : `${kwh(lp.sessionEnergy)} kWh`}
+				{sessionLabel}
 			</span>
 			<span class="text-xs text-muted-foreground">{m.evcc_session()}</span>
 		</div>

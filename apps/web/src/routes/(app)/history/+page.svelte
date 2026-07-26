@@ -8,20 +8,18 @@
 	import MetricGroup from './metric-group.svelte';
 	import { setPageHeader } from '$lib/page-header.svelte';
 	import {
-		filterMetrics,
-		groupByCategory,
-		isChartable,
-		resolvePreset,
-		type HistoryRange
-	} from '$lib/inverter/ranges';
+		chartableMetrics,
+		searchedGroups
+	} from '$lib/components/inverter/_shared/metric-catalog';
+	import { resolvePreset, type HistoryRange } from '$lib/inverter/ranges';
 
 	let range = $state<HistoryRange>(resolvePreset('live'));
 	let search = $state('');
 	// Per-category open state; groups default open (undefined → true).
 	let collapsed = $state<Record<string, boolean>>({});
 
-	const chartable = $derived(inverter.metrics.filter(isChartable));
-	const groups = $derived(groupByCategory(filterMetrics(chartable, search)));
+	const chartable = $derived(chartableMetrics(inverter.metrics));
+	const groups = $derived(searchedGroups(chartable, search));
 
 	const hasChartable = $derived(chartable.length > 0);
 	// Groups default open (undefined → true).

@@ -6,7 +6,12 @@
 	import { Tween } from 'svelte/motion';
 	import { linear } from 'svelte/easing';
 	import * as Chart from '$lib/components/ui/chart';
-	import { fractionDigits } from '$lib/inverter/format';
+	import MetricTooltipRow from '$lib/components/inverter/_shared/metric-tooltip-row.svelte';
+	import {
+		bufferStart,
+		glideOffset,
+		sampleInterval
+	} from '$lib/components/inverter/_shared/live-window';
 	import { display } from '$lib/display.svelte';
 	import type { LivePoint } from '$lib/inverter/types';
 
@@ -46,11 +51,7 @@
 	const lastT = $derived(points.at(-1)?.t);
 
 	// Spacing between samples, clamped, used to size the off-screen buffer below.
-	const interval = $derived.by(() => {
-		const a = points.at(-1)?.t;
-		const b = points.at(-2)?.t;
-		return a !== undefined && b !== undefined ? Math.min(Math.max(a - b, 250), 5000) : 1000;
-	});
+	const interval = $derived(sampleInterval(points.at(-1)?.t, points.at(-2)?.t));
 
 	// A real-time cursor that drifts continuously toward the newest sample instead of
 	// snapping to it once a second. Mirrors AnimatedNumber: stretch every transition
@@ -72,31 +73,16 @@
 		void cursor.set(t, { duration: Math.max(300, untrack(() => interval) * 1.15), easing: linear });
 	});
 
-	// The chart renders with a FIXED window anchored to the newest sample, so `data`
-	// and `xDomain` change only when a sample lands (~1 Hz). That bounds LayerChart's
-	// work — scale recompute, spline path, and the tooltip quadtree rebuild — to sample
-	// cadence instead of every animation frame. `data` keeps a few intervals of buffer
-	// past the left edge so the continuous glide never reveals empty space, and
-	// ChartClipPath around the marks hides everything outside the window.
+	// Fixed window anchored to the newest sample, with an off-screen buffer past the
+	// left edge — see _shared/live-window.ts for why.
 	const xDomain = $derived(lastT === undefined ? undefined : [lastT - windowMs, lastT]);
-	const data = $derived(
-		lastT === undefined ? points : points.filter((p) => p.t >= lastT - windowMs - 6 * interval)
-	);
-
-	// Per-frame smooth scroll WITHOUT re-rendering the chart: translate the marks group
-	// so the visible right edge tracks the interpolated cursor. `xScale` maps time→pixel
-	// for the fixed domain, so this resolves to a compositor-friendly transform on a
-	// single <g> — no path/scale/quadtree recompute. The newest sample trails one
-	// interval off-screen to the right and glides in under the feathered edge.
-	function glideX(xScale: (t: number) => number): number {
-		if (lastT === undefined) return 0;
-		return xScale(lastT) - xScale(cursor.current - interval);
-	}
+	const cutoff = $derived(lastT === undefined ? -Infinity : bufferStart(lastT, windowMs, interval));
+	const data = $derived(points.filter((p) => p.t >= cutoff));
 </script>
 
 {#snippet clippedMarks({ context }: MarksContext)}
 	<ChartClipPath>
-		<g transform={`translate(${glideX(context.xScale)}, 0)`}>
+		<g transform={`translate(${glideOffset(context.xScale, lastT, cursor.current, interval)}, 0)`}>
 			{#if diverging}
 				<DivergingArea {context} />
 			{:else}
@@ -161,8 +147,5 @@
 </Chart.Container>
 
 {#snippet tooltipValue({ value }: { value: unknown })}
-	<span class="text-muted-foreground">{label}</span>
-	<span class="ml-auto font-mono font-medium tabular-nums text-foreground">
-		{Number(value).toLocaleString(undefined, fractionDigits(unit))}{unit ? ` ${unit}` : ''}
-	</span>
+	<MetricTooltipRow {label} {value} {unit} />
 {/snippet}

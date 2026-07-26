@@ -25,6 +25,9 @@
 	const kwh = (w: number) =>
 		`${((w * stepMinutes) / 60 / 1000).toLocaleString(undefined, { maximumFractionDigits: 2 })} kWh`;
 
+	// Older samples predate per-slot peak tracking, so fall back to the average.
+	const actualPeakW = (s: ForecastSlot) => s.actualPeakW ?? s.actualW ?? 0;
+
 	const rows = $derived.by(() => {
 		if (!slot) return [];
 		const out = [
@@ -52,7 +55,7 @@
 				key: 'actual',
 				name: m.weather_forecast_actual(),
 				color: 'var(--color-energy-solar)',
-				peakW: slot.actualPeakW ?? slot.actualW,
+				peakW: actualPeakW(slot),
 				avgW: slot.actualW
 			});
 		}

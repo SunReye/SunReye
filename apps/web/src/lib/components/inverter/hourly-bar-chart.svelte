@@ -2,6 +2,8 @@
 	import { BarChart } from 'layerchart';
 	import * as Chart from '$lib/components/ui/chart';
 	import ChartLegend from '$lib/components/inverter/chart-legend.svelte';
+	import TooltipSeriesRow from '$lib/components/inverter/_shared/tooltip-series-row.svelte';
+	import { seriesConfig } from '$lib/components/inverter/_shared/chart-series';
 
 	// Reusable hourly bar chart for the overview detail dialogs. One or more
 	// series are stacked per band; a single series renders as a plain bar. Mirrors
@@ -31,9 +33,7 @@
 		layout?: 'stack' | 'overlap';
 	} = $props();
 
-	const config: Chart.ChartConfig = $derived(
-		Object.fromEntries(series.map((s) => [s.key, { label: s.label, color: s.color }]))
-	);
+	const config: Chart.ChartConfig = $derived(seriesConfig(series));
 
 	const hasData = $derived(data.some((d) => series.some((s) => s.value(d) > 0)));
 	const fmt = (v: number) => `${v.toLocaleString(undefined, { maximumFractionDigits: 2 })} ${unit}`;
@@ -55,16 +55,7 @@
 				{#snippet tooltip()}
 					<Chart.Tooltip>
 						{#snippet formatter({ value, name, item })}
-							<div
-								class="size-2.5 shrink-0 rounded-xs"
-								style="background: {item.config?.color ?? item.color}"
-							></div>
-							<div class="flex flex-1 items-center justify-between gap-4 leading-none">
-								<span class="text-muted-foreground">{name}</span>
-								<span class="font-mono font-medium tabular-nums text-foreground">
-									{fmt(Number(value))}
-								</span>
-							</div>
+							<TooltipSeriesRow {item} {name} value={fmt(Number(value))} />
 						{/snippet}
 					</Chart.Tooltip>
 				{/snippet}

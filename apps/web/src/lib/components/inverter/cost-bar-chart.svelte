@@ -3,6 +3,8 @@
 	import * as Chart from '$lib/components/ui/chart';
 	import * as m from '$lib/paraglide/messages';
 	import ChartLegend from '$lib/components/inverter/chart-legend.svelte';
+	import TooltipSeriesRow from '$lib/components/inverter/_shared/tooltip-series-row.svelte';
+	import { seriesConfig } from '$lib/components/inverter/_shared/chart-series';
 	import { COST_X_TICKS, periodLabel, type CostBucket } from '$lib/cost/ranges';
 
 	// One diverging stack per period. Mirrors the server's CostSeriesPoint
@@ -49,12 +51,15 @@
 		}
 	];
 
-	const config: Chart.ChartConfig = Object.fromEntries(
-		series.map((s) => [s.key, { label: s.label, color: s.color }])
-	);
+	const config: Chart.ChartConfig = seriesConfig(series);
 
 	const money = (v: number) =>
 		new Intl.NumberFormat(undefined, { style: 'currency', currency }).format(v);
+
+	// Earnings are already negative in the stack, so the sum of the tooltip rows is
+	// the period's net — same figure as the Net cost tile.
+	const netOf = (rows: readonly { value?: unknown }[]) =>
+		rows.reduce((sum, p) => sum + Number(p.value ?? 0), 0);
 
 	const data = $derived(points.map((p) => ({ ...p, label: periodLabel(p.bucket, bucket) })));
 </script>
@@ -74,25 +79,14 @@
 			{#snippet tooltip()}
 				<Chart.Tooltip>
 					{#snippet formatter({ value, name, item, index, payload })}
-						<div
-							class="size-2.5 shrink-0 rounded-xs"
-							style="background: {item.config?.color ?? item.color}"
-						></div>
-						<div class="flex flex-1 items-center justify-between gap-4 leading-none">
-							<span class="text-muted-foreground">{name}</span>
-							<span class="font-mono font-medium tabular-nums text-foreground">
-								{money(Number(value))}
-							</span>
-						</div>
+						<TooltipSeriesRow {item} {name} value={money(Number(value))} />
 						{#if index === payload.length - 1}
-							<!-- Earnings are already negative in the stack, so the sum of the
-							     rows is the period's net — same figure as the Net cost tile. -->
 							<div
 								class="mt-0.5 flex basis-full items-center justify-between gap-4 border-t border-border/50 pt-1.5 leading-none"
 							>
 								<span class="text-muted-foreground">{m.chart_net()}</span>
 								<span class="font-mono font-medium tabular-nums text-foreground">
-									{money(payload.reduce((sum, p) => sum + Number(p.value ?? 0), 0))}
+									{money(netOf(payload))}
 								</span>
 							</div>
 						{/if}

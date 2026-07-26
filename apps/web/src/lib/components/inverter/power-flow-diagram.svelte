@@ -2,15 +2,15 @@
 	import CpuIcon from 'phosphor-svelte/lib/Cpu';
 	import GaugeIcon from 'phosphor-svelte/lib/Gauge';
 	import type { CanonicalRole } from '$lib/inverter/types';
-	import AnimatedNumber from './animated-number.svelte';
 	import PowerFlowNode from './power-flow-node.svelte';
+	import PowerFlowRails, { type RailLine } from './_shared/power-flow-rails.svelte';
+	import HubMetrics from './_shared/hub-metrics.svelte';
 	import { inverter } from '$lib/inverter/store.svelte';
-	import { evcc } from '$lib/evcc/store.svelte';
-	import * as msg from '$lib/paraglide/messages';
+	import { evcc, type EvccLoadpoint } from '$lib/evcc/store.svelte';
 	import {
 		buildPowerGraph,
 		type ChargerDatum,
-		type Flow,
+		type NodeKind,
 		type Pt
 	} from '$lib/inverter/power-graph';
 
@@ -42,17 +42,23 @@
 	// EV charger (external EVCC): lease the store's live stream while the diagram
 	// is mounted; the node appears only while EVCC is reachable with loadpoints.
 	$effect(() => evcc.connect());
+	/** One vehicle → its SoC rings the node; several → no single truthful value. */
+	function singleVehicleSoc(lps: EvccLoadpoint[]): number | undefined {
+		if (lps.length !== 1) return undefined;
+		return lps[0].vehicleSoc ?? undefined;
+	}
+	const subtractsFromHome = () => evcc.state?.subtractFromHome ?? false;
+
 	const charger = $derived.by<ChargerDatum | undefined>(() => {
 		if (!evcc.active) return undefined;
 		const lps = evcc.loadpoints;
-		// One vehicle → its SoC rings the node; several → no single truthful value.
-		const soc = lps.length === 1 ? (lps[0].vehicleSoc ?? undefined) : undefined;
+		const soc = singleVehicleSoc(lps);
 		return {
 			power: evcc.chargePower,
 			...(soc === undefined ? {} : { soc }),
 			connected: lps.some((lp) => lp.connected),
 			charging: lps.some((lp) => lp.charging),
-			subtractFromHome: evcc.state?.subtractFromHome ?? false
+			subtractFromHome: subtractsFromHome()
 		};
 	});
 	const vehicleSoc = $derived(charger?.soc);
@@ -76,8 +82,6 @@
 
 	const graph = $derived.by(() => buildPowerGraph(caps, power, orientation, has, charger));
 
-	type Line = { id: string; flow: Flow; color: string; dur: number; d: string };
-
 	/** Segment pts → SVG path: 2 pts line, 3 quadratic, 4 cubic (see power-graph). */
 	function toPath(px: Pt[]): string {
 		const c = px.map((p) => `${p.x} ${p.y}`);
@@ -86,8 +90,12 @@
 		return `M ${c[0]} L ${c[1]}`;
 	}
 
-	const lines = $derived.by<Line[]>(() => {
-		if (w === 0 || h === 0) return [];
+	// Anchors are fractions; the rails need real pixels, so hold off until the safe
+	// box has been measured.
+	const measured = $derived(w > 0 && h > 0);
+
+	const lines = $derived.by<RailLine[]>(() => {
+		if (!measured) return [];
 		return graph.segments.map((s) => {
 			const px = s.pts.map((p) => ({ x: p.x * w, y: p.y * h }));
 			return {
@@ -99,6 +107,22 @@
 			};
 		});
 	});
+	const flowing = $derived(lines.filter((l) => l.flow !== 'idle'));
+
+	/** Only the battery and the EV charger ring a state-of-charge. */
+	const socFor = (kind: NodeKind) =>
+		kind === 'battery' ? batterySoc : kind === 'charger' ? vehicleSoc : undefined;
+
+	// Per-node extras the diagram supplies, resolved up front so the markup below
+	// stays branch-free.
+	const renderNodes = $derived(
+		graph.nodes.map((n) => ({
+			node: n,
+			soc: socFor(n.kind),
+			// The EVCC feed has its own cadence; the rest follow the inverter's.
+			intervalMs: n.kind === 'charger' ? evcc.cadenceMs : undefined
+		}))
+	);
 
 	/** Map magnitude → dash travel time (s). More watts = faster stream.
 	 *  Quantized to coarse steps: changing a CSS animation-duration mid-flight
@@ -124,37 +148,8 @@
 	<!-- Safe box: everything anchors inside these insets. -->
 	<div class={`absolute ${INSETS[orientation]}`}>
 	<div class="relative h-full w-full" bind:clientWidth={w} bind:clientHeight={h}>
-	{#if w > 0 && h > 0}
-		<svg class="absolute inset-0" width={w} height={h} viewBox={`0 0 ${w} ${h}`} aria-hidden="true">
-			<!-- Static dotted rails first (all segments) so a later segment's idle rail
-			     never overpaints an earlier segment's coloured flow where routes cross. -->
-			{#each lines as l (l.id)}
-				<path
-					class="text-border"
-					d={l.d}
-					fill="none"
-					stroke="currentColor"
-					stroke-width="2"
-					stroke-linecap="round"
-					stroke-dasharray="0.1 8"
-				/>
-			{/each}
-			<!-- Travelling energy dots on top. -->
-			{#each lines as l (`flow-${l.id}`)}
-				{#if l.flow !== 'idle'}
-					<path
-						class={`flow-line ${l.flow === 'in' ? 'flow-in' : 'flow-out'} ${l.color}`}
-						d={l.d}
-						fill="none"
-						stroke="currentColor"
-						stroke-width="4"
-						stroke-linecap="round"
-						stroke-dasharray="0.1 13.9"
-						style={`animation-duration:${l.dur}s`}
-					/>
-				{/if}
-			{/each}
-		</svg>
+	{#if measured}
+		<PowerFlowRails {lines} {flowing} width={w} height={h} />
 	{/if}
 
 	<!-- Inverter hub. Only the box is centred on the anchor; the metric pill
@@ -164,33 +159,7 @@
 		class="absolute -translate-x-1/2 -translate-y-1/2"
 		style={`left:${graph.hub.x * 100}%;top:${graph.hub.y * 100}%`}
 	>
-		{#if (efficiency !== undefined && efficiency > 0) || selfUse !== undefined}
-			<div
-				class="absolute bottom-full left-1/2 mb-2.5 flex -translate-x-1/2 justify-center gap-4 rounded-xl border border-border/60 bg-background/85 px-3 py-1.5 leading-tight backdrop-blur-[2px]"
-			>
-				{#if efficiency !== undefined && efficiency > 0}
-					<div class="flex flex-col items-center whitespace-nowrap">
-						<span
-							class="flex items-center gap-0.5 text-sm font-semibold tabular-nums text-primary 2xl:text-base"
-						>
-							<GaugeIcon class="size-3" weight="duotone" />
-							<AnimatedNumber value={efficiency} unit="%" />%
-						</span>
-						<span class="text-[0.6rem] uppercase tracking-wide text-muted-foreground">{msg.flow_efficiency()}</span>
-					</div>
-				{/if}
-				{#if selfUse !== undefined}
-					<div class="flex flex-col items-center whitespace-nowrap">
-						<span class="text-sm font-medium tabular-nums 2xl:text-base">
-							<AnimatedNumber value={Math.abs(selfUse)} unit="W" /><span
-								class="ml-0.5 text-[0.6rem] font-normal text-muted-foreground">W</span
-							>
-						</span>
-						<span class="text-[0.6rem] uppercase tracking-wide text-muted-foreground">{msg.flow_self_use()}</span>
-					</div>
-				{/if}
-			</div>
-		{/if}
+		<HubMetrics {efficiency} {selfUse} />
 		<div
 			class="relative flex size-14 items-center justify-center border-2 border-primary bg-background sm:size-16 2xl:size-20"
 			style="box-shadow:0 0 40px -8px color-mix(in oklab, var(--primary) 55%, transparent)"
@@ -200,40 +169,16 @@
 		</div>
 	</div>
 
-	{#each graph.nodes as n (n.id)}
-		<PowerFlowNode
-			node={n}
-			soc={n.kind === 'battery' ? batterySoc : n.kind === 'charger' ? vehicleSoc : undefined}
-			intervalMs={n.kind === 'charger' ? evcc.cadenceMs : undefined}
-		/>
+	{#each renderNodes as r (r.node.id)}
+		<PowerFlowNode {...r} />
 	{/each}
 	</div>
 	</div>
 </div>
 
 <style>
-	.flow-line {
-		filter: drop-shadow(0 0 5px currentColor);
-	}
-	.flow-in {
-		animation: flow-in linear infinite;
-	}
-	.flow-out {
-		animation: flow-out linear infinite;
-	}
 	.hub-ring {
 		animation: hub-pulse 2.6s ease-in-out infinite;
-	}
-	/* One dash period (0.1 + 13.9) per keyframe cycle for a seamless loop. */
-	@keyframes flow-in {
-		to {
-			stroke-dashoffset: -14;
-		}
-	}
-	@keyframes flow-out {
-		to {
-			stroke-dashoffset: 14;
-		}
 	}
 	@keyframes hub-pulse {
 		0%,
@@ -247,8 +192,6 @@
 		}
 	}
 	@media (prefers-reduced-motion: reduce) {
-		.flow-in,
-		.flow-out,
 		.hub-ring {
 			animation: none;
 		}
