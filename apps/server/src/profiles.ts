@@ -114,6 +114,29 @@ export interface AvailableProfile extends RepoProfileEntry {
 }
 
 /**
+ * Clone/pull one source, read its `index.json`, and annotate every entry against
+ * the installed set. Throws whatever the sync/parse failed with — the caller
+ * turns that into a per-source error.
+ */
+async function syncSourceProfiles(
+  sourceUrl: string,
+  installedById: ReadonlyMap<string, { version: string }>,
+): Promise<AvailableProfile[]> {
+  const dir = await syncRepo(sourceUrl);
+  const index = await readIndex(dir);
+  return index.profiles.map((p) => {
+    const installed = installedById.get(p.id);
+    return {
+      ...p,
+      source: sourceUrl,
+      installed: installed !== undefined,
+      installedVersion: installed?.version,
+      updateAvailable: installed !== undefined && isNewerVersion(installed.version, p.version),
+    };
+  });
+}
+
+/**
  * Browse every enabled source: clone/pull each repo, read its `index.json`, and
  * annotate each entry against the installed set. A source that fails to sync or
  * parse is reported in `errors` rather than failing the whole browse.
@@ -131,18 +154,7 @@ export async function browseAvailable(): Promise<{
   for (const src of sources) {
     if (!src.enabled) continue;
     try {
-      const dir = await syncRepo(src.url);
-      const index = await readIndex(dir);
-      for (const p of index.profiles) {
-        const installed = installedById.get(p.id);
-        profiles.push({
-          ...p,
-          source: src.url,
-          installed: installed !== undefined,
-          installedVersion: installed?.version,
-          updateAvailable: installed !== undefined && isNewerVersion(installed.version, p.version),
-        });
-      }
+      profiles.push(...(await syncSourceProfiles(src.url, installedById)));
     } catch (error) {
       errors.push({
         source: src.url,
