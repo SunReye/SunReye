@@ -7,6 +7,19 @@ export type { EvccLoadpoint };
 
 export type EvccMode = "off" | "pv" | "minpv" | "now";
 
+/**
+ * The charge limit to display for a loadpoint, in % (0 = no limit).
+ *
+ * EVCC resolves three layers into one: the durable per-vehicle limit, the
+ * per-session loadpoint override, and `effectiveLimitSoc` as the result. Prefer
+ * the effective value — it is what EVCC's own UI shows — and only fall back to
+ * the session override on an EVCC old enough not to publish it. A `0` from
+ * either layer is genuinely "no limit", so it must not fall through.
+ */
+export function displayLimitSoc(lp: EvccLoadpoint): number {
+  return lp.effectiveLimitSoc ?? lp.limitSoc ?? 0;
+}
+
 /** EVCC charge modes with their display labels, in EVCC's own UI order. */
 export const EVCC_MODES: { value: EvccMode; label: () => string }[] = [
   { value: "off", label: m.evcc_mode_off },

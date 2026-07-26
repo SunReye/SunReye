@@ -5,7 +5,7 @@
 	import { toast } from 'svelte-sonner';
 	import { Button } from '$lib/components/ui/button';
 	import { Slider } from '$lib/components/ui/slider';
-	import { EVCC_MODES, evcc, type EvccLoadpoint } from '$lib/evcc/store.svelte';
+	import { displayLimitSoc, EVCC_MODES, evcc, type EvccLoadpoint } from '$lib/evcc/store.svelte';
 	import { socColor } from '$lib/inverter/power-graph';
 	import * as m from '$lib/paraglide/messages';
 
@@ -14,10 +14,10 @@
 	const kwh = (wh: number) => (wh / 1000).toLocaleString(undefined, { maximumFractionDigits: 1 });
 
 	let busy = $state(false);
-	// The slider's uncommitted position; live limitSoc wins until the user drags.
+	// The slider's uncommitted position; the live limit wins until the user drags.
 	let pendingLimit = $state<number | null>(null);
-	const limit = $derived(pendingLimit ?? lp.limitSoc ?? 0);
-	// EVCC treats limitSoc 0 as "charge without a target".
+	const limit = $derived(pendingLimit ?? displayLimitSoc(lp));
+	// EVCC treats a limit of 0 as "charge without a target".
 	const limitLabel = $derived(limit === 0 ? m.evcc_limit_none() : `${limit}%`);
 	const sessionLabel = $derived(
 		lp.sessionEnergy === null ? '—' : `${kwh(lp.sessionEnergy)} kWh`
@@ -54,7 +54,7 @@
 		</div>
 	</div>
 
-	<!-- Charge limit (limitSoc): 0 means "no limit" in EVCC. -->
+	<!-- Charge limit: EVCC's effective (resolved) limit, 0 meaning "no limit". -->
 	<div class="flex flex-col gap-2">
 		<div class="flex items-baseline justify-between gap-2">
 			<span class="text-xs font-medium uppercase tracking-wide text-muted-foreground">

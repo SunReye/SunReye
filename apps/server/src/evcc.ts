@@ -13,12 +13,19 @@
  * - loadpoint topics are `<root>/loadpoints/<n>/<key>` with **1-based** `n`
  *   and camelCase keys; keys can nest further (`chargeCurrents/l1`).
  * - `<root>/loadpoints` (no index) is a retained loadpoint-count topic.
+ * - vehicle topics mirror that shape as `<root>/vehicles/<name>/<key>`, keyed
+ *   by the EVCC config slug the loadpoint reports as `vehicleName`.
  * - `<root>/status` is EVCC's own online/offline (LWT) topic — the freshness
  *   signal; broker-retained state can outlive a dead EVCC.
  * - commands are `<root>/loadpoints/<n>/<key>/set`; state topics use
  *   camelCase there too (`limitSoc/set`, unlike the REST API's lowercase path).
+ *   Vehicle-scoped commands exist too (`<root>/vehicles/<name>/<key>/set`).
  * - live updates arrive with `retain=false`; only the snapshot on subscribe
  *   carries the retain flag, so it must never be filtered on.
+ * - the charge limit is **three-layered**: a durable per-vehicle `limitSoc`, a
+ *   per-session loadpoint `limitSoc` override, and the loadpoint's
+ *   `effectiveLimitSoc` as EVCC's resolution of the two. Read the effective
+ *   one, write the vehicle one — see {@link limitSocTopic}.
  *
  * The topic grammar and payload coercion those notes describe live in
  * {@link ./evcc-topics}, which is pure and unit-tested.
@@ -34,7 +41,12 @@ import {
   type LiveChargePower,
   type LoadpointParams,
 } from "./ev-power-estimator";
-import { type EvccValue, coercePayload, parseLoadpointTopic } from "./evcc-topics";
+import {
+  type EvccValue,
+  coercePayload,
+  parseLoadpointTopic,
+  parseVehicleTopic,
+} from "./evcc-topics";
 import { getEvccConfig } from "./evcc-settings";
 import { log } from "./logging";
 
@@ -66,12 +78,35 @@ export interface EvccLoadpoint {
   vehicleRange: number | null;
   /** Display name of the detected vehicle (nicer than the config slug). */
   vehicleTitle: string | null;
+  /**
+   * Config slug of the detected vehicle (`tesla_ble`) — the key under
+   * `<root>/vehicles/`. Carried for the limit write path, which targets the
+   * vehicle rather than the loadpoint; prefer {@link vehicleTitle} for display.
+   */
+  vehicleName: string | null;
   /** Energy added this charging session in Wh. */
   sessionEnergy: number | null;
   /** Energy still needed to reach the charge limit in Wh (EVCC's estimate). */
   chargeRemainingEnergy: number | null;
-  /** Charge limit in % (0 = no limit). */
+  /**
+   * The loadpoint's *session* charge limit in %, EVCC's per-session override of
+   * the vehicle's configured limit. `0` means "no override", **not** "no limit",
+   * and EVCC clears it on unplug or restart — so it is never the value to
+   * display on its own. See {@link effectiveLimitSoc}.
+   */
   limitSoc: number | null;
+  /**
+   * The limit EVCC actually charges to, in % — its own resolution of the
+   * session override and the vehicle's configured limit. This is what EVCC's UI
+   * shows, so it is what the dashboard renders. `0`/null = no limit.
+   */
+  effectiveLimitSoc: number | null;
+  /**
+   * Charge limit read *from the car* in %, informational only: EVCC surfaces it
+   * so a taper it does not control can be explained. Not writable, and not part
+   * of the effective-limit resolution.
+   */
+  vehicleLimitSoc: number | null;
   phasesActive: number | null;
 }
 
@@ -100,6 +135,7 @@ function toLoadpoint(
   live: LiveChargePower | null,
 ): EvccLoadpoint {
   const chargePower = num(values.get("chargePower")) ?? 0;
+  const vehicleName = str(values.get("vehicleName"));
   return {
     index,
     title: str(values.get("title")),
@@ -111,10 +147,13 @@ function toLoadpoint(
     connected: bool(values.get("connected")),
     vehicleSoc: num(values.get("vehicleSoc")),
     vehicleRange: num(values.get("vehicleRange")),
-    vehicleTitle: str(values.get("vehicleTitle")) ?? str(values.get("vehicleName")),
+    vehicleTitle: str(values.get("vehicleTitle")) ?? vehicleName,
+    vehicleName,
     sessionEnergy: num(values.get("sessionEnergy")),
     chargeRemainingEnergy: num(values.get("chargeRemainingEnergy")),
     limitSoc: num(values.get("limitSoc")),
+    effectiveLimitSoc: num(values.get("effectiveLimitSoc")),
+    vehicleLimitSoc: num(values.get("vehicleLimitSoc")),
     phasesActive: num(values.get("phasesActive")),
   };
 }
@@ -127,6 +166,12 @@ let connected = false;
 /** Last value of `<root>/status` ("online"/"offline"); null until seen. */
 let evccStatus: string | null = null;
 const loadpoints = new Map<number, Map<string, EvccValue>>();
+/**
+ * Ingested `<root>/vehicles/<name>/…` state, keyed by config slug. Not part of
+ * the snapshot — its job is to tell {@link limitSocTopic} which vehicles EVCC
+ * actually knows, so a limit write can be persisted on the right one.
+ */
+const vehicles = new Map<string, Map<string, EvccValue>>();
 const estimator = createEvPowerEstimator();
 
 /** Notified with the fresh snapshot whenever state changes (wired to the WS). */
@@ -185,12 +230,38 @@ export function evccSnapshot(): EvccState | null {
 }
 
 /**
- * Publish a loadpoint command to EVCC (`.../<action>/set`). EVCC applies it
- * and republishes the state topic, so the UI converges via the normal ingest.
+ * Where a charge-limit write belongs.
+ *
+ * EVCC keeps the limit in three layers: the durable per-vehicle `limitSoc`, a
+ * per-session loadpoint `limitSoc` override, and the loadpoint's
+ * `effectiveLimitSoc` resolving the two. Writing the loadpoint override only
+ * sticks until EVCC clears the session (vehicle unplug, EVCC restart), after
+ * which the limit silently reverts — so whenever the loadpoint reports a vehicle
+ * we have actually ingested, persist the limit on that vehicle, exactly as
+ * EVCC's own UI does. The loadpoint override remains the fallback for an
+ * unidentified car (guest vehicle, no vehicle configured).
+ */
+function limitSocTopic(loadpoint: number): string {
+  const vehicleName = str(loadpoints.get(loadpoint)?.get("vehicleName"));
+  if (vehicleName !== null && vehicles.has(vehicleName)) {
+    return `${topicRoot}/vehicles/${vehicleName}/limitSoc/set`;
+  }
+  return `${topicRoot}/loadpoints/${loadpoint}/limitSoc/set`;
+}
+
+/**
+ * Publish a command to EVCC (`.../<action>/set`). EVCC applies it and
+ * republishes the state topic, so the UI converges via the normal ingest.
+ * `mode` is always loadpoint-scoped; `limitSoc` is routed by
+ * {@link limitSocTopic}.
  */
 export function evccControl(loadpoint: number, action: EvccAction, value: string): void {
   if (!client || !connected) throw new Error("EVCC MQTT is not connected");
-  client.publish(`${topicRoot}/loadpoints/${loadpoint}/${action}/set`, value);
+  const topic =
+    action === "limitSoc"
+      ? limitSocTopic(loadpoint)
+      : `${topicRoot}/loadpoints/${loadpoint}/${action}/set`;
+  client.publish(topic, value);
 }
 
 /**
@@ -216,6 +287,28 @@ function trackEstimator(index: number, key: string, value: EvccValue): void {
   if (toParams) estimator.updateParams(index, toParams(value));
 }
 
+/**
+ * Record one coerced leaf value in an entity's flat topic map, creating the map
+ * on first sight of the entity. Returns the coerced value.
+ */
+function storeValue<K>(
+  store: Map<K, Map<string, EvccValue>>,
+  id: K,
+  key: string,
+  payload: Buffer,
+): EvccValue {
+  let values = store.get(id);
+  if (!values) {
+    values = new Map();
+    store.set(id, values);
+  }
+  const value = coercePayload(payload.toString());
+  // An empty retained payload is MQTT's "topic deleted" signal.
+  if (value === null && payload.length === 0) values.delete(key);
+  else values.set(key, value);
+  return value;
+}
+
 function handleMessage(topic: string, payload: Buffer): void {
   if (topic === `${topicRoot}/status`) {
     evccStatus = payload.toString().trim();
@@ -224,7 +317,9 @@ function handleMessage(topic: string, payload: Buffer): void {
   }
   // `.../set` command echoes (our own writes and any external controller's on
   // this broker) are the feed-forward signal: the expected effect is known now,
-  // one EVCC loop before its state topics confirm it.
+  // one EVCC loop before its state topics confirm it. Only loadpoint commands
+  // predict anything — vehicle-scoped echoes (our own limit writes) resolve to
+  // no command here and are dropped.
   if (topic.endsWith("/set")) {
     const command = parseLoadpointTopic(topicRoot, topic.slice(0, -"/set".length));
     if (command && estimator.feedForward(command.index, command.key, payload.toString().trim())) {
@@ -233,17 +328,15 @@ function handleMessage(topic: string, payload: Buffer): void {
     return;
   }
   const parsed = parseLoadpointTopic(topicRoot, topic);
-  if (!parsed) return;
-  let values = loadpoints.get(parsed.index);
-  if (!values) {
-    values = new Map();
-    loadpoints.set(parsed.index, values);
+  if (parsed) {
+    const value = storeValue(loadpoints, parsed.index, parsed.key, payload);
+    trackEstimator(parsed.index, parsed.key, value);
+    scheduleEmit();
+    return;
   }
-  const value = coercePayload(payload.toString());
-  // An empty retained payload is MQTT's "topic deleted" signal.
-  if (value === null && payload.length === 0) values.delete(parsed.key);
-  else values.set(parsed.key, value);
-  trackEstimator(parsed.index, parsed.key, value);
+  const vehicle = parseVehicleTopic(topicRoot, topic);
+  if (!vehicle) return;
+  storeValue(vehicles, vehicle.name, vehicle.key, payload);
   scheduleEmit();
 }
 
@@ -265,6 +358,7 @@ async function stopClient(): Promise<void> {
   connected = false;
   evccStatus = null;
   loadpoints.clear();
+  vehicles.clear();
   estimator.reset();
   if (emitTimer) {
     clearTimeout(emitTimer);
@@ -293,9 +387,12 @@ export async function rebuildEvcc(): Promise<void> {
 
   next.on("connect", () => {
     connected = true;
-    next.subscribe([`${topicRoot}/status`, `${topicRoot}/loadpoints/#`], (err) => {
-      if (err) logger.error("subscribe failed: {error}", { error: err });
-    });
+    next.subscribe(
+      [`${topicRoot}/status`, `${topicRoot}/loadpoints/#`, `${topicRoot}/vehicles/#`],
+      (err) => {
+        if (err) logger.error("subscribe failed: {error}", { error: err });
+      },
+    );
     logger.info('connected to {brokerUrl} (root "{root}")', {
       brokerUrl: mqttConfig.brokerUrl,
       root: topicRoot,
