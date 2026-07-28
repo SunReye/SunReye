@@ -63,6 +63,11 @@
 
   --energy-export: #4478c4;
 
+  /* Battery charge/absorption in the automation charts. Magenta: the only hue
+     that clears CVD separation against solar + self-used + export, which is the
+     set it is plotted with (validated, dataviz skill). */
+  --energy-battery: #b5468f;
+
   /* Fixed grid-connection fee in the cost charts. Teal: distinct from the four
      energy-flow hues under CVD (validated with grid + export, dataviz skill). */
   --cost-standing: #0f9878;
@@ -134,6 +139,9 @@
 
   --energy-export: #5586cc;
 
+  /* Lifted battery magenta for the dark surface (dataviz-validated). */
+  --energy-battery: #c25a9c;
+
   /* Lifted standing-charge teal for the dark surface (dataviz-validated). */
   --cost-standing: #14a385;
 
@@ -192,6 +200,8 @@
   --color-energy-selfused: var(--energy-selfused);
 
   --color-energy-export: var(--energy-export);
+
+  --color-energy-battery: var(--energy-battery);
 
   --color-cost-standing: var(--cost-standing);
 

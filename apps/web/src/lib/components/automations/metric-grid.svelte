@@ -9,7 +9,7 @@
 	{#each rows as row (row.label)}
 		<div>
 			<dt class="text-muted-foreground">{row.label}</dt>
-			<dd class="font-medium">{row.value}</dd>
+			<dd class="font-medium tabular-nums">{row.value}</dd>
 		</div>
 	{/each}
 </dl>

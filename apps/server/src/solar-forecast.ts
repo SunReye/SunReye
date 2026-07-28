@@ -11,6 +11,7 @@
 
 import { type WeatherConfig, forecastReady } from "@SunReye/db/weather";
 import type { CanonicalRole, InverterProfile, InverterSample } from "@SunReye/inverter-core";
+import { HOUR_MS, flowStep } from "./energy-flow";
 import { type CorrectionModel, correctionFactor, hourOf, monthOf } from "./forecast-correction";
 import { log } from "./logging";
 import { STC_CELL_TEMP_C, pvPowerW } from "./pv-model";
@@ -18,8 +19,6 @@ import { cosAoi, sunPosition } from "./solar-geometry";
 import { openMeteoIrradiance } from "./solar-providers/open-meteo";
 
 const logger = log("solar-forecast");
-
-const HOUR_MS = 3_600_000;
 
 /** `v` when it is a usable number, else null. */
 const finiteOrNull = (v: unknown): number | null =>
@@ -186,18 +185,12 @@ function clipCaps(config: WeatherConfig["forecast"]): ClipCaps {
 }
 
 /**
- * One slot of the plant's energy flow, in the self-consumption priority order:
- * PV serves the house load, then charges the battery (bounded by charge rate
- * and remaining headroom), then exports up to the feed-in cap — and whatever
- * is left has nowhere to go and is **curtailed**. On a PV deficit the battery
+ * One slot of the plant's energy flow — the shared {@link flowStep} physics
+ * under the pack's own bounds (no automation ceilings). Returns the *usable*
+ * AC output (raw PV minus curtailment) and the battery's new energy content,
+ * so the caller can carry state to the next slot. On a PV deficit the battery
  * discharges to cover the shortfall (down to its reserve), which reclaims
  * headroom for later slots and, crucially, overnight for the next day.
- *
- * `dtH` is the slot width in hours; power bounds (charge rate, feed-in cap)
- * apply as-is while battery energy moves by power × dtH.
- *
- * Returns the *usable* AC output (raw PV minus curtailment) and the battery's
- * new energy content, so the caller can carry state to the next slot.
  */
 function simulateStep(
   pvW: number,
@@ -206,28 +199,16 @@ function simulateStep(
   caps: ClipCaps,
   dtH: number,
 ): { usefulW: number; socKwh: number } {
-  const pv = Math.max(0, pvW);
-  const load = Math.max(0, loadW);
-  const pvToLoad = Math.min(pv, load);
-  let surplus = pv - pvToLoad;
-  const deficit = load - pvToLoad;
-  let soc = socKwh;
-  let curtailed = 0;
-
-  if (surplus > 0) {
-    // Headroom expressed as the power that would fill it within this slot.
-    const headroomW = (Math.max(0, caps.batteryCapKwh - soc) * 1000) / dtH;
-    const charged = Math.min(surplus, caps.batteryMaxChargeW, headroomW);
-    soc += (charged * dtH) / 1000;
-    surplus -= charged;
-    const exported = Math.min(surplus, caps.maxOutputW);
-    curtailed = surplus - exported;
-  } else if (deficit > 0) {
-    const availableW = (Math.max(0, soc - caps.batteryMinKwh) * 1000) / dtH;
-    soc -= (Math.min(deficit, availableW) * dtH) / 1000;
-  }
-
-  return { usefulW: pv - curtailed, socKwh: soc };
+  const flows = flowStep(pvW, loadW, dtH, {
+    chargeCeilingW: caps.batteryMaxChargeW,
+    headroomKwh: caps.batteryCapKwh - socKwh,
+    aboveFloorKwh: socKwh - caps.batteryMinKwh,
+    exportCeilingW: caps.maxOutputW,
+  });
+  return {
+    usefulW: Math.max(0, pvW) - flows.curtailedW,
+    socKwh: socKwh + ((flows.chargeW - flows.dischargeW) * dtH) / 1000,
+  };
 }
 
 /**
@@ -579,6 +560,24 @@ async function medianHouseLoadW(
 }
 
 /**
+ * The house load any whole-day model should assume, W: the config override
+ * first, else the cached 14-day median of the load metric. `null` when the
+ * plant offers neither. Shared with the peak-shaving automation so its
+ * thresholds sit in the same feed-in frame as the clipping model here.
+ */
+// fallow-ignore-next-line unused-export -- consumed by ./automation through a destructured dynamic `import("./solar-forecast")`, which isn't traced
+export async function representativeHouseLoadW(config: WeatherConfig): Promise<number | null> {
+  if (config.forecast.houseLoadW != null) return config.forecast.houseLoadW;
+  const [{ getActiveProfileOrNull }, { liveState }] = await Promise.all([
+    import("./inverter"),
+    import("./state"),
+  ]);
+  const profile = getActiveProfileOrNull();
+  if (!profile) return null;
+  return await medianHouseLoadW(profile, liveState.latest?.inverterId ?? profile.id);
+}
+
+/**
  * Live SOC + house load for the clipping model (a config load override wins).
  * The `./inverter`, `./state` and `./history` deps are imported lazily so this
  * file's pure model stays importable without the server env / DB — mirroring
@@ -591,10 +590,10 @@ async function resolveSimInputs(config: WeatherConfig): Promise<ForecastSimInput
   ]);
   const profile = getActiveProfileOrNull();
   const sample = liveState.latest;
-  const load =
-    config.forecast.houseLoadW ??
-    (profile ? await medianHouseLoadW(profile, sample?.inverterId ?? profile.id) : null);
-  return { startSocPct: liveSocPct(profile, sample), houseLoadW: load ?? null };
+  return {
+    startSocPct: liveSocPct(profile, sample),
+    houseLoadW: await representativeHouseLoadW(config),
+  };
 }
 
 /**

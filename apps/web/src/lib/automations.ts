@@ -7,8 +7,15 @@
 
 export type {
   AutomationConfig,
+  AutomationHistoryView,
+  AutomationPlanView,
   AutomationStatusView,
+  AutomationStreamMessage,
   Blocker,
+  DecisionPoint,
+  PeakShavingPlan,
+  PeakShavingPlans,
   PeakShavingRunState,
   PeakShavingStatus,
+  PlanSlot,
 } from "server/src/automation";

@@ -1,7 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { toast } from 'svelte-sonner';
-	import { Input } from '$lib/components/ui/input';
 	import { Label } from '$lib/components/ui/label';
 	import { Switch } from '$lib/components/ui/switch';
 	import { Separator } from '$lib/components/ui/separator';
@@ -10,6 +9,8 @@
 	import SaveBar from '$lib/components/settings/save-bar.svelte';
 	import OptionSelect from '$lib/components/settings/option-select.svelte';
 	import BlockerAlert from './blocker-alert.svelte';
+	import GridFriendlyFields from './grid-friendly-fields.svelte';
+	import NumericFieldGrid from './numeric-field-grid.svelte';
 	import { api } from '$lib/api';
 	import { parseNum } from '$lib/parse-num';
 	import { resolve } from '$lib/resolve';
@@ -25,6 +26,7 @@
 	const isAdmin = $derived($session.data?.user.role === 'admin');
 
 	type NumKey = keyof typeof nums;
+	type GfNumKey = keyof typeof gfNums;
 
 	let draft = $state<AutomationConfig | null>(null);
 	let saving = $state(false);
@@ -34,7 +36,15 @@
 		maxChargeA: '',
 		fallbackChargeA: '',
 		topBalanceFloorA: '',
-		nominalBatteryV: ''
+		nominalBatteryV: '',
+		controlIntervalS: ''
+	});
+	// Grid-friendly tuning; only meaningful in that mode, but always persisted.
+	let gfNums = $state({
+		minThresholdW: '',
+		forecastTrustPct: '',
+		slewWPerMin: '',
+		chargeSlewAPerMin: ''
 	});
 
 	const numFields = $derived([
@@ -42,16 +52,29 @@
 		{ key: 'maxChargeA' as NumKey, label: m.peak_shaving_max_charge(), desc: m.peak_shaving_max_charge_desc(), placeholder: '100' },
 		{ key: 'fallbackChargeA' as NumKey, label: m.peak_shaving_fallback(), desc: m.peak_shaving_fallback_desc(), placeholder: '50' },
 		{ key: 'topBalanceFloorA' as NumKey, label: m.peak_shaving_floor(), desc: m.peak_shaving_floor_desc(), placeholder: '5' },
-		{ key: 'nominalBatteryV' as NumKey, label: m.peak_shaving_voltage(), desc: m.peak_shaving_voltage_desc(), placeholder: '51.2' }
+		{ key: 'nominalBatteryV' as NumKey, label: m.peak_shaving_voltage(), desc: m.peak_shaving_voltage_desc(), placeholder: '51.2' },
+		{ key: 'controlIntervalS' as NumKey, label: m.peak_shaving_interval(), desc: m.peak_shaving_interval_desc(), placeholder: '30' }
 	]);
+
+	// A knob the server doesn't know yet (older build behind a newer UI) must
+	// leave one field empty to fill in, not throw and blank the whole form.
+	function fillNums(ps: AutomationConfig['peakShaving']) {
+		for (const f of Object.keys(nums) as NumKey[]) {
+			nums[f] = ps[f]?.toString() ?? '';
+		}
+	}
+	function fillGfNums(gf: AutomationConfig['peakShaving']['gridFriendly']) {
+		for (const f of Object.keys(gfNums) as GfNumKey[]) {
+			gfNums[f] = gf[f]?.toString() ?? '';
+		}
+	}
 
 	onMount(async () => {
 		const { data } = await api.api.settings.automations.get();
 		if (!data) return;
 		draft = data as AutomationConfig;
-		for (const f of Object.keys(nums) as NumKey[]) {
-			nums[f] = draft.peakShaving[f].toString();
-		}
+		fillNums(draft.peakShaving);
+		fillGfNums(draft.peakShaving.gridFriendly);
 	});
 
 	const blockers = $derived(status?.blockers ?? []);
@@ -72,15 +95,19 @@
 		if (draft) draft.peakShaving.enabled = v;
 	}
 
+	function setShadow(v: boolean) {
+		if (draft) draft.peakShaving.shadowMode = v;
+	}
+
 	function setMode(v: string) {
 		if (draft) draft.peakShaving.mode = v as PeakShavingMode;
 	}
 
-	/** Every numeric field as a number, or null when one of them isn't one. */
-	function parsedNums(): Record<NumKey, number> | null {
-		const parsed = {} as Record<NumKey, number>;
-		for (const f of Object.keys(nums) as NumKey[]) {
-			const value = parseNum(nums[f]);
+	/** One text group as numbers, or null when any entry isn't one. */
+	function parsedGroup<K extends string>(group: Record<K, string>): Record<K, number> | null {
+		const parsed = {} as Record<K, number>;
+		for (const f of Object.keys(group) as K[]) {
+			const value = parseNum(group[f]);
 			if (value === null) return null;
 			parsed[f] = value;
 		}
@@ -92,11 +119,15 @@
 		return (value as { error?: string } | null)?.error ?? m.automations_toast_error();
 	}
 
-	async function submit(parsed: Record<NumKey, number>) {
+	async function submit(parsed: Record<NumKey, number>, gf: Record<GfNumKey, number>) {
 		if (!draft) return;
 		const { data, error } = await api.api.settings.automations.put({
 			...draft,
-			peakShaving: { ...draft.peakShaving, ...parsed }
+			peakShaving: {
+				...draft.peakShaving,
+				...parsed,
+				gridFriendly: { ...draft.peakShaving.gridFriendly, ...gf }
+			}
 		});
 		if (error) {
 			toast.error(errorDetail(error.value));
@@ -107,13 +138,14 @@
 	}
 
 	async function save() {
-		const parsed = parsedNums();
-		if (!parsed) {
+		const parsed = parsedGroup(nums);
+		const gf = parsedGroup(gfNums);
+		if (!parsed || !gf) {
 			toast.error(m.automations_toast_invalid());
 			return;
 		}
 		saving = true;
-		await submit(parsed);
+		await submit(parsed, gf);
 		saving = false;
 	}
 </script>
@@ -146,6 +178,19 @@
 			/>
 		</div>
 
+		<div class="flex flex-col gap-1.5">
+			<div class="flex items-center justify-between gap-4">
+				<Label for="peak-shaving-shadow">{m.peak_shaving_shadow()}</Label>
+				<Switch
+					id="peak-shaving-shadow"
+					checked={draft.peakShaving.shadowMode}
+					disabled={readOnly}
+					onCheckedChange={setShadow}
+				/>
+			</div>
+			<p class="text-xs text-muted-foreground">{m.peak_shaving_shadow_desc()}</p>
+		</div>
+
 		<BlockerAlert {blockers} />
 
 		<Separator />
@@ -163,20 +208,14 @@
 			<p class="text-sm text-muted-foreground">{modeDesc}</p>
 		</div>
 
-		<div class="grid gap-3 sm:grid-cols-2">
-			{#each numFields as field (field.key)}
-				<div class="flex flex-col gap-1.5">
-					<Label for="ps-{field.key}">{field.label}</Label>
-					<Input
-						id="ps-{field.key}"
-						bind:value={nums[field.key]}
-						disabled={readOnly}
-						inputmode="decimal"
-						placeholder={field.placeholder}
-					/>
-					<p class="text-xs text-muted-foreground">{field.desc}</p>
-				</div>
-			{/each}
-		</div>
+		<NumericFieldGrid idPrefix="ps" fields={numFields} bind:values={nums} {readOnly} />
+
+		{#if draft.peakShaving.mode === 'grid-friendly'}
+			<GridFriendlyFields
+				bind:cfg={draft.peakShaving.gridFriendly}
+				bind:nums={gfNums}
+				{readOnly}
+			/>
+		{/if}
 	{/if}
 </SettingsSection>

@@ -22,6 +22,7 @@ import { adminGuard, dashboardReadAllowed } from "./routes/admin-guard";
 import { customChartsRoutes } from "./routes/custom-charts";
 import { startUpdateChecks, stopUpdateChecks } from "./profiles";
 import { profileRoutes } from "./routes/profiles";
+import { automationStreamSnapshot, setAutomationListener } from "./automation";
 import { automationRoutes } from "./routes/automations";
 import { settingsRoutes } from "./routes/settings";
 import * as runtime from "./runtime";
@@ -134,6 +135,7 @@ const SampleSchema = t.Object({
 const METRICS_TOPIC = "metrics";
 const EVCC_TOPIC = "evcc";
 const LOG_TOPIC = "logs";
+const AUTOMATION_TOPIC = "automations";
 
 const app = new Elysia()
   // Structured HTTP request logging. Health/liveness probes are noisy and
@@ -299,6 +301,25 @@ const app = new Elysia()
       ws.subscribe(LOG_TOPIC);
       const recent = recentLogs();
       if (recent.length > 0) ws.send(JSON.stringify(recent));
+    },
+  })
+  // Live automations stream for the peak-shaving page: every engine tick pushes
+  // the fresh status, the decision point it logged (if any) and the recomputed
+  // rest-of-today plan (wired below via setAutomationListener). Admin-only like
+  // the HTTP automation reads — the payload exposes what the engine does to the
+  // registers. `open` re-checks the session as a belt-and-braces guard and
+  // replays the current snapshot (status + full decision ring + plan) so the
+  // page paints without waiting up to a control interval for the next tick.
+  .ws("/ws/automations", {
+    requireAdmin: true,
+    async open(ws) {
+      const session = await auth.api.getSession({ headers: ws.data.request.headers });
+      if (session?.user.role !== "admin") {
+        ws.close();
+        return;
+      }
+      ws.subscribe(AUTOMATION_TOPIC);
+      ws.send(JSON.stringify(await automationStreamSnapshot()));
     },
   })
   // Historical data (long form). Filter by metric / inverter; rollups live in
@@ -522,6 +543,11 @@ startUpdateChecks();
 // get the current snapshot from the socket's `open` handler instead.
 setEvccListener((state) => app.server?.publish(EVCC_TOPIC, JSON.stringify(state)));
 void rebuildEvcc();
+
+// Automations stream: every engine tick's outcome fans out to `/ws/automations`
+// subscribers. The listener survives runtime restarts (profile switches) —
+// it's the sink, not the loop.
+setAutomationListener((msg) => app.server?.publish(AUTOMATION_TOPIC, JSON.stringify(msg)));
 
 // Broadcast log lines to `/ws/logs` subscribers, coalescing bursts (startup and
 // error storms emit many lines at once) into one array message every 250ms so a

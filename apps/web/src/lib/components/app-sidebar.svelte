@@ -66,6 +66,11 @@
 		current === '/settings' || current.startsWith('/settings/')
 	);
 
+	// Sections with subroutes (Automations has one page per automation) stay
+	// active on their children; '/' would otherwise prefix-match everything.
+	const isActive = (href: string) =>
+		current === href || (href !== '/' && current.startsWith(`${href}/`));
+
 	const userName = $derived(
 		$sessionQuery.data?.user?.name ||
 			$sessionQuery.data?.user?.email?.split('@')[0] ||
@@ -96,7 +101,7 @@
 					{#each items as item (item.href)}
 						{@const Icon = item.icon}
 						<Sidebar.MenuItem>
-							<Sidebar.MenuButton isActive={current === item.href}>
+							<Sidebar.MenuButton isActive={isActive(item.href)}>
 								{#snippet child({ props })}
 									<a href={resolve(item.href)} onclick={closeSidebar} {...props}>
 										<Icon class="size-4" />

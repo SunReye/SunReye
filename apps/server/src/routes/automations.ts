@@ -1,6 +1,11 @@
 import { automationConfigSchema } from "@SunReye/db/automation-config";
 import { Elysia, t } from "elysia";
-import { automationStatus, applyAutomationConfig } from "../automation";
+import {
+  automationHistory,
+  automationPlan,
+  automationStatus,
+  applyAutomationConfig,
+} from "../automation";
 import { getAutomationConfig, setAutomationConfig } from "../automation-settings";
 import { getActiveProfileOrNull } from "../inverter";
 import { validateAutomationEnable } from "../peak-shaving";
@@ -40,4 +45,9 @@ export const automationRoutes = new Elysia({ name: "automation-routes" })
     { requireAdmin: true, body: t.Unknown() },
   )
   // Live engine state for the automations tab (poll-friendly, in-memory only).
-  .get("/api/automations/status", () => automationStatus(), { requireAdmin: true });
+  .get("/api/automations/status", () => automationStatus(), { requireAdmin: true })
+  // Rolling decision history behind the automation charts; also in-memory only,
+  // so it starts empty after a restart and needs no retention policy.
+  .get("/api/automations/history", () => automationHistory(), { requireAdmin: true })
+  // Forward projection of the rest of today (charge windows + SOC trajectory).
+  .get("/api/automations/plan", () => automationPlan(), { requireAdmin: true });

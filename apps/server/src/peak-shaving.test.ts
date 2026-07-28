@@ -1,5 +1,9 @@
 import { beforeEach, describe, expect, test } from "bun:test";
-import { type AutomationConfig, automationConfigSchema } from "@SunReye/db/automation-config";
+import {
+  type AutomationConfig,
+  type GridFriendlyConfig,
+  automationConfigSchema,
+} from "@SunReye/db/automation-config";
 import type { AutomationState } from "@SunReye/db/automation-state";
 import { type WeatherConfig, weatherConfigSchema } from "@SunReye/db/weather";
 import type { InverterProfile, InverterSample, MetricDef } from "@SunReye/inverter-core";
@@ -10,6 +14,8 @@ import {
   resolvePeakShavingBlockers,
   validateAutomationEnable,
 } from "./peak-shaving";
+import { type DecisionPoint, createDecisionLog } from "./automation-history";
+import { projectPeakShaving } from "./peak-shaving-plan";
 import { type AutomationIO, createPeakShavingEngine } from "./peak-shaving-engine";
 import type { EvccLoadpoint, EvccState } from "./evcc";
 import { buildProfileContext } from "./inverter";
@@ -21,6 +27,10 @@ const CHARGE_KEY = "settings.battery.max_charge_current";
 const PV_KEY = "pv.power";
 const SOC_KEY = "battery.soc";
 const VOLT_KEY = "battery.voltage";
+const LOAD_KEY = "load.power";
+const BATT_POWER_KEY = "battery.power";
+const GRID_KEY = "grid.power";
+const SELL_KEY = "settings.solar_sell_max_power";
 
 const metric = (over: Partial<MetricDef> & { key: string }): MetricDef => ({
   topic: over.key.replaceAll(".", "/"),
@@ -41,17 +51,25 @@ function profileWith(roles: Partial<Record<string, string>> = {}): InverterProfi
     "pv.total.power": PV_KEY,
     "battery.soc": SOC_KEY,
     "battery.voltage": VOLT_KEY,
+    "load.power": LOAD_KEY,
+    "battery.power": BATT_POWER_KEY,
+    "grid.power": GRID_KEY,
+    "setting.solar_sell.max_power": SELL_KEY,
     ...roles,
   };
   const metrics: MetricDef[] = [];
   for (const [role, key] of Object.entries(defaults)) {
     if (!key) continue;
+    // Settings are writable and bounded; the feed-in ceiling is in watts, so it
+    // cannot share the charge register's 0–185 A range.
+    const range =
+      role === "setting.solar_sell.max_power" ? { min: 0, max: 15_000 } : { min: 0, max: 185 };
     metrics.push(
       metric({
         key,
         role: role as MetricDef["role"],
         access: role.startsWith("setting.") ? "rw" : "r",
-        ...(role.startsWith("setting.") ? { range: { min: 0, max: 185 } } : {}),
+        ...(role.startsWith("setting.") ? { range } : {}),
       }),
     );
   }
@@ -117,6 +135,12 @@ function asForecast(view: ForecastSlice, next15MaxW?: number): SolarForecast {
   };
 }
 
+/** Grid-friendly knobs at their schema defaults; override per case. */
+const gridFriendly = (over: Partial<GridFriendlyConfig> = {}): GridFriendlyConfig => ({
+  ...automationConfigSchema.parse({}).peakShaving.gridFriendly,
+  ...over,
+});
+
 const baseInputs = {
   mode: "maximize-exports" as const,
   pvW: 5000,
@@ -129,8 +153,32 @@ const baseInputs = {
   topBalanceFloorA: 5,
   evChargeW: 0,
   evRemainingKwh: 0,
+  evIncludedInLoad: false,
+  liveLoadW: 0,
+  baselineLoadW: 0,
+  gridFriendly: gridFriendly({ chargeSlewAPerMin: 0 }),
+  previousThresholdW: null,
+  previousTargetA: null,
+  sinceLastDecisionMs: 30_000,
   forecast: null,
   nowMs: NOON,
+};
+
+/** A filled decision point; the ring tests override only what they assert on. */
+const logPoint: DecisionPoint = {
+  t: 0,
+  shadow: false,
+  pvW: 0,
+  loadW: null,
+  evChargeW: null,
+  localSinkW: 0,
+  thresholdW: 0,
+  targetA: 0,
+  liveA: null,
+  batteryV: 50,
+  chargeW: null,
+  exportW: null,
+  socPct: 50,
 };
 
 /** A connected pv-mode loadpoint; override what the case needs. */
@@ -156,17 +204,29 @@ const loadpoint = (over: Partial<EvccLoadpoint> = {}): EvccLoadpoint => ({
   ...over,
 });
 
-const evccState = (loadpoints: EvccLoadpoint[], reachable = true): EvccState => ({
-  reachable,
-  loadpoints,
-  subtractFromHome: true,
-});
+const evccState = (
+  loadpoints: EvccLoadpoint[],
+  reachable = true,
+  subtractFromHome = true,
+): EvccState => ({ reachable, loadpoints, subtractFromHome });
 
 // --- remaining-today surplus -------------------------------------------------------
 //
 // The slot math is internal to decideTargetA; it is observed through the
 // `surplusAboveLimitKwh` it reports (energy above `exportLimitW` still ahead
 // today), which is exactly what the engine surfaces in the automation status.
+
+/**
+ * Remaining-today energy above `levelW` in the *export* curve: the forecast minus
+ * the house load, clamped at the export budget. This is the integral the
+ * `grid-friendly` level solves against — energy that would have been sold.
+ */
+const exportSurplusAbove = (view: ForecastSlice, levelW: number, budgetW = 8000, loadW = 0) =>
+  view.series.reduce(
+    (kwh, p) =>
+      kwh + Math.max(0, Math.min(Math.max(0, p.watts - loadW), budgetW) - levelW) * 0.25 * 0.001,
+    0,
+  );
 
 /** Remaining-today surplus above `thresholdW`, as the decision computes it. */
 const surplusAbove = (view: ForecastSlice, thresholdW: number, nowMs: number): number | null =>
@@ -310,10 +370,10 @@ describe("decideTargetA — grid-friendly", () => {
     const inputs = { ...baseInputs, mode: "grid-friendly" as const, socPct: 70, forecast: bell };
     const d = decideTargetA(inputs);
     expect(d.thresholdW).toBeLessThan(inputs.exportLimitW);
-    expect(surplusAbove(bell, d.thresholdW, NOON)).toBeCloseTo(4.5, 1);
+    expect(exportSurplusAbove(bell, d.thresholdW)).toBeCloseTo(4.5, 1);
   });
 
-  test("classic shave when the peak alone overfills the battery", () => {
+  test("a peak that overfills the pack no longer pins the level at the limit", () => {
     const d = decideTargetA({
       ...baseInputs,
       mode: "grid-friendly",
@@ -321,13 +381,17 @@ describe("decideTargetA — grid-friendly", () => {
       forecast: bell,
     });
     expect(d.targetA).toBe(5); // …so the floor wins
+    // 1 kWh of headroom against 3 kWh above the limit. Shaving at the limit here
+    // would fill the pack from energy the grid never sees and leave the feed-in
+    // curve untouched — so the level drops into the exportable part instead.
     const d2 = decideTargetA({
       ...baseInputs,
       mode: "grid-friendly",
-      usableKwh: 2, // 1 kWh headroom at 50% < surplus above the limit
+      usableKwh: 2,
       forecast: bell,
     });
-    expect(d2.thresholdW).toBe(8000);
+    expect(d2.thresholdW).toBeLessThan(8000);
+    expect(exportSurplusAbove(bell, d2.thresholdW)).toBeCloseTo(1, 1);
   });
 
   test("threshold rises toward the limit as SOC rises", () => {
@@ -336,10 +400,12 @@ describe("decideTargetA — grid-friendly", () => {
     expect(hi.thresholdW).toBeGreaterThan(lo.thresholdW);
   });
 
-  test("charges with everything above the dynamic threshold", () => {
+  test("charges with the exportable power above the level", () => {
     const inputs = { ...baseInputs, mode: "grid-friendly" as const, socPct: 80, forecast: bell };
     const d = decideTargetA({ ...inputs, pvW: 10_000 });
-    expect(d.targetA).toBe(Math.min(100, Math.ceil((10_000 - d.thresholdW) / 50)));
+    // 10 kW of PV against an 8 kW budget: the 2 kW above it is not harvested, so
+    // the charge is what the *export* gives up, quantized to the nearest step.
+    expect(d.targetA).toBe(Math.round((8000 - d.thresholdW) / 50 / 5) * 5);
   });
 
   test("absorbs all PV when the battery dwarfs the remaining day", () => {
@@ -353,6 +419,432 @@ describe("decideTargetA — grid-friendly", () => {
     });
     expect(d.thresholdW).toBeLessThan(50);
     expect(d.targetA).toBe(Math.ceil((3000 - d.thresholdW) / 50));
+  });
+});
+
+// --- Grid-friendly: the export-budget frame -----------------------------------------
+//
+// The mode's point is to *lower* midday feed-in, which means the battery must be
+// charged out of energy that would otherwise have been exported — not just out
+// of the excess the export limit blocks. So `export + charge` is held inside the
+// export budget, and the level is solved against the *clamped* export curve
+// (`min(pv − load, budget)`), which is what the grid actually sees.
+
+describe("decideTargetA — grid-friendly export budget", () => {
+  // One hour of hard clipping: 12 kW against an 8 kW limit.
+  const clipping = slice(12, [12_000, 12_000, 12_000, 12_000]);
+
+  const gf = (over: Partial<GridFriendlyConfig> = {}) => ({
+    ...baseInputs,
+    mode: "grid-friendly" as const,
+    gridFriendly: gridFriendly({ chargeSlewAPerMin: 0, ...over }),
+  });
+
+  test("feed-in level drops below the limit even when the peak alone overfills the pack", () => {
+    // 1.5 kWh of headroom against 4 kWh above the limit. The old search gave up
+    // here and pinned the level at the limit, which is no flattening at all.
+    const d = decideTargetA({ ...gf(), socPct: 90, pvW: 12_000, forecast: clipping });
+    expect(d.thresholdW).toBe(6500);
+    expect(exportSurplusAbove(clipping, d.thresholdW)).toBeCloseTo(1.5, 6);
+  });
+
+  test("charge plus feed-in never exceeds the export budget", () => {
+    const d = decideTargetA({ ...gf(), socPct: 90, pvW: 12_000, forecast: clipping });
+    // 30 A × 50 V = 1500 W of charging, 6500 W of export: 8000 W, the budget.
+    expect(d.targetA).toBe(30);
+    expect(d.targetA * 50 + d.thresholdW).toBe(8000);
+  });
+
+  test("PV above the budget is not harvested — that is the price of the flattening", () => {
+    // Raising PV from 8 kW to 20 kW cannot buy more charging: everything above
+    // `budget` is thrown away so the feed-in level can stay down.
+    const at = (pvW: number) => decideTargetA({ ...gf(), socPct: 90, pvW, forecast: clipping });
+    expect(at(20_000).targetA).toBe(at(8000).targetA);
+  });
+
+  test("level respects the configured feed-in floor", () => {
+    // 7.5 kWh of headroom wants a 500 W level, but the floor holds it at 5000 W
+    // and the pack simply does not fill today.
+    const d = decideTargetA({
+      ...gf({ minThresholdW: 5000 }),
+      socPct: 50,
+      pvW: 12_000,
+      forecast: clipping,
+    });
+    expect(d.thresholdW).toBe(5000);
+    expect(d.targetA).toBe(60); // (8000 − 5000) / 50 V
+  });
+
+  test("charge current ramps instead of stepping to the target", () => {
+    const inputs = {
+      ...gf({ chargeSlewAPerMin: 10 }),
+      socPct: 90,
+      pvW: 12_000,
+      forecast: clipping,
+    };
+    // 30 A is wanted, but a 30 s tick may only travel 5 A.
+    expect(decideTargetA({ ...inputs, previousTargetA: 0 }).targetA).toBe(5);
+    expect(decideTargetA({ ...inputs, previousTargetA: 25 }).targetA).toBe(30);
+    // …and down as well: dropping the ceiling in one step is just as abrupt.
+    expect(decideTargetA({ ...inputs, previousTargetA: 60 }).targetA).toBe(55);
+    // No previous target (first tick after a release) starts where it likes.
+    expect(decideTargetA({ ...inputs, previousTargetA: null }).targetA).toBe(30);
+  });
+
+  test("maximize-exports never ramps — a real peak has to be met at once", () => {
+    const d = decideTargetA({
+      ...baseInputs,
+      gridFriendly: gridFriendly({ chargeSlewAPerMin: 10 }),
+      previousTargetA: 0,
+      pvW: 12_000,
+      forecast: clipping,
+    });
+    expect(d.targetA).toBe(80); // (12_000 − 8000) / 50 V, unramped
+  });
+
+  test("a day below the budget behaves as before", () => {
+    // Nothing is clipped, so the clamp is inert and the level is the plain
+    // water-fill of the day's export curve.
+    const gentle = slice(12, [6000, 6000, 6000, 6000]);
+    const d = decideTargetA({ ...gf(), socPct: 90, pvW: 6000, forecast: gentle });
+    expect(d.thresholdW).toBe(4500);
+    expect(d.targetA).toBe(30);
+  });
+
+  test("solar-sell max power is required for grid-friendly", () => {
+    const without = profileWith({ "setting.solar_sell.max_power": "" });
+    expect(resolvePeakShavingBlockers(without, weather(), "grid-friendly")).toEqual([
+      { kind: "role", role: "setting.solar_sell.max_power" },
+    ]);
+    // maximize-exports holds feed-in at the plant limit, so it needs no such write.
+    expect(resolvePeakShavingBlockers(without, weather(), "maximize-exports")).toEqual([]);
+  });
+});
+
+// --- House-load frame --------------------------------------------------------------
+//
+// Curtailment starts when PV exceeds `load + exportLimit` — the frame the
+// forecast's clipping model already uses. Thresholds must live in that same
+// feed-in frame instead of being compared against raw PV.
+
+describe("decideTargetA — house-load frame", () => {
+  test("live load defers live shaving until PV clears load + limit", () => {
+    const forecast = slice(13, [0, 0]); // nothing coming → no peak to reserve for
+    // 9000 W PV with 2000 W of house load only feeds 7000 W: below the limit.
+    const d = decideTargetA({ ...baseInputs, pvW: 9000, liveLoadW: 2000, forecast });
+    expect(d.liveExcessW).toBe(0);
+    expect(d.targetA).toBe(25); // fallback, not a shave
+    // Once PV clears load + limit the excess is real again.
+    const shaving = decideTargetA({ ...baseInputs, pvW: 11_000, liveLoadW: 2000, forecast });
+    expect(shaving.liveExcessW).toBe(1000);
+    expect(shaving.targetA).toBe(20);
+  });
+
+  test("EV draw already inside the load metric is not double-counted", () => {
+    const forecast = slice(13, [0, 0]);
+    const inputs = { ...baseInputs, pvW: 12_000, liveLoadW: 3000, evChargeW: 2000, forecast };
+    // Charger behind the house meter: the 2 kW is part of the 3 kW load.
+    expect(decideTargetA({ ...inputs, evIncludedInLoad: true }).liveExcessW).toBe(1000);
+    // Charger on its own meter: both sinks count.
+    expect(decideTargetA({ ...inputs, evIncludedInLoad: false }).liveExcessW).toBe(0);
+  });
+
+  test("baseline load shrinks the remaining-day surplus", () => {
+    // 4 slots of 9000 W = 1 kWh above an 8000 W limit, but 1000 W of baseline
+    // load eats exactly that — nothing reaches the grid above the limit.
+    const forecast = slice(13, [9000, 9000, 9000, 9000]);
+    expect(decideTargetA({ ...baseInputs, forecast }).surplusAboveLimitKwh).toBeCloseTo(1, 6);
+    const withLoad = decideTargetA({ ...baseInputs, forecast, baselineLoadW: 1000 });
+    expect(withLoad.surplusAboveLimitKwh).toBe(0);
+  });
+
+  test("baseline load lowers the grid-friendly plateau", () => {
+    const bell = slice(
+      12,
+      [2, 4, 6, 8, 10, 12, 12, 10, 8, 6, 4, 2].map((kw) => kw * 1000),
+    );
+    const inputs = { ...baseInputs, mode: "grid-friendly" as const, socPct: 70, forecast: bell };
+    const bare = decideTargetA(inputs);
+    // With 1 kW of standing load, less of the day's PV is exportable, so the
+    // same battery headroom has to be filled from a lower feed-in plateau…
+    const loaded = decideTargetA({ ...inputs, baselineLoadW: 1000 });
+    expect(loaded.thresholdW).toBeLessThan(bare.thresholdW);
+    // …and the reported surplus is the feed-in-frame figure.
+    expect(loaded.surplusAboveLimitKwh).toBeLessThan(bare.surplusAboveLimitKwh ?? 0);
+  });
+});
+
+// --- Grid-friendly options ---------------------------------------------------------
+
+describe("decideTargetA — grid-friendly options", () => {
+  const bell = slice(
+    12,
+    [2, 4, 6, 8, 10, 12, 12, 10, 8, 6, 4, 2].map((kw) => kw * 1000),
+  );
+  const smallDay = slice(13, [3000, 3000]);
+
+  test("minThresholdW floors the plateau so some feed-in always flows", () => {
+    const inputs = {
+      ...baseInputs,
+      mode: "grid-friendly" as const,
+      socPct: 10,
+      pvW: 3000,
+      forecast: smallDay,
+    };
+    expect(decideTargetA(inputs).thresholdW).toBeLessThan(50); // absorbs everything
+    const floored = decideTargetA({
+      ...inputs,
+      gridFriendly: gridFriendly({ minThresholdW: 2000 }),
+    });
+    expect(floored.thresholdW).toBe(2000);
+    expect(floored.targetA).toBe(20); // (3000 − 2000) / 50 V
+  });
+
+  test("a min threshold at or above the limit degenerates to a classic shave", () => {
+    const inputs = {
+      ...baseInputs,
+      mode: "grid-friendly" as const,
+      socPct: 50,
+      forecast: bell,
+      gridFriendly: gridFriendly({ minThresholdW: 20_000 }),
+    };
+    expect(decideTargetA(inputs).thresholdW).toBe(8000);
+  });
+
+  test("forecastTrustPct below 100 lowers the plateau (charges earlier)", () => {
+    const inputs = { ...baseInputs, mode: "grid-friendly" as const, socPct: 70, forecast: bell };
+    const trusted = decideTargetA(inputs);
+    const hedged = decideTargetA({
+      ...inputs,
+      gridFriendly: gridFriendly({ forecastTrustPct: 70 }),
+    });
+    expect(hedged.thresholdW).toBeLessThan(trusted.thresholdW);
+    // Only 70% of the forecast surplus is believed, so the search must gather
+    // headroom/0.7 of nominal surplus above the plateau.
+    expect(exportSurplusAbove(bell, hedged.thresholdW)).toBeCloseTo(4.5 / 0.7, 1);
+  });
+
+  test("forecastTrustPct above 100 raises the plateau (charges later)", () => {
+    const inputs = { ...baseInputs, mode: "grid-friendly" as const, socPct: 70, forecast: bell };
+    const eager = decideTargetA({
+      ...inputs,
+      gridFriendly: gridFriendly({ forecastTrustPct: 130 }),
+    });
+    expect(eager.thresholdW).toBeGreaterThan(decideTargetA(inputs).thresholdW);
+  });
+
+  test("slew caps how far the plateau moves in one tick", () => {
+    const inputs = {
+      ...baseInputs,
+      mode: "grid-friendly" as const,
+      socPct: 70,
+      forecast: bell,
+      previousThresholdW: 8000,
+      sinceLastDecisionMs: 30_000, // half a minute of budget
+    };
+    const undamped = decideTargetA({ ...inputs, gridFriendly: gridFriendly({ slewWPerMin: 0 }) });
+    // 4.5 kWh of headroom fills from 1.5 h above 8 kW plus the 6 kW shoulders.
+    expect(undamped.thresholdW).toBeCloseTo(5250, 2);
+    // 600 W/min × 0.5 min = 300 W of movement allowed.
+    const damped = decideTargetA({ ...inputs, gridFriendly: gridFriendly({ slewWPerMin: 600 }) });
+    expect(damped.thresholdW).toBe(7700);
+  });
+
+  test("slew is symmetric and skipped on the first tick after a release", () => {
+    const inputs = {
+      ...baseInputs,
+      mode: "grid-friendly" as const,
+      socPct: 70,
+      forecast: bell,
+      sinceLastDecisionMs: 60_000,
+    };
+    // Coming from a very low plateau, the rise is capped the same way.
+    const rising = decideTargetA({ ...inputs, previousThresholdW: 1000 });
+    expect(rising.thresholdW).toBe(1600);
+    // No previous threshold → the solved value lands unclamped.
+    expect(decideTargetA({ ...inputs, previousThresholdW: null }).thresholdW).toBeGreaterThan(1600);
+  });
+
+  test("reserveForEvDemand=false leaves the car's share out of the plan", () => {
+    const inputs = {
+      ...baseInputs,
+      mode: "grid-friendly" as const,
+      socPct: 70,
+      forecast: bell,
+      evRemainingKwh: 1.5,
+    };
+    const reserved = decideTargetA(inputs);
+    const ignored = decideTargetA({
+      ...inputs,
+      gridFriendly: gridFriendly({ reserveForEvDemand: false }),
+    });
+    expect(ignored.thresholdW).toBeGreaterThan(reserved.thresholdW);
+    // Identical to the no-car plan: the surplus is left for the car to take.
+    expect(ignored.thresholdW).toBeCloseTo(
+      decideTargetA({ ...inputs, evRemainingKwh: 0 }).thresholdW,
+      6,
+    );
+  });
+
+  test("grid-friendly rounds to the nearest step, maximize-exports still up", () => {
+    // 82% SOC → 2.7 kWh headroom → a 6200 W feed-in level.
+    const inputs = { ...baseInputs, socPct: 82, forecast: bell };
+    // maximize-exports: 100 W above the limit is 2 A, and it rounds *up* — never
+    // under-shave a real peak.
+    expect(decideTargetA({ ...inputs, mode: "maximize-exports", pvW: 8100 }).targetA).toBe(5);
+    // grid-friendly: 100 W above the level is 0.4 of a step, so it waits.
+    expect(decideTargetA({ ...inputs, mode: "grid-friendly", pvW: 6300 }).targetA).toBe(0);
+    // Above the half-step the nearest rounding charges.
+    expect(decideTargetA({ ...inputs, mode: "grid-friendly", pvW: 6350 }).targetA).toBe(5);
+  });
+});
+
+// --- Forward projection -------------------------------------------------------------
+//
+// The plan replays the *same* pure decision over the remaining forecast slots,
+// carrying SOC forward — so "when does it charge, when is it full" comes from
+// the rules themselves rather than a second, drifting model.
+
+describe("projectPeakShaving", () => {
+  // A day that ramps over the export limit at midday and back down.
+  const day = slice(
+    12,
+    [2, 4, 6, 9, 11, 12, 11, 9, 6, 4, 2, 0].map((kw) => kw * 1000),
+  );
+  const planInputs = (over: object = {}) => ({
+    ...baseInputs,
+    mode: "grid-friendly" as const,
+    forecast: day,
+    baselineLoadW: 500,
+    socPct: 20,
+    ...over,
+  });
+  const CAP = { exportCapW: 8400 };
+
+  test("carries SOC forward, and stored energy matches the SOC it gained", () => {
+    const plan = projectPeakShaving(planInputs(), CAP);
+    expect(plan.slots.length).toBe(day.series.length);
+    // SOC rises while PV covers the load; only the dark tail (0 kW against the
+    // 500 W baseline) discharges. Stored energy is the gross charge, so it
+    // matches the *peak* SOC, not the end-of-day one.
+    const socs = plan.slots.map((s) => s.socPct);
+    const peakSoc = Math.max(...socs);
+    expect(socs.indexOf(peakSoc)).toBe(socs.length - 2); // rise, then the dark dip
+    expect(plan.storedKwh).toBeCloseTo((baseInputs.usableKwh * (peakSoc - 20)) / 100, 6);
+    // The level keeps feed-in flowing all day, so this day cannot fill a 15 kWh
+    // pack from 20% — the plan says so instead of promising a full battery.
+    // 89.6% at the peak, minus the last slot's 500 W × 15 min drain.
+    expect(peakSoc).toBeCloseTo(89.6, 1);
+    expect(plan.endSocPct).toBeCloseTo(88.75, 2);
+    expect(plan.fullAt).toBeNull();
+  });
+
+  test("reports when the pack fills, when it can", () => {
+    // 8 kWh usable from 20% needs 6.4 kWh — inside what this day delivers.
+    const plan = projectPeakShaving(planInputs({ usableKwh: 8 }), CAP);
+    // Full at midday; the dark last slot then drains 500 W × 15 min.
+    expect(plan.endSocPct).toBeCloseTo(98.4, 1);
+    expect(plan.fullAt).not.toBeNull();
+    // Full somewhere inside the plotted day, after the first slot.
+    expect(plan.fullAt!).toBeGreaterThan(plan.slots[0]!.t);
+    expect(plan.fullAt!).toBeLessThanOrEqual(plan.slots.at(-1)!.t + 15 * 60_000);
+    // …and it stops charging once there (the tail slots only sell).
+    expect(plan.slots.at(-1)?.chargeW).toBe(0);
+  });
+
+  test("reports the slot charging starts in", () => {
+    // Noon is exactly the first slot's start, so nothing is clamped here.
+    const plan = projectPeakShaving(planInputs(), CAP);
+    const firstCharging = plan.slots.find((s) => s.chargeW > 0);
+    expect(plan.chargeStartsAt).toBe(firstCharging?.t ?? null);
+  });
+
+  test("charging already under way is reported as now, not in the past", () => {
+    // Mid-slot: the running slot began 8 minutes ago and is already charging, so
+    // the answer is "now" — a start time in the past would just read as wrong.
+    const nowMs = NOON + 8 * 60_000;
+    const plan = projectPeakShaving(planInputs({ mode: "maximize-exports", nowMs }), CAP);
+    expect(plan.slots[0]!.t).toBeLessThan(nowMs); // the slot itself still starts earlier
+    expect(plan.slots[0]!.chargeW).toBeGreaterThan(0);
+    expect(plan.chargeStartsAt).toBe(nowMs);
+  });
+
+  test("a plan that never charges reports no start and drains into the load", () => {
+    // Night: no PV left, so the pack serves the 500 W baseline for the hour.
+    const plan = projectPeakShaving(planInputs({ forecast: slice(12, [0, 0, 0, 0]) }), CAP);
+    expect(plan.chargeStartsAt).toBeNull();
+    expect(plan.fullAt).toBeNull();
+    expect(plan.slots.every((s) => s.dischargeW === 500)).toBe(true);
+    // 0.5 kWh out of 15 kWh usable ≈ 3.3% below the starting 20%.
+    expect(plan.endSocPct).toBeCloseTo(16.7, 1);
+    expect(plan.storedKwh).toBe(0);
+  });
+
+  test("the modelled discharge stops at the reserve floor", () => {
+    // 2 kW of load against no PV wants 2 kWh, but only 0.3 kWh (22% → 20% of
+    // 15 kWh) sit above the floor — the drain flattens out there.
+    const plan = projectPeakShaving(
+      planInputs({ forecast: slice(12, [0, 0, 0, 0]), socPct: 22, baselineLoadW: 2000 }),
+      { exportCapW: 8400, reserveSocPct: 20 },
+    );
+    expect(plan.endSocPct).toBeCloseTo(20, 5);
+    expect(plan.slots.at(-1)?.dischargeW).toBe(0);
+  });
+
+  test("nothing left of the local day → an empty plan", () => {
+    const plan = projectPeakShaving(planInputs({ nowMs: Date.parse("2026-07-25T23:59:00Z") }), CAP);
+    expect(plan.slots).toEqual([]);
+    expect(plan.endSocPct).toBe(20);
+  });
+
+  test("caps export at the plant limit and curtails the rest", () => {
+    // A 1 kWh battery fills almost immediately, so the midday peak above the
+    // 8.4 kW cap has nowhere left to go.
+    const plan = projectPeakShaving(planInputs({ usableKwh: 1 }), CAP);
+    expect(Math.max(...plan.slots.map((s) => s.exportW))).toBeLessThanOrEqual(CAP.exportCapW);
+    expect(plan.curtailedKwh).toBeGreaterThan(0);
+    // Full at midday; the dark last slot then drains 500 W × 15 min of the 1 kWh.
+    expect(plan.fullAt).not.toBeNull();
+    expect(plan.endSocPct).toBeCloseTo(87.5, 2);
+  });
+
+  test("even a big battery cannot rescue PV above the budget in grid-friendly", () => {
+    // Feed-in plus charging stay inside the export budget, so the peak above it
+    // is discarded no matter how much room the pack has — that discard is the
+    // price of the lower feed-in curve.
+    const plan = projectPeakShaving(planInputs({ usableKwh: 40 }), CAP);
+    expect(plan.curtailedKwh).toBeGreaterThan(0);
+    expect(plan.endSocPct).toBeLessThan(100);
+    // maximize-exports, with the same room, throws nothing away.
+    const soaking = projectPeakShaving(
+      planInputs({ usableKwh: 40, mode: "maximize-exports" }),
+      CAP,
+    );
+    expect(soaking.curtailedKwh).toBe(0);
+  });
+
+  test("never charges beyond a full pack", () => {
+    const plan = projectPeakShaving(planInputs({ socPct: 99.9 }), CAP);
+    expect(plan.endSocPct).toBeLessThanOrEqual(100);
+    expect(plan.storedKwh).toBeLessThan(0.2);
+  });
+
+  test("grid-friendly plans a lower feed-in peak than maximize-exports", () => {
+    const grid = projectPeakShaving(planInputs(), CAP);
+    const exports_ = projectPeakShaving(planInputs({ mode: "maximize-exports" }), CAP);
+    const peakExportW = (p: typeof grid) => Math.max(...p.slots.map((s) => s.exportW));
+    // The whole point of the mode: the grid sees less at midday…
+    expect(peakExportW(grid)).toBeLessThan(peakExportW(exports_));
+    // …and it is paid for in PV that neither the grid nor the pack takes.
+    expect(grid.curtailedKwh).toBeGreaterThan(exports_.curtailedKwh);
+    expect(grid.storedKwh).toBeGreaterThan(0);
+    expect(exports_.storedKwh).toBeGreaterThan(0);
+  });
+
+  test("the house load is served before anything can be stored or sold", () => {
+    const plan = projectPeakShaving(planInputs({ baselineLoadW: 2000 }), CAP);
+    // First slot is 2 kW of PV against 2 kW of load: nothing to store or sell.
+    expect(plan.slots[0]).toMatchObject({ chargeW: 0, exportW: 0, curtailedW: 0 });
   });
 });
 
@@ -416,18 +908,18 @@ describe("decideTargetA — EV interplay", () => {
     const withEv = decideTargetA({ ...inputs, evRemainingKwh: 1.5 });
     // Battery headroom AND the car must fill from above the threshold.
     expect(withEv.thresholdW).toBeLessThan(without.thresholdW);
-    expect(surplusAbove(bell, withEv.thresholdW, NOON)).toBeCloseTo(4.5 + 1.5, 1);
+    expect(exportSurplusAbove(bell, withEv.thresholdW)).toBeCloseTo(4.5 + 1.5, 1);
   });
 
-  test("grid-friendly EV demand can turn a classic shave into a bisect", () => {
-    // 2.7 kWh headroom at 82% < 3 kWh surplus → classic shave without the car.
+  test("grid-friendly EV demand lowers the level further", () => {
     const inputs = { ...baseInputs, mode: "grid-friendly" as const, socPct: 82, forecast: bell };
-    expect(decideTargetA(inputs).thresholdW).toBe(8000);
+    expect(decideTargetA(inputs).thresholdW).toBeCloseTo(6200, 0);
     expect(decideTargetA({ ...inputs, evRemainingKwh: 1 }).thresholdW).toBeLessThan(8000);
   });
 
-  test("grid-friendly charges with what the car leaves above the threshold", () => {
-    // 2.25 kWh headroom at 85% < 3 kWh surplus → classic shave at the limit.
+  test("grid-friendly charges with what the car leaves below the budget", () => {
+    // 2.25 kWh headroom at 85% → a 6500 W level; PV is far above the 8 kW budget,
+    // so the charge is the budget minus the level: 1500 W = 30 A.
     const inputs = {
       ...baseInputs,
       mode: "grid-friendly" as const,
@@ -435,8 +927,13 @@ describe("decideTargetA — EV interplay", () => {
       pvW: 12_000,
       forecast: bell,
     };
-    expect(decideTargetA(inputs).targetA).toBe(80); // (12000−8000)/50
-    expect(decideTargetA({ ...inputs, evChargeW: 1000 }).targetA).toBe(60); // car takes 1 kW
+    expect(decideTargetA(inputs).targetA).toBe(30);
+    // With PV above the budget the car's kW comes out of what was being thrown
+    // away, so the pack's ceiling is untouched.
+    expect(decideTargetA({ ...inputs, evChargeW: 1000 }).targetA).toBe(30);
+    // Below the budget there is nothing spare: the car is served before the pack.
+    expect(decideTargetA({ ...inputs, pvW: 8000 }).targetA).toBe(30);
+    expect(decideTargetA({ ...inputs, pvW: 8000, evChargeW: 1000 }).targetA).toBe(10);
   });
 });
 
@@ -507,6 +1004,7 @@ interface Harness {
     weather(w: WeatherConfig): void;
     forecast(f: SolarForecast | null): void;
     evcc(state: EvccState | null): void;
+    baselineLoad(w: number | null): void;
     sample(metrics: Record<string, number>, ageMs?: number): void;
     now(ms: number): void;
     state(s: AutomationState): void;
@@ -520,6 +1018,7 @@ function harness(over: { config?: AutomationConfig } = {}): Harness {
   let wx = weather();
   let fc: SolarForecast | null = asForecast(slice(12, [6000, 6000, 6000, 6000]));
   let ev: EvccState | null = null;
+  let baselineLoadW: number | null = null;
   let nowMs = NOON;
   let sample: InverterSample | null = null;
   let state: AutomationState = {};
@@ -545,6 +1044,7 @@ function harness(over: { config?: AutomationConfig } = {}): Harness {
       getConfig: async () => cfg,
       getWeather: async () => wx,
       getForecast: async () => fc,
+      getBaselineLoadW: async () => baselineLoadW,
       getEvcc: () => ev,
       latestSample: () => sample,
       loadState: async () => state,
@@ -559,6 +1059,7 @@ function harness(over: { config?: AutomationConfig } = {}): Harness {
       weather: (w) => (wx = w),
       forecast: (f) => (fc = f),
       evcc: (state) => (ev = state),
+      baselineLoad: (w) => (baselineLoadW = w),
       sample: setSample,
       now: (ms) => (nowMs = ms),
       state: (s) => (state = s),
@@ -635,24 +1136,49 @@ describe("peak-shaving engine", () => {
     expect(h.state()["test-profile:peakShaving"]?.previousValue).toBe(120);
   });
 
-  test("disable restores the snapshot and releases", async () => {
+  test("disable restores the snapshot and falls back to simulating", async () => {
     const engine = createPeakShavingEngine(h.io);
     await engine.tick();
     h.set.config(config({}, { enabled: false }));
     const status = await engine.tick();
-    expect(status.state).toBe("disabled");
+    // Runnable setup in daylight: the disabled engine keeps deciding dry-run.
+    expect(status.state).toBe("simulating");
     expect(status.restorePending).toBe(false);
     expect(h.writes[1]).toEqual({ key: CHARGE_KEY, value: 120 });
     expect(h.state()).toEqual({});
   });
 
-  test("master gate off makes the engine fully inert", async () => {
+  test("master gate off simulates but never writes", async () => {
     h.set.config(config({ enabled: false }));
     const engine = createPeakShavingEngine(h.io);
     const status = await engine.tick();
-    expect(status.state).toBe("disabled");
+    expect(status.state).toBe("simulating");
     expect(status.enabled).toBe(false);
+    expect(status.targetA).toBe(50); // same call a live run would make
     expect(h.writes).toHaveLength(0);
+    expect(h.state()).toEqual({}); // no snapshot: nothing is held
+  });
+
+  test("disabled with blockers or at night parks in plain disabled", async () => {
+    h.set.config(config({ enabled: false }));
+    const engine = createPeakShavingEngine(h.io);
+    h.set.weather(weather({ maxOutputW: null }));
+    const blocked = await engine.tick();
+    expect(blocked.state).toBe("disabled");
+    expect(blocked.blockers).toEqual([{ kind: "config", what: "export-limit" }]);
+    h.set.weather(weather());
+    h.set.sample({ [PV_KEY]: 0, [SOC_KEY]: 50, [VOLT_KEY]: 50, [CHARGE_KEY]: 120 });
+    h.set.forecast(asForecast(slice(12, [0, 0, 0, 0]), 0));
+    expect((await engine.tick()).state).toBe("disabled");
+    expect(h.writes).toHaveLength(0);
+  });
+
+  test("simulation logs shadow points for the charts", async () => {
+    h.set.config(config({ enabled: false }));
+    const engine = createPeakShavingEngine(h.io);
+    await engine.tick();
+    expect(engine.history()).toHaveLength(1);
+    expect(engine.history()[0]?.shadow).toBe(true);
   });
 
   test("blocked mid-run restores and reports the blockers", async () => {
@@ -744,5 +1270,470 @@ describe("peak-shaving engine", () => {
     expect(status.forecastAvailable).toBe(false);
     expect(status.state).toBe("active");
     expect(h.writes[0]).toEqual({ key: CHARGE_KEY, value: 40 }); // (10000−8000)/50
+  });
+});
+
+// --- Engine: load frame, effectiveness watchdog, plateau damping -------------------
+
+describe("peak-shaving engine — house-load frame", () => {
+  let h: Harness;
+  beforeEach(() => {
+    h = harness();
+  });
+
+  test("the measured load metric defers shaving and shows in the status", async () => {
+    h.set.sample({
+      [PV_KEY]: 9000,
+      [SOC_KEY]: 50,
+      [VOLT_KEY]: 50,
+      [LOAD_KEY]: 2000,
+      [CHARGE_KEY]: 120,
+    });
+    const engine = createPeakShavingEngine(h.io);
+    const status = await engine.tick();
+    expect(status.loadW).toBe(2000);
+    expect(status.liveExcessW).toBe(0); // 9000 − 2000 is under the 8000 W limit
+    expect(h.writes[0]).toEqual({ key: CHARGE_KEY, value: 50 }); // fallback, no shave
+  });
+
+  test("the baseline load stands in when the sample carries no load reading", async () => {
+    h.set.baselineLoad(1500);
+    h.set.sample({ [PV_KEY]: 9000, [SOC_KEY]: 50, [VOLT_KEY]: 50, [CHARGE_KEY]: 120 });
+    const engine = createPeakShavingEngine(h.io);
+    const status = await engine.tick();
+    expect(status.loadW).toBe(1500);
+    expect(status.liveExcessW).toBe(0);
+  });
+
+  test("an unknown load keeps the raw-PV behavior", async () => {
+    h.set.sample({ [PV_KEY]: 9000, [SOC_KEY]: 50, [VOLT_KEY]: 50, [CHARGE_KEY]: 120 });
+    const engine = createPeakShavingEngine(h.io);
+    const status = await engine.tick();
+    expect(status.loadW).toBeNull();
+    expect(status.liveExcessW).toBe(1000);
+  });
+
+  test("a charger behind the house meter is not double-counted", async () => {
+    const sample = {
+      [PV_KEY]: 12_000,
+      [SOC_KEY]: 50,
+      [VOLT_KEY]: 50,
+      [LOAD_KEY]: 3000,
+      [CHARGE_KEY]: 120,
+    };
+    h.set.sample(sample);
+    // subtractFromHome: the 2 kW of EV draw is already inside the 3 kW load.
+    h.set.evcc(evccState([loadpoint({ chargePowerLive: 2000, charging: true })], true, true));
+    expect((await createPeakShavingEngine(h.io).tick()).liveExcessW).toBe(1000);
+    // Charger on its own meter → both sinks are subtracted.
+    h.set.sample(sample);
+    h.set.evcc(evccState([loadpoint({ chargePowerLive: 2000, charging: true })], true, false));
+    expect((await createPeakShavingEngine(h.io).tick()).liveExcessW).toBe(0);
+  });
+});
+
+describe("peak-shaving engine — effectiveness watchdog", () => {
+  let h: Harness;
+  const shaving = (batteryPowerW: number) => ({
+    [PV_KEY]: 12_000,
+    [SOC_KEY]: 50,
+    [VOLT_KEY]: 50,
+    [BATT_POWER_KEY]: batteryPowerW,
+    [CHARGE_KEY]: 120,
+  });
+  beforeEach(() => {
+    h = harness();
+  });
+
+  test("a ceiling the inverter ignores is flagged after repeated ticks", async () => {
+    const engine = createPeakShavingEngine(h.io);
+    h.set.sample(shaving(0)); // battery idle despite 4 kW of commanded charge
+    expect((await engine.tick()).ineffective).toBe(false); // the write just landed
+    expect((await engine.tick()).ineffective).toBe(false);
+    expect((await engine.tick()).ineffective).toBe(false);
+    expect((await engine.tick()).ineffective).toBe(true);
+  });
+
+  test("no flag while the battery actually absorbs", async () => {
+    const engine = createPeakShavingEngine(h.io);
+    h.set.sample(shaving(-4000)); // negative = charging
+    for (let i = 0; i < 5; i++) await engine.tick();
+    expect(engine.status().ineffective).toBe(false);
+  });
+
+  test("absorption clears a raised flag", async () => {
+    const engine = createPeakShavingEngine(h.io);
+    h.set.sample(shaving(0));
+    for (let i = 0; i < 4; i++) await engine.tick();
+    expect(engine.status().ineffective).toBe(true);
+    h.set.sample(shaving(-4000));
+    expect((await engine.tick()).ineffective).toBe(false);
+  });
+
+  test("no battery power metric means no watchdog", async () => {
+    const engine = createPeakShavingEngine(h.io);
+    h.set.sample({ [PV_KEY]: 12_000, [SOC_KEY]: 50, [VOLT_KEY]: 50, [CHARGE_KEY]: 120 });
+    for (let i = 0; i < 5; i++) await engine.tick();
+    expect(engine.status().ineffective).toBe(false);
+  });
+
+  test("a released register clears the flag", async () => {
+    const engine = createPeakShavingEngine(h.io);
+    h.set.sample(shaving(0));
+    for (let i = 0; i < 4; i++) await engine.tick();
+    expect(engine.status().ineffective).toBe(true);
+    h.set.config(config({}, { enabled: false }));
+    expect((await engine.tick()).ineffective).toBe(false);
+  });
+});
+
+describe("peak-shaving engine — shadow mode", () => {
+  let h: Harness;
+  beforeEach(() => {
+    h = harness({ config: config({}, { shadowMode: true }) });
+  });
+
+  test("decides without touching the register", async () => {
+    const engine = createPeakShavingEngine(h.io);
+    const status = await engine.tick();
+    expect(status.state).toBe("shadow");
+    expect(status.targetA).toBe(50); // the same call a live run would make
+    expect(h.writes).toHaveLength(0);
+    expect(h.state()).toEqual({}); // no snapshot: nothing to hand back
+    expect(status.restorePending).toBe(false);
+  });
+
+  test("switching a live run to shadow hands the register back once", async () => {
+    h.set.config(config());
+    const engine = createPeakShavingEngine(h.io);
+    await engine.tick();
+    expect(h.state()["test-profile:peakShaving"]?.previousValue).toBe(120);
+    h.set.config(config({}, { shadowMode: true }));
+    const status = await engine.tick();
+    expect(h.writes[1]).toEqual({ key: CHARGE_KEY, value: 120 }); // restored
+    expect(h.state()).toEqual({});
+    expect(status.state).toBe("shadow");
+    expect(status.targetA).not.toBeNull(); // still reporting what it would do
+    await engine.tick();
+    await engine.tick();
+    expect(h.writes).toHaveLength(2); // and never writes again
+  });
+
+  test("the watchdog stays quiet — nothing was commanded", async () => {
+    h.set.sample({
+      [PV_KEY]: 12_000,
+      [SOC_KEY]: 50,
+      [VOLT_KEY]: 50,
+      [BATT_POWER_KEY]: 0,
+      [CHARGE_KEY]: 80,
+    });
+    const engine = createPeakShavingEngine(h.io);
+    for (let i = 0; i < 5; i++) await engine.tick();
+    expect(engine.status().targetA).toBe(80);
+    expect(engine.status().ineffective).toBe(false);
+  });
+
+  test("night and blockers still park the run state", async () => {
+    const engine = createPeakShavingEngine(h.io);
+    h.set.sample({ [PV_KEY]: 0, [SOC_KEY]: 50, [VOLT_KEY]: 50, [CHARGE_KEY]: 120 });
+    h.set.forecast(asForecast(slice(12, [0, 0, 0, 0]), 0));
+    expect((await engine.tick()).state).toBe("idle");
+    h.set.weather(weather({ maxOutputW: null }));
+    expect((await engine.tick()).state).toBe("blocked");
+    expect(h.writes).toHaveLength(0);
+  });
+});
+
+// --- The feed-in ceiling register ----------------------------------------------------
+//
+// `grid-friendly` steers two registers: the charge ceiling decides how much PV
+// the battery takes, the solar-sell ceiling decides how much the inverter is
+// willing to sell. Without the second one the inverter simply sells up to its own
+// limit and the mode cannot lower the midday curve at all.
+
+describe("peak-shaving engine — feed-in ceiling", () => {
+  let h: Harness;
+  const gridCfg = (over: object = {}) => config({}, { mode: "grid-friendly", ...over });
+
+  beforeEach(() => {
+    h = harness({ config: gridCfg() });
+    h.set.sample({
+      [PV_KEY]: 7000,
+      [SOC_KEY]: 50,
+      [VOLT_KEY]: 50,
+      [CHARGE_KEY]: 120,
+      [SELL_KEY]: 8000,
+    });
+  });
+
+  test("writes the decided level and snapshots the user's own setting", async () => {
+    const engine = createPeakShavingEngine(h.io);
+    const status = await engine.tick();
+    expect(status.thresholdW).not.toBeNull();
+    const write = h.writes.find((w) => w.key === SELL_KEY);
+    expect(write?.value).toBe(status.thresholdW!);
+    expect(status.sellLimitW).toBe(status.thresholdW!);
+    // Both registers are held, each in its own slot, so each can be given back.
+    expect(h.state()["test-profile:peakShaving"]?.previousValue).toBe(120);
+    expect(h.state()["test-profile:peakShaving:sell"]?.previousValue).toBe(8000);
+  });
+
+  test("hands both registers back on disable", async () => {
+    const engine = createPeakShavingEngine(h.io);
+    await engine.tick();
+    h.set.config(config({}, { enabled: false }));
+    const status = await engine.tick();
+    expect(h.writes.at(-2)).toEqual({ key: CHARGE_KEY, value: 120 });
+    expect(h.writes.at(-1)).toEqual({ key: SELL_KEY, value: 8000 });
+    expect(h.state()).toEqual({});
+    expect(status.restorePending).toBe(false);
+    expect(status.sellLimitW).toBeNull();
+  });
+
+  test("shadow mode decides the level but writes neither register", async () => {
+    h.set.config(gridCfg({ shadowMode: true }));
+    const engine = createPeakShavingEngine(h.io);
+    const status = await engine.tick();
+    expect(status.thresholdW).not.toBeNull();
+    expect(status.liveSellLimitW).toBe(8000);
+    expect(h.writes).toHaveLength(0);
+    expect(h.state()).toEqual({});
+  });
+
+  test("switching to maximize-exports gives the feed-in ceiling back", async () => {
+    const engine = createPeakShavingEngine(h.io);
+    await engine.tick();
+    expect(h.state()["test-profile:peakShaving:sell"]).toBeDefined();
+    h.set.config(config()); // maximize-exports sells everything it can
+    await engine.tick();
+    expect(h.writes.at(-1)).toEqual({ key: SELL_KEY, value: 8000 });
+    // …and keeps the charge register it is still steering.
+    expect(h.state()["test-profile:peakShaving:sell"]).toBeUndefined();
+    expect(h.state()["test-profile:peakShaving"]).toBeDefined();
+  });
+
+  test("a plant without the register cannot run grid-friendly", async () => {
+    const bare = harness({ config: gridCfg() });
+    // Same setup, minus the mapping.
+    const ctx = buildProfileContext(profileWith({ "setting.solar_sell.max_power": "" }));
+    const engine = createPeakShavingEngine({ ...bare.io, ctx });
+    const status = await engine.tick();
+    expect(status.state).toBe("blocked");
+    expect(status.blockers).toEqual([{ kind: "role", role: "setting.solar_sell.max_power" }]);
+  });
+});
+
+// --- Decision log --------------------------------------------------------------------
+
+describe("decision log", () => {
+  test("keeps the newest points up to its capacity", () => {
+    const log = createDecisionLog(3);
+    for (let t = 1; t <= 5; t++) log.push({ ...logPoint, t });
+    expect(log.points().map((p) => p.t)).toEqual([3, 4, 5]);
+  });
+
+  test("starts empty and preserves push order", () => {
+    const log = createDecisionLog(10);
+    expect(log.points()).toEqual([]);
+    log.push({ ...logPoint, t: 2 });
+    log.push({ ...logPoint, t: 1 });
+    expect(log.points().map((p) => p.t)).toEqual([2, 1]);
+  });
+});
+
+describe("peak-shaving engine — decision log", () => {
+  let h: Harness;
+  beforeEach(() => {
+    h = harness();
+  });
+
+  test("records one point per steering tick with the chart's ingredients", async () => {
+    h.set.baselineLoad(400);
+    h.set.sample({
+      [PV_KEY]: 11_000,
+      [SOC_KEY]: 50,
+      [VOLT_KEY]: 50,
+      [LOAD_KEY]: 1000,
+      [BATT_POWER_KEY]: -2600,
+      [GRID_KEY]: -4000, // exporting 4 kW
+      [CHARGE_KEY]: 120,
+    });
+    const engine = createPeakShavingEngine(h.io);
+    const status = await engine.tick();
+    const [point] = engine.history();
+    expect(engine.history()).toHaveLength(1);
+    expect(point).toMatchObject({
+      t: NOON,
+      shadow: false,
+      pvW: 11_000,
+      loadW: 1000,
+      localSinkW: 1000,
+      socPct: 50,
+      batteryV: 50,
+      chargeW: 2600,
+      exportW: 4000,
+      liveA: 120, // the register as read before this tick's write
+      targetA: status.targetA,
+      thresholdW: status.thresholdW,
+    });
+    await engine.tick();
+    expect(engine.history()).toHaveLength(2);
+  });
+
+  test("marks shadow ticks so the chart can label them", async () => {
+    h.set.config(config({}, { shadowMode: true }));
+    const engine = createPeakShavingEngine(h.io);
+    await engine.tick();
+    expect(engine.history()[0]?.shadow).toBe(true);
+  });
+
+  test("nothing is recorded unless the tick actually decided", async () => {
+    const engine = createPeakShavingEngine(h.io);
+    // Blocked and stale ticks have no decision to log — disabled or not
+    // (a disabled *runnable* tick simulates and does log).
+    h.set.weather(weather({ battery: null }));
+    h.set.config(config({}, { enabled: false }));
+    await engine.tick();
+    h.set.config(config());
+    await engine.tick();
+    h.set.weather(weather());
+    h.set.sample({ [PV_KEY]: 5000, [SOC_KEY]: 50, [CHARGE_KEY]: 120 }, 60_000);
+    await engine.tick();
+    expect(engine.history()).toEqual([]);
+  });
+
+  test("unmapped optional metrics are logged as null", async () => {
+    h.set.sample({ [PV_KEY]: 9000, [SOC_KEY]: 50, [VOLT_KEY]: 50, [CHARGE_KEY]: 120 });
+    const engine = createPeakShavingEngine(h.io);
+    await engine.tick();
+    expect(engine.history()[0]).toMatchObject({ loadW: null, chargeW: null, exportW: null });
+  });
+});
+
+describe("peak-shaving engine — plan", () => {
+  const bell = asForecast(
+    slice(
+      12,
+      [2, 4, 6, 9, 11, 12, 11, 9, 6, 4, 2, 0].map((kw) => kw * 1000),
+    ),
+  );
+  let h: Harness;
+  beforeEach(() => {
+    h = harness();
+    h.set.forecast(bell);
+  });
+
+  test("projects from the live SOC and the plant's real export cap", async () => {
+    h.set.sample({ [PV_KEY]: 4000, [SOC_KEY]: 30, [VOLT_KEY]: 50, [CHARGE_KEY]: 120 });
+    const plan = (await createPeakShavingEngine(h.io).plan())?.today;
+    expect(plan?.slots.length).toBe(12);
+    expect(plan?.slots[0]?.socPct).toBeGreaterThanOrEqual(30);
+    // The cap is maxOutputW (8400), not the buffered decision limit (8000).
+    expect(Math.max(...plan!.slots.map((s) => s.exportW))).toBeLessThanOrEqual(8400);
+  });
+
+  test("a fuller battery plans less charging", async () => {
+    h.set.sample({ [PV_KEY]: 4000, [SOC_KEY]: 30, [VOLT_KEY]: 50, [CHARGE_KEY]: 120 });
+    const low = await createPeakShavingEngine(h.io).plan();
+    h.set.sample({ [PV_KEY]: 4000, [SOC_KEY]: 85, [VOLT_KEY]: 50, [CHARGE_KEY]: 120 });
+    const high = await createPeakShavingEngine(h.io).plan();
+    expect(high!.today.storedKwh).toBeLessThan(low!.today.storedKwh);
+  });
+
+  test("available before the automation is switched on (pre-flight)", async () => {
+    h.set.config(config({}, { enabled: false }));
+    const plan = await createPeakShavingEngine(h.io).plan();
+    expect(plan).not.toBeNull();
+    expect(plan!.today.slots.length).toBeGreaterThan(0);
+  });
+
+  test("tomorrow projects the next local day, seeded with today's end SOC", async () => {
+    // One slot left of today, two of tomorrow, hourly to keep the math small.
+    h.set.forecast(
+      asForecast({
+        stepMinutes: 60,
+        utcOffsetSeconds: 0,
+        series: [
+          { time: "2026-07-25T12:00", watts: 9000, peakWatts: 9000 },
+          { time: "2026-07-26T11:00", watts: 12_000, peakWatts: 12_000 },
+          { time: "2026-07-26T12:00", watts: 12_000, peakWatts: 12_000 },
+        ],
+      }),
+    );
+    h.set.sample({ [PV_KEY]: 4000, [SOC_KEY]: 30, [VOLT_KEY]: 50, [CHARGE_KEY]: 120 });
+    const plans = await createPeakShavingEngine(h.io).plan();
+    expect(plans!.today.slots).toHaveLength(1);
+    expect(plans!.tomorrow.slots.map((s) => new Date(s.t).toISOString().slice(0, 10))).toEqual([
+      "2026-07-26",
+      "2026-07-26",
+    ]);
+    // The pack is assumed to hold overnight: tomorrow starts where today ends.
+    expect(plans!.tomorrow.slots[0]!.socPct).toBeGreaterThanOrEqual(plans!.today.endSocPct);
+  });
+
+  test("tomorrow is empty when the forecast stops today", async () => {
+    h.set.sample({ [PV_KEY]: 4000, [SOC_KEY]: 30, [VOLT_KEY]: 50, [CHARGE_KEY]: 120 });
+    const plans = await createPeakShavingEngine(h.io).plan();
+    expect(plans!.tomorrow.slots).toEqual([]);
+  });
+
+  test("no plan without a runnable setup, a forecast or fresh readings", async () => {
+    h.set.weather(weather({ maxOutputW: null }));
+    expect(await createPeakShavingEngine(h.io).plan()).toBeNull();
+    h.set.weather(weather());
+    h.set.forecast(null);
+    expect(await createPeakShavingEngine(h.io).plan()).toBeNull();
+    h.set.forecast(bell);
+    h.set.sample({ [PV_KEY]: 4000, [SOC_KEY]: 30, [CHARGE_KEY]: 120 }, 60_000);
+    expect(await createPeakShavingEngine(h.io).plan()).toBeNull();
+  });
+
+  test("planning never writes a register", async () => {
+    const engine = createPeakShavingEngine(h.io);
+    await engine.plan();
+    expect(h.writes).toHaveLength(0);
+    expect(h.state()).toEqual({});
+  });
+});
+
+describe("peak-shaving engine — plateau damping", () => {
+  // A midday bell wide enough that the solved plateau sits well below the limit.
+  const bell = asForecast(
+    slice(
+      12,
+      [2, 4, 6, 8, 10, 12, 12, 10, 8, 6, 4, 2].map((kw) => kw * 1000),
+    ),
+  );
+  let h: Harness;
+  beforeEach(() => {
+    h = harness({
+      config: config({}, { mode: "grid-friendly", gridFriendly: { slewWPerMin: 60 } }),
+    });
+    h.set.forecast(bell);
+  });
+
+  test("the plateau moves only within the tick's slew budget, and a release resets it", async () => {
+    const engine = createPeakShavingEngine(h.io);
+    // 50% SOC → 7.5 kWh of headroom, filled from the exportable energy above the
+    // level the search settles on.
+    const settled = (await engine.tick()).thresholdW;
+    expect(settled).not.toBeNull();
+    expect(settled!).toBeLessThan(8000);
+    // 90% SOC alone would jump the level much higher, but no time has passed, so
+    // the budget is zero and the level holds.
+    h.set.sample({ [PV_KEY]: 5000, [SOC_KEY]: 90, [VOLT_KEY]: 50, [CHARGE_KEY]: 50 });
+    expect((await engine.tick()).thresholdW).toBe(settled!);
+    // One minute of budget at 60 W/min (a fresh sample too — the old one would
+    // now be stale, and a stale tick steers nothing).
+    h.set.now(NOON + 60_000);
+    h.set.sample({ [PV_KEY]: 5000, [SOC_KEY]: 90, [VOLT_KEY]: 50, [CHARGE_KEY]: 0 });
+    expect((await engine.tick()).thresholdW).toBe(settled! + 60);
+    // Off and on again: the level is re-solved from scratch, undamped — so it
+    // lands where a whole minute of slew could not have carried it.
+    h.set.config(config({}, { enabled: false }));
+    await engine.tick();
+    h.set.config(config({}, { mode: "grid-friendly", gridFriendly: { slewWPerMin: 60 } }));
+    const undamped = (await engine.tick()).thresholdW;
+    expect(undamped!).toBeGreaterThan(settled! + 60);
   });
 });
