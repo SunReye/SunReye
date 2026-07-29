@@ -32,6 +32,7 @@ import {
   type DecisionInputs,
   type EvInputs,
   type ForecastSlice,
+  NEAR_FULL_KWH,
   SELL_LIMIT_ROLE,
   decideTargetA,
   evccAutomationInputs,
@@ -463,11 +464,20 @@ function recordDecision(
 /**
  * Raise (or clear) {@link PeakShavingStatus.ineffective}: only judged once our
  * ceiling is actually in the register, so the tick that writes it never counts.
+ * A near-full pack tapers to nothing on its own — that is the top-balance floor
+ * doing its job, not an ignored ceiling, so those ticks never count either.
  */
-function updateWatchdog(e: Eng, live: LiveInputs, targetA: number, batteryV: number): void {
+function updateWatchdog(
+  e: Eng,
+  live: LiveInputs,
+  targetA: number,
+  batteryV: number,
+  headroomKwh: number,
+): void {
   const commandedW = targetA * batteryV;
   const settled = live.liveA === targetA;
-  if (live.chargeW === null || !settled || commandedW < INEFFECTIVE_MIN_W) {
+  const nearFull = headroomKwh <= NEAR_FULL_KWH;
+  if (live.chargeW === null || !settled || nearFull || commandedW < INEFFECTIVE_MIN_W) {
     e.ineffectiveTicks = 0;
   } else {
     e.ineffectiveTicks = live.chargeW < commandedW * INEFFECTIVE_RATIO ? e.ineffectiveTicks + 1 : 0;
@@ -605,7 +615,7 @@ async function steer(
     // mode that sells everything it can.
     if (ps.mode === "grid-friendly") await steerSellLimit(e, decision.thresholdW, live);
     else await releaseSellLimit(e);
-    updateWatchdog(e, live, targetA, batteryV);
+    updateWatchdog(e, live, targetA, batteryV, decision.headroomKwh);
   }
   logDecision(e, decision, live, { shadow: ps.shadowMode, targetA, batteryV, evcc });
 }

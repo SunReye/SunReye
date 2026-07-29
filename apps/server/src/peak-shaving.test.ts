@@ -1370,6 +1370,22 @@ describe("peak-shaving engine — effectiveness watchdog", () => {
     expect((await engine.tick()).ineffective).toBe(false);
   });
 
+  test("a full pack tapering at the top-balance floor is never flagged", async () => {
+    const engine = createPeakShavingEngine(h.io);
+    // A floor of 20 A at 50 V commands 1000 W — above the watchdog minimum —
+    // but the near-full pack refusing it is the taper working, not a sell mode.
+    h.set.config(config({}, { topBalanceFloorA: 20 }));
+    h.set.sample({
+      [PV_KEY]: 12_000,
+      [SOC_KEY]: 100,
+      [VOLT_KEY]: 50,
+      [BATT_POWER_KEY]: 0,
+      [CHARGE_KEY]: 120,
+    });
+    for (let i = 0; i < 5; i++) await engine.tick();
+    expect(engine.status().ineffective).toBe(false);
+  });
+
   test("no battery power metric means no watchdog", async () => {
     const engine = createPeakShavingEngine(h.io);
     h.set.sample({ [PV_KEY]: 12_000, [SOC_KEY]: 50, [VOLT_KEY]: 50, [CHARGE_KEY]: 120 });
