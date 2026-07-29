@@ -102,6 +102,12 @@ export interface PeakShavingStatus {
   /** House load the thresholds were measured against, W; null when unknown. */
   loadW: number | null;
   headroomKwh: number | null;
+  /**
+   * Usable battery energy from the forecast config, kWh — lets the client
+   * re-derive headroom from the live 1 Hz SOC between ticks. Null until a tick
+   * has read the config (or when no battery is configured).
+   */
+  usableKwh: number | null;
   remainingAboveLimitKwh: number | null;
   /** Live EV charge power the decision subtracted; null when EVCC is off. */
   evChargeW: number | null;
@@ -166,6 +172,7 @@ export function initialStatus(): PeakShavingStatus {
     liveExcessW: null,
     loadW: null,
     headroomKwh: null,
+    usableKwh: null,
     remainingAboveLimitKwh: null,
     evChargeW: null,
     evDemandKwh: null,
@@ -744,6 +751,7 @@ async function runTick(e: Eng): Promise<PeakShavingStatus> {
     // enable switch on them, and the simulation needs the same go/no-go call.
     const weather = await io.getWeather();
     status.blockers = resolvePeakShavingBlockers(io.ctx.profile, weather, ps.mode);
+    status.usableKwh = weather.forecast.battery?.usableKwh ?? null;
     if (!status.enabled) return await simulateTick(e, ps, weather);
     if (status.blockers.length > 0) return await releasedStatus(e, "blocked");
 

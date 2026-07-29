@@ -8,14 +8,44 @@
 	import StatTiles from './stat-tiles.svelte';
 	import { STATE_LABEL, STATE_VARIANT } from './run-state';
 	import { inverter } from '$lib/inverter/store.svelte';
+	import { evcc } from '$lib/evcc/store.svelte';
 	import * as m from '$lib/paraglide/messages';
 	import type { PeakShavingRunState, PeakShavingStatus } from '$lib/automations';
 
 	let { status }: { status: PeakShavingStatus | null } = $props();
 
-	// The 1 Hz live sample beats the streamed tick for the current PV reading.
-	const pvKey = $derived(inverter.byRole('pv.total.power')?.key);
-	const livePvW = $derived(pvKey ? inverter.value(pvKey) : undefined);
+	// Everything the plant meters beats the streamed tick: PV, house load, the
+	// two registers and SOC all update at the 1 Hz live sample; only the
+	// decisions themselves (target, threshold, surplus) move per control tick.
+	const liveRole = (role: Parameters<typeof inverter.byRole>[0]): number | undefined => {
+		const key = inverter.byRole(role)?.key;
+		return key ? inverter.value(key) : undefined;
+	};
+	const livePvW = $derived(liveRole('pv.total.power'));
+	const liveLoadW = $derived(liveRole('load.power') ?? status?.loadW);
+	const liveRegisterA = $derived(
+		liveRole('setting.battery.max_charge_current') ?? status?.liveA
+	);
+	const liveSellLimitW = $derived(
+		liveRole('setting.solar_sell.max_power') ?? status?.liveSellLimitW
+	);
+	// Headroom re-derived from the live SOC once a tick has told us the pack size.
+	const liveSocPct = $derived(liveRole('battery.soc'));
+	const liveHeadroomKwh = $derived(
+		status?.usableKwh != null && liveSocPct != null
+			? (status.usableKwh * (100 - Math.min(100, Math.max(0, liveSocPct)))) / 100
+			: status?.headroomKwh
+	);
+	// EV draw at the EVCC feed's cadence while its rows are shown. The lease
+	// hangs off a memoized boolean, NOT off `status` itself — the status object
+	// is replaced on every stream frame, and an effect keyed on it would tear
+	// down and reopen the EVCC socket each time.
+	const showEv = $derived(status?.evChargeW != null);
+	$effect(() => {
+		if (!showEv) return;
+		return evcc.connect();
+	});
+	const liveEvChargeW = $derived(evcc.active ? evcc.chargePower : status?.evChargeW);
 
 	const runState = $derived<PeakShavingRunState>(status?.state ?? 'disabled');
 	const slideMs = $derived(prefersReducedMotion.current ? 0 : 160);
@@ -66,10 +96,10 @@
 			{
 				label: m.peak_shaving_status_target(),
 				value: fmtA(s.targetA),
-				sub: `${m.peak_shaving_status_live()}: ${fmtA(s.liveA)}`
+				sub: `${m.peak_shaving_status_live()}: ${fmtA(liveRegisterA)}`
 			},
 			{ label: m.peak_shaving_status_threshold(), value: fmtW(s.thresholdW), sub: null },
-			{ label: m.peak_shaving_status_headroom(), value: fmtKwh(s.headroomKwh), sub: null }
+			{ label: m.peak_shaving_status_headroom(), value: fmtKwh(liveHeadroomKwh), sub: null }
 		];
 	});
 
@@ -77,7 +107,7 @@
 		const s = status;
 		if (!s) return [];
 		return [
-			{ label: m.peak_shaving_status_load(), value: fmtW(s.loadW) },
+			{ label: m.peak_shaving_status_load(), value: fmtW(liveLoadW) },
 			{ label: m.peak_shaving_status_surplus(), value: fmtKwh(s.remainingAboveLimitKwh) },
 			// The feed-in ceiling register is only steered in grid-friendly; elsewhere
 			// the plant's own limit stands and there is nothing of ours to report.
@@ -85,7 +115,7 @@
 				? [
 						{
 							label: m.peak_shaving_status_sell_limit(),
-							value: `${fmtW(s.sellLimitW)} / ${fmtW(s.liveSellLimitW)}`
+							value: `${fmtW(s.sellLimitW)} / ${fmtW(liveSellLimitW)}`
 						}
 					]
 				: []),
@@ -93,7 +123,7 @@
 			...(s.evChargeW == null
 				? []
 				: [
-						{ label: m.peak_shaving_status_ev_power(), value: fmtW(s.evChargeW) },
+						{ label: m.peak_shaving_status_ev_power(), value: fmtW(liveEvChargeW) },
 						{ label: m.peak_shaving_status_ev_demand(), value: fmtKwh(s.evDemandKwh) }
 					]),
 			{ label: m.peak_shaving_status_last_write(), value: fmtTime(s.lastWriteAt) },
