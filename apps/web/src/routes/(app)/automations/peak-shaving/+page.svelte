@@ -38,7 +38,7 @@
 		</a>
 		<LiveIndicator
 			connected={automationStream.connected}
-			lastTickAt={status?.lastTickAt ?? null}
+			tickArrivedAt={automationStream.tickArrivedAt}
 			tickMs={automationStream.tickMs}
 		/>
 	</div>

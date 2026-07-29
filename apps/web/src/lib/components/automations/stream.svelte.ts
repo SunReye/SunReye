@@ -28,6 +28,13 @@ class AutomationStream {
   plan = $state<PeakShavingPlans | null>(null);
   /** Engine cadence, ms — the countdown base for "next decision in …". */
   tickMs = $state(30_000);
+  /**
+   * Client-clock arrival of the last frame that carried a fresh tick — the
+   * countdown anchor. Deliberately not the server's `lastTickAt`: the viewer's
+   * clock and the server's can disagree, and a skew larger than the interval
+   * would pin the countdown at 0.
+   */
+  tickArrivedAt = $state<number | null>(null);
   /** True once a first payload (fetch or socket) has arrived. */
   loaded = $state(false);
   /** Live socket state, for the page's connection indicator. */
@@ -52,6 +59,12 @@ class AutomationStream {
   });
 
   #apply(msg: AutomationStreamMessage): void {
+    // Countdown anchor: the client-clock arrival of a frame carrying a fresh
+    // tick. Server timestamps must never be compared against the viewer's
+    // clock — any skew between the two machines would pin the countdown.
+    if (msg.status.lastTickAt !== this.status?.lastTickAt) {
+      this.tickArrivedAt = Date.now();
+    }
     this.status = msg.status;
     this.plan = msg.plan;
     this.tickMs = msg.tickMs;

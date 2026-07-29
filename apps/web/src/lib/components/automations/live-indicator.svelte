@@ -1,15 +1,18 @@
 <script lang="ts">
 	// Connection + cadence chip for the automations stream: a breathing dot while
 	// the socket is live, and a countdown ring to the engine's next control
-	// decision (fed by the streamed `tickMs` cadence and the last tick time).
+	// decision. Counted from the tick frame's client-clock *arrival*
+	// (`tickArrivedAt`), never from the server's own timestamp — clock skew
+	// between the viewer's machine and the server would otherwise shift the
+	// countdown, pinning it at 0 when the viewer runs ahead.
 	import LiveDot from './live-dot.svelte';
 	import * as m from '$lib/paraglide/messages';
 
 	let {
 		connected,
-		lastTickAt,
+		tickArrivedAt,
 		tickMs
-	}: { connected: boolean; lastTickAt: string | null; tickMs: number } = $props();
+	}: { connected: boolean; tickArrivedAt: number | null; tickMs: number } = $props();
 
 	// Coarse wall clock (4 Hz): smooth enough for a seconds countdown without
 	// paying for an animation-frame loop.
@@ -19,7 +22,7 @@
 		return () => clearInterval(id);
 	});
 
-	const sinceMs = $derived(lastTickAt === null ? null : nowMs - Date.parse(lastTickAt));
+	const sinceMs = $derived(tickArrivedAt === null ? null : nowMs - tickArrivedAt);
 	// The next tick is due `tickMs` after the last one; clamped at 0 while a slow
 	// tick (or the save hot-apply) runs long.
 	const remainingS = $derived(
