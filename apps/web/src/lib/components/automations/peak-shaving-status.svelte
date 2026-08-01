@@ -7,6 +7,7 @@
 	import MetricGrid, { type MetricRow } from './metric-grid.svelte';
 	import StatTiles from './stat-tiles.svelte';
 	import { STATE_LABEL, STATE_VARIANT } from './run-state';
+	import StatusBadges from './status-badges.svelte';
 	import { inverter } from '$lib/inverter/store.svelte';
 	import { evcc } from '$lib/evcc/store.svelte';
 	import * as m from '$lib/paraglide/messages';
@@ -59,6 +60,8 @@
 
 	// Alerts and metrics are derived lists so the template stays two loops
 	// instead of a branch per banner and per reading.
+	const regime = $derived(status?.priceRegime ?? 'none');
+
 	const alerts = $derived.by(() => {
 		const s = status;
 		if (!s) return [];
@@ -83,6 +86,13 @@
 				text: m.peak_shaving_no_forecast(),
 				variant: 'default' as const
 			},
+			{
+				// The honest case: withholding charge cannot empty the pack in time, so
+				// say so rather than let the plan look like it is working.
+				when: s.priceRegime === 'spend-down',
+				text: m.peak_shaving_spend_down_hint(),
+				variant: 'default' as const
+			},
 			{ when: s.lastError != null, text: s.lastError ?? '', variant: 'destructive' as const }
 		].filter((a) => a.when);
 	});
@@ -102,6 +112,29 @@
 			{ label: m.peak_shaving_status_headroom(), value: fmtKwh(liveHeadroomKwh), sub: null }
 		];
 	});
+
+	const fmtWindow = (from: number | null, to: number | null) =>
+		from == null || to == null
+			? '—'
+			: `${new Date(from).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}–${new Date(to).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+
+	/**
+	 * Price readings, only once a window is actually in play — on an ordinary day
+	 * the panel looks exactly as it did before this feature existed.
+	 */
+	function priceRows(s: PeakShavingStatus): MetricRow[] {
+		if (s.priceRegime === 'none') return [];
+		const envelope = s.socEnvelopePct;
+		return [
+			{ label: m.peak_shaving_status_window(), value: fmtWindow(s.windowStartsAt, s.windowEndsAt) },
+			{
+				label: m.peak_shaving_status_envelope(),
+				value: envelope == null ? '—' : `${Math.round(envelope)} %`
+			},
+			{ label: m.peak_shaving_status_soakable(), value: fmtKwh(s.soakableKwh) },
+			{ label: m.peak_shaving_status_unavoidable(), value: fmtKwh(s.unavoidableZeroValueKwh) }
+		];
+	}
 
 	const rows = $derived.by<MetricRow[]>(() => {
 		const s = status;
@@ -126,6 +159,7 @@
 						{ label: m.peak_shaving_status_ev_power(), value: fmtW(liveEvChargeW) },
 						{ label: m.peak_shaving_status_ev_demand(), value: fmtKwh(s.evDemandKwh) }
 					]),
+			...priceRows(s),
 			{ label: m.peak_shaving_status_last_write(), value: fmtTime(s.lastWriteAt) },
 			{ label: m.peak_shaving_status_last_tick(), value: fmtTime(s.lastTickAt) }
 		];
@@ -134,7 +168,7 @@
 
 <SettingsSection title={m.automations_status_title()}>
 	{#snippet actions()}
-		<Badge variant={STATE_VARIANT[runState]}>{STATE_LABEL[runState]()}</Badge>
+		<StatusBadges {runState} {regime} />
 	{/snippet}
 
 	{#if !status}

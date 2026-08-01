@@ -98,7 +98,7 @@ export function resolvePeakShavingBlockers(
  * {@link Blocker} type the settings form already uses to lock a switch, and
  * shared by the PUT guard and the runtime tick so the two cannot drift.
  */
-function resolvePriceAwareBlockers(weather: WeatherConfig): Blocker[] {
+export function resolvePriceAwareBlockers(weather: WeatherConfig): Blocker[] {
   const blockers: Blocker[] = [];
   if (!weather.forecast.smartMeterSince) blockers.push({ kind: "config", what: "smart-meter" });
   return blockers;

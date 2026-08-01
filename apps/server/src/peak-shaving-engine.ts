@@ -38,8 +38,10 @@ import {
   evccAutomationInputs,
   keyForRole,
   resolvePeakShavingBlockers,
+  resolvePriceAwareBlockers,
 } from "./peak-shaving";
 import type { ForecastSlice } from "./slot-window";
+import type { PriceRegime } from "./price-plan";
 import type { SpotSlice } from "./spot-price";
 import {
   type PeakShavingPlans,
@@ -86,6 +88,12 @@ export interface PeakShavingStatus {
   mode: PeakShavingMode;
   state: PeakShavingRunState;
   blockers: Blocker[];
+  /**
+   * What stops *price awareness* specifically. Kept apart from `blockers`
+   * because a missing smart-meter date says nothing about whether peak shaving
+   * can run — only that §51 does not apply to this plant.
+   */
+  priceBlockers: Blocker[];
   lastTickAt: string | null;
   lastWriteAt: string | null;
   lastError: string | null;
@@ -127,6 +135,17 @@ export interface PeakShavingStatus {
   ineffective: boolean;
   /** A snapshot is held — the user's value will be restored on release. */
   restorePending: boolean;
+  /** What price awareness is doing; `none` when off or without prices. */
+  priceRegime: PriceRegime;
+  /** SOC bound the pre-window envelope allows now, %; null when not shaping. */
+  socEnvelopePct: number | null;
+  /** Start/end of the negative-price window in play, epoch ms; null when none. */
+  windowStartsAt: number | null;
+  windowEndsAt: number | null;
+  /** Energy that window can push into the pack, kWh. */
+  soakableKwh: number | null;
+  /** Window energy that will earn nothing whatever the pack does, kWh. */
+  unavoidableZeroValueKwh: number | null;
 }
 
 export interface AutomationStatusView {
@@ -169,6 +188,7 @@ export function initialStatus(): PeakShavingStatus {
     mode: "maximize-exports",
     state: "disabled",
     blockers: [],
+    priceBlockers: [],
     lastTickAt: null,
     lastWriteAt: null,
     lastError: null,
@@ -189,6 +209,12 @@ export function initialStatus(): PeakShavingStatus {
     externalOverride: false,
     ineffective: false,
     restorePending: false,
+    priceRegime: "none",
+    socEnvelopePct: null,
+    windowStartsAt: null,
+    windowEndsAt: null,
+    soakableKwh: null,
+    unavoidableZeroValueKwh: null,
   };
 }
 
@@ -467,6 +493,12 @@ function recordDecision(
   status.evDemandKwh = evccReachable ? ev.evRemainingKwh : null;
   status.externalOverride =
     status.lastWrittenA !== null && live.liveA !== null && live.liveA !== status.lastWrittenA;
+  status.priceRegime = decision.priceRegime;
+  status.socEnvelopePct = decision.socEnvelopePct;
+  status.windowStartsAt = decision.windowStartsAt;
+  status.windowEndsAt = decision.windowEndsAt;
+  status.soakableKwh = decision.soakableKwh;
+  status.unavoidableZeroValueKwh = decision.unavoidableZeroValueKwh;
 }
 
 /**
@@ -789,6 +821,7 @@ async function runTick(e: Eng): Promise<PeakShavingStatus> {
     // enable switch on them, and the simulation needs the same go/no-go call.
     const weather = await io.getWeather();
     status.blockers = resolvePeakShavingBlockers(io.ctx.profile, weather, ps.mode);
+    status.priceBlockers = resolvePriceAwareBlockers(weather);
     status.usableKwh = weather.forecast.battery?.usableKwh ?? null;
     if (!status.enabled) return await simulateTick(e, ps, weather);
     if (status.blockers.length > 0) return await releasedStatus(e, "blocked");

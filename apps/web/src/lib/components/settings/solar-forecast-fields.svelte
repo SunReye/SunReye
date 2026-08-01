@@ -9,6 +9,7 @@
 	import { Input } from '$lib/components/ui/input';
 	import { Label } from '$lib/components/ui/label';
 	import PvArrayRow from './pv-array-row.svelte';
+	import ExportCapHelper from './export-cap-helper.svelte';
 	import * as m from '$lib/paraglide/messages';
 
 	let {
@@ -20,6 +21,7 @@
 		battUsable = $bindable(),
 		battCharge = $bindable(),
 		battReserve = $bindable(),
+		smartMeterSince = $bindable(),
 		disabled
 	}: {
 		arrays: ArrayFields[];
@@ -35,8 +37,14 @@
 		battCharge: string;
 		/** Battery reserve floor, % (blank = 10). */
 		battReserve: string;
+		/** Smart-meter-gateway install date, `YYYY-MM-DD`, or '' when none. */
+		smartMeterSince: string;
 		disabled: boolean;
 	} = $props();
+
+	const totalKwp = $derived(
+		arrays.reduce((sum, a) => sum + (Number.parseFloat(a.kwp) || 0), 0),
+	);
 
 	function addArray() {
 		arrays = [...arrays, { kwp: '', tilt: '30', azimuth: '0' }];
@@ -106,6 +114,7 @@
 				inputmode="decimal"
 				placeholder="10"
 			/>
+			<ExportCapHelper bind:maxOutput bind:smartMeterSince {totalKwp} {disabled} />
 		</div>
 		<div class="flex flex-col gap-1.5">
 			<Label for="forecast-house-load">{m.weather_forecast_house_load()}</Label>

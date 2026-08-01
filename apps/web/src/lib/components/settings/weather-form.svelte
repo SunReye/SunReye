@@ -33,6 +33,7 @@
 			maxOutputW: number | null;
 			battery: ForecastBattery | null;
 			houseLoadW: number | null;
+			smartMeterSince: string | null;
 			correction: { enabled: boolean };
 		};
 	};
@@ -53,6 +54,8 @@
 	let battUsableText = $state('');
 	let battChargeText = $state('');
 	let battReserveText = $state('');
+	// Empty string is the date input's "unset"; the schema wants null.
+	let smartMeterText = $state('');
 
 	const fieldsDisabled = $derived(!isAdmin || saving);
 
@@ -90,6 +93,7 @@
 		battUsableText = battery.usable;
 		battChargeText = battery.charge;
 		battReserveText = battery.reserve;
+		smartMeterText = f.smartMeterSince ?? '';
 	}
 
 	onMount(async () => {
@@ -201,6 +205,7 @@
 				enabled: draft.forecast.enabled,
 				provider: draft.forecast.provider,
 				correction: draft.forecast.correction,
+				smartMeterSince: smartMeterText === '' ? null : smartMeterText,
 				...forecast
 			}
 		});
@@ -316,6 +321,7 @@
 				bind:tempCoeff={tempCoeffText}
 				bind:loss={lossText}
 				bind:maxOutput={maxOutputText}
+				bind:smartMeterSince={smartMeterText}
 				bind:houseLoad={houseLoadText}
 				bind:battUsable={battUsableText}
 				bind:battCharge={battChargeText}

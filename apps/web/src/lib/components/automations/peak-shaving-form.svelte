@@ -10,6 +10,7 @@
 	import OptionSelect from '$lib/components/settings/option-select.svelte';
 	import BlockerAlert from './blocker-alert.svelte';
 	import GridFriendlyFields from './grid-friendly-fields.svelte';
+	import PriceAwareFields, { type PriceNumKey } from './price-aware-fields.svelte';
 	import NumericFieldGrid from './numeric-field-grid.svelte';
 	import { api } from '$lib/api';
 	import { parseNum } from '$lib/parse-num';
@@ -38,6 +39,14 @@
 		topBalanceFloorA: '',
 		nominalBatteryV: '',
 		controlIntervalS: ''
+	});
+	// Price-aware tuning; inert without a price feed, but always persisted.
+	let paNums = $state({
+		negativeThresholdEurPerMwh: '',
+		minWindowMinutes: '',
+		lookaheadHours: '',
+		soakFloorW: '',
+		reserveMarginPct: ''
 	});
 	// Grid-friendly tuning; only meaningful in that mode, but always persisted.
 	let gfNums = $state({
@@ -68,6 +77,11 @@
 			gfNums[f] = gf[f]?.toString() ?? '';
 		}
 	}
+	function fillPaNums(pa: AutomationConfig['peakShaving']['priceAware']) {
+		for (const f of Object.keys(paNums) as PriceNumKey[]) {
+			paNums[f] = pa[f]?.toString() ?? '';
+		}
+	}
 
 	onMount(async () => {
 		const { data } = await api.api.settings.automations.get();
@@ -75,9 +89,15 @@
 		draft = data as AutomationConfig;
 		fillNums(draft.peakShaving);
 		fillGfNums(draft.peakShaving.gridFriendly);
+		fillPaNums(draft.peakShaving.priceAware);
 	});
 
 	const blockers = $derived(status?.blockers ?? []);
+	// The plant has not declared a smart-meter-gateway install, so §51 does not
+	// apply to it and price awareness must stay locked off.
+	const smartMeterMissing = $derived(
+		blockers.some((b) => b.kind === 'config' && b.what === 'smart-meter')
+	);
 	// Turning the automation ON needs a runnable setup; turning it OFF must
 	// always stay possible.
 	const enableLocked = $derived(
@@ -119,14 +139,19 @@
 		return (value as { error?: string } | null)?.error ?? m.automations_toast_error();
 	}
 
-	async function submit(parsed: Record<NumKey, number>, gf: Record<GfNumKey, number>) {
+	async function submit(
+		parsed: Record<NumKey, number>,
+		gf: Record<GfNumKey, number>,
+		pa: Record<PriceNumKey, number>
+	) {
 		if (!draft) return;
 		const { data, error } = await api.api.settings.automations.put({
 			...draft,
 			peakShaving: {
 				...draft.peakShaving,
 				...parsed,
-				gridFriendly: { ...draft.peakShaving.gridFriendly, ...gf }
+				gridFriendly: { ...draft.peakShaving.gridFriendly, ...gf },
+				priceAware: { ...draft.peakShaving.priceAware, ...pa }
 			}
 		});
 		if (error) {
@@ -140,12 +165,13 @@
 	async function save() {
 		const parsed = parsedGroup(nums);
 		const gf = parsedGroup(gfNums);
-		if (!parsed || !gf) {
+		const pa = parsedGroup(paNums);
+		if (!parsed || !gf || !pa) {
 			toast.error(m.automations_toast_invalid());
 			return;
 		}
 		saving = true;
-		await submit(parsed, gf);
+		await submit(parsed, gf, pa);
 		saving = false;
 	}
 </script>
@@ -217,5 +243,12 @@
 				{readOnly}
 			/>
 		{/if}
+
+		<PriceAwareFields
+			bind:cfg={draft.peakShaving.priceAware}
+			bind:nums={paNums}
+			{readOnly}
+			blocked={smartMeterMissing}
+		/>
 	{/if}
 </SettingsSection>

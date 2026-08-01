@@ -92,6 +92,11 @@ irradiance forecast into expected output:
 - **PV arrays** — one row per orientation (**kWp**, **tilt**, **azimuth**; 0° = south,
   −90° = east, 90° = west). Add a row per string group facing a different way.
 - **Temp. coefficient** and **System losses** — from the panel datasheet and install.
+- **Smart meter gateway installed** — the date your iMSys went in, or blank if you don't have
+  one. Installing it is what lifts the 60 % feed-in cap, and it marks the plant as one **§51
+  EEG** applies to — so it is also the gate on price-aware charging. Quick buttons set the
+  feed-in limit to 60 / 70 / 100 % of installed kWp. Raising the cap leaves ordinary peak
+  shaving with much less to do, which is exactly what price-aware charging is for.
 - **Clipping** — feed-in limit, usable battery, max charge power, and reserve, plus an
   average **house load** (blank = inferred from history). These curtail the forecast so it
   doesn't overstate output once the battery is full and export is capped. Past hours are
@@ -185,3 +190,22 @@ A live view of the server log stream (`/settings/logs`, admin only), streamed ov
 :::note
 Client-side admin gating is UX only — every mutation is enforced on the server.
 :::
+
+## Automations
+
+Peak shaving is configured under Settings → Automations (master switch) and on the automation's
+own page. Alongside its two modes it has a **negative-price windows** section:
+
+- **Act on negative prices** — off by default, and locked until a smart meter gateway install
+  date is set. With it on, the battery makes room ahead of a window with a negative day-ahead
+  price and absorbs the surplus during it. Energy exported in those quarter-hours earns nothing
+  under §51 EEG, so storing it is the only way to keep its value.
+- **Hold the battery low before a window** — charges as much as possible, as late as possible,
+  rather than simply stopping: pre-window PV *is* paid for, and the reserve floor still applies.
+- Thresholds for what counts as negative, the shortest window worth acting on, how far ahead to
+  plan, how much feed-in to allow during a window, and a reserve margin.
+
+The status panel names what it is doing (*making room*, *absorbing*, *too full*) and reports the
+window, the SOC ceiling in force, how much the window can absorb — and how much **cannot be
+rescued**. That last figure matters: withholding charge often cannot empty a pack in time, and
+shifting flexible load into the window is what closes the gap.
