@@ -277,18 +277,19 @@ function exportSurplusAboveKwh(
 function gridFriendlyThresholdW(
   i: DecisionInputs & { forecast: ForecastSlice },
   headroomKwh: number,
+  exportLimitW: number,
 ): number {
-  const floorW = Math.min(i.gridFriendly.minThresholdW, i.exportLimitW);
+  const floorW = Math.min(i.gridFriendly.minThresholdW, exportLimitW);
   const trust = i.gridFriendly.forecastTrustPct / 100;
   const evKwh = i.gridFriendly.reserveForEvDemand ? i.evRemainingKwh : 0;
   const fills = (levelW: number) =>
-    exportSurplusAboveKwh(i.forecast, levelW, i.exportLimitW, i.baselineLoadW, i.nowMs) * trust -
+    exportSurplusAboveKwh(i.forecast, levelW, exportLimitW, i.baselineLoadW, i.nowMs) * trust -
       evKwh >
     headroomKwh;
   // Not even the floor gathers enough: sit on it and take everything above.
   if (!fills(floorW)) return floorW;
   let lo = floorW;
-  let hi = i.exportLimitW;
+  let hi = exportLimitW;
   for (let step = 0; step < THRESHOLD_SEARCH_STEPS; step++) {
     const mid = (lo + hi) / 2;
     if (fills(mid)) lo = mid;
@@ -336,8 +337,15 @@ function slewLimitedA(
 }
 
 /**
- * The charge-current target for one tick. Pure — all live/forecast inputs are
- * arguments — so every mode/boundary is directly unit-testable.
+ * The charge-current target one *mode* wants for this tick, given the feed-in
+ * ceiling to respect.
+ *
+ * The ceiling arrives as a parameter rather than being read off `i` so that a
+ * caller can hand it something other than the plant's own export limit — which
+ * is the whole mechanism behind price-aware absorption: lowering this one number
+ * to zero makes "soak everything" fall out of the existing frame, because
+ * `liveExcessW`, both surplus integrals and the grid-friendly bisection all
+ * already read it. No second set of physics.
  *
  * `maximize-exports`: the battery only absorbs power above the export limit;
  * below it, PV exports freely and the battery charges at the fallback rate
@@ -363,13 +371,13 @@ function slewLimitedA(
  * earlier to still fill up; `reserveForEvDemand` turns that off and leaves the
  * surplus to the car.
  */
-export function decideTargetA(i: DecisionInputs): Decision {
+function decideModeTargetA(i: DecisionInputs, exportLimitW: number): Decision {
   const socPct = Math.min(100, Math.max(0, i.socPct));
   const headroomKwh = (i.usableKwh * (100 - socPct)) / 100;
   // PV the grid can never see: the house load, plus the car's draw when the
   // load reading doesn't already include it.
   const localSinkW = Math.max(0, i.liveLoadW) + (i.evIncludedInLoad ? 0 : Math.max(0, i.evChargeW));
-  const liveExcessW = Math.max(0, i.pvW - localSinkW - i.exportLimitW);
+  const liveExcessW = Math.max(0, i.pvW - localSinkW - exportLimitW);
   const base = {
     headroomKwh,
     surplusAboveLimitKwh: null as number | null,
@@ -392,17 +400,17 @@ export function decideTargetA(i: DecisionInputs): Decision {
   // and a hard 0 would cut that short. Keep the configured floor instead.
   if (headroomKwh <= NEAR_FULL_KWH) {
     const floorA = Math.min(i.topBalanceFloorA, i.maxChargeA);
-    return { ...base, targetA: floorA, thresholdW: i.exportLimitW };
+    return { ...base, targetA: floorA, thresholdW: exportLimitW };
   }
 
   // Provider down: never miss a real peak — degrade to pure live shaving.
   const forecast = i.forecast;
   if (!forecast) {
-    return { ...base, targetA: toA(liveExcessW), thresholdW: i.exportLimitW };
+    return { ...base, targetA: toA(liveExcessW), thresholdW: exportLimitW };
   }
 
   // Feed-in frame: the day's load is subtracted before anything can be exported.
-  const surplusAtLimit = surplusAboveKwh(forecast, i.exportLimitW + i.baselineLoadW, i.nowMs);
+  const surplusAtLimit = surplusAboveKwh(forecast, exportLimitW + i.baselineLoadW, i.nowMs);
   base.surplusAboveLimitKwh = surplusAtLimit;
   // The car eats its share of the coming surplus before the battery has to.
   const peakKwh = surplusAtLimit - Math.min(i.evRemainingKwh, surplusAtLimit);
@@ -411,11 +419,11 @@ export function decideTargetA(i: DecisionInputs): Decision {
     return {
       ...base,
       targetA: maximizeExportsA(i, liveExcessW, headroomKwh, peakKwh, toA),
-      thresholdW: i.exportLimitW,
+      thresholdW: exportLimitW,
     };
   }
 
-  const solvedW = gridFriendlyThresholdW({ ...i, forecast }, headroomKwh);
+  const solvedW = gridFriendlyThresholdW({ ...i, forecast }, headroomKwh, exportLimitW);
   const thresholdW = slewLimited(
     solvedW,
     i.previousThresholdW,
@@ -426,7 +434,7 @@ export function decideTargetA(i: DecisionInputs): Decision {
   // battery is filled out of energy that would otherwise have been *sold* and
   // the feed-in level actually drops. PV above the budget is left on the table —
   // rescuing it would consume the same headroom and buy no flattening at all.
-  const exportableNowW = Math.min(Math.max(0, i.pvW - localSinkW), i.exportLimitW);
+  const exportableNowW = Math.min(Math.max(0, i.pvW - localSinkW), exportLimitW);
   const targetA = slewLimitedA(
     toA(Math.max(0, exportableNowW - thresholdW)),
     i.previousTargetA,
@@ -434,4 +442,17 @@ export function decideTargetA(i: DecisionInputs): Decision {
     i.sinceLastDecisionMs,
   );
   return { ...base, targetA, thresholdW };
+}
+
+/**
+ * The charge-current target for one tick — the entry point the live tick and the
+ * forward projection both call.
+ *
+ * A thin composition on purpose. Peak shaving's own maths is one thing and any
+ * adjustment layered on top is another, and keeping them separable is what lets
+ * a reviewer answer "did the shaving behaviour change?" by looking at
+ * {@link decideModeTargetA} alone.
+ */
+export function decideTargetA(i: DecisionInputs): Decision {
+  return decideModeTargetA(i, i.exportLimitW);
 }
