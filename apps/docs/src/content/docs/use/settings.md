@@ -40,6 +40,32 @@ Configure pricing for the [Costs](/use/costs/) screen: currency, standing charge
 rate, a default import price, and **time-of-use bands** (name, price, hour range, weekday
 selection). Add or remove bands and **Save tariff**.
 
+## Day-ahead prices
+
+Optionally fetch **day-ahead wholesale electricity prices** for your bidding zone. Pick a
+**price source** and a **zone** (default `DE-LU`) and save; prices for today and tomorrow
+are stored and refreshed in the background.
+
+Why this is its own setting rather than part of the tariff: the price *feed* is useful even
+on a fixed bill. Under **§51 EEG** a plant commissioned after 2025-02-25 is paid **nothing**
+for energy exported during a quarter-hour whose day-ahead price was negative — so knowing
+which slots those are matters regardless of what you pay for import.
+
+- **Source** — `energy-charts` (Fraunhofer ISE) by default: keyless and, importantly, it
+  serves true **quarter-hour** prices. Since 2025-10-01 the German day-ahead market trades
+  15-minute products, and an hourly average hides a negative quarter-hour sitting inside a
+  net-positive hour — exactly the case §51 turns on. Where a source only publishes hourly
+  data, SunReye says so rather than implying precision it doesn't have.
+- **Zone** — the market area you settle in. The delivery day is measured in the *market's*
+  time zone, so day boundaries stay correct wherever the server runs.
+
+Tomorrow's prices clear around 13:00 market time. Until then only today is available, and
+the UI distinguishes "no negative slots" from "tomorrow not published yet" — an absent slot
+means *unknown*, never a price of zero.
+
+Price data from the default source is republished from Bundesnetzagentur / SMARD.de under
+CC BY 4.0; SunReye shows the required credit alongside the prices.
+
 ## Weather & Forecast
 
 Show current weather on the dashboard and, optionally, a **PV production forecast** — both

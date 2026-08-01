@@ -3,3 +3,4 @@ export * from "./custom-charts";
 export * from "./forecast-correction";
 export * from "./metrics";
 export * from "./settings";
+export * from "./spot-price";

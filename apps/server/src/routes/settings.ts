@@ -1,5 +1,6 @@
 import { inverterConfigSchema } from "@SunReye/db/inverter-config";
 import { maskMqttConfig } from "@SunReye/db/mqtt-config";
+import { spotPriceConfigSchema } from "@SunReye/db/spot-price-config";
 import { Elysia, t } from "elysia";
 import {
   getInverterConfig,
@@ -17,6 +18,8 @@ import { getCorrectionView } from "../forecast-correction-job";
 import * as runtime from "../runtime";
 import { getTariff, setTariff } from "../settings";
 import { fetchSolarForecast, toForecastExport } from "../solar-forecast";
+import { getSpotPriceView, spotProviderCatalog } from "../spot-price-job";
+import { getSpotPriceConfig, setSpotPriceConfig } from "../spot-price-settings";
 import { getUiPrefs, setUiPrefs } from "../ui-prefs-settings";
 import { fetchWeather } from "../weather";
 import { getWeatherConfig, setWeatherConfig } from "../weather-settings";
@@ -185,6 +188,42 @@ export const settingsRoutes = new Elysia({ name: "settings-routes" })
   // Live EVCC loadpoint state (assembled from its retained MQTT topics). Rides
   // the dashboard read policy like weather; `null` while the ingest is disabled.
   .get("/api/evcc", () => evccSnapshot(), { requireSession: true })
+  // Day-ahead price source (provider + bidding zone) — admin read + write.
+  // Saving syncs immediately so the UI shows prices without waiting for the
+  // half-hourly tick. The zone is checked against the provider's advertised
+  // zones here rather than in the schema: the registry lives in the server, and
+  // a zone the source doesn't serve would otherwise fail silently every tick.
+  .get("/api/settings/spot-prices", () => getSpotPriceConfig(), { requireAdmin: true })
+  .put(
+    "/api/settings/spot-prices",
+    async ({ body, status }) => {
+      const saved = await attempt(async () => {
+        const config = spotPriceConfigSchema.parse(body);
+        const provider = spotProviderCatalog().find((p) => p.id === config.provider);
+        if (!provider) throw new Error(`Unknown price provider "${config.provider}"`);
+        if (!provider.zones.includes(config.zone)) {
+          throw new Error(`${provider.id} does not serve zone "${config.zone}"`);
+        }
+        const stored = await setSpotPriceConfig(config);
+        await runtime.syncSpotPricesNow();
+        return stored;
+      }, "Invalid price source");
+      return saved.ok ? saved.value : status(400, { error: saved.error });
+    },
+    adminWrite,
+  )
+  // Registered price sources and the bidding zones each serves — feeds the
+  // settings form's provider/zone pickers so they can't drift from the registry.
+  .get("/api/prices/providers", () => spotProviderCatalog(), { requireAdmin: true })
+  // Day-ahead prices for today + tomorrow. Public market data the dashboard
+  // renders, so it rides the dashboard read policy like weather rather than
+  // being admin-only. `null` when disabled/unconfigured or nothing is stored.
+  //
+  // Read `negativeSlots` together with `coverage`: a 0 for a day whose coverage
+  // is "missing" means *unknown*, never "no negative slots".
+  .get("/api/prices", async () => getSpotPriceView(await getSpotPriceConfig()), {
+    requireSession: true,
+  })
   // Current weather for the configured location (Open-Meteo, server-proxied +
   // cached), plus the PV production forecast when configured. Rides the
   // dashboard read policy so the kiosk view shows it too; `null` when weather

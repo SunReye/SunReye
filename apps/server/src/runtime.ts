@@ -31,6 +31,8 @@ import { runForecastCorrectionLearn } from "./forecast-correction-job";
 import { log } from "./logging";
 import { type MqttBridge, startMqttBridge } from "./mqtt";
 import { fetchSolarForecast, toForecastExport } from "./solar-forecast";
+import { runSpotPriceSync } from "./spot-price-job";
+import { getSpotPriceConfig } from "./spot-price-settings";
 import { liveState } from "./state";
 import { getWeatherConfig } from "./weather-settings";
 
@@ -48,6 +50,8 @@ let polling = false;
 let forecastTimer: ReturnType<typeof setInterval> | null = null;
 let learnTimer: ReturnType<typeof setInterval> | null = null;
 let learnKickTimer: ReturnType<typeof setTimeout> | null = null;
+let spotTimer: ReturnType<typeof setInterval> | null = null;
+let spotKickTimer: ReturnType<typeof setTimeout> | null = null;
 
 // The PV forecast changes slowly (provider cache is 30 min) and its topics are
 // retained, so re-publishing every 5 minutes keeps HA fresh without churn.
@@ -58,6 +62,13 @@ const FORECAST_PUBLISH_INTERVAL_MS = 5 * 60_000;
 // kick so a fresh install backfills without waiting a full interval.
 const LEARN_INTERVAL_MS = 12 * 3600_000;
 const LEARN_KICK_DELAY_MS = 2 * 60_000;
+
+// Day-ahead prices clear around 12:45–13:10 market time, but not reliably — a
+// timer aimed at the publication moment would turn a short delay into a day-long
+// outage. So poll on a plain interval, which no-ops (one indexed count, zero
+// network) once both delivery days are stored; the interval *is* the retry.
+const SPOT_INTERVAL_MS = 30 * 60_000;
+const SPOT_KICK_DELAY_MS = 30_000;
 
 /** Fetch the current forecast and hand it to the MQTT bridge (no-op if disabled). */
 async function publishForecastNow(): Promise<void> {
@@ -80,6 +91,19 @@ async function learnCorrectionNow(): Promise<void> {
     await runForecastCorrectionLearn(await getWeatherConfig());
   } catch (error) {
     logger.warn("forecast correction learn failed: {error}", { error });
+  }
+}
+
+/**
+ * Store today's and tomorrow's day-ahead prices (no-op if disabled or already
+ * complete). Exported so saving the price source can refresh immediately instead
+ * of leaving the UI empty until the next tick.
+ */
+export async function syncSpotPricesNow(): Promise<void> {
+  try {
+    await runSpotPriceSync(await getSpotPriceConfig());
+  } catch (error) {
+    logger.warn("spot price sync failed: {error}", { error });
   }
 }
 
@@ -260,6 +284,10 @@ export async function start(listener: SampleListener, profileCtx: ProfileContext
     learnTimer = setInterval(() => void learnCorrectionNow(), LEARN_INTERVAL_MS);
     learnKickTimer = setTimeout(() => void learnCorrectionNow(), LEARN_KICK_DELAY_MS);
   }
+  if (!spotTimer) {
+    spotTimer = setInterval(() => void syncSpotPricesNow(), SPOT_INTERVAL_MS);
+    spotKickTimer = setTimeout(() => void syncSpotPricesNow(), SPOT_KICK_DELAY_MS);
+  }
   await rebuildInverter(await getInverterConfig());
   await rebuildBridge(await getMqttConfig());
   // Automations write through the same funnel as every other path; they only
@@ -401,6 +429,10 @@ export async function stop(): Promise<void> {
   learnTimer = null;
   if (learnKickTimer) clearTimeout(learnKickTimer);
   learnKickTimer = null;
+  if (spotTimer) clearInterval(spotTimer);
+  spotTimer = null;
+  if (spotKickTimer) clearTimeout(spotKickTimer);
+  spotKickTimer = null;
   // Persist whatever is buffered so a clean shutdown never drops history.
   await flushPending();
   await bridge?.close();
