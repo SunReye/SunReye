@@ -24,9 +24,13 @@
 import type { SpotPriceConfig } from "@SunReye/db/spot-price-config";
 import { spotPricesReady } from "@SunReye/db/spot-price-config";
 import { countSpotPrices, upsertSpotPrices } from "@SunReye/db/spot-price";
+import type { TariffConfig } from "@SunReye/db/tariff";
+import { exportPriceForSlot, importPriceAt } from "@SunReye/db/tariff";
+import { getTariff } from "./settings";
 import { log } from "./logging";
 import {
   type SlotCoverage,
+  type SpotPricePoint,
   type SpotPriceProvider,
   SLOT_MINUTES,
   SpotPriceUnpublished,
@@ -149,6 +153,36 @@ export async function runSpotPriceSync(
   }
 }
 
+/**
+ * A market slot with the money applied: what a kWh imported then costs, and what
+ * a kWh exported then earns, both under the active tariff.
+ */
+export type PricedSlot = SpotPricePoint & {
+  /** Landed import price for the slot, currency-major per kWh. */
+  importPerKwh: number;
+  /** Export remuneration for the slot, currency-major per kWh. Can be 0 (§51). */
+  exportPerKwh: number;
+};
+
+/**
+ * Apply the tariff to every slot.
+ *
+ * The hour/weekday are taken from the slot's own market-local label, so a static
+ * or fallback band lands on the right time-of-use window without re-deriving the
+ * calendar.
+ */
+function priceSlots(slice: SpotSlice, tariff: TariffConfig): PricedSlot[] {
+  return slice.series.map((p) => {
+    const hour = Number(p.time.slice(11, 13));
+    const isoWeekday = ((new Date(p.startMs).getUTCDay() + 6) % 7) + 1;
+    return {
+      ...p,
+      importPerKwh: importPriceAt(tariff, p.eurPerMwh, hour, isoWeekday),
+      exportPerKwh: exportPriceForSlot(tariff, p.eurPerMwh),
+    };
+  });
+}
+
 /** One priced slot as the API returns it. */
 export interface SpotPriceView {
   provider: string;
@@ -164,7 +198,7 @@ export interface SpotPriceView {
   utcOffsetSeconds: number;
   coverage: SpotSlice["coverage"];
   availability: SpotSlice["availability"];
-  series: SpotSlice["series"];
+  series: PricedSlot[];
   /** Cheapest/priciest slot of the whole slice, EUR/MWh; null when empty. */
   extremes: { minEurPerMwh: number; maxEurPerMwh: number } | null;
   /**
@@ -189,6 +223,7 @@ export async function getSpotPriceView(
   const tz = zoneTimeZone(config.zone);
   const tomorrowMs = nextLocalDayStartMs(tz, nowMs);
   const prices = slice.series.map((p) => p.eurPerMwh);
+  const series = priceSlots(slice, await getTariff());
 
   return {
     provider: config.provider,
@@ -198,7 +233,7 @@ export async function getSpotPriceView(
     utcOffsetSeconds: slice.utcOffsetSeconds,
     coverage: slice.coverage,
     availability: slice.availability,
-    series: slice.series,
+    series,
     extremes: { minEurPerMwh: Math.min(...prices), maxEurPerMwh: Math.max(...prices) },
     negativeSlots: {
       today: slice.series.filter((p) => p.negative && p.startMs < tomorrowMs).length,

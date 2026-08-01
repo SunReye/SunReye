@@ -16,6 +16,10 @@ const slot = (i: number, eurPerMwh: number, date = "2026-08-02") => {
     minutes: 15,
     eurPerMwh,
     negative: eurPerMwh < 0,
+    // Priced by the server under the active tariff; the shaping here doesn't read
+    // them, but the fixture has to be a real slot.
+    importPerKwh: 0.35,
+    exportPerKwh: eurPerMwh < 0 ? 0 : 0.0794,
   };
 };
 

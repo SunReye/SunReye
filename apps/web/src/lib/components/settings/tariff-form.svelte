@@ -19,15 +19,19 @@
 		endHour: number;
 		days: number[];
 	};
-	type Tariff = {
-		currency: string;
-		standingChargeMonthly: number;
-		import: { defaultPricePerKwh: number; bands: Band[] };
-		export: { feedInPerKwh: number };
-	};
 	type TariffResponse = NonNullable<
 		Awaited<ReturnType<typeof api.api.settings.tariff.get>>['data']
 	>;
+	/**
+	 * The server's own tariff shape with band `days` normalized for editing. Derived
+	 * from the response rather than hand-mirrored on purpose: this form PUTs the
+	 * whole config, so a field it doesn't know about would be dropped on save and
+	 * silently reset to its default — which is exactly how a plant would lose its
+	 * day-ahead pricing settings by opening this page and pressing Save.
+	 */
+	type Tariff = Omit<TariffResponse, 'import'> & {
+		import: Omit<TariffResponse['import'], 'bands'> & { bands: Band[] };
+	};
 
 	const ALL_DAYS = [1, 2, 3, 4, 5, 6, 7];
 
@@ -44,34 +48,17 @@
 		days: b.days ?? ALL_DAYS
 	});
 
-	function toGeneral(data: TariffResponse | null | undefined) {
-		if (!data) return { currency: 'EUR', standingChargeMonthly: 0 };
-		return {
-			currency: data.currency ?? 'EUR',
-			standingChargeMonthly: data.standingChargeMonthly ?? 0
-		};
-	}
-
-	function toImport(data: TariffResponse | null | undefined): Tariff['import'] {
-		if (!data) return { defaultPricePerKwh: 0, bands: [] };
-		return {
-			defaultPricePerKwh: data.import.defaultPricePerKwh ?? 0,
-			bands: (data.import.bands ?? []).map(toBand)
-		};
-	}
-
-	/** A missing or partial response falls back to a flat zero-price tariff. */
-	function toTariff(data: TariffResponse | null | undefined): Tariff {
-		return {
-			...toGeneral(data),
-			import: toImport(data),
-			export: { feedInPerKwh: data?.export.feedInPerKwh ?? 0 }
-		};
-	}
+	/** The response, with only the bands reshaped; every other field carried through. */
+	const toTariff = (data: TariffResponse): Tariff => ({
+		...data,
+		import: { ...data.import, bands: (data.import.bands ?? []).map(toBand) }
+	});
 
 	onMount(async () => {
 		const { data } = await api.api.settings.tariff.get();
-		tariff = toTariff(data);
+		// Deliberately stays null on a failed read: offering to overwrite a tariff
+		// we could not read is how a stored config gets wiped.
+		if (data) tariff = toTariff(data);
 	});
 
 	function addBand() {
