@@ -171,6 +171,15 @@ async function buildProductionIO(deps: {
     getForecast: fetchSolarForecast,
     getBaselineLoadW: representativeHouseLoadW,
     getEvcc: evccSnapshot,
+    async getPrices() {
+      const [{ getSpotPriceConfig }, { loadSpotSlice }, { spotPricesReady }] = await Promise.all([
+        import("./spot-price-settings"),
+        import("./spot-price-store"),
+        import("@SunReye/db/spot-price-config"),
+      ]);
+      const config = await getSpotPriceConfig();
+      return spotPricesReady(config) ? loadSpotSlice(config.zone) : null;
+    },
     latestSample: () => liveState.latest,
     async loadState() {
       stateCache ??= await appSettings.readSetting(

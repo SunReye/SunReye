@@ -14,6 +14,7 @@ import {
   validateAutomationEnable,
 } from "./peak-shaving";
 import type { ForecastSlice } from "./slot-window";
+import type { SpotSlice } from "./spot-price";
 import { type DecisionPoint, createDecisionLog } from "./automation-history";
 import { projectPeakShaving } from "./peak-shaving-plan";
 import { type AutomationIO, createPeakShavingEngine } from "./peak-shaving-engine";
@@ -161,6 +162,11 @@ const baseInputs = {
   previousTargetA: null,
   sinceLastDecisionMs: 30_000,
   forecast: null,
+  // Price awareness off by default, so every existing case asserts the
+  // unchanged shaving behaviour.
+  price: automationConfigSchema.parse({}).peakShaving.priceAware,
+  priceView: null,
+  minSocPct: 10,
   nowMs: NOON,
 };
 
@@ -1012,10 +1018,11 @@ interface Harness {
   state(): AutomationState;
 }
 
-function harness(over: { config?: AutomationConfig } = {}): Harness {
+function harness(over: { config?: AutomationConfig; prices?: SpotSlice | null } = {}): Harness {
   const ctx = buildProfileContext(profileWith());
   let cfg = over.config ?? config();
   let wx = weather();
+  let prices: SpotSlice | null = over.prices ?? null;
   let fc: SolarForecast | null = asForecast(slice(12, [6000, 6000, 6000, 6000]));
   let ev: EvccState | null = null;
   let baselineLoadW: number | null = null;
@@ -1042,6 +1049,9 @@ function harness(over: { config?: AutomationConfig } = {}): Harness {
         if (sample) sample.metrics[key] = value;
       },
       getConfig: async () => cfg,
+      // No price feed unless a case installs one: every existing engine test
+      // must keep exercising the unchanged shaving path.
+      getPrices: async () => prices,
       getWeather: async () => wx,
       getForecast: async () => fc,
       getBaselineLoadW: async () => baselineLoadW,
@@ -1751,5 +1761,119 @@ describe("peak-shaving engine — plateau damping", () => {
     h.set.config(config({}, { mode: "grid-friendly", gridFriendly: { slewWPerMin: 60 } }));
     const undamped = (await engine.tick()).thresholdW;
     expect(undamped!).toBeGreaterThan(settled! + 60);
+  });
+});
+
+describe("price-aware charging", () => {
+  const HOUR = 3_600_000;
+  const MIDNIGHT = Date.parse("2026-08-01T22:00:00Z"); // 00:00 local at UTC+2
+  const at = (hours: number) => MIDNIGHT + hours * HOUR;
+
+  const priceCfg = (over: object = {}) => ({
+    ...automationConfigSchema.parse({}).peakShaving.priceAware,
+    enabled: true,
+    ...over,
+  });
+
+  /** Quarter-hourly prices: `n` slots from `fromHour` at `eurPerMwh`. */
+  const priceView = (fromHour: number, n: number, eurPerMwh: number): SpotSlice => ({
+    zone: "DE-LU",
+    stepMinutes: 15,
+    utcOffsetSeconds: 0,
+    coverage: { today: "complete", tomorrow: "complete" },
+    availability: "ok",
+    series: Array.from({ length: n }, (_, i) => ({
+      time: "2026-08-02T00:00",
+      startMs: at(fromHour + i * 0.25),
+      minutes: 15,
+      eurPerMwh,
+      negative: eurPerMwh < 0,
+    })),
+  });
+
+  /** A flat forecast for the whole local day at UTC+0, so `at()` lines up. */
+  const flatForecast = (watts: number): ForecastSlice => ({
+    stepMinutes: 15,
+    utcOffsetSeconds: 0,
+    series: Array.from({ length: 96 }, (_, i) => {
+      const minutes = i * 15;
+      const hh = String(Math.floor(minutes / 60)).padStart(2, "0");
+      return {
+        time: `2026-08-02T${hh}:${String(minutes % 60).padStart(2, "0")}`,
+        watts,
+        peakWatts: watts,
+      };
+    }),
+  });
+
+  const withPrices = (over: object = {}) => ({
+    ...baseInputs,
+    forecast: flatForecast(6000),
+    priceView: priceView(12, 12, -40),
+    price: priceCfg(),
+    nowMs: at(9),
+    ...over,
+  });
+
+  test("prices present but the feature off changes nothing at all", () => {
+    // The regression guard: the same inputs with and without a price feed must
+    // produce byte-identical decisions while `enabled` is false.
+    const off = { ...withPrices(), price: priceCfg({ enabled: false }) };
+    expect(decideTargetA(off)).toEqual(decideTargetA({ ...off, priceView: null }));
+  });
+
+  test("inside a window the feed-in ceiling collapses to the soak floor", () => {
+    const inside = decideTargetA(withPrices({ nowMs: at(13), socPct: 30 }));
+    expect(inside.priceRegime).toBe("absorb");
+    expect(inside.thresholdW).toBe(0);
+    // With the ceiling at zero, everything the house cannot eat is excess to take.
+    expect(inside.liveExcessW).toBe(baseInputs.pvW);
+    expect(inside.targetA).toBeGreaterThan(0);
+  });
+
+  test("soaking works the same way in grid-friendly", () => {
+    const inside = decideTargetA(
+      withPrices({ nowMs: at(13), socPct: 30, mode: "grid-friendly" as const }),
+    );
+    expect(inside.priceRegime).toBe("absorb");
+    expect(inside.thresholdW).toBe(0);
+  });
+
+  test("ahead of a modest window the charge target is capped, not zeroed", () => {
+    // One hour of window needs ~5 kWh of room in a 15 kWh pack, putting the
+    // bound near 62 %. A pack at 61 % may still charge, but only at the rate
+    // that keeps it under the bound — well below the mode's own target.
+    const shaping = withPrices({ socPct: 61, priceView: priceView(12, 4, -40) });
+    const shaped = decideTargetA(shaping);
+    expect(shaped.priceRegime).toBe("pre-shape");
+    expect(shaped.socEnvelopePct).not.toBeNull();
+    expect(shaped.targetA).toBeGreaterThan(0);
+    expect(shaped.targetA).toBeLessThan(
+      decideTargetA({ ...shaping, price: priceCfg({ enabled: false }) }).targetA,
+    );
+  });
+
+  test("a pack already past the bound stops charging and says why", () => {
+    // Three hours of window against a 15 kWh pack: no amount of withholding gets
+    // there, so the regime names the shortfall instead of quietly under-delivering.
+    const shaped = decideTargetA(withPrices({ socPct: 70 }));
+    expect(shaped.priceRegime).toBe("spend-down");
+    expect(shaped.targetA).toBe(0);
+    expect(shaped.unavoidableZeroValueKwh).toBeGreaterThan(0);
+  });
+
+  test("a near-full pack keeps its top-balance floor over the envelope", () => {
+    // Cutting the BMS's absorption dwell short is a real harm; a pack that full
+    // has no room left to protect anyway.
+    const nearFull = decideTargetA(withPrices({ socPct: 99.9 }));
+    expect(nearFull.targetA).toBe(baseInputs.topBalanceFloorA);
+  });
+
+  test("the window and the unrescuable energy are reported for the UI", () => {
+    const shaped = decideTargetA(withPrices({ socPct: 70 }));
+    expect(shaped.windowStartsAt).toBe(at(12));
+    expect(shaped.windowEndsAt).toBe(at(15));
+    expect(shaped.soakableKwh).toBeGreaterThan(0);
+    expect(shaped.unavoidableZeroValueKwh).not.toBeNull();
   });
 });

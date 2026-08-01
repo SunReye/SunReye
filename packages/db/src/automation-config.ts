@@ -59,6 +59,61 @@ const gridFriendlyConfigSchema = z.object({
 });
 export type GridFriendlyConfig = z.infer<typeof gridFriendlyConfigSchema>;
 
+/**
+ * Acting on negative day-ahead prices.
+ *
+ * A modifier of peak shaving rather than a mode of its own: the effects are a
+ * lower feed-in ceiling during a window and a cap on charging before one, and
+ * both compose with either mode. "Flatten the export curve normally, but soak
+ * everything during a negative window" is a sensible combination that a
+ * mutually-exclusive mode would forbid.
+ *
+ * Needs a day-ahead price source (Settings → Day-ahead prices) to do anything;
+ * without prices every field here is inert and the decision is untouched.
+ */
+const priceAwareConfigSchema = z.object({
+  /**
+   * Act on negative-price windows. Off by default, and gated on the plant
+   * declaring a smart-meter-gateway install date — this exists for the cohort
+   * whose 60 % cap was lifted, and §51 only applies to them.
+   */
+  enabled: z.boolean().default(false),
+  /**
+   * A slot at or below this counts as "negative", EUR/MWh. 0 is the §51 rule
+   * exactly; a small positive value acts a hair early, a negative one demands a
+   * deeper price before bothering.
+   */
+  negativeThresholdEurPerMwh: z.number().min(-500).max(500).default(0),
+  /** Ignore windows shorter than this — a lone stray slot is not worth steering for. */
+  minWindowMinutes: z.number().int().min(15).max(360).default(15),
+  /**
+   * Bridge this many non-negative slots between two runs and treat them as one
+   * window. Emptying the pack twice for two windows 15 minutes apart is worse
+   * than treating them as one.
+   */
+  bridgeGapSlots: z.number().int().min(0).max(4).default(1),
+  /** How far ahead a window may be before the pack starts making room for it, h. */
+  lookaheadHours: z.number().min(1).max(24).default(8),
+  /**
+   * Feed-in ceiling applied *during* a window, W. 0 means "absorb everything the
+   * pack can take"; a higher value keeps some export flowing.
+   */
+  soakFloorW: z.number().min(0).max(100_000).default(0),
+  /**
+   * Hold the pack low ahead of a window so it can soak the surplus. On by
+   * default because it can only ever *lower* a charge ceiling — the safest
+   * actuation available — and it is the core of the feature.
+   */
+  shapeSoc: z.boolean().default(true),
+  /**
+   * Aim this much below the SOC the window needs, %. Applied downward because
+   * the error is asymmetric: arriving slightly too empty costs a little
+   * self-consumption, arriving too full throws away the whole point.
+   */
+  reserveMarginPct: z.number().min(0).max(50).default(5),
+});
+export type PriceAwareConfig = z.infer<typeof priceAwareConfigSchema>;
+
 const peakShavingConfigSchema = z.object({
   /** Run the peak-shaving loop. Requires the master `enabled` gate too. */
   enabled: z.boolean().default(false),
@@ -97,6 +152,7 @@ const peakShavingConfigSchema = z.object({
    */
   controlIntervalS: z.number().min(5).max(600).default(30),
   gridFriendly: gridFriendlyConfigSchema.default(gridFriendlyConfigSchema.parse({})),
+  priceAware: priceAwareConfigSchema.default(priceAwareConfigSchema.parse({})),
 });
 
 export const automationConfigSchema = z.object({

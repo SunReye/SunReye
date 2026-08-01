@@ -94,6 +94,17 @@ export const solarForecastConfigSchema = z.object({
    * it can be curtailed). `null` means infer it from recent history.
    */
   houseLoadW: z.number().min(0).max(10_000_000).nullable().default(null),
+  /**
+   * Date a smart meter gateway (iMSys) was installed, `YYYY-MM-DD`, or null.
+   *
+   * A plant fact, not an automation knob, which is why it lives here beside the
+   * export limit it is bound up with: installing one is what lifts the 60 %
+   * Wirkleistungsbegrenzung to 100 %, and it marks the plant as belonging to the
+   * cohort §51 EEG applies to. Price-aware automation is gated on it — that is
+   * the whole "only for people who got the gateway" condition, expressed as
+   * something true about the plant rather than a second switch.
+   */
+  smartMeterSince: z.string().nullable().default(null),
   /** Learned bias-correction; learns in the background, applied only when enabled. */
   correction: forecastCorrectionConfigSchema.default(forecastCorrectionConfigSchema.parse({})),
 });

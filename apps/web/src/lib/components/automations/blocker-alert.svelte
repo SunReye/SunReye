@@ -12,7 +12,8 @@
 
 	const CONFIG_LABEL: Record<Extract<Blocker, { kind: 'config' }>['what'], () => string> = {
 		'export-limit': m.automations_blocker_export_limit,
-		battery: m.automations_blocker_battery
+		battery: m.automations_blocker_battery,
+		'smart-meter': m.automations_blocker_smart_meter
 	};
 	// Roles the engine names explicitly; anything else falls back to the raw role.
 	const ROLE_LABEL: Record<string, () => string> = {

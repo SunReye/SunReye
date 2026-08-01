@@ -679,5 +679,6 @@
   "tariff_supplier_markup": "Margine del fornitore (per kWh)",
   "tariff_grid_fees": "Oneri di rete (per kWh)",
   "tariff_levies": "Imposte e oneri (per kWh)",
-  "tariff_vat_percent": "IVA (%)"
+  "tariff_vat_percent": "IVA (%)",
+  "automations_blocker_smart_meter": "Nessuna data di installazione dello smart meter gateway — la ricarica guidata dai prezzi ha senso solo dopo la rimozione del limite del 60 %."
 }

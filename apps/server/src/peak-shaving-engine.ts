@@ -34,11 +34,13 @@ import {
   NEAR_FULL_KWH,
   SELL_LIMIT_ROLE,
   decideTargetA,
+  effectivePriceConfig,
   evccAutomationInputs,
   keyForRole,
   resolvePeakShavingBlockers,
 } from "./peak-shaving";
 import type { ForecastSlice } from "./slot-window";
+import type { SpotSlice } from "./spot-price";
 import {
   type PeakShavingPlans,
   type PlanLimits,
@@ -149,6 +151,12 @@ export interface AutomationIO {
   getBaselineLoadW(weather: WeatherConfig): Promise<number | null>;
   /** Current EVCC snapshot, or null when the integration is off. */
   getEvcc(): EvccState | null;
+  /**
+   * Day-ahead prices for today+tomorrow, or null when the feed is off or has no
+   * data. Never a zero-filled stand-in: under §51 a zero price is a *meaningful*
+   * value, so "no data" must stay distinguishable from "the market cleared at 0".
+   */
+  getPrices(): Promise<SpotSlice | null>;
   latestSample(): InverterSample | null;
   loadState(): Promise<AutomationState>;
   saveState(next: AutomationState): Promise<void>;
@@ -505,6 +513,24 @@ function loadFrame(
   return { loadW: live.loadW ?? (baselineLoadW === null ? null : baselineW), baselineW };
 }
 
+/**
+ * The plant's own parameters, as the decision sees them.
+ *
+ * `weather.forecast` fields are non-null once the blocker gate has passed, so
+ * the fallbacks here are belt-and-braces. The price config comes through
+ * {@link effectivePriceConfig} so the tick honours the same smart-meter gate the
+ * settings PUT does — otherwise clearing that date would leave a running loop
+ * steering on prices it is no longer entitled to act on.
+ */
+function plantParams(weather: WeatherConfig, ps: AutomationConfig["peakShaving"]) {
+  return {
+    exportLimitW: Math.max(0, (weather.forecast.maxOutputW ?? 0) - ps.safetyBufferW),
+    usableKwh: weather.forecast.battery?.usableKwh ?? 0,
+    minSocPct: weather.forecast.battery?.minSoc ?? 0,
+    price: effectivePriceConfig(ps.priceAware, weather),
+  };
+}
+
 /** Assemble the pure decision's inputs from config, live readings and forecast. */
 function decisionInputs(args: {
   e: Eng;
@@ -516,26 +542,26 @@ function decisionInputs(args: {
   evcc: EvccState | null;
   load: { loadW: number | null; baselineW: number };
   batteryV: number;
+  prices: SpotSlice | null;
 }): Parameters<typeof decideTargetA>[0] {
-  const { e, ps, weather, live, forecast, ev, evcc, load, batteryV } = args;
+  const { e, ps, weather, live, forecast, ev, evcc, load, batteryV, prices } = args;
   return {
     ...ev,
+    ...plantParams(weather, ps),
     mode: ps.mode,
     pvW: live.pvW,
     socPct: live.socPct,
     batteryV,
-    // weather.forecast fields are non-null after the blocker gate.
-    exportLimitW: Math.max(0, (weather.forecast.maxOutputW ?? 0) - ps.safetyBufferW),
     liveLoadW: load.loadW ?? 0,
     baselineLoadW: load.baselineW,
     // The load reading covers the charger only when EVCC says it sits behind the
     // house meter — and only when there is a measured reading to contain it.
     evIncludedInLoad: evcc?.subtractFromHome === true && live.loadW !== null,
-    usableKwh: weather.forecast.battery?.usableKwh ?? 0,
     maxChargeA: ps.maxChargeA,
     fallbackChargeA: ps.fallbackChargeA,
     topBalanceFloorA: ps.topBalanceFloorA,
     gridFriendly: ps.gridFriendly,
+    priceView: prices,
     previousThresholdW: e.prevThresholdW,
     previousTargetA: e.prevTargetA,
     sinceLastDecisionMs: e.prevDecisionAtMs === null ? 0 : live.nowMs - e.prevDecisionAtMs,
@@ -595,8 +621,9 @@ async function steer(
   const ev = evccAutomationInputs(evcc);
   const load = loadFrame(live, baselineLoadW);
   const batteryV = liveBatteryV(live, ps);
+  const prices = await io.getPrices();
   const decision = decideTargetA(
-    decisionInputs({ e, ps, weather, live, forecast, ev, evcc, load, batteryV }),
+    decisionInputs({ e, ps, weather, live, forecast, ev, evcc, load, batteryV, prices }),
   );
 
   recordDecision(status, decision, live, ev, evcc?.reachable === true, load.loadW);
@@ -650,6 +677,7 @@ async function planInputs(
     evcc,
     load: loadFrame(live, await io.getBaselineLoadW(weather)),
     batteryV: liveBatteryV(live, ps),
+    prices: await io.getPrices(),
   });
   if (!inputs.forecast) return null;
   return { inputs: { ...inputs, forecast: inputs.forecast }, limits: planLimits(weather) };

@@ -679,5 +679,6 @@
   "tariff_supplier_markup": "Margen del comercializador (por kWh)",
   "tariff_grid_fees": "Peajes de red (por kWh)",
   "tariff_levies": "Impuestos y cargos (por kWh)",
-  "tariff_vat_percent": "IVA (%)"
+  "tariff_vat_percent": "IVA (%)",
+  "automations_blocker_smart_meter": "No hay fecha de instalación del contador inteligente — la carga según precio solo tiene sentido una vez levantado el límite del 60 %."
 }

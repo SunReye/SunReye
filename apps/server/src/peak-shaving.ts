@@ -12,12 +12,15 @@ import type {
   AutomationConfig,
   GridFriendlyConfig,
   PeakShavingMode,
+  PriceAwareConfig,
 } from "@SunReye/db/automation-config";
 import type { WeatherConfig } from "@SunReye/db/weather";
 import type { CanonicalRole, InverterProfile } from "@SunReye/inverter-core";
 import { HOUR_MS } from "./energy-flow";
 import type { EvccState } from "./evcc";
+import { type PriceAction, type PriceRegime, planPriceAction } from "./price-plan";
 import { type ForecastSlice, remainingSlotsToday } from "./slot-window";
+import type { SpotSlice } from "./spot-price";
 
 /** Battery this close to full (kWh headroom) → drop to the top-balance floor. */
 export const NEAR_FULL_KWH = 0.2;
@@ -38,7 +41,7 @@ const THRESHOLD_SEARCH_STEPS = 32;
 /** Why the automation cannot run: an unmapped role or missing plant config. */
 export type Blocker =
   | { kind: "role"; role: CanonicalRole }
-  | { kind: "config"; what: "export-limit" | "battery" };
+  | { kind: "config"; what: "export-limit" | "battery" | "smart-meter" };
 
 const REQUIRED_ROLES = [
   "setting.battery.max_charge_current",
@@ -86,25 +89,75 @@ export function resolvePeakShavingBlockers(
 }
 
 /**
+ * What must hold before price awareness may be switched on.
+ *
+ * The smart-meter-gateway date is the gate, and it is the whole "this is an
+ * option for people who got the gateway installed" condition: §51 applies to the
+ * cohort whose 60 % cap was lifted by that install, and acting on negative prices
+ * makes no sense for anyone else. Expressed as a plant fact via the same
+ * {@link Blocker} type the settings form already uses to lock a switch, and
+ * shared by the PUT guard and the runtime tick so the two cannot drift.
+ */
+function resolvePriceAwareBlockers(weather: WeatherConfig): Blocker[] {
+  const blockers: Blocker[] = [];
+  if (!weather.forecast.smartMeterSince) blockers.push({ kind: "config", what: "smart-meter" });
+  return blockers;
+}
+
+/**
+ * The price-aware config the tick may actually act on: forced off whenever the
+ * plant no longer satisfies {@link resolvePriceAwareBlockers}.
+ *
+ * Without this the gate would only exist at the settings PUT, and clearing the
+ * smart-meter date afterwards would leave a running loop steering on prices it
+ * is no longer entitled to act on.
+ */
+export function effectivePriceConfig(
+  price: PriceAwareConfig,
+  weather: WeatherConfig,
+): PriceAwareConfig {
+  return resolvePriceAwareBlockers(weather).length > 0 ? { ...price, enabled: false } : price;
+}
+
+/**
  * Guard for the settings PUT — what must hold before an enable is persisted:
  * the master gate needs the accepted disclaimer, and a per-automation enable
  * needs the master gate on plus a runnable setup (no blockers). Pure, so the
  * route stays a thin shell and the rules are unit-testable.
  */
+/** Why an enable was refused: a message, plus the blockers behind it when any. */
+export type EnableError = { error: string; blockers?: Blocker[] };
+
+/** The peak-shaving half of the enable guard. */
+function validatePeakShavingEnable(
+  cfg: AutomationConfig,
+  profile: InverterProfile | null,
+  weather: WeatherConfig,
+): EnableError | null {
+  if (!cfg.enabled) return { error: "Enable the automations master switch first" };
+  if (!profile) return { error: "No active inverter profile" };
+  const blockers = resolvePeakShavingBlockers(profile, weather, cfg.peakShaving.mode);
+  return blockers.length > 0
+    ? { error: "Peak shaving cannot run with this setup", blockers }
+    : null;
+}
+
 export function validateAutomationEnable(
   cfg: AutomationConfig,
   profile: InverterProfile | null,
   weather: WeatherConfig,
-): { error: string; blockers?: Blocker[] } | null {
+): EnableError | null {
   if (cfg.enabled && !cfg.disclaimerAcceptedAt) {
     return { error: "Enabling automations requires accepting the disclaimer" };
   }
   if (cfg.peakShaving.enabled) {
-    if (!cfg.enabled) return { error: "Enable the automations master switch first" };
-    if (!profile) return { error: "No active inverter profile" };
-    const blockers = resolvePeakShavingBlockers(profile, weather, cfg.peakShaving.mode);
+    const failed = validatePeakShavingEnable(cfg, profile, weather);
+    if (failed) return failed;
+  }
+  if (cfg.peakShaving.priceAware.enabled) {
+    const blockers = resolvePriceAwareBlockers(weather);
     if (blockers.length > 0) {
-      return { error: "Peak shaving cannot run with this setup", blockers };
+      return { error: "Price-aware charging needs a smart meter gateway install date", blockers };
     }
   }
   return null;
@@ -185,6 +238,12 @@ export interface DecisionInputs extends EvInputs {
   sinceLastDecisionMs: number;
   /** Raw (uncurtailed) forecast, or null when the provider is unavailable. */
   forecast: ForecastSlice | null;
+  /** Config echo for price awareness (never nullable; inert when disabled). */
+  price: PriceAwareConfig;
+  /** Day-ahead prices, or null when unavailable — never a zero-filled stand-in. */
+  priceView: SpotSlice | null;
+  /** Battery reserve floor, % — the envelope never plans below it. */
+  minSocPct: number;
   nowMs: number;
 }
 
@@ -201,6 +260,21 @@ export interface Decision {
   liveExcessW: number;
   /** True when the forecast was unavailable and only live shaving ran. */
   degraded: boolean;
+  /** What price awareness is doing this tick (`none` when off or price-less). */
+  priceRegime: PriceRegime;
+  /** SOC bound the pre-window envelope allows now, %; null when not shaping. */
+  socEnvelopePct: number | null;
+  /** Start/end of the window being planned for, epoch ms; null when none. */
+  windowStartsAt: number | null;
+  windowEndsAt: number | null;
+  /** Energy the window can push into the pack, kWh; null when none. */
+  soakableKwh: number | null;
+  /**
+   * Window energy that will earn nothing whatever the pack does, kWh. Reported
+   * rather than hidden: on many days withholding charge cannot empty the pack in
+   * time, and a planner that pretends otherwise is worse than one that says so.
+   */
+  unavoidableZeroValueKwh: number | null;
 }
 
 /**
@@ -384,6 +458,13 @@ function decideModeTargetA(i: DecisionInputs, exportLimitW: number): Decision {
     localSinkW,
     liveExcessW,
     degraded: i.forecast === null,
+    // Filled in by `priceAdjust`; the mode itself knows nothing about prices.
+    priceRegime: "none" as PriceRegime,
+    socEnvelopePct: null as number | null,
+    windowStartsAt: null as number | null,
+    windowEndsAt: null as number | null,
+    soakableKwh: null as number | null,
+    unavoidableZeroValueKwh: null as number | null,
   };
   // `maximize-exports` rounds up — overshooting a real peak is the safe
   // direction. `grid-friendly` rounds to the nearest step instead: rounding up
@@ -444,15 +525,61 @@ function decideModeTargetA(i: DecisionInputs, exportLimitW: number): Decision {
   return { ...base, targetA, thresholdW };
 }
 
+/** Round a power ceiling down to a charge current — never up: overshoot is the unsafe way. */
+const floorToA = (watts: number, volts: number, maxA: number): number =>
+  Math.min(maxA, Math.max(0, Math.floor(watts / volts / CHARGE_QUANT_A) * CHARGE_QUANT_A));
+
+/**
+ * Layer the price action onto the mode's decision.
+ *
+ * Three effects, each one line, all orthogonal to the mode:
+ * 1. **Soak** — already applied, by handing `decideModeTargetA` a lower ceiling.
+ * 2. **Pre-window envelope** — cap the charge current so the pack keeps room.
+ *    The near-full top-balance floor keeps precedence: a pack that full has no
+ *    room to protect anyway, and cutting the BMS's dwell short would be a real
+ *    harm for an imaginary gain.
+ * 3. **Reporting** — carry the regime and the honest kWh figures out to the log
+ *    and the UI, which is the whole value on days when shaping cannot win.
+ */
+function priceAdjust(i: DecisionInputs, decision: Decision, action: PriceAction): Decision {
+  const capped =
+    action.chargeCeilingW === null || decision.headroomKwh <= NEAR_FULL_KWH
+      ? decision.targetA
+      : Math.min(decision.targetA, floorToA(action.chargeCeilingW, i.batteryV, i.maxChargeA));
+  return {
+    ...decision,
+    targetA: capped,
+    priceRegime: action.regime,
+    socEnvelopePct: action.socEnvelopePct,
+    windowStartsAt: action.window?.startMs ?? null,
+    windowEndsAt: action.window?.endMs ?? null,
+    soakableKwh: action.soakableKwh,
+    unavoidableZeroValueKwh: action.unavoidableZeroValueKwh,
+  };
+}
+
 /**
  * The charge-current target for one tick — the entry point the live tick and the
  * forward projection both call.
  *
- * A thin composition on purpose. Peak shaving's own maths is one thing and any
- * adjustment layered on top is another, and keeping them separable is what lets
- * a reviewer answer "did the shaving behaviour change?" by looking at
+ * A thin composition on purpose. Peak shaving's own maths is one thing and the
+ * price adjustment is another, and keeping them separable is what lets a
+ * reviewer answer "did the shaving behaviour change?" by reading
  * {@link decideModeTargetA} alone.
  */
 export function decideTargetA(i: DecisionInputs): Decision {
-  return decideModeTargetA(i, i.exportLimitW);
+  const action = planPriceAction({
+    price: i.price,
+    prices: i.priceView,
+    forecast: i.forecast,
+    nowMs: i.nowMs,
+    socPct: i.socPct,
+    minSocPct: i.minSocPct,
+    usableKwh: i.usableKwh,
+    baselineLoadW: i.baselineLoadW,
+    maxChargeW: i.maxChargeA * i.batteryV,
+  });
+  // Soaking is expressed as a *lower feed-in ceiling*, so absorption falls out
+  // of the existing frame instead of needing a branch of its own.
+  return priceAdjust(i, decideModeTargetA(i, action.exportLimitW ?? i.exportLimitW), action);
 }

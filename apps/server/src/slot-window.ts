@@ -52,6 +52,30 @@ function slotWidthMs(
 const startOf = (time: string, offsetMs: number): number => Date.parse(`${time}:00Z`) - offsetMs;
 
 /**
+ * Slots overlapping `[fromMs, toMs)`, oldest first, each carrying only the part
+ * inside the window — so the first and last are prorated exactly like the
+ * running slot in {@link remainingSlotsToday}.
+ *
+ * The sibling of `remainingSlotsToday` for an *arbitrary* window: that one
+ * filters by the plant-local date string, so it cannot integrate over a window
+ * that crosses midnight or lies in tomorrow, which is precisely what a planner
+ * looking ahead to tomorrow's prices needs.
+ */
+export function slotsBetween(view: ForecastSlice, fromMs: number, toMs: number): ForecastSlot[] {
+  const offsetMs = view.utcOffsetSeconds * 1000;
+  const fallbackWidth = view.stepMinutes * 60_000;
+  const slots: ForecastSlot[] = [];
+  for (const [i, point] of view.series.entries()) {
+    const startMs = startOf(point.time, offsetMs);
+    const width = slotWidthMs(startMs, view.series[i + 1]?.time, offsetMs, fallbackWidth);
+    const overlapMs = Math.min(startMs + width, toMs) - Math.max(startMs, fromMs);
+    if (overlapMs <= 0) continue;
+    slots.push({ startMs, remainingMs: overlapMs, watts: point.watts });
+  }
+  return slots;
+}
+
+/**
  * Future slots of the plant-local calendar day, oldest first, with the running
  * slot prorated by the fraction still ahead (mirrors `remainingTodayKwh` in
  * solar-forecast). Both the shave threshold's surplus integral and the forward

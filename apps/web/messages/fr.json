@@ -679,5 +679,6 @@
   "tariff_supplier_markup": "Marge du fournisseur (par kWh)",
   "tariff_grid_fees": "Tarifs d'acheminement (par kWh)",
   "tariff_levies": "Taxes et contributions (par kWh)",
-  "tariff_vat_percent": "TVA (%)"
+  "tariff_vat_percent": "TVA (%)",
+  "automations_blocker_smart_meter": "Aucune date d'installation de la passerelle de comptage — la charge pilotée par les prix n'a de sens qu'une fois la limite de 60 % levée."
 }

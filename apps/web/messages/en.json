@@ -679,5 +679,6 @@
   "tariff_supplier_markup": "Supplier markup (per kWh)",
   "tariff_grid_fees": "Grid fees (per kWh)",
   "tariff_levies": "Taxes and levies (per kWh)",
-  "tariff_vat_percent": "VAT (%)"
+  "tariff_vat_percent": "VAT (%)",
+  "automations_blocker_smart_meter": "No smart meter gateway install date is set — price-aware charging is only meaningful once the 60 % cap has been lifted."
 }

@@ -679,5 +679,6 @@
   "tariff_supplier_markup": "Aufschlag des Anbieters (pro kWh)",
   "tariff_grid_fees": "Netzentgelte (pro kWh)",
   "tariff_levies": "Steuern und Abgaben (pro kWh)",
-  "tariff_vat_percent": "MwSt. (%)"
+  "tariff_vat_percent": "MwSt. (%)",
+  "automations_blocker_smart_meter": "Kein Einbaudatum des Smart-Meter-Gateways hinterlegt — preisgesteuertes Laden ist erst sinnvoll, wenn die 60-%-Begrenzung aufgehoben ist."
 }
