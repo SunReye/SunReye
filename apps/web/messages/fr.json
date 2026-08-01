@@ -716,5 +716,9 @@
   "peak_shaving_pa_pull_in_ev_desc": "Basculer les bornes connectées en charge immédiate pendant une fenêtre à prix négatif, et tant que la batterie est trop pleine pour faire de la place seule, puis rétablir le mode précédent. Cela court-circuite la planification d'EVCC, mais c'est généralement ce qui rend possible de vider la batterie à temps.",
   "costs_tile_zero_value": "Injecté pour rien",
   "costs_sub_zero_value": "{amount} de rémunération perdue (§51)",
-  "costs_tile_zero_value_explain": "Énergie injectée pendant des quarts d'heure à prix day-ahead négatif. Selon le §51 EEG, une installation mise en service après le 25/02/2025 ne perçoit rien pour cela. La stocker ou la consommer est le seul moyen d'en conserver la valeur."
+  "costs_tile_zero_value_explain": "Énergie injectée pendant des quarts d'heure à prix day-ahead négatif. Selon le §51 EEG, une installation mise en service après le 25/02/2025 ne perçoit rien pour cela. La stocker ou la consommer est le seul moyen d'en conserver la valeur.",
+  "peak_shaving_pa_grid_charge": "Charger la batterie depuis le réseau",
+  "peak_shaving_pa_grid_charge_desc": "Acheter sur le réseau pendant une fenêtre. N'a d'effet que si votre prix d'achat suit le marché (Réglages → Tarif) : un prix de gros négatif n'allège pas une facture à prix fixe. Et vous payez toujours acheminement, taxes et TVA — il s'agit d'acheter à l'heure la moins chère, pas d'être payé pour consommer.",
+  "peak_shaving_pa_grid_charge_a": "Courant de charge réseau (A)",
+  "peak_shaving_pa_grid_charge_a_desc": "Courant tiré du réseau lors d'une charge pendant une fenêtre."
 }

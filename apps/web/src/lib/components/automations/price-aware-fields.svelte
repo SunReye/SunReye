@@ -13,7 +13,8 @@
 		| 'minWindowMinutes'
 		| 'lookaheadHours'
 		| 'soakFloorW'
-		| 'reserveMarginPct';
+		| 'reserveMarginPct'
+		| 'gridChargeMaxA';
 
 	// Numeric knobs ride as text (a half-typed value must not coerce to 0) and are
 	// parsed by the parent on save; the booleans bind straight to the config.
@@ -54,6 +55,12 @@
 			label: m.peak_shaving_pa_soak_floor(),
 			desc: m.peak_shaving_pa_soak_floor_desc(),
 			placeholder: '0'
+		},
+		{
+			key: 'gridChargeMaxA' as PriceNumKey,
+			label: m.peak_shaving_pa_grid_charge_a(),
+			desc: m.peak_shaving_pa_grid_charge_a_desc(),
+			placeholder: '20'
 		},
 		{
 			key: 'reserveMarginPct' as PriceNumKey,
@@ -101,6 +108,14 @@
 		<Switch id="ps-pa-ev" bind:checked={cfg.pullInEv} disabled={readOnly} />
 	</div>
 	<p class="text-xs text-muted-foreground">{m.peak_shaving_pa_pull_in_ev_desc()}</p>
+</div>
+
+<div class="flex flex-col gap-1.5">
+	<div class="flex items-center justify-between gap-4">
+		<Label for="ps-pa-grid">{m.peak_shaving_pa_grid_charge()}</Label>
+		<Switch id="ps-pa-grid" bind:checked={cfg.gridChargeInWindow} disabled={readOnly} />
+	</div>
+	<p class="text-xs text-muted-foreground">{m.peak_shaving_pa_grid_charge_desc()}</p>
 </div>
 
 <NumericFieldGrid idPrefix="ps-pa" {fields} bind:values={nums} {readOnly} />

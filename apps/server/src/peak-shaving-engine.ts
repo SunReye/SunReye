@@ -37,6 +37,8 @@ import {
   type DecisionInputs,
   type EvInputs,
   NEAR_FULL_KWH,
+  GRID_CHARGE_CURRENT_ROLE,
+  GRID_CHARGE_ROLE,
   SELL_LIMIT_ROLE,
   decideTargetA,
   effectivePriceConfig,
@@ -47,7 +49,9 @@ import {
 } from "./peak-shaving";
 import type { ForecastSlice } from "./slot-window";
 import { type EvPullInPlan, PULL_IN_MODE, planEvPullIn } from "./ev-pull-in";
+import { insideNegativeWindow } from "./price-plan";
 import type { PriceRegime } from "./price-plan";
+import type { TariffConfig } from "@SunReye/db/tariff";
 import type { SpotSlice } from "./spot-price";
 import {
   type PeakShavingPlans,
@@ -115,6 +119,8 @@ export interface PeakShavingStatus {
   sellLimitW: number | null;
   /** Current solar-sell register value from the live sample, W. */
   liveSellLimitW: number | null;
+  /** Grid-charge current we commanded for a window, A; null when not grid-charging. */
+  gridChargeA: number | null;
   liveExcessW: number | null;
   /** House load the thresholds were measured against, W; null when unknown. */
   loadW: number | null;
@@ -182,6 +188,8 @@ export interface AutomationIO {
    * value, so "no data" must stay distinguishable from "the market cleared at 0".
    */
   getPrices(): Promise<SpotSlice | null>;
+  /** The active tariff — read for whether the import price follows the market. */
+  getTariff(): Promise<TariffConfig>;
   /**
    * Set an EVCC loadpoint's charge mode. Throws when the broker is unreachable —
    * the caller treats that as "could not claim", never as success.
@@ -220,6 +228,7 @@ export function initialStatus(): PeakShavingStatus {
     externalOverride: false,
     ineffective: false,
     restorePending: false,
+    gridChargeA: null,
     priceRegime: "none",
     socEnvelopePct: null,
     windowStartsAt: null,
@@ -271,6 +280,10 @@ const targetKeyOf = (io: AutomationIO) =>
 const sellKeyOf = (io: AutomationIO) => keyForRole(io.ctx.profile, SELL_LIMIT_ROLE);
 /** Its own snapshot slot — the two registers are taken and given back separately. */
 const sellSlotOf = (io: AutomationIO) => `${stateKeyOf(io)}:sell`;
+const gridChargeKeyOf = (io: AutomationIO) => keyForRole(io.ctx.profile, GRID_CHARGE_ROLE);
+const gridChargeAKeyOf = (io: AutomationIO) => keyForRole(io.ctx.profile, GRID_CHARGE_CURRENT_ROLE);
+const gridChargeSlotOf = (io: AutomationIO) => `${stateKeyOf(io)}:gridcharge`;
+const gridChargeASlotOf = (io: AutomationIO) => `${stateKeyOf(io)}:gridchargeA`;
 
 /** Both registers the automation may hold, paired with their snapshot slots. */
 const steeredRegisters = (io: AutomationIO): { slot: string; key: string | null }[] => [
@@ -355,8 +368,10 @@ async function release(e: Eng, state: PeakShavingRunState): Promise<void> {
   resetSteering(e);
   await restoreSnapshot(e);
   // Whatever ends the run — disabled, blocked, night, a stale sample — a car
-  // switched to `now` for a window must go back to the user's own mode.
+  // switched to `now` for a window must go back to the user's own mode, and the
+  // grid-charge registers must go back to the user's own values.
   await applyEvPullIn(e, "none", false);
+  await releaseGridCharge(e);
 }
 
 /**
@@ -395,6 +410,10 @@ interface LiveInputs {
   exportW: number | null;
   /** Current feed-in ceiling in the solar-sell register, W; null when unmapped. */
   sellLimitW: number | null;
+  /** Grid-charge enable register; null when the profile doesn't map it. */
+  gridChargeOn: number | null;
+  /** Grid-charge current register, A; null when the profile doesn't map it. */
+  gridChargeA: number | null;
   nowMs: number;
 }
 
@@ -425,6 +444,8 @@ function readLive(io: AutomationIO, key: string): LiveInputs | null {
     chargeW: battW === null ? null : Math.max(0, -battW),
     exportW: gridW === null ? null : Math.max(0, -gridW),
     sellLimitW: byRole(SELL_LIMIT_ROLE),
+    gridChargeOn: byRole(GRID_CHARGE_ROLE),
+    gridChargeA: byRole(GRID_CHARGE_CURRENT_ROLE),
     nowMs,
   };
 }
@@ -487,6 +508,53 @@ async function steerSellLimit(e: Eng, thresholdW: number, live: LiveInputs): Pro
   const value = clampToRegister(io, key, Math.round(thresholdW));
   await writeRegister(e, key, value, live.sellLimitW, live.nowMs);
   status.sellLimitW = value;
+}
+
+/**
+ * Turn grid charging on for a window, at the configured current.
+ *
+ * Both registers are snapshotted before either is written, and a missing
+ * readback holds the whole thing — half-claiming would leave the enable flag on
+ * with no record of the current the user had set.
+ *
+ * The profile not mapping these roles is not an error: grid charging is simply
+ * unavailable on that inverter, and the rest of price awareness works without it.
+ */
+async function steerGridCharge(e: Eng, currentA: number, live: LiveInputs): Promise<void> {
+  const { io, status } = e;
+  const enableKey = gridChargeKeyOf(io);
+  const currentKey = gridChargeAKeyOf(io);
+  if (!enableKey || !currentKey) return;
+  const liveEnable = live.gridChargeOn;
+  const liveCurrent = live.gridChargeA;
+  if (!(await ensureSnapshot(e, gridChargeSlotOf(io), liveEnable))) return;
+  if (!(await ensureSnapshot(e, gridChargeASlotOf(io), liveCurrent))) return;
+  const value = clampToRegister(io, currentKey, Math.round(currentA));
+  await writeRegister(e, currentKey, value, liveCurrent, live.nowMs);
+  await writeRegister(e, enableKey, 1, liveEnable, live.nowMs);
+  status.gridChargeA = value;
+}
+
+/** Hand both grid-charge registers back, enable flag first. */
+async function releaseGridCharge(e: Eng): Promise<void> {
+  const { io, status } = e;
+  const state = await io.loadState();
+  const next = { ...state };
+  let changed = false;
+  // Enable first: handing back the current while charging is still on would
+  // briefly run the user's old current with our command still active.
+  for (const [slot, key] of [
+    [gridChargeSlotOf(io), gridChargeKeyOf(io)],
+    [gridChargeASlotOf(io), gridChargeAKeyOf(io)],
+  ] as const) {
+    const snap = state[slot];
+    if (!snap) continue;
+    if (!(await replaySnapshot(e, key, snap.previousValue))) continue;
+    delete next[slot];
+    changed = true;
+  }
+  if (changed) await io.saveState(next);
+  status.gridChargeA = null;
 }
 
 /** Give the feed-in ceiling back without touching the charge register. */
@@ -602,8 +670,9 @@ function decisionInputs(args: {
   load: { loadW: number | null; baselineW: number };
   batteryV: number;
   prices: SpotSlice | null;
+  tariff: TariffConfig;
 }): Parameters<typeof decideTargetA>[0] {
-  const { e, ps, weather, live, forecast, ev, evcc, load, batteryV, prices } = args;
+  const { e, ps, weather, live, forecast, ev, evcc, load, batteryV, prices, tariff } = args;
   return {
     ...ev,
     ...plantParams(weather, ps),
@@ -621,6 +690,9 @@ function decisionInputs(args: {
     topBalanceFloorA: ps.topBalanceFloorA,
     gridFriendly: ps.gridFriendly,
     priceView: prices,
+    // Grid charging only pays when the bill follows the market; the tariff is
+    // the authority on that, not the automation config.
+    importFollowsMarket: tariff.import.mode === "spot",
     previousThresholdW: e.prevThresholdW,
     previousTargetA: e.prevTargetA,
     sinceLastDecisionMs: e.prevDecisionAtMs === null ? 0 : live.nowMs - e.prevDecisionAtMs,
@@ -744,15 +816,27 @@ async function steer(
   forecast: SolarForecast | null,
   key: string,
   baselineLoadW: number | null,
+  prices: SpotSlice | null,
 ): Promise<void> {
   const { io, status } = e;
   const evcc = io.getEvcc();
   const ev = evccAutomationInputs(evcc);
   const load = loadFrame(live, baselineLoadW);
   const batteryV = liveBatteryV(live, ps);
-  const prices = await io.getPrices();
   const decision = decideTargetA(
-    decisionInputs({ e, ps, weather, live, forecast, ev, evcc, load, batteryV, prices }),
+    decisionInputs({
+      e,
+      ps,
+      weather,
+      live,
+      forecast,
+      ev,
+      evcc,
+      load,
+      batteryV,
+      prices,
+      tariff: await io.getTariff(),
+    }),
   );
 
   recordDecision(status, decision, live, ev, evcc?.reachable === true, load.loadW);
@@ -766,12 +850,17 @@ async function steer(
     e.ineffectiveTicks = 0;
     status.ineffective = false;
     await applyEvPullIn(e, decision.priceRegime, false);
+    await releaseGridCharge(e);
   } else {
     await writeTarget(e, key, targetA, live);
     // Feed-in ceiling: steered in grid-friendly, handed straight back in the
     // mode that sells everything it can.
     if (ps.mode === "grid-friendly") await steerSellLimit(e, decision.thresholdW, live);
     else await releaseSellLimit(e);
+    // Grid charging: only inside a window, only when the import price actually
+    // follows the market, and only on an inverter that maps the registers.
+    if (decision.gridChargeA !== null) await steerGridCharge(e, decision.gridChargeA, live);
+    else await releaseGridCharge(e);
     updateWatchdog(e, live, targetA, batteryV, decision.headroomKwh);
     // Commanding the car is a real write, so a dry run must not do it — but a
     // *held* loadpoint still has to be handed back if the run turns dry, which
@@ -812,6 +901,7 @@ async function planInputs(
     load: loadFrame(live, await io.getBaselineLoadW(weather)),
     batteryV: liveBatteryV(live, ps),
     prices: await io.getPrices(),
+    tariff: await io.getTariff(),
   });
   if (!inputs.forecast) return null;
   return { inputs: { ...inputs, forecast: inputs.forecast }, limits: planLimits(weather) };
@@ -844,8 +934,16 @@ function liveOrHold(io: AutomationIO): { key: string; live: LiveInputs } | null 
 }
 
 /** Night gate: no PV now and none imminent — hand the register back until dawn. */
-const isNight = (live: LiveInputs, forecast: SolarForecast | null): boolean =>
-  live.pvW <= 0 && (forecast?.raw.next15.maxPowerW ?? 0) <= 0;
+/**
+ * Nothing to shave: no PV now and none imminent.
+ *
+ * Price awareness breaks the old assumption that darkness means idleness —
+ * negative prices are usually *wind*, and the deepest ones land at night. So a
+ * pending price action keeps the loop awake; without this the one case
+ * grid-charging exists for could never fire.
+ */
+const isNight = (live: LiveInputs, forecast: SolarForecast | null, priceActive: boolean): boolean =>
+  !priceActive && live.pvW <= 0 && (forecast?.raw.next15.maxPowerW ?? 0) <= 0;
 
 /**
  * Ready the register for this tick: a dry run hands back anything a previous
@@ -878,7 +976,13 @@ async function decideTick(
 
   const forecast = await io.getForecast(weather);
   status.forecastAvailable = forecast !== null;
-  if (isNight(ready.live, forecast)) return await releasedStatus(e, "idle");
+  const prices = await io.getPrices();
+  const priceActive = insideNegativeWindow(
+    prices,
+    effectivePriceConfig(ps.priceAware, weather),
+    ready.live.nowMs,
+  );
+  if (isNight(ready.live, forecast, priceActive)) return await releasedStatus(e, "idle");
 
   if (!(await claimRegister(e, ps.shadowMode, ready.live.liveA))) {
     status.state = "stale";
@@ -886,7 +990,7 @@ async function decideTick(
   }
 
   const baselineLoadW = await io.getBaselineLoadW(weather);
-  await steer(e, ps, weather, ready.live, forecast, ready.key, baselineLoadW);
+  await steer(e, ps, weather, ready.live, forecast, ready.key, baselineLoadW, prices);
   return status;
 }
 

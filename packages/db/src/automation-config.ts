@@ -121,6 +121,18 @@ const priceAwareConfigSchema = z.object({
    * provides, and a car that wants energy anyway is the only one available.
    */
   pullInEv: z.boolean().default(false),
+  /**
+   * Charge the battery **from the grid** during a window.
+   *
+   * Only pays when the import price actually tracks the market, so it does
+   * nothing unless the tariff's import mode is `spot` — a negative *wholesale*
+   * price does not lower a fixed bill. Even then the landed price is spot plus
+   * grid fees, levies and VAT, which is usually still positive; this is about
+   * buying at the cheapest hour of the day, not about being paid to consume.
+   */
+  gridChargeInWindow: z.boolean().default(false),
+  /** Charge current used while grid-charging in a window, A. */
+  gridChargeMaxA: z.number().min(0).max(1_000).default(20),
 });
 export type PriceAwareConfig = z.infer<typeof priceAwareConfigSchema>;
 

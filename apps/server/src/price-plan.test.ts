@@ -79,6 +79,7 @@ const inputs = (over: Partial<PriceInputs> = {}): PriceInputs => ({
   usableKwh: 15,
   baselineLoadW: 400,
   maxChargeW: 5120,
+  importFollowsMarket: false,
   ...over,
 });
 
@@ -234,5 +235,46 @@ describe("planPriceAction", () => {
     const huge = planPriceAction(inputs({ forecast: forecast(14_000) }));
     expect(huge.socEnvelopePct).toBe(modest.socEnvelopePct);
     expect(huge.unavoidableZeroValueKwh ?? 0).toBeGreaterThan(modest.unavoidableZeroValueKwh ?? 0);
+  });
+});
+
+describe("grid charging in a window", () => {
+  const inWindow = (over: object = {}) =>
+    planPriceAction(inputs({ nowMs: at(13), socPct: 30, ...over }));
+
+  test("off by default, even inside a window", () => {
+    expect(inWindow().gridChargeA).toBeNull();
+  });
+
+  test("refused on a fixed tariff — a negative wholesale price is not a cheaper bill", () => {
+    expect(inWindow({ price: cfg({ gridChargeInWindow: true }) }).gridChargeA).toBeNull();
+  });
+
+  test("draws the configured current when the bill follows the market", () => {
+    const action = inWindow({
+      price: cfg({ gridChargeInWindow: true, gridChargeMaxA: 20 }),
+      importFollowsMarket: true,
+    });
+    expect(action.gridChargeA).toBe(20);
+  });
+
+  test("never outside a window", () => {
+    const action = planPriceAction(
+      inputs({
+        nowMs: at(9),
+        price: cfg({ gridChargeInWindow: true }),
+        importFollowsMarket: true,
+      }),
+    );
+    expect(action.gridChargeA).toBeNull();
+  });
+
+  test("not into a full pack", () => {
+    const action = inWindow({
+      socPct: 100,
+      price: cfg({ gridChargeInWindow: true }),
+      importFollowsMarket: true,
+    });
+    expect(action.gridChargeA).toBeNull();
   });
 });

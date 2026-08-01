@@ -13,6 +13,7 @@ import {
   resolvePeakShavingBlockers,
   validateAutomationEnable,
 } from "./peak-shaving";
+import { tariffConfigSchema } from "@SunReye/db/tariff";
 import type { ForecastSlice } from "./slot-window";
 import type { SpotSlice } from "./spot-price";
 import { type DecisionPoint, createDecisionLog } from "./automation-history";
@@ -167,6 +168,7 @@ const baseInputs = {
   price: automationConfigSchema.parse({}).peakShaving.priceAware,
   priceView: null,
   minSocPct: 10,
+  importFollowsMarket: false,
   nowMs: NOON,
 };
 
@@ -1054,6 +1056,7 @@ function harness(over: { config?: AutomationConfig; prices?: SpotSlice | null } 
       // No price feed unless a case installs one: every existing engine test
       // must keep exercising the unchanged shaving path.
       getPrices: async () => prices,
+      getTariff: async () => tariffConfigSchema.parse({}),
       setEvccMode: (loadpoint, mode) => {
         if (evccModeError) throw new Error(evccModeError);
         evccModes.push({ loadpoint, mode });

@@ -716,5 +716,9 @@
   "peak_shaving_pa_pull_in_ev_desc": "Portare le stazioni collegate in ricarica immediata durante una finestra a prezzo negativo, e finché la batteria è troppo carica per fare spazio da sola, ripristinando poi la modalità precedente. Questo scavalca la pianificazione di EVCC, ma di solito è ciò che rende possibile svuotare la batteria in tempo.",
   "costs_tile_zero_value": "Immesso a vuoto",
   "costs_sub_zero_value": "{amount} di remunerazione persa (§51)",
-  "costs_tile_zero_value_explain": "Energia immessa in quarti d'ora con prezzo day-ahead negativo. Secondo il §51 EEG un impianto entrato in servizio dopo il 25/02/2025 non riceve nulla per essa. Accumularla o autoconsumarla è l'unico modo di conservarne il valore."
+  "costs_tile_zero_value_explain": "Energia immessa in quarti d'ora con prezzo day-ahead negativo. Secondo il §51 EEG un impianto entrato in servizio dopo il 25/02/2025 non riceve nulla per essa. Accumularla o autoconsumarla è l'unico modo di conservarne il valore.",
+  "peak_shaving_pa_grid_charge": "Caricare la batteria dalla rete",
+  "peak_shaving_pa_grid_charge_desc": "Acquistare dalla rete durante una finestra. Ha effetto solo se il prezzo di acquisto segue il mercato (Impostazioni → Tariffa): un prezzo all'ingrosso negativo non riduce una bolletta a prezzo fisso. E si pagano comunque oneri di rete, imposte e IVA — si tratta di comprare nell'ora più economica, non di essere pagati per consumare.",
+  "peak_shaving_pa_grid_charge_a": "Corrente di carica da rete (A)",
+  "peak_shaving_pa_grid_charge_a_desc": "Corrente prelevata dalla rete caricando durante una finestra."
 }

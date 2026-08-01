@@ -153,6 +153,7 @@ async function buildProductionIO(deps: {
     { fetchSolarForecast, representativeHouseLoadW },
     { evccSnapshot, evccControl },
     { liveState },
+    { getTariff },
     appSettings,
   ] = await Promise.all([
     import("./automation-settings"),
@@ -160,6 +161,7 @@ async function buildProductionIO(deps: {
     import("./solar-forecast"),
     import("./evcc"),
     import("./state"),
+    import("./settings"),
     import("./app-settings"),
   ]);
   let stateCache: AutomationState | null = null;
@@ -172,6 +174,7 @@ async function buildProductionIO(deps: {
     getBaselineLoadW: representativeHouseLoadW,
     getEvcc: evccSnapshot,
     setEvccMode: (loadpoint, mode) => evccControl(loadpoint, "mode", mode),
+    getTariff,
     async getPrices() {
       const [{ getSpotPriceConfig }, { loadSpotSlice }, { spotPricesReady }] = await Promise.all([
         import("./spot-price-settings"),

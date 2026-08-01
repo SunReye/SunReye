@@ -716,5 +716,9 @@
   "peak_shaving_pa_pull_in_ev_desc": "Angeschlossene Ladepunkte während eines Fensters mit negativen Preisen — und solange der Speicher zu voll ist, um selbst Platz zu schaffen — auf Sofortladen schalten und danach den vorherigen Modus wiederherstellen. Das übergeht die EVCC-Planung, macht das rechtzeitige Leeren des Speichers aber meist überhaupt erst möglich.",
   "costs_tile_zero_value": "Umsonst eingespeist",
   "costs_sub_zero_value": "{amount} entgangene Vergütung (§51)",
-  "costs_tile_zero_value_explain": "Energie, die in Viertelstunden mit negativem Day-Ahead-Preis eingespeist wurde. Nach §51 EEG erhält eine nach dem 25.02.2025 in Betrieb genommene Anlage dafür keine Vergütung. Diese Energie stattdessen zu speichern oder selbst zu verbrauchen ist die einzige Möglichkeit, ihren Wert zu erhalten."
+  "costs_tile_zero_value_explain": "Energie, die in Viertelstunden mit negativem Day-Ahead-Preis eingespeist wurde. Nach §51 EEG erhält eine nach dem 25.02.2025 in Betrieb genommene Anlage dafür keine Vergütung. Diese Energie stattdessen zu speichern oder selbst zu verbrauchen ist die einzige Möglichkeit, ihren Wert zu erhalten.",
+  "peak_shaving_pa_grid_charge": "Speicher aus dem Netz laden",
+  "peak_shaving_pa_grid_charge_desc": "Während eines Fensters aus dem Netz beziehen. Wirkt nur, wenn Ihr Bezugspreis dem Markt folgt (Einstellungen → Tarif) — ein negativer Börsenpreis senkt keine Festpreisrechnung. Auch dann fallen Netzentgelte, Abgaben und MwSt. an: es geht ums Einkaufen zur günstigsten Stunde, nicht ums Bezahltwerden fürs Verbrauchen.",
+  "peak_shaving_pa_grid_charge_a": "Netzladestrom (A)",
+  "peak_shaving_pa_grid_charge_a_desc": "Strom, der beim Laden im Fenster aus dem Netz bezogen wird."
 }

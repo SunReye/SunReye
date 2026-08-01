@@ -210,8 +210,19 @@ own page. Alongside its two modes it has a **negative-price windows** section:
   usually what makes emptying the battery in time possible at all — a house alone cannot absorb
   enough in the hours before a window, and a car that wants energy anyway can. The borrowed mode
   is remembered on disk, so a restart mid-window still hands the car back.
+- **Charge the battery from the grid** — buys from the grid during a window. Off by default and
+  inert unless your **import** price follows the market (Settings → Tariff): a negative wholesale
+  price does not lower a fixed bill. Even on a spot tariff you still pay grid fees, levies and
+  VAT, so this is about buying at the cheapest hour of the day, not about being paid to consume.
+  Needs an inverter that exposes the grid-charge registers; where it doesn't, the switch simply
+  has no effect.
 - Thresholds for what counts as negative, the shortest window worth acting on, how far ahead to
-  plan, how much feed-in to allow during a window, and a reserve margin.
+  plan, how much feed-in to allow during a window, the grid-charge current, and a reserve margin.
+
+Note that negative prices are usually driven by **wind**, and the deepest ones fall at night. The
+loop normally parks itself when there is no sun and none coming; with price awareness on, a live
+negative window keeps it awake — otherwise the one case grid-charging exists for could never
+fire.
 
 The status panel names what it is doing (*making room*, *absorbing*, *too full*) and reports the
 window, the SOC ceiling in force, how much the window can absorb — and how much **cannot be

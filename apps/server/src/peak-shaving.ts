@@ -56,6 +56,10 @@ const REQUIRED_ROLES = [
  * plant's configured limit.
  */
 export const SELL_LIMIT_ROLE = "setting.solar_sell.max_power" satisfies CanonicalRole;
+/** Registers grid-charging needs; absent from a profile simply disables it. */
+export const GRID_CHARGE_ROLE = "setting.battery.grid_charge" satisfies CanonicalRole;
+export const GRID_CHARGE_CURRENT_ROLE =
+  "setting.battery.max_grid_charge_current" satisfies CanonicalRole;
 
 /** The profile's metric key for a canonical role, or null when unmapped. */
 export function keyForRole(profile: InverterProfile, role: CanonicalRole): string | null {
@@ -244,6 +248,8 @@ export interface DecisionInputs extends EvInputs {
   priceView: SpotSlice | null;
   /** Battery reserve floor, % — the envelope never plans below it. */
   minSocPct: number;
+  /** Whether the tariff's import price tracks the market (gates grid-charging). */
+  importFollowsMarket: boolean;
   nowMs: number;
 }
 
@@ -275,6 +281,8 @@ export interface Decision {
    * time, and a planner that pretends otherwise is worse than one that says so.
    */
   unavoidableZeroValueKwh: number | null;
+  /** Grid-charge current for this tick, A; null = don't charge from the grid. */
+  gridChargeA: number | null;
 }
 
 /**
@@ -465,6 +473,7 @@ function decideModeTargetA(i: DecisionInputs, exportLimitW: number): Decision {
     windowEndsAt: null as number | null,
     soakableKwh: null as number | null,
     unavoidableZeroValueKwh: null as number | null,
+    gridChargeA: null as number | null,
   };
   // `maximize-exports` rounds up — overshooting a real peak is the safe
   // direction. `grid-friendly` rounds to the nearest step instead: rounding up
@@ -555,6 +564,7 @@ function priceAdjust(i: DecisionInputs, decision: Decision, action: PriceAction)
     windowEndsAt: action.window?.endMs ?? null,
     soakableKwh: action.soakableKwh,
     unavoidableZeroValueKwh: action.unavoidableZeroValueKwh,
+    gridChargeA: action.gridChargeA,
   };
 }
 
@@ -578,6 +588,7 @@ export function decideTargetA(i: DecisionInputs): Decision {
     usableKwh: i.usableKwh,
     baselineLoadW: i.baselineLoadW,
     maxChargeW: i.maxChargeA * i.batteryV,
+    importFollowsMarket: i.importFollowsMarket,
   });
   // Soaking is expressed as a *lower feed-in ceiling*, so absorption falls out
   // of the existing frame instead of needing a branch of its own.

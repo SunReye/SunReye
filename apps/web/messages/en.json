@@ -716,5 +716,9 @@
   "peak_shaving_pa_pull_in_ev_desc": "Switch connected chargers to immediate charging during a negative-price window, and while the battery is too full to make room on its own — then restore the previous mode. This overrides EVCC's own plan, but it is usually what makes emptying the battery in time possible at all.",
   "costs_tile_zero_value": "Exported for nothing",
   "costs_sub_zero_value": "{amount} of feed-in forgone (§51)",
-  "costs_tile_zero_value_explain": "Energy exported during quarter-hours whose day-ahead price was negative. Under §51 EEG a plant commissioned after 25 Feb 2025 receives no feed-in payment for it. Storing or consuming that energy instead is the only way to keep its value."
+  "costs_tile_zero_value_explain": "Energy exported during quarter-hours whose day-ahead price was negative. Under §51 EEG a plant commissioned after 25 Feb 2025 receives no feed-in payment for it. Storing or consuming that energy instead is the only way to keep its value.",
+  "peak_shaving_pa_grid_charge": "Charge the battery from the grid",
+  "peak_shaving_pa_grid_charge_desc": "Buy from the grid during a window. Only has any effect when your import price follows the market (Settings → Tariff) — a negative wholesale price does not lower a fixed bill. Even then you still pay grid fees, levies and VAT, so this is about buying at the cheapest hour, not about being paid to consume.",
+  "peak_shaving_pa_grid_charge_a": "Grid charge current (A)",
+  "peak_shaving_pa_grid_charge_a_desc": "Current drawn from the grid while charging in a window."
 }

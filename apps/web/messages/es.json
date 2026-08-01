@@ -716,5 +716,9 @@
   "peak_shaving_pa_pull_in_ev_desc": "Poner los cargadores conectados en carga inmediata durante una ventana de precio negativo, y mientras la batería esté demasiado llena para hacer hueco por sí sola, restaurando después el modo anterior. Esto anula la planificación de EVCC, pero suele ser lo único que permite vaciar la batería a tiempo.",
   "costs_tile_zero_value": "Vertido sin retribución",
   "costs_sub_zero_value": "{amount} de retribución perdida (§51)",
-  "costs_tile_zero_value_explain": "Energía vertida en cuartos de hora con precio negativo del mercado diario. Según el §51 EEG, una instalación puesta en servicio después del 25/02/2025 no percibe nada por ella. Almacenarla o consumirla es la única forma de conservar su valor."
+  "costs_tile_zero_value_explain": "Energía vertida en cuartos de hora con precio negativo del mercado diario. Según el §51 EEG, una instalación puesta en servicio después del 25/02/2025 no percibe nada por ella. Almacenarla o consumirla es la única forma de conservar su valor.",
+  "peak_shaving_pa_grid_charge": "Cargar la batería desde la red",
+  "peak_shaving_pa_grid_charge_desc": "Comprar de la red durante una ventana. Solo tiene efecto si su precio de compra sigue al mercado (Ajustes → Tarifa): un precio mayorista negativo no abarata una factura fija. Aun así se pagan peajes, cargos e IVA, así que se trata de comprar en la hora más barata, no de cobrar por consumir.",
+  "peak_shaving_pa_grid_charge_a": "Corriente de carga desde red (A)",
+  "peak_shaving_pa_grid_charge_a_desc": "Corriente tomada de la red al cargar durante una ventana."
 }

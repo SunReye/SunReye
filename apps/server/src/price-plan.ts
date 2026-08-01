@@ -67,6 +67,12 @@ export interface PriceInputs {
   baselineLoadW: number;
   /** Charge power ceiling the pack can actually accept, W. */
   maxChargeW: number;
+  /**
+   * Whether the plant's import price tracks the market. Grid-charging is pointless
+   * on a fixed tariff, so the planner refuses to ask for it — the caller decides,
+   * because the tariff is not this module's business.
+   */
+  importFollowsMarket: boolean;
 }
 
 export interface PriceAction {
@@ -77,6 +83,13 @@ export interface PriceAction {
   exportLimitW: number | null;
   /** Charge-power ceiling this tick, W; null = unconstrained. */
   chargeCeilingW: number | null;
+  /**
+   * Charge current to draw *from the grid* this tick, A; null = don't grid-charge.
+   *
+   * Only ever set inside a window, and only when the caller says the import price
+   * follows the market — a negative *wholesale* price does not lower a fixed bill.
+   */
+  gridChargeA: number | null;
   /** The SOC bound the envelope allows right now, %; null when not shaping. */
   socEnvelopePct: number | null;
   /** Energy the window can push into the pack, kWh; null without a window. */
@@ -94,6 +107,7 @@ const IDLE: PriceAction = {
   window: null,
   exportLimitW: null,
   chargeCeilingW: null,
+  gridChargeA: null,
   socEnvelopePct: null,
   soakableKwh: null,
   unavoidableZeroValueKwh: null,
@@ -244,11 +258,18 @@ function absorbAction(
   const soak = forecast ? soakOf(forecast, window, i.baselineLoadW, i.maxChargeW) : null;
   const headroomKwh = (i.usableKwh * (100 - clampSoc(i.socPct))) / 100;
   const overflowKwh = soak ? Math.max(0, soak.soakableKwh - headroomKwh) : 0;
+  // Buying from the grid only makes sense when the bill follows the market, and
+  // only while there is room to put it.
+  const gridCharge =
+    i.price.gridChargeInWindow && i.importFollowsMarket && headroomKwh > 0
+      ? i.price.gridChargeMaxA
+      : null;
   return {
     ...IDLE,
     regime: "absorb",
     window,
     exportLimitW: i.price.soakFloorW,
+    gridChargeA: gridCharge,
     soakableKwh: soak?.soakableKwh ?? null,
     unavoidableZeroValueKwh: soak ? soak.spillKwh + overflowKwh : null,
   };
@@ -296,6 +317,24 @@ function shapeAction(i: PriceInputs, forecast: ForecastSlice, window: PriceWindo
     chargeCeilingW: Math.max(0, chargeCeilingW),
     socEnvelopePct: boundPct,
   };
+}
+
+/**
+ * Whether `nowMs` falls inside a negative-price window.
+ *
+ * Exists for the night gate: peak shaving parks the loop when there is no PV and
+ * none imminent, which used to be a safe proxy for "nothing to do". Negative
+ * prices are usually *wind*, and the deepest ones land at night — so the one
+ * situation grid-charging exists for is exactly the one that gate would sleep
+ * through.
+ */
+export function insideNegativeWindow(
+  prices: SpotSlice | null,
+  cfg: PriceAwareConfig,
+  nowMs: number,
+): boolean {
+  if (!cfg.enabled || !prices) return false;
+  return windowAt(negativeWindows(prices, cfg), nowMs) !== null;
 }
 
 /**

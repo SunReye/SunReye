@@ -46,7 +46,8 @@
 		minWindowMinutes: '',
 		lookaheadHours: '',
 		soakFloorW: '',
-		reserveMarginPct: ''
+		reserveMarginPct: '',
+		gridChargeMaxA: ''
 	});
 	// Grid-friendly tuning; only meaningful in that mode, but always persisted.
 	let gfNums = $state({
