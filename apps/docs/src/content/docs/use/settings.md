@@ -66,7 +66,9 @@ for energy exported during a quarter-hour whose day-ahead price was negative —
 which slots those are matters regardless of what you pay for import.
 
 - **Source** — `energy-charts` (Fraunhofer ISE) by default: keyless and, importantly, it
-  serves true **quarter-hour** prices. Since 2025-10-01 the German day-ahead market trades
+  serves true **quarter-hour** prices. `awattar` is also available (DE/AT, keyless) for
+  aWATTar/tado customers who want their own supplier's curve — but it publishes hourly prices
+  only, so it cannot resolve the negative quarter-hours §51 turns on. Since 2025-10-01 the German day-ahead market trades
   15-minute products, and an hourly average hides a negative quarter-hour sitting inside a
   net-positive hour — exactly the case §51 turns on. Where a source only publishes hourly
   data, SunReye says so rather than implying precision it doesn't have.

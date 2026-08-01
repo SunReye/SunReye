@@ -9,9 +9,8 @@
  * this feature exists for.
  *
  * The data is republished from Bundesnetzagentur | SMARD.de under CC BY 4.0, so
- * the licence string travels with the series and **must** be rendered in the UI;
- * it is an obligation, not a footnote. The upstream sends it per response rather
- * than as a constant, so it is read from the payload rather than hardcoded.
+ * the credit in `attribution` **must** be rendered wherever the prices appear;
+ * it is a licence condition, not a footnote.
  *
  * Two upstream behaviours the caller depends on:
  * - A day that has not cleared yet is an **HTTP error** (404, or 400 further out),
@@ -27,9 +26,9 @@ import {
   SpotPriceUnpublished,
   zoneTimeZone,
 } from "../spot-price";
+import { fetchSpotJson } from "./shared";
 
 const BASE = "https://api.energy-charts.info/price";
-const TIMEOUT_MS = 10_000;
 
 /** Bidding zones the upstream advertises in its OpenAPI document. */
 const ZONES = [
@@ -173,13 +172,6 @@ export const energyChartsPrices: SpotPriceProvider = {
     const url =
       `${BASE}?bzn=${encodeURIComponent(zone)}` +
       `&start=${marketDate(zone, fromMs)}&end=${marketDate(zone, toMs - 1)}`;
-    const res = await fetch(url, { signal: AbortSignal.timeout(TIMEOUT_MS) });
-    // 404 = the day is not published yet; 400 = out of range entirely. Both are
-    // expected before the auction clears, so they must not read as failures.
-    if (res.status === 404 || res.status === 400) {
-      throw new SpotPriceUnpublished(`HTTP ${res.status} for ${zone}`);
-    }
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    return parseEnergyCharts(zone, (await res.json()) as EnergyChartsResponse);
+    return parseEnergyCharts(zone, await fetchSpotJson<EnergyChartsResponse>(url, zone));
   },
 };

@@ -42,6 +42,7 @@ import {
   zoneTimeZone,
 } from "./spot-price";
 import { invalidateSpotSlice, loadSpotSlice } from "./spot-price-store";
+import { awattarPrices } from "./spot-providers/awattar";
 import { energyChartsPrices } from "./spot-providers/energy-charts";
 
 const logger = log("spot-price");
@@ -53,6 +54,7 @@ const logger = log("spot-price");
  */
 const PROVIDERS: Record<string, SpotPriceProvider> = {
   [energyChartsPrices.id]: energyChartsPrices,
+  [awattarPrices.id]: awattarPrices,
 };
 
 /** Provider ids and the zones each serves — drives the settings form. */
