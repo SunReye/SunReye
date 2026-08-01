@@ -664,5 +664,20 @@
   "prices_settings_zone": "Zona de oferta",
   "prices_settings_publication": "Los precios de mañana se fijan hacia las 13:00 (hora del mercado) y se obtienen en segundo plano; no hay nada que programar.",
   "prices_settings_saved": "Fuente de precios guardada",
-  "prices_settings_error": "No se pudo guardar la fuente de precios"
+  "prices_settings_error": "No se pudo guardar la fuente de precios",
+  "tariff_market_prices": "Precios vinculados al mercado",
+  "tariff_marketing_model": "Retribución por vertido",
+  "tariff_marketing_none": "Tarifa de vertido fija",
+  "tariff_marketing_eeg": "Tarifa de vertido, §51 (sin pago con precio negativo)",
+  "tariff_marketing_direkt": "Venta directa (al precio de mercado)",
+  "tariff_marketing_desc": "Cómo se retribuye la energía vertida. Solo tiene efecto con una fuente de precios del mercado diario.",
+  "tariff_marketing_hint": "Según el §51 EEG, una instalación puesta en servicio después del 25/02/2025 no percibe nada por un cuarto de hora con precio negativo. Verter entonces no vale nada, pero tampoco cuesta: no se gana nada recortando, solo almacenando o consumiendo la energía. En venta directa un intervalo negativo sí cuesta dinero, y ahí recortar compensa.",
+  "tariff_management_fee": "Comisión de gestión (por kWh)",
+  "tariff_management_fee_desc": "La descuenta del precio de mercado su comercializador.",
+  "tariff_import_follows_market": "El precio de compra sigue al mercado",
+  "tariff_import_follows_market_desc": "Solo para un contrato indexado (Tibber, aWATTar, Ostrom …). Déjelo desactivado con precio fijo o por tramos.",
+  "tariff_supplier_markup": "Margen del comercializador (por kWh)",
+  "tariff_grid_fees": "Peajes de red (por kWh)",
+  "tariff_levies": "Impuestos y cargos (por kWh)",
+  "tariff_vat_percent": "IVA (%)"
 }

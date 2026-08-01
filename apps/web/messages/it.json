@@ -664,5 +664,20 @@
   "prices_settings_zone": "Zona di offerta",
   "prices_settings_publication": "I prezzi di domani si definiscono verso le 13:00 (ora di mercato) e vengono recuperati in background; non c'è nulla da pianificare.",
   "prices_settings_saved": "Fonte dei prezzi salvata",
-  "prices_settings_error": "Impossibile salvare la fonte dei prezzi"
+  "prices_settings_error": "Impossibile salvare la fonte dei prezzi",
+  "tariff_market_prices": "Prezzi legati al mercato",
+  "tariff_marketing_model": "Remunerazione dell'immissione",
+  "tariff_marketing_none": "Tariffa di immissione fissa",
+  "tariff_marketing_eeg": "Tariffa di immissione, §51 (nessun pagamento con prezzo negativo)",
+  "tariff_marketing_direkt": "Vendita diretta (al prezzo di mercato)",
+  "tariff_marketing_desc": "Come viene remunerata l'energia immessa. Ha effetto solo con una fonte di prezzi day-ahead.",
+  "tariff_marketing_hint": "Secondo il §51 EEG un impianto entrato in servizio dopo il 25/02/2025 non riceve nulla per un quarto d'ora con prezzo negativo. Immettere allora non vale niente, ma non costa: non si guadagna nulla riducendo la produzione, solo accumulando o autoconsumando. In vendita diretta un intervallo negativo costa denaro, e ridurre conviene.",
+  "tariff_management_fee": "Commissione di gestione (per kWh)",
+  "tariff_management_fee_desc": "Sottratta dal prezzo di mercato dal vostro operatore.",
+  "tariff_import_follows_market": "Il prezzo di acquisto segue il mercato",
+  "tariff_import_follows_market_desc": "Solo per un contratto indicizzato (Tibber, aWATTar, Ostrom …). Lasciare disattivato con tariffa fissa o a fasce.",
+  "tariff_supplier_markup": "Margine del fornitore (per kWh)",
+  "tariff_grid_fees": "Oneri di rete (per kWh)",
+  "tariff_levies": "Imposte e oneri (per kWh)",
+  "tariff_vat_percent": "IVA (%)"
 }

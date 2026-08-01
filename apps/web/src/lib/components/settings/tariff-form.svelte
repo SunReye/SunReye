@@ -8,39 +8,23 @@
 	import SettingsSection from './settings-section.svelte';
 	import ActionBar from './action-bar.svelte';
 	import TariffBandDays from './tariff-band-days.svelte';
+	import TariffSpotFields from './tariff-spot-fields.svelte';
+	import {
+		ALL_DAYS,
+		type BandDraft,
+		type TariffDraft,
+		type TariffResponse
+	} from '$lib/tariff/draft';
 	import PlusIcon from 'phosphor-svelte/lib/Plus';
 	import TrashIcon from 'phosphor-svelte/lib/Trash';
 	import * as m from '$lib/paraglide/messages';
 
-	type Band = {
-		name: string;
-		pricePerKwh: number;
-		startHour: number;
-		endHour: number;
-		days: number[];
-	};
-	type TariffResponse = NonNullable<
-		Awaited<ReturnType<typeof api.api.settings.tariff.get>>['data']
-	>;
-	/**
-	 * The server's own tariff shape with band `days` normalized for editing. Derived
-	 * from the response rather than hand-mirrored on purpose: this form PUTs the
-	 * whole config, so a field it doesn't know about would be dropped on save and
-	 * silently reset to its default — which is exactly how a plant would lose its
-	 * day-ahead pricing settings by opening this page and pressing Save.
-	 */
-	type Tariff = Omit<TariffResponse, 'import'> & {
-		import: Omit<TariffResponse['import'], 'bands'> & { bands: Band[] };
-	};
-
-	const ALL_DAYS = [1, 2, 3, 4, 5, 6, 7];
-
 	// `null` until the config has loaded — there is no other empty state.
-	let tariff = $state<Tariff | null>(null);
+	let tariff = $state<TariffDraft | null>(null);
 	let saving = $state(false);
 
 	// Bands may omit `days` (= every day); normalize to a full array for editing.
-	const toBand = (b: TariffResponse['import']['bands'][number]): Band => ({
+	const toBand = (b: TariffResponse['import']['bands'][number]): BandDraft => ({
 		name: b.name,
 		pricePerKwh: b.pricePerKwh,
 		startHour: b.startHour,
@@ -49,7 +33,7 @@
 	});
 
 	/** The response, with only the bands reshaped; every other field carried through. */
-	const toTariff = (data: TariffResponse): Tariff => ({
+	const toTariff = (data: TariffResponse): TariffDraft => ({
 		...data,
 		import: { ...data.import, bands: (data.import.bands ?? []).map(toBand) }
 	});
@@ -127,6 +111,10 @@
 				<Input id="feedin" type="number" step="0.001" bind:value={tariff.export.feedInPerKwh} />
 			</div>
 		</div>
+	</SettingsSection>
+
+	<SettingsSection title={m.tariff_market_prices()}>
+		<TariffSpotFields bind:tariff />
 	</SettingsSection>
 
 	<SettingsSection title={m.tariff_import_price()}>

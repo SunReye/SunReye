@@ -664,5 +664,20 @@
   "prices_settings_zone": "Zone de dépôt des offres",
   "prices_settings_publication": "Les prix de demain sont fixés vers 13:00 (heure du marché) et récupérés en arrière-plan ; il n'y a rien à planifier.",
   "prices_settings_saved": "Source de prix enregistrée",
-  "prices_settings_error": "Impossible d'enregistrer la source de prix"
+  "prices_settings_error": "Impossible d'enregistrer la source de prix",
+  "tariff_market_prices": "Prix indexés sur le marché",
+  "tariff_marketing_model": "Rémunération de l'injection",
+  "tariff_marketing_none": "Tarif d'injection fixe",
+  "tariff_marketing_eeg": "Tarif d'injection, §51 (aucun paiement si le prix est négatif)",
+  "tariff_marketing_direkt": "Vente directe (au prix du marché)",
+  "tariff_marketing_desc": "Comment l'énergie injectée est rémunérée. Sans source de prix day-ahead, ce réglage n'a aucun effet.",
+  "tariff_marketing_hint": "Selon le §51 EEG, une installation mise en service après le 25/02/2025 ne perçoit rien pour un quart d'heure à prix négatif. Injecter n'a alors aucune valeur, mais ne coûte rien non plus : écrêter n'apporte rien, seul le stockage ou l'autoconsommation le fait. En vente directe, un créneau négatif coûte de l'argent et écrêter devient rentable.",
+  "tariff_management_fee": "Frais de gestion (par kWh)",
+  "tariff_management_fee_desc": "Déduits du prix du marché par votre agrégateur.",
+  "tariff_import_follows_market": "Le prix d'achat suit le marché",
+  "tariff_import_follows_market_desc": "Uniquement pour un contrat indexé (Tibber, aWATTar, Ostrom …). À laisser désactivé pour un tarif fixe ou horosaisonnier.",
+  "tariff_supplier_markup": "Marge du fournisseur (par kWh)",
+  "tariff_grid_fees": "Tarifs d'acheminement (par kWh)",
+  "tariff_levies": "Taxes et contributions (par kWh)",
+  "tariff_vat_percent": "TVA (%)"
 }

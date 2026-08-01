@@ -40,6 +40,20 @@ Configure pricing for the [Costs](/use/costs/) screen: currency, standing charge
 rate, a default import price, and **time-of-use bands** (name, price, hour range, weekday
 selection). Add or remove bands and **Save tariff**.
 
+**Market-linked prices** is the half that needs a [price source](#day-ahead-prices):
+
+- **Export remuneration** — a fixed feed-in tariff (the default, market ignored); *§51*, where a
+  quarter-hour with a negative day-ahead price pays nothing; or *direct marketing*, where you are
+  paid the market price less a management fee. The difference matters: under §51 exporting into a
+  negative slot is **worthless but not costly**, so there is nothing to gain by curtailing — only
+  by storing or consuming the energy instead. Under direct marketing a negative slot actually
+  costs you money.
+- **Import price follows the market** — only for a spot-linked contract (Tibber, aWATTar,
+  Ostrom …). The landed price is the wholesale price plus supplier markup, grid fees and levies,
+  then VAT on the whole sum — including a negative wholesale part, as on a real invoice. Leave
+  this off for a fixed or time-of-use price; the bands above are then used, and are also the
+  fallback for any slot whose market price is unknown.
+
 ## Day-ahead prices
 
 Optionally fetch **day-ahead wholesale electricity prices** for your bidding zone. Pick a

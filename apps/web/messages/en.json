@@ -664,5 +664,20 @@
   "prices_settings_zone": "Bidding zone",
   "prices_settings_publication": "Tomorrow's prices clear around 13:00 market time and are fetched in the background; there is nothing to schedule.",
   "prices_settings_saved": "Price source saved",
-  "prices_settings_error": "Could not save the price source"
+  "prices_settings_error": "Could not save the price source",
+  "tariff_market_prices": "Market-linked prices",
+  "tariff_marketing_model": "Export remuneration",
+  "tariff_marketing_none": "Fixed feed-in tariff",
+  "tariff_marketing_eeg": "Feed-in tariff, §51 (no payment when the price is negative)",
+  "tariff_marketing_direkt": "Direct marketing (paid the market price)",
+  "tariff_marketing_desc": "How exported energy is paid for. Needs a day-ahead price source to have any effect.",
+  "tariff_marketing_hint": "Under §51 EEG a plant commissioned after 25 Feb 2025 is paid nothing for a quarter-hour whose day-ahead price was negative. Exporting then is worthless, not costly — so there is nothing to gain from curtailing, only from storing or consuming the energy instead. Under direct marketing a negative slot costs you money, and curtailing does pay.",
+  "tariff_management_fee": "Management fee (per kWh)",
+  "tariff_management_fee_desc": "Subtracted from the market price by your direct marketer.",
+  "tariff_import_follows_market": "Import price follows the market",
+  "tariff_import_follows_market_desc": "Only for a spot-linked contract (Tibber, aWATTar, Ostrom …). Leave off for a fixed or time-of-use price.",
+  "tariff_supplier_markup": "Supplier markup (per kWh)",
+  "tariff_grid_fees": "Grid fees (per kWh)",
+  "tariff_levies": "Taxes and levies (per kWh)",
+  "tariff_vat_percent": "VAT (%)"
 }

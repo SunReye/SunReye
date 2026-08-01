@@ -664,5 +664,20 @@
   "prices_settings_zone": "Gebotszone",
   "prices_settings_publication": "Die Preise für morgen werden gegen 13:00 Marktzeit veröffentlicht und im Hintergrund abgerufen; es ist nichts zu planen.",
   "prices_settings_saved": "Preisquelle gespeichert",
-  "prices_settings_error": "Preisquelle konnte nicht gespeichert werden"
+  "prices_settings_error": "Preisquelle konnte nicht gespeichert werden",
+  "tariff_market_prices": "Marktgebundene Preise",
+  "tariff_marketing_model": "Einspeisevergütung",
+  "tariff_marketing_none": "Feste Einspeisevergütung",
+  "tariff_marketing_eeg": "Einspeisevergütung, §51 (keine Zahlung bei negativem Preis)",
+  "tariff_marketing_direkt": "Direktvermarktung (Marktpreis)",
+  "tariff_marketing_desc": "Wie eingespeiste Energie vergütet wird. Wirkt nur mit einer Day-Ahead-Preisquelle.",
+  "tariff_marketing_hint": "Nach §51 EEG erhält eine nach dem 25.02.2025 in Betrieb genommene Anlage keine Vergütung für Viertelstunden mit negativem Day-Ahead-Preis. Einspeisen ist dann wertlos, aber nicht teuer — Abregeln bringt also nichts, nur Speichern oder Selbstverbrauch. In der Direktvermarktung kostet eine negative Viertelstunde Geld, dort lohnt Abregeln.",
+  "tariff_management_fee": "Managementgebühr (pro kWh)",
+  "tariff_management_fee_desc": "Wird vom Marktpreis Ihres Direktvermarkters abgezogen.",
+  "tariff_import_follows_market": "Bezugspreis folgt dem Markt",
+  "tariff_import_follows_market_desc": "Nur für einen börsengebundenen Tarif (Tibber, aWATTar, Ostrom …). Bei Fest- oder Zeittarif ausgeschaltet lassen.",
+  "tariff_supplier_markup": "Aufschlag des Anbieters (pro kWh)",
+  "tariff_grid_fees": "Netzentgelte (pro kWh)",
+  "tariff_levies": "Steuern und Abgaben (pro kWh)",
+  "tariff_vat_percent": "MwSt. (%)"
 }
