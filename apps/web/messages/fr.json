@@ -711,5 +711,7 @@
   "price_regime_waiting": "Fenêtre à venir",
   "price_regime_pre_shape": "Fait de la place",
   "price_regime_spend_down": "Trop pleine",
-  "price_regime_absorb": "Absorbe"
+  "price_regime_absorb": "Absorbe",
+  "peak_shaving_pa_pull_in_ev": "Charger la voiture pendant la fenêtre",
+  "peak_shaving_pa_pull_in_ev_desc": "Basculer les bornes connectées en charge immédiate pendant une fenêtre à prix négatif, et tant que la batterie est trop pleine pour faire de la place seule, puis rétablir le mode précédent. Cela court-circuite la planification d'EVCC, mais c'est généralement ce qui rend possible de vider la batterie à temps."
 }

@@ -711,5 +711,7 @@
   "price_regime_waiting": "Fenster voraus",
   "price_regime_pre_shape": "Schafft Platz",
   "price_regime_spend_down": "Zu voll",
-  "price_regime_absorb": "Nimmt auf"
+  "price_regime_absorb": "Nimmt auf",
+  "peak_shaving_pa_pull_in_ev": "Auto im Fenster laden",
+  "peak_shaving_pa_pull_in_ev_desc": "Angeschlossene Ladepunkte während eines Fensters mit negativen Preisen — und solange der Speicher zu voll ist, um selbst Platz zu schaffen — auf Sofortladen schalten und danach den vorherigen Modus wiederherstellen. Das übergeht die EVCC-Planung, macht das rechtzeitige Leeren des Speichers aber meist überhaupt erst möglich."
 }

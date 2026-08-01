@@ -8,6 +8,10 @@
  * holds the register; it is deleted after restore. Keys are namespaced by
  * active profile id — `${profileId}:${automationId}` — so a snapshot taken on
  * one profile is never replayed onto another profile's register.
+ *
+ * The same map also holds borrowed **EVCC loadpoint modes** (see
+ * {@link evccModeStateKey}), so that a car switched to `now` for a
+ * negative-price window is handed back even across a restart.
  */
 
 import { z } from "zod";
@@ -15,9 +19,20 @@ import { z } from "zod";
 /** `app_settings.key` under which automation runtime state is stored. */
 export const AUTOMATION_STATE_KEY = "automationState";
 
-/** One held register: the value to restore, and when it was captured. */
+/**
+ * One held thing: the value to restore, and when it was captured.
+ *
+ * `previousValue` is a union because not everything an automation takes over is
+ * a register — an EVCC loadpoint's charge *mode* is a string. Widening the field
+ * keeps the parse **total**: every row written before EV pull-in existed holds a
+ * number and still parses unchanged. Turning this record into an object with two
+ * sub-maps would have been cleaner to read and catastrophic in practice: every
+ * existing row would fail validation, `readSetting` would silently substitute
+ * the default, and a held charge-current register would lose the user's original
+ * value with no way to restore it.
+ */
 const automationSnapshotSchema = z.object({
-  previousValue: z.number(),
+  previousValue: z.union([z.number(), z.string()]),
   capturedAt: z.string(),
 });
 
@@ -31,4 +46,14 @@ export const defaultAutomationState: AutomationState = {};
 /** Compose the namespaced state key for an automation on a given profile. */
 export function automationStateKey(profileId: string, automationId: string): string {
   return `${profileId}:${automationId}`;
+}
+
+/** State key for a borrowed EVCC loadpoint mode on a given profile. */
+export function evccModeStateKey(profileId: string, loadpoint: number): string {
+  return `${profileId}:evccMode:${loadpoint}`;
+}
+
+/** A snapshot's value when it is a register number, else null. */
+export function numericSnapshot(value: number | string | undefined): number | null {
+  return typeof value === "number" ? value : null;
 }

@@ -711,5 +711,7 @@
   "price_regime_waiting": "Finestra in arrivo",
   "price_regime_pre_shape": "Sta facendo spazio",
   "price_regime_spend_down": "Troppo carica",
-  "price_regime_absorb": "In assorbimento"
+  "price_regime_absorb": "In assorbimento",
+  "peak_shaving_pa_pull_in_ev": "Ricaricare l'auto durante la finestra",
+  "peak_shaving_pa_pull_in_ev_desc": "Portare le stazioni collegate in ricarica immediata durante una finestra a prezzo negativo, e finché la batteria è troppo carica per fare spazio da sola, ripristinando poi la modalità precedente. Questo scavalca la pianificazione di EVCC, ma di solito è ciò che rende possibile svuotare la batteria in tempo."
 }

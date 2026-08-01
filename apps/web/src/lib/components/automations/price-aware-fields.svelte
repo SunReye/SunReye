@@ -95,4 +95,12 @@
 	<p class="text-xs text-muted-foreground">{m.peak_shaving_pa_shape_desc()}</p>
 </div>
 
+<div class="flex flex-col gap-1.5">
+	<div class="flex items-center justify-between gap-4">
+		<Label for="ps-pa-ev">{m.peak_shaving_pa_pull_in_ev()}</Label>
+		<Switch id="ps-pa-ev" bind:checked={cfg.pullInEv} disabled={readOnly} />
+	</div>
+	<p class="text-xs text-muted-foreground">{m.peak_shaving_pa_pull_in_ev_desc()}</p>
+</div>
+
 <NumericFieldGrid idPrefix="ps-pa" {fields} bind:values={nums} {readOnly} />

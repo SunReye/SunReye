@@ -151,7 +151,7 @@ async function buildProductionIO(deps: {
     { getAutomationConfig },
     { getWeatherConfig },
     { fetchSolarForecast, representativeHouseLoadW },
-    { evccSnapshot },
+    { evccSnapshot, evccControl },
     { liveState },
     appSettings,
   ] = await Promise.all([
@@ -171,6 +171,7 @@ async function buildProductionIO(deps: {
     getForecast: fetchSolarForecast,
     getBaselineLoadW: representativeHouseLoadW,
     getEvcc: evccSnapshot,
+    setEvccMode: (loadpoint, mode) => evccControl(loadpoint, "mode", mode),
     async getPrices() {
       const [{ getSpotPriceConfig }, { loadSpotSlice }, { spotPricesReady }] = await Promise.all([
         import("./spot-price-settings"),

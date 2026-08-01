@@ -17,7 +17,12 @@
  */
 
 import type { AutomationConfig } from "@SunReye/db/automation-config";
-import { type AutomationState, automationStateKey } from "@SunReye/db/automation-state";
+import {
+  type AutomationState,
+  automationStateKey,
+  evccModeStateKey,
+  numericSnapshot,
+} from "@SunReye/db/automation-state";
 import type { PeakShavingMode } from "@SunReye/db/automation-config";
 import type { WeatherConfig } from "@SunReye/db/weather";
 import { entityConstraint } from "@SunReye/inverter-core";
@@ -41,6 +46,7 @@ import {
   resolvePriceAwareBlockers,
 } from "./peak-shaving";
 import type { ForecastSlice } from "./slot-window";
+import { type EvPullInPlan, PULL_IN_MODE, planEvPullIn } from "./ev-pull-in";
 import type { PriceRegime } from "./price-plan";
 import type { SpotSlice } from "./spot-price";
 import {
@@ -176,6 +182,11 @@ export interface AutomationIO {
    * value, so "no data" must stay distinguishable from "the market cleared at 0".
    */
   getPrices(): Promise<SpotSlice | null>;
+  /**
+   * Set an EVCC loadpoint's charge mode. Throws when the broker is unreachable —
+   * the caller treats that as "could not claim", never as success.
+   */
+  setEvccMode(loadpoint: number, mode: string): void;
   latestSample(): InverterSample | null;
   loadState(): Promise<AutomationState>;
   saveState(next: AutomationState): Promise<void>;
@@ -284,11 +295,23 @@ function resetSteering(e: Eng): void {
  * Put one snapshotted value back. False keeps the snapshot so the next release
  * retries — a failed restore must never be forgotten, it is the user's setting.
  */
-async function replaySnapshot(e: Eng, key: string | null, value: number): Promise<boolean> {
+async function replaySnapshot(
+  e: Eng,
+  key: string | null,
+  snapshot: number | string,
+): Promise<boolean> {
   const { io, status } = e;
   // Role unmapped (profile changed): the snapshot can't be replayed — orphan
   // it rather than writing to a guessed register.
   if (!key) return false;
+  // The state map also holds non-register snapshots (borrowed EVCC modes). One
+  // landing in a register slot means the state is corrupt, so orphan it rather
+  // than coerce a string into a register write.
+  const value = numericSnapshot(snapshot);
+  if (value === null) {
+    status.lastError = "restore failed: snapshot is not a register value";
+    return false;
+  }
   const err = io.ctx.validateWrite(key, value);
   if (err) {
     status.lastError = `restore failed: ${err}`;
@@ -328,8 +351,12 @@ async function restoreSnapshot(e: Eng): Promise<void> {
 async function release(e: Eng, state: PeakShavingRunState): Promise<void> {
   e.status.state = state;
   e.status.targetA = null;
+  e.status.priceRegime = "none";
   resetSteering(e);
   await restoreSnapshot(e);
+  // Whatever ends the run — disabled, blocked, night, a stale sample — a car
+  // switched to `now` for a window must go back to the user's own mode.
+  await applyEvPullIn(e, "none", false);
 }
 
 /**
@@ -608,6 +635,76 @@ function decisionInputs(args: {
   };
 }
 
+/** Loadpoints whose mode this automation currently holds, from persisted state. */
+function heldLoadpoints(io: AutomationIO, state: AutomationState): number[] {
+  const prefix = evccModeStateKey(io.ctx.profile.id, 0).slice(0, -1);
+  return Object.keys(state)
+    .filter((k) => k.startsWith(prefix))
+    .map((k) => Number(k.slice(prefix.length)))
+    .filter((n) => Number.isInteger(n));
+}
+
+/** Record why a claim or hand-back could not be published, without throwing. */
+function noteEvError(e: Eng, error: unknown): void {
+  e.status.lastError = error instanceof Error ? error.message : String(error);
+}
+
+/** Switch each claimed loadpoint to our mode, remembering the user's first. */
+function claimModes(e: Eng, next: AutomationState, plan: EvPullInPlan, capturedAt: string): void {
+  for (const { loadpoint, previousMode } of plan.claim) {
+    try {
+      e.io.setEvccMode(loadpoint, PULL_IN_MODE);
+      next[evccModeStateKey(e.io.ctx.profile.id, loadpoint)] = {
+        previousValue: previousMode,
+        capturedAt,
+      };
+    } catch (error) {
+      // Not claimed: leave no snapshot, so the next tick simply tries again.
+      noteEvError(e, error);
+    }
+  }
+}
+
+/** Hand each released loadpoint back to the mode the user had set. */
+function releaseModes(e: Eng, next: AutomationState, plan: EvPullInPlan): void {
+  for (const loadpoint of plan.release) {
+    const slot = evccModeStateKey(e.io.ctx.profile.id, loadpoint);
+    const snap = next[slot];
+    if (!snap) continue;
+    try {
+      e.io.setEvccMode(loadpoint, String(snap.previousValue));
+      delete next[slot];
+    } catch (error) {
+      // Keep the snapshot: the car is still on our mode and must be handed back.
+      noteEvError(e, error);
+    }
+  }
+}
+
+/**
+ * Borrow (or hand back) EVCC loadpoints for a negative-price window.
+ *
+ * Every claim is snapshotted before the mode changes and the snapshot is dropped
+ * only once the mode has been handed back, so a restart mid-window still returns
+ * the car to the user's own setting. A broker error leaves the state exactly as
+ * it was: not claimed, or still held and retried next tick.
+ */
+async function applyEvPullIn(e: Eng, regime: PriceRegime, enabled: boolean): Promise<void> {
+  const state = await e.io.loadState();
+  const plan = planEvPullIn({
+    enabled,
+    regime,
+    evcc: e.io.getEvcc(),
+    heldLoadpoints: heldLoadpoints(e.io, state),
+  });
+  if (plan.claim.length === 0 && plan.release.length === 0) return;
+
+  const next = { ...state };
+  claimModes(e, next, plan, new Date(e.io.now()).toISOString());
+  releaseModes(e, next, plan);
+  await e.io.saveState(next);
+}
+
 /** Append this tick's decision + the readings behind it to the chart log. */
 function logDecision(
   e: Eng,
@@ -668,6 +765,7 @@ async function steer(
   if (ps.shadowMode) {
     e.ineffectiveTicks = 0;
     status.ineffective = false;
+    await applyEvPullIn(e, decision.priceRegime, false);
   } else {
     await writeTarget(e, key, targetA, live);
     // Feed-in ceiling: steered in grid-friendly, handed straight back in the
@@ -675,6 +773,10 @@ async function steer(
     if (ps.mode === "grid-friendly") await steerSellLimit(e, decision.thresholdW, live);
     else await releaseSellLimit(e);
     updateWatchdog(e, live, targetA, batteryV, decision.headroomKwh);
+    // Commanding the car is a real write, so a dry run must not do it — but a
+    // *held* loadpoint still has to be handed back if the run turns dry, which
+    // the release path below does by passing `enabled: false`.
+    await applyEvPullIn(e, decision.priceRegime, ps.priceAware.pullInEv);
   }
   logDecision(e, decision, live, { shadow: ps.shadowMode, targetA, batteryV, evcc });
 }

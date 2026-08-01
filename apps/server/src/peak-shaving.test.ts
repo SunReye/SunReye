@@ -1023,6 +1023,8 @@ function harness(over: { config?: AutomationConfig; prices?: SpotSlice | null } 
   let cfg = over.config ?? config();
   let wx = weather();
   let prices: SpotSlice | null = over.prices ?? null;
+  const evccModes: { loadpoint: number; mode: string }[] = [];
+  let evccModeError: string | null = null;
   let fc: SolarForecast | null = asForecast(slice(12, [6000, 6000, 6000, 6000]));
   let ev: EvccState | null = null;
   let baselineLoadW: number | null = null;
@@ -1052,6 +1054,10 @@ function harness(over: { config?: AutomationConfig; prices?: SpotSlice | null } 
       // No price feed unless a case installs one: every existing engine test
       // must keep exercising the unchanged shaving path.
       getPrices: async () => prices,
+      setEvccMode: (loadpoint, mode) => {
+        if (evccModeError) throw new Error(evccModeError);
+        evccModes.push({ loadpoint, mode });
+      },
       getWeather: async () => wx,
       getForecast: async () => fc,
       getBaselineLoadW: async () => baselineLoadW,

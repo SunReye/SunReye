@@ -711,5 +711,7 @@
   "price_regime_waiting": "Ventana próxima",
   "price_regime_pre_shape": "Haciendo hueco",
   "price_regime_spend_down": "Demasiado llena",
-  "price_regime_absorb": "Absorbiendo"
+  "price_regime_absorb": "Absorbiendo",
+  "peak_shaving_pa_pull_in_ev": "Cargar el coche durante la ventana",
+  "peak_shaving_pa_pull_in_ev_desc": "Poner los cargadores conectados en carga inmediata durante una ventana de precio negativo, y mientras la batería esté demasiado llena para hacer hueco por sí sola, restaurando después el modo anterior. Esto anula la planificación de EVCC, pero suele ser lo único que permite vaciar la batería a tiempo."
 }

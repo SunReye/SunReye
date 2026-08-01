@@ -202,6 +202,12 @@ own page. Alongside its two modes it has a **negative-price windows** section:
   under §51 EEG, so storing it is the only way to keep its value.
 - **Hold the battery low before a window** — charges as much as possible, as late as possible,
   rather than simply stopping: pre-window PV *is* paid for, and the reserve floor still applies.
+- **Charge the car during a window** — switches connected [EVCC](/integrations/evcc/) chargers to
+  immediate charging inside a window, and while the battery is too full to make room on its own,
+  restoring the previous mode afterwards. Off by default: it overrides EVCC's own plan. But it is
+  usually what makes emptying the battery in time possible at all — a house alone cannot absorb
+  enough in the hours before a window, and a car that wants energy anyway can. The borrowed mode
+  is remembered on disk, so a restart mid-window still hands the car back.
 - Thresholds for what counts as negative, the shortest window worth acting on, how far ahead to
   plan, how much feed-in to allow during a window, and a reserve margin.
 
