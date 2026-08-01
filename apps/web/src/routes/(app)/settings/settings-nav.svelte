@@ -8,6 +8,7 @@
 	import BroadcastIcon from 'phosphor-svelte/lib/Broadcast';
 	import MonitorIcon from 'phosphor-svelte/lib/Monitor';
 	import ReceiptIcon from 'phosphor-svelte/lib/Receipt';
+	import ChartLineIcon from 'phosphor-svelte/lib/ChartLine';
 	import CloudSunIcon from 'phosphor-svelte/lib/CloudSun';
 	import ShieldCheckIcon from 'phosphor-svelte/lib/ShieldCheck';
 	import StackIcon from 'phosphor-svelte/lib/Stack';
@@ -38,6 +39,7 @@
 			items: [
 				{ href: '/settings/display', label: m.settings_tab_display(), icon: MonitorIcon },
 				{ href: '/settings/tariff', label: m.settings_tab_tariff(), icon: ReceiptIcon },
+				{ href: '/settings/prices', label: m.settings_tab_prices(), icon: ChartLineIcon },
 				{ href: '/settings/weather', label: m.settings_tab_weather(), icon: CloudSunIcon }
 			]
 		},

@@ -38,6 +38,26 @@ toggle and two charts:
 - **Net cost per day** — a horizontal bar per day (green bars for credit days).
 - **Import by tariff band** — kWh and cost per time-of-use band, when bands are configured.
 
+## Day-ahead prices
+
+When a [price source](/use/settings/) is configured, the bottom of the screen shows the
+wholesale day-ahead price for today and tomorrow in ct/kWh, and — the reason the panel
+exists — lists the **negative-price windows**. Under §51 EEG a plant commissioned after
+2025-02-25 receives no feed-in payment for a quarter-hour whose price was negative, so those
+windows are the hours worth planning around: energy exported then earns nothing, while energy
+stored or consumed keeps its full value.
+
+Windows are grouped per day and split at midnight, since "tonight" and "tomorrow morning" are
+separate things to act on. Two things the panel deliberately will *not* claim:
+
+- Before tomorrow's auction clears (~13:00 market time) it does not say "no negative prices" —
+  an empty list then means *unknown*.
+- With an hourly price source it says so, because a negative quarter-hour inside a
+  net-positive hour cannot be resolved from hourly data.
+
+This panel is forward-looking and independent of the range picker above it. Historical costing
+still prices export at the configured flat feed-in rate.
+
 ## Configuring the tariff
 
 Set currency, standing charge, feed-in rate, a default import price, and time-of-use import

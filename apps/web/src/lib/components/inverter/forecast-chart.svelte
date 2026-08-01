@@ -31,6 +31,8 @@
 	import * as Chart from '$lib/components/ui/chart';
 	import ChartLegend from '$lib/components/inverter/chart-legend.svelte';
 	import ForecastTooltip from './forecast-tooltip.svelte';
+	import { seriesConfig } from './_shared/chart-series';
+	import { canvasHighlight } from './_shared/canvas-highlight.svelte';
 	import * as m from '$lib/paraglide/messages';
 
 	let {
@@ -112,22 +114,14 @@
 		{ key: 'actual', label: m.weather_forecast_actual(), color: 'var(--color-energy-solar)' }
 	]);
 
-	const config: Chart.ChartConfig = Object.fromEntries(
-		series.map((s) => [s.key, { label: s.label, color: s.color }])
-	);
+	const config = seriesConfig(series);
 
-	// The hovered-band highlight. In the SVG charts this comes from the
-	// `.lc-highlight-area` CSS rule (a translucent currentColor wash), but the
-	// canvas renderer can't read that rule and falls back to an opaque fill —
-	// an ugly solid bar. Feed it a concrete colour (the resolved foreground,
-	// read off the mounted container) at a low opacity so it matches the other
-	// charts' subtle band.
-	let wrapEl = $state<HTMLDivElement | null>(null);
-	const highlightFill = $derived(wrapEl ? getComputedStyle(wrapEl).color : 'oklch(0.556 0 0)');
+	// Canvas can't read the `.lc-highlight-area` CSS wash; see canvasHighlight.
+	const highlight = canvasHighlight();
 </script>
 
 {#if hasData}
-	<div class="flex min-w-0 flex-col gap-3" bind:this={wrapEl}>
+	<div class="flex min-w-0 flex-col gap-3" bind:this={highlight.el}>
 		<Chart.Container {config} class="h-64 w-full min-w-0">
 			<BarChart
 				data={view}
@@ -137,7 +131,7 @@
 				bandPadding={0.15}
 				padding={{ top: 8, right: 8, bottom: 20, left: 40 }}
 				props={{ xAxis: { ticks: 7 } }}
-				highlight={{ area: { fill: highlightFill, fillOpacity: 0.1 } }}
+				highlight={{ area: { fill: highlight.fill, fillOpacity: 0.1 } }}
 			>
 				{#snippet tooltip()}
 					<ForecastTooltip {stepMinutes} />

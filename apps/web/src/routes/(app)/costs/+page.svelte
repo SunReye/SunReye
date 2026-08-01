@@ -10,6 +10,7 @@
 	import { resolveCostPreset, type CostBucket, type CostRange } from '$lib/cost/ranges';
 	import CostTiles from './cost-tiles.svelte';
 	import BandBreakdown from './band-breakdown.svelte';
+	import PricePanel from '$lib/components/prices/price-panel.svelte';
 
 	// One bar of the contextual chart. Mirrors the server's CostSeriesPoint.
 	type SeriesPoint = {
@@ -232,4 +233,9 @@
 		<!-- Import by band -->
 		<BandBreakdown title={m.costs_import_by_band()} rows={bandRows} />
 	{/if}
+
+	<!-- Day-ahead prices: forward-looking, so deliberately outside the range-driven
+	     block above and outside the `cost` guard — it is worth seeing on a fresh
+	     install with no priced history yet. Renders nothing when the feed is off. -->
+	<PricePanel />
 </div>
