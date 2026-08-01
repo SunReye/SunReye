@@ -27,14 +27,8 @@
  */
 
 import { HOUR_MS, type SlotFlows, flowStep } from "./energy-flow";
-import {
-  type DecisionInputs,
-  type ForecastSlice,
-  type ForecastSlot,
-  NEAR_FULL_KWH,
-  decideTargetA,
-  remainingSlotsToday,
-} from "./peak-shaving";
+import { type DecisionInputs, NEAR_FULL_KWH, decideTargetA } from "./peak-shaving";
+import { type ForecastSlice, type ForecastSlot, remainingSlotsToday } from "./slot-window";
 
 const DAY_MS = 86_400_000;
 

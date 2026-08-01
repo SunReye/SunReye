@@ -17,7 +17,7 @@ import type { WeatherConfig } from "@SunReye/db/weather";
 import type { CanonicalRole, InverterProfile } from "@SunReye/inverter-core";
 import { HOUR_MS } from "./energy-flow";
 import type { EvccState } from "./evcc";
-import type { SolarForecastPoint } from "./solar-forecast";
+import { type ForecastSlice, remainingSlotsToday } from "./slot-window";
 
 /** Battery this close to full (kWh headroom) → drop to the top-balance floor. */
 export const NEAR_FULL_KWH = 0.2;
@@ -112,13 +112,6 @@ export function validateAutomationEnable(
 
 // --- Pure decision math -------------------------------------------------------
 
-/** The slice of a forecast the decision needs (raw/uncurtailed view). */
-export interface ForecastSlice {
-  series: SolarForecastPoint[];
-  stepMinutes: number;
-  utcOffsetSeconds: number;
-}
-
 /** The EV picture the decision accounts for (zeros when EVCC is off/unreachable). */
 export interface EvInputs {
   /** Live EV charge power across all loadpoints, W. */
@@ -208,54 +201,6 @@ export interface Decision {
   liveExcessW: number;
   /** True when the forecast was unavailable and only live shaving ran. */
   degraded: boolean;
-}
-
-/**
- * Width of the slot starting at `startMs`, ms: the gap to the next slot's local
- * time, but never wider than an hour — a series gap (e.g. a day boundary) must
- * not stretch a slot across it. Falls back to the nominal step at the tail.
- */
-function slotWidthMs(
-  startMs: number,
-  nextTime: string | undefined,
-  offsetMs: number,
-  fallbackWidthMs: number,
-): number {
-  if (nextTime === undefined) return fallbackWidthMs;
-  const gap = Date.parse(`${nextTime}:00Z`) - offsetMs - startMs;
-  return gap > 0 && gap <= HOUR_MS ? gap : fallbackWidthMs;
-}
-
-/** A forecast slot still ahead of a reference time. */
-export interface ForecastSlot {
-  /** Slot start, epoch ms. */
-  startMs: number;
-  /** The part of the slot still ahead of the reference time, ms. */
-  remainingMs: number;
-  /** Raw (uncurtailed) forecast power for the slot, W. */
-  watts: number;
-}
-
-/**
- * Future slots of the plant-local calendar day, oldest first, with the running
- * slot prorated by the fraction still ahead (mirrors `remainingTodayKwh` in
- * solar-forecast). The one place slot geometry lives: both the shave threshold's
- * surplus integral and the forward projection walk the day through this.
- */
-export function remainingSlotsToday(view: ForecastSlice, fromMs: number): ForecastSlot[] {
-  const offsetMs = view.utcOffsetSeconds * 1000;
-  const today = new Date(fromMs + offsetMs).toISOString().slice(0, 10);
-  const fallbackWidth = view.stepMinutes * 60_000;
-  const slots: ForecastSlot[] = [];
-  for (const [i, point] of view.series.entries()) {
-    if (!point.time.startsWith(today)) continue;
-    const startMs = Date.parse(`${point.time}:00Z`) - offsetMs;
-    const width = slotWidthMs(startMs, view.series[i + 1]?.time, offsetMs, fallbackWidth);
-    const remainingMs = Math.min(startMs + width - fromMs, width);
-    if (remainingMs <= 0) continue;
-    slots.push({ startMs, remainingMs, watts: point.watts });
-  }
-  return slots;
 }
 
 /**

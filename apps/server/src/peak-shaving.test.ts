@@ -8,12 +8,12 @@ import type { AutomationState } from "@SunReye/db/automation-state";
 import { type WeatherConfig, weatherConfigSchema } from "@SunReye/db/weather";
 import type { InverterProfile, InverterSample, MetricDef } from "@SunReye/inverter-core";
 import {
-  type ForecastSlice,
   decideTargetA,
   evccAutomationInputs,
   resolvePeakShavingBlockers,
   validateAutomationEnable,
 } from "./peak-shaving";
+import type { ForecastSlice } from "./slot-window";
 import { type DecisionPoint, createDecisionLog } from "./automation-history";
 import { projectPeakShaving } from "./peak-shaving-plan";
 import { type AutomationIO, createPeakShavingEngine } from "./peak-shaving-engine";

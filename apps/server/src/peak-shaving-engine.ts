@@ -31,7 +31,6 @@ import {
   type Decision,
   type DecisionInputs,
   type EvInputs,
-  type ForecastSlice,
   NEAR_FULL_KWH,
   SELL_LIMIT_ROLE,
   decideTargetA,
@@ -39,6 +38,7 @@ import {
   keyForRole,
   resolvePeakShavingBlockers,
 } from "./peak-shaving";
+import type { ForecastSlice } from "./slot-window";
 import {
   type PeakShavingPlans,
   type PlanLimits,
