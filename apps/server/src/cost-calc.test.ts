@@ -103,3 +103,42 @@ describe("resolveRange", () => {
     expect(from.getDate()).toBe(1);
   });
 });
+
+describe("§51 zero-value export", () => {
+  const hour = (iso: string, exported: number) => ({
+    time: new Date(iso),
+    import: 0,
+    export: exported,
+    load: 0,
+    production: exported,
+    batteryDischarge: 0,
+  });
+  const tariff = tariffConfigSchema.parse({ export: { feedInPerKwh: 0.08 } });
+
+  test("a fully negative hour earns nothing and is reported as such", () => {
+    const totals = allocateCost([hour("2026-08-02T13:00:00", 4)], tariff, 1, () => 1);
+    expect(totals.exportEarnings).toBe(0);
+    expect(totals.zeroValueExportKwh).toBeCloseTo(4, 10);
+    // And says what that cost: 4 kWh that would have earned 8 ct each.
+    expect(totals.zeroValueExportEur).toBeCloseTo(4 * 0.08, 10);
+  });
+
+  test("a partly negative hour is prorated", () => {
+    // Two of four quarter-hours negative: half the export earns the tariff.
+    const totals = allocateCost([hour("2026-08-02T13:00:00", 4)], tariff, 1, () => 0.5);
+    expect(totals.exportEarnings).toBeCloseTo(2 * 0.08, 10);
+    expect(totals.zeroValueExportKwh).toBeCloseTo(2, 10);
+  });
+
+  test("without the share, pricing is exactly as before", () => {
+    const totals = allocateCost([hour("2026-08-02T13:00:00", 4)], tariff, 1);
+    expect(totals.exportEarnings).toBeCloseTo(4 * 0.08, 10);
+    expect(totals.zeroValueExportKwh).toBe(0);
+  });
+
+  test("the net figure rises by exactly the lost earnings", () => {
+    const paid = allocateCost([hour("2026-08-02T13:00:00", 4)], tariff, 1);
+    const unpaid = allocateCost([hour("2026-08-02T13:00:00", 4)], tariff, 1, () => 1);
+    expect(unpaid.net - paid.net).toBeCloseTo(4 * 0.08, 10);
+  });
+});

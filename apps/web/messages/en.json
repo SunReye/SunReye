@@ -713,5 +713,8 @@
   "price_regime_spend_down": "Too full",
   "price_regime_absorb": "Absorbing",
   "peak_shaving_pa_pull_in_ev": "Charge the car during a window",
-  "peak_shaving_pa_pull_in_ev_desc": "Switch connected chargers to immediate charging during a negative-price window, and while the battery is too full to make room on its own — then restore the previous mode. This overrides EVCC's own plan, but it is usually what makes emptying the battery in time possible at all."
+  "peak_shaving_pa_pull_in_ev_desc": "Switch connected chargers to immediate charging during a negative-price window, and while the battery is too full to make room on its own — then restore the previous mode. This overrides EVCC's own plan, but it is usually what makes emptying the battery in time possible at all.",
+  "costs_tile_zero_value": "Exported for nothing",
+  "costs_sub_zero_value": "{amount} of feed-in forgone (§51)",
+  "costs_tile_zero_value_explain": "Energy exported during quarter-hours whose day-ahead price was negative. Under §51 EEG a plant commissioned after 25 Feb 2025 receives no feed-in payment for it. Storing or consuming that energy instead is the only way to keep its value."
 }

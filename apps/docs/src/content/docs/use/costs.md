@@ -55,8 +55,21 @@ separate things to act on. Two things the panel deliberately will *not* claim:
 - With an hourly price source it says so, because a negative quarter-hour inside a
   net-positive hour cannot be resolved from hourly data.
 
-This panel is forward-looking and independent of the range picker above it. Historical costing
-still prices export at the configured flat feed-in rate.
+This panel is forward-looking and independent of the range picker above it.
+
+### Export that earned nothing
+
+With the export marketing model set to **§51** (Settings → Tariff), the headline tiles gain
+**Exported for nothing**: the kWh sent to the grid during negative quarter-hours, and the
+feed-in revenue that forwent. The tile only appears once there is something to report.
+
+The figure is exact to the hour and prorated within it — export counters are read hourly, so an
+hour with two negative quarter-hours has half its export priced at zero. Export within a sunny
+hour is smooth, so the approximation is small against the number it produces.
+
+Long ranges are the exception: the month-bucketed series groups by hour-of-day and weekday,
+which cannot distinguish 14:00 on the 3rd from 14:00 on the 17th. Those keep pricing export at
+the flat feed-in rate rather than reporting a figure that looks precise and isn't.
 
 ## Configuring the tariff
 

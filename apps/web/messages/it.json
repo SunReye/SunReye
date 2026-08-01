@@ -713,5 +713,8 @@
   "price_regime_spend_down": "Troppo carica",
   "price_regime_absorb": "In assorbimento",
   "peak_shaving_pa_pull_in_ev": "Ricaricare l'auto durante la finestra",
-  "peak_shaving_pa_pull_in_ev_desc": "Portare le stazioni collegate in ricarica immediata durante una finestra a prezzo negativo, e finché la batteria è troppo carica per fare spazio da sola, ripristinando poi la modalità precedente. Questo scavalca la pianificazione di EVCC, ma di solito è ciò che rende possibile svuotare la batteria in tempo."
+  "peak_shaving_pa_pull_in_ev_desc": "Portare le stazioni collegate in ricarica immediata durante una finestra a prezzo negativo, e finché la batteria è troppo carica per fare spazio da sola, ripristinando poi la modalità precedente. Questo scavalca la pianificazione di EVCC, ma di solito è ciò che rende possibile svuotare la batteria in tempo.",
+  "costs_tile_zero_value": "Immesso a vuoto",
+  "costs_sub_zero_value": "{amount} di remunerazione persa (§51)",
+  "costs_tile_zero_value_explain": "Energia immessa in quarti d'ora con prezzo day-ahead negativo. Secondo il §51 EEG un impianto entrato in servizio dopo il 25/02/2025 non riceve nulla per essa. Accumularla o autoconsumarla è l'unico modo di conservarne il valore."
 }

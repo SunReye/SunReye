@@ -713,5 +713,8 @@
   "price_regime_spend_down": "Trop pleine",
   "price_regime_absorb": "Absorbe",
   "peak_shaving_pa_pull_in_ev": "Charger la voiture pendant la fenêtre",
-  "peak_shaving_pa_pull_in_ev_desc": "Basculer les bornes connectées en charge immédiate pendant une fenêtre à prix négatif, et tant que la batterie est trop pleine pour faire de la place seule, puis rétablir le mode précédent. Cela court-circuite la planification d'EVCC, mais c'est généralement ce qui rend possible de vider la batterie à temps."
+  "peak_shaving_pa_pull_in_ev_desc": "Basculer les bornes connectées en charge immédiate pendant une fenêtre à prix négatif, et tant que la batterie est trop pleine pour faire de la place seule, puis rétablir le mode précédent. Cela court-circuite la planification d'EVCC, mais c'est généralement ce qui rend possible de vider la batterie à temps.",
+  "costs_tile_zero_value": "Injecté pour rien",
+  "costs_sub_zero_value": "{amount} de rémunération perdue (§51)",
+  "costs_tile_zero_value_explain": "Énergie injectée pendant des quarts d'heure à prix day-ahead négatif. Selon le §51 EEG, une installation mise en service après le 25/02/2025 ne perçoit rien pour cela. La stocker ou la consommer est le seul moyen d'en conserver la valeur."
 }

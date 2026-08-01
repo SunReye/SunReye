@@ -112,6 +112,20 @@
 				accent: '',
 				explain: m.costs_tile_grid_cost_explain()
 			},
+			// Only once §51 has actually cost something: on a plant that never opted
+			// in, or a day with no negative slots, the tile would be a permanent zero.
+			...(c.zeroValueExportKwh > 0
+				? [
+						{
+							id: 'zeroValueExport',
+							label: m.costs_tile_zero_value(),
+							value: kwh(c.zeroValueExportKwh),
+							sub: m.costs_sub_zero_value({ amount: money(c.zeroValueExportEur) }),
+							accent: '',
+							explain: m.costs_tile_zero_value_explain()
+						}
+					]
+				: []),
 			{
 				id: 'effectiveCost',
 				label: m.costs_tile_effective_cost(),

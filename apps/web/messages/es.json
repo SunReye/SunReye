@@ -713,5 +713,8 @@
   "price_regime_spend_down": "Demasiado llena",
   "price_regime_absorb": "Absorbiendo",
   "peak_shaving_pa_pull_in_ev": "Cargar el coche durante la ventana",
-  "peak_shaving_pa_pull_in_ev_desc": "Poner los cargadores conectados en carga inmediata durante una ventana de precio negativo, y mientras la batería esté demasiado llena para hacer hueco por sí sola, restaurando después el modo anterior. Esto anula la planificación de EVCC, pero suele ser lo único que permite vaciar la batería a tiempo."
+  "peak_shaving_pa_pull_in_ev_desc": "Poner los cargadores conectados en carga inmediata durante una ventana de precio negativo, y mientras la batería esté demasiado llena para hacer hueco por sí sola, restaurando después el modo anterior. Esto anula la planificación de EVCC, pero suele ser lo único que permite vaciar la batería a tiempo.",
+  "costs_tile_zero_value": "Vertido sin retribución",
+  "costs_sub_zero_value": "{amount} de retribución perdida (§51)",
+  "costs_tile_zero_value_explain": "Energía vertida en cuartos de hora con precio negativo del mercado diario. Según el §51 EEG, una instalación puesta en servicio después del 25/02/2025 no percibe nada por ella. Almacenarla o consumirla es la única forma de conservar su valor."
 }

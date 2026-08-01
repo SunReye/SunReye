@@ -18,6 +18,23 @@ export interface HourEnergy {
   batteryDischarge: number;
 }
 
+/**
+ * Share of an hour that fell in quarter-hours with a negative day-ahead price,
+ * 0–1. Under §51 EEG a plant commissioned after 2025-02-25 is paid nothing for
+ * energy exported then, so that share of the hour's export earns no feed-in
+ * tariff.
+ *
+ * Kept beside {@link HourEnergy} rather than inside it: that type is the shape
+ * of the plant's *energy counters*, each field mapped to a canonical metric
+ * role, and a price fact has no role to map to.
+ *
+ * Approximate by construction — it assumes export was spread evenly across the
+ * hour, because the export counter is only read hourly. Export within a sunny
+ * hour is smooth, so the error is second-order against the figure it produces
+ * ("you received 0 ct for 3.2 kWh").
+ */
+export type ZeroValueShare = (hour: Date) => number;
+
 const AVG_DAYS_PER_MONTH = 30.4375;
 const clamp01 = (n: number): number => Math.min(1, Math.max(0, n));
 
@@ -34,6 +51,19 @@ export interface CostTotals {
   productionKwh: number;
   importCost: number;
   exportEarnings: number;
+  /**
+   * Exported energy that earned nothing because its quarter-hour cleared at a
+   * negative day-ahead price (§51 EEG). Zero unless the tariff is in spot mode
+   * with the `eegFeedIn` marketing model.
+   */
+  zeroValueExportKwh: number;
+  /**
+   * Feed-in revenue forgone on {@link zeroValueExportKwh} — what that energy
+   * would have earned at the ordinary tariff. Computed here because this is
+   * where the rate is known; the client must not have to read the tariff (which
+   * is admin-only) just to render the figure.
+   */
+  zeroValueExportEur: number;
   standingCharge: number;
   /** importCost − exportEarnings + standingCharge. */
   net: number;
@@ -73,10 +103,47 @@ export interface CostBreakdown extends CostTotals {
  * Price a list of hourly energy figures against a tariff. `rangeDays` prorates
  * the monthly standing charge.
  */
+/** Fold one hour into its calendar day's running totals. */
+function addToDay(
+  days: Map<string, CostTotals["byDay"][number]>,
+  h: HourEnergy,
+  money: { importCost: number; exportEarnings: number },
+): void {
+  const key = dateKey(h.time);
+  const day = days.get(key) ?? {
+    date: key,
+    importKwh: 0,
+    exportKwh: 0,
+    importCost: 0,
+    exportEarnings: 0,
+    net: 0,
+  };
+  day.importKwh += h.import;
+  day.exportKwh += h.export;
+  day.importCost += money.importCost;
+  day.exportEarnings += money.exportEarnings;
+  day.net = day.importCost - day.exportEarnings;
+  days.set(key, day);
+}
+
+/** Fold one hour's import into its time-of-use band. */
+function addToBand(
+  bands: Map<string, { name: string; importKwh: number; cost: number }>,
+  name: string,
+  importKwh: number,
+  cost: number,
+): void {
+  const band = bands.get(name) ?? { name, importKwh: 0, cost: 0 };
+  band.importKwh += importKwh;
+  band.cost += cost;
+  bands.set(name, band);
+}
+
 export function allocateCost(
   hours: HourEnergy[],
   tariff: TariffConfig,
   rangeDays: number,
+  zeroValueShare?: ZeroValueShare,
 ): CostTotals {
   let importKwh = 0;
   let exportKwh = 0;
@@ -84,6 +151,8 @@ export function allocateCost(
   let productionKwh = 0;
   let importCost = 0;
   let exportEarnings = 0;
+  let zeroValueExportKwh = 0;
+  let zeroValueExportEur = 0;
   let gridOnlyCost = 0;
   const days = new Map<string, CostTotals["byDay"][number]>();
   const bands = new Map<string, { name: string; importKwh: number; cost: number }>();
@@ -93,7 +162,12 @@ export function allocateCost(
     const price = band?.pricePerKwh ?? tariff.import.defaultPricePerKwh;
     const bandName = band?.name ?? "Standard";
     const hourImportCost = h.import * price;
-    const hourEarnings = h.export * tariff.export.feedInPerKwh;
+    // §51: the negative-price share of the hour earns nothing.
+    const paidShare = 1 - clamp01(zeroValueShare?.(h.time) ?? 0);
+    const hourEarnings = h.export * tariff.export.feedInPerKwh * paidShare;
+    const lostKwh = h.export * (1 - paidShare);
+    zeroValueExportKwh += lostKwh;
+    zeroValueExportEur += lostKwh * tariff.export.feedInPerKwh;
 
     importKwh += h.import;
     exportKwh += h.export;
@@ -103,26 +177,8 @@ export function allocateCost(
     exportEarnings += hourEarnings;
     gridOnlyCost += h.load * price;
 
-    const key = dateKey(h.time);
-    const day = days.get(key) ?? {
-      date: key,
-      importKwh: 0,
-      exportKwh: 0,
-      importCost: 0,
-      exportEarnings: 0,
-      net: 0,
-    };
-    day.importKwh += h.import;
-    day.exportKwh += h.export;
-    day.importCost += hourImportCost;
-    day.exportEarnings += hourEarnings;
-    day.net = day.importCost - day.exportEarnings;
-    days.set(key, day);
-
-    const b = bands.get(bandName) ?? { name: bandName, importKwh: 0, cost: 0 };
-    b.importKwh += h.import;
-    b.cost += hourImportCost;
-    bands.set(bandName, b);
+    addToDay(days, h, { importCost: hourImportCost, exportEarnings: hourEarnings });
+    addToBand(bands, bandName, h.import, hourImportCost);
   }
 
   const standingCharge = (tariff.standingChargeMonthly * rangeDays) / AVG_DAYS_PER_MONTH;
@@ -133,6 +189,8 @@ export function allocateCost(
     productionKwh,
     importCost,
     exportEarnings,
+    zeroValueExportKwh,
+    zeroValueExportEur,
     standingCharge,
     net: importCost - exportEarnings + standingCharge,
     gridOnlyCost,

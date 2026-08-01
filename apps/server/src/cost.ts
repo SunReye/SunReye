@@ -12,10 +12,17 @@
  */
 
 import { db } from "@SunReye/db";
+import type { TariffConfig } from "@SunReye/db/tariff";
 import { importPriceForHour } from "@SunReye/db/tariff";
 import type { CanonicalRole, InverterProfile, InverterSample } from "@SunReye/inverter-core";
 import { sql } from "drizzle-orm";
-import { type CostBreakdown, type CostTotals, type HourEnergy, allocateCost } from "./cost-calc";
+import {
+  type CostBreakdown,
+  type CostTotals,
+  type HourEnergy,
+  type ZeroValueShare,
+  allocateCost,
+} from "./cost-calc";
 import type { EnergyTotals } from "./energy-calc";
 import { getTariff } from "./settings";
 import { liveState } from "./state";
@@ -545,6 +552,49 @@ function reportLiveTodayTotals(totals: CostTotals, today: Partial<EnergyTotals>)
   };
 }
 
+/**
+ * How much of each hour cleared at a negative day-ahead price, for §51 pricing.
+ *
+ * Returns undefined — meaning "price export normally" — unless the tariff is
+ * actually in spot mode under the `eegFeedIn` marketing model. A plant that
+ * never opted in pays for no price lookup and its figures are unchanged.
+ *
+ * Built on the *hourly* path deliberately. `fetchCounterDeltaMatrix` groups by
+ * (period, hour-of-day, weekday), which collapses "14:00 on the 3rd" and "14:00
+ * on the 17th" into one bucket — there is no single spot price to apply to that,
+ * and the error would be unbounded rather than a rounding.
+ */
+async function zeroValueShareFor(
+  tariff: TariffConfig,
+  from: Date,
+  to: Date,
+): Promise<ZeroValueShare | undefined> {
+  if (tariff.export.mode !== "spot" || tariff.export.spot.marketingModel !== "eegFeedIn") {
+    return undefined;
+  }
+  const [{ getSpotPrices }, { getSpotPriceConfig }] = await Promise.all([
+    import("@SunReye/db/spot-price"),
+    import("./spot-price-settings"),
+  ]);
+  const rows = await getSpotPrices((await getSpotPriceConfig()).zone, from, to);
+  if (rows.length === 0) return undefined;
+
+  // Slots per hour, and how many were negative. An hour with no stored price
+  // contributes nothing: unknown is not "negative".
+  const byHour = new Map<number, { negative: number; total: number }>();
+  for (const row of rows) {
+    const hourStart = new Date(row.slotStart).setMinutes(0, 0, 0);
+    const seen = byHour.get(hourStart) ?? { negative: 0, total: 0 };
+    seen.total += 1;
+    if (row.eurPerMwh < 0) seen.negative += 1;
+    byHour.set(hourStart, seen);
+  }
+  return (hour: Date) => {
+    const seen = byHour.get(new Date(hour).setMinutes(0, 0, 0));
+    return seen ? seen.negative / seen.total : 0;
+  };
+}
+
 /** Full cost breakdown for an explicit [from, to) window. */
 export async function computeCost(
   profile: InverterProfile,
@@ -558,7 +608,12 @@ export async function computeCost(
   const tariff = await getTariff();
   const hours = await fetchHourlyEnergy(profile, inverterId, opts.from, opts.to);
   const rangeDays = Math.max(0, (opts.to.getTime() - opts.from.getTime()) / 86_400_000);
-  const totals = allocateCost(hours, tariff, rangeDays);
+  const totals = allocateCost(
+    hours,
+    tariff,
+    rangeDays,
+    await zeroValueShareFor(tariff, opts.from, opts.to),
+  );
 
   // Current-day window only: report the ENERGY kWh from the live *.today
   // registers (which lead the coarse cross-bucket *.total delta for the
