@@ -16,18 +16,23 @@ const DAY_MS = 86_400_000;
 /** Fallback slot width when a curve holds a single row and cannot be measured. */
 const DEFAULT_SLOT_MS = 900_000;
 
-/** Local `HH:mm` of an instant. */
-const hhmm = (ms: number): string => {
-  const d = new Date(ms);
-  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
-};
+/**
+ * An instant as market-local wall clock. The analytics endpoint reports
+ * instants, while every other price figure on the page is market-local (the
+ * curve labels, the day headers) — reading these in the *viewer's* zone instead
+ * put the same negative run at two different times on one screen whenever the
+ * two zones differ.
+ */
+const marketTime = (ms: number, utcOffsetSeconds: number): Date =>
+  new Date(ms + utcOffsetSeconds * 1000);
 
-/** Local `YYYY-MM-DD` of an instant. */
-const isoDate = (ms: number): string => {
-  const d = new Date(ms);
-  const month = String(d.getMonth() + 1).padStart(2, "0");
-  return `${d.getFullYear()}-${month}-${String(d.getDate()).padStart(2, "0")}`;
-};
+/** Market-local `HH:mm` of an instant. */
+const hhmm = (ms: number, utcOffsetSeconds: number): string =>
+  marketTime(ms, utcOffsetSeconds).toISOString().slice(11, 16);
+
+/** Market-local `YYYY-MM-DD` of an instant. */
+const isoDate = (ms: number, utcOffsetSeconds: number): string =>
+  marketTime(ms, utcOffsetSeconds).toISOString().slice(0, 10);
 
 /**
  * Start of the history list: the trailing `days` of the picked window, never
@@ -50,6 +55,8 @@ export function historySince(from: Date, to: Date, days: number): number {
 export function historyWindows(
   windows: readonly SpotNegativeWindow[],
   sinceMs: number,
+  /** Market offset from UTC, as `/api/prices` reports it. */
+  utcOffsetSeconds: number,
 ): NegativeWindow[] {
   return windows
     .map((w) => ({ ...w, startMs: Date.parse(w.start), endMs: Date.parse(w.end) }))
@@ -57,9 +64,9 @@ export function historyWindows(
     .map((w) => ({
       startMs: w.startMs,
       endMs: w.endMs,
-      from: hhmm(w.startMs),
-      to: hhmm(w.endMs),
-      date: isoDate(w.startMs),
+      from: hhmm(w.startMs, utcOffsetSeconds),
+      to: hhmm(w.endMs, utcOffsetSeconds),
+      date: isoDate(w.startMs, utcOffsetSeconds),
       slots: w.slots,
       minCtPerKwh: ctPerKwh(w.minEurPerMwh),
     }));

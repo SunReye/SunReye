@@ -44,10 +44,10 @@ describe("historyWindows", () => {
     slots,
   });
 
-  test("converts instants and prices to the panel's local ct/kWh shape", () => {
-    const start = new Date("2026-08-02T13:00:00").toISOString();
-    const end = new Date("2026-08-02T14:30:00").toISOString();
-    const [w] = historyWindows([window(start, end)], 0);
+  test("converts instants and prices to the panel's market-local ct/kWh shape", () => {
+    const start = "2026-08-02T13:00:00Z";
+    const end = "2026-08-02T14:30:00Z";
+    const [w] = historyWindows([window(start, end)], 0, 0);
     expect(w).toEqual({
       startMs: Date.parse(start),
       endMs: Date.parse(end),
@@ -59,11 +59,19 @@ describe("historyWindows", () => {
     });
   });
 
+  test("reads the clock in the market's zone, not the viewer's", () => {
+    // 22:30Z is 00:30 the next day in CEST — the day header has to move too.
+    const [w] = historyWindows([window("2026-08-02T22:30:00Z", "2026-08-02T23:30:00Z")], 0, 7200);
+    expect(w?.from).toBe("00:30");
+    expect(w?.to).toBe("01:30");
+    expect(w?.date).toBe("2026-08-03");
+  });
+
   test("drops windows that start before the history cut-off", () => {
     const older = window("2026-06-01T10:00:00Z", "2026-06-01T11:00:00Z");
     const newer = window("2026-07-20T10:00:00Z", "2026-07-20T11:00:00Z");
     const since = Date.parse("2026-07-01T00:00:00Z");
-    expect(historyWindows([older, newer], since).map((w) => w.startMs)).toEqual([
+    expect(historyWindows([older, newer], since, 0).map((w) => w.startMs)).toEqual([
       Date.parse(newer.start),
     ]);
   });

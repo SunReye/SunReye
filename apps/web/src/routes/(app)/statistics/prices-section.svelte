@@ -47,7 +47,11 @@
 		historySince(range.from, range.to, statisticsPrefs.optionFor('prices').windowDays)
 	);
 	const historyDays = $derived(Math.max(1, Math.round((range.to.getTime() - sinceMs) / DAY_MS)));
-	const history = $derived(stats ? historyWindows(stats.negativeWindows, sinceMs) : []);
+	// Market-local, like the curves above — the day-ahead payload is where the
+	// market's offset comes from.
+	const history = $derived(
+		stats && view ? historyWindows(stats.negativeWindows, sinceMs, view.utcOffsetSeconds) : []
+	);
 
 	const formatters = $derived(costFormatters(stats?.currency));
 </script>

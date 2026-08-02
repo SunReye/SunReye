@@ -88,3 +88,34 @@ export type NegativeWindow = {
 export function negativeHours(windows: NegativeWindow[]): number {
   return windows.reduce((sum, w) => sum + (w.endMs - w.startMs) / 3_600_000, 0);
 }
+
+/** A contiguous stretch of negative bands, as the x-axis labels bounding it. */
+export type NegativeBandRun = { first: string; last: string };
+
+/** The band scale of a chart, as much of it as the span maths needs. */
+export type BandScale = ((label: string) => number | undefined) & { bandwidth?: () => number };
+
+/** Pixel span of one run on a band scale — where the shading goes. */
+export function bandSpan(scale: BandScale, run: NegativeBandRun): { x: number; width: number } {
+  const bandwidth = scale.bandwidth?.() ?? 0;
+  const left = scale(run.first) ?? 0;
+  const right = (scale(run.last) ?? 0) + bandwidth;
+  return { x: left, width: Math.max(1, right - left) };
+}
+
+/**
+ * The negative stretches of a curve, in band terms. The chart shades these
+ * behind the bars: a quarter-hour at −0.5 ct beside a day peaking at 20 ct is
+ * a hairline on the axis, and "when is power free" is the whole question the
+ * curve is read for.
+ */
+export function negativeBandRuns(rows: readonly PriceRow[]): NegativeBandRun[] {
+  const runs: NegativeBandRun[] = [];
+  rows.forEach((row, i) => {
+    if (!row.negative) return;
+    const open = rows[i - 1]?.negative === true ? runs.at(-1) : undefined;
+    if (open) open.last = row.label;
+    else runs.push({ first: row.label, last: row.label });
+  });
+  return runs;
+}

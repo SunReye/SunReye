@@ -3,14 +3,15 @@
 	// bands, far past the point where the SVG context freezes weak devices for
 	// seconds (measured INP ~3 s vs ~90 ms at 24 bands, see forecast-chart).
 	// Canvas draws the same marks without the per-band DOM.
-	import { BarChart, Rule } from 'layerchart/canvas';
+	import { BarChart, Rect, Rule } from 'layerchart/canvas';
+	import type { ChartState } from 'layerchart';
 	import * as Chart from '$lib/components/ui/chart';
 	import ChartLegend from '$lib/components/inverter/chart-legend.svelte';
 	import PriceTooltip from './price-tooltip.svelte';
 	import { seriesConfig } from '$lib/components/inverter/_shared/chart-series';
 	import { canvasHighlight } from '$lib/components/inverter/_shared/canvas-highlight.svelte';
 	import { COST_CHART_PADDING, COST_X_TICK_SPACING } from '$lib/cost/ranges';
-	import type { PriceRow } from '$lib/prices/price-series';
+	import { bandSpan, negativeBandRuns, type PriceRow } from '$lib/prices/price-series';
 	import * as m from '$lib/paraglide/messages';
 
 	let {
@@ -32,15 +33,15 @@
 	// without a forced domain.
 	//
 	// Colours are taken from the existing validated set rather than adding a hue.
-	// The positive half is the neutral reference grey the automation charts use
-	// for "context, not the subject"; the negative half borrows the battery
-	// magenta on purpose — a negative slot is precisely when the pack should be
-	// absorbing, so the colour link carries meaning instead of being arbitrary.
+	// The price itself is the subject of this chart, so it gets a hue rather than
+	// the reference grey it used to wear (which read as disabled); the negative
+	// half borrows the battery magenta on purpose — a negative slot is precisely
+	// when the pack should be absorbing, so the colour link carries meaning.
 	const series = [
 		{
 			key: 'positiveCt',
 			label: m.prices_series_price(),
-			color: 'var(--color-muted-foreground)',
+			color: 'var(--color-energy-export)',
 			value: (d: PriceRow) => d.positiveCt
 		},
 		{
@@ -58,14 +59,32 @@
 
 	// Only label the legend's negative swatch when something is actually
 	// negative, so an ordinary day keeps a one-swatch row.
+	const negativeRuns = $derived(negativeBandRuns(rows));
 	const legend = $derived(
-		rows.some((r) => r.negative) ? series : series.filter((s) => s.key === 'positiveCt')
+		negativeRuns.length > 0 ? series : series.filter((s) => s.key === 'positiveCt')
 	);
 </script>
 
 <!-- Drawn over the bars, inside the chart layer: a dashed rule on the band the
      current slot occupies, so "where are we in the day" needs no reading of the
      axis. Canvas can't resolve a CSS stroke either, hence the concrete colour. -->
+<!-- Behind the bars: the stretches where power is free or paid-for. A
+     quarter-hour at −0.5 ct is a hairline next to a 20 ct peak, so without the
+     shading the one thing this curve is read for is invisible. -->
+{#snippet belowMarks({ context }: { context: ChartState<PriceRow> })}
+	{#each negativeRuns as run (run.first)}
+		{@const span = bandSpan(context.xScale, run)}
+		<Rect
+			x={span.x}
+			y={0}
+			width={span.width}
+			height={context.height}
+			fill="var(--color-energy-battery)"
+			fillOpacity={0.12}
+		/>
+	{/each}
+{/snippet}
+
 {#snippet aboveMarks()}
 	{#if nowKey}
 		<Rule x={nowKey} stroke={highlight.fill} strokeWidth={1} dashArray="4 3" />
@@ -83,6 +102,7 @@
 			padding={COST_CHART_PADDING}
 			props={{ xAxis: { tickSpacing: COST_X_TICK_SPACING } }}
 			highlight={{ area: { fill: highlight.fill, fillOpacity: 0.1 } }}
+			{belowMarks}
 			{aboveMarks}
 		>
 			{#snippet tooltip()}
