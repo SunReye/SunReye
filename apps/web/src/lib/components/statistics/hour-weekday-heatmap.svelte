@@ -106,7 +106,15 @@
 			</p>
 		{/if}
 
-		<div style="height: {gridHeight}px" aria-hidden="true">
+		<!-- `band` mode gives every cell its own hit rect, which doubles as the
+		     hover highlight: the rects sit in an SVG overlay above the canvas and
+		     layerchart only sets `fill: transparent` at zero specificity, so a wash
+		     of the foreground colour lands exactly on the cell under the pointer. -->
+		<div
+			style="height: {gridHeight}px"
+			class="[&_.lc-tooltip-rect:hover]:fill-foreground/10"
+			aria-hidden="true"
+		>
 			<Chart
 				data={points}
 				x="hod"
@@ -116,7 +124,7 @@
 				yScale={scaleBand()}
 				yDomain={weekdays}
 				padding={{ left: 40, bottom: 24, top: 4, right: 8 }}
-				tooltipContext={{ mode: 'quadtree' }}
+				tooltipContext={{ mode: 'band' }}
 			>
 				<Canvas>
 					<Cell
