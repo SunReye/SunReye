@@ -103,7 +103,7 @@ Some domains are configured entirely from the UI, with defaults from their schem
 var exists:
 
 - **Tariff** — currency, standing charge, import bands, feed-in rate. See
-  [Costs & Tariffs](/use/costs/).
+  [Statistics](/use/statistics/).
 - **Profile sources** — the list of git repos to browse for downloadable profiles. See
   [Distributing Profiles](/profiles/distribution/).
 

@@ -16,7 +16,7 @@ has. Live values arrive over a WebSocket at 1 Hz.
 Every screen shares a collapsible left sidebar and a top bar:
 
 - **Sidebar** — the active inverter's name, a "Monitoring" nav group (Overview, History,
-  Costs, and — for admins — Controls and Settings), and a footer with the signed-in user and
+  Statistics, and — for admins — Controls and Settings), and a footer with the signed-in user and
   a sign-out button.
 - **Top bar** — a breadcrumb, a **live status badge** ("Live" / "Connecting…"), and a
   light/dark theme toggle.

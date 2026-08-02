@@ -36,7 +36,7 @@ connection** button. Saving applies live.
 
 ## Tariff
 
-Configure pricing for the [Costs](/use/costs/) screen: currency, standing charge, feed-in
+Configure pricing for the [Statistics](/use/statistics/) screen: currency, standing charge, feed-in
 rate, a default import price, and **time-of-use bands** (name, price, hour range, weekday
 selection). Add or remove bands and **Save tariff**.
 

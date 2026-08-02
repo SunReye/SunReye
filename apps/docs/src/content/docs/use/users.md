@@ -26,7 +26,7 @@ account.
 
 | Capability | Admin | User |
 | --- | --- | --- |
-| View dashboard, history, costs | ✅ | ✅ |
+| View dashboard, history, statistics | ✅ | ✅ |
 | [Controls](/use/controls/) (write settings) | ✅ | — |
 | [Settings](/use/settings/) (all tabs) | ✅ | — |
 | Manage users & profiles | ✅ | — |
