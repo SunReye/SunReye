@@ -1,4 +1,5 @@
 <script lang="ts">
+	import type { Component } from 'svelte';
 	import type { CostBreakdown } from 'server/src/cost-calc';
 	import { api } from '$lib/api';
 	import * as m from '$lib/paraglide/messages';
@@ -9,6 +10,7 @@
 	import PricePanel from '$lib/components/prices/price-panel.svelte';
 	import StatisticsSection from './statistics-section.svelte';
 	import CostSection from './cost-section.svelte';
+	import EnergySection from './energy-section.svelte';
 
 	let range = $state<CostRange>(resolveCostPreset('month'));
 	let cost = $state<CostBreakdown | null>(null);
@@ -34,9 +36,15 @@
 	// First load only: once totals exist a range change refreshes them in place.
 	const showLoader = $derived(loading && !cost);
 
-	// Sections with content today; later waves register theirs here and the
-	// filter goes away.
-	const activeSections = SECTIONS.filter((s) => s.id === 'cost');
+	// Section id → the component that renders it. Every section takes the same
+	// two props (the picked window's breakdown and the range itself) and owns its
+	// own scope switcher and fetches from there; sections without a component yet
+	// simply don't render.
+	const SECTION_VIEWS: Record<string, Component<{ cost: CostBreakdown; range: CostRange }>> = {
+		cost: CostSection,
+		energy: EnergySection
+	};
+	const activeSections = SECTIONS.filter((s) => s.id in SECTION_VIEWS);
 
 	$effect(() => setPageHeader(m.nav_statistics(), m.statistics_subtitle()));
 </script>
@@ -55,8 +63,9 @@
 		     collapsible shell and owns the scope (and fetches) of its own charts,
 		     so the shell caption names the picked window, not any one chart. -->
 		{#each activeSections as section (section.id)}
+			{@const View = SECTION_VIEWS[section.id]}
 			<StatisticsSection title={section.label()} caption={range.label}>
-				<CostSection {cost} {range} />
+				<View {cost} {range} />
 			</StatisticsSection>
 		{/each}
 	{/if}

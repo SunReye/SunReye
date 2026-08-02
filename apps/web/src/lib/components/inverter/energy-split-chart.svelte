@@ -6,31 +6,26 @@
 	import ChartLegend from '$lib/components/inverter/chart-legend.svelte';
 	import RangeSwitcher from '$lib/components/inverter/range-switcher.svelte';
 	import { api } from '$lib/api';
-	import { COST_X_TICKS, periodLabel, type CostBucket, type CostRange } from '$lib/cost/ranges';
+	import type { PeriodEnergy } from 'server/src/energy-calc';
+	import { COST_X_TICKS, periodLabel, type ChartSpec, type CostBucket } from '$lib/cost/ranges';
 
-	// One period of energy, split for the two stacked bars. Mirrors the server's
-	// PeriodEnergy (apps/server/src/energy-calc.ts).
-	type Period = {
-		bucket: string;
-		importKwh: number;
-		exportKwh: number;
-		loadKwh: number;
-		productionKwh: number;
-		gridToLoadKwh: number;
-		solarToLoadKwh: number;
-		selfConsumedKwh: number;
-		exportedKwh: number;
-		selfSufficiency: number | null;
-		selfConsumption: number | null;
-	};
+	// One period of energy, split for the two stacked bars.
+	type Period = PeriodEnergy;
 
-	// Follows the page's range picker: same window/granularity as the net-cost chart.
-	let { chart, caption }: { chart: CostRange['chart']; caption: string } = $props();
+	// Follows the section's chart spec: same window/granularity as the chart it
+	// sits under. `periods` lets a section that already fetched the series (the
+	// energy section fetches once for all its charts) hand them straight over;
+	// without it the chart fetches its own, which is what the cost section does.
+	let {
+		chart,
+		caption,
+		periods: given
+	}: { chart: ChartSpec; caption: string; periods?: Period[] } = $props();
 
 	// Periods + the granularity they were fetched at, updated together so labels
 	// never mix stale periods with a freshly-picked bucket.
 	let view = $state<{ periods: Period[]; bucket: CostBucket }>({ periods: [], bucket: 'day' });
-	const periods = $derived(view.periods);
+	const periods = $derived(given ?? view.periods);
 	let loading = $state(true);
 
 	// The two stacks are read the same way whether shown as absolute kWh or as a
@@ -43,6 +38,10 @@
 	const seriesLayout = $derived(layoutId === 'percent' ? 'stackExpand' : 'stack');
 
 	$effect(() => {
+		if (given) {
+			loading = false;
+			return;
+		}
 		const query = {
 			from: chart.from.toISOString(),
 			to: chart.to.toISOString(),
@@ -60,7 +59,10 @@
 		};
 	});
 
-	const data = $derived(periods.map((p) => ({ ...p, label: periodLabel(p.bucket, view.bucket) })));
+	// Handed-in periods were fetched against the current spec, so they carry the
+	// spec's bucket; self-fetched ones carry the bucket they arrived with.
+	const bucket = $derived(given ? chart.bucket : view.bucket);
+	const data = $derived(periods.map((p) => ({ ...p, label: periodLabel(p.bucket, bucket) })));
 	const hasData = $derived(periods.some((p) => p.loadKwh > 0 || p.productionKwh > 0));
 
 	// Window-average ratio (mean over periods that have the relevant flow), shown
@@ -120,7 +122,7 @@
 				bandPadding={0.25}
 				stackPadding={2}
 				padding={{ top: 8, right: 8, bottom: 20, left: 44 }}
-				props={{ xAxis: { ticks: COST_X_TICKS[view.bucket] } }}
+				props={{ xAxis: { ticks: COST_X_TICKS[bucket] } }}
 			>
 				{#snippet tooltip()}
 					<Chart.Tooltip />

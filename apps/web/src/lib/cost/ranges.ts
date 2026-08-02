@@ -53,6 +53,12 @@ export function chartSpecFor(range: CostRange, scope: ChartScope): ChartSpec {
   return scope === "detail" ? range.detail : range.chart;
 }
 
+/** A chart spec as the query the series endpoints take (`/api/cost/series`,
+ *  `/api/energy/series` — same three parameters). */
+export function specQuery(spec: ChartSpec): { from: string; to: string; bucket: CostBucket } {
+  return { from: spec.from.toISOString(), to: spec.to.toISOString(), bucket: spec.bucket };
+}
+
 /** Selectable presets, in display order. `month` (this month) is the default. */
 export const COST_PRESETS = [
   { id: "today", label: "Today" },

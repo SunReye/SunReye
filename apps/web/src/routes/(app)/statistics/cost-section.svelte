@@ -3,11 +3,16 @@
 	import type { CostBreakdown } from 'server/src/cost-calc';
 	import * as m from '$lib/paraglide/messages';
 	import CostBarChart from '$lib/components/inverter/cost-bar-chart.svelte';
-	import EnergySplitChart from '$lib/components/inverter/energy-split-chart.svelte';
 	import RangeSwitcher from '$lib/components/inverter/range-switcher.svelte';
 	import { api } from '$lib/api';
 	import { costFormatters } from '$lib/cost/format';
-	import { chartSpecFor, type ChartScope, type CostBucket, type CostRange } from '$lib/cost/ranges';
+	import {
+		chartSpecFor,
+		specQuery,
+		type ChartScope,
+		type CostBucket,
+		type CostRange
+	} from '$lib/cost/ranges';
 	import { chartCaption, defaultChartScope, scopeOptions } from '$lib/statistics/chart-scope';
 	import { COST_TILES } from '$lib/statistics/tiles';
 	import StatTiles from './stat-tiles.svelte';
@@ -43,7 +48,7 @@
 	// `cancelled` guards against an earlier request resolving after a later one
 	// and clobbering fresher data.
 	$effect(() => {
-		const query = { from: spec.from.toISOString(), to: spec.to.toISOString(), bucket: spec.bucket };
+		const query = specQuery(spec);
 		let cancelled = false;
 		api.api.cost.series.get({ query }).then(({ data }) => {
 			if (cancelled) return;
@@ -89,10 +94,6 @@
 		<CostBarChart points={series.points} bucket={series.bucket} currency={cost.currency} />
 	</section>
 {/if}
-
-<!-- Energy split (grid-vs-solar, self-consumed-vs-exported), same scope as above.
-     Owns its own section + fade and hides itself when the window has no energy. -->
-<EnergySplitChart chart={spec} {caption} />
 
 <!-- Import by band -->
 <BandBreakdown title={m.costs_import_by_band()} rows={bandRows} />
