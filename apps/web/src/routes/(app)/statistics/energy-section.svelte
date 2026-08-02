@@ -1,5 +1,4 @@
 <script lang="ts">
-	import type { CostBreakdown } from 'server/src/cost-calc';
 	import type { PeriodEnergy } from 'server/src/energy-calc';
 	import { api } from '$lib/api';
 	import * as m from '$lib/paraglide/messages';
@@ -9,7 +8,8 @@
 	import RatioTrendChart from '$lib/components/statistics/ratio-trend-chart.svelte';
 	import HourWeekdayHeatmap from '$lib/components/statistics/hour-weekday-heatmap.svelte';
 	import { costFormatters } from '$lib/cost/format';
-	import { specQuery, type CostRange } from '$lib/cost/ranges';
+	import { specQuery } from '$lib/cost/ranges';
+	import type { SectionData } from '$lib/statistics/sections';
 	import { sectionScope } from '$lib/statistics/chart-scope.svelte';
 	import { ENERGY_TILES, type EnergyTileData } from '$lib/statistics/tiles';
 	import ChartPanel from './chart-panel.svelte';
@@ -20,17 +20,12 @@
 	// Energy analytics: how much came in, went out and stayed on-site — in tiles
 	// first (the everyday "how much did we produce last month?" question), then in
 	// the three charts and the hour×weekday heatmap below them.
-	let {
-		cost,
-		previous,
-		range
-	}: {
-		cost: CostBreakdown;
-		/** The same window one reference period back, or null when that period
-		 *  predates recorded history. Fetched once by the page alongside `cost`. */
-		previous: CostBreakdown | null;
-		range: CostRange;
-	} = $props();
+	// Props are the shared bag every section body takes; `previous` is the same
+	// window one reference period back (null when it predates recorded history).
+	let { data }: { data: SectionData } = $props();
+	const cost = $derived(data.cost);
+	const previous = $derived(data.previous);
+	const range = $derived(data.range);
 
 	// Ephemeral per-viewer choice, seeded from the saved preference.
 	const view = sectionScope('energy', () => range);
@@ -41,9 +36,9 @@
 	$effect(() => {
 		const query = specQuery(view.spec);
 		let cancelled = false;
-		api.api.energy.series.get({ query }).then(({ data }) => {
+		api.api.energy.series.get({ query }).then(({ data: payload }) => {
 			if (cancelled) return;
-			series = (data ?? []) as PeriodEnergy[];
+			series = (payload ?? []) as PeriodEnergy[];
 		});
 		return () => {
 			cancelled = true;

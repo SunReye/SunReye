@@ -1,10 +1,10 @@
 <script lang="ts">
-	import type { CostBreakdown } from 'server/src/cost-calc';
 	import * as m from '$lib/paraglide/messages';
 	import CostBarChart from '$lib/components/inverter/cost-bar-chart.svelte';
 	import { api } from '$lib/api';
 	import { costFormatters } from '$lib/cost/format';
-	import { specQuery, type CostBucket, type CostRange } from '$lib/cost/ranges';
+	import { specQuery, type CostBucket } from '$lib/cost/ranges';
+	import type { SectionData } from '$lib/statistics/sections';
 	import { sectionScope } from '$lib/statistics/chart-scope.svelte';
 	import { COST_TILES } from '$lib/statistics/tiles';
 	import ChartPanel from './chart-panel.svelte';
@@ -24,7 +24,11 @@
 	// chosen scope, and the tariff-band breakdown. The tiles payload is fetched by
 	// the page (one window, shared with the other sections); the bar series is
 	// this section's own, because only this section's scope switcher moves it.
-	let { cost, range }: { cost: CostBreakdown; range: CostRange } = $props();
+	// Props are the shared bag every section body takes, so section-body can map
+	// an id straight onto a component.
+	let { data }: { data: SectionData } = $props();
+	const cost = $derived(data.cost);
+	const range = $derived(data.range);
 
 	// Ephemeral per-viewer choice, seeded from the saved preference.
 	const view = sectionScope('cost', () => range);
@@ -41,9 +45,9 @@
 	$effect(() => {
 		const query = specQuery(view.spec);
 		let cancelled = false;
-		api.api.cost.series.get({ query }).then(({ data }) => {
+		api.api.cost.series.get({ query }).then(({ data: payload }) => {
 			if (cancelled) return;
-			series = { points: (data ?? []) as SeriesPoint[], bucket: query.bucket };
+			series = { points: (payload ?? []) as SeriesPoint[], bucket: query.bucket };
 		});
 		return () => {
 			cancelled = true;

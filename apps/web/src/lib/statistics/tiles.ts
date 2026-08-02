@@ -5,9 +5,11 @@
 // against the same TileDef surface.
 
 import type { CostBreakdown, CostTotals } from "server/src/cost-calc";
+import type { SpotStats, SpotWhatIf } from "server/src/spot-stats";
 import type { RecordsResponse } from "server/src/statistics";
 import type { DayRecord } from "server/src/statistics-calc";
 import type { CostFormatters } from "$lib/cost/format";
+import { ctLabel, ctPerKwh } from "$lib/prices/price-series";
 import { deltaFor } from "$lib/statistics/compare";
 import * as m from "$lib/paraglide/messages";
 
@@ -507,4 +509,173 @@ export const RECORD_TILES: readonly TileDef<RecordsResponse>[] = [
     (v, f) => f.money(v),
     "up",
   ),
+];
+
+/**
+ * Locale date of the day that held a window extreme, so "cheapest slot" says
+ * *when*. Null when no day matches — the tile then falls back to naming the
+ * zone rather than stating a day it can't identify.
+ */
+const extremeDay = (
+  stats: SpotStats,
+  target: number,
+  value: (d: SpotStats["daily"][number]) => number,
+): string | null => {
+  const day = stats.daily.find((d) => value(d) === target);
+  return day ? recordDay(day.date) : null;
+};
+
+/**
+ * One market-price tile. Every figure here is *wholesale* (what the market did),
+ * never a bill: the tiles are only meaningful once the window holds stored
+ * slots, so all of them drop out with `summary`.
+ */
+const marketTile = (
+  id: string,
+  label: () => string,
+  explain: () => string,
+  value: (s: NonNullable<SpotStats["summary"]>) => number,
+  view: (s: SpotStats, summary: NonNullable<SpotStats["summary"]>) => TileView,
+  goodDirection: TileDef<SpotStats>["goodDirection"],
+): TileDef<SpotStats> => ({
+  id,
+  label,
+  explain,
+  compute: (s) => (s.summary ? view(s, s.summary) : null),
+  raw: (s) => (s.summary ? value(s.summary) : null),
+  goodDirection,
+});
+
+/**
+ * Headline market figures for the picked window. `ct/kWh` throughout rather
+ * than the EUR/MWh the market quotes — a household reads its bill in cents.
+ */
+export const PRICE_TILES: readonly TileDef<SpotStats>[] = [
+  marketTile(
+    "prices.marketAvg",
+    m.statistics_prices_tile_avg,
+    m.statistics_prices_tile_avg_explain,
+    (s) => s.avgEurPerMwh,
+    (s, summary) => ({
+      value: ctLabel(ctPerKwh(summary.avgEurPerMwh)),
+      sub: m.statistics_prices_sub_zone({ zone: s.zone }),
+      accent: "",
+    }),
+    "down",
+  ),
+  marketTile(
+    "prices.marketMin",
+    m.statistics_prices_tile_min,
+    m.statistics_prices_tile_min_explain,
+    (s) => s.minEurPerMwh,
+    (s, summary) => ({
+      value: ctLabel(ctPerKwh(summary.minEurPerMwh)),
+      sub:
+        extremeDay(s, summary.minEurPerMwh, (d) => d.minEurPerMwh) ??
+        m.statistics_prices_sub_zone({ zone: s.zone }),
+      accent: "",
+    }),
+    "down",
+  ),
+  marketTile(
+    "prices.marketMax",
+    m.statistics_prices_tile_max,
+    m.statistics_prices_tile_max_explain,
+    (s) => s.maxEurPerMwh,
+    (s, summary) => ({
+      value: ctLabel(ctPerKwh(summary.maxEurPerMwh)),
+      sub:
+        extremeDay(s, summary.maxEurPerMwh, (d) => d.maxEurPerMwh) ??
+        m.statistics_prices_sub_zone({ zone: s.zone }),
+      accent: "",
+    }),
+    "up",
+  ),
+  marketTile(
+    "prices.negativeHours",
+    m.statistics_prices_tile_negative_hours,
+    m.statistics_prices_tile_negative_hours_explain,
+    (s) => s.negativeHours,
+    (_s, summary) => ({
+      value: `${summary.negativeHours.toLocaleString(undefined, { maximumFractionDigits: 1 })} h`,
+      sub: m.statistics_prices_sub_negative({ slots: summary.negativeSlots }),
+      accent: "",
+    }),
+    "neutral",
+  ),
+  {
+    id: "prices.paidVsMarket",
+    label: m.statistics_prices_tile_paid,
+    explain: m.statistics_prices_tile_paid_explain,
+    // Only once the plant imported something in a priced hour: without that
+    // there is no weighted average to state.
+    compute: (s) =>
+      s.paidVsMarket
+        ? {
+            value: ctLabel(ctPerKwh(s.paidVsMarket.importWeightedAvgEurPerMwh)),
+            sub: m.statistics_prices_sub_paid({
+              market: ctLabel(ctPerKwh(s.paidVsMarket.plainAvgEurPerMwh)),
+            }),
+            // Below the plain average means the house bought in cheaper hours.
+            accent: goodIf(
+              s.paidVsMarket.importWeightedAvgEurPerMwh < s.paidVsMarket.plainAvgEurPerMwh,
+            ),
+          }
+        : null,
+    raw: (s) => s.paidVsMarket?.importWeightedAvgEurPerMwh ?? null,
+    goodDirection: "down",
+  },
+];
+
+/**
+ * The what-if row: the window's imported energy repriced both ways. Both
+ * figures come from the SAME fold over the same hours (see `spotWhatIf`), so
+ * they are comparable; the section captions how much of the window had a market
+ * price and whether the tariff's spot components make the spot side a real
+ * quote.
+ *
+ * Deliberately no "actual" tile: the household's real import cost is computed
+ * over the picked range, while the what-if covers the (possibly shorter) window
+ * prices are stored for — putting them side by side would compare two windows.
+ */
+export const WHATIF_TILES: readonly TileDef<SpotWhatIf>[] = [
+  {
+    id: "prices.whatIfStatic",
+    label: m.statistics_prices_tile_static,
+    explain: m.statistics_prices_tile_static_explain,
+    compute: (w, f) => ({
+      value: f.money(w.staticCost),
+      sub: m.statistics_prices_sub_static(),
+      accent: "",
+    }),
+    raw: (w) => w.staticCost,
+    goodDirection: "down",
+  },
+  {
+    id: "prices.whatIfSpot",
+    label: m.statistics_prices_tile_spot,
+    explain: m.statistics_prices_tile_spot_explain,
+    compute: (w, f) => ({
+      value: f.money(w.spotCost),
+      sub: m.statistics_prices_sub_spot(),
+      accent: "",
+    }),
+    raw: (w) => w.spotCost,
+    goodDirection: "down",
+  },
+  {
+    id: "prices.whatIfDelta",
+    label: m.statistics_prices_tile_delta,
+    explain: m.statistics_prices_tile_delta_explain,
+    compute: (w, f) => ({
+      value: f.money(w.delta),
+      sub:
+        w.delta < 0
+          ? m.statistics_prices_sub_delta_cheaper()
+          : m.statistics_prices_sub_delta_pricier(),
+      accent: goodIf(w.delta < 0),
+    }),
+    raw: (w) => w.delta,
+    goodDirection: "down",
+  },
 ];

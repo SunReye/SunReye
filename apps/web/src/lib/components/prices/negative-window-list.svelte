@@ -5,15 +5,15 @@
 
 	let {
 		windows,
-		showEmpty
+		emptyLabel
 	}: {
 		windows: NegativeWindow[];
 		/**
-		 * Whether "no negative prices" may be stated. False while tomorrow is
-		 * unpublished: an empty list then means *unknown*, and claiming there are
-		 * none would be a claim the data cannot support.
+		 * What an empty list means, in the caller's words — "none in this period"
+		 * for a settled history, but never a claim the data cannot support (an
+		 * unpublished day has no negative windows *known*, not none).
 		 */
-		showEmpty: boolean;
+		emptyLabel: string;
 	} = $props();
 
 	const hours = $derived(negativeHours(windows));
@@ -46,6 +46,6 @@
 			<NegativeWindowDay date={group.date} windows={group.windows} />
 		{/each}
 	</div>
-{:else if showEmpty}
-	<p class="text-sm text-muted-foreground">{m.prices_no_negative()}</p>
+{:else}
+	<p class="text-sm text-muted-foreground">{emptyLabel}</p>
 {/if}

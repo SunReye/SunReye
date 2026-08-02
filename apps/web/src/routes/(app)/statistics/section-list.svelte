@@ -1,5 +1,6 @@
 <script lang="ts">
-	import type { SectionDef, SectionData } from '$lib/statistics/sections';
+	import type { SectionDef, SectionData, SectionId } from '$lib/statistics/sections';
+	import { spotStats } from '$lib/statistics/spot-stats.svelte';
 	import StatisticsSection from './statistics-section.svelte';
 	import SectionBody from './section-body.svelte';
 
@@ -12,9 +13,21 @@
 		sections: readonly SectionDef[];
 		data: SectionData;
 	} = $props();
+
+	// Capability gating, which is not the same thing as preference hiding: a
+	// system with no spot price feed has no price section to show, hide or
+	// toggle in customize mode, so the gate sits here rather than in the prefs.
+	// The one fetch it needs is also the section's own payload — the store hands
+	// it to the body, so gating costs no extra request.
+	$effect(() => {
+		spotStats.load(data.range.from, data.range.to);
+	});
+	const available = (id: SectionId): boolean => id !== 'prices' || spotStats.available;
+
+	const shown = $derived(sections.filter((s) => available(s.id)));
 </script>
 
-{#each sections as section (section.id)}
+{#each shown as section (section.id)}
 	<StatisticsSection id={section.id} title={section.label()} caption={data.range.label}>
 		<SectionBody id={section.id} {data} />
 	</StatisticsSection>

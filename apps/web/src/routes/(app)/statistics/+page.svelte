@@ -14,7 +14,6 @@
 	import { referenceWindow, usableComparison, windowDays } from '$lib/statistics/compare';
 	import { statisticsPrefs } from '$lib/statistics-prefs.svelte';
 	import { setCustomizeSession } from '$lib/statistics/customize.svelte';
-	import PricePanel from '$lib/components/prices/price-panel.svelte';
 	import StatisticsBody from './statistics-body.svelte';
 	import CustomizeBar from './customize-bar.svelte';
 
@@ -75,11 +74,10 @@
 			: null
 	);
 
-	// Cost, energy and records have content in this wave; later waves register
-	// their sections in section-body.svelte and the filter goes away.
-	const activeSections = SECTIONS.filter(
-		(s) => s.id === 'cost' || s.id === 'energy' || s.id === 'records'
-	);
+	// Every registered section now has a body. What a given system actually
+	// shows is decided further down: preferences hide sections here, and
+	// capability gating (a missing spot price feed) drops them in section-list.
+	const activeSections = SECTIONS;
 
 	// Instance-wide layout preferences. Only admins may edit them, so the gear
 	// (and the whole draft/save cycle) is admin-only; everyone else just gets
@@ -122,9 +120,4 @@
 	</div>
 
 	<StatisticsBody sections={visibleSections} {data} {loading} />
-
-	<!-- Day-ahead prices: forward-looking, so deliberately outside the range-driven
-	     block above and outside the `cost` guard — it is worth seeing on a fresh
-	     install with no priced history yet. Renders nothing when the feed is off. -->
-	<PricePanel />
 </div>

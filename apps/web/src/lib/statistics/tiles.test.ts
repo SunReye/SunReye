@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import type { CostBreakdown } from "server/src/cost-calc";
+import type { SpotStats, SpotWhatIf } from "server/src/spot-stats";
 import { costFormatters } from "../cost/format";
-import { COST_TILES, deriveTiles } from "./tiles";
+import { COST_TILES, PRICE_TILES, WHATIF_TILES, deriveTiles } from "./tiles";
 
 const f = costFormatters("EUR");
 
@@ -163,5 +164,121 @@ describe("self-sufficiency / self-consumption ratios", () => {
     const def = COST_TILES.find((d) => d.id === "cost.selfSufficiency");
     expect(def?.raw(breakdown())).toBe(0.375);
     expect(def?.raw(breakdown({ selfSufficiency: null }))).toBeNull();
+  });
+});
+
+/** A month of market behaviour; overrides shape each scenario. */
+const stats = (over: Partial<SpotStats> = {}): SpotStats => ({
+  zone: "DE-LU",
+  currency: "EUR",
+  from: "2026-07-01T00:00:00.000Z",
+  to: "2026-08-01T00:00:00.000Z",
+  summary: {
+    avgEurPerMwh: 84.2,
+    minEurPerMwh: -30,
+    maxEurPerMwh: 240,
+    slots: 2976,
+    negativeSlots: 12,
+    negativeHours: 3,
+  },
+  daily: [
+    {
+      date: "2026-07-04",
+      avgEurPerMwh: 40,
+      minEurPerMwh: -30,
+      maxEurPerMwh: 90,
+      slots: 96,
+      negativeSlots: 12,
+    },
+    {
+      date: "2026-07-18",
+      avgEurPerMwh: 120,
+      minEurPerMwh: 10,
+      maxEurPerMwh: 240,
+      slots: 96,
+      negativeSlots: 0,
+    },
+  ],
+  negativeWindows: [],
+  negativeWindowsTruncated: false,
+  paidVsMarket: {
+    importKwh: 300,
+    importWeightedAvgEurPerMwh: 70,
+    plainAvgEurPerMwh: 84.2,
+    coverage: 1,
+  },
+  whatIf: null,
+  ...over,
+});
+
+describe("PRICE_TILES registry", () => {
+  test("states the market figures in ct/kWh", () => {
+    const tiles = deriveTiles(PRICE_TILES, stats(), f);
+    expect(tiles.map((t) => t.id)).toEqual([
+      "prices.marketAvg",
+      "prices.marketMin",
+      "prices.marketMax",
+      "prices.negativeHours",
+      "prices.paidVsMarket",
+    ]);
+    expect(tiles[0]?.value).toBe("8.42 ct");
+    expect(tiles[1]?.value).toBe("-3.00 ct");
+    expect(tiles[3]?.value).toBe("3 h");
+  });
+
+  test("names the day an extreme happened on", () => {
+    const tiles = deriveTiles(PRICE_TILES, stats(), f);
+    expect(tiles[1]?.sub).toContain("2026");
+    expect(tiles[2]?.sub).toContain("2026");
+  });
+
+  test("drops every market tile when the window holds no slots", () => {
+    expect(deriveTiles(PRICE_TILES, stats({ summary: null, paidVsMarket: null }), f)).toEqual([]);
+  });
+
+  test("greens the import price only when it beat the plain average", () => {
+    expect(deriveTiles(PRICE_TILES, stats(), f).at(-1)?.accent).toBe("text-emerald-500");
+    const missed = deriveTiles(
+      PRICE_TILES,
+      stats({
+        paidVsMarket: {
+          importKwh: 300,
+          importWeightedAvgEurPerMwh: 95,
+          plainAvgEurPerMwh: 84.2,
+          coverage: 1,
+        },
+      }),
+      f,
+    ).at(-1);
+    expect(missed?.accent).toBe("");
+  });
+
+  test("drops the import tile alone when nothing was imported in a priced hour", () => {
+    const tiles = deriveTiles(PRICE_TILES, stats({ paidVsMarket: null }), f);
+    expect(tiles.map((t) => t.id)).not.toContain("prices.paidVsMarket");
+    expect(tiles).toHaveLength(4);
+  });
+});
+
+describe("WHATIF_TILES registry", () => {
+  const whatIf = (over: Partial<SpotWhatIf> = {}): SpotWhatIf => ({
+    staticCost: 120,
+    spotCost: 99,
+    delta: -21,
+    spotComponentsConfigured: true,
+    coverage: 0.9,
+    ...over,
+  });
+
+  test("prices the window both ways and greens a cheaper spot bill", () => {
+    const tiles = deriveTiles(WHATIF_TILES, whatIf(), f);
+    expect(tiles.map((t) => t.value)).toEqual([f.money(120), f.money(99), f.money(-21)]);
+    expect(tiles.at(-1)?.accent).toBe("text-emerald-500");
+  });
+
+  test("says plainly when spot would have cost more", () => {
+    const tiles = deriveTiles(WHATIF_TILES, whatIf({ spotCost: 150, delta: 30 }), f);
+    expect(tiles.at(-1)?.accent).toBe("");
+    expect(tiles.at(-1)?.value).toBe(f.money(30));
   });
 });

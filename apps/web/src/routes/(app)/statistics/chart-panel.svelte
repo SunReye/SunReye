@@ -12,6 +12,7 @@
 
 	let {
 		title,
+		caption,
 		view,
 		range,
 		/** Only one panel per section carries the switcher; the rest follow it. */
@@ -19,19 +20,27 @@
 		children
 	}: {
 		title: string;
-		view: SectionScope;
-		range: CostRange;
+		/** Fixed window caption, for panels that own no scope (the price curves
+		 *  are always "today" and "tomorrow", whatever the page range is). */
+		caption?: string;
+		view?: SectionScope;
+		range?: CostRange;
 		switcher?: boolean;
 		children: Snippet;
 	} = $props();
+
+	const heading = $derived.by(() => {
+		const window = view?.caption ?? caption;
+		return window ? `${title} — ${window}` : title;
+	});
 </script>
 
 <section class="flex flex-col gap-4 border border-border p-4" transition:fade={{ duration: 200 }}>
 	<div class="flex flex-wrap items-center justify-between gap-3">
 		<h2 class="text-sm font-medium uppercase tracking-wide text-muted-foreground">
-			{title} — {view.caption}
+			{heading}
 		</h2>
-		{#if switcher}
+		{#if switcher && view && range}
 			<RangeSwitcher
 				options={scopeOptions(range)}
 				bind:value={() => view.scope, (next) => (view.scope = next)}

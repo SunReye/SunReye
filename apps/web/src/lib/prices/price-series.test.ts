@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { SpotPriceView } from "server/src/spot-price-job";
-import { negativeHours, negativeWindows, priceRows } from "./price-series";
+import { ctLabel, negativeHours, priceRows } from "./price-series";
 
 const QUARTER_MS = 900_000;
 const BASE = Date.parse("2026-08-01T22:00:00Z"); // 2026-08-02T00:00 CEST
@@ -61,62 +61,24 @@ describe("priceRows", () => {
   });
 });
 
-describe("negativeWindows", () => {
-  test("groups a contiguous run into one window", () => {
-    const windows = negativeWindows(
-      view([slot(0, 50), slot(1, -10), slot(2, -30), slot(3, -5), slot(4, 20)]),
-    );
-    expect(windows).toHaveLength(1);
-    expect(windows[0]).toMatchObject({
-      from: "00:15",
-      to: "01:00",
+describe("negativeHours", () => {
+  test("sums window durations", () => {
+    const half = (i: number, hours: number) => ({
+      startMs: BASE + i * QUARTER_MS,
+      endMs: BASE + i * QUARTER_MS + hours * 3_600_000,
+      from: "00:00",
+      to: "00:30",
       date: "2026-08-02",
-      slots: 3,
-      minCtPerKwh: -3,
+      slots: 2,
+      minCtPerKwh: -0.1,
     });
-    expect(windows[0]?.endMs).toBe(BASE + 4 * QUARTER_MS);
-  });
-
-  test("a positive slot between runs yields two windows", () => {
-    const windows = negativeWindows(view([slot(0, -1), slot(1, 5), slot(2, -1)]));
-    expect(windows).toHaveLength(2);
-  });
-
-  test("a gap in the stored series splits the window", () => {
-    // Slot 1 is missing entirely: 00:00 and 00:30 are both negative but there
-    // is unpriced time between them, so they are not one window.
-    const windows = negativeWindows(view([slot(0, -1), slot(2, -1)]));
-    expect(windows).toHaveLength(2);
-  });
-
-  test("a run crossing midnight splits at the day boundary", () => {
-    // Continuous in time, but "tonight" and "tomorrow" are different things to
-    // act on, so they are reported separately.
-    const late = { ...slot(95, -8), time: "2026-08-02T23:45" };
-    const early = { ...slot(96, -9), time: "2026-08-03T00:00" };
-    const windows = negativeWindows(view([late, early]));
-    expect(windows).toHaveLength(2);
-    expect(windows.map((w) => w.date)).toEqual(["2026-08-02", "2026-08-03"]);
-    expect(windows[0]?.to).toBe("24:00");
-  });
-
-  test("no negative slots yields no windows", () => {
-    expect(negativeWindows(view([slot(0, 10), slot(1, 20)]))).toEqual([]);
-    expect(negativeWindows(view([]))).toEqual([]);
-  });
-
-  test("a window ending the series is still closed", () => {
-    const windows = negativeWindows(view([slot(0, 5), slot(1, -2), slot(2, -2)]));
-    expect(windows).toHaveLength(1);
-    expect(windows[0]?.slots).toBe(2);
+    expect(negativeHours([half(0, 0.5), half(12, 0.5)])).toBeCloseTo(1, 6);
   });
 });
 
-describe("negativeHours", () => {
-  test("sums window durations", () => {
-    const windows = negativeWindows(
-      view([slot(0, -1), slot(1, -1), slot(2, 5), slot(3, -1), slot(4, -1)]),
-    );
-    expect(negativeHours(windows)).toBeCloseTo(1, 6);
+describe("ctLabel", () => {
+  test("always shows two decimals with the unit", () => {
+    expect(ctLabel(-3)).toBe("-3.00 ct");
+    expect(ctLabel(8.4249)).toBe("8.42 ct");
   });
 });
