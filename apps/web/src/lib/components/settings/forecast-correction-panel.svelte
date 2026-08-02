@@ -5,6 +5,7 @@
 	import { Axis, Canvas, Cell, Chart, Tooltip } from 'layerchart/canvas';
 	import { scaleBand } from 'd3-scale';
 	import { api } from '$lib/api';
+	import GradientLegend from '$lib/components/inverter/_shared/gradient-legend.svelte';
 	import { getLocale } from '$lib/paraglide/runtime';
 	import * as m from '$lib/paraglide/messages';
 
@@ -113,14 +114,11 @@
 			</Chart>
 		</div>
 
-		<div class="flex items-center gap-2 text-xs text-muted-foreground">
-			<span>{m.weather_forecast_correction_legend()}</span>
-			<span class="tabular-nums">0.6×</span>
-			<span
-				class="h-2 w-24 rounded-full"
-				style="background: linear-gradient(to right, hsl(38 65% 45% / 0.85), hsl(0 0% 50% / 0.15), hsl(152 65% 45% / 0.85))"
-			></span>
-			<span class="tabular-nums">1.4×</span>
-		</div>
+		<GradientLegend
+			label={m.weather_forecast_correction_legend()}
+			low="0.6×"
+			high="1.4×"
+			gradient="linear-gradient(to right, hsl(38 65% 45% / 0.85), hsl(0 0% 50% / 0.15), hsl(152 65% 45% / 0.85))"
+		/>
 	{/if}
 </div>

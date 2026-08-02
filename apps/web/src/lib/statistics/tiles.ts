@@ -4,7 +4,7 @@
 // payload. Later sections (energy, prices, records) add their own registries
 // against the same TileDef surface.
 
-import type { CostBreakdown } from "server/src/cost-calc";
+import type { CostBreakdown, CostTotals } from "server/src/cost-calc";
 import type { CostFormatters } from "$lib/cost/format";
 import * as m from "$lib/paraglide/messages";
 
@@ -167,6 +167,129 @@ export const COST_TILES: readonly TileDef<CostBreakdown>[] = [
     raw: (c) => c.selfConsumption,
     goodDirection: "up",
   },
+];
+
+/**
+ * Payload of the energy tile row: the window's totals, the comparison
+ * endpoint's reference window, and how many days the window spans (for the
+ * "per day" sub-line). Both windows come from the ONE `/api/statistics/comparison`
+ * request the page already makes — the energy row costs no extra fetch.
+ */
+export type EnergyTileData = {
+  current: CostTotals;
+  /** Reference window; `null` when the comparison endpoint is unavailable or
+   *  the window predates recorded history. */
+  previous: CostTotals | null;
+  /** Length of the current window in days, ≥ 1. */
+  rangeDays: number;
+  /** Whether this plant has a battery at all (profile manifest). Keeps the
+   *  battery tiles off a batteryless system even mid-fetch, when a zero total
+   *  would otherwise be indistinguishable from an idle pack. */
+  hasBattery: boolean;
+};
+
+/** Signed percentage change against the reference window, e.g. "▲ 8%". Null
+ *  when there is nothing meaningful to compare against (no reference window, a
+ *  zero baseline, or a change under half a percent). */
+function pctDelta(current: number, previous: number | null): string | null {
+  if (previous === null || previous === 0) return null;
+  const change = (current - previous) / previous;
+  if (Math.abs(change) < 0.005) return null;
+  return `${change > 0 ? "▲" : "▼"} ${Math.abs(Math.round(change * 100))}%`;
+}
+
+/** Sub-line shared by every energy tile: the daily average, plus the delta
+ *  against the reference window when one exists. */
+function perDaySub(kwh: number, d: EnergyTileData, previous: number | null, f: CostFormatters) {
+  const amount = f.kwh(kwh / d.rangeDays);
+  const delta = pctDelta(kwh, previous);
+  return delta
+    ? m.statistics_sub_per_day_delta({ amount, delta })
+    : m.statistics_sub_per_day({ amount });
+}
+
+/** One energy tile: same figure read off both windows, formatted as kWh. */
+function energyTile(
+  id: string,
+  label: () => string,
+  explain: () => string,
+  value: (t: CostTotals) => number,
+  goodDirection: TileDef<EnergyTileData>["goodDirection"],
+  /** Extra capability gate on top of "the plant produced/consumed nothing". */
+  applies: (d: EnergyTileData) => boolean = () => true,
+): TileDef<EnergyTileData> {
+  return {
+    id,
+    label,
+    explain,
+    compute: (d, f) => {
+      if (!applies(d)) return null;
+      const kwh = value(d.current);
+      return {
+        value: f.kwh(kwh),
+        sub: perDaySub(kwh, d, d.previous ? value(d.previous) : null, f),
+        accent: "",
+      };
+    },
+    raw: (d) => (applies(d) ? value(d.current) : null),
+    goodDirection,
+  };
+}
+
+/**
+ * A battery figure is worth a tile when the plant has a pack at all — an idle
+ * window is itself information — but never on a plant without one.
+ */
+const hasBatteryEnergy = (d: EnergyTileData): boolean =>
+  d.hasBattery ||
+  d.current.batteryChargeKwh > 0 ||
+  d.current.batteryDischargeKwh > 0 ||
+  (d.previous?.batteryChargeKwh ?? 0) > 0 ||
+  (d.previous?.batteryDischargeKwh ?? 0) > 0;
+
+/**
+ * The energy totals row at the top of the Energy section. These answer the
+ * everyday question ("how much did we produce last month?") in figures, so a
+ * reader never has to integrate a chart by eye.
+ */
+export const ENERGY_TILES: readonly TileDef<EnergyTileData>[] = [
+  energyTile(
+    "energy.produced",
+    m.statistics_tile_produced,
+    m.statistics_tile_produced_explain,
+    (t) => t.productionKwh,
+    "up",
+  ),
+  energyTile(
+    "energy.consumed",
+    m.statistics_tile_consumed,
+    m.statistics_tile_consumed_explain,
+    (t) => t.loadKwh,
+    "down",
+  ),
+  energyTile(
+    "energy.selfUsed",
+    m.statistics_tile_self_used,
+    m.statistics_tile_self_used_explain,
+    (t) => t.selfConsumedKwh,
+    "up",
+  ),
+  energyTile(
+    "energy.batteryCharged",
+    m.statistics_tile_battery_charged,
+    m.statistics_tile_battery_charged_explain,
+    (t) => t.batteryChargeKwh,
+    "neutral",
+    hasBatteryEnergy,
+  ),
+  energyTile(
+    "energy.batteryDischarged",
+    m.statistics_tile_battery_discharged,
+    m.statistics_tile_battery_discharged_explain,
+    (t) => t.batteryDischargeKwh,
+    "neutral",
+    hasBatteryEnergy,
+  ),
 ];
 
 /** One resolved, render-ready tile. */
