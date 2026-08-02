@@ -453,6 +453,7 @@
   "statistics_baseline_previous_days": "los {days} días anteriores",
   "statistics_baseline_year_ago": "el mismo periodo del año pasado",
   "statistics_baseline_reference": "el periodo de referencia",
+  "statistics_caption_range": "{span} · frente a {baseline}",
   "statistics_prices_today": "Hoy",
   "statistics_prices_tomorrow": "Mañana",
   "statistics_prices_negative_history": "Periodos de precio negativo",

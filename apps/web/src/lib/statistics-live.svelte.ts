@@ -32,6 +32,11 @@ class StatisticsLiveStore {
   /** Bumped when a spot-price sync stored fresh slots. Everything price-derived
    *  (the price panel, the spot analytics reads) is stale at that point. */
   priceRevision = $state(0);
+  /** Whether the stream is currently connected — what the page's live dot
+   *  shows. Cleared on a drop, which the socket also reports when the last
+   *  lease goes away, so a past-only range reads as "not live" rather than
+   *  leaving a stale dot lit. */
+  connected = $state(false);
 
   /** How the current lease consumes pushes. */
   #mode: LiveMode = "today";
@@ -47,7 +52,11 @@ class StatisticsLiveStore {
     // A drop (or the last lease going away) must not leave a frozen snapshot
     // patched over the tiles: fall back to the fetched figures until the next
     // open, which the server answers with a fresh snapshot immediately.
+    onOpen: () => {
+      this.connected = true;
+    },
     onDrop: () => {
+      this.connected = false;
       this.today = null;
     },
   });

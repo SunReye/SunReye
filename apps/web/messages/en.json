@@ -453,6 +453,7 @@
   "statistics_baseline_previous_days": "the previous {days} days",
   "statistics_baseline_year_ago": "the same period a year ago",
   "statistics_baseline_reference": "the reference period",
+  "statistics_caption_range": "{span} · vs {baseline}",
   "statistics_prices_today": "Today",
   "statistics_prices_tomorrow": "Tomorrow",
   "statistics_prices_negative_history": "Negative price windows",

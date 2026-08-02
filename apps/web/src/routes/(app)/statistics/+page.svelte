@@ -7,6 +7,7 @@
 	import * as m from '$lib/paraglide/messages';
 	import { Button } from '$lib/components/ui/button';
 	import CostRangePicker from '$lib/components/inverter/cost-range-picker.svelte';
+	import LiveDot from '$lib/components/automations/live-dot.svelte';
 	import { setPageHeader } from '$lib/page-header.svelte';
 	import { useAppSession } from '$lib/session';
 	import { resolveCostPreset, type CostRange } from '$lib/cost/ranges';
@@ -122,6 +123,13 @@
 	{/if}
 
 	<div class="flex flex-wrap items-center justify-end gap-3">
+		<!-- Only while the picked window actually moves: a past-only range holds no
+		     lease, and a lit dot beside a finished month would be a lie. -->
+		{#if includesNow(range)}
+			<span class="text-xs text-muted-foreground">
+				<LiveDot connected={statisticsLive.connected} />
+			</span>
+		{/if}
 		<CostRangePicker bind:range />
 		{#if canCustomize}
 			<Button
