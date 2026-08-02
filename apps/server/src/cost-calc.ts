@@ -4,7 +4,11 @@
  * The DB-bound orchestration lives in cost.ts.
  */
 
-import { type TariffConfig, importBandForHour } from "@SunReye/db/tariff";
+import { type TariffConfig, importBandForHour, importPriceForHour } from "@SunReye/db/tariff";
+// Type-only, so the cost.ts ⇄ cost-calc.ts pairing stays a one-way runtime
+// dependency: cost.ts owns the shapes the SQL layer produces, this module owns
+// the arithmetic over them.
+import type { CostSeriesPoint, CounterDeltaRow, EnergyField } from "./cost";
 
 /** Energy (kWh) that flowed in one hour, plus the hour's local wall time. */
 export interface HourEnergy {
@@ -218,6 +222,113 @@ export function allocateCost(
     byDay: [...days.values()].sort((a, b) => a.date.localeCompare(b.date)),
     byBand: [...bands.values()].sort((a, b) => b.cost - a.cost),
   };
+}
+
+/**
+ * The local wall-clock hour a delta-matrix row describes: the calendar date of
+ * its period key plus the row's hour-of-day. Sound for the hour and day buckets
+ * — there `(period, hod)` pins exactly one real hour — but NOT for month, where
+ * one hod covers every day of the month. Callers needing a real hour run month
+ * windows at day granularity instead (see {@link ./cost}.computeCostSeries).
+ */
+function hourFromPeriodKey(period: string, hod: number): Date {
+  return new Date(
+    Number(period.slice(0, 4)),
+    Number(period.slice(5, 7)) - 1,
+    Number(period.slice(8, 10)),
+    hod,
+  );
+}
+
+const emptySeriesPoint = (bucket: string, standingCharge: number): CostSeriesPoint => ({
+  bucket,
+  importCost: 0,
+  exportEarnings: 0,
+  zeroValueExportKwh: 0,
+  zeroValueExportEur: 0,
+  standingCharge,
+  net: standingCharge,
+});
+
+/** Fold one export row into its period, splitting off the §51 share that earned
+ *  nothing because its quarter-hours cleared below zero. */
+function addExportRow(
+  point: CostSeriesPoint,
+  row: CounterDeltaRow,
+  tariff: TariffConfig,
+  zeroValueShare?: ZeroValueShare,
+): void {
+  const kwh = Number(row.kwh);
+  const share = clamp01(zeroValueShare?.(hourFromPeriodKey(row.period, Number(row.hod))) ?? 0);
+  const lostKwh = kwh * share;
+  point.exportEarnings += (kwh - lostKwh) * tariff.export.feedInPerKwh;
+  point.zeroValueExportKwh += lostKwh;
+  point.zeroValueExportEur += lostKwh * tariff.export.feedInPerKwh;
+}
+
+/** Fold one delta row's money into its period point. Only import and export
+ *  carry money; load/production rows are the energy series' business. */
+function addSeriesRow(
+  point: CostSeriesPoint,
+  row: CounterDeltaRow,
+  field: EnergyField | undefined,
+  tariff: TariffConfig,
+  zeroValueShare?: ZeroValueShare,
+): void {
+  if (field === "import") {
+    point.importCost +=
+      Number(row.kwh) * importPriceForHour(tariff, Number(row.hod), Number(row.dow));
+  } else if (field === "export") {
+    addExportRow(point, row, tariff, zeroValueShare);
+  }
+}
+
+/**
+ * Price a bounded counter-delta matrix into one point per period: import at its
+ * (hour-of-day, weekday) band, export at the feed-in rate less the §51
+ * zero-value share, plus the period's prorated standing charge. The pure
+ * counterpart of {@link allocateCost} for rows SQL has already grouped; rows
+ * for a period outside the zero-filled window (edge rounding) are ignored.
+ */
+export function priceSeriesRows(
+  rows: readonly CounterDeltaRow[],
+  fieldByKey: ReadonlyMap<string, EnergyField>,
+  periods: readonly string[],
+  tariff: TariffConfig,
+  standing: ReadonlyMap<string, number>,
+  zeroValueShare?: ZeroValueShare,
+): CostSeriesPoint[] {
+  const byKey = new Map<string, CostSeriesPoint>(
+    periods.map((b) => [b, emptySeriesPoint(b, standing.get(b) ?? 0)]),
+  );
+  for (const r of rows) {
+    const point = byKey.get(r.period);
+    if (point) addSeriesRow(point, r, fieldByKey.get(r.metric), tariff, zeroValueShare);
+  }
+  const points = [...byKey.values()];
+  for (const p of points) p.net = p.importCost - p.exportEarnings + p.standingCharge;
+  return points;
+}
+
+/**
+ * Sum day points into month points (`YYYY-MM` keys, order preserved). Needed
+ * only when §51 forces a month request down to day granularity: the pricing has
+ * to happen where a real wall-clock hour exists, so the roll-up happens after.
+ */
+export function rollUpToMonths(days: readonly CostSeriesPoint[]): CostSeriesPoint[] {
+  const byMonth = new Map<string, CostSeriesPoint>();
+  for (const d of days) {
+    const key = d.bucket.slice(0, 7);
+    const point = byMonth.get(key) ?? emptySeriesPoint(key, 0);
+    point.importCost += d.importCost;
+    point.exportEarnings += d.exportEarnings;
+    point.zeroValueExportKwh += d.zeroValueExportKwh;
+    point.zeroValueExportEur += d.zeroValueExportEur;
+    point.standingCharge += d.standingCharge;
+    point.net = point.importCost - point.exportEarnings + point.standingCharge;
+    byMonth.set(key, point);
+  }
+  return [...byMonth.values()];
 }
 
 /**

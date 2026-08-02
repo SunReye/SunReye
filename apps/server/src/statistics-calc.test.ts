@@ -236,6 +236,8 @@ describe("pickMoneyRecords", () => {
     bucket,
     importCost: 0,
     exportEarnings: 0,
+    zeroValueExportKwh: 0,
+    zeroValueExportEur: 0,
     standingCharge: 0,
     net: 0,
     ...p,
