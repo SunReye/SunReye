@@ -2,6 +2,7 @@
 	import type { PeriodEnergy } from 'server/src/energy-calc';
 	import PeriodLineChart from './period-line-chart.svelte';
 	import { periodLabel, type CostBucket } from '$lib/cost/ranges';
+	import { decimal } from '$lib/format/number';
 	import * as m from '$lib/paraglide/messages';
 
 	// Every raw energy flow on one kWh axis, period by period: what came in, what
@@ -68,8 +69,7 @@
 			: [])
 	]);
 
-	const kwh = (v: unknown) =>
-		`${Number(v).toLocaleString(undefined, { maximumFractionDigits: 1 })} kWh`;
+	const kwh = (v: unknown) => `${decimal(Number(v))} kWh`;
 </script>
 
 <PeriodLineChart {data} {series} {bucket} format={kwh} />

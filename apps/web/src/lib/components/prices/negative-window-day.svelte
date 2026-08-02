@@ -1,17 +1,12 @@
 <script lang="ts">
 	import { ctLabel, type NegativeWindow } from '$lib/prices/price-series';
+	import { dayKeyDate, weekdayShortDate } from '$lib/format/date';
 	import * as m from '$lib/paraglide/messages';
 
 	// One market-local day's worth of negative windows, as time chips.
 	let { date, windows }: { date: string; windows: NegativeWindow[] } = $props();
 
-	const dayLabel = $derived(
-		new Date(`${date}T12:00:00`).toLocaleDateString(undefined, {
-			weekday: 'short',
-			day: '2-digit',
-			month: '2-digit'
-		})
-	);
+	const dayLabel = $derived(weekdayShortDate(dayKeyDate(date)));
 </script>
 
 <div class="flex flex-col gap-1.5">

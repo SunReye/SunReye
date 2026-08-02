@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { getChartContext, Tooltip as TooltipPrimitive } from 'layerchart';
 	import type { PriceRow } from '$lib/prices/price-series';
+	import { formatNumber } from '$lib/format/number';
 	import * as m from '$lib/paraglide/messages';
 
 	// The diverging halves would each report their own value through
@@ -11,7 +12,7 @@
 	const row = $derived(ctx.tooltip.data as PriceRow | null);
 
 	const ct = (v: number) =>
-		`${v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ct/kWh`;
+		`${formatNumber(v, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ct/kWh`;
 </script>
 
 <TooltipPrimitive.Root variant="none">

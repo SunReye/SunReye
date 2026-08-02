@@ -9,6 +9,8 @@ import type { SpotStats, SpotWhatIf } from "server/src/spot-stats";
 import type { RecordsResponse } from "server/src/statistics";
 import type { DayRecord } from "server/src/statistics-calc";
 import type { CostFormatters } from "$lib/cost/format";
+import { dayKeyDate, dayMonthYear } from "$lib/format/date";
+import { decimal } from "$lib/format/number";
 import { ctLabel, ctPerKwh } from "$lib/prices/price-series";
 import { deltaFor } from "$lib/statistics/compare";
 import * as m from "$lib/paraglide/messages";
@@ -399,12 +401,7 @@ export const COMPARISON_TILES: readonly TileDef<CostBreakdown>[] = [
 ];
 
 /** Locale date for a `YYYY-MM-DD` record day. */
-const recordDay = (date: string): string =>
-  new Date(`${date}T00:00:00`).toLocaleDateString(undefined, {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  });
+const recordDay = (date: string): string => dayMonthYear(dayKeyDate(date));
 
 /**
  * One all-time record tile. `pick` is what makes a tile applicable: money
@@ -597,7 +594,7 @@ export const PRICE_TILES: readonly TileDef<SpotStats>[] = [
     m.statistics_prices_tile_negative_hours_explain,
     (s) => s.negativeHours,
     (_s, summary) => ({
-      value: `${summary.negativeHours.toLocaleString(undefined, { maximumFractionDigits: 1 })} h`,
+      value: `${decimal(summary.negativeHours)} h`,
       sub: m.statistics_prices_sub_negative({ slots: summary.negativeSlots }),
       accent: "",
     }),

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { negativeHours, type NegativeWindow } from '$lib/prices/price-series';
 	import NegativeWindowDay from './negative-window-day.svelte';
+	import { decimal } from '$lib/format/number';
 	import * as m from '$lib/paraglide/messages';
 
 	let {
@@ -33,7 +34,7 @@
 
 	const summary = $derived(
 		m.prices_negative_summary({
-			hours: hours.toLocaleString(undefined, { maximumFractionDigits: 2 }),
+			hours: decimal(hours, 2),
 			windows: windows.length
 		})
 	);

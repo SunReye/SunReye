@@ -3,6 +3,8 @@
 // free functions) because every formatter is pinned to the breakdown's
 // currency: call `costFormatters(cost?.currency)` per fetched payload.
 
+import { getLocale } from "$lib/paraglide/runtime";
+
 export interface CostFormatters {
   /** Currency amount at the locale's default precision (2dp for EUR). */
   money: (v: number) => string;
@@ -14,19 +16,22 @@ export interface CostFormatters {
   pct: (v: number | null) => string;
 }
 
-/** Build the formatter set for one currency; `undefined` falls back to EUR. */
+/** Build the formatter set for one currency; `undefined` falls back to EUR.
+ *  Figures follow the UI locale, not the browser's — a German page grouped its
+ *  thousands the English way until this was threaded through. */
 export function costFormatters(currency?: string): CostFormatters {
   const cur = currency ?? "EUR";
+  const locale = getLocale();
   return {
-    money: (v) => new Intl.NumberFormat(undefined, { style: "currency", currency: cur }).format(v),
+    money: (v) => new Intl.NumberFormat(locale, { style: "currency", currency: cur }).format(v),
     price: (v) =>
-      new Intl.NumberFormat(undefined, {
+      new Intl.NumberFormat(locale, {
         style: "currency",
         currency: cur,
         minimumFractionDigits: 2,
         maximumFractionDigits: 3,
       }).format(v),
-    kwh: (v) => `${v.toLocaleString(undefined, { maximumFractionDigits: 1 })} kWh`,
+    kwh: (v) => `${v.toLocaleString(locale, { maximumFractionDigits: 1 })} kWh`,
     pct: (v) => (v === null ? "—" : `${Math.round(v * 100)}%`),
   };
 }

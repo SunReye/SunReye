@@ -7,6 +7,7 @@
 	import { Button } from '$lib/components/ui/button';
 	import * as Popover from '$lib/components/ui/popover';
 	import * as m from '$lib/paraglide/messages';
+	import { getLocale } from '$lib/paraglide/runtime';
 	import { RangeCalendar } from '$lib/components/ui/range-calendar';
 
 	// Presentational shell shared by the History and Costs range pickers: a trigger
@@ -78,7 +79,14 @@
 		</div>
 		<!-- Stacked (mobile) layout: stretch the calendar's fluid grid across the
 		     popover; side-by-side it keeps its intrinsic width. -->
-		<RangeCalendar bind:value={custom} numberOfMonths={1} class="w-full sm:w-auto" />
+		<!-- bits-ui defaults the calendar to en-US: without the app locale a German
+		     UI shows "Su Mo Tu" and English day names in the aria labels. -->
+		<RangeCalendar
+			bind:value={custom}
+			numberOfMonths={1}
+			locale={getLocale()}
+			class="w-full sm:w-auto"
+		/>
 	</div>
 {/snippet}
 

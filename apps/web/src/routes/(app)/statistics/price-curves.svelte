@@ -6,6 +6,7 @@
 	import PriceTrackChart from '$lib/components/prices/price-track-chart.svelte';
 	import PriceNotes from '$lib/components/prices/price-notes.svelte';
 	import { priceRows } from '$lib/prices/price-series';
+	import { dayKeyDate, weekdayDate } from '$lib/format/date';
 	import { dayCurves, nowBand } from '$lib/statistics/price-history';
 	import ChartPanel from './chart-panel.svelte';
 
@@ -33,12 +34,7 @@
 	// next to the curves it qualifies, together with the source's credit line.
 	const coarse = $derived(view.resolutionMinutes > 15);
 
-	const dayLabel = (date: string) =>
-		new Date(`${date}T12:00:00`).toLocaleDateString(undefined, {
-			weekday: 'long',
-			day: 'numeric',
-			month: 'short'
-		});
+	const dayLabel = (date: string) => weekdayDate(dayKeyDate(date));
 </script>
 
 {#if today}

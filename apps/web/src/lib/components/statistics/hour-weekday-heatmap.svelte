@@ -8,6 +8,7 @@
 	import RangeSwitcher from '$lib/components/inverter/range-switcher.svelte';
 	import GradientLegend from '$lib/components/inverter/_shared/gradient-legend.svelte';
 	import { heatColor, heatGradient, heatOpacity } from '$lib/statistics/heatmap';
+	import { decimal } from '$lib/format/number';
 	import { getLocale } from '$lib/paraglide/runtime';
 	import * as m from '$lib/paraglide/messages';
 
@@ -63,7 +64,7 @@
 	const weekdayLabel = (dow: number) =>
 		new Date(2024, 0, dow).toLocaleDateString(getLocale(), { weekday: 'short' });
 	const hourLabel = (hod: number) => `${String(hod).padStart(2, '0')}:00`;
-	const kwh = (v: number) => `${v.toLocaleString(undefined, { maximumFractionDigits: 2 })} kWh`;
+	const kwh = (v: number) => `${decimal(v, 2)} kWh`;
 
 	const metricLabel = $derived(METRICS.find((x) => x.id === metric)?.label ?? '');
 </script>

@@ -14,6 +14,8 @@
 // buffer / rollup granularity for entity charts — different concern, different
 // shape.
 
+import { dayMonth, monthShort } from "$lib/format/date";
+
 const DAY = 86_400_000;
 
 /** Bar granularity of a statistics chart. */
@@ -82,13 +84,8 @@ export const COST_X_TICKS: Record<CostBucket, number> = { hour: 6, day: 8, month
 
 export function periodLabel(key: string, bucket: CostBucket): string {
   if (bucket === "hour") return `${key.slice(11, 13)}:00`;
-  if (bucket === "day") {
-    return new Date(`${key}T00:00:00`).toLocaleDateString(undefined, {
-      day: "numeric",
-      month: "short",
-    });
-  }
-  return new Date(`${key}-01T00:00:00`).toLocaleDateString(undefined, { month: "short" });
+  if (bucket === "day") return dayMonth(new Date(`${key}T00:00:00`));
+  return monthShort(new Date(`${key}-01T00:00:00`));
 }
 
 const startOfDay = (d: Date): Date => new Date(d.getFullYear(), d.getMonth(), d.getDate());
@@ -181,23 +178,17 @@ export function resolveCostPreset(id: string, now: Date = new Date()): CostRange
   return (PRESET_BUILDERS[id] ?? thisMonth)(now);
 }
 
-const dateFmt = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" });
-
 /**
  * Build a custom range from two inclusive calendar days. The tiles window (and
  * the detail chart) extend `to` to the exclusive next-day boundary so the last
  * picked day is included; the detail chart shows daily bars across the picked
  * span, the context chart the trailing 12 months around it.
  */
-export function customCostRange(
-  from: Date,
-  toInclusive: Date,
-  now: Date = new Date(),
-): CostRange {
+export function customCostRange(from: Date, toInclusive: Date, now: Date = new Date()): CostRange {
   const to = new Date(toInclusive.getTime() + DAY);
   return {
     id: "custom",
-    label: `${dateFmt.format(from)} – ${dateFmt.format(toInclusive)}`,
+    label: `${dayMonth(from)} – ${dayMonth(toInclusive)}`,
     from,
     to,
     detail: { from, to, bucket: "day", caption: "Custom range, by day" },

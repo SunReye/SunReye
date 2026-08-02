@@ -1,5 +1,6 @@
 <script lang="ts">
 	import type { SectionDef, SectionData, SectionId } from '$lib/statistics/sections';
+	import { rangeLabel } from '$lib/cost/labels';
 	import { spotStats } from '$lib/statistics/spot-stats.svelte';
 	import { statisticsLive } from '$lib/statistics-live.svelte';
 	import StatisticsSection from './statistics-section.svelte';
@@ -29,7 +30,7 @@
 </script>
 
 {#each shown as section (section.id)}
-	<StatisticsSection id={section.id} title={section.label()} caption={data.range.label}>
+	<StatisticsSection id={section.id} title={section.label()} caption={rangeLabel(data.range)}>
 		<SectionBody id={section.id} {data} />
 	</StatisticsSection>
 {/each}
