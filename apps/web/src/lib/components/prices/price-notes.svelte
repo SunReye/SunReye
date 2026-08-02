@@ -5,24 +5,19 @@
 	// The caveats that must travel with a price series, kept out of the panel so
 	// that file stays a layout.
 	let {
-		tomorrowPending,
 		coarse,
 		attribution
 	}: {
-		/** Tomorrow's auction hasn't cleared, so its negative slots are unknown. */
-		tomorrowPending: boolean;
 		/** Source is hourly, so a negative quarter-hour inside an hour is invisible. */
 		coarse: boolean;
 		/** Credit line required by the source's licence, when it has one. */
 		attribution: string | null;
 	} = $props();
-</script>
 
-{#if tomorrowPending}
-	<Alert.Root>
-		<Alert.Description>{m.prices_tomorrow_pending()}</Alert.Description>
-	</Alert.Root>
-{/if}
+	// The "tomorrow isn't published yet" note deliberately lives where tomorrow's
+	// curve would be, not down here with the caveats — it explains a missing
+	// chart, so it has to sit in that chart's place.
+</script>
 
 {#if coarse}
 	<Alert.Root>

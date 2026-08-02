@@ -13,7 +13,11 @@ import type { SpotPriceView } from "server/src/spot-price-job";
 type SpotPricePoint = SpotPriceView["series"][number];
 
 /** EUR/MWh → ct/kWh, sign preserved. */
-const ctPerKwh = (eurPerMwh: number): number => eurPerMwh / 10;
+export const ctPerKwh = (eurPerMwh: number): number => eurPerMwh / 10;
+
+/** A ct/kWh figure with its unit — the one display form for market prices. */
+export const ctLabel = (ct: number): string =>
+  `${ct.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ct`;
 
 /** One band of the price chart. */
 export type PriceRow = {
@@ -61,7 +65,11 @@ export function priceRows(view: SpotPriceView): PriceRow[] {
   });
 }
 
-/** A contiguous run of negative slots — one actionable window. */
+/**
+ * A contiguous run of negative slots — one actionable window. Built from the
+ * analytics endpoint's windows by `$lib/statistics/price-history`; the two
+ * price components below render this shape whatever produced it.
+ */
 export type NegativeWindow = {
   startMs: number;
   /** Exclusive end: the start of the first non-negative slot after the run. */
@@ -75,61 +83,6 @@ export type NegativeWindow = {
   /** Deepest (most negative) price in the run, ct/kWh. */
   minCtPerKwh: number;
 };
-
-/** Minutes to add to a `HH:mm` label, wrapping to `24:00` at the end of a day. */
-function addMinutes(hhmm: string, minutes: number): string {
-  const total = Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(3, 5)) + minutes;
-  const h = Math.floor(total / 60);
-  return `${String(h).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
-}
-
-/**
- * Contiguous runs of negative slots.
- *
- * Adjacency is checked on the *instant*, not on array position, so a gap in the
- * stored series splits a window instead of silently joining two runs that have
- * unpriced time between them. Runs are also split at a market-local day boundary:
- * "tonight" and "tomorrow morning" are different things to act on even when the
- * prices are continuous across midnight.
- */
-export function negativeWindows(view: SpotPriceView): NegativeWindow[] {
-  const stepMs = view.series[0] ? 900_000 : 0;
-  const out: NegativeWindow[] = [];
-  let run: SpotPricePoint[] = [];
-
-  const flush = () => {
-    const first = run[0];
-    const last = run.at(-1);
-    if (!first || !last) return;
-    const stepMinutes = stepMs / 60_000;
-    out.push({
-      startMs: first.startMs,
-      endMs: last.startMs + stepMs,
-      from: timeOf(first.time),
-      to: addMinutes(timeOf(last.time), stepMinutes),
-      date: dateOf(first.time),
-      slots: run.length,
-      minCtPerKwh: Math.min(...run.map((p) => ctPerKwh(p.eurPerMwh))),
-    });
-    run = [];
-  };
-
-  for (const point of view.series) {
-    if (!point.negative) {
-      flush();
-      continue;
-    }
-    const previous = run.at(-1);
-    const contiguous =
-      previous !== undefined &&
-      point.startMs === previous.startMs + stepMs &&
-      dateOf(point.time) === dateOf(previous.time);
-    if (previous !== undefined && !contiguous) flush();
-    run.push(point);
-  }
-  flush();
-  return out;
-}
 
 /** Total energy-time spent in negative slots, hours. */
 export function negativeHours(windows: NegativeWindow[]): number {
