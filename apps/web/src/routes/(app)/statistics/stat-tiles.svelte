@@ -1,24 +1,25 @@
-<script lang="ts">
+<script lang="ts" generics="Data">
 	import { fade } from 'svelte/transition';
 	import Info from 'phosphor-svelte/lib/Info';
 	import * as Popover from '$lib/components/ui/popover';
 	import * as m from '$lib/paraglide/messages';
+	import type { CostFormatters } from '$lib/cost/format';
+	import { deriveTiles, type TileDef } from '$lib/statistics/tiles';
 
-	// Headline figures for the costs page. Every string arrives pre-formatted so
-	// currency and locale handling stays with the page that owns the tariff.
+	// Registry-driven headline tiles: resolves a TileDef registry against the
+	// section's payload, so every statistics section shares one grid. Markup is
+	// the costs page's tile grid, unchanged.
 	let {
-		tiles
+		defs,
+		data,
+		formatters
 	}: {
-		tiles: {
-			id: string;
-			label: string;
-			value: string;
-			sub: string;
-			/** Tailwind text-* class emphasising a figure in the household's favour. */
-			accent: string;
-			explain: string;
-		}[];
+		defs: readonly TileDef<Data>[];
+		data: Data;
+		formatters: CostFormatters;
 	} = $props();
+
+	const tiles = $derived(deriveTiles(defs, data, formatters));
 </script>
 
 <div
