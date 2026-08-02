@@ -14,7 +14,7 @@ into a general-purpose home-automation hub is out of scope.
 
 Import/export tariffs with flat and time-of-use bands, standing charge and currency; a cost
 dashboard with grid cost, export earnings, net bill, savings vs. grid-only, self-sufficiency
-and self-consumption. See [Costs & Tariffs](/use/costs/).
+and self-consumption. See [Statistics](/use/statistics/).
 
 ### Configuration in the UI
 

@@ -1,7 +1,6 @@
-// Section registry for the statistics page. Only `cost` has content today;
-// energy, prices and records arrive in later waves — their ids and labels are
-// fixed here already because the customize preferences and message keys must
-// stay stable across those waves.
+// Section registry for the statistics page: the four sections, in render
+// order. The ids are also the keys the customize preferences hide sections by,
+// so they must not change once shipped.
 
 import type { CostBreakdown } from "server/src/cost-calc";
 import type { CompareMode } from "server/src/statistics";

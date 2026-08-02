@@ -1,13 +1,11 @@
 <script lang="ts">
 	import { AreaChart, Area, ChartClipPath, Highlight } from 'layerchart';
 	import { curveCatmullRom } from 'd3-shape';
-	import { untrack } from 'svelte';
-	import { Tween } from 'svelte/motion';
-	import { linear } from 'svelte/easing';
 	import * as Chart from '$lib/components/ui/chart';
 	import DualYAxes from '$lib/components/inverter/_shared/dual-y-axes.svelte';
 	import CustomChartTooltip from '$lib/components/inverter/custom-chart-tooltip.svelte';
 	import { resolveAxes } from '$lib/components/inverter/_shared/chart-series';
+	import { liveCursor } from '$lib/components/inverter/_shared/live-cursor.svelte';
 	import {
 		bufferStart,
 		glideOffset,
@@ -79,22 +77,13 @@
 				}
 	);
 
-	// A real-time cursor that drifts continuously toward the newest sample instead of
-	// snapping to it once a second. Stretch every transition across the feed's own
-	// sample spacing (`interval`, the same value `glideOffset` scrolls by, so the
-	// cursor's speed matches the distance it has to cover) with a small overshoot, so
-	// it gently trails and never reaches the target and freezes between samples. Only
-	// the marks' translate (below) reads `cursor` — never `data`/`xDomain` — so the
-	// chart itself does NOT re-render per frame. Mirrors live-area.svelte; here the
-	// marks group holds every overlaid series.
-	const cursor = new Tween(untrack(() => lastT) ?? 0);
-	$effect(() => {
-		const t = lastT; // track live updates only
-		if (t === undefined) return;
-		// Untracked: `interval` changes in lockstep with `lastT`, and only a new
-		// sample should drive a new glide.
-		void cursor.set(t, { duration: Math.max(300, untrack(() => interval) * 1.15), easing: linear });
-	});
+	// The glide cursor the marks below scroll by — shared with live-area, see
+	// _shared/live-cursor.svelte.ts. Same behaviour here; the difference is only
+	// that this marks group holds every overlaid series.
+	const cursor = liveCursor(
+		() => lastT,
+		() => interval
+	);
 
 	// Keep the right axis gutter opaque too when a second axis is present.
 	const edgeFade = $derived(

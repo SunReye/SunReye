@@ -33,9 +33,9 @@ See [Profiles as data](/profiles/concept/) for how this works end to end.
 - **Control** — writable settings (charge/discharge currents, work mode, grid charge,
   solar-sell …) exposed as validated controls, guarded by the same validation everywhere.
   See [Controls](/use/controls/).
-- **Costs & tariffs** — import/export tariffs with time-of-use bands, cost dashboards,
-  savings vs. grid-only, self-sufficiency and self-consumption. See
-  [Costs & Tariffs](/use/costs/).
+- **Statistics** — import/export tariffs with time-of-use bands, cost and energy analytics,
+  spot price analytics, comparisons and all-time records. See
+  [Statistics](/use/statistics/).
 - **Third-party REST API (`/api/v1`)** — an auto-generated integration surface: entity
   catalog, current state, per-entity history, and one *validated* write route per writable
   entity, with OpenAPI docs. API-key authenticated (fails closed in production). See

@@ -8,7 +8,7 @@
 	// Reusable hourly bar chart for the overview detail dialogs. One or more
 	// series are stacked per band; a single series renders as a plain bar. Mirrors
 	// the LayerChart + chart-container + tooltip idioms of energy-split-chart /
-	// cost-bar-chart so the detail charts read the same as the Costs page ones.
+	// cost-bar-chart so the detail charts read the same as the Statistics ones.
 	type Series = { key: string; label: string; color: string; value: (d: T) => number };
 
 	let {
