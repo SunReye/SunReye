@@ -1,6 +1,15 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import type { CounterDeltaRow, EnergyField } from "./cost";
-import { heatmapCells, hodDowOccurrences, previousWindow } from "./statistics-calc";
+import type { CostSeriesPoint, CounterDeltaRow, EnergyField } from "./cost";
+import { type EnergyTotals, derivePeriodEnergy } from "./energy-calc";
+import {
+  heatmapCells,
+  hodDowOccurrences,
+  maxDay,
+  minDay,
+  pickEnergyRecords,
+  pickMoneyRecords,
+  previousWindow,
+} from "./statistics-calc";
 
 // DST-sensitive math (occurrence counting, previous-window length) is pinned
 // to a known zone. Bun applies process.env.TZ changes at runtime; restore the
@@ -143,5 +152,105 @@ describe("heatmapCells", () => {
     ]);
     const cells = heatmapCells([], fieldByKey, fields, occurrences);
     expect(cells.map((c) => `${c.dow}:${c.hod}`)).toEqual(["1:2", "1:5", "7:0"]);
+  });
+});
+
+describe("maxDay / minDay", () => {
+  const days = [
+    { date: "2025-01-01", value: 5 },
+    { date: "2025-01-02", value: 9 },
+    { date: "2025-01-03", value: 9 },
+    { date: "2025-01-04", value: 2 },
+  ];
+
+  test("pick the extreme; ties keep the earliest day", () => {
+    expect(maxDay(days)).toEqual({ date: "2025-01-02", value: 9 });
+    expect(minDay(days)).toEqual({ date: "2025-01-04", value: 2 });
+  });
+
+  test("empty input yields null", () => {
+    expect(maxDay([])).toBeNull();
+    expect(minDay([])).toBeNull();
+  });
+});
+
+const day = (date: string, t: Partial<EnergyTotals>) =>
+  derivePeriodEnergy(date, {
+    importKwh: 0,
+    exportKwh: 0,
+    loadKwh: 0,
+    productionKwh: 0,
+    batteryDischargeKwh: 0,
+    ...t,
+  });
+
+describe("pickEnergyRecords", () => {
+  test("picks per-metric extremes independently", () => {
+    const r = pickEnergyRecords([
+      day("2025-06-01", { productionKwh: 30, exportKwh: 20, loadKwh: 10, importKwh: 1 }),
+      day("2025-06-02", { productionKwh: 42, exportKwh: 5, loadKwh: 12, importKwh: 9 }),
+    ]);
+    expect(r.maxProductionDay).toEqual({ date: "2025-06-02", value: 42 });
+    expect(r.maxExportDay).toEqual({ date: "2025-06-01", value: 20 });
+    expect(r.maxLoadDay).toEqual({ date: "2025-06-02", value: 12 });
+    expect(r.maxImportDay).toEqual({ date: "2025-06-02", value: 9 });
+  });
+
+  test("zero-filled days never become max records", () => {
+    const r = pickEnergyRecords([day("2025-06-01", {}), day("2025-06-02", { productionKwh: 3 })]);
+    expect(r.maxProductionDay).toEqual({ date: "2025-06-02", value: 3 });
+    expect(r.maxExportDay).toBeNull();
+    expect(r.maxLoadDay).toBeNull();
+    expect(r.maxImportDay).toBeNull();
+  });
+
+  test("self-sufficiency records need at least 1 kWh of load", () => {
+    const r = pickEnergyRecords([
+      day("2025-06-01", { loadKwh: 0.5, importKwh: 0 }), // SS 1.0 but below the floor
+      day("2025-06-02", { loadKwh: 10, importKwh: 2 }), // SS 0.8
+      day("2025-06-03", { loadKwh: 10, importKwh: 9 }), // SS 0.1
+    ]);
+    expect(r.bestSelfSufficiencyDay).toEqual({ date: "2025-06-02", value: 0.8 });
+    expect(r.worstSelfSufficiencyDay).toEqual({ date: "2025-06-03", value: 0.1 });
+  });
+
+  test("empty history yields all-null records", () => {
+    const r = pickEnergyRecords([]);
+    expect(r.maxProductionDay).toBeNull();
+    expect(r.bestSelfSufficiencyDay).toBeNull();
+    expect(r.worstSelfSufficiencyDay).toBeNull();
+  });
+});
+
+describe("pickMoneyRecords", () => {
+  const point = (bucket: string, p: Partial<CostSeriesPoint>): CostSeriesPoint => ({
+    bucket,
+    importCost: 0,
+    exportEarnings: 0,
+    standingCharge: 0,
+    net: 0,
+    ...p,
+  });
+
+  test("picks net extremes and the best earnings day", () => {
+    const r = pickMoneyRecords([
+      point("2025-06-01", { net: 1.2, exportEarnings: 0.5 }),
+      point("2025-06-02", { net: -0.4, exportEarnings: 2.1 }),
+      point("2025-06-03", { net: 3.0, exportEarnings: 0.1 }),
+    ]);
+    expect(r.cheapestDay).toEqual({ date: "2025-06-02", value: -0.4 });
+    expect(r.mostExpensiveDay).toEqual({ date: "2025-06-03", value: 3.0 });
+    expect(r.bestEarningsDay).toEqual({ date: "2025-06-02", value: 2.1 });
+  });
+
+  test("no positive earnings → no earnings record; empty input → all null", () => {
+    const r = pickMoneyRecords([point("2025-06-01", { net: 1 })]);
+    expect(r.bestEarningsDay).toBeNull();
+    expect(r.cheapestDay).toEqual({ date: "2025-06-01", value: 1 });
+
+    const empty = pickMoneyRecords([]);
+    expect(empty.cheapestDay).toBeNull();
+    expect(empty.mostExpensiveDay).toBeNull();
+    expect(empty.bestEarningsDay).toBeNull();
   });
 });

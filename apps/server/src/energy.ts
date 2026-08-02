@@ -24,7 +24,7 @@ import {
 
 export type { PeriodEnergy } from "./energy-calc";
 
-const emptyTotals = (): EnergyTotals => ({
+export const emptyTotals = (): EnergyTotals => ({
   importKwh: 0,
   exportKwh: 0,
   loadKwh: 0,
@@ -34,7 +34,7 @@ const emptyTotals = (): EnergyTotals => ({
 
 /** Sum the delta-matrix rows into per-period {@link EnergyTotals}, zero-filled
  *  across `periods` so every bucket on the chart x-axis has an entry. */
-function accumulateTotals(
+export function accumulateTotals(
   rows: CounterDeltaRow[],
   fieldByKey: Map<string, EnergyField>,
   periods: string[],

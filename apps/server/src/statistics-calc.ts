@@ -6,7 +6,8 @@
  * {@link ./statistics}.
  */
 
-import type { CounterDeltaRow, EnergyField } from "./cost";
+import type { CostSeriesPoint, CounterDeltaRow, EnergyField } from "./cost";
+import type { PeriodEnergy } from "./energy-calc";
 
 /** How the comparison endpoint picks its reference window. */
 export type CompareMode = "previous" | "yearAgo";
@@ -125,4 +126,107 @@ export function heatmapCells(
     rec[key] = (rec[key] ?? 0) + Number(r.kwh);
   }
   return [...cells.values()].sort((a, b) => a.dow - b.dow || a.hod - b.hod);
+}
+
+/** One all-time record: the local day (`YYYY-MM-DD`) and its value. */
+export interface DayRecord {
+  date: string;
+  value: number;
+}
+
+/** All-time per-day energy records. `since` = first day with rollup data. */
+export interface EnergyRecords {
+  since: string;
+  maxProductionDay: DayRecord | null;
+  maxExportDay: DayRecord | null;
+  maxLoadDay: DayRecord | null;
+  maxImportDay: DayRecord | null;
+  bestSelfSufficiencyDay: DayRecord | null;
+  worstSelfSufficiencyDay: DayRecord | null;
+}
+
+/** All-time per-day money records. `since` is clamped to the hourly-rollup
+ *  horizon (band-accurate pricing needs hourly data), so it can start later
+ *  than the energy records' `since`. */
+export interface MoneyRecords {
+  since: string;
+  currency: string;
+  cheapestDay: DayRecord | null;
+  mostExpensiveDay: DayRecord | null;
+  bestEarningsDay: DayRecord | null;
+}
+
+/** The record among date-ascending candidates under `better` (strict), so
+ *  ties keep the EARLIEST day. Empty input → null. */
+function pickDay(
+  days: readonly DayRecord[],
+  better: (candidate: number, best: number) => boolean,
+): DayRecord | null {
+  let best: DayRecord | null = null;
+  for (const d of days) {
+    if (!best || better(d.value, best.value)) best = { date: d.date, value: d.value };
+  }
+  return best;
+}
+
+/** Earliest day with the highest value; null when `days` is empty. */
+export const maxDay = (days: readonly DayRecord[]): DayRecord | null =>
+  pickDay(days, (candidate, best) => candidate > best);
+
+/** Earliest day with the lowest value; null when `days` is empty. */
+export const minDay = (days: readonly DayRecord[]): DayRecord | null =>
+  pickDay(days, (candidate, best) => candidate < best);
+
+/** Days below this load are noise (data gaps, commissioning days) — they are
+ *  excluded from the self-sufficiency records, which are ratios and would
+ *  otherwise be dominated by near-empty days. */
+const SS_MIN_LOAD_KWH = 1;
+
+/** Candidates with `value > 0`: the per-day series is zero-filled, so without
+ *  the floor an all-zero metric would "record" its first calendar day. */
+const positiveDays = (
+  days: readonly PeriodEnergy[],
+  value: (d: PeriodEnergy) => number,
+): DayRecord[] => days.flatMap((d) => (value(d) > 0 ? [{ date: d.bucket, value: value(d) }] : []));
+
+/**
+ * Pick the all-time energy records from date-ascending per-day energy splits
+ * (ties → earliest day). Max records consider only days with a positive
+ * value; self-sufficiency records only days with load ≥ {@link SS_MIN_LOAD_KWH}.
+ * A record is null when no day qualifies.
+ */
+export function pickEnergyRecords(days: readonly PeriodEnergy[]): Omit<EnergyRecords, "since"> {
+  const ss = days.flatMap((d) =>
+    d.selfSufficiency !== null && d.loadKwh >= SS_MIN_LOAD_KWH
+      ? [{ date: d.bucket, value: d.selfSufficiency }]
+      : [],
+  );
+  return {
+    maxProductionDay: maxDay(positiveDays(days, (d) => d.productionKwh)),
+    maxExportDay: maxDay(positiveDays(days, (d) => d.exportKwh)),
+    maxLoadDay: maxDay(positiveDays(days, (d) => d.loadKwh)),
+    maxImportDay: maxDay(positiveDays(days, (d) => d.importKwh)),
+    bestSelfSufficiencyDay: maxDay(ss),
+    worstSelfSufficiencyDay: minDay(ss),
+  };
+}
+
+/**
+ * Pick the all-time money records from date-ascending per-day cost points
+ * (ties → earliest day). Net extremes consider every day (a zero-net day is a
+ * legitimate cheapest day); best earnings requires a positive figure — an
+ * all-zero export history has no earnings record.
+ */
+export function pickMoneyRecords(
+  points: readonly CostSeriesPoint[],
+): Pick<MoneyRecords, "cheapestDay" | "mostExpensiveDay" | "bestEarningsDay"> {
+  const nets = points.map((p) => ({ date: p.bucket, value: p.net }));
+  const earnings = points.flatMap((p) =>
+    p.exportEarnings > 0 ? [{ date: p.bucket, value: p.exportEarnings }] : [],
+  );
+  return {
+    cheapestDay: minDay(nets),
+    mostExpensiveDay: maxDay(nets),
+    bestEarningsDay: maxDay(earnings),
+  };
 }

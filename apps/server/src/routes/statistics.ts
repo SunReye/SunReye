@@ -1,6 +1,6 @@
 import type { InverterProfile } from "@SunReye/inverter-core";
 import { Elysia, t } from "elysia";
-import { computeHeatmap } from "../statistics";
+import { computeComparison, computeHeatmap, computeRecords } from "../statistics";
 import { adminGuard } from "./admin-guard";
 
 // 503 payload for a statistics read attempted before onboarding is done (no
@@ -13,6 +13,14 @@ const ONBOARDING_REQUIRED = { error: "No active inverter profile — onboarding 
 const windowQuery = t.Object({
   from: t.String(),
   to: t.String(),
+  inverterId: t.Optional(t.String()),
+});
+
+// windowQuery plus the reference-window mode for the comparison endpoint.
+const comparisonQuery = t.Object({
+  from: t.String(),
+  to: t.String(),
+  mode: t.Union([t.Literal("previous"), t.Literal("yearAgo")]),
   inverterId: t.Optional(t.String()),
 });
 
@@ -45,6 +53,26 @@ export function statisticsRoutes({ profile }: StatisticsRoutesDeps) {
         ({ query, status }) =>
           profile ? computeHeatmap(profile, windowArgs(query)) : status(503, ONBOARDING_REQUIRED),
         { requireSession: true, query: windowQuery },
+      )
+      // Cost breakdowns for a window and its reference window (previous /
+      // yearAgo) side by side, plus how far back recorded data reaches.
+      .get(
+        "/api/statistics/comparison",
+        ({ query, status }) =>
+          profile
+            ? computeComparison(profile, { ...windowArgs(query), mode: query.mode })
+            : status(503, ONBOARDING_REQUIRED),
+        { requireSession: true, query: comparisonQuery },
+      )
+      // All-time per-day energy + money records (rangeless; cached per local
+      // day server-side since the in-progress day is excluded).
+      .get(
+        "/api/statistics/records",
+        ({ query, status }) =>
+          profile
+            ? computeRecords(profile, { inverterId: query.inverterId })
+            : status(503, ONBOARDING_REQUIRED),
+        { requireSession: true, query: t.Object({ inverterId: t.Optional(t.String()) }) },
       )
   );
 }
