@@ -15,6 +15,7 @@ import { getEvccConfig, setEvccConfig } from "../evcc-settings";
 import * as runtime from "../runtime";
 import { getTariff, setTariff } from "../settings";
 import { fetchSolarForecast } from "../solar-forecast";
+import { getStatisticsPrefs, setStatisticsPrefs } from "../statistics-prefs-settings";
 import { getUiPrefs, setUiPrefs } from "../ui-prefs-settings";
 import { fetchWeather } from "../weather";
 import { getWeatherConfig, setWeatherConfig } from "../weather-settings";
@@ -65,6 +66,24 @@ export const settingsRoutes = new Elysia({ name: "settings-routes" })
     async ({ body, status }) => {
       try {
         return await setUiPrefs(body);
+      } catch (error) {
+        return status(400, {
+          error: error instanceof Error ? error.message : "Invalid preferences",
+        });
+      }
+    },
+    { requireAdmin: true, body: t.Unknown() },
+  )
+  // Statistics page preferences (hidden sections/tiles + per-section display
+  // options). Rides the dashboard read policy so every viewer gets the curated
+  // layout; only admins write. Hiding is a preference, not a capability gate —
+  // the underlying endpoints stay available regardless.
+  .get("/api/settings/statistics", () => getStatisticsPrefs(), { requireSession: true })
+  .put(
+    "/api/settings/statistics",
+    async ({ body, status }) => {
+      try {
+        return await setStatisticsPrefs(body);
       } catch (error) {
         return status(400, {
           error: error instanceof Error ? error.message : "Invalid preferences",
