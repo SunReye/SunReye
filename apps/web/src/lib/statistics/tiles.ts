@@ -1,8 +1,8 @@
-// Tile registry for the statistics page. Pure data + functions so every tile
+// Tile registries for the statistics page. Pure data + functions so every tile
 // derivation is unit-testable without mounting a component; the route's
 // stat-tiles.svelte renders whatever a registry yields for the current
-// payload. Later sections (energy, prices, records) add their own registries
-// against the same TileDef surface.
+// payload. Every section's tiles — cost, energy, prices, records — are a
+// registry against the same TileDef surface.
 
 import type { CostBreakdown, CostTotals } from "server/src/cost-calc";
 import type { SpotStats, SpotWhatIf } from "server/src/spot-stats";
@@ -23,8 +23,8 @@ export type TileView = {
 
 export type TileDef<Data> = {
   /**
-   * Stable id, namespaced "section.tile" — the customize preferences (later
-   * wave) hide tiles by this id, so it must not change once shipped.
+   * Stable id, namespaced "section.tile" — the customize preferences hide
+   * tiles by this id, so it must not change once shipped.
    */
   id: string;
   label: () => string;
@@ -33,8 +33,8 @@ export type TileDef<Data> = {
    *  gating — e.g. §51 never cost this plant anything). */
   compute: (data: Data, f: CostFormatters) => TileView | null;
   /**
-   * The unformatted headline figure for the same payload. Not rendered yet:
-   * the comparison wave diffs it across periods for the delta chips.
+   * The unformatted headline figure for the same payload. Never rendered
+   * directly — it is what the delta chip diffs across the two windows.
    */
   raw: (data: Data) => number | null;
   /** Which delta direction is good for the household; drives future chip color. */

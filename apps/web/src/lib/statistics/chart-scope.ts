@@ -14,10 +14,12 @@ export type ScopedSection = "cost" | "energy";
  * `cost.chartScope` / `energy.chartScope` defaults
  * (packages/db/src/statistics-prefs.ts).
  *
- * SEAM: the statistics prefs store is landing separately. Once
- * `$lib/statistics-prefs.svelte.ts` exists, read the saved scope here (falling
- * back to these values while the preference is still loading) — every section
- * already goes through {@link defaultChartScope}, so no caller changes.
+ * OPEN: `$lib/statistics-prefs.svelte.ts` now exists and carries those two
+ * saved scopes, but nothing reads them — the sections still start on the
+ * schema defaults below, and the customize UI offers no scope control, so the
+ * stored values are inert. Wiring is a one-liner here (read the saved scope,
+ * falling back to these while the preference is still loading): every section
+ * goes through {@link defaultChartScope}, so no caller changes.
  */
 const SCHEMA_DEFAULT_SCOPE: Record<ScopedSection, ChartScope> = {
   cost: "detail",
