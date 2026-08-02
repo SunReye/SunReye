@@ -98,6 +98,29 @@ writes the session override at `<root>/loadpoints/<n>/limitSoc/set` instead.
 The loadpoint's `vehicleLimitSoc` — the limit read *from the car* — is informational and
 takes no part in this.
 
+### What price-aware charging borrows
+
+If you turn on **Use the car as a sink** in [peak shaving](/use/settings/#automations), the
+automation writes three loadpoint topics, and hands each one back when the window is over —
+or when the automation stops for any other reason.
+
+| Topic | Written when |
+| --- | --- |
+| `<root>/loadpoints/<n>/mode/set` | Only to wake an **idle** charger (`off` → `pv`). A charger already on `pv`/`minpv` keeps the mode you set, and one on `now` is left alone entirely. |
+| `<root>/loadpoints/<n>/batteryBoostLimit/set` | The house-battery SOC the car may drain to. EVCC **persists** this one, which is why SunReye restores it. |
+| `<root>/loadpoints/<n>/batteryBoost/set` | While the battery is too full to make room for the window on its own. Switched off once the window starts. |
+
+Order matters and SunReye follows EVCC's rules: a mode change clears any boost, and EVCC
+refuses a boost outside the `pv`/`minpv` modes — so the mode command goes first and the boost
+last. If a boost is rejected because the mode command had not landed yet, the next tick sees
+it missing and asks again.
+
+Nothing is republished once a loadpoint already reads back the wanted state, so the borrowed
+values stay yours rather than being overwritten by SunReye's own on the next tick. And if you
+change the charge mode yourself while SunReye holds a loadpoint, it lets the mode go rather
+than handing back a snapshot that is older than your decision — only the boost settings, which
+EVCC persists, are still restored.
+
 Because EVCC retains its state topics, SunReye has a complete snapshot within a second of
 connecting. If the broker drops or EVCC's status flips to `offline`, the dashboard hides
 the EV surfaces instead of showing stale data.

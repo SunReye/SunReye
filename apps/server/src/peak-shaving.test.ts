@@ -19,7 +19,7 @@ import type { SpotSlice } from "./spot-price";
 import { type DecisionPoint, createDecisionLog } from "./automation-history";
 import { projectPeakShaving } from "./peak-shaving-plan";
 import { type AutomationIO, createPeakShavingEngine } from "./peak-shaving-engine";
-import type { EvccLoadpoint, EvccState } from "./evcc";
+import type { EvccAction, EvccLoadpoint, EvccState } from "./evcc";
 import { buildProfileContext } from "./inverter";
 import type { SolarForecast } from "./solar-forecast";
 
@@ -210,6 +210,8 @@ const loadpoint = (over: Partial<EvccLoadpoint> = {}): EvccLoadpoint => ({
   vehicleLimitSoc: null,
   vehicleCapacityKwh: null,
   phasesActive: null,
+  batteryBoost: false,
+  batteryBoostLimit: 100,
   ...over,
 });
 
@@ -1070,6 +1072,8 @@ describe("validateAutomationEnable", () => {
 interface Harness {
   io: AutomationIO;
   writes: { key: string; value: number }[];
+  /** Every EVCC command the engine published, in order — the order is contractual. */
+  evccCommands: { loadpoint: number; action: EvccAction; value: string }[];
   set: {
     config(c: AutomationConfig): void;
     weather(w: WeatherConfig): void;
@@ -1079,6 +1083,8 @@ interface Harness {
     sample(metrics: Record<string, number>, ageMs?: number): void;
     now(ms: number): void;
     state(s: AutomationState): void;
+    /** Make every EVCC command throw, as an unreachable broker does. */
+    evccError(message: string | null): void;
   };
   state(): AutomationState;
 }
@@ -1088,8 +1094,8 @@ function harness(over: { config?: AutomationConfig; prices?: SpotSlice | null } 
   let cfg = over.config ?? config();
   let wx = weather();
   let prices: SpotSlice | null = over.prices ?? null;
-  const evccModes: { loadpoint: number; mode: string }[] = [];
-  let evccModeError: string | null = null;
+  const evccCommands: Harness["evccCommands"] = [];
+  let evccError: string | null = null;
   let fc: SolarForecast | null = asForecast(slice(12, [6000, 6000, 6000, 6000]));
   let ev: EvccState | null = null;
   let baselineLoadW: number | null = null;
@@ -1120,9 +1126,9 @@ function harness(over: { config?: AutomationConfig; prices?: SpotSlice | null } 
       // must keep exercising the unchanged shaving path.
       getPrices: async () => prices,
       getTariff: async () => tariffConfigSchema.parse({}),
-      setEvccMode: (loadpoint, mode) => {
-        if (evccModeError) throw new Error(evccModeError);
-        evccModes.push({ loadpoint, mode });
+      evccCommand: (loadpoint, action, value) => {
+        if (evccError) throw new Error(evccError);
+        evccCommands.push({ loadpoint, action, value });
       },
       getWeather: async () => wx,
       getForecast: async () => fc,
@@ -1145,7 +1151,9 @@ function harness(over: { config?: AutomationConfig; prices?: SpotSlice | null } 
       sample: setSample,
       now: (ms) => (nowMs = ms),
       state: (s) => (state = s),
+      evccError: (message) => (evccError = message),
     },
+    evccCommands,
     state: () => state,
   };
 }
@@ -1947,5 +1955,164 @@ describe("price-aware charging", () => {
     expect(shaped.windowEndsAt).toBe(at(15));
     expect(shaped.soakableKwh).toBeGreaterThan(0);
     expect(shaped.unavoidableZeroValueKwh).not.toBeNull();
+  });
+});
+
+describe("peak-shaving engine — borrowing the car", () => {
+  const HOUR = 3_600_000;
+  // The engine's fixtures run at NOON UTC with a zero plant offset, so a window
+  // an hour out lands at 13:00 and the pack has one hour to be emptied.
+  const window = (fromHour: number, slots: number): SpotSlice => ({
+    zone: "DE-LU",
+    stepMinutes: 15,
+    utcOffsetSeconds: 0,
+    coverage: { today: "complete", tomorrow: "complete" },
+    availability: "ok",
+    series: Array.from({ length: slots }, (_, i) => ({
+      time: "2026-07-25T00:00",
+      startMs: Date.parse("2026-07-25T00:00:00Z") + (fromHour + i * 0.25) * HOUR,
+      minutes: 15,
+      eurPerMwh: -40,
+      negative: true,
+    })),
+  });
+
+  const MODE_SLOT = "test-profile:evccMode:1";
+  const LIMIT_SLOT = "test-profile:evccBoostLimit:1";
+
+  /** A plant an hour ahead of a three-hour window, too full to make room alone. */
+  function spendDown(pullInEv = true): Harness {
+    const h = harness({
+      config: config({}, { priceAware: { enabled: true, pullInEv, evBoostLimitPct: 15 } }),
+      prices: window(13, 12),
+    });
+    h.set.weather(
+      weather({ smartMeterSince: "2026-06-01", battery: { usableKwh: 15, minSoc: 5 } }),
+    );
+    // Sun right through the window, so it can soak more than the pack can hold.
+    h.set.forecast(
+      asForecast(
+        slice(
+          12,
+          Array.from({ length: 16 }, () => 7000),
+        ),
+      ),
+    );
+    h.set.sample({ [PV_KEY]: 5000, [SOC_KEY]: 85, [VOLT_KEY]: 50, [CHARGE_KEY]: 120 });
+    h.set.evcc({
+      reachable: true,
+      subtractFromHome: false,
+      loadpoints: [loadpoint({ index: 1, mode: "pv", vehicleSoc: 40, effectiveLimitSoc: 80 })],
+    });
+    return h;
+  }
+
+  test("boosts the car to empty the pack, remembering both EVCC settings", async () => {
+    const h = spendDown();
+    const status = await createPeakShavingEngine(h.io).tick();
+    expect(status.priceRegime).toBe("spend-down");
+    // Order is EVCC's: the limit must be in place before the boost that uses it,
+    // and a mode command would clear a boost already set.
+    expect(h.evccCommands).toEqual([
+      { loadpoint: 1, action: "batteryBoostLimit", value: "15" },
+      { loadpoint: 1, action: "batteryBoost", value: "true" },
+    ]);
+    expect(h.state()[MODE_SLOT]?.previousValue).toBe("pv");
+    expect(h.state()[LIMIT_SLOT]?.previousValue).toBe(100);
+  });
+
+  test("the plant's reserve floor wins over a lower configured boost limit", async () => {
+    // Asking EVCC to drain below the floor the inverter enforces would leave it
+    // demanding a discharge that never arrives.
+    const h = spendDown();
+    h.set.weather(
+      weather({ smartMeterSince: "2026-06-01", battery: { usableKwh: 15, minSoc: 30 } }),
+    );
+    await createPeakShavingEngine(h.io).tick();
+    expect(h.evccCommands[0]).toEqual({
+      loadpoint: 1,
+      action: "batteryBoostLimit",
+      value: "30",
+    });
+  });
+
+  test("a second tick republishes nothing", async () => {
+    const h = spendDown();
+    const engine = createPeakShavingEngine(h.io);
+    await engine.tick();
+    // Mirror what EVCC would report back once the commands landed.
+    h.set.evcc({
+      reachable: true,
+      subtractFromHome: false,
+      loadpoints: [
+        loadpoint({
+          index: 1,
+          mode: "pv",
+          vehicleSoc: 40,
+          effectiveLimitSoc: 80,
+          batteryBoost: true,
+          batteryBoostLimit: 15,
+        }),
+      ],
+    });
+    await engine.tick();
+    expect(h.evccCommands).toHaveLength(2);
+    // And the remembered originals are still the user's, not our own.
+    expect(h.state()[LIMIT_SLOT]?.previousValue).toBe(100);
+  });
+
+  test("hands everything back when the automation is switched off", async () => {
+    const h = spendDown();
+    const engine = createPeakShavingEngine(h.io);
+    await engine.tick();
+    h.set.config(config({}, { enabled: false }));
+    await engine.tick();
+    expect(h.evccCommands.slice(2)).toEqual([
+      { loadpoint: 1, action: "batteryBoost", value: "false" },
+      { loadpoint: 1, action: "batteryBoostLimit", value: "100" },
+      { loadpoint: 1, action: "mode", value: "pv" },
+    ]);
+    expect(h.state()[MODE_SLOT]).toBeUndefined();
+    expect(h.state()[LIMIT_SLOT]).toBeUndefined();
+  });
+
+  test("shadow mode borrows nothing", async () => {
+    const h = spendDown();
+    h.set.config(
+      config(
+        {},
+        { shadowMode: true, priceAware: { enabled: true, pullInEv: true, evBoostLimitPct: 15 } },
+      ),
+    );
+    await createPeakShavingEngine(h.io).tick();
+    expect(h.evccCommands).toEqual([]);
+  });
+
+  test("the switch off means the car is never touched", async () => {
+    const h = spendDown(false);
+    await createPeakShavingEngine(h.io).tick();
+    expect(h.evccCommands).toEqual([]);
+  });
+
+  test("a broker error leaves no snapshot, so the next tick tries again", async () => {
+    const h = spendDown();
+    h.set.evccError("EVCC MQTT is not connected");
+    const engine = createPeakShavingEngine(h.io);
+    await engine.tick();
+    expect(h.state()[MODE_SLOT]).toBeUndefined();
+    h.set.evccError(null);
+    await engine.tick();
+    expect(h.state()[MODE_SLOT]?.previousValue).toBe("pv");
+  });
+
+  test("a broker error during hand-back keeps the snapshot", async () => {
+    const h = spendDown();
+    const engine = createPeakShavingEngine(h.io);
+    await engine.tick();
+    h.set.evccError("EVCC MQTT is not connected");
+    h.set.config(config({}, { enabled: false }));
+    await engine.tick();
+    // Still held: the car is on our settings and must not be forgotten.
+    expect(h.state()[MODE_SLOT]?.previousValue).toBe("pv");
   });
 });

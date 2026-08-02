@@ -204,12 +204,18 @@ own page. Alongside its two modes it has a **negative-price windows** section:
   under §51 EEG, so storing it is the only way to keep its value.
 - **Hold the battery low before a window** — charges as much as possible, as late as possible,
   rather than simply stopping: pre-window PV *is* paid for, and the reserve floor still applies.
-- **Charge the car during a window** — switches connected [EVCC](/integrations/evcc/) chargers to
-  immediate charging inside a window, and while the battery is too full to make room on its own,
-  restoring the previous mode afterwards. Off by default: it overrides EVCC's own plan. But it is
-  usually what makes emptying the battery in time possible at all — a house alone cannot absorb
-  enough in the hours before a window, and a car that wants energy anyway can. The borrowed mode
-  is remembered on disk, so a restart mid-window still hands the car back.
+- **Use the car as a sink** — borrows connected [EVCC](/integrations/evcc/) chargers for a window.
+  Off by default, and it works in two steps. An idle charger is woken onto **surplus charging**, so
+  it eats what would otherwise be exported for nothing. And while the battery is still too full to
+  make room on its own, SunReye switches on EVCC's **battery boost**, which drains the house battery
+  into the car — the only sink big enough, since a house alone cannot absorb enough in the hours
+  before a window. Boost stops at the **battery boost floor** below, and is switched off again once
+  the window starts: from then on the battery should be *filling* with energy that earns nothing.
+  A charger you left on immediate charging is never touched, and everything borrowed is remembered
+  on disk, so a restart mid-window still hands the car back.
+- **Battery boost floor** — how far the car may empty the house battery while boosting. EVCC holds
+  the battery there rather than letting it oscillate, and the plant's own reserve applies on top, so
+  this can only ever ask for *less* discharge than the inverter already allows.
 - **Charge the battery from the grid** — buys from the grid during a window. Off by default and
   inert unless your **import** price follows the market (Settings → Tariff): a negative wholesale
   price does not lower a fixed bill. Even on a spot tariff you still pay grid fees, levies and

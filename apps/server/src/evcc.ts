@@ -26,7 +26,11 @@
  *   per-session loadpoint `limitSoc` override, and the loadpoint's
  *   `effectiveLimitSoc` as EVCC's resolution of the two. Read the effective
  *   one, write the vehicle one — see {@link limitSocTopic}.
+ * - `batteryBoost` is only accepted in the `pv`/`minpv` modes; EVCC rejects it
+ *   outright otherwise, and clears it on every mode change. So a boost command
+ *   must follow its mode command, never precede it.
  *
+
  * The topic grammar and payload coercion those notes describe live in
  * {@link ./evcc-topics}, which is pure and unit-tested.
  */
@@ -108,6 +112,22 @@ export interface EvccLoadpoint {
    */
   vehicleLimitSoc: number | null;
   /**
+   * Battery boost: EVCC is deliberately draining the *house* battery into this
+   * car. Transient — EVCC keeps it in memory only and clears it on any mode
+   * change and on unplug, so there is no durable value to give back.
+   *
+   * EVCC refuses to enable it outside the `pv`/`minpv` modes.
+   */
+  batteryBoost: boolean;
+  /**
+   * House-battery SOC floor for {@link batteryBoost}, %: once the battery falls
+   * below it EVCC stops draining but keeps the car prioritised over recharging,
+   * so it settles at the limit instead of oscillating. `100` means *disabled*,
+   * which is also EVCC's default. Unlike the boost flag this **is** persisted by
+   * EVCC, so anything that changes it owes the user a restore.
+   */
+  batteryBoostLimit: number | null;
+  /**
    * Usable pack size of the detected vehicle in kWh, from
    * `<root>/vehicles/<name>/capacity`. Null when no vehicle is detected, or
    * when EVCC has none configured for it (published as `0`) — a car without a
@@ -130,8 +150,14 @@ export interface EvccState {
   subtractFromHome: boolean;
 }
 
-/** Writable loadpoint commands exposed to the web app. */
-export type EvccAction = "mode" | "limitSoc";
+/**
+ * Writable loadpoint commands.
+ *
+ * `mode` and `limitSoc` are the two the web app relays; `batteryBoost` and
+ * `batteryBoostLimit` are used by price-aware charging only (see
+ * `./ev-pull-in`) and are deliberately not offered over HTTP.
+ */
+export type EvccAction = "mode" | "limitSoc" | "batteryBoost" | "batteryBoostLimit";
 
 const num = (v: EvccValue | undefined): number | null => (typeof v === "number" ? v : null);
 const str = (v: EvccValue | undefined): string | null => (typeof v === "string" ? v : null);
@@ -183,6 +209,8 @@ function toLoadpoint(
     limitSoc: num(values.get("limitSoc")),
     effectiveLimitSoc: num(values.get("effectiveLimitSoc")),
     vehicleLimitSoc: num(values.get("vehicleLimitSoc")),
+    batteryBoost: bool(values.get("batteryBoost")),
+    batteryBoostLimit: num(values.get("batteryBoostLimit")),
     vehicleCapacityKwh: capacityOf(vehicleName, vehicleState),
     phasesActive: num(values.get("phasesActive")),
   };

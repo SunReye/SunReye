@@ -9,9 +9,10 @@
  * active profile id — `${profileId}:${automationId}` — so a snapshot taken on
  * one profile is never replayed onto another profile's register.
  *
- * The same map also holds borrowed **EVCC loadpoint modes** (see
- * {@link evccModeStateKey}), so that a car switched to `now` for a
- * negative-price window is handed back even across a restart.
+ * The same map also holds what price-aware charging borrows from **EVCC
+ * loadpoints** — the charge mode ({@link evccModeStateKey}) and the
+ * battery-boost SOC limit ({@link evccBoostLimitStateKey}) — so a car commanded
+ * for a negative-price window is handed back even across a restart.
  */
 
 import { z } from "zod";
@@ -51,6 +52,17 @@ export function automationStateKey(profileId: string, automationId: string): str
 /** State key for a borrowed EVCC loadpoint mode on a given profile. */
 export function evccModeStateKey(profileId: string, loadpoint: number): string {
   return `${profileId}:evccMode:${loadpoint}`;
+}
+
+/**
+ * State key for a borrowed EVCC battery-boost SOC limit on a given profile.
+ *
+ * A second key rather than a richer snapshot record: see the note on
+ * {@link automationSnapshotSchema} for why that record must stay parseable by
+ * every row ever written.
+ */
+export function evccBoostLimitStateKey(profileId: string, loadpoint: number): string {
+  return `${profileId}:evccBoostLimit:${loadpoint}`;
 }
 
 /** A snapshot's value when it is a register number, else null. */

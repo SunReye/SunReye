@@ -112,15 +112,27 @@ const priceAwareConfigSchema = z.object({
    */
   reserveMarginPct: z.number().min(0).max(50).default(5),
   /**
-   * Switch connected EV chargers to `now` during a window (and while the pack is
-   * too full to make room on its own), restoring the previous mode afterwards.
+   * Borrow connected EV chargers as a sink for a negative-price window: wake an
+   * idle charger onto surplus charging, and while the pack is too full to make
+   * room on its own, turn on EVCC's **battery boost** so the car empties it.
+   * Everything is handed back afterwards.
    *
-   * Off by default because it overrides the user's own charge plan and EVCC's
-   * optimiser — but it is what makes SOC shaping physically achievable: emptying
-   * a pack in the hours before a window needs far more sink than a house
-   * provides, and a car that wants energy anyway is the only one available.
+   * Off by default because it commands the user's charger — but it is what makes
+   * SOC shaping physically achievable: emptying a pack in the hours before a
+   * window needs far more sink than a house provides, and a car that wants
+   * energy anyway is the only one available.
    */
   pullInEv: z.boolean().default(false),
+  /**
+   * House-battery SOC the car may drain the pack down to while boosting, %.
+   *
+   * Passed to EVCC as the loadpoint's `batteryBoostLimit`, which it compares
+   * against the *house* battery: below it EVCC stops draining but keeps the car
+   * prioritised over recharging, so the pack settles here rather than
+   * oscillating. The plant's own reserve floor still applies on top, so this can
+   * only ever ask for *less* drain than the inverter already allows.
+   */
+  evBoostLimitPct: z.number().min(0).max(100).default(10),
   /**
    * Charge the battery **from the grid** during a window.
    *

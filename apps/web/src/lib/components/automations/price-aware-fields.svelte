@@ -14,7 +14,8 @@
 		| 'lookaheadHours'
 		| 'soakFloorW'
 		| 'reserveMarginPct'
-		| 'gridChargeMaxA';
+		| 'gridChargeMaxA'
+		| 'evBoostLimitPct';
 
 	// Numeric knobs ride as text (a half-typed value must not coerce to 0) and are
 	// parsed by the parent on save; the booleans bind straight to the config.
@@ -55,6 +56,12 @@
 			label: m.peak_shaving_pa_soak_floor(),
 			desc: m.peak_shaving_pa_soak_floor_desc(),
 			placeholder: '0'
+		},
+		{
+			key: 'evBoostLimitPct' as PriceNumKey,
+			label: m.peak_shaving_pa_ev_boost_limit(),
+			desc: m.peak_shaving_pa_ev_boost_limit_desc(),
+			placeholder: '10'
 		},
 		{
 			key: 'gridChargeMaxA' as PriceNumKey,

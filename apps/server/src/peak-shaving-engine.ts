@@ -20,6 +20,7 @@ import type { AutomationConfig } from "@SunReye/db/automation-config";
 import {
   type AutomationState,
   automationStateKey,
+  evccBoostLimitStateKey,
   evccModeStateKey,
   numericSnapshot,
 } from "@SunReye/db/automation-state";
@@ -28,7 +29,7 @@ import type { WeatherConfig } from "@SunReye/db/weather";
 import { entityConstraint } from "@SunReye/inverter-core";
 import type { CanonicalRole, InverterSample } from "@SunReye/inverter-core";
 import { type DecisionLog, type DecisionPoint, createDecisionLog } from "./automation-history";
-import type { EvccState } from "./evcc";
+import type { EvccAction, EvccState } from "./evcc";
 import type { ProfileContext } from "./inverter";
 import { log } from "./logging";
 import {
@@ -48,7 +49,12 @@ import {
   resolvePriceAwareBlockers,
 } from "./peak-shaving";
 import type { ForecastSlice } from "./slot-window";
-import { type EvPullInPlan, PULL_IN_MODE, planEvPullIn } from "./ev-pull-in";
+import {
+  BOOST_LIMIT_DISABLED,
+  type EvPullInClaim,
+  type EvPullInPlan,
+  planEvPullIn,
+} from "./ev-pull-in";
 import { insideNegativeWindow } from "./price-plan";
 import type { PriceRegime } from "./price-plan";
 import type { TariffConfig } from "@SunReye/db/tariff";
@@ -191,10 +197,11 @@ export interface AutomationIO {
   /** The active tariff — read for whether the import price follows the market. */
   getTariff(): Promise<TariffConfig>;
   /**
-   * Set an EVCC loadpoint's charge mode. Throws when the broker is unreachable —
-   * the caller treats that as "could not claim", never as success.
+   * Command an EVCC loadpoint (charge mode, battery boost, boost SOC limit).
+   * Throws when the broker is unreachable — the caller treats that as "could not
+   * claim", never as success.
    */
-  setEvccMode(loadpoint: number, mode: string): void;
+  evccCommand(loadpoint: number, action: EvccAction, value: string): void;
   latestSample(): InverterSample | null;
   loadState(): Promise<AutomationState>;
   saveState(next: AutomationState): Promise<void>;
@@ -368,9 +375,9 @@ async function release(e: Eng, state: PeakShavingRunState): Promise<void> {
   resetSteering(e);
   await restoreSnapshot(e);
   // Whatever ends the run — disabled, blocked, night, a stale sample — a car
-  // switched to `now` for a window must go back to the user's own mode, and the
+  // borrowed for a window must go back to the user's own settings, and the
   // grid-charge registers must go back to the user's own values.
-  await applyEvPullIn(e, "none", false);
+  await releaseEvPullIn(e);
   await releaseGridCharge(e);
 }
 
@@ -658,6 +665,16 @@ function plantParams(weather: WeatherConfig, ps: AutomationConfig["peakShaving"]
   };
 }
 
+/**
+ * The house-battery SOC the car may drain the pack down to while boosting, %.
+ *
+ * The plant's own reserve floor wins whenever it is higher: the inverter stops
+ * discharging there regardless, so asking EVCC for more would only leave it
+ * demanding a drain that never arrives.
+ */
+const boostFloorPct = (weather: WeatherConfig, ps: AutomationConfig["peakShaving"]): number =>
+  Math.max(ps.priceAware.evBoostLimitPct, weather.forecast.battery?.minSoc ?? 0);
+
 /** Assemble the pure decision's inputs from config, live readings and forecast. */
 function decisionInputs(args: {
   e: Eng;
@@ -721,13 +738,36 @@ function noteEvError(e: Eng, error: unknown): void {
   e.status.lastError = error instanceof Error ? error.message : String(error);
 }
 
-/** Switch each claimed loadpoint to our mode, remembering the user's first. */
-function claimModes(e: Eng, next: AutomationState, plan: EvPullInPlan, capturedAt: string): void {
-  for (const { loadpoint, previousMode } of plan.claim) {
+/**
+ * Publish one loadpoint's commands in the order EVCC requires: a mode change
+ * clears any boost, and boost is only accepted once the loadpoint is in a PV
+ * mode — so mode, then limit, then boost.
+ */
+function publishClaim(io: AutomationIO, claim: EvPullInClaim): void {
+  const { loadpoint } = claim;
+  if (claim.mode !== null) io.evccCommand(loadpoint, "mode", claim.mode);
+  if (claim.boostLimitPct !== null) {
+    io.evccCommand(loadpoint, "batteryBoostLimit", String(claim.boostLimitPct));
+  }
+  if (claim.boost !== null) io.evccCommand(loadpoint, "batteryBoost", String(claim.boost));
+}
+
+/** Bring each loadpoint to its wanted state, remembering the user's values first. */
+function claimLoadpoints(
+  e: Eng,
+  next: AutomationState,
+  plan: EvPullInPlan,
+  capturedAt: string,
+): void {
+  const profileId = e.io.ctx.profile.id;
+  for (const claim of plan.claim) {
+    const { loadpoint, remember } = claim;
     try {
-      e.io.setEvccMode(loadpoint, PULL_IN_MODE);
-      next[evccModeStateKey(e.io.ctx.profile.id, loadpoint)] = {
-        previousValue: previousMode,
+      publishClaim(e.io, claim);
+      if (!remember) continue;
+      next[evccModeStateKey(profileId, loadpoint)] = { previousValue: remember.mode, capturedAt };
+      next[evccBoostLimitStateKey(profileId, loadpoint)] = {
+        previousValue: remember.boostLimitPct,
         capturedAt,
       };
     } catch (error) {
@@ -737,17 +777,31 @@ function claimModes(e: Eng, next: AutomationState, plan: EvPullInPlan, capturedA
   }
 }
 
-/** Hand each released loadpoint back to the mode the user had set. */
-function releaseModes(e: Eng, next: AutomationState, plan: EvPullInPlan): void {
-  for (const loadpoint of plan.release) {
-    const slot = evccModeStateKey(e.io.ctx.profile.id, loadpoint);
-    const snap = next[slot];
+/**
+ * Hand each released loadpoint back to what the user had set.
+ *
+ * The reverse order, for the same reason: boost off first, because restoring the
+ * mode would clear it anyway and EVCC would refuse the command in a non-PV mode.
+ * The boost SOC limit is restored because EVCC *persists* it — unlike the boost
+ * flag, which it forgets on its own.
+ */
+function releaseLoadpoints(e: Eng, next: AutomationState, plan: EvPullInPlan): void {
+  const profileId = e.io.ctx.profile.id;
+  for (const { loadpoint, restoreMode } of plan.release) {
+    const modeSlot = evccModeStateKey(profileId, loadpoint);
+    const limitSlot = evccBoostLimitStateKey(profileId, loadpoint);
+    const snap = next[modeSlot];
     if (!snap) continue;
+    const limit = numericSnapshot(next[limitSlot]?.previousValue) ?? BOOST_LIMIT_DISABLED;
     try {
-      e.io.setEvccMode(loadpoint, String(snap.previousValue));
-      delete next[slot];
+      e.io.evccCommand(loadpoint, "batteryBoost", "false");
+      e.io.evccCommand(loadpoint, "batteryBoostLimit", String(limit));
+      if (restoreMode) e.io.evccCommand(loadpoint, "mode", String(snap.previousValue));
+      delete next[modeSlot];
+      delete next[limitSlot];
     } catch (error) {
-      // Keep the snapshot: the car is still on our mode and must be handed back.
+      // Keep the snapshot: the car is still on our settings and must be handed
+      // back, so the next tick retries the whole sequence.
       noteEvError(e, error);
     }
   }
@@ -756,26 +810,36 @@ function releaseModes(e: Eng, next: AutomationState, plan: EvPullInPlan): void {
 /**
  * Borrow (or hand back) EVCC loadpoints for a negative-price window.
  *
- * Every claim is snapshotted before the mode changes and the snapshot is dropped
- * only once the mode has been handed back, so a restart mid-window still returns
- * the car to the user's own setting. A broker error leaves the state exactly as
- * it was: not claimed, or still held and retried next tick.
+ * Every loadpoint is snapshotted before anything is written to it and the
+ * snapshot is dropped only once it has been handed back, so a restart mid-window
+ * still returns the car to the user's own settings. A broker error leaves the
+ * state exactly as it was: not claimed, or still held and retried next tick.
  */
-async function applyEvPullIn(e: Eng, regime: PriceRegime, enabled: boolean): Promise<void> {
+async function applyEvPullIn(
+  e: Eng,
+  regime: PriceRegime,
+  enabled: boolean,
+  boostLimitPct: number,
+): Promise<void> {
   const state = await e.io.loadState();
   const plan = planEvPullIn({
     enabled,
     regime,
     evcc: e.io.getEvcc(),
+    boostLimitPct,
     heldLoadpoints: heldLoadpoints(e.io, state),
   });
   if (plan.claim.length === 0 && plan.release.length === 0) return;
 
   const next = { ...state };
-  claimModes(e, next, plan, new Date(e.io.now()).toISOString());
-  releaseModes(e, next, plan);
+  claimLoadpoints(e, next, plan, new Date(e.io.now()).toISOString());
+  releaseLoadpoints(e, next, plan);
   await e.io.saveState(next);
 }
+
+/** Hand every borrowed loadpoint back. Nothing is claimed, so no floor is needed. */
+const releaseEvPullIn = (e: Eng): Promise<void> =>
+  applyEvPullIn(e, "none", false, BOOST_LIMIT_DISABLED);
 
 /** Append this tick's decision + the readings behind it to the chart log. */
 function logDecision(
@@ -849,7 +913,7 @@ async function steer(
   if (ps.shadowMode) {
     e.ineffectiveTicks = 0;
     status.ineffective = false;
-    await applyEvPullIn(e, decision.priceRegime, false);
+    await releaseEvPullIn(e);
     await releaseGridCharge(e);
   } else {
     await writeTarget(e, key, targetA, live);
@@ -864,8 +928,13 @@ async function steer(
     updateWatchdog(e, live, targetA, batteryV, decision.headroomKwh);
     // Commanding the car is a real write, so a dry run must not do it — but a
     // *held* loadpoint still has to be handed back if the run turns dry, which
-    // the release path below does by passing `enabled: false`.
-    await applyEvPullIn(e, decision.priceRegime, ps.priceAware.pullInEv);
+    // the shadow branch above does through `releaseEvPullIn`.
+    await applyEvPullIn(
+      e,
+      decision.priceRegime,
+      ps.priceAware.pullInEv,
+      boostFloorPct(weather, ps),
+    );
   }
   logDecision(e, decision, live, { shadow: ps.shadowMode, targetA, batteryV, evcc });
 }

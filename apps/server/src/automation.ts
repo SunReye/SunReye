@@ -173,7 +173,7 @@ async function buildProductionIO(deps: {
     getForecast: fetchSolarForecast,
     getBaselineLoadW: representativeHouseLoadW,
     getEvcc: evccSnapshot,
-    setEvccMode: (loadpoint, mode) => evccControl(loadpoint, "mode", mode),
+    evccCommand: evccControl,
     getTariff,
     async getPrices() {
       const [{ getSpotPriceConfig }, { loadSpotSlice }, { spotPricesReady }] = await Promise.all([
