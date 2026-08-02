@@ -1,7 +1,7 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
 	import type { SpotPriceView } from 'server/src/spot-price-job';
 	import { api } from '$lib/api';
+	import { statisticsLive } from '$lib/statistics-live.svelte';
 	import SettingsSection from '$lib/components/settings/settings-section.svelte';
 	import PriceTrackChart from './price-track-chart.svelte';
 	import NegativeWindowList from './negative-window-list.svelte';
@@ -14,11 +14,19 @@
 	// using it.
 	let view = $state<SpotPriceView | null>(null);
 
-	// A one-shot load, not a reactive one: the window is always "today and
-	// tomorrow", so unlike the cost tiles above there is no range to re-fetch on.
-	onMount(async () => {
-		const { data } = await api.api.prices.get();
-		view = (data as SpotPriceView | null) ?? null;
+	// The window is always "today and tomorrow", so there is no range to re-fetch
+	// on — the only thing that changes the answer is a spot-price sync, which the
+	// live statistics stream signals. Without that signal this stays the one-shot
+	// load it was.
+	$effect(() => {
+		void statisticsLive.priceRevision;
+		let cancelled = false;
+		void api.api.prices.get().then(({ data }) => {
+			if (!cancelled) view = (data as SpotPriceView | null) ?? null;
+		});
+		return () => {
+			cancelled = true;
+		};
 	});
 
 	// Narrowing from the `{#if}` doesn't reach inside a snippet closure, so every

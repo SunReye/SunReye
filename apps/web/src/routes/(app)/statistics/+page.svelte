@@ -13,6 +13,8 @@
 	import { SECTIONS, type SectionData } from '$lib/statistics/sections';
 	import { referenceWindow, usableComparison, windowDays } from '$lib/statistics/compare';
 	import { statisticsPrefs } from '$lib/statistics-prefs.svelte';
+	import { statisticsLive } from '$lib/statistics-live.svelte';
+	import { includesNow } from '$lib/statistics/live';
 	import { setCustomizeSession } from '$lib/statistics/customize.svelte';
 	import PricePanel from '$lib/components/prices/price-panel.svelte';
 	import StatisticsBody from './statistics-body.svelte';
@@ -40,6 +42,10 @@
 	// and clobbering fresher data. Every section's own charts fetch their own
 	// series, because only that section's scope switcher moves them.
 	$effect(() => {
+		// A live push on a wider now-inclusive range invalidates this window
+		// (throttled to a minute by the store); the `today` preset patches below
+		// instead and never bumps the signal.
+		void statisticsLive.revision;
 		const from = range.from.toISOString();
 		const to = range.to.toISOString();
 		const query = { from, to, mode };
@@ -60,12 +66,23 @@
 		};
 	});
 
+	// Live figures, but only while the picked window actually moves: a past-only
+	// range (last month, a historical custom range) takes no lease, so the
+	// server's periodic job sees zero subscribers and skips entirely.
+	$effect(() => (includesNow(range) ? statisticsLive.lease(range) : undefined));
+
+	// On the `today` preset the pushed breakdown *is* the picked window, so the
+	// tiles (cost and energy alike — both read these totals) take it straight
+	// from the stream instead of refetching. Falls back to the fetched window
+	// whenever the stream is down or the range is wider.
+	const liveCost = $derived(range.id === 'today' ? (statisticsLive.today?.cost ?? null) : null);
+
 	// Everything the mounted sections read. Null until the first payload lands,
 	// which is also what keeps the loading panel up.
 	const data = $derived<SectionData | null>(
 		cost
 			? {
-					cost,
+					cost: liveCost ?? cost,
 					previous,
 					mode,
 					windowDays: windowDays(range.from, range.to),

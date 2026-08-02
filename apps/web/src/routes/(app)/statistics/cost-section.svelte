@@ -6,6 +6,7 @@
 	import { costFormatters } from '$lib/cost/format';
 	import { specQuery, type CostBucket, type CostRange } from '$lib/cost/ranges';
 	import { sectionScope } from '$lib/statistics/chart-scope.svelte';
+	import { statisticsLive } from '$lib/statistics-live.svelte';
 	import { COST_TILES } from '$lib/statistics/tiles';
 	import ChartPanel from './chart-panel.svelte';
 	import StatTiles from './stat-tiles.svelte';
@@ -39,6 +40,9 @@
 	// `cancelled` guards against an earlier request resolving after a later one
 	// and clobbering fresher data.
 	$effect(() => {
+		// Shared invalidation signal: a live push on a now-inclusive wider range
+		// bumps it (at most once a minute), which refetches these bars in place.
+		void statisticsLive.revision;
 		const query = specQuery(view.spec);
 		let cancelled = false;
 		api.api.cost.series.get({ query }).then(({ data }) => {
