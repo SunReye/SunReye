@@ -1,20 +1,18 @@
 <script lang="ts">
-	import { fade } from 'svelte/transition';
 	import type { CostBreakdown } from 'server/src/cost-calc';
-	import type { ComparisonResponse } from 'server/src/statistics';
 	import type { PeriodEnergy } from 'server/src/energy-calc';
 	import { api } from '$lib/api';
 	import * as m from '$lib/paraglide/messages';
 	import { inverter } from '$lib/inverter/store.svelte';
 	import EnergySplitChart from '$lib/components/inverter/energy-split-chart.svelte';
-	import RangeSwitcher from '$lib/components/inverter/range-switcher.svelte';
 	import EnergySeriesChart from '$lib/components/statistics/energy-series-chart.svelte';
 	import RatioTrendChart from '$lib/components/statistics/ratio-trend-chart.svelte';
 	import HourWeekdayHeatmap from '$lib/components/statistics/hour-weekday-heatmap.svelte';
 	import { costFormatters } from '$lib/cost/format';
-	import { chartSpecFor, specQuery, type ChartScope, type CostRange } from '$lib/cost/ranges';
-	import { chartCaption, defaultChartScope, scopeOptions } from '$lib/statistics/chart-scope';
+	import { specQuery, type CostRange } from '$lib/cost/ranges';
+	import { sectionScope } from '$lib/statistics/chart-scope.svelte';
 	import { ENERGY_TILES, type EnergyTileData } from '$lib/statistics/tiles';
+	import ChartPanel from './chart-panel.svelte';
 	import StatTiles from './stat-tiles.svelte';
 
 	const DAY = 86_400_000;
@@ -24,45 +22,24 @@
 	// the three charts and the hour×weekday heatmap below them.
 	let {
 		cost,
-		range,
-		/** Comparison payload from the page, when it already fetched one. Left
-		 *  undefined this section fetches its own — the page-level fetch lands with
-		 *  the records section, and this prop is the seam it plugs into. */
-		comparison: given
-	}: { cost: CostBreakdown; range: CostRange; comparison?: ComparisonResponse | null } = $props();
+		previous,
+		range
+	}: {
+		cost: CostBreakdown;
+		/** The same window one reference period back, or null when that period
+		 *  predates recorded history. Fetched once by the page alongside `cost`. */
+		previous: CostBreakdown | null;
+		range: CostRange;
+	} = $props();
 
 	// Ephemeral per-viewer choice, seeded from the saved preference.
-	let scope = $state<ChartScope>(defaultChartScope('energy'));
-	const spec = $derived(chartSpecFor(range, scope));
-	const caption = $derived(chartCaption(range, scope));
-
-	let fetched = $state<ComparisonResponse | null>(null);
-	const comparison = $derived(given ?? fetched);
-
-	// Tile row: the picked window against its adjacent reference window. One
-	// request for both, and the same payload feeds every delta.
-	$effect(() => {
-		if (given !== undefined) return;
-		const query = {
-			from: range.from.toISOString(),
-			to: range.to.toISOString(),
-			mode: 'previous' as const
-		};
-		let cancelled = false;
-		api.api.statistics.comparison.get({ query }).then(({ data }) => {
-			if (cancelled) return;
-			fetched = (data as ComparisonResponse) ?? null;
-		});
-		return () => {
-			cancelled = true;
-		};
-	});
+	const view = sectionScope('energy', () => range);
 
 	// One series fetch for all three charts below: the split, the ratio trend and
 	// the raw flows all read the same periods at the section's chosen scope.
 	let series = $state<PeriodEnergy[]>([]);
 	$effect(() => {
-		const query = specQuery(spec);
+		const query = specQuery(view.spec);
 		let cancelled = false;
 		api.api.energy.series.get({ query }).then(({ data }) => {
 			if (cancelled) return;
@@ -83,16 +60,12 @@
 
 	const hasBattery = $derived(inverter.capabilities?.battery ?? false);
 
-	const tileData = $derived<EnergyTileData | null>(
-		comparison
-			? {
-					current: comparison.current,
-					previous: comparison.previous,
-					rangeDays,
-					hasBattery
-				}
-			: null
-	);
+	const tileData = $derived<EnergyTileData>({
+		current: cost,
+		previous,
+		rangeDays,
+		hasBattery
+	});
 
 	// Capability gate for the battery lines: the pack exists, or the window moved
 	// energy through one. Never two permanently-flat series.
@@ -109,32 +82,21 @@
 	);
 </script>
 
-{#if tileData}
-	<StatTiles defs={ENERGY_TILES} data={tileData} {formatters} />
-{/if}
+<StatTiles defs={ENERGY_TILES} data={tileData} {formatters} />
 
 {#if hasSeries}
 	<!-- Split, ratios and raw flows all read the one fetch above, so the scope
 	     switcher in this header moves every chart in the section at once. -->
-	<section class="flex flex-col gap-4 border border-border p-4" transition:fade={{ duration: 200 }}>
-		<div class="flex flex-wrap items-center justify-between gap-3">
-			<h2 class="text-sm font-medium uppercase tracking-wide text-muted-foreground">
-				{m.statistics_energy_flows()} — {caption}
-			</h2>
-			<RangeSwitcher options={scopeOptions(range)} bind:value={scope} />
-		</div>
-		<EnergySeriesChart periods={series} bucket={spec.bucket} {showBattery} />
-	</section>
+	<ChartPanel title={m.statistics_energy_flows()} {view} {range} switcher>
+		<EnergySeriesChart periods={series} bucket={view.spec.bucket} {showBattery} />
+	</ChartPanel>
 
-	<EnergySplitChart chart={spec} {caption} periods={series} />
+	<EnergySplitChart chart={view.spec} caption={view.caption} periods={series} />
 
 	{#if hasRatios}
-		<section class="flex flex-col gap-3 border border-border p-4" transition:fade={{ duration: 200 }}>
-			<h2 class="text-sm font-medium uppercase tracking-wide text-muted-foreground">
-				{m.statistics_energy_ratios()} — {caption}
-			</h2>
-			<RatioTrendChart periods={series} bucket={spec.bucket} />
-		</section>
+		<ChartPanel title={m.statistics_energy_ratios()} {view} {range}>
+			<RatioTrendChart periods={series} bucket={view.spec.bucket} />
+		</ChartPanel>
 	{/if}
 {/if}
 

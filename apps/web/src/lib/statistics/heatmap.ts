@@ -63,5 +63,4 @@ export function heatOpacity(t: number): number {
 }
 
 /** CSS gradient for the legend bar, left (lowest) to right (highest). */
-export const heatGradient = (): string =>
-  `linear-gradient(to right, ${HEAT_STOPS.join(", ")})`;
+export const heatGradient = (): string => `linear-gradient(to right, ${HEAT_STOPS.join(", ")})`;

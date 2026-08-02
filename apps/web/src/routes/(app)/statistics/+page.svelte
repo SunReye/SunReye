@@ -1,31 +1,58 @@
 <script lang="ts">
-	import type { Component } from 'svelte';
 	import type { CostBreakdown } from 'server/src/cost-calc';
+	import type { CompareMode, ComparisonResponse } from 'server/src/statistics';
+	import { onMount } from 'svelte';
+	import SlidersHorizontal from 'phosphor-svelte/lib/SlidersHorizontal';
 	import { api } from '$lib/api';
 	import * as m from '$lib/paraglide/messages';
+	import { Button } from '$lib/components/ui/button';
 	import CostRangePicker from '$lib/components/inverter/cost-range-picker.svelte';
 	import { setPageHeader } from '$lib/page-header.svelte';
+	import { useAppSession } from '$lib/session';
 	import { resolveCostPreset, type CostRange } from '$lib/cost/ranges';
-	import { SECTIONS } from '$lib/statistics/sections';
+	import { SECTIONS, type SectionData } from '$lib/statistics/sections';
+	import { referenceWindow, usableComparison, windowDays } from '$lib/statistics/compare';
+	import { statisticsPrefs } from '$lib/statistics-prefs.svelte';
+	import { setCustomizeSession } from '$lib/statistics/customize.svelte';
 	import PricePanel from '$lib/components/prices/price-panel.svelte';
-	import StatisticsSection from './statistics-section.svelte';
-	import CostSection from './cost-section.svelte';
-	import EnergySection from './energy-section.svelte';
+	import StatisticsBody from './statistics-body.svelte';
+	import CustomizeBar from './customize-bar.svelte';
 
 	let range = $state<CostRange>(resolveCostPreset('month'));
 	let cost = $state<CostBreakdown | null>(null);
+	let previous = $state<CostBreakdown | null>(null);
 	let loading = $state(true);
 
-	// Headline tiles: priced over the picked [from, to). `cancelled` guards against
-	// an earlier request resolving after a later one and clobbering fresher data.
+	// Reference window for the comparison. Ephemeral for every viewer, with the
+	// saved preference as its default; an admin's current pick is what the
+	// customize draft stores when they save the layout.
+	let pickedMode = $state<CompareMode | null>(null);
+	const mode = $derived(pickedMode ?? statisticsPrefs.optionFor('records').compareMode);
+	function setMode(next: CompareMode) {
+		pickedMode = next;
+		if (customize.active) customize.draft.records.compareMode = next;
+	}
+
+	// Headline tiles: the picked [from, to) priced beside its reference window,
+	// in one request so a §51 spot-price load happens once per window server-side.
+	// `current` is exactly the breakdown the old /api/cost call returned.
+	// `cancelled` guards against an earlier request resolving after a later one
+	// and clobbering fresher data. Every section's own charts fetch their own
+	// series, because only that section's scope switcher moves them.
 	$effect(() => {
 		const from = range.from.toISOString();
 		const to = range.to.toISOString();
+		const query = { from, to, mode };
+		const reference = referenceWindow(range.from, range.to, mode);
 		let cancelled = false;
 		loading = true;
-		api.api.cost.get({ query: { from, to } }).then(({ data }) => {
+		api.api.statistics.comparison.get({ query }).then(({ data }) => {
 			if (cancelled) return;
-			cost = (data as CostBreakdown) ?? null;
+			// usableComparison also drops a reference window that predates recorded
+			// history, so a first-month household never reads a fake −100%.
+			const pair = usableComparison((data as ComparisonResponse) ?? null, reference);
+			cost = pair.current;
+			previous = pair.previous;
 			loading = false;
 		});
 		return () => {
@@ -33,42 +60,68 @@
 		};
 	});
 
-	// First load only: once totals exist a range change refreshes them in place.
-	const showLoader = $derived(loading && !cost);
+	// Everything the mounted sections read. Null until the first payload lands,
+	// which is also what keeps the loading panel up.
+	const data = $derived<SectionData | null>(
+		cost
+			? {
+					cost,
+					previous,
+					mode,
+					windowDays: windowDays(range.from, range.to),
+					setMode,
+					range
+				}
+			: null
+	);
 
-	// Section id → the component that renders it. Every section takes the same
-	// two props (the picked window's breakdown and the range itself) and owns its
-	// own scope switcher and fetches from there; sections without a component yet
-	// simply don't render.
-	const SECTION_VIEWS: Record<string, Component<{ cost: CostBreakdown; range: CostRange }>> = {
-		cost: CostSection,
-		energy: EnergySection
-	};
-	const activeSections = SECTIONS.filter((s) => s.id in SECTION_VIEWS);
+	// Cost, energy and records have content in this wave; later waves register
+	// their sections in section-body.svelte and the filter goes away.
+	const activeSections = SECTIONS.filter(
+		(s) => s.id === 'cost' || s.id === 'energy' || s.id === 'records'
+	);
+
+	// Instance-wide layout preferences. Only admins may edit them, so the gear
+	// (and the whole draft/save cycle) is admin-only; everyone else just gets
+	// the curated layout.
+	const session = useAppSession();
+	const isAdmin = $derived($session.data?.user.role === 'admin');
+	const customize = setCustomizeSession();
+	onMount(() => void statisticsPrefs.load());
+
+	// Hidden sections are not mounted at all outside customize mode, so they
+	// drive no fetches; inside it they render dimmed with their eye toggle.
+	const visibleSections = $derived(
+		customize.active ? activeSections : activeSections.filter((s) => !customize.sectionHidden(s.id))
+	);
+
+	// The gear only exists for admins, and disappears once the draft is open.
+	const canCustomize = $derived(isAdmin && !customize.active);
 
 	$effect(() => setPageHeader(m.nav_statistics(), m.statistics_subtitle()));
 </script>
 
 <div class="flex w-full flex-col gap-6 p-4 sm:p-6">
+	{#if customize.active}
+		<CustomizeBar />
+	{/if}
+
 	<div class="flex flex-wrap items-center justify-end gap-3">
 		<CostRangePicker bind:range />
+		{#if canCustomize}
+			<Button
+				variant="ghost"
+				size="icon"
+				aria-label={m.statistics_customize()}
+				title={m.statistics_customize()}
+				onclick={() => customize.start()}
+			>
+				<SlidersHorizontal class="size-4" />
+			</Button>
+		{/if}
 	</div>
 
-	{#if showLoader}
-		<div class="flex h-40 items-center justify-center border border-border text-sm text-muted-foreground">
-			{m.costs_loading()}
-		</div>
-	{:else if cost}
-		<!-- Section loop over the registry; each entry renders inside the shared
-		     collapsible shell and owns the scope (and fetches) of its own charts,
-		     so the shell caption names the picked window, not any one chart. -->
-		{#each activeSections as section (section.id)}
-			{@const View = SECTION_VIEWS[section.id]}
-			<StatisticsSection title={section.label()} caption={range.label}>
-				<View {cost} {range} />
-			</StatisticsSection>
-		{/each}
-	{/if}
+	<StatisticsBody sections={visibleSections} {data} {loading} />
 
 	<!-- Day-ahead prices: forward-looking, so deliberately outside the range-driven
 	     block above and outside the `cost` guard — it is worth seeing on a fresh

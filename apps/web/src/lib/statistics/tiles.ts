@@ -5,7 +5,10 @@
 // against the same TileDef surface.
 
 import type { CostBreakdown, CostTotals } from "server/src/cost-calc";
+import type { RecordsResponse } from "server/src/statistics";
+import type { DayRecord } from "server/src/statistics-calc";
 import type { CostFormatters } from "$lib/cost/format";
+import { deltaFor } from "$lib/statistics/compare";
 import * as m from "$lib/paraglide/messages";
 
 /** Rendered face of one tile. */
@@ -293,16 +296,215 @@ export const ENERGY_TILES: readonly TileDef<EnergyTileData>[] = [
 ];
 
 /** One resolved, render-ready tile. */
-export type Tile = { id: string; label: string; explain: string } & TileView;
+export type Tile = {
+  id: string;
+  label: string;
+  explain: string;
+  /** Signed change against the reference payload: `undefined` when the caller
+   *  passed none (no chip at all), `null` when the change is not meaningful
+   *  (chip renders an em-dash). */
+  delta?: number | null;
+  goodDirection: TileDef<unknown>["goodDirection"];
+} & TileView;
 
-/** Resolve a registry against one payload, dropping non-applicable tiles. */
+/**
+ * Resolve a registry against one payload, dropping non-applicable tiles. Pass
+ * `previous` — the same shape over a reference window — to have every tile
+ * carry its signed change.
+ */
 export function deriveTiles<Data>(
   defs: readonly TileDef<Data>[],
   data: Data,
   f: CostFormatters,
+  previous?: Data,
 ): Tile[] {
   return defs.flatMap((def) => {
     const view = def.compute(data, f);
-    return view ? [{ id: def.id, label: def.label(), explain: def.explain(), ...view }] : [];
+    if (!view) return [];
+    const delta = previous === undefined ? undefined : deltaFor(def.raw(data), def.raw(previous));
+    return [
+      {
+        id: def.id,
+        label: def.label(),
+        explain: def.explain(),
+        goodDirection: def.goodDirection,
+        delta,
+        ...view,
+      },
+    ];
   });
 }
+
+/** The same tile under a new id and explanation — one figure, two framings. */
+const restated = (from: string, id: string, explain: () => string): TileDef<CostBreakdown> => {
+  const def = COST_TILES.find((t) => t.id === from);
+  if (!def) throw new Error(`unknown cost tile: ${from}`);
+  return { ...def, id, explain };
+};
+
+/**
+ * Period-over-period tiles for the records section. Same figures the cost
+ * section leads with, but read against the reference window: the section's
+ * caption names it ("vs previous 31 days"), and the delta chip carries the
+ * comparison, so these are deliberately the household's four headline numbers
+ * rather than a second, different set.
+ */
+export const COMPARISON_TILES: readonly TileDef<CostBreakdown>[] = [
+  {
+    id: "records.netCost",
+    label: m.costs_tile_effective_cost,
+    explain: m.statistics_records_net_explain,
+    compute: (c, f) => ({
+      value: f.money(c.net),
+      sub: m.statistics_records_sub_net(),
+      accent: goodIf(c.net < 0),
+    }),
+    raw: (c) => c.net,
+    goodDirection: "down",
+  },
+  {
+    id: "records.savings",
+    label: m.costs_tile_total_savings,
+    explain: m.statistics_records_savings_explain,
+    compute: (c, f) => ({
+      value: f.money(c.savings),
+      sub: m.statistics_records_sub_savings(),
+      accent: goodIf(c.savings > 0),
+    }),
+    raw: (c) => c.savings,
+    goodDirection: "up",
+  },
+  {
+    id: "records.import",
+    label: m.costs_tile_grid_import,
+    explain: m.statistics_records_import_explain,
+    compute: (c, f) => ({
+      value: f.kwh(c.importKwh),
+      sub: m.statistics_records_sub_import({ amount: f.money(c.importCost) }),
+      accent: "",
+    }),
+    raw: (c) => c.importKwh,
+    goodDirection: "down",
+  },
+  // Identical figure to the cost section's tile, re-explained for the
+  // comparison framing — restated rather than re-written so the two can never
+  // drift apart.
+  restated(
+    "cost.selfSufficiency",
+    "records.selfSufficiency",
+    m.statistics_records_self_sufficiency_explain,
+  ),
+];
+
+/** Locale date for a `YYYY-MM-DD` record day. */
+const recordDay = (date: string): string =>
+  new Date(`${date}T00:00:00`).toLocaleDateString(undefined, {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+
+/**
+ * One all-time record tile. `pick` is what makes a tile applicable: money
+ * records are null outside the server's hourly-pricing horizon, and any
+ * record is null before there is a full day of history — either way the tile
+ * is dropped rather than rendered empty.
+ */
+const recordTile = (
+  id: string,
+  label: () => string,
+  explain: () => string,
+  pick: (r: RecordsResponse) => DayRecord | null | undefined,
+  format: (v: number, f: CostFormatters) => string,
+  goodDirection: TileDef<RecordsResponse>["goodDirection"],
+): TileDef<RecordsResponse> => ({
+  id,
+  label,
+  explain,
+  compute: (r, f) => {
+    const day = pick(r);
+    return day ? { value: format(day.value, f), sub: recordDay(day.date), accent: "" } : null;
+  },
+  raw: (r) => pick(r)?.value ?? null,
+  goodDirection,
+});
+
+/**
+ * All-time per-day records. Energy records reach back over the whole daily
+ * history; the money ones only cover the horizon the server can price, and
+ * come back null outside it.
+ */
+export const RECORD_TILES: readonly TileDef<RecordsResponse>[] = [
+  recordTile(
+    "records.maxProduction",
+    m.statistics_records_max_production,
+    m.statistics_records_max_production_explain,
+    (r) => r.energy?.maxProductionDay,
+    (v, f) => f.kwh(v),
+    "up",
+  ),
+  recordTile(
+    "records.maxExport",
+    m.statistics_records_max_export,
+    m.statistics_records_max_export_explain,
+    (r) => r.energy?.maxExportDay,
+    (v, f) => f.kwh(v),
+    "up",
+  ),
+  recordTile(
+    "records.maxLoad",
+    m.statistics_records_max_load,
+    m.statistics_records_max_load_explain,
+    (r) => r.energy?.maxLoadDay,
+    (v, f) => f.kwh(v),
+    "neutral",
+  ),
+  recordTile(
+    "records.maxImport",
+    m.statistics_records_max_import,
+    m.statistics_records_max_import_explain,
+    (r) => r.energy?.maxImportDay,
+    (v, f) => f.kwh(v),
+    "down",
+  ),
+  recordTile(
+    "records.bestSelfSufficiency",
+    m.statistics_records_best_self_sufficiency,
+    m.statistics_records_best_self_sufficiency_explain,
+    (r) => r.energy?.bestSelfSufficiencyDay,
+    (v, f) => f.pct(v),
+    "up",
+  ),
+  recordTile(
+    "records.worstSelfSufficiency",
+    m.statistics_records_worst_self_sufficiency,
+    m.statistics_records_worst_self_sufficiency_explain,
+    (r) => r.energy?.worstSelfSufficiencyDay,
+    (v, f) => f.pct(v),
+    "up",
+  ),
+  recordTile(
+    "records.cheapestDay",
+    m.statistics_records_cheapest_day,
+    m.statistics_records_cheapest_day_explain,
+    (r) => r.money?.cheapestDay,
+    (v, f) => f.money(v),
+    "down",
+  ),
+  recordTile(
+    "records.mostExpensiveDay",
+    m.statistics_records_priciest_day,
+    m.statistics_records_priciest_day_explain,
+    (r) => r.money?.mostExpensiveDay,
+    (v, f) => f.money(v),
+    "down",
+  ),
+  recordTile(
+    "records.bestEarningsDay",
+    m.statistics_records_best_earnings,
+    m.statistics_records_best_earnings_explain,
+    (r) => r.money?.bestEarningsDay,
+    (v, f) => f.money(v),
+    "up",
+  ),
+];

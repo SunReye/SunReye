@@ -1,0 +1,66 @@
+// Period-over-period math for the statistics page: the signed change a delta
+// chip renders, and the reference window the server compared against (mirrors
+// `previousWindow` in apps/server/src/statistics-calc.ts) so the page can tell
+// when that window predates recorded history and the delta would be fiction.
+
+import type { CostBreakdown } from "server/src/cost-calc";
+import type { CompareMode, ComparisonResponse } from "server/src/statistics";
+
+/**
+ * Signed relative change from `previous` to `current`, as a fraction
+ * (0.12 = +12%). `null` — rendered as an em-dash — whenever the change is not
+ * meaningful: either figure missing, or a zero/non-finite reference that would
+ * make every change infinite.
+ */
+export function deltaFor(current: number | null, previous: number | null): number | null {
+  if (current === null || previous === null) return null;
+  if (!Number.isFinite(current) || !Number.isFinite(previous) || previous === 0) return null;
+  return (current - previous) / Math.abs(previous);
+}
+
+/**
+ * The window the comparison endpoint priced as the reference for `[from, to)`:
+ * the adjacent same-length window, or the same calendar window a year back.
+ */
+export function referenceWindow(from: Date, to: Date, mode: CompareMode): { from: Date; to: Date } {
+  if (mode === "yearAgo") {
+    const shift = (d: Date) => {
+      const shifted = new Date(d);
+      shifted.setFullYear(shifted.getFullYear() - 1);
+      return shifted;
+    };
+    return { from: shift(from), to: shift(to) };
+  }
+  const length = to.getTime() - from.getTime();
+  return { from: new Date(from.getTime() - length), to: new Date(from) };
+}
+
+/**
+ * Whether the reference window is fully covered by recorded history. Without
+ * this check a household's first month shows a fake −100% against a window
+ * that simply has no data; `dataFrom` is the earliest daily rollup the server
+ * reports.
+ */
+function referenceCovered(reference: { from: Date }, dataFrom: string | null): boolean {
+  if (!dataFrom) return false;
+  return reference.from.getTime() >= new Date(dataFrom).getTime();
+}
+
+/**
+ * Split a comparison payload into the breakdown to show and the reference one
+ * worth comparing against — the latter drops to null when its window predates
+ * recorded history, which suppresses the delta chips instead of inventing one.
+ */
+export function usableComparison(
+  payload: ComparisonResponse | null,
+  reference: { from: Date },
+): { current: CostBreakdown | null; previous: CostBreakdown | null } {
+  if (!payload) return { current: null, previous: null };
+  const covered = referenceCovered(reference, payload.coverage.dataFrom);
+  return { current: payload.current, previous: covered ? payload.previous : null };
+}
+
+/** Whole days in `[from, to)`, at least 1 — the "vs previous {n} days" caption. */
+export function windowDays(from: Date, to: Date): number {
+  return Math.max(1, Math.round((to.getTime() - from.getTime()) / 86_400_000));
+}

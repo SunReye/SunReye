@@ -11,7 +11,7 @@
 	import { scalePoint } from 'd3-scale';
 	import * as Chart from '$lib/components/ui/chart';
 	import ChartLegend from '$lib/components/inverter/chart-legend.svelte';
-	import TooltipSeriesRow from '$lib/components/inverter/_shared/tooltip-series-row.svelte';
+	import SeriesTooltip from './series-tooltip.svelte';
 	import {
 		seriesConfig,
 		type LabelledSeries
@@ -51,11 +51,7 @@
 			props={{ xAxis: { ticks: COST_X_TICKS[bucket] }, yAxis: { format } }}
 		>
 			{#snippet tooltip()}
-				<Chart.Tooltip>
-					{#snippet formatter({ value, name, item })}
-						<TooltipSeriesRow {item} {name} value={format(value)} />
-					{/snippet}
-				</Chart.Tooltip>
+				<SeriesTooltip {format} />
 			{/snippet}
 		</LineChart>
 	</Chart.Container>

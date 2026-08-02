@@ -1,20 +1,13 @@
 <script lang="ts">
-	import { fade } from 'svelte/transition';
 	import type { CostBreakdown } from 'server/src/cost-calc';
 	import * as m from '$lib/paraglide/messages';
 	import CostBarChart from '$lib/components/inverter/cost-bar-chart.svelte';
-	import RangeSwitcher from '$lib/components/inverter/range-switcher.svelte';
 	import { api } from '$lib/api';
 	import { costFormatters } from '$lib/cost/format';
-	import {
-		chartSpecFor,
-		specQuery,
-		type ChartScope,
-		type CostBucket,
-		type CostRange
-	} from '$lib/cost/ranges';
-	import { chartCaption, defaultChartScope, scopeOptions } from '$lib/statistics/chart-scope';
+	import { specQuery, type CostBucket, type CostRange } from '$lib/cost/ranges';
+	import { sectionScope } from '$lib/statistics/chart-scope.svelte';
 	import { COST_TILES } from '$lib/statistics/tiles';
+	import ChartPanel from './chart-panel.svelte';
 	import StatTiles from './stat-tiles.svelte';
 	import BandBreakdown from './band-breakdown.svelte';
 
@@ -34,9 +27,7 @@
 	let { cost, range }: { cost: CostBreakdown; range: CostRange } = $props();
 
 	// Ephemeral per-viewer choice, seeded from the saved preference.
-	let scope = $state<ChartScope>(defaultChartScope('cost'));
-	const spec = $derived(chartSpecFor(range, scope));
-	const caption = $derived(chartCaption(range, scope));
+	const view = sectionScope('cost', () => range);
 
 	// Points + the granularity they were fetched at, updated together so the
 	// chart never labels stale points with a freshly-picked bucket.
@@ -48,7 +39,7 @@
 	// `cancelled` guards against an earlier request resolving after a later one
 	// and clobbering fresher data.
 	$effect(() => {
-		const query = specQuery(spec);
+		const query = specQuery(view.spec);
 		let cancelled = false;
 		api.api.cost.series.get({ query }).then(({ data }) => {
 			if (cancelled) return;
@@ -84,15 +75,9 @@
 <!-- Total-cost bars. Window/granularity follow this section's scope switcher,
      independent of the tiles above and of the other sections' charts. -->
 {#if costHasData}
-	<section class="flex flex-col gap-3 border border-border p-4" transition:fade={{ duration: 200 }}>
-		<div class="flex flex-wrap items-center justify-between gap-3">
-			<h2 class="text-sm font-medium uppercase tracking-wide text-muted-foreground">
-				{m.costs_total_cost()} — {caption}
-			</h2>
-			<RangeSwitcher options={scopeOptions(range)} bind:value={scope} />
-		</div>
+	<ChartPanel title={m.costs_total_cost()} {view} {range} switcher>
 		<CostBarChart points={series.points} bucket={series.bucket} currency={cost.currency} />
-	</section>
+	</ChartPanel>
 {/if}
 
 <!-- Import by band -->
