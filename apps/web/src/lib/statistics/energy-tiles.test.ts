@@ -22,7 +22,7 @@ const totals = (over: Partial<CostTotals> = {}): CostTotals => ({
   gridOnlyCost: 48,
   savings: 22,
   solarSavings: 18,
-  selfConsumedKwh: 60,
+  solarToLoadKwh: 60,
   selfSufficiency: 0.375,
   selfConsumption: 0.5833,
   byDay: [],
@@ -65,7 +65,9 @@ describe("headline figures", () => {
     const d = data();
     expect(byId(d, "energy.produced")?.value).toBe("120 kWh");
     expect(byId(d, "energy.consumed")?.value).toBe("160 kWh");
-    expect(byId(d, "energy.selfUsed")?.value).toBe("60 kWh");
+    // Self-used is production the plant kept (120 − 50), not load − import
+    // (60) — the latter counts battery discharge the sun put there earlier.
+    expect(byId(d, "energy.selfUsed")?.value).toBe("70 kWh");
     expect(byId(d, "energy.batteryCharged")?.value).toBe("22 kWh");
     expect(byId(d, "energy.batteryDischarged")?.value).toBe("20 kWh");
   });

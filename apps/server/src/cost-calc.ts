@@ -88,9 +88,13 @@ export interface CostTotals {
    *  rate = gridOnlyCost − importCost. Every kWh served on-site instead of bought
    *  is worth the grid price; excludes export feed-in (that is separate income). */
   solarSavings: number;
-  /** Energy served on-site instead of imported: max(0, load − import), kWh. The
-   *  Solar Saving tile renders `selfConsumedKwh × (solarSavings/selfConsumedKwh)`. */
-  selfConsumedKwh: number;
+  /**
+   * Energy served on-site instead of imported: max(0, load − import), kWh — the
+   * purchase solar and the battery avoided, which is what `solarSavings` values.
+   * NOT self-consumption: that is production − export (see `selfConsumption`),
+   * and on a battery system the two are different numbers.
+   */
+  solarToLoadKwh: number;
   /** (load − import) / load, 0..1, or null when no load data. */
   selfSufficiency: number | null;
   /** (production − export) / production, 0..1, or null when no production. */
@@ -215,7 +219,7 @@ export function allocateCost(
     gridOnlyCost,
     savings: gridOnlyCost - importCost + exportEarnings,
     solarSavings: gridOnlyCost - importCost,
-    selfConsumedKwh: Math.max(0, loadKwh - importKwh),
+    solarToLoadKwh: Math.max(0, loadKwh - importKwh),
     selfSufficiency: loadKwh > 0 ? clamp01((loadKwh - importKwh) / loadKwh) : null,
     selfConsumption:
       productionKwh > 0 ? clamp01((productionKwh - exportKwh) / productionKwh) : null,

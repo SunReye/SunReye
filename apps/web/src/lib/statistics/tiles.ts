@@ -130,8 +130,8 @@ export const COST_TILES: readonly TileDef<CostBreakdown>[] = [
     compute: (c, f) => ({
       value: f.money(c.solarSavings),
       sub:
-        c.selfConsumedKwh > 0
-          ? `${f.kwh(c.selfConsumedKwh)} × ${f.price(c.solarSavings / c.selfConsumedKwh)}`
+        c.solarToLoadKwh > 0
+          ? `${f.kwh(c.solarToLoadKwh)} × ${f.price(c.solarSavings / c.solarToLoadKwh)}`
           : m.costs_sub_self_consumed(),
       accent: goodIf(c.solarSavings > 0),
     }),
@@ -264,7 +264,10 @@ export const ENERGY_TILES: readonly TileDef<EnergyTileData>[] = [
     "energy.selfUsed",
     m.statistics_tile_self_used,
     m.statistics_tile_self_used_explain,
-    (t) => t.selfConsumedKwh,
+    // Self-consumption, the same measure the ratio tile reports: production the
+    // plant kept. Not load − import, which counts battery discharge the sun put
+    // there on an earlier day.
+    (t) => Math.max(0, t.productionKwh - t.exportKwh),
     "up",
   ),
   energyTile(
@@ -595,17 +598,17 @@ export const PRICE_TILES: readonly TileDef<SpotStats>[] = [
     explain: m.statistics_prices_tile_paid_explain,
     // Only once the plant imported something in a priced hour: without that
     // there is no weighted average to state.
+    // Read against the same market average the tile beside it states — one
+    // market figure on the screen, not two that differ in weighting.
     compute: (s) =>
-      s.paidVsMarket
+      s.paidVsMarket && s.summary
         ? {
             value: ctLabel(ctPerKwh(s.paidVsMarket.importWeightedAvgEurPerMwh)),
             sub: m.statistics_prices_sub_paid({
-              market: ctLabel(ctPerKwh(s.paidVsMarket.plainAvgEurPerMwh)),
+              market: ctLabel(ctPerKwh(s.summary.avgEurPerMwh)),
             }),
-            // Below the plain average means the house bought in cheaper hours.
-            accent: goodIf(
-              s.paidVsMarket.importWeightedAvgEurPerMwh < s.paidVsMarket.plainAvgEurPerMwh,
-            ),
+            // Below the market average means the house bought in cheaper hours.
+            accent: goodIf(s.paidVsMarket.importWeightedAvgEurPerMwh < s.summary.avgEurPerMwh),
           }
         : null,
     raw: (s) => s.paidVsMarket?.importWeightedAvgEurPerMwh ?? null,

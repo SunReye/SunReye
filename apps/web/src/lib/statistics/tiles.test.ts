@@ -26,7 +26,7 @@ const breakdown = (over: Partial<CostBreakdown> = {}): CostBreakdown => ({
   gridOnlyCost: 48,
   savings: 22,
   solarSavings: 18,
-  selfConsumedKwh: 60,
+  solarToLoadKwh: 60,
   selfSufficiency: 0.375,
   selfConsumption: 0.5833,
   byDay: [],
@@ -133,7 +133,7 @@ describe("solar saving", () => {
   });
 
   test("falls back to the generic sub-line without self-consumption", () => {
-    const t = tileById(breakdown({ selfConsumedKwh: 0, solarSavings: 0 }), "cost.solarSaving");
+    const t = tileById(breakdown({ solarToLoadKwh: 0, solarSavings: 0 }), "cost.solarSaving");
     expect(t.sub).not.toContain("×");
     expect(t.accent).toBe("");
   });
@@ -204,7 +204,6 @@ const stats = (over: Partial<SpotStats> = {}): SpotStats => ({
   paidVsMarket: {
     importKwh: 300,
     importWeightedAvgEurPerMwh: 70,
-    plainAvgEurPerMwh: 84.2,
     coverage: 1,
   },
   whatIf: null,
@@ -244,7 +243,6 @@ describe("PRICE_TILES registry", () => {
         paidVsMarket: {
           importKwh: 300,
           importWeightedAvgEurPerMwh: 95,
-          plainAvgEurPerMwh: 84.2,
           coverage: 1,
         },
       }),

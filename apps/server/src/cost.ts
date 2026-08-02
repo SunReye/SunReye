@@ -547,7 +547,7 @@ function reportLiveTodayTotals(totals: CostTotals, today: Partial<EnergyTotals>)
     productionKwh,
     batteryDischargeKwh: today.batteryDischargeKwh ?? totals.batteryDischargeKwh,
     batteryChargeKwh: today.batteryChargeKwh ?? totals.batteryChargeKwh,
-    selfConsumedKwh: Math.max(0, loadKwh - importKwh),
+    solarToLoadKwh: Math.max(0, loadKwh - importKwh),
     selfSufficiency: loadKwh > 0 ? clamp01((loadKwh - importKwh) / loadKwh) : null,
     selfConsumption:
       productionKwh > 0 ? clamp01((productionKwh - exportKwh) / productionKwh) : null,

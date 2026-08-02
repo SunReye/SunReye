@@ -172,7 +172,6 @@ describe("paidVsMarket", () => {
     expect(result).toEqual({
       importKwh: 4,
       importWeightedAvgEurPerMwh: 25,
-      plainAvgEurPerMwh: 50,
       coverage: 1,
     });
   });

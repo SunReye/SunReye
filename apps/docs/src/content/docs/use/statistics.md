@@ -55,7 +55,7 @@ Nine tiles, each with a headline figure and a sub-line:
 | **Net cost** | The bill after export earnings (a credit when negative, shown in green). |
 | **Grid import** | Cost and kWh drawn from the grid. |
 | **Export earnings** | Earnings and kWh fed in. |
-| **Solar saving** | Self-consumed kWh × the effective grid price they displaced. |
+| **Solar saving** | The kWh solar and the battery served instead of the grid (load − import), at the effective grid price they displaced. |
 | **Total savings** | Solar saving plus export earnings, versus buying everything from the grid. |
 | **Self-sufficiency** | % of load met by solar/battery. |
 | **Self-consumption** | % of production used on-site. |
@@ -67,8 +67,13 @@ band** — kWh and cost per time-of-use band, when bands are configured.
 
 A totals row first, because "how much did we produce last month?" should not require reading
 a chart: **produced**, **consumed**, **self-used**, and — on a system with a battery —
-**charged** and **discharged**. Each carries an average-per-day sub-line and a delta against
-the reference window (see [Comparisons & records](#comparisons--records)).
+**charged** and **discharged**. Each carries an average-per-day sub-line and a delta chip
+against the reference window (see [Comparisons & records](#comparisons--records)).
+
+**Self-used** is production the plant kept — production minus export — the same measure the
+self-consumption percentage reports. That is a different figure from the *Solar saving* tile
+above, which values what was not bought (load minus import); on a battery system the two
+differ, because energy discharged today may have been stored yesterday.
 
 Then three charts over one shared series, all moved by the section's scope toggle:
 
@@ -90,9 +95,9 @@ Only exists when a [price source](/use/settings/) is configured. Without one the
 not rendered at all, and does not appear in customize mode either.
 
 Market tiles for the picked window — average, minimum and maximum price in ct/kWh, negative
-hours, and **paid vs. market**: the price-weighted average of the hours this house actually
-imported in, against the plain market average. Below the plain average means it bought in the
-cheaper hours.
+hours, and **your import price**: the price-weighted average of the hours this house actually
+imported in, read against the same market average the tile beside it states. Below that
+average means it bought in the cheaper hours.
 
 Then the day-ahead curves, in a fixed order: **today** first, with a now-marker, and
 **tomorrow** directly below it. Before the auction clears (~13:00 market time) tomorrow's slot

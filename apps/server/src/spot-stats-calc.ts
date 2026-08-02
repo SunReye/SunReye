@@ -162,15 +162,17 @@ export function hourlyAveragePrices(slots: readonly SpotPriceSlot[]): Map<number
   return new Map([...acc].map(([k, a]) => [k, a.priceMinutes / a.minutes]));
 }
 
-/** How the household's import timing compares with the market — both averages
- *  on a wholesale basis, so they are the same kind of number. */
+/**
+ * How the household's import timing compares with the market. Only the weighted
+ * side lives here: the market average it is read against is the window's
+ * {@link SpotSummary.avgEurPerMwh}, so the screen states one market figure
+ * rather than two that differ in weighting and coverage.
+ */
 export interface PaidVsMarket {
   importKwh: number;
-  /** Σ(import·price) / Σ import over priced hours. Below the plain average
+  /** Σ(import·price) / Σ import over priced hours. Below the market average
    *  means the plant imported in the cheaper hours. */
   importWeightedAvgEurPerMwh: number;
-  /** Unweighted mean of the window's hourly prices. */
-  plainAvgEurPerMwh: number;
   /** Share of imported kWh that fell in an hour with a known market price. */
   coverage: number;
 }
@@ -193,12 +195,9 @@ export function paidVsMarket(
     weighted += h.import * price;
   }
   if (pricedKwh <= 0) return null;
-  let plain = 0;
-  for (const p of priceByHour.values()) plain += p;
   return {
     importKwh,
     importWeightedAvgEurPerMwh: weighted / pricedKwh,
-    plainAvgEurPerMwh: plain / priceByHour.size,
     coverage: importKwh > 0 ? pricedKwh / importKwh : 0,
   };
 }
