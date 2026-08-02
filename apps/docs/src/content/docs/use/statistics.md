@@ -144,6 +144,13 @@ and the server pushes today's figures every 15 seconds:
 A past-only range (last month, a historical custom range) takes no lease at all, which leaves
 the server with no subscribers and skips the job entirely.
 
+The inverter's own day counters run slightly ahead of the hourly rollups, so any window that
+runs up to now — today, this month, this year — reports the in-progress day's **energy** from
+those counters, swapping out only today's share of the total. This month therefore always
+covers the day inside it. Money is the exception: it stays priced hour by hour from the
+rollups, since a whole-day counter can't be split across your tariff's time bands. While the
+day is young the two can differ by a few cents.
+
 ## Gaps in the record
 
 Every figure on this page is derived from the rise of the inverter's lifetime counters between

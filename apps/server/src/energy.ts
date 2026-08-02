@@ -21,18 +21,11 @@ import {
   type PeriodEnergy,
   applyTodayOverride,
   derivePeriodEnergy,
+  emptyTotals,
 } from "./energy-calc";
 
 export type { PeriodEnergy } from "./energy-calc";
-
-export const emptyTotals = (): EnergyTotals => ({
-  importKwh: 0,
-  exportKwh: 0,
-  loadKwh: 0,
-  productionKwh: 0,
-  batteryDischargeKwh: 0,
-  batteryChargeKwh: 0,
-});
+export { emptyTotals } from "./energy-calc";
 
 /** Sum the delta-matrix rows into per-period {@link EnergyTotals}, zero-filled
  *  across `periods` so every bucket on the chart x-axis has an entry. */

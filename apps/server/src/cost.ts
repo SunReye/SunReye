@@ -24,7 +24,7 @@ import {
   priceSeriesRows,
   rollUpToMonths,
 } from "./cost-calc";
-import type { EnergyTotals } from "./energy-calc";
+import { type EnergyTotals, emptyTotals, replaceTodaySlice } from "./energy-calc";
 import { getTariff } from "./settings";
 import { liveState } from "./state";
 
@@ -551,30 +551,53 @@ export async function computeCostSeries(
   return rollUp ? rollUpToMonths(points) : points;
 }
 
-/**
- * Whether `[from, to)` is exactly the current day up to now — the `range:
- * "today"` case: `from` is this local day's midnight and `to` lands on today
- * (at or after `from`). Only this window may take the live `*.today` override;
- * month/year windows never do (see {@link computeCost}). Note: on the 1st of a
- * month/year the month/year-to-date IS just today, so this correctly returns
- * true — overriding the tiny window with the live register is coherent there.
- */
-function isTodayWindow(from: Date, to: Date, now: Date = new Date()): boolean {
+/** This local day's midnight. */
+function startOfLocalDay(now: Date): Date {
   const midnight = new Date(now);
   midnight.setHours(0, 0, 0, 0);
-  return (
-    from.getTime() === midnight.getTime() &&
-    to.getTime() >= from.getTime() &&
-    isSameLocalDay(to, now)
-  );
+  return midnight;
 }
 
 /**
- * Report the live `*.today` energy on top of the per-hour cost totals for the
- * current-day window: replace the energy kWh figures with the live values
- * (only the fields the reader supplied) and RECOMPUTE the pure derived-energy /
- * ratio fields from them — mirroring {@link allocateCost}'s formulas exactly so
- * the tiles stay coherent.
+ * Whether `[from, to)` contains all of today so far — today, month-to-date,
+ * year-to-date, a custom range running to the present. These windows take the
+ * live `*.today` override for their today slice (see {@link computeCost}); a
+ * window that starts mid-day or ended before now does not, since the whole-day
+ * register can't be apportioned to part of a day.
+ *
+ * `to` is accepted when it is at or past this moment, or simply lands on today:
+ * the presets resolve `to` to their caller's `now`, which is a few milliseconds
+ * behind the one asked here, and that is a clock artefact, not a past window.
+ */
+function coversTodaySoFar(from: Date, to: Date, now: Date): boolean {
+  const midnight = startOfLocalDay(now);
+  return from.getTime() <= midnight.getTime() && (to >= now || isSameLocalDay(to, now));
+}
+
+/** The counter-delta energy a window already counted for today, by totals key.
+ *  What {@link replaceTodaySlice} exchanges for the live registers. */
+function todayFromHours(hours: HourEnergy[], midnight: Date): EnergyTotals {
+  const out = emptyTotals();
+  for (const h of hours) {
+    if (h.time.getTime() < midnight.getTime()) continue;
+    for (const [field, key] of Object.entries(TOTALS_KEY_BY_FIELD)) {
+      out[key] += h[field as EnergyField];
+    }
+  }
+  return out;
+}
+
+/**
+ * Report the live `*.today` energy on top of a window's per-hour cost totals:
+ * exchange today's delta-derived slice for the live registers (only the fields
+ * the reader supplied) and RECOMPUTE the pure derived-energy / ratio fields from
+ * the result — mirroring {@link allocateCost}'s formulas exactly so the tiles
+ * stay coherent.
+ *
+ * `deltaToday` is today's own contribution to `totals`, so a month-to-date
+ * window keeps its earlier days and only its today slice moves. For the `today`
+ * window itself that slice IS the whole window, and this reduces to a plain
+ * replacement.
  *
  * Deliberate split: the MONEY fields (importCost, exportEarnings,
  * standingCharge, net, gridOnlyCost, savings, solarSavings, byDay, byBand) pass
@@ -583,19 +606,16 @@ function isTodayWindow(from: Date, to: Date, now: Date = new Date()): boolean {
  * banded — so the reported kWh and its priced cost may diverge slightly while
  * the day is in progress.
  */
-function reportLiveTodayTotals(totals: CostTotals, today: Partial<EnergyTotals>): CostTotals {
-  const importKwh = today.importKwh ?? totals.importKwh;
-  const exportKwh = today.exportKwh ?? totals.exportKwh;
-  const loadKwh = today.loadKwh ?? totals.loadKwh;
-  const productionKwh = today.productionKwh ?? totals.productionKwh;
+function reportLiveTodayTotals(
+  totals: CostTotals,
+  today: Partial<EnergyTotals>,
+  deltaToday: EnergyTotals,
+): CostTotals {
+  const energy = replaceTodaySlice(totals, deltaToday, today);
+  const { importKwh, exportKwh, loadKwh, productionKwh } = energy;
   return {
     ...totals,
-    importKwh,
-    exportKwh,
-    loadKwh,
-    productionKwh,
-    batteryDischargeKwh: today.batteryDischargeKwh ?? totals.batteryDischargeKwh,
-    batteryChargeKwh: today.batteryChargeKwh ?? totals.batteryChargeKwh,
+    ...energy,
     solarToLoadKwh: Math.max(0, loadKwh - importKwh),
     selfSufficiency: loadKwh > 0 ? clamp01((loadKwh - importKwh) / loadKwh) : null,
     selfConsumption:
@@ -669,15 +689,19 @@ export async function computeCost(
     await zeroValueShareFor(tariff, opts.from, opts.to),
   );
 
-  // Current-day window only: report the ENERGY kWh from the live *.today
-  // registers (which lead the coarse cross-bucket *.total delta for the
-  // in-progress day, matching the dashboard headline), recomputing the ratios
-  // from them. Money stays per-hour (see reportLiveTodayTotals). Month/year
-  // windows: no override — the today portion is negligible and can't be cleanly
-  // separated from the window's *.total delta.
+  // Any window running up to now — today, month-to-date, year-to-date — reports
+  // today's ENERGY kWh from the live *.today registers, which lead the coarse
+  // cross-bucket *.total delta for the in-progress day and match the dashboard
+  // headline; the ratios are recomputed from the result and money stays per-hour
+  // (see reportLiveTodayTotals). The slice is exchanged, not the total, so a
+  // month can never report less energy than the day inside it.
   const now = new Date();
-  const reported = isTodayWindow(opts.from, opts.to, now)
-    ? reportLiveTodayTotals(totals, liveTodayTotals(profile, inverterId, now))
+  const reported = coversTodaySoFar(opts.from, opts.to, now)
+    ? reportLiveTodayTotals(
+        totals,
+        liveTodayTotals(profile, inverterId, now),
+        todayFromHours(hours, startOfLocalDay(now)),
+      )
     : totals;
 
   return {

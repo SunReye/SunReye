@@ -1,17 +1,32 @@
+import { type TariffConfig, tariffConfigSchema } from "@SunReye/db/tariff";
 import type { CanonicalRole, InverterProfile, InverterSample } from "@SunReye/inverter-core";
 import { describe, expect, mock, test } from "bun:test";
 
 // cost.ts imports the DB singleton (which eagerly validates server env). Mock it
-// so the DB-free guard logic can be imported and exercised without a database or
-// a populated .env — mirroring inverter.test.ts's approach. The live sample is an
-// injectable argument, so the poll cache needs no stand-in.
+// so the guard logic can be imported and exercised without a database or a
+// populated .env — mirroring inverter.test.ts's approach.
+//
 // `fetchBucketEnergy` runs two queries — the pre-window baseline, then the
 // in-window buckets — so the stub answers from a queue in that order.
 let queryResults: Array<Array<Record<string, unknown>>> = [];
 const execute = mock(async () => ({ rows: queryResults.shift() ?? [] }));
 mock.module("@SunReye/db", () => ({ db: { execute } }));
 
-const { fetchBucketEnergy, liveTodayTotals } = await import("./cost");
+// Flat 0.30/kWh so the money in a computeCost result is readable by eye.
+const flatTariff: TariffConfig = tariffConfigSchema.parse({
+  currency: "EUR",
+  standingChargeMonthly: 0,
+  import: { defaultPricePerKwh: 0.3 },
+  export: { feedInPerKwh: 0.08 },
+});
+mock.module("./settings", () => ({ getTariff: async () => flatTariff }));
+
+// computeCost reads the poll cache directly (its `sample` argument is only
+// injectable one level down), so the cache itself is the stand-in.
+const liveState: { latest: InverterSample | null } = { latest: null };
+mock.module("./state", () => ({ liveState }));
+
+const { computeCost, fetchBucketEnergy, liveTodayTotals } = await import("./cost");
 
 /** The live overlay for `inverterId` at `now`, given the poll cache's `sample`. */
 const overlayFor = (
@@ -176,5 +191,104 @@ describe("fetchBucketEnergy", () => {
       [bucketRow(hour(0), 100, 101), bucketRow(hour(2), 101.4, 101.5)],
     );
     expect(imports).toEqual([1, 0.5]);
+  });
+});
+
+describe("computeCost and the live today registers", () => {
+  // Both the lifetime counter and its today twin, so the live overlay applies.
+  const profile = profileWith({
+    "grid.energy.imported.total": "imp",
+    "grid.energy.imported.today": "impToday",
+  });
+
+  // Windows are built from the real clock: computeCost reads `new Date()` for
+  // "today" and takes no injectable now.
+  const clock = new Date();
+  const midnight = new Date(clock);
+  midnight.setHours(0, 0, 0, 0);
+  const at = (offsetHours: number) => new Date(midnight.getTime() + offsetHours * 3_600_000);
+
+  // Yesterday 21:00 → 100 kWh on the clock. Then 2 kWh through the evening and
+  // 1 kWh recorded since midnight: 3 kWh in the month, 1 kWh of it today.
+  const baseline = [{ metric: "imp", bucket: at(-3).toISOString(), last_max: 100 }];
+  const buckets = [
+    { bucket: at(-2).toISOString(), metric: "imp", min_value: 100, max_value: 102 },
+    { bucket: at(0).toISOString(), metric: "imp", min_value: 102, max_value: 103 },
+  ];
+
+  /** The window's breakdown, over the pre-window baseline and in-window rows the
+   *  reader will see. */
+  const costOver = async (
+    from: Date,
+    seed: Array<Record<string, unknown>>,
+    rows: Array<Record<string, unknown>>,
+  ) => {
+    queryResults = [seed, rows];
+    return computeCost(profile, { from, to: new Date(), inverterId: "inv-1" });
+  };
+  /** Month-to-date: yesterday's buckets and today's, seeded before them. */
+  const monthToDate = () =>
+    costOver(new Date(midnight.getFullYear(), midnight.getMonth(), 1), baseline, buckets);
+  /** Today: only the buckets since midnight, seeded from last evening's high. */
+  const todaySeed = [{ metric: "imp", bucket: at(-2).toISOString(), last_max: 102 }];
+  const today = () => costOver(midnight, todaySeed, buckets.slice(1));
+
+  /** A poll-cache sample reading `kwh` on the today twin. */
+  const liveImport = (kwh: number): InverterSample => ({
+    time: clock.toISOString(),
+    inverterId: "inv-1",
+    metrics: { impToday: kwh },
+  });
+
+  test("without a live sample both windows stay on the counter deltas", async () => {
+    liveState.latest = null;
+    expect((await monthToDate()).importKwh).toBe(3);
+    expect((await today()).importKwh).toBe(1);
+  });
+
+  test("the today window reports the live register", async () => {
+    liveState.latest = liveImport(5);
+    expect((await today()).importKwh).toBe(5);
+  });
+
+  test("a month-to-date window swaps today's slice, keeping the earlier days", async () => {
+    // 3 kWh counted − 1 kWh of it today + the 5 kWh the register actually read.
+    liveState.latest = liveImport(5);
+    expect((await monthToDate()).importKwh).toBe(7);
+  });
+
+  test("a month can never report less energy than the day inside it", async () => {
+    // The register leads the rollups, so today's 5 kWh must not be left out of
+    // the wider window — which used to report 3 against the day's 5.
+    liveState.latest = liveImport(5);
+    const [month, day] = [await monthToDate(), await today()];
+    expect(month.importKwh).toBeGreaterThanOrEqual(day.importKwh);
+  });
+
+  test("the money stays priced from the counter deltas, not the register", async () => {
+    liveState.latest = liveImport(5);
+    // 3 kWh at 0.30 — a whole-day register can't be split into tariff bands.
+    expect((await monthToDate()).importCost).toBeCloseTo(0.9, 10);
+  });
+
+  test("a window that starts after midnight takes no override", async () => {
+    // The register counts from midnight, so it cannot be apportioned to a
+    // window that skips part of the day.
+    liveState.latest = liveImport(5);
+    const partial = await costOver(
+      new Date(midnight.getTime() + 1000),
+      todaySeed,
+      buckets.slice(1),
+    );
+    expect(partial.importKwh).toBe(1);
+  });
+
+  test("a stale register (yesterday's sample) leaves the window alone", async () => {
+    liveState.latest = {
+      time: new Date(midnight.getTime() - 3_600_000).toISOString(),
+      inverterId: "inv-1",
+      metrics: { impToday: 5 },
+    };
+    expect((await monthToDate()).importKwh).toBe(3);
   });
 });

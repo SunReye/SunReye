@@ -79,6 +79,52 @@ export function applyTodayOverride(
   };
 }
 
+/** The kWh fields of {@link EnergyTotals}, for whole-record arithmetic. */
+const TOTALS_FIELDS = [
+  "importKwh",
+  "exportKwh",
+  "loadKwh",
+  "productionKwh",
+  "batteryDischargeKwh",
+  "batteryChargeKwh",
+] as const satisfies ReadonlyArray<keyof EnergyTotals>;
+
+/** An all-zero {@link EnergyTotals}, the identity for summing. */
+export function emptyTotals(): EnergyTotals {
+  return {
+    importKwh: 0,
+    exportKwh: 0,
+    loadKwh: 0,
+    productionKwh: 0,
+    batteryDischargeKwh: 0,
+    batteryChargeKwh: 0,
+  };
+}
+
+/**
+ * Swap the in-progress day's contribution to a WIDER window for the live
+ * `*.today` registers: `window − deltaToday + today`, per field, clamped ≥0.
+ *
+ * {@link applyTodayOverride} is the whole-period case — it replaces a bucket
+ * that IS today. A month-to-date window instead *contains* today, so its total
+ * has to keep the earlier days and exchange only today's slice; overriding the
+ * lot would throw the month away, and leaving it alone makes the month report
+ * less than the day inside it. Fields absent from `today` are left untouched,
+ * and an explicit `0` still counts as a reading.
+ */
+export function replaceTodaySlice(
+  window: EnergyTotals,
+  deltaToday: EnergyTotals,
+  today: Partial<EnergyTotals>,
+): EnergyTotals {
+  const out = { ...window };
+  for (const field of TOTALS_FIELDS) {
+    const live = today[field];
+    if (live !== undefined) out[field] = Math.max(0, window[field] - deltaToday[field] + live);
+  }
+  return out;
+}
+
 /** Derive the display splits and ratios for one period's summed energy. */
 export function derivePeriodEnergy(bucket: string, totals: EnergyTotals): PeriodEnergy {
   const { importKwh, exportKwh, loadKwh, productionKwh, batteryDischargeKwh, batteryChargeKwh } =

@@ -1,5 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { type EnergyTotals, applyTodayOverride, derivePeriodEnergy } from "./energy-calc";
+import {
+  type EnergyTotals,
+  applyTodayOverride,
+  derivePeriodEnergy,
+  replaceTodaySlice,
+} from "./energy-calc";
 
 const totals = (t: Partial<EnergyTotals>): EnergyTotals => ({
   importKwh: 0,
@@ -146,5 +151,61 @@ describe("applyTodayOverride", () => {
     expect(base).toEqual(snapshot); // input untouched
     expect(today).toEqual({ loadKwh: 9 }); // override untouched
     expect(out).not.toBe(base); // fresh object
+  });
+});
+
+describe("replaceTodaySlice", () => {
+  // A month-to-date window: 30 kWh imported, 4 of them recorded today.
+  const window = totals({ importKwh: 30, loadKwh: 50, productionKwh: 12 });
+  const deltaToday = totals({ importKwh: 4, loadKwh: 6, productionKwh: 2 });
+
+  test("keeps the earlier days and exchanges only today's slice", () => {
+    expect(replaceTodaySlice(window, deltaToday, { importKwh: 9 })).toMatchObject({
+      importKwh: 35, // 30 − 4 + 9
+      loadKwh: 50, // absent from the register → untouched
+    });
+  });
+
+  test("a window can never end up below its own today slice", () => {
+    // The register leads the rollups, so the live reading is the floor: whatever
+    // the deltas think today was, the window has to carry at least this much.
+    const live = { importKwh: 9 };
+    const out = replaceTodaySlice(window, deltaToday, live);
+    expect(out.importKwh).toBeGreaterThanOrEqual(live.importKwh);
+  });
+
+  test("a register behind the delta shrinks the window rather than double-counting", () => {
+    expect(replaceTodaySlice(window, deltaToday, { importKwh: 1 }).importKwh).toBe(27);
+  });
+
+  test("clamps at zero when the slice exceeds the window", () => {
+    // Can only happen if the two disagree wildly; a negative kWh total is worse
+    // than a zero one.
+    expect(
+      replaceTodaySlice(totals({ importKwh: 2 }), totals({ importKwh: 5 }), { importKwh: 0 }),
+    ).toMatchObject({ importKwh: 0 });
+  });
+
+  test("an explicit zero is a reading — the slice is still removed", () => {
+    expect(replaceTodaySlice(window, deltaToday, { importKwh: 0 }).importKwh).toBe(26);
+  });
+
+  test("empty `today` is the identity (no register, no change)", () => {
+    expect(replaceTodaySlice(window, deltaToday, {})).toEqual({ ...window });
+  });
+
+  test("reduces to a plain replacement when the window IS today", () => {
+    // The `today` preset: the slice is the whole window, so this must agree with
+    // applyTodayOverride rather than being a second, subtly different rule.
+    const live = { importKwh: 9, loadKwh: 11 };
+    expect(replaceTodaySlice(deltaToday, deltaToday, live)).toEqual(
+      applyTodayOverride(deltaToday, live),
+    );
+  });
+
+  test("does not mutate either input", () => {
+    const snapshot = { ...window };
+    replaceTodaySlice(window, deltaToday, { importKwh: 9 });
+    expect(window).toEqual(snapshot);
   });
 });
