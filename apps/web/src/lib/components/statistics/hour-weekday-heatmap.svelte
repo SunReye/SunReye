@@ -8,6 +8,7 @@
 	import RangeSwitcher from '$lib/components/inverter/range-switcher.svelte';
 	import GradientLegend from '$lib/components/inverter/_shared/gradient-legend.svelte';
 	import { heatColor, heatGradient, heatOpacity } from '$lib/statistics/heatmap';
+	import { COST_X_TICK_SPACING } from '$lib/cost/ranges';
 	import { decimal } from '$lib/format/number';
 	import { getLocale } from '$lib/paraglide/runtime';
 	import * as m from '$lib/paraglide/messages';
@@ -56,8 +57,15 @@
 	const busiest = $derived(points.reduce<Point | null>((best, p) => (best && best.avg >= p.avg ? best : p), null));
 
 	const hours = Array.from({ length: 24 }, (_, i) => i);
-	const hourTicks = hours.filter((h) => h % 3 === 0);
-	const weekdays = [1, 2, 3, 4, 5, 6, 7];
+
+	// Only the weekdays the window actually covers. The server emits cells for
+	// the (hour, weekday) slots that occurred, so a two-day window would
+	// otherwise draw five labelled but permanently empty rows.
+	const ALL_WEEKDAYS = [1, 2, 3, 4, 5, 6, 7];
+	const weekdays = $derived.by(() => {
+		const present = new Set(cells.map((c) => c.dow));
+		return ALL_WEEKDAYS.filter((d) => present.has(d));
+	});
 
 	// ISO weekday → short local name. 2024-01-01 was a Monday, so day-of-month
 	// and ISO weekday line up for the whole first week.
@@ -67,6 +75,10 @@
 	const kwh = (v: number) => `${decimal(v, 2)} kWh`;
 
 	const metricLabel = $derived(METRICS.find((x) => x.id === metric)?.label ?? '');
+
+	// Row height, so a window covering two weekdays is a two-row strip rather
+	// than two very tall cells.
+	const gridHeight = $derived(Math.min(224, weekdays.length * 26 + 40));
 </script>
 
 <!-- No cell above zero means the window has no data for this metric at all —
@@ -94,7 +106,7 @@
 			</p>
 		{/if}
 
-		<div class="h-56" aria-hidden="true">
+		<div style="height: {gridHeight}px" aria-hidden="true">
 			<Chart
 				data={points}
 				x="hod"
@@ -115,7 +127,12 @@
 						insets={{ all: 1 }}
 						rx={2}
 					/>
-					<Axis placement="bottom" ticks={hourTicks} format={hourLabel} rule={false} />
+					<Axis
+						placement="bottom"
+						tickSpacing={COST_X_TICK_SPACING}
+						format={hourLabel}
+						rule={false}
+					/>
 					<Axis placement="left" format={weekdayLabel} rule={false} />
 				</Canvas>
 

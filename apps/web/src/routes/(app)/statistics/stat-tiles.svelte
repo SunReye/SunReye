@@ -34,9 +34,12 @@
 	);
 </script>
 
+<!-- Separators are per-tile borders rather than gaps over a border-coloured
+     backdrop: with a tile count that is not a multiple of the column count, the
+     backdrop showed through the empty cells as grey slabs. -->
 {#if shown.length > 0}
 	<div
-		class="grid gap-px border border-border bg-border sm:grid-cols-2 lg:grid-cols-4"
+		class="grid border-l border-t border-border sm:grid-cols-2 lg:grid-cols-4"
 		transition:fade={{ duration: 200 }}
 	>
 		{#each shown as tile (tile.id)}

@@ -16,7 +16,7 @@
 	// Hidden tiles only ever render while customizing (the grid filters them
 	// out otherwise), where they preview at 40%.
 	const cardClass = $derived(
-		`flex flex-col gap-1 bg-background px-4 py-3 ${hidden ? 'opacity-40' : ''}`
+		`flex flex-col gap-1 border-b border-r border-border bg-background px-4 py-3 ${hidden ? 'opacity-40' : ''}`
 	);
 </script>
 

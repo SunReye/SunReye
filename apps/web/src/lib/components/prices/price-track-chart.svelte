@@ -9,6 +9,7 @@
 	import PriceTooltip from './price-tooltip.svelte';
 	import { seriesConfig } from '$lib/components/inverter/_shared/chart-series';
 	import { canvasHighlight } from '$lib/components/inverter/_shared/canvas-highlight.svelte';
+	import { COST_CHART_PADDING, COST_X_TICK_SPACING } from '$lib/cost/ranges';
 	import type { PriceRow } from '$lib/prices/price-series';
 	import * as m from '$lib/paraglide/messages';
 
@@ -79,8 +80,8 @@
 			{series}
 			seriesLayout="stackDiverging"
 			bandPadding={0.1}
-			padding={{ top: 8, right: 8, bottom: 20, left: 44 }}
-			props={{ xAxis: { ticks: 8 } }}
+			padding={COST_CHART_PADDING}
+			props={{ xAxis: { tickSpacing: COST_X_TICK_SPACING } }}
 			highlight={{ area: { fill: highlight.fill, fillOpacity: 0.1 } }}
 			{aboveMarks}
 		>

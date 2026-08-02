@@ -5,8 +5,8 @@
 	import ChartLegend from '$lib/components/inverter/chart-legend.svelte';
 	import { costFormatters } from '$lib/cost/format';
 	import TooltipSeriesRow from '$lib/components/inverter/_shared/tooltip-series-row.svelte';
-	import { seriesConfig } from '$lib/components/inverter/_shared/chart-series';
-	import { COST_X_TICKS, periodLabel, type CostBucket } from '$lib/cost/ranges';
+	import { seriesConfig, stackedBarProps } from '$lib/components/inverter/_shared/chart-series';
+	import { periodLabel, type CostBucket } from '$lib/cost/ranges';
 
 	// One diverging stack per period. Mirrors the server's CostSeriesPoint
 	// (apps/server/src/cost.ts): net = importCost − exportEarnings + standingCharge.
@@ -77,10 +77,7 @@
 			x="label"
 			{series}
 			seriesLayout="stackDiverging"
-			bandPadding={0.25}
-			stackPadding={2}
-			padding={{ top: 8, right: 8, bottom: 20, left: 52 }}
-			props={{ xAxis: { ticks: COST_X_TICKS[bucket] } }}
+			{...stackedBarProps(data.length)}
 		>
 			{#snippet tooltip()}
 				<Chart.Tooltip>

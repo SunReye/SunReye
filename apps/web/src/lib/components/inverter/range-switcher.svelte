@@ -12,7 +12,7 @@
 	} = $props();
 </script>
 
-<div class="flex items-center gap-1 border border-border p-1">
+<div class="flex flex-wrap items-center gap-1 border border-border p-1">
 	{#each options as o (o.id)}
 		<Button
 			variant={value === o.id ? 'default' : 'ghost'}

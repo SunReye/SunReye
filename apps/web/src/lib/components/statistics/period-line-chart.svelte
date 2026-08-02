@@ -16,19 +16,17 @@
 		seriesConfig,
 		type LabelledSeries
 	} from '$lib/components/inverter/_shared/chart-series';
-	import { COST_X_TICKS, type CostBucket } from '$lib/cost/ranges';
+	import { COST_CHART_PADDING, COST_X_TICK_SPACING } from '$lib/cost/ranges';
 
 	let {
 		data,
 		series,
-		bucket,
 		format,
 		yDomain
 	}: {
 		/** Rows in period order; `label` is the x-axis band. */
 		data: Row[];
 		series: (LabelledSeries & { value: (d: Row) => number | null })[];
-		bucket: CostBucket;
 		/** Renders one value for the axis and the tooltip. */
 		format: (v: unknown) => string;
 		/** Fixed y domain — ratios pin [0, 1]; kWh charts scale to their data. */
@@ -36,7 +34,7 @@
 	} = $props();
 
 	const config = $derived(seriesConfig(series));
-	const axisPadding = { top: 8, right: 8, bottom: 20, left: 48 };
+	const axisPadding = COST_CHART_PADDING;
 </script>
 
 <div class="flex min-w-0 flex-col gap-3">
@@ -49,7 +47,7 @@
 			{yDomain}
 			padding={axisPadding}
 			props={{
-				xAxis: { ticks: COST_X_TICKS[bucket] },
+				xAxis: { tickSpacing: COST_X_TICK_SPACING },
 				yAxis: { format },
 				// A line is a stroke, never a fill — but the `fill: none` default for
 				// `.lc-path` ships in LayerChart's *SVG* Path component, which a

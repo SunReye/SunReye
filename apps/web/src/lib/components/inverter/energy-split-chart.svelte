@@ -102,7 +102,6 @@
 				subtitle={msg.chart_consumption_sub()}
 				series={consumptionSeries}
 				{data}
-				{bucket}
 				{seriesLayout}
 				ratio={avgSelfSufficiency}
 				delta={chips.selfSufficiency}
@@ -113,7 +112,6 @@
 				subtitle={msg.chart_production_sub()}
 				series={productionSeries}
 				{data}
-				{bucket}
 				{seriesLayout}
 				ratio={avgSelfConsumption}
 				delta={chips.selfConsumption}

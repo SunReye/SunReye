@@ -2,6 +2,7 @@
 // chart derives from its series list, and the dual-axis normalization the custom
 // charts apply when their series span more than one unit.
 import type { ChartConfig } from "$lib/components/ui/chart";
+import { barBandPadding, COST_CHART_PADDING, COST_X_TICK_SPACING } from "$lib/cost/ranges";
 import {
   domainFor,
   groupSeriesByUnit,
@@ -13,6 +14,20 @@ import {
 
 /** The identity fields every chart series carries, whatever its value shape. */
 export type LabelledSeries = { key: string; label: string; color: string };
+
+/**
+ * The layout props every stacked statistics bar chart passes: a band padding
+ * that keeps a two-bucket window from rendering slabs, a 2px gap between stack
+ * segments, and axes with room for their labels.
+ */
+export function stackedBarProps(bucketCount: number) {
+  return {
+    bandPadding: barBandPadding(bucketCount, 0.25),
+    stackPadding: 2,
+    padding: COST_CHART_PADDING,
+    props: { xAxis: { tickSpacing: COST_X_TICK_SPACING } },
+  };
+}
 
 /** `Chart.ChartConfig` for a series list — label + colour keyed by series key. */
 export function seriesConfig(series: readonly LabelledSeries[]): ChartConfig {

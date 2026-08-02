@@ -18,15 +18,13 @@
 	import * as msg from '$lib/paraglide/messages';
 	import ChartLegend from '$lib/components/inverter/chart-legend.svelte';
 	import DeltaChip from '$lib/components/statistics/delta-chip.svelte';
-	import { seriesConfig } from '$lib/components/inverter/_shared/chart-series';
-	import { COST_X_TICKS, type CostBucket } from '$lib/cost/ranges';
+	import { seriesConfig, stackedBarProps } from '$lib/components/inverter/_shared/chart-series';
 
 	let {
 		title,
 		subtitle,
 		series,
 		data,
-		bucket,
 		seriesLayout,
 		ratio,
 		delta,
@@ -36,7 +34,6 @@
 		subtitle: string;
 		series: SplitSeries<Row>[];
 		data: Row[];
-		bucket: CostBucket;
 		/** 'stack' for kWh, 'stackExpand' for the 100%-normalized share. */
 		seriesLayout: 'stack' | 'stackExpand';
 		/** Window average of the ratio this side describes; null when there was
@@ -77,10 +74,7 @@
 			x="label"
 			{series}
 			{seriesLayout}
-			bandPadding={0.25}
-			stackPadding={2}
-			padding={{ top: 8, right: 8, bottom: 20, left: 44 }}
-			props={{ xAxis: { ticks: COST_X_TICKS[bucket] } }}
+			{...stackedBarProps(data.length)}
 		>
 			{#snippet tooltip()}
 				<Chart.Tooltip />

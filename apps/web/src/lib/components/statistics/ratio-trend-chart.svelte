@@ -43,4 +43,4 @@
 		v === null || v === undefined ? '—' : `${Math.round(Number(v) * 100)}%`;
 </script>
 
-<PeriodLineChart {data} {series} {bucket} format={pct} yDomain={[0, 1]} />
+<PeriodLineChart {data} {series} format={pct} yDomain={[0, 1]} />

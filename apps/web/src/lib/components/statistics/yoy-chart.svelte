@@ -8,7 +8,12 @@
 	import SeriesTooltip from './series-tooltip.svelte';
 	import { seriesConfig } from '$lib/components/inverter/_shared/chart-series';
 	import { canvasHighlight } from '$lib/components/inverter/_shared/canvas-highlight.svelte';
-	import { periodLabel } from '$lib/cost/ranges';
+	import {
+		barBandPadding,
+		COST_CHART_PADDING,
+		COST_X_TICK_SPACING,
+		periodLabel
+	} from '$lib/cost/ranges';
 	import type { YoyRow } from '$lib/statistics/yoy';
 
 	let {
@@ -63,10 +68,10 @@
 			x="label"
 			{series}
 			seriesLayout="group"
-			bandPadding={0.2}
+			bandPadding={barBandPadding(data.length, 0.2)}
 			groupPadding={0.1}
-			padding={{ top: 8, right: 8, bottom: 20, left: 52 }}
-			props={{ xAxis: { ticks: 6 } }}
+			padding={COST_CHART_PADDING}
+			props={{ xAxis: { tickSpacing: COST_X_TICK_SPACING } }}
 			highlight={{ area: { fill: highlight.fill, fillOpacity: 0.1 } }}
 		>
 			{#snippet tooltip()}

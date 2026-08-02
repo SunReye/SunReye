@@ -72,4 +72,4 @@
 	const kwh = (v: unknown) => `${decimal(Number(v))} kWh`;
 </script>
 
-<PeriodLineChart {data} {series} {bucket} format={kwh} />
+<PeriodLineChart {data} {series} format={kwh} />

@@ -82,6 +82,28 @@ export const COST_PRESETS = [
  */
 export const COST_X_TICKS: Record<CostBucket, number> = { hour: 6, day: 8, month: 6 };
 
+/**
+ * Minimum horizontal room an x-axis label gets, in pixels. LayerChart thins the
+ * band domain to fit, so the tick count follows the chart's real width instead
+ * of a guess — at 390px the hour labels used to run into one another
+ * ("00:0003:0006:00").
+ */
+export const COST_X_TICK_SPACING = 72;
+
+/**
+ * Chart padding. The left gutter fits a four-digit figure with its unit
+ * ("1,000 kWh"), which the old 48px clipped to "000 kWh"; the right one keeps
+ * the last tick label ("Aug 2") inside the plot instead of cutting it in half.
+ */
+export const COST_CHART_PADDING = { top: 8, right: 24, bottom: 20, left: 60 };
+
+/**
+ * Band padding for a bar chart of `count` periods. A window with one or two
+ * buckets otherwise renders bars half the viewport wide; past a handful of
+ * bars the usual spacing reads better.
+ */
+export const barBandPadding = (count: number, base: number): number => (count <= 4 ? 0.6 : base);
+
 export function periodLabel(key: string, bucket: CostBucket): string {
   if (bucket === "hour") return `${key.slice(11, 13)}:00`;
   if (bucket === "day") return dayMonth(new Date(`${key}T00:00:00`));
