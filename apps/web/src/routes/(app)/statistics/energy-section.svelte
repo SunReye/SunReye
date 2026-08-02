@@ -8,7 +8,7 @@
 	import RatioTrendChart from '$lib/components/statistics/ratio-trend-chart.svelte';
 	import HourWeekdayHeatmap from '$lib/components/statistics/hour-weekday-heatmap.svelte';
 	import { costFormatters } from '$lib/cost/format';
-	import { specQuery } from '$lib/cost/ranges';
+	import { specQuery, type CostBucket } from '$lib/cost/ranges';
 	import type { SectionData } from '$lib/statistics/sections';
 	import { sectionScope } from '$lib/statistics/chart-scope.svelte';
 	import { baselineLabel, deltaFor } from '$lib/statistics/compare';
@@ -33,8 +33,14 @@
 	const view = sectionScope('energy', () => range);
 
 	// One series fetch for all three charts below: the split, the ratio trend and
-	// the raw flows all read the same periods at the section's chosen scope.
-	let series = $state<PeriodEnergy[]>([]);
+	// the raw flows all read the same periods at the section's chosen scope —
+	// paired with the granularity they were fetched at, updated together (as in
+	// cost-section). Switching scope changes the spec before the response lands,
+	// and labelling day-keyed periods as months threw on an invalid date.
+	let series = $state<{ periods: PeriodEnergy[]; bucket: CostBucket }>({
+		periods: [],
+		bucket: view.spec.bucket
+	});
 	$effect(() => {
 		// Shared invalidation signal: a live push on a now-inclusive wider range
 		// bumps it (at most once a minute), which refetches the series in place.
@@ -43,7 +49,7 @@
 		let cancelled = false;
 		api.api.energy.series.get({ query }).then(({ data: payload }) => {
 			if (cancelled) return;
-			series = (payload ?? []) as PeriodEnergy[];
+			series = { periods: (payload ?? []) as PeriodEnergy[], bucket: query.bucket };
 		});
 		return () => {
 			cancelled = true;
@@ -78,15 +84,15 @@
 	// Capability gate for the battery lines: the pack exists, or the window moved
 	// energy through one. Never two permanently-flat series.
 	const showBattery = $derived(
-		hasBattery || series.some((p) => p.batteryChargeKwh > 0 || p.batteryDischargeKwh > 0)
+		hasBattery || series.periods.some((p) => p.batteryChargeKwh > 0 || p.batteryDischargeKwh > 0)
 	);
 
 	// A window with no energy at all has nothing to plot; the tiles above still
 	// state the zeroes honestly.
-	const hasSeries = $derived(series.some((p) => p.loadKwh > 0 || p.productionKwh > 0));
+	const hasSeries = $derived(series.periods.some((p) => p.loadKwh > 0 || p.productionKwh > 0));
 	// Ratios only exist where there was load / production to divide by.
 	const hasRatios = $derived(
-		series.some((p) => p.selfSufficiency !== null || p.selfConsumption !== null)
+		series.periods.some((p) => p.selfSufficiency !== null || p.selfConsumption !== null)
 	);
 
 	// Headline figure per chart, with the same comparison the tiles carry:
@@ -124,19 +130,19 @@
 	<!-- Split, ratios and raw flows all read the one fetch above, so the scope
 	     switcher in this header moves every chart in the section at once. -->
 	<ChartPanel title={m.statistics_energy_flows()} {view} switcher={range} summary={flowsSummary}>
-		<EnergySeriesChart periods={series} bucket={view.spec.bucket} {showBattery} />
+		<EnergySeriesChart periods={series.periods} bucket={series.bucket} {showBattery} />
 	</ChartPanel>
 
 	<EnergySplitChart
 		caption={view.caption}
-		periods={series}
-		bucket={view.spec.bucket}
+		periods={series.periods}
+		bucket={series.bucket}
 		deltas={view.scope === 'detail' ? splitDeltas : undefined}
 	/>
 
 	{#if hasRatios}
 		<ChartPanel title={m.statistics_energy_ratios()} {view} summary={ratioSummary}>
-			<RatioTrendChart periods={series} bucket={view.spec.bucket} />
+			<RatioTrendChart periods={series.periods} bucket={series.bucket} />
 		</ChartPanel>
 	{/if}
 {/if}

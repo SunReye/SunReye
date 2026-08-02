@@ -138,7 +138,15 @@ describe("periodLabel", () => {
   });
 
   it("labels day and month keys through the locale formatter", () => {
-    expect(periodLabel("2026-05-14", "day")).toBeTruthy();
-    expect(periodLabel("2026-05", "month")).toBeTruthy();
+    expect(periodLabel("2026-05-14", "day")).toBe("May 14");
+    expect(periodLabel("2026-05", "month")).toBe("May");
+  });
+
+  it("falls back to the raw key when it doesn't match the bucket", () => {
+    // A scope switch changes the bucket before the refetch lands, so the chart
+    // can briefly hold day keys while asking for month labels. Intl throws on
+    // the invalid Date that produces — one odd tick beats a blank page.
+    expect(periodLabel("2026-05-14", "month")).toBe("2026-05-14");
+    expect(periodLabel("2026-05", "day")).toBe("2026-05");
   });
 });

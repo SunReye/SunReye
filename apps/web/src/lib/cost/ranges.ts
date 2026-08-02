@@ -104,10 +104,28 @@ export const COST_CHART_PADDING = { top: 8, right: 24, bottom: 20, left: 60 };
  */
 export const barBandPadding = (count: number, base: number): number => (count <= 4 ? 0.6 : base);
 
+/** The period-key shape each bucket produces, as the server writes them. */
+const KEY_SHAPE: Record<CostBucket, RegExp> = {
+  hour: /^\d{4}-\d{2}-\d{2}T\d{2}$/,
+  day: /^\d{4}-\d{2}-\d{2}$/,
+  month: /^\d{4}-\d{2}$/,
+};
+
+/**
+ * Axis label for one period key at the given granularity.
+ *
+ * A key that doesn't match the bucket falls back to itself rather than being
+ * formatted: read as a month, a day key yields an invalid Date and `Intl` throws
+ * on it, taking the page down over one tick. Callers must still pair periods
+ * with the bucket they were fetched at — see the series state in
+ * energy-section/cost-section — this only keeps the failure legible.
+ */
 export function periodLabel(key: string, bucket: CostBucket): string {
+  if (!KEY_SHAPE[bucket].test(key)) return key;
   if (bucket === "hour") return `${key.slice(11, 13)}:00`;
-  if (bucket === "day") return dayMonth(new Date(`${key}T00:00:00`));
-  return monthShort(new Date(`${key}-01T00:00:00`));
+  return bucket === "day"
+    ? dayMonth(new Date(`${key}T00:00:00`))
+    : monthShort(new Date(`${key}-01T00:00:00`));
 }
 
 const startOfDay = (d: Date): Date => new Date(d.getFullYear(), d.getMonth(), d.getDate());
