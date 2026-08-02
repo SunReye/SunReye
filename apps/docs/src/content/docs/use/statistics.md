@@ -144,6 +144,20 @@ and the server pushes today's figures every 15 seconds:
 A past-only range (last month, a historical custom range) takes no lease at all, which leaves
 the server with no subscribers and skips the job entirely.
 
+## Gaps in the record
+
+Every figure on this page is derived from the rise of the inverter's lifetime counters between
+two recorded readings. If the server was down, the counters kept climbing, and the first
+reading after it comes back is higher by everything that happened in between — with nothing to
+say *when* any of it happened.
+
+Energy across a hole longer than a few hours is therefore left out rather than dumped into the
+hour the server came back: a three-day outage would otherwise bill Monday's kWh to Thursday
+lunchtime, and land it in whichever window and tariff band that hour falls in. Short holes — a
+restart, a handful of missed polls — are still bridged, since misplacing an hour inside its own
+day changes nothing you can read. So a window containing downtime reports slightly less energy
+and cost than the meter did, and the tiles say so consistently across every section.
+
 ## Customize mode (admins)
 
 Admins get a sliders button beside the range picker. It opens a **draft**: the sections gain a

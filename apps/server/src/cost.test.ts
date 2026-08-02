@@ -5,9 +5,13 @@ import { describe, expect, mock, test } from "bun:test";
 // so the DB-free guard logic can be imported and exercised without a database or
 // a populated .env — mirroring inverter.test.ts's approach. The live sample is an
 // injectable argument, so the poll cache needs no stand-in.
-mock.module("@SunReye/db", () => ({ db: {} }));
+// `fetchBucketEnergy` runs two queries — the pre-window baseline, then the
+// in-window buckets — so the stub answers from a queue in that order.
+let queryResults: Array<Array<Record<string, unknown>>> = [];
+const execute = mock(async () => ({ rows: queryResults.shift() ?? [] }));
+mock.module("@SunReye/db", () => ({ db: { execute } }));
 
-const { liveTodayTotals } = await import("./cost");
+const { fetchBucketEnergy, liveTodayTotals } = await import("./cost");
 
 /** The live overlay for `inverterId` at `now`, given the poll cache's `sample`. */
 const overlayFor = (
@@ -103,5 +107,74 @@ describe("liveTodayTotals", () => {
       loadKwh: 0,
       productionKwh: 0,
     });
+  });
+});
+
+describe("fetchBucketEnergy", () => {
+  // One counter only: the import total, so the deltas below are unambiguous.
+  const importProfile = profileWith({ "grid.energy.imported.total": "imp" });
+  const hour = (h: number) => new Date(Date.UTC(2024, 5, 15, h));
+  /** A rollup row as the views return it. */
+  const bucketRow = (at: Date, min: number, max: number) => ({
+    bucket: at.toISOString(),
+    metric: "imp",
+    min_value: min,
+    max_value: max,
+  });
+
+  /** Import kWh per bucket, given the baseline row(s) and the in-window rows. */
+  const importsFor = async (
+    baseline: Array<Record<string, unknown>>,
+    rows: Array<Record<string, unknown>>,
+  ) => {
+    queryResults = [baseline, rows];
+    const buckets = await fetchBucketEnergy(
+      importProfile,
+      "inv-1",
+      hour(0),
+      hour(23),
+      "hourly_rollups",
+    );
+    return buckets.map((b) => b.import);
+  };
+
+  test("an adjacent baseline prices the first bucket as a rise from prior state", async () => {
+    const imports = await importsFor(
+      [{ metric: "imp", bucket: hour(-1).toISOString(), last_max: 100 }],
+      [bucketRow(hour(0), 100.5, 101)],
+    );
+    expect(imports).toEqual([1]);
+  });
+
+  test("a baseline on the far side of a recording gap is not bridged", async () => {
+    // Recorder was down for three days; the counter rose 5 kWh in that hole.
+    // Billing it to the first hour back would put three days of energy in this
+    // window — the bucket may only claim the 0.5 it watched happen.
+    const imports = await importsFor(
+      [{ metric: "imp", bucket: new Date(Date.UTC(2024, 5, 12, 8)).toISOString(), last_max: 100 }],
+      [bucketRow(hour(0), 105, 105.5)],
+    );
+    expect(imports).toEqual([0.5]);
+  });
+
+  test("a gap inside the window breaks the chain at the bucket after it", async () => {
+    const imports = await importsFor(
+      [{ metric: "imp", bucket: hour(-1).toISOString(), last_max: 100 }],
+      [
+        bucketRow(hour(0), 100, 101),
+        // Nothing recorded for hours 1–9; hour 10 comes back 8 kWh higher.
+        bucketRow(hour(10), 109, 109.5),
+        bucketRow(hour(11), 109.5, 110),
+      ],
+    );
+    expect(imports).toEqual([1, 0.5, 0.5]);
+  });
+
+  test("a short hole is still bridged — a restart must not drop the energy", async () => {
+    const imports = await importsFor(
+      [{ metric: "imp", bucket: hour(-1).toISOString(), last_max: 100 }],
+      [bucketRow(hour(0), 100, 101), bucketRow(hour(2), 101.4, 101.5)],
+    );
+    expect(imports).toEqual([1, 0.5]);
   });
 });

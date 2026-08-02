@@ -53,6 +53,26 @@ export type EnergyField = keyof Omit<HourEnergy, "time">;
 /** The continuous-aggregate views we can read counter deltas from. */
 export type RollupView = "hourly_rollups" | "daily_rollups";
 
+/**
+ * Longest hole in the record a counter delta may bridge, per view.
+ *
+ * A cumulative counter keeps rising while the recorder is down, so the first
+ * bucket after a gap sees the whole gap's rise. Attributing it to that bucket
+ * puts energy in the wrong hour, the wrong tariff band, and — when the gap
+ * spans midnight or a month boundary — the wrong window entirely: a three-day
+ * outage would bill Monday's kWh to Thursday lunchtime. Past this tolerance the
+ * rise is unattributable, so the bucket falls back to the intra-bucket
+ * `max − min` it can actually vouch for and the gap's energy is dropped.
+ *
+ * Short holes (a restart, a few missed polls) stay bridged: misplacing an hour
+ * within the same day is a rounding error against the banding, and dropping it
+ * would under-report a bill for every service restart.
+ */
+const MAX_GAP_MS: Record<RollupView, number> = {
+  hourly_rollups: 3 * 3_600_000,
+  daily_rollups: 2 * 86_400_000,
+};
+
 /** Metric key → the HourEnergy field it feeds, for the roles this profile has. */
 function resolveEnergyKeys(profile: InverterProfile): Map<string, EnergyField> {
   const fieldByKey = new Map<string, EnergyField>();
@@ -163,8 +183,9 @@ function rollupQueryParts(profile: InverterProfile, view: RollupView) {
  * at most a single bucket instead of pricing the entire lifetime total.
  *
  * The bucket immediately before `from` is read first as a baseline so the first
- * in-range bucket is a delta from real prior state; without a baseline (no data
- * before `from`) the first bucket falls back to its own `max − min`.
+ * in-range bucket is a delta from real prior state; without a usable baseline —
+ * no data before `from`, or a hole longer than {@link MAX_GAP_MS} — the bucket
+ * falls back to its own `max − min`.
  *
  * `view` selects the rollup granularity (hourly for cost banding, daily for long
  * windows); both continuous aggregates share the same column shape.
@@ -182,16 +203,27 @@ export async function fetchBucketEnergy(
   // Cumulative counter level entering the window, per metric (last bucket before
   // `from`). Seeds the delta chain so the first in-range bucket is priced as a
   // rise from prior state rather than from its own intra-bucket minimum.
-  const baselineRows = await db.execute<{ metric: string; last_max: number }>(sql`
-    select distinct on (metric) metric, max_value as last_max
-    from ${viewSql}
-    where inverter_id = ${inverterId}
-      and metric in (${keyList})
-      and bucket < ${from}
-    order by metric, bucket desc
-  `);
-  const prev = new Map<string, number>();
-  for (const r of baselineRows.rows) prev.set(r.metric, Number(r.last_max));
+  const baselineRows = await db.execute<{
+    metric: string;
+    bucket: string | Date;
+    last_max: number;
+  }>(
+    sql`
+      select distinct on (metric) metric, bucket, max_value as last_max
+      from ${viewSql}
+      where inverter_id = ${inverterId}
+        and metric in (${keyList})
+        and bucket < ${from}
+      order by metric, bucket desc
+    `,
+  );
+  // Carries the predecessor's bucket time too: a delta is only meaningful when
+  // the two readings are close enough in time to have observed the rise.
+  const prev = new Map<string, { max: number; at: number }>();
+  for (const r of baselineRows.rows) {
+    prev.set(r.metric, { max: Number(r.last_max), at: new Date(r.bucket).getTime() });
+  }
+  const maxGap = MAX_GAP_MS[view];
 
   const rows = await db.execute<{
     bucket: string | Date;
@@ -213,12 +245,14 @@ export async function fetchBucketEnergy(
     const field = fieldByKey.get(r.metric);
     if (!field) continue;
     const max = Number(r.max_value);
-    // No baseline for the very first bucket of the counter's history → use its
-    // own intra-bucket delta; otherwise rise since the previous bucket's high.
-    const prior = prev.get(r.metric) ?? Number(r.min_value);
-    prev.set(r.metric, max);
-
     const time = new Date(r.bucket);
+    // No predecessor (the counter's very first bucket) or one on the far side of
+    // a recording gap → use this bucket's own intra-bucket delta; otherwise the
+    // rise since the previous bucket's high.
+    const before = prev.get(r.metric);
+    const prior = before && time.getTime() - before.at <= maxGap ? before.max : Number(r.min_value);
+    prev.set(r.metric, { max, at: time.getTime() });
+
     const hour = byBucket.get(time.getTime()) ?? {
       time,
       import: 0,
@@ -419,19 +453,34 @@ export async function fetchCounterDeltaMatrix(
         order by metric, bucket desc
       ) baseline
     ),
+    chained as (
+      select
+        bucket,
+        metric,
+        max_value,
+        min_value,
+        lag(max_value) over (partition by metric order by bucket) as prev_max,
+        lag(bucket) over (partition by metric order by bucket) as prev_bucket
+      from src
+    ),
     deltas as (
       select
         bucket,
         (bucket at time zone ${tz}) as local_bucket,
         metric,
         -- Rise since the previous bucket's high, clamped ≥0. No predecessor (the
-        -- very first bucket in history) → fall back to this bucket's own min so
-        -- it isn't lost, matching fetchBucketEnergy.
+        -- very first bucket in history) or one on the far side of a recording gap
+        -- → fall back to this bucket's own min, matching fetchBucketEnergy.
         greatest(
           0,
-          max_value - coalesce(lag(max_value) over (partition by metric order by bucket), min_value)
+          max_value - case
+            when prev_bucket is not null
+              and bucket - prev_bucket <= make_interval(secs => ${MAX_GAP_MS[view] / 1000})
+              then prev_max
+            else min_value
+          end
         ) as kwh
-      from src
+      from chained
     )
     select
       to_char(date_trunc(${unit}, local_bucket), ${mask}) as period,
