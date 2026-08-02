@@ -4,30 +4,15 @@
 	import * as m from '$lib/paraglide/messages';
 	import CostRangePicker from '$lib/components/inverter/cost-range-picker.svelte';
 	import { setPageHeader } from '$lib/page-header.svelte';
-	import { resolveCostPreset, type CostBucket, type CostRange } from '$lib/cost/ranges';
+	import { resolveCostPreset, type CostRange } from '$lib/cost/ranges';
 	import { SECTIONS } from '$lib/statistics/sections';
 	import PricePanel from '$lib/components/prices/price-panel.svelte';
 	import StatisticsSection from './statistics-section.svelte';
 	import CostSection from './cost-section.svelte';
 
-	// One bar of the contextual chart. Mirrors the server's CostSeriesPoint.
-	type SeriesPoint = {
-		bucket: string;
-		importCost: number;
-		exportEarnings: number;
-		standingCharge: number;
-		net: number;
-	};
-
 	let range = $state<CostRange>(resolveCostPreset('month'));
 	let cost = $state<CostBreakdown | null>(null);
 	let loading = $state(true);
-	// Points + the granularity they were fetched at, updated together so the
-	// chart never labels stale points with a freshly-picked bucket.
-	let series = $state<{ points: SeriesPoint[]; bucket: CostBucket }>({
-		points: [],
-		bucket: 'day'
-	});
 
 	// Headline tiles: priced over the picked [from, to). `cancelled` guards against
 	// an earlier request resolving after a later one and clobbering fresher data.
@@ -46,39 +31,11 @@
 		};
 	});
 
-	// Contextual bar chart: its own "one level up" window/granularity (range.chart),
-	// e.g. a single month charts the trailing 12 months.
-	$effect(() => {
-		const spec = range.chart;
-		const query = { from: spec.from.toISOString(), to: spec.to.toISOString(), bucket: spec.bucket };
-		let cancelled = false;
-		api.api.cost.series.get({ query }).then(({ data }) => {
-			if (cancelled) return;
-			series = { points: (data ?? []) as SeriesPoint[], bucket: spec.bucket };
-		});
-		return () => {
-			cancelled = true;
-		};
-	});
-
-	// Localized caption for the contextual charts, keyed by the picked preset id
-	// (mirrors the English captions baked into $lib/cost/ranges). Falls back to the
-	// range's own caption for any id without a dedicated message.
-	const CAPTIONS: Record<string, () => string> = {
-		today: m.costs_caption_today,
-		'7d': m.costs_caption_last_7d,
-		month: m.costs_caption_this_month,
-		lastMonth: m.range_12mo,
-		year: m.range_12mo,
-		custom: m.costs_caption_custom
-	};
-	const caption = $derived(CAPTIONS[range.id]?.() ?? range.chart.caption);
-
 	// First load only: once totals exist a range change refreshes them in place.
 	const showLoader = $derived(loading && !cost);
 
-	// Only the cost section has content in this wave; later waves register
-	// their sections here and the filter goes away.
+	// Sections with content today; later waves register theirs here and the
+	// filter goes away.
 	const activeSections = SECTIONS.filter((s) => s.id === 'cost');
 
 	$effect(() => setPageHeader(m.nav_statistics(), m.statistics_subtitle()));
@@ -95,10 +52,11 @@
 		</div>
 	{:else if cost}
 		<!-- Section loop over the registry; each entry renders inside the shared
-		     collapsible shell. -->
+		     collapsible shell and owns the scope (and fetches) of its own charts,
+		     so the shell caption names the picked window, not any one chart. -->
 		{#each activeSections as section (section.id)}
-			<StatisticsSection title={section.label()} {caption}>
-				<CostSection {cost} {series} chart={range.chart} {caption} />
+			<StatisticsSection title={section.label()} caption={range.label}>
+				<CostSection {cost} {range} />
 			</StatisticsSection>
 		{/each}
 	{/if}
