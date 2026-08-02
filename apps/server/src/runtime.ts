@@ -41,11 +41,15 @@ const logger = log("runtime");
 /** Notified with each fresh poll sample (the server fans it out to the WS). */
 export type SampleListener = (sample: InverterSample) => void;
 
+/** Notified after a price sync actually stored slots (fanned out to the WS). */
+export type SpotSyncListener = () => void;
+
 let ctx: ProfileContext | null = null;
 let source: InverterSource | null = null;
 let pollTimer: ReturnType<typeof setInterval> | null = null;
 let bridge: MqttBridge | null = null;
 let onSample: SampleListener = () => {};
+let onSpotSync: SpotSyncListener = () => {};
 let polling = false;
 let forecastTimer: ReturnType<typeof setInterval> | null = null;
 let learnTimer: ReturnType<typeof setInterval> | null = null;
@@ -101,10 +105,21 @@ async function learnCorrectionNow(): Promise<void> {
  */
 export async function syncSpotPricesNow(): Promise<void> {
   try {
-    await runSpotPriceSync(await getSpotPriceConfig());
+    const result = await runSpotPriceSync(await getSpotPriceConfig());
+    // Only a real upsert changes what price-derived views show; the no-op tick
+    // (both delivery days already complete) must not make every open page refetch.
+    if (result.outcome === "stored") onSpotSync();
   } catch (error) {
     logger.warn("spot price sync failed: {error}", { error });
   }
+}
+
+/**
+ * Register the sink for "fresh prices were stored". Set once at boot, like the
+ * EVCC listener; survives runtime restarts because it is the sink, not the job.
+ */
+export function setSpotSyncListener(listener: SpotSyncListener): void {
+  onSpotSync = listener;
 }
 
 // --- History write buffer --------------------------------------------------

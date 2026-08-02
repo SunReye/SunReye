@@ -26,6 +26,7 @@ import { automationStreamSnapshot, setAutomationListener } from "./automation";
 import { automationRoutes } from "./routes/automations";
 import { settingsRoutes } from "./routes/settings";
 import { statisticsRoutes } from "./routes/statistics";
+import { type StatisticsLiveMessage, todayStatistics } from "./statistics";
 import * as runtime from "./runtime";
 
 // Shared query for the per-period series endpoints (cost + energy): an explicit
@@ -137,6 +138,15 @@ const METRICS_TOPIC = "metrics";
 const EVCC_TOPIC = "evcc";
 const LOG_TOPIC = "logs";
 const AUTOMATION_TOPIC = "automations";
+const STATISTICS_TOPIC = "statistics";
+
+/**
+ * How often the statistics stream republishes today's figures. Faster than the
+ * numbers actually move (the hourly rollups only refresh periodically; the live
+ * `*.today` registers carry the in-progress day), but slow enough that the tick
+ * is negligible — and it is skipped entirely with no subscribers.
+ */
+const STATISTICS_INTERVAL_MS = 15_000;
 
 const app = new Elysia()
   // Structured HTTP request logging. Health/liveness probes are noisy and
@@ -282,6 +292,22 @@ const app = new Elysia()
       ws.subscribe(EVCC_TOPIC);
       const snap = evccSnapshot();
       if (snap) ws.send(JSON.stringify(snap));
+    },
+  })
+  // Live statistics stream for the Statistics page: today's cost breakdown and
+  // energy split on a slow tick, plus a bare `prices` signal when a spot sync
+  // stores fresh slots (wired below via setSpotSyncListener). Same dashboard
+  // read policy as the HTTP statistics reads. On open we send the current
+  // snapshot immediately so the page paints without waiting for the next tick.
+  .ws("/ws/statistics", {
+    requireSession: true,
+    async open(ws) {
+      if (!(await dashboardReadAllowed(ws.data.request.headers))) {
+        ws.close();
+        return;
+      }
+      ws.subscribe(STATISTICS_TOPIC);
+      if (profile) ws.send(JSON.stringify(await todayStatistics(profile)));
     },
   })
   // Live server log stream for the admin Logs panel. Admin-only (logs can carry
@@ -546,6 +572,24 @@ startUpdateChecks();
 // get the current snapshot from the socket's `open` handler instead.
 setEvccListener((state) => app.server?.publish(EVCC_TOPIC, JSON.stringify(state)));
 void rebuildEvcc();
+
+// Statistics stream: republish today's figures on a slow tick, and signal the
+// page whenever a price sync stores fresh slots. The tick short-circuits with
+// no subscribers, so an idle instance pays nothing for the feature.
+async function publishTodayStatistics(): Promise<void> {
+  const server = app.server;
+  if (!profile || !server || server.subscriberCount(STATISTICS_TOPIC) === 0) return;
+  try {
+    server.publish(STATISTICS_TOPIC, JSON.stringify(await todayStatistics(profile)));
+  } catch (error) {
+    serverLog.warn("statistics publish failed: {error}", { error });
+  }
+}
+setInterval(() => void publishTodayStatistics(), STATISTICS_INTERVAL_MS);
+runtime.setSpotSyncListener(() => {
+  const message: StatisticsLiveMessage = { type: "prices" };
+  app.server?.publish(STATISTICS_TOPIC, JSON.stringify(message));
+});
 
 // Automations stream: every engine tick's outcome fans out to `/ws/automations`
 // subscribers. The listener survives runtime restarts (profile switches) —
