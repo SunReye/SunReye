@@ -56,6 +56,13 @@ describe("planEvPullIn", () => {
     ).toEqual([]);
   });
 
+  test("the car's own limit stops a claim EVCC's higher one would allow", () => {
+    // EVCC would charge to 80%, but the car is set to stop at 75% and is there
+    // already: claiming it buys no sink, only a clobbered charge mode.
+    const lp = loadpoint({ vehicleSoc: 75, effectiveLimitSoc: 80, vehicleLimitSoc: 75 });
+    expect(planEvPullIn(inputs({ evcc: state([lp]) })).claim).toEqual([]);
+  });
+
   test("an unknown SOC still claims — the worst case costs nothing", () => {
     // EVCC simply declines to charge a car that doesn't want energy, so guessing
     // "yes" is free while guessing "no" throws away the sink.

@@ -208,6 +208,7 @@ const loadpoint = (over: Partial<EvccLoadpoint> = {}): EvccLoadpoint => ({
   limitSoc: null,
   effectiveLimitSoc: null,
   vehicleLimitSoc: null,
+  vehicleCapacityKwh: null,
   phasesActive: null,
   ...over,
 });
@@ -881,6 +882,68 @@ describe("evccAutomationInputs", () => {
       loadpoint({ index: 4, mode: "minpv", chargeRemainingEnergy: 2000 }),
     ]);
     expect(evccAutomationInputs(state)).toEqual({ evChargeW: 0, evRemainingKwh: 2 });
+  });
+
+  test("derives the demand from the SOC gap when EVCC reports none", () => {
+    // The bug this pins: a car plugged in and waiting for surplus at 73% with a
+    // 75% limit reported 0.0 kWh, so nothing was reserved for it.
+    const state = evccState([
+      loadpoint({ vehicleSoc: 73, effectiveLimitSoc: 75, vehicleCapacityKwh: 75 }),
+    ]);
+    // 2% of 75 kWh, grossed up by the 90% charge efficiency EVCC assumes.
+    expect(evccAutomationInputs(state).evRemainingKwh).toBeCloseTo(1.667, 3);
+  });
+
+  test("the car's own limit caps the derived gap", () => {
+    // Live shape: EVCC would charge to 80%, the car is set to stop at 75%.
+    const state = evccState([
+      loadpoint({
+        vehicleSoc: 74,
+        effectiveLimitSoc: 80,
+        vehicleLimitSoc: 75,
+        vehicleCapacityKwh: 79,
+      }),
+    ]);
+    expect(evccAutomationInputs(state).evRemainingKwh).toBeCloseTo(0.878, 3);
+  });
+
+  test("a limit of 0 means no limit, so the other one decides", () => {
+    const state = evccState([
+      loadpoint({
+        vehicleSoc: 74,
+        effectiveLimitSoc: 80,
+        vehicleLimitSoc: 0,
+        vehicleCapacityKwh: 79,
+      }),
+    ]);
+    expect(evccAutomationInputs(state).evRemainingKwh).toBeCloseTo(5.267, 3);
+  });
+
+  test("EVCC's own estimate wins over the derived gap", () => {
+    const state = evccState([
+      loadpoint({
+        chargeRemainingEnergy: 4000,
+        vehicleSoc: 50,
+        effectiveLimitSoc: 80,
+        vehicleCapacityKwh: 75,
+      }),
+    ]);
+    expect(evccAutomationInputs(state).evRemainingKwh).toBe(4);
+  });
+
+  test("no demand is derived without an SOC, a limit or a pack size", () => {
+    const full = { vehicleSoc: 73, effectiveLimitSoc: 75, vehicleCapacityKwh: 75 };
+    const cases: Partial<EvccLoadpoint>[] = [
+      { ...full, vehicleSoc: null },
+      { ...full, effectiveLimitSoc: null },
+      { ...full, vehicleCapacityKwh: null },
+      // Already at (or past) the limit: nothing left to want.
+      { ...full, vehicleSoc: 75 },
+      { ...full, vehicleSoc: 80 },
+    ];
+    for (const over of cases) {
+      expect(evccAutomationInputs(evccState([loadpoint(over)])).evRemainingKwh).toBe(0);
+    }
   });
 });
 

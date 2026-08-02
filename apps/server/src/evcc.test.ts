@@ -124,6 +124,31 @@ describe("snapshot", () => {
     expect(lp.vehicleName).toBeNull();
   });
 
+  test("folds the vehicle's pack size onto the loadpoint", async () => {
+    await connectEvcc();
+    send("evcc/loadpoints/1/vehicleName", "tesla_ble");
+    // Published on the vehicle, not the loadpoint.
+    send("evcc/vehicles/tesla_ble/capacity", "75");
+    expect(loadpoint().vehicleCapacityKwh).toBe(75);
+  });
+
+  test("no vehicle, an unknown one or a capacity of 0 leaves the pack size null", async () => {
+    await connectEvcc();
+    send("evcc/loadpoints/1/connected", "true");
+    expect(loadpoint().vehicleCapacityKwh).toBeNull();
+
+    // A car EVCC never published vehicle state for (guest vehicle).
+    send("evcc/loadpoints/1/vehicleName", "unknown_car");
+    send("evcc/vehicles/tesla_ble/capacity", "75");
+    expect(loadpoint().vehicleCapacityKwh).toBeNull();
+
+    // EVCC publishes 0 for a vehicle configured without a capacity — that is
+    // "unknown", not a zero-sized pack.
+    send("evcc/loadpoints/1/vehicleName", "tesla_ble");
+    send("evcc/vehicles/tesla_ble/capacity", "0");
+    expect(loadpoint().vehicleCapacityKwh).toBeNull();
+  });
+
   test("an empty retained payload deletes the key", async () => {
     await connectEvcc();
     send("evcc/loadpoints/1/effectiveLimitSoc", "80");

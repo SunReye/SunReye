@@ -107,6 +107,15 @@ export interface EvccLoadpoint {
    * of the effective-limit resolution.
    */
   vehicleLimitSoc: number | null;
+  /**
+   * Usable pack size of the detected vehicle in kWh, from
+   * `<root>/vehicles/<name>/capacity`. Null when no vehicle is detected, or
+   * when EVCC has none configured for it (published as `0`) — a car without a
+   * capacity is one nothing can be estimated for. Carried on the loadpoint
+   * because that is where the SoC and the limit already are, and the three are
+   * only useful together.
+   */
+  vehicleCapacityKwh: number | null;
   phasesActive: number | null;
 }
 
@@ -128,11 +137,31 @@ const num = (v: EvccValue | undefined): number | null => (typeof v === "number" 
 const str = (v: EvccValue | undefined): string | null => (typeof v === "string" ? v : null);
 const bool = (v: EvccValue | undefined): boolean => v === true;
 
-/** Assemble the API snapshot for one loadpoint from its flat topic map. */
+/**
+ * Pack size of a named vehicle, in kWh. Null for an unnamed or unknown car, and
+ * for the `0` EVCC publishes when a vehicle is configured without a capacity —
+ * that is "unknown", not a zero-sized pack.
+ */
+function capacityOf(
+  vehicleName: string | null,
+  vehicleState: Map<string, Map<string, EvccValue>>,
+): number | null {
+  if (vehicleName === null) return null;
+  const capacity = num(vehicleState.get(vehicleName)?.get("capacity"));
+  return capacity !== null && capacity > 0 ? capacity : null;
+}
+
+/**
+ * Assemble the API snapshot for one loadpoint from its flat topic map.
+ *
+ * `vehicleState` is the ingested `<root>/vehicles/…` tree: the loadpoint names
+ * its vehicle, but the pack size is published on the vehicle itself.
+ */
 function toLoadpoint(
   index: number,
   values: Map<string, EvccValue>,
   live: LiveChargePower | null,
+  vehicleState: Map<string, Map<string, EvccValue>>,
 ): EvccLoadpoint {
   const chargePower = num(values.get("chargePower")) ?? 0;
   const vehicleName = str(values.get("vehicleName"));
@@ -154,6 +183,7 @@ function toLoadpoint(
     limitSoc: num(values.get("limitSoc")),
     effectiveLimitSoc: num(values.get("effectiveLimitSoc")),
     vehicleLimitSoc: num(values.get("vehicleLimitSoc")),
+    vehicleCapacityKwh: capacityOf(vehicleName, vehicleState),
     phasesActive: num(values.get("phasesActive")),
   };
 }
@@ -167,9 +197,11 @@ let connected = false;
 let evccStatus: string | null = null;
 const loadpoints = new Map<number, Map<string, EvccValue>>();
 /**
- * Ingested `<root>/vehicles/<name>/…` state, keyed by config slug. Not part of
- * the snapshot — its job is to tell {@link limitSocTopic} which vehicles EVCC
- * actually knows, so a limit write can be persisted on the right one.
+ * Ingested `<root>/vehicles/<name>/…` state, keyed by config slug. Two jobs: it
+ * tells {@link limitSocTopic} which vehicles EVCC actually knows, so a limit
+ * write can be persisted on the right one, and it carries the pack size the
+ * loadpoint snapshot folds in as
+ * {@link EvccLoadpoint.vehicleCapacityKwh}.
  */
 const vehicles = new Map<string, Map<string, EvccValue>>();
 const estimator = createEvPowerEstimator();
@@ -224,7 +256,7 @@ export function evccSnapshot(): EvccState | null {
     reachable: connected && evccStatus === "online",
     loadpoints: [...loadpoints.entries()]
       .sort(([a], [b]) => a - b)
-      .map(([index, values]) => toLoadpoint(index, values, estimator.live(index))),
+      .map(([index, values]) => toLoadpoint(index, values, estimator.live(index), vehicles)),
     subtractFromHome,
   };
 }

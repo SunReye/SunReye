@@ -17,7 +17,7 @@ import type {
 import type { WeatherConfig } from "@SunReye/db/weather";
 import type { CanonicalRole, InverterProfile } from "@SunReye/inverter-core";
 import { HOUR_MS } from "./energy-flow";
-import type { EvccState } from "./evcc";
+import type { EvccLoadpoint, EvccState } from "./evcc";
 import { type PriceAction, type PriceRegime, planPriceAction } from "./price-plan";
 import { type ForecastSlice, remainingSlotsToday } from "./slot-window";
 import type { SpotSlice } from "./spot-price";
@@ -178,6 +178,58 @@ export interface EvInputs {
 }
 
 /**
+ * EVCC's own charge-efficiency constant (`soc.ChargeEfficiency`). Its estimate
+ * is meter-side energy, so the pack-side gap is grossed up by the same 10% —
+ * the point of the fallback is to land on EVCC's number, not to offer a second,
+ * quieter opinion that disagrees with it once EVCC does report one.
+ */
+const EV_CHARGE_EFFICIENCY = 0.9;
+
+/**
+ * The SOC the charge actually stops at, or null when neither limit is known.
+ *
+ * Not the same question as the limit *write* path ({@link ./evcc}), which
+ * targets EVCC's own resolution of the session and vehicle limits. What stops
+ * the charge is the lower of that and the car's own limit: a Tesla set to 75%
+ * in its app stops there whatever EVCC intends, and the difference is energy no
+ * automation should plan around. `0` is EVCC's "no limit", not a limit of zero,
+ * so it never wins.
+ */
+export function chargeStopSoc(lp: EvccLoadpoint): number | null {
+  const limits = [lp.effectiveLimitSoc, lp.vehicleLimitSoc].filter(
+    (v): v is number => v !== null && v > 0,
+  );
+  return limits.length === 0 ? null : Math.min(...limits);
+}
+
+/**
+ * Energy one loadpoint still wants, kWh.
+ *
+ * EVCC's `chargeRemainingEnergy` is preferred whenever it says anything: it is
+ * the estimator's view, informed by the real pack and the charge taper. But
+ * EVCC only produces it while its SoC estimator is actually running — a car
+ * plugged in and waiting for surplus publishes `0` although it plainly still
+ * wants the gap to its limit. Taking that `0` at face value told the decision
+ * to reserve nothing and let the battery soak the surplus the car was waiting
+ * for, so derive the gap ourselves whenever EVCC declines to.
+ */
+function loadpointDemandKwh(lp: EvccLoadpoint): number {
+  const reported = Math.max(0, lp.chargeRemainingEnergy ?? 0) / 1000;
+  if (reported > 0) return reported;
+  const soc = lp.vehicleSoc;
+  // Reserving surplus above the stop SOC reserves it for nobody.
+  const limit = chargeStopSoc(lp);
+  const capacityKwh = lp.vehicleCapacityKwh;
+  // No SOC, no limit or no pack size: nothing to derive from. Unlike the
+  // pull-in decision (where guessing costs nothing), a guess here would reserve
+  // real surplus the car may not want.
+  if (soc === null || limit === null || capacityKwh === null) return 0;
+  const gapPct = limit - soc;
+  if (gapPct <= 0) return 0;
+  return ((gapPct / 100) * capacityKwh) / EV_CHARGE_EFFICIENCY;
+}
+
+/**
  * Condense the EVCC snapshot into what the decision needs. The car is treated
  * as the surplus consumer of first rank: its live draw never reaches the grid,
  * and its remaining demand will eat forecast surplus before the battery must.
@@ -192,7 +244,7 @@ export function evccAutomationInputs(state: EvccState | null): EvInputs {
     // Demand counts only when a connected car is allowed to charge; a
     // loadpoint in `off` mode (or with no car) won't consume the surplus.
     if (lp.connected && lp.mode !== null && lp.mode !== "off") {
-      evRemainingKwh += Math.max(0, lp.chargeRemainingEnergy ?? 0) / 1000;
+      evRemainingKwh += loadpointDemandKwh(lp);
     }
   }
   return { evChargeW, evRemainingKwh };

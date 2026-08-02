@@ -12,6 +12,7 @@
  */
 
 import type { EvccLoadpoint, EvccState } from "./evcc";
+import { chargeStopSoc } from "./peak-shaving";
 import type { PriceRegime } from "./price-plan";
 
 /** The charge mode a claimed loadpoint is switched to. */
@@ -54,7 +55,7 @@ const wantsSink = (regime: PriceRegime): boolean => regime === "absorb" || regim
 function usable(lp: EvccLoadpoint): boolean {
   if (!lp.connected) return false;
   const soc = lp.vehicleSoc;
-  const limit = lp.effectiveLimitSoc;
+  const limit = chargeStopSoc(lp);
   // Unknown SOC or limit: assume the car still wants energy rather than refusing
   // to help — the worst case is EVCC declining to charge, which costs nothing.
   if (soc === null || limit === null) return true;
