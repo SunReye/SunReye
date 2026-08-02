@@ -38,12 +38,19 @@ describe("chartSpecFor — detail scope buckets inside the picked window", () =>
     });
   });
 
-  it("charts this month by day", () => {
+  it("charts this month by day, across the whole month", () => {
+    // Past today, so the axis is a settled month with today's bar advancing
+    // across it rather than a chart that grows a column a day.
     expect(spec("month", "detail")).toEqual({
       from: local(2026, 4, 1),
-      to: NOW.toISOString(),
+      to: local(2026, 5, 1),
       bucket: "day",
     });
+  });
+
+  it("keeps the month TILES on the month so far", () => {
+    // Only the chart runs ahead: you cannot total a month that hasn't happened.
+    expect(resolveCostPreset("month", NOW).to.toISOString()).toBe(NOW.toISOString());
   });
 
   it("charts last month by day, ending at this month's first", () => {

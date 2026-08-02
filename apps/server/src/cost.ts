@@ -338,6 +338,14 @@ export function currentPeriodKey(bucket: CostBucket, now: Date = new Date()): st
  * key plus `[start, end)` bounds. Stepping uses local calendar fields so month
  * lengths and DST are handled by the Date arithmetic itself. Shared by the
  * zero-fill key list and per-period standing-charge proration.
+ *
+ * A period the window merely clips is left out. Callers pick calendar-aligned
+ * windows, so a period only ends up part-covered when the caller's clock and
+ * this server's disagree — a browser on Europe/Berlin asking for "this month"
+ * sends 22:00 on the 31st, and the server would open the chart with a bar for
+ * the previous month holding two hours of it. The cut-off is half a period, or
+ * the whole window where that is shorter (today-by-day at 02:00 is two hours of
+ * a day and still the only bar there is).
  */
 function eachPeriod(
   from: Date,
@@ -345,6 +353,7 @@ function eachPeriod(
   bucket: CostBucket,
 ): Array<{ key: string; start: Date; end: Date }> {
   const out: Array<{ key: string; start: Date; end: Date }> = [];
+  const windowMs = to.getTime() - from.getTime();
   const cur =
     bucket === "month"
       ? new Date(from.getFullYear(), from.getMonth(), 1)
@@ -356,7 +365,12 @@ function eachPeriod(
     if (bucket === "month") next.setMonth(next.getMonth() + 1);
     else if (bucket === "day") next.setDate(next.getDate() + 1);
     else next.setHours(next.getHours() + 1);
-    out.push({ key: periodKey(cur, bucket), start: new Date(cur), end: new Date(next) });
+
+    const covered =
+      Math.min(next.getTime(), to.getTime()) - Math.max(cur.getTime(), from.getTime());
+    if (covered >= Math.min((next.getTime() - cur.getTime()) / 2, windowMs)) {
+      out.push({ key: periodKey(cur, bucket), start: new Date(cur), end: new Date(next) });
+    }
     cur.setTime(next.getTime());
   }
   return out;
@@ -500,19 +514,26 @@ export async function fetchCounterDeltaMatrix(
  * across `[from, to)` by each period's overlap with the window (partial first/
  * last periods included). Summed over all periods this equals the tiles'
  * standingCharge, so the bars and the headline Net tile agree.
+ *
+ * The overlap also stops at `now`: a window may reach past the present so the
+ * chart shows the whole calendar month, and a standing charge for days that
+ * haven't happened would be both a bar out of nowhere and more charge than the
+ * tiles report.
  */
 function standingByPeriod(
   from: Date,
   to: Date,
   bucket: CostBucket,
   monthly: number,
+  now: Date = new Date(),
 ): Map<string, number> {
   const perDay = monthly / AVG_DAYS_PER_MONTH;
+  const charged = Math.min(to.getTime(), now.getTime());
   const out = new Map<string, number>();
   for (const { key, start, end } of eachPeriod(from, to, bucket)) {
     // Overlap of this period with the window, in days (partial edges included).
     const s = Math.max(start.getTime(), from.getTime());
-    const e = Math.min(end.getTime(), to.getTime());
+    const e = Math.min(end.getTime(), charged);
     out.set(key, perDay * Math.max(0, (e - s) / DAY_MS));
   }
   return out;

@@ -65,6 +65,11 @@ services:
         required: false
     environment:
       NODE_ENV: production
+      # The site's own time zone. Every day, month and tariff-band boundary is
+      # cut in the server's local clock, so a container left on UTC bills a
+      # German evening peak to the following day and starts "this month" two
+      # hours into the last one. Set TZ in .env to the household's zone.
+      TZ: ${TZ:-UTC}
       # Always point at the bundled Postgres, regardless of what .env contains.
       DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:-password}@postgres:5432/SunReye
     # The image is distroless (no shell/curl), so the server binary probes

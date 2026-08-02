@@ -12,21 +12,24 @@ let queryResults: Array<Array<Record<string, unknown>>> = [];
 const execute = mock(async () => ({ rows: queryResults.shift() ?? [] }));
 mock.module("@SunReye/db", () => ({ db: { execute } }));
 
-// Flat 0.30/kWh so the money in a computeCost result is readable by eye.
+// Flat 0.30/kWh so the money in a computeCost result is readable by eye. The
+// standing charge is 0 unless a test swaps `tariff` for one that has it.
 const flatTariff: TariffConfig = tariffConfigSchema.parse({
   currency: "EUR",
   standingChargeMonthly: 0,
   import: { defaultPricePerKwh: 0.3 },
   export: { feedInPerKwh: 0.08 },
 });
-mock.module("./settings", () => ({ getTariff: async () => flatTariff }));
+let tariff: TariffConfig = flatTariff;
+mock.module("./settings", () => ({ getTariff: async () => tariff }));
 
 // computeCost reads the poll cache directly (its `sample` argument is only
 // injectable one level down), so the cache itself is the stand-in.
 const liveState: { latest: InverterSample | null } = { latest: null };
 mock.module("./state", () => ({ liveState }));
 
-const { computeCost, fetchBucketEnergy, liveTodayTotals } = await import("./cost");
+const { computeCost, computeCostSeries, fetchBucketEnergy, liveTodayTotals } =
+  await import("./cost");
 
 /** The live overlay for `inverterId` at `now`, given the poll cache's `sample`. */
 const overlayFor = (
@@ -290,5 +293,77 @@ describe("computeCost and the live today registers", () => {
       metrics: { impToday: 5 },
     };
     expect((await monthToDate()).importKwh).toBe(3);
+  });
+});
+
+describe("computeCostSeries — which periods get a bar", () => {
+  const profile = profileWith({ "grid.energy.imported.total": "imp" });
+
+  /** Period keys for a window, with no counter rows behind them. */
+  const bucketsFor = async (from: Date, to: Date, bucket: "hour" | "day" | "month") => {
+    queryResults = [[]]; // one query: the delta matrix
+    const points = await computeCostSeries(profile, { from, to, bucket, inverterId: "inv-1" });
+    return points.map((p) => p.bucket);
+  };
+
+  test("a calendar month is every day of it, including days still to come", async () => {
+    const days = await bucketsFor(new Date(2026, 7, 1), new Date(2026, 8, 1), "day");
+    expect(days).toHaveLength(31);
+    expect(days.at(0)).toBe("2026-08-01");
+    expect(days.at(-1)).toBe("2026-08-31");
+  });
+
+  test("a period the window only clips gets no bar", async () => {
+    // What a Europe/Berlin browser sends a UTC server for "this month": 22:00
+    // on the previous day. Two hours of July are not a July bar on a chart
+    // captioned "this month".
+    const from = new Date(Date.UTC(2026, 6, 31, 22));
+    const days = await bucketsFor(from, new Date(Date.UTC(2026, 7, 31, 22)), "day");
+    expect(days).not.toContain("2026-07-31");
+    expect(days.at(0)).toBe("2026-08-01");
+  });
+
+  test("but a period the window mostly covers keeps its bar", async () => {
+    // The same skew clips the far end by two hours; that day is still the day.
+    const days = await bucketsFor(
+      new Date(Date.UTC(2026, 6, 31, 22)),
+      new Date(Date.UTC(2026, 7, 31, 22)),
+      "day",
+    );
+    expect(days.at(-1)).toBe("2026-08-31");
+  });
+
+  test("a window shorter than one period is still that one period", async () => {
+    // Today-by-day at 02:00 covers two hours of a day and is the only bar there
+    // is — the majority rule must not empty the chart.
+    const days = await bucketsFor(new Date(2026, 7, 2), new Date(2026, 7, 2, 2), "day");
+    expect(days).toEqual(["2026-08-02"]);
+  });
+
+  test("no standing charge is prorated into days that haven't happened", async () => {
+    // Exactly 1.00/day. The chart now runs to the end of the month, so the days
+    // still to come must carry nothing — otherwise the bars would sum to more
+    // standing charge than the tiles report for the month so far.
+    tariff = tariffConfigSchema.parse({ currency: "EUR", standingChargeMonthly: 30.4375 });
+    try {
+      const now = new Date();
+      const from = new Date(now.getFullYear(), now.getMonth(), 1);
+      const to = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+      queryResults = [[]];
+      const points = await computeCostSeries(profile, {
+        from,
+        to,
+        bucket: "day",
+        inverterId: "inv-1",
+      });
+      const elapsedDays = (now.getTime() - from.getTime()) / 86_400_000;
+      const total = points.reduce((sum, p) => sum + p.standingCharge, 0);
+
+      expect(total).toBeCloseTo(elapsedDays, 6);
+      // The month's last day is in the future for every day but the last one.
+      if (now.getDate() < points.length) expect(points.at(-1)?.standingCharge).toBe(0);
+    } finally {
+      tariff = flatTariff;
+    }
   });
 });

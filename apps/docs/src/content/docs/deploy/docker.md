@@ -44,6 +44,22 @@ on **[http://localhost:3000](http://localhost:3000)**.
 
 See the [Environment Variables](/reference/environment/) reference for every value.
 
+### Set the time zone
+
+Containers run on UTC unless told otherwise, and the server cuts every day, month and
+tariff-band boundary in its own local clock. On UTC, a household two hours east has its
+evening peak billed to the following day, and "this month" opens two hours into the last
+one — so the month chart carries a stray bar from the previous month.
+
+Set `TZ` to the site's IANA zone (the published Compose file passes it through from `.env`):
+
+```bash
+TZ=Europe/Berlin
+```
+
+The browser follows its own system zone, so keep the two the same. A phone in another
+country will draw the day boundaries where the server put them.
+
 ## Notes
 
 - **The server image is distroless** — no shell, node, or curl inside. Its healthcheck runs

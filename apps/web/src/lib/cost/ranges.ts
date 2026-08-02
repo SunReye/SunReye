@@ -130,6 +130,7 @@ export function periodLabel(key: string, bucket: CostBucket): string {
 
 const startOfDay = (d: Date): Date => new Date(d.getFullYear(), d.getMonth(), d.getDate());
 const startOfMonth = (d: Date): Date => new Date(d.getFullYear(), d.getMonth(), 1);
+const startOfNextMonth = (d: Date): Date => new Date(d.getFullYear(), d.getMonth() + 1, 1);
 
 /** Trailing N calendar months → monthly bars. The 12-month form matches
  *  monthlyEnergy's window. */
@@ -148,7 +149,15 @@ function thisMonthByDay(now: Date): ChartSpec {
   return { from: startOfMonth(now), to: now, bucket: "day", caption: "This month, by day" };
 }
 
-/** "month" (this month) — what an unknown preset id falls back to. */
+/**
+ * "month" (this month) — what an unknown preset id falls back to.
+ *
+ * The tiles total the month SO FAR (`to: now`), but the detail chart runs to the
+ * month's end: a month is a fixed calendar shape, and an axis that grows a
+ * column a day is harder to read than one where today's bar advances across a
+ * settled month. Days still to come zero-fill — the server prorates no standing
+ * charge past now, so they are genuinely empty, not cheap.
+ */
 function thisMonth(now: Date): CostRange {
   const from = startOfMonth(now);
   return {
@@ -156,7 +165,7 @@ function thisMonth(now: Date): CostRange {
     label: "This month",
     from,
     to: now,
-    detail: { from, to: now, bucket: "day", caption: "This month, by day" },
+    detail: { from, to: startOfNextMonth(now), bucket: "day", caption: "This month, by day" },
     chart: trailingMonths(now, 12),
   };
 }
