@@ -31,7 +31,7 @@ function keyForRole(p: InverterProfile, role: CanonicalRole): string | undefined
 }
 
 /** The {@link HourEnergy} fields we price, and the role backing each. */
-const ENERGY_FIELDS = {
+export const ENERGY_FIELDS = {
   import: "grid.energy.imported.total",
   export: "grid.energy.exported.total",
   load: "load.energy.total",

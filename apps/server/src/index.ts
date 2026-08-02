@@ -22,6 +22,7 @@ import { customChartsRoutes } from "./routes/custom-charts";
 import { startUpdateChecks, stopUpdateChecks } from "./profiles";
 import { profileRoutes } from "./routes/profiles";
 import { settingsRoutes } from "./routes/settings";
+import { statisticsRoutes } from "./routes/statistics";
 import * as runtime from "./runtime";
 
 // Shared query for the per-period series endpoints (cost + energy): an explicit
@@ -433,6 +434,8 @@ const app = new Elysia()
       profile ? energySeries(profile, seriesArgs(query)) : status(503, ONBOARDING_REQUIRED),
     { requireSession: true, query: seriesQuery },
   )
+  // Statistics-page aggregates (hour×weekday heatmap, …) over the same rollups.
+  .use(statisticsRoutes({ profile }))
   // Profile management: registered list, repo sources, browse/install/activate.
   .use(profileRoutes)
   // User-defined custom charts for the history page (multi-metric overlays).
