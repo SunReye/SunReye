@@ -4,8 +4,6 @@ import { type EnergyTotals, derivePeriodEnergy } from "./energy-calc";
 import {
   heatmapCells,
   hodDowOccurrences,
-  maxDay,
-  minDay,
   pickEnergyRecords,
   pickMoneyRecords,
   previousWindow,
@@ -163,25 +161,6 @@ describe("heatmapCells", () => {
   });
 });
 
-describe("maxDay / minDay", () => {
-  const days = [
-    { date: "2025-01-01", value: 5 },
-    { date: "2025-01-02", value: 9 },
-    { date: "2025-01-03", value: 9 },
-    { date: "2025-01-04", value: 2 },
-  ];
-
-  test("pick the extreme; ties keep the earliest day", () => {
-    expect(maxDay(days)).toEqual({ date: "2025-01-02", value: 9 });
-    expect(minDay(days)).toEqual({ date: "2025-01-04", value: 2 });
-  });
-
-  test("empty input yields null", () => {
-    expect(maxDay([])).toBeNull();
-    expect(minDay([])).toBeNull();
-  });
-});
-
 const day = (date: string, t: Partial<EnergyTotals>) =>
   derivePeriodEnergy(date, {
     importKwh: 0,
@@ -223,6 +202,18 @@ describe("pickEnergyRecords", () => {
     expect(r.worstSelfSufficiencyDay).toEqual({ date: "2025-06-03", value: 0.1 });
   });
 
+  // Both extremes are picked strictly, so an equalled record never moves to a
+  // later day — "since when" stays the day it was first reached.
+  test("tied days keep the earliest date", () => {
+    const r = pickEnergyRecords([
+      day("2025-06-01", { productionKwh: 9, loadKwh: 10, importKwh: 2 }), // SS 0.8
+      day("2025-06-02", { productionKwh: 9, loadKwh: 10, importKwh: 2 }), // SS 0.8
+    ]);
+    expect(r.maxProductionDay).toEqual({ date: "2025-06-01", value: 9 });
+    expect(r.bestSelfSufficiencyDay).toEqual({ date: "2025-06-01", value: 0.8 });
+    expect(r.worstSelfSufficiencyDay).toEqual({ date: "2025-06-01", value: 0.8 });
+  });
+
   test("empty history yields all-null records", () => {
     const r = pickEnergyRecords([]);
     expect(r.maxProductionDay).toBeNull();
@@ -252,6 +243,16 @@ describe("pickMoneyRecords", () => {
     expect(r.cheapestDay).toEqual({ date: "2025-06-02", value: -0.4 });
     expect(r.mostExpensiveDay).toEqual({ date: "2025-06-03", value: 3.0 });
     expect(r.bestEarningsDay).toEqual({ date: "2025-06-02", value: 2.1 });
+  });
+
+  test("tied days keep the earliest date", () => {
+    const r = pickMoneyRecords([
+      point("2025-06-01", { net: 2, exportEarnings: 1 }),
+      point("2025-06-02", { net: 2, exportEarnings: 1 }),
+    ]);
+    expect(r.cheapestDay).toEqual({ date: "2025-06-01", value: 2 });
+    expect(r.mostExpensiveDay).toEqual({ date: "2025-06-01", value: 2 });
+    expect(r.bestEarningsDay).toEqual({ date: "2025-06-01", value: 1 });
   });
 
   test("no positive earnings → no earnings record; empty input → all null", () => {

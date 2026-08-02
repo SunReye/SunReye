@@ -170,11 +170,11 @@ function pickDay(
 }
 
 /** Earliest day with the highest value; null when `days` is empty. */
-export const maxDay = (days: readonly DayRecord[]): DayRecord | null =>
+const maxDay = (days: readonly DayRecord[]): DayRecord | null =>
   pickDay(days, (candidate, best) => candidate > best);
 
 /** Earliest day with the lowest value; null when `days` is empty. */
-export const minDay = (days: readonly DayRecord[]): DayRecord | null =>
+const minDay = (days: readonly DayRecord[]): DayRecord | null =>
   pickDay(days, (candidate, best) => candidate < best);
 
 /** Days below this load are noise (data gaps, commissioning days) — they are
