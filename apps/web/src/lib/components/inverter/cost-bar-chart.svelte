@@ -3,6 +3,7 @@
 	import * as Chart from '$lib/components/ui/chart';
 	import * as m from '$lib/paraglide/messages';
 	import ChartLegend from '$lib/components/inverter/chart-legend.svelte';
+	import { costFormatters } from '$lib/cost/format';
 	import TooltipSeriesRow from '$lib/components/inverter/_shared/tooltip-series-row.svelte';
 	import { seriesConfig } from '$lib/components/inverter/_shared/chart-series';
 	import { COST_X_TICKS, periodLabel, type CostBucket } from '$lib/cost/ranges';
@@ -53,8 +54,7 @@
 
 	const config: Chart.ChartConfig = seriesConfig(series);
 
-	const money = (v: number) =>
-		new Intl.NumberFormat(undefined, { style: 'currency', currency }).format(v);
+	const { money } = $derived(costFormatters(currency));
 
 	// Earnings are already negative in the stack, so the sum of the tooltip rows is
 	// the period's net — same figure as the Net cost tile.
