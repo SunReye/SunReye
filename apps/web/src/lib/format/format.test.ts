@@ -1,14 +1,16 @@
-import { afterAll, describe, expect, test } from "bun:test";
-import { getLocale, overwriteGetLocale, type Locale } from "$lib/paraglide/runtime";
+import { afterEach, describe, expect, test } from "bun:test";
+import { overwriteGetLocale, type Locale } from "$lib/paraglide/runtime";
 import { dayKeyDate, dayMonth, dayMonthYear, monthShort, weekdayDate } from "./date";
 import { decimal } from "./number";
 
 // The locale strategies (localStorage, Accept-Language, …) have nothing to read
 // outside a browser, so drive the runtime's getter directly.
+// The whole suite shares one process, so every test must hand the base locale
+// back — messages resolved elsewhere would otherwise come out German.
 let locale: Locale = "en";
 overwriteGetLocale(() => locale);
 const useLocale = (next: Locale) => (locale = next);
-afterAll(() => overwriteGetLocale(getLocale));
+afterEach(() => (locale = "en"));
 
 describe("date formatters", () => {
   test("follow the UI locale, not the runtime default", () => {
