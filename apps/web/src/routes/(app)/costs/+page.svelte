@@ -8,6 +8,7 @@
 	import CostBarChart from '$lib/components/inverter/cost-bar-chart.svelte';
 	import EnergySplitChart from '$lib/components/inverter/energy-split-chart.svelte';
 	import { resolveCostPreset, type CostBucket, type CostRange } from '$lib/cost/ranges';
+	import { costFormatters } from '$lib/cost/format';
 	import CostTiles from './cost-tiles.svelte';
 	import BandBreakdown from './band-breakdown.svelte';
 	import PricePanel from '$lib/components/prices/price-panel.svelte';
@@ -70,20 +71,8 @@
 		series.points.some((p) => p.importCost !== 0 || p.exportEarnings !== 0 || p.net !== 0)
 	);
 
-	const money = (v: number) =>
-		new Intl.NumberFormat(undefined, {
-			style: 'currency',
-			currency: cost?.currency ?? 'EUR'
-		}).format(v);
-	const kwh = (v: number) => `${v.toLocaleString(undefined, { maximumFractionDigits: 1 })} kWh`;
-	const pct = (v: number | null) => (v === null ? '—' : `${Math.round(v * 100)}%`);
-	const price = (v: number) =>
-		new Intl.NumberFormat(undefined, {
-			style: 'currency',
-			currency: cost?.currency ?? 'EUR',
-			minimumFractionDigits: 2,
-			maximumFractionDigits: 3
-		}).format(v);
+	// Formatters pinned to the fetched breakdown's currency (EUR until it loads).
+	const { money, kwh, pct, price } = $derived(costFormatters(cost?.currency));
 
 	/** Tiles turn green only when the figure is in the household's favour. */
 	const goodIf = (favourable: boolean) => (favourable ? 'text-emerald-500' : '');
