@@ -6,7 +6,9 @@
  */
 
 import { chartSpecFor, type ChartScope, type ChartSpec, type CostRange } from "$lib/cost/ranges";
-import { chartCaption, defaultChartScope, type ScopedSection } from "./chart-scope";
+import { statisticsPrefs } from "$lib/statistics-prefs.svelte";
+import { getCustomizeSession } from "./customize.svelte";
+import { chartCaption, type ScopedSection } from "./chart-scope";
 
 export type SectionScope = {
   /** Bound by the section header's RangeSwitcher. */
@@ -18,12 +20,19 @@ export type SectionScope = {
 };
 
 /**
- * Scope state for one section, seeded from the saved preference and ephemeral
- * afterwards. `range` is a getter so the spec and caption track the picked
- * range without the section re-creating this.
+ * Scope state for one section: ephemeral for every viewer, defaulting to the
+ * saved preference until they pick. An admin's current pick is what the
+ * customize draft stores when they save the layout — the same arrangement the
+ * compare mode and the YoY metric use, so the switchers stay live controls
+ * rather than becoming a second set of customize-only widgets.
+ *
+ * `range` is a getter so the spec and caption track the picked range without
+ * the section re-creating this.
  */
 export function sectionScope(section: ScopedSection, range: () => CostRange): SectionScope {
-  let scope = $state<ChartScope>(defaultChartScope(section));
+  const customize = getCustomizeSession();
+  let picked = $state<ChartScope | null>(null);
+  const scope = $derived(picked ?? statisticsPrefs.optionFor(section).chartScope);
   const spec = $derived(chartSpecFor(range(), scope));
   const caption = $derived(chartCaption(range(), scope));
   return {
@@ -31,7 +40,8 @@ export function sectionScope(section: ScopedSection, range: () => CostRange): Se
       return scope;
     },
     set scope(next: ChartScope) {
-      scope = next;
+      picked = next;
+      if (customize.active) customize.draft[section].chartScope = next;
     },
     get spec() {
       return spec;

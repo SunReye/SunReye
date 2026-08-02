@@ -6,31 +6,9 @@
 import type { ChartScope, CostRange } from "$lib/cost/ranges";
 import * as m from "$lib/paraglide/messages";
 
-/** Statistics sections whose default scope is a stored preference. */
+/** Statistics sections whose default scope is a stored preference, read by
+ *  `sectionScope()` in ./chart-scope.svelte.ts. */
 export type ScopedSection = "cost" | "energy";
-
-/**
- * Default scope per section, mirroring `statisticsPrefsSchema`'s
- * `cost.chartScope` / `energy.chartScope` defaults
- * (packages/db/src/statistics-prefs.ts).
- *
- * OPEN: `$lib/statistics-prefs.svelte.ts` now exists and carries those two
- * saved scopes, but nothing reads them — the sections still start on the
- * schema defaults below, and the customize UI offers no scope control, so the
- * stored values are inert. Wiring is a one-liner here (read the saved scope,
- * falling back to these while the preference is still loading): every section
- * goes through {@link defaultChartScope}, so no caller changes.
- */
-const SCHEMA_DEFAULT_SCOPE: Record<ScopedSection, ChartScope> = {
-  cost: "detail",
-  energy: "detail",
-};
-
-/** The scope a section's switcher starts on. Ephemeral afterwards: the viewer's
- *  choice is never written back. */
-export function defaultChartScope(section: ScopedSection): ChartScope {
-  return SCHEMA_DEFAULT_SCOPE[section];
-}
 
 /** Caption per `${preset id}:${scope}`; anything missing falls back to the
  *  spec's own English caption. */
