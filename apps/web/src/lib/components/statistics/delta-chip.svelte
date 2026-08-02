@@ -8,11 +8,15 @@
 	// the direction is never carried by colour alone.
 	let {
 		delta,
-		goodDirection
+		goodDirection,
+		baseline
 	}: {
 		/** Signed fraction (0.12 = +12%); null when there is no usable reference. */
 		delta: number | null;
 		goodDirection: 'up' | 'down' | 'neutral';
+		/** What the change is measured against, in words ("yesterday"). Named for
+		 *  screen readers and on hover — an arrow alone says nothing about when. */
+		baseline?: string;
 	} = $props();
 
 	const up = $derived((delta ?? 0) > 0);
@@ -25,13 +29,18 @@
 	const tone = $derived(
 		flat || goodDirection === 'neutral' ? '' : good ? 'text-emerald-500' : 'text-red-500'
 	);
+	const against = $derived(baseline ?? m.statistics_baseline_reference());
 	const aria = $derived(
 		delta === null
 			? m.statistics_delta_none_aria()
-			: m.statistics_delta_aria({ percent: Math.round(delta * 100) })
+			: m.statistics_delta_aria({ percent: Math.round(delta * 100), baseline: against })
 	);
 </script>
 
-<span class="text-xs font-medium tabular-nums text-muted-foreground {tone}" aria-label={aria}>
+<span
+	class="text-xs font-medium tabular-nums text-muted-foreground {tone}"
+	aria-label={aria}
+	title={aria}
+>
 	{pct}
 </span>

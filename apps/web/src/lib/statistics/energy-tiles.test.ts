@@ -78,32 +78,38 @@ describe("headline figures", () => {
 
 describe("per-day sub-line", () => {
   test("divides the total by the window length", () => {
-    // 120 kWh over 10 days, unchanged against the reference window → no delta.
     expect(byId(data(), "energy.produced")?.sub).toBe("12 kWh/day");
   });
 
-  test("appends a signed delta against the reference window", () => {
+  test("carries no delta of its own — that is the chip's job", () => {
     const d = data({ previous: totals({ productionKwh: 100 }) });
-    expect(byId(d, "energy.produced")?.sub).toBe("12 kWh/day · ▲ 20%");
-  });
-
-  test("marks a decrease with a down arrow", () => {
-    const d = data({ previous: totals({ productionKwh: 150 }) });
-    expect(byId(d, "energy.produced")?.sub).toBe("12 kWh/day · ▼ 20%");
-  });
-
-  test("omits the delta when there is no reference window", () => {
-    expect(byId(data({ previous: null }), "energy.produced")?.sub).toBe("12 kWh/day");
-  });
-
-  test("omits the delta when the reference window is zero — no fake −100%", () => {
-    const d = data({ previous: totals({ productionKwh: 0 }) });
     expect(byId(d, "energy.produced")?.sub).toBe("12 kWh/day");
   });
+});
 
-  test("omits sub-percent noise", () => {
-    const d = data({ previous: totals({ productionKwh: 120.2 }) });
-    expect(byId(d, "energy.produced")?.sub).toBe("12 kWh/day");
+/** The reference window as the energy section builds it. */
+const reference = (over: Partial<CostTotals> = {}): EnergyTileData => ({
+  current: totals(over),
+  previous: null,
+  rangeDays: 10,
+  hasBattery: true,
+});
+
+const deltaOf = (previous: EnergyTileData | undefined, id: string) =>
+  deriveTiles(ENERGY_TILES, data(), f, previous).find((t) => t.id === id)?.delta;
+
+describe("delta against the reference window", () => {
+  test("is the signed relative change", () => {
+    expect(deltaOf(reference({ productionKwh: 100 }), "energy.produced")).toBeCloseTo(0.2, 5);
+    expect(deltaOf(reference({ productionKwh: 150 }), "energy.produced")).toBeCloseTo(-0.2, 5);
+  });
+
+  test("is absent entirely when no reference window was passed", () => {
+    expect(deltaOf(undefined, "energy.produced")).toBeUndefined();
+  });
+
+  test("is null against a zero baseline — no fake +∞", () => {
+    expect(deltaOf(reference({ productionKwh: 0 }), "energy.produced")).toBeNull();
   });
 });
 

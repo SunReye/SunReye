@@ -37,6 +37,7 @@
 	// means kW and A never end up sharing a plot (no dual axis, ever).
 	import { AreaChart, Area, ChartClipPath, Highlight } from 'layerchart';
 	import * as Chart from '$lib/components/ui/chart';
+	import { seriesConfig } from '$lib/components/inverter/_shared/chart-series';
 	import ChartLegend from '$lib/components/inverter/chart-legend.svelte';
 	import CustomChartTooltip from '$lib/components/inverter/custom-chart-tooltip.svelte';
 	import { display } from '$lib/display.svelte';
@@ -75,9 +76,7 @@
 			value: (d: ChartRow) => d[s.key] as number | null
 		}))
 	);
-	const config: Chart.ChartConfig = $derived(
-		Object.fromEntries(series.map((s) => [s.key, { label: s.label, color: s.color }]))
-	);
+	const config: Chart.ChartConfig = $derived(seriesConfig(series));
 	const tooltipSeries = $derived([...series, ...tooltipExtras]);
 
 	const timeLabel = (value: unknown) => display.time(new Date(Number(value)));

@@ -9,7 +9,7 @@
 
 	// One resolved tile: figure, sub-line, explanation popover — plus the
 	// visibility checkbox while the page is being customized.
-	let { tile }: { tile: Tile } = $props();
+	let { tile, baseline }: { tile: Tile; baseline?: string } = $props();
 
 	const customize = getCustomizeSession();
 	const hidden = $derived(customize.tileHidden(tile.id));
@@ -47,7 +47,7 @@
 	<div class="flex items-baseline gap-2">
 		<span class="text-2xl font-semibold tabular-nums {tile.accent}">{tile.value}</span>
 		{#if tile.delta !== undefined}
-			<DeltaChip delta={tile.delta} goodDirection={tile.goodDirection} />
+			<DeltaChip delta={tile.delta} goodDirection={tile.goodDirection} {baseline} />
 		{/if}
 	</div>
 	<span class="text-xs text-muted-foreground">{tile.sub}</span>

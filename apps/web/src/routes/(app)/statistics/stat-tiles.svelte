@@ -11,12 +11,15 @@
 		defs,
 		data,
 		previous = null,
+		baseline,
 		formatters
 	}: {
 		defs: readonly TileDef<Data>[];
 		data: Data;
 		/** Same shape over a reference window — gives every tile a delta chip. */
 		previous?: Data | null;
+		/** What those chips compare against, in words ("yesterday"). */
+		baseline?: string;
 		formatters: CostFormatters;
 	} = $props();
 
@@ -37,7 +40,7 @@
 		transition:fade={{ duration: 200 }}
 	>
 		{#each shown as tile (tile.id)}
-			<StatTile {tile} />
+			<StatTile {tile} {baseline} />
 		{/each}
 	</div>
 {/if}

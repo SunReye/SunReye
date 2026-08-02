@@ -6,6 +6,7 @@
 	import { specQuery, type CostBucket } from '$lib/cost/ranges';
 	import type { SectionData } from '$lib/statistics/sections';
 	import { sectionScope } from '$lib/statistics/chart-scope.svelte';
+	import { baselineLabel, deltaFor } from '$lib/statistics/compare';
 	import { statisticsLive } from '$lib/statistics-live.svelte';
 	import { COST_TILES } from '$lib/statistics/tiles';
 	import ChartPanel from './chart-panel.svelte';
@@ -30,6 +31,9 @@
 	let { data }: { data: SectionData } = $props();
 	const cost = $derived(data.cost);
 	const range = $derived(data.range);
+	// Every tile carries its change against the reference window, named so the
+	// arrow means something ("▼ 18% versus yesterday").
+	const baseline = $derived(baselineLabel(data.mode, data.windowDays));
 
 	// Ephemeral per-viewer choice, seeded from the saved preference.
 	const view = sectionScope('cost', () => range);
@@ -67,6 +71,15 @@
 		series.points.some((p) => p.importCost !== 0 || p.exportEarnings !== 0 || p.net !== 0)
 	);
 
+	// The chart header restates the window's net cost, so the comparison follows
+	// the reader past the tile row.
+	const summary = $derived({
+		value: formatters.money(cost.net),
+		delta: deltaFor(cost.net, data.previous?.net ?? null),
+		goodDirection: 'down' as const,
+		baseline
+	});
+
 	// Import split by tariff band, pre-formatted for the breakdown section.
 	const bandRows = $derived(
 		cost.byBand.map((b) => ({
@@ -78,12 +91,18 @@
 </script>
 
 <!-- Headline tiles -->
-<StatTiles defs={COST_TILES} data={cost} {formatters} />
+<StatTiles
+	defs={COST_TILES}
+	data={cost}
+	previous={data.previous}
+	{baseline}
+	{formatters}
+/>
 
 <!-- Total-cost bars. Window/granularity follow this section's scope switcher,
      independent of the tiles above and of the other sections' charts. -->
 {#if costHasData}
-	<ChartPanel title={m.costs_total_cost()} {view} {range} switcher>
+	<ChartPanel title={m.costs_total_cost()} {view} switcher={range} {summary}>
 		<CostBarChart points={series.points} bucket={series.bucket} currency={cost.currency} />
 	</ChartPanel>
 {/if}

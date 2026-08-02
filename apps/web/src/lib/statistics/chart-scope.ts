@@ -56,3 +56,16 @@ export function scopeOptions(range: CostRange): readonly { id: ChartScope; label
     { id: "context", label: (CONTEXT_LABELS[range.id] ?? m.statistics_scope_12mo)() },
   ];
 }
+
+/** Panel heading: the chart's name and, when it has one, the window it plots. */
+export const panelHeading = (title: string, window: string | undefined): string =>
+  window ? `${title} — ${window}` : title;
+
+/**
+ * A panel's summary figure describes the PICKED window, so it only belongs on a
+ * chart plotting that window. Zoomed out to context (the trailing 12 or 24
+ * months) the chart and the figure disagree, and the summary is dropped.
+ * A panel with no scope of its own (the price curves) always keeps it.
+ */
+export const summaryForScope = <T>(scope: ChartScope | undefined, summary: T | undefined) =>
+  scope === "context" ? undefined : summary;

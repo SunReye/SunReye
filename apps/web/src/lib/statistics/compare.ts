@@ -5,6 +5,7 @@
 
 import type { CostBreakdown } from "server/src/cost-calc";
 import type { CompareMode, ComparisonResponse } from "server/src/statistics";
+import * as m from "$lib/paraglide/messages";
 
 /**
  * Signed relative change from `previous` to `current`, as a fraction
@@ -74,6 +75,18 @@ export function usableComparison(
   if (!payload) return { current: null, previous: null };
   const covered = referenceCovered(reference, payload.coverage.dataFrom);
   return { current: payload.current, previous: covered ? payload.previous : null };
+}
+
+/**
+ * What a delta is measured against, in words ("yesterday", "the previous 7
+ * days", "the same period a year ago"). An arrow with no baseline is
+ * unreadable, so every chip carries this.
+ */
+export function baselineLabel(mode: CompareMode, days: number): string {
+  if (mode === "yearAgo") return m.statistics_baseline_year_ago();
+  return days === 1
+    ? m.statistics_baseline_previous_day()
+    : m.statistics_baseline_previous_days({ days });
 }
 
 /** Whole days in `[from, to)`, at least 1 — the "vs previous {n} days" caption. */

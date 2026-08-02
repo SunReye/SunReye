@@ -11,6 +11,7 @@
 	import { specQuery } from '$lib/cost/ranges';
 	import type { SectionData } from '$lib/statistics/sections';
 	import { sectionScope } from '$lib/statistics/chart-scope.svelte';
+	import { baselineLabel, deltaFor } from '$lib/statistics/compare';
 	import { statisticsLive } from '$lib/statistics-live.svelte';
 	import { ENERGY_TILES, type EnergyTileData } from '$lib/statistics/tiles';
 	import ChartPanel from './chart-panel.svelte';
@@ -66,6 +67,14 @@
 		hasBattery
 	});
 
+	// Same shape one reference window back, so every energy tile carries its
+	// change. Null previous → no chip payload at all, rather than a fabricated
+	// zero baseline.
+	const previousTileData = $derived<EnergyTileData | null>(
+		previous ? { current: previous, previous: null, rangeDays, hasBattery } : null
+	);
+	const baseline = $derived(baselineLabel(data.mode, data.windowDays));
+
 	// Capability gate for the battery lines: the pack exists, or the window moved
 	// energy through one. Never two permanently-flat series.
 	const showBattery = $derived(
@@ -79,21 +88,54 @@
 	const hasRatios = $derived(
 		series.some((p) => p.selfSufficiency !== null || p.selfConsumption !== null)
 	);
+
+	// Headline figure per chart, with the same comparison the tiles carry:
+	// production for the flows, self-sufficiency for the ratios.
+	const flowsSummary = $derived({
+		value: formatters.kwh(cost.productionKwh),
+		delta: deltaFor(cost.productionKwh, previous?.productionKwh ?? null),
+		goodDirection: 'up' as const,
+		baseline
+	});
+	const ratioSummary = $derived({
+		value: formatters.pct(cost.selfSufficiency),
+		delta: deltaFor(cost.selfSufficiency, previous?.selfSufficiency ?? null),
+		goodDirection: 'up' as const,
+		baseline
+	});
+	// The split chart shows both ratios as its own averages, so it takes the
+	// deltas rather than one panel summary.
+	const splitDeltas = $derived({
+		selfSufficiency: deltaFor(cost.selfSufficiency, previous?.selfSufficiency ?? null),
+		selfConsumption: deltaFor(cost.selfConsumption, previous?.selfConsumption ?? null),
+		baseline
+	});
 </script>
 
-<StatTiles defs={ENERGY_TILES} data={tileData} {formatters} />
+<StatTiles
+	defs={ENERGY_TILES}
+	data={tileData}
+	previous={previousTileData}
+	{baseline}
+	{formatters}
+/>
 
 {#if hasSeries}
 	<!-- Split, ratios and raw flows all read the one fetch above, so the scope
 	     switcher in this header moves every chart in the section at once. -->
-	<ChartPanel title={m.statistics_energy_flows()} {view} {range} switcher>
+	<ChartPanel title={m.statistics_energy_flows()} {view} switcher={range} summary={flowsSummary}>
 		<EnergySeriesChart periods={series} bucket={view.spec.bucket} {showBattery} />
 	</ChartPanel>
 
-	<EnergySplitChart chart={view.spec} caption={view.caption} periods={series} />
+	<EnergySplitChart
+		caption={view.caption}
+		periods={series}
+		bucket={view.spec.bucket}
+		deltas={view.scope === 'detail' ? splitDeltas : undefined}
+	/>
 
 	{#if hasRatios}
-		<ChartPanel title={m.statistics_energy_ratios()} {view} {range}>
+		<ChartPanel title={m.statistics_energy_ratios()} {view} summary={ratioSummary}>
 			<RatioTrendChart periods={series} bucket={view.spec.bucket} />
 		</ChartPanel>
 	{/if}

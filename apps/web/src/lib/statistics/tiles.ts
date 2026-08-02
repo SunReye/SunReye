@@ -12,7 +12,7 @@ import type { CostFormatters } from "$lib/cost/format";
 import { dayKeyDate, dayMonthYear } from "$lib/format/date";
 import { decimal } from "$lib/format/number";
 import { ctLabel, ctPerKwh } from "$lib/prices/price-series";
-import { deltaFor, formatDelta } from "$lib/statistics/compare";
+import { deltaFor } from "$lib/statistics/compare";
 import * as m from "$lib/paraglide/messages";
 
 /** Rendered face of one tile. */
@@ -195,24 +195,11 @@ export type EnergyTileData = {
   hasBattery: boolean;
 };
 
-/** Signed percentage change against the reference window, e.g. "▲ 8%". Null
- *  when there is nothing meaningful to compare against (no reference window, a
- *  zero baseline, or a change under half a percent). */
-function pctDelta(current: number, previous: number | null): string | null {
-  const change = deltaFor(current, previous);
-  if (change === null || Math.abs(change) < 0.005) return null;
-  return formatDelta(change);
-}
-
-/** Sub-line shared by every energy tile: the daily average, plus the delta
- *  against the reference window when one exists. */
-function perDaySub(kwh: number, d: EnergyTileData, previous: number | null, f: CostFormatters) {
-  const amount = f.kwh(kwh / d.rangeDays);
-  const delta = pctDelta(kwh, previous);
-  return delta
-    ? m.statistics_sub_per_day_delta({ amount, delta })
-    : m.statistics_sub_per_day({ amount });
-}
+/** Sub-line shared by every energy tile: the daily average. The change against
+ *  the reference window is the tile's delta chip — one delta per tile, in one
+ *  presentation. */
+const perDaySub = (kwh: number, d: EnergyTileData, f: CostFormatters): string =>
+  m.statistics_sub_per_day({ amount: f.kwh(kwh / d.rangeDays) });
 
 /** One energy tile: same figure read off both windows, formatted as kWh. */
 function energyTile(
@@ -233,7 +220,7 @@ function energyTile(
       const kwh = value(d.current);
       return {
         value: f.kwh(kwh),
-        sub: perDaySub(kwh, d, d.previous ? value(d.previous) : null, f),
+        sub: perDaySub(kwh, d, f),
         accent: "",
       };
     },
