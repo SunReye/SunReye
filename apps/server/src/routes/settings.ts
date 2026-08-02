@@ -20,6 +20,7 @@ import { getTariff, setTariff } from "../settings";
 import { fetchSolarForecast, toForecastExport } from "../solar-forecast";
 import { getSpotPriceView, spotProviderCatalog } from "../spot-price-job";
 import { getSpotPriceConfig, setSpotPriceConfig } from "../spot-price-settings";
+import { getStatisticsPrefs, setStatisticsPrefs } from "../statistics-prefs-settings";
 import { getUiPrefs, setUiPrefs } from "../ui-prefs-settings";
 import { fetchWeather } from "../weather";
 import { getWeatherConfig, setWeatherConfig } from "../weather-settings";
@@ -72,6 +73,24 @@ export const settingsRoutes = new Elysia({ name: "settings-routes" })
       return saved.ok ? saved.value : status(400, { error: saved.error });
     },
     adminWrite,
+  )
+  // Statistics page preferences (hidden sections/tiles + per-section display
+  // options). Rides the dashboard read policy so every viewer gets the curated
+  // layout; only admins write. Hiding is a preference, not a capability gate —
+  // the underlying endpoints stay available regardless.
+  .get("/api/settings/statistics", () => getStatisticsPrefs(), { requireSession: true })
+  .put(
+    "/api/settings/statistics",
+    async ({ body, status }) => {
+      try {
+        return await setStatisticsPrefs(body);
+      } catch (error) {
+        return status(400, {
+          error: error instanceof Error ? error.message : "Invalid preferences",
+        });
+      }
+    },
+    { requireAdmin: true, body: t.Unknown() },
   )
   .get("/api/settings/inverter", () => getInverterConfig(), { requireAdmin: true })
   .put(

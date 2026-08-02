@@ -44,6 +44,7 @@ const ENERGY_FIELDS = {
   load: "load.energy.total",
   production: "production.total",
   batteryDischarge: "battery.energy.discharged.total",
+  batteryCharge: "battery.energy.charged.total",
 } as const satisfies Record<keyof Omit<HourEnergy, "time">, CanonicalRole>;
 
 export type EnergyField = keyof Omit<HourEnergy, "time">;
@@ -75,6 +76,7 @@ const ENERGY_TODAY_FIELDS = {
   load: "load.energy.today",
   production: "production.today",
   batteryDischarge: "battery.energy.discharged.today",
+  batteryCharge: "battery.energy.charged.today",
 } as const satisfies Record<EnergyField, CanonicalRole>;
 
 /** {@link EnergyField} → the {@link EnergyTotals} kWh key it feeds. Shared with
@@ -85,6 +87,7 @@ export const TOTALS_KEY_BY_FIELD = {
   load: "loadKwh",
   production: "productionKwh",
   batteryDischarge: "batteryDischargeKwh",
+  batteryCharge: "batteryChargeKwh",
 } as const satisfies Record<EnergyField, keyof EnergyTotals>;
 
 /** Whether two Dates fall on the same local (server-tz) calendar day. */
@@ -222,6 +225,7 @@ async function fetchBucketEnergy(
       load: 0,
       production: 0,
       batteryDischarge: 0,
+      batteryCharge: 0,
     };
     hour[field] += Math.max(0, max - prior);
     byBucket.set(time.getTime(), hour);
@@ -522,7 +526,7 @@ function isTodayWindow(from: Date, to: Date, now: Date = new Date()): boolean {
 
 /**
  * Report the live `*.today` energy on top of the per-hour cost totals for the
- * current-day window: replace the four energy kWh figures with the live values
+ * current-day window: replace the energy kWh figures with the live values
  * (only the fields the reader supplied) and RECOMPUTE the pure derived-energy /
  * ratio fields from them — mirroring {@link allocateCost}'s formulas exactly so
  * the tiles stay coherent.
@@ -545,6 +549,8 @@ function reportLiveTodayTotals(totals: CostTotals, today: Partial<EnergyTotals>)
     exportKwh,
     loadKwh,
     productionKwh,
+    batteryDischargeKwh: today.batteryDischargeKwh ?? totals.batteryDischargeKwh,
+    batteryChargeKwh: today.batteryChargeKwh ?? totals.batteryChargeKwh,
     selfConsumedKwh: Math.max(0, loadKwh - importKwh),
     selfSufficiency: loadKwh > 0 ? clamp01((loadKwh - importKwh) / loadKwh) : null,
     selfConsumption:

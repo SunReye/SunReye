@@ -7,6 +7,7 @@ const totals = (t: Partial<EnergyTotals>): EnergyTotals => ({
   loadKwh: 0,
   productionKwh: 0,
   batteryDischargeKwh: 0,
+  batteryChargeKwh: 0,
   ...t,
 });
 
@@ -116,6 +117,7 @@ describe("applyTodayOverride", () => {
       loadKwh: 8.6, // overridden
       productionKwh: 4, // kept (absent from today)
       batteryDischargeKwh: 0, // kept (absent from today)
+      batteryChargeKwh: 0, // kept (absent from today)
     });
   });
 

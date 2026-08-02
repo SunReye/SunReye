@@ -31,6 +31,7 @@ const emptyTotals = (): EnergyTotals => ({
   loadKwh: 0,
   productionKwh: 0,
   batteryDischargeKwh: 0,
+  batteryChargeKwh: 0,
 });
 
 /** Sum the delta-matrix rows into per-period {@link EnergyTotals}, zero-filled

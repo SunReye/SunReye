@@ -22,6 +22,10 @@ export interface EnergyTotals {
    *  charge losses, or export). Subdivides the on-site consumption figure into a
    *  battery slice; 0 when the profile maps no battery-discharge role. */
   batteryDischargeKwh: number;
+  /** Battery charge counter delta — raw energy the battery took in (from solar
+   *  or grid). Pass-through figure for battery reporting; no display split reads
+   *  it; 0 when the profile maps no battery-charge role. */
+  batteryChargeKwh: number;
 }
 
 /** One period of energy flows, split for stacked-bar display. */
@@ -71,12 +75,14 @@ export function applyTodayOverride(
     loadKwh: today.loadKwh ?? totals.loadKwh,
     productionKwh: today.productionKwh ?? totals.productionKwh,
     batteryDischargeKwh: today.batteryDischargeKwh ?? totals.batteryDischargeKwh,
+    batteryChargeKwh: today.batteryChargeKwh ?? totals.batteryChargeKwh,
   };
 }
 
 /** Derive the display splits and ratios for one period's summed energy. */
 export function derivePeriodEnergy(bucket: string, totals: EnergyTotals): PeriodEnergy {
-  const { importKwh, exportKwh, loadKwh, productionKwh, batteryDischargeKwh } = totals;
+  const { importKwh, exportKwh, loadKwh, productionKwh, batteryDischargeKwh, batteryChargeKwh } =
+    totals;
   const gridToLoadKwh = Math.min(importKwh, loadKwh);
   const solarToLoadKwh = Math.max(0, loadKwh - importKwh);
   // Subdivide the on-site figure: the battery can only serve up to what was
@@ -92,6 +98,7 @@ export function derivePeriodEnergy(bucket: string, totals: EnergyTotals): Period
     loadKwh,
     productionKwh,
     batteryDischargeKwh,
+    batteryChargeKwh,
     gridToLoadKwh,
     solarToLoadKwh,
     batteryToLoadKwh,
