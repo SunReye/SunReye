@@ -408,6 +408,7 @@
   "statistics_heatmap_caption": "Durchschnitt pro Stunde, auf eine Woche gefaltet",
   "statistics_heatmap_legend": "Durchschnitt",
   "statistics_heatmap_summary": "{metric} erreicht am {weekday} gegen {hour} den Höchstwert, im Schnitt {amount} in dieser Stunde.",
+  "statistics_heatmap_metric_empty": "In diesem Zeitraum wurde kein {metric} erfasst.",
   "statistics_customize": "Diese Seite anpassen",
   "statistics_customize_hint": "Legen Sie fest, was diese Seite für alle zeigt, und speichern Sie.",
   "statistics_customize_collapsed": "Eingeklappt starten",

@@ -408,6 +408,7 @@
   "statistics_heatmap_caption": "Media por hora, plegada en una semana",
   "statistics_heatmap_legend": "Media",
   "statistics_heatmap_summary": "{metric} alcanza su máximo el {weekday} sobre las {hour}, con una media de {amount} en esa hora.",
+  "statistics_heatmap_metric_empty": "No se ha registrado {metric} en este periodo.",
   "statistics_customize": "Personalizar esta página",
   "statistics_customize_hint": "Elija lo que esta página muestra para todos y guarde.",
   "statistics_customize_collapsed": "Empezar plegada",

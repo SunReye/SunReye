@@ -408,6 +408,7 @@
   "statistics_heatmap_caption": "Moyenne par heure, repliée sur une semaine",
   "statistics_heatmap_legend": "Moyenne",
   "statistics_heatmap_summary": "{metric} culmine le {weekday} vers {hour}, avec une moyenne de {amount} sur cette heure.",
+  "statistics_heatmap_metric_empty": "Aucune {metric} enregistrée sur cette période.",
   "statistics_customize": "Personnaliser cette page",
   "statistics_customize_hint": "Choisissez ce que cette page affiche pour tous, puis enregistrez.",
   "statistics_customize_collapsed": "Démarrer replié",

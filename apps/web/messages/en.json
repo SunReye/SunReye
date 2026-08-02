@@ -408,6 +408,7 @@
   "statistics_heatmap_caption": "Average per hour, folded onto one week",
   "statistics_heatmap_legend": "Average",
   "statistics_heatmap_summary": "{metric} peaks on {weekday} around {hour}, averaging {amount} in that hour.",
+  "statistics_heatmap_metric_empty": "No {metric} recorded in this window.",
   "statistics_customize": "Customize this page",
   "statistics_customize_hint": "Pick what this page shows for everyone, then save.",
   "statistics_customize_collapsed": "Start collapsed",

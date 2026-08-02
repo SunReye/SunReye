@@ -13,6 +13,9 @@
 // pass. The validator's "single hue" check fails by construction — that is the
 // multi-hue requirement above, not a defect — and is the one deviation.
 
+import { decimal } from "$lib/format/number";
+import { getLocale } from "$lib/paraglide/runtime";
+
 /** Ramp stops, low value → high value. Not exported: {@link heatColor} and
  *  {@link heatGradient} are the whole public surface, so the stops can be
  *  re-tuned without touching a caller. */
@@ -64,3 +67,19 @@ export function heatOpacity(t: number): number {
 
 /** CSS gradient for the legend bar, left (lowest) to right (highest). */
 export const heatGradient = (): string => `linear-gradient(to right, ${HEAT_STOPS.join(", ")})`;
+
+/** One cell of the grid: an (hour, ISO weekday) slot and its window average. */
+export type HeatPoint = { hod: number; dow: number; avg: number };
+
+/**
+ * ISO weekday → short local name. 2024-01-01 was a Monday, so day-of-month and
+ * ISO weekday line up for the whole first week.
+ */
+export const weekdayLabel = (dow: number): string =>
+  new Date(2024, 0, dow).toLocaleDateString(getLocale(), { weekday: "short" });
+
+/** `07:00` — the grid's hour axis and its tooltip header. */
+export const hourLabel = (hod: number): string => `${String(hod).padStart(2, "0")}:00`;
+
+/** A cell's average, to the two decimals a per-hour figure needs. */
+export const heatKwh = (v: number): string => `${decimal(v, 2)} kWh`;

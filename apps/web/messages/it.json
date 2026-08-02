@@ -408,6 +408,7 @@
   "statistics_heatmap_caption": "Media oraria, ripiegata su una settimana",
   "statistics_heatmap_legend": "Media",
   "statistics_heatmap_summary": "{metric} tocca il massimo di {weekday} verso le {hour}, con una media di {amount} in quell'ora.",
+  "statistics_heatmap_metric_empty": "Nessun dato di {metric} in questo periodo.",
   "statistics_customize": "Personalizza questa pagina",
   "statistics_customize_hint": "Scegli cosa mostra questa pagina per tutti, poi salva.",
   "statistics_customize_collapsed": "Parti compressa",
