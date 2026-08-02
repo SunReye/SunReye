@@ -15,7 +15,7 @@
 	import ChartLineIcon from 'phosphor-svelte/lib/ChartLine';
 	import SlidersIcon from 'phosphor-svelte/lib/SlidersHorizontal';
 	import RobotIcon from 'phosphor-svelte/lib/Robot';
-	import CoinsIcon from 'phosphor-svelte/lib/Coins';
+	import ChartBarIcon from 'phosphor-svelte/lib/ChartBar';
 	import GearIcon from 'phosphor-svelte/lib/Gear';
 	import SignOutIcon from 'phosphor-svelte/lib/SignOut';
 	import SignInIcon from 'phosphor-svelte/lib/SignIn';
@@ -39,7 +39,7 @@
 		{ href: '/', label: m.nav_overview(), icon: GaugeIcon },
 		{ href: '/system', label: m.nav_system(), icon: CpuIcon },
 		{ href: '/history', label: m.nav_history(), icon: ChartLineIcon },
-		{ href: '/costs', label: m.nav_costs(), icon: CoinsIcon },
+		{ href: '/statistics', label: m.nav_statistics(), icon: ChartBarIcon },
 		...(isAdmin && (inverter.capabilities?.controls.length ?? 0) > 0
 			? ([{ href: '/controls', label: m.nav_controls(), icon: SlidersIcon }] satisfies NavItem[])
 			: []),
