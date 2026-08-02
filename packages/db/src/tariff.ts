@@ -59,7 +59,7 @@ const spotImportSchema = z.object({
   /** Floor the landed price at 0 — some suppliers never pay you to consume. */
   clampToZero: z.boolean().default(false),
 });
-type SpotImportPricing = z.infer<typeof spotImportSchema>;
+export type SpotImportPricing = z.infer<typeof spotImportSchema>;
 
 /** How exported energy is remunerated when the market price is known. */
 const spotExportSchema = z.object({
@@ -151,8 +151,12 @@ export function importPriceForHour(tariff: TariffConfig, hour: number, isoWeekda
  * Note the VAT applies to the **whole** landed sum including a negative wholesale
  * part — which is what a German invoice does. VATing only the positive components
  * would overstate the bill in exactly the hours this feature is about.
+ *
+ * Exported for the statistics what-if, which reprices a *static* household's
+ * import under spot — there is no `importPriceAt` path for that, since the
+ * tariff's own mode says static.
  */
-function landedImportPrice(eurPerMwh: number, s: SpotImportPricing): number {
+export function landedImportPrice(eurPerMwh: number, s: SpotImportPricing): number {
   const net = eurPerMwh / 1000 + s.supplierMarkupPerKwh + s.gridFeesPerKwh + s.leviesPerKwh;
   const gross = net * (1 + s.vatPercent / 100);
   return s.clampToZero ? Math.max(0, gross) : gross;

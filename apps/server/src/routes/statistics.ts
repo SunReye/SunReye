@@ -1,5 +1,6 @@
 import type { InverterProfile } from "@SunReye/inverter-core";
 import { Elysia, t } from "elysia";
+import { computeSpotStats } from "../spot-stats";
 import { computeComparison, computeHeatmap, computeRecords } from "../statistics";
 import { adminGuard } from "./admin-guard";
 
@@ -73,6 +74,15 @@ export function statisticsRoutes({ profile }: StatisticsRoutesDeps) {
             ? computeRecords(profile, { inverterId: query.inverterId })
             : status(503, ONBOARDING_REQUIRED),
         { requireSession: true, query: t.Object({ inverterId: t.Optional(t.String()) }) },
+      )
+      // Day-ahead market analytics over an explicit window: price shape, the
+      // negative-price windows, and how the plant's own import compares.
+      // `null` when the price feed isn't configured — the section self-hides.
+      .get(
+        "/api/statistics/prices",
+        ({ query, status }) =>
+          profile ? computeSpotStats(profile, windowArgs(query)) : status(503, ONBOARDING_REQUIRED),
+        { requireSession: true, query: windowQuery },
       )
   );
 }

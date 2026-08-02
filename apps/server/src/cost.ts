@@ -168,7 +168,7 @@ function rollupQueryParts(profile: InverterProfile, view: RollupView) {
  * `view` selects the rollup granularity (hourly for cost banding, daily for long
  * windows); both continuous aggregates share the same column shape.
  */
-async function fetchBucketEnergy(
+export async function fetchBucketEnergy(
   profile: InverterProfile,
   inverterId: string,
   from: Date,
