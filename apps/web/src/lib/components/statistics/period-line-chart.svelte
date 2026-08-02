@@ -48,7 +48,16 @@
 			{series}
 			{yDomain}
 			padding={axisPadding}
-			props={{ xAxis: { ticks: COST_X_TICKS[bucket] }, yAxis: { format } }}
+			props={{
+				xAxis: { ticks: COST_X_TICKS[bucket] },
+				yAxis: { format },
+				// A line is a stroke, never a fill — but the `fill: none` default for
+				// `.lc-path` ships in LayerChart's *SVG* Path component, which a
+				// canvas-only import never pulls in. Without this the renderer reads
+				// the initial `fill: black` off its style probe and floods the area
+				// the polyline encloses.
+				spline: { fill: 'none' }
+			}}
 		>
 			{#snippet tooltip()}
 				<SeriesTooltip {format} />

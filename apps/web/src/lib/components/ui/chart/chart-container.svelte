@@ -68,6 +68,12 @@
 
 		// Tick labels on th x/y axes
 		"[&_.lc-axis-tick-label]:fill-muted-foreground [&_.lc-axis-tick-label]:font-normal",
+		// LayerChart paints a 2px `light-dark(white, black)` halo behind every axis
+		// label. The `[&_text]` rule above clears it for SVG charts, but a canvas
+		// chart has no <text> node — its styles are resolved off a hidden probe
+		// <svg> that only class selectors reach — so in dark mode the halo covers
+		// the label it is meant to protect. Kill it by class as well.
+		"[&_.lc-axis-tick-label]:stroke-transparent [&_.lc-axis-label]:stroke-transparent",
 		"[&_.lc-tooltip-rects-g]:fill-transparent",
 		"[&_.lc-layout-svg-g]:fill-transparent",
 		"[&_.lc-root-container]:w-full",

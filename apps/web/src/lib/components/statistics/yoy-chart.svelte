@@ -7,6 +7,7 @@
 	import ChartLegend from '$lib/components/inverter/chart-legend.svelte';
 	import SeriesTooltip from './series-tooltip.svelte';
 	import { seriesConfig } from '$lib/components/inverter/_shared/chart-series';
+	import { canvasHighlight } from '$lib/components/inverter/_shared/canvas-highlight.svelte';
 	import { periodLabel } from '$lib/cost/ranges';
 	import type { YoyRow } from '$lib/statistics/yoy';
 
@@ -29,26 +30,33 @@
 	// would imply a second meaning. The reference year is the same colour mixed
 	// toward the surface, which keeps the pair distinguishable for every kind of
 	// colour vision (dataviz skill: lightness ordering, not hue coding).
+	//
+	// The keys are the row fields on purpose. A grouped BarChart positions each
+	// series with `x1 = series.value ?? series.key`, so an accessor *function*
+	// here would be handed to a band scale as its lookup key and every bar would
+	// land at NaN — nothing renders. Naming the field and omitting `value` keeps
+	// the lookup a string, and leaves a monthless gap null rather than a zero bar.
 	const series = $derived([
-		{
-			key: 'current',
-			label: `${year}`,
-			color,
-			value: (d: YoyRow) => d.current ?? 0
-		},
+		{ key: 'current', label: `${year}`, color },
 		{
 			key: 'previous',
 			label: `${year - 1}`,
-			color: `color-mix(in oklab, ${color} 40%, var(--color-background))`,
-			value: (d: YoyRow) => d.previous ?? 0
+			color: `color-mix(in oklab, ${color} 40%, var(--color-background))`
 		}
 	]);
 
 	const config = $derived(seriesConfig(series));
 	const data = $derived(rows.map((r) => ({ ...r, label: periodLabel(r.bucket, 'month') })));
+
+	// Canvas can't read the `.lc-highlight-area` wash off CSS; without a concrete
+	// colour the hovered month gets an opaque slab over it.
+	const highlight = canvasHighlight();
+
+	// Both bar paddings below are d3 band fractions, not pixels: `groupPadding: 1`
+	// is the degenerate maximum and collapses each pair to zero width.
 </script>
 
-<div class="flex min-w-0 flex-col gap-3">
+<div class="flex min-w-0 flex-col gap-3" bind:this={highlight.el}>
 	<Chart.Container {config} class="h-64 w-full min-w-0">
 		<BarChart
 			{data}
@@ -56,9 +64,10 @@
 			{series}
 			seriesLayout="group"
 			bandPadding={0.2}
-			groupPadding={1}
+			groupPadding={0.1}
 			padding={{ top: 8, right: 8, bottom: 20, left: 52 }}
 			props={{ xAxis: { ticks: 6 } }}
+			highlight={{ area: { fill: highlight.fill, fillOpacity: 0.1 } }}
 		>
 			{#snippet tooltip()}
 				<SeriesTooltip {format} />
