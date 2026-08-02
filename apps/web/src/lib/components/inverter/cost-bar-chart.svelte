@@ -30,25 +30,31 @@
 	// the energy-split chart: grid red = grid dependence, export blue = exported
 	// production; standing teal is its own slot (all three CVD-validated,
 	// dataviz skill).
-	type Series = { key: string; label: string; color: string; value: (d: Point) => number };
+	type Series = { key: string; label: string; color: string; value: (d: Point) => number | null };
+
+	// An empty segment is left out of the stack rather than laid out at zero
+	// height: `stackPadding` insets it by 1px per side, and the resulting negative
+	// rect height is invalid SVG — the browser rejects the bar and logs.
+	const nonZero = (v: number): number | null => (v === 0 ? null : v);
+
 	const series: Series[] = [
 		{
 			key: 'importCost',
 			label: m.chart_grid_usage(),
 			color: 'var(--color-energy-grid)',
-			value: (d) => d.importCost
+			value: (d) => nonZero(d.importCost)
 		},
 		{
 			key: 'standingCharge',
 			label: m.chart_standing_charge(),
 			color: 'var(--color-cost-standing)',
-			value: (d) => d.standingCharge
+			value: (d) => nonZero(d.standingCharge)
 		},
 		{
 			key: 'exportEarnings',
 			label: m.chart_export_earnings(),
 			color: 'var(--color-energy-export)',
-			value: (d) => -d.exportEarnings
+			value: (d) => nonZero(-d.exportEarnings)
 		}
 	];
 
