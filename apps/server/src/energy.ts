@@ -30,6 +30,7 @@ const emptyTotals = (): EnergyTotals => ({
   loadKwh: 0,
   productionKwh: 0,
   batteryDischargeKwh: 0,
+  batteryChargeKwh: 0,
 });
 
 /** Sum the delta-matrix rows into per-period {@link EnergyTotals}, zero-filled
@@ -50,6 +51,7 @@ function accumulateTotals(
     else if (field === "load") t.loadKwh += kwh;
     else if (field === "production") t.productionKwh += kwh;
     else if (field === "batteryDischarge") t.batteryDischargeKwh += kwh;
+    else if (field === "batteryCharge") t.batteryChargeKwh += kwh;
   }
   return totals;
 }

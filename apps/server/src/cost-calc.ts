@@ -16,6 +16,9 @@ export interface HourEnergy {
   /** Battery discharge counter delta — carried for the energy split only; NOT
    *  priced by {@link allocateCost} (money math never reads it). */
   batteryDischarge: number;
+  /** Battery charge counter delta — carried for the energy split only; NOT
+   *  priced by {@link allocateCost} (money math never reads it). */
+  batteryCharge: number;
 }
 
 const AVG_DAYS_PER_MONTH = 30.4375;
@@ -32,6 +35,12 @@ export interface CostTotals {
   exportKwh: number;
   loadKwh: number;
   productionKwh: number;
+  /** Battery discharge summed over the window — energy figure only, never
+   *  priced (money math ignores it); 0 when no battery-discharge role. */
+  batteryDischargeKwh: number;
+  /** Battery charge summed over the window — energy figure only, never
+   *  priced (money math ignores it); 0 when no battery-charge role. */
+  batteryChargeKwh: number;
   importCost: number;
   exportEarnings: number;
   standingCharge: number;
@@ -82,6 +91,8 @@ export function allocateCost(
   let exportKwh = 0;
   let loadKwh = 0;
   let productionKwh = 0;
+  let batteryDischargeKwh = 0;
+  let batteryChargeKwh = 0;
   let importCost = 0;
   let exportEarnings = 0;
   let gridOnlyCost = 0;
@@ -99,6 +110,8 @@ export function allocateCost(
     exportKwh += h.export;
     loadKwh += h.load;
     productionKwh += h.production;
+    batteryDischargeKwh += h.batteryDischarge;
+    batteryChargeKwh += h.batteryCharge;
     importCost += hourImportCost;
     exportEarnings += hourEarnings;
     gridOnlyCost += h.load * price;
@@ -131,6 +144,8 @@ export function allocateCost(
     exportKwh,
     loadKwh,
     productionKwh,
+    batteryDischargeKwh,
+    batteryChargeKwh,
     importCost,
     exportEarnings,
     standingCharge,
