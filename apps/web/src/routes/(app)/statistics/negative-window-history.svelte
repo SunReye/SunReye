@@ -24,7 +24,9 @@
 
 <ChartPanel
 	title={m.statistics_prices_negative_history()}
-	caption={m.statistics_prices_history_caption({ days })}
+	caption={days === 1
+		? m.statistics_prices_history_caption_one()
+		: m.statistics_prices_history_caption_other({ days })}
 >
 	<NegativeWindowList {windows} emptyLabel={m.prices_no_negative()} />
 	{#if truncated}

@@ -18,6 +18,22 @@ export function deltaFor(current: number | null, previous: number | null): numbe
   return (current - previous) / Math.abs(previous);
 }
 
+/** Past this, a percentage stops informing: "+11 780 %" only says the reference
+ *  window was near zero. The chip caps, the aria-label keeps the real figure. */
+const DELTA_CAP_PCT = 999;
+
+/**
+ * A delta as the chip renders it: an arrow for the sign and a whole percent,
+ * capped so a near-zero baseline cannot blow the tile's layout apart. Null —
+ * no usable reference — is an em-dash, which keeps the row aligned.
+ */
+export function formatDelta(delta: number | null): string {
+  if (delta === null) return "—";
+  const arrow = delta > 0 ? "▲" : "▼";
+  const pct = Math.abs(Math.round(delta * 100));
+  return pct > DELTA_CAP_PCT ? `${arrow} >${DELTA_CAP_PCT}%` : `${arrow} ${pct}%`;
+}
+
 /**
  * The window the comparison endpoint priced as the reference for `[from, to)`:
  * the adjacent same-length window, or the same calendar window a year back.

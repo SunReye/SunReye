@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { formatDelta } from '$lib/statistics/compare';
 	import * as m from '$lib/paraglide/messages';
 
 	// Signed change against the reference window. Colour follows the tile's
@@ -15,9 +16,7 @@
 	} = $props();
 
 	const up = $derived((delta ?? 0) > 0);
-	const pct = $derived(
-		delta === null ? '—' : `${up ? '▲' : '▼'} ${Math.abs(Math.round(delta * 100))}%`
-	);
+	const pct = $derived(formatDelta(delta));
 
 	// Rounding hides sub-percent moves; treat those as flat rather than
 	// colouring a "0%" chip.

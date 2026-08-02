@@ -16,7 +16,9 @@
 			<span class="flex items-baseline gap-2 border border-border px-2 py-1 text-xs tabular-nums">
 				<span class="font-mono font-medium">{w.from}–{w.to}</span>
 				<span class="text-muted-foreground">
-					{m.prices_window_detail({ slots: w.slots, min: ctLabel(w.minCtPerKwh) })}
+					{w.slots === 1
+						? m.prices_window_detail_one({ min: ctLabel(w.minCtPerKwh) })
+						: m.prices_window_detail_other({ slots: w.slots, min: ctLabel(w.minCtPerKwh) })}
 				</span>
 			</span>
 		{/each}

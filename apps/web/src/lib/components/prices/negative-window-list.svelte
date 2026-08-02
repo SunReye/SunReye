@@ -33,10 +33,12 @@
 	});
 
 	const summary = $derived(
-		m.prices_negative_summary({
-			hours: decimal(hours, 2),
-			windows: windows.length
-		})
+		windows.length === 1
+			? m.prices_negative_summary_one({ hours: decimal(hours, 2) })
+			: m.prices_negative_summary_other({
+					hours: decimal(hours, 2),
+					windows: windows.length
+				})
 	);
 </script>
 

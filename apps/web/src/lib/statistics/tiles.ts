@@ -12,7 +12,7 @@ import type { CostFormatters } from "$lib/cost/format";
 import { dayKeyDate, dayMonthYear } from "$lib/format/date";
 import { decimal } from "$lib/format/number";
 import { ctLabel, ctPerKwh } from "$lib/prices/price-series";
-import { deltaFor } from "$lib/statistics/compare";
+import { deltaFor, formatDelta } from "$lib/statistics/compare";
 import * as m from "$lib/paraglide/messages";
 
 /** Rendered face of one tile. */
@@ -199,10 +199,9 @@ export type EnergyTileData = {
  *  when there is nothing meaningful to compare against (no reference window, a
  *  zero baseline, or a change under half a percent). */
 function pctDelta(current: number, previous: number | null): string | null {
-  if (previous === null || previous === 0) return null;
-  const change = (current - previous) / previous;
-  if (Math.abs(change) < 0.005) return null;
-  return `${change > 0 ? "▲" : "▼"} ${Math.abs(Math.round(change * 100))}%`;
+  const change = deltaFor(current, previous);
+  if (change === null || Math.abs(change) < 0.005) return null;
+  return formatDelta(change);
 }
 
 /** Sub-line shared by every energy tile: the daily average, plus the delta
@@ -595,7 +594,10 @@ export const PRICE_TILES: readonly TileDef<SpotStats>[] = [
     (s) => s.negativeHours,
     (_s, summary) => ({
       value: `${decimal(summary.negativeHours)} h`,
-      sub: m.statistics_prices_sub_negative({ slots: summary.negativeSlots }),
+      sub:
+        summary.negativeSlots === 1
+          ? m.statistics_prices_sub_negative_one()
+          : m.statistics_prices_sub_negative_other({ slots: summary.negativeSlots }),
       accent: "",
     }),
     "neutral",
