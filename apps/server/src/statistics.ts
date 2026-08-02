@@ -16,9 +16,10 @@ import {
   computeCostSeries,
   currentPeriodKey,
   fetchCounterDeltaMatrix,
+  resolveRange,
 } from "./cost";
-import { accumulateTotals, emptyTotals } from "./energy";
-import { derivePeriodEnergy } from "./energy-calc";
+import { accumulateTotals, emptyTotals, energySeries } from "./energy";
+import { type PeriodEnergy, derivePeriodEnergy } from "./energy-calc";
 import { getTariff } from "./settings";
 import {
   type CompareMode,
@@ -194,6 +195,48 @@ async function energyRecords(
   const totals = accumulateTotals(rows, fieldByKey, periods);
   const days = periods.map((p) => derivePeriodEnergy(p, totals.get(p) ?? emptyTotals()));
   return { since: from.toISOString(), ...pickEnergyRecords(days) };
+}
+
+/** Today's cost + energy picture, pushed on every tick of the live stream. */
+export interface StatisticsTodayMessage {
+  type: "today";
+  /** When the snapshot was taken (ISO) — the client's freshness indicator. */
+  at: string;
+  cost: CostBreakdown;
+  energy: PeriodEnergy;
+}
+
+/**
+ * What `/ws/statistics` publishes. Exported so the web app can type its socket
+ * against the server's own union rather than restating it.
+ */
+export type StatisticsLiveMessage =
+  | StatisticsTodayMessage
+  /** A price sync stored fresh slots: everything price-derived is now stale. */
+  | { type: "prices" };
+
+/**
+ * Today's cost breakdown and energy split. Cheap by construction — 24 hourly
+ * buckets plus the live `*.today` register override — so republishing it every
+ * few seconds costs about what one dashboard read does.
+ */
+export async function todayStatistics(
+  profile: InverterProfile,
+  inverterId?: string,
+): Promise<StatisticsTodayMessage> {
+  const { from, to } = resolveRange("today");
+  const [cost, periods] = await Promise.all([
+    computeCost(profile, { from, to, inverterId }),
+    energySeries(profile, { from, to, bucket: "day", inverterId }),
+  ]);
+  return {
+    type: "today",
+    at: new Date().toISOString(),
+    cost,
+    // A day with no rollup bucket yet (just past midnight) still gets a
+    // zero-filled period, so the client never has to handle a missing split.
+    energy: periods[0] ?? derivePeriodEnergy(currentPeriodKey("day"), emptyTotals()),
+  };
 }
 
 /** Money records over the band-priceable history: the per-day cost series

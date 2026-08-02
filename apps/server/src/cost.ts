@@ -13,7 +13,6 @@
 
 import { db } from "@SunReye/db";
 import type { TariffConfig } from "@SunReye/db/tariff";
-import { importPriceForHour } from "@SunReye/db/tariff";
 import type { CanonicalRole, InverterProfile, InverterSample } from "@SunReye/inverter-core";
 import { sql } from "drizzle-orm";
 import {
@@ -22,6 +21,8 @@ import {
   type HourEnergy,
   type ZeroValueShare,
   allocateCost,
+  priceSeriesRows,
+  rollUpToMonths,
 } from "./cost-calc";
 import type { EnergyTotals } from "./energy-calc";
 import { getTariff } from "./settings";
@@ -168,7 +169,7 @@ function rollupQueryParts(profile: InverterProfile, view: RollupView) {
  * `view` selects the rollup granularity (hourly for cost banding, daily for long
  * windows); both continuous aggregates share the same column shape.
  */
-async function fetchBucketEnergy(
+export async function fetchBucketEnergy(
   profile: InverterProfile,
   inverterId: string,
   from: Date,
@@ -252,6 +253,14 @@ export interface CostSeriesPoint {
   bucket: string;
   importCost: number;
   exportEarnings: number;
+  /**
+   * Exported energy in this period that earned nothing under §51 EEG, and the
+   * feed-in revenue that cost. ALWAYS present — 0 unless the tariff is in spot
+   * mode with the `eegFeedIn` marketing model — so the chart can decide whether
+   * to shade the period without a second request.
+   */
+  zeroValueExportKwh: number;
+  zeroValueExportEur: number;
   /** Standing charge prorated to this period's overlap with the window. */
   standingCharge: number;
   /** `importCost − exportEarnings + standingCharge` — the all-in cost of the
@@ -464,46 +473,33 @@ function standingByPeriod(
  * Total cost per period ([from, to), one point per `bucket`), tariff-band
  * accurate and zero-filled. Reads the bounded {@link fetchCounterDeltaMatrix}
  * from the hourly rollups (hour-of-day is needed for time-of-use banding), then
- * prices each import group at its (hour, weekday) band and each export group at
- * the feed-in rate in JS — exactly as {@link allocateCost} would per hour,
- * without shipping every hour across the wire. The monthly standing charge is
- * prorated into each period so a bar is the period's all-in cost.
+ * prices the groups in JS via {@link priceSeriesRows} — exactly as
+ * {@link allocateCost} would per hour, without shipping every hour across the
+ * wire. The monthly standing charge is prorated into each period so a bar is
+ * the period's all-in cost.
+ *
+ * Under §51 the export side needs the row's real wall-clock hour, which
+ * `(period, hod)` only pins for the hour and day buckets. So a month request
+ * runs the matrix at DAY granularity and rolls the priced days up — the same
+ * bars, priced where the hour is knowable.
  */
 export async function computeCostSeries(
   profile: InverterProfile,
   opts: { from: Date; to: Date; bucket: CostBucket; inverterId?: string },
 ): Promise<CostSeriesPoint[]> {
+  const tariff = await getTariff();
+  const zeroValueShare = await zeroValueShareFor(tariff, opts.from, opts.to);
+  const rollUp = zeroValueShare !== undefined && opts.bucket === "month";
+  const bucket = rollUp ? "day" : opts.bucket;
+
   const { rows, fieldByKey, periods } = await fetchCounterDeltaMatrix(profile, {
     ...opts,
+    bucket,
     view: "hourly_rollups",
   });
-  const tariff = await getTariff();
-  const standing = standingByPeriod(opts.from, opts.to, opts.bucket, tariff.standingChargeMonthly);
-  const byKey = new Map<string, CostSeriesPoint>(
-    periods.map((b) => {
-      const standingCharge = standing.get(b) ?? 0;
-      return [
-        b,
-        { bucket: b, importCost: 0, exportEarnings: 0, standingCharge, net: standingCharge },
-      ];
-    }),
-  );
-
-  for (const r of rows) {
-    // Only import/export flows carry money; load/production rows are ignored here.
-    const field = fieldByKey.get(r.metric);
-    if (field !== "import" && field !== "export") continue;
-    const point = byKey.get(r.period);
-    if (!point) continue; // outside the zero-filled window (edge rounding) → ignore
-    const kwh = Number(r.kwh);
-    if (field === "import") {
-      point.importCost += kwh * importPriceForHour(tariff, Number(r.hod), Number(r.dow));
-    } else {
-      point.exportEarnings += kwh * tariff.export.feedInPerKwh;
-    }
-    point.net = point.importCost - point.exportEarnings + point.standingCharge;
-  }
-  return [...byKey.values()];
+  const standing = standingByPeriod(opts.from, opts.to, bucket, tariff.standingChargeMonthly);
+  const points = priceSeriesRows(rows, fieldByKey, periods, tariff, standing, zeroValueShare);
+  return rollUp ? rollUpToMonths(points) : points;
 }
 
 /**
@@ -565,10 +561,13 @@ function reportLiveTodayTotals(totals: CostTotals, today: Partial<EnergyTotals>)
  * actually in spot mode under the `eegFeedIn` marketing model. A plant that
  * never opted in pays for no price lookup and its figures are unchanged.
  *
- * Built on the *hourly* path deliberately. `fetchCounterDeltaMatrix` groups by
- * (period, hour-of-day, weekday), which collapses "14:00 on the 3rd" and "14:00
- * on the 17th" into one bucket — there is no single spot price to apply to that,
- * and the error would be unbounded rather than a rounding.
+ * Keyed by real wall-clock hour, which is what every caller must supply.
+ * `fetchCounterDeltaMatrix` groups by (period, hour-of-day, weekday), and at
+ * the MONTH bucket that collapses "14:00 on the 3rd" and "14:00 on the 17th"
+ * into one row — there is no single spot price to apply to that, and the error
+ * would be unbounded rather than a rounding. At the hour and day buckets the
+ * pair pins one real hour, so {@link computeCostSeries} prices them directly
+ * and drops a month request to day granularity before rolling up.
  */
 async function zeroValueShareFor(
   tariff: TariffConfig,
