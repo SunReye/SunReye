@@ -33,8 +33,9 @@
 	type Series = { key: string; label: string; color: string; value: (d: Point) => number | null };
 
 	// An empty segment is left out of the stack rather than laid out at zero
-	// height: `stackPadding` insets it by 1px per side, and the resulting negative
-	// rect height is invalid SVG — the browser rejects the bar and logs.
+	// height, so the tooltip doesn't carry a "0.00 €" row for a series that had
+	// nothing in the period. (Segments too SHORT to survive `stackPadding` are a
+	// layerchart issue, fixed in patches/layerchart@2.0.1.patch.)
 	const nonZero = (v: number): number | null => (v === 0 ? null : v);
 
 	const series: Series[] = [

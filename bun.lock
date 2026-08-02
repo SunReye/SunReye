@@ -187,6 +187,7 @@
   },
   "patchedDependencies": {
     "svelte@5.56.4": "patches/svelte@5.56.4.patch",
+    "layerchart@2.0.1": "patches/layerchart@2.0.1.patch",
   },
   "catalog": {
     "@better-auth/api-key": "1.6.22",
