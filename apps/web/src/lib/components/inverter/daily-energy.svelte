@@ -7,6 +7,7 @@
 	import type { CanonicalRole, ManifestMetric } from '$lib/inverter/types';
 	import { inverter } from '$lib/inverter/store.svelte';
 	import { api } from '$lib/api';
+	import { payloadOrNull } from '$lib/api-payload';
 	import * as m from '$lib/paraglide/messages';
 	import EnergyDetailDialog from './energy-detail-dialog.svelte';
 	import EnergyHeadline from './_shared/energy-headline.svelte';
@@ -54,7 +55,7 @@
 		let stop = false;
 		const load = async () => {
 			const { data } = await api.api.cost.get({ query: { range: 'today' } });
-			if (!stop) cost = (data as CostToday | null) ?? null;
+			if (!stop) cost = payloadOrNull<CostToday>(data);
 		};
 		load();
 		const id = setInterval(load, 60 * 1000);

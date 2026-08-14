@@ -4,6 +4,31 @@
 
 Keep this root `AGENTS.md` routing-only.
 
+## TDD is mandatory
+
+This code writes registers on grid-tied inverters and batteries. Behaviour ships with the
+test that proves it, written first:
+
+1. Write the failing test. 2. Run it, see it fail. 3. Write the smallest code that turns it
+green.
+
+- Never write implementation before the test that names the behaviour.
+- Never mark work done on an unrun suite: `bun run test` (whole repo, seconds).
+- A commit is blocked by a red suite; a PR is blocked when source changed and no test did
+  (CI job **Tests required**) or when coverage falls (`scripts/coverage-floor.ts`).
+- Cover boundaries, not just the happy path: zero and negative values, absent and empty
+  payloads, stale readings across midnight, partial windows, counter restarts.
+- If logic is hard to test because it lives inside a component, extract it. That extraction
+  is part of the change, not a follow-up.
+- Exemptions to the "a test changed with it" rule live in `scripts/require-tests.ts` and are
+  themselves tested. There is no skip flag.
+- `mock.module` is process-global and permanent. ALWAYS spread the real module
+  (`const real = await import("./x"); mock.module("./x", () => ({ ...real, stubbed }))`) —
+  a partial mock deletes the other exports for every test file that runs afterwards and
+  breaks them at import, order-dependently. Enforced by `bun run test:mocks`.
+
+Full rationale: `CONTRIBUTING.md` §6. Frontend specifics: `apps/web/TESTING.md`.
+
 Load `caveman` skill at start of every session.
 
 Load relevant repo-local skills from `.agents/skills/` when matching work:

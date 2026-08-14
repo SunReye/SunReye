@@ -6,9 +6,16 @@ import { Elysia } from "elysia";
 let publicDashboard = false;
 let session: { user: { role: string } } | null = null;
 
+// Spread the real module: mock.module is process-global and permanent, so a
+// factory returning only what this suite needs deletes the other exports for
+// every test file that runs after it (see scripts/mock-hygiene.ts).
+const realAccessSettings = await import("../settings/access-settings");
+
 mock.module("../settings/access-settings", () => ({
+  ...realAccessSettings,
   isPublicDashboard: async () => publicDashboard,
 }));
+// mock-hygiene-ignore-next-line -- importing the real module boots Better Auth, which reads env and a database; avoiding that is the whole point of mocking it here. `auth` is its only export the server imports.
 mock.module("@SunReye/auth", () => ({
   auth: { api: { getSession: async () => session } },
 }));

@@ -4,6 +4,7 @@
 	import { onMount } from 'svelte';
 	import SlidersHorizontal from 'phosphor-svelte/lib/SlidersHorizontal';
 	import { api } from '$lib/api';
+	import { payloadOrNull } from '$lib/api-payload';
 	import * as m from '$lib/paraglide/messages';
 	import { Button } from '$lib/components/ui/button';
 	import CostRangePicker from '$lib/components/inverter/cost-range-picker.svelte';
@@ -56,7 +57,7 @@
 			if (cancelled) return;
 			// usableComparison also drops a reference window that predates recorded
 			// history, so a first-month household never reads a fake −100%.
-			const pair = usableComparison((data as ComparisonResponse) ?? null, reference);
+			const pair = usableComparison(payloadOrNull<ComparisonResponse>(data), reference);
 			cost = pair.current;
 			previous = pair.previous;
 			loading = false;

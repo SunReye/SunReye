@@ -29,11 +29,23 @@ class FakeClient extends EventEmitter {
 
 let fake = new FakeClient();
 
+// `mock.module` is PROCESS-GLOBAL and permanent: every test file that runs
+// after this one sees these modules too. A mock that returns only the exports
+// this suite happens to need therefore DELETES the rest for everyone — a later
+// file importing ./runtime died with "Export named 'getInverterConfig' not
+// found in module config.ts", which also took down that file's own mock
+// registrations and failed four unrelated tests. Spread the real module and
+// override only what this suite stubs.
+const realConfig = await import("../settings/config");
+const realEvccSettings = await import("../settings/evcc-settings");
+
 mock.module("mqtt", () => ({ default: { connect: () => fake } }));
 mock.module("../settings/config", () => ({
+  ...realConfig,
   getMqttConfig: async () => ({ brokerUrl: "mqtt://broker.test:1883" }),
 }));
 mock.module("../settings/evcc-settings", () => ({
+  ...realEvccSettings,
   getEvccConfig: async () => ({ enabled: true, topicRoot: "evcc", subtractFromHome: false }),
 }));
 

@@ -11,6 +11,7 @@
 
 import type { SpotStats } from "server/src/statistics/spot-stats";
 import { api } from "$lib/api";
+import { payloadOrNull } from "$lib/api-payload";
 
 class SpotStatsStore {
   /** The current window's analytics; null when the feed is unconfigured. */
@@ -38,7 +39,7 @@ class SpotStatsStore {
     this.#key = key;
     void api.api.statistics.prices.get({ query }).then(({ data }) => {
       if (this.#key !== key) return;
-      this.stats = (data as SpotStats | null) ?? null;
+      this.stats = payloadOrNull<SpotStats>(data);
       this.loaded = true;
     });
   }

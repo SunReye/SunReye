@@ -1,4 +1,5 @@
 import { api } from "$lib/api";
+import { payloadOrNull } from "$lib/api-payload";
 
 /** `timeZone` sentinel meaning "follow the viewer's system zone". */
 export const TIME_ZONE_AUTO = "auto";
@@ -97,7 +98,7 @@ class DisplayStore {
   async save(next: DisplayConfig): Promise<boolean> {
     const { data, error } = await api.api.settings.display.put(next);
     if (error) return false;
-    this.config = (data as DisplayConfig | null) ?? next;
+    this.config = payloadOrNull<DisplayConfig>(data) ?? next;
     return true;
   }
 }

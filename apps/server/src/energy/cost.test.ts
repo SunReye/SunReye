@@ -8,9 +8,18 @@ import { describe, expect, mock, test } from "bun:test";
 //
 // `fetchBucketEnergy` runs two queries — the pre-window baseline, then the
 // in-window buckets — so the stub answers from a queue in that order.
+//
+// The spreads below are load-bearing: `mock.module` is process-global and
+// permanent, so a mock returning only the exports THIS suite needs deletes the
+// rest for every test file that runs after it. Override what is stubbed, keep
+// everything else real.
+const realDb = await import("@SunReye/db");
+const realSettings = await import("../settings/settings");
+const realState = await import("../shared/state");
+
 let queryResults: Array<Array<Record<string, unknown>>> = [];
 const execute = mock(async () => ({ rows: queryResults.shift() ?? [] }));
-mock.module("@SunReye/db", () => ({ db: { execute } }));
+mock.module("@SunReye/db", () => ({ ...realDb, db: { execute } }));
 
 // Flat 0.30/kWh so the money in a computeCost result is readable by eye. The
 // standing charge is 0 unless a test swaps `tariff` for one that has it.
@@ -21,12 +30,12 @@ const flatTariff: TariffConfig = tariffConfigSchema.parse({
   export: { feedInPerKwh: 0.08 },
 });
 let tariff: TariffConfig = flatTariff;
-mock.module("../settings/settings", () => ({ getTariff: async () => tariff }));
+mock.module("../settings/settings", () => ({ ...realSettings, getTariff: async () => tariff }));
 
 // computeCost reads the poll cache directly (its `sample` argument is only
 // injectable one level down), so the cache itself is the stand-in.
 const liveState: { latest: InverterSample | null } = { latest: null };
-mock.module("../shared/state", () => ({ liveState }));
+mock.module("../shared/state", () => ({ ...realState, liveState }));
 
 const { computeCost, computeCostSeries, fetchBucketEnergy, liveTodayTotals } =
   await import("./cost");

@@ -47,13 +47,33 @@ function cacheDirFor(url: string): string {
   return join(CACHE_ROOT, createHash("sha256").update(url).digest("hex").slice(0, 16));
 }
 
+/**
+ * Ambient git plumbing variables. When they are set — anything launched from a
+ * git hook exports them — every `git` we spawn is redirected at THAT repository
+ * regardless of `cwd`, so a clone into the profile cache fails with "does not
+ * appear to be a git repository" and a commit would land somewhere nobody asked
+ * for. We always operate on our own cache dir, so they are never wanted.
+ */
+const AMBIENT_GIT_ENV =
+  /^GIT_(DIR|WORK_TREE|INDEX_FILE|PREFIX|COMMON_DIR|OBJECT_DIRECTORY|NAMESPACE)$/;
+
+/** `env` minus the ambient plumbing, with unset keys dropped. */
+// fallow-ignore-next-line unused-export -- asserted by git-source.test.ts, which also reuses it for its own fixture; test files aren't traced as consumers
+export function cleanGitEnv(env: Record<string, string | undefined>): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [key, value] of Object.entries(env)) {
+    if (value !== undefined && !AMBIENT_GIT_ENV.test(key)) out[key] = value;
+  }
+  return out;
+}
+
 /** Run a git subcommand with a hard timeout; throws on non-zero exit. */
 async function git(args: string[], cwd?: string): Promise<void> {
   const proc = Bun.spawn(["git", ...args], {
     cwd,
     stdout: "pipe",
     stderr: "pipe",
-    env: { ...process.env, GIT_TERMINAL_PROMPT: "0" }, // never block on a credential prompt
+    env: { ...cleanGitEnv(process.env), GIT_TERMINAL_PROMPT: "0" }, // never block on a credential prompt
   });
   const timer = setTimeout(() => proc.kill(), GIT_TIMEOUT_MS);
   try {

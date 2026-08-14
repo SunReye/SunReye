@@ -10,7 +10,7 @@
     "dev": "while true; do bun run --watch src/index.ts; [ $? -eq 75 ] || break; done",
     "start": "bun run dist/index.mjs",
     "preview": "bun run dist/index.mjs",
-    "test": "bun test src"
+    "test": "SKIP_ENV_VALIDATION=1 bun test ./src"
   },
   "dependencies": {
     "@SunReye/auth": "workspace:*",
