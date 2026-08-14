@@ -24,19 +24,41 @@ name: Docker · addon beta
 # need_update in supervisor/apps/app.py), so a differing version is enough —
 # and because the beta is its own slug, its versions are only ever compared
 # with other betas anyway.
+#
+# Runs on `dev`, but can be dispatched against ANY branch to try one feature on
+# real hardware before integrating it — the beta store entry then serves that
+# branch's image until the next `dev` push takes it back. The version's sha
+# identifies which commit it came from, and the publish commit names the branch.
 on:
   push:
     branches: [dev]
+    # Nothing here reaches the image or the addon manifest, and a beta build
+    # costs ~10 minutes. `sunreye/**` is deliberately NOT ignored: its DOCS.md
+    # and config.yaml are copied into the beta manifest.
+    paths-ignore:
+      - "apps/docs/**"
+      - "plans/**"
+      - ".claude/**"
+      - "README.md"
+      - "AGENTS.md"
+      - "CLAUDE.md"
+      - "TODO.md"
+      - "DEVTOOLS.md"
   workflow_dispatch:
+  # Daily aarch64 build-only check (see the `arm-check` job) — the per-push beta
+  # is amd64, so ARM-only breakage would otherwise surface at release.
+  schedule:
+    - cron: "17 4 * * *"
 
 permissions:
   contents: read
   packages: write
 
 # A newer push to `dev` supersedes an in-flight beta — the older image would
-# only be published as a version nobody wants to install.
+# only be published as a version nobody wants to install. Keyed by event so the
+# nightly ARM check can never cancel a beta that someone is waiting on.
 concurrency:
-  group: docker-addon-beta
+  group: docker-addon-beta-${{ github.event_name }}
   cancel-in-progress: true
 
 env:
@@ -45,6 +67,9 @@ env:
 jobs:
   build:
     name: Build & push (amd64)
+    # The nightly schedule exists only for arm-check; it must not publish a beta
+    # that nobody asked for.
+    if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.v.outputs.version }}
@@ -149,7 +174,15 @@ jobs:
             --head=${{ github.sha }}
 
       # `chore` so release-please never treats a beta as releasable work, and
-      # [skip ci] because only generated files under sunreye-beta/ changed.
+      # [skip ci] because only generated files under sunreye-beta/ changed. The
+      # source ref is named in the subject so master's history says which branch
+      # each beta came from — betas can be dispatched from any branch, not just
+      # `dev`.
+      #
+      # Rebases before pushing: master can advance between this job's checkout
+      # and its push (another merge, or a release), and a rejected push would
+      # fail the beta after its image was already built and tagged. Only
+      # generated files under sunreye-beta/ are involved, so a rebase is safe.
       - name: Commit to master
         run: |
           git config user.name 'github-actions[bot]'
@@ -159,12 +192,24 @@ jobs:
             exit 0
           fi
           git add sunreye-beta
-          git commit -m "chore(addon-beta): publish ${{ needs.build.outputs.version }} [skip ci]"
-          git push origin HEAD:master
+          git commit -m "chore(addon-beta): publish ${{ needs.build.outputs.version }} from ${{ github.ref_name }} [skip ci]"
+
+          for attempt in 1 2 3; do
+            git pull --rebase --quiet origin master || {
+              echo "rebase onto master failed"
+              exit 1
+            }
+            if git push origin HEAD:master; then
+              exit 0
+            fi
+            echo "push rejected (master moved) — retrying ($attempt/3)"
+          done
+          echo "could not publish the manifest after 3 attempts"
+          exit 1
 
       - name: Summary
         run: |
-          echo "Beta \`${{ needs.build.outputs.version }}\` is live." >> "$GITHUB_STEP_SUMMARY"
+          echo "Beta \`${{ needs.build.outputs.version }}\` is live, built from \`${{ github.ref_name }}\`." >> "$GITHUB_STEP_SUMMARY"
           echo "In Home Assistant: Settings → Add-ons → SunReye (beta) → Update." >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "If the store still shows the old version, ⋮ → Check for updates." >> "$GITHUB_STEP_SUMMARY"
@@ -238,3 +283,61 @@ jobs:
             gh api -X DELETE "/$found/$owner/packages/container/$PACKAGE/versions/$id" || \
               echo "  could not delete $id (a PAT with delete:packages may be needed)"
           done
+
+  # Betas are amd64, so an aarch64-only break — a native module that has no ARM
+  # prebuild, a base image that diverges — would stay invisible until the
+  # release build compiles every arch. This builds dev for aarch64 once a day
+  # purely to find that out, and pushes nothing: the beta store entry stays
+  # amd64-only, and this exists to go red, not to ship.
+  arm-check:
+    name: aarch64 build check (no push)
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    steps:
+      # Scheduled runs are always dispatched against the default branch, so
+      # `dev` has to be requested explicitly.
+      - uses: actions/checkout@v4
+        with:
+          ref: dev
+
+      # Same guard as docker-addon.yml's nightly: emulated ARM builds are slow,
+      # so don't spend one re-proving an unchanged branch.
+      - name: Skip when dev has not moved in 24h
+        id: check
+        run: |
+          if [ "$(git log -1 --format=%ct)" -ge "$(( $(date +%s) - 86400 ))" ]; then
+            echo "build=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "no commits on dev since the last check — skipping"
+          fi
+
+      - name: Resolve base image
+        if: steps.check.outputs.build == 'true'
+        id: base
+        run: echo "build_from=$(yq -r '.build_from.aarch64' sunreye/build.yaml)" >> "$GITHUB_OUTPUT"
+
+      - name: Set up QEMU
+        if: steps.check.outputs.build == 'true'
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Buildx
+        if: steps.check.outputs.build == 'true'
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build only
+        if: steps.check.outputs.build == 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: sunreye/Dockerfile
+          platforms: linux/arm64
+          push: false
+          build-args: |
+            BUILD_FROM=${{ steps.base.outputs.build_from }}
+            BUILD_ARCH=aarch64
+            BUILD_VERSION=arm-check
+          # Shares the release build's aarch64 cache, which is the only other
+          # place ARM layers are produced.
+          cache-from: type=gha,scope=addon-aarch64
+          cache-to: type=gha,mode=max,scope=addon-aarch64
+          provenance: false

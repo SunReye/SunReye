@@ -131,7 +131,14 @@ the version PR and the Docker/addon images build from the release tag.
 
 **Merge the `dev` → `master` PR with a merge commit, never a squash.** release-please
 builds the changelog from the individual conventional commits; squashing the release PR
-collapses a whole release into one subject line and loses it.
+collapses a whole release into one subject line and loses it. Nothing enforces this —
+squash stays enabled for feature PRs into `dev`, and GitHub cannot set the merge strategy
+per base branch.
+
+Merging master back into `dev` is automatic (`.github/workflows/sync-dev.yml`), because
+`dev` running behind master fails quietly: the beta workflow and its scripts execute from
+the pushed branch's checkout, so a fix on master does nothing for betas until `dev` has it.
+On a genuine conflict the workflow stops and asks you to merge locally.
 
 ### Beta addon channel
 
@@ -150,6 +157,13 @@ installed one. Superseded beta tags are pruned from GHCR, keeping the newest few
 The beta's Changelog tab lists the unreleased commits it contains — grouped and formatted
 exactly as release-please will render them at release time — above the released history
 carried over from `sunreye/CHANGELOG.md`.
+
+To try a single feature branch on real hardware before integrating it, dispatch
+**Docker · addon beta** against that branch (Actions → Run workflow → pick the branch). The
+beta entry serves that image until the next `dev` push takes it back; the version's sha and
+the publish commit both record where it came from. Changes that cannot affect the image
+(docs, plans) don't trigger a build, and a daily job compiles `dev` for aarch64 without
+pushing, so ARM-only breakage surfaces before release rather than during it.
 
 It installs alongside the stable addon and keeps its own `/data` and its own embedded
 postgres, so a beta cannot touch production data. It ships `boot: manual` on purpose: most

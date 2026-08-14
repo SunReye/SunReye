@@ -1,0 +1,73 @@
+---
+name: Sync dev
+
+# Merge master back into `dev` whenever master moves.
+#
+# `dev` must contain master, or the beta channel silently runs stale logic: the
+# beta workflow and its scripts execute from the checkout of the branch that was
+# pushed, so a fix merged to master does nothing for betas until dev has it.
+# That backmerge was a manual step, and the failure mode is quiet — betas keep
+# building, just with the old code.
+#
+# The beta publish commits do NOT re-trigger this: they are pushed with
+# GITHUB_TOKEN, and GitHub suppresses workflow runs for events made by that
+# token. That is also why the beta build has to be dispatched explicitly below —
+# pushing `dev` from here would otherwise trigger nothing (the same reason
+# release-please.yml dispatches the Docker builds itself).
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: write
+
+# Never cancel a merge mid-flight; queue instead.
+concurrency:
+  group: sync-dev
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    name: Merge master into dev
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Merge and push
+        id: merge
+        run: |
+          if ! git show-ref --verify --quiet refs/remotes/origin/dev; then
+            echo "no dev branch — nothing to sync"
+            exit 0
+          fi
+
+          if git merge-base --is-ancestor origin/master origin/dev; then
+            echo "dev already contains master — nothing to sync"
+            exit 0
+          fi
+
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git checkout dev
+
+          # A conflict needs a human: resolving it unattended would be guessing
+          # at which side of a real disagreement should win.
+          if ! git merge --no-edit origin/master; then
+            git merge --abort
+            echo "::error::master and dev conflict — merge master into dev locally and push"
+            exit 1
+          fi
+
+          git push origin dev
+          echo "synced=true" >> "$GITHUB_OUTPUT"
+
+      # dev changed, so the beta is out of date with it.
+      - name: Build a beta from the updated dev
+        if: steps.merge.outputs.synced == 'true'
+        run: gh workflow run docker-addon-beta.yml --repo "$GITHUB_REPOSITORY" --ref dev
