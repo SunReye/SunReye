@@ -15,26 +15,12 @@
 
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { categoryRank } from "./lib/changelog-categories.mjs";
 
 const ROOT = process.cwd();
 const SERVER_CHANGELOG = join(ROOT, "CHANGELOG.md");
 const WEB_CHANGELOG = join(ROOT, "apps/web/CHANGELOG.md");
 const ADDON_CHANGELOG = join(ROOT, "sunreye/CHANGELOG.md");
-
-// conventional-changelog section order; unknown sections sort after these.
-const CATEGORY_ORDER = [
-  "⚠ BREAKING CHANGES",
-  "Features",
-  "Bug Fixes",
-  "Performance Improvements",
-  "Reverts",
-  "Documentation",
-  "Code Refactoring",
-  "Tests",
-  "Build System",
-  "Continuous Integration",
-  "Miscellaneous Chores",
-];
 
 // The linked-versions placeholder carries no information — never surface it.
 const PLACEHOLDER_BULLET = /Synchronize .*versions/i;
@@ -109,11 +95,6 @@ function mergeCategories(maps) {
     }
   }
   return merged;
-}
-
-function categoryRank(category) {
-  const index = CATEGORY_ORDER.indexOf(category);
-  return index === -1 ? Number.MAX_SAFE_INTEGER : index;
 }
 
 /** Non-empty categories in conventional-changelog order. */
