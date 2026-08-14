@@ -98,3 +98,12 @@ Upgrades are designed to be boring:
   plain-HTTP Home Assistant.
 - **Watchdog restarts**: `/healthz` (through the ingress port) fails when the
   database stops answering; look at the database log lines first.
+- **Spikes in computed metrics (efficiency, self-consumption)**: the registers
+  feeding a computed metric are sampled in one spanning Modbus read so they all
+  reflect the same instant; that read also touches the unmapped register
+  addresses between them. Two limitations: (a) a device that rejects such a
+  read (illegal data address) automatically falls back to split reads — visible
+  as a warning in the log; (b) input registers more than 120 apart can never
+  share a transaction (Modbus caps a single read). In both cases the inputs are
+  sampled milliseconds apart, so a fast power swing between those reads can/will
+  produce a transient spike in the computed value for one sample.
