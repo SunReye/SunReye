@@ -8,7 +8,7 @@
     ".": "./src/index.ts"
   },
   "scripts": {
-    "test": "bun test src"
+    "test": "bun test ./src"
   },
   "dependencies": {
     "@logtape/logtape": "^2.2.3",
