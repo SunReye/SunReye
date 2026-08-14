@@ -12,15 +12,22 @@ name: Docker · addon beta
 # and only then does `publish` advance the version the Supervisor reads. The
 # Supervisor pulls `<image>:<version>`, so naming a version whose tag does not
 # exist yet turns the addon's Update button into a pull failure.
+#
+# Versions are `beta.<YYYYMMDD>-<short sha>`, the scheme evcc uses for its own
+# nightly addon (evcc-io/evcc .github/workflows/nightly.yml). Deliberately NOT
+# semver: a beta cannot know whether the release it leads to will be a major, a
+# minor, or a patch, and any guess is a version string that lies. The date plus
+# the commit says exactly what this image is instead.
+#
+# Ordering does not matter here, which is what makes the scheme safe. The
+# Supervisor offers an update on `self.version != self.latest_version` (see
+# need_update in supervisor/apps/app.py), so a differing version is enough —
+# and because the beta is its own slug, its versions are only ever compared
+# with other betas anyway.
 on:
   push:
     branches: [dev]
   workflow_dispatch:
-    inputs:
-      base_version:
-        description: "Release this beta leads up to (default: next minor after the last release)"
-        type: string
-        required: false
 
 permissions:
   contents: read
@@ -44,19 +51,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # `dev` has not been released, so its manifest still carries the last
-      # released version. The beta leads up to the NEXT minor, and
-      # run_number gives a counter that always increases (and never repeats
-      # after a re-run), so awesomeversion sorts betas in build order and
-      # sorts all of them below the final release.
+      # Date + commit, so the version names the code it contains rather than a
+      # release number nobody can know yet.
       - name: Resolve beta version
         id: v
         run: |
-          base='${{ inputs.base_version }}'
-          if [ -z "$base" ]; then
-            base=$(awk -F. '/^[0-9]/ {printf "%d.%d.0", $1, $2 + 1}' sunreye/version.txt)
-          fi
-          echo "version=${base}-beta.${{ github.run_number }}" >> "$GITHUB_OUTPUT"
+          short_sha=$(echo "${{ github.sha }}" | cut -c 1-7)
+          echo "version=beta.$(date -u +%Y%m%d)-${short_sha}" >> "$GITHUB_OUTPUT"
 
       - name: Resolve base image
         id: base
@@ -80,9 +81,13 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.REGISTRY }}/${{ github.repository }}-addon-amd64
+          # The immutable tag is what the Supervisor pulls; the moving `beta`
+          # tag is for docker-compose users who just want "latest beta" (evcc
+          # publishes its `nightly` pair the same way). No separate short-sha
+          # tag — the version already carries the sha.
           tags: |
             type=raw,value=${{ steps.v.outputs.version }}
-            type=sha,format=short
+            type=raw,value=beta
 
       - name: Build & push
         uses: docker/build-push-action@v6
@@ -153,3 +158,73 @@ jobs:
           echo "In Home Assistant: Settings → Add-ons → SunReye (beta) → Update." >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "If the store still shows the old version, ⋮ → Check for updates." >> "$GITHUB_STEP_SUMMARY"
+
+  # One immutable image per push to `dev` would otherwise pile up in GHCR
+  # forever, so keep only the newest few (evcc prunes its `nightly.*` tags the
+  # same way). Runs after `publish` so the version the manifest now names is
+  # always among the survivors.
+  #
+  # Never fatal: a pruning failure must not turn a successful beta red, and
+  # deleting package versions is the one step whose permissions may need a PAT
+  # rather than GITHUB_TOKEN.
+  prune:
+    name: Prune superseded beta tags
+    needs: publish
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    permissions:
+      packages: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      PACKAGE: sunreye-addon-amd64
+      KEEP: "3"
+    steps:
+      - name: Delete all but the newest beta.* versions
+        run: |
+          owner='${{ github.repository_owner }}'
+
+          # The packages API is owner-type specific and the repository owner may
+          # be either, so try both rather than hardcoding one. Keep gh out of a
+          # pipeline here — piping would test jq's exit status, not gh's, and
+          # the fallback would never fire.
+          found=""
+          for scope in orgs users; do
+            if gh api "/$scope/$owner/packages/container/$PACKAGE/versions" \
+                 --paginate > raw.json 2>/dev/null; then
+              found="$scope"
+              echo "listed versions via /$scope/$owner"
+              break
+            fi
+          done
+
+          if [ -z "$found" ]; then
+            echo "could not list package versions — skipping prune"
+            exit 0
+          fi
+
+          # --paginate emits one array per page; slurp them into a flat list.
+          jq -s 'add' raw.json > versions.json
+
+          # Only versions whose tags are ALL beta.* are eligible: a digest that
+          # also carries `latest` or a release tag is shared with a release
+          # build, and deleting it would break the stable addon. This also
+          # protects the current beta for free — it still carries the moving
+          # `beta` tag, which is not a `beta.` match.
+          ids=$(jq -r --argjson keep "$KEEP" '
+            [ .[]
+              | select((.metadata.container.tags | length) > 0)
+              | select(all(.metadata.container.tags[]; startswith("beta.")))
+            ]
+            | sort_by(.created_at) | reverse | .[$keep:] | .[].id
+          ' versions.json) || ids=""
+
+          if [ -z "$ids" ]; then
+            echo "nothing to prune"
+            exit 0
+          fi
+
+          for id in $ids; do
+            echo "deleting version $id"
+            gh api -X DELETE "/$found/$owner/packages/container/$PACKAGE/versions/$id" || \
+              echo "  could not delete $id (a PAT with delete:packages may be needed)"
+          done

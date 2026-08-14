@@ -7,11 +7,11 @@
 // with stable: its own /data, its own embedded postgres, so testing a beta
 // never touches the production addon's database.
 //
-// The Supervisor pulls `<image>:<version>`, which is why the moving `beta`
-// docker tag is useless here — every beta needs a real, unique tag, and
+// The Supervisor pulls `<image>:<version>`, which is why a moving docker tag
+// cannot drive addon updates — every beta needs its own immutable tag, and
 // `version` in config.yaml must name it. docker-addon-beta.yml builds
-// `<next-minor>-beta.<run_number>` on each push to `dev` and then runs this
-// script on master to publish it.
+// `beta.<YYYYMMDD>-<short sha>` on each push to `dev` and then runs this script
+// on master to publish it.
 //
 // Everything under sunreye-beta/ is DERIVED — never hand-edit it. Only
 // config.yaml is transformed (name/slug/version/arch/panel/boot); the docs,
