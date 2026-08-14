@@ -147,6 +147,10 @@ or a patch. The date and commit say what the image actually is. Ordering does no
 the Supervisor offers an update whenever the published version simply *differs* from the
 installed one. Superseded beta tags are pruned from GHCR, keeping the newest few.
 
+The beta's Changelog tab lists the unreleased commits it contains — grouped and formatted
+exactly as release-please will render them at release time — above the released history
+carried over from `sunreye/CHANGELOG.md`.
+
 It installs alongside the stable addon and keeps its own `/data` and its own embedded
 postgres, so a beta cannot touch production data. It ships `boot: manual` on purpose: most
 inverters accept a single Modbus TCP connection at a time, so stop the stable addon (or run

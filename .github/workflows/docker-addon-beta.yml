@@ -138,6 +138,16 @@ jobs:
       - name: Restore master's stable manifest
         run: git restore --source=HEAD -- sunreye/
 
+      # After the restore, so the released history comes from master's
+      # changelog — that is the authoritative one, and dev may not have had a
+      # release merged back into it yet. The unreleased section is read from
+      # git, so it still describes dev.
+      - name: Write the beta changelog
+        run: |
+          node scripts/beta-changelog.mjs \
+            --version=${{ needs.build.outputs.version }} \
+            --head=${{ github.sha }}
+
       # `chore` so release-please never treats a beta as releasable work, and
       # [skip ci] because only generated files under sunreye-beta/ changed.
       - name: Commit to master
