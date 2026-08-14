@@ -19,6 +19,10 @@
 // needed because config.yaml sets `image:`, so the Supervisor pulls the
 // prebuilt image instead of building anything locally.
 //
+// CHANGELOG.md is the one derived file this script does NOT own — it needs git
+// history rather than a file transform, so scripts/beta-changelog.mjs writes it
+// in the same publish step.
+//
 // Usage:
 //   node scripts/sync-beta-addon.mjs --version=1.3.0-beta.7
 //
