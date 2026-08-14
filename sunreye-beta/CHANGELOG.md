@@ -2,7 +2,7 @@
 
 ## [unreleased]
 
-Unreleased work on `dev` since 1.2.0, shipped in `beta.20260814-3b95b3a`.
+Unreleased work on `dev` since 1.2.0, shipped in `beta.20260814-d69c21f`.
 
 
 ### Features
@@ -182,6 +182,7 @@ Unreleased work on `dev` since 1.2.0, shipped in `beta.20260814-3b95b3a`.
 
 ### Continuous Integration
 
+* give the beta addon a changelog ([edd9a49](https://github.com/SunReye/SunReye/commit/edd9a494d0a58a73e0abd14601ddb19edf94bcba))
 * version betas by date and commit, and prune old beta tags ([1b74ef9](https://github.com/SunReye/SunReye/commit/1b74ef945c63f9a85b0ea4f30077da2a177cc267))
 * run checks on the dev integration branch ([9fccca4](https://github.com/SunReye/SunReye/commit/9fccca451447743e460a25a3fc9218489ba6655b))
 * build a beta addon image from the dev branch ([d87d12e](https://github.com/SunReye/SunReye/commit/d87d12e4f081740b4c51feb8acbafc39795b65c1))
