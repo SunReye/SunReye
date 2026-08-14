@@ -1,6 +1,6 @@
 /**
  * Persistence for day-ahead spot prices. Row-level read/write over the table in
- * {@link @SunReye/db/schema/spot-price}; the server (`apps/server/src/spot-price*`)
+ * {@link @SunReye/db/schema/spot-price}; the server (`apps/server/src/prices/spot-price*`)
  * owns slot geometry, completeness and every pricing formula, so this module
  * stays a thin, dependency-free data layer.
  */

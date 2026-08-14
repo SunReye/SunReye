@@ -18,4 +18,4 @@ export type {
   PeakShavingRunState,
   PeakShavingStatus,
   PlanSlot,
-} from "server/src/automation";
+} from "server/src/automation/automation";

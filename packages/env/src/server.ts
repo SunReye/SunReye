@@ -49,7 +49,7 @@ export const env = createEnv({
     LOG_LEVEL_MQTT: z.enum(["trace", "debug", "info", "warning", "error", "fatal"]).optional(),
 
     // Inverter connection settings are optional at boot: they only *seed* the
-    // DB-backed, UI-editable config on first run (see apps/server/src/config.ts
+    // DB-backed, UI-editable config on first run (see apps/server/src/settings/config.ts
     // and inverter.ts). Leave them unset to configure everything from the UI.
     //
     // Active inverter profile id (from an installed `@SunReye/inverter-*` package).

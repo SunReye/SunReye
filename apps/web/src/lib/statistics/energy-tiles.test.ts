@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { CostTotals } from "server/src/cost-calc";
+import type { CostTotals } from "server/src/energy/cost-calc";
 import { costFormatters } from "../cost/format";
 import { deriveTiles, ENERGY_TILES, type EnergyTileData } from "./tiles";
 

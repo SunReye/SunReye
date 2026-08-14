@@ -9,9 +9,9 @@ let session: { user: { role: string } } | null = null;
 // Spread the real module: mock.module is process-global and permanent, so a
 // factory returning only what this suite needs deletes the other exports for
 // every test file that runs after it (see scripts/mock-hygiene.ts).
-const realAccessSettings = await import("../access-settings");
+const realAccessSettings = await import("../settings/access-settings");
 
-mock.module("../access-settings", () => ({
+mock.module("../settings/access-settings", () => ({
   ...realAccessSettings,
   isPublicDashboard: async () => publicDashboard,
 }));

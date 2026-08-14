@@ -1,4 +1,4 @@
-import type { LogEntry } from "server/src/logging";
+import type { LogEntry } from "server/src/shared/logging";
 import { api } from "$lib/api";
 import { ReconnectingSocket } from "$lib/ws/reconnecting-socket";
 

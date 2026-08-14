@@ -9,7 +9,7 @@
  * read this, so the window is fetched once either way.
  */
 
-import type { SpotStats } from "server/src/spot-stats";
+import type { SpotStats } from "server/src/statistics/spot-stats";
 import { api } from "$lib/api";
 import { payloadOrNull } from "$lib/api-payload";
 

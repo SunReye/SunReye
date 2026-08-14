@@ -1,10 +1,10 @@
 // Period-over-period math for the statistics page: the signed change a delta
 // chip renders, and the reference window the server compared against (mirrors
-// `previousWindow` in apps/server/src/statistics-calc.ts) so the page can tell
+// `previousWindow` in apps/server/src/statistics/statistics-calc.ts) so the page can tell
 // when that window predates recorded history and the delta would be fiction.
 
-import type { CostBreakdown } from "server/src/cost-calc";
-import type { CompareMode, ComparisonResponse } from "server/src/statistics";
+import type { CostBreakdown } from "server/src/energy/cost-calc";
+import type { CompareMode, ComparisonResponse } from "server/src/statistics/statistics";
 import * as m from "$lib/paraglide/messages";
 
 /**

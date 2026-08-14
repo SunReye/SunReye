@@ -1,5 +1,5 @@
 <script lang="ts">
-	import type { RecordsResponse } from 'server/src/statistics';
+	import type { RecordsResponse } from 'server/src/statistics/statistics';
 	import { api } from '$lib/api';
 	import * as m from '$lib/paraglide/messages';
 	import RangeSwitcher from '$lib/components/inverter/range-switcher.svelte';

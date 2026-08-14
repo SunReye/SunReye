@@ -5,11 +5,11 @@ import {
   automationPlan,
   automationStatus,
   applyAutomationConfig,
-} from "../automation";
-import { getAutomationConfig, setAutomationConfig } from "../automation-settings";
-import { getActiveProfileOrNull } from "../inverter";
-import { validateAutomationEnable } from "../peak-shaving";
-import { getWeatherConfig } from "../weather-settings";
+} from "../automation/automation";
+import { getAutomationConfig, setAutomationConfig } from "../settings/automation-settings";
+import { getActiveProfileOrNull } from "../inverter/inverter";
+import { validateAutomationEnable } from "../automation/peak-shaving";
+import { getWeatherConfig } from "../settings/weather-settings";
 import { adminGuard } from "./admin-guard";
 import { attempt } from "./write-attempt";
 

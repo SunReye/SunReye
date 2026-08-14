@@ -7,7 +7,7 @@
  */
 
 import * as m from "$lib/paraglide/messages";
-import type { PriceRegime } from "server/src/price-plan";
+import type { PriceRegime } from "server/src/automation/price-plan";
 import type { BadgeVariant } from "./run-state";
 
 export const REGIME_LABEL: Record<PriceRegime, () => string> = {

@@ -8,7 +8,7 @@
 	import * as m from '$lib/paraglide/messages';
 
 	// One period of today's hourly energy — the fields the four detail charts read.
-	// Mirrors the server's PeriodEnergy (apps/server/src/energy-calc.ts).
+	// Mirrors the server's PeriodEnergy (apps/server/src/energy/energy-calc.ts).
 	type Period = {
 		bucket: string;
 		importKwh: number;

@@ -7,7 +7,7 @@ The engine today is Deye-shaped: FC3 holding registers only, `U_WORD | S_WORD | 
 - **Tier 1 (B0)**: per-metric register `space` (holding/FC3 vs input/FC4 — Sungrow, Growatt, Solis, GoodWe telemetry), `wordOrder` (`lsw` default vs `msw` — SunSpec, Huawei), new register types `S_DWORD` (signed 32-bit totals/grid power) and `F32` (IEEE-754 float — SunSpec float models).
 - **Tier 2**: SunSpec dynamic scale factors — a metric's scale read from a sunssf register at decode time (Fronius, SMA, SolarEdge).
 
-Hard constraints: fully backward compatible — every new field optional, defaults reproduce current behavior bit-identically; `schemaVersion` stays `1`; installed-profile JSON blobs in the DB re-validate unchanged at boot ([apps/server/src/inverter.ts:40-55](apps/server/src/inverter.ts)). Simulator ([simulator.ts](packages/inverter-core/src/simulator.ts)) and capabilities ([capabilities.ts](packages/inverter-core/src/capabilities.ts)) are engineering-unit/role-level and untouched. No DB migration.
+Hard constraints: fully backward compatible — every new field optional, defaults reproduce current behavior bit-identically; `schemaVersion` stays `1`; installed-profile JSON blobs in the DB re-validate unchanged at boot ([apps/server/src/inverter/inverter.ts:40-55](apps/server/src/inverter/inverter.ts)). Simulator ([simulator.ts](packages/inverter-core/src/simulator.ts)) and capabilities ([capabilities.ts](packages/inverter-core/src/capabilities.ts)) are engineering-unit/role-level and untouched. No DB migration.
 
 **Verified greenfield**: no FC4/`readInputRegisters`, `wordOrder`, `sunspec`, or dynamic-scale concept exists anywhere in the repo today. No codec unit tests exist (first ones added here).
 

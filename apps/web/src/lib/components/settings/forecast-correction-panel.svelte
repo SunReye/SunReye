@@ -9,7 +9,7 @@
 	import { getLocale } from '$lib/paraglide/runtime';
 	import * as m from '$lib/paraglide/messages';
 
-	// Mirrors the server's ForecastCorrectionView (apps/server/src/forecast-correction-job.ts).
+	// Mirrors the server's ForecastCorrectionView (apps/server/src/forecast/forecast-correction-job.ts).
 	type CorrectionCell = { month: number; hour: number; factor: number; weight: number };
 	type CorrectionView = {
 		enabled: boolean;
