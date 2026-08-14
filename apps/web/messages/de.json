@@ -239,6 +239,7 @@
   "inverter_active_profile": "Aktives Profil",
   "inverter_change_requires_restart": "(Änderung erfordert Neustart)",
   "inverter_toast_error": "Wechselrichter-Einstellungen konnten nicht gespeichert werden",
+  "inverter_toast_host_required": "Host des Wechselrichters vor dem Speichern eingeben",
   "inverter_toast_saved": "Wechselrichter-Einstellungen gespeichert",
   "inverter_view_snapshot": "Momentaufnahme anzeigen",
   "mqtt_test_ok": "Broker erreichbar",

@@ -2,6 +2,16 @@
 # Halt the container when an essential service dies — the Supervisor restarts
 # the addon and the watchdog reports it. ($1 = exit code; 256 = killed by a
 # signal during normal container shutdown, don't escalate that.)
+#
+# 75 is the deliberate "restart me" exit of the admin restart API, not a death:
+# returning here lets s6-supervise respawn *only* this service (~1 s, postgres
+# and nginx stay up). Halting the container for it would instead bounce the
+# whole addon through the Supervisor watchdog — a ~40 s cold start including
+# initdb checks and migrations, and one that stops happening once the watchdog
+# throttles repeated restarts, leaving the addon stopped.
+if [ "$1" -eq 75 ]; then
+    exit 0
+fi
 if [ "$1" -ne 0 ] && [ "$1" -ne 256 ]; then
     echo "$1" > /run/s6-linux-init-container-results/exitcode
     exec /run/s6/basedir/bin/halt

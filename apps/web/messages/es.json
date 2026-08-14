@@ -239,6 +239,7 @@
   "inverter_active_profile": "Perfil activo",
   "inverter_change_requires_restart": "(el cambio requiere reinicio)",
   "inverter_toast_error": "No se pudieron guardar los ajustes del inversor",
+  "inverter_toast_host_required": "Introduce el host del inversor antes de guardar",
   "inverter_toast_saved": "Ajustes del inversor guardados",
   "inverter_view_snapshot": "Ver instantánea",
   "mqtt_test_ok": "Broker accesible",
