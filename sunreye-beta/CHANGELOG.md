@@ -2,7 +2,7 @@
 
 ## [unreleased]
 
-Unreleased work on `dev` since 1.2.0, shipped in `beta.20260814-76dfc0c`.
+Unreleased work on `dev` since 1.2.0, shipped in `beta.20260814-ba63756`.
 
 
 ### Features
@@ -59,6 +59,10 @@ Unreleased work on `dev` since 1.2.0, shipped in `beta.20260814-76dfc0c`.
 
 ### Bug Fixes
 
+* **test:** stop the suite depending on which file the runner reaches first ([487ea8c](https://github.com/SunReye/SunReye/commit/487ea8cb24f83417565dd2d3c72b9782fc091ae7))
+* **server:** never let ambient git plumbing redirect our git calls ([db8225e](https://github.com/SunReye/SunReye/commit/db8225e9869552f6eda5a2cb565d835b757c50db))
+* **web:** never render a tile against an empty response body ([6c40a8b](https://github.com/SunReye/SunReye/commit/6c40a8bb6302c2f911de9d895ff52a8a977ba4ba))
+* **test:** run the suites against a valid env and the real sources ([b442100](https://github.com/SunReye/SunReye/commit/b442100df65ac579e12d46c09bf5eb6c7d065fc7))
 * **addon:** restart only the server, and never lose the onboarding connection ([5a26509](https://github.com/SunReye/SunReye/commit/5a26509781a97d2d88c6576308b79ac3384dc201))
 * **web:** keep the heatmap panel when a metric has nothing to show ([40d3e6c](https://github.com/SunReye/SunReye/commit/40d3e6cb6c40883ea4cc5db26d42f3ab7170252f))
 * **statistics:** chart the whole calendar month, and only that month ([745fac5](https://github.com/SunReye/SunReye/commit/745fac5134fcb7f49dc05c2b81d5e9f66b920abe))
@@ -91,6 +95,7 @@ Unreleased work on `dev` since 1.2.0, shipped in `beta.20260814-76dfc0c`.
 
 ### Documentation
 
+* add a contributor guide covering the release flow ([02e8aeb](https://github.com/SunReye/SunReye/commit/02e8aeb6c58e4c0a80221ca8ce8dc13aa7e1ddda))
 * document the dev branch and the beta addon channel ([e7a6194](https://github.com/SunReye/SunReye/commit/e7a6194e2176751c892c6dfd7590d57c567f6599))
 * update costs page docs for the statistics rename ([aedbd9f](https://github.com/SunReye/SunReye/commit/aedbd9f6d56d86caea2c103f3fa3cb6bad69ecd1))
 * **evcc:** describe the three-layer charge limit ([a1f59b9](https://github.com/SunReye/SunReye/commit/a1f59b960afabfbd84daab74d6b9c0fb12f82caf))
@@ -107,6 +112,7 @@ Unreleased work on `dev` since 1.2.0, shipped in `beta.20260814-76dfc0c`.
 
 ### Code Refactoring
 
+* **server:** group src into feature folders ([0bd68b5](https://github.com/SunReye/SunReye/commit/0bd68b5327774e069e7b733eca280ef5c675e20b))
 * **web:** per-chart view scope for statistics ranges ([e775066](https://github.com/SunReye/SunReye/commit/e775066aea8ab914f202c1e3ff9f4dc4d2f9b221))
 * **web:** registry-driven statistics tiles and section shells ([7be1575](https://github.com/SunReye/SunReye/commit/7be157560e9a4adfeabe5db16f7beb9a98b724dc))
 * **web:** extract cost formatters to $lib/cost/format.ts ([1ef1f96](https://github.com/SunReye/SunReye/commit/1ef1f9602f14dc0f7902466697a49a4c8d91b2b4))
@@ -183,6 +189,8 @@ Unreleased work on `dev` since 1.2.0, shipped in `beta.20260814-76dfc0c`.
 
 ### Continuous Integration
 
+* give the coverage ratchet room for a version skew, not for regressions ([43c0cc8](https://github.com/SunReye/SunReye/commit/43c0cc836d84b3f437cecfa765f777e651f5d70d))
+* make TDD enforceable, not just intended ([782110a](https://github.com/SunReye/SunReye/commit/782110a3952237640027918c43fdc35599596fd6))
 * close the beta channel's four DX gaps ([2dc4add](https://github.com/SunReye/SunReye/commit/2dc4addfc55c5ee0f3953a0430fc99129a2c6d44))
 * give the beta addon a changelog ([edd9a49](https://github.com/SunReye/SunReye/commit/edd9a494d0a58a73e0abd14601ddb19edf94bcba))
 * version betas by date and commit, and prune old beta tags ([1b74ef9](https://github.com/SunReye/SunReye/commit/1b74ef945c63f9a85b0ea4f30077da2a177cc267))
