@@ -2,7 +2,7 @@
 
 ## [unreleased]
 
-Unreleased work on `dev` since 1.2.0, shipped in `beta.20260814-d69c21f`.
+Unreleased work on `dev` since 1.2.0, shipped in `beta.20260814-76dfc0c`.
 
 
 ### Features
@@ -59,6 +59,7 @@ Unreleased work on `dev` since 1.2.0, shipped in `beta.20260814-d69c21f`.
 
 ### Bug Fixes
 
+* **addon:** restart only the server, and never lose the onboarding connection ([5a26509](https://github.com/SunReye/SunReye/commit/5a26509781a97d2d88c6576308b79ac3384dc201))
 * **web:** keep the heatmap panel when a metric has nothing to show ([40d3e6c](https://github.com/SunReye/SunReye/commit/40d3e6cb6c40883ea4cc5db26d42f3ab7170252f))
 * **statistics:** chart the whole calendar month, and only that month ([745fac5](https://github.com/SunReye/SunReye/commit/745fac5134fcb7f49dc05c2b81d5e9f66b920abe))
 * **web:** hit-test the heatmap per cell and wash the hovered one ([48ed60a](https://github.com/SunReye/SunReye/commit/48ed60abc6060c1462d12048d4c1f4850b73f47c))
@@ -182,6 +183,7 @@ Unreleased work on `dev` since 1.2.0, shipped in `beta.20260814-d69c21f`.
 
 ### Continuous Integration
 
+* close the beta channel's four DX gaps ([2dc4add](https://github.com/SunReye/SunReye/commit/2dc4addfc55c5ee0f3953a0430fc99129a2c6d44))
 * give the beta addon a changelog ([edd9a49](https://github.com/SunReye/SunReye/commit/edd9a494d0a58a73e0abd14601ddb19edf94bcba))
 * version betas by date and commit, and prune old beta tags ([1b74ef9](https://github.com/SunReye/SunReye/commit/1b74ef945c63f9a85b0ea4f30077da2a177cc267))
 * run checks on the dev integration branch ([9fccca4](https://github.com/SunReye/SunReye/commit/9fccca451447743e460a25a3fc9218489ba6655b))
