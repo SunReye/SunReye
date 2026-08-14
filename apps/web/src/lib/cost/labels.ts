@@ -8,7 +8,7 @@
 import type { CostRange } from "./ranges";
 import { dayMonth } from "$lib/format/date";
 import { baselineLabel, windowDays } from "$lib/statistics/compare";
-import type { CompareMode } from "server/src/statistics";
+import type { CompareMode } from "server/src/statistics/statistics";
 import * as m from "$lib/paraglide/messages";
 
 const PRESET_LABELS: Record<string, () => string> = {

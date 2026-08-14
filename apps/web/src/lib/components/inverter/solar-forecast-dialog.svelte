@@ -6,7 +6,7 @@
 	import { inverter } from '$lib/inverter/store.svelte';
 	import * as m from '$lib/paraglide/messages';
 
-	// One slot of the provider-agnostic solar forecast (apps/server/src/solar-forecast.ts).
+	// One slot of the provider-agnostic solar forecast (apps/server/src/forecast/solar-forecast.ts).
 	type ForecastPoint = { time: string; watts: number; peakWatts: number };
 	// The one field of today's hourly energy the fallback path reads (server PeriodEnergy).
 	type Period = { bucket: string; productionKwh: number };

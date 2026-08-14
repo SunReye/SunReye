@@ -91,11 +91,11 @@ manifests). Cap at ~10 repo-wide; anything more means the threshold is wrong, no
 
 1. **4 suppressions missing a reason** — append `-- <reason>` to each:
    - `apps/docs/astro.config.mjs:34` (complexity)
-   - `apps/server/src/inverter.ts:194` (unused-type)
+   - `apps/server/src/inverter/inverter.ts:194` (unused-type)
    - `apps/web/scripts/relativize-fallback.ts:18` (unresolved-import)
    - `packages/inverter-core/src/sdk.type-test.ts:1` (unused-file, file-level)
 2. **18 private-type-leaks** — export the referenced type next to its public signature:
-   `apps/server/src/automation.ts` (`EvInputs` ×2), `evcc.ts` (`EvccListener`),
+   `apps/server/src/automation/automation.ts` (`EvInputs` ×2), `evcc.ts` (`EvccListener`),
    `history.ts` (`HistoryQuery` ×2), `logging.ts` (`LogListener`),
    `mqtt.ts` (`Topics`, `HaDevice`, `Discovery`), `runtime.ts` (`SampleListener`),
    `apps/web/src/lib/inverter/ranges.ts` (`Preset`),
@@ -173,7 +173,7 @@ Three real clusters plus schema boilerplate:
 
 - **Server route validation** — `routes/settings.ts` self-clones (82-96 / 117-130, 102-111 / 123-142)
   and shares blocks with `routes/automations.ts:29-38`. Extract a shared settings-patch validator.
-- **Cost totals shape** — `apps/server/src/cost-calc.ts:34-54` duplicated in
+- **Cost totals shape** — `apps/server/src/energy/cost-calc.ts:34-54` duplicated in
   `apps/web/src/routes/(app)/costs/+page.svelte:16-26`. Move the type into a shared package and
   import it type-only (boundary rules already allow web→server type-only).
 - **Solar providers** — `solar-providers/open-meteo.ts:39-45` vs `open-meteo-archive.ts:40-47`:

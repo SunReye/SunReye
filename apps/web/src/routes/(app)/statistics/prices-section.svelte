@@ -1,5 +1,5 @@
 <script lang="ts">
-	import type { SpotPriceView } from 'server/src/spot-price-job';
+	import type { SpotPriceView } from 'server/src/prices/spot-price-job';
 	import { api } from '$lib/api';
 	import { costFormatters } from '$lib/cost/format';
 	import type { SectionData } from '$lib/statistics/sections';

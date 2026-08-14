@@ -8,7 +8,7 @@
  * not. The conversion is a plain ÷10 and the sign is preserved.
  */
 
-import type { SpotPriceView } from "server/src/spot-price-job";
+import type { SpotPriceView } from "server/src/prices/spot-price-job";
 
 type SpotPricePoint = SpotPriceView["series"][number];
 

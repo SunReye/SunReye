@@ -4,10 +4,10 @@
 // payload. Every section's tiles — cost, energy, prices, records — are a
 // registry against the same TileDef surface.
 
-import type { CostBreakdown, CostTotals } from "server/src/cost-calc";
-import type { SpotStats, SpotWhatIf } from "server/src/spot-stats";
-import type { RecordsResponse } from "server/src/statistics";
-import type { DayRecord } from "server/src/statistics-calc";
+import type { CostBreakdown, CostTotals } from "server/src/energy/cost-calc";
+import type { SpotStats, SpotWhatIf } from "server/src/statistics/spot-stats";
+import type { RecordsResponse } from "server/src/statistics/statistics";
+import type { DayRecord } from "server/src/statistics/statistics-calc";
 import type { CostFormatters } from "$lib/cost/format";
 import { dayKeyDate, dayMonthYear } from "$lib/format/date";
 import { decimal } from "$lib/format/number";

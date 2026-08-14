@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import type { CostBreakdown } from "server/src/cost-calc";
-import type { SpotStats, SpotWhatIf } from "server/src/spot-stats";
+import type { CostBreakdown } from "server/src/energy/cost-calc";
+import type { SpotStats, SpotWhatIf } from "server/src/statistics/spot-stats";
 import { costFormatters } from "../cost/format";
 import { COST_TILES, PRICE_TILES, WHATIF_TILES, deriveTiles } from "./tiles";
 

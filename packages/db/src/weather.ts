@@ -60,7 +60,7 @@ const forecastCorrectionConfigSchema = z.object({
  * Production-forecast settings for the plant (provider-agnostic PV model).
  *
  * Reached in production through {@link weatherConfigSchema}; exported only so
- * `apps/server/src/solar-forecast.test.ts` can build a forecast config directly.
+ * `apps/server/src/forecast/solar-forecast.test.ts` can build a forecast config directly.
  *
  * @internal
  */

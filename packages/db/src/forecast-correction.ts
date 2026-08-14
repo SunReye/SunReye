@@ -1,7 +1,7 @@
 /**
  * Persistence for the learned PV-forecast correction. Row-level read/write over
  * the two tables in {@link @SunReye/db/schema/forecast-correction}; the server
- * (`apps/server/src/forecast-correction*`) owns the in-memory grid and the
+ * (`apps/server/src/forecast/forecast-correction*`) owns the in-memory grid and the
  * learning math, so this module stays a thin, dependency-free data layer.
  */
 

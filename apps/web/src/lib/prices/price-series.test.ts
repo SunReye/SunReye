@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { SpotPriceView } from "server/src/spot-price-job";
+import type { SpotPriceView } from "server/src/prices/spot-price-job";
 import { ctLabel, negativeHours, priceRows } from "./price-series";
 
 const QUARTER_MS = 900_000;

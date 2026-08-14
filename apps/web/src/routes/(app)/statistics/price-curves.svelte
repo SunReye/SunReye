@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import type { SpotPriceView } from 'server/src/spot-price-job';
+	import type { SpotPriceView } from 'server/src/prices/spot-price-job';
 	import * as m from '$lib/paraglide/messages';
 	import * as Alert from '$lib/components/ui/alert';
 	import PriceTrackChart from '$lib/components/prices/price-track-chart.svelte';

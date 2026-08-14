@@ -1,6 +1,6 @@
 import { auth } from "@SunReye/auth";
 import { Elysia } from "elysia";
-import { isPublicDashboard } from "../access-settings";
+import { isPublicDashboard } from "../settings/access-settings";
 
 /**
  * Whether a dashboard **read** may proceed. Allowed anonymously when the public

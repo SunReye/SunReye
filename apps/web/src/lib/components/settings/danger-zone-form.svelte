@@ -10,7 +10,7 @@
 	import WarningIcon from 'phosphor-svelte/lib/Warning';
 	import * as m from '$lib/paraglide/messages';
 
-	// Must match RESET_DATA_CONFIRM on the server (apps/server/src/maintenance.ts):
+	// Must match RESET_DATA_CONFIRM on the server (apps/server/src/admin/maintenance.ts):
 	// the user types it to arm the wipe, and the server re-checks it.
 	const CONFIRM_PHRASE = 'DELETE ALL DATA';
 

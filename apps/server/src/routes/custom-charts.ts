@@ -1,7 +1,7 @@
 import { type CustomChartInput, customChartInputSchema } from "@SunReye/db/custom-charts";
 import { Elysia, t } from "elysia";
-import { createChart, deleteChart, listCharts, updateChart } from "../custom-charts";
-import type { ProfileContext } from "../inverter";
+import { createChart, deleteChart, listCharts, updateChart } from "../charts/custom-charts";
+import type { ProfileContext } from "../inverter/inverter";
 import { adminGuard } from "./admin-guard";
 import { errorMessage } from "./write-attempt";
 

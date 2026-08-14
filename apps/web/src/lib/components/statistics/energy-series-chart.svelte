@@ -1,5 +1,5 @@
 <script lang="ts">
-	import type { PeriodEnergy } from 'server/src/energy-calc';
+	import type { PeriodEnergy } from 'server/src/energy/energy-calc';
 	import PeriodLineChart from './period-line-chart.svelte';
 	import { periodLabel, type CostBucket } from '$lib/cost/ranges';
 	import { decimal } from '$lib/format/number';

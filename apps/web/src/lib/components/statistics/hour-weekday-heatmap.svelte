@@ -1,5 +1,5 @@
 <script lang="ts">
-	import type { HeatmapCell } from 'server/src/statistics-calc';
+	import type { HeatmapCell } from 'server/src/statistics/statistics-calc';
 	import { api } from '$lib/api';
 	import RangeSwitcher from '$lib/components/inverter/range-switcher.svelte';
 	import HeatGrid from './heat-grid.svelte';

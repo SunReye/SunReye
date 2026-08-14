@@ -6,7 +6,7 @@ import { Elysia } from "elysia";
 let publicDashboard = false;
 let session: { user: { role: string } } | null = null;
 
-mock.module("../access-settings", () => ({
+mock.module("../settings/access-settings", () => ({
   isPublicDashboard: async () => publicDashboard,
 }));
 mock.module("@SunReye/auth", () => ({

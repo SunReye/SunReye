@@ -9,7 +9,7 @@
 	import { periodLabel, type CostBucket } from '$lib/cost/ranges';
 
 	// One diverging stack per period. Mirrors the server's CostSeriesPoint
-	// (apps/server/src/cost.ts): net = importCost − exportEarnings + standingCharge.
+	// (apps/server/src/energy/cost.ts): net = importCost − exportEarnings + standingCharge.
 	type Point = {
 		bucket: string;
 		importCost: number;

@@ -1,4 +1,4 @@
-import type { EvccLoadpoint, EvccState } from "server/src/evcc";
+import type { EvccLoadpoint, EvccState } from "server/src/evcc/evcc";
 import { api } from "$lib/api";
 import * as m from "$lib/paraglide/messages";
 import { ReconnectingSocket } from "$lib/ws/reconnecting-socket";

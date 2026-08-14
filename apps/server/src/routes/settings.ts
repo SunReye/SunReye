@@ -8,22 +8,22 @@ import {
   mergeMqttConfig,
   setInverterConfig,
   setMqttConfig,
-} from "../config";
-import { getAccess, setAccess } from "../access-settings";
-import { getDisplay, setDisplay } from "../display-settings";
-import { getLoggingConfig, setLoggingConfig } from "../logging-settings";
-import { evccSnapshot, rebuildEvcc } from "../evcc";
-import { getEvccConfig, setEvccConfig } from "../evcc-settings";
-import { getCorrectionView } from "../forecast-correction-job";
-import * as runtime from "../runtime";
-import { getTariff, setTariff } from "../settings";
-import { fetchSolarForecast, toForecastExport } from "../solar-forecast";
-import { getSpotPriceView, spotProviderCatalog } from "../spot-price-job";
-import { getSpotPriceConfig, setSpotPriceConfig } from "../spot-price-settings";
-import { getStatisticsPrefs, setStatisticsPrefs } from "../statistics-prefs-settings";
-import { getUiPrefs, setUiPrefs } from "../ui-prefs-settings";
-import { fetchWeather } from "../weather";
-import { getWeatherConfig, setWeatherConfig } from "../weather-settings";
+} from "../settings/config";
+import { getAccess, setAccess } from "../settings/access-settings";
+import { getDisplay, setDisplay } from "../settings/display-settings";
+import { getLoggingConfig, setLoggingConfig } from "../settings/logging-settings";
+import { evccSnapshot, rebuildEvcc } from "../evcc/evcc";
+import { getEvccConfig, setEvccConfig } from "../settings/evcc-settings";
+import { getCorrectionView } from "../forecast/forecast-correction-job";
+import * as runtime from "../inverter/runtime";
+import { getTariff, setTariff } from "../settings/settings";
+import { fetchSolarForecast, toForecastExport } from "../forecast/solar-forecast";
+import { getSpotPriceView, spotProviderCatalog } from "../prices/spot-price-job";
+import { getSpotPriceConfig, setSpotPriceConfig } from "../settings/spot-price-settings";
+import { getStatisticsPrefs, setStatisticsPrefs } from "../settings/statistics-prefs-settings";
+import { getUiPrefs, setUiPrefs } from "../settings/ui-prefs-settings";
+import { fetchWeather } from "../forecast/weather";
+import { getWeatherConfig, setWeatherConfig } from "../settings/weather-settings";
 import { adminGuard } from "./admin-guard";
 import { attempt } from "./write-attempt";
 

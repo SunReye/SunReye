@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { ComparisonResponse } from "server/src/statistics";
+import type { ComparisonResponse } from "server/src/statistics/statistics";
 import { deltaFor, referenceWindow, usableComparison, windowDays } from "./compare";
 
 describe("deltaFor", () => {

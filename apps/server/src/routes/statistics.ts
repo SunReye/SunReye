@@ -1,7 +1,7 @@
 import type { InverterProfile } from "@SunReye/inverter-core";
 import { Elysia, t } from "elysia";
-import { computeSpotStats } from "../spot-stats";
-import { computeComparison, computeHeatmap, computeRecords } from "../statistics";
+import { computeSpotStats } from "../statistics/spot-stats";
+import { computeComparison, computeHeatmap, computeRecords } from "../statistics/statistics";
 import { adminGuard } from "./admin-guard";
 
 // 503 payload for a statistics read attempted before onboarding is done (no
@@ -40,7 +40,7 @@ export interface StatisticsRoutesDeps {
 /**
  * Read-only statistics-page aggregates. Session-gated like the other
  * dashboard reads; every handler is a thin parse-and-delegate over
- * {@link ../statistics}.
+ * {@link ../statistics/statistics}.
  */
 export function statisticsRoutes({ profile }: StatisticsRoutesDeps) {
   return (

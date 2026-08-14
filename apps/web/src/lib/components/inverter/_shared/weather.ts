@@ -1,7 +1,7 @@
 // Shapes of the /api/weather payload, shared by the weather tile and the pieces
 // it composes.
 
-/** Provider-agnostic solar forecast (see apps/server/src/solar-forecast.ts). */
+/** Provider-agnostic solar forecast (see apps/server/src/forecast/solar-forecast.ts). */
 export type SolarForecast = {
   provider: string;
   /** Slot width of `series` in minutes (15 for Open-Meteo). */

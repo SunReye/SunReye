@@ -1,7 +1,7 @@
 import { isOfficialSource } from "@SunReye/db/profiles";
 import { listProfiles } from "@SunReye/inverter-core";
 import { Elysia, t } from "elysia";
-import { getActiveProfileOrNull } from "../inverter";
+import { getActiveProfileOrNull } from "../inverter/inverter";
 import {
   browseAvailable,
   getProfileSources,
@@ -11,7 +11,7 @@ import {
   setActiveProfile,
   setProfileSources,
   uninstallProfile,
-} from "../profiles";
+} from "../inverter/profiles";
 import { adminGuard } from "./admin-guard";
 
 // Profile management: registered profiles, git repo sources, and the

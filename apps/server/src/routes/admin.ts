@@ -1,8 +1,8 @@
 import { Elysia, t } from "elysia";
-import { createApiKeyForUser, listApiKeys, revokeApiKey } from "../api-keys";
-import { log } from "../logging";
-import { RESET_DATA_CONFIRM, resetTimeseries } from "../maintenance";
-import * as runtime from "../runtime";
+import { createApiKeyForUser, listApiKeys, revokeApiKey } from "../admin/api-keys";
+import { log } from "../shared/logging";
+import { RESET_DATA_CONFIRM, resetTimeseries } from "../admin/maintenance";
+import * as runtime from "../inverter/runtime";
 import { adminGuard } from "./admin-guard";
 
 const adminLog = log();
