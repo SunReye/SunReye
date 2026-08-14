@@ -75,13 +75,27 @@
 		if (outcome.ok && hasSnapshot) snapshotOpen = true;
 	}
 
-	async function save() {
-		if (!cfg) return;
+	/**
+	 * Persist the connection. Exported (reachable via `bind:this`) so a caller
+	 * that owns its own navigation — the setup wizard's Continue — can save
+	 * before advancing instead of leaving a tested-but-unsaved config behind.
+	 * Returns whether the write succeeded.
+	 */
+	export async function save(): Promise<boolean> {
+		if (!cfg) return false;
+		if (!cfg.host.trim()) {
+			toast.error(m.inverter_toast_host_required());
+			return false;
+		}
 		saving = true;
 		const { error } = await api.api.settings.inverter.put(cfg);
 		saving = false;
-		if (error) toast.error(m.inverter_toast_error());
-		else toast.success(m.inverter_toast_saved());
+		if (error) {
+			toast.error(m.inverter_toast_error());
+			return false;
+		}
+		toast.success(m.inverter_toast_saved());
+		return true;
 	}
 </script>
 

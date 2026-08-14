@@ -241,6 +241,7 @@
   "inverter_active_profile": "Profil actif",
   "inverter_change_requires_restart": "(la modification nécessite un redémarrage)",
   "inverter_toast_error": "Échec de l'enregistrement des paramètres de l'onduleur",
+  "inverter_toast_host_required": "Saisissez l'hôte de l'onduleur avant d'enregistrer",
   "inverter_toast_saved": "Paramètres de l'onduleur enregistrés",
   "inverter_view_snapshot": "Voir l'instantané",
   "mqtt_test_ok": "Broker accessible",

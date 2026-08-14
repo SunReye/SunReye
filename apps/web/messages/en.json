@@ -241,6 +241,7 @@
   "inverter_active_profile": "Active profile",
   "inverter_change_requires_restart": "(change requires restart)",
   "inverter_toast_error": "Failed to save inverter settings",
+  "inverter_toast_host_required": "Enter the inverter host before saving",
   "inverter_toast_saved": "Inverter settings saved",
   "inverter_view_snapshot": "View snapshot",
   "mqtt_test_ok": "Broker reachable",
