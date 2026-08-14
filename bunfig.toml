@@ -5,6 +5,11 @@ linker = "isolated"
 # Root test runs from the repo root, so the per-app bunfig preload does not
 # apply. Load the web test-setup (Paraglide localStorage stub) here too.
 preload = ["./apps/web/src/test-setup.ts"]
+# TDD floor, in bun's own summary metric (78.08 % funcs / 83.75 % lines when this
+# landed). Note that bun only COLOURS the summary when a threshold is missed — it
+# still exits 0 — so this is a reading aid. The gate that actually fails CI is
+# `bun scripts/coverage-floor.ts`, which ratchets on the lcov report.
+coverageThreshold = { line = 0.83, function = 0.77 }
 coveragePathIgnorePatterns = [
   "**/dist/**",
   "**/node_modules/**",

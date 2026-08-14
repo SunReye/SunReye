@@ -16,6 +16,32 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # This project reads and WRITES registers on grid-tied inverters and
+  # batteries, so behaviour does not land without the test that proves it. The
+  # gate is mechanical: source changed in the PR ⇒ a test changed with it. It
+  # cannot check that the test came first, or that it covers the change — that
+  # is review's job, and the coverage floor in the `test` job is the numeric
+  # backstop. PR-only: the rule is about what a change adds, and `push` on an
+  # integration branch has no meaningful base to diff against.
+  tdd:
+    name: Tests required
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The gate diffs the whole PR against its base, so the shallow default
+          # is not enough.
+          fetch-depth: 0
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.13
+
+      - name: Source changed without a test
+        run: bun scripts/require-tests.ts ${{ github.event.pull_request.base.sha }}
+
   quality:
     name: Lint, type-check & build
     runs-on: ubuntu-latest
@@ -104,6 +130,11 @@ jobs:
 
       - name: Test with coverage
         run: bun run test:coverage
+
+      # The ratchet. bun only colours its own coverageThreshold and still exits
+      # 0, so the failing gate is this script, reading the lcov report above.
+      - name: Coverage floor
+        run: bun run test:floor
 
       - name: Generate coverage badge
         run: bun run coverage:badge

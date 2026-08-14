@@ -88,11 +88,12 @@ Branch naming follows the commit types: `feat/…`, `fix/…`, `refactor/…`, `
    git fetch origin
    git checkout -b feat/my-thing origin/dev
    ```
-2. Make one logical change. Follow the conventions in [§7](#7-conventions-that-bite).
-3. Run the checks for what you touched ([§6](#6-checks-before-you-push)).
+2. Make one logical change. Follow the conventions in [§8](#8-conventions-that-bite).
+3. Run the checks for what you touched ([§7](#7-checks-before-you-push)).
 4. Commit using [conventional commits](#commit-style). The pre-commit hook runs `oxlint`,
-   `oxfmt --write`, the Fallow code-health gate, and the i18n lint on staged files, and warns
-   (never blocks) when code changed but no documentation did.
+   `oxfmt --write`, the Fallow code-health gate, and the i18n lint on staged files, then the
+   **whole test suite** — a red suite blocks the commit. It warns (never blocks) when code
+   changed but no documentation did, and when staged source carries no staged test.
 5. Open a PR into `dev`.
 
 ### Commit style
@@ -106,9 +107,44 @@ Branch naming follows the commit types: `feat/…`, `fix/…`, `refactor/…`, `
 - Explain *why* in the body when it is not obvious from the diff.
 
 These messages are not cosmetic: release-please derives versions and the CHANGELOG from them
-(see [§9](#9-cutting-a-release)).
+(see [§10](#10-cutting-a-release)).
 
-## 6. Checks before you push
+## 6. Test-driven development is the rule here
+
+SunReye reads and **writes** registers on grid-tied inverters and batteries. A wrong branch
+does not render a wrong number on a page — it can hold a battery at the wrong SOC, export
+against a feed-in limit, or dispatch on yesterday's tariff, on someone's house, unattended.
+So behaviour lands with the test that proves it, and it lands in that order:
+
+1. **Write the failing test first.** It names the behaviour you are about to add, in the terms
+   the domain uses ("a month can never report less energy than the day inside it"), not the
+   implementation you have in mind.
+2. **Watch it fail.** A test that has never been red has proven nothing. If it passes before
+   you write the code, it is testing something else.
+3. **Write the smallest code that makes it green**, then clean up with the suite behind you.
+
+What is enforced mechanically:
+
+| Gate                                  | Where                            | Blocks                       |
+| ------------------------------------- | -------------------------------- | ---------------------------- |
+| Suite is green                        | `.husky/pre-commit`, CI          | commit, PR                   |
+| Source changed ⇒ a test changed       | CI job **Tests required**        | PR (advisory on commit)      |
+| Coverage may not fall                 | `scripts/coverage-floor.ts`, CI  | PR                           |
+
+The coverage floor is a **ratchet**: it only turns up. If a change drops coverage, cover the
+behaviour — do not lower `FLOOR`. If a file genuinely cannot hold a branch (a barrel, a type
+module, a route shell), exempt it explicitly in `scripts/require-tests.ts`, with a test for
+the exemption; there is no skip flag by design.
+
+Depth, not ceremony. A test that only re-states the happy path is close to worthless on this
+system. Cover the boundaries that actually bite: zero and negative values (0 °C is a
+temperature, −7.5 is a temperature, `0` is not "missing"), the empty and absent payload, the
+stale reading carried across midnight, the window that starts mid-day, the register that
+leads the rollups, the restart that leaves a hole in a counter. Prefer pure functions that
+can be tested directly over logic buried in a component — extracting the guard so it can be
+proven *is* part of the work, and both bugs the gates were built from were exactly that.
+
+## 7. Checks before you push
 
 Run what is relevant to the area you changed — this is what CI runs:
 
@@ -116,6 +152,8 @@ Run what is relevant to the area you changed — this is what CI runs:
 bun run check          # oxlint + oxfmt --write
 bun run check-types    # tsc across the monorepo
 bun run test           # bun test, all workspaces
+bun run test:coverage && bun scripts/coverage-floor.ts   # the coverage ratchet CI enforces
+bun run test:required  # source changed ⇒ a test changed (diffs against origin/dev)
 bunx fallow            # code-health gate (dead code, duplication, complexity)
 bun run build          # only when you touched build config or shared packages
 ```
@@ -134,14 +172,15 @@ Schema work additionally:
 bun run db:generate    # commit the generated migration — CI has a migration drift gate
 ```
 
-CI runs three required jobs on every PR: **Lint, type-check & build** (Fallow gate, oxlint,
-oxfmt `--check`, `check-types`, i18n lint, migration drift gate, build), **Test & coverage**,
-and — when the change touches `packages/db`, `apps/server`, `docker/`, or `sunreye/` — the
+CI runs four required jobs on every PR: **Tests required** (source changed ⇒ a test changed),
+**Lint, type-check & build** (Fallow gate, oxlint, oxfmt `--check`, `check-types`, i18n lint,
+migration drift gate, build), **Test & coverage** (the suite plus the coverage floor), and —
+when the change touches `packages/db`, `apps/server`, `docker/`, or `sunreye/` — the
 **Upgrade test**, which boots the last published release, collects data, swaps in the freshly
 built images, and asserts the migration runner preserves the data and the server comes back
 healthy.
 
-## 7. Conventions that bite
+## 8. Conventions that bite
 
 - **Env vars are declared and validated only in `packages/env`** (`server.ts` / `web.ts`).
   Never parse `process.env` or add a per-package env schema. See
@@ -171,9 +210,9 @@ healthy.
 - **`sunreye-beta/` is generated.** `scripts/sync-beta-addon.mjs` derives it from `sunreye/`.
   Never hand-edit it — change `sunreye/` and let the sync run.
 - **`sunreye/config.yaml`'s `version` is machine-owned.** Neither you nor release-please
-  edits it; `docker-addon.yml` bumps it after the images exist ([§9](#9-cutting-a-release)).
+  edits it; `docker-addon.yml` bumps it after the images exist ([§10](#10-cutting-a-release)).
 
-## 8. Testing on real hardware: the beta channel
+## 9. Testing on real hardware: the beta channel
 
 Every push to `dev` builds a beta addon image automatically
 (`.github/workflows/docker-addon-beta.yml`):
@@ -205,7 +244,7 @@ commits it contains. It ships `boot: manual` deliberately:
 The [README](README.md#beta-addon-channel) covers the channel's design in more depth (tag
 pruning, changelog generation, why the manifest lives on `master`).
 
-## 9. Cutting a release
+## 10. Cutting a release
 
 1. **PR `dev` → `master`, and merge it as a merge commit.** Never squash *this* PR: squashing
    collapses a whole release into one subject line, and release-please builds the changelog
@@ -227,7 +266,7 @@ pruning, changelog generation, why the manifest lives on `master`).
 `sunreye/config.yaml`'s `version` is therefore **not** hand-edited and **not** touched by
 release-please.
 
-## 10. The one manual gate: master → dev backmerge
+## 11. The one manual gate: master → dev backmerge
 
 `sync-dev.yml` merges `master` back into `dev` on every push to `master`, and **fails loudly
 on conflict** rather than guessing at a resolution.
@@ -249,7 +288,7 @@ git push origin dev
 
 Pushing `dev` triggers a fresh beta build, which closes the loop.
 
-## 11. Editing the docs
+## 12. Editing the docs
 
 The docs site is Astro Starlight under `apps/docs`. Pages are Markdown/MDX in
 `src/content/docs`; the sidebar is configured in `astro.config.mjs`. Run it with
@@ -259,7 +298,7 @@ If a change alters documented behaviour, update the docs in the same PR. The pre
 prints a reminder when code changed and no documentation did; it is a reminder, not a gate,
 and reviewers do treat missing docs as review feedback.
 
-## 12. Reporting bugs
+## 13. Reporting bugs
 
 Open an issue with: SunReye version (and whether it is a stable or beta addon build), how it
 is deployed (HA addon / Docker Compose / bun), the inverter profile in use, and the relevant

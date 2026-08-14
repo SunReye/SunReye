@@ -18,7 +18,9 @@
     { "file": "apps/server/tsdown.config.ts", "exports": ["*"] },
     { "file": "apps/web/svelte.config.js", "exports": ["*"] },
     { "file": "packages/db/drizzle.config.ts", "exports": ["*"] },
-    { "file": "packages/profile-sdk/tsdown.config.ts", "exports": ["*"] }
+    { "file": "packages/profile-sdk/tsdown.config.ts", "exports": ["*"] },
+    { "file": "scripts/require-tests.ts", "exports": ["*"] },
+    { "file": "scripts/coverage-floor.ts", "exports": ["*"] }
   ],
   "boundaries": {
     "zones": [
