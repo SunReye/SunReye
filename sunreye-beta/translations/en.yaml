@@ -1,0 +1,84 @@
+configuration:
+  inverter_profile:
+    name: Inverter profile
+    description: >-
+      Profile id of an installed inverter profile (e.g. deye-sg05lp3). Leave
+      empty to pick the profile in the first-run onboarding instead. Only
+      seeds the initial configuration — after onboarding, manage it in the
+      SunReye UI.
+  inverter_host:
+    name: Inverter host
+    description: >-
+      IP address of the inverter's Modbus TCP endpoint (or RS485 gateway).
+      Only seeds the initial configuration; editable in the SunReye UI later.
+  inverter_port:
+    name: Inverter port
+    description: Modbus TCP port, typically 502 or 8899.
+  inverter_unit_id:
+    name: Modbus unit id
+    description: Modbus unit/slave id of the inverter, typically 1.
+  inverter_transport:
+    name: Modbus transport
+    description: >-
+      "tcp" for standard Modbus TCP, "rtu-over-tcp" for RTU frames tunneled
+      through an RS485→Ethernet gateway.
+  inverter_simulate:
+    name: Simulate inverter
+    description: >-
+      Generate synthetic metrics instead of talking to hardware — try the
+      whole stack without an inverter.
+  poll_interval_ms:
+    name: Poll interval (ms)
+    description: How often the inverter is polled. 1000 = 1 Hz (default).
+  log_level:
+    name: Log level
+    description: Lowest log severity written to the addon log.
+  api_keys:
+    name: API keys
+    description: >-
+      Comma-separated keys authorizing third-party access to the /api/v1 REST
+      API (reachable via the direct port). Leave empty to reject all /api/v1
+      requests.
+  external_database_url:
+    name: External database URL
+    description: >-
+      Connect to an external PostgreSQL+TimescaleDB (e.g. the TimescaleDB
+      addon) instead of the embedded database. Format:
+      postgresql://user:password@host:5432/dbname. Leave empty to use the
+      embedded database stored in /data.
+  mqtt_broker_url:
+    name: MQTT broker URL
+    description: >-
+      Override the MQTT broker (mqtt://host:1883). Leave empty to auto-detect
+      the Mosquitto broker addon; MQTT stays off when neither is available.
+  mqtt_username:
+    name: MQTT username
+    description: Only used together with a manual MQTT broker URL.
+  mqtt_password:
+    name: MQTT password
+    description: Only used together with a manual MQTT broker URL.
+  mqtt_topic_prefix:
+    name: MQTT topic prefix
+    description: Base topic for published entity values. Default "sunreye".
+  ha_discovery:
+    name: Home Assistant MQTT discovery
+    description: >-
+      Publish retained discovery configs so SunReye entities auto-populate in
+      Home Assistant. Requires MQTT.
+  secure_cookies:
+    name: Secure cookies
+    description: >-
+      Mark session cookies Secure. Enable only when Home Assistant itself is
+      served over HTTPS — over plain HTTP the browser will silently drop the
+      login session.
+  backups_keep:
+    name: Database backups to keep
+    description: How many rotated dumps to keep in /data/backups.
+  backup_full:
+    name: Full database backups
+    description: >-
+      Include the raw 1 Hz sample window in database dumps. Off (default)
+      keeps dumps small: the raw window is re-collected within days and all
+      long-horizon history lives in the rollups, which are always included.
+network:
+  8100/tcp: Direct access to the dashboard and REST API (bypasses ingress)

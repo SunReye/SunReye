@@ -16,7 +16,14 @@
     ".": {
       "component": "server",
       "release-type": "node",
-      "exclude-paths": ["apps/web", "apps/docs", "packages/inverter-core", "packages/profile-sdk", "sunreye"]
+      "exclude-paths": [
+        "apps/web",
+        "apps/docs",
+        "packages/inverter-core",
+        "packages/profile-sdk",
+        "sunreye",
+        "sunreye-beta"
+      ]
     },
     "apps/web": {
       "component": "web",
