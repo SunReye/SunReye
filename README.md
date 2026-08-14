@@ -125,6 +125,9 @@ For the boot sequence, the registry seam, and the entity model, see the
 
 ## Branching and releases
 
+New here? [CONTRIBUTING.md](CONTRIBUTING.md) is the step-by-step version of this section —
+setup, the checks to run, and the release procedure end to end.
+
 `master` is what is released. `dev` is the integration branch: feature branches open PRs
 into `dev`, and one PR from `dev` to `master` cuts a release, where release-please raises
 the version PR and the Docker/addon images build from the release tag.
