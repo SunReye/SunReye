@@ -6,6 +6,13 @@ description: How to work on SunReye — setup, conventions, and where things liv
 Contributions are welcome — whether that's a new [inverter profile](/profiles/authoring/),
 a feature, or a fix.
 
+:::note
+[`CONTRIBUTING.md`](https://github.com/SunReye/SunReye/blob/master/CONTRIBUTING.md) in the
+repository root is the full contributor guide: the branch model (`dev` → beta → `master`),
+every check CI runs, how to test a branch on real hardware through the beta addon, and the
+release procedure. This page is the short orientation.
+:::
+
 ## Get set up
 
 Follow [Manual Setup](/deploy/manual-setup/) to get the stack running against the simulator.
