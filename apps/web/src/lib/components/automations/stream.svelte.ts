@@ -10,6 +10,7 @@
  */
 
 import { api } from "$lib/api";
+import { payloadOrNull } from "$lib/api-payload";
 import { ReconnectingSocket } from "$lib/ws/reconnecting-socket";
 import type {
   AutomationHistoryView,
@@ -86,8 +87,8 @@ class AutomationStream {
       api.api.automations.history.get(),
       api.api.automations.plan.get(),
     ]);
-    const hasStatus = this.#applyStatus(st.data as AutomationStatusView | null);
-    const hasHistory = this.#applyHistory(hi.data as AutomationHistoryView | null);
+    const hasStatus = this.#applyStatus(payloadOrNull<AutomationStatusView>(st.data));
+    const hasHistory = this.#applyHistory(payloadOrNull<AutomationHistoryView>(hi.data));
     if (pl.data) this.plan = (pl.data as AutomationPlanView).peakShaving;
     if (hasStatus || hasHistory) this.loaded = true;
   }

@@ -29,7 +29,7 @@
   "scripts": {
     "build": "tsdown",
     "prepublishOnly": "bun run build",
-    "test": "bun test src",
+    "test": "bun test ./src",
     "profile": "bun run src/cli.ts"
   },
   "dependencies": {

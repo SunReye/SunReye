@@ -16,6 +16,21 @@ export type SolarForecast = {
   next15: { maxPowerW: number; energyKwh: number };
 };
 
+/**
+ * Whether a `/api/weather` payload carries a reading the tile can actually
+ * print. Weather being off answers `null`, which Elysia sends as an empty body
+ * and Eden reports as `""` — and any partial payload would render
+ * `${Math.round(undefined)}${undefined}`, i.e. "NaN undefined", on a wall
+ * display nobody is watching. Render nothing instead.
+ */
+export function isReadableWeather(data: unknown): data is Weather {
+  if (typeof data !== "object" || data === null) return false;
+  const { temperature, unit } = data as Partial<Weather>;
+  return (
+    typeof temperature === "number" && Number.isFinite(temperature) && typeof unit === "string"
+  );
+}
+
 export type Weather = {
   temperature: number;
   unit: string;

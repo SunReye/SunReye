@@ -1,3 +1,24 @@
 bunx sync-claude-md sync --all --stage
 lint-staged
 sh "$(dirname "$0")/../scripts/check-docs-updated.sh"
+
+# This project writes registers on grid-tied hardware: a red suite never leaves
+# the machine. The whole thing runs in a few seconds, so there is no fast path
+# worth the risk of a partial one.
+#
+# The env stripping is not cosmetic. git exports GIT_DIR & co. into its hooks,
+# and any `git` a test spawns then targets THIS repository whatever its cwd —
+# the git-source fixture did exactly that once and committed its temp tree onto
+# the branch being committed. Production and that fixture now sanitize their own
+# spawns; this is the backstop for the next test that forgets.
+env -u GIT_DIR -u GIT_WORK_TREE -u GIT_INDEX_FILE -u GIT_PREFIX \
+    -u GIT_COMMON_DIR -u GIT_OBJECT_DIRECTORY -u GIT_NAMESPACE \
+    bun run test
+
+# A partial mock of a workspace module passes on the author's machine and fails
+# wherever the runner walks the files in a different order. Catch it here.
+bun run test:mocks
+
+# Advisory here, blocking in CI. A single commit is allowed to be a step —
+# refactor now, its test in the commit after — but the PR as a whole is not.
+bun scripts/require-tests.ts --staged --warn

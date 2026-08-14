@@ -5,7 +5,7 @@ import { join } from "node:path";
 
 import { defineProfile, metric } from "@SunReye/inverter-core";
 
-import { readIndex, readProfile, syncRepo } from "./git-source";
+import { cleanGitEnv, readIndex, readProfile, syncRepo } from "./git-source";
 
 /** A valid profile file, authored with the SDK, committed to the fake repo. */
 const profileJson = JSON.stringify(
@@ -44,24 +44,30 @@ const indexJson = (version: string) =>
 let originDir: string;
 let originUrl: string;
 
+/**
+ * The fixture's git env: no ambient plumbing, a fixed identity. Inherited from a
+ * git hook, GIT_DIR & co. point the fixture's own `git init`/`add`/`commit` at
+ * the repository running the hook — it then commits its temp tree onto the
+ * developer's branch while the clone under test fails. Same reason production
+ * strips them; same helper.
+ */
+const gitEnv = () => ({
+  ...cleanGitEnv(process.env),
+  GIT_AUTHOR_NAME: "t",
+  GIT_AUTHOR_EMAIL: "t@t",
+  GIT_COMMITTER_NAME: "t",
+  GIT_COMMITTER_EMAIL: "t@t",
+});
+
 async function commitAll(dir: string, message: string) {
-  const opts = { cwd: dir } as const;
+  const opts = { cwd: dir, env: gitEnv() } as const;
   await Bun.spawn(["git", "add", "-A"], opts).exited;
-  await Bun.spawn(["git", "commit", "-m", message], {
-    ...opts,
-    env: {
-      ...process.env,
-      GIT_AUTHOR_NAME: "t",
-      GIT_AUTHOR_EMAIL: "t@t",
-      GIT_COMMITTER_NAME: "t",
-      GIT_COMMITTER_EMAIL: "t@t",
-    },
-  }).exited;
+  await Bun.spawn(["git", "commit", "-m", message], opts).exited;
 }
 
 beforeAll(async () => {
   originDir = await mkdtemp(join(tmpdir(), "sunreye-origin-"));
-  await Bun.spawn(["git", "init", "-b", "main"], { cwd: originDir }).exited;
+  await Bun.spawn(["git", "init", "-b", "main"], { cwd: originDir, env: gitEnv() }).exited;
   await mkdir(join(originDir, "profiles"), { recursive: true });
   await writeFile(join(originDir, "index.json"), indexJson("1.0.0"));
   await writeFile(join(originDir, "profiles", "acme-test.json"), profileJson);
@@ -71,6 +77,35 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await rm(originDir, { recursive: true, force: true });
+});
+
+describe("cleanGitEnv", () => {
+  // Regression: run from a git hook, the fixture below inherited GIT_DIR and
+  // committed its temp tree onto the branch being committed — while the clone
+  // under test failed with "does not appear to be a git repository".
+  test("drops the plumbing variables a git hook exports", () => {
+    const cleaned = cleanGitEnv({
+      GIT_DIR: "/repo/.git",
+      GIT_WORK_TREE: "/repo",
+      GIT_INDEX_FILE: "/repo/.git/index",
+      GIT_PREFIX: "",
+      GIT_COMMON_DIR: "/repo/.git",
+      GIT_OBJECT_DIRECTORY: "/repo/.git/objects",
+      GIT_NAMESPACE: "ns",
+    });
+    expect(cleaned).toEqual({});
+  });
+
+  test("keeps everything else, including the identity git needs to commit", () => {
+    expect(cleanGitEnv({ PATH: "/usr/bin", GIT_AUTHOR_NAME: "t", GIT_DIR: "/repo/.git" })).toEqual({
+      PATH: "/usr/bin",
+      GIT_AUTHOR_NAME: "t",
+    });
+  });
+
+  test("drops unset variables rather than passing undefined through", () => {
+    expect(cleanGitEnv({ HOME: undefined, PATH: "/usr/bin" })).toEqual({ PATH: "/usr/bin" });
+  });
 });
 
 describe("git-source", () => {
