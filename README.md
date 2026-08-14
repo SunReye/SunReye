@@ -140,6 +140,13 @@ second entry (slug `sunreye-beta`) in the same add-on repository you already add
 Assistant, so testing unreleased work needs no new repository URL. Hit *Update* on it to
 pull the newest beta.
 
+Betas are versioned `beta.<YYYYMMDD>-<short sha>`, the scheme
+[evcc](https://github.com/evcc-io/evcc) uses for its nightly addon — deliberately not
+semver, since a beta cannot know whether the release it leads to will be a major, a minor,
+or a patch. The date and commit say what the image actually is. Ordering does not matter:
+the Supervisor offers an update whenever the published version simply *differs* from the
+installed one. Superseded beta tags are pruned from GHCR, keeping the newest few.
+
 It installs alongside the stable addon and keeps its own `/data` and its own embedded
 postgres, so a beta cannot touch production data. It ships `boot: manual` on purpose: most
 inverters accept a single Modbus TCP connection at a time, so stop the stable addon (or run
