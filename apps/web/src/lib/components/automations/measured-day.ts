@@ -12,6 +12,7 @@
  */
 
 import { api } from "$lib/api";
+import { payloadOrNull } from "$lib/api-payload";
 import { inverter } from "$lib/inverter/store.svelte";
 import { type PlanRow, measuredDaySeries } from "./plan-series";
 
@@ -38,7 +39,7 @@ async function fetchSeries(metric: string, from: Date, to: Date): Promise<Map<nu
       limit: 1441,
     },
   });
-  const points = (data as { time: string; avg: number }[] | null) ?? [];
+  const points = payloadOrNull<{ time: string; avg: number }[]>(data) ?? [];
   return new Map(points.map((p) => [Date.parse(p.time), p.avg]));
 }
 

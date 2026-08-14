@@ -1,4 +1,5 @@
 import { api } from "$lib/api";
+import { payloadOrNull } from "$lib/api-payload";
 
 /**
  * Statistics-page layout preferences. Mirrors the server's
@@ -89,7 +90,7 @@ class StatisticsPrefsStore {
   async save(next: StatisticsPrefs): Promise<boolean> {
     const { data, error } = await api.api.settings.statistics.put(next);
     if (error) return false;
-    this.config = (data as StatisticsPrefs | null) ?? next;
+    this.config = payloadOrNull<StatisticsPrefs>(data) ?? next;
     return true;
   }
 }

@@ -1,5 +1,6 @@
 import type { EvccLoadpoint, EvccState } from "server/src/evcc";
 import { api } from "$lib/api";
+import { payloadOrNull } from "$lib/api-payload";
 import * as m from "$lib/paraglide/messages";
 import { ReconnectingSocket } from "$lib/ws/reconnecting-socket";
 
@@ -107,7 +108,7 @@ class EvccStore {
   async #refresh(): Promise<void> {
     const { data, error } = await api.api.evcc.get();
     if (error) return; // Transient: keep the last snapshot.
-    this.#apply((data as EvccState | null) ?? null);
+    this.#apply(payloadOrNull<EvccState>(data));
   }
 
   /**

@@ -10,7 +10,7 @@
 	import { api } from '$lib/api';
 	import SolarForecastDialog from './solar-forecast-dialog.svelte';
 	import WeatherTileBody from './_shared/weather-tile-body.svelte';
-	import type { Weather } from './_shared/weather';
+	import { isReadableWeather, type Weather } from './_shared/weather';
 
 	const ICONS: Record<string, Component> = {
 		clear: Sun,
@@ -31,7 +31,10 @@
 		let stop = false;
 		const load = async () => {
 			const { data } = await api.api.weather.get();
-			if (!stop) weather = (data as Weather | null) ?? null;
+			// Weather being off answers `null`, which Elysia sends as an empty body
+			// and Eden reports as ""; `?? null` would keep that and the tile would
+			// print "NaN undefined". Only a payload we can actually read counts.
+			if (!stop) weather = isReadableWeather(data) ? data : null;
 		};
 		load();
 		const id = setInterval(load, 10 * 60 * 1000);
