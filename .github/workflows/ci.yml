@@ -2,7 +2,10 @@ name: CI
 
 on:
   push:
-    branches: [master]
+    # `dev` is the integration branch feature PRs land on; it is checked on
+    # merge too, so a break that only shows up in the merge result is caught
+    # before it reaches the release PR (or a beta addon build).
+    branches: [master, dev]
   pull_request:
 
 permissions:
