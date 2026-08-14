@@ -136,6 +136,22 @@ behaviour — do not lower `FLOOR`. If a file genuinely cannot hold a branch (a 
 module, a route shell), exempt it explicitly in `scripts/require-tests.ts`, with a test for
 the exemption; there is no skip flag by design.
 
+**One rule about mocks, because it has already cost a day.** bun runs every test file in one
+process and `mock.module` is global and permanent, so the mock one file registers is live for
+every file after it. A factory that returns only the exports its own suite needs therefore
+*deletes* the rest for everyone downstream — the next file whose import chain needs a deleted
+export dies at load, and since it never finishes loading, its own mocks never register either.
+Unrelated suites then fail with errors naming none of the guilty code, and only in the file
+order that particular machine happened to walk. Always spread the real module:
+
+```ts
+const real = await import("./config");
+mock.module("./config", () => ({ ...real, getMqttConfig: stub }));
+```
+
+`bun run test:mocks` enforces this (pre-commit and CI). Third-party modules are exempt —
+stubbing `mqtt` wholesale is the point.
+
 Depth, not ceremony. A test that only re-states the happy path is close to worthless on this
 system. Cover the boundaries that actually bite: zero and negative values (0 °C is a
 temperature, −7.5 is a temperature, `0` is not "missing"), the empty and absent payload, the

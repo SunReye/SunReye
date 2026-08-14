@@ -15,6 +15,10 @@ env -u GIT_DIR -u GIT_WORK_TREE -u GIT_INDEX_FILE -u GIT_PREFIX \
     -u GIT_COMMON_DIR -u GIT_OBJECT_DIRECTORY -u GIT_NAMESPACE \
     bun run test
 
+# A partial mock of a workspace module passes on the author's machine and fails
+# wherever the runner walks the files in a different order. Catch it here.
+bun run test:mocks
+
 # Advisory here, blocking in CI. A single commit is allowed to be a step —
 # refactor now, its test in the commit after — but the PR as a whole is not.
 bun scripts/require-tests.ts --staged --warn

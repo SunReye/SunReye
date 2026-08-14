@@ -20,7 +20,8 @@
     { "file": "packages/db/drizzle.config.ts", "exports": ["*"] },
     { "file": "packages/profile-sdk/tsdown.config.ts", "exports": ["*"] },
     { "file": "scripts/require-tests.ts", "exports": ["*"] },
-    { "file": "scripts/coverage-floor.ts", "exports": ["*"] }
+    { "file": "scripts/coverage-floor.ts", "exports": ["*"] },
+    { "file": "scripts/mock-hygiene.ts", "exports": ["*"] }
   ],
   "boundaries": {
     "zones": [

@@ -22,6 +22,10 @@ green.
   is part of the change, not a follow-up.
 - Exemptions to the "a test changed with it" rule live in `scripts/require-tests.ts` and are
   themselves tested. There is no skip flag.
+- `mock.module` is process-global and permanent. ALWAYS spread the real module
+  (`const real = await import("./x"); mock.module("./x", () => ({ ...real, stubbed }))`) —
+  a partial mock deletes the other exports for every test file that runs afterwards and
+  breaks them at import, order-dependently. Enforced by `bun run test:mocks`.
 
 Full rationale: `CONTRIBUTING.md` §6. Frontend specifics: `apps/web/TESTING.md`.
 
