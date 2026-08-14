@@ -152,7 +152,7 @@ Run what is relevant to the area you changed — this is what CI runs:
 bun run check          # oxlint + oxfmt --write
 bun run check-types    # tsc across the monorepo
 bun run test           # bun test, all workspaces
-bun run test:coverage && bun scripts/coverage-floor.ts   # the coverage ratchet CI enforces
+bun run test:coverage && bun run test:floor              # the coverage ratchet CI enforces
 bun run test:required  # source changed ⇒ a test changed (diffs against origin/dev)
 bunx fallow            # code-health gate (dead code, duplication, complexity)
 bun run build          # only when you touched build config or shared packages

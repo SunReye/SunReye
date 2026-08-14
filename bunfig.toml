@@ -11,6 +11,10 @@ preload = ["./apps/web/src/test-setup.ts"]
 # `bun scripts/coverage-floor.ts`, which ratchets on the lcov report.
 coverageThreshold = { line = 0.83, function = 0.77 }
 coveragePathIgnorePatterns = [
+  # The profile-SDK suite scaffolds real files under the OS temp dir and imports
+  # them. They are fixtures, not code we ship, and their count varies per run —
+  # which would make the coverage ratchet flap.
+  "/tmp/**",
   "**/dist/**",
   "**/node_modules/**",
   "**/*.test.ts",
