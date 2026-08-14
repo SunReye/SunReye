@@ -12,6 +12,11 @@ const adminLog = log();
  * runner (`bun run --watch` inside a restart loop) relaunches only on this code
  * — Ctrl-C exits 0 and a crash exits non-zero, so neither loops — and the prod
  * container's `restart: unless-stopped` policy relaunches on any exit.
+ *
+ * In the HA addon, s6 supervises this process: `svc-server/finish` treats 75 as
+ * a respawn of this service alone, and every *other* non-zero code as a death
+ * that halts the container. Keep the two distinguishable — collapsing them
+ * turns each profile activation into a full addon bounce.
  */
 const RESTART_EXIT_CODE = 75;
 

@@ -34,6 +34,14 @@
 	type Step = 'profile' | 'connect' | 'activate';
 	let step = $state<Step>('profile');
 
+	// The connection step's Continue must *save* the config: the form's own Save
+	// button is easy to walk past after a successful test, and an unsaved host
+	// means the post-activation restart boots polling against nothing.
+	let connectForm = $state<ReturnType<typeof InverterForm> | null>(null);
+	async function continueFromConnect() {
+		if (await connectForm?.save()) step = 'activate';
+	}
+
 	let registered = $state<RegisteredProfile[]>([]);
 	let selectedId = $state<string | null>(null);
 	const selected = $derived(registered.find((p) => p.id === selectedId) ?? null);
@@ -142,10 +150,10 @@
 				{onExternalInstalled}
 			/>
 		{:else if step === 'connect'}
-			<InverterForm profileId={selectedId ?? undefined} />
+			<InverterForm bind:this={connectForm} profileId={selectedId ?? undefined} />
 			<div class="flex justify-between">
 				<Button variant="ghost" onclick={() => (step = 'profile')}>{m.action_back()}</Button>
-				<Button onclick={() => (step = 'activate')}>{m.action_continue()}</Button>
+				<Button onclick={continueFromConnect}>{m.action_continue()}</Button>
 			</div>
 		{:else}
 			<ActivateStep

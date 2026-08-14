@@ -39,6 +39,18 @@ let pollTimer: ReturnType<typeof setInterval> | null = null;
 let bridge: MqttBridge | null = null;
 let onSample: SampleListener = () => {};
 let polling = false;
+/**
+ * Whether the current config names something to connect to. A saved config with
+ * no host (fresh install, or onboarding where the connection step was never
+ * saved) would otherwise connect to the empty host — i.e. localhost — and fail
+ * once per tick forever; idle instead and say so once.
+ */
+let connectable = false;
+/** Last logged poll failure, to collapse an identical error repeating at 1 Hz. */
+let lastPollError: string | null = null;
+let lastPollErrorAt = 0;
+/** Re-log an unchanged, ongoing poll failure at most this often. */
+const POLL_ERROR_RELOG_MS = 300_000;
 
 // --- History write buffer --------------------------------------------------
 // The DB is purely the history store — live monitoring is served from
@@ -102,7 +114,7 @@ const inverterStatus = {
 async function pollOnce(): Promise<void> {
   // Skip if the previous poll is still running (a slow/reconnecting source must
   // not let ticks stack up).
-  if (!source || polling) return;
+  if (!source || polling || !connectable) return;
   polling = true;
   const active = source;
   try {
@@ -110,6 +122,7 @@ async function pollOnce(): Promise<void> {
     inverterStatus.connected = true;
     inverterStatus.lastError = null;
     inverterStatus.lastSampleAt = sample.time;
+    lastPollError = null;
     // Composite controls own no register; fold their current (e.g. lock) state
     // into the sample so every downstream surface sees it.
     await injectControlValues(sample, context(), dbControlStore);
@@ -126,9 +139,19 @@ async function pollOnce(): Promise<void> {
     onSample(sample);
     bridge?.publishSample(sample);
   } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
     inverterStatus.connected = false;
-    inverterStatus.lastError = error instanceof Error ? error.message : String(error);
-    logger.error("poll loop error: {error}", { error });
+    inverterStatus.lastError = message;
+    // A dead inverter fails every tick with the same error; log the message (not
+    // the stack — at 1 Hz it buries every other line) on change, then only every
+    // POLL_ERROR_RELOG_MS so a long outage still shows in the log. `/api/status`
+    // always carries the current error regardless.
+    const now = Date.now();
+    if (message !== lastPollError || now - lastPollErrorAt >= POLL_ERROR_RELOG_MS) {
+      lastPollError = message;
+      lastPollErrorAt = now;
+      logger.error("poll loop error: {error}", { error: message });
+    }
   } finally {
     polling = false;
   }
@@ -169,6 +192,14 @@ async function rebuildInverter(config: InverterConfig): Promise<void> {
   // the first successful read, so start pessimistic and let pollOnce flip it.
   inverterStatus.connected = env.INVERTER_SIMULATE;
   inverterStatus.lastError = null;
+  lastPollError = null;
+  connectable = env.INVERTER_SIMULATE || Boolean(config.host?.trim());
+  if (!connectable) {
+    inverterStatus.lastError = "No inverter host configured";
+    logger.warn(
+      "no inverter host configured — polling idle (set the connection in Settings → Inverter)",
+    );
+  }
   restartLoop(config.pollIntervalMs);
   if (previous) await previous.close();
 }
