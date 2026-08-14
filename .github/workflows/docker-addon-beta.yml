@@ -1,0 +1,155 @@
+---
+name: Docker · addon beta
+
+# Beta channel for the Home Assistant addon: every push to `dev` builds one
+# amd64 image and offers it to the `sunreye-beta` store entry, so unreleased
+# work can be tried on a real HA before the release PR lands on master.
+#
+# Only the addon image is built here (not server/web/migrate) and only amd64 —
+# aarch64 needs QEMU emulation and would dominate the run time.
+#
+# Two-step, same ordering rule as docker-addon.yml: the image is pushed first,
+# and only then does `publish` advance the version the Supervisor reads. The
+# Supervisor pulls `<image>:<version>`, so naming a version whose tag does not
+# exist yet turns the addon's Update button into a pull failure.
+on:
+  push:
+    branches: [dev]
+  workflow_dispatch:
+    inputs:
+      base_version:
+        description: "Release this beta leads up to (default: next minor after the last release)"
+        type: string
+        required: false
+
+permissions:
+  contents: read
+  packages: write
+
+# A newer push to `dev` supersedes an in-flight beta — the older image would
+# only be published as a version nobody wants to install.
+concurrency:
+  group: docker-addon-beta
+  cancel-in-progress: true
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  build:
+    name: Build & push (amd64)
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # `dev` has not been released, so its manifest still carries the last
+      # released version. The beta leads up to the NEXT minor, and
+      # run_number gives a counter that always increases (and never repeats
+      # after a re-run), so awesomeversion sorts betas in build order and
+      # sorts all of them below the final release.
+      - name: Resolve beta version
+        id: v
+        run: |
+          base='${{ inputs.base_version }}'
+          if [ -z "$base" ]; then
+            base=$(awk -F. '/^[0-9]/ {printf "%d.%d.0", $1, $2 + 1}' sunreye/version.txt)
+          fi
+          echo "version=${base}-beta.${{ github.run_number }}" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve base image
+        id: base
+        run: echo "build_from=$(yq -r '.build_from.amd64' sunreye/build.yaml)" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # metadata-action lowercases the image name (the repository is mixed
+      # case, GHCR is not). The beta shares the stable addon's image
+      # repository — only the tag distinguishes them.
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ github.repository }}-addon-amd64
+          tags: |
+            type=raw,value=${{ steps.v.outputs.version }}
+            type=sha,format=short
+
+      - name: Build & push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: sunreye/Dockerfile
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            BUILD_FROM=${{ steps.base.outputs.build_from }}
+            BUILD_ARCH=amd64
+            BUILD_VERSION=${{ steps.v.outputs.version }}
+          # Seeded from the stable amd64 cache so the first beta after a
+          # release is not a cold build, but written to its own scope so beta
+          # layers never evict the release build's cache.
+          cache-from: |
+            type=gha,scope=addon-beta-amd64
+            type=gha,scope=addon-amd64
+          cache-to: type=gha,mode=max,scope=addon-beta-amd64
+          provenance: false
+
+  # The image exists now, so the store entry can point at it. sunreye-beta/
+  # must be committed on master because the Supervisor only ever reads an addon
+  # repository's default branch — it cannot be pointed at `dev`.
+  publish:
+    name: Publish version to master
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: master
+          fetch-depth: 0
+
+      # Generate from `dev`'s stable manifest, not master's: the beta image
+      # ships dev's option schema, and a manifest describing the last
+      # release's options would drop any option added since.
+      - name: Take the source manifest from dev
+        run: git restore --source=${{ github.sha }} -- sunreye/
+
+      - name: Sync sunreye-beta/
+        run: node scripts/sync-beta-addon.mjs --version=${{ needs.build.outputs.version }}
+
+      - name: Restore master's stable manifest
+        run: git restore --source=HEAD -- sunreye/
+
+      # `chore` so release-please never treats a beta as releasable work, and
+      # [skip ci] because only generated files under sunreye-beta/ changed.
+      - name: Commit to master
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          if git diff --quiet -- sunreye-beta; then
+            echo "sunreye-beta/ already current — nothing to publish"
+            exit 0
+          fi
+          git add sunreye-beta
+          git commit -m "chore(addon-beta): publish ${{ needs.build.outputs.version }} [skip ci]"
+          git push origin HEAD:master
+
+      - name: Summary
+        run: |
+          echo "Beta \`${{ needs.build.outputs.version }}\` is live." >> "$GITHUB_STEP_SUMMARY"
+          echo "In Home Assistant: Settings → Add-ons → SunReye (beta) → Update." >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "If the store still shows the old version, ⋮ → Check for updates." >> "$GITHUB_STEP_SUMMARY"
