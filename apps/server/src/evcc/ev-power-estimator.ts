@@ -26,8 +26,7 @@
  * estimates; the clock is injected for tests.
  */
 
-/** Where the current `watts` figure comes from (freshness/confidence hint). */
-export type ChargePowerSource = "measured" | "estimated" | "feedforward";
+import type { ChargePowerSource } from "@SunReye/contracts/evcc";
 
 export interface LiveChargePower {
   watts: number;

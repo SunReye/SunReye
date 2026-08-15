@@ -30,12 +30,12 @@
  */
 
 import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test";
+import type { LogEntry } from "@SunReye/contracts/logs";
 import { configure, getLogger, type LogLevel } from "@logtape/logtape";
 import {
   applyLogLevel,
   currentLogLevel,
   defaultLogLevel,
-  type LogEntry,
   log,
   recentLogs,
   setupLogging,

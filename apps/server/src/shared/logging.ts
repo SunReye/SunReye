@@ -9,6 +9,7 @@
  *   ["inverter-core", ...] — Modbus engine library logs (read plan, fallbacks)
  */
 
+import type { LogEntry } from "@SunReye/contracts/logs";
 import { env } from "@SunReye/env/server";
 import {
   ansiColorFormatter,
@@ -23,21 +24,6 @@ import type { Streams } from "./streams";
 
 /** Root category for all application (non-HTTP) logs. */
 const ROOT = "server" as const;
-
-/**
- * A single log line in transport shape — flat and JSON-serialisable so it can
- * ride the `/ws/logs` WebSocket to the admin log viewer unchanged. Shared with
- * the web client, which imports this type from `server/src/shared/logging`.
- */
-export type LogEntry = {
-  /** Epoch milliseconds. */
-  time: number;
-  level: LogLevel;
-  /** Dotted category path, e.g. `server.mqtt` or `elysia`. */
-  category: string;
-  /** Fully-rendered message (template literals with values interpolated). */
-  message: string;
-};
 
 /** How many recent lines to retain so a freshly-connected viewer has context. */
 const BUFFER_MAX = 500;

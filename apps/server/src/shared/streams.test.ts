@@ -16,7 +16,7 @@
 import { describe, expect, test } from "bun:test";
 import type { InverterSample } from "@SunReye/inverter-core";
 import { createStreams } from "./streams";
-import type { LogEntry } from "./logging";
+import type { LogEntry } from "@SunReye/contracts/logs";
 
 const entry = (message: string): LogEntry => ({
   time: 0,

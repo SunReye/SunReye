@@ -19,7 +19,8 @@ import type { SpotSlice } from "@SunReye/contracts/prices";
 import { type DecisionPoint, createDecisionLog } from "./automation-history";
 import { projectPeakShaving } from "./peak-shaving-plan";
 import { type AutomationIO, createPeakShavingEngine } from "./peak-shaving-engine";
-import type { EvccAction, EvccLoadpoint, EvccState } from "../evcc/evcc";
+import type { EvccLoadpoint, EvccState } from "@SunReye/contracts/evcc";
+import type { EvccAction } from "../evcc/evcc";
 import { buildProfileContext } from "../inverter/inverter";
 import type { SolarForecast } from "../forecast/solar-forecast";
 

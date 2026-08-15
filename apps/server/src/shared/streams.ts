@@ -21,9 +21,9 @@
 
 import type { InverterSample } from "@SunReye/inverter-core";
 import type { AutomationStreamMessage } from "../automation/automation";
-import type { EvccState } from "../evcc/evcc";
+import type { EvccState } from "@SunReye/contracts/evcc";
 import type { StatisticsLiveMessage } from "@SunReye/contracts/statistics";
-import type { LogEntry } from "./logging";
+import type { LogEntry } from "@SunReye/contracts/logs";
 
 /** Every live topic and the payload one emit carries. */
 export interface StreamTopics {

@@ -17,7 +17,7 @@ import type {
 import type { WeatherConfig } from "@SunReye/db/weather";
 import type { CanonicalRole, InverterProfile } from "@SunReye/inverter-core";
 import { HOUR_MS } from "../energy/energy-flow";
-import type { EvccLoadpoint, EvccState } from "../evcc/evcc";
+import type { EvccLoadpoint, EvccState } from "@SunReye/contracts/evcc";
 import { type PriceAction, type PriceRegime, planPriceAction } from "./price-plan";
 import { type ForecastSlice, remainingSlotsToday } from "./slot-window";
 import type { SpotSlice } from "@SunReye/contracts/prices";

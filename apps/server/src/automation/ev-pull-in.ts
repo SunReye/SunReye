@@ -35,7 +35,7 @@
  * the publishing. So the rules are unit-testable without a broker.
  */
 
-import type { EvccLoadpoint, EvccState } from "../evcc/evcc";
+import type { EvccLoadpoint, EvccState } from "@SunReye/contracts/evcc";
 import { chargeStopSoc } from "./peak-shaving";
 import type { PriceRegime } from "./price-plan";
 

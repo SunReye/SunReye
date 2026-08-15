@@ -29,7 +29,8 @@ import type { WeatherConfig } from "@SunReye/db/weather";
 import { entityConstraint } from "@SunReye/inverter-core";
 import type { CanonicalRole, InverterSample } from "@SunReye/inverter-core";
 import { type DecisionLog, type DecisionPoint, createDecisionLog } from "./automation-history";
-import type { EvccAction, EvccState } from "../evcc/evcc";
+import type { EvccState } from "@SunReye/contracts/evcc";
+import type { EvccAction } from "../evcc/evcc";
 import type { ProfileContext } from "../inverter/inverter";
 import { log } from "../shared/logging";
 import {
