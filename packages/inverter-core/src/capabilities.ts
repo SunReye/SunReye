@@ -33,24 +33,41 @@ const hasRole = (metrics: MetricDef[], prefix: string): boolean =>
   metrics.some((m) => m.role?.startsWith(prefix));
 
 /**
+ * A feature is present when any metric in the profile matches its rule. Order
+ * here is the order features appear in {@link InverterCapabilities.features}.
+ */
+const FEATURE_RULES: { feature: InverterFeature; match: (m: MetricDef) => boolean }[] = [
+  { feature: "solar_sell", match: (m) => m.role === "setting.solar_sell.enabled" },
+  { feature: "grid_charge", match: (m) => m.role === "setting.battery.grid_charge" },
+  { feature: "time_of_use", match: (m) => m.group === "timeofuse" },
+];
+
+/** The boolean subsystem capabilities, each keyed by the role prefix that signals it. */
+type SubsystemKey = "battery" | "grid" | "generator" | "backupLoad";
+const SUBSYSTEMS: Record<SubsystemKey, string> = {
+  battery: "battery.",
+  grid: "grid.",
+  generator: "generator.",
+  backupLoad: "load.",
+};
+
+/**
  * Derive what the inverter can do from the roles/groups present in its profile.
  * Presence of a canonical role is the signal — no per-inverter probing in the UI.
  */
 export function deriveCapabilities(profile: InverterProfile): InverterCapabilities {
   const metrics = profile.metrics;
 
-  const features: InverterFeature[] = [];
-  if (metrics.some((m) => m.role === "setting.solar_sell.enabled")) features.push("solar_sell");
-  if (metrics.some((m) => m.role === "setting.battery.grid_charge")) features.push("grid_charge");
-  if (metrics.some((m) => m.group === "timeofuse")) features.push("time_of_use");
+  const features = FEATURE_RULES.filter((rule) => metrics.some(rule.match)).map((r) => r.feature);
+  const has = (key: SubsystemKey): boolean => hasRole(metrics, SUBSYSTEMS[key]);
 
   return {
-    battery: hasRole(metrics, "battery."),
+    battery: has("battery"),
     pvStrings: countIndices(metrics, "pv.string.power"),
     phases: Math.max(1, countIndices(metrics, "grid.phase.voltage")),
-    grid: hasRole(metrics, "grid."),
-    generator: hasRole(metrics, "generator."),
-    backupLoad: hasRole(metrics, "load."),
+    grid: has("grid"),
+    generator: has("generator"),
+    backupLoad: has("backupLoad"),
     features,
     controls: metrics.filter((m) => m.access === "rw").map((m) => m.key),
   };
