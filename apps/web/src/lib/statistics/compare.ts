@@ -3,7 +3,7 @@
 // `previousWindow` in apps/server/src/statistics/statistics-calc.ts) so the page can tell
 // when that window predates recorded history and the delta would be fiction.
 
-import type { CostBreakdown } from "server/src/energy/cost-calc";
+import type { CostBreakdown } from "@SunReye/contracts/energy";
 import type { CompareMode, ComparisonResponse } from "server/src/statistics/statistics";
 import * as m from "$lib/paraglide/messages";
 

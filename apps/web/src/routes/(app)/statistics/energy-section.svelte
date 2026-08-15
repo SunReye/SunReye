@@ -1,5 +1,5 @@
 <script lang="ts">
-	import type { PeriodEnergy } from 'server/src/energy/energy-calc';
+	import type { PeriodEnergy } from '@SunReye/contracts/energy';
 	import { api } from '$lib/api';
 	import * as m from '$lib/paraglide/messages';
 	import { inverter } from '$lib/inverter/store.svelte';

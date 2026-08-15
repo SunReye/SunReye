@@ -6,8 +6,8 @@
  * {@link ./statistics}.
  */
 
-import type { CostSeriesPoint, CounterDeltaRow, EnergyField } from "../energy/cost";
-import type { PeriodEnergy } from "../energy/energy-calc";
+import type { EnergyField, PeriodEnergy } from "@SunReye/contracts/energy";
+import type { CostSeriesPoint, CounterDeltaRow } from "../energy/cost";
 
 /** How the comparison endpoint picks its reference window. */
 export type CompareMode = "previous" | "yearAgo";

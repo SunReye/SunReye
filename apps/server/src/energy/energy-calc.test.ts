@@ -1,10 +1,6 @@
+import type { EnergyTotals } from "@SunReye/contracts/energy";
 import { describe, expect, test } from "bun:test";
-import {
-  type EnergyTotals,
-  applyTodayOverride,
-  derivePeriodEnergy,
-  replaceTodaySlice,
-} from "./energy-calc";
+import { applyTodayOverride, derivePeriodEnergy, replaceTodaySlice } from "./energy-calc";
 
 const totals = (t: Partial<EnergyTotals>): EnergyTotals => ({
   importKwh: 0,

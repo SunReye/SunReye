@@ -30,6 +30,7 @@
   },
   "devDependencies": {
     "@SunReye/config": "workspace:*",
+    "@SunReye/contracts": "workspace:*",
     "@types/bun": "catalog:",
     "tsdown": "^0.21.9",
     "typescript": "catalog:"

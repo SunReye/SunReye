@@ -27,6 +27,7 @@
   },
   "devDependencies": {
     "@SunReye/config": "workspace:*",
+    "@SunReye/contracts": "workspace:*",
     "@fontsource-variable/geist-mono": "^5.2.8",
     "@inlang/paraglide-js": "^2.22.0",
     "@internationalized/date": "^3.12.0",

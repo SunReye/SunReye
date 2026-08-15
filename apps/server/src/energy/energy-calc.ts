@@ -10,51 +10,9 @@
  * exactly so the Costs page tiles and the energy-split chart agree.
  */
 
+import type { EnergyTotals, PeriodEnergy } from "@SunReye/contracts/energy";
+
 const clamp01 = (n: number): number => Math.min(1, Math.max(0, n));
-
-/** Energy flows summed over one period, before the display splits are derived. */
-export interface EnergyTotals {
-  importKwh: number;
-  exportKwh: number;
-  loadKwh: number;
-  productionKwh: number;
-  /** Battery discharge counter delta — raw energy the battery sent out (to load,
-   *  charge losses, or export). Subdivides the on-site consumption figure into a
-   *  battery slice; 0 when the profile maps no battery-discharge role. */
-  batteryDischargeKwh: number;
-  /** Battery charge counter delta — raw energy the battery took in (from solar
-   *  or grid). Pass-through figure for battery reporting; no display split reads
-   *  it; 0 when the profile maps no battery-charge role. */
-  batteryChargeKwh: number;
-}
-
-/** One period of energy flows, split for stacked-bar display. */
-export interface PeriodEnergy extends EnergyTotals {
-  /** Local period key: `YYYY-MM-DDTHH` (hour) | `YYYY-MM-DD` (day) | `YYYY-MM` (month). */
-  bucket: string;
-  /** Consumption served by the grid: min(import, load) → "from grid". */
-  gridToLoadKwh: number;
-  /** Consumption served on-site: max(0, load − import) → "from solar+battery"
-   *  (combined). Subdivided by {@link batteryToLoadKwh} + {@link solarDirectToLoadKwh},
-   *  which sum back to this figure. */
-  solarToLoadKwh: number;
-  /** On-site consumption served from the battery: min(batteryDischarge,
-   *  solarToLoad) → "from battery". Clamped so it never exceeds the on-site
-   *  figure; 0 when no battery-discharge data. */
-  batteryToLoadKwh: number;
-  /** On-site consumption served directly from solar: max(0, solarToLoad −
-   *  batteryToLoad) → "from solar". Equals the full on-site figure when there is
-   *  no battery-discharge data. */
-  solarDirectToLoadKwh: number;
-  /** Production used on-site: max(0, production − export) → "used on-site". */
-  selfConsumedKwh: number;
-  /** Production sent to the grid: export → "exported". */
-  exportedKwh: number;
-  /** solarToLoad / load, 0..1, or null when no load data. */
-  selfSufficiency: number | null;
-  /** selfConsumed / production, 0..1, or null when no production. */
-  selfConsumption: number | null;
-}
 
 /**
  * Overlay live current-day energy on a period's `*.total`-delta totals: every

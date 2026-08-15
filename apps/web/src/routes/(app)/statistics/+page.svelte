@@ -1,5 +1,5 @@
 <script lang="ts">
-	import type { CostBreakdown } from 'server/src/energy/cost-calc';
+	import type { CostBreakdown } from '@SunReye/contracts/energy';
 	import type { CompareMode, ComparisonResponse } from 'server/src/statistics/statistics';
 	import { onMount } from 'svelte';
 	import SlidersHorizontal from 'phosphor-svelte/lib/SlidersHorizontal';

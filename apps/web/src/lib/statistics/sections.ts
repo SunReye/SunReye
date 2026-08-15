@@ -2,7 +2,7 @@
 // order. The ids are also the keys the customize preferences hide sections by,
 // so they must not change once shipped.
 
-import type { CostBreakdown } from "server/src/energy/cost-calc";
+import type { CostBreakdown } from "@SunReye/contracts/energy";
 import type { CompareMode } from "server/src/statistics/statistics";
 import type { CostRange } from "$lib/cost/ranges";
 import * as m from "$lib/paraglide/messages";

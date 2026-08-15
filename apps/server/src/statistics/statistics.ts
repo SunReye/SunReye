@@ -5,13 +5,12 @@
  * {@link ../routes/statistics}.
  */
 
+import type { CostBreakdown, EnergyField, PeriodEnergy } from "@SunReye/contracts/energy";
 import { db } from "@SunReye/db";
 import type { InverterProfile } from "@SunReye/inverter-core";
 import { sql } from "drizzle-orm";
 import {
-  type CostBreakdown,
   ENERGY_FIELDS,
-  type EnergyField,
   computeCost,
   computeCostSeries,
   currentPeriodKey,
@@ -19,7 +18,7 @@ import {
   resolveRange,
 } from "../energy/cost";
 import { accumulateTotals, emptyTotals, energySeries } from "../energy/energy";
-import { type PeriodEnergy, derivePeriodEnergy } from "../energy/energy-calc";
+import { derivePeriodEnergy } from "../energy/energy-calc";
 import { getTariff } from "../settings/settings";
 import {
   type CompareMode,

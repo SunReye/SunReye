@@ -8,8 +8,8 @@
  * {@link ./spot-stats}.
  */
 
+import type { HourEnergy } from "@SunReye/contracts/energy";
 import { type TariffConfig, importPriceForHour, landedImportPrice } from "@SunReye/db/tariff";
-import type { HourEnergy } from "../energy/cost-calc";
 
 const HOUR_MS = 3_600_000;
 const MINUTE_MS = 60_000;

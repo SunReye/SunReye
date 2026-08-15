@@ -52,6 +52,7 @@
       },
       "devDependencies": {
         "@SunReye/config": "workspace:*",
+        "@SunReye/contracts": "workspace:*",
         "@types/bun": "catalog:",
         "tsdown": "^0.21.9",
         "typescript": "catalog:",
@@ -71,6 +72,7 @@
       },
       "devDependencies": {
         "@SunReye/config": "workspace:*",
+        "@SunReye/contracts": "workspace:*",
         "@fontsource-variable/geist-mono": "^5.2.8",
         "@inlang/paraglide-js": "^2.22.0",
         "@internationalized/date": "^3.12.0",
@@ -122,6 +124,16 @@
     "packages/config": {
       "name": "@SunReye/config",
       "version": "0.0.0",
+    },
+    "packages/contracts": {
+      "name": "@SunReye/contracts",
+      "version": "0.0.0",
+      "devDependencies": {
+        "@SunReye/config": "workspace:*",
+        "@SunReye/db": "workspace:*",
+        "@SunReye/inverter-core": "workspace:*",
+        "typescript": "catalog:",
+      },
     },
     "packages/db": {
       "name": "@SunReye/db",
@@ -203,6 +215,8 @@
     "@SunReye/brand": ["@SunReye/brand@workspace:packages/brand"],
 
     "@SunReye/config": ["@SunReye/config@workspace:packages/config"],
+
+    "@SunReye/contracts": ["@SunReye/contracts@workspace:packages/contracts"],
 
     "@SunReye/db": ["@SunReye/db@workspace:packages/db"],
 

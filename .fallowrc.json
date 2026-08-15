@@ -30,6 +30,7 @@
       { "name": "docs", "patterns": ["apps/docs/src/**"] },
       { "name": "db", "patterns": ["packages/db/src/**"] },
       { "name": "auth", "patterns": ["packages/auth/src/**"] },
+      { "name": "contracts", "patterns": ["packages/contracts/src/**"] },
       { "name": "env", "patterns": ["packages/env/src/**"] },
       { "name": "inverter-core", "patterns": ["packages/inverter-core/src/**"] },
       { "name": "profile-sdk", "patterns": ["packages/profile-sdk/src/**"] },
@@ -41,10 +42,14 @@
     "rules": [
       {
         "from": "web",
-        "allow": ["env", "auth", "inverter-core"],
+        "allow": ["env", "auth", "inverter-core", "contracts"],
         "allowTypeOnly": ["server"]
       },
-      { "from": "server", "allow": ["db", "auth", "env", "inverter-core", "profile-sdk"] },
+      {
+        "from": "server",
+        "allow": ["db", "auth", "env", "inverter-core", "profile-sdk", "contracts"]
+      },
+      { "from": "contracts", "allow": [], "allowTypeOnly": ["db", "inverter-core"] },
       { "from": "db", "allow": ["env"] },
       { "from": "auth", "allow": ["db", "env"] },
       { "from": "inverter-core", "allow": [] },
@@ -53,7 +58,17 @@
       { "from": "docs", "allow": [] },
       {
         "from": "tooling",
-        "allow": ["web", "server", "docs", "db", "auth", "env", "inverter-core", "profile-sdk"]
+        "allow": [
+          "web",
+          "server",
+          "docs",
+          "db",
+          "auth",
+          "env",
+          "inverter-core",
+          "profile-sdk",
+          "contracts"
+        ]
       }
     ],
     "coverage": { "requireAllFiles": true },
