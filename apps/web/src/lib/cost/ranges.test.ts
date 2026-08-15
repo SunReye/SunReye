@@ -1,9 +1,11 @@
 import { describe, expect, it } from "bun:test";
 import {
+  barBandPadding,
   chartSpecFor,
   customCostRange,
   periodLabel,
   resolveCostPreset,
+  specQuery,
   type ChartScope,
 } from "./ranges";
 
@@ -155,5 +157,52 @@ describe("periodLabel", () => {
     // the invalid Date that produces — one odd tick beats a blank page.
     expect(periodLabel("2026-05-14", "month")).toBe("2026-05-14");
     expect(periodLabel("2026-05", "day")).toBe("2026-05");
+  });
+});
+
+describe("specQuery", () => {
+  it("sends the picked window as the three parameters the series endpoints take", () => {
+    // The two boundaries are LOCAL Dates, and the endpoints are queried in UTC:
+    // serializing them any other way asks the server for someone else's day.
+    const range = resolveCostPreset("today", NOW);
+    expect(specQuery(range.detail)).toEqual({
+      from: new Date(2026, 4, 14).toISOString(),
+      to: NOW.toISOString(),
+      bucket: "hour",
+    });
+  });
+
+  it("carries the scope's own bucket, not the picked range's", () => {
+    // Detail and context are fetched separately; a query that reused the other
+    // scope's bucket would label month keys as days (see periodLabel's fallback).
+    const range = resolveCostPreset("today", NOW);
+    expect(specQuery(range.chart)).toEqual({
+      from: new Date(2026, 4, 1).toISOString(),
+      to: NOW.toISOString(),
+      bucket: "day",
+    });
+  });
+
+  it("keeps a custom range's exclusive end past the last picked day", () => {
+    const range = customCostRange(new Date(2026, 2, 3), new Date(2026, 2, 9), NOW);
+    expect(specQuery(range.detail).to).toBe(new Date(2026, 2, 10).toISOString());
+  });
+});
+
+describe("barBandPadding", () => {
+  it("fattens the padding for a window of a handful of bars", () => {
+    // A two-bucket window (a fresh month, a two-day custom range) otherwise
+    // renders bars half the viewport wide.
+    expect(barBandPadding(1, 0.2)).toBe(0.6);
+    expect(barBandPadding(4, 0.2)).toBe(0.6);
+  });
+
+  it("hands a busy axis back its own spacing", () => {
+    expect(barBandPadding(5, 0.2)).toBe(0.2);
+    expect(barBandPadding(31, 0.25)).toBe(0.25);
+  });
+
+  it("treats an empty series as the narrow case rather than dividing by nothing", () => {
+    expect(barBandPadding(0, 0.2)).toBe(0.6);
   });
 });

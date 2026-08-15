@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import { control, metric } from "@SunReye/inverter-core";
-import type { InverterProfile, InverterSample } from "@SunReye/inverter-core";
+import type { InverterProfile, InverterSample, MetricDef } from "@SunReye/inverter-core";
 
 import {
   type ControlIO,
@@ -154,6 +154,72 @@ describe("executeControl — preset", () => {
   });
 });
 
+describe("executeControl — what it refuses to run", () => {
+  test("a metric that owns a register is not a control", async () => {
+    const h = harness();
+    const plain = h.profile.metrics.find((m) => m.key === TARGET)!;
+    await expect(executeControl(plain, 1, h.io)).rejects.toThrow(/not a control/);
+    expect(h.writes).toEqual([]);
+  });
+
+  test("an action shape this build does not know is refused, not guessed at", async () => {
+    // Profiles are fetched from the profile repo at runtime, so a newer profile
+    // can name an action an older addon has never heard of. Dispatching nothing
+    // is the only safe reading — the alternative is writing a register nobody
+    // asked for.
+    const h = harness();
+    const future = {
+      ...h.lockDef,
+      controlExpr: { rampTo: { target: TARGET, value: 5 } },
+    } as unknown as MetricDef;
+    await expect(executeControl(future, 1, h.io)).rejects.toThrow(/unsupported controlExpr/);
+    expect(h.writes).toEqual([]);
+  });
+});
+
+describe("executeControl — writes the register rejects", () => {
+  test("unlock refuses a captured value the register no longer accepts", async () => {
+    // The profile can be updated under a lock that is already engaged: a
+    // narrowed range makes yesterday's snapshot unwritable. Restoring must fail
+    // loudly and keep the snapshot, never clear it and lose the user's value.
+    const h = harness({ [TARGET]: 30 });
+    await executeControl(h.lockDef, 1, h.io);
+    h.io.ctx = {
+      ...h.ctx,
+      validateWrite: () => "Value 30 is above maximum 20",
+    } as unknown as ProfileContext;
+    await expect(executeControl(h.lockDef, 0, h.io)).rejects.toThrow(/cannot unlock/);
+    expect(h.writes).toEqual([{ target: TARGET, value: 0 }]); // no restore attempted
+    const kept = await h.store.get();
+    expect(kept[`${PROFILE_ID}:${LOCK_KEY}`]).toMatchObject({ previousValue: 30 });
+  });
+
+  test("a preset stops at the first rejected target, leaving earlier writes applied", async () => {
+    // Modbus has no multi-register atomicity, so a half-applied preset is a real
+    // state the operator must be told about rather than a rollback we can fake.
+    const h = harness();
+    h.io.ctx = {
+      ...h.ctx,
+      validateWrite: (_key: string, value: number) =>
+        value > 5 ? `Value ${value} is above maximum 5` : null,
+    } as unknown as ProfileContext;
+    const presetDef = {
+      ...h.lockDef,
+      key: "settings.backup",
+      controlExpr: {
+        preset: {
+          writes: [
+            { target: TARGET, value: 5 },
+            { target: TARGET, value: 7 },
+          ],
+        },
+      },
+    };
+    await expect(executeControl(presetDef, 1, h.io)).rejects.toThrow(/above maximum 5/);
+    expect(h.writes).toEqual([{ target: TARGET, value: 5 }]);
+  });
+});
+
 describe("injectControlValues", () => {
   test("reports 1 when locked, 0 when unlocked", async () => {
     const h = harness({ [TARGET]: 30 });
@@ -168,5 +234,50 @@ describe("injectControlValues", () => {
     await executeControl(h.lockDef, 1, h.io);
     await injectControlValues(sample, h.ctx, h.store);
     expect(sample.metrics[LOCK_KEY]).toBe(1);
+  });
+});
+
+describe("injectControlValues — profiles without lock state", () => {
+  test("a profile with no controls never reads the store", async () => {
+    // Every poll runs through here, so the common case must not cost a read.
+    const h = harness();
+    const bare = { ...h.profile, metrics: h.profile.metrics.filter((m) => !m.controlExpr) };
+    const ctx = { ...h.ctx, profile: bare } as unknown as ProfileContext;
+    const store: ControlStore = {
+      get: async () => {
+        throw new Error("state was read for a profile with no controls");
+      },
+      set: async () => {},
+    };
+    const sample: InverterSample = {
+      time: new Date().toISOString(),
+      inverterId: PROFILE_ID,
+      metrics: { [TARGET]: 30 },
+    };
+    await injectControlValues(sample, ctx, store);
+    expect(sample.metrics).toEqual({ [TARGET]: 30 });
+  });
+
+  test("a stateless control reports 0 even while another control is locked", async () => {
+    // A preset is momentary: it owns no register and holds no state, so it can
+    // never report the lock state of the snapshotToggle sitting next to it.
+    const h = harness({ [TARGET]: 30 });
+    const presetKey = "settings.backup";
+    const withPreset = {
+      ...h.profile,
+      metrics: [
+        ...h.profile.metrics,
+        { ...h.lockDef, key: presetKey, controlExpr: { preset: { writes: [] } } },
+      ],
+    };
+    await executeControl(h.lockDef, 1, h.io);
+    const sample: InverterSample = {
+      time: new Date().toISOString(),
+      inverterId: PROFILE_ID,
+      metrics: {},
+    };
+    await injectControlValues(sample, { ...h.ctx, profile: withPreset } as ProfileContext, h.store);
+    expect(sample.metrics[LOCK_KEY]).toBe(1);
+    expect(sample.metrics[presetKey]).toBe(0);
   });
 });

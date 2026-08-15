@@ -127,11 +127,9 @@ export function measuredFromRollups(rows: MinuteRollup[], stepMinutes: number): 
  * energy across that hour's slots as an average W.
  *
  * Hours after the current one are left unmeasured so the rest of the day stays
- * forecast-only — but the *current* hour is filled completely. Energy the
- * server already attributed to this hour has been produced; truncating the fill
- * at the running slot silently dropped up to an hour of production from the
- * headline every time the dialog was opened mid-hour. No peaks exist on this
- * path.
+ * forecast-only. The in-progress hour is spread across the slots that have
+ * elapsed, so its energy survives the integral in full — see {@link fillHour}.
+ * No peaks exist on this path.
  */
 export function measuredFromHourlyEnergy(
   rows: HourlyEnergy[],

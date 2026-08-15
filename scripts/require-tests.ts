@@ -83,27 +83,61 @@ export function report(v: Verdict, log = console.error): number {
   return 1;
 }
 
-if (import.meta.main) {
-  const args = process.argv.slice(2);
+/**
+ * Everything the CLI reaches the outside world through: git, and the stream the
+ * report goes to. Injected — production wiring is the default, so the entry point
+ * passes nothing — because what has to be provable is which diff a given argv
+ * asks git for and what exit code the answer earns, not that `git` runs.
+ */
+export interface GateIo {
+  /** Run a command, the way `Bun.spawnSync` does, decoded. */
+  run(cmd: string[]): { exitCode: number; stdout: string; stderr: string };
+  /** Where the report goes — stderr in production, so it survives a piped stdout. */
+  log(message: string): void;
+}
+
+/** The real wiring: git, and stderr. */
+export const productionIo: GateIo = {
+  run: (cmd) => {
+    const proc = Bun.spawnSync(cmd);
+    const decoder = new TextDecoder();
+    return {
+      // A process killed by a signal reports a null code; that is a failed read.
+      exitCode: proc.exitCode ?? 1,
+      stdout: decoder.decode(proc.stdout),
+      stderr: decoder.decode(proc.stderr),
+    };
+  },
+  log: (message) => console.error(message),
+};
+
+/** The git command a given argv asks for: the staged change, or the whole branch. */
+export function diffCommand(staged: boolean, base: string): string[] {
+  return staged
+    ? ["git", "diff", "--cached", "--name-only"]
+    : ["git", "diff", "--name-only", `${base}...HEAD`];
+}
+
+/** The gate: read the diff `argv` names, judge it, report, return the exit code. */
+export function main(argv: string[] = [], io: GateIo = productionIo): number {
   // `--warn` reports without failing: the pre-commit hook uses it, because a
   // commit is allowed to be a step (refactor now, its test in the next commit)
   // while a PR is not. CI runs the same gate without it.
-  const warnOnly = args.includes("--warn");
+  const warnOnly = argv.includes("--warn");
   // `--staged` judges what is about to be committed; otherwise the whole branch
   // against a base ref.
-  const staged = args.includes("--staged");
-  const base = args.find((a) => !a.startsWith("--")) ?? "origin/dev";
+  const staged = argv.includes("--staged");
+  const base = argv.find((a) => !a.startsWith("--")) ?? "origin/dev";
 
-  const cmd = staged
-    ? ["git", "diff", "--cached", "--name-only"]
-    : ["git", "diff", "--name-only", `${base}...HEAD`];
-  const proc = Bun.spawnSync(cmd);
+  const proc = io.run(diffCommand(staged, base));
   if (proc.exitCode !== 0) {
-    console.error(`✖ TDD gate: cannot read the ${staged ? "staged" : base} diff.`);
-    console.error(new TextDecoder().decode(proc.stderr));
-    process.exit(warnOnly ? 0 : 1);
+    io.log(`✖ TDD gate: cannot read the ${staged ? "staged" : base} diff.`);
+    io.log(proc.stderr);
+    return warnOnly ? 0 : 1;
   }
-  const changed = new TextDecoder().decode(proc.stdout).split("\n").filter(Boolean);
-  const code = report(verdict(changed));
-  process.exit(warnOnly ? 0 : code);
+  const changed = proc.stdout.split("\n").filter(Boolean);
+  const code = report(verdict(changed), io.log);
+  return warnOnly ? 0 : code;
 }
+
+if (import.meta.main) process.exit(main(process.argv.slice(2)));

@@ -23,8 +23,11 @@ import {
   automationStateSchema,
   defaultAutomationState,
 } from "@SunReye/db/automation-state";
+import type { SpotPriceConfig } from "@SunReye/db/spot-price-config";
+import type { ZodType } from "zod";
 import { HISTORY_CAPACITY, type DecisionPoint } from "./automation-history";
 import type { ProfileContext } from "../inverter/inverter";
+import type { SpotSlice } from "../prices/spot-price";
 import { log } from "../shared/logging";
 import type { PeakShavingPlans } from "./peak-shaving-plan";
 import {
@@ -142,11 +145,82 @@ function scheduleNext(): void {
   }, tickMs);
 }
 
-/** Production IO: real config, forecast, live sample and persisted snapshot state. */
-async function buildProductionIO(deps: {
+/**
+ * What the plant is written through: the active profile and the register writer.
+ * Exported because it names the parameter of {@link startAutomations},
+ * {@link buildProductionIO} and {@link composeAutomationIO} — a caller has to be
+ * able to name what it is handing in.
+ */
+export interface PlantDeps {
   ctx: ProfileContext;
   write: (key: string, value: number) => Promise<void>;
-}): Promise<AutomationIO> {
+}
+
+/**
+ * Everything the production IO reads the plant through. Injected into
+ * {@link composeAutomationIO} rather than imported by it, so the wiring — the
+ * price gate and the snapshot cache especially — can be proven without a
+ * database behind it.
+ */
+export interface AutomationModules {
+  getAutomationConfig: AutomationIO["getConfig"];
+  getWeatherConfig: AutomationIO["getWeather"];
+  fetchSolarForecast: AutomationIO["getForecast"];
+  representativeHouseLoadW: AutomationIO["getBaselineLoadW"];
+  evccSnapshot: AutomationIO["getEvcc"];
+  evccControl: AutomationIO["evccCommand"];
+  getTariff: AutomationIO["getTariff"];
+  getSpotPriceConfig(): Promise<SpotPriceConfig>;
+  spotPricesReady(config: SpotPriceConfig): boolean;
+  loadSpotSlice(zone: string): Promise<SpotSlice>;
+  latestSample: AutomationIO["latestSample"];
+  readSetting<T>(key: string, schema: ZodType<T>, fallback: T): Promise<T>;
+  writeSetting<T>(key: string, value: T): Promise<void>;
+}
+
+/**
+ * Wire the plant modules onto the tick's IO surface: pass-throughs, the price
+ * gate (a disabled or zone-less feed reads as "no prices", never as a price of
+ * zero) and the snapshot cache that keeps the persisted state to one read per
+ * engine run.
+ */
+// fallow-ignore-next-line unused-export -- wiring asserted by automation.test.ts; test files aren't traced as consumers
+export function composeAutomationIO(deps: PlantDeps, mods: AutomationModules): AutomationIO {
+  let stateCache: AutomationState | null = null;
+  return {
+    ctx: deps.ctx,
+    write: deps.write,
+    getConfig: mods.getAutomationConfig,
+    getWeather: mods.getWeatherConfig,
+    getForecast: mods.fetchSolarForecast,
+    getBaselineLoadW: mods.representativeHouseLoadW,
+    getEvcc: mods.evccSnapshot,
+    evccCommand: mods.evccControl,
+    getTariff: mods.getTariff,
+    async getPrices() {
+      const config = await mods.getSpotPriceConfig();
+      return mods.spotPricesReady(config) ? mods.loadSpotSlice(config.zone) : null;
+    },
+    latestSample: mods.latestSample,
+    async loadState() {
+      stateCache ??= await mods.readSetting(
+        AUTOMATION_STATE_KEY,
+        automationStateSchema,
+        defaultAutomationState,
+      );
+      return stateCache;
+    },
+    async saveState(next) {
+      await mods.writeSetting(AUTOMATION_STATE_KEY, next);
+      stateCache = next;
+    },
+    now: () => Date.now(),
+  };
+}
+
+/** Production IO: real config, forecast, live sample and persisted snapshot state. */
+// fallow-ignore-next-line unused-export -- the default `buildIO` of startAutomations, also asserted by automation.test.ts; defaults and test files aren't traced as consumers
+export async function buildProductionIO(deps: PlantDeps): Promise<AutomationIO> {
   const [
     { getAutomationConfig },
     { getWeatherConfig },
@@ -154,7 +228,10 @@ async function buildProductionIO(deps: {
     { evccSnapshot, evccControl },
     { liveState },
     { getTariff },
-    appSettings,
+    { readSetting, writeSetting },
+    { getSpotPriceConfig },
+    { loadSpotSlice },
+    { spotPricesReady },
   ] = await Promise.all([
     import("../settings/automation-settings"),
     import("../settings/weather-settings"),
@@ -163,51 +240,40 @@ async function buildProductionIO(deps: {
     import("../shared/state"),
     import("../settings/settings"),
     import("../settings/app-settings"),
+    import("../settings/spot-price-settings"),
+    import("../prices/spot-price-store"),
+    import("@SunReye/db/spot-price-config"),
   ]);
-  let stateCache: AutomationState | null = null;
-  return {
-    ctx: deps.ctx,
-    write: deps.write,
-    getConfig: getAutomationConfig,
-    getWeather: getWeatherConfig,
-    getForecast: fetchSolarForecast,
-    getBaselineLoadW: representativeHouseLoadW,
-    getEvcc: evccSnapshot,
-    evccCommand: evccControl,
+  return composeAutomationIO(deps, {
+    getAutomationConfig,
+    getWeatherConfig,
+    fetchSolarForecast,
+    representativeHouseLoadW,
+    evccSnapshot,
+    evccControl,
     getTariff,
-    async getPrices() {
-      const [{ getSpotPriceConfig }, { loadSpotSlice }, { spotPricesReady }] = await Promise.all([
-        import("../settings/spot-price-settings"),
-        import("../prices/spot-price-store"),
-        import("@SunReye/db/spot-price-config"),
-      ]);
-      const config = await getSpotPriceConfig();
-      return spotPricesReady(config) ? loadSpotSlice(config.zone) : null;
-    },
+    getSpotPriceConfig,
+    spotPricesReady,
+    loadSpotSlice,
     latestSample: () => liveState.latest,
-    async loadState() {
-      stateCache ??= await appSettings.readSetting(
-        AUTOMATION_STATE_KEY,
-        automationStateSchema,
-        defaultAutomationState,
-      );
-      return stateCache;
-    },
-    async saveState(next) {
-      await appSettings.writeSetting(AUTOMATION_STATE_KEY, next);
-      stateCache = next;
-    },
-    now: () => Date.now(),
-  };
+    readSetting,
+    writeSetting,
+  });
 }
 
-/** Start the automation loop (called by the runtime once a profile is active). */
-export async function startAutomations(deps: {
-  ctx: ProfileContext;
-  write: (key: string, value: number) => Promise<void>;
-}): Promise<void> {
+/**
+ * Start the automation loop (called by the runtime once a profile is active):
+ * stop whatever ran before, build the IO, tick once immediately, then arm the
+ * interval. `buildIO` is the injection seam — production always takes
+ * {@link buildProductionIO}; a caller that owns its own IO (tests, a harness)
+ * passes one in and drives the same loop without a database behind it.
+ */
+export async function startAutomations(
+  deps: PlantDeps,
+  buildIO: (deps: PlantDeps) => Promise<AutomationIO> = buildProductionIO,
+): Promise<void> {
   await stopAutomations();
-  const io = await buildProductionIO(deps);
+  const io = await buildIO(deps);
   readConfig = io.getConfig;
   engine = createPeakShavingEngine(io);
   void tickAndBroadcast().finally(scheduleNext);

@@ -44,9 +44,13 @@ export function cachedSetting<T>(key: string, schema: ZodType<T>, fallback: T): 
       return cache;
     },
     async set(input) {
-      cache = schema.parse(input);
-      await writeSetting(key, cache);
-      return cache;
+      // Cache only once the row is safely written: a failed write must not
+      // leave a value being served as the active setting that the database
+      // never accepted (config.ts orders its own caches the same way).
+      const value = schema.parse(input);
+      await writeSetting(key, value);
+      cache = value;
+      return value;
     },
   };
 }

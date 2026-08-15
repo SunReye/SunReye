@@ -78,6 +78,22 @@ describe("headline figures", () => {
   });
 });
 
+describe("self-consumed energy", () => {
+  test("never reports a negative figure on a day the battery fed the grid", () => {
+    // Export can exceed production when yesterday's stored sun leaves the pack:
+    // "−8 kWh self-used" is not a reading a household can act on, so the tile
+    // floors at zero.
+    const d = data({ current: totals({ productionKwh: 12, exportKwh: 20 }) });
+    expect(byId(d, "energy.selfUsed")?.value).toBe("0 kWh");
+    expect(ENERGY_TILES.find((t) => t.id === "energy.selfUsed")?.raw(d)).toBe(0);
+  });
+
+  test("is the whole production on a window that exported nothing", () => {
+    const d = data({ current: totals({ productionKwh: 12, exportKwh: 0 }) });
+    expect(byId(d, "energy.selfUsed")?.value).toBe("12 kWh");
+  });
+});
+
 describe("per-day sub-line", () => {
   test("divides the total by the window length", () => {
     expect(byId(data(), "energy.produced")?.sub).toBe("12 kWh/day");
@@ -86,6 +102,23 @@ describe("per-day sub-line", () => {
   test("carries no delta of its own — that is the chip's job", () => {
     const d = data({ previous: totals({ productionKwh: 100 }) });
     expect(byId(d, "energy.produced")?.sub).toBe("12 kWh/day");
+  });
+
+  test("restates the total itself on a single-day window", () => {
+    const d = data({ rangeDays: 1 });
+    expect(byId(d, "energy.produced")?.value).toBe("120 kWh");
+    expect(byId(d, "energy.produced")?.sub).toBe("120 kWh/day");
+  });
+
+  test("rounds the daily average rather than printing the full quotient", () => {
+    // 120 kWh over 7 days is 17.142857…; the sub-line is a glance figure.
+    expect(byId(data({ rangeDays: 7 }), "energy.produced")?.sub).toBe("17.1 kWh/day");
+  });
+
+  test("reads a window that produced nothing as a flat zero per day", () => {
+    const d = data({ current: totals({ productionKwh: 0 }) });
+    expect(byId(d, "energy.produced")?.value).toBe("0 kWh");
+    expect(byId(d, "energy.produced")?.sub).toBe("0 kWh/day");
   });
 });
 
@@ -141,6 +174,47 @@ describe("battery capability gating", () => {
   test("keeps them when the manifest is silent but the window moved battery energy", () => {
     const d = data({ hasBattery: false });
     expect(byId(d, "energy.batteryDischarged")?.value).toBe("20 kWh");
+  });
+
+  test("keeps them when only the reference window moved battery energy", () => {
+    // A pack commissioned before the picked window, idle since: the manifest is
+    // silent, this window is flat, but the row must not lose two tiles mid-page.
+    const d = data({
+      hasBattery: false,
+      current: totals({ batteryChargeKwh: 0, batteryDischargeKwh: 0 }),
+      previous: totals({ batteryChargeKwh: 14, batteryDischargeKwh: 0 }),
+    });
+    expect(byId(d, "energy.batteryCharged")?.value).toBe("0 kWh");
+    expect(byId(d, "energy.batteryDischarged")?.value).toBe("0 kWh");
+  });
+
+  test("drops them when there is no reference window to speak for a pack", () => {
+    // `previous` is null whenever the comparison endpoint is unavailable or the
+    // window predates history — that absence must not be read as battery energy.
+    const d = data({
+      hasBattery: false,
+      current: totals({ batteryChargeKwh: 0, batteryDischargeKwh: 0 }),
+      previous: null,
+    });
+    expect(tiles(d).map((t) => t.id)).toEqual([
+      "energy.produced",
+      "energy.consumed",
+      "energy.selfUsed",
+    ]);
+  });
+
+  test("has no delta when the reference window belongs to a batteryless plant", () => {
+    const previous: EnergyTileData = {
+      current: totals({ batteryChargeKwh: 0, batteryDischargeKwh: 0 }),
+      previous: null,
+      rangeDays: 10,
+      hasBattery: false,
+    };
+    const charged = deriveTiles(ENERGY_TILES, data(), f, previous).find(
+      (t) => t.id === "energy.batteryCharged",
+    );
+    expect(charged?.value).toBe("22 kWh");
+    expect(charged?.delta).toBeNull();
   });
 
   test("raw is null for a tile that does not apply", () => {

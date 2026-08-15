@@ -41,7 +41,14 @@ import type { BumpLevel, CanonicalRole, ProfileData } from "@SunReye/inverter-co
 async function readJson(path: string): Promise<unknown> {
   const file = Bun.file(path);
   if (!(await file.exists())) fail(`file not found: ${path}`);
-  return JSON.parse(await file.text());
+  const text = await file.text();
+  try {
+    return JSON.parse(text);
+  } catch (error) {
+    // A truncated or hand-mangled file is a user error, not a crash: keep the
+    // `error: …` + exit 1 contract instead of dumping a parser stack trace.
+    fail(`${path} is not valid JSON: ${error instanceof Error ? error.message : String(error)}`);
+  }
 }
 
 function fail(message: string): never {

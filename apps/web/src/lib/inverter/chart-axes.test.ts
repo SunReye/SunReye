@@ -1,5 +1,11 @@
 import { describe, expect, it } from "bun:test";
-import { type AxisSeries, domainFor, groupSeriesByUnit, normalizeSeries } from "./chart-axes";
+import {
+  type AxisSeries,
+  axisScale,
+  domainFor,
+  groupSeriesByUnit,
+  normalizeSeries,
+} from "./chart-axes";
 
 const s = (key: string, unit: string): AxisSeries => ({
   key,
@@ -65,12 +71,29 @@ describe("domainFor", () => {
     expect(domainFor([], [s("eff", "%")])).toEqual([0, 1]);
   });
 
-  it("skips non-finite readings instead of poisoning the domain", () => {
+  it("skips non-finite and missing readings instead of poisoning the domain", () => {
+    // Only the real readings may decide the axis. An Infinity would stretch the
+    // domain to the end of the number line and a gap (null) would drag its floor
+    // to zero — both leave the actual 50–60 band a flat line against one edge.
     const withGaps = [
-      { date: new Date(0), eff: NaN },
+      { date: new Date(0), eff: Number.NaN },
       { date: new Date(1), eff: 50 },
+      { date: new Date(2), eff: Number.POSITIVE_INFINITY },
+      { date: new Date(3) }, // series reports null for the missing key
+      { date: new Date(4), eff: 60 },
     ];
-    expect(domainFor(withGaps, [s("eff", "%")])).toEqual([0, 55.00000000000001]);
+    expect(domainFor(withGaps, [s("eff", "%")])).toEqual([50, 60]);
+  });
+
+  it("falls back to [0,1] when every reading is non-finite", () => {
+    // Nothing survives the filter, so this must take the empty path. Without it
+    // the extent is [Infinity, -Infinity], which nice()s into a domain whose
+    // ticks are NaN and whose axis renders blank.
+    const allGaps = [
+      { date: new Date(0), eff: Number.NaN },
+      { date: new Date(1), eff: Number.NEGATIVE_INFINITY },
+    ];
+    expect(domainFor(allGaps, [s("eff", "%")])).toEqual([0, 1]);
   });
 
   it("gives a flat series a band from zero, by sign", () => {
@@ -97,5 +120,39 @@ describe("normalizeSeries", () => {
   it("passes through null for missing values", () => {
     const [ns] = normalizeSeries([s("eff", "%")], [80, 90]);
     expect(ns.value({})).toBeNull();
+  });
+});
+
+describe("axisScale", () => {
+  it("puts the domain minimum at the bottom of the plot", () => {
+    // SVG y grows downward, so the range is inverted: a tick label drawn at the
+    // scale's output for `min` has to sit on the baseline, not the top edge.
+    const scale = axisScale([0, 100], 240);
+    expect(scale(0)).toBe(240);
+    expect(scale(100)).toBe(0);
+    expect(scale(50)).toBe(120);
+  });
+
+  it("keeps a signed domain's zero where the data says, not mid-plot", () => {
+    // Battery power runs −135 W to 500 W; the axis must not pretend it is
+    // symmetric, or the charge/discharge crossing is drawn in the wrong place.
+    const scale = axisScale([-135, 500], 635);
+    expect(scale(-135)).toBe(635);
+    expect(scale(0)).toBeCloseTo(500, 6);
+    expect(scale(500)).toBe(0);
+  });
+
+  it("survives a zero-height plot without producing NaN ticks", () => {
+    // The chart is measured after mount; the first paint asks for a scale on a
+    // container that has no height yet.
+    const scale = axisScale([80, 90], 0);
+    expect(scale(85)).toBe(0);
+  });
+
+  it("still resolves a reading outside its domain", () => {
+    // domainFor nice()s the ends, so a raw sample can land just past them —
+    // clamping is not on, and the value has to stay plottable.
+    const scale = axisScale([80, 90], 100);
+    expect(scale(95)).toBe(-50);
   });
 });

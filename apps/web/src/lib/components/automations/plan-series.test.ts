@@ -1,6 +1,13 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, setSystemTime, test } from "bun:test";
 import type { DecisionPoint, PeakShavingPlan, PlanSlot } from "$lib/automations";
-import { measuredDaySeries, toPlanRows, toSocRows } from "./plan-series";
+import {
+  joinDayRows,
+  measuredDaySeries,
+  toMeasuredRows,
+  toPlanRows,
+  toSocRows,
+  todayPoints,
+} from "./plan-series";
 
 const T0 = Date.parse("2026-07-27T12:00:00Z");
 const SLOT = 15 * 60_000;
@@ -162,5 +169,148 @@ describe("measuredDaySeries", () => {
     const { power } = measuredDaySeries({ pv: map(entries), batt: null, grid: null, soc: null });
     expect(power.length).toBeLessThanOrEqual(721);
     expect(power.at(-1)?.t.getTime()).toBe(T0 + 1440 * minute);
+  });
+});
+
+/** One sample off the decision ring, with only the metered fields that matter. */
+const measuredPoint = (over: Partial<DecisionPoint> = {}): DecisionPoint => ({
+  ...historyPoint(T0, 55),
+  pvW: 8000,
+  thresholdW: 5500,
+  chargeW: 2000,
+  exportW: 5500,
+  ...over,
+});
+
+describe("toMeasuredRows", () => {
+  test("the metered halves come out of the PV and the house keeps the rest", () => {
+    const [row] = toMeasuredRows([measuredPoint()]);
+    expect(row).toMatchObject({ loadKw: 0.5, chargeKw: 2, exportKw: 5.5, pvKw: 8 });
+    const stacked = row!.loadKw + row!.chargeKw + row!.exportKw + row!.curtailedKw;
+    expect(stacked).toBeCloseTo(row!.pvKw, 6);
+  });
+
+  test("nothing is curtailed in hindsight", () => {
+    // Curtailment is a projection concept. The measured stack has to sum back to
+    // the PV the meter actually saw, or the "Today" half of the chart claims
+    // production that never existed.
+    const [row] = toMeasuredRows([measuredPoint({ pvW: 12_000, chargeW: 0, exportW: 0 })]);
+    expect(row!.curtailedKw).toBe(0);
+    expect(row!.loadKw).toBe(12);
+  });
+
+  test("a discharging battery is not a charge band", () => {
+    // The metered sign convention is charge-positive; a discharge (negative) is
+    // the pack *feeding* the house, so the whole PV is still load.
+    const [row] = toMeasuredRows([measuredPoint({ pvW: 1000, chargeW: -1500, exportW: 0 })]);
+    expect(row).toMatchObject({ chargeKw: 0, exportKw: 0, loadKw: 1 });
+  });
+
+  test("an import from the grid is not an export band", () => {
+    const [row] = toMeasuredRows([measuredPoint({ pvW: 1000, chargeW: 0, exportW: -2200 })]);
+    expect(row).toMatchObject({ exportKw: 0, loadKw: 1 });
+  });
+
+  test("charging out of the grid can never push the stack past the measured PV", () => {
+    // Grid-charging at first light: the pack takes 3 kW while the array makes 1.
+    // The 2 kW that came off the grid is not solar, so the band stops at PV.
+    const [row] = toMeasuredRows([measuredPoint({ pvW: 1000, chargeW: 3000, exportW: 0 })]);
+    expect(row).toMatchObject({ chargeKw: 1, exportKw: 0, loadKw: 0, pvKw: 1 });
+  });
+
+  test("export is clipped to what is left after charging", () => {
+    const [row] = toMeasuredRows([measuredPoint({ pvW: 4000, chargeW: 3000, exportW: 2000 })]);
+    expect(row).toMatchObject({ chargeKw: 3, exportKw: 1, loadKw: 0 });
+  });
+
+  test("a negative PV reading before sunrise is floored, not plotted below the axis", () => {
+    // Some strings report a small negative DC figure at night; a bar hanging
+    // under the axis would read as consumption.
+    const [row] = toMeasuredRows([measuredPoint({ pvW: -20, chargeW: null, exportW: null })]);
+    expect(row).toMatchObject({ pvKw: 0, loadKw: 0, chargeKw: 0, exportKw: 0 });
+  });
+
+  test("an unmetered plant leaves the whole PV on the house", () => {
+    const [row] = toMeasuredRows([measuredPoint({ pvW: 3000, chargeW: null, exportW: null })]);
+    expect(row).toMatchObject({ loadKw: 3, chargeKw: 0, exportKw: 0 });
+  });
+
+  test("0 % SOC and a zero threshold are readings, not gaps", () => {
+    const [row] = toMeasuredRows([measuredPoint({ socPct: 0, thresholdW: 0 })]);
+    expect(row).toMatchObject({ socPct: 0, thresholdKw: 0 });
+    expect(row!.t.getTime()).toBe(T0);
+  });
+
+  test("an empty ring plots nothing", () => {
+    expect(toMeasuredRows([])).toEqual([]);
+  });
+});
+
+describe("todayPoints", () => {
+  // The ring holds more than a day, so "Today" is a cut at local midnight.
+  const NOW = new Date(2026, 7, 2, 0, 5);
+  const MIDNIGHT = new Date(2026, 7, 2).getTime();
+
+  afterEach(() => setSystemTime());
+
+  test("a sample from the far side of midnight is not part of today", () => {
+    // Five minutes after midnight the ring is almost all yesterday. Carrying it
+    // over would draw last evening's production onto the new day.
+    setSystemTime(NOW);
+    const points = [
+      historyPoint(MIDNIGHT - 60 * 60_000, 30),
+      historyPoint(MIDNIGHT - 1, 31),
+      historyPoint(MIDNIGHT, 32),
+      historyPoint(MIDNIGHT + 5 * 60_000, 33),
+    ];
+    expect(todayPoints(points).map((p) => p.socPct)).toEqual([32, 33]);
+  });
+
+  test("the sample exactly at midnight opens the day", () => {
+    setSystemTime(NOW);
+    expect(todayPoints([historyPoint(MIDNIGHT, 40)])).toHaveLength(1);
+  });
+
+  test("late in the evening the whole day is still there", () => {
+    setSystemTime(new Date(2026, 7, 2, 23, 45));
+    const points = [
+      historyPoint(MIDNIGHT - 1, 20),
+      historyPoint(MIDNIGHT, 21),
+      historyPoint(MIDNIGHT + 12 * 3_600_000, 22),
+    ];
+    expect(todayPoints(points).map((p) => p.socPct)).toEqual([21, 22]);
+    expect(todayPoints([])).toEqual([]);
+  });
+});
+
+describe("joinDayRows", () => {
+  const measured = toMeasuredRows([measuredPoint({ t: T0 - SLOT }), measuredPoint({ t: T0 })]);
+  const projected = toPlanRows([
+    slot({ t: T0 - SLOT }),
+    slot({ t: T0 }),
+    slot({ t: T0 + SLOT }),
+    slot({ t: T0 + 2 * SLOT }),
+  ]);
+
+  test("the projection picks up strictly after the last measured sample", () => {
+    // The plan's running slot started before "now", so its first rows overlap
+    // what has already been measured; keeping them double-plots the same minutes.
+    const rows = joinDayRows(measured, projected);
+    expect(rows.map((r) => r.t.getTime())).toEqual([T0 - SLOT, T0, T0 + SLOT, T0 + 2 * SLOT]);
+  });
+
+  test("a plan row landing exactly on the seam is dropped, not duplicated", () => {
+    const rows = joinDayRows(measured, toPlanRows([slot({ t: T0 })]));
+    expect(rows).toHaveLength(measured.length);
+  });
+
+  test("before the first measurement of the day the whole plan is the day", () => {
+    const rows = joinDayRows([], projected);
+    expect(rows.map((r) => r.t.getTime())).toEqual([T0 - SLOT, T0, T0 + SLOT, T0 + 2 * SLOT]);
+  });
+
+  test("with no plan the day ends at the last measurement", () => {
+    expect(joinDayRows(measured, [])).toEqual(measured);
+    expect(joinDayRows([], [])).toEqual([]);
   });
 });
