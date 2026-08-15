@@ -248,18 +248,14 @@ mock.module("../automation/automation", () => ({
   },
 }));
 
-/** House-load values handed to the EV charge-power estimator, in poll order. */
+/**
+ * House-load values handed to the EV charge-power estimator, in poll order.
+ * The estimator hook is a constructor-injected collaborator (see the
+ * `onLoadSample` dep passed to `createRuntime` below), so this suite records the
+ * per-poll load through an injected spy rather than mocking `../evcc/evcc` — one
+ * fewer process-global module mock to install and unwind.
+ */
 let loadSamples: (number | null)[] = [];
-const realEvcc = await import("../evcc/evcc");
-const realEvccExports = { ...realEvcc };
-const realEvccOnLoadSample = realEvcc.evccOnLoadSample;
-mock.module("../evcc/evcc", () => ({
-  ...realEvcc,
-  evccOnLoadSample: (watts: number | null) => {
-    if (!intercepting) return realEvccOnLoadSample(watts);
-    loadSamples.push(watts);
-  },
-}));
 
 /** Sentinel handed back by `getWeatherConfig`, to prove it is threaded through. */
 const WEATHER_CONFIG = { marker: "weather" };
@@ -637,7 +633,6 @@ afterAll(() => {
   mock.module("../settings/config", () => ({ ...realConfigExports }));
   mock.module("./mqtt", () => ({ ...realBridgeExports }));
   mock.module("../automation/automation", () => ({ ...realAutomationExports }));
-  mock.module("../evcc/evcc", () => ({ ...realEvccExports }));
   mock.module("../settings/weather-settings", () => ({ ...realWeatherSettingsExports }));
   mock.module("../forecast/solar-forecast", () => ({ ...realSolarForecastExports }));
   mock.module("../forecast/forecast-correction-job", () => ({ ...realLearnJobExports }));
@@ -660,7 +655,14 @@ afterAll(() => {
 // in-memory doubles above rather than the module's default instance — which is
 // why no `@SunReye/db` and no `./control-store` mock is needed.
 const { createRuntime } = await import("./runtime");
-const runtime = createRuntime({ history: historyDouble, controlStore });
+const runtime = createRuntime({
+  history: historyDouble,
+  controlStore,
+  // The EV charge-power estimator hook, injected as a spy instead of mocking
+  // `../evcc/evcc`: every poll's house-load value is recorded here, which is why
+  // this suite no longer installs (or has to unwind) an evcc module mock.
+  onLoadSample: (watts) => loadSamples.push(watts),
+});
 const {
   applyInverterConfig,
   applyMqttConfig,

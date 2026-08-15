@@ -112,6 +112,13 @@ export interface RuntimeDeps {
    * in-memory double and this module no longer needs the store mocked.
    */
   controlStore?: ControlStore;
+  /**
+   * The EV charge-power estimator's house-load hook, fed one sample (W, or null
+   * when the profile maps no load) per poll. Defaults to the real EVCC ingest's
+   * {@link evccOnLoadSample} (a no-op when EVCC is off); injected so a test
+   * records the per-poll load through a spy rather than mocking `../evcc/evcc`.
+   */
+  onLoadSample?: (watts: number | null) => void;
 }
 
 /**
@@ -125,6 +132,7 @@ export function createRuntime(deps: RuntimeDeps = {}) {
   const historyBuffer =
     deps.history ?? createHistoryBuffer({ store: db, table: metricsRaw, logger });
   const scheduler = deps.scheduler ?? createJobScheduler();
+  const onLoadSample = deps.onLoadSample ?? evccOnLoadSample;
   let ctx: ProfileContext | null = null;
   let source: InverterSource | null = null;
   let pollTimer: ReturnType<typeof setInterval> | null = null;
@@ -241,7 +249,7 @@ export function createRuntime(deps: RuntimeDeps = {}) {
       liveState.set(sample);
       // The EV charge-power estimator refines its estimate from the 1 Hz house
       // load — between EVCC's much slower publishes (no-op when EVCC is off).
-      evccOnLoadSample(loadPowerOf(sample));
+      onLoadSample(loadPowerOf(sample));
       const rows = Object.entries(sample.metrics).map(([metric, value]) => ({
         time: new Date(sample.time),
         inverterId: sample.inverterId,
