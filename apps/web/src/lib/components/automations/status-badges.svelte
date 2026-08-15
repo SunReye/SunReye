@@ -3,7 +3,7 @@
 	import { STATE_LABEL, STATE_VARIANT } from './run-state';
 	import { REGIME_LABEL, REGIME_VARIANT } from './price-regime';
 	import type { PeakShavingRunState } from '$lib/automations';
-	import type { PriceRegime } from 'server/src/automation/price-plan';
+	import type { PriceRegime } from '@SunReye/contracts/automation';
 
 	// Run state and price regime side by side. Two badges rather than one merged
 	// label because they answer different questions — "is it steering?" and "what

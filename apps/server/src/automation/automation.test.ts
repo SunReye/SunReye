@@ -15,9 +15,9 @@ import type { SolarForecast } from "../forecast/solar-forecast";
 import { buildProfileContext } from "../inverter/inverter";
 import type { SpotSlice } from "@SunReye/contracts/prices";
 import { getAutomationConfig } from "../settings/automation-settings";
+import type { AutomationStreamMessage } from "@SunReye/contracts/automation";
 import {
   type AutomationModules,
-  type AutomationStreamMessage,
   applyAutomationConfig,
   automationHistory,
   automationPlan,

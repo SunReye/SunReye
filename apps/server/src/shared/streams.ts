@@ -20,7 +20,7 @@
  */
 
 import type { InverterSample } from "@SunReye/inverter-core";
-import type { AutomationStreamMessage } from "../automation/automation";
+import type { AutomationStreamMessage } from "@SunReye/contracts/automation";
 import type { EvccState } from "@SunReye/contracts/evcc";
 import type { StatisticsLiveMessage } from "@SunReye/contracts/statistics";
 import type { LogEntry } from "@SunReye/contracts/logs";

@@ -25,67 +25,29 @@ import {
 } from "@SunReye/db/automation-state";
 import type { SpotPriceConfig } from "@SunReye/db/spot-price-config";
 import type { ZodType } from "zod";
-import { HISTORY_CAPACITY, type DecisionPoint } from "./automation-history";
+import type {
+  AutomationHistoryView,
+  AutomationPlanView,
+  AutomationStatusView,
+  AutomationStreamMessage,
+  DecisionPoint,
+} from "@SunReye/contracts/automation";
+import { HISTORY_CAPACITY } from "./automation-history";
 import type { ProfileContext } from "../inverter/inverter";
 import type { SpotSlice } from "@SunReye/contracts/prices";
 import { log } from "../shared/logging";
 import type { Streams } from "../shared/streams";
-import type { PeakShavingPlans } from "./peak-shaving-plan";
 import {
   type AutomationIO,
-  type AutomationStatusView,
   type PeakShavingEngine,
-  type PeakShavingStatus,
   createPeakShavingEngine,
   initialStatus,
-} from "./peak-shaving-engine";
-
-// Re-exported so the web app can type its client against the exact server
-// shapes (see apps/web/src/lib/automations.ts) instead of hand-mirroring them.
-export type { AutomationConfig } from "@SunReye/db/automation-config";
-export type { DecisionPoint } from "./automation-history";
-export type { Blocker } from "./peak-shaving";
-export type { PeakShavingPlan, PeakShavingPlans, PlanSlot } from "./peak-shaving-plan";
-
-/** Payload of `GET /api/automations/plan`. */
-export interface AutomationPlanView {
-  peakShaving: PeakShavingPlans | null;
-}
-
-/** Payload of `GET /api/automations/history`. */
-export interface AutomationHistoryView {
-  /** Engine tick cadence, ms — the nominal spacing between points. */
-  tickMs: number;
-  /** Ring size, i.e. how many points the window can hold at most. */
-  capacity: number;
-  peakShaving: DecisionPoint[];
-}
-export type {
-  AutomationStatusView,
-  PeakShavingRunState,
-  PeakShavingStatus,
 } from "./peak-shaving-engine";
 
 const logger = log("automation");
 
 /** Tick cadence until the config has been read; writes only happen on change. */
 const DEFAULT_TICK_MS = 30_000;
-
-/**
- * One frame of `/ws/automations`: pushed after every engine tick (and once as
- * the on-open snapshot, then carrying the full ring in `history`).
- */
-export interface AutomationStreamMessage {
-  /** Engine cadence, ms — the countdown base for "next decision in …". */
-  tickMs: number;
-  status: PeakShavingStatus;
-  /** The decision point this tick appended; null when the tick decided nothing. */
-  point: DecisionPoint | null;
-  /** Full ring backfill; present only on the socket-open snapshot. */
-  history?: DecisionPoint[];
-  /** Today/tomorrow projections, recomputed per tick; null without a forecast. */
-  plan: PeakShavingPlans | null;
-}
 
 let engine: PeakShavingEngine | null = null;
 let timer: ReturnType<typeof setTimeout> | null = null;
