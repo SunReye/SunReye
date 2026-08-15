@@ -42,8 +42,7 @@
     "rules": [
       {
         "from": "web",
-        "allow": ["env", "auth", "inverter-core", "contracts"],
-        "allowTypeOnly": ["server"]
+        "allow": ["env", "auth", "inverter-core", "contracts"]
       },
       {
         "from": "server",
