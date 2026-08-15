@@ -2,7 +2,7 @@
 
 ## [unreleased]
 
-Unreleased work on `dev` since 1.2.0, shipped in `beta.20260815-ee5dd45`.
+Unreleased work on `dev` since 1.2.0, shipped in `beta.20260815-09677c6`.
 
 
 ### Features
@@ -114,6 +114,9 @@ Unreleased work on `dev` since 1.2.0, shipped in `beta.20260815-ee5dd45`.
 
 ### Code Refactoring
 
+* **server:** extract the runtime control writer as an injected collaborator ([e314497](https://github.com/SunReye/SunReye/commit/e314497e64a4de9f36aaedf99d63900790429a0f))
+* **server:** extract the runtime job scheduler as an injected collaborator ([5056585](https://github.com/SunReye/SunReye/commit/505658569d9dd303fe3f44dccf9025e4e0854cb7))
+* **server:** extract the runtime history buffer as an injected collaborator ([d700bb6](https://github.com/SunReye/SunReye/commit/d700bb65579ce570b35bf31bc754d4bddd93fb57))
 * **contracts:** move automation wire types out of server ([21a0129](https://github.com/SunReye/SunReye/commit/21a0129e9a548abe0c8bdc23baf2b22889207c84))
 * **contracts:** move evcc and log wire types out of server ([28f5463](https://github.com/SunReye/SunReye/commit/28f5463063654c5a064d9d2a1eb99463d26b062a))
 * **contracts:** move spot-price wire types out of server ([c67d510](https://github.com/SunReye/SunReye/commit/c67d5101eecbc2823b2b03d37e9a294acdf92f43))
@@ -194,6 +197,7 @@ Unreleased work on `dev` since 1.2.0, shipped in `beta.20260815-ee5dd45`.
 
 ### Tests
 
+* **server:** inject the evcc load-sample hook instead of module-mocking it ([c20771a](https://github.com/SunReye/SunReye/commit/c20771ac1ab66fb052fee6dda782b96aee24562a))
 * **ci:** make first-party mocks hand themselves back, and gate it ([58d8c41](https://github.com/SunReye/SunReye/commit/58d8c41183b7478649f2973d8845b132fdf19390))
 * take the suite from 80 % to 100 % line coverage ([44e5ba1](https://github.com/SunReye/SunReye/commit/44e5ba1f8da82f0d8364911b0640c5d0477dea89))
 * **web:** hand the base locale back after the format tests ([a57ddd1](https://github.com/SunReye/SunReye/commit/a57ddd1e8e6a8c3a34283982e8d52bf9fc82b9ae))
