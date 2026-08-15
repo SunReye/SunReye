@@ -32,16 +32,18 @@ describe("previousWindow", () => {
   });
 
   test("previous: preserves millisecond length across a DST boundary", () => {
-    // Berlin spring-forward day: [Mar 30, Mar 31) is only 23 real hours.
-    const from = new Date(2025, 2, 30);
-    const to = new Date(2025, 2, 31);
+    // Berlin spring-forward day: [Mar 30, Mar 31) is only 23 real hours. Bounds
+    // are the Berlin-midnight instants in UTC, so the length is 23h regardless
+    // of the host process zone (this suite runs order-sensitively otherwise).
+    const from = new Date("2025-03-29T23:00:00Z"); // Berlin Mar 30 00:00 (CET, +1)
+    const to = new Date("2025-03-30T22:00:00Z"); // Berlin Mar 31 00:00 (CEST, +2)
     const len = to.getTime() - from.getTime();
     expect(len).toBe(23 * 3_600_000);
     const prev = previousWindow(from, to, "previous");
     expect(prev.to.getTime()).toBe(from.getTime());
     expect(prev.to.getTime() - prev.from.getTime()).toBe(len);
-    // 23h before Mar 30 00:00 is Mar 29 01:00 local.
-    expect(prev.from.getTime()).toBe(new Date(2025, 2, 29, 1).getTime());
+    // 23h before Berlin Mar 30 00:00 is Berlin Mar 29 01:00 = 2025-03-29T00:00Z.
+    expect(prev.from.getTime()).toBe(new Date("2025-03-29T00:00:00Z").getTime());
   });
 
   test("yearAgo: calendar shift by one year", () => {
@@ -69,7 +71,13 @@ describe("hodDowOccurrences", () => {
   });
 
   test("spring-forward day has 23 slots and no 02:00", () => {
-    const m = hodDowOccurrences(new Date(2025, 2, 30), new Date(2025, 2, 31)); // Sun
+    // Berlin Mar 30 2025 (Sun): 02:00→03:00, a 23h day. Explicit UTC bounds +
+    // explicit zone so the count doesn't ride on the host process zone.
+    const m = hodDowOccurrences(
+      new Date("2025-03-29T23:00:00Z"), // Berlin Mar 30 00:00
+      new Date("2025-03-30T22:00:00Z"), // Berlin Mar 31 00:00
+      "Europe/Berlin",
+    );
     expect(totalSlots(m)).toBe(23);
     expect(m.get("7:2")).toBeUndefined();
     expect(m.get("7:1")).toBe(1);
@@ -77,7 +85,12 @@ describe("hodDowOccurrences", () => {
   });
 
   test("fall-back day has 25 slots and 02:00 twice", () => {
-    const m = hodDowOccurrences(new Date(2025, 9, 26), new Date(2025, 9, 27)); // Sun
+    // Berlin Oct 26 2025 (Sun): 03:00→02:00, a 25h day.
+    const m = hodDowOccurrences(
+      new Date("2025-10-25T22:00:00Z"), // Berlin Oct 26 00:00
+      new Date("2025-10-26T23:00:00Z"), // Berlin Oct 27 00:00
+      "Europe/Berlin",
+    );
     expect(totalSlots(m)).toBe(25);
     expect(m.get("7:2")).toBe(2);
   });

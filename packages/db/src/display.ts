@@ -43,3 +43,16 @@ export type DisplayConfig = z.infer<typeof displayConfigSchema>;
 
 /** Locale-following defaults used before a preference is configured. */
 export const defaultDisplay: DisplayConfig = displayConfigSchema.parse({});
+
+/**
+ * The concrete IANA zone the server buckets plant-local energy/cost/statistics
+ * periods in. An explicit `timeZone` wins; `"auto"` falls back to `hostZone`
+ * (the process zone) so an unconfigured instance behaves exactly as before.
+ *
+ * Server-side SQL has no viewer to follow, so a mis-zoned host silently filed
+ * periods against the wrong calendar day (issues #46, #52). Setting Display →
+ * time zone to an explicit zone now also fixes server bucketing, from one knob.
+ */
+export function resolvePlantTimeZone(config: DisplayConfig, hostZone: string): string {
+  return config.timeZone === TIME_ZONE_AUTO ? hostZone : config.timeZone;
+}

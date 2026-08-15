@@ -28,6 +28,8 @@ import {
 } from "../energy/cost";
 import { accumulateTotals, emptyTotals, energySeries } from "../energy/energy";
 import { derivePeriodEnergy } from "../energy/energy-calc";
+import { startOfZonedDay } from "../energy/zoned-time";
+import { getPlantTimeZone } from "../settings/display-settings";
 import { getTariff } from "../settings/settings";
 import {
   heatmapCells,
@@ -67,14 +69,16 @@ export async function computeHeatmap(
   opts: { from: Date; to: Date; inverterId?: string },
 ): Promise<HeatmapCell[]> {
   const from = clampToHourlyRetention(opts.from);
+  const tz = await getPlantTimeZone();
   const { rows, fieldByKey } = await fetchCounterDeltaMatrix(profile, {
     from,
     to: opts.to,
     bucket: "month",
     inverterId: opts.inverterId,
     view: "hourly_rollups",
+    tz,
   });
-  return heatmapCells(rows, fieldByKey, ALL_ENERGY_FIELDS, hodDowOccurrences(from, opts.to));
+  return heatmapCells(rows, fieldByKey, ALL_ENERGY_FIELDS, hodDowOccurrences(from, opts.to, tz));
 }
 
 /** Earliest daily-rollup bucket for an inverter — the start of recorded
@@ -116,11 +120,9 @@ export async function computeComparison(
   };
 }
 
-/** Midnight starting the current local day. */
-function startOfLocalDay(now: Date): Date {
-  const d = new Date(now);
-  d.setHours(0, 0, 0, 0);
-  return d;
+/** Midnight starting the current plant-local day (as a UTC instant), in zone `tz`. */
+function startOfLocalDay(now: Date, tz: string): Date {
+  return startOfZonedDay(now, tz);
 }
 
 // Records deliberately exclude the in-progress day, so a result only changes
@@ -134,10 +136,11 @@ export async function computeRecords(
   opts: { inverterId?: string } = {},
 ): Promise<RecordsResponse> {
   const inverterId = opts.inverterId ?? profile.id;
-  const day = currentPeriodKey("day");
+  const tz = await getPlantTimeZone();
+  const day = currentPeriodKey("day", new Date(), tz);
   const hit = recordsCache.get(inverterId);
   if (hit && hit.day === day) return hit.value;
-  const value = await buildRecords(profile, inverterId);
+  const value = await buildRecords(profile, inverterId, tz);
   recordsCache.set(inverterId, { day, value });
   return value;
 }
@@ -146,12 +149,13 @@ export async function computeRecords(
 async function buildRecords(
   profile: InverterProfile,
   inverterId: string,
+  tz: string,
 ): Promise<RecordsResponse> {
   const firstDay = await earliestDailyBucket(inverterId);
-  const to = startOfLocalDay(new Date());
+  const to = startOfLocalDay(new Date(), tz);
   if (!firstDay || firstDay >= to) return { energy: null, money: null };
   const [energy, money] = await Promise.all([
-    energyRecords(profile, inverterId, firstDay, to),
+    energyRecords(profile, inverterId, firstDay, to, tz),
     moneyRecords(profile, inverterId, firstDay, to),
   ]);
   return { energy, money };
@@ -165,6 +169,7 @@ async function energyRecords(
   inverterId: string,
   from: Date,
   to: Date,
+  tz: string,
 ): Promise<EnergyRecords> {
   const { rows, fieldByKey, periods } = await fetchCounterDeltaMatrix(profile, {
     from,
@@ -172,6 +177,7 @@ async function energyRecords(
     bucket: "day",
     inverterId,
     view: "daily_rollups",
+    tz,
   });
   const totals = accumulateTotals(rows, fieldByKey, periods);
   const days = periods.map((p) => derivePeriodEnergy(p, totals.get(p) ?? emptyTotals()));
@@ -188,9 +194,10 @@ export async function todayStatistics(
   inverterId?: string,
 ): Promise<StatisticsTodayMessage> {
   const { from, to } = resolveRange("today");
-  const [cost, periods] = await Promise.all([
+  const [cost, periods, tz] = await Promise.all([
     computeCost(profile, { from, to, inverterId }),
     energySeries(profile, { from, to, bucket: "day", inverterId }),
+    getPlantTimeZone(),
   ]);
   return {
     type: "today",
@@ -198,7 +205,8 @@ export async function todayStatistics(
     cost,
     // A day with no rollup bucket yet (just past midnight) still gets a
     // zero-filled period, so the client never has to handle a missing split.
-    energy: periods[0] ?? derivePeriodEnergy(currentPeriodKey("day"), emptyTotals()),
+    energy:
+      periods[0] ?? derivePeriodEnergy(currentPeriodKey("day", new Date(), tz), emptyTotals()),
   };
 }
 

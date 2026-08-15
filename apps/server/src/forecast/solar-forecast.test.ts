@@ -268,6 +268,12 @@ describe("buildSolarForecast 15-minute grid", () => {
     const f = buildSolarForecast(config(), quarter, "test", at);
     expect(f.next15.energyKwh).toBeCloseTo((f.series[0]?.watts ?? 0) / 4 / 1000, 6);
     expect(f.next15.maxPowerW).toBeCloseTo(f.series[0]?.peakWatts ?? 0, 6);
+    // The tile draws the AVERAGE, so tile kW × 0.25 h must equal tile kWh, and
+    // over a single fully-covered 15-min slot the average equals the slot watts
+    // — well below the (spiky) peak. See issue #49.
+    expect(f.next15.avgPowerW).toBeCloseTo(f.series[0]?.watts ?? 0, 6);
+    expect(f.next15.avgPowerW).toBeLessThan(f.next15.maxPowerW);
+    expect((f.next15.avgPowerW / 1000) * 0.25).toBeCloseTo(f.next15.energyKwh, 9);
   });
 
   test("remaining prorates the running quarter-hour slot", () => {
@@ -919,7 +925,7 @@ describe("fetchSolarForecast irradiance cache", () => {
     expect(f.todayKwh).toBe(0);
     expect(f.remainingTodayKwh).toBe(0);
     expect(f.tomorrowKwh).toBe(0);
-    expect(f.next15).toEqual({ maxPowerW: 0, energyKwh: 0 });
+    expect(f.next15).toEqual({ maxPowerW: 0, energyKwh: 0, avgPowerW: 0 });
     // No grid to measure, so the slot width falls back to the one-hour cap.
     expect(f.stepMinutes).toBe(60);
   });

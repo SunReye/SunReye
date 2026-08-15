@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import {
   type AxisSeries,
+  type Datum,
   axisScale,
   domainFor,
   groupSeriesByUnit,
@@ -75,7 +76,7 @@ describe("domainFor", () => {
     // Only the real readings may decide the axis. An Infinity would stretch the
     // domain to the end of the number line and a gap (null) would drag its floor
     // to zero — both leave the actual 50–60 band a flat line against one edge.
-    const withGaps = [
+    const withGaps: Datum[] = [
       { date: new Date(0), eff: Number.NaN },
       { date: new Date(1), eff: 50 },
       { date: new Date(2), eff: Number.POSITIVE_INFINITY },

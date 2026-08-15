@@ -315,6 +315,7 @@
   "weather_forecast_tomorrow": "Tomorrow",
   "weather_forecast_next15": "Next 15 min",
   "weather_forecast_max": "max",
+  "weather_forecast_avg": "Ø",
   "danger_zone_title": "Danger zone",
   "danger_restart_desc": "Restart the server process to apply boot-time changes — chiefly a newly activated inverter profile, which reshapes the API, manifest, and topics built once at boot. Polling and live data pause briefly while it comes back.",
   "danger_reset_title": "Reset all data",

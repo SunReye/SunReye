@@ -123,6 +123,13 @@ export interface SolarForecastPoint {
 export interface SolarForecastNext15 {
   /** Peak expected AC output during the window, W. */
   maxPowerW: number;
+  /**
+   * Average AC output over the 15-minute window, W — the same quantity the
+   * chart bars draw. `avgPowerW / 1000 × 0.25 h` equals {@link energyKwh}, so a
+   * tile showing this reads consistently with its own kWh sub-line and the
+   * chart's first bar (issue #49). Runs below {@link maxPowerW} on a spiky slot.
+   */
+  avgPowerW: number;
   /** Expected energy produced during the window, kWh. */
   energyKwh: number;
 }
@@ -241,9 +248,11 @@ function simulateStep(
 }
 
 /**
- * Peak power and energy over the 15 minutes after `now`, from the (already
- * clipped) series. Energy is the time-weighted sum of the slots the window
- * overlaps; the peak is the largest per-slot peak among them.
+ * Peak power, average power, and energy over the 15 minutes after `now`, from
+ * the (already clipped) series. Energy is the time-weighted sum of the slots
+ * the window overlaps; the peak is the largest per-slot peak among them; the
+ * average is the energy spread over the fixed 15-minute window, so it equals
+ * the slot watts for a fully-covered single slot and keeps `avg × 0.25 h == kWh`.
  */
 function computeNext15(
   series: SolarForecastPoint[],
@@ -261,7 +270,9 @@ function computeNext15(
     energyKwh += (p.watts * overlapMs) / 3_600_000 / 1000;
     maxPowerW = Math.max(maxPowerW, p.peakWatts);
   });
-  return { maxPowerW, energyKwh };
+  // Average over the whole 15-minute window (0.25 h): energyKwh → W.
+  const avgPowerW = (energyKwh / (15 / 60)) * 1000;
+  return { maxPowerW, avgPowerW, energyKwh };
 }
 
 /** Slot geometry for a series: each sample's start instant and the slot it opens. */

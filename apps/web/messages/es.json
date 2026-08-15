@@ -315,6 +315,7 @@
   "weather_forecast_tomorrow": "Mañana",
   "weather_forecast_next15": "Próx. 15 min",
   "weather_forecast_max": "máx",
+  "weather_forecast_avg": "Ø",
   "danger_zone_title": "Zona de peligro",
   "danger_restart_desc": "Reinicie el proceso del servidor para aplicar los cambios de arranque — principalmente un perfil de inversor recién activado, que rehace la API, el manifiesto y los topics creados al arrancar. El sondeo y los datos en vivo se pausan brevemente mientras vuelve.",
   "danger_reset_title": "Restablecer todos los datos",

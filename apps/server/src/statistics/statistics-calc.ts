@@ -15,6 +15,7 @@ import type {
   MoneyRecords,
 } from "@SunReye/contracts/statistics";
 import type { CostSeriesPoint, CounterDeltaRow } from "../energy/cost";
+import { zonedFields, zonedIsoWeekday } from "../energy/zoned-time";
 
 /**
  * The reference window to compare `[from, to)` against:
@@ -37,9 +38,6 @@ export function previousWindow(from: Date, to: Date, mode: CompareMode): { from:
 
 const HOUR_MS = 3_600_000;
 
-/** Local ISO weekday 1 (Mon) – 7 (Sun); mirrors the SQL `extract(isodow)`. */
-const isoWeekday = (d: Date): number => ((d.getDay() + 6) % 7) + 1;
-
 /** Map key for a (hod, dow) slot. */
 const slotKey = (hod: number, dow: number): string => `${dow}:${hod}`;
 
@@ -52,18 +50,23 @@ function nextHourStart(d: Date): number {
 }
 
 /**
- * How many times each local (hour-of-day, ISO weekday) slot occurs in
- * `[from, to)`, keyed by {@link slotKey}. Steps real time hour by hour and
- * reads the LOCAL Date fields of each step, so it is DST-consistent with the
- * SQL side's `bucket at time zone`: the spring-forward day contributes no
- * 02:00 slot and the fall-back day contributes 02:00 twice.
+ * How many times each plant-local (hour-of-day, ISO weekday) slot occurs in
+ * `[from, to)`, keyed by {@link slotKey}. Steps real time hour by hour and reads
+ * each step's wall-clock fields in `tz`, so it is DST-consistent with the SQL
+ * side's `bucket at time zone $tz`: the spring-forward day contributes no 02:00
+ * slot and the fall-back day contributes 02:00 twice. `tz` defaults to the host
+ * zone for callers that predate the plant zone (issue #46).
  */
-export function hodDowOccurrences(from: Date, to: Date): Map<string, number> {
+export function hodDowOccurrences(
+  from: Date,
+  to: Date,
+  tz: string = Intl.DateTimeFormat().resolvedOptions().timeZone,
+): Map<string, number> {
   const out = new Map<string, number>();
   const end = to.getTime();
   for (let t = nextHourStart(from); t < end; t += HOUR_MS) {
     const d = new Date(t);
-    const key = slotKey(d.getHours(), isoWeekday(d));
+    const key = slotKey(zonedFields(d, tz).hour, zonedIsoWeekday(d, tz));
     out.set(key, (out.get(key) ?? 0) + 1);
   }
   return out;

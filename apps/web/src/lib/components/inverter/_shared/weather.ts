@@ -13,7 +13,7 @@ export type SolarForecast = {
   todayKwh: number;
   remainingTodayKwh: number;
   tomorrowKwh: number;
-  next15: { maxPowerW: number; energyKwh: number };
+  next15: { maxPowerW: number; avgPowerW: number; energyKwh: number };
 };
 
 /**
