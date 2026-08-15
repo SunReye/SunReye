@@ -2,7 +2,7 @@
 
 ## [unreleased]
 
-Unreleased work on `dev` since 1.2.0, shipped in `beta.20260814-ba63756`.
+Unreleased work on `dev` since 1.2.0, shipped in `beta.20260815-714c47c`.
 
 
 ### Features
@@ -59,6 +59,7 @@ Unreleased work on `dev` since 1.2.0, shipped in `beta.20260814-ba63756`.
 
 ### Bug Fixes
 
+* **web:** stop the forecast dialog reporting unmeasured slots as zero production ([5e05163](https://github.com/SunReye/SunReye/commit/5e051634e59865f631ccfd47bf103d439c90bb42))
 * **test:** stop the suite depending on which file the runner reaches first ([487ea8c](https://github.com/SunReye/SunReye/commit/487ea8cb24f83417565dd2d3c72b9782fc091ae7))
 * **server:** never let ambient git plumbing redirect our git calls ([db8225e](https://github.com/SunReye/SunReye/commit/db8225e9869552f6eda5a2cb565d835b757c50db))
 * **web:** never render a tile against an empty response body ([6c40a8b](https://github.com/SunReye/SunReye/commit/6c40a8bb6302c2f911de9d895ff52a8a977ba4ba))
@@ -184,6 +185,8 @@ Unreleased work on `dev` since 1.2.0, shipped in `beta.20260814-ba63756`.
 
 ### Tests
 
+* **ci:** make first-party mocks hand themselves back, and gate it ([58d8c41](https://github.com/SunReye/SunReye/commit/58d8c41183b7478649f2973d8845b132fdf19390))
+* take the suite from 80 % to 100 % line coverage ([44e5ba1](https://github.com/SunReye/SunReye/commit/44e5ba1f8da82f0d8364911b0640c5d0477dea89))
 * **web:** hand the base locale back after the format tests ([a57ddd1](https://github.com/SunReye/SunReye/commit/a57ddd1e8e6a8c3a34283982e8d52bf9fc82b9ae))
 
 
