@@ -2,11 +2,12 @@
 
 ## [unreleased]
 
-Unreleased work on `dev` since 1.2.0, shipped in `beta.20260815-714c47c`.
+Unreleased work on `dev` since 1.2.0, shipped in `beta.20260815-ee5dd45`.
 
 
 ### Features
 
+* **server:** finish the irradiance provider seam ([063086f](https://github.com/SunReye/SunReye/commit/063086fa94c53c62c67b3643941032599d6716e9))
 * **web:** live indicator and dated section captions ([3c8ccf2](https://github.com/SunReye/SunReye/commit/3c8ccf277fe52c99bc114961ddb3da4ce96093da))
 * **web:** compare every statistics figure with its reference window ([723b04e](https://github.com/SunReye/SunReye/commit/723b04e1ae8ed115b08f73191e10e456d7c87f67))
 * **web:** seed chart view scope from the saved preference ([055c799](https://github.com/SunReye/SunReye/commit/055c799467ba6e42506444dacee091ff5ff25783))
@@ -113,6 +114,14 @@ Unreleased work on `dev` since 1.2.0, shipped in `beta.20260815-714c47c`.
 
 ### Code Refactoring
 
+* **contracts:** move automation wire types out of server ([21a0129](https://github.com/SunReye/SunReye/commit/21a0129e9a548abe0c8bdc23baf2b22889207c84))
+* **contracts:** move evcc and log wire types out of server ([28f5463](https://github.com/SunReye/SunReye/commit/28f5463063654c5a064d9d2a1eb99463d26b062a))
+* **contracts:** move spot-price wire types out of server ([c67d510](https://github.com/SunReye/SunReye/commit/c67d5101eecbc2823b2b03d37e9a294acdf92f43))
+* **contracts:** move statistics wire types out of server ([16e6e4f](https://github.com/SunReye/SunReye/commit/16e6e4fc8b8a62a1a6d0a7e3d15e767cb028a0ec))
+* **contracts:** move energy wire types out of server ([78280a3](https://github.com/SunReye/SunReye/commit/78280a3a22617bf1a9567305ce05141189bb2cd7))
+* **inverter-core:** make capability derivation table-driven ([8350b92](https://github.com/SunReye/SunReye/commit/8350b92d7781006e22171eba5b44b18c54bb1d3b))
+* **server:** make the runtime a factory ([1adf9ce](https://github.com/SunReye/SunReye/commit/1adf9ce178812554fd8f68c17396be371bd3c4a0))
+* **server:** unify the read-side stream sinks ([4da084b](https://github.com/SunReye/SunReye/commit/4da084b76a91a22d1eebc74e19bf00f4c3afca8a))
 * **server:** group src into feature folders ([0bd68b5](https://github.com/SunReye/SunReye/commit/0bd68b5327774e069e7b733eca280ef5c675e20b))
 * **web:** per-chart view scope for statistics ranges ([e775066](https://github.com/SunReye/SunReye/commit/e775066aea8ab914f202c1e3ff9f4dc4d2f9b221))
 * **web:** registry-driven statistics tiles and section shells ([7be1575](https://github.com/SunReye/SunReye/commit/7be157560e9a4adfeabe5db16f7beb9a98b724dc))
@@ -204,6 +213,8 @@ Unreleased work on `dev` since 1.2.0, shipped in `beta.20260815-714c47c`.
 
 ### Miscellaneous Chores
 
+* **fallow:** close the web -> server boundary ([44f62ba](https://github.com/SunReye/SunReye/commit/44f62ba92a1a14c35e9e2fe8c3692ef1dc0a4b6b))
+* ignore agent worktrees ([1158899](https://github.com/SunReye/SunReye/commit/11588996953d351374e0a6b8f032e4cbf3afce17))
 * **web:** tidy up after the statistics rename ([12bc1dc](https://github.com/SunReye/SunReye/commit/12bc1dc8338eed0ceb38063c0ad2535946b0acfc))
 * clear inherited fallow findings ([8d19fef](https://github.com/SunReye/SunReye/commit/8d19fefbb7e5d1f2706782b2e54280fb8aad5687))
 * **server:** emit declarations only from tsc -b ([fce15d2](https://github.com/SunReye/SunReye/commit/fce15d21fef01805b43d2aa58622892a922798eb))
