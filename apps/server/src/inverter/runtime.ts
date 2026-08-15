@@ -35,21 +35,21 @@ import { runSpotPriceSync } from "../prices/spot-price-job";
 import { getSpotPriceConfig } from "../settings/spot-price-settings";
 import { liveState } from "../shared/state";
 import { getWeatherConfig } from "../settings/weather-settings";
+import type { Streams } from "../shared/streams";
 
 const logger = log("runtime");
-
-/** Notified with each fresh poll sample (the server fans it out to the WS). */
-export type SampleListener = (sample: InverterSample) => void;
-
-/** Notified after a price sync actually stored slots (fanned out to the WS). */
-export type SpotSyncListener = () => void;
 
 let ctx: ProfileContext | null = null;
 let source: InverterSource | null = null;
 let pollTimer: ReturnType<typeof setInterval> | null = null;
 let bridge: MqttBridge | null = null;
-let onSample: SampleListener = () => {};
-let onSpotSync: SpotSyncListener = () => {};
+/**
+ * The read-side bus, injected by {@link start}. Each poll sample is emitted on
+ * `metrics` and a price sync that stored fresh slots on `statistics`; the server
+ * subscribes the WebSocket broadcasts. Null before boot — the 30 s post-boot
+ * price kick can beat the wiring, so every emit here is guarded.
+ */
+let streams: Streams | null = null;
 let polling = false;
 /**
  * Whether the current config names something to connect to. A saved config with
@@ -120,18 +120,12 @@ export async function syncSpotPricesNow(): Promise<void> {
     const result = await runSpotPriceSync(await getSpotPriceConfig());
     // Only a real upsert changes what price-derived views show; the no-op tick
     // (both delivery days already complete) must not make every open page refetch.
-    if (result.outcome === "stored") onSpotSync();
+    // A `prices` signal on the statistics topic tells open dashboards their
+    // price-derived views are now stale.
+    if (result.outcome === "stored") streams?.emit("statistics", { type: "prices" });
   } catch (error) {
     logger.warn("spot price sync failed: {error}", { error });
   }
-}
-
-/**
- * Register the sink for "fresh prices were stored". Set once at boot, like the
- * EVCC listener; survives runtime restarts because it is the sink, not the job.
- */
-export function setSpotSyncListener(listener: SpotSyncListener): void {
-  onSpotSync = listener;
 }
 
 // --- History write buffer --------------------------------------------------
@@ -239,7 +233,7 @@ async function pollOnce(): Promise<void> {
     // Buffer for a batched flush (see the history write buffer above) rather
     // than committing one transaction per poll.
     if (rows.length > 0) enqueueRows(rows);
-    onSample(sample);
+    streams?.emit("metrics", sample);
     bridge?.publishSample(sample);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -317,9 +311,9 @@ async function rebuildBridge(config: MqttConfig): Promise<void> {
 }
 
 /** Boot the controller: build the source + bridge and start polling. */
-export async function start(listener: SampleListener, profileCtx: ProfileContext): Promise<void> {
+export async function start(streamBus: Streams, profileCtx: ProfileContext): Promise<void> {
   ctx = profileCtx;
-  onSample = listener;
+  streams = streamBus;
   if (!flushTimer) {
     flushTimer = setInterval(() => void flushPending(), env.HISTORY_FLUSH_INTERVAL_MS);
   }
@@ -338,7 +332,8 @@ export async function start(listener: SampleListener, profileCtx: ProfileContext
   await rebuildBridge(await getMqttConfig());
   // Automations write through the same funnel as every other path; they only
   // run while a profile is active (this function is never called without one).
-  await startAutomations({ ctx: profileCtx, write });
+  // They push their tick outcomes onto the same injected bus.
+  await startAutomations({ ctx: profileCtx, write }, streamBus);
 }
 
 /**

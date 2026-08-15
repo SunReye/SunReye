@@ -666,7 +666,6 @@ afterAll(() => {
 const {
   applyInverterConfig,
   applyMqttConfig,
-  setSpotSyncListener,
   start,
   status,
   stop,
@@ -676,16 +675,21 @@ const {
   write,
 } = await import("./runtime");
 const { liveState } = await import("../shared/state");
+const { createStreams } = await import("../shared/streams");
 
-/** Samples the WebSocket publisher was handed, in poll order. */
+/** Samples emitted on the `metrics` topic, in poll order. */
 let published: InverterSample[] = [];
-/** How often the "fresh prices stored" sink fired. */
+/** How often a "fresh prices stored" signal reached the `statistics` topic. */
 let spotSyncNotifications = 0;
+/** The bus the runtime was booted with, for a test that wants its own subscriber. */
+let streams: ReturnType<typeof createStreams>;
 
 /** Boot the runtime with a profile context and hand back that context. */
 async function boot(profile: InverterProfile = mainProfile()) {
   const ctx = buildProfileContext(profile);
-  await start((sample) => published.push(sample), ctx);
+  streams = createStreams();
+  streams.subscribe("metrics", (sample) => published.push(sample));
+  await start(streams, ctx);
   return ctx;
 }
 
@@ -777,8 +781,8 @@ describe("before a profile is active", () => {
   });
 
   test("a price sync landing before the websocket sink is wired is not an error", async () => {
-    // The 30 s post-boot kick can beat the server's `setSpotSyncListener` call;
-    // the default sink has to absorb that rather than throw inside a timer.
+    // The 30 s post-boot kick can beat the boot that injects the stream; a sync
+    // with no bus wired yet has to absorb that rather than throw inside a timer.
     spotOutcome = "stored";
     spotStored = 96;
 
@@ -1424,7 +1428,7 @@ describe("the background jobs", () => {
 
   test("only a run that actually stored slots wakes the open dashboards", async () => {
     await boot();
-    setSpotSyncListener(() => {
+    streams.subscribe("statistics", () => {
       spotSyncNotifications++;
     });
 

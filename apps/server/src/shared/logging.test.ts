@@ -16,12 +16,13 @@
  *    Without that, the ring-buffer test alone prints several hundred lines
  *    into the runner's output.
  *
- * 2. Records are collected through {@link emitted}, which reads them off the
- *    live listener rather than off `recentLogs()`. The ring buffer is capped
- *    and module-global: once the eviction test has filled it, a
- *    "length before/length after" diff would silently observe nothing. The
- *    listener is handed the very same entry object the buffer receives, so it
- *    is the stable seam. The buffer's own behaviour is asserted directly.
+ * 2. Records are collected through {@link emitted}, which reads them off a
+ *    `logs` subscription on the injected stream rather than off `recentLogs()`.
+ *    The ring buffer is capped and module-global: once the eviction test has
+ *    filled it, a "length before/length after" diff would silently observe
+ *    nothing. A subscriber is handed the very same entry object the buffer
+ *    receives, so it is the stable seam. The buffer's own behaviour is asserted
+ *    directly.
  *
  * Boot-time configuration (`LOG_LEVEL`, `LOG_LEVEL_MQTT`, `NODE_ENV`) is read
  * once at module load, so those cases run a fresh `bun` process per
@@ -37,9 +38,9 @@ import {
   type LogEntry,
   log,
   recentLogs,
-  setLogListener,
   setupLogging,
 } from "./logging";
+import { createStreams } from "./streams";
 
 const realConsole = {
   debug: console.debug,
@@ -48,11 +49,17 @@ const realConsole = {
   error: console.error,
 };
 
+/**
+ * The bus the sink emits log lines onto. Injected once at setup; the tests
+ * subscribe to its `logs` topic to observe what made it past the filters.
+ */
+const streams = createStreams();
+
 beforeAll(async () => {
   for (const method of ["debug", "info", "warn", "error"] as const) {
     console[method] = () => {};
   }
-  await setupLogging();
+  await setupLogging(streams);
 });
 
 afterAll(async () => {
@@ -64,18 +71,17 @@ afterAll(async () => {
 });
 
 afterEach(() => {
-  setLogListener(null);
   applyLogLevel(null);
 });
 
 /** The lines that made it past the filters into the sink while `emit` ran. */
 function emitted(emit: () => void): LogEntry[] {
   const seen: LogEntry[] = [];
-  setLogListener((entry) => seen.push(entry));
+  const unsubscribe = streams.subscribe("logs", (entry) => seen.push(entry));
   try {
     emit();
   } finally {
-    setLogListener(null);
+    unsubscribe();
   }
   return seen;
 }
@@ -372,47 +378,55 @@ describe("rendering a log line for the viewer", () => {
   });
 });
 
-describe("the live listener", () => {
+describe("the live subscribers", () => {
   test("each line is pushed as it happens, in order", () => {
     applyLogLevel("trace");
     const seen: string[] = [];
-    setLogListener((entry) => seen.push(entry.message));
+    const unsubscribe = streams.subscribe("logs", (entry) => seen.push(entry.message));
     log("listener").info("first");
     log("listener").info("second");
+    unsubscribe();
     expect(seen).toEqual(["first", "second"]);
   });
 
-  test("only the most recently registered listener is fed", () => {
+  test("every subscriber is fed, not just the most recent", () => {
+    // The old single-`let` sink was last-writer-wins: registering a second
+    // listener silently unhooked the first. The bus fans one line out to every
+    // subscriber, which is what lets more than one WS client watch the log.
     applyLogLevel("trace");
-    const stale: LogEntry[] = [];
-    const live: LogEntry[] = [];
-    setLogListener((entry) => stale.push(entry));
-    setLogListener((entry) => live.push(entry));
-    log("listener").info("after reconnect");
-    expect(stale).toEqual([]);
-    expect(live.map((l) => l.message)).toEqual(["after reconnect"]);
+    const first: string[] = [];
+    const second: string[] = [];
+    const unsubFirst = streams.subscribe("logs", (entry) => first.push(entry.message));
+    const unsubSecond = streams.subscribe("logs", (entry) => second.push(entry.message));
+    log("listener").info("fan out");
+    unsubFirst();
+    unsubSecond();
+    expect(first).toEqual(["fan out"]);
+    expect(second).toEqual(["fan out"]);
   });
 
   test("detaching stops delivery without stopping logging", () => {
     applyLogLevel("trace");
     const seen: LogEntry[] = [];
-    setLogListener((entry) => seen.push(entry));
-    setLogListener(null);
+    const unsubscribe = streams.subscribe("logs", (entry) => seen.push(entry));
+    unsubscribe();
     const buffered = recentLogs().length;
     log("listener").info("after the socket closed");
     expect(seen).toEqual([]);
     expect(recentLogs()).toHaveLength(buffered + 1);
   });
 
-  test("a listener that throws loses neither the line nor the next one", () => {
+  test("a subscriber that throws loses neither the line nor the next one", () => {
     applyLogLevel("trace");
     const survivors: string[] = [];
-    setLogListener(() => {
+    const unsubThrow = streams.subscribe("logs", () => {
       throw new Error("broadcast socket closed");
     });
     expect(() => log("listener").warn("dropped frame")).not.toThrow();
-    setLogListener((entry) => survivors.push(entry.message));
+    const unsubSurvivor = streams.subscribe("logs", (entry) => survivors.push(entry.message));
     log("listener").warn("still logging");
+    unsubThrow();
+    unsubSurvivor();
     expect(survivors).toEqual(["still logging"]);
     expect(recentLogs().at(-2)?.message).toBe("dropped frame");
   });

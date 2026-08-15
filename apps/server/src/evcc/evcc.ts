@@ -53,6 +53,7 @@ import {
 } from "./evcc-topics";
 import { getEvccConfig } from "../settings/evcc-settings";
 import { log } from "../shared/logging";
+import type { Streams } from "../shared/streams";
 
 const logger = log("evcc");
 
@@ -234,18 +235,13 @@ const loadpoints = new Map<number, Map<string, EvccValue>>();
 const vehicles = new Map<string, Map<string, EvccValue>>();
 const estimator = createEvPowerEstimator();
 
-/** Notified with the fresh snapshot whenever state changes (wired to the WS). */
-export type EvccListener = (state: EvccState) => void;
-let listener: EvccListener = () => {};
-let emitTimer: ReturnType<typeof setTimeout> | null = null;
-
 /**
- * Register the push listener (the server wires this to a WS broadcast). Only one
- * is needed — the socket layer fans out to every subscriber.
+ * The read-side bus each fresh snapshot is emitted onto, injected by
+ * {@link rebuildEvcc}. Null until the first (boot) rebuild wires it; the socket
+ * layer fans one emit out to every `/ws/evcc` subscriber.
  */
-export function setEvccListener(fn: EvccListener): void {
-  listener = fn;
-}
+let stream: Streams | null = null;
+let emitTimer: ReturnType<typeof setTimeout> | null = null;
 
 /**
  * Coalesce a burst of topic updates into a single push. EVCC delivers its full
@@ -259,7 +255,7 @@ function scheduleEmit(): void {
   emitTimer = setTimeout(() => {
     emitTimer = null;
     const snap = evccSnapshot();
-    if (snap) listener(snap);
+    if (snap) stream?.emit("evcc", snap);
   }, EMIT_DEBOUNCE_MS);
 }
 
@@ -274,7 +270,7 @@ function emitNow(): void {
     emitTimer = null;
   }
   const snap = evccSnapshot();
-  if (snap) listener(snap);
+  if (snap) stream?.emit("evcc", snap);
 }
 
 /** Current EVCC state for `GET /api/evcc` and WS pushes, or `null` when off. */
@@ -434,8 +430,12 @@ async function stopClient(): Promise<void> {
  * (Re)build the EVCC subscriber from the current EVCC + MQTT settings. Called
  * at boot and whenever either config is saved; tears down to "off" when
  * disabled. Reconnect/backoff on a live client is the mqtt lib's job.
+ *
+ * `streamBus` wires the read-side bus and is passed only on the boot call; the
+ * settings-save rebuilds omit it and keep the bus wired at boot.
  */
-export async function rebuildEvcc(): Promise<void> {
+export async function rebuildEvcc(streamBus?: Streams): Promise<void> {
+  if (streamBus) stream = streamBus;
   const [config, mqttConfig] = await Promise.all([getEvccConfig(), getMqttConfig()]);
   await stopClient();
   subtractFromHome = config.subtractFromHome;

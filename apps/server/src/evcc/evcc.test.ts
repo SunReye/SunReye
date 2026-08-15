@@ -6,6 +6,13 @@
 
 import { EventEmitter } from "node:events";
 import { afterAll, afterEach, describe, expect, mock, test } from "bun:test";
+import { createStreams } from "../shared/streams";
+
+/**
+ * The bus each fresh snapshot is emitted onto. `connectEvcc` wires it into the
+ * ingest; the push tests subscribe to its `evcc` topic to count snapshots.
+ */
+const streams = createStreams();
 
 /** Stands in for `mqtt`'s client: records writes and echoes them back. */
 class FakeClient extends EventEmitter {
@@ -69,7 +76,7 @@ mock.module("../settings/evcc-settings", () => ({
   getEvccConfig: async () => evccConfig,
 }));
 
-const { evccControl, evccOnLoadSample, evccSnapshot, rebuildEvcc, setEvccListener, stopEvcc } =
+const { evccControl, evccOnLoadSample, evccSnapshot, rebuildEvcc, stopEvcc } =
   await import("./evcc");
 
 /** Comfortably past the ingest's emit debounce, so a due push has landed. */
@@ -108,7 +115,7 @@ function loggedDuring(run: () => void): { template: string; values: Record<strin
 /** Build the subscriber against a fresh fake client and complete its handshake. */
 async function connectEvcc(): Promise<void> {
   fake = new FakeClient();
-  await rebuildEvcc();
+  await rebuildEvcc(streams);
   fake.emit("connect");
   send("evcc/status", "online");
 }
@@ -309,7 +316,7 @@ describe("pushes", () => {
     await connectEvcc();
     await Bun.sleep(EMIT_WAIT_MS); // let the connect/status push drain
     let pushes = 0;
-    setEvccListener(() => {
+    const unsubscribe = streams.subscribe("evcc", () => {
       pushes += 1;
     });
     try {
@@ -323,7 +330,7 @@ describe("pushes", () => {
       await Bun.sleep(EMIT_WAIT_MS);
       expect(pushes).toBe(1);
     } finally {
-      setEvccListener(() => {});
+      unsubscribe();
     }
   });
 });
@@ -519,7 +526,7 @@ describe("house-load samples", () => {
     await Bun.sleep(EMIT_WAIT_MS); // let the ingest's own pushes drain
 
     let pushes = 0;
-    setEvccListener(() => {
+    const unsubscribe = streams.subscribe("evcc", () => {
       pushes += 1;
     });
     try {
@@ -534,7 +541,7 @@ describe("house-load samples", () => {
       expect(pushes).toBe(1);
       expect(loadpoint().chargePowerLive).toBe(690);
     } finally {
-      setEvccListener(() => {});
+      unsubscribe();
     }
   });
 });

@@ -19,6 +19,7 @@ import {
   type LogRecord,
   type Sink,
 } from "@logtape/logtape";
+import type { Streams } from "./streams";
 
 /** Root category for all application (non-HTTP) logs. */
 const ROOT = "server" as const;
@@ -42,17 +43,12 @@ export type LogEntry = {
 const BUFFER_MAX = 500;
 const buffer: LogEntry[] = [];
 
-/** Notified with each new line (the server wires this to the WS broadcast). */
-export type LogListener = (entry: LogEntry) => void;
-let listener: LogListener | null = null;
-
 /**
- * Register the push listener (the server wires this to a WS broadcast). Only one
- * is needed — the socket layer fans out to every subscriber.
+ * The bus every new line is emitted onto (the server subscribes the `/ws/logs`
+ * broadcast to the `logs` topic). Injected by {@link setupLogging}; null until
+ * then, and in the fresh-process boot probes that only read the ring buffer.
  */
-export function setLogListener(fn: LogListener | null): void {
-  listener = fn;
-}
+let stream: Streams | null = null;
 
 /** The retained recent lines, oldest first — sent to a viewer on connect. */
 export function recentLogs(): LogEntry[] {
@@ -106,7 +102,7 @@ const streamSink: Sink = (record: LogRecord) => {
   };
   buffer.push(entry);
   if (buffer.length > BUFFER_MAX) buffer.shift();
-  listener?.(entry);
+  stream?.emit("logs", entry);
 };
 
 /**
@@ -154,8 +150,14 @@ const atLeast = (floor: () => LogLevel) => (record: LogRecord) =>
 
 let configured = false;
 
-/** Configure LogTape's sinks and loggers. Idempotent. */
-export async function setupLogging(): Promise<void> {
+/**
+ * Configure LogTape's sinks and loggers, and (when given) inject the stream the
+ * `streamSink` emits each line onto. Idempotent for the LogTape configuration;
+ * the stream is (re)bound whenever one is passed, so the server can wire it on
+ * the single boot call while the config is set up only once.
+ */
+export async function setupLogging(streams?: Streams): Promise<void> {
+  if (streams) stream = streams;
   if (configured) return;
   configured = true;
   await configure({

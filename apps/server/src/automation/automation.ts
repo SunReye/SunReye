@@ -29,6 +29,7 @@ import { HISTORY_CAPACITY, type DecisionPoint } from "./automation-history";
 import type { ProfileContext } from "../inverter/inverter";
 import type { SpotSlice } from "../prices/spot-price";
 import { log } from "../shared/logging";
+import type { Streams } from "../shared/streams";
 import type { PeakShavingPlans } from "./peak-shaving-plan";
 import {
   type AutomationIO,
@@ -93,12 +94,13 @@ let tickMs = DEFAULT_TICK_MS;
 let readConfig: (() => Promise<AutomationConfig>) | null = null;
 /** `t` of the last decision point already streamed, for the delta framing. */
 let streamedT: number | null = null;
-let streamListener: ((msg: AutomationStreamMessage) => void) | null = null;
-
-/** Wire (or clear) the broadcast sink for {@link AutomationStreamMessage}s. */
-export function setAutomationListener(fn: ((msg: AutomationStreamMessage) => void) | null): void {
-  streamListener = fn;
-}
+/**
+ * The read-side bus the tick outcome is emitted onto, injected by
+ * {@link startAutomations}. Null until the loop is started (and in the
+ * onboarding-only boot where it never is); the socket layer fans one emit out
+ * to every `/ws/automations` subscriber.
+ */
+let streams: Streams | null = null;
 
 /**
  * One engine tick, then push the outcome to stream subscribers. The cadence is
@@ -113,8 +115,10 @@ async function tickAndBroadcast(): Promise<void> {
     if (readConfig) {
       tickMs = (await readConfig()).peakShaving.controlIntervalS * 1000;
     }
-    if (!streamListener || engine !== eng) return;
-    streamListener({
+    // The config read above is an await; a stop (or restart) may have run in
+    // between, so re-check we are still the live engine before emitting.
+    if (engine !== eng) return;
+    streams?.emit("automations", {
       tickMs,
       status: eng.status(),
       point: nextStreamPoint(eng),
@@ -267,12 +271,18 @@ export async function buildProductionIO(deps: PlantDeps): Promise<AutomationIO> 
  * interval. `buildIO` is the injection seam — production always takes
  * {@link buildProductionIO}; a caller that owns its own IO (tests, a harness)
  * passes one in and drives the same loop without a database behind it.
+ *
+ * `streamBus` is the read-side bus the tick outcome is emitted onto; omitted
+ * (the runtime-mock fallback) the loop still ticks and records, it just has
+ * nowhere to broadcast.
  */
 export async function startAutomations(
   deps: PlantDeps,
+  streamBus?: Streams,
   buildIO: (deps: PlantDeps) => Promise<AutomationIO> = buildProductionIO,
 ): Promise<void> {
   await stopAutomations();
+  streams = streamBus ?? null;
   const io = await buildIO(deps);
   readConfig = io.getConfig;
   engine = createPeakShavingEngine(io);
