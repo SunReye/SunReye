@@ -2,7 +2,7 @@
 
 ## [unreleased]
 
-Unreleased work on `dev` since 1.2.0, shipped in `beta.20260815-09677c6`.
+Unreleased work on `dev` since 1.2.0, shipped in `beta.20260815-36955a5`.
 
 
 ### Features
@@ -60,6 +60,9 @@ Unreleased work on `dev` since 1.2.0, shipped in `beta.20260815-09677c6`.
 
 ### Bug Fixes
 
+* **web:** type the chart-axes gap fixture so svelte-check passes ([a9e1d3b](https://github.com/SunReye/SunReye/commit/a9e1d3b8db15c396ec1c1f376b7646d0982faa64))
+* **web:** report slot-average power consistently in the solar-forecast dialog ([28ec5fe](https://github.com/SunReye/SunReye/commit/28ec5fe53489a9343cc96de75cdc5d6ddfeb9ace))
+* **server:** bucket plant-local periods by a configured time zone, not the host ([6edf217](https://github.com/SunReye/SunReye/commit/6edf217a684b1116f4a944a1dd6a94f6f3c38ee9))
 * **web:** stop the forecast dialog reporting unmeasured slots as zero production ([5e05163](https://github.com/SunReye/SunReye/commit/5e051634e59865f631ccfd47bf103d439c90bb42))
 * **test:** stop the suite depending on which file the runner reaches first ([487ea8c](https://github.com/SunReye/SunReye/commit/487ea8cb24f83417565dd2d3c72b9782fc091ae7))
 * **server:** never let ambient git plumbing redirect our git calls ([db8225e](https://github.com/SunReye/SunReye/commit/db8225e9869552f6eda5a2cb565d835b757c50db))
