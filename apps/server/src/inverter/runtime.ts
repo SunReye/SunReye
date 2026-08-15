@@ -26,6 +26,7 @@ import { getInverterConfig, getMqttConfig } from "../settings/config";
 import { executeControl, injectControlValues } from "./control-expr";
 import { dbControlStore } from "./control-store";
 import { type HistoryBuffer, createHistoryBuffer } from "./history-buffer";
+import { type JobScheduler, createJobScheduler } from "./job-scheduler";
 import { evccOnLoadSample } from "../evcc/evcc";
 import {
   buildProfileContext,
@@ -95,6 +96,14 @@ export interface RuntimeDeps {
    * it owns its own cap/drop/re-queue boundaries and is tested without a runtime.
    */
   history?: HistoryBuffer;
+  /**
+   * The background job scheduler. Defaults to one arming the process globals; it
+   * owns the arm/teardown of the flush, forecast, learn and price schedules (and
+   * their post-boot kicks) so the runtime states them once and never juggles a
+   * handle. The poll loop is not one of its jobs — its cadence is re-armed on
+   * every source rebuild, so the runtime keeps it.
+   */
+  scheduler?: JobScheduler;
 }
 
 /**
@@ -107,6 +116,7 @@ export interface RuntimeDeps {
 export function createRuntime(deps: RuntimeDeps = {}) {
   const historyBuffer =
     deps.history ?? createHistoryBuffer({ store: db, table: metricsRaw, logger });
+  const scheduler = deps.scheduler ?? createJobScheduler();
   let ctx: ProfileContext | null = null;
   let source: InverterSource | null = null;
   let pollTimer: ReturnType<typeof setInterval> | null = null;
@@ -129,15 +139,6 @@ export function createRuntime(deps: RuntimeDeps = {}) {
   /** Last logged poll failure, to collapse an identical error repeating at 1 Hz. */
   let lastPollError: string | null = null;
   let lastPollErrorAt = 0;
-  let forecastTimer: ReturnType<typeof setInterval> | null = null;
-  let learnTimer: ReturnType<typeof setInterval> | null = null;
-  let learnKickTimer: ReturnType<typeof setTimeout> | null = null;
-  let spotTimer: ReturnType<typeof setInterval> | null = null;
-  let spotKickTimer: ReturnType<typeof setTimeout> | null = null;
-
-  // The batched history writer is injected (see {@link historyBuffer}); the
-  // runtime owns only the timer that flushes it on a cadence.
-  let flushTimer: ReturnType<typeof setInterval> | null = null;
 
   const inverterStatus = {
     connected: false,
@@ -322,20 +323,23 @@ export function createRuntime(deps: RuntimeDeps = {}) {
   async function start(streamBus: Streams, profileCtx: ProfileContext): Promise<void> {
     ctx = profileCtx;
     streams = streamBus;
-    if (!flushTimer) {
-      flushTimer = setInterval(() => void historyBuffer.flush(), env.HISTORY_FLUSH_INTERVAL_MS);
-    }
-    if (!forecastTimer) {
-      forecastTimer = setInterval(() => void publishForecastNow(), FORECAST_PUBLISH_INTERVAL_MS);
-    }
-    if (!learnTimer) {
-      learnTimer = setInterval(() => void learnCorrectionNow(), LEARN_INTERVAL_MS);
-      learnKickTimer = setTimeout(() => void learnCorrectionNow(), LEARN_KICK_DELAY_MS);
-    }
-    if (!spotTimer) {
-      spotTimer = setInterval(() => void syncSpotPricesNow(), SPOT_INTERVAL_MS);
-      spotKickTimer = setTimeout(() => void syncSpotPricesNow(), SPOT_KICK_DELAY_MS);
-    }
+    // The scheduler arms each of these once and is idempotent while running, so
+    // a re-boot re-points the source without stacking a second set of jobs. The
+    // flush cadence is read here (env is dynamic) rather than baked in.
+    scheduler.start([
+      { run: () => void historyBuffer.flush(), intervalMs: env.HISTORY_FLUSH_INTERVAL_MS },
+      { run: () => void publishForecastNow(), intervalMs: FORECAST_PUBLISH_INTERVAL_MS },
+      {
+        run: () => void learnCorrectionNow(),
+        intervalMs: LEARN_INTERVAL_MS,
+        kickMs: LEARN_KICK_DELAY_MS,
+      },
+      {
+        run: () => void syncSpotPricesNow(),
+        intervalMs: SPOT_INTERVAL_MS,
+        kickMs: SPOT_KICK_DELAY_MS,
+      },
+    ]);
     await rebuildInverter(await getInverterConfig());
     await rebuildBridge(await getMqttConfig());
     // Automations write through the same funnel as every other path; they only
@@ -449,18 +453,10 @@ export function createRuntime(deps: RuntimeDeps = {}) {
     await stopAutomations();
     if (pollTimer) clearInterval(pollTimer);
     pollTimer = null;
-    if (flushTimer) clearInterval(flushTimer);
-    flushTimer = null;
-    if (forecastTimer) clearInterval(forecastTimer);
-    forecastTimer = null;
-    if (learnTimer) clearInterval(learnTimer);
-    learnTimer = null;
-    if (learnKickTimer) clearTimeout(learnKickTimer);
-    learnKickTimer = null;
-    if (spotTimer) clearInterval(spotTimer);
-    spotTimer = null;
-    if (spotKickTimer) clearTimeout(spotKickTimer);
-    spotKickTimer = null;
+    // Clears the flush, forecast, learn and price schedules (and their kicks) —
+    // every timer but the poll loop, which the runtime owns because it is re-armed
+    // on each source rebuild.
+    scheduler.stop();
     // Persist whatever is buffered so a clean shutdown never drops history.
     await historyBuffer.flush();
     await bridge?.close();
