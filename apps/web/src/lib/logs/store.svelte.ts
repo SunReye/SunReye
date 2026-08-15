@@ -1,4 +1,4 @@
-import type { LogEntry } from "server/src/shared/logging";
+import type { LogEntry } from "@SunReye/contracts/logs";
 import { api } from "$lib/api";
 import { ReconnectingSocket } from "$lib/ws/reconnecting-socket";
 

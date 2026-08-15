@@ -6,11 +6,15 @@
  * {@link ./statistics}.
  */
 
-import type { CostSeriesPoint, CounterDeltaRow, EnergyField } from "../energy/cost";
-import type { PeriodEnergy } from "../energy/energy-calc";
-
-/** How the comparison endpoint picks its reference window. */
-export type CompareMode = "previous" | "yearAgo";
+import type { EnergyField, PeriodEnergy } from "@SunReye/contracts/energy";
+import type {
+  CompareMode,
+  DayRecord,
+  EnergyRecords,
+  HeatmapCell,
+  MoneyRecords,
+} from "@SunReye/contracts/statistics";
+import type { CostSeriesPoint, CounterDeltaRow } from "../energy/cost";
 
 /**
  * The reference window to compare `[from, to)` against:
@@ -30,23 +34,6 @@ export function previousWindow(from: Date, to: Date, mode: CompareMode): { from:
   const len = to.getTime() - from.getTime();
   return { from: new Date(from.getTime() - len), to: new Date(from) };
 }
-
-/**
- * One hour×weekday heatmap cell: kWh per energy field summed over every
- * occurrence of this local (hour-of-day, ISO weekday) slot in the window.
- * The kWh keys are derived from {@link EnergyField} (`importKwh`,
- * `exportKwh`, …) so a new field in the cost engine's ENERGY_FIELDS flows
- * into the cell shape automatically.
- */
-export type HeatmapCell = {
-  /** Local hour-of-day 0–23. */
-  hod: number;
-  /** Local ISO weekday 1 (Mon) – 7 (Sun). */
-  dow: number;
-  /** How many times this (hod, dow) slot occurs in the window — the client
-   *  divides the kWh sums by this to render averages. */
-  occurrences: number;
-} & { [F in EnergyField as `${F}Kwh`]: number };
 
 const HOUR_MS = 3_600_000;
 
@@ -126,34 +113,6 @@ export function heatmapCells(
     rec[key] = (rec[key] ?? 0) + Number(r.kwh);
   }
   return [...cells.values()].sort((a, b) => a.dow - b.dow || a.hod - b.hod);
-}
-
-/** One all-time record: the local day (`YYYY-MM-DD`) and its value. */
-export interface DayRecord {
-  date: string;
-  value: number;
-}
-
-/** All-time per-day energy records. `since` = first day with rollup data. */
-export interface EnergyRecords {
-  since: string;
-  maxProductionDay: DayRecord | null;
-  maxExportDay: DayRecord | null;
-  maxLoadDay: DayRecord | null;
-  maxImportDay: DayRecord | null;
-  bestSelfSufficiencyDay: DayRecord | null;
-  worstSelfSufficiencyDay: DayRecord | null;
-}
-
-/** All-time per-day money records. `since` is clamped to the hourly-rollup
- *  horizon (band-accurate pricing needs hourly data), so it can start later
- *  than the energy records' `since`. */
-export interface MoneyRecords {
-  since: string;
-  currency: string;
-  cheapestDay: DayRecord | null;
-  mostExpensiveDay: DayRecord | null;
-  bestEarningsDay: DayRecord | null;
 }
 
 /** The record among date-ascending candidates under `better` (strict), so

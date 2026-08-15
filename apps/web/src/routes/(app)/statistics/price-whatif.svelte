@@ -1,5 +1,5 @@
 <script lang="ts">
-	import type { SpotWhatIf } from 'server/src/statistics/spot-stats';
+	import type { SpotWhatIf } from '@SunReye/contracts/prices';
 	import * as m from '$lib/paraglide/messages';
 	import type { CostFormatters } from '$lib/cost/format';
 	import { WHATIF_TILES } from '$lib/statistics/tiles';

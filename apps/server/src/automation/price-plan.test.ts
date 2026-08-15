@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { automationConfigSchema } from "@SunReye/db/automation-config";
 import { type PriceInputs, planPriceAction } from "./price-plan";
 import type { ForecastSlice } from "./slot-window";
-import type { SpotSlice } from "../prices/spot-price";
+import type { SpotSlice } from "@SunReye/contracts/prices";
 
 const HOUR_MS = 3_600_000;
 /** 2026-08-02T00:00 local at UTC+2 — the grid every fixture sits on. */

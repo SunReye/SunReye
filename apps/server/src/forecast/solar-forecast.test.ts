@@ -23,12 +23,14 @@ import {
 import { drizzle } from "drizzle-orm/pg-proxy";
 import { type CorrectionModel, correctionFactor } from "./forecast-correction";
 import { pvPowerW } from "./pv-model";
+import { openMeteoIrradiance } from "./providers/open-meteo";
 import {
   type IrradianceForecast,
   type SolarForecast,
   type SolarForecastPoint,
   buildSolarForecast,
   fetchSolarForecast,
+  forecastProviderCatalog,
   representativeHouseLoadW,
   toForecastExport,
 } from "./solar-forecast";
@@ -489,6 +491,51 @@ describe("buildSolarForecast correction", () => {
     // Both noon slots (month 7, hour 12) scale by the applied factor.
     expect(f.series[1]?.watts).toBeCloseTo((baseline[1] ?? 0) * factor, 6);
     expect(f.series[2]?.watts).toBeCloseTo((baseline[2] ?? 0) * factor, 6);
+  });
+});
+
+describe("forecastProviderCatalog", () => {
+  test("advertises every registered provider with a label and its capability flags", () => {
+    const catalog = forecastProviderCatalog();
+    expect(catalog.map((p) => p.id)).toContain("open-meteo");
+    // A non-empty label is what the settings dropdown renders per provider.
+    expect(catalog.every((p) => p.label.length > 0)).toBe(true);
+    // Open-Meteo delivers DNI and wind, so both physics refinements are on. The
+    // flag pair is what lets the form say which optionals a source resolves.
+    const openMeteo = catalog.find((p) => p.id === "open-meteo");
+    expect(openMeteo?.capabilities).toEqual({ dni: true, windSpeed: true });
+  });
+
+  test("the capability flags are not decoration — the provider actually supplies them", async () => {
+    // Mirror open-meteo-archive.test.ts: swap `globalThis.fetch`, drive the real
+    // provider, and assert the forecast carries exactly the optional series the
+    // provider's `capabilities` claim it does.
+    const nativeFetch = globalThis.fetch;
+    globalThis.fetch = (async () =>
+      ({
+        ok: true,
+        json: async () => ({
+          utc_offset_seconds: 7200,
+          minutely_15: {
+            time: ["2026-07-18T12:00", "2026-07-18T12:15"],
+            temperature_2m: [25, 25],
+            global_tilted_irradiance_instant: [800, 800],
+            direct_normal_irradiance_instant: [500, 500],
+            wind_speed_10m: [3, 3],
+          },
+        }),
+      }) as unknown as Response) as unknown as typeof fetch;
+    try {
+      const forecast = await openMeteoIrradiance.fetch({ latitude: 48, longitude: 9 }, [
+        { tilt: 30, azimuth: 0 },
+      ]);
+      expect(openMeteoIrradiance.capabilities.dni).toBe(true);
+      expect(forecast.dni).toEqual([500, 500]);
+      expect(openMeteoIrradiance.capabilities.windSpeed).toBe(true);
+      expect(forecast.windSpeed).toEqual([3, 3]);
+    } finally {
+      globalThis.fetch = nativeFetch;
+    }
   });
 });
 

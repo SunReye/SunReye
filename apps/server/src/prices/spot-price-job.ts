@@ -28,13 +28,11 @@ import type { TariffConfig } from "@SunReye/db/tariff";
 import { exportPriceForSlot, importPriceAt } from "@SunReye/db/tariff";
 import { getTariff } from "../settings/settings";
 import { log } from "../shared/logging";
+import type { PricedSlot, SlotCoverage, SpotPriceView, SpotSlice } from "@SunReye/contracts/prices";
 import {
-  type SlotCoverage,
-  type SpotPricePoint,
   type SpotPriceProvider,
   SLOT_MINUTES,
   SpotPriceUnpublished,
-  type SpotSlice,
   expectedSlotCount,
   localDayStartMs,
   nextLocalDayStartMs,
@@ -156,17 +154,6 @@ export async function runSpotPriceSync(
 }
 
 /**
- * A market slot with the money applied: what a kWh imported then costs, and what
- * a kWh exported then earns, both under the active tariff.
- */
-export type PricedSlot = SpotPricePoint & {
-  /** Landed import price for the slot, currency-major per kWh. */
-  importPerKwh: number;
-  /** Export remuneration for the slot, currency-major per kWh. Can be 0 (§51). */
-  exportPerKwh: number;
-};
-
-/**
  * Apply the tariff to every slot.
  *
  * The hour/weekday are taken from the slot's own market-local label, so a static
@@ -187,31 +174,6 @@ function priceSlots(slice: SpotSlice, tariff: TariffConfig): PricedSlot[] {
       exportPerKwh: exportPriceForSlot(tariff, p.eurPerMwh),
     };
   });
-}
-
-/** One priced slot as the API returns it. */
-export interface SpotPriceView {
-  provider: string;
-  zone: string;
-  /** Credit line the UI must render (CC BY 4.0 for the default source). */
-  attribution: string | null;
-  /**
-   * Coarsest source resolution present, minutes. 60 means at least some slots
-   * came from an hourly source, so a negative quarter-hour inside a positive hour
-   * could not be resolved.
-   */
-  resolutionMinutes: number;
-  utcOffsetSeconds: number;
-  coverage: SpotSlice["coverage"];
-  availability: SpotSlice["availability"];
-  series: PricedSlot[];
-  /** Cheapest/priciest slot of the whole slice, EUR/MWh; null when empty. */
-  extremes: { minEurPerMwh: number; maxEurPerMwh: number } | null;
-  /**
-   * Count of negative slots per day. Read together with `coverage` — a 0 for a
-   * day that is `"missing"` means *unknown*, not "none".
-   */
-  negativeSlots: { today: number; tomorrow: number };
 }
 
 /**

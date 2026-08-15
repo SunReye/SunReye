@@ -5,13 +5,21 @@
  * {@link ../routes/statistics}.
  */
 
+import type { EnergyField } from "@SunReye/contracts/energy";
+import type {
+  CompareMode,
+  ComparisonResponse,
+  EnergyRecords,
+  HeatmapCell,
+  MoneyRecords,
+  RecordsResponse,
+  StatisticsTodayMessage,
+} from "@SunReye/contracts/statistics";
 import { db } from "@SunReye/db";
 import type { InverterProfile } from "@SunReye/inverter-core";
 import { sql } from "drizzle-orm";
 import {
-  type CostBreakdown,
   ENERGY_FIELDS,
-  type EnergyField,
   computeCost,
   computeCostSeries,
   currentPeriodKey,
@@ -19,22 +27,15 @@ import {
   resolveRange,
 } from "../energy/cost";
 import { accumulateTotals, emptyTotals, energySeries } from "../energy/energy";
-import { type PeriodEnergy, derivePeriodEnergy } from "../energy/energy-calc";
+import { derivePeriodEnergy } from "../energy/energy-calc";
 import { getTariff } from "../settings/settings";
 import {
-  type CompareMode,
-  type EnergyRecords,
-  type HeatmapCell,
-  type MoneyRecords,
   heatmapCells,
   hodDowOccurrences,
   pickEnergyRecords,
   pickMoneyRecords,
   previousWindow,
 } from "./statistics-calc";
-
-// DayRecord (the per-field record shape) stays exported from statistics-calc.
-export type { CompareMode, EnergyRecords, HeatmapCell, MoneyRecords } from "./statistics-calc";
 
 const DAY_MS = 86_400_000;
 
@@ -76,19 +77,6 @@ export async function computeHeatmap(
   return heatmapCells(rows, fieldByKey, ALL_ENERGY_FIELDS, hodDowOccurrences(from, opts.to));
 }
 
-/** Response of `GET /api/statistics/comparison`. */
-export interface ComparisonResponse {
-  mode: CompareMode;
-  current: CostBreakdown;
-  previous: CostBreakdown;
-  coverage: {
-    /** Earliest daily-rollup bucket for this inverter (ISO), null with no data
-     *  at all — lets the UI suppress fake deltas when the reference window
-     *  predates the recorded history. */
-    dataFrom: string | null;
-  };
-}
-
 /** Earliest daily-rollup bucket for an inverter — the start of recorded
  *  history. `daily_rollups` is retained forever, so this is the true first
  *  day of data. */
@@ -126,13 +114,6 @@ export async function computeComparison(
     previous,
     coverage: { dataFrom: dataFrom?.toISOString() ?? null },
   };
-}
-
-/** Response of `GET /api/statistics/records` — null when there is no complete
- *  day of history yet. */
-export interface RecordsResponse {
-  energy: EnergyRecords | null;
-  money: MoneyRecords | null;
 }
 
 /** Midnight starting the current local day. */
@@ -196,24 +177,6 @@ async function energyRecords(
   const days = periods.map((p) => derivePeriodEnergy(p, totals.get(p) ?? emptyTotals()));
   return { since: from.toISOString(), ...pickEnergyRecords(days) };
 }
-
-/** Today's cost + energy picture, pushed on every tick of the live stream. */
-export interface StatisticsTodayMessage {
-  type: "today";
-  /** When the snapshot was taken (ISO) — the client's freshness indicator. */
-  at: string;
-  cost: CostBreakdown;
-  energy: PeriodEnergy;
-}
-
-/**
- * What `/ws/statistics` publishes. Exported so the web app can type its socket
- * against the server's own union rather than restating it.
- */
-export type StatisticsLiveMessage =
-  | StatisticsTodayMessage
-  /** A price sync stored fresh slots: everything price-derived is now stale. */
-  | { type: "prices" };
 
 /**
  * Today's cost breakdown and energy split. Cheap by construction — 24 hourly

@@ -2,6 +2,7 @@ import { cors } from "@elysiajs/cors";
 import { openapi } from "@elysiajs/openapi";
 import { elysiaLogger } from "@logtape/elysia";
 import { auth } from "@SunReye/auth";
+import type { LogEntry } from "@SunReye/contracts/logs";
 import { db } from "@SunReye/db";
 import { metricsRaw } from "@SunReye/db/schema/metrics";
 import { user } from "@SunReye/db/schema/auth";
@@ -11,22 +12,23 @@ import { Elysia, t } from "elysia";
 import { type CostBucket, computeCost, computeCostSeries, resolveRange } from "./energy/cost";
 import { energySeries } from "./energy/energy";
 import { entitiesApi } from "./inverter/entities";
-import { evccControl, evccSnapshot, rebuildEvcc, setEvccListener, stopEvcc } from "./evcc/evcc";
+import { evccControl, evccSnapshot, rebuildEvcc, stopEvcc } from "./evcc/evcc";
 import { queryRollup } from "./shared/history";
 import { isPublicDashboard } from "./settings/access-settings";
 import { buildProfileContext, initProfiles } from "./inverter/inverter";
-import { type LogEntry, log, recentLogs, setLogListener, setupLogging } from "./shared/logging";
+import { log, recentLogs, setupLogging } from "./shared/logging";
+import { createStreams } from "./shared/streams";
 import { initLogLevel } from "./settings/logging-settings";
 import { adminRoutes } from "./routes/admin";
 import { adminGuard, dashboardReadAllowed } from "./routes/admin-guard";
 import { customChartsRoutes } from "./routes/custom-charts";
 import { startUpdateChecks, stopUpdateChecks } from "./inverter/profiles";
 import { profileRoutes } from "./routes/profiles";
-import { automationStreamSnapshot, setAutomationListener } from "./automation/automation";
+import { automationStreamSnapshot } from "./automation/automation";
 import { automationRoutes } from "./routes/automations";
 import { settingsRoutes } from "./routes/settings";
 import { statisticsRoutes } from "./routes/statistics";
-import { type StatisticsLiveMessage, todayStatistics } from "./statistics/statistics";
+import { todayStatistics } from "./statistics/statistics";
 import * as runtime from "./inverter/runtime";
 
 // Shared query for the per-period series endpoints (cost + energy): an explicit
@@ -86,9 +88,16 @@ if (process.argv.includes("--healthcheck")) {
   }
 }
 
+// The one read-side bus: every live feed (metrics, EVCC, logs, automations,
+// statistics) is produced onto it and the WebSocket routes subscribe to it. It
+// is owned here and injected into each producer — a single typed seam in place
+// of the five hand-wired module sinks it replaces.
+const streams = createStreams();
+
 // Wire LogTape before anything logs (Elysia's request logger and the app
-// loggers below both flow through the sinks configured here).
-await setupLogging();
+// loggers below both flow through the sinks configured here). The stream is
+// injected now so a boot-time log line can already reach `/ws/logs`.
+await setupLogging(streams);
 // Apply the persisted runtime log level now that the database is reachable;
 // everything before this line logs at the boot default.
 await initLogLevel();
@@ -278,7 +287,7 @@ const app = new Elysia()
     },
   })
   // Live EVCC stream: the ingest coalesces MQTT updates and broadcasts each
-  // fresh snapshot to `EVCC_TOPIC` (wired below via setEvccListener). Rides the
+  // fresh snapshot to `EVCC_TOPIC` (via the `evcc` stream topic). Rides the
   // same dashboard read policy as `/api/evcc`. On open we send the current
   // snapshot immediately so a subscriber paints without waiting for the next
   // change (EVCC can sit idle for minutes between updates).
@@ -296,7 +305,7 @@ const app = new Elysia()
   })
   // Live statistics stream for the Statistics page: today's cost breakdown and
   // energy split on a slow tick, plus a bare `prices` signal when a spot sync
-  // stores fresh slots (wired below via setSpotSyncListener). Same dashboard
+  // stores fresh slots (via the `statistics` stream topic). Same dashboard
   // read policy as the HTTP statistics reads. On open we send the current
   // snapshot immediately so the page paints without waiting for the next tick.
   .ws("/ws/statistics", {
@@ -314,8 +323,8 @@ const app = new Elysia()
   // config values, hostnames, and error internals), so unlike the dashboard
   // streams this never rides the public-dashboard exemption. Every message is a
   // JSON array of log lines: on open we replay the recent ring buffer so the
-  // viewer opens with context; live lines are pushed (coalesced) below via
-  // setLogListener. The `open` re-checks the admin session as a belt-and-braces
+  // viewer opens with context; live lines are pushed (coalesced) below via the
+  // `logs` stream topic. The `open` re-checks the admin session as a belt-and-braces
   // guard on top of the `requireAdmin` upgrade macro.
   .ws("/ws/logs", {
     requireAdmin: true,
@@ -332,7 +341,7 @@ const app = new Elysia()
   })
   // Live automations stream for the peak-shaving page: every engine tick pushes
   // the fresh status, the decision point it logged (if any) and the recomputed
-  // rest-of-today plan (wired below via setAutomationListener). Admin-only like
+  // rest-of-today plan (via the `automations` stream topic). Admin-only like
   // the HTTP automation reads — the payload exposes what the engine does to the
   // registers. `open` re-checks the session as a belt-and-braces guard and
   // replays the current snapshot (status + full decision ring + plan) so the
@@ -551,14 +560,42 @@ const app = new Elysia()
     });
   });
 
+// The read-side bus's only sink: each live topic is JSON-serialised and
+// published to its WebSocket subscribers. Producers emit onto the bus; these
+// subscriptions push to the browser. Registered before `app.server` exists —
+// the publishes are no-ops until `.listen()` resolves.
+streams.subscribe("metrics", (sample) =>
+  app.server?.publish(METRICS_TOPIC, JSON.stringify(sample)),
+);
+streams.subscribe("evcc", (state) => app.server?.publish(EVCC_TOPIC, JSON.stringify(state)));
+streams.subscribe("statistics", (msg) =>
+  app.server?.publish(STATISTICS_TOPIC, JSON.stringify(msg)),
+);
+streams.subscribe("automations", (msg) =>
+  app.server?.publish(AUTOMATION_TOPIC, JSON.stringify(msg)),
+);
+
+// Log lines coalesce: startup and error storms emit many at once, so a burst is
+// batched into one array message every 250 ms rather than a WS frame per line.
+// This decorator lives here, at the socket boundary — not in the producer.
+const logQueue: LogEntry[] = [];
+let logFlushTimer: ReturnType<typeof setTimeout> | null = null;
+streams.subscribe("logs", (entry) => {
+  logQueue.push(entry);
+  if (logFlushTimer) return;
+  logFlushTimer = setTimeout(() => {
+    logFlushTimer = null;
+    const batch = logQueue.splice(0);
+    if (batch.length > 0) app.server?.publish(LOG_TOPIC, JSON.stringify(batch));
+  }, 250);
+});
+
 // Start the runtime controller: it owns the poll loop, the live source, and the
-// MQTT bridge (all hot-reconfigurable). Each sample is broadcast to WebSocket
-// subscribers here; persistence + MQTT publishing happen inside the controller.
-// Skipped in onboarding-only boot — there's no profile to poll yet.
+// MQTT bridge (all hot-reconfigurable). Each sample is emitted on the `metrics`
+// topic; persistence + MQTT publishing happen inside the controller. Skipped in
+// onboarding-only boot — there's no profile to poll yet.
 if (ctx) {
-  runtime.start((sample) => {
-    app.server?.publish(METRICS_TOPIC, JSON.stringify(sample));
-  }, ctx);
+  runtime.start(streams, ctx);
 }
 
 // Periodically sync profile repos and diff installed versions so the UI can
@@ -568,48 +605,25 @@ startUpdateChecks();
 
 // EVCC ingest (own MQTT client on the shared broker). Independent of the
 // inverter runtime — starts even in onboarding-only boot; no-op when disabled.
-// Each coalesced snapshot is broadcast to WS subscribers; late/new subscribers
-// get the current snapshot from the socket's `open` handler instead.
-setEvccListener((state) => app.server?.publish(EVCC_TOPIC, JSON.stringify(state)));
-void rebuildEvcc();
+// Each coalesced snapshot is emitted on the `evcc` topic (the bus is wired on
+// this boot rebuild); late/new subscribers get the current snapshot from the
+// socket's `open` handler instead.
+void rebuildEvcc(streams);
 
-// Statistics stream: republish today's figures on a slow tick, and signal the
-// page whenever a price sync stores fresh slots. The tick short-circuits with
-// no subscribers, so an idle instance pays nothing for the feature.
+// Statistics stream: republish today's figures on a slow tick; the runtime
+// signals the same topic whenever a price sync stores fresh slots. The tick
+// short-circuits with no subscribers, so an idle instance pays nothing for the
+// feature — that short-circuit stays here, at the boundary.
 async function publishTodayStatistics(): Promise<void> {
   const server = app.server;
   if (!profile || !server || server.subscriberCount(STATISTICS_TOPIC) === 0) return;
   try {
-    server.publish(STATISTICS_TOPIC, JSON.stringify(await todayStatistics(profile)));
+    streams.emit("statistics", await todayStatistics(profile));
   } catch (error) {
     serverLog.warn("statistics publish failed: {error}", { error });
   }
 }
 setInterval(() => void publishTodayStatistics(), STATISTICS_INTERVAL_MS);
-runtime.setSpotSyncListener(() => {
-  const message: StatisticsLiveMessage = { type: "prices" };
-  app.server?.publish(STATISTICS_TOPIC, JSON.stringify(message));
-});
-
-// Automations stream: every engine tick's outcome fans out to `/ws/automations`
-// subscribers. The listener survives runtime restarts (profile switches) —
-// it's the sink, not the loop.
-setAutomationListener((msg) => app.server?.publish(AUTOMATION_TOPIC, JSON.stringify(msg)));
-
-// Broadcast log lines to `/ws/logs` subscribers, coalescing bursts (startup and
-// error storms emit many lines at once) into one array message every 250ms so a
-// viewer isn't hammered with a message per line.
-const logQueue: LogEntry[] = [];
-let logFlushTimer: ReturnType<typeof setTimeout> | null = null;
-setLogListener((entry) => {
-  logQueue.push(entry);
-  if (logFlushTimer) return;
-  logFlushTimer = setTimeout(() => {
-    logFlushTimer = null;
-    const batch = logQueue.splice(0);
-    if (batch.length > 0) app.server?.publish(LOG_TOPIC, JSON.stringify(batch));
-  }, 250);
-});
 
 // Graceful shutdown: stop polling and release the transport + broker.
 for (const signal of ["SIGINT", "SIGTERM"] as const) {

@@ -15,11 +15,13 @@ import {
 } from "./peak-shaving";
 import { tariffConfigSchema } from "@SunReye/db/tariff";
 import type { ForecastSlice } from "./slot-window";
-import type { SpotSlice } from "../prices/spot-price";
-import { type DecisionPoint, createDecisionLog } from "./automation-history";
+import type { SpotSlice } from "@SunReye/contracts/prices";
+import type { DecisionPoint } from "@SunReye/contracts/automation";
+import { createDecisionLog } from "./automation-history";
 import { projectPeakShaving } from "./peak-shaving-plan";
 import { type AutomationIO, createPeakShavingEngine } from "./peak-shaving-engine";
-import type { EvccAction, EvccLoadpoint, EvccState } from "../evcc/evcc";
+import type { EvccLoadpoint, EvccState } from "@SunReye/contracts/evcc";
+import type { EvccAction } from "../evcc/evcc";
 import { buildProfileContext } from "../inverter/inverter";
 import type { SolarForecast } from "../forecast/solar-forecast";
 

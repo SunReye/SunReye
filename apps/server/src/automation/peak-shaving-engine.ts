@@ -24,16 +24,22 @@ import {
   evccModeStateKey,
   numericSnapshot,
 } from "@SunReye/db/automation-state";
-import type { PeakShavingMode } from "@SunReye/db/automation-config";
 import type { WeatherConfig } from "@SunReye/db/weather";
 import { entityConstraint } from "@SunReye/inverter-core";
 import type { CanonicalRole, InverterSample } from "@SunReye/inverter-core";
-import { type DecisionLog, type DecisionPoint, createDecisionLog } from "./automation-history";
-import type { EvccAction, EvccState } from "../evcc/evcc";
+import type {
+  DecisionPoint,
+  PeakShavingPlans,
+  PeakShavingRunState,
+  PeakShavingStatus,
+  PriceRegime,
+} from "@SunReye/contracts/automation";
+import { type DecisionLog, createDecisionLog } from "./automation-history";
+import type { EvccState } from "@SunReye/contracts/evcc";
+import type { EvccAction } from "../evcc/evcc";
 import type { ProfileContext } from "../inverter/inverter";
 import { log } from "../shared/logging";
 import {
-  type Blocker,
   type Decision,
   type DecisionInputs,
   type EvInputs,
@@ -56,14 +62,9 @@ import {
   planEvPullIn,
 } from "./ev-pull-in";
 import { insideNegativeWindow } from "./price-plan";
-import type { PriceRegime } from "./price-plan";
 import type { TariffConfig } from "@SunReye/db/tariff";
-import type { SpotSlice } from "../prices/spot-price";
-import {
-  type PeakShavingPlans,
-  type PlanLimits,
-  projectPeakShavingDays,
-} from "./peak-shaving-plan";
+import type { SpotSlice } from "@SunReye/contracts/prices";
+import { type PlanLimits, projectPeakShavingDays } from "./peak-shaving-plan";
 import type { SolarForecast } from "../forecast/solar-forecast";
 
 const logger = log("automation");
@@ -85,90 +86,6 @@ const STALE_SAMPLE_MS = 30_000;
 const INEFFECTIVE_MIN_W = 300;
 const INEFFECTIVE_RATIO = 0.25;
 const INEFFECTIVE_TICKS = 3;
-
-export type PeakShavingRunState =
-  | "disabled"
-  | "blocked"
-  | "idle"
-  /** Steering the register. */
-  | "active"
-  /** Deciding and logging, but writing nothing (`shadowMode`). */
-  | "shadow"
-  /** Switched off, but a runnable setup still decides in dry-run each tick. */
-  | "simulating"
-  | "stale";
-
-export interface PeakShavingStatus {
-  /** Effective: master gate AND the peak-shaving toggle. */
-  enabled: boolean;
-  mode: PeakShavingMode;
-  state: PeakShavingRunState;
-  blockers: Blocker[];
-  /**
-   * What stops *price awareness* specifically. Kept apart from `blockers`
-   * because a missing smart-meter date says nothing about whether peak shaving
-   * can run — only that §51 does not apply to this plant.
-   */
-  priceBlockers: Blocker[];
-  lastTickAt: string | null;
-  lastWriteAt: string | null;
-  lastError: string | null;
-  targetA: number | null;
-  lastWrittenA: number | null;
-  /** Current register value from the live sample. */
-  liveA: number | null;
-  thresholdW: number | null;
-  /**
-   * Feed-in ceiling last written to the solar-sell register, W — `grid-friendly`
-   * only, since holding export below the plant limit is what that register does.
-   */
-  sellLimitW: number | null;
-  /** Current solar-sell register value from the live sample, W. */
-  liveSellLimitW: number | null;
-  /** Grid-charge current we commanded for a window, A; null when not grid-charging. */
-  gridChargeA: number | null;
-  liveExcessW: number | null;
-  /** House load the thresholds were measured against, W; null when unknown. */
-  loadW: number | null;
-  headroomKwh: number | null;
-  /**
-   * Usable battery energy from the forecast config, kWh — lets the client
-   * re-derive headroom from the live 1 Hz SOC between ticks. Null until a tick
-   * has read the config (or when no battery is configured).
-   */
-  usableKwh: number | null;
-  remainingAboveLimitKwh: number | null;
-  /** Live EV charge power the decision subtracted; null when EVCC is off. */
-  evChargeW: number | null;
-  /** Remaining EV charge demand deducted from the surplus; null when EVCC is off. */
-  evDemandKwh: number | null;
-  forecastAvailable: boolean;
-  /** The register drifted from our last write (e.g. edited in Controls). */
-  externalOverride: boolean;
-  /**
-   * The ceiling is being raised but the battery isn't absorbing — the inverter's
-   * work mode is almost certainly overriding it, so the automation is a no-op.
-   * Only ever set when the profile maps `battery.power`.
-   */
-  ineffective: boolean;
-  /** A snapshot is held — the user's value will be restored on release. */
-  restorePending: boolean;
-  /** What price awareness is doing; `none` when off or without prices. */
-  priceRegime: PriceRegime;
-  /** SOC bound the pre-window envelope allows now, %; null when not shaping. */
-  socEnvelopePct: number | null;
-  /** Start/end of the negative-price window in play, epoch ms; null when none. */
-  windowStartsAt: number | null;
-  windowEndsAt: number | null;
-  /** Energy that window can push into the pack, kWh. */
-  soakableKwh: number | null;
-  /** Window energy that will earn nothing whatever the pack does, kWh. */
-  unavoidableZeroValueKwh: number | null;
-}
-
-export interface AutomationStatusView {
-  peakShaving: PeakShavingStatus;
-}
 
 /**
  * Everything the tick touches, injected so tests can run the full state

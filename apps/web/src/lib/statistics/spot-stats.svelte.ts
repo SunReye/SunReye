@@ -9,7 +9,7 @@
  * read this, so the window is fetched once either way.
  */
 
-import type { SpotStats } from "server/src/statistics/spot-stats";
+import type { SpotStats } from "@SunReye/contracts/prices";
 import { api } from "$lib/api";
 import { payloadOrNull } from "$lib/api-payload";
 

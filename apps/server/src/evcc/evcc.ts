@@ -39,9 +39,9 @@ import { evccReady } from "@SunReye/db/evcc-config";
 import mqtt from "mqtt";
 import type { MqttClient } from "mqtt";
 import { getMqttConfig } from "../settings/config";
+import type { EvccLoadpoint, EvccState } from "@SunReye/contracts/evcc";
 import {
   createEvPowerEstimator,
-  type ChargePowerSource,
   type LiveChargePower,
   type LoadpointParams,
 } from "./ev-power-estimator";
@@ -53,102 +53,9 @@ import {
 } from "./evcc-topics";
 import { getEvccConfig } from "../settings/evcc-settings";
 import { log } from "../shared/logging";
+import type { Streams } from "../shared/streams";
 
 const logger = log("evcc");
-
-/** The per-loadpoint fields the web app renders (subset of EVCC's topics). */
-export interface EvccLoadpoint {
-  /** 1-based loadpoint index, as used in EVCC's topics. */
-  index: number;
-  /** Loadpoint label from the EVCC config (e.g. "Carport"). */
-  title: string | null;
-  /** Charge mode: `off` | `pv` | `minpv` | `now`. */
-  mode: string | null;
-  /** Current charge power in W, as last reported by EVCC. */
-  chargePower: number;
-  /**
-   * Live charge power in W — the estimator's view, updated between EVCC's
-   * publishes from command feed-forward and the 1 Hz house-load residual.
-   * Equals {@link chargePower} whenever the last word was EVCC's own.
-   */
-  chargePowerLive: number;
-  /** Provenance of {@link chargePowerLive} (freshness/confidence hint). */
-  chargePowerSource: ChargePowerSource;
-  charging: boolean;
-  /** Vehicle plugged in. */
-  connected: boolean;
-  vehicleSoc: number | null;
-  /** Vehicle range in km. */
-  vehicleRange: number | null;
-  /** Display name of the detected vehicle (nicer than the config slug). */
-  vehicleTitle: string | null;
-  /**
-   * Config slug of the detected vehicle (`tesla_ble`) — the key under
-   * `<root>/vehicles/`. Carried for the limit write path, which targets the
-   * vehicle rather than the loadpoint; prefer {@link vehicleTitle} for display.
-   */
-  vehicleName: string | null;
-  /** Energy added this charging session in Wh. */
-  sessionEnergy: number | null;
-  /** Energy still needed to reach the charge limit in Wh (EVCC's estimate). */
-  chargeRemainingEnergy: number | null;
-  /**
-   * The loadpoint's *session* charge limit in %, EVCC's per-session override of
-   * the vehicle's configured limit. `0` means "no override", **not** "no limit",
-   * and EVCC clears it on unplug or restart — so it is never the value to
-   * display on its own. See {@link effectiveLimitSoc}.
-   */
-  limitSoc: number | null;
-  /**
-   * The limit EVCC actually charges to, in % — its own resolution of the
-   * session override and the vehicle's configured limit. This is what EVCC's UI
-   * shows, so it is what the dashboard renders. `0`/null = no limit.
-   */
-  effectiveLimitSoc: number | null;
-  /**
-   * Charge limit read *from the car* in %, informational only: EVCC surfaces it
-   * so a taper it does not control can be explained. Not writable, and not part
-   * of the effective-limit resolution.
-   */
-  vehicleLimitSoc: number | null;
-  /**
-   * Battery boost: EVCC is deliberately draining the *house* battery into this
-   * car. Transient — EVCC keeps it in memory only and clears it on any mode
-   * change and on unplug, so there is no durable value to give back.
-   *
-   * EVCC refuses to enable it outside the `pv`/`minpv` modes.
-   */
-  batteryBoost: boolean;
-  /**
-   * House-battery SOC floor for {@link batteryBoost}, %: once the battery falls
-   * below it EVCC stops draining but keeps the car prioritised over recharging,
-   * so it settles at the limit instead of oscillating. `100` means *disabled*,
-   * which is also EVCC's default. Unlike the boost flag this **is** persisted by
-   * EVCC, so anything that changes it owes the user a restore.
-   */
-  batteryBoostLimit: number | null;
-  /**
-   * Usable pack size of the detected vehicle in kWh, from
-   * `<root>/vehicles/<name>/capacity`. Null when no vehicle is detected, or
-   * when EVCC has none configured for it (published as `0`) — a car without a
-   * capacity is one nothing can be estimated for. Carried on the loadpoint
-   * because that is where the SoC and the limit already are, and the three are
-   * only useful together.
-   */
-  vehicleCapacityKwh: number | null;
-  phasesActive: number | null;
-}
-
-export interface EvccState {
-  /** Broker connected *and* EVCC's own status topic reports online. */
-  reachable: boolean;
-  loadpoints: EvccLoadpoint[];
-  /**
-   * Diagram hint: subtract the EV from the house-load node. Carried here (not in
-   * the admin-only settings) so the session-scoped public dashboard can read it.
-   */
-  subtractFromHome: boolean;
-}
 
 /**
  * Writable loadpoint commands.
@@ -234,18 +141,13 @@ const loadpoints = new Map<number, Map<string, EvccValue>>();
 const vehicles = new Map<string, Map<string, EvccValue>>();
 const estimator = createEvPowerEstimator();
 
-/** Notified with the fresh snapshot whenever state changes (wired to the WS). */
-export type EvccListener = (state: EvccState) => void;
-let listener: EvccListener = () => {};
-let emitTimer: ReturnType<typeof setTimeout> | null = null;
-
 /**
- * Register the push listener (the server wires this to a WS broadcast). Only one
- * is needed — the socket layer fans out to every subscriber.
+ * The read-side bus each fresh snapshot is emitted onto, injected by
+ * {@link rebuildEvcc}. Null until the first (boot) rebuild wires it; the socket
+ * layer fans one emit out to every `/ws/evcc` subscriber.
  */
-export function setEvccListener(fn: EvccListener): void {
-  listener = fn;
-}
+let stream: Streams | null = null;
+let emitTimer: ReturnType<typeof setTimeout> | null = null;
 
 /**
  * Coalesce a burst of topic updates into a single push. EVCC delivers its full
@@ -259,7 +161,7 @@ function scheduleEmit(): void {
   emitTimer = setTimeout(() => {
     emitTimer = null;
     const snap = evccSnapshot();
-    if (snap) listener(snap);
+    if (snap) stream?.emit("evcc", snap);
   }, EMIT_DEBOUNCE_MS);
 }
 
@@ -274,7 +176,7 @@ function emitNow(): void {
     emitTimer = null;
   }
   const snap = evccSnapshot();
-  if (snap) listener(snap);
+  if (snap) stream?.emit("evcc", snap);
 }
 
 /** Current EVCC state for `GET /api/evcc` and WS pushes, or `null` when off. */
@@ -434,8 +336,12 @@ async function stopClient(): Promise<void> {
  * (Re)build the EVCC subscriber from the current EVCC + MQTT settings. Called
  * at boot and whenever either config is saved; tears down to "off" when
  * disabled. Reconnect/backoff on a live client is the mqtt lib's job.
+ *
+ * `streamBus` wires the read-side bus and is passed only on the boot call; the
+ * settings-save rebuilds omit it and keep the bus wired at boot.
  */
-export async function rebuildEvcc(): Promise<void> {
+export async function rebuildEvcc(streamBus?: Streams): Promise<void> {
+  if (streamBus) stream = streamBus;
   const [config, mqttConfig] = await Promise.all([getEvccConfig(), getMqttConfig()]);
   await stopClient();
   subtractFromHome = config.subtractFromHome;

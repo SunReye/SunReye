@@ -284,6 +284,7 @@
   "weather_toast_saved": "Wettereinstellungen gespeichert",
   "weather_forecast_enable": "Solar-Ertragsprognose",
   "weather_forecast_desc": "Schätzt den Ertrag deiner Anlage aus der Einstrahlungsprognose je Modulausrichtung. Die Werte stammen aus dem Modul-Datenblatt und deiner Installation.",
+  "weather_forecast_provider": "Quelle",
   "weather_forecast_arrays": "PV-Flächen",
   "weather_forecast_arrays_empty": "Pro Modulausrichtung einen Eintrag anlegen (Strings mit unterschiedlicher Ausrichtung bekommen eigene Einträge).",
   "weather_forecast_add_array": "Fläche hinzufügen",

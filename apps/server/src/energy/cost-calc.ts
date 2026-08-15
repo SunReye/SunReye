@@ -4,26 +4,12 @@
  * The DB-bound orchestration lives in cost.ts.
  */
 
+import type { CostTotals, EnergyField, HourEnergy } from "@SunReye/contracts/energy";
 import { type TariffConfig, importBandForHour, importPriceForHour } from "@SunReye/db/tariff";
 // Type-only, so the cost.ts ⇄ cost-calc.ts pairing stays a one-way runtime
 // dependency: cost.ts owns the shapes the SQL layer produces, this module owns
 // the arithmetic over them.
-import type { CostSeriesPoint, CounterDeltaRow, EnergyField } from "./cost";
-
-/** Energy (kWh) that flowed in one hour, plus the hour's local wall time. */
-export interface HourEnergy {
-  time: Date;
-  import: number;
-  export: number;
-  load: number;
-  production: number;
-  /** Battery discharge counter delta — carried for the energy split only; NOT
-   *  priced by {@link allocateCost} (money math never reads it). */
-  batteryDischarge: number;
-  /** Battery charge counter delta — carried for the energy split only; NOT
-   *  priced by {@link allocateCost} (money math never reads it). */
-  batteryCharge: number;
-}
+import type { CostSeriesPoint, CounterDeltaRow } from "./cost";
 
 /**
  * Share of an hour that fell in quarter-hours with a negative day-ahead price,
@@ -50,71 +36,6 @@ const isoWeekday = (d: Date): number => ((d.getDay() + 6) % 7) + 1;
 
 const dateKey = (d: Date): string =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-
-export interface CostTotals {
-  importKwh: number;
-  exportKwh: number;
-  loadKwh: number;
-  productionKwh: number;
-  /** Battery discharge summed over the window — energy figure only, never
-   *  priced (money math ignores it); 0 when no battery-discharge role. */
-  batteryDischargeKwh: number;
-  /** Battery charge summed over the window — energy figure only, never
-   *  priced (money math ignores it); 0 when no battery-charge role. */
-  batteryChargeKwh: number;
-  importCost: number;
-  exportEarnings: number;
-  /**
-   * Exported energy that earned nothing because its quarter-hour cleared at a
-   * negative day-ahead price (§51 EEG). Zero unless the tariff is in spot mode
-   * with the `eegFeedIn` marketing model.
-   */
-  zeroValueExportKwh: number;
-  /**
-   * Feed-in revenue forgone on {@link zeroValueExportKwh} — what that energy
-   * would have earned at the ordinary tariff. Computed here because this is
-   * where the rate is known; the client must not have to read the tariff (which
-   * is admin-only) just to render the figure.
-   */
-  zeroValueExportEur: number;
-  standingCharge: number;
-  /** importCost − exportEarnings + standingCharge. */
-  net: number;
-  /** What all consumed energy would have cost bought from the grid. */
-  gridOnlyCost: number;
-  /** gridOnlyCost − importCost + exportEarnings. */
-  savings: number;
-  /** Value of self-consumed solar/battery: (load − import) priced at the grid
-   *  rate = gridOnlyCost − importCost. Every kWh served on-site instead of bought
-   *  is worth the grid price; excludes export feed-in (that is separate income). */
-  solarSavings: number;
-  /**
-   * Energy served on-site instead of imported: max(0, load − import), kWh — the
-   * purchase solar and the battery avoided, which is what `solarSavings` values.
-   * NOT self-consumption: that is production − export (see `selfConsumption`),
-   * and on a battery system the two are different numbers.
-   */
-  solarToLoadKwh: number;
-  /** (load − import) / load, 0..1, or null when no load data. */
-  selfSufficiency: number | null;
-  /** (production − export) / production, 0..1, or null when no production. */
-  selfConsumption: number | null;
-  byDay: Array<{
-    date: string;
-    importKwh: number;
-    exportKwh: number;
-    importCost: number;
-    exportEarnings: number;
-    net: number;
-  }>;
-  byBand: Array<{ name: string; importKwh: number; cost: number }>;
-}
-
-export interface CostBreakdown extends CostTotals {
-  currency: string;
-  from: string;
-  to: string;
-}
 
 /**
  * Price a list of hourly energy figures against a tariff. `rangeDays` prorates

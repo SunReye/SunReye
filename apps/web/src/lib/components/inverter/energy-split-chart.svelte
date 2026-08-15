@@ -5,7 +5,7 @@
 	import EnergySplitBlock, {
 		type SplitSeries
 	} from '$lib/components/inverter/energy-split-block.svelte';
-	import type { PeriodEnergy } from 'server/src/energy/energy-calc';
+	import type { PeriodEnergy } from '@SunReye/contracts/energy';
 	import { periodLabel, type CostBucket } from '$lib/cost/ranges';
 
 	// One period of energy, split for the two stacked bars.

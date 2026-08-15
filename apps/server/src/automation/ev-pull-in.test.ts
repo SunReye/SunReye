@@ -3,7 +3,7 @@ import { BOOST_LIMIT_DISABLED, type EvPullInInputs, planEvPullIn } from "./ev-pu
 
 /** The mode an idle charger is woken into — EVCC's surplus-charging mode. */
 const SINK_MODE = "pv";
-import type { EvccLoadpoint, EvccState } from "../evcc/evcc";
+import type { EvccLoadpoint, EvccState } from "@SunReye/contracts/evcc";
 
 const loadpoint = (over: Partial<EvccLoadpoint> = {}): EvccLoadpoint =>
   ({

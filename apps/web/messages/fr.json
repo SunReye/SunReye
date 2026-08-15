@@ -284,6 +284,7 @@
   "weather_toast_saved": "Paramètres météo enregistrés",
   "weather_forecast_enable": "Prévision de production solaire",
   "weather_forecast_desc": "Estime la production de votre installation à partir de la prévision d'irradiance pour chaque orientation de panneaux. Les valeurs proviennent de la fiche technique des panneaux et de votre installation.",
+  "weather_forecast_provider": "Source",
   "weather_forecast_arrays": "Champs PV",
   "weather_forecast_arrays_empty": "Ajoutez une entrée par orientation de panneaux (les strings orientés différemment ont leur propre entrée).",
   "weather_forecast_add_array": "Ajouter un champ",

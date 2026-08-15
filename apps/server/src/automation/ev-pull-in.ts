@@ -35,9 +35,9 @@
  * the publishing. So the rules are unit-testable without a broker.
  */
 
-import type { EvccLoadpoint, EvccState } from "../evcc/evcc";
+import type { PriceRegime } from "@SunReye/contracts/automation";
+import type { EvccLoadpoint, EvccState } from "@SunReye/contracts/evcc";
 import { chargeStopSoc } from "./peak-shaving";
-import type { PriceRegime } from "./price-plan";
 
 /** The charge mode an idle loadpoint is woken into. */
 const SINK_MODE = "pv";

@@ -5,6 +5,7 @@
  * wiring lives in {@link ../routes/statistics}.
  */
 
+import type { SpotStats } from "@SunReye/contracts/prices";
 import { db } from "@SunReye/db";
 import { getSpotPrices } from "@SunReye/db/spot-price";
 import { spotPricesReady } from "@SunReye/db/spot-price-config";
@@ -14,26 +15,13 @@ import { fetchBucketEnergy } from "../energy/cost";
 import { getTariff } from "../settings/settings";
 import { getSpotPriceConfig } from "../settings/spot-price-settings";
 import {
-  type NegativeWindow,
-  type PaidVsMarket,
   type SpotDailyRow,
-  type SpotDailyStat,
   type SpotPriceSlot,
-  type SpotSummary,
-  type SpotWhatIf,
   groupNegativeWindows,
   hourlyAveragePrices,
   paidVsMarket,
   spotDailyStats,
   spotWhatIf,
-} from "./spot-stats-calc";
-
-export type {
-  NegativeWindow,
-  PaidVsMarket,
-  SpotDailyStat,
-  SpotSummary,
-  SpotWhatIf,
 } from "./spot-stats-calc";
 
 const DAY_MS = 86_400_000;
@@ -45,22 +33,6 @@ const DAY_MS = 86_400_000;
  * aggregated in SQL and covers the full requested window regardless.
  */
 const RAW_MAX_DAYS = 400;
-
-/** Response of `GET /api/statistics/prices`. */
-export interface SpotStats {
-  zone: string;
-  currency: string;
-  from: string;
-  to: string;
-  summary: SpotSummary | null;
-  daily: SpotDailyStat[];
-  negativeWindows: NegativeWindow[];
-  /** True when the raw pass covered less than the requested window, so the
-   *  negative-window list starts later than `from`. */
-  negativeWindowsTruncated: boolean;
-  paidVsMarket: PaidVsMarket | null;
-  whatIf: SpotWhatIf | null;
-}
 
 /**
  * Per-day price shape for one zone over `[from, to)`, grouped by LOCAL calendar

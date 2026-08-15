@@ -20,6 +20,7 @@
  * substituted number.
  */
 
+import type { SlotCoverage, SpotAvailability, SpotSlice } from "@SunReye/contracts/prices";
 import type { SpotPriceInsert, SpotPriceRow } from "@SunReye/db/schema/spot-price";
 
 const MINUTE_MS = 60_000;
@@ -238,41 +239,6 @@ export function toSpotRows(series: SpotPriceSeries, provider: string): SpotPrice
     });
   }
   return rows;
-}
-
-export type SlotCoverage = "complete" | "partial" | "missing";
-
-/** Whether the automation may plan on this slice, and how far. */
-export type SpotAvailability = "ok" | "today-only" | "none";
-
-/** One priced market slot, as the API and the automations see it. */
-export interface SpotPricePoint {
-  /** Market-local wall clock, `YYYY-MM-DDTHH:mm` (for labels only). */
-  time: string;
-  /** Slot start as an absolute instant — what all matching is done on. */
-  startMs: number;
-  /** Nominal width of the *source* slot, minutes (60 ⇒ quarter-hours unresolved). */
-  minutes: number;
-  /** Wholesale price, EUR/MWh. Signed. */
-  eurPerMwh: number;
-  /** `eurPerMwh < 0` — the §51 zero-remuneration trigger. Strictly below zero. */
-  negative: boolean;
-}
-
-/**
- * A window of priced slots plus how complete it is.
- *
- * Structurally a superset of the forecast's `ForecastSlice`, deliberately: the
- * automation walks both with the same slot geometry. `utcOffsetSeconds` is the
- * *market's* offset and must never be taken from the forecast.
- */
-export interface SpotSlice {
-  zone: string;
-  series: SpotPricePoint[];
-  stepMinutes: number;
-  utcOffsetSeconds: number;
-  coverage: { today: SlotCoverage; tomorrow: SlotCoverage };
-  availability: SpotAvailability;
 }
 
 function coverageOf(stored: number, expected: number): SlotCoverage {

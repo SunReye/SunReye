@@ -11,26 +11,24 @@
  * gets cost tracking for free.
  */
 
+import type {
+  CostBreakdown,
+  CostTotals,
+  EnergyField,
+  EnergyTotals,
+  HourEnergy,
+} from "@SunReye/contracts/energy";
 import { db } from "@SunReye/db";
 import type { TariffConfig } from "@SunReye/db/tariff";
 import type { CanonicalRole, InverterProfile, InverterSample } from "@SunReye/inverter-core";
 import { sql } from "drizzle-orm";
-import {
-  type CostBreakdown,
-  type CostTotals,
-  type HourEnergy,
-  type ZeroValueShare,
-  allocateCost,
-  priceSeriesRows,
-  rollUpToMonths,
-} from "./cost-calc";
-import { type EnergyTotals, emptyTotals, replaceTodaySlice } from "./energy-calc";
+import { type ZeroValueShare, allocateCost, priceSeriesRows, rollUpToMonths } from "./cost-calc";
+import { emptyTotals, replaceTodaySlice } from "./energy-calc";
 import { getTariff } from "../settings/settings";
 import { liveState } from "../shared/state";
 
 const clamp01 = (n: number): number => Math.min(1, Math.max(0, n));
 
-export type { CostBreakdown } from "./cost-calc";
 export { resolveRange } from "./cost-calc";
 
 /** The energy-counter metric key for a role in this profile, if present. */
@@ -47,8 +45,6 @@ export const ENERGY_FIELDS = {
   batteryDischarge: "battery.energy.discharged.total",
   batteryCharge: "battery.energy.charged.total",
 } as const satisfies Record<keyof Omit<HourEnergy, "time">, CanonicalRole>;
-
-export type EnergyField = keyof Omit<HourEnergy, "time">;
 
 /** The continuous-aggregate views we can read counter deltas from. */
 export type RollupView = "hourly_rollups" | "daily_rollups";

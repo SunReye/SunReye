@@ -13,11 +13,11 @@ import { type WeatherConfig, weatherConfigSchema } from "@SunReye/db/weather";
 import type { InverterProfile, InverterSample, MetricDef } from "@SunReye/inverter-core";
 import type { SolarForecast } from "../forecast/solar-forecast";
 import { buildProfileContext } from "../inverter/inverter";
-import type { SpotSlice } from "../prices/spot-price";
+import type { SpotSlice } from "@SunReye/contracts/prices";
 import { getAutomationConfig } from "../settings/automation-settings";
+import type { AutomationStreamMessage } from "@SunReye/contracts/automation";
 import {
   type AutomationModules,
-  type AutomationStreamMessage,
   applyAutomationConfig,
   automationHistory,
   automationPlan,
@@ -25,12 +25,12 @@ import {
   automationStreamSnapshot,
   buildProductionIO,
   composeAutomationIO,
-  setAutomationListener,
   startAutomations,
   stopAutomations,
 } from "./automation";
 import { HISTORY_CAPACITY } from "./automation-history";
 import type { AutomationIO } from "./peak-shaving-engine";
+import { type Streams, createStreams } from "../shared/streams";
 
 // --- Fixtures ------------------------------------------------------------------
 
@@ -254,17 +254,22 @@ function harness(over: { config?: AutomationConfig } = {}): Harness {
 // --- Stream capture ------------------------------------------------------------
 
 let frames: AutomationStreamMessage[] = [];
+/** The bus the loop is started with each test; frames captures its emits. */
+let streams: Streams;
+/** Detaches the `frames` subscriber — a test can call it to run with none. */
+let unsubscribeFrames: () => void = () => {};
 
 beforeEach(async () => {
   await stopAutomations();
   armed = [];
   frames = [];
+  streams = createStreams();
+  unsubscribeFrames = streams.subscribe("automations", (msg) => frames.push(msg));
   installFakeTimers();
-  setAutomationListener((msg) => frames.push(msg));
 });
 
 afterEach(async () => {
-  setAutomationListener(null);
+  unsubscribeFrames();
   await stopAutomations();
   globalThis.setTimeout = realSetTimeout;
   globalThis.clearTimeout = realClearTimeout;
@@ -272,7 +277,7 @@ afterEach(async () => {
 
 /** Start the loop and let its immediate tick finish. */
 async function start(h: Harness): Promise<void> {
-  await startAutomations(plant, async () => h.io);
+  await startAutomations(plant, streams, async () => h.io);
   await settle();
 }
 
@@ -478,7 +483,7 @@ describe("automation loop", () => {
   test("a restart mid-tick silences the engine it retired", async () => {
     const h = harness();
     const release = h.set.gateConfigRead();
-    void startAutomations(plant, async () => h.io);
+    void startAutomations(plant, streams, async () => h.io);
     await settle();
     expect(frames).toEqual([]);
 
@@ -504,7 +509,7 @@ describe("automation loop", () => {
       finishBuild = resolve;
     });
     const next = harness();
-    const starting = startAutomations(plant, async () => {
+    const starting = startAutomations(plant, streams, async () => {
       await building;
       return next.io;
     });
@@ -536,7 +541,7 @@ describe("automation loop", () => {
   test("a stop while a tick is in flight does not re-arm the loop", async () => {
     const h = harness();
     const release = h.set.gateConfigRead();
-    void startAutomations(plant, async () => h.io);
+    void startAutomations(plant, streams, async () => h.io);
     await settle();
 
     await stopAutomations();
@@ -560,8 +565,8 @@ describe("automation loop", () => {
     expect(frames[1]?.point?.t).toBe(NOON);
   });
 
-  test("without a listener the loop still ticks and records", async () => {
-    setAutomationListener(null);
+  test("without a subscriber the loop still ticks and records", async () => {
+    unsubscribeFrames();
     const h = harness();
     await start(h);
 

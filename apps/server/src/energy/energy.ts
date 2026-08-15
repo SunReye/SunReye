@@ -6,25 +6,18 @@
  * ({@link ./cost}).
  */
 
+import type { EnergyField, EnergyTotals, PeriodEnergy } from "@SunReye/contracts/energy";
 import type { InverterProfile } from "@SunReye/inverter-core";
 import {
   type CostBucket,
   type CounterDeltaRow,
-  type EnergyField,
   TOTALS_KEY_BY_FIELD,
   currentPeriodKey,
   fetchCounterDeltaMatrix,
   liveTodayTotals,
 } from "./cost";
-import {
-  type EnergyTotals,
-  type PeriodEnergy,
-  applyTodayOverride,
-  derivePeriodEnergy,
-  emptyTotals,
-} from "./energy-calc";
+import { applyTodayOverride, derivePeriodEnergy, emptyTotals } from "./energy-calc";
 
-export type { PeriodEnergy } from "./energy-calc";
 export { emptyTotals } from "./energy-calc";
 
 /** Sum the delta-matrix rows into per-period {@link EnergyTotals}, zero-filled

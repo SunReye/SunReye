@@ -17,10 +17,11 @@ import type {
 import type { WeatherConfig } from "@SunReye/db/weather";
 import type { CanonicalRole, InverterProfile } from "@SunReye/inverter-core";
 import { HOUR_MS } from "../energy/energy-flow";
-import type { EvccLoadpoint, EvccState } from "../evcc/evcc";
-import { type PriceAction, type PriceRegime, planPriceAction } from "./price-plan";
+import type { Blocker, PriceRegime } from "@SunReye/contracts/automation";
+import type { EvccLoadpoint, EvccState } from "@SunReye/contracts/evcc";
+import { type PriceAction, planPriceAction } from "./price-plan";
 import { type ForecastSlice, remainingSlotsToday } from "./slot-window";
-import type { SpotSlice } from "../prices/spot-price";
+import type { SpotSlice } from "@SunReye/contracts/prices";
 
 /** Battery this close to full (kWh headroom) → drop to the top-balance floor. */
 export const NEAR_FULL_KWH = 0.2;
@@ -37,11 +38,6 @@ const CHARGE_QUANT_A = 5;
 const THRESHOLD_SEARCH_STEPS = 32;
 
 // --- Blockers ----------------------------------------------------------------
-
-/** Why the automation cannot run: an unmapped role or missing plant config. */
-export type Blocker =
-  | { kind: "role"; role: CanonicalRole }
-  | { kind: "config"; what: "export-limit" | "battery" | "smart-meter" };
 
 const REQUIRED_ROLES = [
   "setting.battery.max_charge_current",

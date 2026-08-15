@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import type { CostBreakdown } from "server/src/energy/cost-calc";
-import type { SpotStats, SpotWhatIf } from "server/src/statistics/spot-stats";
-import type { RecordsResponse } from "server/src/statistics/statistics";
+import type { CostBreakdown } from "@SunReye/contracts/energy";
+import type { SpotStats, SpotWhatIf } from "@SunReye/contracts/prices";
+import type { RecordsResponse } from "@SunReye/contracts/statistics";
 import { costFormatters } from "../cost/format";
 import {
   COMPARISON_TILES,

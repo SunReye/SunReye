@@ -26,6 +26,7 @@
  * {@link projectPeakShavingDays} chains two of them for the today/tomorrow view.
  */
 
+import type { PeakShavingPlan, PeakShavingPlans, PlanSlot } from "@SunReye/contracts/automation";
 import { HOUR_MS, type SlotFlows, flowStep } from "../energy/energy-flow";
 import { type DecisionInputs, NEAR_FULL_KWH, decideTargetA } from "./peak-shaving";
 import { type ForecastSlice, type ForecastSlot, remainingSlotsToday } from "./slot-window";
@@ -35,44 +36,6 @@ const DAY_MS = 86_400_000;
 /** Absorption below this doesn't count as "charging starts here", W. */
 const CHARGING_FLOOR_W = 50;
 
-/** One projected forecast slot. */
-export interface PlanSlot {
-  /** Slot start, epoch ms. */
-  t: number;
-  /** Forecast (raw) PV for the slot, W. */
-  pvW: number;
-  /** House load assumed for the slot, W. */
-  loadW: number;
-  /** The shave threshold the automation would hold, W. */
-  thresholdW: number;
-  /** Charge-current ceiling it would write, A. */
-  targetA: number;
-  /** Battery absorption that ceiling actually admits, W. */
-  chargeW: number;
-  /** Battery power serving the house where PV falls short of the load, W. */
-  dischargeW: number;
-  /** What reaches the grid after load and battery, capped at the plant limit, W. */
-  exportW: number;
-  /** PV with nowhere left to go — above the cap with no room to store it, W. */
-  curtailedW: number;
-  /** Projected SOC at the *end* of the slot, %. */
-  socPct: number;
-}
-
-export interface PeakShavingPlan {
-  slots: PlanSlot[];
-  /** Start of the first slot the plan charges in, ms; null when it never does. */
-  chargeStartsAt: number | null;
-  /** When the projection first runs out of headroom, ms; null when it doesn't today. */
-  fullAt: number | null;
-  /** SOC the plan ends the local day at, %. */
-  endSocPct: number;
-  storedKwh: number;
-  exportedKwh: number;
-  /** Energy the plan expects to lose because nothing can take it, kWh. */
-  curtailedKwh: number;
-}
-
 /** The plant's real feed-in ceiling — unlike the decision's, with no safety buffer. */
 export interface PlanLimits {
   exportCapW: number;
@@ -81,14 +44,6 @@ export interface PlanLimits {
    * config's `minSoc`). 0 (the default) lets the pack drain fully.
    */
   reserveSocPct?: number;
-}
-
-/** The two projections the UI offers, computed from one set of live inputs. */
-export interface PeakShavingPlans {
-  /** Rest of the current plant-local day, from now. */
-  today: PeakShavingPlan;
-  /** The whole next local day; empty slots when the forecast doesn't reach it. */
-  tomorrow: PeakShavingPlan;
 }
 
 /** Plant-local midnight after `nowMs` — the instant tomorrow starts. */

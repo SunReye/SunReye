@@ -24,10 +24,11 @@
  * Shifting flexible load into the window is what actually closes that gap.
  */
 
+import type { PriceRegime } from "@SunReye/contracts/automation";
 import type { PriceAwareConfig } from "@SunReye/db/automation-config";
 import { HOUR_MS } from "../energy/energy-flow";
 import { type ForecastSlice, slotsBetween } from "./slot-window";
-import type { SpotSlice } from "../prices/spot-price";
+import type { SpotSlice } from "@SunReye/contracts/prices";
 
 const MINUTE_MS = 60_000;
 
@@ -40,18 +41,6 @@ export interface PriceWindow {
   minEurPerMwh: number;
   slots: number;
 }
-
-/**
- * What the plant is doing about prices right now.
- *
- * - `none` — off, or no usable price data.
- * - `waiting` — a window is known but nothing needs doing yet (the pack will
- *   arrive with enough room on its own).
- * - `pre-shape` — holding the charge ceiling down to make room for a window.
- * - `spend-down` — already too full to make room by withholding alone.
- * - `absorb` — inside a window: take everything the pack can.
- */
-export type PriceRegime = "none" | "waiting" | "pre-shape" | "spend-down" | "absorb";
 
 export interface PriceInputs {
   price: PriceAwareConfig;

@@ -1,6 +1,6 @@
+import type { HourEnergy } from "@SunReye/contracts/energy";
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { type TariffConfig, tariffConfigSchema } from "@SunReye/db/tariff";
-import type { HourEnergy } from "../energy/cost-calc";
 import {
   type SpotDailyRow,
   type SpotPriceSlot,

@@ -1,13 +1,8 @@
+import type { EnergyField, HourEnergy } from "@SunReye/contracts/energy";
 import { type TariffConfig, tariffConfigSchema } from "@SunReye/db/tariff";
 import { describe, expect, test } from "bun:test";
-import type { CostSeriesPoint, EnergyField } from "./cost";
-import {
-  type HourEnergy,
-  allocateCost,
-  priceSeriesRows,
-  resolveRange,
-  rollUpToMonths,
-} from "./cost-calc";
+import type { CostSeriesPoint } from "./cost";
+import { allocateCost, priceSeriesRows, resolveRange, rollUpToMonths } from "./cost-calc";
 
 /** A tariff: 0.40 peak (08–20 weekdays), 0.10 off-peak default, 0.05 feed-in. */
 const tariff: TariffConfig = tariffConfigSchema.parse({

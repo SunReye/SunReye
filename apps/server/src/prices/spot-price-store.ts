@@ -11,14 +11,9 @@
  * source of truth, and the job invalidates it after a successful sync.
  */
 
+import type { SpotSlice } from "@SunReye/contracts/prices";
 import { getSpotPrices } from "@SunReye/db/spot-price";
-import {
-  type SpotSlice,
-  buildSpotSlice,
-  localDayStartMs,
-  nextLocalDayStartMs,
-  zoneTimeZone,
-} from "./spot-price";
+import { buildSpotSlice, localDayStartMs, nextLocalDayStartMs, zoneTimeZone } from "./spot-price";
 
 const CACHE_TTL_MS = 60_000;
 

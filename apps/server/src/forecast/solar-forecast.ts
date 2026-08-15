@@ -68,8 +68,24 @@ export interface IrradianceForecast {
   windSpeed?: number[];
 }
 
+/**
+ * Which optional inputs a provider actually supplies — the two that change the
+ * physics. `dni` enables the beam/diffuse incidence-angle (IAM) split;
+ * `windSpeed` enables the Faiman cell-temperature model (both consumed in
+ * {@link instantPowerW}). A provider that can't deliver one leaves it `false`
+ * and the model falls back (flat system loss / static NOCT rise).
+ */
+export interface ProviderCapabilities {
+  dni: boolean;
+  windSpeed: boolean;
+}
+
 export interface SolarIrradianceProvider {
   readonly id: string;
+  /** Human-readable name the settings dropdown renders. */
+  readonly label: string;
+  /** The optional series this provider resolves — feeds the settings form. */
+  readonly capabilities: ProviderCapabilities;
   fetch(
     location: { latitude: number; longitude: number },
     planes: PlaneOfArray[],
@@ -80,6 +96,19 @@ export interface SolarIrradianceProvider {
 const PROVIDERS: Record<string, SolarIrradianceProvider> = {
   [openMeteoIrradiance.id]: openMeteoIrradiance,
 };
+
+/** Provider ids, labels, and capability flags — drives the settings form. */
+export function forecastProviderCatalog(): {
+  id: string;
+  label: string;
+  capabilities: ProviderCapabilities;
+}[] {
+  return Object.values(PROVIDERS).map((p) => ({
+    id: p.id,
+    label: p.label,
+    capabilities: p.capabilities,
+  }));
+}
 
 export interface SolarForecastPoint {
   /** Slot start, plant-local time. */

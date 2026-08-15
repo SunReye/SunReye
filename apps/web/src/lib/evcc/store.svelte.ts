@@ -1,4 +1,4 @@
-import type { EvccLoadpoint, EvccState } from "server/src/evcc/evcc";
+import type { EvccLoadpoint, EvccState } from "@SunReye/contracts/evcc";
 import { api } from "$lib/api";
 import { payloadOrNull } from "$lib/api-payload";
 import * as m from "$lib/paraglide/messages";
