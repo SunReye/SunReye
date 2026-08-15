@@ -25,6 +25,7 @@ import { startAutomations, stopAutomations } from "../automation/automation";
 import { getInverterConfig, getMqttConfig } from "../settings/config";
 import { executeControl, injectControlValues } from "./control-expr";
 import { dbControlStore } from "./control-store";
+import { type HistoryBuffer, createHistoryBuffer } from "./history-buffer";
 import { evccOnLoadSample } from "../evcc/evcc";
 import {
   buildProfileContext,
@@ -65,17 +66,6 @@ const LEARN_KICK_DELAY_MS = 2 * 60_000;
 const SPOT_INTERVAL_MS = 30 * 60_000;
 const SPOT_KICK_DELAY_MS = 30_000;
 
-// The DB is purely the history store — live monitoring is served from
-// `liveState`/WebSocket in memory — so *when* rows land is invisible to every
-// feature. Accumulating many polls into one transaction collapses the
-// commit/fsync/WAL churn that dominates SSD write wear (TBW) at 1 Hz, for zero
-// functional change. Worst case a crash loses the buffered window of *history*
-// (never live data, never corruption) — an acceptable trade for telemetry.
-type MetricRow = typeof metricsRaw.$inferInsert;
-// Hard cap so a prolonged DB outage can't grow the buffer without bound; past
-// this the oldest rows are dropped (bounded, predictable memory).
-const MAX_PENDING = 100_000;
-
 /** One captured value from a test read, enriched for a plausibility check. */
 export interface TestSnapshotMetric {
   key: string;
@@ -97,12 +87,26 @@ export interface TestInverterResult {
   metrics?: TestSnapshotMetric[];
 }
 
+/** Collaborators injected into a runtime; each defaults to its production wiring. */
+export interface RuntimeDeps {
+  /**
+   * The batched history writer. Defaults to one committing to the real db — the
+   * only collaborator the runtime holds mutable buffer state for, lifted out so
+   * it owns its own cap/drop/re-queue boundaries and is tested without a runtime.
+   */
+  history?: HistoryBuffer;
+}
+
 /**
  * Build a runtime controller. Every collaborator is a module import captured by
- * the closure below, and every mutable field is closure-local — no module-level
- * state, so a second instance is independent.
+ * the closure below (or injected via {@link RuntimeDeps}), and every mutable
+ * field is closure-local — no module-level state, so a second instance is
+ * independent.
  */
-function createRuntime() {
+// fallow-ignore-next-line unused-export -- the injection seam exercised by runtime.test.ts (which builds its own instance with a fake history buffer); test files aren't traced as consumers
+export function createRuntime(deps: RuntimeDeps = {}) {
+  const historyBuffer =
+    deps.history ?? createHistoryBuffer({ store: db, table: metricsRaw, logger });
   let ctx: ProfileContext | null = null;
   let source: InverterSource | null = null;
   let pollTimer: ReturnType<typeof setInterval> | null = null;
@@ -131,10 +135,9 @@ function createRuntime() {
   let spotTimer: ReturnType<typeof setInterval> | null = null;
   let spotKickTimer: ReturnType<typeof setTimeout> | null = null;
 
-  // --- History write buffer ------------------------------------------------
-  let pending: MetricRow[] = [];
+  // The batched history writer is injected (see {@link historyBuffer}); the
+  // runtime owns only the timer that flushes it on a cadence.
   let flushTimer: ReturnType<typeof setInterval> | null = null;
-  let flushing = false;
 
   const inverterStatus = {
     connected: false,
@@ -189,36 +192,6 @@ function createRuntime() {
     }
   }
 
-  /** Queue history rows for the next flush; eager-flush if the buffer is huge. */
-  function enqueueRows(rows: MetricRow[]): void {
-    for (const row of rows) pending.push(row);
-    // Guards against a mis-set (very long) flush interval or a stalled flush
-    // producing one enormous transaction; the timer handles the normal path.
-    if (!flushing && pending.length >= MAX_PENDING) void flushPending();
-  }
-
-  /** Write the buffered history rows in a single transaction. */
-  async function flushPending(): Promise<void> {
-    if (flushing || pending.length === 0) return;
-    flushing = true;
-    const batch = pending;
-    pending = [];
-    try {
-      await db.insert(metricsRaw).values(batch);
-    } catch (error) {
-      // Re-queue (oldest first) so a transient DB blip doesn't drop history, but
-      // never past the cap — trim the oldest if we're over.
-      pending = batch.concat(pending);
-      if (pending.length > MAX_PENDING) pending = pending.slice(-MAX_PENDING);
-      logger.error("history flush failed, {count} rows queued: {error}", {
-        count: pending.length,
-        error,
-      });
-    } finally {
-      flushing = false;
-    }
-  }
-
   /** The active profile context, set by {@link start} before the loop runs. */
   function context(): ProfileContext {
     if (!ctx) throw new Error("runtime not started");
@@ -265,9 +238,9 @@ function createRuntime() {
         metric,
         value,
       }));
-      // Buffer for a batched flush (see the history write buffer above) rather
-      // than committing one transaction per poll.
-      if (rows.length > 0) enqueueRows(rows);
+      // Buffer for a batched flush (see {@link historyBuffer}) rather than
+      // committing one transaction per poll.
+      if (rows.length > 0) historyBuffer.enqueue(rows);
       streams?.emit("metrics", sample);
       bridge?.publishSample(sample);
     } catch (error) {
@@ -317,7 +290,7 @@ function createRuntime() {
   async function rebuildInverter(config: InverterConfig): Promise<void> {
     // Drain buffered rows before swapping sources so a changed inverterId can't
     // land on rows captured under the previous one.
-    await flushPending();
+    await historyBuffer.flush();
     const previous = source;
     source = buildSource(context().profile, config);
     // The simulator is always "connected"; a real Modbus source only proves it on
@@ -350,7 +323,7 @@ function createRuntime() {
     ctx = profileCtx;
     streams = streamBus;
     if (!flushTimer) {
-      flushTimer = setInterval(() => void flushPending(), env.HISTORY_FLUSH_INTERVAL_MS);
+      flushTimer = setInterval(() => void historyBuffer.flush(), env.HISTORY_FLUSH_INTERVAL_MS);
     }
     if (!forecastTimer) {
       forecastTimer = setInterval(() => void publishForecastNow(), FORECAST_PUBLISH_INTERVAL_MS);
@@ -489,7 +462,7 @@ function createRuntime() {
     if (spotKickTimer) clearTimeout(spotKickTimer);
     spotKickTimer = null;
     // Persist whatever is buffered so a clean shutdown never drops history.
-    await flushPending();
+    await historyBuffer.flush();
     await bridge?.close();
     await source?.close();
   }

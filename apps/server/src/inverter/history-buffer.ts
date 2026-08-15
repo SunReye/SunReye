@@ -1,0 +1,101 @@
+/**
+ * The batched history write buffer, peeled out of the runtime so it can own its
+ * boundaries — the cap, the oldest-row drop, the re-queue-on-error — and be
+ * tested without a runtime, a poll loop, or a database around it.
+ *
+ * The DB is purely the history store — live monitoring is served from
+ * `liveState`/WebSocket in memory — so *when* rows land is invisible to every
+ * feature. Accumulating many polls into one transaction collapses the
+ * commit/fsync/WAL churn that dominates SSD write wear (TBW) at 1 Hz, for zero
+ * functional change. Worst case a crash loses the buffered window of *history*
+ * (never live data, never corruption) — an acceptable trade for telemetry.
+ *
+ * The buffer owns no timer: the runtime arms the flush cadence and calls
+ * {@link HistoryBuffer.flush} on the tick, before a source swap, and at
+ * shutdown. Every collaborator (the insert target, the logger) is injected, so
+ * a second instance shares nothing and a test drives it against in-memory
+ * doubles.
+ */
+
+// Type-only `import()` queries, inlined into the public signatures below: the
+// buffer pulls in no runtime dependency on the db package — the store and its
+// table are injected, so the module stays a pure, self-contained collaborator
+// (and a test needs no `mock.module`).
+
+/** One buffered history row (long form: one metric per tick). */
+export type MetricRow = (typeof import("@SunReye/db/schema/metrics").metricsRaw)["$inferInsert"];
+
+/** The one failure path the buffer logs; kept minimal so any logger satisfies it. */
+export interface HistoryLogger {
+  error(template: string, values?: Record<string, unknown>): void;
+}
+
+export interface HistoryBufferDeps {
+  /** The drizzle db whose `insert(table).values(rows)` commits a batch. */
+  store: Pick<typeof import("@SunReye/db").db, "insert">;
+  /** The metrics table the batch is written to. */
+  table: typeof import("@SunReye/db/schema/metrics").metricsRaw;
+  /** Structured logger for the one flush-failure line. */
+  logger: HistoryLogger;
+  /**
+   * Hard cap on buffered rows so a prolonged DB outage can't grow memory without
+   * bound; past this the oldest rows are dropped. Defaults to 100 000.
+   */
+  maxPending?: number;
+}
+
+export interface HistoryBuffer {
+  /** Queue rows for the next flush; eager-flush if the buffer is at its cap. */
+  enqueue(rows: MetricRow[]): void;
+  /** Write the buffered rows in a single transaction (no-op when empty/in-flight). */
+  flush(): Promise<void>;
+  /** How many rows are currently buffered. */
+  readonly pending: number;
+}
+
+/**
+ * Build a history write buffer. Every mutable field is closure-local — no
+ * module-level state, so a second instance is independent.
+ */
+export function createHistoryBuffer(deps: HistoryBufferDeps): HistoryBuffer {
+  const { store, table, logger } = deps;
+  const maxPending = deps.maxPending ?? 100_000;
+  let pending: MetricRow[] = [];
+  let flushing = false;
+
+  function enqueue(rows: MetricRow[]): void {
+    for (const row of rows) pending.push(row);
+    // Guards against a mis-set (very long) flush interval or a stalled flush
+    // producing one enormous transaction; the timer handles the normal path.
+    if (!flushing && pending.length >= maxPending) void flush();
+  }
+
+  async function flush(): Promise<void> {
+    if (flushing || pending.length === 0) return;
+    flushing = true;
+    const batch = pending;
+    pending = [];
+    try {
+      await store.insert(table).values(batch);
+    } catch (error) {
+      // Re-queue (oldest first) so a transient DB blip doesn't drop history, but
+      // never past the cap — trim the oldest if we're over.
+      pending = batch.concat(pending);
+      if (pending.length > maxPending) pending = pending.slice(-maxPending);
+      logger.error("history flush failed, {count} rows queued: {error}", {
+        count: pending.length,
+        error,
+      });
+    } finally {
+      flushing = false;
+    }
+  }
+
+  return {
+    enqueue,
+    flush,
+    get pending() {
+      return pending.length;
+    },
+  };
+}

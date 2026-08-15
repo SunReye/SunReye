@@ -105,35 +105,32 @@ function untapRuntimeLogger(): void {
   for (const level of LEVELS) delete runtimeLogger[level];
 }
 
-/** Row batches handed to `db.insert(...).values(...)`, in commit order. */
+/** Row batches the injected history buffer committed, in flush order. */
 const inserted: Record<string, unknown>[][] = [];
-/** When set, the next insert rejects with this message (then clears itself). */
-let insertError: string | null = null;
-/** When set, an insert parks here until released — a slow/blocked transaction. */
-let insertGate: { promise: Promise<void>; release: () => void } | null = null;
 
-const realDb = await import("@SunReye/db");
-const realDbExports = { ...realDb };
-const realDbHandle = realDb.db;
-// Only `insert` is taken over; `select`/`execute` still resolve on the real
-// drizzle prototype so files that run after this one are unaffected.
-const dbStub = Object.assign(Object.create(realDbHandle as object) as typeof realDbHandle, {
-  insert: (table: never) => {
-    if (!intercepting) return realDbHandle.insert(table);
-    return {
-      values: async (rows: Record<string, unknown>[]) => {
-        if (insertGate) await insertGate.promise;
-        if (insertError) {
-          const message = insertError;
-          insertError = null;
-          throw new Error(message);
-        }
-        inserted.push(rows);
-      },
-    };
+/**
+ * Stands in for the injected history buffer. The runtime enqueues each poll's
+ * rows, and calls `flush()` on the flush-timer tick, before a source swap, and
+ * at shutdown; the double records every flushed batch. The buffer's own
+ * boundaries — the cap, the oldest-row drop, the re-queue after a failed
+ * transaction — are covered directly in `history-buffer.test.ts`, so the double
+ * needs none of them: it only proves the runtime enqueues and flushes at the
+ * right moments. Injecting it is why this file no longer mocks `@SunReye/db`.
+ */
+const historyDouble = {
+  rows: [] as Record<string, unknown>[],
+  enqueue(next: Record<string, unknown>[]): void {
+    this.rows.push(...next);
   },
-});
-mock.module("@SunReye/db", () => ({ ...realDb, db: dbStub }));
+  async flush(): Promise<void> {
+    if (this.rows.length === 0) return;
+    inserted.push(this.rows);
+    this.rows = [];
+  },
+  get pending(): number {
+    return this.rows.length;
+  },
+};
 
 const PLANT = "plant-1";
 const PROFILE_ID = "test-inverter";
@@ -575,8 +572,6 @@ const SPOT_MS = 30 * 60_000;
 const SPOT_KICK_MS = 30_000;
 const FLUSH_MS = 600_000;
 const BROKER_PROBE_MS = 5000;
-/** Hard cap on buffered history rows, mirrored from the module under test. */
-const MAX_PENDING = 100_000;
 
 const timers = { setInterval, setTimeout, clearInterval, clearTimeout };
 
@@ -640,7 +635,6 @@ afterAll(() => {
   // `realInverter.buildSource` is by now the stub, and `() => realInverter`
   // would restore the double instead of the module.
   intercepting = false;
-  mock.module("@SunReye/db", () => ({ ...realDbExports }));
   mock.module("../settings/config", () => ({ ...realConfigExports }));
   mock.module("./mqtt", () => ({ ...realBridgeExports }));
   mock.module("../automation/automation", () => ({ ...realAutomationExports }));
@@ -663,6 +657,11 @@ afterAll(() => {
   setSystemTime();
 });
 
+// The history buffer is a constructor-injected collaborator, so this suite
+// drives its own runtime instance with the in-memory double above rather than
+// the module's default instance — which is why no `@SunReye/db` mock is needed.
+const { createRuntime } = await import("./runtime");
+const runtime = createRuntime({ history: historyDouble });
 const {
   applyInverterConfig,
   applyMqttConfig,
@@ -673,7 +672,7 @@ const {
   testInverter,
   testMqtt,
   write,
-} = await import("./runtime");
+} = runtime;
 const { liveState } = await import("../shared/state");
 const { createStreams } = await import("../shared/streams");
 
@@ -700,13 +699,12 @@ beforeEach(() => {
   cleared = [];
   logLines = [];
   inserted.length = 0;
+  historyDouble.rows = [];
   bridges.length = 0;
   sources.length = 0;
   published = [];
   loadSamples = [];
   controlState = {};
-  insertError = null;
-  insertGate = null;
   writeError = null;
   readResult = async () => liveSample();
   forecastResult = null;
@@ -1048,77 +1046,11 @@ describe("when the inverter stops answering", () => {
 });
 
 describe("the history write buffer", () => {
-  test("a rejected transaction re-queues the rows for the next flush", async () => {
-    await boot();
-    await poll();
-    insertError = "deadlock detected";
-
-    await fire(FLUSH_MS);
-
-    expect(inserted).toHaveLength(0);
-    expect(linesStartingWith("history flush failed")[0]?.values.count).toBe(4);
-
-    await fire(FLUSH_MS);
-
-    expect(inserted).toHaveLength(1);
-    expect(inserted[0]).toHaveLength(4);
-  });
-
-  test("rows buffered during a slow transaction wait for the next flush, not a second one", async () => {
-    await boot();
-    await poll();
-    const gate = deferred();
-    insertGate = gate;
-
-    // A flush takes the batch and parks inside the transaction…
-    await fire(FLUSH_MS);
-    // …while the loop keeps buffering. A second tick of the flush timer must
-    // not open a concurrent transaction for these rows.
-    await poll();
-    await fire(FLUSH_MS);
-
-    gate.release();
-    await settle();
-    expect(inserted).toHaveLength(1);
-    expect(inserted[0]).toHaveLength(4);
-
-    await fire(FLUSH_MS);
-
-    expect(inserted).toHaveLength(2);
-    expect(inserted[1]).toHaveLength(4);
-  });
-
-  test("the buffer eager-flushes at its cap instead of waiting for the timer", async () => {
-    await boot();
-    readResult = async () => liveSample(wideMetrics(MAX_PENDING));
-
-    await poll();
-    await settle();
-
-    // No flush timer was fired: hitting the cap committed on its own.
-    expect(inserted).toHaveLength(1);
-    expect(inserted[0]).toHaveLength(MAX_PENDING + 1);
-  });
-
-  test("past the cap the oldest rows are dropped, so an outage cannot grow memory", async () => {
-    await boot();
-    readResult = async () => liveSample(wideMetrics(MAX_PENDING));
-    insertError = "database is not accepting connections";
-
-    await poll();
-    await settle();
-
-    expect(linesStartingWith("history flush failed")[0]?.values.count).toBe(MAX_PENDING);
-
-    await fire(FLUSH_MS);
-
-    expect(inserted).toHaveLength(1);
-    expect(inserted[0]).toHaveLength(MAX_PENDING);
-    // The very first reading fell off the front; the newest rows survived.
-    expect(inserted[0]?.[0]?.metric).toBe("m1");
-    expect(inserted[0]?.at(-1)?.metric).toBe(LOCK);
-  });
-
+  // The buffer's own boundaries — the cap, the oldest-row drop, the re-queue
+  // after a failed transaction, the concurrent-flush guard — are covered in
+  // `history-buffer.test.ts`, which drives the buffer directly. What remains
+  // here is the runtime's orchestration of it: that it flushes on shutdown, is
+  // drained before a source swap, and buffers across polls (see "the poll loop").
   test("a clean shutdown persists whatever is still buffered", async () => {
     await boot();
     await poll();
@@ -1130,13 +1062,6 @@ describe("the history write buffer", () => {
     expect(inserted[0]).toHaveLength(4);
   });
 });
-
-/** `count` synthetic register readings, in insertion order `m0…m{count-1}`. */
-function wideMetrics(count: number): Record<string, number> {
-  const metrics: Record<string, number> = {};
-  for (let i = 0; i < count; i++) metrics[`m${i}`] = i;
-  return metrics;
-}
 
 describe("swapping the live source", () => {
   test("buffered history is drained before a new inverter id can claim it", async () => {
