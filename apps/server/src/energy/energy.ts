@@ -16,7 +16,13 @@ import {
   fetchCounterDeltaMatrix,
   liveTodayTotals,
 } from "./cost";
-import { applyTodayOverride, derivePeriodEnergy, emptyTotals } from "./energy-calc";
+import {
+  applyTodayOverride,
+  derivePeriodEnergy,
+  emptyTotals,
+  visibleDayPeriods,
+} from "./energy-calc";
+import { getPlantTimeZone } from "../settings/display-settings";
 
 export { emptyTotals } from "./energy-calc";
 
@@ -52,10 +58,14 @@ function overrideTodayPeriod(
   totals: Map<string, EnergyTotals>,
   profile: InverterProfile,
   inverterId: string,
+  tz: string,
 ): void {
   const now = new Date();
   const liveToday = liveTodayTotals(profile, inverterId, now);
-  const key = currentPeriodKey("day", now);
+  // The key is cut in the SAME plant zone the matrix bucketed in, so the live
+  // registers land on the in-progress day's bar — not, across a server/browser
+  // midnight mismatch, on a future one (issues #46, #52).
+  const key = currentPeriodKey("day", now, tz);
   const base = totals.get(key);
   if (base) totals.set(key, applyTodayOverride(base, liveToday));
 }
@@ -71,7 +81,12 @@ export async function energySeries(
   opts: { from: Date; to: Date; bucket: CostBucket; inverterId?: string },
 ): Promise<PeriodEnergy[]> {
   const view = opts.bucket === "hour" ? "hourly_rollups" : "daily_rollups";
-  const { rows, fieldByKey, periods } = await fetchCounterDeltaMatrix(profile, { ...opts, view });
+  const tz = await getPlantTimeZone();
+  const { rows, fieldByKey, periods } = await fetchCounterDeltaMatrix(profile, {
+    ...opts,
+    view,
+    tz,
+  });
   const totals = accumulateTotals(rows, fieldByKey, periods);
 
   // Current-day override applies to the DAY bucket only. Hour and month buckets
@@ -80,8 +95,19 @@ export async function energySeries(
   // can't be cleanly separated from the month's *.total delta — so those paths
   // stay on the delta method unchanged.
   if (opts.bucket === "day") {
-    overrideTodayPeriod(totals, profile, opts.inverterId ?? profile.id);
+    overrideTodayPeriod(totals, profile, opts.inverterId ?? profile.id, tz);
   }
 
-  return periods.map((p) => derivePeriodEnergy(p, totals.get(p) ?? emptyTotals()));
+  // The energy chart never shows a bar for a day that has not started. The
+  // month window zero-fills to the first of next month, and those future days
+  // were the landing spot the today-override leaked onto across a clock mismatch
+  // (issue #52). Drop them for the day bucket — a future day has no energy and
+  // no place on this chart. (Cost's month-as-days chart keeps its extent; that
+  // path is untouched.)
+  const visible =
+    opts.bucket === "day"
+      ? visibleDayPeriods(periods, currentPeriodKey("day", new Date(), tz))
+      : periods;
+
+  return visible.map((p) => derivePeriodEnergy(p, totals.get(p) ?? emptyTotals()));
 }

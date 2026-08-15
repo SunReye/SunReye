@@ -1,6 +1,11 @@
 import type { EnergyTotals } from "@SunReye/contracts/energy";
 import { describe, expect, test } from "bun:test";
-import { applyTodayOverride, derivePeriodEnergy, replaceTodaySlice } from "./energy-calc";
+import {
+  applyTodayOverride,
+  derivePeriodEnergy,
+  replaceTodaySlice,
+  visibleDayPeriods,
+} from "./energy-calc";
 
 const totals = (t: Partial<EnergyTotals>): EnergyTotals => ({
   importKwh: 0,
@@ -203,5 +208,28 @@ describe("replaceTodaySlice", () => {
     const snapshot = { ...window };
     replaceTodaySlice(window, deltaToday, { importKwh: 9 });
     expect(window).toEqual(snapshot);
+  });
+});
+
+describe("visibleDayPeriods", () => {
+  // The energy chart's month window zero-fills every day of the month; a day
+  // that has not started yet must not appear (issue #52) — it was the bar the
+  // live today-override leaked a full previous day onto across a clock mismatch.
+  const month = ["2026-08-13", "2026-08-14", "2026-08-15", "2026-08-16", "2026-08-17"];
+
+  test("keeps today and every past day, drops days that have not started", () => {
+    expect(visibleDayPeriods(month, "2026-08-15")).toEqual([
+      "2026-08-13",
+      "2026-08-14",
+      "2026-08-15",
+    ]);
+  });
+
+  test("today at the end of the window keeps the whole window", () => {
+    expect(visibleDayPeriods(month, "2026-08-17")).toEqual(month);
+  });
+
+  test("no future landing spot: nothing survives when today precedes the window", () => {
+    expect(visibleDayPeriods(month, "2026-08-01")).toEqual([]);
   });
 });

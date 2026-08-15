@@ -12,6 +12,7 @@ import { spotPricesReady } from "@SunReye/db/spot-price-config";
 import type { InverterProfile } from "@SunReye/inverter-core";
 import { sql } from "drizzle-orm";
 import { fetchBucketEnergy } from "../energy/cost";
+import { getPlantTimeZone } from "../settings/display-settings";
 import { getTariff } from "../settings/settings";
 import { getSpotPriceConfig } from "../settings/spot-price-settings";
 import {
@@ -41,8 +42,12 @@ const RAW_MAX_DAYS = 400;
  * result set. Sums of `price·minutes` come back so the caller can average by
  * slot width instead of by slot count.
  */
-async function fetchDailyPriceRows(zone: string, from: Date, to: Date): Promise<SpotDailyRow[]> {
-  const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+async function fetchDailyPriceRows(
+  zone: string,
+  from: Date,
+  to: Date,
+  tz: string,
+): Promise<SpotDailyRow[]> {
   const res = await db.execute<{
     date: string;
     min_eur: number;
@@ -110,9 +115,10 @@ export async function computeSpotStats(
     Math.max(opts.from.getTime(), opts.to.getTime() - RAW_MAX_DAYS * DAY_MS),
   );
 
+  const tz = await getPlantTimeZone();
   const [tariff, dailyRows, slots, hours] = await Promise.all([
     getTariff(),
-    fetchDailyPriceRows(zone, opts.from, opts.to),
+    fetchDailyPriceRows(zone, opts.from, opts.to, tz),
     fetchPriceSlots(zone, rawFrom, opts.to),
     fetchBucketEnergy(profile, inverterId, rawFrom, opts.to, "hourly_rollups"),
   ]);

@@ -10,6 +10,7 @@ import { type TariffConfig, importBandForHour, importPriceForHour } from "@SunRe
 // dependency: cost.ts owns the shapes the SQL layer produces, this module owns
 // the arithmetic over them.
 import type { CostSeriesPoint, CounterDeltaRow } from "./cost";
+import { zonedDateKey, zonedFields, zonedIsoWeekday } from "./zoned-time";
 
 /**
  * Share of an hour that fell in quarter-hours with a negative day-ahead price,
@@ -31,23 +32,20 @@ export type ZeroValueShare = (hour: Date) => number;
 const AVG_DAYS_PER_MONTH = 30.4375;
 const clamp01 = (n: number): number => Math.min(1, Math.max(0, n));
 
-/** ISO weekday (1=Mon … 7=Sun) from a Date's local day. */
-const isoWeekday = (d: Date): number => ((d.getDay() + 6) % 7) + 1;
-
-const dateKey = (d: Date): string =>
-  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+/** The host process zone — back-compatible default when no plant zone is given. */
+const hostTimeZone = (): string => Intl.DateTimeFormat().resolvedOptions().timeZone;
 
 /**
  * Price a list of hourly energy figures against a tariff. `rangeDays` prorates
  * the monthly standing charge.
  */
-/** Fold one hour into its calendar day's running totals. */
+/** Fold one hour into its calendar day's running totals, keyed by `key`. */
 function addToDay(
   days: Map<string, CostTotals["byDay"][number]>,
   h: HourEnergy,
+  key: string,
   money: { importCost: number; exportEarnings: number },
 ): void {
-  const key = dateKey(h.time);
   const day = days.get(key) ?? {
     date: key,
     importKwh: 0,
@@ -82,6 +80,7 @@ export function allocateCost(
   tariff: TariffConfig,
   rangeDays: number,
   zeroValueShare?: ZeroValueShare,
+  tz: string = hostTimeZone(),
 ): CostTotals {
   let importKwh = 0;
   let exportKwh = 0;
@@ -98,7 +97,13 @@ export function allocateCost(
   const bands = new Map<string, { name: string; importKwh: number; cost: number }>();
 
   for (const h of hours) {
-    const band = importBandForHour(tariff, h.time.getHours(), isoWeekday(h.time));
+    // Plant-local wall-clock decides the tariff band and calendar day, so a
+    // mis-zoned host no longer bands a Berlin evening as afternoon (issue #46).
+    const band = importBandForHour(
+      tariff,
+      zonedFields(h.time, tz).hour,
+      zonedIsoWeekday(h.time, tz),
+    );
     const price = band?.pricePerKwh ?? tariff.import.defaultPricePerKwh;
     const bandName = band?.name ?? "Standard";
     const hourImportCost = h.import * price;
@@ -119,7 +124,10 @@ export function allocateCost(
     exportEarnings += hourEarnings;
     gridOnlyCost += h.load * price;
 
-    addToDay(days, h, { importCost: hourImportCost, exportEarnings: hourEarnings });
+    addToDay(days, h, zonedDateKey(h.time, tz), {
+      importCost: hourImportCost,
+      exportEarnings: hourEarnings,
+    });
     addToBand(bands, bandName, h.import, hourImportCost);
   }
 

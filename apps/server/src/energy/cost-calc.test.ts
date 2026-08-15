@@ -47,6 +47,30 @@ describe("allocateCost", () => {
     expect(r.importCost).toBeCloseTo(0.1, 6);
   });
 
+  test("bands by the PLANT zone, not the host — a mis-zoned host no longer misprices", () => {
+    // 07:30Z on Mon 2024-01-01: hour 7 in UTC (off-peak, 0.10) but 08:30 in
+    // Berlin (CET, +1) → peak 0.40. The band follows the `tz` argument, so the
+    // same instant prices differently per plant zone regardless of the host
+    // clock (issue #46). (No process.env.TZ flip — bun caches the zone.)
+    const utcInstant = hour("2024-01-01T07:30:00Z", { import: 1 });
+    expect(allocateCost([utcInstant], tariff, 0, undefined, "UTC").importCost).toBeCloseTo(0.1, 6);
+    expect(
+      allocateCost([utcInstant], tariff, 0, undefined, "Europe/Berlin").importCost,
+    ).toBeCloseTo(0.4, 6);
+  });
+
+  test("the day split (byDay) is keyed in the plant zone", () => {
+    // 23:30Z on the 15th is already the 16th in Berlin.
+    const r = allocateCost(
+      [hour("2026-08-15T23:30:00Z", { import: 1 })],
+      tariff,
+      0,
+      undefined,
+      "Europe/Berlin",
+    );
+    expect(r.byDay.map((d) => d.date)).toEqual(["2026-08-16"]);
+  });
+
   test("export earnings, net, savings and ratios", () => {
     const hours = [hour("2024-01-01T10:00:00", { import: 1, export: 4, load: 5, production: 10 })];
     const r = allocateCost(hours, tariff, 1);

@@ -604,6 +604,20 @@ describe("currentPeriodKey", () => {
     expect(currentPeriodKey("day", new Date(2024, 5, 15, 23, 59, 59))).toBe("2024-06-15");
   });
 
+  test("an explicit plant zone decides the key, independent of the host zone", () => {
+    // 23:30Z on the 15th is 01:30 on the 16th in Berlin — the exact clock
+    // disagreement that misfiled a full day onto tomorrow's bar (issues #46/#52).
+    // The key reads its zone only from the `tz` argument, so this holds whatever
+    // the host zone is (no process.env.TZ mutation — bun caches the zone and a
+    // flip would leak into later test files).
+    const instant = new Date("2026-08-15T23:30:00Z");
+    expect(currentPeriodKey("hour", instant, "Europe/Berlin")).toBe("2026-08-16T01");
+    expect(currentPeriodKey("day", instant, "Europe/Berlin")).toBe("2026-08-16");
+    expect(currentPeriodKey("month", instant, "Europe/Berlin")).toBe("2026-08");
+    // A different plant zone lands on the previous day for the very same instant.
+    expect(currentPeriodKey("day", instant, "UTC")).toBe("2026-08-15");
+  });
+
   test("matches the key the series produced for the same period", async () => {
     // The live-register override lands on this key, so it has to be the exact
     // one the delta matrix zero-filled — not merely one that looks like it.
