@@ -17,7 +17,11 @@ import { getEvccConfig, setEvccConfig } from "../settings/evcc-settings";
 import { getCorrectionView } from "../forecast/forecast-correction-job";
 import * as runtime from "../inverter/runtime";
 import { getTariff, setTariff } from "../settings/settings";
-import { fetchSolarForecast, toForecastExport } from "../forecast/solar-forecast";
+import {
+  fetchSolarForecast,
+  forecastProviderCatalog,
+  toForecastExport,
+} from "../forecast/solar-forecast";
 import { getSpotPriceView, spotProviderCatalog } from "../prices/spot-price-job";
 import { getSpotPriceConfig, setSpotPriceConfig } from "../settings/spot-price-settings";
 import { getStatisticsPrefs, setStatisticsPrefs } from "../settings/statistics-prefs-settings";
@@ -281,6 +285,9 @@ export const settingsRoutes = new Elysia({ name: "settings-routes" })
     },
     { requireSession: true },
   )
+  // Registered irradiance sources with their labels and capability flags — feeds
+  // the weather form's provider picker so it can't drift from the registry.
+  .get("/api/forecast/providers", () => forecastProviderCatalog(), { requireAdmin: true })
   // The learned bias-correction: state (enabled + last-learned day), the grid of
   // applied `(month, hour)` factors, and the measured error improvement — for the
   // weather-settings panel. The apply toggle itself saves via the weather config.

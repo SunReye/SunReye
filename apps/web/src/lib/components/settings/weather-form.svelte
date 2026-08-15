@@ -9,6 +9,7 @@
 	import SaveBar from './save-bar.svelte';
 	import SolarForecastFields, { type ArrayFields } from './solar-forecast-fields.svelte';
 	import ForecastCorrectionPanel from './forecast-correction-panel.svelte';
+	import OptionSelect from './option-select.svelte';
 	import { api } from '$lib/api';
 	import { parseNum } from '$lib/parse-num';
 	import { useAppSession } from '$lib/session';
@@ -38,7 +39,10 @@
 		};
 	};
 
+	type Provider = { id: string; label: string; capabilities: { dni: boolean; windSpeed: boolean } };
+
 	let draft = $state<WeatherConfig | null>(null);
+	let providers = $state<Provider[]>([]);
 	let saving = $state(false);
 	// All numeric fields are bound as text so a half-typed "-" or "" doesn't
 	// coerce to 0; parsed once on save.
@@ -58,6 +62,7 @@
 	let smartMeterText = $state('');
 
 	const fieldsDisabled = $derived(!isAdmin || saving);
+	const providerItems = $derived(providers.map((p) => ({ value: p.id, label: p.label })));
 
 	// --- Loading: config → input text ---------------------------------------
 
@@ -97,9 +102,13 @@
 	}
 
 	onMount(async () => {
-		const { data } = await api.api.settings.weather.get();
-		if (!data) return;
-		draft = data as WeatherConfig;
+		const [config, catalog] = await Promise.all([
+			api.api.settings.weather.get(),
+			api.api.forecast.providers.get()
+		]);
+		providers = (catalog.data ?? []) as Provider[];
+		if (!config.data) return;
+		draft = config.data as WeatherConfig;
 		loadTexts(draft);
 	});
 
@@ -241,6 +250,9 @@
 	function setForecastEnabled(v: boolean) {
 		if (draft) draft.forecast.enabled = v;
 	}
+	function setProvider(id: string) {
+		if (draft) draft.forecast.provider = id;
+	}
 	function setCorrectionEnabled(v: boolean) {
 		if (draft) draft.forecast.correction.enabled = v;
 	}
@@ -316,6 +328,16 @@
 		</div>
 
 		{#if draft.forecast.enabled}
+			<div class="flex flex-col gap-1.5">
+				<Label for="forecast-provider">{m.weather_forecast_provider()}</Label>
+				<OptionSelect
+					value={draft.forecast.provider}
+					items={providerItems}
+					onchange={setProvider}
+					triggerClass="w-full"
+				/>
+			</div>
+
 			<SolarForecastFields
 				bind:arrays={arrayTexts}
 				bind:tempCoeff={tempCoeffText}

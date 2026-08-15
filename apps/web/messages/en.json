@@ -284,6 +284,7 @@
   "weather_toast_saved": "Weather settings saved",
   "weather_forecast_enable": "Solar production forecast",
   "weather_forecast_desc": "Estimate your plant's output from the irradiance forecast for each panel orientation. Values come from the panel datasheet and your installation.",
+  "weather_forecast_provider": "Source",
   "weather_forecast_arrays": "PV arrays",
   "weather_forecast_arrays_empty": "Add one entry per panel orientation (strings facing different directions get their own entry).",
   "weather_forecast_add_array": "Add array",

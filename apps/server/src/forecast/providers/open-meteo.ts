@@ -43,6 +43,10 @@ async function fetchPlane(
 
 export const openMeteoIrradiance: SolarIrradianceProvider = {
   id: "open-meteo",
+  label: "Open-Meteo",
+  // Both extras ride the first plane's request (open-meteo-shared:79-84), so the
+  // forecast always carries DNI and wind: the IAM split and Faiman model are on.
+  capabilities: { dni: true, windSpeed: true },
 
   async fetch(location, planes): Promise<IrradianceForecast> {
     const entries = uniquePlanes(planes);

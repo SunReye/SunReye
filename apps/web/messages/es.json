@@ -284,6 +284,7 @@
   "weather_toast_saved": "Ajustes del tiempo guardados",
   "weather_forecast_enable": "Previsión de producción solar",
   "weather_forecast_desc": "Estima la producción de tu instalación a partir de la previsión de irradiancia para cada orientación de los paneles. Los valores provienen de la ficha técnica del panel y de tu instalación.",
+  "weather_forecast_provider": "Fuente",
   "weather_forecast_arrays": "Campos FV",
   "weather_forecast_arrays_empty": "Añade una entrada por orientación de paneles (los strings con distinta orientación llevan su propia entrada).",
   "weather_forecast_add_array": "Añadir campo",

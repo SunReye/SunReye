@@ -284,6 +284,7 @@
   "weather_toast_saved": "Impostazioni meteo salvate",
   "weather_forecast_enable": "Previsione di produzione solare",
   "weather_forecast_desc": "Stima la produzione dell'impianto dalla previsione di irraggiamento per ogni orientamento dei pannelli. I valori derivano dalla scheda tecnica dei pannelli e dalla tua installazione.",
+  "weather_forecast_provider": "Fonte",
   "weather_forecast_arrays": "Campi FV",
   "weather_forecast_arrays_empty": "Aggiungi una voce per ogni orientamento dei pannelli (le stringhe con orientamento diverso hanno una voce propria).",
   "weather_forecast_add_array": "Aggiungi campo",
