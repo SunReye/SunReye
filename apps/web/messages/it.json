@@ -840,5 +840,6 @@
   "peak_shaving_pa_grid_charge": "Caricare la batteria dalla rete",
   "peak_shaving_pa_grid_charge_desc": "Acquistare dalla rete durante una finestra. Ha effetto solo se il prezzo di acquisto segue il mercato (Impostazioni → Tariffa): un prezzo all'ingrosso negativo non riduce una bolletta a prezzo fisso. E si pagano comunque oneri di rete, imposte e IVA — si tratta di comprare nell'ora più economica, non di essere pagati per consumare.",
   "peak_shaving_pa_grid_charge_a": "Corrente di carica da rete (A)",
-  "peak_shaving_pa_grid_charge_a_desc": "Corrente prelevata dalla rete caricando durante una finestra."
+  "peak_shaving_pa_grid_charge_a_desc": "Corrente prelevata dalla rete caricando durante una finestra.",
+  "weather_forecast_partial": "{covered}/{elapsed} intervalli misurati"
 }

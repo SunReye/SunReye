@@ -840,5 +840,6 @@
   "peak_shaving_pa_grid_charge": "Speicher aus dem Netz laden",
   "peak_shaving_pa_grid_charge_desc": "Während eines Fensters aus dem Netz beziehen. Wirkt nur, wenn Ihr Bezugspreis dem Markt folgt (Einstellungen → Tarif) — ein negativer Börsenpreis senkt keine Festpreisrechnung. Auch dann fallen Netzentgelte, Abgaben und MwSt. an: es geht ums Einkaufen zur günstigsten Stunde, nicht ums Bezahltwerden fürs Verbrauchen.",
   "peak_shaving_pa_grid_charge_a": "Netzladestrom (A)",
-  "peak_shaving_pa_grid_charge_a_desc": "Strom, der beim Laden im Fenster aus dem Netz bezogen wird."
+  "peak_shaving_pa_grid_charge_a_desc": "Strom, der beim Laden im Fenster aus dem Netz bezogen wird.",
+  "weather_forecast_partial": "{covered}/{elapsed} Slots gemessen"
 }
