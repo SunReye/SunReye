@@ -56,3 +56,7 @@ core
 
 # Personal notes / drafts
 .notes
+
+# Agent worktrees. Checkouts of this repo living inside it: never committable,
+# and oxlint would otherwise walk the copies and report the same file twice.
+.claude/worktrees/
