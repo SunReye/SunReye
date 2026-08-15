@@ -38,8 +38,8 @@
 		stepMinutes: number;
 		todayKwh: number;
 		remainingTodayKwh: number;
-		/** Peak power (W) and energy (kWh) expected over the next 15 minutes. */
-		next15: { maxPowerW: number; energyKwh: number };
+		/** Peak/average power (W) and energy (kWh) expected over the next 15 minutes. */
+		next15: { maxPowerW: number; avgPowerW: number; energyKwh: number };
 		/** Weather-tile classes — the whole tile becomes the dialog trigger button. */
 		triggerClass: string;
 		/** Weather-tile content, rendered inside the trigger button. */
@@ -217,8 +217,10 @@
 		{ label: m.weather_forecast_today(), value: `${kwh(todayKwh)} kWh`, sub: '' },
 		{ label: m.weather_forecast_remaining(), value: `${kwh(remainingTodayKwh)} kWh`, sub: '' },
 		{
+			// Average, not peak, so the tile's kW × 0.25 h equals its kWh sub-line
+			// and it matches the chart's average-power bars (issue #49).
 			label: m.weather_forecast_next15(),
-			value: `${kw(next15.maxPowerW)} kW`,
+			value: `${kw(next15.avgPowerW)} kW`,
 			sub: `${kwh(next15.energyKwh)} kWh`
 		}
 	]);

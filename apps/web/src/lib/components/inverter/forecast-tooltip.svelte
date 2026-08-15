@@ -2,65 +2,34 @@
 	import { getChartContext, Tooltip as TooltipPrimitive } from 'layerchart';
 	import * as m from '$lib/paraglide/messages';
 	import type { ForecastSlot } from './forecast-chart.svelte';
+	import {
+		type TooltipRowKey,
+		kwLabel,
+		kwhLabel,
+		slotEndLabel,
+		tooltipRows
+	} from './forecast-tooltip-rows';
 
 	// Tooltip body for the solar-forecast chart. Chart.Tooltip's formatter only
 	// hands each series its own value; the peak-power / energy readout needs the
 	// whole hovered row, so this reads it straight from the layerchart tooltip
-	// context (same primitive chart-tooltip.svelte builds on).
+	// context (same primitive chart-tooltip.svelte builds on). The row shape and
+	// formatting live in the pure ./forecast-tooltip-rows helper; this file only
+	// binds each row to its localized name and colour.
 	let { stepMinutes }: { stepMinutes: number } = $props();
 
 	const ctx = getChartContext();
 	const slot = $derived(ctx.tooltip.data as ForecastSlot | null);
 
-	// Slot end for the "13:15 – 13:30" header, derived from the label so the
-	// last slot of the day correctly reads 24:00.
-	const endLabel = $derived.by(() => {
-		if (!slot) return '';
-		const t = Number(slot.label.slice(0, 2)) * 60 + Number(slot.label.slice(3, 5)) + stepMinutes;
-		return `${String(Math.floor(t / 60)).padStart(2, '0')}:${String(t % 60).padStart(2, '0')}`;
-	});
+	const endLabel = $derived(slot ? slotEndLabel(slot.label, stepMinutes) : '');
 
-	const kw = (w: number) =>
-		`${(w / 1000).toLocaleString(undefined, { maximumFractionDigits: 2 })} kW`;
-	const kwh = (w: number) =>
-		`${((w * stepMinutes) / 60 / 1000).toLocaleString(undefined, { maximumFractionDigits: 2 })} kWh`;
+	const meta: Record<TooltipRowKey, { name: () => string; color: string }> = {
+		predicted: { name: m.weather_forecast_predicted, color: 'var(--color-energy-export)' },
+		uncapped: { name: m.weather_forecast_uncapped, color: 'var(--color-energy-selfused)' },
+		actual: { name: m.weather_forecast_actual, color: 'var(--color-energy-solar)' }
+	};
 
-	// Older samples predate per-slot peak tracking, so fall back to the average.
-	const actualPeakW = (s: ForecastSlot) => s.actualPeakW ?? s.actualW ?? 0;
-
-	const rows = $derived.by(() => {
-		if (!slot) return [];
-		const out = [
-			{
-				key: 'predicted',
-				name: m.weather_forecast_predicted(),
-				color: 'var(--color-energy-export)',
-				peakW: slot.predictedPeakW,
-				avgW: slot.predictedW
-			}
-		];
-		// Only slots where clipping actually bites get the uncapped row — on an
-		// unclipped slot it would duplicate the predicted numbers.
-		if (slot.predictedRawW > slot.predictedW + 1) {
-			out.push({
-				key: 'uncapped',
-				name: m.weather_forecast_uncapped(),
-				color: 'var(--color-energy-selfused)',
-				peakW: slot.predictedRawPeakW,
-				avgW: slot.predictedRawW
-			});
-		}
-		if (slot.actualW !== null) {
-			out.push({
-				key: 'actual',
-				name: m.weather_forecast_actual(),
-				color: 'var(--color-energy-solar)',
-				peakW: actualPeakW(slot),
-				avgW: slot.actualW
-			});
-		}
-		return out;
-	});
+	const rows = $derived(slot ? tooltipRows(slot) : []);
 </script>
 
 <TooltipPrimitive.Root variant="none">
@@ -72,19 +41,23 @@
 			<div class="grid gap-1.5">
 				{#each rows as row (row.key)}
 					<div class="flex w-full items-center gap-2">
-						<div class="size-2.5 shrink-0 rounded-[2px]" style="background: {row.color}"></div>
+						<div class="size-2.5 shrink-0 rounded-[2px]" style="background: {meta[row.key].color}"></div>
 						<div class="flex flex-1 items-center justify-between gap-4 leading-none">
-							<span class="text-muted-foreground">{row.name}</span>
+							<span class="text-muted-foreground">{meta[row.key].name()}</span>
 							<span class="font-mono font-medium tabular-nums text-foreground">
-								{kw(row.peakW)}
+								{kwLabel(row.avgW)}
 								<span class="font-sans font-normal text-muted-foreground">
-									{m.weather_forecast_max()}
+									{m.weather_forecast_avg()}
 								</span>
 							</span>
 						</div>
 					</div>
 					<div class="flex justify-end leading-none">
-						<span class="font-mono tabular-nums text-muted-foreground">{kwh(row.avgW)}</span>
+						<span class="font-mono tabular-nums text-muted-foreground">
+							{kwLabel(row.peakW)}
+							<span class="font-sans">{m.weather_forecast_max()}</span>
+							· {kwhLabel(row.avgW, stepMinutes)}
+						</span>
 					</div>
 				{/each}
 			</div>

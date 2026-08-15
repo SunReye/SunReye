@@ -375,7 +375,7 @@ const forecastView = (todayKwh: number): SolarForecastExport => ({
   todayKwh,
   remainingTodayKwh: todayKwh / 2,
   tomorrowKwh: todayKwh + 1,
-  next15: { maxPowerW: 4600, energyKwh: 1.1 },
+  next15: { maxPowerW: 4600, avgPowerW: 4400, energyKwh: 1.1 },
   detailedForecast: [{ period_start: "2026-08-15T10:00:00+02:00", watts: 4200 }],
 });
 

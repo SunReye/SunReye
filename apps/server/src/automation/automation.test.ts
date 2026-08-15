@@ -104,7 +104,7 @@ function forecastAt(watts: number[]): SolarForecast {
     todayKwh: 0,
     remainingTodayKwh: 0,
     tomorrowKwh: 0,
-    next15: { maxPowerW: watts[0] ?? 0, energyKwh: 0 },
+    next15: { maxPowerW: watts[0] ?? 0, avgPowerW: watts[0] ?? 0, energyKwh: 0 },
   };
   return { provider: "test", stepMinutes: 15, utcOffsetSeconds: 0, ...raw, raw };
 }

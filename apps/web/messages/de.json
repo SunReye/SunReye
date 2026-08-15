@@ -315,6 +315,7 @@
   "weather_forecast_tomorrow": "Morgen",
   "weather_forecast_next15": "Nächste 15 Min",
   "weather_forecast_max": "max",
+  "weather_forecast_avg": "Ø",
   "danger_zone_title": "Gefahrenbereich",
   "danger_restart_desc": "Starten Sie den Serverprozess neu, um Änderungen zum Startzeitpunkt anzuwenden — vor allem ein neu aktiviertes Wechselrichterprofil, das die API, das Manifest und die beim Start erstellten Topics neu gestaltet. Abfrage und Live-Daten pausieren kurz, während er zurückkehrt.",
   "danger_reset_title": "Alle Daten zurücksetzen",

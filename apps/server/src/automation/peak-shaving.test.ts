@@ -128,7 +128,11 @@ function asForecast(view: ForecastSlice, next15MaxW?: number): SolarForecast {
   const raw = {
     series: view.series,
     ...filler,
-    next15: { maxPowerW: next15MaxW ?? first?.watts ?? 0, energyKwh: 0 },
+    next15: {
+      maxPowerW: next15MaxW ?? first?.watts ?? 0,
+      avgPowerW: next15MaxW ?? first?.watts ?? 0,
+      energyKwh: 0,
+    },
   };
   return {
     provider: "test",
