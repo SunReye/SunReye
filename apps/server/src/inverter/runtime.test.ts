@@ -372,21 +372,20 @@ mock.module("../prices/spot-price-job", () => ({
   },
 }));
 
-/** Composite-control state, in memory instead of `app_settings`. */
+/**
+ * Composite-control state, in memory instead of `app_settings`. It is injected
+ * into the runtime as its control store (shared by the write funnel and the
+ * per-poll state injection), so this suite no longer mocks `./control-store` —
+ * the store is a constructor-injected collaborator, exactly like the history
+ * buffer above.
+ */
 let controlState: ControlState = {};
-const realControlStore = await import("./control-store");
-const realControlStoreExports = { ...realControlStore };
-const realControlStoreHandle = realControlStore.dbControlStore;
-mock.module("./control-store", () => ({
-  ...realControlStore,
-  dbControlStore: {
-    get: async () => (intercepting ? controlState : realControlStoreHandle.get()),
-    set: async (next: ControlState) => {
-      if (!intercepting) return realControlStoreHandle.set(next);
-      controlState = next;
-    },
+const controlStore = {
+  get: async () => controlState,
+  set: async (next: ControlState) => {
+    controlState = next;
   },
-}));
+};
 
 /** Stands in for a Modbus transport: records reads, writes and closes. */
 class FakeSource implements InverterSource {
@@ -644,7 +643,6 @@ afterAll(() => {
   mock.module("../forecast/forecast-correction-job", () => ({ ...realLearnJobExports }));
   mock.module("../settings/spot-price-settings", () => ({ ...realSpotSettingsExports }));
   mock.module("../prices/spot-price-job", () => ({ ...realSpotJobExports }));
-  mock.module("./control-store", () => ({ ...realControlStoreExports }));
   mock.module("./inverter", () => ({ ...realInverterExports }));
   untapRuntimeLogger();
   profileOverride = undefined;
@@ -657,11 +655,12 @@ afterAll(() => {
   setSystemTime();
 });
 
-// The history buffer is a constructor-injected collaborator, so this suite
-// drives its own runtime instance with the in-memory double above rather than
-// the module's default instance — which is why no `@SunReye/db` mock is needed.
+// The history buffer and the control-state store are constructor-injected
+// collaborators, so this suite drives its own runtime instance with the
+// in-memory doubles above rather than the module's default instance — which is
+// why no `@SunReye/db` and no `./control-store` mock is needed.
 const { createRuntime } = await import("./runtime");
-const runtime = createRuntime({ history: historyDouble });
+const runtime = createRuntime({ history: historyDouble, controlStore });
 const {
   applyInverterConfig,
   applyMqttConfig,

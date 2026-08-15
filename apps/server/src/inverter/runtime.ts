@@ -23,8 +23,9 @@ import type { InverterSample, InverterSource } from "@SunReye/inverter-core";
 import mqtt from "mqtt";
 import { startAutomations, stopAutomations } from "../automation/automation";
 import { getInverterConfig, getMqttConfig } from "../settings/config";
-import { executeControl, injectControlValues } from "./control-expr";
+import type { ControlStore } from "./control-expr";
 import { dbControlStore } from "./control-store";
+import { createControlWriter } from "./control-writer";
 import { type HistoryBuffer, createHistoryBuffer } from "./history-buffer";
 import { type JobScheduler, createJobScheduler } from "./job-scheduler";
 import { evccOnLoadSample } from "../evcc/evcc";
@@ -104,6 +105,13 @@ export interface RuntimeDeps {
    * every source rebuild, so the runtime keeps it.
    */
   scheduler?: JobScheduler;
+  /**
+   * Persistent state for composite (`controlExpr`) controls, consumed by both
+   * the write funnel and the per-poll state injection. Defaults to the
+   * `app_settings`-backed store; injected so a test drives the funnel against an
+   * in-memory double and this module no longer needs the store mocked.
+   */
+  controlStore?: ControlStore;
 }
 
 /**
@@ -227,8 +235,9 @@ export function createRuntime(deps: RuntimeDeps = {}) {
       inverterStatus.lastSampleAt = sample.time;
       lastPollError = null;
       // Composite controls own no register; fold their current (e.g. lock) state
-      // into the sample so every downstream surface sees it.
-      await injectControlValues(sample, context(), dbControlStore);
+      // into the sample so every downstream surface sees it (same store as the
+      // write funnel).
+      await controlWriter.injectState(sample);
       liveState.set(sample);
       // The EV charge-power estimator refines its estimate from the 1 Hz house
       // load — between EVCC's much slower publishes (no-op when EVCC is off).
@@ -268,25 +277,20 @@ export function createRuntime(deps: RuntimeDeps = {}) {
     pollTimer = setInterval(pollOnce, intervalMs);
   }
 
-  /** Apply an inbound command write to the live source. */
-  async function write(key: string, value: number): Promise<void> {
-    if (!source) throw new Error("inverter not started");
-    // A composite control (controlExpr) runs its declarative action instead of a
-    // raw register write; the interpreter dispatches to the real target(s).
-    const def = context().defByKey.get(key);
-    if (def?.controlExpr) {
-      // The `let source` loses its non-null narrowing inside the closure, so
-      // capture it here.
-      const src = source;
-      return executeControl(def, value, {
-        ctx: context(),
-        store: dbControlStore,
-        write: (target, v) => src.write(target, v),
-        readLive: (target) => liveState.latest?.metrics[target],
-      });
-    }
-    await source.write(key, value);
-  }
+  /**
+   * The register-write funnel: every inbound command (web, MQTT bridge,
+   * automation) travels this single awaited path. It reads the live source
+   * lazily so a source swap is transparent, and shares its control-state store
+   * with the per-poll `injectState`. `write` is bound out as
+   * a stable reference the bridge and the automations keep calling through swaps.
+   */
+  const controlWriter = createControlWriter({
+    getSource: () => source,
+    getContext: context,
+    store: deps.controlStore ?? dbControlStore,
+    readLive: (target) => liveState.latest?.metrics[target],
+  });
+  const { write } = controlWriter;
 
   async function rebuildInverter(config: InverterConfig): Promise<void> {
     // Drain buffered rows before swapping sources so a changed inverterId can't
