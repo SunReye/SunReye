@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { ComparisonResponse } from "server/src/statistics/statistics";
+import type { ComparisonResponse } from "@SunReye/contracts/statistics";
 import {
   baselineLabel,
   deltaFor,

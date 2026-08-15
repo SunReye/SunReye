@@ -1,7 +1,4 @@
-import type {
-  StatisticsLiveMessage,
-  StatisticsTodayMessage,
-} from "server/src/statistics/statistics";
+import type { StatisticsLiveMessage, StatisticsTodayMessage } from "@SunReye/contracts/statistics";
 import { api } from "$lib/api";
 import { liveModeFor, shouldRevalidate, type LiveMode } from "$lib/statistics/live";
 import type { CostRange } from "$lib/cost/ranges";

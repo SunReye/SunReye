@@ -4,7 +4,7 @@
 // when that window predates recorded history and the delta would be fiction.
 
 import type { CostBreakdown } from "@SunReye/contracts/energy";
-import type { CompareMode, ComparisonResponse } from "server/src/statistics/statistics";
+import type { CompareMode, ComparisonResponse } from "@SunReye/contracts/statistics";
 import * as m from "$lib/paraglide/messages";
 
 /**
