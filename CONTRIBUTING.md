@@ -138,19 +138,48 @@ the exemption; there is no skip flag by design.
 
 **One rule about mocks, because it has already cost a day.** bun runs every test file in one
 process and `mock.module` is global and permanent, so the mock one file registers is live for
-every file after it. A factory that returns only the exports its own suite needs therefore
-*deletes* the rest for everyone downstream — the next file whose import chain needs a deleted
-export dies at load, and since it never finishes loading, its own mocks never register either.
-Unrelated suites then fail with errors naming none of the guilty code, and only in the file
-order that particular machine happened to walk. Always spread the real module:
+every file after it. That has two consequences, and a mock of one of our own modules has to
+answer both.
+
+*Spread, so the mock deletes nothing.* A factory that returns only the exports its own suite
+needs *deletes* the rest for everyone downstream — the next file whose import chain needs a
+deleted export dies at load, and since it never finishes loading, its own mocks never register
+either. Unrelated suites then fail with errors naming none of the guilty code, and only in the
+file order that particular machine happened to walk. Always spread the real module:
 
 ```ts
 const real = await import("./config");
 mock.module("./config", () => ({ ...real, getMqttConfig: stub }));
 ```
 
-`bun run test:mocks` enforces this (pre-commit and CI). Third-party modules are exempt —
-stubbing `mqtt` wholesale is the point.
+*Restore, so the stub does not outlive the suite.* The spread saves the other exports; the
+stubbed one is still installed for every file that loads afterwards. When a later suite is the
+one that **unit-tests that very module**, it silently imports the stub instead of the real
+implementation and asserts against a double — red in the full run, green on its own. That is
+exactly how `packages/db/src/spot-price.test.ts` went 22-tests-red ("no query was issued")
+against the stub left behind by `apps/server/src/prices/spot-price-job.test.ts`. Hand the
+module back in `afterAll`, snapshotting the real exports **by value at load time**:
+
+```ts
+const realDb = await import("@SunReye/db/spot-price");
+const realDbExports = { ...realDb }; // by value, before any mock is installed
+
+mock.module("@SunReye/db/spot-price", () => ({ ...realDb, getSpotPrices: stub }));
+
+afterAll(() => {
+  mock.module("@SunReye/db/spot-price", () => ({ ...realDbExports }));
+});
+```
+
+The snapshot is the whole trick: a module namespace is **live**, so once the mock is installed
+`realDb.getSpotPrices` *is* the stub — restoring with `() => realDb` restores the stub and does
+nothing. `afterAll`, not `afterEach`: the rest of this file's own tests still need the stub.
+
+`bun run test:mocks` enforces both (pre-commit and CI), matching the restore by specifier.
+Third-party modules are exempt from both — stubbing `mqtt` wholesale is the point, and nothing
+in this repo unit-tests it. The one escape hatch is
+`// mock-hygiene-ignore-next-line -- <reason>`, for a module that cannot be imported for real
+(`@SunReye/auth` boots Better Auth, which wants env and a database); the reason is mandatory.
 
 Depth, not ceremony. A test that only re-states the happy path is close to worthless on this
 system. Cover the boundaries that actually bite: zero and negative values (0 °C is a

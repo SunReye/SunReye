@@ -840,5 +840,6 @@
   "peak_shaving_pa_grid_charge": "Charge the battery from the grid",
   "peak_shaving_pa_grid_charge_desc": "Buy from the grid during a window. Only has any effect when your import price follows the market (Settings → Tariff) — a negative wholesale price does not lower a fixed bill. Even then you still pay grid fees, levies and VAT, so this is about buying at the cheapest hour, not about being paid to consume.",
   "peak_shaving_pa_grid_charge_a": "Grid charge current (A)",
-  "peak_shaving_pa_grid_charge_a_desc": "Current drawn from the grid while charging in a window."
+  "peak_shaving_pa_grid_charge_a_desc": "Current drawn from the grid while charging in a window.",
+  "weather_forecast_partial": "{covered}/{elapsed} slots measured"
 }

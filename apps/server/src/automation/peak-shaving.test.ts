@@ -2116,3 +2116,371 @@ describe("peak-shaving engine — borrowing the car", () => {
     expect(h.state()[MODE_SLOT]?.previousValue).toBe("pv");
   });
 });
+
+// --- Price awareness is gated on the plant, not on the shaving mode -----------------
+
+describe("validateAutomationEnable — price awareness", () => {
+  test("price-aware charging without a smart-meter install date is rejected", () => {
+    const cfg = config({}, { priceAware: { enabled: true } });
+    const result = validateAutomationEnable(cfg, profileWith(), weather());
+    expect(result?.error).toContain("smart meter");
+    expect(result?.blockers).toEqual([{ kind: "config", what: "smart-meter" }]);
+  });
+
+  test("the install date is the whole gate", () => {
+    const cfg = config({}, { priceAware: { enabled: true } });
+    const wx = weather({ smartMeterSince: "2026-06-01" });
+    expect(validateAutomationEnable(cfg, profileWith(), wx)).toBeNull();
+  });
+
+  test("the gate applies with peak shaving itself switched off", () => {
+    // §51 is a fact about the plant, so the check cannot be reachable only
+    // through the peak-shaving branch above it.
+    const cfg = config({}, { enabled: false, priceAware: { enabled: true } });
+    expect(validateAutomationEnable(cfg, null, weather())?.blockers).toEqual([
+      { kind: "config", what: "smart-meter" },
+    ]);
+  });
+});
+
+// --- Engine: registers it cannot write, snapshots it cannot replay ------------------
+
+describe("peak-shaving engine — a register it may not write", () => {
+  test("a read-only charge register is reported, never written", async () => {
+    // Mapping the role is all the blocker gate checks; a profile that maps it to
+    // a register this firmware exposes read-only only shows up at the write.
+    const h = harness();
+    const bare = profileWith();
+    const ctx = buildProfileContext({
+      ...bare,
+      metrics: bare.metrics.map((m) =>
+        m.role === "setting.battery.max_charge_current" ? { ...m, access: "r" as const } : m,
+      ),
+    });
+    const status = await createPeakShavingEngine({ ...h.io, ctx }).tick();
+    expect(h.writes).toEqual([]);
+    expect(status.lastError).toContain("not writable");
+    expect(status.lastWrittenA).toBeNull();
+    // The decision itself still runs, and the register was claimed before the
+    // write revealed it could not be steered.
+    expect(status.targetA).toBe(50);
+    expect(status.restorePending).toBe(true);
+  });
+});
+
+describe("peak-shaving engine — snapshots it cannot replay", () => {
+  const CAPTURED = "2026-07-25T11:00:00Z";
+
+  test("a snapshot outside the register's bounds is kept, with the reason", async () => {
+    // A profile update can narrow a register's range under a snapshot taken when
+    // it was wider. Writing it anyway is not an option, and dropping it would
+    // silently lose the user's own setting.
+    const h = harness();
+    h.set.state({ "test-profile:peakShaving": { previousValue: 250, capturedAt: CAPTURED } });
+    const engine = createPeakShavingEngine(h.io);
+    await engine.release();
+    expect(h.writes).toEqual([]);
+    expect(engine.status().lastError).toContain("above maximum 185");
+    expect(engine.status().restorePending).toBe(true);
+    expect(h.state()["test-profile:peakShaving"]?.previousValue).toBe(250);
+  });
+
+  test("a non-numeric snapshot in a register slot is refused as corrupt", async () => {
+    // The same state map holds borrowed EVCC modes; one landing in a register
+    // slot means the state is corrupt, and a string is never coerced to a write.
+    const h = harness();
+    h.set.state({ "test-profile:peakShaving": { previousValue: "pv", capturedAt: CAPTURED } });
+    const engine = createPeakShavingEngine(h.io);
+    await engine.release();
+    expect(h.writes).toEqual([]);
+    expect(engine.status().lastError).toContain("not a register value");
+    expect(h.state()["test-profile:peakShaving"]).toBeDefined();
+  });
+
+  test("a snapshot for a role the profile no longer maps is never guessed at", async () => {
+    // The feed-in ceiling was held under a profile that mapped it; the new one
+    // does not, so there is no register to give it back to.
+    const h = harness();
+    h.set.state({ "test-profile:peakShaving:sell": { previousValue: 8000, capturedAt: CAPTURED } });
+    const ctx = buildProfileContext(profileWith({ "setting.solar_sell.max_power": "" }));
+    const engine = createPeakShavingEngine({ ...h.io, ctx });
+    await engine.release();
+    expect(h.writes).toEqual([]);
+    expect(engine.status().restorePending).toBe(true);
+    expect(h.state()["test-profile:peakShaving:sell"]).toBeDefined();
+  });
+});
+
+describe("peak-shaving engine — no readback of the register it steers", () => {
+  test("the tick holds until the register has been read back once", async () => {
+    // Steering a register whose original value was never recorded would leave
+    // nothing to restore on release, so the tick waits for the poll instead.
+    const h = harness();
+    h.set.sample({ [PV_KEY]: 5000, [SOC_KEY]: 50, [VOLT_KEY]: 50 });
+    const engine = createPeakShavingEngine(h.io);
+    const status = await engine.tick();
+    expect(status.state).toBe("stale");
+    expect(h.writes).toEqual([]);
+    expect(h.state()).toEqual({});
+    // Once the poll delivers it, the same engine takes over and snapshots it.
+    h.set.sample({ [PV_KEY]: 5000, [SOC_KEY]: 50, [VOLT_KEY]: 50, [CHARGE_KEY]: 120 });
+    expect((await engine.tick()).state).toBe("active");
+    expect(h.state()["test-profile:peakShaving"]?.previousValue).toBe(120);
+  });
+});
+
+// --- Engine: buying from the grid inside a negative-price window --------------------
+
+describe("peak-shaving engine — grid charging inside a window", () => {
+  const HOUR = 3_600_000;
+  const GRID_CHARGE_KEY = "settings.grid_charge";
+  const GRID_CHARGE_A_KEY = "settings.max_grid_charge_current";
+  const ENABLE_SLOT = "test-profile:peakShaving:gridcharge";
+  const CURRENT_SLOT = "test-profile:peakShaving:gridchargeA";
+
+  /** `slots` quarter-hours of negative prices from `fromHour` (UTC == local here). */
+  const negativeWindow = (fromHour: number, slots: number): SpotSlice => ({
+    zone: "DE-LU",
+    stepMinutes: 15,
+    utcOffsetSeconds: 0,
+    coverage: { today: "complete", tomorrow: "complete" },
+    availability: "ok",
+    series: Array.from({ length: slots }, (_, i) => ({
+      time: "2026-07-25T00:00",
+      startMs: Date.parse("2026-07-25T00:00:00Z") + (fromHour + i * 0.25) * HOUR,
+      minutes: 15,
+      eurPerMwh: -40,
+      negative: true,
+    })),
+  });
+
+  /** A plant sitting inside an 11:30–13:30 window, half full, with both registers. */
+  function inWindow(
+    over: {
+      gridChargeInWindow?: boolean;
+      spotTariff?: boolean;
+      metrics?: Record<string, number>;
+    } = {},
+  ) {
+    const h = harness({
+      config: config(
+        {},
+        {
+          priceAware: {
+            enabled: true,
+            gridChargeInWindow: over.gridChargeInWindow ?? true,
+            gridChargeMaxA: 20,
+          },
+        },
+      ),
+      prices: negativeWindow(11.5, 8),
+    });
+    h.set.weather(weather({ smartMeterSince: "2026-06-01" }));
+    h.set.sample(
+      over.metrics ?? {
+        [PV_KEY]: 5000,
+        [SOC_KEY]: 50,
+        [VOLT_KEY]: 50,
+        [CHARGE_KEY]: 120,
+        [GRID_CHARGE_KEY]: 0,
+        [GRID_CHARGE_A_KEY]: 40,
+      },
+    );
+    const ctx = buildProfileContext(
+      profileWith({
+        "setting.battery.grid_charge": GRID_CHARGE_KEY,
+        "setting.battery.max_grid_charge_current": GRID_CHARGE_A_KEY,
+      }),
+    );
+    const io: AutomationIO = {
+      ...h.io,
+      ctx,
+      getTariff: async () =>
+        tariffConfigSchema.parse({
+          import: { mode: over.spotTariff === false ? "static" : "spot" },
+        }),
+    };
+    return { h, io };
+  }
+
+  const gridWrites = (h: Harness) =>
+    h.writes.filter((w) => w.key === GRID_CHARGE_KEY || w.key === GRID_CHARGE_A_KEY);
+
+  test("sets the current before switching grid charging on, and remembers both", async () => {
+    // Enabling first would run the user's own (possibly much higher) current
+    // for a tick before ours lands.
+    const { h, io } = inWindow();
+    const status = await createPeakShavingEngine(io).tick();
+    expect(status.priceRegime).toBe("absorb");
+    expect(gridWrites(h)).toEqual([
+      { key: GRID_CHARGE_A_KEY, value: 20 },
+      { key: GRID_CHARGE_KEY, value: 1 },
+    ]);
+    expect(status.gridChargeA).toBe(20);
+    expect(h.state()[ENABLE_SLOT]?.previousValue).toBe(0);
+    expect(h.state()[CURRENT_SLOT]?.previousValue).toBe(40);
+  });
+
+  test("a second tick in the same window writes nothing more", async () => {
+    const { h, io } = inWindow();
+    const engine = createPeakShavingEngine(io);
+    await engine.tick();
+    await engine.tick();
+    expect(gridWrites(h)).toHaveLength(2);
+    // And the remembered originals are still the user's, not our own commands.
+    expect(h.state()[CURRENT_SLOT]?.previousValue).toBe(40);
+  });
+
+  test("the window ending hands both registers back, enable flag first", async () => {
+    const { h, io } = inWindow();
+    const engine = createPeakShavingEngine(io);
+    await engine.tick();
+    const claimed = h.writes.length;
+    // 14:00: the window closed at 13:30. The sample is re-read at the new clock,
+    // otherwise it would be stale and the tick would hold everything.
+    h.set.now(NOON + 2 * HOUR);
+    h.set.sample({
+      [PV_KEY]: 5000,
+      [SOC_KEY]: 50,
+      [VOLT_KEY]: 50,
+      [CHARGE_KEY]: 100,
+      [GRID_CHARGE_KEY]: 1,
+      [GRID_CHARGE_A_KEY]: 20,
+    });
+    const status = await engine.tick();
+    expect(status.priceRegime).toBe("none");
+    expect(h.writes.slice(claimed).filter((w) => w.key !== CHARGE_KEY)).toEqual([
+      { key: GRID_CHARGE_KEY, value: 0 },
+      { key: GRID_CHARGE_A_KEY, value: 40 },
+    ]);
+    expect(status.gridChargeA).toBeNull();
+    expect(h.state()[ENABLE_SLOT]).toBeUndefined();
+    expect(h.state()[CURRENT_SLOT]).toBeUndefined();
+  });
+
+  test("a fixed import price never buys from the grid", async () => {
+    // A negative wholesale price does not lower a bill that does not follow it.
+    const { h, io } = inWindow({ spotTariff: false });
+    const status = await createPeakShavingEngine(io).tick();
+    expect(status.priceRegime).toBe("absorb");
+    expect(gridWrites(h)).toEqual([]);
+    expect(status.gridChargeA).toBeNull();
+    expect(h.state()[ENABLE_SLOT]).toBeUndefined();
+  });
+
+  test("the switch off leaves both registers alone", async () => {
+    const { h, io } = inWindow({ gridChargeInWindow: false });
+    const status = await createPeakShavingEngine(io).tick();
+    expect(gridWrites(h)).toEqual([]);
+    expect(status.gridChargeA).toBeNull();
+  });
+
+  test("no readback of the enable register holds the whole claim", async () => {
+    // Half-claiming would turn grid charging on with no record of the current
+    // the user had set.
+    const { h, io } = inWindow({
+      metrics: {
+        [PV_KEY]: 5000,
+        [SOC_KEY]: 50,
+        [VOLT_KEY]: 50,
+        [CHARGE_KEY]: 120,
+        [GRID_CHARGE_A_KEY]: 40,
+      },
+    });
+    const status = await createPeakShavingEngine(io).tick();
+    expect(gridWrites(h)).toEqual([]);
+    expect(status.gridChargeA).toBeNull();
+    expect(h.state()[ENABLE_SLOT]).toBeUndefined();
+    expect(h.state()[CURRENT_SLOT]).toBeUndefined();
+  });
+
+  test("a missing current readback holds too, and the claim completes when it arrives", async () => {
+    const { h, io } = inWindow({
+      metrics: {
+        [PV_KEY]: 5000,
+        [SOC_KEY]: 50,
+        [VOLT_KEY]: 50,
+        [CHARGE_KEY]: 120,
+        [GRID_CHARGE_KEY]: 0,
+      },
+    });
+    const engine = createPeakShavingEngine(io);
+    const held = await engine.tick();
+    expect(gridWrites(h)).toEqual([]);
+    expect(held.gridChargeA).toBeNull();
+    // The next poll carries the current register too.
+    h.set.sample({
+      [PV_KEY]: 5000,
+      [SOC_KEY]: 50,
+      [VOLT_KEY]: 50,
+      [CHARGE_KEY]: 100,
+      [GRID_CHARGE_KEY]: 0,
+      [GRID_CHARGE_A_KEY]: 40,
+    });
+    const claimed = await engine.tick();
+    expect(gridWrites(h)).toEqual([
+      { key: GRID_CHARGE_A_KEY, value: 20 },
+      { key: GRID_CHARGE_KEY, value: 1 },
+    ]);
+    expect(claimed.gridChargeA).toBe(20);
+    // The enable flag's original value was captured on the first tick and must
+    // not have been re-captured from our own command.
+    expect(h.state()[ENABLE_SLOT]?.previousValue).toBe(0);
+    expect(h.state()[CURRENT_SLOT]?.previousValue).toBe(40);
+  });
+
+  test("an inverter without the registers soaks anyway, it just cannot buy", async () => {
+    // Grid charging is simply unavailable on that plant; the rest of price
+    // awareness must keep working.
+    const h = harness({
+      config: config(
+        {},
+        { priceAware: { enabled: true, gridChargeInWindow: true, gridChargeMaxA: 20 } },
+      ),
+      prices: negativeWindow(11.5, 8),
+    });
+    h.set.weather(weather({ smartMeterSince: "2026-06-01" }));
+    const io: AutomationIO = {
+      ...h.io,
+      getTariff: async () => tariffConfigSchema.parse({ import: { mode: "spot" } }),
+    };
+    const status = await createPeakShavingEngine(io).tick();
+    expect(status.priceRegime).toBe("absorb");
+    expect(status.gridChargeA).toBeNull();
+    expect(h.writes).toEqual([{ key: CHARGE_KEY, value: 100 }]);
+  });
+});
+
+describe("peak-shaving engine — tick queue", () => {
+  test("a third tick behind a slow one rides the queue instead of stacking", async () => {
+    // The interval fires every 30 s and a hot-apply (config PUT) can fire in
+    // between; a slow Modbus tick must never leave a pile of runs waiting to
+    // re-decide on readings that have long since moved on.
+    const h = harness();
+    let runs = 0;
+    let open!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      open = resolve;
+    });
+    const io: AutomationIO = {
+      ...h.io,
+      getConfig: async () => {
+        runs += 1;
+        if (runs === 1) await gate; // hold the first tick open
+        return await h.io.getConfig();
+      },
+    };
+    const engine = createPeakShavingEngine(io);
+    const first = engine.tick();
+    const second = engine.tick();
+    const third = engine.tick(); // one running + one queued is the whole depth
+    open();
+    const settled = await Promise.all([first, second, third]);
+    expect(runs).toBe(2);
+    // The rider still reports the freshest status, and the queued run decided
+    // on the same reading, so only the first tick wrote.
+    expect(settled[2]).toBe(engine.status());
+    expect(settled[2].state).toBe("active");
+    expect(h.writes).toEqual([{ key: CHARGE_KEY, value: 50 }]);
+  });
+});

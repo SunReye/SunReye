@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdtemp, rm, writeFile, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 
 import { defineProfile, metric } from "@SunReye/inverter-core";
 
@@ -149,5 +149,100 @@ describe("git-source", () => {
     expect(new Set(dirs).size).toBe(1);
     const index = await readIndex(dirs[0] as string);
     expect(index.profiles[0]?.id).toBe("acme-test");
+  });
+
+  test("re-clones when the cached clone is too broken to update", async () => {
+    // A clone killed mid-write across a container restart leaves a tree that
+    // still has .git/HEAD but that git refuses to work in. Wiping and cloning
+    // again is what stops a source being wedged until someone clears /tmp.
+    const dir = await syncRepo(originUrl);
+    await writeFile(join(dir, ".git", "config"), "this is not a git config\n");
+
+    const again = await syncRepo(originUrl);
+
+    expect(again).toBe(dir);
+    expect((await readIndex(again)).profiles[0]?.id).toBe("acme-test");
+  });
+
+  test("a source that isn't a repository yet fails, and works once it exists", async () => {
+    // The URL is saved before the repo is published (a typo'd org, a repo made
+    // public later). The first browse must fail loudly and the retry must still
+    // be able to clone — the failure may not leave the cache entry poisoned.
+    const late = await mkdtemp(join(tmpdir(), "sunreye-late-"));
+    const lateUrl = `file://${late}`;
+
+    await expect(syncRepo(lateUrl)).rejects.toThrow(/git clone failed/);
+
+    await Bun.spawn(["git", "init", "-b", "main"], { cwd: late, env: gitEnv() }).exited;
+    await mkdir(join(late, "profiles"), { recursive: true });
+    await writeFile(join(late, "index.json"), indexJson("1.0.0"));
+    await writeFile(join(late, "profiles", "acme-test.json"), profileJson);
+    await commitAll(late, "published");
+
+    const dir = await syncRepo(lateUrl);
+    expect((await readIndex(dir)).profiles[0]?.version).toBe("1.0.0");
+
+    await rm(late, { recursive: true, force: true });
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  test("every overlapping sync of a broken source reports the git failure", async () => {
+    // Serialization must not turn one caller's failure into the others' — each
+    // browse of a broken source gets the real error, not a poisoned chain.
+    const broken = await mkdtemp(join(tmpdir(), "sunreye-broken-"));
+    const brokenUrl = `file://${broken}`;
+
+    const results = await Promise.allSettled([
+      syncRepo(brokenUrl),
+      syncRepo(brokenUrl),
+      syncRepo(brokenUrl),
+    ]);
+
+    expect(results.map((r) => r.status)).toEqual(["rejected", "rejected", "rejected"]);
+    for (const r of results) {
+      expect(String((r as PromiseRejectedResult).reason)).toMatch(/git clone failed/);
+    }
+    await rm(broken, { recursive: true, force: true });
+  });
+
+  test("rejects an absolute path, not just a relative one that climbs out", async () => {
+    const dir = await syncRepo(originUrl);
+    await expect(readProfile(dir, "/etc/passwd")).rejects.toThrow(/escapes repository/);
+  });
+
+  test("rejects a sibling directory whose name merely starts with the clone's", async () => {
+    // `/tmp/cache/abc123-evil` starts with `/tmp/cache/abc123`; only the
+    // separator in the prefix check keeps it out.
+    const dir = await syncRepo(originUrl);
+    await expect(
+      readProfile(dir, `../${basename(dir)}-evil/profiles/acme-test.json`),
+    ).rejects.toThrow(/escapes repository/);
+  });
+
+  test("reports a profile the index lists but the repo does not contain", async () => {
+    const dir = await syncRepo(originUrl);
+    await expect(readProfile(dir, "profiles/missing.json")).rejects.toThrow(
+      /file not found in repo/,
+    );
+  });
+
+  test("refuses to parse a file far larger than any profile", async () => {
+    // A source can commit anything; the parser must not be handed a gigabyte.
+    const dir = await syncRepo(originUrl);
+    const huge = join(dir, "huge.json");
+    await writeFile(huge, "x".repeat(1_000_001));
+
+    await expect(readProfile(dir, "huge.json")).rejects.toThrow(/file too large/);
+
+    await rm(huge, { force: true });
+  });
+
+  test("rejects an index.json that is not a repo manifest", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "sunreye-badindex-"));
+    await writeFile(join(dir, "index.json"), JSON.stringify({ name: "Test Repo" }));
+
+    await expect(readIndex(dir)).rejects.toThrow();
+
+    await rm(dir, { recursive: true, force: true });
   });
 });

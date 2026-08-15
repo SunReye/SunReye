@@ -1,0 +1,462 @@
+import { afterAll, describe, expect, mock, test } from "bun:test";
+import { drizzle } from "drizzle-orm/pg-proxy";
+
+// history.ts is pure database access: every export shapes one SQL statement and
+// maps the rows back. Rather than stubbing the queries away (which would assert
+// nothing), the DB singleton is swapped for drizzle's pg-proxy driver — a real
+// drizzle instance that builds the real SQL string + params and hands them to a
+// callback instead of a socket. So the assertions below are on the SQL this
+// module actually emits, not on a mock's arguments.
+//
+// The spread is load-bearing: `mock.module` is process-global and permanent, so
+// a mock returning only `db` would delete every other `@SunReye/db` export for
+// each test file that runs after this one.
+const realDb = await import("@SunReye/db");
+
+// …and the spread alone is not enough: the stub below is permanent too, so the
+// fake `db` would stay installed for every later file — including the suites
+// that exercise real queries through the singleton. A module namespace is live
+// (after the mock, `realDb.db` IS `dbStub`), so the real exports have to be
+// snapshotted by value here, before anything is installed.
+const realDbExports = { ...realDb };
+
+interface Call {
+  sql: string;
+  params: unknown[];
+  method: string;
+}
+
+const calls: Call[] = [];
+/** Rows the next query resolves with, in call order. */
+const queue: unknown[][] = [];
+
+const proxy = drizzle(async (sqlText: string, params: unknown[], method: string) => {
+  calls.push({ sql: sqlText, params, method });
+  return { rows: queue.shift() ?? [] };
+});
+
+// `db.execute` on the node-postgres driver resolves to a pg result object
+// (`{ rows }`); the proxy driver resolves to the rows themselves. Re-wrap so the
+// module under test sees the shape production gives it.
+const dbStub = {
+  execute: async (q: never) => ({ rows: await proxy.execute(q) }),
+  select: (...args: never[]) => (proxy.select as unknown as (...a: never[]) => unknown)(...args),
+};
+mock.module("@SunReye/db", () => ({ ...realDb, db: dbStub }));
+
+// Hand the singleton back once this file is done, so no later suite runs its
+// queries against this recorder. `afterAll`, not `afterEach`: every test below
+// still needs the proxy.
+afterAll(() => {
+  mock.module("@SunReye/db", () => ({ ...realDbExports }));
+});
+
+const { queryHourlyAvgRange, queryMedianHourlyAvg, queryRawHistory, queryRollup } =
+  await import("./history");
+
+/** Reset the recorder, queue `rows` for the next query, return the call made. */
+async function capture<T>(rows: unknown[], run: () => Promise<T>): Promise<[Call, T]> {
+  calls.length = 0;
+  queue.length = 0;
+  queue.push(rows);
+  const result = await run();
+  const call = calls[0];
+  if (!call) throw new Error("no query was issued");
+  return [call, result];
+}
+
+/** Collapse whitespace so multi-line SQL can be matched by substring. */
+const flat = (s: string) => s.replace(/\s+/g, " ").trim();
+
+const ROLLUP = {
+  metric: "pv.power",
+  inverterId: "inv-1",
+  limit: 5000,
+  bucket: "hour",
+} as const;
+
+describe("queryRollup — window and view selection", () => {
+  test("each bucket size reads its own continuous aggregate view", async () => {
+    for (const [bucket, view] of [
+      ["minute", "minute_rollups"],
+      ["hour", "hourly_rollups"],
+      ["day", "daily_rollups"],
+    ] as const) {
+      const [call] = await capture([], () =>
+        queryRollup({ ...ROLLUP, bucket, since: new Date("2026-01-01T00:00:00Z") }),
+      );
+      expect(flat(call.sql)).toContain(`from ${view}`);
+    }
+  });
+
+  test("an explicit [from, to) window is half-open — a bucket landing exactly on `to` is the next window's", async () => {
+    const from = new Date("2026-03-01T00:00:00Z");
+    const to = new Date("2026-03-02T00:00:00Z");
+    const [call] = await capture([], () => queryRollup({ ...ROLLUP, from, to }));
+    expect(flat(call.sql)).toContain("bucket >= $3 and bucket < $4");
+    expect(call.params[2]).toEqual(from);
+    expect(call.params[3]).toEqual(to);
+  });
+
+  test("an explicit window wins over `since` when both are passed", async () => {
+    const from = new Date("2026-03-01T00:00:00Z");
+    const to = new Date("2026-03-02T00:00:00Z");
+    const since = new Date("2020-01-01T00:00:00Z");
+    const [call] = await capture([], () => queryRollup({ ...ROLLUP, since, from, to }));
+    expect(call.params).not.toContain(since);
+    expect(call.params.slice(2, 4)).toEqual([from, to]);
+  });
+
+  // Hazard: the date-range picker sending only one bound must not silently
+  // become an unbounded read of the whole history. Today it does — both bounds
+  // are required for the range branch — so this pins the fallback that results.
+  test("a half-specified range (only `from`, no `to`) falls back to the open-ended `since` branch", async () => {
+    const from = new Date("2026-03-01T00:00:00Z");
+    const since = new Date("2026-02-01T00:00:00Z");
+    const [call] = await capture([], () => queryRollup({ ...ROLLUP, from, since }));
+    expect(flat(call.sql)).toContain("bucket >= $3");
+    expect(flat(call.sql)).not.toContain("bucket <");
+    expect(call.params[2]).toEqual(since);
+  });
+
+  test("only `to` given, no `since`: the read starts at the epoch, not at `to`", async () => {
+    const to = new Date("2026-03-02T00:00:00Z");
+    const [call] = await capture([], () => queryRollup({ ...ROLLUP, to }));
+    expect(call.params[2]).toEqual(new Date(0));
+  });
+
+  test("no window at all reads from the epoch — every retained bucket, capped by `limit`", async () => {
+    const [call] = await capture([], () => queryRollup({ ...ROLLUP }));
+    expect(call.params[2]).toEqual(new Date(0));
+  });
+
+  test("metric and inverter are bound parameters, not interpolated text", async () => {
+    const [call] = await capture([], () =>
+      queryRollup({
+        ...ROLLUP,
+        metric: "battery.soc'; drop table metrics_raw; --",
+        inverterId: "inv-2",
+        since: new Date(0),
+      }),
+    );
+    expect(call.sql).not.toContain("drop table");
+    expect(call.params[0]).toBe("battery.soc'; drop table metrics_raw; --");
+    expect(call.params[1]).toBe("inv-2");
+  });
+
+  test("rows come back ascending — charts plot left to right without re-sorting", async () => {
+    const [call] = await capture([], () => queryRollup({ ...ROLLUP, since: new Date(0) }));
+    expect(flat(call.sql)).toContain("order by bucket asc");
+  });
+
+  // The 1600-point cap belongs to the caller (route/UI); this layer passes the
+  // number straight through. A day of minute buckets is 1440 — over the cap the
+  // caller must widen the bucket, because here the read is simply truncated.
+  test("`limit` is passed through verbatim — no clamping happens in this layer", async () => {
+    for (const limit of [1, 1600, 50_000]) {
+      const [call] = await capture([], () => queryRollup({ ...ROLLUP, limit, since: new Date(0) }));
+      expect(flat(call.sql)).toContain("limit $4");
+      expect(call.params[3]).toBe(limit);
+    }
+  });
+
+  test("a limit of 0 is sent as 0 — an empty read, not 'unlimited'", async () => {
+    const [call] = await capture([], () =>
+      queryRollup({ ...ROLLUP, limit: 0, since: new Date(0) }),
+    );
+    expect(call.params[3]).toBe(0);
+  });
+});
+
+describe("queryRollup — row mapping", () => {
+  test("no buckets in the window yields an empty series, not null", async () => {
+    const [, rows] = await capture([], () => queryRollup({ ...ROLLUP, since: new Date(0) }));
+    expect(rows).toEqual([]);
+  });
+
+  test("a zero average is a reading — 0 kW of PV at night must survive the mapping", async () => {
+    const [, rows] = await capture(
+      [{ bucket: "2026-01-01T00:00:00.000Z", avg_value: 0, max_value: 0, min_value: 0 }],
+      () => queryRollup({ ...ROLLUP, since: new Date(0) }),
+    );
+    expect(rows).toEqual([{ time: "2026-01-01T00:00:00.000Z", avg: 0, max: 0, min: 0 }]);
+  });
+
+  test("negative values survive — house battery discharge and sub-zero temperatures are real", async () => {
+    const [, rows] = await capture(
+      [{ bucket: "2026-01-01T00:00:00.000Z", avg_value: -7.5, max_value: -0.1, min_value: -12.25 }],
+      () => queryRollup({ ...ROLLUP, since: new Date(0) }),
+    );
+    expect(rows[0]).toEqual({
+      time: "2026-01-01T00:00:00.000Z",
+      avg: -7.5,
+      max: -0.1,
+      min: -12.25,
+    });
+  });
+
+  // postgres returns `numeric`/`double precision` as strings through some
+  // drivers; the caller does arithmetic on these, so they must land as numbers.
+  test("numeric columns arriving as strings are coerced to numbers, not concatenated later", async () => {
+    const [, rows] = await capture(
+      [{ bucket: "2026-01-01T00:00:00.000Z", avg_value: "1.5", max_value: "2", min_value: "-0.5" }],
+      () => queryRollup({ ...ROLLUP, since: new Date(0) }),
+    );
+    expect(rows[0]?.avg).toBe(1.5);
+    expect(rows[0]?.max).toBe(2);
+    expect(rows[0]?.min).toBe(-0.5);
+  });
+
+  test("a bucket handed back as a Date is normalised to the same ISO instant as its string form", async () => {
+    const instant = "2026-06-01T13:00:00.000Z";
+    const [, asDate] = await capture(
+      [{ bucket: new Date(instant), avg_value: 1, max_value: 1, min_value: 1 }],
+      () => queryRollup({ ...ROLLUP, since: new Date(0) }),
+    );
+    const [, asString] = await capture(
+      [{ bucket: instant, avg_value: 1, max_value: 1, min_value: 1 }],
+      () => queryRollup({ ...ROLLUP, since: new Date(0) }),
+    );
+    expect(asDate[0]?.time).toBe(instant);
+    expect(asString[0]?.time).toBe(instant);
+  });
+
+  // Timescale hands back `timestamptz` without a `T`; the mapping must still
+  // produce the UTC instant, or a chart silently shifts by the local offset.
+  test("a postgres-style timestamp string keeps its UTC offset through the mapping", async () => {
+    const [, rows] = await capture(
+      [{ bucket: "2026-06-01 13:00:00+00", avg_value: 1, max_value: 1, min_value: 1 }],
+      () => queryRollup({ ...ROLLUP, since: new Date(0) }),
+    );
+    expect(rows[0]?.time).toBe("2026-06-01T13:00:00.000Z");
+  });
+
+  test("bucket order is preserved exactly as the database returned it, including across midnight", async () => {
+    const [, rows] = await capture(
+      [
+        { bucket: "2026-01-01T23:00:00.000Z", avg_value: 1, max_value: 1, min_value: 1 },
+        { bucket: "2026-01-02T00:00:00.000Z", avg_value: 2, max_value: 2, min_value: 2 },
+      ],
+      () => queryRollup({ ...ROLLUP, since: new Date(0) }),
+    );
+    expect(rows.map((r) => r.time)).toEqual([
+      "2026-01-01T23:00:00.000Z",
+      "2026-01-02T00:00:00.000Z",
+    ]);
+  });
+});
+
+describe("queryMedianHourlyAvg", () => {
+  test("the window is `days` back from now, so a 7-day median never reaches an eighth day", async () => {
+    const before = Date.now();
+    const [call] = await capture([{ median: 1 }], () => queryMedianHourlyAvg("load.power", "i", 7));
+    const after = Date.now();
+    const since = call.params[2] as Date;
+    expect(since.getTime()).toBeGreaterThanOrEqual(before - 7 * 24 * 3600 * 1000);
+    expect(since.getTime()).toBeLessThanOrEqual(after - 7 * 24 * 3600 * 1000);
+  });
+
+  test("0 days asks for the current instant onwards — an empty window, not 'everything'", async () => {
+    const before = Date.now();
+    const [call] = await capture([{ median: null }], () =>
+      queryMedianHourlyAvg("load.power", "i", 0),
+    );
+    expect((call.params[2] as Date).getTime()).toBeGreaterThanOrEqual(before);
+  });
+
+  test("metric and inverter are bound parameters", async () => {
+    const [call] = await capture([{ median: 1 }], () =>
+      queryMedianHourlyAvg("load.power", "inv-9", 3),
+    );
+    expect(call.params[0]).toBe("load.power");
+    expect(call.params[1]).toBe("inv-9");
+    expect(flat(call.sql)).toContain("from hourly_rollups");
+  });
+
+  test("no rows at all means 'no data' — null, so the forecast model can fall back", async () => {
+    const [, median] = await capture([], () => queryMedianHourlyAvg("load.power", "i", 30));
+    expect(median).toBeNull();
+  });
+
+  test("a NULL median (window matched no buckets) is null, not 0", async () => {
+    const [, median] = await capture([{ median: null }], () =>
+      queryMedianHourlyAvg("load.power", "i", 30),
+    );
+    expect(median).toBeNull();
+  });
+
+  test("an undefined median column is null rather than NaN", async () => {
+    const [, median] = await capture([{}], () => queryMedianHourlyAvg("load.power", "i", 30));
+    expect(median).toBeNull();
+  });
+
+  // The falsy-check hazard: a genuinely zero median house load (an all-day
+  // outage, a metric that is flat zero) must stay 0 and not degrade to "no data".
+  test("a median of exactly 0 is a measurement, not missing data", async () => {
+    const [, median] = await capture([{ median: 0 }], () => queryMedianHourlyAvg("l", "i", 30));
+    expect(median).toBe(0);
+  });
+
+  test("a median arriving as a numeric string is coerced to a number", async () => {
+    const [, median] = await capture([{ median: "0.75" }], () =>
+      queryMedianHourlyAvg("l", "i", 30),
+    );
+    expect(median).toBe(0.75);
+  });
+
+  test("a negative median survives — export power is signed", async () => {
+    const [, median] = await capture([{ median: -120.5 }], () => queryMedianHourlyAvg("l", "i", 1));
+    expect(median).toBe(-120.5);
+  });
+
+  test("only the first row is read — a stray second row cannot change the answer", async () => {
+    const [, median] = await capture([{ median: 5 }, { median: 99 }], () =>
+      queryMedianHourlyAvg("l", "i", 1),
+    );
+    expect(median).toBe(5);
+  });
+});
+
+describe("queryHourlyAvgRange", () => {
+  const from = new Date("2026-05-01T00:00:00Z");
+  const to = new Date("2026-05-02T00:00:00Z");
+
+  test("the window is half-open [from, to) so consecutive days never double-count an hour", async () => {
+    const [call] = await capture([], () => queryHourlyAvgRange("pv.power", "inv-1", from, to));
+    const sqlText = flat(call.sql);
+    expect(sqlText).toContain("bucket >= $3");
+    expect(sqlText).toContain("bucket < $4");
+    expect(call.params).toEqual(["pv.power", "inv-1", from, to]);
+  });
+
+  test("reads the hourly aggregate ascending, unlimited — the caller matches it hour by hour", async () => {
+    const [call] = await capture([], () => queryHourlyAvgRange("pv.power", "inv-1", from, to));
+    const sqlText = flat(call.sql);
+    expect(sqlText).toContain("from hourly_rollups");
+    expect(sqlText).toContain("order by bucket asc");
+    expect(sqlText).not.toContain("limit");
+  });
+
+  test("an inverted window (from after to) is still sent — the caller owns that validation", async () => {
+    const [call] = await capture([], () => queryHourlyAvgRange("pv.power", "inv-1", to, from));
+    expect(call.params.slice(2)).toEqual([to, from]);
+  });
+
+  test("a gap in the series yields fewer rows, not zero-filled ones", async () => {
+    const [, rows] = await capture(
+      [
+        { bucket: "2026-05-01T00:00:00.000Z", avg_value: 1 },
+        { bucket: "2026-05-01T02:00:00.000Z", avg_value: 3 },
+      ],
+      () => queryHourlyAvgRange("pv.power", "inv-1", from, to),
+    );
+    expect(rows).toEqual([
+      { bucketMs: Date.parse("2026-05-01T00:00:00Z"), avg: 1 },
+      { bucketMs: Date.parse("2026-05-01T02:00:00Z"), avg: 3 },
+    ]);
+  });
+
+  test("bucketMs is the UTC instant, so it matches a reanalysis series regardless of local offset", async () => {
+    const [, rows] = await capture([{ bucket: "2026-05-01 13:00:00+00", avg_value: 2 }], () =>
+      queryHourlyAvgRange("pv.power", "inv-1", from, to),
+    );
+    expect(rows[0]?.bucketMs).toBe(Date.parse("2026-05-01T13:00:00Z"));
+  });
+
+  test("a zero hourly average is kept — an overcast hour produced 0, it is not a gap", async () => {
+    const [, rows] = await capture([{ bucket: "2026-05-01T00:00:00.000Z", avg_value: 0 }], () =>
+      queryHourlyAvgRange("pv.power", "inv-1", from, to),
+    );
+    expect(rows[0]?.avg).toBe(0);
+  });
+
+  test("a numeric-string average is coerced, so the correction factor stays arithmetic", async () => {
+    const [, rows] = await capture(
+      [{ bucket: "2026-05-01T00:00:00.000Z", avg_value: "12.5" }],
+      () => queryHourlyAvgRange("pv.power", "inv-1", from, to),
+    );
+    expect(rows[0]?.avg).toBe(12.5);
+  });
+
+  test("an empty window is an empty array — the learning step has nothing to correct with", async () => {
+    const [, rows] = await capture([], () => queryHourlyAvgRange("pv.power", "inv-1", from, to));
+    expect(rows).toEqual([]);
+  });
+});
+
+describe("queryRawHistory", () => {
+  const since = new Date("2026-04-01T00:00:00Z");
+  const q = { metric: "pv.power", inverterId: "inv-1", since, limit: 10 };
+
+  /** Driver row for metrics_raw, in the table's column order. */
+  const row = (time: string, value: number, metric = "pv.power", inverterId = "inv-1") => [
+    time,
+    inverterId,
+    metric,
+    value,
+  ];
+
+  test("filters on time, metric and inverter together — never a neighbour inverter's samples", async () => {
+    const [call] = await capture([], () => queryRawHistory(q));
+    const sqlText = flat(call.sql).toLowerCase();
+    expect(sqlText).toContain('from "metrics_raw"');
+    expect(sqlText).toContain('"time" >=');
+    expect(sqlText).toContain('"metric" =');
+    expect(sqlText).toContain('"inverter_id" =');
+    // The timestamp is encoded by drizzle's column type before it reaches the
+    // driver, so compare the instant it denotes rather than the literal shape.
+    expect(Date.parse(String(call.params[0]))).toBe(since.getTime());
+    expect(call.params.slice(1)).toEqual(["pv.power", "inv-1", 10]);
+  });
+
+  test("the lower bound is inclusive — a sample exactly at `since` belongs to the window", async () => {
+    const [call] = await capture([], () => queryRawHistory(q));
+    expect(flat(call.sql)).toContain('"time" >= $1');
+    expect(flat(call.sql)).not.toContain('"time" > $1');
+  });
+
+  test("most-recent-first, so a capped read keeps the newest samples rather than the oldest", async () => {
+    const [call] = await capture([], () => queryRawHistory(q));
+    expect(flat(call.sql).toLowerCase()).toContain("order by");
+    expect(flat(call.sql).toLowerCase()).toContain("desc");
+    expect(flat(call.sql).toLowerCase()).toContain("limit");
+  });
+
+  test("`limit` reaches the query unchanged, including a limit of 1", async () => {
+    const [call] = await capture([], () => queryRawHistory({ ...q, limit: 1 }));
+    expect(call.params.at(-1)).toBe(1);
+  });
+
+  test("no samples in the window is an empty array, not an error", async () => {
+    const [, rows] = await capture([], () => queryRawHistory(q));
+    expect(rows).toEqual([]);
+  });
+
+  test("rows keep the database's descending order — the client is not silently re-sorted", async () => {
+    const [, rows] = await capture(
+      [row("2026-04-02T00:00:00.000Z", 2), row("2026-04-01T23:59:59.000Z", 1)],
+      () => queryRawHistory(q),
+    );
+    expect(rows.map((r) => r.time)).toEqual([
+      "2026-04-02T00:00:00.000Z",
+      "2026-04-01T23:59:59.000Z",
+    ]);
+  });
+
+  test("a 0 W sample is returned as 0 — an idle inverter reported a value", async () => {
+    const [, rows] = await capture([row("2026-04-01T12:00:00.000Z", 0)], () => queryRawHistory(q));
+    expect(rows).toEqual([{ time: "2026-04-01T12:00:00.000Z", value: 0 }]);
+  });
+
+  test("a negative sample is returned as-is — import/export and temperature are signed", async () => {
+    const [, rows] = await capture([row("2026-04-01T12:00:00.000Z", -1234.5)], () =>
+      queryRawHistory(q),
+    );
+    expect(rows[0]?.value).toBe(-1234.5);
+  });
+
+  test("times are serialised as UTC ISO strings whatever the server's local zone", async () => {
+    const [, rows] = await capture([row("2026-04-01 22:30:00+00", 5)], () => queryRawHistory(q));
+    expect(rows[0]?.time).toBe("2026-04-01T22:30:00.000Z");
+  });
+});

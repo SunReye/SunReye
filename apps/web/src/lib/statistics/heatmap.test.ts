@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { heatColor, heatGradient, heatOpacity } from "./heatmap";
+import { heatColor, heatGradient, heatKwh, heatOpacity, hourLabel, weekdayLabel } from "./heatmap";
 
 /** The stops the module interpolates, restated here so a re-tune has to be a
  *  deliberate edit in two places rather than a silent colour drift. */
@@ -72,5 +72,68 @@ describe("heatOpacity", () => {
 describe("heatGradient", () => {
   it("lists every stop left to right for the legend bar", () => {
     expect(heatGradient()).toBe(`linear-gradient(to right, ${HEAT_STOPS.join(", ")})`);
+  });
+});
+
+describe("weekdayLabel", () => {
+  it("names the ISO weekday, Monday first", () => {
+    // The server emits ISO weekdays (1 = Monday … 7 = Sunday); the grid's rows
+    // must read in that order, not the Sunday-first order the platform default
+    // would give.
+    expect([1, 2, 3, 4, 5, 6, 7].map(weekdayLabel)).toEqual([
+      "Mon",
+      "Tue",
+      "Wed",
+      "Thu",
+      "Fri",
+      "Sat",
+      "Sun",
+    ]);
+  });
+
+  it("gives seven distinct row labels, so no two weekdays collide", () => {
+    expect(new Set([1, 2, 3, 4, 5, 6, 7].map(weekdayLabel)).size).toBe(7);
+  });
+});
+
+describe("hourLabel", () => {
+  it("pads the hour to a fixed width, so the axis does not jitter at 10:00", () => {
+    expect(hourLabel(0)).toBe("00:00");
+    expect(hourLabel(7)).toBe("07:00");
+    expect(hourLabel(23)).toBe("23:00");
+    expect(new Set(Array.from({ length: 24 }, (_, h) => hourLabel(h))).size).toBe(24);
+  });
+
+  it("labels every column with its own hour, midnight first", () => {
+    // The grid renders 24 columns in index order, so the label at index h has
+    // to be hour h itself — an off-by-one here silently shifts every reading in
+    // the heatmap by an hour.
+    expect(Array.from({ length: 24 }, (_, h) => hourLabel(h))).toEqual(
+      Array.from({ length: 24 }, (_, h) => `${h < 10 ? "0" : ""}${h}:00`),
+    );
+  });
+});
+
+describe("heatKwh", () => {
+  it("states a cell average to two decimals", () => {
+    expect(heatKwh(1.234)).toBe("1.23 kWh");
+    expect(heatKwh(0.42)).toBe("0.42 kWh");
+  });
+
+  it("reads a slot that moved nothing as a plain zero", () => {
+    // The legend's low end is heatKwh(0), and a slot that occurred but stayed
+    // idle is a real reading — not a gap.
+    expect(heatKwh(0)).toBe("0 kWh");
+  });
+
+  it("collapses a sub-10 Wh average to zero rather than a long tail", () => {
+    // A house that draws 3 W in an hour is 0.003 kWh: the grid should say "0",
+    // not "0.003", and the cell is shaded by value regardless.
+    expect(heatKwh(0.003)).toBe("0 kWh");
+    expect(heatKwh(0.006)).toBe("0.01 kWh");
+  });
+
+  it("groups a large average the way the UI locale does", () => {
+    expect(heatKwh(1234.5)).toBe("1,234.5 kWh");
   });
 });

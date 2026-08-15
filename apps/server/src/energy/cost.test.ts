@@ -1,6 +1,7 @@
+import { spotPrices } from "@SunReye/db/schema/spot-price";
 import { type TariffConfig, tariffConfigSchema } from "@SunReye/db/tariff";
 import type { CanonicalRole, InverterProfile, InverterSample } from "@SunReye/inverter-core";
-import { describe, expect, mock, test } from "bun:test";
+import { afterAll, afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 
 // cost.ts imports the DB singleton (which eagerly validates server env). Mock it
 // so the guard logic can be imported and exercised without a database or a
@@ -17,9 +18,57 @@ const realDb = await import("@SunReye/db");
 const realSettings = await import("../settings/settings");
 const realState = await import("../shared/state");
 
+// ...and the spread alone is not enough: the stubbed exports stay installed for
+// every file that loads after this one, so the suites that unit-test these very
+// modules would assert against the doubles below. `afterAll` hands them back.
+// A module namespace is live — once a mock is installed `realDb.db` IS the stub
+// — so the real exports have to be snapshotted BY VALUE here, at load time,
+// before any `mock.module` call runs.
+const realDbExports = { ...realDb };
+const realSettingsExports = { ...realSettings };
+const realStateExports = { ...realState };
+
+afterAll(() => {
+  mock.module("@SunReye/db", () => ({ ...realDbExports }));
+  mock.module("../settings/settings", () => ({ ...realSettingsExports }));
+  mock.module("../shared/state", () => ({ ...realStateExports }));
+});
+
 let queryResults: Array<Array<Record<string, unknown>>> = [];
 const execute = mock(async () => ({ rows: queryResults.shift() ?? [] }));
-mock.module("@SunReye/db", () => ({ ...realDb, db: { execute } }));
+
+/**
+ * Stored day-ahead slots for the §51 EEG export rule, already narrowed to the
+ * window under test — the stub below answers `from(spot_prices)` with them
+ * verbatim rather than re-implementing the SQL predicate. Real rows carry more
+ * columns; the cost engine reads only these two.
+ */
+let spotSlots: Array<{ slotStart: Date; eurPerMwh: number }> = [];
+/** Tables read through the singleton, so "did it look at prices at all?" is assertable. */
+let tablesRead: unknown[] = [];
+
+/**
+ * The row-level reads behind the §51 path: the price feed reaches for
+ * `spot_prices`, and the bidding zone comes from `app_settings` through the
+ * settings accessor (no row → the stored default zone). Kept on this suite's
+ * own DB stand-in rather than mocking `@SunReye/db/spot-price`, which the db
+ * package's own suite exercises for real.
+ */
+const select = () => {
+  let rows: unknown[] = [];
+  const chain = {
+    from(table: unknown) {
+      tablesRead.push(table);
+      rows = table === spotPrices ? spotSlots : [];
+      return chain;
+    },
+    where: () => chain,
+    orderBy: async () => rows,
+    limit: async () => rows,
+  };
+  return chain;
+};
+mock.module("@SunReye/db", () => ({ ...realDb, db: { execute, select } }));
 
 // Flat 0.30/kWh so the money in a computeCost result is readable by eye. The
 // standing charge is 0 unless a test swaps `tariff` for one that has it.
@@ -37,7 +86,7 @@ mock.module("../settings/settings", () => ({ ...realSettings, getTariff: async (
 const liveState: { latest: InverterSample | null } = { latest: null };
 mock.module("../shared/state", () => ({ ...realState, liveState }));
 
-const { computeCost, computeCostSeries, fetchBucketEnergy, liveTodayTotals } =
+const { computeCost, computeCostSeries, currentPeriodKey, fetchBucketEnergy, liveTodayTotals } =
   await import("./cost");
 
 /** The live overlay for `inverterId` at `now`, given the poll cache's `sample`. */
@@ -302,6 +351,271 @@ describe("computeCost and the live today registers", () => {
       metrics: { impToday: 5 },
     };
     expect((await monthToDate()).importKwh).toBe(3);
+  });
+});
+
+describe("computeCost — the live registers keep the tiles coherent", () => {
+  // Every counter and its today twin, so the whole overlay applies at once.
+  const profile = profileWith({
+    "grid.energy.imported.total": "imp",
+    "grid.energy.exported.total": "exp",
+    "load.energy.total": "load",
+    "production.total": "prod",
+    "grid.energy.imported.today": "impToday",
+    "grid.energy.exported.today": "expToday",
+    "load.energy.today": "loadToday",
+    "production.today": "prodToday",
+  });
+
+  const clock = new Date();
+  const midnight = new Date(clock);
+  midnight.setHours(0, 0, 0, 0);
+
+  /** One rollup bucket at midnight per metric, counting from zero. */
+  const buckets = Object.entries({ imp: 1, exp: 2, load: 4, prod: 5 }).map(([metric, kwh]) => ({
+    bucket: midnight.toISOString(),
+    metric,
+    min_value: 0,
+    max_value: kwh,
+  }));
+
+  /** Today's breakdown with the given live `*.today` registers on the poll cache. */
+  const todayWith = async (metrics: Record<string, number>) => {
+    liveState.latest = { time: clock.toISOString(), inverterId: "inv-1", metrics };
+    queryResults = [[], buckets];
+    return computeCost(profile, { from: midnight, to: new Date(), inverterId: "inv-1" });
+  };
+
+  test("the ratios are recomputed from the reported energy, not left on the deltas", async () => {
+    const totals = await todayWith({ impToday: 2, expToday: 3, loadToday: 10, prodToday: 12 });
+    expect(totals.importKwh).toBe(2);
+    expect(totals.loadKwh).toBe(10);
+    // (10 − 2) / 10 and (12 − 3) / 12 — the deltas would have said 0.75 / 0.6.
+    expect(totals.solarToLoadKwh).toBe(8);
+    expect(totals.selfSufficiency).toBeCloseTo(0.8, 10);
+    expect(totals.selfConsumption).toBeCloseTo(0.75, 10);
+    // Money stays banded from the counter deltas: 1 kWh at 0.30, 2 kWh at 0.08.
+    expect(totals.importCost).toBeCloseTo(0.3, 10);
+    expect(totals.exportEarnings).toBeCloseTo(0.16, 10);
+  });
+
+  test("registers that lead each other never push a ratio below zero", async () => {
+    // The import register can be ahead of the load register mid-poll; a raw
+    // (load − import) / load would then report negative self-sufficiency.
+    const totals = await todayWith({ impToday: 12, expToday: 13, loadToday: 10, prodToday: 12 });
+    expect(totals.solarToLoadKwh).toBe(0);
+    expect(totals.selfSufficiency).toBe(0);
+    expect(totals.selfConsumption).toBe(0);
+  });
+
+  test("a negative register reads as zero, not as free energy", async () => {
+    // A signed grid register can go below zero; letting it through would report
+    // more than 100 % self-sufficiency.
+    const totals = await todayWith({ impToday: -1, expToday: 0, loadToday: 10, prodToday: 12 });
+    expect(totals.importKwh).toBe(0);
+    expect(totals.selfSufficiency).toBe(1);
+    expect(totals.selfConsumption).toBe(1);
+  });
+
+  test("the first minutes after midnight report no ratio at all", async () => {
+    // Nothing consumed and nothing produced yet: the ratios are undefined, and
+    // must be null rather than NaN or a confident zero.
+    const totals = await todayWith({ impToday: 0, expToday: 0, loadToday: 0, prodToday: 0 });
+    expect(totals.loadKwh).toBe(0);
+    expect(totals.selfSufficiency).toBeNull();
+    expect(totals.selfConsumption).toBeNull();
+  });
+});
+
+describe("§51 EEG — export that earned nothing", () => {
+  const exportProfile = profileWith({ "grid.energy.exported.total": "exp" });
+
+  /** A §51 plant: spot-mode export under the eegFeedIn marketing model. */
+  const eegTariff: TariffConfig = tariffConfigSchema.parse({
+    currency: "EUR",
+    standingChargeMonthly: 0,
+    import: { defaultPricePerKwh: 0.3 },
+    export: { mode: "spot", feedInPerKwh: 0.08, spot: { marketingModel: "eegFeedIn" } },
+  });
+
+  const day = (h: number) => new Date(2024, 5, 15, h);
+  /** `kwh` exported in the local hour `h`, as the rollups deliver it: a rise of
+   *  the lifetime counter, which stood at `counterAt` entering the hour. */
+  const exportedAt = (h: number, kwh: number, counterAt = 0) => ({
+    bucket: day(h).toISOString(),
+    metric: "exp",
+    min_value: counterAt,
+    max_value: counterAt + kwh,
+  });
+  /** Quarter-hourly day-ahead prices for one local hour, in €/MWh. */
+  const slotsAt = (h: number, prices: number[], date = day(h)) =>
+    prices.map((eurPerMwh, i) => ({
+      slotStart: new Date(date.getFullYear(), date.getMonth(), date.getDate(), h, i * 15),
+      eurPerMwh,
+    }));
+
+  /** The day's breakdown over the given in-window buckets. */
+  const costOverDay = (rows: Array<Record<string, unknown>>) => {
+    queryResults = [[], rows];
+    return computeCost(exportProfile, { from: day(0), to: day(23), inverterId: "inv-1" });
+  };
+
+  beforeEach(() => {
+    spotSlots = [];
+    tablesRead = [];
+  });
+
+  afterEach(() => {
+    tariff = flatTariff;
+  });
+
+  test("a plant that never opted in pays for no price lookup", async () => {
+    const totals = await costOverDay([exportedAt(13, 4)]);
+    expect(tablesRead).not.toContain(spotPrices);
+    expect(totals.exportEarnings).toBeCloseTo(0.32, 10);
+    expect(totals.zeroValueExportKwh).toBe(0);
+    expect(totals.zeroValueExportEur).toBe(0);
+  });
+
+  test("spot export under another marketing model is not §51 either", async () => {
+    tariff = tariffConfigSchema.parse({
+      currency: "EUR",
+      export: { mode: "spot", feedInPerKwh: 0.08, spot: { marketingModel: "direktvermarktung" } },
+    });
+    const totals = await costOverDay([exportedAt(13, 4)]);
+    expect(tablesRead).not.toContain(spotPrices);
+    expect(totals.zeroValueExportKwh).toBe(0);
+  });
+
+  test("with no prices stored for the window, export is paid as usual", async () => {
+    tariff = eegTariff;
+    const totals = await costOverDay([exportedAt(13, 4)]);
+    // It looked at the price feed — and found nothing recorded for the window.
+    expect(tablesRead).toContain(spotPrices);
+    expect(totals.exportEarnings).toBeCloseTo(0.32, 10);
+    expect(totals.zeroValueExportKwh).toBe(0);
+  });
+
+  test("an hour that cleared negative throughout earns nothing", async () => {
+    tariff = eegTariff;
+    spotSlots = slotsAt(13, [-5, -3, -10, -1]);
+    const totals = await costOverDay([exportedAt(13, 4)]);
+    expect(totals.exportEarnings).toBe(0);
+    expect(totals.zeroValueExportKwh).toBeCloseTo(4, 10);
+    // What the rule cost this plant, in money: 4 kWh × 0.08.
+    expect(totals.zeroValueExportEur).toBeCloseTo(0.32, 10);
+    expect(totals.net).toBeCloseTo(0, 10);
+  });
+
+  test("a partly negative hour loses exactly the negative share", async () => {
+    tariff = eegTariff;
+    spotSlots = slotsAt(13, [-5, 20, 30, 40]); // one quarter-hour of four
+    const totals = await costOverDay([exportedAt(13, 4)]);
+    expect(totals.zeroValueExportKwh).toBeCloseTo(1, 10);
+    expect(totals.exportEarnings).toBeCloseTo(0.24, 10);
+  });
+
+  test("a slot that cleared at exactly 0.00 still pays", async () => {
+    // §51 triggers strictly below zero; free is not negative.
+    tariff = eegTariff;
+    spotSlots = slotsAt(13, [0, -5, 0, 0]);
+    const totals = await costOverDay([exportedAt(13, 4)]);
+    expect(totals.zeroValueExportKwh).toBeCloseTo(1, 10);
+    expect(totals.exportEarnings).toBeCloseTo(0.24, 10);
+  });
+
+  test("an hourly feed's single slot decides its whole hour", async () => {
+    // The share is taken over the slots actually stored, not over a fixed four:
+    // an hourly source (aWATTar) publishes one slot per hour, and a negative one
+    // means the whole hour earned nothing — not a quarter of it.
+    tariff = eegTariff;
+    spotSlots = [{ slotStart: day(13), eurPerMwh: -5 }];
+    const totals = await costOverDay([exportedAt(13, 4)]);
+    expect(totals.zeroValueExportKwh).toBeCloseTo(4, 10);
+    expect(totals.exportEarnings).toBe(0);
+  });
+
+  test("an hour with no stored price is unknown, not negative", async () => {
+    // Hour 12 is priced and negative; hour 13 was never fetched. Treating the
+    // gap as negative would silently zero out a day of feed-in revenue.
+    tariff = eegTariff;
+    spotSlots = slotsAt(12, [-5, -5, -5, -5]);
+    const totals = await costOverDay([exportedAt(12, 4), exportedAt(13, 4, 4)]);
+    expect(totals.exportKwh).toBeCloseTo(8, 10);
+    expect(totals.zeroValueExportKwh).toBeCloseTo(4, 10);
+    expect(totals.exportEarnings).toBeCloseTo(0.32, 10);
+  });
+
+  test("a month of §51 exports is priced per day and rolled back up to one bar", async () => {
+    // A month bucket alone cannot say which 13:00 a row belongs to, so the
+    // series drops to day granularity and rolls the priced days up.
+    tariff = eegTariff;
+    spotSlots = slotsAt(13, [-5, -5, -5, -5], new Date(2024, 5, 15));
+    queryResults = [
+      [
+        { period: "2024-06-15", hod: 13, dow: 6, metric: "exp", kwh: 4 },
+        { period: "2024-06-16", hod: 13, dow: 7, metric: "exp", kwh: 4 },
+      ],
+    ];
+    const points = await computeCostSeries(exportProfile, {
+      from: new Date(2024, 5, 1),
+      to: new Date(2024, 6, 1),
+      bucket: "month",
+      inverterId: "inv-1",
+    });
+    expect(points.map((p) => p.bucket)).toEqual(["2024-06"]);
+    // The 15th's export earned nothing; the 16th's — unpriced — was paid.
+    expect(points[0]?.zeroValueExportKwh).toBeCloseTo(4, 10);
+    expect(points[0]?.zeroValueExportEur).toBeCloseTo(0.32, 10);
+    expect(points[0]?.exportEarnings).toBeCloseTo(0.32, 10);
+  });
+
+  test("without §51 a month request stays grouped by month", async () => {
+    queryResults = [[{ period: "2024-06", hod: 13, dow: 6, metric: "exp", kwh: 4 }]];
+    const points = await computeCostSeries(exportProfile, {
+      from: new Date(2024, 5, 1),
+      to: new Date(2024, 6, 1),
+      bucket: "month",
+      inverterId: "inv-1",
+    });
+    expect(points.map((p) => p.bucket)).toEqual(["2024-06"]);
+    expect(points[0]?.exportEarnings).toBeCloseTo(0.32, 10);
+    expect(points[0]?.zeroValueExportKwh).toBe(0);
+  });
+});
+
+describe("currentPeriodKey", () => {
+  test("names the period a moment falls in, at each granularity", () => {
+    const at = new Date(2024, 5, 15, 9, 45);
+    expect(currentPeriodKey("hour", at)).toBe("2024-06-15T09");
+    expect(currentPeriodKey("day", at)).toBe("2024-06-15");
+    expect(currentPeriodKey("month", at)).toBe("2024-06");
+  });
+
+  test("pads single-digit months, days and hours", () => {
+    const at = new Date(2024, 0, 5, 3, 0);
+    expect(currentPeriodKey("hour", at)).toBe("2024-01-05T03");
+    expect(currentPeriodKey("day", at)).toBe("2024-01-05");
+    expect(currentPeriodKey("month", at)).toBe("2024-01");
+  });
+
+  test("midnight belongs to the day that starts, not the one that ended", () => {
+    expect(currentPeriodKey("hour", new Date(2024, 5, 15, 0, 0, 0))).toBe("2024-06-15T00");
+    expect(currentPeriodKey("day", new Date(2024, 5, 15, 23, 59, 59))).toBe("2024-06-15");
+  });
+
+  test("matches the key the series produced for the same period", async () => {
+    // The live-register override lands on this key, so it has to be the exact
+    // one the delta matrix zero-filled — not merely one that looks like it.
+    const now = new Date(2026, 7, 2, 14, 30);
+    queryResults = [[]];
+    const points = await computeCostSeries(profileWith({ "grid.energy.imported.total": "imp" }), {
+      from: new Date(2026, 7, 1),
+      to: new Date(2026, 8, 1),
+      bucket: "day",
+      inverterId: "inv-1",
+    });
+    expect(points.map((p) => p.bucket)).toContain(currentPeriodKey("day", now));
   });
 });
 

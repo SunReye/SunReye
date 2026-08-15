@@ -4,6 +4,16 @@
 	import ForecastChart, { type ForecastSlot } from './forecast-chart.svelte';
 	import { api } from '$lib/api';
 	import { inverter } from '$lib/inverter/store.svelte';
+	import {
+		type MeasuredDay,
+		type MinuteRollup,
+		measuredFromHourlyEnergy,
+		measuredFromRollups,
+		measuredTotal,
+		slotCount,
+		slotIndexAt,
+		slotLabelAt
+	} from './_shared/measured-day';
 	import * as m from '$lib/paraglide/messages';
 
 	// One slot of the provider-agnostic solar forecast (apps/server/src/forecast/solar-forecast.ts).
@@ -61,77 +71,32 @@
 	});
 
 	// ── Slot grid (plant-local day at the forecast's resolution) ─────────────
+	// The grid maths and the measured-day reconstruction live in
+	// `_shared/measured-day.ts` so they can be unit-tested: this dialog's headline
+	// once reported a recording outage as production (6.9 kWh against the
+	// register's 11.8 kWh) because unmeasured slots were folded to 0 W.
 	const step = $derived(Math.max(1, stepMinutes || 60));
-	const slotsPerDay = $derived(Math.ceil(1440 / step));
+	const slotsPerDay = $derived(slotCount(step));
 	// Today is the date of the first forecast slot; the forecast spans
 	// today + tomorrow but the chart shows today only.
 	const today = $derived(series[0]?.time.slice(0, 10) ?? '');
-	const slotIndex = (hh: number, mm: number) => Math.floor((hh * 60 + mm) / step);
-	const slotLabel = (i: number) => {
-		const t = i * step;
-		return `${String(Math.floor(t / 60)).padStart(2, '0')}:${String(t % 60).padStart(2, '0')}`;
-	};
+	const slotIndex = (hh: number, mm: number) => slotIndexAt(step, hh, mm);
+	const slotLabel = (i: number) => slotLabelAt(step, i);
 
 	// Measured production per slot: average + peak W, null where not measured
 	// yet. Filled from minute rollups of the PV power metric; falls back to the
 	// hourly energy split (no peaks) for profiles without a pv.total.power role.
-	type Actual = { avgW: (number | null)[]; peakW: (number | null)[] };
-	let actual = $state<Actual | null>(null);
+	let actual = $state<MeasuredDay | null>(null);
+	// The slot "now" fell in when `actual` was fetched — the window that could
+	// have been measured. Slots past it are the future, not an outage. Undefined
+	// until the first fetch lands, which scores the whole day as the window.
+	let actualNowIdx = $state<number | undefined>(undefined);
 
 	// The PV power metric is resolved from the *unfiltered* catalog: hiding the
 	// sensor from dashboards shouldn't silently degrade this chart.
 	const pvKey = $derived(inverter.allMetrics.find((mt) => mt.role === 'pv.total.power')?.key);
 
-	const emptyColumn = () => Array.from({ length: slotsPerDay }, (): number | null => null);
-
-	// ── Preferred path: minute rollups of the PV power metric ────────────────
-	type Rollup = { time: string; avg: number; max: number };
-
-	/** Bucket minute rollups into each slot's mean and peak W. */
-	function fromRollups(rows: Rollup[]): Actual {
-		const acc = Array.from({ length: slotsPerDay }, () => ({
-			sum: 0,
-			count: 0,
-			peak: null as number | null
-		}));
-		for (const r of rows) {
-			const d = new Date(r.time);
-			// An out-of-range slot index simply misses the array.
-			const a = acc[slotIndex(d.getHours(), d.getMinutes())];
-			if (!a) continue;
-			a.sum += r.avg;
-			a.count += 1;
-			a.peak = Math.max(a.peak ?? 0, r.max);
-		}
-		return {
-			avgW: acc.map((a) => (a.count > 0 ? a.sum / a.count : null)),
-			peakW: acc.map((a) => a.peak)
-		};
-	}
-
-	// ── Fallback: hourly energy split, for profiles with no pv.total.power ────
-
-	/** Spread one hour's average W across that hour's slots, stopping at `lastIdx`. */
-	function fillHour(avgW: (number | null)[], hour: number, lastIdx: number, watts: number) {
-		const first = slotIndex(hour, 0);
-		for (let i = first; i < first + 60 / step && i <= lastIdx; i++) avgW[i] = watts;
-	}
-
-	/**
-	 * kWh over one hour ⇒ average W. Capped at the running slot so the rest of the
-	 * day stays forecast-only. No peaks are available on this path.
-	 */
-	function fromHourlyEnergy(rows: Period[], nowIdx: number): Actual {
-		const avgW = emptyColumn();
-		for (const p of rows) {
-			const h = Number(p.bucket.slice(11, 13));
-			if (Number.isNaN(h)) continue;
-			fillHour(avgW, h, nowIdx, p.productionKwh * 1000);
-		}
-		return { avgW, peakW: emptyColumn() };
-	}
-
-	async function fetchRollups(metric: string, from: Date, to: Date): Promise<Actual> {
+	async function fetchRollups(metric: string, from: Date, to: Date): Promise<MeasuredDay> {
 		const { data } = await api.api.history.rollup.get({
 			query: {
 				metric,
@@ -141,14 +106,14 @@
 				limit: 1600
 			}
 		});
-		return fromRollups((data ?? []) as Rollup[]);
+		return measuredFromRollups((data ?? []) as MinuteRollup[], step);
 	}
 
-	async function fetchHourlyEnergy(from: Date, to: Date, nowIdx: number): Promise<Actual> {
+	async function fetchHourlyEnergy(from: Date, to: Date, nowIdx: number): Promise<MeasuredDay> {
 		const { data } = await api.api.energy.series.get({
 			query: { from: from.toISOString(), to: to.toISOString(), bucket: 'hour' }
 		});
-		return fromHourlyEnergy((data ?? []) as Period[], nowIdx);
+		return measuredFromHourlyEnergy((data ?? []) as Period[], step, nowIdx);
 	}
 
 	// Guards against out-of-order responses: only the latest request may land.
@@ -157,11 +122,13 @@
 		const id = ++seq;
 		const now = new Date();
 		const from = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+		const nowIdx = slotIndex(now.getHours(), now.getMinutes());
 		const next = pvKey
 			? await fetchRollups(pvKey, from, now)
-			: await fetchHourlyEnergy(from, now, slotIndex(now.getHours(), now.getMinutes()));
+			: await fetchHourlyEnergy(from, now, nowIdx);
 		if (id !== seq) return;
 		actual = next;
+		actualNowIdx = nowIdx;
 	}
 
 	// Prime once at mount so the first open paints the measured bars instantly
@@ -178,11 +145,11 @@
 	});
 
 	// Measured series padded to the slot grid, so slot assembly needs no guards.
-	const measured = $derived<Actual>(actual ?? { avgW: [], peakW: [] });
+	const measured = $derived<MeasuredDay>(actual ?? { avgW: [], peakW: [] });
 
-	const actualTotalKwh = $derived(
-		measured.avgW.reduce((s: number, w) => s + ((w ?? 0) * step) / 60 / 1000, 0)
-	);
+	// kWh plus the coverage behind it. A partial figure is labelled as partial —
+	// it is a reconstruction from what was recorded, not the inverter's counter.
+	const actualTotal = $derived(measuredTotal(measured, step, actualNowIdx));
 
 	/** The day's slots with the measured series filled in and no forecast yet. */
 	function baseSlots(): ForecastSlot[] {
@@ -234,7 +201,19 @@
 
 	// `sub` is always present so the tile markup needs a single truthiness test.
 	const stats = $derived([
-		{ label: m.weather_forecast_actual(), value: `${kwh(actualTotalKwh)} kWh`, sub: '' },
+		{
+			label: m.weather_forecast_actual(),
+			value: `${kwh(actualTotal.kwh)} kWh`,
+			// Slots nobody recorded contribute nothing to the integral, so an outage
+			// would otherwise read as a low-but-confident "Actual". Say so instead.
+			sub:
+				actual === null || actualTotal.complete
+					? ''
+					: m.weather_forecast_partial({
+						covered: actualTotal.coveredSlots,
+						elapsed: actualTotal.elapsedSlots
+					})
+		},
 		{ label: m.weather_forecast_today(), value: `${kwh(todayKwh)} kWh`, sub: '' },
 		{ label: m.weather_forecast_remaining(), value: `${kwh(remainingTodayKwh)} kWh`, sub: '' },
 		{

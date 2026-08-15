@@ -164,7 +164,15 @@ export function startMqttBridge(config: MqttConfig, deps: MqttBridgeDeps): MqttB
   client.on("message", async (topic, payload) => {
     const key = keyByCommandTopic.get(topic);
     if (!key) return; // Not a command topic we own.
-    const value = Number(payload.toString().trim());
+    // An empty payload is how MQTT *deletes* a retained message, not a command:
+    // `Number("")` is 0, so without this guard tidying up a retained setpoint
+    // would drive the register to zero (e.g. max charge current → 0 A).
+    const raw = payload.toString().trim();
+    if (raw === "") {
+      logger.warn("{topic}: empty payload ignored", { topic });
+      return;
+    }
+    const value = Number(raw);
     if (Number.isNaN(value)) {
       logger.warn('{topic}: non-numeric payload "{payload}"', {
         topic,

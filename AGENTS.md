@@ -26,6 +26,12 @@ green.
   (`const real = await import("./x"); mock.module("./x", () => ({ ...real, stubbed }))`) —
   a partial mock deletes the other exports for every test file that runs afterwards and
   breaks them at import, order-dependently. Enforced by `bun run test:mocks`.
+- ALWAYS restore a first-party mock too: a spread mock is still permanent, so the stub stays
+  installed for every later file — and the suite that unit-tests that module then asserts
+  against the double (red in the full run, green alone). Snapshot the exports BY VALUE at load
+  time and hand them back: `const realX = await import("./x"); const realXExports = { ...realX };`
+  … `afterAll(() => mock.module("./x", () => ({ ...realXExports })));`. A namespace is live, so
+  `() => realX` restores the stub. Also enforced by `bun run test:mocks`.
 
 Full rationale: `CONTRIBUTING.md` §6. Frontend specifics: `apps/web/TESTING.md`.
 

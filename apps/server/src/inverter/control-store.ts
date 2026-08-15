@@ -14,7 +14,13 @@ import {
 import { readSetting, writeSetting } from "../settings/app-settings";
 import type { ControlStore } from "./control-expr";
 
-export const dbControlStore: ControlStore = (() => {
+/**
+ * One store over the shared `app_settings` row, with its own cache. Exported so
+ * the caching contract can be proven on a cold instance instead of on the
+ * process-wide {@link dbControlStore}, whose cache outlives any single test.
+ */
+// fallow-ignore-next-line unused-export -- asserted by control-store.test.ts; test files aren't traced as consumers
+export function createControlStore(): ControlStore {
   let cache: ControlState | null = null;
   return {
     async get() {
@@ -26,4 +32,7 @@ export const dbControlStore: ControlStore = (() => {
       cache = next;
     },
   };
-})();
+}
+
+/** The process-wide store the poll loop and control interpreter are wired to. */
+export const dbControlStore: ControlStore = createControlStore();

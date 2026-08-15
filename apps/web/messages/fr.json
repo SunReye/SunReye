@@ -840,5 +840,6 @@
   "peak_shaving_pa_grid_charge": "Charger la batterie depuis le réseau",
   "peak_shaving_pa_grid_charge_desc": "Acheter sur le réseau pendant une fenêtre. N'a d'effet que si votre prix d'achat suit le marché (Réglages → Tarif) : un prix de gros négatif n'allège pas une facture à prix fixe. Et vous payez toujours acheminement, taxes et TVA — il s'agit d'acheter à l'heure la moins chère, pas d'être payé pour consommer.",
   "peak_shaving_pa_grid_charge_a": "Courant de charge réseau (A)",
-  "peak_shaving_pa_grid_charge_a_desc": "Courant tiré du réseau lors d'une charge pendant une fenêtre."
+  "peak_shaving_pa_grid_charge_a_desc": "Courant tiré du réseau lors d'une charge pendant une fenêtre.",
+  "weather_forecast_partial": "{covered}/{elapsed} créneaux mesurés"
 }

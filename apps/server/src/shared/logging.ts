@@ -64,9 +64,14 @@ export function recentLogs(): LogEntry[] {
  * `JSON.stringify` yields `undefined` for functions and `undefined` itself, and
  * `String()` reproduces the plain concatenation that would have coerced it.
  * Circular structures throw, and fall back to `String(value)`.
+ *
+ * Errors are the exception: `message` and `stack` are non-enumerable, so JSON
+ * renders a caught error as `{}` and every `…failed: {error}` line would reach
+ * the log viewer without its cause. `String()` gives `name: message`.
  */
 function renderValue(value: unknown): string {
   if (typeof value === "string") return value;
+  if (value instanceof Error) return String(value);
   try {
     return String(JSON.stringify(value));
   } catch {

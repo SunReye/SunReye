@@ -1,4 +1,4 @@
-import { describe, expect, mock, test } from "bun:test";
+import { afterAll, describe, expect, mock, test } from "bun:test";
 import { Elysia } from "elysia";
 
 // Mutable stand-ins the mocked modules read at call time, so each test can set
@@ -10,6 +10,15 @@ let session: { user: { role: string } } | null = null;
 // factory returning only what this suite needs deletes the other exports for
 // every test file that runs after it (see scripts/mock-hygiene.ts).
 const realAccessSettings = await import("../settings/access-settings");
+
+// The spread keeps the other exports alive; it does nothing about the stub,
+// which is permanent and stayed installed for every later file. That is not
+// theoretical here: this `isPublicDashboard` stub was observed failing two of
+// `../settings/access-settings`'s own tests, which unit-test the real reader and
+// were silently asserting against this double. Snapshot the exports BY VALUE
+// now — a namespace is live, so once the mock below is installed the namespace's
+// own `isPublicDashboard` IS the stub, and handing it back restores nothing.
+const realAccessSettingsExports = { ...realAccessSettings };
 
 mock.module("../settings/access-settings", () => ({
   ...realAccessSettings,
@@ -30,6 +39,14 @@ const app = new Elysia()
 
 const status = (path: string) =>
   app.handle(new Request(`http://localhost${path}`)).then((r) => r.status);
+
+// `afterAll`, not `afterEach`: the guard above binds to the stub and every test
+// in this file still needs it. `@SunReye/auth` is not handed back — the real
+// module cannot be imported to snapshot (booting Better Auth is what the mock
+// avoids), and no suite in this repo unit-tests it.
+afterAll(() => {
+  mock.module("../settings/access-settings", () => ({ ...realAccessSettingsExports }));
+});
 
 describe("requireSession (dashboard reads)", () => {
   test("401 when locked down and no session", async () => {

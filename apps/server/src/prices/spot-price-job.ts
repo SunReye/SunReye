@@ -176,7 +176,11 @@ export type PricedSlot = SpotPricePoint & {
 function priceSlots(slice: SpotSlice, tariff: TariffConfig): PricedSlot[] {
   return slice.series.map((p) => {
     const hour = Number(p.time.slice(11, 13));
-    const isoWeekday = ((new Date(p.startMs).getUTCDay() + 6) % 7) + 1;
+    // Both halves come from the same local label: reading the weekday off the
+    // instant instead would call the first hours of a market day by the previous
+    // day's name (00:15 CEST is still the day before in UTC), so a weekday-
+    // restricted band would land one day out on exactly those slots.
+    const isoWeekday = ((new Date(`${p.time}:00Z`).getUTCDay() + 6) % 7) + 1;
     return {
       ...p,
       importPerKwh: importPriceAt(tariff, p.eurPerMwh, hour, isoWeekday),

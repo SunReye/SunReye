@@ -29,6 +29,7 @@ import {
   upsertCorrectionCells,
   upsertCorrectionState,
 } from "@SunReye/db/forecast-correction";
+import type { InverterProfile, InverterSample } from "@SunReye/inverter-core";
 import {
   type CorrectionModel,
   type Observation,
@@ -58,6 +59,61 @@ const HOUR_MS = 3_600_000;
 const isoDate = (ms: number): string => new Date(ms).toISOString().slice(0, 10);
 const dayMs = (date: string): number => Date.parse(`${date}T00:00:00Z`);
 const addDays = (date: string, n: number): string => isoDate(dayMs(date) + n * DAY_MS);
+
+/**
+ * Everything the job reaches the outside world through: the reanalysis archive,
+ * the measured rollups, the persisted grid, the active plant and the clock.
+ * Injected — with the production wiring as the default, so callers pass nothing —
+ * rather than called straight from the module, so the parts that actually bite
+ * (which days a run asks for, how a plant-local forecast hour is paired with a
+ * measured one, when the cursor may advance) are provable without a database,
+ * a network or the system clock behind them.
+ */
+export interface CorrectionIo {
+  /** Wall clock, ms. Decides which days have settled — nothing else does. */
+  now(): number;
+  /** The active plant profile, or null when none is configured. */
+  activeProfile(): InverterProfile | null;
+  /** Newest poll sample; its inverter id is what the data is keyed to. */
+  latestSample(): InverterSample | null;
+  fetchArchive: typeof fetchHistoricalIrradiance;
+  measuredHourlyAvg: typeof queryHourlyAvgRange;
+  /** The stored cell rows — the view renders each one's weight. */
+  readCells: typeof getCorrectionCells;
+  /** The same cells as the grid a run folds into. */
+  loadModel: typeof loadCorrectionModel;
+  readState: typeof getCorrectionState;
+  writeCells: typeof upsertCorrectionCells;
+  writeState: typeof upsertCorrectionState;
+}
+
+/**
+ * The real wiring: system clock, live poll cache, Open-Meteo archive, database.
+ *
+ * These members hold the imported functions directly, so the binding is captured
+ * when *this* module is first imported. That is invisible in production, but it
+ * means a `mock.module` swapping one of these modules afterwards does not reach
+ * the default wiring — unlike a plain call through the import, which would. Test
+ * this job by injecting a {@link CorrectionIo}, never by mocking the modules
+ * below and calling it with one argument: the mock may or may not be seen,
+ * depending on which suite imported this file first.
+ */
+const productionIo: CorrectionIo = {
+  now: () => Date.now(),
+  activeProfile: getActiveProfileOrNull,
+  latestSample: () => liveState.latest,
+  fetchArchive: fetchHistoricalIrradiance,
+  measuredHourlyAvg: queryHourlyAvgRange,
+  readCells: getCorrectionCells,
+  loadModel: loadCorrectionModel,
+  readState: getCorrectionState,
+  writeCells: upsertCorrectionCells,
+  writeState: upsertCorrectionState,
+};
+
+/** The in-memory grid built from stored cell rows. */
+const modelOf = (rows: readonly { month: number; hour: number; ratio: number; weight: number }[]) =>
+  new Map(rows.map((r) => [cellKey(r.month, r.hour), { ratio: r.ratio, weight: r.weight }]));
 
 /** One grid cell for the settings panel: the applied factor + its confidence. */
 export interface CorrectionCellView {
@@ -90,9 +146,12 @@ const skillOf = (state: CorrectionStateRow): SkillStats => ({
 });
 
 /** Assemble the settings-panel view: the learned grid, applied factors, and skill. */
-export async function getCorrectionView(config: WeatherConfig): Promise<ForecastCorrectionView> {
+export async function getCorrectionView(
+  config: WeatherConfig,
+  io: CorrectionIo = productionIo,
+): Promise<ForecastCorrectionView> {
   const enabled = config.forecast.correction.enabled;
-  const source = resolvePvSource();
+  const source = resolvePvSource(io);
   if (!source) {
     return {
       enabled,
@@ -103,12 +162,10 @@ export async function getCorrectionView(config: WeatherConfig): Promise<Forecast
   }
 
   const [rows, state] = await Promise.all([
-    getCorrectionCells(source.inverterId),
-    getCorrectionState(source.inverterId),
+    io.readCells(source.inverterId),
+    io.readState(source.inverterId),
   ]);
-  const model: CorrectionModel = new Map(
-    rows.map((r) => [cellKey(r.month, r.hour), { ratio: r.ratio, weight: r.weight }]),
-  );
+  const model: CorrectionModel = modelOf(rows);
   const skill = skillOf(state);
   return {
     enabled,
@@ -124,12 +181,12 @@ export async function getCorrectionView(config: WeatherConfig): Promise<Forecast
 }
 
 /** Which inverter id + `pv.total.power` metric key the correction is keyed to. */
-function resolvePvSource(): { inverterId: string; pvKey: string } | null {
-  const profile = getActiveProfileOrNull();
+function resolvePvSource(io: CorrectionIo): { inverterId: string; pvKey: string } | null {
+  const profile = io.activeProfile();
   if (!profile) return null;
   const pvKey = profile.metrics.find((m) => m.role === "pv.total.power")?.key;
   if (!pvKey) return null;
-  return { inverterId: liveState.latest?.inverterId ?? profile.id, pvKey };
+  return { inverterId: io.latestSample()?.inverterId ?? profile.id, pvKey };
 }
 
 export interface LearnRunResult {
@@ -140,8 +197,11 @@ export interface LearnRunResult {
 }
 
 /** The settled, not-yet-learned `[start, end]` window, or null when nothing is due. */
-function learnWindow(learnedThrough: string | null): { startDate: string; endDate: string } | null {
-  const endDate = isoDate(Date.now() - SETTLE_DAYS * DAY_MS);
+function learnWindow(
+  learnedThrough: string | null,
+  nowMs: number,
+): { startDate: string; endDate: string } | null {
+  const endDate = isoDate(nowMs - SETTLE_DAYS * DAY_MS);
   const startDate = learnedThrough ? addDays(learnedThrough, 1) : addDays(endDate, -BACKFILL_DAYS);
   return startDate > endDate ? null : { startDate, endDate };
 }
@@ -149,13 +209,14 @@ function learnWindow(learnedThrough: string | null): { startDate: string; endDat
 type ArchiveData = Awaited<ReturnType<typeof fetchHistoricalIrradiance>>;
 
 /** Reanalysis irradiance for the window, or null when the archive call fails. */
-async function fetchArchive(
+async function archiveOrNull(
+  io: CorrectionIo,
   config: WeatherConfig & { latitude: number; longitude: number },
   startDate: string,
   endDate: string,
 ): Promise<ArchiveData | null> {
   try {
-    return await fetchHistoricalIrradiance(
+    return await io.fetchArchive(
       { latitude: config.latitude, longitude: config.longitude },
       config.forecast.arrays.map(({ tilt, azimuth }) => ({ tilt, azimuth })),
       startDate,
@@ -176,12 +237,13 @@ async function fetchArchive(
  * so a local-time forecast slot can be matched to them by instant.
  */
 async function measuredByMs(
+  io: CorrectionIo,
   source: { inverterId: string; pvKey: string },
   expected: SolarForecastPoint[],
   toUtcMs: (localTime: string) => number,
   fallbackTime: string,
 ): Promise<Map<number, number>> {
-  const rows = await queryHourlyAvgRange(
+  const rows = await io.measuredHourlyAvg(
     source.pvKey,
     source.inverterId,
     new Date(toUtcMs(expected[0]?.time ?? fallbackTime)),
@@ -197,12 +259,13 @@ async function measuredByMs(
  * advancing the cursor); an empty array is a successful "nothing to match".
  */
 async function collectObservations(
+  io: CorrectionIo,
   config: WeatherConfig & { latitude: number; longitude: number },
   source: { inverterId: string; pvKey: string },
   startDate: string,
   endDate: string,
 ): Promise<Observation[] | null> {
-  const data = await fetchArchive(config, startDate, endDate);
+  const data = await archiveOrNull(io, config, startDate, endDate);
   if (!data) return null; // fetch failed — the caller retries without advancing
 
   const expected = buildSolarForecast(config.forecast, data, "open-meteo-archive").raw.series;
@@ -210,7 +273,7 @@ async function collectObservations(
 
   const toUtcMs = (localTime: string): number =>
     Date.parse(`${localTime}:00Z`) - data.utcOffsetSeconds * 1000;
-  const actualByMs = await measuredByMs(source, expected, toUtcMs, endDate);
+  const actualByMs = await measuredByMs(io, source, expected, toUtcMs, endDate);
 
   const observations: Observation[] = [];
   for (const point of expected) {
@@ -224,12 +287,13 @@ async function collectObservations(
 
 /** Persist the cells the batch touched and advance the cursor + skill stats. */
 async function persistLearned(
+  io: CorrectionIo,
   inverterId: string,
   model: CorrectionModel,
   result: ReturnType<typeof learn>,
   learnedThrough: string,
 ): Promise<void> {
-  await upsertCorrectionCells(
+  await io.writeCells(
     [...result.touched].map((key) => {
       const cell = model.get(key);
       const [month, hour] = key.split(":").map(Number);
@@ -242,7 +306,7 @@ async function persistLearned(
       };
     }),
   );
-  await upsertCorrectionState({
+  await io.writeState({
     inverterId,
     learnedThrough,
     maeRaw: result.skill.maeRaw,
@@ -256,18 +320,27 @@ async function persistLearned(
  * active plant. Idempotent and cheap: no-ops when the forecast isn't configured,
  * the plant maps no total-PV metric, or there's nothing new to learn.
  */
-export async function runForecastCorrectionLearn(config: WeatherConfig): Promise<LearnRunResult> {
+export async function runForecastCorrectionLearn(
+  config: WeatherConfig,
+  io: CorrectionIo = productionIo,
+): Promise<LearnRunResult> {
   // `forecastReady` also narrows the config's location to non-null.
   if (!forecastReady(config)) return { learned: 0, learnedThrough: null };
-  const source = resolvePvSource();
+  const source = resolvePvSource(io);
   if (!source) return { learned: 0, learnedThrough: null };
 
-  const state = await getCorrectionState(source.inverterId);
+  const state = await io.readState(source.inverterId);
   const unchanged = { learned: 0, learnedThrough: state?.learnedThrough ?? null };
-  const window = learnWindow(state?.learnedThrough ?? null);
+  const window = learnWindow(state?.learnedThrough ?? null, io.now());
   if (!window) return unchanged;
 
-  const observations = await collectObservations(config, source, window.startDate, window.endDate);
+  const observations = await collectObservations(
+    io,
+    config,
+    source,
+    window.startDate,
+    window.endDate,
+  );
   if (observations === null) return unchanged; // fetch failed — retry next run
   if (observations.length === 0) {
     // No measured hour overlaps the window (fresh install, rollup lag, inverter
@@ -280,7 +353,7 @@ export async function runForecastCorrectionLearn(config: WeatherConfig): Promise
     return unchanged;
   }
 
-  return await foldObservations(config, source.inverterId, state, observations, window.endDate);
+  return await foldObservations(io, config, source.inverterId, state, observations, window.endDate);
 }
 
 /**
@@ -290,13 +363,14 @@ export async function runForecastCorrectionLearn(config: WeatherConfig): Promise
  * skipped forever.
  */
 async function foldObservations(
+  io: CorrectionIo,
   config: WeatherConfig,
   inverterId: string,
   state: CorrectionStateRow,
   observations: Observation[],
   windowEnd: string,
 ): Promise<LearnRunResult> {
-  const model = await loadCorrectionModel(inverterId);
+  const model = await io.loadModel(inverterId);
   const nameplateW = config.forecast.arrays.reduce((sum, a) => sum + a.kwp, 0) * 1000;
   const result = learn(
     model,
@@ -307,7 +381,7 @@ async function foldObservations(
   );
 
   const learnedThrough = observations.at(-1)?.localTime.slice(0, 10) ?? windowEnd;
-  await persistLearned(inverterId, model, result, learnedThrough);
+  await persistLearned(io, inverterId, model, result, learnedThrough);
   logger.info("learned {n} hours through {end} ({cells} cells)", {
     n: observations.length,
     end: learnedThrough,
