@@ -9,6 +9,13 @@
  */
 
 import type { HourEnergy } from "@SunReye/contracts/energy";
+import type {
+  NegativeWindow,
+  PaidVsMarket,
+  SpotDailyStat,
+  SpotSummary,
+  SpotWhatIf,
+} from "@SunReye/contracts/prices";
 import { type TariffConfig, importPriceForHour, landedImportPrice } from "@SunReye/db/tariff";
 
 const HOUR_MS = 3_600_000;
@@ -42,28 +49,6 @@ export interface SpotDailyRow {
   priceMinutes: number;
   minutes: number;
   negativeMinutes: number;
-}
-
-/** One day of the price series returned to the client. */
-export interface SpotDailyStat {
-  date: string;
-  avgEurPerMwh: number;
-  minEurPerMwh: number;
-  maxEurPerMwh: number;
-  slots: number;
-  negativeSlots: number;
-}
-
-/** Window-wide price summary; null when the window holds no stored slot. */
-export interface SpotSummary {
-  avgEurPerMwh: number;
-  minEurPerMwh: number;
-  maxEurPerMwh: number;
-  slots: number;
-  negativeSlots: number;
-  /** Wall-clock hours that cleared below zero, from the slot widths — the
-   *  headline figure, since slot counts differ between 15- and 60-minute days. */
-  negativeHours: number;
 }
 
 /** Derive the per-day series and its window-wide roll-up from the SQL rows. */
@@ -100,14 +85,6 @@ export function spotDailyStats(rows: readonly SpotDailyRow[]): {
       negativeHours: total.negativeMinutes / 60,
     },
   };
-}
-
-/** A contiguous run of below-zero market slots. */
-export interface NegativeWindow {
-  start: string;
-  end: string;
-  minEurPerMwh: number;
-  slots: number;
 }
 
 const slotEndMs = (s: SpotPriceSlot): number => s.startMs + s.minutes * MINUTE_MS;
@@ -162,21 +139,6 @@ export function hourlyAveragePrices(slots: readonly SpotPriceSlot[]): Map<number
   return new Map([...acc].map(([k, a]) => [k, a.priceMinutes / a.minutes]));
 }
 
-/**
- * How the household's import timing compares with the market. Only the weighted
- * side lives here: the market average it is read against is the window's
- * {@link SpotSummary.avgEurPerMwh}, so the screen states one market figure
- * rather than two that differ in weighting and coverage.
- */
-export interface PaidVsMarket {
-  importKwh: number;
-  /** Σ(import·price) / Σ import over priced hours. Below the market average
-   *  means the plant imported in the cheaper hours. */
-  importWeightedAvgEurPerMwh: number;
-  /** Share of imported kWh that fell in an hour with a known market price. */
-  coverage: number;
-}
-
 /** Weight the window's import by the market price of the hour it fell in. Null
  *  when nothing was imported in a priced hour — there is no average then. */
 export function paidVsMarket(
@@ -200,25 +162,6 @@ export function paidVsMarket(
     importWeightedAvgEurPerMwh: weighted / pricedKwh,
     coverage: importKwh > 0 ? pricedKwh / importKwh : 0,
   };
-}
-
-/** What the window's import would have cost under each import model. */
-export interface SpotWhatIf {
-  /** Priced from the tariff's time-of-use bands. */
-  staticCost: number;
-  /** Priced from the market, landed through the tariff's spot components. */
-  spotCost: number;
-  /** `spotCost − staticCost`: negative means spot would have been cheaper. */
-  delta: number;
-  /**
-   * Whether `import.spot` carries any real component. With markup, grid fees,
-   * levies and VAT all at zero the "spot cost" is bare wholesale and grossly
-   * understates a bill — the UI must caption the figure accordingly rather than
-   * present it as a quote.
-   */
-  spotComponentsConfigured: boolean;
-  /** Share of imported kWh that had a market price. */
-  coverage: number;
 }
 
 /** ISO weekday (1=Mon … 7=Sun) from a Date's local day. */

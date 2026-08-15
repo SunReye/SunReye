@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { SpotPriceView } from "server/src/prices/spot-price-job";
+import type { SpotPriceView } from "@SunReye/contracts/prices";
 import {
   type BandScale,
   bandSpan,

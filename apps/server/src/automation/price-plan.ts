@@ -27,7 +27,7 @@
 import type { PriceAwareConfig } from "@SunReye/db/automation-config";
 import { HOUR_MS } from "../energy/energy-flow";
 import { type ForecastSlice, slotsBetween } from "./slot-window";
-import type { SpotSlice } from "../prices/spot-price";
+import type { SpotSlice } from "@SunReye/contracts/prices";
 
 const MINUTE_MS = 60_000;
 

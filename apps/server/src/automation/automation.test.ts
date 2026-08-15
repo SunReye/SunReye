@@ -13,7 +13,7 @@ import { type WeatherConfig, weatherConfigSchema } from "@SunReye/db/weather";
 import type { InverterProfile, InverterSample, MetricDef } from "@SunReye/inverter-core";
 import type { SolarForecast } from "../forecast/solar-forecast";
 import { buildProfileContext } from "../inverter/inverter";
-import type { SpotSlice } from "../prices/spot-price";
+import type { SpotSlice } from "@SunReye/contracts/prices";
 import { getAutomationConfig } from "../settings/automation-settings";
 import {
   type AutomationModules,

@@ -20,7 +20,7 @@ import { HOUR_MS } from "../energy/energy-flow";
 import type { EvccLoadpoint, EvccState } from "../evcc/evcc";
 import { type PriceAction, type PriceRegime, planPriceAction } from "./price-plan";
 import { type ForecastSlice, remainingSlotsToday } from "./slot-window";
-import type { SpotSlice } from "../prices/spot-price";
+import type { SpotSlice } from "@SunReye/contracts/prices";
 
 /** Battery this close to full (kWh headroom) → drop to the top-balance floor. */
 export const NEAR_FULL_KWH = 0.2;

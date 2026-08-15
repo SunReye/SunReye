@@ -5,7 +5,7 @@
 // registry against the same TileDef surface.
 
 import type { CostBreakdown, CostTotals } from "@SunReye/contracts/energy";
-import type { SpotStats, SpotWhatIf } from "server/src/statistics/spot-stats";
+import type { SpotStats, SpotWhatIf } from "@SunReye/contracts/prices";
 import type { DayRecord, RecordsResponse } from "@SunReye/contracts/statistics";
 import type { CostFormatters } from "$lib/cost/format";
 import { dayKeyDate, dayMonthYear } from "$lib/format/date";

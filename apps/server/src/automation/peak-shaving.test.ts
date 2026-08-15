@@ -15,7 +15,7 @@ import {
 } from "./peak-shaving";
 import { tariffConfigSchema } from "@SunReye/db/tariff";
 import type { ForecastSlice } from "./slot-window";
-import type { SpotSlice } from "../prices/spot-price";
+import type { SpotSlice } from "@SunReye/contracts/prices";
 import { type DecisionPoint, createDecisionLog } from "./automation-history";
 import { projectPeakShaving } from "./peak-shaving-plan";
 import { type AutomationIO, createPeakShavingEngine } from "./peak-shaving-engine";

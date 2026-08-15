@@ -9,7 +9,7 @@
  * fed from two different sources, and only the shaping differs.
  */
 
-import type { NegativeWindow as SpotNegativeWindow } from "server/src/statistics/spot-stats";
+import type { NegativeWindow as SpotNegativeWindow } from "@SunReye/contracts/prices";
 import { ctPerKwh, type NegativeWindow, type PriceRow } from "$lib/prices/price-series";
 
 const DAY_MS = 86_400_000;

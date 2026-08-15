@@ -58,7 +58,7 @@ import {
 import { insideNegativeWindow } from "./price-plan";
 import type { PriceRegime } from "./price-plan";
 import type { TariffConfig } from "@SunReye/db/tariff";
-import type { SpotSlice } from "../prices/spot-price";
+import type { SpotSlice } from "@SunReye/contracts/prices";
 import {
   type PeakShavingPlans,
   type PlanLimits,

@@ -27,7 +27,7 @@ import type { SpotPriceConfig } from "@SunReye/db/spot-price-config";
 import type { ZodType } from "zod";
 import { HISTORY_CAPACITY, type DecisionPoint } from "./automation-history";
 import type { ProfileContext } from "../inverter/inverter";
-import type { SpotSlice } from "../prices/spot-price";
+import type { SpotSlice } from "@SunReye/contracts/prices";
 import { log } from "../shared/logging";
 import type { Streams } from "../shared/streams";
 import type { PeakShavingPlans } from "./peak-shaving-plan";
