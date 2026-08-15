@@ -23,8 +23,11 @@ import type { InverterSample, InverterSource } from "@SunReye/inverter-core";
 import mqtt from "mqtt";
 import { startAutomations, stopAutomations } from "../automation/automation";
 import { getInverterConfig, getMqttConfig } from "../settings/config";
-import { executeControl, injectControlValues } from "./control-expr";
+import type { ControlStore } from "./control-expr";
 import { dbControlStore } from "./control-store";
+import { createControlWriter } from "./control-writer";
+import { type HistoryBuffer, createHistoryBuffer } from "./history-buffer";
+import { type JobScheduler, createJobScheduler } from "./job-scheduler";
 import { evccOnLoadSample } from "../evcc/evcc";
 import {
   buildProfileContext,
@@ -65,17 +68,6 @@ const LEARN_KICK_DELAY_MS = 2 * 60_000;
 const SPOT_INTERVAL_MS = 30 * 60_000;
 const SPOT_KICK_DELAY_MS = 30_000;
 
-// The DB is purely the history store — live monitoring is served from
-// `liveState`/WebSocket in memory — so *when* rows land is invisible to every
-// feature. Accumulating many polls into one transaction collapses the
-// commit/fsync/WAL churn that dominates SSD write wear (TBW) at 1 Hz, for zero
-// functional change. Worst case a crash loses the buffered window of *history*
-// (never live data, never corruption) — an acceptable trade for telemetry.
-type MetricRow = typeof metricsRaw.$inferInsert;
-// Hard cap so a prolonged DB outage can't grow the buffer without bound; past
-// this the oldest rows are dropped (bounded, predictable memory).
-const MAX_PENDING = 100_000;
-
 /** One captured value from a test read, enriched for a plausibility check. */
 export interface TestSnapshotMetric {
   key: string;
@@ -97,12 +89,50 @@ export interface TestInverterResult {
   metrics?: TestSnapshotMetric[];
 }
 
+/** Collaborators injected into a runtime; each defaults to its production wiring. */
+export interface RuntimeDeps {
+  /**
+   * The batched history writer. Defaults to one committing to the real db — the
+   * only collaborator the runtime holds mutable buffer state for, lifted out so
+   * it owns its own cap/drop/re-queue boundaries and is tested without a runtime.
+   */
+  history?: HistoryBuffer;
+  /**
+   * The background job scheduler. Defaults to one arming the process globals; it
+   * owns the arm/teardown of the flush, forecast, learn and price schedules (and
+   * their post-boot kicks) so the runtime states them once and never juggles a
+   * handle. The poll loop is not one of its jobs — its cadence is re-armed on
+   * every source rebuild, so the runtime keeps it.
+   */
+  scheduler?: JobScheduler;
+  /**
+   * Persistent state for composite (`controlExpr`) controls, consumed by both
+   * the write funnel and the per-poll state injection. Defaults to the
+   * `app_settings`-backed store; injected so a test drives the funnel against an
+   * in-memory double and this module no longer needs the store mocked.
+   */
+  controlStore?: ControlStore;
+  /**
+   * The EV charge-power estimator's house-load hook, fed one sample (W, or null
+   * when the profile maps no load) per poll. Defaults to the real EVCC ingest's
+   * {@link evccOnLoadSample} (a no-op when EVCC is off); injected so a test
+   * records the per-poll load through a spy rather than mocking `../evcc/evcc`.
+   */
+  onLoadSample?: (watts: number | null) => void;
+}
+
 /**
  * Build a runtime controller. Every collaborator is a module import captured by
- * the closure below, and every mutable field is closure-local — no module-level
- * state, so a second instance is independent.
+ * the closure below (or injected via {@link RuntimeDeps}), and every mutable
+ * field is closure-local — no module-level state, so a second instance is
+ * independent.
  */
-function createRuntime() {
+// fallow-ignore-next-line unused-export -- the injection seam exercised by runtime.test.ts (which builds its own instance with a fake history buffer); test files aren't traced as consumers
+export function createRuntime(deps: RuntimeDeps = {}) {
+  const historyBuffer =
+    deps.history ?? createHistoryBuffer({ store: db, table: metricsRaw, logger });
+  const scheduler = deps.scheduler ?? createJobScheduler();
+  const onLoadSample = deps.onLoadSample ?? evccOnLoadSample;
   let ctx: ProfileContext | null = null;
   let source: InverterSource | null = null;
   let pollTimer: ReturnType<typeof setInterval> | null = null;
@@ -125,16 +155,6 @@ function createRuntime() {
   /** Last logged poll failure, to collapse an identical error repeating at 1 Hz. */
   let lastPollError: string | null = null;
   let lastPollErrorAt = 0;
-  let forecastTimer: ReturnType<typeof setInterval> | null = null;
-  let learnTimer: ReturnType<typeof setInterval> | null = null;
-  let learnKickTimer: ReturnType<typeof setTimeout> | null = null;
-  let spotTimer: ReturnType<typeof setInterval> | null = null;
-  let spotKickTimer: ReturnType<typeof setTimeout> | null = null;
-
-  // --- History write buffer ------------------------------------------------
-  let pending: MetricRow[] = [];
-  let flushTimer: ReturnType<typeof setInterval> | null = null;
-  let flushing = false;
 
   const inverterStatus = {
     connected: false,
@@ -189,36 +209,6 @@ function createRuntime() {
     }
   }
 
-  /** Queue history rows for the next flush; eager-flush if the buffer is huge. */
-  function enqueueRows(rows: MetricRow[]): void {
-    for (const row of rows) pending.push(row);
-    // Guards against a mis-set (very long) flush interval or a stalled flush
-    // producing one enormous transaction; the timer handles the normal path.
-    if (!flushing && pending.length >= MAX_PENDING) void flushPending();
-  }
-
-  /** Write the buffered history rows in a single transaction. */
-  async function flushPending(): Promise<void> {
-    if (flushing || pending.length === 0) return;
-    flushing = true;
-    const batch = pending;
-    pending = [];
-    try {
-      await db.insert(metricsRaw).values(batch);
-    } catch (error) {
-      // Re-queue (oldest first) so a transient DB blip doesn't drop history, but
-      // never past the cap — trim the oldest if we're over.
-      pending = batch.concat(pending);
-      if (pending.length > MAX_PENDING) pending = pending.slice(-MAX_PENDING);
-      logger.error("history flush failed, {count} rows queued: {error}", {
-        count: pending.length,
-        error,
-      });
-    } finally {
-      flushing = false;
-    }
-  }
-
   /** The active profile context, set by {@link start} before the loop runs. */
   function context(): ProfileContext {
     if (!ctx) throw new Error("runtime not started");
@@ -253,21 +243,22 @@ function createRuntime() {
       inverterStatus.lastSampleAt = sample.time;
       lastPollError = null;
       // Composite controls own no register; fold their current (e.g. lock) state
-      // into the sample so every downstream surface sees it.
-      await injectControlValues(sample, context(), dbControlStore);
+      // into the sample so every downstream surface sees it (same store as the
+      // write funnel).
+      await controlWriter.injectState(sample);
       liveState.set(sample);
       // The EV charge-power estimator refines its estimate from the 1 Hz house
       // load — between EVCC's much slower publishes (no-op when EVCC is off).
-      evccOnLoadSample(loadPowerOf(sample));
+      onLoadSample(loadPowerOf(sample));
       const rows = Object.entries(sample.metrics).map(([metric, value]) => ({
         time: new Date(sample.time),
         inverterId: sample.inverterId,
         metric,
         value,
       }));
-      // Buffer for a batched flush (see the history write buffer above) rather
-      // than committing one transaction per poll.
-      if (rows.length > 0) enqueueRows(rows);
+      // Buffer for a batched flush (see {@link historyBuffer}) rather than
+      // committing one transaction per poll.
+      if (rows.length > 0) historyBuffer.enqueue(rows);
       streams?.emit("metrics", sample);
       bridge?.publishSample(sample);
     } catch (error) {
@@ -294,30 +285,25 @@ function createRuntime() {
     pollTimer = setInterval(pollOnce, intervalMs);
   }
 
-  /** Apply an inbound command write to the live source. */
-  async function write(key: string, value: number): Promise<void> {
-    if (!source) throw new Error("inverter not started");
-    // A composite control (controlExpr) runs its declarative action instead of a
-    // raw register write; the interpreter dispatches to the real target(s).
-    const def = context().defByKey.get(key);
-    if (def?.controlExpr) {
-      // The `let source` loses its non-null narrowing inside the closure, so
-      // capture it here.
-      const src = source;
-      return executeControl(def, value, {
-        ctx: context(),
-        store: dbControlStore,
-        write: (target, v) => src.write(target, v),
-        readLive: (target) => liveState.latest?.metrics[target],
-      });
-    }
-    await source.write(key, value);
-  }
+  /**
+   * The register-write funnel: every inbound command (web, MQTT bridge,
+   * automation) travels this single awaited path. It reads the live source
+   * lazily so a source swap is transparent, and shares its control-state store
+   * with the per-poll `injectState`. `write` is bound out as
+   * a stable reference the bridge and the automations keep calling through swaps.
+   */
+  const controlWriter = createControlWriter({
+    getSource: () => source,
+    getContext: context,
+    store: deps.controlStore ?? dbControlStore,
+    readLive: (target) => liveState.latest?.metrics[target],
+  });
+  const { write } = controlWriter;
 
   async function rebuildInverter(config: InverterConfig): Promise<void> {
     // Drain buffered rows before swapping sources so a changed inverterId can't
     // land on rows captured under the previous one.
-    await flushPending();
+    await historyBuffer.flush();
     const previous = source;
     source = buildSource(context().profile, config);
     // The simulator is always "connected"; a real Modbus source only proves it on
@@ -349,20 +335,23 @@ function createRuntime() {
   async function start(streamBus: Streams, profileCtx: ProfileContext): Promise<void> {
     ctx = profileCtx;
     streams = streamBus;
-    if (!flushTimer) {
-      flushTimer = setInterval(() => void flushPending(), env.HISTORY_FLUSH_INTERVAL_MS);
-    }
-    if (!forecastTimer) {
-      forecastTimer = setInterval(() => void publishForecastNow(), FORECAST_PUBLISH_INTERVAL_MS);
-    }
-    if (!learnTimer) {
-      learnTimer = setInterval(() => void learnCorrectionNow(), LEARN_INTERVAL_MS);
-      learnKickTimer = setTimeout(() => void learnCorrectionNow(), LEARN_KICK_DELAY_MS);
-    }
-    if (!spotTimer) {
-      spotTimer = setInterval(() => void syncSpotPricesNow(), SPOT_INTERVAL_MS);
-      spotKickTimer = setTimeout(() => void syncSpotPricesNow(), SPOT_KICK_DELAY_MS);
-    }
+    // The scheduler arms each of these once and is idempotent while running, so
+    // a re-boot re-points the source without stacking a second set of jobs. The
+    // flush cadence is read here (env is dynamic) rather than baked in.
+    scheduler.start([
+      { run: () => void historyBuffer.flush(), intervalMs: env.HISTORY_FLUSH_INTERVAL_MS },
+      { run: () => void publishForecastNow(), intervalMs: FORECAST_PUBLISH_INTERVAL_MS },
+      {
+        run: () => void learnCorrectionNow(),
+        intervalMs: LEARN_INTERVAL_MS,
+        kickMs: LEARN_KICK_DELAY_MS,
+      },
+      {
+        run: () => void syncSpotPricesNow(),
+        intervalMs: SPOT_INTERVAL_MS,
+        kickMs: SPOT_KICK_DELAY_MS,
+      },
+    ]);
     await rebuildInverter(await getInverterConfig());
     await rebuildBridge(await getMqttConfig());
     // Automations write through the same funnel as every other path; they only
@@ -476,20 +465,12 @@ function createRuntime() {
     await stopAutomations();
     if (pollTimer) clearInterval(pollTimer);
     pollTimer = null;
-    if (flushTimer) clearInterval(flushTimer);
-    flushTimer = null;
-    if (forecastTimer) clearInterval(forecastTimer);
-    forecastTimer = null;
-    if (learnTimer) clearInterval(learnTimer);
-    learnTimer = null;
-    if (learnKickTimer) clearTimeout(learnKickTimer);
-    learnKickTimer = null;
-    if (spotTimer) clearInterval(spotTimer);
-    spotTimer = null;
-    if (spotKickTimer) clearTimeout(spotKickTimer);
-    spotKickTimer = null;
+    // Clears the flush, forecast, learn and price schedules (and their kicks) —
+    // every timer but the poll loop, which the runtime owns because it is re-armed
+    // on each source rebuild.
+    scheduler.stop();
     // Persist whatever is buffered so a clean shutdown never drops history.
-    await flushPending();
+    await historyBuffer.flush();
     await bridge?.close();
     await source?.close();
   }
