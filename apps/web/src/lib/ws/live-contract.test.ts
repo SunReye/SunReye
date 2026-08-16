@@ -30,7 +30,7 @@ import {
   type WsSocket,
   createWsConnections,
 } from "../../../../server/src/routes/ws-connection";
-import { muxFrame, muxTopic } from "../../../../server/src/routes/ws-topics";
+import { wsFrame } from "../../../../server/src/routes/ws-topics";
 import type { TopicAccess } from "../../../../server/src/routes/ws-subscribe";
 import { createStreams } from "../../../../server/src/shared/streams";
 import { LiveBus } from "./bus";
@@ -107,14 +107,14 @@ function bridge(options: { backfill?: Record<string, () => unknown> } = {}) {
   });
 
   // The enveloped republish, one per topic, exactly as `index.ts` registers it
-  // — and through the same `muxFrame`, so the live half of this test crosses the
+  // — and through the same `wsFrame`, so the live half of this test crosses the
   // server's envelope rather than restating it.
   for (const topic of REPUBLISHED)
-    streams.subscribe(topic as "evcc", (data) => publish(muxTopic(topic), muxFrame(topic, data)));
+    streams.subscribe(topic as "evcc", (data) => publish(topic, wsFrame(topic, data)));
   // `logs` is the one topic whose bus payload (an entry) differs from its wire
   // payload (a batch). Production coalesces on a 250 ms flush timer; batching
   // each entry on its own keeps the wire shape — an array — without a timer.
-  streams.subscribe("logs", (entry) => publish(muxTopic("logs"), muxFrame("logs", [entry])));
+  streams.subscribe("logs", (entry) => publish("logs", wsFrame("logs", [entry])));
 
   let sockets = 0;
   /** The server's view of one connection: writes to the client, joins the fan-out. */

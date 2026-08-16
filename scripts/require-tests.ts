@@ -33,6 +33,19 @@ const EXEMPT = [
   /\/routes\/\+(layout|error)\.svelte$/,
 ];
 
+/**
+ * Paths an entry above would exempt, but which do hold behaviour. Checked after
+ * {@link EXEMPT}, so it is a deliberate override rather than a hole.
+ *
+ * An app's `src/index.ts` is the only one so far: the barrel rule says
+ * "re-exports only", and an app entry point is the opposite — it is the
+ * composition root, where the boot wiring and every decision that has not been
+ * pushed into a module lives. Inheriting the exemption meant that file could
+ * grow behaviour indefinitely with no test moving. Nested barrels
+ * (`.../ui/card/index.ts`) and package entry points keep the exemption.
+ */
+const NEVER_EXEMPT = [/^apps\/[^/]+\/src\/index\.ts$/];
+
 /** Extensions that can hold behaviour. Docs, JSON and SQL cannot. */
 const SOURCE_EXT = /\.(ts|tsx|js|jsx|mjs|cjs|svelte|svelte\.ts)$/;
 
@@ -46,6 +59,7 @@ export function isSourceFile(path: string): boolean {
   if (isTestFile(path)) return false;
   if (!SOURCE_EXT.test(path)) return false;
   if (!SOURCE_ROOTS.some((root) => root.test(path))) return false;
+  if (NEVER_EXEMPT.some((keep) => keep.test(path))) return true;
   return !EXEMPT.some((skip) => skip.test(path));
 }
 

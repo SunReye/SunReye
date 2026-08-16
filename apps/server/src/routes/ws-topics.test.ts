@@ -14,7 +14,7 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { TOPIC_POLICY, bufferedWhilePriming, isWsTopic, muxFrame, muxTopic } from "./ws-topics";
+import { TOPIC_POLICY, bufferedWhilePriming, isWsTopic, wsFrame } from "./ws-topics";
 
 /**
  * The topics under test, read back off the table itself. Derived here rather
@@ -91,66 +91,32 @@ describe("bufferedWhilePriming", () => {
   });
 });
 
-describe("muxTopic", () => {
-  test("the multiplexed fan-out lives in its own namespace", () => {
-    // The five original routes still publish bare payloads on the unprefixed
-    // names; the prefix is what lets both run side by side during migration.
-    expect(muxTopic("metrics")).toBe("mux:metrics");
-    expect(muxTopic("logs")).toBe("mux:logs");
-  });
-
-  test("no mux topic collides with a bare topic name", () => {
-    const mux = new Set(WS_TOPICS.map(muxTopic));
-    for (const topic of WS_TOPICS) expect(mux.has(topic)).toBe(false);
-  });
-});
-
-describe("muxFrame", () => {
+describe("wsFrame", () => {
   test("the envelope names the topic in the field the browser narrows on", () => {
     // `LiveBus` reads `frame.topic` to pick the subscriber and silently drops a
     // miss, so the key is the contract — not the shape of the object around it.
-    const frame = JSON.parse(muxFrame("evcc", { chargers: [] } as never)) as Record<
-      string,
-      unknown
-    >;
+    const frame = JSON.parse(wsFrame("evcc", { chargers: [] } as never)) as Record<string, unknown>;
     expect(Object.keys(frame).sort()).toEqual(["data", "topic"]);
     expect(frame.topic).toBe("evcc");
     expect(frame.data).toEqual({ chargers: [] });
   });
 
   test("every topic envelopes under its own name", () => {
-    // One writer for the backfill and one for the bus republish; the envelope
-    // has to be the same function for both or a topic paints once and stops.
+    // One writer for the backfill and one for the fan-out; the envelope has to
+    // be the same function for both or a topic paints once and stops.
     for (const topic of WS_TOPICS)
-      expect(JSON.parse(muxFrame(topic, null as never)) as Record<string, unknown>).toEqual({
+      expect(JSON.parse(wsFrame(topic, null as never)) as Record<string, unknown>).toEqual({
         topic,
         data: null,
       });
   });
-});
 
-/** `index.ts` boots the world at import, so the fan-out is read, not run. */
-const indexSource = await Bun.file(new URL("../index.ts", import.meta.url)).text();
-
-describe("every topic is actually wired to the bus fan-out", () => {
-  // The envelope has one writer and is well covered. The REGISTRATION does not:
-  // deleting `streams.subscribe("evcc", … muxFrame …)` from index.ts leaves the
-  // whole suite green, and in production the EV card paints its backfill once
-  // and then goes silent forever. A missing wire is not a contract
-  // disagreement, so nothing that checks the contract can see it.
-  //
-  // Matched at the PUBLISH site rather than at `streams.subscribe`, because
-  // `logs` does not republish from its subscription: its entries go through the
-  // 250 ms batching decorator and are published from the flush. Both shapes end
-  // at the same call, so that is where the wire actually is.
-  //
-  // It compares the SET, so a topic added to `TOPIC_POLICY` without a republish
-  // fails here too — not only a deleted one.
-  const republished = new Set(
-    [...indexSource.matchAll(/publish\(\s*muxTopic\(\s*"(\w+)"/g)].map((match) => match[1]),
-  );
-
-  test("each policy topic republishes an enveloped frame", () => {
-    expect([...republished].sort()).toEqual([...WS_TOPICS].sort());
+  test("carries no namespace prefix", () => {
+    // It had `mux:` while the five legacy routes still published bare payloads
+    // on the unprefixed names. They are gone; a leftover prefix would publish
+    // to a topic nobody subscribes to and deliver nothing, silently.
+    for (const topic of WS_TOPICS) {
+      expect(JSON.parse(wsFrame(topic, null as never)).topic).toBe(topic);
+    }
   });
 });

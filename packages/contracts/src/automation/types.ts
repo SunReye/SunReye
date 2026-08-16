@@ -209,8 +209,8 @@ export interface AutomationHistoryView {
 }
 
 /**
- * One frame of `/ws/automations`: pushed after every engine tick (and once as
- * the on-open snapshot, then carrying the full ring in `history`).
+ * One frame of the `automations` topic: pushed after every engine tick (and once
+ * as the subscribe-time snapshot, then carrying the full ring in `history`).
  */
 export interface AutomationStreamMessage {
   /** Engine cadence, ms — the countdown base for "next decision in …". */

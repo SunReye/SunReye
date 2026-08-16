@@ -48,7 +48,7 @@ import {
   resolveSubscribe,
   resolveUnsubscribe,
 } from "./ws-subscribe";
-import { bufferedWhilePriming, muxFrame, muxTopic } from "./ws-topics";
+import { bufferedWhilePriming, wsFrame } from "./ws-topics";
 
 const wsLog = log("ws");
 
@@ -213,25 +213,29 @@ export function createWsConnections(deps: WsRoutesDeps): WsConnectionHandlers {
   /**
    * Write one topic-tagged data frame.
    *
-   * Through {@link muxFrame} rather than an inline `JSON.stringify`: the same
-   * envelope goes out again from the bus republish in `index.ts` once this
-   * topic is promoted, and a backfill that disagreed with the live feed about
-   * the envelope would paint once and then go quiet.
+   * Through {@link wsFrame} rather than an inline `JSON.stringify`: the same
+   * envelope goes out again from the fan-out in `./ws-publish` once this topic
+   * is promoted, and a backfill that disagreed with the live feed about the
+   * envelope would paint once and then go quiet.
    */
   const sendFrame = <K extends WsTopic>(ws: WsSocket, topic: K, data: WsTopicPayloads[K]) =>
-    ws.send(muxFrame(topic, data));
+    ws.send(wsFrame(topic, data));
 
   /**
    * Stop delivering `topic` on this connection: leave the fan-out, forget the
    * subscription, and abandon any priming run still working on it. Shared by
    * `unsub` and by revocation, because they owe the client the same thing —
    * the feed actually stops.
+   *
+   * The pub/sub name is the topic name itself, here and in `promote` below —
+   * the same string {@link ./ws-publish} publishes on. Nothing but that string
+   * ties the two halves together, so both sides pin it in their tests.
    */
   const drop = (ws: WsSocket, state: ConnectionState, topic: WsTopic) => {
     state.subscribed.delete(topic);
     state.pending.get(topic)?.();
     state.pending.delete(topic);
-    ws.unsubscribe(muxTopic(topic));
+    ws.unsubscribe(topic);
   };
 
   /**
@@ -259,7 +263,7 @@ export function createWsConnections(deps: WsRoutesDeps): WsConnectionHandlers {
       snapshot: () => deps.backfill[topic]?.(),
       sendSnapshot: (snapshot) => sendFrame(ws, topic, snapshot),
       sendLive: (payload) => sendFrame(ws, topic, payload),
-      promote: () => ws.subscribe(muxTopic(topic)),
+      promote: () => ws.subscribe(topic),
       // All three conditions, re-read rather than captured: the socket may have
       // closed, the client may have unsubscribed, or a newer `sub` may have
       // started a second run while this one was awaiting its query.

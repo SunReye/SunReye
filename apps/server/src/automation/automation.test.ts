@@ -161,6 +161,12 @@ async function fireTimer(): Promise<void> {
 interface Harness {
   io: AutomationIO;
   writes: { key: string; value: number }[];
+  /**
+   * How many times the forecast has been read. The tick reads it once; the plan
+   * projection reads it again, so the counter is how a *skipped* projection is
+   * observed from outside the engine.
+   */
+  forecastReads(): number;
   set: {
     config(c: AutomationConfig): void;
     weather(w: WeatherConfig): void;
@@ -186,6 +192,7 @@ function harness(over: { config?: AutomationConfig } = {}): Harness {
   let reads = 0;
   let failAt: { nth: number; message: string } | null = null;
   let gate: Promise<void> | null = null;
+  let forecastReads = 0;
   const writes: { key: string; value: number }[] = [];
   let sample: InverterSample = {
     time: new Date(nowMs).toISOString(),
@@ -212,7 +219,10 @@ function harness(over: { config?: AutomationConfig } = {}): Harness {
         return cfg;
       },
       getWeather: async () => wx,
-      getForecast: async () => fc,
+      getForecast: async () => {
+        forecastReads++;
+        return fc;
+      },
       getBaselineLoadW: async () => null,
       getEvcc: () => null,
       getPrices: async () => null,
@@ -226,6 +236,7 @@ function harness(over: { config?: AutomationConfig } = {}): Harness {
       now: () => nowMs,
     },
     writes,
+    forecastReads: () => forecastReads,
     set: {
       config: (c) => (cfg = c),
       weather: (w) => (wx = w),
@@ -574,6 +585,105 @@ describe("automation loop", () => {
     expect(automationStatus().peakShaving.state).toBe("active");
     expect(automationHistory().peakShaving).toHaveLength(1);
     expect(pending()).toHaveLength(1);
+  });
+});
+
+describe("ticking with nobody watching the automations feed", () => {
+  test("the plant is still steered — the broadcast is skipped, never the tick", async () => {
+    // The whole point of the short-circuit is that it is a *broadcast*
+    // optimisation. An idle instance that stopped writing the charge register
+    // because no browser had the page open would leave the battery on whatever
+    // the last tick set, silently, until someone looked.
+    const h = harness();
+
+    await startAutomations(
+      plant,
+      streams,
+      async () => h.io,
+      () => false,
+    );
+    await settle();
+
+    expect(h.writes).toEqual([{ key: CHARGE_KEY, value: 50 }]);
+    expect(automationStatus().peakShaving.state).toBe("active");
+    expect(automationHistory().peakShaving).toHaveLength(1);
+    // And the loop is still armed at the configured cadence, so it keeps going.
+    expect(pending()).toHaveLength(1);
+    expect(frames).toEqual([]);
+  });
+
+  test("the plan projection — the expensive part — is not computed", async () => {
+    // The projection is the reason the short-circuit exists: it re-reads the
+    // forecast and models the rest of the day on every control tick.
+    const h = harness();
+    let watching = true;
+
+    await startAutomations(
+      plant,
+      streams,
+      async () => h.io,
+      () => watching,
+    );
+    await settle();
+    const watched = h.forecastReads();
+
+    watching = false;
+    h.set.now(NOON + 60_000);
+    await fireTimer();
+    const unwatched = h.forecastReads() - watched;
+
+    expect(unwatched).toBeLessThan(watched);
+    // …but the tick itself still reads the forecast, because it still decides.
+    expect(unwatched).toBeGreaterThan(0);
+  });
+
+  test("a decision taken while nobody watched is streamed to the viewer that arrives", async () => {
+    // The delta framing marks a point as streamed when it goes out. Marking one
+    // that was never sent would lose it: the tick that follows the viewer's
+    // arrival streams the *newest* point, and the ring is only replayed on the
+    // socket-open snapshot.
+    const h = harness();
+    let watching = false;
+
+    await startAutomations(
+      plant,
+      streams,
+      async () => h.io,
+      () => watching,
+    );
+    await settle();
+    expect(frames).toEqual([]);
+    expect(automationHistory().peakShaving.map((p) => p.t)).toEqual([NOON]);
+
+    watching = true;
+    // The clock does not move, so this tick appends no new decision — the point
+    // in the frame can only be the one decided while nobody was listening.
+    await fireTimer();
+
+    expect(frames).toHaveLength(1);
+    expect(frames[0]?.point?.t).toBe(NOON);
+  });
+
+  test("the cadence is still re-read, so a config change lands unwatched", async () => {
+    // The tick timer is armed from the cadence read inside the same path the
+    // short-circuit lives on. Skipping it too would freeze an idle instance at
+    // whatever interval it booted with.
+    const h = harness({ config: config({ controlIntervalS: 60 }) });
+
+    await startAutomations(
+      plant,
+      streams,
+      async () => h.io,
+      () => false,
+    );
+    await settle();
+    expect(pending()[0]?.delayMs).toBe(60_000);
+
+    h.set.config(config({ controlIntervalS: 300 }));
+    await fireTimer();
+
+    expect(pending()[0]?.delayMs).toBe(300_000);
+    expect(automationHistory().tickMs).toBe(300_000);
   });
 });
 

@@ -30,8 +30,8 @@ const BUFFER_MAX = 500;
 const buffer: LogEntry[] = [];
 
 /**
- * The bus every new line is emitted onto (the server subscribes the `/ws/logs`
- * broadcast to the `logs` topic). Injected by {@link setupLogging}; null until
+ * The bus every new line is emitted onto (the server fans the `logs` topic out
+ * to the `/ws` subscribers that asked for it). Injected by {@link setupLogging}; null until
  * then, and in the fresh-process boot probes that only read the ring buffer.
  */
 let stream: Streams | null = null;
@@ -154,7 +154,7 @@ export async function setupLogging(streams?: Streams): Promise<void> {
       console: getConsoleSink({
         formatter: env.NODE_ENV === "development" ? ansiColorFormatter : undefined,
       }),
-      // Fan every record into the ring buffer + live listener for `/ws/logs`.
+      // Fan every record into the ring buffer + live listener for the `logs` topic.
       stream: streamSink,
     },
     filters: {

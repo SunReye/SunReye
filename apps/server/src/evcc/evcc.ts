@@ -144,7 +144,7 @@ const estimator = createEvPowerEstimator();
 /**
  * The read-side bus each fresh snapshot is emitted onto, injected by
  * {@link rebuildEvcc}. Null until the first (boot) rebuild wires it; the socket
- * layer fans one emit out to every `/ws/evcc` subscriber.
+ * layer fans one emit out to every subscriber of the `evcc` topic.
  */
 let stream: Streams | null = null;
 let emitTimer: ReturnType<typeof setTimeout> | null = null;

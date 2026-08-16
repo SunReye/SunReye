@@ -18,7 +18,7 @@ export type LogLevel = "trace" | "debug" | "info" | "warning" | "error" | "fatal
 
 /**
  * A single log line in transport shape — flat and JSON-serialisable so it can
- * ride the `/ws/logs` WebSocket to the admin log viewer unchanged.
+ * ride the `logs` topic of the `/ws` socket to the admin log viewer unchanged.
  */
 export type LogEntry = {
   /** Epoch milliseconds. */

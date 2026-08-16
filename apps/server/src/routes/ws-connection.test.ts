@@ -160,7 +160,7 @@ describe("open", () => {
     await Promise.all([opening, framed]);
 
     expect(sock.ack()).toEqual({ subscribed: ["metrics"], denied: [] });
-    expect(sock.subscribed).toContain("mux:metrics");
+    expect(sock.subscribed).toContain("metrics");
   });
 
   test("a connection that may read nothing is closed and its queued frame is dropped", async () => {
@@ -196,6 +196,30 @@ describe("open", () => {
   });
 });
 
+describe("the pub/sub name a topic joins", () => {
+  test("every topic joins and leaves the fan-out under its own bare name", async () => {
+    // The other half of the pair pinned in ./ws-publish.test.ts: the publisher
+    // sends on the bare topic name, so any decoration here (the `mux:` prefix
+    // the migration needed while the five legacy routes still owned the bare
+    // names) is an acked subscription that never delivers a byte — no error on
+    // either side, just a socket that stays quiet.
+    const topics = ["metrics", "evcc", "statistics", "logs", "automations"];
+    const h = harness({});
+    const sock = fakeSocket();
+    await h.handlers.open(sock.ws);
+
+    await h.handlers.message(sock.ws, { t: "sub", topics });
+    await settle();
+    // Sorted: the primes run concurrently, so the join *order* is not the
+    // contract — the names are.
+    expect([...sock.subscribed].sort()).toEqual([...topics].sort());
+
+    await h.handlers.message(sock.ws, { t: "unsub", topics });
+    await settle();
+    expect([...sock.unsubscribed].sort()).toEqual([...topics].sort());
+  });
+});
+
 describe("frame ordering", () => {
   test("an unsub that follows a sub is applied after it, never before", async () => {
     // A component that mounts and immediately unmounts (or a navigation) emits
@@ -221,7 +245,7 @@ describe("frame ordering", () => {
     // handled does not matter; what matters is that the unsub is applied to the
     // subscription the sub created, so the feed ends up off. Out of order, the
     // unsub found an empty set, did nothing at all, and the topic stayed live.
-    expect(sock.lastEvent("mux:logs")).toBe("unsub mux:logs");
+    expect(sock.lastEvent("logs")).toBe("unsub logs");
   });
 
   test("a stale backfill cannot land after a newer one has promoted", async () => {
@@ -299,13 +323,13 @@ describe("revocation", () => {
 
     await h.handlers.message(sock.ws, { t: "sub", topics: ["logs"] });
     await settle();
-    expect(sock.subscribed).toContain("mux:logs");
+    expect(sock.subscribed).toContain("logs");
 
     access = anonViewer;
     await h.handlers.message(sock.ws, { t: "sub", topics: ["logs"] });
     await settle();
 
-    expect(sock.unsubscribed).toContain("mux:logs");
+    expect(sock.unsubscribed).toContain("logs");
     expect(sock.acks().at(-1)).toEqual({ subscribed: [], denied: ["logs"] });
   });
 
@@ -353,14 +377,14 @@ describe("revocation", () => {
 
     await h.handlers.message(sock.ws, { t: "sub", topics: ["logs", "automations"] });
     await settle();
-    expect(sock.subscribed).toEqual(["mux:logs", "mux:automations"]);
+    expect(sock.subscribed).toEqual(["logs", "automations"]);
 
     access = anonViewer;
     await h.handlers.message(sock.ws, { t: "sub", topics: ["metrics"] });
     await settle();
 
-    expect(sock.lastEvent("mux:logs")).toBe("unsub mux:logs");
-    expect(sock.lastEvent("mux:automations")).toBe("unsub mux:automations");
+    expect(sock.lastEvent("logs")).toBe("unsub logs");
+    expect(sock.lastEvent("automations")).toBe("unsub automations");
     // And the revoked feeds really are off the connection: a payload published
     // now reaches neither.
     expect(h.bus.listenerCount("automations")).toBe(0);
@@ -379,7 +403,7 @@ describe("revocation", () => {
     await h.handlers.message(sock.ws, { t: "sub", topics: ["statistics"] });
     await settle();
 
-    expect(sock.lastEvent("mux:metrics")).toBe("sub mux:metrics");
+    expect(sock.lastEvent("metrics")).toBe("sub metrics");
     expect(sock.unsubscribed).toEqual([]);
   });
 
@@ -483,7 +507,7 @@ describe("robustness", () => {
 
     expect(backfills).toBe(2);
     expect(sock.frames("statistics").map((frame) => frame.data)).toEqual(["snapshot-2"]);
-    expect(sock.subscribed).toContain("mux:statistics");
+    expect(sock.subscribed).toContain("statistics");
   });
 
   test("an ack that fails to write leaves the topic re-subscribable", async () => {
@@ -515,7 +539,7 @@ describe("robustness", () => {
 
     expect(backfills).toBe(1);
     expect(sock.frames("statistics").map((frame) => frame.data)).toEqual(["snapshot-1"]);
-    expect(sock.subscribed).toContain("mux:statistics");
+    expect(sock.subscribed).toContain("statistics");
   });
 
   test("an access lookup that never answers gives the connection back instead of wedging it", async () => {
@@ -601,6 +625,6 @@ describe("close", () => {
     // No snapshot to send, but the client still gets the live feed: a stalled
     // query must not cost it the topic.
     expect(h.bus.listenerCount("statistics")).toBe(0);
-    expect(sock.subscribed).toContain("mux:statistics");
+    expect(sock.subscribed).toContain("statistics");
   });
 });

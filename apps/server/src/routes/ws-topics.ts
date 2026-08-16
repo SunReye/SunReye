@@ -1,6 +1,5 @@
 /**
- * The access policy of every live WebSocket topic, and the pub/sub topic names
- * the multiplexed `/ws` endpoint fans out on.
+ * The access policy of every live WebSocket topic.
  *
  * The five feeds used to be five URLs, and each URL carried its own guard
  * (`requireSession` for the dashboard three, `requireAdmin` for logs and
@@ -59,38 +58,29 @@ export function isWsTopic(value: unknown): value is WsTopic {
  *
  * Not buffering does *not* make the feed duplicate-free: `recentLogs()` returns
  * lines that are still sitting in the 250 ms flush queue, and that flush
- * publishes the same batch to `mux:logs`, so a client priming mid-window sees
- * those lines twice either way. That is exactly what the five old routes did,
- * so it is parity rather than a regression — dedup belongs with the coalescing
- * step, not here.
+ * publishes the same batch to the `logs` topic, so a client priming mid-window
+ * sees those lines twice either way. That is exactly what the five old routes
+ * did, so it is parity rather than a regression — dedup belongs with the
+ * coalescing step, not here.
  */
 export const bufferedWhilePriming = (topic: WsTopic): boolean => topic !== "logs";
 
 /**
- * The pub/sub topic the multiplexed socket fans a live topic out on.
- *
- * Prefixed, because the five single-purpose routes still publish bare payloads
- * on the unprefixed names during the migration. Two namespaces on one server:
- * `metrics` carries the raw sample for the old `/ws/metrics`, `mux:metrics`
- * carries the enveloped {@link ServerFrame} for `/ws`. Reverting the new
- * endpoint is then one commit, with nothing to un-pick from the old one.
- */
-export const muxTopic = (topic: WsTopic): string => `mux:${topic}`;
-
-/**
  * Serialise one server→client data frame.
  *
- * The envelope has two writers that must never disagree: the subscribe-time
- * backfill writes it straight to one socket, and the bus republish in
- * `index.ts` writes it to the whole `mux:` fan-out. They were two independent
- * `JSON.stringify({ topic, data })` literals — six of them — and the browser
- * reads `frame.topic` to decide which subscriber gets the payload, dropping a
- * miss without a word. A rename on one side would therefore have left every
- * card painting its snapshot and then going silent (or the reverse), with both
- * ends' unit suites green because each was self-consistent. One function, so
- * the envelope is a definition rather than a convention.
+ * One writer, because the envelope has two senders that must never disagree:
+ * the subscribe-time backfill in {@link ./ws-connection} writes it straight to
+ * one socket, and {@link ./ws-publish} writes it to a whole topic's fan-out.
+ * The browser reads `frame.topic` to pick the subscriber and drops a miss
+ * without a word, so a rename on one side would leave every card painting its
+ * snapshot and then going silent — with both ends' suites green, because each
+ * would be self-consistent.
+ *
+ * It carried a `mux:` prefix while the five legacy routes still published bare
+ * payloads on the unprefixed names. They are gone, so the topic name IS the
+ * pub/sub name and the prefix would now only deliver to nobody.
  */
-export const muxFrame = <K extends WsTopic>(topic: K, data: WsTopicPayloads[K]): string =>
+export const wsFrame = <K extends WsTopic>(topic: K, data: WsTopicPayloads[K]): string =>
   // The topic↔payload pairing is enforced by the parameter types; the cast is
   // only because a still-generic `K` cannot be shown to pick one member of the
   // distributed union (TS checks `{ topic: K; data: WsTopicPayloads[K] }`

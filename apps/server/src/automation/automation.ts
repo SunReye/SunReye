@@ -60,14 +60,28 @@ let streamedT: number | null = null;
  * The read-side bus the tick outcome is emitted onto, injected by
  * {@link startAutomations}. Null until the loop is started (and in the
  * onboarding-only boot where it never is); the socket layer fans one emit out
- * to every `/ws/automations` subscriber.
+ * to every subscriber of the `automations` topic.
  */
 let streams: Streams | null = null;
+/**
+ * Whether anyone is actually watching the `automations` feed, injected by
+ * {@link startAutomations} because only the socket boundary can answer it.
+ * Defaults to "assume a viewer": a caller that does not know must not be the
+ * reason a frame goes missing.
+ */
+let hasAudience: () => boolean = () => true;
 
 /**
  * One engine tick, then push the outcome to stream subscribers. The cadence is
  * re-read from config afterwards so a changed control interval takes effect on
  * the very next arm, no restart needed.
+ *
+ * The tick and the cadence re-read are unconditional — this loop writes the
+ * charge register, and an instance nobody has a browser open on must keep
+ * steering the plant at the configured interval. Only the frame, and the plan
+ * projection built solely for it, are skipped when there is nobody to send it
+ * to; the projection re-models the rest of the day and is by far the most
+ * expensive thing on this path.
  */
 async function tickAndBroadcast(): Promise<void> {
   const eng = engine;
@@ -80,6 +94,10 @@ async function tickAndBroadcast(): Promise<void> {
     // The config read above is an await; a stop (or restart) may have run in
     // between, so re-check we are still the live engine before emitting.
     if (engine !== eng) return;
+    // Checked before `nextStreamPoint`, which *consumes* the delta: marking a
+    // point streamed that was never sent would lose it, since a later tick only
+    // ever streams the newest one.
+    if (!hasAudience()) return;
     streams?.emit("automations", {
       tickMs,
       status: eng.status(),
@@ -237,14 +255,20 @@ export async function buildProductionIO(deps: PlantDeps): Promise<AutomationIO> 
  * `streamBus` is the read-side bus the tick outcome is emitted onto; omitted
  * (the runtime-mock fallback) the loop still ticks and records, it just has
  * nowhere to broadcast.
+ *
+ * `watching` answers "is anyone subscribed to the `automations` topic right
+ * now" — a question only the socket boundary can answer, so it is injected from
+ * there rather than reached for here. Omitted, every tick broadcasts.
  */
 export async function startAutomations(
   deps: PlantDeps,
   streamBus?: Streams,
   buildIO: (deps: PlantDeps) => Promise<AutomationIO> = buildProductionIO,
+  watching: () => boolean = () => true,
 ): Promise<void> {
   await stopAutomations();
   streams = streamBus ?? null;
+  hasAudience = watching;
   const io = await buildIO(deps);
   readConfig = io.getConfig;
   engine = createPeakShavingEngine(io);
@@ -262,6 +286,8 @@ export async function stopAutomations(): Promise<void> {
   engine = null;
   readConfig = null;
   streamedT = null;
+  // Released with the loop: the predicate closes over the server that owned it.
+  hasAudience = () => true;
 }
 
 /**
@@ -305,7 +331,7 @@ export function automationHistory(): AutomationHistoryView {
 }
 
 /**
- * The on-open frame for a new `/ws/automations` subscriber: current status,
+ * The subscribe-time frame for a new `automations` subscriber: current status,
  * the full decision ring, and the projection — everything the page needs to
  * paint before the next tick lands. Tolerates not-started boot.
  */
