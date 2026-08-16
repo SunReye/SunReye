@@ -9,7 +9,7 @@
 # connection at a time, so stop the stable addon (or set inverter_simulate)
 # before starting this one.
 name: SunReye (beta)
-version: beta.20260816-ee577a8
+version: beta.20260816-ab06deb
 slug: sunreye-beta
 description: >-
   Self-hosted solar / hybrid inverter monitoring, control, and integration —
@@ -26,8 +26,8 @@ boot: manual
 # First boot runs initdb + schema migrations before anything listens.
 timeout: 120
 
-# UI in the HA sidebar. ingress_stream keeps the /ws/metrics WebSocket and
-# other streaming responses unbuffered.
+# UI in the HA sidebar. ingress_stream keeps the /ws live socket and other
+# streaming responses unbuffered.
 ingress: true
 ingress_port: 8099
 ingress_stream: true

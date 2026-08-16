@@ -2,7 +2,7 @@
 
 ## [unreleased]
 
-Unreleased work on `dev` since 1.2.0, shipped in `beta.20260816-ee577a8`.
+Unreleased work on `dev` since 1.2.0, shipped in `beta.20260816-ab06deb`.
 
 
 ### Features
@@ -72,6 +72,7 @@ Unreleased work on `dev` since 1.2.0, shipped in `beta.20260816-ee577a8`.
 
 ### Bug Fixes
 
+* **addon:** serve the multiplexed live socket at exactly /ws ([ab06deb](https://github.com/SunReye/SunReye/commit/ab06deb285fb5bda0d08b8e84016d32cd41d07be))
 * **web:** close the gaps an adversarial review found in the palette work ([c8cc39b](https://github.com/SunReye/SunReye/commit/c8cc39ba8618893c412c71174cf382583c0c6607))
 * **web:** paint fixed meanings from the semantic set, not the palette ([8061145](https://github.com/SunReye/SunReye/commit/8061145f70b59731e245cc3be8811e9c61c6a349))
 * **web:** let an expanded chart escape a transformed ancestor ([4b1c066](https://github.com/SunReye/SunReye/commit/4b1c066492126a0efab2ce5a814d36873b7e653c))
