@@ -20,16 +20,6 @@
 
 import type { Flow } from "./power-graph";
 
-/** Comet speed, px/s. Constant for every rail: rate is density, never speed. */
-// fallow-ignore-next-line unused-export -- the design's constants are asserted against in flow-pulse.test.ts (the ladder invariants) and in power-flow-pulse-wiring.test.ts; web test files aren't traced as consumers
-export const PULSE_SPEED = 80;
-/** Base span (px) one keyframe cycle travels. All dash periods divide it. */
-// fallow-ignore-next-line unused-export -- same: the keyframe travel every layer period has to divide, pinned by its test rather than restated there
-export const PULSE_SPAN = 200;
-/** The one animation-duration in the diagram: PULSE_SPAN / PULSE_SPEED. */
-// fallow-ignore-next-line unused-export -- the rails spell this out as a CSS literal on purpose; the wiring test imports it so the literal is checked against the decision instead of a second copy of "2.5s"
-export const PULSE_PERIOD_S = PULSE_SPAN / PULSE_SPEED; // 2.5
-
 /** Smallest plant a rail is ever measured against (W). */
 // fallow-ignore-next-line unused-export -- the floor IS the contract: stated once here and pinned by flow-pulse.test.ts rather than restated there
 export const CEILING_FLOOR_W = 1000;
@@ -120,78 +110,112 @@ export function parseCeiling(raw: string | null | undefined): Ceiling {
 }
 
 /**
- * Interleaved comet layers. `period`/`delay` are fractions of PULSE_SPAN and
- * PULSE_PERIOD_S; both are constants of the design and never see a reading.
- *
- * Every period divides PULSE_SPAN and the cycle travels exactly PULSE_SPAN, so
- * the loop is seamless at every level and lighting a layer ADDS comets between
- * the existing ones without moving any of them. Density is therefore an opacity
- * fade of an already-running path — the single most important property here,
- * and the reason density is not a changing dash period (which respaces, i.e.
- * teleports, every comet on the rail).
- *
- * `from`/`to` are the share window over which that layer fades in.
+ * The slowest and fastest a charge crosses a rail, seconds. A trickle drifts;
+ * a rail at the plant's remembered peak snaps across.
  */
-// fallow-ignore-next-line unused-export -- the ladder table is what the interleaving invariant is asserted on; layerStyle and railPulse read it internally
-export const PULSE_LAYERS = [
-  { period: 1, delay: 0, from: 0, to: 0 }, // layer 0: any flow shows one comet
-  { period: 1, delay: 1 / 2, from: 0.02, to: 0.18 },
-  { period: 1 / 2, delay: 1 / 4, from: 0.22, to: 0.5 },
-  { period: 1 / 4, delay: 1 / 8, from: 0.52, to: 0.95 },
-] as const;
+const CROSS_SLOWEST_S = 4.5;
+const CROSS_FASTEST_S = 1.1;
+
+/**
+ * Crossing time is QUANTIZED to quarter-seconds, and that is load-bearing.
+ *
+ * One charge per rail means the magnitude has to live in the speed, and speed is
+ * a timing property — the one thing this diagram otherwise refuses to derive
+ * from a reading. Changing a running animation's duration remaps its elapsed
+ * time, so the charge visibly jumps to a new position at the moment of the
+ * change; with a 1 Hz feed and a continuous mapping that is a stutter every
+ * single second. Coarse steps mean an unchanged-enough reading emits a
+ * byte-identical duration and the animation is never touched at all, so the
+ * jump is confined to the rare sample where the power really moved.
+ */
+const CROSS_STEP_S = 0.25;
 
 export type RailPulse = {
   share: number;
-  /** Per-layer opacity, 0..1. Index 0 is always 1 on a flowing rail. */
-  layers: number[];
-  /** Comet head length (px) — grows forward from a fixed dash start. */
-  dot: number;
-  /** Core stroke width (px); the bloom is 2.6x this. */
-  width: number;
-  /** Bloom stroke-opacity. */
+  /** Crossing time (s) — the magnitude, quantized so most samples change it not at all. */
+  dur: number;
+  /** Sprite scale — a busier rail flies a bigger charge. */
+  scale: number;
+  /** Blur radius (px) softening the sprite's edge. */
+  blur: number;
+  /** Near-glow spread (px); the far glow is 3x it. */
   glow: number;
+  /** Overlay stroke width (px) for the reduced-motion still. */
+  width: number;
 };
+
+/**
+ * Share → crossing time. Inverted: more power is less time on the wire.
+ */
+// fallow-ignore-next-line unused-export -- railPulse calls it internally; it is exported so the quantization contract is asserted directly in flow-pulse.test.ts and power-flow-pulse-wiring.test.ts, and web test files are not traced as consumers
+export function crossingSeconds(share: number): number {
+  const s = Number.isFinite(share) ? Math.min(1, Math.max(0, share)) : 0;
+  const raw = CROSS_SLOWEST_S + (CROSS_FASTEST_S - CROSS_SLOWEST_S) * s;
+  return Math.round(raw / CROSS_STEP_S) * CROSS_STEP_S;
+}
 
 const round1 = (n: number): number => Math.round(n * 10) / 10;
 const round2 = (n: number): number => Math.round(n * 100) / 100;
+/** Lags are seconds and land in an attribute; float noise reads badly there. */
+const round4 = (n: number): number => Math.round(n * 10000) / 10000;
 
-/** Everything one flowing rail's comets need, from its watts and the plant's. */
+/** Everything one flowing rail's charge needs, from its watts and the plant's. */
 export function railPulse(watts: number | undefined, ceilingW: number): RailPulse {
   const share = pulseShare(watts, ceilingW);
   return {
     share,
-    layers: PULSE_LAYERS.map(({ from, to }) =>
-      to <= from ? 1 : Math.min(1, Math.max(0, (share - from) / (to - from))),
-    ),
-    dot: round1(5 + share * 9),
-    width: round1(3 + share * 1.5),
-    glow: round2(0.12 + share * 0.22),
+    dur: round2(crossingSeconds(share)),
+    scale: round2(0.55 + share * 0.75),
+    blur: round1(1.6 + share * 1.6),
+    glow: round1(3 + share * 9),
+    width: round1(2 + share * 3),
   };
 }
 
 /**
- * Inline style for layer `i`. Its ONLY input is the layer index — that is what
- * makes the delay a constant of the design rather than a datum. The duration
- * stays a literal in the stylesheet: a timing property reachable by a reading
- * remaps elapsed time, which jumps every comet on every sample.
+ * Which end of the motion path a charge starts from. `in` runs the path as
+ * authored (node → hub, because `power-graph.ts` puts the hub last in `pts`);
+ * `out` runs it backwards. Reversing the KEY POINTS rather than the path string
+ * means both directions share one `<mpath>` — the rail's own cable — so a
+ * resize moves the charges with the wire instead of stranding them.
  */
-export function layerStyle(i: number): string {
-  const l = PULSE_LAYERS[i]!;
-  return `--lvl-period:${l.period * PULSE_SPAN}px;--lvl-phase:${l.delay * PULSE_SPAN}px;animation-delay:-${l.delay * PULSE_PERIOD_S}s`;
+export function moverKeyPoints(flow: Flow): string {
+  return flow === "in" ? "0;1" : "1;0";
 }
 
 /**
- * Comet positions inside one base span at a given lit-layer count — the proof
- * that lighting a layer interleaves rather than respaces. Tests only.
+ * A charge is a CHAIN of beads, not one sprite.
+ *
+ * A single lens sprite can only be placed and rotated — `rotate="auto"` aims it
+ * along the tangent, so on the diagram's Béziers it cuts the corner and reads as
+ * a straight splinter laid across a curved wire. Giving every bead its own
+ * `<animateMotion>` down the same cable, each lagging the one ahead of it, makes
+ * the comet follow the curve exactly, because every part of it is separately on
+ * the path. Blurred together they read as one tapered streak.
  */
-// fallow-ignore-next-line unused-export -- the interleaving invariant is the whole design; its test asserts on it
-export function dotPositions(lit: number): number[] {
-  const spots = new Set<number>();
-  for (const { period, delay } of PULSE_LAYERS.slice(0, Math.max(0, lit))) {
-    const step = period * PULSE_SPAN;
-    for (let x = delay * PULSE_SPAN; x < PULSE_SPAN; x += step) spots.add(x);
-  }
-  return [...spots].sort((a, b) => a - b);
+export const BEAD_COUNT = 24;
+
+/** How much of the whole crossing the comet's own length occupies. */
+const COMET_SPAN = 0.13;
+
+/**
+ * Bead `k`'s shape: 0 is the head. Radius falls off slower than opacity, so the
+ * comet keeps a body before it closes to a point rather than fading to a stub.
+ */
+export function beadShape(k: number): { radius: number; opacity: number } {
+  const t = BEAD_COUNT <= 1 ? 0 : Math.min(1, Math.max(0, k / (BEAD_COUNT - 1)));
+  return { radius: round2((1 - t) ** 0.55), opacity: round2((1 - t) ** 1.35) };
+}
+
+/**
+ * The negative `begin` that puts bead `k` its own lag behind the head. Scaled by
+ * the crossing time so the comet is the same LENGTH at every speed: a fixed lag
+ * in seconds would stretch the comet into a smear whenever the rail slowed down.
+ */
+export function beadBegin(k: number, dur: number): string {
+  const t = BEAD_COUNT <= 1 ? 0 : Math.min(1, Math.max(0, k / (BEAD_COUNT - 1)));
+  const lead = COMET_SPAN * (1 - t) * (Number.isFinite(dur) && dur > 0 ? dur : 1);
+  return `-${round4(lead)}s`;
 }
 
 /**

@@ -18,18 +18,20 @@
 
 import { describe, expect, test } from "bun:test";
 import { Glob } from "bun";
-import { PULSE_PERIOD_S } from "../../inverter/flow-pulse";
+import { crossingSeconds, railPulse } from "../../inverter/flow-pulse";
 
 const SRC = new URL("../../../", import.meta.url);
 
 const read = async (file: string): Promise<string> => await Bun.file(new URL(file, SRC)).text();
 
 const RAILS = "lib/components/inverter/_shared/power-flow-rails.svelte";
+const CHARGE = "lib/components/inverter/_shared/power-flow-charge.svelte";
 const DIAGRAM = "lib/components/inverter/power-flow-diagram.svelte";
 const NODE = "lib/components/inverter/power-flow-node.svelte";
 const SIGNAL = "lib/inverter/flow-pulse.ts";
 
 const rails = await read(RAILS);
+const charge = await read(CHARGE);
 const diagram = await read(DIAGRAM);
 const node = await read(NODE);
 const signal = await read(SIGNAL);
@@ -213,76 +215,40 @@ describe("no reading can reach a timing property", () => {
     expect(offenders).toEqual([]);
   });
 
-  test("a rail's duration is the design's constant, spelled out", () => {
-    // Derived from the token rather than restated: PULSE_SPAN / PULSE_SPEED is
-    // where the number is decided, and every duration in the file has to be it.
-    const durations = [...css(rails).matchAll(/animation-duration:\s*([^;]+);/g)].map((m) =>
-      m[1].trim(),
-    );
-    expect(durations).not.toEqual([]);
-    for (const d of durations) expect(d).toBe(`${PULSE_PERIOD_S}s`);
+  test("the one duration a reading reaches is the quantized crossing time", () => {
+    // A charge per rail means speed IS the reading, so this design cannot claim
+    // no reading reaches a timing property. What it claims instead: the only
+    // timing a reading reaches is `pulse.dur`, and that value is quantized at
+    // its source so an unchanged-enough sample never touches the animation.
+    // The <animateMotion> takes its dur straight from the pulse and nowhere else.
+    expect(timesSet(charge, "dur=")).toBe(1);
+    expect(charge).toContain("dur={`${pulse.dur}s`}");
+    expect(declaration(signal, "CROSS_STEP_S")).toBeTruthy();
+    const body = block(signal, signal.indexOf("{", signal.indexOf("function crossingSeconds(")));
+    expect(body).toContain("CROSS_STEP_S");
   });
 
-  test("the phase offsets are a function of the layer index alone", () => {
-    // `animation-delay` is the other timing property. It exists only inside
-    // `layerStyle(i)`, whose only input is the index — so no reading can shift
-    // a rail's phase, however the components are edited.
-    expect(rails).not.toContain("animation-delay");
-    expect(diagram).not.toContain("animation-delay");
-    const body = block(signal, signal.indexOf("{", signal.indexOf("function layerStyle(")));
-    const inside = body.split("animation-delay").length - 1;
-    const everywhere = signal.split("animation-delay").length - 1;
-    expect(inside).toBe(1);
-    expect(everywhere).toBe(inside);
+  test("a step in that duration rebuilds the mover instead of remapping it", () => {
+    // The whole reason the quantization is safe. SMIL remaps a running
+    // animation when its dur changes, so the charge teleports to wherever the
+    // new duration says it should be by now. Keyed on the duration, a step
+    // replaces the element and the new speed starts from the top of the path.
+    expect(charge).toMatch(/\{#key pulse\.dur\}/);
   });
 
-  test("and the rail line no longer carries one at all", () => {
-    const type = block(rails, rails.indexOf("{", rails.indexOf("export type RailLine")));
-    expect(type).toContain("pulse: RailPulse");
-    expect(type).not.toContain("dur");
-  });
-});
-
-describe("the bloom is paint, not a filter", () => {
-  test("no filter survives in the rails", () => {
-    // `filter: drop-shadow()` re-rasters each path's whole bbox every frame on
-    // a fanless wall panel. The glow is a wider translucent stroke instead.
-    expect(css(rails)).not.toMatch(/\bfilter\s*:/);
-    expect(rails).not.toContain("drop-shadow");
+  test("nothing else in these components animates on a datum", () => {
+    // Everything except that one dur stays a constant of the design.
+    // The rails are pure structure now — the charge owns the only stylesheet.
+    expect(rails).not.toContain("<style>");
+    expect(css(charge)).not.toContain("animation-duration");
+    for (const code of [rails, charge, diagram]) expect(code).not.toContain("animation-delay");
   });
 
-  test("the wide stroke is the one under the comet", () => {
-    const sheet = css(rails);
-    expect(sheet).toMatch(/\.bloom\s*\{[^}]*stroke-width:\s*calc\(var\(--pulse-w\)/);
-    expect(sheet).toMatch(/\.core\s*\{[^}]*stroke-width:\s*var\(--pulse-w\)/);
-  });
-});
-
-describe("density changes without moving a comet", () => {
-  test("the dash period is a per-layer constant and only the head grows", () => {
-    // The head length is the only part of the dash pattern a reading reaches.
-    // A changing PERIOD respaces every comet on the rail — the teleport this
-    // whole design exists to avoid — so the period comes from `--lvl-period`,
-    // which `layerStyle(i)` sets from the layer index.
-    const dash =
-      /stroke-dasharray:\s*var\(--pulse-dot\)\s+calc\(var\(--lvl-period\)\s*-\s*var\(--pulse-dot\)\)/;
-    expect(css(rails)).toMatch(dash);
-  });
-
-  test("each layer is styled by its index and nothing else", () => {
-    expect(argumentsOf(rails, "layerStyle")).toEqual(["i"]);
-  });
-
-  test("the intensity properties glide between samples", () => {
-    // Registered so they can be transitioned at all: an unregistered custom
-    // property is a token stream and jumps. All three are consumed by a rule
-    // below, otherwise the transition is dead code and the bloom steps at 1 Hz.
-    const sheet = css(rails);
-    for (const prop of ["--pulse-dot", "--pulse-w", "--pulse-glow"]) {
-      expect(sheet).toMatch(new RegExp(`@property ${prop}\\s*\\{`));
-      expect(sheet).toMatch(new RegExp(`var\\(${prop}\\)`));
-      expect(sheet).toMatch(new RegExp(`${prop} 700ms`));
-    }
+  test("a quantized duration really does absorb a 1 Hz wobble", () => {
+    // The claim above, exercised rather than asserted about the source: two
+    // neighbouring samples must produce the identical attribute value.
+    expect(railPulse(4000, 9000).dur).toBe(railPulse(4030, 9000).dur);
+    expect(crossingSeconds(0.5)).toBe(crossingSeconds(0.52));
   });
 });
 
@@ -342,10 +308,10 @@ describe("a reversal fades instead of mirroring", () => {
 });
 
 describe("reduced motion stops everything these files start", () => {
-  test.each([
-    [RAILS, () => rails],
-    [DIAGRAM, () => diagram],
-  ])("%s parks every class it animates", (_file, code) => {
+  // The rails animate through SMIL, which no @media block can stop; their guard
+  // is in the markup and has its own case below. This one covers the components
+  // that animate in CSS.
+  test.each([[DIAGRAM, () => diagram]])("%s parks every class it animates", (_file, code) => {
     const sheet = css(code());
     const animated = animatedClasses(sheet);
     expect(animated).not.toEqual([]);
@@ -360,13 +326,27 @@ describe("reduced motion stops everything these files start", () => {
     expect(parked).toContain("transition: none");
   });
 
-  test("the rails park their beads at the layer's own phase", () => {
-    // Stopped mid-cycle every layer would sit at offset 0 and the comets would
-    // pile up on top of each other; parked at `--lvl-phase` they stay the
-    // evenly interleaved beads whose count still encodes the power.
-    const parked = reducedMotionBlock(css(rails));
-    expect(parked).toMatch(/stroke-dashoffset:\s*calc\(var\(--lvl-phase\)\s*\*\s*-1\)/);
-    expect(parked).toContain("transition: none");
+  test("the rails animate in SMIL, so they have no CSS animation to park", () => {
+    // Stated rather than assumed: if a CSS animation is ever added to this file
+    // it needs a reduced-motion rule, and the case above will not cover it.
+    expect(animatedClasses(css(charge))).toEqual([]);
+  });
+
+  test("the rails render no mover at all under reduced motion", () => {
+    // SMIL is not reachable from CSS: a `@media` block cannot stop an
+    // <animateMotion>. So the guard has to be in the markup, and the still it
+    // falls back to is a plain overlay carrying the magnitude — not a frozen
+    // sprite, which reads as debris left on the wire.
+    const query = /const\s+(\w+)\s*=\s*new MediaQuery\(/.exec(rails)?.[1] ?? "";
+    const guard = new RegExp(`\\{#if ${query}\\.current\\}`);
+    expect(rails).toMatch(guard);
+    const still = rails.slice(rails.search(guard), rails.indexOf("{:else}", rails.search(guard)));
+    expect(still).not.toContain("PowerFlowCharge");
+    expect(still).toContain("stroke-width={l.pulse.width}");
+    // …and the charge — the only thing that animates — is on the other branch.
+    const moving = rails.slice(rails.indexOf("{:else}", rails.search(guard)));
+    expect(moving).toContain("<PowerFlowCharge");
+    expect(charge).toContain("animateMotion");
   });
 });
 
