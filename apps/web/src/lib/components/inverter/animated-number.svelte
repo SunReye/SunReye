@@ -1,9 +1,10 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
-	import { Tween } from 'svelte/motion';
+	import { Tween, prefersReducedMotion } from 'svelte/motion';
 	import { linear } from 'svelte/easing';
-	import { configuredDecimals } from '$lib/inverter/format';
 	import { bus } from '$lib/ws/bus.svelte';
+	import { glideDurationMs } from './_shared/glide';
+	import { createNumberDisplay, resolveDecimals } from './animated-number';
 
 	let {
 		value,
@@ -29,38 +30,30 @@
 	// Seed at the first value (untracked), then continuously interpolate toward
 	// each new live value. To read as a continuous realtime feed rather than a
 	// periodic step, every transition is stretched across the feed's actual sample
-	// cadence and eased linearly. The small overshoot factor means the number is
-	// still gently drifting toward its target when the next sample lands — instead
-	// of arriving early and freezing until the feed ticks again, which is what made
-	// a slow feed look like it stopped-then-jumped.
+	// cadence and eased linearly — see `glideDurationMs` in `_shared/glide.ts` for
+	// the overshoot, for why the drift stops under `prefers-reduced-motion`, and
+	// for why the charts' cursor shares the same policy.
 	const tween = new Tween(untrack(() => value));
+	// The formatting memo is per readout, so two instances can't contaminate each
+	// other. It also makes most frames free: no Intl call and no text-node write
+	// while the rounded value hasn't moved.
+	const readout = createNumberDisplay();
+
 	$effect(() => {
 		const v = value; // track live updates only
 		// Read the cadence untracked so its per-sample EMA nudging doesn't retrigger
 		// this effect on its own — a new `value` is what should drive a new glide.
 		const cadence = untrack(() => intervalMs ?? bus.cadenceMs);
-		void tween.set(v, { duration: Math.max(300, cadence * 1.15), easing: linear });
+		// The motion preference IS read tracked, so toggling it takes effect on the
+		// next sample rather than at the next mount.
+		void tween.set(v, {
+			duration: glideDurationMs(cadence, prefersReducedMotion.current),
+			easing: linear
+		});
 	});
 
-	// Decimal places locked to a single count so the digit shape stays fixed
-	// mid-tween — min = max — otherwise an intermediate frame could sprout an extra
-	// decimal and make the text jump. A unit with a configured precision (e.g. `W`
-	// → 0) wins; otherwise fall back to the *target* value's own places, floored at
-	// 1 (so `2` reads `2.0`) and capped at 2.
-	const decimals = $derived.by(() => {
-		const fixed = configuredDecimals(unit);
-		if (fixed !== undefined) return fixed;
-		if (Number.isInteger(value)) return 1;
-		const dot = String(value).indexOf('.');
-		const places = dot === -1 ? 0 : String(value).length - dot - 1;
-		return Math.min(Math.max(places, 1), 2);
-	});
-	const display = $derived(
-		tween.current.toLocaleString(undefined, {
-			minimumFractionDigits: decimals,
-			maximumFractionDigits: decimals
-		})
-	);
+	const decimals = $derived(resolveDecimals(unit, value));
+	const display = $derived(readout.format(tween.current, decimals));
 </script>
 
 <span class={className}>{display}</span>

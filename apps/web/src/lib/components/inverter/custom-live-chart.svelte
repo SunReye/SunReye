@@ -8,7 +8,8 @@
 	import { liveCursor } from '$lib/components/inverter/_shared/live-cursor.svelte';
 	import {
 		bufferStart,
-		glideOffset,
+		glideTransform,
+		pixelQuantum,
 		sampleInterval
 	} from '$lib/components/inverter/_shared/live-window';
 	import type { AxisSeries, Datum } from '$lib/inverter/chart-axes';
@@ -85,6 +86,10 @@
 		() => interval
 	);
 
+	// Step grid the glide snaps to — see `pixelQuantum`. Read once: a dpr change
+	// only alters the step size, never the position.
+	const quantum = pixelQuantum(typeof window === 'undefined' ? 1 : window.devicePixelRatio);
+
 	// Keep the right axis gutter opaque too when a second axis is present.
 	const edgeFade = $derived(
 		dualAxis
@@ -97,8 +102,13 @@
 	{#if dualAxis}
 		<DualYAxes height={context.height} {axes} />
 	{/if}
+	<!-- The SVG transform attribute, snapped to a quarter-pixel grid: the string is
+	     identical on the four frames in five that move less than a quarter pixel, so
+	     Svelte's `!==` equality drops the write, and with it the style invalidation,
+	     paint and raster it would have cost. -->
+	{@const glide = glideTransform(context.xScale, lastT, cursor.current, interval, quantum)}
 	<ChartClipPath>
-		<g transform={`translate(${glideOffset(context.xScale, lastT, cursor.current, interval)}, 0)`}>
+		<g transform={glide}>
 			{#each context.series.visibleSeries as s (s.key)}
 				<Area seriesKey={s.key} curve={curveCatmullRom} {fillOpacity} line={{ 'stroke-width': 1.5 }} />
 			{/each}

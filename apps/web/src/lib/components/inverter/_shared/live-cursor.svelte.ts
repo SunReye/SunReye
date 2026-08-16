@@ -1,12 +1,8 @@
 import { untrack } from "svelte";
 import { linear } from "svelte/easing";
-import { Tween } from "svelte/motion";
+import { prefersReducedMotion, Tween } from "svelte/motion";
 
-/** Shortest glide, so a burst of samples still animates rather than snapping. */
-const MIN_DURATION_MS = 300;
-/** Overshoot factor: the glide is slightly longer than the gap it covers, so the
- *  cursor keeps trailing instead of arriving early and freezing. */
-const OVERSHOOT = 1.15;
+import { glideDurationMs } from "./glide";
 
 /**
  * The scroll cursor shared by the live charts (`live-area.svelte`,
@@ -19,7 +15,9 @@ const OVERSHOOT = 1.15;
  * glides rather than updating on a visible per-sample cadence. The small
  * overshoot keeps the cursor gently trailing so it never reaches the target and
  * freezes between samples — the old wall-clock gap capped at 2 s did exactly
- * that on slow feeds. `interval` is itself clamped (see `live-window.ts`), a
+ * that on slow feeds. The duration itself (floor and overshoot) lives in
+ * `glide.ts` — the one home it shares with the numeric readouts, so the two
+ * cannot drift apart — and `interval` is clamped in `live-window.ts`, a
  * deliberate ceiling: past that the chart steps rather than scrolling a
  * barely-moving cursor across a two-minute window.
  *
@@ -42,7 +40,10 @@ export function liveCursor(
     // Untracked: `interval` changes in lockstep with `lastT`, and only a new
     // sample should drive a new glide.
     void cursor.set(t, {
-      duration: Math.max(MIN_DURATION_MS, untrack(interval) * OVERSHOOT),
+      // Reduced motion snaps per sample instead of gliding; reading the
+      // preference here re-runs the effect when the OS setting flips, which just
+      // re-issues the current target.
+      duration: glideDurationMs(untrack(interval), prefersReducedMotion.current),
       easing: linear,
     });
   });
