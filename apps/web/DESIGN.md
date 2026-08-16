@@ -24,6 +24,9 @@ Motion should clarify:
 
 Avoid decorative animation that delays reading or makes the app feel noisy.
 
+One thing here moves continuously and is not decoration: the power-flow diagram's comet streams.
+They are the reading — see "Continuous motion as a status display" below before touching them.
+
 ### 4. Use the right menu for the job
 
 Do not force every section into the same navigation shape.
@@ -320,6 +323,41 @@ This is especially important for:
 Animate the **inner content**, not the whole shell.
 
 The header/sidebar/breadcrumbs should feel stable. Only the changing content region should move.
+
+### Continuous motion as a status display
+
+The rules above govern **UI transitions** — motion that answers "what just changed". The
+power-flow diagram's rails are not that. A cable carrying 6 kW and a cable carrying 300 W are
+different facts about the plant right now, and on a wall panel read from across a room the
+motion on the rail is how that fact arrives. Stopping it does not calm the diagram; it deletes
+the reading. So the 120–220 ms budget, "no bouncing animations on frequently updated content"
+and "anything that repeats on every poll is a flicker" do not apply to it, and it is the only
+place in this app they do not.
+
+What earns the carve-out is that the diagram obeys four constraints instead — each one the
+reason a specific complaint about continuous motion does not land here:
+
+- **Amplitude-modulated by real throughput.** Every rail is drawn against the plant's remembered
+  peak (`lib/inverter/flow-pulse.ts`), not against the busiest cable of the moment. At 300 W a
+  rail carries one dim spark; at 6 kW it carries eight bright ones. An idle plant is nearly
+  still, which is exactly what "avoid a noisy app" is asking for. A diagram pinned at full
+  throttle all night would be the violation.
+- **One constant period.** `animation-duration` is the literal 2.5 s and the phases come from the
+  layer index alone. No reading can reach a timing property, so nothing accelerates and nothing
+  is a flicker: what a new sample changes is opacity, comet length, stroke width and bloom, all
+  of which change where they already are.
+- **Nothing jumps between samples.** Density rises by fading in an interleaved layer that was
+  already running, never by respacing a dash pattern; the continuous values are
+  `@property`-registered and glide over 700 ms; a flow reversal crosses over on a fade rather
+  than mirroring. That is what makes it readable at 1 Hz instead of twitchy.
+- **It degrades to a still picture.** Under `prefers-reduced-motion: reduce` the animations stop
+  and each layer parks at its own phase, leaving evenly interleaved static beads whose count,
+  length, width and bloom still encode the same power. The status survives; only the movement
+  goes. Anything continuous added here has to keep that property.
+
+This carve-out is for a status display, and it is not a licence to loop an animation elsewhere.
+If a new one is proposed, it has to meet all four constraints — and be the reading, not a
+decoration on top of one.
 
 ---
 
