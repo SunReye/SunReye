@@ -42,7 +42,13 @@
 	import CustomChartTooltip from '$lib/components/inverter/custom-chart-tooltip.svelte';
 	import { display } from '$lib/display.svelte';
 	import type { CurveFactory } from 'd3-shape';
+	import { fittedPadding } from '$lib/charts/plot-padding';
 	import { CHART_BOX } from '$lib/layout/tokens';
+
+	// The plot's own gutters: a kW/A figure on the left, a clock label's overhang
+	// on the right. Its own base, not the cost family's — a decision chart plots
+	// power, never a four-digit kWh total.
+	const PADDING = { top: 8, right: 8, bottom: 24, left: 44 };
 
 	let {
 		rows,
@@ -82,6 +88,10 @@
 
 	const timeLabel = (value: unknown) => display.time(new Date(Number(value)));
 
+	// Measured, not inferred from a breakpoint: this chart renders one-up and
+	// two-up on the same page depending on the column it lands in.
+	let plotWidth = $state(0);
+
 	const boxClass = $derived(`aspect-auto w-full min-w-0 ${height}`);
 </script>
 
@@ -96,7 +106,7 @@
 	</ChartClipPath>
 {/snippet}
 
-<div class="flex min-w-0 flex-col gap-3">
+<div class="flex min-w-0 flex-col gap-3" bind:clientWidth={plotWidth}>
 	<Chart.Container {config} class={boxClass}>
 		<AreaChart
 			data={rows}
@@ -108,7 +118,7 @@
 			rule={false}
 			legend={false}
 			{yDomain}
-			padding={{ top: 8, right: 8, bottom: 24, left: 44 }}
+			padding={fittedPadding(PADDING, plotWidth)}
 			props={{ xAxis: { format: timeLabel, ticks: 5 } }}
 			{marks}
 			highlight={false}

@@ -6,6 +6,7 @@
 	import { scaleBand } from 'd3-scale';
 	import { api } from '$lib/api';
 	import GradientLegend from '$lib/components/inverter/_shared/gradient-legend.svelte';
+	import { fittedPadding } from '$lib/charts/plot-padding';
 	import { getLocale } from '$lib/paraglide/runtime';
 	import * as m from '$lib/paraglide/messages';
 
@@ -50,6 +51,15 @@
 	const confidence = (weight: number) => 0.15 + 0.85 * Math.min(1, weight / 12);
 
 	const hasData = $derived((view?.cells.length ?? 0) > 0);
+
+	// The grid's own gutters: a three-letter month label on the left, hour labels
+	// below. Narrower than the cost charts' because a month name is not a figure.
+	const PADDING = { left: 36, bottom: 24, top: 4, right: 8 };
+
+	// Fitted to the plot's MEASURED width — this panel sits inside a settings
+	// section whose width the viewport does not predict. 0 before it is in the
+	// document reads as the desktop case.
+	let plotWidth = $state(0);
 </script>
 
 <div class="flex flex-col gap-3">
@@ -75,7 +85,7 @@
 			{/if}
 		</div>
 
-		<div class="h-64">
+		<div class="h-64" bind:clientWidth={plotWidth}>
 			<Chart
 				data={view.cells}
 				x="hour"
@@ -84,7 +94,7 @@
 				y="month"
 				yScale={scaleBand()}
 				yDomain={months}
-				padding={{ left: 36, bottom: 24, top: 4, right: 8 }}
+				padding={fittedPadding(PADDING, plotWidth)}
 				tooltipContext={{ mode: 'quadtree' }}
 			>
 				<Canvas>

@@ -9,6 +9,7 @@
 	import ZoomControls from '$lib/charts/zoom-controls.svelte';
 	import { chartZoom, zoomLabelOptions } from '$lib/charts/zoom.svelte';
 	import { minExtentFor, zoomedHistoryRangeFrom } from '$lib/charts/zoom-range';
+	import { fittedPadding } from '$lib/charts/plot-padding';
 	import type { HistoryRange, RollupBucket } from '$lib/inverter/ranges';
 	import type { Snippet } from 'svelte';
 
@@ -54,6 +55,15 @@
 		context: { yScale: (v: number) => number; height: number; padding: { bottom: number } };
 	};
 
+	// This chart's own gutters: a signed power figure on the left, a time label's
+	// overhang on the right. Its base, clamped on a phone — the /history cards go
+	// full-bleed at 412px, where 44px is a tenth of the plot.
+	const PADDING = { top: 8, right: 8, bottom: 28, left: 44 };
+
+	// Measured rather than guessed from a breakpoint: the same card renders
+	// one-up on a phone and three-up in the history grid.
+	let plotWidth = $state(0);
+
 	// The selection floor is two of whatever bucket is on screen: on a 5-minute
 	// window a one-minute drag is a fingertip's width, and a mis-tap that
 	// refetches every card on the page is worse than no gesture at all.
@@ -73,7 +83,7 @@
      outside the drawing layer, so capturing here adds no mark of its own. -->
 {#snippet belowContext({ context }: { context: ChartState<{ date: Date; avg: number }> })}{zoom.capture(context)}{/snippet}
 
-<div class="relative h-full w-full">
+<div class="relative h-full w-full" bind:clientWidth={plotWidth}>
 	<ZoomControls {zoom} resettable={zoomed} />
 	<Chart.Container
 		config={{ avg: { label, color: accent } }}
@@ -86,7 +96,7 @@
 			y="avg"
 			axis
 			grid
-			padding={{ top: 8, right: 8, bottom: 28, left: 44 }}
+			padding={fittedPadding(PADDING, plotWidth)}
 			{xDomain}
 			{...zoom.props}
 			{belowContext}

@@ -4,7 +4,14 @@
 	import ChartLegend from '$lib/components/inverter/chart-legend.svelte';
 	import TooltipSeriesRow from '$lib/components/inverter/_shared/tooltip-series-row.svelte';
 	import { seriesConfig } from '$lib/components/inverter/_shared/chart-series';
+	import { fittedPadding } from '$lib/charts/plot-padding';
 	import { CHART_BOX } from '$lib/layout/tokens';
+
+	// The gutters this chart was tuned with — a two-digit kW figure on the left,
+	// the last "23:00" label's overhang on the right. Kept as its own base rather
+	// than borrowed from the cost family, whose 60px left gutter fits a figure
+	// this chart never plots.
+	const PADDING = { top: 8, right: 8, bottom: 20, left: 40 };
 
 	// Reusable hourly bar chart for the overview detail dialogs. One or more
 	// series are stacked per band; a single series renders as a plain bar. Mirrors
@@ -36,12 +43,17 @@
 
 	const config: Chart.ChartConfig = $derived(seriesConfig(series));
 
+	// The gutters follow the plot's MEASURED width, not a breakpoint: this chart
+	// renders in a dialog on a phone and full-width on a desktop. 0 until it is in
+	// the document, which fittedPadding reads as the desktop case.
+	let plotWidth = $state(0);
+
 	const hasData = $derived(data.some((d) => series.some((s) => s.value(d) > 0)));
 	const fmt = (v: number) => `${v.toLocaleString(undefined, { maximumFractionDigits: 2 })} ${unit}`;
 </script>
 
 {#if hasData}
-	<div class="flex min-w-0 flex-col gap-3">
+	<div class="flex min-w-0 flex-col gap-3" bind:clientWidth={plotWidth}>
 		<Chart.Container {config} class="{CHART_BOX} w-full min-w-0">
 			<BarChart
 				{data}
@@ -50,7 +62,7 @@
 				seriesLayout={layout}
 				bandPadding={0.2}
 				stackPadding={2}
-				padding={{ top: 8, right: 8, bottom: 20, left: 40 }}
+				padding={fittedPadding(PADDING, plotWidth)}
 				props={{ xAxis: { ticks: xTicks } }}
 			>
 				{#snippet tooltip()}
