@@ -12,6 +12,14 @@ import {
 const OVERRIDE_KEY = "sunreye.palette";
 
 /**
+ * The last instance setting this browser saw. Not a preference — a cache, so a
+ * returning viewer paints in the right palette instead of rendering the shipped
+ * one and re-hueing when the fetch lands. The fetch still runs and still wins;
+ * this only removes the flash.
+ */
+const INSTANCE_CACHE_KEY = "sunreye.palette.instance";
+
+/**
  * Which palette the charts and the power-flow diagram are drawn in.
  *
  * Two values, deliberately. The INSTANCE setting is what the plant renders in —
@@ -43,6 +51,10 @@ class ChartPaletteStore {
     try {
       const stored = localStorage.getItem(OVERRIDE_KEY);
       this.override = isPalettePreset(stored) ? stored : null;
+      // Seed the instance from the last one seen, so the first paint is already
+      // right on a plant whose admin chose something. `load()` corrects it.
+      const cached = localStorage.getItem(INSTANCE_CACHE_KEY);
+      if (isPalettePreset(cached)) this.instance = cached;
     } catch {
       this.override = null;
     }
@@ -66,9 +78,18 @@ class ChartPaletteStore {
   load(): Promise<void> {
     this.#loadPromise ??= api.api.settings["chart-palette"].get().then(({ data }) => {
       const preset = (data as { preset?: unknown } | null)?.preset;
-      if (isPalettePreset(preset)) this.instance = preset;
+      if (isPalettePreset(preset)) this.#rememberInstance(preset);
     });
     return this.#loadPromise;
+  }
+
+  #rememberInstance(preset: PalettePreset): void {
+    this.instance = preset;
+    try {
+      localStorage.setItem(INSTANCE_CACHE_KEY, preset);
+    } catch {
+      // A device that cannot cache it just flashes once per load.
+    }
   }
 
   /** Persist the instance setting. Admin-only server-side; false on rejection. */
@@ -76,7 +97,7 @@ class ChartPaletteStore {
     const { data, error } = await api.api.settings["chart-palette"].put({ preset });
     if (error) return false;
     const saved = payloadOrNull<{ preset: PalettePreset }>(data);
-    this.instance = saved && isPalettePreset(saved.preset) ? saved.preset : preset;
+    this.#rememberInstance(saved && isPalettePreset(saved.preset) ? saved.preset : preset);
     return true;
   }
 

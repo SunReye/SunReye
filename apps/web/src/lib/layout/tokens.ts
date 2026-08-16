@@ -240,8 +240,13 @@ const EXPANDED_SECTION = [
  * every body-portalled tooltip and menu out of the rendering tree. So the
  * browser does nothing to lift this card out of the page, and `fixed inset-0`
  * is the only thing that makes it fill the screen.
+ *
+ * `pointer-events-auto` because the frame is portalled to `document.body`, and
+ * bits-ui sets `body { pointer-events: none }` for as long as a dialog is open.
+ * Inheriting that leaves a frame that paints perfectly and cannot be hovered,
+ * brushed or closed.
  */
-const OVERLAY_SECTION = "fixed inset-0 z-50 overflow-auto";
+const OVERLAY_SECTION = "fixed inset-0 z-50 overflow-auto pointer-events-auto";
 
 /** A section card's classes, given whether it currently holds the screen. */
 export function expandedSectionClass(base: string, expanded: boolean): string {

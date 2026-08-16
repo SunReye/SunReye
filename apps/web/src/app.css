@@ -390,9 +390,19 @@
   --sign-good: #326893;
   --sign-warn: #e19b1b;
   --sign-bad: #a63c0c;
+  --chart-1: #6e3c41;
+  --chart-2: #c28efb;
+  --chart-3: #f28f29;
+  --chart-4: #4c55bc;
+  --chart-5: #a06b62;
+  --chart-6: #d3999d;
+  --chart-7: #4d427f;
+  --chart-8: #9d4616;
+  --cost-standing: #5a6a86;
 }
 
-.dark[data-palette="colorblind"] {
+.dark[data-palette="colorblind"],
+.dark [data-palette="colorblind"] {
   --energy-grid: #a96655;
   --energy-solar: #e7bc81;
   --energy-selfused: #39b5ff;
@@ -404,6 +414,15 @@
   --sign-good: #4980ac;
   --sign-warn: #fcb442;
   --sign-bad: #c1552c;
+  --chart-1: #835054;
+  --chart-2: #c0b6fe;
+  --chart-3: #fcb02b;
+  --chart-4: #3a74d4;
+  --chart-5: #c87a30;
+  --chart-6: #605595;
+  --chart-7: #ebafb2;
+  --chart-8: #9985b2;
+  --cost-standing: #8496b4;
 }
 
 [data-palette="vivid"] {
@@ -418,9 +437,19 @@
   --sign-good: #417654;
   --sign-warn: #c59711;
   --sign-bad: #d73817;
+  --chart-1: #9f3960;
+  --chart-2: #6b89f9;
+  --chart-3: #24ae56;
+  --chart-4: #e253ae;
+  --chart-5: #8c2faf;
+  --chart-6: #ba0d01;
+  --chart-7: #ba5277;
+  --chart-8: #8f54dc;
+  --cost-standing: #0f9878;
 }
 
-.dark[data-palette="vivid"] {
+.dark[data-palette="vivid"],
+.dark [data-palette="vivid"] {
   --energy-grid: #ab6d6b;
   --energy-solar: #daae80;
   --energy-selfused: #4aa961;
@@ -432,6 +461,15 @@
   --sign-good: #588e6a;
   --sign-warn: #dfb03b;
   --sign-bad: #f45536;
+  --chart-1: #b74e74;
+  --chart-2: #68aafe;
+  --chart-3: #06c95e;
+  --chart-4: #a247c6;
+  --chart-5: #f077c0;
+  --chart-6: #d33222;
+  --chart-7: #d2678c;
+  --chart-8: #a46bf5;
+  --cost-standing: #14a385;
 }
 
 [data-palette="muted"] {
@@ -446,9 +484,19 @@
   --sign-good: #56695c;
   --sign-warn: #b19454;
   --sign-bad: #aa9190;
+  --chart-1: #704c57;
+  --chart-2: #889cd7;
+  --chart-3: #bf965d;
+  --chart-4: #5a6ca3;
+  --chart-5: #457d52;
+  --chart-6: #57b1a0;
+  --chart-7: #927d9b;
+  --chart-8: #7c4a1c;
+  --cost-standing: #5f8d84;
 }
 
-.dark[data-palette="muted"] {
+.dark[data-palette="muted"],
+.dark [data-palette="muted"] {
   --energy-grid: #8b7472;
   --energy-solar: #bfae9d;
   --energy-selfused: #649c6e;
@@ -460,4 +508,13 @@
   --sign-good: #6d8072;
   --sign-warn: #cbad6d;
   --sign-bad: #c4aaa9;
+  --chart-1: #85606a;
+  --chart-2: #9eb2ee;
+  --chart-3: #d6ac72;
+  --chart-4: #6e80ba;
+  --chart-5: #5a9266;
+  --chart-6: #6ec7b6;
+  --chart-7: #a792b1;
+  --chart-8: #657334;
+  --cost-standing: #7aa79e;
 }

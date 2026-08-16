@@ -335,6 +335,20 @@ describe("expandedSectionClass", () => {
     expect(expandedSectionClass(BASE, true)).toContain("bg-background");
   });
 
+  test("takes pointer input back from the dialog that suppressed it", () => {
+    // The frame is portalled to `document.body`, and bits-ui sets
+    // `body { pointer-events: none }` for as long as a dialog is open — its
+    // scroll lock. The frame therefore INHERITS `none` and every control in it
+    // goes dead: expanded from the energy or forecast dialog it painted
+    // perfectly and could not be hovered, brushed or even closed.
+    //
+    // Only visible to a hit test. A synthetic `element.click()` dispatches
+    // straight at the node and succeeds either way, which is exactly how this
+    // shipped.
+    expect(expandedSectionClass(BASE, true)).toContain("pointer-events-auto");
+    expect(expandedChartClass(true)).toContain("pointer-events-auto");
+  });
+
   test("always pins itself over the page, native full screen or not", () => {
     // The card is never the element handed to the browser — `fullscreenTarget`
     // gives it `<html>`, so that body-portalled tooltips and menus stay in the

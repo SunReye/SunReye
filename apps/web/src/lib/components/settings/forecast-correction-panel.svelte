@@ -48,7 +48,11 @@
 	 * Confidence (sample weight) drives opacity via `fillOpacity`, so sparsely-learned
 	 * cells stay pale.
 	 */
-	const factorColor = (factor: number) => `hsl(${factor >= 1 ? 152 : 38} 65% 45%)`;
+	// A judgement ramp — the forecast ran high or low — so it spends the sign
+	// tokens rather than two raw hues. Those hues were a green/amber pair sitting
+	// outside the palette, which the colour-blind preset could not reach.
+	const factorColor = (factor: number) =>
+		factor >= 1 ? 'var(--sign-good)' : 'var(--sign-warn)';
 	const confidence = (weight: number) => 0.15 + 0.85 * Math.min(1, weight / 12);
 
 	const hasData = $derived((view?.cells.length ?? 0) > 0);
@@ -131,7 +135,7 @@
 			label={m.weather_forecast_correction_legend()}
 			low="0.6×"
 			high="1.4×"
-			gradient="linear-gradient(to right, hsl(38 65% 45% / 0.85), hsl(0 0% 50% / 0.15), hsl(152 65% 45% / 0.85))"
+			gradient="linear-gradient(to right, color-mix(in oklab, var(--sign-warn) 85%, transparent), color-mix(in oklab, var(--muted-foreground) 15%, transparent), color-mix(in oklab, var(--sign-good) 85%, transparent))"
 		/>
 	{/if}
 </div>

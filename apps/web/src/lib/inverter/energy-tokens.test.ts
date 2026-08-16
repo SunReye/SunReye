@@ -371,16 +371,38 @@ describe("weakestPair", () => {
  */
 const PRESETS = ["colorblind", "vivid", "muted"];
 
-/** The tokens a palette owns: the meanings, plus direction and judgement. */
-const OWNED = [...SEMANTIC, "sign-good", "sign-warn", "sign-bad"];
+/**
+ * The tokens a palette owns. Everything that carries meaning: the eight energy
+ * roles, the three direction/judgement colours, the standing-charge hue (drawn
+ * in the same stacked bar as grid and export), and the eight CATEGORICAL series
+ * accents.
+ *
+ * The categorical eight are here because the setting is called "Chart colours".
+ * Leaving them out meant choosing "Colour-blind safe" re-hued the diagram and
+ * the tiles while every custom chart, history accent and swatch in the colour
+ * picker kept the shipped set — which contains a red/green confusion pair. A
+ * preset that fixes some of the screen is worse than one that admits its scope.
+ */
+const CATEGORICAL = Array.from({ length: 8 }, (_, i) => `chart-${i + 1}`);
+const OWNED = [...SEMANTIC, "sign-good", "sign-warn", "sign-bad", "cost-standing", ...CATEGORICAL];
 
 function presetBlock(preset: string, surface: "light" | "dark"): string {
+  // The dark blocks carry two selectors — `.dark[data-palette]` for the root and
+  // `.dark [data-palette]` for a nested preview scope — so anchor on the first.
   const selector =
-    surface === "light" ? `[data-palette="${preset}"] {` : `.dark[data-palette="${preset}"] {`;
+    surface === "light" ? `[data-palette="${preset}"] {` : `.dark[data-palette="${preset}"],`;
   const at = css.indexOf(`\n${selector}`);
   if (at === -1) return "";
   return css.slice(at, css.indexOf("}", at));
 }
+
+/**
+ * The categorical accents overlay each other, all eight at once, in the series
+ * picker and in an eight-metric custom chart. The shipped set scores 0.0278 —
+ * eight mutually distinguishable hues under dichromacy do not exist — so this is
+ * a ratchet against THAT, not against the semantic floor.
+ */
+const CATEGORICAL_FLOOR = 0.027;
 
 describe("palette presets", () => {
   for (const preset of PRESETS) {
@@ -390,6 +412,17 @@ describe("palette presets", () => {
         expect(block, `no ${surface} block for [data-palette="${preset}"]`).not.toBe("");
         const missing = OWNED.filter((token) => !new RegExp(`--${token}:`).test(block));
         expect(missing).toEqual([]);
+      });
+
+      test(`${preset} keeps its ${surface} categorical accents apart`, () => {
+        const block = presetBlock(preset, surface);
+        const value = (token: string) =>
+          new RegExp(`--${token}:\\s*(#[0-9a-fA-F]{6})`).exec(block)![1]!;
+        const worst = weakestPair(Object.fromEntries(CATEGORICAL.map((t) => [t, value(t)])))!;
+        expect(
+          worst.distance,
+          `${preset}/${surface}: ${worst.a} vs ${worst.b} under ${worst.vision}`,
+        ).toBeGreaterThanOrEqual(CATEGORICAL_FLOOR);
       });
 
       test(`${preset} keeps its ${surface} meanings apart on every screen`, () => {

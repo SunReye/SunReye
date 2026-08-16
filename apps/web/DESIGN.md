@@ -378,6 +378,11 @@ the same green on /overview, and gave the generator and the EV charger the ident
   `localStorage` and sent nowhere, so a reader who cannot separate the plant's palette can help
   themselves without being an admin and without changing the wall display. The resolved preset is
   stamped as `data-palette` on `<html>`; `categorical` stamps nothing, because it IS `:root`.
+- A preset re-points **every token that carries meaning** — the eight energy roles, the three sign
+  colours, the standing-charge hue, AND the eight categorical accents. Leaving the categorical set
+  out meant "Colour-blind safe" re-hued the diagram while every custom chart and history accent kept
+  a red/green confusion pair, under a setting labelled *Chart colours*. A preset that fixes half the
+  screen is worse than one that admits its scope.
 - A preset re-points **only the tokens that carry meaning** — the eight energy roles and the three
   sign colours. Chrome, text and surfaces belong to the theme. Every preset authors light AND dark
   values for every token, which is the reason presets exist rather than eight colour pickers: one
