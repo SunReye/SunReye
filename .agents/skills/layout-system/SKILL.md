@@ -57,9 +57,10 @@ live in `expandedSectionClass` / `expandedChartClass` and are written out **lite
 scans source text, so a class name built with `map`/`join` reaches the DOM with no rule behind it
 and silently does nothing.
 
-A metric card full screen can hold a **draft** overlay — extra metrics, unsaved. It renders through
-`OverlayChartView`, the same component a saved custom chart uses; the draft is component state that
-is cleared when the card leaves full screen, and it is saved by seeding the existing editor.
+A metric card can hold a **draft** overlay — extra metrics, unsaved, added from "compare with…" in
+its header. It renders through `OverlayChartView`, the same component a saved custom chart uses; the
+draft is component state that lasts until it is cleared or saved, and it is saved by seeding the
+existing editor.
 
 Never hand the Fullscreen API anything but `document.documentElement` (`fullscreenTarget()`). Native
 full screen renders only that element's subtree, and every tooltip/dropdown/select/popover in this

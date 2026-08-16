@@ -395,8 +395,11 @@ charts drag-select with, and a button there swallows the start of a drag.
   why `expanded` is set *before* the request and never depends on its outcome.
 ### Draft charts
 
-A reader can pull a second metric onto a full-screened history card without saving anything —
-"compare with…" in the card's header while it is expanded.
+A reader can pull a second metric onto any history card without saving anything — "compare with…"
+in the card's header, at every size. It replaced an "add to chart" menu that asked which *saved*
+chart should own the metric: a question you can only answer if you already know what that chart is
+for, where drafting answers the one actually in front of you and ends at the same saved chart by way
+of the editor.
 
 - **One renderer.** A draft draws through `OverlayChartView`, the same component a *saved* custom
   chart uses. The only difference between the two is where the key list came from. Two renderers
@@ -404,8 +407,9 @@ A reader can pull a second metric onto a full-screened history card without savi
   works in one of them.
 - **The draft is component state on the card**, not a store: it is one reader looking at one chart,
   and a store would make every card share one draft.
-- **It dies with the gesture.** Expanding only swaps classes — nothing remounts — so the state
-  survives the toggle and the discard has to be written down (`if (!screen.expanded) draft = []`).
+- **It lasts until it is cleared or saved**, which is what the line under the plot promises. Not
+  discarded on leaving full screen: the control is in the header whether the card is expanded or
+  not, so that gesture has nothing to do with the draft.
 - **Say it is temporary.** Everything else on these pages persists, so a chart that will vanish
   says so under the plot, next to the two ways out of it.
 - **Saving goes through the editor that already writes custom charts**, seeded — not a second

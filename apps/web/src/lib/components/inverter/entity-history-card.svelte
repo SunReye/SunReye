@@ -4,7 +4,6 @@
 	import Section from '$lib/components/layout/section.svelte';
 	import MetricTooltipRow from '$lib/components/inverter/_shared/metric-tooltip-row.svelte';
 	import MetricCardActions from '$lib/components/inverter/_shared/metric-card-actions.svelte';
-	import MetricCompareMenu from '$lib/components/inverter/_shared/metric-compare-menu.svelte';
 	import MetricCardPlot from '$lib/components/inverter/_shared/metric-card-plot.svelte';
 	import DraftChartFooter from '$lib/components/inverter/_shared/draft-chart-footer.svelte';
 	import { api } from '$lib/api';
@@ -45,20 +44,20 @@
 	const current = $derived(inverter.value(metric.key));
 
 	// ── Draft overlay ───────────────────────────────────────────────────────────
-	// Metrics pulled in on top of this card's own while it is full screen. Held
-	// here, on the card, and nowhere else: it is one reader looking at one chart,
-	// so a store would make every card share one draft.
+	// Metrics pulled in on top of this card's own. Held here, on the card, and
+	// nowhere else: it is one reader looking at one chart, so a store would make
+	// every card share one draft.
+	//
+	// It lasts until the reader clears it or saves it — that is what "temporary"
+	// means here, and the footer under the plot says so. It is deliberately NOT
+	// discarded on leaving full screen: the control is in the header whether the
+	// card is expanded or not, so a draft built on a card in the grid would be
+	// thrown away by a gesture that has nothing to do with it.
 	//
 	// The card owns the FullscreenBox rather than letting Section keep its own,
-	// because the draft's whole contract is tied to the gesture — the control
-	// only appears while expanded, and leaving full screen is what throws the
-	// draft away. Expanding only swaps classes on the card, so this $state
-	// survives the gesture and the discard has to be written down.
+	// because it still needs to READ the expanded state — see `mounted`.
 	const screen = new FullscreenBox();
 	let draft = $state<string[]>([]);
-	$effect(() => {
-		if (!screen.expanded && draft.length > 0) draft = [];
-	});
 
 	const drafting = $derived(draft.length > 0);
 	const overlay = $derived(draftMetrics(metric.key, draft));
@@ -121,13 +120,7 @@
 <div use:inView={{ onEnter: enter, onLeave: leave }}>
 	<Section title={metric.label} nested fullscreen {screen}>
 		{#snippet actions()}
-			<!-- Only while full screen: on a card in the grid there is no room to
-			     read a two-series overlay, and the header is already three items
-			     wide at 412px. -->
-			{#if screen.expanded}
-				<MetricCompareMenu base={metric.key} bind:draft />
-			{/if}
-			<MetricCardActions metricKey={metric.key} value={current} {unit} />
+			<MetricCardActions metricKey={metric.key} value={current} {unit} bind:draft />
 		{/snippet}
 
 		{#if !mounted}

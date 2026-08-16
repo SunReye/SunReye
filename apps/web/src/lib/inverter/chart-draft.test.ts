@@ -101,22 +101,25 @@ describe("isDrafted", () => {
 const WEB = new URL("../../", import.meta.url);
 const read = async (file: string): Promise<string> => await Bun.file(new URL(file, WEB)).text();
 
-describe("a draft lives and dies with the full-screen gesture", () => {
+describe("the draft is wired to the card, not to the gesture", () => {
   test("the card owns the FullscreenBox rather than letting Section keep its own", async () => {
-    // The control only exists while expanded and the draft is thrown away on
-    // the way out, so the card has to be able to READ the expanded state.
-    // Section allocates one privately unless it is handed one.
+    // Not for the draft's sake any more — for `mounted`. A card expanded before
+    // it scrolled into view has to mount its chart, and Section allocates its
+    // box privately unless it is handed one.
     const card = await read("lib/components/inverter/entity-history-card.svelte");
     expect(card).toContain("const screen = new FullscreenBox()");
     expect(card).toMatch(/<Section[^>]*\bfullscreen\b[^>]*\{screen\}/);
   });
 
-  test("leaving full screen clears the draft", async () => {
-    // Expanding only swaps classes — nothing remounts — so component state
-    // survives the gesture and the discard has to be written down. Without it,
-    // collapsing the card leaves a two-series overlay in a grid cell 192px tall.
+  test("leaving full screen does NOT clear the draft", async () => {
+    // It did, back when the compare control only existed while expanded. The
+    // control is in the header at every size now, so a draft built on a card in
+    // the grid would be thrown away by a gesture that has nothing to do with
+    // it. A draft lasts until it is cleared or saved — which is what the line
+    // under the plot promises.
     const card = await read("lib/components/inverter/entity-history-card.svelte");
-    expect(card).toMatch(/if \(!screen\.expanded && draft\.length > 0\) draft = \[\]/);
+    expect(card).not.toMatch(/!screen\.expanded && draft/);
+    expect(card).not.toMatch(/screen\.expanded[^\n]*draft = \[\]/);
   });
 
   test("expanding mounts the chart even if the observer never fired", async () => {
@@ -131,9 +134,25 @@ describe("a draft lives and dies with the full-screen gesture", () => {
     expect(card).not.toMatch(/\{#if !visible\}/);
   });
 
-  test("the compare control is rendered only while expanded", async () => {
-    const card = await read("lib/components/inverter/entity-history-card.svelte");
-    expect(card).toMatch(/\{#if screen\.expanded\}\s*<MetricCompareMenu/);
+  test("the compare control sits in the header cluster at every size", async () => {
+    // It replaced the "add to chart" menu that used to be there. Rendered
+    // unconditionally: gating it on `screen.expanded` is what made the draft's
+    // lifetime a property of the full-screen gesture rather than of the card.
+    const cluster = await read("lib/components/inverter/_shared/metric-card-actions.svelte");
+    expect(cluster).toContain("<MetricCompareMenu base={metricKey} bind:draft />");
+    expect(cluster).not.toContain("{#if");
+  });
+
+  test("nothing is left of the menu it replaced", async () => {
+    // Dead code the audit would reject, and a second answer to "put this metric
+    // somewhere" that no longer has a button.
+    const files = [
+      ...new Bun.Glob("**/*.{svelte,ts}").scanSync(new URL("../../", import.meta.url).pathname),
+    ];
+    expect(files).not.toContain("lib/components/inverter/_shared/metric-chart-menu.svelte");
+    expect(files).not.toContain("lib/inverter/chart-membership.ts");
+    const cluster = await read("lib/components/inverter/_shared/metric-card-actions.svelte");
+    expect(cluster).not.toContain("MetricChartMenu");
   });
 
   test("a draft draws through the same renderer a saved chart uses", async () => {
