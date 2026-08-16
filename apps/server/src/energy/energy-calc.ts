@@ -83,20 +83,6 @@ export function replaceTodaySlice(
   return out;
 }
 
-/**
- * The day-period keys to actually plot: everything up to and including today.
- * The month window zero-fills to the first of next month, and those future days
- * were the landing spot the live today-override leaked onto across a
- * server/browser/inverter midnight mismatch (issue #52). A future day has no
- * energy and no place on the chart, so it is dropped.
- *
- * `periods` and `todayKey` are `YYYY-MM-DD` keys cut in the same plant zone, so
- * a lexical `<=` is chronological.
- */
-export function visibleDayPeriods(periods: string[], todayKey: string): string[] {
-  return periods.filter((p) => p <= todayKey);
-}
-
 /** Derive the display splits and ratios for one period's summed energy. */
 export function derivePeriodEnergy(bucket: string, totals: EnergyTotals): PeriodEnergy {
   const { importKwh, exportKwh, loadKwh, productionKwh, batteryDischargeKwh, batteryChargeKwh } =
