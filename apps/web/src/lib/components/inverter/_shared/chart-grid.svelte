@@ -1,7 +1,7 @@
 <script lang="ts">
 	// The saved custom charts, two per row from lg up.
 	import CustomChartCard from '$lib/components/inverter/custom-chart-card.svelte';
-	import type { CustomChart } from '$lib/inverter/custom-charts.svelte';
+	import type { CustomChart } from '$lib/inverter/custom-chart';
 	import type { HistoryRange } from '$lib/inverter/ranges';
 
 	let {

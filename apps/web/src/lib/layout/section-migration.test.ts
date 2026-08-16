@@ -407,9 +407,16 @@ describe("the bespoke cards keep what made them worth keeping", () => {
     // The live reading was the right half of the old header row; it is the
     // header action now. Dropped, the card shows history with no current value.
     test("the live readout is the header action", () => {
+      // The readout moved into `metric-card-actions.svelte` when the
+      // add-to-chart menu joined it there; what matters to this migration is
+      // still that the live value is the section's header action and not a
+      // second row of its own.
       const actions = snippetBody(card(), "actions");
       expect(actions, "entity-history-card passes Section no actions").not.toBeNull();
-      expect(actions!).toContain("<MetricReadout value={current} {unit} />");
+      expect(actions!).toContain("<MetricCardActions");
+      expect(read("lib/components/inverter/_shared/metric-card-actions.svelte")).toContain(
+        "<MetricReadout {value} {unit} />",
+      );
     });
   });
 

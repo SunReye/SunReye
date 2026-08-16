@@ -4,7 +4,7 @@
 	import Section from '$lib/components/layout/section.svelte';
 	import LiveArea from '$lib/components/inverter/live-area.svelte';
 	import MetricTooltipRow from '$lib/components/inverter/_shared/metric-tooltip-row.svelte';
-	import MetricReadout from '$lib/components/inverter/_shared/metric-readout.svelte';
+	import MetricCardActions from '$lib/components/inverter/_shared/metric-card-actions.svelte';
 	import MetricHistoryChart from '$lib/components/inverter/_shared/metric-history-chart.svelte';
 	import ChartStateView from '$lib/components/inverter/_shared/chart-state-view.svelte';
 	import { api } from '$lib/api';
@@ -92,9 +92,7 @@
 <div use:inView={{ onEnter: enter, onLeave: leave }}>
 	<Section title={metric.label} nested fullscreen>
 		{#snippet actions()}
-			<!-- The live value was the right half of the card's own header row; it
-			     is the section's header cluster now. -->
-			<MetricReadout value={current} {unit} />
+			<MetricCardActions metricKey={metric.key} value={current} {unit} />
 		{/snippet}
 
 		{#if !visible}

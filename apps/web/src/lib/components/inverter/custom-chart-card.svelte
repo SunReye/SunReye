@@ -14,7 +14,7 @@
 	import { resolveAxes, seriesConfig } from '$lib/components/inverter/_shared/chart-series';
 	import { CHART_BOX } from '$lib/layout/tokens';
 	import type { Datum } from '$lib/inverter/chart-axes';
-	import type { CustomChart } from '$lib/inverter/custom-charts.svelte';
+	import type { CustomChart } from '$lib/inverter/custom-chart';
 	import type { HistoryRange } from '$lib/inverter/ranges';
 	import type { ManifestMetric } from '$lib/inverter/types';
 

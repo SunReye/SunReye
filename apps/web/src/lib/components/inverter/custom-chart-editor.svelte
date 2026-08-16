@@ -13,19 +13,23 @@
 		chartableMetrics,
 		searchedGroups
 	} from '$lib/components/inverter/_shared/metric-catalog';
-	import {
-		MAX_CHART_METRICS,
-		type CustomChart,
-		customCharts
-	} from '$lib/inverter/custom-charts.svelte';
+	import { customCharts } from '$lib/inverter/custom-charts.svelte';
+	import { MAX_CHART_METRICS, type CustomChart } from '$lib/inverter/custom-chart';
 
 	let {
 		open = $bindable(false),
-		chart = null
+		chart = null,
+		seed = []
 	}: {
 		open?: boolean;
 		/** Chart being edited, or `null` to create a new one. */
 		chart?: CustomChart | null;
+		/**
+		 * Metrics pre-picked for a new chart — the "new chart with this metric"
+		 * path from a card on /history. Ignored when editing: that chart's own
+		 * metrics are the answer.
+		 */
+		seed?: string[];
 	} = $props();
 
 	let name = $state('');
@@ -36,9 +40,8 @@
 	let error = $state<string | null>(null);
 	let saving = $state(false);
 
-	const BLANK_DRAFT = { name: '', metrics: [] as string[] };
-	/** The chart under edit, or blanks when creating a new one. */
-	const draftOf = (c: CustomChart | null) => c ?? BLANK_DRAFT;
+	/** The chart under edit, or a blank one carrying whatever was pre-picked. */
+	const draftOf = (c: CustomChart | null) => c ?? { name: '', metrics: seed };
 
 	// Reset the form each time the dialog opens (create → blank, edit → prefill).
 	$effect(() => {
