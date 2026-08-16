@@ -9,6 +9,7 @@
 	import { useAppSession } from '$lib/session';
 	import { firstRunGate, publicDashboardEnabled, type FirstRunGate } from '$lib/setup';
 	import { inverter } from '$lib/inverter/store.svelte';
+	import { bus } from '$lib/ws/bus.svelte';
 	import { display } from '$lib/display.svelte';
 	import { pageHeader } from '$lib/page-header.svelte';
 	import { resolveView } from './app-view';
@@ -90,10 +91,16 @@
 	// for an anonymous read-only viewer (reads + stream are anon-allowed).
 	$effect(() => {
 		if (gate === 'ready' || isAnon) {
+			// The multiplexed socket is leased here and nowhere else: the shell owns
+			// the connection for as long as the workspace is on screen, while pages
+			// and cards subscribe to topics on top of it (bus.subscribe) without
+			// ever opening or closing one.
+			const releaseBus = bus.connect();
 			inverter.start();
 			// Load the instance-wide clock/time-zone preference so charts render in
 			// the configured format from first paint.
 			display.load();
+			return releaseBus;
 		}
 	});
 

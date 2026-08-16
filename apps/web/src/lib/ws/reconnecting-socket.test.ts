@@ -8,11 +8,16 @@ import {
 /** A socket that records what happened to it and lets a test fire its events. */
 class FakeSocket implements SocketLike {
   closed = 0;
+  /** Frames written to this socket, in order. */
+  sent: string[] = [];
   #handlers = new Map<string, () => void>();
   #message: ((message: { data: unknown }) => void) | null = null;
 
   subscribe(handler: (message: { data: unknown }) => void): void {
     this.#message = handler;
+  }
+  send(data: string): void {
+    this.sent.push(data);
   }
   on(event: "open" | "close" | "error", handler: () => void): void {
     this.#handlers.set(event, handler);
@@ -68,6 +73,19 @@ describe("ReconnectingSocket", () => {
     expect(sockets).toHaveLength(1);
   });
 
+  test("a disposer run twice gives back one lease, not two", () => {
+    // A Svelte cleanup can run twice (a teardown after an explicit release). An
+    // unguarded disposer would drive the refcount negative, and `connect()`'s
+    // "first lease opens" test would never be true again: the page keeps its
+    // dashboard, silently, with no socket behind it for the rest of its life.
+    const { socket, sockets } = harness();
+    const release = socket.connect();
+    release();
+    release();
+    socket.connect();
+    expect(sockets).toHaveLength(2);
+  });
+
   test("ignores messages from a superseded socket", () => {
     const { socket, sockets, seen } = harness();
     const release = socket.connect();
@@ -75,6 +93,185 @@ describe("ReconnectingSocket", () => {
     release();
     sockets[0]?.push("late");
     expect(seen).toEqual(["live"]);
+  });
+});
+
+// --- Asynchronous start ---------------------------------------------------------
+//
+// The metrics store backfills the offline gap over HTTP before each (re)connect.
+// That backfill is a promise, and the socket must not exist until it settles: a
+// live sample landing mid-backfill would be overwritten by the older rows the
+// fetch is still carrying.
+
+/** A deferred the test resolves by hand, standing in for the backfill fetch. */
+function deferred(): { promise: Promise<void>; resolve: () => void; reject: () => void } {
+  let resolve!: () => void;
+  let reject!: () => void;
+  const promise = new Promise<void>((res, rej) => {
+    resolve = res;
+    reject = () => rej(new Error("backfill failed"));
+  });
+  return { promise, resolve, reject };
+}
+
+describe("ReconnectingSocket with an asynchronous onStart", () => {
+  test("holds the socket back until the backfill settles", async () => {
+    const backfill = deferred();
+    const sockets: FakeSocket[] = [];
+    const socket = new ReconnectingSocket({
+      create: () => {
+        const ws = new FakeSocket();
+        sockets.push(ws);
+        return ws;
+      },
+      onMessage: () => {},
+      onStart: () => backfill.promise,
+    });
+    socket.connect();
+    expect(sockets).toHaveLength(0);
+    backfill.resolve();
+    await backfill.promise;
+    expect(sockets).toHaveLength(1);
+  });
+
+  test("a backfill that fails still opens the stream", async () => {
+    // The history endpoint being down is a gap in the sparklines, not a reason
+    // to leave the dashboard with no live feed at all.
+    const backfill = deferred();
+    const sockets: FakeSocket[] = [];
+    const socket = new ReconnectingSocket({
+      create: () => {
+        const ws = new FakeSocket();
+        sockets.push(ws);
+        return ws;
+      },
+      onMessage: () => {},
+      onStart: () => backfill.promise,
+    });
+    socket.connect();
+    backfill.reject();
+    await backfill.promise.catch(() => {});
+    await Bun.sleep(0);
+    expect(sockets).toHaveLength(1);
+  });
+
+  test("a lease released mid-backfill never opens a socket", async () => {
+    // The tab hid while the backfill was in flight; opening afterwards would
+    // leave exactly the buffered 1 Hz backlog the hide is there to avoid.
+    const backfill = deferred();
+    const sockets: FakeSocket[] = [];
+    const socket = new ReconnectingSocket({
+      create: () => {
+        const ws = new FakeSocket();
+        sockets.push(ws);
+        return ws;
+      },
+      onMessage: () => {},
+      onStart: () => backfill.promise,
+    });
+    const release = socket.connect();
+    release();
+    backfill.resolve();
+    await backfill.promise;
+    expect(sockets).toHaveLength(0);
+  });
+
+  test("a start still wanted when its backfill settles is told so", async () => {
+    const backfill = deferred();
+    const wanted: boolean[] = [];
+    const socket = new ReconnectingSocket({
+      create: () => new FakeSocket(),
+      onMessage: () => {},
+      onStart: async (stillWanted) => {
+        await backfill.promise;
+        wanted.push(stillWanted());
+      },
+    });
+    socket.connect();
+    backfill.resolve();
+    await backfill.promise;
+    await Bun.sleep(0);
+    expect(wanted).toEqual([true]);
+  });
+
+  test("an abandoned start is told so, so it cannot write state after the fact", async () => {
+    // The tab hides (or the store stops) while the backfill fetch is in flight.
+    // The socket abandons the attempt, but the hook's own async body runs to
+    // completion regardless — without this signal it publishes "connecting" on
+    // a store that has no socket, no lease and no armed reconnect.
+    const backfill = deferred();
+    const wanted: boolean[] = [];
+    const sockets: FakeSocket[] = [];
+    const socket = new ReconnectingSocket({
+      create: () => {
+        const ws = new FakeSocket();
+        sockets.push(ws);
+        return ws;
+      },
+      onMessage: () => {},
+      onStart: async (stillWanted) => {
+        await backfill.promise;
+        wanted.push(stillWanted());
+      },
+    });
+    const release = socket.connect();
+    release();
+    backfill.resolve();
+    await backfill.promise;
+    await Bun.sleep(0);
+    expect(wanted).toEqual([false]);
+    expect(sockets).toHaveLength(0);
+  });
+
+  test("a start superseded by a reopen is told so", async () => {
+    // Hide-then-show inside one backfill: the first attempt still has a live
+    // lease, but it is not the attempt that owns the connection any more.
+    const backfills = [deferred(), deferred()];
+    let started = 0;
+    const wanted: boolean[] = [];
+    const socket = new ReconnectingSocket({
+      create: () => new FakeSocket(),
+      onMessage: () => {},
+      onStart: async (stillWanted) => {
+        const mine = backfills[started++];
+        await mine?.promise;
+        wanted.push(stillWanted());
+      },
+    });
+    const release = socket.connect();
+    release();
+    socket.connect();
+    backfills[0]?.resolve();
+    backfills[1]?.resolve();
+    await Promise.all(backfills.map((b) => b.promise));
+    await Bun.sleep(0);
+    expect(wanted).toEqual([false, true]);
+  });
+
+  test("a fresh lease during an in-flight backfill supersedes it", async () => {
+    // Hide-then-show inside one backfill: the abandoned start must not open a
+    // second socket alongside the one the new lease is waiting for.
+    const backfills = [deferred(), deferred()];
+    let started = 0;
+    const sockets: FakeSocket[] = [];
+    const socket = new ReconnectingSocket({
+      create: () => {
+        const ws = new FakeSocket();
+        sockets.push(ws);
+        return ws;
+      },
+      onMessage: () => {},
+      onStart: () => backfills[started++]?.promise,
+    });
+    const release = socket.connect();
+    release();
+    socket.connect();
+    backfills[0]?.resolve();
+    backfills[1]?.resolve();
+    await Promise.all(backfills.map((b) => b.promise));
+    await Bun.sleep(0);
+    expect(started).toBe(2);
+    expect(sockets).toHaveLength(1);
   });
 });
 
@@ -166,7 +363,9 @@ function liveHarness(extra: Partial<ReconnectingSocketHooks> = {}): LiveHarness 
       return ws;
     },
     onMessage: (data) => seen.push(data),
-    onStart: () => events.push("start"),
+    onStart: () => {
+      events.push("start");
+    },
     onOpen: () => events.push("open"),
     onDrop: () => events.push("drop"),
     ...extra,
@@ -367,5 +566,121 @@ describe("ReconnectingSocket after an unexpected drop", () => {
     expect(h.events).toEqual(["start", "create", "open", "drop"]);
     expect(pending()).toHaveLength(0);
     expect(h.sockets).toHaveLength(1);
+  });
+});
+
+// --- Writing to the socket ------------------------------------------------------
+//
+// The multiplexed live socket is the first consumer that talks *back*: it sends
+// `{ t: "sub", … }` frames to say which topics it wants. Those frames are written
+// the moment a component subscribes, which is routinely before the handshake has
+// finished — a browser WebSocket throws on a send in CONNECTING, so the queue is
+// what makes "subscribe whenever you like" safe.
+
+describe("ReconnectingSocket.send", () => {
+  beforeEach(() => {
+    armed = [];
+    installFakeTimers();
+  });
+
+  afterEach(() => {
+    globalThis.setTimeout = realSetTimeout;
+    globalThis.clearTimeout = realClearTimeout;
+  });
+
+  test("send() before open is queued and flushed on open", () => {
+    const h = liveHarness();
+    h.socket.connect();
+    h.socket.send("first");
+    h.socket.send("second");
+    // The socket exists but has not shaken hands: nothing may go out yet.
+    expect(last(h.sockets).sent).toEqual([]);
+    last(h.sockets).emit("open");
+    // Flushed in the order they were written — a sub and the unsub that follows
+    // it must not swap places.
+    expect(last(h.sockets).sent).toEqual(["first", "second"]);
+  });
+
+  test("a send after the handshake goes straight out", () => {
+    const h = liveHarness();
+    h.socket.connect();
+    last(h.sockets).emit("open");
+    h.socket.send("live");
+    expect(last(h.sockets).sent).toEqual(["live"]);
+  });
+
+  test("the queue is flushed before the open hook runs", () => {
+    // The consumer's `onOpen` reconciles its subscriptions against what it has
+    // already told this socket. If the queue drained afterwards, that
+    // reconciliation would see an empty socket and write the same frames twice.
+    const events: string[] = [];
+    const h = liveHarness({
+      onOpen: () => events.push(`open:${last(h.sockets).sent.join(",")}`),
+    });
+    h.socket.connect();
+    h.socket.send("queued");
+    last(h.sockets).emit("open");
+    expect(events).toEqual(["open:queued"]);
+  });
+
+  test("a frame queued on a socket that dropped before opening is not replayed on the next one", () => {
+    // A frame belongs to the connection it was written for. The consumer clears
+    // its own bookkeeping on the drop and rewrites whatever is still wanted, so
+    // replaying the old frame would double it.
+    const h = liveHarness();
+    h.socket.connect();
+    h.socket.send("for the dead socket");
+    last(h.sockets).emit("close");
+    elapse();
+    last(h.sockets).emit("open");
+    expect(h.sockets).toHaveLength(2);
+    expect(last(h.sockets).sent).toEqual([]);
+  });
+
+  test("a frame written from onDrop at teardown survives into the next connection", () => {
+    // `onDrop` is where a consumer reconciles what it told the connection that
+    // just died; anything it writes from there is meant for the *next* one. The
+    // last lease going away while the socket was live must not be the one case
+    // where that frame is silently swallowed.
+    const h: LiveHarness = liveHarness({
+      onDrop: () => h.socket.send("written from the drop hook"),
+    });
+    const release = h.socket.connect();
+    last(h.sockets).emit("open"); // a live socket at teardown
+    release();
+
+    h.socket.connect();
+    expect(h.sockets).toHaveLength(2);
+    last(h.sockets).emit("open");
+    expect(last(h.sockets).sent).toEqual(["written from the drop hook"]);
+  });
+
+  test("a frame written from onDrop at teardown survives when the connection was already down", () => {
+    // The same invariant on the other teardown path: the lease went away mid-
+    // outage, so there is no socket left to close. Both paths must agree.
+    const h: LiveHarness = liveHarness({
+      onDrop: () => h.socket.send("written from the drop hook"),
+    });
+    const release = h.socket.connect();
+    last(h.sockets).emit("close"); // drop hook writes once, for the reconnect
+    release(); // ... and once more for whatever lease comes next
+
+    h.socket.connect();
+    expect(h.sockets).toHaveLength(2);
+    last(h.sockets).emit("open");
+    expect(last(h.sockets).sent).toEqual(["written from the drop hook"]);
+  });
+
+  test("a send while the connection is down is queued for the socket that replaces it", () => {
+    // The tab is subscribing to a topic mid-outage. Dropping the frame would
+    // leave the topic silent until something else forced a resubscribe.
+    const h = liveHarness();
+    h.socket.connect();
+    last(h.sockets).emit("close");
+    h.socket.send("written during the outage");
+    elapse();
+    expect(last(h.sockets).sent).toEqual([]);
+    last(h.sockets).emit("open");
+    expect(last(h.sockets).sent).toEqual(["written during the outage"]);
   });
 });

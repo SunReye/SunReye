@@ -1,6 +1,8 @@
 import { SvelteMap } from "svelte/reactivity";
 import { api } from "$lib/api";
 import { uiPrefs } from "$lib/ui-prefs.svelte";
+import { ReconnectingSocket } from "$lib/ws/reconnecting-socket";
+import { CadenceTracker } from "./cadence";
 import type {
   CanonicalRole,
   InverterCapabilities,
@@ -14,10 +16,6 @@ import type {
 const WINDOW_MS = 5 * 60 * 1000;
 /** Hard per-metric point cap so a faster-than-1 Hz feed can't grow unbounded. */
 const MAX_POINTS = 5000;
-
-/** Reconnect backoff: first retry, then doubling, capped. */
-const RECONNECT_BASE_MS = 500;
-const RECONNECT_MAX_MS = 30_000;
 
 type Status = "idle" | "connecting" | "live" | "closed";
 
@@ -45,9 +43,6 @@ function groupRows(
   return byMetric;
 }
 
-/** The live-metrics socket handle (Eden `EdenWS`). */
-type MetricsSocket = ReturnType<typeof api.ws.metrics.subscribe>;
-
 /**
  * Single source of truth for the active inverter on the client. Holds the
  * capability manifest (fetched once) and the live sample stream, plus small
@@ -67,18 +62,61 @@ class InverterStore {
    * continuously between samples instead of snapping and freezing.
    */
   cadenceMs = $state(1000);
-  /** Sample time of the previous live message; drives the cadence estimate. */
-  #lastSampleT: number | null = null;
+  /** The estimate itself — plain TS so the arithmetic is unit-testable. */
+  #cadence = new CadenceTracker();
 
   // Reactive map: metric key → recent points. Plain `Map` in `$state` is NOT
   // reactive on get/set — SvelteMap tracks per-key mutations so sparklines
   // update the instant a new point lands.
   #series = new SvelteMap<string, LivePoint[]>();
-  #ws: MetricsSocket | null = null;
   #started = false;
-  #reconnectTimer: ReturnType<typeof setTimeout> | null = null;
-  #reconnectAttempts = 0;
   #onVisibility: (() => void) | null = null;
+
+  /** Releases the live-stream lease; null while no stream is leased. */
+  #release: (() => void) | null = null;
+
+  #socket = new ReconnectingSocket({
+    create: () => api.ws.metrics.subscribe(),
+    // Runs before every (re)connect, and the socket waits on it: seed the
+    // buffers with the newest rows so they land on current data instead of
+    // replaying the gap, and only then start listening. Nothing stale is queued
+    // behind it because the socket was closed while we were away.
+    onStart: async (stillWanted) => {
+      await this.#backfill();
+      // The fetch outlives its connection attempt when the tab hides or `stop()`
+      // runs mid-flight: those paths released the lease and wrote their own
+      // status, and no socket will follow this backfill. Everything below is
+      // per-connection state for a connection that will never exist.
+      if (!stillWanted()) return;
+      this.status = "connecting";
+      // Fresh connection: don't let the first sample's delta (measured against a
+      // pre-reconnect timestamp) whip the cadence estimate. After the await, with
+      // the status: the reset belongs to the connection this start is opening, so
+      // an abandoned attempt must not perform it either — the seed it would leave
+      // behind is one the next start re-applies anyway.
+      this.#cadence.reset();
+    },
+    onMessage: (raw) => {
+      const sample = raw as LiveSample;
+      this.latest = sample;
+      this.status = "live";
+      const t = new Date(sample.time).getTime();
+      this.cadenceMs = this.#cadence.sample(t);
+      const cutoff = t - WINDOW_MS;
+      for (const [key, v] of Object.entries(sample.metrics)) {
+        this.#appendPoint(key, { t, v }, cutoff);
+      }
+    },
+    // A drop is a reconnect in progress. The socket also reports one when the
+    // last lease goes away (hide/stop); this hook runs synchronously inside that
+    // release, so the "idle"/"closed" those paths write lands after it and
+    // "connecting" never sticks on a stream nobody wants. The reopen path is not
+    // symmetric — `onStart` is async, which is why it re-checks `stillWanted()`
+    // before writing a status of its own.
+    onDrop: () => {
+      this.status = "connecting";
+    },
+  });
 
   get capabilities(): InverterCapabilities | null {
     return this.manifest?.capabilities ?? null;
@@ -147,19 +185,21 @@ class InverterStore {
   #handleVisibility(): void {
     if (typeof document === "undefined") return;
     if (document.visibilityState === "hidden") {
-      this.#teardownSocket();
+      // Releasing the last lease closes the socket and cancels any armed
+      // backoff, so the return path opens immediately instead of waiting one
+      // out.
+      this.#release?.();
+      this.#release = null;
       this.status = "idle";
       return;
     }
-    this.#resumeStream();
+    this.#lease();
   }
 
-  /** Reopen immediately on return, dropping any pending backoff delay. */
-  #resumeStream(): void {
-    if (!this.#started || this.#ws !== null) return;
-    this.#clearReconnectTimer();
-    this.#reconnectAttempts = 0;
-    void this.#reconnect();
+  /** Take the stream lease (idempotent — one lease per store). */
+  #lease(): void {
+    if (!this.#started || this.#release !== null) return;
+    this.#release = this.#socket.connect();
   }
 
   async #init(): Promise<void> {
@@ -168,10 +208,9 @@ class InverterStore {
     // reactive getter re-filters once it resolves.
     void uiPrefs.load();
     await this.#loadManifest();
-    // Seed sparklines with the last window of raw samples so they're populated
-    // on load, then attach the live stream which appends from here on.
-    await this.#backfill();
-    this.#connect();
+    // Lease the stream; the socket backfills the sparklines in `onStart` before
+    // it opens, so the buffers are populated on load and appended to from here.
+    this.#lease();
   }
 
   async #loadManifest(): Promise<void> {
@@ -225,59 +264,6 @@ class InverterStore {
     return windowed.length > MAX_POINTS ? windowed.slice(-MAX_POINTS) : windowed;
   }
 
-  #connect(): void {
-    // Drop any prior socket first; its handlers are identity-guarded on `#ws`, so
-    // once it's no longer the current socket they become no-ops (no stray
-    // reconnect from a superseded connection).
-    this.#teardownSocket();
-    this.status = "connecting";
-    // Fresh connection: don't let the first sample's delta (measured against a
-    // pre-reconnect timestamp) whip the cadence estimate.
-    this.#lastSampleT = null;
-    const ws = api.ws.metrics.subscribe();
-    ws.subscribe((message: { data: unknown }) => {
-      if (this.#ws !== ws) return; // superseded socket flushing late
-      const sample = message.data as LiveSample;
-      this.latest = sample;
-      this.status = "live";
-      const t = new Date(sample.time).getTime();
-      this.#trackCadence(t);
-      const cutoff = t - WINDOW_MS;
-      for (const [key, v] of Object.entries(sample.metrics)) {
-        this.#appendPoint(key, { t, v }, cutoff);
-      }
-    });
-    ws.on("open", () => {
-      if (this.#ws !== ws) return;
-      this.#reconnectAttempts = 0; // healthy connection resets backoff
-    });
-    ws.on("close", () => {
-      if (this.#ws !== ws) return; // intentional/superseded close — don't retry
-      this.#ws = null;
-      this.status = "connecting";
-      this.#scheduleReconnect();
-    });
-    // Surface transport errors as a close so the single reconnect path handles them.
-    ws.on("error", () => ws.close());
-    this.#ws = ws;
-  }
-
-  /**
-   * Track the real spacing between samples so consumers can size their glide to
-   * the live feed. EMA (α=0.3) so one late/early sample nudges rather than whips
-   * it; clamp to the config's allowed poll range to reject backfill jumps and
-   * clock skew.
-   */
-  #trackCadence(t: number): void {
-    const last = this.#lastSampleT;
-    this.#lastSampleT = t;
-    if (last === null) return;
-    const delta = t - last;
-    if (delta <= 0) return;
-    const clamped = Math.min(3_600_000, Math.max(1000, delta));
-    this.cadenceMs = this.cadenceMs * 0.7 + clamped * 0.3;
-  }
-
   /**
    * Append one metric's new sample and drop what fell out of the window. One copy
    * per metric per tick (new reference so consumers re-render): slice off expired
@@ -292,44 +278,10 @@ class InverterStore {
     this.#series.set(key, next);
   }
 
-  /** Reconnect after an unexpected drop: backfill the gap, then reopen the stream. */
-  async #reconnect(): Promise<void> {
-    if (!this.#started) return;
-    // Backfill first so the buffers land on the newest data; nothing stale is
-    // queued because the socket was closed while we were away.
-    await this.#backfill();
-    if (!this.#started) return;
-    this.#connect();
-  }
-
-  #scheduleReconnect(): void {
-    if (this.#reconnectTimer !== null || !this.#started) return;
-    const delay = Math.min(RECONNECT_MAX_MS, RECONNECT_BASE_MS * 2 ** this.#reconnectAttempts);
-    this.#reconnectAttempts += 1;
-    this.#reconnectTimer = setTimeout(() => {
-      this.#reconnectTimer = null;
-      void this.#reconnect();
-    }, delay);
-  }
-
-  #clearReconnectTimer(): void {
-    if (this.#reconnectTimer !== null) {
-      clearTimeout(this.#reconnectTimer);
-      this.#reconnectTimer = null;
-    }
-  }
-
-  /** Close the current socket without scheduling a reconnect (identity-guarded). */
-  #teardownSocket(): void {
-    const ws = this.#ws;
-    this.#ws = null; // clear first so the socket's close handler no-ops
-    ws?.close();
-  }
-
   /** Close the stream and detach listeners (call on shell teardown). */
   stop(): void {
-    this.#clearReconnectTimer();
-    this.#teardownSocket();
+    this.#release?.();
+    this.#release = null;
     if (this.#onVisibility && typeof document !== "undefined") {
       document.removeEventListener("visibilitychange", this.#onVisibility);
       this.#onVisibility = null;
