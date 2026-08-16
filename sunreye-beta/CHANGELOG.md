@@ -2,11 +2,14 @@
 
 ## [unreleased]
 
-Unreleased work on `dev` since 1.2.0, shipped in `beta.20260816-ab06deb`.
+Unreleased work on `dev` since 1.2.0, shipped in `beta.20260816-a1d50dc`.
 
 
 ### Features
 
+* **web:** hub and nodes answer the plant's load ([61626df](https://github.com/SunReye/SunReye/commit/61626dfedc5129e71acfc6fad08c7c083ce1be84))
+* **web:** the interleaved pulse ladder ([f30c49e](https://github.com/SunReye/SunReye/commit/f30c49e6cc19e211b69d00aa3565992f7d1d6568))
+* **web:** a plant ceiling the diagram can be measured against ([9264964](https://github.com/SunReye/SunReye/commit/92649641f95ac427f3164b1b6b6eaafeb37c9719))
 * choose the chart palette in settings ([95a5dcc](https://github.com/SunReye/SunReye/commit/95a5dcc21bb9d7ea528b85a4ae4b65f13ada33a7))
 * **web:** categorical chart palette, and a colour per series ([884c4b6](https://github.com/SunReye/SunReye/commit/884c4b66858150770cba9ef76abb691d3af53d56))
 * **web:** zoom the overlaid chart, saved or drafted ([4764645](https://github.com/SunReye/SunReye/commit/47646450ce1cda8847ab7302be11189322a5ac0c))
@@ -72,6 +75,9 @@ Unreleased work on `dev` since 1.2.0, shipped in `beta.20260816-ab06deb`.
 
 ### Bug Fixes
 
+* **web:** a charge's glow stops being cut off at the safe box ([0d2c783](https://github.com/SunReye/SunReye/commit/0d2c783fa7050d2222e7f53b0aa382cb217bf7d6))
+* **web:** a rising plant stops writing storage at the feed's cadence ([952ee98](https://github.com/SunReye/SunReye/commit/952ee9897596e3a82af05c0a5047753372972686))
+* **web:** the ceiling stops invalidating the effect that folds it ([a930f00](https://github.com/SunReye/SunReye/commit/a930f00e130ce9506e97b83432e92da3cf0c2bd4))
 * **addon:** serve the multiplexed live socket at exactly /ws ([ab06deb](https://github.com/SunReye/SunReye/commit/ab06deb285fb5bda0d08b8e84016d32cd41d07be))
 * **web:** close the gaps an adversarial review found in the palette work ([c8cc39b](https://github.com/SunReye/SunReye/commit/c8cc39ba8618893c412c71174cf382583c0c6607))
 * **web:** paint fixed meanings from the semantic set, not the palette ([8061145](https://github.com/SunReye/SunReye/commit/8061145f70b59731e245cc3be8811e9c61c6a349))
@@ -124,6 +130,8 @@ Unreleased work on `dev` since 1.2.0, shipped in `beta.20260816-ab06deb`.
 
 ### Documentation
 
+* **plans:** record the power-flow energy pulses design ([0b4f1b5](https://github.com/SunReye/SunReye/commit/0b4f1b5d940407cce4ee8d9dc2478e89a057bc0f))
+* **web:** motion carve-out for the power-flow diagram ([968b29c](https://github.com/SunReye/SunReye/commit/968b29ce9c76c041936ef2163f32dd994476e4a9))
 * **web:** write down the full-screen vocabulary ([697b882](https://github.com/SunReye/SunReye/commit/697b882e1e3c92dcaaee726c228f8fdce1fa5e8a))
 * **web:** write down the gesture contract and the testing lesson ([6aac5ca](https://github.com/SunReye/SunReye/commit/6aac5cab864908534bed8a45edb4009806a32dec))
 * add a contributor guide covering the release flow ([02e8aeb](https://github.com/SunReye/SunReye/commit/02e8aeb6c58e4c0a80221ca8ce8dc13aa7e1ddda))
@@ -143,6 +151,8 @@ Unreleased work on `dev` since 1.2.0, shipped in `beta.20260816-ab06deb`.
 
 ### Code Refactoring
 
+* **web:** a charge is a bead chain, and its speed is the reading ([1ffd393](https://github.com/SunReye/SunReye/commit/1ffd3934288b64eebfbc0ed3ec416bdee7c1a9c5))
+* **web:** rails shoot pulses instead of dashes ([fb29f34](https://github.com/SunReye/SunReye/commit/fb29f34490fd813935e719f9e7c37e21d9207cbe))
 * **web:** direction and judgement colours become tokens ([e488ae9](https://github.com/SunReye/SunReye/commit/e488ae9d64505df0e6948cddacf1ea8d991b29dc))
 * **web:** draft controls are icons, without the caption ([6e44599](https://github.com/SunReye/SunReye/commit/6e44599329814bfeec6b52d6104eb04b535aff7d))
 * **web:** one renderer for an overlaid chart ([e2cd65b](https://github.com/SunReye/SunReye/commit/e2cd65baaf2344b370a3455256ffef51b6a6c8bd))
@@ -234,6 +244,7 @@ Unreleased work on `dev` since 1.2.0, shipped in `beta.20260816-ab06deb`.
 
 ### Tests
 
+* **web:** pin the ring's swing to zero at an idle plant ([9e23125](https://github.com/SunReye/SunReye/commit/9e231252a3354c50fa1cab4ebd54cd52f6714484))
 * cross the client/server seam the deleted REST primes relied on ([a368585](https://github.com/SunReye/SunReye/commit/a3685856301aea4f14f89ecce60428e11fe3ff4d))
 * **server:** inject the evcc load-sample hook instead of module-mocking it ([c20771a](https://github.com/SunReye/SunReye/commit/c20771ac1ab66fb052fee6dda782b96aee24562a))
 * **ci:** make first-party mocks hand themselves back, and gate it ([58d8c41](https://github.com/SunReye/SunReye/commit/58d8c41183b7478649f2973d8845b132fdf19390))
