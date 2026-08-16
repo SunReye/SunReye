@@ -33,7 +33,7 @@
 		/** Split the fill red (above 0) / green (below 0) around a zero baseline. */
 		diverging?: boolean;
 		windowMs?: number;
-		/** Tailwind height class for the chart box (fixed height — not h-full). */
+		/** Tailwind height class for the chart box; `h-full` to fill the caller's box. */
 		height?: string;
 		/** Series name shown in the hover tooltip. */
 		label?: string;
@@ -106,8 +106,11 @@
 {/snippet}
 
 <!-- A measuring box around the plot: the chart container is layerchart's own
-     fixed-size element, so the width the gutters follow is read here. -->
-<div class="w-full" bind:clientWidth={plotWidth}>
+     fixed-size element, so the width the gutters follow is read here.
+     `h-full` and not `w-full` alone: /history hands this component `h-full`,
+     which resolves against THIS div — an unsized wrapper made every live chart
+     on that page render at 0px. -->
+<div class="h-full w-full" bind:clientWidth={plotWidth}>
 	<Chart.Container
 		config={{ v: { label, color: accent } }}
 		class={[

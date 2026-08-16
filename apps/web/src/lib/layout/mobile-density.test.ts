@@ -722,3 +722,51 @@ describe("a card header cannot be wider than its card", () => {
     );
   });
 });
+
+describe("a measuring wrapper does not break the height chain", () => {
+  // The gutter work put a `bind:clientWidth` div around each plot so the
+  // padding could follow the MEASURED width. In `live-area.svelte` that div was
+  // written `class="w-full"` — no height — and the component is handed
+  // `height="h-full"` by the history card. `h-full` resolves against the
+  // parent, so the chart asked a height-less div how tall it was, got `auto`,
+  // and rendered at **0px**: every live chart on /history was an empty box,
+  // with the whole suite green and the data present in the DOM.
+  //
+  // The rule is stated from the CALL SITE, discovered on disk: a component
+  // somebody hands `h-full` may not put an unsized box between the box that
+  // owns the height and the chart that consumes it.
+
+  /** Components a caller sizes with `h-full`, mapped back to their own file. */
+  function heightPassthroughFiles(): string[] {
+    const out = new Set<string>();
+    for (const file of files) {
+      const code = read(file);
+      for (const open of code.matchAll(/<([A-Z][\w.]*)((?:[^<>]|\{[^{}]*\})*?)\/?>/g)) {
+        if (!/\bheight=(?:"h-full"|\{[^{}]*['"`]h-full['"`][^{}]*\})/.test(open[2])) continue;
+        // Resolve the tag through the importing file's own import statement, so
+        // this follows a rename instead of hard-coding today's pairs.
+        const imported = code.match(
+          new RegExp(`import\\s+${open[1]}\\s+from\\s+['"]([^'"]+)['"]`),
+        )?.[1];
+        if (imported?.startsWith("$lib/")) out.add(imported.replace("$lib/", "lib/"));
+      }
+    }
+    return [...out].sort();
+  }
+
+  const passthrough = heightPassthroughFiles();
+
+  test("the sweep still finds the history card's live chart", () => {
+    // A discovery that quietly stops matching passes exactly as green as one
+    // that holds; this is the pair the 0px bug was measured on.
+    expect(passthrough).toContain("lib/components/inverter/live-area.svelte");
+  });
+
+  test.each(passthrough)("%s keeps every measuring wrapper full-height", (file) => {
+    const unsized = [...read(file).matchAll(/<div((?:[^<>]|\{[^{}]*\})*?)>/g)]
+      .filter((open) => /\bbind:clientWidth\b/.test(open[1]))
+      .map((open) => open[1])
+      .filter((attrs) => !classValues(attrs).some((v) => /(?:^|\s)h-full(?:\s|$)/.test(v)));
+    expect(unsized).toEqual([]);
+  });
+});
