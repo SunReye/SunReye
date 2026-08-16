@@ -30,7 +30,7 @@ import { settingsRoutes } from "./routes/settings";
 import { statisticsRoutes } from "./routes/statistics";
 import { wsRoutes } from "./routes/ws";
 import { topicAccessFrom } from "./routes/ws-subscribe";
-import { muxTopic } from "./routes/ws-topics";
+import { muxFrame, muxTopic } from "./routes/ws-topics";
 import { todayStatistics } from "./statistics/statistics";
 import * as runtime from "./inverter/runtime";
 
@@ -615,16 +615,14 @@ streams.subscribe("automations", (msg) =>
 // dropping this endpoint is one commit. A publish to a topic nobody subscribed
 // to costs nothing.
 streams.subscribe("metrics", (data) =>
-  app.server?.publish(muxTopic("metrics"), JSON.stringify({ topic: "metrics", data })),
+  app.server?.publish(muxTopic("metrics"), muxFrame("metrics", data)),
 );
-streams.subscribe("evcc", (data) =>
-  app.server?.publish(muxTopic("evcc"), JSON.stringify({ topic: "evcc", data })),
-);
+streams.subscribe("evcc", (data) => app.server?.publish(muxTopic("evcc"), muxFrame("evcc", data)));
 streams.subscribe("statistics", (data) =>
-  app.server?.publish(muxTopic("statistics"), JSON.stringify({ topic: "statistics", data })),
+  app.server?.publish(muxTopic("statistics"), muxFrame("statistics", data)),
 );
 streams.subscribe("automations", (data) =>
-  app.server?.publish(muxTopic("automations"), JSON.stringify({ topic: "automations", data })),
+  app.server?.publish(muxTopic("automations"), muxFrame("automations", data)),
 );
 
 // Log lines coalesce: startup and error storms emit many at once, so a burst is
@@ -643,7 +641,7 @@ streams.subscribe("logs", (entry) => {
     // The coalesced batch is also the multiplexed socket's `logs` payload —
     // the one topic whose wire shape (a batch) differs from its bus shape (a
     // single entry), and this flush is the one place that conversion happens.
-    app.server?.publish(muxTopic("logs"), JSON.stringify({ topic: "logs", data: batch }));
+    app.server?.publish(muxTopic("logs"), muxFrame("logs", batch));
   }, 250);
 });
 

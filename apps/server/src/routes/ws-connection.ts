@@ -38,13 +38,7 @@
  * {@link ./ws} keeps nothing but the route declaration and the upgrade policy.
  */
 
-import type {
-  ClientFrame,
-  ServerAckFrame,
-  ServerFrame,
-  WsTopic,
-  WsTopicPayloads,
-} from "@SunReye/contracts/ws";
+import type { ClientFrame, ServerAckFrame, WsTopic, WsTopicPayloads } from "@SunReye/contracts/ws";
 import { log } from "../shared/logging";
 import type { StreamListener, Streams } from "../shared/streams";
 import { primeTopic } from "./ws-priming";
@@ -54,7 +48,7 @@ import {
   resolveSubscribe,
   resolveUnsubscribe,
 } from "./ws-subscribe";
-import { bufferedWhilePriming, muxTopic } from "./ws-topics";
+import { bufferedWhilePriming, muxFrame, muxTopic } from "./ws-topics";
 
 const wsLog = log("ws");
 
@@ -216,13 +210,16 @@ export function createWsConnections(deps: WsRoutesDeps): WsConnectionHandlers {
     }
   };
 
-  /** Write one topic-tagged data frame. */
+  /**
+   * Write one topic-tagged data frame.
+   *
+   * Through {@link muxFrame} rather than an inline `JSON.stringify`: the same
+   * envelope goes out again from the bus republish in `index.ts` once this
+   * topic is promoted, and a backfill that disagreed with the live feed about
+   * the envelope would paint once and then go quiet.
+   */
   const sendFrame = <K extends WsTopic>(ws: WsSocket, topic: K, data: WsTopicPayloads[K]) =>
-    // The topic↔payload pairing is enforced by the parameter types; the cast is
-    // only because a still-generic `K` cannot be shown to pick one member of
-    // the distributed union (TS checks `{ topic: K; data: WsTopicPayloads[K] }`
-    // against the union as a whole, which no single member satisfies).
-    ws.send(JSON.stringify({ topic, data } as ServerFrame));
+    ws.send(muxFrame(topic, data));
 
   /**
    * Stop delivering `topic` on this connection: leave the fan-out, forget the
