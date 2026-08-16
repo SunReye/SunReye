@@ -148,6 +148,34 @@ function ruleFor(sheet: string, selector: string): string {
   return block(sheet, sheet.indexOf("{", at));
 }
 
+/**
+ * The `base` and `swing` of an amplitude-modulated value — `calc(base + swing *
+ * var(--plant-level))`, the one shape this diagram is allowed to answer the
+ * plant with. Split out because "a calc mentioning --plant-level" is true of
+ * the inverted version too, and inverted is a diagram that flashes hardest at
+ * midnight.
+ */
+function amplitude(text: string): { base: number; swing: number } {
+  const m = /calc\(\s*([\d.]+)\s*([+-])\s*([\d.]+)\s*\*\s*var\(--plant-level\)\s*\)/.exec(text);
+  if (!m) throw new Error(`not amplitude-modulated: ${text}`);
+  return { base: Number(m[1]), swing: Number(m[3]) * (m[2] === "-" ? -1 : 1) };
+}
+
+/** Each frame of a `@keyframes` block, keyed by its whitespace-free selector. */
+function frames(keyframes: string): Map<string, string> {
+  const found = new Map<string, string>();
+  for (const [, selector, declarations] of keyframes.matchAll(/([\d%,\s]+)\{([^{}]*)\}/g))
+    found.set(selector.replaceAll(/\s+/g, ""), declarations);
+  return found;
+}
+
+/** The value a declaration block gives `property`. */
+function valueOf(declarations: string, property: string): string {
+  const m = new RegExp(`(?:^|[;{])\\s*${property}\\s*:([^;]*)`).exec(declarations);
+  if (!m) throw new Error(`no ${property} in ${declarations}`);
+  return m[1].trim();
+}
+
 const REDUCED = "@media (prefers-reduced-motion: reduce)";
 
 function reducedMotionBlock(sheet: string): string {
@@ -371,16 +399,36 @@ describe("the hub, the wash and the nodes answer the plant's load", () => {
 
   test("the wash fades its own opacity, on a transition of its own", () => {
     const wash = ruleFor(css(diagram), ".wash");
-    expect(wash).toMatch(/opacity:\s*calc\([^;]*var\(--plant-level\)/);
     expect(wash).toMatch(/transition:\s*opacity 900ms linear/);
+    // Brighter with the plant, never invisible at rest and never over 1: an
+    // inverted or overdriven wash is a `calc` mentioning the level too.
+    const { base, swing } = amplitude(valueOf(wash, "opacity"));
+    expect(swing).toBeGreaterThan(0);
+    expect(base).toBeGreaterThan(0);
+    expect(base + swing).toBeLessThanOrEqual(1);
   });
 
   test("the ring's beat is amplitude-modulated, so an idle plant barely ticks", () => {
     // Same period, smaller swing: the ring stops reading as full throttle at
-    // 300 W without any timing property moving.
-    const frames = ruleFor(css(diagram), "@keyframes hub-pulse");
-    expect(frames).toMatch(/opacity:\s*calc\([^;]*var\(--plant-level\)/);
-    expect(frames).toMatch(/scale\(calc\([^)]*var\(--plant-level\)/);
+    // 300 W without any timing property moving. The claim is about the SIZE of
+    // the swing, so it is checked at both ends — at an idle plant the beat has
+    // to vanish into the rest frame, and a flipped sign (a ring that flashes
+    // hardest at midnight) leaves a `calc(… var(--plant-level))` in place.
+    const beat = frames(ruleFor(css(diagram), "@keyframes hub-pulse"));
+    const rest = beat.get("0%,100%");
+    const peak = beat.get("50%");
+    expect(rest).toBeDefined();
+    expect(peak).toBeDefined();
+
+    const opacity = amplitude(valueOf(peak!, "opacity"));
+    expect(opacity.base).toBe(Number(valueOf(rest!, "opacity")));
+    expect(opacity.swing).toBeGreaterThan(0);
+    expect(opacity.base + opacity.swing).toBeLessThanOrEqual(1);
+
+    const scale = (t: string): string => /scale\((.*)\)/.exec(t)?.[1] ?? "";
+    const growth = amplitude(scale(valueOf(peak!, "transform")));
+    expect(growth.base).toBe(Number(scale(valueOf(rest!, "transform"))));
+    expect(growth.swing).toBeGreaterThan(0);
   });
 
   test("the level painted is a share of the same remembered plant as the rails", () => {
