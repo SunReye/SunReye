@@ -24,6 +24,9 @@ Motion should clarify:
 
 Avoid decorative animation that delays reading or makes the app feel noisy.
 
+One thing here moves continuously and is not decoration: the power-flow diagram's comet streams.
+They are the reading — see "Continuous motion as a status display" below before touching them.
+
 ### 4. Use the right menu for the job
 
 Do not force every section into the same navigation shape.
@@ -320,6 +323,52 @@ This is especially important for:
 Animate the **inner content**, not the whole shell.
 
 The header/sidebar/breadcrumbs should feel stable. Only the changing content region should move.
+
+### Continuous motion as a status display
+
+The rules above govern **UI transitions** — motion that answers "what just changed". The
+power-flow diagram's rails are not that. A cable carrying 6 kW and a cable carrying 300 W are
+different facts about the plant right now, and on a wall panel read from across a room the
+motion on the rail is how that fact arrives. Stopping it does not calm the diagram; it deletes
+the reading. So the 120–220 ms budget, "no bouncing animations on frequently updated content"
+and "anything that repeats on every poll is a flicker" do not apply to it, and it is the only
+place in this app they do not.
+
+What earns the carve-out is that the diagram obeys four constraints instead — each one the
+reason a specific complaint about continuous motion does not land here:
+
+- **Amplitude-modulated by real throughput.** Every rail is drawn against the plant's remembered
+  peak (`lib/inverter/flow-pulse.ts`), not against the busiest cable of the moment. At 300 W a
+  rail's charge drifts across small and dim; at 6 kW it snaps across, bigger and blooming. An
+  idle plant is nearly still, which is exactly what "avoid a noisy app" is asking for. A diagram
+  pinned at full throttle all night would be the violation.
+- **The speed IS the reading, and it is quantized.** One charge per rail, and its crossing time
+  carries the magnitude — so unlike everything else in this app, a timing property here is
+  derived from a datum. What keeps that honest is `crossingSeconds()`: the duration lands on a
+  quarter-second grid, so an unchanged-enough sample emits a byte-identical `dur` and the running
+  animation is never touched. Nothing accelerates once a second; it changes speed only when the
+  power really moved.
+- **Nothing jumps between samples.** A duration step rebuilds the mover (`{#key l.pulse.dur}`)
+  rather than remapping a running animation into a new elapsed time, which is what would teleport
+  the charge mid-flight. Size and bloom are `@property`-registered and glide over 700 ms; a flow
+  reversal crosses over on a fade rather than mirroring. That is what makes it readable at 1 Hz
+  instead of twitchy.
+- **It degrades to a still picture.** The motion is SMIL (`<animateMotion>` down the rail's own
+  cable), which no `@media` block can stop — so under `prefers-reduced-motion: reduce` the rails
+  render no mover at all and state their magnitude as a still coloured overlay whose width and
+  opacity encode the same power. The status survives; only the movement goes. Anything continuous
+  added here has to keep that property.
+
+A charge is a **chain of beads**, each with its own `<animateMotion>` down the same cable, lagging
+the one ahead of it and fused by a blur into one tapered streak with an incandescent head. That is
+not decoration for its own sake: a dash pattern can only taper by opacity, and a single sprite can
+only be placed and rotated — on this diagram's Béziers it cuts the corner and reads as a straight
+splinter laid across a curved wire. Every part of the comet being separately on the path is what
+makes it bend with the rail.
+
+This carve-out is for a status display, and it is not a licence to loop an animation elsewhere.
+If a new one is proposed, it has to meet all four constraints — and be the reading, not a
+decoration on top of one.
 
 ---
 
