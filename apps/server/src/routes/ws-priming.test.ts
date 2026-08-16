@@ -1,11 +1,11 @@
 /**
  * Backfill ordering on the multiplexed socket.
  *
- * The bug this exists to kill is live today on `/ws/statistics`: `open` calls
- * `ws.subscribe(...)` and *then* awaits `todayStatistics(profile)`. Any live
- * frame emitted during that await reaches the client before the snapshot it is
- * supposed to update, so a fresh page can paint newer data and then be
- * overwritten by the older backfill. The same shape lurks on `/ws/automations`.
+ * The bug this exists to kill was the shape of the retired `/ws/statistics`:
+ * `open` called `ws.subscribe(...)` and *then* awaited `todayStatistics(profile)`.
+ * Any live frame emitted during that await reached the client before the
+ * snapshot it was supposed to update, so a fresh page could paint newer data and
+ * then be overwritten by the older backfill. `/ws/automations` had the same shape.
  *
  * {@link primeTopic} makes it structural rather than a matter of statement
  * order: a topic is "priming" from the moment it is requested until its

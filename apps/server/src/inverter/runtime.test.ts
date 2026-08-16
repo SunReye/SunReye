@@ -229,6 +229,13 @@ const automation = {
    * the teardown position is the only way to observe that ordering.
    */
   clearedAtStop: -1,
+  /**
+   * The "is anyone watching the automations feed" predicate the runtime handed
+   * on. Only the socket boundary can answer that question, so it is injected
+   * into `start` and forwarded; a forward that gets dropped turns the engine's
+   * broadcast short-circuit into "never broadcast" and the page goes quiet.
+   */
+  watching: null as (() => boolean) | null,
 };
 const realAutomation = await import("../automation/automation");
 const realAutomationExports = { ...realAutomation };
@@ -236,10 +243,16 @@ const realStartAutomations = realAutomation.startAutomations;
 const realStopAutomations = realAutomation.stopAutomations;
 mock.module("../automation/automation", () => ({
   ...realAutomation,
-  startAutomations: async (deps: Parameters<typeof realAutomation.startAutomations>[0]) => {
-    if (!intercepting) return realStartAutomations(deps);
+  startAutomations: async (
+    deps: Parameters<typeof realAutomation.startAutomations>[0],
+    streamBus: Parameters<typeof realAutomation.startAutomations>[1],
+    buildIO: Parameters<typeof realAutomation.startAutomations>[2],
+    watching: Parameters<typeof realAutomation.startAutomations>[3],
+  ) => {
+    if (!intercepting) return realStartAutomations(deps, streamBus, buildIO, watching);
     automation.started++;
     automation.profileId = deps.ctx.profile.id;
+    automation.watching = watching ?? null;
   },
   stopAutomations: async () => {
     if (!intercepting) return realStopAutomations();
@@ -726,6 +739,7 @@ beforeEach(() => {
   automation.started = 0;
   automation.stopped = 0;
   automation.clearedAtStop = -1;
+  automation.watching = null;
   shortenBrokerTimeout = false;
   setSystemTime();
 });
@@ -1401,6 +1415,21 @@ describe("shutdown", () => {
     expect(source.closed).toBe(1);
     expect(bridge.closed).toBe(1);
     expect(automation.stopped).toBe(1);
+  });
+
+  test("the automations audience predicate reaches the engine that short-circuits on it", async () => {
+    const ctx = buildProfileContext(mainProfile());
+    streams = createStreams();
+    let watched = false;
+
+    await start(streams, ctx, () => watched);
+
+    // The identity is not the contract — the *answer* is. A forward that
+    // captured the boolean once (rather than the predicate) would read false
+    // forever, and the automations page would never receive a frame.
+    expect(automation.watching?.()).toBe(false);
+    watched = true;
+    expect(automation.watching?.()).toBe(true);
   });
 
   test("automations are stopped before the loop that feeds them", async () => {

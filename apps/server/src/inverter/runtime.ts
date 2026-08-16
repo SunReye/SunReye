@@ -331,8 +331,19 @@ export function createRuntime(deps: RuntimeDeps = {}) {
     void publishForecastNow();
   }
 
-  /** Boot the controller: build the source + bridge and start polling. */
-  async function start(streamBus: Streams, profileCtx: ProfileContext): Promise<void> {
+  /**
+   * Boot the controller: build the source + bridge and start polling.
+   *
+   * `automationsWatched` answers whether anyone is subscribed to the
+   * `automations` topic right now. Only the socket boundary knows, so it is
+   * passed straight through to the engine loop, which skips the frame (and the
+   * plan projection built for it) when nobody is listening.
+   */
+  async function start(
+    streamBus: Streams,
+    profileCtx: ProfileContext,
+    automationsWatched?: () => boolean,
+  ): Promise<void> {
     ctx = profileCtx;
     streams = streamBus;
     // The scheduler arms each of these once and is idempotent while running, so
@@ -357,7 +368,7 @@ export function createRuntime(deps: RuntimeDeps = {}) {
     // Automations write through the same funnel as every other path; they only
     // run while a profile is active (this function is never called without one).
     // They push their tick outcomes onto the same injected bus.
-    await startAutomations({ ctx: profileCtx, write }, streamBus);
+    await startAutomations({ ctx: profileCtx, write }, streamBus, undefined, automationsWatched);
   }
 
   /**

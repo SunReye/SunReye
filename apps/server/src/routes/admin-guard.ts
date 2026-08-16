@@ -5,10 +5,14 @@ import { isPublicDashboard } from "../settings/access-settings";
 /**
  * Whether a dashboard **read** may proceed. Allowed anonymously when the public
  * read-only dashboard is enabled (kiosk / wall-display mode); otherwise requires
- * any valid session (no role check). Shared by the `requireSession` macro and
- * the WebSocket upgrade guard so both honour the same policy.
+ * any valid session (no role check).
+ *
+ * Module-private: it backed the `requireSession` macro below *and* the on-open
+ * re-check of the five retired `/ws/*` routes. The live socket asks the same
+ * question through `topicAccessFrom` instead, per subscribe frame rather than
+ * once at upgrade, so the macro is the only caller left.
  */
-export async function dashboardReadAllowed(headers: Headers): Promise<boolean> {
+async function dashboardReadAllowed(headers: Headers): Promise<boolean> {
   if (await isPublicDashboard()) return true;
   return (await auth.api.getSession({ headers })) !== null;
 }

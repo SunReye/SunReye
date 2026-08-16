@@ -58,6 +58,17 @@ describe("isSourceFile", () => {
     expect(isSourceFile("packages/inverter-core/src/index.ts")).toBe(false);
   });
 
+  // The barrel rule is about re-exports, and an app's entry point is not one: it
+  // is the composition root, where the wiring decisions live. Letting it inherit
+  // the exemption is what let a 550-line `apps/server/src/index.ts` change
+  // without any test moving.
+  test("an app's entry point is source, whatever the barrel rule says", () => {
+    expect(isSourceFile("apps/server/src/index.ts")).toBe(true);
+    expect(isSourceFile("apps/web/src/index.ts")).toBe(true);
+    // Still a barrel, still exempt: nested re-export modules are unaffected.
+    expect(isSourceFile("apps/web/src/lib/components/ui/card/index.ts")).toBe(false);
+  });
+
   test("route and layout shells are exempt — they wire, they do not compute", () => {
     expect(isSourceFile("apps/web/src/routes/(app)/+layout.svelte")).toBe(false);
     expect(isSourceFile("apps/web/src/routes/+error.svelte")).toBe(false);

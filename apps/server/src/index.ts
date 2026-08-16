@@ -2,7 +2,6 @@ import { cors } from "@elysiajs/cors";
 import { openapi } from "@elysiajs/openapi";
 import { elysiaLogger } from "@logtape/elysia";
 import { auth } from "@SunReye/auth";
-import type { LogEntry } from "@SunReye/contracts/logs";
 import { db } from "@SunReye/db";
 import { metricsRaw } from "@SunReye/db/schema/metrics";
 import { user } from "@SunReye/db/schema/auth";
@@ -20,7 +19,7 @@ import { log, recentLogs, setupLogging } from "./shared/logging";
 import { createStreams } from "./shared/streams";
 import { initLogLevel } from "./settings/logging-settings";
 import { adminRoutes } from "./routes/admin";
-import { adminGuard, dashboardReadAllowed } from "./routes/admin-guard";
+import { adminGuard } from "./routes/admin-guard";
 import { customChartsRoutes } from "./routes/custom-charts";
 import { startUpdateChecks, stopUpdateChecks } from "./inverter/profiles";
 import { profileRoutes } from "./routes/profiles";
@@ -29,8 +28,10 @@ import { automationRoutes } from "./routes/automations";
 import { settingsRoutes } from "./routes/settings";
 import { statisticsRoutes } from "./routes/statistics";
 import { wsRoutes } from "./routes/ws";
+import { createTopicAudience, publishTodayStatistics } from "./routes/ws-audience";
+import { createTopicBackfill } from "./routes/ws-backfill";
+import { publishLiveTopics } from "./routes/ws-publish";
 import { topicAccessFrom } from "./routes/ws-subscribe";
-import { muxTopic } from "./routes/ws-topics";
 import { todayStatistics } from "./statistics/statistics";
 import * as runtime from "./inverter/runtime";
 
@@ -99,7 +100,7 @@ const streams = createStreams();
 
 // Wire LogTape before anything logs (Elysia's request logger and the app
 // loggers below both flow through the sinks configured here). The stream is
-// injected now so a boot-time log line can already reach `/ws/logs`.
+// injected now so a boot-time log line can already reach the `logs` topic.
 await setupLogging(streams);
 // Apply the persisted runtime log level now that the database is reachable;
 // everything before this line logs at the boot default.
@@ -139,18 +140,13 @@ const ONBOARDING_REQUIRED = { error: "No active inverter profile — onboarding 
 // Default inverter id for history reads that don't name one; null until onboarded.
 const activeInverterId = profile?.id ?? null;
 
-// Live sample: arbitrary metric keys → numeric values, defined by the profile.
-const SampleSchema = t.Object({
-  time: t.String(),
-  inverterId: t.String(),
-  metrics: t.Record(t.String(), t.Number()),
-});
-
-const METRICS_TOPIC = "metrics";
-const EVCC_TOPIC = "evcc";
-const LOG_TOPIC = "logs";
-const AUTOMATION_TOPIC = "automations";
-const STATISTICS_TOPIC = "statistics";
+/**
+ * The two topics whose producers ask "is anyone actually watching" before doing
+ * the expensive work — see ./routes/ws-audience, which owns the pub/sub names
+ * being counted. Wired here because the count needs `app.server`, which does
+ * not exist until `.listen()` resolves; the predicates re-read it per call.
+ */
+const audience = createTopicAudience({ server: () => app.server ?? undefined });
 
 /**
  * How often the statistics stream republishes today's figures. Faster than the
@@ -272,94 +268,6 @@ const app = new Elysia()
   // builds itself from this — no per-inverter code. 503 until a profile is active.
   .get("/api/profile", ({ status }) => manifest ?? status(503, ONBOARDING_REQUIRED), {
     requireSession: true,
-  })
-  // Live metrics stream: clients subscribe to the shared topic; the God-loop
-  // publishes every sample via `app.server.publish(METRICS_TOPIC, ...)`. The
-  // upgrade runs the same read policy as the HTTP dashboard reads via the
-  // `requireSession` macro (session, or anonymous when the public dashboard is
-  // on); `open` also re-checks and closes the socket as a belt-and-braces guard.
-  .ws("/ws/metrics", {
-    requireSession: true,
-    response: SampleSchema,
-    async open(ws) {
-      if (!(await dashboardReadAllowed(ws.data.request.headers))) {
-        ws.close();
-        return;
-      }
-      ws.subscribe(METRICS_TOPIC);
-    },
-  })
-  // Live EVCC stream: the ingest coalesces MQTT updates and broadcasts each
-  // fresh snapshot to `EVCC_TOPIC` (via the `evcc` stream topic). Rides the
-  // same dashboard read policy as `/api/evcc`. On open we send the current
-  // snapshot immediately so a subscriber paints without waiting for the next
-  // change (EVCC can sit idle for minutes between updates).
-  .ws("/ws/evcc", {
-    requireSession: true,
-    async open(ws) {
-      if (!(await dashboardReadAllowed(ws.data.request.headers))) {
-        ws.close();
-        return;
-      }
-      ws.subscribe(EVCC_TOPIC);
-      const snap = evccSnapshot();
-      if (snap) ws.send(JSON.stringify(snap));
-    },
-  })
-  // Live statistics stream for the Statistics page: today's cost breakdown and
-  // energy split on a slow tick, plus a bare `prices` signal when a spot sync
-  // stores fresh slots (via the `statistics` stream topic). Same dashboard
-  // read policy as the HTTP statistics reads. On open we send the current
-  // snapshot immediately so the page paints without waiting for the next tick.
-  .ws("/ws/statistics", {
-    requireSession: true,
-    async open(ws) {
-      if (!(await dashboardReadAllowed(ws.data.request.headers))) {
-        ws.close();
-        return;
-      }
-      ws.subscribe(STATISTICS_TOPIC);
-      if (profile) ws.send(JSON.stringify(await todayStatistics(profile)));
-    },
-  })
-  // Live server log stream for the admin Logs panel. Admin-only (logs can carry
-  // config values, hostnames, and error internals), so unlike the dashboard
-  // streams this never rides the public-dashboard exemption. Every message is a
-  // JSON array of log lines: on open we replay the recent ring buffer so the
-  // viewer opens with context; live lines are pushed (coalesced) below via the
-  // `logs` stream topic. The `open` re-checks the admin session as a belt-and-braces
-  // guard on top of the `requireAdmin` upgrade macro.
-  .ws("/ws/logs", {
-    requireAdmin: true,
-    async open(ws) {
-      const session = await auth.api.getSession({ headers: ws.data.request.headers });
-      if (session?.user.role !== "admin") {
-        ws.close();
-        return;
-      }
-      ws.subscribe(LOG_TOPIC);
-      const recent = recentLogs();
-      if (recent.length > 0) ws.send(JSON.stringify(recent));
-    },
-  })
-  // Live automations stream for the peak-shaving page: every engine tick pushes
-  // the fresh status, the decision point it logged (if any) and the recomputed
-  // rest-of-today plan (via the `automations` stream topic). Admin-only like
-  // the HTTP automation reads — the payload exposes what the engine does to the
-  // registers. `open` re-checks the session as a belt-and-braces guard and
-  // replays the current snapshot (status + full decision ring + plan) so the
-  // page paints without waiting up to a control interval for the next tick.
-  .ws("/ws/automations", {
-    requireAdmin: true,
-    async open(ws) {
-      const session = await auth.api.getSession({ headers: ws.data.request.headers });
-      if (session?.user.role !== "admin") {
-        ws.close();
-        return;
-      }
-      ws.subscribe(AUTOMATION_TOPIC);
-      ws.send(JSON.stringify(await automationStreamSnapshot()));
-    },
   })
   // Historical data (long form). Filter by metric / inverter; rollups live in
   // TimescaleDB continuous aggregates, this reads the raw hypertable. Capped to
@@ -556,11 +464,11 @@ const app = new Elysia()
   .use(customChartsRoutes({ ctx }))
   // Admin-only maintenance: data reset + API-key administration.
   .use(adminRoutes)
-  // The multiplexed live socket: one connection carrying every topic above,
-  // gated per subscribe frame rather than per URL. Runs beside the five
-  // single-purpose /ws/* routes during the migration — they publish bare
-  // payloads on the unprefixed pub/sub names, this one enveloped frames on the
-  // `mux:` names, so reverting it touches nothing else.
+  // The live socket: one connection carrying every topic, gated per subscribe
+  // frame rather than per URL. It replaced five single-purpose /ws/* routes
+  // (metrics, evcc, statistics, logs, automations), whose upgrade guards became
+  // the per-topic policy table in ./routes/ws-topics and whose on-open sends
+  // became the per-topic backfill table in ./routes/ws-backfill.
   .use(
     wsRoutes({
       streams,
@@ -573,18 +481,16 @@ const app = new Elysia()
           (await auth.api.getSession({ headers }))?.user ?? null,
           await isPublicDashboard(),
         ),
-      // Subscribe-time snapshots, mirroring what each old route sent on `open`.
-      // `metrics` is absent on purpose: samples arrive on the poll interval and
-      // there is no meaningful "current" one to replay.
-      backfill: {
-        evcc: () => evccSnapshot(),
-        statistics: () => (profile ? todayStatistics(profile) : undefined),
-        automations: () => automationStreamSnapshot(),
-        logs: () => {
-          const recent = recentLogs();
-          return recent.length > 0 ? recent : undefined;
-        },
-      },
+      // Subscribe-time snapshots, mirroring what each old route sent on `open`
+      // — see ./routes/ws-backfill, which owns the table and the `metrics`
+      // omission.
+      backfill: createTopicBackfill({
+        profile,
+        evccSnapshot,
+        todayStatistics,
+        automationStreamSnapshot,
+        recentLogs,
+      }),
     }),
   )
   .listen({ port: env.PORT, hostname: env.HOST }, () => {
@@ -594,65 +500,23 @@ const app = new Elysia()
     });
   });
 
-// The read-side bus's only sink: each live topic is JSON-serialised and
-// published to its WebSocket subscribers. Producers emit onto the bus; these
-// subscriptions push to the browser. Registered before `app.server` exists —
-// the publishes are no-ops until `.listen()` resolves.
-streams.subscribe("metrics", (sample) =>
-  app.server?.publish(METRICS_TOPIC, JSON.stringify(sample)),
-);
-streams.subscribe("evcc", (state) => app.server?.publish(EVCC_TOPIC, JSON.stringify(state)));
-streams.subscribe("statistics", (msg) =>
-  app.server?.publish(STATISTICS_TOPIC, JSON.stringify(msg)),
-);
-streams.subscribe("automations", (msg) =>
-  app.server?.publish(AUTOMATION_TOPIC, JSON.stringify(msg)),
-);
-
-// The same payloads again, enveloped, for the multiplexed `/ws`. Dual-publish
-// is deliberate for the migration window: the five bare-payload publishes above
-// stay exactly as they were, so the old routes are provably untouched and
-// dropping this endpoint is one commit. A publish to a topic nobody subscribed
-// to costs nothing.
-streams.subscribe("metrics", (data) =>
-  app.server?.publish(muxTopic("metrics"), JSON.stringify({ topic: "metrics", data })),
-);
-streams.subscribe("evcc", (data) =>
-  app.server?.publish(muxTopic("evcc"), JSON.stringify({ topic: "evcc", data })),
-);
-streams.subscribe("statistics", (data) =>
-  app.server?.publish(muxTopic("statistics"), JSON.stringify({ topic: "statistics", data })),
-);
-streams.subscribe("automations", (data) =>
-  app.server?.publish(muxTopic("automations"), JSON.stringify({ topic: "automations", data })),
-);
-
-// Log lines coalesce: startup and error storms emit many at once, so a burst is
-// batched into one array message every 250 ms rather than a WS frame per line.
-// This decorator lives here, at the socket boundary — not in the producer.
-const logQueue: LogEntry[] = [];
-let logFlushTimer: ReturnType<typeof setTimeout> | null = null;
-streams.subscribe("logs", (entry) => {
-  logQueue.push(entry);
-  if (logFlushTimer) return;
-  logFlushTimer = setTimeout(() => {
-    logFlushTimer = null;
-    const batch = logQueue.splice(0);
-    if (batch.length === 0) return;
-    app.server?.publish(LOG_TOPIC, JSON.stringify(batch));
-    // The coalesced batch is also the multiplexed socket's `logs` payload —
-    // the one topic whose wire shape (a batch) differs from its bus shape (a
-    // single entry), and this flush is the one place that conversion happens.
-    app.server?.publish(muxTopic("logs"), JSON.stringify({ topic: "logs", data: batch }));
-  }, 250);
-});
+// The read-side bus's only sink: each live payload is enveloped and published
+// to the `/ws` subscribers of its topic (see ./routes/ws-publish, which owns
+// the topic names and the log coalescing). Registered before `app.server`
+// exists — the publisher is re-read per emit, so the publishes are no-ops until
+// `.listen()` resolves.
+publishLiveTopics({ streams, publisher: () => app.server ?? undefined });
 
 // Start the runtime controller: it owns the poll loop, the live source, and the
 // MQTT bridge (all hot-reconfigurable). Each sample is emitted on the `metrics`
 // topic; persistence + MQTT publishing happen inside the controller. Skipped in
 // onboarding-only boot — there's no profile to poll yet.
 if (ctx) {
-  runtime.start(streams, ctx);
+  // The audience predicate: the engine's per-tick broadcast (and the plan
+  // projection built only for it) is skipped while no `/ws` connection holds
+  // the `automations` topic. Read per tick, never captured — a page opened an
+  // hour from now must start receiving frames on the very next tick.
+  runtime.start(streams, ctx, audience.automations);
 }
 
 // Periodically sync profile repos and diff installed versions so the UI can
@@ -670,23 +534,17 @@ void rebuildEvcc(streams);
 // Statistics stream: republish today's figures on a slow tick; the runtime
 // signals the same topic whenever a price sync stores fresh slots. The tick
 // short-circuits with no subscribers, so an idle instance pays nothing for the
-// feature — that short-circuit stays here, at the boundary.
-async function publishTodayStatistics(): Promise<void> {
-  const server = app.server;
-  if (!profile || !server) return;
-  // Counts both fan-outs: a viewer on the multiplexed socket is subscribed to
-  // `mux:statistics`, never to the bare topic, and would otherwise see the tick
-  // short-circuit as an idle instance.
-  const listeners =
-    server.subscriberCount(STATISTICS_TOPIC) + server.subscriberCount(muxTopic("statistics"));
-  if (listeners === 0) return;
-  try {
-    streams.emit("statistics", await todayStatistics(profile));
-  } catch (error) {
-    serverLog.warn("statistics publish failed: {error}", { error });
-  }
-}
-setInterval(() => void publishTodayStatistics(), STATISTICS_INTERVAL_MS);
+// feature — see ./routes/ws-audience, which owns that gate.
+setInterval(
+  () =>
+    void publishTodayStatistics({
+      profile,
+      watched: audience.statistics,
+      streams,
+      todayStatistics,
+    }),
+  STATISTICS_INTERVAL_MS,
+);
 
 // Graceful shutdown: stop polling and release the transport + broker.
 for (const signal of ["SIGINT", "SIGTERM"] as const) {

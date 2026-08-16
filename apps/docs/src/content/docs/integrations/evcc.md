@@ -125,7 +125,8 @@ Because EVCC retains its state topics, SunReye has a complete snapshot within a 
 connecting. If the broker drops or EVCC's status flips to `offline`, the dashboard hides
 the EV surfaces instead of showing stale data.
 
-The dashboard receives updates over a **WebSocket** (`/ws/evcc`), not polling: the server
+The dashboard receives updates over the live **WebSocket** (`/ws`, topic `evcc`), not
+polling: the server
 coalesces the MQTT burst and pushes each fresh snapshot, so the EV node and card move in
 near real time. A new subscriber gets the current snapshot the moment it connects, and the
 socket reconnects with backoff if it drops.

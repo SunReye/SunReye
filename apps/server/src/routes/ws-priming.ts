@@ -3,10 +3,10 @@
  *
  * Subscribing to a live feed is two things that must not race: "send me what
  * the state is now" and "send me every change from now on". The five original
- * WebSocket routes did them in the wrong order — `/ws/statistics` calls
- * `ws.subscribe(...)` and only then awaits `todayStatistics(profile)`, so a tick
- * landing during that query overtakes the snapshot and is immediately
- * overwritten by older data. `/ws/automations` has the same shape.
+ * WebSocket routes did them in the wrong order — `/ws/statistics` called
+ * `ws.subscribe(...)` and only then awaited `todayStatistics(profile)`, so a
+ * tick landing during that query overtook the snapshot and was immediately
+ * overwritten by older data. `/ws/automations` had the same shape.
  *
  * The fix is a state, not a statement order. A topic is **priming** from the
  * moment it is requested until its snapshot has been sent: live payloads in

@@ -22,7 +22,8 @@ Inverter (Modbus TCP)  ──►  Core engine (Elysia)  ──►  TimescaleDB (
 1. The **core engine** ([`apps/server`](https://github.com/SunReye/SunReye/tree/master/apps/server))
    polls the inverter over Modbus TCP once a second (the "God loop"). No inverter? A
    [built-in simulator](/start/quick-start/) generates coherent fake metrics.
-2. Each sample is **broadcast** to browsers over a WebSocket (`/ws/metrics`) and
+2. Each sample is **broadcast** to browsers over the live WebSocket (`/ws`, topic
+   `metrics`) and
    **persisted** to TimescaleDB in *narrow* form — one row per metric per tick.
 3. The **manifest** — a capability description built from the profile at boot — drives the
    [SvelteKit dashboard](/use/dashboard/), the auto-generated [REST API](/integrations/rest-api/),

@@ -14,7 +14,7 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { TOPIC_POLICY, bufferedWhilePriming, isWsTopic, muxTopic } from "./ws-topics";
+import { TOPIC_POLICY, bufferedWhilePriming, isWsTopic } from "./ws-topics";
 
 /**
  * The topics under test, read back off the table itself. Derived here rather
@@ -88,19 +88,5 @@ describe("bufferedWhilePriming", () => {
     for (const topic of WS_TOPICS.filter((t) => t !== "logs")) {
       expect(bufferedWhilePriming(topic)).toBe(true);
     }
-  });
-});
-
-describe("muxTopic", () => {
-  test("the multiplexed fan-out lives in its own namespace", () => {
-    // The five original routes still publish bare payloads on the unprefixed
-    // names; the prefix is what lets both run side by side during migration.
-    expect(muxTopic("metrics")).toBe("mux:metrics");
-    expect(muxTopic("logs")).toBe("mux:logs");
-  });
-
-  test("no mux topic collides with a bare topic name", () => {
-    const mux = new Set(WS_TOPICS.map(muxTopic));
-    for (const topic of WS_TOPICS) expect(mux.has(topic)).toBe(false);
   });
 });

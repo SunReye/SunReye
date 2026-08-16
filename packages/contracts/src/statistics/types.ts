@@ -86,7 +86,7 @@ export interface StatisticsTodayMessage {
 }
 
 /**
- * What `/ws/statistics` publishes. Exported so the web app can type its socket
+ * What the `statistics` topic publishes. Exported so the web app can type its socket
  * against the server's own union rather than restating it.
  */
 export type StatisticsLiveMessage =

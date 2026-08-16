@@ -1,6 +1,5 @@
 /**
- * The access policy of every live WebSocket topic, and the pub/sub topic names
- * the multiplexed `/ws` endpoint fans out on.
+ * The access policy of every live WebSocket topic.
  *
  * The five feeds used to be five URLs, and each URL carried its own guard
  * (`requireSession` for the dashboard three, `requireAdmin` for logs and
@@ -59,20 +58,9 @@ export function isWsTopic(value: unknown): value is WsTopic {
  *
  * Not buffering does *not* make the feed duplicate-free: `recentLogs()` returns
  * lines that are still sitting in the 250 ms flush queue, and that flush
- * publishes the same batch to `mux:logs`, so a client priming mid-window sees
- * those lines twice either way. That is exactly what the five old routes did,
- * so it is parity rather than a regression — dedup belongs with the coalescing
- * step, not here.
+ * publishes the same batch to the `logs` topic, so a client priming mid-window
+ * sees those lines twice either way. That is exactly what the five old routes
+ * did, so it is parity rather than a regression — dedup belongs with the
+ * coalescing step, not here.
  */
 export const bufferedWhilePriming = (topic: WsTopic): boolean => topic !== "logs";
-
-/**
- * The pub/sub topic the multiplexed socket fans a live topic out on.
- *
- * Prefixed, because the five single-purpose routes still publish bare payloads
- * on the unprefixed names during the migration. Two namespaces on one server:
- * `metrics` carries the raw sample for the old `/ws/metrics`, `mux:metrics`
- * carries the enveloped {@link ServerFrame} for `/ws`. Reverting the new
- * endpoint is then one commit, with nothing to un-pick from the old one.
- */
-export const muxTopic = (topic: WsTopic): string => `mux:${topic}`;

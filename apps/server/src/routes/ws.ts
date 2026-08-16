@@ -27,12 +27,13 @@
  * function in {@link ./ws-subscribe}, tested exhaustively; the connection state
  * machine is {@link ./ws-connection}; this file is only the route declaration.
  *
- * ## Migration
+ * ## The fan-out
  *
- * The five routes keep working untouched and keep publishing bare payloads on
- * the unprefixed pub/sub names. This endpoint publishes enveloped frames on the
- * `mux:`-prefixed names instead (see {@link ./ws-topics}), so the two run side
- * by side and reverting the new endpoint is one commit.
+ * Payloads reach a connection through the server's pub/sub, on the topic name
+ * itself: {@link ./ws-publish} publishes there, {@link ./ws-connection} joins
+ * there. The five retired routes published *bare* payloads on those same names,
+ * which is why the enveloped fan-out lived under a `mux:` prefix while both
+ * shipped; with the routes gone there is one namespace and no prefix.
  */
 
 import { Elysia } from "elysia";

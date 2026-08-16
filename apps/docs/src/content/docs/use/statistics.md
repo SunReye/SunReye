@@ -132,8 +132,8 @@ Last, **this year against last**, month by month, for net cost or production.
 
 ## Live updates
 
-While the picked range includes *now*, the page holds a websocket lease on `/ws/statistics`
-and the server pushes today's figures every 15 seconds:
+While the picked range includes *now*, the page holds a lease on the `statistics`
+topic of the live websocket and the server pushes today's figures every 15 seconds:
 
 - On the **Today** preset the pushed breakdown *is* the picked window, so the tiles update
   straight from the stream with no refetch.
