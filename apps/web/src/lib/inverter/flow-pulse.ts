@@ -1,5 +1,3 @@
-// fallow-ignore-file unused-file -- the signal ships with its tests before the rails consume it; the rails rewrite removes this line
-// fallow-ignore-file unused-export -- same reason: every export here is exercised by flow-pulse.test.ts, and web test files aren't traced as consumers
 /**
  * The signal behind the power-flow diagram's comet streams.
  *
@@ -23,13 +21,17 @@
 import type { Flow } from "./power-graph";
 
 /** Comet speed, px/s. Constant for every rail: rate is density, never speed. */
+// fallow-ignore-next-line unused-export -- the design's constants are asserted against in flow-pulse.test.ts (the ladder invariants) and in power-flow-pulse-wiring.test.ts; web test files aren't traced as consumers
 export const PULSE_SPEED = 80;
 /** Base span (px) one keyframe cycle travels. All dash periods divide it. */
+// fallow-ignore-next-line unused-export -- same: the keyframe travel every layer period has to divide, pinned by its test rather than restated there
 export const PULSE_SPAN = 200;
 /** The one animation-duration in the diagram: PULSE_SPAN / PULSE_SPEED. */
+// fallow-ignore-next-line unused-export -- the rails spell this out as a CSS literal on purpose; the wiring test imports it so the literal is checked against the decision instead of a second copy of "2.5s"
 export const PULSE_PERIOD_S = PULSE_SPAN / PULSE_SPEED; // 2.5
 
 /** Smallest plant a rail is ever measured against (W). */
+// fallow-ignore-next-line unused-export -- the floor IS the contract: stated once here and pinned by flow-pulse.test.ts rather than restated there
 export const CEILING_FLOOR_W = 1000;
 /** How long the plant remembers its peak. Six hours: a 9 kW noon still dims a
  *  300 W midnight import to a single spark. */
@@ -67,6 +69,7 @@ export function throughputWatts(segments: readonly { flow: Flow; value?: number 
  * Magnitude relative to the remembered plant, quantized so a 1 Hz wobble
  * writes no styles at all. Sign is carried by colour and travel direction.
  */
+// fallow-ignore-next-line unused-export -- railPulse consumes it, and going through railPulse would hide the boundary cases (Infinity, NaN, a zero ceiling) behind the layer arithmetic
 export function pulseShare(watts: number | undefined, ceilingW: number): number {
   const a = Math.abs(watts ?? 0);
   const c = Number.isFinite(ceilingW) && ceilingW > 0 ? ceilingW : CEILING_FLOOR_W;
@@ -107,6 +110,7 @@ export function parseCeiling(raw: string | null | undefined): Ceiling {
  *
  * `from`/`to` are the share window over which that layer fades in.
  */
+// fallow-ignore-next-line unused-export -- the ladder table is what the interleaving invariant is asserted on; layerStyle and railPulse read it internally
 export const PULSE_LAYERS = [
   { period: 1, delay: 0, from: 0, to: 0 }, // layer 0: any flow shows one comet
   { period: 1, delay: 1 / 2, from: 0.02, to: 0.18 },
@@ -158,6 +162,7 @@ export function layerStyle(i: number): string {
  * Comet positions inside one base span at a given lit-layer count — the proof
  * that lighting a layer interleaves rather than respaces. Tests only.
  */
+// fallow-ignore-next-line unused-export -- the interleaving invariant is the whole design; its test asserts on it
 export function dotPositions(lit: number): number[] {
   const spots = new Set<number>();
   for (const { period, delay } of PULSE_LAYERS.slice(0, Math.max(0, lit))) {
@@ -171,6 +176,7 @@ export function dotPositions(lit: number): number[] {
  * The node's glow colour at a given share of the plant. A mix of the node's own
  * accent token, so it follows the palette instead of baking a colour in.
  */
+// fallow-ignore-next-line unused-export -- the node's box-shadow mix; power-flow-node.svelte picks it up when the nodes answer the plant's load
 export function nodeGlow(accent: string, share: number): string {
   const s = Number.isFinite(share) ? Math.min(1, Math.max(0, share)) : 0;
   return `color-mix(in oklab, ${accent} ${Math.round(20 + s * 60)}%, transparent)`;

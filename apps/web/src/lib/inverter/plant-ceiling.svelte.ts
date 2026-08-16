@@ -1,4 +1,3 @@
-// fallow-ignore-file unused-file -- the ceiling ships with its tested arithmetic before the diagram feeds it; the rails rewrite removes this line
 /**
  * The remembered plant peak every rail is measured against, as reactive state.
  *

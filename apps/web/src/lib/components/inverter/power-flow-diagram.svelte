@@ -7,6 +7,8 @@
 	import HubMetrics from './_shared/hub-metrics.svelte';
 	import { inverter } from '$lib/inverter/store.svelte';
 	import { evcc, type EvccLoadpoint } from '$lib/evcc/store.svelte';
+	import { railPulse, throughputWatts } from '$lib/inverter/flow-pulse';
+	import { plantCeiling } from '$lib/inverter/plant-ceiling.svelte';
 	import {
 		buildPowerGraph,
 		type ChargerDatum,
@@ -94,15 +96,33 @@
 	// box has been measured.
 	const measured = $derived(w > 0 && h > 0);
 
+	// The reference every rail is drawn against: the plant's remembered peak, not
+	// the biggest cable right now — that one pins the busiest rail at 1.0 forever
+	// and paints 300 W at midnight like 9 kW at noon (see flow-pulse.ts). Folded
+	// on the feed's own edge: `inverter.latest` is a fresh object per sample
+	// (store.svelte.ts:30), so touching it here is what makes this run at the
+	// live cadence rather than only when the graph's shape changes. The fold is
+	// idempotent in wall-clock time, so an extra run cannot age the plant.
+	//
+	// An effect rather than a $derived on purpose: the ceiling is a MEMORY of
+	// samples already gone, which nothing derivable from the current graph can
+	// reconstruct.
+	$effect(() => {
+		void inverter.latest;
+		plantCeiling.observe(throughputWatts(graph.segments));
+	});
+	const ceiling = $derived(plantCeiling.watts);
+
 	const lines = $derived.by<RailLine[]>(() => {
 		if (!measured) return [];
 		return graph.segments.map((s) => {
 			const px = s.pts.map((p) => ({ x: p.x * w, y: p.y * h }));
+			const pulse = railPulse(s.value, ceiling);
 			return {
 				id: s.id,
 				flow: s.flow,
 				color: s.color,
-				dur: flowDuration(s.value),
+				pulse,
 				d: toPath(px)
 			};
 		});
@@ -123,18 +143,6 @@
 			intervalMs: n.kind === 'charger' ? evcc.cadenceMs : undefined
 		}))
 	);
-
-	/** Map magnitude → dash travel time (s). More watts = faster stream.
-	 *  Quantized to coarse steps: changing a CSS animation-duration mid-flight
-	 *  remaps the elapsed time and makes the dots visibly jump, so with a 1 Hz
-	 *  live feed a continuous mapping stutters every sample. Steps keep the
-	 *  duration stable until the power moves materially. */
-	function flowDuration(watts: number | undefined): number {
-		const a = Math.abs(watts ?? 0);
-		const ms = 2600 / (1 + a / 130);
-		const stepped = Math.round(ms / 200) * 200;
-		return Math.min(2600, Math.max(400, stepped)) / 1000;
-	}
 </script>
 
 <div class="relative h-full w-full" bind:clientWidth={ow} bind:clientHeight={oh}>
