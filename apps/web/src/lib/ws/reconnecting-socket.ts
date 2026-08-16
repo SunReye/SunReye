@@ -86,17 +86,17 @@ export class ReconnectingSocket {
     const generation = this.#generation;
     // An async start (a backfill fetch) can outlive its own connection attempt:
     // the tab may hide, or a reopen may supersede it, while the fetch is in
-    // flight. Only the newest generation with a live lease may still open — and
-    // the hook needs the same answer to decide whether its post-await work is
-    // still wanted (see {@link ReconnectingSocketHooks.onStart}).
+    // flight. Only the newest generation may still open — and the hook needs
+    // the same answer to decide whether its post-await work is still wanted
+    // (see {@link ReconnectingSocketHooks.onStart}).
     //
-    // The generation alone decides every case reachable today: the only way to
-    // reach zero leases is `connect`'s disposer, which runs `#teardown` ->
-    // `#closeSocket` and so bumps the generation on the way. The lease count is
-    // deliberate belt-and-braces on the rule that actually matters — never
-    // create a socket nobody holds — and is therefore not independently
-    // testable; drop it only together with that guarantee.
-    const stillWanted = (): boolean => this.#generation === generation && this.#leases > 0;
+    // The generation is the whole answer, and "a lease is still held" is not a
+    // second condition: every path to zero leases runs `connect`'s disposer ->
+    // `#teardown` -> `#closeSocket`, which bumps the generation on the way out.
+    // Anding a lease check on top read like defence in depth but could never
+    // disagree, so it was a claim no test could hold — and an unpinned
+    // condition is worse than none, because the next reader trusts it.
+    const stillWanted = (): boolean => this.#generation === generation;
     const started = this.#hooks.onStart?.(stillWanted);
     if (!(started instanceof Promise)) {
       this.#createSocket();

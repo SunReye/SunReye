@@ -74,7 +74,7 @@
 	</div>
 
 	{#if hasChartable}
-		<CustomChartSection {range} />
+		<CustomChartSection {range} onZoom={zoomTo} onResetZoom={clearZoom} />
 	{/if}
 
 	{#if emptyMessage}

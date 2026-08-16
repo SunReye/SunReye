@@ -3,6 +3,7 @@
 	import { toast } from 'svelte-sonner';
 	import { Label } from '$lib/components/ui/label';
 	import Section from '$lib/components/layout/section.svelte';
+	import PalettePicker from '$lib/components/settings/palette-picker.svelte';
 	import SaveBar from './save-bar.svelte';
 	import OptionSelect from './option-select.svelte';
 	import { display, TIME_ZONE_AUTO, type DisplayConfig } from '$lib/display.svelte';
@@ -128,6 +129,11 @@
 			triggerClass="max-w-xs"
 		/>
 	</div>
+</Section>
+
+<Section title={m.palette_title()}>
+	<p class="text-sm text-muted-foreground">{m.palette_desc()}</p>
+	<PalettePicker canEdit={isAdmin} />
 </Section>
 
 <Section title={m.settings_datetime()}>

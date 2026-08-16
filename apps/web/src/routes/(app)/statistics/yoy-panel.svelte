@@ -3,6 +3,7 @@
 	import * as m from '$lib/paraglide/messages';
 	import RangeSwitcher from '$lib/components/inverter/range-switcher.svelte';
 	import YoyChart from '$lib/components/statistics/yoy-chart.svelte';
+	import Section from '$lib/components/layout/section.svelte';
 	import type { CostFormatters } from '$lib/cost/format';
 	import { groupYoy, hasYoyData, type MonthlyValue } from '$lib/statistics/yoy';
 	import type { CostPoint } from '$lib/statistics/sections';
@@ -73,13 +74,16 @@
 </script>
 
 {#if hasYoyData(rows)}
-	<section class="flex min-w-0 flex-col gap-3">
-		<div class="flex flex-wrap items-center justify-between gap-3">
-			<h3 class="text-sm font-medium">{m.statistics_yoy_title({ year })}</h3>
+	<!-- Was a hand-rolled `<section>` with an `<h3>` of its own — a seventh
+	     section idiom on a page that shows the shared card everywhere else, and
+	     the reason this was the one statistics chart with no full-screen
+	     control. -->
+	<Section title={m.statistics_yoy_title({ year })} nested fullscreen>
+		{#snippet actions()}
 			<!-- Function binding: the switcher stays uncontrolled, but a pick also
 			     lands in the customize draft when an admin is editing. -->
 			<RangeSwitcher options={METRICS} bind:value={() => metric, pick} />
-		</div>
+		{/snippet}
 		<YoyChart {rows} {year} {format} {color} />
-	</section>
+	</Section>
 {/if}

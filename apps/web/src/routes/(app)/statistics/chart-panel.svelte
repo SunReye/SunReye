@@ -43,7 +43,7 @@
 	<!-- The window used to be glued onto the title with an em dash, which made a
 	     long German heading truncate before its own name was readable. It is the
 	     section caption now — its own line, under the title. -->
-	<Section {title} caption={view?.caption ?? caption} nested>
+	<Section {title} caption={view?.caption ?? caption} nested fullscreen>
 		{#snippet actions()}
 			<!-- Summary and switcher travel together in the one right-hand cluster.
 			     Spread by `justify-between` the summary landed mid-row, where it read

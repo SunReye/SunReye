@@ -11,11 +11,17 @@
 		sampleInterval
 	} from '$lib/components/inverter/_shared/live-window';
 	import { display } from '$lib/display.svelte';
+	import { fittedPadding } from '$lib/charts/plot-padding';
 	import type { LivePoint } from '$lib/inverter/types';
+
+	// The sparkline's own gutters: a power figure on the left, no x-axis at all,
+	// so top/bottom/right are hairlines. Its own base — the cost family's 60px
+	// left gutter would be a third of a 412px live card.
+	const PADDING = { top: 6, bottom: 6, left: 44, right: 6 };
 
 	let {
 		points = [],
-		accent = 'var(--color-chart-2)',
+		accent = 'var(--chart-2)',
 		diverging = false,
 		windowMs = 2 * 60 * 1000,
 		height = 'h-40',
@@ -27,7 +33,7 @@
 		/** Split the fill red (above 0) / green (below 0) around a zero baseline. */
 		diverging?: boolean;
 		windowMs?: number;
-		/** Tailwind height class for the chart box (fixed height — not h-full). */
+		/** Tailwind height class for the chart box; `h-full` to fill the caller's box. */
 		height?: string;
 		/** Series name shown in the hover tooltip. */
 		label?: string;
@@ -63,6 +69,18 @@
 	const xDomain = $derived(lastT === undefined ? undefined : [lastT - windowMs, lastT]);
 	const cutoff = $derived(lastT === undefined ? -Infinity : bufferStart(lastT, windowMs, interval));
 	const data = $derived(points.filter((p) => p.t >= cutoff));
+
+	// Fitted to the MEASURED plot: these cards render one-up on a phone and four
+	// across the overview, so no breakpoint knows how wide this one got.
+	let plotWidth = $state(0);
+	const padding = $derived(fittedPadding(PADDING, plotWidth));
+
+	// The edge fade has to start where the axis-label gutter ENDS, so it follows
+	// the fitted left gutter instead of repeating 44px: clamped to 34px on a
+	// phone, a fade pinned at 44 would eat the first 10px of the plotted line.
+	const edgeFade = $derived(
+		`linear-gradient(to right, #000 0, #000 ${padding.left - 2}px, transparent ${padding.left}px, #000 ${padding.left + 52}px, #000 calc(100% - 58px), transparent calc(100% - 6px))`
+	);
 </script>
 
 {#snippet clippedMarks({ context }: MarksContext)}
@@ -87,49 +105,56 @@
 	</ChartClipPath>
 {/snippet}
 
-<Chart.Container
-	config={{ v: { label, color: accent } }}
-	class={[
-		'aspect-auto w-full',
-		height,
-		// Feather the plot's horizontal edges so data glides in/out instead of ending on
-		// a hard cut. The mask is pinned to layerchart's fixed-size container (not the
-		// moving data path) so the fade stays put while the series scrolls under it. The
-		// gradient keeps the left ~44px axis-label gutter opaque and feathers only inside
-		// the plot area.
-		'[&_.lc-root-container]:mask-(--edge-fade)'
-	]}
-	style="--color-primary: {accent}; --edge-fade: linear-gradient(to right, #000 0, #000 42px, transparent 44px, #000 96px, #000 calc(100% - 58px), transparent calc(100% - 6px))"
->
-	<!--
-		`tooltipContext` mode: the default `quadtree-x` rebuilds a d3-quadtree (async
-		import + full re-index) on every sample — with a 1 Hz feed and 4 always-on
-		sparklines that allocation dominated the heap. `bisect-x` allocates nothing per
-		sample (it binary-searches the sorted series at pointer-move) and gives the same
-		nearest-x hover.
-	-->
-	<AreaChart
-		{data}
-		x="t"
-		{xDomain}
-		y="v"
-		axis="y"
-		grid
-		rule={false}
-		legend={false}
-		padding={{ top: 6, bottom: 6, left: 44, right: 6 }}
-		marks={clippedMarks}
-		highlight={false}
-		tooltipContext={{ mode: 'bisect-x' }}
+<!-- A measuring box around the plot: the chart container is layerchart's own
+     fixed-size element, so the width the gutters follow is read here.
+     `h-full` and not `w-full` alone: /history hands this component `h-full`,
+     which resolves against THIS div — an unsized wrapper made every live chart
+     on that page render at 0px. -->
+<div class="h-full w-full" bind:clientWidth={plotWidth}>
+	<Chart.Container
+		config={{ v: { label, color: accent } }}
+		class={[
+			'aspect-auto w-full',
+			height,
+			// Feather the plot's horizontal edges so data glides in/out instead of ending on
+			// a hard cut. The mask is pinned to layerchart's fixed-size container (not the
+			// moving data path) so the fade stays put while the series scrolls under it. The
+			// gradient keeps the left axis-label gutter opaque and feathers only inside the
+			// plot area — see `edgeFade`, which follows that gutter's fitted width.
+			'[&_.lc-root-container]:mask-(--edge-fade)'
+		]}
+		style="--color-primary: {accent}; --edge-fade: {edgeFade}"
 	>
-		{#snippet tooltip()}
-			<Chart.Tooltip
-				labelFormatter={(value) => display.timeWithSeconds(new Date(Number(value)))}
-				formatter={tooltipValue}
-			/>
-		{/snippet}
-	</AreaChart>
-</Chart.Container>
+		<!--
+			`tooltipContext` mode: the default `quadtree-x` rebuilds a d3-quadtree (async
+			import + full re-index) on every sample — with a 1 Hz feed and 4 always-on
+			sparklines that allocation dominated the heap. `bisect-x` allocates nothing per
+			sample (it binary-searches the sorted series at pointer-move) and gives the same
+			nearest-x hover.
+		-->
+		<AreaChart
+			{data}
+			x="t"
+			{xDomain}
+			y="v"
+			axis="y"
+			grid
+			rule={false}
+			legend={false}
+			padding={padding}
+			marks={clippedMarks}
+			highlight={false}
+			tooltipContext={{ mode: 'bisect-x' }}
+		>
+			{#snippet tooltip()}
+				<Chart.Tooltip
+					labelFormatter={(value) => display.timeWithSeconds(new Date(Number(value)))}
+					formatter={tooltipValue}
+				/>
+			{/snippet}
+		</AreaChart>
+	</Chart.Container>
+</div>
 
 {#snippet tooltipValue({ value }: { value: unknown })}
 	<MetricTooltipRow {label} {value} {unit} />

@@ -14,8 +14,12 @@
  */
 
 import { describe, expect, test } from "bun:test";
+import { fittedPadding, type ChartPadding } from "$lib/charts/plot-padding";
 import { chartPaddingFor } from "$lib/cost/ranges";
 import { CHART_BOX, CHART_BOX_SHORT, TAP, TILE_COLUMNS } from "./tokens";
+
+/** A 412px phone's plot box — the width these rules are measured at. */
+const PHONE_PLOT = 412;
 
 const SRC = new URL("../../", import.meta.url);
 
@@ -153,10 +157,14 @@ describe("chart plot boxes", () => {
   });
 
   test("the box a custom chart's plot fills is the token too", () => {
-    // custom-chart-card sizes the box and its plot fills it with `h-full`, so
-    // the Chart.Container rule above cannot see this one.
-    const card = read("lib/components/inverter/custom-chart-card.svelte");
-    expect(card).toContain("{CHART_BOX} w-full");
+    // The overlay view sizes the box and its plot fills it with `h-full`, so
+    // the Chart.Container rule above cannot see this one. It is the shared
+    // renderer for a saved chart AND for a draft, so the token has to be its
+    // default rather than something each caller restates.
+    const view = read("lib/components/inverter/_shared/overlay-chart-view.svelte");
+    expect(view).toContain("height = CHART_BOX");
+    expect(view).toContain('class="{height} w-full"');
+    expect(view).not.toMatch(/height\s*=\s*['"]h-/);
   });
 
   test("the chart that takes its height as a prop defaults to the token", () => {
@@ -277,26 +285,15 @@ describe("chart gutters follow the measured plot width", () => {
   /**
    * Charts still on a fixed gutter, with the left value each one writes.
    *
-   * These are NOT exempt on merit — the phone gutter is 34px and every one of
-   * them is wider than that, so each still spends 2-10px of a 412px plot it
-   * does not need to. They sit outside the cost/statistics family the fitted
-   * helpers were built for and carry their own tuning, so converting them is a
-   * change to five charts' desktop appearance as well, and it is not being
-   * smuggled in at the end of an unrelated pass.
+   * Empty: the seven that were here are now clamped against their own bases —
+   * see "the hand-tuned charts narrow against their own base" below. An entry
+   * here is a claim that some chart's gutter cannot narrow at all, which has to
+   * be argued in this comment before it is written.
    *
-   * The list is the backlog. What the rule buys today is that it cannot GROW:
-   * a new chart writing its own gutter fails, and shrinking this list needs no
-   * new rule.
+   * What the rule buys is that the list cannot GROW: a new chart writing its
+   * own gutter fails, and shrinking it needs no new rule.
    */
-  const FIXED_GUTTER_BACKLOG: Record<string, number> = {
-    "lib/components/settings/forecast-correction-panel.svelte": 36,
-    "lib/components/inverter/forecast-chart.svelte": 40,
-    "lib/components/inverter/hourly-bar-chart.svelte": 40,
-    "lib/components/inverter/live-area.svelte": 44,
-    "lib/components/inverter/_shared/metric-history-chart.svelte": 44,
-    "lib/components/automations/decision-chart.svelte": 44,
-    "lib/components/inverter/_shared/custom-chart-plot.svelte": 44,
-  };
+  const FIXED_GUTTER_BACKLOG: Record<string, number> = {};
 
   test("nor writes a plot gutter out as a literal instead", () => {
     const inline = files.filter(
@@ -305,15 +302,15 @@ describe("chart gutters follow the measured plot width", () => {
     expect(inline).toEqual([]);
   });
 
-  test.each(Object.entries(FIXED_GUTTER_BACKLOG))(
-    "%s is on the backlog at the gutter it actually writes",
-    (file, left) => {
-      // The entry has to keep naming a real number in a real file, so the list
-      // cannot quietly become a blanket amnesty for the whole folder.
+  test("any chart left on the backlog still writes the gutter it claims", () => {
+    // The entry has to keep naming a real number in a real file, so the list
+    // cannot quietly become a blanket amnesty for the whole folder. Written as
+    // one case rather than `test.each` so an EMPTY backlog is a legal state.
+    for (const [file, left] of Object.entries(FIXED_GUTTER_BACKLOG)) {
       expect(read(file)).toMatch(new RegExp(`left:\\s*${left}\\b`));
       expect(left).toBeGreaterThan(chartPaddingFor(412).left);
-    },
-  );
+    }
+  });
 
   // The bar charts get their padding through the shared props builder, so the
   // width has to travel through it or the two of them silently keep the old
@@ -334,6 +331,202 @@ describe("chart gutters follow the measured plot width", () => {
     );
     expect(calls.length).toBeGreaterThan(0);
     for (const call of calls) expect(call).toMatch(/,\s*\w/);
+  });
+});
+
+describe("the hand-tuned charts narrow against their own base", () => {
+  // These sit outside the cost/statistics family, so routing them through
+  // `chartPaddingFor` would hand a /history area chart the cost charts' 60px
+  // desktop gutter and make it WORSE on a laptop. Each keeps the gutters it was
+  // tuned with as its own base and passes that base through the shared clamp,
+  // which only ever gives room back — so the desktop rendering is unchanged by
+  // construction and only the phone narrows.
+
+  /**
+   * The charts this covers, each with the LEFT gutter it wrote as a fixed
+   * literal before the clamp. That number is the whole point of the case: it is
+   * what pins "the base is still the hand-tuned value", i.e. that nobody quietly
+   * moved these onto the cost family's padding while converting them.
+   */
+  const FITTED_GUTTERS: Record<string, number> = {
+    "lib/components/settings/forecast-correction-panel.svelte": 36,
+    "lib/components/inverter/forecast-chart.svelte": 40,
+    "lib/components/inverter/hourly-bar-chart.svelte": 40,
+    "lib/components/inverter/live-area.svelte": 44,
+    "lib/components/inverter/_shared/metric-history-chart.svelte": 44,
+    "lib/components/automations/decision-chart.svelte": 44,
+    "lib/components/inverter/_shared/custom-chart-plot.svelte": 44,
+  };
+
+  const OPEN = new Set(["(", "[", "{"]);
+  const CLOSE = new Set([")", "]", "}"]);
+
+  /** The text between the balanced delimiters that open at `from`. */
+  function balanced(code: string, from: number): string {
+    let depth = 0;
+    for (let i = from; i < code.length; i++) {
+      depth += Number(OPEN.has(code[i])) - Number(CLOSE.has(code[i]));
+      if (depth === 0) return code.slice(from + 1, i);
+    }
+    throw new Error(`unbalanced at ${from}`);
+  }
+
+  /** An argument list split at the commas that are not nested inside anything. */
+  function splitArguments(args: string): string[] {
+    const parts: string[] = [""];
+    let depth = 0;
+    for (const ch of args) {
+      depth += Number(OPEN.has(ch)) - Number(CLOSE.has(ch));
+      if (ch === "," && depth === 0) parts.push("");
+      else parts[parts.length - 1] += ch;
+    }
+    return parts.map((p) => p.trim());
+  }
+
+  /** Every `padding={…}` prop value in a component, as written. */
+  function paddingProps(code: string): string[] {
+    return [...code.matchAll(/\bpadding=(?=\{)/g)].map((m) =>
+      balanced(code, m.index + "padding=".length).trim(),
+    );
+  }
+
+  /** The whole of a `const name = …` declaration, to the `;` that ends it. */
+  function declaration(code: string, name: string): string {
+    const at = code.search(new RegExp(`\\bconst ${name}(?::[^=]*)? =`));
+    if (at < 0) throw new Error(`no declaration of ${name}`);
+    const rest = code.slice(at);
+    let depth = 0;
+    for (let i = 0; i < rest.length; i++) {
+      depth += Number(OPEN.has(rest[i])) - Number(CLOSE.has(rest[i]));
+      if (depth === 0 && rest[i] === ";") return rest.slice(0, i);
+    }
+    return rest;
+  }
+
+  /** A padding object literal, read back off its declaration. */
+  function paddingOf(decl: string): ChartPadding {
+    const side = (key: string) => {
+      const found = decl.match(new RegExp(`\\b${key}:\\s*(\\d+)`));
+      if (!found) throw new Error(`${decl} declares no ${key}`);
+      return Number(found[1]);
+    };
+    return { top: side("top"), right: side("right"), bottom: side("bottom"), left: side("left") };
+  }
+
+  // The rule above is checked FORWARD — each named file must comply — which
+  // says nothing about a chart that is simply never named. That escape used to
+  // be theoretical; now that a named `const PADDING = { … }` base is the house
+  // style across seven charts, `padding={PADDING}` with no clamp is the
+  // idiomatic-looking way to reintroduce a desktop gutter on a phone.
+  //
+  // So the set is closed from the other side too: whatever a chart passes as
+  // `padding`, the expression has to go through one of the fitted helpers.
+  const FITTED_CALL = /\b(?:fittedPadding|chartPaddingFor|heatPaddingFor|stackedBarProps)\(/;
+
+  /**
+   * Whether a `padding={…}` expression reaches a fitted helper — directly, or
+   * through one binding. A chart that also needs the resolved numbers for
+   * something else (live-area feeds its edge-fade mask from `padding.left`)
+   * binds the call first and passes the identifier, which is correct and must
+   * not read as an escape.
+   */
+  function reachesTheClamp(code: string, expression: string): boolean {
+    if (FITTED_CALL.test(expression)) return true;
+    const identifier = expression.trim().match(/^\w+$/)?.[0];
+    if (!identifier) return false;
+    const bound = code.match(new RegExp(`\\b(?:const|let)\\s+${identifier}\\s*=([^;\\n]*)`));
+    return bound !== null && FITTED_CALL.test(bound[1]);
+  }
+
+  const unclamped = files.flatMap((file) => {
+    const code = read(file);
+    return [...code.matchAll(/\bpadding=\{([\s\S]*?)\}(?=[\s/>])/g)]
+      .filter((m) => !reachesTheClamp(code, m[1]))
+      .map((m) => `${file}: padding={${m[1].trim()}}`);
+  });
+
+  test("and no chart anywhere passes a padding the clamp never saw", () => {
+    expect(unclamped).toEqual([]);
+  });
+
+  test.each(Object.entries(FITTED_GUTTERS))(
+    "%s hands its own base to the clamp with the width it measured",
+    (file, left) => {
+      const code = read(file);
+      const measured = code.match(/bind:clientWidth=\{(\w+)\}/);
+      expect(measured, `${file} measures no plot width`).not.toBeNull();
+
+      const props = paddingProps(code);
+      expect(props.length).toBeGreaterThan(0);
+
+      const bases = new Set<string>();
+      for (const prop of props) {
+        // `padding={BASE}` reads almost exactly like the fitted form and hands
+        // the chart its desktop gutter at every width — which is the whole bug.
+        // So the prop has to RESOLVE to the call (directly, or through the one
+        // `$derived` that a chart reusing the fitted value keeps), and the width
+        // it is given has to be the identifier `bind:clientWidth` writes into.
+        const call = /^\w+$/.test(prop) ? declaration(code, prop) : prop;
+        expect(call).toContain("fittedPadding(");
+        const args = splitArguments(
+          balanced(call, call.indexOf("(", call.indexOf("fittedPadding("))),
+        );
+        expect(args[1]).toBe(measured![1]);
+        // The base is a named constant, so the number asserted below is the one
+        // the chart actually spends rather than one spelled into the assertion.
+        expect(args[0]).toMatch(/^[A-Z][A-Z0-9_]*$/);
+        bases.add(args[0]);
+
+        const base = paddingOf(declaration(code, args[0]));
+        const fitted = fittedPadding(base, PHONE_PLOT, {
+          rightAxis: /rightAxis:\s*true/.test(args[2] ?? ""),
+        });
+        // The clamp has to BITE — a base already inside the caps would make the
+        // conversion decorative — and land every chart on the same phone gutter.
+        expect(fitted.left).toBeLessThan(base.left);
+        expect(fitted.left).toBe(chartPaddingFor(PHONE_PLOT).left);
+        // A right gutter drawing a second y-axis keeps room for its labels; one
+        // holding only a tick overhang gives that room back.
+        if (/rightAxis:\s*true/.test(args[2] ?? "")) expect(fitted.right).toBe(fitted.left);
+        else expect(fitted.right).toBeLessThanOrEqual(8);
+      }
+
+      // …and one of those bases is still the hand-tuned gutter this chart shipped.
+      const lefts = [...bases].map((b) => paddingOf(declaration(code, b)).left);
+      expect(lefts).toContain(left);
+    },
+  );
+
+  test("the custom plot declares the axis on the side that actually draws one", () => {
+    // Without this the `rightAxis` flag is self-certifying: dropping it from the
+    // dual-axis call clamps that gutter to the 8px overhang cap and the case
+    // above still passes, because it only checks the flag against itself. The
+    // side that draws a second y-axis is decided by which chart hands its axes
+    // to the snippet that draws them, so read that.
+    const code = read("lib/components/inverter/_shared/custom-chart-plot.svelte");
+    const axisSnippet = code.slice(code.indexOf("{#snippet dualAxes("));
+    expect(axisSnippet.slice(0, axisSnippet.indexOf("{/snippet}"))).toContain("<DualYAxes");
+    const plots = code.split(/<AreaChart\b/).slice(1);
+    const [dual, single] = [
+      plots.filter((p) => p.includes("axis={dualAxes}")),
+      plots.filter((p) => !p.includes("axis={dualAxes}")),
+    ];
+    expect(dual).toHaveLength(1);
+    expect(single).toHaveLength(1);
+    // Each block runs to the end of the file, so take the padding it opens with.
+    expect(paddingProps(dual[0])[0]).toContain("rightAxis: true");
+    expect(paddingProps(single[0])[0]).not.toContain("rightAxis");
+  });
+
+  test("the live sparkline's edge fade follows the gutter it was measured against", () => {
+    // The mask keeps the axis-label gutter opaque and feathers only inside the
+    // plot. Its offsets were the same 44px the padding wrote, so clamping one
+    // without the other would feather the first 10px of the plotted line away —
+    // a gutter fix that eats data is worse than the gutter.
+    const code = read("lib/components/inverter/live-area.svelte");
+    const fade = declaration(code, "edgeFade");
+    expect(fade).toContain("padding.left");
+    expect(fade).not.toMatch(/\b44px/);
   });
 });
 
@@ -534,5 +727,53 @@ describe("a card header cannot be wider than its card", () => {
     expect(read("lib/components/automations/automation-card.svelte")).toMatch(
       /<Card\.Header[^>]*\bclass="[^"]*grid-cols-\[minmax\(0,\s*1fr\)\]/,
     );
+  });
+});
+
+describe("a measuring wrapper does not break the height chain", () => {
+  // The gutter work put a `bind:clientWidth` div around each plot so the
+  // padding could follow the MEASURED width. In `live-area.svelte` that div was
+  // written `class="w-full"` — no height — and the component is handed
+  // `height="h-full"` by the history card. `h-full` resolves against the
+  // parent, so the chart asked a height-less div how tall it was, got `auto`,
+  // and rendered at **0px**: every live chart on /history was an empty box,
+  // with the whole suite green and the data present in the DOM.
+  //
+  // The rule is stated from the CALL SITE, discovered on disk: a component
+  // somebody hands `h-full` may not put an unsized box between the box that
+  // owns the height and the chart that consumes it.
+
+  /** Components a caller sizes with `h-full`, mapped back to their own file. */
+  function heightPassthroughFiles(): string[] {
+    const out = new Set<string>();
+    for (const file of files) {
+      const code = read(file);
+      for (const open of code.matchAll(/<([A-Z][\w.]*)((?:[^<>]|\{[^{}]*\})*?)\/?>/g)) {
+        if (!/\bheight=(?:"h-full"|\{[^{}]*['"`]h-full['"`][^{}]*\})/.test(open[2])) continue;
+        // Resolve the tag through the importing file's own import statement, so
+        // this follows a rename instead of hard-coding today's pairs.
+        const imported = code.match(
+          new RegExp(`import\\s+${open[1]}\\s+from\\s+['"]([^'"]+)['"]`),
+        )?.[1];
+        if (imported?.startsWith("$lib/")) out.add(imported.replace("$lib/", "lib/"));
+      }
+    }
+    return [...out].sort();
+  }
+
+  const passthrough = heightPassthroughFiles();
+
+  test("the sweep still finds the history card's live chart", () => {
+    // A discovery that quietly stops matching passes exactly as green as one
+    // that holds; this is the pair the 0px bug was measured on.
+    expect(passthrough).toContain("lib/components/inverter/live-area.svelte");
+  });
+
+  test.each(passthrough)("%s keeps every measuring wrapper full-height", (file) => {
+    const unsized = [...read(file).matchAll(/<div((?:[^<>]|\{[^{}]*\})*?)>/g)]
+      .filter((open) => /\bbind:clientWidth\b/.test(open[1]))
+      .map((open) => open[1])
+      .filter((attrs) => !classValues(attrs).some((v) => /(?:^|\s)h-full(?:\s|$)/.test(v)));
+    expect(unsized).toEqual([]);
   });
 });

@@ -2,6 +2,7 @@
 	import Section from '$lib/components/layout/section.svelte';
 	import EntityHistoryCard from '$lib/components/inverter/entity-history-card.svelte';
 	import type { ManifestMetric } from '$lib/inverter/types';
+	import { paletteColor } from '$lib/inverter/chart-palette';
 	import type { HistoryRange } from '$lib/inverter/ranges';
 
 	// One catalogue category on /history. It used to draw a bottom-ruled,
@@ -27,7 +28,10 @@
 		onResetZoom?: () => void;
 	} = $props();
 
-	const accentFor = (i: number) => `var(--color-chart-${(i % 5) + 1})`;
+	// The same categorical palette the overlaid charts spend — it cycles, and it
+	// knows its own length, which the `% 5` written here did not once the palette
+	// grew to eight.
+	const accentFor = (i: number) => paletteColor(i);
 </script>
 
 <!-- `controlled`: the page keeps one collapsed-by-category record and recomputes

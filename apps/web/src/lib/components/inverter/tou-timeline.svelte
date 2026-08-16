@@ -158,9 +158,9 @@
 	// Grid-charge periods are amber, discharge periods sky.
 	const blockClassOf = (grid: boolean) =>
 		grid
-			? 'border-amber-500/40 bg-amber-500/10 hover:bg-amber-500/20'
-			: 'border-sky-500/40 bg-sky-500/10 hover:bg-sky-500/20';
-	const fillClassOf = (grid: boolean) => (grid ? 'bg-amber-500/25' : 'bg-sky-500/25');
+			? 'border-energy-grid/40 bg-energy-grid/10 hover:bg-energy-grid/20'
+			: 'border-energy-battery/40 bg-energy-battery/10 hover:bg-energy-battery/20';
+	const fillClassOf = (grid: boolean) => (grid ? 'bg-energy-grid/25' : 'bg-energy-battery/25');
 
 	/**
 	 * Bar height as a percentage. Voltage targets have no natural 0–100 range, so
@@ -256,11 +256,11 @@
 		<!-- legend -->
 		<div class="flex flex-wrap items-center gap-x-4 gap-y-1 pt-1 text-xs text-muted-foreground">
 			<span class="flex items-center gap-1.5">
-				<span class="size-2.5 rounded-sm border border-amber-500/40 bg-amber-500/25"></span>
+				<span class="size-2.5 rounded-sm border border-energy-grid/40 bg-energy-grid/25"></span>
 				{msg.tou_legend_grid_charge()}
 			</span>
 			<span class="flex items-center gap-1.5">
-				<span class="size-2.5 rounded-sm border border-sky-500/40 bg-sky-500/25"></span>
+				<span class="size-2.5 rounded-sm border border-energy-battery/40 bg-energy-battery/25"></span>
 				{msg.tou_legend_discharge()}
 			</span>
 			<span class="flex items-center gap-1.5">

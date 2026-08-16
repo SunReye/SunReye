@@ -6,7 +6,7 @@
 	import { Button } from '$lib/components/ui/button';
 	import { Slider } from '$lib/components/ui/slider';
 	import { displayLimitSoc, EVCC_MODES, evcc, type EvccLoadpoint } from '$lib/evcc/store.svelte';
-	import { socColor } from '$lib/inverter/power-graph';
+	import { socColor } from '$lib/inverter/sign-colors';
 	import * as m from '$lib/paraglide/messages';
 
 	let { lp }: { lp: EvccLoadpoint } = $props();

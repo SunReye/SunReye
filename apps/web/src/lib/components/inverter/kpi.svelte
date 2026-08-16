@@ -9,7 +9,7 @@
 		text,
 		unit = '',
 		points = [],
-		accent = 'var(--color-chart-2)',
+		accent = 'var(--chart-2)',
 		diverging = false,
 		sub = null
 	}: {

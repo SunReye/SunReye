@@ -79,7 +79,12 @@
 	     the page shell. Title + subtitle + switcher is exactly Section's header,
 	     so the switcher stays OUTSIDE the hasData branch below — see the flat
 	     metric case, where unmounting it would strand the reader. -->
-	<Section title={m.statistics_heatmap_title()} caption={m.statistics_heatmap_caption()} nested>
+	<Section
+	title={m.statistics_heatmap_title()}
+	caption={m.statistics_heatmap_caption()}
+	nested
+	fullscreen
+>
 		{#snippet actions()}
 			<RangeSwitcher options={METRICS} bind:value={metric} />
 		{/snippet}

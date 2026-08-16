@@ -20,6 +20,7 @@ import type { WsTopicPayloads } from "@SunReye/contracts/ws";
 import type { InverterSample } from "@SunReye/inverter-core";
 import { createStreams } from "../shared/streams";
 import { type TopicPublisher, publishLiveTopics } from "./ws-publish";
+import { TOPIC_POLICY } from "./ws-topics";
 
 /** How long the tests let a coalescing window run for. */
 const FLUSH_MS = 5;
@@ -84,13 +85,13 @@ describe("the pub/sub name each topic fans out on", () => {
     h.streams.emit("logs", logLine("boot"));
     await sleep(FLUSH_MS * 3);
 
-    expect(h.published.map((entry) => entry.topic)).toEqual([
-      "metrics",
-      "evcc",
-      "statistics",
-      "automations",
-      "logs",
-    ]);
+    // Compared against the POLICY table rather than a literal list: a topic
+    // added to `TOPIC_POLICY` with no `streams.subscribe` here would otherwise
+    // pass, and in production that card paints its backfill once and then goes
+    // silent forever — a missing wire, which no contract test can see.
+    expect(h.published.map((entry) => entry.topic).sort()).toEqual(
+      Object.keys(TOPIC_POLICY).sort(),
+    );
   });
 
   test("the pub/sub name matches the topic the frame is tagged with", async () => {

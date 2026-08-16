@@ -16,8 +16,9 @@
  */
 
 import type { LogEntry } from "@SunReye/contracts/logs";
-import type { ServerFrame, WsTopic, WsTopicPayloads } from "@SunReye/contracts/ws";
+import type { WsTopic, WsTopicPayloads } from "@SunReye/contracts/ws";
 import type { Streams } from "../shared/streams";
+import { wsFrame } from "./ws-topics";
 
 /**
  * How long log lines are collected before one frame goes out.
@@ -50,10 +51,7 @@ export interface LivePublishDeps {
 export function publishLiveTopics(deps: LivePublishDeps): void {
   /** Publish one topic-tagged frame; a no-op until the server is listening. */
   const publish = <K extends WsTopic>(topic: K, data: WsTopicPayloads[K]) =>
-    // The topic↔payload pairing is enforced by the parameter types; the cast is
-    // only because a still-generic `K` cannot be shown to pick one member of
-    // the distributed union.
-    deps.publisher()?.publish(topic, JSON.stringify({ topic, data } as ServerFrame));
+    deps.publisher()?.publish(topic, wsFrame(topic, data));
 
   deps.streams.subscribe("metrics", (data) => publish("metrics", data));
   deps.streams.subscribe("evcc", (data) => publish("evcc", data));

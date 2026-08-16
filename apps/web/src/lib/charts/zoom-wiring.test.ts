@@ -120,6 +120,11 @@ const ZOOMABLE: string[] = [
   "lib/components/statistics/period-line-chart.svelte",
   "lib/components/prices/price-track-chart.svelte",
   "lib/components/statistics/yoy-chart.svelte",
+  // The overlaid form — a saved custom chart, or a draft on a metric card.
+  // Its LIVE branch still does not zoom: that one glides its own window
+  // through a transform inside a ChartClipPath, and a second one composes
+  // badly. Only the two historical branches spread the controller.
+  "lib/components/inverter/_shared/custom-chart-plot.svelte",
 ];
 
 describe("the charts that zoom", () => {
@@ -129,6 +134,31 @@ describe("the charts that zoom", () => {
     // reset control or the mis-tap floor, and nothing else would say so.
     const brushing = files.filter((f) => svelte(f).includes("chartZoom("));
     expect(brushing.sort()).toEqual([...ZOOMABLE].sort());
+  });
+
+  // A brush — and a `domain` transform, which every chart here also has — makes
+  // LayerChart wrap the `marks` layer in a ChartClipPath clipped to the plot
+  // rect (ChartChildren.base.svelte). Axis labels live in the padding gutter,
+  // OUTSIDE that rect, so a chart drawing its own axes from `marks` loses them
+  // the moment it becomes zoomable: the series keep rendering and the axes
+  // silently vanish. That is what happened to the dual-axis overlay.
+  test.each(ZOOMABLE)("%s draws no axis inside its clipped marks layer", (file) => {
+    const code = svelte(file);
+    const at = code.indexOf("{#snippet marks(");
+    if (at === -1) return; // no custom marks layer, nothing to clip away
+    const marks = code.slice(at, code.indexOf("{/snippet}", at));
+    expect(marks).not.toMatch(/<\w*Axis\b|<DualYAxes\b/);
+  });
+
+  test("the overlay's own axes are drawn from the slot that survives the clip", () => {
+    // `axis` accepts a snippet, and LayerChart renders it outside both clip
+    // paths. Named directly because this is the only chart in the app that
+    // draws axes of its own.
+    const code = svelte("lib/components/inverter/_shared/custom-chart-plot.svelte");
+    expect(code).toContain("axis={dualAxes}");
+    const at = code.indexOf("{#snippet dualAxes(");
+    expect(at).toBeGreaterThan(-1);
+    expect(code.slice(at, code.indexOf("{/snippet}", at))).toContain("<DualYAxes");
   });
 
   test("configure it through the controller rather than by hand", () => {
@@ -212,9 +242,14 @@ describe("a zoom on /history refetches at a finer rollup", () => {
    * plot invocation kills zoom on /history end to end, and neither the suite
    * nor `svelte-check` says a word — an unused destructured prop is legal.
    */
+  // Every hop from the page that owns the range down to the chart that emits
+  // the selection. A callback dropped at any one of them leaves a chart whose
+  // drag does nothing, with the whole suite green — so the chain is listed in
+  // full rather than only at its ends.
   const HOPS: [string, string][] = [
     ["routes/(app)/history/metric-group.svelte", "EntityHistoryCard"],
-    ["lib/components/inverter/entity-history-card.svelte", "MetricHistoryChart"],
+    ["lib/components/inverter/entity-history-card.svelte", "MetricCardPlot"],
+    ["lib/components/inverter/_shared/metric-card-plot.svelte", "MetricHistoryChart"],
   ];
 
   test.each(HOPS)("%s hands the zoom callbacks down to <%s>", (file, child) => {

@@ -14,7 +14,7 @@
  * firehose (config values, hostnames, error internals).
  */
 
-import type { WsTopic } from "@SunReye/contracts/ws";
+import type { ServerFrame, WsTopic, WsTopicPayloads } from "@SunReye/contracts/ws";
 
 /**
  * How a topic is gated.
@@ -64,3 +64,25 @@ export function isWsTopic(value: unknown): value is WsTopic {
  * coalescing step, not here.
  */
 export const bufferedWhilePriming = (topic: WsTopic): boolean => topic !== "logs";
+
+/**
+ * Serialise one server→client data frame.
+ *
+ * One writer, because the envelope has two senders that must never disagree:
+ * the subscribe-time backfill in {@link ./ws-connection} writes it straight to
+ * one socket, and {@link ./ws-publish} writes it to a whole topic's fan-out.
+ * The browser reads `frame.topic` to pick the subscriber and drops a miss
+ * without a word, so a rename on one side would leave every card painting its
+ * snapshot and then going silent — with both ends' suites green, because each
+ * would be self-consistent.
+ *
+ * It carried a `mux:` prefix while the five legacy routes still published bare
+ * payloads on the unprefixed names. They are gone, so the topic name IS the
+ * pub/sub name and the prefix would now only deliver to nobody.
+ */
+export const wsFrame = <K extends WsTopic>(topic: K, data: WsTopicPayloads[K]): string =>
+  // The topic↔payload pairing is enforced by the parameter types; the cast is
+  // only because a still-generic `K` cannot be shown to pick one member of the
+  // distributed union (TS checks `{ topic: K; data: WsTopicPayloads[K] }`
+  // against the union as a whole, which no single member satisfies).
+  JSON.stringify({ topic, data } as ServerFrame);

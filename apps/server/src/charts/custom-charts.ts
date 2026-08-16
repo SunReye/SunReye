@@ -22,6 +22,7 @@ function toChart(row: CustomChartRow): CustomChart {
     id: row.id,
     name: row.name,
     metrics: config.metrics,
+    ...(config.colors ? { colors: config.colors } : {}),
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };

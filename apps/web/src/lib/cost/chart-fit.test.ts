@@ -10,11 +10,13 @@
  *
  * The designed numbers themselves are module-private: the three functions below
  * are the whole surface, so a caller cannot reach past them for the fixed
- * desktop padding the way every chart used to.
+ * desktop padding the way every chart used to. These cases are about the COST
+ * family's bases; the clamp they all run through is $lib/charts/plot-padding.
  */
 
 import { describe, expect, it } from "bun:test";
-import { CHART_NARROW_PX, chartPaddingFor, heatPaddingFor, xTickSpacingFor } from "./ranges";
+import { CHART_NARROW_PX } from "$lib/charts/plot-padding";
+import { chartPaddingFor, heatPaddingFor, xTickSpacingFor } from "./ranges";
 
 /** A width comfortably inside the narrow band — a 412px phone's plot box. */
 const PHONE = 412;

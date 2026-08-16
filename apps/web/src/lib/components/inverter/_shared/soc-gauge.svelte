@@ -6,7 +6,7 @@
 	// Geometry: viewBox 56×56 scaled with the box, so a gauged node keeps the same
 	// footprint as every other node. The perimeter drives the dash fill the way a
 	// circumference would on a round gauge.
-	import { socColor } from '$lib/inverter/power-graph';
+	import { socColor } from '$lib/inverter/sign-colors';
 
 	let { soc }: { soc: number | undefined } = $props();
 

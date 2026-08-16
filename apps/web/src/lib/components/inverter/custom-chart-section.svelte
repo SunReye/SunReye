@@ -7,10 +7,20 @@
 	import ChartEmptyState from './_shared/chart-empty-state.svelte';
 	import ChartAdminDialogs from './_shared/chart-admin-dialogs.svelte';
 	import { useAppSession } from '$lib/session';
-	import { type CustomChart, customCharts } from '$lib/inverter/custom-charts.svelte';
+	import { customCharts } from '$lib/inverter/custom-charts.svelte';
+	import type { CustomChart } from '$lib/inverter/custom-chart';
 	import type { HistoryRange } from '$lib/inverter/ranges';
 
-	let { range }: { range: HistoryRange } = $props();
+	let {
+		range,
+		onZoom,
+		onResetZoom
+	}: {
+		range: HistoryRange;
+		/** Forwarded to every saved chart: a drag on one moves the whole page. */
+		onZoom?: (next: HistoryRange) => void;
+		onResetZoom?: () => void;
+	} = $props();
 
 	const session = useAppSession();
 	const isAdmin = $derived($session.data?.user.role === 'admin');
@@ -21,9 +31,23 @@
 	let editorOpen = $state(false);
 	let editing = $state<CustomChart | null>(null);
 	let pendingDelete = $state<CustomChart | null>(null);
+	let seed = $state<string[]>([]);
+
+	// A card on /history asked for a new chart carrying its metric. The editor
+	// is mounted once, here, so the request travels through the store rather
+	// than through six components of prop plumbing.
+	$effect(() => {
+		const requested = customCharts.editorSeed;
+		if (!requested) return;
+		customCharts.editorSeed = null;
+		seed = requested;
+		editing = null;
+		editorOpen = true;
+	});
 
 	function openCreate() {
 		editing = null;
+		seed = [];
 		editorOpen = true;
 	}
 	function openEdit(chart: CustomChart) {
@@ -55,9 +79,17 @@
 		{#if isEmpty}
 			<ChartEmptyState {isAdmin} onCreate={openCreate} />
 		{:else}
-			<ChartGrid {charts} {range} {isAdmin} onEdit={openEdit} onDelete={requestDelete} />
+			<ChartGrid
+				{charts}
+				{range}
+				{isAdmin}
+				onEdit={openEdit}
+				onDelete={requestDelete}
+				{onZoom}
+				{onResetZoom}
+			/>
 		{/if}
 	</Section>
 
-	<ChartAdminDialogs {isAdmin} bind:editorOpen {editing} bind:pendingDelete />
+	<ChartAdminDialogs {isAdmin} bind:editorOpen {editing} {seed} bind:pendingDelete />
 {/if}

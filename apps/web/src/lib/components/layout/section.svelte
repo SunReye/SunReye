@@ -12,6 +12,9 @@
 	import type { Snippet } from 'svelte';
 	import * as Collapsible from '$lib/components/ui/collapsible';
 	import { sectionShellClass } from '$lib/layout/tokens';
+	import { expandedSectionClass } from '$lib/layout/tokens';
+	import { FullscreenBox } from '$lib/charts/fullscreen.svelte';
+	import { portal } from '$lib/actions/portal';
 	import { sectionOpen, writesOwnOpen } from '$lib/layout/section-state';
 	import SectionHeader from './section-header.svelte';
 	import SectionBody from './section-body.svelte';
@@ -27,6 +30,8 @@
 		dashed = false,
 		dimmed = false,
 		nested = false,
+		fullscreen = false,
+		screen: provided = null,
 		children
 	}: {
 		title: string;
@@ -56,11 +61,35 @@
 		/** Card inside another card: no frame of its own below sm, where the
 		 *  nested chrome costs a quarter of the screen. */
 		nested?: boolean;
+		/**
+		 * The card holds a chart, so its header offers to take the whole screen.
+		 * The card is the box that expands — header, body and the chart component
+		 * itself, which keeps its brush and pinch bound the whole time.
+		 */
+		fullscreen?: boolean;
+		/**
+		 * The caller's own {@link FullscreenBox}, when it needs to READ the
+		 * expanded state — a card that shows a control only while full screen, or
+		 * discards a draft on the way out. Left unset the card keeps its own and
+		 * nobody outside can see it.
+		 *
+		 * A `FullscreenBox` rather than `expanded = $bindable()`: the browser can
+		 * exit full screen on its own (Escape, a swipe, the system control), so a
+		 * second copy of the flag would drift from the one `listen()` maintains.
+		 */
+		screen?: FullscreenBox | null;
 		children: Snippet;
 	} = $props();
 
 	// A non-collapsible section is always open; see section-state.ts.
 	const contentOpenState = $derived(sectionOpen({ collapsible, open }));
+
+	// Allocated unconditionally — it is two fields — but only *wired* when the
+	// card asked for it, so a page of ordinary sections does not put three DOM
+	// listeners each on the document.
+	const own = new FullscreenBox();
+	const screen = $derived(provided ?? own);
+	$effect(() => (fullscreen ? screen.listen() : undefined));
 
 	function handleOpenChange(next: boolean) {
 		if (writesOwnOpen(controlled)) open = next;
@@ -69,8 +98,14 @@
 </script>
 
 <Collapsible.Root open={contentOpenState} onOpenChange={handleOpenChange}>
-	<section class={sectionShellClass({ dashed, dimmed, nested })}>
-		<SectionHeader {title} {caption} {actions} {collapsible} />
+	<section
+		use:portal={fullscreen && screen.expanded}
+		class={expandedSectionClass(
+			sectionShellClass({ dashed, dimmed, nested }),
+			fullscreen && screen.expanded
+		)}
+	>
+		<SectionHeader {title} {caption} {actions} {collapsible} screen={fullscreen ? screen : null} />
 		<SectionBody {children} />
 	</section>
 </Collapsible.Root>

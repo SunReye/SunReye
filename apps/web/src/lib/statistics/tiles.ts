@@ -43,7 +43,7 @@ export type TileDef<Data> = {
 };
 
 /** Tiles turn green only when the figure is in the household's favour. */
-const goodIf = (favourable: boolean): string => (favourable ? "text-emerald-500" : "");
+const goodIf = (favourable: boolean): string => (favourable ? "text-sign-good" : "");
 
 /**
  * The nine cost tiles, 1:1 from the costs page they replace. Order is render

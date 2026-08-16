@@ -11,6 +11,7 @@
 	import { inverter } from '$lib/inverter/store.svelte';
 	import { bus } from '$lib/ws/bus.svelte';
 	import { display } from '$lib/display.svelte';
+	import { chartPalette } from '$lib/chart-palette.svelte';
 	import { pageHeader } from '$lib/page-header.svelte';
 	import { resolveView } from './app-view';
 
@@ -103,12 +104,20 @@
 			// Load the instance-wide clock/time-zone preference so charts render in
 			// the configured format from first paint.
 			display.load();
+			// The palette: this browser's own choice first (synchronous, so the
+			// first paint is already right), then the instance setting.
+			chartPalette.loadOverride();
+			void chartPalette.load();
 			return () => {
 				releaseMetrics();
 				releaseBus();
 			};
 		}
 	});
+
+	// Re-stamp whenever either half of the palette changes, so switching it in
+	// settings re-hues the whole app without a reload.
+	$effect(() => chartPalette.stamp());
 
 	// Subtle route-to-route motion: the shell (sidebar) stays put while the inner
 	// content cross-fades up on each navigation. Honour reduced-motion.

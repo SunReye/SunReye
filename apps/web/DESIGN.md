@@ -249,25 +249,8 @@ Good uses in this app:
 - a `Section` folding — `SectionBody` already does this, with reduced motion handled
 - route content changing inside the stable `(app)` shell
 
-Example:
-
-```svelte
-<script lang="ts">
-	import { prefersReducedMotion } from "svelte/motion";
-	import { fade, fly } from "svelte/transition";
-
-	let open = $state(false);
-</script>
-
-{#if open}
-	<div
-		in:fly={{ y: prefersReducedMotion.current ? 0 : 8, duration: 180 }}
-		out:fade={{ duration: 120 }}
-	>
-		Animated panel
-	</div>
-{/if}
-```
+Distance stays small and the duration short: `in:fly={{ y: 8, duration: 180 }}` paired with
+`out:fade`, with the `y` dropped to `0` under `prefersReducedMotion.current`.
 
 ### Use `animate:flip` for reordering lists
 
@@ -277,24 +260,8 @@ Use this when rows/cards change position because of:
 - a status change reordering entries
 - the customize mode on /statistics moving a section
 
-Example:
-
-```svelte
-<script lang="ts">
-	import { flip } from "svelte/animate";
-
-	let items = $state([
-		{ id: "peak-shaving", label: "Peak shaving" },
-		{ id: "forecast-charge", label: "Forecast charging" }
-	]);
-</script>
-
-{#each items as item (item.id)}
-	<div animate:flip>
-		{item.label}
-	</div>
-{/each}
-```
+`animate:flip` only moves what it can identify, so the `{#each}` needs a real key — `(item.id)`,
+never the index, which renumbers as the list reorders and animates nothing.
 
 ### Use `Spring` or `Tween` for value motion
 
@@ -353,6 +320,167 @@ This is especially important for:
 Animate the **inner content**, not the whole shell.
 
 The header/sidebar/breadcrumbs should feel stable. Only the changing content region should move.
+
+---
+
+## Gestures on a chart
+
+Four charts zoom — the /history metric charts, /statistics' period chart, the price track and the
+year-over-year bars. The gesture is a design decision with a cost on a phone, not a library
+default: `lib/charts/zoom.svelte.ts` holds the state, `lib/charts/zoom-range.ts` holds what a
+selection *means*, and `lib/charts/zoom-wiring.test.ts` holds every chart to both.
+
+- **A horizontal drag selects a range; a vertical swipe still scrolls the page.** LayerChart's
+  brush layer covers the whole plot and declares `touch-action: none` on itself, and /history and
+  /statistics are tall stacks of full-width charts — so that rule breaks the gesture people use
+  most with the one they use least. `[&_.lc-brush-context]:touch-pan-y` in
+  `ui/chart/chart-container.svelte` hands the vertical axis back to the browser and keeps the
+  horizontal one, which is the only axis a selection is drawn on anyway.
+- **Pinch is ARMED per chart, never always on.** A live pointer transform sets an inline
+  `touch-action: none` *and* calls `preventDefault()` on every touchmove, so an always-on pinch
+  would stop the page scrolling on every chart in the stack. The brush is the resting state; pinch
+  is something the viewer switches on for one chart (`toggle()`). The two cannot both be live
+  anyway — LayerChart wires brushing and panning to the same pointer — so arming pinch disables the
+  brush, which is the library's fact and this app's preference at the same time.
+- **A zoom REFETCHES at a finer bucket; it never magnifies what was already fetched.** Every mapper
+  in `zoom-range.ts` ends at the app's existing range state with the granularity re-derived from the
+  selected span, so twenty minutes out of an hourly window comes back as minute rollups, and the
+  chart's local transform is reset the moment the owner accepts the range — otherwise the finer data
+  would arrive magnified through the old gesture. A selection under `minExtent` is a mis-tap and is
+  dropped. Where there is no finer series to fetch the selection narrows the domain in place
+  instead: the price track is already quarter-hourly, and the year-over-year comparison *is* its
+  twelve months.
+- **Every zoomable chart owns a visible way back.** `ZoomControls` sits over the plot rather than in
+  a row of its own — these charts are as short as 176px — and its reset button appears the moment
+  anything is zoomed, including a zoom the *owner* is holding as a refetched range, which the
+  chart's own transform can no longer see. A chart left narrowed with no control does not read as
+  zoomed; it reads as wrong numbers.
+- **Two charts deliberately do not zoom**, and must stay that way: the custom *live* chart and the
+  automations decision chart. Each already runs a transform of its own inside a `ChartClipPath` — a
+  gliding live window, a decision timeline — and a second one composes badly. The overlay's two
+  *historical* forms do zoom, and hand the selection up like any other /history chart: a drag on a
+  saved custom chart or on a draft moves the whole page onto the finer range.
+### Series colour
+
+**A fixed meaning never draws from the categorical palette.** `--chart-N` means "the Nth series,
+order arbitrary"; `--energy-*` means grid, solar, battery, load, export, self-used, EV, generator.
+Painting a meaning from the categorical set is why re-ordering it put battery beside load in nearly
+the same green on /overview, and gave the generator and the EV charger the identical orange.
+
+- The semantic set is chosen as a **set**, not pair by pair — fixing one pair moves it next to
+  another. `energy-tokens.test.ts` scores every group that shares a screen (diagram, overview tiles,
+  /system, statistics) by its **weakest pair**, in both themes, under all three dichromacies, against
+  the floor the shipped set already reached. It is a ratchet: eight-way separation under dichromacy
+  does not exist, so the rule is only that the set never gets worse.
+- **The palette is a setting.** `Settings → Display → Chart colours` chooses between designed
+  presets — `categorical` (shipped), `colorblind`, `vivid`, `muted` — as an id, never colours. Two
+  levels: an instance setting an admin sets for the plant, and a per-browser override kept in
+  `localStorage` and sent nowhere, so a reader who cannot separate the plant's palette can help
+  themselves without being an admin and without changing the wall display. The resolved preset is
+  stamped as `data-palette` on `<html>`; `categorical` stamps nothing, because it IS `:root`.
+- A preset re-points **every token that carries meaning** — the eight energy roles, the three sign
+  colours, the standing-charge hue, AND the eight categorical accents. Leaving the categorical set
+  out meant "Colour-blind safe" re-hued the diagram while every custom chart and history accent kept
+  a red/green confusion pair, under a setting labelled *Chart colours*. A preset that fixes half the
+  screen is worse than one that admits its scope.
+- A preset re-points **only the tokens that carry meaning** — the eight energy roles and the three
+  sign colours. Chrome, text and surfaces belong to the theme. Every preset authors light AND dark
+  values for every token, which is the reason presets exist rather than eight colour pickers: one
+  colour chosen by hand cannot be right on both surfaces, and separation is a property of the set.
+- **`--chart-1..8` is a categorical palette, not a ramp.** shadcn ships five steps of one hue, which
+  is right for a quantity that has an order and wrong for series drawn on top of each other. Eight
+  hues, spaced so consecutive entries are the least alike, mid-lightness so one set reads on both
+  surfaces, red and green not adjacent.
+- **Reference it as `var(--chart-N)`, never `var(--color-chart-N)`.** The `--color-` spelling is
+  Tailwind's `@theme inline` mapping, and that is only re-emitted when Tailwind finds the name in
+  scanned source. Colours composed at runtime are invisible to it: `--chart-6` resolved to nothing
+  and its series drew colourless, while 7 and 8 survived only because a test file spelled them out.
+  Same trap as a composed class name.
+- **A pinned colour is a palette id, never a CSS value.** It round-trips through the server into a
+  `style` attribute and into SVG fill/stroke; the schema accepts the eight ids and nothing else,
+  which is also why the picker offers swatches rather than a free-form field.
+- Overrides are **keyed by metric key, not by position**, so reordering or thinning a chart keeps
+  the colours the user chose. An unpinned series takes the palette entry for its position, and a
+  chart with nothing pinned persists no colours at all.
+
+- **A zoomable chart must not draw its own axes from the `marks` snippet.** LayerChart clips that
+  layer to the plot rect as soon as a chart carries a brush or a `domain` transform, and axis labels
+  live in the padding gutter outside it — so the series keep rendering and the axes silently vanish.
+  Draw them from the `axis` snippet, which renders outside the clip.
+
+## Full screen on a chart
+
+Every chart can take the whole screen, and the control is **in the section card's header**, beside
+the title that already names it. Not floating over the plot: that corner is the brush surface these
+charts drag-select with, and a button there swallows the start of a drag.
+
+- **`<Section fullscreen>`** is the whole vocabulary for a chart that lives in a card. For a chart
+  that has no card — the two dialogs, the forecast-correction panel, the four decision plots —
+  wrap the plot in **`<ChartFullscreen title>`**.
+- **One control per plot, not per card**, when a card holds more than one. `decision-charts` has two
+  plots and three paragraphs; expanding the card split a landscape screen five ways and left each
+  plot 59px tall.
+- The card is **not replaced by a bigger copy of itself**. Same header, same body, the same chart
+  component with its brush and pinch still bound. Only classes change, and they are one token —
+  `expandedSectionClass` / `expandedChartClass` in `tokens.ts`.
+- Those classes are **written out literally, never composed with `map`/`join`**. Tailwind finds
+  classes by scanning source text, so a name this codebase builds at runtime is a name with no rule
+  behind it: present in the DOM, silently doing nothing. That exact mistake shipped a full-screen
+  card with a 192px chart in it. A test reads the token's source file back and rejects a composed
+  name.
+- The expansion grows the **whole chain** from the section body down to the plot, picked out with
+  `:has([data-slot=chart])`, because the depth differs per chart and a legend beside the plot has to
+  keep its content height.
+- **What goes full screen is `<html>`, never the card.** This is the load-bearing rule. In native
+  full screen the browser renders *only* the full-screen element's subtree, and every popup in this
+  app — layerchart's tooltip, and bits-ui's dropdown, select and popover content — is portalled to
+  `document.body`, outside any one card. Full-screening the card therefore hid every tooltip and
+  left every menu opening invisibly, so the controls read as dead. `fullscreenTarget()` returns the
+  document element and there is no way to ask for anything else.
+- **The card is lifted by `fixed inset-0`, always** — in both paths, because the browser does nothing
+  to lift it. The native call buys exactly one thing on top: the browser's own chrome goes away.
+  Losing it (Safari on iPhone implements the API for nothing but `<video>`; under Home Assistant
+  ingress the app is a cross-origin iframe Chrome refuses the request in) costs only that, which is
+  why `expanded` is set *before* the request and never depends on its outcome.
+### Draft charts
+
+A reader can pull a second metric onto any history card without saving anything — "compare with…"
+in the card's header, at every size. It replaced an "add to chart" menu that asked which *saved*
+chart should own the metric: a question you can only answer if you already know what that chart is
+for, where drafting answers the one actually in front of you and ends at the same saved chart by way
+of the editor.
+
+- **One renderer.** A draft draws through `OverlayChartView`, the same component a *saved* custom
+  chart uses. The only difference between the two is where the key list came from. Two renderers
+  would be two things to keep in step, and the mixed-unit dual axis is the kind of thing that only
+  works in one of them.
+- **The draft is component state on the card**, not a store: it is one reader looking at one chart,
+  and a store would make every card share one draft.
+- **It lasts until it is cleared or saved**, which is what the line under the plot promises. Not
+  discarded on leaving full screen: the control is in the header whether the card is expanded or
+  not, so that gesture has nothing to do with the draft.
+- **Two icon controls under the plot**, discard and save, with no sentence beside them. The legend
+  above already names a second series on a card titled after one metric, which is the tell that this
+  is not the card's own chart. Bare 16px icons, so the labels travel with them (`title` + `sr-only`)
+  and `TAP` provides the 44px hit area the words used to.
+- **Saving goes through the editor that already writes custom charts**, seeded — not a second
+  create path. That keeps naming, validation and the admin gate in one place.
+- The card's own metric is the base: always first (so it keeps chart accent 1 while others come and
+  go), and its row in the picker is **disabled**, not silently ignored — a checkbox that does
+  nothing when tapped reads as broken.
+- A card taken full screen **mounts its chart whether or not the lazy-mount observer fired**. Once
+  the card is `fixed`, its in-flow wrapper collapses to nothing, so that observer can never fire
+  while it is expanded.
+
+- **An expanded frame leaves its subtree.** `fixed inset-0` resolves against the nearest ancestor
+  that establishes a containing block, and a CSS `transform` does — `Dialog.Content` centres itself
+  with one, so a chart taken full screen from inside the energy or forecast dialog filled the
+  *dialog*, not the screen. The frame is portalled to `document.body` while expanded (`use:portal`),
+  which covers `filter`, `backdrop-filter` and `contain` too, without changing a vendored primitive
+  every dialog shares. It goes back into its original slot on collapse — Svelte still owns the node.
+- Known limit: in **portrait** on a phone the plot is still 412px wide, so the 34px narrow gutter
+  applies and a two-digit `kWh` label can clip. Landscape — the orientation a full-screen chart is
+  actually read in — gets the designed 60px gutter.
 
 ---
 
@@ -469,7 +597,12 @@ written next year fails too.
   uses the same box, or the page jumps by the difference when data lands.
 - **Chart gutters follow the measured plot width**, not a breakpoint: the same component renders
   full-bleed on /history and two-up inside a statistics section. Bind `clientWidth` and pass *that
-  variable* to `chartPaddingFor` / `xTickSpacingFor` / `stackedBarProps`.
+  variable* to `chartPaddingFor` / `xTickSpacingFor` / `stackedBarProps`. The rule is over the whole
+  tree, not over the charts that had the bug — the callers are discovered from disk, so a component
+  that does not exist yet is already covered, and writing the gutter out longhand as
+  `padding={{ left: 60 }}` fails the same way. The charts outside the cost/statistics family carry
+  hand-tuned gutters of their own; each is listed by name with the left value it actually writes, so
+  that set cannot grow and no chart can be moved onto another family's padding unnoticed.
 - **Nothing scrolls sideways.** `<main>` clips horizontal overflow, grid children carry `min-w-0`,
   and a popover caps itself at `max-w-(--bits-popover-content-available-width)`.
 - **Reading order is a decision.** Stacked, a two-column page reads top to bottom in source order —
@@ -528,5 +661,7 @@ user-visible string.
 
 The design decisions above are executable: `lib/layout/tokens.test.ts`,
 `lib/layout/mobile-density.test.ts`, `lib/layout/section-migration.test.ts`,
-`routes/(app)/page-shells.test.ts` and `lib/live/wiring.test.ts` run in `bun run test`. Read the
+`lib/layout/primitives.test.ts`, `lib/components/layout/header-and-toolbar-rows.test.ts`,
+`routes/(app)/page-shells.test.ts`, `lib/live/wiring.test.ts` and `lib/charts/zoom-wiring.test.ts`
+run in `bun run test`. Read the
 `layout-system` skill before writing a page; read the failing test when one of them rejects you.

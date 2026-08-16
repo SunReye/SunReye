@@ -19,7 +19,7 @@ import type { SpotSlice } from "@SunReye/contracts/prices";
 import type { DecisionPoint } from "@SunReye/contracts/automation";
 import { createDecisionLog } from "./automation-history";
 import { projectPeakShaving } from "./peak-shaving-plan";
-import { type AutomationIO, createPeakShavingEngine } from "./peak-shaving-engine";
+import { type AutomationIO, createPeakShavingEngine, planLimits } from "./peak-shaving-engine";
 import type { EvccLoadpoint, EvccState } from "@SunReye/contracts/evcc";
 import type { EvccAction } from "../evcc/evcc";
 import { buildProfileContext } from "../inverter/inverter";
@@ -1974,6 +1974,95 @@ describe("peak-shaving engine — plan", () => {
     await engine.plan();
     expect(h.writes).toHaveLength(0);
     expect(h.state()).toEqual({});
+  });
+});
+
+const ENGINE_SRC = await Bun.file(new URL("./peak-shaving-engine.ts", import.meta.url)).text();
+
+/**
+ * `PlanLimits.exportCapW` and `DecisionInputs.exportCapW` are the same physical
+ * figure seen from two sides: the ceiling the projection curtails against, and
+ * the one the live decision refuses to absorb below. Two independent
+ * derivations would fail the worst possible way — silently, on a sunny
+ * afternoon, with the pack declining energy that is about to be curtailed,
+ * which is the exact loss the absorb ceiling exists to prevent. So the cap is
+ * derived once and handed on; these cases fail if a second source comes back.
+ */
+describe("peak-shaving engine — one export cap", () => {
+  /**
+   * The initializer of every `key:` property in `code`, read to the comma that
+   * ends it at depth 0 — so a `Math.max(0, …)` value is captured whole instead
+   * of being cut at its own comma.
+   */
+  function initializersOf(code: string, key: string): string[] {
+    const found: string[] = [];
+    for (const match of code.matchAll(new RegExp(`\\b${key}\\s*:`, "g"))) {
+      const from = code.indexOf(":", match.index) + 1;
+      let depth = 0;
+      for (let i = from; i < code.length; i++) {
+        const ch = code[i]!;
+        depth += Number("([{".includes(ch)) - Number(")]}".includes(ch));
+        if (depth < 0 || (depth === 0 && (ch === "," || ch === ";"))) {
+          found.push(code.slice(from, i).trim());
+          break;
+        }
+      }
+    }
+    return found;
+  }
+
+  test("the cap is derived from the weather config in exactly one place", () => {
+    const initializers = initializersOf(ENGINE_SRC, "exportCapW");
+    // Both the type's declaration site and the plan's copy show up here; only
+    // one of them may compute the figure from the plant config.
+    const derived = initializers.filter((v) => v.includes("weather"));
+    expect(derived).toEqual(["Math.max(0, weather.forecast.maxOutputW ?? 0)"]);
+    expect(initializers.length).toBeGreaterThan(1); // the copy still exists
+  });
+
+  test("planLimits reports the cap it is handed, never one of its own", () => {
+    // A figure no weather config could produce: if this survives the round
+    // trip, `planLimits` cannot be recomputing the ceiling behind the plan's
+    // back.
+    expect(planLimits({ exportCapW: 4242 }, weather()).exportCapW).toBe(4242);
+    expect(planLimits({ exportCapW: 0 }, weather({ maxOutputW: 9000 })).exportCapW).toBe(0);
+    // The reserve floor stays the weather config's job.
+    expect(
+      planLimits({ exportCapW: 4242 }, weather({ battery: { usableKwh: 15, minSoc: 20 } }))
+        .reserveSocPct,
+    ).toBe(20);
+  });
+
+  /**
+   * The argument list of the first *call* to `name`, split at the commas that
+   * sit outside any nesting. The declaration of the same name is skipped —
+   * taking its parameter list instead would pass on anything at all.
+   */
+  function argumentsOf(code: string, name: string): string[] {
+    const call = [...code.matchAll(new RegExp(`(function\\s+)?\\b${name}\\s*\\(`, "g"))].find(
+      (m) => m[1] === undefined,
+    );
+    if (!call) throw new Error(`no call to ${name}`);
+    const from = code.indexOf("(", call.index) + 1;
+    const parts = [""];
+    let depth = 0;
+    for (let i = from; i < code.length; i++) {
+      const ch = code[i]!;
+      depth += Number("([{".includes(ch)) - Number(")]}".includes(ch));
+      if (depth < 0) return parts.map((p) => p.trim());
+      if (ch === "," && depth === 0) parts.push("");
+      else parts[parts.length - 1] += ch;
+    }
+    throw new Error(`unbalanced call to ${name}`);
+  }
+
+  test("the plan is handed the very inputs object the decision runs on", () => {
+    // Pins the identifier, not a mention: a `planLimits(weather)` call or a
+    // freshly built literal would both read fine and reintroduce the drift.
+    const [capArg] = argumentsOf(ENGINE_SRC, "planLimits");
+    const built = /const\s+(\w+)\s*=\s*(?:await\s+)?decisionInputs\(/.exec(ENGINE_SRC)?.[1];
+    expect(built).toBeDefined();
+    expect(capArg).toBe(built);
   });
 });
 

@@ -10,6 +10,7 @@
 		groups,
 		isSelected,
 		atLimit,
+		isLocked = () => false,
 		onToggle,
 		emptyQuery
 	}: {
@@ -18,13 +19,20 @@
 		isSelected: (key: string) => boolean;
 		/** No more metrics may be added; unselected rows go disabled. */
 		atLimit: boolean;
+		/**
+		 * This row is checked and cannot be unchecked — the compare menu's base
+		 * metric is the card itself. Disabled rather than silently ignored: a
+		 * checkbox that does nothing when tapped reads as broken.
+		 */
+		isLocked?: (key: string) => boolean;
 		onToggle: (key: string) => void;
 		/** The current search text, for the no-matches message. */
 		emptyQuery: string;
 	} = $props();
 
-	/** At the cap, only already-selected rows stay actionable (so they can be removed). */
-	const rowDisabled = (key: string) => !isSelected(key) && atLimit;
+	/** At the cap, only already-selected rows stay actionable (so they can be
+	 *  removed) — and a locked row is never actionable either way. */
+	const rowDisabled = (key: string) => isLocked(key) || (!isSelected(key) && atLimit);
 </script>
 
 <div class="flex flex-col p-1">

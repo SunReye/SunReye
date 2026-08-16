@@ -14,7 +14,7 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { TOPIC_POLICY, bufferedWhilePriming, isWsTopic } from "./ws-topics";
+import { TOPIC_POLICY, bufferedWhilePriming, isWsTopic, wsFrame } from "./ws-topics";
 
 /**
  * The topics under test, read back off the table itself. Derived here rather
@@ -87,6 +87,36 @@ describe("bufferedWhilePriming", () => {
   test("every awaited-snapshot topic buffers", () => {
     for (const topic of WS_TOPICS.filter((t) => t !== "logs")) {
       expect(bufferedWhilePriming(topic)).toBe(true);
+    }
+  });
+});
+
+describe("wsFrame", () => {
+  test("the envelope names the topic in the field the browser narrows on", () => {
+    // `LiveBus` reads `frame.topic` to pick the subscriber and silently drops a
+    // miss, so the key is the contract — not the shape of the object around it.
+    const frame = JSON.parse(wsFrame("evcc", { chargers: [] } as never)) as Record<string, unknown>;
+    expect(Object.keys(frame).sort()).toEqual(["data", "topic"]);
+    expect(frame.topic).toBe("evcc");
+    expect(frame.data).toEqual({ chargers: [] });
+  });
+
+  test("every topic envelopes under its own name", () => {
+    // One writer for the backfill and one for the fan-out; the envelope has to
+    // be the same function for both or a topic paints once and stops.
+    for (const topic of WS_TOPICS)
+      expect(JSON.parse(wsFrame(topic, null as never)) as Record<string, unknown>).toEqual({
+        topic,
+        data: null,
+      });
+  });
+
+  test("carries no namespace prefix", () => {
+    // It had `mux:` while the five legacy routes still published bare payloads
+    // on the unprefixed names. They are gone; a leftover prefix would publish
+    // to a topic nobody subscribes to and deliver nothing, silently.
+    for (const topic of WS_TOPICS) {
+      expect(JSON.parse(wsFrame(topic, null as never)).topic).toBe(topic);
     }
   });
 });

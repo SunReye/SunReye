@@ -10,7 +10,7 @@ import type { MetricKind } from "./types";
 export function kindValueClass(kind: MetricKind): string {
   switch (kind) {
     case "cumulative":
-      return "text-chart-2";
+      return "text-foreground";
     case "setting":
       return "text-muted-foreground";
     default:
