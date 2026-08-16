@@ -46,18 +46,6 @@ class InverterStore {
     },
   });
 
-  /**
-   * Exponentially-smoothed interval between live samples (ms). Consumers
-   * (`AnimatedNumber`, the live chart cursor) stretch their per-frame glide
-   * across this so values drift continuously between samples instead of
-   * snapping and freezing. Measured by the bus, which is where the frames and
-   * the reconnects both are: the spacing is a property of the feed, not of
-   * whoever happens to be reading it.
-   */
-  get cadenceMs(): number {
-    return bus.cadenceMs;
-  }
-
   get capabilities(): InverterCapabilities | null {
     return this.manifest?.capabilities ?? null;
   }

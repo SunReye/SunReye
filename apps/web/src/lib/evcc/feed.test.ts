@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type { EvccLoadpoint, EvccState } from "@SunReye/contracts/evcc";
 import { LiveBus } from "$lib/ws/bus";
 import type { SocketLike } from "$lib/ws/reconnecting-socket";
-import { EvccFeed, isActive, leaseEvcc, totalChargePower } from "./feed";
+import { EvccFeed, evccStalenessCadenceMs, isActive, leaseEvcc, totalChargePower } from "./feed";
 
 function loadpoint(patch: Partial<EvccLoadpoint> = {}): EvccLoadpoint {
   return {
@@ -142,6 +142,24 @@ describe("EvccFeed", () => {
         }),
       ),
     ).toBe(4200);
+  });
+});
+
+describe("the freshness window is not the glide clamp", () => {
+  test("a charger on its normal slow loop is judged against that loop, not the 10 s glide", () => {
+    // The measured cadence is clamped to 10 s so an idle night cannot stretch
+    // an animation past watching. Judging freshness by that same 10 s says a
+    // charger is dead 30 s after its last push — and EVCC's own publish loop is
+    // 10–30 s, with the server emitting purely on change and no heartbeat. The
+    // window has to clear one healthy quiet loop with room to spare.
+    expect(evccStalenessCadenceMs(10_000)).toBe(30_000);
+    expect(evccStalenessCadenceMs(500)).toBe(30_000);
+  });
+
+  test("a charger that genuinely publishes faster is not held to the floor", () => {
+    // The floor is a floor: a broker pushing every minute (a retained-state
+    // replay after a long silence) should widen the window, never narrow it.
+    expect(evccStalenessCadenceMs(60_000)).toBe(60_000);
   });
 });
 

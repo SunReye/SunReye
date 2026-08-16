@@ -22,6 +22,20 @@ import type { WsTopicPayloads } from "@SunReye/contracts/ws";
  */
 const EVCC_CADENCE_BOUNDS = { minMs: 500, maxMs: 10_000 };
 
+/**
+ * Slowest publish loop a healthy EVCC still counts as talking (ms).
+ *
+ * Freshness gets its own bound on purpose. {@link EVCC_CADENCE_BOUNDS} exists
+ * to keep an *animation* watchable, and spending an animation length as a
+ * freshness window answers "has this number stopped being true?" with "how long
+ * may it glide?" — two different questions. The server emits this topic purely
+ * on change (200 ms debounce, no heartbeat) and EVCC's own loop runs 10–30 s
+ * (`apps/server/src/evcc/ev-power-estimator.ts`), so a window built on the 10 s
+ * ceiling — 30 s at three cadences — is the same order as the gap between two
+ * perfectly normal pushes, and an idle-but-reachable charger flaps "stale".
+ */
+const EVCC_SLOWEST_PUBLISH_MS = 30_000;
+
 export interface EvccFeedHooks {
   /** A fresh snapshot arrived. */
   onState(state: EvccState): void;
@@ -78,6 +92,19 @@ export function leaseEvcc(bus: EvccTopicBus, feed: EvccFeed): () => void {
   return bus.subscribe("evcc", (data) => feed.apply(data), {
     onResume: () => feed.resume(),
   });
+}
+
+/**
+ * The cadence an EVCC reading's freshness is judged against (ms): the measured
+ * spacing, floored at {@link EVCC_SLOWEST_PUBLISH_MS}.
+ *
+ * A floor, not a replacement — a broker that genuinely speaks more slowly (a
+ * retained replay after a long silence) widens the window rather than narrowing
+ * it. A charger that has actually stopped is still caught: three cadences is
+ * 90 s of nothing from a feed that speaks every half minute.
+ */
+export function evccStalenessCadenceMs(cadenceMs: number): number {
+  return Math.max(EVCC_SLOWEST_PUBLISH_MS, cadenceMs);
 }
 
 /** Integration on + EVCC publishing + at least one loadpoint to show. */
