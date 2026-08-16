@@ -21,7 +21,8 @@
     { "file": "packages/profile-sdk/tsdown.config.ts", "exports": ["*"] },
     { "file": "scripts/require-tests.ts", "exports": ["*"] },
     { "file": "scripts/coverage-floor.ts", "exports": ["*"] },
-    { "file": "scripts/mock-hygiene.ts", "exports": ["*"] }
+    { "file": "scripts/mock-hygiene.ts", "exports": ["*"] },
+    { "file": "scripts/nginx-locations.ts", "exports": ["*"] }
   ],
   "boundaries": {
     "zones": [

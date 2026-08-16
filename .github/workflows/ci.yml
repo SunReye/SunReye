@@ -134,6 +134,12 @@ jobs:
       - name: Mock hygiene
         run: bun run test:mocks
 
+      # The addon's front door: `/ws` must reach the server as an upgrade. A
+      # prefix `location /ws/` silently serves index.html instead, and the
+      # dashboard ships with no live socket at all.
+      - name: Addon nginx routing
+        run: bun run test:nginx
+
       - name: Test with coverage
         run: bun run test:coverage
 

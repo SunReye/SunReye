@@ -43,6 +43,7 @@
     "test:required": "bun scripts/require-tests.ts",
     "test:floor": "bun scripts/coverage-floor.ts coverage/lcov.info",
     "test:mocks": "bun scripts/mock-hygiene.ts",
+    "test:nginx": "bun scripts/nginx-locations.ts",
     "coverage:badge": "bun run scripts/coverage-badge.mjs coverage/lcov.info coverage/coverage.svg",
     "check": "oxlint && oxfmt --write",
     "sync:beta-addon": "node scripts/sync-beta-addon.mjs",
