@@ -39,6 +39,15 @@ function read(file: string): string {
 const isPrimitive = (file: string) => file.startsWith("lib/components/layout/");
 
 /**
+ * One attribute's worth of tag text: a bare character, a quoted value, or a
+ * braced expression. Braces nest one level deep because that is how Svelte
+ * writes an object literal into an attribute — `use:inView={{ onEnter: … }}`,
+ * `transition:fade={{ duration: 200 }}`. A single-level pattern stops at the
+ * INNER `}`, so it ends the tag early and then finds no tag at all.
+ */
+const ATTRIBUTE = `(?:[^<>"'{]|"[^"]*"|'[^']*'|\\{(?:[^{}]|\\{[^{}]*\\})*\\})`;
+
+/**
  * The opening `<Name …>` tag, attributes included and nothing past its own `>`.
  *
  * The naive `/<Section[\s\S]*?\bfoo\b[\s\S]*?>/` walks straight over the tag's
@@ -50,13 +59,103 @@ const isPrimitive = (file: string) => file.startsWith("lib/components/layout/");
  * that only tests import is dead code to the production reachability gate.
  */
 function openTagOf(code: string, name: string): string | null {
-  const match = code.match(new RegExp(`<${name}(?:[^<>"'{]|"[^"]*"|'[^']*'|\\{[^{}]*\\})*>`));
+  const match = code.match(new RegExp(`<${name}${ATTRIBUTE}*>`));
   return match ? match[0] : null;
 }
 
-/** Whether `tag` carries `attribute`, shorthand (`nested`) or valued. */
+/**
+ * Whether `tag` carries `attribute` — shorthand (`nested`), valued
+ * (`nested={x}`), or Svelte's value shorthand (`{caption}`, which passes the
+ * binding of that name and is the same prop by another spelling.)
+ */
 function hasAttribute(tag: string, attribute: string): boolean {
-  return new RegExp(`(?:^|\\s)${attribute}(?=[\\s/>=])`).test(tag);
+  return new RegExp(`(?:^|\\s)\\{?${attribute}(?=[\\s/>=}])`).test(tag);
+}
+
+/**
+ * The single open tag that carries `attribute` — element name included.
+ *
+ * "The file still says `use:inView`" is true of a comment, and of the action
+ * left on a child that is unmounted half the time. Which element the observer
+ * sits on is the whole behaviour, so the tag itself is what gets asserted.
+ */
+function tagCarrying(code: string, attribute: string): string | null {
+  for (const tag of code.matchAll(OPEN_TAG)) {
+    if (hasAttribute(tag[0], attribute)) return tag[0];
+  }
+  return null;
+}
+
+/** The body of `{#snippet name()}…{/snippet}`, or null when there is none. */
+function snippetBody(code: string, name: string): string | null {
+  const match = code.match(new RegExp(`\\{#snippet ${name}\\(\\)\\}([\\s\\S]*?)\\{/snippet\\}`));
+  return match ? match[1] : null;
+}
+
+/** Elements with no closing tag, so they never enclose anything. */
+const VOID_ELEMENTS = /^(?:area|base|br|col|embed|hr|img|input|link|meta|source|track|wbr)$/i;
+
+/**
+ * The markup, with the parts that are not the rendered tree removed. Snippet
+ * bodies go too: a snippet is rendered wherever the callee decides, so counting
+ * its tags as enclosing anything below it is simply wrong.
+ */
+function template(source: string): string {
+  return stripSnippets(
+    source.replace(/<script[\s\S]*?<\/script>/g, "").replace(/<!--[\s\S]*?-->/g, ""),
+  ).trim();
+}
+
+/**
+ * Snippet blocks removed, nesting counted.
+ *
+ * A lazy `\{#snippet[\s\S]*?\{/snippet\}` closes an OUTER snippet on an inner
+ * one's terminator — profile-step's row snippet contains an `actions` snippet —
+ * and leaves the outer's tail in the markup, where it becomes the template's
+ * root element and every claim about the root is then made about a fragment.
+ */
+function stripSnippets(markup: string): string {
+  const OPEN = "{#snippet";
+  const CLOSE = "{/snippet}";
+  let out = "";
+  let depth = 0;
+  for (let i = 0; i < markup.length; ) {
+    if (markup.startsWith(OPEN, i)) {
+      depth++;
+      i += OPEN.length;
+    } else if (markup.startsWith(CLOSE, i)) {
+      depth = Math.max(0, depth - 1);
+      i += CLOSE.length;
+    } else {
+      if (depth === 0) out += markup[i];
+      i++;
+    }
+  }
+  return out;
+}
+
+/**
+ * The open tags enclosing `needle`, outermost first. Same shape as
+ * `enclosingTags` in `routes/(app)/page-shells.test.ts`, kept local for the
+ * reason `openTagOf` is.
+ *
+ * Which component WRAPS another is a claim about context: `Tabs.List` only
+ * finds its root through the render tree, so "the file contains a Tabs.Root"
+ * passes a file whose root is a sibling of the section and whose triggers are
+ * inert.
+ */
+function enclosingTags(markup: string, needle: string): string[] {
+  const at = markup.indexOf(needle);
+  expect(at, `${needle} is not in this template`).toBeGreaterThan(-1);
+  const open: string[] = [];
+  const tags = markup
+    .slice(0, at)
+    .matchAll(new RegExp(`<(/?)([A-Za-z][\\w.]*)(${ATTRIBUTE}*?)(/?)>`, "g"));
+  for (const [tag, closing, name, , selfClosing] of tags) {
+    if (closing) open.pop();
+    else if (!selfClosing && !VOID_ELEMENTS.test(name)) open.push(tag);
+  }
+  return open;
 }
 
 /**
@@ -111,6 +210,24 @@ const MIGRATED_SECTIONS = [
   "routes/(app)/statistics/statistics-section.svelte",
 ];
 
+/**
+ * Phase 2.4's own batch: the bespoke cards that were still framing themselves
+ * and writing their own heading after the six section variants had merged.
+ *
+ * Separate from {@link MIGRATED_SECTIONS} because the collapsible rule below
+ * does not apply to them — `profile-step` keeps a `Collapsible.Root`, and it is
+ * not a section collapse but the "no inverter?" disclosure INSIDE the card.
+ */
+const MIGRATED_BESPOKE_CARDS = [
+  "lib/components/inverter/custom-chart-card.svelte",
+  "lib/components/inverter/energy-split-chart.svelte",
+  "lib/components/inverter/entity-history-card.svelte",
+  "lib/components/inverter/time-of-use.svelte",
+  "lib/components/setup/activate-step.svelte",
+  "lib/components/setup/profile-step.svelte",
+  "lib/components/statistics/hour-weekday-heatmap.svelte",
+];
+
 const MIGRATED_EMPTY_STATES = [
   "lib/components/settings/inverter-form.svelte",
   "lib/components/settings/mqtt-form.svelte",
@@ -130,16 +247,17 @@ const HEADINGS_NOT_YET_MIGRATED = [
   "components/AuthShell.svelte",
   "routes/(app)/+layout.svelte",
   "routes/setup/+page.svelte",
-  // Bespoke card frames that carry their own heading — the phase-2.4 backlog.
-  // Migrating one is a line deleted from here, and that is the point.
-  "lib/components/inverter/custom-chart-card.svelte",
-  "lib/components/inverter/energy-split-chart.svelte",
-  "lib/components/inverter/entity-history-card.svelte",
-  "lib/components/inverter/time-of-use.svelte",
+  // The one survivor of the phase-2.4 backlog, and it is a deliberate one.
+  // `Section` frames with `border border-border` and heads with a muted
+  // uppercase title STRING; the danger zone frames with `border-destructive/50`
+  // and heads with a destructive-coloured warning-icon row. Neither the frame
+  // tone nor the icon is expressible through any prop `Section` has, and both
+  // are the whole affordance that separates "this wipes your history" from a
+  // neutral card — the reader is one click from an irreversible reset. Moving
+  // it needs a `tone` on `sectionShellClass` AND on `section-header`, which is
+  // a primitives change, not a migration; `the danger zone earns its
+  // exemption` below pins that the weight is really there and not a comment.
   "lib/components/settings/danger-zone-form.svelte",
-  "lib/components/setup/activate-step.svelte",
-  "lib/components/setup/profile-step.svelte",
-  "lib/components/statistics/hour-weekday-heatmap.svelte",
   // Sub-headings one level BELOW a card title, over a group inside it: a split
   // block inside the energy card, a slot inside the time-of-use editor, and
   // three statistics groups that share one section header. A Section here would
@@ -157,18 +275,11 @@ const HEADINGS_NOT_YET_MIGRATED = [
  * cards awaiting migration, and small bordered chrome that was never a card.
  */
 const CARDS_NOT_YET_MIGRATED = [
-  // Bespoke section cards, the phase-2.4 backlog above seen from the frame side.
-  "lib/components/inverter/custom-chart-card.svelte",
-  "lib/components/inverter/energy-split-chart.svelte",
-  "lib/components/inverter/entity-history-card.svelte",
-  "lib/components/inverter/time-of-use.svelte",
-  "lib/components/setup/activate-step.svelte",
-  "lib/components/setup/profile-step.svelte",
-  "lib/components/statistics/hour-weekday-heatmap.svelte",
   // Chrome, not cards. Each is a bordered thing SMALLER than a section: the
   // diagram's charger and battery badges, a price pill, a note paragraph, the
   // pinned-profile strip, the timezone preview readout, one tariff band row,
-  // one time-of-use slot row, and the lock banner that already sits inside
+  // one time-of-use slot row, the dashed "no inverter?" disclosure inside the
+  // now-migrated profile step, and the lock banner that already sits inside
   // controls-panel's Section. Framing them as Sections would be wrong, so they
   // are listed rather than migrated.
   "lib/components/inverter/_shared/ev-charger-body.svelte",
@@ -179,6 +290,7 @@ const CARDS_NOT_YET_MIGRATED = [
   "lib/components/settings/installed-profiles-list.svelte",
   "lib/components/settings/inverter-form.svelte",
   "lib/components/settings/tariff-form.svelte",
+  "lib/components/setup/profile-step.svelte",
   "routes/(app)/controls/controls-panel.svelte",
 ].sort();
 
@@ -220,6 +332,185 @@ describe("the section recipe lives in one place", () => {
   // may keep a collapsible of its own.
   test.each(MIGRATED_SECTIONS)("%s no longer drives its own collapsible", (file) => {
     expect(read(file)).not.toContain("Collapsible.");
+  });
+
+  test.each(MIGRATED_BESPOKE_CARDS)("%s renders Section instead of a card of its own", (file) => {
+    const code = read(file);
+    expect(code).toContain("layout/section.svelte");
+    expect(code).toMatch(/<Section[\s>]/);
+    expect(code).not.toMatch(/<section[\s>]/);
+  });
+});
+
+/**
+ * Phase 2.4, per card. The census above says "no file frames a card any more";
+ * these say the CONTENT survived the move — a card that dropped its controls,
+ * its aria-label or its lazy mount into the diff would still pass the census.
+ */
+describe("the bespoke cards keep what made them worth keeping", () => {
+  // Both of these render many-up inside a section that is already inside the
+  // page shell (/history's metric group, /statistics' section, the custom-chart
+  // section), so three frames and three pads at 390px is the exact case
+  // `nested` exists for.
+  test.each([
+    "lib/components/inverter/custom-chart-card.svelte",
+    "lib/components/inverter/entity-history-card.svelte",
+    "lib/components/inverter/energy-split-chart.svelte",
+    "lib/components/statistics/hour-weekday-heatmap.svelte",
+  ])("%s asks Section to drop its frame on a phone", (file) => {
+    const tag = openTagOf(read(file), "Section");
+    expect(tag, `${file} renders no Section`).not.toBeNull();
+    expect(hasAttribute(tag!, "nested")).toBe(true);
+  });
+
+  describe("a custom chart card", () => {
+    const card = () => read("lib/components/inverter/custom-chart-card.svelte");
+
+    // The header held title + edit + delete spread by `justify-between`. They
+    // collapse into Section's one right-hand cluster, and the two icon-only
+    // buttons are unreachable to a screen reader without their labels — which
+    // is why the labels are read off the cluster, not off the file.
+    test("its edit and delete controls move into the header cluster, labelled", () => {
+      const actions = snippetBody(card(), "actions");
+      expect(actions, "custom-chart-card passes Section no actions").not.toBeNull();
+      expect(actions!).toContain("aria-label={msg.chart_edit_chart()}");
+      expect(actions!).toContain("aria-label={msg.chart_delete_chart()}");
+      expect(actions!).toContain("onclick={onEdit}");
+      expect(actions!).toContain("onclick={onDelete}");
+    });
+
+    test("the chart's name is the section title, not a heading of its own", () => {
+      expect(openTagOf(card(), "Section")).toContain("title={chart.name}");
+    });
+  });
+
+  describe("an entity history card", () => {
+    const card = () => read("lib/components/inverter/entity-history-card.svelte");
+
+    // `Section` takes neither a `class` nor a `use:` action, and the observer
+    // has to sit on the card's outermost box or 100+ charts all mount at once.
+    // So the root is a bare wrapper — bare being the load-bearing word: a
+    // wrapper that grew a frame would draw a second border around the section.
+    test("the lazy-mount observer sits on a wrapper that draws nothing", () => {
+      const code = card();
+      const tag = tagCarrying(code, "use:inView");
+      expect(tag, "nothing carries the in-view action any more").not.toBeNull();
+      expect(tag!).toMatch(/^<div[\s>]/);
+      expect(tag!).toContain("{ onEnter: enter, onLeave: leave }");
+      for (const [, value] of tag!.matchAll(/class="([^"]*)"/g)) {
+        expect(value).not.toMatch(FRAME);
+        expect(value).not.toMatch(PADDING);
+      }
+      expect(enclosingTags(template(code), "<Section")).toContain(tag!);
+    });
+
+    // The live reading was the right half of the old header row; it is the
+    // header action now. Dropped, the card shows history with no current value.
+    test("the live readout is the header action", () => {
+      const actions = snippetBody(card(), "actions");
+      expect(actions, "entity-history-card passes Section no actions").not.toBeNull();
+      expect(actions!).toContain("<MetricReadout value={current} {unit} />");
+    });
+  });
+
+  describe("the energy split chart", () => {
+    const chart = () => read("lib/components/inverter/energy-split-chart.svelte");
+
+    // "Energy split — this month, by day" was one string in one `<h2>`; the
+    // window is Section's caption line now, as it is on every chart panel.
+    test("the plotted window becomes the caption, not part of the title", () => {
+      const tag = openTagOf(chart(), "Section");
+      expect(tag).toContain("title={msg.chart_energy_split()}");
+      expect(hasAttribute(tag!, "caption")).toBe(true);
+      // The template, not the file: the em dash survives in the comment that
+      // records why it went, and that comment is not on screen.
+      expect(template(chart())).not.toContain("—");
+    });
+
+    // The chart comes and goes with its data, and a transition needs an element
+    // this file owns — the same wrapper chart-panel spends it on.
+    test("its fade sits on a wrapper, since the root is a component now", () => {
+      const wrappers = enclosingTags(template(chart()), "<Section");
+      expect(wrappers.some((tag) => /^<div[^>]*transition:fade/.test(tag))).toBe(true);
+    });
+
+    test("the kWh/percent switcher is the header action", () => {
+      expect(snippetBody(chart(), "actions")).toContain("<RangeSwitcher");
+    });
+  });
+
+  describe("the time-of-use editor", () => {
+    const tou = () => read("lib/components/inverter/time-of-use.svelte");
+
+    // The tab list is a header action, and a `Tabs.List` finds its root through
+    // the RENDER tree. Rendered from Section's header while `Tabs.Root` sits
+    // beside the section rather than around it, the triggers find no context
+    // and the editor cannot be switched at all — so the nesting is the test.
+    test("Tabs.Root wraps the Section, so the tab list in the header has a root", () => {
+      const code = tou();
+      expect(snippetBody(code, "actions")).toContain("<Tabs.List");
+      expect(enclosingTags(template(code), "<Section").map((t) => t.slice(0, 11))).toContain(
+        "<Tabs.Root ",
+      );
+    });
+
+    // Voltage vs SOC packs are driven by different targets, and the sentence
+    // saying which is the caption line now rather than a paragraph the header
+    // row had to make room for.
+    test("the voltage/SOC sentence becomes the section caption", () => {
+      expect(openTagOf(tou(), "Section")).toMatch(/caption=\{/);
+      expect(tou()).toContain("m.tou_schedule_desc_voltage()");
+      expect(tou()).toContain("m.tou_schedule_desc_soc()");
+    });
+  });
+
+  describe("the hour-by-weekday heatmap", () => {
+    const heatmap = () => read("lib/components/statistics/hour-weekday-heatmap.svelte");
+
+    // The metric switcher lives in the header, and the panel deliberately stays
+    // mounted when the chosen metric is flat — unmounting strands the reader on
+    // a choice they cannot undo. Both of those are one claim: the switcher is
+    // in the header, and the header is outside the `hasData` branch.
+    test("the metric switcher is the header action and outlives an empty metric", () => {
+      const code = heatmap();
+      const actions = snippetBody(code, "actions");
+      expect(actions).toContain("<RangeSwitcher");
+      expect(actions).toContain("bind:value={metric}");
+      expect(actions!.includes("{#if hasData}")).toBe(false);
+    });
+
+    test("its subtitle becomes the section caption", () => {
+      expect(openTagOf(heatmap(), "Section")).toContain("caption={m.statistics_heatmap_caption()}");
+    });
+  });
+
+  // These two render OUTSIDE the (app) shell — /setup has no PageShell above
+  // it — so the card is the only thing padding them. A migration that also
+  // added a pad of its own would double it exactly where there is least room.
+  describe.each([
+    "lib/components/setup/activate-step.svelte",
+    "lib/components/setup/profile-step.svelte",
+  ])("%s stands alone in the setup wizard", (file) => {
+    test("it roots at Section, so the card is the whole of its gutter", () => {
+      const markup = template(read(file));
+      expect(markup.startsWith("<Section")).toBe(true);
+      expect(markup.endsWith("</Section>")).toBe(true);
+      // Nothing wraps it: a wrapper here is a pad or a frame the wizard has no
+      // shell to absorb, and it lands on the narrowest screen in the product.
+      expect(enclosingTags(markup, "<Section")).toEqual([]);
+    });
+  });
+
+  // The exemption above is a claim about pixels, so it is checked like one: the
+  // day someone quietly repaints this card in `border-border`, the reason
+  // written next to its allowlist entry stops being true and this goes red.
+  test("the danger zone earns its exemption", () => {
+    const code = read("lib/components/settings/danger-zone-form.svelte");
+    const frame = openTagOf(code, "section");
+    expect(frame, "the danger zone no longer roots at a section").not.toBeNull();
+    expect(frame!).toMatch(/class="[^"]*\bborder-destructive\//);
+    expect(code).toMatch(/<h2[^>]*>/);
+    expect(code).toContain("text-destructive");
   });
 });
 

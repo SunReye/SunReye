@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { HeatmapCell } from '@SunReye/contracts/statistics';
 	import { api } from '$lib/api';
+	import Section from '$lib/components/layout/section.svelte';
 	import RangeSwitcher from '$lib/components/inverter/range-switcher.svelte';
 	import HeatGrid from './heat-grid.svelte';
 	import { heatKwh, hourLabel, weekdayLabel, type HeatPoint } from '$lib/statistics/heatmap';
@@ -74,16 +75,14 @@
      decorative empty component. A flat metric inside a window that HAS data
      keeps the panel and swaps the grid for a line — see hasCells. -->
 {#if hasCells}
-	<section class="flex flex-col gap-3 border border-border p-4">
-		<div class="flex flex-wrap items-center justify-between gap-3">
-			<div class="flex min-w-0 flex-col">
-				<h2 class="text-sm font-medium uppercase tracking-wide text-muted-foreground">
-					{m.statistics_heatmap_title()}
-				</h2>
-				<p class="text-xs text-muted-foreground/70">{m.statistics_heatmap_caption()}</p>
-			</div>
+	<!-- `nested`: the heatmap is one panel of a statistics section, itself inside
+	     the page shell. Title + subtitle + switcher is exactly Section's header,
+	     so the switcher stays OUTSIDE the hasData branch below — see the flat
+	     metric case, where unmounting it would strand the reader. -->
+	<Section title={m.statistics_heatmap_title()} caption={m.statistics_heatmap_caption()} nested>
+		{#snippet actions()}
 			<RangeSwitcher options={METRICS} bind:value={metric} />
-		</div>
+		{/snippet}
 
 		{#if hasData}
 			{#if busiest}
@@ -105,5 +104,5 @@
 				{m.statistics_heatmap_metric_empty({ metric: metricLabel })}
 			</p>
 		{/if}
-	</section>
+	</Section>
 {/if}

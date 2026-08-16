@@ -130,6 +130,9 @@ const files = [...new Bun.Glob("**/+page.svelte").scanSync({ cwd: APP_DIR })].so
 const sources = new Map(await Promise.all(files.map(async (f) => [f, await read(f)] as const)));
 const appLayout = await read("+layout.svelte");
 const settingsLayout = await read("settings/+layout.svelte");
+const pageShell = await Bun.file(
+  new URL("../../lib/components/layout/page-shell.svelte", import.meta.url),
+).text();
 
 describe("page root census", () => {
   // The point of scanning disk instead of listing files: a route added without
@@ -199,6 +202,117 @@ describe("the overview's documented exception", () => {
     expect(root).toContain("lg:h-[calc(100svh-var(--app-header-h))]");
     expect(root).not.toContain("3.5rem");
   });
+});
+
+/**
+ * The toolbar row is one visual line, and nothing in it may claim the whole one.
+ *
+ * `lead` exists because the peak-shaving back link used to render below the
+ * toolbar: two rows for one line of chrome. Render order is what the row-ordering
+ * cases in `lib/components/layout/header-and-toolbar-rows.test.ts` pin, and order
+ * alone does not carry the fix — wrap the lead render in `<div class="w-full">`
+ * and it is still inside the row and still ahead of the controls, but the row is
+ * `flex-wrap`, so a child that fills the line pushes the toolbar cluster onto a
+ * second one and the two-row layout is back with every existing case green.
+ *
+ * What actually holds it is structural: the row's children are direct children
+ * (no wrapper of any kind around the render sites) and none of them is sized to
+ * fill the line.
+ */
+describe("the page shell's toolbar row stays one row", () => {
+  const shellMarkup = template(pageShell);
+
+  /**
+   * Tailwind utilities that make a flex child take the whole line, so the next
+   * child in a `flex-wrap` row starts a new one. Variant prefixes count —
+   * `max-sm:w-full` wraps the row on exactly the screen the row was fixed for —
+   * but only as whole classes: `max-w-full` and `grow-0` are not these.
+   */
+  const FILLS_THE_LINE =
+    /(?:^|\s)(?:[a-z0-9-]+:)*(?:w-full|min-w-full|w-screen|basis-full|flex-1|grow|self-stretch)(?=\s|$)/;
+
+  /** Every `class="…"` literal on an open tag inside `markup`, tag by tag. */
+  function classesOfTags(markup: string): { tag: string; classes: string }[] {
+    const out: { tag: string; classes: string }[] = [];
+    for (const [tag] of markup.matchAll(
+      /<[A-Za-z][\w.]*(?:[^<>"'{]|"[^"]*"|'[^']*'|\{[^{}]*\})*?\/?>/g,
+    )) {
+      out.push({ tag, classes: tag.match(/class="([^"]*)"/)?.[1] ?? "" });
+    }
+    return out;
+  }
+
+  const leadWrappers = enclosingTags(shellMarkup, "{@render lead?.()}");
+  const toolbarWrappers = enclosingTags(shellMarkup, "{@render toolbar?.()}");
+
+  // The row itself, identified by structure rather than by matching its class
+  // string: it is the element the control cluster sits in, i.e. the last thing
+  // still open around the toolbar once its own cluster is discounted.
+  const row = toolbarWrappers.at(-2);
+
+  test("the row exists and is the wrapping flex line both ends share", () => {
+    expect(row).toBeDefined();
+    expect(row).toContain("flex-wrap");
+  });
+
+  // Wrappers and full-width children are not the only way to split the row.
+  // Turning the row itself into a column — `flex max-sm:flex-col` — puts the
+  // back link above the live indicator on every phone, with no wrapper and no
+  // banned child class anywhere. Same two-row layout, one token, and the rest
+  // of this block would not notice.
+  test("and stays a row at every width, on a phone above all", () => {
+    expect(row).not.toMatch(/(?:^|\s)(?:[a-z0-9-]+:)*flex-col(?:-reverse)?(?=\s|"|$)/);
+  });
+
+  // The mutation this is written against: `{@render lead?.()}` wrapped in a
+  // `<div>`. Any wrapper at all is a new flex item with its own sizing, and the
+  // lead is a snippet — the page that passes it cannot see the wrapper to
+  // correct for it. So the render site is a direct child of the row, full stop.
+  test("the lead renders as a direct child of the row, in no wrapper of its own", () => {
+    expect(leadWrappers.at(-1)).toBe(row);
+    expect(leadWrappers).toHaveLength(toolbarWrappers.length - 1);
+  });
+
+  // The controls do get one wrapper — `ml-auto` needs an element to sit on —
+  // and it is the only one.
+  test("the controls sit in exactly one cluster, inside that same row", () => {
+    expect(toolbarWrappers.at(-1)).toContain("ml-auto");
+    expect(toolbarWrappers.at(-2)).toBe(row);
+  });
+
+  test("nothing in the row is sized to fill the line", () => {
+    const rowBlock = shellMarkup.slice(shellMarkup.indexOf(row!));
+    const offenders = classesOfTags(rowBlock)
+      .filter((t) => FILLS_THE_LINE.test(t.classes))
+      .map((t) => t.tag);
+    expect(offenders).toEqual([]);
+  });
+
+  // The row's other half comes from the routes, and a lead snippet is markup
+  // like any other: `<a class="w-full">` in the page wraps the row exactly the
+  // same way a wrapper in the shell would. The shell cannot constrain it, so it
+  // is pinned where it is written.
+  const leads = files
+    .map((file) => ({
+      file,
+      snippet: sources.get(file)!.match(/\{#snippet lead\(\)\}[\s\S]*?\{\/snippet\}/),
+    }))
+    .filter((l) => l.snippet !== null);
+
+  test("there is a lead snippet in the routes to hold to this", () => {
+    expect(leads.length).toBeGreaterThan(0);
+  });
+
+  test.each(leads.map((l) => l.file))(
+    "%s's lead snippet claims no more than its content",
+    (file) => {
+      const snippet = leads.find((l) => l.file === file)!.snippet![0];
+      const offenders = classesOfTags(snippet)
+        .filter((t) => FILLS_THE_LINE.test(t.classes))
+        .map((t) => t.tag);
+      expect(offenders).toEqual([]);
+    },
+  );
 });
 
 describe("app layout", () => {

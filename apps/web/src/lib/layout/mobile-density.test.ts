@@ -14,6 +14,7 @@
  */
 
 import { describe, expect, test } from "bun:test";
+import { chartPaddingFor } from "$lib/cost/ranges";
 import { CHART_BOX, CHART_BOX_SHORT, TAP, TILE_COLUMNS } from "./tokens";
 
 const SRC = new URL("../../", import.meta.url);
@@ -188,18 +189,42 @@ describe("chart gutters follow the measured plot width", () => {
   // was drawn — and a breakpoint could not tell, because the same component
   // renders full-bleed on /history and two-up inside a statistics section.
   const RAW = /\bCOST_CHART_PADDING\b|\bCOST_X_TICK_SPACING\b|\bHEAT_CHART_PADDING\b/;
-  const consumers = [
+
+  /** A gutter helper call in a component, with its argument list. */
+  const GUTTER_CALL =
+    /\b(chartPaddingFor|heatPaddingFor|xTickSpacingFor|stackedBarProps)\(([^()]*(?:\([^()]*\)[^()]*)*)\)/g;
+
+  /**
+   * Components that may call a gutter helper without measuring a plot, each with
+   * the reason. Empty on purpose: a helper call IS the request for a fitted
+   * gutter, and there is no way to fit one to a box nobody measured. An entry
+   * here is a claim that some component cannot measure its own plot, and it has
+   * to be argued in this comment before it is written.
+   */
+  const CANNOT_MEASURE: string[] = [];
+
+  // The rule is over the WHOLE app, not over the six files that had the bug.
+  // Held per-file, it says nothing about the seventh chart: a new component
+  // importing `chartPaddingFor` and calling it with a literal `0` — no
+  // `bind:clientWidth` anywhere in it — reinstates the 60px phone gutter with
+  // the suite green, because no list names it. Discovered from disk, so the
+  // component that does not exist yet is already covered.
+  const callers = files.filter((f) => new RegExp(GUTTER_CALL.source).test(read(f)));
+  const measurers = callers.filter((f) => !CANNOT_MEASURE.includes(f));
+
+  // A sweep that silently stops matching passes just as green as one that
+  // holds. These six are the charts the gutter regression was measured on; the
+  // discovery has to still be finding them.
+  test.each([
     "lib/components/statistics/period-line-chart.svelte",
     "lib/components/statistics/yoy-chart.svelte",
     "lib/components/statistics/heat-grid.svelte",
     "lib/components/prices/price-track-chart.svelte",
     "lib/components/inverter/cost-bar-chart.svelte",
     "lib/components/inverter/energy-split-block.svelte",
-  ];
-
-  /** A gutter helper call in a component, with its argument list. */
-  const GUTTER_CALL =
-    /\b(chartPaddingFor|heatPaddingFor|xTickSpacingFor|stackedBarProps)\(([^()]*(?:\([^()]*\)[^()]*)*)\)/g;
+  ])("%s is among the components the sweep discovers", (file) => {
+    expect(callers).toContain(file);
+  });
 
   /** The last argument of a call — the slot every one of these helpers takes
    *  the plot width in. Split at depth 0 so `stackedBarProps(f(a, b), w)` is
@@ -226,7 +251,7 @@ describe("chart gutters follow the measured plot width", () => {
   // phone chart quietly keeps the 60px gutter while the test stays green. So
   // the bound identifier is captured, and every gutter call in the file has to
   // be spending THAT variable.
-  test.each(consumers)("%s measures its plot and fits the gutters to it", (file) => {
+  test.each(measurers)("%s measures its plot and fits the gutters to it", (file) => {
     const code = read(file);
     const measured = code.match(/bind:clientWidth=\{(\w+)\}/);
     expect(measured, `${file} measures no plot width`).not.toBeNull();
@@ -238,9 +263,57 @@ describe("chart gutters follow the measured plot width", () => {
     }
   });
 
-  test.each(consumers)("%s no longer reaches for the fixed desktop numbers", (file) => {
-    expect(read(file)).not.toMatch(RAW);
+  test("no component anywhere reaches for the fixed desktop numbers", () => {
+    expect(files.filter((f) => RAW.test(read(f)))).toEqual([]);
   });
+
+  // Naming the constants is not the only way back to a desktop gutter: a new
+  // chart can spell `padding={{ left: 60, right: 24 }}` inline and never touch
+  // a helper, so the sweep above — which only holds components that DO call one
+  // — never sees it. A padding literal on a chart is the bug written out
+  // longhand.
+  const PADDING_LITERAL = /padding=\{\{[^}]*\b(?:left|right)\s*:\s*\d/;
+
+  /**
+   * Charts still on a fixed gutter, with the left value each one writes.
+   *
+   * These are NOT exempt on merit — the phone gutter is 34px and every one of
+   * them is wider than that, so each still spends 2-10px of a 412px plot it
+   * does not need to. They sit outside the cost/statistics family the fitted
+   * helpers were built for and carry their own tuning, so converting them is a
+   * change to five charts' desktop appearance as well, and it is not being
+   * smuggled in at the end of an unrelated pass.
+   *
+   * The list is the backlog. What the rule buys today is that it cannot GROW:
+   * a new chart writing its own gutter fails, and shrinking this list needs no
+   * new rule.
+   */
+  const FIXED_GUTTER_BACKLOG: Record<string, number> = {
+    "lib/components/settings/forecast-correction-panel.svelte": 36,
+    "lib/components/inverter/forecast-chart.svelte": 40,
+    "lib/components/inverter/hourly-bar-chart.svelte": 40,
+    "lib/components/inverter/live-area.svelte": 44,
+    "lib/components/inverter/_shared/metric-history-chart.svelte": 44,
+    "lib/components/automations/decision-chart.svelte": 44,
+    "lib/components/inverter/_shared/custom-chart-plot.svelte": 44,
+  };
+
+  test("nor writes a plot gutter out as a literal instead", () => {
+    const inline = files.filter(
+      (f) => PADDING_LITERAL.test(read(f)) && !(f in FIXED_GUTTER_BACKLOG),
+    );
+    expect(inline).toEqual([]);
+  });
+
+  test.each(Object.entries(FIXED_GUTTER_BACKLOG))(
+    "%s is on the backlog at the gutter it actually writes",
+    (file, left) => {
+      // The entry has to keep naming a real number in a real file, so the list
+      // cannot quietly become a blanket amnesty for the whole folder.
+      expect(read(file)).toMatch(new RegExp(`left:\\s*${left}\\b`));
+      expect(left).toBeGreaterThan(chartPaddingFor(412).left);
+    },
+  );
 
   // The bar charts get their padding through the shared props builder, so the
   // width has to travel through it or the two of them silently keep the old

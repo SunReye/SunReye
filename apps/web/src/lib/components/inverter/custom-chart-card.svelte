@@ -4,6 +4,7 @@
 	import Trash from 'phosphor-svelte/lib/Trash';
 	import { Button } from '$lib/components/ui/button';
 	import * as msg from '$lib/paraglide/messages';
+	import Section from '$lib/components/layout/section.svelte';
 	import ChartLegend from '$lib/components/inverter/chart-legend.svelte';
 	import CustomChartPlot from '$lib/components/inverter/_shared/custom-chart-plot.svelte';
 	import ChartStateView from '$lib/components/inverter/_shared/chart-state-view.svelte';
@@ -143,9 +144,15 @@
 	);
 </script>
 
-<section class="flex flex-col gap-3 border border-border p-4">
-	<div class="flex flex-wrap items-center justify-between gap-2">
-		<h3 class="truncate text-sm font-medium">{chart.name}</h3>
+<!-- `nested`: a saved chart is one of a grid of cards inside the custom-chart
+     section, which is itself inside the page shell. Three frames and three pads
+     cost a quarter of a 390px screen; the card's own frame returns at sm. -->
+<Section title={chart.name} nested>
+	{#snippet actions()}
+		<!-- Title, edit and delete were one row spread by `justify-between`; the
+		     two icon buttons are the section's right-hand cluster now. They are
+		     icon-only, so the labels travel with them or they leave the keyboard
+		     and screen-reader path entirely. -->
 		{#if isAdmin}
 			<div class="flex items-center gap-1">
 				<Button variant="ghost" size="icon" aria-label={msg.chart_edit_chart()} onclick={onEdit}>
@@ -156,7 +163,7 @@
 				</Button>
 			</div>
 		{/if}
-	</div>
+	{/snippet}
 
 	<div class="{CHART_BOX} w-full">
 		{#if plottable}
@@ -182,4 +189,4 @@
 	{#if missing.length > 0}
 		<p class="text-xs text-muted-foreground">{missingNote}</p>
 	{/if}
-</section>
+</Section>

@@ -92,6 +92,16 @@ function bodyStart(code: string, name: string): number {
   throw new Error(`no implementation of ${name}`);
 }
 
+/**
+ * The opening `<Tag …>` of a component, attribute expressions consumed whole so
+ * a `{…}` value containing `>` does not end the tag early.
+ */
+function openTagOf(code: string, tag: string): string {
+  const match = new RegExp(`<${tag}(?:\\s(?:[^<>{]|\\{[^{}]*\\})*)?/?>`).exec(code);
+  if (!match) throw new Error(`no <${tag}> in this component`);
+  return match[0];
+}
+
 /** The braces block that starts at `open`, braces included. */
 function block(code: string, open: number): string {
   let depth = 0;
@@ -195,6 +205,23 @@ describe("the page still scrolls under a chart", () => {
 describe("a zoom on /history refetches at a finer rollup", () => {
   const chart = "lib/components/inverter/_shared/metric-history-chart.svelte";
   const page = "routes/(app)/history/+page.svelte";
+
+  /**
+   * The page and the chart are three components apart. Pinning only the two
+   * ends leaves the hops between them free: deleting `{onZoom}` from the card's
+   * plot invocation kills zoom on /history end to end, and neither the suite
+   * nor `svelte-check` says a word — an unused destructured prop is legal.
+   */
+  const HOPS: [string, string][] = [
+    ["routes/(app)/history/metric-group.svelte", "EntityHistoryCard"],
+    ["lib/components/inverter/entity-history-card.svelte", "MetricHistoryChart"],
+  ];
+
+  test.each(HOPS)("%s hands the zoom callbacks down to <%s>", (file, child) => {
+    const tag = openTagOf(svelte(file), child);
+    expect(tag).toContain("{onZoom}");
+    expect(tag).toContain("{onResetZoom}");
+  });
 
   test("the chart resolves the selection through the tested mapper", () => {
     // Not a local parse: `zoomedHistoryRangeFrom` is what rejects a tap, a

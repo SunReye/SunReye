@@ -321,6 +321,15 @@ describe("decideTargetA — shared", () => {
     expect(d.surplusAboveLimitKwh).toBeNull();
   });
 
+  test("live-only shaving is still bounded by the live excess it saw", () => {
+    // 100 W above the limit rounds up to a 5 A / 250 W write; the degraded path
+    // has no forecast but it does know the excess, so it can still say so.
+    const d = decideTargetA({ ...baseInputs, pvW: 8100 });
+    expect(d.degraded).toBe(true);
+    expect(d.targetA).toBe(5);
+    expect(d.absorbCeilingW).toBe(100);
+  });
+
   test("live shaving is capped at maxChargeA", () => {
     const d = decideTargetA({ ...baseInputs, pvW: 20_000, maxChargeA: 60 });
     expect(d.targetA).toBe(60);
@@ -390,6 +399,36 @@ describe("decideTargetA — maximize-exports", () => {
     expect(d.targetA).toBe(10); // 300 W / 50 V rounded up to the 5 A step
   });
 
+  test("the absorb ceiling names the excess the target was sized from", () => {
+    // 100 W above the limit is 2 A, which the 5 A register grid rounds up to
+    // 5 A = 250 W. The write has to stay on the grid; the *spending* must not.
+    const forecast = slice(13, [0, 0]);
+    const d = decideTargetA({ ...baseInputs, pvW: 8100, forecast });
+    expect(d.targetA).toBe(5);
+    expect(d.absorbCeilingW).toBe(100);
+  });
+
+  test("inside the reserve margin the ceiling is the hard excess alone", () => {
+    // 6 kWh of coming peak against 5.7 kWh of headroom at 62%: the buffer band
+    // is left to the grid, so it must not ride in on the round-up either.
+    const forecast = slice(13, Array(8).fill(11_000));
+    const d = decideTargetA({ ...baseInputs, socPct: 62, pvW: 8600, exportCapW: 8400, forecast });
+    expect(d.targetA).toBe(5); // 200 W of hard excess → 4 A → one step
+    expect(d.liveExcessW).toBe(600); // the band is still *reported*…
+    expect(d.absorbCeilingW).toBe(200); // …but it is not in the budget
+  });
+
+  test("the top-balance floor and the fallback rate carry no absorb ceiling", () => {
+    // Neither target is sized from an excess. Bounding the floor by a surplus of
+    // zero would cut the BMS's dwell short, and bounding the fallback rate would
+    // defeat it outright — its whole job is to charge from PV that *is* selling.
+    expect(decideTargetA({ ...baseInputs, socPct: 99 }).absorbCeilingW).toBeNull();
+    const forecast = slice(13, Array(8).fill(11_000));
+    const fallback = decideTargetA({ ...baseInputs, socPct: 50, pvW: 4000, forecast });
+    expect(fallback.targetA).toBe(25);
+    expect(fallback.absorbCeilingW).toBeNull();
+  });
+
   test("boundary: room inside the reserve margin still holds", () => {
     // Headroom − surplus = 0.1 kWh, inside the 0.2 kWh margin → hold.
     const forecast = slice(13, Array(8).fill(11_000)); // 6 kWh surplus
@@ -413,6 +452,21 @@ describe("decideTargetA — grid-friendly", () => {
     const d = decideTargetA(inputs);
     expect(d.thresholdW).toBeLessThan(inputs.exportLimitW);
     expect(exportSurplusAbove(bell, d.thresholdW)).toBeCloseTo(4.5, 1);
+  });
+
+  test("grid-friendly publishes no absorb ceiling", () => {
+    // The mode steers the sell-limit register to the same threshold it charges
+    // against, so surplus above the target has nowhere to go but the pack:
+    // bounding absorption there would only curtail PV, never rescue an export.
+    const d = decideTargetA({
+      ...baseInputs,
+      mode: "grid-friendly",
+      socPct: 70,
+      pvW: 11_000,
+      forecast: bell,
+    });
+    expect(d.targetA).toBeGreaterThan(0);
+    expect(d.absorbCeilingW).toBeNull();
   });
 
   test("a peak that overfills the pack no longer pins the level at the limit", () => {
@@ -909,18 +963,55 @@ describe("projectPeakShaving", () => {
     expect(plan.slots[12]!.chargeW).toBeGreaterThan(3000);
   });
 
-  test("a light-clipping day still ends on the SOC the evening needs", () => {
-    // Throttling absorption is exactly the change that could leave the pack
-    // short after sunset, so pin the end SOC on a day whose clipping is a single
-    // slot: with 12 kWh of headroom against a peak that claims almost none, the
-    // buffer band is absorbed as before and the pack ends where it always did.
-    const light = slice(12, [8850, 8850, 8850, 8850, 9000, 8850, 8850, 0]);
+  test("the charge-current round-up never eats PV the plant could still export", () => {
+    // One clipping slot. 9000 W of PV less the 500 W load leaves 8500 W, of
+    // which only 100 W sits above the 8400 W the plant can physically push out
+    // — the other 8400 W is sold. 100 W at 50 V is 2 A, and the 5 A register
+    // grid rounds that up to 5 A = 250 W, so the pack would swallow 150 W the
+    // grid was going to pay for. Headroom (0.3 kWh at 97 %) sits inside the
+    // reserve margin of the 0.125 kWh peak, so this is the hard-excess-only
+    // branch: the buffer band is deliberately left to the grid.
+    const spike = slice(12, [9000, 0]);
     const plan = projectPeakShaving(
-      planInputs({ mode: "maximize-exports", forecast: light, exportCapW: 8400 }),
+      planInputs({
+        mode: "maximize-exports",
+        forecast: spike,
+        exportCapW: 8400,
+        usableKwh: 10,
+        socPct: 97,
+      }),
       CAP,
     );
+    const peak = plan.slots[0]!;
+    // The write stays a legal multiple of the quantum — the inverter rejects
+    // anything else — but only the true excess is spent.
+    expect(peak.targetA).toBe(5);
+    expect(peak.chargeW).toBe(100);
+    expect(peak.exportW).toBe(8400);
+    expect(peak.curtailedW).toBe(0);
+  });
+
+  test("a light-clipping day sells the round-up instead of storing it", () => {
+    // Throttling absorption is exactly the change that could leave the pack
+    // short after sunset, so pin the end SOC on a day whose clipping is a single
+    // slot. The buffer band is still absorbed here (12 kWh of headroom against a
+    // peak that claims almost none) — but only the band itself: 350 W per
+    // plateau slot, not the 500 W its 10 A write would have taken. The 150 W
+    // difference is a sale, not a loss, so the missing 1.5 % of SOC has an
+    // exact counterpart in `exportedKwh`.
+    const light = slice(12, [8850, 8850, 8850, 8850, 9000, 8850, 8850, 0]);
+    const inputs = planInputs({ mode: "maximize-exports", forecast: light, exportCapW: 8400 });
+    const plan = projectPeakShaving(inputs, CAP);
     expect(plan.curtailedKwh).toBe(0);
-    expect(plan.endSocPct).toBeCloseTo(25, 5);
+    // Six 8850 W slots absorb their 350 W band, the 9000 W slot its 500 W, and
+    // the dark tail drains 500 W for a quarter hour.
+    expect(plan.slots.slice(0, 4).map((s) => s.chargeW)).toEqual(Array(4).fill(350));
+    expect(plan.slots[4]!.chargeW).toBe(500);
+    expect(plan.storedKwh).toBeCloseTo(0.65, 6);
+    expect(plan.endSocPct).toBeCloseTo(23.5, 5);
+    // Feed-in lands exactly on the decision's own threshold rather than 150 W
+    // under it: the plan now spends what the threshold said it would.
+    expect(plan.slots.slice(0, 4).map((s) => s.exportW)).toEqual(Array(4).fill(8000));
   });
 
   test("the house load is served before anything can be stored or sold", () => {

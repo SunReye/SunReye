@@ -320,6 +320,28 @@ export interface Decision {
   localSinkW: number;
   /** PV above the export limit once the local sinks have taken their share, W. */
   liveExcessW: number;
+  /**
+   * The surplus {@link targetA} was sized from, W — the watts absorption must not
+   * exceed however the register write rounded.
+   *
+   * `targetA` is quantized to {@link CHARGE_QUANT_A}, and `maximize-exports`
+   * rounds *up*, so the commanded ceiling can sit a whole step (5 A × the pack
+   * voltage — 256 W on a 51.2 V pack) above the excess the reserve arithmetic
+   * budgeted in exact watts. Spending that ceiling absorbs PV the grid was going
+   * to pay for, which is the opposite of the mode's job. Rounding down instead
+   * would under-absorb real clipping energy — the loss this whole feature exists
+   * to prevent — so the write keeps its round-up and the *spending* is bounded
+   * here instead.
+   *
+   * `null` where no such bound exists, and every one of those is deliberate:
+   * - the near-full top-balance floor and the fallback rate are not derived from
+   *   an excess at all; bounding them by a surplus of zero would cut the BMS's
+   *   dwell short and defeat the fallback outright;
+   * - `grid-friendly` steers the sell-limit register to the very threshold it
+   *   charges against, so surplus above the target has nowhere to go but the
+   *   pack. Bounding it there would curtail PV, never rescue an export.
+   */
+  absorbCeilingW: number | null;
   /** True when the forecast was unavailable and only live shaving ran. */
   degraded: boolean;
   /** What price awareness is doing this tick (`none` when off or price-less). */
@@ -372,12 +394,19 @@ function maximizeExportsA(
   headroomKwh: number,
   peakKwh: number,
   toA: (watts: number) => number,
-): number {
+): { targetA: number; absorbCeilingW: number | null } {
   const roomToSpare = headroomKwh - peakKwh > RESERVE_MARGIN_KWH;
   if (hardExcessW + bufferExcessW > 0) {
-    return toA(roomToSpare ? hardExcessW + bufferExcessW : hardExcessW);
+    // The excess is carried out alongside the current so the round-up cannot be
+    // spent — see {@link Decision.absorbCeilingW}.
+    const excessW = roomToSpare ? hardExcessW + bufferExcessW : hardExcessW;
+    return { targetA: toA(excessW), absorbCeilingW: excessW };
   }
-  return roomToSpare ? Math.min(i.fallbackChargeA, i.maxChargeA) : 0;
+  // The fallback rate charges from PV that *is* selling, on purpose: no bound.
+  return {
+    targetA: roomToSpare ? Math.min(i.fallbackChargeA, i.maxChargeA) : 0,
+    absorbCeilingW: null,
+  };
 }
 
 /**
@@ -540,6 +569,8 @@ function decideModeTargetA(i: DecisionInputs, exportLimitW: number): Decision {
     surplusAboveLimitKwh: null as number | null,
     localSinkW,
     liveExcessW,
+    // Unbounded unless a branch below sized its target from an excess figure.
+    absorbCeilingW: null as number | null,
     degraded: i.forecast === null,
     // Filled in by `priceAdjust`; the mode itself knows nothing about prices.
     priceRegime: "none" as PriceRegime,
@@ -571,10 +602,26 @@ function decideModeTargetA(i: DecisionInputs, exportLimitW: number): Decision {
   // Provider down: never miss a real peak — degrade to pure live shaving.
   const forecast = i.forecast;
   if (!forecast) {
-    return { ...base, targetA: toA(liveExcessW), thresholdW: exportLimitW };
+    return {
+      ...base,
+      targetA: toA(liveExcessW),
+      absorbCeilingW: liveExcessW,
+      thresholdW: exportLimitW,
+    };
   }
 
   // Feed-in frame: the day's load is subtracted before anything can be exported.
+  //
+  // Note the asymmetry with the spending below, which is deliberate: this
+  // integral runs against the *buffered* limit, so it counts the buffer band as
+  // part of the coming peak — while `maximizeExportsA` refuses to store that
+  // band whenever the peak has a claim on the headroom. The reserve is therefore
+  // sized against a peak figure that includes energy it will never spend, a
+  // systematic over-estimate. Kept on purpose: erring toward holding headroom
+  // costs a little discretionary charging, erring the other way loses clipping
+  // energy for good. The two halves genuinely describe different quantities —
+  // "how much could still need rescuing" vs "how much may be taken now" — so do
+  // not "fix" one to match the other without deciding which loss you prefer.
   const surplusAtLimit = surplusAboveKwh(forecast, exportLimitW + i.baselineLoadW, i.nowMs);
   base.surplusAboveLimitKwh = surplusAtLimit;
   // The car eats its share of the coming surplus before the battery has to.
@@ -583,7 +630,7 @@ function decideModeTargetA(i: DecisionInputs, exportLimitW: number): Decision {
   if (i.mode === "maximize-exports") {
     return {
       ...base,
-      targetA: maximizeExportsA(i, hardExcessW, bufferExcessW, headroomKwh, peakKwh, toA),
+      ...maximizeExportsA(i, hardExcessW, bufferExcessW, headroomKwh, peakKwh, toA),
       thresholdW: exportLimitW,
     };
   }

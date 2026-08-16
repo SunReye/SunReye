@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { fade } from 'svelte/transition';
 	import { Skeleton } from '$lib/components/ui/skeleton';
+	import Section from '$lib/components/layout/section.svelte';
 	import LiveArea from '$lib/components/inverter/live-area.svelte';
 	import MetricTooltipRow from '$lib/components/inverter/_shared/metric-tooltip-row.svelte';
 	import MetricReadout from '$lib/components/inverter/_shared/metric-readout.svelte';
@@ -83,50 +84,55 @@
 	const leave = () => (visible = false);
 </script>
 
-<div
-	class="flex flex-col gap-3 border border-border p-4"
-	use:inView={{ onEnter: enter, onLeave: leave }}
->
-	<div class="flex items-baseline justify-between gap-2">
-		<h3 class="truncate text-sm font-medium">{metric.label}</h3>
-		<MetricReadout value={current} {unit} />
-	</div>
+<!-- The observer has to watch the card's outermost box, or a category of 100+
+     charts mounts all at once — and `Section` takes neither a `class` nor a
+     `use:` action, by design. So the root is a bare wrapper: no frame, no pad,
+     nothing that would draw a second border around the card inside it.
+     `nested` because every one of these sits inside a metric-group Section. -->
+<div use:inView={{ onEnter: enter, onLeave: leave }}>
+	<Section title={metric.label} nested>
+		{#snippet actions()}
+			<!-- The live value was the right half of the card's own header row; it
+			     is the section's header cluster now. -->
+			<MetricReadout value={current} {unit} />
+		{/snippet}
 
-	{#if !visible}
-		<Skeleton class="h-50 w-full" />
-	{:else}
-		<!-- Fades in once the card scrolls into view; the wrapper persists across the
-		     loading→data swap so the fade only plays on entry, not on every refetch. -->
-		<div class="h-50 w-full" in:fade={{ duration: 300 }}>
-			{#if range.live}
-				<LiveArea
-					points={inverter.series(metric.key)}
-					label={metric.label}
-					{unit}
-					{accent}
-					{diverging}
-					height="h-full"
-				/>
-			{:else if plottable}
-				<MetricHistoryChart
-					data={chartData}
-					label={metric.label}
-					{accent}
-					{diverging}
-					{xDomain}
-					bucket={range.bucket}
-					{xTickFormat}
-					labelFormatter={labelFmt}
-					{tooltipValue}
-					{onZoom}
-					{onResetZoom}
-					zoomed={range.id === 'zoom'}
-				/>
-			{:else}
-				<ChartStateView {loading} message={m.chart_no_data()} />
-			{/if}
-		</div>
-	{/if}
+		{#if !visible}
+			<Skeleton class="h-50 w-full" />
+		{:else}
+			<!-- Fades in once the card scrolls into view; the wrapper persists across the
+			     loading→data swap so the fade only plays on entry, not on every refetch. -->
+			<div class="h-50 w-full" in:fade={{ duration: 300 }}>
+				{#if range.live}
+					<LiveArea
+						points={inverter.series(metric.key)}
+						label={metric.label}
+						{unit}
+						{accent}
+						{diverging}
+						height="h-full"
+					/>
+				{:else if plottable}
+					<MetricHistoryChart
+						data={chartData}
+						label={metric.label}
+						{accent}
+						{diverging}
+						{xDomain}
+						bucket={range.bucket}
+						{xTickFormat}
+						labelFormatter={labelFmt}
+						{tooltipValue}
+						{onZoom}
+						{onResetZoom}
+						zoomed={range.id === 'zoom'}
+					/>
+				{:else}
+					<ChartStateView {loading} message={m.chart_no_data()} />
+				{/if}
+			</div>
+		{/if}
+	</Section>
 </div>
 
 {#snippet tooltipValue({ value }: { value: unknown })}
