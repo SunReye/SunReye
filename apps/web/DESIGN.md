@@ -382,10 +382,17 @@ charts drag-select with, and a button there swallows the start of a drag.
 - The expansion grows the **whole chain** from the section body down to the plot, picked out with
   `:has([data-slot=chart])`, because the depth differs per chart and a legend beside the plot has to
   keep its content height.
-- **Native `requestFullscreen` where it exists, a fixed overlay where it does not.** Safari on iPhone
-  implements it for nothing but `<video>`, and under Home Assistant ingress the app is a cross-origin
-  iframe Chrome refuses the request in. Only the overlay is `fixed inset-0`; adding that to the
-  native path leaves a card stuck over the page if the exit ever fails.
+- **What goes full screen is `<html>`, never the card.** This is the load-bearing rule. In native
+  full screen the browser renders *only* the full-screen element's subtree, and every popup in this
+  app — layerchart's tooltip, and bits-ui's dropdown, select and popover content — is portalled to
+  `document.body`, outside any one card. Full-screening the card therefore hid every tooltip and
+  left every menu opening invisibly, so the controls read as dead. `fullscreenTarget()` returns the
+  document element and there is no way to ask for anything else.
+- **The card is lifted by `fixed inset-0`, always** — in both paths, because the browser does nothing
+  to lift it. The native call buys exactly one thing on top: the browser's own chrome goes away.
+  Losing it (Safari on iPhone implements the API for nothing but `<video>`; under Home Assistant
+  ingress the app is a cross-origin iframe Chrome refuses the request in) costs only that, which is
+  why `expanded` is set *before* the request and never depends on its outcome.
 - Known limit: in **portrait** on a phone the plot is still 412px wide, so the 34px narrow gutter
   applies and a two-digit `kWh` label can clip. Landscape — the orientation a full-screen chart is
   actually read in — gets the designed 60px gutter.

@@ -273,7 +273,7 @@ describe("expandedSectionClass", () => {
   const BASE = "flex min-w-0 flex-col sm:border sm:border-border gap-4 sm:p-4";
 
   test("is the untouched card while it is not expanded", () => {
-    expect(expandedSectionClass(BASE, false, false)).toBe(BASE);
+    expect(expandedSectionClass(BASE, false)).toBe(BASE);
   });
 
   test("overrides the fixed plot height, or the chart stays 192px tall", () => {
@@ -281,7 +281,7 @@ describe("expandedSectionClass", () => {
     // container. Filling the screen means beating that class on the element
     // that carries it — hence `!h-full` on `[data-slot=chart]` itself, not a
     // height on some ancestor that the plot would ignore.
-    const expanded = expandedSectionClass(BASE, true, false);
+    const expanded = expandedSectionClass(BASE, true);
     expect(expanded).toContain("[&_[data-slot=collapsible-content]_[data-slot=chart]]:!h-full");
     expect(CHART_BOX).toContain("h-48");
   });
@@ -290,7 +290,7 @@ describe("expandedSectionClass", () => {
     // Without this the card is a full-height column whose children keep their
     // content heights and pile up at the top, leaving the chart its original
     // size with a screen of white under it.
-    const expanded = expandedSectionClass(BASE, true, false);
+    const expanded = expandedSectionClass(BASE, true);
     expect(expanded).toContain("[&_[data-slot=collapsible-content]]:flex-1");
     expect(expanded).toContain("[&_[data-slot=collapsible-content]]:min-h-0");
   });
@@ -300,7 +300,7 @@ describe("expandedSectionClass", () => {
     // sit two wrappers down beside a legend and a zoom control. A rule that
     // only sized the plot left those wrappers at their content height, so the
     // plot's `h-full` resolved against 192px and nothing moved.
-    const expanded = expandedSectionClass(BASE, true, false);
+    const expanded = expandedSectionClass(BASE, true);
     for (const c of ["flex", "flex-col", "min-h-0", "flex-1"]) {
       expect(expanded).toContain(
         `[&_[data-slot=collapsible-content]_*:has([data-slot=chart])]:!${c}`,
@@ -316,7 +316,7 @@ describe("expandedSectionClass", () => {
     // 192px tall inside a full-screen card. Nothing about the returned string
     // can show that — only the file can.
     const source = await Bun.file(new URL("./tokens.ts", import.meta.url)).text();
-    const expanded = expandedSectionClass("", true, true).trim().split(/\s+/);
+    const expanded = expandedSectionClass("", true).trim().split(/\s+/);
     expect(expanded.length).toBeGreaterThan(10);
     expect(expanded.filter((c) => !source.includes(c))).toEqual([]);
   });
@@ -325,28 +325,24 @@ describe("expandedSectionClass", () => {
     // `:has()` is what makes that true — it selects the chart's ANCESTORS, and
     // a legend is a sibling. A descendant selector over the whole body would
     // have stretched the legend to a quarter of the screen.
-    expect(expandedSectionClass(BASE, true, false)).toContain(":has([data-slot=chart])");
+    expect(expandedSectionClass(BASE, true)).toContain(":has([data-slot=chart])");
   });
 
   test("paints its own background — the fullscreen backdrop is black", () => {
     // The native fullscreen element sits on a black backdrop, and this card's
     // background comes from the page behind it. Without an explicit one the
     // text renders on black in light mode.
-    expect(expandedSectionClass(BASE, true, false)).toContain("bg-background");
+    expect(expandedSectionClass(BASE, true)).toContain("bg-background");
   });
 
-  test("only the fallback pins itself over the page", () => {
-    // Natively, the browser has already taken the element out of the document
-    // flow; `fixed inset-0` on top of that is what the overlay path needs and
-    // the native path must not have, or a failed exit leaves the card stuck
-    // over the page.
-    expect(expandedSectionClass(BASE, true, false)).not.toContain("fixed");
-    expect(expandedSectionClass(BASE, true, true)).toContain("fixed inset-0");
-  });
-
-  test("an overlay that is not expanded is still just a card", () => {
-    // `overlay` records which mechanism was chosen, not whether it is showing.
-    expect(expandedSectionClass(BASE, false, true)).toBe(BASE);
+  test("always pins itself over the page, native full screen or not", () => {
+    // The card is never the element handed to the browser — `fullscreenTarget`
+    // gives it `<html>`, so that body-portalled tooltips and menus stay in the
+    // rendering tree. Which means the browser does nothing to lift this card
+    // out of the page: `fixed inset-0` is the only thing that makes it fill the
+    // screen, in BOTH paths. Making it conditional is what left the card sitting
+    // in the document flow with a full-screen viewport behind it.
+    expect(expandedSectionClass(BASE, true)).toContain("fixed inset-0");
   });
 });
 
@@ -355,30 +351,28 @@ describe("expandedChartClass", () => {
   // forecast-correction panel. Same job, different anchor — the wrapper's own
   // last child rather than the collapsible body.
   test("is a plain column while it is not expanded", () => {
-    expect(expandedChartClass(false, false)).toBe(expandedChartClass(false, true));
-    expect(expandedChartClass(false, false)).not.toContain("!h-full");
+    expect(expandedChartClass(false)).not.toContain("!h-full");
+    expect(expandedChartClass(false)).not.toContain("fixed");
   });
 
   test("grows the chart and every box above it", () => {
-    const expanded = expandedChartClass(true, false);
+    const expanded = expandedChartClass(true);
     expect(expanded).toContain("[&_[data-slot=chart]]:!h-full");
     expect(expanded).toContain("[&_*:has([data-slot=chart])]:!flex-1");
     expect(expanded).toContain("[&>*:last-child]:flex-1");
   });
 
-  test("only the fallback pins itself over the page", () => {
-    // Same reason as the section card: natively the browser has already lifted
-    // the element out of the document flow, and a `fixed` frame that failed to
-    // exit would sit over the page for good.
-    expect(expandedChartClass(true, false)).not.toContain("fixed");
-    expect(expandedChartClass(true, true)).toContain("fixed inset-0");
+  test("always pins itself over the page", () => {
+    // Same reason as the section card: the browser is handed `<html>`, not this
+    // frame, so nothing but `fixed inset-0` makes it fill the screen.
+    expect(expandedChartClass(true)).toContain("fixed inset-0");
   });
 
   test("every class it names is written literally in the source", async () => {
     // See the same case on expandedSectionClass: a composed class name is in
     // the DOM, has no rule behind it, and changes nothing.
     const source = await Bun.file(new URL("./tokens.ts", import.meta.url)).text();
-    const expanded = expandedChartClass(true, true).trim().split(/\s+/);
+    const expanded = expandedChartClass(true).trim().split(/\s+/);
     expect(expanded.length).toBeGreaterThan(10);
     expect(expanded.filter((c) => !source.includes(c))).toEqual([]);
   });

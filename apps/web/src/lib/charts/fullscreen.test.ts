@@ -8,6 +8,9 @@
  * button that does nothing at all there. The fallback is a fixed overlay, which
  * costs the browser chrome's height and nothing else.
  *
+ * And WHICH element is handed to the browser is the load-bearing case below —
+ * see `fullscreenTarget`.
+ *
  * All of it is decided here rather than in the component: a `.svelte` file
  * cannot be exercised under `bun test` (see apps/web/TESTING.md), and "did we
  * pick the fallback on the one browser that needs it" is exactly the question a
@@ -19,6 +22,7 @@ import {
   activeFullscreenElement,
   exitFullscreen,
   fullscreenMode,
+  fullscreenTarget,
   requestFullscreen,
   type FullscreenCapableDocument,
   type FullscreenCapableElement,
@@ -197,5 +201,31 @@ describe("exitFullscreen", () => {
     await exitFullscreen(null);
     await exitFullscreen({ fullscreenElement: standardElement() });
     expect(true).toBe(true);
+  });
+});
+
+describe("fullscreenTarget", () => {
+  test("is the document element, never the card that asked", () => {
+    // The bug this exists to prevent: in native full screen the browser renders
+    // only the full-screen element's subtree, and every popup in this app —
+    // layerchart's tooltip, bits-ui's dropdown/select/popover content — is
+    // portalled to `document.body`. Full-screening the chart's own card put all
+    // of them outside the rendering tree: tooltips vanished and menus opened
+    // invisibly, so the controls read as broken.
+    //
+    // The card is made to fill the screen by a fixed overlay either way, so
+    // handing the browser `<html>` costs nothing and keeps the whole document
+    // rendered.
+    const documentElement = { requestFullscreen: () => Promise.resolve() };
+    const card = { requestFullscreen: () => Promise.resolve() };
+    expect(fullscreenTarget({ documentElement })).toBe(documentElement);
+    expect(fullscreenTarget({ documentElement })).not.toBe(card);
+  });
+
+  test("is null when there is no document", () => {
+    // Server-side render and the test runner both get here; the caller then
+    // takes the overlay, which needs no element at all.
+    expect(fullscreenTarget(null)).toBe(null);
+    expect(fullscreenTarget({})).toBe(null);
   });
 });

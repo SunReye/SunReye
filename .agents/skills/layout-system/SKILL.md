@@ -57,6 +57,10 @@ live in `expandedSectionClass` / `expandedChartClass` and are written out **lite
 scans source text, so a class name built with `map`/`join` reaches the DOM with no rule behind it
 and silently does nothing.
 
+Never hand the Fullscreen API anything but `document.documentElement` (`fullscreenTarget()`). Native
+full screen renders only that element's subtree, and every tooltip/dropdown/select/popover in this
+app is portalled to `document.body` — full-screening a card makes all of them invisible.
+
 ### Page template
 
 ```svelte

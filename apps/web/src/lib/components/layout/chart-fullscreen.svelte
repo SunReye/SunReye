@@ -23,14 +23,10 @@
 	} = $props();
 
 	const screen = new FullscreenBox();
-	let box = $state<HTMLElement | null>(null);
-	$effect(() => {
-		screen.box = box;
-	});
 	$effect(() => screen.listen());
 </script>
 
-<div bind:this={box} class={expandedChartClass(screen.expanded, screen.overlay)}>
+<div class={expandedChartClass(screen.expanded)}>
 	<div class="flex items-center justify-between gap-3">
 		{#if screen.expanded}
 			<h2 class="truncate text-sm font-medium uppercase tracking-wide text-muted-foreground">

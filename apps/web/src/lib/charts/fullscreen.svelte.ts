@@ -16,31 +16,30 @@ import {
   activeFullscreenElement,
   exitFullscreen,
   fullscreenMode,
+  fullscreenTarget,
   requestFullscreen,
 } from "./fullscreen";
 
 export class FullscreenBox {
-  /** The element that goes full-screen. Bound by the component. */
-  box = $state<HTMLElement | null>(null);
   expanded = $state(false);
-  /** The native request was unavailable or refused, so we paint our own. */
-  overlay = $state(false);
+  /**
+   * The browser also hid its own chrome. Records what happened; it changes no
+   * classes, because the card fills the screen by a fixed overlay either way.
+   */
+  immersive = $state(false);
 
   open = async (): Promise<void> => {
-    if (fullscreenMode(this.box) === "native" && (await requestFullscreen(this.box))) {
-      this.expanded = true;
-      return;
-    }
-    // iPhone Safari, or a cross-origin iframe without `allow="fullscreen"` —
-    // which is how this app runs under Home Assistant ingress. The chart still
-    // fills the screen; it just keeps the browser's own chrome above it.
-    this.overlay = true;
+    // The card fills the screen the instant this flips — the native call below
+    // only takes the browser's chrome away on top of that. Setting it first is
+    // what makes the iPhone and the ingress-iframe cases feel identical.
     this.expanded = true;
+    const target = fullscreenTarget(document);
+    if (fullscreenMode(target) === "native") this.immersive = await requestFullscreen(target);
   };
 
   close = async (): Promise<void> => {
-    if (!this.overlay) await exitFullscreen(document);
-    this.overlay = false;
+    if (this.immersive) await exitFullscreen(document);
+    this.immersive = false;
     this.expanded = false;
   };
 
@@ -53,17 +52,20 @@ export class FullscreenBox {
    * the result — it is the cleanup.
    *
    * Two ways out that never touch our button: the browser's own exit (Escape, a
-   * swipe, the system control) for the native path, and Escape for the overlay,
-   * which has no browser behaviour of its own. Without the first the chart
-   * would come back to the page still wearing its expanded classes.
+   * swipe, the system control) while immersive, and Escape when it is only the
+   * overlay, which has no browser behaviour of its own. Without the first the
+   * card would stay expanded over a page that is no longer full screen.
    */
   listen = (): (() => void) => {
     const sync = () => {
-      if (this.overlay) return;
-      if (activeFullscreenElement(document) !== this.box) this.expanded = false;
+      if (!this.immersive) return;
+      if (activeFullscreenElement(document) !== fullscreenTarget(document)) {
+        this.immersive = false;
+        this.expanded = false;
+      }
     };
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && this.overlay) void this.close();
+      if (event.key === "Escape" && !this.immersive) void this.close();
     };
     document.addEventListener("fullscreenchange", sync);
     document.addEventListener("webkitfullscreenchange", sync);

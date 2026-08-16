@@ -232,12 +232,20 @@ const EXPANDED_SECTION = [
   "[&_[data-slot=collapsible-content]_[data-slot=chart]]:!h-full",
 ].join(" ");
 
+/**
+ * Pinned over the page — in BOTH paths, not only the fallback.
+ *
+ * The element handed to the browser is `<html>`, never this card (see
+ * `$lib/charts/fullscreen`, `fullscreenTarget`): full-screening the card takes
+ * every body-portalled tooltip and menu out of the rendering tree. So the
+ * browser does nothing to lift this card out of the page, and `fixed inset-0`
+ * is the only thing that makes it fill the screen.
+ */
 const OVERLAY_SECTION = "fixed inset-0 z-50 overflow-auto";
 
 /** A section card's classes, given whether it currently holds the screen. */
-export function expandedSectionClass(base: string, expanded: boolean, overlay: boolean): string {
-  if (!expanded) return base;
-  return overlay ? `${base} ${EXPANDED_SECTION} ${OVERLAY_SECTION}` : `${base} ${EXPANDED_SECTION}`;
+export function expandedSectionClass(base: string, expanded: boolean): string {
+  return expanded ? `${base} ${EXPANDED_SECTION} ${OVERLAY_SECTION}` : base;
 }
 
 /**
@@ -262,9 +270,6 @@ const EXPANDED_CHART = [
 ].join(" ");
 
 /** A standalone chart frame's classes, given whether it holds the screen. */
-export function expandedChartClass(expanded: boolean, overlay: boolean): string {
-  if (!expanded) return CHART_FRAME;
-  return overlay
-    ? `${CHART_FRAME} ${EXPANDED_CHART} ${OVERLAY_SECTION}`
-    : `${CHART_FRAME} ${EXPANDED_CHART}`;
+export function expandedChartClass(expanded: boolean): string {
+  return expanded ? `${CHART_FRAME} ${EXPANDED_CHART} ${OVERLAY_SECTION}` : CHART_FRAME;
 }

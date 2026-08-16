@@ -75,10 +75,6 @@
 	// card asked for it, so a page of ordinary sections does not put three DOM
 	// listeners each on the document.
 	const screen = new FullscreenBox();
-	let box = $state<HTMLElement | null>(null);
-	$effect(() => {
-		if (fullscreen) screen.box = box;
-	});
 	$effect(() => (fullscreen ? screen.listen() : undefined));
 
 	function handleOpenChange(next: boolean) {
@@ -89,11 +85,9 @@
 
 <Collapsible.Root open={contentOpenState} onOpenChange={handleOpenChange}>
 	<section
-		bind:this={box}
 		class={expandedSectionClass(
 			sectionShellClass({ dashed, dimmed, nested }),
-			fullscreen && screen.expanded,
-			fullscreen && screen.overlay
+			fullscreen && screen.expanded
 		)}
 	>
 		<SectionHeader {title} {caption} {actions} {collapsible} screen={fullscreen ? screen : null} />

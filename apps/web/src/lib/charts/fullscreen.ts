@@ -9,9 +9,18 @@
  * something this app does not control.
  *
  * So the button can never assume it worked. Everything here answers with a
- * value the caller can branch on rather than throwing, and the component keeps
- * a fixed-position overlay for the cases where the native path is unavailable
- * or refused. The overlay costs the browser's own chrome and nothing else.
+ * value the caller can branch on rather than throwing.
+ *
+ * **What goes full-screen is the document element, never the chart's own card.**
+ * That is not a detail. In native full screen the browser renders ONLY the
+ * full-screen element's subtree, and every popup in this app — layerchart's
+ * tooltip, and bits-ui's dropdown, select and popover content — is portalled to
+ * `document.body`, outside any one card. Full-screening the card therefore hid
+ * every tooltip and left every menu opening invisibly: the control looked dead.
+ * Full-screening `<html>` keeps the whole document in the rendering tree, and
+ * the card is made to fill the screen by a fixed overlay either way. The native
+ * call then buys exactly one thing — the browser's own chrome goes away — and
+ * losing it (iPhone, or a cross-origin ingress iframe) costs only that.
  */
 
 /** The subset of `Element` this module touches, plus the prefixed spelling. */
@@ -22,17 +31,33 @@ export interface FullscreenCapableElement {
 
 /** The subset of `Document` this module touches, plus the prefixed spelling. */
 export interface FullscreenCapableDocument {
+  documentElement?: FullscreenCapableElement | undefined;
   fullscreenElement?: unknown;
   webkitFullscreenElement?: unknown;
   exitFullscreen?: (() => Promise<void>) | undefined;
   webkitExitFullscreen?: (() => void) | undefined;
 }
 
-/** Which mechanism a chart box can use. */
+/**
+ * What to hand the browser: the document element, never the card that asked.
+ *
+ * See the module comment — full-screening the card takes every body-portalled
+ * popup out of the rendering tree, which is how tooltips disappeared and menus
+ * opened invisibly. The card fills the screen by a fixed overlay either way, so
+ * there is nothing to gain from full-screening it and a whole class of dead
+ * controls to lose.
+ */
+export function fullscreenTarget(
+  doc: FullscreenCapableDocument | null,
+): FullscreenCapableElement | null {
+  return doc?.documentElement ?? null;
+}
+
+/** Whether the browser will also hide its own chrome for us. */
 export type FullscreenMode = "native" | "overlay";
 
 /**
- * Whether this element can go full-screen for real, or needs the overlay.
+ * Whether the browser can hide its chrome for us, or we get the overlay alone.
  *
  * Checked by callability rather than by presence: a property that exists and is
  * not a function would throw inside the click handler, leaving the chart in
