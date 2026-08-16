@@ -2,11 +2,12 @@
 
 ## [unreleased]
 
-Unreleased work on `dev` since 1.2.0, shipped in `beta.20260815-36955a5`.
+Unreleased work on `dev` since 1.2.0, shipped in `beta.20260816-2048a31`.
 
 
 ### Features
 
+* **server:** dedicated plant time zone for server-side bucketing ([55885f1](https://github.com/SunReye/SunReye/commit/55885f12da13941a67e9bf5a47d7e28e5528585b))
 * **server:** finish the irradiance provider seam ([063086f](https://github.com/SunReye/SunReye/commit/063086fa94c53c62c67b3643941032599d6716e9))
 * **web:** live indicator and dated section captions ([3c8ccf2](https://github.com/SunReye/SunReye/commit/3c8ccf277fe52c99bc114961ddb3da4ce96093da))
 * **web:** compare every statistics figure with its reference window ([723b04e](https://github.com/SunReye/SunReye/commit/723b04e1ae8ed115b08f73191e10e456d7c87f67))
@@ -60,6 +61,8 @@ Unreleased work on `dev` since 1.2.0, shipped in `beta.20260815-36955a5`.
 
 ### Bug Fixes
 
+* **server:** align the energy day chart extent with the cost series ([9d15260](https://github.com/SunReye/SunReye/commit/9d15260a0f1a97359c7c0fd592707cc43f10c662))
+* **web:** cap the select dropdown height so long lists scroll ([1718f01](https://github.com/SunReye/SunReye/commit/1718f01aed7248473d0fe50a3916bdfd5fba85c1))
 * **web:** type the chart-axes gap fixture so svelte-check passes ([a9e1d3b](https://github.com/SunReye/SunReye/commit/a9e1d3b8db15c396ec1c1f376b7646d0982faa64))
 * **web:** report slot-average power consistently in the solar-forecast dialog ([28ec5fe](https://github.com/SunReye/SunReye/commit/28ec5fe53489a9343cc96de75cdc5d6ddfeb9ace))
 * **server:** bucket plant-local periods by a configured time zone, not the host ([6edf217](https://github.com/SunReye/SunReye/commit/6edf217a684b1116f4a944a1dd6a94f6f3c38ee9))
