@@ -60,6 +60,29 @@ export function decayCeiling(prev: Ceiling, nowMs: number, instantW: number): Ce
   return { watts: Math.max(CEILING_FLOOR_W, now, remembered), at };
 }
 
+/** How much higher a peak has to be before it is worth a synchronous write. */
+const PERSIST_RISE = 1.05;
+/** …and how long a rising ramp may go unwritten regardless (ms). */
+const PERSIST_INTERVAL_MS = 60_000;
+
+/**
+ * Whether a new peak is worth putting through `localStorage.setItem`.
+ *
+ * Only a rise is ever a candidate: the descent is pure decay, which a reload
+ * recomputes from the stored value and its timestamp. But most of a clear-sky
+ * morning is a rise — the plant sets a record on nearly every consecutive
+ * sample for hours — so "any rise" is the same 1 Hz synchronous write on the
+ * main thread of a fanless kiosk that skipping the descent was meant to avoid.
+ *
+ * A meaningful step is written immediately; a creep is written once a minute.
+ * Either way the stored peak is at most slightly low, and a slightly low stored
+ * peak is self-correcting: the plant simply reaches it again.
+ */
+export function shouldPersist(last: Ceiling, next: Ceiling): boolean {
+  if (!(next.watts > last.watts)) return false;
+  return next.watts >= last.watts * PERSIST_RISE || next.at - last.at >= PERSIST_INTERVAL_MS;
+}
+
 /** Total power the plant is moving right now: what the ceiling is fed. */
 export function throughputWatts(segments: readonly { flow: Flow; value?: number }[]): number {
   return segments.reduce((t, s) => (s.flow === "in" ? t + Math.abs(s.value ?? 0) : t), 0);

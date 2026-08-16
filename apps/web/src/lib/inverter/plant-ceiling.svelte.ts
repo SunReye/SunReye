@@ -14,7 +14,7 @@
  * off the returned value registers the dependency one property deeper.
  */
 
-import { decayCeiling, parseCeiling, type Ceiling } from "./flow-pulse";
+import { decayCeiling, parseCeiling, shouldPersist, type Ceiling } from "./flow-pulse";
 
 /** This browser's remembered peak. Local: it describes a viewer's session, not the plant's config. */
 const KEY = "sunreye.plant-ceiling";
@@ -34,6 +34,11 @@ class PlantCeiling {
   /** What the diagram reads. A number, so a sample that changes nothing writes
    *  nothing: Svelte's `===` check makes the assignment a no-op. */
   #watts = $state(this.#memory.watts);
+  /** The last peak actually written, which is not every peak — see
+   *  `shouldPersist`. Held apart from the memory because a creep of a watt a
+   *  second is a rise on every sample but is worth one write a minute. */
+  #written: Ceiling = this.#memory;
+
   /** The reference watts. Feed to `pulseShare`/`railPulse`. */
   get watts(): number {
     return this.#watts;
@@ -42,10 +47,10 @@ class PlantCeiling {
   /** Fold the plant's current inbound throughput in. Idempotent per instant. */
   observe(instantW: number, nowMs: number = Date.now()): void {
     const next = decayCeiling(this.#memory, nowMs, instantW);
-    // Only a new peak is written. Decay is a pure function of the stored peak
-    // and elapsed time, so persisting the descent would add a 1 Hz synchronous
-    // write that a reload could reconstruct anyway.
-    if (next.watts > this.#memory.watts) persist(next);
+    if (shouldPersist(this.#written, next)) {
+      persist(next);
+      this.#written = next;
+    }
     this.#memory = next;
     this.#watts = next.watts;
   }

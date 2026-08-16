@@ -19,7 +19,7 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { CEILING_FLOOR_W, decayCeiling } from "./flow-pulse";
+import { CEILING_FLOOR_W, decayCeiling, shouldPersist } from "./flow-pulse";
 
 const shell = await Bun.file(new URL("./plant-ceiling.svelte.ts", import.meta.url)).text();
 
@@ -125,5 +125,48 @@ describe("the ceiling still survives a reload", () => {
     expect(decayCeiling(once, 1_000_500, 300).watts).toBe(once.watts);
     expect(decayCeiling(prev, 1_000_500, 300)).toEqual(once);
     expect(once.watts).toBeGreaterThanOrEqual(CEILING_FLOOR_W);
+  });
+});
+
+describe("a rising plant does not write storage at the feed's cadence", () => {
+  test("a peak worth remembering is written", () => {
+    const last = { watts: 1000, at: 0 };
+    expect(shouldPersist(last, { watts: 4000, at: 1000 })).toBe(true);
+  });
+
+  test("but a clear-sky ramp that creeps up by a watt a second is not", () => {
+    // The descent was already skipped to avoid a 1 Hz synchronous write; a
+    // morning ramp sets a new record on most consecutive samples, so the ASCENT
+    // is the same hours-long stall on a fanless kiosk. A slightly stale stored
+    // peak is self-correcting — decay reads the stored value and its timestamp —
+    // which is exactly why skipping the descent was safe.
+    const last = { watts: 4000, at: 1_000_000 };
+    expect(shouldPersist(last, { watts: 4001, at: 1_001_000 })).toBe(false);
+    expect(shouldPersist(last, { watts: 4180, at: 1_001_000 })).toBe(false);
+  });
+
+  test("a slow creep is still written once a minute, so a reload keeps it", () => {
+    const last = { watts: 4000, at: 1_000_000 };
+    expect(shouldPersist(last, { watts: 4001, at: 1_059_999 })).toBe(false);
+    expect(shouldPersist(last, { watts: 4001, at: 1_060_000 })).toBe(true);
+  });
+
+  test("a descent, a standstill and an unreadable clock write nothing", () => {
+    const last = { watts: 4000, at: 1_000_000 };
+    expect(shouldPersist(last, { watts: 4000, at: 9_000_000 })).toBe(false);
+    expect(shouldPersist(last, { watts: 100, at: 9_000_000 })).toBe(false);
+    expect(shouldPersist(last, { watts: Number.NaN, at: 9_000_000 })).toBe(false);
+    expect(shouldPersist(last, { watts: 4001, at: Number.NaN })).toBe(false);
+  });
+
+  test("and the shell writes only when that says so", () => {
+    // The guard has to be the thing gating the write, not a second condition
+    // written out beside it that can drift from the tested one.
+    const guarded = memberBody(observe, "if (shouldPersist(");
+    expect(guarded).toContain("persist(next)");
+    // …and there is no second write next to it that the guard does not cover.
+    const writes = (code: string): number => code.split(/(?<![a-zA-Z])persist\(/).length - 1;
+    expect(writes(withoutComments(observe))).toBe(writes(withoutComments(guarded)));
+    expect(writes(withoutComments(guarded))).toBe(1);
   });
 });
