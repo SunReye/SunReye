@@ -27,6 +27,7 @@
 
 	let {
 		metrics,
+		colors = {},
 		range,
 		height = CHART_BOX,
 		onZoom,
@@ -36,6 +37,8 @@
 		/** Metric keys to overlay, in the order the user picked them — position
 		 *  decides colour, so this is not a set. */
 		metrics: string[];
+		/** Per-series colour overrides, keyed by metric key. A draft has none. */
+		colors?: Record<string, string>;
 		range: HistoryRange;
 		/** Plot box height class. A draft fills its full-screen card. */
 		height?: string;
@@ -57,7 +60,7 @@
 	const resolved = $derived(catalog.resolved);
 	const missing = $derived(catalog.missing);
 
-	const series = $derived(overlaySeries(resolved));
+	const series = $derived(overlaySeries(resolved, colors));
 	const config = $derived(seriesConfig(series));
 	const legendItems = $derived(series.map((s) => ({ key: s.key, label: s.label, color: s.color })));
 

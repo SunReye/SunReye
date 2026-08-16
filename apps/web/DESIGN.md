@@ -360,6 +360,24 @@ selection *means*, and `lib/charts/zoom-wiring.test.ts` holds every chart to bot
   gliding live window, a decision timeline — and a second one composes badly. The overlay's two
   *historical* forms do zoom, and hand the selection up like any other /history chart: a drag on a
   saved custom chart or on a draft moves the whole page onto the finer range.
+### Series colour
+
+- **`--chart-1..8` is a categorical palette, not a ramp.** shadcn ships five steps of one hue, which
+  is right for a quantity that has an order and wrong for series drawn on top of each other. Eight
+  hues, spaced so consecutive entries are the least alike, mid-lightness so one set reads on both
+  surfaces, red and green not adjacent.
+- **Reference it as `var(--chart-N)`, never `var(--color-chart-N)`.** The `--color-` spelling is
+  Tailwind's `@theme inline` mapping, and that is only re-emitted when Tailwind finds the name in
+  scanned source. Colours composed at runtime are invisible to it: `--chart-6` resolved to nothing
+  and its series drew colourless, while 7 and 8 survived only because a test file spelled them out.
+  Same trap as a composed class name.
+- **A pinned colour is a palette id, never a CSS value.** It round-trips through the server into a
+  `style` attribute and into SVG fill/stroke; the schema accepts the eight ids and nothing else,
+  which is also why the picker offers swatches rather than a free-form field.
+- Overrides are **keyed by metric key, not by position**, so reordering or thinning a chart keeps
+  the colours the user chose. An unpinned series takes the palette entry for its position, and a
+  chart with nothing pinned persists no colours at all.
+
 - **A zoomable chart must not draw its own axes from the `marks` snippet.** LayerChart clips that
   layer to the plot rect as soon as a chart carries a brush or a `domain` transform, and axis labels
   live in the padding gutter outside it — so the series keep rendering and the axes silently vanish.

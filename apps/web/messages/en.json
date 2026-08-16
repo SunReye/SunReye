@@ -619,6 +619,8 @@
   "chart_name_placeholder": "e.g. PV strings",
   "chart_metrics_label": "Metrics",
   "chart_search_metrics": "Search metrics…",
+  "chart_series_color": "Series colour",
+  "chart_series_color_auto": "Use the default colour",
   "chart_no_metrics_match": "No metrics match “{query}”.",
   "chart_custom_charts": "Custom charts",
   "chart_none_yet": "No custom charts yet.",

@@ -7,6 +7,7 @@
 	import { Label } from '$lib/components/ui/label';
 	import { ScrollArea } from '$lib/components/ui/scroll-area';
 	import MetricPickerList from '$lib/components/inverter/_shared/metric-picker-list.svelte';
+	import SeriesColorPicker from '$lib/components/inverter/_shared/series-color-picker.svelte';
 	import * as m from '$lib/paraglide/messages';
 	import { inverter } from '$lib/inverter/store.svelte';
 	import {
@@ -15,6 +16,8 @@
 	} from '$lib/components/inverter/_shared/metric-catalog';
 	import { customCharts } from '$lib/inverter/custom-charts.svelte';
 	import { MAX_CHART_METRICS, type CustomChart } from '$lib/inverter/custom-chart';
+	import { paletteColor, type SeriesColor } from '$lib/inverter/chart-palette';
+	import { chartFormInput, pinnedColors } from '$lib/inverter/custom-chart-form';
 
 	let {
 		open = $bindable(false),
@@ -33,6 +36,10 @@
 	} = $props();
 
 	let name = $state('');
+	// Pinned colours, keyed by metric key. Sparse on purpose: a key that is not
+	// here takes the palette entry for its position, so the common case persists
+	// nothing and a chart re-ordered later still looks deliberate.
+	let colors = $state<Record<string, SeriesColor>>({});
 	// SvelteSet is reactive on mutation, so it stays a const and we clear/refill it
 	// (rather than reassign) when the dialog opens.
 	const selected = new SvelteSet<string>();
@@ -50,6 +57,7 @@
 		name = draft.name;
 		selected.clear();
 		for (const key of draft.metrics) selected.add(key);
+		colors = pinnedColors(chart);
 		search = '';
 		error = null;
 	});
@@ -70,11 +78,28 @@
 	const saveLabel = $derived(saving ? m.action_saving() : m.action_save());
 	const isSelected = (key: string) => selected.has(key);
 
+	/** The chosen series in the order they will be drawn — which is the order
+	 *  that decides their default colour. */
+	const chosen = $derived(
+		[...selected].map((key, index) => ({
+			key,
+			label: chartable.find((metric) => metric.key === key)?.label ?? key,
+			fallback: paletteColor(index)
+		}))
+	);
+
+	function pick(key: string, color: SeriesColor | undefined) {
+		const next = { ...colors };
+		if (color) next[key] = color;
+		else delete next[key];
+		colors = next;
+	}
+
 	async function save() {
 		if (!canSave) return;
 		saving = true;
 		error = null;
-		const input = { name: name.trim(), metrics: [...selected] };
+		const input = chartFormInput(name, [...selected], colors);
 		const err = chart
 			? await customCharts.update(chart.id, input)
 			: await customCharts.create(input);
@@ -123,6 +148,27 @@
 					/>
 				</ScrollArea>
 			</div>
+
+			{#if chosen.length > 0}
+				<div class="flex flex-col gap-2">
+					<Label>{m.chart_series_color()}</Label>
+					<!-- The chosen series, in draw order: the order IS the default
+					     colour, so showing it is what makes "use the default" mean
+					     something. -->
+					<ul class="flex flex-col gap-1">
+						{#each chosen as series (series.key)}
+							<li class="flex items-center gap-2 text-sm">
+								<SeriesColorPicker
+									color={colors[series.key]}
+									fallback={series.fallback}
+									onPick={(color) => pick(series.key, color)}
+								/>
+								<span class="truncate">{series.label}</span>
+							</li>
+						{/each}
+					</ul>
+				</div>
+			{/if}
 
 			{#if error}
 				<p class="text-sm text-destructive">{error}</p>

@@ -17,6 +17,9 @@ export interface CustomChart {
   id: string;
   name: string;
   metrics: string[];
+  /** Per-series colour overrides, keyed by metric key. Absent keys take the
+   *  palette entry for their position — see `chart-palette.ts`. */
+  colors?: Record<string, string>;
   createdAt: string;
   updatedAt: string;
 }

@@ -42,15 +42,31 @@
 
   --ring: oklch(0.708 0 0);
 
-  --chart-1: oklch(0.809 0.105 251.813);
+  /* Categorical series palette. shadcn ships --chart-1..5 as ONE hue at five
+     lightnesses (oklch 251-265) — a correct sequential ramp for a quantity that
+     has an order, and the wrong thing for series drawn on top of each other,
+     where the only job is telling them apart. On a phone it read as five shades
+     of blue.
 
-  --chart-2: oklch(0.623 0.214 259.815);
+     Eight hues, spaced so consecutive entries are far apart on the wheel: a
+     two-series overlay (the common case) gets the two least alike. Lightness
+     sits mid-range so one set works on both surfaces, and red/green are not
+     adjacent, which is the pair a red-green deficiency loses first. */
+  --chart-1: oklch(0.62 0.19 255);
 
-  --chart-3: oklch(0.546 0.245 262.881);
+  --chart-2: oklch(0.72 0.17 62);
 
-  --chart-4: oklch(0.488 0.243 264.376);
+  --chart-3: oklch(0.68 0.13 195);
 
-  --chart-5: oklch(0.424 0.199 265.638);
+  --chart-4: oklch(0.63 0.23 330);
+
+  --chart-5: oklch(0.66 0.16 145);
+
+  --chart-6: oklch(0.55 0.22 295);
+
+  --chart-7: oklch(0.79 0.15 88);
+
+  --chart-8: oklch(0.62 0.21 25);
 
   /* Semantic energy-flow colors (validated categorical set, dataviz skill).
      grid = grid dependence, solar = on-site supply, self-used = production kept
@@ -128,7 +144,8 @@
 
   --ring: oklch(0.556 0 0);
 
-  /* --chart-1..5 inherit from :root (same ramp on both surfaces). */
+  /* --chart-1..8 inherit from :root: the categorical palette is mid-lightness
+     by design, so one set reads on both surfaces. */
 
   /* Lifted energy-flow steps for the dark surface (dataviz-validated). */
   --energy-grid: #d65a4c;
@@ -182,6 +199,12 @@
   --color-sidebar-foreground: var(--sidebar-foreground);
 
   --color-sidebar: var(--sidebar);
+
+  --color-chart-8: var(--chart-8);
+
+  --color-chart-7: var(--chart-7);
+
+  --color-chart-6: var(--chart-6);
 
   --color-chart-5: var(--chart-5);
 

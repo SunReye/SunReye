@@ -56,6 +56,7 @@
 
 	<OverlayChartView
 		metrics={chart.metrics}
+		colors={chart.colors ?? {}}
 		{range}
 		{onZoom}
 		{onResetZoom}

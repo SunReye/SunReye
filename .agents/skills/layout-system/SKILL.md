@@ -62,6 +62,10 @@ its header. It renders through `OverlayChartView`, the same component a saved cu
 draft is component state that lasts until it is cleared or saved, and it is saved by seeding the
 existing editor.
 
+Series colours come from `$lib/inverter/chart-palette` (`paletteColor(i)` / `colorVar(id)`) — eight
+categorical hues. Write `var(--chart-N)`, never `var(--color-chart-N)`: the `--color-` spelling is
+Tailwind's `@theme inline` mapping and is dropped unless Tailwind sees that exact name in source.
+
 Never hand the Fullscreen API anything but `document.documentElement` (`fullscreenTarget()`). Native
 full screen renders only that element's subtree, and every tooltip/dropdown/select/popover in this
 app is portalled to `document.body` — full-screening a card makes all of them invisible.

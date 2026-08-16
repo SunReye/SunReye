@@ -619,6 +619,8 @@
   "chart_name_placeholder": "es. stringhe FV",
   "chart_metrics_label": "Metriche",
   "chart_search_metrics": "Cerca metriche…",
+  "chart_series_color": "Colore della serie",
+  "chart_series_color_auto": "Usa il colore predefinito",
   "chart_no_metrics_match": "Nessuna metrica corrisponde a “{query}”.",
   "chart_custom_charts": "Grafici personalizzati",
   "chart_none_yet": "Ancora nessun grafico personalizzato.",

@@ -20,30 +20,46 @@ const PV = metric("dc.pv1.power", "PV 1", "W");
 const LOAD = metric("ac.load.power", "Load", "W");
 const SOC = metric("battery.soc", "SOC", "%");
 
-describe("the palette", () => {
-  // Reached through `overlaySeries`, which is the module's only way to colour a
-  // series — a second one is how two charts end up disagreeing about red.
+describe("colouring", () => {
   const colorsFor = (n: number) =>
     overlaySeries(Array.from({ length: n }, (_, i) => metric(`m${i}`, `M${i}`))).map(
       (s) => s.color,
     );
 
-  test("cycles the five chart accents", () => {
-    expect(colorsFor(6)).toEqual([
-      "var(--color-chart-1)",
-      "var(--color-chart-2)",
-      "var(--color-chart-3)",
-      "var(--color-chart-4)",
-      "var(--color-chart-5)",
-      "var(--color-chart-1)",
-    ]);
+  test("spends the palette in order", () => {
+    expect(colorsFor(3)).toEqual(["var(--chart-1)", "var(--chart-2)", "var(--chart-3)"]);
   });
 
-  test("gives eight overlaid series no two adjacent colours", () => {
-    // MAX_CHART_METRICS is 8 against a 5-colour palette, so a repeat is
-    // unavoidable; what must not happen is two neighbours sharing one.
-    const colors = colorsFor(8);
-    for (let i = 1; i < colors.length; i++) expect(colors[i]).not.toBe(colors[i - 1]);
+  test("gives a full chart eight different colours", () => {
+    // The whole point of the categorical palette: at MAX_CHART_METRICS no two
+    // series share a colour, where the old five-entry ramp repeated three.
+    expect(new Set(colorsFor(8)).size).toBe(8);
+  });
+
+  test("uses the colour the user pinned for that metric", () => {
+    const [pv, soc] = overlaySeries([PV, SOC], { "battery.soc": "chart-7" });
+    expect(pv!.color).toBe("var(--chart-1)");
+    expect(soc!.color).toBe("var(--chart-7)");
+  });
+
+  test("keys the override by metric, so reordering does not move it", () => {
+    // An array aligned by position would hand the colour to whichever series
+    // ended up at that index after an edit.
+    const pinned = { "battery.soc": "chart-8" };
+    expect(overlaySeries([SOC, PV], pinned)[0]!.color).toBe("var(--chart-8)");
+    expect(overlaySeries([PV, SOC], pinned)[1]!.color).toBe("var(--chart-8)");
+  });
+
+  test("ignores a pinned value that is not a palette id", () => {
+    // The record comes back from a server that validates on write — but an
+    // older or hand-edited blob is read, not re-validated, and this value lands
+    // in a `style` attribute.
+    const [pv] = overlaySeries([PV], { "dc.pv1.power": "red; background: url(x)" });
+    expect(pv!.color).toBe("var(--chart-1)");
+  });
+
+  test("ignores an override naming a metric the chart does not draw", () => {
+    expect(overlaySeries([PV], { "battery.soc": "chart-5" })[0]!.color).toBe("var(--chart-1)");
   });
 });
 
@@ -89,7 +105,7 @@ describe("overlaySeries", () => {
     // Not by position in the requested keys: a chart whose second key is
     // unavailable would otherwise skip an accent and leave a hole.
     const series = overlaySeries([PV, SOC]);
-    expect(series.map((s) => s.color)).toEqual(["var(--color-chart-1)", "var(--color-chart-2)"]);
+    expect(series.map((s) => s.color)).toEqual(["var(--chart-1)", "var(--chart-2)"]);
   });
 
   test("carries the unit, which is what splits the axes", () => {

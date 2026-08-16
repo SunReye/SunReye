@@ -619,6 +619,8 @@
   "chart_name_placeholder": "z. B. PV-Strings",
   "chart_metrics_label": "Metriken",
   "chart_search_metrics": "Metriken suchen…",
+  "chart_series_color": "Serienfarbe",
+  "chart_series_color_auto": "Standardfarbe verwenden",
   "chart_no_metrics_match": "Keine Metriken entsprechen „{query}“.",
   "chart_custom_charts": "Benutzerdefinierte Diagramme",
   "chart_none_yet": "Noch keine benutzerdefinierten Diagramme.",

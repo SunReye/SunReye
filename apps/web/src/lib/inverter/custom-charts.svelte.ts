@@ -9,6 +9,7 @@ import type { CustomChart } from "./custom-chart";
 interface CustomChartInput {
   name: string;
   metrics: string[];
+  colors?: Record<string, string>;
 }
 
 /** Pull a human message out of an Eden error ({ error } bodies from the API). */

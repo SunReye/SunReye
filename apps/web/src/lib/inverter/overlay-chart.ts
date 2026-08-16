@@ -11,6 +11,7 @@
  * is now only where the key list comes from.
  */
 
+import { colorVar, isSeriesColor, paletteColor } from "./chart-palette";
 import type { AxisSeries, Datum } from "./chart-axes";
 import type { LivePoint, ManifestMetric } from "./types";
 
@@ -26,18 +27,6 @@ export interface ResolvedMetrics {
   /** Requested keys with no metric behind them — a profile changed under a
    *  saved chart, or a draft outlived the metric it started from. */
   missing: string[];
-}
-
-/**
- * The five chart accents, cycled. Position decides colour, which is why
- * everything that adds a metric appends rather than prepends: inserting at the
- * front would recolour every series already on the chart.
- *
- * Module-private: {@link overlaySeries} is the only caller, and a second way to
- * colour a series is how two charts end up disagreeing about what red means.
- */
-function overlayColor(index: number): string {
-  return `var(--color-chart-${(index % 5) + 1})`;
 }
 
 /** Resolve keys against the catalogue, keeping the caller's order. */
@@ -57,18 +46,30 @@ export function resolveMetrics(
 }
 
 /**
- * The plot's series list. Colour follows the metric's position among the
- * RESOLVED metrics, so a chart whose second key is unavailable does not leave a
- * hole in the palette.
+ * The plot's series list.
+ *
+ * Colour is the one the user pinned for that metric, or — for the metrics they
+ * did not — the palette entry for its position among the RESOLVED metrics, so
+ * a chart whose second key is unavailable does not leave a hole in the palette.
+ *
+ * A pinned value that is not a palette id is ignored rather than trusted: it
+ * ends up in a `style` attribute, and the record comes back from a server that
+ * validates on write but not on read of an older blob.
  */
-export function overlaySeries(metrics: readonly ManifestMetric[]): AxisSeries[] {
-  return metrics.map((metric, index) => ({
-    key: metric.key,
-    label: metric.label,
-    color: overlayColor(index),
-    unit: metric.unit ?? "",
-    value: (d: Datum) => (d[metric.key] as number | undefined) ?? null,
-  }));
+export function overlaySeries(
+  metrics: readonly ManifestMetric[],
+  colors: Readonly<Record<string, string>> = {},
+): AxisSeries[] {
+  return metrics.map((metric, index) => {
+    const pinned = colors[metric.key];
+    return {
+      key: metric.key,
+      label: metric.label,
+      color: isSeriesColor(pinned) ? colorVar(pinned) : paletteColor(index),
+      unit: metric.unit ?? "",
+      value: (d: Datum) => (d[metric.key] as number | undefined) ?? null,
+    };
+  });
 }
 
 /**
