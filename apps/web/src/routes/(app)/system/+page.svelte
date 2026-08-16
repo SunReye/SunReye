@@ -19,10 +19,10 @@
 	// author-chosen label), falling back to the profile label if unmapped.
 	const KPI_DEFS: { role: CanonicalRole; label: () => string; accent: string; diverging?: boolean }[] =
 		[
-			{ role: 'pv.total.power', label: m.label_solar, accent: 'var(--chart-1)' },
-			{ role: 'battery.power', label: m.label_battery, accent: 'var(--chart-3)' },
-			{ role: 'grid.power', label: m.label_grid, accent: 'var(--chart-4)', diverging: true },
-			{ role: 'load.power', label: m.label_load, accent: 'var(--chart-5)' }
+			{ role: 'pv.total.power', label: m.label_solar, accent: 'var(--energy-solar)' },
+			{ role: 'battery.power', label: m.label_battery, accent: 'var(--energy-battery)' },
+			{ role: 'grid.power', label: m.label_grid, accent: 'var(--energy-grid)', diverging: true },
+			{ role: 'load.power', label: m.label_load, accent: 'var(--energy-load)' }
 		];
 
 	const kpis = $derived(

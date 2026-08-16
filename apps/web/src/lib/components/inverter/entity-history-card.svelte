@@ -19,7 +19,7 @@
 	let {
 		metric,
 		range,
-		accent = 'var(--color-chart-2)',
+		accent = 'var(--chart-2)',
 		onZoom,
 		onResetZoom
 	}: {

@@ -21,7 +21,7 @@
 
 	let {
 		points = [],
-		accent = 'var(--color-chart-2)',
+		accent = 'var(--chart-2)',
 		diverging = false,
 		windowMs = 2 * 60 * 1000,
 		height = 'h-40',

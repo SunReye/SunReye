@@ -362,6 +362,16 @@ selection *means*, and `lib/charts/zoom-wiring.test.ts` holds every chart to bot
   saved custom chart or on a draft moves the whole page onto the finer range.
 ### Series colour
 
+**A fixed meaning never draws from the categorical palette.** `--chart-N` means "the Nth series,
+order arbitrary"; `--energy-*` means grid, solar, battery, load, export, self-used, EV, generator.
+Painting a meaning from the categorical set is why re-ordering it put battery beside load in nearly
+the same green on /overview, and gave the generator and the EV charger the identical orange.
+
+- The semantic set is chosen as a **set**, not pair by pair — fixing one pair moves it next to
+  another. `energy-tokens.test.ts` scores every group that shares a screen (diagram, overview tiles,
+  /system, statistics) by its **weakest pair**, in both themes, under all three dichromacies, against
+  the floor the shipped set already reached. It is a ratchet: eight-way separation under dichromacy
+  does not exist, so the rule is only that the set never gets worse.
 - **`--chart-1..8` is a categorical palette, not a ramp.** shadcn ships five steps of one hue, which
   is right for a quantity that has an order and wrong for series drawn on top of each other. Eight
   hues, spaced so consecutive entries are the least alike, mid-lightness so one set reads on both

@@ -126,10 +126,10 @@
 		tint: string;
 		bar: string;
 	}[] = [
-		{ role: 'production.today', label: m.energy_production, icon: Sun, accent: 'text-chart-1', tint: 'bg-chart-1/15', bar: 'bg-chart-1' },
-		{ role: 'load.energy.today', label: m.energy_consumption, icon: House, accent: 'text-chart-5', tint: 'bg-chart-5/15', bar: 'bg-chart-5' },
-		{ role: 'grid.energy.exported.today', label: m.energy_feed_in, icon: ArrowLineUp, accent: 'text-chart-3', tint: 'bg-chart-3/15', bar: 'bg-chart-3' },
-		{ role: 'grid.energy.imported.today', label: m.energy_purchase, icon: ArrowLineDown, accent: 'text-chart-4', tint: 'bg-chart-4/15', bar: 'bg-chart-4' }
+		{ role: 'production.today', label: m.energy_production, icon: Sun, accent: 'text-energy-solar', tint: 'bg-energy-solar/15', bar: 'bg-energy-solar' },
+		{ role: 'load.energy.today', label: m.energy_consumption, icon: House, accent: 'text-energy-load', tint: 'bg-energy-load/15', bar: 'bg-energy-load' },
+		{ role: 'grid.energy.exported.today', label: m.energy_feed_in, icon: ArrowLineUp, accent: 'text-energy-export', tint: 'bg-energy-export/15', bar: 'bg-energy-export' },
+		{ role: 'grid.energy.imported.today', label: m.energy_purchase, icon: ArrowLineDown, accent: 'text-energy-grid', tint: 'bg-energy-grid/15', bar: 'bg-energy-grid' }
 	];
 
 	// Which secondary slots each role can ever fill, independent of data. Used to

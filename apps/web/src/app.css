@@ -84,6 +84,19 @@
      set it is plotted with (validated, dataviz skill). */
   --energy-battery: #b5468f;
 
+  /* House consumption. Violet, and deliberately NOT green: green already means
+     production kept on-site, and the two sit next to each other on the
+     power-flow diagram and on the overview tiles. */
+  --energy-load: #6a57b3;
+
+  /* EV charging. Teal — the remaining gap between self-used green and export
+     blue that clears CVD separation against both. */
+  --energy-ev: #3b9d9d;
+
+  /* Generator. Deep brown: separated from solar amber by lightness rather than
+     hue, since the warm end of the wheel is already spent. */
+  --energy-generator: #643d20;
+
   /* Fixed grid-connection fee in the cost charts. Teal: distinct from the four
      energy-flow hues under CVD (validated with grid + export, dataviz skill). */
   --cost-standing: #0f9878;
@@ -159,6 +172,13 @@
   /* Lifted battery magenta for the dark surface (dataviz-validated). */
   --energy-battery: #c25a9c;
 
+  /* Lifted load / EV / generator for the dark surface. */
+  --energy-load: #7b69c6;
+
+  --energy-ev: #50b0b0;
+
+  --energy-generator: #764d30;
+
   /* Lifted standing-charge teal for the dark surface (dataviz-validated). */
   --cost-standing: #14a385;
 
@@ -225,6 +245,12 @@
   --color-energy-export: var(--energy-export);
 
   --color-energy-battery: var(--energy-battery);
+
+  --color-energy-load: var(--energy-load);
+
+  --color-energy-ev: var(--energy-ev);
+
+  --color-energy-generator: var(--energy-generator);
 
   --color-cost-standing: var(--cost-standing);
 

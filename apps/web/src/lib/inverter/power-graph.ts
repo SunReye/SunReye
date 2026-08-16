@@ -237,7 +237,7 @@ function batteryBottom(
     kind: "battery",
     type: "DC",
     value: v,
-    accent: "var(--color-chart-3)",
+    accent: "var(--energy-battery)",
     color: flowColor(s.flow),
     ...s,
   };
@@ -268,7 +268,7 @@ function loadBottom(
     kind: "load",
     type: "AC",
     value,
-    accent: "var(--color-chart-5)",
+    accent: "var(--energy-load)",
     color: flowColor(s.flow),
     ...s,
   };
@@ -293,7 +293,7 @@ function generatorBottom(
     kind: "generator",
     type: "AC",
     value: v,
-    accent: "var(--color-chart-2)",
+    accent: "var(--energy-generator)",
     color: flowColor(s.flow),
     ...s,
   };
@@ -315,7 +315,7 @@ function chargerRow(charger: ChargerDatum): BottomSpec {
     value: charger.power,
     flow,
     state,
-    accent: "var(--color-chart-2)",
+    accent: "var(--energy-ev)",
     color: flowColor(flow),
   };
 }
@@ -373,7 +373,7 @@ function gridRow(g: GridSpec): BottomSpec {
     kind: "grid",
     type: "AC",
     value: g.value,
-    accent: "var(--color-chart-4)",
+    accent: "var(--energy-grid)",
     color: gridColor(g.value),
     flow: g.flow,
     state: g.state,
@@ -409,7 +409,7 @@ function bottomSegment(
   };
 }
 
-const SOLAR_ACCENT = "var(--color-chart-1)";
+const SOLAR_ACCENT = "var(--energy-solar)";
 /** The sink row sits on the safe box's bottom edge. */
 const BOTTOM_Y = 1;
 
