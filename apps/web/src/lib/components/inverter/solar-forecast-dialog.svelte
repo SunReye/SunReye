@@ -2,6 +2,7 @@
 	import type { Snippet } from 'svelte';
 	import * as Dialog from '$lib/components/ui/dialog';
 	import ForecastChart, { type ForecastSlot } from './forecast-chart.svelte';
+	import ChartFullscreen from '$lib/components/layout/chart-fullscreen.svelte';
 	import { api } from '$lib/api';
 	import { inverter } from '$lib/inverter/store.svelte';
 	import {
@@ -251,7 +252,9 @@
 				{/each}
 			</div>
 			{#if chartReady}
-				<ForecastChart {slots} stepMinutes={step} empty={m.overview_no_data_today()} />
+				<ChartFullscreen title={m.weather_forecast_title()}>
+					<ForecastChart {slots} stepMinutes={step} empty={m.overview_no_data_today()} />
+				</ChartFullscreen>
 			{:else}
 				<!-- Same height as the chart (+ legend row) so the dialog doesn't jump. -->
 				<div class="h-77" aria-hidden="true"></div>

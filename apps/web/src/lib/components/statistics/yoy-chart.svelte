@@ -3,17 +3,16 @@
 	// grouped bars over twelve months are cheap today, but the SVG context is
 	// what froze weak devices once the band count grew (see price-track-chart).
 	import { BarChart } from 'layerchart/canvas';
+	import type { ChartState } from 'layerchart';
 	import * as Chart from '$lib/components/ui/chart';
 	import ChartLegend from '$lib/components/inverter/chart-legend.svelte';
 	import SeriesTooltip from './series-tooltip.svelte';
 	import { seriesConfig } from '$lib/components/inverter/_shared/chart-series';
 	import { canvasHighlight } from '$lib/components/inverter/_shared/canvas-highlight.svelte';
-	import {
-		barBandPadding,
-		COST_CHART_PADDING,
-		COST_X_TICK_SPACING,
-		periodLabel
-	} from '$lib/cost/ranges';
+	import { barBandPadding, chartPaddingFor, periodLabel, xTickSpacingFor } from '$lib/cost/ranges';
+	import { CHART_BOX } from '$lib/layout/tokens';
+	import ZoomControls from '$lib/charts/zoom-controls.svelte';
+	import { chartZoom } from '$lib/charts/zoom.svelte';
 	import type { YoyRow } from '$lib/statistics/yoy';
 
 	let {
@@ -59,25 +58,47 @@
 
 	// Both bar paddings below are d3 band fractions, not pixels: `groupPadding: 1`
 	// is the degenerate maximum and collapses each pair to zero width.
+
+	// The gutters follow the plot's MEASURED width, not a breakpoint: this chart
+	// renders full-bleed on one page and inside a two-up grid on another, so only
+	// the element knows how much room it got. 0 until it is in the document,
+	// which chartPaddingFor reads as the desktop case.
+	let plotWidth = $state(0);
+
+	// Twelve grouped pairs, and the comparison IS the twelve months — there is no
+	// finer year-over-year series to fetch, so a zoom here narrows the domain in
+	// place rather than telling an owner to refetch.
+	const zoom = chartZoom();
 </script>
 
-<div class="flex min-w-0 flex-col gap-3" bind:this={highlight.el}>
-	<Chart.Container {config} class="h-64 w-full min-w-0">
-		<BarChart
-			{data}
-			x="label"
-			{series}
-			seriesLayout="group"
-			bandPadding={barBandPadding(data.length, 0.2)}
-			groupPadding={0.1}
-			padding={COST_CHART_PADDING}
-			props={{ xAxis: { tickSpacing: COST_X_TICK_SPACING } }}
-			highlight={{ area: { fill: highlight.fill, fillOpacity: 0.1 } }}
-		>
-			{#snippet tooltip()}
-				<SeriesTooltip {format} />
-			{/snippet}
-		</BarChart>
-	</Chart.Container>
+<!-- The chart context, taken where it is reachable. LayerChart's canvas
+     wrappers do not re-export `context` as bindable, and the reset control has
+     to reach the transform state to undo a gesture. `belowContext` renders
+     outside the drawing layer, so capturing here adds no mark of its own. -->
+{#snippet belowContext({ context }: { context: ChartState<YoyRow> })}{zoom.capture(context)}{/snippet}
+
+<div class="flex min-w-0 flex-col gap-3" bind:this={highlight.el} bind:clientWidth={plotWidth}>
+	<div class="relative">
+		<ZoomControls {zoom} />
+		<Chart.Container {config} class="{CHART_BOX} w-full min-w-0">
+			<BarChart
+				{data}
+				x="label"
+				{series}
+				seriesLayout="group"
+				bandPadding={barBandPadding(data.length, 0.2)}
+				groupPadding={0.1}
+				padding={chartPaddingFor(plotWidth)}
+				props={{ xAxis: { tickSpacing: xTickSpacingFor(plotWidth) } }}
+				highlight={{ area: { fill: highlight.fill, fillOpacity: 0.1 } }}
+				{...zoom.props}
+				{belowContext}
+			>
+				{#snippet tooltip()}
+					<SeriesTooltip {format} />
+				{/snippet}
+			</BarChart>
+		</Chart.Container>
+	</div>
 	<ChartLegend items={series} />
 </div>

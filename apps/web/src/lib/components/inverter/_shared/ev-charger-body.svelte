@@ -30,9 +30,9 @@
 		{title}
 	</span>
 	<span
-		class="flex size-8 shrink-0 items-center justify-center rounded-lg bg-chart-2/15 2xl:size-10"
+		class="flex size-8 shrink-0 items-center justify-center rounded-lg bg-energy-ev/15 2xl:size-10"
 	>
-		<CarProfile class="size-4.5 text-chart-2 2xl:size-5" weight="duotone" />
+		<CarProfile class="size-4.5 text-energy-ev 2xl:size-5" weight="duotone" />
 	</span>
 </span>
 <!-- Primary headline: energy added this charging session, in kWh — the same

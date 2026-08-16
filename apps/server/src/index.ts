@@ -28,6 +28,9 @@ import { automationStreamSnapshot } from "./automation/automation";
 import { automationRoutes } from "./routes/automations";
 import { settingsRoutes } from "./routes/settings";
 import { statisticsRoutes } from "./routes/statistics";
+import { wsRoutes } from "./routes/ws";
+import { topicAccessFrom } from "./routes/ws-subscribe";
+import { muxFrame, muxTopic } from "./routes/ws-topics";
 import { todayStatistics } from "./statistics/statistics";
 import * as runtime from "./inverter/runtime";
 
@@ -553,6 +556,37 @@ const app = new Elysia()
   .use(customChartsRoutes({ ctx }))
   // Admin-only maintenance: data reset + API-key administration.
   .use(adminRoutes)
+  // The multiplexed live socket: one connection carrying every topic above,
+  // gated per subscribe frame rather than per URL. Runs beside the five
+  // single-purpose /ws/* routes during the migration — they publish bare
+  // payloads on the unprefixed pub/sub names, this one enveloped frames on the
+  // `mux:` names, so reverting it touches nothing else.
+  .use(
+    wsRoutes({
+      streams,
+      // Rebuilt from the request's own headers on every frame — the socket
+      // never caches who it is talking to. `isPublicDashboard()` is read here
+      // too, so flipping the kiosk toggle takes effect on the next subscribe
+      // without reconnecting.
+      access: async (headers) =>
+        topicAccessFrom(
+          (await auth.api.getSession({ headers }))?.user ?? null,
+          await isPublicDashboard(),
+        ),
+      // Subscribe-time snapshots, mirroring what each old route sent on `open`.
+      // `metrics` is absent on purpose: samples arrive on the poll interval and
+      // there is no meaningful "current" one to replay.
+      backfill: {
+        evcc: () => evccSnapshot(),
+        statistics: () => (profile ? todayStatistics(profile) : undefined),
+        automations: () => automationStreamSnapshot(),
+        logs: () => {
+          const recent = recentLogs();
+          return recent.length > 0 ? recent : undefined;
+        },
+      },
+    }),
+  )
   .listen({ port: env.PORT, hostname: env.HOST }, () => {
     serverLog.info("server running on http://localhost:{port} — profile {profile}", {
       port: env.PORT,
@@ -575,6 +609,22 @@ streams.subscribe("automations", (msg) =>
   app.server?.publish(AUTOMATION_TOPIC, JSON.stringify(msg)),
 );
 
+// The same payloads again, enveloped, for the multiplexed `/ws`. Dual-publish
+// is deliberate for the migration window: the five bare-payload publishes above
+// stay exactly as they were, so the old routes are provably untouched and
+// dropping this endpoint is one commit. A publish to a topic nobody subscribed
+// to costs nothing.
+streams.subscribe("metrics", (data) =>
+  app.server?.publish(muxTopic("metrics"), muxFrame("metrics", data)),
+);
+streams.subscribe("evcc", (data) => app.server?.publish(muxTopic("evcc"), muxFrame("evcc", data)));
+streams.subscribe("statistics", (data) =>
+  app.server?.publish(muxTopic("statistics"), muxFrame("statistics", data)),
+);
+streams.subscribe("automations", (data) =>
+  app.server?.publish(muxTopic("automations"), muxFrame("automations", data)),
+);
+
 // Log lines coalesce: startup and error storms emit many at once, so a burst is
 // batched into one array message every 250 ms rather than a WS frame per line.
 // This decorator lives here, at the socket boundary — not in the producer.
@@ -586,7 +636,12 @@ streams.subscribe("logs", (entry) => {
   logFlushTimer = setTimeout(() => {
     logFlushTimer = null;
     const batch = logQueue.splice(0);
-    if (batch.length > 0) app.server?.publish(LOG_TOPIC, JSON.stringify(batch));
+    if (batch.length === 0) return;
+    app.server?.publish(LOG_TOPIC, JSON.stringify(batch));
+    // The coalesced batch is also the multiplexed socket's `logs` payload —
+    // the one topic whose wire shape (a batch) differs from its bus shape (a
+    // single entry), and this flush is the one place that conversion happens.
+    app.server?.publish(muxTopic("logs"), muxFrame("logs", batch));
   }, 250);
 });
 
@@ -616,7 +671,13 @@ void rebuildEvcc(streams);
 // feature — that short-circuit stays here, at the boundary.
 async function publishTodayStatistics(): Promise<void> {
   const server = app.server;
-  if (!profile || !server || server.subscriberCount(STATISTICS_TOPIC) === 0) return;
+  if (!profile || !server) return;
+  // Counts both fan-outs: a viewer on the multiplexed socket is subscribed to
+  // `mux:statistics`, never to the bare topic, and would otherwise see the tick
+  // short-circuit as an idle instance.
+  const listeners =
+    server.subscriberCount(STATISTICS_TOPIC) + server.subscriberCount(muxTopic("statistics"));
+  if (listeners === 0) return;
   try {
     streams.emit("statistics", await todayStatistics(profile));
   } catch (error) {

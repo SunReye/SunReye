@@ -39,9 +39,9 @@
 		return v === undefined ? undefined : Math.min(100, Math.max(0, v));
 	});
 
-	// EV charger (external EVCC): lease the store's live stream while the diagram
-	// is mounted; the node appears only while EVCC is reachable with loadpoints.
-	$effect(() => evcc.connect());
+	// EV charger (external EVCC): lease the store's topic while the diagram is
+	// mounted; the node appears only while EVCC is reachable with loadpoints.
+	$effect(() => evcc.lease());
 	/** One vehicle → its SoC rings the node; several → no single truthful value. */
 	function singleVehicleSoc(lps: EvccLoadpoint[]): number | undefined {
 		if (lps.length !== 1) return undefined;

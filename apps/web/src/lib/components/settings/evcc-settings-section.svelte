@@ -2,7 +2,7 @@
 	import { Input } from '$lib/components/ui/input';
 	import { Label } from '$lib/components/ui/label';
 	import { Switch } from '$lib/components/ui/switch';
-	import SettingsSection from './settings-section.svelte';
+	import Section from '$lib/components/layout/section.svelte';
 	import type { EvccForm } from './mqtt-types';
 	import * as m from '$lib/paraglide/messages';
 
@@ -11,7 +11,7 @@
 	let { cfg = $bindable() }: { cfg: EvccForm } = $props();
 </script>
 
-<SettingsSection title={m.evcc_settings_title()}>
+<Section title={m.evcc_settings_title()}>
 	<div class="flex items-center justify-between gap-4">
 		<div class="flex flex-col">
 			<Label for="evcc-enabled">{m.label_enabled()}</Label>
@@ -33,4 +33,4 @@
 			<Switch id="evcc-subtract" bind:checked={cfg.subtractFromHome} />
 		</div>
 	{/if}
-</SettingsSection>
+</Section>

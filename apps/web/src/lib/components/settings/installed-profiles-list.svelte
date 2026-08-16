@@ -2,7 +2,7 @@
 	import GroupedProfileList from "./grouped-profile-list.svelte";
 	import InstalledProfileActions from "./installed-profile-actions.svelte";
 	import ProfileRow from "./profile-row.svelte";
-	import SettingsSection from "./settings-section.svelte";
+	import Section from '$lib/components/layout/section.svelte';
 	import type { RegisteredProfile } from "./profile-types";
 	import * as m from "$lib/paraglide/messages";
 
@@ -51,7 +51,7 @@
 	</ProfileRow>
 {/snippet}
 
-<SettingsSection title={m.profiles_installed_title()}>
+<Section title={m.profiles_installed_title()}>
 	<!-- The active profile is pinned above the list, so search never hides it. -->
 	{#if activeProfile}
 		<div class="border border-border bg-muted/40 px-3">
@@ -64,4 +64,4 @@
 		exclude={(p) => p.active}
 		emptyLabel={m.profiles_none_other()}
 	/>
-</SettingsSection>
+</Section>

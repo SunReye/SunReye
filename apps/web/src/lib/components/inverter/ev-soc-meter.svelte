@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { displayLimitSoc, type EvccLoadpoint } from '$lib/evcc/store.svelte';
-	import { socColor } from '$lib/inverter/power-graph';
+	import { socColor } from '$lib/inverter/sign-colors';
 
 	// State-of-charge meter for one loadpoint, mirroring the ratio meters on the
 	// daily-energy tiles: the bar fills to the current SoC on the shared socColor

@@ -1,33 +1,26 @@
 import type { LogEntry } from "@SunReye/contracts/logs";
-import { api } from "$lib/api";
-import { ReconnectingSocket } from "$lib/ws/reconnecting-socket";
+import { bus } from "$lib/ws/bus.svelte";
+import { type LogFeed, ingestBatch, releaseHeld } from "./feed";
 
 export type { LogEntry };
 
 /**
- * How many lines to keep in the viewer. The server retains a smaller ring
- * buffer for the on-connect replay; this is the client-side cap on the live
- * feed so a long-lived panel can't grow without bound.
- */
-const MAX_LINES = 2000;
-
-/**
- * Server log stream on the client (admin-only, over `/ws/logs`). Like the EVCC
- * store, the single WebSocket is shared via a ref-counted {@link connect} lease
- * and reopened with exponential backoff on drops ({@link ReconnectingSocket}).
- * The server replays its recent ring buffer on open, then pushes coalesced
- * batches of new lines.
+ * Server log stream on the client (admin-only). Transport is not this store's
+ * business: it takes a `logs` lease on the app's one socket ({@link bus}) and
+ * gets batches of lines — the bus owns reconnection, the replay of the
+ * subscription after a drop, and the "are we live?" answer the badge reads.
  *
  * `paused` freezes the visible feed so an operator can read/scroll without the
  * tail jumping. Incoming lines keep arriving while paused — they're held aside
  * and folded back in (in order) on resume, with {@link pendingCount} surfacing
  * how many are waiting.
+ *
+ * The buffer arithmetic, including the reconnect-replay dedupe, lives in
+ * `feed.ts` where the suite can reach it.
  */
 class LogStore {
   /** Visible log lines, oldest first. */
   lines = $state<LogEntry[]>([]);
-  /** True while the socket is open (drives the live/offline status badge). */
-  connected = $state(false);
   /** When true, new lines are held instead of appended to {@link lines}. */
   paused = $state(false);
   /** Lines received while paused, awaiting resume. */
@@ -35,26 +28,17 @@ class LogStore {
 
   #held: LogEntry[] = [];
 
-  #socket = new ReconnectingSocket({
-    create: () => api.ws.logs.subscribe(),
-    onMessage: (raw) => {
-      const parsed = typeof raw === "string" ? JSON.parse(raw) : raw;
-      if (Array.isArray(parsed)) this.#ingest(parsed as LogEntry[]);
-    },
-    onOpen: () => {
-      this.connected = true;
-    },
-    onDrop: () => {
-      this.connected = false;
-    },
-  });
+  /** Live/offline for the status badge — one connection, one answer. */
+  get connected(): boolean {
+    return bus.connected;
+  }
 
   /**
-   * Lease the live stream from a component `$effect`; returns the cleanup. The
-   * socket opens with the first lease and closes with the last.
+   * Lease the `logs` topic from a component `$effect`; returns the cleanup. No
+   * socket is opened or closed here — the app shell holds that lease.
    */
-  connect(): () => void {
-    return this.#socket.connect();
+  lease(): () => void {
+    return bus.subscribe("logs", (batch) => this.#apply(batch));
   }
 
   pause(): void {
@@ -63,11 +47,7 @@ class LogStore {
 
   resume(): void {
     this.paused = false;
-    if (this.#held.length > 0) {
-      this.#appendVisible(this.#held);
-      this.#held = [];
-    }
-    this.pendingCount = 0;
+    this.#commit(releaseHeld(this.#feed()));
   }
 
   clear(): void {
@@ -76,21 +56,20 @@ class LogStore {
     this.pendingCount = 0;
   }
 
-  /** Ingest a batch of lines: hold them while paused, else show immediately. */
-  #ingest(batch: LogEntry[]): void {
-    if (batch.length === 0) return;
-    if (this.paused) {
-      this.#held.push(...batch);
-      if (this.#held.length > MAX_LINES) this.#held.splice(0, this.#held.length - MAX_LINES);
-      this.pendingCount = this.#held.length;
-      return;
-    }
-    this.#appendVisible(batch);
+  #feed(): LogFeed {
+    // `lines` is a reactive proxy; `feed.ts` only ever reads it.
+    return { lines: this.lines, held: this.#held };
   }
 
-  #appendVisible(batch: LogEntry[]): void {
-    const next = this.lines.concat(batch);
-    this.lines = next.length > MAX_LINES ? next.slice(next.length - MAX_LINES) : next;
+  #apply(batch: LogEntry[]): void {
+    this.#commit(ingestBatch(this.#feed(), batch, this.paused));
+  }
+
+  /** Write back only what moved: a fully-replayed batch must cost no re-render. */
+  #commit(next: LogFeed): void {
+    if (next.lines !== this.lines) this.lines = next.lines;
+    this.#held = next.held;
+    if (next.held.length !== this.pendingCount) this.pendingCount = next.held.length;
   }
 }
 

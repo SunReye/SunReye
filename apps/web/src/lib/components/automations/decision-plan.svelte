@@ -7,7 +7,7 @@
 	// a preview before enabling.
 	import { fade } from 'svelte/transition';
 	import { prefersReducedMotion } from 'svelte/motion';
-	import SettingsSection from '$lib/components/settings/settings-section.svelte';
+	import Section from '$lib/components/layout/section.svelte';
 	import RangeSwitcher from '$lib/components/inverter/range-switcher.svelte';
 	import PlanDayView from './plan-day-view.svelte';
 	import { joinDayRows, toMeasuredRows, toPlanRows, toSocRows, todayPoints } from './plan-series';
@@ -87,7 +87,7 @@
 	const fadeMs = $derived(prefersReducedMotion.current ? 0 : 150);
 </script>
 
-<SettingsSection title={m.automations_plan_title()}>
+<Section title={m.automations_plan_title()}>
 	{#snippet actions()}
 		<RangeSwitcher options={VIEW_OPTIONS} bind:value={view} />
 	{/snippet}
@@ -101,4 +101,4 @@
 			</div>
 		{/key}
 	{/if}
-</SettingsSection>
+</Section>

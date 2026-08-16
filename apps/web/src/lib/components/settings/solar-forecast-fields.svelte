@@ -84,7 +84,7 @@
 	</div>
 </div>
 
-<div class="grid gap-3 sm:grid-cols-2">
+<div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
 	<div class="flex flex-col gap-1.5">
 		<Label for="forecast-temp-coeff">{m.weather_forecast_temp_coeff()}</Label>
 		<Input
@@ -104,7 +104,7 @@
 <div class="flex flex-col gap-2">
 	<span class="text-sm font-medium">{m.weather_forecast_clipping()}</span>
 	<p class="text-xs text-muted-foreground">{m.weather_forecast_clipping_desc()}</p>
-	<div class="grid gap-3 sm:grid-cols-2">
+	<div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
 		<div class="flex flex-col gap-1.5">
 			<Label for="forecast-max-output">{m.weather_forecast_max_output()}</Label>
 			<Input

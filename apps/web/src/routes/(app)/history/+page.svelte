@@ -7,6 +7,8 @@
 	import CustomChartSection from '$lib/components/inverter/custom-chart-section.svelte';
 	import MetricGroup from './metric-group.svelte';
 	import { setPageHeader } from '$lib/page-header.svelte';
+	import PageShell from '$lib/components/layout/page-shell.svelte';
+	import EmptyState from '$lib/components/layout/empty-state.svelte';
 	import {
 		chartableMetrics,
 		searchedGroups
@@ -14,6 +16,22 @@
 	import { resolvePreset, type HistoryRange } from '$lib/inverter/ranges';
 
 	let range = $state<HistoryRange>(resolvePreset('live'));
+	// The window a zoom was taken FROM, so the reset control has somewhere to go
+	// back to. Held here rather than derived from the picker: once `range` is the
+	// zoomed window the picker no longer knows which preset it came off.
+	let beforeZoom = $state<HistoryRange | null>(null);
+
+	// A drag on any one card moves every chart on the page. The zoomed range
+	// carries its own bucket (see zoomedHistoryRange), so this is a REFETCH at a
+	// finer rollup rather than a magnification of the rows already fetched.
+	const zoomTo = (next: HistoryRange) => {
+		beforeZoom ??= range;
+		range = next;
+	};
+	const clearZoom = () => {
+		if (beforeZoom) range = beforeZoom;
+		beforeZoom = null;
+	};
 	let search = $state('');
 	// Per-category open state; groups default open (undefined → true).
 	let collapsed = $state<Record<string, boolean>>({});
@@ -33,13 +51,20 @@
 		return null;
 	});
 
+	// Picking a preset or a custom span from the toolbar is its own answer to
+	// "which window?", so it drops the zoom's way back rather than leaving a
+	// reset button pointing at a window nobody asked about any more.
+	$effect(() => {
+		if (range.id !== 'zoom') beforeZoom = null;
+	});
+
 	$effect(() => setPageHeader(m.nav_history(), m.history_subtitle()));
 </script>
 
-<div class="flex w-full flex-col gap-6 p-4 sm:p-6">
-	<div class="flex flex-wrap items-center justify-end gap-3">
+<PageShell width="wide">
+	{#snippet toolbar()}
 		<DateRangePicker bind:range />
-	</div>
+	{/snippet}
 
 	<div class="relative max-w-sm">
 		<MagnifyingGlass
@@ -49,15 +74,11 @@
 	</div>
 
 	{#if hasChartable}
-		<CustomChartSection {range} />
+		<CustomChartSection {range} onZoom={zoomTo} onResetZoom={clearZoom} />
 	{/if}
 
 	{#if emptyMessage}
-		<div
-			class="flex h-40 items-center justify-center border border-border text-sm text-muted-foreground"
-		>
-			{emptyMessage}
-		</div>
+		<EmptyState message={emptyMessage} />
 	{:else}
 		{#each groups as [category, metrics] (category)}
 			<MetricGroup
@@ -66,7 +87,9 @@
 				{range}
 				open={isOpen(category)}
 				onOpenChange={(v) => (collapsed[category] = !v)}
+				onZoom={zoomTo}
+				onResetZoom={clearZoom}
 			/>
 		{/each}
 	{/if}
-</div>
+</PageShell>

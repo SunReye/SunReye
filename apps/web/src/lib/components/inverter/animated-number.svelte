@@ -3,7 +3,7 @@
 	import { Tween } from 'svelte/motion';
 	import { linear } from 'svelte/easing';
 	import { configuredDecimals } from '$lib/inverter/format';
-	import { inverter } from '$lib/inverter/store.svelte';
+	import { bus } from '$lib/ws/bus.svelte';
 
 	let {
 		value,
@@ -18,8 +18,10 @@
 		/**
 		 * Sample cadence (ms) of the feed behind `value` — the glide is stretched
 		 * across it so the number keeps drifting between samples. Defaults to the
-		 * inverter feed's measured cadence; pass a source's own cadence when the
-		 * value comes from elsewhere (e.g. `evcc.cadenceMs` for the EV card).
+		 * metrics cadence the bus measures, which is the one clock every polled
+		 * reading shares; pass a source's own cadence when the value comes from a
+		 * feed with its own rhythm (`evcc.cadenceMs` — EVCC publishes on MQTT
+		 * traffic, not on our poll, and collapsing the two would be wrong).
 		 */
 		intervalMs?: number;
 	} = $props();
@@ -36,7 +38,7 @@
 		const v = value; // track live updates only
 		// Read the cadence untracked so its per-sample EMA nudging doesn't retrigger
 		// this effect on its own — a new `value` is what should drive a new glide.
-		const cadence = untrack(() => intervalMs ?? inverter.cadenceMs);
+		const cadence = untrack(() => intervalMs ?? bus.cadenceMs);
 		void tween.set(v, { duration: Math.max(300, cadence * 1.15), easing: linear });
 	});
 

@@ -576,6 +576,11 @@ function loadFrame(
 function plantParams(weather: WeatherConfig, ps: AutomationConfig["peakShaving"]) {
   return {
     exportLimitW: Math.max(0, (weather.forecast.maxOutputW ?? 0) - ps.safetyBufferW),
+    // The plant's real ceiling, and the only place it is worked out: the
+    // decision needs it to tell PV that is truly lost from PV the grid still
+    // takes, and {@link planLimits} curtails the projection against the figure
+    // it reads back from here rather than deriving its own.
+    exportCapW: Math.max(0, weather.forecast.maxOutputW ?? 0),
     usableKwh: weather.forecast.battery?.usableKwh ?? 0,
     minSocPct: weather.forecast.battery?.minSoc ?? 0,
     price: effectivePriceConfig(ps.priceAware, weather),
@@ -605,7 +610,10 @@ function decisionInputs(args: {
   batteryV: number;
   prices: SpotSlice | null;
   tariff: TariffConfig;
-}): Parameters<typeof decideTargetA>[0] {
+  // `exportCapW` is optional on the decision's own input type (an old caller may
+  // omit it), but this builder always fills it — and saying so is what lets
+  // {@link planLimits} demand the figure instead of recomputing it.
+}): Parameters<typeof decideTargetA>[0] & { exportCapW: number } {
   const { e, ps, weather, live, forecast, ev, evcc, load, batteryV, prices, tariff } = args;
   return {
     ...ev,
@@ -890,7 +898,7 @@ async function planInputs(
     tariff: await io.getTariff(),
   });
   if (!inputs.forecast) return null;
-  return { inputs: { ...inputs, forecast: inputs.forecast }, limits: planLimits(weather) };
+  return { inputs: { ...inputs, forecast: inputs.forecast }, limits: planLimits(inputs, weather) };
 }
 
 /** The measured pack voltage when the reading is sane, the nameplate otherwise. */
@@ -898,12 +906,21 @@ function liveBatteryV(live: LiveInputs, ps: AutomationConfig["peakShaving"]): nu
   return live.liveVolt !== null && live.liveVolt > 0 ? live.liveVolt : ps.nominalBatteryV;
 }
 
-/** The physical bounds a projection runs under, straight from the plant config. */
-function planLimits(weather: WeatherConfig): PlanLimits {
+/**
+ * The physical bounds a projection runs under.
+ *
+ * The export cap is taken from the decision inputs rather than derived a second
+ * time. The two are the same physical ceiling — what the plan curtails against
+ * and what the decision refuses to absorb below — and a drift between them
+ * would not break a build: the pack would quietly stop taking energy that is
+ * about to be curtailed, on a sunny afternoon, which is the one loss this
+ * feature exists to prevent. Requiring the figure as an argument makes the
+ * second source impossible to write by accident.
+ */
+// fallow-ignore-next-line unused-export -- exercised directly by peak-shaving.test.ts; test files aren't traced as consumers
+export function planLimits(inputs: { exportCapW: number }, weather: WeatherConfig): PlanLimits {
   return {
-    // The plan curtails against the plant's real ceiling; the safety buffer
-    // is a decision margin, not a physical limit.
-    exportCapW: Math.max(0, weather.forecast.maxOutputW ?? 0),
+    exportCapW: inputs.exportCapW,
     // The modelled overnight discharge stops at the pack's configured floor.
     reserveSocPct: weather.forecast.battery?.minSoc ?? 0,
   };

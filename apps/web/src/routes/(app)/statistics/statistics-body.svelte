@@ -1,6 +1,7 @@
 <script lang="ts">
 	import * as m from '$lib/paraglide/messages';
 	import type { SectionDef, SectionData } from '$lib/statistics/sections';
+	import EmptyState from '$lib/components/layout/empty-state.svelte';
 	import SectionList from './section-list.svelte';
 
 	// Page body: the section list once the first payload is in, the one-time
@@ -21,9 +22,5 @@
 {#if data}
 	<SectionList {sections} {data} />
 {:else if loading}
-	<div
-		class="flex h-40 items-center justify-center border border-border text-sm text-muted-foreground"
-	>
-		{m.costs_loading()}
-	</div>
+	<EmptyState message={m.costs_loading()} />
 {/if}

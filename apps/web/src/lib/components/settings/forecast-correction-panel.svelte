@@ -5,7 +5,9 @@
 	import { Axis, Canvas, Cell, Chart, Tooltip } from 'layerchart/canvas';
 	import { scaleBand } from 'd3-scale';
 	import { api } from '$lib/api';
+	import ChartFullscreen from '$lib/components/layout/chart-fullscreen.svelte';
 	import GradientLegend from '$lib/components/inverter/_shared/gradient-legend.svelte';
+	import { fittedPadding } from '$lib/charts/plot-padding';
 	import { getLocale } from '$lib/paraglide/runtime';
 	import * as m from '$lib/paraglide/messages';
 
@@ -46,10 +48,23 @@
 	 * Confidence (sample weight) drives opacity via `fillOpacity`, so sparsely-learned
 	 * cells stay pale.
 	 */
-	const factorColor = (factor: number) => `hsl(${factor >= 1 ? 152 : 38} 65% 45%)`;
+	// A judgement ramp — the forecast ran high or low — so it spends the sign
+	// tokens rather than two raw hues. Those hues were a green/amber pair sitting
+	// outside the palette, which the colour-blind preset could not reach.
+	const factorColor = (factor: number) =>
+		factor >= 1 ? 'var(--sign-good)' : 'var(--sign-warn)';
 	const confidence = (weight: number) => 0.15 + 0.85 * Math.min(1, weight / 12);
 
 	const hasData = $derived((view?.cells.length ?? 0) > 0);
+
+	// The grid's own gutters: a three-letter month label on the left, hour labels
+	// below. Narrower than the cost charts' because a month name is not a figure.
+	const PADDING = { left: 36, bottom: 24, top: 4, right: 8 };
+
+	// Fitted to the plot's MEASURED width — this panel sits inside a settings
+	// section whose width the viewport does not predict. 0 before it is in the
+	// document reads as the desktop case.
+	let plotWidth = $state(0);
 </script>
 
 <div class="flex flex-col gap-3">
@@ -75,50 +90,52 @@
 			{/if}
 		</div>
 
-		<div class="h-64">
-			<Chart
-				data={view.cells}
-				x="hour"
-				xScale={scaleBand()}
-				xDomain={hours}
-				y="month"
-				yScale={scaleBand()}
-				yDomain={months}
-				padding={{ left: 36, bottom: 24, top: 4, right: 8 }}
-				tooltipContext={{ mode: 'quadtree' }}
-			>
-				<Canvas>
-					<Cell
-						x="hour"
-						y="month"
-						fill={(d: CorrectionCell) => factorColor(d.factor)}
-						fillOpacity={(d: CorrectionCell) => confidence(d.weight)}
-						insets={{ all: 1 }}
-						rx={2}
-					/>
-					<Axis placement="bottom" ticks={hourTicks} rule={false} />
-					<Axis placement="left" format={(mm: number) => monthLabel(mm)} rule={false} />
-				</Canvas>
+		<ChartFullscreen title={m.weather_forecast_correction_improvement()}>
+				<div class="h-64" bind:clientWidth={plotWidth}>
+				<Chart
+					data={view.cells}
+					x="hour"
+					xScale={scaleBand()}
+					xDomain={hours}
+					y="month"
+					yScale={scaleBand()}
+					yDomain={months}
+					padding={fittedPadding(PADDING, plotWidth)}
+					tooltipContext={{ mode: 'quadtree' }}
+				>
+					<Canvas>
+						<Cell
+							x="hour"
+							y="month"
+							fill={(d: CorrectionCell) => factorColor(d.factor)}
+							fillOpacity={(d: CorrectionCell) => confidence(d.weight)}
+							insets={{ all: 1 }}
+							rx={2}
+						/>
+						<Axis placement="bottom" ticks={hourTicks} rule={false} />
+						<Axis placement="left" format={(mm: number) => monthLabel(mm)} rule={false} />
+					</Canvas>
 
-				<Tooltip.Root>
-					{#snippet children({ data }: { data: CorrectionCell })}
-						<Tooltip.Header>
-							{monthLabel(data.month)}
-							{String(data.hour).padStart(2, '0')}:00
-						</Tooltip.Header>
-						<Tooltip.List>
-							<Tooltip.Item label="×" value={data.factor.toFixed(2)} />
-						</Tooltip.List>
-					{/snippet}
-				</Tooltip.Root>
-			</Chart>
-		</div>
+					<Tooltip.Root>
+						{#snippet children({ data }: { data: CorrectionCell })}
+							<Tooltip.Header>
+								{monthLabel(data.month)}
+								{String(data.hour).padStart(2, '0')}:00
+							</Tooltip.Header>
+							<Tooltip.List>
+								<Tooltip.Item label="×" value={data.factor.toFixed(2)} />
+							</Tooltip.List>
+						{/snippet}
+					</Tooltip.Root>
+				</Chart>
+			</div>
+		</ChartFullscreen>
 
 		<GradientLegend
 			label={m.weather_forecast_correction_legend()}
 			low="0.6×"
 			high="1.4×"
-			gradient="linear-gradient(to right, hsl(38 65% 45% / 0.85), hsl(0 0% 50% / 0.15), hsl(152 65% 45% / 0.85))"
+			gradient="linear-gradient(to right, color-mix(in oklab, var(--sign-warn) 85%, transparent), color-mix(in oklab, var(--muted-foreground) 15%, transparent), color-mix(in oklab, var(--sign-good) 85%, transparent))"
 		/>
 	{/if}
 </div>

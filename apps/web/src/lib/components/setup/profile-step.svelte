@@ -5,6 +5,7 @@
 	import { scale } from 'svelte/transition';
 	import { Button } from '$lib/components/ui/button';
 	import * as Collapsible from '$lib/components/ui/collapsible';
+	import Section from '$lib/components/layout/section.svelte';
 	import ExternalProfilesManager from '$lib/components/settings/external-profiles-manager.svelte';
 	import GroupedProfileList from '$lib/components/settings/grouped-profile-list.svelte';
 	import ProfileRow from '$lib/components/settings/profile-row.svelte';
@@ -55,11 +56,11 @@
 	</ProfileRow>
 {/snippet}
 
-<section class="flex flex-col gap-4 border border-border p-4">
-	<h2 class="text-sm font-medium uppercase tracking-wide text-muted-foreground">
-		{m.setup_select_profile()}
-	</h2>
-
+<!-- Outside the (app) shell, like the activate step: Section's pad is the whole
+     gutter this step gets. The Collapsible below is NOT a section collapse — it
+     is the "no inverter?" disclosure inside the card, and its dashed frame is
+     chrome one level down, which is why it stays on the card census. -->
+<Section title={m.setup_select_profile()}>
 	<GroupedProfileList {profiles} row={profileRow} emptyLabel={m.setup_no_profiles()} />
 
 	<Collapsible.Root bind:open={showSources}>
@@ -85,4 +86,4 @@
 	<div class="flex justify-end">
 		<Button disabled={!selectedId} onclick={onContinue}>{m.action_continue()}</Button>
 	</div>
-</section>
+</Section>

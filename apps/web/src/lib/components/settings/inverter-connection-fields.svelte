@@ -30,7 +30,7 @@
 	}
 </script>
 
-<div class="grid gap-4 sm:grid-cols-2">
+<div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
 	<div class="flex flex-col gap-1.5">
 		<Label for="host">Host</Label>
 		<Input id="host" bind:value={cfg.host} />

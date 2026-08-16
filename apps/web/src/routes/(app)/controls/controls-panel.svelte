@@ -3,6 +3,7 @@
 	import LockOpen from 'phosphor-svelte/lib/LockOpen';
 	import * as m from '$lib/paraglide/messages';
 	import { Switch } from '$lib/components/ui/switch';
+	import Section from '$lib/components/layout/section.svelte';
 	import ControlRow from '$lib/components/inverter/control-row.svelte';
 	import TimeOfUse from '$lib/components/inverter/time-of-use.svelte';
 	import type { ManifestMetric } from '$lib/inverter/types';
@@ -50,14 +51,15 @@
 	inert={locked}
 >
 	{#if hasSettings}
-		<section class="flex flex-col border border-border p-4">
-			<h2 class="mb-2 text-sm font-medium uppercase tracking-wide text-muted-foreground">
-				{m.controls_inverter_settings()}
-			</h2>
-			{#each settings as metric (metric.key)}
-				<ControlRow {metric} />
-			{/each}
-		</section>
+		<Section title={m.controls_inverter_settings()}>
+			<!-- The rows rule themselves; the stack stays gapless so the rules read
+			     as one table rather than as separate cards. -->
+			<div class="flex flex-col">
+				{#each settings as metric (metric.key)}
+					<ControlRow {metric} />
+				{/each}
+			</div>
+		</Section>
 	{/if}
 
 	{#if hasTimeOfUse}

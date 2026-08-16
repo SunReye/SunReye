@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { fade } from 'svelte/transition';
 	import * as msg from '$lib/paraglide/messages';
+	import Section from '$lib/components/layout/section.svelte';
 	import RangeSwitcher from '$lib/components/inverter/range-switcher.svelte';
 	import EnergySplitBlock, {
 		type SplitSeries
@@ -85,38 +86,41 @@
 </script>
 
 {#if hasData}
-	<section
-		class="flex flex-col gap-4 border border-border p-4"
-		transition:fade={{ duration: 200 }}
-	>
-		<div class="flex flex-wrap items-center justify-between gap-3">
-			<h2 class="text-sm font-medium uppercase tracking-wide text-muted-foreground">
-				{msg.chart_energy_split()} — {caption}
-			</h2>
-			<RangeSwitcher options={LAYOUTS} bind:value={layoutId} />
-		</div>
+	<!-- The fade sits on a wrapper because the root is a component now: the chart
+	     comes and goes with the window's data, and the transition has to be on an
+	     element this file owns. `nested` — it is one panel among the statistics
+	     section's, all of which are inside the page shell. -->
+	<div transition:fade={{ duration: 200 }}>
+		<Section title={msg.chart_energy_split()} {caption} nested fullscreen>
+			{#snippet actions()}
+				<RangeSwitcher options={LAYOUTS} bind:value={layoutId} />
+			{/snippet}
 
-		<div class="grid gap-8 lg:grid-cols-2">
-			<EnergySplitBlock
-				title={msg.energy_consumption()}
-				subtitle={msg.chart_consumption_sub()}
-				series={consumptionSeries}
-				{data}
-				{seriesLayout}
-				ratio={avgSelfSufficiency}
-				delta={chips.selfSufficiency}
-				baseline={chips.baseline}
-			/>
-			<EnergySplitBlock
-				title={msg.energy_production()}
-				subtitle={msg.chart_production_sub()}
-				series={productionSeries}
-				{data}
-				{seriesLayout}
-				ratio={avgSelfConsumption}
-				delta={chips.selfConsumption}
-				baseline={chips.baseline}
-			/>
-		</div>
-	</section>
+			<!-- The window used to be glued onto the title with an em dash, which
+			     made the long German heading truncate before its own name was
+			     readable. It is the caption above — its own line, under the title. -->
+			<div class="grid grid-cols-1 gap-8 lg:grid-cols-2">
+				<EnergySplitBlock
+					title={msg.energy_consumption()}
+					subtitle={msg.chart_consumption_sub()}
+					series={consumptionSeries}
+					{data}
+					{seriesLayout}
+					ratio={avgSelfSufficiency}
+					delta={chips.selfSufficiency}
+					baseline={chips.baseline}
+				/>
+				<EnergySplitBlock
+					title={msg.energy_production()}
+					subtitle={msg.chart_production_sub()}
+					series={productionSeries}
+					{data}
+					{seriesLayout}
+					ratio={avgSelfConsumption}
+					delta={chips.selfConsumption}
+					baseline={chips.baseline}
+				/>
+			</div>
+		</Section>
+	</div>
 {/if}

@@ -2,8 +2,9 @@
 	// Decision history section: polls the engine's in-memory log and plots it as
 	// the power plane plus the charge ceiling. Two charts on purpose — kW and A
 	// are different measures, and one plot may only carry one scale.
-	import SettingsSection from '$lib/components/settings/settings-section.svelte';
+	import Section from '$lib/components/layout/section.svelte';
 	import RangeSwitcher from '$lib/components/inverter/range-switcher.svelte';
+	import ChartFullscreen from '$lib/components/layout/chart-fullscreen.svelte';
 	import DecisionPowerChart from './decision-power-chart.svelte';
 	import DecisionCeilingChart from './decision-ceiling-chart.svelte';
 	import { DECISION_WINDOWS, hasLoad, hasRegister, toDecisionRows } from './decision-series';
@@ -28,7 +29,7 @@
 	const shadowing = $derived(points.at(-1)?.shadow === true);
 </script>
 
-<SettingsSection title={m.automations_charts_title()}>
+<Section title={m.automations_charts_title()}>
 	{#snippet actions()}
 		<RangeSwitcher options={WINDOW_OPTIONS} bind:value={range} />
 	{/snippet}
@@ -42,16 +43,23 @@
 			{shadowing ? m.automations_charts_shadow_hint() : m.automations_charts_live_hint()}
 		</p>
 
+		<!-- One control per plot, not one for the card: this section holds two
+		     charts plus three paragraphs, and expanding all of it split a
+		     landscape screen five ways and left each plot 59px tall. -->
 		<div class="flex flex-col gap-2">
 			<p class="text-xs font-medium text-muted-foreground">{m.automations_charts_power()}</p>
-			<DecisionPowerChart {rows} {showLoad} />
+			<ChartFullscreen title={m.automations_charts_power()}>
+				<DecisionPowerChart {rows} {showLoad} />
+			</ChartFullscreen>
 		</div>
 
 		<div class="flex flex-col gap-2">
 			<p class="text-xs font-medium text-muted-foreground">{m.automations_charts_ceiling()}</p>
-			<DecisionCeilingChart {rows} {showRegister} />
+			<ChartFullscreen title={m.automations_charts_ceiling()}>
+				<DecisionCeilingChart {rows} {showRegister} />
+			</ChartFullscreen>
 		</div>
 
 		<p class="text-xs text-muted-foreground">{m.automations_charts_retention()}</p>
 	{/if}
-</SettingsSection>
+</Section>

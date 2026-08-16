@@ -27,7 +27,7 @@
 	const flat = $derived(delta === null || Math.round(delta * 100) === 0);
 	const good = $derived(goodDirection === (up ? 'up' : 'down'));
 	const tone = $derived(
-		flat || goodDirection === 'neutral' ? '' : good ? 'text-emerald-500' : 'text-red-500'
+		flat || goodDirection === 'neutral' ? '' : good ? 'text-sign-good' : 'text-sign-bad'
 	);
 	const against = $derived(baseline ?? m.statistics_baseline_reference());
 	const aria = $derived(

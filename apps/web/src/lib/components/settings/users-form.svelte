@@ -9,7 +9,7 @@
 	import DataTable from './data-table.svelte';
 	import OptionSelect from './option-select.svelte';
 	import RowRemoveButton from './row-remove-button.svelte';
-	import SettingsSection from './settings-section.svelte';
+	import Section from '$lib/components/layout/section.svelte';
 	import * as m from '$lib/paraglide/messages';
 
 	type Role = 'user' | 'admin';
@@ -139,7 +139,7 @@
 	</Table.Cell>
 {/snippet}
 
-<SettingsSection title={m.settings_tab_users()}>
+<Section title={m.settings_tab_users()}>
 	<DataTable
 		{loading}
 		loadingLabel={m.users_loading()}
@@ -147,4 +147,4 @@
 		rows={users}
 		cells={userCells}
 	/>
-</SettingsSection>
+</Section>

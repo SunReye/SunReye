@@ -4,6 +4,7 @@
 	import DailyEnergy from '$lib/components/inverter/daily-energy.svelte';
 	import EvChargerCard from '$lib/components/inverter/ev-charger-card.svelte';
 	import { setPageHeader } from '$lib/page-header.svelte';
+	import { SHELL_GAP, SHELL_PAD } from '$lib/layout/tokens';
 	import * as m from '$lib/paraglide/messages';
 
 	$effect(() => setPageHeader(m.nav_overview()));
@@ -20,9 +21,17 @@
 	desktop size — that <1.1 aspect ratio is what keeps the diagram in portrait.
 	Phones scroll naturally: hero first, then weather, then the tiles. Detailed
 	subsystem metrics live at /system.
+
+	The one page in the app that is NOT a <PageShell>: the grid, the pinned
+	viewport height and the overflow all have to sit on the very element the shell
+	owns, and the shell deliberately accepts no `class`. It still spends the
+	shell's padding and rhythm tokens, so the exception is to the container, not
+	to the vocabulary. The viewport height subtracts the app header via the
+	variable the layout declares — the literal `3.5rem` that used to be here was a
+	copy of an `h-14` in another file, and nothing kept the two in step.
 -->
 <div
-	class="flex flex-col gap-3 p-3 sm:gap-4 sm:p-4 lg:grid lg:h-[calc(100svh-3.5rem)] lg:grid-cols-[1.15fr_1fr] lg:grid-rows-1 lg:overflow-hidden"
+	class="flex flex-col {SHELL_GAP} {SHELL_PAD} lg:grid lg:h-[calc(100svh-var(--app-header-h))] lg:grid-cols-[1.15fr_1fr] lg:grid-rows-1 lg:overflow-hidden"
 >
 	<section class="relative h-[60svh] min-h-108 shrink-0 lg:h-full lg:min-h-0">
 		<h2 class="sr-only">{m.overview_power_flow()}</h2>

@@ -56,7 +56,7 @@
 		<span class="text-xs tabular-nums text-muted-foreground">{rangeLabel}</span>
 	</div>
 
-	<div class="grid gap-4 sm:grid-cols-2">
+	<div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
 		<TouField
 			metric={slot.metrics.time}
 			label={msg.tou_start_time()}

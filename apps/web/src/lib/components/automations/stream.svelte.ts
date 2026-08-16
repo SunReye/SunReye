@@ -1,118 +1,69 @@
 /**
- * The automations live stream: one WebSocket (`/ws/automations`) shared by the
- * index badge and the peak-shaving page — it replaces the status/history/plan
- * polls. The server pushes a frame after every engine tick (status, the
- * decision point it logged, the recomputed plan); the socket's `open` handler
- * replays a full snapshot including the whole decision ring so a subscriber
- * paints immediately. An HTTP backfill on each (re)open covers the handshake
- * window and heals any offline gap ({@link ReconnectingSocket} reconnects with
- * backoff while at least one lease is live).
+ * The automations live picture: the `automations` topic on the app's one
+ * socket, shared by the index badge and the peak-shaving page.
+ *
+ * This store used to own a WebSocket of its own, a reconnect loop, a
+ * `connected` flag and a `JSON.parse(...) as …`, plus a three-call REST prime
+ * (`/status`, `/history`, `/plan`) on every open — the prime existed only
+ * because a bare socket had nothing to replay. The multiplexed `/ws` backfills
+ * the topic on subscribe with exactly those three facts in one frame, so the
+ * prime is gone and with it the race where a slow HTTP answer landed on top of
+ * a newer server snapshot. Transport is {@link bus}'s business; what is left
+ * here is the domain state, folded by {@link applyAutomationFrame}.
+ *
+ * "Are we live?" is `bus.connected` now — one answer for the whole app rather
+ * than a per-store copy that could disagree with the socket it rode on.
  */
 
-import { api } from "$lib/api";
-import { payloadOrNull } from "$lib/api-payload";
-import { ReconnectingSocket } from "$lib/ws/reconnecting-socket";
-import type {
-  AutomationHistoryView,
-  AutomationPlanView,
-  AutomationStatusView,
-  AutomationStreamMessage,
-  DecisionPoint,
-  PeakShavingPlans,
-  PeakShavingStatus,
-} from "$lib/automations";
+import type { DecisionPoint, PeakShavingPlans, PeakShavingStatus } from "$lib/automations";
+import { bus } from "$lib/ws/bus.svelte";
+import {
+  type AutomationStreamState,
+  applyAutomationFrame,
+  emptyAutomationStream,
+} from "./stream-state";
 
 class AutomationStream {
-  status = $state<PeakShavingStatus | null>(null);
+  /** The whole picture in one `$state`, replaced per frame by the pure fold. */
+  #state = $state<AutomationStreamState>(emptyAutomationStream());
+
+  get status(): PeakShavingStatus | null {
+    return this.#state.status;
+  }
+
   /** Decision ring, oldest → newest — snapshot-seeded, then grown per tick. */
-  history = $state<DecisionPoint[]>([]);
-  plan = $state<PeakShavingPlans | null>(null);
+  get history(): DecisionPoint[] {
+    return this.#state.history;
+  }
+
+  get plan(): PeakShavingPlans | null {
+    return this.#state.plan;
+  }
+
   /** Engine cadence, ms — the countdown base for "next decision in …". */
-  tickMs = $state(30_000);
-  /**
-   * Client-clock arrival of the last frame that carried a fresh tick — the
-   * countdown anchor. Deliberately not the server's `lastTickAt`: the viewer's
-   * clock and the server's can disagree, and a skew larger than the interval
-   * would pin the countdown at 0.
-   */
-  tickArrivedAt = $state<number | null>(null);
-  /** True once a first payload (fetch or socket) has arrived. */
-  loaded = $state(false);
-  /** Live socket state, for the page's connection indicator. */
-  connected = $state(false);
-  /** Ring capacity, mirrored from the history endpoint's declared size. */
-  #capacity = 2_880;
-
-  #socket = new ReconnectingSocket({
-    create: () => api.ws.automations.subscribe(),
-    // Fresh connection: backfill over the pre-handshake window / offline gap.
-    onStart: () => void this.#refresh(),
-    onOpen: () => {
-      this.connected = true;
-    },
-    onDrop: () => {
-      this.connected = false;
-    },
-    onMessage: (raw) => {
-      const msg = (typeof raw === "string" ? JSON.parse(raw) : raw) as AutomationStreamMessage;
-      this.#apply(msg);
-    },
-  });
-
-  #apply(msg: AutomationStreamMessage): void {
-    // Countdown anchor: the client-clock arrival of a frame carrying a fresh
-    // tick. Server timestamps must never be compared against the viewer's
-    // clock — any skew between the two machines would pin the countdown.
-    if (msg.status.lastTickAt !== this.status?.lastTickAt) {
-      this.tickArrivedAt = Date.now();
-    }
-    this.status = msg.status;
-    this.plan = msg.plan;
-    this.tickMs = msg.tickMs;
-    if (msg.history) this.history = msg.history;
-    else this.#appendPoint(msg.point);
-    this.loaded = true;
+  get tickMs(): number {
+    return this.#state.tickMs;
   }
 
-  /** Grow the ring by one tick's point, dropping snapshot/stream duplicates. */
-  #appendPoint(point: DecisionPoint | null): void {
-    if (!point || point.t === this.history.at(-1)?.t) return;
-    this.history = [...this.history.slice(-(this.#capacity - 1)), point];
+  /** Client-clock arrival of the newest tick — the countdown anchor. */
+  get tickArrivedAt(): number | null {
+    return this.#state.tickArrivedAt;
   }
 
-  /** One-shot HTTP read for the first paint (and the post-reconnect backfill). */
-  async #refresh(): Promise<void> {
-    const [st, hi, pl] = await Promise.all([
-      api.api.automations.status.get(),
-      api.api.automations.history.get(),
-      api.api.automations.plan.get(),
-    ]);
-    const hasStatus = this.#applyStatus(payloadOrNull<AutomationStatusView>(st.data));
-    const hasHistory = this.#applyHistory(payloadOrNull<AutomationHistoryView>(hi.data));
-    if (pl.data) this.plan = (pl.data as AutomationPlanView).peakShaving;
-    if (hasStatus || hasHistory) this.loaded = true;
-  }
-
-  #applyStatus(view: AutomationStatusView | null): boolean {
-    if (!view?.peakShaving) return false;
-    this.status = view.peakShaving;
-    return true;
-  }
-
-  #applyHistory(view: AutomationHistoryView | null): boolean {
-    if (!view) return false;
-    this.#capacity = view.capacity;
-    this.tickMs = view.tickMs;
-    this.history = view.peakShaving;
-    return true;
+  /** True once the server's snapshot has landed. */
+  get loaded(): boolean {
+    return this.#state.loaded;
   }
 
   /**
-   * Lease the live stream from a component `$effect`; returns the cleanup. Any
-   * number of consumers share the one connection.
+   * Lease the topic from a component `$effect`; returns the cleanup. Any number
+   * of consumers share the one subscription, and none of them touches the
+   * socket — the app shell holds that lease.
    */
-  connect(): () => void {
-    return this.#socket.connect();
+  lease(): () => void {
+    return bus.subscribe("automations", (frame) => {
+      this.#state = applyAutomationFrame(this.#state, frame, Date.now());
+    });
   }
 }
 

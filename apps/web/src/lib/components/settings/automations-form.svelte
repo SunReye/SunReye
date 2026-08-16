@@ -5,7 +5,7 @@
 	import { Switch } from '$lib/components/ui/switch';
 	import { Button } from '$lib/components/ui/button';
 	import * as Dialog from '$lib/components/ui/dialog';
-	import SettingsSection from './settings-section.svelte';
+	import Section from '$lib/components/layout/section.svelte';
 	import SaveBar from './save-bar.svelte';
 	import { apiErrorText } from './api-error';
 	import { api } from '$lib/api';
@@ -60,7 +60,7 @@
 
 <SaveBar {isAdmin} {saving} disabled={!draft} onsave={save} />
 
-<SettingsSection title={m.settings_tab_automations()}>
+<Section title={m.settings_tab_automations()}>
 	{#if !draft}
 		<p class="text-sm text-muted-foreground">{m.app_loading()}</p>
 	{:else}
@@ -85,7 +85,7 @@
 			</p>
 		{/if}
 	{/if}
-</SettingsSection>
+</Section>
 
 <Dialog.Root bind:open={disclaimerOpen}>
 	<Dialog.Content>

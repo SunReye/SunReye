@@ -19,20 +19,20 @@
  * nothing on the write path emits here.
  */
 
-import type { InverterSample } from "@SunReye/inverter-core";
-import type { AutomationStreamMessage } from "@SunReye/contracts/automation";
-import type { EvccState } from "@SunReye/contracts/evcc";
-import type { StatisticsLiveMessage } from "@SunReye/contracts/statistics";
+import type { WsTopicPayloads } from "@SunReye/contracts/ws";
 import type { LogEntry } from "@SunReye/contracts/logs";
 
-/** Every live topic and the payload one emit carries. */
-export interface StreamTopics {
-  metrics: InverterSample;
-  evcc: EvccState;
-  logs: LogEntry;
-  automations: AutomationStreamMessage;
-  statistics: StatisticsLiveMessage;
-}
+/**
+ * Every live topic and the payload one emit carries.
+ *
+ * Derived from the wire mapping rather than restated, so a topic can never mean
+ * one thing to a producer and another to the browser. The single override is
+ * the real divergence: producers emit **one** log entry at a time, while the
+ * wire carries a batch — log lines are coalesced at the socket boundary, not
+ * upstream of the bus. Encoding that here means the coalescing step is the one
+ * place a `LogEntry` becomes a `LogEntry[]`, and the compiler says so.
+ */
+export type StreamTopics = Omit<WsTopicPayloads, "logs"> & { logs: LogEntry };
 
 /** A subscriber to one topic. */
 export type StreamListener<K extends keyof StreamTopics> = (payload: StreamTopics[K]) => void;

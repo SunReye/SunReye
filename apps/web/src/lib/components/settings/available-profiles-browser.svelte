@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { Button } from "$lib/components/ui/button";
 	import AvailableProfileGroup from "./available-profile-group.svelte";
-	import SettingsSection from "./settings-section.svelte";
+	import Section from '$lib/components/layout/section.svelte';
 	import type { AvailableProfile, FamilyGroup, ManufacturerGroup, Source } from "./profile-types";
 	import * as m from "$lib/paraglide/messages";
 
@@ -102,7 +102,7 @@
 	);
 </script>
 
-<SettingsSection title={m.profiles_available_title()}>
+<Section title={m.profiles_available_title()}>
 	{#snippet actions()}
 		<Button variant="outline" size="sm" disabled={browsing} onclick={onBrowse}>
 			{browseLabel}
@@ -122,4 +122,4 @@
 			{/each}
 		</div>
 	{/if}
-</SettingsSection>
+</Section>

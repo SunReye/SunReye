@@ -2,7 +2,7 @@
 	import { onMount } from 'svelte';
 	import { toast } from 'svelte-sonner';
 	import SensorGroup from './sensor-group.svelte';
-	import SettingsSection from './settings-section.svelte';
+	import Section from '$lib/components/layout/section.svelte';
 	import SaveBar from './save-bar.svelte';
 	import { inverter } from '$lib/inverter/store.svelte';
 	import type { ManifestMetric } from '$lib/inverter/types';
@@ -86,7 +86,7 @@
 
 <SaveBar {isAdmin} {saving} disabled={!draft} onsave={save} />
 
-<SettingsSection title={m.settings_sensors_title()}>
+<Section title={m.settings_sensors_title()}>
 	<p class="max-w-prose text-sm text-muted-foreground">{m.settings_sensors_desc()}</p>
 
 	{#if message !== null}
@@ -109,4 +109,4 @@
 			{/each}
 		</div>
 	{/if}
-</SettingsSection>
+</Section>

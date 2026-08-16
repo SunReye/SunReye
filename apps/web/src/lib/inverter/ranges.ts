@@ -41,8 +41,13 @@ export const PRESETS: readonly Preset[] = [
  * last-week (7-day) window; hourly beyond that. A 7-day minute series is
  * ~10k points, so callers must request a limit that covers it (see
  * entity-history-card).
+ *
+ * Exported for the zoom mapper (`$lib/charts/zoom-range`): a zoom that kept the
+ * bucket it was fetched at would only magnify the bars already on screen, so it
+ * has to re-derive the granularity from the SELECTED span — through this, not
+ * through a second table that could drift from it.
  */
-function bucketForSpan(ms: number): RollupBucket {
+export function bucketForSpan(ms: number): RollupBucket {
   if (ms <= 7 * DAY) return "minute";
   return "hour";
 }

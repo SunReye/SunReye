@@ -17,7 +17,7 @@
 		weekdayLabel,
 		type HeatPoint
 	} from '$lib/statistics/heatmap';
-	import { COST_X_TICK_SPACING } from '$lib/cost/ranges';
+	import { heatPaddingFor, xTickSpacingFor } from '$lib/cost/ranges';
 	import * as m from '$lib/paraglide/messages';
 
 	let {
@@ -41,6 +41,12 @@
 	// Row height, so a window covering two weekdays is a two-row strip rather
 	// than two very tall cells.
 	const gridHeight = $derived(Math.min(224, weekdays.length * 26 + 40));
+
+	// The gutters follow the plot's MEASURED width, not a breakpoint: this chart
+	// renders full-bleed on one page and inside a two-up grid on another, so only
+	// the element knows how much room it got. 0 until it is in the document,
+	// which heatPaddingFor reads as the desktop case.
+	let plotWidth = $state(0);
 </script>
 
 <!-- `band` mode gives every cell its own hit rect, which doubles as the hover
@@ -50,6 +56,7 @@
 <div
 	style="height: {gridHeight}px"
 	class="[&_.lc-tooltip-rect:hover]:fill-foreground/10"
+	bind:clientWidth={plotWidth}
 	aria-hidden="true"
 >
 	<Chart
@@ -60,7 +67,7 @@
 		y="dow"
 		yScale={scaleBand()}
 		yDomain={weekdays}
-		padding={{ left: 40, bottom: 24, top: 4, right: 8 }}
+		padding={heatPaddingFor(plotWidth)}
 		tooltipContext={{ mode: 'band' }}
 	>
 		<Canvas>
@@ -72,7 +79,7 @@
 				insets={{ all: 1 }}
 				rx={2}
 			/>
-			<Axis placement="bottom" tickSpacing={COST_X_TICK_SPACING} format={hourLabel} rule={false} />
+			<Axis placement="bottom" tickSpacing={xTickSpacingFor(plotWidth)} format={hourLabel} rule={false} />
 			<Axis placement="left" format={weekdayLabel} rule={false} />
 		</Canvas>
 

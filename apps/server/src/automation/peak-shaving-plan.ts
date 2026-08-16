@@ -108,7 +108,15 @@ function projectSlot(
   const sellCeilingW =
     base.mode === "grid-friendly" ? decision.thresholdW : Number.POSITIVE_INFINITY;
   const flows = flowStep(slot.watts, base.baselineLoadW, slot.remainingMs / HOUR_MS, {
-    chargeCeilingW: decision.targetA * base.batteryV,
+    // The commanded current, bounded by the surplus it was sized from. The write
+    // has to land on the inverter's 5 A grid, but a target rounded up to that
+    // grid must not be *spent* past the excess the reserve arithmetic budgeted —
+    // the difference is PV the grid was going to pay for. See
+    // {@link Decision.absorbCeilingW}.
+    chargeCeilingW: Math.min(
+      decision.targetA * base.batteryV,
+      decision.absorbCeilingW ?? Number.POSITIVE_INFINITY,
+    ),
     headroomKwh: (base.usableKwh * (100 - socPct)) / 100,
     aboveFloorKwh: (base.usableKwh * (socPct - reservePct)) / 100,
     exportCeilingW: Math.min(sellCeilingW, limits.exportCapW),

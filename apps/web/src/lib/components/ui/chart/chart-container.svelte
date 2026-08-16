@@ -74,6 +74,23 @@
 		// <svg> that only class selectors reach — so in dark mode the halo covers
 		// the label it is meant to protect. Kill it by class as well.
 		"[&_.lc-axis-tick-label]:stroke-transparent [&_.lc-axis-label]:stroke-transparent",
+		// Zoom gestures.
+		//
+		// LayerChart's brush layer covers the whole plot and declares
+		// `touch-action: none` on itself. /history and /statistics are tall stacks
+		// of full-width charts, so with that rule a vertical swipe that happens to
+		// start on a chart stops scrolling the page — the gesture people use most
+		// on a phone, broken by the one they use least. `pan-y` hands the vertical
+		// axis back to the browser and keeps the horizontal one for the brush,
+		// which is the axis a selection is drawn on anyway. LayerChart ships its
+		// rule as `:where()` inside `@layer base`, so a plain utility wins it
+		// without `!important`.
+		"[&_.lc-brush-context]:touch-pan-y",
+		// The selection and its edges in the app's own palette; the shipped
+		// default is a grey wash off `--color-surface-content`, a variable this
+		// theme does not define.
+		"[&_.lc-brush-range]:bg-primary/15 [&_.lc-brush-range]:outline [&_.lc-brush-range]:outline-primary/40",
+		"[&_.lc-brush-handle]:bg-primary/50",
 		"[&_.lc-tooltip-rects-g]:fill-transparent",
 		"[&_.lc-layout-svg-g]:fill-transparent",
 		"[&_.lc-root-container]:w-full",

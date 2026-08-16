@@ -14,6 +14,7 @@
 // buffer / rollup granularity for entity charts — different concern, different
 // shape.
 
+import { fittedPadding, isNarrowPlot, type ChartPadding } from "$lib/charts/plot-padding";
 import { dayMonth, monthShort } from "$lib/format/date";
 
 const DAY = 86_400_000;
@@ -88,14 +89,39 @@ export const COST_X_TICKS: Record<CostBucket, number> = { hour: 6, day: 8, month
  * of a guess — at 390px the hour labels used to run into one another
  * ("00:0003:0006:00").
  */
-export const COST_X_TICK_SPACING = 72;
+const COST_X_TICK_SPACING = 72;
 
 /**
  * Chart padding. The left gutter fits a four-digit figure with its unit
  * ("1,000 kWh"), which the old 48px clipped to "000 kWh"; the right one keeps
  * the last tick label ("Aug 2") inside the plot instead of cutting it in half.
  */
-export const COST_CHART_PADDING = { top: 8, right: 24, bottom: 20, left: 60 };
+const COST_CHART_PADDING = { top: 8, right: 24, bottom: 20, left: 60 };
+
+/** The heat grid's own gutters: a weekday label on the left, hour labels below. */
+const HEAT_CHART_PADDING = { top: 4, right: 8, bottom: 24, left: 40 };
+
+/** {@link COST_CHART_PADDING}, fitted to a plot of `width`. */
+export function chartPaddingFor(width: number): ChartPadding {
+  return fittedPadding(COST_CHART_PADDING, width);
+}
+
+/** {@link HEAT_CHART_PADDING}, fitted to a plot of `width`. */
+export function heatPaddingFor(width: number): ChartPadding {
+  return fittedPadding(HEAT_CHART_PADDING, width);
+}
+
+/** Minimum room per x-axis label on a narrow plot — "00:00" plus a hair. */
+const NARROW_X_TICK_SPACING = 48;
+
+/**
+ * {@link COST_X_TICK_SPACING}, fitted to a plot of `width`. At 72px a 412px
+ * phone gets four hour labels across a whole day; at 48 it gets seven, which is
+ * still short of the width where they touch.
+ */
+export function xTickSpacingFor(width: number): number {
+  return isNarrowPlot(width) ? NARROW_X_TICK_SPACING : COST_X_TICK_SPACING;
+}
 
 /**
  * Band padding for a bar chart of `count` periods. A window with one or two

@@ -6,7 +6,8 @@
 	import FormActions from "./form-actions.svelte";
 	import InverterConnectionFields from "./inverter-connection-fields.svelte";
 	import InverterStatusBadge from "./inverter-status-badge.svelte";
-	import SettingsSection from "./settings-section.svelte";
+	import Section from '$lib/components/layout/section.svelte';
+	import EmptyState from '$lib/components/layout/empty-state.svelte';
 	import SnapshotDialog from "./snapshot-dialog.svelte";
 	import type { InverterConfig, InverterStatus, TestResult } from "./inverter-types";
 	import * as m from "$lib/paraglide/messages";
@@ -108,13 +109,9 @@
 </FormActions>
 
 {#if !cfg}
-	<div
-		class="flex h-40 items-center justify-center border border-border text-sm text-muted-foreground"
-	>
-		{m.app_loading()}
-	</div>
+	<EmptyState message={m.app_loading()} />
 {:else}
-	<SettingsSection title={m.inverter_connection()}>
+	<Section title={m.inverter_connection()}>
 		{#snippet actions()}
 			<InverterStatusBadge {status} />
 		{/snippet}
@@ -127,7 +124,7 @@
 		{/if}
 
 		<InverterConnectionFields bind:cfg {status} />
-	</SettingsSection>
+	</Section>
 
 	<SnapshotDialog bind:open={snapshotOpen} result={testResult} />
 {/if}

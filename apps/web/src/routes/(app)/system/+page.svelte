@@ -8,6 +8,7 @@
 	import SubsystemSection from '$lib/components/inverter/subsystem-section.svelte';
 	import IndexedGroup from '$lib/components/inverter/indexed-group.svelte';
 	import { setPageHeader } from '$lib/page-header.svelte';
+	import PageShell from '$lib/components/layout/page-shell.svelte';
 	import * as m from '$lib/paraglide/messages';
 
 	$effect(() => setPageHeader(m.nav_system()));
@@ -18,10 +19,10 @@
 	// author-chosen label), falling back to the profile label if unmapped.
 	const KPI_DEFS: { role: CanonicalRole; label: () => string; accent: string; diverging?: boolean }[] =
 		[
-			{ role: 'pv.total.power', label: m.label_solar, accent: 'var(--color-chart-1)' },
-			{ role: 'battery.power', label: m.label_battery, accent: 'var(--color-chart-3)' },
-			{ role: 'grid.power', label: m.label_grid, accent: 'var(--color-chart-4)', diverging: true },
-			{ role: 'load.power', label: m.label_load, accent: 'var(--color-chart-5)' }
+			{ role: 'pv.total.power', label: m.label_solar, accent: 'var(--energy-solar)' },
+			{ role: 'battery.power', label: m.label_battery, accent: 'var(--energy-battery)' },
+			{ role: 'grid.power', label: m.label_grid, accent: 'var(--energy-grid)', diverging: true },
+			{ role: 'load.power', label: m.label_load, accent: 'var(--energy-load)' }
 		];
 
 	const kpis = $derived(
@@ -170,8 +171,9 @@
 	/>
 {/snippet}
 
-<div class="flex w-full flex-col gap-8 p-4 sm:p-6">
-	<section class="grid gap-4 sm:grid-cols-2 lg:grid-cols-2">
+<!-- Was `gap-8` — a sixth rhythm nobody chose. The shell's gap is the rhythm. -->
+<PageShell width="wide">
+	<section class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-2">
 		{#each kpiCards as k (k.role)}
 			<div class="min-w-0 border border-border">
 				<Kpi
@@ -187,9 +189,9 @@
 		{/each}
 	</section>
 
-	<div class="grid gap-6 lg:grid-cols-2">
+	<div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
 		{#each visibleSections as s (s.id)}
 			<SubsystemSection title={s.title} metrics={s.metrics} children={s.body} />
 		{/each}
 	</div>
-</div>
+</PageShell>

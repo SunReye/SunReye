@@ -5,7 +5,7 @@
 	import { Label } from '$lib/components/ui/label';
 	import { Switch } from '$lib/components/ui/switch';
 	import { Separator } from '$lib/components/ui/separator';
-	import SettingsSection from './settings-section.svelte';
+	import Section from '$lib/components/layout/section.svelte';
 	import SaveBar from './save-bar.svelte';
 	import SolarForecastFields, { type ArrayFields } from './solar-forecast-fields.svelte';
 	import ForecastCorrectionPanel from './forecast-correction-panel.svelte';
@@ -260,7 +260,7 @@
 
 <SaveBar {isAdmin} {saving} disabled={!draft} onsave={save} />
 
-<SettingsSection title={m.weather_title()}>
+<Section title={m.weather_title()}>
 	{#if !draft}
 		<p class="text-sm text-muted-foreground">{m.app_loading()}</p>
 	{:else}
@@ -278,7 +278,7 @@
 			/>
 		</div>
 
-		<div class="grid gap-3 sm:grid-cols-2">
+		<div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
 			<div class="flex flex-col gap-1.5">
 				<Label for="weather-lat">{m.weather_latitude()}</Label>
 				<Input
@@ -369,4 +369,4 @@
 			<ForecastCorrectionPanel />
 		{/if}
 	{/if}
-</SettingsSection>
+</Section>

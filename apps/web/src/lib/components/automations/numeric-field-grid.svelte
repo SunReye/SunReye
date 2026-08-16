@@ -20,7 +20,11 @@
 	} = $props();
 </script>
 
-<div class="grid gap-3 sm:grid-cols-2">
+<!-- Two-up on a phone as well: these are short numeric knobs (a wattage, a
+     percentage), not prose fields, so a column of 17 of them ran ~1700px on a
+     412px screen — the form was taller than three viewports for values that fit
+     in six characters. `min-w-0` because the descriptions under them do wrap. -->
+<div class="grid grid-cols-2 gap-3 [&>*]:min-w-0">
 	{#each fields as field (field.key)}
 		<div class="flex flex-col gap-1.5">
 			<Label for="{idPrefix}-{field.key}">{field.label}</Label>

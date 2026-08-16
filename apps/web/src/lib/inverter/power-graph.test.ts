@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { buildPowerGraph, socColor } from "./power-graph";
+import { buildPowerGraph } from "./power-graph";
+import { socColor } from "./sign-colors";
 import type { CanonicalRole, InverterCapabilities } from "$lib/inverter/types";
 
 const caps = (over: Partial<InverterCapabilities>): InverterCapabilities =>
@@ -83,12 +84,12 @@ describe("buildPowerGraph", () => {
     expect(charging.nodes.find((n) => n.id === "battery")?.flow).toBe("out");
   });
 
-  test("grid uses cost colors: import red, export green", () => {
+  test("grid uses cost colors: importing is bad, exporting is good", () => {
     const importing = buildPowerGraph(caps({ grid: true }), powerFrom({ "grid.power": 400 }));
-    expect(importing.nodes.find((n) => n.id === "grid")?.color).toBe("text-red-500");
+    expect(importing.nodes.find((n) => n.id === "grid")?.color).toBe("text-sign-bad");
     expect(importing.nodes.find((n) => n.id === "grid")?.state).toBe("Importing");
     const exporting = buildPowerGraph(caps({ grid: true }), powerFrom({ "grid.power": -400 }));
-    expect(exporting.nodes.find((n) => n.id === "grid")?.color).toBe("text-emerald-500");
+    expect(exporting.nodes.find((n) => n.id === "grid")?.color).toBe("text-sign-good");
   });
 
   test("full capability set yields all nodes", () => {
@@ -278,21 +279,22 @@ describe("helpers", () => {
     expect(batteryAt(undefined)?.flow).toBe("idle");
   });
 
-  test("flow hues: arriving green, leaving amber, idle the rail colour", () => {
-    expect(batteryAt(800)?.color).toBe("text-emerald-500");
-    expect(batteryAt(-800)?.color).toBe("text-amber-500");
+  test("flow hues: arriving good, leaving warn, idle the rail colour", () => {
+    expect(batteryAt(800)?.color).toBe("text-sign-good");
+    expect(batteryAt(-800)?.color).toBe("text-sign-warn");
     expect(batteryAt(0)?.color).toBe("text-border");
     // Grid uses cost colours; an unknown reading falls back to the rail colour.
     const grid = buildPowerGraph(caps({ grid: true }), () => undefined);
     expect(grid.nodes.find((n) => n.id === "grid")?.color).toBe("text-border");
   });
 
-  test("socColor interpolates across the 0/30/60 stops and clamps", () => {
-    expect(socColor(0)).toBe("rgb(239, 68, 68)"); // red-500
-    expect(socColor(30)).toBe("rgb(249, 115, 22)"); // orange-500
-    expect(socColor(60)).toBe("rgb(34, 197, 94)"); // green-500
-    expect(socColor(100)).toBe("rgb(34, 197, 94)"); // stays green
-    expect(socColor(150)).toBe("rgb(34, 197, 94)"); // clamped
-    expect(socColor(15)).toBe("rgb(244, 92, 45)"); // halfway red→orange
+  test("the battery ring still fades across the 0/30/60 stops", () => {
+    // The ramp moved to ./sign-colors and now mixes tokens instead of baked
+    // rgb() triples; sign-colors.test.ts owns the detail. This holds the shape
+    // the diagram depends on: three stops, a fade between them, and a clamp.
+    expect(socColor(0)).not.toBe(socColor(30));
+    expect(socColor(30)).not.toBe(socColor(60));
+    expect(socColor(15)).toContain("color-mix");
+    expect(socColor(150)).toBe(socColor(100));
   });
 });

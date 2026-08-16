@@ -6,6 +6,7 @@
 	import { costFormatters } from '$lib/cost/format';
 	import TooltipSeriesRow from '$lib/components/inverter/_shared/tooltip-series-row.svelte';
 	import { seriesConfig, stackedBarProps } from '$lib/components/inverter/_shared/chart-series';
+	import { CHART_BOX } from '$lib/layout/tokens';
 	import { periodLabel, type CostBucket } from '$lib/cost/ranges';
 
 	// One diverging stack per period. Mirrors the server's CostSeriesPoint
@@ -69,16 +70,22 @@
 		rows.reduce((sum, p) => sum + Number(p.value ?? 0), 0);
 
 	const data = $derived(points.map((p) => ({ ...p, label: periodLabel(p.bucket, bucket) })));
+
+	// The gutters follow the plot's MEASURED width, not a breakpoint: this chart
+	// renders full-bleed on one page and inside a two-up grid on another, so only
+	// the element knows how much room it got. 0 until it is in the document,
+	// which stackedBarProps reads as the desktop case.
+	let plotWidth = $state(0);
 </script>
 
-<div class="flex flex-col gap-3">
-	<Chart.Container {config} class="h-64 w-full">
+<div class="flex min-w-0 flex-col gap-3" bind:clientWidth={plotWidth}>
+	<Chart.Container {config} class="{CHART_BOX} w-full">
 		<BarChart
 			{data}
 			x="label"
 			{series}
 			seriesLayout="stackDiverging"
-			{...stackedBarProps(data.length)}
+			{...stackedBarProps(data.length, plotWidth)}
 		>
 			{#snippet tooltip()}
 				<Chart.Tooltip>

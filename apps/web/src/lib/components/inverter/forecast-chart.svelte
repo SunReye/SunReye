@@ -34,6 +34,17 @@
 	import { seriesConfig } from './_shared/chart-series';
 	import { canvasHighlight } from './_shared/canvas-highlight.svelte';
 	import * as m from '$lib/paraglide/messages';
+	import { fittedPadding } from '$lib/charts/plot-padding';
+	import { CHART_BOX } from '$lib/layout/tokens';
+
+	// This chart's own gutters — a one-decimal kW figure on the left, the last
+	// hour label's overhang on the right — narrowed on a phone but never widened
+	// to the cost family's desktop pair.
+	const PADDING = { top: 8, right: 8, bottom: 20, left: 40 };
+
+	// Followed from the plot's MEASURED width rather than a breakpoint: this
+	// chart renders inside a dialog whose width the viewport does not give away.
+	let plotWidth = $state(0);
 
 	let {
 		slots,
@@ -121,15 +132,15 @@
 </script>
 
 {#if hasData}
-	<div class="flex min-w-0 flex-col gap-3" bind:this={highlight.el}>
-		<Chart.Container {config} class="h-64 w-full min-w-0">
+	<div class="flex min-w-0 flex-col gap-3" bind:this={highlight.el} bind:clientWidth={plotWidth}>
+		<Chart.Container {config} class="{CHART_BOX} w-full min-w-0">
 			<BarChart
 				data={view}
 				x="label"
 				{series}
 				seriesLayout="overlap"
 				bandPadding={0.15}
-				padding={{ top: 8, right: 8, bottom: 20, left: 40 }}
+				padding={fittedPadding(PADDING, plotWidth)}
 				props={{ xAxis: { ticks: 7 } }}
 				highlight={{ area: { fill: highlight.fill, fillOpacity: 0.1 } }}
 			>
@@ -141,5 +152,5 @@
 		<ChartLegend items={legend} />
 	</div>
 {:else}
-	<div class="flex h-64 items-center justify-center text-sm text-muted-foreground">{empty}</div>
+	<div class="flex {CHART_BOX} items-center justify-center text-sm text-muted-foreground">{empty}</div>
 {/if}

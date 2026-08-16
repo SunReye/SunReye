@@ -6,8 +6,13 @@ Use this file for work in `apps/web`.
 
 If adding, reading, validating, or renaming env vars, also follow `packages/env/AGENTS.md`. Env schemas live there only; import shared env exports instead of making app-local duplicates.
 
+Before editing any `.svelte` file here — a page, a card, a grid, a chart box, a live reading — load
+the `layout-system` skill. Measure, gutter, rhythm, columns, chart heights and value ownership are
+decided in `src/lib/layout/tokens.ts` and `src/lib/live/ownership.ts`, and five test files reject a
+hand-rolled alternative.
+
 For frontend UI/UX work, also read `apps/web/DESIGN.md`.
-For frontend testing work, and after adding/changing pages or user-visible components, also read `apps/web/TESTING.md`.
+For frontend testing work, and after adding/changing pages or user-visible components, also read `apps/web/TESTING.md` — in particular "Writing a source-text test", which is how layout conventions are pinned here.
 
 <!-- ShadCN-Svelte:BEGIN -->
 

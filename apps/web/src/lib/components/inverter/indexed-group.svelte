@@ -20,7 +20,7 @@
 	}
 </script>
 
-<div class={`grid gap-4 ${columns}`}>
+<div class={`grid grid-cols-1 gap-4 ${columns}`}>
 	{#each indices as i (i)}
 		<div class="flex flex-col gap-1">
 			<span class="text-xs font-medium">{label} {i}</span>

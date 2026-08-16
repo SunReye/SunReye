@@ -3,7 +3,7 @@
 	import { toast } from 'svelte-sonner';
 	import { Switch } from '$lib/components/ui/switch';
 	import { Label } from '$lib/components/ui/label';
-	import SettingsSection from './settings-section.svelte';
+	import Section from '$lib/components/layout/section.svelte';
 	import { api } from '$lib/api';
 	import { useAppSession } from '$lib/session';
 	import * as m from '$lib/paraglide/messages';
@@ -35,7 +35,7 @@
 	}
 </script>
 
-<SettingsSection title={m.settings_tab_access()}>
+<Section title={m.settings_tab_access()}>
 	{#if publicDashboard === null}
 		<p class="text-sm text-muted-foreground">{m.app_loading()}</p>
 	{:else}
@@ -57,4 +57,4 @@
 			<span class="text-xs text-muted-foreground">{m.settings_admin_only()}</span>
 		{/if}
 	{/if}
-</SettingsSection>
+</Section>

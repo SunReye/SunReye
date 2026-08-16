@@ -57,10 +57,6 @@ export function scopeOptions(range: CostRange): readonly { id: ChartScope; label
   ];
 }
 
-/** Panel heading: the chart's name and, when it has one, the window it plots. */
-export const panelHeading = (title: string, window: string | undefined): string =>
-  window ? `${title} — ${window}` : title;
-
 /**
  * A panel's summary figure describes the PICKED window, so it only belongs on a
  * chart plotting that window. Zoomed out to context (the trailing 12 or 24

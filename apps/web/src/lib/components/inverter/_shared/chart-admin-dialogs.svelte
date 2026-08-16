@@ -6,18 +6,22 @@
 	import { Button } from '$lib/components/ui/button';
 	import * as m from '$lib/paraglide/messages';
 	import CustomChartEditor from '$lib/components/inverter/custom-chart-editor.svelte';
-	import { type CustomChart, customCharts } from '$lib/inverter/custom-charts.svelte';
+	import { customCharts } from '$lib/inverter/custom-charts.svelte';
+	import type { CustomChart } from '$lib/inverter/custom-chart';
 
 	let {
 		isAdmin,
 		editorOpen = $bindable(false),
 		editing,
+		seed = [],
 		pendingDelete = $bindable(null)
 	}: {
 		isAdmin: boolean;
 		editorOpen?: boolean;
 		/** Chart being edited, or null to create a new one. */
 		editing: CustomChart | null;
+		/** Metrics pre-picked for a new chart. */
+		seed?: string[];
 		/** Chart awaiting delete confirmation; null closes the dialog. */
 		pendingDelete?: CustomChart | null;
 	} = $props();
@@ -49,7 +53,7 @@
 </script>
 
 {#if isAdmin}
-	<CustomChartEditor bind:open={editorOpen} chart={editing} />
+	<CustomChartEditor bind:open={editorOpen} chart={editing} {seed} />
 
 	<Dialog.Root open={pendingDelete !== null} {onOpenChange}>
 		<Dialog.Content class="sm:max-w-sm">

@@ -5,7 +5,8 @@
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
 	import { Label } from '$lib/components/ui/label';
-	import SettingsSection from './settings-section.svelte';
+	import Section from '$lib/components/layout/section.svelte';
+	import EmptyState from '$lib/components/layout/empty-state.svelte';
 	import ActionBar from './action-bar.svelte';
 	import TariffBandDays from './tariff-band-days.svelte';
 	import TariffSpotFields from './tariff-spot-fields.svelte';
@@ -86,9 +87,7 @@
 </script>
 
 {#if !tariff}
-	<div class="flex h-40 items-center justify-center border border-border text-sm text-muted-foreground">
-		{m.tariff_loading()}
-	</div>
+	<EmptyState message={m.tariff_loading()} />
 {:else}
 	<ActionBar>
 		<Button onclick={save} disabled={saving}>
@@ -96,8 +95,8 @@
 		</Button>
 	</ActionBar>
 
-	<SettingsSection title={m.tariff_general()}>
-		<div class="grid gap-4 sm:grid-cols-3">
+	<Section title={m.tariff_general()}>
+		<div class="grid grid-cols-1 gap-4 sm:grid-cols-3">
 			<div class="flex flex-col gap-1.5">
 				<Label for="currency">{m.tariff_currency()}</Label>
 				<Input id="currency" maxlength={3} bind:value={tariff.currency} class="uppercase" />
@@ -111,13 +110,13 @@
 				<Input id="feedin" type="number" step="0.001" bind:value={tariff.export.feedInPerKwh} />
 			</div>
 		</div>
-	</SettingsSection>
+	</Section>
 
-	<SettingsSection title={m.tariff_market_prices()}>
+	<Section title={m.tariff_market_prices()}>
 		<TariffSpotFields bind:tariff />
-	</SettingsSection>
+	</Section>
 
-	<SettingsSection title={m.tariff_import_price()}>
+	<Section title={m.tariff_import_price()}>
 		{#snippet actions()}
 			<Button variant="ghost" size="sm" onclick={addBand}>
 				<PlusIcon class="size-4" /> {m.tariff_add_band()}
@@ -170,5 +169,5 @@
 				<TariffBandDays bind:days={band.days} />
 			</div>
 		{/each}
-	</SettingsSection>
+	</Section>
 {/if}

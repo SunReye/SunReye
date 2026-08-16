@@ -13,8 +13,20 @@
 		bucket,
 		/** Add the two battery flows. Capability gate: a plant without a pack must
 		 *  not get two permanently-flat lines. */
-		showBattery = false
-	}: { periods: PeriodEnergy[]; bucket: CostBucket; showBattery?: boolean } = $props();
+		showBattery = false,
+		onZoom,
+		onResetZoom,
+		zoomed = false
+	}: {
+		periods: PeriodEnergy[];
+		bucket: CostBucket;
+		showBattery?: boolean;
+	/** Forwarded to the line chart: a drag selects positions, and the section
+	 *  answers by refetching that window at a finer bucket. */
+	onZoom?: (indices: [number, number]) => void;
+	onResetZoom?: () => void;
+	zoomed?: boolean;
+	} = $props();
 
 	type Row = PeriodEnergy & { label: string };
 
@@ -72,4 +84,4 @@
 	const kwh = (v: unknown) => `${decimal(Number(v))} kWh`;
 </script>
 
-<PeriodLineChart {data} {series} format={kwh} />
+<PeriodLineChart {data} {series} format={kwh} {onZoom} {onResetZoom} {zoomed} />

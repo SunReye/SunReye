@@ -6,12 +6,12 @@
 	import LogsLines from './logs-lines.svelte';
 	import LogsToolbar from './logs-toolbar.svelte';
 	import OptionSelect from './option-select.svelte';
-	import SettingsSection from './settings-section.svelte';
+	import Section from '$lib/components/layout/section.svelte';
 	import * as m from '$lib/paraglide/messages';
 
-	// Lease the shared log socket while this panel is mounted; the store opens the
-	// WebSocket on the first lease and closes it when this disposer runs.
-	$effect(() => logs.connect());
+	// Lease the `logs` topic on the app's one socket while this panel is mounted;
+	// the disposer gives the topic back, leaving the connection alone.
+	$effect(() => logs.lease());
 
 	// Client-side view filters — the stream (and the export of what's on screen)
 	// always carries every line; these only narrow what is rendered.
@@ -83,7 +83,7 @@
 	}
 </script>
 
-<SettingsSection title={m.logs_title()}>
+<Section title={m.logs_title()}>
 	{#snippet actions()}
 		<LogsToolbar exportDisabled={filtered.length === 0} onexport={exportLogs} />
 	{/snippet}
@@ -117,4 +117,4 @@
 	</div>
 
 	<LogsLines lines={filtered} total={logs.lines.length} />
-</SettingsSection>
+</Section>
