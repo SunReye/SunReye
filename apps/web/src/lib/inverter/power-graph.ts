@@ -1,9 +1,11 @@
+import { flowClass, gridClass, type Flow } from "./sign-colors";
 import type { CanonicalRole, InverterCapabilities } from "$lib/inverter/types";
 import * as m from "$lib/paraglide/messages";
 
 // Flow relative to the inverter: `in` = power arriving (production / discharge
 // / import), `out` = leaving it (load / charge / export).
-export type Flow = "in" | "out" | "idle";
+// Declared with the colours that read it — see ./sign-colors.
+export type { Flow };
 /** Anchor as a fraction (0..1) of the diagram box — node anchors are circle centres. */
 export type Pt = { x: number; y: number };
 
@@ -96,44 +98,10 @@ function sense(
   return { flow: "idle", state: m.flow_idle() };
 }
 
-// Default flow hue by direction relative to the inverter: arriving = green,
-// leaving = amber, idle = the static rail colour.
-function flowColor(flow: Flow): string {
-  return flow === "in" ? "text-emerald-500" : flow === "out" ? "text-amber-500" : "text-border";
-}
-
-// Grid uses cost semantics instead of raw direction: exporting (feeding energy
-// into the grid) is green, importing (pulling from it) is red.
-function gridColor(watts: number | undefined): string {
-  const v = watts ?? 0;
-  if (v < -0.5) return "text-emerald-500"; // exporting
-  if (v > 0.5) return "text-red-500"; // importing
-  return "text-border";
-}
-
-// SOC → colour: red when low, fading through orange to green when healthy.
-// Interpolated between stops so the ring literally fades across the 30/60 bands.
-export function socColor(soc: number): string {
-  const stops = [
-    { p: 0, rgb: [239, 68, 68] }, // red-500
-    { p: 30, rgb: [249, 115, 22] }, // orange-500
-    { p: 60, rgb: [34, 197, 94] }, // green-500
-    { p: 100, rgb: [34, 197, 94] },
-  ];
-  const s = Math.min(100, Math.max(0, soc));
-  let lo = stops[0];
-  let hi = stops[stops.length - 1];
-  for (let i = 0; i < stops.length - 1; i++) {
-    if (s >= stops[i].p && s <= stops[i + 1].p) {
-      lo = stops[i];
-      hi = stops[i + 1];
-      break;
-    }
-  }
-  const t = hi.p === lo.p ? 0 : (s - lo.p) / (hi.p - lo.p);
-  const c = lo.rgb.map((v, i) => Math.round(v + (hi.rgb[i] - v) * t));
-  return `rgb(${c[0]}, ${c[1]}, ${c[2]})`;
-}
+// Direction, cost and battery-health colours live in ./sign-colors, where they
+// are tokens rather than Tailwind literals and can be exercised.
+const flowColor = flowClass;
+const gridColor = gridClass;
 
 /**
  * Evenly place `k` anchors along one axis inside [lo, hi], shrinking the span

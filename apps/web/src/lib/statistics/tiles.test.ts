@@ -133,7 +133,7 @@ describe("effective cost", () => {
   test("turns green when feed-in outweighs the bill", () => {
     const t = tileById(breakdown({ net: -5 }), "cost.effectiveCost");
     expect(t.value).toBe(f.money(-5));
-    expect(t.accent).toBe("text-emerald-500");
+    expect(t.accent).toBe("text-sign-good");
   });
 
   test("stays uncoloured on a month that exactly broke even", () => {
@@ -153,7 +153,7 @@ describe("grid import / export", () => {
   });
 
   test("export earnings turn green only when non-zero", () => {
-    expect(tileById(breakdown(), "cost.gridExport").accent).toBe("text-emerald-500");
+    expect(tileById(breakdown(), "cost.gridExport").accent).toBe("text-sign-good");
     expect(tileById(breakdown({ exportEarnings: 0 }), "cost.gridExport").accent).toBe("");
   });
 });
@@ -164,7 +164,7 @@ describe("solar saving", () => {
     expect(t.value).toBe(f.money(18));
     // 18 € over 60 kWh self-consumed = 0.30 €/kWh effective.
     expect(t.sub).toBe(`${f.kwh(60)} × ${f.price(0.3)}`);
-    expect(t.accent).toBe("text-emerald-500");
+    expect(t.accent).toBe("text-sign-good");
   });
 
   test("falls back to the generic sub-line without self-consumption", () => {
@@ -178,7 +178,7 @@ describe("total savings", () => {
   test("shows the savings figure, green when positive", () => {
     const t = tileById(breakdown(), "cost.totalSavings");
     expect(t.value).toBe(f.money(22));
-    expect(t.accent).toBe("text-emerald-500");
+    expect(t.accent).toBe("text-sign-good");
     expect(t.sub).toContain(f.money(4));
   });
 
@@ -248,14 +248,14 @@ describe("COMPARISON_TILES registry", () => {
   test("states the period's net cost, green only once feed-in outweighs the bill", () => {
     expect(byId(breakdown(), "records.netCost").value).toBe(f.money(36));
     expect(byId(breakdown(), "records.netCost").accent).toBe("");
-    expect(byId(breakdown({ net: -12.5 }), "records.netCost").accent).toBe("text-emerald-500");
+    expect(byId(breakdown({ net: -12.5 }), "records.netCost").accent).toBe("text-sign-good");
     // Breaking even is not in the household's favour, so it stays uncoloured.
     expect(byId(breakdown({ net: 0 }), "records.netCost").accent).toBe("");
   });
 
   test("states what solar saved, green only once it saved something", () => {
     expect(byId(breakdown(), "records.savings").value).toBe(f.money(22));
-    expect(byId(breakdown(), "records.savings").accent).toBe("text-emerald-500");
+    expect(byId(breakdown(), "records.savings").accent).toBe("text-sign-good");
     expect(byId(breakdown({ savings: 0 }), "records.savings").accent).toBe("");
     expect(byId(breakdown({ savings: -3 }), "records.savings").accent).toBe("");
   });
@@ -387,7 +387,7 @@ describe("PRICE_TILES registry", () => {
   });
 
   test("greens the import price only when it beat the plain average", () => {
-    expect(deriveTiles(PRICE_TILES, stats(), f).at(-1)?.accent).toBe("text-emerald-500");
+    expect(deriveTiles(PRICE_TILES, stats(), f).at(-1)?.accent).toBe("text-sign-good");
     const missed = deriveTiles(
       PRICE_TILES,
       stats({
@@ -571,7 +571,7 @@ describe("WHATIF_TILES registry", () => {
   test("prices the window both ways and greens a cheaper spot bill", () => {
     const tiles = deriveTiles(WHATIF_TILES, whatIf(), f);
     expect(tiles.map((t) => t.value)).toEqual([f.money(120), f.money(99), f.money(-21)]);
-    expect(tiles.at(-1)?.accent).toBe("text-emerald-500");
+    expect(tiles.at(-1)?.accent).toBe("text-sign-good");
   });
 
   test("says plainly when spot would have cost more", () => {
@@ -613,7 +613,7 @@ describe("WHATIF_TILES registry", () => {
     const tiles = deriveTiles(WHATIF_TILES, whatIf({ spotCost: -8, delta: -128 }), f);
     expect(tiles[1]?.value).toBe(f.money(-8));
     expect(tiles.at(-1)?.value).toBe(f.money(-128));
-    expect(tiles.at(-1)?.accent).toBe("text-emerald-500");
+    expect(tiles.at(-1)?.accent).toBe("text-sign-good");
   });
 
   test("raw exposes both repriced bills and their difference", () => {

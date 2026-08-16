@@ -97,6 +97,17 @@
      hue, since the warm end of the wheel is already spent. */
   --energy-generator: #643d20;
 
+  /* Direction and judgement: energy arriving or leaving, a meter importing or
+     exporting, money earned or spent, a battery healthy or flat. These were
+     Tailwind literals (emerald-500 / red-500 / amber-500) and three rgb() stops
+     baked into the SOC ramp, which put the most red/green dependent thing in
+     the app outside the theme. They are tokens so a palette can reach them. */
+  --sign-good: #10b981;
+
+  --sign-warn: #f59e0b;
+
+  --sign-bad: #ef4444;
+
   /* Fixed grid-connection fee in the cost charts. Teal: distinct from the four
      energy-flow hues under CVD (validated with grid + export, dataviz skill). */
   --cost-standing: #0f9878;
@@ -179,6 +190,13 @@
 
   --energy-generator: #764d30;
 
+  /* Lifted direction/judgement colours for the dark surface. */
+  --sign-good: #34d399;
+
+  --sign-warn: #fbbf24;
+
+  --sign-bad: #f87171;
+
   /* Lifted standing-charge teal for the dark surface (dataviz-validated). */
   --cost-standing: #14a385;
 
@@ -251,6 +269,12 @@
   --color-energy-ev: var(--energy-ev);
 
   --color-energy-generator: var(--energy-generator);
+
+  --color-sign-good: var(--sign-good);
+
+  --color-sign-warn: var(--sign-warn);
+
+  --color-sign-bad: var(--sign-bad);
 
   --color-cost-standing: var(--cost-standing);
 

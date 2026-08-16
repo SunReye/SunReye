@@ -97,21 +97,21 @@
 			money: {
 				label: m.energy_saved,
 				text: `+${money(c.solarSavings, c.currency)}`,
-				color: 'text-emerald-500'
+				color: 'text-sign-good'
 			}
 		}),
 		'grid.energy.exported.today': (c) => ({
 			money: {
 				label: m.energy_earned,
 				text: `+${money(c.exportEarnings, c.currency)}`,
-				color: 'text-emerald-500'
+				color: 'text-sign-good'
 			}
 		}),
 		'grid.energy.imported.today': (c) => ({
 			money: {
 				label: m.energy_spent,
 				text: `−${money(c.importCost, c.currency)}`,
-				color: 'text-red-500'
+				color: 'text-sign-bad'
 			}
 		})
 	};
