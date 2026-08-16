@@ -2,11 +2,22 @@
 
 ## [unreleased]
 
-Unreleased work on `dev` since 1.2.0, shipped in `beta.20260816-2048a31`.
+Unreleased work on `dev` since 1.2.0, shipped in `beta.20260816-14b4b27`.
 
 
 ### Features
 
+* choose the chart palette in settings ([95a5dcc](https://github.com/SunReye/SunReye/commit/95a5dcc21bb9d7ea528b85a4ae4b65f13ada33a7))
+* **web:** categorical chart palette, and a colour per series ([884c4b6](https://github.com/SunReye/SunReye/commit/884c4b66858150770cba9ef76abb691d3af53d56))
+* **web:** zoom the overlaid chart, saved or drafted ([4764645](https://github.com/SunReye/SunReye/commit/47646450ce1cda8847ab7302be11189322a5ac0c))
+* **web:** compare replaces add-to-chart in the card header ([55490a2](https://github.com/SunReye/SunReye/commit/55490a21fcc36d55dd11cbc83d73144224a7f98f))
+* **web:** draft a chart on a full-screened metric card ([a718f90](https://github.com/SunReye/SunReye/commit/a718f90a7f01744af3548a4ff342c759b7952c9f))
+* **web:** add a metric to a custom chart from its own card ([696b0a1](https://github.com/SunReye/SunReye/commit/696b0a19b19bf3a29e2978d7f5c204b5f6a40469))
+* **web:** take any chart to the whole screen ([be82a7a](https://github.com/SunReye/SunReye/commit/be82a7a94ba99ad87eea8fcdb0d19af3079b3afa))
+* chart zoom, an honest peak-shaving reserve, and the layout docs ([6fa4f3b](https://github.com/SunReye/SunReye/commit/6fa4f3be1783e606b2d86160750dcfe5a8312d54))
+* **web:** canonical page shell and section primitives ([194b05e](https://github.com/SunReye/SunReye/commit/194b05e85ebe4ef3b0335bed7e28df1045a1eb97))
+* **web:** one leased socket with topic subscriptions ([d281575](https://github.com/SunReye/SunReye/commit/d281575929c636d489d2bacb3432f0a3ea0b8bb6))
+* **server:** multiplexed /ws with per-topic authorization ([f42d09a](https://github.com/SunReye/SunReye/commit/f42d09a77f483b2472520160e42337723510ce05))
 * **server:** dedicated plant time zone for server-side bucketing ([55885f1](https://github.com/SunReye/SunReye/commit/55885f12da13941a67e9bf5a47d7e28e5528585b))
 * **server:** finish the irradiance provider seam ([063086f](https://github.com/SunReye/SunReye/commit/063086fa94c53c62c67b3643941032599d6716e9))
 * **web:** live indicator and dated section captions ([3c8ccf2](https://github.com/SunReye/SunReye/commit/3c8ccf277fe52c99bc114961ddb3da4ce96093da))
@@ -61,6 +72,15 @@ Unreleased work on `dev` since 1.2.0, shipped in `beta.20260816-2048a31`.
 
 ### Bug Fixes
 
+* **web:** close the gaps an adversarial review found in the palette work ([c8cc39b](https://github.com/SunReye/SunReye/commit/c8cc39ba8618893c412c71174cf382583c0c6607))
+* **web:** paint fixed meanings from the semantic set, not the palette ([8061145](https://github.com/SunReye/SunReye/commit/8061145f70b59731e245cc3be8811e9c61c6a349))
+* **web:** let an expanded chart escape a transformed ancestor ([4b1c066](https://github.com/SunReye/SunReye/commit/4b1c066492126a0efab2ce5a814d36873b7e653c))
+* **web:** let Escape close the layer on top, not the card under it ([f88a48d](https://github.com/SunReye/SunReye/commit/f88a48d2e3ccaa01283580a4c7a61046b070b3a5))
+* **web:** full-screen the document, not the card ([3f1f1b4](https://github.com/SunReye/SunReye/commit/3f1f1b4c373076a52876e0714231b03cb778d09e))
+* **web:** give the live sparkline's measuring box a height ([65582be](https://github.com/SunReye/SunReye/commit/65582bed3d39a8e85f1fbba8bc300cab9176c2b9))
+* **web:** narrow the last seven chart gutters on a phone ([5d2d2fa](https://github.com/SunReye/SunReye/commit/5d2d2fa026a5544b92c1f2ffb8f89966304feb5f))
+* stop the charge-current round-up eating exportable PV, and finish the card migration ([3cdadfe](https://github.com/SunReye/SunReye/commit/3cdadfec95bbaa412034355159c319ec6519bdf8))
+* **web:** stop the automations card overflowing a phone ([1237d38](https://github.com/SunReye/SunReye/commit/1237d385eeeb4628942358adc5d5b74ddd2caefb))
 * **server:** align the energy day chart extent with the cost series ([9d15260](https://github.com/SunReye/SunReye/commit/9d15260a0f1a97359c7c0fd592707cc43f10c662))
 * **web:** cap the select dropdown height so long lists scroll ([1718f01](https://github.com/SunReye/SunReye/commit/1718f01aed7248473d0fe50a3916bdfd5fba85c1))
 * **web:** type the chart-axes gap fixture so svelte-check passes ([a9e1d3b](https://github.com/SunReye/SunReye/commit/a9e1d3b8db15c396ec1c1f376b7646d0982faa64))
@@ -103,6 +123,8 @@ Unreleased work on `dev` since 1.2.0, shipped in `beta.20260816-2048a31`.
 
 ### Documentation
 
+* **web:** write down the full-screen vocabulary ([697b882](https://github.com/SunReye/SunReye/commit/697b882e1e3c92dcaaee726c228f8fdce1fa5e8a))
+* **web:** write down the gesture contract and the testing lesson ([6aac5ca](https://github.com/SunReye/SunReye/commit/6aac5cab864908534bed8a45edb4009806a32dec))
 * add a contributor guide covering the release flow ([02e8aeb](https://github.com/SunReye/SunReye/commit/02e8aeb6c58e4c0a80221ca8ce8dc13aa7e1ddda))
 * document the dev branch and the beta addon channel ([e7a6194](https://github.com/SunReye/SunReye/commit/e7a6194e2176751c892c6dfd7590d57c567f6599))
 * update costs page docs for the statistics rename ([aedbd9f](https://github.com/SunReye/SunReye/commit/aedbd9f6d56d86caea2c103f3fa3cb6bad69ecd1))
@@ -120,6 +142,13 @@ Unreleased work on `dev` since 1.2.0, shipped in `beta.20260816-2048a31`.
 
 ### Code Refactoring
 
+* **web:** direction and judgement colours become tokens ([e488ae9](https://github.com/SunReye/SunReye/commit/e488ae9d64505df0e6948cddacf1ea8d991b29dc))
+* **web:** draft controls are icons, without the caption ([6e44599](https://github.com/SunReye/SunReye/commit/6e44599329814bfeec6b52d6104eb04b535aff7d))
+* **web:** one renderer for an overlaid chart ([e2cd65b](https://github.com/SunReye/SunReye/commit/e2cd65baaf2344b370a3455256ffef51b6a6c8bd))
+* **server:** one source for the physical export cap ([fba3e4c](https://github.com/SunReye/SunReye/commit/fba3e4c8fc05549fa6ac191eb74cd4a9c828ba43))
+* **web:** put the whole app on the layout system, and open it up on a phone ([828f720](https://github.com/SunReye/SunReye/commit/828f720ba90e046a493a1d08340f6c6c018d77fa))
+* **web:** one owner per live value ([be34538](https://github.com/SunReye/SunReye/commit/be34538daaaff82ca91d8437c4edcafa1c6fc1e0))
+* **web:** every live store reads from the bus ([fe26b17](https://github.com/SunReye/SunReye/commit/fe26b17d0869a6e32bdabb00378007fe09b5debf))
 * **server:** extract the runtime control writer as an injected collaborator ([e314497](https://github.com/SunReye/SunReye/commit/e314497e64a4de9f36aaedf99d63900790429a0f))
 * **server:** extract the runtime job scheduler as an injected collaborator ([5056585](https://github.com/SunReye/SunReye/commit/505658569d9dd303fe3f44dccf9025e4e0854cb7))
 * **server:** extract the runtime history buffer as an injected collaborator ([d700bb6](https://github.com/SunReye/SunReye/commit/d700bb65579ce570b35bf31bc754d4bddd93fb57))
@@ -203,6 +232,7 @@ Unreleased work on `dev` since 1.2.0, shipped in `beta.20260816-2048a31`.
 
 ### Tests
 
+* cross the client/server seam the deleted REST primes relied on ([a368585](https://github.com/SunReye/SunReye/commit/a3685856301aea4f14f89ecce60428e11fe3ff4d))
 * **server:** inject the evcc load-sample hook instead of module-mocking it ([c20771a](https://github.com/SunReye/SunReye/commit/c20771ac1ab66fb052fee6dda782b96aee24562a))
 * **ci:** make first-party mocks hand themselves back, and gate it ([58d8c41](https://github.com/SunReye/SunReye/commit/58d8c41183b7478649f2973d8845b132fdf19390))
 * take the suite from 80 % to 100 % line coverage ([44e5ba1](https://github.com/SunReye/SunReye/commit/44e5ba1f8da82f0d8364911b0640c5d0477dea89))
@@ -223,6 +253,7 @@ Unreleased work on `dev` since 1.2.0, shipped in `beta.20260816-2048a31`.
 
 ### Miscellaneous Chores
 
+* **web:** bump layerchart to 2.2.0 ([a345fa1](https://github.com/SunReye/SunReye/commit/a345fa1cef37d5bef7b2dedf7ee9f0ffff3f3c89))
 * **fallow:** close the web -> server boundary ([44f62ba](https://github.com/SunReye/SunReye/commit/44f62ba92a1a14c35e9e2fe8c3692ef1dc0a4b6b))
 * ignore agent worktrees ([1158899](https://github.com/SunReye/SunReye/commit/11588996953d351374e0a6b8f032e4cbf3afce17))
 * **web:** tidy up after the statistics rename ([12bc1dc](https://github.com/SunReye/SunReye/commit/12bc1dc8338eed0ceb38063c0ad2535946b0acfc))
