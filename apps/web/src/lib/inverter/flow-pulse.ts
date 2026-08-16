@@ -93,3 +93,85 @@ export function parseCeiling(raw: string | null | undefined): Ceiling {
   }
   return { watts: CEILING_FLOOR_W, at: 0 };
 }
+
+/**
+ * Interleaved comet layers. `period`/`delay` are fractions of PULSE_SPAN and
+ * PULSE_PERIOD_S; both are constants of the design and never see a reading.
+ *
+ * Every period divides PULSE_SPAN and the cycle travels exactly PULSE_SPAN, so
+ * the loop is seamless at every level and lighting a layer ADDS comets between
+ * the existing ones without moving any of them. Density is therefore an opacity
+ * fade of an already-running path — the single most important property here,
+ * and the reason density is not a changing dash period (which respaces, i.e.
+ * teleports, every comet on the rail).
+ *
+ * `from`/`to` are the share window over which that layer fades in.
+ */
+export const PULSE_LAYERS = [
+  { period: 1, delay: 0, from: 0, to: 0 }, // layer 0: any flow shows one comet
+  { period: 1, delay: 1 / 2, from: 0.02, to: 0.18 },
+  { period: 1 / 2, delay: 1 / 4, from: 0.22, to: 0.5 },
+  { period: 1 / 4, delay: 1 / 8, from: 0.52, to: 0.95 },
+] as const;
+
+export type RailPulse = {
+  share: number;
+  /** Per-layer opacity, 0..1. Index 0 is always 1 on a flowing rail. */
+  layers: number[];
+  /** Comet head length (px) — grows forward from a fixed dash start. */
+  dot: number;
+  /** Core stroke width (px); the bloom is 2.6x this. */
+  width: number;
+  /** Bloom stroke-opacity. */
+  glow: number;
+};
+
+const round1 = (n: number): number => Math.round(n * 10) / 10;
+const round2 = (n: number): number => Math.round(n * 100) / 100;
+
+/** Everything one flowing rail's comets need, from its watts and the plant's. */
+export function railPulse(watts: number | undefined, ceilingW: number): RailPulse {
+  const share = pulseShare(watts, ceilingW);
+  return {
+    share,
+    layers: PULSE_LAYERS.map(({ from, to }) =>
+      to <= from ? 1 : Math.min(1, Math.max(0, (share - from) / (to - from))),
+    ),
+    dot: round1(5 + share * 9),
+    width: round1(3 + share * 1.5),
+    glow: round2(0.12 + share * 0.22),
+  };
+}
+
+/**
+ * Inline style for layer `i`. Its ONLY input is the layer index — that is what
+ * makes the delay a constant of the design rather than a datum. The duration
+ * stays a literal in the stylesheet: a timing property reachable by a reading
+ * remaps elapsed time, which jumps every comet on every sample.
+ */
+export function layerStyle(i: number): string {
+  const l = PULSE_LAYERS[i]!;
+  return `--lvl-period:${l.period * PULSE_SPAN}px;--lvl-phase:${l.delay * PULSE_SPAN}px;animation-delay:-${l.delay * PULSE_PERIOD_S}s`;
+}
+
+/**
+ * Comet positions inside one base span at a given lit-layer count — the proof
+ * that lighting a layer interleaves rather than respaces. Tests only.
+ */
+export function dotPositions(lit: number): number[] {
+  const spots = new Set<number>();
+  for (const { period, delay } of PULSE_LAYERS.slice(0, Math.max(0, lit))) {
+    const step = period * PULSE_SPAN;
+    for (let x = delay * PULSE_SPAN; x < PULSE_SPAN; x += step) spots.add(x);
+  }
+  return [...spots].sort((a, b) => a - b);
+}
+
+/**
+ * The node's glow colour at a given share of the plant. A mix of the node's own
+ * accent token, so it follows the palette instead of baking a colour in.
+ */
+export function nodeGlow(accent: string, share: number): string {
+  const s = Number.isFinite(share) ? Math.min(1, Math.max(0, share)) : 0;
+  return `color-mix(in oklab, ${accent} ${Math.round(20 + s * 60)}%, transparent)`;
+}

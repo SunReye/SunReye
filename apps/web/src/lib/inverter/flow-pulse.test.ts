@@ -13,11 +13,16 @@ import { describe, expect, test } from "bun:test";
 import {
   CEILING_FLOOR_W,
   decayCeiling,
+  dotPositions,
+  layerStyle,
+  nodeGlow,
   parseCeiling,
+  PULSE_LAYERS,
   PULSE_PERIOD_S,
   PULSE_SPAN,
   PULSE_SPEED,
   pulseShare,
+  railPulse,
   throughputWatts,
   type Ceiling,
 } from "./flow-pulse";
@@ -243,5 +248,253 @@ describe("parseCeiling", () => {
     // JSON has no Infinity, so it round-trips as null — but a hand-edited or
     // foreign entry can still carry one.
     expect(parseCeiling('{"watts":null,"at":null}')).toEqual({ watts: CEILING_FLOOR_W, at: 0 });
+  });
+});
+
+describe("the pulse ladder", () => {
+  test("every layer's dash period divides the travelled span exactly", () => {
+    // The cycle travels exactly PULSE_SPAN. If a period did not divide it, that
+    // layer's comets would jump at the loop point — a visible stutter once per
+    // 2.5 s on a rail nobody is touching.
+    for (const layer of PULSE_LAYERS) {
+      const period = layer.period * PULSE_SPAN;
+      expect(period).toBeGreaterThan(0);
+      expect(PULSE_SPAN % period).toBe(0);
+    }
+  });
+
+  test("the base layer is always lit — any flow shows at least one comet", () => {
+    // A rail that is moving power must never be indistinguishable from an idle
+    // one, however small its share.
+    expect(PULSE_LAYERS[0]?.from).toBe(0);
+    expect(PULSE_LAYERS[0]?.to).toBe(0);
+  });
+
+  test("each layer lights above the one below it", () => {
+    // The windows have to climb, or two layers fade in together and the density
+    // ladder collapses into two steps instead of four.
+    for (let i = 2; i < PULSE_LAYERS.length; i++) {
+      expect(PULSE_LAYERS[i]!.from).toBeGreaterThanOrEqual(PULSE_LAYERS[i - 1]!.to - 0.001);
+      expect(PULSE_LAYERS[i]!.to).toBeGreaterThan(PULSE_LAYERS[i]!.from);
+    }
+  });
+});
+
+describe("dotPositions", () => {
+  /** Spacing of the lit comets inside one span, including the wrap to the next cycle. */
+  function spacings(lit: number): number[] {
+    const dots = dotPositions(lit);
+    return [...dots, PULSE_SPAN].slice(1).map((x, i) => x - dots[i]!);
+  }
+
+  test("each lit layer doubles the comet count at even spacing", () => {
+    // THE invariant of the design: density is a power-of-two interleave, so the
+    // gap between comets halves per layer and the rail never respaces.
+    for (let lit = 1; lit <= PULSE_LAYERS.length; lit++) {
+      const expected = PULSE_SPAN / 2 ** (lit - 1);
+      expect(dotPositions(lit)).toHaveLength(2 ** (lit - 1));
+      for (const gap of spacings(lit)) expect(gap).toBeCloseTo(expected, 9);
+    }
+  });
+
+  test("lighting a layer adds comets between the existing ones without moving any", () => {
+    // Why density is an opacity fade rather than a changing dash period: the
+    // comets already on the rail keep their exact positions, so nothing on
+    // screen teleports when the plant's load changes.
+    for (let lit = 2; lit <= PULSE_LAYERS.length; lit++) {
+      const before = dotPositions(lit - 1);
+      const after = dotPositions(lit);
+      for (const dot of before) expect(after).toContain(dot);
+      expect(after.length).toBe(before.length * 2);
+    }
+  });
+
+  test("no flow is no comets, and asking past the ladder cannot invent one", () => {
+    expect(dotPositions(0)).toEqual([]);
+    expect(dotPositions(-3)).toEqual([]);
+    expect(dotPositions(99)).toEqual(dotPositions(PULSE_LAYERS.length));
+  });
+});
+
+describe("railPulse", () => {
+  test("the same fraction of its own plant is the same picture at any scale", () => {
+    // Why the feature exists. A 5 kW rail on a 5.5 kW plant and a 500 W rail on
+    // a 550 W plant carry identical comets — density, length, width and bloom.
+    expect(railPulse(5000, 5500)).toEqual(railPulse(500, 550));
+    expect(railPulse(500, 5500)).toEqual(railPulse(50, 550));
+  });
+
+  test("a 300 W night against a 9 kW day is a single dim spark", () => {
+    // The flaw that killed max-of-current normalisation: without a remembered
+    // plant peak this rail would be the busiest one on screen and blaze at
+    // full density, so midnight and noon looked identical.
+    const night = railPulse(300, 9000);
+    expect(night.layers[0]).toBe(1);
+    expect(night.layers[1]).toBeLessThan(0.2); // a ghost, not a second comet
+    expect(night.layers[2]).toBe(0);
+    expect(night.layers[3]).toBe(0);
+    expect(night.glow).toBeLessThanOrEqual(0.14);
+  });
+
+  test("a 6 kW rail on the same plant runs every layer", () => {
+    const noon = railPulse(6000, 9000);
+    for (const opacity of noon.layers) expect(opacity).toBeGreaterThan(0);
+    expect(noon.layers[1]).toBe(1);
+    expect(noon.layers[2]).toBe(1);
+    expect(noon.dot).toBeGreaterThan(railPulse(300, 9000).dot);
+    expect(noon.width).toBeGreaterThan(railPulse(300, 9000).width);
+    expect(noon.glow).toBeGreaterThan(railPulse(300, 9000).glow);
+  });
+
+  test("the busiest rail is a fraction of the plant, not pinned at full", () => {
+    // The ceiling tracks the INBOUND sum, so PV sharing the spine with a
+    // discharging battery reads as most of the plant rather than all of it.
+    const segments = [
+      { flow: "in", value: 5000 },
+      { flow: "in", value: 1000 },
+      { flow: "out", value: 3000 },
+      { flow: "out", value: 3000 },
+    ] as const;
+    const ceiling = decayCeiling(
+      { watts: CEILING_FLOOR_W, at: 0 },
+      1000,
+      throughputWatts(segments),
+    );
+    expect(ceiling.watts).toBe(6000);
+    expect(railPulse(5000, ceiling.watts).share).toBeLessThan(1);
+    expect(railPulse(5000, ceiling.watts).share).toBeGreaterThan(0.5);
+  });
+
+  test("the plant's only inbound rail is the plant, and reads full", () => {
+    // The boundary of the rule above, worth stating: with PV alone on the
+    // inbound side it IS the throughput. In practice the remembered peak is
+    // older and larger than this instant, so this is the moment of a new
+    // record rather than the steady state.
+    const solo = [{ flow: "in", value: 5000 }] as const;
+    expect(railPulse(5000, throughputWatts(solo)).share).toBe(1);
+  });
+
+  test("a 1 Hz wobble produces a byte-identical pulse — nothing is written", () => {
+    // Un-quantize the share and each second rewrites four dash patterns and
+    // three custom properties on every rail in the diagram.
+    expect(railPulse(1000, 9000)).toEqual(railPulse(1004, 9000));
+    expect(railPulse(1000, 9000)).toEqual(railPulse(996, 9000));
+  });
+
+  test("carries magnitude, not sign — direction is colour and travel", () => {
+    expect(railPulse(-3000, 9000)).toEqual(railPulse(3000, 9000));
+  });
+
+  test("every layer opacity climbs with power and none overtakes full", () => {
+    const previous = PULSE_LAYERS.map(() => -1);
+    for (let w = 0; w <= 9000; w += 50) {
+      const { layers } = railPulse(w, 9000);
+      expect(layers).toHaveLength(PULSE_LAYERS.length);
+      layers.forEach((opacity, i) => {
+        expect(opacity).toBeGreaterThanOrEqual(previous[i]!);
+        expect(opacity).toBeLessThanOrEqual(1);
+        previous[i] = opacity;
+      });
+    }
+    expect(previous.every((o) => o > 0)).toBe(true);
+  });
+
+  test("survives every boundary reading without a NaN reaching a style", () => {
+    // A NaN in `dot`, `width` or `glow` reaches `stroke-dasharray` and the rail
+    // disappears — a silent blank cable on a wall panel nobody is watching.
+    const readings = [undefined, 0, -0, -250, 1e9, Number.NaN, Number.POSITIVE_INFINITY];
+    const ceilings = [0, -1, 9000, Number.NaN, Number.POSITIVE_INFINITY];
+    for (const w of readings)
+      for (const c of ceilings) {
+        const pulse = railPulse(w, c);
+        expect(pulse.layers[0]).toBe(1);
+        for (const value of [pulse.share, pulse.dot, pulse.width, pulse.glow, ...pulse.layers]) {
+          expect(Number.isFinite(value)).toBe(true);
+        }
+        expect(pulse.share).toBeGreaterThanOrEqual(0);
+        expect(pulse.share).toBeLessThanOrEqual(1);
+        expect(pulse.glow).toBeGreaterThan(0);
+        expect(pulse.glow).toBeLessThanOrEqual(1);
+        expect(pulse.dot).toBeGreaterThan(0);
+        expect(pulse.width).toBeGreaterThan(0);
+      }
+  });
+
+  test("a comet is never longer than the gap it travels in", () => {
+    // `stroke-dasharray: dot, period - dot` goes negative if the head outgrows
+    // the tightest layer's period, which turns the dashes into a solid line.
+    const tightest = Math.min(...PULSE_LAYERS.map((l) => l.period)) * PULSE_SPAN;
+    expect(railPulse(1e9, 9000).dot).toBeLessThan(tightest);
+  });
+});
+
+describe("layerStyle", () => {
+  test("takes the layer index and nothing else — no reading can reach a timing", () => {
+    // The original scar: an `animation-duration` derived from watts remaps
+    // elapsed time, so every sample jumps every comet. Arity 1 is the
+    // structural guarantee that a watt value cannot get in here.
+    expect(layerStyle.length).toBe(1);
+    expect(layerStyle(2)).toBe(layerStyle(2));
+  });
+
+  test("emits exactly the layer's own constants", () => {
+    // Derived from PULSE_LAYERS rather than restated, so a changed ladder is
+    // red here instead of silently mismatching the keyframes.
+    PULSE_LAYERS.forEach((layer, i) => {
+      expect(layerStyle(i)).toBe(
+        `--lvl-period:${layer.period * PULSE_SPAN}px;--lvl-phase:${layer.delay * PULSE_SPAN}px;animation-delay:-${layer.delay * PULSE_PERIOD_S}s`,
+      );
+    });
+  });
+
+  test("sets a delay but never a duration", () => {
+    for (let i = 0; i < PULSE_LAYERS.length; i++) {
+      expect(layerStyle(i)).toContain("animation-delay:");
+      expect(layerStyle(i)).not.toContain("animation-duration");
+    }
+  });
+
+  test("a phase parks each layer where its comets already sit", () => {
+    // Under reduced motion the animation is off and each layer is parked at
+    // --lvl-phase. The beads must land on the same interleave as the moving
+    // comets, or stopping the motion respaces the rail.
+    PULSE_LAYERS.forEach((layer, i) => {
+      const before = dotPositions(i);
+      const introduced = dotPositions(i + 1).filter((dot) => !before.includes(dot));
+      expect(layer.delay * PULSE_SPAN).toBe(introduced[0]!);
+      expect(layerStyle(i)).toContain(`--lvl-phase:${introduced[0]}px`);
+    });
+  });
+});
+
+describe("nodeGlow", () => {
+  test("mixes the node's accent token rather than baking a colour", () => {
+    // A hex here is a colour the palette cannot reach — the whole reason the
+    // direction and judgement colours became tokens.
+    const glow = nodeGlow("var(--energy-solar)", 0.85);
+    expect(glow).toStartWith("color-mix(in oklab,");
+    expect(glow).toContain("var(--energy-solar)");
+    expect(glow).not.toMatch(/#[0-9a-f]{3}/i);
+    expect(glow).not.toMatch(/rgb|emerald|amber/i);
+  });
+
+  test("brightens with the plant's share and stays inside the mix range", () => {
+    const percent = (share: number) => Number(/ (\d+)%/.exec(nodeGlow("var(--x)", share))?.[1]);
+    expect(percent(1)).toBeGreaterThan(percent(0.5));
+    expect(percent(0.5)).toBeGreaterThan(percent(0));
+    expect(percent(0)).toBeGreaterThan(0);
+    expect(percent(1)).toBeLessThanOrEqual(100);
+  });
+
+  test("an out-of-range or unreadable share cannot emit an invalid percentage", () => {
+    // The share arrives from a reading; a NaN percentage silently voids the
+    // whole box-shadow declaration and the node loses its glow entirely.
+    for (const share of [-1, 2, Number.NaN, Number.POSITIVE_INFINITY]) {
+      const glow = nodeGlow("var(--x)", share);
+      const percent = Number(/ (\d+)%/.exec(glow)?.[1]);
+      expect(Number.isFinite(percent)).toBe(true);
+      expect(percent).toBeGreaterThanOrEqual(0);
+      expect(percent).toBeLessThanOrEqual(100);
+    }
   });
 });
