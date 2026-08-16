@@ -286,6 +286,20 @@ describe("the diagram measures each rail against the remembered plant", () => {
   });
 });
 
+describe("the charge is drawn whole", () => {
+  test("its glow may spill past the safe box instead of being clipped", () => {
+    // An <svg> clips to its viewport by default, and this one is inset by a
+    // caption stack on every side (power-graph.ts). A charge's bloom is far
+    // wider than the charge itself, so on a rail running near the edge the halo
+    // met a hard vertical cut — a straight line across a round glow, which
+    // reads as a render bug rather than a design.
+    // `<svg\s` so a prose mention of `<svg>` in a comment cannot satisfy this.
+    const tag = /<svg\s[^>]*>/.exec(rails)?.[0] ?? "";
+    expect(tag).not.toBe("");
+    expect(tag).toContain("overflow-visible");
+  });
+});
+
 describe("a reversal fades instead of mirroring", () => {
   test("the each-key changes when the flow does", () => {
     // Keyed on the id alone, a rail that reverses keeps its group and its

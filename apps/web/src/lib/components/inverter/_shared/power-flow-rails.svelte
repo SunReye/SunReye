@@ -67,7 +67,17 @@
 	};
 </script>
 
-<svg class="absolute inset-0" {width} {height} viewBox={`0 0 ${width} ${height}`} aria-hidden="true">
+<!-- `overflow-visible` because an <svg> clips to its viewport, and this one is
+     inset from the hero by a caption stack on every side (power-graph.ts). A
+     charge's bloom is far wider than the charge, so a rail running near the edge
+     had its halo cut off by a hard straight line. -->
+<svg
+	class="absolute inset-0 overflow-visible"
+	{width}
+	{height}
+	viewBox={`0 0 ${width} ${height}`}
+	aria-hidden="true"
+>
 	<!-- The cables first (all segments) so a later segment's idle rail never
 	     overpaints an earlier segment's lit one where routes cross. They carry
 	     the ids the charges fly along. -->
