@@ -14,6 +14,7 @@
 	import { sectionShellClass } from '$lib/layout/tokens';
 	import { expandedSectionClass } from '$lib/layout/tokens';
 	import { FullscreenBox } from '$lib/charts/fullscreen.svelte';
+	import { portal } from '$lib/actions/portal';
 	import { sectionOpen, writesOwnOpen } from '$lib/layout/section-state';
 	import SectionHeader from './section-header.svelte';
 	import SectionBody from './section-body.svelte';
@@ -98,6 +99,7 @@
 
 <Collapsible.Root open={contentOpenState} onOpenChange={handleOpenChange}>
 	<section
+		use:portal={fullscreen && screen.expanded}
 		class={expandedSectionClass(
 			sectionShellClass({ dashed, dimmed, nested }),
 			fullscreen && screen.expanded

@@ -447,6 +447,12 @@ of the editor.
   the card is `fixed`, its in-flow wrapper collapses to nothing, so that observer can never fire
   while it is expanded.
 
+- **An expanded frame leaves its subtree.** `fixed inset-0` resolves against the nearest ancestor
+  that establishes a containing block, and a CSS `transform` does — `Dialog.Content` centres itself
+  with one, so a chart taken full screen from inside the energy or forecast dialog filled the
+  *dialog*, not the screen. The frame is portalled to `document.body` while expanded (`use:portal`),
+  which covers `filter`, `backdrop-filter` and `contain` too, without changing a vendored primitive
+  every dialog shares. It goes back into its original slot on collapse — Svelte still owns the node.
 - Known limit: in **portrait** on a phone the plot is still 412px wide, so the 34px narrow gutter
   applies and a two-digit `kWh` label can clip. Landscape — the orientation a full-screen chart is
   actually read in — gets the designed 60px gutter.

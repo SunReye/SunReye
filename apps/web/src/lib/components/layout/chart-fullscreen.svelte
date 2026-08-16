@@ -11,6 +11,7 @@
 	import type { Snippet } from 'svelte';
 	import FullscreenTrigger from './fullscreen-trigger.svelte';
 	import { FullscreenBox } from '$lib/charts/fullscreen.svelte';
+	import { portal } from '$lib/actions/portal';
 	import { expandedChartClass } from '$lib/layout/tokens';
 
 	let {
@@ -26,7 +27,13 @@
 	$effect(() => screen.listen());
 </script>
 
-<div class={expandedChartClass(screen.expanded)}>
+<!-- Portalled while expanded: `fixed inset-0` resolves against the nearest
+     ancestor that establishes a containing block, and a CSS transform does —
+     `Dialog.Content` centres itself with one, so a chart expanded from inside
+     the energy or forecast dialog filled the DIALOG. Leaving the subtree fixes
+     it for every such ancestor (transform, filter, contain) at once, without
+     touching a vendored primitive every dialog shares. -->
+<div use:portal={screen.expanded} class={expandedChartClass(screen.expanded)}>
 	<div class="flex items-center justify-between gap-3">
 		{#if screen.expanded}
 			<h2 class="truncate text-sm font-medium uppercase tracking-wide text-muted-foreground">
