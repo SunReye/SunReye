@@ -9,13 +9,17 @@
 		range,
 		isAdmin,
 		onEdit,
-		onDelete
+		onDelete,
+		onZoom,
+		onResetZoom
 	}: {
 		charts: CustomChart[];
 		range: HistoryRange;
 		isAdmin: boolean;
 		onEdit: (chart: CustomChart) => void;
 		onDelete: (chart: CustomChart) => void;
+		onZoom?: (next: HistoryRange) => void;
+		onResetZoom?: () => void;
 	} = $props();
 </script>
 
@@ -27,6 +31,8 @@
 			{isAdmin}
 			onEdit={() => onEdit(chart)}
 			onDelete={() => onDelete(chart)}
+			{onZoom}
+			{onResetZoom}
 		/>
 	{/each}
 </div>

@@ -17,13 +17,19 @@
 		range,
 		isAdmin = false,
 		onEdit,
-		onDelete
+		onDelete,
+		onZoom,
+		onResetZoom
 	}: {
 		chart: CustomChart;
 		range: HistoryRange;
 		isAdmin?: boolean;
 		onEdit?: () => void;
 		onDelete?: () => void;
+		/** A window drag-selected on this chart; /history refetches every chart
+		 *  on the page onto it, exactly as it does for a metric card. */
+		onZoom?: (next: HistoryRange) => void;
+		onResetZoom?: () => void;
 	} = $props();
 </script>
 
@@ -48,5 +54,11 @@
 		{/if}
 	{/snippet}
 
-	<OverlayChartView metrics={chart.metrics} {range} />
+	<OverlayChartView
+		metrics={chart.metrics}
+		{range}
+		{onZoom}
+		{onResetZoom}
+		zoomed={range.id === 'zoom'}
+	/>
 </Section>

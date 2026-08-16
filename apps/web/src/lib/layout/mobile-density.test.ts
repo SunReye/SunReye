@@ -501,12 +501,15 @@ describe("the hand-tuned charts narrow against their own base", () => {
     // Without this the `rightAxis` flag is self-certifying: dropping it from the
     // dual-axis call clamps that gutter to the 8px overhang cap and the case
     // above still passes, because it only checks the flag against itself. The
-    // side that draws a second y-axis is decided by the marks, so read those.
+    // side that draws a second y-axis is decided by which chart hands its axes
+    // to the snippet that draws them, so read that.
     const code = read("lib/components/inverter/_shared/custom-chart-plot.svelte");
+    const axisSnippet = code.slice(code.indexOf("{#snippet dualAxes("));
+    expect(axisSnippet.slice(0, axisSnippet.indexOf("{/snippet}"))).toContain("<DualYAxes");
     const plots = code.split(/<AreaChart\b/).slice(1);
     const [dual, single] = [
-      plots.filter((p) => p.includes("<DualYAxes")),
-      plots.filter((p) => !p.includes("<DualYAxes")),
+      plots.filter((p) => p.includes("axis={dualAxes}")),
+      plots.filter((p) => !p.includes("axis={dualAxes}")),
     ];
     expect(dual).toHaveLength(1);
     expect(single).toHaveLength(1);

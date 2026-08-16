@@ -58,7 +58,14 @@
 	<!-- The same renderer a saved custom chart uses, driven from a key list
 	     nobody has persisted. `h-full` so it fills the expanded card rather than
 	     the grid card's fixed box. -->
-	<OverlayChartView metrics={overlay} {range} height="h-full" />
+	<OverlayChartView
+		metrics={overlay}
+		{range}
+		height="h-full"
+		{onZoom}
+		{onResetZoom}
+		zoomed={range.id === 'zoom'}
+	/>
 {:else if range.live}
 	<LiveArea
 		points={inverter.series(metric.key)}

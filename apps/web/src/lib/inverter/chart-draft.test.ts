@@ -160,8 +160,8 @@ describe("the draft is wired to the card, not to the gesture", () => {
     // a saved chart and a draft is only where the key list came from.
     const plot = await read("lib/components/inverter/_shared/metric-card-plot.svelte");
     const saved = await read("lib/components/inverter/custom-chart-card.svelte");
-    expect(plot).toContain("<OverlayChartView metrics={overlay}");
-    expect(saved).toContain("<OverlayChartView metrics={chart.metrics}");
+    expect(plot).toMatch(/<OverlayChartView\s+metrics=\{overlay\}/);
+    expect(saved).toMatch(/<OverlayChartView\s+metrics=\{chart\.metrics\}/);
   });
 
   test("saving hands the list to the editor that already writes custom charts", async () => {

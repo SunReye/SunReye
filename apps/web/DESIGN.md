@@ -355,9 +355,15 @@ selection *means*, and `lib/charts/zoom-wiring.test.ts` holds every chart to bot
   anything is zoomed, including a zoom the *owner* is holding as a refetched range, which the
   chart's own transform can no longer see. A chart left narrowed with no control does not read as
   zoomed; it reads as wrong numbers.
-- **Two charts deliberately do not zoom**, and must stay that way: the custom live chart and the
+- **Two charts deliberately do not zoom**, and must stay that way: the custom *live* chart and the
   automations decision chart. Each already runs a transform of its own inside a `ChartClipPath` — a
-  gliding live window, a decision timeline — and a second one composes badly.
+  gliding live window, a decision timeline — and a second one composes badly. The overlay's two
+  *historical* forms do zoom, and hand the selection up like any other /history chart: a drag on a
+  saved custom chart or on a draft moves the whole page onto the finer range.
+- **A zoomable chart must not draw its own axes from the `marks` snippet.** LayerChart clips that
+  layer to the plot rect as soon as a chart carries a brush or a `domain` transform, and axis labels
+  live in the padding gutter outside it — so the series keep rendering and the axes silently vanish.
+  Draw them from the `axis` snippet, which renders outside the clip.
 
 ## Full screen on a chart
 

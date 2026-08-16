@@ -1,17 +1,24 @@
 <script lang="ts">
-	// The plot of a custom chart, in whichever of its three forms applies: the
-	// gliding live window, or a historical area chart — dual-axis when the series
-	// span more than one unit (marks drawn by hand so each axis keeps its real
-	// values while the series share a normalized [0,1] scale), otherwise
-	// LayerChart's plain filled area on one axis.
-	import { AreaChart, Area, Highlight } from 'layerchart';
+	// The HISTORICAL plot of an overlaid chart, in whichever of its two forms
+	// applies: dual-axis when the series span more than one unit (marks drawn by
+	// hand so each axis keeps its real values while the series share a
+	// normalized [0,1] scale), otherwise LayerChart's plain filled area on one
+	// axis.
+	//
+	// The gliding live window is `CustomLiveChart`, chosen by the caller. It used
+	// to be a third branch in here, and having it meant every gesture and every
+	// control had to be guarded against a form that owns a transform of its own.
+	import { AreaChart, Area, Axis, Highlight, type ChartState } from 'layerchart';
 	import { curveCatmullRom } from 'd3-shape';
 	import * as Chart from '$lib/components/ui/chart';
 	import DualYAxes from '$lib/components/inverter/_shared/dual-y-axes.svelte';
 	import CustomChartTooltip from '$lib/components/inverter/custom-chart-tooltip.svelte';
-	import CustomLiveChart from '$lib/components/inverter/custom-live-chart.svelte';
 	import type { ResolvedAxes } from '$lib/components/inverter/_shared/chart-series';
+	import ZoomControls from '$lib/charts/zoom-controls.svelte';
+	import { chartZoom, zoomLabelOptions } from '$lib/charts/zoom.svelte';
+	import { minExtentFor, zoomedHistoryRangeFrom } from '$lib/charts/zoom-range';
 	import { fittedPadding } from '$lib/charts/plot-padding';
+	import type { HistoryRange, RollupBucket } from '$lib/inverter/ranges';
 	import type { AxisSeries, Datum } from '$lib/inverter/chart-axes';
 
 	// Two bases, because the two forms carry different things in their right
@@ -27,17 +34,18 @@
 	let plotWidth = $state(0);
 
 	let {
-		live,
 		data,
 		series,
 		config,
 		axes,
 		xDomain,
 		labelFormatter,
-		xTickFormat
+		xTickFormat,
+		bucket,
+		onZoom,
+		onResetZoom,
+		zoomed = false
 	}: {
-		/** Live mode streams from the store into its own gliding window. */
-		live: boolean;
 		data: Datum[];
 		series: AxisSeries[];
 		config: Chart.ChartConfig;
@@ -46,7 +54,31 @@
 		xDomain: [Date, Date];
 		labelFormatter: (v: unknown) => string;
 		xTickFormat: (v: unknown) => string;
+		/** Rollup the plotted rows were fetched at; sets the mis-tap floor. */
+		bucket: RollupBucket;
+		/**
+		 * A drag-selected window, already resolved to a range. The owner answers
+		 * by REFETCHING it, exactly as the single-metric card does — magnifying
+		 * the coarse buckets already on screen would show nothing new.
+		 */
+		onZoom?: (range: HistoryRange) => void;
+		onResetZoom?: () => void;
+		/** The owner is currently showing a zoomed window. */
+		zoomed?: boolean;
 	} = $props();
+
+	// One controller for both historical forms — only one of them renders at a
+	// time. The live form is deliberately left out: it already runs a transform
+	// of its own inside a ChartClipPath to glide the window, and a second one
+	// composes badly (see apps/web/DESIGN.md, "Gestures on a chart").
+	const zoom = chartZoom({
+		minExtent: () => minExtentFor(bucket),
+		onSelect: (x) => {
+			const range = zoomedHistoryRangeFrom(x, zoomLabelOptions());
+			if (range) onZoom?.(range);
+		},
+		onReset: () => onResetZoom?.()
+	});
 
 	// AreaChart's `marks` context isn't exposed in the public types; type just the
 	// fields the dual-axis marks snippet reads.
@@ -55,12 +87,30 @@
 	};
 </script>
 
-<!-- One measuring box around all three forms: the plot is the same box whichever
-     branch renders, and measuring per-branch would re-measure on every switch. -->
-<div class="h-full w-full" bind:clientWidth={plotWidth}>
-	{#if live}
-		<CustomLiveChart {data} {series} {config} {labelFormatter} />
-	{:else if axes.grouping.dualAxis}
+<!-- The chart context, taken where it is reachable: LayerChart's canvas
+     wrappers do not re-export `context` as bindable, and the reset control has
+     to reach the transform state to undo a gesture. -->
+{#snippet belowContext({ context }: { context: ChartState<Datum> })}{zoom.capture(context)}{/snippet}
+
+<!--
+	The dual-axis form draws its own y axes, and it has to do it from the `axis`
+	slot rather than from `marks`. LayerChart wraps `marks` in a ChartClipPath
+	the moment a chart carries a brush or a `domain` transform — which every
+	zoomable chart does — and these labels live in the padding gutter, OUTSIDE
+	the plot rect. Drawn among the marks they are simply clipped away: the series
+	still render and the axes silently vanish.
+-->
+{#snippet dualAxes({ context }: MarksContext)}
+	<Axis placement="bottom" format={xTickFormat} ticks={4} />
+	<DualYAxes height={context.height} {axes} />
+{/snippet}
+
+<!-- One measuring box around both forms: the plot is the same box whichever
+     branch renders, and measuring per-branch would re-measure on every switch.
+     `relative` because ZoomControls positions against it. -->
+<div class="relative h-full w-full" bind:clientWidth={plotWidth}>
+	<ZoomControls {zoom} resettable={zoomed} />
+	{#if axes.grouping.dualAxis}
 		<Chart.Container {config} class="aspect-auto h-full w-full">
 			<AreaChart
 				{data}
@@ -69,14 +119,14 @@
 				{xDomain}
 				yDomain={[0, 1]}
 				seriesLayout="overlap"
-				axis="x"
+				axis={dualAxes}
 				grid={false}
 				highlight={false}
 				padding={fittedPadding(DUAL_AXIS_PADDING, plotWidth, { rightAxis: true })}
-				props={{ xAxis: { format: xTickFormat, ticks: 4 } }}
+				{...zoom.props}
+				{belowContext}
 			>
 				{#snippet marks({ context }: MarksContext)}
-					<DualYAxes height={context.height} {axes} />
 					{#each context.series.visibleSeries as s (s.key)}
 						<Area
 							seriesKey={s.key}
@@ -103,6 +153,8 @@
 				axis
 				grid
 				padding={fittedPadding(PADDING, plotWidth)}
+				{...zoom.props}
+				{belowContext}
 				props={{
 					area: { curve: curveCatmullRom, fillOpacity: 0.2, line: { 'stroke-width': 1.5 } },
 					xAxis: { format: xTickFormat, ticks: 4 }

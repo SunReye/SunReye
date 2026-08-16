@@ -14,6 +14,7 @@
 	import * as msg from '$lib/paraglide/messages';
 	import ChartLegend from '$lib/components/inverter/chart-legend.svelte';
 	import CustomChartPlot from '$lib/components/inverter/_shared/custom-chart-plot.svelte';
+	import CustomLiveChart from '$lib/components/inverter/custom-live-chart.svelte';
 	import ChartStateView from '$lib/components/inverter/_shared/chart-state-view.svelte';
 	import { api } from '$lib/api';
 	import { inverter } from '$lib/inverter/store.svelte';
@@ -27,7 +28,10 @@
 	let {
 		metrics,
 		range,
-		height = CHART_BOX
+		height = CHART_BOX,
+		onZoom,
+		onResetZoom,
+		zoomed = false
 	}: {
 		/** Metric keys to overlay, in the order the user picked them — position
 		 *  decides colour, so this is not a set. */
@@ -35,6 +39,15 @@
 		range: HistoryRange;
 		/** Plot box height class. A draft fills its full-screen card. */
 		height?: string;
+		/**
+		 * A window drag-selected on this chart. The owner answers by refetching
+		 * it, exactly as a single-metric card does — /history moves every chart on
+		 * the page onto the finer range.
+		 */
+		onZoom?: (next: HistoryRange) => void;
+		onResetZoom?: () => void;
+		/** The owner is currently showing a zoomed window. */
+		zoomed?: boolean;
 	} = $props();
 
 	// A key can vanish under a saved chart when the profile changes, and under a
@@ -121,16 +134,26 @@
 <div class="{height} w-full">
 	{#if plottable}
 		<div class="h-full w-full" in:fade={{ duration: 300 }}>
-			<CustomChartPlot
-				live={range.live}
-				data={chartData}
-				{series}
-				{config}
-				{axes}
-				{xDomain}
-				labelFormatter={labelFmt}
-				{xTickFormat}
-			/>
+			<!-- The live form glides its own window through a transform inside a
+			     ChartClipPath, so it takes neither the zoom controller nor the
+			     reset control — a second transform composes badly. -->
+			{#if range.live}
+				<CustomLiveChart data={chartData} {series} {config} labelFormatter={labelFmt} />
+			{:else}
+				<CustomChartPlot
+					data={chartData}
+					{series}
+					{config}
+					{axes}
+					{xDomain}
+					labelFormatter={labelFmt}
+					{xTickFormat}
+					bucket={range.bucket}
+					{onZoom}
+					{onResetZoom}
+					{zoomed}
+				/>
+			{/if}
 		</div>
 	{:else}
 		<ChartStateView loading={fetching} message={emptyMessage} />
