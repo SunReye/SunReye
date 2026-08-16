@@ -42,6 +42,8 @@
   "settings_datetime_desc": "Wie Zeitstempel in Diagrammen und im Verlauf dargestellt werden. Gilt für alle Nutzer dieser Instanz.",
   "settings_clock_format": "Uhrzeitformat",
   "settings_time_zone": "Zeitzone",
+  "settings_plant_time_zone": "Anlagen-Zeitzone",
+  "settings_plant_time_zone_desc": "Die Zeitzone des Standorts, nach der der Server Tagesenergie, Kosten und Rekorde gruppiert – unabhängig von der Anzeigezone oben. Auf den Standort der Anlage setzen.",
   "settings_preview": "Vorschau",
   "settings_admin_only": "Nur Administratoren können diese Einstellung ändern.",
   "action_save": "Speichern",

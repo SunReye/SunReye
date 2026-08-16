@@ -42,6 +42,8 @@
   "settings_datetime_desc": "How timestamps render across charts and history. Applies to everyone using this instance.",
   "settings_clock_format": "Clock format",
   "settings_time_zone": "Time zone",
+  "settings_plant_time_zone": "Plant time zone",
+  "settings_plant_time_zone_desc": "The physical site's zone the server groups daily energy, costs and records by — independent of the display zone above. Set it to your plant's location.",
   "settings_preview": "Preview",
   "settings_admin_only": "Only admins can change this setting.",
   "action_save": "Save",

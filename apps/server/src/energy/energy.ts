@@ -16,12 +16,7 @@ import {
   fetchCounterDeltaMatrix,
   liveTodayTotals,
 } from "./cost";
-import {
-  applyTodayOverride,
-  derivePeriodEnergy,
-  emptyTotals,
-  visibleDayPeriods,
-} from "./energy-calc";
+import { applyTodayOverride, derivePeriodEnergy, emptyTotals } from "./energy-calc";
 import { getPlantTimeZone } from "../settings/display-settings";
 
 export { emptyTotals } from "./energy-calc";
@@ -98,16 +93,11 @@ export async function energySeries(
     overrideTodayPeriod(totals, profile, opts.inverterId ?? profile.id, tz);
   }
 
-  // The energy chart never shows a bar for a day that has not started. The
-  // month window zero-fills to the first of next month, and those future days
-  // were the landing spot the today-override leaked onto across a clock mismatch
-  // (issue #52). Drop them for the day bucket — a future day has no energy and
-  // no place on this chart. (Cost's month-as-days chart keeps its extent; that
-  // path is untouched.)
-  const visible =
-    opts.bucket === "day"
-      ? visibleDayPeriods(periods, currentPeriodKey("day", new Date(), tz))
-      : periods;
-
-  return visible.map((p) => derivePeriodEnergy(p, totals.get(p) ?? emptyTotals()));
+  // Zero-fill every period in the window, oldest first — including days still to
+  // come, so the energy chart shares the exact x-axis extent of the cost series
+  // over the same window (both run to the month's end). Future days carry no
+  // rollup data, so they derive to all-zero bars. The #52 override-leak stays
+  // fixed by overrideTodayPeriod landing the live *.today registers on the
+  // plant-tz today key — never a future bar — so no full day lands on tomorrow.
+  return periods.map((p) => derivePeriodEnergy(p, totals.get(p) ?? emptyTotals()));
 }

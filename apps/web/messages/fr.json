@@ -42,6 +42,8 @@
   "settings_datetime_desc": "Comment les horodatages s'affichent dans les graphiques et l'historique. S'applique à tous les utilisateurs de cette instance.",
   "settings_clock_format": "Format de l'heure",
   "settings_time_zone": "Fuseau horaire",
+  "settings_plant_time_zone": "Fuseau horaire du site",
+  "settings_plant_time_zone_desc": "Le fuseau du site physique selon lequel le serveur regroupe l'énergie quotidienne, les coûts et les records — indépendant du fuseau d'affichage ci-dessus. Réglez-le sur l'emplacement de votre installation.",
   "settings_preview": "Aperçu",
   "settings_admin_only": "Seuls les administrateurs peuvent modifier ce paramètre.",
   "action_save": "Enregistrer",
