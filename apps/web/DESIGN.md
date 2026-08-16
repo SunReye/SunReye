@@ -249,25 +249,8 @@ Good uses in this app:
 - a `Section` folding — `SectionBody` already does this, with reduced motion handled
 - route content changing inside the stable `(app)` shell
 
-Example:
-
-```svelte
-<script lang="ts">
-	import { prefersReducedMotion } from "svelte/motion";
-	import { fade, fly } from "svelte/transition";
-
-	let open = $state(false);
-</script>
-
-{#if open}
-	<div
-		in:fly={{ y: prefersReducedMotion.current ? 0 : 8, duration: 180 }}
-		out:fade={{ duration: 120 }}
-	>
-		Animated panel
-	</div>
-{/if}
-```
+Distance stays small and the duration short: `in:fly={{ y: 8, duration: 180 }}` paired with
+`out:fade`, with the `y` dropped to `0` under `prefersReducedMotion.current`.
 
 ### Use `animate:flip` for reordering lists
 
@@ -277,24 +260,8 @@ Use this when rows/cards change position because of:
 - a status change reordering entries
 - the customize mode on /statistics moving a section
 
-Example:
-
-```svelte
-<script lang="ts">
-	import { flip } from "svelte/animate";
-
-	let items = $state([
-		{ id: "peak-shaving", label: "Peak shaving" },
-		{ id: "forecast-charge", label: "Forecast charging" }
-	]);
-</script>
-
-{#each items as item (item.id)}
-	<div animate:flip>
-		{item.label}
-	</div>
-{/each}
-```
+`animate:flip` only moves what it can identify, so the `{#each}` needs a real key — `(item.id)`,
+never the index, which renumbers as the list reorders and animates nothing.
 
 ### Use `Spring` or `Tween` for value motion
 
@@ -353,6 +320,44 @@ This is especially important for:
 Animate the **inner content**, not the whole shell.
 
 The header/sidebar/breadcrumbs should feel stable. Only the changing content region should move.
+
+---
+
+## Gestures on a chart
+
+Four charts zoom — the /history metric charts, /statistics' period chart, the price track and the
+year-over-year bars. The gesture is a design decision with a cost on a phone, not a library
+default: `lib/charts/zoom.svelte.ts` holds the state, `lib/charts/zoom-range.ts` holds what a
+selection *means*, and `lib/charts/zoom-wiring.test.ts` holds every chart to both.
+
+- **A horizontal drag selects a range; a vertical swipe still scrolls the page.** LayerChart's
+  brush layer covers the whole plot and declares `touch-action: none` on itself, and /history and
+  /statistics are tall stacks of full-width charts — so that rule breaks the gesture people use
+  most with the one they use least. `[&_.lc-brush-context]:touch-pan-y` in
+  `ui/chart/chart-container.svelte` hands the vertical axis back to the browser and keeps the
+  horizontal one, which is the only axis a selection is drawn on anyway.
+- **Pinch is ARMED per chart, never always on.** A live pointer transform sets an inline
+  `touch-action: none` *and* calls `preventDefault()` on every touchmove, so an always-on pinch
+  would stop the page scrolling on every chart in the stack. The brush is the resting state; pinch
+  is something the viewer switches on for one chart (`toggle()`). The two cannot both be live
+  anyway — LayerChart wires brushing and panning to the same pointer — so arming pinch disables the
+  brush, which is the library's fact and this app's preference at the same time.
+- **A zoom REFETCHES at a finer bucket; it never magnifies what was already fetched.** Every mapper
+  in `zoom-range.ts` ends at the app's existing range state with the granularity re-derived from the
+  selected span, so twenty minutes out of an hourly window comes back as minute rollups, and the
+  chart's local transform is reset the moment the owner accepts the range — otherwise the finer data
+  would arrive magnified through the old gesture. A selection under `minExtent` is a mis-tap and is
+  dropped. Where there is no finer series to fetch the selection narrows the domain in place
+  instead: the price track is already quarter-hourly, and the year-over-year comparison *is* its
+  twelve months.
+- **Every zoomable chart owns a visible way back.** `ZoomControls` sits over the plot rather than in
+  a row of its own — these charts are as short as 176px — and its reset button appears the moment
+  anything is zoomed, including a zoom the *owner* is holding as a refetched range, which the
+  chart's own transform can no longer see. A chart left narrowed with no control does not read as
+  zoomed; it reads as wrong numbers.
+- **Two charts deliberately do not zoom**, and must stay that way: the custom live chart and the
+  automations decision chart. Each already runs a transform of its own inside a `ChartClipPath` — a
+  gliding live window, a decision timeline — and a second one composes badly.
 
 ---
 
@@ -469,7 +474,12 @@ written next year fails too.
   uses the same box, or the page jumps by the difference when data lands.
 - **Chart gutters follow the measured plot width**, not a breakpoint: the same component renders
   full-bleed on /history and two-up inside a statistics section. Bind `clientWidth` and pass *that
-  variable* to `chartPaddingFor` / `xTickSpacingFor` / `stackedBarProps`.
+  variable* to `chartPaddingFor` / `xTickSpacingFor` / `stackedBarProps`. The rule is over the whole
+  tree, not over the charts that had the bug — the callers are discovered from disk, so a component
+  that does not exist yet is already covered, and writing the gutter out longhand as
+  `padding={{ left: 60 }}` fails the same way. The charts outside the cost/statistics family carry
+  hand-tuned gutters of their own; each is listed by name with the left value it actually writes, so
+  that set cannot grow and no chart can be moved onto another family's padding unnoticed.
 - **Nothing scrolls sideways.** `<main>` clips horizontal overflow, grid children carry `min-w-0`,
   and a popover caps itself at `max-w-(--bits-popover-content-available-width)`.
 - **Reading order is a decision.** Stacked, a two-column page reads top to bottom in source order —
@@ -528,5 +538,7 @@ user-visible string.
 
 The design decisions above are executable: `lib/layout/tokens.test.ts`,
 `lib/layout/mobile-density.test.ts`, `lib/layout/section-migration.test.ts`,
-`routes/(app)/page-shells.test.ts` and `lib/live/wiring.test.ts` run in `bun run test`. Read the
+`lib/layout/primitives.test.ts`, `lib/components/layout/header-and-toolbar-rows.test.ts`,
+`routes/(app)/page-shells.test.ts`, `lib/live/wiring.test.ts` and `lib/charts/zoom-wiring.test.ts`
+run in `bun run test`. Read the
 `layout-system` skill before writing a page; read the failing test when one of them rejects you.
