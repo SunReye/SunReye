@@ -11,6 +11,7 @@ import {
 } from "../settings/config";
 import { getAccess, setAccess } from "../settings/access-settings";
 import { getDisplay, setDisplay } from "../settings/display-settings";
+import { getPlant, setPlant } from "../settings/plant-settings";
 import { getLoggingConfig, setLoggingConfig } from "../settings/logging-settings";
 import { evccSnapshot, rebuildEvcc } from "../evcc/evcc";
 import { getEvccConfig, setEvccConfig } from "../settings/evcc-settings";
@@ -61,6 +62,19 @@ export const settingsRoutes = new Elysia({ name: "settings-routes" })
     "/api/settings/display",
     async ({ body, status }) => {
       const saved = await attempt(() => setDisplay(body), "Invalid display");
+      return saved.ok ? saved.value : status(400, { error: saved.error });
+    },
+    adminWrite,
+  )
+  // Plant (site) time zone — the physical zone the SERVER buckets
+  // energy/cost/statistics days in, independent of the viewer's display zone.
+  // Admin-only both ways: it changes how stored history is aggregated, not how
+  // one browser renders it, so it is not part of the dashboard read policy.
+  .get("/api/settings/plant", () => getPlant(), { requireAdmin: true })
+  .put(
+    "/api/settings/plant",
+    async ({ body, status }) => {
+      const saved = await attempt(() => setPlant(body), "Invalid plant config");
       return saved.ok ? saved.value : status(400, { error: saved.error });
     },
     adminWrite,

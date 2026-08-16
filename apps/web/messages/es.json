@@ -42,6 +42,8 @@
   "settings_datetime_desc": "Cómo se muestran las marcas de tiempo en los gráficos y el historial. Se aplica a todos los usuarios de esta instancia.",
   "settings_clock_format": "Formato de hora",
   "settings_time_zone": "Zona horaria",
+  "settings_plant_time_zone": "Zona horaria de la planta",
+  "settings_plant_time_zone_desc": "La zona del emplazamiento físico por la que el servidor agrupa la energía diaria, los costes y los récords, independiente de la zona de visualización de arriba. Ajústala a la ubicación de tu planta.",
   "settings_preview": "Vista previa",
   "settings_admin_only": "Solo los administradores pueden cambiar este ajuste.",
   "action_save": "Guardar",

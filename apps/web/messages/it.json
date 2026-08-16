@@ -42,6 +42,8 @@
   "settings_datetime_desc": "Come vengono visualizzati i timestamp nei grafici e nella cronologia. Si applica a tutti gli utenti di questa istanza.",
   "settings_clock_format": "Formato orario",
   "settings_time_zone": "Fuso orario",
+  "settings_plant_time_zone": "Fuso orario dell'impianto",
+  "settings_plant_time_zone_desc": "Il fuso del sito fisico con cui il server raggruppa energia giornaliera, costi e record, indipendente dal fuso di visualizzazione sopra. Impostalo sulla posizione del tuo impianto.",
   "settings_preview": "Anteprima",
   "settings_admin_only": "Solo gli amministratori possono modificare questa impostazione.",
   "action_save": "Salva",

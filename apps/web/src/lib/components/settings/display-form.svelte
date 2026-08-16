@@ -6,6 +6,8 @@
 	import SaveBar from './save-bar.svelte';
 	import OptionSelect from './option-select.svelte';
 	import { display, TIME_ZONE_AUTO, type DisplayConfig } from '$lib/display.svelte';
+	import { plant, type PlantConfig } from '$lib/plant.svelte';
+	import PlantTimezoneField from './plant-timezone-field.svelte';
 	import { getLocale, locales, localeName, setLocale } from '$lib/i18n';
 	import * as m from '$lib/paraglide/messages';
 	import { useAppSession } from '$lib/session';
@@ -36,19 +38,33 @@
 	// System zones (~hundreds) plus the "follow the viewer" sentinel. `undefined`
 	// timeZone in Intl means the runtime zone, which is exactly what auto renders.
 	const SYSTEM_ZONE = Intl.DateTimeFormat().resolvedOptions().timeZone;
+	const SUPPORTED_ZONES =
+		typeof Intl.supportedValuesOf === 'function' ? Intl.supportedValuesOf('timeZone') : [];
+	// Guarantee the detected zone is always selectable — some runtimes report a
+	// resolved zone (e.g. "UTC") that supportedValuesOf omits, which would leave
+	// the prefilled plant zone unmatched ("Select…").
+	const ZONE_VALUES = SUPPORTED_ZONES.includes(SYSTEM_ZONE)
+		? SUPPORTED_ZONES
+		: [SYSTEM_ZONE, ...SUPPORTED_ZONES];
 	const ZONES = [
 		{ value: TIME_ZONE_AUTO, label: m.zone_auto({ zone: SYSTEM_ZONE }) },
-		...(typeof Intl.supportedValuesOf === 'function'
-			? Intl.supportedValuesOf('timeZone').map((z) => ({ value: z, label: z }))
-			: [])
+		...ZONE_VALUES.map((z) => ({ value: z, label: z }))
 	];
 
 	let draft = $state<DisplayConfig | null>(null);
+	// The plant (site) zone drives SERVER-side day/tariff/record bucketing. Its
+	// GET is admin-only, so only admins load/edit it; non-admins still see the
+	// viewer display fields above.
+	let plantDraft = $state<PlantConfig | null>(null);
 	let saving = $state(false);
 
 	onMount(async () => {
 		await display.load();
 		draft = { ...display.config };
+		if (isAdmin) {
+			await plant.load();
+			plantDraft = { ...plant.config };
+		}
 	});
 
 	// Live sample of how the current draft renders "now", so the choice is
@@ -69,10 +85,17 @@
 		}).format(new Date());
 	});
 
+	// Only write the plant zone when it actually changed, so a display-only save
+	// never silently pins server bucketing to the admin's browser zone.
+	function plantWrites(): Promise<boolean>[] {
+		if (!plantDraft || plantDraft.timeZone === plant.config.timeZone) return [];
+		return [plant.save(plantDraft)];
+	}
+
 	async function save() {
 		if (!draft) return;
 		saving = true;
-		const ok = await display.save(draft);
+		const ok = (await Promise.all([display.save(draft), ...plantWrites()])).every(Boolean);
 		saving = false;
 		if (ok) toast.success(m.toast_display_saved());
 		else toast.error(m.toast_display_error());
@@ -132,6 +155,8 @@
 				triggerClass="max-w-xs"
 			/>
 		</div>
+
+		<PlantTimezoneField bind:draft={plantDraft} zones={ZONES} />
 
 		<div class="flex flex-col gap-1 border border-border p-3">
 			<span class="text-xs uppercase tracking-wide text-muted-foreground">{m.settings_preview()}</span>
