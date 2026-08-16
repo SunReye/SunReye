@@ -33,7 +33,13 @@
 	<Card.Root
 		class="transition-[border-color,background-color,translate] duration-200 hover:border-primary/40 hover:bg-muted/40 motion-safe:hover:-translate-y-0.5"
 	>
-		<Card.Header>
+		<!-- The header is a grid whose implicit column is `auto`, so it sizes to
+		     the max-content of its widest row — the title, its badge and the whole
+		     description on one line. At 412px that made a 458px track inside a
+		     380px card and pushed the text off the screen; the title's own
+		     `min-w-0 truncate` could do nothing about a track that was never
+		     asked to fit. -->
+		<Card.Header class="grid-cols-[minmax(0,1fr)]">
 			<Card.Title class="flex items-center gap-2">
 				<span class="min-w-0 flex-1 truncate">{title}</span>
 				<Badge variant={STATE_VARIANT[state]}>{STATE_LABEL[state]()}</Badge>

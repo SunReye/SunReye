@@ -444,3 +444,22 @@ describe("peak shaving reads in the right order on a phone", () => {
     ]);
   });
 });
+
+describe("a card header cannot be wider than its card", () => {
+  // Measured at 412px: the automations list overflowed the viewport by 78px.
+  // `Card.Header` is a grid, and its implicit column is `auto` — which sizes to
+  // the *max-content* of the row, i.e. the title, its badge and the whole
+  // description laid out on one line. 458px of track inside a 380px card, so
+  // the text ran off the right edge no matter how the children were written:
+  // the title span already carried `min-w-0 flex-1 truncate` and did nothing,
+  // because the track it sits in was never asked to fit.
+  //
+  // `overflow-x-clip` on the shell hides the scrollbar this produces, which is
+  // exactly why it needs pinning here — the symptom is suppressed, so a
+  // regression would be silent.
+  test("the automations card constrains its header's grid track", () => {
+    expect(read("lib/components/automations/automation-card.svelte")).toMatch(
+      /<Card\.Header[^>]*\bclass="[^"]*grid-cols-\[minmax\(0,\s*1fr\)\]/,
+    );
+  });
+});
