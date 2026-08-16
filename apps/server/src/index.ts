@@ -12,7 +12,7 @@ import { type CostBucket, computeCost, computeCostSeries, resolveRange } from ".
 import { energySeries } from "./energy/energy";
 import { entitiesApi } from "./inverter/entities";
 import { evccControl, evccSnapshot, rebuildEvcc, stopEvcc } from "./evcc/evcc";
-import { queryRollup } from "./shared/history";
+import { queryRecentBuckets, queryRollup } from "./shared/history";
 import { isPublicDashboard } from "./settings/access-settings";
 import { buildProfileContext, initProfiles } from "./inverter/inverter";
 import { log, recentLogs, setupLogging } from "./shared/logging";
@@ -297,31 +297,35 @@ const app = new Elysia()
       }),
     },
   )
-  // Recent raw samples across all metrics, ascending — used to backfill the
-  // client's in-memory live buffers so sparklines are populated immediately on
-  // page load instead of rebuilding over several minutes.
+  // Recent samples across all metrics, bucketed server-side and returned in the
+  // compact `{ t0, step, metrics: { key: { o, v } } }` form — used to backfill
+  // the client's in-memory live buffers so sparklines are populated immediately
+  // on page load instead of rebuilding over several minutes.
+  //
+  // There is no `limit` parameter by design. The row count is bounded
+  // structurally by the GROUP BY (`metricCount × (ceil(seconds / step) + 1)` —
+  // the `+ 1` because `time_bucket` is epoch-aligned, so an N-second window
+  // starting mid-bucket touches one bucket more than N/step). The old
+  // client-supplied cap sat on a global `order by time desc`, so it truncated
+  // the OLDEST samples of every metric at once — which is why the caller had to
+  // send 200000 to reach back five minutes at all.
   .get(
     "/api/history/recent",
     async ({ query, status }) => {
       const inverterId = query.inverterId ?? activeInverterId;
       if (!inverterId) return status(503, ONBOARDING_REQUIRED);
-      const since = new Date(Date.now() - query.seconds * 1000);
-      // Most-recent-first so a capped result keeps the latest samples (the
-      // client sorts ascending per metric).
-      const rows = await db
-        .select()
-        .from(metricsRaw)
-        .where(and(gte(metricsRaw.time, since), eq(metricsRaw.inverterId, inverterId)))
-        .orderBy(desc(metricsRaw.time))
-        .limit(query.limit);
-      return rows.map((r) => ({ time: r.time.toISOString(), metric: r.metric, value: r.value }));
+      return queryRecentBuckets({
+        inverterId,
+        seconds: query.seconds,
+        stepSeconds: query.stepSeconds,
+      });
     },
     {
       requireSession: true,
       query: t.Object({
         seconds: t.Number({ default: 300, minimum: 1, maximum: 3600 }),
+        stepSeconds: t.Number({ default: 1, minimum: 1, maximum: 60 }),
         inverterId: t.Optional(t.String()),
-        limit: t.Number({ default: 50000, minimum: 1, maximum: 200000 }),
       }),
     },
   )
