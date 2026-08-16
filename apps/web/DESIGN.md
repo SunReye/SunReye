@@ -393,6 +393,30 @@ charts drag-select with, and a button there swallows the start of a drag.
   Losing it (Safari on iPhone implements the API for nothing but `<video>`; under Home Assistant
   ingress the app is a cross-origin iframe Chrome refuses the request in) costs only that, which is
   why `expanded` is set *before* the request and never depends on its outcome.
+### Draft charts
+
+A reader can pull a second metric onto a full-screened history card without saving anything —
+"compare with…" in the card's header while it is expanded.
+
+- **One renderer.** A draft draws through `OverlayChartView`, the same component a *saved* custom
+  chart uses. The only difference between the two is where the key list came from. Two renderers
+  would be two things to keep in step, and the mixed-unit dual axis is the kind of thing that only
+  works in one of them.
+- **The draft is component state on the card**, not a store: it is one reader looking at one chart,
+  and a store would make every card share one draft.
+- **It dies with the gesture.** Expanding only swaps classes — nothing remounts — so the state
+  survives the toggle and the discard has to be written down (`if (!screen.expanded) draft = []`).
+- **Say it is temporary.** Everything else on these pages persists, so a chart that will vanish
+  says so under the plot, next to the two ways out of it.
+- **Saving goes through the editor that already writes custom charts**, seeded — not a second
+  create path. That keeps naming, validation and the admin gate in one place.
+- The card's own metric is the base: always first (so it keeps chart accent 1 while others come and
+  go), and its row in the picker is **disabled**, not silently ignored — a checkbox that does
+  nothing when tapped reads as broken.
+- A card taken full screen **mounts its chart whether or not the lazy-mount observer fired**. Once
+  the card is `fixed`, its in-flow wrapper collapses to nothing, so that observer can never fire
+  while it is expanded.
+
 - Known limit: in **portrait** on a phone the plot is still 412px wide, so the 34px narrow gutter
   applies and a two-digit `kWh` label can clip. Landscape — the orientation a full-screen chart is
   actually read in — gets the designed 60px gutter.

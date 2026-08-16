@@ -212,9 +212,14 @@ describe("a zoom on /history refetches at a finer rollup", () => {
    * plot invocation kills zoom on /history end to end, and neither the suite
    * nor `svelte-check` says a word — an unused destructured prop is legal.
    */
+  // Every hop from the page that owns the range down to the chart that emits
+  // the selection. A callback dropped at any one of them leaves a chart whose
+  // drag does nothing, with the whole suite green — so the chain is listed in
+  // full rather than only at its ends.
   const HOPS: [string, string][] = [
     ["routes/(app)/history/metric-group.svelte", "EntityHistoryCard"],
-    ["lib/components/inverter/entity-history-card.svelte", "MetricHistoryChart"],
+    ["lib/components/inverter/entity-history-card.svelte", "MetricCardPlot"],
+    ["lib/components/inverter/_shared/metric-card-plot.svelte", "MetricHistoryChart"],
   ];
 
   test.each(HOPS)("%s hands the zoom callbacks down to <%s>", (file, child) => {

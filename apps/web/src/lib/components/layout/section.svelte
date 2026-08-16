@@ -30,6 +30,7 @@
 		dimmed = false,
 		nested = false,
 		fullscreen = false,
+		screen: provided = null,
 		children
 	}: {
 		title: string;
@@ -65,16 +66,28 @@
 		 * itself, which keeps its brush and pinch bound the whole time.
 		 */
 		fullscreen?: boolean;
+		/**
+		 * The caller's own {@link FullscreenBox}, when it needs to READ the
+		 * expanded state — a card that shows a control only while full screen, or
+		 * discards a draft on the way out. Left unset the card keeps its own and
+		 * nobody outside can see it.
+		 *
+		 * A `FullscreenBox` rather than `expanded = $bindable()`: the browser can
+		 * exit full screen on its own (Escape, a swipe, the system control), so a
+		 * second copy of the flag would drift from the one `listen()` maintains.
+		 */
+		screen?: FullscreenBox | null;
 		children: Snippet;
 	} = $props();
 
 	// A non-collapsible section is always open; see section-state.ts.
 	const contentOpenState = $derived(sectionOpen({ collapsible, open }));
 
-	// Allocated unconditionally — it is three fields — but only *wired* when the
+	// Allocated unconditionally — it is two fields — but only *wired* when the
 	// card asked for it, so a page of ordinary sections does not put three DOM
 	// listeners each on the document.
-	const screen = new FullscreenBox();
+	const own = new FullscreenBox();
+	const screen = $derived(provided ?? own);
 	$effect(() => (fullscreen ? screen.listen() : undefined));
 
 	function handleOpenChange(next: boolean) {
