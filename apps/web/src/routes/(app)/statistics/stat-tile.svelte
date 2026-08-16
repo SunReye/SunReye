@@ -6,6 +6,7 @@
 	import type { Tile } from '$lib/statistics/tiles';
 	import DeltaChip from '$lib/components/statistics/delta-chip.svelte';
 	import { getCustomizeSession } from '$lib/statistics/customize.svelte';
+	import { TAP } from '$lib/layout/tokens';
 
 	// One resolved tile: figure, sub-line, explanation popover — plus the
 	// visibility checkbox while the page is being customized.
@@ -29,12 +30,16 @@
 				aria-label={m.statistics_customize_tile_aria({ label: tile.label })}
 			/>
 		{/if}
-		<span class="text-[0.65rem] font-medium uppercase tracking-wider text-muted-foreground">
+		<!-- 0.65rem is 10.4px: under the 12px floor, uppercase and letter-spaced,
+		     and it carries the tile's only identification. Full size on a phone. -->
+		<span
+			class="text-xs sm:text-[0.65rem] font-medium uppercase tracking-wider text-muted-foreground"
+		>
 			{tile.label}
 		</span>
 		<Popover.Root>
 			<Popover.Trigger
-				class="text-muted-foreground/70 transition-colors hover:text-foreground"
+				class="{TAP} text-muted-foreground/70 transition-colors hover:text-foreground"
 				aria-label={m.costs_tile_info_aria({ label: tile.label })}
 			>
 				<Info class="size-3.5" weight="bold" />

@@ -1,7 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import {
+  CHART_BOX,
+  CHART_BOX_SHORT,
   CLUSTER_GAP,
   GRID,
+  SEGMENTED_MAX_OPTIONS,
+  TILE_COLUMNS,
+  needsCompactSwitcher,
   SECTION_GAP,
   SECTION_PAD,
   SHELL_GAP,
@@ -101,6 +106,30 @@ describe("section shell builder", () => {
   test("false flags add nothing, so callers can pass booleans straight through", () => {
     expect(sectionShellClass({ dashed: false, dimmed: false })).toBe(base);
   });
+
+  // A chart panel sits inside a statistics section, which sits inside the page
+  // shell: three borders and three pads, 50px per side of pure chrome on a
+  // 390px screen. The inner card keeps its chrome only where there is room.
+  test("nested drops the inner card's own border and pad below sm", () => {
+    expect(sectionShellClass({ nested: true })).toBe(
+      "flex min-w-0 flex-col sm:border sm:border-border gap-4 sm:p-4",
+    );
+  });
+
+  // Derived from SECTION_PAD rather than restated beside it: a changed section
+  // pad has to reach the nested variant too, or the two drift apart silently.
+  test("the nested pad is the sm half of the section pad, not a second literal", () => {
+    const [, ...fromSmUp] = SECTION_PAD.split(" ");
+    expect(sectionShellClass({ nested: true })).toContain(fromSmUp.join(" "));
+    expect(sectionShellClass({ nested: true })).not.toContain(SECTION_PAD);
+  });
+
+  test("a nested section still composes with the customize states", () => {
+    expect(sectionShellClass({ nested: true, dashed: true, dimmed: true })).toBe(
+      "flex min-w-0 flex-col sm:border sm:border-border gap-4 sm:p-4" +
+        " border-dashed border-primary/60 opacity-40",
+    );
+  });
 });
 
 describe("grids", () => {
@@ -126,6 +155,67 @@ describe("grids", () => {
   test.each(variants)("%s is a grid and sets its own gap", (variant) => {
     expect(GRID[variant]).toMatch(/(^|\s)grid(\s|$)/);
     expect(GRID[variant]).toMatch(/(^|\s)gap-\d/);
+  });
+});
+
+describe("tile columns", () => {
+  // The statistics tile grid draws its own hairline separators instead of using
+  // a gap, so it cannot spend GRID.tiles wholesale. It must still get the SAME
+  // column ramp, or the same 31 readouts render 4-up on one page and 2-up on
+  // another — which is exactly what shipped.
+  test("GRID.tiles is the shared ramp plus a gap, not a second column decision", () => {
+    expect(GRID.tiles).toContain(TILE_COLUMNS);
+  });
+
+  test("the ramp starts two-up and never loses a column on a wider screen", () => {
+    const counts = [...TILE_COLUMNS.matchAll(/grid-cols-(\d+)/g)].map((m) => Number(m[1]));
+    expect(counts[0]).toBe(2);
+    expect(counts).toEqual([...counts].sort((a, b) => a - b));
+  });
+});
+
+describe("chart boxes", () => {
+  // A 256px plot box plus its legend and section header meant three charts to a
+  // phone screen; /statistics measured 7371px tall at 412x961.
+  test("the plot box is shorter on a phone and grows back at sm", () => {
+    expect(CHART_BOX).toBe("h-48 sm:h-64");
+    expect(CHART_BOX_SHORT).toBe("h-44 sm:h-55");
+  });
+
+  test.each([CHART_BOX, CHART_BOX_SHORT])("%s changes height exactly once", (box) => {
+    // Same breakpoint policy as the rest of the vocabulary: a box that steps at
+    // sm AND lg produces an in-between size nobody designed.
+    expect(box.match(/(^|\s)(sm|lg|xl|2xl):/g)).toHaveLength(1);
+    expect(box).not.toMatch(/(^|\s)md:/);
+  });
+
+  test("the phone height is the smaller one — the token is a saving, not a swap", () => {
+    const [phone, wide] = CHART_BOX.split(" ");
+    expect(Number(phone.replace("h-", ""))).toBeLessThan(Number(wide.replace("sm:h-", "")));
+  });
+});
+
+describe("compact switcher", () => {
+  // A segmented row of four options wraps to two lines at 412px, and the second
+  // line reads as an unrelated control. Past the threshold the switcher offers a
+  // Select on a phone instead.
+  // The number, not just the relation: a `size="sm"` button with a range label
+  // ("Last 7 days") is ~90px, the row adds 1px of border and 4px of gap either
+  // side, and a 412px phone inside the page and section gutters has ~348px. Four
+  // of them wrap; three do not.
+  test("the threshold is three", () => {
+    expect(SEGMENTED_MAX_OPTIONS).toBe(3);
+  });
+
+  test("three options still fit a phone as a segmented row", () => {
+    expect(needsCompactSwitcher(0)).toBe(false);
+    expect(needsCompactSwitcher(1)).toBe(false);
+    expect(needsCompactSwitcher(3)).toBe(false);
+  });
+
+  test("a fourth option does not", () => {
+    expect(needsCompactSwitcher(4)).toBe(true);
+    expect(needsCompactSwitcher(7)).toBe(true);
   });
 });
 

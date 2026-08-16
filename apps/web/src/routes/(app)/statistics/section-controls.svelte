@@ -5,6 +5,7 @@
 	import { Checkbox } from '$lib/components/ui/checkbox';
 	import * as m from '$lib/paraglide/messages';
 	import { getCustomizeSession } from '$lib/statistics/customize.svelte';
+	import { TAP } from '$lib/layout/tokens';
 
 	// Right-hand side of a section header: the section's own ephemeral controls
 	// normally, the customize affordances (hide the section, have it start
@@ -30,7 +31,7 @@
 	</label>
 	<button
 		type="button"
-		class="text-muted-foreground transition-colors hover:text-foreground"
+		class="{TAP} text-muted-foreground transition-colors hover:text-foreground"
 		aria-label={hideLabel}
 		onclick={() => customize.toggleSection(id)}
 	>

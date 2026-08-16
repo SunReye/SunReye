@@ -16,7 +16,8 @@
 		seriesConfig,
 		type LabelledSeries
 	} from '$lib/components/inverter/_shared/chart-series';
-	import { COST_CHART_PADDING, COST_X_TICK_SPACING } from '$lib/cost/ranges';
+	import { chartPaddingFor, xTickSpacingFor } from '$lib/cost/ranges';
+	import { CHART_BOX } from '$lib/layout/tokens';
 
 	let {
 		data,
@@ -34,20 +35,25 @@
 	} = $props();
 
 	const config = $derived(seriesConfig(series));
-	const axisPadding = COST_CHART_PADDING;
+
+	// The gutters follow the plot's MEASURED width, not a breakpoint: this chart
+	// renders full-bleed on one page and inside a two-up grid on another, so only
+	// the element knows how much room it got. 0 until it is in the document,
+	// which chartPaddingFor reads as the desktop case.
+	let plotWidth = $state(0);
 </script>
 
-<div class="flex min-w-0 flex-col gap-3">
-	<Chart.Container {config} class="h-64 w-full min-w-0">
+<div class="flex min-w-0 flex-col gap-3" bind:clientWidth={plotWidth}>
+	<Chart.Container {config} class="{CHART_BOX} w-full min-w-0">
 		<LineChart
 			{data}
 			x="label"
 			xScale={scalePoint()}
 			{series}
 			{yDomain}
-			padding={axisPadding}
+			padding={chartPaddingFor(plotWidth)}
 			props={{
-				xAxis: { tickSpacing: COST_X_TICK_SPACING },
+				xAxis: { tickSpacing: xTickSpacingFor(plotWidth) },
 				yAxis: { format },
 				// A line is a stroke, never a fill — but the `fill: none` default for
 				// `.lc-path` ships in LayerChart's *SVG* Path component, which a

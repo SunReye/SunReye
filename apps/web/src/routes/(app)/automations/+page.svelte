@@ -2,6 +2,7 @@
 	import AutomationCard from '$lib/components/automations/automation-card.svelte';
 	import { automationStream } from '$lib/components/automations/stream.svelte';
 	import { setPageHeader } from '$lib/page-header.svelte';
+	import PageShell from '$lib/components/layout/page-shell.svelte';
 	import * as m from '$lib/paraglide/messages';
 
 	// Index of the automations, one card each with its live run state. Kept as a
@@ -30,7 +31,15 @@
 	$effect(() => setPageHeader(m.nav_automations(), m.automations_subtitle()));
 </script>
 
-<div class="mx-auto flex w-full max-w-3xl flex-col gap-4 p-4 sm:p-6">
+<!--
+	Wide, not narrow, even though this is a short list: opening an automation from
+	here goes to /automations/peak-shaving, whose widescreen two-column split only
+	fires from the wide measure. A list at 48rem whose own detail page sits at
+	80rem makes the content jump sideways on every open and every back — the most
+	visible symptom of the measure drift this shell exists to end. Same measure
+	both sides; the cards keep their own width inside it.
+-->
+<PageShell width="wide">
 	{#each automations as automation (automation.id)}
 		<AutomationCard
 			href={automation.href}
@@ -40,4 +49,4 @@
 			note={automation.note}
 		/>
 	{/each}
-</div>
+</PageShell>

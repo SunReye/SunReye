@@ -4,6 +4,7 @@
 	// it holds them at. Measured export/charging ride along in the tooltip, so a
 	// shadow run can be checked against what the plant actually did.
 	import { curveMonotoneX } from 'd3-shape';
+	import { CHART_BOX } from '$lib/layout/tokens';
 	import DecisionChart, { type PlotSeries } from './decision-chart.svelte';
 	import * as m from '$lib/paraglide/messages';
 	import type { DecisionRow } from './decision-series';
@@ -73,4 +74,4 @@
 	];
 </script>
 
-<DecisionChart {rows} {series} {tooltipExtras} curve={curveMonotoneX} height="h-64" />
+<DecisionChart {rows} {series} {tooltipExtras} curve={curveMonotoneX} height={CHART_BOX} />

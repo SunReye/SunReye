@@ -1,4 +1,3 @@
-<!-- fallow-ignore-file unused-file -- phase 2.2 of the layout system: the primitives ship before the routes migrate onto them; the migration commits remove this line -->
 <script lang="ts">
 	// The "nothing here yet" block. The same bordered, centred, muted box was
 	// copy-pasted verbatim into six files (mqtt-form, inverter-form, tariff-form,

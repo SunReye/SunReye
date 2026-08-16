@@ -8,7 +8,8 @@
 	import EvccSettingsSection from './evcc-settings-section.svelte';
 	import FormActions from './form-actions.svelte';
 	import MqttStatusBadge from './mqtt-status-badge.svelte';
-	import SettingsSection from './settings-section.svelte';
+	import Section from '$lib/components/layout/section.svelte';
+	import EmptyState from '$lib/components/layout/empty-state.svelte';
 	import type { EvccForm, MqttForm, MqttStatus } from './mqtt-types';
 	import * as m from '$lib/paraglide/messages';
 
@@ -115,11 +116,9 @@
 <FormActions {result} {testing} {saving} disabled={!cfg} ontest={test} onsave={save} />
 
 {#if !cfg}
-	<div class="flex h-40 items-center justify-center border border-border text-sm text-muted-foreground">
-		{m.app_loading()}
-	</div>
+	<EmptyState message={m.app_loading()} />
 {:else}
-	<SettingsSection title={m.mqtt_broker_title()}>
+	<Section title={m.mqtt_broker_title()}>
 		{#snippet actions()}
 			<MqttStatusBadge {status} />
 		{/snippet}
@@ -132,7 +131,7 @@
 			<Switch id="mqtt-enabled" bind:checked={cfg.enabled} />
 		</div>
 
-		<div class="grid gap-4 sm:grid-cols-2">
+		<div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
 			<div class="flex flex-col gap-1.5">
 				<Label for="broker">Broker URL</Label>
 				<Input id="broker" bind:value={cfg.brokerUrl} placeholder="mqtt://host:1883" />
@@ -170,7 +169,7 @@
 				<Input id="ha-prefix" bind:value={cfg.haDiscoveryPrefix} class="max-w-60" />
 			</div>
 		{/if}
-	</SettingsSection>
+	</Section>
 
 	{#if evccCfg}
 		<EvccSettingsSection bind:cfg={evccCfg} />

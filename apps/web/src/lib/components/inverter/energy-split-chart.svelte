@@ -96,7 +96,7 @@
 			<RangeSwitcher options={LAYOUTS} bind:value={layoutId} />
 		</div>
 
-		<div class="grid gap-8 lg:grid-cols-2">
+		<div class="grid grid-cols-1 gap-8 lg:grid-cols-2">
 			<EnergySplitBlock
 				title={msg.energy_consumption()}
 				subtitle={msg.chart_consumption_sub()}

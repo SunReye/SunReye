@@ -35,7 +35,10 @@
 	</div>
 	{#each tiles as tile (tile.label)}
 		<div class="flex flex-col gap-1 bg-background p-3">
-			<span class="truncate text-xs text-muted-foreground">{tile.label}</span>
+			<!-- Wraps rather than truncates: at a quarter of 412px the German labels
+			     ("Netzeinspeisegrenze") clipped to an ellipsis, and the label is the
+			     only thing identifying the figure under it. -->
+			<span class="text-xs text-muted-foreground">{tile.label}</span>
 			<span class="text-xl font-semibold tabular-nums tracking-tight">{tile.value}</span>
 			{#if tile.sub}
 				<span class="text-xs text-muted-foreground">{tile.sub}</span>

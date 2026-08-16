@@ -6,7 +6,7 @@
 	import LogsLines from './logs-lines.svelte';
 	import LogsToolbar from './logs-toolbar.svelte';
 	import OptionSelect from './option-select.svelte';
-	import SettingsSection from './settings-section.svelte';
+	import Section from '$lib/components/layout/section.svelte';
 	import * as m from '$lib/paraglide/messages';
 
 	// Lease the `logs` topic on the app's one socket while this panel is mounted;
@@ -83,7 +83,7 @@
 	}
 </script>
 
-<SettingsSection title={m.logs_title()}>
+<Section title={m.logs_title()}>
 	{#snippet actions()}
 		<LogsToolbar exportDisabled={filtered.length === 0} onexport={exportLogs} />
 	{/snippet}
@@ -117,4 +117,4 @@
 	</div>
 
 	<LogsLines lines={filtered} total={logs.lines.length} />
-</SettingsSection>
+</Section>

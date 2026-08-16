@@ -1,4 +1,4 @@
-// fallow-ignore-file unused-file unused-export unused-type -- phase 2.1 of the layout system: the tokens ship before the routes that spend them, and the migration commits remove this line
+// fallow-ignore-file unused-export unused-type -- phase 2.1 of the layout system: the vocabulary is broader than the first wave of callers spends; later phases claim the rest
 /**
  * The layout vocabulary — one place every page and section reads its measure,
  * padding and rhythm from.
@@ -90,9 +90,21 @@ export function tapTargetPx(contentPx: number): { width: number; height: number 
  * `[&>*]:min-w-0`, because grid children default to `min-width:auto` and one
  * long unbroken number then widens its column past the viewport.
  */
+/**
+ * The column ramp a grid of dense readouts follows, on its own so the one grid
+ * that cannot spend {@link GRID}`.tiles` wholesale still shares the decision.
+ *
+ * The statistics tile grid draws hairline separators with per-tile borders
+ * rather than a gap (a gap over a border-coloured backdrop showed the backdrop
+ * through the empty trailing cells), so it needs the columns without `gap-3`.
+ * Restating them there is how the same 31 readouts ended up 2-up on the
+ * peak-shaving page and 1-up on statistics.
+ */
+export const TILE_COLUMNS = "grid-cols-2 sm:grid-cols-3 lg:grid-cols-4";
+
 export const GRID = {
   /** Dense readouts: stat tiles, metric pairs. */
-  tiles: "grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 [&>*]:min-w-0",
+  tiles: `grid ${TILE_COLUMNS} gap-3 [&>*]:min-w-0`,
   /** Two related blocks — charts side by side once there is room for both. */
   pair: "grid grid-cols-1 gap-4 lg:grid-cols-2 [&>*]:min-w-0",
   /** Many cards of equal weight: automation list, forecast panels. */
@@ -100,6 +112,33 @@ export const GRID = {
 } as const;
 
 export type GridVariant = keyof typeof GRID;
+
+/**
+ * The plot box every full-width chart renders into.
+ *
+ * A chart is a header, a fixed-height plot and a legend; at `h-64` that stack
+ * is ~340px, so a 961px-tall phone showed two and a half of them and
+ * /statistics measured 7371px end to end. Losing 64px per plot on a phone costs
+ * a chart nothing legible — the plot is still taller than it is wide there —
+ * and buys back a whole chart per screenful.
+ */
+export const CHART_BOX = "h-48 sm:h-64";
+
+/** The same box for a chart that ships shorter by design (the energy split). */
+export const CHART_BOX_SHORT = "h-44 sm:h-55";
+
+/**
+ * How many options a segmented switcher can show as a row on a phone. A fourth
+ * wraps to a second line at 412px, where it reads as a separate control rather
+ * than as more of the same choice; past this the switcher offers a Select
+ * instead — see {@link needsCompactSwitcher}.
+ */
+export const SEGMENTED_MAX_OPTIONS = 3;
+
+/** Does a switcher over `optionCount` options need a compact phone form? */
+export function needsCompactSwitcher(optionCount: number): boolean {
+  return optionCount > SEGMENTED_MAX_OPTIONS;
+}
 
 /** Joins the truthy parts of a class list; keeps builders free of `&&` noise. */
 function classes(...parts: (string | false | undefined)[]): string {
@@ -111,19 +150,46 @@ export function pageShellClass(width: ShellWidth = "wide"): string {
   return classes("mx-auto flex w-full flex-col", SHELL_WIDTH[width], SHELL_GAP, SHELL_PAD);
 }
 
+/** The card's own chrome — the frame a nested card gives up on a phone. */
+const SECTION_BORDER = "border border-border";
+
+/** The same utilities, deferred to the sm breakpoint. Written as a transform
+ *  rather than a second literal so one edit still reaches both variants. */
+const fromSmUp = (utilities: string): string =>
+  utilities
+    .split(" ")
+    .map((u) => (u.startsWith("sm:") ? u : `sm:${u}`))
+    .join(" ");
+
+/** The `sm:`-and-up half of a responsive token; its phone value is dropped. */
+const smHalf = (token: string): string =>
+  token
+    .split(" ")
+    .filter((u) => u.startsWith("sm:"))
+    .join(" ");
+
 export type SectionShellOptions = {
   /** Customize mode: the section is being arranged, not just read. */
   dashed?: boolean;
   /** Hidden-section preview — still mounted, visibly demoted. */
   dimmed?: boolean;
+  /**
+   * This card sits inside another one (a chart panel inside a statistics
+   * section, inside the page shell). Three frames cost 50px per side at 390px,
+   * a quarter of the screen spent saying "these things are separate" about
+   * boxes that are already stacked with a gap between them. The inner frame
+   * comes back at sm, where the width is there to spend.
+   */
+  nested?: boolean;
 };
 
 /** The one section card: bordered stack, optionally in a customize state. */
-export function sectionShellClass({ dashed, dimmed }: SectionShellOptions = {}): string {
+export function sectionShellClass({ dashed, dimmed, nested }: SectionShellOptions = {}): string {
   return classes(
-    "flex min-w-0 flex-col border border-border",
+    "flex min-w-0 flex-col",
+    nested ? fromSmUp(SECTION_BORDER) : SECTION_BORDER,
     SECTION_GAP,
-    SECTION_PAD,
+    nested ? smHalf(SECTION_PAD) : SECTION_PAD,
     dashed && "border-dashed border-primary/60",
     dimmed && "opacity-40",
   );

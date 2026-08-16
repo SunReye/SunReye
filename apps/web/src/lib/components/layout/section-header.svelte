@@ -1,4 +1,3 @@
-<!-- fallow-ignore-file unused-file -- phase 2.2 of the layout system: reachable only through `section.svelte`, which the routes have not migrated onto yet; the migration commits remove this line -->
 <script lang="ts">
 	// The section card's header row: uppercase muted title, optional caption,
 	// and one right-hand cluster holding the caller's actions and the collapse
@@ -32,7 +31,18 @@
 
 <div class="flex flex-wrap items-center justify-between {CLUSTER_GAP}">
 	<div class="flex min-w-0 flex-col">
-		<h2 class="truncate text-sm font-medium uppercase tracking-wide text-muted-foreground">
+		<!-- `truncate` is the desktop guard only, and `max-sm:whitespace-normal`
+		     takes it back on a phone. Below ~345px of viewport the row has 264px
+		     for a title after the shell and section gutters, and the longest German
+		     one — "PV-Spitzenkappung & Prognoseladen", 33 monospace characters at
+		     8.75px each — needs 289px: it lost its last four characters to an
+		     ellipsis where the pre-migration header simply wrapped. Nothing is
+		     bought by that, because the row is `flex-wrap`: an over-long title
+		     pushes the action cluster onto its own line rather than off-screen, so
+		     the only thing truncation protects at phone widths is a row height. A
+		     title that silently loses its end is worse than one that takes two
+		     lines. -->
+		<h2 class="truncate max-sm:whitespace-normal text-sm font-medium uppercase tracking-wide text-muted-foreground">
 			{title}
 		</h2>
 		{#if caption}

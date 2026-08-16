@@ -1,4 +1,3 @@
-<!-- fallow-ignore-file unused-file -- phase 2.2 of the layout system: reachable only through `section.svelte`, which the routes have not migrated onto yet; the migration commits remove this line -->
 <script lang="ts">
 	// The section card's collapsible content.
 	//

@@ -56,8 +56,8 @@ describe("page shell", () => {
 });
 
 describe("section", () => {
-  test("spends the section shell builder, with both customize states wired", () => {
-    expect(section).toContain("sectionShellClass({ dashed, dimmed })");
+  test("spends the section shell builder, with every shell state wired", () => {
+    expect(section).toContain("sectionShellClass({ dashed, dimmed, nested })");
   });
 
   test("its open state comes from the tested decisions", () => {

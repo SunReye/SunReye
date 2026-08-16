@@ -11,6 +11,7 @@
 	import { inverter } from '$lib/inverter/store.svelte';
 	import { tooltipLabel, xTick } from '$lib/inverter/chart-format';
 	import { resolveAxes, seriesConfig } from '$lib/components/inverter/_shared/chart-series';
+	import { CHART_BOX } from '$lib/layout/tokens';
 	import type { Datum } from '$lib/inverter/chart-axes';
 	import type { CustomChart } from '$lib/inverter/custom-charts.svelte';
 	import type { HistoryRange } from '$lib/inverter/ranges';
@@ -157,7 +158,7 @@
 		{/if}
 	</div>
 
-	<div class="h-64 w-full">
+	<div class="{CHART_BOX} w-full">
 		{#if plottable}
 			<div class="h-full w-full" in:fade={{ duration: 300 }}>
 				<CustomChartPlot

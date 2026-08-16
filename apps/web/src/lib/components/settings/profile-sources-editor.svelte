@@ -4,7 +4,7 @@
 	import { Input } from "$lib/components/ui/input";
 	import { Label } from "$lib/components/ui/label";
 	import ProfileSourceRow from "./profile-source-row.svelte";
-	import SettingsSection from "./settings-section.svelte";
+	import Section from '$lib/components/layout/section.svelte';
 	import type { Source } from "./profile-types";
 	import * as m from "$lib/paraglide/messages";
 
@@ -53,7 +53,7 @@
 	}
 </script>
 
-<SettingsSection title={m.sources_title()}>
+<Section title={m.sources_title()}>
 	<div class="flex flex-col divide-y divide-border">
 		{#each sources as s (s.url)}
 			<ProfileSourceRow source={s} {saving} {onRemove} {onToggle} />
@@ -75,4 +75,4 @@
 		</div>
 		<Button variant="outline" class="w-full sm:w-auto" disabled={saving} onclick={add}>{m.action_add()}</Button>
 	</div>
-</SettingsSection>
+</Section>

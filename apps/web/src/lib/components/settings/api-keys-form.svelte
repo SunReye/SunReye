@@ -13,7 +13,7 @@
 	import DataTable from './data-table.svelte';
 	import OptionSelect from './option-select.svelte';
 	import RowRemoveButton from './row-remove-button.svelte';
-	import SettingsSection from './settings-section.svelte';
+	import Section from '$lib/components/layout/section.svelte';
 	import CopyIcon from 'phosphor-svelte/lib/Copy';
 	import * as m from '$lib/paraglide/messages';
 
@@ -201,7 +201,7 @@
 	</Table.Cell>
 {/snippet}
 
-<SettingsSection title={m.apikeys_list_title()}>
+<Section title={m.apikeys_list_title()}>
 	{#snippet actions()}
 		<OptionSelect
 			value={filterUserId}
@@ -219,7 +219,7 @@
 		rows={keys}
 		cells={keyCells}
 	/>
-</SettingsSection>
+</Section>
 
 <Dialog.Root open={secretOpen} onOpenChange={closeSecret}>
 	<Dialog.Content>

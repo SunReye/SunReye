@@ -1,4 +1,3 @@
-<!-- fallow-ignore-file unused-file -- phase 2.2 of the layout system: the primitives ship before the routes migrate onto them; the migration commits remove this line -->
 <script lang="ts">
 	// The one page container. Every route's outermost element is this, so the
 	// content measure, gutter and vertical rhythm stop being a per-page choice —
@@ -14,22 +13,45 @@
 
 	let {
 		width = 'wide',
+		lead,
 		toolbar,
 		children
 	}: {
 		/** Content measure, by intent: narrow (forms/lists), wide (dashboards), full. */
 		width?: ShellWidth;
+		/** Left-aligned start of the toolbar row: a back link or breadcrumb — where
+		 *  the reader came from, not a control they operate. */
+		lead?: Snippet;
 		/** Page-level controls — range pickers, primary actions. Rendered first,
 		 *  right-aligned, wrapping onto its own lines on a phone. */
 		toolbar?: Snippet;
 		children: Snippet;
 	} = $props();
+
+	// Lifted out of the template on purpose: `{#if lead || toolbar}` inline put
+	// the shell's markup over the complexity gate (cyclomatic 5, CRAP 30) the
+	// moment `lead` was added. The condition is the interesting part anyway —
+	// the row exists only when something is going into one of its two ends.
+	const hasToolbarRow = $derived(Boolean(lead ?? toolbar));
 </script>
 
 <div class={pageShellClass(width)}>
-	{#if toolbar}
-		<div class="flex flex-wrap items-center justify-end {CLUSTER_GAP}">
-			{@render toolbar()}
+	<!-- One row, two ends. Before `lead` existed, a page with both had to put its
+	     back link in `children`, which rendered it BELOW the toolbar: an extra
+	     vertical row, and "where I came from" sitting under the live status it
+	     has nothing to do with. Guarded together so a page with neither spends no
+	     row at all, and `ml-auto` (not `justify-between`) keeps the controls hard
+	     right whether or not a lead is present — with `justify-between` a
+	     lead-less row would drift its single child to the left edge. -->
+	{#if hasToolbarRow}
+		<div class="flex flex-wrap items-center {CLUSTER_GAP}">
+			{@render lead?.()}
+			<!-- Own cluster so `justify-end` applies to the controls as a group:
+			     spreading them across the row's free space is what a bare
+			     `justify-between` on the outer row would do with two of them. -->
+			<div class="ml-auto flex flex-wrap items-center justify-end {CLUSTER_GAP}">
+				{@render toolbar?.()}
+			</div>
 		</div>
 	{/if}
 	{@render children()}

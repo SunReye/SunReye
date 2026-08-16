@@ -4,7 +4,7 @@
 	import { Label } from '$lib/components/ui/label';
 	import { Switch } from '$lib/components/ui/switch';
 	import * as Alert from '$lib/components/ui/alert';
-	import SettingsSection from './settings-section.svelte';
+	import Section from '$lib/components/layout/section.svelte';
 	import SaveBar from './save-bar.svelte';
 	import OptionSelect from './option-select.svelte';
 	import { apiErrorText } from './api-error';
@@ -70,7 +70,7 @@
 <div class="flex flex-col gap-6">
 	<SaveBar {isAdmin} {saving} disabled={!draft} onsave={save} />
 
-	<SettingsSection title={m.prices_settings_title()}>
+	<Section title={m.prices_settings_title()}>
 		<p class="text-sm text-muted-foreground">{m.prices_settings_intro()}</p>
 
 		{#if draft}
@@ -79,7 +79,7 @@
 				<Switch id="spot-enabled" bind:checked={draft.enabled} disabled={readOnly} />
 			</div>
 
-			<div class="grid gap-4 sm:grid-cols-2">
+			<div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
 				<div class="flex flex-col gap-2">
 					<Label for="spot-provider">{m.prices_settings_provider()}</Label>
 					<OptionSelect
@@ -110,5 +110,5 @@
 				<p class="text-xs text-muted-foreground">{active.attribution}</p>
 			{/if}
 		{/if}
-	</SettingsSection>
+	</Section>
 </div>

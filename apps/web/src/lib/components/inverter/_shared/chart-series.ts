@@ -2,7 +2,7 @@
 // chart derives from its series list, and the dual-axis normalization the custom
 // charts apply when their series span more than one unit.
 import type { ChartConfig } from "$lib/components/ui/chart";
-import { barBandPadding, COST_CHART_PADDING, COST_X_TICK_SPACING } from "$lib/cost/ranges";
+import { barBandPadding, chartPaddingFor, xTickSpacingFor } from "$lib/cost/ranges";
 import {
   domainFor,
   groupSeriesByUnit,
@@ -19,13 +19,18 @@ export type LabelledSeries = { key: string; label: string; color: string };
  * The layout props every stacked statistics bar chart passes: a band padding
  * that keeps a two-bucket window from rendering slabs, a 2px gap between stack
  * segments, and axes with room for their labels.
+ *
+ * `width` is the plot box's MEASURED width, not a breakpoint — the same chart
+ * renders full-bleed on one page and two-up inside a grid on another, so only
+ * the element knows how much room it got. Callers pass `bind:clientWidth`; 0
+ * (not yet in the document) reads as the desktop case.
  */
-export function stackedBarProps(bucketCount: number) {
+export function stackedBarProps(bucketCount: number, width: number) {
   return {
     bandPadding: barBandPadding(bucketCount, 0.25),
     stackPadding: 2,
-    padding: COST_CHART_PADDING,
-    props: { xAxis: { tickSpacing: COST_X_TICK_SPACING } },
+    padding: chartPaddingFor(width),
+    props: { xAxis: { tickSpacing: xTickSpacingFor(width) } },
   };
 }
 

@@ -8,6 +8,7 @@
 	import SubsystemSection from '$lib/components/inverter/subsystem-section.svelte';
 	import IndexedGroup from '$lib/components/inverter/indexed-group.svelte';
 	import { setPageHeader } from '$lib/page-header.svelte';
+	import PageShell from '$lib/components/layout/page-shell.svelte';
 	import * as m from '$lib/paraglide/messages';
 
 	$effect(() => setPageHeader(m.nav_system()));
@@ -170,8 +171,9 @@
 	/>
 {/snippet}
 
-<div class="flex w-full flex-col gap-8 p-4 sm:p-6">
-	<section class="grid gap-4 sm:grid-cols-2 lg:grid-cols-2">
+<!-- Was `gap-8` — a sixth rhythm nobody chose. The shell's gap is the rhythm. -->
+<PageShell width="wide">
+	<section class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-2">
 		{#each kpiCards as k (k.role)}
 			<div class="min-w-0 border border-border">
 				<Kpi
@@ -187,9 +189,9 @@
 		{/each}
 	</section>
 
-	<div class="grid gap-6 lg:grid-cols-2">
+	<div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
 		{#each visibleSections as s (s.id)}
 			<SubsystemSection title={s.title} metrics={s.metrics} children={s.body} />
 		{/each}
 	</div>
-</div>
+</PageShell>

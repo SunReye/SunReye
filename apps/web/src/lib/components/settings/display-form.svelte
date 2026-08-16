@@ -2,7 +2,7 @@
 	import { onMount } from 'svelte';
 	import { toast } from 'svelte-sonner';
 	import { Label } from '$lib/components/ui/label';
-	import SettingsSection from './settings-section.svelte';
+	import Section from '$lib/components/layout/section.svelte';
 	import SaveBar from './save-bar.svelte';
 	import OptionSelect from './option-select.svelte';
 	import { display, TIME_ZONE_AUTO, type DisplayConfig } from '$lib/display.svelte';
@@ -104,7 +104,7 @@
 
 <SaveBar {isAdmin} {saving} disabled={!draft} onsave={save} />
 
-<SettingsSection title={m.settings_language()}>
+<Section title={m.settings_language()}>
 	<p class="text-sm text-muted-foreground">{m.settings_language_desc()}</p>
 	<div class="flex flex-col gap-2">
 		<Label for="language">{m.settings_language()}</Label>
@@ -115,9 +115,9 @@
 			triggerClass="max-w-xs"
 		/>
 	</div>
-</SettingsSection>
+</Section>
 
-<SettingsSection title={m.settings_appearance()}>
+<Section title={m.settings_appearance()}>
 	<p class="text-sm text-muted-foreground">{m.settings_appearance_desc()}</p>
 	<div class="flex flex-col gap-2">
 		<Label for="theme">{m.settings_theme()}</Label>
@@ -128,9 +128,9 @@
 			triggerClass="max-w-xs"
 		/>
 	</div>
-</SettingsSection>
+</Section>
 
-<SettingsSection title={m.settings_datetime()}>
+<Section title={m.settings_datetime()}>
 	{#if !draft}
 		<p class="text-sm text-muted-foreground">{m.app_loading()}</p>
 	{:else}
@@ -163,4 +163,4 @@
 			<span class="font-mono text-sm tabular-nums">{preview}</span>
 		</div>
 	{/if}
-</SettingsSection>
+</Section>

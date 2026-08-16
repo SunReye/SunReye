@@ -1,15 +1,14 @@
-<!-- fallow-ignore-file unused-file -- phase 2.2 of the layout system: the primitives ship before the routes migrate onto them; the migration commits remove this line -->
 <script lang="ts">
 	// The one section card: bordered stack, uppercase muted title, optional
 	// caption, optional right-hand actions, optional collapse. The header row
 	// and the collapsible content live in their own files; what is left here is
 	// the card and the open-state contract.
 	//
-	// This is a promotion of `lib/components/settings/settings-section.svelte`,
-	// which was already cross-feature (four automations components import it) —
-	// its name and its home under `settings/` are precisely why the statistics,
-	// system and controls authors each wrote their own instead, six variants in
-	// total with three different gaps and one missing header gap entirely.
+	// Promoted from `lib/components/settings/settings-section.svelte`, now
+	// deleted. That one was already cross-feature (four automations components
+	// imported it) — its name and its home under `settings/` are precisely why
+	// the statistics, system and controls authors each wrote their own instead,
+	// six variants with three different gaps and one missing header gap.
 	import type { Snippet } from 'svelte';
 	import * as Collapsible from '$lib/components/ui/collapsible';
 	import { sectionShellClass } from '$lib/layout/tokens';
@@ -27,6 +26,7 @@
 		onOpenChange,
 		dashed = false,
 		dimmed = false,
+		nested = false,
 		children
 	}: {
 		title: string;
@@ -53,6 +53,9 @@
 		dashed?: boolean;
 		/** Hidden-section preview — still mounted, visibly demoted. */
 		dimmed?: boolean;
+		/** Card inside another card: no frame of its own below sm, where the
+		 *  nested chrome costs a quarter of the screen. */
+		nested?: boolean;
 		children: Snippet;
 	} = $props();
 
@@ -66,7 +69,7 @@
 </script>
 
 <Collapsible.Root open={contentOpenState} onOpenChange={handleOpenChange}>
-	<section class={sectionShellClass({ dashed, dimmed })}>
+	<section class={sectionShellClass({ dashed, dimmed, nested })}>
 		<SectionHeader {title} {caption} {actions} {collapsible} />
 		<SectionBody {children} />
 	</section>

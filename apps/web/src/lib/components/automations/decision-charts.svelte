@@ -2,7 +2,7 @@
 	// Decision history section: polls the engine's in-memory log and plots it as
 	// the power plane plus the charge ceiling. Two charts on purpose — kW and A
 	// are different measures, and one plot may only carry one scale.
-	import SettingsSection from '$lib/components/settings/settings-section.svelte';
+	import Section from '$lib/components/layout/section.svelte';
 	import RangeSwitcher from '$lib/components/inverter/range-switcher.svelte';
 	import DecisionPowerChart from './decision-power-chart.svelte';
 	import DecisionCeilingChart from './decision-ceiling-chart.svelte';
@@ -28,7 +28,7 @@
 	const shadowing = $derived(points.at(-1)?.shadow === true);
 </script>
 
-<SettingsSection title={m.automations_charts_title()}>
+<Section title={m.automations_charts_title()}>
 	{#snippet actions()}
 		<RangeSwitcher options={WINDOW_OPTIONS} bind:value={range} />
 	{/snippet}
@@ -54,4 +54,4 @@
 
 		<p class="text-xs text-muted-foreground">{m.automations_charts_retention()}</p>
 	{/if}
-</SettingsSection>
+</Section>

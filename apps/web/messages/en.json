@@ -384,7 +384,6 @@
   "statistics_section_energy": "Energy",
   "statistics_section_prices": "Spot prices",
   "statistics_section_records": "Records",
-  "statistics_section_toggle_aria": "Show or hide {section}",
   "layout_section_toggle_aria": "Show or hide {section}",
   "statistics_caption_last_month": "Last month, by day",
   "statistics_caption_this_year": "This year, by month",
@@ -847,5 +846,19 @@
   "peak_shaving_pa_grid_charge_desc": "Buy from the grid during a window. Only has any effect when your import price follows the market (Settings → Tariff) — a negative wholesale price does not lower a fixed bill. Even then you still pay grid fees, levies and VAT, so this is about buying at the cheapest hour, not about being paid to consume.",
   "peak_shaving_pa_grid_charge_a": "Grid charge current (A)",
   "peak_shaving_pa_grid_charge_a_desc": "Current drawn from the grid while charging in a window.",
-  "weather_forecast_partial": "{covered}/{elapsed} slots measured"
+  "weather_forecast_partial": "{covered}/{elapsed} slots measured",
+  "settings_sub_inverter": "How SunReye reaches your inverter, and which profile it speaks.",
+  "settings_sub_sensors": "Choose which sensors appear in this dashboard.",
+  "settings_sub_mqtt": "Publish readings to a broker and to Home Assistant.",
+  "settings_sub_display": "Language, theme, and how dates and times are rendered.",
+  "settings_sub_tariff": "The import and export prices your energy is costed at.",
+  "settings_sub_prices": "Day-ahead market prices and the surcharges on top of them.",
+  "settings_sub_weather": "Location and provider behind the solar forecast.",
+  "settings_sub_access": "Who may read this dashboard without signing in.",
+  "settings_sub_automations": "Instance-wide switches for the automation engine.",
+  "settings_sub_profiles": "Inverter profiles installed on this instance.",
+  "settings_sub_users": "Accounts that can sign in to this instance.",
+  "settings_sub_apikeys": "Long-lived keys for scripts and integrations.",
+  "settings_sub_logs": "Recent server output, for troubleshooting.",
+  "settings_sub_danger": "Destructive operations. Read before you click."
 }

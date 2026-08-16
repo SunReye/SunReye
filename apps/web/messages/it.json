@@ -384,7 +384,6 @@
   "statistics_section_energy": "Energia",
   "statistics_section_prices": "Prezzi spot",
   "statistics_section_records": "Record",
-  "statistics_section_toggle_aria": "Mostra o nascondi {section}",
   "layout_section_toggle_aria": "Mostra o nascondi {section}",
   "statistics_caption_last_month": "Mese scorso, per giorno",
   "statistics_caption_this_year": "Quest'anno, per mese",
@@ -847,5 +846,19 @@
   "peak_shaving_pa_grid_charge_desc": "Acquistare dalla rete durante una finestra. Ha effetto solo se il prezzo di acquisto segue il mercato (Impostazioni → Tariffa): un prezzo all'ingrosso negativo non riduce una bolletta a prezzo fisso. E si pagano comunque oneri di rete, imposte e IVA — si tratta di comprare nell'ora più economica, non di essere pagati per consumare.",
   "peak_shaving_pa_grid_charge_a": "Corrente di carica da rete (A)",
   "peak_shaving_pa_grid_charge_a_desc": "Corrente prelevata dalla rete caricando durante una finestra.",
-  "weather_forecast_partial": "{covered}/{elapsed} intervalli misurati"
+  "weather_forecast_partial": "{covered}/{elapsed} intervalli misurati",
+  "settings_sub_inverter": "Come SunReye raggiunge il tuo inverter e quale profilo usa.",
+  "settings_sub_sensors": "Scegli quali sensori compaiono in questa dashboard.",
+  "settings_sub_mqtt": "Pubblica le letture su un broker e su Home Assistant.",
+  "settings_sub_display": "Lingua, tema e formato di date e orari.",
+  "settings_sub_tariff": "I prezzi di acquisto e cessione con cui viene valorizzata la tua energia.",
+  "settings_sub_prices": "Prezzi del mercato del giorno prima e i sovrapprezzi applicati.",
+  "settings_sub_weather": "Posizione e fornitore dietro la previsione solare.",
+  "settings_sub_access": "Chi può consultare questa dashboard senza accedere.",
+  "settings_sub_automations": "Interruttori globali del motore di automazione.",
+  "settings_sub_profiles": "Profili inverter installati su questa istanza.",
+  "settings_sub_users": "Account che possono accedere a questa istanza.",
+  "settings_sub_apikeys": "Chiavi a lunga durata per script e integrazioni.",
+  "settings_sub_logs": "Output recente del server, per la diagnostica.",
+  "settings_sub_danger": "Operazioni distruttive. Leggi prima di cliccare."
 }

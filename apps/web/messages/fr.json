@@ -384,7 +384,6 @@
   "statistics_section_energy": "Énergie",
   "statistics_section_prices": "Prix spot",
   "statistics_section_records": "Records",
-  "statistics_section_toggle_aria": "Afficher ou masquer {section}",
   "layout_section_toggle_aria": "Afficher ou masquer {section}",
   "statistics_caption_last_month": "Mois dernier, par jour",
   "statistics_caption_this_year": "Cette année, par mois",
@@ -847,5 +846,19 @@
   "peak_shaving_pa_grid_charge_desc": "Acheter sur le réseau pendant une fenêtre. N'a d'effet que si votre prix d'achat suit le marché (Réglages → Tarif) : un prix de gros négatif n'allège pas une facture à prix fixe. Et vous payez toujours acheminement, taxes et TVA — il s'agit d'acheter à l'heure la moins chère, pas d'être payé pour consommer.",
   "peak_shaving_pa_grid_charge_a": "Courant de charge réseau (A)",
   "peak_shaving_pa_grid_charge_a_desc": "Courant tiré du réseau lors d'une charge pendant une fenêtre.",
-  "weather_forecast_partial": "{covered}/{elapsed} créneaux mesurés"
+  "weather_forecast_partial": "{covered}/{elapsed} créneaux mesurés",
+  "settings_sub_inverter": "Comment SunReye joint votre onduleur, et quel profil il utilise.",
+  "settings_sub_sensors": "Choisissez les capteurs affichés dans ce tableau de bord.",
+  "settings_sub_mqtt": "Publier les relevés vers un broker et vers Home Assistant.",
+  "settings_sub_display": "Langue, thème et affichage des dates et des heures.",
+  "settings_sub_tariff": "Les prix d'achat et de revente utilisés pour chiffrer votre énergie.",
+  "settings_sub_prices": "Prix du marché day-ahead et les majorations qui s'y ajoutent.",
+  "settings_sub_weather": "Localisation et fournisseur derrière la prévision solaire.",
+  "settings_sub_access": "Qui peut consulter ce tableau de bord sans se connecter.",
+  "settings_sub_automations": "Interrupteurs globaux du moteur d'automatisation.",
+  "settings_sub_profiles": "Profils d'onduleur installés sur cette instance.",
+  "settings_sub_users": "Comptes pouvant se connecter à cette instance.",
+  "settings_sub_apikeys": "Clés à longue durée de vie pour scripts et intégrations.",
+  "settings_sub_logs": "Sortie récente du serveur, pour le diagnostic.",
+  "settings_sub_danger": "Opérations destructrices. À lire avant de cliquer."
 }

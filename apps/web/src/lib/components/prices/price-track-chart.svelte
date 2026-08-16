@@ -10,7 +10,8 @@
 	import PriceTooltip from './price-tooltip.svelte';
 	import { seriesConfig } from '$lib/components/inverter/_shared/chart-series';
 	import { canvasHighlight } from '$lib/components/inverter/_shared/canvas-highlight.svelte';
-	import { COST_CHART_PADDING, COST_X_TICK_SPACING } from '$lib/cost/ranges';
+	import { chartPaddingFor, xTickSpacingFor } from '$lib/cost/ranges';
+	import { CHART_BOX } from '$lib/layout/tokens';
 	import { bandSpan, negativeBandRuns, type PriceRow } from '$lib/prices/price-series';
 	import * as m from '$lib/paraglide/messages';
 
@@ -63,6 +64,12 @@
 	const legend = $derived(
 		negativeRuns.length > 0 ? series : series.filter((s) => s.key === 'positiveCt')
 	);
+
+	// The gutters follow the plot's MEASURED width, not a breakpoint: this chart
+	// renders full-bleed on one page and inside a two-up grid on another, so only
+	// the element knows how much room it got. 0 until it is in the document,
+	// which chartPaddingFor reads as the desktop case.
+	let plotWidth = $state(0);
 </script>
 
 <!-- Drawn over the bars, inside the chart layer: a dashed rule on the band the
@@ -91,16 +98,16 @@
 	{/if}
 {/snippet}
 
-<div class="flex min-w-0 flex-col gap-3" bind:this={highlight.el}>
-	<Chart.Container {config} class="h-64 w-full min-w-0">
+<div class="flex min-w-0 flex-col gap-3" bind:this={highlight.el} bind:clientWidth={plotWidth}>
+	<Chart.Container {config} class="{CHART_BOX} w-full min-w-0">
 		<BarChart
 			data={rows}
 			x="label"
 			{series}
 			seriesLayout="stackDiverging"
 			bandPadding={0.1}
-			padding={COST_CHART_PADDING}
-			props={{ xAxis: { tickSpacing: COST_X_TICK_SPACING } }}
+			padding={chartPaddingFor(plotWidth)}
+			props={{ xAxis: { tickSpacing: xTickSpacingFor(plotWidth) } }}
 			highlight={{ area: { fill: highlight.fill, fillOpacity: 0.1 } }}
 			{belowMarks}
 			{aboveMarks}

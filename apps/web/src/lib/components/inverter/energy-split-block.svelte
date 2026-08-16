@@ -19,6 +19,14 @@
 	import ChartLegend from '$lib/components/inverter/chart-legend.svelte';
 	import DeltaChip from '$lib/components/statistics/delta-chip.svelte';
 	import { seriesConfig, stackedBarProps } from '$lib/components/inverter/_shared/chart-series';
+	import { CHART_BOX_SHORT } from '$lib/layout/tokens';
+
+	// The gutters follow the plot's MEASURED width, not a breakpoint: the two
+	// halves of the split sit side by side on a laptop and stack on a phone, so
+	// only the element knows how much room it got. Per instance, not module-level:
+	// both halves render this component. 0 until it is in the document, which
+	// stackedBarProps reads as the desktop case.
+	let plotWidth = $state(0);
 
 	let {
 		title,
@@ -51,7 +59,7 @@
 
 <!-- min-w-0 lets the grid column shrink below the chart's intrinsic width;
      without it the block overflows the section edge on narrow screens. -->
-<div class="flex min-w-0 flex-col gap-3">
+<div class="flex min-w-0 flex-col gap-3" bind:clientWidth={plotWidth}>
 	<div class="flex items-baseline justify-between gap-3">
 		<div class="flex flex-col">
 			<h3 class="text-sm font-medium">{title}</h3>
@@ -68,13 +76,13 @@
 			{/if}
 		</span>
 	</div>
-	<Chart.Container {config} class="h-55 w-full">
+	<Chart.Container {config} class="{CHART_BOX_SHORT} w-full">
 		<BarChart
 			{data}
 			x="label"
 			{series}
 			{seriesLayout}
-			{...stackedBarProps(data.length)}
+			{...stackedBarProps(data.length, plotWidth)}
 		>
 			{#snippet tooltip()}
 				<Chart.Tooltip />

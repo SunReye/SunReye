@@ -5,7 +5,7 @@
 	import { Switch } from '$lib/components/ui/switch';
 	import { Separator } from '$lib/components/ui/separator';
 	import * as Alert from '$lib/components/ui/alert';
-	import SettingsSection from '$lib/components/settings/settings-section.svelte';
+	import Section from '$lib/components/layout/section.svelte';
 	import SaveBar from '$lib/components/settings/save-bar.svelte';
 	import OptionSelect from '$lib/components/settings/option-select.svelte';
 	import BlockerAlert from './blocker-alert.svelte';
@@ -180,7 +180,7 @@
 
 <SaveBar {isAdmin} {saving} disabled={!draft} onsave={save} />
 
-<SettingsSection title={m.peak_shaving_title()}>
+<Section title={m.peak_shaving_title()}>
 	{#if !draft}
 		<p class="text-sm text-muted-foreground">{m.app_loading()}</p>
 	{:else if !draft.enabled}
@@ -253,4 +253,4 @@
 			blocked={smartMeterMissing}
 		/>
 	{/if}
-</SettingsSection>
+</Section>

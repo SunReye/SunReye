@@ -10,6 +10,7 @@
 	import CostRangePicker from '$lib/components/inverter/cost-range-picker.svelte';
 	import LiveDot from '$lib/components/automations/live-dot.svelte';
 	import { setPageHeader } from '$lib/page-header.svelte';
+	import PageShell from '$lib/components/layout/page-shell.svelte';
 	import { useAppSession } from '$lib/session';
 	import { resolveCostPreset, type CostRange } from '$lib/cost/ranges';
 	import { SECTIONS, type SectionData } from '$lib/statistics/sections';
@@ -118,12 +119,8 @@
 	$effect(() => setPageHeader(m.nav_statistics(), m.statistics_subtitle()));
 </script>
 
-<div class="flex w-full flex-col gap-6 p-4 sm:p-6">
-	{#if customize.active}
-		<CustomizeBar />
-	{/if}
-
-	<div class="flex flex-wrap items-center justify-end gap-3">
+<PageShell width="wide">
+	{#snippet toolbar()}
 		<!-- Only while the picked window actually moves: a past-only range holds no
 		     lease, and a lit dot beside a finished month would be a lie. -->
 		{#if includesNow(range)}
@@ -143,7 +140,13 @@
 				<SlidersHorizontal class="size-4" />
 			</Button>
 		{/if}
-	</div>
+	{/snippet}
+
+	<!-- The customize bar is a mode banner, not a page control: it owns the full
+	     measure and stays under the toolbar it is toggled from. -->
+	{#if customize.active}
+		<CustomizeBar />
+	{/if}
 
 	<StatisticsBody sections={visibleSections} {data} {loading} />
-</div>
+</PageShell>

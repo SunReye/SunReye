@@ -11,6 +11,7 @@
 	import { bus } from '$lib/ws/bus.svelte';
 	import { resolve } from '$lib/resolve';
 	import { setPageHeader } from '$lib/page-header.svelte';
+	import PageShell from '$lib/components/layout/page-shell.svelte';
 	import * as m from '$lib/paraglide/messages';
 
 	// One topic lease feeds everything on the page: the status card, the form's
@@ -28,8 +29,12 @@
 	$effect(() => setPageHeader(m.peak_shaving_title(), m.automations_subtitle()));
 </script>
 
-<div class="mx-auto flex w-full max-w-7xl flex-col gap-6 p-4 sm:p-6 2xl:max-w-384">
-	<div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+<PageShell width="wide">
+	<!-- The back link is not a page control, so it is not `toolbar` — but it does
+	     belong on the toolbar's row rather than under it: as a child of `children`
+	     it cost a second vertical row and put "where I came from" below the live
+	     status. `lead` is the left end of that one row. -->
+	{#snippet lead()}
 		<a
 			href={resolve('/automations')}
 			class="flex w-fit items-center gap-1 text-sm text-muted-foreground transition-colors hover:text-foreground"
@@ -37,35 +42,42 @@
 			<CaretLeftIcon class="size-4" />
 			{m.automations_back()}
 		</a>
+	{/snippet}
+
+	{#snippet toolbar()}
 		<LiveIndicator
 			connected={bus.connected}
 			tickArrivedAt={automationStream.tickArrivedAt}
 			tickMs={automationStream.tickMs}
 		/>
-	</div>
+	{/snippet}
 
-	<!-- Widescreen: configuration on the left, the live picture on the right;
-	     below xl the sections stack in reading order. -->
-	<div class="grid items-start gap-6 xl:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
-		<div class="flex min-w-0 flex-col gap-6">
+	<!-- Widescreen: configuration on the left, the live picture on the right.
+	     The status card belongs to the live picture, not to the configuration —
+	     it was only ever in the left column because that column happened to be
+	     first, and stacking put a screen and a half of knobs between the reader
+	     and the plan those knobs produce. Below xl the order classes put the live
+	     column first, so a phone reads status → plan → charts → settings. -->
+	<div class="grid grid-cols-1 items-start gap-6 xl:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
+		<div class="order-2 flex min-w-0 flex-col gap-6 xl:order-1">
+			<div in:fly={rise(3)}>
+				<PeakShavingForm {status} />
+			</div>
+		</div>
+		<div class="order-1 flex min-w-0 flex-col gap-6 xl:order-2">
 			<div in:fly={rise(0)}>
 				<PeakShavingStatus {status} />
 			</div>
 			<div in:fly={rise(1)}>
-				<PeakShavingForm {status} />
-			</div>
-		</div>
-		<div class="flex min-w-0 flex-col gap-6">
-			<div in:fly={rise(2)}>
 				<DecisionPlan
 					plans={automationStream.plan}
 					loaded={automationStream.loaded}
 					history={automationStream.history}
 				/>
 			</div>
-			<div in:fly={rise(3)}>
+			<div in:fly={rise(2)}>
 				<DecisionCharts points={automationStream.history} loaded={automationStream.loaded} />
 			</div>
 		</div>
 	</div>
-</div>
+</PageShell>

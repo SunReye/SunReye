@@ -1,7 +1,7 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
 	import { Button } from '$lib/components/ui/button';
-	import SettingsSection from './settings-section.svelte';
+	import Section from '$lib/components/layout/section.svelte';
 	import PlusIcon from 'phosphor-svelte/lib/Plus';
 
 	// The "add a row" form shared by the users and API-key panels: a settings
@@ -24,12 +24,12 @@
 	} = $props();
 </script>
 
-<SettingsSection {title}>
-	<form class="grid items-end gap-3 {gridClass}" {onsubmit}>
+<Section {title}>
+	<form class="grid grid-cols-1 items-end gap-3 {gridClass}" {onsubmit}>
 		{@render children()}
 		<Button type="submit" disabled={busy}>
 			<PlusIcon class="size-4" />
 			{submitLabel}
 		</Button>
 	</form>
-</SettingsSection>
+</Section>

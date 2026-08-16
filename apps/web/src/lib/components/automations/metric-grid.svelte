@@ -5,7 +5,9 @@
 	let { rows }: { rows: MetricRow[] } = $props();
 </script>
 
-<dl class="grid grid-cols-2 gap-x-6 gap-y-3 text-sm sm:grid-cols-3">
+<!-- The column gutter steps down on a phone: 24px between two 412px columns is
+     6% of the screen spent on nothing, and the German labels need it. -->
+<dl class="grid grid-cols-2 gap-x-3 sm:gap-x-6 gap-y-3 text-sm sm:grid-cols-3 [&>*]:min-w-0">
 	{#each rows as row (row.label)}
 		<div>
 			<dt class="text-muted-foreground">{row.label}</dt>

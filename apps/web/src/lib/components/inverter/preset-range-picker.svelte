@@ -92,13 +92,19 @@
 
 <Popover.Root bind:open>
 	{#if onStep}
-		<!-- Segmented control: arrows + trigger share one border-box, 32px tall to
-		     match a `size="sm"` outline button. Corners squared, centre divided. -->
-		<div class="flex h-8 items-center border border-input" role="group" aria-label={m.range_select_aria()}>
+		<!-- Segmented control: arrows + trigger share one border-box, as tall as a
+		     `size="sm"` outline button — which now means 36px on a phone and 32px
+		     from sm up, so the box and the arrows step together. Corners squared,
+		     centre divided. -->
+		<div
+			class="flex h-9 sm:h-8 items-center border border-input"
+			role="group"
+			aria-label={m.range_select_aria()}
+		>
 			<Button
 				variant="ghost"
 				size="icon"
-				class="h-full w-8 rounded-none"
+				class="h-full w-9 sm:w-8 rounded-none"
 				onclick={() => onStep(-1)}
 				aria-label={m.range_prev_day()}
 			>
@@ -120,7 +126,7 @@
 			<Button
 				variant="ghost"
 				size="icon"
-				class="h-full w-8 rounded-none"
+				class="h-full w-9 sm:w-8 rounded-none"
 				onclick={() => onStep(1)}
 				disabled={!canStepForward}
 				aria-label={m.range_next_day()}

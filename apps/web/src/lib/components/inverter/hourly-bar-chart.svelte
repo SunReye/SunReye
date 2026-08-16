@@ -4,6 +4,7 @@
 	import ChartLegend from '$lib/components/inverter/chart-legend.svelte';
 	import TooltipSeriesRow from '$lib/components/inverter/_shared/tooltip-series-row.svelte';
 	import { seriesConfig } from '$lib/components/inverter/_shared/chart-series';
+	import { CHART_BOX } from '$lib/layout/tokens';
 
 	// Reusable hourly bar chart for the overview detail dialogs. One or more
 	// series are stacked per band; a single series renders as a plain bar. Mirrors
@@ -41,7 +42,7 @@
 
 {#if hasData}
 	<div class="flex min-w-0 flex-col gap-3">
-		<Chart.Container {config} class="h-64 w-full min-w-0">
+		<Chart.Container {config} class="{CHART_BOX} w-full min-w-0">
 			<BarChart
 				{data}
 				x="label"
@@ -66,5 +67,5 @@
 		{/if}
 	</div>
 {:else}
-	<div class="flex h-64 items-center justify-center text-sm text-muted-foreground">{empty}</div>
+	<div class="flex {CHART_BOX} items-center justify-center text-sm text-muted-foreground">{empty}</div>
 {/if}

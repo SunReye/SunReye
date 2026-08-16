@@ -129,11 +129,16 @@
 {#snippet shell()}
 	<Sidebar.Provider>
 		<AppSidebar />
-		<Sidebar.Inset>
+		<!-- The header's height is declared once, here, and read by both the header
+		     itself and the overview's `100svh - header` viewport grid. It used to be
+		     an `h-14` here and a hand-copied `3.5rem` in a calc two files away, with
+		     nothing connecting them: changing the header silently made the kiosk
+		     screen scroll. -->
+		<Sidebar.Inset class="[--app-header-h:3.5rem]">
 			<!-- Persistent top header on every viewport: sidebar trigger + the active
 			     page's title/subtitle (set by each page via the page-header store). -->
 			<header
-				class="sticky top-0 z-10 flex h-14 shrink-0 items-center gap-3 border-b border-border bg-background px-4"
+				class="sticky top-0 z-10 flex h-[var(--app-header-h)] shrink-0 items-center gap-3 border-b border-border bg-background px-4"
 			>
 				<Sidebar.Trigger />
 				<div class="flex min-w-0 flex-col">
@@ -145,7 +150,12 @@
 					{/if}
 				</div>
 			</header>
-			<main class="min-h-0 flex-1 overflow-y-auto">
+			<!-- `overflow-x-clip`, not `auto`: at 412px /automations ran past the
+			     viewport and the whole page could be dragged sideways. A sideways
+			     scrollbar on the page is never the fix — anything genuinely too wide
+			     (a table, a chart, a code block) scrolls inside its own box, so
+			     clipping here only ever hides an accident. -->
+			<main class="min-h-0 flex-1 overflow-y-auto overflow-x-clip">
 				{#key topSegment}
 					<div in:fade={contentIn}>
 						{@render children()}

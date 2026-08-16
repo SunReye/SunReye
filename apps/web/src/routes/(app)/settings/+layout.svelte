@@ -6,7 +6,9 @@
 	import { routePath } from '$lib/resolve';
 	import { useAppSession } from '$lib/session';
 	import SettingsNav from './settings-nav.svelte';
+	import { settingsHeaderFor } from './nav-routes';
 	import { setSettingsStatus, type SettingsStatus } from './status-context';
+	import PageShell from '$lib/components/layout/page-shell.svelte';
 	import { setPageHeader } from '$lib/page-header.svelte';
 	import * as m from '$lib/paraglide/messages';
 
@@ -46,14 +48,34 @@
 	const reduceMotion = new MediaQuery('prefers-reduced-motion: reduce');
 	const panelIn = $derived(reduceMotion.current ? { duration: 0 } : { y: 6, duration: 180 });
 
-	$effect(() => setPageHeader(m.nav_settings(), m.settings_subtitle()));
+	// One header per panel, read from the route table the nav rail renders. The
+	// panels themselves never call setPageHeader — fourteen call sites is fourteen
+	// chances to ship the fifteenth panel titled "Settings", which is what the
+	// area-wide header did for all of them. The fallback covers `/settings`
+	// itself, which only redirects on to the first panel.
+	const header = $derived(settingsHeaderFor(current));
+	$effect(() =>
+		setPageHeader(
+			header ? header.title() : m.nav_settings(),
+			header ? header.subtitle() : m.settings_subtitle()
+		)
+	);
 </script>
 
-<div class="mx-auto w-full max-w-5xl p-4 sm:p-6">
+<PageShell width="wide">
+	<!-- `md:` is the ONE grandfathered breakpoint in the codebase (tokens.ts bans
+	     it, tokens.test.ts fails on a new one): the rail is a fixed 13rem column,
+	     and 13rem plus a panel wide enough to hold a form only fits from 768px.
+	     `sm:` (640px) puts the panel at 27rem — narrower than the forms in it —
+	     and `lg:` (1024px) leaves tablets stacked with half the width unused.
+	     There is no token pair that lands the rail where this does. -->
 	<div class="flex flex-col gap-6 md:grid md:grid-cols-[13rem_minmax(0,1fr)] md:gap-10">
 		<SettingsNav {isAdmin} {current} />
 
-		<div class="min-w-0">
+		<!-- Wide shell, narrow panel: the shell measure has to cover rail + panel,
+		     but the panel itself is forms and prose and is capped at the reading
+		     measure so it does not run to 60rem of input fields. -->
+		<div class="min-w-0 max-w-3xl">
 			{#key current}
 				<div class="flex flex-col gap-6" in:fly={panelIn}>
 					{@render children()}
@@ -61,4 +83,4 @@
 			{/key}
 		</div>
 	</div>
-</div>
+</PageShell>

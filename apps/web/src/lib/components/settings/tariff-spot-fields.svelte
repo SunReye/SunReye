@@ -75,7 +75,7 @@
 	</div>
 
 	{#if importSpot}
-		<div class="grid gap-4 sm:grid-cols-2">
+		<div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
 			<div class="flex flex-col gap-1.5">
 				<Label for="markup">{m.tariff_supplier_markup()}</Label>
 				<Input

@@ -34,6 +34,7 @@
 	import { seriesConfig } from './_shared/chart-series';
 	import { canvasHighlight } from './_shared/canvas-highlight.svelte';
 	import * as m from '$lib/paraglide/messages';
+	import { CHART_BOX } from '$lib/layout/tokens';
 
 	let {
 		slots,
@@ -122,7 +123,7 @@
 
 {#if hasData}
 	<div class="flex min-w-0 flex-col gap-3" bind:this={highlight.el}>
-		<Chart.Container {config} class="h-64 w-full min-w-0">
+		<Chart.Container {config} class="{CHART_BOX} w-full min-w-0">
 			<BarChart
 				data={view}
 				x="label"
@@ -141,5 +142,5 @@
 		<ChartLegend items={legend} />
 	</div>
 {:else}
-	<div class="flex h-64 items-center justify-center text-sm text-muted-foreground">{empty}</div>
+	<div class="flex {CHART_BOX} items-center justify-center text-sm text-muted-foreground">{empty}</div>
 {/if}

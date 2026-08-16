@@ -1,4 +1,4 @@
-// fallow-ignore-file unused-file unused-export unused-type -- phase 2.1 of the layout system: the tokens ship before the routes that spend them, and the migration commits remove this line
+// fallow-ignore-file unused-type -- phase 2.1 of the layout system: the vocabulary is broader than the first wave of callers spends; later phases claim the rest
 /**
  * The two decisions `section.svelte` makes, lifted out of the component so the
  * suite can call them (runes do not run under `bun test` — see

@@ -42,12 +42,13 @@
 	import CustomChartTooltip from '$lib/components/inverter/custom-chart-tooltip.svelte';
 	import { display } from '$lib/display.svelte';
 	import type { CurveFactory } from 'd3-shape';
+	import { CHART_BOX } from '$lib/layout/tokens';
 
 	let {
 		rows,
 		series,
 		curve,
-		height = 'h-64',
+		height = CHART_BOX,
 		tooltipExtras = [],
 		yDomain,
 		layout = 'overlap'

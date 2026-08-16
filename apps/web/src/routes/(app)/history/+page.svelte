@@ -7,6 +7,8 @@
 	import CustomChartSection from '$lib/components/inverter/custom-chart-section.svelte';
 	import MetricGroup from './metric-group.svelte';
 	import { setPageHeader } from '$lib/page-header.svelte';
+	import PageShell from '$lib/components/layout/page-shell.svelte';
+	import EmptyState from '$lib/components/layout/empty-state.svelte';
 	import {
 		chartableMetrics,
 		searchedGroups
@@ -36,10 +38,10 @@
 	$effect(() => setPageHeader(m.nav_history(), m.history_subtitle()));
 </script>
 
-<div class="flex w-full flex-col gap-6 p-4 sm:p-6">
-	<div class="flex flex-wrap items-center justify-end gap-3">
+<PageShell width="wide">
+	{#snippet toolbar()}
 		<DateRangePicker bind:range />
-	</div>
+	{/snippet}
 
 	<div class="relative max-w-sm">
 		<MagnifyingGlass
@@ -53,11 +55,7 @@
 	{/if}
 
 	{#if emptyMessage}
-		<div
-			class="flex h-40 items-center justify-center border border-border text-sm text-muted-foreground"
-		>
-			{emptyMessage}
-		</div>
+		<EmptyState message={emptyMessage} />
 	{:else}
 		{#each groups as [category, metrics] (category)}
 			<MetricGroup
@@ -69,4 +67,4 @@
 			/>
 		{/each}
 	{/if}
-</div>
+</PageShell>

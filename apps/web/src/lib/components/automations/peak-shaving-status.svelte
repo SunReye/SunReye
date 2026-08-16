@@ -3,7 +3,7 @@
 	import { prefersReducedMotion } from 'svelte/motion';
 	import { Badge } from '$lib/components/ui/badge';
 	import * as Alert from '$lib/components/ui/alert';
-	import SettingsSection from '$lib/components/settings/settings-section.svelte';
+	import Section from '$lib/components/layout/section.svelte';
 	import MetricGrid, { type MetricRow } from './metric-grid.svelte';
 	import StatTiles from './stat-tiles.svelte';
 	import { STATE_LABEL, STATE_VARIANT } from './run-state';
@@ -166,7 +166,7 @@
 	});
 </script>
 
-<SettingsSection title={m.automations_status_title()}>
+<Section title={m.automations_status_title()}>
 	{#snippet actions()}
 		<StatusBadges {runState} {regime} />
 	{/snippet}
@@ -190,4 +190,4 @@
 			<p class="text-xs text-muted-foreground">{m.peak_shaving_status_restore()}</p>
 		{/if}
 	{/if}
-</SettingsSection>
+</Section>
