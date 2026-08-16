@@ -147,7 +147,7 @@
 <!-- `nested`: a saved chart is one of a grid of cards inside the custom-chart
      section, which is itself inside the page shell. Three frames and three pads
      cost a quarter of a 390px screen; the card's own frame returns at sm. -->
-<Section title={chart.name} nested>
+<Section title={chart.name} nested fullscreen>
 	{#snippet actions()}
 		<!-- Title, edit and delete were one row spread by `justify-between`; the
 		     two icon buttons are the section's right-hand cluster now. They are

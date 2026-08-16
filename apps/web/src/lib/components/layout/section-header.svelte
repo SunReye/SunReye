@@ -8,16 +8,16 @@
 	// unreadable well before that. The split also makes the row reusable: the
 	// page toolbar wants the same title/actions arrangement.
 	import type { Snippet } from 'svelte';
-	import CaretDown from 'phosphor-svelte/lib/CaretDown';
-	import * as Collapsible from '$lib/components/ui/collapsible';
-	import * as m from '$lib/paraglide/messages';
-	import { CLUSTER_GAP, TAP } from '$lib/layout/tokens';
+	import SectionActions from './section-actions.svelte';
+	import type { FullscreenBox } from '$lib/charts/fullscreen.svelte';
+	import { CLUSTER_GAP } from '$lib/layout/tokens';
 
 	let {
 		title,
 		caption,
 		actions,
-		collapsible = false
+		collapsible = false,
+		screen = null
 	}: {
 		title: string;
 		/** Context under the title, e.g. "This month, by day". */
@@ -26,6 +26,8 @@
 		actions?: Snippet;
 		/** Renders the collapse trigger. */
 		collapsible?: boolean;
+		/** Present when the card can take the screen; renders the trigger. */
+		screen?: FullscreenBox | null;
 	} = $props();
 </script>
 
@@ -49,22 +51,5 @@
 			<p class="text-xs text-muted-foreground/70">{caption}</p>
 		{/if}
 	</div>
-	<!-- Unguarded on purpose: a section with neither actions nor a trigger leaves
-	     this a zero-width flex child at the end of the row, which changes nothing
-	     visually — `justify-between` still puts the title block where one child
-	     alone would sit. Guarding it bought a branch and no pixels. -->
-	<div class="flex items-center {CLUSTER_GAP}">
-		{@render actions?.()}
-		{#if collapsible}
-			<!-- The trigger is a bare 16px caret with no padding, and on a phone it
-			     is the only way to fold a section, so TAP is the whole hit area:
-			     44px square, measured by `tapTargetPx` in the suite. -->
-			<Collapsible.Trigger
-				class="group {TAP} text-muted-foreground transition-colors hover:text-foreground"
-				aria-label={m.layout_section_toggle_aria({ section: title })}
-			>
-				<CaretDown class="size-4 transition-transform group-data-[state=closed]:-rotate-90" />
-			</Collapsible.Trigger>
-		{/if}
-	</div>
+	<SectionActions {title} {actions} {collapsible} {screen} />
 </div>

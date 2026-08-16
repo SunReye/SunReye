@@ -5,6 +5,7 @@
 	import { Axis, Canvas, Cell, Chart, Tooltip } from 'layerchart/canvas';
 	import { scaleBand } from 'd3-scale';
 	import { api } from '$lib/api';
+	import ChartFullscreen from '$lib/components/layout/chart-fullscreen.svelte';
 	import GradientLegend from '$lib/components/inverter/_shared/gradient-legend.svelte';
 	import { fittedPadding } from '$lib/charts/plot-padding';
 	import { getLocale } from '$lib/paraglide/runtime';
@@ -85,44 +86,46 @@
 			{/if}
 		</div>
 
-		<div class="h-64" bind:clientWidth={plotWidth}>
-			<Chart
-				data={view.cells}
-				x="hour"
-				xScale={scaleBand()}
-				xDomain={hours}
-				y="month"
-				yScale={scaleBand()}
-				yDomain={months}
-				padding={fittedPadding(PADDING, plotWidth)}
-				tooltipContext={{ mode: 'quadtree' }}
-			>
-				<Canvas>
-					<Cell
-						x="hour"
-						y="month"
-						fill={(d: CorrectionCell) => factorColor(d.factor)}
-						fillOpacity={(d: CorrectionCell) => confidence(d.weight)}
-						insets={{ all: 1 }}
-						rx={2}
-					/>
-					<Axis placement="bottom" ticks={hourTicks} rule={false} />
-					<Axis placement="left" format={(mm: number) => monthLabel(mm)} rule={false} />
-				</Canvas>
+		<ChartFullscreen title={m.weather_forecast_correction_improvement()}>
+				<div class="h-64" bind:clientWidth={plotWidth}>
+				<Chart
+					data={view.cells}
+					x="hour"
+					xScale={scaleBand()}
+					xDomain={hours}
+					y="month"
+					yScale={scaleBand()}
+					yDomain={months}
+					padding={fittedPadding(PADDING, plotWidth)}
+					tooltipContext={{ mode: 'quadtree' }}
+				>
+					<Canvas>
+						<Cell
+							x="hour"
+							y="month"
+							fill={(d: CorrectionCell) => factorColor(d.factor)}
+							fillOpacity={(d: CorrectionCell) => confidence(d.weight)}
+							insets={{ all: 1 }}
+							rx={2}
+						/>
+						<Axis placement="bottom" ticks={hourTicks} rule={false} />
+						<Axis placement="left" format={(mm: number) => monthLabel(mm)} rule={false} />
+					</Canvas>
 
-				<Tooltip.Root>
-					{#snippet children({ data }: { data: CorrectionCell })}
-						<Tooltip.Header>
-							{monthLabel(data.month)}
-							{String(data.hour).padStart(2, '0')}:00
-						</Tooltip.Header>
-						<Tooltip.List>
-							<Tooltip.Item label="×" value={data.factor.toFixed(2)} />
-						</Tooltip.List>
-					{/snippet}
-				</Tooltip.Root>
-			</Chart>
-		</div>
+					<Tooltip.Root>
+						{#snippet children({ data }: { data: CorrectionCell })}
+							<Tooltip.Header>
+								{monthLabel(data.month)}
+								{String(data.hour).padStart(2, '0')}:00
+							</Tooltip.Header>
+							<Tooltip.List>
+								<Tooltip.Item label="×" value={data.factor.toFixed(2)} />
+							</Tooltip.List>
+						{/snippet}
+					</Tooltip.Root>
+				</Chart>
+			</div>
+		</ChartFullscreen>
 
 		<GradientLegend
 			label={m.weather_forecast_correction_legend()}

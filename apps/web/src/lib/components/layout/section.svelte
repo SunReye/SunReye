@@ -12,6 +12,8 @@
 	import type { Snippet } from 'svelte';
 	import * as Collapsible from '$lib/components/ui/collapsible';
 	import { sectionShellClass } from '$lib/layout/tokens';
+	import { expandedSectionClass } from '$lib/layout/tokens';
+	import { FullscreenBox } from '$lib/charts/fullscreen.svelte';
 	import { sectionOpen, writesOwnOpen } from '$lib/layout/section-state';
 	import SectionHeader from './section-header.svelte';
 	import SectionBody from './section-body.svelte';
@@ -27,6 +29,7 @@
 		dashed = false,
 		dimmed = false,
 		nested = false,
+		fullscreen = false,
 		children
 	}: {
 		title: string;
@@ -56,11 +59,27 @@
 		/** Card inside another card: no frame of its own below sm, where the
 		 *  nested chrome costs a quarter of the screen. */
 		nested?: boolean;
+		/**
+		 * The card holds a chart, so its header offers to take the whole screen.
+		 * The card is the box that expands — header, body and the chart component
+		 * itself, which keeps its brush and pinch bound the whole time.
+		 */
+		fullscreen?: boolean;
 		children: Snippet;
 	} = $props();
 
 	// A non-collapsible section is always open; see section-state.ts.
 	const contentOpenState = $derived(sectionOpen({ collapsible, open }));
+
+	// Allocated unconditionally — it is three fields — but only *wired* when the
+	// card asked for it, so a page of ordinary sections does not put three DOM
+	// listeners each on the document.
+	const screen = new FullscreenBox();
+	let box = $state<HTMLElement | null>(null);
+	$effect(() => {
+		if (fullscreen) screen.box = box;
+	});
+	$effect(() => (fullscreen ? screen.listen() : undefined));
 
 	function handleOpenChange(next: boolean) {
 		if (writesOwnOpen(controlled)) open = next;
@@ -69,8 +88,15 @@
 </script>
 
 <Collapsible.Root open={contentOpenState} onOpenChange={handleOpenChange}>
-	<section class={sectionShellClass({ dashed, dimmed, nested })}>
-		<SectionHeader {title} {caption} {actions} {collapsible} />
+	<section
+		bind:this={box}
+		class={expandedSectionClass(
+			sectionShellClass({ dashed, dimmed, nested }),
+			fullscreen && screen.expanded,
+			fullscreen && screen.overlay
+		)}
+	>
+		<SectionHeader {title} {caption} {actions} {collapsible} screen={fullscreen ? screen : null} />
 		<SectionBody {children} />
 	</section>
 </Collapsible.Root>

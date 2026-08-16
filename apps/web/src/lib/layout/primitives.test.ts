@@ -21,6 +21,10 @@ async function source(file: string): Promise<string> {
 const pageShell = await source("page-shell.svelte");
 const section = await source("section.svelte");
 const sectionHeader = await source("section-header.svelte");
+// The header row's right-hand cluster; split out when the full-screen toggle
+// joined the collapse caret there and the header template crossed the gate.
+const sectionActions = await source("section-actions.svelte");
+const fullscreenTrigger = await source("fullscreen-trigger.svelte");
 const sectionBody = await source("section-body.svelte");
 const emptyState = await source("empty-state.svelte");
 const sectionGrid = await source("section-grid.svelte");
@@ -101,8 +105,8 @@ describe("section header", () => {
   // next to the trigger. Read the icon the trigger actually renders and measure
   // what TAP makes of it: shrink either one and this fails.
   test("the collapse trigger's hit area measures 44px around the icon it renders", () => {
-    expect(sectionHeader).toMatch(/Collapsible\.Trigger[\s\S]*\{TAP\}/);
-    const icon = sectionHeader.match(/<CaretDown class="size-(\d+)/);
+    expect(sectionActions).toMatch(/Collapsible\.Trigger[\s\S]*\{TAP\}/);
+    const icon = sectionActions.match(/<CaretDown class="size-(\d+)/);
     expect(icon).not.toBeNull();
     const iconPx = Number(icon![1]) * 4;
     expect(tapTargetPx(iconPx)).toEqual({ width: 44, height: 44 });
@@ -111,8 +115,20 @@ describe("section header", () => {
   // The trigger has no padding of its own, so a box-model class here would
   // silently become the real hit area and the measurement above would be a lie.
   test("and gets its reach from TAP alone, not from padding", () => {
-    const trigger = sectionHeader.match(/<Collapsible\.Trigger[\s\S]*?>/)![0];
+    const trigger = sectionActions.match(/<Collapsible\.Trigger[\s\S]*?>/)![0];
     expect(trigger).not.toMatch(/\bp[xytblr]?-\d/);
+  });
+
+  // The full-screen toggle sits in the same cluster and is the same shape of
+  // control: a bare 16px icon with nothing beside it to widen the hit area.
+  // Sized differently from the caret it stands next to, it would read as a
+  // second kind of thing rather than as more of the same row.
+  test("the full-screen toggle is the same 44px target as the caret", () => {
+    expect(fullscreenTrigger).toContain("{TAP}");
+    const icons = [...fullscreenTrigger.matchAll(/<Arrows(?:In|Out) class="size-(\d+)/g)];
+    expect(icons).toHaveLength(2);
+    for (const icon of icons)
+      expect(tapTargetPx(Number(icon[1]) * 4)).toEqual({ width: 44, height: 44 });
   });
 });
 
@@ -151,6 +167,8 @@ describe("breakpoint policy", () => {
     ["page-shell", pageShell],
     ["section", section],
     ["section-header", sectionHeader],
+    ["section-actions", sectionActions],
+    ["fullscreen-trigger", fullscreenTrigger],
     ["section-body", sectionBody],
     ["empty-state", emptyState],
     ["section-grid", sectionGrid],

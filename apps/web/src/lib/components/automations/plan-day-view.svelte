@@ -2,6 +2,7 @@
 	// One plan tab's body: hint, summary and the two charts — or the empty text
 	// when the day has neither a projection nor measured rows to show.
 	import PlanSummary from './plan-summary.svelte';
+	import ChartFullscreen from '$lib/components/layout/chart-fullscreen.svelte';
 	import PlanPowerChart from './plan-power-chart.svelte';
 	import SocChart from './soc-chart.svelte';
 	import type { PlanRow, SocRow } from './plan-series';
@@ -37,13 +38,17 @@
 
 	<div class="flex flex-col gap-2">
 		<p class="text-xs font-medium text-muted-foreground">{m.automations_plan_power()}</p>
-		<PlanPowerChart rows={powerRows} />
+		<ChartFullscreen title={m.automations_plan_power()}>
+			<PlanPowerChart rows={powerRows} />
+		</ChartFullscreen>
 	</div>
 
 	{#if socRows.length > 0}
 		<div class="flex flex-col gap-2">
 			<p class="text-xs font-medium text-muted-foreground">{m.automations_plan_soc()}</p>
-			<SocChart rows={socRows} />
+			<ChartFullscreen title={m.automations_plan_soc()}>
+				<SocChart rows={socRows} />
+			</ChartFullscreen>
 		</div>
 	{/if}
 {/if}

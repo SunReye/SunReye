@@ -91,7 +91,7 @@
 	     element this file owns. `nested` — it is one panel among the statistics
 	     section's, all of which are inside the page shell. -->
 	<div transition:fade={{ duration: 200 }}>
-		<Section title={msg.chart_energy_split()} {caption} nested>
+		<Section title={msg.chart_energy_split()} {caption} nested fullscreen>
 			{#snippet actions()}
 				<RangeSwitcher options={LAYOUTS} bind:value={layoutId} />
 			{/snippet}

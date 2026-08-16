@@ -194,3 +194,77 @@ export function sectionShellClass({ dashed, dimmed, nested }: SectionShellOption
     dimmed && "opacity-40",
   );
 }
+
+/**
+ * What a section card becomes while one of its charts holds the screen.
+ *
+ * The card is not replaced by a "big" copy of itself — same header, same body,
+ * same chart component with its brush and pinch still bound. Only these classes
+ * change, and they are stated here rather than inline because which declaration
+ * wins is the whole behaviour: every chart is sized by {@link CHART_BOX} on
+ * layerchart's own container, so filling the screen means beating that class on
+ * the element that carries it.
+ *
+ * Written out one literal at a time, never composed with `map`/`join`: Tailwind
+ * finds classes by scanning source text, so a class name this file builds at
+ * runtime is a class name that never reaches the stylesheet. That failure is
+ * silent — the string is present in the DOM and does nothing.
+ */
+const EXPANDED_SECTION = [
+  "!h-full !w-full !max-w-none !border-0 !p-4 bg-background",
+  "flex flex-col",
+  // The body takes the leftover height; otherwise the children keep their
+  // content heights and pile up at the top with a screen of white beneath.
+  "[&_[data-slot=collapsible-content]]:flex [&_[data-slot=collapsible-content]]:flex-col",
+  "[&_[data-slot=collapsible-content]]:min-h-0 [&_[data-slot=collapsible-content]]:flex-1",
+  // Then the whole chain down to the plot. `:has()` picks out exactly the
+  // ancestors of a chart, so a legend or a caption beside it keeps its content
+  // height while the plot takes everything left over. A chain rather than one
+  // rule because the depth differs per chart — some are a bare container in the
+  // body, some sit two wrappers down beside a legend and a zoom control.
+  "[&_[data-slot=collapsible-content]_*:has([data-slot=chart])]:!flex",
+  "[&_[data-slot=collapsible-content]_*:has([data-slot=chart])]:!flex-col",
+  "[&_[data-slot=collapsible-content]_*:has([data-slot=chart])]:!min-h-0",
+  "[&_[data-slot=collapsible-content]_*:has([data-slot=chart])]:!flex-1",
+  // And the plot itself, which is where CHART_BOX's fixed height is written.
+  "[&_[data-slot=collapsible-content]_[data-slot=chart]]:!min-h-0",
+  "[&_[data-slot=collapsible-content]_[data-slot=chart]]:!flex-1",
+  "[&_[data-slot=collapsible-content]_[data-slot=chart]]:!h-full",
+].join(" ");
+
+const OVERLAY_SECTION = "fixed inset-0 z-50 overflow-auto";
+
+/** A section card's classes, given whether it currently holds the screen. */
+export function expandedSectionClass(base: string, expanded: boolean, overlay: boolean): string {
+  if (!expanded) return base;
+  return overlay ? `${base} ${EXPANDED_SECTION} ${OVERLAY_SECTION}` : `${base} ${EXPANDED_SECTION}`;
+}
+
+/**
+ * The same expansion for a chart with no section card around it — the two
+ * dialogs and the forecast-correction panel. Same rules, anchored on the
+ * wrapper's own last child instead of on the collapsible body.
+ *
+ * Literal class names for the same reason as {@link expandedSectionClass}:
+ * Tailwind scans source text, so a name composed at runtime never reaches the
+ * stylesheet and fails silently.
+ */
+const CHART_FRAME = "flex min-w-0 flex-col gap-2";
+
+const EXPANDED_CHART = [
+  "!h-full !w-full !p-4 bg-background",
+  "[&>*:last-child]:flex [&>*:last-child]:flex-col",
+  "[&>*:last-child]:min-h-0 [&>*:last-child]:flex-1",
+  "[&_*:has([data-slot=chart])]:!flex [&_*:has([data-slot=chart])]:!flex-col",
+  "[&_*:has([data-slot=chart])]:!min-h-0 [&_*:has([data-slot=chart])]:!flex-1",
+  "[&_[data-slot=chart]]:!min-h-0 [&_[data-slot=chart]]:!flex-1",
+  "[&_[data-slot=chart]]:!h-full",
+].join(" ");
+
+/** A standalone chart frame's classes, given whether it holds the screen. */
+export function expandedChartClass(expanded: boolean, overlay: boolean): string {
+  if (!expanded) return CHART_FRAME;
+  return overlay
+    ? `${CHART_FRAME} ${EXPANDED_CHART} ${OVERLAY_SECTION}`
+    : `${CHART_FRAME} ${EXPANDED_CHART}`;
+}

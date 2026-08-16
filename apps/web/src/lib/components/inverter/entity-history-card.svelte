@@ -90,7 +90,7 @@
      nothing that would draw a second border around the card inside it.
      `nested` because every one of these sits inside a metric-group Section. -->
 <div use:inView={{ onEnter: enter, onLeave: leave }}>
-	<Section title={metric.label} nested>
+	<Section title={metric.label} nested fullscreen>
 		{#snippet actions()}
 			<!-- The live value was the right half of the card's own header row; it
 			     is the section's header cluster now. -->
