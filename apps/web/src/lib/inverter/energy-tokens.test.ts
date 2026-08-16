@@ -359,3 +359,57 @@ describe("weakestPair", () => {
     expect(withClash!.distance).toBeLessThan(0.01);
   });
 });
+
+/**
+ * Every preset re-points every meaning, on both surfaces, and none of them
+ * quietly ships a set that is worse than the shipped one.
+ *
+ * A preset that forgets a token is not a broken preset — it is a preset where
+ * that one meaning keeps the previous palette's colour, which is exactly the
+ * kind of half-applied theme nobody notices until two things match that should
+ * not.
+ */
+const PRESETS = ["colorblind", "vivid", "muted"];
+
+/** The tokens a palette owns: the meanings, plus direction and judgement. */
+const OWNED = [...SEMANTIC, "sign-good", "sign-warn", "sign-bad"];
+
+function presetBlock(preset: string, surface: "light" | "dark"): string {
+  const selector =
+    surface === "light" ? `[data-palette="${preset}"] {` : `.dark[data-palette="${preset}"] {`;
+  const at = css.indexOf(`\n${selector}`);
+  if (at === -1) return "";
+  return css.slice(at, css.indexOf("}", at));
+}
+
+describe("palette presets", () => {
+  for (const preset of PRESETS) {
+    for (const surface of ["light", "dark"] as const) {
+      test(`${preset} authors every token for the ${surface} surface`, () => {
+        const block = presetBlock(preset, surface);
+        expect(block, `no ${surface} block for [data-palette="${preset}"]`).not.toBe("");
+        const missing = OWNED.filter((token) => !new RegExp(`--${token}:`).test(block));
+        expect(missing).toEqual([]);
+      });
+
+      test(`${preset} keeps its ${surface} meanings apart on every screen`, () => {
+        const block = presetBlock(preset, surface);
+        const value = (token: string) =>
+          new RegExp(`--${token}:\\s*(#[0-9a-fA-F]{6})`).exec(block)![1]!;
+        for (const tokens of Object.values(SCREENS)) {
+          const worst = weakestPair(Object.fromEntries(tokens.map((t) => [t, value(t)])))!;
+          expect(
+            worst.distance,
+            `${preset}/${surface}: ${worst.a} vs ${worst.b} under ${worst.vision}`,
+          ).toBeGreaterThanOrEqual(FLOOR);
+        }
+      });
+    }
+  }
+
+  test("the shipped palette stamps no attribute of its own", () => {
+    // `categorical` is `:root`. A `[data-palette="categorical"]` block would
+    // mean an instance that never chose depends on it existing.
+    expect(css).not.toContain('[data-palette="categorical"]');
+  });
+});

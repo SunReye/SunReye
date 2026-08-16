@@ -372,6 +372,16 @@ the same green on /overview, and gave the generator and the EV charger the ident
   /system, statistics) by its **weakest pair**, in both themes, under all three dichromacies, against
   the floor the shipped set already reached. It is a ratchet: eight-way separation under dichromacy
   does not exist, so the rule is only that the set never gets worse.
+- **The palette is a setting.** `Settings → Display → Chart colours` chooses between designed
+  presets — `categorical` (shipped), `colorblind`, `vivid`, `muted` — as an id, never colours. Two
+  levels: an instance setting an admin sets for the plant, and a per-browser override kept in
+  `localStorage` and sent nowhere, so a reader who cannot separate the plant's palette can help
+  themselves without being an admin and without changing the wall display. The resolved preset is
+  stamped as `data-palette` on `<html>`; `categorical` stamps nothing, because it IS `:root`.
+- A preset re-points **only the tokens that carry meaning** — the eight energy roles and the three
+  sign colours. Chrome, text and surfaces belong to the theme. Every preset authors light AND dark
+  values for every token, which is the reason presets exist rather than eight colour pickers: one
+  colour chosen by hand cannot be right on both surfaces, and separation is a property of the set.
 - **`--chart-1..8` is a categorical palette, not a ramp.** shadcn ships five steps of one hue, which
   is right for a quantity that has an order and wrong for series drawn on top of each other. Eight
   hues, spaced so consecutive entries are the least alike, mid-lightness so one set reads on both

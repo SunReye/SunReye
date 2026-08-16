@@ -355,3 +355,109 @@
     @apply font-mono;
   }
 }
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Palette presets.
+
+   A preset re-points the tokens that carry MEANING — the eight energy roles and
+   the three direction/judgement colours — and nothing else. Chrome, text and
+   surfaces are the theme's business, not the palette's.
+
+   Stamped as `data-palette` on <html> from the saved setting; the shipped
+   `categorical` palette stamps nothing, because it IS `:root`.
+
+   Every preset authors LIGHT and DARK values for every token, which is the
+   reason this is a preset and not eight colour pickers: one colour chosen by
+   hand cannot be right on both surfaces. `vivid` and `muted` keep each token's
+   shipped HUE and vary only lightness and chroma, so "solar is amber" and "grid
+   is warm" stay true; `colorblind` abandons the red/green axis entirely for a
+   blue/orange/purple one and separates the rest by lightness.
+
+   Every block is checked by energy-tokens.test.ts: each has to author every
+   token, and each has to keep the colours that share a screen apart under three
+   dichromacies. `colorblind` scores ~0.12 against the shipped palette's 0.04.
+   ───────────────────────────────────────────────────────────────────────────── */
+
+[data-palette="colorblind"] {
+  --energy-grid: #8f4f3f;
+  --energy-solar: #cca369;
+  --energy-selfused: #39b5ff;
+  --energy-export: #1762b6;
+  --energy-battery: #ba93fb;
+  --energy-load: #857db9;
+  --energy-ev: #116d8a;
+  --energy-generator: #b37458;
+  --sign-good: #326893;
+  --sign-warn: #e19b1b;
+  --sign-bad: #a63c0c;
+}
+
+.dark[data-palette="colorblind"] {
+  --energy-grid: #a96655;
+  --energy-solar: #e7bc81;
+  --energy-selfused: #39b5ff;
+  --energy-export: #337bd0;
+  --energy-battery: #ba93fb;
+  --energy-load: #9d95d3;
+  --energy-ev: #3285a2;
+  --energy-generator: #ce8d6f;
+  --sign-good: #4980ac;
+  --sign-warn: #fcb442;
+  --sign-bad: #c1552c;
+}
+
+[data-palette="vivid"] {
+  --energy-grid: #925654;
+  --energy-solar: #c09568;
+  --energy-selfused: #2d9049;
+  --energy-export: #326ca6;
+  --energy-battery: #e864cb;
+  --energy-load: #8558e2;
+  --energy-ev: #358890;
+  --energy-generator: #c17a00;
+  --sign-good: #417654;
+  --sign-warn: #c59711;
+  --sign-bad: #d73817;
+}
+
+.dark[data-palette="vivid"] {
+  --energy-grid: #ab6d6b;
+  --energy-solar: #daae80;
+  --energy-selfused: #4aa961;
+  --energy-export: #4a84c0;
+  --energy-battery: #e864cb;
+  --energy-load: #9c72fe;
+  --energy-ev: #4fa1a9;
+  --energy-generator: #dc932e;
+  --sign-good: #588e6a;
+  --sign-warn: #dfb03b;
+  --sign-bad: #f45536;
+}
+
+[data-palette="muted"] {
+  --energy-grid: #745d5c;
+  --energy-solar: #a59585;
+  --energy-selfused: #4c8357;
+  --energy-export: #5f7791;
+  --energy-battery: #965f88;
+  --energy-load: #9a90c0;
+  --energy-ev: #628f94;
+  --energy-generator: #875726;
+  --sign-good: #56695c;
+  --sign-warn: #b19454;
+  --sign-bad: #aa9190;
+}
+
+.dark[data-palette="muted"] {
+  --energy-grid: #8b7472;
+  --energy-solar: #bfae9d;
+  --energy-selfused: #649c6e;
+  --energy-export: #768faa;
+  --energy-battery: #af77a0;
+  --energy-load: #b3a9da;
+  --energy-ev: #7aa8ad;
+  --energy-generator: #9f6e3e;
+  --sign-good: #6d8072;
+  --sign-warn: #cbad6d;
+  --sign-bad: #c4aaa9;
+}

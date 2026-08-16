@@ -10,6 +10,7 @@ import {
   setMqttConfig,
 } from "../settings/config";
 import { getAccess, setAccess } from "../settings/access-settings";
+import { getChartPalette, setChartPalette } from "../settings/chart-palette-settings";
 import { getDisplay, setDisplay } from "../settings/display-settings";
 import { getPlant, setPlant } from "../settings/plant-settings";
 import { getLoggingConfig, setLoggingConfig } from "../settings/logging-settings";
@@ -62,6 +63,18 @@ export const settingsRoutes = new Elysia({ name: "settings-routes" })
     "/api/settings/display",
     async ({ body, status }) => {
       const saved = await attempt(() => setDisplay(body), "Invalid display");
+      return saved.ok ? saved.value : status(400, { error: saved.error });
+    },
+    adminWrite,
+  )
+  // Chart palette. A render preference exactly like display: the anonymous
+  // public dashboard has to read it, or a kiosk silently draws in a different
+  // palette from the one the admin chose. Only admins write.
+  .get("/api/settings/chart-palette", () => getChartPalette(), { requireSession: true })
+  .put(
+    "/api/settings/chart-palette",
+    async ({ body, status }) => {
+      const saved = await attempt(() => setChartPalette(body), "Invalid chart palette");
       return saved.ok ? saved.value : status(400, { error: saved.error });
     },
     adminWrite,
