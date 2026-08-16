@@ -38,11 +38,24 @@ settings nav rail is the single grandfathered exception and says so in the file.
   `class` prop**; a page needing a bespoke root asks for `width="full"` and owns its markup.
 - `Section` — `title`, `caption?`, `actions?` snippet, `collapsible?`, `open?` + `controlled?` +
   `onOpenChange?`, `dashed?`/`dimmed?` (customize mode), `nested?` (drops border and pad below `sm`
-  when this card sits inside another).
+  when this card sits inside another), `fullscreen?` (the card holds a chart and its header offers
+  to take the whole screen).
 - `SectionGrid` — `variant="tiles"|"pair"|"wall"`.
 - `EmptyState` — `message`, `icon?`, `action?` snippet. `min-h-32` floor, not a fixed height.
 
-`SectionHeader` / `SectionBody` are internals of `Section`; do not import them directly.
+- `ChartFullscreen` — `title`, children. **Only** for a chart with no section card around it (a
+  dialog, a panel). A chart in a card uses `<Section fullscreen>` instead.
+
+`SectionHeader` / `SectionActions` / `SectionBody` / `FullscreenTrigger` are internals of `Section`;
+do not import them directly.
+
+### Charts
+
+Every chart gets a full-screen control, and `lib/charts/fullscreen-coverage.test.ts` finds new ones
+on disk. Put the control on the **plot**, not on a card holding several plots. The expanded classes
+live in `expandedSectionClass` / `expandedChartClass` and are written out **literally** — Tailwind
+scans source text, so a class name built with `map`/`join` reaches the DOM with no rule behind it
+and silently does nothing.
 
 ### Page template
 
@@ -119,6 +132,7 @@ All run in `bun run test` from the repo root.
 | `lib/layout/section-migration.test.ts` | any component outside the primitives that writes a section heading or frames its own card |
 | `lib/layout/mobile-density.test.ts` | a grid with no base column count, a literal chart height, a shrunk tap target, a broken reading order |
 | `lib/live/wiring.test.ts` | a cross-topic fallback, a peeled `Reading`, an unleased feed |
+| `lib/charts/fullscreen-coverage.test.ts` | a new chart with no way to take it full screen |
 
 They read sources, because runes do not run under `bun test` and there is no render harness. When
 you add one, pin the structure or the identifier that is actually passed — never that a string

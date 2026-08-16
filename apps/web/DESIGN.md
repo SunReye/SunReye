@@ -359,6 +359,37 @@ selection *means*, and `lib/charts/zoom-wiring.test.ts` holds every chart to bot
   automations decision chart. Each already runs a transform of its own inside a `ChartClipPath` — a
   gliding live window, a decision timeline — and a second one composes badly.
 
+## Full screen on a chart
+
+Every chart can take the whole screen, and the control is **in the section card's header**, beside
+the title that already names it. Not floating over the plot: that corner is the brush surface these
+charts drag-select with, and a button there swallows the start of a drag.
+
+- **`<Section fullscreen>`** is the whole vocabulary for a chart that lives in a card. For a chart
+  that has no card — the two dialogs, the forecast-correction panel, the four decision plots —
+  wrap the plot in **`<ChartFullscreen title>`**.
+- **One control per plot, not per card**, when a card holds more than one. `decision-charts` has two
+  plots and three paragraphs; expanding the card split a landscape screen five ways and left each
+  plot 59px tall.
+- The card is **not replaced by a bigger copy of itself**. Same header, same body, the same chart
+  component with its brush and pinch still bound. Only classes change, and they are one token —
+  `expandedSectionClass` / `expandedChartClass` in `tokens.ts`.
+- Those classes are **written out literally, never composed with `map`/`join`**. Tailwind finds
+  classes by scanning source text, so a name this codebase builds at runtime is a name with no rule
+  behind it: present in the DOM, silently doing nothing. That exact mistake shipped a full-screen
+  card with a 192px chart in it. A test reads the token's source file back and rejects a composed
+  name.
+- The expansion grows the **whole chain** from the section body down to the plot, picked out with
+  `:has([data-slot=chart])`, because the depth differs per chart and a legend beside the plot has to
+  keep its content height.
+- **Native `requestFullscreen` where it exists, a fixed overlay where it does not.** Safari on iPhone
+  implements it for nothing but `<video>`, and under Home Assistant ingress the app is a cross-origin
+  iframe Chrome refuses the request in. Only the overlay is `fixed inset-0`; adding that to the
+  native path leaves a card stuck over the page if the exit ever fails.
+- Known limit: in **portrait** on a phone the plot is still 412px wide, so the 34px narrow gutter
+  applies and a two-digit `kWh` label can clip. Landscape — the orientation a full-screen chart is
+  actually read in — gets the designed 60px gutter.
+
 ---
 
 ## Styling and spacing guidance
