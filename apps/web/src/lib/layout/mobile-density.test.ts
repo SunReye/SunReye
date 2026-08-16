@@ -157,10 +157,14 @@ describe("chart plot boxes", () => {
   });
 
   test("the box a custom chart's plot fills is the token too", () => {
-    // custom-chart-card sizes the box and its plot fills it with `h-full`, so
-    // the Chart.Container rule above cannot see this one.
-    const card = read("lib/components/inverter/custom-chart-card.svelte");
-    expect(card).toContain("{CHART_BOX} w-full");
+    // The overlay view sizes the box and its plot fills it with `h-full`, so
+    // the Chart.Container rule above cannot see this one. It is the shared
+    // renderer for a saved chart AND for a draft, so the token has to be its
+    // default rather than something each caller restates.
+    const view = read("lib/components/inverter/_shared/overlay-chart-view.svelte");
+    expect(view).toContain("height = CHART_BOX");
+    expect(view).toContain('class="{height} w-full"');
+    expect(view).not.toMatch(/height\s*=\s*['"]h-/);
   });
 
   test("the chart that takes its height as a prop defaults to the token", () => {
