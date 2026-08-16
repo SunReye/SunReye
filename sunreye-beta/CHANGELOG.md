@@ -2,7 +2,7 @@
 
 ## [unreleased]
 
-Unreleased work on `dev` since 1.2.0, shipped in `beta.20260816-14b4b27`.
+Unreleased work on `dev` since 1.2.0, shipped in `beta.20260816-ee577a8`.
 
 
 ### Features
@@ -145,6 +145,7 @@ Unreleased work on `dev` since 1.2.0, shipped in `beta.20260816-14b4b27`.
 * **web:** direction and judgement colours become tokens ([e488ae9](https://github.com/SunReye/SunReye/commit/e488ae9d64505df0e6948cddacf1ea8d991b29dc))
 * **web:** draft controls are icons, without the caption ([6e44599](https://github.com/SunReye/SunReye/commit/6e44599329814bfeec6b52d6104eb04b535aff7d))
 * **web:** one renderer for an overlaid chart ([e2cd65b](https://github.com/SunReye/SunReye/commit/e2cd65baaf2344b370a3455256ffef51b6a6c8bd))
+* **server:** retire the five legacy websocket routes ([33ec667](https://github.com/SunReye/SunReye/commit/33ec6678d46c76b8ae34b83bc0fb27a4c5dfdca6))
 * **server:** one source for the physical export cap ([fba3e4c](https://github.com/SunReye/SunReye/commit/fba3e4c8fc05549fa6ac191eb74cd4a9c828ba43))
 * **web:** put the whole app on the layout system, and open it up on a phone ([828f720](https://github.com/SunReye/SunReye/commit/828f720ba90e046a493a1d08340f6c6c018d77fa))
 * **web:** one owner per live value ([be34538](https://github.com/SunReye/SunReye/commit/be34538daaaff82ca91d8437c4edcafa1c6fc1e0))
