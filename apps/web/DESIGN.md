@@ -410,8 +410,10 @@ of the editor.
 - **It lasts until it is cleared or saved**, which is what the line under the plot promises. Not
   discarded on leaving full screen: the control is in the header whether the card is expanded or
   not, so that gesture has nothing to do with the draft.
-- **Say it is temporary.** Everything else on these pages persists, so a chart that will vanish
-  says so under the plot, next to the two ways out of it.
+- **Two icon controls under the plot**, discard and save, with no sentence beside them. The legend
+  above already names a second series on a card titled after one metric, which is the tell that this
+  is not the card's own chart. Bare 16px icons, so the labels travel with them (`title` + `sr-only`)
+  and `TAP` provides the 44px hit area the words used to.
 - **Saving goes through the editor that already writes custom charts**, seeded — not a second
   create path. That keeps naming, validation and the admin gate in one place.
 - The card's own metric is the base: always first (so it keeps chart accent 1 while others come and

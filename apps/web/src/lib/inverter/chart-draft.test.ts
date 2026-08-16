@@ -172,6 +172,21 @@ describe("the draft is wired to the card, not to the gesture", () => {
     expect(footer).toContain("$session.data?.user.role === 'admin'");
   });
 
+  test("the icon-only controls keep their labels and a 44px hit area", async () => {
+    // Bare 16px icons with no text beside them: without `sr-only` they leave
+    // the keyboard and screen-reader path entirely, and without TAP a thumb has
+    // 16px to hit. Both are what the words used to provide.
+    const footer = await read("lib/components/inverter/_shared/draft-chart-footer.svelte");
+    const buttons = [...footer.matchAll(/<button[\s\S]*?<\/button>/g)].map((match) => match[0]);
+    expect(buttons).toHaveLength(2);
+    for (const button of buttons) {
+      expect(button).toContain("{TAP}");
+      expect(button).toMatch(/title=\{m\.chart_draft_(clear|save)\(\)\}/);
+      expect(button).toMatch(/<span class="sr-only">\{m\.chart_draft_(clear|save)\(\)\}<\/span>/);
+      expect(button).toMatch(/class="size-4"/);
+    }
+  });
+
   test("the base metric's row is disabled, not silently ignored", async () => {
     // `toggleDraft` refuses to remove it; a checkbox that does nothing when
     // tapped reads as broken.
