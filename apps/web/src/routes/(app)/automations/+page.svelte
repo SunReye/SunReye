@@ -7,7 +7,7 @@
 	// Index of the automations, one card each with its live run state. Kept as a
 	// derived list rather than hard-coded markup so a second automation is one
 	// entry, not a new layout. The run state rides the shared live stream.
-	$effect(() => automationStream.connect());
+	$effect(() => automationStream.lease());
 	const peakShaving = $derived(automationStream.status);
 
 	const modeNote = $derived(

@@ -96,11 +96,17 @@
 			// and cards subscribe to topics on top of it (bus.subscribe) without
 			// ever opening or closing one.
 			const releaseBus = bus.connect();
-			inverter.start();
+			// The metrics TOPIC, on top of that connection — the dashboard's live
+			// numbers are read from nearly every page, so the shell holds this one
+			// too instead of every card re-taking it.
+			const releaseMetrics = inverter.start();
 			// Load the instance-wide clock/time-zone preference so charts render in
 			// the configured format from first paint.
 			display.load();
-			return releaseBus;
+			return () => {
+				releaseMetrics();
+				releaseBus();
+			};
 		}
 	});
 

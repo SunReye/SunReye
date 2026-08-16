@@ -8,14 +8,15 @@
 	import DecisionPlan from '$lib/components/automations/decision-plan.svelte';
 	import LiveIndicator from '$lib/components/automations/live-indicator.svelte';
 	import { automationStream } from '$lib/components/automations/stream.svelte';
+	import { bus } from '$lib/ws/bus.svelte';
 	import { resolve } from '$lib/resolve';
 	import { setPageHeader } from '$lib/page-header.svelte';
 	import * as m from '$lib/paraglide/messages';
 
-	// One WebSocket lease feeds everything on the page: the status card, the
-	// form's blocker gating, the plan section and the decision charts all update
-	// the moment the engine ticks — no polls.
-	$effect(() => automationStream.connect());
+	// One topic lease feeds everything on the page: the status card, the form's
+	// blocker gating, the plan section and the decision charts all update the
+	// moment the engine ticks — no polls. The socket itself is the app shell's.
+	$effect(() => automationStream.lease());
 	const status = $derived(automationStream.status);
 
 	// Section entrances: a small staggered rise, disabled for reduced motion.
@@ -37,7 +38,7 @@
 			{m.automations_back()}
 		</a>
 		<LiveIndicator
-			connected={automationStream.connected}
+			connected={bus.connected}
 			tickArrivedAt={automationStream.tickArrivedAt}
 			tickMs={automationStream.tickMs}
 		/>

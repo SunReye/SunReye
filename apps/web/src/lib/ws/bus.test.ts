@@ -306,6 +306,37 @@ describe("LiveBus", () => {
     expect(h.cadence).toEqual([1000, 1000]);
   });
 
+  test("a fresh connection tells every held topic to start over", () => {
+    // Only the bus knows an outage happened. A topic that keeps its own cadence
+    // estimate (EVCC publishes on its own slow loop, not on our poll) would
+    // otherwise measure its first push across the whole gap and stretch every
+    // animation that reads it.
+    const h = harness();
+    openConnection(h);
+    const resumed: string[] = [];
+    h.bus.subscribe("evcc", () => {}, { onResume: () => resumed.push("evcc") });
+    h.bus.subscribe("logs", () => {}, { onResume: () => resumed.push("logs") });
+    expect(resumed).toEqual([]);
+    last(h.sockets).emit("close");
+    h.tick(60_000);
+    elapse();
+    last(h.sockets).emit("open");
+    expect(resumed).toEqual(["evcc", "logs"]);
+  });
+
+  test("a topic given back before the reconnect is not told to start over", () => {
+    const h = harness();
+    openConnection(h);
+    const resumed: string[] = [];
+    const release = h.bus.subscribe("evcc", () => {}, { onResume: () => resumed.push("evcc") });
+    release();
+    last(h.sockets).emit("close");
+    h.tick(60_000);
+    elapse();
+    last(h.sockets).emit("open");
+    expect(resumed).toEqual([]);
+  });
+
   test("releasing the shell's lease closes the socket", () => {
     const h = harness();
     const release = openConnection(h);

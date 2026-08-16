@@ -39,12 +39,12 @@
 	);
 	// EV draw at the EVCC feed's cadence while its rows are shown. The lease
 	// hangs off a memoized boolean, NOT off `status` itself — the status object
-	// is replaced on every stream frame, and an effect keyed on it would tear
-	// down and reopen the EVCC socket each time.
+	// is replaced on every stream frame, and an effect keyed on it would give the
+	// EVCC topic back and re-subscribe it each time.
 	const showEv = $derived(status?.evChargeW != null);
 	$effect(() => {
 		if (!showEv) return;
-		return evcc.connect();
+		return evcc.lease();
 	});
 	const liveEvChargeW = $derived(evcc.active ? evcc.chargePower : status?.evChargeW);
 

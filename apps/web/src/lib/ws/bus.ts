@@ -48,6 +48,20 @@ export interface LiveBusHooks {
 /** One subscriber. Wrapped so the same function may be subscribed twice and counted twice. */
 interface Subscription {
   on: (data: never) => void;
+  onResume?: () => void;
+}
+
+/** Per-subscription options. */
+export interface SubscribeOptions {
+  /**
+   * A fresh connection has been established and this topic has been asked for
+   * again — anything measured against wall-clock arrivals has to start over.
+   *
+   * Only the bus knows an outage happened: a topic whose publisher runs on its
+   * own loop (EVCC pushes on MQTT traffic, not on our poll) cannot tell a slow
+   * period from a dead socket by looking at frame spacing alone.
+   */
+  onResume?: () => void;
 }
 
 /** A server frame reduced to the two fields this module reads. */
@@ -102,6 +116,7 @@ export class LiveBus {
         // A fresh connection: the gap across the outage is not a poll interval.
         this.#cadence.reset();
         hooks.onConnected(true);
+        this.#resume();
         this.#sync();
       },
       onDrop: () => {
@@ -126,13 +141,20 @@ export class LiveBus {
    * it back. The connection is untouched either way.
    */
   // fallow-ignore-next-line unused-class-member -- called as `this.#bus.subscribe()` from the rune shell; calls through a private-field receiver aren't traced
-  subscribe<K extends WsTopic>(topic: K, on: (data: WsTopicPayloads[K]) => void): () => void {
+  subscribe<K extends WsTopic>(
+    topic: K,
+    on: (data: WsTopicPayloads[K]) => void,
+    options: SubscribeOptions = {},
+  ): () => void {
     let subscribers = this.#handlers.get(topic);
     if (!subscribers) {
       subscribers = new Set();
       this.#handlers.set(topic, subscribers);
     }
-    const subscription: Subscription = { on: on as (data: never) => void };
+    const subscription: Subscription = {
+      on: on as (data: never) => void,
+      onResume: options.onResume,
+    };
     subscribers.add(subscription);
     this.#sync();
 
@@ -154,6 +176,16 @@ export class LiveBus {
    * runs this same diff, which is why a reconnect needs no special case: the
    * drop emptied `#sent`, so the diff *is* the replay.
    */
+  /**
+   * Tell every still-held subscription that a new connection has begun, before
+   * its first frame arrives. Iterated over a copy, since a consumer is free to
+   * give the topic back from inside its own resume hook.
+   */
+  #resume(): void {
+    for (const subscribers of this.#handlers.values())
+      for (const subscription of Array.from(subscribers)) subscription.onResume?.();
+  }
+
   #sync(): void {
     const wanted = new Set(this.#handlers.keys());
     const add = [...wanted].filter((topic) => !this.#sent.has(topic));

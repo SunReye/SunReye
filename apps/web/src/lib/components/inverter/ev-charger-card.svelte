@@ -13,7 +13,7 @@
 	// Commands are admin-only server-side; everyone else gets the read-only tile.
 	const isAdmin = $derived($session.data?.user.role === 'admin');
 
-	$effect(() => evcc.connect());
+	$effect(() => evcc.lease());
 </script>
 
 {#if evcc.active}
