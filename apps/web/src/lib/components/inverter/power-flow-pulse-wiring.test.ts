@@ -26,10 +26,12 @@ const read = async (file: string): Promise<string> => await Bun.file(new URL(fil
 
 const RAILS = "lib/components/inverter/_shared/power-flow-rails.svelte";
 const DIAGRAM = "lib/components/inverter/power-flow-diagram.svelte";
+const NODE = "lib/components/inverter/power-flow-node.svelte";
 const SIGNAL = "lib/inverter/flow-pulse.ts";
 
 const rails = await read(RAILS);
 const diagram = await read(DIAGRAM);
+const node = await read(NODE);
 const signal = await read(SIGNAL);
 
 const OPEN = new Set(["(", "[", "{"]);
@@ -91,9 +93,12 @@ function declaration(code: string, name: string): string {
   return rest;
 }
 
+/** `code` without its line comments: a comma inside one separates nothing. */
+const withoutComments = (code: string): string => code.replaceAll(/\/\/[^\n]*/g, "");
+
 /** The value an object literal gives `key`, shorthand resolved to the key. */
 function objectProperty(literal: string, key: string): string {
-  for (const part of topLevelParts(literal.slice(1, -1))) {
+  for (const part of topLevelParts(withoutComments(literal).slice(1, -1))) {
     const colon = part.indexOf(":");
     const name = (colon < 0 ? part : part.slice(0, colon)).trim();
     if (name !== key) continue;
@@ -107,6 +112,40 @@ function css(code: string): string {
   const at = code.indexOf("<style>");
   if (at < 0) throw new Error("this component has no style block");
   return code.slice(at + "<style>".length, code.indexOf("</style>", at));
+}
+
+/** The opening tags whose attributes set `prop`, each with the text that follows
+ *  it — enough to tell a leaf from an element with a subtree under it. The
+ *  caller checks the count against the raw occurrences, so a tag this misses
+ *  fails the case rather than passing it. */
+function elementsSetting(code: string, prop: string): { tag: string; after: string }[] {
+  return [...code.matchAll(/<[a-zA-Z][^<>]*>/g)]
+    .filter((tag) => tag[0].includes(prop))
+    .map((tag) => ({ tag: tag[0], after: code.slice(tag.index + tag[0].length).trimStart() }));
+}
+
+/** How many times `prop` is set anywhere in `code`. */
+const timesSet = (code: string, prop: string): number => code.split(prop).length - 1;
+
+/** Every declaration — `property: value` — in which `needle` appears. */
+function declarationsUsing(code: string, needle: string): string[] {
+  const found: string[] = [];
+  let from = 0;
+  for (;;) {
+    const at = code.indexOf(needle, from);
+    if (at < 0) return found;
+    from = at + needle.length;
+    const starts = ["{", "}", ";"].map((c) => code.lastIndexOf(c, at));
+    const ends = [";", "}"].map((c) => code.indexOf(c, at)).filter((i) => i > 0);
+    found.push(code.slice(Math.max(...starts) + 1, Math.min(...ends)).trim());
+  }
+}
+
+/** The declarations of the first rule whose selector mentions `selector`. */
+function ruleFor(sheet: string, selector: string): string {
+  const at = sheet.indexOf(selector);
+  if (at < 0) throw new Error(`no rule for ${selector}`);
+  return block(sheet, sheet.indexOf("{", at));
 }
 
 const REDUCED = "@media (prefers-reduced-motion: reduce)";
@@ -287,6 +326,12 @@ describe("reduced motion stops everything these files start", () => {
     expect(parked).toContain("animation: none");
   });
 
+  test("the wash and the ring hold their idle look under reduced motion", () => {
+    // The wash's 900 ms opacity glide is motion too, however slow.
+    const parked = reducedMotionBlock(css(diagram));
+    expect(parked).toContain("transition: none");
+  });
+
   test("the rails park their beads at the layer's own phase", () => {
     // Stopped mid-cycle every layer would sit at offset 0 and the comets would
     // pile up on top of each other; parked at `--lvl-phase` they stay the
@@ -294,5 +339,91 @@ describe("reduced motion stops everything these files start", () => {
     const parked = reducedMotionBlock(css(rails));
     expect(parked).toMatch(/stroke-dashoffset:\s*calc\(var\(--lvl-phase\)\s*\*\s*-1\)/);
     expect(parked).toContain("transition: none");
+  });
+});
+
+describe("the hub, the wash and the nodes answer the plant's load", () => {
+  test("the plant level is carried by leaves, never by an ancestor", () => {
+    // On the diagram root it would re-resolve style for the whole node subtree,
+    // AnimatedNumber included, ~90% of every second. `inherits: false` keeps it
+    // off descendants; setting it only on childless elements keeps it off the
+    // wrappers too, so the two claims cannot drift apart.
+    const setters = elementsSetting(diagram, "--plant-level:");
+    expect(setters).not.toEqual([]);
+    // Every place the file sets it is one of the tags examined below.
+    expect(setters).toHaveLength(timesSet(diagram, "--plant-level:"));
+    for (const el of setters) expect(el.after.slice(0, 2)).toBe("</");
+    expect(setters.filter((el) => /class=[^>]*hub-ring/.test(el.tag))).toHaveLength(1);
+    expect(ruleFor(css(diagram), "@property --plant-level")).toContain("inherits: false");
+  });
+
+  test("only opacity and transform ever see it", () => {
+    // A `color-mix` percentage inside the wash's `background` would repaint a
+    // hero-sized radial gradient continuously instead of compositing a layer.
+    const declarations = declarationsUsing(css(diagram), "var(--plant-level)");
+    expect(declarations).not.toEqual([]);
+    for (const d of declarations) {
+      expect(["opacity", "transform"]).toContain(d.slice(0, d.indexOf(":")).trim());
+      expect(d).not.toContain("color-mix");
+      expect(d).not.toContain("background");
+    }
+  });
+
+  test("the wash fades its own opacity, on a transition of its own", () => {
+    const wash = ruleFor(css(diagram), ".wash");
+    expect(wash).toMatch(/opacity:\s*calc\([^;]*var\(--plant-level\)/);
+    expect(wash).toMatch(/transition:\s*opacity 900ms linear/);
+  });
+
+  test("the ring's beat is amplitude-modulated, so an idle plant barely ticks", () => {
+    // Same period, smaller swing: the ring stops reading as full throttle at
+    // 300 W without any timing property moving.
+    const frames = ruleFor(css(diagram), "@keyframes hub-pulse");
+    expect(frames).toMatch(/opacity:\s*calc\([^;]*var\(--plant-level\)/);
+    expect(frames).toMatch(/scale\(calc\([^)]*var\(--plant-level\)/);
+  });
+
+  test("the level painted is a share of the same remembered plant as the rails", () => {
+    // Captured from the style attribute that really paints it: a second, stale
+    // identifier next to the right one is the slip this catches.
+    const ring = elementsSetting(diagram, "--plant-level:").find((el) =>
+      /hub-ring/.test(el.tag),
+    )?.tag;
+    const painted = /--plant-level:\$\{(\w+)\}/.exec(ring ?? "")?.[1] ?? "";
+    expect(painted).not.toBe("");
+    const [, ceiling] = argumentsOf(diagram, "railPulse");
+    expect(declaration(diagram, painted)).toContain(
+      `pulseShare(throughputWatts(graph.segments), ${ceiling})`,
+    );
+  });
+
+  test("each node is measured against that same ceiling, by its own value", () => {
+    const nodes = declaration(diagram, "renderNodes");
+    const literal = block(nodes, nodes.indexOf("{", nodes.indexOf("({")));
+    const [, ceiling] = argumentsOf(diagram, "railPulse");
+    expect(objectProperty(literal, "share")).toBe(`pulseShare(n.value, ${ceiling})`);
+  });
+
+  test("the node glows through the pure mix, on the transition it already had", () => {
+    // No new element and no new animation: the signal rides the box-shadow
+    // transition that is already on the box, and the colour comes from the
+    // token mix `flow-pulse.ts` tests, not from a second literal here.
+    expect(argumentsOf(node, "nodeGlow")).toEqual(["node.accent", "share"]);
+    const shadow = node.split("\n").filter((l) => l.includes("box-shadow:"));
+    expect(shadow).toHaveLength(1);
+    expect(shadow[0]).toContain("${nodeGlow(");
+    // The colour is the pure mix's output, not a second literal written here.
+    expect(shadow[0]).not.toContain("color-mix");
+    expect(node).toContain("transition-[box-shadow");
+    expect(node).not.toContain("@keyframes");
+    expect(node).not.toContain("animation");
+  });
+
+  test("share is a prop of the node, not a value it invents", () => {
+    const destructured = block(node, node.indexOf("{", node.indexOf("let {")));
+    const props = topLevelParts(withoutComments(destructured).slice(1, -1)).map((p) =>
+      p.split(/[=:]/)[0].trim(),
+    );
+    expect(props).toContain("share");
   });
 });

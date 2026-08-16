@@ -69,7 +69,6 @@ export function throughputWatts(segments: readonly { flow: Flow; value?: number 
  * Magnitude relative to the remembered plant, quantized so a 1 Hz wobble
  * writes no styles at all. Sign is carried by colour and travel direction.
  */
-// fallow-ignore-next-line unused-export -- railPulse consumes it, and going through railPulse would hide the boundary cases (Infinity, NaN, a zero ceiling) behind the layer arithmetic
 export function pulseShare(watts: number | undefined, ceilingW: number): number {
   const a = Math.abs(watts ?? 0);
   const c = Number.isFinite(ceilingW) && ceilingW > 0 ? ceilingW : CEILING_FLOOR_W;
@@ -176,7 +175,6 @@ export function dotPositions(lit: number): number[] {
  * The node's glow colour at a given share of the plant. A mix of the node's own
  * accent token, so it follows the palette instead of baking a colour in.
  */
-// fallow-ignore-next-line unused-export -- the node's box-shadow mix; power-flow-node.svelte picks it up when the nodes answer the plant's load
 export function nodeGlow(accent: string, share: number): string {
   const s = Number.isFinite(share) ? Math.min(1, Math.max(0, share)) : 0;
   return `color-mix(in oklab, ${accent} ${Math.round(20 + s * 60)}%, transparent)`;

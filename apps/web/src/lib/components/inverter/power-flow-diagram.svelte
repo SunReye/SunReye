@@ -7,7 +7,7 @@
 	import HubMetrics from './_shared/hub-metrics.svelte';
 	import { inverter } from '$lib/inverter/store.svelte';
 	import { evcc, type EvccLoadpoint } from '$lib/evcc/store.svelte';
-	import { railPulse, throughputWatts } from '$lib/inverter/flow-pulse';
+	import { pulseShare, railPulse, throughputWatts } from '$lib/inverter/flow-pulse';
 	import { plantCeiling } from '$lib/inverter/plant-ceiling.svelte';
 	import {
 		buildPowerGraph,
@@ -113,6 +113,13 @@
 	});
 	const ceiling = $derived(plantCeiling.watts);
 
+	/** How hard the whole plant is working, 0..1, quantized to 1/20 by
+	 *  `pulseShare` so a 1 Hz wobble writes no style at all. The hub ring's beat
+	 *  and the background wash answer this, and nothing else does: it is set on
+	 *  those two leaves alone, never on an ancestor whose subtree would then
+	 *  re-resolve style every second. */
+	const plantLevel = $derived(pulseShare(throughputWatts(graph.segments), ceiling));
+
 	const lines = $derived.by<RailLine[]>(() => {
 		if (!measured) return [];
 		return graph.segments.map((s) => {
@@ -139,6 +146,9 @@
 		graph.nodes.map((n) => ({
 			node: n,
 			soc: socFor(n.kind),
+			// The node's own power against the same remembered plant the rails are
+			// drawn against, so box and cable agree on what "busy" means.
+			share: pulseShare(n.value, ceiling),
 			// The EVCC feed has its own cadence; the rest follow the inverter's.
 			intervalMs: n.kind === 'charger' ? evcc.cadenceMs : undefined
 		}))
@@ -147,10 +157,11 @@
 
 <div class="relative h-full w-full" bind:clientWidth={ow} bind:clientHeight={oh}>
 	<!-- Soft ambience centred on the hub — gives the wall display depth without
-	     competing with the flow lines. -->
+	     competing with the flow lines. Its strength follows the plant: the layer's
+	     own opacity fades, so the gradient itself is painted once. -->
 	<div
-		class="pointer-events-none absolute inset-0"
-		style={`background:radial-gradient(60% 55% at 50% ${graph.hub.y * 100}%, color-mix(in oklab, var(--primary) 8%, transparent), transparent 75%)`}
+		class="wash pointer-events-none absolute inset-0"
+		style={`--plant-level:${plantLevel};background:radial-gradient(60% 55% at 50% ${graph.hub.y * 100}%, color-mix(in oklab, var(--primary) 8%, transparent), transparent 75%)`}
 	></div>
 
 	<!-- Safe box: everything anchors inside these insets. -->
@@ -172,7 +183,10 @@
 			class="relative flex size-14 items-center justify-center border-2 border-primary bg-background sm:size-16 2xl:size-20"
 			style="box-shadow:0 0 40px -8px color-mix(in oklab, var(--primary) 55%, transparent)"
 		>
-			<span class="hub-ring absolute -inset-1 border border-primary/50"></span>
+			<span
+				class="hub-ring absolute -inset-1 border border-primary/50"
+				style={`--plant-level:${plantLevel}`}
+			></span>
 			<CpuIcon class="size-7 text-primary sm:size-8 2xl:size-10" weight="duotone" />
 		</div>
 	</div>
@@ -185,9 +199,30 @@
 </div>
 
 <style>
+	/* How hard the plant is working, 0..1. Registered so the ring's keyframe can
+	   read it as a number, and `inherits: false` so setting it on the ring and on
+	   the wash cannot restyle a subtree — the node boxes and their AnimatedNumber
+	   readouts would otherwise re-resolve style every second. */
+	@property --plant-level {
+		syntax: '<number>';
+		inherits: false;
+		initial-value: 0;
+	}
+
+	/* One layer, painted once; only its opacity answers the plant. Mixing the
+	   level into the gradient's own colour stops would repaint a hero-sized
+	   radial gradient on every sample instead of compositing an existing layer. */
+	.wash {
+		opacity: calc(0.4 + 0.6 * var(--plant-level));
+		transition: opacity 900ms linear;
+	}
+
 	.hub-ring {
 		animation: hub-pulse 2.6s ease-in-out infinite;
 	}
+	/* Same period at every load — a timing property is never a datum here. What
+	   the plant changes is the AMPLITUDE: at night the ring barely ticks, at noon
+	   it flashes to the full swing this diagram has always had. */
 	@keyframes hub-pulse {
 		0%,
 		100% {
@@ -195,13 +230,17 @@
 			transform: scale(1);
 		}
 		50% {
-			opacity: 0.75;
-			transform: scale(1.12);
+			opacity: calc(0.35 + 0.4 * var(--plant-level));
+			transform: scale(calc(1 + 0.12 * var(--plant-level)));
 		}
 	}
 	@media (prefers-reduced-motion: reduce) {
 		.hub-ring {
 			animation: none;
+		}
+		/* A 900 ms fade is motion too, however soft. */
+		.wash {
+			transition: none;
 		}
 	}
 </style>

@@ -11,15 +11,20 @@
 	import AnimatedNumber from './animated-number.svelte';
 	import SocGauge from './_shared/soc-gauge.svelte';
 	import type { GraphNode, NodeKind } from '$lib/inverter/power-graph';
+	import { nodeGlow } from '$lib/inverter/flow-pulse';
 
 	let {
 		node,
 		soc,
+		share = 0,
 		intervalMs
 	}: {
 		node: GraphNode;
 		/** Battery/vehicle state-of-charge (0..100); renders the square gauge when set. */
 		soc?: number;
+		/** This node's power as a share (0..1) of the plant's remembered peak. The
+		 *  glow answers it, so a 300 W night import does not blaze like noon. */
+		share?: number;
 		/** Sample cadence (ms) of the feed behind `node.value`; forwarded to the
 		 *  animated readout so, e.g., the EVCC charger node glides at EVCC's rate
 		 *  rather than the inverter feed's. Falls back to the inverter cadence. */
@@ -58,14 +63,17 @@
 		node.labelSide === 'above' ? 'bottom-full mb-2 flex-col-reverse' : 'top-full mt-2'
 	);
 
-	/** Node box treatment: accent ring + tint + soft glow while power moves. */
+	/** Node box treatment: accent ring + tint + soft glow while power moves. The
+	 *  glow's strength is the node's share of the plant, so the box brightens and
+	 *  dims with real load — riding the box-shadow transition already on the box
+	 *  rather than a halo element of its own. */
 	const circleStyle = $derived.by(() => {
 		const border = hasSoc ? 'transparent' : active ? node.accent : 'var(--border)';
 		if (!active) return `border-color:${border};background:var(--background)`;
 		return [
 			`border-color:${border}`,
 			`background:color-mix(in oklab, ${node.accent} 10%, var(--background))`,
-			`box-shadow:0 0 34px -6px color-mix(in oklab, ${node.accent} 60%, transparent)`
+			`box-shadow:0 0 34px -6px ${nodeGlow(node.accent, share)}`
 		].join(';');
 	});
 </script>
