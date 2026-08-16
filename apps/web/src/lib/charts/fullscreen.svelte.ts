@@ -14,6 +14,7 @@
 
 import {
   activeFullscreenElement,
+  escapeClosesOverlay,
   exitFullscreen,
   fullscreenMode,
   fullscreenTarget,
@@ -57,6 +58,14 @@ export class FullscreenBox {
    * card would stay expanded over a page that is no longer full screen.
    */
   listen = (): (() => void) => {
+    // Whether something portalled is open above the card. Read at the moment of
+    // the keypress rather than tracked: these layers mount and unmount into
+    // `document.body` from four different components, and a flag we maintained
+    // ourselves would be the thing that goes stale.
+    const layerOpen = () =>
+      document.querySelector(
+        "[data-slot=dropdown-menu-content],[data-slot=popover-content],[data-slot=dialog-content],[data-slot=select-content],[data-slot=sheet-content]",
+      ) !== null;
     const sync = () => {
       if (!this.immersive) return;
       if (activeFullscreenElement(document) !== fullscreenTarget(document)) {
@@ -65,7 +74,7 @@ export class FullscreenBox {
       }
     };
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && !this.immersive) void this.close();
+      if (escapeClosesOverlay(event.key, this.immersive, layerOpen())) void this.close();
     };
     document.addEventListener("fullscreenchange", sync);
     document.addEventListener("webkitfullscreenchange", sync);

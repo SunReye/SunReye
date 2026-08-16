@@ -110,3 +110,23 @@ export async function exitFullscreen(doc: FullscreenCapableDocument | null): Pro
     // Nothing to recover: the page is either in the state we wanted or not.
   }
 }
+
+/**
+ * Does this keypress mean "give the card its screen back"?
+ *
+ * Escape has to mean "close the thing on top", and there are three layers it
+ * could be aimed at:
+ *
+ * - While the browser is holding full screen (`immersive`), it owns Escape and
+ *   exits by itself; the `fullscreenchange` listener collapses the card from
+ *   there. Acting here too would spend one press on both.
+ * - While a portalled layer is open above the card — the draft picker is a
+ *   dropdown ON the expanded card — Escape is aimed at that layer. Collapsing
+ *   the card as well would throw the user out of full screen and lose the draft
+ *   they were building.
+ * - Otherwise the card is a fixed overlay with nothing above it, and Escape is
+ *   the only way back out. That is the one case that closes it.
+ */
+export function escapeClosesOverlay(key: string, immersive: boolean, layerOpen: boolean): boolean {
+  return key === "Escape" && !immersive && !layerOpen;
+}

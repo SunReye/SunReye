@@ -20,6 +20,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   activeFullscreenElement,
+  escapeClosesOverlay,
   exitFullscreen,
   fullscreenMode,
   fullscreenTarget,
@@ -227,5 +228,39 @@ describe("fullscreenTarget", () => {
     // takes the overlay, which needs no element at all.
     expect(fullscreenTarget(null)).toBe(null);
     expect(fullscreenTarget({})).toBe(null);
+  });
+});
+
+describe("escapeClosesOverlay", () => {
+  // Escape has to mean "close the thing on top". When the browser is holding
+  // full screen for us it owns the key and we must not also act on it. When it
+  // is not — iPhone Safari, or the cross-origin ingress iframe, where the card
+  // is only a fixed overlay — Escape is the ONLY way back out, so we do act on
+  // it. Unless something is open above the card, in which case that layer is
+  // what the user meant to dismiss.
+
+  test("closes the card when nothing else is open and we own the key", () => {
+    expect(escapeClosesOverlay("Escape", false, false)).toBe(true);
+  });
+
+  test("leaves the key to the browser while it is holding full screen", () => {
+    // Acting here would exit full screen AND collapse the card on one press,
+    // and the `fullscreenchange` listener already collapses it.
+    expect(escapeClosesOverlay("Escape", true, false)).toBe(false);
+  });
+
+  test("dismisses an open layer instead of the card underneath it", () => {
+    // The draft picker is a dropdown ON the expanded card. Without this, one
+    // Escape closes the picker and throws the user out of full screen at the
+    // same time, losing the draft they were building.
+    expect(escapeClosesOverlay("Escape", false, true)).toBe(false);
+  });
+
+  test("ignores every other key", () => {
+    // The handler is on `document` for as long as a card is expanded, so it
+    // sees everything the user types into the picker's search box.
+    for (const key of ["Enter", "Tab", "a", "ArrowDown", "Esc", "escape"]) {
+      expect(escapeClosesOverlay(key, false, false)).toBe(false);
+    }
   });
 });
