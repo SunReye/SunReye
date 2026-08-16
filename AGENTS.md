@@ -37,11 +37,17 @@ Full rationale: `CONTRIBUTING.md` §6. Frontend specifics: `apps/web/TESTING.md`
 
 Load `caveman` skill at start of every session.
 
-Load relevant repo-local skills from `.agents/skills/` when matching work:
+Repo-local skills live in `.agents/skills/`; `.claude/skills/` is where Claude Code resolves them
+and links to the same directories, so add a skill in `.agents/skills/<name>/SKILL.md` and symlink it
+in (`ln -s ../../.agents/skills/<name> .claude/skills/<name>`) — two copies drift.
+
+Load the relevant one when matching work:
 
 - TypeScript work → load `typescript-best-practices`.
 - Tailwind class work → load `tailwind-best-practices`.
 - SvelteKit work → load `sveltekit-best-practices`.
+- Any `.svelte` file in `apps/web` (page, card, grid, chart box, live reading) → load
+  `layout-system`. The layout vocabulary is test-enforced; the skill is the short version.
 - AI SDK work → load `ai-sdk`.
 - Starter repo initialization / post-clone customization → load `project-init`.
 - Similar domain-specific work → load matching skill when available.

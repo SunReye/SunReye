@@ -365,6 +365,31 @@ describe("decideTargetA — maximize-exports", () => {
     expect(d.targetA).toBe(25);
   });
 
+  test("PV inside the safety-buffer band is left to the grid when the peak needs it", () => {
+    // 8300 W clears the 8000 W decision limit but not the 8400 W the plant can
+    // physically push out, so absorbing it saves nothing — and the coming peak
+    // (6 kWh against 5.7 kWh of headroom at 62%) has a claim on every kWh.
+    const forecast = slice(13, Array(8).fill(11_000));
+    const d = decideTargetA({
+      ...baseInputs,
+      socPct: 62,
+      pvW: 8300,
+      exportCapW: 8400,
+      forecast,
+    });
+    expect(d.targetA).toBe(0);
+    // The band is still reported as live excess — it is the *spending* that stops.
+    expect(d.liveExcessW).toBe(300);
+  });
+
+  test("the buffer band is absorbed anyway once the peak is covered", () => {
+    // Same band, but 7.5 kWh of headroom at 50% against the same 6 kWh peak:
+    // room to spare, so there is no reason to be picky about which watts fill it.
+    const forecast = slice(13, Array(8).fill(11_000));
+    const d = decideTargetA({ ...baseInputs, socPct: 50, pvW: 8300, exportCapW: 8400, forecast });
+    expect(d.targetA).toBe(10); // 300 W / 50 V rounded up to the 5 A step
+  });
+
   test("boundary: room inside the reserve margin still holds", () => {
     // Headroom − surplus = 0.1 kWh, inside the 0.2 kWh margin → hold.
     const forecast = slice(13, Array(8).fill(11_000)); // 6 kWh surplus
@@ -858,6 +883,46 @@ describe("projectPeakShaving", () => {
     expect(exports_.storedKwh).toBeGreaterThan(0);
   });
 
+  test("does not spend headroom on PV the plant could still export", () => {
+    // 3 h of plateau sitting inside the safety-buffer band — 8850 W of PV less
+    // the 500 W load feeds 8350 W, under the 8400 W plant cap, so not one watt
+    // of it was ever going to be lost — followed by 30 min of real clipping at
+    // 12 kW. The pack holds just enough for that clipping peak (1.55 kWh of hard
+    // excess into 1.8 kWh of headroom), so every kWh taken from the band is a
+    // kWh missing when the peak arrives.
+    const plateauThenPeak = slice(12, [...Array(12).fill(8850), 12_000, 12_000, 0]);
+    const plan = projectPeakShaving(
+      planInputs({
+        mode: "maximize-exports",
+        forecast: plateauThenPeak,
+        exportCapW: 8400,
+        usableKwh: 2.25,
+      }),
+      CAP,
+    );
+    expect(plan.curtailedKwh).toBe(0);
+    // The band stayed with the grid: the plateau slots store nothing and sell all of it.
+    const plateau = plan.slots.slice(0, 12);
+    expect(plateau.map((s) => s.chargeW)).toEqual(Array(12).fill(0));
+    expect(plateau.map((s) => s.exportW)).toEqual(Array(12).fill(8350));
+    // …and the pack did fill on the peak instead.
+    expect(plan.slots[12]!.chargeW).toBeGreaterThan(3000);
+  });
+
+  test("a light-clipping day still ends on the SOC the evening needs", () => {
+    // Throttling absorption is exactly the change that could leave the pack
+    // short after sunset, so pin the end SOC on a day whose clipping is a single
+    // slot: with 12 kWh of headroom against a peak that claims almost none, the
+    // buffer band is absorbed as before and the pack ends where it always did.
+    const light = slice(12, [8850, 8850, 8850, 8850, 9000, 8850, 8850, 0]);
+    const plan = projectPeakShaving(
+      planInputs({ mode: "maximize-exports", forecast: light, exportCapW: 8400 }),
+      CAP,
+    );
+    expect(plan.curtailedKwh).toBe(0);
+    expect(plan.endSocPct).toBeCloseTo(25, 5);
+  });
+
   test("the house load is served before anything can be stored or sold", () => {
     const plan = projectPeakShaving(planInputs({ baselineLoadW: 2000 }), CAP);
     // First slot is 2 kW of PV against 2 kW of load: nothing to store or sell.
@@ -1335,6 +1400,19 @@ describe("peak-shaving engine", () => {
     // Live excess 18000 − 8000 = 10000 W at 100 V nominal → 100 A.
     const status = await engine.tick();
     expect(status.targetA).toBe(100);
+  });
+
+  test("the plant's real export cap reaches the live decision, not just the plan", async () => {
+    // 8300 W clears the 8000 W decision limit (8400 maxOutput − 400 buffer) but
+    // not the 8400 W the plant can physically push out, and the coming peak
+    // (6 kWh) outsizes the headroom at 62% SOC (5.7 kWh) — so that band is the
+    // grid's and the register is told to take nothing.
+    h.set.forecast(asForecast(slice(13, Array(8).fill(11_000))));
+    h.set.sample({ [PV_KEY]: 8300, [SOC_KEY]: 62, [VOLT_KEY]: 50, [CHARGE_KEY]: 120 });
+    const engine = createPeakShavingEngine(h.io);
+    const status = await engine.tick();
+    expect(status.liveExcessW).toBe(300);
+    expect(status.targetA).toBe(0);
   });
 
   test("a charging car shrinks the shave target and shows in the status", async () => {
@@ -1915,6 +1993,19 @@ describe("price-aware charging", () => {
     // With the ceiling at zero, everything the house cannot eat is excess to take.
     expect(inside.liveExcessW).toBe(baseInputs.pvW);
     expect(inside.targetA).toBeGreaterThan(0);
+  });
+
+  test("a soak window absorbs the whole band, peak or no peak", () => {
+    // The plant's safety buffer is discretionary; a ceiling a *price* window
+    // collapsed is not — it was lowered precisely because that energy is worth
+    // more in the pack than sold into a negative price. So even with a huge
+    // coming peak laying claim to every kWh of headroom, the soak takes the lot.
+    const soaking = decideTargetA(
+      withPrices({ nowMs: at(13), socPct: 30, exportCapW: 8400, forecast: flatForecast(12_000) }),
+    );
+    expect(soaking.thresholdW).toBe(0);
+    expect(soaking.liveExcessW).toBe(baseInputs.pvW);
+    expect(soaking.targetA).toBe(100); // 5000 W / 50 V, at the maxChargeA ceiling
   });
 
   test("soaking works the same way in grid-friendly", () => {

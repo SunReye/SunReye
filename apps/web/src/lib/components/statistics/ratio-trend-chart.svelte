@@ -8,7 +8,21 @@
 	// (self-sufficiency) and how much of its own energy it keeps
 	// (self-consumption), period by period. Both are shares, so they share one
 	// 0–100% axis — no second scale, and the two lines compare directly.
-	let { periods, bucket }: { periods: PeriodEnergy[]; bucket: CostBucket } = $props();
+	let {
+		periods,
+		bucket,
+		onZoom,
+		onResetZoom,
+		zoomed = false
+	}: {
+		periods: PeriodEnergy[];
+		bucket: CostBucket;
+	/** Forwarded to the line chart: a drag selects positions, and the section
+	 *  answers by refetching that window at a finer bucket. */
+	onZoom?: (indices: [number, number]) => void;
+	onResetZoom?: () => void;
+	zoomed?: boolean;
+	} = $props();
 
 	type Row = { label: string; selfSufficiency: number | null; selfConsumption: number | null };
 
@@ -43,4 +57,12 @@
 		v === null || v === undefined ? '—' : `${Math.round(Number(v) * 100)}%`;
 </script>
 
-<PeriodLineChart {data} {series} format={pct} yDomain={[0, 1]} />
+<PeriodLineChart
+	{data}
+	{series}
+	format={pct}
+	yDomain={[0, 1]}
+	{onZoom}
+	{onResetZoom}
+	{zoomed}
+/>

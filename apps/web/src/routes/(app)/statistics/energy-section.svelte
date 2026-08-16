@@ -9,6 +9,8 @@
 	import HourWeekdayHeatmap from '$lib/components/statistics/hour-weekday-heatmap.svelte';
 	import { costFormatters } from '$lib/cost/format';
 	import { specQuery, type CostBucket } from '$lib/cost/ranges';
+	import { zoomedChartSpec } from '$lib/charts/zoom-range';
+	import { zoomLabelOptions } from '$lib/charts/zoom.svelte';
 	import type { SectionData } from '$lib/statistics/sections';
 	import { sectionScope } from '$lib/statistics/chart-scope.svelte';
 	import { baselineLabel, deltaFor } from '$lib/statistics/compare';
@@ -55,6 +57,17 @@
 			cancelled = true;
 		};
 	});
+
+	// The period keys the plotted rows were built from, in the order the bands
+	// sit in. A drag hands back POSITIONS (a 24-month axis repeats "Aug"), and
+	// these are what turn a position back into a window.
+	const periodKeys = $derived(series.periods.map((p) => p.bucket));
+
+	// A zoom narrows the spec the effect above fetches, so selecting a week of a
+	// month chart comes back BY HOUR rather than as six magnified daily bars.
+	const zoomTo = (indices: [number, number]) =>
+		view.zoomTo(zoomedChartSpec(view.spec, periodKeys, indices, zoomLabelOptions()));
+	const clearZoom = () => view.zoomTo(null);
 
 	const formatters = $derived(costFormatters(cost.currency));
 
@@ -130,7 +143,14 @@
 	<!-- Split, ratios and raw flows all read the one fetch above, so the scope
 	     switcher in this header moves every chart in the section at once. -->
 	<ChartPanel title={m.statistics_energy_flows()} {view} switcher={range} summary={flowsSummary}>
-		<EnergySeriesChart periods={series.periods} bucket={series.bucket} {showBattery} />
+		<EnergySeriesChart
+			periods={series.periods}
+			bucket={series.bucket}
+			{showBattery}
+			onZoom={zoomTo}
+			onResetZoom={clearZoom}
+			zoomed={view.zoomed}
+		/>
 	</ChartPanel>
 
 	<EnergySplitChart
@@ -142,7 +162,13 @@
 
 	{#if hasRatios}
 		<ChartPanel title={m.statistics_energy_ratios()} {view} summary={ratioSummary}>
-			<RatioTrendChart periods={series.periods} bucket={series.bucket} />
+			<RatioTrendChart
+				periods={series.periods}
+				bucket={series.bucket}
+				onZoom={zoomTo}
+				onResetZoom={clearZoom}
+				zoomed={view.zoomed}
+			/>
 		</ChartPanel>
 	{/if}
 {/if}

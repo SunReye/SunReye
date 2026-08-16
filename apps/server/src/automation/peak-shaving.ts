@@ -257,6 +257,14 @@ export interface DecisionInputs extends EvInputs {
   /** Effective export ceiling: `maxOutputW − safetyBufferW`, W. */
   exportLimitW: number;
   /**
+   * The plant's *physical* feed-in ceiling: `maxOutputW`, no buffer, W. PV
+   * between this and {@link exportLimitW} would still have reached the grid, so
+   * storing it rescues nothing — it only spends headroom the real clipping peak
+   * needs later. Absent, it falls back to {@link exportLimitW}, i.e. the old
+   * behaviour of treating the decision margin as a physical loss.
+   */
+  exportCapW?: number;
+  /**
    * House load right now, W — measured from `load.power` when the profile maps
    * it, else the baseline, else 0. PV is only curtailed above `load + limit`
    * (the frame the forecast's clipping model uses), so every threshold is
@@ -346,20 +354,30 @@ function surplusAboveKwh(view: ForecastSlice, thresholdW: number, nowMs: number)
 }
 
 /**
- * `maximize-exports` target: absorb whatever exceeds the export limit right
- * now; with nothing to absorb, hold the headroom for the coming peak and fall
- * back to the configured rate only when there is room to spare after it.
+ * `maximize-exports` target: absorb whatever the plant genuinely cannot export
+ * right now, plus — only when there is room to spare after the coming peak —
+ * the safety-buffer band on top; with nothing to absorb, hold the headroom for
+ * that peak and fall back to the configured rate under the same condition.
+ *
+ * The band between `exportLimitW` and `exportCapW` is discretionary in exactly
+ * the way the fallback rate already is: that PV is being sold either way, so
+ * paying for it with headroom is a straight loss whenever the peak still needs
+ * the room. Above the cap the energy is gone if the pack does not take it, so
+ * that half is never negotiable.
  */
 function maximizeExportsA(
   i: DecisionInputs,
-  liveExcessW: number,
+  hardExcessW: number,
+  bufferExcessW: number,
   headroomKwh: number,
   peakKwh: number,
   toA: (watts: number) => number,
 ): number {
-  if (liveExcessW > 0) return toA(liveExcessW);
-  const chargeableKwh = headroomKwh - peakKwh;
-  return chargeableKwh <= RESERVE_MARGIN_KWH ? 0 : Math.min(i.fallbackChargeA, i.maxChargeA);
+  const roomToSpare = headroomKwh - peakKwh > RESERVE_MARGIN_KWH;
+  if (hardExcessW + bufferExcessW > 0) {
+    return toA(roomToSpare ? hardExcessW + bufferExcessW : hardExcessW);
+  }
+  return roomToSpare ? Math.min(i.fallbackChargeA, i.maxChargeA) : 0;
 }
 
 /**
@@ -508,6 +526,15 @@ function decideModeTargetA(i: DecisionInputs, exportLimitW: number): Decision {
   // load reading doesn't already include it.
   const localSinkW = Math.max(0, i.liveLoadW) + (i.evIncludedInLoad ? 0 : Math.max(0, i.evChargeW));
   const liveExcessW = Math.max(0, i.pvW - localSinkW - exportLimitW);
+  // The physical ceiling this tick. Only the plant's own safety buffer is a
+  // paper limit: a price action collapses the ceiling *because* it wants that
+  // energy in the pack, so the band it opens is not discretionary at all.
+  const capW =
+    exportLimitW < i.exportLimitW ? exportLimitW : Math.max(exportLimitW, i.exportCapW ?? 0);
+  // PV that is lost unless the pack takes it, and the buffer band on top of it
+  // — energy the grid would still have accepted.
+  const hardExcessW = Math.max(0, i.pvW - localSinkW - capW);
+  const bufferExcessW = liveExcessW - hardExcessW;
   const base = {
     headroomKwh,
     surplusAboveLimitKwh: null as number | null,
@@ -556,7 +583,7 @@ function decideModeTargetA(i: DecisionInputs, exportLimitW: number): Decision {
   if (i.mode === "maximize-exports") {
     return {
       ...base,
-      targetA: maximizeExportsA(i, liveExcessW, headroomKwh, peakKwh, toA),
+      targetA: maximizeExportsA(i, hardExcessW, bufferExcessW, headroomKwh, peakKwh, toA),
       thresholdW: exportLimitW,
     };
   }

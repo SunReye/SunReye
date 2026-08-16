@@ -30,8 +30,61 @@ is more than a null check, that condition is the unit. Lift it into a `.ts` next
 component (or into `_shared/`), export it, test it, and let the component call it. The
 extraction is part of the change.
 
-What stays in the component: markup, class strings, prop wiring, `$effect` plumbing. If a
-bug can only live there, it is a visual bug — catch it in the browser, not in a unit test.
+What stays in the component: markup, class strings, prop wiring, `$effect` plumbing. Rendering is
+still not unit-tested — but a **convention** that lives in markup is, by reading the source. The
+layout vocabulary, the mobile floors and the live-value ownership rule are all conventions of that
+kind, and they are pinned by `lib/layout/tokens.test.ts`, `lib/layout/mobile-density.test.ts`,
+`lib/layout/section-migration.test.ts`, `routes/(app)/page-shells.test.ts` and
+`lib/live/wiring.test.ts`. A page that hand-rolls its own shell is not a visual bug you catch in
+the browser; it is a decision nobody made, and it fails the suite.
+
+## Writing a source-text test
+
+The technique has one rule, learned the expensive way: **pin the structure, or pin the identifier
+that is actually passed. Never pin that a string appears somewhere in the file.**
+
+A `toContain` over the whole file passes on a comment, on a dead branch, on the class sitting on
+the wrong element, and on the right helper called with the wrong argument. Every one of those is a
+shipped bug with a green test.
+
+Bad — every chart in `mobile-density.test.ts` measures its plot width, and this says so:
+
+```ts
+expect(code).toContain("bind:clientWidth");
+expect(code).toContain("chartPaddingFor(");
+```
+
+That stays green for `bind:clientWidth={plotWidth}` next to `chartPaddingFor(0)` — and every gutter
+helper reads `0` as the desktop case, so every phone chart quietly keeps its 60px gutter.
+
+Good — capture the bound identifier and require the call to spend *that variable*:
+
+```ts
+const measured = code.match(/bind:clientWidth=\{(\w+)\}/);
+expect(measured, `${file} measures no plot width`).not.toBeNull();
+for (const [, helper, args] of code.matchAll(GUTTER_CALL))
+  expect(`${helper}: ${lastArgument(args)}`).toBe(`${helper}: ${measured![1]}`);
+```
+
+The same discipline in its other forms:
+
+- **Parse a bounded opening tag** when the claim is about an element: `openTagOf()` in
+  `section-migration.test.ts` and `rootTag()` in `page-shells.test.ts` consume attribute values as
+  units so a `>` in a string or the `=>` in `onOpenChange={(v) => …}` does not end the tag early.
+  `<Section nested>` is a claim about a tag; "the file mentions nested" is not.
+- **Assert the branch, not the operands.** `wiring.test.ts` matches the whole ternary, because
+  swapping its two arms is a one-token merge slip that inverts the behaviour while both strings are
+  still present.
+- **Discover the file set from disk, and assert an exact set.** `page-shells.test.ts` globs
+  `**/+page.svelte`; `section-migration.test.ts` compares the offender list to an explicit
+  allowlist. A new violation is a new entry, so it fails until someone migrates it or writes down
+  why it belongs.
+- **Derive the expectation from the token** rather than restating it beside the assertion —
+  `tapTargetPx(16)` is `{44, 44}` because the token says so, so a shrunk inset is red instead of
+  silent.
+
+And prove the test discriminates before you believe it: apply the exact regression it names, watch
+it go red, then restore.
 
 ## What to cover
 

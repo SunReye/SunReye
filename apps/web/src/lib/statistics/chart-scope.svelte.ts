@@ -6,6 +6,7 @@
  */
 
 import { chartSpecFor, type ChartScope, type ChartSpec, type CostRange } from "$lib/cost/ranges";
+import { activeSpec, zoomAnchor, type SpecZoom } from "$lib/charts/zoom-range";
 import { statisticsPrefs } from "$lib/statistics-prefs.svelte";
 import { getCustomizeSession } from "./customize.svelte";
 import { chartCaption, type ScopedSection } from "./chart-scope";
@@ -17,6 +18,10 @@ export type SectionScope = {
   readonly spec: ChartSpec;
   /** What the charts are currently plotting, in words. */
   readonly caption: string;
+  /** Is a zoom currently narrowing the section, rather than its own scope? */
+  readonly zoomed: boolean;
+  /** Narrow the section to a drag-selected window, or `null` to drop it. */
+  zoomTo(spec: ChartSpec | null): void;
 };
 
 /**
@@ -33,14 +38,30 @@ export function sectionScope(section: ScopedSection, range: () => CostRange): Se
   const customize = getCustomizeSession();
   let picked = $state<ChartScope | null>(null);
   const scope = $derived(picked ?? statisticsPrefs.optionFor(section).chartScope);
-  const spec = $derived(chartSpecFor(range(), scope));
-  const caption = $derived(chartCaption(range(), scope));
+  const base = $derived(chartSpecFor(range(), scope));
+
+  // A zoom is the same kind of thing as `picked`: ephemeral, per viewer, and
+  // never written to `statisticsPrefs`. Anchoring and expiry live in
+  // `$lib/charts/zoom-range` where they are tested; all that is held here is the
+  // state itself.
+  let zoom = $state<SpecZoom | null>(null);
+  const spec = $derived(activeSpec(base, zoom));
+  const caption = $derived(spec === base ? chartCaption(range(), scope) : spec.caption);
   return {
+    get zoomed() {
+      return spec !== base;
+    },
+    zoomTo(next: ChartSpec | null) {
+      zoom = zoomAnchor(base, next);
+    },
     get scope() {
       return scope;
     },
     set scope(next: ChartScope) {
       picked = next;
+      // Switching scope is its own answer to "which window?"; keeping a zoom
+      // across it would land the viewer on a window neither control names.
+      zoom = null;
       if (customize.active) customize.draft[section].chartScope = next;
     },
     get spec() {

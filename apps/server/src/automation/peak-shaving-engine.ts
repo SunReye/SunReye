@@ -576,6 +576,9 @@ function loadFrame(
 function plantParams(weather: WeatherConfig, ps: AutomationConfig["peakShaving"]) {
   return {
     exportLimitW: Math.max(0, (weather.forecast.maxOutputW ?? 0) - ps.safetyBufferW),
+    // The same real ceiling {@link planLimits} curtails against: the decision
+    // needs it to tell PV that is truly lost from PV the grid still takes.
+    exportCapW: Math.max(0, weather.forecast.maxOutputW ?? 0),
     usableKwh: weather.forecast.battery?.usableKwh ?? 0,
     minSocPct: weather.forecast.battery?.minSoc ?? 0,
     price: effectivePriceConfig(ps.priceAware, weather),

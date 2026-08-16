@@ -17,11 +17,17 @@
 	let {
 		metric,
 		range,
-		accent = 'var(--color-chart-2)'
+		accent = 'var(--color-chart-2)',
+		onZoom,
+		onResetZoom
 	}: {
 		metric: ManifestMetric;
 		range: HistoryRange;
 		accent?: string;
+		/** A window drag-selected on this card's chart. The page answers it by
+		 *  moving every card onto the finer range — see /history's `range`. */
+		onZoom?: (next: HistoryRange) => void;
+		onResetZoom?: () => void;
 	} = $props();
 
 	// Signed metrics (battery/grid power) split the fill red/green around zero.
@@ -108,9 +114,13 @@
 					{accent}
 					{diverging}
 					{xDomain}
+					bucket={range.bucket}
 					{xTickFormat}
 					labelFormatter={labelFmt}
 					{tooltipValue}
+					{onZoom}
+					{onResetZoom}
+					zoomed={range.id === 'zoom'}
 				/>
 			{:else}
 				<ChartStateView {loading} message={m.chart_no_data()} />

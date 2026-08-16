@@ -13,13 +13,18 @@
 		metrics,
 		range,
 		open,
-		onOpenChange
+		onOpenChange,
+		onZoom,
+		onResetZoom
 	}: {
 		category: string;
 		metrics: ManifestMetric[];
 		range: HistoryRange;
 		open: boolean;
 		onOpenChange: (open: boolean) => void;
+		/** Forwarded from every card: a zoom on one chart moves the whole page. */
+		onZoom?: (next: HistoryRange) => void;
+		onResetZoom?: () => void;
 	} = $props();
 
 	const accentFor = (i: number) => `var(--color-chart-${(i % 5) + 1})`;
@@ -33,7 +38,7 @@
 	{/snippet}
 	<div class="grid grid-cols-1 gap-4 lg:grid-cols-2 xl:grid-cols-3">
 		{#each metrics as metric, i (metric.key)}
-			<EntityHistoryCard {metric} {range} accent={accentFor(i)} />
+			<EntityHistoryCard {metric} {range} accent={accentFor(i)} {onZoom} {onResetZoom} />
 		{/each}
 	</div>
 </Section>
