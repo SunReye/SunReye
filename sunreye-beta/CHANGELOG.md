@@ -2,7 +2,7 @@
 
 ## [unreleased]
 
-Unreleased work on `dev` since 1.2.0, shipped in `beta.20260816-a1d50dc`.
+Unreleased work on `dev` since 1.2.0, shipped in `beta.20260817-6f08e7a`.
 
 
 ### Features
@@ -126,6 +126,12 @@ Unreleased work on `dev` since 1.2.0, shipped in `beta.20260816-a1d50dc`.
 * **server:** harden forecast-correction learning ([58d33d8](https://github.com/SunReye/SunReye/commit/58d33d8ccfff9b0442317f189b641d2f4bd8ce55))
 * **web:** correct Array.from type arguments in solar-forecast dialog ([a34d777](https://github.com/SunReye/SunReye/commit/a34d777464bd64ce8200a1279cef5f3196e69652))
 * **forecast:** integrate instantaneous irradiance per clock hour ([3e772de](https://github.com/SunReye/SunReye/commit/3e772de9f864d4aa9952af505acd4dccb62d0020))
+
+
+### Performance Improvements
+
+* **server,web:** bucket the sparkline backfill and resume from the gap ([d9a66b8](https://github.com/SunReye/SunReye/commit/d9a66b826c450ec6d60d66145f9e487d1778917b))
+* **web:** stop the live charts repainting on every frame ([82399f5](https://github.com/SunReye/SunReye/commit/82399f5777f8174f11be68804f00d801772d6503))
 
 
 ### Documentation
