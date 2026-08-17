@@ -10,7 +10,12 @@
 // is shared is the clamp.
 
 /** Reserved space around a plot, in CSS px. */
-export type ChartPadding = { top: number; right: number; bottom: number; left: number };
+export type ChartPadding = {
+  top: number;
+  right: number;
+  bottom: number;
+  left: number;
+};
 
 /**
  * Plot width at or above which a chart gets its designed gutters. Below it the
@@ -37,6 +42,24 @@ const NARROW_RIGHT_GUTTER = 8;
  */
 export function isNarrowPlot(width: number): boolean {
   return width > 0 && width < CHART_NARROW_PX;
+}
+
+/**
+ * May a plot of this measured width be drawn yet?
+ *
+ * A chart whose gutters follow `bind:clientWidth` starts at `0`, renders in
+ * full — scales, axis ticks, grid lines, spline, area path — and then rebuilds
+ * every one of them when the bind lands one frame later and the padding
+ * changes. Both renders cost the same; only the second is kept. Gating on the
+ * measurement pays one frame of an empty (but full-height, so nothing shifts)
+ * box and halves the construction cost of every card the page mounts.
+ *
+ * Deliberately the same reading of "measured" that {@link isNarrowPlot} uses:
+ * a width the clamp declines to judge is exactly a width no plot should be
+ * built at.
+ */
+export function shouldRenderPlot(width: number): boolean {
+  return Number.isFinite(width) && width > 0;
 }
 
 /** What a gutter carries, where that changes how tightly it may be capped. */

@@ -12,7 +12,8 @@
 		sampleInterval
 	} from '$lib/components/inverter/_shared/live-window';
 	import { display } from '$lib/display.svelte';
-	import { fittedPadding } from '$lib/charts/plot-padding';
+	import { fittedPadding, shouldRenderPlot } from '$lib/charts/plot-padding';
+	import { downsample, pointBudget } from '$lib/components/inverter/_shared/downsample';
 	import type { LivePoint } from '$lib/inverter/types';
 
 	// The sparkline's own gutters: a power figure on the left, no x-axis at all,
@@ -32,7 +33,8 @@
 		windowMs = 2 * 60 * 1000,
 		height = 'h-40',
 		label = 'Value',
-		unit = ''
+		unit = '',
+		maxPoints
 	}: {
 		points?: LivePoint[];
 		accent?: string;
@@ -45,6 +47,13 @@
 		label?: string;
 		/** Unit suffix appended to the tooltip value. */
 		unit?: string;
+		/**
+		 * Samples to draw at most, after the window filter. Defaults to the
+		 * MEASURED plot's own pixel budget; a caller with a wider box (the
+		 * overview's sparklines) states its own, and `Infinity` keeps every
+		 * sample the window holds.
+		 */
+		maxPoints?: number;
 	} = $props();
 
 	// AreaChart's `marks` context isn't exposed in the public types; type just the
@@ -74,12 +83,26 @@
 	// left edge — see _shared/live-window.ts for why.
 	const xDomain = $derived(lastT === undefined ? undefined : [lastT - windowMs, lastT]);
 	const cutoff = $derived(lastT === undefined ? -Infinity : bufferStart(lastT, windowMs, interval));
-	const data = $derived(points.filter((p) => p.t >= cutoff));
 
 	// Fitted to the MEASURED plot: these cards render one-up on a phone and four
 	// across the overview, so no breakpoint knows how wide this one got.
 	let plotWidth = $state(0);
 	const padding = $derived(fittedPadding(PADDING, plotWidth));
+
+	// The window filter above decides which samples are IN FRAME; this decides
+	// how many of those the frame can resolve — one per device pixel, LTTB so a
+	// one-sample spike survives the reduction instead of being strided away. A
+	// two-minute live window rarely reaches the budget, so this normally hands
+	// back the filtered series untouched; a slow feed backfilled over a long
+	// window is what it is here for.
+	const dpr = typeof window === 'undefined' ? 1 : window.devicePixelRatio;
+	const data = $derived(
+		downsample(
+			points.filter((p) => p.t >= cutoff),
+			maxPoints ?? pointBudget(plotWidth, dpr),
+			{ x: (p) => p.t, y: (p) => p.v }
+		)
+	);
 
 	// The edge fade has to start where the axis-label gutter ENDS, so it follows
 	// the fitted left gutter instead of repeating 44px: clamped to 34px on a
@@ -122,49 +145,58 @@
      which resolves against THIS div — an unsized wrapper made every live chart
      on that page render at 0px. -->
 <div class="h-full w-full" bind:clientWidth={plotWidth}>
-	<Chart.Container
-		config={{ v: { label, color: accent } }}
-		class={[
-			'aspect-auto w-full',
-			height,
-			// Feather the plot's horizontal edges so data glides in/out instead of ending on
-			// a hard cut. The mask is pinned to layerchart's fixed-size container (not the
-			// moving data path) so the fade stays put while the series scrolls under it. The
-			// gradient keeps the left axis-label gutter opaque and feathers only inside the
-			// plot area — see `edgeFade`, which follows that gutter's fitted width.
-			'[&_.lc-root-container]:mask-(--edge-fade)'
-		]}
-		style="--color-primary: {accent}; --edge-fade: {edgeFade}"
-	>
-		<!--
-			`tooltipContext` mode: the default `quadtree-x` rebuilds a d3-quadtree (async
-			import + full re-index) on every sample — with a 1 Hz feed and 4 always-on
-			sparklines that allocation dominated the heap. `bisect-x` allocates nothing per
-			sample (it binary-searches the sorted series at pointer-move) and gives the same
-			nearest-x hover.
-		-->
-		<AreaChart
-			{data}
-			x="t"
-			{xDomain}
-			y="v"
-			axis="y"
-			grid
-			rule={false}
-			legend={false}
-			padding={padding}
-			marks={clippedMarks}
-			highlight={false}
-			tooltipContext={{ mode: 'bisect-x' }}
+	{#if !shouldRenderPlot(plotWidth)}
+		<!-- One frame, before `bind:clientWidth` lands. Rendering the plot here
+		     would build every scale, tick, grid line and area path at width 0 and
+		     throw all of it away when the fitted padding changed a frame later.
+		     The spacer carries the caller's own height class so the box the chart
+		     is about to fill is already the right size and nothing shifts. -->
+		<div class={['w-full', height]} aria-hidden="true"></div>
+	{:else}
+		<Chart.Container
+			config={{ v: { label, color: accent } }}
+			class={[
+				'aspect-auto w-full',
+				height,
+				// Feather the plot's horizontal edges so data glides in/out instead of ending on
+				// a hard cut. The mask is pinned to layerchart's fixed-size container (not the
+				// moving data path) so the fade stays put while the series scrolls under it. The
+				// gradient keeps the left axis-label gutter opaque and feathers only inside the
+				// plot area — see `edgeFade`, which follows that gutter's fitted width.
+				'[&_.lc-root-container]:mask-(--edge-fade)'
+			]}
+			style="--color-primary: {accent}; --edge-fade: {edgeFade}"
 		>
-			{#snippet tooltip()}
-				<Chart.Tooltip
-					labelFormatter={(value) => display.timeWithSeconds(new Date(Number(value)))}
-					formatter={tooltipValue}
-				/>
-			{/snippet}
-		</AreaChart>
-	</Chart.Container>
+			<!--
+				`tooltipContext` mode: the default `quadtree-x` rebuilds a d3-quadtree (async
+				import + full re-index) on every sample — with a 1 Hz feed and 4 always-on
+				sparklines that allocation dominated the heap. `bisect-x` allocates nothing per
+				sample (it binary-searches the sorted series at pointer-move) and gives the same
+				nearest-x hover.
+			-->
+			<AreaChart
+				{data}
+				x="t"
+				{xDomain}
+				y="v"
+				axis="y"
+				grid
+				rule={false}
+				legend={false}
+				padding={padding}
+				marks={clippedMarks}
+				highlight={false}
+				tooltipContext={{ mode: 'bisect-x' }}
+			>
+				{#snippet tooltip()}
+					<Chart.Tooltip
+						labelFormatter={(value) => display.timeWithSeconds(new Date(Number(value)))}
+						formatter={tooltipValue}
+					/>
+				{/snippet}
+			</AreaChart>
+		</Chart.Container>
+	{/if}
 </div>
 
 {#snippet tooltipValue({ value }: { value: unknown })}
