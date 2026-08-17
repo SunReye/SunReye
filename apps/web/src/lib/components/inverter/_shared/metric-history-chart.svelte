@@ -9,12 +9,14 @@
 	import ZoomControls from '$lib/charts/zoom-controls.svelte';
 	import { chartZoom, zoomLabelOptions } from '$lib/charts/zoom.svelte';
 	import { minExtentFor, zoomedHistoryRangeFrom } from '$lib/charts/zoom-range';
-	import { fittedPadding } from '$lib/charts/plot-padding';
+	import { fittedPadding, shouldRenderPlot } from '$lib/charts/plot-padding';
+	import { downsample, pointBudget } from '$lib/components/inverter/_shared/downsample';
 	import type { HistoryRange, RollupBucket } from '$lib/inverter/ranges';
 	import type { Snippet } from 'svelte';
 
 	let {
 		data,
+		maxPoints,
 		label,
 		accent,
 		diverging,
@@ -29,6 +31,14 @@
 	}: {
 		/** Rollup rows carrying `date` and `avg`. */
 		data: { date: Date; avg: number }[];
+		/**
+		 * Rows to draw at most. Defaults to the MEASURED plot's own pixel budget
+		 * — a preset range hands a ~450px card ~1876 rows, and the ones past
+		 * roughly one per device pixel cost path construction to produce a
+		 * sub-pixel wobble. A caller with a bigger plot (or a reason to keep the
+		 * lot) states its own; `Infinity` disables the reduction.
+		 */
+		maxPoints?: number;
 		label: string;
 		accent: string;
 		diverging: boolean;
@@ -64,6 +74,22 @@
 	// one-up on a phone and three-up in the history grid.
 	let plotWidth = $state(0);
 
+	// Device pixels per CSS pixel, read once — a dpr change (browser zoom,
+	// monitor swap) only widens the row budget below, never invalidates a
+	// series already drawn at the coarser one.
+	const dpr = typeof window === 'undefined' ? 1 : window.devicePixelRatio;
+
+	// The rows this plot can actually resolve. A preset range returns ~1876 of
+	// them per card and ~270ms of the measured 278ms mount was d3 turning those
+	// into path data; LTTB keeps the spikes that make the chart worth opening.
+	// Derived from the plot width, so it only ever runs on a measured box.
+	const plotted = $derived(
+		downsample(data, maxPoints ?? pointBudget(plotWidth, dpr), {
+			x: (row) => row.date.getTime(),
+			y: (row) => row.avg
+		})
+	);
+
 	// The selection floor is two of whatever bucket is on screen: on a 5-minute
 	// window a one-minute drag is a fingertip's width, and a mis-tap that
 	// refetches every card on the page is worse than no gesture at all.
@@ -83,44 +109,52 @@
      outside the drawing layer, so capturing here adds no mark of its own. -->
 {#snippet belowContext({ context }: { context: ChartState<{ date: Date; avg: number }> })}{zoom.capture(context)}{/snippet}
 
+<!-- The plot waits one frame for `bind:clientWidth` to land — see
+     `shouldRenderPlot`. Without the gate every scale, tick, grid line, spline
+     and area path is built once at width 0 and then rebuilt at the real width
+     the moment the fitted padding changes, which was the largest multiplier
+     inside the measured per-mount cost. The wrapper keeps its own height, so
+     the skipped frame shifts nothing. -->
 <div class="relative h-full w-full" bind:clientWidth={plotWidth}>
 	<ZoomControls {zoom} resettable={zoomed} />
-	<Chart.Container
-		config={{ avg: { label, color: accent } }}
-		class="aspect-auto h-full w-full"
-		style="--color-primary: {accent}"
-	>
-		<AreaChart
-			{data}
-			x="date"
-			y="avg"
-			axis
-			grid
-			padding={fittedPadding(PADDING, plotWidth)}
-			{xDomain}
-			{...zoom.props}
-			{belowContext}
-			props={{ xAxis: { format: xTickFormat, ticks: 4 } }}
+	{#if shouldRenderPlot(plotWidth)}
+		<Chart.Container
+			config={{ avg: { label, color: accent } }}
+			class="aspect-auto h-full w-full"
+			style="--color-primary: {accent}"
 		>
-			{#snippet marks({ context }: MarksContext)}
-				{#if diverging}
-					<DivergingArea {context} />
-				{:else}
-					<LinearGradient vertical stops={[[0, accent], [1, 'transparent']]}>
-						{#snippet children({ gradient })}
-							<Area
-								curve={curveCatmullRom}
-								line={{ stroke: accent, 'stroke-width': 1.5 }}
-								fill={gradient}
-								fillOpacity={0.9}
-							/>
-						{/snippet}
-					</LinearGradient>
-				{/if}
-			{/snippet}
-			{#snippet tooltip()}
-				<Chart.Tooltip {labelFormatter} formatter={tooltipValue} />
-			{/snippet}
-		</AreaChart>
-	</Chart.Container>
+			<AreaChart
+				data={plotted}
+				x="date"
+				y="avg"
+				axis
+				grid
+				padding={fittedPadding(PADDING, plotWidth)}
+				{xDomain}
+				{...zoom.props}
+				{belowContext}
+				props={{ xAxis: { format: xTickFormat, ticks: 4 } }}
+			>
+				{#snippet marks({ context }: MarksContext)}
+					{#if diverging}
+						<DivergingArea {context} />
+					{:else}
+						<LinearGradient vertical stops={[[0, accent], [1, 'transparent']]}>
+							{#snippet children({ gradient })}
+								<Area
+									curve={curveCatmullRom}
+									line={{ stroke: accent, 'stroke-width': 1.5 }}
+									fill={gradient}
+									fillOpacity={0.9}
+								/>
+							{/snippet}
+						</LinearGradient>
+					{/if}
+				{/snippet}
+				{#snippet tooltip()}
+					<Chart.Tooltip {labelFormatter} formatter={tooltipValue} />
+				{/snippet}
+			</AreaChart>
+		</Chart.Container>
+	{/if}
 </div>

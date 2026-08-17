@@ -254,14 +254,17 @@ describe("animated-number.svelte", () => {
     expect(code).not.toContain("Intl.NumberFormat");
   });
 
-  it("spends glideDurationMs — with the reduced-motion preference — as the tween duration", () => {
+  it("spends readoutGlideMs — with the reduced-motion preference AND the on-screen flag — as the tween duration", () => {
     // Pin the two load-bearing tokens INSIDE the duration option: a bare
     // file-level `toContain` stays green while the component computes the
     // duration and then ignores it. Renaming the local cadence variable, or
     // reformatting the call, is not a regression and must not fail here.
     const duration = optionValue(callArguments(code, "tween.set"), "duration");
-    expect(duration).toContain("glideDurationMs(");
+    expect(duration).toContain("readoutGlideMs(");
     expect(duration).toContain("prefersReducedMotion.current");
+    // The third argument is the card's visibility. Computing it and then not
+    // spending it here is exactly the never-idle Tween on 63 off-screen cards.
+    expect(duration).toContain("animate");
   });
 
   it("renders the memoised readout, not the raw tween value", () => {

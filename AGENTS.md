@@ -20,6 +20,10 @@ green.
   payloads, stale readings across midnight, partial windows, counter restarts.
 - If logic is hard to test because it lives inside a component, extract it. That extraction
   is part of the change, not a follow-up.
+- When the behaviour only exists in a running document (a reactive loop, a request storm, an
+  animation), the test is a browser spec: `apps/web/e2e/*.spec.ts`, `bun run e2e`. Those count
+  as "a test changed" for the gate. Never stand a source-text regex over the fix's own text in
+  for one — see `apps/web/TESTING.md`, "Which layer does this test belong in".
 - Exemptions to the "a test changed with it" rule live in `scripts/require-tests.ts` and are
   themselves tested. There is no skip flag.
 - `mock.module` is process-global and permanent. ALWAYS spread the real module

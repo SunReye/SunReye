@@ -1,6 +1,8 @@
 {
   "$schema": "https://docs.fallow.tools/schema.json",
   "ignorePatterns": [
+    "apps/web/e2e/**",
+    "apps/web/playwright.config.ts",
     "apps/web/src/lib/components/ui/**",
     "apps/web/src/lib/hooks/**",
     "apps/web/src/lib/utils.ts",

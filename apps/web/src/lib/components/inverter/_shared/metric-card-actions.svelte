@@ -18,11 +18,15 @@
 		metricKey,
 		value,
 		unit,
+		animate = true,
 		draft = $bindable([])
 	}: {
 		metricKey: string;
 		value: number | undefined;
 		unit: string;
+		/** Whether this card is on screen. False makes the readout step instead of
+		 *  glide, so an off-screen card runs no rAF loop — see `readoutGlideMs`. */
+		animate?: boolean;
 		/** Metrics drafted on top of this card's own. */
 		draft?: string[];
 	} = $props();
@@ -30,7 +34,7 @@
 
 <!-- The live value was the right half of the card's own header row; it is the
      section's header cluster now. -->
-<MetricReadout {value} {unit} />
+<MetricReadout {value} {unit} {animate} />
 <!-- Not admin-gated, unlike the menu it replaced: overlaying two metrics to
      look at them is a read. It only becomes a write if the reader then saves
      the draft, and that goes through the editor, which is gated where it was. -->

@@ -11,7 +11,7 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { glideDurationMs } from "./glide";
+import { glideDurationMs, readoutGlideMs } from "./glide";
 
 describe("glideDurationMs", () => {
   test("stretches the glide 1.15x past the gap so the motion is still running when the next sample lands", () => {
@@ -53,5 +53,46 @@ describe("glideDurationMs", () => {
       expect(duration).toBeGreaterThanOrEqual(previous);
       previous = duration;
     }
+  });
+});
+
+/**
+ * `readoutGlideMs` — the same policy, with an off-screen escape hatch.
+ *
+ * MetricCardActions renders in a Section's `actions` snippet, ABOVE the
+ * `{#if !mounted}` gate that lazily builds the chart. So all 63 history cards
+ * ran a readout Tween while only a handful of charts existed, and the glide
+ * (1150ms at the measured 1s cadence) is LONGER than the feed interval — the
+ * rAF loop never settles. Measured: 829 text mutations per 10s on /history
+ * against 78 on /.
+ *
+ * The fix is a duration of 0, not an unmount. A 0-duration Tween SNAPS and
+ * starts no rAF loop — exactly the mechanism reduced motion already uses — so
+ * the off-screen readout still shows the correct latest value, and scrolling
+ * back shows no em dash and no flash.
+ */
+describe("readoutGlideMs", () => {
+  test("is byte-identical to glideDurationMs whenever the card is on screen", () => {
+    // The on-screen readout must not change at all. If this ever diverges, the
+    // fix has started costing the thing it was meant to leave alone.
+    for (const gap of [0, -5, 100, 260, 300, 1000, 2000, 5000, Number.NaN]) {
+      expect(readoutGlideMs(gap, false, true)).toBe(glideDurationMs(gap, false));
+      expect(readoutGlideMs(gap, true, true)).toBe(glideDurationMs(gap, true));
+    }
+  });
+
+  test("snaps to 0 for an off-screen card at every cadence", () => {
+    for (const gap of [0, -5, -10_000, 100, 1000, 5000, Number.NaN, Number.POSITIVE_INFINITY]) {
+      expect(readoutGlideMs(gap, false, false)).toBe(0);
+    }
+  });
+
+  test("reduced motion still wins when the card is on screen", () => {
+    expect(readoutGlideMs(1000, true, true)).toBe(0);
+    expect(readoutGlideMs(1000, false, true)).toBe(1150);
+  });
+
+  test("neither flag can resurrect motion the other has switched off", () => {
+    expect(readoutGlideMs(1000, true, false)).toBe(0);
   });
 });

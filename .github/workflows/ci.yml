@@ -110,6 +110,64 @@ jobs:
       - name: Build
         run: bun run build
 
+  # The browser layer. Deliberately its own job rather than a step of `test`:
+  # `bun run test` is the seconds-long unit run every commit waits on, and a
+  # Chromium download plus a scroll sweep is neither. Nothing here needs the
+  # engine, Postgres or an inverter — the backend is faked in the browser
+  # (apps/web/e2e/support/api-mock.ts), so the job is a checkout, a browser and
+  # `vite dev`.
+  e2e:
+    name: Browser tests
+    runs-on: ubuntu-latest
+    env:
+      SKIP_ENV_VALIDATION: "1"
+      # Pin the browser cache to a path the cache action can restore.
+      PLAYWRIGHT_BROWSERS_PATH: ${{ github.workspace }}/.playwright
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.13
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      # ~300 MB of Chrome for Testing. Keyed on the resolved Playwright version
+      # so a bump re-downloads and anything else hits the cache.
+      - name: Resolve Playwright version
+        id: pw
+        run: echo "version=$(bunx playwright --version | awk '{print $2}')" >> "$GITHUB_OUTPUT"
+
+      - name: Cache browsers
+        id: browser-cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/.playwright
+          key: playwright-${{ runner.os }}-${{ steps.pw.outputs.version }}
+
+      - name: Install Chromium
+        run: bun run e2e:install
+
+      # Playwright transpiles TypeScript without checking it, and the browser
+      # layer sits outside the SvelteKit tsconfig, so nothing else would.
+      - name: Type check the browser layer
+        run: bun run e2e:types
+
+      - name: Browser tests
+        run: bun run e2e
+
+      - name: Upload report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            apps/web/playwright-report
+            apps/web/test-results
+          retention-days: 7
+
   test:
     name: Test & coverage
     runs-on: ubuntu-latest

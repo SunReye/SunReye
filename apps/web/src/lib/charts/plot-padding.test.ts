@@ -12,7 +12,13 @@
  */
 
 import { describe, expect, it } from "bun:test";
-import { CHART_NARROW_PX, fittedPadding, isNarrowPlot, type ChartPadding } from "./plot-padding";
+import {
+  CHART_NARROW_PX,
+  fittedPadding,
+  isNarrowPlot,
+  shouldRenderPlot,
+  type ChartPadding,
+} from "./plot-padding";
 
 /** A width comfortably inside the narrow band — a 412px phone's plot box. */
 const PHONE = 412;
@@ -34,6 +40,42 @@ describe("isNarrowPlot", () => {
     expect(isNarrowPlot(0)).toBe(false);
     expect(isNarrowPlot(Number.NaN)).toBe(false);
     expect(isNarrowPlot(-1)).toBe(false);
+  });
+});
+
+describe("shouldRenderPlot", () => {
+  // The measuring pass is why this exists. A chart whose padding follows
+  // `bind:clientWidth` renders ONCE at width 0 — every scale, tick, grid line,
+  // spline and area path — and then rebuilds all of it when the bind lands and
+  // the padding changes. Holding the plot back for that one frame halves the
+  // construction cost of every card the page mounts.
+
+  it("holds the plot back until the wrapper has been measured", () => {
+    expect(shouldRenderPlot(0)).toBe(false);
+  });
+
+  it("draws as soon as a real width arrives", () => {
+    expect(shouldRenderPlot(320)).toBe(true);
+    expect(shouldRenderPlot(1)).toBe(true);
+    expect(shouldRenderPlot(1200)).toBe(true);
+  });
+
+  it("refuses a width that is not a usable number", () => {
+    // A collapsed or detached wrapper must not produce a plot with NaN scales:
+    // d3 turns those into `d="MNaN,NaN"` and the card renders empty for good.
+    expect(shouldRenderPlot(Number.NaN)).toBe(false);
+    expect(shouldRenderPlot(-1)).toBe(false);
+    expect(shouldRenderPlot(Infinity)).toBe(false);
+  });
+
+  it("agrees with the clamp about what counts as measured", () => {
+    // `isNarrowPlot` already reads 0/NaN/negative as "not measured yet, assume
+    // wide". The gate must not admit a width the clamp would refuse to judge,
+    // or the plot renders on exactly the widths the gate exists to skip.
+    for (const width of [0, -1, Number.NaN]) {
+      expect(shouldRenderPlot(width)).toBe(false);
+      expect(fittedPadding(BASE, width)).toEqual(BASE);
+    }
   });
 });
 

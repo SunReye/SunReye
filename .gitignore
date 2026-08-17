@@ -47,6 +47,12 @@ lerna-debug.log*
 coverage
 .nyc_output
 
+# Playwright (browser layer, apps/web/e2e)
+test-results
+playwright-report
+blob-report
+.playwright
+
 # Misc
 *.tgz
 .cache

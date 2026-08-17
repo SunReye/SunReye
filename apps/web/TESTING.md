@@ -6,11 +6,119 @@ half — what that means when the thing you changed is a Svelte component.
 
 ```bash
 cd apps/web
-bun run test        # bun test ./src
+bun run test        # bun test ./src  — seconds, runs on every commit
 bun run check       # svelte-check (types, unused props, a11y)
+bun run e2e         # Playwright: a real browser, a faked backend (see below)
 ```
 
-## The one rule that decides where a test goes
+## Two layers, and what each is for
+
+`bun test` proves **decisions**. Playwright proves **behaviour in a document** — the things that
+only exist once there is a scheduler, a compositor and a socket: a reactive loop, a scroll that
+mounts sixty charts, a tween that never settles, a request storm.
+
+The browser layer lives in `e2e/`, deliberately outside the `./src` glob `bun test` is pointed
+at, so bun never tries to import `@playwright/test` (it cannot run it) and the unit suite stays
+seconds long. It is a separate CI job for the same reason.
+
+Nothing in it needs the engine, Postgres/TimescaleDB or an inverter. `e2e/support/api-mock.ts`
+answers every `/api/*` call with `page.route` and serves the multiplexed live socket with
+`page.routeWebSocket`, off a committed 105-metric Deye manifest
+(`e2e/fixtures/manifest.json`). A run is one command with no setup:
+
+```bash
+bun run e2e:install   # once: downloads Chromium
+bun run e2e
+```
+
+The measuring instruments are all in `e2e/support/perf.ts` — `countRequests`, `measureScroll`,
+`countChartMounts`, `countTextMutations`, `throttleCpu` — so no spec writes its own
+`page.evaluate` and two specs cannot disagree about what a long task is.
+
+## Which layer does this test belong in
+
+Ask what kind of claim you are making. There are three answers, and only the first two are
+real coverage.
+
+| The claim is about…                                          | Write a…             | Where            |
+| ------------------------------------------------------------ | -------------------- | ---------------- |
+| a value, a branch, a boundary — "what does this return"       | **unit test**        | `src/**/*.test.ts` |
+| the running app — "what does it do once there is a scheduler" | **browser spec**     | `e2e/*.spec.ts`  |
+| a convention that only exists as markup                       | source-text test     | `src/**/*.test.ts` |
+
+**Default to the unit test.** It runs in milliseconds on every commit, and if the logic is
+hard to reach because it lives in a component, extracting it is part of the change (see the
+next section).
+
+**Reach for a browser spec when the thing that breaks is not a value.** Anything with a
+scheduler, a compositor, a socket or an observer in it: a reactive loop, a lease taken twice,
+a request storm, sixty charts mounting on a scroll, a tween that never settles, an intersection
+gate. Runes do not run under `bun test`, so for this class the browser is not a nicer option —
+it is the only one. `scripts/require-tests.ts` counts an `e2e/*.spec.ts` as a test changing, so
+a fix covered only there satisfies the TDD gate.
+
+**Source-text tests are a last resort, and they are not coverage.** They pin a convention that
+genuinely has no runtime value to assert — the layout vocabulary, the live-value ownership rule.
+Everything else they touch, they get wrong in both directions: they pass for broken code and
+fail for a rename. The technique and its rules are below; the honest example of its limits is
+`lib/inverter/store-backfill-wiring.test.ts`.
+
+### The worked example, both ways
+
+An `$effect` in `routes/(app)/+layout.svelte` took a reactive dependency on the `SvelteMap` of
+live buffers that its own backfill then wrote. The effect invalidated on its own write, its
+cleanup released the socket and the metrics lease, it re-ran, re-leased and re-fetched — ~12
+cycles a second of `/api/profile` + `/api/history/recent`, a WebSocket closed before it could
+finish opening 2708 times, and every reading on the dashboard rendering as an em dash while the
+server was healthy.
+
+The first attempt was `store-backfill-wiring.test.ts`, a regex asserting the fix's own text
+(`untrack(() => this.#live.newestHeldMs())`) is still in the file. It passes for any *other*
+reactive read that reintroduces the loop, and fails for a rename that changes nothing.
+
+The coverage that actually exists is `e2e/shell-lease-loop.spec.ts`, which boots the app and
+counts: boot calls in a settled 3s window (0 — the pre-fix build scores ~400), socket opens (1 —
+pre-fix, hundreds), `unsub` frames (0), and a power-flow readout holding a digit rather than an
+em dash. It has been watched fail against the reverted fix and it does not care how the fix is
+spelled. The regex is kept as a fast canary, with its limits written at the top of the file.
+
+### Adding a spec
+
+Copy the shape of an existing one; the whole harness is three modules in `e2e/support/`.
+
+```ts
+import { expect, test } from "@playwright/test";
+import { mockBackend } from "./support/api-mock";
+import { countRequests } from "./support/perf";
+
+test("the shell boots once and stays booted", async ({ page }) => {
+  const backend = await mockBackend(page);   // MUST come before goto
+  await page.goto("/#/");                    // hash router: `/#/history`, `/#/settings`
+  await backend.waitForLive();
+  const calls = await countRequests(page, /\/api\/profile$/, () => page.waitForTimeout(3000));
+  expect(calls).toBe(0);
+});
+```
+
+Four things worth knowing before you write one:
+
+- **Mock first.** `mockBackend(page)` installs the routes; calling it after `goto` mocks nothing
+  and the page silently sits behind its first-run gate. Assert `backend.unhandled` is `[]` when
+  you add a route that fetches something new.
+- **`/history` has a helper.** `openHistory(page)`, `metricCards`, `mountedCharts`,
+  `selectRange` in `support/history.ts` — so a markup change costs one edit, not one per spec.
+- **Don't wait for a thing your assertion is about.** If the spec's subject is the live socket
+  staying up, `await backend.waitForLive()` turns the regression into a setup timeout instead of
+  a number. Poll the counter you are about to assert on.
+- **Numbers are ratios, never floors.** This browser composites in software.
+  `e2e/overview-baseline.spec.ts` is the control group; compare against it rather than pinning
+  an fps.
+
+And the rule that outranks all of them: **prove the spec discriminates.** Apply the exact
+regression it names, watch it go red, restore. A regression test nobody has watched fail is a
+guess.
+
+## The one rule that decides where a unit test goes
 
 A component is a rendering of a decision. **Test the decision, not the rendering.**
 
@@ -30,7 +138,9 @@ is more than a null check, that condition is the unit. Lift it into a `.ts` next
 component (or into `_shared/`), export it, test it, and let the component call it. The
 extraction is part of the change.
 
-What stays in the component: markup, class strings, prop wiring, `$effect` plumbing. Rendering is
+What stays in the component: markup, class strings, prop wiring, `$effect` plumbing. "Stays in the
+component" is not "is untestable" — `$effect` plumbing is what the PR #60 outage was made of, and
+that is a browser spec, not a regex. Rendering is
 still not unit-tested — but a **convention** that lives in markup is, by reading the source. The
 layout vocabulary, the mobile floors, the live-value ownership rule and the chart zoom gestures are
 all conventions of that kind, and seven files pin them by reading `.svelte` sources:

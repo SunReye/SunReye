@@ -42,3 +42,26 @@ export function glideDurationMs(gapMs: number, reduceMotion: boolean): number {
   if (!Number.isFinite(gapMs) || gapMs <= 0) return MIN_GLIDE_MS;
   return Math.max(MIN_GLIDE_MS, gapMs * GLIDE_OVERSHOOT);
 }
+
+/**
+ * Glide length for a metric card's live readout.
+ *
+ * Same policy as `glideDurationMs` with one extra gate. The readout lives in the
+ * card's header, ABOVE the lazy-mount gate that builds the chart, so every card
+ * on /history ran a Tween while only a handful of charts existed — and at the
+ * measured 1s cadence the glide is 1150ms, longer than the interval, so the rAF
+ * loop never settles. Measured: 829 text mutations per 10s on /history against
+ * 78 on the overview.
+ *
+ * `animate` is the card's own visibility. False gives 0, which is the same snap
+ * reduced motion already takes: the Tween jumps to each sample and starts no rAF
+ * loop, so an off-screen readout still holds the correct latest value and
+ * scrolling back to it shows neither an em dash nor a flash. On screen the
+ * result is identical to `glideDurationMs` — that equivalence is pinned in
+ * `glide.test.ts`, because the moment it drifts the fix has started costing the
+ * motion it was meant to leave alone.
+ */
+export function readoutGlideMs(gapMs: number, reduceMotion: boolean, animate: boolean): number {
+  if (!animate) return 0;
+  return glideDurationMs(gapMs, reduceMotion);
+}

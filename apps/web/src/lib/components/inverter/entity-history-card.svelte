@@ -9,7 +9,8 @@
 	import { api } from '$lib/api';
 	import * as m from '$lib/paraglide/messages';
 	import { inverter } from '$lib/inverter/store.svelte';
-	import { inView } from '$lib/actions/in-view';
+	import { RETENTION_BAND, inView } from '$lib/actions/in-view';
+	import { sharedMountQueue } from '$lib/actions/mount-queue';
 	import { FullscreenBox } from '$lib/charts/fullscreen.svelte';
 	import { draftMetrics } from '$lib/inverter/chart-draft';
 	import { tooltipLabel, xTick } from '$lib/inverter/chart-format';
@@ -108,8 +109,28 @@
 	/** True once the historical query has landed with rows to draw. */
 	const plottable = $derived(!loading && chartData.length > 0);
 
-	const enter = () => (visible = true);
-	const leave = () => (visible = false);
+	// Entering the band only REQUESTS the mount. Wiring the observer straight to
+	// `visible = true` meant a scroll sweep synchronously built a LayerChart for
+	// every card it flew past — 59 mounts AND 59 unmounts in 12s, ~278ms of
+	// construction each on a preset range. The queue admits work only once the
+	// scroll settles, and `cancel` on the way out means a card merely passed
+	// never builds at all. Shared across the grid so the per-frame budget is one
+	// budget, not 63 of them.
+	const queue = sharedMountQueue();
+	const enter = () => queue.request(metric.key, () => (visible = true));
+	const leave = () => {
+		queue.cancel(metric.key);
+		visible = false;
+	};
+
+	// The queue outlives the card — it is shared across the grid — so a request
+	// still parked when this card is destroyed would run later and write
+	// `visible` on a dead component. `leave` only fires when the OBSERVER says
+	// so, which is not the same event: a collapsed category, a search that
+	// filters this metric out, or leaving /history all destroy the card without
+	// it ever leaving the viewport. Reading `metric.key` inside the cleanup does
+	// not track it, so this effect runs its teardown exactly once, at destroy.
+	$effect(() => () => queue.cancel(metric.key));
 </script>
 
 <!-- The observer has to watch the card's outermost box, or a category of 100+
@@ -117,10 +138,27 @@
      `use:` action, by design. So the root is a bare wrapper: no frame, no pad,
      nothing that would draw a second border around the card inside it.
      `nested` because every one of these sits inside a metric-group Section. -->
-<div use:inView={{ onEnter: enter, onLeave: leave }}>
+<div
+	use:inView={{
+		onEnter: enter,
+		onLeave: leave,
+		rootMargin: RETENTION_BAND.mount,
+		retainMargin: RETENTION_BAND.retain
+	}}
+>
 	<Section title={metric.label} nested fullscreen {screen}>
 		{#snippet actions()}
-			<MetricCardActions metricKey={metric.key} value={current} {unit} bind:draft />
+			<!-- `animate` is the card's own visibility. The readout renders here, ABOVE
+			     the lazy-mount gate, so all 63 cards used to run a Tween whose 1150ms
+			     glide outlasts the 1s feed — an rAF loop that never settles. Off screen
+			     it snaps instead, still holding the latest value. -->
+			<MetricCardActions
+				metricKey={metric.key}
+				value={current}
+				{unit}
+				animate={mounted}
+				bind:draft
+			/>
 		{/snippet}
 
 		{#if !mounted}

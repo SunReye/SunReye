@@ -14,7 +14,11 @@
     "prepare": "bun scripts/compile-i18n.ts && (svelte-kit sync || echo '')",
     "check": "bun scripts/compile-i18n.ts && svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
     "check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
-    "test": "SKIP_ENV_VALIDATION=1 bun test ./src"
+    "test": "SKIP_ENV_VALIDATION=1 bun test ./src",
+    "e2e": "playwright test",
+    "e2e:ui": "playwright test --ui",
+    "e2e:install": "playwright install --with-deps chromium",
+    "e2e:types": "tsc -p e2e/tsconfig.json"
   },
   "dependencies": {
     "@SunReye/inverter-core": "workspace:*",
@@ -31,6 +35,7 @@
     "@fontsource-variable/geist-mono": "^5.2.8",
     "@inlang/paraglide-js": "^2.22.0",
     "@internationalized/date": "^3.12.0",
+    "@playwright/test": "^1.62.1",
     "@sveltejs/adapter-auto": "^7.0.1",
     "@sveltejs/adapter-node": "^5.5.4",
     "@sveltejs/adapter-static": "^3.0.10",
@@ -39,6 +44,7 @@
     "@tailwindcss/vite": "^4.3.1",
     "@types/d3-scale": "^4.0.9",
     "@types/d3-shape": "^3.1.8",
+    "@types/node": "^26.2.0",
     "bits-ui": "^2.16.3",
     "clsx": "^2.1.1",
     "layerchart": "2.2.0",
