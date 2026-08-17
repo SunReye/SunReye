@@ -1,0 +1,20 @@
+{
+  // The browser layer is outside the SvelteKit tsconfig (which only covers
+  // `src`), so it gets its own. `bun run e2e:types` checks it; Playwright
+  // itself transpiles without type-checking, so nothing else would.
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "types": ["node"],
+    "strict": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "esModuleInterop": true,
+    "isolatedModules": true,
+    "verbatimModuleSyntax": true
+  },
+  "include": ["./**/*.ts", "../playwright.config.ts"]
+}

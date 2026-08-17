@@ -85,6 +85,32 @@ describe("isTestFile", () => {
   test("a source file is not a test", () => {
     expect(isTestFile("apps/server/src/cost.ts")).toBe(false);
   });
+
+  // A Playwright spec is a test, and for a whole class of behaviour it is the
+  // ONLY test there can be: runes do not run under `bun test`, so a reactive
+  // loop, a request storm or a tween that never settles is provable in a
+  // browser and nowhere else. While the gate counted `*.test.ts` alone, fixing
+  // one of those and covering it in `e2e/` still read as "source changed, no
+  // test changed" — and the way through was to write a source-text regex
+  // instead. That is how `store-backfill-wiring.test.ts` came to exist.
+  test("a Playwright spec counts — for a rune shell it is the only test there is", () => {
+    expect(isTestFile("apps/web/e2e/shell-lease-loop.spec.ts")).toBe(true);
+    expect(isTestFile("apps/web/e2e/history-scroll-mounts.spec.ts")).toBe(true);
+  });
+
+  // Scoped to an `e2e/` directory on purpose: `.spec.ts` is not a convention
+  // this repo uses anywhere else, and a bare suffix rule would let any file
+  // named `foo.spec.ts` next to the source satisfy the gate without ever being
+  // run by `bun test` (which globs `./src` for `*.test.ts`).
+  test("a stray .spec.ts outside e2e/ does not satisfy the gate", () => {
+    expect(isTestFile("apps/web/src/lib/inverter/store.spec.ts")).toBe(false);
+  });
+
+  // The harness itself is not the proof. `api-mock.ts` is a fake backend, not
+  // an assertion — a change that only touched it would otherwise pass.
+  test("e2e support code is not a test", () => {
+    expect(isTestFile("apps/web/e2e/support/api-mock.ts")).toBe(false);
+  });
 });
 
 describe("verdict", () => {

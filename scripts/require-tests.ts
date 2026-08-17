@@ -49,9 +49,27 @@ const NEVER_EXEMPT = [/^apps\/[^/]+\/src\/index\.ts$/];
 /** Extensions that can hold behaviour. Docs, JSON and SQL cannot. */
 const SOURCE_EXT = /\.(ts|tsx|js|jsx|mjs|cjs|svelte|svelte\.ts)$/;
 
-/** Whether `path` is a colocated bun test. */
+/**
+ * Whether `path` is a colocated bun test, or a Playwright spec in an `e2e/`
+ * tree.
+ *
+ * The browser layer counts because for a whole class of behaviour it is the
+ * only proof there can be: runes do not run under `bun test`, so a reactive
+ * loop, a request storm or a tween that never settles is testable in a document
+ * and nowhere else. While this gate recognised `*.test.ts` alone, fixing one of
+ * those and covering it in `e2e/` still read as "source changed, no test
+ * changed", and the cheapest way past that was a source-text regex over the
+ * fix's own text. That is a green test for broken code, and it is how
+ * `apps/web/src/lib/inverter/store-backfill-wiring.test.ts` came to exist.
+ *
+ * Scoped to an `e2e/` segment rather than the bare `.spec.ts` suffix: nothing
+ * else in this repo uses that suffix, and an unscoped rule would let a
+ * `foo.spec.ts` sitting next to a source satisfy the gate while no runner ever
+ * globs it (`bun test ./src` looks for `*.test.ts`; Playwright looks in `e2e/`).
+ */
 export function isTestFile(path: string): boolean {
-  return /\.test\.(ts|tsx|js|jsx)$/.test(path);
+  if (/\.test\.(ts|tsx|js|jsx)$/.test(path)) return true;
+  return /(^|\/)e2e\/.*\.spec\.(ts|tsx|js|jsx)$/.test(path);
 }
 
 /** Whether `path` is behaviour this repo is responsible for proving. */

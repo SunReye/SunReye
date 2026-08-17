@@ -12,7 +12,9 @@ decided in `src/lib/layout/tokens.ts` and `src/lib/live/ownership.ts`, and five 
 hand-rolled alternative.
 
 For frontend UI/UX work, also read `apps/web/DESIGN.md`.
-For frontend testing work, and after adding/changing pages or user-visible components, also read `apps/web/TESTING.md` — in particular "Writing a source-text test", which is how layout conventions are pinned here.
+For frontend testing work, and after adding/changing pages or user-visible components, also read `apps/web/TESTING.md` — start at "Which layer does this test belong in", which picks between a unit test, a browser spec and (rarely) a source-text test.
+For anything that only exists in a running document — a reactive loop, a request storm, scroll cost, an animation that never settles — use the browser layer in `apps/web/e2e` (`bun run e2e`) instead of a source-text test. It fakes the whole backend, so it needs no server, database or inverter, and `scripts/require-tests.ts` counts an `e2e/*.spec.ts` as a test changing, so a fix covered only there satisfies the TDD gate. See "Adding a spec" in `TESTING.md`.
+A source-text test is the last resort and is not coverage: it passes for broken code and fails for a rename. `src/lib/inverter/store-backfill-wiring.test.ts` documents that trade-off at the top of the file, and `e2e/shell-lease-loop.spec.ts` is what actually proves the bug it names is gone.
 
 <!-- ShadCN-Svelte:BEGIN -->
 
