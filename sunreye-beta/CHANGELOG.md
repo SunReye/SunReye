@@ -2,7 +2,7 @@
 
 ## [unreleased]
 
-Unreleased work on `dev` since 1.2.0, shipped in `beta.20260817-419c1a2`.
+Unreleased work on `dev` since 1.2.0, shipped in `beta.20260817-c8b4281`.
 
 
 ### Features
@@ -131,6 +131,8 @@ Unreleased work on `dev` since 1.2.0, shipped in `beta.20260817-419c1a2`.
 
 ### Performance Improvements
 
+* **web:** build each chart once, at a width it can actually use ([db697a8](https://github.com/SunReye/SunReye/commit/db697a84bb03e0f55dae223edbf71b16e5d60988))
+* **web:** build a chart when the reader stops, not when they scroll past ([c077445](https://github.com/SunReye/SunReye/commit/c0774452f2e89c5aebff5eaa1113b616da79ae7a))
 * **server,web:** bucket the sparkline backfill and resume from the gap ([d9a66b8](https://github.com/SunReye/SunReye/commit/d9a66b826c450ec6d60d66145f9e487d1778917b))
 * **web:** stop the live charts repainting on every frame ([82399f5](https://github.com/SunReye/SunReye/commit/82399f5777f8174f11be68804f00d801772d6503))
 
@@ -251,6 +253,7 @@ Unreleased work on `dev` since 1.2.0, shipped in `beta.20260817-419c1a2`.
 
 ### Tests
 
+* **web:** add a browser test layer, and stop proving things with regexes ([d4ed34b](https://github.com/SunReye/SunReye/commit/d4ed34bcc0e6bee3ea09b14ee2f6159fa23f21c7))
 * **web:** pin the ring's swing to zero at an idle plant ([9e23125](https://github.com/SunReye/SunReye/commit/9e231252a3354c50fa1cab4ebd54cd52f6714484))
 * cross the client/server seam the deleted REST primes relied on ([a368585](https://github.com/SunReye/SunReye/commit/a3685856301aea4f14f89ecce60428e11fe3ff4d))
 * **server:** inject the evcc load-sample hook instead of module-mocking it ([c20771a](https://github.com/SunReye/SunReye/commit/c20771ac1ab66fb052fee6dda782b96aee24562a))
