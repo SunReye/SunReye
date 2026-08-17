@@ -1,3 +1,4 @@
+import { untrack } from "svelte";
 import { SvelteMap } from "svelte/reactivity";
 import { api } from "$lib/api";
 import { uiPrefs } from "$lib/ui-prefs.svelte";
@@ -146,7 +147,23 @@ class InverterStore {
     // full 5-minute refetch. The endpoint buckets server-side and answers in a
     // compact offset encoding, so there is no client row cap to pick any more:
     // the row count is bounded by window ÷ step, per metric.
-    const seconds = backfillSeconds(this.#live.newestHeldMs(), Date.now());
+    //
+    // UNTRACKED, and this is load-bearing rather than an optimisation.
+    // `newestHeldMs` walks the `SvelteMap` of buffers, and `lease()` calls this
+    // synchronously from inside the shell's `$effect` (see `(app)/+layout.svelte`
+    // — the await chain has not suspended yet at this line). A tracked read there
+    // makes the effect depend on the very map that `seedBackfill`/`mergeBackfill`
+    // and every live frame then WRITE: the effect invalidates, its cleanup
+    // releases the socket and the metrics lease, it re-runs, re-leases, re-fetches
+    // and writes again. That shipped, and it was a hot restart loop — ~12 cycles a
+    // second of `/api/profile` + `/api/history/recent`, a socket closed before it
+    // could finish opening, and `#consuming` never latching, so not one live frame
+    // was ever applied and every reading on the dashboard rendered as an em dash.
+    // The gap width is an input to a fetch, never a reason to re-run the shell.
+    const seconds = backfillSeconds(
+      untrack(() => this.#live.newestHeldMs()),
+      Date.now(),
+    );
     const { data } = await api.api.history.recent.get({
       query: { seconds, stepSeconds: 1 },
     });
