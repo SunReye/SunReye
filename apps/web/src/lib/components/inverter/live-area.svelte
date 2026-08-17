@@ -7,7 +7,8 @@
 	import { liveCursor } from '$lib/components/inverter/_shared/live-cursor.svelte';
 	import {
 		bufferStart,
-		glideOffset,
+		glideTransform,
+		pixelQuantum,
 		sampleInterval
 	} from '$lib/components/inverter/_shared/live-window';
 	import { display } from '$lib/display.svelte';
@@ -18,6 +19,11 @@
 	// so top/bottom/right are hairlines. Its own base — the cost family's 60px
 	// left gutter would be a third of a 412px live card.
 	const PADDING = { top: 6, bottom: 6, left: 44, right: 6 };
+
+	// Step grid the glide snaps to — see `pixelQuantum`. Read once: a dpr change
+	// (browser zoom, monitor swap) only alters the step size, never the position,
+	// so a stale value is harmless.
+	const quantum = pixelQuantum(typeof window === 'undefined' ? 1 : window.devicePixelRatio);
 
 	let {
 		points = [],
@@ -84,8 +90,13 @@
 </script>
 
 {#snippet clippedMarks({ context }: MarksContext)}
+	<!-- The SVG transform attribute, snapped to a quarter-pixel grid: the string is
+	     identical on the four frames in five that move less than a quarter pixel, so
+	     Svelte's `!==` equality drops the write, and with it the style invalidation,
+	     paint and raster it would have cost. -->
+	{@const glide = glideTransform(context.xScale, lastT, cursor.current, interval, quantum)}
 	<ChartClipPath>
-		<g transform={`translate(${glideOffset(context.xScale, lastT, cursor.current, interval)}, 0)`}>
+		<g transform={glide}>
 			{#if diverging}
 				<DivergingArea {context} />
 			{:else}

@@ -2,7 +2,7 @@ import { SvelteMap } from "svelte/reactivity";
 import { api } from "$lib/api";
 import { uiPrefs } from "$lib/ui-prefs.svelte";
 import { bus } from "$lib/ws/bus.svelte";
-import { LiveSeries, MetricsFeed, WINDOW_MS } from "./live-metrics";
+import { backfillSeconds, isFullBackfill, LiveSeries, MetricsFeed } from "./live-metrics";
 import type {
   CanonicalRole,
   InverterCapabilities,
@@ -140,15 +140,23 @@ class InverterStore {
    * the tab comes back, so the buffers land on current data.
    */
   async #backfill(): Promise<void> {
-    // Over-fetch: pull the whole 5-minute buffer across every metric at the
-    // endpoint's max row cap. `desc + limit` returns the most-recent rows, so a
-    // small cap would only reach back a few seconds under a dense/multi-metric
-    // feed and leave the sparkline window unfilled. Downsample-to-1Hz keeps the
-    // client cheap regardless of how many rows come back.
+    // Ask only for what is actually missing. On first load nothing is held, so
+    // this is the whole window; on a resume after a short hide it is the gap
+    // plus a small overlap — by far the most frequent case, and previously the
+    // full 5-minute refetch. The endpoint buckets server-side and answers in a
+    // compact offset encoding, so there is no client row cap to pick any more:
+    // the row count is bounded by window ÷ step, per metric.
+    const seconds = backfillSeconds(this.#live.newestHeldMs(), Date.now());
     const { data } = await api.api.history.recent.get({
-      query: { seconds: WINDOW_MS / 1000, limit: 200000 },
+      query: { seconds, stepSeconds: 1 },
     });
-    if (data) this.#live.seedRows(data);
+    if (!data) return;
+    // A full-width request is authoritative about the window and replaces the
+    // buffers; a gap request only describes the gap and merges. The predicate is
+    // `isFullBackfill` rather than an inline comparison so the suite exercises
+    // THIS branch instead of a copy of it.
+    if (isFullBackfill(seconds)) this.#live.seedBackfill(data);
+    else this.#live.mergeBackfill(data);
   }
 }
 

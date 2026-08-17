@@ -114,6 +114,111 @@ export async function queryHourlyAvgRange(
   }));
 }
 
+/** One metric's compact series: `o` = offsets in steps from `t0`, `v` = values. */
+export interface RecentSeries {
+  o: number[];
+  v: number[];
+}
+
+/**
+ * The compact backfill payload. Timestamps are not repeated per sample: every
+ * point is `t0 + o[i] * step * 1000` ms, and the metric name is paid once per
+ * series instead of once per row. That is the whole point — the long form was
+ * ~75 B/sample of which ~55 B was a repeated ISO string and metric name, and
+ * this server has no HTTP compression to hide it.
+ */
+export interface RecentBackfill {
+  t0: number;
+  step: number;
+  metrics: Record<string, RecentSeries>;
+}
+
+/**
+ * Belt for the structural bound. The row count is already
+ * `metricCount × (ceil(seconds / step) + 1)` because of the GROUP BY, so this only
+ * catches an absurd metric explosion. It is DERIVED here and never accepted
+ * from the client: a client-supplied global `limit` over a `desc` order is
+ * exactly the bug this endpoint used to have — it truncated the OLDEST samples
+ * of every metric at once, which is why the caller had to send 200000.
+ */
+const MAX_METRICS_GUARD = 512;
+
+/** Clamp to a whole number inside `[lo, hi]` — these reach the SQL as literals. */
+const clampInt = (n: number, lo: number, hi: number): number =>
+  Math.min(hi, Math.max(lo, Math.trunc(Number.isFinite(n) ? n : lo)));
+
+/** Shape `(metric, bucket, value)` rows into the compact wire form. */
+function shapeRecentBuckets(
+  rows: ReadonlyArray<{ metric: string; bucket: string | number; value: number | string }>,
+  step: number,
+): RecentBackfill {
+  let t0 = Number.POSITIVE_INFINITY;
+  const parsed: Array<{ metric: string; ms: number; value: number }> = [];
+  for (const r of rows) {
+    const ms = Number(r.bucket) * 1000;
+    if (!Number.isFinite(ms)) continue;
+    if (ms < t0) t0 = ms;
+    parsed.push({ metric: r.metric, ms, value: Number(r.value) });
+  }
+  // No rows: a finite `t0` so the client never derives NaN timestamps from it.
+  if (parsed.length === 0) return { t0: 0, step, metrics: {} };
+  const metrics: Record<string, RecentSeries> = {};
+  const stepMs = step * 1000;
+  for (const p of parsed) {
+    const s = (metrics[p.metric] ??= { o: [], v: [] });
+    s.o.push(Math.round((p.ms - t0) / stepMs));
+    s.v.push(p.value);
+  }
+  return { t0, step, metrics };
+}
+
+/**
+ * Recent samples across every metric of one inverter, bucketed server-side and
+ * encoded compactly — the client's live sparkline backfill.
+ *
+ * `last(value, time)` per `time_bucket` reproduces exactly what the client used
+ * to do locally ("keep the last sample in each bucket"), so visual density is
+ * unchanged while a sub-second poll configuration no longer inflates the
+ * payload. There is deliberately no caller-supplied row cap; see
+ * {@link MAX_METRICS_GUARD}.
+ */
+export async function queryRecentBuckets(q: {
+  inverterId: string;
+  seconds: number;
+  stepSeconds: number;
+}): Promise<RecentBackfill> {
+  const step = clampInt(q.stepSeconds, 1, 60);
+  const seconds = clampInt(q.seconds, 1, 3600);
+  const since = new Date(Date.now() - seconds * 1000);
+  // Both are validated integers rendered as literals, never client text.
+  const width = sql.raw(String(step));
+  // `+ 1`: `time_bucket` is EPOCH-aligned, not `since`-aligned, so an N-second
+  // window starting mid-bucket spans ceil(N / step) + 1 buckets. Without it the
+  // cap is one row per metric short — and since the order is `metric, bucket`,
+  // truncation does not shave edges evenly, it drops the alphabetically LAST
+  // metrics ENTIRELY, which a full-width `seedBackfill` then reads as "dead" and
+  // clears. The guard is a belt over a structural bound; it must never bite
+  // first.
+  const buckets = Math.ceil(seconds / step) + 1;
+  const cap = sql.raw(String(buckets * MAX_METRICS_GUARD));
+  const result = await db.execute<{
+    metric: string;
+    bucket: string | number;
+    value: number | string;
+  }>(sql`
+    select metric,
+           (extract(epoch from time_bucket(make_interval(secs => ${width}), time)))::bigint as bucket,
+           last(value, time) as value
+    from metrics_raw
+    where inverter_id = ${q.inverterId}
+      and time >= ${since}
+    group by metric, bucket
+    order by metric, bucket asc
+    limit ${cap}
+  `);
+  return shapeRecentBuckets(result.rows, step);
+}
+
 /** Raw samples for one metric, most-recent-first. */
 export async function queryRawHistory(
   q: HistoryQuery,

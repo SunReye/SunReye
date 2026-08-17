@@ -51,8 +51,13 @@ afterAll(() => {
   mock.module("@SunReye/db", () => ({ ...realDbExports }));
 });
 
-const { queryHourlyAvgRange, queryMedianHourlyAvg, queryRawHistory, queryRollup } =
-  await import("./history");
+const {
+  queryHourlyAvgRange,
+  queryMedianHourlyAvg,
+  queryRawHistory,
+  queryRecentBuckets,
+  queryRollup,
+} = await import("./history");
 
 /** Reset the recorder, queue `rows` for the next query, return the call made. */
 async function capture<T>(rows: unknown[], run: () => Promise<T>): Promise<[Call, T]> {
@@ -458,5 +463,178 @@ describe("queryRawHistory", () => {
   test("times are serialised as UTC ISO strings whatever the server's local zone", async () => {
     const [, rows] = await capture([row("2026-04-01 22:30:00+00", 5)], () => queryRawHistory(q));
     expect(rows[0]?.time).toBe("2026-04-01T22:30:00.000Z");
+  });
+});
+
+describe("queryRecentBuckets — the SQL", () => {
+  const q = { inverterId: "inv-1", seconds: 300, stepSeconds: 1 };
+
+  test("buckets server-side with time_bucket + last(value, time), grouped per metric", async () => {
+    const [call] = await capture([], () => queryRecentBuckets(q));
+    const sqlText = flat(call.sql);
+    expect(sqlText).toContain("time_bucket(");
+    expect(sqlText).toContain("last(value, time)");
+    expect(sqlText).toContain("group by metric, bucket");
+    expect(sqlText).toContain("order by metric, bucket asc");
+    expect(sqlText).toContain("from metrics_raw");
+  });
+
+  test("inverter and window are bound parameters, never interpolated text", async () => {
+    const before = Date.now();
+    const [call] = await capture([], () =>
+      queryRecentBuckets({ ...q, inverterId: "inv'; drop table metrics_raw; --" }),
+    );
+    const after = Date.now();
+    expect(call.sql).not.toContain("drop table");
+    expect(call.params[0]).toBe("inv'; drop table metrics_raw; --");
+    const since = call.params[1] as Date;
+    expect(since.getTime()).toBeGreaterThanOrEqual(before - 300_000);
+    expect(since.getTime()).toBeLessThanOrEqual(after - 300_000);
+  });
+
+  // The bug the old `limit: 200000` was papering over: a GLOBAL `desc + limit`
+  // caps rows before any per-metric grouping, so a wide feed loses its oldest
+  // samples across EVERY metric. The bound is now structural (window ÷ step),
+  // and the client cannot influence it at all.
+  test("carries no client-supplied limit — any cap is derived from window ÷ step", async () => {
+    const [call] = await capture([], () => queryRecentBuckets(q));
+    const sqlText = flat(call.sql);
+    // No limit is a bound parameter, and no number the caller passed is one.
+    expect(call.params).toEqual(["inv-1", call.params[1]]);
+    const cap = /limit (\d+)/.exec(sqlText)?.[1];
+    if (cap !== undefined) {
+      // Derived: grows with the bucket count, and comfortably above the
+      // structural row count of any realistic feed.
+      const wide = await capture([], () => queryRecentBuckets({ ...q, seconds: 600 }));
+      const wideCap = /limit (\d+)/.exec(flat(wide[0].sql))?.[1];
+      expect(Number(wideCap)).toBeGreaterThan(Number(cap));
+      expect(Number(cap)).toBeGreaterThanOrEqual(300 * 64);
+    }
+    expect(sqlText).not.toContain("order by time desc");
+  });
+
+  // `time_bucket` is EPOCH-aligned, not `since`-aligned, so an N-second window
+  // whose start falls mid-bucket spans N/step + 1 buckets. A cap of exactly
+  // ceil(seconds/step) × guard is therefore one bucket-row-per-metric short —
+  // and because the order is `metric, bucket`, truncation does not shave the
+  // edges evenly: it drops the alphabetically LAST metrics ENTIRELY. On a
+  // full-width request `seedBackfill` reads an absent metric as dead and clears
+  // its buffer, so an off-by-one here blanks the tail of the dashboard.
+  test("the derived cap allows for the extra epoch-aligned bucket an unaligned window spans", async () => {
+    for (const [seconds, stepSeconds, buckets] of [
+      [1, 1, 2],
+      [300, 1, 301],
+      [300, 5, 61],
+      [3600, 60, 61],
+    ] as const) {
+      const [call] = await capture([], () => queryRecentBuckets({ ...q, seconds, stepSeconds }));
+      const cap = Number(/limit (\d+)/.exec(flat(call.sql))?.[1] ?? Number.POSITIVE_INFINITY);
+      expect(cap).toBeGreaterThanOrEqual(buckets * 512);
+    }
+  });
+
+  test("two metrics × 300 buckets: every metric still keeps its OLDEST bucket", async () => {
+    const rows: unknown[] = [];
+    for (const metric of ["a_pv", "z_load"]) {
+      for (let i = 0; i < 300; i++) rows.push({ metric, bucket: 1_755_345_600 + i, value: i });
+    }
+    const [, out] = await capture(rows, () => queryRecentBuckets(q));
+    expect(out.metrics.a_pv?.o[0]).toBe(0);
+    expect(out.metrics.z_load?.o[0]).toBe(0);
+    expect(out.metrics.a_pv?.o.length).toBe(300);
+    expect(out.metrics.z_load?.o.length).toBe(300);
+  });
+
+  test("stepSeconds reaches the bucket width and the offsets that are derived from it", async () => {
+    const [call, out] = await capture(
+      [
+        { metric: "pv", bucket: 1_755_345_600, value: 1 },
+        { metric: "pv", bucket: 1_755_345_605, value: 2 },
+      ],
+      () => queryRecentBuckets({ ...q, stepSeconds: 5 }),
+    );
+    expect(flat(call.sql)).toContain("secs => 5");
+    expect(out.step).toBe(5);
+    expect(out.metrics.pv).toEqual({ o: [0, 1], v: [1, 2] });
+  });
+});
+
+describe("queryRecentBuckets — row shaping", () => {
+  const q = { inverterId: "inv-1", seconds: 300, stepSeconds: 1 };
+
+  test("offsets are small integers relative to t0, values in the same order", async () => {
+    const [, out] = await capture(
+      [
+        { metric: "pv", bucket: 1_755_345_600, value: 10 },
+        { metric: "pv", bucket: 1_755_345_601, value: 11 },
+      ],
+      () => queryRecentBuckets(q),
+    );
+    expect(out).toEqual({
+      t0: 1_755_345_600_000,
+      step: 1,
+      metrics: { pv: { o: [0, 1], v: [10, 11] } },
+    });
+  });
+
+  test("no rows in the window is an empty metric map with a numeric t0, never NaN", async () => {
+    const [, out] = await capture([], () => queryRecentBuckets(q));
+    expect(out.metrics).toEqual({});
+    expect(Number.isFinite(out.t0)).toBe(true);
+    expect(out.step).toBe(1);
+  });
+
+  test("exactly one row lands at offset 0", async () => {
+    const [, out] = await capture([{ metric: "pv", bucket: 1_755_345_600, value: 7 }], () =>
+      queryRecentBuckets(q),
+    );
+    expect(out.metrics.pv).toEqual({ o: [0], v: [7] });
+  });
+
+  test("0 W and −350 W survive shaping — they are readings, not absences", async () => {
+    const [, out] = await capture(
+      [
+        { metric: "grid", bucket: 1_755_345_600, value: 0 },
+        { metric: "grid", bucket: 1_755_345_601, value: -350 },
+      ],
+      () => queryRecentBuckets(q),
+    );
+    expect(out.metrics.grid?.v).toEqual([0, -350]);
+  });
+
+  test("two metrics with DISJOINT bucket sets share one t0 — the oldest bucket seen anywhere", async () => {
+    const [, out] = await capture(
+      [
+        { metric: "load", bucket: 1_755_345_610, value: 1 },
+        { metric: "pv", bucket: 1_755_345_600, value: 2 },
+      ],
+      () => queryRecentBuckets(q),
+    );
+    expect(out.t0).toBe(1_755_345_600_000);
+    expect(out.metrics.pv).toEqual({ o: [0], v: [2] });
+    expect(out.metrics.load).toEqual({ o: [10], v: [1] });
+  });
+
+  test("a gap inside one metric's buckets is a jump in `o`, never a fabricated point", async () => {
+    const [, out] = await capture(
+      [
+        { metric: "pv", bucket: 1_755_345_600, value: 1 },
+        { metric: "pv", bucket: 1_755_345_607, value: 2 },
+      ],
+      () => queryRecentBuckets(q),
+    );
+    expect(out.metrics.pv).toEqual({ o: [0, 7], v: [1, 2] });
+  });
+
+  test("bigint buckets and numeric values arriving as strings are coerced, not concatenated", async () => {
+    const [, out] = await capture(
+      [
+        { metric: "pv", bucket: "1755345600", value: "1.5" },
+        { metric: "pv", bucket: "1755345601", value: "0" },
+      ],
+      () => queryRecentBuckets(q),
+    );
+    expect(out.t0).toBe(1_755_345_600_000);
+    expect(out.metrics.pv).toEqual({ o: [0, 1], v: [1.5, 0] });
   });
 });
