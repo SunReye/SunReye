@@ -14,16 +14,22 @@
  *
  * ## Pacing matters, and these specs are explicit about it
  *
- * `scrollPage` does a `page.evaluate` round trip between wheel steps, and under
- * a 4x CPU throttle that round trip costs hundreds of milliseconds. So the
- * harness's DEFAULT `intervalMs: 250` is not a continuous gesture at all — it is
- * "half a screen, stand still for half a second, repeat", and a queue that waits
- * for the scroll to settle is RIGHT to admit a mount into each of those stops.
- * Measured on that pacing: 44 mounts unqueued against 38 queued, which says
- * almost nothing about the fix.
+ * There are two gestures, and they test opposite halves of the same feature.
  *
- * A real flick or a momentum scroll fires `scroll` every frame. `intervalMs: 40`
- * is the harness's closest honest imitation, and it is what these specs use.
+ * A FLICK (`dwellMs` left at 0) never goes quiet, so nothing may build: the
+ * reader has not stopped anywhere. That is what these specs use.
+ *
+ * A DWELL (`dwellMs` above the 400ms settle window) is a reader stopping to
+ * look, and charts SHOULD build for them — measured in chart-mount-cost.spec.ts
+ * and history-smoke.spec.ts. A suite with only the flick would pass happily
+ * while shipping a dashboard that never renders anything.
+ *
+ * `scrollPage` runs the whole gesture inside the page for this reason. An
+ * earlier version drove it from the test process — three round trips per step —
+ * and under a 4x CPU throttle that turned a "flick" into 13 jumps with a 1100ms
+ * median gap. The queue then correctly treated each stop as a stop and built 64
+ * charts, failing a budget against code that was working perfectly. In-page the
+ * same gesture holds a 17ms median gap at 1x and 4x alike.
  *
  * Read the rest as RATIOS. This browser composites in software, so a chart-heavy
  * page scores below its production figure while showing the same ordering.

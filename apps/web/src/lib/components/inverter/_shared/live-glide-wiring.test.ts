@@ -177,8 +177,91 @@ describe("the glide floor and overshoot have exactly one home", () => {
     expect(stripComments(callerSources.get("./live-cursor.svelte.ts") as string)).toMatch(
       /import\s*\{[^}]*glideDurationMs[^}]*\}\s*from\s*["'][^"']*\/?glide["']/,
     );
+    // The readout takes the `readoutGlideMs` wrapper rather than the base
+    // function: same policy, plus the off-screen 0. Still glide.ts's decision —
+    // what this case is really pinning is that the duration is IMPORTED.
     expect(stripComments(callerSources.get("../animated-number.svelte") as string)).toMatch(
-      /import\s*\{[^}]*glideDurationMs[^}]*\}\s*from\s*["'][^"']*glide["']/,
+      /import\s*\{[^}]*readoutGlideMs[^}]*\}\s*from\s*["'][^"']*glide["']/,
     );
+  });
+});
+
+/**
+ * Fix 3: the live readout is gated on the card's own visibility.
+ *
+ * MetricCardActions renders in the Section's `actions` snippet, which sits ABOVE
+ * `{#if !mounted}` — so all 63 history cards ran a readout Tween while only four
+ * charts existed, and at the measured 1s cadence the 1150ms glide outlasts the
+ * feed, so the rAF loop never settles (829 text mutations per 10s on /history
+ * against 78 on the overview).
+ *
+ * The gate is a DURATION, not an unmount: `readoutGlideMs(..., false)` is 0, the
+ * Tween snaps, no rAF loop starts, and the off-screen readout still holds the
+ * latest value — so scrolling back shows no em dash and no flash. Unmounting
+ * AnimatedNumber, or branching the markup, would reintroduce both.
+ */
+const CARD = await read("../entity-history-card.svelte");
+const ACTIONS = await read("./metric-card-actions.svelte");
+const READOUT = await read("./metric-readout.svelte");
+const NUMBER = await read("../animated-number.svelte");
+
+describe("the readout's glide is gated on the card being on screen", () => {
+  test("the card hands MetricCardActions its own `mounted` state", () => {
+    // `mounted`, not `visible`: an expanded card bypasses the observer entirely
+    // and must still animate.
+    expect(stripComments(CARD)).toMatch(/animate=\{mounted\}/);
+  });
+
+  test("actions and readout pass it straight through to AnimatedNumber", () => {
+    expect(stripComments(ACTIONS)).toMatch(/<MetricReadout[^>]*\{animate\}/);
+    expect(stripComments(READOUT)).toMatch(/<AnimatedNumber[^>]*\{animate\}/);
+  });
+
+  test("AnimatedNumber spends it on the Tween duration", () => {
+    const code = stripComments(NUMBER);
+    expect(callArguments(code, "readoutGlideMs")).toContain("animate");
+    // The old, ungated call must be gone, or the prop is decoration.
+    expect(code).not.toContain("glideDurationMs(");
+  });
+
+  test("the readout is never unmounted or branched away instead", () => {
+    // An {#if animate} around it would drop the value while off screen and pop
+    // an em dash on re-entry — the whole reason this is a duration.
+    expect(stripComments(READOUT)).not.toMatch(/\{#if[^}]*animate/);
+    expect(stripComments(ACTIONS)).not.toMatch(/\{#if[^}]*animate/);
+  });
+});
+
+/**
+ * Fix 1: a card the scroll merely passes must never build a chart.
+ *
+ * `use:inView` used to wire onEnter straight into `visible = true`, so a 12s
+ * sweep paid full LayerChart construction for all 59 cards it flew past and tore
+ * all 59 back down (~278ms each on a preset range, 9.4s blocked of 12s).
+ */
+describe("entity-history-card admits its mount through the queue", () => {
+  const code = stripComments(CARD);
+
+  test("enter REQUESTS a mount rather than setting visible synchronously", () => {
+    expect(code).toMatch(/queue\.request\(/);
+    expect(code).not.toMatch(/onEnter:\s*\(\)\s*=>\s*\(?visible\s*=\s*true/);
+  });
+
+  test("leave CANCELS the parked request — the whole point of the queue", () => {
+    // Without the cancel, a flown-past card still builds 160ms later: the sweep
+    // pays for every card it passed, just off the critical path.
+    expect(code).toMatch(/queue\.cancel\(/);
+  });
+
+  test("mounts on the narrow margin and releases only on the wide one", () => {
+    expect(code).toContain("RETENTION_BAND.mount");
+    expect(code).toContain("RETENTION_BAND.retain");
+  });
+
+  test("full screen still bypasses the queue entirely", () => {
+    // An expanded card is `fixed`, so its in-flow wrapper collapses to nothing
+    // and the observer can never fire — a card expanded before it scrolled into
+    // view would be stuck as a skeleton with no way out.
+    expect(code).toMatch(/const mounted = \$derived\(visible \|\| screen\.expanded\)/);
   });
 });

@@ -396,7 +396,11 @@ describe("the bespoke cards keep what made them worth keeping", () => {
       const tag = tagCarrying(code, "use:inView");
       expect(tag, "nothing carries the in-view action any more").not.toBeNull();
       expect(tag!).toMatch(/^<div[\s>]/);
-      expect(tag!).toContain("{ onEnter: enter, onLeave: leave }");
+      // The handlers are what this migration cares about; the retention-band
+      // margins beside them are the scroll-perf change's business, not this
+      // file's.
+      expect(tag!).toContain("onEnter: enter");
+      expect(tag!).toContain("onLeave: leave");
       for (const [, value] of tag!.matchAll(/class="([^"]*)"/g)) {
         expect(value).not.toMatch(FRAME);
         expect(value).not.toMatch(PADDING);
@@ -414,8 +418,8 @@ describe("the bespoke cards keep what made them worth keeping", () => {
       const actions = snippetBody(card(), "actions");
       expect(actions, "entity-history-card passes Section no actions").not.toBeNull();
       expect(actions!).toContain("<MetricCardActions");
-      expect(read("lib/components/inverter/_shared/metric-card-actions.svelte")).toContain(
-        "<MetricReadout {value} {unit} />",
+      expect(read("lib/components/inverter/_shared/metric-card-actions.svelte")).toMatch(
+        /<MetricReadout\s[^>]*\{value\}[^>]*\{unit\}/,
       );
     });
   });

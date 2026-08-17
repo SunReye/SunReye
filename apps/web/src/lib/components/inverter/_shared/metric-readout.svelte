@@ -5,10 +5,13 @@
 
 	let {
 		value,
-		unit
+		unit,
+		animate = true
 	}: {
 		value: number | undefined;
 		unit: string;
+		/** Passed straight through: false snaps the figure instead of gliding it. */
+		animate?: boolean;
 	} = $props();
 
 	const suffix = $derived(unit ? ` ${unit}` : '');
@@ -18,6 +21,6 @@
 	{#if value === undefined}
 		—
 	{:else}
-		<AnimatedNumber {value} {unit} />{suffix}
+		<AnimatedNumber {value} {unit} {animate} />{suffix}
 	{/if}
 </span>
