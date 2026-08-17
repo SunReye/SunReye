@@ -2,7 +2,7 @@
 
 ## [unreleased]
 
-Unreleased work on `dev` since 1.2.0, shipped in `beta.20260817-6f08e7a`.
+Unreleased work on `dev` since 1.2.0, shipped in `beta.20260817-419c1a2`.
 
 
 ### Features
@@ -75,6 +75,7 @@ Unreleased work on `dev` since 1.2.0, shipped in `beta.20260817-6f08e7a`.
 
 ### Bug Fixes
 
+* **web:** read the buffers untracked when sizing the backfill ([419c1a2](https://github.com/SunReye/SunReye/commit/419c1a27d024d9a85f851f249b62ee46a669484a))
 * **web:** a charge's glow stops being cut off at the safe box ([0d2c783](https://github.com/SunReye/SunReye/commit/0d2c783fa7050d2222e7f53b0aa382cb217bf7d6))
 * **web:** a rising plant stops writing storage at the feed's cadence ([952ee98](https://github.com/SunReye/SunReye/commit/952ee9897596e3a82af05c0a5047753372972686))
 * **web:** the ceiling stops invalidating the effect that folds it ([a930f00](https://github.com/SunReye/SunReye/commit/a930f00e130ce9506e97b83432e92da3cf0c2bd4))
