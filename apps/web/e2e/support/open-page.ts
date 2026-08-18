@@ -211,6 +211,54 @@ function walk(dir: string, prefix = ""): string[] {
 }
 
 /**
+ * The range picker's popover, opened, with its calendar grid on screen.
+ *
+ * Every route carrying a range control (/history, /statistics) renders the same
+ * `preset-range-picker.svelte` behind a bits-ui popover, so the gestures — click
+ * the trigger, wait for the portalled content to paint — belong here rather than
+ * in each spec.
+ *
+ * Days are addressed by `data-value` (bits-ui writes the ISO date on every
+ * `[data-bits-day]`), never by their visible number: "16" also matches the 16th
+ * of a neighbouring month bleeding into the grid, and the year dropdown's
+ * options besides.
+ *
+ * Deliberately NOT on `support/history.ts`, which is the /history vocabulary and
+ * is edited concurrently by other work.
+ */
+export interface OpenedRangePicker {
+  /** One day cell, by ISO date (`2026-08-16`). */
+  day(isoDate: string): Locator;
+  /** The day bits-ui marked `data-today`. Exactly one per grid. */
+  readonly today: Locator;
+  /** Every day cell in the visible grid, outside-month days included. */
+  readonly days: Locator;
+}
+
+export function rangePicker(page: Page): OpenedRangePicker {
+  const days = page.locator("[data-bits-day]");
+  return {
+    day: (isoDate) => page.locator(`[data-bits-day][data-value="${isoDate}"]`),
+    today: days.and(page.locator("[data-today]")),
+    days,
+  };
+}
+
+/**
+ * Open the range picker on the current page and return its day locators.
+ *
+ * The trigger is matched by `data-popover-trigger` — the picker is the only
+ * popover a range toolbar carries, and matching it by its label would mean
+ * re-deriving in the spec the very range label the picker renders.
+ */
+export async function openRangePicker(page: Page): Promise<OpenedRangePicker> {
+  await page.locator("[data-popover-trigger]").first().click();
+  const picker = rangePicker(page);
+  await expect(picker.today).toBeVisible();
+  return picker;
+}
+
+/**
  * `(app)/settings/mqtt/+page.svelte` → `/#/settings/mqtt`.
  *
  * Derived, never stored beside the file path: a table carrying both would let
