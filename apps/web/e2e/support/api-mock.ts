@@ -18,12 +18,36 @@
  * If the app grows a call this file does not answer, {@link MockBackend.unhandled}
  * names it and the smoke spec fails — a missing stub otherwise shows up as a
  * page that silently never leaves its first-run gate.
+ *
+ * This file is the ROUTING table: which method and path gets which body, and
+ * what the live socket does on subscribe. The bodies themselves live in
+ * `api-fixtures.ts`, each one next to the contract it copies.
+ *
+ * Two things it did wrong for a long time, worth knowing because the fix is
+ * load-bearing:
+ *
+ *   - Nothing read `route.request().method()`. `POST /api/custom-charts` (a
+ *     chart being CREATED) therefore matched the GET handler and resolved to
+ *     `[]`, and every other PUT/POST/DELETE in the app fell through to the
+ *     catch-all. Every handler below is now keyed on method first.
+ *   - The socket acked every topic with `denied: []`. The server denies `logs`
+ *     and `automations` to a non-admin session, so a spec about that gate would
+ *     have passed against a broken build. {@link BackendOptions.role} now
+ *     drives the same denial.
+ *   - `allows()` then ended in `return true`, so every topic name it did not
+ *     recognise was GRANTED — under a comment saying the client may ask for one
+ *     the server has never heard of. The server denies those by name
+ *     (`ws-subscribe.ts`), and now so does this.
+ *   - Every `PUT` echoed the request body. The server answers with the value it
+ *     PARSED, so a save could read back a config missing defaults the real
+ *     server always fills in; see {@link saved}.
  */
 
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Page, Route, WebSocketRoute } from "@playwright/test";
+import * as fixture from "./api-fixtures";
 
 const here = dirname(fileURLToPath(import.meta.url));
 
@@ -85,6 +109,34 @@ export interface BackendOptions {
   role?: "admin" | "user" | null;
   /** Whether the anonymous read-only dashboard is enabled (only read when logged out). */
   publicDashboard?: boolean;
+  /**
+   * `/api/setup-status`. `true` is the first-run instance with no admin account
+   * yet — the ONLY state in which `/#/onboarding` renders instead of bouncing
+   * to `/#/login`.
+   */
+  needsSetup?: boolean;
+  /**
+   * `/api/profile-status`. `true` is an instance with an admin but no active
+   * inverter profile — the only state in which `/#/setup` renders instead of
+   * bouncing to `/#/`. Must be paired with `needsSetup: false`, or the setup
+   * page's own gate sends it on to onboarding.
+   */
+  needsProfile?: boolean;
+  /**
+   * `/api/weather`. `"reading"` (default) is a full, readable reading;
+   * `null` is weather switched off, which the server answers with an EMPTY
+   * BODY — the case `payloadOrNull` exists for, and the case in which the tile
+   * renders nothing at all.
+   */
+  weather?: "reading" | null;
+  /**
+   * `/api/prices` + `/api/statistics/prices`. `null` is "no price feed
+   * configured": both answer with an empty body and the whole prices section
+   * disappears.
+   */
+  prices?: "view" | null;
+  /** `evcc` topic payload. `null` is ingest disabled — the EV card self-hides. */
+  evcc?: "state" | null;
 }
 
 export interface MockBackend {
@@ -106,8 +158,17 @@ export interface MockBackend {
   waitForLive(timeoutMs?: number): Promise<void>;
   /** Send exactly one `metrics` frame, optionally forcing some values. */
   pushMetrics(overrides?: Record<string, number>): Promise<void>;
-  /** Drop the socket, as a network blip would. The app reconnects on its own. */
-  dropSocket(): Promise<void>;
+  /**
+   * Send one frame on any other topic. The non-`metrics` topics are backfilled
+   * once at subscribe time (as the server does); these drive the LIVE path,
+   * which is the only thing /#/settings/logs has, and the only way a spec can
+   * watch a value CHANGE rather than merely arrive.
+   */
+  pushEvcc(state?: unknown): Promise<void>;
+  pushAutomations(message?: unknown): Promise<void>;
+  pushLogs(entries?: unknown[]): Promise<void>;
+  /** Topics the socket refused, as the ack reported them. */
+  readonly deniedTopics: readonly string[];
   /** Stop the automatic feed (idempotent; also runs at test end). */
   stopFeed(): void;
 }
@@ -152,6 +213,42 @@ function json(route: Route, body: unknown, status = 200): Promise<void> {
     body: JSON.stringify(body),
   });
 }
+
+/**
+ * A 200 with NO body and no content type — how Elysia serialises a handler that
+ * returned `null`.
+ *
+ * This is not a nicety. Eden hands an empty body back as `""`, and `""` is not
+ * nullish, so `data ?? null` keeps it and every downstream `if (data)` passes
+ * on a feature that is switched off. `json(route, null)` sends the four
+ * characters `null`, which parses to `null` and takes a DIFFERENT branch — so a
+ * fixture that used it would never exercise the guard (`src/lib/api-payload.ts`)
+ * that exists for this exact response.
+ */
+function emptyBody(route: Route): Promise<void> {
+  return route.fulfill({ status: 200, body: "" });
+}
+
+/**
+ * A settings save's response body.
+ *
+ * The server never echoes what it was handed: every `PUT /api/settings/*` runs
+ * the body through its zod schema and answers with the PARSED value (see
+ * `apps/server/src/routes/settings.ts`), so defaults are filled in and unknown
+ * keys are stripped. A raw echo lets a form post a partial patch and read back
+ * a config missing keys the real server always supplies — the panel then
+ * renders empty inputs on a successful save.
+ *
+ * Shallow, deliberately: every form in this app posts whole nested groups
+ * (`tariff.import`, `weather.forecast`), so a deep merge would only paper over
+ * a partial post the server itself would have rejected.
+ */
+function saved<T extends object>(defaults: T, patch: Record<string, unknown>): T {
+  return { ...defaults, ...patch };
+}
+
+const nowIso = (): string => new Date().toISOString();
+const isoAgo = (ms: number): string => new Date(Date.now() - ms).toISOString();
 
 /** The `/api/history/recent` payload: `{ t0, step, metrics: { key: { o, v } } }`. */
 function backfillBody(seconds: number, stepSeconds: number, strideSeconds: number) {
@@ -217,7 +314,9 @@ export async function mockBackend(page: Page, options: BackendOptions = {}): Pro
   const clientFrames: unknown[] = [];
   let sockets: WebSocketRoute[] = [];
   let socketOpens = 0;
-  let subscribed = new Set<string>();
+  const subscribed = new Set<string>();
+  const denied: string[] = [];
+  const evccSnapshot = options.evcc === null ? null : fixture.EVCC_STATE;
   let tick = 0;
   let feed: ReturnType<typeof setInterval> | null = null;
   // One body per (window, series) pair: every card on a page asks for the same
@@ -237,6 +336,60 @@ export async function mockBackend(page: Page, options: BackendOptions = {}): Pro
     return { time: new Date().toISOString(), inverterId: MANIFEST.id, metrics };
   }
 
+  /**
+   * The subscribe-time backfill, per topic — `apps/server/src/routes/ws-backfill.ts`.
+   *
+   * The server pointedly does NOT backfill `metrics` (pinned by
+   * `ws-backfill.test.ts`); this fixture does, as a first-paint accelerator, so
+   * a page under test does not spend a whole second showing em dashes. Every
+   * other topic here mirrors the server: a page that gates on `loaded` (the
+   * automations stream does) never leaves its skeleton without one.
+   */
+  function backfill(topic: string): void {
+    if (topic === "metrics") return sendFrame("metrics", sample());
+    if (topic === "evcc") {
+      // No snapshot means NO FRAME, not a frame carrying `null`: `ws-priming.ts`
+      // documents "`undefined`/`null` means there is nothing to send", and
+      // `evccSnapshot()` answers null until EVCC's first MQTT message. A
+      // `{topic:"evcc",data:null}` is a frame production cannot emit.
+      if (evccSnapshot === null) return;
+      return sendFrame("evcc", evccSnapshot);
+    }
+    if (topic === "statistics") return sendFrame("statistics", fixture.statisticsToday());
+    if (topic === "automations") return sendFrame("automations", fixture.automationStream());
+    // `logs`: the server backfills `recentLogs()` only when the ring is
+    // non-empty, and a freshly-booted engine's is empty. Drive it with
+    // `pushLogs()` — the live path is the whole feature on that page.
+  }
+
+  /**
+   * The wire's topic set and each one's gate — `TOPIC_POLICY` in
+   * `apps/server/src/routes/ws-topics.ts`, restated.
+   *
+   * A name that is not a key here is not a topic at all, and the server refuses
+   * it by name (`ws-subscribe.ts`: `isWsTopic(requested) && allows(...)`, else
+   * `denied.push(name)`). This table used to end in `return true`, so the mock
+   * GRANTED every topic it had never heard of — under a comment saying the
+   * client may ask for one — and a client typo would have been a passing test.
+   */
+  const TOPIC_POLICY: Record<string, "dashboard" | "admin"> = {
+    metrics: "dashboard",
+    evcc: "dashboard",
+    statistics: "dashboard",
+    logs: "admin",
+    automations: "admin",
+  };
+
+  /**
+   * Topics this session may hold. `admin` never rides the public-dashboard
+   * exemption; `dashboard` is any session, or anonymous when it is on.
+   */
+  function allows(topic: string): boolean {
+    const policy = TOPIC_POLICY[topic];
+    if (policy === undefined) return false;
+    return policy === "admin" ? role === "admin" : true;
+  }
+
   function handleClientFrame(raw: string): void {
     let frame: { t?: string; topics?: string[] };
     try {
@@ -247,12 +400,15 @@ export async function mockBackend(page: Page, options: BackendOptions = {}): Pro
     clientFrames.push(frame);
     const topics = frame.topics ?? [];
     if (frame.t === "sub") {
-      for (const topic of topics) subscribed.add(topic);
-      sendFrame("__ack", { subscribed: topics, denied: [] });
-      // The first frame lands immediately, the way a live plant's next poll
-      // would: a page that waits a whole second for its first number measures
-      // the wait, not the page.
-      if (subscribed.has("metrics")) sendFrame("metrics", sample());
+      const granted = topics.filter(allows);
+      const refused = topics.filter((topic) => !allows(topic));
+      for (const topic of granted) subscribed.add(topic);
+      for (const topic of refused) if (!denied.includes(topic)) denied.push(topic);
+      // `denied` is `string[]` on the wire, not `WsTopic[]` — on purpose: an
+      // unknown name is refused BY NAME rather than dropped, which is how the
+      // client learns its typo was not simply ignored.
+      sendFrame("__ack", { subscribed: granted, denied: refused });
+      for (const topic of granted) backfill(topic);
     } else if (frame.t === "unsub") {
       for (const topic of topics) subscribed.delete(topic);
     }
@@ -270,47 +426,107 @@ export async function mockBackend(page: Page, options: BackendOptions = {}): Pro
   });
 
   await page.route("**/api/**", async (route) => {
-    const url = new URL(route.request().url());
+    const request = route.request();
+    const method = request.method();
+    const url = new URL(request.url());
     const path = url.pathname;
+    const query = Object.fromEntries(url.searchParams);
     requests.push(path + url.search);
+    /** The request body, for the routes that echo what they were given. */
+    const body = (): Record<string, unknown> =>
+      (request.postDataJSON() as Record<string, unknown> | null) ?? {};
+    /** The last path segment — `:id` for the by-id routes. */
+    const id = path.slice(path.lastIndexOf("/") + 1);
+    const at = (suffix: string): boolean => path.endsWith(`/api/${suffix}`);
+    const under = (prefix: string): boolean => path.includes(`/api/${prefix}/`);
 
     // ── Auth ────────────────────────────────────────────────────────────────
-    if (path.endsWith("/api/auth/get-session")) {
+    if (at("auth/get-session")) {
       if (!role) return json(route, null);
       return json(route, {
         session: { id: "e2e-session", userId: SESSION_USER.id, token: "e2e" },
         user: { ...SESSION_USER, role },
       });
     }
+    // Better Auth's admin plugin. These used to be swallowed by the `/api/auth/`
+    // catch-all below, which answers `null` — so /#/settings/users and
+    // /#/settings/api-keys rendered a load-error toast over an empty table and
+    // any assertion on either page was vacuous.
+    if (at("auth/admin/list-users")) {
+      return json(route, {
+        users: [{ ...SESSION_USER, role: role ?? "user", banned: false }],
+        total: 1,
+        limit: Number(query.limit ?? 100),
+        offset: 0,
+      });
+    }
+    if (at("auth/admin/create-user")) {
+      return json(route, { user: { ...SESSION_USER, id: "new-user", role: body().role } });
+    }
+    if (at("auth/admin/set-role")) {
+      return json(route, { user: { ...SESSION_USER, role: body().role } });
+    }
+    if (at("auth/admin/remove-user")) return json(route, { success: true });
+    if (at("auth/sign-in/email") || at("auth/sign-up/email")) {
+      return json(route, { user: { ...SESSION_USER, role: role ?? "admin" }, token: "e2e" });
+    }
+    if (at("auth/sign-out")) return json(route, { success: true });
     if (path.includes("/api/auth/")) return json(route, null);
 
     // ── Boot gates ──────────────────────────────────────────────────────────
-    if (path.endsWith("/api/setup-status")) return json(route, { needsSetup: false });
-    if (path.endsWith("/api/profile-status")) {
-      return json(route, { needsProfile: false, activeProfileId: MANIFEST.id });
+    // These three decide which of the 26 routes is even reachable: `(app)`'s
+    // first-run gate reads them in this order and redirects on the first one
+    // that is not satisfied.
+    if (at("setup-status")) return json(route, { needsSetup: options.needsSetup ?? false });
+    if (at("profile-status")) {
+      return json(route, {
+        needsProfile: options.needsProfile ?? false,
+        activeProfileId: options.needsProfile ? null : MANIFEST.id,
+      });
     }
-    if (path.endsWith("/api/access-status")) {
+    if (at("access-status")) {
       return json(route, { publicDashboard: options.publicDashboard ?? false });
     }
 
     // ── Instance settings the shell loads before it renders ─────────────────
-    if (path.endsWith("/api/settings/ui")) return json(route, { hiddenKeys: [], hiddenGroups: [] });
-    if (path.endsWith("/api/settings/display")) {
-      return json(route, { hourCycle: "24h", timeZone: "Europe/Berlin" });
+    if (at("settings/ui")) {
+      if (method === "PUT") return json(route, saved(fixture.UI_PREFS, body()));
+      return json(route, fixture.UI_PREFS);
     }
-    if (path.endsWith("/api/settings/chart-palette")) return json(route, { preset: "categorical" });
+    if (at("settings/display")) {
+      if (method === "PUT") return json(route, saved(fixture.DISPLAY, body()));
+      return json(route, fixture.DISPLAY);
+    }
+    if (at("settings/chart-palette")) {
+      if (method === "PUT") return json(route, saved(fixture.CHART_PALETTE, body()));
+      return json(route, fixture.CHART_PALETTE);
+    }
+
+    // ── Engine status (polled by every /settings/* route) ───────────────────
+    if (at("status")) return json(route, fixture.status(MANIFEST));
 
     // ── The catalogue ───────────────────────────────────────────────────────
-    if (path.endsWith("/api/profile")) return json(route, MANIFEST);
-    if (path.endsWith("/api/custom-charts")) return json(route, []);
+    if (at("profile")) return json(route, MANIFEST);
+    if (at("custom-charts")) {
+      // Branch on the METHOD: `endsWith` alone matched the create too, so a new
+      // chart silently resolved to the empty list.
+      if (method === "POST") {
+        return json(route, { id: "chart-1", ...body() });
+      }
+      return json(route, []);
+    }
+    if (under("custom-charts")) {
+      if (method === "DELETE") return json(route, { ok: true, id });
+      return json(route, { id, ...body() });
+    }
 
     // ── Time series ─────────────────────────────────────────────────────────
-    if (path.endsWith("/api/history/recent")) {
+    if (at("history/recent")) {
       const seconds = Number(url.searchParams.get("seconds") ?? 300);
       const step = Number(url.searchParams.get("stepSeconds") ?? 1);
       return json(route, backfillBody(seconds, step, stride));
     }
-    if (path.endsWith("/api/history/rollup")) {
+    if (at("history/rollup")) {
       const metric = url.searchParams.get("metric") ?? "";
       const from = Date.parse(url.searchParams.get("from") ?? "") || Date.now() - 3600_000;
       const to = Date.parse(url.searchParams.get("to") ?? "") || Date.now();
@@ -318,20 +534,191 @@ export async function mockBackend(page: Page, options: BackendOptions = {}): Pro
       // does not look like one chart repeated, cheap enough to cache.
       const seed = hash(metric) % 8;
       const key = `${from}|${to}|${rows}|${seed}`;
-      let body = rollupCache.get(key);
-      if (!body) {
-        body = JSON.stringify(rollupRows(from, to, rows, seed));
-        rollupCache.set(key, body);
+      let cached = rollupCache.get(key);
+      if (!cached) {
+        cached = JSON.stringify(rollupRows(from, to, rows, seed));
+        rollupCache.set(key, cached);
       }
-      return route.fulfill({ status: 200, contentType: "application/json", body });
+      return route.fulfill({ status: 200, contentType: "application/json", body: cached });
     }
-    if (path.endsWith("/api/history")) return json(route, []);
+    if (at("history")) return json(route, []);
+
+    // ── Overview ────────────────────────────────────────────────────────────
+    if (at("weather")) {
+      // `null` here is weather switched off. Elysia sends that as an empty body
+      // (no content type), Eden hands back `""`, and `""` is not nullish — the
+      // exact case `payloadOrNull`/`isReadableWeather` exist for. `json(route,
+      // null)` would send the literal `"null"` and take the OTHER branch.
+      if (options.weather === null) return emptyBody(route);
+      return json(route, fixture.WEATHER);
+    }
+    if (at("cost/series")) {
+      return json(
+        route,
+        fixture.costSeries(query.from ?? "", query.to ?? "", query.bucket ?? "day"),
+      );
+    }
+    if (at("cost")) {
+      return json(
+        route,
+        fixture.costBreakdown(query.from ?? isoAgo(86_400_000), query.to ?? nowIso()),
+      );
+    }
+    if (at("energy/series")) {
+      return json(
+        route,
+        fixture.energySeries(query.from ?? "", query.to ?? "", query.bucket ?? "day"),
+      );
+    }
+
+    // ── Statistics ──────────────────────────────────────────────────────────
+    if (at("statistics/comparison")) {
+      return json(
+        route,
+        fixture.comparison(query.from ?? "", query.to ?? "", query.mode ?? "previous"),
+      );
+    }
+    if (at("statistics/heatmap")) return json(route, fixture.heatmap());
+    if (at("statistics/records")) return json(route, fixture.records());
+    if (at("statistics/prices")) {
+      if (options.prices === null) return emptyBody(route);
+      return json(route, fixture.spotStats(query.from ?? "", query.to ?? ""));
+    }
+    if (at("settings/statistics")) {
+      if (method === "PUT") return json(route, saved(fixture.STATISTICS_PREFS, body()));
+      return json(route, fixture.STATISTICS_PREFS);
+    }
+
+    // ── Prices ──────────────────────────────────────────────────────────────
+    if (at("prices/providers")) return json(route, fixture.PRICE_PROVIDERS);
+    if (at("prices")) {
+      if (options.prices === null) return emptyBody(route);
+      return json(route, fixture.spotPriceView());
+    }
+    if (at("settings/spot-prices")) {
+      if (method === "PUT") return json(route, saved(fixture.SPOT_PRICE_CONFIG, body()));
+      return json(route, fixture.SPOT_PRICE_CONFIG);
+    }
+
+    // ── Forecast ────────────────────────────────────────────────────────────
+    if (at("forecast/providers")) return json(route, fixture.FORECAST_PROVIDERS);
+    if (at("forecast/correction")) return json(route, fixture.forecastCorrection());
+
+    // ── Admin config panels ─────────────────────────────────────────────────
+    if (at("settings/plant")) {
+      if (method === "PUT") return json(route, saved(fixture.PLANT, body()));
+      return json(route, fixture.PLANT);
+    }
+    if (at("settings/access")) {
+      if (method === "PUT") return json(route, saved(fixture.ACCESS, body()));
+      return json(route, fixture.ACCESS);
+    }
+    if (at("settings/tariff")) {
+      if (method === "PUT") return json(route, saved(fixture.TARIFF, body()));
+      return json(route, fixture.TARIFF);
+    }
+    if (at("settings/inverter/test")) {
+      return json(route, {
+        ok: true,
+        metricCount: MANIFEST.metrics.length,
+        durationMs: 84,
+        metrics: MANIFEST.metrics.slice(0, 5).map((metric) => ({
+          key: metric.key,
+          label: metric.label,
+          unit: metric.unit,
+          group: metric.group,
+          value: valueFor(metric, 1),
+        })),
+      });
+    }
+    if (at("settings/inverter")) {
+      if (method === "PUT") return json(route, saved(fixture.INVERTER_CONFIG, body()));
+      return json(route, fixture.INVERTER_CONFIG);
+    }
+    if (at("settings/mqtt/test")) return json(route, { ok: true });
+    if (at("settings/mqtt")) {
+      // The server masks the password on the way out, both on read and on save.
+      if (method === "PUT")
+        return json(route, { ...fixture.MQTT_CONFIG, ...body(), password: undefined });
+      return json(route, fixture.MQTT_CONFIG);
+    }
+    if (at("settings/evcc")) {
+      if (method === "PUT") return json(route, saved(fixture.EVCC_CONFIG, body()));
+      return json(route, fixture.EVCC_CONFIG);
+    }
+    if (at("settings/logging")) {
+      if (method === "PUT") {
+        const level = (body().level ?? null) as string | null;
+        return json(route, { level, effective: level ?? "info", default: "info" });
+      }
+      return json(route, fixture.LOGGING);
+    }
+    if (at("settings/weather")) {
+      if (method === "PUT") return json(route, saved(fixture.WEATHER_CONFIG, body()));
+      return json(route, fixture.WEATHER_CONFIG);
+    }
+    if (at("settings/automations")) {
+      if (method === "PUT") return json(route, saved(fixture.automations(), body()));
+      return json(route, fixture.automations());
+    }
+    if (at("settings/profile-sources")) {
+      if (method === "PUT") return json(route, { sources: body().sources });
+      return json(route, fixture.PROFILE_SOURCES);
+    }
+    if (at("settings/active-profile")) {
+      return json(route, { id: body().id, restartRequired: false });
+    }
+
+    // ── Profiles ────────────────────────────────────────────────────────────
+    if (at("profiles/updates")) return json(route, fixture.profileUpdates());
+    if (at("profiles/available")) return json(route, fixture.AVAILABLE_PROFILES);
+    if (at("profiles/install")) return json(route, { id: body().id, version: "1.1.0" });
+    if (at("profiles")) return json(route, fixture.profiles(MANIFEST));
+    if (under("profiles") && method === "DELETE") return json(route, { ok: true, id });
+
+    // ── Commands ────────────────────────────────────────────────────────────
+    if (at("commands/setting")) {
+      return json(route, { ok: true, key: body().key, value: body().value });
+    }
+    if (at("commands/evcc")) return json(route, { ok: true });
+
+    // ── Admin ───────────────────────────────────────────────────────────────
+    if (at("admin/api-keys/revoke")) return json(route, { success: true });
+    if (at("admin/api-keys")) {
+      if (method === "POST") {
+        // The form reads only `data.key`; the real body is a Better Auth key.
+        return json(route, { id: "key-2", name: body().name, key: "sr_live_e2e_generated_key" });
+      }
+      return json(route, fixture.apiKeys(SESSION_USER));
+    }
+    if (at("admin/reset-data")) {
+      return json(route, { ok: true, cleared: ["metrics_raw", "hourly_rollups", "daily_rollups"] });
+    }
+    if (at("admin/restart")) return json(route, { ok: true });
 
     // Anything else is a contract this fixture has not been taught. Recorded
     // rather than silently 404'd into a blank page.
     unhandled.push(path);
     return json(route, {}, 404);
   });
+
+  /**
+   * One frame on `topic`, awaited past the render flush.
+   *
+   * Throws rather than no-oping when the topic was never subscribed: a spec
+   * that pushes into the void and then waits for the DOM to change is a
+   * fifteen-second timeout with no explanation, and the usual cause is the
+   * admin gate above having refused the topic.
+   */
+  async function push(topic: string, data: unknown): Promise<void> {
+    if (sockets.length === 0) throw new Error(`push("${topic}"): no live socket`);
+    if (!subscribed.has(topic)) {
+      const refused = denied.includes(topic) ? " — the ack DENIED it (admin-only topic?)" : "";
+      throw new Error(`push("${topic}"): nothing is subscribed to it${refused}`);
+    }
+    sendFrame(topic, data);
+    await page.waitForTimeout(0);
+  }
 
   function stopFeed(): void {
     if (feed) clearInterval(feed);
@@ -397,11 +784,17 @@ export async function mockBackend(page: Page, options: BackendOptions = {}): Pro
       // Let the frame cross the boundary and the render flush before returning.
       await page.waitForTimeout(0);
     },
-    async dropSocket() {
-      const open = sockets;
-      sockets = [];
-      subscribed = new Set();
-      for (const ws of open) await ws.close();
+    pushEvcc(state = fixture.EVCC_STATE) {
+      return push("evcc", state);
+    },
+    pushAutomations(message = fixture.automationStream()) {
+      return push("automations", message);
+    },
+    pushLogs(entries = fixture.logBatch()) {
+      return push("logs", entries);
+    },
+    get deniedTopics() {
+      return denied;
     },
     stopFeed,
   };

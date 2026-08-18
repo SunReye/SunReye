@@ -55,6 +55,13 @@ export const SELECTORS = {
   metricCard: ".h-50.w-full",
   /** The app shell's scroll container (`(app)/+layout.svelte`). */
   scroller: "main",
+  /**
+   * A live numeric readout — a power-flow node on the overview, a KPI on
+   * /system. `power-flow-node.svelte` renders a literal `\u2014` here while the
+   * value is `undefined`, so "does this hold a digit?" is the readout probe the
+   * shell-lease outage was reported as.
+   */
+  liveReadout: "span.font-semibold.tabular-nums",
 } as const;
 
 export interface ScrollOptions {
