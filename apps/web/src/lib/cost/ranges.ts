@@ -16,6 +16,8 @@
 
 import { fittedPadding, isNarrowPlot, type ChartPadding } from "$lib/charts/plot-padding";
 import { dayMonth, monthShort } from "$lib/format/date";
+import { browserTimeZone } from "$lib/time/browser-zone";
+import { periodWindow, startOfPeriod } from "$lib/time/period";
 
 const DAY = 86_400_000;
 
@@ -154,7 +156,17 @@ export function periodLabel(key: string, bucket: CostBucket): string {
     : monthShort(new Date(`${key}-01T00:00:00`));
 }
 
-const startOfDay = (d: Date): Date => new Date(d.getFullYear(), d.getMonth(), d.getDate());
+/**
+ * Midnight starting the civil day `d` falls in, in the viewer's zone — the same
+ * primitive {@link customCostRange} bounds its window with, rather than a second
+ * local-midnight helper that could drift from it.
+ *
+ * NOTE: this does not rescue the `7d` preset, which asks for
+ * `startOfDay(now - 6 * DAY)`. Across a spring-forward that subtraction lands on
+ * the day before the one intended and the window covers eight days — the same
+ * defect family, left alone here on purpose.
+ */
+const startOfDay = (d: Date): Date => startOfPeriod(d, "day", { timeZone: browserTimeZone() });
 const startOfMonth = (d: Date): Date => new Date(d.getFullYear(), d.getMonth(), 1);
 const startOfNextMonth = (d: Date): Date => new Date(d.getFullYear(), d.getMonth() + 1, 1);
 
@@ -257,10 +269,22 @@ export function resolveCostPreset(id: string, now: Date = new Date()): CostRange
  * Build a custom range from two inclusive calendar days. The tiles window (and
  * the detail chart) extend `to` to the exclusive next-day boundary so the last
  * picked day is included; the detail chart shows daily bars across the picked
- * span, the context chart the trailing 12 months around it.
+ * span, the context chart the trailing 12 months around `now`.
+ *
+ * That boundary is the next civil midnight, not `+ 86_400_000`: a
+ * spring-forward day is 23 hours, so a flat day overshoots and prices an hour of
+ * the next day, and a fall-back day is 25, so it drops the last hour of the day
+ * the user picked. `timeZone` defaults to the browser's — the zone the picker's
+ * days were read in — and is deliberately the LAST parameter: `now` still
+ * anchors the trailing-12-month context chart.
  */
-export function customCostRange(from: Date, toInclusive: Date, now: Date = new Date()): CostRange {
-  const to = new Date(toInclusive.getTime() + DAY);
+export function customCostRange(
+  from: Date,
+  toInclusive: Date,
+  now: Date = new Date(),
+  timeZone: string = browserTimeZone(),
+): CostRange {
+  const to = periodWindow(toInclusive, "day", { timeZone }).end;
   return {
     id: "custom",
     label: `${dayMonth(from)} – ${dayMonth(toInclusive)}`,

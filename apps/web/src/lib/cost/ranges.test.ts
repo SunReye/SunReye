@@ -141,6 +141,68 @@ describe("customCostRange", () => {
   });
 });
 
+describe("customCostRange — the exclusive end is the next civil midnight", () => {
+  const BERLIN = "Europe/Berlin";
+
+  /** A boundary read back as wall-clock parts in the zone that produced it. */
+  const wall = (instant: Date, timeZone: string): string => {
+    const p = Object.fromEntries(
+      new Intl.DateTimeFormat("en-US", {
+        timeZone,
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+        hourCycle: "h23",
+      })
+        .formatToParts(instant)
+        .map((x) => [x.type, x.value]),
+    );
+    return `${p.year}-${p.month}-${p.day} ${String(Number(p.hour) % 24).padStart(2, "0")}:${p.minute}`;
+  };
+
+  it("does not overshoot into the next day on a 23-hour day", () => {
+    // Berlin springs forward on 2026-03-29, so `toInclusive + 86_400_000` lands
+    // at 01:00 on the 30th and prices an hour that belongs to the next day.
+    const range = customCostRange(
+      new Date("2026-03-22T23:00:00Z"), // 2026-03-23 00:00 Berlin
+      new Date("2026-03-28T23:00:00Z"), // 2026-03-29 00:00 Berlin
+      NOW,
+      BERLIN,
+    );
+    expect(wall(range.to, BERLIN)).toBe("2026-03-30 00:00");
+    expect(range.detail.to.toISOString()).toBe("2026-03-29T22:00:00.000Z");
+  });
+
+  it("does not drop the last hour on a 25-hour day", () => {
+    // Berlin falls back on 2026-10-25: an hour of the day the user picked was
+    // silently missing from the tiles and from the daily bars.
+    const range = customCostRange(
+      new Date("2026-10-18T22:00:00Z"), // 2026-10-19 00:00 Berlin
+      new Date("2026-10-24T22:00:00Z"), // 2026-10-25 00:00 Berlin
+      NOW,
+      BERLIN,
+    );
+    expect(wall(range.to, BERLIN)).toBe("2026-10-26 00:00");
+    expect(range.detail.to.toISOString()).toBe("2026-10-25T23:00:00.000Z");
+  });
+
+  it("still takes its trailing-12-month context from `now`, not from the zone", () => {
+    // The third parameter is the context anchor. Passing a zone must not
+    // displace it — the context chart would silently re-anchor on today.
+    const range = customCostRange(
+      new Date("2026-10-18T22:00:00Z"),
+      new Date("2026-10-24T22:00:00Z"),
+      NOW,
+      BERLIN,
+    );
+    expect(range.chart.caption).toBe("Last 12 months");
+    expect(range.chart.to).toBe(NOW);
+    expect(range.chart.from.toISOString()).toBe(local(2025, 5, 1));
+  });
+});
+
 describe("periodLabel", () => {
   it("labels an hour key with its wall-clock hour", () => {
     expect(periodLabel("2026-05-14T07", "hour")).toBe("07:00");

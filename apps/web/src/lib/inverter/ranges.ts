@@ -2,6 +2,8 @@
 // `HistoryRange` is either the realtime `live` buffer or a concrete `[from, to)`
 // window; the rollup bucket is derived from the span so a 12-month chart stays
 // cheap while an hour chart stays detailed.
+import { browserTimeZone } from "$lib/time/browser-zone";
+import { periodWindow } from "$lib/time/period";
 import type { ManifestMetric } from "./types";
 
 export type RollupBucket = "minute" | "hour" | "day";
@@ -85,9 +87,18 @@ const dateFmt = new Intl.DateTimeFormat(undefined, { month: "short", day: "numer
  * Build a custom range from two inclusive calendar days. The label shows the
  * days the user picked, while the query window extends `to` to the exclusive
  * next-day boundary so the last day's data is included in `[from, to)`.
+ *
+ * That boundary is the next civil midnight, not `+ 86_400_000`: across a
+ * spring-forward the day is 23 hours (adding a flat day overshoots into the
+ * next one) and across a fall-back 25 (it drops the last hour). `timeZone`
+ * defaults to the browser's, which is the zone the picker's days were read in.
  */
-export function customRange(from: Date, toInclusive: Date): HistoryRange {
-  const to = new Date(toInclusive.getTime() + DAY);
+export function customRange(
+  from: Date,
+  toInclusive: Date,
+  timeZone: string = browserTimeZone(),
+): HistoryRange {
+  const to = periodWindow(toInclusive, "day", { timeZone }).end;
   return {
     id: "custom",
     label: `${dateFmt.format(from)} – ${dateFmt.format(toInclusive)}`,
@@ -98,20 +109,16 @@ export function customRange(from: Date, toInclusive: Date): HistoryRange {
   };
 }
 
-/** Local midnight starting the calendar day `d` falls in. */
-function startOfLocalDay(d: Date): Date {
-  return new Date(d.getFullYear(), d.getMonth(), d.getDate());
-}
-
 /**
- * A single local calendar day `[00:00, next 00:00)` for the day-stepper. Bounds
- * are computed from date parts (not `+DAY`) so DST-shortened/lengthened days
- * still cover exactly one civil day. Minute rollups: a day is well within the
- * ≤7-day minute window.
+ * A single calendar day `[00:00, next 00:00)` for the day-stepper. Bounds come
+ * from date parts (not `+DAY`) so DST-shortened/lengthened days still cover
+ * exactly one civil day — through the same primitive as {@link customRange},
+ * rather than a second local-midnight helper that could drift from it.
+ * `timeZone` defaults to the browser's. Minute rollups: a day is well within
+ * the ≤7-day minute window.
  */
-export function dayRange(anchor: Date): HistoryRange {
-  const from = startOfLocalDay(anchor);
-  const to = new Date(from.getFullYear(), from.getMonth(), from.getDate() + 1);
+export function dayRange(anchor: Date, timeZone: string = browserTimeZone()): HistoryRange {
+  const { start: from, end: to } = periodWindow(anchor, "day", { timeZone });
   return {
     id: "day",
     label: dateFmt.format(from),
