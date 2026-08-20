@@ -60,6 +60,22 @@ export const CLUSTER_GAP = "gap-x-3 gap-y-2";
  */
 export const TAP = "relative after:absolute after:-inset-3.5";
 
+/**
+ * How close a portalled overlay — popover, tooltip, and the chart tooltips that
+ * follow them — may come to the edge of the viewport, in CSS px.
+ *
+ * Spent as floating-ui's `collisionPadding`, which defaults to zero: an overlay
+ * anchored to a control in the page gutter flips and then sits flush against
+ * the edge, with its shadow and its rounded corner cut in half. A NUMBER rather
+ * than a class, because the collision is resolved at position time by
+ * measurement — a Tailwind inset is invisible to it and would only shift the
+ * box after the decision was already made.
+ *
+ * Half the phone gutter (`SHELL_PAD`'s `p-4`): enough to read as deliberate,
+ * small enough that a wide popover still prefers its natural side.
+ */
+export const TOOLTIP_VIEWPORT_MARGIN = 8;
+
 /** Tailwind's default spacing step (`--spacing: 0.25rem`) at a 16px root. */
 const SPACING_PX = 4;
 
@@ -101,6 +117,172 @@ export function tapTargetPx(contentPx: number): { width: number; height: number 
  * peak-shaving page and 1-up on statistics.
  */
 export const TILE_COLUMNS = "grid-cols-2 sm:grid-cols-3 lg:grid-cols-4";
+
+/**
+ * The tile grid's own frame.
+ *
+ * On a laptop this is `border-l border-t` and the tiles close the box with
+ * their own `border-b border-r` — a hairline grid inside the section card.
+ * Nested inside a card that is itself inside the page, that box cost 46px per
+ * edge at 390px and left a two-up tile 133px: a box, in a box, in the page,
+ * for a figure with a delta chip beside it.
+ *
+ * So on a phone the grid stops being a box and becomes a full-bleed run of
+ * rows. It gives up its left border and pulls out through the section's gutter
+ * (`SECTION_PAD`'s `p-3`), keeping only the top rule that separates it from
+ * the header. The right bleed is one pixel deeper than the left on purpose:
+ * the LAST column still draws its own `border-r`, and at -13px that border
+ * lands exactly on the card's, instead of beside it as a two-pixel edge. The
+ * left needs no such pixel — the card's own border is the frame there.
+ *
+ * `sm:ml-0 sm:mr-0` rather than `sm:mx-0`: Tailwind sorts `ml`/`mr` after `mx`,
+ * so the axis form is not reliably the winner at the breakpoint even though it
+ * comes later in the source. Same level on both sides of the breakpoint, and
+ * the browser pass in `e2e/statistics-mobile-density.spec.ts` measures that it
+ * really did win.
+ */
+export const TILE_FRAME = "-ml-3 -mr-[13px] border-t border-border sm:ml-0 sm:mr-0 sm:border-l";
+
+/**
+ * One tile in that grid: the hairlines that close the box, and its gutter.
+ *
+ * The gutter steps down to 12px on a phone for the reason {@link SECTION_PAD}
+ * does — the innermost box pays least — and because 16px inside a cell that is
+ * already flush with the card's edge is padding on top of padding.
+ */
+export const TILE_CELL = "border-b border-r border-border bg-background px-3 py-3 sm:px-4";
+
+/** Tailwind's `sm` breakpoint (40rem at a 16px root), in CSS px. */
+const SM_PX = 640;
+
+/** The wide shell's cap (`max-w-7xl`, 80rem), in CSS px. */
+const SHELL_CAP_PX = 1280;
+
+/** The utilities of a responsive token that actually apply at `viewportPx`. */
+function activeUtilities(token: string, viewportPx: number): string[] {
+  return token
+    .split(/\s+/)
+    .filter(Boolean)
+    .flatMap((u) => (u.startsWith("sm:") ? (viewportPx >= SM_PX ? [u.slice(3)] : []) : [u]));
+}
+
+/** `3` -> 12px, `[13px]` -> 13px. Tailwind's step at a 16px root. */
+function lengthPx(value: string): number {
+  const arbitrary = value.match(/^\[(\d+(?:\.\d+)?)px\]$/);
+  return arbitrary ? Number(arbitrary[1]) : Number(value) * SPACING_PX;
+}
+
+/**
+ * What a class list spends on ONE horizontal side: border + padding + margin,
+ * in CSS px. Negative margins spend negatively — that is the whole point of a
+ * full-bleed row, and a helper that could not go below zero could not measure
+ * one.
+ *
+ * Resolution follows Tailwind's own ordering: a side utility (`pl-`) beats an
+ * axis one (`px-`) beats the all-sides form (`p-`), and among equals the later
+ * one in the token wins — which is how `px-3 sm:px-4` resolves once
+ * {@link activeUtilities} has kept both. Tokens here therefore never mix
+ * levels across a breakpoint (`-ml-3 sm:mx-0` would resolve differently in this
+ * model than in the stylesheet); they restate the same level, and
+ * `tokens.test.ts` measures the result rather than trusting it.
+ */
+function sideSpendPx(utilities: string[], side: "left" | "right"): number {
+  const axial = side === "left" ? "l" : "r";
+  return spentByClaims(utilities.flatMap((u) => sideClaimOf(u, axial) ?? []));
+}
+
+/** Which horizontal side a utility names, as `sideSpendPx` addresses it. */
+type AxialSide = "l" | "r";
+
+/**
+ * One utility's claim on one horizontal side: which box part it sets
+ * (`p`, `m`, `border`), how specifically it named the side, and what it costs.
+ */
+interface SideClaim {
+  readonly kind: string;
+  readonly rank: number;
+  readonly px: number;
+}
+
+/**
+ * How specifically `target` names `axial`, following Tailwind's own ordering:
+ * the side form (`pl-`) beats the axis (`px-`) beats all-sides (`p-`). A
+ * vertical-only target (`pt-`, `border-y`) is not a claim on this side at all,
+ * and scores below every rank so it can be dropped rather than ranked.
+ */
+function sideRank(target: string | undefined, axial: AxialSide): number {
+  if (target === axial) return 2;
+  if (target === "x") return 1;
+  return target === undefined || target === "" ? 0 : -1;
+}
+
+/** The padding/margin a utility spends on `axial`, or `null` if it is not one. */
+function boxClaimOf(utility: string, axial: AxialSide): SideClaim | null {
+  const box = utility.match(/^(-?)([pm])([xylrtb]?)-(.+)$/);
+  if (box === null) return null;
+  const [, sign, kind, target, value] = box;
+  const rank = sideRank(target, axial);
+  // Negative margins spend negatively — that is the whole point of a full-bleed
+  // row, so the sign travels with the length rather than being clamped away.
+  return rank < 0
+    ? null
+    : { kind: kind ?? "", rank, px: (sign === "-" ? -1 : 1) * lengthPx(value ?? "") };
+}
+
+/** The border width a utility draws on `axial`, or `null` if it draws none. */
+function borderClaimOf(utility: string, axial: AxialSide): SideClaim | null {
+  const border = utility.match(/^border(?:-([xylrtb]))?(?:-(\d+))?$/);
+  if (border === null) return null;
+  const [, target, width] = border;
+  const rank = sideRank(target, axial);
+  return rank < 0 ? null : { kind: "border", rank, px: width === undefined ? 1 : Number(width) };
+}
+
+/** What one utility claims on `axial` — padding, margin, border, or nothing. */
+function sideClaimOf(utility: string, axial: AxialSide): SideClaim | null {
+  return boxClaimOf(utility, axial) ?? borderClaimOf(utility, axial);
+}
+
+/**
+ * The px the surviving claims add up to: one winner per box part — the most
+ * specific, and among equals the later one in the token, which is how
+ * `px-3 sm:px-4` resolves once {@link activeUtilities} has kept both.
+ */
+function spentByClaims(claims: SideClaim[]): number {
+  const best = new Map<string, SideClaim>();
+  for (const claim of claims) {
+    const held = best.get(claim.kind);
+    if (held === undefined || claim.rank >= held.rank) best.set(claim.kind, claim);
+  }
+
+  let total = 0;
+  for (const { px } of best.values()) total += px;
+  return total;
+}
+
+/** `width` minus what `token` spends on both of its horizontal sides. */
+function insideOf(width: number, token: string, viewportPx: number): number {
+  const utilities = activeUtilities(token, viewportPx);
+  return width - sideSpendPx(utilities, "left") - sideSpendPx(utilities, "right");
+}
+
+/**
+ * How many CSS px are left for a tile's TEXT at a given viewport, walking the
+ * whole chrome chain the tile sits in: page shell, section card, tile grid,
+ * tile.
+ *
+ * The number, not the classes, is the thing that was wrong. At 390px the chain
+ * was 16 + (1 + 12) + 1 + (1 + 16) = 46px per edge and left a two-up tile 133px
+ * — a box, inside a box, inside the page, for a figure with a delta chip beside
+ * it. Derived from the tokens rather than restated next to them, so shrinking a
+ * tile's measure is a red test instead of a silent regression.
+ */
+export function tileContentWidthPx(viewportPx: number, columns: number): number {
+  const shell = insideOf(Math.min(viewportPx, SHELL_CAP_PX), SHELL_PAD, viewportPx);
+  const section = insideOf(shell, `${SECTION_BORDER} ${SECTION_PAD}`, viewportPx);
+  const grid = insideOf(section, TILE_FRAME, viewportPx);
+  return insideOf(grid / columns, TILE_CELL, viewportPx);
+}
 
 export const GRID = {
   /** Dense readouts: stat tiles, metric pairs. */

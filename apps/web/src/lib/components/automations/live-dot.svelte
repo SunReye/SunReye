@@ -11,7 +11,10 @@
 	const label = $derived(connected ? m.automations_live() : m.automations_connecting());
 </script>
 
-<span class="flex items-center gap-1.5 font-medium">
+<!-- `data-slot` so a spec can assert the indicator is present — or, on a page
+     that deliberately carries none, absent. The label alone is not a handle:
+     /history's range control has a "Live" preset that is a different thing. -->
+<span data-slot="live-dot" class="flex items-center gap-1.5 font-medium">
 	<span class="relative flex size-2">
 		{#if breathing}
 			<span

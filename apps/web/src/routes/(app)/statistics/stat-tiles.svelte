@@ -4,7 +4,7 @@
 	import { deriveTiles, type TileDef } from '$lib/statistics/tiles';
 	import { getCustomizeSession } from '$lib/statistics/customize.svelte';
 	import StatTile from './stat-tile.svelte';
-	import { TILE_COLUMNS } from '$lib/layout/tokens';
+	import { TILE_COLUMNS, TILE_FRAME } from '$lib/layout/tokens';
 
 	// Registry-driven headline tiles: resolves a TileDef registry against the
 	// section's payload, so every statistics section shares one grid.
@@ -39,10 +39,15 @@
      backdrop: with a tile count that is not a multiple of the column count, the
      backdrop showed through the empty cells as grey slabs. That is also why
      this cannot spend GRID.tiles wholesale — it carries a gap — so it takes the
-     column ramp alone and the tokens keep owning the decision. -->
+     column ramp alone and the tokens keep owning the decision.
+
+     TILE_FRAME is the rest of that decision: the hairline box on a laptop, and
+     on a phone a full-bleed run of rows that gives the tile back the 21px the
+     nested frame was spending. -->
 {#if shown.length > 0}
 	<div
-		class="grid {TILE_COLUMNS} border-l border-t border-border [&>*]:min-w-0"
+		data-slot="stat-tiles"
+		class="grid {TILE_COLUMNS} {TILE_FRAME} [&>*]:min-w-0"
 		transition:fade={{ duration: 200 }}
 	>
 		{#each shown as tile (tile.id)}

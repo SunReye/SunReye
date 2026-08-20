@@ -7,7 +7,9 @@ import {
   expandedSectionClass,
   GRID,
   SEGMENTED_MAX_OPTIONS,
+  TILE_CELL,
   TILE_COLUMNS,
+  TILE_FRAME,
   needsCompactSwitcher,
   SECTION_GAP,
   SECTION_PAD,
@@ -15,9 +17,11 @@ import {
   SHELL_PAD,
   SHELL_WIDTH,
   TAP,
+  TOOLTIP_VIEWPORT_MARGIN,
   pageShellClass,
   sectionShellClass,
   tapTargetPx,
+  tileContentWidthPx,
   type GridVariant,
   type ShellWidth,
 } from "./tokens";
@@ -176,6 +180,54 @@ describe("tile columns", () => {
   });
 });
 
+describe("what is left for a tile to say", () => {
+  // Measured in a browser at 390px before this: page shell p-4, section
+  // border + p-3, grid border-l, tile border-r + px-4 — 46px of chrome per
+  // edge and 133px of content, for a figure that carries a delta chip beside
+  // it and a sub-line under it. Three stacked borders: a box, in a box, in the
+  // page.
+  //
+  // 150px is the floor because that is what the widest headline row needs at
+  // this type scale: a `text-2xl` five-character figure ("−1,234") measures
+  // ~92px in the app's mono face, the delta chip beside it is ~48px, and the
+  // `gap-2` between them is 8.
+  test("a two-up tile on a 390px phone gets at least 150px for its text", () => {
+    expect(tileContentWidthPx(390, 2)).toBeGreaterThanOrEqual(150);
+  });
+
+  // The saving has to come out of the CHROME, not out of the desktop card. A
+  // laptop keeps the frame it has room for, and the same helper says so.
+  test("a laptop still spends the full nested frame on its tiles", () => {
+    const utilities = TILE_FRAME.split(" ");
+    expect(utilities).toContain("sm:border-l");
+    expect(TILE_CELL).toContain("sm:px-4");
+    expect(tileContentWidthPx(1024, 4)).toBeGreaterThan(150);
+  });
+
+  // The helper is only worth having if it MEASURES the tokens. A frame that
+  // stopped bleeding, or a cell that padded itself back up, has to move the
+  // number — otherwise the assertion above is decoration.
+  test("the measurement follows the tokens rather than restating them", () => {
+    const bled = tileContentWidthPx(390, 2);
+    expect(bled).toBeGreaterThan(insideTheOldFrame(390, 2));
+  });
+
+  test("more columns divide the same row, they do not conjure width", () => {
+    expect(tileContentWidthPx(390, 4)).toBeLessThan(tileContentWidthPx(390, 2));
+  });
+});
+
+/**
+ * The same walk with the frame this replaced — a nested bordered box and a
+ * 16px cell gutter — so the improvement is a comparison and not a memory.
+ */
+function insideTheOldFrame(viewportPx: number, columns: number): number {
+  const shell = viewportPx - 2 * 16;
+  const section = shell - 2 * (1 + 12);
+  const grid = section - 1;
+  return grid / columns - 1 - 2 * 16;
+}
+
 describe("chart boxes", () => {
   // A 256px plot box plus its legend and section header meant three charts to a
   // phone screen; /statistics measured 7371px tall at 412x961.
@@ -239,6 +291,26 @@ describe("tap targets", () => {
   test("the expander is symmetric, so it adds the same reach to any control", () => {
     expect(tapTargetPx(0)).toEqual({ width: 28, height: 28 });
     expect(tapTargetPx(32)).toEqual({ width: 60, height: 60 });
+  });
+});
+
+describe("overlay viewport margin", () => {
+  // A popover or tooltip anchored to a control in the page gutter has 16px of
+  // shell padding to work with, and bits-ui's collision detection defaults to
+  // zero: the flipped side lands flush against the viewport edge, where the
+  // shadow and the rounded corner are cut in half and the text starts one pixel
+  // in. 8px is half the phone gutter — enough to read as deliberate, small
+  // enough that a wide popover still prefers its natural side rather than
+  // flipping.
+  test("an overlay keeps eight pixels between itself and the viewport edge", () => {
+    expect(TOOLTIP_VIEWPORT_MARGIN).toBe(8);
+  });
+
+  // Spent as a NUMBER, not as a class: `collisionPadding` is measured by
+  // floating-ui at position time, so a Tailwind inset would be invisible to it
+  // and would move the box after the collision was already resolved.
+  test("it is a measurement, not a utility string", () => {
+    expect(typeof TOOLTIP_VIEWPORT_MARGIN).toBe("number");
   });
 });
 

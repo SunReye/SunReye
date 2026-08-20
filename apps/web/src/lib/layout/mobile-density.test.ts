@@ -596,6 +596,14 @@ describe("nothing runs off the side of the screen", () => {
     expect(popover).toContain("max-w-(--bits-popover-content-available-width)");
   });
 
+  // Width is only half of it: a popover that fits can still be positioned hard
+  // against the edge, because bits-ui's collision padding defaults to zero.
+  // That one is NOT pinned here. It is a resolved position, not a class — only
+  // a document that has run floating-ui knows the number — so it lives in
+  // `e2e/overlay-viewport-margin.spec.ts`, which measures the open popover's
+  // gap to both viewport edges at 390px. The token itself is
+  // `TOOLTIP_VIEWPORT_MARGIN`, owned by `tokens.test.ts`.
+
   test("the band breakdown gives its three columns their own rows on a phone", () => {
     // Name, energy and cost on one 412px row left the name ~120px, which
     // truncated every band label in German.
