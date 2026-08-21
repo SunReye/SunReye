@@ -224,7 +224,7 @@ const KEY_SHAPE: Record<CostBucket, RegExp> = {
  * frame `resolveCostPreset` builds its windows in. Built from date PARTS rather
  * than by adding a fixed span, so a DST-shortened day still ends at the next
  * civil midnight. Null when the key doesn't match the bucket it arrived with,
- * which is the stale-refetch case `periodLabel` guards the same way.
+ * which is the stale-refetch case `periodKeyLabel` guards the same way.
  */
 function periodBounds(key: string, bucket: CostBucket): [Date, Date] | null {
   if (!KEY_SHAPE[bucket].test(key)) return null;

@@ -7,7 +7,7 @@
 		type SplitSeries
 	} from '$lib/components/inverter/energy-split-block.svelte';
 	import type { PeriodEnergy } from '@SunReye/contracts/energy';
-	import { periodLabel, type CostBucket } from '$lib/cost/ranges';
+	import { periodKeyLabel, type CostBucket } from '$lib/cost/ranges';
 
 	// One period of energy, split for the two stacked bars.
 	type Period = PeriodEnergy;
@@ -44,7 +44,7 @@
 	let layoutId = $state<(typeof LAYOUTS)[number]['id']>('kwh');
 	const seriesLayout = $derived(layoutId === 'percent' ? 'stackExpand' : 'stack');
 
-	const data = $derived(periods.map((p) => ({ ...p, label: periodLabel(p.bucket, bucket) })));
+	const data = $derived(periods.map((p) => ({ ...p, label: periodKeyLabel(p.bucket, bucket) })));
 	const hasData = $derived(periods.some((p) => p.loadKwh > 0 || p.productionKwh > 0));
 
 	// Window-average ratio (mean over periods that have the relevant flow), shown

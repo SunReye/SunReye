@@ -214,7 +214,7 @@ function walk(dir: string, prefix = ""): string[] {
  * The range picker's popover, opened, with its calendar grid on screen.
  *
  * Every route carrying a range control (/history, /statistics) renders the same
- * `preset-range-picker.svelte` behind a bits-ui popover, so the gestures — click
+ * `period-navigator.svelte` behind a bits-ui popover, so the gestures — click
  * the trigger, wait for the portalled content to paint — belong here rather than
  * in each spec.
  *

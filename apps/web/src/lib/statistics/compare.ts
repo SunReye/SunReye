@@ -36,6 +36,33 @@ export function formatDelta(delta: number | null): string {
 }
 
 /**
+ * The part of a picked range that has actually happened — what a comparison is
+ * priced over.
+ *
+ * A calendar period's `to` is its exclusive end, and for the CURRENT period that
+ * is in the future on purpose: `$lib/cost/ranges#costRangeFor` keeps the whole
+ * period so the live lease holds and the detail chart has a settled axis. The
+ * comparison must not spend it. The server has this month's data up to now and
+ * all thirty-one days of last month, so an unclamped window prices twenty days
+ * against thirty-one and every delta chip reads as a collapse that never
+ * happened.
+ *
+ * `windowDays` and {@link referenceWindow} both take their span from the clamped
+ * window, so the caption ("vs the previous 2 days") and the reference the server
+ * priced cannot disagree.
+ *
+ * A window that has not STARTED is returned untouched: clamping it would put
+ * `to` before `from` and hand the server a negative-length reference.
+ */
+export function pricedWindow(
+  range: { from: Date; to: Date },
+  now: Date = new Date(),
+): { from: Date; to: Date } {
+  const clamp = now.getTime() > range.from.getTime() && now.getTime() < range.to.getTime();
+  return clamp ? { from: range.from, to: now } : range;
+}
+
+/**
  * The window the comparison endpoint priced as the reference for `[from, to)`:
  * the adjacent same-length window, or the same calendar window a year back.
  */
@@ -89,7 +116,34 @@ export function baselineLabel(mode: CompareMode, days: number): string {
     : m.statistics_baseline_previous_days({ days });
 }
 
-/** Whole days in `[from, to)`, at least 1 — the "vs previous {n} days" caption. */
+/** Midnight starting the civil day `d` falls in, in the viewer's own zone — the
+ *  zone `rangeSpan`'s dates are already formatted in. */
+const startOfCivilDay = (d: Date): Date => new Date(d.getFullYear(), d.getMonth(), d.getDate());
+
+/**
+ * Civil days the window `[from, to)` TOUCHES, at least 1 — the "vs previous {n}
+ * days" caption.
+ *
+ * Counted from date parts rather than as `round(span / 86_400_000)`, because the
+ * window this is asked about is usually a partial day long: {@link pricedWindow}
+ * clamps the period the reader is standing in at `now`, so the month tab on the
+ * 21st is 20 days and however many hours it is. Rounding that reads "the
+ * previous 20 days" before midday and "21 days" after it — the same window, the
+ * same figures, the same comparison the server made, and a caption that re-bases
+ * itself over lunch. Days touched is 21 from midnight to midnight.
+ *
+ * Rounding UP the ms span would fix the flip and break a different case: a
+ * calendar month across an autumn fall-back is 31 days and an hour, and `ceil`
+ * calls that 32 days. Both boundaries of such a window are midnights, so
+ * counting the days between them lands on 31. The `round` here only absorbs the
+ * DST hour between two midnights; it can no longer see a partial day.
+ *
+ * `to` is exclusive, so the last covered instant is the day that gets counted —
+ * a window ending at midnight stops on the previous day, not on the empty one
+ * that starts there.
+ */
 export function windowDays(from: Date, to: Date): number {
-  return Math.max(1, Math.round((to.getTime() - from.getTime()) / 86_400_000));
+  const lastCovered = startOfCivilDay(new Date(to.getTime() - 1));
+  const days = (lastCovered.getTime() - startOfCivilDay(from).getTime()) / 86_400_000;
+  return Math.max(1, Math.round(days) + 1);
 }

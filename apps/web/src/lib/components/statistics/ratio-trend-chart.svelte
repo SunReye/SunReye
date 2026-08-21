@@ -1,7 +1,7 @@
 <script lang="ts">
 	import type { PeriodEnergy } from '@SunReye/contracts/energy';
 	import PeriodLineChart from './period-line-chart.svelte';
-	import { periodLabel, type CostBucket } from '$lib/cost/ranges';
+	import { periodKeyLabel, type CostBucket } from '$lib/cost/ranges';
 	import * as m from '$lib/paraglide/messages';
 
 	// The two ratios that say how much of the household runs on its own energy
@@ -28,7 +28,7 @@
 
 	const data = $derived<Row[]>(
 		periods.map((p) => ({
-			label: periodLabel(p.bucket, bucket),
+			label: periodKeyLabel(p.bucket, bucket),
 			selfSufficiency: p.selfSufficiency,
 			selfConsumption: p.selfConsumption
 		}))

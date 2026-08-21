@@ -74,21 +74,25 @@ test("a one-day pick paints one day: today is not dressed as the selection", asy
   expect(todayIso).toMatch(/^\d{4}-\d{2}-\d{2}$/);
   const pickedIso = neighbourOf(todayIso ?? "");
 
-  // The reported gesture exactly: the same day clicked twice is a one-day range,
-  // which fires the picker's `$effect` and closes the popover. Reopening is how
-  // the user sees the grid they complained about.
-  await picker.day(pickedIso).click();
-  await picker.day(pickedIso).click();
-  await expect(picker.today).toBeHidden();
-
-  const reopened = await openRangePicker(page);
-  const selected = reopened.day(pickedIso);
+  // ONE click, and the grid stays open: a range's first end is picked and the
+  // second is still to come, which is the moment the user described.
+  //
+  // The gesture used to be the same day twice, then REOPENING the popover to see
+  // the grid — because the control this replaced kept its `DateRange` across a
+  // close and painted the applied range again. The period navigator clears the
+  // selection on every open on purpose (`e2e/period-navigator.spec.ts`, "no
+  // stale selection"), so a reopen now shows an empty grid and there would be
+  // nothing to compare. Picking one end reaches the same two painted cells —
+  // the selection and today — without depending on which of those two
+  // behaviours the control has.
+  const selected = picker.day(pickedIso);
+  await selected.click();
   await expect(selected).toHaveAttribute("data-selected", "");
   // bits-ui is not confused — this is the assertion that passes on the broken
   // build, kept only to prove the phantom is purely visual.
-  await expect(reopened.today).not.toHaveAttribute("data-selected", "");
+  await expect(picker.today).not.toHaveAttribute("data-selected", "");
 
-  const todayPaint = await paintOf(reopened.today);
+  const todayPaint = await paintOf(picker.today);
   const selectedPaint = await paintOf(selected);
 
   // THE BUG. Broken build: both are oklch(0.488 0.243 264.376).
@@ -96,7 +100,7 @@ test("a one-day pick paints one day: today is not dressed as the selection", asy
 
   // A plain day: not today, not picked, not focused. The two guards below stop
   // the cheap wrong fixes — unpainting the selection, or unmarking today.
-  const plain = reopened.days
+  const plain = picker.days
     .and(page.locator(":not([data-today])"))
     .and(page.locator(":not([data-selected])"))
     .and(page.locator(":not([data-outside-month])"))
@@ -105,4 +109,10 @@ test("a one-day pick paints one day: today is not dressed as the selection", asy
 
   expect(selectedPaint.background).not.toBe(plainPaint.background);
   expect(Object.values(todayPaint).join(" | ")).not.toBe(Object.values(plainPaint).join(" | "));
+
+  // …and the pick still APPLIES: the second end closes the popover and the
+  // control's title takes the window. Without this the case above would be
+  // green for a calendar that paints beautifully and selects nothing.
+  await picker.day(pickedIso).click();
+  await expect(picker.today).toBeHidden();
 });

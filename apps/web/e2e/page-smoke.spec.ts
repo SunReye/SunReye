@@ -246,12 +246,13 @@ const ROUTES: readonly SmokeRoute[] = [
       await heading(page, "Records");
       await expect(page.getByText("Best production day")).toBeVisible();
 
-      // And the toolbar carries NO live indicator. The dot was removed: one
-      // socket now serves every feed, so a lit dot here said "connected" about
-      // the app rather than about this page, beside figures that are a
-      // finished window's totals. Matched on the indicator's own element, not
-      // on the word "Live" — /history's range control has a Live preset that
-      // is a different thing and must keep saying so.
+      // And the toolbar carries no CONNECTION indicator. The dot was removed:
+      // one socket now serves every feed, so a lit dot here said "connected"
+      // about the app rather than about this page, beside figures that are a
+      // finished window's totals. Matched on that indicator's own element, not
+      // on the word "Live" — the period navigator's live pill is a different
+      // claim (this window still includes now) and it must keep saying so on
+      // the current period.
       await expect(page.locator("[data-slot=live-dot]")).toHaveCount(0);
     },
   },

@@ -3,8 +3,11 @@
 // (preset id, scope) pair onto the message catalogue and produces the two
 // labels the section headers' RangeSwitcher renders.
 
-import type { ChartScope, CostRange } from "$lib/cost/ranges";
+import type { ChartScope, CostBucket, CostRange } from "$lib/cost/ranges";
 import * as m from "$lib/paraglide/messages";
+import { getLocale } from "$lib/paraglide/runtime";
+import { browserTimeZone } from "$lib/time/browser-zone";
+import { periodTitle, type Grain } from "$lib/time/period";
 
 /** Statistics sections whose default scope is a stored preference, read by
  *  `sectionScope()` in ./chart-scope.svelte.ts. */
@@ -13,22 +16,61 @@ export type ScopedSection = "cost" | "energy";
 /** Caption per `${preset id}:${scope}`; anything missing falls back to the
  *  spec's own English caption. */
 const CAPTIONS: Record<string, () => string> = {
-  "today:detail": m.costs_caption_today,
-  "today:context": m.costs_caption_this_month,
   "7d:detail": m.costs_caption_last_7d,
   "7d:context": m.costs_caption_this_month,
-  "month:detail": m.costs_caption_this_month,
-  "month:context": m.range_12mo,
-  "lastMonth:detail": m.statistics_caption_last_month,
-  "lastMonth:context": m.range_12mo,
-  "year:detail": m.statistics_caption_this_year,
-  "year:context": m.statistics_caption_24mo,
   "custom:detail": m.costs_caption_custom,
   "custom:context": m.range_12mo,
 };
 
+/**
+ * The four calendar grains, which are also the ids `costRangeFor` stamps on a
+ * period range. They cannot be table entries like the presets above: a table is
+ * keyed on the id alone, and every day the reader steps back to is still `day`,
+ * so "Today, by hour" would be the caption for last Tuesday.
+ */
+const GRAIN_IDS = new Set<string>(["day", "week", "month", "year"]);
+
+/** `{period}, by hour` — the period NAMES itself, the bucket says how finely. */
+const PERIOD_DETAIL_CAPTION: Record<CostBucket, (args: { period: string }) => string> = {
+  hour: m.statistics_caption_period_hour,
+  day: m.statistics_caption_period_day,
+  month: m.statistics_caption_period_month,
+};
+
+/**
+ * The window each grain's context chart zooms out to, in the same words
+ * `$lib/cost/ranges` bakes into the spec — a day and a week read against the
+ * month they sit in, a month against the trailing twelve, a year against 24.
+ */
+const PERIOD_CONTEXT_CAPTION: Record<Grain, () => string> = {
+  day: m.costs_caption_this_month,
+  week: m.costs_caption_this_month,
+  month: m.range_12mo,
+  year: m.statistics_caption_24mo,
+};
+
+/**
+ * The caption for a calendar period, composed rather than looked up.
+ *
+ * `periodTitle` is the navigator's own header function, so the caption under a
+ * chart and the title on the control above it name the period identically —
+ * "Today" while it is today, "Aug 12" once the reader has stepped back, the
+ * zone's own year rather than the instant's UTC one.
+ */
+function periodCaption(range: CostRange, scope: ChartScope): string {
+  const grain = range.id as Grain;
+  if (scope === "context") return PERIOD_CONTEXT_CAPTION[grain]();
+  const period = periodTitle(
+    { grain, start: range.from, end: range.to },
+    { timeZone: browserTimeZone(), locale: getLocale() },
+    { today: m.range_today, weekOf: m.range_week_of },
+  );
+  return PERIOD_DETAIL_CAPTION[range.detail.bucket]({ period });
+}
+
 /** Localized caption for what a chart is currently plotting. */
 export function chartCaption(range: CostRange, scope: ChartScope): string {
+  if (GRAIN_IDS.has(range.id)) return periodCaption(range, scope);
   const spec = scope === "detail" ? range.detail : range.chart;
   return CAPTIONS[`${range.id}:${scope}`]?.() ?? spec.caption;
 }
@@ -44,7 +86,8 @@ const DETAIL_LABELS = {
  *  than its bucket, so a year ("24 months") never collides with its own
  *  by-month detail view. */
 const CONTEXT_LABELS: Record<string, () => string> = {
-  today: m.range_this_month,
+  day: m.range_this_month,
+  week: m.range_this_month,
   "7d": m.range_this_month,
   year: m.statistics_scope_24mo,
 };

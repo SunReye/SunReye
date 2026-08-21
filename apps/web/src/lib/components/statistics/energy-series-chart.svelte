@@ -1,7 +1,7 @@
 <script lang="ts">
 	import type { PeriodEnergy } from '@SunReye/contracts/energy';
 	import PeriodLineChart from './period-line-chart.svelte';
-	import { periodLabel, type CostBucket } from '$lib/cost/ranges';
+	import { periodKeyLabel, type CostBucket } from '$lib/cost/ranges';
 	import { decimal } from '$lib/format/number';
 	import * as m from '$lib/paraglide/messages';
 
@@ -31,7 +31,7 @@
 	type Row = PeriodEnergy & { label: string };
 
 	const data = $derived<Row[]>(
-		periods.map((p) => ({ ...p, label: periodLabel(p.bucket, bucket) }))
+		periods.map((p) => ({ ...p, label: periodKeyLabel(p.bucket, bucket) }))
 	);
 
 	// Hues are the app's validated energy set, used with their established

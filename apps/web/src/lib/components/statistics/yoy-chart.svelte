@@ -9,7 +9,7 @@
 	import SeriesTooltip from './series-tooltip.svelte';
 	import { seriesConfig } from '$lib/components/inverter/_shared/chart-series';
 	import { canvasHighlight } from '$lib/components/inverter/_shared/canvas-highlight.svelte';
-	import { barBandPadding, chartPaddingFor, periodLabel, xTickSpacingFor } from '$lib/cost/ranges';
+	import { barBandPadding, chartPaddingFor, periodKeyLabel, xTickSpacingFor } from '$lib/cost/ranges';
 	import { CHART_BOX } from '$lib/layout/tokens';
 	import ZoomControls from '$lib/charts/zoom-controls.svelte';
 	import { chartZoom } from '$lib/charts/zoom.svelte';
@@ -50,7 +50,7 @@
 	]);
 
 	const config = $derived(seriesConfig(series));
-	const data = $derived(rows.map((r) => ({ ...r, label: periodLabel(r.bucket, 'month') })));
+	const data = $derived(rows.map((r) => ({ ...r, label: periodKeyLabel(r.bucket, 'month') })));
 
 	// Canvas can't read the `.lc-highlight-area` wash off CSS; without a concrete
 	// colour the hovered month gets an opaque slab over it.

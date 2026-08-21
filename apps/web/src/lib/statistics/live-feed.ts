@@ -50,7 +50,10 @@ export class StatisticsLiveFeed {
    */
   // fallow-ignore-next-line unused-class-member -- called as `this.#feed.lease()` from the rune shell; calls through a private-field receiver aren't traced
   lease(range: CostRange): () => void {
-    const lease: Lease = { mode: liveModeFor(range) };
+    // Through the injected clock, not `Date.now()`: the mode now depends on
+    // WHICH day the range is (`liveModeFor`), so a feed under a fake clock has
+    // to read the same clock the throttle does or it decides against the host's.
+    const lease: Lease = { mode: liveModeFor(range, new Date(this.#now())) };
     // The caller has just fetched this window, so the throttle starts closed
     // and the first invalidation lands a minute in, not on the backfill.
     if (lease.mode === "window") this.#lastRevalidateAt = this.#now();
