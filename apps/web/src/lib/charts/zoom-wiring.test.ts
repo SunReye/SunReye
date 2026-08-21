@@ -117,7 +117,7 @@ const methodBody = (code: string, name: string) => block(code, bodyStart(code, n
 /** Charts that gained the gesture, in the order they were rolled out. */
 const ZOOMABLE: string[] = [
   "lib/components/inverter/_shared/metric-history-chart.svelte",
-  "lib/components/statistics/period-line-chart.svelte",
+  "lib/components/statistics/period-series-chart.svelte",
   "lib/components/prices/price-track-chart.svelte",
   "lib/components/statistics/yoy-chart.svelte",
   // The overlaid form — a saved custom chart, or a draft on a metric card.
@@ -206,6 +206,36 @@ describe("the charts that zoom", () => {
     const code = svelte(file);
     expect(code).toContain("ChartClipPath");
     expect(code).not.toContain("chartZoom");
+  });
+});
+
+describe("the resting gesture follows the pointer", () => {
+  // What a finger actually does is measured in `e2e/chart-gesture-lock.spec.ts`
+  // — a vertical swipe moving `window.scrollY`, a horizontal one refetching
+  // nothing. These two are the one-token canaries for the same claim: the
+  // controller has to ASK which pointer it is on, and it has to ask
+  // ./gesture.ts rather than re-deriving the props itself.
+  const controllerFile = "lib/charts/zoom.svelte.ts";
+
+  test("the controller reads the pointer rather than assuming a mouse", async () => {
+    const code = await read(controllerFile);
+    // `restingMode(true)` is locked and `restingMode(false)` is the brush
+    // (./gesture.test.ts). Passing a literal here is how brush-on-touch — the
+    // bug — comes back with the whole unit suite green.
+    expect(code).toContain("restingMode(pointerKind.coarse)");
+  });
+
+  test("and spends the tested mode mapping rather than its own", () => {
+    const code = svelte("lib/charts/zoom-controls.svelte");
+    // The control's `aria-pressed` and its way back out are what tell a viewer
+    // the chart is holding their finger. Both hang off the controller's mode.
+    expect(code).toContain("zoom.pinching");
+    expect(code).toContain("zoom.reset()");
+  });
+
+  test("no chart hand-rolls the three modes for itself", async () => {
+    const code = await read(controllerFile);
+    expect(code).toContain("gestureProps(mode");
   });
 });
 
@@ -306,7 +336,7 @@ describe("a zoom on /history refetches at a finer rollup", () => {
 
 describe("a zoom on /statistics narrows the section's own spec", () => {
   const section = "routes/(app)/statistics/energy-section.svelte";
-  const chart = "lib/components/statistics/period-line-chart.svelte";
+  const chart = "lib/components/statistics/period-series-chart.svelte";
   const scopeFile = "lib/statistics/chart-scope.svelte.ts";
 
   test("the chart reports positions, resolved against the bands it plotted", () => {

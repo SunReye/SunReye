@@ -2,10 +2,10 @@
 	// The historical area chart of a single metric. Signed metrics (battery/grid
 	// power) split the fill red above / green below a zero baseline; unsigned ones
 	// get a vertical gradient fading to transparent.
-	import { AreaChart, Area, LinearGradient, type ChartState } from 'layerchart';
-	import { curveCatmullRom } from 'd3-shape';
+	import { AreaChart, type ChartState } from 'layerchart';
 	import * as Chart from '$lib/components/ui/chart';
 	import DivergingArea from '$lib/components/inverter/diverging-area.svelte';
+	import PowerArea from '$lib/components/inverter/power-area.svelte';
 	import ZoomControls from '$lib/charts/zoom-controls.svelte';
 	import { chartZoom, zoomLabelOptions } from '$lib/charts/zoom.svelte';
 	import { minExtentFor, zoomedHistoryRangeFrom } from '$lib/charts/zoom-range';
@@ -139,16 +139,10 @@
 					{#if diverging}
 						<DivergingArea {context} />
 					{:else}
-						<LinearGradient vertical stops={[[0, accent], [1, 'transparent']]}>
-							{#snippet children({ gradient })}
-								<Area
-									curve={curveCatmullRom}
-									line={{ stroke: accent, 'stroke-width': 1.5 }}
-									fill={gradient}
-									fillOpacity={0.9}
-								/>
-							{/snippet}
-						</LinearGradient>
+						<!-- `power`: one instantaneous measure. The SAME component the live
+						     sparkline of the same metric draws, so "these two are one drawing"
+						     is a fact of the import rather than of two files agreeing. -->
+						<PowerArea {accent} />
 					{/if}
 				{/snippet}
 				{#snippet tooltip()}

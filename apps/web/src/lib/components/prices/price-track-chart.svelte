@@ -15,6 +15,7 @@
 	import { bandSpan, negativeBandRuns, type PriceRow } from '$lib/prices/price-series';
 	import ZoomControls from '$lib/charts/zoom-controls.svelte';
 	import { chartZoom } from '$lib/charts/zoom.svelte';
+	import { DASH } from '$lib/charts/house-style';
 	import { clipRunsToDomain, isBandVisible } from '$lib/charts/visible-bands';
 	import * as m from '$lib/paraglide/messages';
 
@@ -115,9 +116,11 @@
 	{/each}
 {/snippet}
 
+<!-- The house `reference` dash on the "now" rule: it is a marker, not a
+     measurement, and the app has exactly two dash patterns for that reason. -->
 {#snippet aboveMarks({ context }: { context: ChartState<PriceRow> })}
 	{#if isBandVisible(nowKey, context.xScale.domain())}
-		<Rule x={nowKey} stroke={highlight.fill} strokeWidth={1} dashArray="4 3" />
+		<Rule x={nowKey} stroke={highlight.fill} strokeWidth={1} dashArray={DASH.reference} />
 	{/if}
 {/snippet}
 
@@ -133,7 +136,7 @@
 				bandPadding={0.1}
 				padding={chartPaddingFor(plotWidth)}
 				props={{ xAxis: { tickSpacing: xTickSpacingFor(plotWidth) } }}
-				highlight={{ area: { fill: highlight.fill, fillOpacity: 0.1 } }}
+				highlight={highlight.props}
 				{...zoom.props}
 				{belowContext}
 				{belowMarks}

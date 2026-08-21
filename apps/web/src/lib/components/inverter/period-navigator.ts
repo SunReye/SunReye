@@ -55,7 +55,8 @@ export interface GrainMessages {
  *
  * PER GRAIN, and not one generic pair, because a name has to be unambiguous on
  * the page it is spoken on. /statistics has carried a compare-mode button
- * reading "Previous period" since before this control existed, so an arrow
+ * reading "Previous period" since before this control existed — it sits in that
+ * page's toolbar now, a row above these arrows — so an arrow
  * labelled "Previous period" gave that route two buttons with one accessible
  * name, doing entirely different things — indistinguishable to a screen reader,
  * and ambiguous to every locator that addresses a control by its name.

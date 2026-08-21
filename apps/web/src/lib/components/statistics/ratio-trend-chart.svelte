@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type { PeriodEnergy } from '@SunReye/contracts/energy';
-	import PeriodLineChart from './period-line-chart.svelte';
+	import PeriodSeriesChart from './period-series-chart.svelte';
 	import { periodKeyLabel, type CostBucket } from '$lib/cost/ranges';
 	import * as m from '$lib/paraglide/messages';
 
@@ -57,9 +57,14 @@
 		v === null || v === undefined ? '—' : `${Math.round(Number(v) * 100)}%`;
 </script>
 
-<PeriodLineChart
+<!-- `overlay`: two shares compared on one plot. A share is not accrued over its
+     bucket — it varies through it — so the line is the honest mark here, and the
+     two are unfilled because overlapping translucent fills mix into a third
+     colour that belongs to neither. -->
+<PeriodSeriesChart
 	{data}
 	{series}
+	kind="overlay"
 	format={pct}
 	yDomain={[0, 1]}
 	{onZoom}

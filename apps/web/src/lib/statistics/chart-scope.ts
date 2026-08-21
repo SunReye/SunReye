@@ -60,12 +60,21 @@ const PERIOD_CONTEXT_CAPTION: Record<Grain, () => string> = {
 function periodCaption(range: CostRange, scope: ChartScope): string {
   const grain = range.id as Grain;
   if (scope === "context") return PERIOD_CONTEXT_CAPTION[grain]();
-  const period = periodTitle(
-    { grain, start: range.from, end: range.to },
+  return PERIOD_DETAIL_CAPTION[range.detail.bucket]({ period: periodName(range) });
+}
+
+/**
+ * The picked calendar period's own name — "Today", "Week of Aug 17", "Aug 2026".
+ *
+ * `periodTitle` is the navigator's own header function, so the words under a
+ * chart and the words on the control above it are the same words.
+ */
+function periodName(range: CostRange): string {
+  return periodTitle(
+    { grain: range.id as Grain, start: range.from, end: range.to },
     { timeZone: browserTimeZone(), locale: getLocale() },
     { today: m.range_today, weekOf: m.range_week_of },
   );
-  return PERIOD_DETAIL_CAPTION[range.detail.bucket]({ period });
 }
 
 /** Localized caption for what a chart is currently plotting. */
@@ -75,29 +84,46 @@ export function chartCaption(range: CostRange, scope: ChartScope): string {
   return CAPTIONS[`${range.id}:${scope}`]?.() ?? spec.caption;
 }
 
-/** Switcher label for the detail option — the granularity inside the window. */
-const DETAIL_LABELS = {
-  hour: m.statistics_scope_by_hour,
-  day: m.statistics_scope_by_day,
-  month: m.statistics_scope_by_month,
-};
-
-/** Switcher label for the context option — named by the wider window rather
- *  than its bucket, so a year ("24 months") never collides with its own
- *  by-month detail view. */
-const CONTEXT_LABELS: Record<string, () => string> = {
+/** Name of the WIDER window a range zooms out to — never its bucket, so a year
+ *  ("24 months") cannot collide with its own by-month detail view. */
+const CONTEXT_WINDOW_LABELS: Record<string, () => string> = {
   day: m.range_this_month,
   week: m.range_this_month,
   "7d": m.range_this_month,
   year: m.statistics_scope_24mo,
 };
 
-/** The two options a section header's RangeSwitcher renders for `range`. */
-export function scopeOptions(range: CostRange): readonly { id: ChartScope; label: string }[] {
-  return [
-    { id: "detail", label: DETAIL_LABELS[range.detail.bucket]() },
-    { id: "context", label: (CONTEXT_LABELS[range.id] ?? m.statistics_scope_12mo)() },
-  ];
+/** Name of the PICKED window, for the ranges that are not calendar periods. A
+ *  custom span falls through to the formatted dates the range already carries. */
+const DETAIL_WINDOW_LABELS: Record<string, () => string> = { "7d": m.range_last_7d };
+
+/** What the picked window is called: the period's own title, or the range's. */
+function detailWindowLabel(range: CostRange): string {
+  if (GRAIN_IDS.has(range.id)) return periodName(range);
+  return DETAIL_WINDOW_LABELS[range.id]?.() ?? range.label;
+}
+
+/**
+ * The one control a chart panel offers over its window: where the toggle goes
+ * next, and the name of the window it lands on.
+ *
+ * This replaces a two-chip segmented switcher that read "By day | 12 months" —
+ * a BUCKET beside a SPAN, two grammars in one row, with nothing to say which of
+ * them was showing. Both of these labels are spans, and the label always names
+ * the window the reader is NOT looking at, so pressing it is unsurprising.
+ *
+ * The bucket is gone from the control because it was never a choice: every
+ * calendar grain has exactly one sensible granularity inside it
+ * (`PERIOD_DETAIL_BUCKET` in `$lib/cost/ranges`), and the caption under the
+ * title already says which one is drawn.
+ */
+export function scopeToggle(
+  range: CostRange,
+  scope: ChartScope,
+): { next: ChartScope; label: string } {
+  return scope === "detail"
+    ? { next: "context", label: (CONTEXT_WINDOW_LABELS[range.id] ?? m.statistics_scope_12mo)() }
+    : { next: "detail", label: detailWindowLabel(range) };
 }
 
 /**

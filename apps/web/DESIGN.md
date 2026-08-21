@@ -409,6 +409,52 @@ selection *means*, and `lib/charts/zoom-wiring.test.ts` holds every chart to bot
   gliding live window, a decision timeline — and a second one composes badly. The overlay's two
   *historical* forms do zoom, and hand the selection up like any other /history chart: a drag on a
   saved custom chart or on a draft moves the whole page onto the finer range.
+### The house style for marks
+
+**The mark follows what the data IS, not which file the chart lives in.** The table is
+`src/lib/charts/house-style.ts`; a component states a `kind` and the table answers with the curve,
+the fill, the stroke weight and the dash. Before it existed the dashboard carried three smoothings
+and four fills across nineteen plots, none of it decided: `curveCatmullRom` on the live and history
+areas, `curveMonotoneX` on the decision plots, no curve at all on the statistics lines; fills at
+0.9 gradient, 0.3 flat, 0.2 flat and none; strokes at 1.5 and 2. Read together they claim a
+difference that does not exist.
+
+| kind       | the data                                                     | mark  | curve         | fill            |
+| ---------- | ------------------------------------------------------------ | ----- | ------------- | --------------- |
+| `power`    | one instantaneous measure over time (W, A, %)                 | area  | monotone-x    | accent gradient |
+| `flow`     | the same, SIGNED around zero                                  | area  | monotone-x    | split at zero   |
+| `overlay`  | several measures compared on one plot                         | line  | monotone-x    | none            |
+| `stack`    | a decomposition of one total into its parts                   | area  | monotone-x    | flat 0.75       |
+| `energy`   | a quantity belonging to a BUCKET (kWh, money, the price)       | bars  | — (no interp) | solid           |
+| `setpoint` | a decided value, held until it is written again                | line  | step-after    | none            |
+| `heat`     | a matrix of buckets, read by colour                          | cells | — (no interp) | ramp            |
+
+- **No kind smooths with `curveCatmullRom`, ever.** Not taste — the spline overshoots its control
+  points, so a PV area drawn through a sunny day's samples bulges *above* the highest sample and the
+  chart reports a watt figure the plant never produced, disagreeing with its own tooltip.
+  `curveMonotoneX` is the smoothing that cannot do that: between two samples it stays inside their
+  range. It is the only smoothing in the house.
+- **A quantity that belongs to a bucket is bars.** kWh accrued over a day is not a rate between two
+  instants; a line through bucket totals paints a slope the data does not carry, and the eye reads
+  the area under that line as a total. `period-series-chart` draws the same periods as bars or as a
+  line depending on the kind it is handed — the energy flows are bars, the two self-consumption
+  ratios stay a line, because a share varies *through* its bucket rather than accruing over it.
+- **A setpoint is a step.** A ceiling written to a register holds its value until the next write, so
+  the step is the truth and a slope between two writes is a fiction.
+- **Overlaid series carry no fill.** Two translucent fills over each other mix into a third colour
+  belonging to neither, and the plot grows a hue nobody assigned. A chart that wants one series
+  filled as *context* says so per series (`decision-chart`'s `PlotSeries.fill`).
+- **One stroke weight, two dash patterns.** `1.5` everywhere, so a heavier line is still available
+  to mean something. `DASH.secondary` is a line that is not the primary measurement (a projection, a
+  register readback, a context series); `DASH.reference` is a line that is not a measurement at all
+  (a limit, a plateau, the "now" marker). They were four literals across three files, `'5 4'`
+  meaning three different things.
+- **Grouped bars carry no outline.** LayerChart strokes every bar 1px in the foreground colour; six
+  series over thirty-one days at 390px puts each bar under two pixels wide, the strokes of
+  neighbours meet, and the plot renders as a black comb with the hues invisible behind it. Both the
+  width and the colour have to go — `ctx.lineWidth = 0` is a no-op in the 2D context. A *stacked*
+  bar keeps its edge, where it separates the segments of one bar.
+
 ### Series colour
 
 **A fixed meaning never draws from the categorical palette.** `--chart-N` means "the Nth series,
@@ -469,6 +515,19 @@ charts drag-select with, and a button there swallows the start of a drag.
 - **One control per plot, not per card**, when a card holds more than one. `decision-charts` has two
   plots and three paragraphs; expanding the card split a landscape screen five ways and left each
   plot 59px tall.
+- The same rule survived a **control-count cut on /statistics**, where hoisting nine panel controls
+  into the four section headers would have removed five buttons. It was measured first, on a 390x844
+  phone: with the control on the section card, Costs & savings gave its one plot **69px**, Energy
+  **0px** for each of its four, Spot prices **0/0**, Records **0** — against the **192px** every one
+  of those plots already has in the scrolling page. A card's tiles, nested panel headers and legends
+  keep their content height; the plots divide whatever is left, and on that page nothing is left. A
+  control that makes the plot smaller than not pressing it is not a saving.
+  `lib/charts/fullscreen-coverage.test.ts` pins both ends now: every chart has a control, and the
+  statistics section cards do not offer one.
+- **A control over a box with no plot in it** is the same defect from the other side. The
+  negative-price-window history is a grouped list, height-unconstrained and already fully visible;
+  it went through `ChartPanel` and inherited an expand button that promised a bigger view of a list.
+  It is a plain `Section` now.
 - The card is **not replaced by a bigger copy of itself**. Same header, same body, the same chart
   component with its brush and pinch still bound. Only classes change, and they are one token —
   `expandedSectionClass` / `expandedChartClass` in `tokens.ts`.
@@ -532,6 +591,31 @@ of the editor.
   actually read in — gets the designed 60px gutter.
 
 ---
+
+## A section header is a row of controls
+
+The header's right-hand cluster is **controls only**. /statistics put a panel's headline figure
+there, and a row reading `€6.62 ▼15%   By day   12 months   ⤢` is four items at one weight: the
+reader counts four controls where there are two, and the complaint that came back was "many buttons,
+it's confusing". Data goes in the body — the figure now sits directly above the plot it describes,
+where it reads as the plot's headline instead of as a button.
+
+- **Page state gets a page control.** The comparison reference ("Previous period" / "Year ago") is a
+  parameter of the request the page makes and it re-bases every section's delta chips, so it belongs
+  in `PageShell`'s `toolbar`, beside the navigator whose window it measures. Inside one of four
+  section headers it read as that section's own filter and gave that section a control row the other
+  three do not have. The paragraph beside it went too: it restated the baseline half of the caption
+  `rangeCaption` already prints under every section title.
+- **One switcher asks one question.** `By day | 12 months` was a bucket beside a span — "how
+  finely?" beside "over what span?" — and the lit chip was the only clue which was showing. It is
+  one button that names the window the reader is *not* looking at ("12 months", then "Aug 2026"), so
+  pressing it has one obvious outcome and there is no state to read. The bucket was never a choice:
+  every calendar grain has exactly one granularity inside it (`PERIOD_DETAIL_BUCKET`), and the
+  caption under the title already says which one is drawn.
+- The wider window stays reachable **only through that toggle**, never as a second range control.
+  The period navigator owns range selection on this page; a chip that silently replaced the window
+  with a trailing twelve months — contradicting the tiles above it, the caption, and the live pill —
+  was one, which is why it is now named after where it goes.
 
 ## Styling and spacing guidance
 

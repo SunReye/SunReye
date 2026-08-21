@@ -1,6 +1,6 @@
 <script lang="ts">
 	// A chart panel: what it plots, over which window, and — when the panel owns
-	// its section's scope — the switcher that moves it. The card itself is the
+	// its section's scope — the control that moves it. The card itself is the
 	// shared `Section`, so the panel no longer carries a heading, a border or a
 	// gap of its own; the header cluster is `panel-actions.svelte`.
 	//
@@ -11,7 +11,7 @@
 	import { fade } from 'svelte/transition';
 	import Section from '$lib/components/layout/section.svelte';
 	import PanelActions from './panel-actions.svelte';
-	import type { PanelSummary as Summary } from './panel-summary.svelte';
+	import PanelSummary, { type PanelSummary as Summary } from './panel-summary.svelte';
 	import type { SectionScope } from '$lib/statistics/chart-scope.svelte';
 	import type { CostRange } from '$lib/cost/ranges';
 
@@ -30,7 +30,7 @@
 		view?: SectionScope;
 		summary?: Summary;
 		/** The picked range, passed by the one panel per section that carries the
-		 *  scope switcher; the section's other panels follow it. */
+		 *  window control; the section's other panels follow it. */
 		switcher?: CostRange;
 		children: Snippet;
 	} = $props();
@@ -45,11 +45,14 @@
 	     section caption now — its own line, under the title. -->
 	<Section {title} caption={view?.caption ?? caption} nested fullscreen>
 		{#snippet actions()}
-			<!-- Summary and switcher travel together in the one right-hand cluster.
-			     Spread by `justify-between` the summary landed mid-row, where it read
-			     as a second title rather than as this panel's headline figure. -->
-			<PanelActions {view} {summary} {switcher} />
+			<!-- CONTROLS only. The headline figure used to travel here beside the
+			     window control, where a row of two controls read as a row of five. -->
+			<PanelActions {view} {switcher} />
 		{/snippet}
+		<!-- The figure, over the plot it describes. `PanelSummary` renders nothing
+		     when the panel has none, or when the chart is zoomed out past the
+		     window the figure states. -->
+		<PanelSummary {view} {summary} />
 		{@render children()}
 	</Section>
 </div>

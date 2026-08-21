@@ -3,7 +3,6 @@
 	// the export the decision implies, the charging it asks for, and the plateau
 	// it holds them at. Measured export/charging ride along in the tooltip, so a
 	// shadow run can be checked against what the plant actually did.
-	import { curveMonotoneX } from 'd3-shape';
 	import { CHART_BOX } from '$lib/layout/tokens';
 	import DecisionChart, { type PlotSeries } from './decision-chart.svelte';
 	import * as m from '$lib/paraglide/messages';
@@ -29,7 +28,8 @@
 						label: m.automations_series_load(),
 						color: 'var(--color-energy-selfused)',
 						unit: 'kW',
-						dash: '5 4'
+						// Context, not one of the steered quantities.
+						dash: 'secondary'
 					} satisfies PlotSeries
 				]
 			: []),
@@ -52,8 +52,9 @@
 			label: m.automations_series_plateau(),
 			color: 'var(--color-muted-foreground)',
 			unit: 'kW',
-			dash: '2 3',
-			width: 1.5
+			// A limit the others are steered toward, not a measurement at all —
+			// hence the second pattern rather than a thinner version of the first.
+			dash: 'reference'
 		}
 	]);
 
@@ -74,4 +75,4 @@
 	];
 </script>
 
-<DecisionChart {rows} {series} {tooltipExtras} curve={curveMonotoneX} height={CHART_BOX} />
+<DecisionChart {rows} {series} {tooltipExtras} kind="overlay" height={CHART_BOX} />

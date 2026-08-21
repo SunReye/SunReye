@@ -1,7 +1,7 @@
 <script lang="ts">
-	import { AreaChart, Area, ChartClipPath, Highlight } from 'layerchart';
-	import { curveCatmullRom } from 'd3-shape';
+	import { AreaChart, ChartClipPath, Highlight } from 'layerchart';
 	import DivergingArea from '$lib/components/inverter/diverging-area.svelte';
+	import PowerArea from '$lib/components/inverter/power-area.svelte';
 	import * as Chart from '$lib/components/ui/chart';
 	import MetricTooltipRow from '$lib/components/inverter/_shared/metric-tooltip-row.svelte';
 	import { liveCursor } from '$lib/components/inverter/_shared/live-cursor.svelte';
@@ -123,12 +123,12 @@
 			{#if diverging}
 				<DivergingArea {context} />
 			{:else}
-				<Area
-					curve={curveCatmullRom}
-					line={{ stroke: accent, 'stroke-width': 1.5 }}
-					fill={accent}
-					fillOpacity={0.3}
-				/>
+				<!-- `power`: one instantaneous measure, so the house fill is the accent
+				     fading downward to transparent. It used to be a flat 0.3 wash here
+				     and a 0.9 gradient on the history card, which read as two different
+				     measures; the SAME component draws both now, so they cannot drift
+				     apart again. -->
+				<PowerArea {accent} />
 			{/if}
 			<!-- Render the hover highlight INSIDE the glide-translated group so the
 			     point/crosshair track the visible line. The chart's built-in highlight

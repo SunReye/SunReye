@@ -3,7 +3,7 @@ import { costRangeFor, customCostRange, resolveCostPreset } from "$lib/cost/rang
 import { overwriteGetLocale, type Locale } from "$lib/paraglide/runtime";
 import { browserTimeZone } from "$lib/time/browser-zone";
 import { periodWindow, stepPeriod, type Grain } from "$lib/time/period";
-import { chartCaption, scopeOptions } from "./chart-scope";
+import { chartCaption, scopeToggle } from "./chart-scope";
 
 /**
  * The captions are read against the REAL clock, and the periods are built from
@@ -76,20 +76,52 @@ describe("chartCaption — the ranges that are not calendar periods", () => {
   });
 });
 
-describe("scopeOptions", () => {
-  test("labels the context option by the window each grain zooms out to", () => {
-    const context = (grain: Grain) => scopeOptions(tab(grain))[1].label;
-    expect(context("day")).toBe("This month");
-    expect(context("week")).toBe("This month");
-    expect(context("month")).toBe("12 months");
-    expect(context("year")).toBe("24 months");
+describe("scopeToggle — one control, one grammar", () => {
+  // The switcher this replaces offered "By day" beside "12 months": a BUCKET
+  // name next to a SPAN name, two grammars in one segmented row, and no clue
+  // which of them the reader is currently looking at. The toggle names the
+  // window it takes you TO, so both of its states read as spans.
+  const toLabel = (grain: Grain) => scopeToggle(tab(grain), "detail").label;
+  const backLabel = (grain: Grain) => scopeToggle(tab(grain), "context").label;
+
+  test("from the picked window it offers the wider one, by name", () => {
+    expect(scopeToggle(tab("month"), "detail").next).toBe("context");
+    expect(toLabel("day")).toBe("This month");
+    expect(toLabel("week")).toBe("This month");
+    expect(toLabel("month")).toBe("12 months");
+    expect(toLabel("year")).toBe("24 months");
   });
 
-  test("labels the detail option by the granularity inside the window", () => {
-    const detail = (grain: Grain) => scopeOptions(tab(grain))[0].label;
-    expect(detail("day")).toBe("By hour");
-    expect(detail("week")).toBe("By day");
-    expect(detail("year")).toBe("By month");
+  test("from the wider window it offers the picked one, by its own name", () => {
+    // The navigator prints exactly these words above the chart, so the way back
+    // is named after the period the reader chose rather than after a bucket.
+    expect(scopeToggle(tab("month"), "context").next).toBe("detail");
+    expect(backLabel("day")).toBe("Today");
+    expect(backLabel("week")).toMatch(/^Week of \w+ \d{1,2}$/);
+    expect(backLabel("month")).toBe(monthName(NOW));
+    expect(backLabel("year")).toBe(String(NOW.getFullYear()));
+  });
+
+  test("no label is a bucket, in either direction, for any grain", () => {
+    // The whole defect: "By day" is an answer to "how finely?", "12 months" to
+    // "over what span?". A single control cannot ask both.
+    for (const grain of ["day", "week", "month", "year"] as const) {
+      expect(toLabel(grain)).not.toMatch(/^By /);
+      expect(backLabel(grain)).not.toMatch(/^By /);
+      expect(toLabel(grain)).not.toBe(backLabel(grain));
+    }
+  });
+
+  test("a kept preset and a custom span name themselves too", () => {
+    const week = resolveCostPreset("7d", NOW);
+    expect(scopeToggle(week, "detail").label).toBe("This month");
+    expect(scopeToggle(week, "context").label).toBe("Last 7 days");
+
+    const custom = customCostRange(new Date(2026, 6, 17), new Date(2026, 7, 2), NOW);
+    expect(scopeToggle(custom, "detail").label).toBe("12 months");
+    // The dates the reader picked, not the word "Custom" — the label the range
+    // already carries.
+    expect(scopeToggle(custom, "context").label).toBe(custom.label);
   });
 });
 

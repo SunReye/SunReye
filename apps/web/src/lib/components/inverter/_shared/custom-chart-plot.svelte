@@ -9,7 +9,7 @@
 	// to be a third branch in here, and having it meant every gesture and every
 	// control had to be guarded against a form that owns a transform of its own.
 	import { AreaChart, Area, Axis, Highlight, type ChartState } from 'layerchart';
-	import { curveCatmullRom } from 'd3-shape';
+	import { houseLine } from '$lib/charts/house-style';
 	import * as Chart from '$lib/components/ui/chart';
 	import DualYAxes from '$lib/components/inverter/_shared/dual-y-axes.svelte';
 	import CustomChartTooltip from '$lib/components/inverter/custom-chart-tooltip.svelte';
@@ -127,13 +127,11 @@
 				{belowContext}
 			>
 				{#snippet marks({ context }: MarksContext)}
+					<!-- `overlay`: several measures compared, so a stroke and no fill
+					     ($lib/charts/house-style). Two translucent fills over each
+					     other mix into a third colour belonging to neither series. -->
 					{#each context.series.visibleSeries as s (s.key)}
-						<Area
-							seriesKey={s.key}
-							curve={curveCatmullRom}
-							fillOpacity={0}
-							line={{ 'stroke-width': 1.5 }}
-						/>
+						<Area seriesKey={s.key} {...houseLine('overlay')} />
 					{/each}
 					<Highlight points lines />
 				{/snippet}
@@ -156,7 +154,7 @@
 				{...zoom.props}
 				{belowContext}
 				props={{
-					area: { curve: curveCatmullRom, fillOpacity: 0.2, line: { 'stroke-width': 1.5 } },
+					area: houseLine('overlay'),
 					xAxis: { format: xTickFormat, ticks: 4 }
 				}}
 			>

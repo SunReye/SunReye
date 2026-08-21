@@ -1,8 +1,10 @@
 /**
  * Two controls on /statistics must not announce themselves identically.
  *
- * The Records section has carried a compare-mode button reading "Previous
- * period" since long before the period navigator existed. The navigator arrived
+ * /statistics has carried a compare-mode button reading "Previous period" since
+ * long before the period navigator existed — it lived in the Records section
+ * then and sits in the page toolbar now, one row from these arrows. The
+ * navigator arrived
  * with arrows labelled `range_prev_period` / `range_next_period` — and the back
  * arrow's aria-label was, word for word, that button's visible text. Two
  * controls, one page, one name, and they do completely different things: one

@@ -3,6 +3,8 @@
 	// Canvas layer: a 12×~15 Cell grid renders far more cheaply than SVG and
 	// sidesteps the >24-band INP freeze (see forecast-chart.svelte).
 	import { Axis, Canvas, Cell, Chart, Tooltip } from 'layerchart/canvas';
+	import ChartTooltipRoot from '$lib/charts/chart-tooltip-root.svelte';
+	import { houseCell } from '$lib/charts/house-style';
 	import { scaleBand } from 'd3-scale';
 	import { api } from '$lib/api';
 	import ChartFullscreen from '$lib/components/layout/chart-fullscreen.svelte';
@@ -104,19 +106,20 @@
 					tooltipContext={{ mode: 'quadtree' }}
 				>
 					<Canvas>
+						<!-- `heat`: the same cell geometry as the hour/weekday grid on
+						     /statistics ($lib/charts/house-style). -->
 						<Cell
 							x="hour"
 							y="month"
 							fill={(d: CorrectionCell) => factorColor(d.factor)}
 							fillOpacity={(d: CorrectionCell) => confidence(d.weight)}
-							insets={{ all: 1 }}
-							rx={2}
+							{...houseCell()}
 						/>
 						<Axis placement="bottom" ticks={hourTicks} rule={false} />
 						<Axis placement="left" format={(mm: number) => monthLabel(mm)} rule={false} />
 					</Canvas>
 
-					<Tooltip.Root>
+					<ChartTooltipRoot>
 						{#snippet children({ data }: { data: CorrectionCell })}
 							<Tooltip.Header>
 								{monthLabel(data.month)}
@@ -126,7 +129,7 @@
 								<Tooltip.Item label="×" value={data.factor.toFixed(2)} />
 							</Tooltip.List>
 						{/snippet}
-					</Tooltip.Root>
+					</ChartTooltipRoot>
 				</Chart>
 			</div>
 		</ChartFullscreen>

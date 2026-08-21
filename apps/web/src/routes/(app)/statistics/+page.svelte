@@ -8,6 +8,7 @@
 	import * as m from '$lib/paraglide/messages';
 	import { Button } from '$lib/components/ui/button';
 	import PeriodNavigator from '$lib/components/inverter/period-navigator.svelte';
+	import RangeSwitcher from '$lib/components/inverter/range-switcher.svelte';
 	import type { RangeOverride } from '$lib/components/inverter/period-navigator';
 	import { setPageHeader } from '$lib/page-header.svelte';
 	import PageShell from '$lib/components/layout/page-shell.svelte';
@@ -22,6 +23,7 @@
 		usableComparison,
 		windowDays
 	} from '$lib/statistics/compare';
+	import { compareModes } from '$lib/statistics/compare-modes';
 	import { statisticsPrefs } from '$lib/statistics-prefs.svelte';
 	import { statisticsLive } from '$lib/statistics-live.svelte';
 	import { includesNow, liveModeFor } from '$lib/statistics/live';
@@ -86,6 +88,14 @@
 	// Reference window for the comparison. Ephemeral for every viewer, with the
 	// saved preference as its default; an admin's current pick is what the
 	// customize draft stores when they save the layout.
+	//
+	// The control is in the PAGE TOOLBAR, beside the navigator that picks the
+	// window it is measured against. It spent its life inside the Records
+	// section, which is the one place it does not belong: nothing about it is
+	// that section's — it is a parameter of the request this page makes, and it
+	// re-bases every section's delta chips and every section's caption. Sitting
+	// in one of four section headers it read as that section's own filter, and
+	// gave that header a control row the other three do not have.
 	let pickedMode = $state<CompareMode | null>(null);
 	const mode = $derived(pickedMode ?? statisticsPrefs.optionFor('records').compareMode);
 	function setMode(next: CompareMode) {
@@ -161,7 +171,6 @@
 					// "vs the previous N days" baseline names the window the server
 					// compared rather than a month that has not finished.
 					windowDays: pricedDays(range),
-					setMode,
 					range
 				}
 			: null
@@ -204,6 +213,9 @@
 			onPreset={pickPreset}
 			onCustomRange={pickCustom}
 		/>
+		<!-- Two options, so it stays a segmented row on a phone rather than
+		     offering a Select (`needsCompactSwitcher`). -->
+		<RangeSwitcher options={compareModes()} bind:value={() => mode, setMode} />
 		{#if canCustomize}
 			<Button
 				variant="ghost"

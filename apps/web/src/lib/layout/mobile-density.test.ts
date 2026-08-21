@@ -200,7 +200,7 @@ describe("chart gutters follow the measured plot width", () => {
 
   /** A gutter helper call in a component, with its argument list. */
   const GUTTER_CALL =
-    /\b(chartPaddingFor|heatPaddingFor|xTickSpacingFor|stackedBarProps)\(([^()]*(?:\([^()]*\)[^()]*)*)\)/g;
+    /\b(chartPaddingFor|heatPaddingFor|xTickSpacingFor|stackedBarProps|groupedBarProps)\(([^()]*(?:\([^()]*\)[^()]*)*)\)/g;
 
   /**
    * Components that may call a gutter helper without measuring a plot, each with
@@ -224,7 +224,7 @@ describe("chart gutters follow the measured plot width", () => {
   // holds. These six are the charts the gutter regression was measured on; the
   // discovery has to still be finding them.
   test.each([
-    "lib/components/statistics/period-line-chart.svelte",
+    "lib/components/statistics/period-series-chart.svelte",
     "lib/components/statistics/yoy-chart.svelte",
     "lib/components/statistics/heat-grid.svelte",
     "lib/components/prices/price-track-chart.svelte",

@@ -197,7 +197,7 @@ describe("the sweep finds what it claims to", () => {
   });
 
   test.each([
-    "lib/components/statistics/period-line-chart.svelte",
+    "lib/components/statistics/period-series-chart.svelte",
     "lib/components/statistics/yoy-chart.svelte",
     "lib/components/prices/price-track-chart.svelte",
     "lib/components/inverter/live-area.svelte",
@@ -242,5 +242,60 @@ const NOT_WORTH_EXPANDING = ["lib/components/inverter/live-area.svelte"];
 describe("every chart can be taken full screen", () => {
   test.each(charts.filter((c) => !NOT_WORTH_EXPANDING.includes(c)))("%s", (chart) => {
     expect(covered(chart)).toBe(true);
+  });
+});
+
+/**
+ * The other half of the claim: WHICH box the control expands.
+ *
+ * The sweep above holds the floor — no chart ships without a way to make it big.
+ * These hold the ceiling on /statistics, and they are the decision that was made
+ * when that page's control count was cut: the control stays on the panel that
+ * holds one plot, and the four section cards above them do NOT get one.
+ *
+ * Expanding a box expands everything in it. `EXPANDED_SECTION`
+ * (`$lib/layout/tokens`) puts `flex-1 min-h-0` on every ancestor of every
+ * `[data-slot=chart]` in the card, so plots in one box divide whatever the
+ * card's tiles, nested panel headers and legends leave — and on this page they
+ * leave nothing. Measured on a 390x844 phone with the control hoisted to the
+ * four section cards: Costs & savings 69px for its one plot, Energy 0/0/0/0 for
+ * its four, Spot prices 0/0, Records 0 — against the 192px every one of those
+ * plots already has in the scrolling page. Hoisting would have removed five
+ * buttons and made all four expansions worse than not expanding at all.
+ * `decision-charts.svelte` shipped that once — one control, two plots, three
+ * paragraphs, 59px of plot — and the containment check in this file is what was
+ * written for it.
+ */
+describe("on /statistics the control sits on the plot, not on the card above it", () => {
+  const SHELL = "routes/(app)/statistics/statistics-section.svelte";
+  const PANEL = "routes/(app)/statistics/chart-panel.svelte";
+
+  test("the four section cards offer none", () => {
+    // Read off the shell every section renders through, so this cannot be
+    // satisfied by today's four sections happening not to ask for it.
+    expect(read(SHELL)).toMatch(/<Section(?=[\s/>])/);
+    expect(declaresFullscreen(SHELL)).toBe(false);
+  });
+
+  test("the chart panel is the provider, so a plot is one control's whole box", () => {
+    expect(declaresFullscreen(PANEL)).toBe(true);
+    // And it is the panel every plotted statistics block goes through.
+    for (const file of [
+      "routes/(app)/statistics/cost-section.svelte",
+      "routes/(app)/statistics/energy-section.svelte",
+      "routes/(app)/statistics/price-curves.svelte",
+    ]) {
+      expect(importsOf(file).get("ChartPanel")).toBe(PANEL);
+    }
+  });
+
+  // A control over a box with no plot in it promises a bigger view of a list.
+  // The negative-window history is a grouped list of times, height-unconstrained
+  // and already fully visible in the page.
+  test("a panel that plots nothing offers no bigger view of it", () => {
+    const list = "routes/(app)/statistics/negative-window-history.svelte";
+    expect(read(list)).not.toMatch(/<Chart\.Container[\s/>]|<Chart[\s/>]/);
+    expect(providerRanges(list)).toEqual([]);
+    expect(importsOf(list).has("ChartPanel")).toBe(false);
   });
 });

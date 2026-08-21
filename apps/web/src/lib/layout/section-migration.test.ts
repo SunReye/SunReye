@@ -570,6 +570,32 @@ describe("statistics sections stay controlled", () => {
   });
 });
 
+describe("the comparison reference is a page control", () => {
+  const records = () => read("routes/(app)/statistics/records-section.svelte");
+  const page = () => read("routes/(app)/statistics/+page.svelte");
+
+  // `mode` is the page's state, it is a parameter of the page's own comparison
+  // request, and it re-bases every section's delta chips. Sitting in the Records
+  // header it read as that section's own filter, and gave the section a control
+  // row the other three do not have.
+  test("the switcher is in the page toolbar, not inside one of the four sections", () => {
+    const toolbar = page().match(/\{#snippet toolbar\(\)\}[\s\S]*?\{\/snippet\}/);
+    expect(toolbar, "the statistics page declares no toolbar snippet").not.toBeNull();
+    expect(toolbar![0]).toContain("<RangeSwitcher");
+    expect(toolbar![0]).toContain("compareModes()");
+    expect(records()).not.toContain("RangeSwitcher");
+  });
+
+  // The caption went with it. "vs the previous 21 days" was already the second
+  // half of every section's own caption (`rangeCaption`), so the Records
+  // section was printing the page's baseline twice, once as a paragraph.
+  test("its duplicate baseline paragraph goes with it", () => {
+    const code = records();
+    expect(code).not.toContain("statistics_records_vs_year");
+    expect(code).not.toContain("statistics_records_vs_previous");
+  });
+});
+
 describe("the chart panel nests without doubling the chrome", () => {
   const chartPanel = () => read("routes/(app)/statistics/chart-panel.svelte");
 
@@ -582,19 +608,39 @@ describe("the chart panel nests without doubling the chrome", () => {
     expect(hasAttribute(tag!, "nested")).toBe(true);
   });
 
-  // Three header items spread by justify-between put the summary in the middle
-  // of the row, where it read as a second title. Section gives one right-hand
-  // cluster, so summary and switcher travel together.
-  test("its summary and switcher move into the header action cluster", () => {
+  // The header cluster holds CONTROLS. It held the headline figure too, and a
+  // row reading "EUR 6.62 –  By day  12 months  ⤢" is five things wearing one
+  // grammar: the reader counts five controls where there are two. The figure is
+  // the panel's own data, so it moved into the body, directly above the plot it
+  // describes.
+  test("the header cluster holds the window control and nothing that is not one", () => {
     const actions = chartPanel().match(/\{#snippet actions\(\)\}[\s\S]*?\{\/snippet\}/);
     expect(actions).not.toBeNull();
     expect(actions![0]).toContain("<PanelActions");
+    expect(actions![0]).not.toContain("PanelSummary");
 
-    // The pair itself lives one file down — the panel's template branched four
-    // ways with them inline, which put it over the complexity gate.
+    // The control itself lives one file down — the panel's template branched
+    // four ways with it inline, which put it over the complexity gate.
     const cluster = read("routes/(app)/statistics/panel-actions.svelte");
-    expect(cluster).toContain("<PanelSummary");
-    expect(cluster).toContain("<RangeSwitcher");
+    expect(cluster).toContain("<ScopeToggle");
+    expect(cluster).not.toContain("PanelSummary");
+  });
+
+  // Above the plot, not merely "somewhere in the file": a figure rendered after
+  // the chart is a footnote, and one rendered inside the actions snippet is what
+  // this change exists to undo.
+  test("the headline figure is the first thing in the body, over the plot", () => {
+    const markup = template(chartPanel());
+    const figure = markup.indexOf("<PanelSummary");
+    const plot = markup.indexOf("{@render children()}");
+    expect(figure).toBeGreaterThan(-1);
+    expect(plot).toBeGreaterThan(-1);
+    expect(figure).toBeLessThan(plot);
+    // `template()` drops the snippet bodies, so finding it at all proves it is
+    // not in the header cluster — and this states why.
+    const card = openTagOf(markup, "Section");
+    expect(card, "chart-panel renders no Section").not.toBeNull();
+    expect(enclosingTags(markup, "<PanelSummary")).toContain(card!);
   });
 
   // The window used to be glued onto the title with an em dash; Section has a
