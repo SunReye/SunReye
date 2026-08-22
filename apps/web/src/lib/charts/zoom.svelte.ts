@@ -39,7 +39,14 @@ import {
 } from "./gesture";
 
 import { pointerKind } from "./pointer.svelte";
-import { labelOptionsFrom, MIN_BAND_EXTENT, type LabelOptions } from "./zoom-range";
+import {
+  labelOptionsFrom,
+  MIN_BAND_EXTENT,
+  minExtentFor,
+  zoomedHistoryRangeFrom,
+  type LabelOptions,
+} from "./zoom-range";
+import type { HistoryRange, RollupBucket } from "../inverter/ranges";
 
 /**
  * Zone and clock for a zoom's own labels, from the viewer's display
@@ -149,4 +156,38 @@ export function chartZoom(options: ChartZoomOptions = {}) {
       options.onReset?.();
     },
   };
+}
+
+/**
+ * The controller both history plots share: a drag selects a window and the OWNER
+ * refetches it at a finer rollup.
+ *
+ * `metric-history-chart.svelte` and `custom-chart-plot.svelte` had this
+ * construction character for character — the same floor, the same range
+ * mapping, the same two callbacks. It is one behaviour ("select a window on a
+ * history plot"), and two copies of it are two places to fix when the mapping
+ * changes.
+ *
+ * `bucket` is a getter because it is reactive at both call sites: the floor
+ * follows whatever rollup is currently on screen.
+ */
+export function historyZoom(options: {
+  /** The bucket currently plotted; the selection floor is two of them. */
+  bucket: () => RollupBucket;
+  /** A settled selection, for the owner to refetch. */
+  onZoom?: (range: HistoryRange) => void;
+  /** Clear whatever the owner did with a previous selection. */
+  onResetZoom?: () => void;
+}): ChartZoom {
+  return chartZoom({
+    // Two of whatever bucket is on screen: on a 5-minute window a one-minute
+    // drag is a fingertip's width, and a mis-tap that refetches every card on
+    // the page is worse than no gesture at all.
+    minExtent: () => minExtentFor(options.bucket()),
+    onSelect: (x) => {
+      const range = zoomedHistoryRangeFrom(x, zoomLabelOptions());
+      if (range) options.onZoom?.(range);
+    },
+    onReset: () => options.onResetZoom?.(),
+  });
 }

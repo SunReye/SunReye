@@ -10,15 +10,13 @@
 	import type { Snippet } from 'svelte';
 	import SectionActions from './section-actions.svelte';
 	import SectionCollapseTrigger from './section-collapse-trigger.svelte';
-	import type { FullscreenBox } from '$lib/charts/fullscreen.svelte';
 	import { sectionActionsClass, sectionHeaderGridClass } from '$lib/layout/tokens';
 
 	let {
 		title,
 		caption,
 		actions,
-		collapsible = false,
-		screen = null
+		collapsible = false
 	}: {
 		title: string;
 		/** Context under the title, e.g. "This month, by day". */
@@ -27,8 +25,6 @@
 		actions?: Snippet;
 		/** Renders the collapse trigger. */
 		collapsible?: boolean;
-		/** Present when the card can take the screen; renders the trigger. */
-		screen?: FullscreenBox | null;
 	} = $props();
 </script>
 
@@ -67,7 +63,7 @@
 	     wrapping row that needed it: nothing about column two changes below
 	     `sm`, so there is no phone-only arrangement left to correct. -->
 	<div data-slot="section-actions" class={sectionActionsClass()}>
-		<SectionActions {actions} {screen} />
+		<SectionActions {actions} />
 		{#if collapsible}
 			<SectionCollapseTrigger {title} />
 		{/if}

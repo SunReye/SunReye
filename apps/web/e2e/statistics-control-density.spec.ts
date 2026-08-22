@@ -123,14 +123,21 @@ test("a chart panel's header holds chrome only, and its data sits over the plot"
   const panel = card(page, "Total cost");
   const row = header(panel);
 
-  // One: the full-screen toggle. This is the row the complaint was about, and it
-  // carried four items — a figure, a bucket chip, a span chip and the icon. The
-  // window control was the last of the four to leave: it is a text-labelled
-  // choice about the plot, not chrome, so it belongs with the panel's own data.
-  await expect(row.getByRole("button")).toHaveCount(1);
-  await expect(row.getByRole("button", { name: "Full screen" })).toHaveCount(1);
+  // NONE. This is the row the complaint was about and it carried four items — a
+  // figure, a bucket chip, a span chip and the ⤢. Each left for a different
+  // reason: the two chips because a bucket is not a choice (one grain per
+  // period), the figure and the window control because they are the panel's own
+  // data rather than chrome, and the ⤢ last of all, because in a cluster it sat
+  // one 44px box from the collapse caret and the two were mispressed. It is in
+  // the plot's bottom-right corner now — `e2e/plot-corner-controls.spec.ts`
+  // measures where, this only states that the header is empty of it.
+  await expect(row.getByRole("button")).toHaveCount(0);
+  await expect(row.getByRole("button", { name: "Full screen" })).toHaveCount(0);
   await expect(row.getByRole("button", { name: "Show 12 months" })).toHaveCount(0);
   await expect(row.locator("[data-slot=panel-figure]")).toHaveCount(0);
+
+  // And exactly one of them exists on the panel, over the plot.
+  await expect(panel.getByRole("button", { name: "Full screen" })).toHaveCount(1);
 
   // Both are the readout row now: the figure left, the control right, on one
   // line between the header and the plot.
@@ -228,7 +235,8 @@ for (const panelTitle of ["Total cost", "Energy flows"]) {
     const panel = card(page, panelTitle);
     const inPage = await panel.locator("[data-slot=chart]").first().boundingBox();
 
-    await header(panel).getByRole("button", { name: "Full screen" }).click();
+    // In the plot's corner, not the header — see the previous test.
+    await panel.getByRole("button", { name: "Full screen" }).click();
     const expanded = page.locator("section.fixed");
     await expect(expanded).toHaveCount(1);
     await expect(expanded.locator("[data-slot=chart]")).toHaveCount(1);

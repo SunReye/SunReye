@@ -15,8 +15,8 @@
 	import CustomChartTooltip from '$lib/components/inverter/custom-chart-tooltip.svelte';
 	import type { ResolvedAxes } from '$lib/components/inverter/_shared/chart-series';
 	import ZoomControls from '$lib/charts/zoom-controls.svelte';
-	import { chartZoom, zoomLabelOptions } from '$lib/charts/zoom.svelte';
-	import { minExtentFor, zoomedHistoryRangeFrom } from '$lib/charts/zoom-range';
+	import PlotFrame from '$lib/components/layout/plot-frame.svelte';
+	import { historyZoom } from '$lib/charts/zoom.svelte';
 	import { fittedPadding } from '$lib/charts/plot-padding';
 	import type { HistoryRange, RollupBucket } from '$lib/inverter/ranges';
 	import type { AxisSeries, Datum } from '$lib/inverter/chart-axes';
@@ -71,13 +71,13 @@
 	// time. The live form is deliberately left out: it already runs a transform
 	// of its own inside a ChartClipPath to glide the window, and a second one
 	// composes badly (see apps/web/DESIGN.md, "Gestures on a chart").
-	const zoom = chartZoom({
-		minExtent: () => minExtentFor(bucket),
-		onSelect: (x) => {
-			const range = zoomedHistoryRangeFrom(x, zoomLabelOptions());
-			if (range) onZoom?.(range);
-		},
-		onReset: () => onResetZoom?.()
+	// Every field is a closure, deliberately: a prop passed by value here would
+	// capture whatever it was on the first render, and the page reassigns these
+	// handlers as its range changes.
+	const zoom = historyZoom({
+		bucket: () => bucket,
+		onZoom: (range) => onZoom?.(range),
+		onResetZoom: () => onResetZoom?.()
 	});
 
 	// AreaChart's `marks` context isn't exposed in the public types; type just the
@@ -107,61 +107,73 @@
 
 <!-- One measuring box around both forms: the plot is the same box whichever
      branch renders, and measuring per-branch would re-measure on every switch.
-     `relative` because ZoomControls positions against it. -->
-<div class="relative h-full w-full" bind:clientWidth={plotWidth}>
-	<ZoomControls {zoom} resettable={zoomed} />
-	{#if axes.grouping.dualAxis}
-		<Chart.Container {config} class="aspect-auto h-full w-full">
-			<AreaChart
-				{data}
-				x="date"
-				series={axes.plotSeries}
-				{xDomain}
-				yDomain={[0, 1]}
-				seriesLayout="overlap"
-				axis={dualAxes}
-				grid={false}
-				highlight={false}
-				padding={fittedPadding(DUAL_AXIS_PADDING, plotWidth, { rightAxis: true })}
-				{...zoom.props}
-				{belowContext}
-			>
-				{#snippet marks({ context }: MarksContext)}
-					<!-- `overlay`: several measures compared, so a stroke and no fill
-					     ($lib/charts/house-style). Two translucent fills over each
-					     other mix into a third colour belonging to neither series. -->
-					{#each context.series.visibleSeries as s (s.key)}
-						<Area seriesKey={s.key} {...houseLine('overlay')} />
-					{/each}
-					<Highlight points lines />
-				{/snippet}
-				{#snippet tooltip()}
-					<CustomChartTooltip {series} {labelFormatter} />
-				{/snippet}
-			</AreaChart>
-		</Chart.Container>
-	{:else}
-		<Chart.Container {config} class="aspect-auto h-full w-full">
-			<AreaChart
-				{data}
-				x="date"
-				{series}
-				{xDomain}
-				seriesLayout="overlap"
-				axis
-				grid
-				padding={fittedPadding(PADDING, plotWidth)}
-				{...zoom.props}
-				{belowContext}
-				props={{
-					area: houseLine('overlay'),
-					xAxis: { format: xTickFormat, ticks: 4 }
-				}}
-			>
-				{#snippet tooltip()}
-					<CustomChartTooltip {series} {labelFormatter} />
-				{/snippet}
-			</AreaChart>
-		</Chart.Container>
-	{/if}
+     It stays an element of its own rather than becoming PlotFrame: the frame owns
+     its inner div, so `bind:clientWidth` cannot ride on it, and the binding has to
+     keep reading the plot's box. Same box either way — this element is what sizes
+     the frame — and the height is still the card's, since EXPANDED_SECTION's
+     `*:has([data-slot=chart])` chain claims every ancestor of the plot, this one
+     included. `relative` moved with the controls: it is PlotFrame's box the
+     corners resolve against now. -->
+<div class="h-full w-full" bind:clientWidth={plotWidth}>
+	<PlotFrame>
+		{#snippet chips()}
+			<!-- The transient top-right corner: ZoomControls positions itself
+			     absolutely, so it needs PlotFrame's `relative` box. -->
+			<ZoomControls {zoom} resettable={zoomed} />
+		{/snippet}
+		{#if axes.grouping.dualAxis}
+			<Chart.Container {config} class="aspect-auto h-full w-full">
+				<AreaChart
+					{data}
+					x="date"
+					series={axes.plotSeries}
+					{xDomain}
+					yDomain={[0, 1]}
+					seriesLayout="overlap"
+					axis={dualAxes}
+					grid={false}
+					highlight={false}
+					padding={fittedPadding(DUAL_AXIS_PADDING, plotWidth, { rightAxis: true })}
+					{...zoom.props}
+					{belowContext}
+				>
+					{#snippet marks({ context }: MarksContext)}
+						<!-- `overlay`: several measures compared, so a stroke and no fill
+						     ($lib/charts/house-style). Two translucent fills over each
+						     other mix into a third colour belonging to neither series. -->
+						{#each context.series.visibleSeries as s (s.key)}
+							<Area seriesKey={s.key} {...houseLine('overlay')} />
+						{/each}
+						<Highlight points lines />
+					{/snippet}
+					{#snippet tooltip()}
+						<CustomChartTooltip {series} {labelFormatter} />
+					{/snippet}
+				</AreaChart>
+			</Chart.Container>
+		{:else}
+			<Chart.Container {config} class="aspect-auto h-full w-full">
+				<AreaChart
+					{data}
+					x="date"
+					{series}
+					{xDomain}
+					seriesLayout="overlap"
+					axis
+					grid
+					padding={fittedPadding(PADDING, plotWidth)}
+					{...zoom.props}
+					{belowContext}
+					props={{
+						area: houseLine('overlay'),
+						xAxis: { format: xTickFormat, ticks: 4 }
+					}}
+				>
+					{#snippet tooltip()}
+						<CustomChartTooltip {series} {labelFormatter} />
+					{/snippet}
+				</AreaChart>
+			</Chart.Container>
+		{/if}
+	</PlotFrame>
 </div>

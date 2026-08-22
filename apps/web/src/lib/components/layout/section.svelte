@@ -16,6 +16,7 @@
 	import { FullscreenBox } from '$lib/charts/fullscreen.svelte';
 	import { portal } from '$lib/actions/portal';
 	import { sectionOpen, writesOwnOpen } from '$lib/layout/section-state';
+	import { provideFullscreen } from '$lib/charts/fullscreen-context';
 	import SectionHeader from './section-header.svelte';
 	import SectionBody from './section-body.svelte';
 
@@ -91,6 +92,33 @@
 	const screen = $derived(provided ?? own);
 	$effect(() => (fullscreen ? screen.listen() : undefined));
 
+	// Published for the plot inside, which is where the control renders now —
+	// several components down, past whichever chart wrapper the page uses. See
+	// `charts/fullscreen-context.ts` for why this is context and not a prop.
+	//
+	// Unconditional on `fullscreen` being set: `setContext` may only run during
+	// init, and `fullscreen` is a prop that could in principle arrive later. A
+	// card that never asked for the control publishes a box nothing consumes,
+	// which costs one context entry and no behaviour — a plot frame only draws a
+	// trigger when its card is one that expands.
+	// Which plot frame in this card draws the corner control — see
+	// `claimCorner`. A card with one plot never exercises this; a card with two
+	// is the reason it exists.
+	let cornerOwner = $state<symbol | null>(null);
+
+	provideFullscreen({
+		get box() {
+			return screen;
+		},
+		claimCorner(token: symbol) {
+			cornerOwner ??= token;
+			return () => cornerOwner === token;
+		},
+		releaseCorner(token: symbol) {
+			if (cornerOwner === token) cornerOwner = null;
+		}
+	});
+
 	function handleOpenChange(next: boolean) {
 		if (writesOwnOpen(controlled)) open = next;
 		onOpenChange?.(next);
@@ -105,7 +133,7 @@
 			fullscreen && screen.expanded
 		)}
 	>
-		<SectionHeader {title} {caption} {actions} {collapsible} screen={fullscreen ? screen : null} />
+		<SectionHeader {title} {caption} {actions} {collapsible} />
 		<SectionBody {children} />
 	</section>
 </Collapsible.Root>

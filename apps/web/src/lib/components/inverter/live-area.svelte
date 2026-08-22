@@ -12,6 +12,7 @@
 		sampleInterval
 	} from '$lib/components/inverter/_shared/live-window';
 	import { display } from '$lib/display.svelte';
+	import PlotFrame from '$lib/components/layout/plot-frame.svelte';
 	import { fittedPadding, shouldRenderPlot } from '$lib/charts/plot-padding';
 	import { downsample, pointBudget } from '$lib/components/inverter/_shared/downsample';
 	import type { LivePoint } from '$lib/inverter/types';
@@ -144,7 +145,20 @@
      `h-full` and not `w-full` alone: /history hands this component `h-full`,
      which resolves against THIS div — an unsized wrapper made every live chart
      on that page render at 0px. -->
+<!-- Framed, like the historical plot next door in `metric-card-plot.svelte`: a
+     /history card shows THIS component while its range is live, and without a
+     frame that card offered full screen and drew no button — which the unit
+     sweep in `charts/fullscreen-coverage.test.ts` cannot see, because it reads
+     imports and this is one of two branches. `e2e/plot-corner-controls.spec.ts`
+     is what caught it.
+
+     Safe in the other use too, and this is why the frame is unconditional: the
+     dashboard KPI tile draws this same component as a 40px decorative sparkline
+     with no enclosing card, so no `FullscreenBox` reaches it through context and
+     the frame renders no control there. The distinction the sweep documents as
+     "a chart here, an ornament there" costs nothing at this end. -->
 <div class="h-full w-full" bind:clientWidth={plotWidth}>
+	<PlotFrame>
 	{#if !shouldRenderPlot(plotWidth)}
 		<!-- One frame, before `bind:clientWidth` lands. Rendering the plot here
 		     would build every scale, tick, grid line and area path at width 0 and
@@ -197,6 +211,7 @@
 			</AreaChart>
 		</Chart.Container>
 	{/if}
+	</PlotFrame>
 </div>
 
 {#snippet tooltipValue({ value }: { value: unknown })}

@@ -30,6 +30,7 @@
 	import { chartPaddingFor, xTickSpacingFor } from '$lib/cost/ranges';
 	import { CHART_BOX } from '$lib/layout/tokens';
 	import ZoomControls from '$lib/charts/zoom-controls.svelte';
+	import PlotFrame from '$lib/components/layout/plot-frame.svelte';
 	import { chartZoom } from '$lib/charts/zoom.svelte';
 	import { bandIndexRange } from '$lib/charts/zoom-range';
 
@@ -114,8 +115,12 @@
 {#snippet belowContext({ context }: { context: ChartState<Row> })}{zoom.capture(context)}{/snippet}
 
 <div class="flex min-w-0 flex-col gap-3" bind:this={highlight.el} bind:clientWidth={plotWidth}>
-	<div class="relative">
-		<ZoomControls {zoom} resettable={zoomed} />
+	<!-- The plot's own box: `PlotFrame` is the `relative` ancestor the zoom chips
+	     have always positioned against, and it is also what draws full screen in
+	     the opposite corner. The height stays the container's (`CHART_BOX`) — the
+	     frame adds no box of its own. -->
+	<PlotFrame>
+		{#snippet chips()}<ZoomControls {zoom} resettable={zoomed} />{/snippet}
 		<Chart.Container {config} class="{CHART_BOX} w-full min-w-0">
 			{#if bars}
 				<!-- A quantity that belongs to the bucket: one bar per period per
@@ -174,6 +179,6 @@
 				</LineChart>
 			{/if}
 		</Chart.Container>
-	</div>
+	</PlotFrame>
 	<ChartLegend items={series} />
 </div>

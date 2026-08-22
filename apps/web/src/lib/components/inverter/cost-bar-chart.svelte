@@ -7,6 +7,7 @@
 	import TooltipSeriesRow from '$lib/components/inverter/_shared/tooltip-series-row.svelte';
 	import { seriesConfig, stackedBarProps } from '$lib/components/inverter/_shared/chart-series';
 	import { CHART_BOX } from '$lib/layout/tokens';
+	import PlotFrame from '$lib/components/layout/plot-frame.svelte';
 	import { periodKeyLabel, type CostBucket } from '$lib/cost/ranges';
 
 	// One diverging stack per period. Mirrors the server's CostSeriesPoint
@@ -79,32 +80,37 @@
 </script>
 
 <div class="flex min-w-0 flex-col gap-3" bind:clientWidth={plotWidth}>
-	<Chart.Container {config} class="{CHART_BOX} w-full">
-		<BarChart
-			{data}
-			x="label"
-			{series}
-			seriesLayout="stackDiverging"
-			{...stackedBarProps(data.length, plotWidth)}
-		>
-			{#snippet tooltip()}
-				<Chart.Tooltip>
-					{#snippet formatter({ value, name, item, index, payload })}
-						<TooltipSeriesRow {item} {name} value={money(Number(value))} />
-						{#if index === payload.length - 1}
-							<div
-								class="mt-0.5 flex basis-full items-center justify-between gap-4 border-t border-border/50 pt-1.5 leading-none"
-							>
-								<span class="text-muted-foreground">{m.chart_net()}</span>
-								<span class="font-mono font-medium tabular-nums text-foreground">
-									{money(netOf(payload))}
-								</span>
-							</div>
-						{/if}
-					{/snippet}
-				</Chart.Tooltip>
-			{/snippet}
-		</BarChart>
-	</Chart.Container>
+	<!-- The plot's own box. No gesture here, so no chips — the frame is present
+	     for the corner full-screen control, and it adds no height: the container's
+	     `CHART_BOX` is still what sizes the plot. -->
+	<PlotFrame>
+		<Chart.Container {config} class="{CHART_BOX} w-full">
+			<BarChart
+				{data}
+				x="label"
+				{series}
+				seriesLayout="stackDiverging"
+				{...stackedBarProps(data.length, plotWidth)}
+			>
+				{#snippet tooltip()}
+					<Chart.Tooltip>
+						{#snippet formatter({ value, name, item, index, payload })}
+							<TooltipSeriesRow {item} {name} value={money(Number(value))} />
+							{#if index === payload.length - 1}
+								<div
+									class="mt-0.5 flex basis-full items-center justify-between gap-4 border-t border-border/50 pt-1.5 leading-none"
+								>
+									<span class="text-muted-foreground">{m.chart_net()}</span>
+									<span class="font-mono font-medium tabular-nums text-foreground">
+										{money(netOf(payload))}
+									</span>
+								</div>
+							{/if}
+						{/snippet}
+					</Chart.Tooltip>
+				{/snippet}
+			</BarChart>
+		</Chart.Container>
+	</PlotFrame>
 	<ChartLegend items={series} />
 </div>

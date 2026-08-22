@@ -12,6 +12,7 @@
 	import { periodKeyLabel } from '$lib/cost/ranges';
 	import { CHART_BOX } from '$lib/layout/tokens';
 	import ZoomControls from '$lib/charts/zoom-controls.svelte';
+	import PlotFrame from '$lib/components/layout/plot-frame.svelte';
 	import { chartZoom } from '$lib/charts/zoom.svelte';
 	import type { YoyRow } from '$lib/statistics/yoy';
 
@@ -81,8 +82,11 @@
 {#snippet belowContext({ context }: { context: ChartState<YoyRow> })}{zoom.capture(context)}{/snippet}
 
 <div class="flex min-w-0 flex-col gap-3" bind:this={highlight.el} bind:clientWidth={plotWidth}>
-	<div class="relative">
-		<ZoomControls {zoom} />
+	<!-- The plot's own box: the same `relative` ancestor the zoom chips were
+	     already positioned against, now also the anchor for full screen in the
+	     opposite corner. The height stays the container's (`CHART_BOX`). -->
+	<PlotFrame>
+		{#snippet chips()}<ZoomControls {zoom} />{/snippet}
 		<Chart.Container {config} class="{CHART_BOX} w-full min-w-0">
 			<BarChart
 				{data}
@@ -99,6 +103,6 @@
 				{/snippet}
 			</BarChart>
 		</Chart.Container>
-	</div>
+	</PlotFrame>
 	<ChartLegend items={series} />
 </div>
