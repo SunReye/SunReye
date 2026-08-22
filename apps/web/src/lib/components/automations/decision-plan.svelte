@@ -89,7 +89,7 @@
 
 <Section title={m.automations_plan_title()}>
 	{#snippet actions()}
-		<RangeSwitcher options={VIEW_OPTIONS} bind:value={view} />
+		<RangeSwitcher options={VIEW_OPTIONS} bind:value={view} label={m.range_select_view_aria()} />
 	{/snippet}
 
 	{#if !loaded}

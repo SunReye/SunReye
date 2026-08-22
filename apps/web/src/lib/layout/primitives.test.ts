@@ -99,8 +99,15 @@ describe("section header", () => {
     expect(sectionHeader).toMatch(/<h2 class="truncate/);
   });
 
-  test("the header cluster uses the shared control-cluster gap", () => {
-    expect(sectionHeader).toContain("{CLUSTER_GAP}");
+  // The gap is no longer named here because the spacing is no longer this
+  // component's to name: the row and its cluster take whole class strings from
+  // the tokens, and CLUSTER_GAP is spent inside those. What this pins is that
+  // the header did not go back to writing its own — a literal utility in the
+  // template is the regression, whichever value it happens to carry.
+  test("the header spends no spacing of its own on its row or cluster", () => {
+    expect(sectionHeader).toContain("class={sectionHeaderGridClass()}");
+    expect(sectionHeader).toContain("class={sectionActionsClass()}");
+    expect(sectionHeader).not.toMatch(/class="[^"]*\bgap-/);
   });
 
   // On a phone this caret is the only way to fold a section, so what matters is

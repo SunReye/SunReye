@@ -1,9 +1,10 @@
 /**
  * The live-readout storm.
  *
- * `MetricCardActions` renders in the Section's `actions` snippet, which sits
- * ABOVE the `{#if !mounted}` gate — so all 63 history cards ran a readout Tween
- * while only four charts existed. At the measured 1s feed cadence the glide is
+ * The live readout renders in the card's readout row, the first row of the body,
+ * which sits ABOVE the `{#if !mounted}` gate — as the Section's `actions` snippet
+ * it came from did too, so nothing about this hazard changed when it moved. All
+ * 63 history cards ran a readout Tween while only four charts existed. At the measured 1s feed cadence the glide is
  * 1150ms, LONGER than the interval, so each of those rAF loops never settles.
  * Measured on the tablet: 829 characterData mutations per 10s on /history
  * against 78 on the overview.

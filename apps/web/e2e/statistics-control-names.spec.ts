@@ -27,18 +27,32 @@ import { expect, type Locator, type Page, test } from "@playwright/test";
 import { openPage } from "./support/open-page";
 
 /**
- * Every button name in `scope`, as the accessibility tree reports them.
+ * Every control name in `scope`, as the accessibility tree reports them.
  *
  * Per matched element, because `ariaSnapshot` is strict and the navigator is two
  * sibling groups rather than one box.
+ *
+ * Both roles, because the segmented switchers are real ToggleGroups now: the
+ * grain tabs report as `radio` inside a radiogroup while the arrows and the
+ * calendar trigger are still `button`. Matching only one role would quietly
+ * shrink the census this test's whole claim is made over — and a name collision
+ * between a radio and a button is exactly as bad for a screen reader as one
+ * between two buttons.
  */
-async function buttonNames(scope: Locator): Promise<string[]> {
+async function controlNames(scope: Locator): Promise<string[]> {
   const names: string[] = [];
   for (const row of await scope.all()) {
     const snapshot = await row.ariaSnapshot();
-    names.push(...[...snapshot.matchAll(/- button "([^"]*)"/g)].map((match) => match[1]));
+    names.push(...[...snapshot.matchAll(/- (?:button|radio) "([^"]*)"/g)].map((match) => match[1]));
   }
   return names;
+}
+
+/** The one control answering to `name`, whichever of the two roles it carries. */
+function named(page: Page, name: string): Locator {
+  return page
+    .getByRole("button", { name, exact: true })
+    .or(page.getByRole("radio", { name, exact: true }));
 }
 
 /** The navigator's two rows: the four grain tabs, and `‹ 📅 title ›`. */
@@ -54,10 +68,10 @@ test("no navigator control shares its accessible name with anything else on /sta
   // The compare switcher is the control that collides, and it only exists once
   // the comparison payload has landed — so wait for its OTHER option before
   // counting anything.
-  await expect(page.getByRole("button", { name: "Year ago", exact: true })).toBeVisible();
+  await expect(page.getByRole("radio", { name: "Year ago", exact: true })).toBeVisible();
   await expect(navigatorRows(page)).toHaveCount(2);
 
-  const names = await buttonNames(navigatorRows(page));
+  const names = await controlNames(navigatorRows(page));
   // Four tabs, two arrows, the calendar trigger.
   expect(names).toHaveLength(7);
 
@@ -65,12 +79,12 @@ test("no navigator control shares its accessible name with anything else on /sta
   expect([...new Set(names)]).toHaveLength(names.length);
   // …and unique on the page: exactly one control answers to each of them.
   for (const name of names) {
-    await expect(page.getByRole("button", { name, exact: true })).toHaveCount(1);
+    await expect(named(page, name)).toHaveCount(1);
   }
 
   // And the collision was resolved by naming the ARROWS, not by renaming the
   // compare mode out from under the reader who already knows it.
-  await expect(page.getByRole("button", { name: "Previous period", exact: true })).toHaveCount(1);
+  await expect(named(page, "Previous period")).toHaveCount(1);
   expect(names).not.toContain("Previous period");
 
   expect(opened.consoleErrors).toEqual([]);

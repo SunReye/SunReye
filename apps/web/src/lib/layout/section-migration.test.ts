@@ -377,6 +377,9 @@ describe("the bespoke cards keep what made them worth keeping", () => {
       expect(actions!).toContain("aria-label={msg.chart_delete_chart()}");
       expect(actions!).toContain("onclick={onEdit}");
       expect(actions!).toContain("onclick={onDelete}");
+      // Icon-only IS chrome, so these two stay put — this card spends no readout
+      // row, and an empty one would cost every saved chart a gap above its plot.
+      expect(card()).not.toContain("PanelReadoutRow");
     });
 
     test("the chart's name is the section title, not a heading of its own", () => {
@@ -408,19 +411,35 @@ describe("the bespoke cards keep what made them worth keeping", () => {
       expect(enclosingTags(template(code), "<Section")).toContain(tag!);
     });
 
-    // The live reading was the right half of the old header row; it is the
-    // header action now. Dropped, the card shows history with no current value.
-    test("the live readout is the header action", () => {
-      // The readout moved into `metric-card-actions.svelte` when the
-      // add-to-chart menu joined it there; what matters to this migration is
-      // still that the live value is the section's header action and not a
-      // second row of its own.
-      const actions = snippetBody(card(), "actions");
-      expect(actions, "entity-history-card passes Section no actions").not.toBeNull();
-      expect(actions!).toContain("<MetricCardActions");
-      expect(read("lib/components/inverter/_shared/metric-card-actions.svelte")).toMatch(
-        /<MetricReadout\s[^>]*\{value\}[^>]*\{unit\}/,
-      );
+    // The live reading was the right half of the old header row, then the
+    // section's header action; it is the readout row now — the first row of the
+    // body, above the plot. Dropped, the card shows history with no current
+    // value at all.
+    test("the live readout is the row above the plot and the header keeps only chrome", () => {
+      const code = card();
+      const value = snippetBody(code, "reading");
+      expect(value, "entity-history-card hands PanelReadoutRow no value").not.toBeNull();
+      expect(value!).toMatch(/<MetricReadout\s[^>]*value=\{current\}/);
+      // Not decoration: the row renders ABOVE the lazy-mount gate exactly as
+      // the header cluster did, so without the gate all 63 cards run a 1150ms
+      // Tween against a 1s feed — an rAF loop that never settles. The mechanism
+      // is pinned in `_shared/live-glide-wiring.test.ts`.
+      expect(value!).toContain("animate={mounted}");
+      // What is left in the header is chrome: the compare menu is icon-only.
+      const actions = snippetBody(code, "actions");
+      expect(actions).toContain("<MetricCompareMenu");
+      expect(actions).not.toContain("<MetricReadout");
+    });
+
+    // Above the gate, not merely inside the card: the point of a live reading is
+    // that it is there before the history is, and while the card is off screen.
+    test("the readout row sits above the lazy-mount gate", () => {
+      const markup = template(card());
+      const row = markup.indexOf("<PanelReadoutRow");
+      const gate = markup.indexOf("{#if !mounted}");
+      expect(row).toBeGreaterThan(-1);
+      expect(gate).toBeGreaterThan(-1);
+      expect(row).toBeLessThan(gate);
     });
   });
 
@@ -445,8 +464,15 @@ describe("the bespoke cards keep what made them worth keeping", () => {
       expect(wrappers.some((tag) => /^<div[^>]*transition:fade/.test(tag))).toBe(true);
     });
 
-    test("the kWh/percent switcher is the header action", () => {
-      expect(snippetBody(chart(), "actions")).toContain("<RangeSwitcher");
+    // A text-labelled switcher is not chrome. It reads as one of the card's own
+    // controls, so it belongs in the readout row with them — a card holding a
+    // plot keeps icons only in its header cluster.
+    test("the kWh/percent switcher is a text control, so it sits above the plots", () => {
+      const code = chart();
+      expect(snippetBody(code, "controls")).toContain("<RangeSwitcher");
+      expect(snippetBody(code, "actions"), "the header cluster is empty now").toBeNull();
+      const markup = template(code);
+      expect(markup.indexOf("<PanelReadoutRow")).toBeLessThan(markup.indexOf("<EnergySplitBlock"));
     });
   });
 
@@ -478,16 +504,20 @@ describe("the bespoke cards keep what made them worth keeping", () => {
   describe("the hour-by-weekday heatmap", () => {
     const heatmap = () => read("lib/components/statistics/hour-weekday-heatmap.svelte");
 
-    // The metric switcher lives in the header, and the panel deliberately stays
-    // mounted when the chosen metric is flat — unmounting strands the reader on
-    // a choice they cannot undo. Both of those are one claim: the switcher is
-    // in the header, and the header is outside the `hasData` branch.
-    test("the metric switcher is the header action and outlives an empty metric", () => {
+    // The metric switcher is a text control, so it sits in the readout row above
+    // the grid rather than in the header cluster; and the panel deliberately
+    // stays mounted when the chosen metric is flat — unmounting strands the
+    // reader on a choice they cannot undo without reloading. Both are one claim:
+    // the switcher is in the row, and the row is outside the `hasData` branch.
+    test("the metric switcher is the row above the grid and outlives an empty metric", () => {
       const code = heatmap();
-      const actions = snippetBody(code, "actions");
-      expect(actions).toContain("<RangeSwitcher");
-      expect(actions).toContain("bind:value={metric}");
-      expect(actions!.includes("{#if hasData}")).toBe(false);
+      const controls = snippetBody(code, "controls");
+      expect(controls).toContain("<RangeSwitcher");
+      expect(controls).toContain("bind:value={metric}");
+      const markup = template(code);
+      const row = markup.indexOf("<PanelReadoutRow");
+      expect(row).toBeGreaterThan(-1);
+      expect(row).toBeLessThan(markup.indexOf("{#if hasData}"));
     });
 
     test("its subtitle becomes the section caption", () => {
@@ -598,6 +628,12 @@ describe("the comparison reference is a page control", () => {
 
 describe("the chart panel nests without doubling the chrome", () => {
   const chartPanel = () => read("routes/(app)/statistics/chart-panel.svelte");
+  // The row and its two guards live one file down, in the component whose whole
+  // job is deciding which cells this panel spends. The card renders it and knows
+  // nothing else about it — which is the point: with the guards inline, the
+  // card's template carried the figure, the caption, the plot AND four branches,
+  // and crossed the complexity gate.
+  const panelReadout = () => read("routes/(app)/statistics/panel-readout.svelte");
 
   // On the tag, not anywhere in the file: without the prop the panel draws a
   // second border and a second pad inside the section that already has both,
@@ -608,39 +644,62 @@ describe("the chart panel nests without doubling the chrome", () => {
     expect(hasAttribute(tag!, "nested")).toBe(true);
   });
 
-  // The header cluster holds CONTROLS. It held the headline figure too, and a
-  // row reading "EUR 6.62 –  By day  12 months  ⤢" is five things wearing one
-  // grammar: the reader counts five controls where there are two. The figure is
-  // the panel's own data, so it moved into the body, directly above the plot it
-  // describes.
-  test("the header cluster holds the window control and nothing that is not one", () => {
-    const actions = chartPanel().match(/\{#snippet actions\(\)\}[\s\S]*?\{\/snippet\}/);
-    expect(actions).not.toBeNull();
-    expect(actions![0]).toContain("<PanelActions");
-    expect(actions![0]).not.toContain("PanelSummary");
+  // A row reading "EUR 6.62 –  By day  12 months  ⤢" is five things wearing one
+  // grammar: the reader counts five controls where there are two. That is still
+  // the claim — the readout row satisfies it now, rather than a split between the
+  // header and the body, so the figure and the window control are BOTH out of the
+  // header cluster and both above the plot: one left, one right, one line.
+  test("the figure and the window control share the row above the plot", () => {
+    expect(snippetBody(chartPanel(), "actions"), "the header cluster is empty now").toBeNull();
+    const readout = panelReadout();
+    expect(snippetBody(readout, "headline")).toContain("<PanelSummary");
+    expect(snippetBody(readout, "windowControl")).toContain("<ScopeToggle");
+  });
 
-    // The control itself lives one file down — the panel's template branched
-    // four ways with it inline, which put it over the complexity gate.
-    const cluster = read("routes/(app)/statistics/panel-actions.svelte");
-    expect(cluster).toContain("<ScopeToggle");
-    expect(cluster).not.toContain("PanelSummary");
+  // An empty readout row would cost a gap above the plot of every panel that has
+  // neither cell — the price curves carry a fixed caption, no figure and no
+  // scope. So each cell is passed only when the panel has one, which is also why
+  // the two guards these snippets replaced (`{#if switcher && view}` in
+  // panel-actions, the scope guard in panel-summary) resolve out here.
+  test("each cell is passed only when the panel has one", () => {
+    const code = panelReadout();
+    expect(code).toContain("value={figure ? headline : undefined}");
+    expect(code).toContain("controls={scope ? windowControl : undefined}");
   });
 
   // Above the plot, not merely "somewhere in the file": a figure rendered after
-  // the chart is a footnote, and one rendered inside the actions snippet is what
-  // this change exists to undo.
-  test("the headline figure is the first thing in the body, over the plot", () => {
+  // the chart is a footnote, and one rendered in the header cluster is what this
+  // change exists to undo.
+  test("the readout row is the first thing in the body, over the plot", () => {
     const markup = template(chartPanel());
-    const figure = markup.indexOf("<PanelSummary");
+    // `<PanelReadout` — the panel's own readout component, which renders the
+    // shared `<PanelReadoutRow>` and is asserted to do so below. What matters
+    // here is the ORDER inside the card, and that is this file's to state.
+    const row = markup.indexOf("<PanelReadout");
     const plot = markup.indexOf("{@render children()}");
-    expect(figure).toBeGreaterThan(-1);
+    expect(row).toBeGreaterThan(-1);
     expect(plot).toBeGreaterThan(-1);
-    expect(figure).toBeLessThan(plot);
-    // `template()` drops the snippet bodies, so finding it at all proves it is
-    // not in the header cluster — and this states why.
+    expect(row).toBeLessThan(plot);
     const card = openTagOf(markup, "Section");
     expect(card, "chart-panel renders no Section").not.toBeNull();
-    expect(enclosingTags(markup, "<PanelSummary")).toContain(card!);
+    expect(enclosingTags(markup, "<PanelReadout")).toContain(card!);
+  });
+
+  // …and that the component the card renders is the shared primitive and not a
+  // second row of its own. Without this the case above would pass on a
+  // hand-rolled div named PanelReadout.
+  test("and it reaches the shared row primitive, not a hand-rolled one", () => {
+    const code = panelReadout();
+    expect(code).toContain("$lib/components/layout/panel-readout-row.svelte");
+    expect(code).toContain("<PanelReadoutRow");
+  });
+
+  // The cluster file went with the cluster it was named for: one `{#if}` around
+  // one `<ScopeToggle>` is the `windowControl` snippet, and a file that only
+  // forwards two props is a second place to look for a control that is now
+  // written where it is rendered.
+  test("the header-cluster file is gone", () => {
+    expect(files).not.toContain("routes/(app)/statistics/panel-actions.svelte");
   });
 
   // The window used to be glued onto the title with an em dash; Section has a
@@ -649,5 +708,79 @@ describe("the chart panel nests without doubling the chrome", () => {
     const code = chartPanel();
     expect(code).toMatch(/caption=\{view\?\.caption \?\? caption\}/);
     expect(code).not.toContain("panelHeading");
+  });
+});
+
+/**
+ * Zones 2 and 3: what a card holding a plot is allowed to keep in its header.
+ *
+ * Every card below used to put its value, or its text-labelled switcher, or
+ * both, into the section's header action cluster — where the cluster's own
+ * wrapping rule right-aligned it beside a short title and CENTRED it under a
+ * long or captioned one, so one control landed in two different places on one
+ * page. The header is two grid tracks now and the cluster is hard right at every
+ * width, which only reads as a header if what sits in it is chrome: a caret, an
+ * expand icon, an icon button. Values and text controls go to the readout row,
+ * the first row of the body, above the plot.
+ *
+ * The census is keyed on `fullscreen`, because that prop is exactly the claim
+ * "this card holds a plot", and the plot is the scope of the rule. A settings
+ * panel legitimately keeps a text button in its header cluster and is
+ * deliberately not in this list.
+ */
+describe("a card holding a plot keeps only chrome in its header", () => {
+  const plotCards = files.filter((file) => {
+    if (isPrimitive(file)) return false;
+    const tag = openTagOf(read(file), "Section");
+    return tag !== null && hasAttribute(tag, "fullscreen");
+  });
+
+  // An exact set, not a count: a new chart card that quietly puts its switcher
+  // back in the header has to be added here, and adding it fails the case below.
+  test("the census finds every card that offers full screen", () => {
+    expect(plotCards).toEqual([
+      "lib/components/inverter/custom-chart-card.svelte",
+      "lib/components/inverter/energy-split-chart.svelte",
+      "lib/components/inverter/entity-history-card.svelte",
+      "lib/components/statistics/hour-weekday-heatmap.svelte",
+      "routes/(app)/statistics/chart-panel.svelte",
+      "routes/(app)/statistics/yoy-panel.svelte",
+    ]);
+  });
+
+  /** Things that read as a value or as a text-labelled control, never as chrome. */
+  const NOT_CHROME = ["<RangeSwitcher", "<ScopeToggle", "<MetricReadout", "<PanelSummary"];
+
+  test.each(plotCards)("%s puts nothing but chrome in its header cluster", (file) => {
+    const actions = snippetBody(read(file), "actions") ?? "";
+    for (const tag of NOT_CHROME) expect(actions).not.toContain(tag);
+  });
+
+  // The row is the primitive's job, not five cards' worth of grid classes: it
+  // self-guards on emptiness, and it is the only zone allowed to wrap — which it
+  // does by stacking LEFT. See `lib/components/layout/panel-readout-row.svelte`.
+  test.each([
+    "lib/components/inverter/energy-split-chart.svelte",
+    "lib/components/inverter/entity-history-card.svelte",
+    "lib/components/statistics/hour-weekday-heatmap.svelte",
+    // chart-panel reaches it through `panel-readout.svelte`, which is where its
+    // two cell guards live; the file named here is the one that renders the row.
+    "routes/(app)/statistics/panel-readout.svelte",
+    "routes/(app)/statistics/yoy-panel.svelte",
+  ])("%s reaches the row through the shared primitive", (file) => {
+    const code = read(file);
+    expect(code).toContain("<PanelReadoutRow");
+    expect(code).toMatch(
+      /import PanelReadoutRow from ["']\$lib\/components\/layout\/panel-readout-row\.svelte["']/,
+    );
+  });
+
+  // The year-over-year switcher specifically: it is the one that also writes into
+  // the customize draft, and that function binding has to survive the move or an
+  // admin's pick silently stops being saveable.
+  test("the year-over-year metric switcher keeps its customize-draft binding", () => {
+    const controls = snippetBody(read("routes/(app)/statistics/yoy-panel.svelte"), "controls");
+    expect(controls).toContain("<RangeSwitcher");
+    expect(controls).toContain("bind:value={() => metric, pick}");
   });
 });

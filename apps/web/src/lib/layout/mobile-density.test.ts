@@ -652,7 +652,9 @@ describe("a four-option switcher does not wrap on a phone", () => {
   });
 
   test("it offers a select below sm and the segmented row from sm up", () => {
-    expect(switcher).toContain("OptionSelect");
+    // The phone form is the OS picker: a native list cannot overflow a 360px
+    // card in any locale, which a styled Select could.
+    expect(switcher).toContain("NativeSelect");
     // Both forms are always rendered and CSS picks one: a JS media query here
     // would mean a resize listener per switcher and a visible swap on rotate.
     expect(switcher).toContain("sm:hidden");
@@ -660,8 +662,10 @@ describe("a four-option switcher does not wrap on a phone", () => {
   });
 
   test("both forms drive the same bound value", () => {
-    expect(switcher).toContain("value = o.id");
-    expect(switcher).toMatch(/onchange=\{\(v\) => \(value = v as T\)\}/);
+    // One writer for both: `commitRangeSelection` is what keeps a deselecting
+    // second press from leaving the switcher with no range at all.
+    const writes = switcher.match(/value = commitRangeSelection\(v, value\)/g);
+    expect(writes).toHaveLength(2);
   });
 
   test("only the switchers that need one pay for the select", () => {

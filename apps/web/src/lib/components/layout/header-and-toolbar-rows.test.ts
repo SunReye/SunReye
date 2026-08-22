@@ -10,7 +10,7 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { SECTION_PAD, SHELL_PAD } from "../../layout/tokens";
+import { SECTION_PAD, SHELL_PAD, sectionHeaderGridClass } from "../../layout/tokens";
 
 const LAYOUT = new URL("./", import.meta.url);
 const ROUTES = new URL("../../../routes/(app)/", import.meta.url);
@@ -71,20 +71,33 @@ describe("a section title that does not fit wraps instead of losing its end", ()
   });
 
   // `truncate` stays for the desktop case it was written for. What it may not
-  // do is fire on a phone, where the row is `flex-wrap` and a second line costs
-  // nothing while a silent ellipsis costs the end of the title.
+  // do is fire on a phone, where a second line is free — the title has a column
+  // to itself now — while a silent ellipsis costs the end of the title.
   test("the heading takes its nowrap back below the sm breakpoint", () => {
     const classes = headingClasses();
     expect(classes.split(/\s+/)).toContain("max-sm:whitespace-normal");
   });
 
-  // The reset only wins because the header row wraps: without `flex-wrap` a
-  // two-line title would shove the action cluster off the right edge, which is
-  // the failure `truncate` was originally guarding against.
-  test("the header row still wraps, so a two-line title costs no actions", () => {
-    const row = sectionHeader.match(/<div class="flex[^"]*"[^>]*>/);
-    expect(row).not.toBeNull();
-    expect(row![0]).toContain("flex-wrap");
+  // What makes a second line free is no longer that the row wraps — it does not
+  // any more, and a wrapping row was the bug: the one cluster ended up right of
+  // a short title and centred under a long one. It is that the title and the
+  // chrome sit in two grid tracks, so title length is column one's business
+  // alone and can never move column two. This goes red if the row regresses to
+  // `flex-wrap`, and red just as loudly if the tracks stop being sized to say
+  // so: `auto` for the chrome (content width, nothing more) and `minmax(0,1fr)`
+  // for the title (a grid item's automatic minimum is its min-content size, so
+  // a plain `1fr` would let one long unbroken word blow the track open and push
+  // the chrome off the right edge).
+  test("the header row is two tracks, not one wrapping line", () => {
+    const row = sectionHeader.match(/<div class=\{sectionHeaderGridClass\(\)\}>/);
+    expect(row, "the header row no longer takes its class from the token").not.toBeNull();
+    expect(sectionHeader).not.toContain("flex-wrap");
+
+    const columns = sectionHeaderGridClass().match(/grid-cols-\[([^\]]*)\]/);
+    expect(columns, "the header grid names no explicit columns").not.toBeNull();
+    const [first, second] = columns![1]!.split("_");
+    expect(first).toBe("minmax(0,1fr)");
+    expect(second).toBe("auto");
   });
 });
 

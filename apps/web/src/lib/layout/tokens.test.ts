@@ -25,6 +25,8 @@ import {
   type GridVariant,
   type ShellWidth,
   sectionActionsClass,
+  sectionHeaderGridClass,
+  readoutRowClass,
 } from "./tokens";
 
 describe("shell widths", () => {
@@ -466,34 +468,91 @@ describe("expandedChartClass", () => {
 });
 
 describe("header action placement", () => {
-  test("a cluster with rendered controls takes its own centred row on a phone", () => {
-    // The complaint this exists for: the section header is one
-    // `flex-wrap` row, so where the controls LAND depended on whether the title
-    // happened to leave room. Short title ("Energy split") and they sat beside it;
-    // long title or a caption ("Hour of the week", "2026 versus last year") and
-    // they wrapped onto their own line, left-aligned. Three panels, three
-    // placements, none of them chosen.
-    const utilities = sectionActionsClass().split(/\s+/);
-    expect(utilities).toContain("max-sm:[&:has(>*)]:w-full");
-    expect(utilities).toContain("max-sm:[&:has(>*)]:justify-center");
+  // The complaint this exists for: the section header used to be one
+  // `flex-wrap` row, so where the controls LANDED depended on whether the title
+  // happened to leave room. Short title ("Energy split") and they sat beside it,
+  // right-aligned; a long title or a caption ("Hour of the week", "2026 versus
+  // last year") wrapped them onto a row of their own, where they were CENTRED.
+  // Three chart panels on /statistics, three placements, none of them chosen.
+  //
+  // The header is now a two-column grid, so the cluster's column is the same
+  // column at every width and the title's length cannot reach it.
+  test("the title column absorbs every bit of title-length variance", () => {
+    const utilities = sectionHeaderGridClass().split(/\s+/);
+    expect(utilities).toContain("grid");
+    // `minmax(0,1fr)` and not `1fr`: a grid item's automatic minimum is its
+    // min-content size, so a long unbroken title (or a `truncate` that never
+    // gets the chance to truncate) grows column one past the track and shoves
+    // the cluster off the right edge. The zero floor is what makes the second
+    // column's position independent of the first column's content.
+    expect(utilities).toContain("grid-cols-[minmax(0,1fr)_auto]");
+    expect(utilities).toContain("items-start");
+    // The gap between the two columns is the same cluster gap the controls
+    // inside the cluster use — one rhythm, decided once.
+    for (const gap of CLUSTER_GAP.split(/\s+/)) expect(utilities).toContain(gap);
   });
 
-  test("an EMPTY cluster claims no row", () => {
+  test("the cluster is hard right at EVERY width", () => {
+    const utilities = sectionActionsClass().split(/\s+/);
+    expect(utilities).toContain("justify-end");
+    // The regression guard. Any of these coming back means the phone-width
+    // cluster is centred on a row of its own again, which is the whole bug.
+    expect(utilities).not.toContain("max-sm:[&:has(>*)]:w-full");
+    expect(utilities).not.toContain("max-sm:[&:has(>*)]:justify-center");
+    expect(utilities).not.toContain("justify-center");
+    expect(utilities).not.toContain("justify-between");
+    expect(utilities).not.toContain("w-full");
+    // Not a single responsive variant survives: a cluster that is placed by its
+    // grid column has nothing left to say at a breakpoint, and any variant here
+    // could only move it back off that column.
+    expect(utilities.filter((u) => /^(max-)?(sm|lg|xl|2xl):/.test(u))).toEqual([]);
+    // `sm:ml-auto` is dead weight now — column two is already flush right — and
+    // an auto margin that outlives its reason is the next author's puzzle.
+    expect(utilities).not.toContain("sm:ml-auto");
+    expect(utilities).not.toContain("ml-auto");
+  });
+
+  test("an EMPTY cluster claims no row and no gap", () => {
     // Every statistics section passes an `actions` snippet (`SectionControls`)
     // that renders nothing outside customize mode, so a `hasActions` prop is
     // truthy while the cluster is visually empty — this was tried and it spent a
-    // `gap-y` on four sections for nothing. The `:has(> *)` gate is the whole
-    // reason the fill is written as a variant and not as a plain utility.
+    // `gap-y` on four sections for nothing. `:has(> *)` asks the only question
+    // that matters, which is whether anything was actually rendered. In the grid
+    // an empty `auto` column collapses to zero width by itself, so the cluster
+    // must carry NO width, padding or min-size of its own that would keep the
+    // column open.
     const utilities = sectionActionsClass().split(/\s+/);
-    expect(utilities).not.toContain("w-full");
-    expect(utilities).not.toContain("justify-center");
-    expect(utilities.every((u) => !u.startsWith("max-sm:") || u.includes(":has(>*)"))).toBe(true);
+    expect(utilities.filter((u) => /^(w-|min-w-|p[xl]?-|basis-|grow)/.test(u))).toEqual([]);
   });
 
-  test("and is right-aligned beside the title from sm up", () => {
-    const utilities = sectionActionsClass().split(/\s+/);
-    expect(utilities).toContain("justify-end");
-    expect(utilities).toContain("sm:ml-auto");
-    expect(utilities).not.toContain("sm:w-full");
+  test("the readout row puts the value left and the controls right, and never centres", () => {
+    // Zone 3: the row above the plot. It is the only zone allowed to wrap, and
+    // wrapping means STACKING — on a phone the two cells become one column each
+    // starting at the left margin. `grid-cols-1` and not a flex fallback,
+    // because a wrapped flex line with one child obeys `justify-*` and that is
+    // exactly how the header cluster ended up centred.
+    const utilities = readoutRowClass().split(/\s+/);
+    expect(utilities).toContain("grid");
+    expect(utilities).toContain("grid-cols-[minmax(0,1fr)_auto]");
+    expect(utilities).toContain("max-sm:grid-cols-1");
+    // Bottoms, not centres: the value is a big number and the controls are
+    // small text, and they read as one line only when their bottoms agree.
+    expect(utilities).toContain("items-end");
+    expect(
+      utilities.filter((u) => u.includes("justify-center") || u.includes("text-center")),
+    ).toEqual([]);
+    expect(utilities).not.toContain("items-center");
+    for (const gap of CLUSTER_GAP.split(/\s+/)) expect(utilities).toContain(gap);
+  });
+
+  test("every class the header zones name is written literally in the source", async () => {
+    // Same reason as the expanded-chart case: Tailwind scans SOURCE TEXT, so a
+    // class composed at a call site is in the DOM with no rule behind it.
+    const source = await Bun.file(new URL("./tokens.ts", import.meta.url)).text();
+    const named = [sectionHeaderGridClass(), readoutRowClass(), sectionActionsClass()]
+      .join(" ")
+      .trim()
+      .split(/\s+/);
+    expect(named.filter((c) => !source.includes(c))).toEqual([]);
   });
 });

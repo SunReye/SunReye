@@ -31,7 +31,7 @@
 
 <Section title={m.automations_charts_title()}>
 	{#snippet actions()}
-		<RangeSwitcher options={WINDOW_OPTIONS} bind:value={range} />
+		<RangeSwitcher options={WINDOW_OPTIONS} bind:value={range} label={m.range_select_window_aria()} />
 	{/snippet}
 
 	{#if !loaded}

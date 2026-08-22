@@ -86,31 +86,84 @@ export const TOOLBAR_CONTROL_H_SM = "sm:h-9";
 export const TOOLBAR_ICON_CONTROL = "sm:size-9";
 
 /**
- * The section header's right-hand cluster.
+ * The section header's two columns: title + caption on the left, chrome on the
+ * right.
  *
- * The header is one `flex-wrap justify-between` row, which means the controls
- * land wherever the title left room rather than anywhere chosen: a short title
- * keeps them beside it, right-aligned; a long title or a caption pushes them
- * onto their own line, where `justify-between` — with one child on that line —
- * puts them at the LEFT. Three chart panels on /statistics, three placements.
+ * The header used to be a single `flex-wrap items-center` row, and that is where
+ * a card's controls scattered. Wrapping is decided by content, so the SAME
+ * cluster landed in a different place on every panel: beside a short title
+ * ("Energy split") it was right-aligned; under a long or captioned one ("Hour of
+ * the week", "2026 versus last year") it took a line of its own and, with one
+ * child on that line, was CENTRED. Three chart panels on /statistics, three
+ * placements, none of them a decision.
  *
- * On a phone the cluster therefore takes a full row of its own and centres in
- * it, so the answer is the same on every panel regardless of how long its title
- * runs. From `sm` the row has room for both and they go back to the far end.
+ * A grid ends the argument by never asking about content: column two is column
+ * two at 390px and at 2560px. Column one is `minmax(0,1fr)` and not `1fr`
+ * because a grid item's automatic minimum is its min-content size — a long
+ * unbroken title would otherwise blow the track open and push the cluster off
+ * the right edge, and the `truncate` on the `h2` would never get to fire.
+ * `items-start` so a two-line title grows downwards while the chrome stays put
+ * on the first line instead of drifting to the middle of it.
  *
- * Gated on `:has(> *)` rather than on a `hasActions` prop, because the prop
- * lies: every statistics section passes an `actions` snippet (`SectionControls`)
- * that renders nothing outside customize mode, so the prop is truthy while the
- * cluster is visually empty — and an empty child claiming a full row spends a
- * `gap-y` for nothing. `:has` asks the only question that matters, which is
- * whether anything was actually rendered.
+ * The universal part of the four-zone header, so settings panels get it too;
+ * only the readout row ({@link readoutRowClass}) and the icons-only rule are
+ * specific to cards holding a plot.
+ */
+export function sectionHeaderGridClass(): string {
+  return `grid grid-cols-[minmax(0,1fr)_auto] items-start ${CLUSTER_GAP}`;
+}
+
+/**
+ * The card's readout row — zone 3, the first row of the body, above the plot:
+ * the headline value and its delta on the left, the card's text controls on the
+ * right.
  *
- * The collapse caret is deliberately NOT in here (see
- * `section-collapse-trigger.svelte`): dragged onto a centred row of its own it
- * reads as a "show more" button and costs a row on every collapsible section.
+ * This is the one zone allowed to wrap, and wrapping here means STACKING: from
+ * `max-sm` the two cells become one column apiece, each starting at the left
+ * margin. Written as `max-sm:grid-cols-1` rather than as a wrapping flex row on
+ * purpose — a wrapped flex line holding a single child still obeys `justify-*`,
+ * which is precisely how the old header cluster ended up centred. A grid cell
+ * has nowhere to centre to.
+ *
+ * `items-end` and not `items-center`: the value is a large number and the
+ * controls are small text, so the two only read as one line when their bottoms
+ * agree.
+ */
+export function readoutRowClass(): string {
+  return `grid grid-cols-[minmax(0,1fr)_auto] max-sm:grid-cols-1 items-end ${CLUSTER_GAP}`;
+}
+
+/**
+ * The header's right-hand cluster — zone 2, the contents of grid column two.
+ *
+ * Placement is no longer this token's business: {@link sectionHeaderGridClass}
+ * puts the column hard right at every width, which is why the phone-width
+ * `max-sm:[&:has(>*)]:w-full` + `justify-center` pair is gone (it was what
+ * centred the cluster under a long title) and why `sm:ml-auto` went with them —
+ * an auto margin pushing against the end of a track that is already flush right
+ * does nothing but outlive its reason.
+ *
+ * What survives is the cluster's own internals: a row, vertically centred,
+ * packed to its right edge so it grows leftwards as controls are added.
+ *
+ * It deliberately claims no width, padding or min-size of its own. An `auto`
+ * track with nothing in it collapses to zero and the column gap goes with it,
+ * which is what keeps an EMPTY cluster free — and empty is the common case:
+ * every statistics section passes an `actions` snippet (`SectionControls`) that
+ * renders nothing outside customize mode, so a `hasActions` prop is truthy while
+ * the cluster is visually empty. That is the observation the old `:has(> *)`
+ * gate encoded; the grid now answers it structurally, without a selector.
+ *
+ * On a card holding a plot this cluster is icons only — a text button belongs in
+ * the readout row ({@link readoutRowClass}). Settings panels, which have no
+ * plot and no readout row, legitimately keep a text button here.
+ *
+ * The collapse caret is still deliberately NOT in here (see
+ * `section-collapse-trigger.svelte`): grouped with the chrome it reads as a
+ * "show more" button rather than as the section's own affordance.
  */
 export function sectionActionsClass(): string {
-  return `flex items-center justify-end sm:ml-auto ${CLUSTER_GAP} max-sm:[&:has(>*)]:w-full max-sm:[&:has(>*)]:justify-center`;
+  return `flex items-center justify-end ${CLUSTER_GAP}`;
 }
 
 /**

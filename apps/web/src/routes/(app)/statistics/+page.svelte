@@ -216,7 +216,7 @@
 		/>
 		<!-- Two options, so it stays a segmented row on a phone rather than
 		     offering a Select (`needsCompactSwitcher`). -->
-		<RangeSwitcher options={compareModes()} bind:value={() => mode, setMode} />
+		<RangeSwitcher options={compareModes()} bind:value={() => mode, setMode} label={m.range_select_compare_aria()} />
 		{#if canCustomize}
 			<Button
 				variant="ghost"

@@ -103,27 +103,48 @@ test("a laptop keeps the nested frame the phone gave up", async ({ page }) => {
 /**
  * Where a chart panel's controls land.
  *
- * The header is one `flex-wrap` row, so before this the placement depended on
- * whether the title happened to leave room: "Energy split" is short and its
- * controls sat beside it, right-aligned; "Hour of the week" and "2026 versus
- * last year" pushed theirs onto a second line, where `justify-between` with a
- * single child on it left them at the LEFT. Three panels on one page, three
- * placements, none of them chosen.
+ * ## The defect, and why the fix moved
  *
- * Measured rather than asserted on classes because the whole defect was a
- * cascade/wrap interaction: the utilities were already "right", and where the
- * box ended up was decided by the length of a translated title.
+ * The header used to be one `flex-wrap` row, so placement depended on whether
+ * the title happened to leave room: "Energy split" is short and its controls sat
+ * beside it, right-aligned; "Hour of the week" and "2026 versus last year"
+ * pushed theirs onto a second line. Three panels on one page, three placements,
+ * none of them chosen.
+ *
+ * The first fix accepted the wrap and made it uniform — every cluster took a
+ * full row of its own and centred in it, which is what this test used to pin.
+ * That bought consistency at phone width and nothing above it, and it centred a
+ * cluster whose contents are left-to-right controls. The header is a two-column
+ * grid now (`sectionHeaderGridClass`), so the cluster's column is the same
+ * column at every width and the title cannot reach it: right-aligned, on the
+ * title's own row, at 390px exactly as at 1440px.
+ *
+ * Still measured rather than asserted on classes, for the original reason: the
+ * utilities were already "right" when this was broken, and where the box ended
+ * up was decided by the length of a translated title.
+ *
+ * Every expectation below is the OPPOSITE of what the previous layout produced,
+ * so this cannot pass on a revert: `centred` and `ownRow` were both true then
+ * and must both be false now.
  */
-test("every chart panel puts its controls on the same centred row on a phone", async ({ page }) => {
+test("every chart panel's controls sit hard right on the title's own row", async ({ page }) => {
   await openStatistics(page, PHONE);
 
   const clusters = await page.evaluate(() => {
-    const out: { title: string; centred: boolean; ownRow: boolean; fillsRow: boolean }[] = [];
-    // `data-slot` rather than a shape heuristic: the cluster is one div among
+    const out: {
+      title: string;
+      centred: boolean;
+      ownRow: boolean;
+      fillsRow: boolean;
+      flushRight: boolean;
+    }[] = [];
+    // `data-slot` rather than a shape heuristic: the cluster is one box among
     // several in the header row, and guessing which by child count broke the
     // moment the caret moved out of it.
     for (const cluster of document.querySelectorAll("[data-slot=section-actions]")) {
       if (cluster.children.length === 0) continue; // rendered empty: not a panel
+      // The header row is the grid itself. The cluster is a direct child of it,
+      // so the parent is the row whose edges the cluster is measured against.
       const row = cluster.parentElement;
       if (!row) continue;
       const c = cluster.getBoundingClientRect();
@@ -133,6 +154,10 @@ test("every chart panel puts its controls on the same centred row on a phone", a
         centred: Math.abs(c.left - r.left - (r.right - c.right)) < 3,
         ownRow: Math.round(c.top) > Math.round(r.top) + 4,
         fillsRow: Math.round(c.width) === Math.round(r.width),
+        // The claim that matters: the cluster ends where the header ends,
+        // whatever the title did. A grid track cannot drift, so this is exact
+        // to sub-pixel rounding rather than to a tolerance.
+        flushRight: Math.abs(c.right - r.right) < 1,
       });
     }
     return out;
@@ -143,11 +168,39 @@ test("every chart panel puts its controls on the same centred row on a phone", a
   expect(clusters.length).toBeGreaterThanOrEqual(3);
   for (const cluster of clusters) {
     expect(cluster, `panel: ${cluster.title}`).toMatchObject({
-      centred: true,
-      ownRow: true,
-      fillsRow: true,
+      flushRight: true,
+      centred: false,
+      ownRow: false,
+      fillsRow: false,
     });
   }
+});
+
+/**
+ * And the same cluster, at the same place, on a laptop.
+ *
+ * The point of the grid is that there is no phone arrangement and no desktop
+ * arrangement — there is one arrangement. Without this case the suite would
+ * still accept a `sm:` variant that moved the cluster above the breakpoint,
+ * which is exactly the class of rule that produced the original three
+ * placements.
+ */
+test("and at laptop width, in the same column", async ({ page }) => {
+  await openStatistics(page, LAPTOP);
+
+  const drift = await page.evaluate(() => {
+    const out: number[] = [];
+    for (const cluster of document.querySelectorAll("[data-slot=section-actions]")) {
+      if (cluster.children.length === 0) continue;
+      const row = cluster.parentElement;
+      if (!row) continue;
+      out.push(Math.abs(cluster.getBoundingClientRect().right - row.getBoundingClientRect().right));
+    }
+    return out;
+  });
+
+  expect(drift.length).toBeGreaterThanOrEqual(3);
+  for (const gap of drift) expect(gap).toBeLessThan(1);
 });
 
 /**

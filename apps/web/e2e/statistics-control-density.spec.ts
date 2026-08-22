@@ -23,12 +23,30 @@ import { openPage } from "./support/open-page";
 const PHONE = { width: 390, height: 844 };
 
 /**
- * The ceiling. 74 before this change, 71 after, and the three that went are the
- * two surplus scope chips and the full-screen control over the negative-window
- * LIST. Deliberately a ceiling and not an equality: the count depends on which
- * tiles this payload makes available (six registries, capability-gated), so
- * pinning it exactly would make an unrelated tile a failure here. A floor comes
- * with it — a page that rendered nothing would otherwise pass.
+ * The ceiling, re-measured at 390px after the four-zone migration: 71, which is
+ * the same number as before it. Two movements cancelled, and neither is a reason
+ * to relax anything:
+ *
+ *  - The migration MOVES controls, it does not remove them. A panel's figure and
+ *    its window control left the header for the readout row above the plot; a
+ *    thumb can reach exactly what it could reach before, in a better place.
+ *  - The one real saving is the compact switcher. A switcher over more than
+ *    three options now renders a NativeSelect on a phone and keeps its toggle
+ *    row `hidden sm:flex`, so the heatmap's four metric buttons are ONE control
+ *    here — the hidden row measures 0x0 and the census skips it, which is what
+ *    the zero-box guard below is for. Three fewer reachable controls.
+ *  - Against that, the total did not fall, so three controls this payload
+ *    renders now were not on the page when 71 was last taken. The census is
+ *    taken over whatever the payload offers, which is exactly why this is a
+ *    ceiling; it was re-measured rather than widened, and it did not move.
+ *
+ * Deliberately a ceiling and not an equality: the count depends on which tiles
+ * this payload makes available (six registries, capability-gated), so pinning it
+ * exactly would make an unrelated tile a failure here. A floor comes with it — a
+ * page that rendered nothing would otherwise pass. Where the controls SIT is not
+ * this number's job and never was; that is
+ * `e2e/panel-control-placement.spec.ts`, which measures the two edges at 360,
+ * 768 and 1440.
  */
 const CONTROL_CEILING = 71;
 const CONTROL_FLOOR = 55;
@@ -38,7 +56,12 @@ async function controlCensus(page: Page): Promise<string[]> {
   return page.evaluate(() => {
     const out: string[] = [];
     for (const el of document.querySelectorAll(
-      "button, a[href], input, select, [role=button], [role=combobox], [role=tab]",
+      // `[role=radio]` is here because the segmented switchers are real
+      // ToggleGroups now: their options report as radios inside a radiogroup,
+      // which is the group semantics a row of Buttons never had. Without it this
+      // census silently stopped counting every switcher option on the page —
+      // reading as a saving where nothing had actually gone away.
+      "button, a[href], input, select, [role=button], [role=combobox], [role=tab], [role=radio]",
     )) {
       const box = el.getBoundingClientRect();
       // `hidden sm:flex` renders BOTH forms of a compact switcher and lets CSS
@@ -70,7 +93,9 @@ async function openStatistics(page: Page) {
   const opened = await openPage(page, "/#/statistics");
   // The comparison payload is what the tiles and the panel figures are built
   // from; nothing below is meaningful before it lands.
-  await expect(page.getByRole("button", { name: "Year ago", exact: true })).toBeVisible();
+  // A radio, not a button: the compare switcher is a ToggleGroup, so its
+  // options carry `role="radio"` inside a radiogroup.
+  await expect(page.getByRole("radio", { name: "Year ago", exact: true })).toBeVisible();
   await expect(page.locator("[data-slot=panel-figure]").first()).toBeVisible();
   return opened;
 }
@@ -91,28 +116,53 @@ test("the page offers a phone no more controls than it did before", async ({ pag
   expect(opened.consoleErrors).toEqual([]);
 });
 
-test("a chart panel's header holds its two controls and no data", async ({ page }) => {
+test("a chart panel's header holds chrome only, and its data sits over the plot", async ({
+  page,
+}) => {
   await openStatistics(page);
   const panel = card(page, "Total cost");
   const row = header(panel);
 
-  // Two: the window control and the full-screen toggle. This is the row the
-  // complaint was about, and it carried four items.
-  await expect(row.getByRole("button")).toHaveCount(2);
-  await expect(row.getByRole("button", { name: "Show 12 months" })).toHaveCount(1);
+  // One: the full-screen toggle. This is the row the complaint was about, and it
+  // carried four items — a figure, a bucket chip, a span chip and the icon. The
+  // window control was the last of the four to leave: it is a text-labelled
+  // choice about the plot, not chrome, so it belongs with the panel's own data.
+  await expect(row.getByRole("button")).toHaveCount(1);
   await expect(row.getByRole("button", { name: "Full screen" })).toHaveCount(1);
-
-  // The figure is data. In the cluster it was the thing that made two controls
-  // read as four, so it is in the body now — above the plot it describes.
+  await expect(row.getByRole("button", { name: "Show 12 months" })).toHaveCount(0);
   await expect(row.locator("[data-slot=panel-figure]")).toHaveCount(0);
-  const figure = panel.locator("[data-slot=panel-figure]").first();
+
+  // Both are the readout row now: the figure left, the control right, on one
+  // line between the header and the plot.
+  const readout = panel.locator("[data-slot=panel-readout-row]").first();
+  const figure = readout.locator("[data-slot=panel-figure]").first();
+  const toggle = readout.getByRole("button", { name: "Show 12 months" });
   await expect(figure).toBeVisible();
+  await expect(toggle).toBeVisible();
 
   const figureBox = await figure.boundingBox();
+  const toggleBox = await toggle.boundingBox();
   const plotBox = await panel.locator("[data-slot=chart]").first().boundingBox();
   const rowBox = await row.boundingBox();
   expect(figureBox!.y).toBeGreaterThan(rowBox!.y);
   expect(figureBox!.y).toBeLessThan(plotBox!.y);
+
+  // At 390px the row STACKS — `readoutRowClass()` drops to one column below
+  // `sm`, unconditionally, rather than letting content decide. That is the whole
+  // point of the token: "does it happen to fit" is the question that produced
+  // three placements from one component, so the answer is the same width-driven
+  // one whatever the strings are. The claim at phone width is therefore that the
+  // control sits BELOW the figure and both start at the same left edge — stacked
+  // and left-aligned, never centred.
+  expect(toggleBox!.y).toBeGreaterThan(figureBox!.y);
+  expect(Math.abs(toggleBox!.x - figureBox!.x)).toBeLessThan(1);
+
+  // From `sm` the two share one line, figure left of control.
+  await page.setViewportSize({ width: 1024, height: 768 });
+  const wideFigure = await figure.boundingBox();
+  const wideToggle = await toggle.boundingBox();
+  expect(wideFigure!.x).toBeLessThan(wideToggle!.x);
+  expect(Math.abs(wideFigure!.y - wideToggle!.y)).toBeLessThan(wideFigure!.height);
 });
 
 test("the comparison reference is a page control, not a section's", async ({ page }) => {
@@ -120,7 +170,7 @@ test("the comparison reference is a page control, not a section's", async ({ pag
 
   // It re-bases every section's delta chips, so it belongs above all of them —
   // in the toolbar, beside the navigator that picks the window it measures.
-  const compare = page.getByRole("button", { name: "Previous period", exact: true });
+  const compare = page.getByRole("radio", { name: "Previous period", exact: true });
   await expect(compare).toHaveCount(1);
   await expect(
     page.locator("section").filter({ has: compare }),
@@ -137,8 +187,12 @@ test("the comparison reference is a page control, not a section's", async ({ pag
 test("the window control names where it goes, in both directions", async ({ page }) => {
   await openStatistics(page);
   const panel = card(page, "Total cost");
-  const row = header(panel);
-  const toggle = row.getByRole("button", { name: /^Show / });
+  // In the readout row, not the header: a text-labelled choice about the plot is
+  // the panel's own data, not chrome. See the previous test.
+  const toggle = panel
+    .locator("[data-slot=panel-readout-row]")
+    .first()
+    .getByRole("button", { name: /^Show / });
 
   // The switcher this replaced showed "By day" beside "12 months" — a bucket
   // beside a span, with the lit chip the only clue which was drawn. One button
