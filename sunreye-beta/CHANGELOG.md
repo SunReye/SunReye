@@ -2,11 +2,16 @@
 
 ## [unreleased]
 
-Unreleased work on `dev` since 1.2.0, shipped in `beta.20260817-c8b4281`.
+Unreleased work on `dev` since 1.2.0, shipped in `beta.20260822-6646324`.
 
 
 ### Features
 
+* **web:** two fingers zoom any chart, with nothing to arm ([65d26ba](https://github.com/SunReye/SunReye/commit/65d26ba24b2129dde64617cc0bdb558d57fa8d36))
+* **web:** full screen moves to the plot's corner, away from the caret ([15723cb](https://github.com/SunReye/SunReye/commit/15723cbe1c08d5d5b78760a0483be6b8f110b0b2))
+* **web:** one interaction model and one house style for every chart ([564b9bc](https://github.com/SunReye/SunReye/commit/564b9bc13c083b1f25b6d7f823d87cf5172ff7fa))
+* **web:** navigate history and statistics by period ([59b3852](https://github.com/SunReye/SunReye/commit/59b3852da6b9e94d0d24eb3abc4e90fad215af80))
+* **web:** show grid imported and exported energy on /statistics ([c56b7f9](https://github.com/SunReye/SunReye/commit/c56b7f96573d04798db23fd3481f27dc5af950d7))
 * **web:** hub and nodes answer the plant's load ([61626df](https://github.com/SunReye/SunReye/commit/61626dfedc5129e71acfc6fad08c7c083ce1be84))
 * **web:** the interleaved pulse ladder ([f30c49e](https://github.com/SunReye/SunReye/commit/f30c49e6cc19e211b69d00aa3565992f7d1d6568))
 * **web:** a plant ceiling the diagram can be measured against ([9264964](https://github.com/SunReye/SunReye/commit/92649641f95ac427f3164b1b6b6eaafeb37c9719))
@@ -75,6 +80,11 @@ Unreleased work on `dev` since 1.2.0, shipped in `beta.20260817-c8b4281`.
 
 ### Bug Fixes
 
+* **web:** the desktop toolbar is one line of controls, one height ([4dd2ed1](https://github.com/SunReye/SunReye/commit/4dd2ed107a670d452ca8d8f13bb43b279eb819e0))
+* **web:** one place for a panel's controls, and one width for the navigator ([c6e1a4c](https://github.com/SunReye/SunReye/commit/c6e1a4cfa355a1343bb42ddccce6e6ecf2d2954f))
+* **web:** stat tiles stop drawing a second box on a phone ([2e22f51](https://github.com/SunReye/SunReye/commit/2e22f514b28bdd529dec347b62651d67bf33137b))
+* **web:** stop the calendar's today marker reading as a selected day ([22d9aa1](https://github.com/SunReye/SunReye/commit/22d9aa107b4c60007498fac99b2dd2948dd57fcf))
+* **web:** build inclusive day ranges from date parts, not +86_400_000 ([ed8a520](https://github.com/SunReye/SunReye/commit/ed8a5209b2ee0e5de6eb73c6726a8bc70673a6c7))
 * **web:** read the buffers untracked when sizing the backfill ([419c1a2](https://github.com/SunReye/SunReye/commit/419c1a27d024d9a85f851f249b62ee46a669484a))
 * **web:** a charge's glow stops being cut off at the safe box ([0d2c783](https://github.com/SunReye/SunReye/commit/0d2c783fa7050d2222e7f53b0aa382cb217bf7d6))
 * **web:** a rising plant stops writing storage at the feed's cadence ([952ee98](https://github.com/SunReye/SunReye/commit/952ee9897596e3a82af05c0a5047753372972686))
@@ -160,6 +170,7 @@ Unreleased work on `dev` since 1.2.0, shipped in `beta.20260817-c8b4281`.
 
 ### Code Refactoring
 
+* **web:** one header grid and one readout row per chart card ([14dad81](https://github.com/SunReye/SunReye/commit/14dad8144e4dd0d9c4dbaa3defa42e5f70eb9ab0))
 * **web:** a charge is a bead chain, and its speed is the reading ([1ffd393](https://github.com/SunReye/SunReye/commit/1ffd3934288b64eebfbc0ed3ec416bdee7c1a9c5))
 * **web:** rails shoot pulses instead of dashes ([fb29f34](https://github.com/SunReye/SunReye/commit/fb29f34490fd813935e719f9e7c37e21d9207cbe))
 * **web:** direction and judgement colours become tokens ([e488ae9](https://github.com/SunReye/SunReye/commit/e488ae9d64505df0e6948cddacf1ea8d991b29dc))
@@ -253,6 +264,8 @@ Unreleased work on `dev` since 1.2.0, shipped in `beta.20260817-c8b4281`.
 
 ### Tests
 
+* **web:** measure a chart's mount cost, not the scroll around it ([de4cd42](https://github.com/SunReye/SunReye/commit/de4cd4246a506fb7d20867322a191619f628d123))
+* **web:** cover every route in the browser layer ([d555e9d](https://github.com/SunReye/SunReye/commit/d555e9d878e6d4d2ed36b321206a886c4a464e56))
 * **web:** add a browser test layer, and stop proving things with regexes ([d4ed34b](https://github.com/SunReye/SunReye/commit/d4ed34bcc0e6bee3ea09b14ee2f6159fa23f21c7))
 * **web:** pin the ring's swing to zero at an idle plant ([9e23125](https://github.com/SunReye/SunReye/commit/9e231252a3354c50fa1cab4ebd54cd52f6714484))
 * cross the client/server seam the deleted REST primes relied on ([a368585](https://github.com/SunReye/SunReye/commit/a3685856301aea4f14f89ecce60428e11fe3ff4d))
@@ -276,6 +289,7 @@ Unreleased work on `dev` since 1.2.0, shipped in `beta.20260817-c8b4281`.
 
 ### Miscellaneous Chores
 
+* **web:** let the e2e port be overridden ([8f71ccc](https://github.com/SunReye/SunReye/commit/8f71ccc21f9f2010abb12aeede4ee23e88d10a79))
 * **web:** bump layerchart to 2.2.0 ([a345fa1](https://github.com/SunReye/SunReye/commit/a345fa1cef37d5bef7b2dedf7ee9f0ffff3f3c89))
 * **fallow:** close the web -> server boundary ([44f62ba](https://github.com/SunReye/SunReye/commit/44f62ba92a1a14c35e9e2fe8c3692ef1dc0a4b6b))
 * ignore agent worktrees ([1158899](https://github.com/SunReye/SunReye/commit/11588996953d351374e0a6b8f032e4cbf3afce17))
