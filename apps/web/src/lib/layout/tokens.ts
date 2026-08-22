@@ -48,6 +48,34 @@ export const SECTION_GAP = "gap-4";
 export const CLUSTER_GAP = "gap-x-3 gap-y-2";
 
 /**
+ * The section header's right-hand cluster.
+ *
+ * The header is one `flex-wrap justify-between` row, which means the controls
+ * land wherever the title left room rather than anywhere chosen: a short title
+ * keeps them beside it, right-aligned; a long title or a caption pushes them
+ * onto their own line, where `justify-between` — with one child on that line —
+ * puts them at the LEFT. Three chart panels on /statistics, three placements.
+ *
+ * On a phone the cluster therefore takes a full row of its own and centres in
+ * it, so the answer is the same on every panel regardless of how long its title
+ * runs. From `sm` the row has room for both and they go back to the far end.
+ *
+ * Gated on `:has(> *)` rather than on a `hasActions` prop, because the prop
+ * lies: every statistics section passes an `actions` snippet (`SectionControls`)
+ * that renders nothing outside customize mode, so the prop is truthy while the
+ * cluster is visually empty — and an empty child claiming a full row spends a
+ * `gap-y` for nothing. `:has` asks the only question that matters, which is
+ * whether anything was actually rendered.
+ *
+ * The collapse caret is deliberately NOT in here (see
+ * `section-collapse-trigger.svelte`): dragged onto a centred row of its own it
+ * reads as a "show more" button and costs a row on every collapsible section.
+ */
+export function sectionActionsClass(): string {
+  return `flex items-center justify-end sm:ml-auto ${CLUSTER_GAP} max-sm:[&:has(>*)]:w-full max-sm:[&:has(>*)]:justify-center`;
+}
+
+/**
  * Hit-area expander for icon-only triggers: an invisible `::after` grows the
  * touch target past the icon without moving the icon or disturbing the layout.
  *

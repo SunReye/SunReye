@@ -217,7 +217,7 @@
 {/snippet}
 
 <Popover.Root bind:open>
-	<div class="flex w-full flex-col border border-input sm:w-auto">
+	<div data-slot="period-navigator" class="flex w-full flex-col border border-input sm:w-auto">
 		<div class={GRAIN_ROW} role="group" aria-label={m.range_grain_aria()}>
 			{#each tabs as tab (tab.id)}
 				<Button

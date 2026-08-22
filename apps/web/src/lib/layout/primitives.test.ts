@@ -25,6 +25,9 @@ const sectionHeader = await source("section-header.svelte");
 // joined the collapse caret there and the header template crossed the gate.
 const sectionActions = await source("section-actions.svelte");
 const fullscreenTrigger = await source("fullscreen-trigger.svelte");
+// The caret moved out of the actions cluster into its own row child, so that a
+// phone can give the controls a centred row without dragging the caret along.
+const collapseTrigger = await source("section-collapse-trigger.svelte");
 const sectionBody = await source("section-body.svelte");
 const emptyState = await source("empty-state.svelte");
 const sectionGrid = await source("section-grid.svelte");
@@ -105,8 +108,8 @@ describe("section header", () => {
   // next to the trigger. Read the icon the trigger actually renders and measure
   // what TAP makes of it: shrink either one and this fails.
   test("the collapse trigger's hit area measures 44px around the icon it renders", () => {
-    expect(sectionActions).toMatch(/Collapsible\.Trigger[\s\S]*\{TAP\}/);
-    const icon = sectionActions.match(/<CaretDown class="size-(\d+)/);
+    expect(collapseTrigger).toMatch(/Collapsible\.Trigger[\s\S]*\{TAP\}/);
+    const icon = collapseTrigger.match(/<CaretDown class="size-(\d+)/);
     expect(icon).not.toBeNull();
     const iconPx = Number(icon![1]) * 4;
     expect(tapTargetPx(iconPx)).toEqual({ width: 44, height: 44 });
@@ -115,7 +118,7 @@ describe("section header", () => {
   // The trigger has no padding of its own, so a box-model class here would
   // silently become the real hit area and the measurement above would be a lie.
   test("and gets its reach from TAP alone, not from padding", () => {
-    const trigger = sectionActions.match(/<Collapsible\.Trigger[\s\S]*?>/)![0];
+    const trigger = collapseTrigger.match(/<Collapsible\.Trigger[\s\S]*?>/)![0];
     expect(trigger).not.toMatch(/\bp[xytblr]?-\d/);
   });
 

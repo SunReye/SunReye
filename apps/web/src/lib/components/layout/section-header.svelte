@@ -9,6 +9,7 @@
 	// page toolbar wants the same title/actions arrangement.
 	import type { Snippet } from 'svelte';
 	import SectionActions from './section-actions.svelte';
+	import SectionCollapseTrigger from './section-collapse-trigger.svelte';
 	import type { FullscreenBox } from '$lib/charts/fullscreen.svelte';
 	import { CLUSTER_GAP } from '$lib/layout/tokens';
 
@@ -31,8 +32,8 @@
 	} = $props();
 </script>
 
-<div class="flex flex-wrap items-center justify-between {CLUSTER_GAP}">
-	<div class="flex min-w-0 flex-col">
+<div class="flex flex-wrap items-center {CLUSTER_GAP}">
+	<div class="flex min-w-0 flex-1 flex-col sm:flex-none">
 		<!-- `truncate` is the desktop guard only, and `max-sm:whitespace-normal`
 		     takes it back on a phone. Below ~345px of viewport the row has 264px
 		     for a title after the shell and section gutters, and the longest German
@@ -51,5 +52,10 @@
 			<p class="text-xs text-muted-foreground/70">{caption}</p>
 		{/if}
 	</div>
-	<SectionActions {title} {actions} {collapsible} {screen} />
+	<!-- Caret first in the DOM so a phone keeps it on the title row, `order`
+	     puts it back after the controls from sm up. See the trigger's own file. -->
+	{#if collapsible}
+		<SectionCollapseTrigger {title} />
+	{/if}
+	<SectionActions {actions} {screen} />
 </div>

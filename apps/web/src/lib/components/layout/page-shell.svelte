@@ -35,7 +35,7 @@
 	const hasToolbarRow = $derived(Boolean(lead ?? toolbar));
 </script>
 
-<div class={pageShellClass(width)}>
+<div data-slot="page-shell" class={pageShellClass(width)}>
 	<!-- One row, two ends. Before `lead` existed, a page with both had to put its
 	     back link in `children`, which rendered it BELOW the toolbar: an extra
 	     vertical row, and "where I came from" sitting under the live status it
@@ -48,8 +48,21 @@
 			{@render lead?.()}
 			<!-- Own cluster so `justify-end` applies to the controls as a group:
 			     spreading them across the row's free space is what a bare
-			     `justify-between` on the outer row would do with two of them. -->
-			<div class="ml-auto flex flex-wrap items-center justify-end {CLUSTER_GAP}">
+			     `justify-between` on the outer row would do with two of them.
+
+			     `w-full` below sm, and this is load-bearing rather than tidiness.
+			     The cluster is a flex item, so without it the box is shrink-to-fit
+			     and a child asking for `w-full` resolves against the cluster's own
+			     CONTENT width — which is why the period navigator stretched across
+			     /statistics (three controls made the cluster wide) and did not on
+			     /history (it was the only child, so `w-full` meant "as wide as
+			     itself"). Same markup, same component, two widths.
+
+			     Phone-only, and it does relax the row's one-line rule there — see
+			     the amended block in routes/(app)/page-shells.test.ts. At 390px the
+			     line was never holding anyway: /statistics already spent two rows,
+			     and a back link plus a period navigator do not share 390px. -->
+			<div class="ml-auto flex max-sm:w-full flex-wrap items-center justify-end {CLUSTER_GAP}">
 				{@render toolbar?.()}
 			</div>
 		</div>

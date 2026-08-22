@@ -24,6 +24,7 @@ import {
   tileContentWidthPx,
   type GridVariant,
   type ShellWidth,
+  sectionActionsClass,
 } from "./tokens";
 
 describe("shell widths", () => {
@@ -461,5 +462,38 @@ describe("expandedChartClass", () => {
     const expanded = expandedChartClass(true).trim().split(/\s+/);
     expect(expanded.length).toBeGreaterThan(10);
     expect(expanded.filter((c) => !source.includes(c))).toEqual([]);
+  });
+});
+
+describe("header action placement", () => {
+  test("a cluster with rendered controls takes its own centred row on a phone", () => {
+    // The complaint this exists for: the section header is one
+    // `flex-wrap` row, so where the controls LAND depended on whether the title
+    // happened to leave room. Short title ("Energy split") and they sat beside it;
+    // long title or a caption ("Hour of the week", "2026 versus last year") and
+    // they wrapped onto their own line, left-aligned. Three panels, three
+    // placements, none of them chosen.
+    const utilities = sectionActionsClass().split(/\s+/);
+    expect(utilities).toContain("max-sm:[&:has(>*)]:w-full");
+    expect(utilities).toContain("max-sm:[&:has(>*)]:justify-center");
+  });
+
+  test("an EMPTY cluster claims no row", () => {
+    // Every statistics section passes an `actions` snippet (`SectionControls`)
+    // that renders nothing outside customize mode, so a `hasActions` prop is
+    // truthy while the cluster is visually empty — this was tried and it spent a
+    // `gap-y` on four sections for nothing. The `:has(> *)` gate is the whole
+    // reason the fill is written as a variant and not as a plain utility.
+    const utilities = sectionActionsClass().split(/\s+/);
+    expect(utilities).not.toContain("w-full");
+    expect(utilities).not.toContain("justify-center");
+    expect(utilities.every((u) => !u.startsWith("max-sm:") || u.includes(":has(>*)"))).toBe(true);
+  });
+
+  test("and is right-aligned beside the title from sm up", () => {
+    const utilities = sectionActionsClass().split(/\s+/);
+    expect(utilities).toContain("justify-end");
+    expect(utilities).toContain("sm:ml-auto");
+    expect(utilities).not.toContain("sm:w-full");
   });
 });

@@ -99,3 +99,98 @@ test("a laptop keeps the nested frame the phone gave up", async ({ page }) => {
     .evaluate((el) => parseFloat(getComputedStyle(el).paddingLeft));
   expect(padding).toBe(16);
 });
+
+/**
+ * Where a chart panel's controls land.
+ *
+ * The header is one `flex-wrap` row, so before this the placement depended on
+ * whether the title happened to leave room: "Energy split" is short and its
+ * controls sat beside it, right-aligned; "Hour of the week" and "2026 versus
+ * last year" pushed theirs onto a second line, where `justify-between` with a
+ * single child on it left them at the LEFT. Three panels on one page, three
+ * placements, none of them chosen.
+ *
+ * Measured rather than asserted on classes because the whole defect was a
+ * cascade/wrap interaction: the utilities were already "right", and where the
+ * box ended up was decided by the length of a translated title.
+ */
+test("every chart panel puts its controls on the same centred row on a phone", async ({ page }) => {
+  await openStatistics(page, PHONE);
+
+  const clusters = await page.evaluate(() => {
+    const out: { title: string; centred: boolean; ownRow: boolean; fillsRow: boolean }[] = [];
+    // `data-slot` rather than a shape heuristic: the cluster is one div among
+    // several in the header row, and guessing which by child count broke the
+    // moment the caret moved out of it.
+    for (const cluster of document.querySelectorAll("[data-slot=section-actions]")) {
+      if (cluster.children.length === 0) continue; // rendered empty: not a panel
+      const row = cluster.parentElement;
+      if (!row) continue;
+      const c = cluster.getBoundingClientRect();
+      const r = row.getBoundingClientRect();
+      out.push({
+        title: (row.querySelector("h2")?.textContent ?? "").trim(),
+        centred: Math.abs(c.left - r.left - (r.right - c.right)) < 3,
+        ownRow: Math.round(c.top) > Math.round(r.top) + 4,
+        fillsRow: Math.round(c.width) === Math.round(r.width),
+      });
+    }
+    return out;
+  });
+
+  // Four panels carry controls; if that count changes this should be re-read,
+  // not relaxed.
+  expect(clusters.length).toBeGreaterThanOrEqual(3);
+  for (const cluster of clusters) {
+    expect(cluster, `panel: ${cluster.title}`).toMatchObject({
+      centred: true,
+      ownRow: true,
+      fillsRow: true,
+    });
+  }
+});
+
+/**
+ * The other half of the same complaint: the period navigator was full-measure on
+ * /statistics and content-width on /history, from identical markup. The toolbar
+ * cluster is a flex item, so shrink-to-fit made the navigator's own `w-full`
+ * resolve against the cluster's CONTENT width — wide on /statistics, where two
+ * more controls widened it, and narrow on /history where it was the only child.
+ *
+ * Asserted against the SHELL MEASURE, not by comparing the two pages to each
+ * other. Comparing them was tried and it could not fail: the effect is
+ * locale-dependent, because what widened the /statistics cluster was the compare
+ * switcher's own labels. In German ("Vorheriger Zeitraum", "Vor einem Jahr")
+ * that is wide enough to stretch the navigator noticeably — which is how the bug
+ * was reported — while the English the mock runs in is narrow enough that both
+ * pages agreed with the fix reverted. The requirement is "fills the measure on a
+ * phone", so that is what this measures, on each page independently.
+ */
+test("the period navigator fills the phone's measure on every page that carries it", async ({
+  page,
+}) => {
+  for (const route of ["/#/statistics", "/#/history"]) {
+    // Viewport BEFORE the first layout, like openStatistics does — `openPage`
+    // takes no viewport, and passing one silently left this at the 1024 default.
+    await page.setViewportSize(PHONE);
+    await openPage(page, route);
+    await expect(page.locator("[data-slot=period-navigator]").first()).toBeVisible();
+    // `data-slot` and not `getByRole("group")`: /statistics carries a second
+    // group (the compare-mode switcher), so the role locator measured whichever
+    // came first.
+    const measured = await page
+      .locator("[data-slot=period-navigator]")
+      .first()
+      .evaluate((el) => {
+        const shell = el.closest("[data-slot=page-shell]") ?? document.body;
+        const style = getComputedStyle(shell);
+        const measure =
+          shell.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+        return {
+          navigator: Math.round(el.getBoundingClientRect().width),
+          measure: Math.round(measure),
+        };
+      });
+    expect(measured.navigator, `route: ${route}`).toBe(measured.measure);
+  }
+});
