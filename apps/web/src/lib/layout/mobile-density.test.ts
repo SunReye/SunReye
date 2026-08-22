@@ -578,15 +578,20 @@ describe("touch targets", () => {
     expect(nav).not.toMatch(/h-full w-8 rounded-none/);
     expect(nav.match(/w-9 sm:w-8/g)).toHaveLength(2);
     // The arrows sit in a shared border-box whose height they fill, so the box
-    // has to grow with them or the wider arrows stay 32px tall.
-    expect(nav).toContain("h-9 sm:h-8 items-center border-t border-input");
+    // has to grow with them or the wider arrows stay 32px tall. `sm:h-full`
+    // rather than a second literal height: from sm the navigator is ONE row of a
+    // fixed height (TOOLBAR_CONTROL_H_SM) that its two halves fill, so a height
+    // restated here would fight the row it sits in.
+    expect(nav).toContain("h-9 sm:h-full items-center border-t border-input");
   });
 
   test("the navigator's two rows step together", () => {
     // A control whose grain tabs are 36px and whose arrow row is 32px reads as
-    // two stacked controls. Both rows carry the same `size="sm"` height ladder.
+    // two stacked controls. Both halves take the SAME height at every width:
+    // 36px on a phone, where they are two stacked rows, and the enclosing row's
+    // full height from sm, where they sit side by side.
     const nav = read("lib/components/inverter/period-navigator.svelte");
-    expect(nav.match(/h-9 sm:h-8/g)).toHaveLength(2);
+    expect(nav.match(/h-9 sm:h-full/g)).toHaveLength(2);
   });
 
   test("the calendar's day cells are tappable before they are compact", () => {

@@ -313,3 +313,34 @@ test("all four tabs share one row of equal columns at 390px", async ({ page }) =
   });
   expect(overflow).toBeLessThanOrEqual(0);
 });
+
+test("on a laptop the whole navigator is one row, aligned with the toolbar beside it", async ({
+  page,
+}) => {
+  // The complaint: on a desktop /statistics toolbar the navigator was a
+  // two-row block (tabs over stepper) sitting next to a one-row compare
+  // switcher and a one-row gear, so three controls on one line had three
+  // different heights and nothing shared a baseline. The stack is a PHONE
+  // answer — at 390px four tabs and a stepper cannot share 358px — and a
+  // laptop has the width to spend.
+  //
+  // German on purpose: "Vorheriger Zeitraum" is what makes the row wide in the
+  // reported screenshot, and a layout that only holds in English proves little.
+  await page.setViewportSize({ width: 1440, height: 900 });
+  const navigator = await openNavigator(page, "de");
+
+  const tabs = navigator.grainRow.getByRole("button");
+  const stepper = page.getByRole("group", { name: /zeitraum|range/i }).last();
+
+  const rows = await Promise.all(
+    [...(await tabs.all()), stepper].map(async (el) => {
+      const box = await el.boundingBox();
+      expect(box).not.toBeNull();
+      return Math.round(box!.y);
+    }),
+  );
+
+  // Every tab AND the stepper start on the same line. Reverting the sm: row
+  // direction puts the stepper ~32px below the tabs and this fails.
+  expect(new Set(rows).size).toBe(1);
+});

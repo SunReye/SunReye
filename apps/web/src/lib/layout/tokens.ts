@@ -48,6 +48,44 @@ export const SECTION_GAP = "gap-4";
 export const CLUSTER_GAP = "gap-x-3 gap-y-2";
 
 /**
+ * One height for every control in a page toolbar, borders included.
+ *
+ * The toolbar is a row of peers, and they were three different sizes: the period
+ * navigator sat flush inside its border (34px), the range switcher carries `p-1`
+ * (38px), and an icon button is `size="icon"` (32px). At 1440px that is a 2-3px
+ * step at each seam of one line — not obviously wrong, which is why it survived,
+ * and visibly untidy all the same.
+ *
+ * `h-9` and not a padding rule: these controls disagree about their INSIDES (one
+ * flush, one padded, one a bare icon), so the only thing they can share is the
+ * outside. Tailwind is border-box, so this is the total including the border.
+ */
+export const TOOLBAR_CONTROL_H = "h-9";
+
+/**
+ * The same height, from `sm` up only — for a control that is a stacked block on
+ * a phone and a single row on a laptop (the period navigator).
+ *
+ * Spelled out as its own literal rather than composed as `sm:{TOOLBAR_CONTROL_H}`
+ * at the call site: Tailwind scans SOURCE TEXT, so an interpolated variant is
+ * never generated and the class silently does nothing. The suite has a case for
+ * exactly this mistake on the fullscreen tokens.
+ */
+export const TOOLBAR_CONTROL_H_SM = "sm:h-9";
+
+/**
+ * An icon button in a page toolbar, at the same height as its neighbours.
+ *
+ * The Button primitive's `size="icon"` is `size-9 sm:size-8` — it SHRINKS from
+ * `sm`, which is the one breakpoint where it has to line up with a 36px
+ * navigator and a 36px switcher. Written as a `sm:size-*` class and not as
+ * `sm:h-9 sm:w-9`, because tailwind-merge only displaces a class from the same
+ * group AND the same variant: `w-9` leaves `sm:size-8` standing, and the winner
+ * is then whichever rule Tailwind happened to emit last.
+ */
+export const TOOLBAR_ICON_CONTROL = "sm:size-9";
+
+/**
  * The section header's right-hand cluster.
  *
  * The header is one `flex-wrap justify-between` row, which means the controls

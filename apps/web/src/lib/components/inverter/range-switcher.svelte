@@ -1,7 +1,7 @@
 <script lang="ts" generics="T extends string">
 	import { Button } from '$lib/components/ui/button';
 	import OptionSelect from '$lib/components/settings/option-select.svelte';
-	import { needsCompactSwitcher } from '$lib/layout/tokens';
+	import { needsCompactSwitcher, TOOLBAR_CONTROL_H } from '$lib/layout/tokens';
 
 	// Segmented button group for picking a named range (history window, cost
 	// period, …). Generic over the option id so `bind:value` stays type-safe.
@@ -27,7 +27,7 @@
 	// is the one place this repo cannot unit-test, so it holds no branches it does
 	// not have to.
 	const rowClass = $derived(
-		`${compact ? 'hidden sm:flex' : 'flex'} flex-wrap items-center gap-1 border border-border p-1`
+		`${compact ? 'hidden sm:flex' : 'flex'} ${TOOLBAR_CONTROL_H} items-center gap-1 border border-border p-1`
 	);
 	const variantFor = (id: T) => (value === id ? ('default' as const) : ('ghost' as const));
 </script>
@@ -37,7 +37,7 @@
 {/if}
 <div class={rowClass}>
 	{#each options as o (o.id)}
-		<Button variant={variantFor(o.id)} size="sm" onclick={() => (value = o.id)}>
+		<Button variant={variantFor(o.id)} size="sm" class="h-full" onclick={() => (value = o.id)}>
 			{o.label}
 		</Button>
 	{/each}

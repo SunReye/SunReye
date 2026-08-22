@@ -97,7 +97,7 @@ export function grainTabs(messages: GrainMessages): readonly { id: Grain; label:
  * decision, which is the rule `lib/layout/mobile-density.test.ts` holds the
  * whole tree to.
  */
-export const GRAIN_ROW = "grid grid-cols-4";
+export const GRAIN_ROW = "grid grid-cols-4 sm:flex";
 
 /**
  * Which tab is lit, or `null` for none.

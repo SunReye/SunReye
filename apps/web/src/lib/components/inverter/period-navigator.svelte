@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { TOOLBAR_CONTROL_H_SM } from '$lib/layout/tokens';
 	import CalendarBlank from 'phosphor-svelte/lib/CalendarBlank';
 	import CaretLeft from 'phosphor-svelte/lib/CaretLeft';
 	import CaretRight from 'phosphor-svelte/lib/CaretRight';
@@ -217,13 +218,16 @@
 {/snippet}
 
 <Popover.Root bind:open>
-	<div data-slot="period-navigator" class="flex w-full flex-col border border-input sm:w-auto">
+	<div
+		data-slot="period-navigator"
+		class="flex w-full flex-col border border-input sm:w-auto sm:flex-row sm:items-stretch {TOOLBAR_CONTROL_H_SM}"
+	>
 		<div class={GRAIN_ROW} role="group" aria-label={m.range_grain_aria()}>
 			{#each tabs as tab (tab.id)}
 				<Button
 					variant={tabVariant(tab.id)}
 					size="sm"
-					class="h-9 sm:h-8 rounded-none"
+					class="h-9 sm:h-full rounded-none"
 					onclick={() => pickGrain(tab.id)}
 				>
 					{tab.label}
@@ -233,7 +237,7 @@
 		<!-- One border-box as tall as a `size="sm"` outline button — 36px on a
 		     phone, 32px from sm up — so the arrows and the trigger step together. -->
 		<div
-			class="flex h-9 sm:h-8 items-center border-t border-input"
+			class="flex h-9 sm:h-full items-center border-t border-input sm:border-t-0 sm:border-l"
 			role="group"
 			aria-label={m.range_select_aria()}
 		>
@@ -252,7 +256,7 @@
 						{...props}
 						variant="ghost"
 						size="sm"
-						class="h-full flex-1 gap-2 rounded-none border-x border-input"
+						class="h-full flex-1 gap-2 rounded-none border-x border-input sm:flex-none sm:px-3"
 					>
 						<CalendarBlank class="size-4" />
 						{title}

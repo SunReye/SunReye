@@ -12,6 +12,7 @@
 	import type { RangeOverride } from '$lib/components/inverter/period-navigator';
 	import { setPageHeader } from '$lib/page-header.svelte';
 	import PageShell from '$lib/components/layout/page-shell.svelte';
+	import { TOOLBAR_ICON_CONTROL } from '$lib/layout/tokens';
 	import { useAppSession } from '$lib/session';
 	import { costRangeFor, customCostRange, resolveCostPreset } from '$lib/cost/ranges';
 	import type { CostRange } from '$lib/cost/ranges';
@@ -220,6 +221,7 @@
 			<Button
 				variant="ghost"
 				size="icon"
+				class={TOOLBAR_ICON_CONTROL}
 				aria-label={m.statistics_customize()}
 				title={m.statistics_customize()}
 				onclick={() => customize.start()}

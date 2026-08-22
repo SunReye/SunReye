@@ -190,3 +190,35 @@ for (const panelTitle of ["Total cost", "Energy flows"]) {
     await expect(page.locator("section.fixed")).toHaveCount(0);
   });
 }
+
+test("the desktop toolbar is one line of controls that share a baseline", async ({ page }) => {
+  // Reported on a 1440px /statistics: the navigator was a two-row block (tabs
+  // over stepper) beside a one-row compare switcher and a one-row gear, so
+  // three peers on one line had three heights and nothing lined up. The stack
+  // is the PHONE answer — four tabs and a stepper do not share 358px — and a
+  // laptop has the width to spend.
+  //
+  // Two separate things had to be true, and the first alone was not enough:
+  // the navigator became one row (34px) while the switcher carries `p-1` (38px),
+  // which still left a 2px step at each end of the row.
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await openPage(page, "/#/statistics");
+
+  const peers = await page.locator("[data-slot=page-shell] .ml-auto > *").evaluateAll((els) =>
+    els.map((el) => {
+      const box = el.getBoundingClientRect();
+      return {
+        slot: el.getAttribute("data-slot") ?? el.tagName.toLowerCase(),
+        top: Math.round(box.top),
+        height: Math.round(box.height),
+      };
+    }),
+  );
+
+  // The navigator plus at least the compare switcher; the gear is admin-only.
+  expect(peers.length).toBeGreaterThan(1);
+  // `.size`, not `toHaveLength`: a Set has no `length`, so `toHaveLength(1)`
+  // fails even on a one-element Set and the message reads like a real defect.
+  expect(new Set(peers.map((p) => p.height)).size, `heights: ${JSON.stringify(peers)}`).toBe(1);
+  expect(new Set(peers.map((p) => p.top)).size, `tops: ${JSON.stringify(peers)}`).toBe(1);
+});

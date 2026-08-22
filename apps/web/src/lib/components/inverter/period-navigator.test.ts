@@ -191,8 +191,10 @@ describe("the component spends the decisions rather than restating them", () => 
 
   it("keeps its tabs and arrows thumb-height on a phone", () => {
     // The 44px floor: interactive rows gain a step below sm and hand it back.
-    // `h-8 sm:h-7` here would be a 32px tab under a thumb.
-    expect(code).toMatch(/h-9 sm:h-8/);
+    // `h-8 sm:h-7` here would be a 32px tab under a thumb. The `sm` half is
+    // `h-full` now — from sm the navigator is one row of a fixed height and both
+    // halves fill it — so what is pinned here is the phone number.
+    expect(code).toMatch(/h-9 sm:h-full/);
     expect(code).not.toMatch(/(?:^|\s)h-8 sm:h-7/);
   });
 
