@@ -1,8 +1,9 @@
 <script lang="ts">
 	// A chart panel: what it plots, over which window, and — when the panel owns
-	// its section's scope — the switcher that moves it. The card itself is the
+	// its section's scope — the control that moves it. The card itself is the
 	// shared `Section`, so the panel no longer carries a heading, a border or a
-	// gap of its own; the header cluster is `panel-actions.svelte`.
+	// gap of its own; its headline figure and its window control are the readout
+	// row at the top of the body, above the plot they describe.
 	//
 	// `nested` because a panel always renders inside a statistics section, which
 	// renders inside the page shell: three frames and three pads cost 50px per
@@ -10,8 +11,8 @@
 	import type { Snippet } from 'svelte';
 	import { fade } from 'svelte/transition';
 	import Section from '$lib/components/layout/section.svelte';
-	import PanelActions from './panel-actions.svelte';
-	import type { PanelSummary as Summary } from './panel-summary.svelte';
+	import PanelReadout from './panel-readout.svelte';
+	import { type PanelSummary as Summary } from './panel-summary.svelte';
 	import type { SectionScope } from '$lib/statistics/chart-scope.svelte';
 	import type { CostRange } from '$lib/cost/ranges';
 
@@ -30,7 +31,7 @@
 		view?: SectionScope;
 		summary?: Summary;
 		/** The picked range, passed by the one panel per section that carries the
-		 *  scope switcher; the section's other panels follow it. */
+		 *  window control; the section's other panels follow it. */
 		switcher?: CostRange;
 		children: Snippet;
 	} = $props();
@@ -44,12 +45,13 @@
 	     long German heading truncate before its own name was readable. It is the
 	     section caption now — its own line, under the title. -->
 	<Section {title} caption={view?.caption ?? caption} nested fullscreen>
-		{#snippet actions()}
-			<!-- Summary and switcher travel together in the one right-hand cluster.
-			     Spread by `justify-between` the summary landed mid-row, where it read
-			     as a second title rather than as this panel's headline figure. -->
-			<PanelActions {view} {summary} {switcher} />
-		{/snippet}
+		<!-- The figure and the window control, one row, above the plot. They were
+		     the header's action cluster and the first line of the body
+		     respectively, and a header row reading "EUR 6.62 –  By day
+		     12 months  ⤢" is five things wearing one grammar: a reader counts five
+		     controls where there are two. Which of the two cells this panel spends
+		     is `panel-readout.svelte`'s business, not the card's. -->
+		<PanelReadout {view} {summary} {switcher} />
 		{@render children()}
 	</Section>
 </div>

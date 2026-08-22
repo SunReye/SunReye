@@ -189,9 +189,10 @@ describe("the glide floor and overshoot have exactly one home", () => {
 /**
  * Fix 3: the live readout is gated on the card's own visibility.
  *
- * MetricCardActions renders in the Section's `actions` snippet, which sits ABOVE
- * `{#if !mounted}` — so all 63 history cards ran a readout Tween while only four
- * charts existed, and at the measured 1s cadence the 1150ms glide outlasts the
+ * The readout renders in the card's readout row, the first row of the body,
+ * which sits ABOVE `{#if !mounted}` — as the Section's `actions` snippet it came
+ * from did too, so moving it changed nothing about this hazard. All 63 history
+ * cards ran a readout Tween while only four charts existed, and at the measured 1s cadence the 1150ms glide outlasts the
  * feed, so the rAF loop never settles (829 text mutations per 10s on /history
  * against 78 on the overview).
  *
@@ -201,19 +202,21 @@ describe("the glide floor and overshoot have exactly one home", () => {
  * AnimatedNumber, or branching the markup, would reintroduce both.
  */
 const CARD = await read("../entity-history-card.svelte");
-const ACTIONS = await read("./metric-card-actions.svelte");
 const READOUT = await read("./metric-readout.svelte");
 const NUMBER = await read("../animated-number.svelte");
 
 describe("the readout's glide is gated on the card being on screen", () => {
-  test("the card hands MetricCardActions its own `mounted` state", () => {
+  test("the card hands the readout its own `mounted` state", () => {
     // `mounted`, not `visible`: an expanded card bypasses the observer entirely
     // and must still animate.
     expect(stripComments(CARD)).toMatch(/animate=\{mounted\}/);
   });
 
-  test("actions and readout pass it straight through to AnimatedNumber", () => {
-    expect(stripComments(ACTIONS)).toMatch(/<MetricReadout[^>]*\{animate\}/);
+  test("the readout passes it straight through to AnimatedNumber", () => {
+    // The card writes the readout itself now — the file that used to stand
+    // between them held it and the compare menu together, and those two live in
+    // different zones of the card since the header cluster went icons-only.
+    expect(stripComments(CARD)).toMatch(/<MetricReadout[^>]*animate=\{mounted\}/);
     expect(stripComments(READOUT)).toMatch(/<AnimatedNumber[^>]*\{animate\}/);
   });
 
@@ -228,7 +231,7 @@ describe("the readout's glide is gated on the card being on screen", () => {
     // An {#if animate} around it would drop the value while off screen and pop
     // an em dash on re-entry — the whole reason this is a duration.
     expect(stripComments(READOUT)).not.toMatch(/\{#if[^}]*animate/);
-    expect(stripComments(ACTIONS)).not.toMatch(/\{#if[^}]*animate/);
+    expect(stripComments(CARD)).not.toMatch(/\{#if[^}]*animate/);
   });
 });
 

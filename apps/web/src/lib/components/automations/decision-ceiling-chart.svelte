@@ -3,7 +3,6 @@
 	// against what the register actually held. Step curve, because a ceiling is
 	// piecewise constant between writes — and in shadow mode the two lines
 	// diverging is exactly the point.
-	import { curveStepAfter } from 'd3-shape';
 	import DecisionChart, { type PlotSeries } from './decision-chart.svelte';
 	import * as m from '$lib/paraglide/messages';
 	import type { DecisionRow } from './decision-series';
@@ -27,11 +26,13 @@
 						label: m.automations_series_register(),
 						color: 'var(--color-muted-foreground)',
 						unit: 'A',
-						dash: '5 4'
+						// Not the primary measurement: this is what the register reads
+						// back, beside what the automation decided.
+						dash: 'secondary'
 					} satisfies PlotSeries
 				]
 			: [])
 	]);
 </script>
 
-<DecisionChart {rows} {series} curve={curveStepAfter} height="h-40" yDomain={[0, null]} />
+<DecisionChart {rows} {series} kind="setpoint" height="h-40" yDomain={[0, null]} />

@@ -42,11 +42,13 @@ const tiles = (d: EnergyTileData) => deriveTiles(ENERGY_TILES, d, f);
 const byId = (d: EnergyTileData, id: string) => tiles(d).find((t) => t.id === id);
 
 describe("ENERGY_TILES registry", () => {
-  test("declares the five totals in render order", () => {
+  test("declares the seven totals in render order", () => {
     expect(ENERGY_TILES.map((t) => t.id)).toEqual([
       "energy.produced",
       "energy.consumed",
       "energy.selfUsed",
+      "energy.gridImported",
+      "energy.gridExported",
       "energy.batteryCharged",
       "energy.batteryDischarged",
     ]);
@@ -68,6 +70,8 @@ describe("headline figures", () => {
     // Self-used is production the plant kept (120 − 50), not load − import
     // (60) — the latter counts battery discharge the sun put there earlier.
     expect(byId(d, "energy.selfUsed")?.value).toBe("70 kWh");
+    expect(byId(d, "energy.gridImported")?.value).toBe("100 kWh");
+    expect(byId(d, "energy.gridExported")?.value).toBe("50 kWh");
     expect(byId(d, "energy.batteryCharged")?.value).toBe("22 kWh");
     expect(byId(d, "energy.batteryDischarged")?.value).toBe("20 kWh");
   });
@@ -91,6 +95,55 @@ describe("self-consumed energy", () => {
   test("is the whole production on a window that exported nothing", () => {
     const d = data({ current: totals({ productionKwh: 12, exportKwh: 0 }) });
     expect(byId(d, "energy.selfUsed")?.value).toBe("12 kWh");
+  });
+});
+
+describe("grid energy", () => {
+  test("keeps both tiles on a window that moved nothing either way", () => {
+    // A genuine zero is the headline result of a good solar month ("we imported
+    // nothing all August"), so these tiles are unconditional — unlike the
+    // battery pair, which a plant without a pack should never see.
+    const d = data({
+      current: totals({ importKwh: 0, exportKwh: 0 }),
+      previous: totals({ importKwh: 0, exportKwh: 0 }),
+    });
+    expect(byId(d, "energy.gridImported")?.value).toBe("0 kWh");
+    expect(byId(d, "energy.gridExported")?.value).toBe("0 kWh");
+    expect(tiles(d).map((t) => t.id)).toContain("energy.gridImported");
+    expect(tiles(d).map((t) => t.id)).toContain("energy.gridExported");
+  });
+
+  test("still stands on a batteryless plant that never exported", () => {
+    const d = data({
+      hasBattery: false,
+      current: totals({ importKwh: 0, exportKwh: 0, batteryChargeKwh: 0, batteryDischargeKwh: 0 }),
+      previous: totals({ importKwh: 0, exportKwh: 0, batteryChargeKwh: 0, batteryDischargeKwh: 0 }),
+    });
+    expect(tiles(d).map((t) => t.id)).toEqual([
+      "energy.produced",
+      "energy.consumed",
+      "energy.selfUsed",
+      "energy.gridImported",
+      "energy.gridExported",
+    ]);
+  });
+
+  test("closes the identity produced = self-used + exported", () => {
+    const d = data();
+    const kwh = (id: string) => ENERGY_TILES.find((t) => t.id === id)?.raw(d);
+    expect((kwh("energy.selfUsed") ?? 0) + (kwh("energy.gridExported") ?? 0)).toBe(
+      kwh("energy.produced") ?? 0,
+    );
+  });
+
+  test("raw exposes the unformatted kWh both ways", () => {
+    expect(ENERGY_TILES.find((t) => t.id === "energy.gridImported")?.raw(data())).toBe(100);
+    expect(ENERGY_TILES.find((t) => t.id === "energy.gridExported")?.raw(data())).toBe(50);
+  });
+
+  test("divides each total by the window length in the sub-line", () => {
+    expect(byId(data(), "energy.gridImported")?.sub).toBe("10 kWh/day");
+    expect(byId(data(), "energy.gridExported")?.sub).toBe("5 kWh/day");
   });
 });
 
@@ -168,6 +221,8 @@ describe("battery capability gating", () => {
       "energy.produced",
       "energy.consumed",
       "energy.selfUsed",
+      "energy.gridImported",
+      "energy.gridExported",
     ]);
   });
 
@@ -200,6 +255,8 @@ describe("battery capability gating", () => {
       "energy.produced",
       "energy.consumed",
       "energy.selfUsed",
+      "energy.gridImported",
+      "energy.gridExported",
     ]);
   });
 

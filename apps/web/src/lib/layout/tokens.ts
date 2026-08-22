@@ -48,6 +48,125 @@ export const SECTION_GAP = "gap-4";
 export const CLUSTER_GAP = "gap-x-3 gap-y-2";
 
 /**
+ * One height for every control in a page toolbar, borders included.
+ *
+ * The toolbar is a row of peers, and they were three different sizes: the period
+ * navigator sat flush inside its border (34px), the range switcher carries `p-1`
+ * (38px), and an icon button is `size="icon"` (32px). At 1440px that is a 2-3px
+ * step at each seam of one line — not obviously wrong, which is why it survived,
+ * and visibly untidy all the same.
+ *
+ * `h-9` and not a padding rule: these controls disagree about their INSIDES (one
+ * flush, one padded, one a bare icon), so the only thing they can share is the
+ * outside. Tailwind is border-box, so this is the total including the border.
+ */
+export const TOOLBAR_CONTROL_H = "h-9";
+
+/**
+ * The same height, from `sm` up only — for a control that is a stacked block on
+ * a phone and a single row on a laptop (the period navigator).
+ *
+ * Spelled out as its own literal rather than composed as `sm:{TOOLBAR_CONTROL_H}`
+ * at the call site: Tailwind scans SOURCE TEXT, so an interpolated variant is
+ * never generated and the class silently does nothing. The suite has a case for
+ * exactly this mistake on the fullscreen tokens.
+ */
+export const TOOLBAR_CONTROL_H_SM = "sm:h-9";
+
+/**
+ * An icon button in a page toolbar, at the same height as its neighbours.
+ *
+ * The Button primitive's `size="icon"` is `size-9 sm:size-8` — it SHRINKS from
+ * `sm`, which is the one breakpoint where it has to line up with a 36px
+ * navigator and a 36px switcher. Written as a `sm:size-*` class and not as
+ * `sm:h-9 sm:w-9`, because tailwind-merge only displaces a class from the same
+ * group AND the same variant: `w-9` leaves `sm:size-8` standing, and the winner
+ * is then whichever rule Tailwind happened to emit last.
+ */
+export const TOOLBAR_ICON_CONTROL = "sm:size-9";
+
+/**
+ * The section header's two columns: title + caption on the left, chrome on the
+ * right.
+ *
+ * The header used to be a single `flex-wrap items-center` row, and that is where
+ * a card's controls scattered. Wrapping is decided by content, so the SAME
+ * cluster landed in a different place on every panel: beside a short title
+ * ("Energy split") it was right-aligned; under a long or captioned one ("Hour of
+ * the week", "2026 versus last year") it took a line of its own and, with one
+ * child on that line, was CENTRED. Three chart panels on /statistics, three
+ * placements, none of them a decision.
+ *
+ * A grid ends the argument by never asking about content: column two is column
+ * two at 390px and at 2560px. Column one is `minmax(0,1fr)` and not `1fr`
+ * because a grid item's automatic minimum is its min-content size — a long
+ * unbroken title would otherwise blow the track open and push the cluster off
+ * the right edge, and the `truncate` on the `h2` would never get to fire.
+ * `items-start` so a two-line title grows downwards while the chrome stays put
+ * on the first line instead of drifting to the middle of it.
+ *
+ * The universal part of the four-zone header, so settings panels get it too;
+ * only the readout row ({@link readoutRowClass}) and the icons-only rule are
+ * specific to cards holding a plot.
+ */
+export function sectionHeaderGridClass(): string {
+  return `grid grid-cols-[minmax(0,1fr)_auto] items-start ${CLUSTER_GAP}`;
+}
+
+/**
+ * The card's readout row — zone 3, the first row of the body, above the plot:
+ * the headline value and its delta on the left, the card's text controls on the
+ * right.
+ *
+ * This is the one zone allowed to wrap, and wrapping here means STACKING: from
+ * `max-sm` the two cells become one column apiece, each starting at the left
+ * margin. Written as `max-sm:grid-cols-1` rather than as a wrapping flex row on
+ * purpose — a wrapped flex line holding a single child still obeys `justify-*`,
+ * which is precisely how the old header cluster ended up centred. A grid cell
+ * has nowhere to centre to.
+ *
+ * `items-end` and not `items-center`: the value is a large number and the
+ * controls are small text, so the two only read as one line when their bottoms
+ * agree.
+ */
+export function readoutRowClass(): string {
+  return `grid grid-cols-[minmax(0,1fr)_auto] max-sm:grid-cols-1 items-end ${CLUSTER_GAP}`;
+}
+
+/**
+ * The header's right-hand cluster — zone 2, the contents of grid column two.
+ *
+ * Placement is no longer this token's business: {@link sectionHeaderGridClass}
+ * puts the column hard right at every width, which is why the phone-width
+ * `max-sm:[&:has(>*)]:w-full` + `justify-center` pair is gone (it was what
+ * centred the cluster under a long title) and why `sm:ml-auto` went with them —
+ * an auto margin pushing against the end of a track that is already flush right
+ * does nothing but outlive its reason.
+ *
+ * What survives is the cluster's own internals: a row, vertically centred,
+ * packed to its right edge so it grows leftwards as controls are added.
+ *
+ * It deliberately claims no width, padding or min-size of its own. An `auto`
+ * track with nothing in it collapses to zero and the column gap goes with it,
+ * which is what keeps an EMPTY cluster free — and empty is the common case:
+ * every statistics section passes an `actions` snippet (`SectionControls`) that
+ * renders nothing outside customize mode, so a `hasActions` prop is truthy while
+ * the cluster is visually empty. That is the observation the old `:has(> *)`
+ * gate encoded; the grid now answers it structurally, without a selector.
+ *
+ * On a card holding a plot this cluster is icons only — a text button belongs in
+ * the readout row ({@link readoutRowClass}). Settings panels, which have no
+ * plot and no readout row, legitimately keep a text button here.
+ *
+ * The collapse caret is still deliberately NOT in here (see
+ * `section-collapse-trigger.svelte`): grouped with the chrome it reads as a
+ * "show more" button rather than as the section's own affordance.
+ */
+export function sectionActionsClass(): string {
+  return `flex items-center justify-end ${CLUSTER_GAP}`;
+}
+
+/**
  * Hit-area expander for icon-only triggers: an invisible `::after` grows the
  * touch target past the icon without moving the icon or disturbing the layout.
  *
@@ -59,6 +178,22 @@ export const CLUSTER_GAP = "gap-x-3 gap-y-2";
  * trigger has nothing next to it.
  */
 export const TAP = "relative after:absolute after:-inset-3.5";
+
+/**
+ * How close a portalled overlay — popover, tooltip, and the chart tooltips that
+ * follow them — may come to the edge of the viewport, in CSS px.
+ *
+ * Spent as floating-ui's `collisionPadding`, which defaults to zero: an overlay
+ * anchored to a control in the page gutter flips and then sits flush against
+ * the edge, with its shadow and its rounded corner cut in half. A NUMBER rather
+ * than a class, because the collision is resolved at position time by
+ * measurement — a Tailwind inset is invisible to it and would only shift the
+ * box after the decision was already made.
+ *
+ * Half the phone gutter (`SHELL_PAD`'s `p-4`): enough to read as deliberate,
+ * small enough that a wide popover still prefers its natural side.
+ */
+export const TOOLTIP_VIEWPORT_MARGIN = 8;
 
 /** Tailwind's default spacing step (`--spacing: 0.25rem`) at a 16px root. */
 const SPACING_PX = 4;
@@ -101,6 +236,172 @@ export function tapTargetPx(contentPx: number): { width: number; height: number 
  * peak-shaving page and 1-up on statistics.
  */
 export const TILE_COLUMNS = "grid-cols-2 sm:grid-cols-3 lg:grid-cols-4";
+
+/**
+ * The tile grid's own frame.
+ *
+ * On a laptop this is `border-l border-t` and the tiles close the box with
+ * their own `border-b border-r` — a hairline grid inside the section card.
+ * Nested inside a card that is itself inside the page, that box cost 46px per
+ * edge at 390px and left a two-up tile 133px: a box, in a box, in the page,
+ * for a figure with a delta chip beside it.
+ *
+ * So on a phone the grid stops being a box and becomes a full-bleed run of
+ * rows. It gives up its left border and pulls out through the section's gutter
+ * (`SECTION_PAD`'s `p-3`), keeping only the top rule that separates it from
+ * the header. The right bleed is one pixel deeper than the left on purpose:
+ * the LAST column still draws its own `border-r`, and at -13px that border
+ * lands exactly on the card's, instead of beside it as a two-pixel edge. The
+ * left needs no such pixel — the card's own border is the frame there.
+ *
+ * `sm:ml-0 sm:mr-0` rather than `sm:mx-0`: Tailwind sorts `ml`/`mr` after `mx`,
+ * so the axis form is not reliably the winner at the breakpoint even though it
+ * comes later in the source. Same level on both sides of the breakpoint, and
+ * the browser pass in `e2e/statistics-mobile-density.spec.ts` measures that it
+ * really did win.
+ */
+export const TILE_FRAME = "-ml-3 -mr-[13px] border-t border-border sm:ml-0 sm:mr-0 sm:border-l";
+
+/**
+ * One tile in that grid: the hairlines that close the box, and its gutter.
+ *
+ * The gutter steps down to 12px on a phone for the reason {@link SECTION_PAD}
+ * does — the innermost box pays least — and because 16px inside a cell that is
+ * already flush with the card's edge is padding on top of padding.
+ */
+export const TILE_CELL = "border-b border-r border-border bg-background px-3 py-3 sm:px-4";
+
+/** Tailwind's `sm` breakpoint (40rem at a 16px root), in CSS px. */
+const SM_PX = 640;
+
+/** The wide shell's cap (`max-w-7xl`, 80rem), in CSS px. */
+const SHELL_CAP_PX = 1280;
+
+/** The utilities of a responsive token that actually apply at `viewportPx`. */
+function activeUtilities(token: string, viewportPx: number): string[] {
+  return token
+    .split(/\s+/)
+    .filter(Boolean)
+    .flatMap((u) => (u.startsWith("sm:") ? (viewportPx >= SM_PX ? [u.slice(3)] : []) : [u]));
+}
+
+/** `3` -> 12px, `[13px]` -> 13px. Tailwind's step at a 16px root. */
+function lengthPx(value: string): number {
+  const arbitrary = value.match(/^\[(\d+(?:\.\d+)?)px\]$/);
+  return arbitrary ? Number(arbitrary[1]) : Number(value) * SPACING_PX;
+}
+
+/**
+ * What a class list spends on ONE horizontal side: border + padding + margin,
+ * in CSS px. Negative margins spend negatively — that is the whole point of a
+ * full-bleed row, and a helper that could not go below zero could not measure
+ * one.
+ *
+ * Resolution follows Tailwind's own ordering: a side utility (`pl-`) beats an
+ * axis one (`px-`) beats the all-sides form (`p-`), and among equals the later
+ * one in the token wins — which is how `px-3 sm:px-4` resolves once
+ * {@link activeUtilities} has kept both. Tokens here therefore never mix
+ * levels across a breakpoint (`-ml-3 sm:mx-0` would resolve differently in this
+ * model than in the stylesheet); they restate the same level, and
+ * `tokens.test.ts` measures the result rather than trusting it.
+ */
+function sideSpendPx(utilities: string[], side: "left" | "right"): number {
+  const axial = side === "left" ? "l" : "r";
+  return spentByClaims(utilities.flatMap((u) => sideClaimOf(u, axial) ?? []));
+}
+
+/** Which horizontal side a utility names, as `sideSpendPx` addresses it. */
+type AxialSide = "l" | "r";
+
+/**
+ * One utility's claim on one horizontal side: which box part it sets
+ * (`p`, `m`, `border`), how specifically it named the side, and what it costs.
+ */
+interface SideClaim {
+  readonly kind: string;
+  readonly rank: number;
+  readonly px: number;
+}
+
+/**
+ * How specifically `target` names `axial`, following Tailwind's own ordering:
+ * the side form (`pl-`) beats the axis (`px-`) beats all-sides (`p-`). A
+ * vertical-only target (`pt-`, `border-y`) is not a claim on this side at all,
+ * and scores below every rank so it can be dropped rather than ranked.
+ */
+function sideRank(target: string | undefined, axial: AxialSide): number {
+  if (target === axial) return 2;
+  if (target === "x") return 1;
+  return target === undefined || target === "" ? 0 : -1;
+}
+
+/** The padding/margin a utility spends on `axial`, or `null` if it is not one. */
+function boxClaimOf(utility: string, axial: AxialSide): SideClaim | null {
+  const box = utility.match(/^(-?)([pm])([xylrtb]?)-(.+)$/);
+  if (box === null) return null;
+  const [, sign, kind, target, value] = box;
+  const rank = sideRank(target, axial);
+  // Negative margins spend negatively — that is the whole point of a full-bleed
+  // row, so the sign travels with the length rather than being clamped away.
+  return rank < 0
+    ? null
+    : { kind: kind ?? "", rank, px: (sign === "-" ? -1 : 1) * lengthPx(value ?? "") };
+}
+
+/** The border width a utility draws on `axial`, or `null` if it draws none. */
+function borderClaimOf(utility: string, axial: AxialSide): SideClaim | null {
+  const border = utility.match(/^border(?:-([xylrtb]))?(?:-(\d+))?$/);
+  if (border === null) return null;
+  const [, target, width] = border;
+  const rank = sideRank(target, axial);
+  return rank < 0 ? null : { kind: "border", rank, px: width === undefined ? 1 : Number(width) };
+}
+
+/** What one utility claims on `axial` — padding, margin, border, or nothing. */
+function sideClaimOf(utility: string, axial: AxialSide): SideClaim | null {
+  return boxClaimOf(utility, axial) ?? borderClaimOf(utility, axial);
+}
+
+/**
+ * The px the surviving claims add up to: one winner per box part — the most
+ * specific, and among equals the later one in the token, which is how
+ * `px-3 sm:px-4` resolves once {@link activeUtilities} has kept both.
+ */
+function spentByClaims(claims: SideClaim[]): number {
+  const best = new Map<string, SideClaim>();
+  for (const claim of claims) {
+    const held = best.get(claim.kind);
+    if (held === undefined || claim.rank >= held.rank) best.set(claim.kind, claim);
+  }
+
+  let total = 0;
+  for (const { px } of best.values()) total += px;
+  return total;
+}
+
+/** `width` minus what `token` spends on both of its horizontal sides. */
+function insideOf(width: number, token: string, viewportPx: number): number {
+  const utilities = activeUtilities(token, viewportPx);
+  return width - sideSpendPx(utilities, "left") - sideSpendPx(utilities, "right");
+}
+
+/**
+ * How many CSS px are left for a tile's TEXT at a given viewport, walking the
+ * whole chrome chain the tile sits in: page shell, section card, tile grid,
+ * tile.
+ *
+ * The number, not the classes, is the thing that was wrong. At 390px the chain
+ * was 16 + (1 + 12) + 1 + (1 + 16) = 46px per edge and left a two-up tile 133px
+ * — a box, inside a box, inside the page, for a figure with a delta chip beside
+ * it. Derived from the tokens rather than restated next to them, so shrinking a
+ * tile's measure is a red test instead of a silent regression.
+ */
+export function tileContentWidthPx(viewportPx: number, columns: number): number {
+  const shell = insideOf(Math.min(viewportPx, SHELL_CAP_PX), SHELL_PAD, viewportPx);
+  const section = insideOf(shell, `${SECTION_BORDER} ${SECTION_PAD}`, viewportPx);
+  const grid = insideOf(section, TILE_FRAME, viewportPx);
+  return insideOf(grid / columns, TILE_CELL, viewportPx);
+}
 
 export const GRID = {
   /** Dense readouts: stat tiles, metric pairs. */

@@ -55,6 +55,13 @@ export const SELECTORS = {
   metricCard: ".h-50.w-full",
   /** The app shell's scroll container (`(app)/+layout.svelte`). */
   scroller: "main",
+  /**
+   * A live numeric readout — a power-flow node on the overview, a KPI on
+   * /system. `power-flow-node.svelte` renders a literal `\u2014` here while the
+   * value is `undefined`, so "does this hold a digit?" is the readout probe the
+   * shell-lease outage was reported as.
+   */
+  liveReadout: "span.font-semibold.tabular-nums",
 } as const;
 
 export interface ScrollOptions {
@@ -412,4 +419,236 @@ export async function throttleCpu(page: Page, rate: number): Promise<() => Promi
     await client.send("Emulation.setCPUThrottlingRate", { rate: 1 });
     await client.detach();
   };
+}
+
+export interface MountCostOptions {
+  /** How many scroll steps to take at most. */
+  steps?: number;
+  /** Travel per step, as a fraction of the viewport height. */
+  stepFraction?: number;
+  /** How long that travel takes. NOT measured — see {@link measureMountCost}. */
+  travelMs?: number;
+  /**
+   * How long the page must go without a new chart appearing before the burst
+   * counts as finished. Must exceed the mount queue's own settle window
+   * (400 ms) or the measurement stops before the queue has started.
+   */
+  quietMs?: number;
+  /** Give up waiting for quiet after this long, so a pathological build cannot hang the spec. */
+  maxSettleMs?: number;
+  /**
+   * Grace period before closing the probe. `longtask` entries are delivered in
+   * a later task, so a window closed the instant it goes quiet drops the tail
+   * of the work it was measuring.
+   */
+  drainMs?: number;
+}
+
+export interface MountCost {
+  /** Long-task time inside the stationary windows only. */
+  blockedMs: number;
+  chartMounts: number;
+  longTasks: number;
+  /** Windows actually measured (fewer than `steps` if the page ran out). */
+  windows: number;
+  /** Wall time spent inside the measured windows. */
+  measuredMs: number;
+}
+
+/**
+ * What mounting a chart costs, measured with the page HELD STILL.
+ *
+ * ## Why this exists, and why dividing a scroll sweep does not work
+ *
+ * The obvious instrument — sweep for 12 s, divide total long-task time by the
+ * number of charts that appeared — does not measure a per-mount cost, because
+ * the numerator is dominated by a term that has nothing to do with mounting.
+ * Scrolling a stack of sixty cards re-layouts and repaints every chart already
+ * on screen, and under a 4× throttle every one of those frames is a long task.
+ * Fitting the measured runs gives `blocked ≈ 3600ms + ~100ms × mounts`: the
+ * constant is the scroll, and a fixed-duration sweep pays it whatever happens.
+ *
+ * Dividing that by the mount count therefore reads `3600/mounts + 100`, which
+ * is a hyperbola in the DENOMINATOR — and the denominator is exactly what a
+ * slower machine changes, because fewer dwell cycles complete inside a fixed
+ * 12 s. Measured on one unchanged tree, only the throttle varying:
+ *
+ * | throttle | mounts | blocked | blocked/mounts |
+ * | -------- | ------ | ------- | -------------- |
+ * | 4×       | 42     | 7489    | 178            |
+ * | 6×       | 32     | 9144    | 286            |
+ * | 8×       | 20     | 8494    | 425            |
+ *
+ * Same code, same page, a metric that more than doubles. That is how a 280 ms
+ * budget failed on CI at 296–308 ms while reading 165 ms locally: CI is roughly
+ * half this machine's speed, so it mounted about twenty charts and paid the
+ * whole scroll constant across them. `corr(blocked/mounts, mounts) = -0.91`.
+ *
+ * ## What this measures instead
+ *
+ * The probe runs ONLY while the page is stationary. Each step scrolls
+ * unmeasured, then holds still and measures until no new chart has appeared for
+ * `quietMs`. A stationary page with its charts already built does almost no
+ * work, so the constant term is gone and what is left in `blockedMs` is chart
+ * construction — which makes `blockedMs / chartMounts` a real per-mount figure
+ * that stays put when the mount count moves.
+ *
+ * Waiting for QUIET rather than a fixed dwell is what carries this across
+ * machines: a slower runner takes longer to build its charts and is given that
+ * time, instead of having the window close mid-build and reporting a mount whose
+ * cost was never counted.
+ */
+export async function measureMountCost(
+  page: Page,
+  options: MountCostOptions = {},
+): Promise<MountCost> {
+  const steps = options.steps ?? 12;
+  const stepFraction = options.stepFraction ?? 0.5;
+  const travelMs = options.travelMs ?? 250;
+  const quietMs = options.quietMs ?? 600;
+  const maxSettleMs = options.maxSettleMs ?? 8000;
+  const drainMs = options.drainMs ?? 200;
+  const viewport = page.viewportSize();
+  const height = viewport?.height ?? 768;
+  const step = Math.round(height * stepFraction);
+
+  await page.evaluate(PROBE_SOURCE);
+  return (await page.evaluate(
+    async (args) => {
+      const perf = (
+        window as unknown as {
+          __sunreyePerf: {
+            start(): number;
+            stop(id: number): { blockedMs: number; chartMounts: number; longTasks: number };
+          };
+        }
+      ).__sunreyePerf;
+      const host = document.querySelector(args.selector) as HTMLElement | null;
+      const target: Element =
+        host && host.scrollHeight > host.clientHeight + 1 ? host : document.scrollingElement!;
+      const wait = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+      const built = (): number => document.querySelectorAll(args.chartSelector).length;
+
+      // Scrolled on a rAF ramp rather than by one assignment: a single jump
+      // lands the whole distance in one frame, which is not the gesture the
+      // lazy-mount window reacts to. This travel is deliberately OUTSIDE every
+      // probe session, so its layout and paint cost is never attributed to a
+      // mount.
+      const travel = (distance: number): Promise<void> =>
+        new Promise((resolve) => {
+          const from = target.scrollTop;
+          const t0 = performance.now();
+          const frame = (now: number): void => {
+            const progress = Math.min(1, (now - t0) / args.travelMs);
+            target.scrollTop = from + distance * progress;
+            if (progress < 1) requestAnimationFrame(frame);
+            else resolve();
+          };
+          requestAnimationFrame(frame);
+        });
+
+      let blockedMs = 0;
+      let chartMounts = 0;
+      let longTasks = 0;
+      let windows = 0;
+      let measuredMs = 0;
+
+      for (let i = 0; i < args.steps; i++) {
+        const room = target.scrollHeight - target.clientHeight - target.scrollTop;
+        if (room <= 1) break;
+        await travel(Math.min(args.step, room));
+
+        const id = perf.start();
+        const openedAt = performance.now();
+        let seen = built();
+        let quietSince = performance.now();
+        // Hold still until the build burst this step queued has finished.
+        while (
+          performance.now() - quietSince < args.quietMs &&
+          performance.now() - openedAt < args.maxSettleMs
+        ) {
+          await wait(100);
+          const now = built();
+          if (now !== seen) {
+            seen = now;
+            quietSince = performance.now();
+          }
+        }
+        await wait(args.drainMs);
+        const raw = perf.stop(id);
+        measuredMs += performance.now() - openedAt;
+        blockedMs += raw.blockedMs;
+        chartMounts += raw.chartMounts;
+        longTasks += raw.longTasks;
+        windows++;
+      }
+      return { blockedMs, chartMounts, longTasks, windows, measuredMs };
+    },
+    {
+      selector: SELECTORS.scroller,
+      chartSelector: SELECTORS.chart,
+      steps,
+      step,
+      travelMs,
+      quietMs,
+      maxSettleMs,
+      drainMs,
+    },
+  )) as MountCost;
+}
+
+/**
+ * The cost of building ONE chart, as a multiple of a fixed unit of this
+ * machine's CPU work.
+ *
+ * Divided by {@link calibrateCpu} rather than left in milliseconds. Chart
+ * construction is mostly d3 turning rows into path data, so a fixed arithmetic
+ * loop measured under the SAME throttle is a fair yardstick, and dividing by it
+ * cancels most of the machine out. That is the difference between a budget that
+ * means "a chart costs this much work" and one that means "a chart costs this
+ * many milliseconds on the laptop the number was written on": measured on one
+ * unchanged tree, the raw figure runs 156 / 284 / 451 ms at 4x / 6x / 8x while
+ * this ratio runs 0.32 / 0.40 / 0.45.
+ *
+ * ## Why the live feed is NOT subtracted
+ *
+ * The obvious next correction is to measure a still page building nothing and
+ * take that off the numerator, since the feed keeps arriving throughout. It was
+ * tried and removed: measured idle long-task time is 0.00 ms/ms at 4x and 6x and
+ * 0.05 at 8x, so it corrects nothing in the range this spec runs in — and
+ * because idle work grows with throttle while the window count does not, the
+ * subtraction runs away at the extremes and INVERTS the metric. With it in, the
+ * same healthy page read 0.16 at 12x and 0.002 at 16x, which is a spec that
+ * passes hardest when the machine is worst. An over-report on a slow runner is a
+ * safe failure; a silent pass is not.
+ */
+export function perMountCost(measured: MountCost, cpuUnitMs: number): number {
+  return measured.blockedMs / measured.chartMounts / cpuUnitMs;
+}
+
+/**
+ * How long this machine takes to do a fixed lump of arithmetic, in ms.
+ *
+ * The yardstick for {@link perMountCost}. Deterministic, allocation-free and
+ * touching neither the DOM nor the network, so it measures CPU and nothing else;
+ * run under whatever `throttleCpu` rate is in force and it tracks it almost
+ * exactly (measured 486 / 730 / 974 ms at 4x / 6x / 8x, against an ideal
+ * 486 / 729 / 972).
+ *
+ * The fastest of several passes, not the mean: a slow pass means something else
+ * ran, and the floor is the number that describes the machine.
+ */
+export async function calibrateCpu(page: Page): Promise<number> {
+  return (await page.evaluate(`(() => {
+  const run = () => {
+    const t0 = performance.now();
+    let x = 1234567;
+    let acc = 0;
+    for (let i = 0; i < 6000000; i++) { x = (x * 1103515245 + 12345) % 2147483648; acc += x % 7; }
+    // Returned so the loop cannot be optimised away as dead.
+    return { ms: performance.now() - t0, acc };
+  };
+  run();
+  return Math.min(run().ms, run().ms, run().ms);
+})()`)) as number;
 }

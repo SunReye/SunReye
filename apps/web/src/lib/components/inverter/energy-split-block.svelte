@@ -18,6 +18,7 @@
 	import * as msg from '$lib/paraglide/messages';
 	import ChartLegend from '$lib/components/inverter/chart-legend.svelte';
 	import DeltaChip from '$lib/components/statistics/delta-chip.svelte';
+	import PlotFrame from '$lib/components/layout/plot-frame.svelte';
 	import { seriesConfig, stackedBarProps } from '$lib/components/inverter/_shared/chart-series';
 	import { CHART_BOX_SHORT } from '$lib/layout/tokens';
 
@@ -76,18 +77,35 @@
 			{/if}
 		</span>
 	</div>
-	<Chart.Container {config} class="{CHART_BOX_SHORT} w-full">
-		<BarChart
-			{data}
-			x="label"
-			{series}
-			{seriesLayout}
-			{...stackedBarProps(data.length, plotWidth)}
-		>
-			{#snippet tooltip()}
-				<Chart.Tooltip />
-			{/snippet}
-		</BarChart>
-	</Chart.Container>
+	<!-- The height stays on this wrapper, not on the frame: `CHART_BOX_SHORT` is
+	     what sizes the plot, and a frame carrying its own height would be a second
+	     one in the chain EXPANDED_SECTION walks. The frame's job here is only to
+	     be the positioning box the corner control anchors to — no gesture on this
+	     chart, so no `chips`.
+
+	     One ⤢ per BLOCK, which means two in the energy-split card, both expanding
+	     it. That is the honest reading of "the control sits on the plot": the card
+	     is a single box holding two plots, the reader's pointer is over one of
+	     them, and the corner they can see is the one they press. Framing only the
+	     left block instead would leave the right block's corner permanently dead
+	     with no way to tell why, and putting it back in the header cluster is the
+	     mispress against the collapse caret this whole change removes. -->
+	<div class="{CHART_BOX_SHORT} w-full">
+		<PlotFrame>
+			<Chart.Container {config} class="aspect-auto h-full w-full">
+				<BarChart
+					{data}
+					x="label"
+					{series}
+					{seriesLayout}
+					{...stackedBarProps(data.length, plotWidth)}
+				>
+					{#snippet tooltip()}
+						<Chart.Tooltip />
+					{/snippet}
+				</BarChart>
+			</Chart.Container>
+		</PlotFrame>
+	</div>
 	<ChartLegend items={series} />
 </div>

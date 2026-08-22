@@ -1,29 +1,54 @@
 /**
- * The two zoom gestures a chart offers, and why they are never both live.
+ * One chart's gesture state: which of the three modes it is in, and the way out.
  *
- * LayerChart wires drag-to-select and drag-to-pan to the same pointer, so
- * `Chart` switches the transform's pointer handling off for as long as a brush
- * is enabled (`disablePointer` in Chart.base.svelte). Two-finger pinch rides on
- * those same pointer events, which makes brushing and pinching mutually
- * exclusive — not a choice made here, a fact of the library.
+ * The mode VOCABULARY and the props each mode implies are ./gesture.ts, which is
+ * pure and unit-tested. This file is the part that cannot be: a rune holding
+ * what the viewer last tapped, and the LayerChart context a reset has to reach.
  *
- * That is the right default anyway on a phone. A live pointer transform sets an
- * inline `touch-action: none` AND calls `preventDefault()` on every touchmove,
- * so a vertical swipe that starts on a chart stops scrolling /history and
- * /statistics — tall stacks of full-width charts where scrolling is the primary
- * gesture. So the brush is the resting state (a horizontal drag selects, a
- * vertical one still scrolls the page, see chart-container's `touch-pan-y`
- * override), and pinch is something the viewer switches ON for one chart and is
- * given a visible way back out of.
+ * The resting mode follows the POINTER (./pointer.svelte.ts):
  *
- * The mapping from a selection to a range lives in ./zoom-range.ts, which is
- * where it can be tested; this only holds the gesture state.
+ *  - a finger rests LOCKED. A drag scrolls the page, a hold scrubs the tooltip
+ *    crosshair, and pinch/pan are ignored. /history is a stack of ~100
+ *    full-width charts and /statistics nine; on both, scrolling is the gesture
+ *    people use every second and zooming the one they use twice a week, so the
+ *    chart must not be holding the pointer by default. It used to: the brush was
+ *    the resting mode on every pointer, and a horizontal swipe across a card on
+ *    a phone selected a window and refetched every chart on the page
+ *    (`e2e/chart-gesture-lock.spec.ts` measured 3 rollup calls turning into 6).
+ *  - a mouse rests on the BRUSH — drag a window, refetch it at a finer rollup.
+ *    A mouse drag cannot be mistaken for a page scroll, so there is nothing to
+ *    defend against, and the landed /history and /statistics gesture is kept.
+ *
+ * Pinch is no longer a mode at all: two fingers zoom on any chart, at any time,
+ * and nothing has to be armed first. It could not be a mode, because the
+ * library's pointer path cannot separate two fingers from one (see
+ * `gestureProps`) — so `./touch-gestures.ts` arbitrates it from the plot frame's
+ * own handler and drives the transform through `pinch()` below. The way back out
+ * is still always on screen (./zoom-controls.svelte).
+ *
+ * The mapping from a selection to a range lives in ./zoom-range.ts.
  */
 
 import type { ChartState } from "layerchart";
 import { display } from "$lib/display.svelte";
 import { getLocale } from "$lib/paraglide/runtime";
-import { labelOptionsFrom, MIN_BAND_EXTENT, type LabelOptions } from "./zoom-range";
+import {
+  gestureProps,
+  restingMode,
+  type BrushEndPayload,
+  type BrushSelection,
+  type GestureMode,
+} from "./gesture";
+
+import { pointerKind } from "./pointer.svelte";
+import {
+  labelOptionsFrom,
+  MIN_BAND_EXTENT,
+  minExtentFor,
+  zoomedHistoryRangeFrom,
+  type LabelOptions,
+} from "./zoom-range";
+import type { HistoryRange, RollupBucket } from "../inverter/ranges";
 
 /**
  * Zone and clock for a zoom's own labels, from the viewer's display
@@ -33,16 +58,6 @@ import { labelOptionsFrom, MIN_BAND_EXTENT, type LabelOptions } from "./zoom-ran
 export function zoomLabelOptions(): LabelOptions {
   return labelOptionsFrom(getLocale(), display.config);
 }
-
-/** The x edges of a settled brush, in domain values. */
-export type BrushSelection = readonly (number | Date | string | null)[];
-
-/**
- * The brush payload, typed loosely enough to be a supertype of LayerChart's
- * own `BrushState` — the package does not export that type, and a handler whose
- * parameter is any narrower is rejected by the prop it is assigned to.
- */
-type BrushEnd = { brush: { active?: boolean; x: BrushSelection } };
 
 export type ChartZoomOptions = {
   /**
@@ -73,35 +88,26 @@ export function chartZoom(options: ChartZoomOptions = {}) {
   let context: ChartState<any> | undefined;
 
   let scale = $state(1);
-  let pinching = $state(false);
 
   const minExtent = $derived(options.minExtent?.() ?? MIN_BAND_EXTENT);
 
-  const brush = $derived(
-    pinching
-      ? // Pointer transform and brush cannot share the pointer; disabling the
-        // brush is what hands pinch and pan back to the transform.
-        { disabled: true }
-      : {
-          axis: "x" as const,
-          minExtent: { x: minExtent },
-          onBrushEnd: ({ brush: state }: BrushEnd) => {
-            if (!state.active) return;
-            options.onSelect?.(state.x);
-            if (options.onSelect) context?.transform.reset();
-          },
-        },
-  );
+  // The whole gesture decision, in one line: what this pointer rests in. There
+  // is nothing to arm any more — pinch is always live and is arbitrated by
+  // ./touch-gestures.ts, outside the library's pointer path. `pointerKind.coarse`
+  // is a rune, so a tablet docked to a mouse moves every chart on the page
+  // without a remount.
+  const mode = $derived<GestureMode>(restingMode(pointerKind.coarse));
 
-  // `domain` rather than `canvas`: narrowing the DATA domain re-ticks the axes
-  // and keeps every stroke 1px, where a canvas transform magnifies the pixels
-  // it already drew. `scaleExtent` floors at 1 so the chart can never be zoomed
-  // out past the window it was given.
-  const transform = {
-    mode: "domain" as const,
-    axis: "x" as const,
-    scaleExtent: [1, 64] as [number, number],
-  };
+  const gesture = $derived(
+    gestureProps(mode, {
+      minExtent,
+      onBrushEnd: ({ brush: state }: BrushEndPayload) => {
+        if (!state.active) return;
+        options.onSelect?.(state.x);
+        if (options.onSelect) context?.transform.reset();
+      },
+    }),
+  );
 
   const onTransform = (details: { scale: number }) => {
     scale = details.scale;
@@ -115,7 +121,7 @@ export function chartZoom(options: ChartZoomOptions = {}) {
      * object, so a handler set inside `transform` is overwritten with nothing.
      */
     get props() {
-      return { brush, transform, onTransform };
+      return { ...gesture, onTransform };
     },
     /**
      * Take the chart context out of a `belowContext` snippet. The canvas
@@ -128,17 +134,28 @@ export function chartZoom(options: ChartZoomOptions = {}) {
       context = next;
       return "";
     },
-    /** Is the pinch gesture armed (and page scrolling on this chart suspended)? */
-    get pinching() {
-      return pinching;
-    },
     /** Has the chart been moved off the window it was handed? */
     get zoomed() {
       return scale !== 1;
     },
-    toggle() {
-      pinching = !pinching;
-      if (!pinching) this.resetTransform();
+    /**
+     * Apply one frame of a two-finger gesture: scale about `mid`, then pan.
+     *
+     * Called from the plot frame's own pointer handler (./touch-gestures.ts
+     * decides the numbers) because the library's pointer path is off — see
+     * `gestureProps`. `factor` is multiplicative, which is what `scaleTo` takes;
+     * a frame that changed nothing is skipped rather than round-tripped through
+     * the transform, since a pinch delivers one of those per finger per frame.
+     */
+    pinch(factor: number, mid: { x: number; y: number }, pan: { x: number; y: number }) {
+      if (!context) return;
+      const { transform } = context;
+      if (factor !== 1) transform.scaleTo(factor, mid);
+      // Domain mode on `x`, so the vertical component is not ours to move.
+      if (pan.x !== 0) {
+        const at = transform.translate;
+        transform.setTranslate({ x: at.x + pan.x, y: at.y });
+      }
     },
     /** Undo the local gesture without touching what the owner fetched. */
     resetTransform() {
@@ -147,9 +164,42 @@ export function chartZoom(options: ChartZoomOptions = {}) {
     },
     /** The way back: undo both the local gesture and whatever it made the owner fetch. */
     reset() {
-      pinching = false;
       this.resetTransform();
       options.onReset?.();
     },
   };
+}
+
+/**
+ * The controller both history plots share: a drag selects a window and the OWNER
+ * refetches it at a finer rollup.
+ *
+ * `metric-history-chart.svelte` and `custom-chart-plot.svelte` had this
+ * construction character for character — the same floor, the same range
+ * mapping, the same two callbacks. It is one behaviour ("select a window on a
+ * history plot"), and two copies of it are two places to fix when the mapping
+ * changes.
+ *
+ * `bucket` is a getter because it is reactive at both call sites: the floor
+ * follows whatever rollup is currently on screen.
+ */
+export function historyZoom(options: {
+  /** The bucket currently plotted; the selection floor is two of them. */
+  bucket: () => RollupBucket;
+  /** A settled selection, for the owner to refetch. */
+  onZoom?: (range: HistoryRange) => void;
+  /** Clear whatever the owner did with a previous selection. */
+  onResetZoom?: () => void;
+}): ChartZoom {
+  return chartZoom({
+    // Two of whatever bucket is on screen: on a 5-minute window a one-minute
+    // drag is a fingertip's width, and a mis-tap that refetches every card on
+    // the page is worse than no gesture at all.
+    minExtent: () => minExtentFor(options.bucket()),
+    onSelect: (x) => {
+      const range = zoomedHistoryRangeFrom(x, zoomLabelOptions());
+      if (range) options.onZoom?.(range);
+    },
+    onReset: () => options.onResetZoom?.(),
+  });
 }

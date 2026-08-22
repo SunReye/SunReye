@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { Area, LinearGradient } from 'layerchart';
-	import { curveCatmullRom } from 'd3-shape';
+	import { houseLine } from '$lib/charts/house-style';
 
 	// Diverging semantics: above 0 costs (importing, discharging), below 0 earns
 	// (exporting, charging). The SIGN tokens and not the energy ones: this
@@ -35,12 +35,10 @@
 	]}
 >
 	{#snippet children({ gradient })}
-		<Area
-			y0={() => 0}
-			curve={curveCatmullRom}
-			line={{ stroke: gradient, 'stroke-width': 1.5 }}
-			fill={gradient}
-			fillOpacity={0.25}
-		/>
+		<!-- `flow`: the house treatment for a SIGNED instantaneous measure. The
+		     curve, the weight and the fill opacity are the table's
+		     ($lib/charts/house-style); only the sign-split gradient is this
+		     component's own, because it is what makes the kind. -->
+		<Area y0={() => 0} {...houseLine('flow', { stroke: gradient })} fill={gradient} />
 	{/snippet}
 </LinearGradient>

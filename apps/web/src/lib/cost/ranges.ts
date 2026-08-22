@@ -16,6 +16,14 @@
 
 import { fittedPadding, isNarrowPlot, type ChartPadding } from "$lib/charts/plot-padding";
 import { dayMonth, monthShort } from "$lib/format/date";
+import { browserTimeZone } from "$lib/time/browser-zone";
+import {
+  periodLabel,
+  periodWindow,
+  startOfPeriod,
+  type Grain,
+  type Period,
+} from "$lib/time/period";
 
 const DAY = 86_400_000;
 
@@ -62,20 +70,17 @@ export function specQuery(spec: ChartSpec): { from: string; to: string; bucket: 
   return { from: spec.from.toISOString(), to: spec.to.toISOString(), bucket: spec.bucket };
 }
 
-/** Selectable presets, in display order. `month` (this month) is the default. */
-export const COST_PRESETS = [
-  { id: "today", label: "Today" },
-  { id: "7d", label: "Last 7 days" },
-  { id: "month", label: "This month" },
-  { id: "lastMonth", label: "Last month" },
-  { id: "year", label: "This year" },
-] as const;
-
 /**
- * Compact x-axis label for a server period key at the given bucket granularity.
- * Keys are local wall-clock: `YYYY-MM-DDTHH` (hour) | `YYYY-MM-DD` (day) |
- * `YYYY-MM` (month). Shared by the net-cost and energy-split charts.
+ * Selectable presets, in display order.
+ *
+ * One entry, and that is the point. The period navigator's four tabs ARE the
+ * calendar windows: `today` is Day, `month` is Month, `lastMonth` is Month plus
+ * one back-press, `year` is Year. A rolling seven days is the only window this
+ * page offered that no calendar grain can express, so it is the only one kept —
+ * the same rule that keeps 1h / 6h / 14d / 6mo on /history.
  */
+export const COST_PRESETS = [{ id: "7d", label: "Last 7 days" }] as const;
+
 /**
  * Max x-axis tick labels for a bucket, sized so labels don't collide on a
  * ~350px mobile chart (layerchart thins a band domain to every Nth entry).
@@ -138,7 +143,14 @@ const KEY_SHAPE: Record<CostBucket, RegExp> = {
 };
 
 /**
- * Axis label for one period key at the given granularity.
+ * Axis label for one period KEY at the given granularity.
+ *
+ * Named for its argument, not for what it returns: `$lib/time/period` exports a
+ * `periodLabel` that names a whole `Period` for the navigator's header, and two
+ * exports called `periodLabel` in one app is one import-completion away from the
+ * wrong label on an axis. Neither is a barrel export and their arguments do not
+ * overlap, so the collision was never a type error — which is exactly why it
+ * needed a name rather than a suppression.
  *
  * A key that doesn't match the bucket falls back to itself rather than being
  * formatted: read as a month, a day key yields an invalid Date and `Intl` throws
@@ -146,7 +158,7 @@ const KEY_SHAPE: Record<CostBucket, RegExp> = {
  * with the bucket they were fetched at — see the series state in
  * energy-section/cost-section — this only keeps the failure legible.
  */
-export function periodLabel(key: string, bucket: CostBucket): string {
+export function periodKeyLabel(key: string, bucket: CostBucket): string {
   if (!KEY_SHAPE[bucket].test(key)) return key;
   if (bucket === "hour") return `${key.slice(11, 13)}:00`;
   return bucket === "day"
@@ -154,9 +166,28 @@ export function periodLabel(key: string, bucket: CostBucket): string {
     : monthShort(new Date(`${key}-01T00:00:00`));
 }
 
-const startOfDay = (d: Date): Date => new Date(d.getFullYear(), d.getMonth(), d.getDate());
+/**
+ * Midnight starting the civil day `d` falls in, in the viewer's zone — the same
+ * primitive {@link customCostRange} bounds its window with, rather than a second
+ * local-midnight helper that could drift from it.
+ *
+ * NOTE: this does not rescue the `7d` preset, which asks for
+ * `startOfDay(now - 6 * DAY)`. Across a spring-forward that subtraction lands on
+ * the day before the one intended and the window covers eight days — the same
+ * defect family, left alone here on purpose.
+ */
+const startOfDay = (d: Date): Date => startOfPeriod(d, "day", { timeZone: browserTimeZone() });
 const startOfMonth = (d: Date): Date => new Date(d.getFullYear(), d.getMonth(), 1);
-const startOfNextMonth = (d: Date): Date => new Date(d.getFullYear(), d.getMonth() + 1, 1);
+
+/**
+ * The exclusive midnight ENDING the civil day `d` falls in — where a
+ * now-inclusive window stops.
+ *
+ * Not `startOfDay(d) + DAY`: the same 23/25-hour argument {@link customCostRange}
+ * spells out. Through `periodWindow`, so there is one implementation of "the
+ * next civil midnight" in the app.
+ */
+const endOfDay = (d: Date): Date => periodWindow(d, "day", { timeZone: browserTimeZone() }).end;
 
 /** Trailing N calendar months → monthly bars. The 12-month form matches
  *  monthlyEnergy's window. */
@@ -175,92 +206,128 @@ function thisMonthByDay(now: Date): ChartSpec {
   return { from: startOfMonth(now), to: now, bucket: "day", caption: "This month, by day" };
 }
 
+/** Bar granularity INSIDE each calendar period — one level finer than itself. */
+const PERIOD_DETAIL_BUCKET: Record<Grain, CostBucket> = {
+  day: "hour",
+  week: "day",
+  month: "day",
+  year: "month",
+};
+
 /**
- * "month" (this month) — what an unknown preset id falls back to.
- *
- * The tiles total the month SO FAR (`to: now`), but the detail chart runs to the
- * month's end: a month is a fixed calendar shape, and an axis that grows a
- * column a day is harder to read than one where today's bar advances across a
- * settled month. Days still to come zero-fill — the server prorates no standing
- * charge past now, so they are genuinely empty, not cheap.
+ * The context chart for each grain — the same zoom-one-level-out the presets
+ * already make. A day and a week both read against the month they sit in; a
+ * month against the trailing twelve; a year against the trailing 24, so this
+ * year reads against the whole of the last one.
  */
-function thisMonth(now: Date): CostRange {
-  const from = startOfMonth(now);
+const PERIOD_CONTEXT: Record<Grain, (now: Date) => ChartSpec> = {
+  day: thisMonthByDay,
+  week: thisMonthByDay,
+  month: (now) => trailingMonths(now, 12),
+  year: (now) => trailingMonths(now, 24),
+};
+
+/**
+ * A calendar period as a statistics range — the period navigator's adapter.
+ *
+ * Additive: every preset builder and {@link customCostRange} keeps the exact
+ * signature it had, `now` third and `timeZone` last.
+ *
+ * The window is the WHOLE period, not the part of it that has happened. `to:
+ * now` is right for a preset that means "this month so far" and wrong here for
+ * two reasons: `includesNow` (`$lib/statistics/live`) leases the live feed while
+ * `range.to` is still ahead of the clock, so a window clamped at construction
+ * stops being live one tick later and the tiles freeze; and the detail chart
+ * wants a settled axis, with today's bar advancing across the month rather than
+ * a chart that grows a column a day. Days still to come are genuinely empty —
+ * the server prorates no standing charge past now.
+ *
+ * The label and caption are baked in English, as every builder in this file
+ * does; `$lib/statistics/chart-scope` renders a localized one from the grain and
+ * the period instead.
+ */
+export function costRangeFor(
+  period: Period,
+  now: Date = new Date(),
+  timeZone: string = browserTimeZone(),
+): CostRange {
+  const label = periodLabel(period, { timeZone, now });
+  const bucket = PERIOD_DETAIL_BUCKET[period.grain];
   return {
-    id: "month",
-    label: "This month",
+    id: period.grain,
+    label,
+    from: period.start,
+    to: period.end,
+    detail: {
+      from: period.start,
+      to: period.end,
+      bucket,
+      caption: `${label}, by ${bucket}`,
+    },
+    chart: PERIOD_CONTEXT[period.grain](now),
+  };
+}
+
+/**
+ * The rolling seven days: today plus the six prior days.
+ *
+ * `to` is the exclusive midnight ENDING today, not the instant the preset was
+ * picked: `$lib/statistics/live#includesNow` is `containsNow` over `[from, to)`
+ * with no id list beside it, and a window clamped at the pick instant stops
+ * containing `now` one tick later — the lease drops and the tiles freeze, which
+ * is what the id list existed to paper over.
+ *
+ * That boundary does NOT settle the comparison caption, and a comment here once
+ * claimed it did. The comparison is priced over `pricedWindow`, which clamps
+ * this window back to `now` — so "Last 7 days" reads as seven days only because
+ * `$lib/statistics/compare#windowDays` counts CIVIL DAYS. Rounding the
+ * millisecond span, which is what it used to do, answered six before noon and
+ * seven after it, and the baseline moved over lunch.
+ *
+ * The server prorates no standing charge past `now`, so the hours of today still
+ * to come are genuinely empty rather than cheap.
+ */
+function rollingWeek(now: Date): CostRange {
+  const from = startOfDay(new Date(now.getTime() - 6 * DAY));
+  const to = endOfDay(now);
+  return {
+    id: "7d",
+    label: "Last 7 days",
     from,
-    to: now,
-    detail: { from, to: startOfNextMonth(now), bucket: "day", caption: "This month, by day" },
-    chart: trailingMonths(now, 12),
+    to,
+    detail: { from, to, bucket: "day", caption: "Last 7 days, by day" },
+    chart: thisMonthByDay(now),
   };
 }
 
 /** Selectable presets: id → concrete range anchored at `now`. */
-const PRESET_BUILDERS: Record<string, (now: Date) => CostRange> = {
-  today: (now) => {
-    const from = startOfDay(now);
-    return {
-      id: "today",
-      label: "Today",
-      from,
-      to: now,
-      detail: { from, to: now, bucket: "hour", caption: "Today, by hour" },
-      chart: thisMonthByDay(now),
-    };
-  },
-  // Today plus the six prior days = a rolling 7-day window.
-  "7d": (now) => {
-    const from = startOfDay(new Date(now.getTime() - 6 * DAY));
-    return {
-      id: "7d",
-      label: "Last 7 days",
-      from,
-      to: now,
-      detail: { from, to: now, bucket: "day", caption: "Last 7 days, by day" },
-      chart: thisMonthByDay(now),
-    };
-  },
-  lastMonth: (now) => {
-    const from = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-    const to = startOfMonth(now); // exclusive: first of this month
-    return {
-      id: "lastMonth",
-      label: "Last month",
-      from,
-      to,
-      detail: { from, to, bucket: "day", caption: "Last month, by day" },
-      chart: trailingMonths(now, 12),
-    };
-  },
-  year: (now) => {
-    const from = new Date(now.getFullYear(), 0, 1);
-    return {
-      id: "year",
-      label: "This year",
-      from,
-      to: now,
-      detail: { from, to: now, bucket: "month", caption: "This year, by month" },
-      // Two years of bars so this year reads against the whole of the last one.
-      chart: trailingMonths(now, 24),
-    };
-  },
-  month: thisMonth,
-};
+const PRESET_BUILDERS: Record<string, (now: Date) => CostRange> = { "7d": rollingWeek };
 
 /** Resolve a preset id into a concrete range anchored at `now`. */
 export function resolveCostPreset(id: string, now: Date = new Date()): CostRange {
-  return (PRESET_BUILDERS[id] ?? thisMonth)(now);
+  return (PRESET_BUILDERS[id] ?? rollingWeek)(now);
 }
 
 /**
  * Build a custom range from two inclusive calendar days. The tiles window (and
  * the detail chart) extend `to` to the exclusive next-day boundary so the last
  * picked day is included; the detail chart shows daily bars across the picked
- * span, the context chart the trailing 12 months around it.
+ * span, the context chart the trailing 12 months around `now`.
+ *
+ * That boundary is the next civil midnight, not `+ 86_400_000`: a
+ * spring-forward day is 23 hours, so a flat day overshoots and prices an hour of
+ * the next day, and a fall-back day is 25, so it drops the last hour of the day
+ * the user picked. `timeZone` defaults to the browser's — the zone the picker's
+ * days were read in — and is deliberately the LAST parameter: `now` still
+ * anchors the trailing-12-month context chart.
  */
-export function customCostRange(from: Date, toInclusive: Date, now: Date = new Date()): CostRange {
-  const to = new Date(toInclusive.getTime() + DAY);
+export function customCostRange(
+  from: Date,
+  toInclusive: Date,
+  now: Date = new Date(),
+  timeZone: string = browserTimeZone(),
+): CostRange {
+  const to = periodWindow(toInclusive, "day", { timeZone }).end;
   return {
     id: "custom",
     label: `${dayMonth(from)} – ${dayMonth(toInclusive)}`,

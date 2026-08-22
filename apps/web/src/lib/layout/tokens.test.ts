@@ -7,7 +7,9 @@ import {
   expandedSectionClass,
   GRID,
   SEGMENTED_MAX_OPTIONS,
+  TILE_CELL,
   TILE_COLUMNS,
+  TILE_FRAME,
   needsCompactSwitcher,
   SECTION_GAP,
   SECTION_PAD,
@@ -15,11 +17,16 @@ import {
   SHELL_PAD,
   SHELL_WIDTH,
   TAP,
+  TOOLTIP_VIEWPORT_MARGIN,
   pageShellClass,
   sectionShellClass,
   tapTargetPx,
+  tileContentWidthPx,
   type GridVariant,
   type ShellWidth,
+  sectionActionsClass,
+  sectionHeaderGridClass,
+  readoutRowClass,
 } from "./tokens";
 
 describe("shell widths", () => {
@@ -176,6 +183,54 @@ describe("tile columns", () => {
   });
 });
 
+describe("what is left for a tile to say", () => {
+  // Measured in a browser at 390px before this: page shell p-4, section
+  // border + p-3, grid border-l, tile border-r + px-4 — 46px of chrome per
+  // edge and 133px of content, for a figure that carries a delta chip beside
+  // it and a sub-line under it. Three stacked borders: a box, in a box, in the
+  // page.
+  //
+  // 150px is the floor because that is what the widest headline row needs at
+  // this type scale: a `text-2xl` five-character figure ("−1,234") measures
+  // ~92px in the app's mono face, the delta chip beside it is ~48px, and the
+  // `gap-2` between them is 8.
+  test("a two-up tile on a 390px phone gets at least 150px for its text", () => {
+    expect(tileContentWidthPx(390, 2)).toBeGreaterThanOrEqual(150);
+  });
+
+  // The saving has to come out of the CHROME, not out of the desktop card. A
+  // laptop keeps the frame it has room for, and the same helper says so.
+  test("a laptop still spends the full nested frame on its tiles", () => {
+    const utilities = TILE_FRAME.split(" ");
+    expect(utilities).toContain("sm:border-l");
+    expect(TILE_CELL).toContain("sm:px-4");
+    expect(tileContentWidthPx(1024, 4)).toBeGreaterThan(150);
+  });
+
+  // The helper is only worth having if it MEASURES the tokens. A frame that
+  // stopped bleeding, or a cell that padded itself back up, has to move the
+  // number — otherwise the assertion above is decoration.
+  test("the measurement follows the tokens rather than restating them", () => {
+    const bled = tileContentWidthPx(390, 2);
+    expect(bled).toBeGreaterThan(insideTheOldFrame(390, 2));
+  });
+
+  test("more columns divide the same row, they do not conjure width", () => {
+    expect(tileContentWidthPx(390, 4)).toBeLessThan(tileContentWidthPx(390, 2));
+  });
+});
+
+/**
+ * The same walk with the frame this replaced — a nested bordered box and a
+ * 16px cell gutter — so the improvement is a comparison and not a memory.
+ */
+function insideTheOldFrame(viewportPx: number, columns: number): number {
+  const shell = viewportPx - 2 * 16;
+  const section = shell - 2 * (1 + 12);
+  const grid = section - 1;
+  return grid / columns - 1 - 2 * 16;
+}
+
 describe("chart boxes", () => {
   // A 256px plot box plus its legend and section header meant three charts to a
   // phone screen; /statistics measured 7371px tall at 412x961.
@@ -239,6 +294,26 @@ describe("tap targets", () => {
   test("the expander is symmetric, so it adds the same reach to any control", () => {
     expect(tapTargetPx(0)).toEqual({ width: 28, height: 28 });
     expect(tapTargetPx(32)).toEqual({ width: 60, height: 60 });
+  });
+});
+
+describe("overlay viewport margin", () => {
+  // A popover or tooltip anchored to a control in the page gutter has 16px of
+  // shell padding to work with, and bits-ui's collision detection defaults to
+  // zero: the flipped side lands flush against the viewport edge, where the
+  // shadow and the rounded corner are cut in half and the text starts one pixel
+  // in. 8px is half the phone gutter — enough to read as deliberate, small
+  // enough that a wide popover still prefers its natural side rather than
+  // flipping.
+  test("an overlay keeps eight pixels between itself and the viewport edge", () => {
+    expect(TOOLTIP_VIEWPORT_MARGIN).toBe(8);
+  });
+
+  // Spent as a NUMBER, not as a class: `collisionPadding` is measured by
+  // floating-ui at position time, so a Tailwind inset would be invisible to it
+  // and would move the box after the collision was already resolved.
+  test("it is a measurement, not a utility string", () => {
+    expect(typeof TOOLTIP_VIEWPORT_MARGIN).toBe("number");
   });
 });
 
@@ -389,5 +464,95 @@ describe("expandedChartClass", () => {
     const expanded = expandedChartClass(true).trim().split(/\s+/);
     expect(expanded.length).toBeGreaterThan(10);
     expect(expanded.filter((c) => !source.includes(c))).toEqual([]);
+  });
+});
+
+describe("header action placement", () => {
+  // The complaint this exists for: the section header used to be one
+  // `flex-wrap` row, so where the controls LANDED depended on whether the title
+  // happened to leave room. Short title ("Energy split") and they sat beside it,
+  // right-aligned; a long title or a caption ("Hour of the week", "2026 versus
+  // last year") wrapped them onto a row of their own, where they were CENTRED.
+  // Three chart panels on /statistics, three placements, none of them chosen.
+  //
+  // The header is now a two-column grid, so the cluster's column is the same
+  // column at every width and the title's length cannot reach it.
+  test("the title column absorbs every bit of title-length variance", () => {
+    const utilities = sectionHeaderGridClass().split(/\s+/);
+    expect(utilities).toContain("grid");
+    // `minmax(0,1fr)` and not `1fr`: a grid item's automatic minimum is its
+    // min-content size, so a long unbroken title (or a `truncate` that never
+    // gets the chance to truncate) grows column one past the track and shoves
+    // the cluster off the right edge. The zero floor is what makes the second
+    // column's position independent of the first column's content.
+    expect(utilities).toContain("grid-cols-[minmax(0,1fr)_auto]");
+    expect(utilities).toContain("items-start");
+    // The gap between the two columns is the same cluster gap the controls
+    // inside the cluster use — one rhythm, decided once.
+    for (const gap of CLUSTER_GAP.split(/\s+/)) expect(utilities).toContain(gap);
+  });
+
+  test("the cluster is hard right at EVERY width", () => {
+    const utilities = sectionActionsClass().split(/\s+/);
+    expect(utilities).toContain("justify-end");
+    // The regression guard. Any of these coming back means the phone-width
+    // cluster is centred on a row of its own again, which is the whole bug.
+    expect(utilities).not.toContain("max-sm:[&:has(>*)]:w-full");
+    expect(utilities).not.toContain("max-sm:[&:has(>*)]:justify-center");
+    expect(utilities).not.toContain("justify-center");
+    expect(utilities).not.toContain("justify-between");
+    expect(utilities).not.toContain("w-full");
+    // Not a single responsive variant survives: a cluster that is placed by its
+    // grid column has nothing left to say at a breakpoint, and any variant here
+    // could only move it back off that column.
+    expect(utilities.filter((u) => /^(max-)?(sm|lg|xl|2xl):/.test(u))).toEqual([]);
+    // `sm:ml-auto` is dead weight now — column two is already flush right — and
+    // an auto margin that outlives its reason is the next author's puzzle.
+    expect(utilities).not.toContain("sm:ml-auto");
+    expect(utilities).not.toContain("ml-auto");
+  });
+
+  test("an EMPTY cluster claims no row and no gap", () => {
+    // Every statistics section passes an `actions` snippet (`SectionControls`)
+    // that renders nothing outside customize mode, so a `hasActions` prop is
+    // truthy while the cluster is visually empty — this was tried and it spent a
+    // `gap-y` on four sections for nothing. `:has(> *)` asks the only question
+    // that matters, which is whether anything was actually rendered. In the grid
+    // an empty `auto` column collapses to zero width by itself, so the cluster
+    // must carry NO width, padding or min-size of its own that would keep the
+    // column open.
+    const utilities = sectionActionsClass().split(/\s+/);
+    expect(utilities.filter((u) => /^(w-|min-w-|p[xl]?-|basis-|grow)/.test(u))).toEqual([]);
+  });
+
+  test("the readout row puts the value left and the controls right, and never centres", () => {
+    // Zone 3: the row above the plot. It is the only zone allowed to wrap, and
+    // wrapping means STACKING — on a phone the two cells become one column each
+    // starting at the left margin. `grid-cols-1` and not a flex fallback,
+    // because a wrapped flex line with one child obeys `justify-*` and that is
+    // exactly how the header cluster ended up centred.
+    const utilities = readoutRowClass().split(/\s+/);
+    expect(utilities).toContain("grid");
+    expect(utilities).toContain("grid-cols-[minmax(0,1fr)_auto]");
+    expect(utilities).toContain("max-sm:grid-cols-1");
+    // Bottoms, not centres: the value is a big number and the controls are
+    // small text, and they read as one line only when their bottoms agree.
+    expect(utilities).toContain("items-end");
+    expect(
+      utilities.filter((u) => u.includes("justify-center") || u.includes("text-center")),
+    ).toEqual([]);
+    expect(utilities).not.toContain("items-center");
+    for (const gap of CLUSTER_GAP.split(/\s+/)) expect(utilities).toContain(gap);
+  });
+
+  test("every class the header zones name is written literally in the source", async () => {
+    // Same reason as the expanded-chart case: Tailwind scans SOURCE TEXT, so a
+    // class composed at a call site is in the DOM with no rule behind it.
+    const source = await Bun.file(new URL("./tokens.ts", import.meta.url)).text();
+    const named = [sectionHeaderGridClass(), readoutRowClass(), sectionActionsClass()]
+      .join(" ")
+      .trim()
+      .split(/\s+/);
+    expect(named.filter((c) => !source.includes(c))).toEqual([]);
   });
 });

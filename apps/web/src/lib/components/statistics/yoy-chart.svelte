@@ -7,11 +7,11 @@
 	import * as Chart from '$lib/components/ui/chart';
 	import ChartLegend from '$lib/components/inverter/chart-legend.svelte';
 	import SeriesTooltip from './series-tooltip.svelte';
-	import { seriesConfig } from '$lib/components/inverter/_shared/chart-series';
+	import { groupedBarProps, seriesConfig } from '$lib/components/inverter/_shared/chart-series';
 	import { canvasHighlight } from '$lib/components/inverter/_shared/canvas-highlight.svelte';
-	import { barBandPadding, chartPaddingFor, periodLabel, xTickSpacingFor } from '$lib/cost/ranges';
+	import { periodKeyLabel } from '$lib/cost/ranges';
 	import { CHART_BOX } from '$lib/layout/tokens';
-	import ZoomControls from '$lib/charts/zoom-controls.svelte';
+	import PlotFrame from '$lib/components/layout/plot-frame.svelte';
 	import { chartZoom } from '$lib/charts/zoom.svelte';
 	import type { YoyRow } from '$lib/statistics/yoy';
 
@@ -50,14 +50,17 @@
 	]);
 
 	const config = $derived(seriesConfig(series));
-	const data = $derived(rows.map((r) => ({ ...r, label: periodLabel(r.bucket, 'month') })));
+	const data = $derived(rows.map((r) => ({ ...r, label: periodKeyLabel(r.bucket, 'month') })));
 
 	// Canvas can't read the `.lc-highlight-area` wash off CSS; without a concrete
 	// colour the hovered month gets an opaque slab over it.
 	const highlight = canvasHighlight();
 
-	// Both bar paddings below are d3 band fractions, not pixels: `groupPadding: 1`
-	// is the degenerate maximum and collapses each pair to zero width.
+	// Layout, band fractions and gutters come from `groupedBarProps` — the same
+	// spread the energy-flows chart passes, so the two grouped bar charts on this
+	// page are one decision rather than two sets of literals. (Those fractions are
+	// not pixels: `groupPadding: 1` is the degenerate maximum and collapses each
+	// pair to zero width.)
 
 	// The gutters follow the plot's MEASURED width, not a breakpoint: this chart
 	// renders full-bleed on one page and inside a two-up grid on another, so only
@@ -78,19 +81,18 @@
 {#snippet belowContext({ context }: { context: ChartState<YoyRow> })}{zoom.capture(context)}{/snippet}
 
 <div class="flex min-w-0 flex-col gap-3" bind:this={highlight.el} bind:clientWidth={plotWidth}>
-	<div class="relative">
-		<ZoomControls {zoom} />
+	<!-- The plot's own box: the same `relative` ancestor the zoom chips were
+	     already positioned against, now also the anchor for full screen in the
+	     opposite corner. The height stays the container's (`CHART_BOX`). -->
+	<PlotFrame {zoom}>
 		<Chart.Container {config} class="{CHART_BOX} w-full min-w-0">
 			<BarChart
 				{data}
 				x="label"
 				{series}
 				seriesLayout="group"
-				bandPadding={barBandPadding(data.length, 0.2)}
-				groupPadding={0.1}
-				padding={chartPaddingFor(plotWidth)}
-				props={{ xAxis: { tickSpacing: xTickSpacingFor(plotWidth) } }}
-				highlight={{ area: { fill: highlight.fill, fillOpacity: 0.1 } }}
+				{...groupedBarProps(data.length, plotWidth)}
+				highlight={highlight.props}
 				{...zoom.props}
 				{belowContext}
 			>
@@ -99,6 +101,6 @@
 				{/snippet}
 			</BarChart>
 		</Chart.Container>
-	</div>
+	</PlotFrame>
 	<ChartLegend items={series} />
 </div>

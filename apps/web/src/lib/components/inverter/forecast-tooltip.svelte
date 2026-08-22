@@ -1,5 +1,6 @@
 <script lang="ts">
-	import { getChartContext, Tooltip as TooltipPrimitive } from 'layerchart';
+	import { getChartContext } from 'layerchart';
+	import ChartTooltipRoot from '$lib/charts/chart-tooltip-root.svelte';
 	import * as m from '$lib/paraglide/messages';
 	import type { ForecastSlot } from './forecast-chart.svelte';
 	import {
@@ -32,7 +33,7 @@
 	const rows = $derived(slot ? tooltipRows(slot) : []);
 </script>
 
-<TooltipPrimitive.Root variant="none">
+<ChartTooltipRoot variant="none">
 	{#if slot}
 		<div
 			class="grid min-w-[12rem] items-start gap-1.5 rounded-lg border border-border/50 bg-background px-2.5 py-1.5 text-xs shadow-xl"
@@ -63,4 +64,4 @@
 			</div>
 		</div>
 	{/if}
-</TooltipPrimitive.Root>
+</ChartTooltipRoot>

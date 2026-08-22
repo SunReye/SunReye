@@ -200,7 +200,7 @@ describe("chart gutters follow the measured plot width", () => {
 
   /** A gutter helper call in a component, with its argument list. */
   const GUTTER_CALL =
-    /\b(chartPaddingFor|heatPaddingFor|xTickSpacingFor|stackedBarProps)\(([^()]*(?:\([^()]*\)[^()]*)*)\)/g;
+    /\b(chartPaddingFor|heatPaddingFor|xTickSpacingFor|stackedBarProps|groupedBarProps)\(([^()]*(?:\([^()]*\)[^()]*)*)\)/g;
 
   /**
    * Components that may call a gutter helper without measuring a plot, each with
@@ -224,7 +224,7 @@ describe("chart gutters follow the measured plot width", () => {
   // holds. These six are the charts the gutter regression was measured on; the
   // discovery has to still be finding them.
   test.each([
-    "lib/components/statistics/period-line-chart.svelte",
+    "lib/components/statistics/period-series-chart.svelte",
     "lib/components/statistics/yoy-chart.svelte",
     "lib/components/statistics/heat-grid.svelte",
     "lib/components/prices/price-track-chart.svelte",
@@ -573,13 +573,25 @@ describe("touch targets", () => {
     expect(TAP).toContain("after:-inset-3.5");
   });
 
-  test("the range picker's step arrows are thumb-width on a phone", () => {
-    const picker = read("lib/components/inverter/preset-range-picker.svelte");
-    expect(picker).not.toMatch(/h-full w-8 rounded-none/);
-    expect(picker.match(/w-9 sm:w-8/g)).toHaveLength(2);
+  test("the period navigator's step arrows are thumb-width on a phone", () => {
+    const nav = read("lib/components/inverter/period-navigator.svelte");
+    expect(nav).not.toMatch(/h-full w-8 rounded-none/);
+    expect(nav.match(/w-9 sm:w-8/g)).toHaveLength(2);
     // The arrows sit in a shared border-box whose height they fill, so the box
-    // has to grow with them or the wider arrows stay 32px tall.
-    expect(picker).toContain("h-9 sm:h-8 items-center border border-input");
+    // has to grow with them or the wider arrows stay 32px tall. `sm:h-full`
+    // rather than a second literal height: from sm the navigator is ONE row of a
+    // fixed height (TOOLBAR_CONTROL_H_SM) that its two halves fill, so a height
+    // restated here would fight the row it sits in.
+    expect(nav).toContain("h-9 sm:h-full items-center border-t border-input");
+  });
+
+  test("the navigator's two rows step together", () => {
+    // A control whose grain tabs are 36px and whose arrow row is 32px reads as
+    // two stacked controls. Both halves take the SAME height at every width:
+    // 36px on a phone, where they are two stacked rows, and the enclosing row's
+    // full height from sm, where they sit side by side.
+    const nav = read("lib/components/inverter/period-navigator.svelte");
+    expect(nav.match(/h-9 sm:h-full/g)).toHaveLength(2);
   });
 
   test("the calendar's day cells are tappable before they are compact", () => {
@@ -595,6 +607,14 @@ describe("nothing runs off the side of the screen", () => {
     const popover = read("lib/components/ui/popover/popover-content.svelte");
     expect(popover).toContain("max-w-(--bits-popover-content-available-width)");
   });
+
+  // Width is only half of it: a popover that fits can still be positioned hard
+  // against the edge, because bits-ui's collision padding defaults to zero.
+  // That one is NOT pinned here. It is a resolved position, not a class — only
+  // a document that has run floating-ui knows the number — so it lives in
+  // `e2e/overlay-viewport-margin.spec.ts`, which measures the open popover's
+  // gap to both viewport edges at 390px. The token itself is
+  // `TOOLTIP_VIEWPORT_MARGIN`, owned by `tokens.test.ts`.
 
   test("the band breakdown gives its three columns their own rows on a phone", () => {
     // Name, energy and cost on one 412px row left the name ~120px, which
@@ -632,7 +652,9 @@ describe("a four-option switcher does not wrap on a phone", () => {
   });
 
   test("it offers a select below sm and the segmented row from sm up", () => {
-    expect(switcher).toContain("OptionSelect");
+    // The phone form is the OS picker: a native list cannot overflow a 360px
+    // card in any locale, which a styled Select could.
+    expect(switcher).toContain("NativeSelect");
     // Both forms are always rendered and CSS picks one: a JS media query here
     // would mean a resize listener per switcher and a visible swap on rotate.
     expect(switcher).toContain("sm:hidden");
@@ -640,8 +662,10 @@ describe("a four-option switcher does not wrap on a phone", () => {
   });
 
   test("both forms drive the same bound value", () => {
-    expect(switcher).toContain("value = o.id");
-    expect(switcher).toMatch(/onchange=\{\(v\) => \(value = v as T\)\}/);
+    // One writer for both: `commitRangeSelection` is what keeps a deselecting
+    // second press from leaving the switcher with no range at all.
+    const writes = switcher.match(/value = commitRangeSelection\(v, value\)/g);
+    expect(writes).toHaveLength(2);
   });
 
   test("only the switchers that need one pay for the select", () => {

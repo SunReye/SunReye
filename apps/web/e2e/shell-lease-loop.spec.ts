@@ -28,6 +28,7 @@
 
 import { expect, test } from "@playwright/test";
 import { mockBackend } from "./support/api-mock";
+import { POWER_FLOW_READOUTS, powerFlowReadouts } from "./support/open-page";
 import { countRequests } from "./support/perf";
 
 /** `{t:"sub"|"unsub", topics}` frames the client sent for a given topic. */
@@ -103,7 +104,14 @@ test("live frames reach the screen instead of every reading showing an em dash",
 
   // Every power-flow node on the overview renders a literal `—` when its value
   // is `undefined` (`power-flow-node.svelte`) — the reported symptom verbatim.
-  const readouts = page.locator("span.font-semibold.tabular-nums");
+  //
+  // Scoped to the DIAGRAM, and an exact count rather than a floor. The bare
+  // `span.font-semibold.tabular-nums` locator is worn by sixteen components,
+  // and now that the weather, energy and EVCC payloads are all mocked it also
+  // sweeps their readouts — none of which the metrics feed owns. A floor of
+  // three was then met without a single node recovering, and `first()` pointed
+  // at a node only because the overview happens to place the diagram first.
+  const readouts = powerFlowReadouts(page);
   await expect(readouts.first()).toBeVisible();
 
   for (let i = 0; i < 5; i++) await backend.pushMetrics();
@@ -111,7 +119,6 @@ test("live frames reach the screen instead of every reading showing an em dash",
   // Not "the first one recovered": every node the shell feeds must have a
   // number in it. In the broken build not one frame was ever applied.
   await expect(readouts.first()).toHaveText(/\d/, { timeout: 5000 });
-  const texts = await readouts.allTextContents();
-  expect(texts.length).toBeGreaterThan(3);
-  for (const text of texts) expect(text).toMatch(/\d/);
+  await expect(readouts).toHaveCount(POWER_FLOW_READOUTS);
+  for (const text of await readouts.allTextContents()) expect(text).toMatch(/\d/);
 });

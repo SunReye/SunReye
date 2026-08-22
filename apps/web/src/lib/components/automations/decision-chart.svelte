@@ -1,18 +1,24 @@
 <script module lang="ts">
+	import { houseLine, type ChartKind, type DashKind } from '$lib/charts/house-style';
+
 	/**
 	 * One plotted series. Mark shape carries identity alongside hue — filled area
 	 * for context measures, solid or dashed line for the rest — so the series stay
 	 * distinguishable under colour-vision deficiency (dataviz accessibility pass).
+	 *
+	 * The three optional fields are OVERRIDES of the chart's kind, each with a
+	 * reason at the site that spends it. Everything else — the curve, the stroke
+	 * weight, the two dash patterns — is the house table's.
 	 */
 	export type PlotSeries = {
 		key: string;
 		label: string;
 		color: string;
 		unit: string;
-		/** Fill opacity under the line; line-only when omitted. */
+		/** Fill opacity under the line; the kind's default when omitted. */
 		fill?: number;
-		/** SVG dash pattern; solid when omitted. */
-		dash?: string;
+		/** Dash by MEANING, not by pattern; solid when omitted. */
+		dash?: DashKind;
 		width?: number;
 	};
 
@@ -20,28 +26,26 @@
 	export type ChartRow = { t: Date; [key: string]: unknown };
 
 	/** A series' mark attributes, resolved once per series instead of per render. */
-	function styleOf(s: PlotSeries) {
-		return {
-			fillOpacity: s.fill === undefined ? 0 : s.fill,
-			line: {
-				'stroke-width': s.width === undefined ? 2 : s.width,
-				'stroke-dasharray': s.dash === undefined ? 'none' : s.dash
-			}
-		};
+	function styleOf(s: PlotSeries, kind: ChartKind) {
+		return houseLine(kind, { dash: s.dash, strokeWidth: s.width, fillOpacity: s.fill });
 	}
 </script>
 
 <script lang="ts">
-	// The shared plot behind both decision charts: same axes, hover and legend
-	// treatment, only the series list and curve differ. Keeping one chart body
-	// means kW and A never end up sharing a plot (no dual axis, ever).
+	// The shared plot behind all four decision charts: same axes, hover and
+	// legend treatment, only the series list and the KIND differ. Keeping one
+	// chart body means kW and A never end up sharing a plot (no dual axis, ever).
+	//
+	// It used to take a `curve` factory, which is exactly how two of the four
+	// ended up smoothed and one stepped with nobody deciding that: the caller
+	// chose a spline. Now the caller says what it plots and
+	// $lib/charts/house-style answers.
 	import { AreaChart, Area, ChartClipPath, Highlight } from 'layerchart';
 	import * as Chart from '$lib/components/ui/chart';
 	import { seriesConfig } from '$lib/components/inverter/_shared/chart-series';
 	import ChartLegend from '$lib/components/inverter/chart-legend.svelte';
 	import CustomChartTooltip from '$lib/components/inverter/custom-chart-tooltip.svelte';
 	import { display } from '$lib/display.svelte';
-	import type { CurveFactory } from 'd3-shape';
 	import { fittedPadding } from '$lib/charts/plot-padding';
 	import { CHART_BOX } from '$lib/layout/tokens';
 
@@ -53,7 +57,7 @@
 	let {
 		rows,
 		series,
-		curve,
+		kind,
 		height = CHART_BOX,
 		tooltipExtras = [],
 		yDomain,
@@ -61,7 +65,8 @@
 	}: {
 		rows: ChartRow[];
 		series: PlotSeries[];
-		curve: CurveFactory;
+		/** What these series ARE; decides the curve and the mark treatment. */
+		kind: ChartKind;
 		/** Tailwind height class for the plot box (fixed height, not h-full). */
 		height?: string;
 		/** Rows shown on hover only, e.g. the measured counterpart of a series. */
@@ -74,7 +79,7 @@
 
 	type MarksContext = { context: { series: { visibleSeries: { key: string }[] } } };
 
-	const markStyle = $derived(Object.fromEntries(series.map((s) => [s.key, styleOf(s)])));
+	const markStyle = $derived(Object.fromEntries(series.map((s) => [s.key, styleOf(s, kind)])));
 	const plotSeries = $derived(
 		series.map((s) => ({
 			key: s.key,
@@ -100,7 +105,7 @@
 {#snippet marks({ context }: MarksContext)}
 	<ChartClipPath>
 		{#each context.series.visibleSeries as s (s.key)}
-			<Area seriesKey={s.key} {curve} {...markStyle[s.key]} />
+			<Area seriesKey={s.key} {...markStyle[s.key]} />
 		{/each}
 		<Highlight points lines />
 	</ChartClipPath>

@@ -2,6 +2,7 @@
 	import type { HeatmapCell } from '@SunReye/contracts/statistics';
 	import { api } from '$lib/api';
 	import Section from '$lib/components/layout/section.svelte';
+	import PanelReadoutRow from '$lib/components/layout/panel-readout-row.svelte';
 	import RangeSwitcher from '$lib/components/inverter/range-switcher.svelte';
 	import HeatGrid from './heat-grid.svelte';
 	import { heatKwh, hourLabel, weekdayLabel, type HeatPoint } from '$lib/statistics/heatmap';
@@ -76,18 +77,20 @@
      keeps the panel and swaps the grid for a line — see hasCells. -->
 {#if hasCells}
 	<!-- `nested`: the heatmap is one panel of a statistics section, itself inside
-	     the page shell. Title + subtitle + switcher is exactly Section's header,
-	     so the switcher stays OUTSIDE the hasData branch below — see the flat
-	     metric case, where unmounting it would strand the reader. -->
+	     the page shell. -->
 	<Section
-	title={m.statistics_heatmap_title()}
-	caption={m.statistics_heatmap_caption()}
-	nested
-	fullscreen
->
-		{#snippet actions()}
-			<RangeSwitcher options={METRICS} bind:value={metric} />
-		{/snippet}
+		title={m.statistics_heatmap_title()}
+		caption={m.statistics_heatmap_caption()}
+		nested
+		fullscreen
+	>
+		<!-- The metric switcher is a choice about the grid, spelled out in four
+		     text labels — the card's own control, not chrome, so it sits above the
+		     grid rather than in the header cluster, which on a card holding a plot
+		     is icons only. It stays OUTSIDE the hasData branch below: see the flat
+		     metric case, where unmounting it strands the reader on a choice they
+		     cannot undo without reloading. -->
+		<PanelReadoutRow {controls} />
 
 		{#if hasData}
 			{#if busiest}
@@ -111,3 +114,7 @@
 		{/if}
 	</Section>
 {/if}
+
+{#snippet controls()}
+	<RangeSwitcher options={METRICS} bind:value={metric} label={m.range_select_metric_aria()} />
+{/snippet}

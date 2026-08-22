@@ -1,12 +1,17 @@
 import { describe, expect, test } from "bun:test";
 import type { StatisticsLiveMessage, StatisticsTodayMessage } from "@SunReye/contracts/statistics";
-import { resolveCostPreset } from "$lib/cost/ranges";
+import { costRangeFor, resolveCostPreset } from "$lib/cost/ranges";
+import { browserTimeZone } from "$lib/time/browser-zone";
+import { periodWindow } from "$lib/time/period";
 import { StatisticsLiveFeed, type StatisticsFeedHooks } from "./live-feed";
 
 const NOW = new Date("2026-08-02T10:30:00");
 const MINUTE = 60_000;
 
-const todayRange = () => resolveCostPreset("today", NOW);
+/** The Day tab standing on today — the one range the stream can patch outright. */
+const todayRange = () =>
+  costRangeFor(periodWindow(NOW, "day", { timeZone: browserTimeZone() }), NOW);
+/** Anything wider, which can only learn that its own fetches went stale. */
 const windowRange = () => resolveCostPreset("7d", NOW);
 
 function todayMessage(at = "2026-08-02T10:30:00.000Z"): StatisticsTodayMessage {
@@ -19,7 +24,10 @@ function todayMessage(at = "2026-08-02T10:30:00.000Z"): StatisticsTodayMessage {
 }
 
 /** A feed wired to a fake topic lease, so nothing here needs a socket. */
-function harness(startAt = 1_000_000) {
+// The clock starts at NOW, not at an arbitrary epoch: `liveModeFor` asks whether
+// the leased range is the day holding now, so a feed reading 1970 would call
+// every range a window and the `today` half of this file would test nothing.
+function harness(startAt = NOW.getTime()) {
   let clock = startAt;
   let handler: ((data: StatisticsLiveMessage) => void) | null = null;
   const seen = {

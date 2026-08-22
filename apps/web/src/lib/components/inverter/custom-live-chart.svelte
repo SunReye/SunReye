@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { AreaChart, Area, ChartClipPath, Highlight } from 'layerchart';
-	import { curveCatmullRom } from 'd3-shape';
+	import { houseLine } from '$lib/charts/house-style';
 	import * as Chart from '$lib/components/ui/chart';
 	import DualYAxes from '$lib/components/inverter/_shared/dual-y-axes.svelte';
 	import CustomChartTooltip from '$lib/components/inverter/custom-chart-tooltip.svelte';
@@ -58,7 +58,6 @@
 	// plots against a normalized [0,1] scale so both real axes stay aligned.
 	const axes = $derived(resolveAxes(windowed, series));
 	const dualAxis = $derived(axes.grouping.dualAxis);
-	const fillOpacity = $derived(dualAxis ? 0 : 0.2);
 
 	// With two axes the chart's own y-axis/grid step aside for the real-valued left and
 	// right axes drawn in `marks`, and the right gutter widens to fit their labels.
@@ -110,7 +109,11 @@
 	<ChartClipPath>
 		<g transform={glide}>
 			{#each context.series.visibleSeries as s (s.key)}
-				<Area seriesKey={s.key} curve={curveCatmullRom} {fillOpacity} line={{ 'stroke-width': 1.5 }} />
+				<!-- `overlay`: a stroke per series and no fill ($lib/charts/house-style).
+				     A translucent fill under each of several overlaid series mixes into a
+				     colour that belongs to none of them, and with two axes the fill was
+				     already being switched off — so it is off for both forms now. -->
+				<Area seriesKey={s.key} {...houseLine('overlay')} />
 			{/each}
 			<!-- Highlight inside the glide-translated group so the point/crosshair track
 			     the visible line (the chart's own highlight sits in untranslated data

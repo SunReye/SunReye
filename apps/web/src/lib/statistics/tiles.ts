@@ -269,6 +269,26 @@ export const ENERGY_TILES: readonly TileDef<EnergyTileData>[] = [
     (t) => Math.max(0, t.productionKwh - t.exportKwh),
     "up",
   ),
+  // Both grid figures are unconditional: a zero is the answer to the question
+  // ("we bought nothing from the grid all August"), so there is no capability
+  // gate here — a meter that reads zero is still a meter.
+  energyTile(
+    "energy.gridImported",
+    m.statistics_tile_grid_imported,
+    m.statistics_tile_grid_imported_explain,
+    (t) => t.importKwh,
+    "down",
+  ),
+  energyTile(
+    "energy.gridExported",
+    m.statistics_tile_grid_exported,
+    m.statistics_tile_grid_exported_explain,
+    // The complement of the self-used tile: produced = self-used + exported,
+    // which is why the explain string names the identity rather than leaving
+    // the reader to wonder which of the two is the "real" number.
+    (t) => t.exportKwh,
+    "neutral",
+  ),
   energyTile(
     "energy.batteryCharged",
     m.statistics_tile_battery_charged,

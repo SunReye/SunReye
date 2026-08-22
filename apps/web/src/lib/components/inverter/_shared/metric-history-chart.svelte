@@ -2,13 +2,12 @@
 	// The historical area chart of a single metric. Signed metrics (battery/grid
 	// power) split the fill red above / green below a zero baseline; unsigned ones
 	// get a vertical gradient fading to transparent.
-	import { AreaChart, Area, LinearGradient, type ChartState } from 'layerchart';
-	import { curveCatmullRom } from 'd3-shape';
+	import { AreaChart, type ChartState } from 'layerchart';
 	import * as Chart from '$lib/components/ui/chart';
 	import DivergingArea from '$lib/components/inverter/diverging-area.svelte';
-	import ZoomControls from '$lib/charts/zoom-controls.svelte';
-	import { chartZoom, zoomLabelOptions } from '$lib/charts/zoom.svelte';
-	import { minExtentFor, zoomedHistoryRangeFrom } from '$lib/charts/zoom-range';
+	import PowerArea from '$lib/components/inverter/power-area.svelte';
+	import PlotFrame from '$lib/components/layout/plot-frame.svelte';
+	import { historyZoom } from '$lib/charts/zoom.svelte';
 	import { fittedPadding, shouldRenderPlot } from '$lib/charts/plot-padding';
 	import { downsample, pointBudget } from '$lib/components/inverter/_shared/downsample';
 	import type { HistoryRange, RollupBucket } from '$lib/inverter/ranges';
@@ -93,13 +92,13 @@
 	// The selection floor is two of whatever bucket is on screen: on a 5-minute
 	// window a one-minute drag is a fingertip's width, and a mis-tap that
 	// refetches every card on the page is worse than no gesture at all.
-	const zoom = chartZoom({
-		minExtent: () => minExtentFor(bucket),
-		onSelect: (x) => {
-			const range = zoomedHistoryRangeFrom(x, zoomLabelOptions());
-			if (range) onZoom?.(range);
-		},
-		onReset: () => onResetZoom?.()
+	// Every field is a closure, deliberately: a prop passed by value here would
+	// capture whatever it was on the first render, and the page reassigns these
+	// handlers as its range changes.
+	const zoom = historyZoom({
+		bucket: () => bucket,
+		onZoom: (range) => onZoom?.(range),
+		onResetZoom: () => onResetZoom?.()
 	});
 </script>
 
@@ -115,46 +114,47 @@
      the moment the fitted padding changes, which was the largest multiplier
      inside the measured per-mount cost. The wrapper keeps its own height, so
      the skipped frame shifts nothing. -->
-<div class="relative h-full w-full" bind:clientWidth={plotWidth}>
-	<ZoomControls {zoom} resettable={zoomed} />
-	{#if shouldRenderPlot(plotWidth)}
-		<Chart.Container
-			config={{ avg: { label, color: accent } }}
-			class="aspect-auto h-full w-full"
-			style="--color-primary: {accent}"
-		>
-			<AreaChart
-				data={plotted}
-				x="date"
-				y="avg"
-				axis
-				grid
-				padding={fittedPadding(PADDING, plotWidth)}
-				{xDomain}
-				{...zoom.props}
-				{belowContext}
-				props={{ xAxis: { format: xTickFormat, ticks: 4 } }}
+<!-- The measuring box stays an element of its own: `bind:clientWidth` has to keep
+     reading the plot's box, and PlotFrame owns its inner div, so the binding
+     cannot ride on it. Same size either way — this element sizes the frame — and
+     the height is still the card's, since EXPANDED_SECTION's
+     `*:has([data-slot=chart])` chain claims every ancestor of the plot, this one
+     included. -->
+<div class="h-full w-full" bind:clientWidth={plotWidth}>
+	<PlotFrame {zoom} resettable={zoomed}>
+		{#if shouldRenderPlot(plotWidth)}
+			<Chart.Container
+				config={{ avg: { label, color: accent } }}
+				class="aspect-auto h-full w-full"
+				style="--color-primary: {accent}"
 			>
-				{#snippet marks({ context }: MarksContext)}
-					{#if diverging}
-						<DivergingArea {context} />
-					{:else}
-						<LinearGradient vertical stops={[[0, accent], [1, 'transparent']]}>
-							{#snippet children({ gradient })}
-								<Area
-									curve={curveCatmullRom}
-									line={{ stroke: accent, 'stroke-width': 1.5 }}
-									fill={gradient}
-									fillOpacity={0.9}
-								/>
-							{/snippet}
-						</LinearGradient>
-					{/if}
-				{/snippet}
-				{#snippet tooltip()}
-					<Chart.Tooltip {labelFormatter} formatter={tooltipValue} />
-				{/snippet}
-			</AreaChart>
-		</Chart.Container>
-	{/if}
+				<AreaChart
+					data={plotted}
+					x="date"
+					y="avg"
+					axis
+					grid
+					padding={fittedPadding(PADDING, plotWidth)}
+					{xDomain}
+					{...zoom.props}
+					{belowContext}
+					props={{ xAxis: { format: xTickFormat, ticks: 4 } }}
+				>
+					{#snippet marks({ context }: MarksContext)}
+						{#if diverging}
+							<DivergingArea {context} />
+						{:else}
+							<!-- `power`: one instantaneous measure. The SAME component the live
+							     sparkline of the same metric draws, so "these two are one drawing"
+							     is a fact of the import rather than of two files agreeing. -->
+							<PowerArea {accent} />
+						{/if}
+					{/snippet}
+					{#snippet tooltip()}
+						<Chart.Tooltip {labelFormatter} formatter={tooltipValue} />
+					{/snippet}
+				</AreaChart>
+			</Chart.Container>
+		{/if}
+	</PlotFrame>
 </div>

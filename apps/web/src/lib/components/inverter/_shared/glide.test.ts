@@ -59,8 +59,9 @@ describe("glideDurationMs", () => {
 /**
  * `readoutGlideMs` — the same policy, with an off-screen escape hatch.
  *
- * MetricCardActions renders in a Section's `actions` snippet, ABOVE the
- * `{#if !mounted}` gate that lazily builds the chart. So all 63 history cards
+ * The live readout renders in the card's readout row, ABOVE the
+ * `{#if !mounted}` gate that lazily builds the chart — as it did from the
+ * Section's `actions` snippet before the row existed. So all 63 history cards
  * ran a readout Tween while only a handful of charts existed, and the glide
  * (1150ms at the measured 1s cadence) is LONGER than the feed interval — the
  * rAF loop never settles. Measured: 829 text mutations per 10s on /history

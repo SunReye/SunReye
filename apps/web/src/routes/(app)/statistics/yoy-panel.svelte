@@ -4,6 +4,7 @@
 	import RangeSwitcher from '$lib/components/inverter/range-switcher.svelte';
 	import YoyChart from '$lib/components/statistics/yoy-chart.svelte';
 	import Section from '$lib/components/layout/section.svelte';
+	import PanelReadoutRow from '$lib/components/layout/panel-readout-row.svelte';
 	import type { CostFormatters } from '$lib/cost/format';
 	import { groupYoy, hasYoyData, type MonthlyValue } from '$lib/statistics/yoy';
 	import type { CostPoint } from '$lib/statistics/sections';
@@ -79,11 +80,18 @@
 	     the reason this was the one statistics chart with no full-screen
 	     control. -->
 	<Section title={m.statistics_yoy_title({ year })} nested fullscreen>
-		{#snippet actions()}
-			<!-- Function binding: the switcher stays uncontrolled, but a pick also
-			     lands in the customize draft when an admin is editing. -->
-			<RangeSwitcher options={METRICS} bind:value={() => metric, pick} />
-		{/snippet}
+		<PanelReadoutRow {controls} />
 		<YoyChart {rows} {year} {format} {color} />
 	</Section>
 {/if}
+
+<!-- The metric switcher is the card's own control, not chrome: it carries two
+     text labels and reads as a choice about the plot, so it sits in the row
+     above it rather than in the header cluster, which on a card holding a plot
+     is icons only. This panel has no headline figure, so the row's left cell is
+     unspent and the switcher stays hard right. -->
+{#snippet controls()}
+	<!-- Function binding: the switcher stays uncontrolled, but a pick also lands
+	     in the customize draft when an admin is editing. -->
+	<RangeSwitcher options={METRICS} bind:value={() => metric, pick} label={m.range_select_metric_aria()} />
+{/snippet}

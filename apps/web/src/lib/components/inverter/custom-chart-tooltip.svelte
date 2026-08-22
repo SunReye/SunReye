@@ -1,5 +1,6 @@
 <script lang="ts">
-	import { getChartContext, Tooltip as TooltipPrimitive } from 'layerchart';
+	import { getChartContext } from 'layerchart';
+	import ChartTooltipRoot from '$lib/charts/chart-tooltip-root.svelte';
 	import { fractionDigits } from '$lib/inverter/format';
 
 	// Tooltip that reads each series' RAW value from the hovered datum rather than
@@ -34,7 +35,7 @@
 </script>
 
 {#if visible}
-	<TooltipPrimitive.Root variant="none">
+	<ChartTooltipRoot variant="none">
 		<div
 			class="grid min-w-[9rem] items-start gap-1.5 rounded-lg border border-border/50 bg-background px-2.5 py-1.5 text-xs shadow-xl"
 		>
@@ -56,5 +57,5 @@
 				{/each}
 			</div>
 		</div>
-	</TooltipPrimitive.Root>
+	</ChartTooltipRoot>
 {/if}

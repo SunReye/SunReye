@@ -47,8 +47,6 @@ export type SectionData = {
   mode: CompareMode;
   /** Length of the picked window in days — names the "previous" reference. */
   windowDays: number;
-  /** Switch the reference window. Ephemeral, available to every viewer. */
-  setMode: (mode: CompareMode) => void;
   /** The picked range. Each section derives its own chart spec from it, so the
    *  page never fetches a series on their behalf. */
   range: CostRange;

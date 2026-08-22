@@ -2,12 +2,13 @@
 	import { fade } from 'svelte/transition';
 	import * as msg from '$lib/paraglide/messages';
 	import Section from '$lib/components/layout/section.svelte';
+	import PanelReadoutRow from '$lib/components/layout/panel-readout-row.svelte';
 	import RangeSwitcher from '$lib/components/inverter/range-switcher.svelte';
 	import EnergySplitBlock, {
 		type SplitSeries
 	} from '$lib/components/inverter/energy-split-block.svelte';
 	import type { PeriodEnergy } from '@SunReye/contracts/energy';
-	import { periodLabel, type CostBucket } from '$lib/cost/ranges';
+	import { periodKeyLabel, type CostBucket } from '$lib/cost/ranges';
 
 	// One period of energy, split for the two stacked bars.
 	type Period = PeriodEnergy;
@@ -44,7 +45,7 @@
 	let layoutId = $state<(typeof LAYOUTS)[number]['id']>('kwh');
 	const seriesLayout = $derived(layoutId === 'percent' ? 'stackExpand' : 'stack');
 
-	const data = $derived(periods.map((p) => ({ ...p, label: periodLabel(p.bucket, bucket) })));
+	const data = $derived(periods.map((p) => ({ ...p, label: periodKeyLabel(p.bucket, bucket) })));
 	const hasData = $derived(periods.some((p) => p.loadKwh > 0 || p.productionKwh > 0));
 
 	// Window-average ratio (mean over periods that have the relevant flow), shown
@@ -92,9 +93,13 @@
 	     section's, all of which are inside the page shell. -->
 	<div transition:fade={{ duration: 200 }}>
 		<Section title={msg.chart_energy_split()} {caption} nested fullscreen>
-			{#snippet actions()}
-				<RangeSwitcher options={LAYOUTS} bind:value={layoutId} />
-			{/snippet}
+			<!-- kWh or a 100% share is a choice about these two plots, worn as two
+			     text labels — the card's own control, not chrome, so it reads above
+			     them rather than in the header cluster, which on a card holding a
+			     plot is icons only. The row's left cell is unspent here: each
+			     block states its own average ratio beside its own bars, where the
+			     chip that qualifies it can sit next to it. -->
+			<PanelReadoutRow {controls} />
 
 			<!-- The window used to be glued onto the title with an em dash, which
 			     made the long German heading truncate before its own name was
@@ -124,3 +129,7 @@
 		</Section>
 	</div>
 {/if}
+
+{#snippet controls()}
+	<RangeSwitcher options={LAYOUTS} bind:value={layoutId} label={msg.range_select_unit_aria()} />
+{/snippet}

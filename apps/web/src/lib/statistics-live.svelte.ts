@@ -38,12 +38,6 @@ class StatisticsLiveStore {
     },
   });
 
-  /** Whether the stream is live — what the page's live dot shows. One socket
-   *  now serves every feed, so this is the app-wide answer. */
-  get connected(): boolean {
-    return bus.connected;
-  }
-
   /**
    * The snapshot, but only while the connection is up: an outage must not leave
    * frozen figures patched over the tiles. The page falls back to the fetched

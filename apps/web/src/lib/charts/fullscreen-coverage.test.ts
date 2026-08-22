@@ -197,7 +197,7 @@ describe("the sweep finds what it claims to", () => {
   });
 
   test.each([
-    "lib/components/statistics/period-line-chart.svelte",
+    "lib/components/statistics/period-series-chart.svelte",
     "lib/components/statistics/yoy-chart.svelte",
     "lib/components/prices/price-track-chart.svelte",
     "lib/components/inverter/live-area.svelte",
@@ -242,5 +242,171 @@ const NOT_WORTH_EXPANDING = ["lib/components/inverter/live-area.svelte"];
 describe("every chart can be taken full screen", () => {
   test.each(charts.filter((c) => !NOT_WORTH_EXPANDING.includes(c)))("%s", (chart) => {
     expect(covered(chart)).toBe(true);
+  });
+});
+
+/**
+ * The other half of the claim: WHICH box the control expands.
+ *
+ * The sweep above holds the floor — no chart ships without a way to make it big.
+ * These hold the ceiling on /statistics, and they are the decision that was made
+ * when that page's control count was cut: the control stays on the panel that
+ * holds one plot, and the four section cards above them do NOT get one.
+ *
+ * Expanding a box expands everything in it. `EXPANDED_SECTION`
+ * (`$lib/layout/tokens`) puts `flex-1 min-h-0` on every ancestor of every
+ * `[data-slot=chart]` in the card, so plots in one box divide whatever the
+ * card's tiles, nested panel headers and legends leave — and on this page they
+ * leave nothing. Measured on a 390x844 phone with the control hoisted to the
+ * four section cards: Costs & savings 69px for its one plot, Energy 0/0/0/0 for
+ * its four, Spot prices 0/0, Records 0 — against the 192px every one of those
+ * plots already has in the scrolling page. Hoisting would have removed five
+ * buttons and made all four expansions worse than not expanding at all.
+ * `decision-charts.svelte` shipped that once — one control, two plots, three
+ * paragraphs, 59px of plot — and the containment check in this file is what was
+ * written for it.
+ */
+describe("on /statistics the control sits on the plot, not on the card above it", () => {
+  const SHELL = "routes/(app)/statistics/statistics-section.svelte";
+  const PANEL = "routes/(app)/statistics/chart-panel.svelte";
+
+  test("the four section cards offer none", () => {
+    // Read off the shell every section renders through, so this cannot be
+    // satisfied by today's four sections happening not to ask for it.
+    expect(read(SHELL)).toMatch(/<Section(?=[\s/>])/);
+    expect(declaresFullscreen(SHELL)).toBe(false);
+  });
+
+  test("the chart panel is the provider, so a plot is one control's whole box", () => {
+    expect(declaresFullscreen(PANEL)).toBe(true);
+    // And it is the panel every plotted statistics block goes through.
+    for (const file of [
+      "routes/(app)/statistics/cost-section.svelte",
+      "routes/(app)/statistics/energy-section.svelte",
+      "routes/(app)/statistics/price-curves.svelte",
+    ]) {
+      expect(importsOf(file).get("ChartPanel")).toBe(PANEL);
+    }
+  });
+
+  // A control over a box with no plot in it promises a bigger view of a list.
+  // The negative-window history is a grouped list of times, height-unconstrained
+  // and already fully visible in the page.
+  test("a panel that plots nothing offers no bigger view of it", () => {
+    const list = "routes/(app)/statistics/negative-window-history.svelte";
+    expect(read(list)).not.toMatch(/<Chart\.Container[\s/>]|<Chart[\s/>]/);
+    expect(providerRanges(list)).toEqual([]);
+    expect(importsOf(list).has("ChartPanel")).toBe(false);
+  });
+});
+
+/**
+ * The offer has to resolve to a control.
+ *
+ * Everything above proves a chart has an ancestor that OFFERS full screen —
+ * a `<Section fullscreen>` or a `<ChartFullscreen>` frame. That was the whole
+ * claim while the trigger rendered inside `Section`'s own header: offering it and
+ * drawing it were the same act.
+ *
+ * They are not any more. The control moved into the plot's bottom-right corner,
+ * diagonally opposite the zoom reset, because in the header cluster it sat one
+ * icon away from the collapse caret and the two were mispressed for each other.
+ * `Section` now publishes its {@link FullscreenBox} through context and
+ * `layout/plot-frame.svelte` consumes it — so a card can ask for full screen,
+ * pass every case above, and render no button at all if nothing in its body is a
+ * plot frame. That failure is invisible in review and total for the reader.
+ *
+ * So: every file that declares the offer must reach a `PlotFrame`, and the
+ * reaching is transitive, because the frame is inside whichever chart component
+ * the card happens to render.
+ */
+describe("a card that offers full screen actually draws the control", () => {
+  const FRAME = "lib/components/layout/plot-frame.svelte";
+
+  /** Does this file, or anything it renders, render the plot frame? */
+  const framed = new Map<string, boolean>();
+  function reachesFrame(file: string, stack = new Set<string>()): boolean {
+    const memo = framed.get(file);
+    if (memo !== undefined) return memo;
+    if (stack.has(file)) return false;
+    stack.add(file);
+    const code = read(file);
+    const result =
+      /<PlotFrame(?=[\s/>])/.test(code) ||
+      [...importsOf(file).values()].some((target) => reachesFrame(target, stack));
+    stack.delete(file);
+    framed.set(file, result);
+    return result;
+  }
+
+  /**
+   * Cards whose plot is not theirs to render: the body arrives as `children`,
+   * from a caller.
+   *
+   * `chart-panel.svelte` is the /statistics panel — it draws the card, the
+   * caption and the readout row, and the plot comes from `cost-section`,
+   * `energy-section` or `price-curves`. The import graph does not cross a slot,
+   * so no edit to any chart could ever make the panel itself reach a frame, and
+   * the one edit that would — a `<PlotFrame>` in the panel, around
+   * `{@render children()}` — is wrong: several panels put a legend or a footer in
+   * that slot too, and the frame would hand the corner control to the legend.
+   *
+   * So for these the rule moves to the callers, which is where the plot actually
+   * is. That is a real check and not a hole: each of the three sections below
+   * imports its charts directly.
+   */
+  const BODY_FROM_CALLER: Record<string, string> = {
+    "routes/(app)/statistics/chart-panel.svelte": "ChartPanel",
+  };
+
+  /** Every file that puts `fullscreen` on a Section — the cards under this rule.
+   *  `section.svelte` itself is excluded: it is the component the prop is passed
+   *  TO, and it forwards it to its own header. */
+  const offering = files.filter(
+    (f) =>
+      declaresFullscreen(f) &&
+      !f.endsWith("layout/section.svelte") &&
+      !read(f).includes("<ChartFullscreen") &&
+      !(f in BODY_FROM_CALLER),
+  );
+
+  /** The files that fill a slot-bodied card, as `[card, filler]` pairs. */
+  const fillers = Object.entries(BODY_FROM_CALLER).flatMap(([card, tag]) =>
+    files.filter((f) => importsOf(f).get(tag) === card).map((f) => [card, f] as const),
+  );
+
+  test("there are cards to check, so this rule cannot pass by matching nothing", () => {
+    expect(offering.length).toBeGreaterThanOrEqual(5);
+  });
+
+  test.each(offering)("%s reaches a PlotFrame", (file) => {
+    expect(reachesFrame(file)).toBe(true);
+  });
+
+  test("the slot-bodied cards have fillers to check", () => {
+    // Otherwise the rule below passes by matching nothing, and the busiest page
+    // in the app would be checked by no case at all.
+    expect(fillers.length).toBeGreaterThanOrEqual(3);
+  });
+
+  test.each(fillers)("%s is filled by %s, which reaches a PlotFrame", (_card, filler) => {
+    expect(reachesFrame(filler)).toBe(true);
+  });
+
+  // The frame is what publishes the trigger into the corner; a frame that drew
+  // no button would satisfy the rule above and still ship nothing.
+  test("the frame draws the trigger, positioned in the plot's own corner", () => {
+    const code = read(FRAME);
+    expect(code).toContain("<FullscreenTrigger");
+    expect(code).toMatch(/absolute[^"']*bottom-/);
+    expect(code).toContain("useFullscreen");
+  });
+
+  // And the header no longer does. Both places drawing it is the mispress this
+  // change exists to remove, and it would look correct in every screenshot.
+  test("the header cluster no longer draws one", () => {
+    expect(read("lib/components/layout/section-actions.svelte")).not.toContain(
+      "<FullscreenTrigger",
+    );
   });
 });

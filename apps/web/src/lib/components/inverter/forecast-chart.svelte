@@ -142,7 +142,7 @@
 				bandPadding={0.15}
 				padding={fittedPadding(PADDING, plotWidth)}
 				props={{ xAxis: { ticks: 7 } }}
-				highlight={{ area: { fill: highlight.fill, fillOpacity: 0.1 } }}
+				highlight={highlight.props}
 			>
 				{#snippet tooltip()}
 					<ForecastTooltip {stepMinutes} />

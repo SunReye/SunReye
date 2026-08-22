@@ -4,6 +4,7 @@ import {
   baselineLabel,
   deltaFor,
   formatDelta,
+  pricedWindow,
   referenceWindow,
   usableComparison,
   windowDays,
@@ -197,9 +198,73 @@ describe("windowDays", () => {
     expect(windowDays(from, new Date(from.getTime() + 7 * 86_400_000 - 3_600_000))).toBe(7);
   });
 
+  test("gives one answer all day — the caption does not change baseline over lunch", () => {
+    // THE NOON FLIP. `Math.round(span / 86_400_000)` over a window clamped at
+    // `now` (which is what `pricedWindow` hands this for the period the reader
+    // is standing in) reads "vs the previous 20 days" before midday and "21
+    // days" after it — same window, same data, same server comparison, a
+    // caption that re-bases itself while the reader watches. Counted in CIVIL
+    // DAYS the answer is how many days the window touches, which holds still
+    // for a whole day.
+    const from = new Date(2026, 7, 1);
+    const morning = windowDays(from, new Date(2026, 7, 21, 3, 0));
+    const afternoon = windowDays(from, new Date(2026, 7, 21, 15, 0));
+    expect(morning).toBe(afternoon);
+    expect(morning).toBe(21);
+  });
+
+  test("counts the rolling seven days as seven, at any hour of the day", () => {
+    // What `$lib/cost/ranges#rollingWeek` already claims in prose: "Last 7 days"
+    // is 7. The comparison prices the part of the window that has happened, so
+    // at 01:00 that is six days and an hour — which rounded to six, and the
+    // reader who picked "Last 7 days" was told their deltas were measured
+    // against the previous SIX.
+    const from = new Date(2026, 7, 15);
+    expect(windowDays(from, new Date(2026, 7, 21, 1, 0))).toBe(7);
+    expect(windowDays(from, new Date(2026, 7, 21, 12, 30))).toBe(7);
+    expect(windowDays(from, new Date(2026, 7, 21, 23, 59))).toBe(7);
+  });
+
   test("never reports zero or a negative caption for an empty or inverted range", () => {
     const day = new Date(2026, 6, 1);
     expect(windowDays(day, day)).toBe(1);
     expect(windowDays(new Date(2026, 7, 1), new Date(2026, 6, 1))).toBe(1);
+  });
+});
+
+describe("pricedWindow", () => {
+  const now = new Date(2026, 7, 2, 19, 30);
+
+  test("clamps a period that runs into the future back to now", () => {
+    // A calendar period's `to` is its exclusive end, which for the CURRENT
+    // period is in the future — deliberately, so the detail chart has a settled
+    // axis. The comparison cannot use it: the server has data for August up to
+    // now and a full 31 days for July, so an unclamped window prices twenty days
+    // against thirty-one and every delta reads as a collapse.
+    const august = pricedWindow({ from: new Date(2026, 7, 1), to: new Date(2026, 8, 1) }, now);
+    expect(august.from).toEqual(new Date(2026, 7, 1));
+    expect(august.to).toBe(now);
+  });
+
+  test("leaves a closed window exactly where it is", () => {
+    const july = { from: new Date(2026, 6, 1), to: new Date(2026, 7, 1) };
+    expect(pricedWindow(july, now)).toEqual(july);
+  });
+
+  test("keeps the reference window length-matched to what was actually priced", () => {
+    // The two have to be derived from the SAME window or the comparison is
+    // between windows of different lengths — which is the bug above, one layer
+    // down.
+    const priced = pricedWindow({ from: new Date(2026, 7, 1), to: new Date(2026, 8, 1) }, now);
+    const reference = referenceWindow(priced.from, priced.to, "previous");
+    expect(windowDays(reference.from, reference.to)).toBe(windowDays(priced.from, priced.to));
+  });
+
+  test("does not invert a window that has not started yet", () => {
+    // A custom range picked entirely in the future would otherwise come back
+    // with `to` before `from`, and `referenceWindow` would hand the server a
+    // negative-length reference.
+    const future = { from: new Date(2026, 7, 10), to: new Date(2026, 7, 12) };
+    expect(pricedWindow(future, now)).toEqual(future);
   });
 });

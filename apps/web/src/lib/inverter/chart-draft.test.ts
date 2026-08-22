@@ -138,9 +138,16 @@ describe("the draft is wired to the card, not to the gesture", () => {
     // It replaced the "add to chart" menu that used to be there. Rendered
     // unconditionally: gating it on `screen.expanded` is what made the draft's
     // lifetime a property of the full-screen gesture rather than of the card.
-    const cluster = await read("lib/components/inverter/_shared/metric-card-actions.svelte");
-    expect(cluster).toContain("<MetricCompareMenu base={metricKey} bind:draft />");
-    expect(cluster).not.toContain("{#if");
+    //
+    // Read off the card, not off a cluster file: the readout it used to share
+    // one with is a VALUE and moved to the row above the plot, leaving the menu
+    // as the only thing in the header — icon-only, which is what a card holding
+    // a plot may keep there.
+    const card = await read("lib/components/inverter/entity-history-card.svelte");
+    const cluster = card.match(/\{#snippet actions\(\)\}([\s\S]*?)\{\/snippet\}/);
+    expect(cluster, "entity-history-card passes Section no actions").not.toBeNull();
+    expect(cluster![1]).toContain("<MetricCompareMenu base={metric.key} bind:draft />");
+    expect(cluster![1]).not.toContain("{#if");
   });
 
   test("nothing is left of the menu it replaced", async () => {
@@ -151,8 +158,11 @@ describe("the draft is wired to the card, not to the gesture", () => {
     ];
     expect(files).not.toContain("lib/components/inverter/_shared/metric-chart-menu.svelte");
     expect(files).not.toContain("lib/inverter/chart-membership.ts");
-    const cluster = await read("lib/components/inverter/_shared/metric-card-actions.svelte");
-    expect(cluster).not.toContain("MetricChartMenu");
+    // The cluster file went too, once its two occupants ended up in different
+    // zones of the card.
+    expect(files).not.toContain("lib/components/inverter/_shared/metric-card-actions.svelte");
+    const card = await read("lib/components/inverter/entity-history-card.svelte");
+    expect(card).not.toContain("MetricChartMenu");
   });
 
   test("a draft draws through the same renderer a saved chart uses", async () => {

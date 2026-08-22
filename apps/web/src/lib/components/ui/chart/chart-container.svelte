@@ -74,17 +74,29 @@
 		// <svg> that only class selectors reach — so in dark mode the halo covers
 		// the label it is meant to protect. Kill it by class as well.
 		"[&_.lc-axis-tick-label]:stroke-transparent [&_.lc-axis-label]:stroke-transparent",
-		// Zoom gestures.
+		// Zoom gestures, and the `touch-action` each of the three modes needs
+		// (`$lib/charts/gesture.ts`; measured in `e2e/chart-gesture-lock.spec.ts`).
 		//
-		// LayerChart's brush layer covers the whole plot and declares
-		// `touch-action: none` on itself. /history and /statistics are tall stacks
-		// of full-width charts, so with that rule a vertical swipe that happens to
-		// start on a chart stops scrolling the page — the gesture people use most
-		// on a phone, broken by the one they use least. `pan-y` hands the vertical
-		// axis back to the browser and keeps the horizontal one for the brush,
-		// which is the axis a selection is drawn on anyway. LayerChart ships its
-		// rule as `:where()` inside `@layer base`, so a plain utility wins it
-		// without `!important`.
+		//  - LOCKED (the resting mode on a coarse pointer): nothing here applies.
+		//    No brush layer is rendered at all, and LayerChart leaves its own
+		//    `.lc-transform-context` rule off because the mode hands the pointer
+		//    back (`disablePointer`). What governs is the tooltip layer's own
+		//    `--touch-action: pan-y` — the browser keeps the vertical axis, so a
+		//    swipe scrolls the page, and the chart keeps the horizontal one, so a
+		//    hold scrubs the crosshair.
+		//  - PINCH (one tap away, never a default): LayerChart writes an inline
+		//    `touch-action: none` on `.lc-transform-context` and `preventDefault()`s
+		//    every touchmove, which is exactly what captures a two-finger gesture —
+		//    and is why page scrolling on THAT chart stops and the way out has to
+		//    stay on screen. Nothing here may override it.
+		//  - BRUSH (the resting mode on a mouse): the rule below. LayerChart's
+		//    brush layer covers the whole plot and declares `touch-action: none` on
+		//    itself, which would stop a vertical swipe scrolling /history — a touch
+		//    screen with a mouse attached reads as `(pointer: fine)` and gets this
+		//    mode with a finger available. `pan-y` hands the vertical axis back and
+		//    keeps the horizontal one, which is the axis a selection is drawn on
+		//    anyway. LayerChart ships its rule as `:where()` inside `@layer base`,
+		//    so a plain utility wins it without `!important`.
 		"[&_.lc-brush-context]:touch-pan-y",
 		// The selection and its edges in the app's own palette; the shipped
 		// default is a grey wash off `--color-surface-content`, a variable this

@@ -1,6 +1,7 @@
 // Series plumbing shared by the dashboard charts: the `Chart.ChartConfig` every
 // chart derives from its series list, and the dual-axis normalization the custom
 // charts apply when their series span more than one unit.
+import { MARK_STYLE } from "$lib/charts/house-style";
 import type { ChartConfig } from "$lib/components/ui/chart";
 import { barBandPadding, chartPaddingFor, xTickSpacingFor } from "$lib/cost/ranges";
 import {
@@ -31,6 +32,40 @@ export function stackedBarProps(bucketCount: number, width: number) {
     stackPadding: 2,
     padding: chartPaddingFor(width),
     props: { xAxis: { tickSpacing: xTickSpacingFor(width) } },
+  };
+}
+
+/**
+ * The layout props a GROUPED statistics bar chart passes: bars for the same
+ * period stand side by side rather than on top of each other.
+ *
+ * Both numbers are d3 band FRACTIONS, not pixels — `groupPadding: 1` is the
+ * degenerate maximum and collapses every group to zero width, so a chart drawn
+ * with it renders nothing and reports no error. No `stackPadding`: there is no
+ * stack, and the gap it inserts would come out of the bars' own width.
+ *
+ * And no outline, which is the `energy` kind's house rule
+ * ($lib/charts/house-style): LayerChart strokes every bar 1px in the foreground
+ * colour, and where a group is six series over thirty-one days each bar is under
+ * two pixels wide — the strokes of neighbouring bars meet and the plot renders
+ * as a black comb with the hues invisible behind it. A stacked bar keeps its
+ * edge, because there it separates the segments of one bar.
+ *
+ * `width` is the plot box's MEASURED width, as with the stacked pair above.
+ */
+export function groupedBarProps(bucketCount: number, width: number) {
+  return {
+    bandPadding: barBandPadding(bucketCount, 0.2),
+    groupPadding: 0.1,
+    padding: chartPaddingFor(width),
+    props: {
+      xAxis: { tickSpacing: xTickSpacingFor(width) },
+      // Both, because one is not enough: `ctx.lineWidth = 0` is a no-op in the
+      // 2D context (the spec ignores it and the previous width stays), so the
+      // canvas renderer draws the outline anyway. The colour is what stops it,
+      // and the width is what says so for the SVG-layer bar charts.
+      bars: { strokeWidth: MARK_STYLE.energy.strokeWidth, stroke: "none" },
+    },
   };
 }
 

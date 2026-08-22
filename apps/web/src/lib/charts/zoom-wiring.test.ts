@@ -28,9 +28,20 @@ function svelte(file: string): string {
   return text;
 }
 
-/** The name a file binds its `chartZoom()` controller to. */
+/**
+ * The name a file binds its zoom controller to.
+ *
+ * Two factories, one controller: `chartZoom` is the general one, and
+ * `historyZoom` (`charts/zoom.svelte.ts`) is the preset the two history plots
+ * share — same floor, same range mapping, same two callbacks, which they used to
+ * spell out character for character in both files. A chart is "zoomable" if it
+ * builds either, so this census cannot be quietly narrowed by moving a
+ * construction behind a helper.
+ */
+const BUILDS_ZOOM = /const\s+(\w+)\s*=\s*(?:chartZoom|historyZoom)\(/;
+
 function controller(code: string): string | null {
-  return code.match(/const\s+(\w+)\s*=\s*chartZoom\(/)?.[1] ?? null;
+  return code.match(BUILDS_ZOOM)?.[1] ?? null;
 }
 
 const OPEN = new Set(["(", "[", "{"]);
@@ -117,7 +128,7 @@ const methodBody = (code: string, name: string) => block(code, bodyStart(code, n
 /** Charts that gained the gesture, in the order they were rolled out. */
 const ZOOMABLE: string[] = [
   "lib/components/inverter/_shared/metric-history-chart.svelte",
-  "lib/components/statistics/period-line-chart.svelte",
+  "lib/components/statistics/period-series-chart.svelte",
   "lib/components/prices/price-track-chart.svelte",
   "lib/components/statistics/yoy-chart.svelte",
   // The overlaid form — a saved custom chart, or a draft on a metric card.
@@ -132,7 +143,7 @@ describe("the charts that zoom", () => {
     // A census rather than a list check: a chart that starts brushing without
     // going through the controller gets none of the touch-action handling, the
     // reset control or the mis-tap floor, and nothing else would say so.
-    const brushing = files.filter((f) => svelte(f).includes("chartZoom("));
+    const brushing = files.filter((f) => BUILDS_ZOOM.test(svelte(f)));
     expect(brushing.sort()).toEqual([...ZOOMABLE].sort());
   });
 
@@ -175,14 +186,30 @@ describe("the charts that zoom", () => {
     expect(code).toContain(`{...${zoom}.props}`);
   });
 
+  // The reset control is `layout/plot-frame.svelte`'s now, not each chart's:
+  // the frame already owns the box both plot corners position against, and the
+  // pinch handler that needs the same controller. Five charts had written the
+  // identical `{#snippet chips()}<ZoomControls …>{/snippet}` before that.
+  //
+  // So what a chart must do is hand its controller to the frame. A chart that
+  // renders a `<PlotFrame>` without one gets no reset chip AND no pinch, and
+  // both failures are silent.
   test.each(ZOOMABLE)("%s gives the viewer the way back out", (file) => {
     const code = svelte(file);
     const zoom = controller(code)!;
-    const tag = code.match(/<ZoomControls\b([^>]*)>/);
-    expect(tag, `${file} renders no reset control`).not.toBeNull();
-    // The control has to be handed THIS chart's controller; a second one would
-    // reset a transform nothing is using.
+    const tag = code.match(/<PlotFrame\b([^>]*)>/);
+    expect(tag, `${file} renders no plot frame`).not.toBeNull();
+    // Handed THIS chart's controller; a second one would reset a transform
+    // nothing is using.
     expect(tag![1]).toContain(`{${zoom}}`);
+  });
+
+  test("and the frame is what draws it", () => {
+    const frame = svelte("lib/components/layout/plot-frame.svelte");
+    expect(frame).toContain("<ZoomControls");
+    // Only when it was given a controller: a plot with no gesture must not draw
+    // a reset for a transform that cannot move.
+    expect(frame).toMatch(/\{#if zoom\}/);
   });
 
   test.each(ZOOMABLE)("%s captures the context its reset needs", (file) => {
@@ -206,6 +233,40 @@ describe("the charts that zoom", () => {
     const code = svelte(file);
     expect(code).toContain("ChartClipPath");
     expect(code).not.toContain("chartZoom");
+  });
+});
+
+describe("the resting gesture follows the pointer", () => {
+  // What a finger actually does is measured in `e2e/chart-gesture-lock.spec.ts`
+  // — a vertical swipe moving `window.scrollY`, a horizontal one refetching
+  // nothing. These two are the one-token canaries for the same claim: the
+  // controller has to ASK which pointer it is on, and it has to ask
+  // ./gesture.ts rather than re-deriving the props itself.
+  const controllerFile = "lib/charts/zoom.svelte.ts";
+
+  test("the controller reads the pointer rather than assuming a mouse", async () => {
+    const code = await read(controllerFile);
+    // `restingMode(true)` is locked and `restingMode(false)` is the brush
+    // (./gesture.test.ts). Passing a literal here is how brush-on-touch — the
+    // bug — comes back with the whole unit suite green.
+    expect(code).toContain("restingMode(pointerKind.coarse)");
+  });
+
+  test("and the way back out is the controller's, not a local undo", () => {
+    const code = svelte("lib/charts/zoom-controls.svelte");
+    // `zoom.reset()` undoes BOTH this chart's transform and whatever the owner
+    // refetched on the strength of a selection; a local `resetTransform()` would
+    // leave the page holding a narrowed range with the chip gone.
+    expect(code).toContain("zoom.reset()");
+    // And the arm button is gone with the mode it armed: pinch is live on every
+    // chart now, so a control that switched it on has nothing to switch.
+    expect(code).not.toContain("pinching");
+    expect(code).not.toContain("aria-pressed");
+  });
+
+  test("no chart hand-rolls the modes for itself", async () => {
+    const code = await read(controllerFile);
+    expect(code).toContain("gestureProps(mode");
   });
 });
 
@@ -258,32 +319,50 @@ describe("a zoom on /history refetches at a finer rollup", () => {
     expect(tag).toContain("{onResetZoom}");
   });
 
-  test("the chart resolves the selection through the tested mapper", () => {
+  test("the chart resolves the selection through the tested mapper", async () => {
     // Not a local parse: `zoomedHistoryRangeFrom` is what rejects a tap, a
     // half-open selection and a band value, and re-derives the bucket.
-    expect(svelte(chart)).toContain("zoomedHistoryRangeFrom(");
+    //
+    // Read off `historyZoom` rather than the chart: the mapping is that
+    // factory's, shared by both history plots, and the chart reaching it is the
+    // case above. A chart that stopped calling `historyZoom` would fail the
+    // census, not this.
+    expect(await read("lib/charts/zoom.svelte.ts")).toContain("zoomedHistoryRangeFrom(");
+    expect(svelte(chart)).toContain("historyZoom(");
   });
 
-  test("and hands the page that range whole, bucket and all", () => {
+  test("and hands the page that range whole, bucket and all", async () => {
     // The bucket the mapper re-derives IS the feature: without it a zoom
     // narrows the axis over data already fetched, magnifying four hourly bars
-    // — the one thing a zoom must not do. Spreading the range and overriding
-    // `bucket` with the chart's current rollup is a one-token edit that leaves
-    // every other assertion here green, so the emitted value is pinned to the
+    // — the one thing a zoom must not do. Dropping the mapper's result and
+    // handing the raw selection on is a one-token edit that leaves every other
+    // assertion here green, so what the factory emits is pinned to the
     // identifier the mapper returned rather than to the call appearing at all.
-    const code = svelte(chart);
+    //
+    // In `historyZoom` now, where the mapping lives for both history plots.
+    const code = await read("lib/charts/zoom.svelte.ts");
     const emitted = /const\s+(\w+)\s*=\s*zoomedHistoryRangeFrom\(/.exec(code)?.[1] ?? "";
     expect(emitted).not.toBe("");
-    const [handed] = argumentsOf(code, "onZoom?.");
+    const [handed] = argumentsOf(code, "options.onZoom?.");
     expect(handed).toBe(emitted);
   });
 
-  test("the mis-tap floor follows the bucket the chart was fetched at", () => {
+  test("the mis-tap floor follows the bucket the chart was fetched at", async () => {
+    // Two halves, one per file, because the floor now crosses the boundary the
+    // extraction created and either half alone would pass a broken chain.
+    //
+    // The factory reads the bucket through the getter it was handed, never a
+    // captured value: a literal or a stale local would put a 5-minute window's
+    // floor at two days.
+    const factory = await read("lib/charts/zoom.svelte.ts");
+    const [bucketArg] = argumentsOf(factory, "minExtentFor");
+    expect(bucketArg).toBe("options.bucket()");
+
+    // …and the chart hands it a getter over its own CURRENT prop, not a copy.
     const code = svelte(chart);
-    const [bucket] = argumentsOf(code, "minExtentFor");
-    // The floor is only right if it reads the CURRENT rollup; a literal or a
-    // stale local would put a 5-minute window's floor at two days.
-    expect(code).toMatch(new RegExp(`\\n\\t\\t${bucket}: RollupBucket;`));
+    const [handed] = argumentsOf(code, "historyZoom");
+    expect(handed).toContain("bucket: () => bucket");
+    expect(code).toMatch(/\n\t\tbucket: RollupBucket;/);
   });
 
   test("the page answers a zoom by moving its own range state", () => {
@@ -306,7 +385,7 @@ describe("a zoom on /history refetches at a finer rollup", () => {
 
 describe("a zoom on /statistics narrows the section's own spec", () => {
   const section = "routes/(app)/statistics/energy-section.svelte";
-  const chart = "lib/components/statistics/period-line-chart.svelte";
+  const chart = "lib/components/statistics/period-series-chart.svelte";
   const scopeFile = "lib/statistics/chart-scope.svelte.ts";
 
   test("the chart reports positions, resolved against the bands it plotted", () => {

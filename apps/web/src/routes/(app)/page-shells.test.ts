@@ -218,6 +218,20 @@ describe("the overview's documented exception", () => {
  * What actually holds it is structural: the row's children are direct children
  * (no wrapper of any kind around the render sites) and none of them is sized to
  * fill the line.
+ *
+ * AMENDED, phone widths only, and deliberately: the controls cluster now carries
+ * `max-sm:w-full`. Two reasons the one-line rule was not buying anything at
+ * 390px. First, the cluster is a flex item, so shrink-to-fit made a child's own
+ * `w-full` resolve against the cluster's CONTENT width — which is why the period
+ * navigator stretched on /statistics (three controls widened the cluster) and did
+ * not on /history (sole child), from identical markup. Second, the line was
+ * already lost there: /statistics spent two rows regardless, and the one page
+ * with a lead (/automations/peak-shaving) cannot fit a back link beside a period
+ * navigator in 390px.
+ *
+ * So the rule now reads: at `sm` and up nothing in the row may fill the line, and
+ * below `sm` only the controls cluster may. The lead render site still may not,
+ * at any width — that is the case the block was originally written against.
  */
 describe("the page shell's toolbar row stays one row", () => {
   const shellMarkup = template(pageShell);
@@ -280,12 +294,34 @@ describe("the page shell's toolbar row stays one row", () => {
     expect(toolbarWrappers.at(-2)).toBe(row);
   });
 
-  test("nothing in the row is sized to fill the line", () => {
+  test("nothing in the row fills the line from sm up", () => {
+    // `max-sm:`-prefixed fillers are the phone carve-out above. Anything else —
+    // unprefixed, or `sm:`/`lg:`-prefixed — still breaks the row on a laptop,
+    // which is what this has always been for.
     const rowBlock = shellMarkup.slice(shellMarkup.indexOf(row!));
     const offenders = classesOfTags(rowBlock)
+      .map((t) => ({ ...t, classes: t.classes.replace(/(?:^|\s)max-sm:\S+/g, " ") }))
       .filter((t) => FILLS_THE_LINE.test(t.classes))
       .map((t) => t.tag);
     expect(offenders).toEqual([]);
+  });
+
+  test("the controls cluster fills the line on a phone, and only there", () => {
+    // Pinned rather than merely permitted: this is what makes the period
+    // navigator the same width on /history as on /statistics. Drop it and the
+    // cluster goes back to shrink-to-fit, where a sole child asking for `w-full`
+    // gets its own content width.
+    const cluster = toolbarWrappers.at(-1)!;
+    const utilities = (cluster.match(/class="([^"]*)"/)?.[1] ?? "").split(/\s+/);
+    expect(utilities).toContain("max-sm:w-full");
+    expect(utilities).not.toContain("w-full");
+  });
+
+  test("the lead render site is never sized to fill the line, at any width", () => {
+    // The original defect: a wrapper around the lead pushes the controls onto a
+    // second row while every structural case stays green. No carve-out here.
+    const leadTag = leadWrappers.at(0) ?? "";
+    expect(FILLS_THE_LINE.test(leadTag.match(/class="([^"]*)"/)?.[1] ?? "")).toBe(false);
   });
 
   // The row's other half comes from the routes, and a lead snippet is markup

@@ -2,8 +2,10 @@
 	import { fade } from 'svelte/transition';
 	import { Skeleton } from '$lib/components/ui/skeleton';
 	import Section from '$lib/components/layout/section.svelte';
+	import PanelReadoutRow from '$lib/components/layout/panel-readout-row.svelte';
 	import MetricTooltipRow from '$lib/components/inverter/_shared/metric-tooltip-row.svelte';
-	import MetricCardActions from '$lib/components/inverter/_shared/metric-card-actions.svelte';
+	import MetricReadout from '$lib/components/inverter/_shared/metric-readout.svelte';
+	import MetricCompareMenu from '$lib/components/inverter/_shared/metric-compare-menu.svelte';
 	import MetricCardPlot from '$lib/components/inverter/_shared/metric-card-plot.svelte';
 	import DraftChartFooter from '$lib/components/inverter/_shared/draft-chart-footer.svelte';
 	import { api } from '$lib/api';
@@ -148,18 +150,33 @@
 >
 	<Section title={metric.label} nested fullscreen {screen}>
 		{#snippet actions()}
-			<!-- `animate` is the card's own visibility. The readout renders here, ABOVE
-			     the lazy-mount gate, so all 63 cards used to run a Tween whose 1150ms
-			     glide outlasts the 1s feed — an rAF loop that never settles. Off screen
-			     it snaps instead, still holding the latest value. -->
-			<MetricCardActions
-				metricKey={metric.key}
-				value={current}
-				{unit}
-				animate={mounted}
-				bind:draft
-			/>
+			<!-- Chrome only, because this card holds a plot: the compare menu is one
+			     icon. It replaced an "add to chart" menu that stood here too — that
+			     one answered a question ("which saved chart should own this?") you
+			     can only ask if you already know what the chart is for, where
+			     drafting answers the one actually in front of you ("what does this
+			     look like next to that?") and ends at the same saved chart by way of
+			     the editor. Not admin-gated, unlike the menu it replaced: overlaying
+			     two metrics to look at them is a read.
+			     Rendered unconditionally — gating it on `screen.expanded` is what
+			     made the draft's lifetime a property of the full-screen gesture
+			     rather than of the card. -->
+			<MetricCompareMenu base={metric.key} bind:draft />
 		{/snippet}
+
+		<!-- The live reading, above the plot. It was the right half of the card's
+		     own header row, then the section's header cluster; it is a value, not
+		     chrome, so it reads left of the row the card's controls would use.
+		     The two used to share one file, because a readout and a menu in one
+		     `actions` snippet put this template over the complexity gate; they sit
+		     in different zones now, so there is nothing left to group.
+
+		     `animate` is the card's own visibility, and it must stay: this row
+		     renders ABOVE the lazy-mount gate exactly as the header cluster did,
+		     so all 63 cards would otherwise run a Tween whose 1150ms glide
+		     outlasts the 1s feed — an rAF loop that never settles. Off screen it
+		     snaps instead, still holding the latest value. -->
+		<PanelReadoutRow value={reading} />
 
 		{#if !mounted}
 			<Skeleton class="h-50 w-full" />
@@ -196,4 +213,8 @@
 
 {#snippet tooltipValue({ value }: { value: unknown })}
 	<MetricTooltipRow label={metric.label} {value} {unit} />
+{/snippet}
+
+{#snippet reading()}
+	<MetricReadout value={current} {unit} animate={mounted} />
 {/snippet}

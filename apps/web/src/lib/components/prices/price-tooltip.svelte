@@ -1,5 +1,6 @@
 <script lang="ts">
-	import { getChartContext, Tooltip as TooltipPrimitive } from 'layerchart';
+	import { getChartContext } from 'layerchart';
+	import ChartTooltipRoot from '$lib/charts/chart-tooltip-root.svelte';
 	import type { PriceRow } from '$lib/prices/price-series';
 	import { formatNumber } from '$lib/format/number';
 	import * as m from '$lib/paraglide/messages';
@@ -15,7 +16,7 @@
 		`${formatNumber(v, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ct/kWh`;
 </script>
 
-<TooltipPrimitive.Root variant="none">
+<ChartTooltipRoot variant="none">
 	{#if row}
 		<div
 			class="grid min-w-[11rem] items-start gap-1.5 rounded-lg border border-border/50 bg-background px-2.5 py-1.5 text-xs shadow-xl"
@@ -32,4 +33,4 @@
 			{/if}
 		</div>
 	{/if}
-</TooltipPrimitive.Root>
+</ChartTooltipRoot>

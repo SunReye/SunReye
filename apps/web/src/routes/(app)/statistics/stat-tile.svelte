@@ -6,7 +6,7 @@
 	import type { Tile } from '$lib/statistics/tiles';
 	import DeltaChip from '$lib/components/statistics/delta-chip.svelte';
 	import { getCustomizeSession } from '$lib/statistics/customize.svelte';
-	import { TAP } from '$lib/layout/tokens';
+	import { TAP, TILE_CELL } from '$lib/layout/tokens';
 
 	// One resolved tile: figure, sub-line, explanation popover — plus the
 	// visibility checkbox while the page is being customized.
@@ -17,11 +17,11 @@
 	// Hidden tiles only ever render while customizing (the grid filters them
 	// out otherwise), where they preview at 40%.
 	const cardClass = $derived(
-		`flex flex-col gap-1 border-b border-r border-border bg-background px-4 py-3 ${hidden ? 'opacity-40' : ''}`
+		`flex flex-col gap-1 ${TILE_CELL} ${hidden ? 'opacity-40' : ''}`
 	);
 </script>
 
-<div class={cardClass}>
+<div data-slot="stat-tile" class={cardClass}>
 	<div class="flex items-center gap-1.5">
 		{#if customize.active}
 			<Checkbox
