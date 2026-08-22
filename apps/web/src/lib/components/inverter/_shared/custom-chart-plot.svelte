@@ -14,7 +14,6 @@
 	import DualYAxes from '$lib/components/inverter/_shared/dual-y-axes.svelte';
 	import CustomChartTooltip from '$lib/components/inverter/custom-chart-tooltip.svelte';
 	import type { ResolvedAxes } from '$lib/components/inverter/_shared/chart-series';
-	import ZoomControls from '$lib/charts/zoom-controls.svelte';
 	import PlotFrame from '$lib/components/layout/plot-frame.svelte';
 	import { historyZoom } from '$lib/charts/zoom.svelte';
 	import { fittedPadding } from '$lib/charts/plot-padding';
@@ -115,12 +114,7 @@
      included. `relative` moved with the controls: it is PlotFrame's box the
      corners resolve against now. -->
 <div class="h-full w-full" bind:clientWidth={plotWidth}>
-	<PlotFrame>
-		{#snippet chips()}
-			<!-- The transient top-right corner: ZoomControls positions itself
-			     absolutely, so it needs PlotFrame's `relative` box. -->
-			<ZoomControls {zoom} resettable={zoomed} />
-		{/snippet}
+	<PlotFrame {zoom} resettable={zoomed}>
 		{#if axes.grouping.dualAxis}
 			<Chart.Container {config} class="aspect-auto h-full w-full">
 				<AreaChart

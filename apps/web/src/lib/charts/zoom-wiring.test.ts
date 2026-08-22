@@ -186,14 +186,30 @@ describe("the charts that zoom", () => {
     expect(code).toContain(`{...${zoom}.props}`);
   });
 
+  // The reset control is `layout/plot-frame.svelte`'s now, not each chart's:
+  // the frame already owns the box both plot corners position against, and the
+  // pinch handler that needs the same controller. Five charts had written the
+  // identical `{#snippet chips()}<ZoomControls …>{/snippet}` before that.
+  //
+  // So what a chart must do is hand its controller to the frame. A chart that
+  // renders a `<PlotFrame>` without one gets no reset chip AND no pinch, and
+  // both failures are silent.
   test.each(ZOOMABLE)("%s gives the viewer the way back out", (file) => {
     const code = svelte(file);
     const zoom = controller(code)!;
-    const tag = code.match(/<ZoomControls\b([^>]*)>/);
-    expect(tag, `${file} renders no reset control`).not.toBeNull();
-    // The control has to be handed THIS chart's controller; a second one would
-    // reset a transform nothing is using.
+    const tag = code.match(/<PlotFrame\b([^>]*)>/);
+    expect(tag, `${file} renders no plot frame`).not.toBeNull();
+    // Handed THIS chart's controller; a second one would reset a transform
+    // nothing is using.
     expect(tag![1]).toContain(`{${zoom}}`);
+  });
+
+  test("and the frame is what draws it", () => {
+    const frame = svelte("lib/components/layout/plot-frame.svelte");
+    expect(frame).toContain("<ZoomControls");
+    // Only when it was given a controller: a plot with no gesture must not draw
+    // a reset for a transform that cannot move.
+    expect(frame).toMatch(/\{#if zoom\}/);
   });
 
   test.each(ZOOMABLE)("%s captures the context its reset needs", (file) => {
@@ -236,15 +252,19 @@ describe("the resting gesture follows the pointer", () => {
     expect(code).toContain("restingMode(pointerKind.coarse)");
   });
 
-  test("and spends the tested mode mapping rather than its own", () => {
+  test("and the way back out is the controller's, not a local undo", () => {
     const code = svelte("lib/charts/zoom-controls.svelte");
-    // The control's `aria-pressed` and its way back out are what tell a viewer
-    // the chart is holding their finger. Both hang off the controller's mode.
-    expect(code).toContain("zoom.pinching");
+    // `zoom.reset()` undoes BOTH this chart's transform and whatever the owner
+    // refetched on the strength of a selection; a local `resetTransform()` would
+    // leave the page holding a narrowed range with the chip gone.
     expect(code).toContain("zoom.reset()");
+    // And the arm button is gone with the mode it armed: pinch is live on every
+    // chart now, so a control that switched it on has nothing to switch.
+    expect(code).not.toContain("pinching");
+    expect(code).not.toContain("aria-pressed");
   });
 
-  test("no chart hand-rolls the three modes for itself", async () => {
+  test("no chart hand-rolls the modes for itself", async () => {
     const code = await read(controllerFile);
     expect(code).toContain("gestureProps(mode");
   });

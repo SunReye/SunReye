@@ -1,11 +1,16 @@
 /**
  * What a finger does to a chart, and what it must not do.
  *
- * The decision, made with the user: on a coarse pointer a chart rests LOCKED. A
- * drag scrolls the PAGE, a hold scrubs the tooltip crosshair, and pinch/pan are
- * ignored until the viewer taps the control. Pinch-by-default would trap the
- * finger on /history, which is a stack of ~100 full-width charts and where
- * scrolling is the primary gesture; pinch stays one tap away.
+ * The decision, as revised with the user: TWO fingers zoom, on any chart, with
+ * nothing to arm — a phone already knows how to pinch. ONE finger still belongs
+ * to the page: a drag scrolls it and a hold scrubs the tooltip crosshair.
+ *
+ * That pairing is only possible because the chart hands LayerChart no pointer at
+ * all (`charts/gesture.ts`) and `layout/plot-frame.svelte` arbitrates the gesture
+ * itself, claiming multi-touch and nothing else. The ⌕ chip that used to arm
+ * pinch is gone; it was the price of a pointer path that could not tell two
+ * fingers from one, and it cost a reader a hunt and a tap before a phone could
+ * do what a phone does.
  *
  * A BROWSER claim throughout. The mode mapping is pure and unit-tested
  * (`src/lib/charts/gesture.test.ts`); what cannot be asserted there is what a
@@ -103,6 +108,9 @@ function scrollOffset(page: Page): Promise<number> {
  * /history on a HISTORICAL window, at phone width, with the first zoomable
  * chart on screen.
  *
+ * There is no `lock` here any more: the ⌕ chip that armed pinch is gone, and a
+ * locator for it would have quietly resolved to nothing on every card.
+ *
  * The step back matters: the range the page opens on is `live`, and
  * `metric-card-plot.svelte` answers that with the gliding `LiveArea`, which
  * takes no gesture controller at all (it owns a transform of its own inside a
@@ -115,8 +123,6 @@ async function openLockedChart(page: Page): Promise<{
   /** The metric card, so a control can be scoped to THIS chart's overlay. */
   card: Locator;
   chart: Locator;
-  /** The lock/pinch toggle: the only `aria-pressed` control on this card. */
-  lock: Locator;
   box: { x: number; y: number; width: number; height: number };
 }> {
   const backend = await openHistory(page);
@@ -132,7 +138,6 @@ async function openLockedChart(page: Page): Promise<{
     backend,
     card,
     chart,
-    lock: card.locator("[aria-pressed]").first(),
     box: (await chart.boundingBox())!,
   };
 }
@@ -207,12 +212,18 @@ test("a vertical swipe on a chart scrolls the page — the floor, in every mode"
     .toBeGreaterThan(before);
 });
 
-test("and the transform never claims the touch while locked", async ({ page }) => {
+test("and the transform never claims the touch — in any mode now", async ({ page }) => {
   const { chart } = await openLockedChart(page);
   // LayerChart writes `style:touch-action: none` on `.lc-transform-context`
   // whenever its pointer transform is live, and `preventDefault()`s every
   // touchmove under the same condition. Either one alone stops the page
   // scrolling, so the resting mode has to leave both off.
+  //
+  // This used to be a statement about ONE mode, with the armed mode deliberately
+  // doing the opposite. It is now a statement about all of them: `disablePointer`
+  // is unconditional and the pinch is arbitrated outside the library, so there is
+  // no mode left in which the plot can hold a lone finger. If this regresses,
+  // every vertical swipe on a page ~100 charts tall is eaten.
   expect(await touchAction(chart, ".lc-transform-context")).not.toBe("none");
   // What is left is the tooltip layer's own `pan-y`: the browser keeps the
   // vertical axis (page scroll) and the chart keeps the horizontal one (the
@@ -220,23 +231,19 @@ test("and the transform never claims the touch while locked", async ({ page }) =
   expect(await touchAction(chart, ".lc-tooltip-context")).toBe("pan-y");
 });
 
-test("one tap arms pinch, and then the plot does claim the touch", async ({ page }) => {
-  const { chart, lock } = await openLockedChart(page);
-  await lock.click();
-
-  // Armed: the transform's own inline rule is what captures a two-finger
-  // gesture, and it is also why this is opt-in — page scrolling on THIS chart
-  // stops for as long as it is on, so the way back out has to stay visible.
-  expect(await touchAction(chart, ".lc-transform-context")).toBe("none");
-  await expect(lock).toHaveAttribute("aria-pressed", "true");
-  // And the brush stays off: LayerChart wires the brush and the pointer
-  // transform to the same pointer, so arming one must disable the other.
-  expect(await chart.locator(".lc-brush-context").count()).toBe(0);
-});
-
-test("armed, a real two-finger pinch zooms the chart", async ({ page }) => {
-  const { card, lock, box } = await openLockedChart(page);
-  await lock.click();
+test("two fingers zoom with nothing armed first", async ({ page }) => {
+  // The change: there is no ⌕ chip to find and no tap to spend. A reader puts
+  // two fingers on any chart and it zooms — which is what a phone already does
+  // everywhere else, and what the arming chip was the price of.
+  //
+  // It works because the chart hands LayerChart NO pointer at all now
+  // (`gestureProps`, `disablePointer: true` in every mode) and
+  // `layout/plot-frame.svelte` arbitrates the gesture itself, claiming only
+  // multi-touch. The reset control appearing is the observable proof the domain
+  // actually moved: nothing else on this card can make it appear, because the
+  // page's own range never changed.
+  const { card, box } = await openLockedChart(page);
+  await expect(card.getByRole("button", { name: "Reset zoom" })).toHaveCount(0);
 
   const y = box.y + box.height / 2;
   const centre = box.x + box.width / 2;
@@ -248,9 +255,47 @@ test("armed, a real two-finger pinch zooms the chart", async ({ page }) => {
   }
   await hand.up();
 
-  // The reset control appears the moment anything is zoomed, and nothing else
-  // on this chart can make it appear — the page's own range never moved.
-  // Scoped to THIS card: every other card carries the same control, so an
-  // unscoped locator would pass on a chart nobody pinched.
+  // Scoped to THIS card: every card carries the same control, so an unscoped
+  // locator would pass on a chart nobody pinched.
   await expect(card.getByRole("button", { name: "Reset zoom" })).toBeVisible();
+});
+
+test("a held finger drags the tooltip crosshair along the series", async ({ page }) => {
+  // The other half of what a finger can do, and until now nothing proved it —
+  // this file's own header notes that `page.touchscreen` only taps, so a held
+  // scrub was unreachable and the behaviour went untested while being described
+  // in three comments as the reason `locked` is usable.
+  //
+  // It is LayerChart's tooltip layer that provides it, through the `pan-y` above,
+  // and that is worth pinning precisely BECAUSE nothing here implements it: the
+  // pinch work rewrote every neighbouring decision, and a change that took the
+  // tooltip layer's pointer away would cost the one gesture a finger has for
+  // reading a value.
+  const { chart, box } = await openLockedChart(page);
+  const reading = () =>
+    page.evaluate(() => {
+      const el = document.querySelector(".lc-tooltip-root");
+      if (!el) return null;
+      return { x: Math.round(el.getBoundingClientRect().x), text: (el.textContent ?? "").trim() };
+    });
+
+  const y = box.y + box.height / 2;
+  const start = box.x + box.width * 0.3;
+  const hand = await fingers(page);
+
+  await hand.down({ id: 1, x: start, y });
+  await expect.poll(reading, { message: "a hold showed no tooltip" }).not.toBeNull();
+  const held = await reading();
+
+  // Slide, still held. A hold that showed a tooltip but did not track would read
+  // the same sample the whole way across.
+  for (let i = 1; i <= 8; i++) await hand.move({ id: 1, x: start + i * 12, y });
+  await expect
+    .poll(async () => (await reading())?.text, { message: "the crosshair never moved" })
+    .not.toBe(held!.text);
+  expect((await reading())!.x).toBeGreaterThan(held!.x);
+  await hand.up();
+
+  // And the brush stayed out of it: a one-finger slide must not select a window.
+  expect(await chart.locator(".lc-brush-range").count()).toBe(0);
 });

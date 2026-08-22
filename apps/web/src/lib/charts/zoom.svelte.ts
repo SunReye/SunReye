@@ -19,10 +19,12 @@
  *    A mouse drag cannot be mistaken for a page scroll, so there is nothing to
  *    defend against, and the landed /history and /statistics gesture is kept.
  *
- * Pinch is the third mode and is never a default: it is one tap away and the
- * way back out is always on screen (./zoom-controls.svelte). LayerChart wires
- * drag-to-select and drag-to-pan to the same pointer, so brushing and pinching
- * are mutually exclusive — a fact of the library, not a choice here.
+ * Pinch is no longer a mode at all: two fingers zoom on any chart, at any time,
+ * and nothing has to be armed first. It could not be a mode, because the
+ * library's pointer path cannot separate two fingers from one (see
+ * `gestureProps`) — so `./touch-gestures.ts` arbitrates it from the plot frame's
+ * own handler and drives the transform through `pinch()` below. The way back out
+ * is still always on screen (./zoom-controls.svelte).
  *
  * The mapping from a selection to a range lives in ./zoom-range.ts.
  */
@@ -86,15 +88,15 @@ export function chartZoom(options: ChartZoomOptions = {}) {
   let context: ChartState<any> | undefined;
 
   let scale = $state(1);
-  /** Has the viewer tapped the control? The only input to the mode besides the pointer. */
-  let armed = $state(false);
 
   const minExtent = $derived(options.minExtent?.() ?? MIN_BAND_EXTENT);
 
-  // The whole gesture decision, in one line: what the viewer asked for, else
-  // what this pointer rests in. `pointerKind.coarse` is a rune, so a tablet
-  // docked to a mouse moves every chart on the page without a remount.
-  const mode = $derived<GestureMode>(armed ? "pinch" : restingMode(pointerKind.coarse));
+  // The whole gesture decision, in one line: what this pointer rests in. There
+  // is nothing to arm any more — pinch is always live and is arbitrated by
+  // ./touch-gestures.ts, outside the library's pointer path. `pointerKind.coarse`
+  // is a rune, so a tablet docked to a mouse moves every chart on the page
+  // without a remount.
+  const mode = $derived<GestureMode>(restingMode(pointerKind.coarse));
 
   const gesture = $derived(
     gestureProps(mode, {
@@ -132,17 +134,28 @@ export function chartZoom(options: ChartZoomOptions = {}) {
       context = next;
       return "";
     },
-    /** Is the pinch gesture armed (and page scrolling on this chart suspended)? */
-    get pinching() {
-      return mode === "pinch";
-    },
     /** Has the chart been moved off the window it was handed? */
     get zoomed() {
       return scale !== 1;
     },
-    toggle() {
-      armed = !armed;
-      if (!armed) this.resetTransform();
+    /**
+     * Apply one frame of a two-finger gesture: scale about `mid`, then pan.
+     *
+     * Called from the plot frame's own pointer handler (./touch-gestures.ts
+     * decides the numbers) because the library's pointer path is off — see
+     * `gestureProps`. `factor` is multiplicative, which is what `scaleTo` takes;
+     * a frame that changed nothing is skipped rather than round-tripped through
+     * the transform, since a pinch delivers one of those per finger per frame.
+     */
+    pinch(factor: number, mid: { x: number; y: number }, pan: { x: number; y: number }) {
+      if (!context) return;
+      const { transform } = context;
+      if (factor !== 1) transform.scaleTo(factor, mid);
+      // Domain mode on `x`, so the vertical component is not ours to move.
+      if (pan.x !== 0) {
+        const at = transform.translate;
+        transform.setTranslate({ x: at.x + pan.x, y: at.y });
+      }
     },
     /** Undo the local gesture without touching what the owner fetched. */
     resetTransform() {
@@ -151,7 +164,6 @@ export function chartZoom(options: ChartZoomOptions = {}) {
     },
     /** The way back: undo both the local gesture and whatever it made the owner fetch. */
     reset() {
-      armed = false;
       this.resetTransform();
       options.onReset?.();
     },

@@ -25,12 +25,12 @@ import { gestureProps, restingMode, type GestureMode } from "./gesture";
 /**
  * Every mode, enumerated HERE rather than exported from the source.
  *
- * `Record<GestureMode, true>` is what makes this exhaustive: adding a fourth
- * mode to the union stops this file compiling until the mode is listed, so the
- * sweep below cannot quietly skip one. An exported array would have to be
- * kept in step by hand and would be dead weight in the shipped bundle.
+ * `Record<GestureMode, true>` is what makes this exhaustive: adding a mode to
+ * the union stops this file compiling until it is listed, so the sweep below
+ * cannot quietly skip one. An exported array would have to be kept in step by
+ * hand and would be dead weight in the shipped bundle.
  */
-const EVERY_MODE: Record<GestureMode, true> = { locked: true, brush: true, pinch: true };
+const EVERY_MODE: Record<GestureMode, true> = { locked: true, brush: true };
 const GESTURE_MODES = Object.keys(EVERY_MODE) as GestureMode[];
 
 describe("the resting mode", () => {
@@ -45,14 +45,24 @@ describe("the resting mode", () => {
   });
 });
 
-describe("pinch", () => {
-  test("leaves LayerChart's pointer transform alive", () => {
-    // THE assertion. Everything else about a lock regression is invisible.
-    expect(gestureProps("pinch").transform.disablePointer).toBeFalsy();
+describe("pinch is not a mode any more", () => {
+  // THE assertion of this whole change, and it reads backwards: the way pinch
+  // became always-available was to take the pointer away from the library in
+  // EVERY mode. Its `onPointerDown` returns early on `disablePointer`, and pinch
+  // and one-finger pan enter through that same call — so leaving it enabled to
+  // get pinch also writes `touch-action: none` and preventDefaults every
+  // touchmove, single pointer included, which is what took page scrolling away.
+  // `charts/touch-gestures.ts` arbitrates two fingers instead, outside it.
+  test("so no mode hands LayerChart the pointer", () => {
+    for (const mode of GESTURE_MODES) {
+      expect(gestureProps(mode).transform.disablePointer, mode).toBe(true);
+    }
   });
 
-  test("and turns the brush off, because the two share the one pointer", () => {
-    expect(gestureProps("pinch").brush).toEqual({ disabled: true });
+  // A regression here is invisible on a mouse and total on a phone: the chart
+  // would eat every vertical swipe on a page ~100 charts deep.
+  test("and there is no mode left that could", () => {
+    expect(GESTURE_MODES).not.toContain("pinch" as GestureMode);
   });
 });
 
@@ -99,7 +109,7 @@ describe("every mode", () => {
     },
   );
 
-  test("is one of exactly three", () => {
-    expect([...GESTURE_MODES].sort()).toEqual(["brush", "locked", "pinch"]);
+  test("is one of exactly two", () => {
+    expect([...GESTURE_MODES].sort()).toEqual(["brush", "locked"]);
   });
 });

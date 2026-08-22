@@ -13,7 +13,6 @@
 	import { chartPaddingFor, xTickSpacingFor } from '$lib/cost/ranges';
 	import { CHART_BOX } from '$lib/layout/tokens';
 	import { bandSpan, negativeBandRuns, type PriceRow } from '$lib/prices/price-series';
-	import ZoomControls from '$lib/charts/zoom-controls.svelte';
 	import PlotFrame from '$lib/components/layout/plot-frame.svelte';
 	import { chartZoom } from '$lib/charts/zoom.svelte';
 	import { DASH } from '$lib/charts/house-style';
@@ -129,8 +128,7 @@
 	<!-- The plot's own box: the same `relative` ancestor the zoom chips were
 	     already positioned against, now also the anchor for full screen in the
 	     opposite corner. The height stays the container's (`CHART_BOX`). -->
-	<PlotFrame>
-		{#snippet chips()}<ZoomControls {zoom} />{/snippet}
+	<PlotFrame {zoom}>
 		<Chart.Container {config} class="{CHART_BOX} w-full min-w-0">
 			<BarChart
 				data={rows}

@@ -6,7 +6,6 @@
 	import * as Chart from '$lib/components/ui/chart';
 	import DivergingArea from '$lib/components/inverter/diverging-area.svelte';
 	import PowerArea from '$lib/components/inverter/power-area.svelte';
-	import ZoomControls from '$lib/charts/zoom-controls.svelte';
 	import PlotFrame from '$lib/components/layout/plot-frame.svelte';
 	import { historyZoom } from '$lib/charts/zoom.svelte';
 	import { fittedPadding, shouldRenderPlot } from '$lib/charts/plot-padding';
@@ -122,12 +121,7 @@
      `*:has([data-slot=chart])` chain claims every ancestor of the plot, this one
      included. -->
 <div class="h-full w-full" bind:clientWidth={plotWidth}>
-	<PlotFrame>
-		{#snippet chips()}
-			<!-- The transient corner: ZoomControls positions itself absolutely, so it
-			     needs PlotFrame's `relative` box to resolve against. -->
-			<ZoomControls {zoom} resettable={zoomed} />
-		{/snippet}
+	<PlotFrame {zoom} resettable={zoomed}>
 		{#if shouldRenderPlot(plotWidth)}
 			<Chart.Container
 				config={{ avg: { label, color: accent } }}

@@ -29,7 +29,6 @@
 	import { CURVE, MARK_STYLE, type ChartKind } from '$lib/charts/house-style';
 	import { chartPaddingFor, xTickSpacingFor } from '$lib/cost/ranges';
 	import { CHART_BOX } from '$lib/layout/tokens';
-	import ZoomControls from '$lib/charts/zoom-controls.svelte';
 	import PlotFrame from '$lib/components/layout/plot-frame.svelte';
 	import { chartZoom } from '$lib/charts/zoom.svelte';
 	import { bandIndexRange } from '$lib/charts/zoom-range';
@@ -119,8 +118,7 @@
 	     have always positioned against, and it is also what draws full screen in
 	     the opposite corner. The height stays the container's (`CHART_BOX`) — the
 	     frame adds no box of its own. -->
-	<PlotFrame>
-		{#snippet chips()}<ZoomControls {zoom} resettable={zoomed} />{/snippet}
+	<PlotFrame {zoom} resettable={zoomed}>
 		<Chart.Container {config} class="{CHART_BOX} w-full min-w-0">
 			{#if bars}
 				<!-- A quantity that belongs to the bucket: one bar per period per

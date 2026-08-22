@@ -25,16 +25,33 @@
 	// there. The reverse mistake IS guarded — see `fullscreen-trigger.svelte`.
 	import type { Snippet } from 'svelte';
 	import FullscreenTrigger from './fullscreen-trigger.svelte';
+	import ZoomControls from '$lib/charts/zoom-controls.svelte';
 	import { useFullscreen } from '$lib/charts/fullscreen-context';
+	import {
+		isPinching,
+		touchIdle,
+		touchStep,
+		type TouchEvent,
+		type TouchState
+	} from '$lib/charts/touch-gestures';
+	import type { ChartZoom } from '$lib/charts/zoom.svelte';
 
 	let {
 		children,
-		chips
+		zoom,
+		resettable = false
 	}: {
 		children: Snippet;
-		/** The transient top-right corner: reset, live window. Charts with a
-		 *  gesture pass `ZoomControls` here; the rest pass nothing. */
-		chips?: Snippet;
+		/**
+		 * This plot's gesture controller, for the charts that have one. Passing it
+		 * here rather than each chart rendering its own `<ZoomControls>` and its own
+		 * handler: the transient corner and the pinch belong to the same box this
+		 * frame already owns, and five charts had written the identical snippet.
+		 */
+		zoom?: ChartZoom;
+		/** The OWNER is holding a zoom (a refetched range), so the way out must
+		 *  show even though this chart's own transform is back at 1. */
+		resettable?: boolean;
 	} = $props();
 
 	// Null in a dialog or the correction panel, which have no card and bring
@@ -52,6 +69,39 @@
 	// Resolved here rather than in the template, which is the one thing in this
 	// repo that cannot be unit-tested and so carries no logic it does not have to.
 	const showsCorner = $derived(!!source && ownsCorner?.() === true);
+
+	// ── Two fingers zoom, always ────────────────────────────────────────────────
+	// The arbitration is `charts/touch-gestures.ts` and the reason it lives out
+	// here rather than in LayerChart is `charts/gesture.ts`'s `gestureProps`: the
+	// library's pointer path cannot tell two fingers from one, so the chart keeps
+	// `disablePointer` and this frame decides.
+	//
+	// A single pointer is never claimed. No `preventDefault`, no capture, nothing
+	// — so a swipe scrolls the page and a hold scrubs the crosshair exactly as
+	// before, which on a page ~100 charts deep is the property that matters most.
+	let touch = $state<TouchState>(touchIdle());
+
+	/** Two fingers are down, so the plot is being zoomed rather than read. */
+	const pinching = $derived(isPinching(touch));
+
+	/** One pointer event, in the module's vocabulary. Its own function because a
+	 *  ternary inline put `drive` over the complexity gate. */
+	function asEvent(kind: 'down' | 'move' | 'lift', event: PointerEvent): TouchEvent {
+		const id = event.pointerId;
+		if (kind === 'lift') return { kind, id };
+		return { kind, id, at: { x: event.clientX, y: event.clientY } };
+	}
+
+	function drive(kind: 'down' | 'move' | 'lift', event: PointerEvent) {
+		if (!zoom || event.pointerType !== 'touch') return;
+		const { state, action } = touchStep(touch, asEvent(kind, event), 'x');
+		touch = state;
+		if (action.kind !== 'transform') return;
+		// Ours now: stop the browser treating the same two fingers as a page
+		// gesture of its own.
+		event.preventDefault();
+		zoom.pinch(action.factor, action.mid, action.pan);
+	}
 
 	// Two notes about the markup below, kept here because the template's own size
 	// is measured:
@@ -74,9 +124,32 @@
 	//    series runs through the corner.
 </script>
 
-<div class="relative h-full w-full">
-	{@render children()}
-	{@render chips?.()}
+<!-- No ARIA role, and the warning is suppressed rather than answered: these
+     handlers are a two-finger gesture surface over a graphic, not a control. The
+     chart inside carries the semantics, every gesture here has a visible control
+     that does the same thing (the corner ⤢, the reset chip), and a `role` on this
+     div would announce a box that does nothing to a keyboard or a screen reader.
+
+     `touch-none` is deliberately NOT here: the pointer handlers claim only
+     multi-touch, and a blanket rule would take the page's scroll axis back on
+     every chart — the exact regression the old arming chip existed to avoid. -->
+<!-- svelte-ignore a11y_no_static_element_interactions -->
+<div
+	class="relative h-full w-full"
+	onpointerdown={(event) => drive('down', event)}
+	onpointermove={(event) => drive('move', event)}
+	onpointerup={(event) => drive('lift', event)}
+	onpointercancel={(event) => drive('lift', event)}
+>
+	<!-- `pointer-events-none` on the plot while two fingers are down: the tooltip
+	     layer would otherwise keep scrubbing a crosshair under one of them, so a
+	     pinch read as a reading and a zoom at the same time. -->
+	<div class={['h-full w-full', pinching && 'pointer-events-none']}>
+		{@render children()}
+	</div>
+	{#if zoom}
+		<ZoomControls {zoom} {resettable} />
+	{/if}
 	{#if showsCorner}
 		<div class="absolute bottom-1 right-1 z-10">
 			<FullscreenTrigger screen={source!.box} class="bg-background/70 backdrop-blur-sm" />

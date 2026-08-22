@@ -1,11 +1,17 @@
 /**
- * What a chart does with a finger, as three named modes.
+ * What a chart does with a finger, as two named modes.
  *
- * The decision, made with the user: on a coarse pointer the resting state is
- * LOCKED. A drag scrolls the PAGE, a hold scrubs the tooltip crosshair, and
- * pinch/pan are ignored until the viewer taps the lock. Pinch-by-default would
- * trap the finger on /history, which is ~100 full-width charts deep and where
- * scrolling is the primary gesture; pinch stays one tap away.
+ * The decision, revised with the user: a phone already knows how to pinch and
+ * should not have to be told. Two fingers zoom, always, with nothing to arm —
+ * see `./touch-gestures.ts`, which is where that gesture is now decided, and
+ * `gestureProps` below for why making it unconditional meant taking the pointer
+ * away from the library rather than giving it more.
+ *
+ * What a single finger does is unchanged, and deliberately so. On a coarse
+ * pointer a chart is LOCKED to it: a drag scrolls the PAGE and a hold scrubs the
+ * tooltip crosshair. One-finger brushing is what turned three rollup calls into
+ * six on a mis-swipe down /history, ~100 full-width charts deep, and it is not
+ * coming back.
  *
  * On a mouse the resting state stays the BRUSH — drag a window, refetch it at a
  * finer rollup (./zoom-range.ts). A mouse drag cannot be mistaken for a page
@@ -21,9 +27,6 @@
  * `style:touch-action={mode && mode !== 'none' && !disablePointer ? 'none' : undefined}`
  * and calls `preventDefault()` on every touchmove under the same condition. So:
  *
- *  - pinch  → disablePointer FALSY → inline `touch-action: none` → the plot
- *    captures the two-finger gesture, and page scrolling on that one chart
- *    stops (which is why it is opt-in, and why the way out is always visible).
  *  - locked → disablePointer true → no inline rule, no preventDefault, and no
  *    `.lc-brush-context` (BrushContext renders none while disabled, and its own
  *    stylesheet is where `touch-action: none` would come from). What is left is
@@ -45,7 +48,7 @@ export type BrushSelection = readonly (number | Date | string | null)[];
 /** A settled brush selection, as LayerChart hands it over. */
 export type BrushEndPayload = { brush: { active?: boolean; x: BrushSelection } };
 
-export type GestureMode = "locked" | "brush" | "pinch";
+export type GestureMode = "locked" | "brush";
 
 /** What a chart rests in when nobody has touched the lock. */
 export function restingMode(coarse: boolean): GestureMode {
@@ -88,12 +91,32 @@ const TRANSFORM: Omit<TransformProps, "disablePointer"> = {
   scaleExtent: [1, 64],
 };
 
-/** Everything a chart hands LayerChart for `mode`, in one object. */
+/**
+ * Everything a chart hands LayerChart for `mode`, in one object.
+ *
+ * `disablePointer` is now UNCONDITIONALLY true, which is the whole of the pinch
+ * change and needs saying out loud, because it reads backwards: the way to make
+ * pinch always available was to stop letting the library have the pointer at all.
+ *
+ * Its pointer path is one door. `states/transform.svelte.js`, `onPointerDown`
+ * returns early on `disablePointer`, and pinch and one-finger pan enter through
+ * that same call — so there is no setting that yields "two fingers yes, one
+ * finger no". Leaving it enabled to get pinch also writes an inline
+ * `touch-action: none` and `preventDefault()`s every touchmove, single pointer
+ * included, which is exactly what took page scrolling away and forced pinch to
+ * be opt-in behind a chip on a page ~100 charts deep.
+ *
+ * So the library draws and we arbitrate: `./touch-gestures.ts` decides per event
+ * whether a gesture is ours, and drives the transform through the context the
+ * chart already captures. A single finger is never touched, so the page keeps
+ * scrolling and a hold keeps scrubbing the crosshair through the tooltip layer's
+ * own `pan-y` — which is what LOCKED always meant and now means for pinch too.
+ */
 export function gestureProps(
   mode: GestureMode,
   options: GestureOptions = {},
 ): { brush: BrushProps; transform: TransformProps } {
-  const transform: TransformProps = { ...TRANSFORM, disablePointer: mode !== "pinch" };
+  const transform: TransformProps = { ...TRANSFORM, disablePointer: true };
   if (mode !== "brush") return { brush: { disabled: true }, transform };
   return {
     brush: {
