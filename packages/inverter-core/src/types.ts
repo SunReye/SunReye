@@ -272,6 +272,23 @@ export interface InverterConnection {
 }
 
 /**
+ * Where an HTTP-polled device answers, and how long to wait.
+ *
+ * Deliberately not a widening of {@link InverterConnection}: that type is Modbus
+ * vocabulary — a host, a port, a unit id, a framing — and an HTTP source shares
+ * none of it. {@link DeviceTransport} never mentions a connection, so two
+ * transports needing two connection shapes costs the seam nothing.
+ */
+export interface HttpConnection {
+  /** Absolute URL of the one GET that answers the whole device. */
+  url: string;
+  /** Deadline for that request, ms. Defaults to 5000. */
+  timeoutMs?: number;
+  /** Extra request headers, e.g. an API token. */
+  headers?: Record<string, string>;
+}
+
+/**
  * One timestamped reading of every numeric metric in a profile.
  *
  * `time` is when the sample was assembled, and for a single atomic read that is
