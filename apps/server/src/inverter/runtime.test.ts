@@ -1250,12 +1250,13 @@ describe("register writes", () => {
     expect(latestSource().writes).toEqual([{ key: TARGET, value: 60 }]);
   });
 
-  test("a write to a key the profile does not define is still handed to the source", async () => {
+  test("a write to a key the profile does not define is refused, never handed on", async () => {
     await boot();
 
-    await write("vendor.undocumented", 3);
-
-    expect(latestSource().writes).toEqual([{ key: "vendor.undocumented", value: 3 }]);
+    await expect(write("vendor.undocumented", 3)).rejects.toThrow(
+      "Unknown entity: vendor.undocumented",
+    );
+    expect(latestSource().writes).toEqual([]);
   });
 
   test("a transport failure on write is surfaced, not swallowed", async () => {

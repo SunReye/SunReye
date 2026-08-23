@@ -15,6 +15,7 @@ import { evccControl, evccSnapshot, rebuildEvcc, stopEvcc } from "./evcc/evcc";
 import { queryRecentBuckets, queryRollup } from "./shared/history";
 import { isPublicDashboard } from "./settings/access-settings";
 import { buildProfileContext, initProfiles } from "./inverter/inverter";
+import { WriteRejectedError } from "./inverter/control-writer";
 import { log, recentLogs, setupLogging } from "./shared/logging";
 import { createStreams } from "./shared/streams";
 import { initLogLevel } from "./settings/logging-settings";
@@ -361,18 +362,20 @@ const app = new Elysia()
       }),
     },
   )
-  // Internal write pipeline for the (session-authed) web app. Validates the key
-  // and value against the entity's metadata before touching the inverter — the
-  // external `/api/v1` surface enforces the same rules via generated schemas.
+  // Internal write pipeline for the (session-authed) web app. The write funnel
+  // validates the key and value against the entity's metadata before touching
+  // the inverter — the external `/api/v1` surface travels the same funnel.
   .post(
     "/api/commands/setting",
     async ({ body, status }) => {
       if (!ctx) return status(503, ONBOARDING_REQUIRED);
-      const error = ctx.validateWrite(body.key, body.value);
-      if (error) return status(400, { error });
       try {
         await runtime.write(body.key, body.value);
       } catch (err) {
+        // The funnel validates key and value; a rejection there is the caller's
+        // mistake, not the inverter's, so it stays a 400 and is never logged as
+        // a device failure.
+        if (err instanceof WriteRejectedError) return status(400, { error: err.message });
         // The inverter didn't accept/answer the write (e.g. Modbus timeout or
         // exception response). Log the real cause and surface it as a gateway
         // error rather than a bare 500.

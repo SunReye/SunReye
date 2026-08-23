@@ -26,6 +26,7 @@ import {
 } from "@SunReye/db/automation-state";
 import type { WeatherConfig } from "@SunReye/db/weather";
 import { entityConstraint } from "@SunReye/inverter-core";
+import { WriteRejectedError } from "../inverter/control-writer";
 import type { CanonicalRole, InverterSample } from "@SunReye/inverter-core";
 import type {
   DecisionPoint,
@@ -249,15 +250,14 @@ async function replaySnapshot(
     status.lastError = "restore failed: snapshot is not a register value";
     return false;
   }
-  const err = io.ctx.validateWrite(key, value);
-  if (err) {
-    status.lastError = `restore failed: ${err}`;
-    return false;
-  }
   try {
+    // The write funnel validates against the profile's bounds, so a range
+    // narrowed under an older snapshot surfaces here — as a kept snapshot with
+    // a reason, never as a write the register would refuse.
     await io.write(key, value);
   } catch (error) {
-    status.lastError = error instanceof Error ? error.message : String(error);
+    const message = error instanceof Error ? error.message : String(error);
+    status.lastError = error instanceof WriteRejectedError ? `restore failed: ${message}` : message;
     return false;
   }
   logger.info("peak shaving released {key}, restored {value}", { key, value });
@@ -399,12 +399,17 @@ async function writeRegister(
 ): Promise<boolean> {
   const { io, status } = e;
   if (liveValue === value) return false;
-  const err = io.ctx.validateWrite(key, value);
-  if (err) {
-    status.lastError = err;
+  try {
+    await io.write(key, value);
+  } catch (err) {
+    // A register this firmware exposes read-only (or a target the profile's
+    // range refuses) is the engine's own miscalculation to report, not a
+    // transport fault, so it is recorded and the tick continues. A device
+    // failure still propagates.
+    if (!(err instanceof WriteRejectedError)) throw err;
+    status.lastError = err.message;
     return false;
   }
-  await io.write(key, value);
   status.lastWriteAt = new Date(nowMs).toISOString();
   return true;
 }

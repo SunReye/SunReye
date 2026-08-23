@@ -4,6 +4,10 @@
  * bridge, and the automation loop all write through this one function — and can
  * be tested without a runtime, a poll loop or a transport around it.
  *
+ * Because it is the one path, it is also the one validation point: the key and
+ * value are checked against the profile's metadata here, so no entry point
+ * carries its own copy of the rule and a new one cannot forget it.
+ *
  * A plain register write hands straight to the live source; a composite control
  * (`controlExpr`) instead runs its declarative action through the interpreter
  * (control-expr.ts), which dispatches to the real target register(s). Either
@@ -23,6 +27,20 @@ import type { InverterSample, InverterSource } from "@SunReye/inverter-core";
 
 import { type ControlStore, executeControl, injectControlValues } from "./control-expr";
 import type { ProfileContext } from "./inverter";
+import { WriteRejectedError } from "./write-rejected";
+
+/**
+ * A command the profile's own metadata refuses: an unknown key, a register that
+ * is not writable, a value outside its range or off its enum. Distinct from a
+ * transport failure so an entry point can answer "your value is wrong" (a 400, a
+ * warn-and-skip) rather than "the inverter failed" (a 502, an error log) without
+ * re-deriving the rule it just got a verdict on.
+ *
+ * Defined in `./write-rejected` so the interpreter can throw it too without an
+ * import cycle, and re-exported here because this funnel is where callers expect
+ * to find it.
+ */
+export { WriteRejectedError };
 
 export interface ControlWriterDeps {
   /**
@@ -44,7 +62,8 @@ export interface ControlWriter {
    * straight through; a composite control runs its `controlExpr` action via the
    * interpreter. A single awaited path — never fire-and-forget. Throws
    * "inverter not started" if no source is built yet (checked before the
-   * context is read).
+   * context is read), and a {@link WriteRejectedError} when the profile's
+   * metadata refuses the key or the value.
    */
   write(key: string, value: number): Promise<void>;
   /**
@@ -69,12 +88,19 @@ export function createControlWriter(deps: ControlWriterDeps): ControlWriter {
     // unbuilt context.
     const source = getSource();
     if (!source) throw new Error("inverter not started");
+    const ctx = getContext();
+    // Validation lives here, ahead of the controlExpr branch, so every entry
+    // point (web command, MQTT bridge, automation loop, the next one nobody has
+    // written yet) is covered by the profile's own bounds/enum without a copy of
+    // the rule at each call site — and a composite write is checked too.
+    const invalid = ctx.validateWrite(key, value);
+    if (invalid) throw new WriteRejectedError(invalid);
     // A composite control (controlExpr) runs its declarative action instead of a
     // raw register write; the interpreter dispatches to the real target(s).
-    const def = getContext().defByKey.get(key);
+    const def = ctx.defByKey.get(key);
     if (def?.controlExpr) {
       return executeControl(def, value, {
-        ctx: getContext(),
+        ctx,
         store,
         write: (target, v) => source.write(target, v),
         readLive,

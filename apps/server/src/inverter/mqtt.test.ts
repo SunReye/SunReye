@@ -16,6 +16,7 @@ import {
   topicsFor,
 } from "./mqtt-discovery";
 import type { ProfileContext } from "./inverter";
+import { createControlWriter } from "./control-writer";
 import type { ForecastVariant, SolarForecastExport } from "../forecast/solar-forecast";
 
 const topics = topicsFor("sunreye", "deye");
@@ -321,22 +322,30 @@ function start(
   } = {},
 ): Harness {
   const writes: { key: string; value: number }[] = [];
-  const bridge = startMqttBridge(
-    { ...baseConfig, ...over },
-    {
-      ctx: {
-        profile,
-        manifest,
-        defByKey: opts.defByKey ?? defByKey,
-        metaByKey,
-        validateWrite: opts.validateWrite ?? domainValidateWrite,
-      },
+  const ctx: ProfileContext = {
+    profile,
+    manifest,
+    defByKey: opts.defByKey ?? defByKey,
+    metaByKey,
+    validateWrite: opts.validateWrite ?? domainValidateWrite,
+  };
+  // The bridge writes through the production funnel (which owns the validation
+  // every entry point shares), so only the transport underneath it is a double.
+  const funnel = createControlWriter({
+    getSource: () => ({
+      profile,
+      read: async () => ({ time: "2026-08-15T10:00:00.000Z", inverterId: profile.id, metrics: {} }),
       write: async (key, value) => {
         writes.push({ key, value });
         await opts.write?.(key, value);
       },
-    },
-  );
+      close: async () => {},
+    }),
+    getContext: () => ctx,
+    store: { get: async () => ({}), set: async () => {} },
+    readLive: () => undefined,
+  });
+  const bridge = startMqttBridge({ ...baseConfig, ...over }, { ctx, write: funnel.write });
   if (!bridge) throw new Error("bridge was disabled");
   const client = clients.at(-1);
   if (!client) throw new Error("no client was created");
