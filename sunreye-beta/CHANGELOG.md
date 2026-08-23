@@ -2,11 +2,14 @@
 
 ## [unreleased]
 
-Unreleased work on `dev` since 1.2.0, shipped in `beta.20260823-26371e8`.
+Unreleased work on `dev` since 1.2.0, shipped in `beta.20260823-93537ed`.
 
 
 ### Features
 
+* **tooling:** extend the TDD gate to Rust before any .rs exists ([d43aa42](https://github.com/SunReye/SunReye/commit/d43aa42c8e3c152cd4f3b7799f606f17b0cebf50))
+* **profile-sdk:** six plausibility lints and a required-role build floor ([0b34134](https://github.com/SunReye/SunReye/commit/0b34134fe636018cd73c11666b8dd5eaf3a9e7e2))
+* **profile-sdk:** add `profile replay` — golden register captures ([915ad49](https://github.com/SunReye/SunReye/commit/915ad497d2a990eb27ab8442633dabb28aefeb76))
 * **profile-sdk:** lint the silent resolveKind fallback ([383c9c0](https://github.com/SunReye/SunReye/commit/383c9c08843a36c7f421911d236f6f558dd052ad))
 * **web:** two fingers zoom any chart, with nothing to arm ([65d26ba](https://github.com/SunReye/SunReye/commit/65d26ba24b2129dde64617cc0bdb558d57fa8d36))
 * **web:** full screen moves to the plot's corner, away from the caret ([15723cb](https://github.com/SunReye/SunReye/commit/15723cbe1c08d5d5b78760a0483be6b8f110b0b2))
@@ -177,6 +180,7 @@ Unreleased work on `dev` since 1.2.0, shipped in `beta.20260823-26371e8`.
 
 ### Code Refactoring
 
+* **profile-sdk:** split replay by concern to clear the health gate ([a0fbf1c](https://github.com/SunReye/SunReye/commit/a0fbf1c17dd99cd0067727f608410e3ed2bd49a5))
 * **web:** one header grid and one readout row per chart card ([14dad81](https://github.com/SunReye/SunReye/commit/14dad8144e4dd0d9c4dbaa3defa42e5f70eb9ab0))
 * **web:** a charge is a bead chain, and its speed is the reading ([1ffd393](https://github.com/SunReye/SunReye/commit/1ffd3934288b64eebfbc0ed3ec416bdee7c1a9c5))
 * **web:** rails shoot pulses instead of dashes ([fb29f34](https://github.com/SunReye/SunReye/commit/fb29f34490fd813935e719f9e7c37e21d9207cbe))
