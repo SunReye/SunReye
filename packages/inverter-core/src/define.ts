@@ -1,5 +1,6 @@
 import type { CanonicalRole } from "./roles";
 import { ROLE_CATALOG } from "./roles";
+import { bindingFor } from "./profile-data";
 import type {
   AggregateExpr,
   AggregateMatch,
@@ -9,7 +10,14 @@ import type {
   ProfileData,
   TopicToKey,
 } from "./profile-data";
-import type { MetricAccess, MetricFlow, MetricKind, MetricRange, RegisterType } from "./types";
+import type {
+  Binding,
+  MetricAccess,
+  MetricFlow,
+  MetricKind,
+  MetricRange,
+  RegisterType,
+} from "./types";
 
 /**
  * Authoring SDK for inverter profiles. `metric()` mirrors the terse register-map
@@ -108,6 +116,14 @@ export function sumOf(match: AggregateMatch): AggregateExpr {
 }
 
 /**
+ * A metric a builder produced: its {@link Binding} is always present, so the
+ * result satisfies the runtime {@link MetricDef} without going through the
+ * upcast. (On a serialized `MetricDataDef` the binding is optional — a v1
+ * profile carries none.)
+ */
+export type BoundMetricDef = MetricDataDef & { binding: Binding };
+
+/**
  * Build one metric. The canonical `key` is the topic with `/` → `.`. Generic on
  * the topic literal so the returned `key` is a literal type ({@link TopicToKey}):
  * profiles can derive their key union (`typeof metrics[number]["key"]`) and feed
@@ -116,9 +132,9 @@ export function sumOf(match: AggregateMatch): AggregateExpr {
 export function metric<const T extends string>(
   topic: T,
   opts: MetricOpts,
-): MetricDataDef & { key: TopicToKey<T> } {
+): BoundMetricDef & { key: TopicToKey<T> } {
   const { addr } = opts;
-  return {
+  const def: MetricDataDef & { key: TopicToKey<T> } = {
     // The runtime `replaceAll` produces exactly `TopicToKey<T>` by construction;
     // assert it so the literal key type survives (String#replaceAll widens to string).
     key: topic.replaceAll("/", ".") as TopicToKey<T>,
@@ -139,6 +155,7 @@ export function metric<const T extends string>(
     enumLabels: opts.enumLabels,
     flow: opts.flow,
   };
+  return { ...def, binding: bindingFor(def) };
 }
 
 /** Options for a composite control built by {@link control}. */
@@ -166,8 +183,8 @@ export interface ControlOpts<K extends string> {
 export function control<const K extends string>(
   topic: string,
   opts: ControlOpts<K>,
-): MetricDataDef {
-  return {
+): BoundMetricDef {
+  const def: MetricDataDef = {
     key: topic.replaceAll("/", "."),
     topic,
     label: opts.label,
@@ -182,6 +199,17 @@ export function control<const K extends string>(
     kind: opts.kind,
     range: opts.range,
   };
+  return { ...def, binding: bindingFor(def) };
+}
+
+/**
+ * Re-derive every metric's {@link MetricDataDef.binding} from its final fields.
+ * Run at emit time, after overlays and aggregate resolution, so a patched
+ * address or a restated compute can never leave a stale binding behind — the
+ * one place addressing is stated twice is the one place it is re-synced.
+ */
+function bound(metrics: MetricDataDef[]): MetricDataDef[] {
+  return metrics.map((m) => ({ ...m, binding: bindingFor({ ...m, binding: undefined }) }));
 }
 
 /** Assemble a {@link ProfileData} from identity + a metric list, resolving any
@@ -194,11 +222,13 @@ export function defineProfile(input: {
   metrics: MetricDataDef[];
 }): ProfileData {
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     ...input,
-    metrics: resolveAggregates(
-      input.metrics.map((m) => ({ ...m })),
-      input.id,
+    metrics: bound(
+      resolveAggregates(
+        input.metrics.map((m) => ({ ...m })),
+        input.id,
+      ),
     ),
   };
 }
@@ -549,12 +579,12 @@ export function defineVariant(
     overrides.id,
   );
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     id: overrides.id,
     name: overrides.name ?? base.name,
     manufacturer: overrides.manufacturer ?? base.manufacturer,
     version: overrides.version ?? base.version,
-    metrics,
+    metrics: bound(metrics),
   };
 }
 
@@ -577,7 +607,7 @@ export function defineFamily<const M extends readonly MetricDataDef[]>(def: {
   // base up front (via defineProfile) would bake in the base's own key list, so
   // a model that drops a string could no longer self-heal its aggregates.
   const unresolvedBase: ProfileData = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     id: def.id,
     name: def.name,
     manufacturer: def.manufacturer,

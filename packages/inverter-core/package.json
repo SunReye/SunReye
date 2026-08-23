@@ -8,7 +8,8 @@
     ".": "./src/index.ts"
   },
   "scripts": {
-    "test": "bun test ./src"
+    "test": "bun test ./src",
+    "check-types": "tsc --noEmit"
   },
   "dependencies": {
     "@logtape/logtape": "^2.2.3",

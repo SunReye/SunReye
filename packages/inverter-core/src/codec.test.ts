@@ -4,14 +4,22 @@ import { clampReports, decode, encodeWord, registerWidth, resetClampReports } fr
 import type { MetricDef, RegisterType } from "./types";
 
 /** Minimal metric definition — only the encoding fields matter here. */
-const def = (over: Partial<MetricDef> & { type: RegisterType }): MetricDef =>
+const def = ({
+  type,
+  addresses = [10],
+  ...over
+}: Partial<MetricDef> & { type: RegisterType }): MetricDef =>
   ({
     key: "m",
     topic: "m",
     label: "m",
     unit: null,
     group: "test",
-    addresses: [10],
+    type,
+    addresses,
+    // The codec addresses through the binding; the legacy mirror above stays in
+    // step with it exactly as `hydrateProfile` keeps it.
+    binding: { via: "modbus", addr: addresses, type },
     scale: 1,
     access: "r",
     ...over,

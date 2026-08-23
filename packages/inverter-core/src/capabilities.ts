@@ -16,6 +16,18 @@ const log = getLogger(["inverter-core", "capabilities"]);
 /** The fields {@link resolveKind} reads — so the lint can ask about a bare def. */
 export type KindInputs = Pick<MetricDef, "kind" | "role" | "access" | "unit">;
 
+/**
+ * {@link KindInputs} plus the key, which {@link resolveKind} needs only to name
+ * the metric in its fallback report.
+ *
+ * Deliberately narrower than `MetricDef`: kind resolution reads five fields and
+ * nothing about addressing, so it must not require a `binding`. Taking the full
+ * `MetricDef` made it uncallable from `profile-sdk`'s lints, which work on the
+ * wire shape (`MetricDataDef`, where `binding` is optional) — and no gate caught
+ * that, because only `apps/server` had a `check-types` task.
+ */
+export type KindResolvable = KindInputs & Pick<MetricDef, "key">;
+
 /** The kind a metric's canonical role prescribes, when it carries one. */
 function roleKind(def: KindInputs): MetricKind | undefined {
   return def.role ? ROLE_CATALOG[def.role].kind : undefined;
@@ -82,7 +94,7 @@ function reportKindFallback(key: string): void {
  * cumulative). Anything left defaults to a plain measurement — reported once per
  * key rather than assumed silently, since that default is a guess.
  */
-export function resolveKind(def: MetricDef): MetricKind {
+export function resolveKind(def: KindResolvable): MetricKind {
   if (def.kind) return def.kind;
   const fromRole = roleKind(def);
   if (fromRole) return fromRole;

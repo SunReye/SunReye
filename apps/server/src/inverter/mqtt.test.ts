@@ -212,12 +212,19 @@ mock.module("mqtt", () => ({
 
 const { startMqttBridge } = await import("./mqtt");
 
-const def = (over: Partial<MetricDef> & { key: string; topic: string }): MetricDef => ({
+const def = ({
+  type = "U_WORD",
+  addresses = [1],
+  ...over
+}: Partial<MetricDef> & { key: string; topic: string }): MetricDef => ({
   label: over.key,
   unit: null,
   group: "test",
-  type: "U_WORD",
-  addresses: [1],
+  type,
+  addresses,
+  // The codec addresses through the binding; the legacy mirror stays in step
+  // with it exactly as `hydrateProfile` keeps it.
+  binding: { via: "modbus", addr: addresses, type },
   scale: 1,
   access: "r",
   ...over,

@@ -249,7 +249,7 @@ function isProfileLike(value: unknown): value is ProfileData {
   return (
     typeof value === "object" &&
     value !== null &&
-    (value as ProfileData).schemaVersion === 1 &&
+    [1, 2].includes((value as ProfileData).schemaVersion) &&
     typeof (value as ProfileData).id === "string" &&
     Array.isArray((value as ProfileData).metrics)
   );

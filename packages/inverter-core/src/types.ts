@@ -8,7 +8,7 @@
  * are added without touching the core engine.
  */
 
-import type { ControlExpr } from "./profile-data";
+import type { ComputeExpr, ControlExpr } from "./profile-data";
 import type { CanonicalRole } from "./roles";
 
 /**
@@ -52,6 +52,27 @@ export type MetricKind = "measurement" | "cumulative" | "status" | "setting";
  */
 export type { CanonicalRole };
 
+/**
+ * Where a metric's value comes from — the one place a *source* is named, so a
+ * non-register source has somewhere to put its addressing instead of borrowing
+ * Modbus fields. A tagged union rather than optional fields: the runtime
+ * implements a closed set of arms, and an arm it does not implement is rejected
+ * when the profile is parsed, never discovered at read time.
+ *
+ * - `modbus`  holding register(s), decimal addresses. Length matches `type`:
+ *             1 for `U_WORD`/`S_WORD`, 2 (`[low, high]`) for `U_DWORD`, N for `RAW`.
+ * - `compute` derived from other decoded values; never read from the wire.
+ * - `control` composite control; writing runs the expression instead of a
+ *             register write.
+ *
+ * `scale`/`offset` deliberately stay on {@link MetricBase} — an API answering
+ * deciwatts needs them exactly as much as a register does.
+ */
+export type Binding =
+  | { via: "modbus"; addr: number[]; type: RegisterType }
+  | { via: "compute"; expr: ComputeExpr }
+  | { via: "control"; expr: ControlExpr };
+
 /** Expected value bounds for gauge-style widgets. */
 export interface MetricRange {
   min: number;
@@ -86,11 +107,17 @@ export interface MetricBase {
   unit: string | null;
   /** Logical grouping (inverter, battery, generator, settings, ...). */
   group: string;
+  /** Where the value comes from, and how to address it. */
+  binding: Binding;
+  /**
+   * @deprecated Legacy Modbus mirror of {@link binding}, kept while the read
+   * planner and simulator still read it directly. New code reads the binding;
+   * the mirror disappears once those move behind the transport interface.
+   */
   type: RegisterType;
   /**
-   * Modbus holding-register address(es), decimal. Length matches `type`:
-   * 1 for `U_WORD`/`S_WORD`, 2 (`[low, high]`) for `U_DWORD`, N for `RAW`.
-   * Empty for computed metrics (never read from the wire).
+   * @deprecated Legacy Modbus mirror of {@link binding} — `addr` for a `modbus`
+   * binding, empty for every other arm. See {@link type}.
    */
   addresses: number[];
   /** Multiply the raw integer by this to get engineering units. */
@@ -247,7 +274,41 @@ export interface InverterSample {
   metrics: MetricValues;
 }
 
-/** A transport (real Modbus or simulator) exposing the same read/write shape. */
+/**
+ * How a device is actually talked to — the one seam every source-specific
+ * concern hides behind.
+ *
+ * The Modbus implementation owns contiguous-block coalescing, the per-request
+ * register cap, atomic compute groups and the exception-2 split-and-remember
+ * fallback. None of that generalises: a single HTTP GET is atomic for free, and
+ * a push transport has no read to plan at all. So the interface promises only
+ * what every source can honour — a connect, a whole-device read, a keyed write
+ * in engineering units, a close — and declares the rest through {@link caps}.
+ */
+export interface DeviceTransport {
+  /** Short identifier for logs and diagnostics, e.g. `modbus`. */
+  readonly kind: string;
+  /** Open the underlying connection. Idempotent; a read may do it lazily. */
+  connect(): Promise<void>;
+  /**
+   * One whole-device read: decoded values keyed by metric key. `readAt` carries
+   * per-key read times (epoch ms) when — and only when — the transport knows
+   * them: a push source stamps each key as it arrives, while a block-reading
+   * poll has one time for a whole span and reports none.
+   */
+  read(): Promise<{ values: MetricValues; readAt?: Record<string, number> }>;
+  /** Write a `rw` metric in engineering units. */
+  write(key: string, value: number): Promise<void>;
+  /**
+   * What this transport can do, so callers branch on the capability instead of
+   * probing the `kind`. `pushBased` transports deliver values on their own
+   * schedule; polling them is a no-op read of the last known state.
+   */
+  readonly caps: { canWrite: boolean; pushBased: boolean };
+  close(): Promise<void>;
+}
+
+/** A source (real Modbus or simulator) exposing the same profile-shaped sample. */
 export interface InverterSource {
   readonly profile: InverterProfile;
   read(): Promise<InverterSample>;

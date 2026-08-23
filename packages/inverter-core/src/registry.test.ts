@@ -31,13 +31,20 @@ afterEach(() => {
   for (const p of snapshot) registerProfile(p);
 });
 
-const metric = (over: Partial<MetricDef> & { key: string }): MetricDef => ({
+const metric = ({
+  type = "U_WORD",
+  addresses = [100],
+  ...over
+}: Partial<MetricDef> & { key: string }): MetricDef => ({
   topic: over.key.replaceAll(".", "/"),
   label: over.key,
   unit: null,
   group: "test",
-  type: "U_WORD",
-  addresses: [100],
+  type,
+  addresses,
+  // The planner addresses through the binding; the legacy mirror above stays in
+  // step with it exactly as `hydrateProfile` keeps it.
+  binding: { via: "modbus", addr: addresses, type },
   scale: 1,
   access: "r",
   ...over,
