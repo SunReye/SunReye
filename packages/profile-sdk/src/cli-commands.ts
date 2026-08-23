@@ -14,6 +14,8 @@ import {
   coverage,
   groupByPrefix,
   isIndexedRole,
+  missingRequiredRoles,
+  parseRequiredRoles,
   suggestAggregates,
   type AggregateSuggestion,
 } from "./coverage";
@@ -34,9 +36,16 @@ import {
   type VersionStatus,
 } from "./repo";
 import { scaffoldFromCsv } from "./scaffold";
+import { captureSchema, replayCapture, type Capture, type ReplayResult } from "./replay";
 import { lintProfile, validateProfile } from "./validate";
 import pkg from "../package.json";
-import type { BumpLevel, CanonicalRole, ProfileData } from "@SunReye/inverter-core";
+import { hydrateProfile, parseProfileData } from "@SunReye/inverter-core";
+import type {
+  BumpLevel,
+  CanonicalRole,
+  InverterProfile,
+  ProfileData,
+} from "@SunReye/inverter-core";
 
 async function readJson(path: string): Promise<unknown> {
   const file = Bun.file(path);
@@ -92,14 +101,24 @@ export async function cmdValidate(
   const { ok, issues } = validateProfile(data);
   if (!ok) failIssues(`✗ ${path} is invalid:`, issues);
 
-  const warnings = lintProfile(data as ProfileData);
+  const profile = data as ProfileData;
+  const warnings = lintProfile(profile);
   if (warnings.length > 0 && "strict" in opts) {
     failIssues(`✗ ${path} failed ${warnings.length} lint(s):`, warnings);
   }
   console.log(`✓ ${path} is a valid profile`);
-  if (warnings.length === 0) return;
-  console.log(`\n⚠ ${warnings.length} lint warning(s) — re-run with --strict to gate on them:`);
-  for (const w of warnings) console.log(`  • ${w}`);
+  if (warnings.length > 0) {
+    console.log(`\n⚠ ${warnings.length} lint warning(s) — re-run with --strict to gate on them:`);
+    for (const w of warnings) console.log(`  • ${w}`);
+  }
+  // Coverage advice is never a gate — an inverter without a generator is not a
+  // broken profile — so it prints after the lints and does not affect the exit.
+  const report = coverage(profile);
+  if (report.missing.length > 0) {
+    console.log("");
+    printMissingRoles(report.missing);
+  }
+  printAggregateHints(suggestAggregates(profile));
 }
 
 /** Print the unmapped-role section of a coverage report, grouped by role prefix. */
@@ -333,10 +352,34 @@ function reportBuild(result: RepoBuildResult, out: string): void {
   }
 }
 
+/**
+ * Refuse to publish a profile that leaves a required renderable role unmapped —
+ * the section it feeds would render empty on every dashboard. The floor is
+ * `--require a,b` when given, otherwise the per-family anchors
+ * ({@link FAMILY_ANCHOR_ROLES}), so a machine without a battery is never asked
+ * for `battery.soc`. Every refusal names the profile and the missing role(s).
+ */
+function enforceRoleFloor(entries: readonly RepoEntryInput[], require: string | undefined): void {
+  const { roles, unknown } = parseRequiredRoles(require);
+  if (unknown.length > 0) {
+    fail(`--require lists unknown role(s): ${unknown.join(", ")}`);
+  }
+  const issues: string[] = [];
+  for (const entry of entries) {
+    const missing = missingRequiredRoles(entry.profile, roles);
+    if (missing.length > 0) {
+      issues.push(`${entry.profile.id}: missing required role(s) ${missing.join(", ")}`);
+    }
+  }
+  if (issues.length > 0) {
+    failIssues("✗ repo build failed — required roles are unmapped:", issues);
+  }
+}
+
 export async function cmdBuild(paths: string[], opts: Record<string, string>): Promise<void> {
   if (paths.length === 0) {
     fail(
-      "usage: profile build <module.ts|profile.json ...> --out <dir> [--name n] [--maintainer m] [--bump patch|minor|major]",
+      "usage: profile build <module.ts|profile.json ...> --out <dir> [--name n] [--maintainer m] [--bump patch|minor|major] [--require role,role]",
     );
   }
   const out = opts.out;
@@ -356,6 +399,7 @@ export async function cmdBuild(paths: string[], opts: Record<string, string>): P
   });
   if (!result.ok) failIssues("✗ repo build failed:", result.issues);
 
+  enforceRoleFloor(entries, opts.require);
   await writeFiles(out, result.files);
   reportBuild(result, out);
 }
@@ -511,4 +555,76 @@ export async function cmdInit(
 
   await runPostInitSteps(targetDir, opts, deps);
   console.log(`\nNext: cd ${dir ?? "."} && bun run build`);
+}
+
+/**
+ * `profile replay <capture.json...>` — run golden register captures through the
+ * real decode path and diff against their expectations.
+ *
+ * This is the only authoring check that can prove a value is *correct* rather
+ * than merely present: `exerciseProfile()` drives the generic simulator, so it
+ * shows every metric produces a number and can never show the number is right.
+ * A capture taken from a real device is therefore the regression test for the
+ * highest-risk profile edit there is — a changed `scale`, `offset` or address.
+ *
+ * Exit 1 if any capture fails, so it is usable as a CI gate next to the profile.
+ */
+/**
+ * The profile a capture is replayed against. An explicit `--profile` is what a
+ * profile repo uses: the profile under test is a file in the working tree, not
+ * something installed in this process. Absent, `replayCapture` resolves the
+ * capture's own id from the registry.
+ */
+async function replayProfile(path: string | undefined): Promise<InverterProfile | undefined> {
+  if (!path) return undefined;
+  const data = await readJson(path);
+  const { ok, issues } = validateProfile(data);
+  if (!ok) failIssues(`✗ ${path} is invalid:`, issues);
+  return hydrateProfile(parseProfileData(data));
+}
+
+/** Read and validate one capture file, failing readably rather than throwing. */
+async function readCapture(path: string): Promise<Capture> {
+  try {
+    return captureSchema.parse(JSON.parse(await Bun.file(path).text()));
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    fail(`invalid capture file ${path}: ${message}`);
+  }
+}
+
+/** Print one capture's outcome. Returns whether it failed. */
+function reportReplay(path: string, r: ReplayResult): boolean {
+  if (r.ok) {
+    const keys = r.matched.map((m) => m.key).join(", ");
+    console.log(`✓ ${path} — ${r.expectationCount} expectation(s) matched: ${keys}`);
+  } else {
+    console.error(`✗ ${path}`);
+    for (const m of r.mismatched) {
+      console.error(`  • ${m.key}: expected ${m.expected}, got ${m.actual}`);
+    }
+    for (const e of r.errors) console.error(`  • ${e}`);
+  }
+  // Informational either way: a capture may legitimately cover a subset of the
+  // profile's registers, and after #63 an unanswered address decodes to
+  // `undefined` rather than 0 — worth surfacing so it is not mistaken for one.
+  for (const miss of r.missingRegisters) {
+    console.error(`  ⚠ ${miss.key}: no value — registers absent: ${miss.missing.join(", ")}`);
+  }
+  return !r.ok;
+}
+
+export async function cmdReplay(paths: string[], opts: Record<string, string> = {}): Promise<void> {
+  if (paths.length === 0) {
+    fail("usage: profile replay <capture.json...> [--profile <file>] [--json]");
+  }
+
+  const profile = await replayProfile(opts.profile);
+  const results: ReplayResult[] = [];
+  for (const path of paths) results.push(replayCapture(await readCapture(path), profile));
+
+  if ("json" in opts) console.log(JSON.stringify(results, null, 2));
+
+  const failed = results.filter((r, i) => reportReplay(paths[i]!, r)).length;
+  if (failed > 0) fail(`${failed} of ${results.length} capture(s) failed`);
 }

@@ -1,6 +1,8 @@
 import { hasResolvableKind, safeParseProfileData } from "@SunReye/inverter-core";
 import type { ProfileData } from "@SunReye/inverter-core";
 
+import { semanticLints } from "./lints";
+
 export interface ValidationResult {
   ok: boolean;
   /** Human-readable `path: message` lines, empty when valid. */
@@ -22,16 +24,19 @@ export function validateProfile(input: unknown): ValidationResult {
  * warnings by `profile validate`, and gated by `--strict` (the storage policy
  * in #109 keys off `resolveKind`, so a guessed kind becomes a data decision).
  *
- * Today's single lint: a metric whose kind is neither explicit nor implied by a
- * mapped role, its writability or a kWh unit resolves to `measurement` by
- * default — which silently turns a status enum into a deadbanded number.
+ * The first lint is kind resolution: a metric whose kind is neither explicit nor
+ * implied by a mapped role, its writability or a kWh unit resolves to
+ * `measurement` by default — which silently turns a status enum into a
+ * deadbanded number. The rest are the physical-plausibility rules in ./lints
+ * (unbounded percentages, signed energy counters, missed temperature offsets, …).
  */
 export function lintProfile(data: ProfileData): string[] {
-  return data.metrics
+  const kindWarnings = data.metrics
     .filter((m) => !hasResolvableKind(m))
     .map(
       (m) =>
         `${m.key}: unresolvable kind — defaults to "measurement". ` +
         "Add an explicit `kind` (with `enumLabels` for an enum) or a canonical role.",
     );
+  return [...kindWarnings, ...semanticLints(data).map((f) => f.message)];
 }

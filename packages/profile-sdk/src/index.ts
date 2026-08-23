@@ -33,13 +33,29 @@ export type { RepoIndex, RepoProfileEntry } from "@SunReye/inverter-core";
 
 export { lintProfile, validateProfile } from "./validate";
 export type { ValidationResult } from "./validate";
-export { coverage, groupByPrefix, isIndexedRole, suggestAggregates } from "./coverage";
+export {
+  coverage,
+  FAMILY_ANCHOR_ROLES,
+  groupByPrefix,
+  isIndexedRole,
+  missingRequiredRoles,
+  parseRequiredRoles,
+  requiredRoles,
+  suggestAggregates,
+} from "./coverage";
 export type { AggregateSuggestion, CoverageReport } from "./coverage";
+export { LINT_RULES, semanticLints } from "./lints";
+export type { LintFinding, LintRule } from "./lints";
 export { scaffoldFromCsv } from "./scaffold";
 export type { ScaffoldMeta } from "./scaffold";
 export { scaffoldProject } from "./init";
 export type { InitOptions } from "./init";
 export { exerciseProfile } from "./harness";
 export type { HarnessResult } from "./harness";
+// Golden register captures. `exerciseProfile` proves every metric produces a
+// value; this proves the value is the right one, which is what a `scale`,
+// `offset` or address edit can silently break.
+export { captureSchema, DEFAULT_TOLERANCE, replayCapture } from "./replay";
+export type { Capture, Expectation, MissingRegisters, ReplayResult } from "./replay";
 export { buildRepo } from "./repo";
 export type { BuildRepoOptions, RepoBuildResult, RepoEntryInput } from "./repo";
