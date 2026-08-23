@@ -61,6 +61,9 @@ export type { CanonicalRole };
  *
  * - `modbus`  holding register(s), decimal addresses. Length matches `type`:
  *             1 for `U_WORD`/`S_WORD`, 2 (`[low, high]`) for `U_DWORD`, N for `RAW`.
+ * - `http`    a value inside the JSON body of one GET, addressed by RFC 6901
+ *             JSON pointer. No width and no encoding: the body already answers
+ *             `236.402`, so there is nothing to combine, only somewhere to look.
  * - `compute` derived from other decoded values; never read from the wire.
  * - `control` composite control; writing runs the expression instead of a
  *             register write.
@@ -70,6 +73,7 @@ export type { CanonicalRole };
  */
 export type Binding =
   | { via: "modbus"; addr: number[]; type: RegisterType }
+  | { via: "http"; pointer: string }
   | { via: "compute"; expr: ComputeExpr }
   | { via: "control"; expr: ControlExpr };
 
