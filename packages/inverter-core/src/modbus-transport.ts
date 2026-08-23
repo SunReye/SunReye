@@ -313,14 +313,13 @@ export class ModbusTransport implements DeviceTransport {
    * its neighbour's, since the interleaved responses would mismatch and time
    * out either way.
    */
-  private readonly bus: Bus;
+  private joined: Bus | null = null;
   /** Whether this transport still counts against {@link Bus.holders}. */
   private holding = false;
 
   constructor(profile: InverterProfile, conn: InverterConnection) {
     this.profile = profile;
     this.conn = conn;
-    this.bus = busFor(conn);
     this.blocks = planReads(profile.metrics);
     this.degraded = hasUnplannableGroup(profile.metrics);
     log.info(
@@ -338,30 +337,45 @@ export class ModbusTransport implements DeviceTransport {
    * second device on a shared gateway reading the first's registers.
    */
   private locked<T>(op: () => Promise<T>): Promise<T> {
+    const bus = this.join();
     const run = async () => {
-      this.bus.client?.setID(this.conn.unitId);
+      bus.client?.setID(this.conn.unitId);
       return op();
     };
-    const result = this.bus.lock.then(run, run);
+    const result = bus.lock.then(run, run);
     // Keep the chain alive on failure without leaking the rejection.
-    this.bus.lock = result.then(
+    bus.lock = result.then(
       () => {},
       () => {},
     );
     return result;
   }
 
+  /**
+   * The bus this transport is on, joining the current one for its connection if
+   * it has not already.
+   *
+   * Resolved on first use rather than at construction, because a bus captured in
+   * the constructor can be evicted before the transport ever reads — the source
+   * rebuild builds the replacement and only then closes the previous one — and
+   * the transport would then revive an orphan, ending up on a second socket to
+   * the same gateway with a second, independent lock. Claiming the share here
+   * also means a transport that is built and never read holds nothing open.
+   */
+  private join(): Bus {
+    if (this.joined) return this.joined;
+    const bus = busFor(this.conn);
+    this.joined = bus;
+    this.holding = true;
+    bus.holders += 1;
+    return bus;
+  }
+
   private async getClient(): Promise<ModbusRTU> {
-    // Claim a share of the wire on first use rather than at construction: a
-    // transport that is built and never read (a probe that fails to configure)
-    // must not keep a socket open on someone else's behalf.
-    if (!this.holding) {
-      this.holding = true;
-      this.bus.holders += 1;
-    }
-    if (this.bus.client?.isOpen) return this.bus.client;
-    if (this.bus.connecting) return this.bus.connecting;
-    this.bus.connecting = (async () => {
+    const bus = this.join();
+    if (bus.client?.isOpen) return bus.client;
+    if (bus.connecting) return bus.connecting;
+    bus.connecting = (async () => {
       const next = new ModbusRTU();
       const timeout = this.conn.timeoutMs ?? 2000;
       const opts = { port: this.conn.port };
@@ -386,15 +400,15 @@ export class ModbusTransport implements DeviceTransport {
         ]);
       } catch (err) {
         next.close(() => {});
-        this.bus.connecting = null;
+        bus.connecting = null;
         throw err;
       }
       next.setTimeout(timeout);
-      this.bus.client = next;
-      this.bus.connecting = null;
+      bus.client = next;
+      bus.connecting = null;
       return next;
     })();
-    return this.bus.connecting;
+    return bus.connecting;
   }
 
   /** Open the socket (idempotent); reads and writes do this for themselves. */
@@ -498,17 +512,23 @@ export class ModbusTransport implements DeviceTransport {
    * releases nothing, so it cannot take someone else's share with it.
    */
   async close(): Promise<void> {
-    if (!this.holding) return;
+    const bus = this.joined;
+    if (!this.holding || !bus) return;
     this.holding = false;
-    this.bus.holders -= 1;
-    if (this.bus.holders > 0) return;
-    const { client } = this.bus;
+    this.joined = null;
+    bus.holders -= 1;
+    if (bus.holders > 0) return;
+    const { client } = bus;
     await new Promise<void>((resolve) => {
       if (client?.isOpen) client.close(() => resolve());
       else resolve();
     });
-    this.bus.client = null;
-    this.bus.connecting = null;
-    buses.delete(busKey(this.conn));
+    bus.client = null;
+    bus.connecting = null;
+    // By identity, not by key: a late close from the holder of an already-
+    // evicted bus would otherwise remove whichever live bus now sits at that
+    // key, orphan it in turn, and fork the wire all over again.
+    const key = busKey(this.conn);
+    if (buses.get(key) === bus) buses.delete(key);
   }
 }

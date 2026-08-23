@@ -27,6 +27,7 @@ import { log } from "../shared/logging";
 import type { Streams } from "../shared/streams";
 import type { Device } from "./device-registry";
 import { startPlantJobs, stopPlantJobs } from "./plant-jobs";
+import * as moduleRuntime from "./runtime";
 import { createRuntime as createRealRuntime, type RuntimeDevice } from "./runtime";
 
 const logger = log("fleet");
@@ -57,7 +58,42 @@ export interface FleetDeps {
 }
 
 /**
- * A bus that drops `metrics` and forwards everything else — what a non-default
+ * How a runtime is built, when the caller does not say.
+ *
+ * **The lead device runs on the module's own instance**, and that is not an
+ * optimisation. `/api/status`, the settings hot-apply, the register-write
+ * funnel, the admin restart and the plant's forecast all reach the runtime
+ * through `runtime.*` — the module-level re-exports of that one instance. Give
+ * the lead device a fresh instance instead and every one of those acts on a
+ * runtime nothing ever started: status permanently disconnected, writes
+ * throwing, saves silently not applying, shutdown flushing nothing. Extra
+ * devices get their own instances, which nothing addresses by name yet.
+ */
+// fallow-ignore-next-line unused-export -- used inside startFleet as the default factory, and asserted by identity in fleet.test.ts; test files aren't traced as consumers
+export function runtimeFor(leadId: string | null): (device: Device) => FleetRuntime {
+  return (device) =>
+    device.id === leadId
+      ? { start: moduleRuntime.start, stop: moduleRuntime.stop }
+      : createRealRuntime();
+}
+
+/**
+ * Which device gets the metrics bus, the automations and the module's runtime.
+ *
+ * The named default when it is actually pollable, else the first device that is.
+ * Without the fallback a disabled default — or one whose profile was
+ * uninstalled, since the registry's `default()` falls back to the first device
+ * while `pollable()` filters on `enabled` — would match no runtime at all: every
+ * device would get the metrics-less bus, the live dashboard would show nothing,
+ * and nothing would run the automations. Silently.
+ */
+function leadOf(pollable: readonly Device[], defaultDeviceId: string | null): string | null {
+  if (pollable.some((d) => d.id === defaultDeviceId)) return defaultDeviceId;
+  return pollable[0]?.id ?? null;
+}
+
+/**
+ * A bus that drops `metrics` and forwards everything else — what a non-lead
  * device's runtime is given. Not a no-op bus: a secondary device still has
  * things to say that are not per-device readings.
  */
@@ -88,10 +124,17 @@ export async function startFleet(
   },
   deps: FleetDeps = {},
 ): Promise<Fleet> {
-  const make = deps.createRuntime ?? (() => createRealRuntime());
   const plant = deps.plantJobs ?? { start: startPlantJobs, stop: stopPlantJobs };
   const pollable = opts.devices.filter((d) => d.enabled && d.source.enabled);
   const running = new Map<string, FleetRuntime>();
+  const leadId = leadOf(pollable, opts.defaultDeviceId);
+  if (leadId !== opts.defaultDeviceId) {
+    logger.warn("default device {wanted} is not pollable — {lead} leads instead", {
+      wanted: opts.defaultDeviceId,
+      lead: leadId,
+    });
+  }
+  const make = deps.createRuntime ?? runtimeFor(leadId);
 
   /**
    * Start one device's loop, or report why it did not start. A device that will
@@ -99,12 +142,12 @@ export async function startFleet(
    * swallowed here rather than aborting the loop over the fleet.
    */
   async function startOne(device: Device): Promise<FleetRuntime | null> {
-    const isDefault = device.id === opts.defaultDeviceId;
+    const isLead = device.id === leadId;
     const runtime = make(device);
     try {
-      await runtime.start(isDefault ? opts.streams : withoutMetrics(opts.streams), device, {
-        automationsWatched: isDefault ? opts.automationsWatched : undefined,
-        automations: isDefault,
+      await runtime.start(isLead ? opts.streams : withoutMetrics(opts.streams), device, {
+        automationsWatched: isLead ? opts.automationsWatched : undefined,
+        automations: isLead,
       });
       return runtime;
     } catch (error) {
@@ -112,11 +155,23 @@ export async function startFleet(
         id: device.id,
         error: error instanceof Error ? error.message : String(error),
       });
+      // `start` arms the flush schedule and builds the source and poll timer
+      // before the fallible steps, so a runtime that threw part-way is still
+      // polling. Dropping the handle would leave it reading, buffering rows and
+      // emitting frames with nothing able to stop it ever again.
+      await runtime.stop().catch(() => {});
       return null;
     }
   }
 
   for (const device of pollable) {
+    if (running.has(device.id)) {
+      // Two rows claiming one id — a hand-edited table. Both would write the
+      // same `inverter_id` and share one MQTT topic root, and since the handles
+      // are keyed by id the first would become unreachable and unstoppable.
+      logger.error("device id {id} appears twice — only the first is started", { id: device.id });
+      continue;
+    }
     const runtime = await startOne(device);
     if (runtime) running.set(device.id, runtime);
   }

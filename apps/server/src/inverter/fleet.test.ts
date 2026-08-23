@@ -3,7 +3,7 @@ import type { InverterSample } from "@SunReye/inverter-core";
 
 import { createStreams } from "../shared/streams";
 import type { Device } from "./device-registry";
-import { startFleet, type FleetRuntime } from "./fleet";
+import { runtimeFor, startFleet, type FleetRuntime } from "./fleet";
 import type { ProfileContext } from "./inverter";
 
 const ctx = (id: string) => ({ profile: { id } }) as unknown as ProfileContext;
@@ -194,6 +194,93 @@ describe("one bad device", () => {
     const fleet = await h.start({ failing: new Set(["roof"]) });
 
     expect([...fleet.ids()]).toEqual(["barn"]);
+  });
+});
+
+// Every HTTP surface — `/api/status`, the settings hot-apply, the register-write
+// funnel, the admin restart, and the plant's forecast — reaches the runtime
+// through the module's default instance. If the fleet started a *different*
+// instance for the default device, all of them would act on a runtime that was
+// never started: status permanently disconnected, writes throwing, saves
+// silently not applying, and shutdown flushing nothing.
+describe("the lead device runs on the module's own runtime", () => {
+  test("gets the exported instance, by identity — not a fresh one", async () => {
+    const runtime = await import("./runtime");
+
+    const built = runtimeFor("only")(device("only"));
+
+    expect(built.start).toBe(runtime.start);
+    expect(built.stop).toBe(runtime.stop);
+  });
+
+  test("every other device gets an instance of its own", async () => {
+    const runtime = await import("./runtime");
+
+    const built = runtimeFor("only")(device("second"));
+
+    expect(built.start).not.toBe(runtime.start);
+  });
+});
+
+describe("a device that will not start", () => {
+  test("is stopped, not abandoned mid-start", async () => {
+    // `start` arms the flush schedule and builds the source and poll timer
+    // before the fallible MQTT step, so a runtime that throws part-way is still
+    // polling. Dropping the handle would leave it reading, buffering rows and
+    // emitting frames forever, with nothing able to stop it.
+    const h = harness([device("roof"), device("barn")], "roof");
+
+    const fleet = await h.start({ failing: new Set(["roof"]) });
+
+    expect(h.made[0]?.stops).toBe(1);
+    expect(fleet.ids()).toEqual(["barn"]);
+  });
+});
+
+describe("two rows claiming one device id", () => {
+  test("only the first is started; the second is refused", async () => {
+    // A hand-edited devices table. Two runtimes for one id would both write the
+    // same `inverter_id`, share one MQTT topic root, and — because the fleet
+    // keys its handles by id — leave the first unreachable and unstoppable.
+    const h = harness([device("dupe"), device("dupe")], "dupe");
+
+    const fleet = await h.start();
+
+    expect(h.made).toHaveLength(1);
+    expect(fleet.ids()).toEqual(["dupe"]);
+  });
+});
+
+describe("when the default device cannot be polled", () => {
+  const disabledDefault = () =>
+    harness([device("off", { enabled: false }), device("second")], "off");
+
+  test("the metrics stream does not go silent", async () => {
+    // No runtime matches the named default, so without a fallback every device
+    // gets the metrics-less bus and the live dashboard shows nothing at all.
+    const h = disabledDefault();
+    await h.start();
+
+    h.made[0]?.poll("second");
+
+    expect(h.published.map((s) => s.inverterId)).toEqual(["second"]);
+  });
+
+  test("something still runs the automations", async () => {
+    const h = disabledDefault();
+
+    await h.start();
+
+    expect(h.made.flatMap((m) => m.started.filter((s) => s.automations))).toHaveLength(1);
+  });
+
+  test("with nothing pollable at all, nothing is started and nothing pretends to be", async () => {
+    const h = harness([device("off", { enabled: false })], "off");
+
+    const fleet = await h.start();
+
+    expect(fleet.size).toBe(0);
+    expect(h.plant.starts).toBe(0);
   });
 });
 

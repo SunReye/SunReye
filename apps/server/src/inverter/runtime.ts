@@ -511,9 +511,14 @@ export function createRuntime(deps: RuntimeDeps = {}) {
  */
 const defaultRuntime = createRuntime();
 
-// No module-level `start`: a runtime is started by the fleet, which builds one
-// per device. The rest stay because the settings and admin routes act on the
-// default device's runtime by name.
+/**
+ * Started by the fleet, for the lead device. The rest of the re-exports below
+ * are what the settings routes, the admin restart, the write funnel and the
+ * plant's forecast act on, so they and this must be the same instance — a fleet
+ * that started a *different* runtime for the lead device would leave every one
+ * of them talking to a runtime nothing ever started.
+ */
+export const start = defaultRuntime.start;
 export const write = defaultRuntime.write;
 export const status = defaultRuntime.status;
 export const stop = defaultRuntime.stop;

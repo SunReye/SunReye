@@ -1203,6 +1203,53 @@ describe("register writes", () => {
   });
 });
 
+// One plant, one engine. `startAutomations`/`stopAutomations` act on a single
+// module-level engine, so a second device's runtime must not touch it: starting
+// would re-point the first device's engine out from under it, and stopping would
+// take the plant's automations down when that device shuts off.
+describe("a runtime that does not lead the plant", () => {
+  test("starts no automation engine", async () => {
+    const profile = mainProfile();
+    streams = createStreams();
+
+    await start(
+      streams,
+      { id: profile.id, ctx: buildProfileContext(profile) },
+      {
+        automations: false,
+      },
+    );
+
+    expect(automation.started).toBe(0);
+  });
+
+  test("stops none on the way out either", async () => {
+    const profile = mainProfile();
+    streams = createStreams();
+    await start(
+      streams,
+      { id: profile.id, ctx: buildProfileContext(profile) },
+      {
+        automations: false,
+      },
+    );
+
+    await stop();
+
+    expect(automation.stopped).toBe(0);
+  });
+
+  test("the one that does lead starts and stops them", async () => {
+    await boot();
+
+    expect(automation.started).toBe(1);
+
+    await stop();
+
+    expect(automation.stopped).toBe(1);
+  });
+});
+
 describe("the background jobs", () => {
   test("boot arms this device's flush, and only that", async () => {
     // The plant's schedules — forecast, correction, prices — are armed once by

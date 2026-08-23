@@ -1141,6 +1141,50 @@ describe("two devices on one connection", () => {
     expect((await b.read()).metrics).toEqual({ b: 7 });
   });
 
+  test("a transport built before the bus closed still joins the new one", async () => {
+    // `rebuildInverter` constructs the replacement source and *then* closes the
+    // previous one. A transport that captured its bus at construction would be
+    // holding an evicted object, revive it on its first read, and end up on a
+    // second socket to the same gateway — two independent locks on one wire,
+    // which is the interleaving this whole mechanism exists to prevent.
+    const first = new ModbusInverter(profileOf([raw("a", 100)]), connection({ unitId: 1 }));
+    device.read = bank({ 100: 5, 200: 7 });
+    await first.read();
+    const replacement = new ModbusInverter(profileOf([raw("b", 200)]), connection({ unitId: 2 }));
+
+    await first.close();
+    await replacement.read();
+    const third = new ModbusInverter(profileOf([raw("a", 100)]), connection({ unitId: 3 }));
+    await third.read();
+
+    // One socket for the replacement, and the newcomer joins it rather than
+    // dialling its own.
+    expect(wire.instances).toHaveLength(2);
+  });
+
+  test("closing an orphaned holder does not evict the bus that replaced it", async () => {
+    // The eviction is by connection key, so a late close from a transport whose
+    // bus is already gone would remove whatever live bus now sits at that key —
+    // orphaning that one in turn, and forking the wire again.
+    const first = new ModbusInverter(profileOf([raw("a", 100)]), connection({ unitId: 1 }));
+    device.read = bank({ 100: 5, 200: 7 });
+    await first.read();
+    const second = new ModbusInverter(profileOf([raw("b", 200)]), connection({ unitId: 2 }));
+    await first.close();
+    await second.read();
+
+    await second.close();
+    const third = new ModbusInverter(profileOf([raw("a", 100)]), connection({ unitId: 3 }));
+    await third.read();
+    const afterThird = wire.instances.length;
+    const fourth = new ModbusInverter(profileOf([raw("b", 200)]), connection({ unitId: 4 }));
+    await fourth.read();
+
+    // The newcomer joins the live bus. If a stale close had evicted it, `fourth`
+    // would have dialled a socket of its own and the two would be unserialized.
+    expect(wire.instances).toHaveLength(afterThird);
+  });
+
   test("a fresh socket is dialled after the bus was fully closed", async () => {
     const { a, b } = twoDevices();
     device.read = bank({ 100: 5, 200: 7 });
