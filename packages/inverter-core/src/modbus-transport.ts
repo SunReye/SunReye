@@ -236,6 +236,57 @@ function writableRegister(def: MetricDef): number | undefined {
   return b.addr[0];
 }
 
+/**
+ * One physical bus: the socket, and the lock that serializes everything on it.
+ *
+ * Shared by every device reached through the same host, port and framing,
+ * because that is what the wire is. Several inverters on one RS485→Ethernet
+ * gateway differ only by unit id, and cheap gateways either accept a single TCP
+ * connection or interleave two devices' RTU frames into mismatched responses —
+ * the failure the lock has always existed to prevent, one device further out.
+ */
+interface Bus {
+  client: ModbusRTU | null;
+  connecting: Promise<ModbusRTU> | null;
+  /** Serializes transactions: one request in flight per connection, ever. */
+  lock: Promise<unknown>;
+  /** How many transports hold this bus; the last one out closes the socket. */
+  holders: number;
+}
+
+/**
+ * Every open bus, by connection. Module-level because the thing it models is:
+ * two transports pointed at one gateway are pointed at one piece of hardware,
+ * whatever object graph built them.
+ */
+const buses = new Map<string, Bus>();
+
+/**
+ * Forget every bus without closing anything.
+ *
+ * For tests, which build transports against the same fake gateway over and over
+ * and would otherwise inherit the previous test's socket. Production never needs
+ * it: the last device to close a bus removes it, so the map empties itself.
+ */
+// fallow-ignore-next-line unused-export -- test-only reset for a process-wide registry, in the shape of `resetClampReports`; test files aren't traced as consumers
+export function resetBuses(): void {
+  buses.clear();
+}
+
+/** What makes two connections the same wire. The unit id deliberately does not. */
+function busKey(conn: InverterConnection): string {
+  return `${conn.transport ?? "tcp"}://${conn.host}:${conn.port}`;
+}
+
+function busFor(conn: InverterConnection): Bus {
+  const key = busKey(conn);
+  const existing = buses.get(key);
+  if (existing) return existing;
+  const bus: Bus = { client: null, connecting: null, lock: Promise.resolve(), holders: 0 };
+  buses.set(key, bus);
+  return bus;
+}
+
 /** Modbus-TCP transport for a register-mapped device described by a profile. */
 export class ModbusTransport implements DeviceTransport {
   readonly kind = "modbus";
@@ -245,8 +296,6 @@ export class ModbusTransport implements DeviceTransport {
   private readonly profile: InverterProfile;
   private readonly conn: InverterConnection;
   private readonly blocks: ReadBlock[];
-  private client: ModbusRTU | null = null;
-  private connecting: Promise<ModbusRTU> | null = null;
   /**
    * An atomic group is being read as separate transactions, so this device's
    * samples do not come from one snapshot. Set at construction for a group too
@@ -256,15 +305,22 @@ export class ModbusTransport implements DeviceTransport {
    * raises no exception of its own.
    */
   private degraded = false;
-  /** Serializes transactions on the shared client — modbus-serial allows only
-   * one in-flight request per connection, so a write must never overlap a
-   * concurrent poll read (the interleaved responses would mismatch and time
-   * out). */
-  private lock: Promise<unknown> = Promise.resolve();
+  /**
+   * The wire this device is on, shared with every other device on the same
+   * host/port/framing. Holds the socket and the lock that serializes every
+   * transaction across all of them: modbus-serial allows one in-flight request
+   * per connection, so a write must never overlap a poll — a device's own or
+   * its neighbour's, since the interleaved responses would mismatch and time
+   * out either way.
+   */
+  private readonly bus: Bus;
+  /** Whether this transport still counts against {@link Bus.holders}. */
+  private holding = false;
 
   constructor(profile: InverterProfile, conn: InverterConnection) {
     this.profile = profile;
     this.conn = conn;
+    this.bus = busFor(conn);
     this.blocks = planReads(profile.metrics);
     this.degraded = hasUnplannableGroup(profile.metrics);
     log.info(
@@ -273,11 +329,22 @@ export class ModbusTransport implements DeviceTransport {
     );
   }
 
-  /** Run a Modbus transaction with exclusive access to the client. */
+  /**
+   * Run a Modbus transaction with exclusive access to the wire, addressed to
+   * this device.
+   *
+   * The unit id is set inside the lock, immediately before the request: the
+   * client carries one at a time, so setting it at connect time would have the
+   * second device on a shared gateway reading the first's registers.
+   */
   private locked<T>(op: () => Promise<T>): Promise<T> {
-    const result = this.lock.then(op, op);
+    const run = async () => {
+      this.bus.client?.setID(this.conn.unitId);
+      return op();
+    };
+    const result = this.bus.lock.then(run, run);
     // Keep the chain alive on failure without leaking the rejection.
-    this.lock = result.then(
+    this.bus.lock = result.then(
       () => {},
       () => {},
     );
@@ -285,9 +352,16 @@ export class ModbusTransport implements DeviceTransport {
   }
 
   private async getClient(): Promise<ModbusRTU> {
-    if (this.client?.isOpen) return this.client;
-    if (this.connecting) return this.connecting;
-    this.connecting = (async () => {
+    // Claim a share of the wire on first use rather than at construction: a
+    // transport that is built and never read (a probe that fails to configure)
+    // must not keep a socket open on someone else's behalf.
+    if (!this.holding) {
+      this.holding = true;
+      this.bus.holders += 1;
+    }
+    if (this.bus.client?.isOpen) return this.bus.client;
+    if (this.bus.connecting) return this.bus.connecting;
+    this.bus.connecting = (async () => {
       const next = new ModbusRTU();
       const timeout = this.conn.timeoutMs ?? 2000;
       const opts = { port: this.conn.port };
@@ -312,16 +386,15 @@ export class ModbusTransport implements DeviceTransport {
         ]);
       } catch (err) {
         next.close(() => {});
-        this.connecting = null;
+        this.bus.connecting = null;
         throw err;
       }
-      next.setID(this.conn.unitId);
       next.setTimeout(timeout);
-      this.client = next;
-      this.connecting = null;
+      this.bus.client = next;
+      this.bus.connecting = null;
       return next;
     })();
-    return this.connecting;
+    return this.bus.connecting;
   }
 
   /** Open the socket (idempotent); reads and writes do this for themselves. */
@@ -415,11 +488,27 @@ export class ModbusTransport implements DeviceTransport {
     });
   }
 
+  /**
+   * Release this device's share of the wire, and close the socket if it was the
+   * last one holding it.
+   *
+   * Refcounted rather than unconditional: the socket belongs to the bus, not to
+   * whichever device happened to open it, and closing it while a neighbour is
+   * mid-poll would drop that device's readings. Idempotent — a second close
+   * releases nothing, so it cannot take someone else's share with it.
+   */
   async close(): Promise<void> {
+    if (!this.holding) return;
+    this.holding = false;
+    this.bus.holders -= 1;
+    if (this.bus.holders > 0) return;
+    const { client } = this.bus;
     await new Promise<void>((resolve) => {
-      if (this.client?.isOpen) this.client.close(() => resolve());
+      if (client?.isOpen) client.close(() => resolve());
       else resolve();
     });
-    this.client = null;
+    this.bus.client = null;
+    this.bus.connecting = null;
+    buses.delete(busKey(this.conn));
   }
 }

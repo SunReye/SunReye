@@ -84,7 +84,7 @@ mock.module("modbus-serial", () => ({ ...realModbus, default: FakeModbusRTU }));
 
 const { ModbusInverter } = await import("./driver");
 // Planning lives in the Modbus transport now; these tests are unchanged.
-const { planReads, splitBlock } = await import("./modbus-transport");
+const { planReads, splitBlock, resetBuses } = await import("./modbus-transport");
 
 /** Minimal raw register metric. */
 const raw = (key: string, addr: number, type: RegisterType = "U_WORD") => {
@@ -296,6 +296,9 @@ function deferred<T = void>() {
 }
 
 beforeEach(() => {
+  // The bus registry is process-wide, because a gateway is: without this, one
+  // test's still-open fake socket is handed to the next.
+  resetBuses();
   device.connect = async () => {};
   device.read = async () => ({ data: [] });
   device.write = async () => {};
@@ -1006,5 +1009,148 @@ describe("ModbusInverter staleness from the transport", () => {
     const inv = new ModbusInverter(soc(), connection(), stale({ degraded: false }));
 
     expect((await inv.read()).degraded).toBe(false);
+  });
+});
+
+// --- devices sharing one bus ------------------------------------------------
+//
+// Several inverters on one RS485→Ethernet gateway differ only by unit id. The
+// per-transport lock was written for "a write must not overlap a poll", which is
+// one scope too narrow: the thing that must not overlap is *anything else on the
+// same wire*. Cheap gateways either accept a single TCP connection or interleave
+// the RTU frames of two into mismatched responses — the exact failure the lock
+// exists to prevent, one device further out.
+
+describe("two devices on one connection", () => {
+  const twoDevices = () => ({
+    a: new ModbusInverter(profileOf([raw("a", 100)]), connection({ unitId: 1 })),
+    b: new ModbusInverter(profileOf([raw("b", 200)]), connection({ unitId: 2 })),
+  });
+
+  test("share one socket rather than opening one each", async () => {
+    const { a, b } = twoDevices();
+    device.read = bank({ 100: 5, 200: 7 });
+
+    await a.read();
+    await b.read();
+
+    expect(wire.instances).toHaveLength(1);
+    expect(wire.connects).toHaveLength(1);
+  });
+
+  test("each addresses its own unit id, on every transaction", async () => {
+    // The client carries one unit id at a time, so a device that set it at
+    // connect time would read the other's registers as soon as both are polling.
+    const { a, b } = twoDevices();
+    const ids: number[] = [];
+    device.read = async (start, count) => {
+      ids.push(wire.instances[0]?.unitId ?? -1);
+      return bank({ 100: 5, 200: 7 })(start, count);
+    };
+
+    await a.read();
+    await b.read();
+    await a.read();
+
+    expect(ids).toEqual([1, 2, 1]);
+  });
+
+  test("their transactions never interleave", async () => {
+    // Two RTU requests in flight on one socket come back as one mismatched pair.
+    const gate = deferred();
+    const { a, b } = twoDevices();
+    let first = true;
+    device.read = async (start, count) => {
+      if (first) {
+        first = false;
+        await gate.promise;
+      }
+      return bank({ 100: 5, 200: 7 })(start, count);
+    };
+
+    const polls = Promise.all([a.read(), b.read()]);
+    gate.resolve();
+    await polls;
+
+    expect(wire.order).toEqual(["read 100+1", "read 200+1"]);
+  });
+
+  test("a different host is a different bus", async () => {
+    const a = new ModbusInverter(profileOf([raw("a", 100)]), connection({ host: "10.0.0.5" }));
+    const b = new ModbusInverter(profileOf([raw("b", 200)]), connection({ host: "10.0.0.6" }));
+    device.read = bank({ 100: 5, 200: 7 });
+
+    await a.read();
+    await b.read();
+
+    expect(wire.instances).toHaveLength(2);
+  });
+
+  test.each([
+    ["port", { port: 8899 }],
+    ["framing", { transport: "rtu-over-tcp" as const }],
+  ])("a different %s is a different bus", async (_label, over) => {
+    const a = new ModbusInverter(profileOf([raw("a", 100)]), connection());
+    const b = new ModbusInverter(profileOf([raw("b", 200)]), connection(over));
+    device.read = bank({ 100: 5, 200: 7 });
+
+    await a.read();
+    await b.read();
+
+    expect(wire.instances).toHaveLength(2);
+  });
+
+  test("closing one device leaves the other's socket open", async () => {
+    // The shared socket belongs to the bus, not to whichever device opened it.
+    const { a, b } = twoDevices();
+    device.read = bank({ 100: 5, 200: 7 });
+    await a.read();
+    await b.read();
+
+    await a.close();
+
+    expect(wire.closes).toBe(0);
+    expect((await b.read()).metrics).toEqual({ b: 7 });
+    expect(wire.instances).toHaveLength(1);
+  });
+
+  test("the last device out closes it", async () => {
+    const { a, b } = twoDevices();
+    device.read = bank({ 100: 5, 200: 7 });
+    await a.read();
+    await b.read();
+
+    await a.close();
+    await b.close();
+
+    expect(wire.closes).toBe(1);
+  });
+
+  test("closing twice does not release someone else's share", async () => {
+    // A double close that decremented twice would drop the socket out from under
+    // the device still polling on it.
+    const { a, b } = twoDevices();
+    device.read = bank({ 100: 5, 200: 7 });
+    await a.read();
+    await b.read();
+
+    await a.close();
+    await a.close();
+
+    expect(wire.closes).toBe(0);
+    expect((await b.read()).metrics).toEqual({ b: 7 });
+  });
+
+  test("a fresh socket is dialled after the bus was fully closed", async () => {
+    const { a, b } = twoDevices();
+    device.read = bank({ 100: 5, 200: 7 });
+    await a.read();
+    await b.read();
+    await a.close();
+    await b.close();
+
+    await a.read();
+
+    expect(wire.instances).toHaveLength(2);
   });
 });
