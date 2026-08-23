@@ -160,6 +160,16 @@ function groupedBlock(r: AtomicRange): ReadBlock | undefined {
 }
 
 /**
+ * Whether any atomic group is too wide to share a transaction, and so is read
+ * split from the very first poll. Same skew as the exception-2 fallback, decided
+ * at plan time instead of at read time — and unlike the fallback it raises no
+ * exception to notice it by, which is exactly why it has to be asked about.
+ */
+export function hasUnplannableGroup(metrics: MetricDef[]): boolean {
+  return mergeRanges(atomicRanges(metrics)).some((r) => r.max - r.min + 1 > MAX_BLOCK);
+}
+
+/**
  * One spanning {@link ReadBlock} per atomic compute group: the transitive raw
  * inputs of each computed metric, so they are all sampled in a single Modbus
  * transaction.
@@ -237,6 +247,15 @@ export class ModbusTransport implements DeviceTransport {
   private readonly blocks: ReadBlock[];
   private client: ModbusRTU | null = null;
   private connecting: Promise<ModbusRTU> | null = null;
+  /**
+   * An atomic group is being read as separate transactions, so this device's
+   * samples do not come from one snapshot. Set at construction for a group too
+   * wide to ever share a transaction, and at read time when the device rejects
+   * the spanning block. Sticky either way, because the split is: the plan is
+   * rewritten permanently, and every later poll inherits the skew even though it
+   * raises no exception of its own.
+   */
+  private degraded = false;
   /** Serializes transactions on the shared client — modbus-serial allows only
    * one in-flight request per connection, so a write must never overlap a
    * concurrent poll read (the interleaved responses would mismatch and time
@@ -247,6 +266,7 @@ export class ModbusTransport implements DeviceTransport {
     this.profile = profile;
     this.conn = conn;
     this.blocks = planReads(profile.metrics);
+    this.degraded = hasUnplannableGroup(profile.metrics);
     log.info(
       `modbus read plan for ${profile.id}: ` +
         this.blocks.map((b) => `${b.start}+${b.count}${b.grouped ? " (atomic)" : ""}`).join(", "),
@@ -314,7 +334,7 @@ export class ModbusTransport implements DeviceTransport {
    * Derived (compute) and composite (control) metrics are not this layer's
    * business — they own no register.
    */
-  async read(): Promise<{ values: MetricValues }> {
+  async read(): Promise<{ values: MetricValues; degraded?: boolean }> {
     const client = await this.getClient();
     const started = performance.now();
     const regs = await this.locked(() => this.readBlocks(client));
@@ -333,7 +353,9 @@ export class ModbusTransport implements DeviceTransport {
     // No `readAt`: one block read stamps a whole span of registers, so there is
     // no honest per-metric read time to report here. It exists on the interface
     // for push transports, where each key genuinely arrives on its own.
-    return { values };
+    // `degraded` is reported only once it is true, so a healthy sample keeps the
+    // shape it had before the flag existed.
+    return this.degraded ? { values, degraded: true } : { values };
   }
 
   /** Every planned block, in order, into one address → word map. */
@@ -356,6 +378,9 @@ export class ModbusTransport implements DeviceTransport {
             `computed values may show transient skew on fast power swings`,
         );
         this.blocks.splice(this.blocks.indexOf(block), 1, ...subBlocks);
+        // The warning above is no longer the only record: every sample from here
+        // on is assembled from transactions milliseconds apart, and says so.
+        this.degraded = true;
         for (const sub of subBlocks) {
           const { data } = await client.readHoldingRegisters(sub.start, sub.count);
           data.forEach((word, i) => acc.set(sub.start + i, word));

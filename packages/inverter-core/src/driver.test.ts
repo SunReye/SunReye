@@ -852,3 +852,125 @@ describe("ModbusInverter close", () => {
     expect(wire.closes).toBe(1);
   });
 });
+
+// --- per-metric staleness --------------------------------------------------
+//
+// One `time` per sample is a lie the moment the plan stops being atomic. The
+// exception-2 fallback permanently splices a rejected group into split blocks,
+// after which values in one sample come from transactions ms apart — and until
+// now the only record of that was a log line.
+
+describe("ModbusInverter degraded sampling", () => {
+  /** Two raw inputs of a computed metric — the atomic group the device rejects. */
+  const grouped = () => [
+    def({ key: "a", addresses: [590] }),
+    def({ key: "b", addresses: [600] }),
+    def({ key: "x", compute: (v) => v["a"]! + v["b"]!, computeInputs: ["a", "b"] }),
+  ];
+
+  test("flags the sample when the device rejects the atomic block", async () => {
+    const inv = new ModbusInverter(profileOf(grouped()), connection());
+    device.read = async (start, count) => {
+      if (start === 590 && count === 11) throw illegalDataAddress();
+      return bank({ 590: 1, 600: 2 })(start, count);
+    };
+
+    expect((await inv.read()).degraded).toBe(true);
+  });
+
+  test("leaves an atomic read unflagged — no field at all, not a false", async () => {
+    const inv = new ModbusInverter(profileOf(grouped()), connection());
+    device.read = bank({ 590: 1, 600: 2 });
+
+    const sample = await inv.read();
+
+    // Absent rather than `false`: a healthy sample stays byte-identical on the
+    // wire, so nothing downstream has to learn a new field to keep working.
+    expect(sample.degraded).toBeUndefined();
+    expect("degraded" in sample).toBe(false);
+  });
+
+  test("keeps the flag on every later poll — the split is remembered, so the skew is too", async () => {
+    const inv = new ModbusInverter(profileOf(grouped()), connection());
+    device.read = async (start, count) => {
+      if (start === 590 && count === 11) throw illegalDataAddress();
+      return bank({ 590: 1, 600: 2 })(start, count);
+    };
+
+    await inv.read();
+    // The second poll never even attempts the span, so the flag has to survive
+    // on the transport rather than be re-derived from this poll's exceptions.
+    const second = await inv.read();
+
+    expect(wire.reads.slice(-2)).toEqual([
+      { start: 590, count: 1 },
+      { start: 600, count: 1 },
+    ]);
+    expect(second.degraded).toBe(true);
+  });
+
+  test("flags a group too wide to share a transaction — degraded before the first read", async () => {
+    // Same skew, decided at plan time instead of at read time: inputs 300
+    // registers apart can never share a transaction, so they are read split from
+    // the very first poll and no exception is ever raised to notice it by.
+    const inv = new ModbusInverter(
+      profileOf([raw("a", 100), raw("b", 400), derived("x", ["a", "b"])]),
+      connection(),
+    );
+    device.read = bank({ 100: 1, 400: 2 });
+
+    expect((await inv.read()).degraded).toBe(true);
+  });
+
+  test("reports no per-metric read times — a block read stamps a whole span", async () => {
+    const inv = new ModbusInverter(profileOf([def({ key: "a", addresses: [100] })]), connection());
+    device.read = bank({ 100: 7 });
+
+    expect((await inv.read()).readAt).toBeUndefined();
+  });
+});
+
+describe("ModbusInverter staleness from the transport", () => {
+  /** A transport that reports whatever staleness metadata the test hands it. */
+  const stale = (extra: { readAt?: Record<string, number>; degraded?: boolean }) =>
+    ({
+      kind: "fake",
+      caps: { canWrite: false, pushBased: true },
+      async connect() {},
+      async read() {
+        return { values: { "battery.soc": 42 }, ...extra };
+      },
+      async write() {},
+      async close() {},
+    }) satisfies DeviceTransport;
+
+  const soc = () => profileOf([def({ key: "battery.soc", addresses: [200] })]);
+
+  test("carries the transport's per-metric read times onto the sample", async () => {
+    const readAt = { "battery.soc": 1_700_000_000_000 };
+    const inv = new ModbusInverter(soc(), connection(), stale({ readAt }));
+
+    expect((await inv.read()).readAt).toEqual(readAt);
+  });
+
+  test("carries the transport's degraded flag onto the sample", async () => {
+    const inv = new ModbusInverter(soc(), connection(), stale({ degraded: true }));
+
+    expect((await inv.read()).degraded).toBe(true);
+  });
+
+  test("omits both when the transport reports neither", async () => {
+    const inv = new ModbusInverter(soc(), connection(), stale({}));
+
+    const sample = await inv.read();
+
+    expect("readAt" in sample).toBe(false);
+    expect("degraded" in sample).toBe(false);
+  });
+
+  test("does not flag a sample the transport reported as healthy", async () => {
+    const inv = new ModbusInverter(soc(), connection(), stale({ degraded: false }));
+
+    expect((await inv.read()).degraded).toBe(false);
+  });
+});

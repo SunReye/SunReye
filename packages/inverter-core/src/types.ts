@@ -267,11 +267,34 @@ export interface InverterConnection {
   transport?: InverterTransport;
 }
 
-/** One timestamped reading of every numeric metric in a profile. */
+/**
+ * One timestamped reading of every numeric metric in a profile.
+ *
+ * `time` is when the sample was assembled, and for a single atomic read that is
+ * also when every value was true. The two optional fields exist for when it is
+ * not: {@link degraded} says the values in this sample were not all sampled
+ * together, and {@link readAt} says exactly when each one was, for the
+ * transports that know. Both are absent on a healthy Modbus poll, so nothing
+ * downstream has to learn a field to keep working.
+ */
 export interface InverterSample {
   time: string;
   inverterId: string;
   metrics: MetricValues;
+  /**
+   * These values did not all come from one device-side snapshot — set when the
+   * transport is reading in a degraded mode, such as Modbus after a rejected
+   * atomic group is split into separate transactions. Derived values over them
+   * can show transient skew on fast power swings, so a consumer may want to mark
+   * them rather than present them as coherent.
+   */
+  degraded?: boolean;
+  /**
+   * Per-metric read times (epoch ms) for the transports that know them — a push
+   * source stamps each key as it arrives. Absent, or missing a key, means the
+   * only time available is the sample's own; it never means "never read".
+   */
+  readAt?: Record<string, number>;
 }
 
 /**
@@ -294,9 +317,15 @@ export interface DeviceTransport {
    * One whole-device read: decoded values keyed by metric key. `readAt` carries
    * per-key read times (epoch ms) when — and only when — the transport knows
    * them: a push source stamps each key as it arrives, while a block-reading
-   * poll has one time for a whole span and reports none.
+   * poll has one time for a whole span and reports none. `degraded` says these
+   * values were not all sampled together; both ride onto the
+   * {@link InverterSample} unchanged.
    */
-  read(): Promise<{ values: MetricValues; readAt?: Record<string, number> }>;
+  read(): Promise<{
+    values: MetricValues;
+    readAt?: Record<string, number>;
+    degraded?: boolean;
+  }>;
   /** Write a `rw` metric in engineering units. */
   write(key: string, value: number): Promise<void>;
   /**
