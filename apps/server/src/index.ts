@@ -18,6 +18,7 @@ import { initDeviceRegistry } from "./inverter/device-registry";
 import { initProfiles } from "./inverter/inverter";
 import { WriteRejectedError } from "./inverter/control-writer";
 import { log, recentLogs, setupLogging } from "./shared/logging";
+import { liveState } from "./shared/state";
 import { createStreams } from "./shared/streams";
 import { initLogLevel } from "./settings/logging-settings";
 import { adminRoutes } from "./routes/admin";
@@ -151,6 +152,10 @@ const ONBOARDING_REQUIRED = { error: "No active inverter profile — onboarding 
 // The device's id, not the profile's — the same string today, and the seed is
 // what keeps it so for every install that already has history.
 const activeInverterId = defaultDevice?.id ?? null;
+// Name the device the single-device readers of `liveState.latest` mean, rather
+// than leaving them to infer it. With one device the inference is right anyway;
+// with two it is the difference between an answer and a coin flip.
+liveState.setDefaultDevice(activeInverterId);
 
 /**
  * The two topics whose producers ask "is anyone actually watching" before doing

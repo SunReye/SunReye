@@ -89,14 +89,64 @@ describe("the live poll cache", () => {
     expect(liveState.latest).toBe(s);
   });
 
-  test("a sample from another inverter overwrites too — the cache holds one poll", () => {
-    // There is a single God-loop, so the cache is deliberately not keyed by
-    // inverter; every reader filters on `inverterId` itself (see the cost
-    // engine's live-today guard).
-    liveState.set(sample({ "battery.soc": 42 }));
+  test("a second device does not overwrite the first — the cache is keyed", () => {
+    // It used to hold exactly one sample, because there was exactly one poll
+    // loop. Two loops storing into one slot is the failure mode that looks
+    // healthy: every reader would see whichever device ticked most recently,
+    // at that device's timestamp, and call it current.
+    const first = sample({ "battery.soc": 42 });
     const other: InverterSample = { ...sample({ "battery.soc": 7 }), inverterId: "inv-2" };
+
+    liveState.set(first);
     liveState.set(other);
+
+    expect(liveState.for("inv-1")).toBe(first);
+    expect(liveState.for("inv-2")).toBe(other);
+  });
+
+  test("asking for a device that has never reported answers null", () => {
+    expect(liveState.for("never-polled")).toBeNull();
+  });
+
+  test("`latest` answers the default device once one is named", () => {
+    const mine = sample({ "battery.soc": 42 });
+    const other: InverterSample = { ...sample({ "battery.soc": 7 }), inverterId: "inv-2" };
+    liveState.set(mine);
+    liveState.set(other);
+
+    liveState.setDefaultDevice("inv-2");
     expect(liveState.latest).toBe(other);
-    expect(liveState.latest?.inverterId).toBe("inv-2");
+
+    liveState.setDefaultDevice("inv-1");
+    expect(liveState.latest).toBe(mine);
+  });
+
+  test("with no default named and two devices reporting, `latest` is null, not a guess", () => {
+    // The dangerous answer here is a plausible one. Every caller of `latest`
+    // was written when it could only mean one machine; handing it whichever
+    // device ticked last would be silently wrong in a way nothing surfaces.
+    liveState.setDefaultDevice(null);
+    liveState.set(sample({ "battery.soc": 42 }));
+    liveState.set({ ...sample({ "battery.soc": 7 }), inverterId: "inv-2" });
+
+    expect(liveState.latest).toBeNull();
+  });
+
+  test("with no default named and one device reporting, `latest` is that device", () => {
+    // Every install today. The single-device answer must not need configuring.
+    liveState.reset();
+    liveState.setDefaultDevice(null);
+    const only = sample({ "battery.soc": 42 });
+    liveState.set(only);
+
+    expect(liveState.latest).toBe(only);
+  });
+
+  test("a named default that has not reported yet answers null, not another device", () => {
+    liveState.reset();
+    liveState.setDefaultDevice("inv-9");
+    liveState.set(sample({ "battery.soc": 42 }));
+
+    expect(liveState.latest).toBeNull();
   });
 });
