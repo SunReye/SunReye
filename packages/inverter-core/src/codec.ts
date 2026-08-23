@@ -100,22 +100,39 @@ function reportClamp(def: MetricDef, value: number, clamped: number): void {
 }
 
 /**
- * Decode a metric from raw register words keyed by absolute address.
- * Returns `undefined` for `RAW`/unreadable metrics.
+ * Raw value → engineering units: scale, offset, and the declared `range` clamp.
+ *
+ * Deliberately knows nothing about where the raw number came from. Registers are
+ * one way to obtain one; a JSON body answering `236.402` is another, and it
+ * arrives already fractional with no word width to widen. Every transport shares
+ * this tail rather than reimplementing it — that is what makes "an HTTP source
+ * is scaled and clamped identically to a register" a fact about the code instead
+ * of a claim about two copies, and it keeps one clamp ledger for both.
  *
  * Every value here originates outside the process, so a declared `range` is
  * enforced at this one boundary: a cold or error-state register answering
  * `0xFFFF` would otherwise persist a 655.35 % state of charge. A metric without
  * a `range` gets no bounds at all — never an invented default.
  */
-export function decode(def: MetricDef, regs: ReadonlyMap<number, number>): number | undefined {
-  const raw = rawValue(def, regs);
-  if (raw === undefined) return undefined;
+export function applyScaling(def: MetricDef, raw: number): number {
   const value = raw * def.scale + (def.offset ?? 0);
   if (!def.range) return value;
   const clamped = Math.min(def.range.max, Math.max(def.range.min, value));
   if (clamped !== value) reportClamp(def, value, clamped);
   return clamped;
+}
+
+/**
+ * Decode a metric from raw register words keyed by absolute address.
+ * Returns `undefined` for `RAW`/unreadable metrics.
+ *
+ * The Modbus-specific half is {@link rawValue}: which words to look up and how
+ * to combine them. Everything after it is {@link applyScaling}, shared.
+ */
+export function decode(def: MetricDef, regs: ReadonlyMap<number, number>): number | undefined {
+  const raw = rawValue(def, regs);
+  if (raw === undefined) return undefined;
+  return applyScaling(def, raw);
 }
 
 /** Inclusive raw-value limits of each writable register type. */
