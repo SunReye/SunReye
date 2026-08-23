@@ -1,7 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import {
   type GateIo,
+  cfgTestRanges,
+  changedLines,
   diffCommand,
+  inlineTestChanged,
   isSourceFile,
   isTestFile,
   main,
@@ -346,5 +349,305 @@ describe("productionIo", () => {
       code = main(["sunreye-no-such-ref", "--warn"]);
     });
     expect(code).toBe(0);
+  });
+});
+
+// ─── Rust ────────────────────────────────────────────────────────────────────
+// A `.rs` file was invisible to `SOURCE_EXT`, so a Rust change would have
+// bypassed the one rule this gate exists for while CI went green. Rust proves
+// itself differently from TypeScript: the test usually lives INSIDE the file it
+// covers (`#[cfg(test)] mod tests`), so a name-only rule cannot see it — hence
+// the patch-reading below.
+
+describe("Rust sources", () => {
+  test("a crate source counts as behaviour", () => {
+    expect(isSourceFile("apps/planner/src/forecast.rs")).toBe(true);
+    expect(isSourceFile("packages/planner-core/src/solver.rs")).toBe(true);
+  });
+
+  // The mirror of `apps/*/src/index.ts`: an entry point is the composition
+  // root, not a re-export, so it never inherits an exemption.
+  test("main.rs is never exempt, whatever the mod.rs rule says", () => {
+    expect(isSourceFile("apps/planner/src/main.rs")).toBe(true);
+  });
+
+  test("build scripts, generated output and re-export modules are exempt", () => {
+    expect(isSourceFile("apps/planner/src/build.rs")).toBe(false);
+    expect(isSourceFile("apps/planner/src/generated/registers.rs")).toBe(false);
+    expect(isSourceFile("apps/planner/src/forecast/mod.rs")).toBe(false);
+  });
+
+  test("the generated exemption is Rust-only — it must not let TS through the gate", () => {
+    // A bare `/generated/` pattern would exempt every language under such a
+    // directory. No `generated/` dir exists today, so this guards a hole rather
+    // than a regression: the day someone adds `src/generated/foo.ts`, the TDD
+    // gate must still apply to it.
+    expect(isSourceFile("apps/web/src/lib/generated/client.ts")).toBe(true);
+    expect(isSourceFile("packages/contracts/src/generated/schema.ts")).toBe(true);
+    expect(isSourceFile("apps/web/src/lib/generated/Widget.svelte")).toBe(true);
+    // `generated/types.ts` stays exempt, but via the pre-existing `types.ts`
+    // rule (type aliases, no runtime) — not because of the directory.
+    expect(isSourceFile("packages/contracts/src/generated/types.ts")).toBe(false);
+  });
+
+  test("an integration test under tests/ is a test, not a source", () => {
+    expect(isTestFile("apps/planner/tests/end_to_end.rs")).toBe(true);
+    expect(isSourceFile("apps/planner/tests/end_to_end.rs")).toBe(false);
+  });
+
+  test("a .rs outside a crate src tree is neither", () => {
+    expect(isSourceFile("apps/planner/build.rs")).toBe(false);
+    expect(isTestFile("apps/planner/build.rs")).toBe(false);
+  });
+});
+
+describe("cfgTestRanges", () => {
+  test("finds the line span of an inline test module", () => {
+    const src = [
+      "pub fn add(a: i32, b: i32) -> i32 {", // 1
+      "    a + b", // 2
+      "}", // 3
+      "", // 4
+      "#[cfg(test)]", // 5
+      "mod tests {", // 6
+      "    use super::*;", // 7
+      "    #[test]", // 8
+      "    fn adds() {", // 9
+      "        assert_eq!(add(1, 2), 3);", // 10
+      "    }", // 11
+      "}", // 12
+    ].join("\n");
+    expect(cfgTestRanges(src)).toEqual([[5, 12]]);
+  });
+
+  test("a brace inside a string or comment does not end the module early", () => {
+    const src = [
+      "#[cfg(test)]", // 1
+      "mod tests {", // 2
+      '    const S: &str = "}";', // 3
+      "    // }", // 4
+      "    fn f() {}", // 5
+      "}", // 6
+      "pub fn real() {}", // 7
+    ].join("\n");
+    expect(cfgTestRanges(src)).toEqual([[1, 6]]);
+  });
+
+  test("an attribute with no block covers only its own item", () => {
+    const src = ["#[cfg(test)]", "use std::io;", "pub fn real() {}"].join("\n");
+    expect(cfgTestRanges(src)).toEqual([[1, 2]]);
+  });
+
+  test("cfg(all(test, ...)) counts, and a plain cfg does not", () => {
+    expect(cfgTestRanges(['#[cfg(all(test, feature = "x"))]', "mod t {", "}"].join("\n"))).toEqual([
+      [1, 3],
+    ]);
+    expect(cfgTestRanges(['#[cfg(feature = "test")]', "mod t {", "}"].join("\n"))).toEqual([]);
+  });
+
+  test("a file with no test module has no ranges", () => {
+    expect(cfgTestRanges("pub fn f() {}\n")).toEqual([]);
+    expect(cfgTestRanges("")).toEqual([]);
+  });
+});
+
+describe("changedLines", () => {
+  test("added lines are reported at their new-file numbers", () => {
+    const patch = [
+      "diff --git a/x.rs b/x.rs",
+      "--- a/x.rs",
+      "+++ b/x.rs",
+      "@@ -1,2 +1,4 @@",
+      " fn a() {}",
+      "+fn b() {}",
+      "+fn c() {}",
+      " fn d() {}",
+    ].join("\n");
+    expect(changedLines(patch)).toEqual([2, 3]);
+  });
+
+  // A pure deletion has no new-side line of its own; it still has to register,
+  // or removing a test would read as "no test changed".
+  test("a deletion registers at the position it was removed from", () => {
+    const patch = ["@@ -10,3 +10,2 @@", " keep", "-gone", " keep"].join("\n");
+    expect(changedLines(patch)).toEqual([11]);
+  });
+
+  test("several hunks are all counted", () => {
+    const patch = ["@@ -1,1 +1,2 @@", " a", "+b", "@@ -20,1 +21,2 @@", " x", "+y"].join("\n");
+    expect(changedLines(patch)).toEqual([2, 22]);
+  });
+
+  test("an empty or contextless patch changes nothing", () => {
+    expect(changedLines("")).toEqual([]);
+    expect(changedLines("diff --git a/x b/x\n")).toEqual([]);
+  });
+});
+
+describe("inlineTestChanged", () => {
+  const src = [
+    "pub fn add(a: i32, b: i32) -> i32 {", // 1
+    "    a + b", // 2
+    "}", // 3
+    "#[cfg(test)]", // 4
+    "mod tests {", // 5
+    "    #[test]", // 6
+    "    fn adds() {", // 7
+    "        assert_eq!(add(1, 2), 3);", // 8
+    "    }", // 9
+    "}", // 10
+  ].join("\n");
+
+  test("a change inside the test module counts", () => {
+    const patch = ["@@ -7,2 +7,3 @@", "     fn adds() {", "+        assert!(true);"].join("\n");
+    expect(inlineTestChanged(src, patch)).toBe(true);
+  });
+
+  test("a change only in the production body does not", () => {
+    const patch = ["@@ -1,3 +1,3 @@", "-    a + b", "+    a + b + 0"].join("\n");
+    expect(inlineTestChanged(src, patch)).toBe(false);
+  });
+
+  test("no test module at all is never satisfied", () => {
+    expect(inlineTestChanged("pub fn f() {}\n", "@@ -1,1 +1,1 @@\n+pub fn f() {}")).toBe(false);
+  });
+});
+
+describe("verdict with Rust", () => {
+  test("a Rust source with nothing else in the change is blocked", () => {
+    const v = verdict(["apps/planner/src/forecast.rs"]);
+    expect(v.ok).toBe(false);
+    expect(v.sources).toEqual(["apps/planner/src/forecast.rs"]);
+  });
+
+  // A TypeScript test cannot exercise a Rust function, so it does not pay for
+  // one. This is stricter than the TS rule on purpose.
+  test("a TypeScript test does not cover a Rust change", () => {
+    expect(verdict(["apps/planner/src/forecast.rs", "apps/server/src/cost.test.ts"]).ok).toBe(
+      false,
+    );
+  });
+
+  test("an integration test in the same crate covers it", () => {
+    expect(verdict(["apps/planner/src/forecast.rs", "apps/planner/tests/forecast.rs"]).ok).toBe(
+      true,
+    );
+  });
+
+  test("an integration test in a DIFFERENT crate does not", () => {
+    expect(verdict(["apps/planner/src/forecast.rs", "packages/other/tests/x.rs"]).ok).toBe(false);
+  });
+
+  test("its own inline test module counts when the diff touched it", () => {
+    expect(verdict(["apps/planner/src/forecast.rs"], ["apps/planner/src/forecast.rs"]).ok).toBe(
+      true,
+    );
+  });
+
+  test("an inline test elsewhere does not cover this file", () => {
+    expect(verdict(["apps/planner/src/forecast.rs"], ["apps/planner/src/other.rs"]).ok).toBe(false);
+  });
+
+  test("exempt Rust paths pass with nothing to cover", () => {
+    expect(verdict(["apps/planner/src/forecast/mod.rs", "apps/planner/build.rs"]).ok).toBe(true);
+  });
+
+  test("a mixed change needs both languages covered", () => {
+    expect(
+      verdict(["apps/server/src/cost.ts", "apps/planner/src/f.rs", "apps/server/src/cost.test.ts"])
+        .ok,
+    ).toBe(false);
+    expect(
+      verdict(
+        ["apps/server/src/cost.ts", "apps/planner/src/f.rs", "apps/server/src/cost.test.ts"],
+        ["apps/planner/src/f.rs"],
+      ).ok,
+    ).toBe(true);
+  });
+});
+
+describe("main with Rust", () => {
+  /** A stand-in git that answers the listing, a file body, and a per-file patch. */
+  function rustIo(diff: string, files: Record<string, { patch?: string; body?: string }>) {
+    const commands: string[][] = [];
+    const lines: string[] = [];
+    const io: GateIo = {
+      run: (cmd) => {
+        commands.push(cmd);
+        if (cmd[1] === "show") {
+          const path = (cmd[2] ?? "").replace(/^[^:]*:/, "");
+          return { exitCode: 0, stdout: files[path]?.body ?? "", stderr: "" };
+        }
+        if (cmd.includes("--")) {
+          const path = cmd[cmd.length - 1] ?? "";
+          return { exitCode: 0, stdout: files[path]?.patch ?? "", stderr: "" };
+        }
+        return { exitCode: 0, stdout: diff, stderr: "" };
+      },
+      log: (m) => lines.push(m),
+    };
+    return { io, commands, output: () => lines.join("\n") };
+  }
+
+  const body = [
+    "pub fn f() -> i32 {", // 1
+    "    1", // 2
+    "}", // 3
+    "#[cfg(test)]", // 4
+    "mod tests {", // 5
+    "    #[test]", // 6
+    "    fn works() {", // 7
+    "        assert_eq!(f(), 1);", // 8
+    "    }", // 9
+    "}", // 10
+  ].join("\n");
+
+  test("a Rust change whose inline test module moved lands", () => {
+    const f = rustIo("apps/planner/src/f.rs\n", {
+      "apps/planner/src/f.rs": {
+        body,
+        patch: ["@@ -7,2 +7,3 @@", "     fn works() {", "+        assert!(f() > 0);"].join("\n"),
+      },
+    });
+    expect(main([], f.io)).toBe(0);
+    expect(f.output()).toBe("");
+  });
+
+  test("a Rust change that only touched production code is blocked, naming it", () => {
+    const f = rustIo("apps/planner/src/f.rs\n", {
+      "apps/planner/src/f.rs": {
+        body,
+        patch: ["@@ -1,3 +1,3 @@", " pub fn f() -> i32 {", "-    1", "+    2", " }"].join("\n"),
+      },
+    });
+    expect(main([], f.io)).toBe(1);
+    expect(f.output()).toContain("apps/planner/src/f.rs");
+  });
+
+  test("a Rust change covered under tests/ needs no patch read at all", () => {
+    const f = rustIo("apps/planner/src/f.rs\napps/planner/tests/f.rs\n", {});
+    expect(main([], f.io)).toBe(0);
+    expect(f.commands).toHaveLength(1);
+  });
+
+  test("--staged reads the index, not HEAD, for the Rust body", () => {
+    const f = rustIo("apps/planner/src/f.rs\n", {
+      "apps/planner/src/f.rs": {
+        body,
+        patch: ["@@ -7,2 +7,3 @@", "     fn works() {", "+        assert!(f() > 0);"].join("\n"),
+      },
+    });
+    expect(main(["--staged"], f.io)).toBe(0);
+    const show = f.commands.find((c) => c[1] === "show");
+    expect(show?.[2]).toBe(":apps/planner/src/f.rs");
+    expect(f.commands.some((c) => c.includes("--cached") && c.includes("--"))).toBe(true);
+  });
+
+  // A file git cannot show (deleted in this change) has no inline test to find;
+  // it must not crash, and it must not be waved through either.
+  test("a deleted Rust source with no test in the change is blocked, not crashed", () => {
+    const f = rustIo("apps/planner/src/f.rs\n", {});
+    expect(main([], f.io)).toBe(1);
+    expect(f.output()).toContain("apps/planner/src/f.rs");
   });
 });

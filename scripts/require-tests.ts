@@ -31,6 +31,12 @@ const EXEMPT = [
   /\/index\.ts$/, // barrels: re-exports only
   /\/routes\/.*\/\+(layout|error)\.svelte$/, // route shells wire, they do not compute
   /\/routes\/\+(layout|error)\.svelte$/,
+  /\/build\.rs$/, // cargo build script: not linked into the crate under test
+  // Generated Rust only. Anchored on `.rs` deliberately: a bare `/generated/`
+  // would exempt any future TS or Svelte file under such a directory from the
+  // TDD gate, which is not what this entry is for and would be a silent hole.
+  /\/generated\/.*\.rs$/,
+  /\/mod\.rs$/, // the Rust barrel: re-exports only
 ];
 
 /**
@@ -43,11 +49,14 @@ const EXEMPT = [
  * pushed into a module lives. Inheriting the exemption meant that file could
  * grow behaviour indefinitely with no test moving. Nested barrels
  * (`.../ui/card/index.ts`) and package entry points keep the exemption.
+ *
+ * `src/main.rs` is the same argument in Rust: the binary's composition root.
+ * The `mod.rs` barrel exemption above must never be read as covering it.
  */
-const NEVER_EXEMPT = [/^apps\/[^/]+\/src\/index\.ts$/];
+const NEVER_EXEMPT = [/^apps\/[^/]+\/src\/index\.ts$/, /^apps\/[^/]+\/src\/main\.rs$/];
 
 /** Extensions that can hold behaviour. Docs, JSON and SQL cannot. */
-const SOURCE_EXT = /\.(ts|tsx|js|jsx|mjs|cjs|svelte|svelte\.ts)$/;
+const SOURCE_EXT = /\.(ts|tsx|js|jsx|mjs|cjs|svelte|svelte\.ts|rs)$/;
 
 /**
  * Whether `path` is a colocated bun test, or a Playwright spec in an `e2e/`
@@ -69,6 +78,9 @@ const SOURCE_EXT = /\.(ts|tsx|js|jsx|mjs|cjs|svelte|svelte\.ts)$/;
  */
 export function isTestFile(path: string): boolean {
   if (/\.test\.(ts|tsx|js|jsx)$/.test(path)) return true;
+  // A crate's `tests/` directory is cargo's integration-test convention: every
+  // `.rs` in it is its own test binary, so the path alone proves it is a test.
+  if (/(^|\/)tests\/.*\.rs$/.test(path)) return true;
   return /(^|\/)e2e\/.*\.spec\.(ts|tsx|js|jsx)$/.test(path);
 }
 
@@ -90,11 +102,27 @@ export type Verdict = {
   tests: string[];
 };
 
-/** Judge a list of changed paths against the rule. */
-export function verdict(changed: string[]): Verdict {
+/**
+ * Judge a list of changed paths against the rule.
+ *
+ * `inlineTested` names the changed Rust files whose own `#[cfg(test)]` region
+ * the diff touched — the caller reads that from git, because no filename can
+ * show it. A Rust source needs Rust evidence: its own inline test module, or a
+ * `.rs` under the same crate's `tests/`. Everything else keeps the original
+ * rule, where any test in the change counts.
+ */
+export function verdict(changed: string[], inlineTested: string[] = []): Verdict {
   const sources = changed.filter(isSourceFile);
   const tests = changed.filter(isTestFile);
-  return { ok: sources.length === 0 || tests.length > 0, sources, tests };
+  const rust = sources.filter(isRustSource);
+  const other = sources.filter((p) => !isRustSource(p));
+  const rustCovered = rust.every(
+    (path) =>
+      inlineTested.includes(path) ||
+      tests.some((t) => t.endsWith(".rs") && crateOf(t) === crateOf(path)),
+  );
+  const otherCovered = other.length === 0 || tests.length > 0;
+  return { ok: otherCovered && rustCovered, sources, tests };
 }
 
 /** Report a verdict for humans, and exit non-zero when the change may not land. */
@@ -150,6 +178,25 @@ export function diffCommand(staged: boolean, base: string): string[] {
     : ["git", "diff", "--name-only", `${base}...HEAD`];
 }
 
+/**
+ * The changed Rust sources whose own `#[cfg(test)]` region the diff touched.
+ *
+ * Only asked of files a `tests/` sibling has not already covered, so the common
+ * case costs no extra git calls. A body git cannot show (a deletion) yields no
+ * ranges and therefore no evidence — the change is blocked, not waved through.
+ */
+function inlineTestedRust(changed: string[], staged: boolean, base: string, io: GateIo): string[] {
+  const tests = changed.filter(isTestFile);
+  const pending = changed
+    .filter(isRustSource)
+    .filter((p) => !tests.some((t) => t.endsWith(".rs") && crateOf(t) === crateOf(p)));
+  return pending.filter((path) => {
+    const body = io.run(rustBodyCommand(staged, path));
+    const patch = io.run(rustPatchCommand(staged, base, path));
+    return inlineTestChanged(body.stdout, patch.stdout);
+  });
+}
+
 /** The gate: read the diff `argv` names, judge it, report, return the exit code. */
 export function main(argv: string[] = [], io: GateIo = productionIo): number {
   // `--warn` reports without failing: the pre-commit hook uses it, because a
@@ -168,8 +215,122 @@ export function main(argv: string[] = [], io: GateIo = productionIo): number {
     return warnOnly ? 0 : 1;
   }
   const changed = proc.stdout.split("\n").filter(Boolean);
-  const code = report(verdict(changed), io.log);
+  const code = report(verdict(changed, inlineTestedRust(changed, staged, base, io)), io.log);
   return warnOnly ? 0 : code;
+}
+
+/**
+ * Rust proves itself in a place a filename cannot see. Cargo's convention puts
+ * the unit tests INSIDE the file they cover (`#[cfg(test)] mod tests`), so the
+ * name-only rule that works for `cost.ts` / `cost.test.ts` would read every
+ * honest Rust change as "source changed, no test changed" — and the cheapest
+ * way past that is a fake test, which is the exact failure mode this gate
+ * exists to prevent. So for Rust the gate reads the patch: a changed line
+ * inside the file's own `#[cfg(test)]` region counts, as does a `.rs` under the
+ * same crate's `tests/`.
+ *
+ * The other half of the asymmetry: a TypeScript test cannot exercise a Rust
+ * function, so it does not pay for a Rust change. Rust is covered by Rust.
+ */
+
+/** `#[cfg(test)]`, including `#[cfg(all(test, …))]` — but not `cfg(feature="test")`. */
+const CFG_TEST = /#\[\s*cfg\s*\(\s*(?:all\s*\(\s*)?test\b/;
+
+/** Blank out string/char literals and line comments, so a `"}"` cannot close a block. */
+function withoutLiterals(line: string): string {
+  return line
+    .replace(/"(?:[^"\\]|\\.)*"/g, '""')
+    .replace(/'(?:[^'\\]|\\.)*'/g, "''")
+    .replace(/\/\/.*$/, "");
+}
+
+/** How far one line moves the brace depth, literals and comments discounted. */
+function braceDelta(line: string): number {
+  let delta = 0;
+  for (const ch of withoutLiterals(line)) {
+    if (ch === "{") delta++;
+    else if (ch === "}") delta--;
+  }
+  return delta;
+}
+
+/** The 1-based line span of the item the attribute on `start` (0-based) applies to. */
+function itemRange(lines: string[], start: number): [number, number] {
+  let depth = 0;
+  let opened = false;
+  for (let j = start; j < lines.length; j++) {
+    const line = lines[j] ?? "";
+    depth += braceDelta(line);
+    opened = opened || withoutLiterals(line).includes("{");
+    if (opened && depth <= 0) return [start + 1, j + 1];
+    // An attribute on a non-block item (`#[cfg(test)] use …;`) covers that line.
+    if (!opened && j > start) return [start + 1, j + 1];
+  }
+  return [start + 1, lines.length];
+}
+
+/** Every `#[cfg(test)]` region in `src`, as inclusive 1-based line spans. */
+export function cfgTestRanges(src: string): Array<[number, number]> {
+  const lines = src.split("\n");
+  const ranges: Array<[number, number]> = [];
+  for (let i = 0; i < lines.length; i++) {
+    if (!CFG_TEST.test(lines[i] ?? "")) continue;
+    const range = itemRange(lines, i);
+    ranges.push(range);
+    i = range[1] - 1;
+  }
+  return ranges;
+}
+
+/**
+ * The new-file line numbers a unified diff touched. A deletion has no new-side
+ * line of its own, so it registers at the position it was removed from —
+ * otherwise deleting a test would read as no test having changed.
+ */
+export function changedLines(patch: string): number[] {
+  const touched: number[] = [];
+  let line = 0;
+  for (const raw of patch.split("\n")) {
+    const hunk = /^@@ -\d+(?:,\d+)? \+(\d+)/.exec(raw);
+    if (hunk) {
+      line = Number(hunk[1]);
+      continue;
+    }
+    if (raw.startsWith("+++") || raw.startsWith("---")) continue;
+    if (raw.startsWith("+")) touched.push(line++);
+    else if (raw.startsWith("-")) touched.push(line);
+    else if (raw.startsWith(" ")) line++;
+  }
+  return touched;
+}
+
+/** Whether `patch` touched a `#[cfg(test)]` region of the file whose body is `src`. */
+export function inlineTestChanged(src: string, patch: string): boolean {
+  const ranges = cfgTestRanges(src);
+  if (ranges.length === 0) return false;
+  return changedLines(patch).some((n) => ranges.some(([from, to]) => n >= from && n <= to));
+}
+
+/** Whether `path` is Rust behaviour, i.e. subject to the Rust evidence rule. */
+export function isRustSource(path: string): boolean {
+  return path.endsWith(".rs") && isSourceFile(path);
+}
+
+/** The crate a path belongs to: everything above its `src/` or `tests/` segment. */
+export function crateOf(path: string): string {
+  return path.replace(/\/(src|tests)\/.*$/, "");
+}
+
+/** `git show` for a file's post-change body: the index when staged, else HEAD. */
+export function rustBodyCommand(staged: boolean, path: string): string[] {
+  return ["git", "show", `${staged ? "" : "HEAD"}:${path}`];
+}
+
+/** `git diff` for one file's patch, over the same range the listing used. */
+export function rustPatchCommand(staged: boolean, base: string, path: string): string[] {
+  return staged
+    ? ["git", "diff", "--cached", "--", path]
+    : ["git", "diff", `${base}...HEAD`, "--", path];
 }
 
 if (import.meta.main) process.exit(main(process.argv.slice(2)));

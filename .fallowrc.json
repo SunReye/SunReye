@@ -6,7 +6,8 @@
     "apps/web/src/lib/components/ui/**",
     "apps/web/src/lib/hooks/**",
     "apps/web/src/lib/utils.ts",
-    "packages/backend/data/**"
+    "packages/backend/data/**",
+    "**/target/**"
   ],
   "ignoreDependencies": ["sharp", "zod"],
   "dynamicallyLoaded": [
