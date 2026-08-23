@@ -84,6 +84,32 @@ jobs:
           psql -d postgres -c "CREATE DATABASE source"
           DATABASE_URL="$SOURCE_URL" bun run --cwd packages/db db:migrate
 
+      # The fixture deliberately spans more than the 7-day raw retention window,
+      # so the source's own retention job will delete chunks out from under it —
+      # between the snapshot and the dump, which made before/after
+      # non-deterministic (115204 raw rows before, 86320 after; 9 compressed
+      # chunks before, 6 after). Compression is driven manually below for the
+      # same reason.
+      #
+      # Refresh policies stay scheduled on purpose: a refresh is idempotent over
+      # already-materialized data, and the "re-armed" assertion later depends on
+      # them being scheduled.
+      #
+      # The policy rows themselves survive — db-parity snapshots
+      # `proc_name:hypertable`, not `scheduled` — so this is invisible to the
+      # parity comparison. It also carries into the dump, which means the
+      # restored databases inherit the disabled state and cannot race their own
+      # snapshot either.
+      - name: Stop the destructive policies racing the fixture
+        run: |
+          psql -d "$SOURCE_URL" -v ON_ERROR_STOP=1 -tAc \
+            "SELECT alter_job(job_id, scheduled => false)
+               FROM timescaledb_information.jobs
+              WHERE proc_name IN ('policy_retention', 'policy_compression')" > /dev/null
+          psql -d "$SOURCE_URL" -tAc \
+            "SELECT proc_name, coalesce(hypertable_name, '-'), scheduled
+               FROM timescaledb_information.jobs ORDER BY job_id"
+
       # >7 days at 30 s resolution over two inverters and two metrics: enough
       # to cross compress_after (2 hours, see #110) and the raw retention window
       # (7 days), small enough to seed in seconds.
