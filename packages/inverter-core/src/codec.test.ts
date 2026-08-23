@@ -1,6 +1,13 @@
 import { beforeEach, describe, expect, test } from "bun:test";
 
-import { clampReports, decode, encodeWord, registerWidth, resetClampReports } from "./codec";
+import {
+  applyScaling,
+  clampReports,
+  decode,
+  encodeWord,
+  registerWidth,
+  resetClampReports,
+} from "./codec";
 import type { MetricDef, RegisterType } from "./types";
 
 /** Minimal metric definition — only the encoding fields matter here. */
@@ -160,6 +167,62 @@ describe("decode range clamping", () => {
   test("an undecodable metric is never reported as clamped", () => {
     expect(decode(soc, regs([]))).toBeUndefined();
     expect(clampReports()).toEqual([]);
+  });
+});
+
+// Registers are one way to obtain a raw number, not the only one. Everything
+// after the raw value — scale, offset, the range clamp and its report — is
+// addressing-agnostic, and a second transport has to reach it rather than
+// reimplement it, or "identical to the Modbus path" stops being true.
+describe("applyScaling", () => {
+  beforeEach(() => {
+    resetClampReports();
+  });
+
+  const soc = def({ type: "U_WORD", scale: 0.01, range: { min: 0, max: 100 }, key: "battery.soc" });
+
+  test("scales then offsets", () => {
+    expect(applyScaling(def({ type: "U_WORD", scale: 0.1 }), 1250)).toBeCloseTo(125);
+    expect(applyScaling(def({ type: "U_WORD", scale: 0.1, offset: -100 }), 1250)).toBeCloseTo(25);
+  });
+
+  test("clamps to a declared range, at both ends", () => {
+    expect(applyScaling(soc, 0xffff)).toBe(100);
+    expect(applyScaling(soc, -1)).toBe(0);
+  });
+
+  test("leaves a metric with no range completely alone", () => {
+    expect(applyScaling(def({ type: "U_WORD", scale: 0.1, key: "energy" }), 0xffff)).toBeCloseTo(
+      6553.5,
+    );
+    expect(clampReports()).toEqual([]);
+  });
+
+  test("takes a value the raw wire could never hold — no register semantics survive here", () => {
+    // A JSON body answers 236.402 V directly; there is no word to widen and no
+    // encoding to pick, so a float raw must pass through untouched.
+    expect(applyScaling(def({ type: "U_WORD", key: "grid.phase.voltage" }), 236.402)).toBe(236.402);
+    expect(applyScaling(def({ type: "U_WORD", scale: 0.001, key: "grid.energy" }), 1_234_567)).toBe(
+      1234.567,
+    );
+  });
+
+  test("a finite raw that scales to infinity is no reading at all", () => {
+    // Bounded register words can never reach this; a device-supplied float can.
+    // Infinity is not a value any consumer can use, and it JSON-serializes to
+    // `null`, so it must be absent here rather than a hole three layers away.
+    expect(applyScaling(def({ type: "U_WORD", scale: 10, key: "p" }), 1e308)).toBeUndefined();
+    expect(applyScaling(def({ type: "U_WORD", scale: Number.NaN, key: "p" }), 1)).toBeUndefined();
+  });
+
+  test("reports its clamps into the same ledger decode uses — one per key, not one per source", () => {
+    decode(soc, regs([[10, 0xffff]]));
+    applyScaling(soc, 0xfffe);
+
+    const reports = clampReports();
+    expect(reports).toHaveLength(1);
+    expect(reports[0]?.key).toBe("battery.soc");
+    expect(reports[0]?.count).toBe(2);
   });
 });
 

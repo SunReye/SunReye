@@ -67,12 +67,24 @@ const controlExprSchema = z.union([
  * the profile is parsed — the point of tagging the union rather than probing
  * optional fields at read time.
  */
+/**
+ * RFC 6901 JSON pointer, minus the empty one. `""` is legal in the RFC and means
+ * the whole document — never what a metric wants, and it would silently address
+ * an object where a number is expected. Otherwise: one or more `/`-prefixed
+ * reference tokens, in which the only escapes are `~0` (a literal `~`) and `~1`
+ * (a literal `/`), so a dangling or undefined `~x` is a typo, not a token.
+ */
+const jsonPointerSchema = z
+  .string()
+  .regex(/^(?:\/(?:[^~]|~[01])*)+$/, "pointer must be a non-empty RFC 6901 JSON pointer");
+
 const bindingSchema = z.discriminatedUnion("via", [
   z.strictObject({
     via: z.literal("modbus"),
     addr: z.array(z.number().int().min(0).max(65535)),
     type: registerTypeSchema,
   }),
+  z.strictObject({ via: z.literal("http"), pointer: jsonPointerSchema }),
   z.strictObject({ via: z.literal("compute"), expr: computeExprSchema }),
   z.strictObject({ via: z.literal("control"), expr: controlExprSchema }),
 ]);
@@ -106,25 +118,63 @@ interface FieldIssue {
   message: string;
 }
 
-/**
- * Register-width rules a plain schema can't express: controls and computed
- * metrics own no register at all, `RAW` needs at least one word, and the
- * fixed-width types need exactly the count their encoding implies. A metric that
- * is *both* a control and computed reports that plus any stray addresses.
- */
-function widthIssues(m: z.infer<typeof metricDataSchema>): FieldIssue[] {
-  const stray = (what: string): FieldIssue[] =>
-    m.addresses.length === 0
-      ? []
-      : [{ field: "addresses", message: `${what} must have no addresses` }];
+/** Addresses on a metric that owns no register — one claim too many. */
+function strayAddresses(m: z.infer<typeof metricDataSchema>, what: string): FieldIssue[] {
+  return m.addresses.length === 0
+    ? []
+    : [{ field: "addresses", message: `${what} must have no addresses` }];
+}
 
+/**
+ * Everything that disqualifies a metric bound to a JSON pointer. Registers are
+ * one claim too many, and so is a second *source*: a `computeExpr` or
+ * `controlExpr` beside a pointer means the value is read and then silently
+ * overwritten by the derived one. `access: "rw"` is rejected too — the entity
+ * layer, the MQTT bridge and the manifest all key their write surfaces off it,
+ * and no HTTP transport can write, so a writable http metric offers a control
+ * that cannot work. Rejected here rather than discovered at write time, which is
+ * the whole point of tagging the union.
+ */
+function httpIssues(m: z.infer<typeof metricDataSchema>): FieldIssue[] {
+  const derived: FieldIssue[] =
+    m.computeExpr || m.controlExpr
+      ? [{ field: "binding", message: "http metric cannot also be computed or a control" }]
+      : [];
+  const writable: FieldIssue[] =
+    m.access === "rw"
+      ? [{ field: "access", message: "http metric cannot be writable: no transport can write one" }]
+      : [];
+  return [...derived, ...writable, ...strayAddresses(m, "http metric")];
+}
+
+/**
+ * The arms that own no register: an http metric addressed by pointer, a
+ * composite control, a computed value. Their only width rule is that they claim
+ * no addresses — for an http metric, `type`/`addresses` are the neutral seed the
+ * upcast filled in, and addresses beside a pointer would be two conflicting
+ * claims about where the value lives. `null` means "this metric does own
+ * registers", so {@link widthIssues} should go on and count them.
+ */
+function addresslessIssues(m: z.infer<typeof metricDataSchema>): FieldIssue[] | null {
+  if (m.binding?.via === "http") return httpIssues(m);
   if (m.controlExpr) {
     const alsoComputed: FieldIssue[] = m.computeExpr
       ? [{ field: "controlExpr", message: "metric cannot be both a control and computed" }]
       : [];
-    return [...alsoComputed, ...stray("control metric")];
+    return [...alsoComputed, ...strayAddresses(m, "control metric")];
   }
-  if (m.computeExpr) return stray("computed metric");
+  if (m.computeExpr) return strayAddresses(m, "computed metric");
+  return null;
+}
+
+/**
+ * Register-width rules a plain schema can't express: the addressless arms own no
+ * register at all, `RAW` needs at least one word, and the fixed-width types need
+ * exactly the count their encoding implies.
+ */
+function widthIssues(m: z.infer<typeof metricDataSchema>): FieldIssue[] {
+  const addressless = addresslessIssues(m);
+  if (addressless) return addressless;
   if (m.type === "RAW") {
     return m.addresses.length >= 1
       ? []
@@ -156,8 +206,15 @@ function controlRefs(expr: ControlExpr): string[] {
   return expr.preset.writes.map((w) => w.target);
 }
 
+/**
+ * A binding the legacy `type`/`addresses`/`computeExpr`/`controlExpr` mirror can
+ * represent. `http` cannot be one: the mirror speaks in registers, and a pointer
+ * is not one — which is why {@link bindingIssues} never compares it.
+ */
+type MirrorBinding = Exclude<Binding, { via: "http" }>;
+
 /** Structural equality of two bindings (key order and identity aside). */
-function sameBinding(a: Binding, b: Binding): boolean {
+function sameBinding(a: MirrorBinding, b: MirrorBinding): boolean {
   if (a.via !== b.via) return false;
   if (a.via === "modbus") {
     const other = b as Extract<Binding, { via: "modbus" }>;
@@ -185,13 +242,19 @@ function bindingIssues(m: z.infer<typeof metricDataSchema>, version: number): Fi
   if (!m.binding) {
     return [{ field: "binding", message: "schemaVersion 2 requires a binding" }];
   }
+  // Nothing to disagree with: the mirror can only describe registers, and an
+  // http metric has none. The equivalent check — that it claims no addressing
+  // outside its pointer — is `widthIssues`.
+  if (m.binding.via === "http") return [];
   // `bindingFor` returns `m.binding` when present, so passing `m` straight in
   // compared the binding to itself and this arm could never fire. Derive from the
   // mirror alone — that is the thing we are checking it against.
+  // `MirrorBinding` by construction: with `binding` removed, `bindingFor` reads
+  // only the mirror fields, whose three arms are exactly the ones it can express.
   const fromMirror = bindingFor({
     ...(m as Parameters<typeof bindingFor>[0]),
     binding: undefined,
-  });
+  }) as MirrorBinding;
   return sameBinding(m.binding, fromMirror)
     ? []
     : [{ field: "binding", message: "binding disagrees with type/addresses" }];

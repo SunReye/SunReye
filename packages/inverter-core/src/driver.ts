@@ -31,9 +31,18 @@ export class ModbusInverter implements InverterSource {
   }
 
   async read(): Promise<InverterSample> {
-    const { values } = await this.transport.read();
+    const { values, readAt, degraded } = await this.transport.read();
     applyComputed(this.profile.metrics, values);
-    return { time: new Date().toISOString(), inverterId: this.profile.id, metrics: values };
+    return {
+      time: new Date().toISOString(),
+      inverterId: this.profile.id,
+      metrics: values,
+      // Spread rather than assign: a transport that knows nothing about
+      // staleness leaves the sample exactly the shape it has always been,
+      // instead of gaining two `undefined` keys that serialize as noise.
+      ...(degraded === undefined ? {} : { degraded }),
+      ...(readAt === undefined ? {} : { readAt }),
+    };
   }
 
   /**

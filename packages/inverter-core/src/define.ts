@@ -34,6 +34,12 @@ export interface BaseMetricOpts {
   group: string;
   /** Single address, `[low, high]` for `U_DWORD`, N words for `RAW`. Omit for computed. */
   addr?: number | number[];
+  /**
+   * RFC 6901 JSON pointer into the device's HTTP response, e.g.
+   * `/em:0/total_act_power`. Mutually exclusive with {@link addr}: a value
+   * cannot live in a register and in a JSON body at once.
+   */
+  pointer?: string;
   type?: RegisterType;
   unit?: string | null;
   scale?: number;
@@ -133,7 +139,10 @@ export function metric<const T extends string>(
   topic: T,
   opts: MetricOpts,
 ): BoundMetricDef & { key: TopicToKey<T> } {
-  const { addr } = opts;
+  const { addr, pointer } = opts;
+  if (addr !== undefined && pointer !== undefined) {
+    throw new Error(`${topic}: a metric cannot have both an address and a pointer`);
+  }
   const def: MetricDataDef & { key: TopicToKey<T> } = {
     // The runtime `replaceAll` produces exactly `TopicToKey<T>` by construction;
     // assert it so the literal key type survives (String#replaceAll widens to string).
@@ -155,7 +164,16 @@ export function metric<const T extends string>(
     enumLabels: opts.enumLabels,
     flow: opts.flow,
   };
-  return { ...def, binding: bindingFor(def) };
+  return { ...def, binding: bindingOf(def, pointer) };
+}
+
+/**
+ * The binding for a metric being authored. A pointer states it outright, because
+ * there is nothing on the metric for {@link bindingFor} to derive it from — the
+ * legacy `type`/`addresses` mirror speaks only in registers.
+ */
+function bindingOf(def: MetricDataDef, pointer: string | undefined): Binding {
+  return pointer === undefined ? bindingFor(def) : { via: "http", pointer };
 }
 
 /** Options for a composite control built by {@link control}. */
@@ -209,7 +227,14 @@ export function control<const K extends string>(
  * one place addressing is stated twice is the one place it is re-synced.
  */
 function bound(metrics: MetricDataDef[]): MetricDataDef[] {
-  return metrics.map((m) => ({ ...m, binding: bindingFor({ ...m, binding: undefined }) }));
+  return metrics.map((m) => ({
+    // An http binding is exempt, and not as a special case: re-deriving exists
+    // because addressing is stated twice, and a pointer is stated once. There is
+    // nothing in the mirror to re-sync it against, so carrying it through is the
+    // same rule, not an exception to it.
+    ...m,
+    binding: m.binding?.via === "http" ? m.binding : bindingFor({ ...m, binding: undefined }),
+  }));
 }
 
 /** Assemble a {@link ProfileData} from identity + a metric list, resolving any

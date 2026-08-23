@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import { decode, encodeWord } from "./codec";
+import { planReads } from "./modbus-transport";
 import {
   hydrateProfile,
   type ComputeExpr,
@@ -171,6 +172,132 @@ describe("bindings are validated at parse time", () => {
 
   test("a v1 profile still parses unchanged", () => {
     expect(safeParseProfileData(profileOf([v1Metric({ key: "a.b" })])).success).toBe(true);
+  });
+});
+
+// The second arm that is not a register. Everything a `modbus` metric says about
+// where its value lives — a type, a word count, an address range — is Modbus
+// vocabulary; an HTTP body has one thing instead, the JSON pointer that picks the
+// value out of it.
+describe("the http binding arm", () => {
+  const httpMetric = (pointer: string, over: Partial<MetricDataDef> = {}): MetricDataDef =>
+    ({
+      key: "grid.power",
+      topic: "grid/power",
+      label: "Grid power",
+      unit: "W",
+      group: "grid",
+      scale: 1,
+      access: "r",
+      binding: { via: "http", pointer },
+      ...over,
+    }) as MetricDataDef;
+
+  const issuesOf = (data: unknown) => {
+    const r = safeParseProfileData(data);
+    expect(r.success).toBe(false);
+    return JSON.stringify(r.error?.issues);
+  };
+
+  test("parses and hydrates to the pointer it was authored with", () => {
+    const data = profileOf([httpMetric("/em:0/total_act_power")], 2);
+
+    expect(safeParseProfileData(data).success).toBe(true);
+    expect(bindingsOf(data)).toEqual([{ via: "http", pointer: "/em:0/total_act_power" }]);
+  });
+
+  test("needs no registers, and its legacy mirror stays neutral rather than fictional", () => {
+    // `type`/`addresses` are still required fields, so the upcast fills them —
+    // but there is no register here, and the mirror must not pretend otherwise.
+    const parsed = safeParseProfileData(profileOf([httpMetric("/em:0/total_act_power")], 2));
+    const metric = (parsed.data as ProfileData).metrics[0]!;
+
+    expect(metric.addresses).toEqual([]);
+    expect(metric.type).toBe("U_WORD");
+  });
+
+  test("rejects addresses smuggled in beside the pointer", () => {
+    expect(
+      issuesOf(profileOf([httpMetric("/em:0/total_act_power", { addresses: [500] })], 2)),
+    ).toContain("addresses");
+  });
+
+  test.each([
+    ["no leading slash", "em:0/total_act_power"],
+    ["the whole document", ""],
+    ["a dangling escape", "/a~"],
+    ["an undefined escape", "/a~2b"],
+  ])("rejects %s as a pointer", (_label, pointer) => {
+    expect(issuesOf(profileOf([httpMetric(pointer)], 2))).toContain("pointer");
+  });
+
+  test.each([
+    ["an unescaped colon, which RFC 6901 does not escape", "/em:0/a_act_power"],
+    ["an escaped slash and tilde", "/a~1b/~0c"],
+    ["an array index", "/em:0/a_errors/0"],
+    ["an empty reference token", "//x"],
+  ])("accepts %s", (_label, pointer) => {
+    expect(safeParseProfileData(profileOf([httpMetric(pointer)], 2)).success).toBe(true);
+  });
+
+  test.each([
+    ["computed", { computeExpr: { sum: ["other"] } }],
+    ["a control", { controlExpr: { preset: { writes: [{ target: "other", value: 1 }] } } }],
+  ])("rejects a metric that is bound to a pointer and %s as well", (_label, over) => {
+    // Two sources for one value: the pointer is read and then silently
+    // overwritten by the derived value. Every other arm rejects this shape.
+    expect(
+      issuesOf(
+        profileOf(
+          [
+            httpMetric("/em:0/total_act_power", over as Partial<MetricDataDef>),
+            {
+              ...v1Metric({ key: "other" }),
+              binding: { via: "modbus", addr: [500], type: "U_WORD" },
+            },
+          ],
+          2,
+        ),
+      ),
+    ).toContain("http metric");
+  });
+
+  test("rejects a writable http metric — nothing can write one, so nothing may offer to", () => {
+    // `access: "rw"` is what the entity layer, the MQTT bridge and the manifest
+    // key their write surfaces off. HttpTransport refuses every write, so a
+    // writable http metric is a control that cannot work.
+    expect(
+      issuesOf(profileOf([httpMetric("/em:0/total_act_power", { access: "rw" })], 2)),
+    ).toContain("access");
+  });
+
+  test("is rejected on a v1 profile — the upcast is one-way for every arm", () => {
+    // Authored as a v1 metric in every other respect, so the only thing left to
+    // object to is the binding itself.
+    const asV1 = httpMetric("/em:0/total_act_power", { type: "U_WORD", addresses: [] });
+
+    expect(issuesOf(profileOf([asV1], 1))).toContain("binding requires schemaVersion 2");
+  });
+
+  test("is invisible to the Modbus path — nothing to plan, nothing to decode", () => {
+    // The seam paying off: every Modbus site already asks the binding whether it
+    // is a register, so a new arm costs the read planner and the codec nothing.
+    const metrics = hydrateProfile(
+      profileOf(
+        [
+          httpMetric("/em:0/total_act_power"),
+          {
+            ...v1Metric({ key: "a.b", addresses: [1] }),
+            binding: { via: "modbus", addr: [1], type: "U_WORD" },
+          },
+        ],
+        2,
+      ),
+    ).metrics;
+
+    // The register metric beside it is planned exactly as it always was.
+    expect(planReads(metrics)).toEqual([{ start: 1, count: 1 }]);
+    expect(decode(metrics[0]!, new Map([[0, 7]]))).toBeUndefined();
   });
 });
 

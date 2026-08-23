@@ -4,6 +4,8 @@ export type { ClampReport } from "./codec";
 export { ModbusInverter } from "./driver";
 export { ModbusTransport, planReads } from "./modbus-transport";
 export type { ReadBlock } from "./modbus-transport";
+export { HttpReadError, HttpTransport } from "./http-transport";
+export type { HttpFailureKind } from "./http-transport";
 export { applyComputed } from "./computed";
 export { SimulatedInverter } from "./simulator";
 export { genericSimulate } from "./generic-sim";
