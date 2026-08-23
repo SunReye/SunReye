@@ -95,19 +95,20 @@ services:
     image: timescale/timescaledb:2.28.2-pg17
     # SSD-endurance tuning: cut the writes (TBW) a 1 Hz ingest makes.
     # synchronous_commit=off group-commits WAL (bounded <~0.5s crash-loss window
-    # for telemetry — no corruption); wal_compression shrinks full-page images;
-    # wider checkpoint spacing means fewer full-page writes. Additive `-c`
+    # for telemetry — no corruption); wal_compression=zstd shrinks full-page
+    # images harder than the pglz `on` default; a 2 h checkpoint_timeout writes
+    # each hot page's image ~4x less often. full_page_writes stays ON. Additive `-c`
     # overrides — timescaledb's own config (shared_preload_libraries) is kept.
     command:
       - postgres
       - -c
       - synchronous_commit=off
       - -c
-      - wal_compression=on
+      - wal_compression=zstd
       - -c
       - max_wal_size=2GB
       - -c
-      - checkpoint_timeout=30min
+      - checkpoint_timeout=2h
     environment:
       POSTGRES_DB: SunReye
       POSTGRES_USER: postgres

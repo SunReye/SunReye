@@ -37,13 +37,17 @@ jit = off
 # SSD-endurance tuning: cut the writes (TBW) a 1 Hz ingest makes — this addon
 # most often runs on a Pi (SD card / eMMC), where write wear matters most.
 # synchronous_commit=off group-commits WAL (bounded <~0.5s crash-loss window
-# for telemetry — no corruption); wal_compression shrinks full-page images;
-# wider checkpoint spacing means fewer full-page writes. Mirrors the compose
-# deployments' postgres flags.
+# for telemetry — no corruption); wal_compression=zstd shrinks full-page images
+# harder than the pglz `on` default (~25% better on this data); a 2 h
+# checkpoint_timeout writes each hot page's full-page image ~4x less often —
+# measured, FPI was 22% of an 894 MB WAL over 18 h. Cost is crash-recovery time
+# only. full_page_writes stays ON: SD and eMMC give no atomic-write guarantee,
+# so cutting checkpoint frequency is the only sound way to cut FPI cost.
+# Mirrors the compose deployments' postgres flags.
 synchronous_commit = off
-wal_compression = on
+wal_compression = zstd
 max_wal_size = 2GB
-checkpoint_timeout = 30min
+checkpoint_timeout = 2h
 EOF
 chown postgres:postgres /data/postgres/sunreye.conf
 grep -q "include = 'sunreye.conf'" /data/postgres/postgresql.conf \

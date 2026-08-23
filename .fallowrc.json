@@ -9,7 +9,10 @@
     "packages/backend/data/**"
   ],
   "ignoreDependencies": ["sharp", "zod"],
-  "dynamicallyLoaded": ["apps/docs/src/styles/theme.css"],
+  "dynamicallyLoaded": [
+    "apps/docs/src/styles/theme.css",
+    "scripts/db-parity.ts"
+  ],
   "usedClassMembers": [{ "implements": "InverterSource", "members": ["read"] }],
   "production": { "deadCode": true },
   "audit": { "gate": "all" },
@@ -24,7 +27,9 @@
     { "file": "scripts/require-tests.ts", "exports": ["*"] },
     { "file": "scripts/coverage-floor.ts", "exports": ["*"] },
     { "file": "scripts/mock-hygiene.ts", "exports": ["*"] },
-    { "file": "scripts/nginx-locations.ts", "exports": ["*"] }
+    { "file": "scripts/nginx-locations.ts", "exports": ["*"] },
+    { "file": "scripts/storage-tuning.ts", "exports": ["*"] },
+    { "file": "scripts/db-parity.ts", "exports": ["*"] }
   ],
   "boundaries": {
     "zones": [

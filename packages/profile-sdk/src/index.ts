@@ -31,7 +31,7 @@ export { ROLE_CATALOG, ROLE_NAMES } from "@SunReye/inverter-core";
 export { repoIndexSchema, repoProfileEntrySchema } from "@SunReye/inverter-core";
 export type { RepoIndex, RepoProfileEntry } from "@SunReye/inverter-core";
 
-export { validateProfile } from "./validate";
+export { lintProfile, validateProfile } from "./validate";
 export type { ValidationResult } from "./validate";
 export { coverage, groupByPrefix, isIndexedRole, suggestAggregates } from "./coverage";
 export type { AggregateSuggestion, CoverageReport } from "./coverage";

@@ -10,6 +10,7 @@ import {
   injectControlValues,
 } from "./control-expr";
 import type { ProfileContext } from "./inverter";
+import { WriteRejectedError } from "./write-rejected";
 
 const PROFILE_ID = "test-inv";
 const LOCK_KEY = "settings.lock";
@@ -194,29 +195,110 @@ describe("executeControl — writes the register rejects", () => {
     expect(kept[`${PROFILE_ID}:${LOCK_KEY}`]).toMatchObject({ previousValue: 30 });
   });
 
-  test("a preset stops at the first rejected target, leaving earlier writes applied", async () => {
-    // Modbus has no multi-register atomicity, so a half-applied preset is a real
-    // state the operator must be told about rather than a rollback we can fake.
+  // Every refusal below comes from the profile's own metadata, so each must be a
+  // WriteRejectedError — the type is what decides 400 vs 502 at the edge. A
+  // plain Error here means an equivalent refusal answers 400 through the funnel
+  // and 502 through a composite control, for the same caller mistake.
+  test("a refused unlock is a WriteRejectedError, not a device failure", async () => {
+    const h = harness({ [TARGET]: 30 });
+    await executeControl(h.lockDef, 1, h.io);
+    h.io.ctx = {
+      ...h.ctx,
+      validateWrite: () => "Value 30 is above maximum 20",
+    } as unknown as ProfileContext;
+    await expect(executeControl(h.lockDef, 0, h.io)).rejects.toBeInstanceOf(WriteRejectedError);
+  });
+
+  test("a snapshotToggle handed a non-boolean is a WriteRejectedError", async () => {
+    const h = harness({ [TARGET]: 5 });
+    await expect(executeControl(h.lockDef, 2, h.io)).rejects.toBeInstanceOf(WriteRejectedError);
+    expect(h.writes).toEqual([]);
+  });
+
+  /** A preset that writes the given values to {@link TARGET}, in order. */
+  const presetOf = (h: ReturnType<typeof harness>, values: number[]): MetricDef => ({
+    ...h.lockDef,
+    key: "settings.backup",
+    controlExpr: { preset: { writes: values.map((value) => ({ target: TARGET, value })) } },
+  });
+
+  test("a preset refused by the profile is a WriteRejectedError", async () => {
+    const h = harness({ [TARGET]: 5 });
+    h.io.ctx = {
+      ...h.ctx,
+      validateWrite: (_k: string, v: number) => (v === 99 ? "Value 99 is above maximum 20" : null),
+    } as unknown as ProfileContext;
+    await expect(executeControl(presetOf(h, [1, 99]), 1, h.io)).rejects.toBeInstanceOf(
+      WriteRejectedError,
+    );
+    expect(h.writes).toEqual([]);
+  });
+
+  test("a preset whose second target is out of range performs no write at all", async () => {
+    // Validation is not a device concern, so nothing forces it to interleave
+    // with the writes: a preset the profile already refuses must leave the
+    // inverter in the state the operator last chose, not half of a new one.
     const h = harness();
     h.io.ctx = {
       ...h.ctx,
       validateWrite: (_key: string, value: number) =>
         value > 5 ? `Value ${value} is above maximum 5` : null,
     } as unknown as ProfileContext;
-    const presetDef = {
-      ...h.lockDef,
-      key: "settings.backup",
-      controlExpr: {
-        preset: {
-          writes: [
-            { target: TARGET, value: 5 },
-            { target: TARGET, value: 7 },
-          ],
-        },
-      },
+
+    await expect(executeControl(presetOf(h, [5, 7]), 1, h.io)).rejects.toThrow(/above maximum 5/);
+    expect(h.writes).toEqual([]);
+  });
+
+  test("the last target is pre-flighted too, not only the ones before it", async () => {
+    const h = harness();
+    h.io.ctx = {
+      ...h.ctx,
+      validateWrite: (_key: string, value: number) => (value === 9 ? "nope" : null),
+    } as unknown as ProfileContext;
+
+    await expect(executeControl(presetOf(h, [1, 2, 9]), 1, h.io)).rejects.toThrow(/nope/);
+    expect(h.writes).toEqual([]);
+  });
+
+  test("a preset every target passes is applied in order", async () => {
+    const h = harness();
+
+    await executeControl(presetOf(h, [1, 2, 3]), 1, h.io);
+
+    expect(h.writes).toEqual([
+      { target: TARGET, value: 1 },
+      { target: TARGET, value: 2 },
+      { target: TARGET, value: 3 },
+    ]);
+  });
+
+  test("a device write that fails mid-preset names the targets that landed", async () => {
+    // Modbus has no multi-register atomicity, so a half-applied preset is a real
+    // state the operator must be told about rather than a rollback we can fake —
+    // and the report has to say how far it got.
+    const h = harness();
+    const plain = h.io.write;
+    h.io.write = async (target, value) => {
+      if (value === 7) throw new Error("Modbus exception 4");
+      await plain(target, value);
     };
-    await expect(executeControl(presetDef, 1, h.io)).rejects.toThrow(/above maximum 5/);
+
+    await expect(executeControl(presetOf(h, [5, 7, 9]), 1, h.io)).rejects.toThrow(
+      /applied: settings\.max_discharge=5/,
+    );
     expect(h.writes).toEqual([{ target: TARGET, value: 5 }]);
+  });
+
+  test("a preset whose very first write fails says nothing landed", async () => {
+    const h = harness();
+    h.io.write = async () => {
+      throw new Error("Modbus exception 4");
+    };
+
+    await expect(executeControl(presetOf(h, [5, 7]), 1, h.io)).rejects.toThrow(
+      /applied: nothing|nothing applied/,
+    );
+    expect(h.writes).toEqual([]);
   });
 });
 

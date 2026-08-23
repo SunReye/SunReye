@@ -24,6 +24,7 @@ import { entityConstraint } from "@SunReye/inverter-core";
 import mqtt from "mqtt";
 import type { MqttClient } from "mqtt";
 import type { ProfileContext } from "./inverter";
+import { WriteRejectedError } from "./control-writer";
 import { log } from "../shared/logging";
 import {
   FORECAST_VARIANTS,
@@ -55,7 +56,7 @@ export interface MqttBridge {
 export interface MqttBridgeDeps {
   /** The active profile context (manifest, catalog, write validator). */
   ctx: ProfileContext;
-  /** Apply an inbound command write (validated by the bridge first). */
+  /** Apply an inbound command write — the funnel validates it. */
   write(key: string, value: number): Promise<void>;
 }
 
@@ -67,7 +68,7 @@ export interface MqttBridgeDeps {
 export function startMqttBridge(config: MqttConfig, deps: MqttBridgeDeps): MqttBridge | null {
   if (!config.enabled) return null;
 
-  const { profile, manifest, defByKey, validateWrite } = deps.ctx;
+  const { profile, manifest, defByKey } = deps.ctx;
   const haDevice: HaDevice = {
     identifiers: [`sunreye_${profile.id}`],
     name: manifest.name,
@@ -180,14 +181,16 @@ export function startMqttBridge(config: MqttConfig, deps: MqttBridgeDeps): MqttB
       });
       return;
     }
-    const error = validateWrite(key, value);
-    if (error) {
-      logger.warn("{topic}: rejected {value}: {error}", { topic, value, error });
-      return;
-    }
     try {
+      // The write funnel validates key and value; a rejection is a bad command,
+      // not a broken inverter, so it is warned about and dropped rather than
+      // logged as a transport failure.
       await deps.write(key, value);
     } catch (err) {
+      if (err instanceof WriteRejectedError) {
+        logger.warn("{topic}: rejected {value}: {error}", { topic, value, error: err.message });
+        return;
+      }
       logger.error("write {key}={value} failed: {error}", { key, value, error: err });
     }
   });

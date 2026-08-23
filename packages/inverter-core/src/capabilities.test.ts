@@ -1,6 +1,14 @@
-import { describe, expect, test } from "bun:test";
+import { beforeEach, describe, expect, test } from "bun:test";
 
-import { buildManifest, deriveCapabilities, resolveKind, toManifestMetric } from "./capabilities";
+import {
+  buildManifest,
+  deriveCapabilities,
+  kindFallbackKeys,
+  kindFallbackReports,
+  resetKindFallbacks,
+  resolveKind,
+  toManifestMetric,
+} from "./capabilities";
 import type { CanonicalRole, InverterProfile, MetricDef } from "./types";
 
 /**
@@ -38,9 +46,54 @@ describe("resolveKind", () => {
     expect(resolveKind(m({ key: "x", access: "r", unit: "kWh" }))).toBe("cumulative");
   });
 
+  test("a role-mapped metric with no explicit kind inherits its role's kind", () => {
+    // The Deye `ac.relay_status` shape: read-only, unitless, kind-less — but the
+    // role catalog already knows it is a status enum.
+    expect(resolveKind(m({ key: "ac.relay_status", role: "inverter.relay_status" }))).toBe(
+      "status",
+    );
+    expect(resolveKind(m({ key: "e", role: "production.today" }))).toBe("cumulative");
+  });
+
   test("everything else defaults to measurement", () => {
     expect(resolveKind(m({ key: "x", access: "r", unit: "W" }))).toBe("measurement");
     expect(resolveKind(m({ key: "x", access: "r", unit: null }))).toBe("measurement");
+  });
+});
+
+describe("the resolveKind fallback", () => {
+  beforeEach(() => resetKindFallbacks());
+
+  // Asserted against the ledger rather than the log transport: the observable
+  // fact is "one entry per key, counting every occurrence", and a test that
+  // spies on the logger breaks the moment the logger changes without the
+  // behaviour changing. Same shape as codec's clampReports().
+  test("is recorded once per key, however many times it resolves", () => {
+    const def = m({ key: "ac.mystery", access: "r", unit: null });
+    resolveKind(def);
+    resolveKind(def);
+    resolveKind(def);
+    expect(kindFallbackKeys()).toEqual(["ac.mystery"]);
+    expect(kindFallbackReports()).toEqual([{ key: "ac.mystery", count: 3 }]);
+  });
+
+  test("counts separate keys separately", () => {
+    resolveKind(m({ key: "ac.mystery", access: "r", unit: null }));
+    resolveKind(m({ key: "ac.other", access: "r", unit: null }));
+    resolveKind(m({ key: "ac.mystery", access: "r", unit: null }));
+    expect(kindFallbackReports()).toEqual([
+      { key: "ac.mystery", count: 2 },
+      { key: "ac.other", count: 1 },
+    ]);
+  });
+
+  test("records nothing when the kind is explicit, role-mapped, writable or kWh", () => {
+    resolveKind(m({ key: "a", kind: "status" }));
+    resolveKind(m({ key: "b", role: "inverter.relay_status" }));
+    resolveKind(m({ key: "c", access: "rw" }));
+    resolveKind(m({ key: "d", unit: "kWh" }));
+    expect(kindFallbackKeys()).toEqual([]);
+    expect(kindFallbackReports()).toEqual([]);
   });
 });
 

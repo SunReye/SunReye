@@ -22,7 +22,8 @@ import { projectPeakShaving } from "./peak-shaving-plan";
 import { type AutomationIO, createPeakShavingEngine, planLimits } from "./peak-shaving-engine";
 import type { EvccLoadpoint, EvccState } from "@SunReye/contracts/evcc";
 import type { EvccAction } from "../evcc/evcc";
-import { buildProfileContext } from "../inverter/inverter";
+import { buildProfileContext, type ProfileContext } from "../inverter/inverter";
+import { createControlWriter } from "../inverter/control-writer";
 import type { SolarForecast } from "../forecast/solar-forecast";
 
 // --- Fixtures ------------------------------------------------------------------
@@ -1247,12 +1248,19 @@ interface Harness {
     state(s: AutomationState): void;
     /** Make every EVCC command throw, as an unreachable broker does. */
     evccError(message: string | null): void;
+    /**
+     * Point the write funnel at another profile context — pair it with an
+     * `{ ...h.io, ctx }` override so the engine and the funnel it writes
+     * through agree on which profile is active.
+     */
+    ctx(c: ProfileContext): void;
   };
   state(): AutomationState;
 }
 
 function harness(over: { config?: AutomationConfig; prices?: SpotSlice | null } = {}): Harness {
   const ctx = buildProfileContext(profileWith());
+  let writeCtx: ProfileContext = ctx;
   let cfg = over.config ?? config();
   let wx = weather();
   let prices: SpotSlice | null = over.prices ?? null;
@@ -1278,11 +1286,23 @@ function harness(over: { config?: AutomationConfig; prices?: SpotSlice | null } 
   return {
     io: {
       ctx,
-      write: async (key, value) => {
-        writes.push({ key, value });
-        // Mirror the register readback the next poll would deliver.
-        if (sample) sample.metrics[key] = value;
-      },
+      // The engine writes through the production funnel, which owns the
+      // validation every entry point shares; only the transport is a double.
+      write: createControlWriter({
+        getSource: () => ({
+          profile: ctx.profile,
+          read: async () => ({ time: "", inverterId: "test-profile", metrics: {} }),
+          write: async (key, value) => {
+            writes.push({ key, value });
+            // Mirror the register readback the next poll would deliver.
+            if (sample) sample.metrics[key] = value;
+          },
+          close: async () => {},
+        }),
+        getContext: () => writeCtx,
+        store: { get: async () => ({}), set: async () => {} },
+        readLive: (target) => sample?.metrics[target],
+      }).write,
       getConfig: async () => cfg,
       // No price feed unless a case installs one: every existing engine test
       // must keep exercising the unchanged shaving path.
@@ -1314,6 +1334,7 @@ function harness(over: { config?: AutomationConfig; prices?: SpotSlice | null } 
       now: (ms) => (nowMs = ms),
       state: (s) => (state = s),
       evccError: (message) => (evccError = message),
+      ctx: (c) => (writeCtx = c),
     },
     evccCommands,
     state: () => state,
@@ -1797,6 +1818,7 @@ describe("peak-shaving engine — feed-in ceiling", () => {
     const bare = harness({ config: gridCfg() });
     // Same setup, minus the mapping.
     const ctx = buildProfileContext(profileWith({ "setting.solar_sell.max_power": "" }));
+    bare.set.ctx(ctx);
     const engine = createPeakShavingEngine({ ...bare.io, ctx });
     const status = await engine.tick();
     expect(status.state).toBe("blocked");
@@ -2434,6 +2456,7 @@ describe("peak-shaving engine — a register it may not write", () => {
         m.role === "setting.battery.max_charge_current" ? { ...m, access: "r" as const } : m,
       ),
     });
+    h.set.ctx(ctx);
     const status = await createPeakShavingEngine({ ...h.io, ctx }).tick();
     expect(h.writes).toEqual([]);
     expect(status.lastError).toContain("not writable");
@@ -2480,6 +2503,7 @@ describe("peak-shaving engine — snapshots it cannot replay", () => {
     const h = harness();
     h.set.state({ "test-profile:peakShaving:sell": { previousValue: 8000, capturedAt: CAPTURED } });
     const ctx = buildProfileContext(profileWith({ "setting.solar_sell.max_power": "" }));
+    h.set.ctx(ctx);
     const engine = createPeakShavingEngine({ ...h.io, ctx });
     await engine.release();
     expect(h.writes).toEqual([]);
@@ -2569,6 +2593,7 @@ describe("peak-shaving engine — grid charging inside a window", () => {
         "setting.battery.max_grid_charge_current": GRID_CHARGE_A_KEY,
       }),
     );
+    h.set.ctx(ctx);
     const io: AutomationIO = {
       ...h.io,
       ctx,

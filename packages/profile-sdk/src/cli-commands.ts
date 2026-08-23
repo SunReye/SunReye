@@ -34,7 +34,7 @@ import {
   type VersionStatus,
 } from "./repo";
 import { scaffoldFromCsv } from "./scaffold";
-import { validateProfile } from "./validate";
+import { lintProfile, validateProfile } from "./validate";
 import pkg from "../package.json";
 import type { BumpLevel, CanonicalRole, ProfileData } from "@SunReye/inverter-core";
 
@@ -78,11 +78,28 @@ export function flags(args: string[]): Record<string, string> {
   return out;
 }
 
-export async function cmdValidate(path: string | undefined): Promise<void> {
+/**
+ * Strict validation plus the semantic lints. Lint findings are warnings by
+ * default and a hard failure under `--strict`, so the same command can advise
+ * an author and gate a CI run.
+ */
+export async function cmdValidate(
+  path: string | undefined,
+  opts: Record<string, string> = {},
+): Promise<void> {
   if (!path) fail("usage: profile validate <file>");
-  const { ok, issues } = validateProfile(await readJson(path));
+  const data = await readJson(path);
+  const { ok, issues } = validateProfile(data);
   if (!ok) failIssues(`✗ ${path} is invalid:`, issues);
+
+  const warnings = lintProfile(data as ProfileData);
+  if (warnings.length > 0 && "strict" in opts) {
+    failIssues(`✗ ${path} failed ${warnings.length} lint(s):`, warnings);
+  }
   console.log(`✓ ${path} is a valid profile`);
+  if (warnings.length === 0) return;
+  console.log(`\n⚠ ${warnings.length} lint warning(s) — re-run with --strict to gate on them:`);
+  for (const w of warnings) console.log(`  • ${w}`);
 }
 
 /** Print the unmapped-role section of a coverage report, grouped by role prefix. */

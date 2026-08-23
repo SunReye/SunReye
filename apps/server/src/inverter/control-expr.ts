@@ -14,6 +14,7 @@
 import { type ControlLock, type ControlState, controlStateKey } from "@SunReye/db/control-state";
 import type { InverterSample, MetricDef } from "@SunReye/inverter-core";
 import type { ProfileContext } from "./inverter";
+import { WriteRejectedError } from "./write-rejected";
 
 /** Persistent state for stateful controls (snapshotToggle). */
 export interface ControlStore {
@@ -99,7 +100,7 @@ async function releaseSnapshot(
   engaged: ControlLock,
 ): Promise<void> {
   const invalid = io.ctx.validateWrite(target, engaged.previousValue);
-  if (invalid) throw new Error(`cannot unlock ${def.key}: ${invalid}`);
+  if (invalid) throw new WriteRejectedError(`cannot unlock ${def.key}: ${invalid}`);
   await io.write(target, engaged.previousValue);
   const rest = { ...state };
   delete rest[stateKey];
@@ -128,22 +129,52 @@ async function snapshotToggle(
     return;
   }
 
-  throw new Error(`snapshotToggle expects 0 or 1, got ${value}`);
+  throw new WriteRejectedError(`snapshotToggle expects 0 or 1, got ${value}`);
+}
+
+type PresetWrite = { target: string; value: number };
+
+/**
+ * Refuse the whole preset if the profile refuses any target. Validation is a
+ * fact about the profile, not about the wire, so nothing forces it to interleave
+ * with the writes — and interleaving is what left a preset half-applied.
+ */
+function preflightPreset(writes: PresetWrite[], io: ControlIO): void {
+  for (const w of writes) {
+    const invalid = io.ctx.validateWrite(w.target, w.value);
+    if (invalid) throw new WriteRejectedError(`preset target "${w.target}": ${invalid}`);
+  }
+}
+
+/**
+ * Apply in order, naming what landed if the device stops accepting part-way.
+ * Modbus has no multi-register atomicity, so a partial apply here is a real
+ * state the operator has to be told about — unlike a validation refusal, which
+ * is avoidable and therefore avoided.
+ */
+async function applyPreset(writes: PresetWrite[], io: ControlIO): Promise<void> {
+  const applied: string[] = [];
+  for (const w of writes) {
+    try {
+      await io.write(w.target, w.value);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      throw new Error(
+        `preset stopped at "${w.target}": ${message} — applied: ${applied.join(", ") || "nothing"}`,
+      );
+    }
+    applied.push(`${w.target}=${w.value}`);
+  }
 }
 
 async function preset(
-  { writes }: { writes: { target: string; value: number }[] },
+  { writes }: { writes: PresetWrite[] },
   value: number,
   io: ControlIO,
 ): Promise<void> {
   if (!value) return; // momentary: only a truthy write applies the preset
-  // Not transactional — Modbus has no multi-register atomicity; stop + report on
-  // the first failure, leaving earlier writes applied.
-  for (const w of writes) {
-    const invalid = io.ctx.validateWrite(w.target, w.value);
-    if (invalid) throw new Error(`preset target "${w.target}": ${invalid}`);
-    await io.write(w.target, w.value);
-  }
+  preflightPreset(writes, io);
+  await applyPreset(writes, io);
 }
 
 /** The current reported value for a control, from persisted state. */

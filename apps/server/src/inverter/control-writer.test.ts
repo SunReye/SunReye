@@ -19,7 +19,7 @@ import type { ControlState } from "@SunReye/db/control-state";
 import { controlStateKey } from "@SunReye/db/control-state";
 
 import type { ControlStore } from "./control-expr";
-import { createControlWriter } from "./control-writer";
+import { WriteRejectedError, createControlWriter } from "./control-writer";
 import { buildProfileContext, type ProfileContext } from "./inverter";
 
 const PROFILE_ID = "test-inv";
@@ -39,6 +39,7 @@ function profile(): InverterProfile {
         group: "settings",
         addr: 109,
         access: "rw",
+        range: { min: 0, max: 100 },
       }),
       control<typeof TARGET>("settings/lock", {
         label: "Lock",
@@ -149,12 +150,63 @@ describe("the register-write funnel", () => {
     expect((source as FakeSource).writes).toEqual([{ key: TARGET, value: 60 }]);
   });
 
-  test("a write to a key the profile does not define is still handed to the source", async () => {
+  test("a write to a key the profile does not define is refused, never handed on", async () => {
+    // The funnel is the only validation point every entry path shares, so an
+    // unknown key must die here rather than reach the transport as a guess.
     const writer = make();
 
-    await writer.write("vendor.undocumented", 3);
+    await expect(writer.write("vendor.undocumented", 3)).rejects.toThrow(
+      "Unknown entity: vendor.undocumented",
+    );
+    expect((source as FakeSource).writes).toEqual([]);
+  });
 
-    expect((source as FakeSource).writes).toEqual([{ key: "vendor.undocumented", value: 3 }]);
+  describe("the value the register accepts", () => {
+    test("a value above the register's maximum is refused before the source is touched", async () => {
+      const writer = make();
+
+      await expect(writer.write(TARGET, 9999)).rejects.toThrow("Value 9999 is above maximum 100");
+      expect((source as FakeSource).writes).toEqual([]);
+    });
+
+    test("a value below the register's minimum is refused", async () => {
+      const writer = make();
+
+      await expect(writer.write(TARGET, -1)).rejects.toThrow("Value -1 is below minimum 0");
+      expect((source as FakeSource).writes).toEqual([]);
+    });
+
+    test("both bounds are inclusive, so the extremes still reach the source", async () => {
+      const writer = make();
+
+      await writer.write(TARGET, 0);
+      await writer.write(TARGET, 100);
+
+      expect((source as FakeSource).writes).toEqual([
+        { key: TARGET, value: 0 },
+        { key: TARGET, value: 100 },
+      ]);
+    });
+
+    test("a read-only register is refused however it is addressed", async () => {
+      ctx = buildProfileContext(plainProfile());
+      const writer = make();
+
+      await expect(writer.write("battery.soc", 50)).rejects.toThrow(
+        "Entity is not writable: battery.soc",
+      );
+      expect((source as FakeSource).writes).toEqual([]);
+    });
+
+    test("a rejection is a WriteRejectedError, so an entry point can answer 400", async () => {
+      // Every caller has to tell "the value is wrong" from "the device failed":
+      // one is the user's mistake, the other is the inverter's.
+      const writer = make();
+
+      const err = await writer.write(TARGET, 9999).catch((e: unknown) => e);
+
+      expect(err).toBeInstanceOf(WriteRejectedError);
+    });
   });
 
   test("a transport failure on write is surfaced, not swallowed", async () => {
@@ -213,6 +265,18 @@ describe("the register-write funnel", () => {
         { key: TARGET, value: 0 },
         { key: TARGET, value: 30 },
       ]);
+      expect(state()).toEqual({});
+    });
+
+    test("a value the control's enum does not list is refused before the interpreter runs", async () => {
+      // The funnel validates ahead of the controlExpr branch, so a composite
+      // write is covered by the same rule as a plain register write — and the
+      // store is never touched by a value the control never accepted.
+      const { store, state } = memStore();
+      const writer = make({ store });
+
+      await expect(writer.write(LOCK, 2)).rejects.toThrow("Value must be one of: 0, 1");
+      expect((source as FakeSource).writes).toEqual([]);
       expect(state()).toEqual({});
     });
 

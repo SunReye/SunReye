@@ -4,7 +4,7 @@
  *
  *   profile init [dir] [--pkg n] [--id i] [--manufacturer m] [--yes]
  *   profile upgrade [dir] [--force]    refresh the AI authoring guide (AGENTS.md + CLAUDE.md)
- *   profile validate <file>            strict validation + semantic lints
+ *   profile validate <file> [--strict] strict validation + semantic lints
  *   profile coverage <file>            which renderable roles are mapped
  *   profile scaffold <csv> --id <id> --name <n> --manufacturer <m> [--version v]
  *   profile build <entries...> --out <dir> [--name n] [--maintainer m] [--bump patch|minor|major]
@@ -39,7 +39,7 @@ switch (command) {
     break;
   }
   case "validate":
-    await cmdValidate(rest[0]);
+    await cmdValidate(rest[0], flags(rest.slice(1)));
     break;
   case "coverage":
     await cmdCoverage(rest[0]);

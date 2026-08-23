@@ -18,6 +18,10 @@ import { Elysia, t } from "elysia";
 import { rangeNote, valueSchema } from "./entity-schema";
 import { queryRawHistory, queryRollup } from "../shared/history";
 import type { ProfileContext } from "./inverter";
+import { WriteRejectedError } from "./write-rejected";
+
+/** Elysia's `status` helper, as narrowly as this file needs it. */
+type StatusFn = (code: 400, body: { error: string }) => unknown;
 import { log } from "../shared/logging";
 import { liveState } from "../shared/state";
 
@@ -219,8 +223,17 @@ export function entitiesApi(deps: EntitiesApiDeps) {
       const accepts = rangeNote(constraint, metric.unit);
       return acc.put(
         `/entities/${metric.key}`,
-        async ({ body }: { body: { value: number } }) => {
-          await deps.write(metric.key, body.value);
+        async ({ body, status }: { body: { value: number }; status: StatusFn }) => {
+          try {
+            await deps.write(metric.key, body.value);
+          } catch (err) {
+            // The generated body schema catches most bad values, but not the
+            // enum and composite-control cases the funnel decides. Those are
+            // still the caller's mistake, so this route must answer 400 like the
+            // internal command endpoint does — not leak a 500.
+            if (err instanceof WriteRejectedError) return status(400, { error: err.message });
+            throw err;
+          }
           return { ok: true, key: metric.key, value: body.value };
         },
         {
