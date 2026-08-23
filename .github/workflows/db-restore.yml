@@ -85,8 +85,8 @@ jobs:
           DATABASE_URL="$SOURCE_URL" bun run --cwd packages/db db:migrate
 
       # >7 days at 30 s resolution over two inverters and two metrics: enough
-      # to cross compress_after (1 day) and the raw retention window (7 days),
-      # small enough to seed in seconds.
+      # to cross compress_after (2 hours, see #110) and the raw retention window
+      # (7 days), small enough to seed in seconds.
       - name: Seed a fixture spanning more than the raw retention window
         run: |
           psql -d "$SOURCE_URL" -v ON_ERROR_STOP=1 <<'SQL'
@@ -136,9 +136,11 @@ jobs:
       # The shipped dump.sh, sourced through the bashio shim — not a copy of it.
       - name: Dump both modes with the addon's dump.sh
         run: |
+          # dump.sh reads DATABASE_URL and runs under `set -u`, so it must be
+          # exported explicitly — SOURCE_URL is this workflow's name for it.
           for mode in excluded full; do
             full=false; [ "$mode" = full ] && full=true
-            bash -c "source scripts/ci/bashio-shim.sh
+            DATABASE_URL="$SOURCE_URL" bash -c "source scripts/ci/bashio-shim.sh
                      BACKUP_FULL=$full BACKUPS_KEEP=5 . sunreye/rootfs/usr/lib/sunreye/dump.sh $mode"
           done
           ls -l "$BACKUP_DIR"
