@@ -4,17 +4,25 @@ import { SimulatedInverter } from "./simulator";
 import type { InverterProfile, MetricDef, MetricValues, SimContext } from "./types";
 
 /** A metric with the defaults the simulator cares about; override per test. */
-const m = (over: Partial<MetricDef> & { key: string }): MetricDef => ({
-  topic: over.key.replaceAll(".", "/"),
-  label: over.key,
-  unit: null,
-  group: "inverter",
-  type: "U_WORD",
-  addresses: [1],
-  scale: 1,
-  access: "r",
-  ...over,
-});
+const m = ({
+  type = "U_WORD",
+  addresses = [1],
+  ...over
+}: Partial<MetricDef> & { key: string }): MetricDef =>
+  ({
+    topic: over.key.replaceAll(".", "/"),
+    label: over.key,
+    unit: null,
+    group: "inverter",
+    type,
+    addresses,
+    // The legacy mirror stays in step with the binding, exactly as
+    // `hydrateProfile` keeps it.
+    binding: { via: "modbus", addr: addresses, type },
+    scale: 1,
+    access: "r",
+    ...over,
+  }) as MetricDef;
 
 const profileOf = (metrics: MetricDef[], simulate?: (ctx: SimContext) => MetricValues) =>
   ({

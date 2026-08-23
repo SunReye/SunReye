@@ -1,7 +1,8 @@
 import { z } from "zod";
 
 import { ROLE_CATALOG, ROLE_NAMES, type RoleSpec } from "./roles";
-import type { ComputeExpr, ControlExpr, ProfileData } from "./profile-data";
+import { bindingFor, type ComputeExpr, type ControlExpr, type ProfileData } from "./profile-data";
+import type { Binding } from "./types";
 
 /**
  * Strict runtime validator for {@link ProfileData}. This is the single gate for
@@ -61,6 +62,21 @@ const controlExprSchema = z.union([
   }),
 ]);
 
+/**
+ * The tagged binding. A `via` the runtime does not implement fails *here*, when
+ * the profile is parsed — the point of tagging the union rather than probing
+ * optional fields at read time.
+ */
+const bindingSchema = z.discriminatedUnion("via", [
+  z.strictObject({
+    via: z.literal("modbus"),
+    addr: z.array(z.number().int().min(0).max(65535)),
+    type: registerTypeSchema,
+  }),
+  z.strictObject({ via: z.literal("compute"), expr: computeExprSchema }),
+  z.strictObject({ via: z.literal("control"), expr: controlExprSchema }),
+]);
+
 const metricDataSchema = z.strictObject({
   key: z.string().min(1),
   topic: z.string().min(1),
@@ -72,6 +88,7 @@ const metricDataSchema = z.strictObject({
   scale: z.number(),
   offset: z.number().optional(),
   access: z.enum(["r", "rw"]),
+  binding: bindingSchema.optional(),
   computeExpr: computeExprSchema.optional(),
   controlExpr: controlExprSchema.optional(),
   role: z.enum(ROLE_NAMES).optional(),
@@ -139,9 +156,76 @@ function controlRefs(expr: ControlExpr): string[] {
   return expr.preset.writes.map((w) => w.target);
 }
 
-export const profileDataSchema = z
+/** Structural equality of two bindings (key order and identity aside). */
+function sameBinding(a: Binding, b: Binding): boolean {
+  if (a.via !== b.via) return false;
+  if (a.via === "modbus") {
+    const other = b as Extract<Binding, { via: "modbus" }>;
+    return (
+      a.type === other.type &&
+      a.addr.length === other.addr.length &&
+      a.addr.every((x, i) => x === other.addr[i])
+    );
+  }
+  return (
+    JSON.stringify(a.expr) === JSON.stringify((b as Extract<Binding, { via: "compute" }>).expr)
+  );
+}
+
+/**
+ * Per-version binding rules: v1 metrics carry none (the upcast happens on load,
+ * one-way), v2 metrics must carry one that agrees with the legacy mirror the
+ * upcast fills in. A disagreement means an author patched an address without
+ * re-deriving the binding — silently reading the wrong register otherwise.
+ */
+function bindingIssues(m: z.infer<typeof metricDataSchema>, version: number): FieldIssue[] {
+  if (version === 1) {
+    return m.binding ? [{ field: "binding", message: "binding requires schemaVersion 2" }] : [];
+  }
+  if (!m.binding) {
+    return [{ field: "binding", message: "schemaVersion 2 requires a binding" }];
+  }
+  // `bindingFor` returns `m.binding` when present, so passing `m` straight in
+  // compared the binding to itself and this arm could never fire. Derive from the
+  // mirror alone — that is the thing we are checking it against.
+  const fromMirror = bindingFor({
+    ...(m as Parameters<typeof bindingFor>[0]),
+    binding: undefined,
+  });
+  return sameBinding(m.binding, fromMirror)
+    ? []
+    : [{ field: "binding", message: "binding disagrees with type/addresses" }];
+}
+
+/**
+ * A `schemaVersion: 2` profile states its addressing only in `binding`, so fill
+ * the legacy `type`/`addresses`/`computeExpr`/`controlExpr` mirror from it before
+ * validation — every semantic lint below (widths, duplicate addresses, compute
+ * references) then runs unchanged on either version. Explicit fields win, so a
+ * profile that carries both is checked for agreement rather than overwritten.
+ */
+function fillLegacyMirror(metric: unknown): unknown {
+  if (typeof metric !== "object" || metric === null) return metric;
+  const binding = (metric as { binding?: unknown }).binding;
+  if (typeof binding !== "object" || binding === null) return metric;
+  const b = binding as { via?: unknown; addr?: unknown; type?: unknown; expr?: unknown };
+  const mirror: Record<string, unknown> = { type: "U_WORD", addresses: [] };
+  if (b.via === "modbus") Object.assign(mirror, { type: b.type, addresses: b.addr });
+  if (b.via === "compute") mirror.computeExpr = b.expr;
+  if (b.via === "control") mirror.controlExpr = b.expr;
+  return { ...mirror, ...metric };
+}
+
+function upcastForValidation(input: unknown): unknown {
+  if (typeof input !== "object" || input === null) return input;
+  const data = input as { schemaVersion?: unknown; metrics?: unknown };
+  if (data.schemaVersion !== 2 || !Array.isArray(data.metrics)) return input;
+  return { ...data, metrics: data.metrics.map(fillLegacyMirror) };
+}
+
+const coreProfileSchema = z
   .strictObject({
-    schemaVersion: z.literal(1),
+    schemaVersion: z.union([z.literal(1), z.literal(2)]),
     id: z
       .string()
       .min(1)
@@ -177,6 +261,11 @@ export const profileDataSchema = z
     // --- register width matches type ---
     metrics.forEach((m, i) => {
       for (const issue of widthIssues(m)) at(i, issue.field, issue.message);
+    });
+
+    // --- the binding matches the schema version (and the mirror) ---
+    metrics.forEach((m, i) => {
+      for (const issue of bindingIssues(m, data.schemaVersion)) at(i, issue.field, issue.message);
     });
 
     // --- role-shape rules from the catalog ---
@@ -222,6 +311,13 @@ export const profileDataSchema = z
       }
     });
   });
+
+/**
+ * Strict validator for either schema version. A `schemaVersion: 2` profile has
+ * its legacy mirror filled in first, so the parsed value is the same in-memory
+ * shape a v1 profile yields plus its `binding`.
+ */
+export const profileDataSchema = z.preprocess(upcastForValidation, coreProfileSchema);
 
 /** Validate untrusted input and return typed {@link ProfileData} (throws on failure). */
 export function parseProfileData(input: unknown): ProfileData {

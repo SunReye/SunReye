@@ -240,9 +240,13 @@ describe("buildSource", () => {
     ...over,
   });
 
-  /** The connection the source was actually constructed with. */
+  /**
+   * The connection the source was actually constructed with. It lives on the
+   * source's `DeviceTransport` — the connection details are Modbus's business,
+   * not the profile wrapper's.
+   */
   const connectionOf = (source: unknown) =>
-    (source as { conn?: Record<string, unknown> }).conn ?? {};
+    (source as { transport?: { conn?: Record<string, unknown> } }).transport?.conn ?? {};
 
   test("binds the source to the profile and the saved connection", () => {
     const hydrated = hydrateProfile(profile);

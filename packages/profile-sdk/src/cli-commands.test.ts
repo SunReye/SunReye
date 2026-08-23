@@ -383,6 +383,37 @@ describe("cmdBuild", () => {
     expect(io.err.join("\n")).toContain("requires --out");
   });
 
+  test("picks up a schemaVersion 2 export — what the authoring builders now emit", async () => {
+    io = captureIo();
+    const entry = writeFixture(
+      "v2-entry.ts",
+      `export const p = ${JSON.stringify(
+        defineProfile({
+          id: "v2-one",
+          name: "V2",
+          manufacturer: "ACME",
+          version: "1.0.0",
+          metrics: [
+            metric("battery/soc", {
+              label: "Battery SOC",
+              group: "battery",
+              unit: "%",
+              role: "battery.soc",
+              addr: 588,
+              range: { min: 0, max: 100 },
+            }),
+          ],
+        }),
+      )};`,
+    );
+    const out = join(dir, "v2-out");
+    await cmdBuild([entry], { out });
+    const index = JSON.parse(await Bun.file(join(out, "index.json")).text()) as {
+      profiles: { id: string }[];
+    };
+    expect(index.profiles.map((p) => p.id)).toEqual(["v2-one"]);
+  });
+
   test("fails when a module exports no profiles", async () => {
     io = captureIo();
     const empty = writeFixture("no-profiles.ts", "export const x = 1;");

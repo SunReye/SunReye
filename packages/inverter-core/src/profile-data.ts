@@ -1,5 +1,12 @@
 import type { CanonicalRole } from "./roles";
-import type { InverterProfile, MetricBase, MetricDef, MetricValues, SimulateFn } from "./types";
+import type {
+  Binding,
+  InverterProfile,
+  MetricBase,
+  MetricDef,
+  MetricValues,
+  SimulateFn,
+} from "./types";
 
 /**
  * Serializable inverter profile — the downloadable artifact and DB row. It is a
@@ -10,8 +17,17 @@ import type { InverterProfile, MetricBase, MetricDef, MetricValues, SimulateFn }
  * downstream of the registry has to know a profile came from data vs. code.
  */
 export interface ProfileData {
-  /** Bumped when the serialized shape changes; validated on load. */
-  schemaVersion: 1;
+  /**
+   * Bumped when the serialized shape changes; validated on load.
+   *
+   * - `1` addressing as `type` + `addresses` on every metric.
+   * - `2` addressing as a tagged {@link Binding}.
+   *
+   * A v1 profile is upcast to v2 on load ({@link hydrateProfile}) so every
+   * already-published profile keeps working. The upcast is one-way: nothing
+   * downcasts a binding back to `type` + `addresses`.
+   */
+  schemaVersion: 1 | 2;
   id: string;
   name: string;
   manufacturer: string;
@@ -96,7 +112,12 @@ export type TopicToKey<T extends string> = T extends `${infer H}/${infer R}`
  * {@link MetricDef} without runtime-only fields: `compute` → `computeExpr`.
  * Everything else is shared, so it comes from {@link MetricBase}.
  */
-export interface MetricDataDef extends MetricBase {
+export interface MetricDataDef extends Omit<MetricBase, "binding"> {
+  /**
+   * Addressing as a tagged union. Required at `schemaVersion: 2`, forbidden at
+   * `1` — a v1 metric gets its binding from the upcast in {@link hydrateProfile}.
+   */
+  binding?: Binding;
   /** Declarative derived value; mutually exclusive with reading from the wire. */
   computeExpr?: ComputeExpr;
   /**
@@ -158,17 +179,32 @@ export function compileComputeExpr(expr: ComputeExpr): (values: MetricValues) =>
   };
 }
 
+/**
+ * The {@link Binding} a serialized metric describes — its own when it carries
+ * one (v2), otherwise derived from the legacy `type`/`addresses`/expression
+ * fields (v1). This is the whole v1 -> v2 upcast: a control or computed metric
+ * owns no register, so it becomes a `control`/`compute` arm rather than a modbus
+ * binding with an empty address list.
+ */
+export function bindingFor(m: MetricDataDef): Binding {
+  if (m.binding) return m.binding;
+  if (m.controlExpr) return { via: "control", expr: m.controlExpr };
+  if (m.computeExpr) return { via: "compute", expr: m.computeExpr };
+  return { via: "modbus", addr: [...m.addresses], type: m.type };
+}
+
 function toMetricDef(m: MetricDataDef): MetricDef {
   // `computeAggregate` is author-time only; resolution strips it, but drop it
   // here too so a stray token can never leak into the runtime metric.
   const { computeExpr, computeAggregate: _computeAggregate, ...rest } = m;
+  const base = { ...rest, binding: bindingFor(m) };
   return computeExpr
     ? {
-        ...rest,
+        ...base,
         compute: compileComputeExpr(computeExpr),
         computeInputs: computeExprInputs(computeExpr),
       }
-    : rest;
+    : base;
 }
 
 /**

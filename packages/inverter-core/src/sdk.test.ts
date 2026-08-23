@@ -4,6 +4,7 @@ import { control, defineProfile, metric } from "./define";
 import { compileComputeExpr, hydrateProfile, type ProfileData } from "./profile-data";
 import { ROLE_CATALOG, ROLE_NAMES } from "./roles";
 import { profileDataSchema, safeParseProfileData } from "./schema";
+import type { RegisterType } from "./types";
 
 /** A minimal valid profile built via the SDK, reused across cases. */
 function goodProfile(): ProfileData {
@@ -121,7 +122,7 @@ describe("profileDataSchema", () => {
 
   test("rejects duplicate wire addresses", () => {
     const p = goodProfile();
-    p.metrics[2]!.addresses = [672]; // clash with pv1 power
+    setAddressing(p, 2, { addresses: [672] }); // clash with pv1 power
     expect(safeParseProfileData(p).success).toBe(false);
   });
 
@@ -145,13 +146,13 @@ describe("profileDataSchema", () => {
 
   test("rejects a U_DWORD without exactly two addresses", () => {
     const p = goodProfile();
-    p.metrics[2]!.type = "U_DWORD"; // soc has a single address
+    setAddressing(p, 2, { type: "U_DWORD" }); // soc has a single address
     expect(safeParseProfileData(p).success).toBe(false);
   });
 
   test("rejects computeExpr referencing an unknown key", () => {
     const p = goodProfile();
-    p.metrics[5]!.computeExpr = { sum: ["dc.pv1.power", "does.not.exist"] };
+    setCompute(p, 5, { sum: ["dc.pv1.power", "does.not.exist"] });
     expect(safeParseProfileData(p).success).toBe(false);
   });
 
@@ -165,7 +166,7 @@ describe("profileDataSchema", () => {
         computeExpr: { scale: ["dc.total_power", 2] },
       }),
     );
-    p.metrics[5]!.computeExpr = { sum: ["dc.derived"] };
+    setCompute(p, 5, { sum: ["dc.derived"] });
     expect(safeParseProfileData(p).success).toBe(false);
   });
 
@@ -176,22 +177,74 @@ describe("profileDataSchema", () => {
 
   test("accepts a valid clamp computeExpr", () => {
     const p = goodProfile();
-    p.metrics[5]!.computeExpr = { clamp: { key: "dc.pv1.power", min: 0 } };
+    setCompute(p, 5, { clamp: { key: "dc.pv1.power", min: 0 } });
     expect(safeParseProfileData(p).success).toBe(true);
   });
 
   test("rejects a clamp with neither min nor max (no-op)", () => {
     const p = goodProfile();
-    p.metrics[5]!.computeExpr = { clamp: { key: "dc.pv1.power" } } as never;
+    setCompute(p, 5, { clamp: { key: "dc.pv1.power" } });
     expect(safeParseProfileData(p).success).toBe(false);
   });
 
   test("rejects a clamp referencing an unknown key", () => {
     const p = goodProfile();
-    p.metrics[5]!.computeExpr = { clamp: { key: "does.not.exist", min: 0 } };
+    setCompute(p, 5, { clamp: { key: "does.not.exist", min: 0 } });
     expect(safeParseProfileData(p).success).toBe(false);
   });
 });
+
+/**
+ * Patch a metric's addressing the way an author re-deriving it would.
+ *
+ * After #76 the binding is the source of truth and `defineProfile` emits v2, so
+ * moving only the legacy `type`/`addresses` mirror is invalid authoring — the
+ * agreement check fires and masks whichever lint the test is actually about.
+ * (Before that check was live, `rejects duplicate wire addresses` had started
+ * passing for the wrong reason.)
+ */
+function setAddressing(
+  p: ProfileData,
+  i: number,
+  over: { type?: RegisterType; addresses?: number[] },
+): void {
+  const m = p.metrics[i]!;
+  const type = over.type ?? m.type;
+  const addresses = over.addresses ?? m.addresses;
+  m.type = type;
+  m.addresses = addresses;
+  m.binding = { via: "modbus", addr: addresses, type };
+}
+
+/**
+ * Drop to the v1 wire shape: addressing lives only in `type`/`addresses`, so a
+ * test can patch the mirror freely without the v2 agreement check weighing in.
+ * Useful for the lints that are version-independent.
+ */
+function asV1(p: ProfileData): ProfileData {
+  return {
+    ...p,
+    schemaVersion: 1,
+    metrics: p.metrics.map(({ binding: _binding, ...rest }) => rest as (typeof p.metrics)[number]),
+  };
+}
+
+/**
+ * Set a metric's compute expression and its binding together — the same
+ * re-derivation `setAddressing` does, for the compute arm.
+ */
+function setCompute(p: ProfileData, i: number, expr: unknown): void {
+  const m = p.metrics[i]!;
+  m.computeExpr = expr as never;
+  m.binding = { via: "compute", expr: expr as never };
+}
+
+/** As {@link setCompute}, for the control arm. */
+function setControl(p: ProfileData, i: number, expr: unknown): void {
+  const m = p.metrics[i]!;
+  m.controlExpr = expr as never;
+  m.binding = { via: "control", expr: expr as never };
+}
 
 /** Every issue message the parse produced, so a rule is pinned to its wording. */
 const issues = (p: unknown): string[] => {
@@ -202,41 +255,44 @@ const issues = (p: unknown): string[] => {
 describe("profileDataSchema — register width", () => {
   test("a computed metric carrying addresses is rejected by name", () => {
     const p = goodProfile();
-    p.metrics[5]!.addresses = [700];
+    setAddressing(p, 5, { addresses: [700] });
     expect(issues(p)).toContain("computed metric must have no addresses");
   });
 
   test("RAW needs at least one address", () => {
     const p = goodProfile();
-    p.metrics[2]!.type = "RAW";
+    setAddressing(p, 2, { type: "RAW" });
     expect(issues(p)).toEqual([]);
-    p.metrics[2]!.addresses = [];
+    setAddressing(p, 2, { addresses: [] });
     expect(issues(p)).toContain("RAW metric needs at least one address");
   });
 
   test("RAW accepts an arbitrary word count", () => {
     const p = goodProfile();
-    p.metrics[2]!.type = "RAW";
-    p.metrics[2]!.addresses = [700, 701, 702];
+    setAddressing(p, 2, { type: "RAW", addresses: [700, 701, 702] });
     expect(issues(p)).toEqual([]);
   });
 
   test("a single-word type reports the count it wanted and got", () => {
     const p = goodProfile();
-    p.metrics[2]!.addresses = [700, 701];
+    setAddressing(p, 2, { addresses: [700, 701] });
     expect(issues(p)).toContain("U_WORD needs 1 address(es), got 2");
   });
 
   test("U_DWORD wants exactly two addresses", () => {
     const p = goodProfile();
-    p.metrics[2]!.type = "U_DWORD";
+    setAddressing(p, 2, { type: "U_DWORD" });
     expect(issues(p)).toContain("U_DWORD needs 2 address(es), got 1");
-    p.metrics[2]!.addresses = [700, 701];
+    setAddressing(p, 2, { addresses: [700, 701] });
     expect(issues(p)).toEqual([]);
   });
 
   test("a control that is also computed and addressed reports both faults", () => {
-    const p = controlProfile();
+    // Asserted at v1. The faults are version-independent, but a metric that is
+    // simultaneously a control, computed AND addressed has no coherent binding
+    // either — so at v2 the agreement check adds a third issue and this
+    // assertion would stop being about the two faults it names.
+    const p = asV1(controlProfile());
     p.metrics[1]!.computeExpr = { sum: ["settings.max_discharge"] };
     p.metrics[1]!.addresses = [200];
     expect(issues(p)).toEqual([
@@ -301,15 +357,15 @@ describe("profileDataSchema — controlExpr", () => {
 
   test("accepts a valid preset control", () => {
     const p = controlProfile();
-    p.metrics[1]!.controlExpr = {
+    setControl(p, 1, {
       preset: { writes: [{ target: "settings.max_discharge", value: 5 }] },
-    };
+    });
     expect(safeParseProfileData(p).success).toBe(true);
   });
 
   test("rejects a control targeting an unknown key", () => {
     const p = controlProfile();
-    p.metrics[1]!.controlExpr = { snapshotToggle: { target: "does.not.exist", lockedValue: 0 } };
+    setControl(p, 1, { snapshotToggle: { target: "does.not.exist", lockedValue: 0 } });
     expect(safeParseProfileData(p).success).toBe(false);
   });
 
@@ -333,13 +389,13 @@ describe("profileDataSchema — controlExpr", () => {
 
   test("rejects a control metric that carries addresses", () => {
     const p = controlProfile();
-    p.metrics[1]!.addresses = [200];
+    setAddressing(p, 1, { addresses: [200] });
     expect(safeParseProfileData(p).success).toBe(false);
   });
 
   test("rejects a metric that is both a control and computed", () => {
     const p = controlProfile();
-    p.metrics[1]!.computeExpr = { sum: ["settings.max_discharge"] };
+    setCompute(p, 1, { sum: ["settings.max_discharge"] });
     expect(safeParseProfileData(p).success).toBe(false);
   });
 });

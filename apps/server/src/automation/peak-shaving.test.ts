@@ -37,13 +37,20 @@ const BATT_POWER_KEY = "battery.power";
 const GRID_KEY = "grid.power";
 const SELL_KEY = "settings.solar_sell_max_power";
 
-const metric = (over: Partial<MetricDef> & { key: string }): MetricDef => ({
+const metric = ({
+  type = "U_WORD",
+  addresses = [1],
+  ...over
+}: Partial<MetricDef> & { key: string }): MetricDef => ({
   topic: over.key.replaceAll(".", "/"),
   label: over.key,
   unit: null,
   group: "test",
-  type: "U_WORD",
-  addresses: [1],
+  type,
+  addresses,
+  // The codec addresses through the binding; the legacy mirror stays in step
+  // with it exactly as `hydrateProfile` keeps it.
+  binding: { via: "modbus", addr: addresses, type },
   scale: 1,
   access: "r",
   ...over,

@@ -50,6 +50,7 @@ const metric = (key: string, role: string, writable = false): MetricDef => ({
   group: "test",
   type: "U_WORD",
   addresses: [1],
+  binding: { via: "modbus", addr: [1], type: "U_WORD" },
   scale: 1,
   access: writable ? "rw" : "r",
   role: role as MetricDef["role"],

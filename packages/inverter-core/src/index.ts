@@ -1,8 +1,9 @@
 export * from "./types";
 export { decode, encodeWord, registerWidth, clampReports, resetClampReports } from "./codec";
 export type { ClampReport } from "./codec";
-export { ModbusInverter, planReads } from "./driver";
-export type { ReadBlock } from "./driver";
+export { ModbusInverter } from "./driver";
+export { ModbusTransport, planReads } from "./modbus-transport";
+export type { ReadBlock } from "./modbus-transport";
 export { applyComputed } from "./computed";
 export { SimulatedInverter } from "./simulator";
 export { genericSimulate } from "./generic-sim";
@@ -24,7 +25,7 @@ export {
   toManifestMetric,
   buildManifest,
 } from "./capabilities";
-export type { KindFallbackReport, KindInputs } from "./capabilities";
+export type { KindFallbackReport, KindInputs, KindResolvable } from "./capabilities";
 export { entityConstraint, writableMetrics, metricByKey } from "./entities";
 export type { EntityConstraint, EntityValueType } from "./entities";
 // Profile authoring SDK + serializable data model + validator.
@@ -33,6 +34,7 @@ export type { CanonicalRole, RoleSpec } from "./roles";
 export { control, defineFamily, defineProfile, defineVariant, metric, sumOf } from "./define";
 export type {
   BaseMetricOpts,
+  BoundMetricDef,
   ControlOpts,
   MetricAdd,
   MetricOpts,
@@ -42,7 +44,7 @@ export type {
   RoledMetricOpts,
   UnroledMetricOpts,
 } from "./define";
-export { compileComputeExpr, hydrateProfile } from "./profile-data";
+export { bindingFor, compileComputeExpr, hydrateProfile } from "./profile-data";
 export type {
   AggregateExpr,
   AggregateMatch,

@@ -33,22 +33,26 @@ function toSigned16(v: number): number {
  * from the real thing and would steer the automation engines.
  */
 function rawValue(def: MetricDef, regs: ReadonlyMap<number, number>): number | undefined {
-  const [a0, a1] = def.addresses;
-  if (a0 === undefined) return undefined;
-  const w0 = regs.get(a0);
+  // Addressing comes from the binding: a metric bound to anything but Modbus
+  // has no register to read, whatever the legacy mirror still says.
+  if (def.binding.via !== "modbus") return undefined;
+  const [a0, a1] = def.binding.addr;
+  const w0 = a0 === undefined ? undefined : regs.get(a0);
   if (w0 === undefined) return undefined;
-  switch (def.type) {
+  return fromWords(def.binding.type, w0, a1 === undefined ? undefined : regs.get(a1));
+}
+
+/** Combine the answered word(s) per encoding; `undefined` when one is missing. */
+function fromWords(type: RegisterType, w0: number, w1: number | undefined): number | undefined {
+  switch (type) {
     case "U_WORD":
       return w0;
     case "S_WORD":
       return toSigned16(w0);
-    case "U_DWORD": {
+    case "U_DWORD":
       // Low word first, high word second (LW,HW). Avoid bit-shift so the
       // 32-bit value stays an exact double rather than a signed int32.
-      if (a1 === undefined) return undefined;
-      const w1 = regs.get(a1);
       return w1 === undefined ? undefined : w0 + w1 * 0x10000;
-    }
     case "RAW":
       return undefined;
   }
@@ -130,7 +134,7 @@ const WORD_LIMITS: Record<"U_WORD" | "S_WORD", { min: number; max: number }> = {
  * not every caller passes through the API's range validation.
  */
 export function encodeWord(def: MetricDef, value: number): number {
-  const type = def.type === "S_WORD" ? "S_WORD" : "U_WORD";
+  const type = def.binding.via === "modbus" && def.binding.type === "S_WORD" ? "S_WORD" : "U_WORD";
   const raw = Math.round((value - (def.offset ?? 0)) / def.scale);
   const { min, max } = WORD_LIMITS[type];
   if (!Number.isFinite(raw) || raw < min || raw > max) {

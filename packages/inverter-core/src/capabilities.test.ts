@@ -15,18 +15,25 @@ import type { CanonicalRole, InverterProfile, MetricDef } from "./types";
  * Minimal {@link MetricDef} builder — every wire field defaulted so a test can
  * name only the fields it exercises (role, access, group, unit, kind, index).
  */
-function m(overrides: Partial<MetricDef> & { key: string }): MetricDef {
+function m({
+  type = "U_WORD",
+  addresses = [0],
+  ...overrides
+}: Partial<MetricDef> & { key: string }): MetricDef {
   return {
     topic: overrides.key.replaceAll(".", "/"),
     label: overrides.key,
     unit: null,
     group: "misc",
-    type: "U_WORD",
-    addresses: [0],
+    type,
+    addresses,
+    // The legacy mirror stays in step with the binding, exactly as
+    // `hydrateProfile` keeps it.
+    binding: { via: "modbus", addr: addresses, type },
     scale: 1,
     access: "r",
     ...overrides,
-  };
+  } as MetricDef;
 }
 
 function profile(metrics: MetricDef[]): InverterProfile {

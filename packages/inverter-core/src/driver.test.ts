@@ -1,6 +1,12 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 
-import type { InverterConnection, InverterProfile, MetricDef, RegisterType } from "./types";
+import type {
+  DeviceTransport,
+  InverterConnection,
+  InverterProfile,
+  MetricDef,
+  RegisterType,
+} from "./types";
 
 // --- fake Modbus transport -------------------------------------------------
 //
@@ -76,21 +82,28 @@ class FakeModbusRTU {
 const realModbus = await import("modbus-serial");
 mock.module("modbus-serial", () => ({ ...realModbus, default: FakeModbusRTU }));
 
-const { ModbusInverter, planReads, splitBlock } = await import("./driver");
+const { ModbusInverter } = await import("./driver");
+// Planning lives in the Modbus transport now; these tests are unchanged.
+const { planReads, splitBlock } = await import("./modbus-transport");
 
 /** Minimal raw register metric. */
-const raw = (key: string, addr: number, type: RegisterType = "U_WORD") =>
-  ({
+const raw = (key: string, addr: number, type: RegisterType = "U_WORD") => {
+  const addresses = type === "U_DWORD" ? [addr, addr + 1] : [addr];
+  return {
     key,
     topic: key,
     label: key,
     unit: null,
     group: "test",
     type,
-    addresses: type === "U_DWORD" ? [addr, addr + 1] : [addr],
+    addresses,
+    // Codec + planner address through the binding; the legacy mirror above stays
+    // in step with it exactly as `hydrateProfile` keeps it.
+    binding: { via: "modbus", addr: addresses, type },
     scale: 1,
     access: "r",
-  }) as MetricDef;
+  } as MetricDef;
+};
 
 /** Minimal computed metric — only `computeInputs` matters to the planner. */
 const derived = (key: string, computeInputs: string[]) =>
@@ -102,6 +115,7 @@ const derived = (key: string, computeInputs: string[]) =>
     group: "test",
     type: "U_WORD",
     addresses: [],
+    binding: { via: "compute", expr: { sum: computeInputs } },
     scale: 1,
     access: "r",
     compute: () => 0,
@@ -225,14 +239,21 @@ describe("splitBlock", () => {
 // --- ModbusInverter --------------------------------------------------------
 
 /** Metric with every field defaulted, so a test only states what it is about. */
-const def = (over: Partial<MetricDef> & { key: string }): MetricDef =>
+const def = ({
+  type = "U_WORD",
+  addresses = [],
+  ...over
+}: Partial<MetricDef> & { key: string }): MetricDef =>
   ({
     topic: over.key,
     label: over.key,
     unit: null,
     group: "test",
-    type: "U_WORD",
-    addresses: [],
+    type,
+    addresses,
+    // Codec + planner address through the binding; the legacy mirror above stays
+    // in step with it exactly as `hydrateProfile` keeps it.
+    binding: { via: "modbus", addr: addresses, type },
     scale: 1,
     access: "r",
     ...over,
@@ -633,6 +654,20 @@ describe("ModbusInverter write", () => {
     expect(wire.writes).toEqual([{ addr: 204, values: [95] }]);
   });
 
+  test("takes the register from the binding, not the deprecated mirror", async () => {
+    // The mirror disagrees on purpose; nothing hydrated looks like this, but it
+    // is the only way to prove which of the two the write path reads.
+    const skewed = {
+      ...writable({ key: "battery.max_soc", addresses: [999] }),
+      binding: { via: "modbus", addr: [204], type: "U_WORD" },
+    } as MetricDef;
+    const inv = new ModbusInverter(profileOf([skewed]), connection());
+
+    await inv.write("battery.max_soc", 95);
+
+    expect(wire.writes).toEqual([{ addr: 204, values: [95] }]);
+  });
+
   test("encodes the engineering value back through scale and offset", async () => {
     const inv = new ModbusInverter(
       profileOf([writable({ key: "battery.float_voltage", scale: 0.01, addresses: [99] })]),
@@ -688,6 +723,101 @@ describe("ModbusInverter write", () => {
 
     // The write waits for the *whole* poll, not just the block it collides with.
     expect(wire.order).toEqual(["read 100+1", "read 300+1", "read 500+1", "write 500"]);
+  });
+});
+
+// --- the transport seam ----------------------------------------------------
+//
+// `ModbusInverter` is the profile-shaped wrapper; everything Modbus lives in the
+// injected `DeviceTransport`. These tests drive it over a fake transport, so
+// they assert the wrapper's own contract (sample envelope, computed metrics,
+// delegation) with no wire underneath at all.
+
+describe("ModbusInverter over an injected transport", () => {
+  /** A DeviceTransport that answers from a fixed value map and records calls. */
+  const fake = (values: Record<string, number>) => {
+    const calls: string[] = [];
+    return {
+      calls,
+      transport: {
+        kind: "fake",
+        caps: { canWrite: true, pushBased: false },
+        async connect() {
+          calls.push("connect");
+        },
+        async read() {
+          calls.push("read");
+          return { values: { ...values } };
+        },
+        async write(key: string, value: number) {
+          calls.push(`write ${key}=${value}`);
+        },
+        async close() {
+          calls.push("close");
+        },
+      } satisfies DeviceTransport,
+    };
+  };
+
+  test("wraps the transport's values in a stamped sample", async () => {
+    const { transport, calls } = fake({ "battery.soc": 42 });
+    const inv = new ModbusInverter(
+      profileOf([def({ key: "battery.soc", addresses: [200] })]),
+      connection(),
+      transport,
+    );
+
+    const before = Date.now();
+    const sample = await inv.read();
+
+    expect(calls).toEqual(["read"]);
+    expect(sample.inverterId).toBe("test-inverter");
+    expect(sample.metrics).toEqual({ "battery.soc": 42 });
+    expect(Date.parse(sample.time)).toBeGreaterThanOrEqual(before - 1);
+    expect(wire.instances).toEqual([]); // no Modbus client was ever built
+  });
+
+  test("derives computed metrics above the seam, from whatever the transport read", async () => {
+    const { transport } = fake({ "dc.power": 1000, "ac.power": 900 });
+    const inv = new ModbusInverter(
+      profileOf([
+        def({ key: "dc.power", addresses: [100] }),
+        def({ key: "ac.power", addresses: [101] }),
+        def({
+          key: "inverter.efficiency",
+          range: { min: 0, max: 100 },
+          compute: (v) => (v["ac.power"]! / v["dc.power"]!) * 100,
+          computeInputs: ["ac.power", "dc.power"],
+        }),
+      ]),
+      connection(),
+      transport,
+    );
+
+    expect((await inv.read()).metrics["inverter.efficiency"]).toBe(90);
+  });
+
+  test("hands a write to the transport verbatim — keys and units, not registers", async () => {
+    const { transport, calls } = fake({});
+    const inv = new ModbusInverter(
+      profileOf([def({ key: "battery.max_soc", access: "rw", addresses: [204] })]),
+      connection(),
+      transport,
+    );
+
+    await inv.write("battery.max_soc", 95);
+
+    expect(calls).toEqual(["write battery.max_soc=95"]);
+    expect(wire.writes).toEqual([]);
+  });
+
+  test("closes through the transport", async () => {
+    const { transport, calls } = fake({});
+    const inv = new ModbusInverter(profileOf([raw("a", 100)]), connection(), transport);
+
+    await inv.close();
+
+    expect(calls).toEqual(["close"]);
   });
 });
 
