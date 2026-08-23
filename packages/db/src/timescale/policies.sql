@@ -38,17 +38,18 @@ SELECT add_continuous_aggregate_policy('daily_rollups',
 SELECT remove_compression_policy('metrics_raw', if_exists => TRUE);
 --> statement-breakpoint
 
-SELECT add_compression_policy('metrics_raw', INTERVAL '1 day', if_not_exists => TRUE);
+SELECT add_compression_policy('metrics_raw', INTERVAL '2 hours', if_not_exists => TRUE);
 --> statement-breakpoint
 
 -- Retention (cleanup). Drop raw 1 Hz rows after 7 days — the feasible floor.
 -- It must comfortably exceed the widest continuous-aggregate refresh window
 -- (daily_rollups start_offset = 3 days) so neither the refresh nor the
 -- real-time union ever reaches a chunk retention has dropped; 7d leaves margin.
--- By 7 days rows are compressed (>1d) and fully materialized into every rollup,
--- so nothing that reads the aggregates loses data. 7d = ~1 day uncompressed +
--- ~6 days compressed (~10 GB for one inverter); long-horizon history lives in
--- the rollups, not here. Shorten further per-inverter as inverters are added.
+-- By 7 days rows are compressed (>2h) and fully materialized into every rollup,
+-- so nothing that reads the aggregates loses data. 7d = ~1 day uncompressed
+-- (chunks are 1 day wide, so the current one is always hot) + ~6 days
+-- compressed; long-horizon history lives in the rollups, not here. Shorten
+-- further per-inverter as inverters are added.
 SELECT remove_retention_policy('metrics_raw', if_exists => TRUE);
 --> statement-breakpoint
 

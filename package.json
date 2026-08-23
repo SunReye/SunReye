@@ -44,6 +44,7 @@
     "test:floor": "bun scripts/coverage-floor.ts coverage/lcov.info",
     "test:mocks": "bun scripts/mock-hygiene.ts",
     "test:nginx": "bun scripts/nginx-locations.ts",
+    "test:storage": "bun scripts/storage-tuning.ts",
     "e2e": "bun run --cwd apps/web e2e",
     "e2e:install": "bun run --cwd apps/web e2e:install",
     "e2e:types": "bun run --cwd apps/web e2e:types",
