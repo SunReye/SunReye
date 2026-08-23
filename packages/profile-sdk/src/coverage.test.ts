@@ -2,7 +2,14 @@ import { describe, expect, test } from "bun:test";
 
 import { defineProfile, metric, ROLE_NAMES, type MetricDataDef } from "@SunReye/inverter-core";
 
-import { coverage, groupByPrefix, isIndexedRole, suggestAggregates } from "./coverage";
+import {
+  coverage,
+  groupByPrefix,
+  isIndexedRole,
+  missingRequiredRoles,
+  parseRequiredRoles,
+  suggestAggregates,
+} from "./coverage";
 
 const pv = (n: number): MetricDataDef =>
   metric(`dc/pv${n}/power`, {
@@ -195,5 +202,86 @@ describe("suggestAggregates", () => {
       metric("derived/x", { label: "X", group: "grid", computeExpr: { sum: ["ac.daily_bought"] } }),
     ]);
     expect(suggestAggregates(data)).toEqual([]);
+  });
+});
+
+describe("parseRequiredRoles", () => {
+  test("splits a comma-separated --require list, trimming and dropping blanks", () => {
+    expect(parseRequiredRoles(" battery.soc , grid.power ,")).toEqual({
+      roles: ["battery.soc", "grid.power"],
+      unknown: [],
+    });
+  });
+
+  test("an absent or empty flag requires nothing explicitly", () => {
+    expect(parseRequiredRoles(undefined)).toEqual({ roles: [], unknown: [] });
+    expect(parseRequiredRoles("")).toEqual({ roles: [], unknown: [] });
+  });
+
+  test("reports a name that is not a canonical role instead of silently ignoring it", () => {
+    // A typo must not quietly weaken the gate.
+    expect(parseRequiredRoles("battery.soc,battery.sock")).toEqual({
+      roles: ["battery.soc"],
+      unknown: ["battery.sock"],
+    });
+  });
+
+  test("dedupes a role listed twice", () => {
+    expect(parseRequiredRoles("grid.power,grid.power").roles).toEqual(["grid.power"]);
+  });
+});
+
+const socMetric = metric("battery/soc", {
+  label: "SOC",
+  group: "battery",
+  unit: "%",
+  role: "battery.soc",
+  addr: 588,
+  range: { min: 0, max: 100 },
+});
+
+describe("missingRequiredRoles — explicit floor", () => {
+  test("names the required role the profile does not map", () => {
+    expect(missingRequiredRoles(profile([socMetric]), ["battery.soc", "grid.power"])).toEqual([
+      "grid.power",
+    ]);
+  });
+
+  test("nothing is missing when every required role is mapped", () => {
+    expect(missingRequiredRoles(profile([socMetric]), ["battery.soc"])).toEqual([]);
+  });
+
+  test("an explicit floor replaces the family defaults rather than adding to them", () => {
+    // Asking only for pv.string.power must not also demand pv.total.power.
+    expect(missingRequiredRoles(profile([pv(1), socMetric]), ["pv.string.power"])).toEqual([]);
+  });
+});
+
+describe("missingRequiredRoles — per-family default", () => {
+  const batteryPower = metric("battery/power", {
+    label: "Battery Power",
+    group: "battery",
+    unit: "W",
+    type: "S_WORD",
+    role: "battery.power",
+    addr: 590,
+    flow: { positive: "Charging", negative: "Discharging" },
+  });
+
+  test("a profile with battery metrics but no soc is refused, naming battery.soc", () => {
+    // The exact bug: the whole battery section renders empty.
+    expect(missingRequiredRoles(profile([batteryPower]))).toContain("battery.soc");
+  });
+
+  test("a profile with no battery at all is not asked for battery.soc", () => {
+    expect(missingRequiredRoles(profile([unmapped]))).toEqual([]);
+  });
+
+  test("a pv profile must expose the whole-array total, not only per-string power", () => {
+    expect(missingRequiredRoles(profile([pv(1), pv(2)]))).toEqual(["pv.total.power"]);
+  });
+
+  test("the anchor being present satisfies its family", () => {
+    expect(missingRequiredRoles(profile([batteryPower, socMetric]))).toEqual([]);
   });
 });

@@ -29,6 +29,67 @@ export function coverage(data: ProfileData): CoverageReport {
   return { total: ROLE_NAMES.length, mappedCount: mapped.length, mapped, missing };
 }
 
+/**
+ * The one role each renderable family cannot do without: map anything in the
+ * family and this must be there or the whole section renders empty. A profile
+ * that maps no role from a family is simply a machine without it (no battery,
+ * no PV) and is never asked for its anchor — the floor scales itself to the
+ * hardware instead of demanding a fixed role list from every profile.
+ */
+export const FAMILY_ANCHOR_ROLES = {
+  battery: "battery.soc",
+  pv: "pv.total.power",
+  grid: "grid.power",
+  load: "load.power",
+} as const satisfies Record<string, CanonicalRole>;
+
+/**
+ * Parse a `--require a,b` role floor. Unknown names are returned separately
+ * rather than dropped: a typo must fail loudly instead of quietly weakening the
+ * gate to nothing.
+ */
+export function parseRequiredRoles(raw: string | undefined): {
+  roles: CanonicalRole[];
+  unknown: string[];
+} {
+  const names = (raw ?? "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter((s) => s !== "");
+  const known = new Set<string>(ROLE_NAMES);
+  const roles = [...new Set(names.filter((n) => known.has(n)))] as CanonicalRole[];
+  const unknown = [...new Set(names.filter((n) => !known.has(n)))];
+  return { roles, unknown };
+}
+
+/**
+ * The roles this profile must map: the explicit floor when one is given
+ * (it fully replaces the defaults — an author naming a floor means it), else
+ * the {@link FAMILY_ANCHOR_ROLES} of every family the profile touches.
+ */
+export function requiredRoles(
+  data: ProfileData,
+  explicit: readonly CanonicalRole[] = [],
+): CanonicalRole[] {
+  if (explicit.length > 0) return [...explicit];
+  const families = new Set(data.metrics.filter((m) => m.role).map((m) => m.role!.split(".")[0]!));
+  return Object.entries(FAMILY_ANCHOR_ROLES)
+    .filter(([family]) => families.has(family))
+    .map(([, anchor]) => anchor);
+}
+
+/**
+ * Required roles the profile leaves unmapped — the build refuses on a non-empty
+ * result, naming each one (in the spirit of `scripts/coverage-floor.ts`).
+ */
+export function missingRequiredRoles(
+  data: ProfileData,
+  explicit: readonly CanonicalRole[] = [],
+): CanonicalRole[] {
+  const present = new Set(data.metrics.map((m) => m.role).filter((r): r is CanonicalRole => !!r));
+  return requiredRoles(data, explicit).filter((r) => !present.has(r));
+}
+
 /** Group roles by their leading segment (`pv`, `battery`, `grid`, …) for display. */
 export function groupByPrefix(roles: CanonicalRole[]): Map<string, CanonicalRole[]> {
   const groups = new Map<string, CanonicalRole[]>();
