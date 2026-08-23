@@ -1,4 +1,12 @@
-import { mkdtempSync, readFileSync, readdirSync, utimesSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  utimesSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "bun:test";
@@ -147,17 +155,114 @@ describe("CI bashio shim", () => {
 });
 
 describe("dump.sh dump modes", () => {
-  test("the non-full mode excludes only metrics_raw chunk DATA", () => {
-    expect(DUMP_SH).toContain("--exclude-table-data=");
-    expect(DUMP_SH).toContain("hypertable_name = 'metrics_raw'");
+  /**
+   * Runs the *shipped* dump.sh with fake `psql`/`pg_dump` on PATH and the
+   * hardcoded /data/backups retargeted at a temp dir, and returns the flags
+   * pg_dump was actually handed.
+   *
+   * The exclusion used to be asserted by grepping dump.sh for a query
+   * fragment. That test passed while `backup_full: false` was still dumping
+   * every compressed chunk — a source-text assertion cannot see whether the
+   * rows the query returns reach pg_dump. This drives the real loop instead.
+   */
+  async function dumpFlags(
+    chunkRows: string[],
+    env: Record<string, string> = {},
+  ): Promise<{ flags: string[]; code: number }> {
+    const dir = mkdtempSync(join(tmpdir(), "sunreye-dumpmode-"));
+    const bin = join(dir, "bin");
+    mkdirSync(bin);
+    const log = join(dir, "pgdump.log");
+
+    writeFileSync(
+      join(bin, "psql"),
+      `#!/usr/bin/env bash\nprintf '%s\\n' ${chunkRows.map((r) => `'${r}'`).join(" ") || "''"}\nexit 0\n`,
+    );
+    writeFileSync(
+      join(bin, "pg_dump"),
+      `#!/usr/bin/env bash\nprintf '%s\\n' "$@" >> ${log}\n` +
+        `for a in "$@"; do case "$a" in --file) :;; --file=*) touch "\${a#--file=}";; esac; done\n` +
+        `prev=""; for a in "$@"; do [ "$prev" = "--file" ] && touch "$a"; prev="$a"; done\nexit 0\n`,
+    );
+    chmodSync(join(bin, "psql"), 0o755);
+    chmodSync(join(bin, "pg_dump"), 0o755);
+
+    // The shipped file, with only the addon-only bits made runnable here.
+    const script = join(dir, "dump.sh");
+    writeFileSync(script, DUMP_SH.replaceAll("/data/backups", dir));
+    const proc = Bun.spawn(
+      ["bash", "-c", `source ${join(import.meta.dir, "ci/bashio-shim.sh")}\n. ${script} probe`],
+      {
+        env: {
+          PATH: `${bin}:${process.env.PATH}`,
+          DATABASE_URL: "postgresql://u:p@localhost:5432/db",
+          ...env,
+        },
+        stdout: "pipe",
+        stderr: "pipe",
+      },
+    );
+    await new Response(proc.stdout).text();
+    await new Response(proc.stderr).text();
+    const code = await proc.exited;
+    let flags: string[] = [];
+    try {
+      flags = readFileSync(log, "utf8").trim().split("\n").filter(Boolean);
+    } catch {
+      flags = [];
+    }
+    return { flags, code };
+  }
+
+  const CHUNK = "_timescaledb_internal._hyper_1_45_chunk";
+  const COMPRESSED = "_timescaledb_internal.compress_hyper_5_50_chunk";
+
+  test("every chunk table the query returns becomes an exclusion", async () => {
+    const { flags } = await dumpFlags([CHUNK, COMPRESSED]);
+    expect(flags).toContain(`--exclude-table-data=${CHUNK}`);
+    expect(flags).toContain(`--exclude-table-data=${COMPRESSED}`);
+  });
+
+  test("a compress_hyper_* name is passed through like any other", async () => {
+    const { flags } = await dumpFlags([COMPRESSED]);
+    expect(flags).toContain(`--exclude-table-data=${COMPRESSED}`);
+  });
+
+  // Tripwire, not proof. The fake psql above ignores the query text, so nothing
+  // in this file can tell whether the SQL actually *finds* the compressed data
+  // tables — and that was the real bug: a compressed chunk's rows live in
+  // compress_hyper_*, which timescaledb_information.chunks never names, so
+  // `backup_full: false` dumped the whole compressed history while still
+  // producing a smaller file than a full dump. Only a real TimescaleDB can
+  // catch that, which is what .github/workflows/db-restore.yml asserts
+  // ("expected the raw window to be empty after restore"). This just fails
+  // loudly if someone drops the join that reaches those tables.
+  test("the exclusion query still reaches compressed chunks (see db-restore.yml)", () => {
+    // Match the join itself, not the word: an earlier version of this assertion
+    // looked for "compressed_chunk_id" and was satisfied by the *comment* above
+    // the query, so sabotaging the join did not turn it red.
+    expect(DUMP_SH).toContain("cc.id = c.compressed_chunk_id");
+  });
+
+  test("backup_full excludes nothing at all", async () => {
+    const { flags } = await dumpFlags([CHUNK, COMPRESSED], { BACKUP_FULL: "true" });
+    expect(flags.filter((f) => f.startsWith("--exclude-table-data="))).toEqual([]);
+  });
+
+  test("no chunks at all is a clean dump, not a broken flag list", async () => {
+    const { flags, code } = await dumpFlags([]);
+    expect(code).toBe(0);
+    expect(flags.filter((f) => f.startsWith("--exclude-table-data="))).toEqual([]);
+  });
+
+  test("the dump is the custom format pg_restore needs", async () => {
+    const { flags } = await dumpFlags([CHUNK]);
+    expect(flags).toContain("-Fc");
+  });
+
+  test("data is excluded, never the table itself — the schema must survive", () => {
+    // --exclude-table would drop the chunk's definition, so a restore would
+    // rebuild a hypertable missing its chunks rather than an empty one.
     expect(DUMP_SH).not.toContain("--exclude-table=");
-  });
-
-  test("backup_full dumps everything — no exclusion is computed", () => {
-    expect(DUMP_SH).toContain("bashio::config.true 'backup_full'");
-  });
-
-  test("the dump is the custom format pg_restore needs", () => {
-    expect(DUMP_SH).toContain("pg_dump -Fc");
   });
 });

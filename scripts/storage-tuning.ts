@@ -167,7 +167,9 @@ function settingsProblems(where: string, settings: Record<string, string>): stri
     );
   // full_page_writes must stay on: SD gives no atomic-write guarantee.
   if (settings.full_page_writes === "off") {
-    problems.push(`${where}: full_page_writes is off — SD offers no atomic-write guarantee (#111).`);
+    problems.push(
+      `${where}: full_page_writes is off — SD offers no atomic-write guarantee (#111).`,
+    );
   }
   return problems;
 }

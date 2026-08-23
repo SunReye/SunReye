@@ -19,10 +19,27 @@ exclude_args=()
 if ! bashio::config.true 'backup_full'; then
     # Resolve the raw hypertable's chunk tables dynamically — their
     # _timescaledb_internal names encode a hypertable id we can't hardcode.
+    #
+    # Both halves are required. A *compressed* chunk's rows do not live in the
+    # chunk table at all; they live in a separate `compress_hyper_*` table that
+    # `timescaledb_information.chunks` does not name. Excluding only the chunk
+    # names therefore left every compressed chunk fully dumped — silently, since
+    # the dump was still smaller than a full one. The catalog is the only place
+    # the compressed table's name is exposed, hence the join through
+    # `compressed_chunk_id`.
     while IFS= read -r chunk; do
         [ -n "$chunk" ] && exclude_args+=("--exclude-table-data=$chunk")
     done < <(psql -X -d "$DATABASE_URL" -tAc \
-        "SELECT format('%I.%I', chunk_schema, chunk_name) FROM timescaledb_information.chunks WHERE hypertable_name = 'metrics_raw'" \
+        "SELECT format('%I.%I', c.schema_name, c.table_name)
+           FROM _timescaledb_catalog.chunk c
+           JOIN _timescaledb_catalog.hypertable h ON h.id = c.hypertable_id
+          WHERE h.table_name = 'metrics_raw'
+         UNION
+         SELECT format('%I.%I', cc.schema_name, cc.table_name)
+           FROM _timescaledb_catalog.chunk c
+           JOIN _timescaledb_catalog.hypertable h ON h.id = c.hypertable_id
+           JOIN _timescaledb_catalog.chunk cc ON cc.id = c.compressed_chunk_id
+          WHERE h.table_name = 'metrics_raw'" \
         2>/dev/null || true)
 fi
 
