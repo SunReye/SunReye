@@ -28,6 +28,7 @@ import type { InverterProfile } from "@SunReye/inverter-core";
 
 import { db } from "@SunReye/db";
 import { devices as devicesTable, sources as sourcesTable } from "@SunReye/db/schema/devices";
+import { eq } from "drizzle-orm";
 import { tryGetProfile } from "@SunReye/inverter-core";
 
 import { getInverterConfig } from "../settings/config";
@@ -123,6 +124,8 @@ export interface RegistryIo {
   listDevices(): Promise<DeviceRow[]>;
   insertSource(row: SourceInsert): Promise<void>;
   insertDevice(row: DeviceInsert): Promise<void>;
+  /** Switch a device on or off without deleting it — it still owns its history. */
+  setDeviceEnabled(id: string, enabled: boolean): Promise<void>;
   /** The `activeProfile` setting — the single-device pointer being replaced. */
   activeProfileId(): Promise<string | null>;
   /** The saved connection, which becomes the seeded source's config. */
@@ -143,26 +146,18 @@ export interface RegistryIo {
  * — it addresses a device *within* a connection, which is exactly how a second
  * inverter on the same gateway will be described.
  */
-async function seed(io: RegistryIo): Promise<void> {
-  const profileId = await io.activeProfileId();
-  if (!profileId) return;
-  if (!io.resolveProfile(profileId)) {
-    // The saved id names a profile this install no longer has. Persisting a
-    // device row for it would write the broken state down; boot degrades to
-    // onboarding exactly as it did before the registry existed.
-    logger.warn(
-      "active profile {profileId} is not installed — seeding no device (onboarding-only boot)",
-      { profileId },
-    );
-    return;
-  }
-  const config = await io.inverterConfig();
-  const { unitId, ...connection } = config;
+async function seed(io: RegistryIo, profileId: string): Promise<void> {
+  const { unitId, ...connection } = await io.inverterConfig();
+  // The unit id is not part of the connection: it addresses a device *within*
+  // one, which is exactly how the second inverter on this gateway will be
+  // described. Everything else is the connection, stored as a snapshot —
+  // `app_settings` is still the live truth the runtime dials from, until the
+  // slice that moves it here.
   await io.insertSource({
     id: DEFAULT_SOURCE_ID,
     kind: "modbus",
     label: "Inverter",
-    config,
+    config: connection,
     enabled: true,
   });
   await io.insertDevice({
@@ -174,10 +169,62 @@ async function seed(io: RegistryIo): Promise<void> {
     address: { unitId },
     enabled: true,
   });
-  logger.info("seeded the device registry from the active profile: {profileId}", {
-    profileId,
-    connection,
-  });
+  logger.info("registered a device for the active profile: {profileId}", { profileId, connection });
+}
+
+/**
+ * Make the registry agree with the `activeProfile` setting, which is still the
+ * single-device pointer the UI writes.
+ *
+ * This is not just first-boot seeding. Switching profiles is the ordinary
+ * onboarding-correction path — the admin picks the wrong variant of a model,
+ * notices, and picks the right one — and before the registry the next boot
+ * simply resolved the new id. A registry that seeded once and never looked again
+ * would keep decoding a live inverter with the old register map, indefinitely
+ * and silently.
+ *
+ * So: the device for the active profile is created if it is missing and
+ * re-enabled if it is there, and any device this seeder previously created for a
+ * different profile is *disabled* rather than deleted — its id is the key its
+ * readings are stored under, and those outlive the switch. That mirrors what
+ * used to happen exactly: the old series stopped growing and stayed where it
+ * was.
+ */
+async function reconcile(io: RegistryIo): Promise<void> {
+  const profileId = await io.activeProfileId();
+  if (!profileId) return;
+  if (!io.resolveProfile(profileId)) {
+    // The saved id names a profile this install no longer has — an upgrade that
+    // dropped a built-in package, say. Boot degrades to onboarding exactly as it
+    // did before the registry existed, and crucially without disabling the
+    // device that is working in the meantime.
+    logger.warn("active profile {profileId} is not installed — leaving the registry as it is", {
+      profileId,
+    });
+    return;
+  }
+
+  const rows = await io.listDevices();
+  const existing = rows.find((d) => d.id === profileId);
+  if (!existing) await seed(io, profileId);
+  else if (!existing.enabled) {
+    // Switching back to a profile this install used before. Its device row is
+    // the one whose id its history is already under, so it is re-enabled rather
+    // than duplicated.
+    await io.setDeviceEnabled(profileId, true);
+    logger.info("re-enabled the device for {profileId}", { profileId });
+  }
+
+  // Everything this seeder owns — the devices it put on the default source —
+  // that is not the active one. A device on any other source was not created
+  // here and is none of this function's business.
+  for (const row of rows) {
+    if (row.id === profileId || row.sourceId !== DEFAULT_SOURCE_ID || !row.enabled) continue;
+    await io.setDeviceEnabled(row.id, false);
+    logger.info("device {id} is no longer the active profile — disabled, history kept", {
+      id: row.id,
+    });
+  }
 }
 
 /**
@@ -190,7 +237,7 @@ async function seed(io: RegistryIo): Promise<void> {
  */
 // fallow-ignore-next-line unused-export -- built here by initDeviceRegistry and driven directly by device-registry.test.ts against a fake io; test files aren't traced as consumers
 export async function createDeviceRegistry(io: RegistryIo): Promise<DeviceRegistry> {
-  if ((await io.listDevices()).length === 0) await seed(io);
+  await reconcile(io);
 
   const { sources: sourceRecords, skipped: badSources } = parseSourceRows(await io.listSources());
   const { devices: deviceRecords, skipped: badDevices } = parseDeviceRows(await io.listDevices());
@@ -253,6 +300,9 @@ function dbRegistryIo(): RegistryIo {
     },
     insertDevice: async (row) => {
       await db.insert(devicesTable).values(row).onConflictDoNothing();
+    },
+    setDeviceEnabled: async (id, enabled) => {
+      await db.update(devicesTable).set({ enabled }).where(eq(devicesTable.id, id));
     },
     activeProfileId,
     inverterConfig: getInverterConfig,

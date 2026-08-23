@@ -56,10 +56,18 @@ function io(over: Partial<RegistryIo> & { profiles?: InverterProfile[] } = {}) {
     listSources: async () => sourceRows,
     listDevices: async () => deviceRows,
     insertSource: async (row: SourceInsert) => {
+      // Mirrors the real io's `onConflictDoNothing`: an id that is already there
+      // is left exactly as it is.
+      if (sourceRows.some((s) => s.id === row.id)) return;
       sourceRows.push({ enabled: true, ...stamps, ...row } as SourceRow);
     },
     insertDevice: async (row: DeviceInsert) => {
+      if (deviceRows.some((d) => d.id === row.id)) return;
       deviceRows.push({ enabled: true, ...stamps, ...row } as DeviceRow);
+    },
+    setDeviceEnabled: async (id: string, enabled: boolean) => {
+      const row = deviceRows.find((d) => d.id === id);
+      if (row) row.enabled = enabled;
     },
     activeProfileId: async () => "deye-sg05lp3",
     inverterConfig: async () => CONFIG,
@@ -92,7 +100,13 @@ describe("seeding an existing install", () => {
 
     expect(sourceRows).toHaveLength(1);
     expect(sourceRows[0]).toMatchObject({ id: DEFAULT_SOURCE_ID, kind: "modbus" });
-    expect(sourceRows[0]?.config).toEqual(CONFIG);
+    // Everything about the connection, and nothing about the device on it: the
+    // unit id lives on the device, so keeping a copy here would be two claims
+    // about one fact, free to diverge.
+    const { unitId, ...connection } = CONFIG;
+    expect(sourceRows[0]?.config).toEqual(connection);
+    expect(sourceRows[0]?.config).not.toHaveProperty("unitId");
+    expect(unitId).toBe(1);
   });
 
   test("the unit id moves from the connection to the device", async () => {
@@ -136,6 +150,121 @@ describe("seeding an existing install", () => {
 
     expect(registry.devices()).toEqual([]);
     expect(deviceRows).toEqual([]);
+  });
+});
+
+// Switching the active profile is the ordinary onboarding-correction path: the
+// admin picks the wrong variant of a model, notices, picks the right one and
+// restarts. Before the registry, the next boot simply resolved the new id. A
+// registry that seeds once and never looks again would keep decoding a real
+// inverter with the old register map forever, and say nothing.
+describe("following the active-profile setting", () => {
+  /** A backend whose rows persist across boots, with a switchable active id. */
+  function install(initial: string) {
+    let active = initial;
+    const {
+      io: backend,
+      deviceRows,
+      sourceRows,
+    } = io({
+      profiles: [profileOf("profile-a"), profileOf("profile-b")],
+      activeProfileId: async () => active,
+    });
+    return {
+      deviceRows,
+      sourceRows,
+      boot: () => createDeviceRegistry(backend),
+      choose: (id: string) => {
+        active = id;
+      },
+    };
+  }
+
+  test("a switched profile takes effect on the next boot", async () => {
+    const site = install("profile-a");
+    await site.boot();
+
+    site.choose("profile-b");
+    const registry = await site.boot();
+
+    expect(registry.default()?.ctx.profile.id).toBe("profile-b");
+  });
+
+  test("the new device gets the new profile's id, as the history key always did", async () => {
+    // Before the registry, `activeInverterId` was the profile id, so switching
+    // profiles switched the series readings were written under. Keeping that
+    // is what makes the switch behave as it always has.
+    const site = install("profile-a");
+    await site.boot();
+
+    site.choose("profile-b");
+    const registry = await site.boot();
+
+    expect(registry.default()?.id).toBe("profile-b");
+  });
+
+  test("the superseded device stops being polled but keeps its row and its history", async () => {
+    const site = install("profile-a");
+    await site.boot();
+
+    site.choose("profile-b");
+    const registry = await site.boot();
+
+    expect(
+      registry
+        .devices()
+        .map((d) => d.id)
+        .sort(),
+    ).toEqual(["profile-a", "profile-b"]);
+    expect(registry.pollable().map((d) => d.id)).toEqual(["profile-b"]);
+  });
+
+  test("switching back re-enables the device that was already there", async () => {
+    // Its id, and therefore its history, is the one it always had. Seeding a
+    // second row for the same profile would be a new series for the same
+    // machine.
+    const site = install("profile-a");
+    await site.boot();
+    site.choose("profile-b");
+    await site.boot();
+
+    site.choose("profile-a");
+    const registry = await site.boot();
+
+    expect(site.deviceRows).toHaveLength(2);
+    expect(registry.pollable().map((d) => d.id)).toEqual(["profile-a"]);
+  });
+
+  test("re-uses the source that is already there rather than making a second one", async () => {
+    const site = install("profile-a");
+    await site.boot();
+    site.choose("profile-b");
+    await site.boot();
+
+    expect(site.sourceRows).toHaveLength(1);
+  });
+
+  test("switching to a profile that is not installed changes nothing", async () => {
+    // Today's boot warns and degrades on a stale id. It must not disable the
+    // device that is working in the meantime.
+    const site = install("profile-a");
+    await site.boot();
+
+    site.choose("gone");
+    const registry = await site.boot();
+
+    expect(site.deviceRows).toHaveLength(1);
+    expect(registry.pollable().map((d) => d.id)).toEqual(["profile-a"]);
+  });
+
+  test("an unchanged setting rewrites nothing", async () => {
+    const site = install("profile-a");
+    await site.boot();
+    const before = site.deviceRows.map((r) => ({ ...r }));
+
+    await site.boot();
+
+    expect(site.deviceRows).toEqual(before);
   });
 });
 

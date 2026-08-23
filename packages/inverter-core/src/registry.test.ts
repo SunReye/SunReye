@@ -308,6 +308,27 @@ describe("createInverter", () => {
     expect(source.profile).toBe(p);
   });
 
+  test.each([
+    ["the simulator", true],
+    ["the real Modbus source", false],
+  ])("hands the device id through to %s", async (_label, simulate) => {
+    // Both arms, because the id is what every reading is stored under and a
+    // simulated plant writes history exactly like a real one. Reading through
+    // the simulator proves the whole chain without a socket.
+    const p = profile("deye-sg05lp3");
+
+    const source = createInverter(p, { simulate, connection, deviceId: "barn" });
+
+    if (simulate) expect((await source.read()).inverterId).toBe("barn");
+    else expect((source as unknown as { deviceId: string }).deviceId).toBe("barn");
+  });
+
+  test("without a device id, samples carry the profile id", async () => {
+    const source = createInverter(profile("deye-sg05lp3"), { simulate: true, connection });
+
+    expect((await source.read()).inverterId).toBe("deye-sg05lp3");
+  });
+
   test("takes the profile object, so an unregistered profile still yields a source", () => {
     // createInverter deliberately does not consult the registry — the server
     // may build a source from a freshly hydrated profile before install.

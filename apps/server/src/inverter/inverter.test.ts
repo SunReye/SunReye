@@ -290,6 +290,24 @@ describe("buildSource", () => {
 
     expect(buildSource(hydrated, config())).not.toBe(buildSource(hydrated, config()));
   });
+
+  /**
+   * The id the built source will stamp its samples with. Reached through the
+   * private field for the same reason `connectionOf` is: the observable proof
+   * is a sample, and taking one means dialling a real socket.
+   */
+  const deviceIdOf = (source: unknown) => (source as { deviceId?: string }).deviceId;
+
+  test("the device id reaches the source, through the real construction chain", () => {
+    // buildSource → createInverter → ModbusInverter, not a recorded argument.
+    // Two inverters of one model differ only here, and `inverter_id` is the key
+    // every reading is stored under.
+    expect(deviceIdOf(buildSource(hydrateProfile(profile), config(), "barn"))).toBe("barn");
+  });
+
+  test("without one, the source stamps the profile id — every install today", () => {
+    expect(deviceIdOf(buildSource(hydrateProfile(profile), config()))).toBe(profile.id);
+  });
 });
 
 describe("validateWrite", () => {
