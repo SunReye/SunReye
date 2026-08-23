@@ -45,7 +45,7 @@ const logLine = (message: string): LogEntry => ({
  * before `.listen()` resolves — `app.server` is undefined until then, and the
  * bus is already wired.
  */
-function harness(options: { listening?: boolean } = {}) {
+function harness(options: { listening?: boolean; leadDeviceId?: string | null } = {}) {
   const published: { topic: string; message: string }[] = [];
   let listening = options.listening ?? true;
   const publisher: TopicPublisher = {
@@ -56,6 +56,7 @@ function harness(options: { listening?: boolean } = {}) {
     streams,
     publisher: () => (listening ? publisher : undefined),
     logFlushMs: FLUSH_MS,
+    leadDeviceId: options.leadDeviceId === undefined ? sample.inverterId : options.leadDeviceId,
   });
   return {
     streams,
@@ -89,9 +90,10 @@ describe("the pub/sub name each topic fans out on", () => {
     // added to `TOPIC_POLICY` with no `streams.subscribe` here would otherwise
     // pass, and in production that card paints its backfill once and then goes
     // silent forever — a missing wire, which no contract test can see.
-    expect(h.published.map((entry) => entry.topic).sort()).toEqual(
-      Object.keys(TOPIC_POLICY).sort(),
-    );
+    // `metrics` also goes out on its device channel (`metrics:<id>`); the bare
+    // names are what this test is about, so the qualified one is set aside.
+    const bare = h.published.map((entry) => entry.topic).filter((t) => !t.includes(":"));
+    expect(bare.sort()).toEqual(Object.keys(TOPIC_POLICY).sort());
   });
 
   test("the pub/sub name matches the topic the frame is tagged with", async () => {
@@ -104,7 +106,10 @@ describe("the pub/sub name each topic fans out on", () => {
     h.streams.emit("logs", logLine("boot"));
     await sleep(FLUSH_MS * 3);
 
-    for (const { topic, frame } of h.frames()) expect(frame.topic).toBe(topic);
+    // A device channel is `<topic>:<device>`, and the frame stays tagged with
+    // the topic — that is what the browser narrows on.
+    for (const { topic, frame } of h.frames())
+      expect(`${frame.topic}`).toBe(topic.replace(/:.*$/, ""));
   });
 });
 
@@ -117,7 +122,10 @@ describe("the frame envelope", () => {
 
     h.streams.emit("metrics", sample);
 
-    expect(h.frames()).toEqual([{ topic: "metrics", frame: { topic: "metrics", data: sample } }]);
+    expect(h.frames()).toEqual([
+      { topic: "metrics", frame: { topic: "metrics", data: sample } },
+      { topic: `metrics:${sample.inverterId}`, frame: { topic: "metrics", data: sample } },
+    ]);
   });
 
   test("a statistics signal keeps its own union member intact", () => {
@@ -178,6 +186,71 @@ describe("before the server is listening", () => {
 
     h.setListening(true);
     h.streams.emit("metrics", sample);
-    expect(h.published.map((entry) => entry.topic)).toEqual(["metrics"]);
+    expect(h.published.map((entry) => entry.topic)).toEqual([
+      "metrics",
+      `metrics:${sample.inverterId}`,
+    ]);
+  });
+});
+
+// A plant can hold several devices. Every reading is published on its own
+// device's channel, so a client can ask for one machine — and the lead device's
+// also goes out on the bare `metrics` name, which is what every existing client
+// subscribes to and must keep receiving unchanged.
+describe("metrics per device", () => {
+  const from = (inverterId: string): InverterSample => ({ ...sample, inverterId });
+
+  test("the lead device publishes on both the bare topic and its own channel", async () => {
+    const h = harness({ leadDeviceId: "roof" });
+
+    h.streams.emit("metrics", from("roof"));
+
+    expect(h.published.map((e) => e.topic)).toEqual(["metrics", "metrics:roof"]);
+  });
+
+  test("another device publishes only on its own channel", async () => {
+    // The bare name is the lead device's. A second device publishing there too
+    // would have every existing client alternating between two machines, each
+    // frame stamped with the current time — plausible, and wrong.
+    const h = harness({ leadDeviceId: "roof" });
+
+    h.streams.emit("metrics", from("barn"));
+
+    expect(h.published.map((e) => e.topic)).toEqual(["metrics:barn"]);
+  });
+
+  test("both devices' frames carry their own sample", async () => {
+    const h = harness({ leadDeviceId: "roof" });
+
+    h.streams.emit("metrics", from("roof"));
+    h.streams.emit("metrics", from("barn"));
+
+    const byTopic = new Map(h.published.map((e) => [e.topic, JSON.parse(e.message)]));
+    expect(byTopic.get("metrics:roof").data.inverterId).toBe("roof");
+    expect(byTopic.get("metrics:barn").data.inverterId).toBe("barn");
+    expect(byTopic.get("metrics").data.inverterId).toBe("roof");
+  });
+
+  test("with no lead named, every device gets the bare topic too", async () => {
+    // The onboarding boot, and every install before devices existed: one
+    // device, and the client that asks for plain `metrics` must still be fed.
+    const h = harness({ leadDeviceId: null });
+
+    h.streams.emit("metrics", from("only"));
+
+    expect(h.published.map((e) => e.topic)).toEqual(["metrics", "metrics:only"]);
+  });
+
+  test("a non-lead device whose id cannot be a channel is not published live at all", async () => {
+    // Ids are slugs in practice; a hand-edited row could hold anything.
+    // `channelFor` refuses it, and the fallback is the *bare* topic — which is
+    // the lead device's. Publishing there would put a second machine's readings
+    // on every existing client's feed, so this device stays off the live wire.
+    // Its readings still reach history and MQTT, which are keyed by id.
+    const h = harness({ leadDeviceId: "roof" });
+
+    h.streams.emit("metrics", from("not a slug"));
+
+    expect(h.published.map((e) => e.topic)).toEqual([]);
   });
 });

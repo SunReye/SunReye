@@ -628,3 +628,100 @@ describe("close", () => {
     expect(sock.subscribed).toContain("statistics");
   });
 });
+
+// A plant can hold several devices, and the dashboard shows one at a time. The
+// topic vocabulary stays closed — the policy table gates the admin feeds and is
+// exhaustive over it — so which device a connection wants rides alongside the
+// `sub` frame and decides the pub/sub channel it is joined to.
+describe("subscribing to one device's metrics", () => {
+  const opened = async (backfill: Record<string, () => unknown> = {}) => {
+    const h = harness({ backfill });
+    const sock = fakeSocket();
+    await h.handlers.open(sock.ws);
+    return { h, sock };
+  };
+
+  test("joins that device's channel instead of the bare topic", async () => {
+    const { h, sock } = await opened();
+
+    await h.handlers.message(sock.ws, { t: "sub", topics: ["metrics"], deviceId: "barn" });
+
+    expect(sock.subscribed).toEqual(["metrics:barn"]);
+  });
+
+  test("without a device, joins the bare topic — what every client sends today", async () => {
+    const { h, sock } = await opened();
+
+    await h.handlers.message(sock.ws, { t: "sub", topics: ["metrics"] });
+
+    expect(sock.subscribed).toEqual(["metrics"]);
+  });
+
+  test("the ack still names the topic, not the channel", async () => {
+    // The client asked for `metrics`; the channel is the server's business.
+    const { h, sock } = await opened();
+
+    await h.handlers.message(sock.ws, { t: "sub", topics: ["metrics"], deviceId: "barn" });
+
+    expect(sock.ack()).toEqual({ subscribed: ["metrics"], denied: [] });
+  });
+
+  test("plant-level topics ignore the device entirely", async () => {
+    // One EVCC, one price series. Joining `evcc:barn` would subscribe to a
+    // channel nothing publishes on, and the card would never paint.
+    const { h, sock } = await opened();
+
+    await h.handlers.message(sock.ws, {
+      t: "sub",
+      topics: ["evcc", "statistics"],
+      deviceId: "barn",
+    });
+
+    expect(sock.subscribed.sort()).toEqual(["evcc", "statistics"]);
+  });
+
+  test("switching device leaves the old channel before joining the new one", async () => {
+    // Left on both, the dashboard would receive two machines' readings and
+    // paint whichever arrived last — the failure this split exists to prevent.
+    const { h, sock } = await opened();
+    await h.handlers.message(sock.ws, { t: "sub", topics: ["metrics"], deviceId: "roof" });
+
+    await h.handlers.message(sock.ws, { t: "sub", topics: ["metrics"], deviceId: "barn" });
+
+    // Left on both, the connection would receive two machines' readings.
+    expect(sock.unsubscribed).toEqual(["metrics:roof"]);
+    expect(sock.subscribed).toEqual(["metrics:roof", "metrics:barn"]);
+    expect(sock.lastEvent("metrics:barn")).toBe("sub metrics:barn");
+  });
+
+  test("switching device re-primes, so the new one paints without waiting for a poll", async () => {
+    // A repeat `sub` for the *same* device must not re-send the snapshot, but a
+    // different device has never sent one.
+    const { h, sock } = await opened({ metrics: () => ({ inverterId: "snapshot" }) });
+    await h.handlers.message(sock.ws, { t: "sub", topics: ["metrics"], deviceId: "roof" });
+    sock.sent.length = 0;
+
+    await h.handlers.message(sock.ws, { t: "sub", topics: ["metrics"], deviceId: "barn" });
+
+    expect(sock.sent.filter((f) => f.topic === "metrics")).toHaveLength(1);
+  });
+
+  test("re-subscribing to the same device does not re-send the snapshot", async () => {
+    const { h, sock } = await opened({ metrics: () => ({ inverterId: "snapshot" }) });
+    await h.handlers.message(sock.ws, { t: "sub", topics: ["metrics"], deviceId: "barn" });
+    sock.sent.length = 0;
+
+    await h.handlers.message(sock.ws, { t: "sub", topics: ["metrics"], deviceId: "barn" });
+
+    expect(sock.sent.filter((f) => f.topic === "metrics")).toEqual([]);
+  });
+
+  test("unsubscribing leaves the device's channel, not the bare name", async () => {
+    const { h, sock } = await opened();
+    await h.handlers.message(sock.ws, { t: "sub", topics: ["metrics"], deviceId: "barn" });
+
+    await h.handlers.message(sock.ws, { t: "unsub", topics: ["metrics"] });
+
+    expect(sock.unsubscribed).toEqual(["metrics:barn"]);
+  });
+});

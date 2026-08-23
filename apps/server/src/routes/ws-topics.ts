@@ -66,6 +66,40 @@ export function isWsTopic(value: unknown): value is WsTopic {
 export const bufferedWhilePriming = (topic: WsTopic): boolean => topic !== "logs";
 
 /**
+ * Topics whose frames belong to one device rather than to the plant.
+ *
+ * Only `metrics`: a reading comes off a particular inverter. The others are
+ * plant-level — one EVCC, one price series, one automation engine, one log —
+ * and scoping them per device would split one feed into N copies of itself.
+ */
+const DEVICE_SCOPED: ReadonlySet<WsTopic> = new Set<WsTopic>(["metrics"]);
+
+/**
+ * Device ids that may be interpolated into a channel name.
+ *
+ * The name is a pub/sub key assembled from a string the client sent, so the
+ * charset is a gate rather than a formality: a colon in it would let a client
+ * address a different topic's channel. Slugs only, and short — real ids are
+ * profile slugs like `deye-sg05lp3`.
+ */
+const DEVICE_ID = /^[a-z0-9][a-z0-9_-]{0,63}$/i;
+
+/**
+ * The pub/sub channel one topic is delivered on, for one device.
+ *
+ * The topic *vocabulary* stays closed — {@link TOPIC_POLICY} is exhaustive over
+ * it, and that exhaustiveness is what keeps a new topic from reaching the wire
+ * ungated — so the device rides here, in the channel name, instead of in the
+ * topic. An unnamed (or unusable) device falls back to the bare topic, which is
+ * both what every client sends today and where the lead device publishes.
+ */
+export function channelFor(topic: WsTopic, deviceId: string | null | undefined): string {
+  if (!DEVICE_SCOPED.has(topic)) return topic;
+  if (!deviceId || !DEVICE_ID.test(deviceId)) return topic;
+  return `${topic}:${deviceId}`;
+}
+
+/**
  * Serialise one server→client data frame.
  *
  * One writer, because the envelope has two senders that must never disagree:

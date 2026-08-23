@@ -80,5 +80,16 @@ export type ServerAckFrame = {
  * a connection's subscription set is the accumulation of them, never replaced
  * wholesale, so two independent components on a page can each ask for what they
  * need without knowing about each other.
+ *
+ * `deviceId` names which device the connection wants the device-scoped topics
+ * for — `metrics` is the only one, since a reading comes off a particular
+ * inverter while the price series and the log do not. It is deliberately *not*
+ * part of the topic name: {@link WsTopic} is a closed vocabulary the server's
+ * policy table is exhaustive over, and that exhaustiveness is what keeps a new
+ * topic from reaching the wire ungated. One device at a time per connection,
+ * which is what a dashboard showing one machine needs; omitting it means the
+ * plant's lead device, and is what every client sent before devices existed.
  */
-export type ClientFrame = { t: "sub"; topics: WsTopic[] } | { t: "unsub"; topics: WsTopic[] };
+export type ClientFrame =
+  | { t: "sub"; topics: WsTopic[]; deviceId?: string }
+  | { t: "unsub"; topics: WsTopic[] };

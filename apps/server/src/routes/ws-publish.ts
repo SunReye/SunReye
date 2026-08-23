@@ -18,7 +18,7 @@
 import type { LogEntry } from "@SunReye/contracts/logs";
 import type { WsTopic, WsTopicPayloads } from "@SunReye/contracts/ws";
 import type { Streams } from "../shared/streams";
-import { wsFrame } from "./ws-topics";
+import { channelFor, wsFrame } from "./ws-topics";
 
 /**
  * How long log lines are collected before one frame goes out.
@@ -45,6 +45,17 @@ export interface LivePublishDeps {
   publisher: () => TopicPublisher | undefined;
   /** Override for {@link LOG_FLUSH_MS}; the tests use it to not wait. */
   logFlushMs?: number;
+  /**
+   * The device whose readings also go out on the bare `metrics` name.
+   *
+   * Every device publishes on its own `metrics:<id>` channel, but the bare name
+   * is what every client subscribes to today, and it has to keep meaning one
+   * machine: two devices publishing there would have an existing dashboard
+   * alternating between them, each frame stamped with the current time —
+   * plausible, and wrong. `null` means "no plant lead yet", where the sole
+   * device still owes the bare topic its frames.
+   */
+  leadDeviceId?: string | null;
 }
 
 /** Wire every live topic from the bus to its `/ws` subscribers. */
@@ -53,7 +64,23 @@ export function publishLiveTopics(deps: LivePublishDeps): void {
   const publish = <K extends WsTopic>(topic: K, data: WsTopicPayloads[K]) =>
     deps.publisher()?.publish(topic, wsFrame(topic, data));
 
-  deps.streams.subscribe("metrics", (data) => publish("metrics", data));
+  /**
+   * A reading goes to its own device's channel, and to the bare topic when it
+   * is the lead device's — the two names a client can be listening on.
+   *
+   * A device whose id cannot form a channel is published nowhere rather than on
+   * the bare topic: that name belongs to the lead device, and putting a second
+   * machine's readings on it is the failure this split exists to prevent. Its
+   * readings still reach history and MQTT, both keyed by id.
+   */
+  deps.streams.subscribe("metrics", (data) => {
+    const lead = deps.leadDeviceId ?? null;
+    if (lead === null || data.inverterId === lead) publish("metrics", data);
+    const channel = channelFor("metrics", data.inverterId);
+    if (channel !== "metrics") {
+      deps.publisher()?.publish(channel, wsFrame("metrics", data));
+    }
+  });
   deps.streams.subscribe("evcc", (data) => publish("evcc", data));
   deps.streams.subscribe("statistics", (data) => publish("statistics", data));
   deps.streams.subscribe("automations", (data) => publish("automations", data));

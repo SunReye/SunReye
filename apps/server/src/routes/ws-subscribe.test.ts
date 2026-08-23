@@ -230,3 +230,46 @@ describe("parseClientFrame", () => {
     expect(parseClientFrame(42)).toBeNull();
   });
 });
+
+// The frame is rebuilt field by field rather than passed through, so anything
+// the parser does not name is dropped. A device the client asked for and the
+// server silently ignored would leave the dashboard on the wrong machine.
+describe("the device a sub frame names", () => {
+  test("survives the parse", () => {
+    expect(parseClientFrame({ t: "sub", topics: ["metrics"], deviceId: "barn" })).toEqual({
+      t: "sub",
+      topics: ["metrics"],
+      deviceId: "barn",
+    });
+  });
+
+  test("is absent when the client does not name one", () => {
+    expect(parseClientFrame({ t: "sub", topics: ["metrics"] })).toEqual({
+      t: "sub",
+      topics: ["metrics"],
+    });
+  });
+
+  test.each([
+    ["a number", 7],
+    ["an object", { id: "barn" }],
+    ["null", null],
+    ["an empty string", ""],
+  ])("%s is dropped rather than carried", (_label, deviceId) => {
+    // It ends up interpolated into a pub/sub channel name; anything that is not
+    // a usable id must fall back to the plant's lead device, not travel.
+    const parsed = parseClientFrame({ t: "sub", topics: ["metrics"], deviceId });
+
+    expect(parsed).toEqual({ t: "sub", topics: ["metrics"] });
+  });
+
+  test("an absurdly long id is dropped, not truncated into a different id", () => {
+    const parsed = parseClientFrame({
+      t: "sub",
+      topics: ["metrics"],
+      deviceId: "x".repeat(500),
+    });
+
+    expect(parsed).toEqual({ t: "sub", topics: ["metrics"] });
+  });
+});

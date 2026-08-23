@@ -539,7 +539,13 @@ const app = new Elysia()
 // the topic names and the log coalescing). Registered before `app.server`
 // exists — the publisher is re-read per emit, so the publishes are no-ops until
 // `.listen()` resolves.
-publishLiveTopics({ streams, publisher: () => app.server ?? undefined });
+publishLiveTopics({
+  streams,
+  publisher: () => app.server ?? undefined,
+  // The device whose readings also ride the bare `metrics` name — what a client
+  // that names no device is subscribed to.
+  leadDeviceId: activeInverterId,
+});
 
 // Start the runtime controller: it owns the poll loop, the live source, and the
 // MQTT bridge (all hot-reconfigurable). Each sample is emitted on the `metrics`

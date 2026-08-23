@@ -48,7 +48,7 @@ import {
   resolveSubscribe,
   resolveUnsubscribe,
 } from "./ws-subscribe";
-import { bufferedWhilePriming, wsFrame } from "./ws-topics";
+import { bufferedWhilePriming, channelFor, wsFrame } from "./ws-topics";
 
 const wsLog = log("ws");
 
@@ -136,6 +136,12 @@ interface ConnectionState {
   tail: Promise<void>;
   /** Cleared by `close`; every queued task checks it before touching the socket. */
   open: boolean;
+  /**
+   * Which device this connection wants the device-scoped topics for, as named
+   * by the most recent `sub`. `null` is the plant's lead device — the bare
+   * channel, and what every client asked for before devices existed.
+   */
+  deviceId: string | null;
 }
 
 /** The socket surface this module uses — structural, so it needs no Elysia types. */
@@ -235,7 +241,7 @@ export function createWsConnections(deps: WsRoutesDeps): WsConnectionHandlers {
     state.subscribed.delete(topic);
     state.pending.get(topic)?.();
     state.pending.delete(topic);
-    ws.unsubscribe(topic);
+    ws.unsubscribe(channelFor(topic, state.deviceId));
   };
 
   /**
@@ -263,7 +269,7 @@ export function createWsConnections(deps: WsRoutesDeps): WsConnectionHandlers {
       snapshot: () => deps.backfill[topic]?.(),
       sendSnapshot: (snapshot) => sendFrame(ws, topic, snapshot),
       sendLive: (payload) => sendFrame(ws, topic, payload),
-      promote: () => ws.subscribe(topic),
+      promote: () => ws.subscribe(channelFor(topic, state.deviceId)),
       // All three conditions, re-read rather than captured: the socket may have
       // closed, the client may have unsubscribed, or a newer `sub` may have
       // started a second run while this one was awaiting its query.
@@ -307,6 +313,21 @@ export function createWsConnections(deps: WsRoutesDeps): WsConnectionHandlers {
     access: TopicAccess,
   ) => {
     const { subscribe, denied } = resolveSubscribe(frame.topics, access);
+
+    // A `sub` naming a different device re-points this connection. The old
+    // channels have to be left *first*: a connection on both would receive two
+    // machines' readings and the dashboard would paint whichever arrived last,
+    // each frame stamped with the current time — the plausible wrong number
+    // this split exists to prevent. Dropping also clears the subscribed set, so
+    // the topics below are re-primed and the new device paints at once instead
+    // of waiting for its next poll.
+    const wanted = frame.deviceId ?? null;
+    if (wanted !== state.deviceId) {
+      for (const topic of Array.from(state.subscribed)) {
+        if (channelFor(topic, state.deviceId) !== channelFor(topic, wanted)) drop(ws, state, topic);
+      }
+      state.deviceId = wanted;
+    }
 
     // Only topics this connection does not already hold are primed: a repeat
     // `sub` must not re-run the backfill and re-send a snapshot the client
@@ -384,6 +405,7 @@ export function createWsConnections(deps: WsRoutesDeps): WsConnectionHandlers {
         pending: new Map(),
         tail: Promise.resolve(),
         open: true,
+        deviceId: null,
       };
       connections.set(ws.id, state);
 

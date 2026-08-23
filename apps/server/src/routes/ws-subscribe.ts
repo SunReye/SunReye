@@ -165,7 +165,13 @@ export const MAX_FRAME_TOPICS = 64;
  * reason: the honest prefix of a frame from a buggy client still works, and no
  * legitimate client can reach {@link MAX_FRAME_TOPICS} in the first place.
  */
-export function parseClientFrame(raw: unknown): ClientFrame | null {
+/**
+ * The object behind a frame, or `null` when the payload is not one.
+ *
+ * Elysia hands the handler a parsed object when the payload is JSON and the raw
+ * string otherwise, so both are accepted.
+ */
+function frameObject(raw: unknown): Record<string, unknown> | null {
   let value = raw;
   if (typeof value === "string") {
     try {
@@ -174,9 +180,25 @@ export function parseClientFrame(raw: unknown): ClientFrame | null {
       return null;
     }
   }
+  return value && typeof value === "object" ? (value as Record<string, unknown>) : null;
+}
 
-  if (!value || typeof value !== "object") return null;
-  const frame = value as { t?: unknown; topics?: unknown };
+/**
+ * A device id a `sub` frame may carry, or `null` for anything else.
+ *
+ * The same charset the channel builder accepts, checked here so the frame that
+ * reaches the connection is already trustworthy. Length-capped rather than
+ * truncated: a shortened id names a *different* device, which is worse than
+ * falling back to the lead one.
+ */
+function usableDeviceId(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  return /^[a-z0-9][a-z0-9_-]{0,63}$/i.test(value) ? value : null;
+}
+
+export function parseClientFrame(raw: unknown): ClientFrame | null {
+  const frame = frameObject(raw);
+  if (!frame) return null;
   if (frame.t !== "sub" && frame.t !== "unsub") return null;
   if (!Array.isArray(frame.topics)) return null;
 
@@ -186,5 +208,12 @@ export function parseClientFrame(raw: unknown): ClientFrame | null {
   const topics = (
     frame.topics.length > MAX_FRAME_TOPICS ? frame.topics.slice(0, MAX_FRAME_TOPICS) : frame.topics
   ) as WsTopic[];
-  return { t: frame.t, topics };
+  if (frame.t === "unsub") return { t: "unsub", topics };
+  // The device is validated here rather than denied: it ends up interpolated
+  // into a pub/sub channel name, and the fallback for anything unusable is the
+  // plant's lead device — which is also what a client that names none gets. The
+  // frame is rebuilt field by field, so an id that is not carried here is one
+  // the server silently ignores; that is why it has its own test.
+  const deviceId = usableDeviceId(frame.deviceId);
+  return deviceId === null ? { t: "sub", topics } : { t: "sub", topics, deviceId };
 }

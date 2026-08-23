@@ -14,7 +14,7 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { TOPIC_POLICY, bufferedWhilePriming, isWsTopic, wsFrame } from "./ws-topics";
+import { TOPIC_POLICY, bufferedWhilePriming, channelFor, isWsTopic, wsFrame } from "./ws-topics";
 
 /**
  * The topics under test, read back off the table itself. Derived here rather
@@ -118,5 +118,46 @@ describe("wsFrame", () => {
     for (const topic of WS_TOPICS) {
       expect(JSON.parse(wsFrame(topic, null as never)).topic).toBe(topic);
     }
+  });
+});
+
+// A plant can hold several devices, and `metrics` is the one topic whose frames
+// belong to one of them. The topic *vocabulary* stays closed — the policy table
+// is exhaustive over it, and that exhaustiveness is what gates the admin log
+// firehose — so the device rides in the pub/sub channel name instead.
+describe("channelFor", () => {
+  test("a device-scoped topic publishes on its own channel", () => {
+    expect(channelFor("metrics", "barn")).toBe("metrics:barn");
+  });
+
+  test("without a device the channel is the bare topic — what every client sends today", () => {
+    expect(channelFor("metrics", null)).toBe("metrics");
+    expect(channelFor("metrics", undefined)).toBe("metrics");
+  });
+
+  test.each(["evcc", "statistics", "automations", "logs"] as const)(
+    "%s is plant-level and ignores a device",
+    (topic) => {
+      // One EVCC, one price series, one automation engine, one log. Scoping
+      // these per device would split one feed into N copies of itself.
+      expect(channelFor(topic, "barn")).toBe(topic);
+    },
+  );
+
+  test.each([
+    ["a colon, which would address another channel", "metrics:other"],
+    ["a space", "a b"],
+    ["a traversal", "../x"],
+    ["something absurdly long", "x".repeat(200)],
+    ["nothing at all", ""],
+  ])("refuses %s rather than interpolating it", (_label, hostile) => {
+    // The channel name is a pub/sub key built from a client-supplied string.
+    expect(channelFor("metrics", hostile)).toBe("metrics");
+  });
+
+  test("accepts the ids real devices have", () => {
+    // Device ids are profile slugs today: lowercase, digits, dashes.
+    expect(channelFor("metrics", "deye-sg05lp3")).toBe("metrics:deye-sg05lp3");
+    expect(channelFor("metrics", "inverter_2")).toBe("metrics:inverter_2");
   });
 });
