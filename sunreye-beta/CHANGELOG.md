@@ -2,7 +2,7 @@
 
 ## [unreleased]
 
-Unreleased work on `dev` since 1.2.0, shipped in `beta.20260823-93537ed`.
+Unreleased work on `dev` since 1.2.0, shipped in `beta.20260823-a0da113`.
 
 
 ### Features
@@ -180,6 +180,7 @@ Unreleased work on `dev` since 1.2.0, shipped in `beta.20260823-93537ed`.
 
 ### Code Refactoring
 
+* **inverter-core:** tagged Binding union and a transport seam ([0c3a239](https://github.com/SunReye/SunReye/commit/0c3a23909ab73816fb5c2f90a6ffc1988c1f38bf))
 * **profile-sdk:** split replay by concern to clear the health gate ([a0fbf1c](https://github.com/SunReye/SunReye/commit/a0fbf1c17dd99cd0067727f608410e3ed2bd49a5))
 * **web:** one header grid and one readout row per chart card ([14dad81](https://github.com/SunReye/SunReye/commit/14dad8144e4dd0d9c4dbaa3defa42e5f70eb9ab0))
 * **web:** a charge is a bead chain, and its speed is the reading ([1ffd393](https://github.com/SunReye/SunReye/commit/1ffd3934288b64eebfbc0ed3ec416bdee7c1a9c5))
