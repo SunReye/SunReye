@@ -6,8 +6,13 @@
  *   profile upgrade [dir] [--force]    refresh the AI authoring guide (AGENTS.md + CLAUDE.md)
  *   profile validate <file> [--strict] strict validation + semantic lints
  *   profile coverage <file>            which renderable roles are mapped
+ *   profile replay <capture.json...> [--profile <file>] [--json]
+ *                                      golden register captures: do these words
+ *                                      still decode to these values?
  *   profile scaffold <csv> --id <id> --name <n> --manufacturer <m> [--version v]
  *   profile build <entries...> --out <dir> [--name n] [--maintainer m] [--bump patch|minor|major]
+ *                                         [--require role,role]  required-role floor
+ *                                         (default: the anchor role of every family the profile touches)
  *
  * Exits non-zero on validation failure so it's usable as a CI/pre-commit gate.
  * Command bodies live in ./cli-commands (unit-tested); this file only parses
@@ -18,6 +23,7 @@ import {
   cmdBuild,
   cmdCoverage,
   cmdInit,
+  cmdReplay,
   cmdScaffold,
   cmdUpgrade,
   cmdValidate,
@@ -54,9 +60,16 @@ switch (command) {
     await cmdBuild(paths, flags(firstFlag === -1 ? [] : rest.slice(firstFlag)));
     break;
   }
+  case "replay": {
+    // Same positional-then-flags split as `build`: captures are variadic.
+    const firstFlag = rest.findIndex((a) => a.startsWith("--"));
+    const paths = firstFlag === -1 ? rest : rest.slice(0, firstFlag);
+    await cmdReplay(paths, flags(firstFlag === -1 ? [] : rest.slice(firstFlag)));
+    break;
+  }
   default:
     console.error(
-      "usage: profile <init|upgrade|validate|coverage|scaffold|build> [file...] [options]",
+      "usage: profile <init|upgrade|validate|coverage|replay|scaffold|build> [file...] [options]",
     );
     process.exit(1);
 }

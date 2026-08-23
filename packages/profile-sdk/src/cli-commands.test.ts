@@ -13,6 +13,7 @@ import {
   cmdBuild,
   cmdCoverage,
   cmdInit,
+  cmdReplay,
   cmdScaffold,
   cmdUpgrade,
   cmdValidate,
@@ -58,6 +59,9 @@ const sparseProfilePath = writeFixture(
           unit: "%",
           role: "battery.soc",
           addr: 588,
+          // Bounded, so this fixture trips no semantic lint: it isolates the
+          // coverage warnings from the lint gate.
+          range: { min: 0, max: 100 },
         }),
         metric("dc/pv1/power", {
           label: "PV1 Power",
@@ -779,5 +783,216 @@ describe("cmdUpgrade", () => {
     await cmdUpgrade(out, { force: "" });
     expect(io.out.join("\n")).toContain("needs a manual edit");
     expect(readFileSync(join(out, "CLAUDE.md"), "utf8")).toBe("# hand-written\n"); // preserved
+  });
+});
+
+// A valid profile with battery metrics but no `battery.soc` — the whole battery
+// section renders empty, and it used to publish cleanly (#75).
+const batteryWithoutSocPath = writeFixture(
+  "battery-no-soc.json",
+  JSON.stringify(
+    defineProfile({
+      id: "no-soc",
+      name: "No SOC",
+      manufacturer: "ACME",
+      version: "1.0.0",
+      metrics: [
+        metric("battery/power", {
+          label: "Battery Power",
+          group: "battery",
+          unit: "W",
+          type: "S_WORD",
+          role: "battery.power",
+          addr: 590,
+          flow: { positive: "Charging", negative: "Discharging" },
+        }),
+      ],
+    }),
+  ),
+);
+
+describe("cmdValidate coverage warnings", () => {
+  test("surfaces the unmapped renderable roles for a sparse profile and still exits 0", async () => {
+    io = captureIo();
+    await cmdValidate(sparseProfilePath);
+    const out = io.out.join("\n");
+    expect(out).toContain("valid profile");
+    expect(out).toContain("grid.power"); // an unmapped renderable role, named
+    expect(out).toContain("pv.total.power");
+  });
+
+  test("says nothing about unmapped roles for a profile that maps them all", async () => {
+    io = captureIo();
+    await cmdValidate(validProfilePath);
+    expect(io.out.join("\n")).not.toContain("render empty");
+  });
+
+  test("surfaces the sumOf suggestion for a hand-listed sum", async () => {
+    io = captureIo();
+    await cmdValidate(validProfilePath);
+    expect(io.out.join("\n")).toContain('sumOf({ role: "pv.string.power" })');
+  });
+
+  test("coverage findings alone never fail the command, even under --strict", async () => {
+    // Only schema failure and semantic lints gate; an unmapped role is advice.
+    io = captureIo();
+    await cmdValidate(sparseProfilePath, { strict: "" });
+    expect(io.out.join("\n")).toContain("valid profile");
+  });
+});
+
+describe("cmdValidate semantic lints", () => {
+  test("warns about a percentage metric with no range, naming the key", async () => {
+    io = captureIo();
+    // The shipped Deye profile's TOU SOC settings carry `%` with no bounds.
+    await cmdValidate(validProfilePath);
+    const out = io.out.join("\n");
+    expect(out).toContain("timeofuse.soc.1");
+    expect(out).toContain("range");
+  });
+
+  test("--strict turns a semantic lint into a non-zero exit", async () => {
+    io = captureIo();
+    await expect(cmdValidate(validProfilePath, { strict: "" })).rejects.toThrow("exit 1");
+    expect(io.err.join("\n")).toContain("timeofuse.soc.1");
+  });
+});
+
+describe("cmdBuild required-role floor", () => {
+  test("refuses a profile missing an explicitly required role, naming it", async () => {
+    const out = join(dir, "require-out");
+    io = captureIo();
+    await expect(
+      cmdBuild([sparseProfilePath], { out, require: "battery.soc,grid.power" }),
+    ).rejects.toThrow("exit 1");
+    const err = io.err.join("\n");
+    expect(err).toContain("grid.power");
+    expect(err).toContain("sparse");
+    expect(err).not.toContain("battery.soc"); // that one is mapped
+    expect(existsSync(join(out, "index.json"))).toBe(false);
+  });
+
+  test("builds when every required role is mapped", async () => {
+    const out = join(dir, "require-ok-out");
+    io = captureIo();
+    await cmdBuild([sparseProfilePath], { out, require: "battery.soc" });
+    expect(existsSync(join(out, "index.json"))).toBe(true);
+  });
+
+  test("refuses a battery profile with no battery.soc without any flag", async () => {
+    const out = join(dir, "anchor-out");
+    io = captureIo();
+    await expect(cmdBuild([batteryWithoutSocPath], { out })).rejects.toThrow("exit 1");
+    expect(io.err.join("\n")).toContain("battery.soc");
+    expect(existsSync(join(out, "index.json"))).toBe(false);
+  });
+
+  test("rejects a --require name that is not a canonical role", async () => {
+    io = captureIo();
+    await expect(
+      cmdBuild([validProfilePath], { out: join(dir, "bad-require-out"), require: "battery.sock" }),
+    ).rejects.toThrow("exit 1");
+    expect(io.err.join("\n")).toContain("battery.sock");
+  });
+});
+
+describe("cmdReplay", () => {
+  const tinyReplayPath = writeFixture(
+    "tiny-replay.json",
+    JSON.stringify(
+      defineProfile({
+        id: "tiny-replay",
+        name: "Tiny Replay",
+        manufacturer: "ACME",
+        version: "1.0.0",
+        metrics: [
+          metric("battery/soc", {
+            label: "Battery SOC",
+            group: "battery",
+            unit: "%",
+            role: "battery.soc",
+            addr: 10,
+            range: { min: 0, max: 100 },
+          }),
+        ],
+      }),
+    ),
+  );
+
+  /** Write captures to disk and replay them against the tiny fixture profile. */
+  function captures(...bodies: unknown[]): string[] {
+    return bodies.map((b, i) =>
+      writeFixture(
+        `capture-${Math.random().toString(36).slice(2)}-${i}.json`,
+        typeof b === "string" ? b : JSON.stringify(b),
+      ),
+    );
+  }
+
+  const holds = { profile: "tiny-replay", registers: { "10": 51 }, expect: { "battery.soc": 51 } };
+
+  test("a capture whose expectations hold passes and reports what it checked", async () => {
+    io = captureIo();
+    await cmdReplay(captures(holds), { profile: tinyReplayPath });
+    expect(io.out.join("\n")).toContain("battery.soc");
+  });
+
+  test("a mismatch exits non-zero naming the metric, the expected and the actual", async () => {
+    io = captureIo();
+    await expect(
+      cmdReplay(captures({ ...holds, expect: { "battery.soc": 99 } }), { profile: tinyReplayPath }),
+    ).rejects.toThrow("exit 1");
+    const text = io.err.join("\n");
+    expect(text).toContain("battery.soc");
+    expect(text).toContain("99");
+    expect(text).toContain("51");
+  });
+
+  test("one bad capture among several fails the whole run", async () => {
+    io = captureIo();
+    await expect(
+      cmdReplay(captures(holds, { ...holds, expect: { "battery.soc": 7 } }), {
+        profile: tinyReplayPath,
+      }),
+    ).rejects.toThrow("exit 1");
+  });
+
+  test("an expectation naming an unknown metric fails rather than being skipped", async () => {
+    io = captureIo();
+    await expect(
+      cmdReplay(captures({ ...holds, expect: { "battery.nope": 1 } }), {
+        profile: tinyReplayPath,
+      }),
+    ).rejects.toThrow("exit 1");
+    expect(io.err.join("\n")).toContain("battery.nope");
+  });
+
+  test("an empty expect block is never a vacuous pass", async () => {
+    io = captureIo();
+    await expect(
+      cmdReplay(captures({ ...holds, expect: {} }), { profile: tinyReplayPath }),
+    ).rejects.toThrow("exit 1");
+  });
+
+  test("a malformed capture file is a readable error, not a stack trace", async () => {
+    io = captureIo();
+    await expect(cmdReplay(captures("{ not json"), { profile: tinyReplayPath })).rejects.toThrow(
+      "exit 1",
+    );
+    expect(io.err.join("\n")).toMatch(/invalid capture file/i);
+  });
+
+  test("no capture path is a usage error", async () => {
+    io = captureIo();
+    await expect(cmdReplay([], {})).rejects.toThrow("exit 1");
+    expect(io.err.join("\n")).toMatch(/usage: profile replay/);
+  });
+
+  test("a capture for a profile that is not installed and not given fails clearly", async () => {
+    io = captureIo();
+    await expect(cmdReplay(captures({ ...holds, profile: "no-such-profile" }), {})).rejects.toThrow(
+      "exit 1",
+    );
+    expect(io.err.join("\n")).toContain("no-such-profile");
   });
 });
