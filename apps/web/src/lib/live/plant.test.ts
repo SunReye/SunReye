@@ -255,3 +255,48 @@ describe("the canonical feed's wiring", () => {
     expect(bus.released.length).toBe(2);
   });
 });
+
+// Switching device makes every reading held wrong: they are the previous
+// machine's, and the ids they are keyed by carry no device, so the next read
+// would answer with another inverter's numbers — fresh, not stale, because the
+// timestamps are recent. That is the exact failure this module exists to
+// prevent, arriving from a direction it did not know about.
+describe("clearing the readings for a device switch", () => {
+  const readings = () => new PlantReadings({ cadenceMs: () => 1000 });
+
+  it("a value observed before the switch reads absent after it", () => {
+    const r = readings();
+    r.observe("metrics", "battery.soc", 42, 1000);
+
+    r.clear();
+
+    expect(r.read("battery.soc", 1000)).toEqual({ value: undefined, stale: false });
+  });
+
+  it("clears every topic's values, not just the device-scoped one", () => {
+    // A switch re-primes the whole panel; leaving the plant-level values behind
+    // would be defensible, but leaving *some* of them is what produces a screen
+    // that is half one machine and half another.
+    const r = readings();
+    r.observe("metrics", "battery.soc", 42, 1000);
+    r.observe("evcc", "evcc.charge.power", 3000, 1000);
+
+    r.clear();
+
+    expect(r.read("evcc.charge.power", 1000).value).toBeUndefined();
+  });
+
+  it("the next device's readings land normally afterwards", () => {
+    const r = readings();
+    r.observe("metrics", "battery.soc", 42, 1000);
+    r.clear();
+
+    r.observe("metrics", "battery.soc", 7, 1200);
+
+    expect(r.read("battery.soc", 1200)).toEqual({ value: 7, stale: false });
+  });
+
+  it("clearing an empty set is not an error", () => {
+    expect(() => readings().clear()).not.toThrow();
+  });
+});

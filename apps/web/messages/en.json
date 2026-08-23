@@ -375,6 +375,7 @@
   "snapshot_col_group": "Group",
   "snapshot_col_value": "Value",
   "option_select_placeholder": "Select…",
+  "device_switcher_label": "Device",
   "profiles_installed_title": "Installed profiles",
   "action_apply": "Apply",
   "action_delete": "Delete",

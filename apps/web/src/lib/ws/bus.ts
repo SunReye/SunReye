@@ -105,6 +105,8 @@ export class LiveBus {
    * Cleared on every drop: the new connection knows nothing.
    */
   #sent = new Set<WsTopic>();
+  /** The device every device-scoped topic is wanted for; `null` is the plant's lead. */
+  #deviceId: string | null = null;
   #cadence = new CadenceTracker();
 
   constructor(hooks: LiveBusHooks) {
@@ -120,6 +122,9 @@ export class LiveBus {
         this.#sync();
       },
       onDrop: () => {
+        // The new connection knows nothing — not the topics, and not the device
+        // they were asked for under. The diff in `#sync` is the replay, and it
+        // sends the device with them.
         this.#sent.clear();
         hooks.onConnected(false);
       },
@@ -171,6 +176,24 @@ export class LiveBus {
   }
 
   /**
+   * Point the device-scoped topics at one device; `null` is the plant's lead.
+   *
+   * Held topics are re-subscribed to it, because the frames already arriving are
+   * the previous device's and a panel that kept them would go on painting the
+   * old machine. Choosing the device already chosen sends nothing, so a store
+   * re-asserting its selection does not re-prime a backfill it already has.
+   */
+  // fallow-ignore-next-line unused-class-member -- called as `this.#bus.setDevice()` from the rune shell; calls through a private-field receiver aren't traced
+  setDevice(deviceId: string | null): void {
+    if (deviceId === this.#deviceId) return;
+    this.#deviceId = deviceId;
+    // Every held topic is now untold: the device is part of what a `sub` says,
+    // so the diff below re-sends them under the new one.
+    this.#sent.clear();
+    this.#sync();
+  }
+
+  /**
    * Reconcile what the connection has been told with what is wanted, in at most
    * one frame each way. Every path — a subscribe, a disposer, a handshake —
    * runs this same diff, which is why a reconnect needs no special case: the
@@ -191,7 +214,14 @@ export class LiveBus {
     const add = [...wanted].filter((topic) => !this.#sent.has(topic));
     const remove = [...this.#sent].filter((topic) => !wanted.has(topic));
     if (add.length > 0) {
-      this.#send({ t: "sub", topics: add });
+      // Omitted rather than sent as null when there is no chosen device: that is
+      // the frame every client sent before devices existed, and the server reads
+      // its absence as "the plant's lead".
+      this.#send(
+        this.#deviceId === null
+          ? { t: "sub", topics: add }
+          : { t: "sub", topics: add, deviceId: this.#deviceId },
+      );
       for (const topic of add) this.#sent.add(topic);
     }
     if (remove.length > 0) {

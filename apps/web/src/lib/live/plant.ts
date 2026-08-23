@@ -130,6 +130,20 @@ export class PlantReadings {
     return true;
   }
 
+  /**
+   * Forget every observation.
+   *
+   * For a device switch. The ids carry no device, so a value held across one
+   * would be answered as the new machine's — and answered *fresh*, since its
+   * timestamp is recent. A blank panel that fills in on the next frame is the
+   * honest state; a plausible number from the machine just switched away from
+   * is the failure this module exists to prevent.
+   */
+  // fallow-ignore-next-line unused-class-member -- called as `this.#readings.clear()` from the rune shell; calls through a private-field receiver aren't traced
+  clear(): void {
+    this.#observed.clear();
+  }
+
   /** The canonical reading, judged against its owner's cadence. */
   // fallow-ignore-next-line unused-class-member -- called as `this.#readings.x()` / `this.#feed.x()` from the rune shell; calls through a private-field receiver aren't traced
   read(id: LiveValueId, nowMs: number): Reading {

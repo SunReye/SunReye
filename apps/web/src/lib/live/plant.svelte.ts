@@ -70,6 +70,20 @@ class LivePlantStore {
   });
 
   /**
+   * Forget every reading, for a device switch.
+   *
+   * Bumps the frame counter as well, or the blanking would not repaint: the
+   * tiles are recomputed off `#version`, and clearing the map alone changes
+   * nothing they are watching. Leases are untouched — the ticker is shared and
+   * the panel is still mounted, it is simply looking at another machine now.
+   */
+  clearReadings(): void {
+    this.#readings.clear();
+    this.#version += 1;
+    this.#clock = Date.now();
+  }
+
+  /**
    * The canonical reading of one quantity. Reading it subscribes the caller to
    * both the frame counter and the staleness clock, so a tile re-renders when
    * the number changes *and* when it stops changing.

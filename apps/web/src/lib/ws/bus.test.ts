@@ -408,3 +408,98 @@ describe("LiveBus", () => {
     expect(seen).toEqual(["state"]);
   });
 });
+
+// A plant can hold several devices, and the dashboard shows one at a time. The
+// bus carries which one alongside the `sub` — the topic vocabulary is the
+// server's closed, gated set, so the device cannot ride inside a topic name.
+describe("LiveBus device scope", () => {
+  // The reconnect case drives the backoff timer, which only exists while the
+  // fakes are installed.
+  beforeEach(installFakeTimers);
+  afterEach(() => {
+    globalThis.setTimeout = realSetTimeout;
+    globalThis.clearTimeout = realClearTimeout;
+  });
+
+  test("names no device until one is chosen — what the server calls its lead", () => {
+    const h = harness();
+    openConnection(h);
+
+    h.bus.subscribe("metrics", () => {});
+
+    expect(last(h.sockets).frames()).toEqual([{ t: "sub", topics: ["metrics"] }]);
+  });
+
+  test("carries the chosen device on the sub frame", () => {
+    const h = harness();
+    openConnection(h);
+    h.bus.setDevice("barn");
+
+    h.bus.subscribe("metrics", () => {});
+
+    expect(last(h.sockets).frames()).toEqual([{ t: "sub", topics: ["metrics"], deviceId: "barn" }]);
+  });
+
+  test("choosing a device re-subscribes the held topics to it", () => {
+    // The frames already flowing are the previous device's. Without the
+    // re-subscribe the panel would keep painting the old machine.
+    const h = harness();
+    openConnection(h);
+    h.bus.subscribe("metrics", () => {});
+    last(h.sockets).sent.length = 0;
+
+    h.bus.setDevice("barn");
+
+    expect(last(h.sockets).frames()).toEqual([{ t: "sub", topics: ["metrics"], deviceId: "barn" }]);
+  });
+
+  test("choosing the device already chosen sends nothing", () => {
+    // A store re-asserting its selection must not re-prime a backfill it has.
+    const h = harness();
+    openConnection(h);
+    h.bus.setDevice("barn");
+    h.bus.subscribe("metrics", () => {});
+    last(h.sockets).sent.length = 0;
+
+    h.bus.setDevice("barn");
+
+    expect(last(h.sockets).frames()).toEqual([]);
+  });
+
+  test("a reconnect replays the device, not just the topics", () => {
+    // `#sent` is cleared on drop and the diff is the replay; the device is part
+    // of what the new connection has not been told.
+    const h = harness();
+    openConnection(h);
+    h.bus.setDevice("barn");
+    h.bus.subscribe("metrics", () => {});
+
+    last(h.sockets).emit("close");
+    elapse();
+    last(h.sockets).emit("open");
+
+    expect(last(h.sockets).frames()).toEqual([{ t: "sub", topics: ["metrics"], deviceId: "barn" }]);
+  });
+
+  test("choosing a device before the socket opens is not lost", () => {
+    const h = harness();
+    h.bus.setDevice("barn");
+    openConnection(h);
+
+    h.bus.subscribe("metrics", () => {});
+
+    expect(last(h.sockets).frames()).toEqual([{ t: "sub", topics: ["metrics"], deviceId: "barn" }]);
+  });
+
+  test("going back to the plant default drops the device from the frame", () => {
+    const h = harness();
+    openConnection(h);
+    h.bus.setDevice("barn");
+    h.bus.subscribe("metrics", () => {});
+    last(h.sockets).sent.length = 0;
+
+    h.bus.setDevice(null);
+
+    expect(last(h.sockets).frames()).toEqual([{ t: "sub", topics: ["metrics"] }]);
+  });
+});

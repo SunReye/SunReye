@@ -287,9 +287,20 @@ const app = new Elysia()
   // Capability manifest for the active inverter profile: capabilities + a
   // render-ready metric catalog (role, kind, range, enum labels, flow). The UI
   // builds itself from this — no per-inverter code. 503 until a profile is active.
-  .get("/api/profile", ({ status }) => manifest ?? status(503, ONBOARDING_REQUIRED), {
-    requireSession: true,
-  })
+  // `deviceId` picks one of the plant's devices; without it the caller gets the
+  // default device's, which is what every client asked for before there were
+  // several. An id naming no device is a 404 rather than a silent fall back to
+  // the default — a dashboard switched to a device it cannot describe would
+  // render another machine's metric catalog against this one's readings.
+  .get(
+    "/api/profile",
+    ({ status, query }) => {
+      if (!query.deviceId) return manifest ?? status(503, ONBOARDING_REQUIRED);
+      const device = registry.get(query.deviceId);
+      return device ? device.ctx.manifest : status(404, { error: "Unknown device" });
+    },
+    { requireSession: true, query: t.Object({ deviceId: t.Optional(t.String()) }) },
+  )
   // Every device this plant polls, so a client can name one instead of relying
   // on the server's default. History and statistics already take an
   // `inverterId`; this is how a caller learns which ids exist. No connection

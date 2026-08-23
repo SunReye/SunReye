@@ -52,6 +52,7 @@ const RESUME_OVERLAP_S = 2;
 export interface SeriesSink {
   get(key: string): LivePoint[] | undefined;
   set(key: string, points: LivePoint[]): void;
+  clear(): void;
   keys(): Iterable<string>;
 }
 
@@ -173,6 +174,18 @@ export class LiveSeries {
 
   constructor(sink: SeriesSink) {
     this.#sink = sink;
+  }
+
+  /**
+   * Drop every buffer.
+   *
+   * For a device switch: the points held are the previous machine's history,
+   * and two devices of one model share metric keys, so merging would splice two
+   * plants into one line with nothing downstream able to tell them apart.
+   */
+  // fallow-ignore-next-line unused-class-member -- called as `this.#live.clear()` from the store; calls through a private-field receiver aren't traced
+  clear(): void {
+    this.#sink.clear();
   }
 
   /** Fold one live sample in, one buffer per metric it carries. */
@@ -324,6 +337,20 @@ export class MetricsFeed {
       this.#release?.();
       this.#release = null;
     };
+  }
+
+  /**
+   * Re-seed for a device that has just been switched to.
+   *
+   * Stops consuming first, so a frame still in flight — the *previous* device's
+   * — is not applied to the new one's buffers, then re-runs the backfill. The
+   * topic subscription is kept: the bus re-points it to the new device, so
+   * giving it back and taking it again would only cost a re-prime.
+   */
+  // fallow-ignore-next-line unused-class-member -- called as `this.#feed.restart()` from the store; calls through a private-field receiver aren't traced
+  restart(): void {
+    this.#stop();
+    void this.#resume();
   }
 
   /** Tab visibility changed; the shell owns the DOM listener. */

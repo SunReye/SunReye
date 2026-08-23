@@ -29,6 +29,12 @@ import type {
 class InverterStore {
   manifest = $state<InverterManifest | null>(null);
   latest = $state<LiveSample | null>(null);
+  /**
+   * Which device this store describes; `null` is the plant's default, which is
+   * what every install with one device has and what the server answers when a
+   * request names none.
+   */
+  deviceId = $state<string | null>(null);
 
   // Reactive map: metric key → recent points. Plain `Map` in `$state` is NOT
   // reactive on get/set — SvelteMap tracks per-key mutations so sparklines
@@ -128,8 +134,37 @@ class InverterStore {
     this.#onVisibility = null;
   }
 
+  /**
+   * Point this store at another device.
+   *
+   * Everything held is the previous machine's, so it goes first: the last
+   * sample, the sparkline buffers, and the manifest that decodes them. A
+   * dashboard that kept any of it would render one device's catalog against
+   * another's readings — and `latest` in particular would keep painting numbers
+   * that look perfectly current.
+   *
+   * Called from an event handler, never from the shell's `$effect`: making that
+   * effect depend on the selection would tear down and re-lease the socket on
+   * every switch, which is the restart loop the backfill comment describes.
+   */
+  async switchTo(deviceId: string | null): Promise<void> {
+    if (deviceId === this.deviceId) return;
+    this.deviceId = deviceId;
+    this.latest = null;
+    this.#live.clear();
+    // Re-points the live topic; the server leaves the old device's channel
+    // before joining the new one.
+    bus.setDevice(deviceId);
+    // Re-runs the backfill for the new device, and holds frames off until it
+    // lands so an in-flight frame from the old one is not applied.
+    this.#feed.restart();
+    await this.#loadManifest();
+  }
+
   async #loadManifest(): Promise<void> {
-    const { data } = await api.api.profile.get();
+    const { data } = await api.api.profile.get(
+      this.deviceId === null ? {} : { query: { deviceId: this.deviceId } },
+    );
     if (data) this.manifest = data as unknown as InverterManifest;
   }
 
@@ -165,7 +200,12 @@ class InverterStore {
       Date.now(),
     );
     const { data } = await api.api.history.recent.get({
-      query: { seconds, stepSeconds: 1 },
+      // Named, so the sparklines behind a switched-to device are its own rows
+      // rather than the default device's.
+      query:
+        this.deviceId === null
+          ? { seconds, stepSeconds: 1 }
+          : { seconds, stepSeconds: 1, inverterId: this.deviceId },
     });
     if (!data) return;
     // A full-width request is authoritative about the window and replaces the

@@ -6,6 +6,7 @@
 	import { MediaQuery } from 'svelte/reactivity';
 	import * as Sidebar from '$lib/components/ui/sidebar';
 	import AppSidebar from '$lib/components/app-sidebar.svelte';
+	import DeviceSwitcher from '$lib/components/inverter/device-switcher.svelte';
 	import { useAppSession } from '$lib/session';
 	import { firstRunGate, publicDashboardEnabled, type FirstRunGate } from '$lib/setup';
 	import { inverter } from '$lib/inverter/store.svelte';
@@ -157,6 +158,12 @@
 							{pageHeader.subtitle}
 						</p>
 					{/if}
+				</div>
+				<!-- Trailing slot. The switcher renders nothing for a plant with one
+				     device, so the header keeps exactly the shape it has today on
+				     every install that has not added a second inverter. -->
+				<div class="ml-auto flex items-center">
+					<DeviceSwitcher />
 				</div>
 			</header>
 			<!-- `overflow-x-clip`, not `auto`: at 412px /automations ran past the

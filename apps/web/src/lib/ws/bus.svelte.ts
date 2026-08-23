@@ -47,6 +47,16 @@ class LiveBusStore {
     return this.#bus.connect();
   }
 
+  /**
+   * Point the device-scoped topics at one device; `null` is the plant's lead.
+   * Held topics are re-subscribed to it, so the frames arriving are the chosen
+   * machine's rather than the previous one's.
+   */
+  setDevice(deviceId: string | null): void {
+    if (!browser) return;
+    this.#bus.setDevice(deviceId);
+  }
+
   /** Receive one topic's frames until the returned disposer runs. */
   subscribe<K extends WsTopic>(topic: K, on: (data: WsTopicPayloads[K]) => void): () => void {
     if (!browser) return () => {};

@@ -77,6 +77,20 @@ export const MANIFEST = JSON.parse(
   readFileSync(join(here, "..", "fixtures", "manifest.json"), "utf8"),
 ) as FixtureManifest;
 
+/**
+ * The plant's devices when a spec does not say. One, matching the manifest, so
+ * the switcher hides itself and every existing spec sees the shell it asserts.
+ */
+const DEFAULT_DEVICES = [
+  {
+    id: MANIFEST.id,
+    label: MANIFEST.name,
+    deviceClass: "inverter",
+    enabled: true,
+    isDefault: true,
+  },
+];
+
 /** Only measurement/cumulative metrics get a card (see `ranges.ts#isChartable`). */
 export const CHARTABLE_METRIC_COUNT = MANIFEST.metrics.filter(
   (m) => m.kind === "measurement" || m.kind === "cumulative",
@@ -123,6 +137,18 @@ export interface BackendOptions {
    */
   needsProfile?: boolean;
   /**
+   * The plant's devices, as `/api/devices` answers. One by default — a switcher
+   * hides itself below two, so the shell keeps the shape every other spec
+   * asserts against.
+   */
+  devices?: {
+    id: string;
+    label: string;
+    deviceClass: string;
+    enabled: boolean;
+    isDefault: boolean;
+  }[];
+  /**
    * `/api/weather`. `"reading"` (default) is a full, readable reading;
    * `null` is weather switched off, which the server answers with an EMPTY
    * BODY — the case `payloadOrNull` exists for, and the case in which the tile
@@ -167,6 +193,8 @@ export interface MockBackend {
   pushEvcc(state?: unknown): Promise<void>;
   pushAutomations(message?: unknown): Promise<void>;
   pushLogs(entries?: unknown[]): Promise<void>;
+  /** The device the live socket is subscribed for, as the last `sub` named it. */
+  readonly liveDeviceId: string | null;
   /** Topics the socket refused, as the ack reported them. */
   readonly deniedTopics: readonly string[];
   /** Stop the automatic feed (idempotent; also runs at test end). */
@@ -318,6 +346,8 @@ export async function mockBackend(page: Page, options: BackendOptions = {}): Pro
   const denied: string[] = [];
   const evccSnapshot = options.evcc === null ? null : fixture.EVCC_STATE;
   let tick = 0;
+  /** The device the live socket is currently subscribed for; `null` is the lead. */
+  let liveDeviceId: string | null = null;
   let feed: ReturnType<typeof setInterval> | null = null;
   // One body per (window, series) pair: every card on a page asks for the same
   // window, so generating 1876 rows sixty-three times would measure the mock.
@@ -333,7 +363,13 @@ export async function mockBackend(page: Page, options: BackendOptions = {}): Pro
     const metrics: Record<string, number> = {};
     for (const metric of MANIFEST.metrics) metrics[metric.key] = valueFor(metric, tick);
     Object.assign(metrics, overrides);
-    return { time: new Date().toISOString(), inverterId: MANIFEST.id, metrics };
+    // Stamped with whichever device the client last subscribed to — the server
+    // only ever sends a connection the device it asked for.
+    return {
+      time: new Date().toISOString(),
+      inverterId: liveDeviceId ?? MANIFEST.id,
+      metrics,
+    };
   }
 
   /**
@@ -391,7 +427,7 @@ export async function mockBackend(page: Page, options: BackendOptions = {}): Pro
   }
 
   function handleClientFrame(raw: string): void {
-    let frame: { t?: string; topics?: string[] };
+    let frame: { t?: string; topics?: string[]; deviceId?: string };
     try {
       frame = JSON.parse(raw);
     } catch {
@@ -400,6 +436,10 @@ export async function mockBackend(page: Page, options: BackendOptions = {}): Pro
     clientFrames.push(frame);
     const topics = frame.topics ?? [];
     if (frame.t === "sub") {
+      // The device this connection asked for, as the server records it. Frames
+      // pushed afterwards are stamped with it, which is what makes "the panel
+      // shows the device it was switched to" assertable at all.
+      if (topics.includes("metrics")) liveDeviceId = frame.deviceId ?? null;
       const granted = topics.filter(allows);
       const refused = topics.filter((topic) => !allows(topic));
       for (const topic of granted) subscribed.add(topic);
@@ -506,7 +546,13 @@ export async function mockBackend(page: Page, options: BackendOptions = {}): Pro
     if (at("status")) return json(route, fixture.status(MANIFEST));
 
     // ── The catalogue ───────────────────────────────────────────────────────
+    // One manifest, whichever device is asked for: the fixture plant's devices
+    // are the same model, which is exactly the case that makes a switcher hard
+    // (shared metric keys) and is therefore the one worth faking.
     if (at("profile")) return json(route, MANIFEST);
+    // The plant's devices. A single-device plant is the default, because that is
+    // every install; a spec that wants a switcher passes two.
+    if (at("devices")) return json(route, options.devices ?? DEFAULT_DEVICES);
     if (at("custom-charts")) {
       // Branch on the METHOD: `endsWith` alone matched the create too, so a new
       // chart silently resolved to the empty list.
@@ -741,6 +787,9 @@ export async function mockBackend(page: Page, options: BackendOptions = {}): Pro
     },
     get unhandled() {
       return unhandled;
+    },
+    get liveDeviceId() {
+      return liveDeviceId;
     },
     get clientFrames() {
       return clientFrames;

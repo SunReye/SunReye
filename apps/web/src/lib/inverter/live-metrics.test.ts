@@ -783,3 +783,83 @@ describe("the store's backfill closure — full window on load, gap window on re
     expect(c.asked[1]).toBe(WINDOW_MS / 1000);
   });
 });
+
+// Switching to another device makes everything held about the previous one
+// wrong: its sparkline buffers are a different machine's history, and its last
+// sample is a different machine's numbers.
+describe("switching device", () => {
+  test("clearing empties every buffer", () => {
+    const map = sink();
+    const live = new LiveSeries(map);
+    live.appendSample(sample(0, { pv: 1, soc: 2 }));
+
+    live.clear();
+
+    expect(map.size).toBe(0);
+  });
+
+  test("a buffer cleared then refilled holds only the new device's points", () => {
+    // Merging would splice two machines' histories into one line — and two
+    // devices of the same model share metric keys, so nothing downstream could
+    // tell them apart.
+    const map = sink();
+    const live = new LiveSeries(map);
+    live.appendSample(sample(0, { pv: 1 }));
+
+    live.clear();
+    live.appendSample(sample(1000, { pv: 9 }));
+
+    expect((map.get("pv") ?? []).map((point) => point.v)).toEqual([9]);
+  });
+
+  test("restarting re-runs the backfill and keeps the one topic subscription", async () => {
+    // The rows held are the old device's, so they have to be refetched. The
+    // topic itself is re-pointed by the bus, not by giving it back here.
+    const h = harness();
+    h.feed.lease();
+    await h.seed();
+    h.log.length = 0;
+
+    h.feed.restart();
+    await h.seed();
+
+    expect(h.log).toEqual(["backfill", "seeded"]);
+  });
+
+  test("a frame that arrives mid-restart is not applied", async () => {
+    // Between the switch and the new backfill landing, a frame in flight is the
+    // *old* device's — applying it would paint the machine just switched away
+    // from, at the current time.
+    const h = harness();
+    h.feed.lease();
+    await h.seed();
+    h.log.length = 0;
+
+    h.feed.restart();
+    h.send("2026-08-15T10:00:00.000Z");
+
+    expect(h.log).toEqual(["backfill"]);
+  });
+
+  test("frames land again once the new backfill has settled", async () => {
+    const h = harness();
+    h.feed.lease();
+    await h.seed();
+    h.feed.restart();
+    await h.seed();
+    h.log.length = 0;
+
+    h.send("2026-08-15T10:00:01.000Z");
+
+    expect(h.log).toEqual(["sample:2026-08-15T10:00:01.000Z"]);
+  });
+
+  test("restarting without a lease does nothing", async () => {
+    // Nothing is consuming, so there is nothing to re-seed for.
+    const h = harness();
+
+    h.feed.restart();
+
+    expect(h.log).toEqual([]);
+  });
+});
