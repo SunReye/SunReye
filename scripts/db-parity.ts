@@ -1,0 +1,239 @@
+import { readFileSync } from "node:fs";
+
+/**
+ * Restore parity: does the database that came out of `pg_restore` hold exactly
+ * what the database that was dumped held?
+ *
+ * The comparison is deliberately pure — `SNAPSHOT_SQL` is run by psql on both
+ * sides (see `.github/workflows/db-restore.yml`), each side is written to a
+ * JSON file, and this module diffs the two. Nothing here talks to a database,
+ * so every boundary (a drifted average, a rollup bucket that vanished, the raw
+ * window that was *supposed* to vanish in `backup_full: false`, a compression
+ * or refresh policy that did not come back) is covered by the suite.
+ */
+
+export type RollupRow = {
+  bucket: string;
+  inverterId: string;
+  metric: string;
+  avg: number | null;
+  max: number | null;
+  min: number | null;
+};
+
+export type RollupName = "minute_rollups" | "hourly_rollups" | "daily_rollups";
+
+export type Snapshot = {
+  /** Every materialized bucket of every rollup, per inverter and metric. */
+  rollups: Record<RollupName, RollupRow[]>;
+  /** Row counts of the irreplaceable side tables (settings, auth, profiles …). */
+  tables: Record<string, number>;
+  /** Order-independent content digest per side table, so values are compared too. */
+  digests: Record<string, string>;
+  /** Rows in the raw 1 Hz hypertable — expected to be 0 after a non-full dump. */
+  rawRows: number;
+  /** Compressed chunks across all hypertables: the case most likely to break. */
+  compressedChunks: number;
+  /** `<job kind>:<hypertable>` for every TimescaleDB background job. */
+  policies: string[];
+};
+
+export type CompareOptions = {
+  /**
+   * `backup_full: false`. The raw window is excluded from the dump on purpose:
+   * its absence is then required, and its presence is the failure (the
+   * exclusion silently stopped working).
+   */
+  expectRawLoss: boolean;
+  /**
+   * Assert the fixture itself is meaty enough to be worth comparing — rollup
+   * rows materialized and at least one compressed chunk. Without it a broken
+   * seed step would make parity trivially true.
+   */
+  requireData?: boolean;
+};
+
+const ROLLUPS: readonly RollupName[] = ["minute_rollups", "hourly_rollups", "daily_rollups"];
+const METRICS = ["avg", "max", "min"] as const;
+
+/** Floating point round trip through pg_dump's text form is not bit-exact. */
+const EPSILON = 1e-9;
+
+export function rollupKey(row: RollupRow): string {
+  return `${row.bucket}|${row.inverterId}|${row.metric}`;
+}
+
+function sameNumber(a: number | null, b: number | null): boolean {
+  if (a === null || b === null) return a === b;
+  return Math.abs(a - b) <= EPSILON;
+}
+
+function compareRollup(name: RollupName, before: RollupRow[], after: RollupRow[]): string[] {
+  const problems: string[] = [];
+  if (before.length !== after.length) {
+    problems.push(`${name}: row count ${before.length} before, ${after.length} after`);
+  }
+
+  const afterByKey = new Map(after.map((r) => [rollupKey(r), r]));
+  for (const row of before) {
+    const key = rollupKey(row);
+    const restored = afterByKey.get(key);
+    if (!restored) {
+      problems.push(`${name}: bucket missing after restore: ${key}`);
+      continue;
+    }
+    for (const metric of METRICS) {
+      if (!sameNumber(row[metric], restored[metric])) {
+        problems.push(
+          `${name}: ${key}: ${metric} ${row[metric]} before, ${restored[metric]} after`,
+        );
+      }
+    }
+    afterByKey.delete(key);
+  }
+  for (const key of afterByKey.keys()) {
+    problems.push(`${name}: bucket appeared out of nowhere after restore: ${key}`);
+  }
+  return problems;
+}
+
+/** Row counts and content digests per table — the "nothing was lost" check. */
+function compareTables(before: Snapshot, after: Snapshot): string[] {
+  const problems: string[] = [];
+  for (const [table, count] of Object.entries(before.tables)) {
+    const restored = after.tables[table];
+    if (restored === undefined) problems.push(`${table}: table missing after restore`);
+    else if (restored !== count) problems.push(`${table}: ${count} rows before, ${restored} after`);
+  }
+  for (const [table, digest] of Object.entries(before.digests)) {
+    const restored = after.digests[table];
+    if (restored !== digest) {
+      problems.push(`${table}: content digest ${digest} before, ${restored} after`);
+    }
+  }
+  return problems;
+}
+
+/**
+ * The raw window, which is the one thing a `backup_full: false` dump is allowed
+ * to lose — and if it is allowed, its absence is *required*, so an unexpected
+ * survivor is as much a finding as an unexpected loss.
+ */
+function compareRawWindow(before: Snapshot, after: Snapshot, expectRawLoss: boolean): string[] {
+  if (expectRawLoss) {
+    return after.rawRows === 0
+      ? []
+      : [
+          `backup_full: false expected the raw window to be empty after restore, found ${after.rawRows} rows`,
+        ];
+  }
+  const problems: string[] = [];
+  if (after.rawRows !== before.rawRows) {
+    problems.push(`metrics_raw: ${before.rawRows} raw rows before, ${after.rawRows} after`);
+  }
+  if (after.compressedChunks !== before.compressedChunks) {
+    problems.push(
+      `compressed chunks: ${before.compressedChunks} before, ${after.compressedChunks} after`,
+    );
+  }
+  return problems;
+}
+
+/**
+ * Guard against a green run over an empty fixture. Parity between two empty
+ * databases holds trivially, so the fixture has to be shown to contain the cases
+ * that can actually break — rollup rows, and at least one compressed chunk.
+ */
+function checkFixtureIsMeaningful(before: Snapshot): string[] {
+  const problems: string[] = [];
+  if (ROLLUPS.every((name) => (before.rollups[name] ?? []).length === 0)) {
+    problems.push("fixture has no rollup rows — parity over nothing proves nothing");
+  }
+  if (before.compressedChunks === 0) {
+    problems.push("fixture has no compressed chunk — the riskiest case is untested");
+  }
+  return problems;
+}
+
+export function compareSnapshots(
+  before: Snapshot,
+  after: Snapshot,
+  options: CompareOptions,
+): string[] {
+  return [
+    ...ROLLUPS.flatMap((name) =>
+      compareRollup(name, before.rollups[name] ?? [], after.rollups[name] ?? []),
+    ),
+    ...compareTables(before, after),
+    ...before.policies
+      .filter((policy) => !after.policies.includes(policy))
+      .map((policy) => `policy not re-armed: ${policy}`),
+    ...compareRawWindow(before, after, options.expectRawLoss ?? false),
+    ...(options.requireData ? checkFixtureIsMeaningful(before) : []),
+  ];
+}
+
+const rollupSelect = (name: RollupName) => `
+    '${name}', (SELECT coalesce(json_agg(r ORDER BY r.bucket, r."inverterId", r.metric), '[]'::json)
+      FROM (SELECT bucket, inverter_id AS "inverterId", metric,
+                   avg_value AS avg, max_value AS max, min_value AS min
+            FROM ${name}) r)`;
+
+/** Tables whose loss is unrecoverable: settings, tariffs (settings-backed), auth, profiles. */
+export const SIDE_TABLES = [
+  "app_settings",
+  "installed_profiles",
+  "custom_charts",
+  "spot_prices",
+  "forecast_correction_cells",
+  "user",
+  "account",
+  "session",
+  "apikey",
+] as const;
+
+const tableCount = (t: string) => `'${t}', (SELECT count(*) FROM "${t}")`;
+const tableDigest = (t: string) =>
+  `'${t}', (SELECT md5(coalesce(string_agg(x, '|' ORDER BY x), '')) FROM (SELECT t::text AS x FROM "${t}" t) s)`;
+
+/** One query, one JSON object: the snapshot both sides of a restore are compared by. */
+export const SNAPSHOT_SQL = `SELECT json_build_object(
+  'rollups', json_build_object(${ROLLUPS.map(rollupSelect).join(",")}
+  ),
+  'tables', json_build_object(${SIDE_TABLES.map(tableCount).join(", ")}),
+  'digests', json_build_object(${SIDE_TABLES.map(tableDigest).join(", ")}),
+  'rawRows', (SELECT count(*) FROM metrics_raw),
+  'compressedChunks', (SELECT count(*) FROM timescaledb_information.chunks WHERE is_compressed),
+  'policies', (SELECT coalesce(json_agg(DISTINCT proc_name || ':' || coalesce(hypertable_name, '-')), '[]'::json)
+               FROM timescaledb_information.jobs)
+)`;
+
+export function readSnapshot(path: string): Snapshot {
+  return JSON.parse(readFileSync(path, "utf8")) as Snapshot;
+}
+
+/** `db-parity.ts <before.json> <after.json> [--expect-raw-loss] [--require-data]` */
+export function main(argv: readonly string[]): number {
+  const flags = argv.filter((a) => a.startsWith("--"));
+  const [before, after] = argv.filter((a) => !a.startsWith("--"));
+  if (!before || !after) {
+    console.error("usage: db-parity.ts <before.json> <after.json> [--expect-raw-loss]");
+    return 2;
+  }
+  const problems = compareSnapshots(readSnapshot(before), readSnapshot(after), {
+    expectRawLoss: flags.includes("--expect-raw-loss"),
+    requireData: flags.includes("--require-data"),
+  });
+  if (problems.length === 0) {
+    console.log("restore parity: identical");
+    return 0;
+  }
+  console.error(`restore parity: ${problems.length} mismatch(es)`);
+  for (const problem of problems) console.error(`  - ${problem}`);
+  return 1;
+}
+
+if (import.meta.main) {
+  if (process.argv[2] === "--print-sql") console.log(SNAPSHOT_SQL);
+  else process.exit(main(process.argv.slice(2)));
+}
