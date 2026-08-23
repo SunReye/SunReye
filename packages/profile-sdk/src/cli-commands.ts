@@ -569,61 +569,62 @@ export async function cmdInit(
  *
  * Exit 1 if any capture fails, so it is usable as a CI gate next to the profile.
  */
+/**
+ * The profile a capture is replayed against. An explicit `--profile` is what a
+ * profile repo uses: the profile under test is a file in the working tree, not
+ * something installed in this process. Absent, `replayCapture` resolves the
+ * capture's own id from the registry.
+ */
+async function replayProfile(path: string | undefined): Promise<InverterProfile | undefined> {
+  if (!path) return undefined;
+  const data = await readJson(path);
+  const { ok, issues } = validateProfile(data);
+  if (!ok) failIssues(`✗ ${path} is invalid:`, issues);
+  return hydrateProfile(parseProfileData(data));
+}
+
+/** Read and validate one capture file, failing readably rather than throwing. */
+async function readCapture(path: string): Promise<Capture> {
+  try {
+    return captureSchema.parse(JSON.parse(await Bun.file(path).text()));
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    fail(`invalid capture file ${path}: ${message}`);
+  }
+}
+
+/** Print one capture's outcome. Returns whether it failed. */
+function reportReplay(path: string, r: ReplayResult): boolean {
+  if (r.ok) {
+    const keys = r.matched.map((m) => m.key).join(", ");
+    console.log(`✓ ${path} — ${r.expectationCount} expectation(s) matched: ${keys}`);
+  } else {
+    console.error(`✗ ${path}`);
+    for (const m of r.mismatched) {
+      console.error(`  • ${m.key}: expected ${m.expected}, got ${m.actual}`);
+    }
+    for (const e of r.errors) console.error(`  • ${e}`);
+  }
+  // Informational either way: a capture may legitimately cover a subset of the
+  // profile's registers, and after #63 an unanswered address decodes to
+  // `undefined` rather than 0 — worth surfacing so it is not mistaken for one.
+  for (const miss of r.missingRegisters) {
+    console.error(`  ⚠ ${miss.key}: no value — registers absent: ${miss.missing.join(", ")}`);
+  }
+  return !r.ok;
+}
+
 export async function cmdReplay(paths: string[], opts: Record<string, string> = {}): Promise<void> {
   if (paths.length === 0) {
     fail("usage: profile replay <capture.json...> [--profile <file>] [--json]");
   }
 
-  // An explicit --profile is what a profile repo uses: the profile under test is
-  // a file in the working tree, not something installed in this process.
-  let profile: InverterProfile | undefined;
-  if (opts.profile) {
-    const data = await readJson(opts.profile);
-    const { ok, issues } = validateProfile(data);
-    if (!ok) failIssues(`✗ ${opts.profile} is invalid:`, issues);
-    profile = hydrateProfile(parseProfileData(data));
-  }
-
+  const profile = await replayProfile(opts.profile);
   const results: ReplayResult[] = [];
-  for (const path of paths) {
-    let capture: Capture;
-    try {
-      capture = captureSchema.parse(JSON.parse(await Bun.file(path).text()));
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      fail(`invalid capture file ${path}: ${message}`);
-    }
-    results.push(replayCapture(capture, profile));
-  }
+  for (const path of paths) results.push(replayCapture(await readCapture(path), profile));
 
-  if ("json" in opts) {
-    console.log(JSON.stringify(results, null, 2));
-  }
+  if ("json" in opts) console.log(JSON.stringify(results, null, 2));
 
-  let failed = 0;
-  for (const [i, r] of results.entries()) {
-    const path = paths[i];
-    if (r.ok) {
-      console.log(
-        `✓ ${path} — ${r.expectationCount} expectation(s) matched: ${r.matched
-          .map((m) => m.key)
-          .join(", ")}`,
-      );
-    } else {
-      failed += 1;
-      console.error(`✗ ${path}`);
-      for (const m of r.mismatched) {
-        console.error(`  • ${m.key}: expected ${m.expected}, got ${m.actual}`);
-      }
-      for (const e of r.errors) console.error(`  • ${e}`);
-    }
-    // Informational either way: a capture may legitimately cover a subset of the
-    // profile's registers, and after #63 an unanswered address decodes to
-    // `undefined` rather than 0 — worth surfacing so it is not mistaken for one.
-    for (const miss of r.missingRegisters) {
-      console.error(`  ⚠ ${miss.key}: no value — registers absent: ${miss.missing.join(", ")}`);
-    }
-  }
-
+  const failed = results.filter((r, i) => reportReplay(paths[i]!, r)).length;
   if (failed > 0) fail(`${failed} of ${results.length} capture(s) failed`);
 }

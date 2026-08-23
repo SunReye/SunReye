@@ -32,6 +32,19 @@ import {
 
 const [command, ...rest] = process.argv.slice(2);
 
+/**
+ * Split argv for the variadic commands (`build`, `replay`): every positional up
+ * to the first `--` is a path, the rest are flags. Shared rather than repeated,
+ * because getting the boundary wrong silently feeds a flag's *value* in as a
+ * path — a failure that looks like a missing file rather than a parse bug.
+ */
+function variadic(args: string[]): { paths: string[]; opts: Record<string, string> } {
+  const firstFlag = args.findIndex((a) => a.startsWith("--"));
+  return firstFlag === -1
+    ? { paths: args, opts: {} }
+    : { paths: args.slice(0, firstFlag), opts: flags(args.slice(firstFlag)) };
+}
+
 switch (command) {
   case "init": {
     // First positional is the target dir unless it's a flag.
@@ -54,17 +67,13 @@ switch (command) {
     await cmdScaffold(rest[0], flags(rest.slice(1)));
     break;
   case "build": {
-    // Positional entry files come first; everything from the first `--` on is flags.
-    const firstFlag = rest.findIndex((a) => a.startsWith("--"));
-    const paths = firstFlag === -1 ? rest : rest.slice(0, firstFlag);
-    await cmdBuild(paths, flags(firstFlag === -1 ? [] : rest.slice(firstFlag)));
+    const { paths, opts } = variadic(rest);
+    await cmdBuild(paths, opts);
     break;
   }
   case "replay": {
-    // Same positional-then-flags split as `build`: captures are variadic.
-    const firstFlag = rest.findIndex((a) => a.startsWith("--"));
-    const paths = firstFlag === -1 ? rest : rest.slice(0, firstFlag);
-    await cmdReplay(paths, flags(firstFlag === -1 ? [] : rest.slice(firstFlag)));
+    const { paths, opts } = variadic(rest);
+    await cmdReplay(paths, opts);
     break;
   }
   default:

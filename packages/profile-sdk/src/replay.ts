@@ -115,31 +115,80 @@ export function replayCapture(capture: Capture, profile?: InverterProfile): Repl
     );
   }
 
+  const { values, missingRegisters } = decodeAll(resolved, parsed.registers);
+  const diff = diffExpectations(resolved, values, parsed.expect, tolerance);
+
+  const expectationCount = Object.keys(parsed.expect).length;
+  const errors = [...diff.errors];
+  if (expectationCount === 0) errors.push("capture states no expectations — nothing was asserted");
+
+  return {
+    ok: expectationCount > 0 && diff.mismatched.length === 0 && diff.unknownMetrics.length === 0,
+    profileId: resolved.id,
+    matched: diff.matched,
+    mismatched: diff.mismatched,
+    unknownMetrics: diff.unknownMetrics,
+    missingRegisters,
+    expectationCount,
+    tolerance,
+    errors,
+  };
+}
+
+/**
+ * Decode every metric the profile declares, and record which declared addresses
+ * the capture did not supply. `applyComputed` runs afterwards so `sumOf`/`combine`
+ * metrics — which carry no addresses of their own — are covered too; a capture
+ * that expects one is the only thing that can catch a broken reference, since the
+ * raw metrics it derives from all still decode fine.
+ */
+function decodeAll(
+  profile: InverterProfile,
+  registers: Record<string, number>,
+): { values: MetricValues; missingRegisters: MissingRegisters[] } {
   const regs = new Map<number, number>();
-  for (const [addr, word] of Object.entries(parsed.registers)) regs.set(Number(addr), word);
+  for (const [addr, word] of Object.entries(registers)) regs.set(Number(addr), word);
 
   const values: MetricValues = {};
   const missingRegisters: MissingRegisters[] = [];
-  for (const def of resolved.metrics) {
+  for (const def of profile.metrics) {
     if (def.addresses.length > 0) {
       const missing = def.addresses.filter((a) => !regs.has(a));
       if (missing.length > 0) missingRegisters.push({ key: def.key, missing });
     }
+    // #63: an absent address decodes to `undefined`, never a fabricated 0, so an
+    // unanswered register must not enter `values` at all.
     const value = decode(def, regs);
     if (value !== undefined) values[def.key] = value;
   }
-  applyComputed(resolved.metrics, values);
+  applyComputed(profile.metrics, values);
+  return { values, missingRegisters };
+}
 
-  const keys = new Set(resolved.metrics.map((m) => m.key));
+/** Compare decoded values against the capture's expectations, within tolerance. */
+function diffExpectations(
+  profile: InverterProfile,
+  values: MetricValues,
+  expect: Record<string, number>,
+  tolerance: number,
+): {
+  matched: Expectation[];
+  mismatched: Expectation[];
+  unknownMetrics: string[];
+  errors: string[];
+} {
+  const keys = new Set(profile.metrics.map((m) => m.key));
   const matched: Expectation[] = [];
   const mismatched: Expectation[] = [];
   const unknownMetrics: string[] = [];
   const errors: string[] = [];
 
-  for (const [key, expected] of Object.entries(parsed.expect)) {
+  for (const [key, expected] of Object.entries(expect)) {
     if (!keys.has(key)) {
+      // An error rather than a skip: a typo'd key would otherwise make a capture
+      // silently assert nothing while still reporting success.
       unknownMetrics.push(key);
-      errors.push(`${key}: no such metric in profile "${resolved.id}"`);
+      errors.push(`${key}: no such metric in profile "${profile.id}"`);
       continue;
     }
     const actual = values[key];
@@ -147,19 +196,5 @@ export function replayCapture(capture: Capture, profile?: InverterProfile): Repl
     (hit ? matched : mismatched).push({ key, expected, actual });
     if (!hit) errors.push(`${key}: expected ${expected}, got ${actual}`);
   }
-
-  const expectationCount = Object.keys(parsed.expect).length;
-  if (expectationCount === 0) errors.push("capture states no expectations — nothing was asserted");
-
-  return {
-    ok: expectationCount > 0 && mismatched.length === 0 && unknownMetrics.length === 0,
-    profileId: resolved.id,
-    matched,
-    mismatched,
-    unknownMetrics,
-    missingRegisters,
-    expectationCount,
-    tolerance,
-    errors,
-  };
+  return { matched, mismatched, unknownMetrics, errors };
 }
