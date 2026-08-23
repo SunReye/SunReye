@@ -1,5 +1,6 @@
 export * from "./types";
-export { decode, encodeWord, registerWidth } from "./codec";
+export { decode, encodeWord, registerWidth, clampReports, resetClampReports } from "./codec";
+export type { ClampReport } from "./codec";
 export { ModbusInverter, planReads } from "./driver";
 export type { ReadBlock } from "./driver";
 export { applyComputed } from "./computed";
@@ -13,7 +14,17 @@ export {
   listProfiles,
   createInverter,
 } from "./registry";
-export { resolveKind, deriveCapabilities, toManifestMetric, buildManifest } from "./capabilities";
+export {
+  resolveKind,
+  hasResolvableKind,
+  kindFallbackKeys,
+  kindFallbackReports,
+  resetKindFallbacks,
+  deriveCapabilities,
+  toManifestMetric,
+  buildManifest,
+} from "./capabilities";
+export type { KindFallbackReport, KindInputs } from "./capabilities";
 export { entityConstraint, writableMetrics, metricByKey } from "./entities";
 export type { EntityConstraint, EntityValueType } from "./entities";
 // Profile authoring SDK + serializable data model + validator.

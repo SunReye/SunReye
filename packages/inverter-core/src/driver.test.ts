@@ -424,7 +424,7 @@ describe("ModbusInverter read", () => {
     expect(Date.parse(sample.time)).toBeLessThanOrEqual(Date.now());
   });
 
-  test("treats a register the device left out of a short frame as zero", async () => {
+  test("omits a register the device left out of a short frame instead of reporting zero", async () => {
     const inv = new ModbusInverter(
       profileOf([def({ key: "a", addresses: [100] }), def({ key: "b", addresses: [101] })]),
       connection(),
@@ -433,7 +433,7 @@ describe("ModbusInverter read", () => {
 
     const sample = await inv.read();
 
-    expect(sample.metrics).toEqual({ a: 7, b: 0 });
+    expect(sample.metrics).toEqual({ a: 7 });
   });
 
   test("skips metrics that own no register: RAW, addressless and composite controls", async () => {
