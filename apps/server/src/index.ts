@@ -15,6 +15,7 @@ import { evccControl, evccSnapshot, rebuildEvcc, stopEvcc } from "./evcc/evcc";
 import { queryRecentBuckets, queryRollup } from "./shared/history";
 import { isPublicDashboard } from "./settings/access-settings";
 import { initDeviceRegistry } from "./inverter/device-registry";
+import { deviceSummaries } from "./inverter/device-summary";
 import { startFleet, type Fleet } from "./inverter/fleet";
 import { initProfiles } from "./inverter/inverter";
 import { WriteRejectedError } from "./inverter/control-writer";
@@ -287,6 +288,13 @@ const app = new Elysia()
   // render-ready metric catalog (role, kind, range, enum labels, flow). The UI
   // builds itself from this — no per-inverter code. 503 until a profile is active.
   .get("/api/profile", ({ status }) => manifest ?? status(503, ONBOARDING_REQUIRED), {
+    requireSession: true,
+  })
+  // Every device this plant polls, so a client can name one instead of relying
+  // on the server's default. History and statistics already take an
+  // `inverterId`; this is how a caller learns which ids exist. No connection
+  // details — a source's config carries credentials.
+  .get("/api/devices", () => deviceSummaries(registry.devices(), activeInverterId), {
     requireSession: true,
   })
   // Historical data (long form). Filter by metric / inverter; rollups live in
