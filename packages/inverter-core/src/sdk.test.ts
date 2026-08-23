@@ -107,6 +107,59 @@ describe("metric() builder defaults", () => {
     expect(m.addresses).toEqual([]);
     expect(m.computeExpr).toEqual({ sum: ["a", "b"] });
   });
+
+  test("a pointer authors an http metric, with the register mirror left neutral", () => {
+    const m = metric("grid/power", {
+      label: "Grid power",
+      group: "grid",
+      unit: "W",
+      pointer: "/em:0/total_act_power",
+      role: "grid.power",
+    });
+
+    expect(m.binding).toEqual({ via: "http", pointer: "/em:0/total_act_power" });
+    expect(m.addresses).toEqual([]);
+  });
+
+  test("refuses a metric that is both addressed and pointed at", () => {
+    // Author-time, because it is a contradiction rather than a preference: the
+    // value cannot live in register 633 and in a JSON body at once.
+    expect(() =>
+      metric("grid/power", {
+        label: "Grid power",
+        group: "grid",
+        addr: 633,
+        pointer: "/em:0/total_act_power",
+      }),
+    ).toThrow("both");
+  });
+
+  test("survives the emit-time binding re-derive that the mirror cannot express", () => {
+    // `defineProfile` re-derives every binding from the final mirror fields so a
+    // patched address cannot leave a stale binding behind. There is no mirror to
+    // re-derive an http binding from, so it must be carried through untouched.
+    const data = defineProfile({
+      id: "meter",
+      name: "Meter",
+      manufacturer: "ACME",
+      version: "1.0.0",
+      metrics: [
+        metric("grid/power", {
+          label: "Grid power",
+          group: "grid",
+          unit: "W",
+          pointer: "/em:0/total_act_power",
+          role: "grid.power",
+        }),
+      ],
+    });
+
+    expect(data.metrics[0]?.binding).toEqual({
+      via: "http",
+      pointer: "/em:0/total_act_power",
+    });
+    expect(safeParseProfileData(data).success).toBe(true);
+  });
 });
 
 describe("profileDataSchema", () => {
