@@ -71,6 +71,72 @@ const sparseProfilePath = writeFixture(
     }),
   ),
 );
+// A valid profile whose one extra metric is read-only, unitless, roleless and
+// kind-less — the shape that silently falls through to `measurement` (#124).
+const unresolvableKindPath = writeFixture(
+  "unresolvable-kind.json",
+  JSON.stringify(
+    defineProfile({
+      id: "unresolvable",
+      name: "Unresolvable",
+      manufacturer: "ACME",
+      version: "1.0.0",
+      metrics: [
+        metric("battery/soc", {
+          label: "Battery SOC",
+          group: "battery",
+          unit: "%",
+          role: "battery.soc",
+          addr: 588,
+        }),
+        metric("ac/relay_status", { label: "Relays", group: "inverter", addr: 552 }),
+      ],
+    }),
+  ),
+);
+// The same profile with the two escape hatches the lint accepts: a mapped role
+// on one metric, an explicit `kind` on the other.
+const resolvableKindPath = writeFixture(
+  "resolvable-kind.json",
+  JSON.stringify(
+    defineProfile({
+      id: "resolvable",
+      name: "Resolvable",
+      manufacturer: "ACME",
+      version: "1.0.0",
+      metrics: [
+        metric("ac/relay_status", {
+          label: "Relays",
+          group: "inverter",
+          addr: 552,
+          role: "inverter.relay_status",
+          enumLabels: { 0: "Open", 1: "Closed" },
+        }),
+        metric("inverter/mystery", {
+          label: "Mystery",
+          group: "inverter",
+          addr: 553,
+          kind: "status",
+          enumLabels: { 0: "Off", 1: "On" },
+        }),
+      ],
+    }),
+  ),
+);
+// The published Deye profile as it was before #124 fixed it: `ac.relay_status`
+// read-only, unitless, roleless and kind-less. The regression proof that the
+// lint catches a real shipped mistake, not a hypothetical.
+const deyeBeforeFixPath = writeFixture(
+  "deye-pre-124.json",
+  JSON.stringify({
+    ...deyeSg05lp3Data,
+    metrics: deyeSg05lp3Data.metrics.map((m) =>
+      m.key === "ac.relay_status"
+        ? { ...m, role: undefined, kind: undefined, enumLabels: undefined }
+        : m,
+    ),
+  }),
+);
 const csvPath = writeFixture(
   "regs.csv",
   [
@@ -138,6 +204,43 @@ describe("cmdValidate", () => {
     io = captureIo();
     await expect(cmdValidate(truncated)).rejects.toThrow("exit 1");
     expect(io.err.join("\n")).toContain(`error: ${truncated} is not valid JSON`);
+  });
+});
+
+describe("cmdValidate kind lint", () => {
+  test("warns about a read-only, unitless, roleless, kind-less metric, naming the key", async () => {
+    io = captureIo();
+    await cmdValidate(unresolvableKindPath);
+    const out = io.out.join("\n");
+    expect(out).toContain("ac.relay_status");
+    expect(out).toContain("kind");
+  });
+
+  test("stays quiet when the kind comes from a mapped role or an explicit field", async () => {
+    io = captureIo();
+    await cmdValidate(resolvableKindPath);
+    expect(io.out.join("\n")).not.toContain("ac.relay_status");
+  });
+
+  test("fires on the pre-fix Deye profile's ac.relay_status", async () => {
+    io = captureIo();
+    await cmdValidate(deyeBeforeFixPath);
+    expect(io.out.join("\n")).toContain("ac.relay_status");
+  });
+
+  test("the shipped Deye profile's ac.relay_status is marked, so it is not flagged", async () => {
+    io = captureIo();
+    await cmdValidate(validProfilePath);
+    const out = io.out.join("\n");
+    expect(out).toContain("valid profile");
+    // Other roleless metrics in that profile still warn — this key must not.
+    expect(out).not.toContain("ac.relay_status");
+  });
+
+  test("--strict turns the warning into a gate", async () => {
+    io = captureIo();
+    await expect(cmdValidate(unresolvableKindPath, { strict: "" })).rejects.toThrow("exit 1");
+    expect(io.err.join("\n")).toContain("ac.relay_status");
   });
 });
 
