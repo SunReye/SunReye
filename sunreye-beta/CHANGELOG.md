@@ -2,11 +2,12 @@
 
 ## [unreleased]
 
-Unreleased work on `dev` since 1.2.0, shipped in `beta.20260822-6646324`.
+Unreleased work on `dev` since 1.2.0, shipped in `beta.20260823-26371e8`.
 
 
 ### Features
 
+* **profile-sdk:** lint the silent resolveKind fallback ([383c9c0](https://github.com/SunReye/SunReye/commit/383c9c08843a36c7f421911d236f6f558dd052ad))
 * **web:** two fingers zoom any chart, with nothing to arm ([65d26ba](https://github.com/SunReye/SunReye/commit/65d26ba24b2129dde64617cc0bdb558d57fa8d36))
 * **web:** full screen moves to the plot's corner, away from the caret ([15723cb](https://github.com/SunReye/SunReye/commit/15723cbe1c08d5d5b78760a0483be6b8f110b0b2))
 * **web:** one interaction model and one house style for every chart ([564b9bc](https://github.com/SunReye/SunReye/commit/564b9bc13c083b1f25b6d7f823d87cf5172ff7fa))
@@ -80,6 +81,11 @@ Unreleased work on `dev` since 1.2.0, shipped in `beta.20260822-6646324`.
 
 ### Bug Fixes
 
+* **addon:** exclude compressed chunk data from a non-full dump ([2ec3ec3](https://github.com/SunReye/SunReye/commit/2ec3ec3871ce88981c5977ae73dd2456bec5a2f9))
+* **ci:** stop retention deleting the restore fixture mid-test ([aba10ab](https://github.com/SunReye/SunReye/commit/aba10abad32d0e62db1058a5cbf644007d33f4da))
+* **ci:** pass DATABASE_URL to dump.sh in the restore test ([bd3a308](https://github.com/SunReye/SunReye/commit/bd3a308221818c2d92e6e9f62ec22d58bd4c84c1))
+* **server:** validate every write in the funnel, and pre-flight presets ([15a3a77](https://github.com/SunReye/SunReye/commit/15a3a77063b59ed9c3a8129af802785b446cc38d))
+* **inverter-core:** never fabricate a reading, never wrap a write ([7f0586b](https://github.com/SunReye/SunReye/commit/7f0586beeec74471bf6c85deafa762632ecd576b))
 * **web:** the desktop toolbar is one line of controls, one height ([4dd2ed1](https://github.com/SunReye/SunReye/commit/4dd2ed107a670d452ca8d8f13bb43b279eb819e0))
 * **web:** one place for a panel's controls, and one width for the navigator ([c6e1a4c](https://github.com/SunReye/SunReye/commit/c6e1a4cfa355a1343bb42ddccce6e6ecf2d2954f))
 * **web:** stat tiles stop drawing a second box on a phone ([2e22f51](https://github.com/SunReye/SunReye/commit/2e22f514b28bdd529dec347b62651d67bf33137b))
@@ -141,6 +147,7 @@ Unreleased work on `dev` since 1.2.0, shipped in `beta.20260822-6646324`.
 
 ### Performance Improvements
 
+* **db:** compress after 2h, checkpoint every 2h, compress WAL with zstd ([42bac87](https://github.com/SunReye/SunReye/commit/42bac87c62ab92f3f9085d367e687e766dfc4b84))
 * **web:** build each chart once, at a width it can actually use ([db697a8](https://github.com/SunReye/SunReye/commit/db697a84bb03e0f55dae223edbf71b16e5d60988))
 * **web:** build a chart when the reader stops, not when they scroll past ([c077445](https://github.com/SunReye/SunReye/commit/c0774452f2e89c5aebff5eaa1113b616da79ae7a))
 * **server,web:** bucket the sparkline backfill and resume from the gap ([d9a66b8](https://github.com/SunReye/SunReye/commit/d9a66b826c450ec6d60d66145f9e487d1778917b))
@@ -264,6 +271,7 @@ Unreleased work on `dev` since 1.2.0, shipped in `beta.20260822-6646324`.
 
 ### Tests
 
+* **db:** actually restore a dump in CI and assert parity ([54cd5c5](https://github.com/SunReye/SunReye/commit/54cd5c551057b0be8952cd8f56578614a542e37d))
 * **web:** measure a chart's mount cost, not the scroll around it ([de4cd42](https://github.com/SunReye/SunReye/commit/de4cd4246a506fb7d20867322a191619f628d123))
 * **web:** cover every route in the browser layer ([d555e9d](https://github.com/SunReye/SunReye/commit/d555e9d878e6d4d2ed36b321206a886c4a464e56))
 * **web:** add a browser test layer, and stop proving things with regexes ([d4ed34b](https://github.com/SunReye/SunReye/commit/d4ed34bcc0e6bee3ea09b14ee2f6159fa23f21c7))

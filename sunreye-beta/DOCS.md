@@ -67,13 +67,23 @@ automatic.
   days; all long-horizon history lives in the rollups, which are included).
   Set `backup_full: true` to dump everything.
 
-To restore a dump into a fresh addon install, from the addon's terminal:
+To restore a dump into a fresh addon install, run the restore script — it is the
+only place the sequence lives (the TimescaleDB pre/post-restore bracket, the
+`pg_restore` invocation, and the refusals), and CI restores real dumps with it on
+every release:
 
 ```sh
-psql -d "$DATABASE_URL" -c "SELECT timescaledb_pre_restore();"
-pg_restore -d "$DATABASE_URL" --no-owner /data/backups/<file>.dump
-psql -d "$DATABASE_URL" -c "SELECT timescaledb_post_restore();"
+scripts/db-restore.sh /data/backups/<file>.dump
 ```
+
+It refuses, before writing anything, when the target database was migrated by a
+newer SunReye release than the dump, or when it already holds SunReye data —
+pass `--force` to overwrite the latter deliberately. Restore into a fresh
+database and start SunReye afterwards; migrations bring the schema current.
+
+A dump taken with the default `backup_full: false` restores all history (the
+rollups) but no raw 1 Hz samples: the last days of second-resolution detail are
+gone and collection resumes from now.
 
 ## Upgrades
 
