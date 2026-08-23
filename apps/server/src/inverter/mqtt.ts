@@ -58,6 +58,21 @@ export interface MqttBridgeDeps {
   ctx: ProfileContext;
   /** Apply an inbound command write — the funnel validates it. */
   write(key: string, value: number): Promise<void>;
+  /**
+   * Which device this bridge speaks for. Everything that identifies it on the
+   * broker keys off this: the topic root, the availability topic, the Home
+   * Assistant device and every entity's `unique_id`.
+   *
+   * Defaults to the profile id, which is what every existing install has been
+   * publishing under — moving it would re-create every HA entity and break the
+   * dashboards and automations built on them. Two devices of the *same model*
+   * are why it has to be separable at all: sharing these would collapse them
+   * onto one topic root, one HA device, one availability state, and one command
+   * topic — where a single `.../set` would be written to both inverters.
+   */
+  deviceId?: string;
+  /** What to call this device in Home Assistant; the profile's name by default. */
+  deviceLabel?: string;
 }
 
 /**
@@ -69,13 +84,18 @@ export function startMqttBridge(config: MqttConfig, deps: MqttBridgeDeps): MqttB
   if (!config.enabled) return null;
 
   const { profile, manifest, defByKey } = deps.ctx;
+  // The device's identity, not the profile's — they are the same string for an
+  // install with one device, and must not be for two of the same model.
+  const deviceId = deps.deviceId ?? profile.id;
   const haDevice: HaDevice = {
-    identifiers: [`sunreye_${profile.id}`],
-    name: manifest.name,
+    identifiers: [`sunreye_${deviceId}`],
+    name: deps.deviceLabel ?? manifest.name,
     manufacturer: manifest.manufacturer,
+    // Still the profile: two devices of one model share a model, and that is
+    // the true thing to say about them.
     model: profile.id,
   };
-  const topics = topicsFor(config.topicPrefix, profile.id);
+  const topics = topicsFor(config.topicPrefix, deviceId);
   let connected = false;
   let lastError: string | null = null;
   // Latest forecast (both variants), kept so a reconnect can restore its retained
@@ -116,7 +136,7 @@ export function startMqttBridge(config: MqttConfig, deps: MqttBridgeDeps): MqttB
 
   /** The retained discovery topic one announcement is published to. */
   const discoveryTopic = (component: string, objectId: string): string =>
-    `${config.haDiscoveryPrefix}/${component}/sunreye_${profile.id}/${objectId}/config`;
+    `${config.haDiscoveryPrefix}/${component}/sunreye_${deviceId}/${objectId}/config`;
 
   /** (Re)publish the retained HA discovery configs: one per entity, plus the
    *  two forecast sensors. Called on every connect so they survive a broker
@@ -125,13 +145,13 @@ export function startMqttBridge(config: MqttConfig, deps: MqttBridgeDeps): MqttB
     for (const m of manifest.metrics) {
       const def = defByKey.get(m.key);
       if (!def) continue;
-      const disc = discoveryConfig(m, entityConstraint(def), topics, profile.id, haDevice);
+      const disc = discoveryConfig(m, entityConstraint(def), topics, deviceId, haDevice);
       client.publish(discoveryTopic(disc.component, slug(m.key)), JSON.stringify(disc.config), {
         retain: true,
       });
     }
     for (const variant of FORECAST_VARIANTS) {
-      const disc = forecastDiscoveryConfig(topics, profile.id, haDevice, variant);
+      const disc = forecastDiscoveryConfig(topics, deviceId, haDevice, variant);
       client.publish(
         discoveryTopic(disc.component, forecastObjectId(variant)),
         JSON.stringify(disc.config),

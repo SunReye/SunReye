@@ -318,6 +318,8 @@ type Harness = {
   drop(): void;
   /** Deliver one inbound message and let the async handler settle. */
   deliver(topic: string, payload: string): Promise<void>;
+  /** The last-will topic this bridge dialled with — its availability identity. */
+  willTopic: string | undefined;
 };
 
 function start(
@@ -326,6 +328,9 @@ function start(
     validateWrite?: ProfileContext["validateWrite"];
     write?: (key: string, value: number) => Promise<void>;
     defByKey?: Map<string, MetricDef>;
+    /** Which device this bridge speaks for; the profile id when unnamed. */
+    deviceId?: string;
+    deviceLabel?: string;
   } = {},
 ): Harness {
   const writes: { key: string; value: number }[] = [];
@@ -352,14 +357,19 @@ function start(
     store: { get: async () => ({}), set: async () => {} },
     readLive: () => undefined,
   });
-  const bridge = startMqttBridge({ ...baseConfig, ...over }, { ctx, write: funnel.write });
+  const bridge = startMqttBridge(
+    { ...baseConfig, ...over },
+    { ctx, write: funnel.write, deviceId: opts.deviceId, deviceLabel: opts.deviceLabel },
+  );
   if (!bridge) throw new Error("bridge was disabled");
   const client = clients.at(-1);
   if (!client) throw new Error("no client was created");
+  const will = connectCalls.at(-1)?.opts.will as { topic?: string } | undefined;
   return {
     bridge,
     client,
     writes,
+    willTopic: will?.topic,
     connect() {
       client.connected = true;
       client.emit("connect");
@@ -930,5 +940,112 @@ describe("shutting down", () => {
     await h.bridge.close();
     expect(h.client.ended).toBe(1);
     expect(h.bridge.status().connected).toBe(false);
+  });
+});
+
+// Two inverters of the same model share a profile. Everything that identifies a
+// bridge was keyed on the profile id, so they would have shared their topics,
+// their Home Assistant entity ids, their availability, and — the sharp one —
+// their command topic: one `.../set` aimed at one machine, written to both.
+describe("two devices on one broker", () => {
+  const both = () => ({
+    roof: start({ haDiscoveryEnabled: true }, { deviceId: "roof", deviceLabel: "Roof array" }),
+    barn: start({ haDiscoveryEnabled: true }, { deviceId: "barn", deviceLabel: "Barn array" }),
+  });
+
+  test("each publishes under its own topic root", () => {
+    const { roof, barn } = both();
+    roof.connect();
+    barn.connect();
+
+    roof.bridge.publishSample(sample({ "pv.power": 42 }));
+    barn.bridge.publishSample(sample({ "pv.power": 7 }));
+
+    expect(roof.client.published.map((p) => p.topic)).toContain("sunreye/roof/pv/power");
+    expect(barn.client.published.map((p) => p.topic)).toContain("sunreye/barn/pv/power");
+    expect(roof.client.published.some((p) => p.topic.includes("/barn/"))).toBe(false);
+  });
+
+  test("a command aimed at one device is not written to the other", async () => {
+    // The failure this prevents is a register write to grid-tied hardware that
+    // the operator aimed somewhere else, and it fails in the direction of doing
+    // more, not less.
+    const { roof, barn } = both();
+    roof.connect();
+    barn.connect();
+
+    await roof.deliver("sunreye/roof/setting/charge/current/set", "40");
+
+    expect(roof.writes).toEqual([{ key: "setting.charge.current", value: 40 }]);
+    expect(barn.writes).toEqual([]);
+  });
+
+  test("the other device never subscribed to that topic in the first place", () => {
+    const { roof, barn } = both();
+    roof.connect();
+    barn.connect();
+
+    expect(barn.client.subscribed.flat().some((t) => t.includes("/roof/"))).toBe(false);
+  });
+
+  test("each announces itself to Home Assistant under its own unique ids", () => {
+    // HA de-duplicates on `unique_id`, so a shared one does not duplicate the
+    // entity — it rejects the second device's outright, and half the plant
+    // silently never appears.
+    const { roof, barn } = both();
+    roof.connect();
+    barn.connect();
+
+    const uniqueIds = (h: ReturnType<typeof start>) =>
+      h.client.published
+        .filter((p) => p.topic.startsWith("homeassistant/"))
+        .map((p) => (JSON.parse(p.payload) as { unique_id?: string }).unique_id);
+
+    const roofIds = uniqueIds(roof);
+    const barnIds = uniqueIds(barn);
+    expect(roofIds.length).toBeGreaterThan(0);
+    expect(roofIds.every((id) => id?.startsWith("sunreye_roof_"))).toBe(true);
+    expect(barnIds.every((id) => id?.startsWith("sunreye_barn_"))).toBe(true);
+    expect(roofIds.some((id) => barnIds.includes(id))).toBe(false);
+  });
+
+  test("each is its own Home Assistant device, named for itself", () => {
+    // Same model, same manufacturer, two machines. Sharing `identifiers` would
+    // fold them into one device card carrying both plants' entities.
+    const { roof, barn } = both();
+    roof.connect();
+    barn.connect();
+
+    const device = (h: ReturnType<typeof start>) =>
+      (
+        JSON.parse(
+          h.client.published.find((p) => p.topic.startsWith("homeassistant/"))?.payload ?? "{}",
+        ) as { device?: { identifiers?: string[]; name?: string; model?: string } }
+      ).device;
+
+    expect(device(roof)?.identifiers).toEqual(["sunreye_roof"]);
+    expect(device(barn)?.identifiers).toEqual(["sunreye_barn"]);
+    expect(device(roof)?.name).toBe("Roof array");
+    expect(device(barn)?.name).toBe("Barn array");
+    // The model is still the model — that is what the profile actually names.
+    expect(device(roof)?.model).toBe(device(barn)?.model);
+  });
+
+  test("one device going offline does not mark the other unavailable", () => {
+    const { roof, barn } = both();
+
+    expect(roof.willTopic).toBe("sunreye/roof/status");
+    expect(barn.willTopic).toBe("sunreye/barn/status");
+  });
+
+  test("a bridge with no device named keeps the profile's identity, exactly as before", () => {
+    // Every existing install: the topic root and the HA entity ids it has been
+    // publishing under for months must not move.
+    const h = start();
+    h.connect();
+    h.bridge.publishSample(sample({ "pv.power": 42 }));
+
+    expect(h.client.published.map((p) => p.topic)).toContain("sunreye/deye-sg05lp3/pv/power");
+    expect(h.willTopic).toBe("sunreye/deye-sg05lp3/status");
   });
 });

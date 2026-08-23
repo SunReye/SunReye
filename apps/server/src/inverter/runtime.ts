@@ -99,6 +99,8 @@ export interface TestInverterResult {
 export interface RuntimeDevice {
   id: string;
   ctx: ProfileContext;
+  /** Human name, for the Home Assistant device card. */
+  label?: string;
 }
 
 /** Collaborators injected into a runtime; each defaults to its production wiring. */
@@ -148,6 +150,8 @@ export function createRuntime(deps: RuntimeDeps = {}) {
   let ctx: ProfileContext | null = null;
   /** Which device this runtime serves; set by {@link start}. */
   let deviceId: string | null = null;
+  /** What to call it — in Home Assistant, and in anything else user-facing. */
+  let deviceLabel: string | null = null;
   let source: InverterSource | null = null;
   let pollTimer: ReturnType<typeof setInterval> | null = null;
   let bridge: MqttBridge | null = null;
@@ -347,7 +351,15 @@ export function createRuntime(deps: RuntimeDeps = {}) {
 
   async function rebuildBridge(config: MqttConfig): Promise<void> {
     const previous = bridge;
-    bridge = startMqttBridge(config, { ctx: context(), write });
+    bridge = startMqttBridge(config, {
+      ctx: context(),
+      write,
+      // The bridge speaks for this runtime's device, not for its profile: two
+      // runtimes on one broker must not share a topic root, an HA identity, or
+      // a command topic.
+      deviceId: currentDeviceId(),
+      deviceLabel: deviceLabel ?? undefined,
+    });
     if (previous) await previous.close();
     // Seed a fresh bridge with the current forecast instead of waiting a full
     // interval; harmless when the forecast is disabled (publishes null → no-op).
@@ -369,6 +381,7 @@ export function createRuntime(deps: RuntimeDeps = {}) {
   ): Promise<void> {
     ctx = device.ctx;
     deviceId = device.id;
+    deviceLabel = device.label ?? null;
     streams = streamBus;
     // The scheduler arms each of these once and is idempotent while running, so
     // a re-boot re-points the source without stacking a second set of jobs. The
