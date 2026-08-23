@@ -221,6 +221,33 @@ describe("HttpTransport absent values", () => {
     expect((await transport.read()).values).toEqual({});
   });
 
+  test("a value that only goes non-finite after scaling yields no metric", async () => {
+    // The raw number is finite, so the pointer walk is happy; `1e308 * 10`
+    // overflows. Infinity is not a reading, and it serializes to `null` on the
+    // wire — a hole that looks like a decode bug three layers away.
+    const { transport } = serving({ p: 1e308, q: -1e308 }, [
+      def("power", "/p", { scale: 10 }),
+      def("neg", "/q", { scale: 10 }),
+    ]);
+
+    expect((await transport.read()).values).toEqual({});
+  });
+
+  test("does not read a value off the prototype chain", async () => {
+    // A pointer whose token happens to name an inherited property must miss.
+    // JSON.parse never produces an inherited key, but a polluted Object.prototype
+    // would otherwise fabricate a reading for a metric the device never sent.
+    const polluted = Object.prototype as unknown as Record<string, unknown>;
+    polluted["soc"] = 42;
+    try {
+      const { transport } = serving({ other: 1 }, [def("battery.soc", "/soc")]);
+
+      expect((await transport.read()).values).toEqual({});
+    } finally {
+      delete polluted["soc"];
+    }
+  });
+
   test("an index past the end of an array yields no metric", async () => {
     expect(await absent({ x: [] }, "/x/0")).toEqual({});
   });

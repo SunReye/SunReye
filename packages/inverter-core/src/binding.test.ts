@@ -240,6 +240,37 @@ describe("the http binding arm", () => {
     expect(safeParseProfileData(profileOf([httpMetric(pointer)], 2)).success).toBe(true);
   });
 
+  test.each([
+    ["computed", { computeExpr: { sum: ["other"] } }],
+    ["a control", { controlExpr: { preset: { writes: [{ target: "other", value: 1 }] } } }],
+  ])("rejects a metric that is bound to a pointer and %s as well", (_label, over) => {
+    // Two sources for one value: the pointer is read and then silently
+    // overwritten by the derived value. Every other arm rejects this shape.
+    expect(
+      issuesOf(
+        profileOf(
+          [
+            httpMetric("/em:0/total_act_power", over as Partial<MetricDataDef>),
+            {
+              ...v1Metric({ key: "other" }),
+              binding: { via: "modbus", addr: [500], type: "U_WORD" },
+            },
+          ],
+          2,
+        ),
+      ),
+    ).toContain("http metric");
+  });
+
+  test("rejects a writable http metric — nothing can write one, so nothing may offer to", () => {
+    // `access: "rw"` is what the entity layer, the MQTT bridge and the manifest
+    // key their write surfaces off. HttpTransport refuses every write, so a
+    // writable http metric is a control that cannot work.
+    expect(
+      issuesOf(profileOf([httpMetric("/em:0/total_act_power", { access: "rw" })], 2)),
+    ).toContain("access");
+  });
+
   test("is rejected on a v1 profile — the upcast is one-way for every arm", () => {
     // Authored as a v1 metric in every other respect, so the only thing left to
     // object to is the binding itself.

@@ -126,6 +126,28 @@ function strayAddresses(m: z.infer<typeof metricDataSchema>, what: string): Fiel
 }
 
 /**
+ * Everything that disqualifies a metric bound to a JSON pointer. Registers are
+ * one claim too many, and so is a second *source*: a `computeExpr` or
+ * `controlExpr` beside a pointer means the value is read and then silently
+ * overwritten by the derived one. `access: "rw"` is rejected too — the entity
+ * layer, the MQTT bridge and the manifest all key their write surfaces off it,
+ * and no HTTP transport can write, so a writable http metric offers a control
+ * that cannot work. Rejected here rather than discovered at write time, which is
+ * the whole point of tagging the union.
+ */
+function httpIssues(m: z.infer<typeof metricDataSchema>): FieldIssue[] {
+  const derived: FieldIssue[] =
+    m.computeExpr || m.controlExpr
+      ? [{ field: "binding", message: "http metric cannot also be computed or a control" }]
+      : [];
+  const writable: FieldIssue[] =
+    m.access === "rw"
+      ? [{ field: "access", message: "http metric cannot be writable: no transport can write one" }]
+      : [];
+  return [...derived, ...writable, ...strayAddresses(m, "http metric")];
+}
+
+/**
  * The arms that own no register: an http metric addressed by pointer, a
  * composite control, a computed value. Their only width rule is that they claim
  * no addresses — for an http metric, `type`/`addresses` are the neutral seed the
@@ -134,7 +156,7 @@ function strayAddresses(m: z.infer<typeof metricDataSchema>, what: string): Fiel
  * registers", so {@link widthIssues} should go on and count them.
  */
 function addresslessIssues(m: z.infer<typeof metricDataSchema>): FieldIssue[] | null {
-  if (m.binding?.via === "http") return strayAddresses(m, "http metric");
+  if (m.binding?.via === "http") return httpIssues(m);
   if (m.controlExpr) {
     const alsoComputed: FieldIssue[] = m.computeExpr
       ? [{ field: "controlExpr", message: "metric cannot be both a control and computed" }]

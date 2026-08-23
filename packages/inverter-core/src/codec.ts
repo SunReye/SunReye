@@ -113,9 +113,15 @@ function reportClamp(def: MetricDef, value: number, clamped: number): void {
  * enforced at this one boundary: a cold or error-state register answering
  * `0xFFFF` would otherwise persist a 655.35 % state of charge. A metric without
  * a `range` gets no bounds at all — never an invented default.
+ *
+ * `undefined` when the result is not finite. A register word cannot reach that,
+ * but a device-supplied float times a scale can (`1e308 * 10`), and Infinity is
+ * not a reading: it JSON-serializes to `null` and turns into a hole three layers
+ * away, indistinguishable from a decode bug.
  */
-export function applyScaling(def: MetricDef, raw: number): number {
+export function applyScaling(def: MetricDef, raw: number): number | undefined {
   const value = raw * def.scale + (def.offset ?? 0);
+  if (!Number.isFinite(value)) return undefined;
   if (!def.range) return value;
   const clamped = Math.min(def.range.max, Math.max(def.range.min, value));
   if (clamped !== value) reportClamp(def, value, clamped);

@@ -207,6 +207,14 @@ describe("applyScaling", () => {
     );
   });
 
+  test("a finite raw that scales to infinity is no reading at all", () => {
+    // Bounded register words can never reach this; a device-supplied float can.
+    // Infinity is not a value any consumer can use, and it JSON-serializes to
+    // `null`, so it must be absent here rather than a hole three layers away.
+    expect(applyScaling(def({ type: "U_WORD", scale: 10, key: "p" }), 1e308)).toBeUndefined();
+    expect(applyScaling(def({ type: "U_WORD", scale: Number.NaN, key: "p" }), 1)).toBeUndefined();
+  });
+
   test("reports its clamps into the same ledger decode uses — one per key, not one per source", () => {
     decode(soc, regs([[10, 0xffff]]));
     applyScaling(soc, 0xfffe);

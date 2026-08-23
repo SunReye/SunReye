@@ -81,14 +81,19 @@ function arrayIndex(token: string): number | undefined {
  * indistinguishable from the real thing and would steer the automation engines —
  * the same rule the register codec states, for the same reason.
  */
-/** One step of the walk: index an array, or take a key out of an object. */
+/**
+ * One step of the walk: index an array, or take a key out of an object. Own
+ * properties only — `JSON.parse` never produces an inherited one, so a pointer
+ * that resolves through the prototype chain is reading something the device
+ * never sent.
+ */
 function step(node: unknown, key: string): unknown {
   if (Array.isArray(node)) {
     const i = arrayIndex(key);
     return i === undefined ? undefined : node[i];
   }
   if (typeof node !== "object" || node === null) return undefined;
-  return (node as Record<string, unknown>)[key];
+  return Object.hasOwn(node, key) ? (node as Record<string, unknown>)[key] : undefined;
 }
 
 export function resolvePointer(body: unknown, pointer: string): number | undefined {
@@ -148,7 +153,8 @@ export class HttpTransport implements DeviceTransport {
     for (const def of this.profile.metrics) {
       if (def.binding.via !== "http") continue;
       const raw = resolvePointer(body, def.binding.pointer);
-      if (raw !== undefined) values[def.key] = applyScaling(def, raw);
+      const value = raw === undefined ? undefined : applyScaling(def, raw);
+      if (value !== undefined) values[def.key] = value;
     }
     log.debug("read {metrics} metrics from {url} ({ms} ms)", {
       metrics: Object.keys(values).length,
