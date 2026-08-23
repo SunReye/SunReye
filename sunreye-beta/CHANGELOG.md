@@ -2,11 +2,19 @@
 
 ## [unreleased]
 
-Unreleased work on `dev` since 1.2.0, shipped in `beta.20260823-9e8a9e3`.
+Unreleased work on `dev` since 1.2.0, shipped in `beta.20260823-9da0643`.
 
 
 ### Features
 
+* **web:** a device switcher in the dashboard header ([46d8744](https://github.com/SunReye/SunReye/commit/46d87441bdbaa30eee6f29aaf3f1e3861d081729))
+* **server:** a socket can ask for one device's metrics ([d577bfa](https://github.com/SunReye/SunReye/commit/d577bfa9d7bf4682636296cff5e344468da52748))
+* **server:** GET /api/devices, so a client can name a device ([08920ef](https://github.com/SunReye/SunReye/commit/08920ef2485a1ce5ccd8b4dfcaf2b7b10b6f4d47))
+* **server:** one poll loop per device ([45e3af8](https://github.com/SunReye/SunReye/commit/45e3af8a9053d12a0f71377809bfbbe8ce550f45))
+* **server:** an MQTT bridge speaks for a device, not for a profile ([6222b8a](https://github.com/SunReye/SunReye/commit/6222b8a4efe149bf0397f408a264f4b8a578d269))
+* **server:** the live poll cache holds one sample per device ([ceae74f](https://github.com/SunReye/SunReye/commit/ceae74f7f3faa3c0df1ec5b4b0d9bf5d29246b80))
+* **inverter-core:** a sample is stamped with a device id, not a profile id ([a6af311](https://github.com/SunReye/SunReye/commit/a6af31103c26cb310499f94e411edeef164ce9ac))
+* **server:** a device registry, and the end of the activeProfile global ([9b24772](https://github.com/SunReye/SunReye/commit/9b247723efedc6ffb7f9e79f8e01f4c6379a94d8))
 * **profile-sdk:** author a real meter against the http arm ([76c57b5](https://github.com/SunReye/SunReye/commit/76c57b52570952c966ce5bf2b6e1c145e7e6eb50))
 * **inverter-core:** an HTTP transport behind the same seam ([048dcb6](https://github.com/SunReye/SunReye/commit/048dcb6628ee430e695f224b4cae03b93436aa11))
 * **inverter-core:** an http arm on the binding union ([5f3f051](https://github.com/SunReye/SunReye/commit/5f3f0516b0071a92e50d22ddf71b8a1e022b7e08))
@@ -88,6 +96,9 @@ Unreleased work on `dev` since 1.2.0, shipped in `beta.20260823-9e8a9e3`.
 
 ### Bug Fixes
 
+* **server:** the lead device runs on the runtime every route talks to ([20ce048](https://github.com/SunReye/SunReye/commit/20ce048d936ce30ee1c9192a86a9b4be083b9278))
+* **inverter-core:** the Modbus lock belongs to the wire, not to the device ([290cef9](https://github.com/SunReye/SunReye/commit/290cef95912aa03920a972f1d65afe5d06f81207))
+* **server:** the registry follows the active-profile setting, not just its seed ([1562da8](https://github.com/SunReye/SunReye/commit/1562da807fe9c95939d932d95d7dff2a7b207083))
 * **inverter-core:** three holes an adversarial pass found in the http arm ([9cad2d8](https://github.com/SunReye/SunReye/commit/9cad2d85c53fe2dde8d93b66f26f42ad7a63b113))
 * **addon:** exclude compressed chunk data from a non-full dump ([2ec3ec3](https://github.com/SunReye/SunReye/commit/2ec3ec3871ce88981c5977ae73dd2456bec5a2f9))
 * **ci:** stop retention deleting the restore fixture mid-test ([aba10ab](https://github.com/SunReye/SunReye/commit/aba10abad32d0e62db1058a5cbf644007d33f4da))
