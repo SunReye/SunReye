@@ -6,7 +6,12 @@ dotenv.config({
 });
 
 export default defineConfig({
-  schema: "./src/schema",
+  // The barrel, not the directory. Pointed at `./src/schema`, drizzle-kit loads
+  // every file in it through its own CJS loader — including the colocated
+  // `*.test.ts`, which import `bun:test` and fail to resolve, so `db:generate`
+  // dies before it reads a single table. The barrel re-exports every schema
+  // module and no test.
+  schema: "./src/schema/index.ts",
   out: "./src/migrations",
   dialect: "postgresql",
   dbCredentials: {

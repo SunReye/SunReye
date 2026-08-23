@@ -608,11 +608,11 @@ async function medianHouseLoadW(
 // fallow-ignore-next-line unused-export -- consumed by ./automation through a destructured dynamic `import("./solar-forecast")`, which isn't traced
 export async function representativeHouseLoadW(config: WeatherConfig): Promise<number | null> {
   if (config.forecast.houseLoadW != null) return config.forecast.houseLoadW;
-  const [{ getActiveProfileOrNull }, { liveState }] = await Promise.all([
-    import("../inverter/inverter"),
+  const [{ activeProfileOrNull }, { liveState }] = await Promise.all([
+    import("../inverter/device-registry"),
     import("../shared/state"),
   ]);
-  const profile = getActiveProfileOrNull();
+  const profile = activeProfileOrNull();
   if (!profile) return null;
   return await medianHouseLoadW(profile, liveState.latest?.inverterId ?? profile.id);
 }
@@ -624,11 +624,11 @@ export async function representativeHouseLoadW(config: WeatherConfig): Promise<n
  * the DB-free split used by {@link ../energy/energy-calc}.
  */
 async function resolveSimInputs(config: WeatherConfig): Promise<ForecastSimInputs> {
-  const [{ getActiveProfileOrNull }, { liveState }] = await Promise.all([
-    import("../inverter/inverter"),
+  const [{ activeProfileOrNull }, { liveState }] = await Promise.all([
+    import("../inverter/device-registry"),
     import("../shared/state"),
   ]);
-  const profile = getActiveProfileOrNull();
+  const profile = activeProfileOrNull();
   const sample = liveState.latest;
   return {
     startSocPct: liveSocPct(profile, sample),
@@ -643,12 +643,12 @@ async function resolveSimInputs(config: WeatherConfig): Promise<ForecastSimInput
  * SOC metric or no rollup covers that hour.
  */
 async function resolveDayStartSoc(data: IrradianceForecast): Promise<number | null> {
-  const [{ getActiveProfileOrNull }, { liveState }, { queryHourlyAvgRange }] = await Promise.all([
-    import("../inverter/inverter"),
+  const [{ activeProfileOrNull }, { liveState }, { queryHourlyAvgRange }] = await Promise.all([
+    import("../inverter/device-registry"),
     import("../shared/state"),
     import("../shared/history"),
   ]);
-  const profile = getActiveProfileOrNull();
+  const profile = activeProfileOrNull();
   const socKey = roleKey(profile, "battery.soc");
   const startLocal = data.times[0];
   if (!profile || !socKey || startLocal === undefined) return null;
@@ -670,12 +670,12 @@ async function resolveDayStartSoc(data: IrradianceForecast): Promise<number | nu
  */
 async function resolveCorrection(config: WeatherConfig): Promise<CorrectionModel | undefined> {
   if (!config.forecast.correction.enabled) return undefined;
-  const [{ getActiveProfileOrNull }, { liveState }, { loadCorrectionModel }] = await Promise.all([
-    import("../inverter/inverter"),
+  const [{ activeProfileOrNull }, { liveState }, { loadCorrectionModel }] = await Promise.all([
+    import("../inverter/device-registry"),
     import("../shared/state"),
     import("./forecast-correction-store"),
   ]);
-  const profile = getActiveProfileOrNull();
+  const profile = activeProfileOrNull();
   if (!profile) return undefined;
   const model = await loadCorrectionModel(liveState.latest?.inverterId ?? profile.id);
   return model.size > 0 ? model : undefined;

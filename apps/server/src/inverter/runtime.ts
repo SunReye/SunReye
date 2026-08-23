@@ -29,10 +29,10 @@ import { createControlWriter } from "./control-writer";
 import { type HistoryBuffer, createHistoryBuffer } from "./history-buffer";
 import { type JobScheduler, createJobScheduler } from "./job-scheduler";
 import { evccOnLoadSample } from "../evcc/evcc";
+import { activeProfileOrNull } from "./device-registry";
 import {
   buildProfileContext,
   buildSource,
-  getActiveProfileOrNull,
   resolveProfileById,
   type ProfileContext,
 } from "./inverter";
@@ -412,7 +412,7 @@ export function createRuntime(deps: RuntimeDeps = {}) {
     profileId: string | null,
     config: InverterConfig,
   ): Promise<TestInverterResult> {
-    const profile = profileId ? await resolveProfileById(profileId) : getActiveProfileOrNull();
+    const profile = profileId ? await resolveProfileById(profileId) : activeProfileOrNull();
     if (!profile) {
       return {
         ok: false,

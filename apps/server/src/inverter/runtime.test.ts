@@ -433,7 +433,6 @@ const realInverter = await import("./inverter");
 const realInverterExports = { ...realInverter };
 const realBuildSource = realInverter.buildSource;
 const realResolveProfileById = realInverter.resolveProfileById;
-const realGetActiveProfileOrNull = realInverter.getActiveProfileOrNull;
 const { buildProfileContext } = realInverter;
 mock.module("./inverter", () => ({
   ...realInverter,
@@ -443,13 +442,21 @@ mock.module("./inverter", () => ({
     sources.push(built);
     return built;
   },
-  // Both profile lookups fall through to the real implementation unless a test
-  // has taken them over, so a later test file that imports this module keeps
-  // production behaviour.
+  // Falls through to the real implementation unless a test has taken it over,
+  // so a later test file that imports this module keeps production behaviour.
   resolveProfileById: async (id: string) =>
     resolveOverride ? resolveOverride(id) : realResolveProfileById(id),
-  getActiveProfileOrNull: () =>
-    profileOverride === undefined ? realGetActiveProfileOrNull() : profileOverride,
+}));
+
+// `testInverter`'s no-id fallback now asks the device registry for its default
+// device instead of reading the profile global that used to live in ./inverter.
+const realRegistry = await import("./device-registry");
+const realRegistryExports = { ...realRegistry };
+const realActiveProfileOrNull = realRegistry.activeProfileOrNull;
+mock.module("./device-registry", () => ({
+  ...realRegistry,
+  activeProfileOrNull: () =>
+    profileOverride === undefined ? realActiveProfileOrNull() : profileOverride,
 }));
 
 /** Stands in for `mqtt`'s client in the broker probe. */
@@ -652,6 +659,7 @@ afterAll(() => {
   mock.module("../settings/spot-price-settings", () => ({ ...realSpotSettingsExports }));
   mock.module("../prices/spot-price-job", () => ({ ...realSpotJobExports }));
   mock.module("./inverter", () => ({ ...realInverterExports }));
+  mock.module("./device-registry", () => ({ ...realRegistryExports }));
   untapRuntimeLogger();
   profileOverride = undefined;
   resolveOverride = null;

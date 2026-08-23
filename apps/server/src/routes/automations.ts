@@ -7,7 +7,7 @@ import {
   applyAutomationConfig,
 } from "../automation/automation";
 import { getAutomationConfig, setAutomationConfig } from "../settings/automation-settings";
-import { getActiveProfileOrNull } from "../inverter/inverter";
+import { activeProfileOrNull } from "../inverter/device-registry";
 import { validateAutomationEnable } from "../automation/peak-shaving";
 import { getWeatherConfig } from "../settings/weather-settings";
 import { adminGuard } from "./admin-guard";
@@ -26,7 +26,7 @@ export const automationRoutes = new Elysia({ name: "automation-routes" })
         // Validate the shape first so the enable-guard reasons about the exact
         // config that would be persisted (defaults applied, unknowns stripped).
         const parsed = automationConfigSchema.parse(body);
-        const profile = getActiveProfileOrNull();
+        const profile = activeProfileOrNull();
         return {
           parsed,
           rejected: validateAutomationEnable(parsed, profile, await getWeatherConfig()),

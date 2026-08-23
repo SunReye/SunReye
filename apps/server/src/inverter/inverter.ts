@@ -73,12 +73,10 @@ export async function resolveProfileById(id: string): Promise<InverterProfile | 
  * Active profile id: the saved setting wins, else the `INVERTER_PROFILE` env
  * seed, else `null` when neither is set (a fresh install with no config yet).
  */
-async function activeProfileId(): Promise<string | null> {
+export async function activeProfileId(): Promise<string | null> {
   const stored = await readSetting(ACTIVE_PROFILE_KEY, activeProfileSchema, { id: "" });
   return stored.id || env.INVERTER_PROFILE || null;
 }
-
-let activeProfile: InverterProfile | null = null;
 
 /**
  * Resolve the active profile for this process. Runs the two-phase boot: built-in
@@ -99,7 +97,6 @@ export async function initProfiles(): Promise<InverterProfile | null> {
     logger.warn(
       "no active inverter profile configured — booting onboarding-only (choose one in the UI, then restart)",
     );
-    activeProfile = null;
     return null;
   }
   // The saved id may point at a profile that's no longer available — e.g. an
@@ -113,21 +110,9 @@ export async function initProfiles(): Promise<InverterProfile | null> {
       'active inverter profile "{id}" is not installed — booting onboarding-only (reinstall it from a profile source, then restart)',
       { id },
     );
-    activeProfile = null;
     return null;
   }
-  activeProfile = resolved;
-  return activeProfile;
-}
-
-/**
- * The resolved active profile, or `null` when none is configured (degraded
- * onboarding-only boot). Callers that hold a non-null {@link ProfileContext}
- * already have the profile; this is for the routes that must tolerate its
- * absence.
- */
-export function getActiveProfileOrNull(): InverterProfile | null {
-  return activeProfile;
+  return resolved;
 }
 
 /**

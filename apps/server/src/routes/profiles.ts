@@ -1,7 +1,7 @@
 import { isOfficialSource } from "@SunReye/db/profiles";
 import { listProfiles } from "@SunReye/inverter-core";
 import { Elysia, t } from "elysia";
-import { getActiveProfileOrNull } from "../inverter/inverter";
+import { activeProfileOrNull, profileInUse } from "../inverter/device-registry";
 import {
   browseAvailable,
   getProfileSources,
@@ -24,7 +24,7 @@ export const profileRoutes = new Elysia({ name: "profile-routes" })
   .get(
     "/api/profiles",
     async () => {
-      const activeId = getActiveProfileOrNull()?.id ?? null;
+      const activeId = activeProfileOrNull()?.id ?? null;
       const installed = new Map((await listInstalled()).map((p) => [p.id, p]));
       return listProfiles().map((p) => ({
         id: p.id,
@@ -82,8 +82,11 @@ export const profileRoutes = new Elysia({ name: "profile-routes" })
   .delete(
     "/api/profiles/:id",
     async ({ params, status }) => {
-      if (params.id === getActiveProfileOrNull()?.id) {
-        return status(409, { error: "Cannot uninstall the active profile" });
+      // Any device that decodes with it, not just the default one: uninstalling
+      // the profile a second device needs is exactly as destructive, and
+      // comparing against one active id never noticed.
+      if (profileInUse(params.id)) {
+        return status(409, { error: "Cannot uninstall a profile a device is using" });
       }
       await uninstallProfile(params.id);
       return { ok: true, id: params.id };
@@ -97,7 +100,7 @@ export const profileRoutes = new Elysia({ name: "profile-routes" })
     async ({ body, status }) => {
       try {
         const { id } = await setActiveProfile(body);
-        return { id, restartRequired: id !== getActiveProfileOrNull()?.id };
+        return { id, restartRequired: id !== activeProfileOrNull()?.id };
       } catch (error) {
         return status(400, { error: error instanceof Error ? error.message : "Invalid profile" });
       }

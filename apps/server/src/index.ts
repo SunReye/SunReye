@@ -14,7 +14,8 @@ import { entitiesApi } from "./inverter/entities";
 import { evccControl, evccSnapshot, rebuildEvcc, stopEvcc } from "./evcc/evcc";
 import { queryRecentBuckets, queryRollup } from "./shared/history";
 import { isPublicDashboard } from "./settings/access-settings";
-import { buildProfileContext, initProfiles } from "./inverter/inverter";
+import { initDeviceRegistry } from "./inverter/device-registry";
+import { initProfiles } from "./inverter/inverter";
 import { WriteRejectedError } from "./inverter/control-writer";
 import { log, recentLogs, setupLogging } from "./shared/logging";
 import { createStreams } from "./shared/streams";
@@ -133,13 +134,23 @@ function describeWriteError(err: unknown): string {
 // handler short-circuits with 503 and the poll loop / MQTT bridge never start —
 // the admin picks a profile from the first-run flow, then restarts into the
 // full API.
-const profile = await initProfiles();
-const ctx = profile ? buildProfileContext(profile) : null;
+await initProfiles();
+// The device registry, seeded on first boot from the active profile and the
+// saved connection. Everything below still reads its *default* device, which on
+// a single-device install is the same object the active profile used to be —
+// that identity is what makes this a rename rather than a migration. Surfaces
+// move to naming a device one at a time.
+const registry = await initDeviceRegistry();
+const defaultDevice = registry.default() ?? null;
+const profile = defaultDevice?.ctx.profile ?? null;
+const ctx = defaultDevice?.ctx ?? null;
 const manifest = ctx?.manifest ?? null;
 // 503 payload for a profile-dependent surface hit before onboarding is done.
 const ONBOARDING_REQUIRED = { error: "No active inverter profile — onboarding required" } as const;
 // Default inverter id for history reads that don't name one; null until onboarded.
-const activeInverterId = profile?.id ?? null;
+// The device's id, not the profile's — the same string today, and the seed is
+// what keeps it so for every install that already has history.
+const activeInverterId = defaultDevice?.id ?? null;
 
 /**
  * The two topics whose producers ask "is anyone actually watching" before doing

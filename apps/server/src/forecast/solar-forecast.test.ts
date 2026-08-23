@@ -575,11 +575,11 @@ describe("forecastProviderCatalog", () => {
 // mocks, `realState.liveState` IS `poll` — so the real exports are snapshotted
 // by value here, at load time, before anything is installed.
 const realDb = await import("@SunReye/db");
-const realInverter = await import("../inverter/inverter");
+const realRegistry = await import("../inverter/device-registry");
 const realState = await import("../shared/state");
 
 const realDbExports = { ...realDb };
-const realInverterExports = { ...realInverter };
+const realRegistryExports = { ...realRegistry };
 const realStateExports = { ...realState };
 
 /** Every statement `db.execute` was handed, flattened for substring matching. */
@@ -610,9 +610,9 @@ const dbStub = {
 mock.module("@SunReye/db", () => ({ ...realDb, db: dbStub }));
 
 let activeProfile: InverterProfile | null = null;
-mock.module("../inverter/inverter", () => ({
-  ...realInverter,
-  getActiveProfileOrNull: () => activeProfile,
+mock.module("../inverter/device-registry", () => ({
+  ...realRegistry,
+  activeProfileOrNull: () => activeProfile,
 }));
 
 // A faithful stand-in for the poll cache, not a bare `{ latest }` bag: the real
@@ -638,7 +638,7 @@ mock.module("../shared/state", () => ({ ...realState, liveState: poll }));
 // modules back.
 afterAll(() => {
   mock.module("@SunReye/db", () => ({ ...realDbExports }));
-  mock.module("../inverter/inverter", () => ({ ...realInverterExports }));
+  mock.module("../inverter/device-registry", () => ({ ...realRegistryExports }));
   mock.module("../shared/state", () => ({ ...realStateExports }));
 });
 

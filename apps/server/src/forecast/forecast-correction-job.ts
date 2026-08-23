@@ -40,7 +40,7 @@ import {
   skillImprovementPct,
 } from "./forecast-correction";
 import { loadCorrectionModel } from "./forecast-correction-store";
-import { getActiveProfileOrNull } from "../inverter/inverter";
+import { activeProfileOrNull } from "../inverter/device-registry";
 import { queryHourlyAvgRange } from "../shared/history";
 import { type SolarForecastPoint, buildSolarForecast } from "./solar-forecast";
 import { fetchHistoricalIrradiance } from "./providers/open-meteo-archive";
@@ -100,7 +100,7 @@ export interface CorrectionIo {
  */
 const productionIo: CorrectionIo = {
   now: () => Date.now(),
-  activeProfile: getActiveProfileOrNull,
+  activeProfile: activeProfileOrNull,
   latestSample: () => liveState.latest,
   fetchArchive: fetchHistoricalIrradiance,
   measuredHourlyAvg: queryHourlyAvgRange,
