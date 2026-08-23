@@ -40,12 +40,20 @@ export function listProfiles(): InverterProfile[] {
   return [...profiles.values()];
 }
 
-/** Build a live source for a profile: simulator or real Modbus TCP. */
+/**
+ * Build a live source for a profile: simulator or real Modbus TCP.
+ *
+ * `deviceId` is what the samples are stamped with. It defaults to the profile's
+ * id — every install with one device — and is passed explicitly when a device
+ * has an identity of its own, which is the case as soon as two of them share a
+ * profile.
+ */
 export function createInverter(
   profile: InverterProfile,
-  opts: { simulate: boolean; connection: InverterConnection },
+  opts: { simulate: boolean; connection: InverterConnection; deviceId?: string },
 ): InverterSource {
+  const { deviceId } = opts;
   return opts.simulate
-    ? new SimulatedInverter(profile)
-    : new ModbusInverter(profile, opts.connection);
+    ? new SimulatedInverter(profile, { deviceId })
+    : new ModbusInverter(profile, opts.connection, undefined, { deviceId });
 }

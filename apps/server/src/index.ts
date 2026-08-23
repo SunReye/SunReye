@@ -529,12 +529,16 @@ publishLiveTopics({ streams, publisher: () => app.server ?? undefined });
 // MQTT bridge (all hot-reconfigurable). Each sample is emitted on the `metrics`
 // topic; persistence + MQTT publishing happen inside the controller. Skipped in
 // onboarding-only boot — there's no profile to poll yet.
-if (ctx) {
+if (defaultDevice) {
   // The audience predicate: the engine's per-tick broadcast (and the plan
   // projection built only for it) is skipped while no `/ws` connection holds
   // the `automations` topic. Read per tick, never captured — a page opened an
   // hour from now must start receiving frames on the very next tick.
-  runtime.start(streams, ctx, audience.automations);
+  //
+  // One runtime, for the default device. A registry with two devices needs one
+  // loop each, which is the next slice — this one is what makes the loop able
+  // to say which device it is polling.
+  runtime.start(streams, defaultDevice, audience.automations);
 }
 
 // Periodically sync profile repos and diff installed versions so the UI can

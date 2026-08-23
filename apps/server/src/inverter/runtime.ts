@@ -89,6 +89,18 @@ export interface TestInverterResult {
   metrics?: TestSnapshotMetric[];
 }
 
+/**
+ * The device a runtime serves: an id to stamp its readings with, and the
+ * context that decodes them. A `Device` from the registry satisfies it, which is
+ * how the composition root hands one over without the runtime importing the
+ * registry.
+ */
+// fallow-ignore-next-line unused-type -- structural: the composition root passes a registry `Device`, which satisfies it without naming it
+export interface RuntimeDevice {
+  id: string;
+  ctx: ProfileContext;
+}
+
 /** Collaborators injected into a runtime; each defaults to its production wiring. */
 export interface RuntimeDeps {
   /**
@@ -134,6 +146,8 @@ export function createRuntime(deps: RuntimeDeps = {}) {
   const scheduler = deps.scheduler ?? createJobScheduler();
   const onLoadSample = deps.onLoadSample ?? evccOnLoadSample;
   let ctx: ProfileContext | null = null;
+  /** Which device this runtime serves; set by {@link start}. */
+  let deviceId: string | null = null;
   let source: InverterSource | null = null;
   let pollTimer: ReturnType<typeof setInterval> | null = null;
   let bridge: MqttBridge | null = null;
@@ -213,6 +227,15 @@ export function createRuntime(deps: RuntimeDeps = {}) {
   function context(): ProfileContext {
     if (!ctx) throw new Error("runtime not started");
     return ctx;
+  }
+
+  /**
+   * The id this runtime's samples are stamped with — the device's, not the
+   * profile's. They are the same string for every install with one device, and
+   * stop being the same the moment two devices share a model.
+   */
+  function currentDeviceId(): string {
+    return deviceId ?? context().profile.id;
   }
 
   /** The house-load value (W) of a sample, or null when the profile has no load role. */
@@ -305,7 +328,7 @@ export function createRuntime(deps: RuntimeDeps = {}) {
     // land on rows captured under the previous one.
     await historyBuffer.flush();
     const previous = source;
-    source = buildSource(context().profile, config);
+    source = buildSource(context().profile, config, currentDeviceId());
     // The simulator is always "connected"; a real Modbus source only proves it on
     // the first successful read, so start pessimistic and let pollOnce flip it.
     inverterStatus.connected = env.INVERTER_SIMULATE;
@@ -341,10 +364,11 @@ export function createRuntime(deps: RuntimeDeps = {}) {
    */
   async function start(
     streamBus: Streams,
-    profileCtx: ProfileContext,
+    device: RuntimeDevice,
     automationsWatched?: () => boolean,
   ): Promise<void> {
-    ctx = profileCtx;
+    ctx = device.ctx;
+    deviceId = device.id;
     streams = streamBus;
     // The scheduler arms each of these once and is idempotent while running, so
     // a re-boot re-points the source without stacking a second set of jobs. The
@@ -368,7 +392,7 @@ export function createRuntime(deps: RuntimeDeps = {}) {
     // Automations write through the same funnel as every other path; they only
     // run while a profile is active (this function is never called without one).
     // They push their tick outcomes onto the same injected bus.
-    await startAutomations({ ctx: profileCtx, write }, streamBus, undefined, automationsWatched);
+    await startAutomations({ ctx: device.ctx, write }, streamBus, undefined, automationsWatched);
   }
 
   /**

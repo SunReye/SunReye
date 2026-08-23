@@ -777,6 +777,40 @@ describe("ModbusInverter over an injected transport", () => {
     expect(wire.instances).toEqual([]); // no Modbus client was ever built
   });
 
+  test("stamps the device id it was given, not the profile's", async () => {
+    // Two inverters of the same model on one gateway share a profile and share
+    // nothing else. If the sample carried the profile id, both would write
+    // their readings into the same history rows under the same key — two
+    // machines averaged into one, silently.
+    const profile = profileOf([def({ key: "battery.soc", addresses: [200] })]);
+    const first = new ModbusInverter(profile, connection(), fake({ "battery.soc": 10 }).transport, {
+      deviceId: "roof",
+    });
+    const second = new ModbusInverter(
+      profile,
+      connection(),
+      fake({ "battery.soc": 90 }).transport,
+      {
+        deviceId: "barn",
+      },
+    );
+
+    expect((await first.read()).inverterId).toBe("roof");
+    expect((await second.read()).inverterId).toBe("barn");
+  });
+
+  test("falls back to the profile id when no device id is given", async () => {
+    // Every existing install has exactly one device, whose id is its profile id.
+    const inv = new ModbusInverter(
+      profileOf([def({ key: "battery.soc", addresses: [200] })]),
+      connection(),
+      fake({ "battery.soc": 42 }).transport,
+      {},
+    );
+
+    expect((await inv.read()).inverterId).toBe("test-inverter");
+  });
+
   test("derives computed metrics above the seam, from whatever the transport read", async () => {
     const { transport } = fake({ "dc.power": 1000, "ac.power": 900 });
     const inv = new ModbusInverter(

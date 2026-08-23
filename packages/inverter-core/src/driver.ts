@@ -20,14 +20,24 @@ import type {
 export class ModbusInverter implements InverterSource {
   readonly profile: InverterProfile;
   private readonly transport: DeviceTransport;
+  /**
+   * The id every sample is stamped with, and therefore the key every reading is
+   * stored under. Defaults to the profile's id, which is what an install with
+   * one device has always used — but two inverters of the same model on one
+   * gateway share a profile and share nothing else, and stamping the profile id
+   * would average two machines into one set of history rows without a word.
+   */
+  private readonly deviceId: string;
 
   constructor(
     profile: InverterProfile,
     conn: InverterConnection,
     transport: DeviceTransport = new ModbusTransport(profile, conn),
+    opts: { deviceId?: string } = {},
   ) {
     this.profile = profile;
     this.transport = transport;
+    this.deviceId = opts.deviceId ?? profile.id;
   }
 
   async read(): Promise<InverterSample> {
@@ -35,7 +45,7 @@ export class ModbusInverter implements InverterSource {
     applyComputed(this.profile.metrics, values);
     return {
       time: new Date().toISOString(),
-      inverterId: this.profile.id,
+      inverterId: this.deviceId,
       metrics: values,
       // Spread rather than assign: a transport that knows nothing about
       // staleness leaves the sample exactly the shape it has always been,

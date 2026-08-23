@@ -46,6 +46,16 @@ describe("the profile's own simulate hook", () => {
     expect(Date.parse(sample.time)).not.toBeNaN();
   });
 
+  test("stamps a device id when one is given — two simulated devices are two devices", async () => {
+    const profile = profileOf([m({ key: "battery.soc", unit: "%" })], () => ({
+      "battery.soc": 73,
+    }));
+
+    const sim = new SimulatedInverter(profile, { deviceId: "barn" });
+
+    expect((await sim.read()).inverterId).toBe("barn");
+  });
+
   test("a modelled zero is a reading, not a gap — it never falls back to 230 V", async () => {
     // A hybrid at night really does report 0 V on an idle port. `0 ?? x` must
     // stay 0; `0 || x` would silently invent a nominal voltage.

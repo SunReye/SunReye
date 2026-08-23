@@ -404,6 +404,8 @@ class FakeSource implements InverterSource {
   constructor(
     readonly profile: InverterProfile,
     readonly config: InverterConfig,
+    /** The device this source was built for — what a real one stamps samples with. */
+    readonly deviceId?: string,
   ) {}
   async read(): Promise<InverterSample> {
     this.reads++;
@@ -436,9 +438,9 @@ const realResolveProfileById = realInverter.resolveProfileById;
 const { buildProfileContext } = realInverter;
 mock.module("./inverter", () => ({
   ...realInverter,
-  buildSource: (profile: InverterProfile, config: InverterConfig) => {
-    if (!intercepting) return realBuildSource(profile, config);
-    const built = new FakeSource(profile, config);
+  buildSource: (profile: InverterProfile, config: InverterConfig, deviceId?: string) => {
+    if (!intercepting) return realBuildSource(profile, config, deviceId);
+    const built = new FakeSource(profile, config, deviceId);
     sources.push(built);
     return built;
   },
@@ -705,12 +707,15 @@ let spotSyncNotifications = 0;
 /** The bus the runtime was booted with, for a test that wants its own subscriber. */
 let streams: ReturnType<typeof createStreams>;
 
-/** Boot the runtime with a profile context and hand back that context. */
-async function boot(profile: InverterProfile = mainProfile()) {
+/**
+ * Boot the runtime for a device and hand back its context. `deviceId` defaults
+ * to the profile id, which is what every install with one device has.
+ */
+async function boot(profile: InverterProfile = mainProfile(), deviceId = profile.id) {
   const ctx = buildProfileContext(profile);
   streams = createStreams();
   streams.subscribe("metrics", (sample) => published.push(sample));
-  await start(streams, ctx);
+  await start(streams, { id: deviceId, ctx });
   return ctx;
 }
 
@@ -860,6 +865,23 @@ describe("the poll loop", () => {
       metric: "load.power",
       value: 1200,
     });
+  });
+
+  test("builds its source for the device it serves, not for the profile", async () => {
+    // Two inverters of the same model share a profile and share nothing else.
+    // The source stamps every sample with the id it was built for, so this is
+    // what keeps two machines' readings in two series — and
+    // `metrics_raw.inverter_id` is a compression segment key, so getting it
+    // wrong is not cheaply undoable once it is on disk.
+    await boot(mainProfile(), "barn");
+
+    expect(latestSource().deviceId).toBe("barn");
+  });
+
+  test("serves the profile's id when the device has no other one", async () => {
+    await boot();
+
+    expect(latestSource().deviceId).toBe(PROFILE_ID);
   });
 
   test("a read that yields no metrics writes no history row", async () => {
@@ -1427,11 +1449,12 @@ describe("shutdown", () => {
   });
 
   test("the automations audience predicate reaches the engine that short-circuits on it", async () => {
-    const ctx = buildProfileContext(mainProfile());
+    const profile = mainProfile();
+    const ctx = buildProfileContext(profile);
     streams = createStreams();
     let watched = false;
 
-    await start(streams, ctx, () => watched);
+    await start(streams, { id: profile.id, ctx }, () => watched);
 
     // The identity is not the contract — the *answer* is. A forward that
     // captured the boolean once (rather than the predicate) would read false

@@ -38,9 +38,12 @@ export class SimulatedInverter implements InverterSource {
   private readonly state: SimState = {};
   private readonly overrides: MetricValues = {};
   private lastTime: number | null = null;
+  /** The id samples are stamped with; the profile's when the caller names none. */
+  private readonly deviceId: string;
 
-  constructor(profile: InverterProfile) {
+  constructor(profile: InverterProfile, opts: { deviceId?: string } = {}) {
     this.profile = profile;
+    this.deviceId = opts.deviceId ?? profile.id;
   }
 
   read(): Promise<InverterSample> {
@@ -59,7 +62,7 @@ export class SimulatedInverter implements InverterSource {
     }
     applyComputed(this.profile.metrics, metrics);
 
-    return Promise.resolve({ time: now.toISOString(), inverterId: this.profile.id, metrics });
+    return Promise.resolve({ time: now.toISOString(), inverterId: this.deviceId, metrics });
   }
 
   write(key: string, value: number): Promise<void> {

@@ -120,9 +120,17 @@ export async function initProfiles(): Promise<InverterProfile | null> {
  * simulator or a real Modbus source is a deploy-level choice (`INVERTER_SIMULATE`),
  * not part of the saved config.
  */
-export function buildSource(profile: InverterProfile, config: InverterConfig): InverterSource {
+export function buildSource(
+  profile: InverterProfile,
+  config: InverterConfig,
+  deviceId?: string,
+): InverterSource {
   return createInverter(profile, {
     simulate: env.INVERTER_SIMULATE,
+    // What the samples are stamped with, and therefore the key every reading is
+    // stored under. Defaults to the profile id inside `createInverter`, which is
+    // what every install with a single device already uses.
+    deviceId,
     connection: {
       // Empty when the inverter hasn't been configured yet; a real connect then
       // fails (handled by the God-loop), while simulate mode ignores it entirely.
