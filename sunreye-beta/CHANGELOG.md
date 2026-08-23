@@ -2,11 +2,15 @@
 
 ## [unreleased]
 
-Unreleased work on `dev` since 1.2.0, shipped in `beta.20260823-a0da113`.
+Unreleased work on `dev` since 1.2.0, shipped in `beta.20260823-9e8a9e3`.
 
 
 ### Features
 
+* **profile-sdk:** author a real meter against the http arm ([76c57b5](https://github.com/SunReye/SunReye/commit/76c57b52570952c966ce5bf2b6e1c145e7e6eb50))
+* **inverter-core:** an HTTP transport behind the same seam ([048dcb6](https://github.com/SunReye/SunReye/commit/048dcb6628ee430e695f224b4cae03b93436aa11))
+* **inverter-core:** an http arm on the binding union ([5f3f051](https://github.com/SunReye/SunReye/commit/5f3f0516b0071a92e50d22ddf71b8a1e022b7e08))
+* **inverter-core:** say when a sample was not read all at once ([b607cc0](https://github.com/SunReye/SunReye/commit/b607cc0ae37fa9730741dbf21395f8f67aca126e))
 * **tooling:** extend the TDD gate to Rust before any .rs exists ([d43aa42](https://github.com/SunReye/SunReye/commit/d43aa42c8e3c152cd4f3b7799f606f17b0cebf50))
 * **profile-sdk:** six plausibility lints and a required-role build floor ([0b34134](https://github.com/SunReye/SunReye/commit/0b34134fe636018cd73c11666b8dd5eaf3a9e7e2))
 * **profile-sdk:** add `profile replay` — golden register captures ([915ad49](https://github.com/SunReye/SunReye/commit/915ad497d2a990eb27ab8442633dabb28aefeb76))
@@ -84,6 +88,7 @@ Unreleased work on `dev` since 1.2.0, shipped in `beta.20260823-a0da113`.
 
 ### Bug Fixes
 
+* **inverter-core:** three holes an adversarial pass found in the http arm ([9cad2d8](https://github.com/SunReye/SunReye/commit/9cad2d85c53fe2dde8d93b66f26f42ad7a63b113))
 * **addon:** exclude compressed chunk data from a non-full dump ([2ec3ec3](https://github.com/SunReye/SunReye/commit/2ec3ec3871ce88981c5977ae73dd2456bec5a2f9))
 * **ci:** stop retention deleting the restore fixture mid-test ([aba10ab](https://github.com/SunReye/SunReye/commit/aba10abad32d0e62db1058a5cbf644007d33f4da))
 * **ci:** pass DATABASE_URL to dump.sh in the restore test ([bd3a308](https://github.com/SunReye/SunReye/commit/bd3a308221818c2d92e6e9f62ec22d58bd4c84c1))
@@ -180,6 +185,7 @@ Unreleased work on `dev` since 1.2.0, shipped in `beta.20260823-a0da113`.
 
 ### Code Refactoring
 
+* **inverter-core:** split decode into addressing and scaling ([cad040e](https://github.com/SunReye/SunReye/commit/cad040ed7ef72292b2375a9cf37cc632e528676a))
 * **inverter-core:** tagged Binding union and a transport seam ([0c3a239](https://github.com/SunReye/SunReye/commit/0c3a23909ab73816fb5c2f90a6ffc1988c1f38bf))
 * **profile-sdk:** split replay by concern to clear the health gate ([a0fbf1c](https://github.com/SunReye/SunReye/commit/a0fbf1c17dd99cd0067727f608410e3ed2bd49a5))
 * **web:** one header grid and one readout row per chart card ([14dad81](https://github.com/SunReye/SunReye/commit/14dad8144e4dd0d9c4dbaa3defa42e5f70eb9ab0))
