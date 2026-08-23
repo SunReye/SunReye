@@ -15,6 +15,7 @@ import { evccControl, evccSnapshot, rebuildEvcc, stopEvcc } from "./evcc/evcc";
 import { queryRecentBuckets, queryRollup } from "./shared/history";
 import { isPublicDashboard } from "./settings/access-settings";
 import { initDeviceRegistry } from "./inverter/device-registry";
+import { startFleet, type Fleet } from "./inverter/fleet";
 import { initProfiles } from "./inverter/inverter";
 import { WriteRejectedError } from "./inverter/control-writer";
 import { log, recentLogs, setupLogging } from "./shared/logging";
@@ -156,6 +157,8 @@ const activeInverterId = defaultDevice?.id ?? null;
 // than leaving them to infer it. With one device the inference is right anyway;
 // with two it is the difference between an answer and a coin flip.
 liveState.setDefaultDevice(activeInverterId);
+/** Every poll loop this process runs; empty until the devices are started. */
+let fleet: Fleet | null = null;
 
 /**
  * The two topics whose producers ask "is anyone actually watching" before doing
@@ -540,10 +543,14 @@ if (defaultDevice) {
   // the `automations` topic. Read per tick, never captured — a page opened an
   // hour from now must start receiving frames on the very next tick.
   //
-  // One runtime, for the default device. A registry with two devices needs one
-  // loop each, which is the next slice — this one is what makes the loop able
-  // to say which device it is polling.
-  runtime.start(streams, defaultDevice, audience.automations);
+  // One loop per pollable device, plus the plant's own jobs once. On a
+  // single-device install that is exactly the one runtime it has always been.
+  fleet = await startFleet({
+    devices: registry.devices(),
+    defaultDeviceId: defaultDevice.id,
+    streams,
+    automationsWatched: audience.automations,
+  });
 }
 
 // Periodically sync profile repos and diff installed versions so the UI can
@@ -578,7 +585,7 @@ for (const signal of ["SIGINT", "SIGTERM"] as const) {
   process.on(signal, async () => {
     stopUpdateChecks();
     await stopEvcc();
-    await runtime.stop();
+    await fleet?.stop();
     process.exit(0);
   });
 }

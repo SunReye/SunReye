@@ -17,6 +17,7 @@ import { getLoggingConfig, setLoggingConfig } from "../settings/logging-settings
 import { evccSnapshot, rebuildEvcc } from "../evcc/evcc";
 import { getEvccConfig, setEvccConfig } from "../settings/evcc-settings";
 import { getCorrectionView } from "../forecast/forecast-correction-job";
+import { syncSpotPricesNow } from "../inverter/plant-jobs";
 import * as runtime from "../inverter/runtime";
 import { getTariff, setTariff } from "../settings/settings";
 import {
@@ -255,7 +256,7 @@ export const settingsRoutes = new Elysia({ name: "settings-routes" })
           throw new Error(`${provider.id} does not serve zone "${config.zone}"`);
         }
         const stored = await setSpotPriceConfig(config);
-        await runtime.syncSpotPricesNow();
+        await syncSpotPricesNow();
         return stored;
       }, "Invalid price source");
       return saved.ok ? saved.value : status(400, { error: saved.error });

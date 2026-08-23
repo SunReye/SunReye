@@ -285,102 +285,6 @@ mock.module("../settings/weather-settings", () => ({
       : realGetWeatherConfig(),
 }));
 
-/** A two-slot forecast; `toForecastExport` (real) shapes it for publication. */
-const forecastFixture = () => ({
-  provider: "test-provider",
-  stepMinutes: 60,
-  utcOffsetSeconds: 7200,
-  series: [
-    { time: "2026-08-15T10:00", watts: 3000, peakWatts: 3400 },
-    { time: "2026-08-15T11:00", watts: 4000, peakWatts: 4200 },
-  ],
-  todayKwh: 7,
-  remainingTodayKwh: 7,
-  tomorrowKwh: 9,
-  next15: { maxPowerW: 3400, energyKwh: 0.8 },
-  raw: {
-    series: [
-      { time: "2026-08-15T10:00", watts: 3500, peakWatts: 3900 },
-      { time: "2026-08-15T11:00", watts: 5000, peakWatts: 5200 },
-    ],
-    todayKwh: 8.5,
-    remainingTodayKwh: 8.5,
-    tomorrowKwh: 11,
-    next15: { maxPowerW: 3900, energyKwh: 0.9 },
-  },
-});
-type Forecast = ReturnType<typeof forecastFixture>;
-
-let forecastResult: Forecast | null = null;
-let forecastError: string | null = null;
-let forecastConfigSeen: unknown = null;
-const realSolarForecast = await import("../forecast/solar-forecast");
-const realSolarForecastExports = { ...realSolarForecast };
-const realFetchSolarForecast = realSolarForecast.fetchSolarForecast;
-mock.module("../forecast/solar-forecast", () => ({
-  ...realSolarForecast,
-  fetchSolarForecast: async (
-    config: Parameters<typeof realSolarForecast.fetchSolarForecast>[0],
-  ) => {
-    if (!intercepting) return realFetchSolarForecast(config);
-    forecastConfigSeen = config;
-    if (forecastError) throw new Error(forecastError);
-    return forecastResult as unknown as Awaited<
-      ReturnType<typeof realSolarForecast.fetchSolarForecast>
-    >;
-  },
-}));
-
-let learnRuns = 0;
-let learnError: string | null = null;
-let learnConfigSeen: unknown = null;
-const realLearnJob = await import("../forecast/forecast-correction-job");
-const realLearnJobExports = { ...realLearnJob };
-const realRunLearn = realLearnJob.runForecastCorrectionLearn;
-mock.module("../forecast/forecast-correction-job", () => ({
-  ...realLearnJob,
-  runForecastCorrectionLearn: async (
-    config: Parameters<typeof realLearnJob.runForecastCorrectionLearn>[0],
-  ) => {
-    if (!intercepting) return realRunLearn(config);
-    learnRuns++;
-    learnConfigSeen = config;
-    if (learnError) throw new Error(learnError);
-    return { learnedDays: 0 } as unknown as Awaited<
-      ReturnType<typeof realLearnJob.runForecastCorrectionLearn>
-    >;
-  },
-}));
-
-const SPOT_CONFIG = { marker: "spot" };
-const realSpotSettings = await import("../settings/spot-price-settings");
-const realSpotSettingsExports = { ...realSpotSettings };
-const realGetSpotPriceConfig = realSpotSettings.getSpotPriceConfig;
-mock.module("../settings/spot-price-settings", () => ({
-  ...realSpotSettings,
-  getSpotPriceConfig: async () =>
-    intercepting
-      ? (SPOT_CONFIG as unknown as Awaited<ReturnType<typeof realSpotSettings.getSpotPriceConfig>>)
-      : realGetSpotPriceConfig(),
-}));
-
-let spotRuns = 0;
-let spotError: string | null = null;
-let spotOutcome: "stored" | "complete" | "disabled" = "complete";
-let spotStored = 0;
-const realSpotJob = await import("../prices/spot-price-job");
-const realSpotJobExports = { ...realSpotJob };
-const realRunSpotPriceSync = realSpotJob.runSpotPriceSync;
-mock.module("../prices/spot-price-job", () => ({
-  ...realSpotJob,
-  runSpotPriceSync: async (...args: Parameters<typeof realSpotJob.runSpotPriceSync>) => {
-    if (!intercepting) return realRunSpotPriceSync(...args);
-    spotRuns++;
-    if (spotError) throw new Error(spotError);
-    return { outcome: spotOutcome, stored: spotStored };
-  },
-}));
-
 /**
  * Composite-control state, in memory instead of `app_settings`. It is injected
  * into the runtime as its control store (shared by the write funnel and the
@@ -582,11 +486,6 @@ let cleared: unknown[] = [];
 let shortenBrokerTimeout = false;
 
 /** The cadences the runtime is contracted to arm (ms). */
-const FORECAST_MS = 5 * 60_000;
-const LEARN_MS = 12 * 3600_000;
-const LEARN_KICK_MS = 2 * 60_000;
-const SPOT_MS = 30 * 60_000;
-const SPOT_KICK_MS = 30_000;
 const FLUSH_MS = 600_000;
 const BROKER_PROBE_MS = 5000;
 
@@ -656,10 +555,6 @@ afterAll(() => {
   mock.module("./mqtt", () => ({ ...realBridgeExports }));
   mock.module("../automation/automation", () => ({ ...realAutomationExports }));
   mock.module("../settings/weather-settings", () => ({ ...realWeatherSettingsExports }));
-  mock.module("../forecast/solar-forecast", () => ({ ...realSolarForecastExports }));
-  mock.module("../forecast/forecast-correction-job", () => ({ ...realLearnJobExports }));
-  mock.module("../settings/spot-price-settings", () => ({ ...realSpotSettingsExports }));
-  mock.module("../prices/spot-price-job", () => ({ ...realSpotJobExports }));
   mock.module("./inverter", () => ({ ...realInverterExports }));
   mock.module("./device-registry", () => ({ ...realRegistryExports }));
   untapRuntimeLogger();
@@ -692,18 +587,22 @@ const {
   start,
   status,
   stop,
-  syncSpotPricesNow,
   testInverter,
   testMqtt,
+  publishForecast,
   write,
 } = runtime;
+
+/** A forecast as `./plant-jobs` hands it down: already exported, both variants. */
+const FORECAST_PAYLOAD = {
+  raw: { todayKwh: 8.5, detailedForecast: [] },
+  usable: { todayKwh: 7, detailedForecast: [] },
+} as unknown as Parameters<typeof publishForecast>[0];
 const { liveState } = await import("../shared/state");
 const { createStreams } = await import("../shared/streams");
 
 /** Samples emitted on the `metrics` topic, in poll order. */
 let published: InverterSample[] = [];
-/** How often a "fresh prices stored" signal reached the `statistics` topic. */
-let spotSyncNotifications = 0;
 /** The bus the runtime was booted with, for a test that wants its own subscriber. */
 let streams: ReturnType<typeof createStreams>;
 
@@ -734,17 +633,6 @@ beforeEach(() => {
   controlState = {};
   writeError = null;
   readResult = async () => liveSample();
-  forecastResult = null;
-  forecastError = null;
-  forecastConfigSeen = null;
-  learnConfigSeen = null;
-  learnError = null;
-  learnRuns = 0;
-  spotError = null;
-  spotRuns = 0;
-  spotOutcome = "complete";
-  spotStored = 0;
-  spotSyncNotifications = 0;
   profileOverride = undefined;
   resolveOverride = null;
   mqttClient = null;
@@ -804,16 +692,6 @@ describe("before a profile is active", () => {
       error: "No profile selected",
     });
     expect(sources).toHaveLength(0);
-  });
-
-  test("a price sync landing before the websocket sink is wired is not an error", async () => {
-    // The 30 s post-boot kick can beat the boot that injects the stream; a sync
-    // with no bus wired yet has to absorb that rather than throw inside a timer.
-    spotOutcome = "stored";
-    spotStored = 96;
-
-    await expect(syncSpotPricesNow()).resolves.toBeUndefined();
-    expect(spotRuns).toBe(1);
   });
 
   test("a test read against an uninstalled profile names the id", async () => {
@@ -1183,56 +1061,42 @@ describe("swapping the live source", () => {
 });
 
 describe("the MQTT bridge", () => {
-  test("a fresh bridge is seeded with the current forecast, both variants", async () => {
-    forecastResult = forecastFixture();
-
+  test("a forecast handed down reaches this device's bridge", async () => {
+    // Fetching it belongs to the plant — one forecast, however many inverters.
+    // This end only publishes what it is given.
     await boot();
-    await settle();
 
-    expect(forecastConfigSeen).toBe(WEATHER_CONFIG);
-    const published0 = latestBridge().forecasts[0] as {
-      raw: { todayKwh: number; detailedForecast: { period_start: string; watts: number }[] };
-      usable: { todayKwh: number; detailedForecast: { period_start: string; watts: number }[] };
-    };
-    expect(published0.usable.todayKwh).toBe(7);
-    expect(published0.raw.todayKwh).toBe(8.5);
-    // The plant-local slot times become offset-aware timestamps for HA.
-    expect(published0.usable.detailedForecast[0]).toEqual({
-      period_start: "2026-08-15T10:00:00+02:00",
-      watts: 3000,
-    });
-    expect(published0.raw.detailedForecast[1]?.watts).toBe(5000);
+    publishForecast(FORECAST_PAYLOAD);
+
+    expect(latestBridge().forecasts).toEqual([FORECAST_PAYLOAD]);
   });
 
-  test("a disabled forecast publishes null rather than a stale curve", async () => {
-    forecastResult = null;
-
+  test("null is published rather than swallowed — a stale curve is worse", async () => {
     await boot();
-    await settle();
+
+    publishForecast(null);
 
     expect(latestBridge().forecasts).toEqual([null]);
   });
 
-  test("a forecast provider failure is logged and never breaks the bridge swap", async () => {
-    forecastError = "open-meteo returned 503";
-
+  test("a rebuilt bridge is seeded with the last forecast, not left blank", async () => {
+    // A bridge starts with empty retained topics, and the plant only re-fetches
+    // every five minutes; without this, Home Assistant shows no forecast for
+    // most of that window after any broker settings change.
     await boot();
-    await settle();
+    publishForecast(FORECAST_PAYLOAD);
 
-    expect(bridges).toHaveLength(1);
-    expect(linesStartingWith("forecast publish failed")).toHaveLength(1);
-    expect(latestBridge().forecasts).toHaveLength(0);
+    await applyMqttConfig(baseMqttConfig({ topicPrefix: "solar" }));
+
+    expect(latestBridge().forecasts).toEqual([FORECAST_PAYLOAD]);
   });
 
-  test("the forecast is re-published on its own cadence", async () => {
-    forecastResult = forecastFixture();
+  test("a bridge rebuilt before any forecast arrived publishes nothing", async () => {
     await boot();
-    await settle();
-    expect(latestBridge().forecasts).toHaveLength(1);
 
-    await fire(FORECAST_MS);
+    await applyMqttConfig(baseMqttConfig({ topicPrefix: "solar" }));
 
-    expect(latestBridge().forecasts).toHaveLength(2);
+    expect(latestBridge().forecasts).toEqual([]);
   });
 
   test("changing broker settings closes the previous connection", async () => {
@@ -1247,19 +1111,15 @@ describe("the MQTT bridge", () => {
     expect(latestBridge().config.brokerUrl).toBe("mqtt://other.test:1883");
   });
 
-  test("disabling MQTT leaves no bridge, and nothing is published to one", async () => {
+  test("disabling MQTT leaves no bridge, and a forecast handed down goes nowhere", async () => {
     mqttConfig = baseMqttConfig({ enabled: false });
-    forecastResult = forecastFixture();
 
     await boot();
-    await settle();
     await poll();
-    await fire(FORECAST_MS);
+    publishForecast(FORECAST_PAYLOAD);
 
     expect(bridges).toHaveLength(0);
     expect(status().mqtt).toEqual({ enabled: false, connected: false, lastError: null });
-    // The publisher short-circuits before it even asks the provider.
-    expect(forecastConfigSeen).toBeNull();
   });
 
   test("an inbound broker command goes through the same write funnel as every other path", async () => {
@@ -1344,83 +1204,22 @@ describe("register writes", () => {
 });
 
 describe("the background jobs", () => {
-  test("boot arms the flush, forecast, learn and price schedules exactly once", async () => {
+  test("boot arms this device's flush, and only that", async () => {
+    // The plant's schedules — forecast, correction, prices — are armed once by
+    // `./plant-jobs`. Arming them here would run each of them once per inverter.
     await boot();
 
     expect(armedAt(FLUSH_MS)).toHaveLength(1);
-    expect(armedAt(FORECAST_MS)).toHaveLength(1);
-    expect(armedAt(LEARN_MS)).toHaveLength(1);
-    expect(armedAt(LEARN_KICK_MS, "timeout")).toHaveLength(1);
-    expect(armedAt(SPOT_MS)).toHaveLength(1);
-    expect(armedAt(SPOT_KICK_MS, "timeout")).toHaveLength(1);
+    expect(armed.filter((t) => t.kind === "interval")).toHaveLength(2); // flush + poll
   });
 
-  test("a second boot re-points the source without stacking a second set of jobs", async () => {
+  test("a second boot re-points the source without stacking a second flush", async () => {
     await boot();
     await boot();
 
     expect(armedAt(FLUSH_MS)).toHaveLength(1);
-    expect(armedAt(FORECAST_MS)).toHaveLength(1);
-    expect(armedAt(LEARN_MS)).toHaveLength(1);
-    expect(armedAt(SPOT_MS)).toHaveLength(1);
     // Only the poll loop is rebuilt, because the connection config was re-read.
     expect(armedAt(inverterConfig.pollIntervalMs)).toHaveLength(2);
-  });
-
-  test("the forecast correction is kicked shortly after boot and twice a day after that", async () => {
-    await boot();
-
-    await fire(LEARN_KICK_MS, "timeout");
-    expect(learnRuns).toBe(1);
-    expect(learnConfigSeen).toBe(WEATHER_CONFIG);
-
-    await fire(LEARN_MS);
-    expect(learnRuns).toBe(2);
-  });
-
-  test("a failing correction run is logged, never thrown into the timer", async () => {
-    await boot();
-    learnError = "reanalysis archive unavailable";
-
-    await fire(LEARN_KICK_MS, "timeout");
-
-    expect(linesStartingWith("forecast correction learn failed")).toHaveLength(1);
-  });
-
-  test("the price sync is kicked shortly after boot and every half hour after that", async () => {
-    await boot();
-
-    await fire(SPOT_KICK_MS, "timeout");
-    expect(spotRuns).toBe(1);
-
-    await fire(SPOT_MS);
-    expect(spotRuns).toBe(2);
-  });
-
-  test("only a run that actually stored slots wakes the open dashboards", async () => {
-    await boot();
-    streams.subscribe("statistics", () => {
-      spotSyncNotifications++;
-    });
-
-    spotOutcome = "complete";
-    await syncSpotPricesNow();
-    expect(spotSyncNotifications).toBe(0);
-
-    spotOutcome = "stored";
-    spotStored = 96;
-    await syncSpotPricesNow();
-    expect(spotSyncNotifications).toBe(1);
-  });
-
-  test("a failing price sync is logged and leaves the schedule intact", async () => {
-    await boot();
-    spotError = "ENTSO-E rejected the token";
-
-    await syncSpotPricesNow();
-
-    expect(linesStartingWith("spot price sync failed")).toHaveLength(1);
-    expect(spotSyncNotifications).toBe(0);
   });
 });
 
@@ -1430,15 +1229,9 @@ describe("shutdown", () => {
     await poll();
     const source = latestSource();
     const bridge = latestBridge();
-    const handles = [
-      timerFor(inverterConfig.pollIntervalMs).handle,
-      timerFor(FLUSH_MS).handle,
-      timerFor(FORECAST_MS).handle,
-      timerFor(LEARN_MS).handle,
-      timerFor(LEARN_KICK_MS, "timeout").handle,
-      timerFor(SPOT_MS).handle,
-      timerFor(SPOT_KICK_MS, "timeout").handle,
-    ];
+    // The poll loop and this device's flush — the two timers a runtime owns.
+    // The plant's schedules are torn down by whoever armed them.
+    const handles = [timerFor(inverterConfig.pollIntervalMs).handle, timerFor(FLUSH_MS).handle];
 
     await stop();
 
@@ -1454,7 +1247,7 @@ describe("shutdown", () => {
     streams = createStreams();
     let watched = false;
 
-    await start(streams, { id: profile.id, ctx }, () => watched);
+    await start(streams, { id: profile.id, ctx }, { automationsWatched: () => watched });
 
     // The identity is not the contract — the *answer* is. A forward that
     // captured the boolean once (rather than the predicate) would read false
@@ -1498,7 +1291,7 @@ describe("shutdown", () => {
     await boot();
 
     expect(armedAt(FLUSH_MS)).toHaveLength(1);
-    expect(armedAt(SPOT_MS)).toHaveLength(1);
+    expect(armedAt(inverterConfig.pollIntervalMs)).toHaveLength(1);
   });
 });
 

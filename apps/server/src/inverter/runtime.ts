@@ -28,6 +28,7 @@ import { dbControlStore } from "./control-store";
 import { createControlWriter } from "./control-writer";
 import { type HistoryBuffer, createHistoryBuffer } from "./history-buffer";
 import { type JobScheduler, createJobScheduler } from "./job-scheduler";
+import type { ForecastPayload } from "./plant-jobs";
 import { evccOnLoadSample } from "../evcc/evcc";
 import { activeProfileOrNull } from "./device-registry";
 import {
@@ -36,37 +37,15 @@ import {
   resolveProfileById,
   type ProfileContext,
 } from "./inverter";
-import { runForecastCorrectionLearn } from "../forecast/forecast-correction-job";
 import { log } from "../shared/logging";
 import { type MqttBridge, startMqttBridge } from "./mqtt";
-import { fetchSolarForecast, toForecastExport } from "../forecast/solar-forecast";
-import { runSpotPriceSync } from "../prices/spot-price-job";
-import { getSpotPriceConfig } from "../settings/spot-price-settings";
 import { liveState } from "../shared/state";
-import { getWeatherConfig } from "../settings/weather-settings";
 import type { Streams } from "../shared/streams";
 
 const logger = log("runtime");
 
 /** Re-log an unchanged, ongoing poll failure at most this often. */
 const POLL_ERROR_RELOG_MS = 300_000;
-
-// The PV forecast changes slowly (provider cache is 30 min) and its topics are
-// retained, so re-publishing every 5 minutes keeps HA fresh without churn.
-const FORECAST_PUBLISH_INTERVAL_MS = 5 * 60_000;
-
-// The correction learns from newly-*settled* reanalysis days, so there's at most
-// one new day to fold in per day — twice-daily is ample, with a short post-boot
-// kick so a fresh install backfills without waiting a full interval.
-const LEARN_INTERVAL_MS = 12 * 3600_000;
-const LEARN_KICK_DELAY_MS = 2 * 60_000;
-
-// Day-ahead prices clear around 12:45–13:10 market time, but not reliably — a
-// timer aimed at the publication moment would turn a short delay into a day-long
-// outage. So poll on a plain interval, which no-ops (one indexed count, zero
-// network) once both delivery days are stored; the interval *is* the retry.
-const SPOT_INTERVAL_MS = 30 * 60_000;
-const SPOT_KICK_DELAY_MS = 30_000;
 
 /** One captured value from a test read, enriched for a plausibility check. */
 export interface TestSnapshotMetric {
@@ -95,7 +74,6 @@ export interface TestInverterResult {
  * how the composition root hands one over without the runtime importing the
  * registry.
  */
-// fallow-ignore-next-line unused-type -- structural: the composition root passes a registry `Device`, which satisfies it without naming it
 export interface RuntimeDevice {
   id: string;
   ctx: ProfileContext;
@@ -113,10 +91,11 @@ export interface RuntimeDeps {
   history?: HistoryBuffer;
   /**
    * The background job scheduler. Defaults to one arming the process globals; it
-   * owns the arm/teardown of the flush, forecast, learn and price schedules (and
-   * their post-boot kicks) so the runtime states them once and never juggles a
-   * handle. The poll loop is not one of its jobs — its cadence is re-armed on
-   * every source rebuild, so the runtime keeps it.
+   * owns the arm/teardown of this runtime's history flush so the runtime states
+   * it once and never juggles a handle. The plant's jobs (forecast, correction,
+   * prices) are armed once elsewhere — see `./plant-jobs`. The poll loop is not
+   * one of its jobs either: its cadence is re-armed on every source rebuild, so
+   * the runtime keeps it.
    */
   scheduler?: JobScheduler;
   /**
@@ -141,7 +120,6 @@ export interface RuntimeDeps {
  * field is closure-local — no module-level state, so a second instance is
  * independent.
  */
-// fallow-ignore-next-line unused-export -- the injection seam exercised by runtime.test.ts (which builds its own instance with a fake history buffer); test files aren't traced as consumers
 export function createRuntime(deps: RuntimeDeps = {}) {
   const historyBuffer =
     deps.history ?? createHistoryBuffer({ store: db, table: metricsRaw, logger });
@@ -152,6 +130,10 @@ export function createRuntime(deps: RuntimeDeps = {}) {
   let deviceId: string | null = null;
   /** What to call it — in Home Assistant, and in anything else user-facing. */
   let deviceLabel: string | null = null;
+  /** The last forecast handed down, replayed onto a rebuilt bridge. */
+  let lastForecast: ForecastPayload | null = null;
+  /** Whether this runtime is the one running the plant's automation engine. */
+  let runsAutomations = true;
   let source: InverterSource | null = null;
   let pollTimer: ReturnType<typeof setInterval> | null = null;
   let bridge: MqttBridge | null = null;
@@ -185,46 +167,17 @@ export function createRuntime(deps: RuntimeDeps = {}) {
   // lookup is a linear scan; the poll loop runs at 1 Hz forever).
   let loadKeyCache: { ctx: ProfileContext; key: string | null } | null = null;
 
-  /** Fetch the current forecast and hand it to the MQTT bridge (no-op if disabled). */
-  async function publishForecastNow(): Promise<void> {
-    if (!bridge) return;
-    try {
-      const forecast = await fetchSolarForecast(await getWeatherConfig());
-      bridge.publishForecast(
-        forecast
-          ? { raw: toForecastExport(forecast, "raw"), usable: toForecastExport(forecast, "usable") }
-          : null,
-      );
-    } catch (error) {
-      logger.warn("forecast publish failed: {error}", { error });
-    }
-  }
-
-  /** Fold newly-settled days into the forecast correction grid (no-op if disabled). */
-  async function learnCorrectionNow(): Promise<void> {
-    try {
-      await runForecastCorrectionLearn(await getWeatherConfig());
-    } catch (error) {
-      logger.warn("forecast correction learn failed: {error}", { error });
-    }
-  }
-
   /**
-   * Store today's and tomorrow's day-ahead prices (no-op if disabled or already
-   * complete). Exported so saving the price source can refresh immediately instead
-   * of leaving the UI empty until the next tick.
+   * Hand a forecast to this device's bridge, and remember it.
+   *
+   * Fetching it belongs to `./plant-jobs` — one forecast per plant, not per
+   * device — so this end only publishes. The last one is kept because a rebuilt
+   * bridge starts with empty retained topics, and waiting out the plant's
+   * five-minute interval would leave Home Assistant blank in the meantime.
    */
-  async function syncSpotPricesNow(): Promise<void> {
-    try {
-      const result = await runSpotPriceSync(await getSpotPriceConfig());
-      // Only a real upsert changes what price-derived views show; the no-op tick
-      // (both delivery days already complete) must not make every open page refetch.
-      // A `prices` signal on the statistics topic tells open dashboards their
-      // price-derived views are now stale.
-      if (result.outcome === "stored") streams?.emit("statistics", { type: "prices" });
-    } catch (error) {
-      logger.warn("spot price sync failed: {error}", { error });
-    }
+  function publishForecast(forecast: ForecastPayload | null): void {
+    lastForecast = forecast;
+    bridge?.publishForecast(forecast);
   }
 
   /** The active profile context, set by {@link start} before the loop runs. */
@@ -361,9 +314,9 @@ export function createRuntime(deps: RuntimeDeps = {}) {
       deviceLabel: deviceLabel ?? undefined,
     });
     if (previous) await previous.close();
-    // Seed a fresh bridge with the current forecast instead of waiting a full
-    // interval; harmless when the forecast is disabled (publishes null → no-op).
-    void publishForecastNow();
+    // Seed the fresh bridge with the forecast already known, instead of leaving
+    // its retained topics empty until the plant's next five-minute tick.
+    if (lastForecast) bridge?.publishForecast(lastForecast);
   }
 
   /**
@@ -377,35 +330,48 @@ export function createRuntime(deps: RuntimeDeps = {}) {
   async function start(
     streamBus: Streams,
     device: RuntimeDevice,
-    automationsWatched?: () => boolean,
+    opts: {
+      /** Whether anyone is subscribed to the `automations` topic right now. */
+      automationsWatched?: () => boolean;
+      /**
+       * Whether this runtime runs the automation engine. Exactly one may: the
+       * engine steers one battery through one write funnel, and a second
+       * instance re-points the first's engine out from under it. Defaults to
+       * true, which is every single-device install.
+       */
+      automations?: boolean;
+    } = {},
   ): Promise<void> {
     ctx = device.ctx;
     deviceId = device.id;
     deviceLabel = device.label ?? null;
+    runsAutomations = opts.automations !== false;
+    // A boot knows no forecast yet; the plant publishes one as it starts.
+    lastForecast = null;
     streams = streamBus;
-    // The scheduler arms each of these once and is idempotent while running, so
-    // a re-boot re-points the source without stacking a second set of jobs. The
-    // flush cadence is read here (env is dynamic) rather than baked in.
+    // One job, and it is the only one that is genuinely per device: this
+    // runtime's own buffer. The plant's jobs — forecast, correction, prices —
+    // are armed once by `./plant-jobs`, because arming them here would mean
+    // doing the same work once per inverter. The flush cadence is read here (env
+    // is dynamic) rather than baked in. Idempotent while running, so a re-boot
+    // re-points the source without stacking a second copy.
     scheduler.start([
       { run: () => void historyBuffer.flush(), intervalMs: env.HISTORY_FLUSH_INTERVAL_MS },
-      { run: () => void publishForecastNow(), intervalMs: FORECAST_PUBLISH_INTERVAL_MS },
-      {
-        run: () => void learnCorrectionNow(),
-        intervalMs: LEARN_INTERVAL_MS,
-        kickMs: LEARN_KICK_DELAY_MS,
-      },
-      {
-        run: () => void syncSpotPricesNow(),
-        intervalMs: SPOT_INTERVAL_MS,
-        kickMs: SPOT_KICK_DELAY_MS,
-      },
     ]);
     await rebuildInverter(await getInverterConfig());
     await rebuildBridge(await getMqttConfig());
     // Automations write through the same funnel as every other path; they only
     // run while a profile is active (this function is never called without one).
-    // They push their tick outcomes onto the same injected bus.
-    await startAutomations({ ctx: device.ctx, write }, streamBus, undefined, automationsWatched);
+    // They push their tick outcomes onto the same injected bus. One plant, one
+    // engine — a runtime that is not the one running them skips this entirely.
+    if (opts.automations !== false) {
+      await startAutomations(
+        { ctx: device.ctx, write },
+        streamBus,
+        undefined,
+        opts.automationsWatched,
+      );
+    }
   }
 
   /**
@@ -510,12 +476,15 @@ export function createRuntime(deps: RuntimeDeps = {}) {
   async function stop(): Promise<void> {
     // Stops the tick only — deliberately no register restore, so a reboot with
     // the automation enabled resumes seamlessly (its snapshot is persisted).
-    await stopAutomations();
+    // Only the runtime that started them stops them: `stopAutomations` acts on
+    // the one module-level engine, so a secondary device calling it would stop
+    // the plant's automations on its way out.
+    if (runsAutomations) await stopAutomations();
     if (pollTimer) clearInterval(pollTimer);
     pollTimer = null;
-    // Clears the flush, forecast, learn and price schedules (and their kicks) —
-    // every timer but the poll loop, which the runtime owns because it is re-armed
-    // on each source rebuild.
+    // Clears this runtime's flush schedule — every timer but the poll loop,
+    // which the runtime owns because it is re-armed on each source rebuild. The
+    // plant's own schedules are stopped by whoever started them.
     scheduler.stop();
     // Persist whatever is buffered so a clean shutdown never drops history.
     await historyBuffer.flush();
@@ -532,7 +501,7 @@ export function createRuntime(deps: RuntimeDeps = {}) {
     applyMqttConfig,
     testInverter,
     testMqtt,
-    syncSpotPricesNow,
+    publishForecast,
   };
 }
 
@@ -542,7 +511,9 @@ export function createRuntime(deps: RuntimeDeps = {}) {
  */
 const defaultRuntime = createRuntime();
 
-export const start = defaultRuntime.start;
+// No module-level `start`: a runtime is started by the fleet, which builds one
+// per device. The rest stay because the settings and admin routes act on the
+// default device's runtime by name.
 export const write = defaultRuntime.write;
 export const status = defaultRuntime.status;
 export const stop = defaultRuntime.stop;
@@ -556,4 +527,4 @@ export const testInverter: (
   config: InverterConfig,
 ) => Promise<TestInverterResult> = defaultRuntime.testInverter;
 export const testMqtt = defaultRuntime.testMqtt;
-export const syncSpotPricesNow = defaultRuntime.syncSpotPricesNow;
+export const publishForecast = defaultRuntime.publishForecast;
