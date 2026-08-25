@@ -2,7 +2,7 @@
 
 ## [unreleased]
 
-Unreleased work on `dev` since 1.2.0, shipped in `beta.20260823-9da0643`.
+Unreleased work on `dev` since 1.2.0, shipped in `beta.20260825-99e2d3f`.
 
 
 ### Features
@@ -96,6 +96,7 @@ Unreleased work on `dev` since 1.2.0, shipped in `beta.20260823-9da0643`.
 
 ### Bug Fixes
 
+* **lint:** stop lint-staged failing when every staged file is ignored ([e32bbff](https://github.com/SunReye/SunReye/commit/e32bbff91e093e4aa7fb7e944cf49c7add533590))
 * **server:** the lead device runs on the runtime every route talks to ([20ce048](https://github.com/SunReye/SunReye/commit/20ce048d936ce30ee1c9192a86a9b4be083b9278))
 * **inverter-core:** the Modbus lock belongs to the wire, not to the device ([290cef9](https://github.com/SunReye/SunReye/commit/290cef95912aa03920a972f1d65afe5d06f81207))
 * **server:** the registry follows the active-profile setting, not just its seed ([1562da8](https://github.com/SunReye/SunReye/commit/1562da807fe9c95939d932d95d7dff2a7b207083))
@@ -175,6 +176,7 @@ Unreleased work on `dev` since 1.2.0, shipped in `beta.20260823-9da0643`.
 
 ### Documentation
 
+* dependencies arrive through seams, not module mocks ([18014cd](https://github.com/SunReye/SunReye/commit/18014cde1acf1212617a89adf1cdd950d674558d))
 * **plans:** record the power-flow energy pulses design ([0b4f1b5](https://github.com/SunReye/SunReye/commit/0b4f1b5d940407cce4ee8d9dc2478e89a057bc0f))
 * **web:** motion carve-out for the power-flow diagram ([968b29c](https://github.com/SunReye/SunReye/commit/968b29ce9c76c041936ef2163f32dd994476e4a9))
 * **web:** write down the full-screen vocabulary ([697b882](https://github.com/SunReye/SunReye/commit/697b882e1e3c92dcaaee726c228f8fdce1fa5e8a))
@@ -319,6 +321,8 @@ Unreleased work on `dev` since 1.2.0, shipped in `beta.20260823-9da0643`.
 
 ### Miscellaneous Chores
 
+* **skills:** add the install-anti-slop skill ([99e2d3f](https://github.com/SunReye/SunReye/commit/99e2d3f1322bff83a34f93671693795c3693aa8c))
+* **lint:** vendor the anti-slop oxlint plugin, rules off ([2cd0cc2](https://github.com/SunReye/SunReye/commit/2cd0cc20a588fc6239c5943ceadb042ed367c680))
 * **web:** let the e2e port be overridden ([8f71ccc](https://github.com/SunReye/SunReye/commit/8f71ccc21f9f2010abb12aeede4ee23e88d10a79))
 * **web:** bump layerchart to 2.2.0 ([a345fa1](https://github.com/SunReye/SunReye/commit/a345fa1cef37d5bef7b2dedf7ee9f0ffff3f3c89))
 * **fallow:** close the web -> server boundary ([44f62ba](https://github.com/SunReye/SunReye/commit/44f62ba92a1a14c35e9e2fe8c3692ef1dc0a4b6b))
