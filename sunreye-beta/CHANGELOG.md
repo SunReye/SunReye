@@ -2,11 +2,36 @@
 
 ## [unreleased]
 
-Unreleased work on `dev` since 1.2.0, shipped in `beta.20260825-99e2d3f`.
+Unreleased work on `dev` since 1.2.0, shipped in `beta.20260825-bbb7e10`.
 
 
 ### Features
 
+* **web:** rebuild the settings device panel around an add-device wizard ([8b6416c](https://github.com/SunReye/SunReye/commit/8b6416c98ab9e54afbd1d1d7404f69f99d8d6b45))
+* **server:** honour a device's own poll cadence ([e5347f8](https://github.com/SunReye/SunReye/commit/e5347f83ab4147e646eed10d8a2a955bcf0a4f40))
+* **db:** give a device a poll cadence of its own ([cd04423](https://github.com/SunReye/SunReye/commit/cd0442340806174246a425e688ec2bef5dfa3d4c))
+* **web:** make the plant the dashboard's default view ([db6693a](https://github.com/SunReye/SunReye/commit/db6693a56865ba0e1291dd3d8e0e4516f9027e48))
+* **server:** publish every plant-wide figure on the plant topic ([bd0408f](https://github.com/SunReye/SunReye/commit/bd0408fed88dea73257f4abcbea4698b3c82853c))
+* **web:** resolve which device speaks for the plant from the settings page ([84a5c96](https://github.com/SunReye/SunReye/commit/84a5c96962da04178cc7d6d27cf586dc47182eb0))
+* **web:** show the plant's charge on the overview, and say why when there is none ([b620bf2](https://github.com/SunReye/SunReye/commit/b620bf244ed5efdb5080e599b3935e97671c5241))
+* **server:** publish the plant's weighted charge on its own live topic ([d27b1bd](https://github.com/SunReye/SunReye/commit/d27b1bd91e1ebc6f67319f0647bea57b3fdbbda1))
+* **server:** carry capacity into the plant view and refuse a sum that cannot add ([80986ff](https://github.com/SunReye/SunReye/commit/80986ff9e830ff3b5af50b4f7732a6d759cd8d42))
+* **web:** type a pack capacity, and say why a plant SOC is missing ([aa1d631](https://github.com/SunReye/SunReye/commit/aa1d6314c256c7583e6ac0d85f3aec0012643eb9))
+* **server:** resolve the plant's SOC by capacity, or refuse ([d66210c](https://github.com/SunReye/SunReye/commit/d66210cb90e2985d6e15d7c29da12514604c5d99))
+* **db:** hold a per-device battery capacity in kWh ([bceea82](https://github.com/SunReye/SunReye/commit/bceea828d69089833a9af7aceec5fe9610b9c3f2))
+* **inverter-core:** add battery.capacity as a constant role ([fc1f9d3](https://github.com/SunReye/SunReye/commit/fc1f9d3e3ca79650b78736ee3be312306401b6d4))
+* **server:** expose the plant's role rules over HTTP ([9e2aa84](https://github.com/SunReye/SunReye/commit/9e2aa840f46e79ce7f70e026e0c1589c54fa271d))
+* **server:** resolve plant roles against the plant, not one sample ([59e4fcd](https://github.com/SunReye/SunReye/commit/59e4fcd86a2f4523bd3cb9823d8e0d104c18bd49))
+* **server:** identify the device once a poll has proved the connection ([5590bbf](https://github.com/SunReye/SunReye/commit/5590bbfb360864fac157075511ad317737641c9f))
+* **web:** manage connections and devices from the settings page ([c78a021](https://github.com/SunReye/SunReye/commit/c78a021cf5d2f1cadcc93cfcfe30a2a8b3a13528))
+* **server:** admin CRUD for sources and devices over HTTP ([96e982c](https://github.com/SunReye/SunReye/commit/96e982c9ea0b399c269c50a845c1f45a64bd0550))
+* **profile-sdk:** expose the identity vocabulary to profile authors ([488bedc](https://github.com/SunReye/SunReye/commit/488bedcd1332b5a815eb3aaee94fce86131f016d))
+* **server:** store the plant's role rules and steer by them ([826404d](https://github.com/SunReye/SunReye/commit/826404dbbcdb34c3f543c2c023d04ffddc97e65e))
+* **server:** surface device identity on the inverter manifest ([5e4d4d2](https://github.com/SunReye/SunReye/commit/5e4d4d208d9de29f9da8b4e85286d996e1853f41))
+* **inverter-core:** read static device identity once at connect ([016cd05](https://github.com/SunReye/SunReye/commit/016cd051b8cd857ecbff661119f84f2b08e74680))
+* **server:** resolve plant roles instead of taking whoever answers ([9caf984](https://github.com/SunReye/SunReye/commit/9caf9842ebf47bef0aa8e95b55a49f76b511883c))
+* **server:** dial the source row rather than the saved setting ([aece952](https://github.com/SunReye/SunReye/commit/aece9527d2b3d2aa6e8ca314b3d944ba6ff081fb))
+* **inverter-core:** state each role's cross-device aggregability ([0d52e43](https://github.com/SunReye/SunReye/commit/0d52e43076107cfd3b0e5342ffaed4ff18005de2))
 * **web:** a device switcher in the dashboard header ([46d8744](https://github.com/SunReye/SunReye/commit/46d87441bdbaa30eee6f29aaf3f1e3861d081729))
 * **server:** a socket can ask for one device's metrics ([d577bfa](https://github.com/SunReye/SunReye/commit/d577bfa9d7bf4682636296cff5e344468da52748))
 * **server:** GET /api/devices, so a client can name a device ([08920ef](https://github.com/SunReye/SunReye/commit/08920ef2485a1ce5ccd8b4dfcaf2b7b10b6f4d47))
@@ -96,6 +121,8 @@ Unreleased work on `dev` since 1.2.0, shipped in `beta.20260825-99e2d3f`.
 
 ### Bug Fixes
 
+* **server:** publish every device's samples, not only the lead's ([c2c6d14](https://github.com/SunReye/SunReye/commit/c2c6d14fcfad8fe19f0ffdf491a3dea510c009aa))
+* **web:** let the plant figure expire, and scope the specs that watch it ([508adb4](https://github.com/SunReye/SunReye/commit/508adb41ad0c093de81573074e3eb282e264d434))
 * **lint:** stop lint-staged failing when every staged file is ignored ([e32bbff](https://github.com/SunReye/SunReye/commit/e32bbff91e093e4aa7fb7e944cf49c7add533590))
 * **server:** the lead device runs on the runtime every route talks to ([20ce048](https://github.com/SunReye/SunReye/commit/20ce048d936ce30ee1c9192a86a9b4be083b9278))
 * **inverter-core:** the Modbus lock belongs to the wire, not to the device ([290cef9](https://github.com/SunReye/SunReye/commit/290cef95912aa03920a972f1d65afe5d06f81207))
@@ -176,6 +203,8 @@ Unreleased work on `dev` since 1.2.0, shipped in `beta.20260825-99e2d3f`.
 
 ### Documentation
 
+* document the devices panel and the per-device poll override ([81d5c4f](https://github.com/SunReye/SunReye/commit/81d5c4f3dcd8005afe56643419ec6a3779885223))
+* document the plant's device, source and role-rule endpoints ([f460ca8](https://github.com/SunReye/SunReye/commit/f460ca8b63f37cddb6782fa1834824656e030fff))
 * dependencies arrive through seams, not module mocks ([18014cd](https://github.com/SunReye/SunReye/commit/18014cde1acf1212617a89adf1cdd950d674558d))
 * **plans:** record the power-flow energy pulses design ([0b4f1b5](https://github.com/SunReye/SunReye/commit/0b4f1b5d940407cce4ee8d9dc2478e89a057bc0f))
 * **web:** motion carve-out for the power-flow diagram ([968b29c](https://github.com/SunReye/SunReye/commit/968b29ce9c76c041936ef2163f32dd994476e4a9))
@@ -198,6 +227,8 @@ Unreleased work on `dev` since 1.2.0, shipped in `beta.20260825-99e2d3f`.
 
 ### Code Refactoring
 
+* **web:** read the cadence untracked where the plant lease arms its ticker ([8922df5](https://github.com/SunReye/SunReye/commit/8922df5837fb3e6b85f6213f80f67ce174133397))
+* **inverter-core:** don't reach for a device to answer a field you can't read ([42a67d5](https://github.com/SunReye/SunReye/commit/42a67d55059fcca8bc66ad7d0a18691aa0912739))
 * **inverter-core:** split decode into addressing and scaling ([cad040e](https://github.com/SunReye/SunReye/commit/cad040ed7ef72292b2375a9cf37cc632e528676a))
 * **inverter-core:** tagged Binding union and a transport seam ([0c3a239](https://github.com/SunReye/SunReye/commit/0c3a23909ab73816fb5c2f90a6ffc1988c1f38bf))
 * **profile-sdk:** split replay by concern to clear the health gate ([a0fbf1c](https://github.com/SunReye/SunReye/commit/a0fbf1c17dd99cd0067727f608410e3ed2bd49a5))
@@ -295,6 +326,9 @@ Unreleased work on `dev` since 1.2.0, shipped in `beta.20260825-99e2d3f`.
 
 ### Tests
 
+* **web:** make the plant switcher and rules specs run ([bbb7e10](https://github.com/SunReye/SunReye/commit/bbb7e1023a21a645ad39e0495b27d1200f05434c))
+* **web:** make the device-management spec run, and stop the fixture inventing a profile ([28b88ab](https://github.com/SunReye/SunReye/commit/28b88ab007ea36a3c440b309c0f8acd8906b162e))
+* **server:** prove the config path still produces a shared bus ([25c0717](https://github.com/SunReye/SunReye/commit/25c0717f68c6e3127acff113997f9760a73e6d45))
 * **db:** actually restore a dump in CI and assert parity ([54cd5c5](https://github.com/SunReye/SunReye/commit/54cd5c551057b0be8952cd8f56578614a542e37d))
 * **web:** measure a chart's mount cost, not the scroll around it ([de4cd42](https://github.com/SunReye/SunReye/commit/de4cd4246a506fb7d20867322a191619f628d123))
 * **web:** cover every route in the browser layer ([d555e9d](https://github.com/SunReye/SunReye/commit/d555e9d878e6d4d2ed36b321206a886c4a464e56))
@@ -321,6 +355,7 @@ Unreleased work on `dev` since 1.2.0, shipped in `beta.20260825-99e2d3f`.
 
 ### Miscellaneous Chores
 
+* **web:** drop the message the devices panel no longer says ([4257700](https://github.com/SunReye/SunReye/commit/42577004a3273bb76582eae40dada196894cb3bc))
 * **skills:** add the install-anti-slop skill ([99e2d3f](https://github.com/SunReye/SunReye/commit/99e2d3f1322bff83a34f93671693795c3693aa8c))
 * **lint:** vendor the anti-slop oxlint plugin, rules off ([2cd0cc2](https://github.com/SunReye/SunReye/commit/2cd0cc20a588fc6239c5943ceadb042ed367c680))
 * **web:** let the e2e port be overridden ([8f71ccc](https://github.com/SunReye/SunReye/commit/8f71ccc21f9f2010abb12aeede4ee23e88d10a79))
