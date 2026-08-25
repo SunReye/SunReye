@@ -2,7 +2,7 @@
 
 ## [unreleased]
 
-Unreleased work on `dev` since 1.2.0, shipped in `beta.20260825-bbb7e10`.
+Unreleased work on `dev` since 1.2.0, shipped in `beta.20260825-87f1c25`.
 
 
 ### Features
@@ -326,6 +326,7 @@ Unreleased work on `dev` since 1.2.0, shipped in `beta.20260825-bbb7e10`.
 
 ### Tests
 
+* **web:** stop two browser cases racing the fixture, which CI lost ([87f1c25](https://github.com/SunReye/SunReye/commit/87f1c258252be274b43527e701b59c4bd14fd222))
 * **web:** make the plant switcher and rules specs run ([bbb7e10](https://github.com/SunReye/SunReye/commit/bbb7e1023a21a645ad39e0495b27d1200f05434c))
 * **web:** make the device-management spec run, and stop the fixture inventing a profile ([28b88ab](https://github.com/SunReye/SunReye/commit/28b88ab007ea36a3c440b309c0f8acd8906b162e))
 * **server:** prove the config path still produces a shared bus ([25c0717](https://github.com/SunReye/SunReye/commit/25c0717f68c6e3127acff113997f9760a73e6d45))
