@@ -177,7 +177,16 @@ const peakShavingConfigSchema = z.object({
    * top-balancing dwell time; a small allowance lets it finish. 0 disables.
    */
   topBalanceFloorA: z.number().min(0).max(100).default(5),
-  /** Battery voltage for W→A when no `battery.voltage` metric is mapped, V. */
+  /**
+   * LEGACY battery voltage for W→A, V.
+   *
+   * The field moved: it describes the battery, not the automation, and is now
+   * edited with the plant (`packages/db/src/weather.ts`, `forecast.battery
+   * .nominalV`). It stays here, and stays read, because an install that set 48 V
+   * on this page must keep charging at 48 V until someone restates it — the
+   * engine prefers the plant's value and falls back to this one
+   * (`peak-shaving-engine.ts`, `liveBatteryV`). No longer editable in the UI.
+   */
   nominalBatteryV: z.number().positive().max(1_500).default(51.2),
   /**
    * Seconds between control decisions — the engine tick cadence, i.e. how often

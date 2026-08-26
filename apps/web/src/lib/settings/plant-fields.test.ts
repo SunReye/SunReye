@@ -16,6 +16,7 @@ const texts = (over: Partial<PlantTexts> = {}): PlantTexts => ({
   battUsable: "15",
   battCharge: "5",
   battReserve: "10",
+  battNominalV: "51.2",
   smartMeterSince: "",
   ...over,
 });
@@ -83,6 +84,7 @@ describe("parsePlantFields", () => {
       usableKwh: 15,
       maxChargeW: null,
       minSoc: 10,
+      nominalV: 51.2,
     });
   });
 
@@ -91,5 +93,26 @@ describe("parsePlantFields", () => {
     expect(parsePlantFields(texts({ smartMeterSince: "2026-02-25" }))?.smartMeterSince).toBe(
       "2026-02-25",
     );
+  });
+});
+
+describe("the battery's nominal voltage", () => {
+  test("is kept as entered", () => {
+    expect(parsePlantFields(texts({ battNominalV: "48" }))?.battery?.nominalV).toBe(48);
+  });
+
+  test("stays null when blank, which is not the same as 51.2", () => {
+    // Null tells the automation engine to keep whatever this install already had
+    // on the automations page, where this field used to live. A default would
+    // rescale every commanded current on a 48 V pack by 7 %, silently.
+    expect(parsePlantFields(texts({ battNominalV: "" }))?.battery?.nominalV).toBeNull();
+  });
+
+  test("rejects a voltage that was typed but cannot be read", () => {
+    expect(parsePlantFields(texts({ battNominalV: "fifty" }))).toBeNull();
+  });
+
+  test("is absent along with the rest of the block when no battery is stated", () => {
+    expect(parsePlantFields(texts({ battUsable: "", battNominalV: "48" }))?.battery).toBeNull();
   });
 });

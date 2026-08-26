@@ -1521,6 +1521,41 @@ describe("peak-shaving engine", () => {
     expect(status.targetA).toBe(100);
   });
 
+  test("the plant's stated voltage wins over the legacy automation field", async () => {
+    // The field describes the battery, so it moved to the plant settings. While
+    // both exist, the plant's is the one being maintained.
+    // Both candidate answers must land inside the register's own 0-185 A range,
+    // or the clamp decides the test instead of the precedence.
+    h.set.config(config({}, { nominalBatteryV: 100 }));
+    h.set.weather(weather({ battery: { usableKwh: 15, nominalV: 200 } }));
+    h.set.sample({ [PV_KEY]: 18_000, [SOC_KEY]: 50, [CHARGE_KEY]: 120 });
+    const status = await createPeakShavingEngine(h.io).tick();
+    // 10000 W at 200 V → 50 A, not the 100 A the legacy field would give.
+    expect(status.targetA).toBe(50);
+  });
+
+  test("an install that never restated it keeps charging at the voltage it set", async () => {
+    // The reason the plant field is nullable rather than defaulted: a default of
+    // 51.2 would silently shadow a 48 V pack's existing setting, and every
+    // commanded current would be 7 % off with nothing to show for it.
+    h.set.config(config({}, { nominalBatteryV: 100 }));
+    h.set.weather(weather({ battery: { usableKwh: 15 } }));
+    h.set.sample({ [PV_KEY]: 18_000, [SOC_KEY]: 50, [CHARGE_KEY]: 120 });
+    const status = await createPeakShavingEngine(h.io).tick();
+    expect(status.targetA).toBe(100);
+  });
+
+  test("a live voltage reading beats both stated values", async () => {
+    // maxChargeA raised past the answer: the default 100 A ceiling would clamp
+    // the live-voltage result down onto the legacy one and hide the difference.
+    h.set.config(config({}, { nominalBatteryV: 100, maxChargeA: 300 }));
+    h.set.weather(weather({ battery: { usableKwh: 15, nominalV: 200 } }));
+    h.set.sample({ [PV_KEY]: 18_000, [SOC_KEY]: 50, [VOLT_KEY]: 62.5, [CHARGE_KEY]: 120 });
+    const status = await createPeakShavingEngine(h.io).tick();
+    // 10000 W at the measured 62.5 V → 160 A; neither stated value gives that.
+    expect(status.targetA).toBe(160);
+  });
+
   test("the plant's real export cap reaches the live decision, not just the plan", async () => {
     // 8300 W clears the 8000 W decision limit (8400 maxOutput − 400 buffer) but
     // not the 8400 W the plant can physically push out, and the coming peak

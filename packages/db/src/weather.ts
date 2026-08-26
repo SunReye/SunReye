@@ -42,6 +42,18 @@ const forecastBatterySchema = z.object({
   maxChargeW: z.number().positive().max(10_000_000).nullable().default(null),
   /** Reserve floor in % the battery is not discharged below (overnight drain). */
   minSoc: z.number().min(0).max(100).default(10),
+  /**
+   * Nominal pack voltage in V — what the peak-shaving engine converts watts to
+   * charge-current amps with when no `battery.voltage` metric is mapped.
+   *
+   * `null`, not a default, so "never stated" stays distinguishable from "stated
+   * as 51.2". A plant that predates this field keeps whatever it set on the
+   * automations page, which is where this used to live; the engine falls back to
+   * that value while this is null (see peak-shaving-engine's `liveBatteryV`).
+   * Getting it wrong is not cosmetic — every commanded current is scaled by it,
+   * so a 48 V pack driven at 51.2 V is charged 7 % below what was asked for.
+   */
+  nominalV: z.number().positive().max(1_500).nullable().default(null),
 });
 
 /**

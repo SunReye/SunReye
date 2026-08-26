@@ -12,7 +12,12 @@
 export type ArrayText = { kwp: string; tilt: string; azimuth: string };
 
 export type PvArray = { kwp: number; tilt: number; azimuth: number };
-export type PlantBattery = { usableKwh: number; maxChargeW: number | null; minSoc: number };
+export type PlantBattery = {
+  usableKwh: number;
+  maxChargeW: number | null;
+  minSoc: number;
+  nominalV: number | null;
+};
 
 /** Every text field the plant form owns. */
 export interface PlantTexts {
@@ -25,6 +30,8 @@ export interface PlantTexts {
   battUsable: string;
   battCharge: string;
   battReserve: string;
+  /** Nominal pack voltage, V. Blank = never stated (see PlantBattery.nominalV). */
+  battNominalV: string;
   /** `''` is the date input's "unset"; the record wants null. */
   smartMeterSince: string;
 }
@@ -78,8 +85,14 @@ function parseBattery(texts: PlantTexts, maxChargeW: number | null) {
   if (texts.battUsable.trim() === "") return none;
   const usableKwh = num(texts.battUsable);
   const minSoc = texts.battReserve.trim() === "" ? DEFAULT_RESERVE_PCT : num(texts.battReserve);
+  // Blank voltage stays null rather than defaulting: null is what tells the
+  // automation engine to keep using whatever this install already had, instead
+  // of quietly rescaling every commanded current to 51.2 V.
+  const blankVolts = texts.battNominalV.trim() === "";
+  const nominalV = blankVolts ? null : num(texts.battNominalV);
   if (usableKwh === null || minSoc === null) return { ...none, ok: false };
-  return { ok: true, battery: { usableKwh, maxChargeW, minSoc } };
+  if (!blankVolts && nominalV === null) return { ...none, ok: false };
+  return { ok: true, battery: { usableKwh, maxChargeW, minSoc, nominalV } };
 }
 
 /**

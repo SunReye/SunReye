@@ -34,8 +34,11 @@ Below the connection: what the system physically **is**, as opposed to how SunRe
 - **PV arrays** — one row per orientation (**kWp**, **tilt**, **azimuth**; 0° = south,
   −90° = east, 90° = west). Add a row per string group facing a different way.
 - **Temp. coefficient** and **System losses** — from the panel datasheet and install.
-- **Curtailment** — feed-in limit, usable battery, max charge power and reserve, plus an
-  average **house load** (blank = inferred from history).
+- **Curtailment** — feed-in limit, usable battery, max charge power, reserve and the pack's
+  **nominal voltage**, plus an average **house load** (blank = inferred from history). The
+  voltage is what peak shaving converts power into charge current with when the inverter
+  reports no live battery voltage; leaving it blank keeps whatever was already set under
+  Automations, where this field used to live.
 - **Smart meter gateway installed** — the date your iMSys went in, or blank if you don't have
   one. Installing it is what lifts the 60 % feed-in cap, and it marks the plant as one **§51
   EEG** applies to — so it is also the gate on price-aware charging. Quick buttons set the

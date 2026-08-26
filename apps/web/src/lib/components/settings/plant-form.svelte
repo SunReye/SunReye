@@ -41,6 +41,7 @@
 	let battUsableText = $state('');
 	let battChargeText = $state('');
 	let battReserveText = $state('');
+	let battNominalVText = $state('');
 	// Empty string is the date input's "unset"; the schema wants null.
 	let smartMeterText = $state('');
 
@@ -56,8 +57,13 @@
 
 	/** Blank fields when no battery is described. */
 	function batteryTexts(b: PlantBattery | null) {
-		if (!b) return { usable: '', charge: '', reserve: '' };
-		return { usable: b.usableKwh.toString(), charge: wToKw(b.maxChargeW), reserve: b.minSoc.toString() };
+		if (!b) return { usable: '', charge: '', reserve: '', volts: '' };
+		return {
+			usable: b.usableKwh.toString(),
+			charge: wToKw(b.maxChargeW),
+			reserve: b.minSoc.toString(),
+			volts: b.nominalV?.toString() ?? ''
+		};
 	}
 
 	onMount(async () => {
@@ -73,6 +79,7 @@
 		battUsableText = battery.usable;
 		battChargeText = battery.charge;
 		battReserveText = battery.reserve;
+		battNominalVText = battery.volts;
 		smartMeterText = f.smartMeterSince ?? '';
 		loaded = true;
 	});
@@ -87,6 +94,7 @@
 			battUsable: battUsableText,
 			battCharge: battChargeText,
 			battReserve: battReserveText,
+			battNominalV: battNominalVText,
 			smartMeterSince: smartMeterText
 		});
 		if (!fields) {
@@ -130,6 +138,7 @@
 			bind:battUsable={battUsableText}
 			bind:battCharge={battChargeText}
 			bind:battReserve={battReserveText}
+			bind:battNominalV={battNominalVText}
 			disabled={fieldsDisabled}
 		/>
 	{/if}

@@ -816,7 +816,7 @@ async function steer(
   const evcc = io.getEvcc();
   const ev = evccAutomationInputs(evcc);
   const load = loadFrame(live, baselineLoadW);
-  const batteryV = liveBatteryV(live, ps);
+  const batteryV = liveBatteryV(live, ps, weather);
   const decision = decideTargetA(
     decisionInputs({
       e,
@@ -898,7 +898,7 @@ async function planInputs(
     ev: evccAutomationInputs(evcc),
     evcc,
     load: loadFrame(live, await io.getBaselineLoadW(weather)),
-    batteryV: liveBatteryV(live, ps),
+    batteryV: liveBatteryV(live, ps, weather),
     prices: await io.getPrices(),
     tariff: await io.getTariff(),
   });
@@ -906,9 +906,23 @@ async function planInputs(
   return { inputs: { ...inputs, forecast: inputs.forecast }, limits: planLimits(inputs, weather) };
 }
 
-/** The measured pack voltage when the reading is sane, the nameplate otherwise. */
-function liveBatteryV(live: LiveInputs, ps: AutomationConfig["peakShaving"]): number {
-  return live.liveVolt !== null && live.liveVolt > 0 ? live.liveVolt : ps.nominalBatteryV;
+/**
+ * The measured pack voltage when the reading is sane, the stated one otherwise.
+ *
+ * Three sources in order, because the stated value moved. It describes the
+ * battery, so it now lives with the plant (Settings -> Inverter); it used to be
+ * a peak-shaving field, and an install that set 48 V there must keep charging at
+ * 48 V until someone restates it. So: the live reading, then the plant's, then
+ * the legacy automation field — which is why the plant's is nullable rather than
+ * defaulted, since a default would shadow the legacy value with 51.2.
+ */
+function liveBatteryV(
+  live: LiveInputs,
+  ps: AutomationConfig["peakShaving"],
+  weather: WeatherConfig,
+): number {
+  if (live.liveVolt !== null && live.liveVolt > 0) return live.liveVolt;
+  return weather.forecast.battery?.nominalV ?? ps.nominalBatteryV;
 }
 
 /**

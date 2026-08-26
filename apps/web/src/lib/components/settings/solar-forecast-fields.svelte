@@ -21,6 +21,7 @@
 		battUsable = $bindable(),
 		battCharge = $bindable(),
 		battReserve = $bindable(),
+		battNominalV = $bindable(),
 		smartMeterSince = $bindable(),
 		disabled
 	}: {
@@ -37,6 +38,8 @@
 		battCharge: string;
 		/** Battery reserve floor, % (blank = 10). */
 		battReserve: string;
+		/** Nominal pack voltage, V — blank keeps whatever the automation had. */
+		battNominalV: string;
 		/** Smart-meter-gateway install date, `YYYY-MM-DD`, or '' when none. */
 		smartMeterSince: string;
 		disabled: boolean;
@@ -155,6 +158,17 @@
 				inputmode="decimal"
 				placeholder="10"
 			/>
+		</div>
+		<div class="flex flex-col gap-1.5">
+			<Label for="forecast-batt-nominal-v">{m.plant_battery_nominal_v()}</Label>
+			<Input
+				id="forecast-batt-nominal-v"
+				bind:value={battNominalV}
+				disabled={battDisabled}
+				inputmode="decimal"
+				placeholder="51.2"
+			/>
+			<p class="text-xs text-muted-foreground">{m.plant_battery_nominal_v_desc()}</p>
 		</div>
 	</div>
 </div>

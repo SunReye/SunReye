@@ -22,6 +22,7 @@ const read = async (file: string) => await Bun.file(new URL(file, import.meta.ur
 const weatherForm = await read("./weather-form.svelte");
 const plantForm = await read("./plant-form.svelte");
 const blockerAlert = await read("../automations/blocker-alert.svelte");
+const peakShavingForm = await read("../automations/peak-shaving-form.svelte");
 
 /** The body of the single `settings.weather.put({...})` call in a form. */
 function putBody(source: string): string {
@@ -68,5 +69,15 @@ describe("the plant's own fields", () => {
     // started this: an automation asking for a regulatory date under "Weather".
     expect(blockerAlert).toContain("resolve('/settings/inverter')");
     expect(blockerAlert).not.toContain("resolve('/settings/weather')");
+  });
+
+  test("the battery's nominal voltage is edited here, not on the automations page", () => {
+    // It describes the battery, so it moved with the rest of the pack's
+    // description. The automation still READS the legacy value (an install that
+    // set 48 V must keep charging at 48 V), but two editors for one number is
+    // how the two drift apart.
+    expect(putBody(plantForm)).toContain("battery");
+    expect(plantForm).toContain("battNominalV");
+    expect(peakShavingForm).not.toContain("nominalBatteryV");
   });
 });

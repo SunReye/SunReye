@@ -37,7 +37,6 @@
 		maxChargeA: '',
 		fallbackChargeA: '',
 		topBalanceFloorA: '',
-		nominalBatteryV: '',
 		controlIntervalS: ''
 	});
 	// Price-aware tuning; inert without a price feed, but always persisted.
@@ -63,7 +62,6 @@
 		{ key: 'maxChargeA' as NumKey, label: m.peak_shaving_max_charge(), desc: m.peak_shaving_max_charge_desc(), placeholder: '100' },
 		{ key: 'fallbackChargeA' as NumKey, label: m.peak_shaving_fallback(), desc: m.peak_shaving_fallback_desc(), placeholder: '50' },
 		{ key: 'topBalanceFloorA' as NumKey, label: m.peak_shaving_floor(), desc: m.peak_shaving_floor_desc(), placeholder: '5' },
-		{ key: 'nominalBatteryV' as NumKey, label: m.peak_shaving_voltage(), desc: m.peak_shaving_voltage_desc(), placeholder: '51.2' },
 		{ key: 'controlIntervalS' as NumKey, label: m.peak_shaving_interval(), desc: m.peak_shaving_interval_desc(), placeholder: '30' }
 	]);
 
