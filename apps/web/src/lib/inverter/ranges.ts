@@ -240,9 +240,21 @@ export function historyPeriodRange(
     : historyRangeFor(period, timeZone);
 }
 
-/** Only measurement/cumulative metrics carry a numeric time series worth charting. */
+/**
+ * A metric worth offering a custom chart over: it must be numeric *and*
+ * persisted as a series. The kind answers the first half — a status enum and a
+ * control are not curves — and `storage` answers the second: a `config` metric
+ * lives in the change-log and a `none` metric is never written at all, so a chart
+ * over either plots an empty axis. Before `storage` existed the second half was
+ * unanswerable and the empty plot was reachable from the UI.
+ */
 export function isChartable(metric: ManifestMetric): boolean {
-  return metric.kind === "measurement" || metric.kind === "cumulative";
+  if (metric.storage !== "series") return false;
+  // A state is not a curve: an enum plotted as a line is a meaningless ramp
+  // between arbitrary codes, whether it is reported (`status`) or written
+  // (a `setting` like the work mode). `enumLabels` is the tell either way.
+  if (metric.kind === "status" || metric.enumLabels) return false;
+  return true;
 }
 
 const ROLE_CATEGORY: Record<string, string> = {

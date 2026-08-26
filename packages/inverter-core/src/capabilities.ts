@@ -9,6 +9,7 @@ import type {
   ManifestMetric,
   MetricDef,
   MetricKind,
+  MetricStorage,
 } from "./types";
 
 const log = getLogger(["inverter-core", "capabilities"]);
@@ -42,7 +43,7 @@ function roleKind(def: KindInputs): MetricKind | undefined {
  * deadband applied to an enum.
  */
 export function hasResolvableKind(def: KindInputs): boolean {
-  return Boolean(def.kind ?? roleKind(def)) || def.access === "rw" || def.unit === "kWh";
+  return statedKind(def) !== undefined;
 }
 
 /** A metric whose kind was guessed rather than stated. */
@@ -95,13 +96,71 @@ function reportKindFallback(key: string): void {
  * key rather than assumed silently, since that default is a guess.
  */
 export function resolveKind(def: KindResolvable): MetricKind {
+  const stated = statedKind(def);
+  if (stated) return stated;
+  reportKindFallback(def.key);
+  return "measurement";
+}
+
+/**
+ * The kind a metric actually states — explicitly, through its canonical role,
+ * through writability or through the kWh unit — and `undefined` when nothing
+ * does. {@link resolveKind} is this plus the reported `measurement` guess.
+ *
+ * Split out because the guess has a side effect (it is recorded and logged per
+ * key) and two callers must not trip it: the profile validator, which asks about
+ * a bare wire-shape def and reports its own issue, and {@link resolveStorage},
+ * for which a missing kind is not a kind question at all.
+ */
+export function statedKind(def: KindInputs): MetricKind | undefined {
   if (def.kind) return def.kind;
   const fromRole = roleKind(def);
   if (fromRole) return fromRole;
   if (def.access === "rw") return "setting";
   if (def.unit === "kWh") return "cumulative";
-  reportKindFallback(def.key);
-  return "measurement";
+  return undefined;
+}
+
+/** The fields {@link resolveStorage} reads. */
+export type StorageInputs = KindInputs & Pick<MetricDef, "storage">;
+
+/**
+ * Where a metric's values are persisted: an explicit {@link MetricStorage} wins,
+ * otherwise it is derived from the kind. Only `setting` derives away from the
+ * hypertable — 37 of this profile's 108 metrics are configuration registers, 34 %
+ * of every row written, and a schedule slot or an enum has no time-weighted mean
+ * for the rollups to compute.
+ *
+ * The derivation is a default, not a law: the 1:1 mapping between the four kinds
+ * and the storage policies is a property of one vendor's profile. A `setting` the
+ * automation engine writes is worth charting, and a diagnostic `measurement` may
+ * be worth no storage at all — so the author overrides, and `kind` stays a
+ * rendering statement.
+ */
+export function resolveStorage(def: StorageInputs): MetricStorage {
+  if (def.storage) return def.storage;
+  return statedKind(def) === "setting" ? "config" : "series";
+}
+
+/** The fields {@link resolveDeadband} reads. */
+export type DeadbandInputs = StorageInputs & Pick<MetricDef, "deadband">;
+
+/**
+ * The change threshold to filter a metric's stored series by, in the metric's
+ * own unit — `undefined` meaning "store every change", which is the default and
+ * the only safe one: a guessed global threshold silently degrades data.
+ *
+ * `undefined` regardless of what is authored for the two kinds a magnitude
+ * threshold is meaningless on (a deadband makes a counter lag, and on an enum it
+ * can swallow a genuine state transition) and for anything not stored as a
+ * series. The schema rejects those combinations at parse time; this is the
+ * runtime half of the same rule, so a hand-built def cannot route around it.
+ */
+export function resolveDeadband(def: DeadbandInputs): number | undefined {
+  if (def.deadband === undefined) return undefined;
+  if (resolveStorage(def) !== "series") return undefined;
+  const kind = statedKind(def);
+  return kind === "cumulative" || kind === "status" ? undefined : def.deadband;
 }
 
 /** Count distinct 1-based indices for an indexed role (e.g. PV strings). */
@@ -166,6 +225,7 @@ export function toManifestMetric(def: MetricDef): ManifestMetric {
     unit: def.unit,
     group: def.group,
     kind: resolveKind(def),
+    storage: resolveStorage(def),
     writable: def.access === "rw",
     role: def.role,
     index: def.index,

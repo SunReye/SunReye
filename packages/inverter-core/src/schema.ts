@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { resolveStorage, statedKind } from "./capabilities";
 import { ROLE_CATALOG, ROLE_NAMES, type RoleSpec } from "./roles";
 import { bindingFor, type ComputeExpr, type ControlExpr, type ProfileData } from "./profile-data";
 import type { Binding } from "./types";
@@ -106,6 +107,10 @@ const metricDataSchema = z.strictObject({
   role: z.enum(ROLE_NAMES).optional(),
   index: z.number().int().positive().optional(),
   kind: z.enum(["measurement", "cumulative", "status", "setting"]).optional(),
+  storage: z.enum(["series", "config", "none"]).optional(),
+  // No zero: "no threshold" is absence. A `0` here would be indistinguishable
+  // from "not applicable", the sentinel trap `decode()` avoids one layer down.
+  deadband: z.number().positive().optional(),
   range: z.strictObject({ min: z.number(), max: z.number() }).optional(),
   // JSON object keys are strings; enum keys must be integer-like.
   enumLabels: z.record(z.string().regex(/^-?\d+$/), z.string()).optional(),
@@ -286,6 +291,40 @@ function upcastForValidation(input: unknown): unknown {
   return { ...data, metrics: data.metrics.map(fillLegacyMirror) };
 }
 
+/**
+ * Where an authored `deadband` is an error rather than a filter. Rejected here,
+ * at authoring time, instead of being silently dropped by the write path:
+ *
+ * - a metric not stored as a series never reaches the filter at all, so a
+ *   threshold on it is dead configuration that reads as if it were doing
+ *   something;
+ * - a counter filtered by a magnitude threshold *lags* — the stored series
+ *   trails the device's own total until the next increment clears the band;
+ * - a threshold on an enum is meaningless and can swallow a state transition;
+ * - a threshold below `scale` is below the register's quantisation step, so no
+ *   sample can ever fall inside it. That is an authoring mistake, not a no-op.
+ */
+function deadbandIssues(m: z.infer<typeof metricDataSchema>): FieldIssue[] {
+  if (m.deadband === undefined) return [];
+  const storage = resolveStorage(m);
+  if (storage !== "series") {
+    return [{ field: "deadband", message: `deadband needs storage "series", not "${storage}"` }];
+  }
+  const kind = statedKind(m);
+  if (kind === "cumulative" || kind === "status") {
+    return [{ field: "deadband", message: `a ${kind} metric is stored exactly: no deadband` }];
+  }
+  const floor = Math.abs(m.scale);
+  return m.deadband < floor
+    ? [
+        {
+          field: "deadband",
+          message: `deadband ${m.deadband} is below the ${floor} quantisation step`,
+        },
+      ]
+    : [];
+}
+
 const coreProfileSchema = z
   .strictObject({
     schemaVersion: z.union([z.literal(1), z.literal(2)]),
@@ -329,6 +368,11 @@ const coreProfileSchema = z
     // --- the binding matches the schema version (and the mirror) ---
     metrics.forEach((m, i) => {
       for (const issue of bindingIssues(m, data.schemaVersion)) at(i, issue.field, issue.message);
+    });
+
+    // --- the deadband is only meaningful where it is also safe ---
+    metrics.forEach((m, i) => {
+      for (const issue of deadbandIssues(m)) at(i, issue.field, issue.message);
     });
 
     // --- role-shape rules from the catalog ---

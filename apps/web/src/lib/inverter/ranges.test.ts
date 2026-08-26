@@ -47,6 +47,7 @@ const metric = (over: Partial<ManifestMetric> = {}): ManifestMetric => ({
   unit: "W",
   group: "solar",
   kind: "measurement",
+  storage: "series",
   writable: false,
   ...over,
 });
@@ -188,7 +189,34 @@ describe("isChartable", () => {
     expect(isChartable(metric({ kind: "measurement" }))).toBe(true);
     expect(isChartable(metric({ kind: "cumulative" }))).toBe(true);
     expect(isChartable(metric({ kind: "status" }))).toBe(false);
-    expect(isChartable(metric({ kind: "setting" }))).toBe(false);
+    // A setting derives to the config change-log, so there is no series behind it.
+    expect(isChartable(metric({ kind: "setting", storage: "config" }))).toBe(false);
+  });
+
+  it("does not chart a metric that is never persisted", () => {
+    // A custom chart over a metric with no history plots nothing. The storage
+    // class is the only thing that knows — the kind is a rendering statement.
+    expect(isChartable(metric({ kind: "measurement", storage: "none" }))).toBe(false);
+    expect(isChartable(metric({ kind: "cumulative", storage: "none" }))).toBe(false);
+  });
+
+  it("does not chart an enum setting even when it is stored as a series", () => {
+    // The work mode is a code, not a curve — a line between "Selling First" and
+    // "Zero Export" ramps through nothing.
+    expect(
+      isChartable(metric({ kind: "setting", storage: "series", enumLabels: { 0: "Selling" } })),
+    ).toBe(false);
+  });
+
+  it("charts a numeric setting the profile explicitly stores as a series", () => {
+    // `settings.battery.maximum_charge_current` is written by the automation
+    // engine; charted against battery power it is one of the more useful series
+    // in the app, and the derivation alone would have hidden it.
+    expect(isChartable(metric({ kind: "setting", storage: "series" }))).toBe(true);
+  });
+
+  it("does not chart a config-logged metric", () => {
+    expect(isChartable(metric({ kind: "measurement", storage: "config" }))).toBe(false);
   });
 });
 

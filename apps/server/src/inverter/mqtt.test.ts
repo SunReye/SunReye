@@ -34,6 +34,7 @@ const metric = (over: Partial<ManifestMetric> & { key: string }): ManifestMetric
   unit: null,
   group: "test",
   kind: "measurement",
+  storage: "series",
   writable: false,
   ...over,
 });

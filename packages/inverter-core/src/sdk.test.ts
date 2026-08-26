@@ -1,10 +1,16 @@
 import { describe, expect, test } from "bun:test";
 
 import { control, defineProfile, metric } from "./define";
-import { compileComputeExpr, hydrateProfile, type ProfileData } from "./profile-data";
+import { resolveStorage } from "./capabilities";
+import {
+  compileComputeExpr,
+  hydrateProfile,
+  type MetricDataDef,
+  type ProfileData,
+} from "./profile-data";
 import { ROLE_CATALOG, ROLE_NAMES } from "./roles";
 import { profileDataSchema, safeParseProfileData } from "./schema";
-import type { RegisterType } from "./types";
+import type { MetricStorage, RegisterType } from "./types";
 
 /** A minimal valid profile built via the SDK, reused across cases. */
 function goodProfile(): ProfileData {
@@ -518,5 +524,105 @@ describe("compileComputeExpr", () => {
     expect(both({ a: -5 })).toBe(0);
     expect(both({ a: 150 })).toBe(100);
     expect(both({ a: 60 })).toBe(60);
+  });
+});
+
+describe("profileDataSchema — storage and deadband", () => {
+  /** The PV1 measurement of {@link goodProfile}, with storage fields applied. */
+  function withStorage(patch: Partial<MetricDataDef>): ReturnType<typeof safeParseProfileData> {
+    const p = goodProfile();
+    Object.assign(p.metrics[0]!, patch);
+    return safeParseProfileData(p);
+  }
+
+  test("a profile with no storage field parses, and every metric resolves to its default", () => {
+    // The backwards-compatibility proof: the field is optional precisely so no
+    // published profile has to be rebuilt to keep parsing.
+    const parsed = safeParseProfileData(goodProfile());
+    expect(parsed.success).toBe(true);
+    const metrics = parsed.data!.metrics;
+    expect(metrics.every((m) => m.storage === undefined)).toBe(true);
+    expect(resolveStorage(metrics.find((m) => m.key === "settings.workmode")!)).toBe("config");
+    expect(resolveStorage(metrics.find((m) => m.key === "dc.pv1.power")!)).toBe("series");
+  });
+
+  test("accepts each declared storage class", () => {
+    for (const storage of ["series", "config", "none"] as const) {
+      expect(withStorage({ storage }).success).toBe(true);
+    }
+  });
+
+  test("an unknown storage value fails rather than silently defaulting", () => {
+    expect(withStorage({ storage: "ephemeral" as MetricStorage }).success).toBe(false);
+  });
+
+  test("accepts a deadband in the metric's own unit, at and above the scale floor", () => {
+    expect(withStorage({ deadband: 1 }).success).toBe(true);
+    expect(withStorage({ scale: 0.1, deadband: 0.1 }).success).toBe(true);
+  });
+
+  test("deadband 0 fails validation — there is no zero threshold", () => {
+    // `0` as a stand-in for "not applicable" makes it indistinguishable from a
+    // real threshold of zero. Absence means no filtering; nothing else does.
+    expect(withStorage({ deadband: 0 }).success).toBe(false);
+  });
+
+  test("a negative deadband fails validation", () => {
+    expect(withStorage({ deadband: -1 }).success).toBe(false);
+  });
+
+  test("a deadband below the register's quantisation step fails validation", () => {
+    // Unrepresentable, so it is an authoring error rather than a no-op.
+    expect(withStorage({ scale: 0.1, deadband: 0.05 }).success).toBe(false);
+  });
+
+  test("a deadband on a counter or a status enum fails validation", () => {
+    // Both are stored exactly: a threshold makes a counter lag, and on an enum
+    // it can swallow a genuine state transition. Rejected at authoring time
+    // rather than quietly ignored at write time.
+    // Roleless: a mapped role's kind wins over the kWh unit, and this profile's
+    // PV metric is role-mapped as a measurement.
+    expect(
+      withStorage({ role: undefined, index: undefined, unit: "kWh", deadband: 5 }).success,
+    ).toBe(false);
+    expect(withStorage({ kind: "status", deadband: 1 }).success).toBe(false);
+  });
+
+  test("a deadband on a metric that is not stored as a series fails validation", () => {
+    expect(withStorage({ storage: "none", deadband: 1 }).success).toBe(false);
+    expect(withStorage({ storage: "config", deadband: 1 }).success).toBe(false);
+  });
+
+  test("a deadband is accepted on a setting explicitly stored as a series", () => {
+    // The awkward direction, and the reason storage is a field rather than a
+    // derivation: `settings.battery.maximum_charge_current` is written by the
+    // automation engine and worth charting.
+    const p = goodProfile();
+    Object.assign(p.metrics[4]!, { storage: "series", deadband: 1, kind: "measurement" });
+    expect(safeParseProfileData(p).success).toBe(true);
+  });
+
+  test("the metric() builder carries storage and deadband through", () => {
+    const built = metric("ac/l1/voltage", {
+      label: "L1",
+      unit: "V",
+      group: "grid",
+      addr: 598,
+      scale: 0.1,
+      storage: "series",
+      deadband: 1,
+    });
+    expect(built.storage).toBe("series");
+    expect(built.deadband).toBe(1);
+  });
+
+  test("the control() builder carries storage through", () => {
+    const built = control("settings/battery/lock", {
+      label: "Lock",
+      group: "settings",
+      controlExpr: { snapshotToggle: { target: "settings.workmode", lockedValue: 1 } },
+      storage: "none",
+    });
+    expect(built.storage).toBe("none");
   });
 });

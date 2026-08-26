@@ -6,7 +6,9 @@ import {
   kindFallbackKeys,
   kindFallbackReports,
   resetKindFallbacks,
+  resolveDeadband,
   resolveKind,
+  resolveStorage,
   toManifestMetric,
 } from "./capabilities";
 import type { CanonicalRole, InverterProfile, MetricDef } from "./types";
@@ -129,6 +131,7 @@ describe("toManifestMetric", () => {
       unit: "%",
       group: "battery",
       kind: "measurement",
+      storage: "series",
       writable: false,
       role: "battery.soc",
       index: 1,
@@ -358,5 +361,85 @@ describe("buildManifest", () => {
       "pv1",
       "setting.work_mode",
     ]);
+  });
+});
+
+describe("resolveStorage", () => {
+  test("a setting derives the config change-log, not the hypertable", () => {
+    // 34% of all rows written today are configuration registers persisted to a
+    // timeseries table every poll; this derivation is what routes them out.
+    expect(resolveStorage(m({ key: "settings.workmode", access: "rw" }))).toBe("config");
+  });
+
+  test("a measurement, a counter and a status enum all derive series", () => {
+    expect(resolveStorage(m({ key: "ac.l1.voltage", unit: "V" }))).toBe("series");
+    expect(resolveStorage(m({ key: "ac.daily_energy", unit: "kWh" }))).toBe("series");
+    expect(resolveStorage(m({ key: "ac.relay_status", kind: "status" }))).toBe("series");
+  });
+
+  test("an explicit storage overrides the derivation, including the awkward direction", () => {
+    // `settings.battery.maximum_charge_current` is written by the automation
+    // engine, and charting it against battery power is genuinely useful — the
+    // derivation would banish it to a change-log.
+    expect(
+      resolveStorage(
+        m({ key: "settings.battery.maximum_charge_current", access: "rw", storage: "series" }),
+      ),
+    ).toBe("series");
+    expect(resolveStorage(m({ key: "ac.l1.voltage", unit: "V", storage: "none" }))).toBe("none");
+  });
+
+  test("storage none is honoured on a role-mapped metric — a role does not force persistence", () => {
+    expect(
+      resolveStorage(
+        m({ key: "ac.l1.voltage", role: "grid.phase.voltage", index: 1, storage: "none" }),
+      ),
+    ).toBe("none");
+  });
+
+  test("resolving storage never reports a kind fallback — it is not a kind question", () => {
+    resetKindFallbacks();
+    expect(resolveStorage(m({ key: "ac.relay_status" }))).toBe("series");
+    expect(kindFallbackKeys()).toEqual([]);
+  });
+});
+
+describe("resolveDeadband", () => {
+  test("an authored deadband on a measurement is returned in the metric's own unit", () => {
+    expect(resolveDeadband(m({ key: "ac.l1.voltage", unit: "V", scale: 0.1, deadband: 1 }))).toBe(
+      1,
+    );
+  });
+
+  test("absent by default — a wrong global threshold silently degrades data", () => {
+    expect(resolveDeadband(m({ key: "ac.l1.voltage", unit: "V" }))).toBeUndefined();
+  });
+
+  test("undefined for a counter and a status enum, so a caller stores every change", () => {
+    // Asserted as `undefined` rather than 0: a caller that coerced absence to a
+    // zero threshold would pass a weaker test, and a deadband on a counter makes
+    // it lag while one on an enum can swallow a state transition.
+    expect(
+      resolveDeadband(m({ key: "ac.total_energy", unit: "kWh", deadband: 5 })),
+    ).toBeUndefined();
+    expect(
+      resolveDeadband(m({ key: "ac.relay_status", kind: "status", deadband: 1 })),
+    ).toBeUndefined();
+  });
+
+  test("undefined when the metric is not stored as a series at all", () => {
+    expect(
+      resolveDeadband(m({ key: "settings.solar_sell", access: "rw", deadband: 2 })),
+    ).toBeUndefined();
+    expect(
+      resolveDeadband(m({ key: "ac.l1.voltage", unit: "V", storage: "none", deadband: 2 })),
+    ).toBeUndefined();
+  });
+});
+
+describe("toManifestMetric", () => {
+  test("carries the resolved storage class so the UI can hide unstored metrics", () => {
+    expect(toManifestMetric(m({ key: "settings.workmode", access: "rw" })).storage).toBe("config");
+    expect(toManifestMetric(m({ key: "ac.l1.voltage", unit: "V" })).storage).toBe("series");
   });
 });

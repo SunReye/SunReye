@@ -16,6 +16,7 @@ import type {
   MetricFlow,
   MetricKind,
   MetricRange,
+  MetricStorage,
   RegisterType,
 } from "./types";
 
@@ -53,6 +54,13 @@ export interface BaseMetricOpts {
    */
   computeExpr?: ComputeExpr | AggregateExpr;
   kind?: MetricKind;
+  /** Overrides the storage class derived from the resolved kind. */
+  storage?: MetricStorage;
+  /**
+   * Minimum change worth persisting, in this metric's own unit — set it where
+   * the register is noisy. Absent (the default) stores every change.
+   */
+  deadband?: number;
   range?: MetricRange;
   flow?: MetricFlow;
 }
@@ -160,6 +168,8 @@ export function metric<const T extends string>(
     role: opts.role,
     index: opts.index,
     kind: opts.kind,
+    storage: opts.storage,
+    deadband: opts.deadband,
     range: opts.range,
     enumLabels: opts.enumLabels,
     flow: opts.flow,
@@ -186,6 +196,12 @@ export interface ControlOpts<K extends string> {
   enumLabels?: Record<number, string>;
   unit?: string | null;
   kind?: MetricKind;
+  /**
+   * Overrides the storage class. A composite control owns no register, so the
+   * derivation sends it to the config change-log; `none` keeps it off disk
+   * entirely, which is usually what a snapshot toggle wants.
+   */
+  storage?: MetricStorage;
   /** Optional bounds; renders a capped slider and clamps writes when present. */
   range?: MetricRange;
   /** Writable by definition; defaults to `"rw"`. */
@@ -215,6 +231,7 @@ export function control<const K extends string>(
     controlExpr: opts.controlExpr,
     enumLabels: opts.enumLabels,
     kind: opts.kind,
+    storage: opts.storage,
     range: opts.range,
   };
   return { ...def, binding: bindingFor(def) };

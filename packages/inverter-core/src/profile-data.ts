@@ -26,6 +26,13 @@ export interface ProfileData {
    * A v1 profile is upcast to v2 on load ({@link hydrateProfile}) so every
    * already-published profile keeps working. The upcast is one-way: nothing
    * downcasts a binding back to `type` + `addresses`.
+   *
+   * `storage`/`deadband` deliberately did **not** bump this. Decided rather than
+   * omitted: both are optional with a derivation behind them, so an existing
+   * published profile parses unchanged and resolves to the same policy it would
+   * have had — which is the whole reason the fields are optional. A bump is owed
+   * only when an older runtime would *misread* a newer profile, and an older
+   * runtime does not read these fields at all.
    */
   schemaVersion: 1 | 2;
   id: string;
