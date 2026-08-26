@@ -522,6 +522,7 @@
   "toast_statistics_error": "No se pudo guardar el diseño de estadísticas",
   "costs_loading": "Cargando costes…",
   "costs_tile_info_aria": "¿Qué es {label}?",
+  "settings_field_info_aria": "¿Qué es {label}?",
   "costs_tile_grid_cost": "Coste de red",
   "costs_tile_grid_cost_explain": "Lo que realmente paga a la compañía: energía importada a su tarifa más el cargo fijo. Los ingresos por exportación NO se restan aquí — esta es la factura antes de los ingresos por inyección.",
   "costs_sub_grid_cost": "consumo {imported} + fijo {standing}",

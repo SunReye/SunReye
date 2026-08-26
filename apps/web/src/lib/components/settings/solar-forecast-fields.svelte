@@ -8,6 +8,7 @@
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
 	import { Label } from '$lib/components/ui/label';
+	import FieldInfo from './field-info.svelte';
 	import PvArrayRow from './pv-array-row.svelte';
 	import ExportCapHelper from './export-cap-helper.svelte';
 	import * as m from '$lib/paraglide/messages';
@@ -63,7 +64,10 @@
 </script>
 
 <div class="flex flex-col gap-2">
-	<span class="text-sm font-medium">{m.weather_forecast_arrays()}</span>
+	<div class="flex items-center gap-1.5">
+		<span class="text-sm font-medium">{m.weather_forecast_arrays()}</span>
+		<FieldInfo label={m.weather_forecast_arrays()} info={m.weather_forecast_azimuth_hint()} />
+	</div>
 	{#if arrays.length === 0}
 		<p class="text-sm text-muted-foreground">{m.weather_forecast_arrays_empty()}</p>
 	{/if}
@@ -78,7 +82,6 @@
 			onremove={() => removeArray(i)}
 		/>
 	{/each}
-	<p class="text-xs text-muted-foreground">{m.weather_forecast_azimuth_hint()}</p>
 	<div>
 		<Button variant="outline" size="sm" onclick={addArray} disabled={addDisabled}>
 			<PlusIcon class="size-4" />
@@ -105,8 +108,10 @@
 </div>
 
 <div class="flex flex-col gap-2">
-	<span class="text-sm font-medium">{m.weather_forecast_clipping()}</span>
-	<p class="text-xs text-muted-foreground">{m.weather_forecast_clipping_desc()}</p>
+	<div class="flex items-center gap-1.5">
+		<span class="text-sm font-medium">{m.weather_forecast_clipping()}</span>
+		<FieldInfo label={m.weather_forecast_clipping()} info={m.weather_forecast_clipping_desc()} />
+	</div>
 	<div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
 		<div class="flex flex-col gap-1.5">
 			<Label for="forecast-max-output">{m.weather_forecast_max_output()}</Label>
@@ -160,7 +165,13 @@
 			/>
 		</div>
 		<div class="flex flex-col gap-1.5">
-			<Label for="forecast-batt-nominal-v">{m.plant_battery_nominal_v()}</Label>
+			<div class="flex items-center gap-1.5">
+				<Label for="forecast-batt-nominal-v">{m.plant_battery_nominal_v()}</Label>
+				<FieldInfo
+					label={m.plant_battery_nominal_v()}
+					info={m.plant_battery_nominal_v_desc()}
+				/>
+			</div>
 			<Input
 				id="forecast-batt-nominal-v"
 				bind:value={battNominalV}
@@ -168,7 +179,6 @@
 				inputmode="decimal"
 				placeholder="51.2"
 			/>
-			<p class="text-xs text-muted-foreground">{m.plant_battery_nominal_v_desc()}</p>
 		</div>
 	</div>
 </div>

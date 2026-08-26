@@ -522,6 +522,7 @@
   "toast_statistics_error": "Statistik-Layout konnte nicht gespeichert werden",
   "costs_loading": "Kosten werden geladen…",
   "costs_tile_info_aria": "Was ist {label}?",
+  "settings_field_info_aria": "Was ist {label}?",
   "costs_tile_grid_cost": "Netzkosten",
   "costs_tile_grid_cost_explain": "Was Sie tatsächlich an den Versorger zahlen: importierte Energie zu Ihrem Tarif plus Grundgebühr. Einspeisevergütungen werden hier NICHT abgezogen — dies ist die Rechnung vor Einspeiseerlösen.",
   "costs_sub_grid_cost": "Bezug {imported} + Grundgebühr {standing}",

@@ -522,6 +522,7 @@
   "toast_statistics_error": "Échec de l'enregistrement de la mise en page des statistiques",
   "costs_loading": "Chargement des coûts…",
   "costs_tile_info_aria": "Qu'est-ce que {label} ?",
+  "settings_field_info_aria": "Qu'est-ce que {label} ?",
   "costs_tile_grid_cost": "Coût réseau",
   "costs_tile_grid_cost_explain": "Ce que vous payez réellement au fournisseur : énergie importée facturée à votre tarif plus l'abonnement. Les revenus de revente ne sont PAS déduits ici — c'est la facture avant les revenus de revente.",
   "costs_sub_grid_cost": "importation {imported} + abonnement {standing}",

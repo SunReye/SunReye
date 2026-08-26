@@ -522,6 +522,7 @@
   "toast_statistics_error": "Failed to save the statistics layout",
   "costs_loading": "Loading costs…",
   "costs_tile_info_aria": "What is {label}?",
+  "settings_field_info_aria": "What is {label}?",
   "costs_tile_grid_cost": "Grid cost",
   "costs_tile_grid_cost_explain": "What you actually pay the utility: imported energy priced at your tariff plus the standing charge. Export earnings are NOT subtracted here — this is the bill before feed-in income.",
   "costs_sub_grid_cost": "import {imported} + standing {standing}",

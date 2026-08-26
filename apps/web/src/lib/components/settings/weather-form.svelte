@@ -7,6 +7,7 @@
 	import { Separator } from '$lib/components/ui/separator';
 	import Section from '$lib/components/layout/section.svelte';
 	import SaveBar from './save-bar.svelte';
+	import FieldInfo from './field-info.svelte';
 	import ForecastCorrectionPanel from './forecast-correction-panel.svelte';
 	import OptionSelect from './option-select.svelte';
 	import { api } from '$lib/api';
@@ -137,10 +138,6 @@
 	{#if !draft}
 		<p class="text-sm text-muted-foreground">{m.app_loading()}</p>
 	{:else}
-		<p class="text-sm text-muted-foreground">
-			{m.weather_desc()}
-		</p>
-
 		<div class="flex items-center justify-between gap-4">
 			<Label for="weather-enabled">{m.weather_show_tile()}</Label>
 			<Switch
@@ -189,7 +186,10 @@
 
 		<div class="flex flex-col gap-1">
 			<div class="flex items-center justify-between gap-4">
-				<Label for="forecast-enabled">{m.weather_forecast_enable()}</Label>
+				<div class="flex items-center gap-1.5">
+					<Label for="forecast-enabled">{m.weather_forecast_enable()}</Label>
+					<FieldInfo label={m.weather_forecast_enable()} info={m.weather_forecast_desc()} />
+				</div>
 				<Switch
 					id="forecast-enabled"
 					checked={draft.forecast.enabled}
@@ -197,7 +197,6 @@
 					onCheckedChange={setForecastEnabled}
 				/>
 			</div>
-			<p class="text-sm text-muted-foreground">{m.weather_forecast_desc()}</p>
 		</div>
 
 		{#if draft.forecast.enabled}
@@ -217,7 +216,13 @@
 
 			<div class="flex flex-col gap-1">
 				<div class="flex items-center justify-between gap-4">
-					<Label for="correction-enabled">{m.weather_forecast_correction()}</Label>
+					<div class="flex items-center gap-1.5">
+						<Label for="correction-enabled">{m.weather_forecast_correction()}</Label>
+						<FieldInfo
+							label={m.weather_forecast_correction()}
+							info={m.weather_forecast_correction_desc()}
+						/>
+					</div>
 					<Switch
 						id="correction-enabled"
 						checked={draft.forecast.correction.enabled}
@@ -225,7 +230,6 @@
 						onCheckedChange={setCorrectionEnabled}
 					/>
 				</div>
-				<p class="text-sm text-muted-foreground">{m.weather_forecast_correction_desc()}</p>
 			</div>
 
 			<ForecastCorrectionPanel />

@@ -522,6 +522,7 @@
   "toast_statistics_error": "Impossibile salvare il layout delle statistiche",
   "costs_loading": "Caricamento costi…",
   "costs_tile_info_aria": "Cos'è {label}?",
+  "settings_field_info_aria": "Che cos'è {label}?",
   "costs_tile_grid_cost": "Costo di rete",
   "costs_tile_grid_cost_explain": "Quello che paghi davvero al fornitore: energia importata alla tua tariffa più il costo fisso. I ricavi da immissione NON vengono sottratti qui — questa è la bolletta prima degli introiti da immissione.",
   "costs_sub_grid_cost": "prelievo {imported} + fisso {standing}",
