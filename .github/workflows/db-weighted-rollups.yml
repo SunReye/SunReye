@@ -326,46 +326,54 @@ jobs:
             SELECT 'weighted', bucket, weighted_sum / nullif(weight, 0) FROM weighted_hourly_rollups
              WHERE inverter_id = 'cut'
             ORDER BY 2, 1"
-          DATABASE_URL="$FIXTURE_URL" bun -e '
-            const { queryRollup } = await import("./apps/server/src/shared/history");
-            // Imported by path rather than by workspace specifier: bun -e has no
-            // file to anchor a bare specifier against, so it cannot resolve one.
-            const { db } = await import("./packages/db/src/index");
-            const { sql } = await import("drizzle-orm");
-            const rows = await queryRollup({
-              bucket: "hour", metric: "grid.import_power", inverterId: "cut",
-              from: new Date("2026-08-02T00:00:00Z"), to: new Date("2026-08-02T04:00:00Z"),
-              limit: 100,
-            });
-            console.log(JSON.stringify(rows));
-            if (rows.length !== 4) throw new Error(`expected 4 buckets, got ${rows.length}`);
-            if (new Set(rows.map((r) => r.time)).size !== 4) throw new Error("a bucket was double-counted");
-            const ms = rows.map((r) => Date.parse(r.time));
-            for (let i = 1; i < ms.length; i++) {
-              if (ms[i]! - ms[i - 1]! !== 3_600_000) throw new Error("the series is not contiguous");
+          # A file under apps/server, not `bun -e` and not a file at the repo
+          # root. Bun anchors a bare specifier at the nearest package.json, and
+          # `@SunReye/db` and `drizzle-orm` are dependencies of apps/server — the
+          # root package.json declares neither, so both forms fail to resolve
+          # there. (The read-path step above gets away with a relative import
+          # because ITS transitive `@SunReye/db` resolves from the imported file,
+          # which does live under apps/server.)
+          cat > apps/server/ci-cutover.ts <<'TS'
+          import { queryRollup } from "./src/shared/history";
+          import { db } from "@SunReye/db";
+          import { sql } from "drizzle-orm";
+
+          const rows = await queryRollup({
+            bucket: "hour", metric: "grid.import_power", inverterId: "cut",
+            from: new Date("2026-08-02T00:00:00Z"), to: new Date("2026-08-02T04:00:00Z"),
+            limit: 100,
+          });
+          console.log(JSON.stringify(rows));
+          if (rows.length !== 4) throw new Error(`expected 4 buckets, got ${rows.length}`);
+          if (new Set(rows.map((r) => r.time)).size !== 4) throw new Error("a bucket was double-counted");
+          const ms = rows.map((r) => Date.parse(r.time));
+          for (let i = 1; i < ms.length; i++) {
+            if (ms[i]! - ms[i - 1]! !== 3_600_000) throw new Error("the series is not contiguous");
+          }
+          // The two buckets the weighted view reaches must be served from it,
+          // and the two it does not from the legacy view.
+          const weighted = await db.execute<{ bucket: Date; avg: string }>(sql`
+            select bucket, weighted_sum / nullif(weight, 0) as avg
+            from weighted_hourly_rollups where inverter_id = ${"cut"} order by bucket`);
+          const byBucket = new Map(
+            weighted.rows.map((r) => [new Date(r.bucket).toISOString(), Number(r.avg)]),
+          );
+          if (byBucket.size !== 2) throw new Error(`fixture broken: ${byBucket.size} weighted buckets`);
+          for (const row of rows) {
+            const w = byBucket.get(row.time);
+            if (w === undefined) {
+              // Legacy side: an unweighted mean of this fixture is several times
+              // the truth, so "not the weighted number" is easy to see.
+              if (row.avg < 3000) throw new Error(`${row.time} should have come from the legacy view`);
+            } else if (Math.abs(row.avg - w) > 1e-9) {
+              throw new Error(`${row.time} did not come from the weighted view`);
             }
-            // The two buckets the weighted view reaches must be served from it,
-            // and the two it does not from the legacy view.
-            const weighted = await db.execute<{ bucket: Date; avg: string }>(sql`
-              select bucket, weighted_sum / nullif(weight, 0) as avg
-              from weighted_hourly_rollups where inverter_id = ${"cut"} order by bucket`);
-            const byBucket = new Map(
-              weighted.rows.map((r) => [new Date(r.bucket).toISOString(), Number(r.avg)]),
-            );
-            if (byBucket.size !== 2) throw new Error(`fixture broken: ${byBucket.size} weighted buckets`);
-            for (const row of rows) {
-              const w = byBucket.get(row.time);
-              if (w === undefined) {
-                // Legacy side: an unweighted mean of this fixture is several times
-                // the truth, so "not the weighted number" is easy to see.
-                if (row.avg < 3000) throw new Error(`${row.time} should have come from the legacy view`);
-              } else if (Math.abs(row.avg - w) > 1e-9) {
-                throw new Error(`${row.time} did not come from the weighted view`);
-              }
-            }
-            console.log("cutover: 4 contiguous buckets, weighted wins where it exists");
-            process.exit(0);
-          '
+          }
+          console.log("cutover: 4 contiguous buckets, weighted wins where it exists");
+          process.exit(0);
+          TS
+          DATABASE_URL="$FIXTURE_URL" bun run apps/server/ci-cutover.ts
+          rm -f apps/server/ci-cutover.ts
 
       # ------------------------------------------------------------------ 5 ---
       # #134's read cost. The issue's target is <= 200 buffers; the measured
