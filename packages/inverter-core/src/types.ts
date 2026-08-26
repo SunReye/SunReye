@@ -42,6 +42,22 @@ export type MetricValues = Record<string, number>;
 export type MetricKind = "measurement" | "cumulative" | "status" | "setting";
 
 /**
+ * Where a metric's values are persisted — a *storage* statement, deliberately
+ * not a rendering one. {@link MetricKind} drives widget choice, so deriving
+ * retention from it alone would couple what is kept to how it is drawn; this is
+ * the field an author overrides when the derivation is wrong for their device.
+ *
+ * - `series`  change-only rows into the `metrics_raw` hypertable.
+ * - `config`  a change-log, never `metrics_raw`: an enum, a schedule slot or a
+ *             current limit has no meaningful time-weighted mean, so the
+ *             timeseries policies (rollups, retention) buy nothing.
+ * - `none`    live feed only, never persisted.
+ *
+ * Absent ⇒ derived from {@link resolveKind}; see `resolveStorage`.
+ */
+export type MetricStorage = "series" | "config" | "none";
+
+/**
  * Canonical, inverter-agnostic concept a metric represents. This is the stable
  * vocabulary the UI renders against; adapters map device-specific metrics onto
  * these roles so the UI never hard-codes vendor keys. Indexed concepts
@@ -127,6 +143,22 @@ export interface MetricBase {
   /** Multiply the raw integer by this to get engineering units. */
   scale: number;
   /**
+   * Minimum change worth persisting, **in this metric's own unit**. A change
+   * smaller than this is not stored; the comparison is against the last value
+   * that *was* stored, carried forward, so the stored series is never wrong by
+   * more than this threshold. Absent ⇒ every change is stored.
+   *
+   * There is no zero. "No threshold" is absence, never `0` — a counter or an
+   * enum has no threshold at all, and spelling that `0` makes "not applicable"
+   * indistinguishable from a real threshold of zero, the same sentinel trap
+   * `decode()` avoids one layer down.
+   *
+   * Floor is {@link scale}: a change below the register's quantisation step is
+   * unrepresentable, so a smaller `deadband` is an authoring error, not a no-op.
+   * Only meaningful where {@link storage} resolves to `series`.
+   */
+  deadband?: number;
+  /**
    * Added after scaling: engineering value = `raw * scale + offset`. For the
    * vendor "+1000" temperature encoding (register = °C×10 + 1000) pair
    * `scale: 0.1` with `offset: -100`. Absent ⇒ treated as 0.
@@ -148,6 +180,8 @@ export interface MetricBase {
   index?: number;
   /** Overrides the kind inferred from `access`/`unit`. */
   kind?: MetricKind;
+  /** Overrides the storage class derived from the resolved kind. */
+  storage?: MetricStorage;
   /** Expected bounds for gauges. */
   range?: MetricRange;
   /** Enum → label map for `status` metrics. */
@@ -232,6 +266,11 @@ export interface ManifestMetric {
   unit: string | null;
   group: string;
   kind: MetricKind;
+  /**
+   * Resolved storage class — the UI uses it to stop offering a custom chart over
+   * a metric that has no history to chart.
+   */
+  storage: MetricStorage;
   writable: boolean;
   role?: CanonicalRole;
   index?: number;

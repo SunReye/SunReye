@@ -20,6 +20,7 @@ const metric = (over: Partial<ManifestMetric> = {}): ManifestMetric => ({
   unit: "W",
   group: "pv",
   kind: "measurement",
+  storage: "series",
   writable: false,
   ...over,
 });

@@ -58,6 +58,9 @@ export interface FixtureMetric {
   unit: string | null;
   group: string;
   kind: string;
+  /** Where the server persists it — mirrors `resolveStorage` in inverter-core. */
+  storage?: string;
+  enumLabels?: Record<string, string>;
   writable: boolean;
   role?: string;
   index?: number;
@@ -77,9 +80,13 @@ export const MANIFEST = JSON.parse(
   readFileSync(join(here, "..", "fixtures", "manifest.json"), "utf8"),
 ) as FixtureManifest;
 
-/** Only measurement/cumulative metrics get a card (see `ranges.ts#isChartable`). */
+/**
+ * Metrics that get a card, mirroring `ranges.ts#isChartable`: not excluded from
+ * the timeseries table, and not a state. Derived from the manifest rather than
+ * pinned, so re-recording the fixture cannot silently drift from the app.
+ */
 export const CHARTABLE_METRIC_COUNT = MANIFEST.metrics.filter(
-  (m) => m.kind === "measurement" || m.kind === "cumulative",
+  (m) => m.storage !== "config" && m.storage !== "none" && m.kind !== "status" && !m.enumLabels,
 ).length;
 
 /** Every metric key the fake inverter publishes. */

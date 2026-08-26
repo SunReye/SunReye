@@ -20,6 +20,24 @@ export function validateProfile(input: unknown): ValidationResult {
 }
 
 /**
+ * The warning for one metric whose kind is a guess. An explicit `storage` takes
+ * the *persistence* consequence off the table — the guess then only picks a
+ * widget — so the sentence about storage is only written when it is true. A
+ * warning that overstates its own stakes is a warning authors learn to skip.
+ */
+function kindWarning(m: { key: string; storage?: string }): string {
+  const consequence =
+    m.storage === undefined
+      ? ' — defaults to "measurement", which also derives its storage class ' +
+        "(change-only into the hypertable, with a deadband allowed)"
+      : ' — defaults to "measurement"';
+  return (
+    `${m.key}: unresolvable kind${consequence}. ` +
+    "Add an explicit `kind` (with `enumLabels` for an enum) or a canonical role."
+  );
+}
+
+/**
  * Semantic lints — a valid profile that is still probably wrong. Reported as
  * warnings by `profile validate`, and gated by `--strict` (the storage policy
  * in #109 keys off `resolveKind`, so a guessed kind becomes a data decision).
@@ -31,12 +49,6 @@ export function validateProfile(input: unknown): ValidationResult {
  * (unbounded percentages, signed energy counters, missed temperature offsets, …).
  */
 export function lintProfile(data: ProfileData): string[] {
-  const kindWarnings = data.metrics
-    .filter((m) => !hasResolvableKind(m))
-    .map(
-      (m) =>
-        `${m.key}: unresolvable kind — defaults to "measurement". ` +
-        "Add an explicit `kind` (with `enumLabels` for an enum) or a canonical role.",
-    );
+  const kindWarnings = data.metrics.filter((m) => !hasResolvableKind(m)).map(kindWarning);
   return [...kindWarnings, ...semanticLints(data).map((f) => f.message)];
 }

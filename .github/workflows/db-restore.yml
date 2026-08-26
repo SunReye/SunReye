@@ -140,10 +140,22 @@ jobs:
           # Materialize every rollup over the whole fixture, then compress the
           # aged chunks: a compressed chunk in the dump is the case most likely
           # to break, so the fixture must contain one.
+          #
+          # EVERY tier, including the weighted ones. A continuous aggregate runs
+          # with `materialized_only = false`, so selecting from one that was never
+          # refreshed answers from the real-time arm over raw — rows that exist in
+          # the view and in no table. The snapshot then records buckets a dump
+          # cannot carry, and parity fails after restore with "bucket missing"
+          # for data that was never materialized in the first place. Refreshing
+          # is what makes the comparison about the backup rather than about the
+          # view.
           psql -d "$SOURCE_URL" -v ON_ERROR_STOP=1 <<'SQL'
           CALL refresh_continuous_aggregate('minute_rollups', NULL, NULL);
           CALL refresh_continuous_aggregate('hourly_rollups', NULL, NULL);
           CALL refresh_continuous_aggregate('daily_rollups', NULL, NULL);
+          CALL refresh_continuous_aggregate('weighted_minute_rollups', NULL, NULL);
+          CALL refresh_continuous_aggregate('weighted_hourly_rollups', NULL, NULL);
+          CALL refresh_continuous_aggregate('weighted_daily_rollups', NULL, NULL);
           SQL
           psql -d "$SOURCE_URL" -tAc \
             "SELECT compress_chunk(c) FROM show_chunks('metrics_raw', older_than => INTERVAL '1 day') c" \

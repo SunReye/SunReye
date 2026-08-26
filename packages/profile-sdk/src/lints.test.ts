@@ -8,6 +8,7 @@ import {
 } from "@SunReye/inverter-core";
 
 import { LINT_RULES, semanticLints, type LintRule } from "./lints";
+import { lintProfile } from "./validate";
 
 const profile = (metrics: MetricDataDef[]): ProfileData =>
   defineProfile({ id: "acme", name: "Acme", manufacturer: "Acme", version: "1.0.0", metrics });
@@ -386,5 +387,47 @@ describe("semanticLints — several problems at once", () => {
       "c.both/percent-without-range",
       "c.both/zero-scale",
     ]);
+  });
+});
+
+describe("lintProfile — storage resolution", () => {
+  /** Read-only, unitless, roleless, kind-less: the shape that guesses. */
+  const guessing = (extra: Partial<MetricDataDef> = {}): ProfileData =>
+    profile([
+      { ...metric("ac/relay_status", { label: "Relays", group: "inverter", addr: 552 }), ...extra },
+    ]);
+
+  test("an unresolvable kind warns that the storage class is a guess too", () => {
+    // The kind guess stopped being cosmetic when it became the storage-policy
+    // input: `measurement` means change-only *plus a deadband*, and a deadband on
+    // a status enum can swallow a state transition.
+    const [warning] = lintProfile(guessing());
+    expect(warning).toContain("ac.relay_status");
+    expect(warning).toContain("storage");
+  });
+
+  test("an explicit storage takes the storage consequence out of the kind warning", () => {
+    // The kind is still a guess — it still drives widget choice — but nothing is
+    // being guessed about persistence any more, so the warning must not say so.
+    const [warning] = lintProfile(guessing({ storage: "series" }));
+    expect(warning).toContain("ac.relay_status");
+    expect(warning).not.toContain("storage");
+  });
+
+  test("a metric whose kind comes from a mapped role warns about neither", () => {
+    expect(
+      lintProfile(
+        profile([
+          metric("battery/soc", {
+            label: "SOC",
+            group: "battery",
+            unit: "%",
+            role: "battery.soc",
+            addr: 588,
+            range: { min: 0, max: 100 },
+          }),
+        ]),
+      ),
+    ).toEqual([]);
   });
 });

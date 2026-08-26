@@ -160,8 +160,10 @@ describe("queryRollup — window and view selection", () => {
   test("`limit` is passed through verbatim — no clamping happens in this layer", async () => {
     for (const limit of [1, 1600, 50_000]) {
       const [call] = await capture([], () => queryRollup({ ...ROLLUP, limit, since: new Date(0) }));
-      expect(flat(call.sql)).toContain("limit $4");
-      expect(call.params[3]).toBe(limit);
+      // $7: the predicates are bound once per union arm (metric, inverter,
+      // window × 2), so the limit is the seventh parameter, not the fourth.
+      expect(flat(call.sql)).toContain("limit $7");
+      expect(call.params[6]).toBe(limit);
     }
   });
 
@@ -169,7 +171,7 @@ describe("queryRollup — window and view selection", () => {
     const [call] = await capture([], () =>
       queryRollup({ ...ROLLUP, limit: 0, since: new Date(0) }),
     );
-    expect(call.params[3]).toBe(0);
+    expect(call.params[6]).toBe(0);
   });
 });
 
@@ -331,7 +333,9 @@ describe("queryHourlyAvgRange", () => {
     const sqlText = flat(call.sql);
     expect(sqlText).toContain("bucket >= $3");
     expect(sqlText).toContain("bucket < $4");
-    expect(call.params).toEqual(["pv.power", "inv-1", from, to]);
+    // Once per union arm: the weighted aggregate and the legacy one are filtered
+    // by the same window, so an arm can never contribute a bucket outside it.
+    expect(call.params).toEqual(["pv.power", "inv-1", from, to, "pv.power", "inv-1", from, to]);
   });
 
   test("reads the hourly aggregate ascending, unlimited — the caller matches it hour by hour", async () => {
@@ -344,7 +348,8 @@ describe("queryHourlyAvgRange", () => {
 
   test("an inverted window (from after to) is still sent — the caller owns that validation", async () => {
     const [call] = await capture([], () => queryHourlyAvgRange("pv.power", "inv-1", to, from));
-    expect(call.params.slice(2)).toEqual([to, from]);
+    expect(call.params.slice(2, 4)).toEqual([to, from]);
+    expect(call.params.slice(6)).toEqual([to, from]);
   });
 
   test("a gap in the series yields fewer rows, not zero-filled ones", async () => {
@@ -499,8 +504,10 @@ describe("queryRecentBuckets — the SQL", () => {
   test("carries no client-supplied limit — any cap is derived from window ÷ step", async () => {
     const [call] = await capture([], () => queryRecentBuckets(q));
     const sqlText = flat(call.sql);
-    // No limit is a bound parameter, and no number the caller passed is one.
-    expect(call.params).toEqual(["inv-1", call.params[1]]);
+    // No limit is a bound parameter, and no number the caller passed is one:
+    // every parameter is either the inverter id or the window start.
+    const since = call.params[1];
+    expect(call.params.every((p) => p === "inv-1" || p === since)).toBe(true);
     const cap = /limit (\d+)/.exec(sqlText)?.[1];
     if (cap !== undefined) {
       // Derived: grows with the bucket count, and comfortably above the
@@ -556,6 +563,57 @@ describe("queryRecentBuckets — the SQL", () => {
     expect(flat(call.sql)).toContain("secs => 5");
     expect(out.step).toBe(5);
     expect(out.metrics.pv).toEqual({ o: [0, 1], v: [1, 2] });
+  });
+});
+
+describe("queryRecentBuckets — carrying the held value into the window", () => {
+  const q = { inverterId: "inv-1", seconds: 300, stepSeconds: 1 };
+
+  test("seeds each metric with the value in force at the window start", async () => {
+    // Under change-only storage a metric that did not change inside the window
+    // has NO row in it. Without a seed the payload omits the metric entirely,
+    // and a full-width backfill reads an omitted metric as dead and clears its
+    // buffer — a steady voltage would blank its own sparkline.
+    const [call] = await capture([], () => queryRecentBuckets(q));
+    expect(flat(call.sql)).toContain("order by metric, time desc");
+    expect(flat(call.sql)).toContain("union all");
+  });
+
+  test("the lookback for the seed is bounded, not an open-ended scan", async () => {
+    // An unbounded `time < since` walks the whole hypertable. The encoder closes
+    // every interval at its bucket boundary, so a live metric always has a row
+    // within a minute; a 5-minute bound is generous and still cheap.
+    const [call] = await capture([], () => queryRecentBuckets(q));
+    expect(flat(call.sql)).toContain("make_interval(secs => 300)");
+  });
+
+  test("a real sample in the first bucket wins over the seed", async () => {
+    // Both arms can land in the same bucket. Emitting two points at one instant
+    // would make the client draw a vertical step out of nothing, so the measured
+    // sample is preferred.
+    const [call] = await capture([], () => queryRecentBuckets(q));
+    expect(flat(call.sql)).toContain("distinct on (metric, bucket)");
+  });
+
+  test("a metric with no row in the lookback is not seeded", async () => {
+    // The boundary that matters: "unchanged" and "the device was not answering"
+    // must not become the same thing. A metric the seed cannot find stays absent,
+    // which is how a dead metric still reads as dead.
+    const [, out] = await capture([{ metric: "pv.power", bucket: 1_700_000_000, value: 42 }], () =>
+      queryRecentBuckets(q),
+    );
+    expect(Object.keys(out.metrics)).toEqual(["pv.power"]);
+  });
+
+  test("the seeded value is shaped like any other point", async () => {
+    const [, out] = await capture(
+      [
+        { metric: "pv.power", bucket: 1_700_000_000, value: 230 },
+        { metric: "pv.power", bucket: 1_700_000_060, value: 231 },
+      ],
+      () => queryRecentBuckets({ ...q, stepSeconds: 60 }),
+    );
+    expect(out.metrics["pv.power"]).toEqual({ o: [0, 1], v: [230, 231] });
   });
 });
 
@@ -636,5 +694,98 @@ describe("queryRecentBuckets — row shaping", () => {
     );
     expect(out.t0).toBe(1_755_345_600_000);
     expect(out.metrics.pv).toEqual({ o: [0, 1], v: [1.5, 0] });
+  });
+});
+
+/**
+ * The read cutover (#116). `rollup-sql.test.ts` proves the composition; these
+ * prove what this module does with the rows that come back — in particular the
+ * one row shape a weighted aggregate can produce that the legacy one never
+ * could.
+ */
+describe("queryRollup — weighted/legacy cutover", () => {
+  test("each tier reads BOTH its weighted aggregate and its legacy one", async () => {
+    for (const [bucket, weighted, legacy] of [
+      ["minute", "weighted_minute_rollups", "minute_rollups"],
+      ["hour", "weighted_hourly_rollups", "hourly_rollups"],
+      ["day", "weighted_daily_rollups", "daily_rollups"],
+    ] as const) {
+      const [call] = await capture([], () =>
+        queryRollup({ ...ROLLUP, bucket, since: new Date(0) }),
+      );
+      expect(flat(call.sql)).toContain(`from ${weighted}`);
+      expect(flat(call.sql)).toContain(`from ${legacy}`);
+    }
+  });
+
+  test("a degenerate zero-weight bucket is dropped, never reported as 0 kW", async () => {
+    // `nullif(weight, 0)` makes the quotient NULL rather than an error or a
+    // fabricated number. `Number(null)` is 0, which would draw a flat line
+    // through a gap and read as a real measurement — so the row is dropped.
+    const [, rows] = await capture(
+      [
+        { bucket: "2026-01-01T00:00:00.000Z", avg_value: null, max_value: 5, min_value: 5 },
+        { bucket: "2026-01-01T01:00:00.000Z", avg_value: 2, max_value: 3, min_value: 1 },
+      ],
+      () => queryRollup({ ...ROLLUP, since: new Date(0) }),
+    );
+    expect(rows).toEqual([{ time: "2026-01-01T01:00:00.000Z", avg: 2, max: 3, min: 1 }]);
+  });
+
+  test("a zero average is still a reading — the drop is for NULL only", async () => {
+    const [, rows] = await capture(
+      [{ bucket: "2026-01-01T00:00:00.000Z", avg_value: 0, max_value: 0, min_value: 0 }],
+      () => queryRollup({ ...ROLLUP, since: new Date(0) }),
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.avg).toBe(0);
+  });
+
+  test("the predicates are bound once per arm, so neither side scans unfiltered", async () => {
+    const [call] = await capture([], () =>
+      queryRollup({ ...ROLLUP, metric: "battery.power", inverterId: "inv-7", since: new Date(0) }),
+    );
+    expect(call.params.filter((p) => p === "battery.power")).toHaveLength(2);
+    expect(call.params.filter((p) => p === "inv-7")).toHaveLength(2);
+  });
+
+  test("the row shape callers already depend on is unchanged", async () => {
+    const [, rows] = await capture(
+      [{ bucket: "2026-01-01T00:00:00.000Z", avg_value: 1.5, max_value: 3, min_value: 0 }],
+      () => queryRollup({ ...ROLLUP, since: new Date(0) }),
+    );
+    expect(Object.keys(rows[0] ?? {})).toEqual(["time", "avg", "max", "min"]);
+  });
+});
+
+describe("queryHourlyAvgRange — weighted/legacy cutover", () => {
+  test("reads both hourly aggregates", async () => {
+    const [call] = await capture([], () =>
+      queryHourlyAvgRange("pv.power", "inv-1", new Date(0), new Date(1)),
+    );
+    expect(flat(call.sql)).toContain("from weighted_hourly_rollups");
+    expect(flat(call.sql)).toContain("from hourly_rollups");
+  });
+
+  test("a NULL average is dropped rather than learned from as a zero actual", async () => {
+    // This series is the measured-actual side of the forecast correction's
+    // learning. A fabricated 0 here teaches the model that the sun did not shine.
+    const [, rows] = await capture(
+      [
+        { bucket: "2026-01-01T00:00:00.000Z", avg_value: null },
+        { bucket: "2026-01-01T01:00:00.000Z", avg_value: 4 },
+      ],
+      () => queryHourlyAvgRange("pv.power", "inv-1", new Date(0), new Date(1)),
+    );
+    expect(rows).toEqual([{ bucketMs: Date.parse("2026-01-01T01:00:00.000Z"), avg: 4 }]);
+  });
+});
+
+describe("queryMedianHourlyAvg — weighted/legacy cutover", () => {
+  test("takes the median over the cutover union, not over one aggregate", async () => {
+    const [call] = await capture([{ median: 1 }], () => queryMedianHourlyAvg("load.power", "i", 7));
+    expect(flat(call.sql)).toContain("from weighted_hourly_rollups");
+    expect(flat(call.sql)).toContain("from hourly_rollups");
+    expect(flat(call.sql)).toContain("percentile_cont(0.5) within group (order by avg_value)");
   });
 });

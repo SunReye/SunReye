@@ -174,9 +174,18 @@ describe("dump.sh dump modes", () => {
     mkdirSync(bin);
     const log = join(dir, "pgdump.log");
 
+    // Query-aware, because the script now asks two different questions: the
+    // retention policy first, then the chunk tables. A fake that answered both
+    // with the chunk list made the retention unparseable, which the script
+    // correctly reads as "do not exclude anything" — the same class of blind
+    // spot the note below this function describes.
     writeFileSync(
       join(bin, "psql"),
-      `#!/usr/bin/env bash\nprintf '%s\\n' ${chunkRows.map((r) => `'${r}'`).join(" ") || "''"}\nexit 0\n`,
+      `#!/usr/bin/env bash\n` +
+        `case "$*" in\n` +
+        `  *policy_retention*) printf '%s\\n' "\${RETENTION_DAYS:-7 90}" ;;\n` +
+        `  *) printf '%s\\n' ${chunkRows.map((r) => `'${r}'`).join(" ") || "''"} ;;\n` +
+        `esac\nexit 0\n`,
     );
     writeFileSync(
       join(bin, "pg_dump"),
@@ -223,6 +232,22 @@ describe("dump.sh dump modes", () => {
     expect(flags).toContain(`--exclude-table-data=${COMPRESSED}`);
   });
 
+  test("a long raw retention produces no exclusions at all, and still dumps", async () => {
+    // The whole point of #133: once raw is the long-horizon tier, the default
+    // backup must cover it. Driven through the real script rather than asserted
+    // on its source, so a decision that is computed but never consulted fails.
+    const { flags, code } = await dumpFlags([CHUNK, COMPRESSED], { RETENTION_DAYS: "1460 90" });
+    expect(code).toBe(0);
+    expect(flags.some((f) => f.startsWith("--exclude-table-data="))).toBe(false);
+    expect(flags).toContain("-Fc");
+  });
+
+  test("an unreadable retention answer also keeps the data", async () => {
+    const { flags, code } = await dumpFlags([CHUNK], { RETENTION_DAYS: "ERROR: nope" });
+    expect(code).toBe(0);
+    expect(flags.some((f) => f.startsWith("--exclude-table-data="))).toBe(false);
+  });
+
   test("a compress_hyper_* name is passed through like any other", async () => {
     const { flags } = await dumpFlags([COMPRESSED]);
     expect(flags).toContain(`--exclude-table-data=${COMPRESSED}`);
@@ -264,5 +289,111 @@ describe("dump.sh dump modes", () => {
     // --exclude-table would drop the chunk's definition, so a restore would
     // rebuild a hypertable missing its chunks rather than an empty one.
     expect(DUMP_SH).not.toContain("--exclude-table=");
+  });
+});
+
+/**
+ * The raw-exclusion decision, lifted out of the shipped file the same way the
+ * rotation block is — so these assert the code that ships, not a copy of it.
+ *
+ * What is being pinned is a premise with an expiry date. `dump.sh` excludes the
+ * raw hypertable's chunk data by default because raw is a short window fully
+ * materialized into the rollups. When raw becomes the long-horizon tier, that
+ * comment is still readable, still sounds right, and the default backup silently
+ * stops covering years of history. The decision is now derived from the live
+ * retention policy, and every answer that is not "a small window" — including a
+ * failure to ask — keeps the data.
+ */
+function exclusionDecisionBlock(): string {
+  const start = DUMP_SH.indexOf("safe_to_exclude_raw() {");
+  // The function's own closing brace, at column 0 — `indexOf("}")` would stop
+  // inside the awk program's `BEGIN { … }`.
+  const end = DUMP_SH.indexOf("\n}", DUMP_SH.indexOf("safe_to_exclude_raw() {"));
+  if (start === -1 || end === -1) {
+    throw new Error("dump.sh no longer derives the raw exclusion from retention");
+  }
+  return DUMP_SH.slice(start, end + 2);
+}
+
+/**
+ * True when the shipped decision says raw chunk data may be excluded.
+ * `rollupDays` defaults to the 90 days `minute_rollups` keeps — the shortest
+ * aggregate retention the app ships.
+ */
+async function safeToExclude(days: string, rollupDays = "90"): Promise<boolean> {
+  const proc = Bun.spawn(
+    [
+      "bash",
+      "-c",
+      `${exclusionDecisionBlock()}\nif safe_to_exclude_raw ${JSON.stringify(days)} ${JSON.stringify(rollupDays)}; then echo yes; else echo no; fi`,
+    ],
+    { stdout: "pipe", stderr: "pipe" },
+  );
+  const out = await new Response(proc.stdout).text();
+  await proc.exited;
+  return out.trim() === "yes";
+}
+
+describe("dump.sh raw-exclusion decision", () => {
+  test("today's shipped shape is still fully materialized", async () => {
+    // 90-day raw against 90-day minute buckets: every raw row's bucket is still
+    // in every aggregate, so excluding raw loses resolution on restore and no
+    // coverage. The regression proof that this change did not make every backup
+    // a full one.
+    expect(await safeToExclude("90", "90")).toBe(true);
+    expect(await safeToExclude("7", "90")).toBe(true);
+  });
+
+  test("raw outliving the shortest aggregate keeps the data", async () => {
+    // One day past it is enough: that day exists only in raw, and excluding it
+    // drops a time range from the backup silently.
+    expect(await safeToExclude("91", "90")).toBe(false);
+    expect(await safeToExclude("1460", "90")).toBe(false);
+  });
+
+  test("aggregates kept forever make any finite raw retention safe", async () => {
+    // `-1` on the rollup side means no aggregate has a retention policy at all.
+    expect(await safeToExclude("1460", "-1")).toBe(true);
+  });
+
+  test("raw kept forever is never safe to exclude", async () => {
+    // The most dangerous case, and the one a hardcoded premise gets wrong: there
+    // is no horizon at which the rollups have caught up.
+    expect(await safeToExclude("-1", "-1")).toBe(false);
+    expect(await safeToExclude("-1", "90")).toBe(false);
+  });
+
+  test("a query that could not run keeps the data", async () => {
+    // Empty output means psql failed. Guessing "probably still fine" here is how
+    // a backup tool loses history it was asked to protect.
+    expect(await safeToExclude("", "90")).toBe(false);
+    expect(await safeToExclude("90", "")).toBe(false);
+  });
+
+  test("an unparseable answer keeps the data", async () => {
+    expect(await safeToExclude("ERROR:  relation does not exist", "90")).toBe(false);
+    expect(await safeToExclude("abc", "90")).toBe(false);
+    expect(await safeToExclude("90", "oops")).toBe(false);
+  });
+
+  test("fractional retentions compare on their real values", async () => {
+    // `extract(epoch …) / 86400` on a 36-hour policy is not an integer, and a
+    // string comparison would order "90.5" before "9".
+    expect(await safeToExclude("1.5", "90")).toBe(true);
+    expect(await safeToExclude("90.5", "90")).toBe(false);
+  });
+
+  test("the retentions are read from the policies, not from constants", async () => {
+    // A hardcoded interval here would make the whole check decorative.
+    expect(DUMP_SH).toContain("timescaledb_information.jobs");
+    expect(DUMP_SH).toContain("policy_retention");
+    expect(DUMP_SH).toContain("hypertable_name <> 'metrics_raw'");
+  });
+
+  test("when the data is kept, the reason names both retentions", async () => {
+    const warning = DUMP_SH.slice(DUMP_SH.indexOf("bashio::log.warning"));
+    expect(warning).toContain("INCLUDED");
+    expect(warning).toContain("backup_full");
+    expect(warning).toContain("rollup retention");
   });
 });

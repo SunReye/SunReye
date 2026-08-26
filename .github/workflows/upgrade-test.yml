@@ -69,14 +69,50 @@ jobs:
           docker compose logs migrate
           [ "$(docker inspect -f '{{.State.ExitCode}}' "$(docker compose ps -aq migrate)")" = "0" ]
 
-      - name: Seed metrics on the old schema
+      # Days of data across several chunks, materialized into every rollup, and
+      # then COMPRESSED. Compression is the part that matters: the operations an
+      # upgrade performs on a compressed hypertable (adding a column, changing
+      # `compress_segmentby`, recompressing existing batches) either work or
+      # silently do nothing, and a 500-row seed inside the current chunk exercises
+      # none of them. This step is what makes the assertions below evidence.
+      - name: Seed metrics on the old schema, materialize and compress
         run: |
           docker compose exec -T postgres psql -U postgres -d SunReye -c \
             "INSERT INTO metrics_raw (time, inverter_id, metric, value)
-             SELECT now() - (i || ' seconds')::interval, 'inv1', 'pv_power', random()*5000
-             FROM generate_series(1, 500) i"
+             SELECT now() - (i || ' seconds')::interval, 'inv1', m,
+                    CASE WHEN m = 'pv.power' THEN random()*5000 ELSE 230 + random() END
+             FROM generate_series(1, 400000, 3) i,
+                  unnest(ARRAY['pv.power','ac.l1.voltage','settings.workmode']) m"
+          for view in minute_rollups hourly_rollups daily_rollups; do
+            docker compose exec -T postgres psql -U postgres -d SunReye -c \
+              "CALL refresh_continuous_aggregate('$view', NULL, NULL);"
+          done
+          docker compose exec -T postgres psql -U postgres -d SunReye -c \
+            "SELECT compress_chunk(c, if_not_compressed => true)
+               FROM show_chunks('metrics_raw', older_than => INTERVAL '2 hours') c"
+          docker compose exec -T postgres psql -U postgres -d SunReye -c \
+            "SELECT compress_chunk(c, if_not_compressed => true)
+               FROM show_chunks('minute_rollups') c"
+
           docker compose exec -T postgres psql -U postgres -d SunReye -tAc "SELECT count(*) FROM metrics_raw" | tee /tmp/rows-before
           [ "$(cat /tmp/rows-before)" -gt 0 ]
+
+          # There must be something compressed to upgrade over, or the steps
+          # above silently degraded into the old 500-row seed.
+          compressed=$(docker compose exec -T postgres psql -U postgres -d SunReye -tAc \
+            "SELECT count(*) FROM timescaledb_information.chunks WHERE is_compressed")
+          echo "compressed chunks before upgrade: $compressed"
+          [ "$compressed" -ge 2 ]
+
+          # Per-rollup fingerprints: bucket count and the aggregate columns. Any
+          # migration that re-materializes a bucket from raw it can no longer see
+          # moves these.
+          for view in minute_rollups hourly_rollups daily_rollups; do
+            docker compose exec -T postgres psql -U postgres -d SunReye -tAc \
+              "SELECT count(*)||'|'||coalesce(round(avg(avg_value)::numeric,6),0)
+                 FROM $view" > /tmp/$view-before
+            echo "$view before: $(cat /tmp/$view-before)"
+          done
 
       - name: Build this ref's images
         working-directory: .
@@ -113,6 +149,56 @@ jobs:
           after=$(docker compose exec -T postgres psql -U postgres -d SunReye -tAc "SELECT count(*) FROM metrics_raw")
           echo "rows before=$(cat /tmp/rows-before) after=$after"
           [ "$after" -ge "$(cat /tmp/rows-before)" ]
+
+          # No existing aggregate was re-materialized. Compared to 6 decimal
+          # places rather than exactly: recompressing a chunk changes the order
+          # doubles are summed in, which moves a sum of tens of millions in its
+          # last bits and is not a data change.
+          for view in minute_rollups hourly_rollups daily_rollups; do
+            now=$(docker compose exec -T postgres psql -U postgres -d SunReye -tAc \
+              "SELECT count(*)||'|'||coalesce(round(avg(avg_value)::numeric,6),0) FROM $view")
+            echo "$view before=$(cat /tmp/$view-before) after=$now"
+            [ "$now" = "$(cat /tmp/$view-before)" ]
+          done
+
+          # Every retention interval the shipped policy file declares reached the
+          # database. `add_retention_policy(…, if_not_exists => TRUE)` is a NO-OP
+          # where a policy already exists, so an interval change can be committed,
+          # reported as applied, and never take effect on an upgraded system —
+          # which is exactly what happened to the hourly tier once.
+          docker compose exec -T postgres psql -U postgres -d SunReye -tAc \
+            "SELECT hypertable_name||'='||(config->>'drop_after')
+               FROM timescaledb_information.jobs
+              WHERE proc_name = 'policy_retention' ORDER BY 1" | tee /tmp/retention-after
+          # `if`, not `[ -z … ] && continue`: the step runs under `bash -e`, where a
+          # standalone `&&` list that evaluates false aborts the whole step.
+          while read -r line; do
+            target=${line%%=*}
+            want=$(grep -oP "add_retention_policy\\('${target}', INTERVAL '\\K[^']+" \
+              ../packages/db/src/timescale/policies.sql | tail -1)
+            if [ -n "$want" ]; then
+              echo "$target: db='${line#*=}' file='$want'"
+              [ "${line#*=}" = "$want" ]
+            fi
+          done < /tmp/retention-after
+
+          # The weight column is present and NULL on every pre-upgrade row: that
+          # NULL is what makes the weighted aggregates read exactly as the old
+          # plain ones over a complete series.
+          nulls=$(docker compose exec -T postgres psql -U postgres -d SunReye -tAc \
+            "SELECT count(*) FILTER (WHERE dur_ms IS NULL) = count(*) FROM metrics_raw")
+          echo "every pre-upgrade row has dur_ms IS NULL: $nulls"
+          [ "$nulls" = "t" ]
+
+          # #134 in place: the segmentby reached the already-compressed rollup
+          # chunks rather than only future ones (TimescaleDB applies the setting
+          # to future compressions and says so in a NOTICE, so a migration that
+          # only ALTERs is silently a no-op for existing data).
+          segmented=$(docker compose exec -T postgres psql -U postgres -d SunReye -tAc \
+            "SELECT count(DISTINCT hypertable_name) FROM timescaledb_information.compression_settings
+              WHERE attname IN ('metric','inverter_id') AND segmentby_column_index IS NOT NULL")
+          echo "hypertables segmented by (metric, inverter_id): $segmented"
+          [ "$segmented" -ge 7 ]
 
       - name: Assert server healthy after upgrade
         run: |

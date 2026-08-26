@@ -1,0 +1,1 @@
+ALTER TABLE "metrics_raw" ADD COLUMN "dur_ms" integer;

@@ -1,7 +1,11 @@
+import type { EnergyField } from "@SunReye/contracts/energy";
 import { spotPrices } from "@SunReye/db/schema/spot-price";
 import { type TariffConfig, tariffConfigSchema } from "@SunReye/db/tariff";
 import type { CanonicalRole, InverterProfile, InverterSample } from "@SunReye/inverter-core";
 import { afterAll, afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+
+/** How an energy figure is derived from stored data — see `ENERGY_ROLE_DERIVATION`. */
+type EnergyDerivation = "counter" | "integral";
 
 // cost.ts imports the DB singleton (which eagerly validates server env). Mock it
 // so the guard logic can be imported and exercised without a database or a
@@ -86,8 +90,15 @@ mock.module("../settings/settings", () => ({ ...realSettings, getTariff: async (
 const liveState: { latest: InverterSample | null } = { latest: null };
 mock.module("../shared/state", () => ({ ...realState, liveState }));
 
-const { computeCost, computeCostSeries, currentPeriodKey, fetchBucketEnergy, liveTodayTotals } =
-  await import("./cost");
+const {
+  ENERGY_FIELDS,
+  ENERGY_ROLE_DERIVATION,
+  computeCost,
+  computeCostSeries,
+  currentPeriodKey,
+  fetchBucketEnergy,
+  liveTodayTotals,
+} = await import("./cost");
 
 /** The live overlay for `inverterId` at `now`, given the poll cache's `sample`. */
 const overlayFor = (
@@ -702,5 +713,161 @@ describe("computeCostSeries — which periods get a bar", () => {
     } finally {
       tariff = flatTariff;
     }
+  });
+});
+
+/**
+ * Issue #115: is a role's energy read from a device counter, or integrated from
+ * power samples? The answer is declared by `ENERGY_ROLE_DERIVATION` in `cost.ts`
+ * and MEASURED here, so the table cannot rot — it is compared against what the
+ * code actually does with one recording described two ways.
+ *
+ * The discriminating perturbation is exactly what milestone 8's change-only
+ * storage does to the raw series. A monotonic counter's change points are
+ * precisely the samples change-only storage keeps, so a bucket's `max_value`
+ * and `min_value` survive thinning untouched while its unweighted `avg_value`
+ * and sample count move a long way. A counter-derived figure is therefore
+ * invariant across the two; an integral over the averaged samples is not.
+ */
+describe("energy derivation per role (issue #115)", () => {
+  const hour = (h: number) => new Date(Date.UTC(2024, 5, 15, h));
+  const HOURS = 6;
+
+  /** A rollup row as the continuous aggregates materialize one. */
+  interface RollupRow extends Record<string, unknown> {
+    bucket: string;
+    metric: string;
+    min_value: number;
+    max_value: number;
+    avg_value: number;
+    samples: number;
+  }
+
+  /**
+   * One morning of a counter climbing 1 kWh/hour, as the hourly rollups would
+   * hold it. `dense` picks the recording style: a sample every poll (the counter
+   * sits at the hour's opening level almost the whole hour, so the mean hugs the
+   * minimum) versus change-only (only the change points survive, so the mean
+   * sits mid-bucket). Same physical counter, same max/min — different mean.
+   */
+  const counterDay = (metric: string, dense: boolean): RollupRow[] =>
+    Array.from({ length: HOURS }, (_, h) => {
+      const min = 100 + h;
+      const max = 101 + h;
+      return {
+        bucket: hour(h).toISOString(),
+        metric,
+        min_value: min,
+        max_value: max,
+        avg_value: dense ? min + 0.02 : (min + max) / 2,
+        samples: dense ? 3600 : 2,
+      };
+    });
+
+  /** Total kWh the engine reports for `field` from these rollup rows. */
+  const energyFrom = async (field: EnergyField, rows: RollupRow[]): Promise<number> => {
+    const profile = profileWith({ [ENERGY_FIELDS[field]]: "m" });
+    // No baseline row: both variants then price their first bucket from its own
+    // min, so the two runs differ ONLY in mean and sample count.
+    queryResults = [[], rows];
+    const buckets = await fetchBucketEnergy(
+      profile,
+      "inv-1",
+      hour(0),
+      hour(HOURS),
+      "hourly_rollups",
+    );
+    return buckets.reduce((sum, b) => sum + b[field], 0);
+  };
+
+  /** What the code actually does, measured rather than restated from the table. */
+  const measureDerivation = async (field: EnergyField): Promise<EnergyDerivation> => {
+    const dense = await energyFrom(field, counterDay("m", true));
+    const thinned = await energyFrom(field, counterDay("m", false));
+    // A figure that is zero either way would be trivially "invariant" — the
+    // fixture has to actually produce energy for the verdict to mean anything.
+    expect(dense).toBeGreaterThan(0);
+    return Math.abs(dense - thinned) < 1e-9 ? "counter" : "integral";
+  };
+
+  test("the fixture's thinning really does move an integral (the test has teeth)", () => {
+    // Σ avg·1h over the same two row sets — the naive integral #116 is about.
+    const integral = (rows: RollupRow[]) => rows.reduce((sum, r) => sum + r.avg_value, 0);
+    expect(integral(counterDay("m", true))).not.toBeCloseTo(integral(counterDay("m", false)), 6);
+  });
+
+  for (const [field, declared] of Object.entries(ENERGY_ROLE_DERIVATION) as Array<
+    [EnergyField, EnergyDerivation]
+  >) {
+    test(`${field} is ${declared}-derived`, async () => {
+      expect(await measureDerivation(field)).toBe(declared);
+    });
+  }
+
+  test("the table covers every energy role the engine prices", () => {
+    expect(Object.keys(ENERGY_ROLE_DERIVATION).sort()).toEqual(Object.keys(ENERGY_FIELDS).sort());
+  });
+});
+
+/**
+ * A counter that restarts — firmware update, device swap, a register that rolls
+ * over — must cost at most the bucket it happened in. An integral would simply
+ * carry on; a counter difference can go wrong in both directions, so both are
+ * pinned: never a negative kWh, and never the whole lifetime total.
+ */
+describe("counter restart across the bucket boundary", () => {
+  const importProfile = profileWith({ "grid.energy.imported.total": "imp" });
+  const hour = (h: number) => new Date(Date.UTC(2024, 5, 15, h));
+  const staleBaseline = [
+    { metric: "imp", bucket: new Date(Date.UTC(2024, 5, 12, 8)).toISOString(), last_max: 11_000 },
+  ];
+  const bucketRow = (at: Date, min: number, max: number) => ({
+    bucket: at.toISOString(),
+    metric: "imp",
+    min_value: min,
+    max_value: max,
+  });
+  const importsFor = async (
+    baseline: Array<Record<string, unknown>>,
+    rows: Array<Record<string, unknown>>,
+  ) => {
+    queryResults = [baseline, rows];
+    const buckets = await fetchBucketEnergy(
+      importProfile,
+      "inv-1",
+      hour(0),
+      hour(23),
+      "hourly_rollups",
+    );
+    return buckets.map((b) => b.import);
+  };
+
+  test("a restart to zero costs one bucket — never a negative kWh", async () => {
+    const imports = await importsFor(
+      [{ metric: "imp", bucket: hour(-1).toISOString(), last_max: 11_000 }],
+      [
+        // The counter is replaced and restarts near zero, then climbs normally.
+        bucketRow(hour(0), 0, 0.5),
+        bucketRow(hour(1), 0.5, 1.5),
+      ],
+    );
+    expect(imports).toEqual([0, 1]);
+  });
+
+  test("a restart in the first bucket back after an outage is not billed as a lifetime total", async () => {
+    // The recorder was down for three days, came back on the OLD counter
+    // (11 000 kWh), and the device restarted inside that same hour. The bucket's
+    // own max − min then spans the restart: 11 000 kWh in one hour, a bill
+    // nobody can pay. It may only claim the rise it watched happen since the
+    // last known level.
+    const imports = await importsFor(staleBaseline, [bucketRow(hour(0), 0, 11_000.4)]);
+    expect(imports[0]).toBeCloseTo(0.4, 6);
+  });
+
+  test("a restart entirely before the outage ended still prices its own rise", async () => {
+    // Every sample in the bucket is post-restart (max is BELOW the stale
+    // baseline), so the intra-bucket rise is the honest figure.
+    const imports = await importsFor(staleBaseline, [bucketRow(hour(0), 0.2, 0.7)]);
+    expect(imports[0]).toBeCloseTo(0.5, 6);
   });
 });

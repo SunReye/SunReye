@@ -19,6 +19,9 @@ export {
 } from "./registry";
 export {
   resolveKind,
+  resolveStorage,
+  resolveDeadband,
+  statedKind,
   hasResolvableKind,
   kindFallbackKeys,
   kindFallbackReports,
@@ -27,7 +30,13 @@ export {
   toManifestMetric,
   buildManifest,
 } from "./capabilities";
-export type { KindFallbackReport, KindInputs, KindResolvable } from "./capabilities";
+export type {
+  DeadbandInputs,
+  KindFallbackReport,
+  KindInputs,
+  KindResolvable,
+  StorageInputs,
+} from "./capabilities";
 export { entityConstraint, writableMetrics, metricByKey } from "./entities";
 export type { EntityConstraint, EntityValueType } from "./entities";
 // Profile authoring SDK + serializable data model + validator.
