@@ -232,7 +232,7 @@ function checkWeightedBackfill(after: Snapshot): string[] {
 
 /**
  * The safety property that makes this migration landable: while every `dur_ms`
- * is NULL the aggregates read `coalesce(dur_ms, 1)`, so
+ * is NULL the aggregates read `coalesce(dur_ms, 1000)`, so
  * `sum(value * 1) / sum(1)` is *exactly* `avg(value)`. Every bucket the weighted
  * side holds must therefore equal its legacy counterpart, over unweighted data.
  *

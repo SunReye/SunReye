@@ -9,6 +9,7 @@ import {
   parseComposePgFlags,
   parsePgConf,
   removesBeforeAdding,
+  removesRetentionBeforeAdding,
   retentionDays,
   intervalDays,
   checkStorageTuning,
@@ -443,8 +444,8 @@ describe("rollup compression (#134)", () => {
   test("the weighted aggregates materialize the two sums, never their quotient", () => {
     // An expression over aggregates inside a continuous-aggregate definition is
     // a portability risk, and the parts stay composable. The read layer divides.
-    expect(WEIGHTED_ROLLUPS).toContain("sum(value * coalesce(dur_ms, 1))");
-    expect(WEIGHTED_ROLLUPS).toContain("sum(coalesce(dur_ms, 1))");
+    expect(WEIGHTED_ROLLUPS).toContain("sum(value * coalesce(dur_ms, 1000))");
+    expect(WEIGHTED_ROLLUPS).toContain("sum(coalesce(dur_ms, 1000))");
     expect(WEIGHTED_ROLLUPS).not.toMatch(/sum\([^)]*\)\s*\/\s*sum\(/);
   });
 
@@ -677,5 +678,56 @@ describe("the retention invariant", () => {
 
   test("shortening a rollup below raw fails too — the invariant is symmetric", () => {
     expect(withRetention("minute_rollups", "30 days").code).toBe(1);
+  });
+});
+
+describe("retention policies are authoritative on an existing database", () => {
+  // `add_retention_policy(…, if_not_exists => TRUE)` is a NO-OP where a policy
+  // already exists. Measured on an upgraded database before this was fixed: the
+  // hourly tier stayed at 730 days while policies.sql said 3650, silently, with
+  // the migration reporting success. Same trap the compression policies already
+  // document — these tests are what stop it coming back.
+  const RETENTION_TARGETS = [
+    "metrics_raw",
+    "minute_rollups",
+    "hourly_rollups",
+    "weighted_minute_rollups",
+    "weighted_hourly_rollups",
+  ];
+
+  test.each(RETENTION_TARGETS)("%s is removed before it is added", (target) => {
+    expect(removesRetentionBeforeAdding(policies, target)).toBe(true);
+  });
+
+  test("an add-only retention policy is a finding, not a style preference", () => {
+    const addOnly = policies.replace(
+      "SELECT remove_retention_policy('hourly_rollups', if_exists => TRUE);",
+      "SELECT 1;",
+    );
+    expect(removesRetentionBeforeAdding(addOnly, "hourly_rollups")).toBe(false);
+    const errors: string[] = [];
+    checkStorageTuning({
+      read: (path) =>
+        path.endsWith("policies.sql")
+          ? addOnly
+          : path.endsWith(".sql")
+            ? read(path)
+            : path.includes("init-postgres")
+              ? "checkpoint_timeout = '2h'\nwal_compression = 'zstd'\n"
+              : "      - checkpoint_timeout=2h\n      - wal_compression=zstd\n",
+      log: () => {},
+      error: (line) => errors.push(line),
+    });
+    expect(errors.join("\n")).toContain("no-op on a configured deployment");
+  });
+
+  test("the order matters: adding then removing leaves no policy at all", () => {
+    const wrongOrder = [
+      "SELECT add_retention_policy('m', INTERVAL '90 days');",
+      "--> statement-breakpoint",
+      "SELECT remove_retention_policy('m', if_exists => TRUE);",
+    ].join("\n");
+    expect(removesRetentionBeforeAdding(wrongOrder, "m")).toBe(false);
+    expect(retentionDays(wrongOrder)).not.toHaveProperty("m");
   });
 });

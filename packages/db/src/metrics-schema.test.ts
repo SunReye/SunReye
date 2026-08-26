@@ -73,7 +73,7 @@ describe("metrics_raw.dur_ms", () => {
 
   test("is nullable: NULL means 'this row predates weighting', not a duration", () => {
     // Every row written before #117 has no recorded hold time. The aggregates
-    // read NULL as an equal weight (`coalesce(dur_ms, 1)`), which makes the
+    // read NULL as an equal weight (`coalesce(dur_ms, 1000)`), which makes the
     // weighted mean exactly equal to the old plain mean over a complete series —
     // the property that makes this migration safe.
     expect(columns.durMs?.notNull).toBe(false);

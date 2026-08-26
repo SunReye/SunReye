@@ -126,10 +126,25 @@ export function refreshPolicies(sql: string): string[] {
 
 /** True when the file removes the target's policy before (re)adding it. */
 export function removesBeforeAdding(sql: string, target: string): boolean {
+  return removeThenAdd(sql, target, REMOVE_COMPRESSION, ADD_COMPRESSION);
+}
+
+/**
+ * The same question for a retention policy, and it is not academic:
+ * `add_retention_policy(…, if_not_exists => TRUE)` is a no-op on an
+ * already-configured deployment, so a file that only adds keeps the OLD interval
+ * forever. Measured on an upgraded database: the hourly tier stayed at 730 days
+ * while this file said 3650.
+ */
+export function removesRetentionBeforeAdding(sql: string, target: string): boolean {
+  return removeThenAdd(sql, target, REMOVE_RETENTION, ADD_RETENTION);
+}
+
+function removeThenAdd(sql: string, target: string, remove: RegExp, add: RegExp): boolean {
   const order = statements(sql).flatMap((statement) => {
-    const removed = REMOVE_COMPRESSION.exec(statement);
+    const removed = remove.exec(statement);
     if (removed?.[1] === target) return ["remove"];
-    const added = ADD_COMPRESSION.exec(statement);
+    const added = add.exec(statement);
     return added?.[1] === target ? ["add"] : [];
   });
   const removedAt = order.indexOf("remove");
@@ -302,10 +317,18 @@ function retentionProblems(io: CheckIO): string[] {
     );
   }
   for (const [target, retention] of Object.entries(days)) {
-    if (target === "metrics_raw" || !(retention < raw)) continue;
-    problems.push(
-      `metrics_raw is kept ${raw} day(s) but ${target} only ${retention} — raw then covers a range the rollups do not, and the addon's default backup excludes raw (#121, #133).`,
-    );
+    if (target !== "metrics_raw" && retention < raw) {
+      problems.push(
+        `metrics_raw is kept ${raw} day(s) but ${target} only ${retention} — raw then covers a range the rollups do not, and the addon's default backup excludes raw (#121, #133).`,
+      );
+    }
+  }
+  for (const target of Object.keys(days)) {
+    if (!removesRetentionBeforeAdding(io.read(POLICY_SQL), target)) {
+      problems.push(
+        `policies.sql adds a retention policy for ${target} without removing it first — \`if_not_exists => TRUE\` is a no-op on a configured deployment, so an interval change would never reach an existing database.`,
+      );
+    }
   }
   return problems;
 }

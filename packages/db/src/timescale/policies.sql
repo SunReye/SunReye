@@ -170,7 +170,18 @@ SELECT add_compression_policy('weighted_daily_rollups', INTERVAL '30 days', if_n
 -- before the compression was measured. Minute stays at 90 days: it is the most
 -- expensive tier per day of coverage (15x fewer rows than raw, each ~52x wider),
 -- and it is also the ceiling on raw retention above.
+-- remove+add, not add-if-not-exists: on an already-configured deployment
+-- `if_not_exists => TRUE` is a NO-OP and silently keeps the old interval — the
+-- same trap this file documents for the compression policies. Measured: without
+-- the remove, an existing database upgraded straight past the hourly change and
+-- stayed on 730 days while the file said 3650.
+SELECT remove_retention_policy('minute_rollups', if_exists => TRUE);
+--> statement-breakpoint
+
 SELECT add_retention_policy('minute_rollups', INTERVAL '90 days', if_not_exists => TRUE);
+--> statement-breakpoint
+
+SELECT remove_retention_policy('hourly_rollups', if_exists => TRUE);
 --> statement-breakpoint
 
 SELECT add_retention_policy('hourly_rollups', INTERVAL '3650 days', if_not_exists => TRUE);
@@ -179,7 +190,13 @@ SELECT add_retention_policy('hourly_rollups', INTERVAL '3650 days', if_not_exist
 -- The weighted tiers mirror them, so the two sources age out together and the
 -- read layer's per-bucket preference never has to reach past the horizon the
 -- legacy tier keeps. weighted_daily_rollups, like daily_rollups, is kept forever.
+SELECT remove_retention_policy('weighted_minute_rollups', if_exists => TRUE);
+--> statement-breakpoint
+
 SELECT add_retention_policy('weighted_minute_rollups', INTERVAL '90 days', if_not_exists => TRUE);
+--> statement-breakpoint
+
+SELECT remove_retention_policy('weighted_hourly_rollups', if_exists => TRUE);
 --> statement-breakpoint
 
 SELECT add_retention_policy('weighted_hourly_rollups', INTERVAL '3650 days', if_not_exists => TRUE);

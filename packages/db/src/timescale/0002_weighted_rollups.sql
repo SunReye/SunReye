@@ -32,11 +32,33 @@
 -- keeps the aggregates composable later (a coarser tier can be rolled up from a
 -- finer one by summing both columns). The read layer divides.
 --
--- `coalesce(dur_ms, 1)`: every row written before #117 has dur_ms = NULL, which
--- must read as an equal weight — that makes the weighted mean *exactly* equal to
--- the legacy plain mean over a complete series, which is this migration's safety
--- property. NULL is not a duration, which is why the column has no numeric
--- default; see packages/db/src/schema/metrics.ts.
+-- `coalesce(dur_ms, 1000)`: every row written before #117 has dur_ms = NULL and
+-- must read as an equal weight, which makes the weighted mean *exactly* equal to
+-- the legacy plain mean over a complete series — this migration's safety
+-- property, and true for any constant. NULL is not a duration, which is why the
+-- column itself has no default; see packages/db/src/schema/metrics.ts.
+--
+-- The constant is 1000 rather than 1 because of the one bucket per tier that
+-- SPANS the upgrade: it holds NULL-weighted rows from before it and real
+-- intervals from after. 1000 is the shipped `POLL_INTERVAL_MS` — what a pre-#117
+-- row actually represented — so that bucket is exact at a 1 s cadence and off by
+-- the cadence ratio elsewhere, instead of off by 3000x.
+--
+-- Measured on a fabricated upgrade day (12 h at 100, then 12 h at 200 stored as
+-- 60 s intervals; truth 150), on a 3 s instance:
+--
+--   weight 1000 (this file)              175.000
+--   weight 1                             199.967   <- the day reports its afternoon
+--   weight 3000 (a 3 s row's true span)  150.000
+--   the LEGACY unweighted arm            104.762   <- worse than either, see below
+--
+-- The legacy figure is why the read layer still prefers the weighted arm for this
+-- bucket: an unweighted mean over a partly-thinned day counts 14,400 morning
+-- samples against 720 afternoon rows and is further from the truth than anything
+-- the weighted arm produces. There is no correct source for that one bucket; the
+-- weighted arm is the least wrong, and it is exactly three buckets — the minute,
+-- hour and day containing the upgrade. Every earlier bucket is uniformly
+-- NULL-weighted (so exact), every later one fully weighted.
 --
 -- Names must end in `_rollups`: drizzle.config.ts's `tablesFilter: ["!*_rollups"]`
 -- is what stops drizzle emitting `DROP VIEW` for a continuous aggregate, and a
@@ -53,8 +75,8 @@ SELECT
   time_bucket('1 minute', time) AS bucket,
   inverter_id,
   metric,
-  sum(value * coalesce(dur_ms, 1)) AS weighted_sum,
-  sum(coalesce(dur_ms, 1))         AS weight,
+  sum(value * coalesce(dur_ms, 1000)) AS weighted_sum,
+  sum(coalesce(dur_ms, 1000))      AS weight,
   max(value) AS max_value,
   min(value) AS min_value
 FROM metrics_raw
@@ -68,8 +90,8 @@ SELECT
   time_bucket('1 hour', time) AS bucket,
   inverter_id,
   metric,
-  sum(value * coalesce(dur_ms, 1)) AS weighted_sum,
-  sum(coalesce(dur_ms, 1))         AS weight,
+  sum(value * coalesce(dur_ms, 1000)) AS weighted_sum,
+  sum(coalesce(dur_ms, 1000))      AS weight,
   max(value) AS max_value,
   min(value) AS min_value
 FROM metrics_raw
@@ -83,8 +105,8 @@ SELECT
   time_bucket('1 day', time) AS bucket,
   inverter_id,
   metric,
-  sum(value * coalesce(dur_ms, 1)) AS weighted_sum,
-  sum(coalesce(dur_ms, 1))         AS weight,
+  sum(value * coalesce(dur_ms, 1000)) AS weighted_sum,
+  sum(coalesce(dur_ms, 1000))      AS weight,
   max(value) AS max_value,
   min(value) AS min_value
 FROM metrics_raw

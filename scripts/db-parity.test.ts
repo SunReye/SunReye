@@ -340,7 +340,7 @@ describe("compareSnapshots — the migration gate", () => {
 describe("weightedMatchesLegacy", () => {
   /**
    * The safety property of the whole migration: while every `dur_ms` is NULL the
-   * aggregates read `coalesce(dur_ms, 1)`, so the weighted mean is *exactly* the
+   * aggregates read `coalesce(dur_ms, 1000)`, so the weighted mean is *exactly* the
    * legacy plain mean. Any bucket where the two disagree, over unweighted data,
    * is a bug in the aggregate definition — and it is checked per bucket rather
    * than in aggregate, because a compensating pair of errors would cancel.
