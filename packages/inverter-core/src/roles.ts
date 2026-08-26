@@ -93,9 +93,17 @@ export const ROLE_CATALOG = {
   "inverter.power": { kind: "measurement", unitHint: "W" },
   "inverter.efficiency": { kind: "measurement", unitHint: "%" },
   // --- Settings / controls ---
+  // Battery limits come in two denominations and a profile maps whichever its
+  // device actually exposes: a current ceiling (Deye/Sunsynk and most
+  // high-voltage hybrids) or a power ceiling (Victron ESS, SMA, and every device
+  // whose limits are set in watts). Never both for the same limit — the pair
+  // would give the automation two registers to steer for one quantity.
   "setting.battery.max_charge_current": { kind: "setting", writable: true, unitHint: "A" },
   "setting.battery.max_discharge_current": { kind: "setting", writable: true, unitHint: "A" },
   "setting.battery.max_grid_charge_current": { kind: "setting", writable: true, unitHint: "A" },
+  "setting.battery.max_charge_power": { kind: "setting", writable: true, unitHint: "W" },
+  "setting.battery.max_discharge_power": { kind: "setting", writable: true, unitHint: "W" },
+  "setting.battery.max_grid_charge_power": { kind: "setting", writable: true, unitHint: "W" },
   "setting.battery.grid_charge": { kind: "setting", writable: true, needsEnumLabels: true },
   "setting.work_mode": { kind: "setting", writable: true, needsEnumLabels: true },
   "setting.solar_sell.max_power": { kind: "setting", writable: true, unitHint: "W" },

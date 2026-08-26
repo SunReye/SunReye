@@ -72,10 +72,10 @@ function profileWith(roles: Partial<Record<string, string>> = {}): InverterProfi
   const metrics: MetricDef[] = [];
   for (const [role, key] of Object.entries(defaults)) {
     if (!key) continue;
-    // Settings are writable and bounded; the feed-in ceiling is in watts, so it
-    // cannot share the charge register's 0–185 A range.
-    const range =
-      role === "setting.solar_sell.max_power" ? { min: 0, max: 15_000 } : { min: 0, max: 185 };
+    // Settings are writable and bounded; a watt register (the feed-in ceiling, a
+    // power-denominated battery limit) cannot share the charge register's
+    // 0–185 A range.
+    const range = role.endsWith("power") ? { min: 0, max: 15_000 } : { min: 0, max: 185 };
     metrics.push(
       metric({
         key,
@@ -1187,13 +1187,27 @@ describe("resolvePeakShavingBlockers", () => {
     expect(resolvePeakShavingBlockers(profileWith(), weather())).toEqual([]);
   });
 
-  test.each(["setting.battery.max_charge_current", "pv.total.power", "battery.soc"] as const)(
-    "missing role %s blocks",
-    (role) => {
-      const profile = profileWith({ [role]: undefined });
-      expect(resolvePeakShavingBlockers(profile, weather())).toEqual([{ kind: "role", role }]);
-    },
-  );
+  test.each(["pv.total.power", "battery.soc"] as const)("missing role %s blocks", (role) => {
+    const profile = profileWith({ [role]: undefined });
+    expect(resolvePeakShavingBlockers(profile, weather())).toEqual([{ kind: "role", role }]);
+  });
+
+  test("a power-denominated charge ceiling satisfies the same requirement", () => {
+    // Victron/SMA and friends set the battery limit in watts. The requirement is
+    // "a charge ceiling this automation can steer", not "an ampere register".
+    const profile = profileWith({
+      "setting.battery.max_charge_current": "",
+      "setting.battery.max_charge_power": CHARGE_KEY,
+    });
+    expect(resolvePeakShavingBlockers(profile, weather())).toEqual([]);
+  });
+
+  test("neither denomination mapped blocks, naming the conventional role", () => {
+    const profile = profileWith({ "setting.battery.max_charge_current": "" });
+    expect(resolvePeakShavingBlockers(profile, weather())).toEqual([
+      { kind: "role", role: "setting.battery.max_charge_current" },
+    ]);
+  });
 
   test("battery.voltage is optional", () => {
     const profile = profileWith({ "battery.voltage": undefined });
