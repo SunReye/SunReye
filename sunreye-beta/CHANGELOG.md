@@ -2,11 +2,20 @@
 
 ## [unreleased]
 
-Unreleased work on `dev` since 1.2.0, shipped in `beta.20260826-8d50081`.
+Unreleased work on `dev` since 1.2.0, shipped in `beta.20260826-309f93c`.
 
 
 ### Features
 
+* **db:** re-derive retention against the measured footprint ([82eeaf0](https://github.com/SunReye/SunReye/commit/82eeaf0f68bc1d8a843b3c3d81922d37b30bec4d))
+* **server:** serve each rollup bucket from one source, preferring the weighted one ([c4b9631](https://github.com/SunReye/SunReye/commit/c4b9631b1c8981fd851ae81d9eedfb3a070cece4))
+* **db:** time-weighted rollups, and the compression every tier was missing ([8d61780](https://github.com/SunReye/SunReye/commit/8d6178018345b94fd60b2a859323897fb50b75de))
+* **db:** a weight column on the hot path ([e464e3f](https://github.com/SunReye/SunReye/commit/e464e3fa7f5df41a21b865a06bc3f125e8d94605))
+* **server:** count and export the history buffer's dropped rows ([290c619](https://github.com/SunReye/SunReye/commit/290c61982fef9f7167b2a2deadf083fe29b54152))
+* **scripts:** the storage-wear harness, so the projections become gates ([a89bd08](https://github.com/SunReye/SunReye/commit/a89bd08f07db19aa4210b2e5b1126558775c5b69))
+* **server:** change-encode the stored series, with the duration each value held ([70cc884](https://github.com/SunReye/SunReye/commit/70cc884aaf73e77f77fe324fa39c775c24099927))
+* **server:** route config registers and absent hardware out of metrics_raw ([33760c6](https://github.com/SunReye/SunReye/commit/33760c64d2b29f99f5a92e2d1de3e9ed1c4a79a5))
+* **inverter-core:** storage class and deadband as authored profile fields ([3640187](https://github.com/SunReye/SunReye/commit/3640187f5522d10b7a252cac444ea462b2e3a88a))
 * **profile-sdk:** author a real meter against the http arm ([76c57b5](https://github.com/SunReye/SunReye/commit/76c57b52570952c966ce5bf2b6e1c145e7e6eb50))
 * **inverter-core:** an HTTP transport behind the same seam ([048dcb6](https://github.com/SunReye/SunReye/commit/048dcb6628ee430e695f224b4cae03b93436aa11))
 * **inverter-core:** an http arm on the binding union ([5f3f051](https://github.com/SunReye/SunReye/commit/5f3f0516b0071a92e50d22ddf71b8a1e022b7e08))
@@ -88,6 +97,14 @@ Unreleased work on `dev` since 1.2.0, shipped in `beta.20260826-8d50081`.
 
 ### Bug Fixes
 
+* **web:** tolerate a manifest with no storage, and teach the e2e fixture the field ([a388f9e](https://github.com/SunReye/SunReye/commit/a388f9ebbac42177870413038449c30cf7970dbe))
+* **ci:** run the cutover assertion from apps/server, where its deps are declared ([78d6beb](https://github.com/SunReye/SunReye/commit/78d6beb337b42073d821d158374d83b500b119ad))
+* **ci:** materialize the weighted tiers in the restore fixture ([eeadfec](https://github.com/SunReye/SunReye/commit/eeadfec886cc115003430314e11aabdc2a0c78da))
+* **ci:** import the db by path in the weighted-rollups gate ([56dfe1f](https://github.com/SunReye/SunReye/commit/56dfe1fbf57a78d9ac37db62ef26717725ab0097))
+* **db:** make the retention change reach an existing database, and prove it ([780c767](https://github.com/SunReye/SunReye/commit/780c7675f43cf8d8755aec62ece6f2907494b845))
+* **server:** carry the held value into the live backfill window ([f504120](https://github.com/SunReye/SunReye/commit/f50412036b7e70a64111089937368f4bf90d5893))
+* **addon:** derive the backup's raw-data exclusion from the live retention policy ([c6e68aa](https://github.com/SunReye/SunReye/commit/c6e68aac4a2364b9461e6389525ceac92771db4f))
+* **energy:** pin each role's kWh derivation, and a counter-restart hole (#115) ([a8b5f55](https://github.com/SunReye/SunReye/commit/a8b5f55f19d0a2f3b3b7aa02efbcc90d5c84aaa4))
 * **inverter-core:** three holes an adversarial pass found in the http arm ([9cad2d8](https://github.com/SunReye/SunReye/commit/9cad2d85c53fe2dde8d93b66f26f42ad7a63b113))
 * **addon:** exclude compressed chunk data from a non-full dump ([2ec3ec3](https://github.com/SunReye/SunReye/commit/2ec3ec3871ce88981c5977ae73dd2456bec5a2f9))
 * **ci:** stop retention deleting the restore fixture mid-test ([aba10ab](https://github.com/SunReye/SunReye/commit/aba10abad32d0e62db1058a5cbf644007d33f4da))
@@ -155,6 +172,7 @@ Unreleased work on `dev` since 1.2.0, shipped in `beta.20260826-8d50081`.
 
 ### Performance Improvements
 
+* **e2e:** run the browser suite fully parallel and sharded, and drop the measurement layer ([44d1e65](https://github.com/SunReye/SunReye/commit/44d1e659cf4fba46a27b5fc789ed688b5a5cd49d))
 * **test:** run the suite with --parallel, and say why coverage must not ([6a5f738](https://github.com/SunReye/SunReye/commit/6a5f73838722d0bb0cee705c0458e374d0bcc749))
 * **db:** compress after 2h, checkpoint every 2h, compress WAL with zstd ([42bac87](https://github.com/SunReye/SunReye/commit/42bac87c62ab92f3f9085d367e687e766dfc4b84))
 * **web:** build each chart once, at a width it can actually use ([db697a8](https://github.com/SunReye/SunReye/commit/db697a84bb03e0f55dae223edbf71b16e5d60988))
@@ -165,6 +183,9 @@ Unreleased work on `dev` since 1.2.0, shipped in `beta.20260826-8d50081`.
 
 ### Documentation
 
+* match the re-derived retention shape ([c5eed53](https://github.com/SunReye/SunReye/commit/c5eed53d14421500d55653df64b46c44d85b22ac))
+* **profiles:** document the storage class and the deadband ([d6c76ce](https://github.com/SunReye/SunReye/commit/d6c76ce88cd5f3cf6d51f4170c1337b2ffad415a))
+* rewrite the storage section around change-only storage ([bc476ca](https://github.com/SunReye/SunReye/commit/bc476caceaa9b0bd7f30cd0eaf69aec8f3d941b8))
 * **plans:** record the power-flow energy pulses design ([0b4f1b5](https://github.com/SunReye/SunReye/commit/0b4f1b5d940407cce4ee8d9dc2478e89a057bc0f))
 * **web:** motion carve-out for the power-flow diagram ([968b29c](https://github.com/SunReye/SunReye/commit/968b29ce9c76c041936ef2163f32dd994476e4a9))
 * **web:** write down the full-screen vocabulary ([697b882](https://github.com/SunReye/SunReye/commit/697b882e1e3c92dcaaee726c228f8fdce1fa5e8a))
@@ -186,6 +207,7 @@ Unreleased work on `dev` since 1.2.0, shipped in `beta.20260826-8d50081`.
 
 ### Code Refactoring
 
+* **server:** the history buffer commits through an injected callback ([fd38239](https://github.com/SunReye/SunReye/commit/fd38239ad50a1bd0c4fb45d2b4c588797a5e0a14))
 * **inverter-core:** split decode into addressing and scaling ([cad040e](https://github.com/SunReye/SunReye/commit/cad040ed7ef72292b2375a9cf37cc632e528676a))
 * **inverter-core:** tagged Binding union and a transport seam ([0c3a239](https://github.com/SunReye/SunReye/commit/0c3a23909ab73816fb5c2f90a6ffc1988c1f38bf))
 * **profile-sdk:** split replay by concern to clear the health gate ([a0fbf1c](https://github.com/SunReye/SunReye/commit/a0fbf1c17dd99cd0067727f608410e3ed2bd49a5))
@@ -283,6 +305,8 @@ Unreleased work on `dev` since 1.2.0, shipped in `beta.20260826-8d50081`.
 
 ### Tests
 
+* **server:** teach the runtime's buffer doubles the dropped-row counter ([6730706](https://github.com/SunReye/SunReye/commit/6730706118ab5d755219dbf2df2658892e416549))
+* **db:** a real-database gate for the weighted rollups ([5a7cec5](https://github.com/SunReye/SunReye/commit/5a7cec51ba8cecca224c4f9e42e0289921a5cf01))
 * **db:** actually restore a dump in CI and assert parity ([54cd5c5](https://github.com/SunReye/SunReye/commit/54cd5c551057b0be8952cd8f56578614a542e37d))
 * **web:** measure a chart's mount cost, not the scroll around it ([de4cd42](https://github.com/SunReye/SunReye/commit/de4cd4246a506fb7d20867322a191619f628d123))
 * **web:** cover every route in the browser layer ([d555e9d](https://github.com/SunReye/SunReye/commit/d555e9d878e6d4d2ed36b321206a886c4a464e56))
@@ -309,7 +333,9 @@ Unreleased work on `dev` since 1.2.0, shipped in `beta.20260826-8d50081`.
 
 ### Miscellaneous Chores
 
+* **ci:** pin the weighted-rollups gate to bun 1.4.0 ([0cb8712](https://github.com/SunReye/SunReye/commit/0cb87122eda470354b6dc5342c4961257b59fa40))
 * bun 1.3.13 -> 1.4.0 ([c7ecf18](https://github.com/SunReye/SunReye/commit/c7ecf186f9d9aa4b597443b4a3bc168eb1b96925))
+* **db:** move the schema suites out of the drizzle schema directory ([c0cabba](https://github.com/SunReye/SunReye/commit/c0cabba8876d89dcdd273c3969e150bafceae60d))
 * **web:** let the e2e port be overridden ([8f71ccc](https://github.com/SunReye/SunReye/commit/8f71ccc21f9f2010abb12aeede4ee23e88d10a79))
 * **web:** bump layerchart to 2.2.0 ([a345fa1](https://github.com/SunReye/SunReye/commit/a345fa1cef37d5bef7b2dedf7ee9f0ffff3f3c89))
 * **fallow:** close the web -> server boundary ([44f62ba](https://github.com/SunReye/SunReye/commit/44f62ba92a1a14c35e9e2fe8c3692ef1dc0a4b6b))
