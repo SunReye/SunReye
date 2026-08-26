@@ -98,15 +98,21 @@ Long-horizon history lives in the rollups, each built directly from the raw tabl
 
 | Data | Resolution | Retention |
 | --- | --- | --- |
-| `metrics_raw` | change-only | 7 days |
+| `metrics_raw` | change-only | 90 days |
 | `minute_rollups` | 1 min | 90 days |
-| `hourly_rollups` | 1 hour | 730 days (2 years) |
+| `hourly_rollups` | 1 hour | 10 years |
 | `daily_rollups` | 1 day | forever |
 
 Every interval is tunable in `packages/db/src/timescale/policies.sql`, which is re-applied on every
-migration run. **Raw retention is expected to get longer, not shorter**: it was set to 7 days when a
-day of raw cost 5–9 GB, and that premise no longer holds. The re-derivation is deliberately gated
-on measurement rather than on arithmetic (see below).
+migration run. Raw was 7 days when a day of raw cost 5–9 GB uncompressed; at the measured footprint
+that was discarding second-resolution replay to save single-digit megabytes.
+
+Raw is deliberately **equal to the shortest rollup retention**, not longer. Past that point a time
+range exists that only raw covers, and the addon's default backup excludes raw precisely because raw
+is fully materialized into the rollups — so a longer raw tier would either bloat every backup or
+silently drop a range from it. `bun run test:storage` fails if a policy edit breaks that. Going
+further means growing the minute tier with it, or moving minute-resolution reads onto raw and
+dropping that tier.
 
 ### SSD endurance (TBW)
 
