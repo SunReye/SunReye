@@ -215,6 +215,18 @@ describe("isChartable", () => {
     expect(isChartable(metric({ kind: "setting", storage: "series" }))).toBe(true);
   });
 
+  it("charts a metric whose manifest carries no storage at all", () => {
+    // Version skew, and the reason this is a `!==` on the two excluding values
+    // rather than an `=== "series"`: a manifest from a server older than the
+    // storage field has no `storage` on any metric. Requiring the field made
+    // EVERY metric unchartable, which blanked the History page entirely — caught
+    // by the browser specs against a stub backend that models exactly that server.
+    // An old server also still writes settings to the hypertable, so charting
+    // them is correct there.
+    const { storage: _dropped, ...legacy } = metric({ kind: "measurement" });
+    expect(isChartable(legacy as ManifestMetric)).toBe(true);
+  });
+
   it("does not chart a config-logged metric", () => {
     expect(isChartable(metric({ kind: "measurement", storage: "config" }))).toBe(false);
   });

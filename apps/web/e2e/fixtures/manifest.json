@@ -72,7 +72,8 @@
         "2": "Normal",
         "3": "Alarm",
         "4": "Fault"
-      }
+      },
+      "storage": "series"
     },
     {
       "key": "ac.relay_status",
@@ -86,7 +87,8 @@
       "enumLabels": {
         "0": "Open",
         "1": "Closed"
-      }
+      },
+      "storage": "series"
     },
     {
       "key": "dc.pv1.power",
@@ -97,7 +99,8 @@
       "kind": "measurement",
       "writable": false,
       "role": "pv.string.power",
-      "index": 1
+      "index": 1,
+      "storage": "series"
     },
     {
       "key": "dc.pv2.power",
@@ -108,7 +111,8 @@
       "kind": "measurement",
       "writable": false,
       "role": "pv.string.power",
-      "index": 2
+      "index": 2,
+      "storage": "series"
     },
     {
       "key": "dc.pv1.voltage",
@@ -119,7 +123,8 @@
       "kind": "measurement",
       "writable": false,
       "role": "pv.string.voltage",
-      "index": 1
+      "index": 1,
+      "storage": "series"
     },
     {
       "key": "dc.pv2.voltage",
@@ -130,7 +135,8 @@
       "kind": "measurement",
       "writable": false,
       "role": "pv.string.voltage",
-      "index": 2
+      "index": 2,
+      "storage": "series"
     },
     {
       "key": "dc.pv1.current",
@@ -141,7 +147,8 @@
       "kind": "measurement",
       "writable": false,
       "role": "pv.string.current",
-      "index": 1
+      "index": 1,
+      "storage": "series"
     },
     {
       "key": "dc.pv2.current",
@@ -152,7 +159,8 @@
       "kind": "measurement",
       "writable": false,
       "role": "pv.string.current",
-      "index": 2
+      "index": 2,
+      "storage": "series"
     },
     {
       "key": "day_energy",
@@ -162,7 +170,8 @@
       "group": "inverter",
       "kind": "cumulative",
       "writable": false,
-      "role": "production.today"
+      "role": "production.today",
+      "storage": "series"
     },
     {
       "key": "total_energy",
@@ -172,7 +181,8 @@
       "group": "inverter",
       "kind": "cumulative",
       "writable": false,
-      "role": "production.total"
+      "role": "production.total",
+      "storage": "series"
     },
     {
       "key": "ac.total_power",
@@ -186,7 +196,8 @@
       "flow": {
         "positive": "Importing",
         "negative": "Exporting"
-      }
+      },
+      "storage": "series"
     },
     {
       "key": "ac.l1.voltage",
@@ -197,7 +208,8 @@
       "kind": "measurement",
       "writable": false,
       "role": "grid.phase.voltage",
-      "index": 1
+      "index": 1,
+      "storage": "series"
     },
     {
       "key": "ac.l2.voltage",
@@ -208,7 +220,8 @@
       "kind": "measurement",
       "writable": false,
       "role": "grid.phase.voltage",
-      "index": 2
+      "index": 2,
+      "storage": "series"
     },
     {
       "key": "ac.l3.voltage",
@@ -219,7 +232,8 @@
       "kind": "measurement",
       "writable": false,
       "role": "grid.phase.voltage",
-      "index": 3
+      "index": 3,
+      "storage": "series"
     },
     {
       "key": "ac.l1.ct.internal",
@@ -234,7 +248,8 @@
       "flow": {
         "positive": "Importing",
         "negative": "Exporting"
-      }
+      },
+      "storage": "series"
     },
     {
       "key": "ac.l2.ct.internal",
@@ -249,7 +264,8 @@
       "flow": {
         "positive": "Importing",
         "negative": "Exporting"
-      }
+      },
+      "storage": "series"
     },
     {
       "key": "ac.l3.ct.internal",
@@ -264,7 +280,8 @@
       "flow": {
         "positive": "Importing",
         "negative": "Exporting"
-      }
+      },
+      "storage": "series"
     },
     {
       "key": "ac.total_internal_power",
@@ -273,7 +290,8 @@
       "unit": "W",
       "group": "inverter",
       "kind": "measurement",
-      "writable": false
+      "writable": false,
+      "storage": "series"
     },
     {
       "key": "ac.l1.ct.external",
@@ -282,7 +300,8 @@
       "unit": "W",
       "group": "inverter",
       "kind": "measurement",
-      "writable": false
+      "writable": false,
+      "storage": "series"
     },
     {
       "key": "ac.l2.ct.external",
@@ -291,7 +310,8 @@
       "unit": "W",
       "group": "inverter",
       "kind": "measurement",
-      "writable": false
+      "writable": false,
+      "storage": "series"
     },
     {
       "key": "ac.l3.ct.external",
@@ -300,7 +320,8 @@
       "unit": "W",
       "group": "inverter",
       "kind": "measurement",
-      "writable": false
+      "writable": false,
+      "storage": "series"
     },
     {
       "key": "ac.daily_energy_bought",
@@ -310,7 +331,8 @@
       "group": "inverter",
       "kind": "cumulative",
       "writable": false,
-      "role": "grid.energy.imported.today"
+      "role": "grid.energy.imported.today",
+      "storage": "series"
     },
     {
       "key": "ac.total_energy_bought",
@@ -320,7 +342,8 @@
       "group": "inverter",
       "kind": "cumulative",
       "writable": false,
-      "role": "grid.energy.imported.total"
+      "role": "grid.energy.imported.total",
+      "storage": "series"
     },
     {
       "key": "ac.daily_energy_sold",
@@ -330,7 +353,8 @@
       "group": "inverter",
       "kind": "cumulative",
       "writable": false,
-      "role": "grid.energy.exported.today"
+      "role": "grid.energy.exported.today",
+      "storage": "series"
     },
     {
       "key": "ac.total_energy_sold",
@@ -340,7 +364,8 @@
       "group": "inverter",
       "kind": "cumulative",
       "writable": false,
-      "role": "grid.energy.exported.total"
+      "role": "grid.energy.exported.total",
+      "storage": "series"
     },
     {
       "key": "ac.l1.current",
@@ -355,7 +380,8 @@
       "flow": {
         "positive": "Importing",
         "negative": "Exporting"
-      }
+      },
+      "storage": "series"
     },
     {
       "key": "ac.l2.current",
@@ -370,7 +396,8 @@
       "flow": {
         "positive": "Importing",
         "negative": "Exporting"
-      }
+      },
+      "storage": "series"
     },
     {
       "key": "ac.l3.current",
@@ -385,7 +412,8 @@
       "flow": {
         "positive": "Importing",
         "negative": "Exporting"
-      }
+      },
+      "storage": "series"
     },
     {
       "key": "ac.l1.power",
@@ -394,7 +422,8 @@
       "unit": "W",
       "group": "inverter",
       "kind": "measurement",
-      "writable": false
+      "writable": false,
+      "storage": "series"
     },
     {
       "key": "ac.l2.power",
@@ -403,7 +432,8 @@
       "unit": "W",
       "group": "inverter",
       "kind": "measurement",
-      "writable": false
+      "writable": false,
+      "storage": "series"
     },
     {
       "key": "ac.l3.power",
@@ -412,27 +442,30 @@
       "unit": "W",
       "group": "inverter",
       "kind": "measurement",
-      "writable": false
+      "writable": false,
+      "storage": "series"
     },
     {
       "key": "radiator_temp",
       "topic": "radiator_temp",
       "label": "DC Temperature",
-      "unit": "°C",
+      "unit": "\u00b0C",
       "group": "inverter",
       "kind": "measurement",
       "writable": false,
-      "role": "inverter.temperature.dc"
+      "role": "inverter.temperature.dc",
+      "storage": "series"
     },
     {
       "key": "ac.temperature",
       "topic": "ac/temperature",
       "label": "AC Temperature",
-      "unit": "°C",
+      "unit": "\u00b0C",
       "group": "inverter",
       "kind": "measurement",
       "writable": false,
-      "role": "inverter.temperature.ac"
+      "role": "inverter.temperature.ac",
+      "storage": "series"
     },
     {
       "key": "dc.total_power",
@@ -442,7 +475,8 @@
       "group": "inverter",
       "kind": "measurement",
       "writable": false,
-      "role": "pv.total.power"
+      "role": "pv.total.power",
+      "storage": "series"
     },
     {
       "key": "inverter.power",
@@ -452,7 +486,8 @@
       "group": "inverter",
       "kind": "measurement",
       "writable": false,
-      "role": "inverter.power"
+      "role": "inverter.power",
+      "storage": "series"
     },
     {
       "key": "inverter.efficiency",
@@ -466,7 +501,8 @@
       "range": {
         "min": 0,
         "max": 100
-      }
+      },
+      "storage": "series"
     },
     {
       "key": "battery.daily_charge",
@@ -476,7 +512,8 @@
       "group": "battery",
       "kind": "cumulative",
       "writable": false,
-      "role": "battery.energy.charged.today"
+      "role": "battery.energy.charged.today",
+      "storage": "series"
     },
     {
       "key": "battery.daily_discharge",
@@ -486,7 +523,8 @@
       "group": "battery",
       "kind": "cumulative",
       "writable": false,
-      "role": "battery.energy.discharged.today"
+      "role": "battery.energy.discharged.today",
+      "storage": "series"
     },
     {
       "key": "battery.total_charge",
@@ -496,7 +534,8 @@
       "group": "battery",
       "kind": "cumulative",
       "writable": false,
-      "role": "battery.energy.charged.total"
+      "role": "battery.energy.charged.total",
+      "storage": "series"
     },
     {
       "key": "battery.total_discharge",
@@ -506,7 +545,8 @@
       "group": "battery",
       "kind": "cumulative",
       "writable": false,
-      "role": "battery.energy.discharged.total"
+      "role": "battery.energy.discharged.total",
+      "storage": "series"
     },
     {
       "key": "battery.power",
@@ -520,7 +560,8 @@
       "flow": {
         "positive": "Discharging",
         "negative": "Charging"
-      }
+      },
+      "storage": "series"
     },
     {
       "key": "battery.voltage",
@@ -530,7 +571,8 @@
       "group": "battery",
       "kind": "measurement",
       "writable": false,
-      "role": "battery.voltage"
+      "role": "battery.voltage",
+      "storage": "series"
     },
     {
       "key": "battery.soc",
@@ -544,7 +586,8 @@
       "range": {
         "min": 0,
         "max": 100
-      }
+      },
+      "storage": "series"
     },
     {
       "key": "battery.1.current",
@@ -557,7 +600,8 @@
       "flow": {
         "positive": "Discharging",
         "negative": "Charging"
-      }
+      },
+      "storage": "series"
     },
     {
       "key": "battery.2.current",
@@ -570,7 +614,8 @@
       "flow": {
         "positive": "Discharging",
         "negative": "Charging"
-      }
+      },
+      "storage": "series"
     },
     {
       "key": "battery.current",
@@ -584,17 +629,19 @@
       "flow": {
         "positive": "Discharging",
         "negative": "Charging"
-      }
+      },
+      "storage": "series"
     },
     {
       "key": "battery.temperature",
       "topic": "battery/temperature",
       "label": "Battery Temperature",
-      "unit": "°C",
+      "unit": "\u00b0C",
       "group": "battery",
       "kind": "measurement",
       "writable": false,
-      "role": "battery.temperature"
+      "role": "battery.temperature",
+      "storage": "series"
     },
     {
       "key": "battery.mode",
@@ -608,7 +655,8 @@
       "enumLabels": {
         "0": "Lead-acid (voltage)",
         "1": "Lithium (SOC)"
-      }
+      },
+      "storage": "series"
     },
     {
       "key": "ac.generator.a.voltage",
@@ -619,7 +667,8 @@
       "kind": "measurement",
       "writable": false,
       "role": "generator.phase.voltage",
-      "index": 1
+      "index": 1,
+      "storage": "series"
     },
     {
       "key": "ac.generator.b.voltage",
@@ -630,7 +679,8 @@
       "kind": "measurement",
       "writable": false,
       "role": "generator.phase.voltage",
-      "index": 2
+      "index": 2,
+      "storage": "series"
     },
     {
       "key": "ac.generator.c.voltage",
@@ -641,7 +691,8 @@
       "kind": "measurement",
       "writable": false,
       "role": "generator.phase.voltage",
-      "index": 3
+      "index": 3,
+      "storage": "series"
     },
     {
       "key": "ac.generator.a.power",
@@ -652,7 +703,8 @@
       "kind": "measurement",
       "writable": false,
       "role": "generator.phase.power",
-      "index": 1
+      "index": 1,
+      "storage": "series"
     },
     {
       "key": "ac.generator.b.power",
@@ -663,7 +715,8 @@
       "kind": "measurement",
       "writable": false,
       "role": "generator.phase.power",
-      "index": 2
+      "index": 2,
+      "storage": "series"
     },
     {
       "key": "ac.generator.c.power",
@@ -674,7 +727,8 @@
       "kind": "measurement",
       "writable": false,
       "role": "generator.phase.power",
-      "index": 3
+      "index": 3,
+      "storage": "series"
     },
     {
       "key": "ac.generator.total_power",
@@ -684,7 +738,8 @@
       "group": "generator",
       "kind": "measurement",
       "writable": false,
-      "role": "generator.power"
+      "role": "generator.power",
+      "storage": "series"
     },
     {
       "key": "ac.generator.daily_energy",
@@ -694,7 +749,8 @@
       "group": "generator",
       "kind": "cumulative",
       "writable": false,
-      "role": "generator.energy.today"
+      "role": "generator.energy.today",
+      "storage": "series"
     },
     {
       "key": "settings.battery.maximum_charge_current",
@@ -708,7 +764,8 @@
       "range": {
         "min": 0,
         "max": 350
-      }
+      },
+      "storage": "config"
     },
     {
       "key": "settings.battery.maximum_discharge_current",
@@ -722,7 +779,8 @@
       "range": {
         "min": 0,
         "max": 350
-      }
+      },
+      "storage": "config"
     },
     {
       "key": "settings.battery.maximum_grid_charge_current",
@@ -732,7 +790,8 @@
       "group": "settings",
       "kind": "setting",
       "writable": true,
-      "role": "setting.battery.max_grid_charge_current"
+      "role": "setting.battery.max_grid_charge_current",
+      "storage": "config"
     },
     {
       "key": "settings.battery.grid_charge",
@@ -746,7 +805,8 @@
       "enumLabels": {
         "0": "Off",
         "1": "On"
-      }
+      },
+      "storage": "config"
     },
     {
       "key": "settings.workmode",
@@ -761,7 +821,8 @@
         "0": "Selling First",
         "1": "Zero Export to Load",
         "2": "Zero Export to CT"
-      }
+      },
+      "storage": "config"
     },
     {
       "key": "settings.solar_sell_max_power",
@@ -771,7 +832,8 @@
       "group": "settings",
       "kind": "setting",
       "writable": true,
-      "role": "setting.solar_sell.max_power"
+      "role": "setting.solar_sell.max_power",
+      "storage": "config"
     },
     {
       "key": "settings.solar_sell",
@@ -785,7 +847,8 @@
       "enumLabels": {
         "0": "Off",
         "1": "On"
-      }
+      },
+      "storage": "config"
     },
     {
       "key": "settings.system_time",
@@ -794,7 +857,8 @@
       "unit": null,
       "group": "system",
       "kind": "measurement",
-      "writable": false
+      "writable": false,
+      "storage": "series"
     },
     {
       "key": "timeofuse.selling",
@@ -803,7 +867,8 @@
       "unit": null,
       "group": "timeofuse",
       "kind": "setting",
-      "writable": true
+      "writable": true,
+      "storage": "config"
     },
     {
       "key": "timeofuse.time.1",
@@ -812,7 +877,8 @@
       "unit": null,
       "group": "timeofuse",
       "kind": "setting",
-      "writable": true
+      "writable": true,
+      "storage": "config"
     },
     {
       "key": "timeofuse.time.2",
@@ -821,7 +887,8 @@
       "unit": null,
       "group": "timeofuse",
       "kind": "setting",
-      "writable": true
+      "writable": true,
+      "storage": "config"
     },
     {
       "key": "timeofuse.time.3",
@@ -830,7 +897,8 @@
       "unit": null,
       "group": "timeofuse",
       "kind": "setting",
-      "writable": true
+      "writable": true,
+      "storage": "config"
     },
     {
       "key": "timeofuse.time.4",
@@ -839,7 +907,8 @@
       "unit": null,
       "group": "timeofuse",
       "kind": "setting",
-      "writable": true
+      "writable": true,
+      "storage": "config"
     },
     {
       "key": "timeofuse.time.5",
@@ -848,7 +917,8 @@
       "unit": null,
       "group": "timeofuse",
       "kind": "setting",
-      "writable": true
+      "writable": true,
+      "storage": "config"
     },
     {
       "key": "timeofuse.time.6",
@@ -857,7 +927,8 @@
       "unit": null,
       "group": "timeofuse",
       "kind": "setting",
-      "writable": true
+      "writable": true,
+      "storage": "config"
     },
     {
       "key": "timeofuse.power.1",
@@ -870,7 +941,8 @@
       "range": {
         "min": 0,
         "max": 20000
-      }
+      },
+      "storage": "config"
     },
     {
       "key": "timeofuse.power.2",
@@ -883,7 +955,8 @@
       "range": {
         "min": 0,
         "max": 20000
-      }
+      },
+      "storage": "config"
     },
     {
       "key": "timeofuse.power.3",
@@ -896,7 +969,8 @@
       "range": {
         "min": 0,
         "max": 20000
-      }
+      },
+      "storage": "config"
     },
     {
       "key": "timeofuse.power.4",
@@ -909,7 +983,8 @@
       "range": {
         "min": 0,
         "max": 20000
-      }
+      },
+      "storage": "config"
     },
     {
       "key": "timeofuse.power.5",
@@ -922,7 +997,8 @@
       "range": {
         "min": 0,
         "max": 20000
-      }
+      },
+      "storage": "config"
     },
     {
       "key": "timeofuse.power.6",
@@ -935,7 +1011,8 @@
       "range": {
         "min": 0,
         "max": 20000
-      }
+      },
+      "storage": "config"
     },
     {
       "key": "timeofuse.voltage.1",
@@ -944,7 +1021,8 @@
       "unit": "V",
       "group": "timeofuse",
       "kind": "setting",
-      "writable": true
+      "writable": true,
+      "storage": "config"
     },
     {
       "key": "timeofuse.voltage.2",
@@ -953,7 +1031,8 @@
       "unit": "V",
       "group": "timeofuse",
       "kind": "setting",
-      "writable": true
+      "writable": true,
+      "storage": "config"
     },
     {
       "key": "timeofuse.voltage.3",
@@ -962,7 +1041,8 @@
       "unit": "V",
       "group": "timeofuse",
       "kind": "setting",
-      "writable": true
+      "writable": true,
+      "storage": "config"
     },
     {
       "key": "timeofuse.voltage.4",
@@ -971,7 +1051,8 @@
       "unit": "V",
       "group": "timeofuse",
       "kind": "setting",
-      "writable": true
+      "writable": true,
+      "storage": "config"
     },
     {
       "key": "timeofuse.voltage.5",
@@ -980,7 +1061,8 @@
       "unit": "V",
       "group": "timeofuse",
       "kind": "setting",
-      "writable": true
+      "writable": true,
+      "storage": "config"
     },
     {
       "key": "timeofuse.voltage.6",
@@ -989,7 +1071,8 @@
       "unit": "V",
       "group": "timeofuse",
       "kind": "setting",
-      "writable": true
+      "writable": true,
+      "storage": "config"
     },
     {
       "key": "timeofuse.soc.1",
@@ -998,7 +1081,8 @@
       "unit": "%",
       "group": "timeofuse",
       "kind": "setting",
-      "writable": true
+      "writable": true,
+      "storage": "config"
     },
     {
       "key": "timeofuse.soc.2",
@@ -1007,7 +1091,8 @@
       "unit": "%",
       "group": "timeofuse",
       "kind": "setting",
-      "writable": true
+      "writable": true,
+      "storage": "config"
     },
     {
       "key": "timeofuse.soc.3",
@@ -1016,7 +1101,8 @@
       "unit": "%",
       "group": "timeofuse",
       "kind": "setting",
-      "writable": true
+      "writable": true,
+      "storage": "config"
     },
     {
       "key": "timeofuse.soc.4",
@@ -1025,7 +1111,8 @@
       "unit": "%",
       "group": "timeofuse",
       "kind": "setting",
-      "writable": true
+      "writable": true,
+      "storage": "config"
     },
     {
       "key": "timeofuse.soc.5",
@@ -1034,7 +1121,8 @@
       "unit": "%",
       "group": "timeofuse",
       "kind": "setting",
-      "writable": true
+      "writable": true,
+      "storage": "config"
     },
     {
       "key": "timeofuse.soc.6",
@@ -1043,7 +1131,8 @@
       "unit": "%",
       "group": "timeofuse",
       "kind": "setting",
-      "writable": true
+      "writable": true,
+      "storage": "config"
     },
     {
       "key": "timeofuse.enabled.1",
@@ -1052,7 +1141,8 @@
       "unit": null,
       "group": "timeofuse",
       "kind": "setting",
-      "writable": true
+      "writable": true,
+      "storage": "config"
     },
     {
       "key": "timeofuse.enabled.2",
@@ -1061,7 +1151,8 @@
       "unit": null,
       "group": "timeofuse",
       "kind": "setting",
-      "writable": true
+      "writable": true,
+      "storage": "config"
     },
     {
       "key": "timeofuse.enabled.3",
@@ -1070,7 +1161,8 @@
       "unit": null,
       "group": "timeofuse",
       "kind": "setting",
-      "writable": true
+      "writable": true,
+      "storage": "config"
     },
     {
       "key": "timeofuse.enabled.4",
@@ -1079,7 +1171,8 @@
       "unit": null,
       "group": "timeofuse",
       "kind": "setting",
-      "writable": true
+      "writable": true,
+      "storage": "config"
     },
     {
       "key": "timeofuse.enabled.5",
@@ -1088,7 +1181,8 @@
       "unit": null,
       "group": "timeofuse",
       "kind": "setting",
-      "writable": true
+      "writable": true,
+      "storage": "config"
     },
     {
       "key": "timeofuse.enabled.6",
@@ -1097,7 +1191,8 @@
       "unit": null,
       "group": "timeofuse",
       "kind": "setting",
-      "writable": true
+      "writable": true,
+      "storage": "config"
     },
     {
       "key": "ac.ups.total_power",
@@ -1107,7 +1202,8 @@
       "group": "load",
       "kind": "measurement",
       "writable": false,
-      "role": "load.power"
+      "role": "load.power",
+      "storage": "series"
     },
     {
       "key": "ac.ups.l1.power",
@@ -1118,7 +1214,8 @@
       "kind": "measurement",
       "writable": false,
       "role": "load.phase.power",
-      "index": 1
+      "index": 1,
+      "storage": "series"
     },
     {
       "key": "ac.ups.l2.power",
@@ -1129,7 +1226,8 @@
       "kind": "measurement",
       "writable": false,
       "role": "load.phase.power",
-      "index": 2
+      "index": 2,
+      "storage": "series"
     },
     {
       "key": "ac.ups.l3.power",
@@ -1140,7 +1238,8 @@
       "kind": "measurement",
       "writable": false,
       "role": "load.phase.power",
-      "index": 3
+      "index": 3,
+      "storage": "series"
     },
     {
       "key": "ac.ups.l1.voltage",
@@ -1151,7 +1250,8 @@
       "kind": "measurement",
       "writable": false,
       "role": "load.phase.voltage",
-      "index": 1
+      "index": 1,
+      "storage": "series"
     },
     {
       "key": "ac.ups.l2.voltage",
@@ -1162,7 +1262,8 @@
       "kind": "measurement",
       "writable": false,
       "role": "load.phase.voltage",
-      "index": 2
+      "index": 2,
+      "storage": "series"
     },
     {
       "key": "ac.ups.l3.voltage",
@@ -1173,7 +1274,8 @@
       "kind": "measurement",
       "writable": false,
       "role": "load.phase.voltage",
-      "index": 3
+      "index": 3,
+      "storage": "series"
     },
     {
       "key": "ac.ups.daily_energy",
@@ -1183,7 +1285,8 @@
       "group": "load",
       "kind": "cumulative",
       "writable": false,
-      "role": "load.energy.today"
+      "role": "load.energy.today",
+      "storage": "series"
     },
     {
       "key": "ac.ups.total_energy",
@@ -1193,7 +1296,8 @@
       "group": "load",
       "kind": "cumulative",
       "writable": false,
-      "role": "load.energy.total"
+      "role": "load.energy.total",
+      "storage": "series"
     },
     {
       "key": "settings.battery.lock",
@@ -1206,7 +1310,8 @@
       "enumLabels": {
         "0": "Unlocked",
         "1": "Locked"
-      }
+      },
+      "storage": "config"
     }
   ]
 }

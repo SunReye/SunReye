@@ -241,15 +241,22 @@ export function historyPeriodRange(
 }
 
 /**
- * A metric worth offering a custom chart over: it must be numeric *and*
- * persisted as a series. The kind answers the first half — a status enum and a
- * control are not curves — and `storage` answers the second: a `config` metric
- * lives in the change-log and a `none` metric is never written at all, so a chart
- * over either plots an empty axis. Before `storage` existed the second half was
- * unanswerable and the empty plot was reachable from the UI.
+ * A metric worth offering a custom chart over: it must be numeric *and* not
+ * excluded from the timeseries table. The kind answers the first half — a status
+ * enum and a control are not curves — and `storage` answers the second: a
+ * `config` metric lives in the change-log and a `none` metric is never written at
+ * all, so a chart over either plots an empty axis. Before `storage` existed the
+ * second half was unanswerable and the empty plot was reachable from the UI.
+ *
+ * Note the test: the two *excluding* values, not `=== "series"`. A manifest from
+ * a server older than the field carries no `storage` on any metric, and demanding
+ * it made every metric unchartable — which blanks the History page rather than
+ * degrading. Absent means "this server does not distinguish", which for an older
+ * server is also the truth: it still writes settings to the hypertable, so
+ * charting them there works.
  */
 export function isChartable(metric: ManifestMetric): boolean {
-  if (metric.storage !== "series") return false;
+  if (metric.storage === "config" || metric.storage === "none") return false;
   // A state is not a curve: an enum plotted as a line is a meaningless ramp
   // between arbitrary codes, whether it is reported (`status`) or written
   // (a `setting` like the work mode). `enumLabels` is the tell either way.
