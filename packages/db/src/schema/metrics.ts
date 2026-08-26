@@ -1,4 +1,4 @@
-import { doublePrecision, index, pgTable, text, timestamp } from "drizzle-orm/pg-core";
+import { doublePrecision, index, integer, pgTable, text, timestamp } from "drizzle-orm/pg-core";
 
 /**
  * The four columns a reading is: when, from which device, which metric, what
@@ -26,14 +26,46 @@ const readingColumns = () => ({
  * continuous-aggregate rollups by the raw SQL in `src/timescale.sql`; drizzle
  * only manages the column shape. Apply via `bun run db:timescale`.
  */
-export const metricsRaw = pgTable("metrics_raw", readingColumns(), (t) => [
-  index("metrics_raw_metric_time_idx").on(t.inverterId, t.metric, t.time),
-  // Time-only index for pure time-range scans (e.g. /api/history). Owned by
-  // drizzle so `push` doesn't try to drop it — TimescaleDB's `create_hypertable`
-  // is configured with `create_default_indexes => FALSE` precisely so this is
-  // the single source of truth for the time index (see src/timescale.sql).
-  index("metrics_raw_time_idx").on(t.time.desc()),
-]);
+export const metricsRaw = pgTable(
+  "metrics_raw",
+  {
+    ...readingColumns(),
+    /**
+     * How long this row's `value` was held, in milliseconds, starting at the
+     * row's own `time` — the weight the weighted continuous aggregates
+     * (`weighted_*_rollups`) multiply `value` by.
+     *
+     * It exists because the plain `avg(value)` in the original rollups relies on
+     * a property a change-only writer destroys: that every stored sample stands
+     * for an equal slice of time. Store only *changes* and a signal flat at 0
+     * for 50 minutes contributes one row while a 10-minute excursion
+     * contributes hundreds, so the unweighted mean reports something close to
+     * the excursion. That error is largest exactly where the data matters most
+     * — `grid.import_power`, `battery.power`, every `*.ct.*`. See #116.
+     *
+     * **Nullable with no default, on purpose.** `NULL` means "this row predates
+     * weighting", which is not a duration and must not be spelled as one: a
+     * default of `0` would be a zero-width interval (a row that weighs nothing)
+     * and a default of `1` would claim a 1 ms hold nothing measured. The
+     * aggregates read `coalesce(dur_ms, 1)`, so every NULL row carries the same
+     * weight as its neighbours and the weighted mean is *exactly* the old plain
+     * mean over a complete series. That equality is what makes adding the column
+     * safe ahead of the writer that fills it (#117).
+     *
+     * Deliberately not on `metrics_config_log`: an enum, a schedule slot or a
+     * current limit has no time-weighted mean, and nothing reads their rollups.
+     */
+    durMs: integer("dur_ms"),
+  },
+  (t) => [
+    index("metrics_raw_metric_time_idx").on(t.inverterId, t.metric, t.time),
+    // Time-only index for pure time-range scans (e.g. /api/history). Owned by
+    // drizzle so `push` doesn't try to drop it — TimescaleDB's
+    // `create_hypertable` is configured with `create_default_indexes => FALSE`
+    // precisely so this is the single source of truth for the time index.
+    index("metrics_raw_time_idx").on(t.time.desc()),
+  ],
+);
 
 /**
  * Configuration-register change-log: one row when a value the user (or the
