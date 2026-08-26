@@ -27,13 +27,27 @@ answers every `/api/*` call with `page.route` and serves the multiplexed live so
 (`e2e/fixtures/manifest.json`). A run is one command with no setup:
 
 ```bash
-bun run e2e:install   # once: downloads Chromium
-bun run e2e
+bun run e2e:install          # once: downloads Chromium
+bun run e2e                  # the suite
+bun run e2e e2e/x.spec.ts    # one spec — prefer this while iterating
+bun run e2e -- --shard=1/4   # what CI runs, four ways in parallel
 ```
 
-The measuring instruments are all in `e2e/support/perf.ts` — `countRequests`, `measureScroll`,
-`countChartMounts`, `countTextMutations`, `throttleCpu` — so no spec writes its own
-`page.evaluate` and two specs cannot disagree about what a long task is.
+The suite runs **fully parallel**: every file, and every test within a file, can land on a
+different worker. CI shards it across four runners. Nothing here holds cross-file state — the
+backend is faked per page — so any split is valid.
+
+**This layer no longer measures performance.** It used to: frame rates, mount cost and CPU-throttled
+scroll sweeps, which is why it ran one worker with no sharding — a measured fps is only comparable
+when nothing else is running. Those specs cost ten minutes a run and were removed. What is left
+asserts what a contended machine cannot change: layout, request counts, mount counts, socket
+lifecycle.
+
+If you add a timing budget back, it needs a serial home of its own; under these settings it would
+measure the other workers. The instruments are still in `e2e/support/perf.ts` — `countRequests`,
+`countChartMounts`, `countTextMutations`, `measureScroll`, `throttleCpu` — so no spec writes its own
+`page.evaluate`, and the counting ones (requests, mounts, mutations) are contention-independent and
+safe to use as they are.
 
 ## Which layer does this test belong in
 
@@ -110,9 +124,11 @@ Four things worth knowing before you write one:
 - **Don't wait for a thing your assertion is about.** If the spec's subject is the live socket
   staying up, `await backend.waitForLive()` turns the regression into a setup timeout instead of
   a number. Poll the counter you are about to assert on.
-- **Numbers are ratios, never floors.** This browser composites in software.
-  `e2e/overview-baseline.spec.ts` is the control group; compare against it rather than pinning
-  an fps.
+- **Don't pin a number that contention can move.** This browser composites in software and the
+  suite runs parallel and sharded, so an fps or a millisecond floor measures the runner, not the
+  app. Count things instead — requests, mounts, mutations — which come out the same however loaded
+  the machine is. (The control-group spec this bullet used to point at was one of the measurement
+  specs that were removed.)
 
 And the rule that outranks all of them: **prove the spec discriminates.** Apply the exact
 regression it names, watch it go red, restore. A regression test nobody has watched fail is a

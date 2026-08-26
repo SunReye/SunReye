@@ -38,7 +38,7 @@
     "docker:up": "docker compose up -d --build",
     "docker:down": "docker compose down",
     "docker:logs": "docker compose logs -f",
-    "test": "SKIP_ENV_VALIDATION=1 bun test apps/*/src packages/*/src ./scripts",
+    "test": "SKIP_ENV_VALIDATION=1 bun test --parallel apps/*/src packages/*/src ./scripts",
     "test:coverage": "SKIP_ENV_VALIDATION=1 bun test --coverage --coverage-reporter=lcov --coverage-reporter=text --coverage-dir=coverage apps/*/src packages/*/src ./scripts",
     "test:required": "bun scripts/require-tests.ts",
     "test:floor": "bun scripts/coverage-floor.ts coverage/lcov.info",
@@ -87,7 +87,7 @@
       "sh -c 'cd apps/web && bun run i18n:lint'"
     ]
   },
-  "packageManager": "bun@1.3.13",
+  "packageManager": "bun@1.4.0",
   "patchedDependencies": {
     "svelte@5.56.4": "patches/svelte@5.56.4.patch",
     "layerchart@2.2.0": "patches/layerchart@2.2.0.patch"
