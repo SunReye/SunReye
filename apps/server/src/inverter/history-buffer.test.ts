@@ -34,7 +34,7 @@ const rows = (count: number): MetricRow[] => Array.from({ length: count }, (_, i
 
 // --- injected doubles ------------------------------------------------------
 
-/** Batches handed to `store.insert(table).values(...)`, in commit order. */
+/** Batches handed to the injected `commit`, in commit order. */
 let inserted: MetricRow[][] = [];
 /** When set, the next transaction rejects with this message, then clears itself. */
 let insertError: string | null = null;
@@ -43,19 +43,15 @@ let insertGate: { promise: Promise<void>; release: () => void } | null = null;
 /** Failure lines the buffer logged, in order. */
 let logged: { template: string; values: Record<string, unknown> }[] = [];
 
-const store = {
-  insert: () => ({
-    values: async (batch: MetricRow[]) => {
-      if (insertGate) await insertGate.promise;
-      if (insertError) {
-        const message = insertError;
-        insertError = null;
-        throw new Error(message);
-      }
-      inserted.push(batch);
-    },
-  }),
-} as unknown as Parameters<typeof createHistoryBuffer>[0]["store"];
+const commit = async (batch: MetricRow[]): Promise<void> => {
+  if (insertGate) await insertGate.promise;
+  if (insertError) {
+    const message = insertError;
+    insertError = null;
+    throw new Error(message);
+  }
+  inserted.push(batch);
+};
 
 const logger = {
   error: (template: string, values: Record<string, unknown> = {}) => {
@@ -63,11 +59,8 @@ const logger = {
   },
 };
 
-/** The table is an opaque token to the buffer — it only forwards it to the store. */
-const table = {} as unknown as Parameters<typeof createHistoryBuffer>[0]["table"];
-
-const make = (maxPending?: number): HistoryBuffer =>
-  createHistoryBuffer({ store, table, logger, maxPending });
+const make = (maxPending?: number): HistoryBuffer<MetricRow> =>
+  createHistoryBuffer({ commit, logger, maxPending });
 
 beforeEach(() => {
   inserted = [];

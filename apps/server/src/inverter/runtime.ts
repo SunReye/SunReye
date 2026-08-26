@@ -26,7 +26,7 @@ import { getInverterConfig, getMqttConfig } from "../settings/config";
 import type { ControlStore } from "./control-expr";
 import { dbControlStore } from "./control-store";
 import { createControlWriter } from "./control-writer";
-import { type HistoryBuffer, createHistoryBuffer } from "./history-buffer";
+import { type HistoryBuffer, type MetricRow, createHistoryBuffer } from "./history-buffer";
 import { type JobScheduler, createJobScheduler } from "./job-scheduler";
 import { evccOnLoadSample } from "../evcc/evcc";
 import {
@@ -96,7 +96,7 @@ export interface RuntimeDeps {
    * only collaborator the runtime holds mutable buffer state for, lifted out so
    * it owns its own cap/drop/re-queue boundaries and is tested without a runtime.
    */
-  history?: HistoryBuffer;
+  history?: HistoryBuffer<MetricRow>;
   /**
    * The background job scheduler. Defaults to one arming the process globals; it
    * owns the arm/teardown of the flush, forecast, learn and price schedules (and
@@ -130,7 +130,8 @@ export interface RuntimeDeps {
 // fallow-ignore-next-line unused-export -- the injection seam exercised by runtime.test.ts (which builds its own instance with a fake history buffer); test files aren't traced as consumers
 export function createRuntime(deps: RuntimeDeps = {}) {
   const historyBuffer =
-    deps.history ?? createHistoryBuffer({ store: db, table: metricsRaw, logger });
+    deps.history ??
+    createHistoryBuffer({ commit: (rows) => db.insert(metricsRaw).values(rows), logger });
   const scheduler = deps.scheduler ?? createJobScheduler();
   const onLoadSample = deps.onLoadSample ?? evccOnLoadSample;
   let ctx: ProfileContext | null = null;

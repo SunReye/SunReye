@@ -12,15 +12,15 @@
  *
  * The buffer owns no timer: the runtime arms the flush cadence and calls
  * {@link HistoryBuffer.flush} on the tick, before a source swap, and at
- * shutdown. Every collaborator (the insert target, the logger) is injected, so
+ * shutdown. Every collaborator (the commit, the logger) is injected, so
  * a second instance shares nothing and a test drives it against in-memory
  * doubles.
  */
 
-// Type-only `import()` queries, inlined into the public signatures below: the
-// buffer pulls in no runtime dependency on the db package — the store and its
-// table are injected, so the module stays a pure, self-contained collaborator
-// (and a test needs no `mock.module`).
+// Type-only `import()` query, inlined into the public signature below: the
+// buffer pulls in no runtime dependency on the db package — the commit is
+// injected, so the module stays a pure, self-contained collaborator (and a test
+// needs no `mock.module`).
 
 /** One buffered history row (long form: one metric per tick). */
 export type MetricRow = (typeof import("@SunReye/db/schema/metrics").metricsRaw)["$inferInsert"];
@@ -30,11 +30,16 @@ export interface HistoryLogger {
   error(template: string, values?: Record<string, unknown>): void;
 }
 
-export interface HistoryBufferDeps {
-  /** The drizzle db whose `insert(table).values(rows)` commits a batch. */
-  store: Pick<typeof import("@SunReye/db").db, "insert">;
-  /** The metrics table the batch is written to. */
-  table: typeof import("@SunReye/db/schema/metrics").metricsRaw;
+export interface HistoryBufferDeps<Row> {
+  /**
+   * Write one batch in a single transaction. A callback rather than a
+   * `(store, table)` pair: the buffer never needed the drizzle handle, only
+   * "commit these rows", and naming the table in its own signature is what tied
+   * it to one table. Two buffers over two tables now differ by their callback
+   * instead of by a copy of this file — the timeseries rows and the config
+   * change-log have the same batching problem and want the same solution.
+   */
+  commit(rows: Row[]): Promise<unknown>;
   /** Structured logger for the one flush-failure line. */
   logger: HistoryLogger;
   /**
@@ -44,9 +49,9 @@ export interface HistoryBufferDeps {
   maxPending?: number;
 }
 
-export interface HistoryBuffer {
+export interface HistoryBuffer<Row = MetricRow> {
   /** Queue rows for the next flush; eager-flush if the buffer is at its cap. */
-  enqueue(rows: MetricRow[]): void;
+  enqueue(rows: Row[]): void;
   /** Write the buffered rows in a single transaction (no-op when empty/in-flight). */
   flush(): Promise<void>;
   /** How many rows are currently buffered. */
@@ -57,13 +62,13 @@ export interface HistoryBuffer {
  * Build a history write buffer. Every mutable field is closure-local — no
  * module-level state, so a second instance is independent.
  */
-export function createHistoryBuffer(deps: HistoryBufferDeps): HistoryBuffer {
-  const { store, table, logger } = deps;
+export function createHistoryBuffer<Row>(deps: HistoryBufferDeps<Row>): HistoryBuffer<Row> {
+  const { commit, logger } = deps;
   const maxPending = deps.maxPending ?? 100_000;
-  let pending: MetricRow[] = [];
+  let pending: Row[] = [];
   let flushing = false;
 
-  function enqueue(rows: MetricRow[]): void {
+  function enqueue(rows: Row[]): void {
     for (const row of rows) pending.push(row);
     // Guards against a mis-set (very long) flush interval or a stalled flush
     // producing one enormous transaction; the timer handles the normal path.
@@ -76,7 +81,7 @@ export function createHistoryBuffer(deps: HistoryBufferDeps): HistoryBuffer {
     const batch = pending;
     pending = [];
     try {
-      await store.insert(table).values(batch);
+      await commit(batch);
     } catch (error) {
       // Re-queue (oldest first) so a transient DB blip doesn't drop history, but
       // never past the cap — trim the oldest if we're over.
