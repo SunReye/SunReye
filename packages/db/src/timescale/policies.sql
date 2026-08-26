@@ -76,19 +76,34 @@ SELECT remove_compression_policy('metrics_raw', if_exists => TRUE);
 SELECT add_compression_policy('metrics_raw', INTERVAL '2 hours', if_not_exists => TRUE);
 --> statement-breakpoint
 
--- Retention (cleanup). Drop raw 1 Hz rows after 7 days — the feasible floor.
--- It must comfortably exceed the widest continuous-aggregate refresh window
--- (daily_rollups start_offset = 3 days) so neither the refresh nor the
--- real-time union ever reaches a chunk retention has dropped; 7d leaves margin.
--- By 7 days rows are compressed (>2h) and fully materialized into every rollup,
--- so nothing that reads the aggregates loses data. 7d = ~1 day uncompressed
--- (chunks are 1 day wide, so the current one is always hot) + ~6 days
--- compressed; long-horizon history lives in the rollups, not here. Shorten
--- further per-inverter as inverters are added.
+-- Retention (cleanup). Raw was 7 days: "the feasible floor", derived when a day
+-- of raw cost 5-9 GB uncompressed and nothing thinned it. Both halves of that
+-- premise are gone — compression is measured at 55x (4.1 B/row) and the writer
+-- stores changes rather than samples — so 7 days was throwing away
+-- second-resolution replay to save single-digit megabytes.
+--
+-- Re-derived at **90 days**, which is not a compromise between two numbers but
+-- the answer to two constraints:
+--
+--   * It must exceed the widest continuous-aggregate refresh window
+--     (daily_rollups start_offset = 3 days), so neither a refresh nor the
+--     real-time union ever reaches a chunk retention has dropped. 90d is ample.
+--   * It must not EXCEED the shortest aggregate retention (minute_rollups, 90
+--     days). Past that, a time range exists that only raw covers — and the
+--     addon's default backup excludes raw precisely because raw is fully
+--     materialized into the rollups. `dump.sh` now derives that from these two
+--     policies rather than assuming it, so raw outliving a rollup makes the
+--     default backup include raw instead of silently dropping the range. Keeping
+--     the two equal keeps backups small AND lossless.
+--
+-- Going further (the 4-year raw tier the storage decision sketches) is therefore
+-- gated on the minute tier, not on footprint: either minute_rollups' retention
+-- grows with it, or minute-resolution reads move to raw and that tier is
+-- dropped. Neither is this change.
 SELECT remove_retention_policy('metrics_raw', if_exists => TRUE);
 --> statement-breakpoint
 
-SELECT add_retention_policy('metrics_raw', INTERVAL '7 days', if_not_exists => TRUE);
+SELECT add_retention_policy('metrics_raw', INTERVAL '90 days', if_not_exists => TRUE);
 --> statement-breakpoint
 
 -- Rollup compression, every tier (#134). Before this, policies.sql armed
@@ -148,10 +163,17 @@ SELECT add_compression_policy('weighted_daily_rollups', INTERVAL '30 days', if_n
 -- (not from a coarser rollup), so these policies are independent and drop only
 -- their own already-materialized buckets. daily_rollups has no policy — kept
 -- forever as the cheap long-horizon record.
+--
+-- Hourly goes from 730 days to 10 years. It is the tier every long-horizon chart
+-- reads, and at ~4.9 kB/metric/year compressed the whole extension costs tens of
+-- megabytes per device — the 2-year figure was inherited from a budget written
+-- before the compression was measured. Minute stays at 90 days: it is the most
+-- expensive tier per day of coverage (15x fewer rows than raw, each ~52x wider),
+-- and it is also the ceiling on raw retention above.
 SELECT add_retention_policy('minute_rollups', INTERVAL '90 days', if_not_exists => TRUE);
 --> statement-breakpoint
 
-SELECT add_retention_policy('hourly_rollups', INTERVAL '730 days', if_not_exists => TRUE);
+SELECT add_retention_policy('hourly_rollups', INTERVAL '3650 days', if_not_exists => TRUE);
 --> statement-breakpoint
 
 -- The weighted tiers mirror them, so the two sources age out together and the
@@ -160,4 +182,4 @@ SELECT add_retention_policy('hourly_rollups', INTERVAL '730 days', if_not_exists
 SELECT add_retention_policy('weighted_minute_rollups', INTERVAL '90 days', if_not_exists => TRUE);
 --> statement-breakpoint
 
-SELECT add_retention_policy('weighted_hourly_rollups', INTERVAL '730 days', if_not_exists => TRUE);
+SELECT add_retention_policy('weighted_hourly_rollups', INTERVAL '3650 days', if_not_exists => TRUE);

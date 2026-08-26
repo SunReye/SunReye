@@ -9,6 +9,8 @@ import {
   parseComposePgFlags,
   parsePgConf,
   removesBeforeAdding,
+  retentionDays,
+  intervalDays,
   checkStorageTuning,
 } from "./storage-tuning";
 
@@ -567,5 +569,113 @@ describe("checkStorageTuning — rollup compression (#134)", () => {
     const code = checkStorageTuning({ read, log: () => {}, error: (l) => errors.push(l) });
     expect(errors).toEqual([]);
     expect(code).toBe(0);
+  });
+});
+
+describe("retentionDays", () => {
+  test("reads each target's interval in days", () => {
+    expect(
+      retentionDays(
+        [
+          "SELECT add_retention_policy('metrics_raw', INTERVAL '90 days', if_not_exists => TRUE);",
+          "--> statement-breakpoint",
+          "SELECT add_retention_policy('hourly_rollups', INTERVAL '3650 days', if_not_exists => TRUE);",
+        ].join("\n"),
+      ),
+    ).toEqual({ metrics_raw: 90, hourly_rollups: 3650 });
+  });
+
+  test("a target with no policy has no entry — that is what 'kept forever' means", () => {
+    // `daily_rollups` deliberately has none. An entry of Infinity would invite a
+    // caller to compare it numerically and get a nonsense answer.
+    expect(
+      retentionDays("SELECT add_retention_policy('minute_rollups', INTERVAL '90 days');"),
+    ).not.toHaveProperty("daily_rollups");
+  });
+
+  test("a remove drops the earlier declaration, so re-running the file converges", () => {
+    const sql = [
+      "SELECT add_retention_policy('metrics_raw', INTERVAL '7 days');",
+      "--> statement-breakpoint",
+      "SELECT remove_retention_policy('metrics_raw', if_exists => TRUE);",
+      "--> statement-breakpoint",
+      "SELECT add_retention_policy('metrics_raw', INTERVAL '90 days');",
+    ].join("\n");
+    expect(retentionDays(sql)).toEqual({ metrics_raw: 90 });
+  });
+
+  test("converts every interval unit the policies could use", () => {
+    expect(intervalDays("90 days")).toBe(90);
+    expect(intervalDays("2 hours")).toBeCloseTo(2 / 24, 8);
+    expect(intervalDays("30 minutes")).toBeCloseTo(30 / 1440, 8);
+    expect(intervalDays("2 weeks")).toBe(14);
+    expect(intervalDays("1 year")).toBe(365);
+  });
+
+  test("an interval it cannot read is NaN, not a guess", () => {
+    // A silent 0 would make a broken policy look like the tightest possible one.
+    expect(Number.isNaN(intervalDays("a fortnight"))).toBe(true);
+    expect(Number.isNaN(intervalDays(""))).toBe(true);
+  });
+});
+
+describe("the retention invariant", () => {
+  /**
+   * `checkStorageTuning` over the SHIPPED policy file, with one retention
+   * interval rewritten — so the invariant is asserted against the real file
+   * rather than against a fixture that could drift away from it.
+   */
+  const withRetention = (target: string, interval: string) => {
+    const rewritten = policies.replace(
+      new RegExp(`add_retention_policy\\('${target}', INTERVAL '[^']+'`),
+      `add_retention_policy('${target}', INTERVAL '${interval}'`,
+    );
+    return runShipped(rewritten);
+  };
+
+  const runShipped = (policySql: string) => {
+    const errors: string[] = [];
+    const code = checkStorageTuning({
+      read: (path) =>
+        path.endsWith("policies.sql")
+          ? policySql
+          : path.endsWith(".sql")
+            ? read(path)
+            : path.includes("init-postgres")
+              ? "checkpoint_timeout = '2h'\nwal_compression = 'zstd'\n"
+              : "      - checkpoint_timeout=2h\n      - wal_compression=zstd\n",
+      log: () => {},
+      error: (line) => errors.push(line),
+    });
+    return { code, errors };
+  };
+
+  test("the shipped policies satisfy it", () => {
+    expect(runShipped(policies)).toEqual({ code: 0, errors: [] });
+  });
+
+  test("raw outliving the shortest rollup fails, naming both", () => {
+    // This is the state in which the addon's default backup silently stops
+    // covering a time range — the reason dump.sh derives the same rule.
+    const { code, errors } = withRetention("metrics_raw", "1460 days");
+    expect(code).toBe(1);
+    expect(errors.join("\n")).toContain("minute_rollups");
+    expect(errors.join("\n")).toContain("1460");
+  });
+
+  test("raw inside the widest refresh window fails", () => {
+    // A refresh would reach for a chunk retention has already dropped.
+    const { code, errors } = withRetention("metrics_raw", "2 days");
+    expect(code).toBe(1);
+    expect(errors.join("\n")).toContain("refresh window");
+  });
+
+  test("raw equal to the shortest rollup retention is allowed", () => {
+    // The boundary the shipped shape sits on: equal is still fully materialized.
+    expect(withRetention("metrics_raw", "90 days").code).toBe(0);
+  });
+
+  test("shortening a rollup below raw fails too — the invariant is symmetric", () => {
+    expect(withRetention("minute_rollups", "30 days").code).toBe(1);
   });
 });

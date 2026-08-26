@@ -37,6 +37,13 @@ const ADD_COMPRESSION =
 const REMOVE_COMPRESSION =
   /(?:remove_compression_policy|remove_columnstore_policy)\s*\(\s*'([^']+)'/i;
 const ADD_REFRESH = /add_continuous_aggregate_policy\s*\(\s*'([^']+)'/i;
+const ADD_RETENTION =
+  /add_retention_policy\s*\(\s*'([^']+)'\s*,\s*(?:drop_after\s*=>\s*)?INTERVAL\s*'([^']+)'/i;
+const REMOVE_RETENTION = /remove_retention_policy\s*\(\s*'([^']+)'/i;
+
+/** `daily_rollups`' refresh `start_offset` — the widest window any policy uses. */
+const WIDEST_REFRESH_DAYS = 3;
+
 const SET_COMPRESS = /ALTER\s+(?:MATERIALIZED\s+VIEW|TABLE)\s+(\w+)\s+SET\s*\(([^)]*)\)/i;
 const SEGMENTBY = /compress_segmentby\s*=\s*'([^']*)'/i;
 
@@ -76,6 +83,37 @@ export function compressSegmentBy(sql: string): Record<string, string> {
     byTarget[set[1]] = SEGMENTBY.exec(set[2])?.[1] ?? "";
   }
   return byTarget;
+}
+
+/**
+ * The retention each target ends up with, in days. `Infinity` is never returned:
+ * a target with no policy simply has no entry, which is what "kept forever"
+ * means here.
+ */
+export function retentionDays(sql: string): Record<string, number> {
+  const byTarget: Record<string, number> = {};
+  for (const statement of statements(sql)) {
+    const removed = REMOVE_RETENTION.exec(statement);
+    if (removed?.[1]) delete byTarget[removed[1]];
+    const added = ADD_RETENTION.exec(statement);
+    if (added?.[1] && added[2]) byTarget[added[1]] = intervalDays(added[2]);
+  }
+  return byTarget;
+}
+
+/** `'90 days'`, `'2 hours'`, `'3 mons'` as days. NaN for anything unrecognised. */
+export function intervalDays(interval: string): number {
+  const match = /^\s*(\d+(?:\.\d+)?)\s*(\w+)/.exec(interval);
+  if (!match?.[1] || !match[2]) return Number.NaN;
+  const n = Number(match[1]);
+  const unit = match[2].toLowerCase();
+  if (unit.startsWith("day")) return n;
+  if (unit.startsWith("hour")) return n / 24;
+  if (unit.startsWith("min")) return n / 1440;
+  if (unit.startsWith("week")) return n * 7;
+  if (unit.startsWith("mon")) return n * 30;
+  if (unit.startsWith("year")) return n * 365;
+  return Number.NaN;
 }
 
 /** Continuous aggregates the file arms a refresh policy for, in order. */
@@ -231,6 +269,47 @@ function settingsProblems(where: string, settings: Record<string, string>): stri
 }
 
 /** #134: the segmentby, the policy that makes it take effect, and the refresh. */
+/**
+ * The retention invariant the backup default rests on.
+ *
+ * `dump.sh` excludes raw chunk data by default because raw is fully materialized
+ * into the rollups. That is true exactly while raw's retention does not exceed
+ * the shortest aggregate retention — past that, a time range exists that only
+ * raw covers. The script derives the same rule from the live database, but a
+ * policy edit that breaks it should fail CI rather than wait to be noticed as a
+ * one-line warning in a backup log.
+ *
+ * Also checked: raw must comfortably exceed the widest refresh window
+ * (daily_rollups' 3-day `start_offset`), or a refresh reaches for a chunk
+ * retention has dropped.
+ */
+function retentionProblems(io: CheckIO): string[] {
+  const days = retentionDays(io.read(POLICY_SQL));
+  const raw = days["metrics_raw"];
+  const problems: string[] = [];
+  if (raw === undefined) {
+    // Not a failure: raw kept forever is a deliberate shape. But the backup
+    // default then has to include raw, which dump.sh handles.
+    return problems;
+  }
+  if (!Number.isFinite(raw)) {
+    problems.push("metrics_raw retention interval is unparseable in policies.sql.");
+    return problems;
+  }
+  if (raw <= WIDEST_REFRESH_DAYS) {
+    problems.push(
+      `metrics_raw retention is ${raw} day(s), inside the widest continuous-aggregate refresh window (${WIDEST_REFRESH_DAYS} days) — a refresh would reach a chunk retention has dropped.`,
+    );
+  }
+  for (const [target, retention] of Object.entries(days)) {
+    if (target === "metrics_raw" || !(retention < raw)) continue;
+    problems.push(
+      `metrics_raw is kept ${raw} day(s) but ${target} only ${retention} — raw then covers a range the rollups do not, and the addon's default backup excludes raw (#121, #133).`,
+    );
+  }
+  return problems;
+}
+
 function rollupProblems(io: CheckIO): string[] {
   const structural = ROLLUP_STRUCTURAL_SQL.map((path) => ({ path, sql: io.read(path) }));
   const segmentby = Object.assign({}, ...structural.map((f) => compressSegmentBy(f.sql))) as Record<
@@ -276,6 +355,7 @@ export function checkStorageTuning(io: CheckIO): number {
   const problems = [
     ...policyProblems(io),
     ...rollupProblems(io),
+    ...retentionProblems(io),
     ...settingsProblems(ADDON_CONF, parsePgConf(io.read(ADDON_CONF))),
     ...settingsProblems("docker-compose.yml", parseComposePgFlags(io.read("docker-compose.yml"))),
     ...settingsProblems(

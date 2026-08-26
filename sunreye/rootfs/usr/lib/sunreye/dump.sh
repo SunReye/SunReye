@@ -12,8 +12,9 @@
 # silently stops covering years of history — a correct comment guarding a default
 # that fails quietly. So it is no longer a comment: the retention policy is read
 # from the live database and the exclusion is only applied while it still holds.
-# Unreadable, absent, or longer than SAFE_EXCLUDE_MAX_DAYS means the data is
-# INCLUDED and the reason is logged. A backup tool must fail toward keeping data.
+# Raw outliving any aggregate built from it — or either retention being
+# unreadable — means the data is INCLUDED and the reason is logged. A backup tool
+# must fail toward keeping data.
 #
 # Restore with: pg_restore -d "$DATABASE_URL" --no-owner <file>
 # (run `SELECT timescaledb_pre_restore();` / `timescaledb_post_restore();`
@@ -23,32 +24,44 @@ set -euo pipefail
 name="$1"
 mkdir -p /data/backups
 
-# The longest metrics_raw retention for which "fully materialized into the
-# rollups" is still true. The widest continuous-aggregate refresh window is 3
-# days, so 30 leaves a large margin while rejecting anything that is a history
-# tier in its own right.
-SAFE_EXCLUDE_MAX_DAYS=30
-
 # Whether raw chunk data can be excluded without losing history that lives
-# nowhere else. Argument is the retention in days, `-1` for "no policy", or
-# anything unparseable when the query failed. Only a finite window inside the
-# ceiling is safe; every other answer, including a failure to ask, is not.
+# nowhere else — derived, not a magic number.
+#
+# Excluding raw is safe exactly while raw is "fully materialized into the
+# rollups": every raw row's bucket must still exist in every aggregate built from
+# it. That is true iff raw's retention is FINITE and no coarser tier drops its
+# buckets sooner. If raw outlives a rollup tier, there is a time range only raw
+# covers, and excluding it drops that range from the backup — silently, since the
+# dump is still smaller than a full one.
+#
+# Arguments are days: raw retention, then the SHORTEST retention among the
+# aggregates. `-1` means "no policy" on either side — for raw that is "kept
+# forever" and is never safe to exclude; for the aggregates it means every tier
+# is kept forever, which is always safe.
+#
+# What `backup_full: false` still gives up is *resolution* on restore, not
+# coverage: the rollups keep the span, at their own bucket widths. That is the
+# flag's whole purpose.
 safe_to_exclude_raw() {
-    local days="$1"
-    case "$days" in
-        '' | *[!0-9.-]*) return 1 ;;
-    esac
-    awk -v d="$days" -v max="$SAFE_EXCLUDE_MAX_DAYS" \
-        'BEGIN { exit !(d >= 0 && d <= max) }'
+    local raw="$1" rollups="$2" arg
+    # Each argument on its own: concatenating them would let an empty raw hide
+    # behind a numeric rollup value, and awk reads an empty string as 0.
+    for arg in "$raw" "$rollups"; do
+        case "$arg" in
+            '' | *[!0-9.-]*) return 1 ;;
+        esac
+    done
+    awk -v raw="$raw" -v roll="$rollups" \
+        'BEGIN { exit !(raw >= 0 && (roll < 0 || raw <= roll)) }'
 }
 
 exclude_args=()
 raw_retention_days=""
+rollup_retention_days=""
 if ! bashio::config.true 'backup_full'; then
-    # Days of metrics_raw retention, from the policy itself rather than from an
-    # assumption: -1 when no policy exists (raw is kept forever), empty when the
-    # query could not run.
-    raw_retention_days="$(psql -X -d "$DATABASE_URL" -tAc \
+    # Both retentions in days, from the policies themselves rather than from an
+    # assumption: `-1` where no policy exists, empty when the query could not run.
+    retentions="$(psql -X -d "$DATABASE_URL" -tAc \
         "SELECT coalesce(
                   extract(epoch FROM (
                     SELECT (config->>'drop_after')::interval
@@ -57,17 +70,27 @@ if ! bashio::config.true 'backup_full'; then
                        AND hypertable_name = 'metrics_raw'
                      LIMIT 1
                   )) / 86400,
-                  -1)" \
+                  -1)
+           || ' ' ||
+           coalesce((
+             SELECT min(extract(epoch FROM (config->>'drop_after')::interval)) / 86400
+               FROM timescaledb_information.jobs
+              WHERE proc_name = 'policy_retention'
+                AND hypertable_name <> 'metrics_raw'
+           ), -1)" \
         2>/dev/null || true)"
-    raw_retention_days="$(echo "$raw_retention_days" | tr -d '[:space:]')"
+    raw_retention_days="$(echo "$retentions" | awk '{ print $1 }' | tr -d '[:space:]')"
+    rollup_retention_days="$(echo "$retentions" | awk '{ print $2 }' | tr -d '[:space:]')"
 fi
 
-if ! bashio::config.true 'backup_full' && ! safe_to_exclude_raw "$raw_retention_days"; then
+if ! bashio::config.true 'backup_full' &&
+    ! safe_to_exclude_raw "$raw_retention_days" "$rollup_retention_days"; then
     bashio::log.warning \
-        "metrics_raw retention is '${raw_retention_days:-unreadable}' day(s), past the ${SAFE_EXCLUDE_MAX_DAYS}-day ceiling for treating it as a materialized window: raw chunk data is INCLUDED in this backup despite backup_full: false, because excluding it would drop history that lives nowhere else."
+        "metrics_raw retention is '${raw_retention_days:-unreadable}' day(s) against a shortest rollup retention of '${rollup_retention_days:-unreadable}': raw is no longer fully materialized into the rollups, so its chunk data is INCLUDED in this backup despite backup_full: false — excluding it would drop a time range that lives nowhere else."
 fi
 
-if ! bashio::config.true 'backup_full' && safe_to_exclude_raw "$raw_retention_days"; then
+if ! bashio::config.true 'backup_full' &&
+    safe_to_exclude_raw "$raw_retention_days" "$rollup_retention_days"; then
     # Resolve the raw hypertable's chunk tables dynamically — their
     # _timescaledb_internal names encode a hypertable id we can't hardcode.
     #
