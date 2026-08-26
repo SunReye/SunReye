@@ -41,6 +41,7 @@ export const FAMILY_ANCHOR_ROLES = {
   pv: "pv.total.power",
   grid: "grid.power",
   load: "load.power",
+  backup: "backup.power",
 } as const satisfies Record<string, CanonicalRole>;
 
 /**

@@ -191,7 +191,11 @@ const SUBSYSTEMS: Record<SubsystemKey, string> = {
   battery: "battery.",
   grid: "grid.",
   generator: "generator.",
-  backupLoad: "load.",
+  // Not `load.`: house consumption is measured by grid-tied plants that have no
+  // backup output whatsoever. The output is either declared
+  // (`declares.backupOutput`) or metered as its own subsystem — see
+  // `ProfileDeclarations`.
+  backupLoad: "backup.",
 };
 
 /**
@@ -210,7 +214,9 @@ export function deriveCapabilities(profile: InverterProfile): InverterCapabiliti
     phases: Math.max(1, countIndices(metrics, "grid.phase.voltage")),
     grid: has("grid"),
     generator: has("generator"),
-    backupLoad: has("backupLoad"),
+    // A declaration is a statement about the hardware and wins over the metric
+    // set — including an explicit `false` on a profile that meters `backup.*`.
+    backupLoad: profile.declares?.backupOutput ?? has("backupLoad"),
     features,
     controls: metrics.filter((m) => m.access === "rw").map((m) => m.key),
   };

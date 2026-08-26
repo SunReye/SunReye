@@ -172,10 +172,24 @@ describe("deriveCapabilities — subsystem presence", () => {
     ).toBe(true);
   });
 
-  test("backupLoad is true when any load.* role is present", () => {
-    expect(deriveCapabilities(profile([m({ key: "l", role: "load.power" })])).backupLoad).toBe(
+  test("backupLoad is true when any backup.* role is present", () => {
+    expect(deriveCapabilities(profile([m({ key: "b", role: "backup.power" })])).backupLoad).toBe(
       true,
     );
+  });
+
+  test("a house-load role alone never claims a backup output", () => {
+    // The grid-tied case: `load.power` is a consumption meter, not a UPS. The
+    // output is a declaration, not an inference — see `ProfileDeclarations`.
+    expect(deriveCapabilities(profile([m({ key: "l", role: "load.power" })])).backupLoad).toBe(
+      false,
+    );
+  });
+
+  test("a declared backup output needs no metric behind it", () => {
+    expect(
+      deriveCapabilities({ ...profile([]), declares: { backupOutput: true } }).backupLoad,
+    ).toBe(true);
   });
 
   test("subsystems are all false for a profile with no matching roles", () => {

@@ -2,7 +2,13 @@ import { z } from "zod";
 
 import { resolveStorage, statedKind } from "./capabilities";
 import { ROLE_CATALOG, ROLE_NAMES, type RoleSpec } from "./roles";
-import { bindingFor, type ComputeExpr, type ControlExpr, type ProfileData } from "./profile-data";
+import {
+  bindingFor,
+  PROFILE_SCHEMA_VERSIONS,
+  type ComputeExpr,
+  type ControlExpr,
+  type ProfileData,
+} from "./profile-data";
 import type { Binding } from "./types";
 
 /**
@@ -18,6 +24,14 @@ import type { Binding } from "./types";
  */
 
 const registerTypeSchema = z.enum(["U_WORD", "S_WORD", "U_DWORD", "RAW"]);
+
+/**
+ * The profile's hardware declarations. Strict, so a typo'd or invented field is
+ * a validation failure rather than a statement the runtime silently ignores.
+ */
+const declarationsSchema = z.strictObject({
+  backupOutput: z.boolean().optional(),
+});
 
 const computeExprSchema = z.union([
   z.strictObject({ sum: z.array(z.string().min(1)).min(1) }),
@@ -236,16 +250,17 @@ function sameBinding(a: MirrorBinding, b: MirrorBinding): boolean {
 
 /**
  * Per-version binding rules: v1 metrics carry none (the upcast happens on load,
- * one-way), v2 metrics must carry one that agrees with the legacy mirror the
- * upcast fills in. A disagreement means an author patched an address without
- * re-deriving the binding — silently reading the wrong register otherwise.
+ * one-way); every later version must carry one that agrees with the legacy
+ * mirror the upcast fills in. A disagreement means an author patched an address
+ * without re-deriving the binding — silently reading the wrong register
+ * otherwise.
  */
 function bindingIssues(m: z.infer<typeof metricDataSchema>, version: number): FieldIssue[] {
   if (version === 1) {
     return m.binding ? [{ field: "binding", message: "binding requires schemaVersion 2" }] : [];
   }
   if (!m.binding) {
-    return [{ field: "binding", message: "schemaVersion 2 requires a binding" }];
+    return [{ field: "binding", message: `schemaVersion ${version} requires a binding` }];
   }
   // Nothing to disagree with: the mirror can only describe registers, and an
   // http metric has none. The equivalent check — that it claims no addressing
@@ -266,11 +281,12 @@ function bindingIssues(m: z.infer<typeof metricDataSchema>, version: number): Fi
 }
 
 /**
- * A `schemaVersion: 2` profile states its addressing only in `binding`, so fill
- * the legacy `type`/`addresses`/`computeExpr`/`controlExpr` mirror from it before
- * validation — every semantic lint below (widths, duplicate addresses, compute
- * references) then runs unchanged on either version. Explicit fields win, so a
- * profile that carries both is checked for agreement rather than overwritten.
+ * A `schemaVersion: 2`-or-later profile states its addressing only in `binding`,
+ * so fill the legacy `type`/`addresses`/`computeExpr`/`controlExpr` mirror from
+ * it before validation — every semantic lint below (widths, duplicate addresses,
+ * compute references) then runs unchanged on every version. Explicit fields win,
+ * so a profile that carries both is checked for agreement rather than
+ * overwritten.
  */
 function fillLegacyMirror(metric: unknown): unknown {
   if (typeof metric !== "object" || metric === null) return metric;
@@ -287,7 +303,8 @@ function fillLegacyMirror(metric: unknown): unknown {
 function upcastForValidation(input: unknown): unknown {
   if (typeof input !== "object" || input === null) return input;
   const data = input as { schemaVersion?: unknown; metrics?: unknown };
-  if (data.schemaVersion !== 2 || !Array.isArray(data.metrics)) return input;
+  const versioned = data.schemaVersion === 2 || data.schemaVersion === 3;
+  if (!versioned || !Array.isArray(data.metrics)) return input;
   return { ...data, metrics: data.metrics.map(fillLegacyMirror) };
 }
 
@@ -327,7 +344,13 @@ function deadbandIssues(m: z.infer<typeof metricDataSchema>): FieldIssue[] {
 
 const coreProfileSchema = z
   .strictObject({
-    schemaVersion: z.union([z.literal(1), z.literal(2)]),
+    schemaVersion: z.union(
+      PROFILE_SCHEMA_VERSIONS.map((v) => z.literal(v)) as [
+        z.ZodLiteral<1>,
+        z.ZodLiteral<2>,
+        z.ZodLiteral<3>,
+      ],
+    ),
     id: z
       .string()
       .min(1)
@@ -336,11 +359,24 @@ const coreProfileSchema = z
     manufacturer: z.string().min(1),
     version: z.string().min(1),
     metrics: z.array(metricDataSchema).min(1),
+    declares: declarationsSchema.optional(),
   })
   .superRefine((data, ctx) => {
     const { metrics } = data;
     const at = (i: number, field: string, message: string) =>
       ctx.addIssue({ code: "custom", path: ["metrics", i, field], message });
+
+    // --- declarations are v3 vocabulary ---
+    // A v1/v2 profile's `load.*` roles already imply a backup output (that is
+    // what they meant when it was authored), so letting one also declare would
+    // put two answers in the same file.
+    if (data.declares && data.schemaVersion < 3) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["declares"],
+        message: "declares requires schemaVersion 3",
+      });
+    }
 
     // --- duplicate keys ---
     const seenKey = new Set<string>();

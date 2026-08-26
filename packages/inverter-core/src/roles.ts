@@ -57,12 +57,27 @@ export const ROLE_CATALOG = {
   "grid.energy.imported.total": { kind: "cumulative", unitHint: "kWh" },
   "grid.energy.exported.today": { kind: "cumulative", unitHint: "kWh" },
   "grid.energy.exported.total": { kind: "cumulative", unitHint: "kWh" },
-  // --- Backup / load ---
+  // --- House load ---
+  // Whole-house consumption, wherever it is measured: a hybrid's load output, a
+  // grid-tied plant's consumption meter, or a computed residual. Never "the UPS
+  // socket" — that is `backup.*` below, and conflating the two makes a
+  // grid-tied inverter claim hardware it does not have.
   "load.power": { kind: "measurement", unitHint: "W" },
   "load.phase.power": { kind: "measurement", indexed: true, unitHint: "W" },
   "load.phase.voltage": { kind: "measurement", indexed: true, unitHint: "V" },
   "load.energy.today": { kind: "cumulative", unitHint: "kWh" },
   "load.energy.total": { kind: "cumulative", unitHint: "kWh" },
+  // --- Backup / EPS output ---
+  // The islanded output that keeps running through a grid failure, metered
+  // separately from the house. On a whole-home UPS these repeat `load.*`, so a
+  // profile maps them only when the two genuinely differ (a critical-loads
+  // sub-panel), and states the output it does not meter via
+  // `declares.backupOutput` instead.
+  "backup.power": { kind: "measurement", unitHint: "W" },
+  "backup.phase.power": { kind: "measurement", indexed: true, unitHint: "W" },
+  "backup.phase.voltage": { kind: "measurement", indexed: true, unitHint: "V" },
+  "backup.energy.today": { kind: "cumulative", unitHint: "kWh" },
+  "backup.energy.total": { kind: "cumulative", unitHint: "kWh" },
   // --- Generator ---
   "generator.power": { kind: "measurement", unitHint: "W" },
   "generator.phase.power": { kind: "measurement", indexed: true, unitHint: "W" },

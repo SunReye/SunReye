@@ -31,6 +31,40 @@ function writeFixture(name: string, content: string): string {
 }
 
 const validProfilePath = writeFixture("deye.json", JSON.stringify(deyeSg05lp3Data));
+/**
+ * Every renderable role mapped. The Deye fixture maps all but the `backup.*`
+ * family: its load output *is* the house load, so it states the output through
+ * `declares.backupOutput` (a v3 profile) or by being legacy, and never meters it
+ * twice. A profile that separates the two — a critical-loads sub-panel — is what
+ * 100 % coverage looks like, so that is what the coverage report is asserted on.
+ */
+const backupMetric = (key: string, addr: number, over: Record<string, unknown> = {}) => ({
+  key,
+  topic: key.replaceAll(".", "/"),
+  label: key,
+  unit: null,
+  group: "backup",
+  type: "U_WORD",
+  addresses: [addr],
+  scale: 1,
+  access: "r",
+  role: key,
+  ...over,
+});
+const fullCoveragePath = writeFixture(
+  "full-coverage.json",
+  JSON.stringify({
+    ...deyeSg05lp3Data,
+    metrics: [
+      ...deyeSg05lp3Data.metrics,
+      backupMetric("backup.power", 60000, { unit: "W" }),
+      backupMetric("backup.phase.power", 60001, { unit: "W", index: 1 }),
+      backupMetric("backup.phase.voltage", 60002, { unit: "V", index: 1 }),
+      backupMetric("backup.energy.today", 60003, { unit: "kWh" }),
+      backupMetric("backup.energy.total", 60004, { unit: "kWh" }),
+    ],
+  }),
+);
 const brokenProfilePath = writeFixture(
   "broken.json",
   JSON.stringify({
@@ -289,7 +323,7 @@ describe("cmdCoverage", () => {
 
     io.restore();
     io = captureIo();
-    await cmdCoverage(validProfilePath);
+    await cmdCoverage(fullCoveragePath);
     expect(io.out.join("\n")).toContain("✓ every renderable role is mapped");
   });
 
@@ -383,7 +417,7 @@ describe("cmdBuild", () => {
     expect(io.err.join("\n")).toContain("requires --out");
   });
 
-  test("picks up a schemaVersion 2 export — what the authoring builders now emit", async () => {
+  test("picks up the export the authoring builders emit, whatever version that is", async () => {
     io = captureIo();
     const entry = writeFixture(
       "v2-entry.ts",
@@ -854,7 +888,7 @@ describe("cmdValidate coverage warnings", () => {
 
   test("says nothing about unmapped roles for a profile that maps them all", async () => {
     io = captureIo();
-    await cmdValidate(validProfilePath);
+    await cmdValidate(fullCoveragePath);
     expect(io.out.join("\n")).not.toContain("render empty");
   });
 
