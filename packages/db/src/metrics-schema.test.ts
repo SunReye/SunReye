@@ -52,3 +52,46 @@ describe("metrics_config_log", () => {
     expect(columns.value.columnType).toBe(raw.value.columnType);
   });
 });
+
+/**
+ * `dur_ms` is the weight the continuous aggregates multiply `value` by: how long
+ * this row's value was held, in milliseconds, starting at the row's own `time`.
+ *
+ * It exists because a change-only writer (#117) breaks the one property the
+ * plain `avg(value)` in the rollups silently relied on — that every stored
+ * sample represents an equal slice of time. Once only *changes* are stored, a
+ * metric flat at 0 for 50 minutes contributes one row and a 10-minute spike
+ * contributes hundreds, so an unweighted mean reports something close to the
+ * spike (#116).
+ */
+describe("metrics_raw.dur_ms", () => {
+  const columns = getTableColumns(metricsRaw);
+
+  test("exists as the weight column the weighted rollups read", () => {
+    expect(columns.durMs?.name).toBe("dur_ms");
+  });
+
+  test("is nullable: NULL means 'this row predates weighting', not a duration", () => {
+    // Every row written before #117 has no recorded hold time. The aggregates
+    // read NULL as an equal weight (`coalesce(dur_ms, 1)`), which makes the
+    // weighted mean exactly equal to the old plain mean over a complete series —
+    // the property that makes this migration safe.
+    expect(columns.durMs?.notNull).toBe(false);
+  });
+
+  test("has no default — 'not applicable' is never spelled as a number", () => {
+    // A DEFAULT of 0 would be a zero-width interval (a row that weighs nothing);
+    // a DEFAULT of 1 would claim a 1 ms hold the writer never measured. Both are
+    // numbers standing in for "unknown", which this repo forbids.
+    expect(columns.durMs?.hasDefault).toBe(false);
+    expect(columns.durMs?.default).toBeUndefined();
+  });
+
+  test("is an integer, not a float: milliseconds are counted, not measured", () => {
+    expect(columns.durMs?.columnType).toBe("PgInteger");
+  });
+
+  test("is not on the config change-log — a setting has no time-weighted mean", () => {
+    expect(getTableColumns(metricsConfigLog)).not.toHaveProperty("durMs");
+  });
+});

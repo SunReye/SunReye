@@ -8,12 +8,9 @@ import { db } from "@SunReye/db";
 import { metricsRaw } from "@SunReye/db/schema/metrics";
 import { and, desc, eq, gte } from "drizzle-orm";
 import { sql } from "drizzle-orm";
+import { type RollupBucket, preferredRollup } from "./rollup-sql";
 
-/** Rollup granularity → its TimescaleDB continuous aggregate view. */
-export type RollupBucket = "minute" | "hour" | "day";
-
-const viewFor = (bucket: RollupBucket): string =>
-  bucket === "day" ? "daily_rollups" : bucket === "minute" ? "minute_rollups" : "hourly_rollups";
+export type { RollupBucket } from "./rollup-sql";
 
 /** The window one entity's time-series read is bounded by. */
 export interface HistoryQuery {
@@ -37,31 +34,47 @@ export async function queryRollup(
     to?: Date;
   },
 ): Promise<Array<{ time: string; avg: number; max: number; min: number }>> {
-  const view = sql.raw(viewFor(q.bucket));
   const window =
     q.from && q.to
       ? sql`bucket >= ${q.from} and bucket < ${q.to}`
       : sql`bucket >= ${q.since ?? new Date(0)}`;
+  const source = preferredRollup(
+    q.bucket,
+    sql`metric = ${q.metric} and inverter_id = ${q.inverterId} and ${window}`,
+  );
   const result = await db.execute<{
     bucket: string | Date;
-    avg_value: number;
+    avg_value: number | null;
     max_value: number;
     min_value: number;
   }>(sql`
     select bucket, avg_value, max_value, min_value
-    from ${view}
-    where metric = ${q.metric}
-      and inverter_id = ${q.inverterId}
-      and ${window}
+    from ${source} r
     order by bucket asc
     limit ${q.limit}
   `);
-  return result.rows.map((r) => ({
+  return result.rows.filter(hasAverage).map((r) => ({
     time: new Date(r.bucket).toISOString(),
     avg: Number(r.avg_value),
     max: Number(r.max_value),
     min: Number(r.min_value),
   }));
+}
+
+/**
+ * Whether a bucket has an average at all.
+ *
+ * The weighted aggregates divide two materialized sums, guarded by
+ * `nullif(weight, 0)`, so a degenerate bucket — one whose recorded hold times
+ * sum to zero — yields NULL rather than an error or a fabricated number. It must
+ * not reach a caller: `Number(null)` is `0`, which would draw a flat line
+ * through a gap and read as a measurement. A real `0` is a reading (0 kW of PV
+ * at night) and survives.
+ */
+function hasAverage<T extends { avg_value: number | null }>(
+  row: T,
+): row is T & { avg_value: number } {
+  return row.avg_value !== null;
 }
 
 /**
@@ -76,12 +89,16 @@ export async function queryMedianHourlyAvg(
   days: number,
 ): Promise<number | null> {
   const since = new Date(Date.now() - days * 24 * 3600 * 1000);
+  const source = preferredRollup(
+    "hour",
+    sql`metric = ${metric} and inverter_id = ${inverterId} and bucket >= ${since}`,
+  );
+  // `percentile_cont` is an ordered-set aggregate: it ignores NULL inputs, so a
+  // degenerate zero-weight bucket drops out of the ordering rather than skewing
+  // the median toward zero.
   const result = await db.execute<{ median: number | null }>(sql`
     select percentile_cont(0.5) within group (order by avg_value) as median
-    from hourly_rollups
-    where metric = ${metric}
-      and inverter_id = ${inverterId}
-      and bucket >= ${since}
+    from ${source} r
   `);
   const median = result.rows[0]?.median;
   return median == null ? null : Number(median);
@@ -99,16 +116,19 @@ export async function queryHourlyAvgRange(
   from: Date,
   to: Date,
 ): Promise<Array<{ bucketMs: number; avg: number }>> {
-  const result = await db.execute<{ bucket: string; avg_value: number }>(sql`
+  const source = preferredRollup(
+    "hour",
+    sql`metric = ${metric} and inverter_id = ${inverterId} and bucket >= ${from} and bucket < ${to}`,
+  );
+  const result = await db.execute<{ bucket: string; avg_value: number | null }>(sql`
     select bucket, avg_value
-    from hourly_rollups
-    where metric = ${metric}
-      and inverter_id = ${inverterId}
-      and bucket >= ${from}
-      and bucket < ${to}
+    from ${source} r
     order by bucket asc
   `);
-  return result.rows.map((r) => ({
+  // A NULL average is dropped, not coerced: this series is the measured-actual
+  // side of the forecast correction's learning, and a fabricated 0 would teach
+  // the model that the sun did not shine.
+  return result.rows.filter(hasAverage).map((r) => ({
     bucketMs: new Date(r.bucket).getTime(),
     avg: Number(r.avg_value),
   }));

@@ -59,6 +59,45 @@ export const ENERGY_FIELDS = {
   batteryCharge: "battery.energy.charged.total",
 } as const satisfies Record<keyof Omit<HourEnergy, "time">, CanonicalRole>;
 
+/** How an energy figure is derived from stored data. */
+type EnergyDerivation = "counter" | "integral";
+
+/**
+ * Where each energy role's kWh figure actually comes from — issue #115's answer,
+ * kept next to the code it describes.
+ *
+ * This is not documentation. `cost.test.ts` ("energy derivation per role")
+ * MEASURES the derivation from the running code and compares it against this
+ * table, so flipping a role from a counter read to an integral (or back) without
+ * updating the table turns the suite red.
+ *
+ * Why it matters: milestone 8 stores only *changes* to a metric instead of a
+ * sample per poll. Thinning the raw series leaves a bucket's `max_value` /
+ * `min_value` untouched (a counter's change points are exactly the samples
+ * change-only storage keeps) but moves its unweighted `avg_value` and its sample
+ * count a long way. So a `"counter"` figure — a difference of monotonic counter
+ * readings — is invariant under thinning and the storage change is safe for it,
+ * while an `"integral"` figure (Σ power·Δt over the recorded samples) moves with
+ * the sample density and needs time-weighting first (issues #116 / #117).
+ *
+ * All six reported roles are counter-derived: {@link fetchBucketEnergy} and
+ * {@link fetchCounterDeltaMatrix} read only `max_value` / `min_value`, never
+ * `avg_value`, and the live current-day override ({@link liveTodayTotals}) reads
+ * the device's own `*.today` registers. Nothing in this layer integrates power.
+ * The one integrated energy figure in the product is the browser-side
+ * reconstruction in
+ * `apps/web/src/lib/components/inverter/_shared/measured-day.ts`.
+ */
+// fallow-ignore-next-line unused-export -- the verdict cost.test.ts measures the code against; test files aren't traced as consumers
+export const ENERGY_ROLE_DERIVATION = {
+  import: "counter",
+  export: "counter",
+  load: "counter",
+  production: "counter",
+  batteryDischarge: "counter",
+  batteryCharge: "counter",
+} as const satisfies Record<EnergyField, EnergyDerivation>;
+
 /** The continuous-aggregate views we can read counter deltas from. */
 export type RollupView = "hourly_rollups" | "daily_rollups";
 
@@ -182,6 +221,27 @@ function rollupQueryParts(profile: InverterProfile, view: RollupView) {
 }
 
 /**
+ * Baseline for a bucket that cannot chain to a predecessor (none at all, or one
+ * on the far side of a recording gap): normally the bucket's own `min`, the rise
+ * it can vouch for by itself.
+ *
+ * Unless the counter RESTARTED inside it. Recording resumes on the old counter,
+ * the device is swapped or reflashed mid-bucket, and the bucket then holds both
+ * the old lifetime level and the new near-zero one — so `max − min` is the whole
+ * lifetime total billed to one hour. The stale level sitting strictly inside
+ * `(min, max]` is exactly that signature (a bucket recorded wholly after the
+ * restart has `max` BELOW the stale level, and one recorded wholly before it has
+ * `min` at or above it), and in that case only the rise above the last known
+ * level was actually observed. It is also the safe reading of a merely spurious
+ * low sample: the figure can only come out smaller, never larger.
+ *
+ * Mirrored by the `case` in {@link fetchCounterDeltaMatrix}'s SQL.
+ */
+function intraBucketBase(min: number, max: number, staleMax: number | undefined): number {
+  return staleMax !== undefined && staleMax > min && staleMax <= max ? staleMax : min;
+}
+
+/**
  * Read per-bucket energy for the energy roles this profile exposes, over
  * [from, to). Energy in a bucket is the monotonic counter's rise since the
  * previous bucket — `max_value − prior max_value`, clamped ≥0. `max_value` is
@@ -257,7 +317,10 @@ export async function fetchBucketEnergy(
     // a recording gap → use this bucket's own intra-bucket delta; otherwise the
     // rise since the previous bucket's high.
     const before = prev.get(r.metric);
-    const prior = before && time.getTime() - before.at <= maxGap ? before.max : Number(r.min_value);
+    const prior =
+      before && time.getTime() - before.at <= maxGap
+        ? before.max
+        : intraBucketBase(Number(r.min_value), max, before?.max);
     prev.set(r.metric, { max, at: time.getTime() });
 
     const hour = byBucket.get(time.getTime()) ?? {
@@ -534,12 +597,17 @@ export async function fetchCounterDeltaMatrix(
         metric,
         -- Rise since the previous bucket's high, clamped ≥0. No predecessor (the
         -- very first bucket in history) or one on the far side of a recording gap
-        -- → fall back to this bucket's own min, matching fetchBucketEnergy.
+        -- → fall back to this bucket's own min, matching fetchBucketEnergy —
+        -- except when a stale level lies strictly inside (min, max], the
+        -- signature of a counter restart INSIDE this bucket, where max − min
+        -- would bill the whole lifetime total to one bucket (intraBucketBase).
         greatest(
           0,
           max_value - case
             when prev_bucket is not null
               and bucket - prev_bucket <= make_interval(secs => ${MAX_GAP_MS[view] / 1000})
+              then prev_max
+            when prev_max is not null and prev_max > min_value and prev_max <= max_value
               then prev_max
             else min_value
           end

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import {
+  MEASURED_PRODUCTION_DERIVATION,
   measuredFromHourlyEnergy,
   measuredFromRollups,
   measuredTotal,
@@ -246,5 +247,45 @@ describe("measuredFromHourlyEnergy — fallback for profiles without pv.total.po
   it("an empty series measures nothing", () => {
     const day = measuredFromHourlyEnergy([], 60, slotIndexAt(60, 12, 0));
     expect(day.avgW.every((w) => w === null)).toBe(true);
+  });
+});
+
+/**
+ * Issue #115: this module's kWh is an INTEGRAL over recorded power, not a
+ * counter read — and that is why it is the one energy figure exposed to
+ * milestone 8's change-only storage. Pinned here by demonstrating the exposure
+ * rather than by restating the declaration: thin the same physical hour the way
+ * change-only storage would (a sample only when the value moves, so steady
+ * minutes leave no row at all) and the figure moves with it.
+ *
+ * Counter-derived energy does NOT behave this way — see
+ * `apps/server/src/energy/cost.test.ts`, "energy derivation per role", where the
+ * identical perturbation leaves every reported role's kWh unchanged.
+ */
+describe("measuredTotal is an integral, so thinning the samples moves it (issue #115)", () => {
+  // One hour of PV: 1000 W for forty minutes, then 100 W for twenty.
+  const minutes = Array.from({ length: 60 }, (_, m) => ({ m, w: m < 40 ? 1000 : 100 }));
+  const dense = minutes.map(({ m, w }) => at(9, m, w));
+  // Change-only: a row exists only for the minutes in which the value moved.
+  const thinned = minutes
+    .filter(({ m, w }) => m === 0 || w !== minutes[m - 1]?.w)
+    .map(({ m, w }) => at(9, m, w));
+
+  const kwhOf = (rows: ReturnType<typeof at>[]) =>
+    measuredTotal(measuredFromRollups(rows, 60), 60, slotIndexAt(60, 23, 0)).kwh;
+
+  it("declares itself an integral", () => {
+    expect(MEASURED_PRODUCTION_DERIVATION).toBe("integral");
+  });
+
+  it("the dense recording integrates to the hour's true energy", () => {
+    // (1000·40 + 100·20) / 60 = 700 W mean over one hour.
+    expect(kwhOf(dense)).toBeCloseTo(0.7, 6);
+  });
+
+  it("the change-only recording of the SAME hour reports a different figure", () => {
+    // Two surviving samples, weighted equally: (1000 + 100) / 2 = 550 W.
+    expect(kwhOf(thinned)).toBeCloseTo(0.55, 6);
+    expect(kwhOf(thinned)).not.toBeCloseTo(kwhOf(dense), 3);
   });
 });
