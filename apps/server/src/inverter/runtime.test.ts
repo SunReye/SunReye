@@ -132,6 +132,9 @@ const historyDouble = {
   get pending(): number {
     return this.rows.length;
   },
+  // The cap never fires in these doubles: the runtime's contract is enqueue and
+  // flush, and the cap's own boundaries are covered in `history-buffer.test.ts`.
+  dropped: 0,
 };
 
 /** Batches the injected config change-log buffer committed, in flush order. */
@@ -155,6 +158,9 @@ const configDouble = {
   get pending(): number {
     return this.rows.length;
   },
+  // The cap never fires in these doubles: the runtime's contract is enqueue and
+  // flush, and the cap's own boundaries are covered in `history-buffer.test.ts`.
+  dropped: 0,
 };
 
 const PLANT = "plant-1";
