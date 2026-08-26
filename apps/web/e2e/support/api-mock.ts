@@ -596,6 +596,13 @@ export async function mockBackend(page: Page, options: BackendOptions = {}): Pro
       return json(route, fixture.STATISTICS_PREFS);
     }
 
+    // ── Battery ─────────────────────────────────────────────────────────────
+    // Measured capacity and SOH. The statistics page asks for this once, and
+    // a plant with too few deep discharges legitimately has nothing to report —
+    // which is what this returns, so the tiles' absent case is the default and
+    // no spec has to opt out of it.
+    if (at("battery/health")) return json(route, fixture.BATTERY_HEALTH);
+
     // ── Prices ──────────────────────────────────────────────────────────────
     if (at("prices/providers")) return json(route, fixture.PRICE_PROVIDERS);
     if (at("prices")) {

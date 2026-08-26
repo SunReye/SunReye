@@ -646,6 +646,20 @@ export const PLANT = { timeZone: "auto" };
 export const ACCESS = { publicDashboard: false };
 
 /** `packages/db/src/statistics-prefs.ts` → `defaultStatisticsPrefs`. */
+/**
+ * Measured battery capacity and state of health.
+ *
+ * All-null: a plant needs several deep discharges before any of it exists, and
+ * "not measured yet" is the state most specs should see. Null is not "healthy" —
+ * the tiles render absent, which is the behaviour worth being the default.
+ */
+export const BATTERY_HEALTH = {
+  capacity: null,
+  baseline: null,
+  health: null,
+  trend: [],
+};
+
 export const STATISTICS_PREFS = {
   hiddenSections: [],
   hiddenTiles: [],
