@@ -539,8 +539,20 @@ jobs:
           diff /tmp/jobs-1.txt /tmp/jobs-2.txt
           diff /tmp/jobs-2.txt /tmp/jobs-3.txt
           # Every tier must actually be armed, or "unchanged" is unchanged-empty.
+          # Compression on all six: a frozen tier still holds buckets, and they
+          # still have to compress.
           for tier in minute_rollups hourly_rollups daily_rollups \
                       weighted_minute_rollups weighted_hourly_rollups weighted_daily_rollups; do
-            grep -q "policy_refresh_continuous_aggregate:$tier:" /tmp/jobs-3.txt
             grep -q "policy_compression:$tier:" /tmp/jobs-3.txt
+          done
+          # Refresh on the LIVE tiers only.
+          for tier in hourly_rollups daily_rollups \
+                      weighted_hourly_rollups weighted_daily_rollups; do
+            grep -q "policy_refresh_continuous_aggregate:$tier:" /tmp/jobs-3.txt
+          done
+          # …and NOT on the frozen ones, on every repeat. Re-applying policies.sql
+          # must not re-arm what it just removed, which is the failure mode a
+          # remove+add pair has and an `add(if_not_exists)` does not.
+          for tier in minute_rollups weighted_minute_rollups; do
+            ! grep -q "policy_refresh_continuous_aggregate:$tier:" /tmp/jobs-3.txt
           done
