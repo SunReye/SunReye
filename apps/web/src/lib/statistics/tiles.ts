@@ -305,7 +305,65 @@ export const ENERGY_TILES: readonly TileDef<EnergyTileData>[] = [
     "neutral",
     hasBatteryEnergy,
   ),
+  {
+    id: "energy.batteryRoundTrip",
+    label: m.statistics_tile_battery_round_trip,
+    explain: m.statistics_tile_battery_round_trip_explain,
+    compute: (d, f) => {
+      const ratio = roundTripEfficiency(d);
+      if (ratio === null) return null;
+      return {
+        value: f.pct(ratio),
+        sub: m.statistics_sub_round_trip({
+          discharged: f.kwh(d.current.batteryDischargeKwh),
+          charged: f.kwh(d.current.batteryChargeKwh),
+        }),
+        accent: "",
+      };
+    },
+    raw: roundTripEfficiency,
+    goodDirection: "up",
+  },
 ];
+
+/**
+ * Round-trip efficiency: the energy the pack gave back, over the energy it took
+ * in, across the whole window.
+ *
+ * The arithmetic is a division. The care is all in when NOT to do it.
+ *
+ * The identity `discharge / charge = efficiency` holds only if the pack holds
+ * the same energy at both ends of the window. Whatever it gained across the
+ * boundary was charged and never discharged, so it inflates the denominator;
+ * whatever it lost does the reverse. That drift is bounded by roughly one full
+ * cycle, and a day's throughput is roughly one cycle, so the relative error is
+ * on the order of `1 / rangeDays` — 100 % over a day, ~3 % over a month. Hence
+ * {@link MIN_ROUND_TRIP_DAYS}: the tile declines short windows instead of
+ * printing a confident number that is mostly boundary drift.
+ *
+ * The plausibility band catches the same problem when the window is long but the
+ * drift is large anyway (a pack that sat full for three weeks, a capacity
+ * change, a counter reset). Above 1 the pack returned more than it stored, which
+ * is not efficiency; below {@link MIN_PLAUSIBLE_ROUND_TRIP} no real chemistry
+ * applies. Both are reports about the edges, and neither is worth showing as an
+ * efficiency.
+ *
+ * Correcting rather than declining would need the pack's usable capacity and its
+ * SOC at both edges — `usableKwh` is optional forecast config, so it cannot be
+ * assumed present. That is the upgrade path, not this tile.
+ */
+const MIN_ROUND_TRIP_DAYS = 14;
+const MIN_PLAUSIBLE_ROUND_TRIP = 0.5;
+
+function roundTripEfficiency(d: EnergyTileData): number | null {
+  if (!hasBatteryEnergy(d)) return null;
+  if (d.rangeDays < MIN_ROUND_TRIP_DAYS) return null;
+  const { batteryChargeKwh: charged, batteryDischargeKwh: discharged } = d.current;
+  if (charged <= 0 || discharged <= 0) return null;
+  const ratio = discharged / charged;
+  if (ratio > 1 || ratio < MIN_PLAUSIBLE_ROUND_TRIP) return null;
+  return ratio;
+}
 
 /** One resolved, render-ready tile. */
 export type Tile = {

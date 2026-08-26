@@ -42,7 +42,7 @@ const tiles = (d: EnergyTileData) => deriveTiles(ENERGY_TILES, d, f);
 const byId = (d: EnergyTileData, id: string) => tiles(d).find((t) => t.id === id);
 
 describe("ENERGY_TILES registry", () => {
-  test("declares the seven totals in render order", () => {
+  test("declares the eight totals in render order", () => {
     expect(ENERGY_TILES.map((t) => t.id)).toEqual([
       "energy.produced",
       "energy.consumed",
@@ -51,6 +51,7 @@ describe("ENERGY_TILES registry", () => {
       "energy.gridExported",
       "energy.batteryCharged",
       "energy.batteryDischarged",
+      "energy.batteryRoundTrip",
     ]);
   });
 
@@ -281,5 +282,102 @@ describe("battery capability gating", () => {
       previous: totals({ batteryChargeKwh: 0, batteryDischargeKwh: 0 }),
     });
     expect(ENERGY_TILES.find((t) => t.id === "energy.batteryCharged")?.raw(d)).toBeNull();
+  });
+});
+
+/**
+ * Round-trip efficiency is discharge / charge over the window — the only two
+ * counters that measure the same energy on both sides of the pack.
+ *
+ * What makes it delicate is not the division but the window EDGES. The identity
+ * only holds when the pack holds the same energy at both ends; whatever it
+ * gained or lost across the boundary lands in `charge` without a matching
+ * `discharge`, and biases the ratio. That drift is bounded by roughly one cycle,
+ * so the relative error is about `1 / rangeDays` — which is why the tile refuses
+ * short windows rather than printing a confident wrong number.
+ */
+describe("energy.batteryRoundTrip", () => {
+  const MONTH = 30;
+  const roundTrip = ENERGY_TILES.find((t) => t.id === "energy.batteryRoundTrip");
+
+  test("is discharge over charge, as a whole percent", () => {
+    const d = data({
+      rangeDays: MONTH,
+      current: totals({ batteryChargeKwh: 100, batteryDischargeKwh: 91 }),
+    });
+    expect(byId(d, "energy.batteryRoundTrip")?.value).toBe("91%");
+    expect(roundTrip?.raw(d)).toBeCloseTo(0.91, 10);
+  });
+
+  test("names both counters in the sub-line, so the figure can be checked by hand", () => {
+    const d = data({
+      rangeDays: MONTH,
+      current: totals({ batteryChargeKwh: 100, batteryDischargeKwh: 91 }),
+    });
+    const sub = byId(d, "energy.batteryRoundTrip")?.sub ?? "";
+    expect(sub).toContain("91");
+    expect(sub).toContain("100");
+  });
+
+  test("is hidden on a plant with no battery", () => {
+    // The shared battery gate reads non-zero counters as proof of a pack even
+    // when the manifest flag is off, so "no battery" has to mean both.
+    const none = totals({ batteryChargeKwh: 0, batteryDischargeKwh: 0 });
+    const d = data({ rangeDays: MONTH, hasBattery: false, current: none, previous: none });
+    expect(byId(d, "energy.batteryRoundTrip")).toBeUndefined();
+    expect(roundTrip?.raw(d)).toBeNull();
+  });
+
+  test("is hidden when the pack never charged — 0/0 is not 0 %", () => {
+    const d = data({
+      rangeDays: MONTH,
+      current: totals({ batteryChargeKwh: 0, batteryDischargeKwh: 0 }),
+    });
+    expect(byId(d, "energy.batteryRoundTrip")).toBeUndefined();
+  });
+
+  test("is hidden on a window too short for the edges to average out", () => {
+    // A single day's throughput is about one cycle, so the boundary drift is the
+    // same size as the measurement. Refusing beats printing "68 %" for a pack
+    // that simply ended the day fuller than it started.
+    const short = totals({ batteryChargeKwh: 10, batteryDischargeKwh: 9 });
+    expect(byId(data({ rangeDays: 1, current: short }), "energy.batteryRoundTrip")).toBeUndefined();
+    expect(byId(data({ rangeDays: 7, current: short }), "energy.batteryRoundTrip")).toBeUndefined();
+    expect(byId(data({ rangeDays: 14, current: short }), "energy.batteryRoundTrip")).toBeDefined();
+  });
+
+  test("is hidden when the ratio is impossible, whichever way the drift went", () => {
+    // Above 1 the pack gave back more than it took — it ended emptier, and the
+    // drift is larger than the losses. Below 0.5 no real chemistry applies; the
+    // pack ended much fuller. Both are drift reports, not efficiency.
+    const over = data({
+      rangeDays: MONTH,
+      current: totals({ batteryChargeKwh: 100, batteryDischargeKwh: 104 }),
+    });
+    const under = data({
+      rangeDays: MONTH,
+      current: totals({ batteryChargeKwh: 100, batteryDischargeKwh: 40 }),
+    });
+    expect(byId(over, "energy.batteryRoundTrip")).toBeUndefined();
+    expect(byId(under, "energy.batteryRoundTrip")).toBeUndefined();
+    expect(roundTrip?.raw(over)).toBeNull();
+    expect(roundTrip?.raw(under)).toBeNull();
+  });
+
+  test("accepts the boundaries themselves", () => {
+    const at = (dis: number) =>
+      byId(
+        data({
+          rangeDays: MONTH,
+          current: totals({ batteryChargeKwh: 100, batteryDischargeKwh: dis }),
+        }),
+        "energy.batteryRoundTrip",
+      );
+    expect(at(100)?.value).toBe("100%");
+    expect(at(50)?.value).toBe("50%");
+  });
+
+  test("more efficiency is better for the household", () => {
+    expect(roundTrip?.goodDirection).toBe("up");
   });
 });

@@ -67,13 +67,27 @@ band** — kWh and cost per time-of-use band, when bands are configured.
 
 A totals row first, because "how much did we produce last month?" should not require reading
 a chart: **produced**, **consumed**, **self-used**, and — on a system with a battery —
-**charged** and **discharged**. Each carries an average-per-day sub-line and a delta chip
-against the reference window (see [Comparisons & records](#comparisons--records)).
+**charged**, **discharged** and **round-trip**. Each carries an average-per-day sub-line and a
+delta chip against the reference window (see [Comparisons & records](#comparisons--records)).
 
 **Self-used** is production the plant kept — production minus export — the same measure the
 self-consumption percentage reports. That is a different figure from the *Solar saving* tile
 above, which values what was not bought (load minus import); on a battery system the two
 differ, because energy discharged today may have been stored yesterday.
+
+It also *includes production that went into the battery*, which is why self-used can read
+higher than consumed: that energy stayed on site without having been consumed yet, and the
+gap between the two is battery charging plus storage losses.
+
+**Round-trip** is those storage losses as a single figure: discharged divided by charged over
+the window. It appears only for windows of **14 days or more**, and only when the result lands
+between 50 % and 100 %. Both limits exist for the same reason — the ratio is only an
+efficiency if the pack holds the same energy at the start and the end of the window. Whatever
+it gained across that boundary was charged and never discharged, so it lands in the
+denominator unmatched. That drift is about one cycle, and a day's throughput is about one
+cycle, so the error is on the order of `1 / days`: ~3 % over a month, meaningless over a day.
+A result outside the band is a report about the edges, not about the battery, so the tile
+declines rather than printing it.
 
 Then three charts over one shared series, all moved by the section's scope toggle:
 
