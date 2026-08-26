@@ -35,6 +35,7 @@ const data = (over: Partial<EnergyTileData> = {}): EnergyTileData => ({
   previous: totals(),
   rangeDays: 10,
   hasBattery: true,
+  health: null,
   ...over,
 });
 
@@ -42,7 +43,7 @@ const tiles = (d: EnergyTileData) => deriveTiles(ENERGY_TILES, d, f);
 const byId = (d: EnergyTileData, id: string) => tiles(d).find((t) => t.id === id);
 
 describe("ENERGY_TILES registry", () => {
-  test("declares the eight totals in render order", () => {
+  test("declares the totals then the measured pack figures, in render order", () => {
     expect(ENERGY_TILES.map((t) => t.id)).toEqual([
       "energy.produced",
       "energy.consumed",
@@ -52,6 +53,8 @@ describe("ENERGY_TILES registry", () => {
       "energy.batteryCharged",
       "energy.batteryDischarged",
       "energy.batteryRoundTrip",
+      "energy.batteryCapacity",
+      "energy.batteryHealth",
     ]);
   });
 
@@ -180,6 +183,7 @@ describe("per-day sub-line", () => {
 const reference = (over: Partial<CostTotals> = {}): EnergyTileData => ({
   current: totals(over),
   previous: null,
+  health: null,
   rangeDays: 10,
   hasBattery: true,
 });
@@ -265,6 +269,7 @@ describe("battery capability gating", () => {
     const previous: EnergyTileData = {
       current: totals({ batteryChargeKwh: 0, batteryDischargeKwh: 0 }),
       previous: null,
+      health: null,
       rangeDays: 10,
       hasBattery: false,
     };
@@ -379,5 +384,88 @@ describe("energy.batteryRoundTrip", () => {
 
   test("more efficiency is better for the household", () => {
     expect(roundTrip?.goodDirection).toBe("up");
+  });
+});
+
+/**
+ * Capacity and SOH are plant properties, not window figures: the same two
+ * numbers whatever range is picked. They sit in the energy row because that is
+ * where the reader is already looking at battery energy, and they carry the
+ * same battery gate.
+ */
+describe("the measured battery tiles", () => {
+  const capacity = (kwh: number, segments = 9) => ({
+    kwh,
+    low: kwh * 0.95,
+    high: kwh * 1.05,
+    segments,
+  });
+  const withHealth = (health: EnergyTileData["health"]) => data({ rangeDays: 30, health });
+
+  test("capacity reports the measured kWh and how many discharges it rests on", () => {
+    const d = withHealth({
+      capacity: capacity(13.5, 11),
+      baseline: capacity(15),
+      health: { ratio: 0.9, reference: "baseline", referenceKwh: 15 },
+      trend: [],
+    });
+    expect(byId(d, "energy.batteryCapacity")?.value).toBe("13.5 kWh");
+    expect(byId(d, "energy.batteryCapacity")?.sub).toContain("11");
+  });
+
+  test("health reports the percentage and what it was measured against", () => {
+    const d = withHealth({
+      capacity: capacity(13.5),
+      baseline: capacity(15),
+      health: { ratio: 0.9, reference: "nameplate", referenceKwh: 15 },
+      trend: [],
+    });
+    expect(byId(d, "energy.batteryHealth")?.value).toBe("90%");
+    // The reference is the whole meaning of the number: 90 % of a nameplate and
+    // 90 % of "whatever we first measured" are different claims.
+    expect(byId(d, "energy.batteryHealth")?.sub).toContain("15");
+  });
+
+  test("both are absent until something has actually been measured", () => {
+    // Never a placeholder: an unmeasured pack must not read as a healthy one.
+    const d = withHealth({ capacity: null, baseline: null, health: null, trend: [] });
+    expect(byId(d, "energy.batteryCapacity")).toBeUndefined();
+    expect(byId(d, "energy.batteryHealth")).toBeUndefined();
+  });
+
+  test("capacity can exist before health does", () => {
+    // Measured, but nothing to measure it against: no nameplate, and too little
+    // history for a baseline.
+    const d = withHealth({ capacity: capacity(13.5), baseline: null, health: null, trend: [] });
+    expect(byId(d, "energy.batteryCapacity")).toBeDefined();
+    expect(byId(d, "energy.batteryHealth")).toBeUndefined();
+  });
+
+  test("both are absent on a plant with no battery, whatever the server sent", () => {
+    const none = totals({ batteryChargeKwh: 0, batteryDischargeKwh: 0 });
+    const d = data({
+      rangeDays: 30,
+      hasBattery: false,
+      current: none,
+      previous: none,
+      health: { capacity: capacity(13.5), baseline: null, health: null, trend: [] },
+    });
+    expect(byId(d, "energy.batteryCapacity")).toBeUndefined();
+  });
+
+  test("neither carries a per-day sub-line — a capacity is not a rate", () => {
+    const d = withHealth({
+      capacity: capacity(13.5),
+      baseline: capacity(15),
+      health: { ratio: 0.9, reference: "baseline", referenceKwh: 15 },
+      trend: [],
+    });
+    expect(byId(d, "energy.batteryCapacity")?.sub).not.toContain("/");
+  });
+
+  test("more of either is better for the household", () => {
+    for (const id of ["energy.batteryCapacity", "energy.batteryHealth"]) {
+      expect(ENERGY_TILES.find((t) => t.id === id)?.goodDirection).toBe("up");
+    }
   });
 });

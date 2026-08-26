@@ -4,7 +4,7 @@
 // payload. Every section's tiles — cost, energy, prices, records — are a
 // registry against the same TileDef surface.
 
-import type { CostBreakdown, CostTotals } from "@SunReye/contracts/energy";
+import type { BatteryHealth, CostBreakdown, CostTotals } from "@SunReye/contracts/energy";
 import type { SpotStats, SpotWhatIf } from "@SunReye/contracts/prices";
 import type { DayRecord, RecordsResponse } from "@SunReye/contracts/statistics";
 import type { CostFormatters } from "$lib/cost/format";
@@ -192,6 +192,10 @@ export type EnergyTileData = {
    *  battery tiles off a batteryless system even mid-fetch, when a zero total
    *  would otherwise be indistinguishable from an idle pack. */
   hasBattery: boolean;
+  /** Measured capacity and SOH. Window-INDEPENDENT — the same figures whatever
+   *  range is picked — and null until the server has measured enough discharge
+   *  segments to answer. */
+  health: BatteryHealth | null;
 };
 
 /** Sub-line shared by every energy tile: the daily average. The change against
@@ -324,6 +328,41 @@ export const ENERGY_TILES: readonly TileDef<EnergyTileData>[] = [
     raw: roundTripEfficiency,
     goodDirection: "up",
   },
+  {
+    id: "energy.batteryCapacity",
+    label: m.statistics_tile_battery_capacity,
+    explain: m.statistics_tile_battery_capacity_explain,
+    compute: (d, f) => {
+      const capacity = measuredCapacity(d);
+      if (!capacity) return null;
+      return {
+        value: f.kwh(capacity.kwh),
+        sub: m.statistics_sub_measured_over({ count: capacity.segments }),
+        accent: "",
+      };
+    },
+    raw: (d) => measuredCapacity(d)?.kwh ?? null,
+    goodDirection: "up",
+  },
+  {
+    id: "energy.batteryHealth",
+    label: m.statistics_tile_battery_health,
+    explain: m.statistics_tile_battery_health_explain,
+    compute: (d, f) => {
+      const health = measuredHealth(d);
+      if (!health) return null;
+      return {
+        value: f.pct(health.ratio),
+        sub:
+          health.reference === "nameplate"
+            ? m.statistics_sub_of_nameplate({ amount: f.kwh(health.referenceKwh) })
+            : m.statistics_sub_of_baseline({ amount: f.kwh(health.referenceKwh) }),
+        accent: "",
+      };
+    },
+    raw: (d) => measuredHealth(d)?.ratio ?? null,
+    goodDirection: "up",
+  },
 ];
 
 /**
@@ -364,6 +403,20 @@ function roundTripEfficiency(d: EnergyTileData): number | null {
   if (ratio > 1 || ratio < MIN_PLAUSIBLE_ROUND_TRIP) return null;
   return ratio;
 }
+
+/**
+ * The measured figures, behind the same battery gate as the energy pair.
+ *
+ * The gate matters independently of the server's answer: a plant with no pack
+ * should never see a capacity, even if a stale or mis-addressed response
+ * carried one.
+ */
+const measuredCapacity = (d: EnergyTileData) =>
+  hasBatteryEnergy(d) ? (d.health?.capacity ?? null) : null;
+
+/** Null until there is both a capacity and something to measure it against. */
+const measuredHealth = (d: EnergyTileData) =>
+  hasBatteryEnergy(d) ? (d.health?.health ?? null) : null;
 
 /** One resolved, render-ready tile. */
 export type Tile = {
