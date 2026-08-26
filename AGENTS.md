@@ -26,6 +26,18 @@ green.
   for one — see `apps/web/TESTING.md`, "Which layer does this test belong in".
 - Exemptions to the "a test changed with it" rule live in `scripts/require-tests.ts` and are
   themselves tested. There is no skip flag.
+- `bun run test` passes `--parallel`, which gives every test file a fresh global
+  and module registry. That contains the `mock.module` leak below **at runtime**:
+  a missing restore no longer turns a later suite red. Measured on a two-file
+  fixture — serial fails, `--isolate` and `--parallel` pass; `--no-isolate` fails
+  again, so never reach for it. **The discipline below therefore still stands, and
+  `bun run test:mocks` is now the only thing that catches a missing restore.** A
+  leak that no run reveals is still a leak: it breaks anyone on `bun test` without
+  the flag, on an older bun, or running one file at a time.
+- `bun run test:coverage` stays **serial on purpose**. Bun's parallel coverage
+  merge is lossy: identical passing tests report 88.91 % lines under `--parallel`
+  against 99.31 % serial, reproducibly. Do not add `--parallel` there — it will
+  fail `test:floor` for a reason that has nothing to do with the code.
 - `mock.module` is process-global and permanent. ALWAYS spread the real module
   (`const real = await import("./x"); mock.module("./x", () => ({ ...real, stubbed }))`) —
   a partial mock deletes the other exports for every test file that runs afterwards and
