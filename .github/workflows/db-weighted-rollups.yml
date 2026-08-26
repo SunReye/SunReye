@@ -328,7 +328,9 @@ jobs:
             ORDER BY 2, 1"
           DATABASE_URL="$FIXTURE_URL" bun -e '
             const { queryRollup } = await import("./apps/server/src/shared/history");
-            const { db } = await import("@SunReye/db");
+            // Imported by path rather than by workspace specifier: bun -e has no
+            // file to anchor a bare specifier against, so it cannot resolve one.
+            const { db } = await import("./packages/db/src/index");
             const { sql } = await import("drizzle-orm");
             const rows = await queryRollup({
               bucket: "hour", metric: "grid.import_power", inverterId: "cut",
