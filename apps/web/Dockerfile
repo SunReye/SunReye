@@ -6,7 +6,7 @@
 # build once on the build platform even for multi-arch images. adapter-node
 # bundles every dependency into build/, so the runtime needs no node_modules.
 # ─────────────────────────────────────────────────────────────────────────────
-FROM --platform=$BUILDPLATFORM oven/bun:1.3 AS build
+FROM --platform=$BUILDPLATFORM oven/bun:1.4 AS build
 WORKDIR /app
 ENV HUSKY=0 SKIP_ENV_VALIDATION=1 NODE_ENV=production
 
