@@ -62,6 +62,11 @@ const fullCoveragePath = writeFixture(
       backupMetric("backup.phase.voltage", 60002, { unit: "V", index: 1 }),
       backupMetric("backup.energy.today", 60003, { unit: "kWh" }),
       backupMetric("backup.energy.total", 60004, { unit: "kWh" }),
+      // Roles a hybrid may not report but a string inverter does: per-MPPT yield
+      // and the grid frequency.
+      backupMetric("grid.frequency", 60005, { unit: "Hz", group: "grid" }),
+      backupMetric("pv.string.energy.today", 60006, { unit: "kWh", group: "pv", index: 1 }),
+      backupMetric("pv.string.energy.total", 60007, { unit: "kWh", group: "pv", index: 1 }),
     ],
   }),
 );
@@ -308,7 +313,7 @@ describe("cmdCoverage", () => {
     // Grouped under the leading segment, in catalog order, `[]` on the roles
     // that need one metric per string/phase.
     expect(out).toContain("  pv: pv.string.voltage[], pv.string.current[], pv.total.power");
-    expect(out).toContain("  grid: grid.power, grid.phase.voltage[]");
+    expect(out).toContain("  grid: grid.power, grid.frequency, grid.phase.voltage[]");
     // The two roles the profile does map are absent from the unmapped list.
     // No other canonical role has these as a substring, so a bare `not.toContain`
     // is the strict assertion (a trailing comma would pass on a group-final role).

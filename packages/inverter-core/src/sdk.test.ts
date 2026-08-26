@@ -72,13 +72,15 @@ function goodProfile(): ProfileData {
 describe("role catalog", () => {
   test("CanonicalRole vocabulary is complete and lists the expected roles", () => {
     // Guards against accidental deletion when editing the catalog.
-    expect(ROLE_NAMES.length).toBe(54);
+    expect(ROLE_NAMES.length).toBe(57);
     for (const r of [
       "pv.string.power",
       "battery.power",
       "grid.power",
       "load.power",
       "backup.power",
+      "grid.frequency",
+      "pv.string.energy.today",
       "setting.work_mode",
       "inverter.power",
       "inverter.efficiency",
@@ -89,6 +91,11 @@ describe("role catalog", () => {
 
   test("indexed / writable / enum flags are set for representative roles", () => {
     expect(ROLE_CATALOG["pv.string.power"].indexed).toBe(true);
+    // A per-string counter is both indexed and cumulative — one metric per MPPT.
+    expect(ROLE_CATALOG["pv.string.energy.total"]).toMatchObject({
+      indexed: true,
+      kind: "cumulative",
+    });
     expect(ROLE_CATALOG["setting.work_mode"].writable).toBe(true);
     expect(ROLE_CATALOG["inverter.status"].needsEnumLabels).toBe(true);
     expect(ROLE_CATALOG["battery.power"].signed).toBe(true);

@@ -33,6 +33,10 @@ export const ROLE_CATALOG = {
   "pv.string.voltage": { kind: "measurement", indexed: true, unitHint: "V" },
   "pv.string.current": { kind: "measurement", indexed: true, unitHint: "A" },
   "pv.total.power": { kind: "measurement", unitHint: "W" },
+  // Per-string yield, for the inverters that count each MPPT separately (4-input
+  // hybrids, and every string inverter with per-tracker energy registers).
+  "pv.string.energy.today": { kind: "cumulative", indexed: true, unitHint: "kWh" },
+  "pv.string.energy.total": { kind: "cumulative", indexed: true, unitHint: "kWh" },
   "production.today": { kind: "cumulative", unitHint: "kWh" },
   "production.total": { kind: "cumulative", unitHint: "kWh" },
   // --- Battery ---
@@ -50,6 +54,9 @@ export const ROLE_CATALOG = {
   "battery.energy.discharged.total": { kind: "cumulative", unitHint: "kWh" },
   // --- Grid ---
   "grid.power": { kind: "measurement", signed: true, unitHint: "W" },
+  // Reported by essentially every grid-tied device (SunSpec, Sungrow, Victron)
+  // and the first thing an installer looks at on an islanding fault.
+  "grid.frequency": { kind: "measurement", unitHint: "Hz" },
   "grid.phase.voltage": { kind: "measurement", indexed: true, unitHint: "V" },
   "grid.phase.current": { kind: "measurement", indexed: true, signed: true, unitHint: "A" },
   "grid.phase.power": { kind: "measurement", indexed: true, signed: true, unitHint: "W" },
