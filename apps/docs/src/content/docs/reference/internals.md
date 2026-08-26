@@ -82,9 +82,10 @@ split reads. See [Profiles → Authoring](/profiles/authoring/#compute-expressio
 
 Telemetry is stored **narrow** — one row per metric per tick, keyed by `inverterId` and
 metric key — in a TimescaleDB hypertable (`packages/db`). Continuous aggregates provide
-per-minute / hourly / daily rollups; retention and compression policies keep raw data
-bounded while preserving long-range trends. A new inverter needs **no migration** because
-nothing is vendor-columned.
+hourly / daily rollups; minute-resolution reads are answered from the raw hypertable itself,
+bucketed and time-weighted at read time, since a stored row is an interval rather than a
+sample. Retention and compression policies keep raw data bounded while preserving long-range
+trends. A new inverter needs **no migration** because nothing is vendor-columned.
 
 Runtime settings (inverter connection, MQTT, tariff, profile sources, active profile) live
 in an `app_settings` table as JSONB with per-key Zod schemas, hot-reloaded on write (except

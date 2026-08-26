@@ -98,8 +98,8 @@ Long-horizon history lives in the rollups, each built directly from the raw tabl
 
 | Data | Resolution | Retention |
 | --- | --- | --- |
-| `metrics_raw` | change-only | 90 days |
-| `minute_rollups` | 1 min | 90 days |
+| `metrics_raw` | change-only | 5 years |
+| `minute_rollups` | 1 min | frozen — decaying, 90 days |
 | `hourly_rollups` | 1 hour | 10 years |
 | `daily_rollups` | 1 day | forever |
 
@@ -107,12 +107,39 @@ Every interval is tunable in `packages/db/src/timescale/policies.sql`, which is 
 migration run. Raw was 7 days when a day of raw cost 5–9 GB uncompressed; at the measured footprint
 that was discarding second-resolution replay to save single-digit megabytes.
 
-Raw is deliberately **equal to the shortest rollup retention**, not longer. Past that point a time
-range exists that only raw covers, and the addon's default backup excludes raw precisely because raw
-is fully materialized into the rollups — so a longer raw tier would either bloat every backup or
-silently drop a range from it. `bun run test:storage` fails if a policy edit breaks that. Going
-further means growing the minute tier with it, or moving minute-resolution reads onto raw and
-dropping that tier.
+### Why the minute tier is frozen
+
+Change-only storage removed the reason the minute rollups existed. Measured on 30 days of
+change-only traffic at the authored deadbands, compressed, one device:
+
+| tier | per device-year |
+| --- | --- |
+| `metrics_raw` | 361 MB |
+| `minute_rollups` + `weighted_minute_rollups` | 333 MB |
+
+The tier that was built because it was ~15x cheaper per day of coverage than raw now costs about
+the same as raw — while also being the *ceiling* on raw retention, since raw may not outlive the
+shortest aggregate it is materialized into. So the two minute aggregates are no longer refreshed,
+and raw answers minute-resolution reads directly, bucketed and time-weighted at read time. Raw's
+retention is then bounded by the hourly tier's 10 years instead of the minute tier's 90 days, and
+5 years costs about **1.8 GB per device**.
+
+They are frozen rather than dropped: every bucket already materialized keeps answering reads until
+its own retention ages it out. On a deployment whose raw does not yet reach back that far, those
+buckets are the only minute-resolution record of the days raw no longer covers.
+
+This assumes the installed profile actually carries deadbands. Without them raw runs about 5.5x
+heavier and five years does not fit the footprint budget.
+
+### What that costs backups
+
+Raw used to be excluded from the addon's default backup because it was fully materialized into the
+rollups — the backup kept the span at coarser resolution, which is exactly what `backup_full: false`
+is for. With the minute tier frozen, raw is the only minute-resolution record, so excluding it would
+restore an hourly-only history. `dump.sh` derives this from the database rather than assuming it:
+if the minute tier is not being refreshed, raw is included whatever the retention numbers say.
+Backups are correspondingly larger. `bun run test:storage` fails if a policy edit breaks the
+invariant.
 
 ### SSD endurance (TBW)
 

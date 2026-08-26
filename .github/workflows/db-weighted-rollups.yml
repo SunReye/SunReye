@@ -53,6 +53,7 @@ jobs:
       LEGACY_URL: postgresql://postgres:weighted-test@localhost:5432/legacy
       FIXTURE_URL: postgresql://postgres:weighted-test@localhost:5432/fixture
       PERF_URL: postgresql://postgres:weighted-test@localhost:5432/perf
+      MINUTE_URL: postgresql://postgres:weighted-test@localhost:5432/minute
       # The pre-migration TimescaleDB pipeline: the current tree minus the two
       # numbered files this release adds. Expressing "before" as a subtraction
       # from the real tree keeps it honest as the tree moves on.
@@ -374,6 +375,94 @@ jobs:
           TS
           DATABASE_URL="$FIXTURE_URL" bun run apps/server/ci-cutover.ts
           rm -f apps/server/ci-cutover.ts
+
+      # ------------------------------------------------------------------ 4b --
+      # The minute tier is frozen (policies.sql): raw answers its buckets, and
+      # the aggregates hold only what was materialized before the freeze. Two
+      # claims, both of which have to hold for that to be lossless:
+      #   * raw and the aggregate produce the SAME number for a bucket both
+      #     cover — otherwise a chart's values would step at the freeze point;
+      #   * a bucket whose raw rows have aged out is still answered, from the
+      #     frozen aggregate — otherwise the decay window is a hole.
+      - name: Minute buckets read identically from raw and from the frozen aggregate
+        run: |
+          psql -d postgres -c "CREATE DATABASE minute"
+          DATABASE_URL="$MINUTE_URL" bun run --cwd packages/db db:migrate
+          psql -d "$MINUTE_URL" -v ON_ERROR_STOP=1 -tAc \
+            "SELECT alter_job(job_id, scheduled => false) FROM timescaledb_information.jobs" > /dev/null
+
+          # No refresh policy may exist for either minute aggregate — the freeze
+          # has to have reached the database, not just the file.
+          armed=$(psql -d "$MINUTE_URL" -tAc \
+            "SELECT count(*) FROM timescaledb_information.jobs
+              WHERE proc_name = 'policy_refresh_continuous_aggregate'
+                AND hypertable_name IN ('minute_rollups','weighted_minute_rollups')")
+          echo "minute refresh policies armed: $armed"
+          [ "$armed" = "0" ]
+
+          psql -d "$MINUTE_URL" -v ON_ERROR_STOP=1 <<'SQL'
+          -- Change-only traffic: long holds interleaved with short bursts, so an
+          -- unweighted mean and a weighted one visibly disagree.
+          INSERT INTO metrics_raw (time, inverter_id, metric, value, dur_ms)
+          SELECT t, 'dev-1', 'battery.power',
+                 CASE WHEN extract(second FROM t)::int % 7 = 0
+                      THEN 3000 + (extract(epoch FROM t)::bigint % 401) ELSE 120 END,
+                 CASE WHEN extract(second FROM t)::int % 7 = 0 THEN 1500 ELSE 8000 END
+          FROM generate_series(timestamptz '2026-08-01 00:00:00+00',
+                               timestamptz '2026-08-01 02:59:59+00', INTERVAL '5 seconds') t;
+          SQL
+          # Materialized by hand: this is what a deployment carries into the
+          # freeze, and the only way to produce it now that no policy runs.
+          psql -d "$MINUTE_URL" -c "CALL refresh_continuous_aggregate('weighted_minute_rollups', timestamptz '2026-08-01 00:00:00+00', timestamptz '2026-08-01 03:00:00+00')"
+
+          cat > apps/server/ci-minute.ts <<'TS'
+          import { queryRollup } from "./src/shared/history";
+          import { db } from "@SunReye/db";
+          import { sql } from "drizzle-orm";
+
+          const base = {
+            bucket: "minute", metric: "battery.power", inverterId: "dev-1",
+            from: new Date("2026-08-01T00:00:00Z"), to: new Date("2026-08-01T03:00:00Z"),
+            limit: 500,
+          } as const;
+
+          const before = await queryRollup({ ...base });
+          const agg = await db.execute<{ bucket: string; v: number }>(sql`
+            select bucket, weighted_sum / nullif(weight, 0) as v
+            from weighted_minute_rollups
+            where metric = 'battery.power' and inverter_id = 'dev-1' order by bucket`);
+          const aggBy = new Map(agg.rows.map((r) => [new Date(r.bucket).toISOString(), Number(r.v)]));
+
+          let worst = 0;
+          for (const row of before) {
+            const a = aggBy.get(row.time);
+            if (a === undefined) throw new Error(`read path returned a bucket the aggregate lacks: ${row.time}`);
+            worst = Math.max(worst, Math.abs(a - row.avg));
+          }
+          console.log(`buckets=${before.length} aggregate=${aggBy.size} worst_diff=${worst}`);
+          if (before.length !== aggBy.size) throw new Error("bucket count differs");
+          // Exactly, not within a tolerance: the raw arm computes the same two
+          // sums the aggregate materialized, over the same rows.
+          if (worst !== 0) throw new Error(`raw arm differs from the aggregate by ${worst}`);
+
+          // Decay: the raw rows behind the first hour age out, leaving those
+          // buckets only in the frozen aggregate. Every bucket must survive.
+          await db.execute(sql`delete from metrics_raw where time < timestamptz '2026-08-01 01:00:00+00'`);
+          const after = await queryRollup({ ...base });
+          console.log(`after ageing out an hour of raw: buckets=${after.length}`);
+          if (after.length !== before.length) {
+            throw new Error(`lost ${before.length - after.length} buckets when raw aged out`);
+          }
+          let worstAfter = 0;
+          for (const row of after) {
+            worstAfter = Math.max(worstAfter, Math.abs((aggBy.get(row.time) ?? NaN) - row.avg));
+          }
+          console.log(`worst_diff_after=${worstAfter}`);
+          if (worstAfter !== 0) throw new Error("the frozen aggregate answered with a different value");
+          process.exit(0);
+          TS
+          DATABASE_URL="$MINUTE_URL" bun run apps/server/ci-minute.ts
+          rm -f apps/server/ci-minute.ts
 
       # ------------------------------------------------------------------ 5 ---
       # #134's read cost. The issue's target is <= 200 buffers; the measured
