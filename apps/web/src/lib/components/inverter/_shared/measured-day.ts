@@ -12,7 +12,28 @@
  * caller that prints the kWh without the coverage is claiming the array was
  * idle during hours it simply never observed — the bug that motivated this
  * module (dialog said 6.9 kWh, the register said 11.8 kWh for the same day).
+ *
+ * ISSUE #115 — this is the one energy figure in the product that is INTEGRATED
+ * rather than counter-read, so it is the one exposed to milestone 8's
+ * change-only storage. See {@link MEASURED_PRODUCTION_DERIVATION}.
  */
+
+/**
+ * How this module's kWh figure is derived: an integral over recorded power
+ * samples (Σ mean·Δt), never a device counter. The server-side counterpart is
+ * `ENERGY_ROLE_DERIVATION` in `apps/server/src/energy/cost.ts`, where every
+ * reported energy role is `"counter"`.
+ *
+ * The distinction is not cosmetic. Change-only storage records a sample only
+ * when the metric moves, so minutes in which PV power held steady produce no
+ * row at all — and both means this module takes (the minute rollup's own
+ * `avg`, and {@link measuredFromRollups}'s unweighted mean of the minutes that
+ * survived) are then averages over a different, unevenly spaced sample set. The
+ * integral moves with them. Time-weighting it is issues #116 / #117; the drift
+ * itself is pinned in `measured-day.test.ts`.
+ */
+// fallow-ignore-next-line unused-export -- the verdict measured-day.test.ts holds the code to; web test files aren't traced as consumers
+export const MEASURED_PRODUCTION_DERIVATION = "integral";
 
 /** One minute rollup of a power metric, as served by GET /api/history/rollup. */
 export interface MinuteRollup {
@@ -203,6 +224,10 @@ export function measuredTotal(
     // null is "not measured", not "measured zero" — it must not be integrated.
     if (!isReading(w)) continue;
     coveredSlots += 1;
+    // THE integration site (issue #115): Σ mean·Δt over whatever was recorded,
+    // with every surviving sample weighted equally. Exposed to change-only
+    // storage — thin the samples and this figure moves. Needs time-weighting
+    // (#116 / #117), or a counter-derived source, before that lands.
     kwh += (w * step) / 60 / 1000;
   }
 
