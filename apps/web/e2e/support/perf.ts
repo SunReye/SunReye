@@ -32,9 +32,12 @@
  * below its production figure while showing exactly the same phenomena in the
  * same order (overview ≫ live range ≫ preset range).
  *
- * So assert against the control group (`e2e/overview-baseline.spec.ts`) and
- * against the run before the change. An absolute fps floor pinned to a number
- * from one laptop is a flake waiting for a new CI runner.
+ * So an absolute fps floor pinned to a number from one laptop is a flake waiting
+ * for a new CI runner — and now also for a new worker, since the suite runs
+ * parallel and sharded. The timing helpers below are kept for local
+ * investigation; no spec asserts on their numbers any more. The COUNTING helpers
+ * (requests, mounts, mutations) are contention-independent and are what the
+ * specs use.
  *
  * `blockedMs` also under-reports on purpose: `longtask` only sees work over
  * 50 ms, and a page that spends 40 ms per frame is ruinous with zero long

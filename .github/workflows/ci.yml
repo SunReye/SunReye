@@ -117,8 +117,16 @@ jobs:
   # (apps/web/e2e/support/api-mock.ts), so the job is a checkout, a browser and
   # `vite dev`.
   e2e:
-    name: Browser tests
+    name: Browser tests (shard ${{ matrix.shard }}/4)
     runs-on: ubuntu-latest
+    # Sharding: four independent runners, each executing a quarter of the specs
+    # (`--shard=i/n`). Nothing in this layer holds cross-file state — the backend
+    # is faked per page — so any split is valid, and wall time is the slowest
+    # shard rather than the sum.
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
     env:
       SKIP_ENV_VALIDATION: "1"
       # Pin the browser cache to a path the cache action can restore.
@@ -156,13 +164,13 @@ jobs:
         run: bun run e2e:types
 
       - name: Browser tests
-        run: bun run e2e
+        run: bun run e2e -- --shard=${{ matrix.shard }}/4
 
       - name: Upload report on failure
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-report
+          name: playwright-report-shard-${{ matrix.shard }}
           path: |
             apps/web/playwright-report
             apps/web/test-results

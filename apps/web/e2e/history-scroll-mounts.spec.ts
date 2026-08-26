@@ -20,8 +20,9 @@
  * reader has not stopped anywhere. That is what these specs use.
  *
  * A DWELL (`dwellMs` above the 400ms settle window) is a reader stopping to
- * look, and charts SHOULD build for them — measured in chart-mount-cost.spec.ts
- * and history-smoke.spec.ts. A suite with only the flick would pass happily
+ * look, and charts SHOULD build for them — asserted below as a mount COUNT.
+ * (The specs that measured what those mounts cost are gone; see the note in
+ * playwright.config.ts.) A suite with only the flick would pass happily
  * while shipping a dashboard that never renders anything.
  *
  * `scrollPage` runs the whole gesture inside the page for this reason. An
@@ -82,7 +83,6 @@ test("the live range pays the same per-sweep mount cost as a preset one", async 
 
   expect(result.chartMounts).toBeLessThan(12);
   expect(result.chartUnmounts).toBeLessThan(12);
-  expect(result.maxFrameMs).toBeLessThan(2000);
   // The sweep did not knock the socket over on its way past either.
   expect(backend.socketOpens).toBe(1);
 });

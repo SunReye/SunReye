@@ -33,16 +33,36 @@ export default defineConfig({
   // full reload landing inside a measured sweep tears the probes down with the
   // document. See e2e/support/global-setup.ts.
   globalSetup: "./e2e/support/global-setup.ts",
-  // Perf numbers are the point of this layer, and parallel workers share the
-  // machine's CPU. One worker, no sharding: a measured fps is only comparable
-  // to the last one if nothing else was running.
-  fullyParallel: false,
-  workers: 1,
-  // A scroll sweep is 12 s by design, plus the dev server's first compile.
+  // Parallel, including WITHIN a file. That is the setting that matters: a spec
+  // file never splits across workers, and one file here holds 27 tests, so
+  // raising the worker count alone bought 22 % while `--fully-parallel` took the
+  // biggest file from 104.7 s to 39.1 s.
+  //
+  // This layer used to run one worker, no sharding, because it measured frame
+  // rates and mount cost and those numbers are only comparable when nothing else
+  // is running. Those specs are gone (see git history for
+  // `chart-mount-cost.spec.ts` and `overview-baseline.spec.ts`): what is left
+  // asserts behaviour a contended machine cannot change — layout, request
+  // counts, mount counts, socket lifecycle. Do NOT add a timing budget back
+  // here without also giving it a serial home; under these settings it would
+  // measure the runner's other workers.
+  fullyParallel: true,
+  // Locally: the machine. In CI: the runner has 4 cores and is also serving the
+  // dev server, so oversubscribing costs more than it buys.
+  workers: process.env.CI ? 4 : undefined,
+  // Sharding splits the suite across independent jobs (`--shard=i/n`); CI fans
+  // it out across a matrix. Nothing here holds cross-file state, so any split is
+  // valid.
   timeout: 120_000,
   expect: { timeout: 15_000 },
   forbidOnly: !!process.env.CI,
-  retries: 0,
+  // One retry in CI only. Going parallel means the runner is oversubscribed —
+  // four workers plus the dev server on a four-core box — and a layout assertion
+  // was observed failing under that load and passing 8/8 in isolation. A retry
+  // buys back the wall-clock win without turning contention into red builds.
+  // It does mask genuine flakiness, so a spec that only ever passes on the retry
+  // is a bug report, not a pass.
+  retries: process.env.CI ? 1 : 0,
   reporter: process.env.CI ? [["github"], ["list"]] : [["list"]],
   use: {
     baseURL: ORIGIN,
