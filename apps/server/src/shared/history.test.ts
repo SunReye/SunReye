@@ -160,8 +160,10 @@ describe("queryRollup — window and view selection", () => {
   test("`limit` is passed through verbatim — no clamping happens in this layer", async () => {
     for (const limit of [1, 1600, 50_000]) {
       const [call] = await capture([], () => queryRollup({ ...ROLLUP, limit, since: new Date(0) }));
-      expect(flat(call.sql)).toContain("limit $4");
-      expect(call.params[3]).toBe(limit);
+      // $7: the predicates are bound once per union arm (metric, inverter,
+      // window × 2), so the limit is the seventh parameter, not the fourth.
+      expect(flat(call.sql)).toContain("limit $7");
+      expect(call.params[6]).toBe(limit);
     }
   });
 
@@ -169,7 +171,7 @@ describe("queryRollup — window and view selection", () => {
     const [call] = await capture([], () =>
       queryRollup({ ...ROLLUP, limit: 0, since: new Date(0) }),
     );
-    expect(call.params[3]).toBe(0);
+    expect(call.params[6]).toBe(0);
   });
 });
 
@@ -331,7 +333,9 @@ describe("queryHourlyAvgRange", () => {
     const sqlText = flat(call.sql);
     expect(sqlText).toContain("bucket >= $3");
     expect(sqlText).toContain("bucket < $4");
-    expect(call.params).toEqual(["pv.power", "inv-1", from, to]);
+    // Once per union arm: the weighted aggregate and the legacy one are filtered
+    // by the same window, so an arm can never contribute a bucket outside it.
+    expect(call.params).toEqual(["pv.power", "inv-1", from, to, "pv.power", "inv-1", from, to]);
   });
 
   test("reads the hourly aggregate ascending, unlimited — the caller matches it hour by hour", async () => {
@@ -344,7 +348,8 @@ describe("queryHourlyAvgRange", () => {
 
   test("an inverted window (from after to) is still sent — the caller owns that validation", async () => {
     const [call] = await capture([], () => queryHourlyAvgRange("pv.power", "inv-1", to, from));
-    expect(call.params.slice(2)).toEqual([to, from]);
+    expect(call.params.slice(2, 4)).toEqual([to, from]);
+    expect(call.params.slice(6)).toEqual([to, from]);
   });
 
   test("a gap in the series yields fewer rows, not zero-filled ones", async () => {
@@ -636,5 +641,98 @@ describe("queryRecentBuckets — row shaping", () => {
     );
     expect(out.t0).toBe(1_755_345_600_000);
     expect(out.metrics.pv).toEqual({ o: [0, 1], v: [1.5, 0] });
+  });
+});
+
+/**
+ * The read cutover (#116). `rollup-sql.test.ts` proves the composition; these
+ * prove what this module does with the rows that come back — in particular the
+ * one row shape a weighted aggregate can produce that the legacy one never
+ * could.
+ */
+describe("queryRollup — weighted/legacy cutover", () => {
+  test("each tier reads BOTH its weighted aggregate and its legacy one", async () => {
+    for (const [bucket, weighted, legacy] of [
+      ["minute", "weighted_minute_rollups", "minute_rollups"],
+      ["hour", "weighted_hourly_rollups", "hourly_rollups"],
+      ["day", "weighted_daily_rollups", "daily_rollups"],
+    ] as const) {
+      const [call] = await capture([], () =>
+        queryRollup({ ...ROLLUP, bucket, since: new Date(0) }),
+      );
+      expect(flat(call.sql)).toContain(`from ${weighted}`);
+      expect(flat(call.sql)).toContain(`from ${legacy}`);
+    }
+  });
+
+  test("a degenerate zero-weight bucket is dropped, never reported as 0 kW", async () => {
+    // `nullif(weight, 0)` makes the quotient NULL rather than an error or a
+    // fabricated number. `Number(null)` is 0, which would draw a flat line
+    // through a gap and read as a real measurement — so the row is dropped.
+    const [, rows] = await capture(
+      [
+        { bucket: "2026-01-01T00:00:00.000Z", avg_value: null, max_value: 5, min_value: 5 },
+        { bucket: "2026-01-01T01:00:00.000Z", avg_value: 2, max_value: 3, min_value: 1 },
+      ],
+      () => queryRollup({ ...ROLLUP, since: new Date(0) }),
+    );
+    expect(rows).toEqual([{ time: "2026-01-01T01:00:00.000Z", avg: 2, max: 3, min: 1 }]);
+  });
+
+  test("a zero average is still a reading — the drop is for NULL only", async () => {
+    const [, rows] = await capture(
+      [{ bucket: "2026-01-01T00:00:00.000Z", avg_value: 0, max_value: 0, min_value: 0 }],
+      () => queryRollup({ ...ROLLUP, since: new Date(0) }),
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.avg).toBe(0);
+  });
+
+  test("the predicates are bound once per arm, so neither side scans unfiltered", async () => {
+    const [call] = await capture([], () =>
+      queryRollup({ ...ROLLUP, metric: "battery.power", inverterId: "inv-7", since: new Date(0) }),
+    );
+    expect(call.params.filter((p) => p === "battery.power")).toHaveLength(2);
+    expect(call.params.filter((p) => p === "inv-7")).toHaveLength(2);
+  });
+
+  test("the row shape callers already depend on is unchanged", async () => {
+    const [, rows] = await capture(
+      [{ bucket: "2026-01-01T00:00:00.000Z", avg_value: 1.5, max_value: 3, min_value: 0 }],
+      () => queryRollup({ ...ROLLUP, since: new Date(0) }),
+    );
+    expect(Object.keys(rows[0] ?? {})).toEqual(["time", "avg", "max", "min"]);
+  });
+});
+
+describe("queryHourlyAvgRange — weighted/legacy cutover", () => {
+  test("reads both hourly aggregates", async () => {
+    const [call] = await capture([], () =>
+      queryHourlyAvgRange("pv.power", "inv-1", new Date(0), new Date(1)),
+    );
+    expect(flat(call.sql)).toContain("from weighted_hourly_rollups");
+    expect(flat(call.sql)).toContain("from hourly_rollups");
+  });
+
+  test("a NULL average is dropped rather than learned from as a zero actual", async () => {
+    // This series is the measured-actual side of the forecast correction's
+    // learning. A fabricated 0 here teaches the model that the sun did not shine.
+    const [, rows] = await capture(
+      [
+        { bucket: "2026-01-01T00:00:00.000Z", avg_value: null },
+        { bucket: "2026-01-01T01:00:00.000Z", avg_value: 4 },
+      ],
+      () => queryHourlyAvgRange("pv.power", "inv-1", new Date(0), new Date(1)),
+    );
+    expect(rows).toEqual([{ bucketMs: Date.parse("2026-01-01T01:00:00.000Z"), avg: 4 }]);
+  });
+});
+
+describe("queryMedianHourlyAvg — weighted/legacy cutover", () => {
+  test("takes the median over the cutover union, not over one aggregate", async () => {
+    const [call] = await capture([{ median: 1 }], () => queryMedianHourlyAvg("load.power", "i", 7));
+    expect(flat(call.sql)).toContain("from weighted_hourly_rollups");
+    expect(flat(call.sql)).toContain("from hourly_rollups");
+    expect(flat(call.sql)).toContain("percentile_cont(0.5) within group (order by avg_value)");
   });
 });
