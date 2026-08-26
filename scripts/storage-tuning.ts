@@ -36,6 +36,9 @@ const ADD_COMPRESSION =
   /(?:add_compression_policy|add_columnstore_policy)\s*\(\s*'([^']+)'\s*,\s*(?:after\s*=>\s*)?INTERVAL\s*'([^']+)'/i;
 const REMOVE_COMPRESSION =
   /(?:remove_compression_policy|remove_columnstore_policy)\s*\(\s*'([^']+)'/i;
+const ADD_REFRESH = /add_continuous_aggregate_policy\s*\(\s*'([^']+)'/i;
+const SET_COMPRESS = /ALTER\s+(?:MATERIALIZED\s+VIEW|TABLE)\s+(\w+)\s+SET\s*\(([^)]*)\)/i;
+const SEGMENTBY = /compress_segmentby\s*=\s*'([^']*)'/i;
 
 /**
  * The compression policies a policy file leaves behind, in declaration order.
@@ -53,6 +56,34 @@ export function compressionPolicies(sql: string): CompressionPolicy[] {
     if (added?.[1] && added[2]) byTarget.set(added[1], { target: added[1], after: added[2] });
   }
   return [...byTarget.values()];
+}
+
+/**
+ * The `compress_segmentby` each target ends up with, per the file.
+ *
+ * The empty string is a *finding*, not an absence: compression enabled with no
+ * segmentby is exactly the pre-#134 state of `minute_rollups`, where the
+ * materialized rows are grouped by bucket so a per-metric query decompresses
+ * batches it does not need. A caller has to be able to tell "never configured"
+ * from "configured to segment by nothing".
+ */
+export function compressSegmentBy(sql: string): Record<string, string> {
+  const byTarget: Record<string, string> = {};
+  for (const statement of statements(sql)) {
+    const set = SET_COMPRESS.exec(statement);
+    if (!set?.[1] || set[2] === undefined) continue;
+    if (!/timescaledb\.compress/i.test(set[2])) continue;
+    byTarget[set[1]] = SEGMENTBY.exec(set[2])?.[1] ?? "";
+  }
+  return byTarget;
+}
+
+/** Continuous aggregates the file arms a refresh policy for, in order. */
+export function refreshPolicies(sql: string): string[] {
+  return statements(sql).flatMap((statement) => {
+    const match = ADD_REFRESH.exec(statement);
+    return match?.[1] ? [match[1]] : [];
+  });
 }
 
 /** True when the file removes the target's policy before (re)adding it. */
@@ -132,6 +163,31 @@ export interface CheckIO {
 const ADDON_CONF = "sunreye/rootfs/etc/s6-overlay/s6-rc.d/init-postgres/run";
 const POLICY_SQL = "packages/db/src/timescale/policies.sql";
 
+/**
+ * #134. Rollup rows are materialized grouped by *bucket*, so without a
+ * segmentby a per-metric range scan touches essentially every page in the
+ * range — measured, 1 row per 8 KB block against ~143 rows/block in
+ * metrics_raw. Every tier must therefore mirror metrics_raw's segmentby AND
+ * carry a compression policy, because a segmentby with no policy never
+ * compresses and a policy with no segmentby compresses into the wrong shape.
+ * Neither half is any use alone, which is exactly how the original defect
+ * survived: minute_rollups had the policy, hourly and daily had neither.
+ */
+const ROLLUP_TIERS = [
+  "minute_rollups",
+  "hourly_rollups",
+  "daily_rollups",
+  "weighted_minute_rollups",
+  "weighted_hourly_rollups",
+  "weighted_daily_rollups",
+] as const;
+const REQUIRED_SEGMENTBY = "metric, inverter_id";
+/** The numbered structural files that declare the rollups' storage layout. */
+const ROLLUP_STRUCTURAL_SQL = [
+  "packages/db/src/timescale/0002_weighted_rollups.sql",
+  "packages/db/src/timescale/0003_rollup_compression_segmentby.sql",
+];
+
 /** #110: the compression policy, and the remove+add discipline that makes it stick. */
 function policyProblems(io: CheckIO): string[] {
   const sql = io.read(POLICY_SQL);
@@ -174,9 +230,52 @@ function settingsProblems(where: string, settings: Record<string, string>): stri
   return problems;
 }
 
+/** #134: the segmentby, the policy that makes it take effect, and the refresh. */
+function rollupProblems(io: CheckIO): string[] {
+  const structural = ROLLUP_STRUCTURAL_SQL.map((path) => ({ path, sql: io.read(path) }));
+  const segmentby = Object.assign({}, ...structural.map((f) => compressSegmentBy(f.sql))) as Record<
+    string,
+    string
+  >;
+  const policySql = io.read(POLICY_SQL);
+  const compressed = compressionPolicies(policySql).map((p) => p.target);
+  const refreshed = refreshPolicies(policySql);
+
+  const problems: string[] = [];
+  for (const tier of ROLLUP_TIERS) {
+    const declared = segmentby[tier];
+    if (declared === undefined) {
+      problems.push(`${tier} declares no compression settings in any numbered file (#134).`);
+    } else if (declared !== REQUIRED_SEGMENTBY) {
+      problems.push(
+        `${tier} compress_segmentby is '${declared}', expected '${REQUIRED_SEGMENTBY}' — a rollup that does not mirror metrics_raw decompresses batches it does not need (#134).`,
+      );
+    }
+    if (!compressed.includes(tier)) {
+      problems.push(
+        `policies.sql declares no compression policy for ${tier}, so it can never compress (#134).`,
+      );
+    }
+    if (!refreshed.includes(tier)) {
+      problems.push(
+        `policies.sql arms no refresh policy for ${tier}; an aggregate nothing refreshes is an aggregate nothing can read (#116).`,
+      );
+    }
+  }
+  problems.push(
+    ...structural.flatMap((f) =>
+      continuousAggregateDrops(f.sql).map(
+        (drop) => `${f.path} would destroy a continuous aggregate: ${drop}`,
+      ),
+    ),
+  );
+  return problems;
+}
+
 export function checkStorageTuning(io: CheckIO): number {
   const problems = [
     ...policyProblems(io),
+    ...rollupProblems(io),
     ...settingsProblems(ADDON_CONF, parsePgConf(io.read(ADDON_CONF))),
     ...settingsProblems("docker-compose.yml", parseComposePgFlags(io.read("docker-compose.yml"))),
     ...settingsProblems(
@@ -188,6 +287,9 @@ export function checkStorageTuning(io: CheckIO): number {
   for (const problem of problems) io.error(`✗ ${problem}`);
   if (problems.length > 0) return 1;
   io.log("✓ storage tuning: compress_after 2 hours, checkpoint_timeout 2h, wal_compression zstd.");
+  io.log(
+    `✓ rollup compression: ${ROLLUP_TIERS.length} tiers segmented by '${REQUIRED_SEGMENTBY}', each with a compression and a refresh policy.`,
+  );
   return 0;
 }
 

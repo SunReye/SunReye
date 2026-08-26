@@ -2,8 +2,10 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, test } from "bun:test";
 import {
+  compressSegmentBy,
   compressionPolicies,
   continuousAggregateDrops,
+  refreshPolicies,
   parseComposePgFlags,
   parsePgConf,
   removesBeforeAdding,
@@ -210,12 +212,48 @@ describe("WAL and checkpoint settings (#111)", () => {
   }
 });
 
+/** Every rollup tier the #134 half of the gate requires; see the describe below. */
+const GATE_ROLLUP_TIERS = [
+  "minute_rollups",
+  "hourly_rollups",
+  "daily_rollups",
+  "weighted_minute_rollups",
+  "weighted_hourly_rollups",
+  "weighted_daily_rollups",
+] as const;
+
+/** The rollup half of a passing fixture, so the #110/#111 tests below can ignore it. */
+const rollupSegmentBySql = (tiers: readonly string[]) =>
+  tiers
+    .map(
+      (t) =>
+        `ALTER MATERIALIZED VIEW ${t} SET (timescaledb.compress = true, timescaledb.compress_segmentby = 'metric, inverter_id');`,
+    )
+    .join("\n--> statement-breakpoint\n");
+
+const rollupPolicySql = (tiers: readonly string[]) =>
+  tiers
+    .flatMap((t) => [
+      `SELECT add_continuous_aggregate_policy('${t}', start_offset => INTERVAL '1 day');`,
+      `SELECT remove_compression_policy('${t}', if_exists => TRUE);`,
+      `SELECT add_compression_policy('${t}', INTERVAL '7 days', if_not_exists => TRUE);`,
+    ])
+    .join("\n--> statement-breakpoint\n");
+
 describe("checkStorageTuning", () => {
   const GOOD: Record<string, string> = {
+    "packages/db/src/timescale/0002_weighted_rollups.sql": rollupSegmentBySql(
+      GATE_ROLLUP_TIERS.filter((t) => t.startsWith("weighted_")),
+    ),
+    "packages/db/src/timescale/0003_rollup_compression_segmentby.sql": rollupSegmentBySql(
+      GATE_ROLLUP_TIERS.filter((t) => !t.startsWith("weighted_")),
+    ),
     "packages/db/src/timescale/policies.sql":
       "SELECT remove_compression_policy('metrics_raw', if_exists => TRUE);\n" +
       "--> statement-breakpoint\n" +
-      "SELECT add_compression_policy('metrics_raw', INTERVAL '2 hours', if_not_exists => TRUE);",
+      "SELECT add_compression_policy('metrics_raw', INTERVAL '2 hours', if_not_exists => TRUE);\n" +
+      "--> statement-breakpoint\n" +
+      rollupPolicySql(GATE_ROLLUP_TIERS),
     "sunreye/rootfs/etc/s6-overlay/s6-rc.d/init-postgres/run":
       "checkpoint_timeout = '2h'\nwal_compression = 'zstd'\nfull_page_writes = 'on'\n",
     "docker-compose.yml": "      - checkpoint_timeout=2h\n      - wal_compression=zstd\n",
@@ -241,7 +279,9 @@ describe("checkStorageTuning", () => {
       "packages/db/src/timescale/policies.sql":
         "SELECT remove_compression_policy('metrics_raw', if_exists => TRUE);\n" +
         "--> statement-breakpoint\n" +
-        "SELECT add_compression_policy('metrics_raw', INTERVAL '1 day');",
+        "SELECT add_compression_policy('metrics_raw', INTERVAL '1 day');\n" +
+        "--> statement-breakpoint\n" +
+        rollupPolicySql(GATE_ROLLUP_TIERS),
     });
     expect(code).toBe(1);
     expect(errors.join("\n")).toMatch(/compress_after is '1 day'/);
@@ -250,7 +290,9 @@ describe("checkStorageTuning", () => {
   test("fails when a policy is added without removing the old one first", () => {
     const { code, errors } = run({
       "packages/db/src/timescale/policies.sql":
-        "SELECT add_compression_policy('metrics_raw', INTERVAL '2 hours', if_not_exists => TRUE);",
+        "SELECT add_compression_policy('metrics_raw', INTERVAL '2 hours', if_not_exists => TRUE);\n" +
+        "--> statement-breakpoint\n" +
+        rollupPolicySql(GATE_ROLLUP_TIERS),
     });
     expect(code).toBe(1);
     expect(errors.join("\n")).toMatch(/remove metrics_raw's policy before/);
@@ -281,9 +323,249 @@ describe("checkStorageTuning", () => {
         "--> statement-breakpoint\n" +
         "SELECT remove_compression_policy('metrics_raw', if_exists => TRUE);\n" +
         "--> statement-breakpoint\n" +
-        "SELECT add_compression_policy('metrics_raw', INTERVAL '2 hours');",
+        "SELECT add_compression_policy('metrics_raw', INTERVAL '2 hours');\n" +
+        "--> statement-breakpoint\n" +
+        rollupPolicySql(GATE_ROLLUP_TIERS),
     });
     expect(code).toBe(1);
     expect(errors.join("\n")).toMatch(/destroy a continuous aggregate/);
+  });
+});
+
+const WEIGHTED_ROLLUPS = readFileSync(join(TIMESCALE, "0002_weighted_rollups.sql"), "utf8");
+const LEGACY_SEGMENTBY = readFileSync(
+  join(TIMESCALE, "0003_rollup_compression_segmentby.sql"),
+  "utf8",
+);
+
+describe("compressSegmentBy", () => {
+  test("reads the segmentby of a continuous aggregate", () => {
+    expect(
+      compressSegmentBy(
+        "ALTER MATERIALIZED VIEW hourly_rollups SET (\n" +
+          "  timescaledb.compress = true,\n" +
+          "  timescaledb.compress_segmentby = 'metric, inverter_id'\n);",
+      ),
+    ).toEqual({ hourly_rollups: "metric, inverter_id" });
+  });
+
+  test("reads the segmentby of a plain hypertable too", () => {
+    expect(
+      compressSegmentBy(
+        "ALTER TABLE metrics_raw SET (timescaledb.compress, timescaledb.compress_segmentby = 'inverter_id, metric');",
+      ),
+    ).toEqual({ metrics_raw: "inverter_id, metric" });
+  });
+
+  test("compression enabled with no segmentby is recorded as the empty string, not absent", () => {
+    // This is precisely the pre-#134 state of minute_rollups: compression on,
+    // segmentby missing, so a per-metric query decompresses batches it does not
+    // need. "Absent" and "explicitly nothing" have to be distinguishable.
+    expect(
+      compressSegmentBy(
+        "ALTER MATERIALIZED VIEW minute_rollups SET (timescaledb.compress = true);",
+      ),
+    ).toEqual({
+      minute_rollups: "",
+    });
+  });
+
+  test("a later statement for the same target wins", () => {
+    const sql = [
+      "ALTER MATERIALIZED VIEW m SET (timescaledb.compress = true);",
+      "ALTER MATERIALIZED VIEW m SET (timescaledb.compress_segmentby = 'metric');",
+    ].join(`\n--> statement-breakpoint\n`);
+    expect(compressSegmentBy(sql)).toEqual({ m: "metric" });
+  });
+
+  test("a commented-out setting does not count", () => {
+    expect(
+      compressSegmentBy("-- ALTER MATERIALIZED VIEW m SET (timescaledb.compress = true);"),
+    ).toEqual({});
+  });
+});
+
+describe("refreshPolicies", () => {
+  test("reads the target of a continuous-aggregate refresh policy", () => {
+    expect(
+      refreshPolicies(
+        "SELECT add_continuous_aggregate_policy('hourly_rollups',\n  start_offset => INTERVAL '3 hours');",
+      ),
+    ).toEqual(["hourly_rollups"]);
+  });
+
+  test("a commented-out policy does not count", () => {
+    expect(refreshPolicies("-- SELECT add_continuous_aggregate_policy('x');")).toEqual([]);
+  });
+});
+
+describe("rollup compression (#134)", () => {
+  test("every rollup tier segments by metric and inverter, mirroring metrics_raw", () => {
+    const declared = {
+      ...compressSegmentBy(WEIGHTED_ROLLUPS),
+      ...compressSegmentBy(LEGACY_SEGMENTBY),
+    };
+    for (const tier of GATE_ROLLUP_TIERS) {
+      expect(declared[tier], `${tier} must declare a segmentby`).toBe("metric, inverter_id");
+    }
+  });
+
+  test("every rollup tier has a compression policy, or it can never compress at all", () => {
+    // The original defect: policies.sql armed minute_rollups alone, so
+    // hourly_rollups and daily_rollups would never compress no matter what
+    // compress_after said.
+    const targets = compressionPolicies(policies).map((p) => p.target);
+    for (const tier of GATE_ROLLUP_TIERS) expect(targets).toContain(tier);
+  });
+
+  test("each rollup compression policy is authoritative: removed before it is re-added", () => {
+    for (const tier of GATE_ROLLUP_TIERS) expect(removesBeforeAdding(policies, tier)).toBe(true);
+  });
+
+  test("re-applying policies.sql converges on one policy per tier", () => {
+    const twice = `${policies}\n--> statement-breakpoint\n${policies}`;
+    const found = compressionPolicies(twice);
+    for (const tier of GATE_ROLLUP_TIERS) {
+      expect(found.filter((p) => p.target === tier)).toHaveLength(1);
+    }
+  });
+
+  test("the numbered migrations create the weighted aggregates and drop none", () => {
+    expect(continuousAggregateDrops(WEIGHTED_ROLLUPS)).toEqual([]);
+    expect(continuousAggregateDrops(LEGACY_SEGMENTBY)).toEqual([]);
+    // The legacy fix is in-place only: it must not contain a CREATE either, since
+    // a create under an existing name is a recreate by another route.
+    expect(LEGACY_SEGMENTBY).not.toMatch(/CREATE\s+MATERIALIZED\s+VIEW/i);
+  });
+
+  test("the weighted aggregates materialize the two sums, never their quotient", () => {
+    // An expression over aggregates inside a continuous-aggregate definition is
+    // a portability risk, and the parts stay composable. The read layer divides.
+    expect(WEIGHTED_ROLLUPS).toContain("sum(value * coalesce(dur_ms, 1))");
+    expect(WEIGHTED_ROLLUPS).toContain("sum(coalesce(dur_ms, 1))");
+    expect(WEIGHTED_ROLLUPS).not.toMatch(/sum\([^)]*\)\s*\/\s*sum\(/);
+  });
+
+  test("every weighted aggregate is named *_rollups, or drizzle would emit DROP VIEW for it", () => {
+    // drizzle.config.ts's `tablesFilter: ["!*_rollups"]` is the only thing that
+    // keeps push/pull from trying to drop a continuous aggregate.
+    const created = [...WEIGHTED_ROLLUPS.matchAll(/CREATE MATERIALIZED VIEW IF NOT EXISTS (\w+)/g)];
+    expect(created).toHaveLength(3);
+    for (const [, name] of created) expect(name).toMatch(/_rollups$/);
+  });
+
+  test("the weighted aggregates are refreshed, or the read cutover never prefers them", () => {
+    const refreshed = refreshPolicies(policies);
+    for (const tier of GATE_ROLLUP_TIERS) expect(refreshed).toContain(tier);
+  });
+});
+
+describe("checkStorageTuning — rollup compression (#134)", () => {
+  const SEGMENTBY_SQL = (tiers: readonly string[], segmentby = "metric, inverter_id") =>
+    segmentby === "metric, inverter_id"
+      ? rollupSegmentBySql(tiers)
+      : tiers
+          .map(
+            (t) =>
+              `ALTER MATERIALIZED VIEW ${t} SET (timescaledb.compress = true, timescaledb.compress_segmentby = '${segmentby}');`,
+          )
+          .join("\n--> statement-breakpoint\n");
+
+  const POLICY_SQL_FOR = (tiers: readonly string[]) =>
+    [
+      "SELECT remove_compression_policy('metrics_raw', if_exists => TRUE);",
+      "SELECT add_compression_policy('metrics_raw', INTERVAL '2 hours', if_not_exists => TRUE);",
+      rollupPolicySql(tiers),
+    ].join("\n--> statement-breakpoint\n");
+
+  const GOOD: Record<string, string> = {
+    "packages/db/src/timescale/policies.sql": POLICY_SQL_FOR(GATE_ROLLUP_TIERS),
+    "packages/db/src/timescale/0002_weighted_rollups.sql": SEGMENTBY_SQL(
+      GATE_ROLLUP_TIERS.filter((t) => t.startsWith("weighted_")),
+    ),
+    "packages/db/src/timescale/0003_rollup_compression_segmentby.sql": SEGMENTBY_SQL(
+      GATE_ROLLUP_TIERS.filter((t) => !t.startsWith("weighted_")),
+    ),
+    "sunreye/rootfs/etc/s6-overlay/s6-rc.d/init-postgres/run":
+      "checkpoint_timeout = '2h'\nwal_compression = 'zstd'\nfull_page_writes = 'on'\n",
+    "docker-compose.yml": "      - checkpoint_timeout=2h\n      - wal_compression=zstd\n",
+    "docker/docker-compose.yml": "      - checkpoint_timeout=2h\n      - wal_compression=zstd\n",
+  };
+  const run = (over: Record<string, string> = {}) => {
+    const files = { ...GOOD, ...over };
+    const errors: string[] = [];
+    const code = checkStorageTuning({
+      read: (path) => files[path] ?? "",
+      log: () => {},
+      error: (line) => errors.push(line),
+    });
+    return { code, errors };
+  };
+
+  test("passes when every rollup tier is segmented and has a compression policy", () => {
+    expect(run()).toEqual({ code: 0, errors: [] });
+  });
+
+  test("fails when a rollup tier has compression on but no segmentby", () => {
+    // The original minute_rollups defect: compressed, but interleaving every
+    // metric within a batch.
+    const { code, errors } = run({
+      "packages/db/src/timescale/0003_rollup_compression_segmentby.sql":
+        "ALTER MATERIALIZED VIEW minute_rollups SET (timescaledb.compress = true);\n" +
+        "--> statement-breakpoint\n" +
+        SEGMENTBY_SQL(["hourly_rollups", "daily_rollups"]),
+    });
+    expect(code).toBe(1);
+    expect(errors.join("\n")).toMatch(/minute_rollups/);
+    expect(errors.join("\n")).toMatch(/segmentby/i);
+  });
+
+  test("fails when a tier has no compression policy at all", () => {
+    const { code, errors } = run({
+      "packages/db/src/timescale/policies.sql": POLICY_SQL_FOR(
+        GATE_ROLLUP_TIERS.filter((t) => t !== "daily_rollups"),
+      ),
+    });
+    expect(code).toBe(1);
+    expect(errors.join("\n")).toMatch(/daily_rollups/);
+  });
+
+  test("fails when a weighted aggregate is never refreshed — the cutover would never prefer it", () => {
+    const { code, errors } = run({
+      "packages/db/src/timescale/policies.sql": POLICY_SQL_FOR(GATE_ROLLUP_TIERS).replace(
+        "SELECT add_continuous_aggregate_policy('weighted_hourly_rollups', start_offset => INTERVAL '1 day');",
+        "SELECT 1;",
+      ),
+    });
+    expect(code).toBe(1);
+    expect(errors.join("\n")).toMatch(/weighted_hourly_rollups/);
+  });
+
+  test("fails when a segmentby drifts away from metrics_raw's columns", () => {
+    const { code, errors } = run({
+      "packages/db/src/timescale/0002_weighted_rollups.sql": SEGMENTBY_SQL(
+        GATE_ROLLUP_TIERS.filter((t) => t.startsWith("weighted_")),
+        "inverter_id",
+      ),
+    });
+    expect(code).toBe(1);
+    expect(errors.join("\n")).toMatch(/inverter_id/);
+  });
+
+  test("fails when a numbered migration would drop a continuous aggregate", () => {
+    const { code, errors } = run({
+      "packages/db/src/timescale/0003_rollup_compression_segmentby.sql":
+        "DROP MATERIALIZED VIEW minute_rollups;\n--> statement-breakpoint\n" +
+        SEGMENTBY_SQL(GATE_ROLLUP_TIERS.filter((t) => !t.startsWith("weighted_"))),
+    });
+    expect(code).toBe(1);
+    expect(errors.join("\n")).toMatch(/destroy a continuous aggregate/);
+  });
+
+  test("the real repo files pass the gate", () => {
+    const errors: string[] = [];
+    const code = checkStorageTuning({ read, log: () => {}, error: (l) => errors.push(l) });
+    expect(errors).toEqual([]);
+    expect(code).toBe(0);
   });
 });
