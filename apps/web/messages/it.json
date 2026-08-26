@@ -286,7 +286,7 @@
   "weather_title": "Meteo",
   "plant_title": "Impianto",
   "plant_battery_nominal_v": "Tensione nominale (V)",
-  "plant_battery_nominal_v_desc": "Serve a convertire la potenza in corrente di carica quando l'inverter non riporta la tensione reale della batteria. Vuoto mantiene il valore già impostato in Automazioni.",
+  "plant_battery_nominal_v_desc": "Serve a convertire la potenza in corrente di carica quando l'inverter non riporta la tensione reale della batteria.",
   "plant_desc": "Che cos'è fisicamente l'impianto: quanto fotovoltaico è esposto in quale direzione, cosa accetta la connessione di rete e quanto contiene la batteria. Li leggono sia la previsione solare sia le automazioni.",
   "plant_toast_saved": "Impostazioni impianto salvate.",
   "plant_toast_error": "Impossibile salvare le impostazioni dell'impianto.",

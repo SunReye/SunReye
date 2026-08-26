@@ -5,7 +5,7 @@
 	import SaveBar from './save-bar.svelte';
 	import SolarForecastFields, { type ArrayFields } from './solar-forecast-fields.svelte';
 	import { api } from '$lib/api';
-	import { parsePlantFields } from '$lib/settings/plant-fields';
+	import { parsePlantFields, plantTextsFrom } from '$lib/settings/plant-fields';
 	import { useAppSession } from '$lib/session';
 	import * as m from '$lib/paraglide/messages';
 
@@ -22,7 +22,6 @@
 	// They share ONE stored record with the weather settings, and this form sends
 	// only the fields above (the server merges). Sending the whole record from two
 	// pages is how one page silently undoes the other.
-	import type { PlantBattery, PvArray } from '$lib/settings/plant-fields';
 
 	const session = useAppSession();
 	const isAdmin = $derived($session.data?.user.role === 'admin');
@@ -47,40 +46,28 @@
 
 	const fieldsDisabled = $derived(!isAdmin || saving);
 
-	/** Watts as kW text; blank when unset. */
-	const wToKw = (w: number | null) => (w == null ? '' : (w / 1000).toString());
-	const arrayText = (a: PvArray): ArrayFields => ({
-		kwp: a.kwp.toString(),
-		tilt: a.tilt.toString(),
-		azimuth: a.azimuth.toString()
-	});
-
-	/** Blank fields when no battery is described. */
-	function batteryTexts(b: PlantBattery | null) {
-		if (!b) return { usable: '', charge: '', reserve: '', volts: '' };
-		return {
-			usable: b.usableKwh.toString(),
-			charge: wToKw(b.maxChargeW),
-			reserve: b.minSoc.toString(),
-			volts: b.nominalV?.toString() ?? ''
-		};
-	}
-
 	onMount(async () => {
-		const { data } = await api.api.settings.weather.get();
+		// The automation config is read only to carry ONE value across: the pack's
+		// nominal voltage used to be a peak-shaving field, and an install that set
+		// 48 V there must see 48 V here rather than a blank box that silently means
+		// something else. Whatever is shown is what the engine is using, and the
+		// first save moves it into the plant record for good.
+		const [{ data }, { data: automations }] = await Promise.all([
+			api.api.settings.weather.get(),
+			api.api.settings.automations.get()
+		]);
 		if (!data) return;
-		const f = data.forecast;
-		const battery = batteryTexts(f.battery);
-		tempCoeffText = f.tempCoefficient.toString();
-		lossText = f.systemLoss.toString();
-		arrayTexts = f.arrays.map(arrayText);
-		maxOutputText = wToKw(f.maxOutputW);
-		houseLoadText = wToKw(f.houseLoadW);
-		battUsableText = battery.usable;
-		battChargeText = battery.charge;
-		battReserveText = battery.reserve;
-		battNominalVText = battery.volts;
-		smartMeterText = f.smartMeterSince ?? '';
+		const texts = plantTextsFrom(data.forecast, automations?.peakShaving?.nominalBatteryV);
+		tempCoeffText = texts.tempCoeff;
+		lossText = texts.loss;
+		arrayTexts = texts.arrays;
+		maxOutputText = texts.maxOutput;
+		houseLoadText = texts.houseLoad;
+		battUsableText = texts.battUsable;
+		battChargeText = texts.battCharge;
+		battReserveText = texts.battReserve;
+		battNominalVText = texts.battNominalV;
+		smartMeterText = texts.smartMeterSince;
 		loaded = true;
 	});
 

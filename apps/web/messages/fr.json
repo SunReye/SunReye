@@ -286,7 +286,7 @@
   "weather_title": "Météo",
   "plant_title": "Installation",
   "plant_battery_nominal_v": "Tension nominale (V)",
-  "plant_battery_nominal_v_desc": "Sert à convertir la puissance en courant de charge quand l'onduleur ne rapporte pas la tension réelle de la batterie. Vide conserve la valeur déjà définie dans Automatisations.",
+  "plant_battery_nominal_v_desc": "Sert à convertir la puissance en courant de charge quand l'onduleur ne rapporte pas la tension réelle de la batterie.",
   "plant_desc": "Ce que l'installation est physiquement : quelle puissance PV est orientée dans quelle direction, ce que le raccordement accepte et ce que la batterie contient. La prévision solaire comme les automatisations les lisent.",
   "plant_toast_saved": "Réglages de l'installation enregistrés.",
   "plant_toast_error": "Impossible d'enregistrer les réglages de l'installation.",

@@ -37,8 +37,8 @@ Below the connection: what the system physically **is**, as opposed to how SunRe
 - **Curtailment** — feed-in limit, usable battery, max charge power, reserve and the pack's
   **nominal voltage**, plus an average **house load** (blank = inferred from history). The
   voltage is what peak shaving converts power into charge current with when the inverter
-  reports no live battery voltage; leaving it blank keeps whatever was already set under
-  Automations, where this field used to live.
+  reports no live battery voltage. It used to live under Automations; an existing system
+  opens this page with its old value already filled in, so nothing changes underfoot.
 - **Smart meter gateway installed** — the date your iMSys went in, or blank if you don't have
   one. Installing it is what lifts the 60 % feed-in cap, and it marks the plant as one **§51
   EEG** applies to — so it is also the gate on price-aware charging. Quick buttons set the

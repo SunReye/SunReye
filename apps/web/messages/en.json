@@ -286,7 +286,7 @@
   "weather_title": "Weather",
   "plant_title": "Plant",
   "plant_battery_nominal_v": "Nominal voltage (V)",
-  "plant_battery_nominal_v_desc": "Used to convert power into charge current when the inverter reports no live battery voltage. Blank keeps the value already set under Automations.",
+  "plant_battery_nominal_v_desc": "Used to convert power into charge current when the inverter reports no live battery voltage.",
   "plant_desc": "What the system physically is: how much PV faces which way, what the grid connection will take, and what the battery holds. The solar forecast and the automations both read these.",
   "plant_toast_saved": "Plant settings saved.",
   "plant_toast_error": "Could not save the plant settings.",

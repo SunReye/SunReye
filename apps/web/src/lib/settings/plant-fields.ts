@@ -132,3 +132,46 @@ export function parsePlantFields(texts: PlantTexts): PlantFields | null {
     smartMeterSince: texts.smartMeterSince === "" ? null : texts.smartMeterSince,
   };
 }
+
+/** The stored half of the record this form edits. */
+export interface StoredPlant {
+  arrays: PvArray[];
+  tempCoefficient: number;
+  systemLoss: number;
+  maxOutputW: number | null;
+  houseLoadW: number | null;
+  battery: PlantBattery | null;
+  smartMeterSince: string | null;
+}
+
+/** Watts as kW text; blank when unset. */
+const kwText = (w: number | null | undefined) => (w == null ? "" : (w / 1000).toString());
+
+/**
+ * The stored record as the form's text fields.
+ *
+ * `legacyNominalV` is the pack voltage's old home — it was a peak-shaving field
+ * before it was a plant one. An install that set 48 V there must OPEN this page
+ * showing 48 V, not an empty box: blank would read as "nothing is set" while the
+ * engine was quietly still using 48. So whatever this shows is what the engine
+ * is using, and the first save moves it into the plant record for good.
+ */
+export function plantTextsFrom(stored: StoredPlant, legacyNominalV?: number | null): PlantTexts {
+  const battery = stored.battery;
+  return {
+    arrays: stored.arrays.map((a) => ({
+      kwp: a.kwp.toString(),
+      tilt: a.tilt.toString(),
+      azimuth: a.azimuth.toString(),
+    })),
+    tempCoeff: stored.tempCoefficient.toString(),
+    loss: stored.systemLoss.toString(),
+    maxOutput: kwText(stored.maxOutputW),
+    houseLoad: kwText(stored.houseLoadW),
+    battUsable: battery ? battery.usableKwh.toString() : "",
+    battCharge: battery ? kwText(battery.maxChargeW) : "",
+    battReserve: battery ? battery.minSoc.toString() : "",
+    battNominalV: (battery?.nominalV ?? legacyNominalV)?.toString() ?? "",
+    smartMeterSince: stored.smartMeterSince ?? "",
+  };
+}

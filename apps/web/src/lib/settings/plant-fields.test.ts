@@ -1,5 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { DEFAULT_RESERVE_PCT, parsePlantFields, type PlantTexts } from "./plant-fields";
+import {
+  DEFAULT_RESERVE_PCT,
+  parsePlantFields,
+  plantTextsFrom,
+  type PlantTexts,
+  type StoredPlant,
+} from "./plant-fields";
 
 /**
  * The plant form's fields are bound as text, so this is where "what did the
@@ -114,5 +120,64 @@ describe("the battery's nominal voltage", () => {
 
   test("is absent along with the rest of the block when no battery is stated", () => {
     expect(parsePlantFields(texts({ battUsable: "", battNominalV: "48" }))?.battery).toBeNull();
+  });
+});
+
+describe("plantTextsFrom", () => {
+  const stored = (over: Partial<StoredPlant> = {}): StoredPlant => ({
+    arrays: [{ kwp: 9.8, tilt: 30, azimuth: -15 }],
+    tempCoefficient: -0.4,
+    systemLoss: 14,
+    maxOutputW: 10_000,
+    houseLoadW: null,
+    battery: { usableKwh: 15, maxChargeW: 5_000, minSoc: 10, nominalV: null },
+    smartMeterSince: null,
+    ...over,
+  });
+
+  test("shows the power fields in kW, which is what the labels say", () => {
+    const texts = plantTextsFrom(stored());
+    expect(texts.maxOutput).toBe("10");
+    expect(texts.battCharge).toBe("5");
+  });
+
+  test("shows an unset optional field as blank, not as 0", () => {
+    const texts = plantTextsFrom(stored({ houseLoadW: null, smartMeterSince: null }));
+    expect(texts.houseLoad).toBe("");
+    expect(texts.smartMeterSince).toBe("");
+  });
+
+  test("blanks the whole battery group when there is no battery", () => {
+    const texts = plantTextsFrom(stored({ battery: null }));
+    expect([texts.battUsable, texts.battCharge, texts.battReserve]).toEqual(["", "", ""]);
+  });
+
+  test("fills the voltage from the automation's old value when the plant has none", () => {
+    // The carry-over that makes the field honest: an install that set 48 V on
+    // the automations page must open this one showing 48 V. A blank box would
+    // read as "nothing is set" while the engine was still using 48.
+    expect(plantTextsFrom(stored(), 48).battNominalV).toBe("48");
+  });
+
+  test("prefers the plant's own voltage once it has been stated", () => {
+    const withVolts = stored({
+      battery: { usableKwh: 15, maxChargeW: null, minSoc: 10, nominalV: 51.2 },
+    });
+    expect(plantTextsFrom(withVolts, 48).battNominalV).toBe("51.2");
+  });
+
+  test("is blank only when neither source has one", () => {
+    expect(plantTextsFrom(stored()).battNominalV).toBe("");
+    expect(plantTextsFrom(stored(), null).battNominalV).toBe("");
+  });
+
+  test("round-trips through the parser unchanged", () => {
+    // The two halves are inverses; a unit mismatch in either would show up here
+    // as watts becoming kilowatts on every save.
+    const original = stored();
+    expect(parsePlantFields(plantTextsFrom(original))).toEqual({
+      ...original,
+      battery: { ...original.battery!, nominalV: null },
+    });
   });
 });

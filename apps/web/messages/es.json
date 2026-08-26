@@ -286,7 +286,7 @@
   "weather_title": "Tiempo",
   "plant_title": "Instalación",
   "plant_battery_nominal_v": "Tensión nominal (V)",
-  "plant_battery_nominal_v_desc": "Sirve para convertir potencia en corriente de carga cuando el inversor no informa de la tensión real de la batería. En blanco se mantiene el valor ya fijado en Automatizaciones.",
+  "plant_battery_nominal_v_desc": "Sirve para convertir potencia en corriente de carga cuando el inversor no informa de la tensión real de la batería.",
   "plant_desc": "Lo que la instalación es físicamente: cuánta fotovoltaica mira en cada dirección, qué admite la conexión a red y qué almacena la batería. Los leen tanto la previsión solar como las automatizaciones.",
   "plant_toast_saved": "Ajustes de la instalación guardados.",
   "plant_toast_error": "No se han podido guardar los ajustes de la instalación.",

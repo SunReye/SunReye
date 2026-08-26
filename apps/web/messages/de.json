@@ -286,7 +286,7 @@
   "weather_title": "Wetter",
   "plant_title": "Anlage",
   "plant_battery_nominal_v": "Nennspannung (V)",
-  "plant_battery_nominal_v_desc": "Rechnet Leistung in Ladestrom um, wenn der Wechselrichter keine aktuelle Batteriespannung meldet. Leer behält den unter Automationen bereits gesetzten Wert.",
+  "plant_battery_nominal_v_desc": "Rechnet Leistung in Ladestrom um, wenn der Wechselrichter keine aktuelle Batteriespannung meldet.",
   "plant_desc": "Was die Anlage physisch ist: wie viel PV in welche Richtung zeigt, was der Netzanschluss aufnimmt und was der Speicher fasst. Sowohl die Ertragsprognose als auch die Automationen lesen diese Werte.",
   "plant_toast_saved": "Anlagendaten gespeichert.",
   "plant_toast_error": "Anlagendaten konnten nicht gespeichert werden.",
