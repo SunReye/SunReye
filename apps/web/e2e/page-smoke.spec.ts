@@ -63,7 +63,9 @@
  *   - `/#/onboarding` — redirected to `/#/login`: `/api/setup-status` was
  *     hardcoded `{ needsSetup: false }` and no option could change it.
  *   - `/#/setup` — redirected to `/#/`, same reason for `/api/profile-status`.
- *   - `/#/system` and `/#/settings/danger` also caught two bugs in THIS spec
+ *   - `/#/system` (since removed — its subsystem panels are the power-flow
+ *     nodes' dialogs now, see `node-detail-dialog.spec.ts`) and
+ *     `/#/settings/danger` also caught two bugs in THIS spec
  *     rather than in the app: a heading regex that did not match the real
  *     message ("Solar · 2 strings"), and `getByRole("heading", …)` matching by
  *     substring across levels, which collided the shell's `<h1>` with the
@@ -266,18 +268,6 @@ const ROUTES: readonly SmokeRoute[] = [
     surface: async (page) => {
       await heading(page, "Costs & savings");
       await expect(sectionNamed(page, "Import by tariff band")).toContainText("Standard");
-    },
-  },
-  {
-    file: "(app)/system/+page.svelte",
-    h1: "System",
-    surface: async (page, opened) => {
-      // Both halves of the page: the manifest-derived subsystem panels and a
-      // KPI holding a live number.
-      await heading(page, "Battery");
-      await heading(page, /Solar · \d+ strings/);
-      for (let i = 0; i < 3; i++) await opened.backend.pushMetrics();
-      await expect(opened.liveReadouts.first()).toHaveText(/\d/);
     },
   },
   {

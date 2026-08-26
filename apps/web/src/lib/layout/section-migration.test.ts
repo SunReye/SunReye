@@ -202,7 +202,6 @@ const COPIED_EMPTY_STATE =
 
 const MIGRATED_SECTIONS = [
   "lib/components/inverter/custom-chart-section.svelte",
-  "lib/components/inverter/subsystem-section.svelte",
   "routes/(app)/controls/controls-panel.svelte",
   "routes/(app)/history/metric-group.svelte",
   "routes/(app)/statistics/band-breakdown.svelte",

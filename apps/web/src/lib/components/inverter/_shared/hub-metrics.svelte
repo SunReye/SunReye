@@ -1,54 +1,71 @@
 <script lang="ts">
-	// The metric pill floating above the inverter hub: conversion efficiency and the
-	// inverter's own draw (conversion losses + standby). Sits on a translucent
-	// backdrop so connector rails can pass underneath without colliding with text.
+	// The metric pill floating above the inverter hub: the total DC power it
+	// converts, its conversion efficiency, and its own draw (conversion losses +
+	// standby). Sits on a translucent backdrop so connector rails can pass
+	// underneath without colliding with text.
 	import GaugeIcon from 'phosphor-svelte/lib/Gauge';
-	import AnimatedNumber from '$lib/components/inverter/animated-number.svelte';
+	import HubMetric from './hub-metric.svelte';
 	import * as msg from '$lib/paraglide/messages';
 
 	let {
 		efficiency,
-		selfUse
+		selfUse,
+		dcInput
 	}: {
 		/** Percent; hidden at zero, which means "not computable right now". */
 		efficiency: number | undefined;
 		/** Watts, signed. */
 		selfUse: number | undefined;
+		/**
+		 * Total DC power arriving from the array, W. The hub is where it belongs:
+		 * it is the sum the inverter converts, and with per-string power mapped no
+		 * node carries it — the strings each show their own.
+		 */
+		dcInput: number | undefined;
 	} = $props();
 
-	const hasEfficiency = $derived(efficiency !== undefined && efficiency > 0);
-	const hasSelfUse = $derived(selfUse !== undefined);
-	const show = $derived(hasEfficiency || hasSelfUse);
+	/** The figures with a reading behind them, in reading order. A zero
+	 *  efficiency means "not computable right now", so it counts as absent. */
+	const shown = $derived(
+		[
+			dcInput === undefined
+				? null
+				: {
+						id: 'dc',
+						value: dcInput,
+						unit: 'W',
+						caption: msg.flow_dc_input(),
+						valueClass: 'font-semibold text-energy-solar'
+					},
+			efficiency === undefined || efficiency <= 0
+				? null
+				: {
+						id: 'eff',
+						value: efficiency,
+						unit: '%',
+						caption: msg.flow_efficiency(),
+						valueClass: 'font-semibold text-primary',
+						icon: GaugeIcon
+					},
+			selfUse === undefined
+				? null
+				: {
+						id: 'self',
+						value: Math.abs(selfUse),
+						unit: 'W',
+						caption: msg.flow_self_use(),
+						valueClass: 'font-medium'
+					}
+		].filter((figure) => figure !== null)
+	);
 </script>
 
-{#if show}
+{#if shown.length > 0}
 	<div
 		class="absolute bottom-full left-1/2 mb-2.5 flex -translate-x-1/2 justify-center gap-4 rounded-xl border border-border/60 bg-background/85 px-3 py-1.5 leading-tight backdrop-blur-[2px]"
 	>
-		{#if hasEfficiency}
-			<div class="flex flex-col items-center whitespace-nowrap">
-				<span
-					class="flex items-center gap-0.5 text-sm font-semibold tabular-nums text-primary 2xl:text-base"
-				>
-					<GaugeIcon class="size-3" weight="duotone" />
-					<AnimatedNumber value={efficiency as number} unit="%" />%
-				</span>
-				<span class="text-[0.6rem] uppercase tracking-wide text-muted-foreground">
-					{msg.flow_efficiency()}
-				</span>
-			</div>
-		{/if}
-		{#if hasSelfUse}
-			<div class="flex flex-col items-center whitespace-nowrap">
-				<span class="text-sm font-medium tabular-nums 2xl:text-base">
-					<AnimatedNumber value={Math.abs(selfUse as number)} unit="W" /><span
-						class="ml-0.5 text-[0.6rem] font-normal text-muted-foreground">W</span
-					>
-				</span>
-				<span class="text-[0.6rem] uppercase tracking-wide text-muted-foreground">
-					{msg.flow_self_use()}
-				</span>
-			</div>
-		{/if}
+		{#each shown as figure (figure.id)}
+			<HubMetric {...figure} />
+		{/each}
 	</div>
 {/if}

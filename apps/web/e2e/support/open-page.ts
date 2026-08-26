@@ -125,15 +125,18 @@ export async function openPage(
 /**
  * Live readouts the power-flow diagram draws for the committed Deye manifest:
  * one per graph node (`power-graph.ts`, including the EVCC charger the `evcc`
- * topic supplies) plus the hub's own self-use figure.
+ * topic supplies) plus two on the hub's own pill — its conversion efficiency
+ * and the total DC power it converts, which no node carries once per-string
+ * power is mapped. (The pill's third figure, self-use, is `font-medium` and so
+ * outside this selector.)
  *
  * An EXACT count, so it is a ratio and not a floor. Two specs used to accept
  * "at least four" — and four is met by the diagram alone, so the tiles beside
- * it could be deleted outright, or six of these ten could vanish, with both
- * cases still green. This number moves when the graph or the manifest moves,
- * and the failure names which.
+ * it could be deleted outright, or six of these could vanish, with both cases
+ * still green. This number moves when the graph or the manifest moves, and the
+ * failure names which.
  */
-export const POWER_FLOW_READOUTS = 10;
+export const POWER_FLOW_READOUTS = 11;
 
 /**
  * The power-flow diagram's OWN live readouts, on the overview.

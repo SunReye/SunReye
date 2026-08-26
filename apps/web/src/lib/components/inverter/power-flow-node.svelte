@@ -10,14 +10,17 @@
 	import ArrowUp from 'phosphor-svelte/lib/ArrowUp';
 	import AnimatedNumber from './animated-number.svelte';
 	import SocGauge from './_shared/soc-gauge.svelte';
+	import NodeDetailDialog from './node-detail-dialog.svelte';
 	import type { GraphNode, NodeKind } from '$lib/inverter/power-graph';
+	import type { NodeDetail } from '$lib/inverter/node-details';
 	import { nodeGlow } from '$lib/inverter/flow-pulse';
 
 	let {
 		node,
 		soc,
 		share = 0,
-		intervalMs
+		intervalMs,
+		detail
 	}: {
 		node: GraphNode;
 		/** Battery/vehicle state-of-charge (0..100); renders the square gauge when set. */
@@ -29,6 +32,10 @@
 		 *  animated readout so, e.g., the EVCC charger node glides at EVCC's rate
 		 *  rather than the inverter feed's. Falls back to the inverter cadence. */
 		intervalMs?: number;
+		/** This subsystem's readings; the box opens onto them. Absent (the profile
+		 *  maps none, or Settings → Sensors hid them) leaves a plain box — a
+		 *  trigger that opens an empty dialog is worse than no trigger. */
+		detail?: NodeDetail;
 	} = $props();
 
 	// Node kind → icon; the graph builder stays a pure module without component
@@ -51,6 +58,10 @@
 	const ringSoc = $derived(gauged ? soc : undefined);
 
 	const iconColor = $derived(active ? node.accent : 'var(--muted-foreground)');
+
+	/** The node box, shared by the plain and the tappable variant so the two can
+	 *  never drift apart in size — the anchors are computed against this box. */
+	const BOX_CLASS = 'relative block size-14 sm:size-16 2xl:size-20';
 
 	// Direction chevron beside the state caption; idle nodes show none.
 	const FlowIcon = $derived(
@@ -83,7 +94,7 @@
 	style={`left:${node.at.x * 100}%;top:${node.at.y * 100}%`}
 	class:opacity-70={!active}
 >
-	<div class="relative size-14 sm:size-16 2xl:size-20">
+	{#snippet box()}
 		<div
 			class="flex size-full items-center justify-center border-2 transition-[box-shadow,border-color,background] duration-500"
 			style={circleStyle}
@@ -91,7 +102,15 @@
 			<Icon class="size-7 sm:size-8 2xl:size-10" weight="duotone" style={`color:${iconColor}`} />
 		</div>
 		<SocGauge soc={ringSoc} />
-	</div>
+	{/snippet}
+
+	{#if detail}
+		<NodeDetailDialog {detail} triggerClass={`${BOX_CLASS} cursor-pointer`}>
+			{@render box()}
+		</NodeDetailDialog>
+	{:else}
+		<div class={BOX_CLASS}>{@render box()}</div>
+	{/if}
 	<div
 		class={`absolute left-1/2 flex w-24 -translate-x-1/2 flex-col items-center gap-0.5 leading-tight 2xl:w-32 ${labelBoxClass}`}
 	>

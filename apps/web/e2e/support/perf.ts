@@ -59,9 +59,10 @@ export const SELECTORS = {
   /** The app shell's scroll container (`(app)/+layout.svelte`). */
   scroller: "main",
   /**
-   * A live numeric readout — a power-flow node on the overview, a KPI on
-   * /system. `power-flow-node.svelte` renders a literal `\u2014` here while the
-   * value is `undefined`, so "does this hold a digit?" is the readout probe the
+   * A live numeric readout — a power-flow node or the hub's pill on the
+   * overview, a row inside a node's detail dialog.
+   * `power-flow-node.svelte` renders a literal `\u2014` here while the value is
+   * `undefined`, so "does this hold a digit?" is the readout probe the
    * shell-lease outage was reported as.
    */
   liveReadout: "span.font-semibold.tabular-nums",

@@ -1,7 +1,6 @@
 {
   "$schema": "https://inlang.com/schema/inlang-message-format",
   "nav_overview": "Panoramica",
-  "nav_system": "Sistema",
   "nav_history": "Cronologia",
   "nav_statistics": "Statistiche",
   "nav_controls": "Controlli",
@@ -542,6 +541,8 @@
   "controls_toast_update_failed": "Impossibile aggiornare {name}",
   "flow_efficiency": "Rend.",
   "flow_self_use": "Autoconsumo",
+  "flow_node_details": "Dettagli {name}",
+  "flow_dc_input": "Ingresso CC",
   "weather_solar_sum": "MJ/m² sole",
   "range_1h": "1 ora",
   "range_6h": "6 ore",

@@ -19,8 +19,10 @@
 	The left column is held to ~53% of the width (proportional split, not a fixed
 	right width) so its full-height box stays taller than it is wide at every
 	desktop size — that <1.1 aspect ratio is what keeps the diagram in portrait.
-	Phones scroll naturally: hero first, then weather, then the tiles. Detailed
-	subsystem metrics live at /system.
+	Phones scroll naturally: hero first, then weather, then the tiles. Every
+	subsystem's own readings live behind its node in the hero: tapping a node
+	opens them (see node-detail-dialog.svelte), which is what the /system page
+	used to be.
 
 	The one page in the app that is NOT a <PageShell>: the grid, the pinned
 	viewport height and the overflow all have to sit on the very element the shell

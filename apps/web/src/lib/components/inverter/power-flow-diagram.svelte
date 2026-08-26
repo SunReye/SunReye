@@ -15,6 +15,8 @@
 		type NodeKind,
 		type Pt
 	} from '$lib/inverter/power-graph';
+	import { nodeDetail } from '$lib/inverter/node-details';
+	import NodeDetailDialog from './node-detail-dialog.svelte';
 
 	function power(role: CanonicalRole, index?: number): number | undefined {
 		const m = inverter.byRole(role, index);
@@ -29,10 +31,13 @@
 
 	const caps = $derived(inverter.capabilities);
 
-	// Computed metrics shown on the hub itself: self-consumption (conversion
-	// losses + standby draw) and the share of drawn power that reaches the load.
+	// Readings shown on the hub itself: total DC in (the sum the inverter
+	// converts — no node carries it once per-string power is mapped), the
+	// inverter's own draw (conversion losses + standby) and the share of drawn
+	// power that reaches the load.
 	const selfUse = $derived(power('inverter.power'));
 	const efficiency = $derived(power('inverter.efficiency'));
+	const dcInput = $derived(power('pv.total.power'));
 
 	// Battery state-of-charge (0..100) drives the square gauge on the battery node.
 	const batterySoc = $derived.by(() => {
@@ -83,6 +88,13 @@
 	};
 
 	const graph = $derived.by(() => buildPowerGraph(caps, power, orientation, has, charger));
+
+	/** The hub box, shared by the plain and the tappable variant so the two can
+	 *  never drift apart in size — the ring and the rails anchor on it. */
+	const HUB_BOX_CLASS =
+		'relative flex size-14 items-center justify-center border-2 border-primary bg-background sm:size-16 2xl:size-20';
+	const HUB_BOX_STYLE =
+		'box-shadow:0 0 40px -8px color-mix(in oklab, var(--primary) 55%, transparent)';
 
 	/** Segment pts → SVG path: 2 pts line, 3 quadratic, 4 cubic (see power-graph). */
 	function toPath(px: Pt[]): string {
@@ -140,11 +152,18 @@
 	const socFor = (kind: NodeKind) =>
 		kind === 'battery' ? batterySoc : kind === 'charger' ? vehicleSoc : undefined;
 
+	// What each node opens onto: its subsystem's readings, which used to be a page
+	// of panels at /system. Resolved from the manifest here — the store is already
+	// filtered by Settings → Sensors, so a hidden group takes its dialog with it.
+	const detailFor = (id: string) => nodeDetail(id, inverter.metrics, caps) ?? undefined;
+	const hubDetail = $derived(detailFor('hub'));
+
 	// Per-node extras the diagram supplies, resolved up front so the markup below
 	// stays branch-free.
 	const renderNodes = $derived(
 		graph.nodes.map((n) => ({
 			node: n,
+			detail: detailFor(n.id),
 			soc: socFor(n.kind),
 			// The node's own power against the same remembered plant the rails are
 			// drawn against, so box and cable agree on what "busy" means.
@@ -178,17 +197,25 @@
 		class="absolute -translate-x-1/2 -translate-y-1/2"
 		style={`left:${graph.hub.x * 100}%;top:${graph.hub.y * 100}%`}
 	>
-		<HubMetrics {efficiency} {selfUse} />
-		<div
-			class="relative flex size-14 items-center justify-center border-2 border-primary bg-background sm:size-16 2xl:size-20"
-			style="box-shadow:0 0 40px -8px color-mix(in oklab, var(--primary) 55%, transparent)"
-		>
+		<HubMetrics {efficiency} {selfUse} {dcInput} />
+		{#snippet hubBox()}
 			<span
 				class="hub-ring absolute -inset-1 border border-primary/50"
 				style={`--plant-level:${plantLevel}`}
 			></span>
 			<CpuIcon class="size-7 text-primary sm:size-8 2xl:size-10" weight="duotone" />
-		</div>
+		{/snippet}
+		{#if hubDetail}
+			<NodeDetailDialog
+				detail={hubDetail}
+				triggerClass={`${HUB_BOX_CLASS} cursor-pointer`}
+				triggerStyle={HUB_BOX_STYLE}
+			>
+				{@render hubBox()}
+			</NodeDetailDialog>
+		{:else}
+			<div class={HUB_BOX_CLASS} style={HUB_BOX_STYLE}>{@render hubBox()}</div>
+		{/if}
 	</div>
 
 	{#each renderNodes as r (r.node.id)}

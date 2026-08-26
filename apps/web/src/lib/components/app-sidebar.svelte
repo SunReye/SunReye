@@ -11,7 +11,6 @@
 	import { inverter } from '$lib/inverter/store.svelte';
 	import * as m from '$lib/paraglide/messages';
 	import GaugeIcon from 'phosphor-svelte/lib/Gauge';
-	import CpuIcon from 'phosphor-svelte/lib/Cpu';
 	import ChartLineIcon from 'phosphor-svelte/lib/ChartLine';
 	import SlidersIcon from 'phosphor-svelte/lib/SlidersHorizontal';
 	import RobotIcon from 'phosphor-svelte/lib/Robot';
@@ -37,7 +36,6 @@
 
 	const items = $derived<NavItem[]>([
 		{ href: '/', label: m.nav_overview(), icon: GaugeIcon },
-		{ href: '/system', label: m.nav_system(), icon: CpuIcon },
 		{ href: '/history', label: m.nav_history(), icon: ChartLineIcon },
 		{ href: '/statistics', label: m.nav_statistics(), icon: ChartBarIcon },
 		...(isAdmin && (inverter.capabilities?.controls.length ?? 0) > 0
