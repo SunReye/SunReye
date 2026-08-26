@@ -163,6 +163,25 @@ export interface RecentBackfill {
  */
 const MAX_METRICS_GUARD = 512;
 
+/**
+ * How far back to look for the value a metric was *holding* when the window
+ * opened.
+ *
+ * Under change-only storage a metric that did not change inside the window has
+ * no row in it, and a payload that omits a metric is read by a full-width
+ * backfill as "this metric is dead" — so a steady voltage would blank its own
+ * sparkline. Carrying the held value in fixes that, and the bound is what keeps
+ * it cheap: the writer closes every interval at its bucket boundary, so a metric
+ * the device is still answering has a row within a minute. Five minutes is
+ * generous against that and still a bounded scan, where an open-ended
+ * `time < since` would walk the hypertable.
+ *
+ * A metric with nothing in the lookback is deliberately NOT seeded: "unchanged"
+ * and "the device stopped answering" must not become the same thing, which is
+ * the same boundary the decode layer keeps one level down.
+ */
+const SEED_LOOKBACK_S = 300;
+
 /** Clamp to a whole number inside `[lo, hi]` — these reach the SQL as literals. */
 const clampInt = (n: number, lo: number, hi: number): number =>
   Math.min(hi, Math.max(lo, Math.trunc(Number.isFinite(n) ? n : lo)));
@@ -221,19 +240,32 @@ export async function queryRecentBuckets(q: {
   // first.
   const buckets = Math.ceil(seconds / step) + 1;
   const cap = sql.raw(String(buckets * MAX_METRICS_GUARD));
+  const lookback = sql.raw(String(SEED_LOOKBACK_S));
+  const firstBucket = sql`(extract(epoch from time_bucket(make_interval(secs => ${width}), ${since})))::bigint`;
   const result = await db.execute<{
     metric: string;
     bucket: string | number;
     value: number | string;
   }>(sql`
-    select metric,
-           (extract(epoch from time_bucket(make_interval(secs => ${width}), time)))::bigint as bucket,
-           last(value, time) as value
-    from metrics_raw
-    where inverter_id = ${q.inverterId}
-      and time >= ${since}
-    group by metric, bucket
-    order by metric, bucket asc
+    select distinct on (metric, bucket) metric, bucket, value
+    from (
+      select metric,
+             (extract(epoch from time_bucket(make_interval(secs => ${width}), time)))::bigint as bucket,
+             last(value, time) as value,
+             0 as pref
+      from metrics_raw
+      where inverter_id = ${q.inverterId}
+        and time >= ${since}
+      group by metric, bucket
+      union all
+      select distinct on (metric) metric, ${firstBucket} as bucket, value, 1 as pref
+      from metrics_raw
+      where inverter_id = ${q.inverterId}
+        and time < ${since}
+        and time >= ${since} - make_interval(secs => ${lookback})
+      order by metric, time desc
+    ) u
+    order by metric, bucket asc, pref
     limit ${cap}
   `);
   return shapeRecentBuckets(result.rows, step);

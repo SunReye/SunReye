@@ -504,8 +504,10 @@ describe("queryRecentBuckets — the SQL", () => {
   test("carries no client-supplied limit — any cap is derived from window ÷ step", async () => {
     const [call] = await capture([], () => queryRecentBuckets(q));
     const sqlText = flat(call.sql);
-    // No limit is a bound parameter, and no number the caller passed is one.
-    expect(call.params).toEqual(["inv-1", call.params[1]]);
+    // No limit is a bound parameter, and no number the caller passed is one:
+    // every parameter is either the inverter id or the window start.
+    const since = call.params[1];
+    expect(call.params.every((p) => p === "inv-1" || p === since)).toBe(true);
     const cap = /limit (\d+)/.exec(sqlText)?.[1];
     if (cap !== undefined) {
       // Derived: grows with the bucket count, and comfortably above the
@@ -561,6 +563,57 @@ describe("queryRecentBuckets — the SQL", () => {
     expect(flat(call.sql)).toContain("secs => 5");
     expect(out.step).toBe(5);
     expect(out.metrics.pv).toEqual({ o: [0, 1], v: [1, 2] });
+  });
+});
+
+describe("queryRecentBuckets — carrying the held value into the window", () => {
+  const q = { inverterId: "inv-1", seconds: 300, stepSeconds: 1 };
+
+  test("seeds each metric with the value in force at the window start", async () => {
+    // Under change-only storage a metric that did not change inside the window
+    // has NO row in it. Without a seed the payload omits the metric entirely,
+    // and a full-width backfill reads an omitted metric as dead and clears its
+    // buffer — a steady voltage would blank its own sparkline.
+    const [call] = await capture([], () => queryRecentBuckets(q));
+    expect(flat(call.sql)).toContain("order by metric, time desc");
+    expect(flat(call.sql)).toContain("union all");
+  });
+
+  test("the lookback for the seed is bounded, not an open-ended scan", async () => {
+    // An unbounded `time < since` walks the whole hypertable. The encoder closes
+    // every interval at its bucket boundary, so a live metric always has a row
+    // within a minute; a 5-minute bound is generous and still cheap.
+    const [call] = await capture([], () => queryRecentBuckets(q));
+    expect(flat(call.sql)).toContain("make_interval(secs => 300)");
+  });
+
+  test("a real sample in the first bucket wins over the seed", async () => {
+    // Both arms can land in the same bucket. Emitting two points at one instant
+    // would make the client draw a vertical step out of nothing, so the measured
+    // sample is preferred.
+    const [call] = await capture([], () => queryRecentBuckets(q));
+    expect(flat(call.sql)).toContain("distinct on (metric, bucket)");
+  });
+
+  test("a metric with no row in the lookback is not seeded", async () => {
+    // The boundary that matters: "unchanged" and "the device was not answering"
+    // must not become the same thing. A metric the seed cannot find stays absent,
+    // which is how a dead metric still reads as dead.
+    const [, out] = await capture([{ metric: "pv.power", bucket: 1_700_000_000, value: 42 }], () =>
+      queryRecentBuckets(q),
+    );
+    expect(Object.keys(out.metrics)).toEqual(["pv.power"]);
+  });
+
+  test("the seeded value is shaped like any other point", async () => {
+    const [, out] = await capture(
+      [
+        { metric: "pv.power", bucket: 1_700_000_000, value: 230 },
+        { metric: "pv.power", bucket: 1_700_000_060, value: 231 },
+      ],
+      () => queryRecentBuckets({ ...q, stepSeconds: 60 }),
+    );
+    expect(out.metrics["pv.power"]).toEqual({ o: [0, 1], v: [230, 231] });
   });
 });
 
