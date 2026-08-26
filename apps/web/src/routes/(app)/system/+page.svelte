@@ -7,6 +7,7 @@
 	import BatteryBar from '$lib/components/inverter/battery-bar.svelte';
 	import SubsystemSection from '$lib/components/inverter/subsystem-section.svelte';
 	import IndexedGroup from '$lib/components/inverter/indexed-group.svelte';
+	import { backupSectionMetrics } from '$lib/inverter/backup-metrics';
 	import { setPageHeader } from '$lib/page-header.svelte';
 	import PageShell from '$lib/components/layout/page-shell.svelte';
 	import * as m from '$lib/paraglide/messages';
@@ -82,7 +83,7 @@
 	// section on whether it still has *visible* metrics so hiding a group (e.g. an
 	// unconnected generator) drops its section instead of leaving an empty header.
 	const generatorMetrics = $derived(inverter.inGroup('generator'));
-	const backupMetrics = $derived(inverter.inGroup('load'));
+	const backupMetrics = $derived(backupSectionMetrics(inverter.metrics));
 	const hasBatteryContent = $derived(
 		batteryRows.length > 0 || socMetric !== undefined || batteryPowerMetric !== undefined
 	);
