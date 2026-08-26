@@ -2,8 +2,15 @@ import { describe, expect, test } from "bun:test";
 import { getTableConfig } from "drizzle-orm/pg-core";
 import { drizzle } from "drizzle-orm/pg-proxy";
 
-import * as schema from "./auth";
-import { account, apikey, session, user, verification } from "./auth";
+import * as schema from "./schema/auth";
+import { account, apikey, session, user, verification } from "./schema/auth";
+
+/**
+ * One directory up from the schema it pins, deliberately: `drizzle-kit` loads
+ * every file under the `schema` path in `drizzle.config.ts`, so a co-located
+ * `*.test.ts` importing `bun:test` crashes `bun run db:generate` before it can
+ * read a single table.
+ */
 
 /** The columns of a table, keyed by their SQL name. */
 const columns = (table: Parameters<typeof getTableConfig>[0]) =>
