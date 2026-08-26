@@ -30,6 +30,7 @@
     { "file": "scripts/mock-hygiene.ts", "exports": ["*"] },
     { "file": "scripts/nginx-locations.ts", "exports": ["*"] },
     { "file": "scripts/storage-tuning.ts", "exports": ["*"] },
+    { "file": "scripts/storage-wear.ts", "exports": ["*"] },
     { "file": "scripts/db-parity.ts", "exports": ["*"] }
   ],
   "boundaries": {

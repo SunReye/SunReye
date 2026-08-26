@@ -42,106 +42,122 @@ Nothing here is required; any Modbus-TCP-capable gateway will do.
 
 ## Storage
 
-Telemetry is stored in TimescaleDB as narrow rows — **one row per metric per poll**. At the
-default **1 Hz** poll rate (`POLL_INTERVAL_MS=1000`) a Deye/Sunsynk inverter with ~99 metrics
-writes ~99 rows every second, or **~8.5 million rows per day per inverter**.
+Telemetry is stored in TimescaleDB as narrow rows — but **one row per metric per *change*, not
+per poll**. That distinction is the whole storage story, so it is worth stating plainly:
 
-### How much is written
+> The number of times a signal changes per day is a property of the signal, not of the sampler.
 
-This is the raw ingest volume before compression — useful for understanding throughput, but
-**not** what you provision (see below).
+So **poll rate and stored volume are decoupled**. Polling at 1 Hz for control quality costs the
+same history as a 30-second logger. Device count still scales the stream linearly; poll rate no
+longer does. Measured on one real device, 69.8 % of every row previously written was a
+byte-identical repeat of the value before it.
 
-| Window | Rows written | Uncompressed |
-| --- | --- | --- |
-| Day | ~8.5 million | ~5–9 GB |
-| Week | ~60 million | ~35–65 GB |
-| Month | ~260 million | ~150–270 GB |
-| Year | ~3.1 billion | ~1.8–3.3 TB |
+A stored row is therefore an *interval*, not a sample: it records the value and how long that
+value was held. The rollups compute a **time-weighted** average from that, which is what keeps a
+mostly-idle signal with short excursions (grid import, battery power, any CT reading) honest — a
+plain average over a change-only series reports something close to the spike.
+
+### What is stored, and what is not
+
+| Class of metric | Stored as |
+| --- | --- |
+| Measurements (power, voltage, current, temperature) | change-only, plus an optional per-metric deadband |
+| Energy counters (`*.total_*`, `*.daily_*`) | change-only, **exact** — never deadbanded, so a counter reset is never swallowed |
+| Status enums | change-only, exact |
+| Configuration (time-of-use slots, inverter settings) | a **change-log**, not the timeseries table — one row when the value actually changes |
+| Hardware that is not connected (e.g. a generator input reading a constant 0) | not stored until it answers |
+
+The profile decides, per metric, through its `storage` and `deadband` fields — so a vendor whose
+registers are named differently gets the same treatment, and a profile author can keep the history
+of a setting worth charting. A **deadband** is the smallest change worth storing, in the metric's
+own unit, compared against the last value that was *stored*: a "1 V deadband" therefore means the
+stored series is never wrong by more than 1 V.
 
 ### How much is actually stored on disk
 
-Disk usage is **bounded and roughly flat** — it does *not* grow with the numbers above. Two
-mechanisms keep it in check:
+Measured on the dev instance (one device, 3 s poll cadence, 108 metrics) before this work:
 
-- **Compression** — chunks older than a day are compressed at a measured **~45×**, so a day of
-  raw data drops from ~5–9 GB to ~0.1–0.2 GB.
-- **Retention** — raw 1 Hz rows are dropped after **7 days**; long-horizon history lives in the
-  rollups instead:
+| | Measured |
+| --- | --- |
+| Device writes | **3.39 GB/day** |
+| Rows | 3.11 M/day |
+| Uncompressed row | 226.6 B |
+| Compressed row | **4.1 B** — a ratio of **55x** |
+| Write amplification | 16.0x |
 
-  | Data | Resolution | Retention |
-  | --- | --- | --- |
-  | `metrics_raw` | 1 s | 7 days |
-  | `minute_rollups` | 1 min | 90 days |
-  | `hourly_rollups` | 1 hour | 730 days (2 years) |
-  | `daily_rollups` | 1 day | forever |
+Three levers act on that, in the order they matter:
 
-Net steady-state footprint is roughly **~10 GB for the raw 7-day window** (~1 day uncompressed +
-~6 days compressed) plus a few GB of rollups. Only `daily_rollups` grows without bound, at ~99
-rows/day — negligible. **Provision ~15 GB per inverter** with headroom and you are comfortable
-indefinitely.
+1. **Compression at 55x**, with `compress_after` at 2 hours so the uncompressed hot window stays
+   small. Before the retune, two full days sat uncompressed — 1011 MB of a 1232 MB database.
+2. **Configuration and absent hardware out of the timeseries table.** On the measured profile 37
+   of 108 metrics were configuration registers being rewritten every poll: 34 % of every row,
+   carrying no information.
+3. **Change-only storage with per-metric deadbands**, the largest lever, and rate-independent.
 
-Both the poll rate and every retention/compression interval are tunable — see the retention and
-compression policies in `packages/db/src/timescale/policies.sql`. Lowering the poll rate or
-shortening raw retention scales the figures down proportionally.
+Long-horizon history lives in the rollups, each built directly from the raw table:
+
+| Data | Resolution | Retention |
+| --- | --- | --- |
+| `metrics_raw` | change-only | 7 days |
+| `minute_rollups` | 1 min | 90 days |
+| `hourly_rollups` | 1 hour | 730 days (2 years) |
+| `daily_rollups` | 1 day | forever |
+
+Every interval is tunable in `packages/db/src/timescale/policies.sql`, which is re-applied on every
+migration run. **Raw retention is expected to get longer, not shorter**: it was set to 7 days when a
+day of raw cost 5–9 GB, and that premise no longer holds. The re-derivation is deliberately gated
+on measurement rather than on arithmetic (see below).
 
 ### SSD endurance (TBW)
 
-The **on-disk footprint stays flat, but the drive is written to continuously** — this is what
-determines SSD lifetime, and it is a *larger* number than the logical data volume above. Every
-row is written to the write-ahead log **and** the heap, plus **two indexes** on `metrics_raw`,
-plus full-page images after each checkpoint, plus the daily compression job rewriting a day's
-chunk. In practice physical writes land at roughly **3–5×** the logical figure:
+The on-disk footprint is bounded and roughly flat; the *drive* is written to continuously, and that
+is what determines lifetime. Every row costs the write-ahead log, the heap, and two indexes, plus
+full-page images after each checkpoint and the compression job rewriting a chunk.
 
-| | Per day | Per year |
-| --- | --- | --- |
-| Logical data | ~5–9 GB | — (bounded by retention) |
-| Physical writes to device (TBW) | ~20–45 GB | **~10–15 TB / inverter** |
+**Measure it rather than trusting a projection.** The harness is in the repo:
 
-For context, a modest consumer SSD is rated for ~300–600 **TBW** (roughly 0.3 drive-writes/day
-over 5 years). At ~10–15 TB/year, **a single 250 GB+ SSD lasts well over a decade** for one
-inverter — endurance is not a concern on real SSDs.
+```bash
+bun run test:wear -- --minutes 60 --devices 1 --poll-ms 1000
+```
 
-**It *is* a concern on the wrong media:**
+It reads the container's cgroup `io.stat` for device bytes, `pg_stat_wal` for what Postgres believes
+it wrote, subtracts the idle baseline (and still reports it), records the host load each sample was
+taken under, and answers a fixed set of gates — the headline ones being **≤ 0.4 GB/day** for one
+device at 1 Hz and **≤ 4x** write amplification, down from 3.39 GB/day and 16x. It refuses to
+compare populations taken under different host load, and refuses to call a regression from fewer
+than five samples per side, because a write-rate figure from a contended host is not comparable to
+one from an idle host.
 
-- **Do not run the database on an SD card or eMMC** (the default storage on a Raspberry Pi, and
-  common under the Home Assistant addon). At tens of GB/day these have no meaningful write
-  endurance and will fail in months. Put the Postgres data directory on an SSD (SATA or NVMe).
-- Writes scale **linearly per inverter** and with poll rate — several inverters or a faster poll
-  rate multiply TBW accordingly.
+Two figures deliberately have no number in this page: GB/day and lifetime on *your* hardware. Both
+depend on your drive's internal write amplification, which cannot be derived from a repo checkout.
 
 #### What SunReye already does
 
-These endurance optimizations ship on by default — no tuning required, and no functionality is
-given up (live monitoring is served from memory over WebSocket, so the database is only the
-history store):
+These ship on by default, and no functionality is given up — live monitoring is served from memory
+over WebSocket, so the database is only the history store:
 
+- **Change-only storage with per-metric deadbands** (above). Rate-independent, so the poll rate is
+  a control-quality decision rather than a storage one.
+- **Configuration in a change-log** instead of the timeseries table, and no rows at all for
+  hardware that has never answered.
 - **Batched history writes.** Rows are buffered and flushed in one transaction every
-  `HISTORY_FLUSH_INTERVAL_MS` (default 5 s) instead of one INSERT per poll, collapsing
-  commit/fsync/WAL churn ~5×. A crash loses at most that window of history — never live data,
-  never corruption.
+  `HISTORY_FLUSH_INTERVAL_MS` (default 5 s) instead of one INSERT per poll. A crash loses at most
+  that window of *history* — never live data, never corruption. Rows the buffer's cap discards
+  during a long database outage are counted and exported, not silently dropped.
+- **Compression at 2 hours**, measured at 55x on this data.
 - **Tuned Postgres** in every bundled database — the Docker Compose TimescaleDB containers *and*
   the Home Assistant addon's embedded PostgreSQL: `synchronous_commit=off` (group-commit, bounded
-  <~0.5 s crash-loss window), `wal_compression=on`, and wider checkpoint spacing
-  (`max_wal_size=2GB`, `checkpoint_timeout=30min`) to cut full-page-write churn.
+  <~0.5 s crash-loss window), `wal_compression=zstd`, and wider checkpoint spacing
+  (`max_wal_size=2GB`, `checkpoint_timeout=2h`) to cut full-page-write churn.
 
-Net effect, per inverter:
+**On SD cards and eMMC:** the write volume that made an SD card a non-starter is largely gone, but
+wear was never the only problem. The dominant SD failure mode is power loss during an FTL metadata
+update, which corrupts blocks unrelated to the write in flight, and most cards cannot report their
+own health at all. Prefer NVMe or eMMC where the choice exists; where it does not, back up (the
+addon does, on a schedule) and put the box behind a UPS.
 
-| | Untuned baseline | With defaults |
-| --- | --- | --- |
-| DB commits / disk flushes | ~86,400 / day (1/s) | **~17,000 / day** (1 per 5 s) |
-| Physical writes (TBW) | ~20–45 GB/day (~10–15 TB/yr) | **~8–20 GB/day (~3–7 TB/yr)** |
-
-Batching alone drops commits and fsyncs ~5× (measured: one transaction per ~5 s of samples, not
-one per poll); the Postgres tuning then shrinks WAL and full-page-write volume on top. Together
-they cut bytes written **roughly 2–3×** below the untuned baseline. On a real SSD that stretches
-an already-comfortable decade-plus lifespan into several decades — but the bigger practical wins
-are far fewer flash program/erase cycles and lower I/O load, which matter most on the constrained
-hardware (Pi-class devices) the Home Assistant addon typically runs on. Figures are approximate
-and deployment-dependent — actual write amplification varies with Postgres config and the drive.
-
-To reduce writes further, lower the poll rate (`POLL_INTERVAL_MS`) — the single biggest lever.
-If you point at your **own** PostgreSQL via `DATABASE_URL`, apply the same Postgres settings
-there; the batching happens in the app and applies regardless.
+To reduce writes further, author deadbands on the noisiest registers in your profile — after
+change-only storage that is a larger lever than the poll rate.
 
 ## Ports
 

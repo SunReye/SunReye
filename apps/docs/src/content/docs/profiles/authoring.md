@@ -59,6 +59,64 @@ The `role` you choose narrows what the rest of the argument must contain, read f
 Omit any of these and it's a compile error. A metric with **no role** is allowed — it's a
 diagnostic value that isn't rendered by role.
 
+### Storage: what is worth keeping, and how finely
+
+Two optional fields decide how much of a register's history reaches disk. Both default to
+something sensible, so a profile that omits them behaves exactly as before — but only the
+vendor map knows what a register is *worth*, which is why they are authored here rather
+than guessed downstream.
+
+```ts
+metric("ac/l1/voltage", {
+  label: "Grid Voltage L1", group: "grid",
+  role: "grid.phase.voltage", index: 1, addr: 598, unit: "V", scale: 0.1,
+  deadband: 1,            // store a change of 1 V or more, in the metric's own unit
+});
+
+metric("settings/battery/maximum_charge_current", {
+  label: "Max charge current", group: "settings",
+  role: "setting.battery.max_charge_current", access: "rw", addr: 108, unit: "A",
+  storage: "series",      // the automation engine writes this; its history is worth charting
+});
+
+metric("settings/system_time", {
+  label: "System time", group: "settings", type: "RAW", addr: [22, 23, 24],
+  storage: "none",        // a packed register that is never part of the numeric sample
+});
+```
+
+**`storage`** — where the values go:
+
+| Value | Meaning |
+| --- | --- |
+| `series` | change-only rows in the timeseries table (the default for everything read-only) |
+| `config` | a change-log: one row when the value actually changes (the default for every writable register) |
+| `none` | live feed only, never persisted |
+
+The default is derived from the metric's kind, and it is a *default*, not a law. Configuration
+registers were 34 % of every row one measured profile wrote, re-persisting an unchanged schedule
+slot on every poll — hence `config` for writable registers. But a setting your automation writes
+is genuinely worth charting, and a diagnostic measurement may be worth no storage at all, so
+either can be overridden.
+
+**`deadband`** — the smallest change worth storing, **in the metric's own unit**:
+
+- It is compared against the last value that was **stored**, carried forward — not against the
+  previous sample. That makes the error bound *equal* to the threshold: `deadband: 1` on a
+  voltage means the stored series is never wrong by more than 1 V. (Comparing against the
+  previous sample instead is unboundedly wrong: a signal drifting 0.9 V per reading never trips
+  a 1 V per-sample threshold and is never stored at all.)
+- **Absence means "store every change".** There is no `deadband: 0` — a zero would make "not
+  applicable" indistinguishable from a real threshold of zero, so validation rejects it.
+- It must be at least `scale`: a threshold below the register's own quantisation step is
+  unrepresentable, so it is an authoring error rather than a no-op.
+- It is rejected on a **counter** or a **status enum**. A threshold makes a monotonic counter lag,
+  and on an enum it can swallow a state transition. Those are always stored exactly.
+
+Pick values off the datasheet and stay inside instrument noise. The official Deye profiles use
+20 W, 1 V (0.1 V on the battery pack), 0.2 A and 0.5 °C — each above the register's own step and
+well inside the noise floor.
+
 ### Addresses by register type
 
 - `U_WORD` / `S_WORD` → one address: `addr: 672`

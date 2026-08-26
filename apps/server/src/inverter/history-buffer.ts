@@ -56,6 +56,15 @@ export interface HistoryBuffer<Row = MetricRow> {
   flush(): Promise<void>;
   /** How many rows are currently buffered. */
   readonly pending: number;
+  /**
+   * Rows the cap has discarded since this buffer was built, cumulative.
+   *
+   * Exported rather than merely logged: a cap that quietly eats history is
+   * indistinguishable from a cap that never fires, and "the buffer is fine" is
+   * not a measurement. The wear harness reads this beside the write figures, so a
+   * run that dropped rows cannot be reported as a clean one.
+   */
+  readonly dropped: number;
 }
 
 /**
@@ -67,6 +76,7 @@ export function createHistoryBuffer<Row>(deps: HistoryBufferDeps<Row>): HistoryB
   const maxPending = deps.maxPending ?? 100_000;
   let pending: Row[] = [];
   let flushing = false;
+  let dropped = 0;
 
   function enqueue(rows: Row[]): void {
     for (const row of rows) pending.push(row);
@@ -86,7 +96,19 @@ export function createHistoryBuffer<Row>(deps: HistoryBufferDeps<Row>): HistoryB
       // Re-queue (oldest first) so a transient DB blip doesn't drop history, but
       // never past the cap — trim the oldest if we're over.
       pending = batch.concat(pending);
-      if (pending.length > maxPending) pending = pending.slice(-maxPending);
+      if (pending.length > maxPending) {
+        const overflow = pending.length - maxPending;
+        pending = pending.slice(-maxPending);
+        // Logged the first time only, then counted: at 1 Hz a line per drop
+        // buries every other line in the file — the same reason the poll loop
+        // rate-limits its error. The count stays readable either way.
+        if (dropped === 0) {
+          logger.error("history buffer at its cap: {dropped} oldest row(s) dropped", {
+            dropped: overflow,
+          });
+        }
+        dropped += overflow;
+      }
       logger.error("history flush failed, {count} rows queued: {error}", {
         count: pending.length,
         error,
@@ -101,6 +123,9 @@ export function createHistoryBuffer<Row>(deps: HistoryBufferDeps<Row>): HistoryB
     flush,
     get pending() {
       return pending.length;
+    },
+    get dropped() {
+      return dropped;
     },
   };
 }

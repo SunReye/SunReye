@@ -860,10 +860,32 @@ describe("the poll loop", () => {
     expect(status().mqtt).toEqual({ enabled: true, connected: true, lastError: null });
   });
 
-  test("history is buffered across polls and committed in one transaction", async () => {
+  test("repeated polls of an unchanged reading write no history row at all", async () => {
+    // 69.8 % of every row this app used to write was a byte-identical repeat of
+    // its predecessor. A series row is an interval now, so three polls of an
+    // unchanged value are not three rows — they are one interval, still open.
     await boot();
     await poll();
     await poll();
+    await poll();
+
+    expect(inserted).toHaveLength(0);
+    await fire(FLUSH_MS);
+    expect(inserted).toHaveLength(0);
+
+    // The interval lands when it closes, carrying how long the value was held.
+    await stop();
+    const rows = inserted.flat();
+    expect(rows.map((r) => r.metric).sort()).toEqual(["battery.soc", "load.power"]);
+    expect(rows.every((r) => typeof r.durMs === "number" && (r.durMs as number) > 0)).toBe(true);
+  });
+
+  test("a changed reading closes the previous interval, and it is buffered until the flush", async () => {
+    await boot();
+    await poll();
+    setSystemTime(new Date("2026-08-15T10:00:06.000Z"));
+    readResult = async () =>
+      liveSample({ ...READINGS, "load.power": 2400 }, "2026-08-15T10:00:06.000Z");
     await poll();
 
     // Nothing has hit the database yet — that is the whole point of the buffer.
@@ -872,15 +894,13 @@ describe("the poll loop", () => {
     await fire(FLUSH_MS);
 
     expect(inserted).toHaveLength(1);
-    // Two telemetry readings, three times over. The other two keys of each poll
-    // - the writable `settings.max_discharge` and the injected `settings.lock`
-    // state - are configuration and go to the change-log instead.
-    expect(inserted[0]).toHaveLength(6);
+    expect(inserted[0]).toHaveLength(1);
     expect(inserted[0]?.[0]).toEqual({
       time: new Date("2026-08-15T10:00:00.000Z"),
       inverterId: PLANT,
       metric: "load.power",
       value: 1200,
+      durMs: 6000,
     });
   });
 

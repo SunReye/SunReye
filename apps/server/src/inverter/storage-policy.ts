@@ -20,10 +20,17 @@
  *    hardware that is not there. `deriveCapabilities` cannot answer this: the
  *    profile *does* map generator roles, so role presence says the subsystem
  *    exists. Only the readings say otherwise, so the evidence is runtime.
+ * 3. **A timeseries row is an interval, not a sample.** 69.8 % of every row
+ *    written was a byte-identical repeat of its predecessor, so the series is
+ *    change-encoded by `./change-encoder` — which also carries the duration each
+ *    value was held, without which a change-only series has no correct mean. See
+ *    that file for the two properties that makes safe.
  */
 
-import { resolveStorage } from "@SunReye/inverter-core";
+import { resolveDeadband, resolveStorage } from "@SunReye/inverter-core";
 import type { MetricDef, MetricStorage } from "@SunReye/inverter-core";
+
+import { type ChangeEncoder, createChangeEncoder } from "./change-encoder";
 
 /** One row of either destination: they share a shape, not a table. */
 export interface StorageRow {
@@ -31,6 +38,13 @@ export interface StorageRow {
   inverterId: string;
   metric: string;
   value: number;
+  /**
+   * Milliseconds this value was held, for a change-encoded series row — the
+   * weight the time-weighted aggregates divide by. Absent on a config change-log
+   * row, where a duration would mean nothing: the log records *that* a setting
+   * changed, and the next row says when it changed again.
+   */
+  durMs?: number;
 }
 
 /** Where one poll's readings are to be written. */
@@ -71,6 +85,13 @@ export interface StoragePolicyDeps {
 export interface StoragePolicy {
   /** Split one sample into the rows each destination should receive. */
   route(sample: RoutableSample): RoutedSample;
+  /**
+   * Close every open series interval at `at`, returning the rows they imply.
+   * The runtime calls this before a source swap and at shutdown: an interval is
+   * written when it *closes*, so without this the currently-held value of every
+   * metric is lost — and on a restart loop that is every metric, every time.
+   */
+  close(at: Date): StorageRow[];
 }
 
 /** Where one reading goes; `drop` is "persisted nowhere", not an error. */
@@ -102,6 +123,24 @@ export function createStoragePolicy(deps: StoragePolicyDeps): StoragePolicy {
   const present = new Set<string>();
   /** Last value written to the change-log, per inverter and metric. */
   const lastLogged = new Map<string, number>();
+  /** Deadband per metric, resolved once per profile. */
+  const deadbands = new Map<string, number | undefined>(
+    deps.metrics.map((def) => [def.key, resolveDeadband(def)]),
+  );
+  /**
+   * One change encoder per device. Per device rather than one keyed by
+   * `(device, metric)` so the metric name survives {@link StoragePolicy.close}
+   * without being packed into a composite key and parsed back out.
+   */
+  const encoders = new Map<string, ChangeEncoder>();
+
+  function encoderFor(inverterId: string): ChangeEncoder {
+    const existing = encoders.get(inverterId);
+    if (existing) return existing;
+    const created = createChangeEncoder({ deadbandFor: (metric) => deadbands.get(metric) });
+    encoders.set(inverterId, created);
+    return created;
+  }
 
   /**
    * Record every optional subsystem this sample proves exists. Run over the whole
@@ -163,11 +202,27 @@ export function createStoragePolicy(deps: StoragePolicyDeps): StoragePolicy {
     for (const [metric, value] of readings) {
       const destination = destinationOf(sample.inverterId, metric, value);
       if (destination === "drop") continue;
-      const row = { time, inverterId: sample.inverterId, metric, value };
-      (destination === "series" ? series : config).push(row);
+      if (destination === "config") {
+        config.push({ time, inverterId: sample.inverterId, metric, value });
+        continue;
+      }
+      // A series row is emitted when its interval closes, so a reading usually
+      // produces none.
+      for (const encoded of encoderFor(sample.inverterId).observe(metric, time, value)) {
+        series.push({ inverterId: sample.inverterId, metric, ...encoded });
+      }
     }
     return { series, config };
   }
 
-  return { route };
+  function close(at: Date): StorageRow[] {
+    const rows: StorageRow[] = [];
+    for (const [inverterId, encoder] of encoders) {
+      for (const row of encoder.close(at)) rows.push({ inverterId, ...row });
+    }
+    encoders.clear();
+    return rows;
+  }
+
+  return { route, close };
 }

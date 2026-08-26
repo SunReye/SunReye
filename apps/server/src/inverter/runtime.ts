@@ -239,12 +239,22 @@ export function createRuntime(deps: RuntimeDeps = {}) {
   function storagePolicy(): StoragePolicy {
     const current = context();
     if (policyCache?.ctx !== current) {
+      // A profile swap ends every open interval. Close them under the outgoing
+      // policy first: a series row is written when its interval closes, so
+      // dropping the policy instead would lose the currently-held value of every
+      // metric — and on a restart loop, that is every metric, every time.
+      closeSeriesIntervals();
       policyCache = {
         ctx: current,
         policy: createStoragePolicy({ metrics: current.profile.metrics }),
       };
     }
     return policyCache.policy;
+  }
+
+  /** Flush the open series intervals into the history buffer (no-op when none). */
+  function closeSeriesIntervals(): void {
+    if (policyCache) historyBuffer.enqueue(policyCache.policy.close(new Date()));
   }
 
   /** The house-load value (W) of a sample, or null when the profile has no load role. */
@@ -334,6 +344,7 @@ export function createRuntime(deps: RuntimeDeps = {}) {
   async function rebuildInverter(config: InverterConfig): Promise<void> {
     // Drain buffered rows before swapping sources so a changed inverterId can't
     // land on rows captured under the previous one.
+    closeSeriesIntervals();
     await historyBuffer.flush();
     await configLogBuffer.flush();
     const previous = source;
@@ -518,7 +529,9 @@ export function createRuntime(deps: RuntimeDeps = {}) {
     // every timer but the poll loop, which the runtime owns because it is re-armed
     // on each source rebuild.
     scheduler.stop();
-    // Persist whatever is buffered so a clean shutdown never drops history.
+    // Persist whatever is buffered so a clean shutdown never drops history —
+    // including the interval each metric currently has open.
+    closeSeriesIntervals();
     await historyBuffer.flush();
     await configLogBuffer.flush();
     await bridge?.close();

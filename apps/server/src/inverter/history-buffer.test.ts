@@ -216,12 +216,55 @@ describe("the history write buffer", () => {
     await settle();
 
     // The flush failed and re-queued, but trimmed to the cap: the oldest fell off.
-    expect(logged[0]?.values.count).toBe(2);
+    expect(logged.find((l) => l.template.includes("flush failed"))?.values.count).toBe(2);
     expect(buffer.pending).toBe(2);
 
     await buffer.flush();
 
     expect(inserted).toHaveLength(1);
     expect(inserted[0]?.map((r) => r.metric)).toEqual(["mid", "new"]);
+  });
+
+  test("dropped rows are counted and exported, not silently discarded", async () => {
+    // A cap that quietly eats history is indistinguishable from a cap that never
+    // fires. The count is what turns "the buffer is fine" into a measurement.
+    const buffer = make(2);
+    expect(buffer.dropped).toBe(0);
+
+    insertError = "database is not accepting connections";
+    buffer.enqueue([row("a"), row("b"), row("c")]);
+    await settle();
+    expect(buffer.dropped).toBe(1);
+
+    insertError = "still down";
+    buffer.enqueue([row("d"), row("e")]);
+    await settle();
+    // Cumulative across outages: the total is the number that matters, not the
+    // most recent trim.
+    expect(buffer.dropped).toBe(3);
+  });
+
+  test("the drop is logged the first time and then only counted", async () => {
+    // At 1 Hz a per-drop log line buries every other line in the file, the same
+    // reason the poll loop rate-limits its error.
+    const buffer = make(1);
+    insertError = "down";
+    buffer.enqueue([row("a"), row("b")]);
+    await settle();
+    insertError = "down";
+    buffer.enqueue([row("c")]);
+    await settle();
+
+    const dropLines = logged.filter((l) => l.template.includes("dropped"));
+    expect(dropLines).toHaveLength(1);
+    expect(dropLines[0]?.values.dropped).toBe(1);
+    expect(buffer.dropped).toBe(2);
+  });
+
+  test("a buffer that never overflows reports no drops", async () => {
+    const buffer = make(10);
+    buffer.enqueue([row("a")]);
+    await buffer.flush();
+    expect(buffer.dropped).toBe(0);
   });
 });
