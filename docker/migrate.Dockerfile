@@ -16,7 +16,7 @@
 # Unlike the distroless server image, this needs the bun toolchain and the
 # migration SQL files — hence a separate, run-once image.
 # ─────────────────────────────────────────────────────────────────────────────
-FROM oven/bun:1.3
+FROM oven/bun:1.4
 WORKDIR /app
 ENV HUSKY=0 SKIP_ENV_VALIDATION=1 NODE_ENV=production
 

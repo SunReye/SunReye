@@ -7,7 +7,7 @@
 # fully self-contained binary — all npm deps are bundled in, so the runtime
 # image needs no node_modules and no JS runtime.
 # ─────────────────────────────────────────────────────────────────────────────
-FROM --platform=$BUILDPLATFORM oven/bun:1.3 AS build
+FROM --platform=$BUILDPLATFORM oven/bun:1.4 AS build
 WORKDIR /app
 ENV HUSKY=0 SKIP_ENV_VALIDATION=1 NODE_ENV=production
 
