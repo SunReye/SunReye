@@ -2,7 +2,7 @@ import type { InverterProfile } from "@SunReye/inverter-core";
 import { Elysia, t } from "elysia";
 import { batteryHealthSummary, measureSegments, recordSegments } from "../battery/health";
 import { batteryKeys } from "../battery/keys";
-import { getBatteryConfig, setBatteryConfig } from "../settings/battery-settings";
+import { getWeatherConfig } from "../settings/weather-settings";
 import { adminGuard } from "./admin-guard";
 
 // 503 payload for a battery read attempted before onboarding is done.
@@ -35,23 +35,16 @@ export function batteryRoutes({ profile }: BatteryRoutesDeps) {
           if (!profile) return status(503, ONBOARDING_REQUIRED);
           const keys = batteryKeys(profile);
           if (!keys) return status(422, UNSUPPORTED);
-          const { nameplateKwh } = await getBatteryConfig();
-          return batteryHealthSummary(query.inverterId ?? profile.id, { nameplateKwh });
+          // The stated capacity, read from the plant record the inverter settings
+          // own. Deliberately not a second field of its own: one battery, one
+          // number — two would drift apart and make SOH quietly wrong.
+          const { forecast } = await getWeatherConfig();
+          return batteryHealthSummary(query.inverterId ?? profile.id, {
+            nameplateKwh: forecast.battery?.usableKwh ?? null,
+          });
         },
         { requireSession: true, query: t.Object({ inverterId: t.Optional(t.String()) }) },
       )
-      // The battery record. A read, so session-gated like the rest of the
-      // dashboard: the nameplate is not a secret and the health tile needs to know
-      // whether one is set.
-      .get("/api/battery/config", () => getBatteryConfig(), { requireSession: true })
-      // Stating the nameplate changes what SOH is measured against, so it is
-      // admin-only like every other configuration write.
-      .put("/api/battery/config", async ({ body }) => setBatteryConfig(body), {
-        requireAdmin: true,
-        body: t.Object({
-          nameplateKwh: t.Union([t.Number({ exclusiveMinimum: 0, maximum: 10_000 }), t.Null()]),
-        }),
-      })
       // Re-measure a window of raw history and store whatever segments it holds.
       // Idempotent (the segment's end instant is the key), so a widened window
       // adds only what is new and a repeat adds nothing — which is what makes it

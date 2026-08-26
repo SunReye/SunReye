@@ -9,6 +9,7 @@ import { db } from "@SunReye/db";
 import { appSettings } from "@SunReye/db/schema/settings";
 import { eq } from "drizzle-orm";
 import type { ZodType } from "zod";
+import { mergeSetting } from "./merge-setting";
 
 export async function readSetting<T>(key: string, schema: ZodType<T>, fallback: T): Promise<T> {
   const [row] = await db.select().from(appSettings).where(eq(appSettings.key, key)).limit(1);
@@ -29,6 +30,16 @@ export interface CachedSetting<T> {
   get(): Promise<T>;
   /** Validate and persist (upsert), refreshing the cache. */
   set(input: unknown): Promise<T>;
+  /**
+   * Apply a PARTIAL update: merge onto the stored record, then validate and
+   * persist as {@link set} does.
+   *
+   * For a record edited from more than one place. Two forms each sending the
+   * whole record means the second save writes back whatever the first had
+   * loaded, so one page silently undoes the other; sending only what a form owns
+   * cannot. See ./merge-setting for what merges and what replaces.
+   */
+  patch(input: unknown): Promise<T>;
 }
 
 /**
@@ -38,12 +49,12 @@ export interface CachedSetting<T> {
  */
 export function cachedSetting<T>(key: string, schema: ZodType<T>, fallback: T): CachedSetting<T> {
   let cache: T | null = null;
-  return {
+  const accessor: CachedSetting<T> = {
     async get() {
       cache ??= await readSetting(key, schema, fallback);
       return cache;
     },
-    async set(input) {
+    async set(input: unknown) {
       // Cache only once the row is safely written: a failed write must not
       // leave a value being served as the active setting that the database
       // never accepted (config.ts orders its own caches the same way).
@@ -52,5 +63,9 @@ export function cachedSetting<T>(key: string, schema: ZodType<T>, fallback: T): 
       cache = value;
       return value;
     },
+    async patch(input: unknown) {
+      return accessor.set(mergeSetting(await accessor.get(), input));
+    },
   };
+  return accessor;
 }
