@@ -17,7 +17,7 @@
 import { db } from "@SunReye/db";
 import type { InverterConfig } from "@SunReye/db/inverter-config";
 import type { MqttConfig } from "@SunReye/db/mqtt-config";
-import { metricsRaw } from "@SunReye/db/schema/metrics";
+import { metricsConfigLog, metricsRaw } from "@SunReye/db/schema/metrics";
 import { env } from "@SunReye/env/server";
 import type { InverterSample, InverterSource } from "@SunReye/inverter-core";
 import mqtt from "mqtt";
@@ -27,6 +27,7 @@ import type { ControlStore } from "./control-expr";
 import { dbControlStore } from "./control-store";
 import { createControlWriter } from "./control-writer";
 import { type HistoryBuffer, type MetricRow, createHistoryBuffer } from "./history-buffer";
+import { type StoragePolicy, type StorageRow, createStoragePolicy } from "./storage-policy";
 import { type JobScheduler, createJobScheduler } from "./job-scheduler";
 import { evccOnLoadSample } from "../evcc/evcc";
 import {
@@ -98,6 +99,14 @@ export interface RuntimeDeps {
    */
   history?: HistoryBuffer<MetricRow>;
   /**
+   * The batched writer for the configuration change-log — the second
+   * destination the storage policy routes to. Same batching contract as
+   * {@link history}, a different table: configuration registers are not
+   * timeseries, and rewriting them into the hypertable every poll was 34 % of
+   * every row this app wrote.
+   */
+  configLog?: HistoryBuffer<StorageRow>;
+  /**
    * The background job scheduler. Defaults to one arming the process globals; it
    * owns the arm/teardown of the flush, forecast, learn and price schedules (and
    * their post-boot kicks) so the runtime states them once and never juggles a
@@ -132,6 +141,9 @@ export function createRuntime(deps: RuntimeDeps = {}) {
   const historyBuffer =
     deps.history ??
     createHistoryBuffer({ commit: (rows) => db.insert(metricsRaw).values(rows), logger });
+  const configLogBuffer =
+    deps.configLog ??
+    createHistoryBuffer({ commit: (rows) => db.insert(metricsConfigLog).values(rows), logger });
   const scheduler = deps.scheduler ?? createJobScheduler();
   const onLoadSample = deps.onLoadSample ?? evccOnLoadSample;
   let ctx: ProfileContext | null = null;
@@ -167,6 +179,7 @@ export function createRuntime(deps: RuntimeDeps = {}) {
   // The `load.power` metric key of the active profile, memoized per context (the
   // lookup is a linear scan; the poll loop runs at 1 Hz forever).
   let loadKeyCache: { ctx: ProfileContext; key: string | null } | null = null;
+  let policyCache: { ctx: ProfileContext; policy: StoragePolicy } | null = null;
 
   /** Fetch the current forecast and hand it to the MQTT bridge (no-op if disabled). */
   async function publishForecastNow(): Promise<void> {
@@ -216,6 +229,24 @@ export function createRuntime(deps: RuntimeDeps = {}) {
     return ctx;
   }
 
+  /**
+   * The storage policy for the active profile: which metrics are timeseries,
+   * which are configuration, which are not persisted at all. Cached against the
+   * profile context the same way {@link loadPowerOf} caches its key, so a
+   * profile swap rebuilds it (and resets its change-log memory) rather than
+   * carrying one profile's classes into the next.
+   */
+  function storagePolicy(): StoragePolicy {
+    const current = context();
+    if (policyCache?.ctx !== current) {
+      policyCache = {
+        ctx: current,
+        policy: createStoragePolicy({ metrics: current.profile.metrics }),
+      };
+    }
+    return policyCache.policy;
+  }
+
   /** The house-load value (W) of a sample, or null when the profile has no load role. */
   function loadPowerOf(sample: InverterSample): number | null {
     const current = context();
@@ -251,15 +282,14 @@ export function createRuntime(deps: RuntimeDeps = {}) {
       // The EV charge-power estimator refines its estimate from the 1 Hz house
       // load — between EVCC's much slower publishes (no-op when EVCC is off).
       onLoadSample(loadPowerOf(sample));
-      const rows = Object.entries(sample.metrics).map(([metric, value]) => ({
-        time: new Date(sample.time),
-        inverterId: sample.inverterId,
-        metric,
-        value,
-      }));
+      // Persistence only: the live frame below carries every key regardless of
+      // where — or whether — its value is stored.
+      const routed = storagePolicy().route(sample);
       // Buffer for a batched flush (see {@link historyBuffer}) rather than
-      // committing one transaction per poll.
-      if (rows.length > 0) historyBuffer.enqueue(rows);
+      // committing one transaction per poll. An empty list is a no-op in the
+      // buffer, so neither destination is guarded here.
+      historyBuffer.enqueue(routed.series);
+      configLogBuffer.enqueue(routed.config);
       streams?.emit("metrics", sample);
       bridge?.publishSample(sample);
     } catch (error) {
@@ -305,6 +335,7 @@ export function createRuntime(deps: RuntimeDeps = {}) {
     // Drain buffered rows before swapping sources so a changed inverterId can't
     // land on rows captured under the previous one.
     await historyBuffer.flush();
+    await configLogBuffer.flush();
     const previous = source;
     source = buildSource(context().profile, config);
     // The simulator is always "connected"; a real Modbus source only proves it on
@@ -351,7 +382,13 @@ export function createRuntime(deps: RuntimeDeps = {}) {
     // a re-boot re-points the source without stacking a second set of jobs. The
     // flush cadence is read here (env is dynamic) rather than baked in.
     scheduler.start([
-      { run: () => void historyBuffer.flush(), intervalMs: env.HISTORY_FLUSH_INTERVAL_MS },
+      {
+        run: () => {
+          void historyBuffer.flush();
+          void configLogBuffer.flush();
+        },
+        intervalMs: env.HISTORY_FLUSH_INTERVAL_MS,
+      },
       { run: () => void publishForecastNow(), intervalMs: FORECAST_PUBLISH_INTERVAL_MS },
       {
         run: () => void learnCorrectionNow(),
@@ -483,6 +520,7 @@ export function createRuntime(deps: RuntimeDeps = {}) {
     scheduler.stop();
     // Persist whatever is buffered so a clean shutdown never drops history.
     await historyBuffer.flush();
+    await configLogBuffer.flush();
     await bridge?.close();
     await source?.close();
   }

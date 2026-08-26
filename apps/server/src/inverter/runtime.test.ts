@@ -51,6 +51,8 @@ import type { MqttConfig } from "@SunReye/db/mqtt-config";
 import { control, metric } from "@SunReye/inverter-core";
 import type { InverterProfile, InverterSample, InverterSource } from "@SunReye/inverter-core";
 
+import type { StorageRow } from "./storage-policy";
+
 // --- doubles ---------------------------------------------------------------
 
 /**
@@ -125,6 +127,29 @@ const historyDouble = {
   async flush(): Promise<void> {
     if (this.rows.length === 0) return;
     inserted.push(this.rows);
+    this.rows = [];
+  },
+  get pending(): number {
+    return this.rows.length;
+  },
+};
+
+/** Batches the injected config change-log buffer committed, in flush order. */
+const configInserted: StorageRow[][] = [];
+
+/**
+ * Stands in for the injected config change-log buffer, exactly as
+ * {@link historyDouble} stands in for the timeseries one. Two destinations, one
+ * batching contract - the split itself is what these tests are about.
+ */
+const configDouble = {
+  rows: [] as StorageRow[],
+  enqueue(next: StorageRow[]): void {
+    this.rows.push(...next);
+  },
+  async flush(): Promise<void> {
+    if (this.rows.length === 0) return;
+    configInserted.push(this.rows);
     this.rows = [];
   },
   get pending(): number {
@@ -670,6 +695,7 @@ afterAll(() => {
 const { createRuntime } = await import("./runtime");
 const runtime = createRuntime({
   history: historyDouble,
+  configLog: configDouble,
   controlStore,
   // The EV charge-power estimator hook, injected as a spy instead of mocking
   // `../evcc/evcc`: every poll's house-load value is recorded here, which is why
@@ -714,6 +740,8 @@ beforeEach(() => {
   logLines = [];
   inserted.length = 0;
   historyDouble.rows = [];
+  configDouble.rows = [];
+  configInserted.length = 0;
   bridges.length = 0;
   sources.length = 0;
   published = [];
@@ -844,14 +872,81 @@ describe("the poll loop", () => {
     await fire(FLUSH_MS);
 
     expect(inserted).toHaveLength(1);
-    // Three register readings plus the injected lock state, three times over.
-    expect(inserted[0]).toHaveLength(12);
+    // Two telemetry readings, three times over. The other two keys of each poll
+    // - the writable `settings.max_discharge` and the injected `settings.lock`
+    // state - are configuration and go to the change-log instead.
+    expect(inserted[0]).toHaveLength(6);
     expect(inserted[0]?.[0]).toEqual({
       time: new Date("2026-08-15T10:00:00.000Z"),
       inverterId: PLANT,
       metric: "load.power",
       value: 1200,
     });
+  });
+
+  test("a configuration register is logged once on change, not written every poll", async () => {
+    await boot();
+    await poll();
+    await poll();
+    await poll();
+    await fire(FLUSH_MS);
+
+    // 34 % of every row this app wrote was a configuration register repeating
+    // itself into a timeseries table. Three polls of an unchanged setting are
+    // one row now.
+    const config = configInserted.flat();
+    expect(config.map((r) => r.metric).sort()).toEqual(["settings.lock", "settings.max_discharge"]);
+    expect(config.find((r) => r.metric === TARGET)).toEqual({
+      time: new Date("2026-08-15T10:00:00.000Z"),
+      inverterId: PLANT,
+      metric: TARGET,
+      value: 30,
+    });
+    // ...and none of them reached the hypertable.
+    expect(inserted.flat().map((r) => r.metric)).not.toContain(TARGET);
+  });
+
+  test("a changed configuration register is logged again", async () => {
+    await boot();
+    await poll();
+    readResult = async () => liveSample({ ...READINGS, [TARGET]: 60 });
+    await poll();
+    await fire(FLUSH_MS);
+
+    const values = configInserted
+      .flat()
+      .filter((r) => r.metric === TARGET)
+      .map((r) => r.value);
+    expect(values).toEqual([30, 60]);
+  });
+
+  test("the live frame still carries every key the profile reads", async () => {
+    // The no-regression proof for #113: only *persistence* moved. Charts,
+    // controls, the MQTT bridge and the peak-shaving engine all read this frame.
+    await boot();
+    await poll();
+
+    const frame = published.at(-1) as { metrics: Record<string, number> };
+    expect(Object.keys(frame.metrics).sort()).toEqual([
+      "battery.soc",
+      "load.power",
+      "settings.lock",
+      TARGET,
+    ]);
+  });
+
+  test("the config change-log is drained on the flush tick and at shutdown", async () => {
+    await boot();
+    await poll();
+    // Nothing has hit the database yet - the change-log is batched like history.
+    expect(configInserted).toHaveLength(0);
+    await fire(FLUSH_MS);
+    expect(configInserted).toHaveLength(1);
+
+    readResult = async () => liveSample({ ...READINGS, [TARGET]: 90 });
+    await poll();
+    await stop();
+    expect(configInserted.flat().map((r) => r.value)).toContain(90);
   });
 
   test("a read that yields no metrics writes no history row", async () => {
@@ -1074,7 +1169,10 @@ describe("the history write buffer", () => {
     await stop();
 
     expect(inserted).toHaveLength(1);
-    expect(inserted[0]).toHaveLength(4);
+    // The poll's two telemetry readings; its two configuration values are
+    // flushed to the change-log by the same shutdown path.
+    expect(inserted[0]).toHaveLength(2);
+    expect(configInserted[0]).toHaveLength(2);
   });
 });
 
