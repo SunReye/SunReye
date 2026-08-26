@@ -79,6 +79,26 @@ It also *includes production that went into the battery*, which is why self-used
 higher than consumed: that energy stayed on site without having been consumed yet, and the
 gap between the two is battery charging plus storage losses.
 
+**Capacity** and **health** are measured, not reported. Neither supported inverter family exposes a
+pack capacity, an SOH or a cycle count, so SunReye infers them: over each deep discharge, the energy
+that came out divided by the charge it cost is the pack's full-range energy. Only discharges of 20
+SOC points or more count — SOC is quantised to 1 %, so a shallower one is mostly rounding — and only
+the 10–95 % band, where the BMS's own estimate is not being recalibrated. The figure shown is the
+median across every measured discharge, so one odd night cannot move it, and nothing appears at all
+until at least five have been measured.
+
+**Health** compares that against what the pack should hold. If you enter the rated capacity under
+*Settings → Inverter → Battery*, health is measured against the nameplate — the usual meaning of
+"90 % healthy". If you don't, it is measured against this system's own earliest measurements, which
+tracks degradation from the day SunReye met the pack but cannot say how far it already was from
+factory. The tile always states which reference it used, because the two are different claims.
+
+**Battery capacity over time** below the charts plots every measurement the pack has produced, with
+the nameplate as a reference line when one is set. The scatter is part of the message: capacity
+genuinely varies with temperature and discharge rate, and a single smooth line would claim a
+precision no one discharge has. Measurements are backfilled across all stored history the first time
+the feature runs, so the curve exists immediately rather than accumulating from today.
+
 **Round-trip** is those storage losses as a single figure: discharged divided by charged over
 the window. It appears only for windows of **14 days or more**, and only when the result lands
 between 50 % and 100 %. Both limits exist for the same reason — the ratio is only an

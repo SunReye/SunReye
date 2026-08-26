@@ -16,6 +16,7 @@
 	import { baselineLabel, deltaFor } from '$lib/statistics/compare';
 	import { statisticsLive } from '$lib/statistics-live.svelte';
 	import { ENERGY_TILES, type EnergyTileData } from '$lib/statistics/tiles';
+	import BatteryHealthPanel from './battery-health-panel.svelte';
 	import ChartPanel from './chart-panel.svelte';
 	import StatTiles from './stat-tiles.svelte';
 
@@ -191,6 +192,8 @@
 		</ChartPanel>
 	{/if}
 {/if}
+
+<BatteryHealthPanel {health} {hasBattery} />
 
 <!-- Rangeless-by-scope: the heatmap always folds the PICKED window (not the
      chart scope) onto one week, and hides itself when that window has no data. -->
