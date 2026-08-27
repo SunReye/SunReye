@@ -250,6 +250,31 @@ const REQUIRED_PG_SETTINGS: Record<string, string> = {
   wal_compression: "zstd",
 };
 
+/**
+ * Memory knobs the addon must size itself.
+ *
+ * The addon sets WAL and worker knobs but used to set no memory knobs at all,
+ * so it inherited PostgreSQL's stock 128 MB shared_buffers / 4 MB work_mem
+ * while the compose path gets timescaledb-tune sizing. The compose files run on
+ * a real machine and may be retuned per host; the addon most often runs on a
+ * 2 GB Home Assistant box and has nobody to tune it, so the sizing is pinned
+ * here rather than left to the default.
+ */
+const REQUIRED_ADDON_MEMORY_SETTINGS = [
+  "shared_buffers",
+  "work_mem",
+  "effective_cache_size",
+  "maintenance_work_mem",
+  "max_connections",
+] as const;
+
+/**
+ * TimescaleDB's job scheduler on a small box. 8 workers x (cagg refresh over a
+ * compressed chunk) does not fit in a 2 GB box alongside the server and the
+ * ingest; the jobs queue instead of failing, which is the behaviour we want.
+ */
+const REQUIRED_ADDON_BACKGROUND_WORKERS = "4";
+
 export interface CheckIO {
   read: (path: string) => string;
   log: (line: string) => void;
@@ -640,12 +665,29 @@ function pinProblems(io: CheckIO): string[] {
   return problems;
 }
 
+/** #111 follow-up: the addon sizes its own memory instead of inheriting defaults. */
+function addonMemoryProblems(settings: Record<string, string>): string[] {
+  const problems = REQUIRED_ADDON_MEMORY_SETTINGS.filter((key) => settings[key] === undefined).map(
+    (key) =>
+      `${ADDON_CONF}: ${key} is unset, so the addon inherits the PostgreSQL default while the compose path is tuned — on a 2 GB Home Assistant box that is where it hurts.`,
+  );
+  const workers = settings["timescaledb.max_background_workers"];
+  if (workers !== REQUIRED_ADDON_BACKGROUND_WORKERS) {
+    problems.push(
+      `${ADDON_CONF}: timescaledb.max_background_workers is '${workers ?? "unset"}', expected '${REQUIRED_ADDON_BACKGROUND_WORKERS}' — 8 concurrent jobs do not fit in a 2 GB box alongside the server and the ingest.`,
+    );
+  }
+  return problems;
+}
+
 export function checkStorageTuning(io: CheckIO): number {
+  const addonSettings = parsePgConf(io.read(ADDON_CONF));
   const problems = [
     ...policyProblems(io),
     ...rollupProblems(io),
     ...retentionProblems(io),
-    ...settingsProblems(ADDON_CONF, parsePgConf(io.read(ADDON_CONF))),
+    ...settingsProblems(ADDON_CONF, addonSettings),
+    ...addonMemoryProblems(addonSettings),
     ...COMPOSE_PG_SURFACES.flatMap((compose) =>
       settingsProblems(compose, parseComposePgFlags(io.read(compose))),
     ),

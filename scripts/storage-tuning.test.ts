@@ -20,6 +20,7 @@ import {
   REQUIRED_DB_IMAGE,
   REQUIRED_TIMESCALEDB_VERSION,
   TIMESCALEDB_DOCKERFILES,
+  ADDON_CONF,
   COMPOSE_PG_SURFACES,
   IMAGE_BUILD_WORKFLOW,
 } from "./storage-tuning";
@@ -1049,5 +1050,39 @@ describe("the one image is published by a workflow", () => {
     const { code, errors } = runGate({ [IMAGE_BUILD_WORKFLOW]: "on: workflow_dispatch\n" });
     expect(code).toBe(1);
     expect(errors.join("\n")).toContain(IMAGE_BUILD_WORKFLOW);
+  });
+});
+
+/**
+ * The addon set WAL and worker knobs but no memory knobs at all, so it silently
+ * inherited PostgreSQL's 128 MB shared_buffers / 4 MB work_mem defaults while
+ * the compose path got tuned sizing. On a 2 GB Home Assistant box that is the
+ * surface where it hurts most.
+ */
+describe("the addon sizes its memory knobs", () => {
+  const settings = () => parsePgConf(read(ADDON_CONF));
+
+  for (const key of [
+    "shared_buffers",
+    "work_mem",
+    "effective_cache_size",
+    "maintenance_work_mem",
+    "max_connections",
+  ]) {
+    test(`sunreye.conf sets ${key}`, () => {
+      expect(settings()[key]).toBeDefined();
+    });
+  }
+
+  test("timescaledb.max_background_workers is 4, not 8 — a 2 GB box has no room for 8", () => {
+    expect(settings()["timescaledb.max_background_workers"]).toBe("4");
+  });
+
+  test("the gate reports a missing memory knob", () => {
+    const { code, errors } = runGate({
+      [ADDON_CONF]: TUNED_CONF.replace("work_mem = '8MB'\n", ""),
+    });
+    expect(code).toBe(1);
+    expect(errors.join("\n")).toContain("work_mem");
   });
 });
