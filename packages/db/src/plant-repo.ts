@@ -142,7 +142,6 @@ function toPlant(row: Record<string, unknown>): PlantRecord {
  * import creates another, on a query that used to work. Lowest id is
  * deterministic and is the plant this install has always been.
  */
-// fallow-ignore-next-line unused-export -- the repository's read half: used by `ensurePlant` in this file and asserted directly by `apps/server/db-tests/plant-spine.test.ts`, and test files are not traced as consumers. A repository that could only be written through would make every provisioning bug invisible until a poll dropped rows.
 export async function readPlant(db: PlantDb, id?: number): Promise<PlantRecord | null> {
   const where = id === undefined ? sql`order by id asc limit 1` : sql`where id = ${id}`;
   const { rows } = await db.execute(sql`select ${PLANT_COLUMNS} from plants ${where}`);
@@ -543,4 +542,58 @@ export async function readRawSetting(db: PlantDb, key: string): Promise<unknown>
   // battery read back as "nothing was ever configured" — which is the exact
   // silent loss the RAW accessor exists to prevent.
   return row === undefined ? undefined : jsonDocument(row.value);
+}
+
+/** Which rows, and which of their slugs, a migration correction is moving. */
+export interface OnboardingReslug {
+  plantId: number;
+  /** A corrected plant slug, or absent for "leave it". */
+  plantSlug?: string;
+  /** The device to re-slug, or `null` when there is none to correct. */
+  deviceId: number | null;
+  deviceSlug?: string;
+}
+
+/**
+ * THE ONE PLACE A SLUG MAY CHANGE, and it is not a general capability.
+ *
+ * Everything else in this module refuses to express a slug on purpose (see the
+ * module note, "A SLUG IS FROZEN, A NAME IS NOT"), and that stays true. This is a
+ * separate, deliberately awkward function with a name that says when it may be
+ * called, for one situation that cannot be served any other way:
+ *
+ * The 1.2.0 -> 2.0.0 upgrade DERIVES both slugs before anybody has been asked —
+ * the plant's from whatever human string the old settings happened to hold (a
+ * weather tile's label), the device's from its role. Those become the MQTT
+ * namespace and every Home Assistant `unique_id`, permanently. An operator whose
+ * plant is now `limburg-weilburg` because that word was in a weather widget has no
+ * way back, and this release is ALREADY forcing exactly one round of Home
+ * Assistant entity churn. So the correction is offered ONCE, while discovery is
+ * still held and nothing has been announced, and it is frozen at announcement.
+ *
+ * The gate is not here. `apps/server/src/migration/onboarding-plan.ts` owns it
+ * (`slugFrozen`), because "may this still change" is a question about the
+ * migration record and the discovery gate, neither of which belongs in a
+ * repository function. What is guaranteed here is narrower and worth having on its
+ * own: this is an UPDATE, so both ids survive it, and five years of
+ * `metrics_raw.device_id` stay bound to the same machine. A delete-and-recreate
+ * would renumber them, which is the bug 2.0.0 broke its schema to fix.
+ *
+ * Naming neither slug executes nothing: `update plants set where id = 1` is a
+ * syntax error, and "the operator changed nothing" is the common case.
+ *
+ * A collision is left to the engine — `plants_slug_unique` and
+ * `devices_plant_slug_key`. Pre-checking in TypeScript would be a race and, worse,
+ * would still succeed on a database that had lost the index.
+ */
+export async function reslugForMigrationOnboarding(
+  db: PlantDb,
+  move: OnboardingReslug,
+): Promise<void> {
+  if (move.plantSlug !== undefined) {
+    await db.execute(sql`update plants set slug = ${move.plantSlug} where id = ${move.plantId}`);
+  }
+  if (move.deviceId !== null && move.deviceSlug !== undefined) {
+    await db.execute(sql`update devices set slug = ${move.deviceSlug} where id = ${move.deviceId}`);
+  }
 }

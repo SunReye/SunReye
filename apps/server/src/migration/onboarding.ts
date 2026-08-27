@@ -107,7 +107,6 @@ function nameProblem(field: keyof NameInput, value: string): string | null {
  * is held; making the operator submit twice to discover the second mistake is how
  * a two-field form becomes a thing they walk away from.
  */
-// fallow-ignore-next-line unused-export -- the migration onboarding route's validator; that route is the remaining piece of this upgrade, and the rule is proved now by ./onboarding.test.ts so it cannot be got wrong later.
 export function validateNames(input: NameInput): NameValidation {
   const plantName = input.plantName.trim();
   const deviceName = input.deviceName.trim();
@@ -135,7 +134,6 @@ export interface ProfileNaming {
  * fallback, which is ugly but recognisable and — crucially — visibly THEIRS to
  * edit.
  */
-// fallow-ignore-next-line unused-export -- the device field's pre-fill, for the same unbuilt route; proved by ./onboarding.test.ts.
 export function defaultDeviceName(profile: ProfileNaming): string {
   const name = profile.name?.trim() ?? "";
   return name.length > 0 ? name : profile.id;
@@ -168,7 +166,6 @@ export interface MigrationStatus {
  * the date the banner shows and the date a 422 reports cannot disagree — which
  * they would if either side computed its own.
  */
-// fallow-ignore-next-line unused-export -- the payload the unbuilt onboarding route returns and the banner renders; proved by ./onboarding.test.ts.
 export function migrationStatus(record: MigrationRecord, names: NameInput): MigrationStatus {
   const horizon = migrationHorizonFrom(record);
   return {

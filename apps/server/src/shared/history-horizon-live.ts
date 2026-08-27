@@ -38,7 +38,6 @@ const TTL_MS = 30_000;
 let cached: { at: number; limits: HistoryLimits } | null = null;
 
 /** Forget the memo — called by whatever advances the migration's stage. */
-// fallow-ignore-next-line unused-export -- called by whatever advances the migration's stage — the onboarding route, still unbuilt; without it a finished backfill reports as pending for the memo's TTL.
 export function invalidateHistoryLimits(): void {
   cached = null;
 }
