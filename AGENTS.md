@@ -24,6 +24,16 @@ green.
   animation), the test is a browser spec: `apps/web/e2e/*.spec.ts`, `bun run e2e`. Those count
   as "a test changed" for the gate. Never stand a source-text regex over the fix's own text in
   for one — see `apps/web/TESTING.md`, "Which layer does this test belong in".
+- When the behaviour is whether **Postgres accepts the statement**, the test is a database
+  spec: `apps/server/db-tests/*.test.ts`, `bun run test:db`. A SQL-text assertion cannot
+  prove a query runs — two 500s shipped behind a fully green suite that way (an ambiguous
+  `time_bucket` overload, an `ORDER BY` that bound to a UNION instead of its arm). Anything
+  touching a Timescale hyperfunction, a continuous aggregate, a UNION, `DISTINCT ON`, or a
+  cast belongs here as well as in the unit suite. The layer creates and drops its own
+  `sunreye_dbtest` database and refuses any other name — your `DATABASE_URL` may point at a
+  database shared with a live inverter. It skips when no Postgres is reachable and fails hard
+  when `CI` is set, so it can never be silently absent. Lives outside `src/` so
+  `bun run test` stays database-free.
 - Exemptions to the "a test changed with it" rule live in `scripts/require-tests.ts` and are
   themselves tested. There is no skip flag.
 - `bun run test` passes `--parallel`, which gives every test file a fresh global

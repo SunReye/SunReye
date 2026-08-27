@@ -176,6 +176,51 @@ jobs:
             apps/web/test-results
           retention-days: 7
 
+  # The database layer. Its own job rather than a step of `test`, for the same
+  # reason `e2e` is: `bun run test` is the seconds-long run every commit waits
+  # on, and pulling a TimescaleDB image is not. It also cannot share that job's
+  # runner — these tests DROP and CREATE their own database.
+  #
+  # This layer exists because the unit suite asserts on the SQL a query builder
+  # emits, which cannot say whether Postgres accepts it. Two 500s shipped behind
+  # a fully green suite that way (an ambiguous `time_bucket` overload, and an
+  # `ORDER BY` that bound to a UNION instead of its arm).
+  db:
+    name: Database query tests
+    runs-on: ubuntu-latest
+    env:
+      SKIP_ENV_VALIDATION: "1"
+      # The harness derives its own scratch database from this and refuses to
+      # touch any other, so the name here is only the connection target.
+      DB_TEST_URL: postgresql://postgres:db-test@localhost:5432/postgres
+    services:
+      timescaledb:
+        image: timescale/timescaledb:2.28.2-pg17
+        env:
+          POSTGRES_PASSWORD: db-test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.0
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      # The suite skips itself when no database is reachable — right locally, a
+      # silent hole in CI. It throws instead when CI is set, so a broken service
+      # container fails the job rather than quietly removing this layer.
+      - name: Database query tests
+        run: bun run test:db
+
   test:
     name: Test & coverage
     runs-on: ubuntu-latest
