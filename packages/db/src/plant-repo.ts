@@ -53,6 +53,7 @@
 import { type SQL, sql } from "drizzle-orm";
 
 import type { DeviceBattery } from "./batteries";
+import { jsonDocument } from "./json-value";
 import { type PlantFactColumns, columnsFromPlantRow } from "./plant-facts";
 
 /** The subset of a drizzle client this module needs — see `./metric-keys.ts`. */
@@ -536,5 +537,10 @@ export async function deleteDeviceBattery(db: PlantDb, deviceId: number): Promis
 export async function readRawSetting(db: PlantDb, key: string): Promise<unknown> {
   const { rows } = await db.execute(sql`select value from app_settings where key = ${key} limit 1`);
   const row = rows[0] as { value?: unknown } | undefined;
-  return row === undefined ? undefined : row.value;
+  // Unwrapped once, because a `jsonb` column can hold the document AS A JSON
+  // STRING and a 1.x row genuinely can be in that shape (`./json-value.ts`).
+  // Without this, a fully-configured install's coordinates, export cap and
+  // battery read back as "nothing was ever configured" — which is the exact
+  // silent loss the RAW accessor exists to prevent.
+  return row === undefined ? undefined : jsonDocument(row.value);
 }

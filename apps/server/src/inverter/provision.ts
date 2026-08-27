@@ -150,8 +150,15 @@ export interface ProvisionLogger {
   warn(template: string, values?: Record<string, unknown>): void;
 }
 
-/** Longest slug this will emit — a topic segment, not a free-text field. */
-const SLUG_MAX = 48;
+/**
+ * The longest slug this will emit — a topic segment, not a free-text field.
+ *
+ * Exported because migration onboarding refuses a NAME longer than this rather
+ * than letting `slugify` silently cut it (`../migration/onboarding.ts`): the slug
+ * is the MQTT namespace and it is frozen, so a truncation the operator never
+ * chose is permanent.
+ */
+export const SLUG_MAX = 48;
 
 /**
  * A typed name as a stable machine name.
@@ -166,7 +173,6 @@ const SLUG_MAX = 48;
  * callers all have a named fallback for it. It never invents one here: the
  * fallback belongs where the meaning is ("plant", "inverter").
  */
-// fallow-ignore-next-line unused-export -- the slug derivation, proved on its own by provision.test.ts (an empty or edge-dashed slug renders `<prefix>//<topic>`); test files are not traced as consumers, and it is called from `provisionPlantRow` in this file.
 export function slugify(text: string): string {
   return (
     text

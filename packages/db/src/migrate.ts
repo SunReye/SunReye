@@ -7,6 +7,8 @@ import { drizzle } from "drizzle-orm/node-postgres";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { Client } from "pg";
 
+import { pgUpgradeClient, runBlockingUpgrade, stampDrizzleBaseline } from "./upgrade-120-run";
+
 // Load the server env file before importing the env schema, so this works when
 // run via turbo (CWD = packages/db) the same way `drizzle.config.ts` does. In
 // containers the path doesn't exist and dotenv silently no-ops.
@@ -19,6 +21,15 @@ const { env } = await import("@SunReye/env/server");
  *
  *  1. Downgrade guard: refuses to touch a database that was migrated by a
  *     newer SunReye than this build.
+ *  1a. The IN-PLACE 1.2.0 -> 2.0.0 upgrade (`./upgrade-120-run.ts`), which is a
+ *     no-op on every database that is not a 1.x one. It has to run here, before
+ *     anything is stamped and before drizzle's migrator: a 1.2.0 database HAS
+ *     `drizzle.__drizzle_migrations`, so it classifies as journaled, takes
+ *     neither stamp path, and dies inside drizzle's migrator with a bare
+ *     `relation "user" already exists`. The upgrade renames 1.2.0's relations out
+ *     of the way, applies the parts of the baseline the database is missing, and
+ *     stamps the baseline itself — after which the steps below see an ordinary
+ *     journaled 2.0.0 database.
  *  2. Baseline stamping: databases created in the pre-journal `db:push` era
  *     have the full schema but no `drizzle.__drizzle_migrations` table. The
  *     baseline migration (journal entry 0) is *recorded as applied* without
@@ -164,11 +175,51 @@ async function missingDimensions(client: Client): Promise<string[]> {
  * hold the schema THIS build's baseline creates, dimension spine included.
  */
 async function databaseShape(client: Client): Promise<DatabaseShape> {
-  if (await tableExists(client, "drizzle.__drizzle_migrations")) return "journaled";
   const hasApp =
     (await tableExists(client, "public.metrics_raw")) && (await tableExists(client, "public.user"));
+  const incomplete = hasApp && (await missingDimensions(client)).length > 0;
+  if (await tableExists(client, "drizzle.__drizzle_migrations")) {
+    // A JOURNALED database missing the dimension spine is refused rather than
+    // handed to drizzle's migrator. This is the gap a previous wave left open on
+    // purpose: a real 1.2.0 database has a journal, so it took neither stamp path
+    // and died inside the migrator with a bare `relation "user" already exists` —
+    // loud, but naming nothing an operator could act on. It is safe to refuse
+    // here now because the only database that legitimately arrives in this shape
+    // is a 1.x one, and `runBlockingUpgrade` has already run by the time this is
+    // reached: it creates the dimension spine, so the upgrade path this refusal
+    // would otherwise block goes through untouched. What is left to refuse is a
+    // database this build cannot recognise at all — a half-migrated one, a 1.1.x
+    // one, a hand-edited one — and for those, stopping with the tables named
+    // beats a migrator error that names none of them.
+    return incomplete ? "pre-baseline" : "journaled";
+  }
   if (!hasApp) return "fresh";
-  return (await missingDimensions(client)).length === 0 ? "push-era" : "pre-baseline";
+  return incomplete ? "pre-baseline" : "push-era";
+}
+
+/**
+ * The journal's baseline entry, its SQL, and the stamp row that records it.
+ *
+ * One reader for both users — {@link stampBaseline}, which records the baseline
+ * without executing it, and `upgradeInPlace`, which executes the parts a 1.2.0
+ * database is missing and then records it. They must agree on the HASH: two
+ * readers that hashed differently would let a database be stamped with a hash
+ * drizzle's migrator would not recognise, and the next migration would try to
+ * apply the baseline again.
+ */
+function readBaseline(entries: JournalEntry[]): {
+  tag: string;
+  content: string;
+  stamp: { when: number; hash: string };
+} {
+  const baseline = entries[0];
+  if (!baseline) throw new Error("migration journal is empty");
+  const content = readFileSync(join(MIGRATIONS_DIR, `${baseline.tag}.sql`), "utf8");
+  return {
+    tag: baseline.tag,
+    content,
+    stamp: { when: baseline.when, hash: sha256(content) },
+  };
 }
 
 /**
@@ -199,22 +250,12 @@ export async function stampBaseline(client: Client, entries: JournalEntry[]) {
   }
   if (shape !== "push-era") return; // fresh or already journaled
 
-  const baseline = entries[0];
-  if (!baseline) throw new Error("migration journal is empty");
-  const content = readFileSync(join(MIGRATIONS_DIR, `${baseline.tag}.sql`), "utf8");
+  const baseline = readBaseline(entries);
 
-  await client.query("CREATE SCHEMA IF NOT EXISTS drizzle");
-  await client.query(
-    `CREATE TABLE IF NOT EXISTS drizzle.__drizzle_migrations (
-      id SERIAL PRIMARY KEY,
-      hash text NOT NULL,
-      created_at bigint
-    )`,
-  );
-  await client.query(
-    "INSERT INTO drizzle.__drizzle_migrations (hash, created_at) VALUES ($1, $2)",
-    [sha256(content), baseline.when],
-  );
+  // The same insert the in-place upgrade uses, so there is one implementation of
+  // "record a migration as applied without executing it" rather than two that
+  // could disagree about the hash or the table's DDL.
+  await stampDrizzleBaseline(pgUpgradeClient(client), baseline.stamp);
   console.log(
     `Baselined pre-journal database: stamped ${baseline.tag} as applied without executing it.`,
   );
@@ -367,6 +408,25 @@ export const productionRuntime: MigrateRuntime = {
   exit: process.exit.bind(process) as (code: number) => never,
 };
 
+/**
+ * The 1.2.0 -> 2.0.0 in-place upgrade, handed the baseline this build ships.
+ *
+ * A no-op on anything that is not a 1.x database — the recognition lives in
+ * `./upgrade-120.ts` and is a pure function of the catalog, so it is unit-tested
+ * rather than being a condition here. The baseline SQL is read and split HERE
+ * because this module already owns `MIGRATIONS_DIR` and the breakpoint format;
+ * `./upgrade-120-run.ts` stays free of the filesystem and is therefore drivable
+ * from a database test with a statement list of its own.
+ */
+async function upgradeInPlace(client: Client, entries: JournalEntry[]): Promise<void> {
+  const baseline = readBaseline(entries);
+  await runBlockingUpgrade(pgUpgradeClient(client), {
+    baselineStatements: splitStatements(baseline.content),
+    baseline: baseline.stamp,
+    logger: { log: (message) => console.log(message) },
+  });
+}
+
 export async function runMigrations(
   databaseUrl: string,
   runtime: MigrateRuntime = productionRuntime,
@@ -378,6 +438,7 @@ export async function runMigrations(
   await client.connect();
   try {
     await guardDowngrade(client, entries, runtime);
+    await upgradeInPlace(client, entries);
     await stampBaseline(client, entries);
     await runtime.applyDrizzle(client, MIGRATIONS_DIR);
     console.log(`Schema is at ${entries.at(-1)?.tag} (${entries.length} migration(s)).`);

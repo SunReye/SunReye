@@ -131,3 +131,91 @@ async function buildTestDatabase(): Promise<string> {
   await runMigrations(url);
   return url;
 }
+
+/**
+ * The ONLY other database this layer may touch: a scratch one built to look like
+ * an addon-1.2.0 install, so the in-place 1.2.0 -> 2.0.0 upgrade can be run for
+ * real.
+ *
+ * A SECOND database rather than a second shape of the first, because the upgrade
+ * is a migration of a whole database: it renames relations, applies the baseline
+ * selectively and stamps a journal, none of which can share a database with specs
+ * that expect a migrated 2.0.0 schema. Its own name means those specs cannot be
+ * affected by it and it needs no row scoping.
+ */
+const LEGACY_TEST_DB = "sunreye_dbtest_120";
+
+/** Refuse any URL that does not name {@link LEGACY_TEST_DB}. Same rule, same reason. */
+export function assertLegacyTestDatabase(url: string): void {
+  const name = new URL(url).pathname.replace(/^\//, "");
+  if (name !== LEGACY_TEST_DB) {
+    throw new Error(
+      `Refusing to build the 1.2.0 upgrade fixture in ${name || "(no database)"} — only ` +
+        `${LEGACY_TEST_DB} is allowed`,
+    );
+  }
+}
+
+/** Connection URL for {@link LEGACY_TEST_DB}, or null when nothing is configured. */
+export function legacyTestDatabaseUrl(): string | null {
+  const base = baseUrl();
+  return base === null ? null : withDatabase(base, LEGACY_TEST_DB);
+}
+
+/**
+ * Drop and recreate {@link LEGACY_TEST_DB}, EMPTY apart from the TimescaleDB
+ * extension.
+ *
+ * Deliberately NOT memoized, unlike {@link resetTestDatabase}: the upgrade is a
+ * one-way transformation of a database, so a spec that wants to run it again —
+ * or to run it from a different starting state — needs a fresh one, and sharing
+ * would make the second assertion depend on the first having happened.
+ */
+export async function resetLegacyDatabase(): Promise<string> {
+  const base = baseUrl();
+  if (base === null) throw new Error("no DB_TEST_URL or DATABASE_URL configured");
+  const url = withDatabase(base, LEGACY_TEST_DB);
+  assertLegacyTestDatabase(url);
+
+  const admin = new SQL(withDatabase(base, ADMIN_DB));
+  try {
+    await admin.unsafe(`DROP DATABASE IF EXISTS ${LEGACY_TEST_DB} WITH (FORCE)`);
+    await admin.unsafe(`CREATE DATABASE ${LEGACY_TEST_DB}`);
+  } finally {
+    await admin.end();
+  }
+  const db = new SQL(url, { max: 1 });
+  try {
+    await db.unsafe("CREATE EXTENSION IF NOT EXISTS timescaledb");
+  } finally {
+    await db.end();
+  }
+  return url;
+}
+
+/**
+ * `git show addon-v1.2.0:<path>` — the 1.2.0 schema, RECOVERED rather than
+ * transcribed.
+ *
+ * `scripts/fixture-1-2-0.ts` already does this and would be the natural thing to
+ * call, but `apps/server` cannot import from `scripts/` — it is outside tsc's
+ * `rootDir`, and `tsc -b` silently emits `scripts/*.d.ts` when you try. Reading
+ * the same tag through the same command is the next best thing: if the tag says
+ * `metrics_raw` has four columns, that is what this builds, and a future reader
+ * can diff the tag instead of trusting a copy.
+ */
+export async function showAtLegacyTag(path: string): Promise<string> {
+  const proc = Bun.spawn(["git", "show", `addon-v1.2.0:${path}`], {
+    cwd: new URL("../../../", import.meta.url).pathname,
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  const [out, err] = await Promise.all([
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+  ]);
+  if ((await proc.exited) !== 0) {
+    throw new Error(`git show addon-v1.2.0:${path} failed: ${err.trim()}`);
+  }
+  return out;
+}

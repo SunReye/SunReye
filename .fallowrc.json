@@ -19,7 +19,9 @@
     "apps/docs/src/styles/theme.css",
     "scripts/db-parity.ts",
     "scripts/fixture-1-2-0.ts",
-    "scripts/replay-rehearsal.ts"
+    "scripts/replay-rehearsal.ts",
+    "scripts/upgrade-rehearsal.ts",
+    "scripts/upgrade-phases.ts"
   ],
   "usedClassMembers": [
     {
@@ -140,6 +142,18 @@
     },
     {
       "file": "scripts/replay-rehearsal.ts",
+      "exports": [
+        "*"
+      ]
+    },
+    {
+      "file": "scripts/upgrade-rehearsal.ts",
+      "exports": [
+        "*"
+      ]
+    },
+    {
+      "file": "scripts/upgrade-phases.ts",
       "exports": [
         "*"
       ]

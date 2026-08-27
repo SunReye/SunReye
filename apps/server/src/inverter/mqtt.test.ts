@@ -15,6 +15,7 @@ import {
   forecastDiscoveryConfig,
   topicsFor,
 } from "./mqtt-discovery";
+import { holdDiscovery, releaseDiscovery, resetDiscoveryGate } from "../migration/discovery-gate";
 import type { ProfileContext } from "./inverter";
 import { createControlWriter } from "./control-writer";
 import type { ForecastVariant, SolarForecastExport } from "../forecast/solar-forecast";
@@ -404,6 +405,9 @@ const forecast = (raw: number, usable: number): Record<ForecastVariant, SolarFor
 beforeEach(() => {
   clients = [];
   connectCalls = [];
+  // The discovery gate is module-level process state, so a test that holds it
+  // would suppress every announcement in every test that ran afterwards.
+  resetDiscoveryGate();
 });
 
 describe("enabling the bridge", () => {
@@ -737,6 +741,91 @@ describe("home assistant discovery", () => {
     const discovery = h.client.topics().filter((t) => t.startsWith("homeassistant/"));
     expect(discovery).not.toContain("homeassistant/sensor/sunreye_deye-sg05lp3/pv_power/config");
     expect(discovery).toContain("homeassistant/sensor/sunreye_deye-sg05lp3/grid_import/config");
+  });
+
+  // THE MIGRATION GATE. A discovery announcement is retained on the broker and
+  // Home Assistant keys its entities on `unique_id`, so announcing under a
+  // placeholder identity is not something a later rename can take back: the old
+  // entities stay, the new ones appear beside them, and every automation the
+  // operator built points at the wrong half. The 1.2.0 -> 2.0.0 upgrade
+  // synthesises a plant and a device whose slugs the operator has not chosen yet,
+  // so the announcement has to WAIT for them. See ../migration/discovery-gate.ts.
+  test("a held gate suppresses the announcement entirely", () => {
+    holdDiscovery("migration onboarding not completed");
+    const h = start({ haDiscoveryEnabled: true });
+    h.connect();
+    expect(h.client.topics().some((t) => t.startsWith("homeassistant/"))).toBe(false);
+  });
+
+  test("availability and commands still work while discovery is held", () => {
+    // Holding discovery must not hold the BRIDGE. The dashboard is live from the
+    // first minute after the upgrade and the operator can still control the
+    // inverter; only the retained HA announcement waits.
+    holdDiscovery("migration onboarding not completed");
+    const h = start({ haDiscoveryEnabled: true });
+    h.connect();
+    expect(h.client.published.map((p) => p.topic)).toContain("sunreye/deye-sg05lp3/status");
+  });
+
+  test("a reconnect while held STAYS silent — a retry is not a release", () => {
+    holdDiscovery("migration onboarding not completed");
+    const h = start({ haDiscoveryEnabled: true });
+    h.connect();
+    h.drop();
+    h.connect();
+    expect(h.client.topics().some((t) => t.startsWith("homeassistant/"))).toBe(false);
+  });
+
+  test("releasing the gate announces immediately, without waiting for a reconnect", () => {
+    // The operator confirms their names and expects their entities to appear. A
+    // gate that only published on the next connect would wait for the broker to
+    // drop, which on a healthy broker is never.
+    holdDiscovery("migration onboarding not completed");
+    const h = start({ haDiscoveryEnabled: true });
+    h.connect();
+    releaseDiscovery();
+    expect(h.client.topics()).toContain(
+      "homeassistant/sensor/sunreye_deye-sg05lp3/pv_power/config",
+    );
+  });
+
+  test("releasing while DISCONNECTED does not publish — the next connect does", () => {
+    // Publishing into a closed socket would drop the announcement silently, and
+    // the gate is already lifted, so nothing would ever retry it.
+    holdDiscovery("migration onboarding not completed");
+    const h = start({ haDiscoveryEnabled: true });
+    h.connect();
+    h.drop();
+    h.client.published.length = 0;
+    releaseDiscovery();
+    expect(h.client.topics().some((t) => t.startsWith("homeassistant/"))).toBe(false);
+    h.connect();
+    expect(h.client.topics()).toContain(
+      "homeassistant/sensor/sunreye_deye-sg05lp3/pv_power/config",
+    );
+  });
+
+  test("a release published once is not re-published by a later release", () => {
+    holdDiscovery("migration onboarding not completed");
+    const h = start({ haDiscoveryEnabled: true });
+    h.connect();
+    releaseDiscovery();
+    h.client.published.length = 0;
+    releaseDiscovery();
+    expect(h.client.topics().some((t) => t.startsWith("homeassistant/"))).toBe(false);
+  });
+
+  test("a closed bridge does not announce when the gate lifts later", async () => {
+    // The listener has to be removed on stop, or a released gate publishes
+    // through a bridge that has been torn down — and on a profile swap, under the
+    // OLD profile's identity.
+    holdDiscovery("migration onboarding not completed");
+    const h = start({ haDiscoveryEnabled: true });
+    h.connect();
+    await h.bridge.close();
+    h.client.published.length = 0;
+    releaseDiscovery();
+    expect(h.client.topics().some((t) => t.startsWith("homeassistant/"))).toBe(false);
   });
 
   test("a reconnect re-announces, so a broker restart does not lose the entities", () => {
