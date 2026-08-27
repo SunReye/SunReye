@@ -16,6 +16,7 @@ import { entitiesApi } from "./inverter/entities";
 import { evccControl, evccSnapshot, rebuildEvcc, stopEvcc } from "./evcc/evcc";
 import { deviceIdOf, metricIdOf } from "./shared/identity-sql";
 import { queryRecentBuckets, queryRollup } from "./shared/history";
+import { type HistoryTier, refuseIncompleteRange } from "./shared/history-horizon";
 import { isPublicDashboard } from "./settings/access-settings";
 import { buildProfileContext, initProfiles } from "./inverter/inverter";
 import { syncProvisioning } from "./inverter/provision-boot";
@@ -72,6 +73,40 @@ const ROLLUP_DEFAULT_HOURS = 168;
 function historyWindow(q: { from?: string; to?: string; hours?: number }) {
   if (q.from && q.to) return { from: new Date(q.from), to: new Date(q.to) };
   return { since: new Date(Date.now() - (q.hours ?? ROLLUP_DEFAULT_HOURS) * 60 * 60 * 1000) };
+}
+
+/**
+ * The tier a `bucket` query parameter reads. `month` is derived from the daily
+ * tier, so it inherits the daily horizon.
+ */
+const TIER_OF: Record<string, HistoryTier> = {
+  minute: "minute",
+  hour: "hour",
+  day: "day",
+  month: "day",
+};
+
+/**
+ * Refuse a range this instance cannot answer COMPLETELY, or `undefined`.
+ *
+ * Applied to every range-taking read. The hazard is not the empty answer, it is
+ * the PARTIAL one: a month-to-date figure whose window opens before the
+ * retention horizon — or before a pending 1.2.0 migration's cutover — is a real
+ * number computed over a fraction of the range it claims, rendered exactly like a
+ * complete one. See `./shared/history-horizon.ts`; issue #154 is the same defect
+ * with a different cause, and both are decided there.
+ *
+ * `422`, not `404` or `503`: the request is well-formed and the instance is
+ * healthy — the RANGE is unanswerable, and the body carries the oldest instant
+ * that is not, so a client can offer to clamp to it.
+ */
+async function guardRange(
+  tier: HistoryTier,
+  range: { from: Date; to: Date },
+  status: (code: 422, body: unknown) => unknown,
+): Promise<unknown | undefined> {
+  const refusal = await refuseIncompleteRange(tier, range);
+  return refusal === null ? undefined : status(422, refusal);
 }
 
 /** The `[from, to)` a cost read covers: an explicit window, else a named range. */
@@ -166,6 +201,38 @@ const activeInverterId = profile?.id ?? null;
 // plant, and never a renumbered device id, which would rebind five years of
 // readings to a different machine. Never throws.
 await syncProvisioning(profile);
+
+// HOLD HOME ASSISTANT DISCOVERY when a 1.x -> 2.0.0 migration has not been
+// through onboarding yet. Before the MQTT bridge starts, necessarily: the
+// announcement goes out inside MQTT's synchronous `connect` handler, which cannot
+// await a database read, so the flag has to be set before anything dials.
+//
+// A discovery announcement is retained and Home Assistant keys its entities on
+// `unique_id`. Announcing under the placeholder identity the migration
+// synthesises is therefore not something a later rename can take back, so it
+// waits for the operator's names — see ./migration/onboarding.ts. A no-op on
+// every install that never ran a 1.x upgrade, which is the important half: a gate
+// that engaged by accident looks exactly like a broken MQTT bridge.
+//
+// Never throws. A migration record that cannot be read must not stop the server
+// booting; the gate simply stays open, which is the state every healthy install
+// is in anyway.
+try {
+  const { readMigrationRecord } = await import("./migration/record");
+  const { migrationGateReason } = await import("./migration/onboarding");
+  const { holdDiscovery } = await import("./migration/discovery-gate");
+  const { log } = await import("./shared/logging");
+  const reason = migrationGateReason(await readMigrationRecord());
+  if (reason !== null) {
+    holdDiscovery(reason);
+    log("migration").warn("Home Assistant discovery is held: {reason}", { reason });
+  }
+} catch (error) {
+  const { log } = await import("./shared/logging");
+  log("migration").warn("could not read the migration record; discovery is not held: {error}", {
+    error: (error as Error).message,
+  });
+}
 
 /**
  * The two topics whose producers ask "is anyone actually watching" before doing
@@ -322,8 +389,10 @@ const app = new Elysia()
         inverterId: t.Optional(t.String()),
       }),
     },
-    async ({ query }) => {
+    async ({ query, status }) => {
       const since = new Date(Date.now() - query.hours * 60 * 60 * 1000);
+      const refused = await guardRange("raw", { from: since, to: new Date() }, status);
+      if (refused !== undefined) return refused;
       const filters = [gte(metricsRaw.time, since)];
       // Filtered BY id, resolved from the name the caller sent. `metric` and
       // `inverterId` stay the query vocabulary: the int2 is a storage detail, and
@@ -406,12 +475,20 @@ const app = new Elysia()
     async ({ query, status }) => {
       const inverterId = query.inverterId ?? activeInverterId;
       if (!inverterId) return status(503, ONBOARDING_REQUIRED);
+      const bucket = query.bucket ?? "hour";
+      const window = historyWindow(query);
+      const refused = await guardRange(
+        TIER_OF[bucket] ?? "hour",
+        { from: window.from ?? window.since ?? new Date(), to: window.to ?? new Date() },
+        status,
+      );
+      if (refused !== undefined) return refused;
       return queryRollup({
         metric: query.metric,
         inverterId,
         limit: query.limit,
-        bucket: query.bucket ?? "hour",
-        ...historyWindow(query),
+        bucket,
+        ...window,
       });
     },
   )
@@ -492,23 +569,42 @@ const app = new Elysia()
         inverterId: t.Optional(t.String()),
       }),
     },
-    ({ query, status }) => {
+    async ({ query, status }) => {
       if (!profile) return status(503, ONBOARDING_REQUIRED);
       const { from, to } = costWindow(query);
+      // The named ranges are exactly the hazard: `month` and `year` open at a
+      // boundary that can precede the cutover, and the answer would be a real
+      // partial number labelled "month to date".
+      const refused = await guardRange("hour", { from, to }, status);
+      if (refused !== undefined) return refused;
       return computeCost(profile, { from, to, inverterId: query.inverterId });
     },
   )
   // Net-cost time-series over an explicit [from, to) window, one point per
   // `bucket` (hour / day / month). Feeds the Costs page's range-driven bar chart;
   // band-accurate and cheap (delta + rollup done in SQL, bounded matrix returned).
-  .get("/api/cost/series", { requireSession: true, query: seriesQuery }, ({ query, status }) =>
-    profile ? computeCostSeries(profile, seriesArgs(query)) : status(503, ONBOARDING_REQUIRED),
+  .get(
+    "/api/cost/series",
+    { requireSession: true, query: seriesQuery },
+    async ({ query, status }) => {
+      if (!profile) return status(503, ONBOARDING_REQUIRED);
+      const args = seriesArgs(query);
+      const refused = await guardRange(TIER_OF[query.bucket] ?? "day", args, status);
+      return refused ?? computeCostSeries(profile, args);
+    },
   )
   // Per-period energy split (grid-vs-solar consumption, self-consumed-vs-exported
   // production) over the same window/bucket. Feeds the Costs page energy chart;
   // derived at query time from the rollups, zero-filled so the x-axis stays stable.
-  .get("/api/energy/series", { requireSession: true, query: seriesQuery }, ({ query, status }) =>
-    profile ? energySeries(profile, seriesArgs(query)) : status(503, ONBOARDING_REQUIRED),
+  .get(
+    "/api/energy/series",
+    { requireSession: true, query: seriesQuery },
+    async ({ query, status }) => {
+      if (!profile) return status(503, ONBOARDING_REQUIRED);
+      const args = seriesArgs(query);
+      const refused = await guardRange(TIER_OF[query.bucket] ?? "day", args, status);
+      return refused ?? energySeries(profile, args);
+    },
   )
   // Statistics-page aggregates (hour×weekday heatmap, …) over the same rollups.
   .use(statisticsRoutes({ profile }))

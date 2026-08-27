@@ -19,8 +19,11 @@
  * a decision is not a statement Postgres has an opinion about. The statements
  * themselves are covered by the database layer (`apps/server/db-tests`).
  */
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, test } from "bun:test";
 import type { Client } from "pg";
+import { classifyBaselineStatement } from "./upgrade-120";
 import {
   applyTimescale,
   cli,
@@ -48,6 +51,10 @@ type Catalog = {
   relations: Set<string>;
   /** `<table>.<column>` pairs that exist. */
   columns: Set<string>;
+  /** Index names in `public`, as the in-place upgrade's rename guard reads them. */
+  indexes: Set<string>;
+  /** Constraint names in `public`, same. */
+  constraints: Set<string>;
   /** Names already recorded in `public.timescale_migrations`. */
   timescaleApplied: string[];
   /**
@@ -88,12 +95,35 @@ const PROBES: readonly [
     (catalog, params) => [{ oid: catalog.relations.has(String(params?.[0])) ? "16384" : null }],
   ],
   [
+    // The upgrade's own column read: the WHOLE list, not one probe. Listed
+    // before the single-column probe because both mention
+    // `information_schema.columns` and this one is the more specific.
+    "column_name as c",
+    (catalog) =>
+      [...catalog.columns].map((pair) => {
+        const dot = pair.indexOf(".");
+        return { t: pair.slice(0, dot), c: pair.slice(dot + 1) };
+      }),
+  ],
+  [
     "information_schema.columns",
     (catalog, params) =>
       catalog.columns.has(`${String(params?.[0])}.${String(params?.[1])}`)
         ? [{ present: true }]
         : [],
   ],
+  // `readCatalog` in upgrade-120-run.ts. The relation names it reads are
+  // UNQUALIFIED, so the qualified names the `to_regclass` probes use are stripped
+  // here rather than being a second list that could disagree with the first.
+  [
+    "c.relkind in ('r', 'v', 'm', 'p', 'f')",
+    (catalog) =>
+      [...catalog.relations]
+        .filter((name) => name.startsWith("public."))
+        .map((name) => ({ name: name.slice("public.".length) })),
+  ],
+  ["c.relkind = 'i'", (catalog) => [...catalog.indexes].map((name) => ({ name }))],
+  ["pg_constraint", (catalog) => [...catalog.constraints].map((name) => ({ name }))],
 ];
 
 /**
@@ -110,6 +140,55 @@ function probeAnswer(
 }
 
 /**
+ * Apply the DDL the in-place upgrade sends to the fake's own catalog.
+ *
+ * Without this the fake is a SNAPSHOT, and a snapshot cannot answer the one
+ * question the upgrade's safety rests on: what does the catalog look like AFTER
+ * the rename? A static fake reports the renamed-away `metrics_raw` as still
+ * present, so the selective baseline apply would appear to refuse a database it
+ * actually handles — and, worse, the "killed after the rename" case could not be
+ * distinguished from the first run at all.
+ *
+ * Only the three shapes this module emits are modelled. Anything else is
+ * swallowed, exactly as the fake swallows every other statement.
+ */
+function applyDdl(catalog: Catalog, text: string): void {
+  const rename = /^\s*alter\s+(table|materialized view|index)\s+(\w+)\s+rename to\s+(\w+)/i.exec(
+    text,
+  );
+  if (rename) {
+    const [, kind, from, to] = rename as unknown as [string, string, string, string];
+    if (kind.toLowerCase() === "index") {
+      catalog.indexes.delete(from);
+      catalog.indexes.add(to);
+      return;
+    }
+    catalog.relations.delete(`public.${from}`);
+    catalog.relations.add(`public.${to}`);
+    // The spread is NOT useless: the loop DELETES from the set it is iterating,
+    // and mutating a Set mid-iteration skips entries. Snapshot first.
+    // oxlint-disable-next-line unicorn/no-useless-spread
+    for (const pair of [...catalog.columns]) {
+      if (!pair.startsWith(`${from}.`)) continue;
+      catalog.columns.delete(pair);
+      catalog.columns.add(`${to}.${pair.slice(from.length + 1)}`);
+    }
+    return;
+  }
+  const created = /^\s*CREATE TABLE "(\w+)"/i.exec(text);
+  if (created?.[1]) {
+    const parsed = classifyBaselineStatement(text);
+    catalog.relations.add(`public.${created[1]}`);
+    if (parsed.kind === "table") {
+      for (const column of parsed.columns) catalog.columns.add(`${created[1]}.${column}`);
+    }
+    return;
+  }
+  const index = /^\s*CREATE (?:UNIQUE )?INDEX "(\w+)"/i.exec(text);
+  if (index?.[1]) catalog.indexes.add(index[1]);
+}
+
+/**
  * A `pg.Client` that exists only as a catalog.
  *
  * Every statement is recorded in `statements` (raw, comments included) and the
@@ -120,6 +199,8 @@ function fakeClient(
   options: {
     relations?: string[];
     columns?: string[];
+    indexes?: string[];
+    constraints?: string[];
     timescaleApplied?: string[];
     journalMax?: number | null;
   } = {},
@@ -127,6 +208,8 @@ function fakeClient(
   const catalog: Catalog = {
     relations: new Set(options.relations ?? []),
     columns: new Set(options.columns ?? []),
+    indexes: new Set(options.indexes ?? []),
+    constraints: new Set(options.constraints ?? []),
     timescaleApplied: options.timescaleApplied ?? [],
     journalMax: options.journalMax ?? null,
   };
@@ -149,6 +232,7 @@ function fakeClient(
       const probe = probeAnswer(text, params, catalog);
       if (probe !== null) return probe;
       if (WRITES.test(text)) writes.push(text.replace(/\s+/g, " ").trim());
+      applyDdl(catalog, text);
       return { rows: [] };
     },
   };
@@ -164,8 +248,17 @@ const PUSH_ERA_2_0_0 = ["public.metrics_raw", "public.user", ...DIMENSIONS];
 /** The shape the single production instance is actually in today. */
 const PROD_1_2_0 = ["public.metrics_raw", "public.user", "public.minute_rollups"];
 
+/**
+ * The baseline-stamp inserts a run sent.
+ *
+ * Case-insensitive on purpose: the statement is now issued by
+ * `upgrade-120-run.ts`'s `stampDrizzleBaseline`, which both stamp paths share so
+ * there is one implementation of "record a migration as applied without
+ * executing it". What is under test is which statement was sent, not how it is
+ * capitalised.
+ */
 const stamped = (client: FakeClient) =>
-  client.writes.filter((w) => w.startsWith("INSERT INTO drizzle.__drizzle_migrations"));
+  client.writes.filter((w) => /^insert into drizzle\.__drizzle_migrations/i.test(w));
 
 describe("stampBaseline", () => {
   test("stamps a push-era database that already holds the whole baseline", async () => {
@@ -507,7 +600,7 @@ describe("runMigrations: orchestration", () => {
     // The baseline stamp has to land before drizzle's migrator looks at the
     // journal, or the migrator executes a baseline the database already has.
     const stampAt = client.statements.findIndex((s) =>
-      s.includes("INSERT INTO drizzle.__drizzle_migrations"),
+      /insert into drizzle\.__drizzle_migrations/i.test(s),
     );
     expect(stampAt).toBeGreaterThan(-1);
     // …and the timescale pipeline after it, since the aggregates read tables the
@@ -547,6 +640,232 @@ describe("runMigrations: orchestration", () => {
       console.log = realLog;
     }
     expect(logs.join("\n")).toContain(`Schema is at ${readJournal().at(-1)!.tag}`);
+  });
+});
+
+/**
+ * The 1.2.0 -> 2.0.0 in-place upgrade, as `runMigrations` drives it.
+ *
+ * The DECISIONS are unit-tested in `./upgrade-120.test.ts` and the statements are
+ * executed against a restored fixture in `apps/server/db-tests/upgrade.test.ts`.
+ * What is under test here is the one thing only this module owns: that the
+ * upgrade happens at the right POINT in the chain — after the downgrade guard,
+ * before anything is stamped and before drizzle's migrator, which is the ordering
+ * a 1.2.0 database's outcome turns on.
+ */
+describe("runMigrations: the in-place 1.2.0 upgrade", () => {
+  /**
+   * The columns the shipped baseline declares for `table`.
+   *
+   * Derived rather than transcribed: the eight relations 1.2.0 and 2.0.0 share
+   * are byte-identical in the two baselines, and a hand-written list here would
+   * be a third copy that drifts. It also makes this fixture describe exactly what
+   * the selective apply checks against.
+   */
+  const baselineColumns = (table: string): string[] => {
+    const file = readFileSync(join(import.meta.dir, "migrations", "0000_baseline.sql"), "utf8");
+    for (const text of file.split("--> statement-breakpoint")) {
+      const parsed = classifyBaselineStatement(text.trim());
+      if (parsed.kind === "table" && parsed.name === table) {
+        return parsed.columns.map((column) => `${table}.${column}`);
+      }
+    }
+    throw new Error(`the baseline no longer declares ${table}`);
+  };
+
+  /** A restored addon-1.2.0 database: journaled, no dimension spine. */
+  const PROD_1_2_0_FULL = {
+    relations: [
+      "drizzle.__drizzle_migrations",
+      "public.metrics_raw",
+      "public.user",
+      "public.app_settings",
+      "public.installed_profiles",
+      "public.custom_charts",
+      "public.minute_rollups",
+      "public.hourly_rollups",
+      "public.daily_rollups",
+    ],
+    columns: [
+      // 1.2.0's own metrics_raw: four columns, keyed on a text inverter_id.
+      "metrics_raw.time",
+      "metrics_raw.inverter_id",
+      "metrics_raw.metric",
+      "metrics_raw.value",
+      // The eight relations both generations share, exactly as 2.0.0 declares
+      // them — which is what makes the selective apply skip rather than refuse.
+      ...baselineColumns("user"),
+      ...baselineColumns("app_settings"),
+      ...baselineColumns("installed_profiles"),
+      ...baselineColumns("custom_charts"),
+    ],
+    indexes: ["metrics_raw_time_idx", "metrics_raw_metric_time_idx"],
+    journalMax: 1783956595918,
+    timescaleApplied: ["0000_bootstrap.sql"],
+  };
+
+  const runtime = (client: FakeClient): MigrateRuntime => ({
+    createClient: () => client,
+    applyDrizzle: async () => {
+      client.statements.push("-- applyDrizzle --");
+    },
+    exit: (() => {
+      throw new Error("exit called");
+    }) as never,
+  });
+
+  const indexOf = (client: FakeClient, pattern: RegExp) =>
+    client.statements.findIndex((statement) => pattern.test(statement));
+
+  test("renames 1.2.0's relations out of the way of the 2.0.0 baseline", async () => {
+    const client = fakeClient(PROD_1_2_0_FULL);
+    await runMigrations("postgres://x/y", runtime(client));
+    const sent = client.statements.join("\n");
+    expect(sent).toContain("alter table metrics_raw rename to metrics_raw_legacy");
+    expect(sent).toContain(
+      "alter materialized view minute_rollups rename to legacy_minute_rollups",
+    );
+    // Renaming a table does NOT rename its indexes, and 1.2.0's
+    // `metrics_raw_time_idx` has the same name as 2.0.0's.
+    expect(sent).toContain(
+      "alter index metrics_raw_time_idx rename to metrics_raw_legacy_time_idx",
+    );
+  });
+
+  test("detaches the minute tier's 90-day retention BEFORE the rename", async () => {
+    // The decisive statement: without it that policy keeps dropping the oldest
+    // buckets while the upgrade waits for the operator to click, and a retention
+    // policy follows a rename, so it has to be named here.
+    const client = fakeClient(PROD_1_2_0_FULL);
+    await runMigrations("postgres://x/y", runtime(client));
+    const detach = indexOf(client, /remove_retention_policy\('minute_rollups'/);
+    const rename = indexOf(client, /rename to legacy_minute_rollups/);
+    expect(detach).toBeGreaterThan(-1);
+    expect(detach).toBeLessThan(rename);
+  });
+
+  test("creates what 1.2.0 lacks and skips what it already has", async () => {
+    const client = fakeClient(PROD_1_2_0_FULL);
+    await runMigrations("postgres://x/y", runtime(client));
+    const sent = client.statements.join("\n");
+    expect(sent).toContain('CREATE TABLE "devices"');
+    expect(sent).toContain('CREATE TABLE "metric_keys"');
+    expect(sent).toContain('CREATE TABLE "metrics_raw"');
+    // The eight relations both generations share must NOT be re-created.
+    expect(sent).not.toContain('CREATE TABLE "user"');
+    expect(sent).not.toContain('CREATE TABLE "app_settings"');
+    expect(sent).not.toContain('CREATE TABLE "custom_charts"');
+  });
+
+  test("the new metrics_raw is created AFTER the old one has been renamed away", async () => {
+    const client = fakeClient(PROD_1_2_0_FULL);
+    await runMigrations("postgres://x/y", runtime(client));
+    expect(indexOf(client, /alter table metrics_raw rename to/)).toBeLessThan(
+      indexOf(client, /CREATE TABLE "metrics_raw"/),
+    );
+  });
+
+  test("stamps the baseline, and only then lets drizzle's migrator run", async () => {
+    // A 1.2.0 database is JOURNALED, so `stampBaseline` will not stamp it and the
+    // migrator would execute a baseline whose `"user"` table already exists.
+    const client = fakeClient(PROD_1_2_0_FULL);
+    await runMigrations("postgres://x/y", runtime(client));
+    const stampAt = indexOf(client, /insert into drizzle\.__drizzle_migrations/i);
+    const migratorAt = indexOf(client, /-- applyDrizzle --/);
+    expect(stampAt).toBeGreaterThan(-1);
+    expect(stampAt).toBeLessThan(migratorAt);
+    expect(indexOf(client, /CREATE TABLE "devices"/)).toBeLessThan(stampAt);
+  });
+
+  test("records the migration so every read knows history is WITHHELD, not absent", async () => {
+    const client = fakeClient(PROD_1_2_0_FULL);
+    await runMigrations("postgres://x/y", runtime(client));
+    const record = client.writes.find((w) => w.includes("insert into app_settings"));
+    expect(record).toBeDefined();
+  });
+
+  test("a fresh database is untouched by any of it", async () => {
+    const client = fakeClient({ relations: [] });
+    await runMigrations("postgres://x/y", runtime(client));
+    expect(client.statements.join("\n")).not.toContain("rename to");
+  });
+
+  test("an already-2.0.0 database is untouched by any of it", async () => {
+    const client = fakeClient({
+      relations: ["drizzle.__drizzle_migrations", ...PUSH_ERA_2_0_0],
+      columns: ["metrics_raw.device_id", "metrics_raw.metric_id"],
+      timescaleApplied: ["0000_baseline.sql"],
+    });
+    await runMigrations("postgres://x/y", runtime(client));
+    expect(client.statements.join("\n")).not.toContain("rename to");
+  });
+
+  test("a run killed after the rename does NOT rename the new metrics_raw", async () => {
+    // THE dangerous re-run. The second boot sees `metrics_raw_legacy` already
+    // there and must resume, not repeat: renaming again would move the new,
+    // correctly-shaped table out of the name the app reads.
+    const client = fakeClient({
+      relations: [
+        "drizzle.__drizzle_migrations",
+        "public.metrics_raw_legacy",
+        "public.legacy_minute_rollups",
+        "public.user",
+        "public.app_settings",
+      ],
+      columns: [
+        "metrics_raw_legacy.time",
+        "metrics_raw_legacy.inverter_id",
+        ...baselineColumns("user"),
+        ...baselineColumns("app_settings"),
+      ],
+      indexes: ["metrics_raw_legacy_time_idx"],
+      journalMax: 1783956595918,
+      timescaleApplied: ["0000_bootstrap.sql"],
+    });
+    await runMigrations("postgres://x/y", runtime(client));
+    const sent = client.statements.join("\n");
+    expect(sent).not.toContain("rename to");
+    // …and it still finishes the job: the baseline's own tables are created.
+    expect(sent).toContain('CREATE TABLE "metrics_raw"');
+  });
+
+  test("BOTH a legacy-shaped metrics_raw and a metrics_raw_legacy is refused", async () => {
+    const client = fakeClient({
+      relations: ["public.metrics_raw", "public.metrics_raw_legacy"],
+      columns: ["metrics_raw.inverter_id", "metrics_raw_legacy.inverter_id"],
+    });
+    await expect(runMigrations("postgres://x/y", runtime(client))).rejects.toThrow(
+      /cannot tell which one holds the history/,
+    );
+  });
+});
+
+/**
+ * A journaled database missing the dimension spine that the upgrade CANNOT
+ * recognise — a half-migrated one, a 1.1.x one, a hand-edited one.
+ *
+ * Before this it took neither stamp path and died inside drizzle's migrator with
+ * `relation "user" already exists`, which names nothing an operator can act on.
+ */
+describe("stampBaseline: a journaled but pre-baseline database", () => {
+  test("is refused, with the missing tables named", async () => {
+    const client = fakeClient({
+      relations: ["drizzle.__drizzle_migrations", "public.metrics_raw", "public.user"],
+      // Neither 1.2.0's identity nor 2.0.0's: nothing the upgrade can classify.
+      columns: ["metrics_raw.time"],
+    });
+    const error = await stampBaseline(client, ENTRIES).catch((e: unknown) => e as Error);
+    expect((error as Error).message).toMatch(/dimension/i);
+    expect((error as Error).message).toContain("public.metric_keys");
+    expect(stamped(client)).toEqual([]);
+  });
+
+  test("a journaled 2.0.0 database is still left alone", async () => {
+    const client = fakeClient({
+      relations: ["drizzle.__drizzle_migrations", ...PUSH_ERA_2_0_0],
+    });
+    await stampBaseline(client, ENTRIES);
+    expect(stamped(client)).toEqual([]);
   });
 });
 

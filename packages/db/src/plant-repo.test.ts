@@ -414,3 +414,34 @@ describe("readRawSetting", () => {
     expect(await readRawSetting(stored.client, "weather")).toBeNull();
   });
 });
+
+describe("readRawSetting: a jsonb value wrapped in a JSON string", () => {
+  test("a double-encoded 1.x blob is mined, not read as absent", async () => {
+    // A `jsonb` column can hold the document AS A JSON STRING, and a 1.2.0-shaped
+    // database genuinely does (scripts/fixture-1-2-0.ts writes every app_settings
+    // row that way). Reading it as a bare string means `object(value)` sees
+    // nothing, and a fully-configured install is seeded as if it had never been
+    // configured — losing its coordinates, export cap and battery silently.
+    const db = {
+      execute: async () => ({ rows: [{ value: '{"label":"Limburg-Weilburg","lat":50.4}' }] }),
+    };
+    expect(await readRawSetting(db, "weather")).toEqual({ label: "Limburg-Weilburg", lat: 50.4 });
+  });
+
+  test("an ordinary object value is untouched", async () => {
+    const db = { execute: async () => ({ rows: [{ value: { label: "Hof" } }] }) };
+    expect(await readRawSetting(db, "weather")).toEqual({ label: "Hof" });
+  });
+
+  test("an absent row is still undefined, not null", async () => {
+    // `undefined` means "the row is genuinely absent" and the seeding path
+    // depends on telling that apart from a stored null.
+    const db = { execute: async () => ({ rows: [] }) };
+    expect(await readRawSetting(db, "weather")).toBeUndefined();
+  });
+
+  test("a plain string setting comes back as itself", async () => {
+    const db = { execute: async () => ({ rows: [{ value: "Europe/Berlin" }] }) };
+    expect(await readRawSetting(db, "tz")).toBe("Europe/Berlin");
+  });
+});

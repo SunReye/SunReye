@@ -186,6 +186,7 @@ describe("dump.sh dump modes", () => {
         `case "$*" in\n` +
         `  *policy_retention*) printf '%s\\n' "\${RETENTION_DAYS:-7 90}" ;;\n` +
         `  *policy_refresh_continuous_aggregate*) printf '%s\\n' "\${MINUTE_REFRESHED:-t}" ;;\n` +
+        `  *inverter_id*) printf '%s\\n' "\${PRE_2_0_0:-f}" ;;\n` +
         `  *) printf '%s\\n' ${chunkRows.map((r) => `'${r}'`).join(" ") || "''"} ;;\n` +
         `esac\nexit 0\n`,
     );
@@ -301,6 +302,30 @@ describe("dump.sh dump modes", () => {
     expect(flags).toContain("-Fc");
   });
 
+  test("a PRE-2.0.0 schema produces no exclusions — this dump is a migration's rollback", async () => {
+    // End to end through the real script, because a decision that is computed and
+    // never consulted is exactly how the compressed-chunk bug shipped. Every
+    // retention number here says "excludable"; the pending schema change is what
+    // must override them.
+    const { flags, code } = await dumpFlags([CHUNK, COMPRESSED], {
+      RETENTION_DAYS: "7 90",
+      MINUTE_REFRESHED: "t",
+      PRE_2_0_0: "t",
+    });
+    expect(code).toBe(0);
+    expect(flags.some((f) => f.startsWith("--exclude-table-data="))).toBe(false);
+    expect(flags).toContain("-Fc");
+  });
+
+  test("a 2.0.0 schema still excludes, so the flag keeps working after the upgrade", async () => {
+    const { flags } = await dumpFlags([CHUNK, COMPRESSED], {
+      RETENTION_DAYS: "7 90",
+      MINUTE_REFRESHED: "t",
+      PRE_2_0_0: "f",
+    });
+    expect(flags).toContain(`--exclude-table-data=${CHUNK}`);
+  });
+
   test("data is excluded, never the table itself — the schema must survive", () => {
     // --exclude-table would drop the chunk's definition, so a restore would
     // rebuild a hypertable missing its chunks rather than an empty one.
@@ -340,12 +365,13 @@ async function safeToExclude(
   days: string,
   rollupDays = "90",
   minuteRefreshed = "1",
+  pre200 = "0",
 ): Promise<boolean> {
   const proc = Bun.spawn(
     [
       "bash",
       "-c",
-      `${exclusionDecisionBlock()}\nif safe_to_exclude_raw ${JSON.stringify(days)} ${JSON.stringify(rollupDays)} ${JSON.stringify(minuteRefreshed)}; then echo yes; else echo no; fi`,
+      `${exclusionDecisionBlock()}\nif safe_to_exclude_raw ${JSON.stringify(days)} ${JSON.stringify(rollupDays)} ${JSON.stringify(minuteRefreshed)} ${JSON.stringify(pre200)}; then echo yes; else echo no; fi`,
     ],
     { stdout: "pipe", stderr: "pipe" },
   );
@@ -437,5 +463,48 @@ describe("dump.sh raw-exclusion decision", () => {
     expect(warning).toContain("INCLUDED");
     expect(warning).toContain("backup_full");
     expect(warning).toContain("rollup retention");
+  });
+});
+
+/**
+ * The one upgrade whose backup MUST be full, and the reason it cannot be a
+ * comment.
+ *
+ * On a 1.2.0 instance every number the exclusion consults says "excludable": raw
+ * keeps 7 days, the shortest aggregate retention is 90, the minute tier is
+ * refreshed. What none of those numbers can see is that the next thing to happen
+ * is a SCHEMA CHANGE — `metrics_raw` re-keyed, its aggregates renamed out of the
+ * way, two months of buckets replayed forward — and that this dump is its ONLY
+ * rollback: there is no intermediate release and no user-performed export. A
+ * default dump without raw makes a mid-migration restore silently lose the last
+ * 7 days of SECOND-resolution data, which nothing regenerates, while the file
+ * still looks like a successful smaller backup.
+ */
+describe("dump.sh: a pending 1.x → 2.0.0 migration forces a full backup", () => {
+  test("a pre-2.0.0 schema is never excludable, whatever the numbers say", async () => {
+    // The exact state of the one production instance today.
+    expect(await safeToExclude("7", "90", "1", "1")).toBe(false);
+    expect(await safeToExclude("90", "90", "1", "1")).toBe(false);
+    expect(await safeToExclude("1", "-1", "1", "1")).toBe(false);
+  });
+
+  test("a 2.0.0 schema is decided by the retention numbers as before", async () => {
+    expect(await safeToExclude("7", "90", "1", "0")).toBe(true);
+    expect(await safeToExclude("91", "90", "1", "0")).toBe(false);
+  });
+
+  test("an unreadable schema answer keeps the data", async () => {
+    // Same rule as every other input: a question that could not be answered is
+    // not an answer of "probably fine".
+    expect(await safeToExclude("7", "90", "1", "")).toBe(false);
+    expect(await safeToExclude("7", "90", "1", "maybe")).toBe(false);
+  });
+
+  test("the schema is read from the catalog, using the migration's own discriminator", () => {
+    // Both generations have a `metrics_raw`, so its existence says nothing — the
+    // text `inverter_id` column is what only 1.x has. A check on the table name
+    // would be decorative.
+    expect(DUMP_SH).toContain("column_name = 'inverter_id'");
+    expect(DUMP_SH).toContain("table_name = 'metrics_raw'");
   });
 });

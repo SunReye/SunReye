@@ -162,6 +162,23 @@ export interface ReplayRequest {
   from?: Date;
   /** Replay only up to here, exclusive. Defaults to just past the latest bucket. */
   to?: Date;
+  /**
+   * The `dur_ms` every written row claims, instead of the tier's bucket width.
+   *
+   * For BUCKETS the width is the duration — a bucket's mean was held for the
+   * bucket. But the same statements below also carry a 1.2.0 install's retained
+   * RAW window forward (`../upgrade-120-run.ts`), where each row is one poll
+   * sample and its duration is the poll cadence, which is an addon option (1 s on
+   * a live install, 60 s on the fixture) and therefore measured rather than
+   * declared. A second implementation of these two `INSERT … SELECT`s would be a
+   * second answer to identity resolution, config routing and the watermark; one
+   * optional width is not.
+   *
+   * `null` writes no duration at all — `metrics_raw.dur_ms` is nullable and the
+   * readers already fall back, so an absent duration is a supported state and a
+   * fabricated one is not. Omitted keeps the tier's width.
+   */
+  durMsOverride?: number | null;
 }
 
 export interface ChunkResult extends ReplayChunk {
@@ -344,7 +361,7 @@ async function insertSeries(
     chunk.start.toISOString(),
     chunk.end.toISOString(),
     request.identity.deviceId,
-    bucketWidthMs(chunk.tier),
+    request.durMsOverride === undefined ? bucketWidthMs(chunk.tier) : request.durMsOverride,
     ...configKeys,
   ];
   const exclude =

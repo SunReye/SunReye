@@ -23,6 +23,7 @@ import type { InverterSample } from "@SunReye/inverter-core";
 import { entityConstraint } from "@SunReye/inverter-core";
 import mqtt from "mqtt";
 import type { MqttClient } from "mqtt";
+import { discoveryHeld, onDiscoveryRelease } from "../migration/discovery-gate";
 import type { ProfileContext } from "./inverter";
 import { WriteRejectedError } from "./control-writer";
 import { log } from "../shared/logging";
@@ -143,12 +144,51 @@ export function startMqttBridge(config: MqttConfig, deps: MqttBridgeDeps): MqttB
     });
   }
 
+  /**
+   * Announce, unless discovery is turned off or the MIGRATION GATE is holding it.
+   *
+   * The gate exists because a discovery announcement is RETAINED and Home
+   * Assistant keys its entities on `unique_id`. Announcing under a placeholder
+   * identity is therefore not something a later rename can take back — the old
+   * entities stay, the new ones appear beside them, and every automation and
+   * dashboard card the operator built points at the wrong half. The 1.2.0 ->
+   * 2.0.0 upgrade synthesises a plant and a device before the operator has named
+   * either, so the announcement waits for them. See
+   * `../migration/discovery-gate.ts`.
+   *
+   * Only the ANNOUNCEMENT waits. Availability, state topics and inbound commands
+   * are untouched: the dashboard is live from the first minute after the upgrade
+   * and the operator can still control the inverter.
+   */
+  function announceIfAllowed(): void {
+    if (!config.haDiscoveryEnabled) return;
+    const held = discoveryHeld();
+    if (held !== null) {
+      logger.info("HA discovery withheld: {reason}", { reason: held });
+      return;
+    }
+    publishDiscovery();
+  }
+
+  /**
+   * Announce as soon as the gate lifts, rather than on the next connect.
+   *
+   * A connect-only announcement would wait for the broker to drop, which on a
+   * healthy broker is never — so an operator who has just confirmed their names
+   * would see no entities and no reason why. When the socket is DOWN at that
+   * moment there is nothing to do: publishing into a closed socket drops the
+   * message silently, and the connect handler will announce on its own.
+   */
+  const stopWaitingForRelease = onDiscoveryRelease(() => {
+    if (client.connected) announceIfAllowed();
+  });
+
   client.on("connect", () => {
     connected = true;
     lastError = null;
     client.publish(topics.availability, "online", { retain: true });
     subscribeCommands();
-    if (config.haDiscoveryEnabled) publishDiscovery();
+    announceIfAllowed();
     // Restore the retained forecast topics on (re)connect.
     if (lastForecast) emitForecast(lastForecast);
 
@@ -222,6 +262,11 @@ export function startMqttBridge(config: MqttConfig, deps: MqttBridgeDeps): MqttB
       return { connected, lastError };
     },
     async close() {
+      // Drop the release listener FIRST. A gate lifting after this bridge is gone
+      // would otherwise publish through it — and on a profile swap, under the old
+      // profile's identity, which is exactly the wrong-`unique_id` outcome the
+      // gate exists to prevent.
+      stopWaitingForRelease();
       // Flip availability to "offline" cleanly before disconnecting so HA
       // doesn't have to wait for the LWT timeout.
       await new Promise<void>((resolve) => {
