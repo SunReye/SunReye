@@ -34,6 +34,7 @@ mock.module("@SunReye/auth", () => ({
 
 // Imported after the mock so the guard inside the ws route binds to it.
 const { wsRoutes } = await import("./routes/ws");
+const { compression } = await import("./shared/compression");
 const { requestLogger } = await import("./shared/request-log");
 const { webRoutes } = await import("./web/static");
 
@@ -53,6 +54,7 @@ const wsDeps = () => ({
 
 const stack = () =>
   new Elysia()
+    .use(compression())
     .use(requestLogger({ skip: (ctx) => ctx.path === "/healthz" }))
     .use(cors({ origin: true }))
     .use(openapi({ exclude: { staticFile: false } }))

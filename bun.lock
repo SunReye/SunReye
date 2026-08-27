@@ -39,6 +39,7 @@
         "@SunReye/db": "workspace:*",
         "@SunReye/env": "workspace:*",
         "@SunReye/inverter-core": "workspace:*",
+        "@elysia/compress": "2.0.0-beta.1",
         "@elysia/cors": "2.0.0-beta.1",
         "@elysia/openapi": "2.0.0-beta.1",
         "@logtape/logtape": "^2.2.3",
@@ -328,6 +329,8 @@
     "@dagrejs/graphlib": ["@dagrejs/graphlib@3.0.4", "", {}, "sha512-HxZ7fCvAwTLCWCO0WjDkzAFQze8LdC6iOpKbetDKHIuDfIgMlIzYzqZ4nxwLlclQX+3ZVeZ1K2OuaOE2WWcyOg=="],
 
     "@drizzle-team/brocli": ["@drizzle-team/brocli@0.10.2", "", {}, "sha512-z33Il7l5dKjUgGULTqBsQBQwckHh5AbIuxhdsIxDDiZAzBOrZO6q9ogcWC65kU382AfynTfgNumVcNIjuIua6w=="],
+
+    "@elysia/compress": ["@elysia/compress@2.0.0-beta.1", "", { "peerDependencies": { "elysia": ">= 2.0.0-beta.7" } }, "sha512-WKegxppxFIUJR6hE4e4ipIeo0bdU8ktHMV8gQ0EFGAFxfABQK8LWY8Ooh5Z+OCRNQg8dVMdf7nGEihjf0K0h/Q=="],
 
     "@elysia/cors": ["@elysia/cors@2.0.0-beta.1", "", { "peerDependencies": { "elysia": ">= 2.0.0-beta.1" } }, "sha512-dHb21xI4Dm7wcf5+rWLiLSwJARLAewnOzRjRk0wRMfBiLGA1t/CXsblzKUtwYRFhQCteUEGdhEace+6PF0UUKw=="],
 

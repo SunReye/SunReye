@@ -41,6 +41,7 @@ import { todayStatistics } from "./statistics/statistics";
 import * as runtime from "./inverter/runtime";
 import { loadAssets } from "./web/loaded";
 import { webRoutes } from "./web/static";
+import { compression } from "./shared/compression";
 
 // Shared query for the per-period series endpoints (cost + energy): an explicit
 // [from, to) window at a chosen bucket, plus an optional inverter override.
@@ -169,6 +170,10 @@ const STATISTICS_INTERVAL_MS = 15_000;
 setupStaticTypebox();
 
 const app = new Elysia()
+  // Response compression, first so it covers every route below — the API and
+  // the dashboard bundle alike. See ./shared/compression for why these
+  // encodings and not the best-compressing ones.
+  .use(compression())
   // Structured HTTP request logging. Health/liveness probes are noisy and
   // uninteresting, so skip them.
   .use(
