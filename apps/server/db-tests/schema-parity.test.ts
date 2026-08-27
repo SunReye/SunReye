@@ -19,13 +19,7 @@
  */
 import { describe, expect, test } from "bun:test";
 import { metricsConfigLog, metricsRaw } from "@SunReye/db/schema/metrics";
-import {
-  batteries,
-  connections,
-  devices,
-  metricKeys,
-  plants,
-} from "@SunReye/db/schema/plants";
+import { batteries, connections, devices, metricKeys, plants } from "@SunReye/db/schema/plants";
 import { dailyRollups, hourlyRollups, minuteRollups } from "@SunReye/db/schema/rollups";
 import { type ColumnShape, declaredColumns, diffColumns } from "@SunReye/db/schema-parity";
 import { databaseReachable, resetTestDatabase } from "./harness";

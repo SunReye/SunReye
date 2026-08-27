@@ -149,9 +149,7 @@ describe("writing the learned grid", () => {
     // The grid is keyed (inverter, month, hour); a second learn run for the same
     // hour must land on the same row or the grid grows without bound and the
     // reader picks an arbitrary one of the duplicates.
-    await upsertCorrectionCells([
-      { deviceId: 3, month: 6, hour: 12, ratio: 1.1, weight: 3 },
-    ]);
+    await upsertCorrectionCells([{ deviceId: 3, month: 6, hour: 12, ratio: 1.1, weight: 3 }]);
     const sqlText = flat(onlyCall().sql);
     expect(sqlText).toContain('on conflict ("device_id","month","hour") do update set');
     expect(sqlText).toContain('"ratio" = excluded.ratio');
@@ -161,9 +159,7 @@ describe("writing the learned grid", () => {
   test("the overwrite restamps updated_at from the database clock", async () => {
     // Staleness of the grid is judged from this column; carrying the old value
     // over on conflict would make a freshly-relearned cell look abandoned.
-    await upsertCorrectionCells([
-      { deviceId: 3, month: 6, hour: 12, ratio: 1.1, weight: 3 },
-    ]);
+    await upsertCorrectionCells([{ deviceId: 3, month: 6, hour: 12, ratio: 1.1, weight: 3 }]);
     expect(flat(onlyCall().sql)).toContain('"updated_at" = now()');
   });
 

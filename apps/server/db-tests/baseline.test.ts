@@ -283,11 +283,15 @@ suite("the 2.0.0 baseline schema", () => {
       await db.execute(sql`insert into packing_probe_naive values (now(), 1000, 1, 1.5, 1)`);
       await db.execute(sql`insert into packing_probe_worst values (now(), 1, 1.5, 1, 1000)`);
 
-      await db.execute(sql`insert into plants (name, slug, time_zone) values ('p', 'packing', 'UTC')`);
+      await db.execute(
+        sql`insert into plants (name, slug, time_zone) values ('p', 'packing', 'UTC')`,
+      );
       await db.execute(sql`
         insert into devices (plant_id, connection_id, unit_id, slug, name, profile_id, role)
         select id, null, 1, 'packing-probe', 'probe', 'test-profile', 'inverter' from plants where slug = 'packing'`);
-      await db.execute(sql`insert into metric_keys (key, is_counter) values ('packing.probe', false)`);
+      await db.execute(
+        sql`insert into metric_keys (key, is_counter) values ('packing.probe', false)`,
+      );
       await db.execute(sql`
         insert into metrics_raw (time, value, dur_ms, device_id, metric_id)
         select now(), 1.5, 1000, d.id, m.id from devices d, metric_keys m
@@ -315,7 +319,9 @@ suite("the 2.0.0 baseline schema", () => {
     let counterId = 0;
 
     test("seed and refresh every tier", async () => {
-      await db.execute(sql`insert into plants (name, slug, time_zone) values ('agg', 'agg', 'UTC')`);
+      await db.execute(
+        sql`insert into plants (name, slug, time_zone) values ('agg', 'agg', 'UTC')`,
+      );
       const device = await one<{ id: number }>(sql`
         insert into devices (plant_id, connection_id, unit_id, slug, name, profile_id, role)
         select id, null, 1, 'agg-device', 'agg', 'test-profile', 'inverter' from plants where slug = 'agg'
@@ -440,7 +446,9 @@ suite("the 2.0.0 baseline schema", () => {
       await db.execute(sql`
         insert into installed_profiles (id, source, version, data)
         values ('outlive-profile', 'https://example.invalid/p.git', '1.0.0', '{}'::jsonb)`);
-      await db.execute(sql`insert into plants (name, slug, time_zone) values ('o', 'outlive', 'UTC')`);
+      await db.execute(
+        sql`insert into plants (name, slug, time_zone) values ('o', 'outlive', 'UTC')`,
+      );
       await db.execute(sql`
         insert into devices (plant_id, connection_id, unit_id, slug, name, profile_id, role)
         select id, null, 1, 'outlive-device', 'o', 'outlive-profile', 'inverter'

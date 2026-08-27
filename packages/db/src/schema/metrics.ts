@@ -1,11 +1,4 @@
-import {
-  doublePrecision,
-  index,
-  integer,
-  pgTable,
-  smallint,
-  timestamp,
-} from "drizzle-orm/pg-core";
+import { doublePrecision, index, integer, pgTable, smallint, timestamp } from "drizzle-orm/pg-core";
 
 import { devices, metricKeys } from "./plants";
 

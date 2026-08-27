@@ -90,11 +90,7 @@ function sameNumber(a: number | null, b: number | null): boolean {
   return Math.abs(a - b) <= EPSILON;
 }
 
-function compareRollup(
-  name: RollupName,
-  before: RollupRow[],
-  after: RollupRow[],
-): string[] {
+function compareRollup(name: RollupName, before: RollupRow[], after: RollupRow[]): string[] {
   const problems: string[] = [];
   if (before.length !== after.length) {
     problems.push(`${name}: row count ${before.length} before, ${after.length} after`);

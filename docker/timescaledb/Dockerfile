@@ -5,8 +5,8 @@
 #
 # Published as ghcr.io/sunreye/timescaledb:pg17-ts<version> by
 # .github/workflows/db-image.yml, and consumed by docker-compose.yml,
-# docker-compose.db.yml, docker/docker-compose.yml and the three workflows that
-# stand a real Postgres up. scripts/storage-tuning.ts asserts all six agree.
+# docker-compose.db.yml, docker/docker-compose.yml and the two workflows that
+# stand a real Postgres up. scripts/storage-tuning.ts asserts all five agree.
 #
 # Why not an off-the-shelf image (measured, do not re-litigate):
 #   timescale/timescaledb:2.28.2-pg17   445 MB, and carries NO timescaledb_toolkit

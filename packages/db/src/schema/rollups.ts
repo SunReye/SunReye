@@ -54,7 +54,13 @@
  * express, and it is only available because the partial is stored.
  */
 
-import { customType, doublePrecision, pgMaterializedView, smallint, timestamp } from "drizzle-orm/pg-core";
+import {
+  customType,
+  doublePrecision,
+  pgMaterializedView,
+  smallint,
+  timestamp,
+} from "drizzle-orm/pg-core";
 
 /**
  * `timescaledb_toolkit`'s `TimeWeightSummary`, the partial `time_weight()`

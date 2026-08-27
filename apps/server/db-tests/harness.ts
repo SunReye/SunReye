@@ -47,9 +47,17 @@ export function assertTestDatabase(url: string): void {
   }
 }
 
-/** Base URL these tests derive their target from, or null when unset. */
+/**
+ * Base URL these tests derive their target from, or null when unset.
+ *
+ * An EMPTY variable counts as unset. `??` alone accepts `""`, which made
+ * `DB_TEST_URL= bun run test:db` throw out of `new URL("")` instead of skipping
+ * — a footgun on the one layer whose whole safety story is "skip when the
+ * database is unreachable". CI still cannot lose the layer silently: it fails
+ * hard when `CI` is set.
+ */
 function baseUrl(): string | null {
-  return process.env.DB_TEST_URL ?? process.env.DATABASE_URL ?? null;
+  return process.env.DB_TEST_URL || process.env.DATABASE_URL || null;
 }
 
 /** Connection URL for the test database, or null when no base URL is configured. */

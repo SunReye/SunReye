@@ -59,8 +59,9 @@ describe("derivePlantBattery", () => {
   });
 
   test("every pack unbounded is still unbounded", () => {
-    expect(derivePlantBattery([pack({ maxChargeW: null }), pack({ maxChargeW: null })])?.maxChargeW)
-      .toBeNull();
+    expect(
+      derivePlantBattery([pack({ maxChargeW: null }), pack({ maxChargeW: null })])?.maxChargeW,
+    ).toBeNull();
   });
 
   test("nominalV is the first stated value, never a mean of voltages", () => {
