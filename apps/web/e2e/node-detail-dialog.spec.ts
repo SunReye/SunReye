@@ -21,8 +21,11 @@ import { SELECTORS } from "./support/perf";
 /** The overview, with the diagram live. */
 const overview = (page: Page): Promise<OpenedPage> => openPage(page, "/#/");
 
-/** One node's box, by the accessible name the dialog trigger carries. */
-const nodeTrigger = (page: Page, name: string) => page.getByRole("button", { name });
+/**
+ * One node's box, by the accessible name the dialog trigger carries. A pattern
+ * for the grid, whose title carries the plant's phase count.
+ */
+const nodeTrigger = (page: Page, name: string | RegExp) => page.getByRole("button", { name });
 
 const dialog = (page: Page) => page.getByRole("dialog");
 
