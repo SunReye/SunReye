@@ -1,6 +1,7 @@
 {
   "$schema": "https://docs.fallow.tools/schema.json",
   "ignorePatterns": [
+    "apps/server/db-tests/**",
     "apps/web/e2e/**",
     "apps/web/playwright.config.ts",
     "apps/web/src/lib/components/ui/**",
@@ -21,6 +22,9 @@
   "publicPackages": ["@sunreye/profile-sdk", "@SunReye/inverter-core"],
   "ignoreExports": [
     { "file": "apps/docs/astro.config.mjs", "exports": ["*"] },
+    { "file": "apps/server/src/web/pack-file.d.ts", "exports": ["*"] },
+    { "file": "packages/db/src/index.ts", "exports": ["createDbAt"] },
+    { "file": "packages/db/src/schema-parity.ts", "exports": ["*"] },
     { "file": "apps/server/tsdown.config.ts", "exports": ["*"] },
     { "file": "apps/web/svelte.config.js", "exports": ["*"] },
     { "file": "packages/db/drizzle.config.ts", "exports": ["*"] },

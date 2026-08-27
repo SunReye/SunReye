@@ -7,11 +7,11 @@
   "scripts": {
     "dev": "vite dev",
     "build": "vite build",
-    "build:static": "SVELTEKIT_ADAPTER=static vite build && bun scripts/relativize-fallback.ts",
+    "build:static": "SVELTEKIT_ADAPTER=static PUBLIC_SERVER_URL= vite build && bun scripts/relativize-fallback.ts && bun scripts/pack-build.ts",
     "preview": "PORT=4173 node build/index.js",
     "paraglide": "bun scripts/compile-i18n.ts",
     "i18n:lint": "bun scripts/i18n-lint.ts",
-    "prepare": "bun scripts/compile-i18n.ts && (svelte-kit sync || echo '')",
+    "prepare": "bun scripts/placeholder-pack.ts && bun scripts/compile-i18n.ts && (svelte-kit sync || echo '')",
     "check": "bun scripts/compile-i18n.ts && svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
     "check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
     "test": "SKIP_ENV_VALIDATION=1 bun test ./src",
