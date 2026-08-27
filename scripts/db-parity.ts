@@ -50,10 +50,14 @@ export type Snapshot = {
    * the two sets are directly comparable.
    */
   weightedRollups: Record<WeightedRollupName, RollupRow[]>;
-  /** Row counts of the irreplaceable side tables (settings, auth, profiles …). */
-  tables: Record<string, number>;
+  /**
+   * Row counts of the irreplaceable side tables (settings, auth, profiles …).
+   * `null` means the table does not exist in that database at all — a
+   * pre-2.0.0 snapshot has no `spot_prices` — which is distinct from zero rows.
+   */
+  tables: Record<string, number | null>;
   /** Order-independent content digest per side table, so values are compared too. */
-  digests: Record<string, string>;
+  digests: Record<string, string | null>;
   /** Rows in the raw 1 Hz hypertable — expected to be 0 after a non-full dump. */
   rawRows: number;
   /** Compressed chunks across all hypertables: the case most likely to break. */
@@ -145,18 +149,48 @@ function compareRollup(
   return problems;
 }
 
-/** Row counts and content digests per table — the "nothing was lost" check. */
+/**
+ * Row counts and content digests per table — the "nothing was lost" check.
+ *
+ * A `null` on the BEFORE side means the table did not exist yet, so there is
+ * nothing to have lost and the comparison is skipped: a 1.2.0 → 2.0.0 migration
+ * is *supposed* to make `spot_prices` appear. A `null` on the AFTER side is the
+ * loss this function exists to catch, and is reported as missing rather than as
+ * a row-count change, because a dropped table and an emptied one are different
+ * failures.
+ */
 function compareTables(before: Snapshot, after: Snapshot): string[] {
+  return [
+    ...compareTableField(before.tables, after.tables, "", (a, b) => `${a} rows before, ${b} after`),
+    ...compareTableField(
+      before.digests,
+      after.digests,
+      "content digest ",
+      (a, b) => `content digest ${a} before, ${b} after`,
+    ),
+  ];
+}
+
+/**
+ * One side-table field, counts or digests. A `null` BEFORE is skipped; a `null`
+ * or absent AFTER is "missing", never a value change.
+ */
+function compareTableField<T extends number | string>(
+  before: Record<string, T | null>,
+  after: Record<string, T | null>,
+  missingPrefix: string,
+  changed: (a: T, b: T) => string,
+): string[] {
   const problems: string[] = [];
-  for (const [table, count] of Object.entries(before.tables)) {
-    const restored = after.tables[table];
-    if (restored === undefined) problems.push(`${table}: table missing after restore`);
-    else if (restored !== count) problems.push(`${table}: ${count} rows before, ${restored} after`);
-  }
-  for (const [table, digest] of Object.entries(before.digests)) {
-    const restored = after.digests[table];
-    if (restored !== digest) {
-      problems.push(`${table}: content digest ${digest} before, ${restored} after`);
+  for (const [table, value] of Object.entries(before)) {
+    if (value === null) continue;
+    const restored = after[table];
+    if (restored === undefined || restored === null) {
+      problems.push(
+        `${table}: ${missingPrefix}${missingPrefix ? "" : "table "}missing after restore`,
+      );
+    } else if (restored !== value) {
+      problems.push(`${table}: ${changed(value, restored as T)}`);
     }
   }
   return problems;
@@ -342,15 +376,53 @@ export const SIDE_TABLES = [
   "apikey",
 ] as const;
 
-const tableCount = (t: string) => `'${t}', (SELECT count(*) FROM "${t}")`;
-const tableDigest = (t: string) =>
-  `'${t}', (SELECT md5(coalesce(string_agg(x, '|' ORDER BY x), '')) FROM (SELECT t::text AS x FROM "${t}" t) s)`;
+/**
+ * A side-table probe that survives the table being absent.
+ *
+ * Same reason as {@link weightedRollupSelect}: a missing relation is a *parse*
+ * error, so a `to_regclass` CASE around a direct reference does not save the
+ * query — the planner resolves both arms. `query_to_xml` takes its query as
+ * text, so the name is resolved only once the guard has decided it is there.
+ * Needed because the pre-migration side of a 1.2.0 → 2.0.0 comparison has no
+ * `spot_prices` and no `forecast_correction_cells` at all, and that side is the
+ * one snapshot that cannot be retaken.
+ */
+const optionalTable = (t: string, inner: string, cast: string) =>
+  `'${t}', (SELECT CASE WHEN to_regclass('public."${t}"') IS NULL THEN NULL ELSE
+      (xpath('/row/j/text()', query_to_xml('${inner}', false, true, '')))[1]::text${cast} END)`;
 
-/** One query, one JSON object: the snapshot both sides of a restore are compared by. */
-export const SNAPSHOT_SQL = `SELECT json_build_object(
-  'rollups', json_build_object(${ROLLUPS.map(rollupSelect).join(",")}
+const tableCount = (t: string) => optionalTable(t, `select count(*) as j from "${t}"`, "::bigint");
+const tableDigest = (t: string) =>
+  optionalTable(
+    t,
+    `select md5(coalesce(string_agg(x, ''|'' ORDER BY x), '''')) as j from (select t::text as x from "${t}" t) s`,
+    "",
+  );
+
+/**
+ * One query, one JSON object: the snapshot both sides of a restore are compared
+ * by.
+ *
+ * `includeRollups: false` drops the per-bucket arrays and leaves the tiers as
+ * empty lists. They are unbounded — 60 days of per-minute buckets across 105
+ * metrics is 9.07 M rows, and `json_agg`-ing that into a single value is an
+ * out-of-memory error rather than a slow query. A caller that cannot afford them
+ * (the addon-1.2.0 fixture, which carries a per-tier md5 digest instead) still
+ * gets everything that is cheap at any scale: side-table counts and digests, the
+ * raw row count, the compressed-chunk count and the policy list.
+ */
+export function buildSnapshotSql(options: { includeRollups?: boolean } = {}): string {
+  const withRollups = options.includeRollups ?? true;
+  const rollups = withRollups
+    ? ROLLUPS.map(rollupSelect).join(",")
+    : ROLLUPS.map((name) => `\n    '${name}', '[]'::json`).join(",");
+  const weighted = withRollups
+    ? WEIGHTED_ROLLUPS.map(weightedRollupSelect).join(",")
+    : WEIGHTED_ROLLUPS.map((name) => `\n    '${name}', '[]'::json`).join(",");
+  return `SELECT json_build_object(
+  'rollups', json_build_object(${rollups}
   ),
-  'weightedRollups', json_build_object(${WEIGHTED_ROLLUPS.map(weightedRollupSelect).join(",")}
+  'weightedRollups', json_build_object(${weighted}
   ),
   'tables', json_build_object(${SIDE_TABLES.map(tableCount).join(", ")}),
   'digests', json_build_object(${SIDE_TABLES.map(tableDigest).join(", ")}),
@@ -359,6 +431,9 @@ export const SNAPSHOT_SQL = `SELECT json_build_object(
   'policies', (SELECT coalesce(json_agg(DISTINCT proc_name || ':' || coalesce(hypertable_name, '-')), '[]'::json)
                FROM timescaledb_information.jobs)
 )`;
+}
+
+export const SNAPSHOT_SQL = buildSnapshotSql();
 
 export function readSnapshot(path: string): Snapshot {
   return JSON.parse(readFileSync(path, "utf8")) as Snapshot;
