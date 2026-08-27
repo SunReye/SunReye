@@ -1,6 +1,16 @@
 import { describe, expect, test } from "bun:test";
 import { PgDialect } from "drizzle-orm/pg-core";
-import { sql } from "drizzle-orm";
+import { getTableName, getViewName, sql } from "drizzle-orm";
+import { declaredColumns } from "@SunReye/db/schema-parity";
+import { metricsRaw } from "@SunReye/db/schema/metrics";
+import {
+  dailyRollups,
+  hourlyRollups,
+  minuteRollups,
+  weightedDailyRollups,
+  weightedHourlyRollups,
+  weightedMinuteRollups,
+} from "@SunReye/db/schema/rollups";
 import { ROLLUP_BUCKETS, preferredRollup, rollupArms } from "./rollup-sql";
 
 /**
@@ -35,6 +45,42 @@ const render = (
   );
   return { sql: query.sql.replace(/\s+/g, " ").trim(), params: query.params };
 };
+
+// The relation names an arm reads are no longer literals in this module: they
+// come from the drizzle declarations in @SunReye/db/schema/rollups, whose
+// agreement with the database is proved by apps/server/db-tests. These tests pin
+// that the derivation still yields the names the SQL files create.
+describe("relation names come from the declarations", () => {
+  test("every arm reads a relation that is actually declared", () => {
+    const declared = new Set<string>([
+      getTableName(metricsRaw),
+      ...[
+        minuteRollups,
+        hourlyRollups,
+        dailyRollups,
+        weightedMinuteRollups,
+        weightedHourlyRollups,
+        weightedDailyRollups,
+      ].map((v) => getViewName(v)),
+    ]);
+    for (const bucket of ROLLUP_BUCKETS) {
+      for (const arm of rollupArms(bucket)) expect(declared).toContain(arm.view);
+    }
+  });
+
+  // `WEIGHTED_AVG` is one expression shared by the view arms and the raw arm —
+  // it must be, or a bucket changes value depending on which arm answered it.
+  // That means it cannot be built from qualified column objects, so this is what
+  // stops the column names in it from drifting away from the aggregates.
+  test("the weighted average references only columns the weighted views declare", () => {
+    const columns = new Set(declaredColumns(weightedHourlyRollups).map((c) => c.name));
+    const weighted = rollupArms("hour").find((a) => a.weighted);
+    const identifiers = weighted?.avgExpr.match(/[a-z_][a-z0-9_]*/g) ?? [];
+    const referenced = identifiers.filter((id) => id !== "nullif");
+    expect(referenced.length).toBeGreaterThan(0);
+    for (const id of referenced) expect(columns).toContain(id);
+  });
+});
 
 describe("rollupArms", () => {
   test("the hour and day tiers read exactly their aggregate pair", () => {
@@ -124,7 +170,14 @@ describe("preferredRollup", () => {
 
 describe("the raw minute arm", () => {
   test("buckets raw rows with the same time_bucket width the aggregate used", () => {
-    expect(render("minute").sql).toContain("time_bucket('1 minute'::interval, \"time\")");
+    // Spelled `make_interval(secs => 60)` because the call goes through the
+    // shared wrapper now (@SunReye/db/timescale-fns) rather than a local
+    // fragment. Same interval value as the aggregate's own `'1 minute'`, and
+    // measured to produce an identical plan — what matters is that the WIDTH
+    // matches, not how it is written.
+    expect(render("minute").sql).toContain(
+      'time_bucket(make_interval(secs => 60), "metrics_raw"."time")',
+    );
   });
 
   test("weights each row by its own dur_ms, defaulting a pre-#117 row to one second", () => {

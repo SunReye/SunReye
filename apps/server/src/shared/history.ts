@@ -6,7 +6,8 @@
 
 import { db } from "@SunReye/db";
 import { metricsRaw } from "@SunReye/db/schema/metrics";
-import { and, desc, eq, gte } from "drizzle-orm";
+import { bucketEpoch, interval, last } from "@SunReye/db/timescale-fns";
+import { and, desc, eq, gte, lt } from "drizzle-orm";
 import { sql } from "drizzle-orm";
 import { type RollupBucket, preferredRollup } from "./rollup-sql";
 
@@ -224,8 +225,7 @@ export async function queryRecentBuckets(q: {
   const step = clampInt(q.stepSeconds, 1, 60);
   const seconds = clampInt(q.seconds, 1, 3600);
   const since = new Date(Date.now() - seconds * 1000);
-  // Both are validated integers rendered as literals, never client text.
-  const width = sql.raw(String(step));
+  const width = interval(step);
   // `+ 1`: `time_bucket` is EPOCH-aligned, not `since`-aligned, so an N-second
   // window starting mid-bucket spans ceil(N / step) + 1 buckets. Without it the
   // cap is one row per metric short — and since the order is `metric, bucket`,
@@ -234,36 +234,63 @@ export async function queryRecentBuckets(q: {
   // clears. The guard is a belt over a structural bound; it must never bite
   // first.
   const buckets = Math.ceil(seconds / step) + 1;
-  const cap = sql.raw(String(buckets * MAX_METRICS_GUARD));
-  const lookback = sql.raw(String(SEED_LOOKBACK_S));
-  const firstBucket = sql`(extract(epoch from time_bucket(make_interval(secs => ${width}), ${since})))::bigint`;
-  const result = await db.execute<{
-    metric: string;
-    bucket: string | number;
-    value: number | string;
-  }>(sql`
-    select distinct on (metric, bucket) metric, bucket, value
-    from (
-      select metric,
-             (extract(epoch from time_bucket(make_interval(secs => ${width}), time)))::bigint as bucket,
-             last(value, time) as value,
-             0 as pref
-      from metrics_raw
-      where inverter_id = ${q.inverterId}
-        and time >= ${since}
-      group by metric, bucket
-      union all
-      select distinct on (metric) metric, ${firstBucket} as bucket, value, 1 as pref
-      from metrics_raw
-      where inverter_id = ${q.inverterId}
-        and time < ${since}
-        and time >= ${since} - make_interval(secs => ${lookback})
-      order by metric, time desc
-    ) u
-    order by metric, bucket asc, pref
-    limit ${cap}
-  `);
-  return shapeRecentBuckets(result.rows, step);
+
+  // Samples inside the window, reduced to one row per (metric, bucket).
+  const windowArm = db
+    .select({
+      metric: metricsRaw.metric,
+      bucket: bucketEpoch(width, metricsRaw.time).as("bucket"),
+      value: last(metricsRaw.value, metricsRaw.time).as("value"),
+      pref: sql<number>`0`.as("pref"),
+    })
+    .from(metricsRaw)
+    .where(and(eq(metricsRaw.inverterId, q.inverterId), gte(metricsRaw.time, since)))
+    // The bucket alias, not a re-derivation: Postgres resolves an output name in
+    // GROUP BY, and repeating the expression would be a second thing to keep in
+    // step with `bucketOf`.
+    .groupBy(metricsRaw.metric, sql`bucket`);
+
+  // The value each metric was already holding when the window opened, so a
+  // signal that has not changed recently still draws from the left edge rather
+  // than appearing to start mid-chart. `distinct on (metric)` + this arm's own
+  // ordering is what makes it the most RECENT such sample.
+  const seedArm = db
+    .selectDistinctOn([metricsRaw.metric], {
+      metric: metricsRaw.metric,
+      bucket: bucketEpoch(width, since).as("bucket"),
+      value: metricsRaw.value,
+      pref: sql<number>`1`.as("pref"),
+    })
+    .from(metricsRaw)
+    .where(
+      and(
+        eq(metricsRaw.inverterId, q.inverterId),
+        lt(metricsRaw.time, since),
+        gte(metricsRaw.time, sql`${since}::timestamptz - ${interval(SEED_LOOKBACK_S)}`),
+      ),
+    )
+    .orderBy(metricsRaw.metric, desc(metricsRaw.time));
+
+  // `unionAll` parenthesises each arm, which is load-bearing rather than
+  // cosmetic: an unparenthesised `order by` after the final arm binds to the
+  // WHOLE union, where only the output columns are in scope, and the seed arm's
+  // `order by ... time desc` then fails with `column "time" does not exist`.
+  // Hand-written SQL had exactly that bug; the builder cannot express it.
+  const u = windowArm.unionAll(seedArm).as("u");
+
+  // `pref` orders the seed row after a real sample in the same bucket, so
+  // `distinct on` keeps the measurement and drops the carried-forward value.
+  const rows = await db
+    .selectDistinctOn([u.metric, u.bucket], {
+      metric: u.metric,
+      bucket: u.bucket,
+      value: u.value,
+    })
+    .from(u)
+    .orderBy(u.metric, u.bucket, u.pref)
+    .limit(buckets * MAX_METRICS_GUARD);
+
+  return shapeRecentBuckets(rows, step);
 }
 
 /** Raw samples for one metric, most-recent-first. */

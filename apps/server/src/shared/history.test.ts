@@ -41,6 +41,8 @@ const proxy = drizzle(async (sqlText: string, params: unknown[], method: string)
 const dbStub = {
   execute: async (q: never) => ({ rows: await proxy.execute(q) }),
   select: (...args: never[]) => (proxy.select as unknown as (...a: never[]) => unknown)(...args),
+  selectDistinctOn: (...args: never[]) =>
+    (proxy.selectDistinctOn as unknown as (...a: never[]) => unknown)(...args),
 };
 mock.module("@SunReye/db", () => ({ ...realDb, db: dbStub }));
 
@@ -72,6 +74,37 @@ async function capture<T>(rows: unknown[], run: () => Promise<T>): Promise<[Call
 
 /** Collapse whitespace so multi-line SQL can be matched by substring. */
 const flat = (s: string) => s.replace(/\s+/g, " ").trim();
+
+/**
+ * `flat`, plus the query builder's identifier quoting and table qualification
+ * stripped. Those are the builder's house style and change nothing about what
+ * the statement does, so asserting on them would make every assertion below a
+ * test of drizzle rather than of this module.
+ */
+const shape = (s: string) =>
+  flat(s).replaceAll('"', "").replaceAll("metrics_raw.", "").replaceAll("u.", "");
+
+/**
+ * The structural row cap the recent-buckets read carries. It is the query
+ * builder's `.limit()`, so it arrives as the last bound parameter rather than a
+ * literal in the SQL text — reading it from `params` keeps these assertions real
+ * instead of silently passing when the shape changes.
+ */
+const capOf = (call: Call) => Number(call.params.at(-1));
+
+/**
+ * Driver row for the recent-buckets read: `[metric, bucket, value]`.
+ *
+ * `bucket` and `value` accept strings as well as numbers because that is what
+ * the real driver hands back — Postgres renders `bigint` and `numeric` as text,
+ * and one test below exists precisely to pin that they are coerced rather than
+ * concatenated.
+ */
+const recentRow = (metric: string, bucket: number | string, value: number | string) => [
+  metric,
+  bucket,
+  value,
+];
 
 const ROLLUP = {
   metric: "pv.power",
@@ -476,11 +509,15 @@ describe("queryRecentBuckets — the SQL", () => {
 
   test("buckets server-side with time_bucket + last(value, time), grouped per metric", async () => {
     const [call] = await capture([], () => queryRecentBuckets(q));
-    const sqlText = flat(call.sql);
+    const sqlText = shape(call.sql);
     expect(sqlText).toContain("time_bucket(");
     expect(sqlText).toContain("last(value, time)");
     expect(sqlText).toContain("group by metric, bucket");
-    expect(sqlText).toContain("order by metric, bucket asc");
+    // Ascending is the default, so the builder omits the keyword; what matters is
+    // that the outer ordering is metric-then-bucket and never descending (a
+    // global `desc` is what the old client-supplied limit truncated against).
+    expect(sqlText).toMatch(/order by metric, bucket(?: asc)?, pref/);
+    expect(sqlText).not.toMatch(/order by metric, bucket desc/);
     expect(sqlText).toContain("from metrics_raw");
   });
 
@@ -492,9 +529,11 @@ describe("queryRecentBuckets — the SQL", () => {
     const after = Date.now();
     expect(call.sql).not.toContain("drop table");
     expect(call.params[0]).toBe("inv'; drop table metrics_raw; --");
-    const since = call.params[1] as Date;
-    expect(since.getTime()).toBeGreaterThanOrEqual(before - 300_000);
-    expect(since.getTime()).toBeLessThanOrEqual(after - 300_000);
+    // Encoded by drizzle's column type before it reaches the driver, so compare
+    // the instant it denotes rather than the literal shape.
+    const since = Date.parse(String(call.params[1]));
+    expect(since).toBeGreaterThanOrEqual(before - 300_000);
+    expect(since).toBeLessThanOrEqual(after - 300_000);
   });
 
   // The bug the old `limit: 200000` was papering over: a GLOBAL `desc + limit`
@@ -502,22 +541,22 @@ describe("queryRecentBuckets — the SQL", () => {
   // samples across EVERY metric. The bound is now structural (window ÷ step),
   // and the client cannot influence it at all.
   test("carries no client-supplied limit — any cap is derived from window ÷ step", async () => {
-    const [call] = await capture([], () => queryRecentBuckets(q));
-    const sqlText = flat(call.sql);
-    // No limit is a bound parameter, and no number the caller passed is one:
-    // every parameter is either the inverter id or the window start.
-    const since = call.params[1];
-    expect(call.params.every((p) => p === "inv-1" || p === since)).toBe(true);
-    const cap = /limit (\d+)/.exec(sqlText)?.[1];
-    if (cap !== undefined) {
-      // Derived: grows with the bucket count, and comfortably above the
-      // structural row count of any realistic feed.
-      const wide = await capture([], () => queryRecentBuckets({ ...q, seconds: 600 }));
-      const wideCap = /limit (\d+)/.exec(flat(wide[0].sql))?.[1];
-      expect(Number(wideCap)).toBeGreaterThan(Number(cap));
-      expect(Number(cap)).toBeGreaterThanOrEqual(300 * 64);
-    }
-    expect(sqlText).not.toContain("order by time desc");
+    // Deliberately not the default 300 s / 1 s: 300 is also SEED_LOOKBACK_S and 1
+    // is the bucket width, so those values in `params` would prove nothing.
+    const odd = { ...q, seconds: 421, stepSeconds: 7 };
+    const [call] = await capture([], () => queryRecentBuckets(odd));
+    // The caller's own numbers never reach the statement: `seconds` becomes a
+    // window start and `stepSeconds` a literal bucket width, and the cap below is
+    // computed from both. Neither appears as a parameter.
+    expect(call.params).not.toContain(odd.seconds);
+    expect(call.params).not.toContain(odd.stepSeconds);
+    // Derived: grows with the bucket count, and comfortably above the structural
+    // row count of any realistic feed.
+    const wide = await capture([], () => queryRecentBuckets({ ...odd, seconds: 842 }));
+    expect(capOf(wide[0])).toBeGreaterThan(capOf(call));
+    const [base] = await capture([], () => queryRecentBuckets(q));
+    expect(capOf(base)).toBeGreaterThanOrEqual(300 * 64);
+    expect(shape(call.sql)).not.toContain("order by time desc");
   });
 
   // `time_bucket` is EPOCH-aligned, not `since`-aligned, so an N-second window
@@ -535,15 +574,60 @@ describe("queryRecentBuckets — the SQL", () => {
       [3600, 60, 61],
     ] as const) {
       const [call] = await capture([], () => queryRecentBuckets({ ...q, seconds, stepSeconds }));
-      const cap = Number(/limit (\d+)/.exec(flat(call.sql))?.[1] ?? Number.POSITIVE_INFINITY);
-      expect(cap).toBeGreaterThanOrEqual(buckets * 512);
+      expect(capOf(call)).toBeGreaterThanOrEqual(buckets * 512);
     }
+  });
+
+  // Postgres overloads `time_bucket` on its second argument (timestamp,
+  // timestamptz, date). A bare placeholder there arrives typed `unknown`, so the
+  // planner cannot choose and rejects the whole statement with
+  // `function time_bucket(interval, unknown) is not unique` — a 500 on every
+  // dashboard load, while the same call over the `time` COLUMN resolves fine
+  // because the column carries its type. Every parameter in that position must
+  // be cast explicitly.
+  test("casts the window start where it is handed to time_bucket", async () => {
+    const [call] = await capture([], () => queryRecentBuckets(q));
+    const sqlText = shape(call.sql);
+    const bucketArgs = [...sqlText.matchAll(/time_bucket\([^,]+,\s*([^)]+)\)/g)].flatMap((m) =>
+      m[1] === undefined ? [] : [m[1].trim()],
+    );
+    expect(bucketArgs.length).toBeGreaterThan(0);
+    for (const arg of bucketArgs) {
+      // Either a typed column reference, or a placeholder with an explicit cast.
+      if (arg.startsWith("$"))
+        expect(arg).toMatch(/^\$\d+::(timestamptz|timestamp with time zone)$/);
+    }
+  });
+
+  // Same overload trap on the other side of the subtraction: `$n - interval`
+  // needs the placeholder typed too.
+  test("casts the window start everywhere it is used in date arithmetic", async () => {
+    const [call] = await capture([], () => queryRecentBuckets(q));
+    const sqlText = shape(call.sql);
+    expect(sqlText).not.toMatch(/\$\d+\s*-\s*make_interval/);
+  });
+
+  // `order by` after the final arm of a UNION binds to the WHOLE union, not to
+  // that arm — so an unparenthesised `order by metric, time desc` there is read
+  // against the union's output columns (metric, bucket, value, pref) and fails
+  // with `column "time" does not exist`. The seed arm needs its own ordering for
+  // `distinct on (metric)` to mean "the most recent sample", so the arm has to
+  // be parenthesised. This was invisible until the time_bucket ambiguity above
+  // was fixed: Postgres rejected the statement on overload resolution first.
+  test("parenthesises the seed arm so its ordering binds to the arm, not the union", async () => {
+    const [call] = await capture([], () => queryRecentBuckets(q));
+    const sqlText = shape(call.sql);
+    expect(sqlText).toMatch(/union all\s*\(\s*select distinct on \(metric\)/);
+    // The arm's ordering must close inside the parentheses, before the subquery
+    // alias — never trail into the union.
+    expect(sqlText).toMatch(/order by metric, time desc\s*\)/);
+    expect(sqlText).not.toMatch(/order by metric, time desc\s*\)\s*u/);
   });
 
   test("two metrics × 300 buckets: every metric still keeps its OLDEST bucket", async () => {
     const rows: unknown[] = [];
     for (const metric of ["a_pv", "z_load"]) {
-      for (let i = 0; i < 300; i++) rows.push({ metric, bucket: 1_755_345_600 + i, value: i });
+      for (let i = 0; i < 300; i++) rows.push(recentRow(metric, 1_755_345_600 + i, i));
     }
     const [, out] = await capture(rows, () => queryRecentBuckets(q));
     expect(out.metrics.a_pv?.o[0]).toBe(0);
@@ -554,13 +638,10 @@ describe("queryRecentBuckets — the SQL", () => {
 
   test("stepSeconds reaches the bucket width and the offsets that are derived from it", async () => {
     const [call, out] = await capture(
-      [
-        { metric: "pv", bucket: 1_755_345_600, value: 1 },
-        { metric: "pv", bucket: 1_755_345_605, value: 2 },
-      ],
+      [recentRow("pv", 1_755_345_600, 1), recentRow("pv", 1_755_345_605, 2)],
       () => queryRecentBuckets({ ...q, stepSeconds: 5 }),
     );
-    expect(flat(call.sql)).toContain("secs => 5");
+    expect(shape(call.sql)).toContain("secs => 5");
     expect(out.step).toBe(5);
     expect(out.metrics.pv).toEqual({ o: [0, 1], v: [1, 2] });
   });
@@ -575,8 +656,8 @@ describe("queryRecentBuckets — carrying the held value into the window", () =>
     // and a full-width backfill reads an omitted metric as dead and clears its
     // buffer — a steady voltage would blank its own sparkline.
     const [call] = await capture([], () => queryRecentBuckets(q));
-    expect(flat(call.sql)).toContain("order by metric, time desc");
-    expect(flat(call.sql)).toContain("union all");
+    expect(shape(call.sql)).toContain("order by metric, time desc");
+    expect(shape(call.sql)).toContain("union all");
   });
 
   test("the lookback for the seed is bounded, not an open-ended scan", async () => {
@@ -584,7 +665,11 @@ describe("queryRecentBuckets — carrying the held value into the window", () =>
     // every interval at its bucket boundary, so a live metric always has a row
     // within a minute; a 5-minute bound is generous and still cheap.
     const [call] = await capture([], () => queryRecentBuckets(q));
-    expect(flat(call.sql)).toContain("make_interval(secs => 300)");
+    // The width is a literal, not a bound parameter: `interval()` in
+    // @SunReye/db/timescale-fns proves it is a positive whole number of seconds
+    // before rendering it, and a server-derived constant reads better in a log
+    // than an opaque `$7`.
+    expect(shape(call.sql)).toContain("time >= $6::timestamptz - make_interval(secs => 300)");
   });
 
   test("a real sample in the first bucket wins over the seed", async () => {
@@ -592,14 +677,14 @@ describe("queryRecentBuckets — carrying the held value into the window", () =>
     // would make the client draw a vertical step out of nothing, so the measured
     // sample is preferred.
     const [call] = await capture([], () => queryRecentBuckets(q));
-    expect(flat(call.sql)).toContain("distinct on (metric, bucket)");
+    expect(shape(call.sql)).toContain("distinct on (metric, bucket)");
   });
 
   test("a metric with no row in the lookback is not seeded", async () => {
     // The boundary that matters: "unchanged" and "the device was not answering"
     // must not become the same thing. A metric the seed cannot find stays absent,
     // which is how a dead metric still reads as dead.
-    const [, out] = await capture([{ metric: "pv.power", bucket: 1_700_000_000, value: 42 }], () =>
+    const [, out] = await capture([recentRow("pv.power", 1_700_000_000, 42)], () =>
       queryRecentBuckets(q),
     );
     expect(Object.keys(out.metrics)).toEqual(["pv.power"]);
@@ -607,10 +692,7 @@ describe("queryRecentBuckets — carrying the held value into the window", () =>
 
   test("the seeded value is shaped like any other point", async () => {
     const [, out] = await capture(
-      [
-        { metric: "pv.power", bucket: 1_700_000_000, value: 230 },
-        { metric: "pv.power", bucket: 1_700_000_060, value: 231 },
-      ],
+      [recentRow("pv.power", 1_700_000_000, 230), recentRow("pv.power", 1_700_000_060, 231)],
       () => queryRecentBuckets({ ...q, stepSeconds: 60 }),
     );
     expect(out.metrics["pv.power"]).toEqual({ o: [0, 1], v: [230, 231] });
@@ -622,10 +704,7 @@ describe("queryRecentBuckets — row shaping", () => {
 
   test("offsets are small integers relative to t0, values in the same order", async () => {
     const [, out] = await capture(
-      [
-        { metric: "pv", bucket: 1_755_345_600, value: 10 },
-        { metric: "pv", bucket: 1_755_345_601, value: 11 },
-      ],
+      [recentRow("pv", 1_755_345_600, 10), recentRow("pv", 1_755_345_601, 11)],
       () => queryRecentBuckets(q),
     );
     expect(out).toEqual({
@@ -643,18 +722,13 @@ describe("queryRecentBuckets — row shaping", () => {
   });
 
   test("exactly one row lands at offset 0", async () => {
-    const [, out] = await capture([{ metric: "pv", bucket: 1_755_345_600, value: 7 }], () =>
-      queryRecentBuckets(q),
-    );
+    const [, out] = await capture([recentRow("pv", 1_755_345_600, 7)], () => queryRecentBuckets(q));
     expect(out.metrics.pv).toEqual({ o: [0], v: [7] });
   });
 
   test("0 W and −350 W survive shaping — they are readings, not absences", async () => {
     const [, out] = await capture(
-      [
-        { metric: "grid", bucket: 1_755_345_600, value: 0 },
-        { metric: "grid", bucket: 1_755_345_601, value: -350 },
-      ],
+      [recentRow("grid", 1_755_345_600, 0), recentRow("grid", 1_755_345_601, -350)],
       () => queryRecentBuckets(q),
     );
     expect(out.metrics.grid?.v).toEqual([0, -350]);
@@ -662,10 +736,7 @@ describe("queryRecentBuckets — row shaping", () => {
 
   test("two metrics with DISJOINT bucket sets share one t0 — the oldest bucket seen anywhere", async () => {
     const [, out] = await capture(
-      [
-        { metric: "load", bucket: 1_755_345_610, value: 1 },
-        { metric: "pv", bucket: 1_755_345_600, value: 2 },
-      ],
+      [recentRow("load", 1_755_345_610, 1), recentRow("pv", 1_755_345_600, 2)],
       () => queryRecentBuckets(q),
     );
     expect(out.t0).toBe(1_755_345_600_000);
@@ -675,10 +746,7 @@ describe("queryRecentBuckets — row shaping", () => {
 
   test("a gap inside one metric's buckets is a jump in `o`, never a fabricated point", async () => {
     const [, out] = await capture(
-      [
-        { metric: "pv", bucket: 1_755_345_600, value: 1 },
-        { metric: "pv", bucket: 1_755_345_607, value: 2 },
-      ],
+      [recentRow("pv", 1_755_345_600, 1), recentRow("pv", 1_755_345_607, 2)],
       () => queryRecentBuckets(q),
     );
     expect(out.metrics.pv).toEqual({ o: [0, 7], v: [1, 2] });
@@ -686,14 +754,29 @@ describe("queryRecentBuckets — row shaping", () => {
 
   test("bigint buckets and numeric values arriving as strings are coerced, not concatenated", async () => {
     const [, out] = await capture(
-      [
-        { metric: "pv", bucket: "1755345600", value: "1.5" },
-        { metric: "pv", bucket: "1755345601", value: "0" },
-      ],
+      [recentRow("pv", "1755345600", "1.5"), recentRow("pv", "1755345601", "0")],
       () => queryRecentBuckets(q),
     );
     expect(out.t0).toBe(1_755_345_600_000);
     expect(out.metrics.pv).toEqual({ o: [0, 1], v: [1.5, 0] });
+  });
+
+  // `bucket` is `::bigint`, and Postgres renders bigint as TEXT — measured, not
+  // assumed: `typeof` on a real driver row is "string" for bigint while int4,
+  // double precision and avg() all arrive as numbers. So a bare `sql<number>`
+  // there is an unchecked lie the compiler happily believes, and arithmetic on
+  // it silently concatenates. `.mapWith(Number)` is what makes the annotation
+  // true, at the query layer rather than only in the shaper downstream.
+  test("the bucket column is a number by the time it leaves the query, not a string", async () => {
+    const [, out] = await capture(
+      [recentRow("pv", "1755345600", 1), recentRow("pv", "1755345601", 2)],
+      () => queryRecentBuckets(q),
+    );
+    for (const offset of out.metrics.pv?.o ?? []) expect(typeof offset).toBe("number");
+    expect(typeof out.t0).toBe("number");
+    // Concatenation rather than addition is the failure this guards: an offset
+    // derived from a string bucket lands far outside a 300 s window.
+    expect(out.metrics.pv?.o).toEqual([0, 1]);
   });
 });
 

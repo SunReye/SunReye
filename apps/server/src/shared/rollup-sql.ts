@@ -43,7 +43,17 @@
  * (`rollup-sql.test.ts`) instead of only reachable through a live query.
  */
 
-import { type SQL, sql } from "drizzle-orm";
+import { type SQL, getTableName, getViewName, sql } from "drizzle-orm";
+import { metricsRaw } from "@SunReye/db/schema/metrics";
+import { interval as bucketWidth, timeBucket } from "@SunReye/db/timescale-fns";
+import {
+  dailyRollups,
+  hourlyRollups,
+  minuteRollups,
+  weightedDailyRollups,
+  weightedHourlyRollups,
+  weightedMinuteRollups,
+} from "@SunReye/db/schema/rollups";
 
 /**
  * Every rollup granularity. `minute` is a live API option; all three are read
@@ -91,11 +101,22 @@ export interface RollupWindow {
   to?: Date;
 }
 
-/** `bucket` → the pair of aggregate names that tier is materialized into. */
+/**
+ * `bucket` → the pair of aggregates that tier is materialized into.
+ *
+ * Names come from the drizzle declarations rather than literals here: those
+ * declarations are checked against the live relations by
+ * `apps/server/db-tests/schema-parity.test.ts`, so a rename in
+ * `packages/db/src/timescale/*.sql` cannot leave this module addressing a
+ * relation that no longer exists — which a string literal silently would.
+ */
 const VIEWS: Record<RollupBucket, { weighted: string; legacy: string }> = {
-  minute: { weighted: "weighted_minute_rollups", legacy: "minute_rollups" },
-  hour: { weighted: "weighted_hourly_rollups", legacy: "hourly_rollups" },
-  day: { weighted: "weighted_daily_rollups", legacy: "daily_rollups" },
+  minute: {
+    weighted: getViewName(weightedMinuteRollups),
+    legacy: getViewName(minuteRollups),
+  },
+  hour: { weighted: getViewName(weightedHourlyRollups), legacy: getViewName(hourlyRollups) },
+  day: { weighted: getViewName(weightedDailyRollups), legacy: getViewName(dailyRollups) },
 };
 
 /** `bucket` → the `time_bucket` width, as a literal and in milliseconds. */
@@ -114,8 +135,8 @@ const WIDTHS: Record<RollupBucket, { interval: string; ms: number }> = {
  */
 const RAW_TIERS: readonly RollupBucket[] = ["minute"];
 
-/** The raw hypertable, as the raw arm's `view`. */
-const RAW_RELATION = "metrics_raw";
+/** The raw hypertable, as the raw arm's `view`. From the schema, not a literal. */
+const RAW_RELATION = getTableName(metricsRaw);
 
 /**
  * The weighted mean, computed at read time from the two sums.
@@ -222,8 +243,13 @@ function viewArm(arm: RollupArm, w: RollupWindow): SQL {
  * bucket predicate every other arm uses, which trims the generosity back off.
  */
 function rawArm(arm: RollupArm, bucket: RollupBucket, w: RollupWindow): SQL {
-  const { interval, ms } = WIDTHS[bucket];
-  const width = sql.raw(`'${interval}'::interval`);
+  const { ms } = WIDTHS[bucket];
+  // Through the shared wrapper rather than a local fragment, so this call cannot
+  // drift from the rules in @SunReye/db/timescale-fns. `make_interval(secs => N)`
+  // replaces the previous `'1 minute'::interval` spelling: the same interval
+  // value, and measured to plan identically (same chunks excluded), so bucket
+  // alignment with the aggregates is unchanged.
+  const width = bucketWidth(ms / 1000);
   const scan = [sql`"time" >= ${floorTo(ms, w.from)}`];
   // One bucket past `to`, since the exact filter admits the bucket `to` lands in
   // whenever `to` is not itself bucket-aligned.
@@ -231,7 +257,7 @@ function rawArm(arm: RollupArm, bucket: RollupBucket, w: RollupWindow): SQL {
   return sql`
       select bucket, ${sql.raw(arm.avgExpr)} as avg_value, max_value, min_value, ${sql.raw(String(arm.pref))} as pref
       from (
-        select time_bucket(${width}, "time") as bucket,
+        select ${timeBucket(width, metricsRaw.time)} as bucket,
                sum(value * ${sql.raw(RAW_WEIGHT)}) as weighted_sum,
                sum(${sql.raw(RAW_WEIGHT)}) as weight,
                max(value) as max_value,
