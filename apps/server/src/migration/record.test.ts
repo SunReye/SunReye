@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 
 import { noMigration } from "@SunReye/db/upgrade-state";
 
-import { migrationRecordFrom } from "./record";
+import { migrationRecordFrom, readMigrationRecord } from "./record";
 
 describe("migrationRecordFrom", () => {
   test("no row at all reads back as 'never migrated'", () => {
@@ -43,5 +43,21 @@ describe("migrationRecordFrom", () => {
     ]);
     expect(record.stage).toBe("none");
     expect(record.sourceId).toBe("deye-sg05lp3");
+  });
+});
+
+describe("readMigrationRecord", () => {
+  test("reads the row and hands it to the parser, so a live read degrades the same way", async () => {
+    // The read and the parse are separated so the parse can be proved above; this
+    // is the half that says the two are actually joined up.
+    const record = await readMigrationRecord({
+      execute: async () => ({ rows: [{ value: { stage: "carried", sourceId: "deye-sg05lp3" } }] }),
+    });
+    expect(record.stage).toBe("carried");
+    expect(record.sourceId).toBe("deye-sg05lp3");
+  });
+
+  test("an instance with no such row reads back as 'never migrated'", async () => {
+    expect(await readMigrationRecord({ execute: async () => ({ rows: [] }) })).toEqual(noMigration);
   });
 });

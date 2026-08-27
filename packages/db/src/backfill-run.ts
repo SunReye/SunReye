@@ -3,13 +3,23 @@
  * tiers — resuming wherever the last run stopped.
  *
  * The SQL-issuing half, separated from `./backfill.ts` the way `./replay-run.ts`
- * is separated from `./replay.ts`. Nothing in here is assertable without a real
- * Postgres, and it is deliberately not faked: a SQL-text assertion cannot prove a
- * query RUNS, and this release already shipped two 500s behind a fully green suite
- * that way (CONTRIBUTING.md §6). Its tests are therefore database tests —
- * `apps/server/db-tests/upgrade.test.ts` — plus the end-to-end rehearsal in
+ * is separated from `./replay.ts`.
+ *
+ * ## Where it is proved, and at which layer
+ *
+ * The STATEMENTS are proved by executing them, because a SQL-text assertion
+ * cannot prove a query runs and this release already shipped two 500s behind a
+ * fully green suite that way (CONTRIBUTING.md §6): `apps/server/db-tests/
+ * upgrade.test.ts` against a real TimescaleDB, plus the end-to-end rehearsal in
  * `scripts/upgrade-rehearsal.ts`, which runs the whole thing against a restored
  * addon-1.2.0 fixture and compares the result with committed ground truth.
+ *
+ * The DECISIONS are proved without one, in `./backfill-run.test.ts`, over the
+ * structural `UpgradeClient` — the refusals, the stage transitions, the refresh
+ * order, the watermark that makes a killed run resume, and the verification gate.
+ * That file asserts on none of the statement strings; the double only decides
+ * which seeded rows a statement is asking for, the way `./replay-run.test.ts` and
+ * `./archive-import-io.test.ts` already do.
  *
  * WHY IT IS RESUMABLE, which is the only interesting thing about the control flow
  * here: this runs outside the addon's boot chain because it cannot fit in
@@ -70,7 +80,6 @@ const silent: UpgradeLogger = { log: () => {} };
  * safe to call from a boot hook or a button without either of them having to
  * know the state.
  */
-// fallow-ignore-next-line complexity -- CRAP only, not complexity: cyclomatic 9 and cognitive 8 are both inside the repo's limits of 10. CRAP squares complexity when unit coverage is zero, and zero is correct here BY DESIGN — this module issues SQL, and a SQL-text assertion cannot prove a query runs (CONTRIBUTING.md §6; two 500s already shipped behind a green suite that way). It is covered by apps/server/db-tests/upgrade.test.ts against a real Postgres and by the end-to-end rehearsal.
 export async function runBackfill(
   client: UpgradeClient,
   input: BackfillInput,
@@ -166,7 +175,6 @@ async function advance(
  * — including the carried raw window, and including a resumed run that wrote part
  * of it on an earlier attempt.
  */
-// fallow-ignore-next-line complexity -- CRAP only, not complexity: cyclomatic 5 and cognitive 2 are both inside the repo's limits of 10. CRAP squares complexity when unit coverage is zero, and zero is correct here BY DESIGN — this module issues SQL, and a SQL-text assertion cannot prove a query runs (CONTRIBUTING.md §6; two 500s already shipped behind a green suite that way). It is covered by apps/server/db-tests/upgrade.test.ts against a real Postgres and by the end-to-end rehearsal.
 async function writtenSpan(client: UpgradeClient, deviceId: number): Promise<Span | null> {
   const result = await client.query(
     `select min(time) as "from", max(time) as "to" from metrics_raw where device_id = $1`,
@@ -178,7 +186,6 @@ async function writtenSpan(client: UpgradeClient, deviceId: number): Promise<Spa
 }
 
 /** Materialize every tier over the written span, parent first, resumably. */
-// fallow-ignore-next-line complexity -- CRAP only, not complexity: cyclomatic 6 and cognitive 8 are both inside the repo's limits of 10. CRAP squares complexity when unit coverage is zero, and zero is correct here BY DESIGN — this module issues SQL, and a SQL-text assertion cannot prove a query runs (CONTRIBUTING.md §6; two 500s already shipped behind a green suite that way). It is covered by apps/server/db-tests/upgrade.test.ts against a real Postgres and by the end-to-end rehearsal.
 async function refreshTiers(
   client: UpgradeClient,
   input: BackfillInput,
@@ -262,7 +269,6 @@ async function recordRefresh(
  * bucket per new bucket (it is one poll sample per new sample), so including it
  * would compare two things that are not the same shape.
  */
-// fallow-ignore-next-line complexity -- CRAP only, not complexity: cyclomatic 5 and cognitive 4 are both inside the repo's limits of 10. CRAP squares complexity when unit coverage is zero, and zero is correct here BY DESIGN — this module issues SQL, and a SQL-text assertion cannot prove a query runs (CONTRIBUTING.md §6; two 500s already shipped behind a green suite that way). It is covered by apps/server/db-tests/upgrade.test.ts against a real Postgres and by the end-to-end rehearsal.
 export async function verifyMigration(
   client: UpgradeClient,
   deviceId: number,
@@ -353,7 +359,6 @@ async function readCoverage(
      order by 1, 2`,
     [sourceId, deviceId, replayTo.toISOString(), ...configKeys],
   );
-  // fallow-ignore-next-line complexity -- CRAP only, not complexity: cyclomatic 5 and cognitive 4 are both inside the repo's limits of 10. CRAP squares complexity when unit coverage is zero, and zero is correct here BY DESIGN — this module issues SQL, and a SQL-text assertion cannot prove a query runs (CONTRIBUTING.md §6; two 500s already shipped behind a green suite that way). It is covered by apps/server/db-tests/upgrade.test.ts against a real Postgres and by the end-to-end rehearsal.
   return (result.rows as Record<string, unknown>[]).map((row) => ({
     metric: String(row.metric),
     day: String(row.day),
