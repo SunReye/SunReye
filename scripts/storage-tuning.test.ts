@@ -14,6 +14,15 @@ import {
   retentionDays,
   intervalDays,
   checkStorageTuning,
+  databaseImages,
+  timescaledbPin,
+  DB_IMAGE_SURFACES,
+  REQUIRED_DB_IMAGE,
+  REQUIRED_TIMESCALEDB_VERSION,
+  TIMESCALEDB_DOCKERFILES,
+  ADDON_CONF,
+  COMPOSE_PG_SURFACES,
+  IMAGE_BUILD_WORKFLOW,
 } from "./storage-tuning";
 
 const REPO = join(import.meta.dir, "..");
@@ -23,7 +32,41 @@ const read = (path: string) => readFileSync(join(REPO, path), "utf8");
 const policies = readFileSync(join(TIMESCALE, "policies.sql"), "utf8");
 const compressAfterMigration = readFileSync(join(TIMESCALE, "0001_compress_after_2h.sql"), "utf8");
 
-/** `checkStorageTuning` over the shipped files, with `policies.sql` substituted. */
+/** A conf/compose stand-in that satisfies every non-policy half of the gate. */
+const TUNED_CONF = [
+  "checkpoint_timeout = '2h'",
+  "wal_compression = 'zstd'",
+  "shared_buffers = '256MB'",
+  "work_mem = '8MB'",
+  "effective_cache_size = '1GB'",
+  "maintenance_work_mem = '128MB'",
+  "max_connections = 40",
+  "timescaledb.max_background_workers = 4",
+  "",
+].join("\n");
+const TUNED_DOCKERFILE = [
+  `ARG TIMESCALEDB_VERSION=${REQUIRED_TIMESCALEDB_VERSION}`,
+  '       "timescaledb-2-postgresql-${PG_MAJOR}=${TIMESCALEDB_VERSION}.*" \\',
+  '       "timescaledb-2-loader-postgresql-${PG_MAJOR}=${TIMESCALEDB_VERSION}.*" \\',
+  '       "timescaledb-toolkit-postgresql-${PG_MAJOR}=1:1.25.0*" \\',
+  "    && find \"/usr/lib/postgresql/${PG_MAJOR}/lib\" -name 'timescaledb-*.so' \\",
+  '       ! -name "timescaledb-${TIMESCALEDB_VERSION}.*" \\',
+  '       ! -name "timescaledb-tsl-${TIMESCALEDB_VERSION}.*" -delete \\',
+  "",
+].join("\n");
+const TUNED_COMPOSE = [
+  `    image: ${REQUIRED_DB_IMAGE}`,
+  "      - checkpoint_timeout=2h",
+  "      - wal_compression=zstd",
+  "",
+].join("\n");
+
+/**
+ * `checkStorageTuning` over the shipped files, with `policies.sql` substituted.
+ * Everything the policy half does not care about is stubbed tuned, so a failure
+ * here is always about the SQL under test — except the SQL files themselves and
+ * the image/pin surfaces, which are read from the tree.
+ */
 const runShipped = (policySql: string) => {
   const errors: string[] = [];
   const code = checkStorageTuning({
@@ -33,8 +76,10 @@ const runShipped = (policySql: string) => {
         : path.endsWith(".sql")
           ? read(path)
           : path.includes("init-postgres")
-            ? "checkpoint_timeout = '2h'\nwal_compression = 'zstd'\n"
-            : "      - checkpoint_timeout=2h\n      - wal_compression=zstd\n",
+            ? TUNED_CONF
+            : (COMPOSE_PG_SURFACES as readonly string[]).includes(path)
+              ? TUNED_COMPOSE
+              : read(path),
     log: () => {},
     error: (line) => errors.push(line),
   });
@@ -42,7 +87,7 @@ const runShipped = (policySql: string) => {
 };
 
 const ADDON_CONF_SCRIPT = "sunreye/rootfs/etc/s6-overlay/s6-rc.d/init-postgres/run";
-const COMPOSE_FILES = ["docker-compose.yml", "docker/docker-compose.yml"];
+const COMPOSE_FILES = ["docker-compose.yml", "docker/docker-compose.yml", "docker-compose.db.yml"];
 
 describe("compressionPolicies", () => {
   test("reads the target and the interval of an add", () => {
@@ -266,35 +311,46 @@ const rollupPolicySql = (tiers: readonly string[]) =>
     ])
     .join("\n--> statement-breakpoint\n");
 
+/** A whole file set the gate passes on, for per-surface substitution below. */
+const GOOD_FILES: Record<string, string> = {
+  "packages/db/src/timescale/0002_weighted_rollups.sql": rollupSegmentBySql(
+    GATE_ROLLUP_TIERS.filter((t) => t.startsWith("weighted_")),
+  ),
+  "packages/db/src/timescale/0003_rollup_compression_segmentby.sql": rollupSegmentBySql(
+    GATE_ROLLUP_TIERS.filter((t) => !t.startsWith("weighted_")),
+  ),
+  "packages/db/src/timescale/policies.sql":
+    "SELECT remove_compression_policy('metrics_raw', if_exists => TRUE);\n" +
+    "--> statement-breakpoint\n" +
+    "SELECT add_compression_policy('metrics_raw', INTERVAL '2 hours', if_not_exists => TRUE);\n" +
+    "--> statement-breakpoint\n" +
+    rollupPolicySql(GATE_ROLLUP_TIERS),
+  "sunreye/rootfs/etc/s6-overlay/s6-rc.d/init-postgres/run": `${TUNED_CONF}full_page_writes = 'on'\n`,
+  "docker-compose.yml": TUNED_COMPOSE,
+  "docker/docker-compose.yml": TUNED_COMPOSE,
+  "docker-compose.db.yml": TUNED_COMPOSE,
+  ".github/workflows/ci.yml": `        image: ${REQUIRED_DB_IMAGE}\n`,
+  ".github/workflows/db-restore.yml": `        image: ${REQUIRED_DB_IMAGE}\n`,
+  ".github/workflows/db-weighted-rollups.yml": `        image: ${REQUIRED_DB_IMAGE}\n`,
+  ".github/workflows/db-image.yml":
+    "  IMAGE: ghcr.io/sunreye/timescaledb\n          file: docker/timescaledb/Dockerfile\n",
+  "sunreye/Dockerfile": TUNED_DOCKERFILE,
+  "docker/timescaledb/Dockerfile": TUNED_DOCKERFILE,
+};
+/** `checkStorageTuning` over `GOOD_FILES`, with the named surfaces replaced. */
+const runGate = (over: Record<string, string> = {}) => {
+  const files = { ...GOOD_FILES, ...over };
+  const errors: string[] = [];
+  const code = checkStorageTuning({
+    read: (path) => files[path] ?? "",
+    log: () => {},
+    error: (line) => errors.push(line),
+  });
+  return { code, errors };
+};
+
 describe("checkStorageTuning", () => {
-  const GOOD: Record<string, string> = {
-    "packages/db/src/timescale/0002_weighted_rollups.sql": rollupSegmentBySql(
-      GATE_ROLLUP_TIERS.filter((t) => t.startsWith("weighted_")),
-    ),
-    "packages/db/src/timescale/0003_rollup_compression_segmentby.sql": rollupSegmentBySql(
-      GATE_ROLLUP_TIERS.filter((t) => !t.startsWith("weighted_")),
-    ),
-    "packages/db/src/timescale/policies.sql":
-      "SELECT remove_compression_policy('metrics_raw', if_exists => TRUE);\n" +
-      "--> statement-breakpoint\n" +
-      "SELECT add_compression_policy('metrics_raw', INTERVAL '2 hours', if_not_exists => TRUE);\n" +
-      "--> statement-breakpoint\n" +
-      rollupPolicySql(GATE_ROLLUP_TIERS),
-    "sunreye/rootfs/etc/s6-overlay/s6-rc.d/init-postgres/run":
-      "checkpoint_timeout = '2h'\nwal_compression = 'zstd'\nfull_page_writes = 'on'\n",
-    "docker-compose.yml": "      - checkpoint_timeout=2h\n      - wal_compression=zstd\n",
-    "docker/docker-compose.yml": "      - checkpoint_timeout=2h\n      - wal_compression=zstd\n",
-  };
-  const run = (over: Record<string, string> = {}) => {
-    const files = { ...GOOD, ...over };
-    const errors: string[] = [];
-    const code = checkStorageTuning({
-      read: (path) => files[path] ?? "",
-      log: () => {},
-      error: (line) => errors.push(line),
-    });
-    return { code, errors };
-  };
+  const run = runGate;
 
   test("passes when every surface carries the tuned values", () => {
     expect(run()).toEqual({ code: 0, errors: [] });
@@ -506,7 +562,11 @@ describe("checkStorageTuning — rollup compression (#134)", () => {
       rollupPolicySql(tiers),
     ].join("\n--> statement-breakpoint\n");
 
+  // Only the SQL differs from the shared passing set — everything else (the
+  // conf, the compose flags, the image surfaces) stays tuned so a failure here
+  // is always about the rollups.
   const GOOD: Record<string, string> = {
+    ...GOOD_FILES,
     "packages/db/src/timescale/policies.sql": POLICY_SQL_FOR(GATE_ROLLUP_TIERS),
     "packages/db/src/timescale/0002_weighted_rollups.sql": SEGMENTBY_SQL(
       GATE_ROLLUP_TIERS.filter((t) => t.startsWith("weighted_")),
@@ -514,21 +574,8 @@ describe("checkStorageTuning — rollup compression (#134)", () => {
     "packages/db/src/timescale/0003_rollup_compression_segmentby.sql": SEGMENTBY_SQL(
       GATE_ROLLUP_TIERS.filter((t) => !t.startsWith("weighted_")),
     ),
-    "sunreye/rootfs/etc/s6-overlay/s6-rc.d/init-postgres/run":
-      "checkpoint_timeout = '2h'\nwal_compression = 'zstd'\nfull_page_writes = 'on'\n",
-    "docker-compose.yml": "      - checkpoint_timeout=2h\n      - wal_compression=zstd\n",
-    "docker/docker-compose.yml": "      - checkpoint_timeout=2h\n      - wal_compression=zstd\n",
   };
-  const run = (over: Record<string, string> = {}) => {
-    const files = { ...GOOD, ...over };
-    const errors: string[] = [];
-    const code = checkStorageTuning({
-      read: (path) => files[path] ?? "",
-      log: () => {},
-      error: (line) => errors.push(line),
-    });
-    return { code, errors };
-  };
+  const run = (over: Record<string, string> = {}) => runGate({ ...GOOD, ...over });
 
   test("passes when every rollup tier is segmented and has a compression policy", () => {
     expect(run()).toEqual({ code: 0, errors: [] });
@@ -815,5 +862,227 @@ describe("the minute aggregates are frozen, not dropped", () => {
     const { code, errors } = runShipped(rearmed);
     expect(code).toBe(1);
     expect(errors.join("\n")).toContain("minute_rollups");
+  });
+});
+
+describe("databaseImages", () => {
+  test("reads every database image reference of a compose file", () => {
+    expect(
+      databaseImages("services:\n  db:\n    image: timescale/timescaledb:2.28.2-pg17\n"),
+    ).toEqual(["timescale/timescaledb:2.28.2-pg17"]);
+  });
+
+  test("reads the image of a workflow service block", () => {
+    expect(
+      databaseImages("    services:\n      timescaledb:\n        image: ghcr.io/x/timescaledb:t\n"),
+    ).toEqual(["ghcr.io/x/timescaledb:t"]);
+  });
+
+  test("ignores images that are not a database", () => {
+    expect(
+      databaseImages(
+        "    image: ghcr.io/sunreye/sunreye-server:${SUNREYE_TAG:-latest}\n    image: oven/bun:1.4\n",
+      ),
+    ).toEqual([]);
+  });
+});
+
+describe("timescaledbPin", () => {
+  test("reads the ARG the apt patterns interpolate", () => {
+    expect(timescaledbPin("ARG PG_MAJOR=17\nARG TIMESCALEDB_VERSION=2.28.2\n")).toBe("2.28.2");
+  });
+
+  test("is undefined when the file declares no pin", () => {
+    expect(timescaledbPin("FROM postgres:17-bookworm\n")).toBeUndefined();
+  });
+});
+
+/**
+ * Step 2: one image, everywhere.
+ *
+ * The dev/CI database and the addon must carry the SAME extensions, or a
+ * migration that needs `timescaledb_toolkit` passes in one and fails in the
+ * other — precisely the class of bug apps/server/db-tests exists to catch. Six
+ * separate files name that image and nothing linked them together.
+ */
+describe("one database image across every surface", () => {
+  for (const surface of DB_IMAGE_SURFACES) {
+    test(`${surface} names the one database image`, () => {
+      expect(databaseImages(read(surface))).toEqual([REQUIRED_DB_IMAGE]);
+    });
+  }
+
+  test("the gate names the file that drifts", () => {
+    const { code, errors } = runShipped(policies);
+    expect(code).toBe(0);
+    expect(errors).toEqual([]);
+  });
+});
+
+describe("checkStorageTuning — one database image", () => {
+  test("reads every one of the six image surfaces", () => {
+    const seen: string[] = [];
+    checkStorageTuning({
+      read: (path) => {
+        seen.push(path);
+        return "";
+      },
+      log: () => {},
+      error: () => {},
+    });
+    for (const surface of DB_IMAGE_SURFACES) expect(seen).toContain(surface);
+  });
+
+  test("fails naming the drifting surface and both refs", () => {
+    const { code, errors } = runGate({
+      ".github/workflows/ci.yml": "        image: timescale/timescaledb:2.28.2-pg17\n",
+    });
+    expect(code).toBe(1);
+    expect(errors.join("\n")).toContain(".github/workflows/ci.yml");
+    expect(errors.join("\n")).toContain("timescale/timescaledb:2.28.2-pg17");
+    expect(errors.join("\n")).toContain(REQUIRED_DB_IMAGE);
+  });
+
+  test("fails when a surface names no database image at all", () => {
+    const { code, errors } = runGate({ "docker-compose.db.yml": "services: {}\n" });
+    expect(code).toBe(1);
+    expect(errors.join("\n")).toContain("docker-compose.db.yml");
+  });
+});
+
+describe("docker-compose.db.yml is tuned like every other surface", () => {
+  test("the gate reads it", () => {
+    const seen: string[] = [];
+    checkStorageTuning({
+      read: (path) => {
+        seen.push(path);
+        return "";
+      },
+      log: () => {},
+      error: () => {},
+    });
+    expect(seen).toContain("docker-compose.db.yml");
+  });
+
+  test("the gate reports it when its WAL settings drift", () => {
+    const { code, errors } = runGate({
+      "docker-compose.db.yml": `    image: ${REQUIRED_DB_IMAGE}\n      - checkpoint_timeout=5min\n`,
+    });
+    expect(code).toBe(1);
+    expect(errors.join("\n")).toContain("docker-compose.db.yml: checkpoint_timeout");
+  });
+
+  test("the shipped file carries the tuned values", () => {
+    const flags = parseComposePgFlags(read("docker-compose.db.yml"));
+    expect(flags.checkpoint_timeout).toBe("2h");
+    expect(flags.wal_compression).toBe("zstd");
+  });
+});
+
+/**
+ * A floating `2.28.*` pattern is not a pin: a rebuild today resolves 2.28.3,
+ * so the addon and the dev/CI image can ship different extension binaries from
+ * the same commit. Both Dockerfiles therefore pin the full patch, identically.
+ */
+describe("the TimescaleDB pin is a full patch version in both Dockerfiles", () => {
+  for (const dockerfile of TIMESCALEDB_DOCKERFILES) {
+    test(`${dockerfile} pins ${REQUIRED_TIMESCALEDB_VERSION}`, () => {
+      expect(timescaledbPin(read(dockerfile))).toBe(REQUIRED_TIMESCALEDB_VERSION);
+    });
+
+    test(`${dockerfile} installs the toolkit`, () => {
+      expect(read(dockerfile)).toContain("timescaledb-toolkit-postgresql-");
+    });
+
+    test(`${dockerfile} keeps the versioned-.so prune`, () => {
+      expect(read(dockerfile)).toContain("timescaledb-*.so");
+      expect(read(dockerfile)).toContain('! -name "timescaledb-tsl-${TIMESCALEDB_VERSION}.*"');
+    });
+  }
+
+  test("the image tag carries the same version the Dockerfiles pin", () => {
+    expect(REQUIRED_DB_IMAGE).toContain(REQUIRED_TIMESCALEDB_VERSION);
+  });
+
+  test("the gate fails on a floating pin", () => {
+    const { code, errors } = runGate({
+      "sunreye/Dockerfile": TUNED_DOCKERFILE.replace(
+        `ARG TIMESCALEDB_VERSION=${REQUIRED_TIMESCALEDB_VERSION}`,
+        "ARG TIMESCALEDB_VERSION=2.28",
+      ),
+    });
+    expect(code).toBe(1);
+    expect(errors.join("\n")).toContain("sunreye/Dockerfile");
+    expect(errors.join("\n")).toContain("2.28");
+  });
+
+  test("the gate fails when the two Dockerfiles disagree", () => {
+    const { code, errors } = runGate({
+      "docker/timescaledb/Dockerfile": TUNED_DOCKERFILE.replace(
+        `ARG TIMESCALEDB_VERSION=${REQUIRED_TIMESCALEDB_VERSION}`,
+        "ARG TIMESCALEDB_VERSION=2.29.2",
+      ),
+    });
+    expect(code).toBe(1);
+    expect(errors.join("\n")).toContain("2.29.2");
+  });
+
+  test("the gate fails when a Dockerfile drops the toolkit", () => {
+    const { code, errors } = runGate({
+      "docker/timescaledb/Dockerfile": TUNED_DOCKERFILE.replace(
+        '       "timescaledb-toolkit-postgresql-${PG_MAJOR}=1:1.25.0*" \\',
+        "",
+      ),
+    });
+    expect(code).toBe(1);
+    expect(errors.join("\n")).toContain("timescaledb_toolkit");
+  });
+});
+
+describe("the one image is published by a workflow", () => {
+  test("db-image.yml builds the repository every surface pulls from", () => {
+    const workflow = read(IMAGE_BUILD_WORKFLOW);
+    expect(workflow).toContain(REQUIRED_DB_IMAGE.split(":")[0]);
+    expect(workflow).toContain("docker/timescaledb/Dockerfile");
+  });
+
+  test("the gate fails when the workflow stops building that repository", () => {
+    const { code, errors } = runGate({ [IMAGE_BUILD_WORKFLOW]: "on: workflow_dispatch\n" });
+    expect(code).toBe(1);
+    expect(errors.join("\n")).toContain(IMAGE_BUILD_WORKFLOW);
+  });
+});
+
+/**
+ * The addon set WAL and worker knobs but no memory knobs at all, so it silently
+ * inherited PostgreSQL's 128 MB shared_buffers / 4 MB work_mem defaults while
+ * the compose path got tuned sizing. On a 2 GB Home Assistant box that is the
+ * surface where it hurts most.
+ */
+describe("the addon sizes its memory knobs", () => {
+  const settings = () => parsePgConf(read(ADDON_CONF));
+
+  for (const key of [
+    "shared_buffers",
+    "work_mem",
+    "effective_cache_size",
+    "maintenance_work_mem",
+    "max_connections",
+  ]) {
+    test(`sunreye.conf sets ${key}`, () => {
+      expect(settings()[key]).toBeDefined();
+    });
+  }
+
+  test("timescaledb.max_background_workers is 4, not 8 — a 2 GB box has no room for 8", () => {
+    expect(settings()["timescaledb.max_background_workers"]).toBe("4");
+  });
+
+  test("the gate reports a missing memory knob", () => {
+    const { code, errors } = runGate({
+      [ADDON_CONF]: TUNED_CONF.replace("work_mem = '8MB'\n", ""),
+    });
+    expect(code).toBe(1);
+    expect(errors.join("\n")).toContain("work_mem");
   });
 });

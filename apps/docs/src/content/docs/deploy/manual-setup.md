@@ -21,8 +21,11 @@ Run a local TimescaleDB via Docker Compose:
 bun run db:start
 ```
 
-This uses `docker-compose.db.yml`, which runs `timescale/timescaledb:latest-pg17` and
-exposes it on `localhost:5432`.
+This uses `docker-compose.db.yml`, which runs the pinned `ghcr.io/sunreye/timescaledb:pg17-ts2.28.2`
+image and exposes it on `localhost:5432`. That image is built from
+`docker/timescaledb/Dockerfile` — PostgreSQL 17 with TimescaleDB **and
+timescaledb_toolkit** — and is the same image CI and the Home Assistant addon use, so a
+migration behaves identically everywhere.
 
 :::note[Host networking]
 The local DB container uses **host networking**. This is required for Docker running inside

@@ -27,10 +27,16 @@ bun run docker:down    # stop
 | --- | --- | --- |
 | `server` | `apps/server/Dockerfile` | `3000` |
 | `migrate` | same image, `command: ["migrate"]` (run-once) | — |
-| `postgres` | `timescale/timescaledb:2.28.2-pg17` (pinned) | `5432` |
+| `postgres` | `ghcr.io/sunreye/timescaledb:pg17-ts2.28.2` (pinned) | `5432` |
 
 Everything is on **[http://localhost:3000](http://localhost:3000)** — dashboard, API and
 OpenAPI docs.
+
+The database image is SunReye's own: `postgres:17-bookworm` plus a pinned TimescaleDB and
+**timescaledb_toolkit**, built from `docker/timescaledb/Dockerfile`. The upstream
+`timescale/timescaledb` images carry no toolkit at any tag, and the schema's weighted
+rollups need it — the same image is used by the local dev database, by CI and inside the
+Home Assistant addon, so a migration can never pass in one place and fail in another.
 
 The embedded dashboard is the **hash-router** build, the same one the Home Assistant addon
 serves so it survives a reverse-proxy path prefix. Routes therefore read
