@@ -58,8 +58,22 @@ jobs:
       # healthchecks predate the compose file, and known-broken old binaries
       # (e.g. the serialport bundling regression) must not be able to fail the
       # upgrade test. Data is seeded directly instead of via the poll loop.
+      # The retired migrate image, on purpose. The published release predates the
+      # argv dispatcher, so its server image ignores `migrate` and BOOTS THE
+      # SERVER instead — the database would go unshaped and the upgrade below
+      # would prove nothing. `command: []` clears the compose command so the
+      # old image's own ENTRYPOINT (`bun run db:migrate`) runs alone.
+      #
+      # Drop this override once the oldest release this test upgrades from
+      # ships the dispatcher.
       - name: Shape a database with the last published release
         run: |
+          cat > docker-compose.override.yml <<'EOF'
+          services:
+            migrate:
+              image: ghcr.io/sunreye/sunreye-migrate:latest
+              command: []
+          EOF
           SUNREYE_TAG=latest docker compose up -d --quiet-pull migrate
           for i in $(seq 1 60); do
             state=$(docker inspect -f '{{.State.Status}}' "$(docker compose ps -aq migrate)")
@@ -131,18 +145,19 @@ jobs:
       - name: Build this ref's images
         working-directory: .
         run: |
-          docker build -f docker/migrate.Dockerfile -t sunreye-migrate:pr .
           docker build -f apps/server/Dockerfile -t sunreye-server:pr .
 
       - name: Upgrade in place
         run: |
           docker compose rm -f -s migrate
           SUNREYE_TAG=latest docker compose up -d --no-recreate postgres
-          # Re-point server + migrate at the PR images without touching the volume.
+          # Re-point both at the PR image without touching the volume — and
+          # replace the shaping override above, so `migrate` goes back to the
+          # compose file's `command: ["migrate"]` against the new dispatcher.
           cat > docker-compose.override.yml <<'EOF'
           services:
             migrate:
-              image: sunreye-migrate:pr
+              image: sunreye-server:pr
             server:
               image: sunreye-server:pr
           EOF
