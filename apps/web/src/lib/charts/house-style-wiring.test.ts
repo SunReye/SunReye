@@ -109,6 +109,10 @@ const KIND_OF: Record<string, string> = {
   "lib/components/automations/decision-power-chart.svelte": "overlay",
   "lib/components/automations/soc-chart.svelte": "overlay",
   "lib/components/statistics/ratio-trend-chart.svelte": "overlay",
+  // Measured capacities against the rated one. A capacity is a LEVEL the pack
+  // holds, not something accrued over a bucket, so it takes the line rather
+  // than the energy mark — and the two are compared on one plot.
+  "lib/components/statistics/battery-health-chart.svelte": "overlay",
   // A decomposition of one total into the parts that make it up.
   "lib/components/automations/plan-power-chart.svelte": "stack",
   // A quantity that belongs to a bucket, not to an instant.

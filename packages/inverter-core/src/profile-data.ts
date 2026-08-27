@@ -5,8 +5,19 @@ import type {
   MetricBase,
   MetricDef,
   MetricValues,
+  ProfileDeclarations,
   SimulateFn,
 } from "./types";
+
+/**
+ * Every schema version this runtime reads, oldest first. One list, so the
+ * validator's union and the CLI's "is this a profile?" probe cannot disagree
+ * about what a profile may claim to be.
+ */
+export const PROFILE_SCHEMA_VERSIONS = [1, 2, 3] as const;
+
+/** A version this runtime reads. */
+export type ProfileSchemaVersion = (typeof PROFILE_SCHEMA_VERSIONS)[number];
 
 /**
  * Serializable inverter profile — the downloadable artifact and DB row. It is a
@@ -22,6 +33,8 @@ export interface ProfileData {
    *
    * - `1` addressing as `type` + `addresses` on every metric.
    * - `2` addressing as a tagged {@link Binding}.
+   * - `3` the profile states its own hardware declarations, and `load.*` means
+   *   whole-house consumption rather than "the inverter's load output".
    *
    * A v1 profile is upcast to v2 on load ({@link hydrateProfile}) so every
    * already-published profile keeps working. The upcast is one-way: nothing
@@ -33,14 +46,26 @@ export interface ProfileData {
    * have had — which is the whole reason the fields are optional. A bump is owed
    * only when an older runtime would *misread* a newer profile, and an older
    * runtime does not read these fields at all.
+   *
+   * `declares` *did* owe the bump to `3`, by that same rule: a v2 runtime reads
+   * a backup output out of `load.*`, so a v3 profile that maps house
+   * consumption and no UPS would be misread by it — and, in the other
+   * direction, this runtime must keep reading every published v1/v2 profile the
+   * way its author meant it ({@link hydrateProfile}).
    */
-  schemaVersion: 1 | 2;
+  schemaVersion: ProfileSchemaVersion;
   id: string;
   name: string;
   manufacturer: string;
   /** Semver of the profile content itself (drives update detection). */
   version: string;
   metrics: MetricDataDef[];
+  /**
+   * Hardware facts the metric set cannot imply. `schemaVersion: 3` and above
+   * only — a legacy profile predates the vocabulary, so stating one would be
+   * ambiguous rather than helpful.
+   */
+  declares?: ProfileDeclarations;
 }
 
 /**
@@ -228,6 +253,26 @@ export function hydrateProfile(
     name: data.name,
     manufacturer: data.manufacturer,
     metrics: data.metrics.map(toMetricDef),
+    declares: declarationsOf(data),
     simulate: opts?.simulate,
   };
+}
+
+/**
+ * The profile's declarations, filled in for the versions that could not state
+ * them.
+ *
+ * Every v1/v2 profile was authored against a vocabulary in which `load.*` was
+ * the inverter's own (UPS) load output — that is what the capability was derived
+ * from — so reading `backupOutput: true` out of those roles is not a guess about
+ * the hardware, it is the author's meaning. A v3 profile says so itself, and
+ * saying nothing there means no backup output.
+ *
+ * Exported because the authoring side needs the same reading: a v3 variant
+ * derived from a published legacy base must inherit what that base's `load.*`
+ * roles meant, not lose it in the version step.
+ */
+export function declarationsOf(data: ProfileData): ProfileDeclarations | undefined {
+  if (data.schemaVersion >= 3) return data.declares;
+  return data.metrics.some((m) => m.role?.startsWith("load.")) ? { backupOutput: true } : undefined;
 }

@@ -2,6 +2,7 @@
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
 	import { Label } from '$lib/components/ui/label';
+	import FieldInfo from './field-info.svelte';
 	import * as Alert from '$lib/components/ui/alert';
 	import * as m from '$lib/paraglide/messages';
 
@@ -50,7 +51,13 @@
 	{/if}
 
 	<div class="flex flex-col gap-1.5">
-		<Label for="smart-meter-since">{m.weather_smart_meter_since()}</Label>
+		<div class="flex items-center gap-1.5">
+			<Label for="smart-meter-since">{m.weather_smart_meter_since()}</Label>
+			<FieldInfo
+				label={m.weather_smart_meter_since()}
+				info={m.weather_smart_meter_since_desc()}
+			/>
+		</div>
 		<Input
 			id="smart-meter-since"
 			type="date"
@@ -58,7 +65,6 @@
 			{disabled}
 			class="max-w-48"
 		/>
-		<span class="text-xs text-muted-foreground">{m.weather_smart_meter_since_desc()}</span>
 	</div>
 
 	{#if smartMeterSince}

@@ -132,3 +132,46 @@ export interface CostBreakdown extends CostTotals {
   from: string;
   to: string;
 }
+
+/** One measured capacity estimate — a point on the degradation series. */
+export interface BatteryCapacityPoint {
+  /** ISO instant the discharge segment ended. */
+  measuredAt: string;
+  /** That segment's estimate of full-range usable energy, kWh. */
+  capacityKwh: number;
+  /** Duration-weighted mean pack temperature, °C; null when unreported. */
+  tempC: number | null;
+}
+
+/** A capacity figure and how much the segments behind it disagreed. */
+export interface BatteryCapacity {
+  kwh: number;
+  /** 10th and 90th percentile of the per-segment estimates. */
+  low: number;
+  high: number;
+  /** How many discharge segments the median was taken over. */
+  segments: number;
+}
+
+/**
+ * Measured battery capacity and state of health.
+ *
+ * Every field is nullable because measuring is conditional: a plant needs
+ * several deep discharges before any of it exists, and SOH additionally needs a
+ * reference. Null means "not measured yet", never "healthy".
+ */
+export interface BatteryHealth {
+  /** Capacity over the recent window; null before enough segments. */
+  capacity: BatteryCapacity | null;
+  /** Capacity over this install's earliest segments — the SOH fallback. */
+  baseline: BatteryCapacity | null;
+  health: {
+    /** capacity / reference. Uncapped: a pack above nameplate is a real answer. */
+    ratio: number;
+    /** What the ratio was measured against. */
+    reference: "nameplate" | "baseline";
+    referenceKwh: number;
+  } | null;
+  /** Every stored estimate, oldest first. */
+  trend: BatteryCapacityPoint[];
+}

@@ -76,6 +76,55 @@ describe("coverage", () => {
   });
 });
 
+describe("coverage — roles that answer the same question", () => {
+  const chargeA = metric("settings/max_charge_current", {
+    label: "Max charge current",
+    group: "settings",
+    unit: "A",
+    role: "setting.battery.max_charge_current",
+    access: "rw",
+    addr: 210,
+  });
+  const chargeW = metric("settings/max_charge_power", {
+    label: "Max charge power",
+    group: "settings",
+    unit: "W",
+    role: "setting.battery.max_charge_power",
+    access: "rw",
+    addr: 211,
+  });
+
+  test("a current-denominated limit covers its power twin", () => {
+    // A device sets its charge ceiling in amps OR in watts. Reporting the other
+    // one as an empty UI area would tell every author to map a register their
+    // inverter does not have.
+    const report = coverage(profile([chargeA]));
+    expect(report.missing).not.toContain("setting.battery.max_charge_power");
+    expect(report.missing).not.toContain("setting.battery.max_charge_current");
+  });
+
+  test("and the other way round", () => {
+    const report = coverage(profile([chargeW]));
+    expect(report.missing).not.toContain("setting.battery.max_charge_current");
+  });
+
+  test("`mapped` stays literal — only what the profile really carries", () => {
+    expect(coverage(profile([chargeA])).mapped).toEqual(["setting.battery.max_charge_current"]);
+  });
+
+  test("mapping neither leaves both unmapped", () => {
+    const report = coverage(profile([unmapped]));
+    expect(report.missing).toContain("setting.battery.max_charge_current");
+    expect(report.missing).toContain("setting.battery.max_charge_power");
+  });
+
+  test("each limit is its own group — a charge ceiling is not a discharge ceiling", () => {
+    const report = coverage(profile([chargeA]));
+    expect(report.missing).toContain("setting.battery.max_discharge_current");
+    expect(report.missing).toContain("setting.battery.max_discharge_power");
+  });
+});
+
 describe("groupByPrefix", () => {
   test("groups roles under their leading segment, keeping the order given", () => {
     const groups = groupByPrefix([

@@ -182,6 +182,28 @@ jobs:
             fi
           done < /tmp/retention-after
 
+          # The minute aggregates are FROZEN on an upgraded database, not merely
+          # omitted for fresh installs. `policies.sql` states
+          # `remove_continuous_aggregate_policy` for exactly this reason: leaving
+          # the `add_` out would freeze a new install and leave every existing
+          # deployment refreshing a tier raw now answers — and re-imposing that
+          # tier's 90-day retention as the ceiling on raw's 1825.
+          frozen=$(docker compose exec -T postgres psql -U postgres -d SunReye -tAc \
+            "SELECT count(*) FROM timescaledb_information.jobs
+              WHERE proc_name = 'policy_refresh_continuous_aggregate'
+                AND hypertable_name IN ('minute_rollups','weighted_minute_rollups')")
+          echo "minute refresh policies still armed after upgrade: $frozen"
+          [ "$frozen" = "0" ]
+
+          # …while the tiers that are still the long-horizon record keep theirs.
+          live=$(docker compose exec -T postgres psql -U postgres -d SunReye -tAc \
+            "SELECT count(*) FROM timescaledb_information.jobs
+              WHERE proc_name = 'policy_refresh_continuous_aggregate'
+                AND hypertable_name IN ('hourly_rollups','daily_rollups',
+                                        'weighted_hourly_rollups','weighted_daily_rollups')")
+          echo "live refresh policies: $live"
+          [ "$live" = "4" ]
+
           # The weight column is present and NULL on every pre-upgrade row: that
           # NULL is what makes the weighted aggregates read exactly as the old
           # plain ones over a complete series.
@@ -210,6 +232,11 @@ jobs:
 
       - name: Assert rollups intact
         run: |
+          # A manual refresh, because the minute tier has no policy any more —
+          # what is asserted is that the aggregate still MATERIALIZES from
+          # upgraded raw rows, not that anything schedules it. The buckets a
+          # deployment already holds keep answering reads while they decay, and
+          # this is the proof they can still be produced at all.
           docker compose exec -T postgres psql -U postgres -d SunReye -c "CALL refresh_continuous_aggregate('minute_rollups', NULL, NULL);"
           rollups=$(docker compose exec -T postgres psql -U postgres -d SunReye -tAc "SELECT count(*) FROM minute_rollups")
           echo "rollup rows=$rollups"

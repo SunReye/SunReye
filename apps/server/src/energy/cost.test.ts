@@ -98,6 +98,7 @@ const {
   currentPeriodKey,
   fetchBucketEnergy,
   liveTodayTotals,
+  metersLoadEnergy,
 } = await import("./cost");
 
 /** The live overlay for `inverterId` at `now`, given the poll cache's `sample`. */
@@ -197,6 +198,31 @@ describe("liveTodayTotals", () => {
   });
 });
 
+describe("metersLoadEnergy", () => {
+  test("the cumulative counter counts", () => {
+    expect(metersLoadEnergy(profileWith({ "load.energy.total": "load" }))).toBe(true);
+  });
+
+  test("so does the current-day twin on its own", () => {
+    // A profile may map only the today register; deriving over it would
+    // overwrite a measured figure with an implied one.
+    expect(metersLoadEnergy(profileWith({ "load.energy.today": "loadToday" }))).toBe(true);
+  });
+
+  test("a plant with production and grid flow but no house counter does not", () => {
+    expect(
+      metersLoadEnergy(
+        profileWith({ "production.total": "prod", "grid.energy.imported.total": "imp" }),
+      ),
+    ).toBe(false);
+  });
+
+  test("an instantaneous load reading is not an energy counter", () => {
+    // `load.power` says nothing about kWh over a period.
+    expect(metersLoadEnergy(profileWith({ "load.power": "loadW" }))).toBe(false);
+  });
+});
+
 describe("fetchBucketEnergy", () => {
   // One counter only: the import total, so the deltas below are unambiguous.
   const importProfile = profileWith({ "grid.energy.imported.total": "imp" });
@@ -224,6 +250,44 @@ describe("fetchBucketEnergy", () => {
     );
     return buckets.map((b) => b.import);
   };
+
+  test("a plant with no load counter gets its consumption implied per hour", async () => {
+    // The grid-tied shape: production + grid flow metered, house consumption
+    // not. Without this the whole savings/self-sufficiency side of the Costs
+    // page reads zero on a plant that consumes plenty.
+    const gridTied = profileWith({
+      "grid.energy.imported.total": "imp",
+      "grid.energy.exported.total": "exp",
+      "production.total": "prod",
+    });
+    queryResults = [
+      [],
+      [
+        { bucket: hour(12).toISOString(), metric: "prod", min_value: 0, max_value: 4 },
+        { bucket: hour(12).toISOString(), metric: "exp", min_value: 0, max_value: 3 },
+        { bucket: hour(20).toISOString(), metric: "imp", min_value: 0, max_value: 1.5 },
+      ],
+    ];
+    const buckets = await fetchBucketEnergy(gridTied, "inv-1", hour(0), hour(23), "hourly_rollups");
+    expect(buckets.map((b) => b.load)).toEqual([1, 1.5]);
+  });
+
+  test("a plant that meters its load keeps the measured figure", async () => {
+    const metered = profileWith({
+      "grid.energy.imported.total": "imp",
+      "load.energy.total": "load",
+    });
+    queryResults = [
+      [],
+      [
+        { bucket: hour(20).toISOString(), metric: "imp", min_value: 0, max_value: 5 },
+        { bucket: hour(20).toISOString(), metric: "load", min_value: 0, max_value: 2 },
+      ],
+    ];
+    const buckets = await fetchBucketEnergy(metered, "inv-1", hour(0), hour(23), "hourly_rollups");
+    // 2, not the 5 the surrounding flows would imply — a measured counter wins.
+    expect(buckets.map((b) => b.load)).toEqual([2]);
+  });
 
   test("an adjacent baseline prices the first bucket as a rise from prior state", async () => {
     const imports = await importsFor(
@@ -362,6 +426,52 @@ describe("computeCost and the live today registers", () => {
       metrics: { impToday: 5 },
     };
     expect((await monthToDate()).importKwh).toBe(3);
+  });
+});
+
+describe("computeCost — an unmetered house load", () => {
+  // Grid-tied: production and grid flow metered with their today twins, nothing
+  // counting the house.
+  const gridTied = profileWith({
+    "grid.energy.imported.total": "imp",
+    "grid.energy.exported.total": "exp",
+    "production.total": "prod",
+    "grid.energy.imported.today": "impToday",
+    "grid.energy.exported.today": "expToday",
+    "production.today": "prodToday",
+  });
+
+  const clock = new Date();
+  const midnight = new Date(clock);
+  midnight.setHours(0, 0, 0, 0);
+  const buckets = Object.entries({ imp: 1, exp: 2, prod: 5 }).map(([metric, kwh]) => ({
+    bucket: midnight.toISOString(),
+    metric,
+    min_value: 0,
+    max_value: kwh,
+  }));
+
+  const todayWith = async (metrics: Record<string, number>) => {
+    liveState.latest = { time: clock.toISOString(), inverterId: "inv-1", metrics };
+    queryResults = [[], buckets];
+    return computeCost(gridTied, { from: midnight, to: new Date(), inverterId: "inv-1" });
+  };
+
+  test("the reported consumption follows the live registers it was implied from", async () => {
+    // The live swap moves import/export/production; a load implied from the
+    // pre-swap deltas would then contradict the numbers next to it on the tile.
+    const totals = await todayWith({ impToday: 2, expToday: 3, prodToday: 12 });
+    expect(totals.loadKwh).toBeCloseTo(11, 10);
+    expect(totals.selfSufficiency).toBeCloseTo(9 / 11, 10);
+  });
+
+  test("savings are priced against the implied consumption, not against zero", async () => {
+    // gridOnlyCost is what the house would have cost bought entirely from the
+    // grid — 0 for an unmetered plant before this, so its whole savings tile
+    // read 0.
+    const totals = await todayWith({ impToday: 2, expToday: 3, prodToday: 12 });
+    expect(totals.gridOnlyCost).toBeGreaterThan(0);
+    expect(totals.savings).toBeGreaterThan(0);
   });
 });
 

@@ -67,13 +67,47 @@ band** — kWh and cost per time-of-use band, when bands are configured.
 
 A totals row first, because "how much did we produce last month?" should not require reading
 a chart: **produced**, **consumed**, **self-used**, and — on a system with a battery —
-**charged** and **discharged**. Each carries an average-per-day sub-line and a delta chip
-against the reference window (see [Comparisons & records](#comparisons--records)).
+**charged**, **discharged** and **round-trip**. Each carries an average-per-day sub-line and a
+delta chip against the reference window (see [Comparisons & records](#comparisons--records)).
 
 **Self-used** is production the plant kept — production minus export — the same measure the
 self-consumption percentage reports. That is a different figure from the *Solar saving* tile
 above, which values what was not bought (load minus import); on a battery system the two
 differ, because energy discharged today may have been stored yesterday.
+
+It also *includes production that went into the battery*, which is why self-used can read
+higher than consumed: that energy stayed on site without having been consumed yet, and the
+gap between the two is battery charging plus storage losses.
+
+**Capacity** and **health** are measured, not reported. Neither supported inverter family exposes a
+pack capacity, an SOH or a cycle count, so SunReye infers them: over each deep discharge, the energy
+that came out divided by the charge it cost is the pack's full-range energy. Only discharges of 20
+SOC points or more count — SOC is quantised to 1 %, so a shallower one is mostly rounding — and only
+the 10–95 % band, where the BMS's own estimate is not being recalibrated. The figure shown is the
+median across every measured discharge, so one odd night cannot move it, and nothing appears at all
+until at least five have been measured.
+
+**Health** compares that against what the pack should hold. If you enter the rated capacity under
+*Settings → Inverter → Battery*, health is measured against the nameplate — the usual meaning of
+"90 % healthy". If you don't, it is measured against this system's own earliest measurements, which
+tracks degradation from the day SunReye met the pack but cannot say how far it already was from
+factory. The tile always states which reference it used, because the two are different claims.
+
+**Battery capacity over time** below the charts plots every measurement the pack has produced, with
+the nameplate as a reference line when one is set. The scatter is part of the message: capacity
+genuinely varies with temperature and discharge rate, and a single smooth line would claim a
+precision no one discharge has. Measurements are backfilled across all stored history the first time
+the feature runs, so the curve exists immediately rather than accumulating from today.
+
+**Round-trip** is those storage losses as a single figure: discharged divided by charged over
+the window. It appears only for windows of **14 days or more**, and only when the result lands
+between 50 % and 100 %. Both limits exist for the same reason — the ratio is only an
+efficiency if the pack holds the same energy at the start and the end of the window. Whatever
+it gained across that boundary was charged and never discharged, so it lands in the
+denominator unmatched. That drift is about one cycle, and a day's throughput is about one
+cycle, so the error is on the order of `1 / days`: ~3 % over a month, meaningless over a day.
+A result outside the band is a report about the edges, not about the battery, so the tile
+declines rather than printing it.
 
 Then three charts over one shared series, all moved by the section's scope toggle:
 

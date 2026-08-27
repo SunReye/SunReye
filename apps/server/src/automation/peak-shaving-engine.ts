@@ -45,7 +45,11 @@ import {
   type DecisionInputs,
   type EvInputs,
   NEAR_FULL_KWH,
-  GRID_CHARGE_CURRENT_ROLE,
+  limitAmps,
+  limitValue,
+  resolveChargeLimit,
+  resolveGridChargeLimit,
+  type SteeredLimit,
   GRID_CHARGE_ROLE,
   SELL_LIMIT_ROLE,
   decideTargetA,
@@ -196,23 +200,35 @@ interface Eng {
   prevDecisionAtMs: number | null;
   /** Consecutive ticks where a settled ceiling produced no absorption. */
   ineffectiveTicks: number;
+  /**
+   * The last value actually written to the charge-limit register, in that
+   * register's own unit. `status.lastWrittenA` is the same command in amps; this
+   * is what a readback can be compared against without a conversion in the way.
+   */
+  lastWrittenRegister: number | null;
 }
 
 const stateKeyOf = (io: AutomationIO) => automationStateKey(io.ctx.profile.id, PEAK_SHAVING_ID);
-const targetKeyOf = (io: AutomationIO) =>
-  keyForRole(io.ctx.profile, "setting.battery.max_charge_current");
+/**
+ * The charge ceiling this plant is steered through, and the unit it speaks —
+ * amps on a current-denominated hybrid, watts on a Victron/SMA-style device. The
+ * engine plans in amps either way; only the register write and its readback
+ * change unit.
+ */
+const chargeLimitOf = (io: AutomationIO) => resolveChargeLimit(io.ctx.profile);
 /** The feed-in ceiling register `grid-friendly` steers; null when unmapped. */
 const sellKeyOf = (io: AutomationIO) => keyForRole(io.ctx.profile, SELL_LIMIT_ROLE);
 /** Its own snapshot slot — the two registers are taken and given back separately. */
 const sellSlotOf = (io: AutomationIO) => `${stateKeyOf(io)}:sell`;
 const gridChargeKeyOf = (io: AutomationIO) => keyForRole(io.ctx.profile, GRID_CHARGE_ROLE);
-const gridChargeAKeyOf = (io: AutomationIO) => keyForRole(io.ctx.profile, GRID_CHARGE_CURRENT_ROLE);
+/** The grid-charge ceiling, in whichever unit this device sets it. */
+const gridChargeLimitOf = (io: AutomationIO) => resolveGridChargeLimit(io.ctx.profile);
 const gridChargeSlotOf = (io: AutomationIO) => `${stateKeyOf(io)}:gridcharge`;
 const gridChargeASlotOf = (io: AutomationIO) => `${stateKeyOf(io)}:gridchargeA`;
 
 /** Both registers the automation may hold, paired with their snapshot slots. */
 const steeredRegisters = (io: AutomationIO): { slot: string; key: string | null }[] => [
-  { slot: stateKeyOf(io), key: targetKeyOf(io) },
+  { slot: stateKeyOf(io), key: chargeLimitOf(io)?.key ?? null },
   { slot: sellSlotOf(io), key: sellKeyOf(io) },
 ];
 
@@ -222,6 +238,7 @@ const steeredRegisters = (io: AutomationIO): { slot: string; key: string | null 
  * linger past a release.
  */
 function resetSteering(e: Eng): void {
+  e.lastWrittenRegister = null;
   e.prevThresholdW = null;
   e.prevTargetA = null;
   e.prevDecisionAtMs = null;
@@ -324,7 +341,13 @@ async function ensureSnapshot(e: Eng, slot: string, liveValue: number | null): P
 interface LiveInputs {
   pvW: number;
   socPct: number;
-  liveA: number | null;
+  /**
+   * What the steered charge-limit register currently reads, in ITS OWN unit
+   * (amps or watts). Everything the engine reports converts it back to amps —
+   * this is the raw register value, which is what a write must be compared and
+   * snapshotted against.
+   */
+  liveLimit: number | null;
   liveVolt: number | null;
   /** Measured house load, W; null when the profile maps no `load.power`. */
   loadW: number | null;
@@ -336,8 +359,8 @@ interface LiveInputs {
   sellLimitW: number | null;
   /** Grid-charge enable register; null when the profile doesn't map it. */
   gridChargeOn: number | null;
-  /** Grid-charge current register, A; null when the profile doesn't map it. */
-  gridChargeA: number | null;
+  /** Grid-charge limit register, in its own unit; null when unmapped. */
+  gridChargeLimit: number | null;
   nowMs: number;
 }
 
@@ -362,14 +385,17 @@ function readLive(io: AutomationIO, key: string): LiveInputs | null {
   return {
     pvW,
     socPct,
-    liveA: finite(sample.metrics[key]),
+    liveLimit: finite(sample.metrics[key]),
     liveVolt: byRole("battery.voltage"),
     loadW: byRole("load.power"),
     chargeW: battW === null ? null : Math.max(0, -battW),
     exportW: gridW === null ? null : Math.max(0, -gridW),
     sellLimitW: byRole(SELL_LIMIT_ROLE),
     gridChargeOn: byRole(GRID_CHARGE_ROLE),
-    gridChargeA: byRole(GRID_CHARGE_CURRENT_ROLE),
+    gridChargeLimit: (() => {
+      const limit = resolveGridChargeLimit(io.ctx.profile);
+      return limit ? finite(sample.metrics[limit.key]) : null;
+    })(),
     nowMs,
   };
 }
@@ -414,9 +440,18 @@ async function writeRegister(
   return true;
 }
 
-async function writeTarget(e: Eng, key: string, targetA: number, live: LiveInputs): Promise<void> {
-  if (await writeRegister(e, key, targetA, live.liveA, live.nowMs)) {
+async function writeTarget(
+  e: Eng,
+  limit: SteeredLimit,
+  commanded: number,
+  targetA: number,
+  live: LiveInputs,
+): Promise<void> {
+  if (await writeRegister(e, limit.key, commanded, live.liveLimit, live.nowMs)) {
+    // Reported in amps (the plan), remembered in the register's unit (what the
+    // next tick's readback is compared against).
     e.status.lastWrittenA = targetA;
+    e.lastWrittenRegister = commanded;
   }
 }
 
@@ -449,19 +484,25 @@ async function steerSellLimit(e: Eng, thresholdW: number, live: LiveInputs): Pro
  * The profile not mapping these roles is not an error: grid charging is simply
  * unavailable on that inverter, and the rest of price awareness works without it.
  */
-async function steerGridCharge(e: Eng, currentA: number, live: LiveInputs): Promise<void> {
+async function steerGridCharge(
+  e: Eng,
+  currentA: number,
+  batteryV: number,
+  live: LiveInputs,
+): Promise<void> {
   const { io, status } = e;
   const enableKey = gridChargeKeyOf(io);
-  const currentKey = gridChargeAKeyOf(io);
-  if (!enableKey || !currentKey) return;
+  const limit = gridChargeLimitOf(io);
+  if (!enableKey || !limit) return;
   const liveEnable = live.gridChargeOn;
-  const liveCurrent = live.gridChargeA;
+  const liveLimit = live.gridChargeLimit;
   if (!(await ensureSnapshot(e, gridChargeSlotOf(io), liveEnable))) return;
-  if (!(await ensureSnapshot(e, gridChargeASlotOf(io), liveCurrent))) return;
-  const value = clampToRegister(io, currentKey, Math.round(currentA));
-  await writeRegister(e, currentKey, value, liveCurrent, live.nowMs);
+  if (!(await ensureSnapshot(e, gridChargeASlotOf(io), liveLimit))) return;
+  const value = clampToRegister(io, limit.key, Math.round(limitValue(limit, currentA, batteryV)));
+  await writeRegister(e, limit.key, value, liveLimit, live.nowMs);
   await writeRegister(e, enableKey, 1, liveEnable, live.nowMs);
-  status.gridChargeA = value;
+  // Reported in amps, like every other figure the automation shows.
+  status.gridChargeA = Math.round(limitAmps(limit, value, batteryV));
 }
 
 /** Hand both grid-charge registers back, enable flag first. */
@@ -474,7 +515,7 @@ async function releaseGridCharge(e: Eng): Promise<void> {
   // briefly run the user's old current with our command still active.
   for (const [slot, key] of [
     [gridChargeSlotOf(io), gridChargeKeyOf(io)],
-    [gridChargeASlotOf(io), gridChargeAKeyOf(io)],
+    [gridChargeASlotOf(io), gridChargeLimitOf(io)?.key ?? null],
   ] as const) {
     const snap = state[slot];
     if (!snap) continue;
@@ -507,6 +548,7 @@ function recordDecision(
   ev: EvInputs,
   evccReachable: boolean,
   loadW: number | null,
+  lastWrittenRegister: number | null,
 ): void {
   status.thresholdW = Math.round(decision.thresholdW);
   status.headroomKwh = decision.headroomKwh;
@@ -515,8 +557,12 @@ function recordDecision(
   status.loadW = loadW;
   status.evChargeW = evccReachable ? ev.evChargeW : null;
   status.evDemandKwh = evccReachable ? ev.evRemainingKwh : null;
+  // Compared in the register's own unit: an amps plan and a watts readback would
+  // differ on every tick and report a permanent phantom override.
   status.externalOverride =
-    status.lastWrittenA !== null && live.liveA !== null && live.liveA !== status.lastWrittenA;
+    lastWrittenRegister !== null &&
+    live.liveLimit !== null &&
+    live.liveLimit !== lastWrittenRegister;
   status.priceRegime = decision.priceRegime;
   status.socEnvelopePct = decision.socEnvelopePct;
   status.windowStartsAt = decision.windowStartsAt;
@@ -535,11 +581,12 @@ function updateWatchdog(
   e: Eng,
   live: LiveInputs,
   targetA: number,
+  commanded: number,
   batteryV: number,
   headroomKwh: number,
 ): void {
   const commandedW = targetA * batteryV;
-  const settled = live.liveA === targetA;
+  const settled = live.liveLimit === commanded;
   const nearFull = headroomKwh <= NEAR_FULL_KWH;
   if (live.chargeW === null || !settled || nearFull || commandedW < INEFFECTIVE_MIN_W) {
     e.ineffectiveTicks = 0;
@@ -776,7 +823,13 @@ function logDecision(
   e: Eng,
   decision: Decision,
   live: LiveInputs,
-  args: { shadow: boolean; targetA: number; batteryV: number; evcc: EvccState | null },
+  args: {
+    shadow: boolean;
+    targetA: number;
+    limit: SteeredLimit;
+    batteryV: number;
+    evcc: EvccState | null;
+  },
 ): void {
   e.log.push({
     t: live.nowMs,
@@ -789,7 +842,9 @@ function logDecision(
     localSinkW: decision.localSinkW,
     thresholdW: decision.thresholdW,
     targetA: args.targetA,
-    liveA: live.liveA,
+    // Charted against the plan, so the readback is reported in amps whatever
+    // unit the register itself speaks.
+    liveA: live.liveLimit === null ? null : limitAmps(args.limit, live.liveLimit, args.batteryV),
     batteryV: args.batteryV,
     chargeW: live.chargeW,
     exportW: live.exportW,
@@ -808,7 +863,7 @@ async function steer(
   weather: WeatherConfig,
   live: LiveInputs,
   forecast: SolarForecast | null,
-  key: string,
+  limit: SteeredLimit,
   baselineLoadW: number | null,
   prices: SpotSlice | null,
 ): Promise<void> {
@@ -816,7 +871,7 @@ async function steer(
   const evcc = io.getEvcc();
   const ev = evccAutomationInputs(evcc);
   const load = loadFrame(live, baselineLoadW);
-  const batteryV = liveBatteryV(live, ps);
+  const batteryV = liveBatteryV(live, ps, weather);
   const decision = decideTargetA(
     decisionInputs({
       e,
@@ -833,8 +888,24 @@ async function steer(
     }),
   );
 
-  recordDecision(status, decision, live, ev, evcc?.reachable === true, load.loadW);
-  const targetA = clampToRegister(io, key, Math.round(decision.targetA));
+  recordDecision(
+    status,
+    decision,
+    live,
+    ev,
+    evcc?.reachable === true,
+    load.loadW,
+    e.lastWrittenRegister,
+  );
+  // Clamped in the register's own unit — a watt register's bounds say nothing
+  // about amps and vice versa — then read back as the amps the plan means, so
+  // the reported target and the ramp anchor stay one unit whatever was written.
+  const commanded = clampToRegister(
+    io,
+    limit.key,
+    Math.round(limitValue(limit, decision.targetA, batteryV)),
+  );
+  const targetA = Math.round(limitAmps(limit, commanded, batteryV));
   status.targetA = targetA;
   status.state = ps.shadowMode ? "shadow" : "active";
   e.prevThresholdW = decision.thresholdW;
@@ -846,16 +917,17 @@ async function steer(
     await releaseEvPullIn(e);
     await releaseGridCharge(e);
   } else {
-    await writeTarget(e, key, targetA, live);
+    await writeTarget(e, limit, commanded, targetA, live);
     // Feed-in ceiling: steered in grid-friendly, handed straight back in the
     // mode that sells everything it can.
     if (ps.mode === "grid-friendly") await steerSellLimit(e, decision.thresholdW, live);
     else await releaseSellLimit(e);
     // Grid charging: only inside a window, only when the import price actually
     // follows the market, and only on an inverter that maps the registers.
-    if (decision.gridChargeA !== null) await steerGridCharge(e, decision.gridChargeA, live);
+    if (decision.gridChargeA !== null)
+      await steerGridCharge(e, decision.gridChargeA, batteryV, live);
     else await releaseGridCharge(e);
-    updateWatchdog(e, live, targetA, batteryV, decision.headroomKwh);
+    updateWatchdog(e, live, targetA, commanded, batteryV, decision.headroomKwh);
     // Commanding the car is a real write, so a dry run must not do it — but a
     // *held* loadpoint still has to be handed back if the run turns dry, which
     // the shadow branch above does through `releaseEvPullIn`.
@@ -866,7 +938,7 @@ async function steer(
       boostFloorPct(weather, ps),
     );
   }
-  logDecision(e, decision, live, { shadow: ps.shadowMode, targetA, batteryV, evcc });
+  logDecision(e, decision, live, { shadow: ps.shadowMode, targetA, limit, batteryV, evcc });
 }
 
 /**
@@ -898,7 +970,7 @@ async function planInputs(
     ev: evccAutomationInputs(evcc),
     evcc,
     load: loadFrame(live, await io.getBaselineLoadW(weather)),
-    batteryV: liveBatteryV(live, ps),
+    batteryV: liveBatteryV(live, ps, weather),
     prices: await io.getPrices(),
     tariff: await io.getTariff(),
   });
@@ -906,9 +978,23 @@ async function planInputs(
   return { inputs: { ...inputs, forecast: inputs.forecast }, limits: planLimits(inputs, weather) };
 }
 
-/** The measured pack voltage when the reading is sane, the nameplate otherwise. */
-function liveBatteryV(live: LiveInputs, ps: AutomationConfig["peakShaving"]): number {
-  return live.liveVolt !== null && live.liveVolt > 0 ? live.liveVolt : ps.nominalBatteryV;
+/**
+ * The measured pack voltage when the reading is sane, the stated one otherwise.
+ *
+ * Three sources in order, because the stated value moved. It describes the
+ * battery, so it now lives with the plant (Settings -> Inverter); it used to be
+ * a peak-shaving field, and an install that set 48 V there must keep charging at
+ * 48 V until someone restates it. So: the live reading, then the plant's, then
+ * the legacy automation field — which is why the plant's is nullable rather than
+ * defaulted, since a default would shadow the legacy value with 51.2.
+ */
+function liveBatteryV(
+  live: LiveInputs,
+  ps: AutomationConfig["peakShaving"],
+  weather: WeatherConfig,
+): number {
+  if (live.liveVolt !== null && live.liveVolt > 0) return live.liveVolt;
+  return weather.forecast.battery?.nominalV ?? ps.nominalBatteryV;
 }
 
 /**
@@ -935,10 +1021,10 @@ export function planLimits(inputs: { exportCapW: number }, weather: WeatherConfi
  * One steering step's preconditions: the register key plus fresh live readings,
  * or the run state to park in when either is unavailable.
  */
-function liveOrHold(io: AutomationIO): { key: string; live: LiveInputs } | null {
-  const key = targetKeyOf(io); // non-null after the blocker gate
-  const live = key ? readLive(io, key) : null;
-  return key && live ? { key, live } : null;
+function liveOrHold(io: AutomationIO): { limit: SteeredLimit; live: LiveInputs } | null {
+  const limit = chargeLimitOf(io); // non-null after the blocker gate
+  const live = limit ? readLive(io, limit.key) : null;
+  return limit && live ? { limit, live } : null;
 }
 
 /** Night gate: no PV now and none imminent — hand the register back until dawn. */
@@ -979,7 +1065,14 @@ async function decideTick(
     status.state = "stale"; // hold everything — never steer on stale data
     return status;
   }
-  status.liveA = ready.live.liveA;
+  // Reported in amps — the unit every other figure on the automation page uses —
+  // so a watt-denominated register reads back through the pack voltage.
+  status.liveA =
+    ready.live.liveLimit === null
+      ? null
+      : Math.round(
+          limitAmps(ready.limit, ready.live.liveLimit, liveBatteryV(ready.live, ps, weather)),
+        );
   status.liveSellLimitW = ready.live.sellLimitW;
 
   const forecast = await io.getForecast(weather);
@@ -992,13 +1085,14 @@ async function decideTick(
   );
   if (isNight(ready.live, forecast, priceActive)) return await releasedStatus(e, "idle");
 
-  if (!(await claimRegister(e, ps.shadowMode, ready.live.liveA))) {
+  // Snapshotted raw: a restore has to put the register's own value back.
+  if (!(await claimRegister(e, ps.shadowMode, ready.live.liveLimit))) {
     status.state = "stale";
     return status;
   }
 
   const baselineLoadW = await io.getBaselineLoadW(weather);
-  await steer(e, ps, weather, ready.live, forecast, ready.key, baselineLoadW, prices);
+  await steer(e, ps, weather, ready.live, forecast, ready.limit, baselineLoadW, prices);
   return status;
 }
 
@@ -1062,6 +1156,7 @@ export function createPeakShavingEngine(io: AutomationIO): PeakShavingEngine {
     io,
     status: initialStatus(),
     log: createDecisionLog(),
+    lastWrittenRegister: null,
     prevThresholdW: null,
     prevTargetA: null,
     prevDecisionAtMs: null,

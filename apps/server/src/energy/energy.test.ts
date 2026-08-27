@@ -39,7 +39,7 @@ mock.module("@SunReye/db", () => ({ ...realDb, db: { execute, select } }));
 const liveState: { latest: InverterSample | null } = { latest: null };
 mock.module("../shared/state", () => ({ ...realState, liveState }));
 
-const { energySeries } = await import("./energy");
+const { derivePeriods, energySeries } = await import("./energy");
 const { currentPeriodKey } = await import("./cost");
 
 /** Minimal profile mapping the given canonical roles → metric keys. */
@@ -58,6 +58,43 @@ const monthWindow = (now: Date) => ({
   days: new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate(),
 });
 
+describe("derivePeriods — who gets an implied consumption", () => {
+  const totalsOf = (over: Record<string, number>) => ({
+    importKwh: 0,
+    exportKwh: 0,
+    loadKwh: 0,
+    productionKwh: 0,
+    batteryDischargeKwh: 0,
+    batteryChargeKwh: 0,
+    ...over,
+  });
+
+  test("a plant with no consumption counter has its house figure implied", () => {
+    const gridTied = profileWith({ "production.total": "prod" });
+    const totals = new Map([["2024-06-15", totalsOf({ productionKwh: 10, exportKwh: 3 })]]);
+    expect(derivePeriods(gridTied, ["2024-06-15"], totals)[0]?.loadKwh).toBeCloseTo(7, 6);
+  });
+
+  test("a metered plant is left alone, zero included", () => {
+    const metered = profileWith({ "load.energy.total": "load" });
+    const totals = new Map([["2024-06-15", totalsOf({ productionKwh: 10, exportKwh: 3 })]]);
+    expect(derivePeriods(metered, ["2024-06-15"], totals)[0]?.loadKwh).toBe(0);
+  });
+
+  test("a period with no data is zero-filled and implies nothing", () => {
+    const gridTied = profileWith({ "production.total": "prod" });
+    const [day] = derivePeriods(gridTied, ["2024-06-16"], new Map());
+    expect(day?.loadKwh).toBe(0);
+    expect(day?.selfSufficiency).toBeNull();
+  });
+
+  test("every requested period gets an entry, in order", () => {
+    const gridTied = profileWith({ "production.total": "prod" });
+    const periods = ["2024-06-14", "2024-06-15", "2024-06-16"];
+    expect(derivePeriods(gridTied, periods, new Map()).map((p) => p.bucket)).toEqual(periods);
+  });
+});
+
 describe("energySeries — which day periods get a bar", () => {
   test("a month window zero-fills every day of the month, including days still to come", async () => {
     // The energy chart must share the cost series' x-axis extent: both run to
@@ -74,6 +111,52 @@ describe("energySeries — which day periods get a bar", () => {
     expect(points.at(-1)?.bucket).toBe(`${y}-${m}-${String(days).padStart(2, "0")}`);
     // Today is present and is NOT the last bar unless today IS month-end.
     expect(points.map((p) => p.bucket)).toContain(currentPeriodKey("day", now));
+  });
+
+  test("a plant with no load counter gets a consumption bar anyway", async () => {
+    // Grid-tied: production + grid flow only. Without an implied figure the
+    // whole consumption side of the energy chart was flat zero.
+    const now = new Date();
+    const from = new Date(now.getFullYear(), now.getMonth(), 1);
+    const to = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+    const gridTied = profileWith({
+      "grid.energy.imported.total": "imp",
+      "grid.energy.exported.total": "exp",
+      "production.total": "prod",
+    });
+    const period = currentPeriodKey("day", from);
+    queryResults = [
+      [
+        { period, hod: 12, dow: 1, metric: "prod", kwh: 10 },
+        { period, hod: 12, dow: 1, metric: "exp", kwh: 3 },
+        { period, hod: 20, dow: 1, metric: "imp", kwh: 4 },
+      ],
+    ];
+    const points = await energySeries(gridTied, { from, to, bucket: "day", inverterId: "inv-1" });
+    const first = points[0];
+    expect(first?.loadKwh).toBeCloseTo(11, 6);
+    expect(first?.selfSufficiency).toBeCloseTo(7 / 11, 6);
+    // A day the plant recorded nothing on implies nothing — no invented bars.
+    expect(points.at(-1)?.loadKwh).toBe(0);
+  });
+
+  test("a plant that meters consumption is left on its own counter", async () => {
+    const now = new Date();
+    const from = new Date(now.getFullYear(), now.getMonth(), 1);
+    const to = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+    const metered = profileWith({
+      "grid.energy.imported.total": "imp",
+      "load.energy.total": "load",
+    });
+    const period = currentPeriodKey("day", from);
+    queryResults = [
+      [
+        { period, hod: 20, dow: 1, metric: "imp", kwh: 4 },
+        { period, hod: 20, dow: 1, metric: "load", kwh: 2 },
+      ],
+    ];
+    const points = await energySeries(metered, { from, to, bucket: "day", inverterId: "inv-1" });
+    expect(points[0]?.loadKwh).toBeCloseTo(2, 6);
   });
 
   test("the live today-override lands only on today's bar, never a future one (#52)", async () => {

@@ -6,6 +6,7 @@ import {
   compressionPolicies,
   continuousAggregateDrops,
   refreshPolicies,
+  FROZEN_TIERS,
   parseComposePgFlags,
   parsePgConf,
   removesBeforeAdding,
@@ -21,6 +22,24 @@ const TIMESCALE = join(REPO, "packages/db/src/timescale");
 const read = (path: string) => readFileSync(join(REPO, path), "utf8");
 const policies = readFileSync(join(TIMESCALE, "policies.sql"), "utf8");
 const compressAfterMigration = readFileSync(join(TIMESCALE, "0001_compress_after_2h.sql"), "utf8");
+
+/** `checkStorageTuning` over the shipped files, with `policies.sql` substituted. */
+const runShipped = (policySql: string) => {
+  const errors: string[] = [];
+  const code = checkStorageTuning({
+    read: (path) =>
+      path.endsWith("policies.sql")
+        ? policySql
+        : path.endsWith(".sql")
+          ? read(path)
+          : path.includes("init-postgres")
+            ? "checkpoint_timeout = '2h'\nwal_compression = 'zstd'\n"
+            : "      - checkpoint_timeout=2h\n      - wal_compression=zstd\n",
+    log: () => {},
+    error: (line) => errors.push(line),
+  });
+  return { code, errors };
+};
 
 const ADDON_CONF_SCRIPT = "sunreye/rootfs/etc/s6-overlay/s6-rc.d/init-postgres/run";
 const COMPOSE_FILES = ["docker-compose.yml", "docker/docker-compose.yml"];
@@ -237,7 +256,11 @@ const rollupSegmentBySql = (tiers: readonly string[]) =>
 const rollupPolicySql = (tiers: readonly string[]) =>
   tiers
     .flatMap((t) => [
-      `SELECT add_continuous_aggregate_policy('${t}', start_offset => INTERVAL '1 day');`,
+      // A frozen tier states the removal instead — arming a refresh for one is
+      // itself a finding, so a fixture that armed all six would never pass.
+      (FROZEN_TIERS as readonly string[]).includes(t)
+        ? `SELECT remove_continuous_aggregate_policy('${t}', if_not_exists => TRUE);`
+        : `SELECT add_continuous_aggregate_policy('${t}', start_offset => INTERVAL '1 day');`,
       `SELECT remove_compression_policy('${t}', if_exists => TRUE);`,
       `SELECT add_compression_policy('${t}', INTERVAL '7 days', if_not_exists => TRUE);`,
     ])
@@ -457,9 +480,11 @@ describe("rollup compression (#134)", () => {
     for (const [, name] of created) expect(name).toMatch(/_rollups$/);
   });
 
-  test("the weighted aggregates are refreshed, or the read cutover never prefers them", () => {
+  test("every live aggregate is refreshed, or the read cutover never prefers it", () => {
     const refreshed = refreshPolicies(policies);
-    for (const tier of GATE_ROLLUP_TIERS) expect(refreshed).toContain(tier);
+    const live = GATE_ROLLUP_TIERS.filter((t) => !(FROZEN_TIERS as readonly string[]).includes(t));
+    for (const tier of live) expect(refreshed).toContain(tier);
+    expect(live).toHaveLength(GATE_ROLLUP_TIERS.length - FROZEN_TIERS.length);
   });
 });
 
@@ -634,34 +659,26 @@ describe("the retention invariant", () => {
     return runShipped(rewritten);
   };
 
-  const runShipped = (policySql: string) => {
-    const errors: string[] = [];
-    const code = checkStorageTuning({
-      read: (path) =>
-        path.endsWith("policies.sql")
-          ? policySql
-          : path.endsWith(".sql")
-            ? read(path)
-            : path.includes("init-postgres")
-              ? "checkpoint_timeout = '2h'\nwal_compression = 'zstd'\n"
-              : "      - checkpoint_timeout=2h\n      - wal_compression=zstd\n",
-      log: () => {},
-      error: (line) => errors.push(line),
-    });
-    return { code, errors };
-  };
-
   test("the shipped policies satisfy it", () => {
     expect(runShipped(policies)).toEqual({ code: 0, errors: [] });
   });
 
-  test("raw outliving the shortest rollup fails, naming both", () => {
+  test("raw outliving the shortest LIVE rollup fails, naming both", () => {
     // This is the state in which the addon's default backup silently stops
     // covering a time range — the reason dump.sh derives the same rule.
-    const { code, errors } = withRetention("metrics_raw", "1460 days");
+    // "Live" because the frozen minute aggregates are exempt: they stopped being
+    // refreshed and are decaying under their own retention, so raw outliving
+    // them is the point, not a defect.
+    const { code, errors } = withRetention("metrics_raw", "4000 days");
     expect(code).toBe(1);
-    expect(errors.join("\n")).toContain("minute_rollups");
-    expect(errors.join("\n")).toContain("1460");
+    expect(errors.join("\n")).toContain("hourly_rollups");
+    expect(errors.join("\n")).toContain("4000");
+  });
+
+  test("raw outliving the FROZEN minute aggregates is not a finding", () => {
+    // The whole shape of the change: raw is the minute-resolution record now,
+    // so it is expected to reach far past the aggregates that used to hold it.
+    expect(withRetention("metrics_raw", "1825 days").code).toBe(0);
   });
 
   test("raw inside the widest refresh window fails", () => {
@@ -671,13 +688,17 @@ describe("the retention invariant", () => {
     expect(errors.join("\n")).toContain("refresh window");
   });
 
-  test("raw equal to the shortest rollup retention is allowed", () => {
-    // The boundary the shipped shape sits on: equal is still fully materialized.
-    expect(withRetention("metrics_raw", "90 days").code).toBe(0);
+  test("raw equal to the shortest live rollup retention is allowed", () => {
+    // The boundary: equal is still fully materialized into the hourly tier.
+    expect(withRetention("metrics_raw", "3650 days").code).toBe(0);
   });
 
-  test("shortening a rollup below raw fails too — the invariant is symmetric", () => {
-    expect(withRetention("minute_rollups", "30 days").code).toBe(1);
+  test("shortening a live rollup below raw fails too — the invariant is symmetric", () => {
+    expect(withRetention("hourly_rollups", "30 days").code).toBe(1);
+  });
+
+  test("shortening a frozen aggregate is allowed — decaying is what it is for", () => {
+    expect(withRetention("minute_rollups", "30 days").code).toBe(0);
   });
 });
 
@@ -729,5 +750,70 @@ describe("retention policies are authoritative on an existing database", () => {
     ].join("\n");
     expect(removesRetentionBeforeAdding(wrongOrder, "m")).toBe(false);
     expect(retentionDays(wrongOrder)).not.toHaveProperty("m");
+  });
+});
+
+describe("the minute aggregates are frozen, not dropped", () => {
+  /**
+   * Once a raw row became an interval (#117), the minute aggregates stopped
+   * being cheaper than the rows they summarize — 361 MB/device-year for raw
+   * against 333 MB for the pair — while remaining the ceiling on raw retention,
+   * since raw may not outlive the shortest aggregate. So they stopped being
+   * refreshed rather than being dropped: every bucket already materialized keeps
+   * answering reads until its own retention ages it out, which is what makes
+   * this survivable on a deployment whose raw does not reach back that far.
+   */
+  const FROZEN = ["minute_rollups", "weighted_minute_rollups"] as const;
+
+  test("no refresh policy is armed for either of them", () => {
+    const armed = refreshPolicies(policies);
+    for (const tier of FROZEN) expect(armed).not.toContain(tier);
+  });
+
+  test("the hour and day tiers are still refreshed", () => {
+    const armed = refreshPolicies(policies);
+    for (const tier of [
+      "hourly_rollups",
+      "daily_rollups",
+      "weighted_hourly_rollups",
+      "weighted_daily_rollups",
+    ]) {
+      expect(armed).toContain(tier);
+    }
+  });
+
+  test("the freeze is applied to existing databases, not just omitted for new ones", () => {
+    // Omitting the `add_` is enough for a fresh install and does NOTHING to a
+    // deployment that already has the policy — the same trap `if_not_exists`
+    // sets for compression and retention. The removal has to be stated.
+    for (const tier of FROZEN) {
+      expect(policies).toContain(`remove_continuous_aggregate_policy('${tier}'`);
+    }
+  });
+
+  test("they keep a retention policy, or a frozen aggregate would linger forever", () => {
+    const days = retentionDays(policies);
+    for (const tier of FROZEN) expect(days[tier]).toBeGreaterThan(0);
+  });
+
+  test("they keep their compression policy — the buckets already materialized still compress", () => {
+    const compressed = compressionPolicies(policies).map((p) => p.target);
+    for (const tier of FROZEN) expect(compressed).toContain(tier);
+  });
+
+  test("a re-armed refresh policy is a finding, not a silent resumption", () => {
+    const rearmed = policies.replace(
+      "-- FROZEN: minute_rollups",
+      `SELECT add_continuous_aggregate_policy('minute_rollups',
+  start_offset => INTERVAL '10 minutes',
+  end_offset   => INTERVAL '1 minute',
+  schedule_interval => INTERVAL '1 minute',
+  if_not_exists => TRUE);
+--> statement-breakpoint
+-- FROZEN: minute_rollups`,
+    );
+    const { code, errors } = runShipped(rearmed);
+    expect(code).toBe(1);
+    expect(errors.join("\n")).toContain("minute_rollups");
   });
 });

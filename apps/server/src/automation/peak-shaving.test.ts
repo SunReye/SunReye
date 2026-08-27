@@ -72,10 +72,10 @@ function profileWith(roles: Partial<Record<string, string>> = {}): InverterProfi
   const metrics: MetricDef[] = [];
   for (const [role, key] of Object.entries(defaults)) {
     if (!key) continue;
-    // Settings are writable and bounded; the feed-in ceiling is in watts, so it
-    // cannot share the charge register's 0–185 A range.
-    const range =
-      role === "setting.solar_sell.max_power" ? { min: 0, max: 15_000 } : { min: 0, max: 185 };
+    // Settings are writable and bounded; a watt register (the feed-in ceiling, a
+    // power-denominated battery limit) cannot share the charge register's
+    // 0–185 A range.
+    const range = role.endsWith("power") ? { min: 0, max: 15_000 } : { min: 0, max: 185 };
     metrics.push(
       metric({
         key,
@@ -1187,13 +1187,27 @@ describe("resolvePeakShavingBlockers", () => {
     expect(resolvePeakShavingBlockers(profileWith(), weather())).toEqual([]);
   });
 
-  test.each(["setting.battery.max_charge_current", "pv.total.power", "battery.soc"] as const)(
-    "missing role %s blocks",
-    (role) => {
-      const profile = profileWith({ [role]: undefined });
-      expect(resolvePeakShavingBlockers(profile, weather())).toEqual([{ kind: "role", role }]);
-    },
-  );
+  test.each(["pv.total.power", "battery.soc"] as const)("missing role %s blocks", (role) => {
+    const profile = profileWith({ [role]: undefined });
+    expect(resolvePeakShavingBlockers(profile, weather())).toEqual([{ kind: "role", role }]);
+  });
+
+  test("a power-denominated charge ceiling satisfies the same requirement", () => {
+    // Victron/SMA and friends set the battery limit in watts. The requirement is
+    // "a charge ceiling this automation can steer", not "an ampere register".
+    const profile = profileWith({
+      "setting.battery.max_charge_current": "",
+      "setting.battery.max_charge_power": CHARGE_KEY,
+    });
+    expect(resolvePeakShavingBlockers(profile, weather())).toEqual([]);
+  });
+
+  test("neither denomination mapped blocks, naming the conventional role", () => {
+    const profile = profileWith({ "setting.battery.max_charge_current": "" });
+    expect(resolvePeakShavingBlockers(profile, weather())).toEqual([
+      { kind: "role", role: "setting.battery.max_charge_current" },
+    ]);
+  });
 
   test("battery.voltage is optional", () => {
     const profile = profileWith({ "battery.voltage": undefined });
@@ -1519,6 +1533,61 @@ describe("peak-shaving engine", () => {
     // Live excess 18000 − 8000 = 10000 W at 100 V nominal → 100 A.
     const status = await engine.tick();
     expect(status.targetA).toBe(100);
+  });
+
+  test("the plant's stated voltage wins over the legacy automation field", async () => {
+    // The field describes the battery, so it moved to the plant settings. While
+    // both exist, the plant's is the one being maintained.
+    // Both candidate answers must land inside the register's own 0-185 A range,
+    // or the clamp decides the test instead of the precedence.
+    h.set.config(config({}, { nominalBatteryV: 100 }));
+    h.set.weather(weather({ battery: { usableKwh: 15, nominalV: 200 } }));
+    h.set.sample({ [PV_KEY]: 18_000, [SOC_KEY]: 50, [CHARGE_KEY]: 120 });
+    const status = await createPeakShavingEngine(h.io).tick();
+    // 10000 W at 200 V → 50 A, not the 100 A the legacy field would give.
+    expect(status.targetA).toBe(50);
+  });
+
+  test("an install that never restated it keeps charging at the voltage it set", async () => {
+    // The reason the plant field is nullable rather than defaulted: a default of
+    // 51.2 would silently shadow a 48 V pack's existing setting, and every
+    // commanded current would be 7 % off with nothing to show for it.
+    h.set.config(config({}, { nominalBatteryV: 100 }));
+    h.set.weather(weather({ battery: { usableKwh: 15 } }));
+    h.set.sample({ [PV_KEY]: 18_000, [SOC_KEY]: 50, [CHARGE_KEY]: 120 });
+    const status = await createPeakShavingEngine(h.io).tick();
+    expect(status.targetA).toBe(100);
+  });
+
+  test("a live voltage reading beats both stated values", async () => {
+    // maxChargeA raised past the answer: the default 100 A ceiling would clamp
+    // the live-voltage result down onto the legacy one and hide the difference.
+    h.set.config(config({}, { nominalBatteryV: 100, maxChargeA: 300 }));
+    h.set.weather(weather({ battery: { usableKwh: 15, nominalV: 200 } }));
+    h.set.sample({ [PV_KEY]: 18_000, [SOC_KEY]: 50, [VOLT_KEY]: 62.5, [CHARGE_KEY]: 120 });
+    const status = await createPeakShavingEngine(h.io).tick();
+    // 10000 W at the measured 62.5 V → 160 A; neither stated value gives that.
+    expect(status.targetA).toBe(160);
+  });
+
+  test("the reported live limit reads a watt register back at the stated voltage", async () => {
+    // `liveA` is the register as it read before this tick's write, and the page
+    // reports every figure in amps. A watt-denominated plant with no voltage
+    // metric has only the plant's stated voltage to divide by — the one place
+    // the readback and the target resolve it from different call sites.
+    const ctx = buildProfileContext(
+      profileWith({
+        "setting.battery.max_charge_current": "",
+        "setting.battery.max_charge_power": CHARGE_KEY,
+        "battery.voltage": undefined,
+      }),
+    );
+    h.set.ctx(ctx);
+    h.set.weather(weather({ battery: { usableKwh: 15, nominalV: 200 } }));
+    h.set.sample({ [PV_KEY]: 18_000, [SOC_KEY]: 50, [CHARGE_KEY]: 10_000 });
+    const status = await createPeakShavingEngine({ ...h.io, ctx }).tick();
+    // The 10000 W the register held, read back at 200 V → 50 A.
+    expect(status.liveA).toBe(50);
   });
 
   test("the plant's real export cap reaches the live decision, not just the plan", async () => {

@@ -34,23 +34,34 @@ mkdir -p /data/backups
 # covers, and excluding it drops that range from the backup — silently, since the
 # dump is still smaller than a full one.
 #
-# Arguments are days: raw retention, then the SHORTEST retention among the
-# aggregates. `-1` means "no policy" on either side — for raw that is "kept
-# forever" and is never safe to exclude; for the aggregates it means every tier
-# is kept forever, which is always safe.
+# Arguments: raw retention in days, the SHORTEST retention among the aggregates
+# in days, and whether the minute tier is still being refreshed (1/0). `-1` means
+# "no policy" on either retention — for raw that is "kept forever" and is never
+# safe to exclude; for the aggregates it means every tier is kept forever, which
+# would otherwise always be safe.
 #
-# What `backup_full: false` still gives up is *resolution* on restore, not
-# coverage: the rollups keep the span, at their own bucket widths. That is the
-# flag's whole purpose.
+# The third argument is not redundant with the first two. A comparison of
+# retention numbers asks whether the SPAN is covered; it cannot see that the
+# minute aggregates stopped being refreshed (policies.sql), which is the point at
+# which raw became the only minute-RESOLUTION record. Restoring a backup without
+# raw would then hand back an hourly-only history — and hourly's 3650 days covers
+# the span, so nothing in the numbers would object.
+#
+# What `backup_full: false` still gives up, when it is safe at all, is
+# *resolution* on restore, not coverage: the rollups keep the span, at their own
+# bucket widths. That is the flag's whole purpose — and it is exactly why a
+# frozen minute tier ends the exclusion rather than shrinking it.
 safe_to_exclude_raw() {
-    local raw="$1" rollups="$2" arg
+    local raw="$1" rollups="$2" minute_refreshed="$3" arg
     # Each argument on its own: concatenating them would let an empty raw hide
     # behind a numeric rollup value, and awk reads an empty string as 0.
-    for arg in "$raw" "$rollups"; do
+    for arg in "$raw" "$rollups" "$minute_refreshed"; do
         case "$arg" in
             '' | *[!0-9.-]*) return 1 ;;
         esac
     done
+    # An unrefreshed minute tier is decisive on its own: raw is the record.
+    [ "$minute_refreshed" = "1" ] || return 1
     awk -v raw="$raw" -v roll="$rollups" \
         'BEGIN { exit !(raw >= 0 && (roll < 0 || raw <= roll)) }'
 }
@@ -58,6 +69,7 @@ safe_to_exclude_raw() {
 exclude_args=()
 raw_retention_days=""
 rollup_retention_days=""
+minute_refreshed=""
 if ! bashio::config.true 'backup_full'; then
     # Both retentions in days, from the policies themselves rather than from an
     # assumption: `-1` where no policy exists, empty when the query could not run.
@@ -81,16 +93,29 @@ if ! bashio::config.true 'backup_full'; then
         2>/dev/null || true)"
     raw_retention_days="$(echo "$retentions" | awk '{ print $1 }' | tr -d '[:space:]')"
     rollup_retention_days="$(echo "$retentions" | awk '{ print $2 }' | tr -d '[:space:]')"
+    # Whether the minute tier is still materialized in the background. Read from
+    # the jobs catalog, not assumed: policies.sql can freeze or re-arm it, and
+    # this decision has to follow whatever the database actually does.
+    minute_refreshed="$(psql -X -d "$DATABASE_URL" -tAc \
+        "SELECT count(*) > 0
+           FROM timescaledb_information.jobs
+          WHERE proc_name = 'policy_refresh_continuous_aggregate'
+            AND hypertable_name = 'minute_rollups'" \
+        2>/dev/null | tr -d '[:space:]' || true)"
+    case "$minute_refreshed" in
+        t | true) minute_refreshed=1 ;;
+        f | false) minute_refreshed=0 ;;
+    esac
 fi
 
 if ! bashio::config.true 'backup_full' &&
-    ! safe_to_exclude_raw "$raw_retention_days" "$rollup_retention_days"; then
+    ! safe_to_exclude_raw "$raw_retention_days" "$rollup_retention_days" "$minute_refreshed"; then
     bashio::log.warning \
-        "metrics_raw retention is '${raw_retention_days:-unreadable}' day(s) against a shortest rollup retention of '${rollup_retention_days:-unreadable}': raw is no longer fully materialized into the rollups, so its chunk data is INCLUDED in this backup despite backup_full: false — excluding it would drop a time range that lives nowhere else."
+        "metrics_raw retention is '${raw_retention_days:-unreadable}' day(s) against a shortest rollup retention of '${rollup_retention_days:-unreadable}', minute tier refreshed: '${minute_refreshed:-unreadable}'. Raw is not fully materialized into the rollups, so its chunk data is INCLUDED in this backup despite backup_full: false — excluding it would drop history, or the minute resolution of it, that lives nowhere else."
 fi
 
 if ! bashio::config.true 'backup_full' &&
-    safe_to_exclude_raw "$raw_retention_days" "$rollup_retention_days"; then
+    safe_to_exclude_raw "$raw_retention_days" "$rollup_retention_days" "$minute_refreshed"; then
     # Resolve the raw hypertable's chunk tables dynamically — their
     # _timescaledb_internal names encode a hypertable id we can't hardcode.
     #

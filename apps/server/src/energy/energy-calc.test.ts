@@ -1,6 +1,12 @@
-import type { EnergyTotals } from "@SunReye/contracts/energy";
+import type { EnergyTotals, HourEnergy } from "@SunReye/contracts/energy";
 import { describe, expect, test } from "bun:test";
-import { applyTodayOverride, derivePeriodEnergy, replaceTodaySlice } from "./energy-calc";
+import {
+  applyTodayOverride,
+  derivePeriodEnergy,
+  impliedLoadKwh,
+  replaceTodaySlice,
+  withImpliedHourLoad,
+} from "./energy-calc";
 
 const totals = (t: Partial<EnergyTotals>): EnergyTotals => ({
   importKwh: 0,
@@ -203,5 +209,121 @@ describe("replaceTodaySlice", () => {
     const snapshot = { ...window };
     replaceTodaySlice(window, deltaToday, { importKwh: 9 });
     expect(window).toEqual(snapshot);
+  });
+});
+
+describe("impliedLoadKwh", () => {
+  test("is what came in minus what left", () => {
+    // A grid-tied plant with a battery: 10 produced, 4 imported, 2 discharged,
+    // 3 exported, 1 charged → 12 consumed in the house.
+    expect(
+      impliedLoadKwh(
+        totals({
+          productionKwh: 10,
+          importKwh: 4,
+          batteryDischargeKwh: 2,
+          exportKwh: 3,
+          batteryChargeKwh: 1,
+        }),
+      ),
+    ).toBeCloseTo(12, 6);
+  });
+
+  test("a plant with no battery needs none of the battery terms", () => {
+    expect(impliedLoadKwh(totals({ productionKwh: 8, importKwh: 5, exportKwh: 6 }))).toBeCloseTo(
+      7,
+      6,
+    );
+  });
+
+  test("an empty period implies nothing consumed", () => {
+    // Every future day on the chart is zero-filled; none of them may invent a load.
+    expect(impliedLoadKwh(totals({}))).toBe(0);
+  });
+
+  test("never negative, however the counters disagree", () => {
+    // Counter restarts and gap-bridging can make export exceed production for a
+    // bucket. A negative house load is not a reading, it is an artefact.
+    expect(impliedLoadKwh(totals({ productionKwh: 1, exportKwh: 9 }))).toBe(0);
+  });
+
+  test("import alone is consumption: a night with no sun", () => {
+    expect(impliedLoadKwh(totals({ importKwh: 6 }))).toBeCloseTo(6, 6);
+  });
+});
+
+describe("derivePeriodEnergy — an unmetered house load", () => {
+  test("implies the load, and every split that reads it follows", () => {
+    const m = derivePeriodEnergy(
+      "2024-06-15",
+      totals({ productionKwh: 10, importKwh: 4, exportKwh: 3 }),
+      { impliedLoad: true },
+    );
+    expect(m.loadKwh).toBeCloseTo(11, 6);
+    expect(m.gridToLoadKwh).toBeCloseTo(4, 6);
+    expect(m.solarToLoadKwh).toBeCloseTo(7, 6);
+    expect(m.selfSufficiency).toBeCloseTo(7 / 11, 6);
+  });
+
+  test("without the option a plant with no load counter still reports nothing", () => {
+    // The old behaviour, kept explicit: `loadKwh` 0 → the whole consumption
+    // split reads empty and self-sufficiency is unknowable.
+    const m = derivePeriodEnergy("2024-06-15", totals({ productionKwh: 10, importKwh: 4 }));
+    expect(m.loadKwh).toBe(0);
+    expect(m.selfSufficiency).toBeNull();
+  });
+
+  test("an implied figure overwrites whatever the load field held", () => {
+    // The caller only asks for this when the profile maps no load counter, so
+    // there is nothing measured to protect — but be explicit that the option
+    // does not merge.
+    const m = derivePeriodEnergy("2024-06-15", totals({ importKwh: 5, loadKwh: 99 }), {
+      impliedLoad: true,
+    });
+    expect(m.loadKwh).toBeCloseTo(5, 6);
+  });
+
+  test("an empty period implies no load, so self-sufficiency stays unknown", () => {
+    const m = derivePeriodEnergy("2024-06-16", totals({}), { impliedLoad: true });
+    expect(m.loadKwh).toBe(0);
+    expect(m.selfSufficiency).toBeNull();
+  });
+});
+
+describe("withImpliedHourLoad", () => {
+  const hour = (h: number, over: Partial<HourEnergy> = {}): HourEnergy => ({
+    time: new Date(Date.UTC(2024, 5, 15, h)),
+    import: 0,
+    export: 0,
+    load: 0,
+    production: 0,
+    batteryDischarge: 0,
+    batteryCharge: 0,
+    ...over,
+  });
+
+  test("implies each hour on its own, so the tariff banding still holds", () => {
+    // Per-hour and not on the window total: `gridOnlyCost` prices each hour at
+    // its own band, so a whole-window figure could not be banded at all.
+    const out = withImpliedHourLoad([
+      hour(2, { import: 1.5 }),
+      hour(12, { production: 4, export: 3 }),
+    ]);
+    expect(out.map((h) => h.load)).toEqual([1.5, 1]);
+  });
+
+  test("leaves the other fields and the timestamps untouched", () => {
+    const [out] = withImpliedHourLoad([hour(12, { production: 4, export: 1, import: 0.5 })]);
+    expect(out).toEqual(hour(12, { production: 4, export: 1, import: 0.5, load: 3.5 }));
+  });
+
+  test("an empty window stays empty", () => {
+    expect(withImpliedHourLoad([])).toEqual([]);
+  });
+
+  test("never mutates the hours it was given", () => {
+    const hours = [hour(12, { production: 4 })];
+    withImpliedHourLoad(hours);
+    expect(hours[0]?.load).toBe(0);
   });
 });
