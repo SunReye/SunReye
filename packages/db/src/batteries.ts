@@ -9,6 +9,12 @@
  * (`./schema/plants.ts`, `batteries`), and the plant-level record is computed
  * from however many of those exist.
  *
+ * WIRED. `./plant-facts.ts`'s `plantBatteryFrom` is the single entry point, and
+ * `apps/server/src/settings/weather-settings.ts` composes `forecast.battery` out
+ * of it — so every existing reader of that field (the forecast's clipping model,
+ * the peak-shaving engine's reserve floor, the config-blocker list) travels this
+ * arithmetic by construction rather than by remembering to.
+ *
  * WHY THIS IS A MODULE WITH TESTS AND NOT THREE LINES AT THE CALL SITE
  *
  * With one device every rule below is the identity function. That is exactly why
@@ -64,7 +70,6 @@ export interface PlantBattery {
  *    this cannot express, and averaging them would hide that rather than leave
  *    it visible.
  */
-// fallow-ignore-next-line unused-export -- the plant-battery derivation the forecast and the peak-shaving engine will read; apps/server still reads the 1.x `weather.forecast.battery` record and is re-pointed at this in wave 3. Proved by batteries.test.ts, and test files are not traced as consumers.
 export function derivePlantBattery(packs: readonly DeviceBattery[]): PlantBattery | null {
   if (packs.length === 0) return null;
 
@@ -112,7 +117,6 @@ export function derivePlantBattery(packs: readonly DeviceBattery[]): PlantBatter
  * `null` when nothing states one is what lets the caller keep using the legacy
  * default it already has.
  */
-// fallow-ignore-next-line unused-export -- the three-place fallback for a value that has now moved twice; wired in wave 3 alongside peak-shaving-engine's liveBatteryV. Proved by batteries.test.ts.
 export function resolveNominalV(
   deviceValue: number | null | undefined,
   legacyPlantValue: number | null | undefined,

@@ -16,6 +16,29 @@ import { describe, expect, test } from "bun:test";
  * A source-text test, which is the weaker layer (apps/web/TESTING.md): it pins
  * the fields a form names in its request, which is the thing that actually
  * causes the clobber, rather than that some string appears somewhere.
+ *
+ * ## Why this file SURVIVED the 2.0.0 move to real columns
+ *
+ * 2.0.0 gave every plant fact its own column on `plants`, and
+ * `apps/server/src/settings/weather-settings.ts` now emits an `UPDATE` naming
+ * only the fields the incoming patch mentioned
+ * (`packages/db/src/plant-facts.ts`, `splitWeatherWrite`). That kills the
+ * IMPLICIT clobber completely, and it was the whole bug: a JSONB save is a
+ * read-modify-write of the entire document, so a form had no way to send its own
+ * half — it wrote back everything it had loaded whether it meant to or not. That
+ * mechanism is gone, and no rule about forms is needed to keep it gone.
+ *
+ * What is NOT gone is the EXPLICIT clobber: a form that names `arrays` in its
+ * request still writes the value it happens to be holding. The consequence is
+ * milder now (one form saving a field it displays, rather than an unrelated
+ * page's edit vanishing) but the fix is still the same rule — a form names only
+ * what it owns — and nothing in the type system says so. So the assertions stay,
+ * and the strong new guarantee is tested where it actually lives, in
+ * `packages/db/src/plant-facts.test.ts` ("writes ONLY the columns the patch
+ * named").
+ *
+ * The last two tests were never about the clobber at all: they pin where a
+ * config blocker sends the reader, and that the pack voltage has ONE editor.
  */
 const read = async (file: string) => await Bun.file(new URL(file, import.meta.url).pathname).text();
 
