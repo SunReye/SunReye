@@ -28,4 +28,14 @@ export type LogEntry = {
   category: string;
   /** Fully-rendered message (template literals with values interpolated). */
   message: string;
+  /**
+   * Correlation id of the request being handled when this line was emitted, if
+   * any. Absent for anything the engine does on its own schedule — the 1 Hz
+   * poll, a scheduled automation, boot.
+   *
+   * A field rather than something to parse out of {@link message}: the point is
+   * to group every line from one request together, including the ones logged by
+   * code that knows nothing about requests.
+   */
+  requestId?: string;
 };

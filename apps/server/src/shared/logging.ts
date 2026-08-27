@@ -21,6 +21,7 @@ import {
   type Sink,
 } from "@logtape/logtape";
 import type { Streams } from "./streams";
+import { requestContextStorage } from "./request-context";
 
 /** Root category for all application (non-HTTP) logs. */
 const ROOT = "server" as const;
@@ -80,11 +81,16 @@ function renderMessage(message: readonly unknown[]): string {
  * it can never feed back into itself.
  */
 const streamSink: Sink = (record: LogRecord) => {
+  // Set by ./request-log for the duration of a request, and picked up here from
+  // LogTape's implicit context — which is why a record logged by code that has
+  // never heard of requests still carries it. See `contextLocalStorage` below.
+  const requestId = record.properties.requestId;
   const entry: LogEntry = {
     time: record.timestamp,
     level: record.level,
     category: record.category.join("."),
     message: renderMessage(record.message),
+    ...(typeof requestId === "string" ? { requestId } : {}),
   };
   buffer.push(entry);
   if (buffer.length > BUFFER_MAX) buffer.shift();
@@ -148,6 +154,11 @@ export async function setupLogging(streams?: Streams): Promise<void> {
   configured = true;
   await configure({
     reset: true,
+    // What makes request correlation work at all: LogTape reads this store per
+    // record, so an id parked there by ./request-log lands on every line the
+    // request produces, however deep. `withContext`/`enterWith` are inert
+    // without it — LogTape logs a warning to its meta category and moves on.
+    contextLocalStorage: requestContextStorage,
     sinks: {
       // Colorized, human-readable output in dev; plain in prod so log
       // shippers/journald get clean lines.

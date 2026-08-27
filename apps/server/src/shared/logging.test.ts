@@ -29,9 +29,10 @@
  * environment instead of mutating a global mock.
  */
 
-import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, afterEach, beforeAll, describe, expect, it, test } from "bun:test";
 import type { LogEntry } from "@SunReye/contracts/logs";
 import { configure, getLogger, type LogLevel } from "@logtape/logtape";
+import { enterRequestContext, requestContextStorage } from "./request-context";
 import {
   applyLogLevel,
   currentLogLevel,
@@ -429,6 +430,46 @@ describe("the live subscribers", () => {
     unsubSurvivor();
     expect(survivors).toEqual(["still logging"]);
     expect(recentLogs().at(-2)?.message).toBe("dropped frame");
+  });
+});
+
+// The capability `@logtape/elysia` took with it when it was dropped: an id on
+// every record emitted while a request is handled, so a failure deep in the
+// engine can be tied back to what asked for it. LogTape only does this when a
+// `contextLocalStorage` is configured, and it is inert without one.
+describe("request correlation reaching the viewer", () => {
+  it("stamps a record emitted inside a request with its id", () => {
+    const line = onlyLine(() => {
+      requestContextStorage.run({}, () => {
+        enterRequestContext("req-abc");
+        log("engine").error("read plan failed");
+      });
+    });
+    expect(line.requestId).toBe("req-abc");
+    // The rendered message stays the caller's own — the id is a field, so the
+    // viewer can group by it instead of everyone parsing it out of prose.
+    expect(line.message).toBe("read plan failed");
+  });
+
+  it("leaves a record logged outside any request unstamped", () => {
+    expect(onlyLine(() => log("engine").info("boot")).requestId).toBeUndefined();
+  });
+
+  it("keeps two concurrent requests' records apart", async () => {
+    const seen: LogEntry[] = [];
+    const unsubscribe = streams.subscribe("logs", (entry) => seen.push(entry));
+    const emit = (id: string, delayMs: number) =>
+      requestContextStorage.run({}, async () => {
+        enterRequestContext(id);
+        await new Promise((r) => setTimeout(r, delayMs));
+        log("engine").info("work for {id}", { id });
+      });
+    try {
+      await Promise.all([emit("slow", 8), emit("fast", 1)]);
+    } finally {
+      unsubscribe();
+    }
+    expect(seen.map((l) => l.requestId).sort()).toEqual(["fast", "slow"]);
   });
 });
 

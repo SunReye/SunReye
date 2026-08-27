@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { Elysia } from "elysia";
+import { requestContextStorage } from "./request-context";
 import { type RequestLogEntry, requestLogger } from "./request-log";
 
 /** Only `.handle` is exercised here; the full Elysia generic is noise. */
@@ -7,6 +8,8 @@ type Handleable = { handle(request: Request): Promise<Response> };
 
 const appWith = (options?: Parameters<typeof requestLogger>[0]) => {
   const seen: RequestLogEntry[] = [];
+  /** What the ambient context held when unrelated code ran mid-request. */
+  const contexts: (string | undefined)[] = [];
   const app = new Elysia()
     .use(requestLogger({ ...options, emit: (entry) => seen.push(entry) }))
     .get("/ping", () => "pong")
@@ -14,8 +17,15 @@ const appWith = (options?: Parameters<typeof requestLogger>[0]) => {
     .get("/boom", () => {
       throw new Error("nope");
     })
+    .get("/deep", async () => {
+      // Stands in for the engine: unrelated code, several awaits away, that
+      // logs without being handed anything.
+      await new Promise((r) => setTimeout(r, 1));
+      contexts.push(requestContextStorage.getStore()?.requestId as string | undefined);
+      return "deep";
+    })
     .post("/thing", () => "made");
-  return { app, seen };
+  return { app, seen, contexts };
 };
 
 const get = (app: Handleable, path: string, init?: RequestInit) =>
@@ -89,5 +99,75 @@ describe("requestLogger", () => {
     await get(app, "/ping");
     await get(app, "/ping");
     expect(seen).toHaveLength(2);
+  });
+
+  // The dropped `@logtape/elysia` logged the full URL; we logged only the path,
+  // which loses exactly the part that identifies a history request.
+  it("records the query string, which is what distinguishes one request", async () => {
+    const { app, seen } = appWith();
+    await get(app, "/ping?from=2026-01-01&to=2026-02-01");
+    expect(seen[0]?.path).toBe("/ping");
+    expect(seen[0]?.query).toBe("?from=2026-01-01&to=2026-02-01");
+  });
+
+  it("reports an empty query rather than undefined when there is none", async () => {
+    const { app, seen } = appWith();
+    await get(app, "/ping");
+    expect(seen[0]?.query).toBe("");
+  });
+
+  it("logs at the level the caller asked for", async () => {
+    const { app, seen } = appWith({ level: "debug" });
+    await get(app, "/ping");
+    expect(seen[0]?.level).toBe("debug");
+  });
+
+  it("logs at info by default", async () => {
+    const { app, seen } = appWith();
+    await get(app, "/ping");
+    expect(seen[0]?.level).toBe("info");
+  });
+});
+
+describe("requestLogger correlation", () => {
+  it("carries the id a caller supplied", async () => {
+    const { app, seen } = appWith();
+    await get(app, "/ping", { headers: { "x-request-id": "caller-abc" } });
+    expect(seen[0]?.requestId).toBe("caller-abc");
+  });
+
+  it("mints one when the caller supplied none", async () => {
+    const { app, seen } = appWith();
+    await get(app, "/ping");
+    expect(seen[0]?.requestId).toMatch(/^[0-9a-f-]{36}$/);
+  });
+
+  // So a caller can find its own request in the log, and a proxy can stitch a
+  // trace together.
+  it("echoes the id back on the response", async () => {
+    const { app } = appWith();
+    const res = await get(app, "/ping", { headers: { "x-request-id": "caller-abc" } });
+    expect(res.headers.get("x-request-id")).toBe("caller-abc");
+  });
+
+  it("echoes a minted id too", async () => {
+    const { app, seen } = appWith();
+    const res = await get(app, "/ping");
+    expect(res.headers.get("x-request-id")).toBe(seen[0]?.requestId ?? null);
+  });
+
+  it("refuses to repeat an id that could forge a log line", async () => {
+    const { app, seen } = appWith();
+    const res = await get(app, "/ping", { headers: { "x-request-id": "ok-but-then\ttab" } });
+    expect(seen[0]?.requestId).toMatch(/^[0-9a-f-]{36}$/);
+    expect(res.headers.get("x-request-id")).toBe(seen[0]?.requestId ?? null);
+  });
+
+  // The point of the whole exercise: a record emitted by unrelated code deep
+  // inside the request still carries the id.
+  it("reaches a log record emitted from inside the handler", async () => {
+    const { app, contexts } = appWith();
+    await get(app, "/deep", { headers: { "x-request-id": "deep-1" } });
+    expect(contexts).toEqual(["deep-1"]);
   });
 });
