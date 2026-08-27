@@ -26,7 +26,27 @@
  * `./backfill-task.test.ts` drives the single-flight rule with a promise it settles
  * by hand. The real runner needs a Postgres, a 1.2.0 fixture and three minutes; the
  * rule needs neither, and a rule proved only by the thing it guards is not proved.
+ *
+ * ## Why the wiring goes through an io seam
+ *
+ * The same reason, one level out. {@link runMigrationBackfill} issues no SQL of its
+ * own: it resolves WHERE the history may be written, opens a connection, hands the
+ * driver its input and reports what came back. Those are decisions — the two
+ * refusals, the config keys and cadence the driver is handed, and the horizon memo
+ * that must be forgotten afterwards — and every one of them is wrong-able without a
+ * statement being wrong. {@link BackfillIo} defaults to {@link productionBackfillIo}
+ * as a parameter, so no call site changes; it is the seam `admin/archive-download.ts`
+ * and `scripts/upgrade-rehearsal.ts` already use. The statements themselves stay
+ * proved where statements have to be proved: `apps/server/db-tests/upgrade.test.ts`
+ * against a real TimescaleDB, and `scripts/upgrade-phases.ts` end to end.
  */
+
+import type { BackfillInput } from "@SunReye/db/backfill";
+import type { BackfillResult } from "@SunReye/db/backfill-run";
+import type { MigrationRecord } from "@SunReye/db/upgrade-state";
+import type { UpgradeClient } from "@SunReye/db/upgrade-120-run";
+import type { UpgradeConnection } from "@SunReye/db/upgrade-connect";
+import type { PlantDb } from "@SunReye/db/plant-repo";
 
 import { env } from "@SunReye/env/server";
 import { db } from "@SunReye/db";
@@ -82,6 +102,78 @@ export function createBackfillTask(deps: BackfillTaskDeps): BackfillTask {
   };
 }
 
+/** A device as {@link backfillTarget} reads one. */
+export interface TargetDevice {
+  id: number;
+  profileId: string;
+  role: string;
+}
+
+/** Everything this module touches that is not a decision. */
+export interface BackfillIo {
+  /** Read late: the addon's connection string is not known at import time. */
+  databaseUrl(): string;
+  readRecord(): Promise<MigrationRecord>;
+  readPlant(): Promise<{ id: number } | null>;
+  readDevices(plantId: number): Promise<readonly TargetDevice[]>;
+  /**
+   * ITS OWN CONNECTION, not the shared pool. The backfill is minutes of
+   * statements; holding a pooled connection for that long would starve the poll
+   * loop, which is writing to the same database at 1 Hz.
+   */
+  withClient<T>(url: string, body: (client: UpgradeClient) => Promise<T>): Promise<T>;
+  readCadenceMs(client: UpgradeClient): Promise<number | null>;
+  runBackfill(client: UpgradeClient, input: BackfillInput): Promise<BackfillResult | null>;
+  /** Forget the history-horizon memo. See the note at the end of the run. */
+  invalidate(): void;
+  warn(message: string, fields: Record<string, unknown>): void;
+  info(message: string, fields: Record<string, unknown>): void;
+}
+
+/**
+ * The singletons {@link backfillIo} wires the seam from.
+ *
+ * A factory over these rather than a literal of arrows, for the reason the seam
+ * exists at all: the WIRING is a thing that can be wrong on its own. Handing
+ * `readDevices` the plant's id and `readPlant` nothing is a swap no statement
+ * would catch, and it would attribute two months of history to the wrong device.
+ */
+export interface BackfillWiring {
+  database: PlantDb;
+  /** Read late: the addon's connection string is not known at import time. */
+  databaseUrl(): string;
+  logger: {
+    warn(message: string, fields: Record<string, unknown>): void;
+    info(message: string, fields: Record<string, unknown>): void;
+  };
+  /** Injected only by a test; production takes `withUpgradeClient`'s own default. */
+  connect?: (databaseUrl: string) => UpgradeConnection;
+}
+
+/** The real wiring, over collaborators that are parameters. */
+// fallow-ignore-next-line unused-export -- the production seam, built below and never named again; exported so ./backfill-task.test.ts can build the same wiring over doubles and prove each member routes where it should.
+export function backfillIo(wiring: BackfillWiring): BackfillIo {
+  return {
+    databaseUrl: () => wiring.databaseUrl(),
+    readRecord: () => readMigrationRecord(wiring.database),
+    readPlant: () => readPlant(wiring.database),
+    readDevices: (plantId) => readDevices(wiring.database, plantId),
+    withClient: (url, body) => withUpgradeClient(url, body, wiring.connect),
+    readCadenceMs: (client) => readLegacyCadenceMs(client),
+    runBackfill: (client, input) => runBackfill(client, input),
+    invalidate: () => invalidateHistoryLimits(),
+    warn: (message, fields) => wiring.logger.warn(message, fields),
+    info: (message, fields) => wiring.logger.info(message, fields),
+  };
+}
+
+/** The seam every caller gets when it passes none. */
+const productionBackfillIo: BackfillIo = backfillIo({
+  database: db,
+  databaseUrl: () => env.DATABASE_URL,
+  logger: log("migration"),
+});
+
 /**
  * The real backfill, against this instance's database.
  *
@@ -96,40 +188,40 @@ export function createBackfillTask(deps: BackfillTaskDeps): BackfillTask {
  * `runBackfill` decides that from the record, which is what makes this safe to
  * call from a button that cannot know the state.
  */
-// fallow-ignore-next-line complexity -- coverage, not complexity: cyclomatic 4. This is the SQL-issuing driver, and its coverage is zero BY DESIGN (CONTRIBUTING.md §6 — a SQL-text assertion cannot prove a query runs). Every DECISION it makes is in `backfillTarget` and `createBackfillTask` above, both unit-proved; what is left is the wiring, exercised against a real database by scripts/upgrade-phases.ts and verified by hand against a booted server.
-export async function runMigrationBackfill(configKeys: readonly string[]): Promise<void> {
-  const record = await readMigrationRecord();
-  const plant = await readPlant(db);
+export async function runMigrationBackfill(
+  configKeys: readonly string[],
+  io: BackfillIo = productionBackfillIo,
+): Promise<void> {
+  const record = await io.readRecord();
+  const plant = await io.readPlant();
   const target = backfillTarget(
     record,
     plant,
-    plant === null ? [] : await readDevices(db, plant.id),
+    plant === null ? [] : await io.readDevices(plant.id),
   );
   if (!target.ok) {
-    log("migration").warn("history backfill has nowhere to write: {reason}", {
-      reason: target.reason,
-    });
+    io.warn("history backfill has nowhere to write: {reason}", { reason: target.reason });
     return;
   }
 
-  await withUpgradeClient(env.DATABASE_URL, async (client) => {
-    const rawDurMs = await readLegacyCadenceMs(client);
-    log("migration").info(
-      "history backfill starting: device {deviceId}, legacy cadence {rawDurMs} ms",
-      { deviceId: target.deviceId, rawDurMs },
-    );
-    const result = await runBackfill(client, {
+  await io.withClient(io.databaseUrl(), async (client) => {
+    const rawDurMs = await io.readCadenceMs(client);
+    io.info("history backfill starting: device {deviceId}, legacy cadence {rawDurMs} ms", {
+      deviceId: target.deviceId,
+      rawDurMs,
+    });
+    const result = await io.runBackfill(client, {
       deviceId: target.deviceId,
       configKeys,
       rawDurMs,
-      logger: { log: (line: string) => log("migration").info("{line}", { line }) },
+      logger: { log: (line: string) => io.info("{line}", { line }) },
     });
     if (result === null) {
-      log("migration").info("nothing to backfill: the migration record says it is already done");
+      io.info("nothing to backfill: the migration record says it is already done", {});
       return;
     }
-    log("migration").info(
-      "history backfill complete in {seconds}s: {carried} carried raw rows, {replayed} replayed bucket rows, {refreshed} refresh window(s) — stage {stage}",
+    io.info(
+      "history backfill complete in {seconds}s: {carried} carried raw rows, {replayed} replayed bucket rows, {refreshed} refresh window(s) \u2014 stage {stage}",
       {
         seconds: (result.elapsedMs / 1000).toFixed(1),
         carried: result.carried?.seriesRows ?? 0,
@@ -142,5 +234,5 @@ export async function runMigrationBackfill(configKeys: readonly string[]): Promi
 
   // The horizon has MOVED: the memo would otherwise keep refusing month-to-date
   // reads for its TTL after the data they need has landed.
-  invalidateHistoryLimits();
+  io.invalidate();
 }

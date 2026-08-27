@@ -15,11 +15,21 @@
  * apart at the fastest. But the horizon SLIDES WITH THE CLOCK, so `now` is re-read
  * even on a cache hit: a 30-second-old `now` would let a range through 30 seconds
  * after it stopped being complete.
+ *
+ * ## The io seam
+ *
+ * The two catalog reads and the clock go through {@link HorizonIo}, defaulted to
+ * the production wiring as a parameter so no route changes. What it buys is
+ * that the SHAPE READING (text `drop_after` to days, `null` as "kept forever", a
+ * record stored as a JSON string) and the MEMO's own rules are provable without a
+ * Postgres and a two-month migration — and each of those is a way to get the rule
+ * in `./history-horizon.ts` right and still ship #154. The statements themselves
+ * are proved by executing them, in `apps/server/db-tests`.
  */
 import { db } from "@SunReye/db";
 import { jsonDocument } from "@SunReye/db/json-value";
 import { migrationHorizonFrom, migrationRecordSchema } from "@SunReye/db/upgrade-state";
-import { sql } from "drizzle-orm";
+import { type SQL, sql } from "drizzle-orm";
 
 import type { HorizonProblem } from "@SunReye/db/upgrade-120";
 
@@ -37,6 +47,57 @@ import { type HistoryLimits, type HistoryTier, incompleteRangeProblem } from "./
 const TTL_MS = 30_000;
 let cached: { at: number; limits: HistoryLimits } | null = null;
 
+/** One `timescaledb_information.jobs` row, as both drivers report it. */
+export interface RetentionJobRow {
+  hypertable_name: string;
+  /** `drop_after` in days. TEXT through both drivers, or absent entirely. */
+  days: string | null;
+}
+
+/** Everything this module touches that is not a decision. */
+export interface HorizonIo {
+  retentionJobs(): Promise<readonly RetentionJobRow[]>;
+  /** The raw `app_settings.value`, which may be the document AS A JSON STRING. */
+  migrationDocument(): Promise<unknown>;
+  now(): Date;
+}
+
+/** The subset of a drizzle client this module needs — `PlantDb`'s shape. */
+export interface HorizonDb {
+  execute: (query: SQL) => Promise<{ rows: unknown[] }>;
+}
+
+/**
+ * The real wiring, over a client that is a parameter.
+ *
+ * A factory rather than a literal so the UNWRAPPING is provable: the migration
+ * document is `rows[0].value`, and handing the ROW itself to the parser instead
+ * would report "no migration here" on every instance in the middle of one.
+ */
+// fallow-ignore-next-line unused-export -- the production seam, built below and never named again; exported so ./history-horizon-live.test.ts can build the same two reads over a double and prove the document is the row's `value`.
+export function horizonIo(database: HorizonDb = db): HorizonIo {
+  return {
+    retentionJobs: async () => {
+      const result = await database.execute(sql`
+        select hypertable_name,
+               (extract(epoch from (config->>'drop_after')::interval) / 86400)::text as days
+          from timescaledb_information.jobs
+         where proc_name = 'policy_retention'`);
+      return result.rows as RetentionJobRow[];
+    },
+    migrationDocument: async () => {
+      const result = await database.execute(
+        sql`select value from app_settings where key = 'migration.v2'`,
+      );
+      return (result.rows[0] as { value?: unknown } | undefined)?.value;
+    },
+    now: () => new Date(),
+  };
+}
+
+/** The seam every caller gets when it passes none. */
+const productionHorizonIo: HorizonIo = horizonIo();
+
 /** Forget the memo — called by whatever advances the migration's stage. */
 export function invalidateHistoryLimits(): void {
   cached = null;
@@ -44,41 +105,35 @@ export function invalidateHistoryLimits(): void {
 
 /** The retention policies and the migration record, from the database. */
 // fallow-ignore-next-line unused-export -- the uncached read behind historyLimits below; exported so a test can bypass the memo.
-export async function readHistoryLimits(): Promise<HistoryLimits> {
-  const retention = await db.execute<{ hypertable_name: string; days: string | null }>(sql`
-    select hypertable_name,
-           (extract(epoch from (config->>'drop_after')::interval) / 86400)::text as days
-      from timescaledb_information.jobs
-     where proc_name = 'policy_retention'`);
-  const record = await db.execute<{ value: unknown }>(
-    sql`select value from app_settings where key = 'migration.v2'`,
-  );
-  const parsed = migrationRecordSchema.safeParse(
-    jsonDocument((record.rows[0] as { value?: unknown } | undefined)?.value) ?? {},
-  );
+export async function readHistoryLimits(
+  io: HorizonIo = productionHorizonIo,
+): Promise<HistoryLimits> {
+  const jobs = await io.retentionJobs();
+  const parsed = migrationRecordSchema.safeParse(jsonDocument(await io.migrationDocument()) ?? {});
   return {
-    now: new Date(),
-    retention: (retention.rows as { hypertable_name: string; days: string | null }[]).map(
-      (row) => ({
-        hypertableName: row.hypertable_name,
-        dropAfterDays: row.days === null ? null : Number(row.days),
-      }),
-    ),
+    now: io.now(),
+    retention: jobs.map((row) => ({
+      hypertableName: row.hypertable_name,
+      // TEXT through both drivers. A string here makes every comparison
+      // downstream silently false, so the refusal simply stops happening.
+      dropAfterDays: row.days === null ? null : Number(row.days),
+    })),
     migrationFrom: parsed.success ? migrationHorizonFrom(parsed.data) : null,
   };
 }
 
 /** The limits, from the memo when it is fresh. */
 // fallow-ignore-next-line unused-export -- the memoized read refuseIncompleteRange below uses; exported for the same reason.
-export async function historyLimits(): Promise<HistoryLimits> {
-  if (cached !== null && Date.now() - cached.at < TTL_MS) {
+export async function historyLimits(io: HorizonIo = productionHorizonIo): Promise<HistoryLimits> {
+  const now = io.now();
+  if (cached !== null && now.getTime() - cached.at < TTL_MS) {
     // `now` is re-read even on a cache hit: the retention HORIZON slides with the
     // clock, and a 30-second-old `now` would let a range through 30 seconds after
     // it stopped being complete.
-    return { ...cached.limits, now: new Date() };
+    return { ...cached.limits, now };
   }
-  const limits = await readHistoryLimits();
-  cached = { at: Date.now(), limits };
+  const limits = await readHistoryLimits(io);
+  cached = { at: limits.now.getTime(), limits };
   return limits;
 }
 
@@ -103,8 +158,9 @@ export interface IncompleteRangeBody {
 export async function refuseIncompleteRange(
   tier: HistoryTier,
   range: { from: Date; to: Date },
+  io: HorizonIo = productionHorizonIo,
 ): Promise<IncompleteRangeBody | null> {
-  const problem = incompleteRangeProblem(tier, range, await historyLimits());
+  const problem = incompleteRangeProblem(tier, range, await historyLimits(io));
   if (problem === null) return null;
   return {
     error: "history_incomplete",

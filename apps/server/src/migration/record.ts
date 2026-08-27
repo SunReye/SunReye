@@ -22,7 +22,12 @@ import {
   noMigration,
 } from "@SunReye/db/upgrade-state";
 import { db } from "@SunReye/db";
-import { sql } from "drizzle-orm";
+import { type SQL, sql } from "drizzle-orm";
+
+/** The subset of a drizzle client this module needs — `PlantDb`'s shape. */
+export interface RecordDb {
+  execute: (query: SQL) => Promise<{ rows: unknown[] }>;
+}
 
 /**
  * One `app_settings` row, as any driver hands it back.
@@ -56,9 +61,15 @@ export function migrationRecordFrom(rows: readonly SettingRow[]): MigrationRecor
   return parsed.success ? parsed.data : noMigration;
 }
 
-/** The live record. Reads per call: it changes as the migration advances. */
-export async function readMigrationRecord(): Promise<MigrationRecord> {
-  const result = await db.execute<SettingRow>(
+/**
+ * The live record. Reads per call: it changes as the migration advances.
+ *
+ * The client is a parameter with a production default, so the READ — which row
+ * shape reaches {@link migrationRecordFrom} — is provable without a Postgres.
+ * Production never passes one.
+ */
+export async function readMigrationRecord(database: RecordDb = db): Promise<MigrationRecord> {
+  const result = await database.execute(
     sql`select value from app_settings where key = ${MIGRATION_KEY}`,
   );
   return migrationRecordFrom(result.rows as SettingRow[]);
