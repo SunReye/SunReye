@@ -14,8 +14,20 @@ import { readFileSync } from "node:fs";
 
 export type RollupRow = {
   bucket: string;
-  inverterId: string;
-  metric: string;
+  /**
+   * The int2 device id, as text (json_agg renders it as a number, so the key
+   * builder stringifies it).
+   *
+   * Was `inverterId`, a text PROFILE id, until 2.0.0 re-keyed every reading.
+   * That matters more here than anywhere else: after this change the id is
+   * meaningless without the `devices` row it resolves against, which is why
+   * `devices`, `metric_keys` and the rest of the dimension spine were added to
+   * {@link SIDE_TABLES}. A restore that brought back every bucket and lost
+   * `devices` would pass a parity check keyed on ids alone while leaving a
+   * database whose entire history names nothing.
+   */
+  deviceId: number;
+  metricId: number;
   avg: number | null;
   max: number | null;
   min: number | null;
@@ -23,33 +35,9 @@ export type RollupRow = {
 
 export type RollupName = "minute_rollups" | "hourly_rollups" | "daily_rollups";
 
-/**
- * The time-weighted aggregates (#116). Separate from {@link RollupName} because
- * they can legitimately be absent — a snapshot taken before the migration has no
- * such views at all — and because a migration is *expected* to make them appear,
- * which a restore never is.
- */
-export type WeightedRollupName =
-  | "weighted_minute_rollups"
-  | "weighted_hourly_rollups"
-  | "weighted_daily_rollups";
-
-/** The legacy aggregate each weighted one shadows, bucket for bucket. */
-const SHADOWS: Record<WeightedRollupName, RollupName> = {
-  weighted_minute_rollups: "minute_rollups",
-  weighted_hourly_rollups: "hourly_rollups",
-  weighted_daily_rollups: "daily_rollups",
-};
-
 export type Snapshot = {
-  /** Every materialized bucket of every rollup, per inverter and metric. */
+  /** Every materialized bucket of every rollup, per device and metric. */
   rollups: Record<RollupName, RollupRow[]>;
-  /**
-   * The same, for the weighted aggregates — with `avg` already reduced to
-   * `weighted_sum / nullif(weight, 0)`, the quotient the read layer computes, so
-   * the two sets are directly comparable.
-   */
-  weightedRollups: Record<WeightedRollupName, RollupRow[]>;
   /**
    * Row counts of the irreplaceable side tables (settings, auth, profiles …).
    * `null` means the table does not exist in that database at all — a
@@ -80,35 +68,21 @@ export type CompareOptions = {
    */
   requireData?: boolean;
   /**
-   * Comparing a database to *itself* across the weighted-rollup migration
-   * (#116), rather than across a dump/restore.
-   *
-   * The migration creates three aggregates and materializes them over whatever
-   * raw rows remain, so the weighted side appears from nothing — which is the
-   * point, not a mismatch. Every legacy bucket, meanwhile, must be identical:
-   * `metrics_raw` has 7-day retention, so a recreate could only re-materialize
-   * the last 7 days and would silently destroy every older bucket.
-   *
-   * The weighted side is then required to be non-empty, so a migration that
-   * created the views and materialized nothing fails loudly instead of passing
-   * trivially.
+   * Comparing a database to *itself* across a MIGRATION rather than across a
+   * dump/restore: more compressed chunks than before is then the intended
+   * outcome, not a loss.
    */
-  expectWeightedBackfill?: boolean;
+  acrossMigration?: boolean;
 };
 
 const ROLLUPS: readonly RollupName[] = ["minute_rollups", "hourly_rollups", "daily_rollups"];
-const WEIGHTED_ROLLUPS: readonly WeightedRollupName[] = [
-  "weighted_minute_rollups",
-  "weighted_hourly_rollups",
-  "weighted_daily_rollups",
-];
 const METRICS = ["avg", "max", "min"] as const;
 
 /** Floating point round trip through pg_dump's text form is not bit-exact. */
 const EPSILON = 1e-9;
 
 export function rollupKey(row: RollupRow): string {
-  return `${row.bucket}|${row.inverterId}|${row.metric}`;
+  return `${row.bucket}|${row.deviceId}|${row.metricId}`;
 }
 
 function sameNumber(a: number | null, b: number | null): boolean {
@@ -117,7 +91,7 @@ function sameNumber(a: number | null, b: number | null): boolean {
 }
 
 function compareRollup(
-  name: RollupName | WeightedRollupName,
+  name: RollupName,
   before: RollupRow[],
   after: RollupRow[],
 ): string[] {
@@ -248,56 +222,6 @@ function checkFixtureIsMeaningful(before: Snapshot): string[] {
   return problems;
 }
 
-/**
- * The weighted side of a migration comparison: it may appear from nothing, but
- * it may not stay empty. An empty weighted set means the aggregates were created
- * and never materialized, so nothing about the weighting was proved and the read
- * cutover would serve the legacy side forever.
- */
-function checkWeightedBackfill(after: Snapshot): string[] {
-  const total = WEIGHTED_ROLLUPS.reduce(
-    (sum, name) => sum + (after.weightedRollups?.[name] ?? []).length,
-    0,
-  );
-  return total > 0
-    ? []
-    : ["migration produced no weighted rollup buckets — the aggregates exist but hold nothing"];
-}
-
-/**
- * The safety property that makes this migration landable: while every `dur_ms`
- * is NULL the aggregates read `coalesce(dur_ms, 1000)`, so
- * `sum(value * 1) / sum(1)` is *exactly* `avg(value)`. Every bucket the weighted
- * side holds must therefore equal its legacy counterpart, over unweighted data.
- *
- * Checked per bucket rather than in aggregate, because a compensating pair of
- * errors would cancel out of a total. The reverse direction is deliberately not
- * symmetric: a legacy bucket with no weighted counterpart is correct (the
- * weighted view can only be materialized as far back as `metrics_raw` reaches),
- * but a weighted bucket with no legacy counterpart means one of the two refresh
- * policies has stopped running.
- */
-export function weightedMatchesLegacy(snapshot: Snapshot): string[] {
-  const problems: string[] = [];
-  for (const name of WEIGHTED_ROLLUPS) {
-    const legacy = new Map(
-      (snapshot.rollups[SHADOWS[name]] ?? []).map((r) => [rollupKey(r), r] as const),
-    );
-    for (const row of snapshot.weightedRollups?.[name] ?? []) {
-      const key = rollupKey(row);
-      const plain = legacy.get(key);
-      if (!plain) {
-        problems.push(`${name}: ${key} has no counterpart in ${SHADOWS[name]}`);
-      } else if (!sameNumber(row.avg, plain.avg)) {
-        problems.push(
-          `${name}: ${key}: weighted avg ${row.avg} != ${SHADOWS[name]} avg ${plain.avg}`,
-        );
-      }
-    }
-  }
-  return problems;
-}
-
 export function compareSnapshots(
   before: Snapshot,
   after: Snapshot,
@@ -307,15 +231,6 @@ export function compareSnapshots(
     ...ROLLUPS.flatMap((name) =>
       compareRollup(name, before.rollups[name] ?? [], after.rollups[name] ?? []),
     ),
-    ...(options.expectWeightedBackfill
-      ? checkWeightedBackfill(after)
-      : WEIGHTED_ROLLUPS.flatMap((name) =>
-          compareRollup(
-            name,
-            before.weightedRollups?.[name] ?? [],
-            after.weightedRollups?.[name] ?? [],
-          ),
-        )),
     ...compareTables(before, after),
     ...before.policies
       .filter((policy) => !after.policies.includes(policy))
@@ -324,47 +239,42 @@ export function compareSnapshots(
       before,
       after,
       options.expectRawLoss ?? false,
-      options.expectWeightedBackfill ?? false,
+      options.acrossMigration ?? false,
     ),
     ...(options.requireData ? checkFixtureIsMeaningful(before) : []),
   ];
 }
 
-const rollupSelect = (name: RollupName) => `
-    '${name}', (SELECT coalesce(json_agg(r ORDER BY r.bucket, r."inverterId", r.metric), '[]'::json)
-      FROM (SELECT bucket, inverter_id AS "inverterId", metric,
-                   avg_value AS avg, max_value AS max, min_value AS min
-            FROM ${name}) r)`;
-
 /**
- * The weighted aggregates, reduced to the same shape — `avg` is the quotient the
- * read layer computes, `nullif` and all, so a degenerate bucket surfaces as NULL
- * rather than raising inside the snapshot.
+ * One tier, reduced to a comparable shape.
  *
- * Read through `query_to_xml` rather than referenced directly, because the
- * "before" side of a migration comparison is a database where these views do not
- * exist yet — and a missing relation is a *parse* error, so a `to_regclass` CASE
- * around a direct reference does not save it (the planner resolves both arms).
- * `query_to_xml` takes its query as text, so the name is only resolved when the
- * guard has already decided the view is there. A snapshot that cannot be taken
- * proves nothing, and the pre-migration snapshot is exactly the one that matters.
+ * `average(tw)` rather than a stored `avg_value`: since 2.0.0 a tier materializes
+ * a `timescaledb_toolkit` TimeWeightSummary, and there is no finished mean in the
+ * relation to compare. NULL is a legitimate value here — `average()` of a bucket
+ * holding one sample is NULL, because a point has no duration — and both sides
+ * being NULL is parity, which `sameNumber` already treats correctly.
+ *
+ * Deliberately NOT `interpolated_average`: that reads a bucket's NEIGHBOURS, so
+ * two databases holding identical rows could differ on a bucket at the edge of
+ * the compared range. A parity check must compare each row against itself.
  */
-const weightedRollupSelect = (name: WeightedRollupName) => {
-  const inner = [
-    `select coalesce(json_agg(r ORDER BY r.bucket, r."inverterId", r.metric), ''[]''::json) as j`,
-    `from (select bucket, inverter_id AS "inverterId", metric,`,
-    `             weighted_sum / nullif(weight, 0) AS avg,`,
-    `             max_value AS max, min_value AS min`,
-    `      from ${name}) r`,
-  ].join(" ");
-  return `
-    '${name}', (SELECT CASE WHEN to_regclass('public.${name}') IS NULL THEN '[]'::json ELSE
-        coalesce((xpath('/row/j/text()', query_to_xml('${inner}', false, true, '')))[1]::text::json,
-                 '[]'::json) END)`;
-};
+const rollupSelect = (name: RollupName) => `
+    '${name}', (SELECT coalesce(json_agg(r ORDER BY r.bucket, r."deviceId", r."metricId"), '[]'::json)
+      FROM (SELECT bucket, device_id AS "deviceId", metric_id AS "metricId",
+                   average(tw) AS avg, max_value AS max, min_value AS min
+            FROM ${name}) r)`;
 
 /** Tables whose loss is unrecoverable: settings, tariffs (settings-backed), auth, profiles. */
 export const SIDE_TABLES = [
+  // THE DIMENSION SPINE, first because it is the one thing whose loss cannot be
+  // reconstructed from anything else. Every reading and every rollup bucket
+  // names a device and a metric by int2; without these rows the whole history
+  // resolves to nothing, and a parity check keyed on ids alone would not notice.
+  "plants",
+  "connections",
+  "devices",
+  "batteries",
+  "metric_keys",
   "app_settings",
   "installed_profiles",
   "custom_charts",
@@ -379,7 +289,7 @@ export const SIDE_TABLES = [
 /**
  * A side-table probe that survives the table being absent.
  *
- * Same reason as {@link weightedRollupSelect}: a missing relation is a *parse*
+ * A missing relation is a *parse*
  * error, so a `to_regclass` CASE around a direct reference does not save the
  * query — the planner resolves both arms. `query_to_xml` takes its query as
  * text, so the name is resolved only once the guard has decided it is there.
@@ -416,13 +326,8 @@ export function buildSnapshotSql(options: { includeRollups?: boolean } = {}): st
   const rollups = withRollups
     ? ROLLUPS.map(rollupSelect).join(",")
     : ROLLUPS.map((name) => `\n    '${name}', '[]'::json`).join(",");
-  const weighted = withRollups
-    ? WEIGHTED_ROLLUPS.map(weightedRollupSelect).join(",")
-    : WEIGHTED_ROLLUPS.map((name) => `\n    '${name}', '[]'::json`).join(",");
   return `SELECT json_build_object(
   'rollups', json_build_object(${rollups}
-  ),
-  'weightedRollups', json_build_object(${weighted}
   ),
   'tables', json_build_object(${SIDE_TABLES.map(tableCount).join(", ")}),
   'digests', json_build_object(${SIDE_TABLES.map(tableDigest).join(", ")}),
@@ -441,7 +346,7 @@ export function readSnapshot(path: string): Snapshot {
 
 /**
  * `db-parity.ts <before.json> <after.json> [--expect-raw-loss] [--require-data]
- *                [--expect-weighted-backfill] [--weighted-equals-legacy]`
+ *                [--across-migration]`
  */
 export function main(argv: readonly string[]): number {
   const flags = argv.filter((a) => a.startsWith("--"));
@@ -450,14 +355,14 @@ export function main(argv: readonly string[]): number {
     console.error("usage: db-parity.ts <before.json> <after.json> [--expect-raw-loss]");
     return 2;
   }
+  // Read once, so a large snapshot is not parsed twice.
   const afterSnapshot = readSnapshot(after);
   const problems = [
     ...compareSnapshots(readSnapshot(before), afterSnapshot, {
       expectRawLoss: flags.includes("--expect-raw-loss"),
       requireData: flags.includes("--require-data"),
-      expectWeightedBackfill: flags.includes("--expect-weighted-backfill"),
+      acrossMigration: flags.includes("--across-migration"),
     }),
-    ...(flags.includes("--weighted-equals-legacy") ? weightedMatchesLegacy(afterSnapshot) : []),
   ];
   if (problems.length === 0) {
     console.log("restore parity: identical");

@@ -1,4 +1,5 @@
 export * from "./auth";
+export * from "./plants";
 export * from "./custom-charts";
 export * from "./battery-health";
 export * from "./forecast-correction";

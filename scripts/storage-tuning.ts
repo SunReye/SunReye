@@ -117,27 +117,28 @@ export function intervalDays(interval: string): number {
 }
 
 /**
- * Aggregates that are deliberately NOT refreshed any more (#117 follow-up).
+ * Rollup tiers `metrics_raw` is ALLOWED to outlive.
  *
- * The minute tier stopped paying for itself once a raw row became an interval —
- * measured, raw costs 361 MB/device-year against the pair's 333 — while
- * remaining the ceiling on raw retention. Freezing them rather than dropping
- * them keeps every already-materialized bucket readable until its own retention
- * ages it out, which is what makes the change safe on a deployment whose raw
- * does not reach back that far.
+ * The coverage rule below exists because `dump.sh` could exclude raw from a
+ * backup while raw was fully materialized into the rollups. A tier kept for less
+ * time than raw breaks that, so it has to be declared here, deliberately, rather
+ * than pass silently.
+ *
+ * `minute_rollups` is on the list because in 2.0.0 its retention is a
+ * RESOLUTION window, not a coverage horizon: past 90 days a minute-resolution
+ * read goes to raw (kept 1825 days) and a wider read goes to hourly (3650). What
+ * that costs is the backup default, and `dump.sh` derives exactly that from the
+ * live policies — `safe_to_exclude_raw` compares the retentions AND checks
+ * whether the minute tier is refreshed at all, so a backup taken under this
+ * shape includes raw.
+ *
+ * This replaces 1.x's `FROZEN_TIERS`. Those two aggregates were exempt from the
+ * coverage rule because nothing refreshed them any more; here every tier is
+ * refreshed, and the exemption is about retention alone. The distinction matters:
+ * a frozen tier was decaying toward useless, while this one is load-bearing for
+ * every short-horizon chart.
  */
-export const FROZEN_TIERS = ["minute_rollups", "weighted_minute_rollups"] as const;
-
-/** `remove_continuous_aggregate_policy('x'` — the statement that applies a freeze. */
-const REMOVE_REFRESH = /remove_continuous_aggregate_policy\s*\(\s*'([^']+)'/i;
-
-/** Continuous aggregates the file explicitly stops refreshing, in order. */
-export function frozenPolicies(sql: string): string[] {
-  return statements(sql).flatMap((statement) => {
-    const match = REMOVE_REFRESH.exec(statement);
-    return match?.[1] ? [match[1]] : [];
-  });
-}
+export const RAW_MAY_OUTLIVE_TIERS = ["minute_rollups"] as const;
 
 /** Continuous aggregates the file arms a refresh policy for, in order. */
 export function refreshPolicies(sql: string): string[] {
@@ -177,8 +178,11 @@ function removeThenAdd(sql: string, target: string, remove: RegExp, add: RegExp)
 
 /**
  * Statements that would destroy an existing continuous aggregate. Dropping one
- * is never allowed in a migration: metrics_raw has 7-day retention, so a
- * recreate can only re-materialize the last 7 days (see 0000_bootstrap.sql).
+ * is never allowed in a migration: a recreate can only re-materialize as far
+ * back as raw reaches, so it silently loses every older bucket. 2.0.0's
+ * 0000_baseline.sql suspended that rule exactly once, under a dated note, and it
+ * is back in force — which is why this parser gates the files rather than
+ * trusting them.
  */
 export function continuousAggregateDrops(sql: string): string[] {
   return statements(sql).filter((statement) =>
@@ -352,21 +356,19 @@ export const TIMESCALEDB_DOCKERFILES = [
  * compresses and a policy with no segmentby compresses into the wrong shape.
  * Neither half is any use alone, which is exactly how the original defect
  * survived: minute_rollups had the policy, hourly and daily had neither.
+ *
+ * THREE tiers since 2.0.0, not six. The two generations 1.x had to keep
+ * refreshed forever — the unweighted originals and the dur_ms-weighted second
+ * family — were collapsed into one that is right from birth.
  */
-const ROLLUP_TIERS = [
-  "minute_rollups",
-  "hourly_rollups",
-  "daily_rollups",
-  "weighted_minute_rollups",
-  "weighted_hourly_rollups",
-  "weighted_daily_rollups",
-] as const;
-const REQUIRED_SEGMENTBY = "metric, inverter_id";
-/** The numbered structural files that declare the rollups' storage layout. */
-const ROLLUP_STRUCTURAL_SQL = [
-  "packages/db/src/timescale/0002_weighted_rollups.sql",
-  "packages/db/src/timescale/0003_rollup_compression_segmentby.sql",
-];
+const ROLLUP_TIERS = ["minute_rollups", "hourly_rollups", "daily_rollups"] as const;
+/**
+ * The int2 identity, mirroring metrics_raw. Was `metric, inverter_id`;
+ * `inverter_id` held the PROFILE id, so it was never a device key at all.
+ */
+const REQUIRED_SEGMENTBY = "device_id, metric_id";
+/** The numbered structural file that declares the rollups' storage layout. */
+const ROLLUP_STRUCTURAL_SQL = ["packages/db/src/timescale/0000_baseline.sql"];
 
 /** #110: the compression policy, and the remove+add discipline that makes it stick. */
 function policyProblems(io: CheckIO): string[] {
@@ -425,21 +427,22 @@ function settingsProblems(where: string, settings: Record<string, string>): stri
  * (daily_rollups' 3-day `start_offset`), or a refresh reaches for a chunk
  * retention has dropped.
  */
-/** Is this tier decaying on purpose rather than holding the record? */
-function isFrozen(tier: string): boolean {
-  return (FROZEN_TIERS as readonly string[]).includes(tier);
+/** Is raw deliberately allowed to reach back further than this tier? */
+function rawMayOutlive(tier: string): boolean {
+  return (RAW_MAY_OUTLIVE_TIERS as readonly string[]).includes(tier);
 }
 
 /**
  * Rollup tiers raw must not outlive.
  *
- * Frozen tiers are exempt: they are decaying on purpose, and raw outliving them
- * is the point of the change rather than a coverage hole.
+ * The declared ones are exempt: raw outliving them is a decision, and the backup
+ * default derives from the live policies rather than from this list.
  */
 function coverageProblems(days: Record<string, number>, raw: number): string[] {
   return Object.entries(days)
     .filter(
-      ([target, retention]) => target !== "metrics_raw" && !isFrozen(target) && retention < raw,
+      ([target, retention]) =>
+        target !== "metrics_raw" && !rawMayOutlive(target) && retention < raw,
     )
     .map(
       ([target, retention]) =>
@@ -494,29 +497,16 @@ function segmentbyProblems(tier: string, declared: string | undefined): string[]
 }
 
 /**
- * Whether the tier is materialized on the schedule its role requires: live tiers
- * refreshed, frozen tiers explicitly un-refreshed.
+ * Every tier must be refreshed. There is one generation now, so an aggregate
+ * nothing refreshes is an aggregate nothing can read — 1.x could leave the
+ * minute pair frozen because a second family still answered those buckets.
  */
-function refreshStateProblems(tier: string, policySql: string, refreshed: string[]): string[] {
-  if (!isFrozen(tier)) {
-    return refreshed.includes(tier)
-      ? []
-      : [
-          `policies.sql arms no refresh policy for ${tier}; an aggregate nothing refreshes is an aggregate nothing can read (#116).`,
-        ];
-  }
-  const problems: string[] = [];
-  if (refreshed.includes(tier)) {
-    problems.push(
-      `policies.sql arms a refresh policy for ${tier}, which is frozen — refreshing it again re-materializes a tier raw already answers, and re-imposes its retention as the ceiling on raw's.`,
-    );
-  }
-  if (!frozenPolicies(policySql).includes(tier)) {
-    problems.push(
-      `policies.sql never removes ${tier}'s refresh policy; omitting the add only freezes a FRESH install, and leaves every existing deployment refreshing.`,
-    );
-  }
-  return problems;
+function refreshStateProblems(tier: string, refreshed: string[]): string[] {
+  return refreshed.includes(tier)
+    ? []
+    : [
+        `policies.sql arms no refresh policy for ${tier}; with one rollup generation an aggregate nothing refreshes is an aggregate nothing can read.`,
+      ];
 }
 
 function rollupProblems(io: CheckIO): string[] {
@@ -536,7 +526,7 @@ function rollupProblems(io: CheckIO): string[] {
       : [
           `policies.sql declares no compression policy for ${tier}, so it can never compress (#134).`,
         ]),
-    ...refreshStateProblems(tier, policySql, refreshed),
+    ...refreshStateProblems(tier, refreshed),
   ]);
 
   return [
@@ -565,55 +555,6 @@ function imageProblems(io: CheckIO): string[] {
           `${surface} uses database image '${ref}', expected '${REQUIRED_DB_IMAGE}' — one image, or the toolkit exists on only one side.`,
       );
   });
-}
-
-/** Whatever the six surfaces pull has to be something we actually publish. */
-function publishProblems(io: CheckIO): string[] {
-  const workflow = io.read(IMAGE_BUILD_WORKFLOW);
-  const repository = REQUIRED_DB_IMAGE.split(":")[0];
-  const problems: string[] = [];
-  if (repository !== undefined && !workflow.includes(repository)) {
-    problems.push(
-      `${IMAGE_BUILD_WORKFLOW} does not build '${repository}', which all ${DB_IMAGE_SURFACES.length} surfaces pull — a workflow \`services:\` block cannot build an image inline, so an unpublished tag fails every database job.`,
-    );
-  }
-  if (!workflow.includes("docker/timescaledb/Dockerfile")) {
-    problems.push(
-      `${IMAGE_BUILD_WORKFLOW} does not build docker/timescaledb/Dockerfile, so the published image and the checked-in one can diverge.`,
-    );
-  }
-  return problems;
-}
-
-/** The extension pin: full patch, the same in both Dockerfiles, toolkit installed. */
-function pinProblems(io: CheckIO): string[] {
-  const problems: string[] = [];
-  for (const dockerfile of TIMESCALEDB_DOCKERFILES) {
-    const content = io.read(dockerfile);
-    const pin = timescaledbPin(content);
-    if (pin === undefined) {
-      problems.push(`${dockerfile} declares no ARG TIMESCALEDB_VERSION.`);
-    } else if (!/^\d+\.\d+\.\d+$/.test(pin)) {
-      problems.push(
-        `${dockerfile} pins TIMESCALEDB_VERSION='${pin}', which is not a full patch version — the apt pattern then floats to whatever patch is newest, so two builds of this commit can ship different extension binaries. Expected '${REQUIRED_TIMESCALEDB_VERSION}'.`,
-      );
-    } else if (pin !== REQUIRED_TIMESCALEDB_VERSION) {
-      problems.push(
-        `${dockerfile} pins TIMESCALEDB_VERSION='${pin}', expected '${REQUIRED_TIMESCALEDB_VERSION}' — the addon and the dev/CI image must ship the same extension.`,
-      );
-    }
-    if (!content.includes("timescaledb-toolkit-postgresql-")) {
-      problems.push(
-        `${dockerfile} does not install timescaledb-toolkit-postgresql-\${PG_MAJOR}; the baseline schema needs time_weight('LOCF', …) and counter_agg from timescaledb_toolkit.`,
-      );
-    }
-    if (!content.includes("timescaledb-tsl-${TIMESCALEDB_VERSION}.")) {
-      problems.push(
-        `${dockerfile} lost the versioned-.so prune — the deb ships a .so per release since 2.17 (~420 MB), and keeping them all is most of the image.`,
-      );
-    }
-  }
-  return problems;
 }
 
 /** Whatever the six surfaces pull has to be something we actually publish. */
@@ -703,7 +644,7 @@ export function checkStorageTuning(io: CheckIO): number {
     `✓ one database image: ${REQUIRED_DB_IMAGE} on ${DB_IMAGE_SURFACES.length} surfaces, TimescaleDB ${REQUIRED_TIMESCALEDB_VERSION} pinned with the toolkit in both Dockerfiles.`,
   );
   io.log(
-    `✓ rollup compression: ${ROLLUP_TIERS.length} tiers segmented by '${REQUIRED_SEGMENTBY}', each with a compression policy; ${ROLLUP_TIERS.length - FROZEN_TIERS.length} refreshed, ${FROZEN_TIERS.length} frozen.`,
+    `✓ rollup compression: ${ROLLUP_TIERS.length} tiers segmented by '${REQUIRED_SEGMENTBY}', each refreshed and with a compression policy; raw may outlive ${RAW_MAY_OUTLIVE_TIERS.length} of them by declaration.`,
   );
   return 0;
 }
