@@ -47,7 +47,14 @@ export interface JournalEntry {
   tag: string;
 }
 
-function readJournal(): JournalEntry[] {
+/**
+ * The migration journal this build ships.
+ *
+ * @internal Exported for `migrate.test.ts`: the guard below compares the
+ * database against `entries.at(-1)`, so "the entries are ordered oldest first"
+ * is load-bearing rather than incidental.
+ */
+export function readJournal(): JournalEntry[] {
   const journalPath = join(MIGRATIONS_DIR, "meta", "_journal.json");
   const journal = JSON.parse(readFileSync(journalPath, "utf8")) as { entries: JournalEntry[] };
   return journal.entries;
@@ -96,7 +103,11 @@ async function latestJournaledInDb(client: Client): Promise<number> {
  * build ships — starting an older server against a newer schema is the one
  * upgrade direction that can corrupt data silently.
  */
-async function guardDowngrade(client: Client, entries: JournalEntry[]) {
+async function guardDowngrade(
+  client: Client,
+  entries: JournalEntry[],
+  runtime: MigrateRuntime,
+): Promise<void> {
   const dbLatest = await latestJournaledInDb(client);
   const shippedLatest = entries.at(-1)?.when ?? 0;
   if (dbLatest <= shippedLatest) return;
@@ -105,7 +116,7 @@ async function guardDowngrade(client: Client, entries: JournalEntry[]) {
       `(db journal ${new Date(dbLatest).toISOString()} > shipped ${new Date(shippedLatest).toISOString()}). ` +
       `Upgrade SunReye again, or restore the pre-upgrade backup to downgrade.`,
   );
-  process.exit(1);
+  runtime.exit(1);
 }
 
 /**
@@ -324,16 +335,51 @@ export async function applyTimescale(client: Client) {
   await applyTimescalePolicies(client);
 }
 
-export async function runMigrations(databaseUrl: string) {
+/**
+ * Everything `runMigrations` reaches the outside world through.
+ *
+ * Injected — with the production wiring as the default, so callers pass nothing
+ * — because the decisions worth proving are the ORDER of the steps, that the
+ * downgrade guard refuses before anything is applied, and that the connection is
+ * always released. None of those are things Postgres has an opinion about, and
+ * reaching them by stubbing `pg` itself is not available here: `mock.module` is
+ * process-global and permanent, and `packages/db/src/index.ts` pulls `pg` in
+ * transitively for many later files in the serial coverage run.
+ *
+ * The statements themselves are proved against a real database in
+ * `apps/server/db-tests`, which calls {@link runMigrations} with this default.
+ */
+export interface MigrateRuntime {
+  /** A client for `databaseUrl`, not yet connected. */
+  createClient(databaseUrl: string): Client;
+  /** Apply the journaled drizzle migrations through an open client. */
+  applyDrizzle(client: Client, migrationsFolder: string): Promise<void>;
+  /** Abandon the process. Separated so the downgrade refusal is observable. */
+  exit(code: number): never;
+}
+
+/** The real wiring: a `pg.Client`, drizzle's migrator, and `process.exit`. */
+export const productionRuntime: MigrateRuntime = {
+  createClient: (databaseUrl) => new Client({ connectionString: databaseUrl }),
+  applyDrizzle: (client, migrationsFolder) => migrate(drizzle(client), { migrationsFolder }),
+  // A direct reference, not a wrapper: there is no decision to make here, and a
+  // wrapper would be a function nothing can ever call without ending the run.
+  exit: process.exit.bind(process) as (code: number) => never,
+};
+
+export async function runMigrations(
+  databaseUrl: string,
+  runtime: MigrateRuntime = productionRuntime,
+) {
   if (!existsSync(MIGRATIONS_DIR)) throw new Error(`migrations dir not found: ${MIGRATIONS_DIR}`);
   const entries = readJournal();
 
-  const client = new Client({ connectionString: databaseUrl });
+  const client = runtime.createClient(databaseUrl);
   await client.connect();
   try {
-    await guardDowngrade(client, entries);
+    await guardDowngrade(client, entries, runtime);
     await stampBaseline(client, entries);
-    await migrate(drizzle(client), { migrationsFolder: MIGRATIONS_DIR });
+    await runtime.applyDrizzle(client, MIGRATIONS_DIR);
     console.log(`Schema is at ${entries.at(-1)?.tag} (${entries.length} migration(s)).`);
     await applyTimescale(client);
   } finally {
@@ -341,9 +387,22 @@ export async function runMigrations(databaseUrl: string) {
   }
 }
 
-if (import.meta.main) {
-  runMigrations(env.DATABASE_URL).catch((error) => {
+/**
+ * The entry point's body, extracted so the failure path is provable: a migration
+ * that throws must stop the server rather than let it start on a half-migrated
+ * schema.
+ */
+export async function cli(
+  databaseUrl: string = env.DATABASE_URL,
+  runtime: MigrateRuntime = productionRuntime,
+): Promise<number> {
+  try {
+    await runMigrations(databaseUrl, runtime);
+    return 0;
+  } catch (error) {
     console.error("Migration failed — the server will not start:", error);
-    process.exit(1);
-  });
+    return 1;
+  }
 }
+
+if (import.meta.main) process.exit(await cli());

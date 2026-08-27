@@ -7,6 +7,7 @@
  * `storage-tuning.test.ts` reads the real files through these parsers and pins
  * the tuned values.
  */
+import { readFileSync } from "node:fs";
 
 /** A compression (columnstore) policy declaration found in policy SQL. */
 export interface CompressionPolicy {
@@ -649,22 +650,29 @@ export function checkStorageTuning(io: CheckIO): number {
   return 0;
 }
 
-if (import.meta.main) {
-  const { readFileSync } = await import("node:fs");
-  process.exit(
-    checkStorageTuning({
-      // A surface that has gone missing is a finding, not a stack trace: the
-      // checks below all report "declares no …" for empty content, which names
-      // the file the way every other failure does.
-      read: (path) => {
-        try {
-          return readFileSync(path, "utf8");
-        } catch {
-          return "";
-        }
-      },
-      log: (line) => console.log(line),
-      error: (line) => console.error(line),
-    }),
-  );
+/**
+ * The real wiring: the repo's own files, and the two console streams.
+ *
+ * A surface that has gone missing is a finding, not a stack trace: reading it as
+ * empty makes every check report "declares no …", which names the file the way
+ * every other failure does. That fallback is a decision, so it lives here where
+ * a test can reach it rather than inside the entry-point block.
+ */
+export const productionCheckIo: CheckIO = {
+  read: (path) => {
+    try {
+      return readFileSync(path, "utf8");
+    } catch {
+      return "";
+    }
+  },
+  log: (line) => console.log(line),
+  error: (line) => console.error(line),
+};
+
+/** The entry point's body, extracted so the production wiring is provable. */
+export function cli(io: CheckIO = productionCheckIo): number {
+  return checkStorageTuning(io);
 }
+
+if (import.meta.main) process.exit(cli());

@@ -1,10 +1,16 @@
 import { describe, expect, test } from "bun:test";
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
   SIDE_TABLES,
   SNAPSHOT_SQL,
   buildSnapshotSql,
+  cli,
   type Snapshot,
   compareSnapshots,
+  main,
+  readSnapshot,
   rollupKey,
 } from "./db-parity";
 
@@ -309,5 +315,163 @@ describe("buildSnapshotSql", () => {
   test("the weighted views are dropped too — they are the same unbounded shape", () => {
     const sql = buildSnapshotSql({ includeRollups: false });
     expect(sql).not.toContain("weighted_sum / nullif");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The CLI: which file is read, which flags reach the comparison, what exit code
+// a given pair of snapshots earns. This is the layer a CI job actually invokes,
+// so a wrong exit code here is a green build over a broken restore.
+// ---------------------------------------------------------------------------
+
+/** Capture what a body writes to the two console streams, and restore them. */
+function captureConsole(body: () => number): { code: number; out: string[]; err: string[] } {
+  const out: string[] = [];
+  const err: string[] = [];
+  const realLog = console.log;
+  const realError = console.error;
+  console.log = (...args: unknown[]) => void out.push(args.join(" "));
+  console.error = (...args: unknown[]) => void err.push(args.join(" "));
+  try {
+    return { code: body(), out, err };
+  } finally {
+    console.log = realLog;
+    console.error = realError;
+  }
+}
+
+describe("compareRollup: a bucket that was not there before", () => {
+  test("a bucket that appeared out of nowhere after restore is a finding", () => {
+    const before = snapshot();
+    const after = snapshot();
+    after.rollups.minute_rollups = [
+      ...after.rollups.minute_rollups,
+      { bucket: "2026-08-02T00:00:00Z", deviceId: 1, metricId: 7, avg: 9, max: 9, min: 9 },
+    ];
+    const problems = compareSnapshots(before, after, { expectRawLoss: false });
+    expect(problems).toContain(
+      "minute_rollups: bucket appeared out of nowhere after restore: 2026-08-02T00:00:00Z|1|7",
+    );
+  });
+});
+
+describe("readSnapshot", () => {
+  test("parses a snapshot written as JSON", () => {
+    const dir = mkdtempSync(join(tmpdir(), "db-parity-read-"));
+    const path = join(dir, "snap.json");
+    const snap = snapshot();
+    writeFileSync(path, JSON.stringify(snap));
+    expect(readSnapshot(path)).toEqual(snap);
+  });
+
+  test("a snapshot file that is not there throws rather than reading as empty", () => {
+    expect(() => readSnapshot(join(tmpdir(), "db-parity-absent-snapshot.json"))).toThrow();
+  });
+});
+
+describe("main", () => {
+  /** Write a before/after pair to disk and return their paths. */
+  function pair(before: Snapshot, after: Snapshot): [string, string] {
+    const dir = mkdtempSync(join(tmpdir(), "db-parity-main-"));
+    const beforePath = join(dir, "before.json");
+    const afterPath = join(dir, "after.json");
+    writeFileSync(beforePath, JSON.stringify(before));
+    writeFileSync(afterPath, JSON.stringify(after));
+    return [beforePath, afterPath];
+  }
+
+  test("two identical snapshots are parity, exit 0", () => {
+    const [b, a] = pair(snapshot(), snapshot());
+    const { code, out, err } = captureConsole(() => main([b, a]));
+    expect(code).toBe(0);
+    expect(out).toEqual(["restore parity: identical"]);
+    expect(err).toEqual([]);
+  });
+
+  test("a mismatch exits 1 and names every problem on stderr", () => {
+    const after = snapshot({ rawRows: 12 });
+    after.tables.tariffs = 1;
+    const [b, a] = pair(snapshot(), after);
+    const { code, out, err } = captureConsole(() => main([b, a]));
+    expect(code).toBe(1);
+    expect(out).toEqual([]);
+    expect(err[0]).toBe("restore parity: 2 mismatch(es)");
+    expect(err.join("\n")).toContain("tariffs: 2 rows before, 1 after");
+    expect(err.join("\n")).toContain("metrics_raw: 700000 raw rows before, 12 after");
+    // Every problem is listed, not just counted.
+    expect(err).toHaveLength(3);
+  });
+
+  test("no arguments at all is a usage error, exit 2 — never a silent pass", () => {
+    const { code, err } = captureConsole(() => main([]));
+    expect(code).toBe(2);
+    expect(err.join("\n")).toContain("usage: db-parity.ts");
+  });
+
+  test("one path without the other is a usage error, not a comparison", () => {
+    const [b] = pair(snapshot(), snapshot());
+    const { code, err } = captureConsole(() => main([b]));
+    expect(code).toBe(2);
+    expect(err.join("\n")).toContain("usage: db-parity.ts");
+  });
+
+  test("flags alone, with no positional paths, is still a usage error", () => {
+    const { code } = captureConsole(() => main(["--expect-raw-loss", "--require-data"]));
+    expect(code).toBe(2);
+  });
+
+  test("--expect-raw-loss turns a vanished raw window from a failure into the requirement", () => {
+    const [b, a] = pair(snapshot(), snapshot({ rawRows: 0 }));
+    expect(captureConsole(() => main([b, a])).code).toBe(1);
+    expect(captureConsole(() => main([b, a, "--expect-raw-loss"])).code).toBe(0);
+  });
+
+  test("--expect-raw-loss fails when the raw window SURVIVED — the exclusion broke", () => {
+    const [b, a] = pair(snapshot(), snapshot());
+    const { code, err } = captureConsole(() => main([b, a, "--expect-raw-loss"]));
+    expect(code).toBe(1);
+    expect(err.join("\n")).toContain("expected the raw window to be empty after restore");
+  });
+
+  test("--require-data refuses a comparison of two empty databases", () => {
+    const [b, a] = pair(EMPTY, EMPTY);
+    // Without the flag two empty snapshots are trivially identical.
+    expect(captureConsole(() => main([b, a])).code).toBe(0);
+    const { code, err } = captureConsole(() => main([b, a, "--require-data"]));
+    expect(code).toBe(1);
+    expect(err.join("\n")).not.toBe("");
+  });
+
+  test("--across-migration allows MORE compressed chunks but never fewer", () => {
+    const [b, more] = pair(snapshot(), snapshot({ compressedChunks: 9 }));
+    expect(captureConsole(() => main([b, more])).code).toBe(1);
+    expect(captureConsole(() => main([b, more, "--across-migration"])).code).toBe(0);
+
+    const [b2, fewer] = pair(snapshot(), snapshot({ compressedChunks: 2 }));
+    const { code, err } = captureConsole(() => main([b2, fewer, "--across-migration"]));
+    expect(code).toBe(1);
+    expect(err.join("\n")).toContain("compressed chunks: 6 before, 2 after");
+  });
+
+  test("flags may precede the paths — position does not decide which file is which", () => {
+    const [b, a] = pair(snapshot(), snapshot({ rawRows: 0 }));
+    expect(captureConsole(() => main(["--expect-raw-loss", b, a])).code).toBe(0);
+    // Reversed, the "before" is the empty one and raw loss is not satisfied.
+    expect(captureConsole(() => main(["--expect-raw-loss", a, b])).code).toBe(1);
+  });
+});
+
+describe("cli", () => {
+  test("--print-sql prints the snapshot query and exits 0, running no comparison", () => {
+    const { code, out } = captureConsole(() => cli(["--print-sql"]));
+    expect(code).toBe(0);
+    expect(out).toHaveLength(1);
+    expect(out[0]).toBe(SNAPSHOT_SQL);
+  });
+
+  test("without --print-sql the arguments go to the comparison", () => {
+    const { code, err } = captureConsole(() => cli([]));
+    expect(code).toBe(2);
+    expect(err.join("\n")).toContain("usage: db-parity.ts");
   });
 });

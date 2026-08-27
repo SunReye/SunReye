@@ -59,6 +59,13 @@
       ]
     },
     {
+      "file": "packages/db/src/migrate.ts",
+      "exports": [
+        "productionRuntime",
+        "cli"
+      ]
+    },
+    {
       "file": "apps/server/tsdown.config.ts",
       "exports": [
         "*"

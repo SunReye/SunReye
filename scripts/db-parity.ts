@@ -369,7 +369,18 @@ export function main(argv: readonly string[]): number {
   return 1;
 }
 
-if (import.meta.main) {
-  if (process.argv[2] === "--print-sql") console.log(SNAPSHOT_SQL);
-  else process.exit(main(process.argv.slice(2)));
+/**
+ * The entry point's whole body, extracted so it is reachable from a test: the
+ * `--print-sql` escape hatch (how `db-restore.yml` gets the query it runs on
+ * both sides) is a routing decision, and routing that only exists inside an
+ * `import.meta.main` block is routing nothing can prove.
+ */
+export function cli(argv: readonly string[]): number {
+  if (argv[0] === "--print-sql") {
+    console.log(SNAPSHOT_SQL);
+    return 0;
+  }
+  return main(argv);
 }
+
+if (import.meta.main) process.exit(cli(process.argv.slice(2)));
