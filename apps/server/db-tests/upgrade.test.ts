@@ -46,7 +46,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { SQL } from "bun";
 import { runMigrations } from "@SunReye/db/migrate";
 import { type CounterReading, perDayEnergy } from "@SunReye/db/counter-energy";
-import { runBackfill, verifyMigration } from "@SunReye/db/backfill";
+import { runBackfill, verifyMigration } from "@SunReye/db/backfill-run";
 import {
   dropLegacyStatements,
   readCatalog,

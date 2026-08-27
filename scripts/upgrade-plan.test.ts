@@ -260,15 +260,43 @@ describe("renamePreservedProblems", () => {
 });
 
 describe("report", () => {
-  test("no problems is exit 0", () => {
-    expect(report([])).toBe(0);
+  /**
+   * `report` PRINTS the problems, which is its job and not something to suppress
+   * in production — but a test suite that dumps 100 fake problem lines into its
+   * own output trains the reader to skim past exactly the place real failures
+   * appear. So the lines are captured and asserted on instead.
+   *
+   * Restored in a `finally`: a stubbed `console.error` left behind by a failing
+   * assertion would silence every test that ran afterwards.
+   */
+  function captureReport(problems: readonly string[]): { code: number; printed: string[] } {
+    const printed: string[] = [];
+    const real = console.error;
+    console.error = (...args: unknown[]) => void printed.push(args.join(" "));
+    try {
+      return { code: report(problems), printed };
+    } finally {
+      console.error = real;
+    }
+  }
+
+  test("no problems is exit 0, and nothing is printed", () => {
+    expect(captureReport([])).toEqual({ code: 0, printed: [] });
   });
 
   test("any problem is exit 1 — a rehearsal that found something must not pass", () => {
-    expect(report(["something is wrong"])).toBe(1);
+    const { code, printed } = captureReport(["something is wrong"]);
+    expect(code).toBe(1);
+    expect(printed.join("\n")).toContain("something is wrong");
   });
 
-  test("a flood of problems still exits 1 and does not throw while truncating", () => {
-    expect(report(Array.from({ length: 100 }, (_, i) => `problem ${i}`))).toBe(1);
+  test("a flood is TRUNCATED at 40, and says how many it did not print", () => {
+    // Truncation matters: the drop phase can produce one problem per metric-day,
+    // and a screen of them buries the first — which is the one that explains the
+    // rest.
+    const { code, printed } = captureReport(Array.from({ length: 100 }, (_, i) => `problem ${i}`));
+    expect(code).toBe(1);
+    expect(printed.filter((line) => line.includes("problem "))).toHaveLength(40);
+    expect(printed.join("\n")).toContain("60 more");
   });
 });

@@ -265,7 +265,8 @@ function logBackfillResult(result: BackfillOutcome, elapsedMs: number): void {
 export async function backfill(o: Options): Promise<string[]> {
   const url = urlFor(o, o.database);
   assertUpgradeTarget(url);
-  const { chunkLine, runBackfill } = await import("../packages/db/src/backfill");
+  const { chunkLine } = await import("../packages/db/src/backfill");
+  const { runBackfill } = await import("../packages/db/src/backfill-run");
   const db = new SQL(url, { max: 1, idleTimeout: 0 });
   try {
     const { client, deviceId, configKeys, cadence } = await backfillInputs(o, db);
@@ -299,7 +300,7 @@ export async function backfill(o: Options): Promise<string[]> {
 export async function verify(o: Options, truth: GroundTruth): Promise<string[]> {
   const url = urlFor(o, o.database);
   assertUpgradeTarget(url);
-  const { verifyMigration } = await import("../packages/db/src/backfill");
+  const { verifyMigration } = await import("../packages/db/src/backfill-run");
   const db = new SQL(url, { max: 1, idleTimeout: 0 });
   try {
     const { client, deviceId, configKeys } = await backfillInputs(o, db);
