@@ -2,7 +2,7 @@
 
 ## [unreleased]
 
-Unreleased work on `dev` since 1.2.0, shipped in `beta.20260827-b9755e2`.
+Unreleased work on `dev` since 1.2.0, shipped in `beta.20260827-1b46c25`.
 
 
 ### Features
@@ -367,6 +367,7 @@ Unreleased work on `dev` since 1.2.0, shipped in `beta.20260827-b9755e2`.
 
 ### Continuous Integration
 
+* **db:** publish the database image carrying timescaledb_toolkit ([43c47a3](https://github.com/SunReye/SunReye/commit/43c47a33cc2148b9f7990eb3f4e8990d4a97bc34))
 * compress only the chunks the upgrade seed has not compressed ([dc37a42](https://github.com/SunReye/SunReye/commit/dc37a4240759b3759f0be488c4db4b73c9ef5126))
 * give the coverage ratchet room for a version skew, not for regressions ([43c0cc8](https://github.com/SunReye/SunReye/commit/43c0cc836d84b3f437cecfa765f777e651f5d70d))
 * make TDD enforceable, not just intended ([782110a](https://github.com/SunReye/SunReye/commit/782110a3952237640027918c43fdc35599596fd6))
