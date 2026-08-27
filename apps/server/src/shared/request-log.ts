@@ -37,6 +37,8 @@ const logLine = (entry: RequestLogEntry): void => {
   httpLog.info("{method} {path} {status} in {durationMs}ms", { ...entry });
 };
 
+const round2 = (ms: number): number => Math.round(ms * 100) / 100;
+
 export function requestLogger(options: RequestLogOptions = {}) {
   const emit = options.emit ?? logLine;
   const skip = options.skip;
@@ -61,7 +63,8 @@ export function requestLogger(options: RequestLogOptions = {}) {
           method: request.method,
           path,
           status: typeof set.status === "number" ? set.status : 200,
-          durationMs: started === undefined ? 0 : performance.now() - started,
+          // Two decimals: a raw performance.now() delta prints seventeen digits.
+          durationMs: started === undefined ? 0 : round2(performance.now() - started),
         });
       })
       .as("global")

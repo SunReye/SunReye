@@ -65,6 +65,15 @@ describe("requestLogger", () => {
     expect(seen.map((e) => e.path)).toEqual(["/ping"]);
   });
 
+  // A raw performance.now() delta reads as "in 7.111102000002575ms" in the log
+  // viewer: noise in every line, for precision nobody can use.
+  it("rounds the duration to something a log line can show", async () => {
+    const { app, seen } = appWith();
+    await get(app, "/ping");
+    const durationMs = seen[0]?.durationMs ?? -1;
+    expect(durationMs).toBe(Math.round(durationMs * 100) / 100);
+  });
+
   it("times each request without borrowing another's clock", async () => {
     const { app, seen } = appWith();
     await Promise.all([get(app, "/ping"), get(app, "/thing", { method: "POST" })]);
