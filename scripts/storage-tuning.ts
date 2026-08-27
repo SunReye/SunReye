@@ -315,14 +315,13 @@ export const REQUIRED_DB_IMAGE = "ghcr.io/sunreye/timescaledb:pg17-ts2.28.2";
  */
 export const REQUIRED_TIMESCALEDB_VERSION = "2.28.2";
 
-/** Every file that names a database image. All six must agree. */
+/** Every file that names a database image. All five must agree. */
 export const DB_IMAGE_SURFACES = [
   "docker-compose.yml",
   "docker-compose.db.yml",
   "docker/docker-compose.yml",
   ".github/workflows/ci.yml",
   ".github/workflows/db-restore.yml",
-  ".github/workflows/db-weighted-rollups.yml",
 ] as const;
 
 /** Compose files that start a postgres with `-c` flags. */
@@ -336,8 +335,9 @@ export const COMPOSE_PG_SURFACES = [
 
 /**
  * The workflow that publishes the image. It exists because a GitHub Actions
- * `services:` block cannot build an image inline, and three workflows consume
- * one — so the tag has to be in a registry before any of them runs.
+ * `services:` block cannot build an image inline, and two workflows plus three
+ * compose files consume one — so the tag has to be in a registry before any of
+ * them runs.
  */
 export const IMAGE_BUILD_WORKFLOW = ".github/workflows/db-image.yml";
 
@@ -539,7 +539,7 @@ function rollupProblems(io: CheckIO): string[] {
   ];
 }
 
-/** Step 2: exactly one database image, named identically on all six surfaces. */
+/** Step 2: exactly one database image, named identically on all five surfaces. */
 function imageProblems(io: CheckIO): string[] {
   return DB_IMAGE_SURFACES.flatMap((surface) => {
     const refs = databaseImages(io.read(surface));
@@ -557,7 +557,7 @@ function imageProblems(io: CheckIO): string[] {
   });
 }
 
-/** Whatever the six surfaces pull has to be something we actually publish. */
+/** Whatever those surfaces pull has to be something we actually publish. */
 function publishProblems(io: CheckIO): string[] {
   const workflow = io.read(IMAGE_BUILD_WORKFLOW);
   const repository = REQUIRED_DB_IMAGE.split(":")[0];

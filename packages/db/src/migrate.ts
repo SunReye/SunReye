@@ -41,7 +41,7 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const MIGRATIONS_DIR = process.env.MIGRATIONS_DIR || join(HERE, "migrations");
 const TIMESCALE_DIR = process.env.TIMESCALE_DIR || join(HERE, "timescale");
 
-interface JournalEntry {
+export interface JournalEntry {
   idx: number;
   when: number;
   tag: string;
@@ -72,6 +72,16 @@ async function tableExists(client: Client, qualified: string): Promise<boolean> 
   return res.rows[0]?.oid != null;
 }
 
+/** Whether a public-schema table carries a column — the identity discriminator. */
+async function columnExists(client: Client, table: string, column: string): Promise<boolean> {
+  const res = await client.query(
+    `SELECT true AS present FROM information_schema.columns
+      WHERE table_schema = 'public' AND table_name = $1 AND column_name = $2`,
+    [table, column],
+  );
+  return res.rows.length > 0;
+}
+
 /** Newest journal timestamp recorded in the database, 0 when unjournaled. */
 async function latestJournaledInDb(client: Client): Promise<number> {
   if (!(await tableExists(client, "drizzle.__drizzle_migrations"))) return 0;
@@ -98,12 +108,56 @@ async function guardDowngrade(client: Client, entries: JournalEntry[]) {
   process.exit(1);
 }
 
-/** A pre-journal (`db:push`-era) database has the app schema but no journal. */
-async function isPushEraDatabase(client: Client): Promise<boolean> {
-  if (await tableExists(client, "drizzle.__drizzle_migrations")) return false;
-  return (
-    (await tableExists(client, "public.metrics_raw")) && (await tableExists(client, "public.user"))
-  );
+/**
+ * Everything the 2.0.0 baseline creates that NO pre-2.0.0 database has.
+ *
+ * The dimension spine is the discriminator, and it has to be, because the two
+ * relations a push-era database was recognised by — `metrics_raw` and `"user"`
+ * — are also exactly what a 1.2.0 production database has. Recognising that
+ * database as push-era stamps the baseline as applied without running it, and
+ * leaves a database with no plants, connections, devices or metric_keys whose
+ * journal reports success. That is silent, permanent data loss on the one
+ * instance whose history cannot be regenerated.
+ */
+const BASELINE_DIMENSIONS = [
+  "public.plants",
+  "public.connections",
+  "public.devices",
+  "public.metric_keys",
+] as const;
+
+/** Which of the shapes `stampBaseline` has to tell apart. */
+type DatabaseShape =
+  /** The journal is there; drizzle's migrator owns it from here. */
+  | "journaled"
+  /** Nothing to adopt — the baseline executes normally. */
+  | "fresh"
+  /** Unjournaled but complete: safe to record the baseline without running it. */
+  | "push-era"
+  /** Unjournaled and INCOMPLETE — a 1.x database, or a half-migrated one. */
+  | "pre-baseline";
+
+/** Qualified names of the {@link BASELINE_DIMENSIONS} this database lacks. */
+async function missingDimensions(client: Client): Promise<string[]> {
+  const missing: string[] = [];
+  for (const table of BASELINE_DIMENSIONS) {
+    if (!(await tableExists(client, table))) missing.push(table);
+  }
+  return missing;
+}
+
+/**
+ * Classify a database before anything is stamped over it.
+ *
+ * "Has the app schema but no journal" is not enough to mean push era: it must
+ * hold the schema THIS build's baseline creates, dimension spine included.
+ */
+async function databaseShape(client: Client): Promise<DatabaseShape> {
+  if (await tableExists(client, "drizzle.__drizzle_migrations")) return "journaled";
+  const hasApp =
+    (await tableExists(client, "public.metrics_raw")) && (await tableExists(client, "public.user"));
+  if (!hasApp) return "fresh";
+  return (await missingDimensions(client)).length === 0 ? "push-era" : "pre-baseline";
 }
 
 /**
@@ -113,9 +167,26 @@ async function isPushEraDatabase(client: Client): Promise<boolean> {
  *
  * Only the baseline entry (journal index 0) is stamped: anything after it is a
  * real change the push-era database may not have, and must execute normally.
+ *
+ * @internal Exported for `migrate.test.ts`, which proves the refusals below
+ * against a fake catalog. Production callers go through {@link runMigrations}.
  */
-async function stampBaseline(client: Client, entries: JournalEntry[]) {
-  if (!(await isPushEraDatabase(client))) return; // fresh or already journaled
+export async function stampBaseline(client: Client, entries: JournalEntry[]) {
+  const shape = await databaseShape(client);
+  if (shape === "pre-baseline") {
+    // Loudly, rather than guessing. Both guesses are bad: stamping loses the
+    // dimension spine silently, and running the baseline over an existing
+    // `"user"` table fails with an error that names none of this. The in-place
+    // upgrade from 1.x is its own migration path, not something a stamp can do.
+    throw new Error(
+      `Refusing to migrate: this database has the SunReye app schema but is missing the ` +
+        `2.0.0 dimension tables (${(await missingDimensions(client)).join(", ")}), and has no ` +
+        `migration journal. It is a pre-2.0.0 (or half-migrated) database — stamping the ` +
+        `baseline here would record success over a database that never got those tables. ` +
+        `Restore a backup and run the documented 1.x → 2.0.0 upgrade.`,
+    );
+  }
+  if (shape !== "push-era") return; // fresh or already journaled
 
   const baseline = entries[0];
   if (!baseline) throw new Error("migration journal is empty");
@@ -167,12 +238,46 @@ async function recordTimescaleFile(client: Client, file: string, content: string
 }
 
 /**
+ * The columns 2.0.0 re-keyed every reading onto. A 1.x `metrics_raw` carries a
+ * text `inverter_id` (which was really the PROFILE id) and a text `metric`
+ * instead, and its rollups are plain averages over those — so their mere
+ * EXISTENCE says nothing about whether this baseline's aggregates were created.
+ */
+const BASELINE_READING_COLUMNS = ["device_id", "metric_id"] as const;
+
+/**
  * Pre-journal databases already ran the bootstrap (as the old timescale.sql):
  * stamp it instead of re-executing when the rollup views exist.
+ *
+ * Same rule as {@link stampBaseline}, one layer down, and reachable on its own
+ * through `setup-timescale.ts`: an existing `minute_rollups` is only this
+ * baseline's `minute_rollups` if the timeseries has this baseline's identity.
+ * Stamped over a 1.x generation, the run records success for continuous
+ * aggregates that were never created — and unlike a missing table, an aggregate
+ * that quietly is not there shows up as a chart that is merely wrong.
+ *
+ * @internal Exported for `migrate.test.ts`; production callers reach it through
+ * {@link applyTimescale}.
  */
-async function stampTimescaleBootstrap(client: Client, bootstrap: string, applied: Set<string>) {
+export async function stampTimescaleBootstrap(
+  client: Client,
+  bootstrap: string,
+  applied: Set<string>,
+) {
   if (applied.size > 0) return;
   if (!(await tableExists(client, "public.minute_rollups"))) return;
+  const missing: string[] = [];
+  for (const column of BASELINE_READING_COLUMNS) {
+    if (!(await columnExists(client, "metrics_raw", column))) missing.push(column);
+  }
+  if (missing.length > 0) {
+    throw new Error(
+      `Refusing to migrate: metrics_raw is missing ${missing.join(", ")}, so the rollups this ` +
+        `database already has are not the ones ${bootstrap} creates (a pre-2.0.0 generation, or ` +
+        `a half-migrated one). Stamping it would record success for continuous aggregates that ` +
+        `do not exist. Restore a backup and run the documented 1.x → 2.0.0 upgrade.`,
+    );
+  }
   await recordTimescaleFile(
     client,
     bootstrap,

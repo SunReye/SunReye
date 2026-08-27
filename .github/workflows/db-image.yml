@@ -4,9 +4,8 @@ name: Docker · database image
 # The ONE database image: ghcr.io/sunreye/timescaledb:pg17-ts<version>.
 #
 # It has to be published rather than built where it is used, because a GitHub
-# Actions `services:` block cannot build an image inline — and three workflows
-# (ci.yml, db-restore.yml, db-weighted-rollups.yml) plus all three compose files
-# consume it. scripts/storage-tuning.ts asserts every one of them names the tag
+# Actions `services:` block cannot build an image inline — and two workflows
+# (ci.yml, db-restore.yml) plus all three compose files consume it. scripts/storage-tuning.ts asserts every one of them names the tag
 # this workflow pushes.
 #
 # The tag is derived from the Dockerfile's own ARG, so the pin lives in exactly
