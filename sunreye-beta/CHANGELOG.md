@@ -2,7 +2,7 @@
 
 ## [unreleased]
 
-Unreleased work on `dev` since 1.2.0, shipped in `beta.20260827-b87b0d1`.
+Unreleased work on `dev` since 1.2.0, shipped in `beta.20260827-b9755e2`.
 
 
 ### Features
@@ -116,6 +116,7 @@ Unreleased work on `dev` since 1.2.0, shipped in `beta.20260827-b87b0d1`.
 
 ### Bug Fixes
 
+* **auth:** trust a request's own origin only when it is same-origin ([ed89a0f](https://github.com/SunReye/SunReye/commit/ed89a0f866c4a65562043412052590a714142860))
 * **server:** declare openapi-types, Elysia 2's last undeclared peer ([f1583e9](https://github.com/SunReye/SunReye/commit/f1583e940f6e05aa7be477a4f747f70d444242db))
 * **server:** wire TypeBox statically so the compiled binary can validate ([34ef44a](https://github.com/SunReye/SunReye/commit/34ef44afb573aaf195122a47441a6f7579c87540))
 * **server:** round the request-log duration to two decimals ([d5a87c3](https://github.com/SunReye/SunReye/commit/d5a87c347e34320c1386359586a80882bc18cb0e))
@@ -237,6 +238,7 @@ Unreleased work on `dev` since 1.2.0, shipped in `beta.20260827-b87b0d1`.
 
 ### Code Refactoring
 
+* **addon:** serve the dashboard from the binary, drop nginx ([02c6da1](https://github.com/SunReye/SunReye/commit/02c6da18a316756e8bcc79ec0d2611b5b47cbfe1))
 * **server:** embed the web build with --asset ([63f8133](https://github.com/SunReye/SunReye/commit/63f81331b406bdd5670b4234f377f5c598e38393))
 * **web:** settings fields explain themselves in a popover ([ed1ebb1](https://github.com/SunReye/SunReye/commit/ed1ebb166115ff9b323276db3654d88668989cc1))
 * **web:** move the plant's own settings off the weather page ([3b405e7](https://github.com/SunReye/SunReye/commit/3b405e7024015c329cc95fcde7efad06a12569a6))
@@ -338,6 +340,8 @@ Unreleased work on `dev` since 1.2.0, shipped in `beta.20260827-b87b0d1`.
 
 ### Tests
 
+* **db:** pin the stale-seed window instead of racing the clock ([1be249a](https://github.com/SunReye/SunReye/commit/1be249a3e346d36d3e34740741f1978e1353717c))
+* **web:** wait for the navigator's stylesheet before measuring it ([25e40d7](https://github.com/SunReye/SunReye/commit/25e40d749c379f65260cca7a07a213117aa9e524))
 * **server:** build the test database once per process ([c5ce219](https://github.com/SunReye/SunReye/commit/c5ce219b9500d49505df1cf08f101e0843a7a1a5))
 * **server:** add a database-backed query test layer ([8755b0d](https://github.com/SunReye/SunReye/commit/8755b0d7f0ffdb19a38e517d8324b3994dd1f538))
 * **ci:** the database workflows assert the frozen minute tier, not the old one ([87fa788](https://github.com/SunReye/SunReye/commit/87fa7881e3d79d1d711dae6507383de74242e94e))
