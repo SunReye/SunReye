@@ -276,6 +276,11 @@ export const SIDE_TABLES = [
   "custom_charts",
   "spot_prices",
   "forecast_correction_cells",
+  // The bucket replay's watermark. Not user data, and losing it costs no
+  // history — but a resumed replay reads it to decide which days are already
+  // written, so a restore that dropped it would replay them AGAIN and leave
+  // `metrics_raw` holding every historical bucket twice.
+  "replay_progress",
   "user",
   "account",
   "session",

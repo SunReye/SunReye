@@ -18,7 +18,8 @@
   "dynamicallyLoaded": [
     "apps/docs/src/styles/theme.css",
     "scripts/db-parity.ts",
-    "scripts/fixture-1-2-0.ts"
+    "scripts/fixture-1-2-0.ts",
+    "scripts/replay-rehearsal.ts"
   ],
   "usedClassMembers": [
     {
@@ -128,6 +129,21 @@
       "file": "scripts/fixture-1-2-0.ts",
       "exports": [
         "*"
+      ]
+    },
+    {
+      "file": "scripts/replay-rehearsal.ts",
+      "exports": [
+        "*"
+      ]
+    },
+    {
+      "file": "packages/db/src/replay-run.ts",
+      "exports": [
+        "readTierWindows",
+        "unregisteredMetrics",
+        "completedChunks",
+        "replayChunk"
       ]
     }
   ],

@@ -20,6 +20,7 @@
 import { describe, expect, test } from "bun:test";
 import { metricsConfigLog, metricsRaw } from "@SunReye/db/schema/metrics";
 import { batteries, connections, devices, metricKeys, plants } from "@SunReye/db/schema/plants";
+import { replayProgress } from "@SunReye/db/schema/replay";
 import { dailyRollups, hourlyRollups, minuteRollups } from "@SunReye/db/schema/rollups";
 import { type ColumnShape, declaredColumns, diffColumns } from "@SunReye/db/schema-parity";
 import { databaseReachable, resetTestDatabase } from "./harness";
@@ -51,6 +52,10 @@ const RELATIONS = [
   { name: "devices", relation: devices },
   { name: "batteries", relation: batteries },
   { name: "metric_keys", relation: metricKeys },
+  // The bucket replay's watermark. Its whole job is to be read back by a
+  // resumed run, and a column this declaration got wrong would surface as a
+  // replay that either redid a day or skipped one.
+  { name: "replay_progress", relation: replayProgress },
 ] as const;
 
 const suite = reachable ? describe : describe.skip;
