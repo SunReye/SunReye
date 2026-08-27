@@ -1570,6 +1570,26 @@ describe("peak-shaving engine", () => {
     expect(status.targetA).toBe(160);
   });
 
+  test("the reported live limit reads a watt register back at the stated voltage", async () => {
+    // `liveA` is the register as it read before this tick's write, and the page
+    // reports every figure in amps. A watt-denominated plant with no voltage
+    // metric has only the plant's stated voltage to divide by — the one place
+    // the readback and the target resolve it from different call sites.
+    const ctx = buildProfileContext(
+      profileWith({
+        "setting.battery.max_charge_current": "",
+        "setting.battery.max_charge_power": CHARGE_KEY,
+        "battery.voltage": undefined,
+      }),
+    );
+    h.set.ctx(ctx);
+    h.set.weather(weather({ battery: { usableKwh: 15, nominalV: 200 } }));
+    h.set.sample({ [PV_KEY]: 18_000, [SOC_KEY]: 50, [CHARGE_KEY]: 10_000 });
+    const status = await createPeakShavingEngine({ ...h.io, ctx }).tick();
+    // The 10000 W the register held, read back at 200 V → 50 A.
+    expect(status.liveA).toBe(50);
+  });
+
   test("the plant's real export cap reaches the live decision, not just the plan", async () => {
     // 8300 W clears the 8000 W decision limit (8400 maxOutput − 400 buffer) but
     // not the 8400 W the plant can physically push out, and the coming peak

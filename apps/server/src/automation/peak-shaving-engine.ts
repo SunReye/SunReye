@@ -1070,7 +1070,9 @@ async function decideTick(
   status.liveA =
     ready.live.liveLimit === null
       ? null
-      : Math.round(limitAmps(ready.limit, ready.live.liveLimit, liveBatteryV(ready.live, ps)));
+      : Math.round(
+          limitAmps(ready.limit, ready.live.liveLimit, liveBatteryV(ready.live, ps, weather)),
+        );
   status.liveSellLimitW = ready.live.sellLimitW;
 
   const forecast = await io.getForecast(weather);
