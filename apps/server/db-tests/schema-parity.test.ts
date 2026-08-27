@@ -3,7 +3,11 @@
  *
  * The continuous aggregates cannot be managed by drizzle (see
  * `packages/db/src/schema/rollups.ts`), so their declarations are a
- * hand-maintained mirror of `packages/db/src/timescale/*.sql`. Nothing else
+ * hand-maintained mirror of `packages/db/src/timescale/0000_baseline.sql`. Since
+ * 2.0.0 two of their columns are `timescaledb_toolkit` PARTIALS
+ * (`timeweightsummary`, `countersummary`) declared as opaque custom types, which
+ * makes this check strictly more valuable: nothing else in the repo would notice
+ * a toolkit upgrade that renamed one. Nothing else
  * checks that mirror. Without this test the typed reads built on it are typed
  * GUESSES: a renamed column in the SQL would leave the declaration describing a
  * relation that no longer exists, and the first query to touch it would fail at
@@ -14,15 +18,15 @@
  * proof that promotion leaves its columns alone.
  */
 import { describe, expect, test } from "bun:test";
-import { metricsRaw } from "@SunReye/db/schema/metrics";
+import { metricsConfigLog, metricsRaw } from "@SunReye/db/schema/metrics";
 import {
-  dailyRollups,
-  hourlyRollups,
-  minuteRollups,
-  weightedDailyRollups,
-  weightedHourlyRollups,
-  weightedMinuteRollups,
-} from "@SunReye/db/schema/rollups";
+  batteries,
+  connections,
+  devices,
+  metricKeys,
+  plants,
+} from "@SunReye/db/schema/plants";
+import { dailyRollups, hourlyRollups, minuteRollups } from "@SunReye/db/schema/rollups";
 import { type ColumnShape, declaredColumns, diffColumns } from "@SunReye/db/schema-parity";
 import { databaseReachable, resetTestDatabase } from "./harness";
 
@@ -40,12 +44,19 @@ if (!reachable) {
  */
 const RELATIONS = [
   { name: "metrics_raw", relation: metricsRaw },
+  { name: "metrics_config_log", relation: metricsConfigLog },
   { name: "minute_rollups", relation: minuteRollups },
   { name: "hourly_rollups", relation: hourlyRollups },
   { name: "daily_rollups", relation: dailyRollups },
-  { name: "weighted_minute_rollups", relation: weightedMinuteRollups },
-  { name: "weighted_hourly_rollups", relation: weightedHourlyRollups },
-  { name: "weighted_daily_rollups", relation: weightedDailyRollups },
+  // The dimensions. Drizzle-managed, so drift is unlikely — but the int2
+  // identity is only as good as the tables it resolves against, and a
+  // hand-written `smallint` that generated as `integer` would silently double
+  // the width of every reading's key.
+  { name: "plants", relation: plants },
+  { name: "connections", relation: connections },
+  { name: "devices", relation: devices },
+  { name: "batteries", relation: batteries },
+  { name: "metric_keys", relation: metricKeys },
 ] as const;
 
 const suite = reachable ? describe : describe.skip;

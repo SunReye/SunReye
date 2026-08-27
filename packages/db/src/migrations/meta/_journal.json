@@ -5,50 +5,8 @@
     {
       "idx": 0,
       "version": "7",
-      "when": 1783846237679,
-      "tag": "0000_brief_cammi",
-      "breakpoints": true
-    },
-    {
-      "idx": 1,
-      "version": "7",
-      "when": 1783956595918,
-      "tag": "0001_magenta_the_initiative",
-      "breakpoints": true
-    },
-    {
-      "idx": 2,
-      "version": "7",
-      "when": 1784963031631,
-      "tag": "0002_melodic_hitman",
-      "breakpoints": true
-    },
-    {
-      "idx": 3,
-      "version": "7",
-      "when": 1785613699681,
-      "tag": "0003_massive_felicia_hardy",
-      "breakpoints": true
-    },
-    {
-      "idx": 4,
-      "version": "7",
-      "when": 1787737771890,
-      "tag": "0004_sloppy_venom",
-      "breakpoints": true
-    },
-    {
-      "idx": 5,
-      "version": "7",
-      "when": 1787738705168,
-      "tag": "0005_absent_justin_hammer",
-      "breakpoints": true
-    },
-    {
-      "idx": 6,
-      "version": "7",
-      "when": 1787777044631,
-      "tag": "0006_fluffy_captain_britain",
+      "when": 1787851083826,
+      "tag": "0000_baseline",
       "breakpoints": true
     }
   ]

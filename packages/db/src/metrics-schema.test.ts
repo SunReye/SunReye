@@ -28,7 +28,7 @@ describe("metrics_config_log", () => {
   });
 
   test("carries one typed, non-null column per field", () => {
-    expect(Object.keys(columns).sort()).toEqual(["inverterId", "metric", "time", "value"]);
+    expect(Object.keys(columns).sort()).toEqual(["deviceId", "metricId", "time", "value"]);
     for (const [name, column] of Object.entries(columns)) {
       expect(column.notNull, `${name} must be NOT NULL`).toBe(true);
     }
@@ -47,9 +47,13 @@ describe("metrics_config_log", () => {
     // `metrics_raw`; that only works if the row identifies the device and metric
     // the same way.
     const raw = getTableColumns(metricsRaw);
-    expect(columns.inverterId.name).toBe(raw.inverterId.name);
-    expect(columns.metric.name).toBe(raw.metric.name);
+    expect(columns.deviceId.name).toBe(raw.deviceId.name);
+    expect(columns.metricId.name).toBe(raw.metricId.name);
     expect(columns.value.columnType).toBe(raw.value.columnType);
+    // Both halves are int2. A widened dimension here would double the width of
+    // the identity on the hot path without any error to notice it by.
+    expect(columns.deviceId.columnType).toBe(raw.deviceId.columnType);
+    expect(columns.metricId.columnType).toBe(raw.metricId.columnType);
   });
 });
 
