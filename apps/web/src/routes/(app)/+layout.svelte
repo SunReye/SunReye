@@ -13,6 +13,8 @@
 	import { display } from '$lib/display.svelte';
 	import { chartPalette } from '$lib/chart-palette.svelte';
 	import { pageHeader } from '$lib/page-header.svelte';
+	import { migration } from '$lib/migration.svelte';
+	import HistoryNoticeBanner from '$lib/components/migration/history-notice-banner.svelte';
 	import { resolveView } from './app-view';
 
 	const { children } = $props();
@@ -71,6 +73,22 @@
 			gate = g;
 			if (g === 'setup-account') goto(resolve('/onboarding'));
 			else if (g === 'setup-profile') goto(resolve('/setup'));
+		});
+	});
+
+	// The 1.2.0 -> 2.0.0 migration gate, AFTER the first-run gates and only for a
+	// signed-in viewer. An instance whose plant and device have not been named holds
+	// Home Assistant discovery until they are, so the form is a diversion rather than
+	// a notice — it is the one screen that has to be finished.
+	//
+	// The status is loaded for every signed-in viewer regardless, because the
+	// app-wide banner below reads it: a viewer who is not an admin cannot fix the
+	// missing history, but they must still be told the figures on screen do not cover
+	// the period they name.
+	$effect(() => {
+		if ($sessionQuery.isPending || !$sessionQuery.data) return;
+		migration.load().then(() => {
+			if (migration.status?.onboardingRequired === true) goto(resolve('/migration'));
 		});
 	});
 
@@ -159,6 +177,12 @@
 					{/if}
 				</div>
 			</header>
+			<!-- The app-wide notice slot. Above `main` and below the header, so it is
+			     part of the shell on every screen: a settings-page-scoped warning that
+			     "these figures cover less than the period they name" is a warning the
+			     one viewer who most needs it — somebody reading a wall display — never
+			     sees. Renders nothing at all when there is nothing to say. -->
+			<HistoryNoticeBanner {isAdmin} />
 			<!-- `overflow-x-clip`, not `auto`: at 412px /automations ran past the
 			     viewport and the whole page could be dragged sideways. A sideways
 			     scrollbar on the page is never the fix — anything genuinely too wide
