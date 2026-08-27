@@ -70,8 +70,6 @@
   "label_inverter": "Wechselrichter",
   "label_string": "String",
   "label_phase": "Phase",
-  "system_backup_load": "Notstromverbraucher",
-  "system_solar_strings": "Solar · {count} Strings",
   "system_grid_phase": "Netz · {count}-phasig",
   "flow_producing": "Erzeugt",
   "flow_idle": "Inaktiv",

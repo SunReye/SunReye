@@ -70,8 +70,6 @@
   "label_inverter": "Onduleur",
   "label_string": "Chaîne",
   "label_phase": "Phase",
-  "system_backup_load": "Charge de secours",
-  "system_solar_strings": "Solaire · {count} chaînes",
   "system_grid_phase": "Réseau · {count} phases",
   "flow_producing": "Production",
   "flow_idle": "Inactif",

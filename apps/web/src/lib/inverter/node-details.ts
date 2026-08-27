@@ -130,7 +130,19 @@ const SPECS: Record<string, NodeSpec> = {
   load: {
     title: () => m.label_load(),
     primary: { role: "load.power", accent: "var(--energy-load)" },
-    rows: ["load.power", "load.energy.today", "load.energy.total"],
+    // `backup.*` trails the house rows rather than forming a node of its own:
+    // the two shapes of backup output land on the same box. A whole-home UPS
+    // meters its islanded output once, as house load, so `load.*` already is
+    // that reading; a vendor that meters it apart maps `backup.*`, and those
+    // rows are dropped for every profile that does not.
+    rows: [
+      "load.power",
+      "load.energy.today",
+      "load.energy.total",
+      "backup.power",
+      "backup.energy.today",
+      "backup.energy.total",
+    ],
     indexed: {
       roles: ["load.phase.power", "load.phase.voltage"],
       label: m.label_phase(),

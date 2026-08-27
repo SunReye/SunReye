@@ -70,8 +70,6 @@
   "label_inverter": "Inverter",
   "label_string": "String",
   "label_phase": "Phase",
-  "system_backup_load": "Backup load",
-  "system_solar_strings": "Solar · {count} strings",
   "system_grid_phase": "Grid · {count}-phase",
   "flow_producing": "Producing",
   "flow_idle": "Idle",

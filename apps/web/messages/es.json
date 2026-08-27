@@ -70,8 +70,6 @@
   "label_inverter": "Inversor",
   "label_string": "Cadena",
   "label_phase": "Fase",
-  "system_backup_load": "Carga de respaldo",
-  "system_solar_strings": "Solar · {count} cadenas",
   "system_grid_phase": "Red · {count} fases",
   "flow_producing": "Produciendo",
   "flow_idle": "Inactivo",

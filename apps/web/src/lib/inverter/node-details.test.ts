@@ -117,6 +117,31 @@ describe("nodeDetail — which readings belong to which node", () => {
     ]);
   });
 
+  test("a separately metered backup output reads on the home node", () => {
+    // Two shapes map to one node. A whole-home UPS — every published Deye —
+    // meters its islanded output once, as house load, so `load.*` already is the
+    // backup reading. A vendor that meters the output apart maps `backup.*`, and
+    // those readings had nowhere to go once /system retired.
+    const metrics = [
+      metric("load.power"),
+      metric("load.energy.today"),
+      metric("backup.power"),
+      metric("backup.energy.today"),
+    ];
+    expect(rowsOf("load", metrics, caps({ backupLoad: true }))).toEqual([
+      "load.energy.today",
+      "backup.power",
+      "backup.energy.today",
+    ]);
+  });
+
+  test("a plant that meters no backup output shows no backup rows", () => {
+    // The roles are unmapped for every profile shipped today, and an unmapped
+    // role renders nothing — the home node is unchanged for all of them.
+    const metrics = [metric("load.power"), metric("load.energy.today")];
+    expect(rowsOf("load", metrics, caps({ backupLoad: true }))).toEqual(["load.energy.today"]);
+  });
+
   test("the generator node carries its own subsystem", () => {
     const metrics = [metric("generator.power"), metric("generator.energy.today")];
     expect(rowsOf("generator", metrics, caps({ generator: true }))).toEqual([
