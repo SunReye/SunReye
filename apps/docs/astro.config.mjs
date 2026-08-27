@@ -109,6 +109,7 @@ export default defineConfig({
             { label: "Controls", slug: "use/controls" },
             { label: "Statistics", slug: "use/statistics" },
             { label: "Settings", slug: "use/settings" },
+            { label: "Export & Import", slug: "use/export-import" },
             { label: "Users & Roles", slug: "use/users" },
           ],
         },

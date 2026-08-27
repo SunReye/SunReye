@@ -2,6 +2,7 @@ import { Elysia, t } from "elysia";
 import { createApiKeyForUser, listApiKeys, revokeApiKey } from "../admin/api-keys";
 import { log } from "../shared/logging";
 import { RESET_DATA_CONFIRM, resetTimeseries } from "../admin/maintenance";
+import { buildExportArchive } from "../admin/archive-download";
 import * as runtime from "../inverter/runtime";
 import { adminGuard } from "./admin-guard";
 
@@ -42,6 +43,35 @@ export const adminRoutes = new Elysia({ name: "admin-routes" })
       return { ok: true, ...result };
     },
   )
+  // TAKE A COPY BEFORE YOU DELETE ONE. The counterpart to `reset-data` above, and
+  // it lives beside it on purpose: "delete every measurement" without "download
+  // everything first" is a button nobody should be asked to press.
+  //
+  // A GET, not a POST, and that is what makes it a download at all: the browser
+  // has to be able to follow it as a navigation so it streams to disk instead of
+  // through a Blob in memory. It is still admin-only (`requireAdmin`), and it
+  // takes NO parameters — there is nothing here for a crafted link to steer.
+  //
+  // The response body is a `Bun.file`, which the runtime streams: a full export
+  // is ~9 M readings and 53 MB measured on the real fixture, and neither this
+  // process nor the browser should hold that. `Content-Length` is real because
+  // the archive is finished before the first byte goes out (a tar header must
+  // declare its member sizes — see packages/db/src/archive-file.ts), which also
+  // means the download shows a progress bar and can be resumed.
+  .get("/api/admin/export", { requireAdmin: true }, async ({ set }) => {
+    const archive = await buildExportArchive();
+    adminLog.info("archive export downloaded: {filename} ({bytes} bytes, {rows} readings)", {
+      filename: archive.filename,
+      bytes: archive.bytes,
+      rows: archive.rows,
+    });
+    set.headers["content-type"] = "application/gzip";
+    set.headers["content-disposition"] = `attachment; filename="${archive.filename}"`;
+    set.headers["content-length"] = String(archive.bytes);
+    // No caching: the next export is a different file with the same route.
+    set.headers["cache-control"] = "no-store";
+    return Bun.file(archive.path);
+  })
   // API-key administration. Admin-only surface for issuing/listing/revoking
   // keys on behalf of any user (see ../api-keys). The generated key is returned
   // exactly once, on create.

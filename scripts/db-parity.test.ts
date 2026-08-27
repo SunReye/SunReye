@@ -9,6 +9,7 @@ import {
   cli,
   type Snapshot,
   compareSnapshots,
+  compareStreamCounts,
   main,
   readSnapshot,
   rollupKey,
@@ -473,5 +474,45 @@ describe("cli", () => {
     const { code, err } = captureConsole(() => cli([]));
     expect(code).toBe(2);
     expect(err.join("\n")).toContain("usage: db-parity.ts");
+  });
+});
+
+describe("compareStreamCounts", () => {
+  test("identical counts are parity", () => {
+    expect(compareStreamCounts({ minute: 100, raw: 20 }, { minute: 100, raw: 20 })).toEqual([]);
+  });
+
+  test("a SHORTFALL is reported with both numbers — that is a row that did not travel", () => {
+    const problems = compareStreamCounts({ minute: 100 }, { minute: 99 });
+    expect(problems).toHaveLength(1);
+    expect(problems[0]).toContain("100");
+    expect(problems[0]).toContain("99");
+  });
+
+  test("a SURPLUS is reported too — an export that duplicates is the worse failure", () => {
+    // A double count does not error anywhere downstream; it just reports a wrong
+    // kWh figure months later. More rows than the source held is never fine.
+    expect(compareStreamCounts({ minute: 100 }, { minute: 101 })[0]).toMatch(/101/);
+  });
+
+  test("a stream the actual side does not carry at all is reported as absent", () => {
+    expect(compareStreamCounts({ minute: 100 }, {})[0]).toMatch(/no minute/i);
+  });
+
+  test("ZERO expected and zero actual is parity, not an absence", () => {
+    // An empty database exports zero rows, and that must compare clean.
+    expect(compareStreamCounts({ minute: 0, raw: 0 }, { minute: 0, raw: 0 })).toEqual([]);
+  });
+
+  test("zero expected but rows present is reported", () => {
+    expect(compareStreamCounts({ daily: 0 }, { daily: 5 })[0]).toMatch(/5/);
+  });
+
+  test("streams only the ACTUAL side names are ignored — expected is the contract", () => {
+    expect(compareStreamCounts({ minute: 1 }, { minute: 1, hourly: 7 })).toEqual([]);
+  });
+
+  test("an empty expectation compares clean over anything", () => {
+    expect(compareStreamCounts({}, { minute: 5 })).toEqual([]);
   });
 });

@@ -218,6 +218,46 @@ function checkFixtureIsMeaningful(before: Snapshot): string[] {
   return problems;
 }
 
+/**
+ * Per-stream row counts: does the archive carry exactly the rows the source held
+ * for the days the export plan assigned to each tier?
+ *
+ * The third comparator in this file, and the one the PORTABLE ARCHIVE needs. The
+ * other two compare a database to a database; an archive is a file, and the only
+ * thing that can be checked about it cheaply at any scale is its own count of
+ * what it carries, against a count taken from the source.
+ *
+ * BOTH DIRECTIONS ARE FINDINGS, and the surplus is the more dangerous one. A
+ * shortfall is a row that did not travel — visible as a hole in a chart. A
+ * surplus means the export claimed a day for two tiers, which is the same energy
+ * counted twice, and a doubled series does not error anywhere: `time_weight`
+ * reports the same mean and `counter_agg` reports a plausible delta. It surfaces
+ * months later as a kWh figure nobody can explain.
+ *
+ * `expected` is the contract: a stream it does not name is not compared, so a
+ * caller can check one tier without enumerating all of them. A stream it names
+ * and `actual` does not carry is an absence rather than a count change, because a
+ * dropped stream and an emptied one are different failures.
+ */
+export function compareStreamCounts(
+  expected: Readonly<Record<string, number>>,
+  actual: Readonly<Record<string, number>>,
+): string[] {
+  const problems: string[] = [];
+  for (const [stream, count] of Object.entries(expected)) {
+    const carried = actual[stream];
+    if (carried === undefined) {
+      problems.push(`${stream}: the archive carries no ${stream} stream at all`);
+    } else if (carried !== count) {
+      problems.push(
+        `${stream}: the source holds ${count} row(s) for the days this tier answers, the ` +
+          `archive carries ${carried}`,
+      );
+    }
+  }
+  return problems;
+}
+
 export function compareSnapshots(
   before: Snapshot,
   after: Snapshot,
