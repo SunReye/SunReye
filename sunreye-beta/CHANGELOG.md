@@ -2,11 +2,16 @@
 
 ## [unreleased]
 
-Unreleased work on `dev` since 1.2.0, shipped in `beta.20260827-22ae4e5`.
+Unreleased work on `dev` since 1.2.0, shipped in `beta.20260827-05370ce`.
 
 
 ### Features
 
+* **server:** compress responses with @elysia/compress ([2a9f59f](https://github.com/SunReye/SunReye/commit/2a9f59f0b9fd13bd35360f9102565113c3fa473e))
+* **server:** restore request correlation lost with @logtape/elysia ([a8bafe9](https://github.com/SunReye/SunReye/commit/a8bafe9c1e6709efbdfba7474a98fa4ce2d85470))
+* **server:** upgrade to Elysia 2 ([d280e20](https://github.com/SunReye/SunReye/commit/d280e20b7f2edef453afeb5175457db69f97fb86))
+* **db:** type the TimescaleDB surface — hyperfunction wrappers, declared aggregates, parity ([4c805fc](https://github.com/SunReye/SunReye/commit/4c805fc87aaa4b6ae1675218a042a7f57787d156))
+* **server:** serve the dashboard from the compiled binary ([b52de5e](https://github.com/SunReye/SunReye/commit/b52de5ec5c578165df9781a901bc071d8f950a80))
 * **web:** the home node carries a separately metered backup output ([d066040](https://github.com/SunReye/SunReye/commit/d06604059fb50f7d5ae16a6b8f14bc080cac6efa))
 * **web:** open each power-flow node onto its own readings, and retire /system ([dd77bcb](https://github.com/SunReye/SunReye/commit/dd77bcbca06e063750b8b40c2597b45f259124af))
 * **web:** the battery's nominal voltage moves to the plant settings ([6714eca](https://github.com/SunReye/SunReye/commit/6714ecabe1717daf203c2bb949798f425c33e52f))
@@ -111,6 +116,11 @@ Unreleased work on `dev` since 1.2.0, shipped in `beta.20260827-22ae4e5`.
 
 ### Bug Fixes
 
+* **server:** declare openapi-types, Elysia 2's last undeclared peer ([f1583e9](https://github.com/SunReye/SunReye/commit/f1583e940f6e05aa7be477a4f747f70d444242db))
+* **server:** wire TypeBox statically so the compiled binary can validate ([34ef44a](https://github.com/SunReye/SunReye/commit/34ef44afb573aaf195122a47441a6f7579c87540))
+* **server:** round the request-log duration to two decimals ([d5a87c3](https://github.com/SunReye/SunReye/commit/d5a87c347e34320c1386359586a80882bc18cb0e))
+* **server:** restore HEAD on GET routes under Elysia 2 ([886ad63](https://github.com/SunReye/SunReye/commit/886ad6304b405b4bc57de06ff36d0230ed1579cd))
+* **server:** the recent-history read no longer 500s on every dashboard load ([5da7c40](https://github.com/SunReye/SunReye/commit/5da7c4067c72ed236c9d1d5c24bff4edc4694af8))
 * **automation:** the live limit readback resolves voltage like the target does ([5470d42](https://github.com/SunReye/SunReye/commit/5470d42f9d3fb81a1981d42858b4e3241cc0e573))
 * **web:** type the node-trigger helper for a pattern, not just a string ([9a83369](https://github.com/SunReye/SunReye/commit/9a83369697efe812bc719236067f6097d7e80d13))
 * **web:** stub the battery-health read in the browser layer ([dcdf2d0](https://github.com/SunReye/SunReye/commit/dcdf2d0568bf69cf3710977abb2882cf8714a0e3))
@@ -227,6 +237,7 @@ Unreleased work on `dev` since 1.2.0, shipped in `beta.20260827-22ae4e5`.
 
 ### Code Refactoring
 
+* **server:** embed the web build with --asset ([63f8133](https://github.com/SunReye/SunReye/commit/63f81331b406bdd5670b4234f377f5c598e38393))
 * **web:** settings fields explain themselves in a popover ([ed1ebb1](https://github.com/SunReye/SunReye/commit/ed1ebb166115ff9b323276db3654d88668989cc1))
 * **web:** move the plant's own settings off the weather page ([3b405e7](https://github.com/SunReye/SunReye/commit/3b405e7024015c329cc95fcde7efad06a12569a6))
 * **server:** the history buffer commits through an injected callback ([fd38239](https://github.com/SunReye/SunReye/commit/fd38239ad50a1bd0c4fb45d2b4c588797a5e0a14))
@@ -327,6 +338,8 @@ Unreleased work on `dev` since 1.2.0, shipped in `beta.20260827-22ae4e5`.
 
 ### Tests
 
+* **server:** build the test database once per process ([c5ce219](https://github.com/SunReye/SunReye/commit/c5ce219b9500d49505df1cf08f101e0843a7a1a5))
+* **server:** add a database-backed query test layer ([8755b0d](https://github.com/SunReye/SunReye/commit/8755b0d7f0ffdb19a38e517d8324b3994dd1f538))
 * **ci:** the database workflows assert the frozen minute tier, not the old one ([87fa788](https://github.com/SunReye/SunReye/commit/87fa7881e3d79d1d711dae6507383de74242e94e))
 * **server:** teach the runtime's buffer doubles the dropped-row counter ([6730706](https://github.com/SunReye/SunReye/commit/6730706118ab5d755219dbf2df2658892e416549))
 * **db:** a real-database gate for the weighted rollups ([5a7cec5](https://github.com/SunReye/SunReye/commit/5a7cec51ba8cecca224c4f9e42e0289921a5cf01))
@@ -342,8 +355,14 @@ Unreleased work on `dev` since 1.2.0, shipped in `beta.20260827-22ae4e5`.
 * **web:** hand the base locale back after the format tests ([a57ddd1](https://github.com/SunReye/SunReye/commit/a57ddd1e8e6a8c3a34283982e8d52bf9fc82b9ae))
 
 
+### Build System
+
+* make the single-binary compile a turbo task ([b42839d](https://github.com/SunReye/SunReye/commit/b42839d780e0eeeaa7ffe534e0bdf19d1502c0fe))
+
+
 ### Continuous Integration
 
+* compress only the chunks the upgrade seed has not compressed ([dc37a42](https://github.com/SunReye/SunReye/commit/dc37a4240759b3759f0be488c4db4b73c9ef5126))
 * give the coverage ratchet room for a version skew, not for regressions ([43c0cc8](https://github.com/SunReye/SunReye/commit/43c0cc836d84b3f437cecfa765f777e651f5d70d))
 * make TDD enforceable, not just intended ([782110a](https://github.com/SunReye/SunReye/commit/782110a3952237640027918c43fdc35599596fd6))
 * close the beta channel's four DX gaps ([2dc4add](https://github.com/SunReye/SunReye/commit/2dc4addfc55c5ee0f3953a0430fc99129a2c6d44))
