@@ -87,12 +87,26 @@ jobs:
             docker compose exec -T postgres psql -U postgres -d SunReye -c \
               "CALL refresh_continuous_aggregate('$view', NULL, NULL);"
           done
-          docker compose exec -T postgres psql -U postgres -d SunReye -c \
-            "SELECT compress_chunk(c, if_not_compressed => true)
-               FROM show_chunks('metrics_raw', older_than => INTERVAL '2 hours') c"
-          docker compose exec -T postgres psql -U postgres -d SunReye -c \
-            "SELECT compress_chunk(c, if_not_compressed => true)
-               FROM show_chunks('minute_rollups') c"
+          # Compress only what is not compressed already, rather than calling
+          # `compress_chunk(..., if_not_compressed => true)` over everything.
+          # That flag is not the guard it looks like: it downgrades the newer
+          # "already converted to columnstore" case to a NOTICE but still
+          # ERRORs on "chunk ... is already compressed", and the published
+          # release's own compression policy may have compressed a chunk before
+          # this step runs. Skipping compressed chunks cannot hit either
+          # wording. `show_chunks` is kept because it resolves a continuous
+          # aggregate to its materialized hypertable, which
+          # `chunks.hypertable_name` does not.
+          compress_uncompressed() {
+            docker compose exec -T postgres psql -U postgres -d SunReye -c \
+              "SELECT compress_chunk(c) FROM $1 c
+                WHERE NOT EXISTS (
+                  SELECT 1 FROM timescaledb_information.chunks ch
+                   WHERE format('%I.%I', ch.chunk_schema, ch.chunk_name)::regclass = c
+                     AND ch.is_compressed)"
+          }
+          compress_uncompressed "show_chunks('metrics_raw', older_than => INTERVAL '2 hours')"
+          compress_uncompressed "show_chunks('minute_rollups')"
 
           docker compose exec -T postgres psql -U postgres -d SunReye -tAc "SELECT count(*) FROM metrics_raw" | tee /tmp/rows-before
           [ "$(cat /tmp/rows-before)" -gt 0 ]
