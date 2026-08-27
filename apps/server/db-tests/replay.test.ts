@@ -259,7 +259,7 @@ suite("bucket replay against a real TimescaleDB", () => {
     // THE GROUND TRUTH, read out of the source buckets themselves: what the
     // 1.2.0 aggregate holds is what the replay has to still be able to answer.
     truth = perDayEnergy(await sourceReadings(SERIES.filter((m) => m.isCounter).map((m) => m.key)));
-  });
+  }, 60_000);
 
   afterAll(async () => {
     await pool.end();
@@ -431,7 +431,7 @@ suite("bucket replay against a real TimescaleDB", () => {
         await raw.execute(sql`call refresh_continuous_aggregate(
           ${sql.raw(`'${tier}'`)}, '2026-04-30Z'::timestamptz, '2026-05-06Z'::timestamptz)`);
       }
-    });
+    }, 60_000);
 
     /** Every replayed reading of one counter, as the ground-truth reader sees it. */
     const replayedReadings = async (metric: string): Promise<CounterReading[]> => {
@@ -574,7 +574,7 @@ suite("bucket replay against a real TimescaleDB", () => {
       );
       await raw.execute(sql`call refresh_continuous_aggregate(
         'hourly_rollups', '2026-04-30Z'::timestamptz, '2026-05-06Z'::timestamptz)`);
-    });
+    }, 60_000);
 
     test("an hourly replay writes ONE row per hour, holding the hour's mean for an hour", async () => {
       const row = await raw.execute<{ n: string; value: number; dur_ms: number }>(sql`
