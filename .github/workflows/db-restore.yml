@@ -44,7 +44,7 @@ jobs:
       BACKUP_DIR: /data/backups
     services:
       timescaledb:
-        image: timescale/timescaledb:2.28.2-pg17
+        image: ghcr.io/sunreye/timescaledb:pg17-ts2.28.2
         env:
           POSTGRES_PASSWORD: restore-test
         ports: ["5432:5432"]

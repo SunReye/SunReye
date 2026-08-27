@@ -215,6 +215,26 @@ export function parseComposePgFlags(yaml: string): Record<string, string> {
 }
 
 /**
+ * Database image references a compose file or a workflow `services:` block
+ * names. Only images that ARE a database are returned — a compose file also
+ * names the server image, and a workflow also names actions' own images.
+ */
+export function databaseImages(yaml: string): string[] {
+  const refs: string[] = [];
+  for (const line of yaml.split("\n")) {
+    const match = /^\s*image:\s*(\S+)\s*$/.exec(line);
+    if (!match?.[1]) continue;
+    if (/timescale|postgres/i.test(match[1])) refs.push(match[1]);
+  }
+  return refs;
+}
+
+/** The `ARG TIMESCALEDB_VERSION=` a Dockerfile's apt patterns interpolate. */
+export function timescaledbPin(dockerfile: string): string | undefined {
+  return /^\s*ARG\s+TIMESCALEDB_VERSION=(\S+)/m.exec(dockerfile)?.[1];
+}
+
+/**
  * The tuned values themselves, asserted as a gate.
  *
  * The parsers above exist so `storage-tuning.test.ts` can pin these, but a unit
@@ -236,8 +256,67 @@ export interface CheckIO {
   error: (line: string) => void;
 }
 
-const ADDON_CONF = "sunreye/rootfs/etc/s6-overlay/s6-rc.d/init-postgres/run";
+export const ADDON_CONF = "sunreye/rootfs/etc/s6-overlay/s6-rc.d/init-postgres/run";
 const POLICY_SQL = "packages/db/src/timescale/policies.sql";
+
+/**
+ * The ONE database image every deployment surface and CI service must name.
+ *
+ * timescale/timescaledb carries no timescaledb_toolkit at any tag, and the -ha
+ * image that does is 1333 MB and moves `data_directory` out from under the
+ * compose volume mounts. This image is built from docker/timescaledb/Dockerfile
+ * — postgres:17-bookworm plus the pinned extension, the toolkit, and the same
+ * versioned-.so prune the addon performs.
+ *
+ * Why a gate: the new baseline schema needs `time_weight('LOCF', …)` and
+ * `counter_agg` from the toolkit. If dev/CI and the addon ever carry different
+ * extensions, a migration passes on one and fails on the other — the exact class
+ * of bug apps/server/db-tests exists to catch, and it would catch it only on
+ * whichever side CI happens to run.
+ */
+export const REQUIRED_DB_IMAGE = "ghcr.io/sunreye/timescaledb:pg17-ts2.28.2";
+
+/**
+ * The FULL patch version both Dockerfiles pin.
+ *
+ * A `2.28.*` apt pattern is not a pin: a rebuild resolves whatever patch is
+ * newest (2.28.3 today), so the addon and the dev/CI image can ship different
+ * extension binaries from the same commit — and the loader compatibility rule
+ * the prune below rests on is stated in terms of a known version.
+ */
+export const REQUIRED_TIMESCALEDB_VERSION = "2.28.2";
+
+/** Every file that names a database image. All six must agree. */
+export const DB_IMAGE_SURFACES = [
+  "docker-compose.yml",
+  "docker-compose.db.yml",
+  "docker/docker-compose.yml",
+  ".github/workflows/ci.yml",
+  ".github/workflows/db-restore.yml",
+  ".github/workflows/db-weighted-rollups.yml",
+] as const;
+
+/** Compose files that start a postgres with `-c` flags. */
+export const COMPOSE_PG_SURFACES = [
+  "docker-compose.yml",
+  "docker/docker-compose.yml",
+  // The standalone dev database. It was exempt from this check, which is
+  // backwards: it is the surface a storage measurement is taken on.
+  "docker-compose.db.yml",
+] as const;
+
+/**
+ * The workflow that publishes the image. It exists because a GitHub Actions
+ * `services:` block cannot build an image inline, and three workflows consume
+ * one — so the tag has to be in a registry before any of them runs.
+ */
+export const IMAGE_BUILD_WORKFLOW = ".github/workflows/db-image.yml";
+
+/** The two Dockerfiles that install the extension from packagecloud. */
+export const TIMESCALEDB_DOCKERFILES = [
+  "sunreye/Dockerfile",
+  "docker/timescaledb/Dockerfile",
+] as const;
 
 /**
  * #134. Rollup rows are materialized grouped by *bucket*, so without a
@@ -445,22 +524,142 @@ function rollupProblems(io: CheckIO): string[] {
   ];
 }
 
+/** Step 2: exactly one database image, named identically on all six surfaces. */
+function imageProblems(io: CheckIO): string[] {
+  return DB_IMAGE_SURFACES.flatMap((surface) => {
+    const refs = databaseImages(io.read(surface));
+    if (refs.length === 0) {
+      return [
+        `${surface} names no database image; every surface must use '${REQUIRED_DB_IMAGE}' — dev/CI and the addon have to carry the same extensions (timescaledb_toolkit) or a migration passes on one and fails on the other.`,
+      ];
+    }
+    return refs
+      .filter((ref) => ref !== REQUIRED_DB_IMAGE)
+      .map(
+        (ref) =>
+          `${surface} uses database image '${ref}', expected '${REQUIRED_DB_IMAGE}' — one image, or the toolkit exists on only one side.`,
+      );
+  });
+}
+
+/** Whatever the six surfaces pull has to be something we actually publish. */
+function publishProblems(io: CheckIO): string[] {
+  const workflow = io.read(IMAGE_BUILD_WORKFLOW);
+  const repository = REQUIRED_DB_IMAGE.split(":")[0];
+  const problems: string[] = [];
+  if (repository !== undefined && !workflow.includes(repository)) {
+    problems.push(
+      `${IMAGE_BUILD_WORKFLOW} does not build '${repository}', which all ${DB_IMAGE_SURFACES.length} surfaces pull — a workflow \`services:\` block cannot build an image inline, so an unpublished tag fails every database job.`,
+    );
+  }
+  if (!workflow.includes("docker/timescaledb/Dockerfile")) {
+    problems.push(
+      `${IMAGE_BUILD_WORKFLOW} does not build docker/timescaledb/Dockerfile, so the published image and the checked-in one can diverge.`,
+    );
+  }
+  return problems;
+}
+
+/** The extension pin: full patch, the same in both Dockerfiles, toolkit installed. */
+function pinProblems(io: CheckIO): string[] {
+  const problems: string[] = [];
+  for (const dockerfile of TIMESCALEDB_DOCKERFILES) {
+    const content = io.read(dockerfile);
+    const pin = timescaledbPin(content);
+    if (pin === undefined) {
+      problems.push(`${dockerfile} declares no ARG TIMESCALEDB_VERSION.`);
+    } else if (!/^\d+\.\d+\.\d+$/.test(pin)) {
+      problems.push(
+        `${dockerfile} pins TIMESCALEDB_VERSION='${pin}', which is not a full patch version — the apt pattern then floats to whatever patch is newest, so two builds of this commit can ship different extension binaries. Expected '${REQUIRED_TIMESCALEDB_VERSION}'.`,
+      );
+    } else if (pin !== REQUIRED_TIMESCALEDB_VERSION) {
+      problems.push(
+        `${dockerfile} pins TIMESCALEDB_VERSION='${pin}', expected '${REQUIRED_TIMESCALEDB_VERSION}' — the addon and the dev/CI image must ship the same extension.`,
+      );
+    }
+    if (!content.includes("timescaledb-toolkit-postgresql-")) {
+      problems.push(
+        `${dockerfile} does not install timescaledb-toolkit-postgresql-\${PG_MAJOR}; the baseline schema needs time_weight('LOCF', …) and counter_agg from timescaledb_toolkit.`,
+      );
+    }
+    if (!content.includes("timescaledb-tsl-${TIMESCALEDB_VERSION}.")) {
+      problems.push(
+        `${dockerfile} lost the versioned-.so prune — the deb ships a .so per release since 2.17 (~420 MB), and keeping them all is most of the image.`,
+      );
+    }
+  }
+  return problems;
+}
+
+/** Whatever the six surfaces pull has to be something we actually publish. */
+function publishProblems(io: CheckIO): string[] {
+  const workflow = io.read(IMAGE_BUILD_WORKFLOW);
+  const repository = REQUIRED_DB_IMAGE.split(":")[0];
+  const problems: string[] = [];
+  if (repository !== undefined && !workflow.includes(repository)) {
+    problems.push(
+      `${IMAGE_BUILD_WORKFLOW} does not build '${repository}', which all ${DB_IMAGE_SURFACES.length} surfaces pull — a workflow \`services:\` block cannot build an image inline, so an unpublished tag fails every database job.`,
+    );
+  }
+  if (!workflow.includes("docker/timescaledb/Dockerfile")) {
+    problems.push(
+      `${IMAGE_BUILD_WORKFLOW} does not build docker/timescaledb/Dockerfile, so the published image and the checked-in one can diverge.`,
+    );
+  }
+  return problems;
+}
+
+/** The extension pin: full patch, the same in both Dockerfiles, toolkit installed. */
+function pinProblems(io: CheckIO): string[] {
+  const problems: string[] = [];
+  for (const dockerfile of TIMESCALEDB_DOCKERFILES) {
+    const content = io.read(dockerfile);
+    const pin = timescaledbPin(content);
+    if (pin === undefined) {
+      problems.push(`${dockerfile} declares no ARG TIMESCALEDB_VERSION.`);
+    } else if (!/^\d+\.\d+\.\d+$/.test(pin)) {
+      problems.push(
+        `${dockerfile} pins TIMESCALEDB_VERSION='${pin}', which is not a full patch version — the apt pattern then floats to whatever patch is newest, so two builds of this commit can ship different extension binaries. Expected '${REQUIRED_TIMESCALEDB_VERSION}'.`,
+      );
+    } else if (pin !== REQUIRED_TIMESCALEDB_VERSION) {
+      problems.push(
+        `${dockerfile} pins TIMESCALEDB_VERSION='${pin}', expected '${REQUIRED_TIMESCALEDB_VERSION}' — the addon and the dev/CI image must ship the same extension.`,
+      );
+    }
+    if (!content.includes("timescaledb-toolkit-postgresql-")) {
+      problems.push(
+        `${dockerfile} does not install timescaledb-toolkit-postgresql-\${PG_MAJOR}; the baseline schema needs time_weight('LOCF', …) and counter_agg from timescaledb_toolkit.`,
+      );
+    }
+    if (!content.includes("timescaledb-tsl-${TIMESCALEDB_VERSION}.")) {
+      problems.push(
+        `${dockerfile} lost the versioned-.so prune — the deb ships a .so per release since 2.17 (~420 MB), and keeping them all is most of the image.`,
+      );
+    }
+  }
+  return problems;
+}
+
 export function checkStorageTuning(io: CheckIO): number {
   const problems = [
     ...policyProblems(io),
     ...rollupProblems(io),
     ...retentionProblems(io),
     ...settingsProblems(ADDON_CONF, parsePgConf(io.read(ADDON_CONF))),
-    ...settingsProblems("docker-compose.yml", parseComposePgFlags(io.read("docker-compose.yml"))),
-    ...settingsProblems(
-      "docker/docker-compose.yml",
-      parseComposePgFlags(io.read("docker/docker-compose.yml")),
+    ...COMPOSE_PG_SURFACES.flatMap((compose) =>
+      settingsProblems(compose, parseComposePgFlags(io.read(compose))),
     ),
+    ...imageProblems(io),
+    ...pinProblems(io),
+    ...publishProblems(io),
   ];
 
   for (const problem of problems) io.error(`✗ ${problem}`);
   if (problems.length > 0) return 1;
   io.log("✓ storage tuning: compress_after 2 hours, checkpoint_timeout 2h, wal_compression zstd.");
+  io.log(
+    `✓ one database image: ${REQUIRED_DB_IMAGE} on ${DB_IMAGE_SURFACES.length} surfaces, TimescaleDB ${REQUIRED_TIMESCALEDB_VERSION} pinned with the toolkit in both Dockerfiles.`,
+  );
   io.log(
     `✓ rollup compression: ${ROLLUP_TIERS.length} tiers segmented by '${REQUIRED_SEGMENTBY}', each with a compression policy; ${ROLLUP_TIERS.length - FROZEN_TIERS.length} refreshed, ${FROZEN_TIERS.length} frozen.`,
   );
@@ -471,7 +670,16 @@ if (import.meta.main) {
   const { readFileSync } = await import("node:fs");
   process.exit(
     checkStorageTuning({
-      read: (path) => readFileSync(path, "utf8"),
+      // A surface that has gone missing is a finding, not a stack trace: the
+      // checks below all report "declares no …" for empty content, which names
+      // the file the way every other failure does.
+      read: (path) => {
+        try {
+          return readFileSync(path, "utf8");
+        } catch {
+          return "";
+        }
+      },
       log: (line) => console.log(line),
       error: (line) => console.error(line),
     }),

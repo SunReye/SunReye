@@ -7,10 +7,12 @@ description: What you need to run SunReye.
 
 - **[bun](https://bun.sh/)** — the JavaScript runtime and package manager the whole
   monorepo uses. Install it first.
-- **PostgreSQL with TimescaleDB** — telemetry is stored in a hypertable with
-  continuous-aggregate rollups. The project ships a Docker Compose file that runs a
-  pinned `timescale/timescaledb:*-pg17` image; you can also point at any existing
-  PostgreSQL + TimescaleDB instance via `DATABASE_URL`.
+- **PostgreSQL with TimescaleDB + timescaledb_toolkit** — telemetry is stored in a
+  hypertable with continuous-aggregate rollups. The project ships a Docker Compose file
+  that runs the pinned `ghcr.io/sunreye/timescaledb:pg17-ts2.28.2` image (PostgreSQL 17,
+  TimescaleDB and the toolkit); you can also point at any existing PostgreSQL +
+  TimescaleDB instance via `DATABASE_URL`, provided the **timescaledb_toolkit**
+  extension is available there — the rollups use its `time_weight` and `counter_agg`.
 - **Docker** (recommended) — used both for the local database and for the
   [full-stack deployment](/deploy/docker/).
 
