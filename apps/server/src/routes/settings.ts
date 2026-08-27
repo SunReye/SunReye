@@ -17,6 +17,8 @@ import { getLoggingConfig, setLoggingConfig } from "../settings/logging-settings
 import { evccSnapshot, rebuildEvcc } from "../evcc/evcc";
 import { getEvccConfig, setEvccConfig } from "../settings/evcc-settings";
 import { getCorrectionView } from "../forecast/forecast-correction-job";
+import { getActiveProfileOrNull } from "../inverter/inverter";
+import { syncProvisioning } from "../inverter/provision-boot";
 import * as runtime from "../inverter/runtime";
 import { getTariff, setTariff } from "../settings/settings";
 import {
@@ -107,6 +109,12 @@ export const settingsRoutes = new Elysia({ name: "settings-routes" })
   .put("/api/settings/inverter", adminWrite, async ({ body, status }) => {
     const saved = await attempt(async () => {
       const config = await setInverterConfig(body);
+      // The endpoint the operator just described IS the `connections` row (and
+      // the device's `unit_id`), so keep the spine in step with the config the
+      // poll loop is about to use. Idempotent and never throws: it EDITS the
+      // existing endpoint rather than adding a second one, which is why moving a
+      // gateway cannot leave the device pointing at the old address.
+      await syncProvisioning(getActiveProfileOrNull());
       await runtime.applyInverterConfig(config);
       return config;
     }, "Invalid config");

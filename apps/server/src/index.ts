@@ -18,6 +18,7 @@ import { deviceIdOf, metricIdOf } from "./shared/identity-sql";
 import { queryRecentBuckets, queryRollup } from "./shared/history";
 import { isPublicDashboard } from "./settings/access-settings";
 import { buildProfileContext, initProfiles } from "./inverter/inverter";
+import { syncProvisioning } from "./inverter/provision-boot";
 import { WriteRejectedError } from "./inverter/control-writer";
 import { log, recentLogs, setupLogging } from "./shared/logging";
 import { requestLogger } from "./shared/request-log";
@@ -149,6 +150,22 @@ const manifest = ctx?.manifest ?? null;
 const ONBOARDING_REQUIRED = { error: "No active inverter profile — onboarding required" } as const;
 // Default inverter id for history reads that don't name one; null until onboarded.
 const activeInverterId = profile?.id ?? null;
+
+// Provision the dimension spine: the plant, and — once a profile is active — its
+// connection and the device every reading is FROM.
+//
+// This is what makes the write path able to store anything. `metrics_raw.device_id`
+// is a NOT NULL foreign key, so the writer resolves a device before inserting and,
+// finding none, drops the batch with one warning per source (see
+// ./inverter/storage-identity.ts). Until this call existed a fresh 2.0.0 install
+// recorded no history whatsoever.
+//
+// Before `runtime.start` below, deliberately: the first poll can land within a
+// second of boot, and a device that appears only after it would have cost that
+// sample. Idempotent, so every later boot adopts the same rows — never a second
+// plant, and never a renumbered device id, which would rebind five years of
+// readings to a different machine. Never throws.
+await syncProvisioning(profile);
 
 /**
  * The two topics whose producers ask "is anyone actually watching" before doing
