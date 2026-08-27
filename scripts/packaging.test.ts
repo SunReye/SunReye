@@ -40,6 +40,17 @@ interface ComposeFile {
 /** A Dockerfile with line continuations folded, so one RUN reads as one line. */
 const folded = async (path: string) => (await read(path)).replaceAll(/\\\r?\n\s*/g, " ");
 
+/**
+ * The same, with comments removed — what docker actually acts on. Needed
+ * wherever a prose mention would otherwise read as an instruction: the addon's
+ * header comment explains that nginx is gone, and says "nginx" doing so.
+ */
+const instructions = async (path: string) =>
+  (await folded(path))
+    .split("\n")
+    .map((line) => line.replace(/(^|\s)#.*$/, ""))
+    .join("\n");
+
 /** The `FROM` line that opens the final stage — the base the image ships on. */
 function runtimeBase(dockerfile: string): string {
   const froms = [...dockerfile.matchAll(/^FROM\s+(\S+)/gm)].map((m) => m[1] as string);
@@ -138,6 +149,107 @@ describe("the addon image", () => {
 
   it("compiles the same argv dispatcher as the server image", async () => {
     expect(await folded(ADDON)).toContain("apps/server/src/main.ts");
+  });
+
+  // This compile runs from the repo root, not from apps/server, so the path
+  // --asset is given differs from the server image's. Getting it wrong is not
+  // a build error once the directory exists: the binary serves the API
+  // perfectly and 404s every dashboard path.
+  it("embeds the dashboard, at a path relative to the repo root", async () => {
+    expect(await folded(ADDON)).toContain("--asset apps/web/build");
+  });
+
+  describe("has no nginx left in it", () => {
+    it("installs and runs no nginx", async () => {
+      expect(await instructions(ADDON)).not.toContain("nginx");
+    });
+
+    it("copies no static build for one to serve", async () => {
+      expect(await instructions(ADDON)).not.toContain("/opt/sunreye/web");
+    });
+
+    const gone = [
+      "sunreye/rootfs/etc/nginx/sunreye.conf",
+      "sunreye/rootfs/etc/nginx/sunreye-locations.conf",
+      "sunreye/rootfs/etc/s6-overlay/s6-rc.d/svc-nginx/run",
+      "sunreye/rootfs/etc/s6-overlay/s6-rc.d/user/contents.d/svc-nginx",
+    ];
+    for (const path of gone) {
+      it(`${path} is gone`, () => {
+        expect(existsSync(at(path))).toBe(false);
+      });
+    }
+  });
+});
+
+describe("the addon's front door", () => {
+  const readText = async (path: string) => await read(path);
+  const SVC_SERVER = "sunreye/rootfs/etc/s6-overlay/s6-rc.d/svc-server/run";
+  const INIT_ENV = "sunreye/rootfs/etc/s6-overlay/s6-rc.d/init-env/run";
+
+  /** The container port the Supervisor proxies ingress to. */
+  const ingressPort = async (): Promise<number> => {
+    const config = Bun.YAML.parse(await read("sunreye/config.yaml")) as {
+      ingress_port: number;
+      ports: Record<string, number | null>;
+    };
+    return config.ingress_port;
+  };
+
+  it("serves ingress and the optional direct port from one listener", async () => {
+    const config = Bun.YAML.parse(await read("sunreye/config.yaml")) as {
+      ingress_port: number;
+      ports: Record<string, number | null>;
+      ports_description: Record<string, string>;
+    };
+    const published = Object.keys(config.ports);
+    expect(published).toEqual([`${config.ingress_port}/tcp`]);
+    // `null` = mapping disabled, so nothing reaches it from the LAN until the
+    // user assigns a host port themselves.
+    expect(config.ports[`${config.ingress_port}/tcp`]).toBeNull();
+    expect(Object.keys(config.ports_description)).toEqual(published);
+  });
+
+  it("binds the port the Supervisor actually connects to", async () => {
+    expect(await readText(SVC_SERVER)).toContain(`export PORT=${await ingressPort()}`);
+  });
+
+  // The whole reason this is asserted: 127.0.0.1 was right while nginx sat on
+  // loopback in front. With the binary as the front door it means the
+  // Supervisor (172.30.32.2) gets connection refused, and the addon shows an
+  // empty ingress panel with nothing in the log.
+  it("binds every interface, not just loopback", async () => {
+    expect(await readText(INIT_ENV)).toContain("set_env HOST 0.0.0.0");
+    expect(await readText(INIT_ENV)).not.toContain("set_env HOST 127.0.0.1");
+  });
+
+  it("watchdogs and healthchecks that same port", async () => {
+    const port = await ingressPort();
+    expect(await read("sunreye/config.yaml")).toContain(`[PORT:${port}]/healthz`);
+    expect(await folded(ADDON)).toContain(`127.0.0.1:${port}/healthz`);
+  });
+
+  it("no longer waits on an nginx service", async () => {
+    for await (const entry of new Bun.Glob("**/dependencies.d/*").scan({
+      cwd: new URL("../sunreye/rootfs/etc/s6-overlay/s6-rc.d", import.meta.url).pathname,
+    })) {
+      expect(entry).not.toContain("nginx");
+    }
+  });
+});
+
+describe("the two images' toolchains", () => {
+  const bunPin = (dockerfile: string): string | undefined =>
+    dockerfile.match(/FROM\s+--platform=\$BUILDPLATFORM\s+(oven\/bun:\S+)\s+AS build/)?.[1];
+
+  // They drifted, and it cost a build: the addon sat on oven/bun:1.3, where
+  // directory embedding does not exist — `--asset <dir>` is read as a second
+  // entry point and the build dies on `ModuleNotFound resolving "..."`. Since
+  // both images now embed the dashboard, both need the same bun.
+  it("pin the same bun, because both compile with --asset", async () => {
+    const server = bunPin(await folded(SERVER));
+    expect(server).toBeString();
+    expect(bunPin(await folded(ADDON))).toBe(server as string);
   });
 });
 

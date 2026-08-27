@@ -3,11 +3,16 @@
 # ─────────────────────────────────────────────────────────────────────────────
 # Home Assistant addon image: the whole SunReye stack in one container.
 #
-#   nginx (ingress port 8099 + optional direct port 8100)
-#     ├── /api, /ws, /openapi, /healthz → server (bun binary, 127.0.0.1:3000)
-#     └── everything else              → static web build, served by nginx
+#   server (bun binary, 0.0.0.0:8099) — dashboard, API, /ws, /healthz
+#     the SvelteKit build is embedded in the binary (--asset), so this is the
+#     front door itself; nginx used to sit in front and is gone
 #   postgres/timescaledb (127.0.0.1:5432, datadir /data/postgres)
 #   migrate (same binary as the server, `sunreye migrate`, gates server start)
+#
+# 8099 serves both doors: the Supervisor proxies ingress to it, and the user
+# may publish it for direct LAN access (disabled by default). One listener is
+# why nginx could go — Elysia builds the /ws handlers inside .listen() and does
+# not expose them, so a second Bun.serve would drop the live socket.
 #
 # Supervised by the HA base image's s6-overlay v3 — see rootfs/etc/s6-overlay.
 # Built per-arch (amd64/aarch64) by .github/workflows/docker-addon.yml with the
@@ -19,12 +24,22 @@
 ARG BUILD_FROM=ghcr.io/home-assistant/amd64-base-debian:bookworm
 
 # ─── Build stage: pinned to the build platform, cross-compiles per TARGETARCH ─
-FROM --platform=$BUILDPLATFORM oven/bun:1.3 AS build
+# bun 1.4, not 1.3: directory embedding via `--asset` landed in 1.4. On 1.3 the
+# flag exists in the help output as `--asset-naming` only, and the build fails
+# with `ModuleNotFound resolving "apps/web/build" (entry point)` — bun takes the
+# directory for a second entry point. Kept equal to apps/server/Dockerfile's
+# pin, asserted in scripts/packaging.test.ts.
+FROM --platform=$BUILDPLATFORM oven/bun:1.4 AS build
 WORKDIR /app
 ENV HUSKY=0 SKIP_ENV_VALIDATION=1 NODE_ENV=production
 
 COPY . .
 RUN --mount=type=cache,target=/root/.bun/install/cache bun install --frozen-lockfile
+
+# The dashboard the binary serves (hash router, no server routes). Must run
+# BEFORE the compile below: --asset reads the directory at build time, and a
+# missing one is a hard build error. Architecture-independent.
+RUN cd apps/web && bun run build:static
 
 ARG TARGETARCH
 RUN case "$TARGETARCH" in \
@@ -38,14 +53,11 @@ RUN case "$TARGETARCH" in \
     # that cost for nothing.
     # --external serialport: see apps/server/Dockerfile — bun's bundler breaks
     # on @serialport/bindings-cpp, and the serial path is never used.
-    # Deliberately NO --asset here: nginx serves the SPA off /opt/sunreye/web
-    # below, so this binary is API-only and src/web/loaded.ts finds nothing
-    # embedded — every asset path 404s and nginx never asks it for one.
-    bun build --compile --minify --external serialport --target="$BUN_TARGET" apps/server/src/main.ts --outfile /out/sunreye
-
-# Static SPA build (hash router, no server routes) — nginx serves the files
-# directly, no Node runtime in the image. Architecture-independent.
-RUN cd apps/web && bun run build:static
+    # --asset embeds the whole build tree; bun keeps only its BASENAME, so it
+    # arrives as build/… inside the binary — see src/web/loaded.ts. The path is
+    # relative to the repo root here, NOT to apps/server as in the server
+    # image: a wrong one still compiles and 404s every dashboard path.
+    bun build --compile --minify --external serialport --target="$BUN_TARGET" --asset apps/web/build apps/server/src/main.ts --outfile /out/sunreye
 
 # ─── Runtime stage: HA debian base (s6-overlay v3 + bashio, glibc) ───────────
 FROM $BUILD_FROM
@@ -60,7 +72,7 @@ ENV PG_MAJOR=${PG_MAJOR}
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates curl gnupg git openssl nginx-light \
+    && apt-get install -y --no-install-recommends ca-certificates curl gnupg git openssl \
     # PGDG for a pinned postgres major; Timescale's packagecloud repo for the extension.
     && install -d /usr/share/postgresql-common/pgdg \
     && curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc \
@@ -99,7 +111,6 @@ RUN apt-get update \
     && ln -s "/usr/lib/postgresql/${PG_MAJOR}/bin/"* /usr/local/bin/
 
 COPY --from=build /out/sunreye /opt/sunreye/sunreye
-COPY --from=build /app/apps/web/build /opt/sunreye/web
 # The compiled migrate binary reads the SQL as plain files (MIGRATIONS_DIR /
 # TIMESCALE_DIR are set by init-env).
 COPY --from=build /app/packages/db/src/migrations /opt/sunreye/db/migrations

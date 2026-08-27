@@ -9,8 +9,10 @@ set_env() { printf '%s' "$2" > "${ENVDIR}/$1"; }
 
 # ── Core ─────────────────────────────────────────────────────────────────────
 set_env NODE_ENV production
-# Loopback only: nginx on the ingress/direct ports is the sole front door.
-set_env HOST 127.0.0.1
+# Every interface: the server IS the front door now. Loopback would leave the
+# Supervisor (172.30.32.2) with connection refused on the ingress port, which
+# shows up as an empty panel and nothing in the log.
+set_env HOST 0.0.0.0
 # Deliberately NOT exported as LOG_LEVEL: bashio interprets a LOG_LEVEL env
 # var as its own logging setting and breaks under `set -u` when it holds the
 # app's string value. svc-server/run maps this back to LOG_LEVEL for the app.
