@@ -856,13 +856,13 @@ export function writeGroundTruth(
   mode: FixtureMode,
   truth: GroundTruth,
   stage: GroundTruthStage = "final",
+  io: FixtureIo = productionIo,
 ): string {
   const path = groundTruthPath(mode, stage);
-  mkdirSync(dirname(path), { recursive: true });
   const { snapshot, ...summaries } = truth;
-  writeFileSync(path, `${JSON.stringify({ provenance: PROVENANCE, ...summaries }, null, 2)}\n`);
+  io.writeFile(path, `${JSON.stringify({ provenance: PROVENANCE, ...summaries }, null, 2)}\n`);
   if (snapshot) {
-    writeFileSync(paritySnapshotPath(mode, stage), `${JSON.stringify(snapshot)}\n`);
+    io.writeFile(paritySnapshotPath(mode, stage), `${JSON.stringify(snapshot)}\n`);
   }
   return path;
 }
@@ -878,6 +878,62 @@ export const sha256 = (text: string) => createHash("sha256").update(text).digest
 // ---------------------------------------------------------------------------
 
 const REPO_ROOT = join(import.meta.dir, "..");
+
+/**
+ * Everything the runtime half reaches the outside world through: Docker, the
+ * fixture's Postgres, git, the clock and the filesystem.
+ *
+ * Injected — with the production wiring as the default, so every caller passes
+ * nothing and the script behaves exactly as before — in the same shape as the
+ * `FloorIo` seam in `scripts/coverage-floor.ts`.
+ *
+ * The split is deliberate: each method below holds ONE command, verbatim, and
+ * nothing else. What a command *is* cannot be proved by a unit test (only by
+ * running the fixture), so it is isolated where a test never has to look at it.
+ * Which command runs *when* — the reset branch, the readiness retry giving up,
+ * a `pg_restore` exit code that must not be reported as success, the trim cutoff
+ * — is a decision, and every one of those is proved against a fake below.
+ */
+/**
+ * One Docker invocation the fixture makes.
+ *
+ * A union rather than eight methods so that EVERY shell command in this script
+ * lives in exactly one function ({@link productionIo.docker}) — the one thing a
+ * unit test can never execute, because `docker rm -f` and `pg_dump` act on the
+ * real fixture container and even a read-only `docker ps` fails wherever Docker
+ * is absent. Which command runs when stays out here, where it is provable.
+ */
+export type DockerCommand =
+  /** `docker ps -a` — the container's state, or "" when it does not exist. */
+  | { kind: "state" }
+  /** `pg_isready` inside the container. */
+  | { kind: "ready" }
+  | { kind: "remove" }
+  | { kind: "create" }
+  | { kind: "start" }
+  /** `pg_dump` to {@link SNAPSHOT_IN_CONTAINER}. */
+  | { kind: "dump" }
+  /** `pg_restore` from {@link SNAPSHOT_IN_CONTAINER}. */
+  | { kind: "restore" }
+  | { kind: "psql"; sql: string };
+
+export interface FixtureIo {
+  /** Run one Docker command; its stdout and exit code. */
+  docker(command: DockerCommand): Promise<{ stdout: string; exitCode: number }>;
+  /** `git show <SCHEMA_TAG>:<path>` — the schema, recovered never transcribed. */
+  gitShow(path: string): Promise<string>;
+  /** A connection pool for `url`. */
+  connect(url: string): SQL;
+  /** A single-connection pool for the `postgres` maintenance database. */
+  connectAdmin(url: string): SQL;
+  sleep(ms: number): Promise<void>;
+  /** The profile JSON this fixture's identity comes from, as text. */
+  readProfile(): Promise<string>;
+  /** Write `content` to `path`, creating the directory. */
+  writeFile(path: string, content: string): void;
+  log(message: string): void;
+  error(message: string): void;
+}
 
 /** The tag the fixture's schema is recovered from. Never a hand-written copy. */
 export const SCHEMA_TAG = "addon-v1.2.0";
@@ -903,9 +959,70 @@ const PROFILE_FILE = "packages/profile-sdk/src/__fixtures__/sample-profile.json"
 /** Where snapshots live INSIDE the container, so no host pg_dump is needed. */
 const SNAPSHOT_IN_CONTAINER = "/var/lib/postgresql/fixture-1-2-0.dump";
 
-const log = (message: string) => console.log(`[fixture] ${message}`);
-
-const gitShow = (path: string) => $`git -C ${REPO_ROOT} show ${SCHEMA_TAG}:${path}`.text();
+/**
+ * The real wiring. Every shell command in the fixture lives here and nowhere
+ * else, exactly as it was written; `--network host` because bridged containers
+ * do not work in this LXC, which is also why the port has to be moved with
+ * `-c port=` instead of `-p`: with host networking there is no port mapping to
+ * hide behind, and the default 5432 is the dev database.
+ */
+export const productionIo: FixtureIo = {
+  async docker(command) {
+    const run = async (shell: PromiseLike<{ stdout: Buffer; exitCode: number | null }>) => {
+      const result = await shell;
+      return { stdout: result.stdout.toString(), exitCode: result.exitCode ?? 0 };
+    };
+    switch (command.kind) {
+      case "state":
+        return run(
+          $`docker ps -a --filter name=^${FIXTURE_CONTAINER}$ --format {{.State}}`.quiet(),
+        );
+      case "ready":
+        return run(
+          $`docker exec ${FIXTURE_CONTAINER} pg_isready -h 127.0.0.1 -p ${FIXTURE_PORT} -U postgres`
+            .quiet()
+            .nothrow(),
+        );
+      case "remove":
+        return run($`docker rm -f ${FIXTURE_CONTAINER}`.quiet());
+      case "create":
+        return run(
+          $`docker run -d --name ${FIXTURE_CONTAINER} --network host \
+      -e POSTGRES_PASSWORD=${FIXTURE_PASSWORD} -e POSTGRES_DB=postgres -e PGPORT=${FIXTURE_PORT} \
+      -e TIMESCALEDB_TELEMETRY=off \
+      ${FIXTURE_IMAGE} \
+      -c port=${FIXTURE_PORT} -c max_wal_size=8GB -c checkpoint_timeout=30min \
+      -c synchronous_commit=off -c timescaledb.telemetry_level=off`.quiet(),
+        );
+      case "start":
+        return run($`docker start ${FIXTURE_CONTAINER}`.quiet());
+      case "dump":
+        return run(
+          $`docker exec ${FIXTURE_CONTAINER} pg_dump -U postgres -p ${FIXTURE_PORT} \
+    -d ${FIXTURE_DB} -Fc -f ${SNAPSHOT_IN_CONTAINER}`,
+        );
+      case "restore":
+        return run(
+          $`docker exec ${FIXTURE_CONTAINER} pg_restore -U postgres -p ${FIXTURE_PORT} -d ${FIXTURE_DB} --no-owner ${SNAPSHOT_IN_CONTAINER}`.nothrow(),
+        );
+      case "psql":
+        return run(
+          $`docker exec ${FIXTURE_CONTAINER} psql -X -q -U postgres -p ${FIXTURE_PORT} -d ${FIXTURE_DB} -c ${command.sql}`.quiet(),
+        );
+    }
+  },
+  gitShow: (path) => $`git -C ${REPO_ROOT} show ${SCHEMA_TAG}:${path}`.text(),
+  connect: (url) => new SQL(url, { max: 1, idleTimeout: 0 }),
+  connectAdmin: (url) => new SQL(url, { max: 1 }),
+  sleep: (ms) => Bun.sleep(ms),
+  readProfile: () => Bun.file(join(REPO_ROOT, PROFILE_FILE)).text(),
+  writeFile: (path, content) => {
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, content);
+  },
+  log: (message) => console.log(`[fixture] ${message}`),
+  error: (message) => console.error(message),
+};
 
 /**
  * Split a SQL file on drizzle's breakpoint marker. Continuous aggregates cannot
@@ -919,23 +1036,35 @@ export function statements(sql: string): string[] {
     .filter((chunk) => chunk.length > 0 && !/^(--[^\n]*\n?)+$/.test(chunk));
 }
 
-async function containerState(): Promise<"absent" | "stopped" | "running"> {
-  const out = (
-    await $`docker ps -a --filter name=^${FIXTURE_CONTAINER}$ --format {{.State}}`.text()
-  ).trim();
+/**
+ * Which of the three states the container is in.
+ *
+ * `docker ps -a` prints nothing at all for a container that does not exist, and
+ * that is the case the reset branch below must not try to remove.
+ *
+ * @internal Exported for `fixture-1-2-0.test.ts`.
+ */
+export async function containerState(
+  io: FixtureIo = productionIo,
+): Promise<"absent" | "stopped" | "running"> {
+  const out = (await io.docker({ kind: "state" })).stdout.trim();
   if (out.length === 0) return "absent";
   return out.startsWith("running") ? "running" : "stopped";
 }
 
-/** Wait for the server to accept connections, or give up loudly. */
-async function waitReady(): Promise<void> {
+/**
+ * Wait for the server to accept connections, or give up loudly.
+ *
+ * A minute of retries is a starting Postgres; sixty seconds of them is a
+ * container that will never come up, and hanging forever on it would look
+ * exactly like a slow fixture build.
+ *
+ * @internal Exported for `fixture-1-2-0.test.ts`.
+ */
+export async function waitReady(io: FixtureIo = productionIo): Promise<void> {
   for (let attempt = 0; attempt < 120; attempt++) {
-    const probe =
-      await $`docker exec ${FIXTURE_CONTAINER} pg_isready -h 127.0.0.1 -p ${FIXTURE_PORT} -U postgres`
-        .quiet()
-        .nothrow();
-    if (probe.exitCode === 0) return;
-    await Bun.sleep(500);
+    if ((await io.docker({ kind: "ready" })).exitCode === 0) return;
+    await io.sleep(500);
   }
   throw new Error(`${FIXTURE_CONTAINER} never became ready on port ${FIXTURE_PORT}`);
 }
@@ -948,47 +1077,51 @@ async function waitReady(): Promise<void> {
  * networking there is no port mapping to hide behind, and the default 5432 is
  * the dev database.
  */
-async function ensureContainer(reset: boolean): Promise<void> {
-  let state = await containerState();
+export async function ensureContainer(reset: boolean, io: FixtureIo = productionIo): Promise<void> {
+  let state = await containerState(io);
   if (reset && state !== "absent") {
-    log(`removing container ${FIXTURE_CONTAINER}`);
-    await $`docker rm -f ${FIXTURE_CONTAINER}`.quiet();
+    io.log(`removing container ${FIXTURE_CONTAINER}`);
+    await io.docker({ kind: "remove" });
     state = "absent";
   }
   if (state === "absent") {
-    log(`starting ${FIXTURE_IMAGE} on port ${FIXTURE_PORT}`);
-    await $`docker run -d --name ${FIXTURE_CONTAINER} --network host \
-      -e POSTGRES_PASSWORD=${FIXTURE_PASSWORD} -e POSTGRES_DB=postgres -e PGPORT=${FIXTURE_PORT} \
-      -e TIMESCALEDB_TELEMETRY=off \
-      ${FIXTURE_IMAGE} \
-      -c port=${FIXTURE_PORT} -c max_wal_size=8GB -c checkpoint_timeout=30min \
-      -c synchronous_commit=off -c timescaledb.telemetry_level=off`.quiet();
+    io.log(`starting ${FIXTURE_IMAGE} on port ${FIXTURE_PORT}`);
+    await io.docker({ kind: "create" });
   } else if (state === "stopped") {
-    log(`starting existing container ${FIXTURE_CONTAINER}`);
-    await $`docker start ${FIXTURE_CONTAINER}`.quiet();
+    io.log(`starting existing container ${FIXTURE_CONTAINER}`);
+    await io.docker({ kind: "start" });
   }
-  await waitReady();
+  await waitReady(io);
 }
 
-/** Recreate the fixture database itself. This is what makes a re-run a reset. */
-async function recreateDatabase(): Promise<void> {
-  const admin = new SQL(adminUrl(), { max: 1 });
+/**
+ * Recreate the fixture database itself. This is what makes a re-run a reset.
+ *
+ * @internal Exported for `fixture-1-2-0.test.ts`: this is the one function that
+ * DROPs, so which database it names is worth proving.
+ */
+export async function recreateDatabase(io: FixtureIo = productionIo): Promise<void> {
+  const admin = io.connectAdmin(adminUrl());
   try {
     await admin.unsafe(`DROP DATABASE IF EXISTS ${FIXTURE_DB} WITH (FORCE)`);
     await admin.unsafe(`CREATE DATABASE ${FIXTURE_DB}`);
   } finally {
     await admin.end();
   }
-  log(`recreated database ${FIXTURE_DB}`);
+  io.log(`recreated database ${FIXTURE_DB}`);
 }
 
-/** Replay the tag's SQL, statement by statement, in the runner's own order. */
-async function applySchema(db: SQL): Promise<void> {
+/**
+ * Replay the tag's SQL, statement by statement, in the runner's own order.
+ *
+ * @internal Exported for `fixture-1-2-0.test.ts`.
+ */
+export async function applySchema(db: SQL, io: FixtureIo = productionIo): Promise<void> {
   for (const file of [...DRIZZLE_FILES, ...TIMESCALE_FILES]) {
-    const sql = await gitShow(file);
+    const sql = await io.gitShow(file);
     const parts = statements(sql);
     for (const statement of parts) await db.unsafe(statement);
-    log(`applied ${SCHEMA_TAG}:${file} (${parts.length} statements)`);
+    io.log(`applied ${SCHEMA_TAG}:${file} (${parts.length} statements)`);
   }
 }
 
@@ -1000,8 +1133,8 @@ async function applySchema(db: SQL): Promise<void> {
  * refusal would take a different branch here than they will in production —
  * which is the one thing this fixture exists to get right.
  */
-async function stampJournals(db: SQL): Promise<void> {
-  const journal = JSON.parse(await gitShow(JOURNAL_FILE)) as {
+export async function stampJournals(db: SQL, io: FixtureIo = productionIo): Promise<void> {
+  const journal = JSON.parse(await io.gitShow(JOURNAL_FILE)) as {
     entries: { idx: number; tag: string; when: number }[];
   };
   await db.unsafe(`CREATE SCHEMA IF NOT EXISTS drizzle`);
@@ -1013,7 +1146,7 @@ async function stampJournals(db: SQL): Promise<void> {
     const file = `packages/db/src/migrations/${entry.tag}.sql`;
     await db.unsafe(
       `INSERT INTO drizzle."__drizzle_migrations" (hash, created_at) VALUES ($1, $2)`,
-      [sha256(await gitShow(file)), entry.when],
+      [sha256(await io.gitShow(file)), entry.when],
     );
   }
   await db.unsafe(
@@ -1023,9 +1156,9 @@ async function stampJournals(db: SQL): Promise<void> {
   const bootstrap = "0000_bootstrap.sql";
   await db.unsafe(
     `INSERT INTO public.timescale_migrations (name, hash) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
-    [bootstrap, sha256(await gitShow(`packages/db/src/timescale/${bootstrap}`))],
+    [bootstrap, sha256(await io.gitShow(`packages/db/src/timescale/${bootstrap}`))],
   );
-  log(`stamped ${journal.entries.length} drizzle migrations and the timescale bootstrap`);
+  io.log(`stamped ${journal.entries.length} drizzle migrations and the timescale bootstrap`);
 }
 
 /**
@@ -1033,7 +1166,12 @@ async function stampJournals(db: SQL): Promise<void> {
  * loses `app_settings` loses the user's tariffs and every configured chart — and
  * `db-parity.ts` digests them, so they must not be empty.
  */
-async function seedSideTables(db: SQL, plan: FixturePlan, profile: unknown): Promise<void> {
+export async function seedSideTables(
+  db: SQL,
+  plan: FixturePlan,
+  profile: unknown,
+  io: FixtureIo = productionIo,
+): Promise<void> {
   await db.unsafe(
     `INSERT INTO "user" (id, name, email, email_verified, role, updated_at)
      VALUES ('fixture-owner', 'Fixture Owner', 'owner@fixture.invalid', true, 'admin', now())`,
@@ -1061,7 +1199,7 @@ async function seedSideTables(db: SQL, plan: FixturePlan, profile: unknown): Pro
     "PV vs battery",
     JSON.stringify({ series: ["dc.pv1.power", "battery.power"], kind: "line" }),
   ]);
-  log(`seeded side tables (1 user, ${settings.length} settings, 1 profile, 1 chart)`);
+  io.log(`seeded side tables (1 user, ${settings.length} settings, 1 profile, 1 chart)`);
 }
 
 /**
@@ -1072,7 +1210,11 @@ async function seedSideTables(db: SQL, plan: FixturePlan, profile: unknown): Pro
  * both are needed because Postgres has `mod` and integer division for bigint and
  * the trigonometric functions for float8, and no overlap.
  */
-async function seedMetrics(db: SQL, plan: FixturePlan): Promise<void> {
+export async function seedMetrics(
+  db: SQL,
+  plan: FixturePlan,
+  io: FixtureIo = productionIo,
+): Promise<void> {
   const start = plan.startsAt.toISOString();
   const end = plan.endsAt.toISOString();
   const began = Date.now();
@@ -1091,7 +1233,7 @@ async function seedMetrics(db: SQL, plan: FixturePlan): Promise<void> {
     );
   }
   const seconds = ((Date.now() - began) / 1000).toFixed(1);
-  log(`seeded ${planRowCount(plan).toLocaleString("en-US")} raw rows in ${seconds}s`);
+  io.log(`seeded ${planRowCount(plan).toLocaleString("en-US")} raw rows in ${seconds}s`);
 }
 
 /**
@@ -1102,7 +1244,11 @@ async function seedMetrics(db: SQL, plan: FixturePlan): Promise<void> {
  * are proves the opposite of what it claims. So a sample of seeded rows is read
  * back and compared to {@link valueAt}. A mismatch fails the build.
  */
-async function verifyModel(db: SQL, plan: FixturePlan): Promise<void> {
+export async function verifyModel(
+  db: SQL,
+  plan: FixturePlan,
+  io: FixtureIo = productionIo,
+): Promise<void> {
   const totalMinutes = plan.spanDays * MINUTES_PER_DAY;
   let checked = 0;
   for (const metric of plan.metrics) {
@@ -1127,7 +1273,7 @@ async function verifyModel(db: SQL, plan: FixturePlan): Promise<void> {
       checked += 1;
     }
   }
-  log(`value model verified: ${checked} sampled rows match valueAt() exactly`);
+  io.log(`value model verified: ${checked} sampled rows match valueAt() exactly`);
 }
 
 /**
@@ -1139,7 +1285,11 @@ async function verifyModel(db: SQL, plan: FixturePlan): Promise<void> {
  * `refresh_continuous_aggregate` over the full window reproduces the state a
  * real instance reached by running continuously for two months.
  */
-async function materialize(db: SQL, plan: FixturePlan): Promise<void> {
+export async function materialize(
+  db: SQL,
+  plan: FixturePlan,
+  io: FixtureIo = productionIo,
+): Promise<void> {
   const from = new Date(plan.startsAt.getTime() - 86_400_000).toISOString();
   const to = new Date(plan.endsAt.getTime() + 86_400_000).toISOString();
   for (const tier of TIERS) {
@@ -1147,7 +1297,7 @@ async function materialize(db: SQL, plan: FixturePlan): Promise<void> {
     await db.unsafe(
       `CALL refresh_continuous_aggregate('${tier}', '${from}'::timestamptz, '${to}'::timestamptz)`,
     );
-    log(`materialized ${tier} in ${((Date.now() - began) / 1000).toFixed(1)}s`);
+    io.log(`materialized ${tier} in ${((Date.now() - began) / 1000).toFixed(1)}s`);
   }
 }
 
@@ -1156,7 +1306,11 @@ async function materialize(db: SQL, plan: FixturePlan): Promise<void> {
  * no compressed chunk as untested for a reason: writing back a compressed chunk
  * is the case most likely to break, and the policies would not have run yet.
  */
-async function compress(db: SQL, plan: FixturePlan): Promise<void> {
+export async function compress(
+  db: SQL,
+  plan: FixturePlan,
+  io: FixtureIo = productionIo,
+): Promise<void> {
   const rawCutoff = new Date(plan.endsAt.getTime() - 86_400_000).toISOString();
   const minuteCutoff = new Date(plan.endsAt.getTime() - 7 * 86_400_000).toISOString();
   for (const [table, cutoff] of [
@@ -1171,10 +1325,10 @@ async function compress(db: SQL, plan: FixturePlan): Promise<void> {
       .catch((error: unknown) => {
         // A tier with no chunk old enough is not a failure — in --fast mode
         // minute_rollups has nothing older than 7 days by construction.
-        log(`compress ${table}: skipped (${(error as Error).message})`);
+        io.log(`compress ${table}: skipped (${(error as Error).message})`);
         return [{ n: 0 }];
       });
-    log(`compressed ${(result as { n: number }[])[0]?.n ?? 0} chunk(s) of ${table}`);
+    io.log(`compressed ${(result as { n: number }[])[0]?.n ?? 0} chunk(s) of ${table}`);
   }
 }
 
@@ -1186,12 +1340,16 @@ async function compress(db: SQL, plan: FixturePlan): Promise<void> {
  * aborts past ~100k tuples, and it is also not what retention does — the
  * migration must face whole missing chunks, not a table with holes.
  */
-async function trimRaw(db: SQL, plan: FixturePlan): Promise<void> {
+export async function trimRaw(
+  db: SQL,
+  plan: FixturePlan,
+  io: FixtureIo = productionIo,
+): Promise<void> {
   const cutoff = new Date(plan.endsAt.getTime() - 7 * 86_400_000).toISOString();
   const dropped = (await db.unsafe(
     `SELECT count(*) AS n FROM drop_chunks('metrics_raw', older_than => '${cutoff}'::timestamptz)`,
   )) as { n: number }[];
-  log(`dropped ${dropped[0]?.n ?? 0} raw chunk(s) older than ${cutoff} (7-day retention)`);
+  io.log(`dropped ${dropped[0]?.n ?? 0} raw chunk(s) older than ${cutoff} (7-day retention)`);
 }
 
 const counterMetrics = (plan: FixturePlan) =>
@@ -1202,7 +1360,7 @@ const counterMetrics = (plan: FixturePlan) =>
  * rather than by a second SQL implementation — one query per counter metric so
  * the readings stream in bounded chunks instead of one 1.1 M-row result.
  */
-async function readEnergy(
+export async function readEnergy(
   db: SQL,
   plan: FixturePlan,
 ): Promise<{ energy: EnergyRow[]; restarts: RestartRow[] }> {
@@ -1225,14 +1383,14 @@ async function readEnergy(
 }
 
 /** Tier windows, the raw window, and the db-parity snapshot. */
-async function readState(db: SQL): Promise<Pick<GroundTruth, "tiers" | "raw" | "snapshot">> {
+export async function readState(db: SQL): Promise<Pick<GroundTruth, "tiers" | "raw" | "snapshot">> {
   const tiers = {} as Record<TierName, TierSummary>;
   for (const tier of TIERS) tiers[tier] = await readTier(db, tier);
   const snapshot = await readParitySnapshot(db);
   return { tiers, raw: await readRawWindow(db), ...(snapshot ? { snapshot } : {}) };
 }
 
-async function readTier(db: SQL, tier: TierName): Promise<TierSummary> {
+export async function readTier(db: SQL, tier: TierName): Promise<TierSummary> {
   const rows = (await db.unsafe(
     `SELECT min(bucket)::text AS "minBucket", max(bucket)::text AS "maxBucket",
             count(*)::bigint AS count,
@@ -1256,7 +1414,7 @@ async function readTier(db: SQL, tier: TierName): Promise<TierSummary> {
   };
 }
 
-async function readRawWindow(db: SQL): Promise<GroundTruth["raw"]> {
+export async function readRawWindow(db: SQL): Promise<GroundTruth["raw"]> {
   const rows = (await db.unsafe(
     `SELECT min(time)::text AS "minTime", max(time)::text AS "maxTime",
             count(*)::bigint AS count FROM metrics_raw`,
@@ -1280,12 +1438,12 @@ async function readRawWindow(db: SQL): Promise<GroundTruth["raw"]> {
 const PARITY_SQL = buildSnapshotSql({ includeRollups: false });
 
 /** One `json_build_object`, unwrapped from whatever column name it lands in. */
-async function readParitySnapshot(db: SQL): Promise<Snapshot | undefined> {
+export async function readParitySnapshot(db: SQL): Promise<Snapshot | undefined> {
   const rows = (await db.unsafe(PARITY_SQL)) as Record<string, unknown>[];
   return Object.values(rows[0] ?? {})[0] as Snapshot | undefined;
 }
 
-async function recordGroundTruth(
+export async function recordGroundTruth(
   db: SQL,
   plan: FixturePlan,
   energy: { energy: EnergyRow[]; restarts: RestartRow[] },
@@ -1307,100 +1465,114 @@ async function recordGroundTruth(
   };
 }
 
-/** A short human summary, so a run reports its own numbers rather than "done". */
-function report(truth: GroundTruth): void {
+/**
+ * A short human summary, so a run reports its own numbers rather than "done".
+ *
+ * The last line is the one that matters: the worst per-day gap between the
+ * counter-aware energy and the naive `max - min`. A fixture where that line is
+ * absent has no reset to trip over, and a migration could keep the naive
+ * arithmetic and still look correct against it.
+ *
+ * @internal Exported for `fixture-1-2-0.test.ts`.
+ */
+export function report(truth: GroundTruth, io: FixtureIo = productionIo): void {
   for (const tier of TIERS) {
     const t = truth.tiers[tier];
-    log(`${tier}: ${t.count.toLocaleString("en-US")} buckets, ${t.minBucket} .. ${t.maxBucket}`);
+    io.log(`${tier}: ${t.count.toLocaleString("en-US")} buckets, ${t.minBucket} .. ${t.maxBucket}`);
   }
-  log(
+  io.log(
     `metrics_raw: ${truth.raw.count.toLocaleString("en-US")} rows, ` +
       `${truth.raw.minTime} .. ${truth.raw.maxTime}`,
   );
-  log(`per-metric per-day energy rows: ${truth.perMetricPerDayEnergy.length}`);
-  log(`counter restarts seeded: ${truth.restarts.length}`);
+  io.log(`per-metric per-day energy rows: ${truth.perMetricPerDayEnergy.length}`);
+  io.log(`counter restarts seeded: ${truth.restarts.length}`);
   const worst = truth.perMetricPerDayEnergy
     .filter((r) => r.resets > 0 && r.energy > 0)
     .sort((a, b) => b.naive / b.energy - a.naive / a.energy)[0];
   if (worst) {
-    log(
+    io.log(
       `worst naive error: ${worst.metric} ${worst.day}: true ${worst.energy.toFixed(3)} kWh vs ` +
         `max-min ${worst.naive.toFixed(3)} kWh (${(worst.naive / worst.energy).toFixed(0)}x)`,
     );
   }
 }
 
-async function loadProfile(): Promise<{ id: string; version: string; metrics: ProfileMetric[] }> {
-  const profile = JSON.parse(await Bun.file(join(REPO_ROOT, PROFILE_FILE)).text());
+export async function loadProfile(
+  io: FixtureIo = productionIo,
+): Promise<{ id: string; version: string; metrics: ProfileMetric[] }> {
+  const profile = JSON.parse(await io.readProfile());
   return profile;
 }
 
-/** The span ends on a whole minute so buckets are not half-open at the top. */
-function spanEnd(): Date {
-  const now = new Date();
-  now.setUTCSeconds(0, 0);
-  return now;
+/**
+ * The span ends on a whole minute so buckets are not half-open at the top.
+ *
+ * @internal Exported for `fixture-1-2-0.test.ts`.
+ */
+export function spanEnd(now: Date = new Date()): Date {
+  const end = new Date(now.getTime());
+  end.setUTCSeconds(0, 0);
+  return end;
 }
 
-async function build(options: CliOptions): Promise<number> {
-  const profile = await loadProfile();
+export async function build(options: CliOptions, io: FixtureIo = productionIo): Promise<number> {
+  const profile = await loadProfile(io);
   const plan = buildPlan({
     mode: options.mode,
     endsAt: options.endsAt ?? spanEnd(),
     profileMetrics: profile.metrics.map((m) => ({ key: m.key, unit: m.unit ?? null })),
     inverterId: profile.id,
   });
-  log(
+  io.log(
     `${plan.mode} mode: ${plan.spanDays} days x ${plan.metrics.length} metrics = ` +
       `${planRowCount(plan).toLocaleString("en-US")} raw rows, inverter_id "${plan.inverterId}"`,
   );
 
-  await ensureContainer(options.reset);
-  await recreateDatabase();
+  await ensureContainer(options.reset, io);
+  await recreateDatabase(io);
   const url = fixtureUrl();
   assertFixtureTarget(url);
-  const db = new SQL(url, { max: 1, idleTimeout: 0 });
+  const db = io.connect(url);
   try {
-    await applySchema(db);
-    await stampJournals(db);
-    await seedSideTables(db, plan, profile);
-    await seedMetrics(db, plan);
-    await verifyModel(db, plan);
-    await materialize(db, plan);
-    await compress(db, plan);
+    await applySchema(db, io);
+    await stampJournals(db, io);
+    await seedSideTables(db, plan, profile, io);
+    await seedMetrics(db, plan, io);
+    await verifyModel(db, plan, io);
+    await materialize(db, plan, io);
+    await compress(db, plan, io);
 
     // Energy is read BEFORE the trim: this is the only moment the full span
     // exists in raw form, and it is the answer the migration must still be able
     // to produce from the rollups afterwards.
     const energy = await readEnergy(db, plan);
     const preTrim = await recordGroundTruth(db, plan, energy);
-    writeGroundTruth(plan.mode, preTrim, "pre-trim");
+    writeGroundTruth(plan.mode, preTrim, "pre-trim", io);
 
-    await trimRaw(db, plan);
+    await trimRaw(db, plan, io);
 
     const final = await recordGroundTruth(db, plan, energy);
-    const path = writeGroundTruth(plan.mode, final);
-    report(final);
-    log(`ground truth: ${path}`);
+    const path = writeGroundTruth(plan.mode, final, "final", io);
+    report(final, io);
+    io.log(`ground truth: ${path}`);
     const problems = compareGroundTruth(final, final, { requireData: true });
     if (problems.length > 0) {
-      for (const problem of problems) console.error(`  - ${problem}`);
-      log("the fixture is not meaningful enough to rehearse against — see above");
+      for (const problem of problems) io.error(`  - ${problem}`);
+      io.log("the fixture is not meaningful enough to rehearse against — see above");
       return 1;
     }
-    log("fixture ready. SYNTHETIC-BUT-SCHEMA-EXACT: see the provenance block in the JSON.");
+    io.log("fixture ready. SYNTHETIC-BUT-SCHEMA-EXACT: see the provenance block in the JSON.");
     return 0;
   } finally {
     await db.end();
   }
 }
 
-async function snapshot(): Promise<number> {
-  await waitReady();
-  log(`dumping ${FIXTURE_DB} to ${SNAPSHOT_IN_CONTAINER} (inside the container)`);
-  await $`docker exec ${FIXTURE_CONTAINER} pg_dump -U postgres -p ${FIXTURE_PORT} \
-    -d ${FIXTURE_DB} -Fc -f ${SNAPSHOT_IN_CONTAINER}`;
-  log("snapshot written. Restore it with --restore; it survives a container restart.");
+export async function snapshot(io: FixtureIo = productionIo): Promise<number> {
+  await waitReady(io);
+  io.log(`dumping ${FIXTURE_DB} to ${SNAPSHOT_IN_CONTAINER} (inside the container)`);
+  await io.docker({ kind: "dump" });
+  io.log("snapshot written. Restore it with --restore; it survives a container restart.");
   return 0;
 }
 
@@ -1409,29 +1581,30 @@ async function snapshot(): Promise<number> {
  * for the same reason `scripts/db-restore.sh` does it: without them compressed
  * chunks and continuous-aggregate catalog rows cannot be written back.
  */
-async function restore(): Promise<number> {
-  await waitReady();
-  await recreateDatabase();
-  const psql = (sql: string) =>
-    $`docker exec ${FIXTURE_CONTAINER} psql -X -q -U postgres -p ${FIXTURE_PORT} -d ${FIXTURE_DB} -c ${sql}`.quiet();
-  await psql("SELECT timescaledb_pre_restore();");
-  const restored =
-    await $`docker exec ${FIXTURE_CONTAINER} pg_restore -U postgres -p ${FIXTURE_PORT} -d ${FIXTURE_DB} --no-owner ${SNAPSHOT_IN_CONTAINER}`.nothrow();
-  await psql("SELECT timescaledb_post_restore();");
-  if (restored.exitCode !== 0) {
-    console.error(`pg_restore exited ${restored.exitCode} — the fixture is NOT trustworthy.`);
-    return restored.exitCode ?? 1;
+export async function restore(io: FixtureIo = productionIo): Promise<number> {
+  await waitReady(io);
+  await recreateDatabase(io);
+  await io.docker({ kind: "psql", sql: "SELECT timescaledb_pre_restore();" });
+  const { exitCode } = await io.docker({ kind: "restore" });
+  await io.docker({ kind: "psql", sql: "SELECT timescaledb_post_restore();" });
+  if (exitCode !== 0) {
+    io.error(`pg_restore exited ${exitCode} — the fixture is NOT trustworthy.`);
+    return exitCode;
   }
-  log(`restored ${FIXTURE_DB} from ${SNAPSHOT_IN_CONTAINER}`);
+  io.log(`restored ${FIXTURE_DB} from ${SNAPSHOT_IN_CONTAINER}`);
   return 0;
 }
 
-async function groundTruthOnly(mode: FixtureMode, endsAt: Date | null): Promise<number> {
-  await waitReady();
-  const profile = await loadProfile();
+export async function groundTruthOnly(
+  mode: FixtureMode,
+  endsAt: Date | null,
+  io: FixtureIo = productionIo,
+): Promise<number> {
+  await waitReady(io);
+  const profile = await loadProfile(io);
   const url = fixtureUrl();
   assertFixtureTarget(url);
-  const db = new SQL(url, { max: 1, idleTimeout: 0 });
+  const db = io.connect(url);
   try {
     const plan = buildPlan({
       mode,
@@ -1443,36 +1616,42 @@ async function groundTruthOnly(mode: FixtureMode, endsAt: Date | null): Promise<
     // faithfully but can only see 7 days of energy. The authoritative energy
     // numbers stay in the file the build wrote.
     const truth = await recordGroundTruth(db, plan, await readEnergy(db, plan));
-    report(truth);
-    log(`ground truth (raw window only): ${writeGroundTruth(mode, truth, "recheck")}`);
+    report(truth, io);
+    io.log(`ground truth (raw window only): ${writeGroundTruth(mode, truth, "recheck", io)}`);
     return 0;
   } finally {
     await db.end();
   }
 }
 
-export async function main(argv: readonly string[]): Promise<number> {
+export async function main(argv: readonly string[], io: FixtureIo = productionIo): Promise<number> {
   const options = parseArgs(argv);
   switch (options.action) {
     case "help":
       console.log(HELP);
       return 0;
     case "snapshot":
-      return snapshot();
+      return snapshot(io);
     case "restore":
-      return restore();
+      return restore(io);
     case "ground-truth":
-      return groundTruthOnly(options.mode, options.endsAt);
+      return groundTruthOnly(options.mode, options.endsAt, io);
     case "build":
-      return build(options);
+      return build(options, io);
   }
 }
 
-if (import.meta.main) {
+/**
+ * The entry point's body, extracted so the failure path is provable: a bad flag
+ * or a refused target must exit 1 with its own message, never a stack trace.
+ */
+export async function cli(argv: readonly string[], io: FixtureIo = productionIo): Promise<number> {
   try {
-    process.exit(await main(process.argv.slice(2)));
+    return await main(argv, io);
   } catch (error) {
-    console.error((error as Error).message);
-    process.exit(1);
+    io.error((error as Error).message);
+    return 1;
   }
 }
+
+if (import.meta.main) process.exit(await cli(process.argv.slice(2)));

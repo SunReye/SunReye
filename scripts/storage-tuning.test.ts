@@ -14,6 +14,8 @@ import {
   retentionDays,
   intervalDays,
   checkStorageTuning,
+  cli,
+  productionCheckIo,
   databaseImages,
   timescaledbPin,
   DB_IMAGE_SURFACES,
@@ -1145,5 +1147,121 @@ describe("the addon sizes its memory knobs", () => {
     });
     expect(code).toBe(1);
     expect(errors.join("\n")).toContain("work_mem");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The two boundaries the gate's own failure modes depend on: a retention
+// interval it cannot read, and the entry point that wires it to the filesystem.
+// ---------------------------------------------------------------------------
+
+describe("retentionProblems: an interval the gate cannot read", () => {
+  /**
+   * The passing policy SQL with ONE thing wrong: a metrics_raw retention
+   * interval the parser cannot read. Built on the good set on purpose — a
+   * hand-written minimal file would trip the compression and refresh checks too,
+   * and then the test would pass for the wrong reason.
+   */
+  const unparseable = [
+    GOOD_FILES["packages/db/src/timescale/policies.sql"],
+    "SELECT remove_retention_policy('metrics_raw', if_exists => TRUE);",
+    "SELECT add_retention_policy('metrics_raw', INTERVAL 'forever', if_not_exists => TRUE);",
+  ].join("\n--> statement-breakpoint\n");
+
+  test("an unparseable metrics_raw interval is reported, never treated as zero days", () => {
+    // The danger is silence: NaN compares false against every threshold, so an
+    // interval the parser cannot read would otherwise pass every check below it.
+    expect(intervalDays("forever")).toBeNaN();
+    const { code, errors } = runGate({ "packages/db/src/timescale/policies.sql": unparseable });
+    expect(code).toBe(1);
+    expect(errors.join("\n")).toContain(
+      "metrics_raw retention interval is unparseable in policies.sql.",
+    );
+  });
+
+  test("the unparseable interval is the ONLY finding — later checks do not run on NaN", () => {
+    // NaN would otherwise slip past the refresh-window and coverage comparisons
+    // silently, reporting nothing at all.
+    const { errors } = runGate({ "packages/db/src/timescale/policies.sql": unparseable });
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toContain("unparseable");
+  });
+
+  test("a readable interval outside the refresh window passes the same surface", () => {
+    const readable = [
+      GOOD_FILES["packages/db/src/timescale/policies.sql"],
+      "SELECT remove_retention_policy('metrics_raw', if_exists => TRUE);",
+      "SELECT add_retention_policy('metrics_raw', INTERVAL '1825 days', if_not_exists => TRUE);",
+    ].join("\n--> statement-breakpoint\n");
+    expect(runGate({ "packages/db/src/timescale/policies.sql": readable })).toEqual({
+      code: 0,
+      errors: [],
+    });
+  });
+
+  test("no metrics_raw retention policy at all is a deliberate shape, not a finding", () => {
+    // Raw kept forever: dump.sh then includes raw in the default backup.
+    const { errors } = runGate({
+      "packages/db/src/timescale/policies.sql":
+        "SELECT add_retention_policy('minute_rollups', INTERVAL '90 days', if_not_exists => TRUE);",
+    });
+    expect(errors.join("\n")).not.toContain("metrics_raw retention");
+  });
+});
+
+describe("productionCheckIo", () => {
+  test("reads a surface that exists off the real filesystem", () => {
+    const content = productionCheckIo.read("packages/db/src/timescale/policies.sql");
+    expect(content).toContain("add_retention_policy");
+  });
+
+  test("a surface that has gone missing reads as empty, so the gate names the file", () => {
+    // A stack trace would tell a reader nothing about which surface vanished;
+    // every check reports "declares no …" for empty content instead.
+    expect(productionCheckIo.read("packages/db/src/timescale/no-such-file.sql")).toBe("");
+  });
+
+  test("log and error reach the two console streams", () => {
+    const out: string[] = [];
+    const err: string[] = [];
+    const realLog = console.log;
+    const realError = console.error;
+    console.log = (...a: unknown[]) => void out.push(a.join(" "));
+    console.error = (...a: unknown[]) => void err.push(a.join(" "));
+    try {
+      productionCheckIo.log("✓ tuned");
+      productionCheckIo.error("✗ drifted");
+    } finally {
+      console.log = realLog;
+      console.error = realError;
+    }
+    expect(out).toEqual(["✓ tuned"]);
+    expect(err).toEqual(["✗ drifted"]);
+  });
+});
+
+describe("cli", () => {
+  test("the repo's own surfaces pass the gate", () => {
+    // The gate guards this repo; if it fails here it fails in CI.
+    const out: string[] = [];
+    const err: string[] = [];
+    const code = cli({
+      read: productionCheckIo.read,
+      log: (l) => out.push(l),
+      error: (l) => err.push(l),
+    });
+    expect(err).toEqual([]);
+    expect(code).toBe(0);
+    expect(out.join("\n")).toContain("storage tuning");
+  });
+
+  test("defaults to the real filesystem when handed no io", () => {
+    const realLog = console.log;
+    console.log = () => {};
+    try {
+      expect(cli()).toBe(0);
+    } finally {
+      console.log = realLog;
+    }
   });
 });

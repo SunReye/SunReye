@@ -21,12 +21,26 @@
  */
 import { describe, expect, test } from "bun:test";
 import type { Client } from "pg";
-import { applyTimescale, stampBaseline, stampTimescaleBootstrap } from "./migrate";
+import {
+  applyTimescale,
+  cli,
+  type MigrateRuntime,
+  productionRuntime,
+  readJournal,
+  runMigrations,
+  stampBaseline,
+  stampTimescaleBootstrap,
+} from "./migrate";
 
 /** The journal as it ships in 2.0.0: one baseline entry. */
 const ENTRIES = [{ idx: 0, when: 1787851083826, tag: "0000_baseline" }];
 
-type FakeClient = Client & { readonly writes: string[]; readonly statements: string[] };
+type FakeClient = Client & {
+  readonly writes: string[];
+  readonly statements: string[];
+  /** Connection lifecycle, so a test can prove the client is always released. */
+  readonly lifecycle: string[];
+};
 
 /** What the fake answers existence probes from. */
 type Catalog = {
@@ -36,10 +50,51 @@ type Catalog = {
   columns: Set<string>;
   /** Names already recorded in `public.timescale_migrations`. */
   timescaleApplied: string[];
+  /**
+   * `max(created_at)` in `drizzle.__drizzle_migrations` — the newest migration
+   * the DATABASE has recorded, which is what the downgrade guard compares the
+   * shipped journal against. `null` is a journal table with no rows.
+   */
+  journalMax: number | null;
 };
 
 /** Statements that write, so a test can assert nothing was stamped. */
 const WRITES = /^\s*(insert|create|alter|drop|update|delete)/i;
+
+/**
+ * The probes the fake recognises, as a table: the fragment that identifies each
+ * one, and the rows it answers with.
+ *
+ * A table rather than an if-chain so each probe's answer is a small function of
+ * its own — the chain grew past the complexity ceiling once the downgrade guard's
+ * `max(created_at)` probe joined it.
+ */
+const PROBES: readonly [
+  fragment: string,
+  answer: (catalog: Catalog, params: unknown[] | undefined) => unknown[],
+][] = [
+  [
+    "SELECT name FROM public.timescale_migrations",
+    (catalog) => catalog.timescaleApplied.map((name) => ({ name })),
+  ],
+  [
+    // bigint, so it comes back as text — which is what makes `Number(null)` vs
+    // `Number(undefined)` load-bearing in `latestJournaledInDb`.
+    "max(created_at)",
+    (catalog) => [{ max: catalog.journalMax === null ? null : String(catalog.journalMax) }],
+  ],
+  [
+    "to_regclass",
+    (catalog, params) => [{ oid: catalog.relations.has(String(params?.[0])) ? "16384" : null }],
+  ],
+  [
+    "information_schema.columns",
+    (catalog, params) =>
+      catalog.columns.has(`${String(params?.[0])}.${String(params?.[1])}`)
+        ? [{ present: true }]
+        : [],
+  ],
+];
 
 /**
  * The rows a probe expects back, or null when this statement is not a probe
@@ -50,17 +105,8 @@ function probeAnswer(
   params: unknown[] | undefined,
   catalog: Catalog,
 ): { rows: unknown[] } | null {
-  if (text.includes("SELECT name FROM public.timescale_migrations")) {
-    return { rows: catalog.timescaleApplied.map((name) => ({ name })) };
-  }
-  if (text.includes("to_regclass")) {
-    return { rows: [{ oid: catalog.relations.has(String(params?.[0])) ? "16384" : null }] };
-  }
-  if (text.includes("information_schema.columns")) {
-    const key = `${String(params?.[0])}.${String(params?.[1])}`;
-    return { rows: catalog.columns.has(key) ? [{ present: true }] : [] };
-  }
-  return null;
+  const probe = PROBES.find(([fragment]) => text.includes(fragment));
+  return probe ? { rows: probe[1](catalog, params) } : null;
 }
 
 /**
@@ -71,19 +117,33 @@ function probeAnswer(
  * both what was decided and what was sent.
  */
 function fakeClient(
-  options: { relations?: string[]; columns?: string[]; timescaleApplied?: string[] } = {},
+  options: {
+    relations?: string[];
+    columns?: string[];
+    timescaleApplied?: string[];
+    journalMax?: number | null;
+  } = {},
 ): FakeClient {
   const catalog: Catalog = {
     relations: new Set(options.relations ?? []),
     columns: new Set(options.columns ?? []),
     timescaleApplied: options.timescaleApplied ?? [],
+    journalMax: options.journalMax ?? null,
   };
   const statements: string[] = [];
   const writes: string[] = [];
+  const lifecycle: string[] = [];
 
   const client = {
     writes,
     statements,
+    lifecycle,
+    async connect() {
+      lifecycle.push("connect");
+    },
+    async end() {
+      lifecycle.push("end");
+    },
     async query(text: string, params?: unknown[]) {
       statements.push(text);
       const probe = probeAnswer(text, params, catalog);
@@ -277,5 +337,273 @@ describe("applyTimescale", () => {
     // syntax error, so the splitter has to drop them.
     expect(client.statements.filter((s) => sqlOnly(s) === "")).toEqual([]);
     expect(client.statements.length).toBeGreaterThan(10);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The runner itself: the journal it ships, the downgrade it refuses, and the
+// order it does things in.
+//
+// `runMigrations` used to build its own `pg.Client`, which put all of this out
+// of reach of a unit test — the only way in would have been `mock.module("pg")`,
+// and that is process-global and permanent, so it would have installed a stub
+// for every later file in a serial coverage run (CONTRIBUTING.md §6). Instead it
+// takes a {@link MigrateRuntime}, defaulting to the production wiring, in the
+// same shape as the `FloorIo` seam in `scripts/coverage-floor.ts`.
+// ---------------------------------------------------------------------------
+
+/** A runtime that hands back one fake client and records the steps taken. */
+function fakeRuntime(
+  client: FakeClient,
+  options: { onExit?: (code: number) => never } = {},
+): MigrateRuntime & { readonly steps: string[]; readonly urls: string[] } {
+  const steps: string[] = [];
+  const urls: string[] = [];
+  return {
+    steps,
+    urls,
+    createClient(databaseUrl: string) {
+      urls.push(databaseUrl);
+      steps.push("createClient");
+      return client;
+    },
+    async applyDrizzle(_client, migrationsFolder) {
+      steps.push(`applyDrizzle:${migrationsFolder}`);
+    },
+    exit(code: number): never {
+      steps.push(`exit:${code}`);
+      if (options.onExit) return options.onExit(code);
+      throw new Error(`process.exit(${code})`);
+    },
+  };
+}
+
+/** Silence the runner's progress logs, keeping what it wrote to each stream. */
+function quietly<T>(
+  body: () => Promise<T>,
+): Promise<{ value?: T; error?: unknown; err: string[] }> {
+  const err: string[] = [];
+  const realLog = console.log;
+  const realError = console.error;
+  console.log = () => {};
+  console.error = (...a: unknown[]) => void err.push(a.join(" "));
+  return body()
+    .then((value) => ({ value, err }))
+    .catch((error) => ({ error, err }))
+    .finally(() => {
+      console.log = realLog;
+      console.error = realError;
+    });
+}
+
+describe("readJournal", () => {
+  test("reads the journal that ships beside this module", () => {
+    const entries = readJournal();
+    expect(entries.length).toBeGreaterThan(0);
+    expect(entries[0]).toMatchObject({ idx: 0, tag: "0000_baseline" });
+  });
+
+  test("every entry carries the timestamp the downgrade guard compares", () => {
+    for (const entry of readJournal()) {
+      expect(Number.isFinite(entry.when)).toBe(true);
+      expect(entry.when).toBeGreaterThan(0);
+    }
+  });
+
+  test("entries are ordered oldest first, so `at(-1)` is really the newest", () => {
+    const whens = readJournal().map((e) => e.when);
+    expect([...whens].sort((a, b) => a - b)).toEqual(whens);
+  });
+});
+
+describe("runMigrations: the downgrade guard", () => {
+  /** A journal timestamp comfortably newer than anything this build ships. */
+  const NEWER = Date.now() + 86_400_000;
+
+  test("refuses a database migrated by a newer release, and applies nothing", async () => {
+    const client = fakeClient({
+      relations: ["drizzle.__drizzle_migrations", ...PUSH_ERA_2_0_0],
+      journalMax: NEWER,
+    });
+    const runtime = fakeRuntime(client);
+    const { error, err } = await quietly(() => runMigrations("postgres:///x", runtime));
+
+    expect(String(error)).toContain("process.exit(1)");
+    expect(runtime.steps).toContain("exit:1");
+    // The refusal must happen before ANY migration is applied: an older server
+    // writing to a newer schema is the direction that corrupts data silently.
+    expect(runtime.steps.filter((s) => s.startsWith("applyDrizzle"))).toEqual([]);
+    expect(client.writes).toEqual([]);
+    expect(err.join("\n")).toContain("Refusing to start");
+    expect(err.join("\n")).toContain("migrated by a newer SunReye release");
+    // The client is released even on the refusal path.
+    expect(client.lifecycle).toEqual(["connect", "end"]);
+  });
+
+  test("a database journaled at EXACTLY the shipped timestamp is not a downgrade", async () => {
+    // The boundary: `<=` passes. An off-by-one here bricks every up-to-date
+    // instance on restart.
+    const shipped = readJournal().at(-1)!.when;
+    const client = fakeClient({
+      relations: ["drizzle.__drizzle_migrations", ...PUSH_ERA_2_0_0],
+      journalMax: shipped,
+    });
+    const runtime = fakeRuntime(client);
+    const { error } = await quietly(() => runMigrations("postgres:///x", runtime));
+
+    expect(error).toBeUndefined();
+    expect(runtime.steps).not.toContain("exit:1");
+  });
+
+  test("one millisecond newer than shipped IS a downgrade", async () => {
+    const shipped = readJournal().at(-1)!.when;
+    const client = fakeClient({
+      relations: ["drizzle.__drizzle_migrations", ...PUSH_ERA_2_0_0],
+      journalMax: shipped + 1,
+    });
+    const runtime = fakeRuntime(client);
+    await quietly(() => runMigrations("postgres:///x", runtime));
+    expect(runtime.steps).toContain("exit:1");
+  });
+
+  test("a journal table with no rows reads as 0, not as NaN", async () => {
+    // `Number(null)` is 0 but `Number(undefined)` is NaN, and `NaN <= shipped`
+    // is false — which would refuse to start on an empty journal table.
+    const client = fakeClient({
+      relations: ["drizzle.__drizzle_migrations", ...PUSH_ERA_2_0_0],
+      journalMax: null,
+    });
+    const runtime = fakeRuntime(client);
+    const { error } = await quietly(() => runMigrations("postgres:///x", runtime));
+    expect(error).toBeUndefined();
+    expect(runtime.steps).not.toContain("exit:1");
+  });
+
+  test("a database with no journal table at all is not a downgrade", async () => {
+    const client = fakeClient({ relations: [] });
+    const runtime = fakeRuntime(client);
+    const { error } = await quietly(() => runMigrations("postgres:///x", runtime));
+    expect(error).toBeUndefined();
+    expect(runtime.steps).not.toContain("exit:1");
+  });
+});
+
+describe("runMigrations: orchestration", () => {
+  test("connects with the URL it was handed", async () => {
+    const client = fakeClient({ relations: [] });
+    const runtime = fakeRuntime(client);
+    await quietly(() => runMigrations("postgres://u:p@h:5432/sunreye", runtime));
+    expect(runtime.urls).toEqual(["postgres://u:p@h:5432/sunreye"]);
+    expect(client.lifecycle).toEqual(["connect", "end"]);
+  });
+
+  test("stamps, then applies drizzle, then the timescale pipeline — in that order", async () => {
+    const client = fakeClient({ relations: PUSH_ERA_2_0_0 });
+    const runtime = fakeRuntime(client);
+    await quietly(() => runMigrations("postgres:///x", runtime));
+
+    const drizzleAt = runtime.steps.findIndex((s) => s.startsWith("applyDrizzle"));
+    expect(drizzleAt).toBeGreaterThan(-1);
+    // The baseline stamp has to land before drizzle's migrator looks at the
+    // journal, or the migrator executes a baseline the database already has.
+    const stampAt = client.statements.findIndex((s) =>
+      s.includes("INSERT INTO drizzle.__drizzle_migrations"),
+    );
+    expect(stampAt).toBeGreaterThan(-1);
+    // …and the timescale pipeline after it, since the aggregates read tables the
+    // journaled migrations create.
+    const timescaleAt = client.statements.findIndex((s) => s.includes("timescale_migrations"));
+    expect(timescaleAt).toBeGreaterThan(stampAt);
+  });
+
+  test("hands drizzle the migrations folder the journal was read from", async () => {
+    const client = fakeClient({ relations: [] });
+    const runtime = fakeRuntime(client);
+    await quietly(() => runMigrations("postgres:///x", runtime));
+    const step = runtime.steps.find((s) => s.startsWith("applyDrizzle:"));
+    expect(step).toBeDefined();
+    expect(step).toContain("migrations");
+  });
+
+  test("releases the client even when a step throws", async () => {
+    // A leaked connection on a failed migration keeps the next start from
+    // acquiring the advisory lock, turning one failure into a wedged addon.
+    const client = fakeClient({ relations: PROD_1_2_0 });
+    const runtime = fakeRuntime(client);
+    const { error } = await quietly(() => runMigrations("postgres:///x", runtime));
+
+    expect(String(error)).toContain("Refusing to migrate");
+    expect(client.lifecycle).toEqual(["connect", "end"]);
+  });
+
+  test("reports the schema it left the database at", async () => {
+    const client = fakeClient({ relations: [] });
+    const logs: string[] = [];
+    const realLog = console.log;
+    console.log = (...a: unknown[]) => void logs.push(a.join(" "));
+    try {
+      await runMigrations("postgres:///x", fakeRuntime(client));
+    } finally {
+      console.log = realLog;
+    }
+    expect(logs.join("\n")).toContain(`Schema is at ${readJournal().at(-1)!.tag}`);
+  });
+});
+
+describe("productionRuntime", () => {
+  test("builds a pg client for the URL, without connecting it", () => {
+    const client = productionRuntime.createClient("postgres://u:p@localhost:1/none");
+    expect(client).toBeDefined();
+    expect(typeof client.connect).toBe("function");
+    expect(typeof client.query).toBe("function");
+  });
+
+  test("applyDrizzle refuses a migrations folder that is not there", async () => {
+    // The wiring has to fail loudly on a bad MIGRATIONS_DIR: the compiled addon
+    // points that env var at files shipped beside the binary, and a silent
+    // no-op would start the server on an unmigrated database.
+    const client = fakeClient({ relations: [] });
+    await expect(
+      productionRuntime.applyDrizzle(client, "/nonexistent-migrations-dir"),
+    ).rejects.toThrow();
+  });
+
+  test("exit is the process exit itself, not a wrapper around it", () => {
+    // A wrapper would be a function no test could ever call.
+    expect(typeof productionRuntime.exit).toBe("function");
+  });
+});
+
+describe("cli", () => {
+  test("a successful migration exits 0", async () => {
+    const client = fakeClient({ relations: [] });
+    const realLog = console.log;
+    console.log = () => {};
+    try {
+      expect(await cli("postgres:///x", fakeRuntime(client))).toBe(0);
+    } finally {
+      console.log = realLog;
+    }
+  });
+
+  test("a failed migration exits 1 and says the server will not start", async () => {
+    // The whole point of the entry point: a half-migrated schema must never be
+    // served. Swallowing the error and returning 0 would boot the server on it.
+    const client = fakeClient({ relations: PROD_1_2_0 });
+    const { value, err } = await quietly(() => cli("postgres:///x", fakeRuntime(client)));
+
+    expect(value).toBe(1);
+    expect(err.join("\n")).toContain("Migration failed — the server will not start");
+    expect(err.join("\n")).toContain("Refusing to migrate");
+  });
+
+  test("the downgrade refusal also exits 1 rather than propagating", async () => {
+    const client = fakeClient({
+      relations: ["drizzle.__drizzle_migrations", ...PUSH_ERA_2_0_0],
+      journalMax: Date.now() + 86_400_000,
+    });
+    const { value, err } = await quietly(() => cli("postgres:///x", fakeRuntime(client)));
+    expect(value).toBe(1);
+    expect(err.join("\n")).toContain("Refusing to start");
   });
 });
