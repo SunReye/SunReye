@@ -210,6 +210,26 @@ describe("the addon's front door", () => {
     expect(Object.keys(config.ports_description)).toEqual(published);
   });
 
+  it("maps /share read-write, so an export can leave the addon at all", async () => {
+    // Without a `map:` block the addon can hand the user nothing but a Home
+    // Assistant backup, which is a restore vehicle rather than a file you can
+    // copy off the box. `share:rw` is what puts the portable export somewhere the
+    // Samba add-on and the File Editor can both see it.
+    const config = Bun.YAML.parse(await read("sunreye/config.yaml")) as {
+      map?: string[];
+    };
+    expect(config.map).toBeDefined();
+    expect(config.map).toContain("share:rw");
+  });
+
+  it("does not map anything the export does not need", async () => {
+    // A map entry is a hole in the addon's isolation. `/share` is the one the
+    // export needs; `/config`, `/ssl`, `/media`, `/backup` are not, and adding one
+    // "while we are here" is how an addon quietly gains reach over the whole box.
+    const config = Bun.YAML.parse(await read("sunreye/config.yaml")) as { map?: string[] };
+    expect(config.map).toEqual(["share:rw"]);
+  });
+
   it("binds the port the Supervisor actually connects to", async () => {
     expect(await readText(SVC_SERVER)).toContain(`export PORT=${await ingressPort()}`);
   });

@@ -17,6 +17,7 @@
   ],
   "dynamicallyLoaded": [
     "apps/docs/src/styles/theme.css",
+    "scripts/archive-round-trip.ts",
     "scripts/db-parity.ts",
     "scripts/fixture-1-2-0.ts",
     "scripts/replay-rehearsal.ts"
@@ -151,6 +152,87 @@
         "unregisteredMetrics",
         "completedChunks",
         "replayChunk"
+      ]
+    },
+    {
+      "file": "apps/server/src/admin/archive-download.ts",
+      "exports": [
+        "SPOOL_CANDIDATES",
+        "SPOOL_DIR",
+        "exportFilename",
+        "isStaleSpool",
+        "pickSpoolRoot"
+      ]
+    },
+    {
+      "file": "apps/server/src/archive-cli.ts",
+      "exports": [
+        "ARCHIVE_SUBCOMMANDS",
+        "EXPORT_HELP",
+        "IMPORT_HELP",
+        "KNOWN_FLAGS",
+        "defaultArchiveName",
+        "parseDeviceMap",
+        "parseExportArgs",
+        "parseImportArgs",
+        "runExport",
+        "runImport",
+        "sourceForShape"
+      ]
+    },
+    {
+      "file": "packages/db/src/archive-config.ts",
+      "exports": [
+        "REDACTED",
+        "isSecretField",
+        "slugifyId"
+      ]
+    },
+    {
+      "file": "packages/db/src/archive-export.ts",
+      "exports": [
+        "WINDOW_DAYS",
+        "createChangeFilter",
+        "planExport",
+        "windowsOf"
+      ]
+    },
+    {
+      "file": "packages/db/src/archive-file.ts",
+      "exports": [
+        "indexTar"
+      ]
+    },
+    {
+      "file": "packages/db/src/archive-import.ts",
+      "exports": [
+        "BATCH_ROWS",
+        "STAGE_TABLE",
+        "archiveSourceId",
+        "batchWriter",
+        "batchesOf",
+        "doneSourceId",
+        "overlapVerdict",
+        "refreshAggregates",
+        "retentionWarning",
+        "shortfallProblems",
+        "stageColumns"
+      ]
+    },
+    {
+      "file": "packages/db/src/archive.ts",
+      "exports": [
+        "ARCHIVE_FORMAT",
+        "ARCHIVE_FORMAT_VERSION",
+        "SOURCE_TIERS",
+        "manifestProblems",
+        "tarMember"
+      ]
+    },
+    {
+      "file": "scripts/archive-round-trip.ts",
+      "exports": [
+        "*"
       ]
     }
   ],
