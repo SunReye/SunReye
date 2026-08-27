@@ -10,64 +10,246 @@
     "packages/backend/data/**",
     "**/target/**"
   ],
-  "ignoreDependencies": ["sharp", "zod"],
+  "ignoreDependencies": [
+    "sharp",
+    "zod",
+    "openapi-types"
+  ],
   "dynamicallyLoaded": [
     "apps/docs/src/styles/theme.css",
     "scripts/db-parity.ts"
   ],
-  "usedClassMembers": [{ "implements": "InverterSource", "members": ["read"] }],
-  "production": { "deadCode": true },
-  "audit": { "gate": "all" },
+  "usedClassMembers": [
+    {
+      "implements": "InverterSource",
+      "members": [
+        "read"
+      ]
+    }
+  ],
+  "production": {
+    "deadCode": true
+  },
+  "audit": {
+    "gate": "all"
+  },
   "includeEntryExports": true,
-  "publicPackages": ["@sunreye/profile-sdk", "@SunReye/inverter-core"],
+  "publicPackages": [
+    "@sunreye/profile-sdk",
+    "@SunReye/inverter-core"
+  ],
   "ignoreExports": [
-    { "file": "apps/docs/astro.config.mjs", "exports": ["*"] },
-    { "file": "packages/db/src/index.ts", "exports": ["createDbAt"] },
-    { "file": "packages/db/src/schema-parity.ts", "exports": ["*"] },
-    { "file": "apps/server/tsdown.config.ts", "exports": ["*"] },
-    { "file": "apps/web/svelte.config.js", "exports": ["*"] },
-    { "file": "packages/db/drizzle.config.ts", "exports": ["*"] },
-    { "file": "packages/profile-sdk/tsdown.config.ts", "exports": ["*"] },
-    { "file": "scripts/require-tests.ts", "exports": ["*"] },
-    { "file": "scripts/coverage-floor.ts", "exports": ["*"] },
-    { "file": "scripts/mock-hygiene.ts", "exports": ["*"] },
-    { "file": "scripts/nginx-locations.ts", "exports": ["*"] },
-    { "file": "scripts/storage-tuning.ts", "exports": ["*"] },
-    { "file": "scripts/storage-wear.ts", "exports": ["*"] },
-    { "file": "scripts/db-parity.ts", "exports": ["*"] }
+    {
+      "file": "apps/docs/astro.config.mjs",
+      "exports": [
+        "*"
+      ]
+    },
+    {
+      "file": "packages/db/src/index.ts",
+      "exports": [
+        "createDbAt"
+      ]
+    },
+    {
+      "file": "packages/db/src/schema-parity.ts",
+      "exports": [
+        "*"
+      ]
+    },
+    {
+      "file": "apps/server/tsdown.config.ts",
+      "exports": [
+        "*"
+      ]
+    },
+    {
+      "file": "apps/web/svelte.config.js",
+      "exports": [
+        "*"
+      ]
+    },
+    {
+      "file": "packages/db/drizzle.config.ts",
+      "exports": [
+        "*"
+      ]
+    },
+    {
+      "file": "packages/profile-sdk/tsdown.config.ts",
+      "exports": [
+        "*"
+      ]
+    },
+    {
+      "file": "scripts/require-tests.ts",
+      "exports": [
+        "*"
+      ]
+    },
+    {
+      "file": "scripts/coverage-floor.ts",
+      "exports": [
+        "*"
+      ]
+    },
+    {
+      "file": "scripts/mock-hygiene.ts",
+      "exports": [
+        "*"
+      ]
+    },
+    {
+      "file": "scripts/nginx-locations.ts",
+      "exports": [
+        "*"
+      ]
+    },
+    {
+      "file": "scripts/storage-tuning.ts",
+      "exports": [
+        "*"
+      ]
+    },
+    {
+      "file": "scripts/storage-wear.ts",
+      "exports": [
+        "*"
+      ]
+    },
+    {
+      "file": "scripts/db-parity.ts",
+      "exports": [
+        "*"
+      ]
+    }
   ],
   "boundaries": {
     "zones": [
-      { "name": "web", "patterns": ["apps/web/src/**"] },
-      { "name": "server", "patterns": ["apps/server/src/**"] },
-      { "name": "docs", "patterns": ["apps/docs/src/**"] },
-      { "name": "db", "patterns": ["packages/db/src/**"] },
-      { "name": "auth", "patterns": ["packages/auth/src/**"] },
-      { "name": "contracts", "patterns": ["packages/contracts/src/**"] },
-      { "name": "env", "patterns": ["packages/env/src/**"] },
-      { "name": "inverter-core", "patterns": ["packages/inverter-core/src/**"] },
-      { "name": "profile-sdk", "patterns": ["packages/profile-sdk/src/**"] },
+      {
+        "name": "web",
+        "patterns": [
+          "apps/web/src/**"
+        ]
+      },
+      {
+        "name": "server",
+        "patterns": [
+          "apps/server/src/**"
+        ]
+      },
+      {
+        "name": "docs",
+        "patterns": [
+          "apps/docs/src/**"
+        ]
+      },
+      {
+        "name": "db",
+        "patterns": [
+          "packages/db/src/**"
+        ]
+      },
+      {
+        "name": "auth",
+        "patterns": [
+          "packages/auth/src/**"
+        ]
+      },
+      {
+        "name": "contracts",
+        "patterns": [
+          "packages/contracts/src/**"
+        ]
+      },
+      {
+        "name": "env",
+        "patterns": [
+          "packages/env/src/**"
+        ]
+      },
+      {
+        "name": "inverter-core",
+        "patterns": [
+          "packages/inverter-core/src/**"
+        ]
+      },
+      {
+        "name": "profile-sdk",
+        "patterns": [
+          "packages/profile-sdk/src/**"
+        ]
+      },
       {
         "name": "tooling",
-        "patterns": ["scripts/**", "apps/*/scripts/**", "packages/*/scripts/**", "**/*.config.*"]
+        "patterns": [
+          "scripts/**",
+          "apps/*/scripts/**",
+          "packages/*/scripts/**",
+          "**/*.config.*"
+        ]
       }
     ],
     "rules": [
       {
         "from": "web",
-        "allow": ["env", "auth", "inverter-core", "contracts"]
+        "allow": [
+          "env",
+          "auth",
+          "inverter-core",
+          "contracts"
+        ]
       },
       {
         "from": "server",
-        "allow": ["db", "auth", "env", "inverter-core", "profile-sdk", "contracts"]
+        "allow": [
+          "db",
+          "auth",
+          "env",
+          "inverter-core",
+          "profile-sdk",
+          "contracts"
+        ]
       },
-      { "from": "contracts", "allow": [], "allowTypeOnly": ["db", "inverter-core"] },
-      { "from": "db", "allow": ["env"] },
-      { "from": "auth", "allow": ["db", "env"] },
-      { "from": "inverter-core", "allow": [] },
-      { "from": "profile-sdk", "allow": ["inverter-core"] },
-      { "from": "env", "allow": [] },
-      { "from": "docs", "allow": [] },
+      {
+        "from": "contracts",
+        "allow": [],
+        "allowTypeOnly": [
+          "db",
+          "inverter-core"
+        ]
+      },
+      {
+        "from": "db",
+        "allow": [
+          "env"
+        ]
+      },
+      {
+        "from": "auth",
+        "allow": [
+          "db",
+          "env"
+        ]
+      },
+      {
+        "from": "inverter-core",
+        "allow": []
+      },
+      {
+        "from": "profile-sdk",
+        "allow": [
+          "inverter-core"
+        ]
+      },
+      {
+        "from": "env",
+        "allow": []
+      },
+      {
+        "from": "docs",
+        "allow": []
+      },
       {
         "from": "tooling",
         "allow": [
@@ -83,14 +265,49 @@
         ]
       }
     ],
-    "coverage": { "requireAllFiles": true },
+    "coverage": {
+      "requireAllFiles": true
+    },
     "calls": {
       "forbidden": [
-        { "from": "web", "callee": ["fs.*", "node:fs.*", "child_process.*", "eval"] },
-        { "from": "inverter-core", "callee": ["fetch", "fs.*", "node:fs.*", "child_process.*"] },
-        { "from": "db", "callee": ["fetch", "child_process.*"] },
-        { "from": "env", "callee": ["fetch", "child_process.*"] },
-        { "from": "server", "callee": ["eval"] }
+        {
+          "from": "web",
+          "callee": [
+            "fs.*",
+            "node:fs.*",
+            "child_process.*",
+            "eval"
+          ]
+        },
+        {
+          "from": "inverter-core",
+          "callee": [
+            "fetch",
+            "fs.*",
+            "node:fs.*",
+            "child_process.*"
+          ]
+        },
+        {
+          "from": "db",
+          "callee": [
+            "fetch",
+            "child_process.*"
+          ]
+        },
+        {
+          "from": "env",
+          "callee": [
+            "fetch",
+            "child_process.*"
+          ]
+        },
+        {
+          "from": "server",
+          "callee": [
+            "eval"
+          ]
+        }
       ]
     }
   },
