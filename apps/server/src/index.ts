@@ -7,6 +7,7 @@ import { user } from "@SunReye/db/schema/auth";
 import { env } from "@SunReye/env/server";
 import { and, count, desc, eq, gte, sql } from "drizzle-orm";
 import { Elysia, t } from "elysia";
+import { autoHead } from "elysia/auto-head";
 import { type CostBucket, computeCost, computeCostSeries, resolveRange } from "./energy/cost";
 import { energySeries } from "./energy/energy";
 import { entitiesApi } from "./inverter/entities";
@@ -506,6 +507,11 @@ const app = new Elysia()
   // whatever is left, with the SPA page as the fallback (hash router). Absent in
   // an API-only build (compiled without --asset) — then these paths simply 404.
   .use(webRoutes(await loadAssets()))
+  // HEAD for every GET above, answered with the headers and no body. Mounted
+  // LAST and on purpose: it derives the HEAD routes from the ones already
+  // registered, so anything added after it would not get one. Elysia 1 answered
+  // HEAD on a `.get` for free; Elysia 2 404s it without this.
+  .use(autoHead())
   .listen({ port: env.PORT, hostname: env.HOST }, () => {
     serverLog.info("server running on http://localhost:{port} — profile {profile}", {
       port: env.PORT,
