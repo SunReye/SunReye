@@ -104,20 +104,31 @@ suite("queryRecentBuckets against a real TimescaleDB", () => {
   // outliving a newer one — that is the job of the seed arm's ordering and of
   // the `pref` tie-break together.
   //
-  // Written to be deterministic rather than clock-lucky: `since` is computed
-  // inside the query from its own `Date.now()`, so the exact bucket boundary is
-  // unknowable here. Blanketing the start of the window with samples 100 ms
-  // apart guarantees one shares the seed's bucket however the boundary falls,
-  // and every one of them is newer than the stale row regardless of drift.
+  // The window end is passed EXPLICITLY, which is what makes this deterministic.
+  // It used to blanket the boundary with 20 samples 100 ms apart and reason that
+  // one must share the seed's bucket however the boundary fell. That is not true:
+  // `time_bucket` is epoch-aligned, not `since`-aligned, so when `since` lands in
+  // the last <50 ms of a second the opening bucket ENDS before the first sample,
+  // the seed sits in it alone, and the stale 1 survives — a real failure of a
+  // real assertion, caused by the clock rather than the code. It reproduced 1 run
+  // in 12 on an idle machine and once in CI.
   test("a stale pre-window value never survives alongside newer samples", async () => {
-    const now = Date.now();
-    const fresh = Array.from({ length: 20 }, (_, i) => ({
-      metric: "db.wins",
-      at: new Date(now - 299_950 + i * 100),
-      value: 999,
-    }));
-    await seed([{ metric: "db.wins", at: new Date(now - 400_000), value: 1 }, ...fresh]);
-    const out = await queryRecentBuckets({ inverterId, seconds: 300, stepSeconds: 1 });
+    // A whole second, so `since` is exactly a 1 s bucket boundary and every
+    // offset below is unambiguous.
+    const now = new Date(Math.ceil(Date.now() / 1000) * 1000);
+    const since = now.getTime() - 300_000;
+
+    await seed([
+      // The only row before the window: whatever the seed arm returns, it is this.
+      { metric: "db.wins", at: new Date(since - 100_000), value: 1 },
+      // In the bucket the window opens in, so it meets the seed head-on and the
+      // `pref` tie-break has to prefer the real sample.
+      { metric: "db.wins", at: new Date(since), value: 999 },
+      // A later bucket, so the seed is not simply overwritten everywhere.
+      { metric: "db.wins", at: new Date(since + 1500), value: 999 },
+    ]);
+
+    const out = await queryRecentBuckets({ inverterId, seconds: 300, stepSeconds: 1, now });
     expect(out.metrics["db.wins"]?.v).toContain(999);
     expect(out.metrics["db.wins"]?.v).not.toContain(1);
   });

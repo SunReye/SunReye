@@ -221,10 +221,21 @@ export async function queryRecentBuckets(q: {
   inverterId: string;
   seconds: number;
   stepSeconds: number;
+  /**
+   * The instant the window ends, for tests that need to know where its buckets
+   * fall. Callers leave it unset; the window is always "the last `seconds`".
+   *
+   * Without it a case cannot place a sample in the bucket the window OPENS in,
+   * because `time_bucket` is epoch-aligned (see below) and `since` is derived
+   * from a clock the case cannot read. Blanketing the boundary with samples
+   * instead is not equivalent — it fails whenever `since` lands in the last
+   * few milliseconds of a bucket, which is what made the db-test intermittent.
+   */
+  now?: Date;
 }): Promise<RecentBackfill> {
   const step = clampInt(q.stepSeconds, 1, 60);
   const seconds = clampInt(q.seconds, 1, 3600);
-  const since = new Date(Date.now() - seconds * 1000);
+  const since = new Date((q.now?.getTime() ?? Date.now()) - seconds * 1000);
   const width = interval(step);
   // `+ 1`: `time_bucket` is EPOCH-aligned, not `since`-aligned, so an N-second
   // window starting mid-bucket spans ceil(N / step) + 1 buckets. Without it the
