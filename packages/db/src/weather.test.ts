@@ -57,3 +57,42 @@ describe("weather config", () => {
     expect(forecastReady({ ...on, enabled: false })).toBe(false);
   });
 });
+
+/**
+ * Nominal pack voltage, which the peak-shaving engine converts watts into
+ * charge-current amps with. It moved here from the automations config because it
+ * describes the battery, not the automation — and every commanded current is
+ * scaled by it, so a wrong value is not cosmetic.
+ */
+describe("the plant battery's nominal voltage", () => {
+  const battery = (over: Record<string, unknown> = {}) =>
+    weatherConfigSchema.parse({
+      forecast: { battery: { usableKwh: 15, ...over } },
+    }).forecast.battery;
+
+  test("is null when never stated, not 51.2", () => {
+    // The difference is load-bearing: null means "fall back to whatever this
+    // install already had on the automations page", while a default would
+    // silently overwrite a 48 V pack's setting with a 51.2 V one.
+    expect(battery()?.nominalV).toBeNull();
+  });
+
+  test("keeps a stated voltage", () => {
+    expect(battery({ nominalV: 48 })?.nominalV).toBe(48);
+    expect(battery({ nominalV: 51.2 })?.nominalV).toBe(51.2);
+  });
+
+  test("refuses a voltage that cannot be one", () => {
+    // Zero and negatives divide the wrong way or by zero; the ceiling is a typo
+    // guard for someone entering millivolts.
+    for (const bad of [0, -48, 5000]) {
+      expect(() =>
+        weatherConfigSchema.parse({ forecast: { battery: { usableKwh: 15, nominalV: bad } } }),
+      ).toThrow();
+    }
+  });
+
+  test("exists only where a battery does", () => {
+    expect(weatherConfigSchema.parse({ forecast: {} }).forecast.battery).toBeNull();
+  });
+});

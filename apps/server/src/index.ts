@@ -22,7 +22,9 @@ import { initLogLevel } from "./settings/logging-settings";
 import { adminRoutes } from "./routes/admin";
 import { adminGuard } from "./routes/admin-guard";
 import { customChartsRoutes } from "./routes/custom-charts";
+import { startBatteryScoring } from "./battery/scoring";
 import { startUpdateChecks, stopUpdateChecks } from "./inverter/profiles";
+import { batteryRoutes } from "./routes/battery";
 import { profileRoutes } from "./routes/profiles";
 import { automationStreamSnapshot } from "./automation/automation";
 import { automationRoutes } from "./routes/automations";
@@ -469,6 +471,7 @@ const app = new Elysia()
   // Statistics-page aggregates (hour×weekday heatmap, …) over the same rollups.
   .use(statisticsRoutes({ profile }))
   // Profile management: registered list, repo sources, browse/install/activate.
+  .use(batteryRoutes({ profile }))
   .use(profileRoutes)
   // User-defined custom charts for the history page (multi-metric overlays).
   .use(customChartsRoutes({ ctx }))
@@ -529,6 +532,11 @@ if (ctx) {
   runtime.start(streams, ctx, audience.automations);
 }
 
+// Measure the battery's usable capacity from the discharge segments in raw
+// history — one catch-up pass over the retention window, then a slow tick.
+// No-op on a profile that maps no SOC, so a batteryless plant pays nothing.
+const stopBatteryScoring = startBatteryScoring(profile);
+
 // Periodically sync profile repos and diff installed versions so the UI can
 // surface "update available" without the admin manually browsing. Independent
 // of the poll loop — runs even in onboarding-only boot.
@@ -559,6 +567,7 @@ setInterval(
 // Graceful shutdown: stop polling and release the transport + broker.
 for (const signal of ["SIGINT", "SIGTERM"] as const) {
   process.on(signal, async () => {
+    stopBatteryScoring();
     stopUpdateChecks();
     await stopEvcc();
     await runtime.stop();

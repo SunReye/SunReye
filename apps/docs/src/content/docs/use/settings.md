@@ -27,6 +27,29 @@ Disconnected / Simulated.
 - If simulation mode is on (`INVERTER_SIMULATE`), a notice explains the settings are saved
   but unused.
 
+### Plant
+
+Below the connection: what the system physically **is**, as opposed to how SunReye reaches it.
+
+- **PV arrays** — one row per orientation (**kWp**, **tilt**, **azimuth**; 0° = south,
+  −90° = east, 90° = west). Add a row per string group facing a different way.
+- **Temp. coefficient** and **System losses** — from the panel datasheet and install.
+- **Curtailment** — feed-in limit, usable battery, max charge power, reserve and the pack's
+  **nominal voltage**, plus an average **house load** (blank = inferred from history). The
+  voltage is what peak shaving converts power into charge current with when the inverter
+  reports no live battery voltage. It used to live under Automations; an existing system
+  opens this page with its old value already filled in, so nothing changes underfoot.
+- **Smart meter gateway installed** — the date your iMSys went in, or blank if you don't have
+  one. Installing it is what lifts the 60 % feed-in cap, and it marks the plant as one **§51
+  EEG** applies to — so it is also the gate on price-aware charging. Quick buttons set the
+  feed-in limit to 60 / 70 / 100 % of installed kWp.
+
+These live here, not under Weather, because more than the forecast reads them: the feed-in
+limit and the battery drive [peak shaving](/use/automations/), the smart-meter date decides
+whether §51 applies at all, and the usable capacity is what
+[battery health](/use/statistics/) is measured against. The forecast consumes them; it does
+not own them.
+
 ## MQTT & Home Assistant
 
 Configure the [MQTT bridge](/integrations/mqtt/): enable switch, broker URL, topic prefix,
@@ -88,23 +111,16 @@ Show current weather on the dashboard and, optionally, a **PV production forecas
 from [Open-Meteo](https://open-meteo.com/) (keyless, server-proxied). Set the plant
 **location** (latitude / longitude + a display name) to enable the weather tile.
 
-Turn on **Solar production forecast** and describe the plant so SunReye can turn the
-irradiance forecast into expected output:
+Turn on **Solar production forecast** and pick the irradiance **source**. What the forecast
+needs to know about the plant itself — the PV arrays, the loss coefficients, the feed-in
+limit, the battery and the smart-meter date — is described under
+[Settings → Inverter](#plant), because the automations and the battery-health figure read the
+same values. This tab keeps the location, the switch and the source.
 
-- **PV arrays** — one row per orientation (**kWp**, **tilt**, **azimuth**; 0° = south,
-  −90° = east, 90° = west). Add a row per string group facing a different way.
-- **Temp. coefficient** and **System losses** — from the panel datasheet and install.
-- **Smart meter gateway installed** — the date your iMSys went in, or blank if you don't have
-  one. Installing it is what lifts the 60 % feed-in cap, and it marks the plant as one **§51
-  EEG** applies to — so it is also the gate on price-aware charging. Quick buttons set the
-  feed-in limit to 60 / 70 / 100 % of installed kWp. Raising the cap leaves ordinary peak
-  shaving with much less to do, which is exactly what price-aware charging is for.
-- **Clipping** — feed-in limit, usable battery, max charge power, and reserve, plus an
-  average **house load** (blank = inferred from history). These curtail the forecast so it
-  doesn't overstate output once the battery is full and export is capped. Past hours are
-  reconstructed from the measured battery state at the start of the day (falling back to
-  the uncurtailed estimate when none is recorded), so the curve has no artificial step at
-  "now".
+Those figures curtail the forecast so it doesn't overstate output once the battery is full and
+export is capped. Past hours are reconstructed from the measured battery state at the start of
+the day (falling back to the uncurtailed estimate when none is recorded), so the curve has no
+artificial step at "now".
 
 The forecast is also published to [MQTT / Home Assistant](/integrations/mqtt/) and the
 [REST API](/integrations/rest-api/), not just the dashboard tile.

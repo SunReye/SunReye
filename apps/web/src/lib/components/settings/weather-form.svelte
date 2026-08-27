@@ -7,7 +7,7 @@
 	import { Separator } from '$lib/components/ui/separator';
 	import Section from '$lib/components/layout/section.svelte';
 	import SaveBar from './save-bar.svelte';
-	import SolarForecastFields, { type ArrayFields } from './solar-forecast-fields.svelte';
+	import FieldInfo from './field-info.svelte';
 	import ForecastCorrectionPanel from './forecast-correction-panel.svelte';
 	import OptionSelect from './option-select.svelte';
 	import { api } from '$lib/api';
@@ -48,57 +48,17 @@
 	// coerce to 0; parsed once on save.
 	let latText = $state('');
 	let lonText = $state('');
-	let tempCoeffText = $state('');
-	let lossText = $state('');
-	let arrayTexts = $state<ArrayFields[]>([]);
-	// Power fields are shown in kW (friendlier than the schema's watts) and
-	// converted on load/save.
-	let maxOutputText = $state('');
-	let houseLoadText = $state('');
-	let battUsableText = $state('');
-	let battChargeText = $state('');
-	let battReserveText = $state('');
-	// Empty string is the date input's "unset"; the schema wants null.
-	let smartMeterText = $state('');
 
 	const fieldsDisabled = $derived(!isAdmin || saving);
 	const providerItems = $derived(providers.map((p) => ({ value: p.id, label: p.label })));
 
 	// --- Loading: config → input text ---------------------------------------
 
-	/** Watts as kW text; blank when unset. */
-	const wToKw = (w: number | null) => (w == null ? '' : (w / 1000).toString());
 	const numText = (n: number | null) => n?.toString() ?? '';
-	const arrayText = (a: PvArray): ArrayFields => ({
-		kwp: a.kwp.toString(),
-		tilt: a.tilt.toString(),
-		azimuth: a.azimuth.toString()
-	});
-
-	/** Blank fields when the forecast carries no battery model. */
-	function batteryTexts(b: ForecastBattery | null) {
-		if (!b) return { usable: '', charge: '', reserve: '' };
-		return {
-			usable: b.usableKwh.toString(),
-			charge: wToKw(b.maxChargeW),
-			reserve: b.minSoc.toString()
-		};
-	}
 
 	function loadTexts(config: WeatherConfig) {
-		const f = config.forecast;
-		const battery = batteryTexts(f.battery);
 		latText = numText(config.latitude);
 		lonText = numText(config.longitude);
-		tempCoeffText = f.tempCoefficient.toString();
-		lossText = f.systemLoss.toString();
-		arrayTexts = f.arrays.map(arrayText);
-		maxOutputText = wToKw(f.maxOutputW);
-		houseLoadText = wToKw(f.houseLoadW);
-		battUsableText = battery.usable;
-		battChargeText = battery.charge;
-		battReserveText = battery.reserve;
-		smartMeterText = f.smartMeterSince ?? '';
 	}
 
 	onMount(async () => {
@@ -114,97 +74,18 @@
 
 	// --- Saving: input text → config ----------------------------------------
 
-	type ForecastFields = {
-		arrays: PvArray[];
-		tempCoefficient: number;
-		systemLoss: number;
-		maxOutputW: number | null;
-		battery: ForecastBattery | null;
-		houseLoadW: number | null;
-	};
-
-	/** A blank field is a valid "unset"; a filled-but-unparseable one is not. */
-	function parseOptionalKw(text: string): { ok: boolean; watts: number | null } {
-		if (text.trim() === '') return { ok: true, watts: null };
-		const kw = parseNum(text);
-		return kw === null ? { ok: false, watts: null } : { ok: true, watts: kw * 1000 };
-	}
-
-	function parseArray(t: ArrayFields): PvArray | null {
-		const kwp = parseNum(t.kwp);
-		const tilt = parseNum(t.tilt);
-		const azimuth = parseNum(t.azimuth);
-		if (kwp === null || tilt === null || azimuth === null) return null;
-		return { kwp, tilt, azimuth };
-	}
-
-	function parseArrays(): PvArray[] | null {
-		const arrays: PvArray[] = [];
-		for (const t of arrayTexts) {
-			const parsed = parseArray(t);
-			if (parsed === null) return null;
-			arrays.push(parsed);
-		}
-		return arrays;
-	}
-
-	/** The array geometry plus the two loss coefficients; null if any is invalid. */
-	function parseArrayFields() {
-		const arrays = parseArrays();
-		const tempCoefficient = parseNum(tempCoeffText);
-		const systemLoss = parseNum(lossText);
-		if (arrays === null || tempCoefficient === null || systemLoss === null) return null;
-		return { arrays, tempCoefficient, systemLoss };
-	}
-
-	/** The blank-allowed power fields in watts; null if any is filled but invalid. */
-	function parsePowerFields() {
-		const maxOut = parseOptionalKw(maxOutputText);
-		const load = parseOptionalKw(houseLoadText);
-		const charge = parseOptionalKw(battChargeText);
-		if (![maxOut, load, charge].every((f) => f.ok)) return null;
-		return { maxOutputW: maxOut.watts, houseLoadW: load.watts, maxChargeW: charge.watts };
-	}
-
-	/** Reserve floor, defaulting to 10% when left blank. */
-	function parseReserve(): number | null {
-		if (battReserveText.trim() === '') return 10;
-		return parseNum(battReserveText);
-	}
-
-	// The battery block exists only when a usable capacity is given; the reserve
-	// then defaults to 10% and the charge cap is optional.
-	function parseBattery(maxChargeW: number | null): { ok: boolean; battery: ForecastBattery | null } {
-		if (battUsableText.trim() === '') return { ok: true, battery: null };
-		const usableKwh = parseNum(battUsableText);
-		const minSoc = parseReserve();
-		if (usableKwh === null || minSoc === null) return { ok: false, battery: null };
-		return { ok: true, battery: { usableKwh, maxChargeW, minSoc } };
-	}
-
-	/** Parse the forecast inputs, or null when any is invalid. */
-	function parseForecast(): ForecastFields | null {
-		const fields = parseArrayFields();
-		const power = parsePowerFields();
-		if (fields === null || power === null) return null;
-		const battery = parseBattery(power.maxChargeW);
-		if (!battery.ok) return null;
-		return {
-			...fields,
-			maxOutputW: power.maxOutputW,
-			houseLoadW: power.houseLoadW,
-			battery: battery.battery
-		};
-	}
-
 	/** Coordinates only have to parse once the tile is switched on. */
 	function coordsInvalid(enabled: boolean, latitude: number | null, longitude: number | null) {
 		return enabled && (latitude === null || longitude === null);
 	}
 
-	async function put(latitude: number | null, longitude: number | null, forecast: ForecastFields) {
+	async function put(latitude: number | null, longitude: number | null) {
 		if (!draft) return;
 		saving = true;
+		// Only the fields this form owns. The plant's own description — arrays,
+		// export limit, battery, smart-meter date — shares this record but is
+		// edited with the inverter, and the server merges rather than replacing,
+		// so neither page can write back the other's stale values.
 		const { data, error } = await api.api.settings.weather.put({
 			enabled: draft.enabled,
 			latitude,
@@ -213,9 +94,7 @@
 			forecast: {
 				enabled: draft.forecast.enabled,
 				provider: draft.forecast.provider,
-				correction: draft.forecast.correction,
-				smartMeterSince: smartMeterText === '' ? null : smartMeterText,
-				...forecast
+				correction: draft.forecast.correction
 			}
 		});
 		saving = false;
@@ -234,12 +113,7 @@
 			toast.error(m.weather_toast_invalid_coords());
 			return;
 		}
-		const forecast = parseForecast();
-		if (!forecast) {
-			toast.error(m.weather_forecast_toast_invalid());
-			return;
-		}
-		await put(latitude, longitude, forecast);
+		await put(latitude, longitude);
 	}
 
 	// Switches write through the draft; the guard keeps the handlers callable
@@ -264,10 +138,6 @@
 	{#if !draft}
 		<p class="text-sm text-muted-foreground">{m.app_loading()}</p>
 	{:else}
-		<p class="text-sm text-muted-foreground">
-			{m.weather_desc()}
-		</p>
-
 		<div class="flex items-center justify-between gap-4">
 			<Label for="weather-enabled">{m.weather_show_tile()}</Label>
 			<Switch
@@ -316,7 +186,10 @@
 
 		<div class="flex flex-col gap-1">
 			<div class="flex items-center justify-between gap-4">
-				<Label for="forecast-enabled">{m.weather_forecast_enable()}</Label>
+				<div class="flex items-center gap-1.5">
+					<Label for="forecast-enabled">{m.weather_forecast_enable()}</Label>
+					<FieldInfo label={m.weather_forecast_enable()} info={m.weather_forecast_desc()} />
+				</div>
 				<Switch
 					id="forecast-enabled"
 					checked={draft.forecast.enabled}
@@ -324,7 +197,6 @@
 					onCheckedChange={setForecastEnabled}
 				/>
 			</div>
-			<p class="text-sm text-muted-foreground">{m.weather_forecast_desc()}</p>
 		</div>
 
 		{#if draft.forecast.enabled}
@@ -338,24 +210,19 @@
 				/>
 			</div>
 
-			<SolarForecastFields
-				bind:arrays={arrayTexts}
-				bind:tempCoeff={tempCoeffText}
-				bind:loss={lossText}
-				bind:maxOutput={maxOutputText}
-				bind:smartMeterSince={smartMeterText}
-				bind:houseLoad={houseLoadText}
-				bind:battUsable={battUsableText}
-				bind:battCharge={battChargeText}
-				bind:battReserve={battReserveText}
-				disabled={fieldsDisabled}
-			/>
+			<p class="text-sm text-muted-foreground">{m.weather_forecast_plant_hint()}</p>
 
 			<Separator />
 
 			<div class="flex flex-col gap-1">
 				<div class="flex items-center justify-between gap-4">
-					<Label for="correction-enabled">{m.weather_forecast_correction()}</Label>
+					<div class="flex items-center gap-1.5">
+						<Label for="correction-enabled">{m.weather_forecast_correction()}</Label>
+						<FieldInfo
+							label={m.weather_forecast_correction()}
+							info={m.weather_forecast_correction_desc()}
+						/>
+					</div>
 					<Switch
 						id="correction-enabled"
 						checked={draft.forecast.correction.enabled}
@@ -363,7 +230,6 @@
 						onCheckedChange={setCorrectionEnabled}
 					/>
 				</div>
-				<p class="text-sm text-muted-foreground">{m.weather_forecast_correction_desc()}</p>
 			</div>
 
 			<ForecastCorrectionPanel />

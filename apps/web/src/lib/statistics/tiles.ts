@@ -4,7 +4,7 @@
 // payload. Every section's tiles — cost, energy, prices, records — are a
 // registry against the same TileDef surface.
 
-import type { CostBreakdown, CostTotals } from "@SunReye/contracts/energy";
+import type { BatteryHealth, CostBreakdown, CostTotals } from "@SunReye/contracts/energy";
 import type { SpotStats, SpotWhatIf } from "@SunReye/contracts/prices";
 import type { DayRecord, RecordsResponse } from "@SunReye/contracts/statistics";
 import type { CostFormatters } from "$lib/cost/format";
@@ -192,6 +192,10 @@ export type EnergyTileData = {
    *  battery tiles off a batteryless system even mid-fetch, when a zero total
    *  would otherwise be indistinguishable from an idle pack. */
   hasBattery: boolean;
+  /** Measured capacity and SOH. Window-INDEPENDENT — the same figures whatever
+   *  range is picked — and null until the server has measured enough discharge
+   *  segments to answer. */
+  health: BatteryHealth | null;
 };
 
 /** Sub-line shared by every energy tile: the daily average. The change against
@@ -305,7 +309,114 @@ export const ENERGY_TILES: readonly TileDef<EnergyTileData>[] = [
     "neutral",
     hasBatteryEnergy,
   ),
+  {
+    id: "energy.batteryRoundTrip",
+    label: m.statistics_tile_battery_round_trip,
+    explain: m.statistics_tile_battery_round_trip_explain,
+    compute: (d, f) => {
+      const ratio = roundTripEfficiency(d);
+      if (ratio === null) return null;
+      return {
+        value: f.pct(ratio),
+        sub: m.statistics_sub_round_trip({
+          discharged: f.kwh(d.current.batteryDischargeKwh),
+          charged: f.kwh(d.current.batteryChargeKwh),
+        }),
+        accent: "",
+      };
+    },
+    raw: roundTripEfficiency,
+    goodDirection: "up",
+  },
+  {
+    id: "energy.batteryCapacity",
+    label: m.statistics_tile_battery_capacity,
+    explain: m.statistics_tile_battery_capacity_explain,
+    compute: (d, f) => {
+      const capacity = measuredCapacity(d);
+      if (!capacity) return null;
+      return {
+        value: f.kwh(capacity.kwh),
+        sub: m.statistics_sub_measured_over({ count: capacity.segments }),
+        accent: "",
+      };
+    },
+    raw: (d) => measuredCapacity(d)?.kwh ?? null,
+    goodDirection: "up",
+  },
+  {
+    id: "energy.batteryHealth",
+    label: m.statistics_tile_battery_health,
+    explain: m.statistics_tile_battery_health_explain,
+    compute: (d, f) => {
+      const health = measuredHealth(d);
+      if (!health) return null;
+      return {
+        value: f.pct(health.ratio),
+        sub:
+          health.reference === "nameplate"
+            ? m.statistics_sub_of_nameplate({ amount: f.kwh(health.referenceKwh) })
+            : m.statistics_sub_of_baseline({ amount: f.kwh(health.referenceKwh) }),
+        accent: "",
+      };
+    },
+    raw: (d) => measuredHealth(d)?.ratio ?? null,
+    goodDirection: "up",
+  },
 ];
+
+/**
+ * Round-trip efficiency: the energy the pack gave back, over the energy it took
+ * in, across the whole window.
+ *
+ * The arithmetic is a division. The care is all in when NOT to do it.
+ *
+ * The identity `discharge / charge = efficiency` holds only if the pack holds
+ * the same energy at both ends of the window. Whatever it gained across the
+ * boundary was charged and never discharged, so it inflates the denominator;
+ * whatever it lost does the reverse. That drift is bounded by roughly one full
+ * cycle, and a day's throughput is roughly one cycle, so the relative error is
+ * on the order of `1 / rangeDays` — 100 % over a day, ~3 % over a month. Hence
+ * {@link MIN_ROUND_TRIP_DAYS}: the tile declines short windows instead of
+ * printing a confident number that is mostly boundary drift.
+ *
+ * The plausibility band catches the same problem when the window is long but the
+ * drift is large anyway (a pack that sat full for three weeks, a capacity
+ * change, a counter reset). Above 1 the pack returned more than it stored, which
+ * is not efficiency; below {@link MIN_PLAUSIBLE_ROUND_TRIP} no real chemistry
+ * applies. Both are reports about the edges, and neither is worth showing as an
+ * efficiency.
+ *
+ * Correcting rather than declining would need the pack's usable capacity and its
+ * SOC at both edges — `usableKwh` is optional forecast config, so it cannot be
+ * assumed present. That is the upgrade path, not this tile.
+ */
+const MIN_ROUND_TRIP_DAYS = 14;
+const MIN_PLAUSIBLE_ROUND_TRIP = 0.5;
+
+function roundTripEfficiency(d: EnergyTileData): number | null {
+  if (!hasBatteryEnergy(d)) return null;
+  if (d.rangeDays < MIN_ROUND_TRIP_DAYS) return null;
+  const { batteryChargeKwh: charged, batteryDischargeKwh: discharged } = d.current;
+  if (charged <= 0 || discharged <= 0) return null;
+  const ratio = discharged / charged;
+  if (ratio > 1 || ratio < MIN_PLAUSIBLE_ROUND_TRIP) return null;
+  return ratio;
+}
+
+/**
+ * The measured figures, behind the same battery gate as the energy pair.
+ *
+ * The gate matters independently of the server's answer: a plant with no pack
+ * should never see a capacity, even if a stale or mis-addressed response
+ * carried one.
+ */
+const measuredCapacity = (d: EnergyTileData) =>
+  hasBatteryEnergy(d) ? (d.health?.capacity ?? null) : null;
+
+/** Null until there is both a capacity and something to measure it against. */
+const measuredHealth = (d: EnergyTileData) =>
+  hasBatteryEnergy(d) ? (d.health?.health ?? null) : null;
 
 /** One resolved, render-ready tile. */
 export type Tile = {

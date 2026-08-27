@@ -8,6 +8,7 @@
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
 	import { Label } from '$lib/components/ui/label';
+	import FieldInfo from './field-info.svelte';
 	import PvArrayRow from './pv-array-row.svelte';
 	import ExportCapHelper from './export-cap-helper.svelte';
 	import * as m from '$lib/paraglide/messages';
@@ -21,6 +22,7 @@
 		battUsable = $bindable(),
 		battCharge = $bindable(),
 		battReserve = $bindable(),
+		battNominalV = $bindable(),
 		smartMeterSince = $bindable(),
 		disabled
 	}: {
@@ -37,6 +39,8 @@
 		battCharge: string;
 		/** Battery reserve floor, % (blank = 10). */
 		battReserve: string;
+		/** Nominal pack voltage, V — blank keeps whatever the automation had. */
+		battNominalV: string;
 		/** Smart-meter-gateway install date, `YYYY-MM-DD`, or '' when none. */
 		smartMeterSince: string;
 		disabled: boolean;
@@ -60,7 +64,10 @@
 </script>
 
 <div class="flex flex-col gap-2">
-	<span class="text-sm font-medium">{m.weather_forecast_arrays()}</span>
+	<div class="flex items-center gap-1.5">
+		<span class="text-sm font-medium">{m.weather_forecast_arrays()}</span>
+		<FieldInfo label={m.weather_forecast_arrays()} info={m.weather_forecast_azimuth_hint()} />
+	</div>
 	{#if arrays.length === 0}
 		<p class="text-sm text-muted-foreground">{m.weather_forecast_arrays_empty()}</p>
 	{/if}
@@ -75,7 +82,6 @@
 			onremove={() => removeArray(i)}
 		/>
 	{/each}
-	<p class="text-xs text-muted-foreground">{m.weather_forecast_azimuth_hint()}</p>
 	<div>
 		<Button variant="outline" size="sm" onclick={addArray} disabled={addDisabled}>
 			<PlusIcon class="size-4" />
@@ -102,8 +108,10 @@
 </div>
 
 <div class="flex flex-col gap-2">
-	<span class="text-sm font-medium">{m.weather_forecast_clipping()}</span>
-	<p class="text-xs text-muted-foreground">{m.weather_forecast_clipping_desc()}</p>
+	<div class="flex items-center gap-1.5">
+		<span class="text-sm font-medium">{m.weather_forecast_clipping()}</span>
+		<FieldInfo label={m.weather_forecast_clipping()} info={m.weather_forecast_clipping_desc()} />
+	</div>
 	<div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
 		<div class="flex flex-col gap-1.5">
 			<Label for="forecast-max-output">{m.weather_forecast_max_output()}</Label>
@@ -154,6 +162,22 @@
 				disabled={battDisabled}
 				inputmode="decimal"
 				placeholder="10"
+			/>
+		</div>
+		<div class="flex flex-col gap-1.5">
+			<div class="flex items-center gap-1.5">
+				<Label for="forecast-batt-nominal-v">{m.plant_battery_nominal_v()}</Label>
+				<FieldInfo
+					label={m.plant_battery_nominal_v()}
+					info={m.plant_battery_nominal_v_desc()}
+				/>
+			</div>
+			<Input
+				id="forecast-batt-nominal-v"
+				bind:value={battNominalV}
+				disabled={battDisabled}
+				inputmode="decimal"
+				placeholder="51.2"
 			/>
 		</div>
 	</div>

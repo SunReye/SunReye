@@ -30,9 +30,18 @@
 
   --muted-foreground: oklch(0.556 0 0);
 
-  --accent: oklch(0.488 0.243 264.376);
+  /* A SUBTLE surface, not the brand colour. `accent` is what shadcn paints a
+     hover or a highlighted menu row with, and its foreground is the text on
+     top of that. Both were set to the primary pair, which made every
+     `bg-accent` surface solid brand blue and — worse — left
+     `text-accent-foreground` near-white in light mode. A select's highlighted
+     row overrides the background to `bg-foreground/10` but keeps that
+     foreground, so the row read as white text on near-white. Same collision
+     behind the calendar's phantom-selected day. Brand blue is `--primary`,
+     which is still one token away wherever it is actually wanted. */
+  --accent: oklch(0.97 0 0);
 
-  --accent-foreground: oklch(0.97 0.014 254.604);
+  --accent-foreground: oklch(0.21 0.006 285.885);
 
   --destructive: oklch(0.577 0.245 27.325);
 
@@ -156,9 +165,10 @@
 
   --muted-foreground: oklch(0.708 0 0);
 
-  --accent: oklch(0.424 0.199 265.638);
+  /* The dark half of the same pair — see the note in the light block. */
+  --accent: oklch(0.269 0 0);
 
-  --accent-foreground: oklch(0.97 0.014 254.604);
+  --accent-foreground: oklch(0.985 0 0);
 
   --destructive: oklch(0.704 0.191 22.216);
 

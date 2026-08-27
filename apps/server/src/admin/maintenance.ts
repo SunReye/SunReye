@@ -20,7 +20,14 @@ export const RESET_DATA_CONFIRM = "DELETE ALL DATA";
 const ROLLUP_VIEWS = ["minute_rollups", "hourly_rollups", "daily_rollups"] as const;
 
 /** Derived-from-history tables cleared with the measurements they were learned from. */
-const DERIVED_TABLES = ["forecast_correction_cells", "forecast_correction_state"] as const;
+// fallow-ignore-next-line unused-export -- exported so maintenance.test.ts can assert the membership rule (anything derived from the time-series is cleared with it) without a live database; test files are not traced as consumers.
+export const DERIVED_TABLES = [
+  "forecast_correction_cells",
+  "forecast_correction_state",
+  // Capacity estimates are measurements OF the raw series: keeping them across a
+  // reset would leave an SOH baseline referring to history that no longer exists.
+  "battery_capacity_estimates",
+] as const;
 
 export interface ResetResult {
   /** Views + tables that were truncated, in the order they were cleared. */

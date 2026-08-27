@@ -1,5 +1,5 @@
 <script lang="ts">
-	import type { PeriodEnergy } from '@SunReye/contracts/energy';
+	import type { BatteryHealth, PeriodEnergy } from '@SunReye/contracts/energy';
 	import { api } from '$lib/api';
 	import * as m from '$lib/paraglide/messages';
 	import { inverter } from '$lib/inverter/store.svelte';
@@ -16,6 +16,7 @@
 	import { baselineLabel, deltaFor } from '$lib/statistics/compare';
 	import { statisticsLive } from '$lib/statistics-live.svelte';
 	import { ENERGY_TILES, type EnergyTileData } from '$lib/statistics/tiles';
+	import BatteryHealthPanel from './battery-health-panel.svelte';
 	import ChartPanel from './chart-panel.svelte';
 	import StatTiles from './stat-tiles.svelte';
 
@@ -79,18 +80,37 @@
 
 	const hasBattery = $derived(inverter.capabilities?.battery ?? false);
 
+	// Measured pack capacity and SOH. Fetched ONCE, not per window: these are
+	// properties of the battery, not of the picked range, and re-fetching them on
+	// every zoom would issue a query per drag for two numbers that cannot have
+	// changed. Null until it arrives — and null is also the answer on a plant the
+	// server cannot measure (no SOC role, too few deep discharges), which the
+	// tiles render as absent rather than as a healthy-looking placeholder.
+	let health = $state<BatteryHealth | null>(null);
+	$effect(() => {
+		if (!hasBattery) return;
+		let cancelled = false;
+		void api.api.battery.health.get().then(({ data: got }) => {
+			if (!cancelled) health = got ?? null;
+		});
+		return () => {
+			cancelled = true;
+		};
+	});
+
 	const tileData = $derived<EnergyTileData>({
 		current: cost,
 		previous,
 		rangeDays,
-		hasBattery
+		hasBattery,
+		health
 	});
 
 	// Same shape one reference window back, so every energy tile carries its
 	// change. Null previous → no chip payload at all, rather than a fabricated
 	// zero baseline.
 	const previousTileData = $derived<EnergyTileData | null>(
-		previous ? { current: previous, previous: null, rangeDays, hasBattery } : null
+		previous ? { current: previous, previous: null, rangeDays, hasBattery, health } : null
 	);
 	const baseline = $derived(baselineLabel(data.mode, data.windowDays));
 
@@ -172,6 +192,8 @@
 		</ChartPanel>
 	{/if}
 {/if}
+
+<BatteryHealthPanel {health} {hasBattery} />
 
 <!-- Rangeless-by-scope: the heatmap always folds the PICKED window (not the
      chart scope) onto one week, and hides itself when that window has no data. -->
