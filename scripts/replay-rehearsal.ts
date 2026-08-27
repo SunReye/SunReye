@@ -419,18 +419,127 @@ const log = (message: string) => {
 const urlFor = (o: RehearsalOptions, database: string) =>
   `postgres://postgres:${o.password}@localhost:${o.port}/${database}`;
 
+/**
+ * The 1.2.0 bucket columns, in order, written ONCE.
+ *
+ * The order is load-bearing and the single list is the reason: `COPY … BINARY`
+ * matches columns by POSITION, never by name. A column added to the `CREATE
+ * TABLE` and not to the `COPY (select …)` — or reordered in one of them — would
+ * not fail the copy. It would write `min_value` into `max_value`, and every
+ * energy check downstream would still pass, because the mean is the only column
+ * the replay reads.
+ */
+export const LEGACY_COLUMNS = [
+  { name: "bucket", type: "timestamptz not null" },
+  { name: "inverter_id", type: "text not null" },
+  { name: "metric", type: "text not null" },
+  { name: "avg_value", type: "double precision" },
+  { name: "max_value", type: "double precision" },
+  { name: "min_value", type: "double precision" },
+] as const;
+
+/** The plain table one tier's buckets are copied into. */
+export function legacyTableDdl(tier: SourceTier): string {
+  const columns = LEGACY_COLUMNS.map((c) => `      ${c.name} ${c.type}`).join(",\n");
+  return `create table ${LEGACY_RELATION[tier]} (\n${columns}\n    )`;
+}
+
+/**
+ * The two halves of the tier copy's binary pipe.
+ *
+ * `COPY … TO STDOUT BINARY` out of the 1.2.0 aggregate, `COPY … FROM STDIN
+ * BINARY` into the plain relation — the direction is the decision, and swapping
+ * it would overwrite the fixture. Kept out here, as text, so it is provable
+ * without Docker.
+ */
+export function copyStatements(tier: SourceTier): { from: string; to: string } {
+  const names = LEGACY_COLUMNS.map((c) => c.name).join(", ");
+  return {
+    from: `COPY (select ${names} from ${TIER_OF[tier]}) TO STDOUT BINARY`,
+    to: `COPY ${LEGACY_RELATION[tier]} FROM STDIN BINARY`,
+  };
+}
+
+/** One tier copy: the container it runs in, and the two statements it pipes. */
+export interface DockerCopy {
+  container: string;
+  /** The port BOTH databases listen on — one container, two databases. */
+  port: number;
+  from: { db: string; statement: string };
+  to: { db: string; statement: string };
+}
+
+/**
+ * The rig's side effects, injected — with the production wiring as the default,
+ * so every caller passes nothing and the script behaves exactly as before.
+ *
+ * The same shape as the `FixtureIo` seam in `./fixture-1-2-0.ts` and the
+ * `FloorIo` one in `./coverage-floor.ts`, and for the same reason: what a
+ * `docker exec` DOES cannot be proved by a unit test — only by running the
+ * rehearsal against the real fixture, which is how it was proved. Which
+ * statement runs WHEN, in what order, and against which database is a decision,
+ * and every one of those is proved against a double.
+ */
+export interface RehearsalIo {
+  /** A pool for the target, held open across the whole verification pass. */
+  connect(url: string): UnsafeSql & { end(): Promise<void> };
+  /**
+   * A pool for a handful of statements, closed immediately. Separate from
+   * {@link connect} because it must NOT disable the idle timeout: these are the
+   * maintenance connection that drops the target and the two bookends of the
+   * copy, and an idle one of those is what makes the next run's DROP hang.
+   */
+  connectBriefly(url: string): UnsafeSql & { end(): Promise<void> };
+  /** Apply the 2.0.0 schema with the shipped migration runner. */
+  migrate(url: string): Promise<void>;
+  /** The one shell command the rehearsal runs. */
+  copyBinary(command: DockerCopy): Promise<void>;
+  /** The committed ground truth for `mode`. */
+  readGroundTruth(mode: RehearsalMode): Promise<GroundTruth>;
+  log(message: string): void;
+  error(message: string): void;
+}
+
+/**
+ * The real wiring. The single shell command in this script lives here and
+ * nowhere else, exactly as it was written: both `psql` processes run INSIDE the
+ * container, so 9.1 M rows never cross this process and no float ever
+ * round-trips through text.
+ */
+export const productionIo: RehearsalIo = {
+  connect: (url) => new SQL(url, { max: 1, idleTimeout: 0 }),
+  connectBriefly: (url) => new SQL(url, { max: 1 }),
+  migrate: async (url) => {
+    const { runMigrations } = await import("../packages/db/src/migrate");
+    await runMigrations(url);
+  },
+  async copyBinary({ container, port, from, to }) {
+    const psql = (db: string, statement: string) =>
+      `psql -X -q -U postgres -p ${port} -d ${db} -c ${JSON.stringify(statement)}`;
+    await $`docker exec ${container} sh -c ${
+      `${psql(from.db, from.statement)}` + ` | ${psql(to.db, to.statement)}`
+    }`.quiet();
+  },
+  readGroundTruth: (mode) => Bun.file(groundTruthPath(mode)).json() as Promise<GroundTruth>,
+  log,
+  error: (message) => console.error(message),
+};
+
 /** Recreate the 2.0.0 target. This is what makes a re-run a reset. */
-async function recreateTarget(o: RehearsalOptions): Promise<string> {
+export async function recreateTarget(
+  o: RehearsalOptions,
+  io: RehearsalIo = productionIo,
+): Promise<string> {
   const url = urlFor(o, o.targetDb);
   assertRehearsalTarget(url);
-  const admin = new SQL(urlFor(o, "postgres"), { max: 1 });
+  const admin = io.connectBriefly(urlFor(o, "postgres"));
   try {
     await admin.unsafe(`DROP DATABASE IF EXISTS ${o.targetDb} WITH (FORCE)`);
     await admin.unsafe(`CREATE DATABASE ${o.targetDb}`);
   } finally {
     await admin.end();
   }
-  log(`recreated ${o.targetDb} (2.0.0 target)`);
+  io.log(`recreated ${o.targetDb} (2.0.0 target)`);
   return url;
 }
 
@@ -443,37 +552,35 @@ async function recreateTarget(o: RehearsalOptions): Promise<string> {
  * text. A `CREATE TABLE AS` cannot be used because the two databases are
  * different databases, which is also exactly the shape an import has.
  */
-async function copyLegacyTier(o: RehearsalOptions, tier: SourceTier): Promise<number> {
+export async function copyLegacyTier(
+  o: RehearsalOptions,
+  tier: SourceTier,
+  io: RehearsalIo = productionIo,
+): Promise<number> {
   const relation = LEGACY_RELATION[tier];
-  const target = new SQL(urlFor(o, o.targetDb), { max: 1 });
+  const target = io.connectBriefly(urlFor(o, o.targetDb));
   try {
     await target.unsafe(`drop table if exists ${relation}`);
-    await target.unsafe(`create table ${relation} (
-      bucket timestamptz not null,
-      inverter_id text not null,
-      metric text not null,
-      avg_value double precision,
-      max_value double precision,
-      min_value double precision
-    )`);
+    await target.unsafe(legacyTableDdl(tier));
   } finally {
     await target.end();
   }
   const source = TIER_OF[tier];
   const began = Date.now();
-  const psql = (db: string, statement: string) =>
-    `psql -X -q -U postgres -p ${o.port} -d ${db} -c ${JSON.stringify(statement)}`;
-  await $`docker exec ${o.container} sh -c ${
-    `${psql(o.sourceDb, `COPY (select bucket, inverter_id, metric, avg_value, max_value, min_value from ${source}) TO STDOUT BINARY`)}` +
-    ` | ${psql(o.targetDb, `COPY ${relation} FROM STDIN BINARY`)}`
-  }`.quiet();
-  const check = new SQL(urlFor(o, o.targetDb), { max: 1 });
+  const statements = copyStatements(tier);
+  await io.copyBinary({
+    container: o.container,
+    port: o.port,
+    from: { db: o.sourceDb, statement: statements.from },
+    to: { db: o.targetDb, statement: statements.to },
+  });
+  const check = io.connectBriefly(urlFor(o, o.targetDb));
   try {
     const rows = (await check.unsafe(`select count(*)::bigint as n from ${relation}`)) as {
       n: string;
     }[];
     const copied = Number(rows[0]?.n ?? 0);
-    log(
+    io.log(
       `copied ${copied.toLocaleString("en-US")} ${source} buckets into ${relation} in ` +
         `${((Date.now() - began) / 1000).toFixed(1)}s`,
     );
@@ -598,7 +705,7 @@ export interface Replayed {
 
 /** Is the source we are about to replay the real fixture's data, bit for bit? */
 export async function verifySource(
-  target: SQL,
+  target: UnsafeSql,
   options: RehearsalOptions,
   truth: GroundTruth,
 ): Promise<string[]> {
@@ -606,7 +713,9 @@ export async function verifySource(
   // definition rather than two.
   const { readTier } = await import("./fixture-1-2-0");
   const tierName = TIER_OF[options.tier];
-  const copied = await readTier(target, tierName, LEGACY_RELATION[options.tier]);
+  // `readTier` is typed against bun's concrete `SQL`; it only ever calls
+  // `unsafe`, which is what {@link UnsafeSql} promises.
+  const copied = await readTier(target as never, tierName, LEGACY_RELATION[options.tier]);
   const problems = compareTier(tierName, truth.tiers[tierName], copied);
   log(
     problems.length === 0
@@ -714,25 +823,27 @@ export async function replay(
 }
 
 /** The rig, then the replay, then every verification. Returns the findings. */
-async function rehearse(options: RehearsalOptions): Promise<string[]> {
-  const truth = (await Bun.file(groundTruthPath(options.mode)).json()) as GroundTruth;
-  log(
+export async function rehearse(
+  options: RehearsalOptions,
+  io: RehearsalIo = productionIo,
+): Promise<string[]> {
+  const truth = await io.readGroundTruth(options.mode);
+  io.log(
     `ground truth: ${options.mode} fixture, ${truth.fixture.spanDays} days x ` +
       `${truth.fixture.metricCount} metrics, ${truth.restarts.length} counter restarts`,
   );
 
-  const targetUrl = await recreateTarget(options);
-  const { runMigrations } = await import("../packages/db/src/migrate");
-  await runMigrations(targetUrl);
-  log("applied the 2.0.0 schema with the shipped migration runner");
-  await copyLegacyTier(options, options.tier);
+  const targetUrl = await recreateTarget(options, io);
+  await io.migrate(targetUrl);
+  io.log("applied the 2.0.0 schema with the shipped migration runner");
+  await copyLegacyTier(options, options.tier, io);
 
-  const target = new SQL(targetUrl, { max: 1, idleTimeout: 0 });
+  const target = io.connect(targetUrl);
   try {
     const problems = await verifySource(target, options, truth);
     const { metrics, configKeys, inverterId } = await classifyProfile();
     const deviceId = await seedDimensions(target, inverterId, metrics);
-    log(`${configKeys.length} of ${metrics.length} metrics are configuration by profile`);
+    io.log(`${configKeys.length} of ${metrics.length} metrics are configuration by profile`);
 
     problems.push(
       ...(await replay(
@@ -757,32 +868,42 @@ async function rehearse(options: RehearsalOptions): Promise<string[]> {
 }
 
 /** Report the findings, and return the exit code they imply. */
-export function report(problems: readonly string[]): number {
+export function report(problems: readonly string[], io: RehearsalIo = productionIo): number {
   if (problems.length === 0) {
-    log("rehearsal PASSED: the replay reproduces the fixture's energy, per metric and per day.");
+    io.log("rehearsal PASSED: the replay reproduces the fixture's energy, per metric and per day.");
     return 0;
   }
-  for (const problem of problems.slice(0, 40)) console.error(`  - ${problem}`);
-  if (problems.length > 40) console.error(`  … and ${problems.length - 40} more`);
-  log(`FAILED with ${problems.length} problem(s)`);
+  for (const problem of problems.slice(0, 40)) io.error(`  - ${problem}`);
+  if (problems.length > 40) io.error(`  … and ${problems.length - 40} more`);
+  io.log(`FAILED with ${problems.length} problem(s)`);
   return 1;
 }
 
+/** Parse, run, report. Throws; turning that into an exit code is {@link cli}. */
+export async function main(
+  argv: readonly string[],
+  io: RehearsalIo = productionIo,
+): Promise<number> {
+  const options = parseArgs(argv);
+  if (options.help) {
+    console.log(HELP);
+    return 0;
+  }
+  return report(await rehearse(options, io), io);
+}
+
 /**
- * Total: every failure becomes an exit code here rather than an unhandled
- * rejection, so the entry point below is a single line and this function is the
- * only thing a caller has to reason about.
+ * The entry point's body, extracted so the failure path is provable: a bad flag
+ * or a refused target must exit 1 with its own message, never a stack trace.
  */
-export async function main(argv: readonly string[]): Promise<number> {
+export async function cli(
+  argv: readonly string[],
+  io: RehearsalIo = productionIo,
+): Promise<number> {
   try {
-    const options = parseArgs(argv);
-    if (options.help) {
-      console.log(HELP);
-      return 0;
-    }
-    return report(await rehearse(options));
+    return await main(argv, io);
   } catch (error) {
-    console.error((error as Error).message);
+    io.error((error as Error).message);
     return 1;
   }
 }
@@ -858,4 +979,4 @@ export async function checkAggregates(
   return problems;
 }
 
-if (import.meta.main) process.exit(await main(process.argv.slice(2)));
+if (import.meta.main) process.exit(await cli(process.argv.slice(2)));
