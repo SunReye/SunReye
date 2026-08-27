@@ -273,9 +273,12 @@ const app = new Elysia()
     requireSession: true,
   })
   // Historical data (long form). Filter by metric / inverter; rollups live in
-  // TimescaleDB continuous aggregates, this reads the raw hypertable. Capped to
-  // the raw retention window (30 days) so it never queries dropped chunks —
-  // longer spans must go through /api/history/rollup.
+  // TimescaleDB continuous aggregates, this reads the raw hypertable. The
+  // 720-hour cap is no longer the raw retention window — raw is kept 1825 days
+  // — it is a bound on the RESPONSE: this returns individual rows, and a span
+  // wide enough to matter is a rollup query. Longer spans go through
+  // /api/history/rollup, whose minute tier now reads the same raw rows,
+  // bucketed and time-weighted (apps/server/src/shared/rollup-sql.ts).
   .get(
     "/api/history",
     async ({ query }) => {

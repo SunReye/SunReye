@@ -26,7 +26,7 @@ import {
   fetchCounterDeltaMatrix,
   resolveRange,
 } from "../energy/cost";
-import { accumulateTotals, emptyTotals, energySeries } from "../energy/energy";
+import { accumulateTotals, derivePeriods, emptyTotals, energySeries } from "../energy/energy";
 import { derivePeriodEnergy } from "../energy/energy-calc";
 import { startOfZonedDay } from "../energy/zoned-time";
 import { getPlantTimeZone } from "../settings/display-settings";
@@ -180,7 +180,7 @@ async function energyRecords(
     tz,
   });
   const totals = accumulateTotals(rows, fieldByKey, periods);
-  const days = periods.map((p) => derivePeriodEnergy(p, totals.get(p) ?? emptyTotals()));
+  const days = derivePeriods(profile, periods, totals);
   return { since: from.toISOString(), ...pickEnergyRecords(days) };
 }
 

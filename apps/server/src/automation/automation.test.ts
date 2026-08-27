@@ -57,6 +57,27 @@ const metric = (key: string, role: string, writable = false): MetricDef => ({
   ...(writable ? { range: { min: 0, max: 185 } } : {}),
 });
 
+/**
+ * The same plant with a watt-denominated battery limit — Victron ESS, SMA and
+ * every device whose charge ceiling is set in power rather than current. Same
+ * register key, so the fixture's live readback needs no special case.
+ */
+const powerLimitProfile = (): InverterProfile => ({
+  id: "test-profile",
+  name: "Test",
+  manufacturer: "Test",
+  metrics: [
+    {
+      ...metric(CHARGE_KEY, "setting.battery.max_charge_power", true),
+      unit: "W",
+      range: { min: 0, max: 15_000 },
+    },
+    metric(PV_KEY, "pv.total.power"),
+    metric(SOC_KEY, "battery.soc"),
+    metric(VOLT_KEY, "battery.voltage"),
+  ],
+});
+
 /** The three roles peak shaving requires, and nothing else. */
 const profile: InverterProfile = {
   id: "test-profile",
@@ -183,8 +204,8 @@ interface Harness {
   state(): AutomationState;
 }
 
-function harness(over: { config?: AutomationConfig } = {}): Harness {
-  const ctx = buildProfileContext(profile);
+function harness(over: { config?: AutomationConfig; profile?: InverterProfile } = {}): Harness {
+  const ctx = buildProfileContext(over.profile ?? profile);
   let cfg = over.config ?? config();
   let wx = weather();
   let fc: SolarForecast | null = forecastAt([6000, 6000, 6000, 6000]);
@@ -339,6 +360,27 @@ describe("automation loop", () => {
     expect(h.writes.map((w) => w.key)).toEqual([CHARGE_KEY]);
     expect(frames).toHaveLength(1);
     expect(frames[0]?.status.state).toBe("active");
+  });
+
+  test("a watt-denominated plant is steered in watts", async () => {
+    // The decision stays in amps — it is sized from the pack, and the config's
+    // limits are amps — so the *write* converts at the measured pack voltage.
+    // 50 A on a 50 V pack is 2500 W.
+    const h = harness({ profile: powerLimitProfile() });
+    await start(h);
+
+    expect(h.writes).toEqual([{ key: CHARGE_KEY, value: 2500 }]);
+    // The reported plan is still the amps figure the engine decided.
+    expect(automationStatus().peakShaving.targetA).toBe(50);
+  });
+
+  test("a watt-denominated register is clamped in its own unit", async () => {
+    // A 0–185 clamp would have cut 2500 W down to 185 W — the current register's
+    // bounds have no meaning for a power register.
+    const h = harness({ profile: powerLimitProfile() });
+    await start(h);
+
+    expect(h.writes.at(-1)?.value).toBeGreaterThan(185);
   });
 
   test("the loop arms the next tick at the configured control interval", async () => {

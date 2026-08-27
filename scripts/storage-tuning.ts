@@ -116,6 +116,29 @@ export function intervalDays(interval: string): number {
   return Number.NaN;
 }
 
+/**
+ * Aggregates that are deliberately NOT refreshed any more (#117 follow-up).
+ *
+ * The minute tier stopped paying for itself once a raw row became an interval —
+ * measured, raw costs 361 MB/device-year against the pair's 333 — while
+ * remaining the ceiling on raw retention. Freezing them rather than dropping
+ * them keeps every already-materialized bucket readable until its own retention
+ * ages it out, which is what makes the change safe on a deployment whose raw
+ * does not reach back that far.
+ */
+export const FROZEN_TIERS = ["minute_rollups", "weighted_minute_rollups"] as const;
+
+/** `remove_continuous_aggregate_policy('x'` — the statement that applies a freeze. */
+const REMOVE_REFRESH = /remove_continuous_aggregate_policy\s*\(\s*'([^']+)'/i;
+
+/** Continuous aggregates the file explicitly stops refreshing, in order. */
+export function frozenPolicies(sql: string): string[] {
+  return statements(sql).flatMap((statement) => {
+    const match = REMOVE_REFRESH.exec(statement);
+    return match?.[1] ? [match[1]] : [];
+  });
+}
+
 /** Continuous aggregates the file arms a refresh policy for, in order. */
 export function refreshPolicies(sql: string): string[] {
   return statements(sql).flatMap((statement) => {
@@ -298,37 +321,96 @@ function settingsProblems(where: string, settings: Record<string, string>): stri
  * (daily_rollups' 3-day `start_offset`), or a refresh reaches for a chunk
  * retention has dropped.
  */
+/** Is this tier decaying on purpose rather than holding the record? */
+function isFrozen(tier: string): boolean {
+  return (FROZEN_TIERS as readonly string[]).includes(tier);
+}
+
+/**
+ * Rollup tiers raw must not outlive.
+ *
+ * Frozen tiers are exempt: they are decaying on purpose, and raw outliving them
+ * is the point of the change rather than a coverage hole.
+ */
+function coverageProblems(days: Record<string, number>, raw: number): string[] {
+  return Object.entries(days)
+    .filter(
+      ([target, retention]) => target !== "metrics_raw" && !isFrozen(target) && retention < raw,
+    )
+    .map(
+      ([target, retention]) =>
+        `metrics_raw is kept ${raw} day(s) but ${target} only ${retention} — raw then covers a range the rollups do not, and the addon's default backup excludes raw (#121, #133).`,
+    );
+}
+
+/** Every retention policy must be authoritative on an already-configured database. */
+function authoritativeRetentionProblems(policySql: string, targets: string[]): string[] {
+  return targets
+    .filter((target) => !removesRetentionBeforeAdding(policySql, target))
+    .map(
+      (target) =>
+        `policies.sql adds a retention policy for ${target} without removing it first — \`if_not_exists => TRUE\` is a no-op on a configured deployment, so an interval change would never reach an existing database.`,
+    );
+}
+
 function retentionProblems(io: CheckIO): string[] {
-  const days = retentionDays(io.read(POLICY_SQL));
+  const policySql = io.read(POLICY_SQL);
+  const days = retentionDays(policySql);
   const raw = days["metrics_raw"];
-  const problems: string[] = [];
-  if (raw === undefined) {
-    // Not a failure: raw kept forever is a deliberate shape. But the backup
-    // default then has to include raw, which dump.sh handles.
-    return problems;
-  }
+  // Raw kept forever is not a failure — it is a deliberate shape. But the backup
+  // default then has to include raw, which dump.sh handles.
+  if (raw === undefined) return [];
   if (!Number.isFinite(raw)) {
-    problems.push("metrics_raw retention interval is unparseable in policies.sql.");
-    return problems;
+    return ["metrics_raw retention interval is unparseable in policies.sql."];
   }
-  if (raw <= WIDEST_REFRESH_DAYS) {
+  const refresh =
+    raw <= WIDEST_REFRESH_DAYS
+      ? [
+          `metrics_raw retention is ${raw} day(s), inside the widest continuous-aggregate refresh window (${WIDEST_REFRESH_DAYS} days) — a refresh would reach a chunk retention has dropped.`,
+        ]
+      : [];
+  return [
+    ...refresh,
+    ...coverageProblems(days, raw),
+    ...authoritativeRetentionProblems(policySql, Object.keys(days)),
+  ];
+}
+
+/** #134: the tier compresses into the shape a per-metric range scan can use. */
+function segmentbyProblems(tier: string, declared: string | undefined): string[] {
+  if (declared === undefined) {
+    return [`${tier} declares no compression settings in any numbered file (#134).`];
+  }
+  if (declared !== REQUIRED_SEGMENTBY) {
+    return [
+      `${tier} compress_segmentby is '${declared}', expected '${REQUIRED_SEGMENTBY}' — a rollup that does not mirror metrics_raw decompresses batches it does not need (#134).`,
+    ];
+  }
+  return [];
+}
+
+/**
+ * Whether the tier is materialized on the schedule its role requires: live tiers
+ * refreshed, frozen tiers explicitly un-refreshed.
+ */
+function refreshStateProblems(tier: string, policySql: string, refreshed: string[]): string[] {
+  if (!isFrozen(tier)) {
+    return refreshed.includes(tier)
+      ? []
+      : [
+          `policies.sql arms no refresh policy for ${tier}; an aggregate nothing refreshes is an aggregate nothing can read (#116).`,
+        ];
+  }
+  const problems: string[] = [];
+  if (refreshed.includes(tier)) {
     problems.push(
-      `metrics_raw retention is ${raw} day(s), inside the widest continuous-aggregate refresh window (${WIDEST_REFRESH_DAYS} days) — a refresh would reach a chunk retention has dropped.`,
+      `policies.sql arms a refresh policy for ${tier}, which is frozen — refreshing it again re-materializes a tier raw already answers, and re-imposes its retention as the ceiling on raw's.`,
     );
   }
-  for (const [target, retention] of Object.entries(days)) {
-    if (target !== "metrics_raw" && retention < raw) {
-      problems.push(
-        `metrics_raw is kept ${raw} day(s) but ${target} only ${retention} — raw then covers a range the rollups do not, and the addon's default backup excludes raw (#121, #133).`,
-      );
-    }
-  }
-  for (const target of Object.keys(days)) {
-    if (!removesRetentionBeforeAdding(io.read(POLICY_SQL), target)) {
-      problems.push(
-        `policies.sql adds a retention policy for ${target} without removing it first — \`if_not_exists => TRUE\` is a no-op on a configured deployment, so an interval change would never reach an existing database.`,
-      );
-    }
+  if (!frozenPolicies(policySql).includes(tier)) {
+    problems.push(
+      `policies.sql never removes ${tier}'s refresh policy; omitting the add only freezes a FRESH install, and leaves every existing deployment refreshing.`,
+    );
   }
   return problems;
 }
@@ -343,35 +425,24 @@ function rollupProblems(io: CheckIO): string[] {
   const compressed = compressionPolicies(policySql).map((p) => p.target);
   const refreshed = refreshPolicies(policySql);
 
-  const problems: string[] = [];
-  for (const tier of ROLLUP_TIERS) {
-    const declared = segmentby[tier];
-    if (declared === undefined) {
-      problems.push(`${tier} declares no compression settings in any numbered file (#134).`);
-    } else if (declared !== REQUIRED_SEGMENTBY) {
-      problems.push(
-        `${tier} compress_segmentby is '${declared}', expected '${REQUIRED_SEGMENTBY}' — a rollup that does not mirror metrics_raw decompresses batches it does not need (#134).`,
-      );
-    }
-    if (!compressed.includes(tier)) {
-      problems.push(
-        `policies.sql declares no compression policy for ${tier}, so it can never compress (#134).`,
-      );
-    }
-    if (!refreshed.includes(tier)) {
-      problems.push(
-        `policies.sql arms no refresh policy for ${tier}; an aggregate nothing refreshes is an aggregate nothing can read (#116).`,
-      );
-    }
-  }
-  problems.push(
+  const perTier = ROLLUP_TIERS.flatMap((tier) => [
+    ...segmentbyProblems(tier, segmentby[tier]),
+    ...(compressed.includes(tier)
+      ? []
+      : [
+          `policies.sql declares no compression policy for ${tier}, so it can never compress (#134).`,
+        ]),
+    ...refreshStateProblems(tier, policySql, refreshed),
+  ]);
+
+  return [
+    ...perTier,
     ...structural.flatMap((f) =>
       continuousAggregateDrops(f.sql).map(
         (drop) => `${f.path} would destroy a continuous aggregate: ${drop}`,
       ),
     ),
-  );
-  return problems;
+  ];
 }
 
 export function checkStorageTuning(io: CheckIO): number {
@@ -391,7 +462,7 @@ export function checkStorageTuning(io: CheckIO): number {
   if (problems.length > 0) return 1;
   io.log("✓ storage tuning: compress_after 2 hours, checkpoint_timeout 2h, wal_compression zstd.");
   io.log(
-    `✓ rollup compression: ${ROLLUP_TIERS.length} tiers segmented by '${REQUIRED_SEGMENTBY}', each with a compression and a refresh policy.`,
+    `✓ rollup compression: ${ROLLUP_TIERS.length} tiers segmented by '${REQUIRED_SEGMENTBY}', each with a compression policy; ${ROLLUP_TIERS.length - FROZEN_TIERS.length} refreshed, ${FROZEN_TIERS.length} frozen.`,
   );
   return 0;
 }

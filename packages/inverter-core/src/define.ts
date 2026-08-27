@@ -1,6 +1,6 @@
 import type { CanonicalRole } from "./roles";
 import { ROLE_CATALOG } from "./roles";
-import { bindingFor } from "./profile-data";
+import { bindingFor, declarationsOf } from "./profile-data";
 import type {
   AggregateExpr,
   AggregateMatch,
@@ -17,6 +17,7 @@ import type {
   MetricKind,
   MetricRange,
   MetricStorage,
+  ProfileDeclarations,
   RegisterType,
 } from "./types";
 
@@ -254,6 +255,23 @@ function bound(metrics: MetricDataDef[]): MetricDataDef[] {
   }));
 }
 
+/**
+ * The version every authored profile is emitted at — the vocabulary this SDK
+ * writes, not the oldest one the runtime still reads.
+ */
+const EMIT_SCHEMA_VERSION = 3 as const;
+
+/**
+ * A declarations block, or nothing at all. An emitted profile is a JSON artifact
+ * that gets diffed against its own baseline, so an absent declaration must leave
+ * no key behind rather than serialize as `"declares": undefined`.
+ */
+function declaresPart(declares: ProfileDeclarations | undefined): {
+  declares?: ProfileDeclarations;
+} {
+  return declares ? { declares } : {};
+}
+
 /** Assemble a {@link ProfileData} from identity + a metric list, resolving any
  *  deferred {@link sumOf} aggregates against the given metrics. */
 export function defineProfile(input: {
@@ -262,10 +280,14 @@ export function defineProfile(input: {
   manufacturer: string;
   version: string;
   metrics: MetricDataDef[];
+  /** Hardware the metric set cannot imply — see {@link ProfileDeclarations}. */
+  declares?: ProfileDeclarations;
 }): ProfileData {
+  const { declares, ...identity } = input;
   return {
-    schemaVersion: 2,
-    ...input,
+    schemaVersion: EMIT_SCHEMA_VERSION,
+    ...identity,
+    ...declaresPart(declares),
     metrics: bound(
       resolveAggregates(
         input.metrics.map((m) => ({ ...m })),
@@ -316,6 +338,11 @@ export interface ModelOverrides<K extends string = string> {
   version?: string;
   manufacturer?: string;
   metrics?: MetricsOverlay<K>;
+  /**
+   * Restated hardware declarations — a model of the same family without the
+   * backup output, say. Omitted inherits the base's.
+   */
+  declares?: ProfileDeclarations;
 }
 
 function normalizeAddr(addr: number | number[]): number[] {
@@ -621,11 +648,15 @@ export function defineVariant(
     overrides.id,
   );
   return {
-    schemaVersion: 2,
+    schemaVersion: EMIT_SCHEMA_VERSION,
     id: overrides.id,
     name: overrides.name ?? base.name,
     manufacturer: overrides.manufacturer ?? base.manufacturer,
     version: overrides.version ?? base.version,
+    // `declarationsOf` rather than `base.declares`: a legacy base states its
+    // backup output through its `load.*` roles, and the variant is emitted at a
+    // version where that is no longer read.
+    ...declaresPart(overrides.declares ?? declarationsOf(base)),
     metrics: bound(metrics),
   };
 }
@@ -642,6 +673,8 @@ export function defineFamily<const M extends readonly MetricDataDef[]>(def: {
   manufacturer: string;
   version: string;
   metrics: M;
+  /** The family's hardware declarations; a model may restate them. */
+  declares?: ProfileDeclarations;
   models: Record<string, ModelOverrides<M[number]["key"]>>;
 }): ProfileData[] {
   // Keep the base metrics UNRESOLVED (aggregate tokens intact) and derive every
@@ -649,11 +682,12 @@ export function defineFamily<const M extends readonly MetricDataDef[]>(def: {
   // base up front (via defineProfile) would bake in the base's own key list, so
   // a model that drops a string could no longer self-heal its aggregates.
   const unresolvedBase: ProfileData = {
-    schemaVersion: 2,
+    schemaVersion: EMIT_SCHEMA_VERSION,
     id: def.id,
     name: def.name,
     manufacturer: def.manufacturer,
     version: def.version,
+    ...declaresPart(def.declares),
     metrics: def.metrics.map((m) => ({ ...m })),
   };
   const base = defineVariant(unresolvedBase, { id: def.id });

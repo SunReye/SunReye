@@ -211,19 +211,25 @@ function batteryBottom(
   };
 }
 
-/** Whether the load node renders: capability present *and* its metric visible. */
-function loadVisible(caps: InverterCapabilities | null, has: VisibleLookup): boolean {
-  return Boolean(caps?.backupLoad) && has("load.power");
+/**
+ * Whether the home node renders: its metric is mapped and visible, full stop.
+ *
+ * Deliberately not gated on `backupLoad`: house consumption and a backup output
+ * are different things, and a grid-tied plant meters the first while having none
+ * of the second. Gating on the capability dropped the biggest sink out of those
+ * plants' diagrams.
+ */
+function loadVisible(has: VisibleLookup): boolean {
+  return has("load.power");
 }
 
 /** The load/home bottom-row entry, or null when absent/hidden. */
 function loadBottom(
-  caps: InverterCapabilities | null,
   power: PowerLookup,
   has: VisibleLookup,
   charger: ChargerDatum | undefined,
 ): BottomSpec | null {
-  if (!loadVisible(caps, has)) return null;
+  if (!loadVisible(has)) return null;
   const { value, label } = homeBottom(power("load.power"), charger);
   const s = sense(
     value,
@@ -292,12 +298,8 @@ function chargerRow(charger: ChargerDatum): BottomSpec {
  * The charger's bottom-row entry, or null when there is no charger or no visible
  * load node for it to belong to.
  */
-function chargerBottom(
-  caps: InverterCapabilities | null,
-  has: VisibleLookup,
-  charger: ChargerDatum | undefined,
-): BottomSpec | null {
-  if (!charger || !loadVisible(caps, has)) return null;
+function chargerBottom(has: VisibleLookup, charger: ChargerDatum | undefined): BottomSpec | null {
+  if (!charger || !loadVisible(has)) return null;
   return chargerRow(charger);
 }
 
@@ -306,13 +308,9 @@ function chargerBottom(
  * its draw is already inside `load.power` and a hub rail would double-count it.
  * Residual-home mode makes it a real sibling with its own rail.
  */
-function evIsSubBranch(
-  caps: InverterCapabilities | null,
-  has: VisibleLookup,
-  charger: ChargerDatum | undefined,
-): boolean {
+function evIsSubBranch(has: VisibleLookup, charger: ChargerDatum | undefined): boolean {
   if (!charger || charger.subtractFromHome) return false;
-  return loadVisible(caps, has);
+  return loadVisible(has);
 }
 
 /** Grid presence, reading and flow sense — shared by both orientations. */
@@ -447,8 +445,8 @@ function collectBottoms(
   return [
     batteryBottom(caps, power, has),
     gridBottom(grid, portrait),
-    loadBottom(caps, power, has, charger),
-    chargerBottom(caps, has, charger),
+    loadBottom(power, has, charger),
+    chargerBottom(has, charger),
     generatorBottom(caps, power, has),
   ].filter((b): b is BottomSpec => b !== null);
 }
@@ -522,7 +520,7 @@ export function buildPowerGraph(
   const bottoms = collectBottoms(caps, power, has, grid, portrait, charger);
   const parts = [
     pvGraph(caps, power, has, portrait, hub),
-    bottomGraph(bottoms, portrait, hub, evIsSubBranch(caps, has, charger)),
+    bottomGraph(bottoms, portrait, hub, evIsSubBranch(has, charger)),
     landscapeGrid(grid, portrait, hub),
   ];
   return {

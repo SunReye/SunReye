@@ -17,9 +17,23 @@ const powerFrom =
   (values: Partial<Record<string, number>>) => (role: CanonicalRole, index?: number) =>
     values[index === undefined ? role : `${role}#${index}`];
 
+// `has` reports whether a metric is mapped and *visible* (Settings → Sensors).
+// Capabilities stay true, so a hidden subsystem must drop its node/segment via
+// `has` alone — and a role the profile never mapped reads the same way.
+const hidden = (keys: string[]) => (role: CanonicalRole, index?: number) =>
+  !keys.includes(index === undefined ? role : `${role}#${index}`);
+
+/** A plant with no house-load metric — the PV-side tests are about PV. */
+const noLoadMetric = hidden(["load.power"]);
+
 describe("buildPowerGraph", () => {
   test("no capabilities → single solar node from pv total", () => {
-    const g = buildPowerGraph(caps({}), powerFrom({ "pv.total.power": 1200 }));
+    const g = buildPowerGraph(
+      caps({}),
+      powerFrom({ "pv.total.power": 1200 }),
+      "landscape",
+      noLoadMetric,
+    );
     expect(g.nodes.map((n) => n.id)).toEqual(["solar"]);
     expect(g.segments.map((s) => s.id)).toEqual(["solar-hub"]);
     expect(g.nodes[0].flow).toBe("in");
@@ -30,6 +44,8 @@ describe("buildPowerGraph", () => {
     const g = buildPowerGraph(
       caps({ pvStrings: 3 }),
       powerFrom({ "pv.string.power#1": 500, "pv.string.power#2": 0, "pv.string.power#3": 300 }),
+      "landscape",
+      noLoadMetric,
     );
     expect(g.nodes.map((n) => n.id)).toEqual(["pv1", "pv2", "pv3"]);
     expect(g.nodes[1].flow).toBe("idle");
@@ -53,9 +69,9 @@ describe("buildPowerGraph", () => {
 
   test("portrait pv captions sit above their nodes, clear of the connectors", () => {
     const power = powerFrom({ "pv.string.power#1": 500, "pv.string.power#2": 300 });
-    const portrait = buildPowerGraph(caps({ pvStrings: 2 }), power, "portrait");
+    const portrait = buildPowerGraph(caps({ pvStrings: 2 }), power, "portrait", noLoadMetric);
     expect(portrait.nodes.every((n) => n.labelSide === "above")).toBe(true);
-    const landscape = buildPowerGraph(caps({ pvStrings: 2 }), power, "landscape");
+    const landscape = buildPowerGraph(caps({ pvStrings: 2 }), power, "landscape", noLoadMetric);
     expect(landscape.nodes.every((n) => n.labelSide === "below")).toBe(true);
   });
 
@@ -109,11 +125,6 @@ describe("buildPowerGraph", () => {
     expect(g.segments.every((s) => s.flow === "idle")).toBe(true);
   });
 
-  // `has` reports whether a metric is *visible* (Settings → Sensors). Capabilities
-  // stay true, so a hidden subsystem must drop its node/segment via `has` alone.
-  const hidden = (keys: string[]) => (role: CanonicalRole, index?: number) =>
-    !keys.includes(index === undefined ? role : `${role}#${index}`);
-
   test("hidden group drops its node even though the capability stays true", () => {
     const g = buildPowerGraph(
       caps({ battery: true, backupLoad: true, generator: true, grid: true }),
@@ -132,7 +143,7 @@ describe("buildPowerGraph", () => {
       caps({ pvStrings: 3 }),
       powerFrom({ "pv.string.power#1": 500, "pv.string.power#3": 300 }),
       "landscape",
-      hidden(["pv.string.power#2"]),
+      hidden(["pv.string.power#2", "load.power"]),
     );
     expect(g.nodes.map((n) => n.id)).toEqual(["pv1", "pv3"]);
     expect(g.segments.map((s) => s.id)).toEqual(["pv1-hub", "pv3-hub"]);
@@ -143,9 +154,30 @@ describe("buildPowerGraph", () => {
       caps({ pvStrings: 2 }),
       powerFrom({ "pv.total.power": 900 }),
       "landscape",
-      hidden(["pv.string.power#1", "pv.string.power#2"]),
+      hidden(["pv.string.power#1", "pv.string.power#2", "load.power"]),
     );
     expect(g.nodes.map((n) => n.id)).toEqual(["solar"]);
+  });
+
+  test("a metered house load renders a home node with no backup output in sight", () => {
+    // The grid-tied shape (SolarEdge/Sungrow SG + consumption meter): the home
+    // node follows the metric, never the UPS capability — gating it on
+    // `backupLoad` left these plants with a diagram missing its biggest sink.
+    const g = buildPowerGraph(
+      caps({ grid: true }),
+      powerFrom({ "load.power": 900, "grid.power": 900 }),
+    );
+    expect(g.nodes.map((n) => n.kind)).toContain("load");
+  });
+
+  test("no load metric, no home node — the capability never stood in for one", () => {
+    const g = buildPowerGraph(
+      caps({ backupLoad: true, grid: true }),
+      () => undefined,
+      "landscape",
+      hidden(["load.power"]),
+    );
+    expect(g.nodes.map((n) => n.kind)).not.toContain("load");
   });
 
   test("informational mode: charger branches off the load node, load unchanged", () => {
@@ -211,7 +243,7 @@ describe("buildPowerGraph", () => {
       caps({ grid: true }),
       () => undefined,
       "landscape",
-      () => true,
+      noLoadMetric,
       { power: 1800, connected: true, charging: true, subtractFromHome: false },
     );
     expect(noLoad.nodes.some((n) => n.kind === "charger")).toBe(false);

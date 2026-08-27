@@ -55,7 +55,13 @@ export type {
   RoledMetricOpts,
   UnroledMetricOpts,
 } from "./define";
-export { bindingFor, compileComputeExpr, hydrateProfile } from "./profile-data";
+export {
+  bindingFor,
+  compileComputeExpr,
+  declarationsOf,
+  hydrateProfile,
+  PROFILE_SCHEMA_VERSIONS,
+} from "./profile-data";
 export type {
   AggregateExpr,
   AggregateMatch,
@@ -63,6 +69,7 @@ export type {
   ControlExpr,
   MetricDataDef,
   ProfileData,
+  ProfileSchemaVersion,
   TopicToKey,
 } from "./profile-data";
 export { profileDataSchema, parseProfileData, safeParseProfileData } from "./schema";

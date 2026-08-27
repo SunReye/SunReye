@@ -15,6 +15,7 @@ import {
   currentPeriodKey,
   fetchCounterDeltaMatrix,
   liveTodayTotals,
+  metersLoadEnergy,
 } from "./cost";
 import { applyTodayOverride, derivePeriodEnergy, emptyTotals } from "./energy-calc";
 import { getPlantTimeZone } from "../settings/display-settings";
@@ -66,6 +67,23 @@ function overrideTodayPeriod(
 }
 
 /**
+ * Derive every period's splits, zero-filling the periods with no data.
+ *
+ * The one place the implied-consumption decision is made, so the energy chart
+ * and the statistics records can never disagree about whether a plant's house
+ * figure is measured or derived. Applied per period and *after* any live
+ * override, so an implied figure is coherent with the flows shown beside it.
+ */
+export function derivePeriods(
+  profile: InverterProfile,
+  periods: string[],
+  totals: Map<string, EnergyTotals>,
+): PeriodEnergy[] {
+  const impliedLoad = !metersLoadEnergy(profile);
+  return periods.map((p) => derivePeriodEnergy(p, totals.get(p) ?? emptyTotals(), { impliedLoad }));
+}
+
+/**
  * Per-period energy splits over `[from, to)`, one entry per `bucket`
  * (hour / day / month), oldest first and zero-filled so the chart x-axis is
  * stable. Sub-daily windows read the hourly rollups; day/month windows read the
@@ -99,5 +117,5 @@ export async function energySeries(
   // rollup data, so they derive to all-zero bars. The #52 override-leak stays
   // fixed by overrideTodayPeriod landing the live *.today registers on the
   // plant-tz today key — never a future bar — so no full day lands on tomorrow.
-  return periods.map((p) => derivePeriodEnergy(p, totals.get(p) ?? emptyTotals()));
+  return derivePeriods(profile, periods, totals);
 }
