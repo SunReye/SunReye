@@ -17,14 +17,35 @@
 SELECT set_chunk_time_interval('metrics_raw', INTERVAL '1 day');
 --> statement-breakpoint
 
--- Keep the rollups current in the background.
-SELECT add_continuous_aggregate_policy('minute_rollups',
-  start_offset => INTERVAL '10 minutes',
-  end_offset   => INTERVAL '1 minute',
-  schedule_interval => INTERVAL '1 minute',
-  if_not_exists => TRUE);
+-- FROZEN: minute_rollups and weighted_minute_rollups are no longer refreshed.
+--
+-- Once a raw row became an interval rather than a sample (#117), the minute tier
+-- stopped paying for itself. Measured on 30 days of change-only traffic at the
+-- authored deadbands, compressed, one device: metrics_raw costs 361 MB/year
+-- against 174 + 159 MB for the minute pair — the tier that existed because it
+-- was ~15x cheaper per day of coverage than raw now costs about the same as raw,
+-- and it was ALSO the ceiling on raw retention, since raw may not outlive the
+-- shortest aggregate (see the retention section below).
+--
+-- Frozen rather than dropped, deliberately. A drop would take every minute
+-- bucket with it, and on a deployment whose raw is still at an older, shorter
+-- retention those buckets are the only minute-resolution record of the days raw
+-- no longer covers — hourly would be all that survived. Freezing loses nothing:
+-- each materialized bucket keeps answering reads until its own retention policy
+-- ages it out, and the read layer prefers raw wherever raw reaches
+-- (apps/server/src/shared/rollup-sql.ts).
+--
+-- `remove_`, not merely "stop adding". Omitting the `add_` is enough for a fresh
+-- install and does NOTHING to a deployment that already has the policy — the
+-- same trap `if_not_exists => TRUE` sets for the compression and retention
+-- policies below, and the reason this file is re-applied on every start.
+SELECT remove_continuous_aggregate_policy('minute_rollups', if_not_exists => TRUE);
 --> statement-breakpoint
 
+SELECT remove_continuous_aggregate_policy('weighted_minute_rollups', if_not_exists => TRUE);
+--> statement-breakpoint
+
+-- Keep the remaining rollups current in the background.
 SELECT add_continuous_aggregate_policy('hourly_rollups',
   start_offset => INTERVAL '3 hours',
   end_offset   => INTERVAL '1 hour',
@@ -41,18 +62,12 @@ SELECT add_continuous_aggregate_policy('daily_rollups',
 
 -- The time-weighted aggregates (#116), on the same offsets as the tier they
 -- shadow. Both sets are refreshed on purpose: the weighted views can only ever
--- be materialized as far back as metrics_raw reaches (7 days), so a year-old
--- bucket exists only in the legacy view and the read layer must be able to serve
+-- be materialized as far back as metrics_raw reaches, so a bucket older than
+-- that exists only in the legacy view and the read layer must be able to serve
 -- it. A period of double materialization is correct, cheap and reversible; the
 -- read layer prefers the weighted row per bucket
--- (apps/server/src/shared/rollup-sql.ts).
-SELECT add_continuous_aggregate_policy('weighted_minute_rollups',
-  start_offset => INTERVAL '10 minutes',
-  end_offset   => INTERVAL '1 minute',
-  schedule_interval => INTERVAL '1 minute',
-  if_not_exists => TRUE);
---> statement-breakpoint
-
+-- (apps/server/src/shared/rollup-sql.ts). The minute pair is exempt — frozen
+-- above, and answered from raw.
 SELECT add_continuous_aggregate_policy('weighted_hourly_rollups',
   start_offset => INTERVAL '3 hours',
   end_offset   => INTERVAL '1 hour',
@@ -82,28 +97,36 @@ SELECT add_compression_policy('metrics_raw', INTERVAL '2 hours', if_not_exists =
 -- stores changes rather than samples — so 7 days was throwing away
 -- second-resolution replay to save single-digit megabytes.
 --
--- Re-derived at **90 days**, which is not a compromise between two numbers but
--- the answer to two constraints:
+-- Re-derived at **1825 days (5 years)**, now that the second of the two
+-- constraints that pinned it to 90 has been removed:
 --
 --   * It must exceed the widest continuous-aggregate refresh window
 --     (daily_rollups start_offset = 3 days), so neither a refresh nor the
---     real-time union ever reaches a chunk retention has dropped. 90d is ample.
---   * It must not EXCEED the shortest aggregate retention (minute_rollups, 90
---     days). Past that, a time range exists that only raw covers — and the
---     addon's default backup excludes raw precisely because raw is fully
---     materialized into the rollups. `dump.sh` now derives that from these two
---     policies rather than assuming it, so raw outliving a rollup makes the
---     default backup include raw instead of silently dropping the range. Keeping
---     the two equal keeps backups small AND lossless.
+--     real-time union ever reaches a chunk retention has dropped. Unchanged, and
+--     1825d is ample.
+--   * It must not EXCEED the shortest retention among the aggregates raw is
+--     materialized into. That used to be minute_rollups at 90 days, which is
+--     exactly what the previous revision of this comment called the gate on
+--     going further: "either minute_rollups' retention grows with it, or
+--     minute-resolution reads move to raw and that tier is dropped". The second
+--     of those is what happened — the minute pair is frozen above and raw
+--     answers minute reads — so the binding tier is now hourly_rollups at 3650
+--     days, and 1825 sits comfortably inside it.
 --
--- Going further (the 4-year raw tier the storage decision sketches) is therefore
--- gated on the minute tier, not on footprint: either minute_rollups' retention
--- grows with it, or minute-resolution reads move to raw and that tier is
--- dropped. Neither is this change.
+-- Cost, measured (30 days of change-only traffic at the authored deadbands,
+-- compressed, one device): 361 MB/device-year, so 1.8 GB per device over the
+-- five years, against the 5 GB/device/10-year budget. That figure assumes the
+-- deadbands are actually authored in the installed profile — without them raw
+-- runs ~5.5x heavier and five years does NOT fit the budget.
+--
+-- What this DOES change is the backup default. Raw was excludable because it was
+-- fully materialized into the rollups; with the minute tier frozen, raw is the
+-- only minute-resolution record and excluding it would silently restore an
+-- hourly-only history. `dump.sh` derives that too — see safe_to_exclude_raw.
 SELECT remove_retention_policy('metrics_raw', if_exists => TRUE);
 --> statement-breakpoint
 
-SELECT add_retention_policy('metrics_raw', INTERVAL '90 days', if_not_exists => TRUE);
+SELECT add_retention_policy('metrics_raw', INTERVAL '1825 days', if_not_exists => TRUE);
 --> statement-breakpoint
 
 -- Rollup compression, every tier (#134). Before this, policies.sql armed
@@ -167,9 +190,13 @@ SELECT add_compression_policy('weighted_daily_rollups', INTERVAL '30 days', if_n
 -- Hourly goes from 730 days to 10 years. It is the tier every long-horizon chart
 -- reads, and at ~4.9 kB/metric/year compressed the whole extension costs tens of
 -- megabytes per device — the 2-year figure was inherited from a budget written
--- before the compression was measured. Minute stays at 90 days: it is the most
--- expensive tier per day of coverage (15x fewer rows than raw, each ~52x wider),
--- and it is also the ceiling on raw retention above.
+-- before the compression was measured.
+--
+-- Minute stays at 90 days, but the number now means the opposite of what it did:
+-- these two aggregates are frozen (see the top of this file), so their retention
+-- is not a coverage horizon, it is how long the last materialized buckets take
+-- to decay. Raw covers the tier from here on. Shortening it is safe; lengthening
+-- it only delays the decay.
 -- remove+add, not add-if-not-exists: on an already-configured deployment
 -- `if_not_exists => TRUE` is a NO-OP and silently keeps the old interval — the
 -- same trap this file documents for the compression policies. Measured: without

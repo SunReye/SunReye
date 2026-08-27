@@ -34,14 +34,15 @@ export async function queryRollup(
     to?: Date;
   },
 ): Promise<Array<{ time: string; avg: number; max: number; min: number }>> {
-  const window =
-    q.from && q.to
-      ? sql`bucket >= ${q.from} and bucket < ${q.to}`
-      : sql`bucket >= ${q.since ?? new Date(0)}`;
-  const source = preferredRollup(
-    q.bucket,
-    sql`metric = ${q.metric} and inverter_id = ${q.inverterId} and ${window}`,
-  );
+  // A range needs BOTH ends: a half-specified one falls back to the open-ended
+  // `since` branch rather than reading `from` as an open start, which would
+  // silently widen a window the caller bounded.
+  const range = q.from && q.to ? { from: q.from, to: q.to } : { from: q.since ?? new Date(0) };
+  const source = preferredRollup(q.bucket, {
+    metric: q.metric,
+    inverterId: q.inverterId,
+    ...range,
+  });
   const result = await db.execute<{
     bucket: string | Date;
     avg_value: number | null;
@@ -89,10 +90,7 @@ export async function queryMedianHourlyAvg(
   days: number,
 ): Promise<number | null> {
   const since = new Date(Date.now() - days * 24 * 3600 * 1000);
-  const source = preferredRollup(
-    "hour",
-    sql`metric = ${metric} and inverter_id = ${inverterId} and bucket >= ${since}`,
-  );
+  const source = preferredRollup("hour", { metric, inverterId, from: since });
   // `percentile_cont` is an ordered-set aggregate: it ignores NULL inputs, so a
   // degenerate zero-weight bucket drops out of the ordering rather than skewing
   // the median toward zero.
@@ -116,10 +114,7 @@ export async function queryHourlyAvgRange(
   from: Date,
   to: Date,
 ): Promise<Array<{ bucketMs: number; avg: number }>> {
-  const source = preferredRollup(
-    "hour",
-    sql`metric = ${metric} and inverter_id = ${inverterId} and bucket >= ${from} and bucket < ${to}`,
-  );
+  const source = preferredRollup("hour", { metric, inverterId, from, to });
   const result = await db.execute<{ bucket: string; avg_value: number | null }>(sql`
     select bucket, avg_value
     from ${source} r

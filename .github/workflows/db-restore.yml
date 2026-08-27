@@ -184,9 +184,12 @@ jobs:
           ls -l "$BACKUP_DIR"
           test -s "$BACKUP_DIR/full.dump"
           test -s "$BACKUP_DIR/excluded.dump"
-          # The excluded dump must be the smaller one — proof the raw window
-          # really was left out rather than the flag being ignored.
-          [ "$(stat -c%s "$BACKUP_DIR/excluded.dump")" -lt "$(stat -c%s "$BACKUP_DIR/full.dump")" ]
+          # Under the SHIPPED policies the two are the same dump. `backup_full:
+          # false` excludes raw only while raw is redundant, and the minute
+          # aggregates are frozen — raw is the only minute-resolution record, so
+          # dropping it would restore an hourly-only history. The exclusion
+          # machinery is exercised below, on a database where it does apply.
+          [ "$(stat -c%s "$BACKUP_DIR/excluded.dump")" = "$(stat -c%s "$BACKUP_DIR/full.dump")" ]
 
       - name: Restore the full dump and assert parity
         run: |
@@ -197,14 +200,42 @@ jobs:
             -tAf /tmp/snapshot.sql > /tmp/restored-full.json
           bun scripts/db-parity.ts /tmp/source.json /tmp/restored-full.json --require-data
 
-      - name: Restore the excluded dump and assert the loss is exactly the raw window
+      - name: Restore the excluded dump and assert it lost nothing
         run: |
+          # Same file as the full dump under the shipped policies, so it must
+          # restore to full parity. A raw window missing HERE would be the bug
+          # the size check above is guarding against.
           psql -d postgres -c "CREATE DATABASE restored_excluded"
           DATABASE_URL=postgresql://postgres:restore-test@localhost:5432/restored_excluded \
             scripts/db-restore.sh "$BACKUP_DIR/excluded.dump"
           psql -d postgresql://postgres:restore-test@localhost:5432/restored_excluded \
             -tAf /tmp/snapshot.sql > /tmp/restored-excluded.json
-          bun scripts/db-parity.ts /tmp/source.json /tmp/restored-excluded.json \
+          bun scripts/db-parity.ts /tmp/source.json /tmp/restored-excluded.json --require-data
+
+      # …and the exclusion itself still works, on a database where it applies:
+      # re-arm the minute refresh policy and raw becomes redundant again.
+      - name: With a live minute tier, raw IS excluded and exactly that is lost
+        run: |
+          psql -d "$SOURCE_URL" -v ON_ERROR_STOP=1 -tAc \
+            "SELECT add_continuous_aggregate_policy('minute_rollups',
+               start_offset => INTERVAL '10 minutes',
+               end_offset => INTERVAL '1 minute',
+               schedule_interval => INTERVAL '1 minute',
+               if_not_exists => TRUE)" > /dev/null
+          # Raw must also not outlive the tier it is being excluded in favour of.
+          psql -d "$SOURCE_URL" -v ON_ERROR_STOP=1 -tAc \
+            "SELECT remove_retention_policy('metrics_raw', if_exists => TRUE);
+             SELECT add_retention_policy('metrics_raw', INTERVAL '90 days')" > /dev/null
+          DATABASE_URL="$SOURCE_URL" bash -c "source scripts/ci/bashio-shim.sh
+                   BACKUP_FULL=false BACKUPS_KEEP=5 . sunreye/rootfs/usr/lib/sunreye/dump.sh thinned"
+          ls -l "$BACKUP_DIR"
+          [ "$(stat -c%s "$BACKUP_DIR/thinned.dump")" -lt "$(stat -c%s "$BACKUP_DIR/full.dump")" ]
+          psql -d postgres -c "CREATE DATABASE restored_thinned"
+          DATABASE_URL=postgresql://postgres:restore-test@localhost:5432/restored_thinned \
+            scripts/db-restore.sh "$BACKUP_DIR/thinned.dump"
+          psql -d postgresql://postgres:restore-test@localhost:5432/restored_thinned \
+            -tAf /tmp/snapshot.sql > /tmp/restored-thinned.json
+          bun scripts/db-parity.ts /tmp/source.json /tmp/restored-thinned.json \
             --expect-raw-loss --require-data
 
       - name: Continuous-aggregate policies are present and re-armed
@@ -214,14 +245,22 @@ jobs:
             echo "== $db"
             psql -d "$url" -tAc \
               "SELECT proc_name, hypertable_name, scheduled FROM timescaledb_information.jobs ORDER BY 1,2"
-            # Every refresh policy the source had, still scheduled here.
+            # Every refresh policy the source had, still scheduled here. The
+            # minute tier is NOT among them: it is frozen, and a restore that
+            # re-armed it would start re-materializing a tier raw now answers.
             missing=$(psql -d "$url" -tAc \
-              "SELECT count(*) FROM (VALUES ('minute_rollups'),('hourly_rollups'),('daily_rollups')) v(h)
+              "SELECT count(*) FROM (VALUES ('hourly_rollups'),('daily_rollups')) v(h)
                WHERE NOT EXISTS (SELECT 1 FROM timescaledb_information.jobs j
                  WHERE j.proc_name = 'policy_refresh_continuous_aggregate'
                    AND j.hypertable_name = v.h AND j.scheduled)")
             echo "missing refresh policies: $missing"
             [ "$missing" = "0" ]
+            revived=$(psql -d "$url" -tAc \
+              "SELECT count(*) FROM timescaledb_information.jobs
+                WHERE proc_name = 'policy_refresh_continuous_aggregate'
+                  AND hypertable_name IN ('minute_rollups','weighted_minute_rollups')")
+            echo "revived minute refresh policies: $revived"
+            [ "$revived" = "0" ]
           done
 
       - name: A newer-schema target is refused, not half-applied

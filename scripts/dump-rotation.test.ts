@@ -174,8 +174,9 @@ describe("dump.sh dump modes", () => {
     mkdirSync(bin);
     const log = join(dir, "pgdump.log");
 
-    // Query-aware, because the script now asks two different questions: the
-    // retention policy first, then the chunk tables. A fake that answered both
+    // Query-aware, because the script asks three different questions: the
+    // retention policies, whether the minute tier is still refreshed, and then
+    // the chunk tables. A fake that answered both
     // with the chunk list made the retention unparseable, which the script
     // correctly reads as "do not exclude anything" — the same class of blind
     // spot the note below this function describes.
@@ -184,6 +185,7 @@ describe("dump.sh dump modes", () => {
       `#!/usr/bin/env bash\n` +
         `case "$*" in\n` +
         `  *policy_retention*) printf '%s\\n' "\${RETENTION_DAYS:-7 90}" ;;\n` +
+        `  *policy_refresh_continuous_aggregate*) printf '%s\\n' "\${MINUTE_REFRESHED:-t}" ;;\n` +
         `  *) printf '%s\\n' ${chunkRows.map((r) => `'${r}'`).join(" ") || "''"} ;;\n` +
         `esac\nexit 0\n`,
     );
@@ -246,6 +248,20 @@ describe("dump.sh dump modes", () => {
     const { flags, code } = await dumpFlags([CHUNK], { RETENTION_DAYS: "ERROR: nope" });
     expect(code).toBe(0);
     expect(flags.some((f) => f.startsWith("--exclude-table-data="))).toBe(false);
+  });
+
+  test("a frozen minute tier produces no exclusions, whatever the retentions say", async () => {
+    // End-to-end proof of the rule the unit tests state: with the minute
+    // aggregates no longer refreshed, raw is the only minute-resolution record,
+    // so the default backup must carry it even though every retention number
+    // still looks safe.
+    const { flags, code } = await dumpFlags([CHUNK, COMPRESSED], {
+      RETENTION_DAYS: "90 90",
+      MINUTE_REFRESHED: "f",
+    });
+    expect(code).toBe(0);
+    expect(flags.some((f) => f.startsWith("--exclude-table-data="))).toBe(false);
+    expect(flags).toContain("-Fc");
   });
 
   test("a compress_hyper_* name is passed through like any other", async () => {
@@ -320,12 +336,16 @@ function exclusionDecisionBlock(): string {
  * `rollupDays` defaults to the 90 days `minute_rollups` keeps — the shortest
  * aggregate retention the app ships.
  */
-async function safeToExclude(days: string, rollupDays = "90"): Promise<boolean> {
+async function safeToExclude(
+  days: string,
+  rollupDays = "90",
+  minuteRefreshed = "1",
+): Promise<boolean> {
   const proc = Bun.spawn(
     [
       "bash",
       "-c",
-      `${exclusionDecisionBlock()}\nif safe_to_exclude_raw ${JSON.stringify(days)} ${JSON.stringify(rollupDays)}; then echo yes; else echo no; fi`,
+      `${exclusionDecisionBlock()}\nif safe_to_exclude_raw ${JSON.stringify(days)} ${JSON.stringify(rollupDays)} ${JSON.stringify(minuteRefreshed)}; then echo yes; else echo no; fi`,
     ],
     { stdout: "pipe", stderr: "pipe" },
   );
@@ -335,13 +355,30 @@ async function safeToExclude(days: string, rollupDays = "90"): Promise<boolean> 
 }
 
 describe("dump.sh raw-exclusion decision", () => {
-  test("today's shipped shape is still fully materialized", async () => {
-    // 90-day raw against 90-day minute buckets: every raw row's bucket is still
-    // in every aggregate, so excluding raw loses resolution on restore and no
-    // coverage. The regression proof that this change did not make every backup
-    // a full one.
+  test("a raw span the aggregates still materialize is excludable", async () => {
+    // Every raw row's bucket is still in every aggregate, so excluding raw loses
+    // resolution on restore and no coverage. The regression proof that this
+    // check did not make every backup a full one.
     expect(await safeToExclude("90", "90")).toBe(true);
     expect(await safeToExclude("7", "90")).toBe(true);
+  });
+
+  test("a frozen minute tier makes raw unexcludable at any retention", async () => {
+    // The premise of the whole exclusion is that raw is redundant. Once the
+    // minute aggregates stopped being refreshed, raw became the ONLY
+    // minute-resolution record: a backup without it restores an hourly-only
+    // history, silently, and no comparison of retention numbers would notice —
+    // hourly's 3650 days covers the span at its own bucket width.
+    expect(await safeToExclude("90", "90", "0")).toBe(false);
+    expect(await safeToExclude("1825", "3650", "0")).toBe(false);
+    expect(await safeToExclude("7", "-1", "0")).toBe(false);
+  });
+
+  test("an unreadable refresh state keeps the data", async () => {
+    // Same rule as every other input here: a question that could not be answered
+    // is not an answer of \"probably fine\".
+    expect(await safeToExclude("90", "90", "")).toBe(false);
+    expect(await safeToExclude("90", "90", "maybe")).toBe(false);
   });
 
   test("raw outliving the shortest aggregate keeps the data", async () => {
@@ -388,6 +425,11 @@ describe("dump.sh raw-exclusion decision", () => {
     expect(DUMP_SH).toContain("timescaledb_information.jobs");
     expect(DUMP_SH).toContain("policy_retention");
     expect(DUMP_SH).toContain("hypertable_name <> 'metrics_raw'");
+  });
+
+  test("the refresh state is read from the policies too", async () => {
+    expect(DUMP_SH).toContain("policy_refresh_continuous_aggregate");
+    expect(DUMP_SH).toContain("minute_rollups");
   });
 
   test("when the data is kept, the reason names both retentions", async () => {
