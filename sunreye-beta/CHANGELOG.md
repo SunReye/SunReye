@@ -2,11 +2,16 @@
 
 ## [unreleased]
 
-Unreleased work on `dev` since 1.2.0, shipped in `beta.20260827-39db7f8`.
+Unreleased work on `dev` since 1.2.0, shipped in `beta.20260827-186968e`.
 
 
 ### Features
 
+* **web:** the battery's nominal voltage moves to the plant settings ([6714eca](https://github.com/SunReye/SunReye/commit/6714ecabe1717daf203c2bb949798f425c33e52f))
+* **web:** nameplate setting and the capacity degradation chart ([bb35d49](https://github.com/SunReye/SunReye/commit/bb35d4987846962d439df44fc47ba1daacb565b4))
+* **web:** capacity and health tiles for the measured battery ([10abc21](https://github.com/SunReye/SunReye/commit/10abc21bd31e1be194ee3dcf88876c849d1a2a15))
+* **server:** measure battery capacity and state of health ([4ac71f9](https://github.com/SunReye/SunReye/commit/4ac71f9db8b4f0cf1fac75815ebc78340211487e))
+* **web:** a battery round-trip efficiency tile ([e105692](https://github.com/SunReye/SunReye/commit/e1056925ebf3f8f179f9660e11f44cd64b93baca))
 * **inverter-core:** add per-string yield and grid frequency roles ([452d165](https://github.com/SunReye/SunReye/commit/452d16537b3077db83a5bc5e4ae9790e8ee9b8b2))
 * **automation:** steer battery limits in watts as well as amps ([b6bd8d8](https://github.com/SunReye/SunReye/commit/b6bd8d851364a02d68505affcc5f3522f91e5830))
 * **server:** imply house consumption when nothing meters it ([7404790](https://github.com/SunReye/SunReye/commit/7404790920519232f9e1f5ba89a221ad52d3082d))
@@ -104,6 +109,10 @@ Unreleased work on `dev` since 1.2.0, shipped in `beta.20260827-39db7f8`.
 
 ### Bug Fixes
 
+* **automation:** the live limit readback resolves voltage like the target does ([5470d42](https://github.com/SunReye/SunReye/commit/5470d42f9d3fb81a1981d42858b4e3241cc0e573))
+* **web:** stub the battery-health read in the browser layer ([dcdf2d0](https://github.com/SunReye/SunReye/commit/dcdf2d0568bf69cf3710977abb2882cf8714a0e3))
+* **web:** accent stops being an alias of primary, which made selects unreadable ([b90af82](https://github.com/SunReye/SunReye/commit/b90af82dcbd10382faf0dbfb812052bd59f24f79))
+* **web:** carry the pack voltage forward instead of explaining where it went ([0235af8](https://github.com/SunReye/SunReye/commit/0235af8b8b4c390c60ff50600bed385d9451da96))
 * **addon:** keep raw in the default backup once the minute tier is frozen ([3d159df](https://github.com/SunReye/SunReye/commit/3d159dfd0e3b1c8d88716f90f857502dc8dac944))
 * **web:** tolerate a manifest with no storage, and teach the e2e fixture the field ([a388f9e](https://github.com/SunReye/SunReye/commit/a388f9ebbac42177870413038449c30cf7970dbe))
 * **ci:** run the cutover assertion from apps/server, where its deps are declared ([78d6beb](https://github.com/SunReye/SunReye/commit/78d6beb337b42073d821d158374d83b500b119ad))
@@ -215,6 +224,8 @@ Unreleased work on `dev` since 1.2.0, shipped in `beta.20260827-39db7f8`.
 
 ### Code Refactoring
 
+* **web:** settings fields explain themselves in a popover ([ed1ebb1](https://github.com/SunReye/SunReye/commit/ed1ebb166115ff9b323276db3654d88668989cc1))
+* **web:** move the plant's own settings off the weather page ([3b405e7](https://github.com/SunReye/SunReye/commit/3b405e7024015c329cc95fcde7efad06a12569a6))
 * **server:** the history buffer commits through an injected callback ([fd38239](https://github.com/SunReye/SunReye/commit/fd38239ad50a1bd0c4fb45d2b4c588797a5e0a14))
 * **inverter-core:** split decode into addressing and scaling ([cad040e](https://github.com/SunReye/SunReye/commit/cad040ed7ef72292b2375a9cf37cc632e528676a))
 * **inverter-core:** tagged Binding union and a transport seam ([0c3a239](https://github.com/SunReye/SunReye/commit/0c3a23909ab73816fb5c2f90a6ffc1988c1f38bf))
