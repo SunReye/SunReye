@@ -195,7 +195,9 @@ describe("the semantic set is complete", () => {
  * that the ones drawn TOGETHER are.
  */
 const SCREENS: Record<string, readonly string[]> = {
-  // The power-flow diagram: every node the plant can have at once.
+  // The power-flow diagram: every node the plant can have at once. A node's
+  // detail dialog draws ONE series, in that node's own colour, so it needs no
+  // set of its own — the /system KPI screen this replaced had four at once.
   diagram: [
     "energy-solar",
     "energy-battery",
@@ -206,8 +208,6 @@ const SCREENS: Record<string, readonly string[]> = {
   ],
   // The four daily-energy tiles on /overview.
   tiles: ["energy-solar", "energy-load", "energy-export", "energy-grid"],
-  // The /system live KPI charts.
-  system: ["energy-solar", "energy-battery", "energy-grid", "energy-load"],
   // The statistics energy series.
   statistics: ["energy-solar", "energy-selfused", "energy-export", "energy-grid"],
 };

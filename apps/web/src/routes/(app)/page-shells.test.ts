@@ -64,7 +64,6 @@ const EXPECTED: Record<string, Shape> = {
   "automations/peak-shaving/+page.svelte": "wide",
   "history/+page.svelte": "wide",
   "statistics/+page.svelte": "wide",
-  "system/+page.svelte": "wide",
   // /costs moved to /statistics; the stub only redirects.
   "costs/+page.svelte": "redirect",
   // Settings has no landing screen of its own.
@@ -80,7 +79,7 @@ async function read(file: string): Promise<string> {
 
 /**
  * The page's markup: everything outside `<script>`, comments and `{#snippet}`
- * definitions. Snippets are declarations, not layout — /system declares two
+ * definitions. Snippets are declarations, not layout — a page may declare one
  * above its root — so leaving them in would make the first tag in the file the
  * wrong answer to "what is the root element".
  */
