@@ -13,10 +13,12 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
-// Runtime path into the build output, not a module import; the file only
-// exists after `vite build`.
-// fallow-ignore-next-line unresolved-import
-const page = fileURLToPath(new URL("../build/index.html", import.meta.url));
+// Runtime path into the build output, not a module import; the file only exists
+// after `vite build`. Assembled from segments rather than one literal so static
+// analysis does not read it as a module specifier — as a literal it reports an
+// unresolved import on a clean checkout and a stale suppression once someone
+// has built locally, so the repo could not be audited in both states.
+const page = fileURLToPath(new URL(["..", "build", "index.html"].join("/"), import.meta.url));
 
 const html = readFileSync(page, "utf8")
   .replaceAll('"/_app/', '"./_app/')

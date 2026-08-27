@@ -1,9 +1,8 @@
 <script lang="ts">
 	import type { Snippet } from "svelte";
-	import CaretDown from "phosphor-svelte/lib/CaretDown";
 	import MagnifyingGlass from "phosphor-svelte/lib/MagnifyingGlass";
-	import * as Collapsible from "$lib/components/ui/collapsible";
 	import { Input } from "$lib/components/ui/input";
+	import ProfileManufacturerGroup from "./profile-manufacturer-group.svelte";
 	import type { RegisteredProfile } from "./profile-types";
 	import * as m from "$lib/paraglide/messages";
 
@@ -11,17 +10,14 @@
 		profiles,
 		row,
 		exclude,
-		pinned,
 		searchPlaceholder = m.profiles_search_placeholder(),
 		emptyLabel = m.profiles_none_available()
 	}: {
 		profiles: RegisteredProfile[];
 		/** Renders one profile; its root element is a direct child of a `divide-y` group. */
 		row: Snippet<[RegisteredProfile]>;
-		/** Profiles to keep out of the groups (e.g. the pinned active one). */
+		/** Profiles to keep out of the groups (e.g. an active one pinned by the caller). */
 		exclude?: (p: RegisteredProfile) => boolean;
-		/** Rendered above the search box, unaffected by filtering. */
-		pinned?: Snippet;
 		searchPlaceholder?: string;
 		/** Shown when there are no groupable profiles at all (no query). */
 		emptyLabel?: string;
@@ -34,20 +30,24 @@
 	const query = $derived(search.trim().toLowerCase());
 	const candidates = $derived(profiles.filter((p) => !exclude?.(p)));
 
+	const matchesQuery = (p: RegisteredProfile) =>
+		!query || `${p.name} ${p.manufacturer}`.toLowerCase().includes(query);
+
 	const groups = $derived.by(() => {
 		const byManufacturer: Record<string, RegisteredProfile[]> = {};
-		for (const p of candidates) {
-			if (query && !`${p.name} ${p.manufacturer}`.toLowerCase().includes(query)) continue;
-			const key = p.manufacturer || "Other";
-			(byManufacturer[key] ??= []).push(p);
+		for (const p of candidates.filter(matchesQuery)) {
+			(byManufacturer[p.manufacturer || "Other"] ??= []).push(p);
 		}
 		return Object.entries(byManufacturer).sort(([a], [b]) => a.localeCompare(b));
 	});
-</script>
 
-{#if pinned}
-	{@render pinned()}
-{/if}
+	// While searching every group stays open; the manual collapse state only
+	// applies to the unfiltered list.
+	const isOpen = (manufacturer: string) => query !== "" || !collapsed[manufacturer];
+	const setOpen = (manufacturer: string, open: boolean) => {
+		if (!query) collapsed[manufacturer] = !open;
+	};
+</script>
 
 {#if candidates.length === 0}
 	<p class="py-2 text-sm text-muted-foreground">{emptyLabel}</p>
@@ -64,29 +64,13 @@
 	{:else}
 		<div class="flex flex-col gap-1">
 			{#each groups as [manufacturer, list] (manufacturer)}
-				<Collapsible.Root
-					open={query !== "" || !collapsed[manufacturer]}
-					onOpenChange={(v) => {
-						if (!query) collapsed[manufacturer] = !v;
-					}}
-				>
-					<Collapsible.Trigger
-						class="group flex w-full items-center gap-2 border-b border-border py-2 text-left text-sm font-medium"
-					>
-						<CaretDown
-							class="size-4 text-muted-foreground transition-transform group-data-[state=closed]:-rotate-90"
-						/>
-						{manufacturer}
-						<span class="text-xs text-muted-foreground">({list.length})</span>
-					</Collapsible.Trigger>
-					<Collapsible.Content>
-						<div class="flex flex-col divide-y divide-border">
-							{#each list as p (p.id)}
-								{@render row(p)}
-							{/each}
-						</div>
-					</Collapsible.Content>
-				</Collapsible.Root>
+				<ProfileManufacturerGroup
+					{manufacturer}
+					profiles={list}
+					{row}
+					open={isOpen(manufacturer)}
+					onOpenChange={(v) => setOpen(manufacturer, v)}
+				/>
 			{/each}
 		</div>
 	{/if}

@@ -6,10 +6,11 @@
 	import { Input } from '$lib/components/ui/input';
 	import { Label } from '$lib/components/ui/label';
 	import RestartButton from './restart-button.svelte';
+	import { apiErrorText } from './api-error';
 	import WarningIcon from 'phosphor-svelte/lib/Warning';
 	import * as m from '$lib/paraglide/messages';
 
-	// Must match RESET_DATA_CONFIRM on the server (apps/server/src/maintenance.ts):
+	// Must match RESET_DATA_CONFIRM on the server (apps/server/src/admin/maintenance.ts):
 	// the user types it to arm the wipe, and the server re-checks it.
 	const CONFIRM_PHRASE = 'DELETE ALL DATA';
 
@@ -25,9 +26,7 @@
 		const { error } = await api.api.admin['reset-data'].post({ confirm: phrase.trim() });
 		busy = false;
 		if (error) {
-			toast.error(
-				(error.value as { error?: string })?.error ?? m.danger_toast_reset_error()
-			);
+			toast.error(apiErrorText(error.value, m.danger_toast_reset_error()));
 			return;
 		}
 		toast.success(m.danger_toast_reset_success());

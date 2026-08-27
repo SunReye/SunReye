@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { buildPowerGraph, flowColor, gridColor, sense, socColor } from "./power-graph";
+import { buildPowerGraph } from "./power-graph";
+import { socColor } from "./sign-colors";
 import type { CanonicalRole, InverterCapabilities } from "$lib/inverter/types";
 
 const caps = (over: Partial<InverterCapabilities>): InverterCapabilities =>
@@ -16,9 +17,23 @@ const powerFrom =
   (values: Partial<Record<string, number>>) => (role: CanonicalRole, index?: number) =>
     values[index === undefined ? role : `${role}#${index}`];
 
+// `has` reports whether a metric is mapped and *visible* (Settings → Sensors).
+// Capabilities stay true, so a hidden subsystem must drop its node/segment via
+// `has` alone — and a role the profile never mapped reads the same way.
+const hidden = (keys: string[]) => (role: CanonicalRole, index?: number) =>
+  !keys.includes(index === undefined ? role : `${role}#${index}`);
+
+/** A plant with no house-load metric — the PV-side tests are about PV. */
+const noLoadMetric = hidden(["load.power"]);
+
 describe("buildPowerGraph", () => {
   test("no capabilities → single solar node from pv total", () => {
-    const g = buildPowerGraph(caps({}), powerFrom({ "pv.total.power": 1200 }));
+    const g = buildPowerGraph(
+      caps({}),
+      powerFrom({ "pv.total.power": 1200 }),
+      "landscape",
+      noLoadMetric,
+    );
     expect(g.nodes.map((n) => n.id)).toEqual(["solar"]);
     expect(g.segments.map((s) => s.id)).toEqual(["solar-hub"]);
     expect(g.nodes[0].flow).toBe("in");
@@ -29,6 +44,8 @@ describe("buildPowerGraph", () => {
     const g = buildPowerGraph(
       caps({ pvStrings: 3 }),
       powerFrom({ "pv.string.power#1": 500, "pv.string.power#2": 0, "pv.string.power#3": 300 }),
+      "landscape",
+      noLoadMetric,
     );
     expect(g.nodes.map((n) => n.id)).toEqual(["pv1", "pv2", "pv3"]);
     expect(g.nodes[1].flow).toBe("idle");
@@ -52,9 +69,9 @@ describe("buildPowerGraph", () => {
 
   test("portrait pv captions sit above their nodes, clear of the connectors", () => {
     const power = powerFrom({ "pv.string.power#1": 500, "pv.string.power#2": 300 });
-    const portrait = buildPowerGraph(caps({ pvStrings: 2 }), power, "portrait");
+    const portrait = buildPowerGraph(caps({ pvStrings: 2 }), power, "portrait", noLoadMetric);
     expect(portrait.nodes.every((n) => n.labelSide === "above")).toBe(true);
-    const landscape = buildPowerGraph(caps({ pvStrings: 2 }), power, "landscape");
+    const landscape = buildPowerGraph(caps({ pvStrings: 2 }), power, "landscape", noLoadMetric);
     expect(landscape.nodes.every((n) => n.labelSide === "below")).toBe(true);
   });
 
@@ -83,12 +100,12 @@ describe("buildPowerGraph", () => {
     expect(charging.nodes.find((n) => n.id === "battery")?.flow).toBe("out");
   });
 
-  test("grid uses cost colors: import red, export green", () => {
+  test("grid uses cost colors: importing is bad, exporting is good", () => {
     const importing = buildPowerGraph(caps({ grid: true }), powerFrom({ "grid.power": 400 }));
-    expect(importing.nodes.find((n) => n.id === "grid")?.color).toBe("text-red-500");
+    expect(importing.nodes.find((n) => n.id === "grid")?.color).toBe("text-sign-bad");
     expect(importing.nodes.find((n) => n.id === "grid")?.state).toBe("Importing");
     const exporting = buildPowerGraph(caps({ grid: true }), powerFrom({ "grid.power": -400 }));
-    expect(exporting.nodes.find((n) => n.id === "grid")?.color).toBe("text-emerald-500");
+    expect(exporting.nodes.find((n) => n.id === "grid")?.color).toBe("text-sign-good");
   });
 
   test("full capability set yields all nodes", () => {
@@ -108,11 +125,6 @@ describe("buildPowerGraph", () => {
     expect(g.segments.every((s) => s.flow === "idle")).toBe(true);
   });
 
-  // `has` reports whether a metric is *visible* (Settings → Sensors). Capabilities
-  // stay true, so a hidden subsystem must drop its node/segment via `has` alone.
-  const hidden = (keys: string[]) => (role: CanonicalRole, index?: number) =>
-    !keys.includes(index === undefined ? role : `${role}#${index}`);
-
   test("hidden group drops its node even though the capability stays true", () => {
     const g = buildPowerGraph(
       caps({ battery: true, backupLoad: true, generator: true, grid: true }),
@@ -131,7 +143,7 @@ describe("buildPowerGraph", () => {
       caps({ pvStrings: 3 }),
       powerFrom({ "pv.string.power#1": 500, "pv.string.power#3": 300 }),
       "landscape",
-      hidden(["pv.string.power#2"]),
+      hidden(["pv.string.power#2", "load.power"]),
     );
     expect(g.nodes.map((n) => n.id)).toEqual(["pv1", "pv3"]);
     expect(g.segments.map((s) => s.id)).toEqual(["pv1-hub", "pv3-hub"]);
@@ -142,9 +154,30 @@ describe("buildPowerGraph", () => {
       caps({ pvStrings: 2 }),
       powerFrom({ "pv.total.power": 900 }),
       "landscape",
-      hidden(["pv.string.power#1", "pv.string.power#2"]),
+      hidden(["pv.string.power#1", "pv.string.power#2", "load.power"]),
     );
     expect(g.nodes.map((n) => n.id)).toEqual(["solar"]);
+  });
+
+  test("a metered house load renders a home node with no backup output in sight", () => {
+    // The grid-tied shape (SolarEdge/Sungrow SG + consumption meter): the home
+    // node follows the metric, never the UPS capability — gating it on
+    // `backupLoad` left these plants with a diagram missing its biggest sink.
+    const g = buildPowerGraph(
+      caps({ grid: true }),
+      powerFrom({ "load.power": 900, "grid.power": 900 }),
+    );
+    expect(g.nodes.map((n) => n.kind)).toContain("load");
+  });
+
+  test("no load metric, no home node — the capability never stood in for one", () => {
+    const g = buildPowerGraph(
+      caps({ backupLoad: true, grid: true }),
+      () => undefined,
+      "landscape",
+      hidden(["load.power"]),
+    );
+    expect(g.nodes.map((n) => n.kind)).not.toContain("load");
   });
 
   test("informational mode: charger branches off the load node, load unchanged", () => {
@@ -210,7 +243,7 @@ describe("buildPowerGraph", () => {
       caps({ grid: true }),
       () => undefined,
       "landscape",
-      () => true,
+      noLoadMetric,
       { power: 1800, connected: true, charging: true, subtractFromHome: false },
     );
     expect(noLoad.nodes.some((n) => n.kind === "charger")).toBe(false);
@@ -236,6 +269,21 @@ describe("buildPowerGraph", () => {
     expect(charger?.flow).toBe("idle");
   });
 
+  test("a lone landscape PV string sits on the hub row, so its rail runs straight", () => {
+    const g = buildPowerGraph(caps({ pvStrings: 1 }), powerFrom({ "pv.string.power#1": 500 }));
+    expect(g.nodes[0].at.y).toBe(g.hub.y);
+    expect(g.segments[0].pts).toHaveLength(2);
+  });
+
+  test("a lone portrait sink node is centred rather than pinned to the left edge", () => {
+    const g = buildPowerGraph(
+      caps({ backupLoad: true }),
+      powerFrom({ "load.power": 900 }),
+      "portrait",
+    );
+    expect(g.nodes.find((n) => n.id === "load")?.at.x).toBe(0.5);
+  });
+
   test("no visible PV metric at all yields no PV node", () => {
     const g = buildPowerGraph(
       caps({ pvStrings: 1 }),
@@ -248,28 +296,37 @@ describe("buildPowerGraph", () => {
 });
 
 describe("helpers", () => {
-  test("sense treats |v| <= 0.5 as idle", () => {
-    const pos = { flow: "in", state: "On" } as const;
-    const neg = { flow: "out", state: "Off" } as const;
-    expect(sense(0.4, pos, neg).flow).toBe("idle");
-    expect(sense(0.6, pos, neg)).toEqual(pos);
-    expect(sense(-0.6, pos, neg)).toEqual(neg);
-    expect(sense(undefined, pos, neg).flow).toBe("idle");
+  // The direction/colour helpers are module-private; drive them through the graph
+  // the battery node produces (signed reading → flow, state and hue).
+  const batteryAt = (watts: number | undefined) =>
+    buildPowerGraph(caps({ battery: true }), powerFrom({ "battery.power": watts })).nodes.find(
+      (n) => n.id === "battery",
+    );
+
+  test("a signed reading within ±0.5 W reads as idle", () => {
+    expect(batteryAt(0.4)?.flow).toBe("idle");
+    expect(batteryAt(-0.4)?.flow).toBe("idle");
+    expect(batteryAt(0.6)?.flow).toBe("in");
+    expect(batteryAt(-0.6)?.flow).toBe("out");
+    expect(batteryAt(undefined)?.flow).toBe("idle");
   });
 
-  test("flowColor / gridColor map directions to hues", () => {
-    expect(flowColor("in")).toBe("text-emerald-500");
-    expect(flowColor("out")).toBe("text-amber-500");
-    expect(flowColor("idle")).toBe("text-border");
-    expect(gridColor(undefined)).toBe("text-border");
+  test("flow hues: arriving good, leaving warn, idle the rail colour", () => {
+    expect(batteryAt(800)?.color).toBe("text-sign-good");
+    expect(batteryAt(-800)?.color).toBe("text-sign-warn");
+    expect(batteryAt(0)?.color).toBe("text-border");
+    // Grid uses cost colours; an unknown reading falls back to the rail colour.
+    const grid = buildPowerGraph(caps({ grid: true }), () => undefined);
+    expect(grid.nodes.find((n) => n.id === "grid")?.color).toBe("text-border");
   });
 
-  test("socColor interpolates across the 0/30/60 stops and clamps", () => {
-    expect(socColor(0)).toBe("rgb(239, 68, 68)"); // red-500
-    expect(socColor(30)).toBe("rgb(249, 115, 22)"); // orange-500
-    expect(socColor(60)).toBe("rgb(34, 197, 94)"); // green-500
-    expect(socColor(100)).toBe("rgb(34, 197, 94)"); // stays green
-    expect(socColor(150)).toBe("rgb(34, 197, 94)"); // clamped
-    expect(socColor(15)).toBe("rgb(244, 92, 45)"); // halfway red→orange
+  test("the battery ring still fades across the 0/30/60 stops", () => {
+    // The ramp moved to ./sign-colors and now mixes tokens instead of baked
+    // rgb() triples; sign-colors.test.ts owns the detail. This holds the shape
+    // the diagram depends on: three stops, a fade between them, and a clamp.
+    expect(socColor(0)).not.toBe(socColor(30));
+    expect(socColor(30)).not.toBe(socColor(60));
+    expect(socColor(15)).toContain("color-mix");
+    expect(socColor(150)).toBe(socColor(100));
   });
 });

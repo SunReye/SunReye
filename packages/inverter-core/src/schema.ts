@@ -1,7 +1,15 @@
 import { z } from "zod";
 
+import { resolveStorage, statedKind } from "./capabilities";
 import { ROLE_CATALOG, ROLE_NAMES, type RoleSpec } from "./roles";
-import type { ComputeExpr, ControlExpr, ProfileData } from "./profile-data";
+import {
+  bindingFor,
+  PROFILE_SCHEMA_VERSIONS,
+  type ComputeExpr,
+  type ControlExpr,
+  type ProfileData,
+} from "./profile-data";
+import type { Binding } from "./types";
 
 /**
  * Strict runtime validator for {@link ProfileData}. This is the single gate for
@@ -16,6 +24,14 @@ import type { ComputeExpr, ControlExpr, ProfileData } from "./profile-data";
  */
 
 const registerTypeSchema = z.enum(["U_WORD", "S_WORD", "U_DWORD", "RAW"]);
+
+/**
+ * The profile's hardware declarations. Strict, so a typo'd or invented field is
+ * a validation failure rather than a statement the runtime silently ignores.
+ */
+const declarationsSchema = z.strictObject({
+  backupOutput: z.boolean().optional(),
+});
 
 const computeExprSchema = z.union([
   z.strictObject({ sum: z.array(z.string().min(1)).min(1) }),
@@ -61,6 +77,33 @@ const controlExprSchema = z.union([
   }),
 ]);
 
+/**
+ * The tagged binding. A `via` the runtime does not implement fails *here*, when
+ * the profile is parsed — the point of tagging the union rather than probing
+ * optional fields at read time.
+ */
+/**
+ * RFC 6901 JSON pointer, minus the empty one. `""` is legal in the RFC and means
+ * the whole document — never what a metric wants, and it would silently address
+ * an object where a number is expected. Otherwise: one or more `/`-prefixed
+ * reference tokens, in which the only escapes are `~0` (a literal `~`) and `~1`
+ * (a literal `/`), so a dangling or undefined `~x` is a typo, not a token.
+ */
+const jsonPointerSchema = z
+  .string()
+  .regex(/^(?:\/(?:[^~]|~[01])*)+$/, "pointer must be a non-empty RFC 6901 JSON pointer");
+
+const bindingSchema = z.discriminatedUnion("via", [
+  z.strictObject({
+    via: z.literal("modbus"),
+    addr: z.array(z.number().int().min(0).max(65535)),
+    type: registerTypeSchema,
+  }),
+  z.strictObject({ via: z.literal("http"), pointer: jsonPointerSchema }),
+  z.strictObject({ via: z.literal("compute"), expr: computeExprSchema }),
+  z.strictObject({ via: z.literal("control"), expr: controlExprSchema }),
+]);
+
 const metricDataSchema = z.strictObject({
   key: z.string().min(1),
   topic: z.string().min(1),
@@ -72,16 +115,100 @@ const metricDataSchema = z.strictObject({
   scale: z.number(),
   offset: z.number().optional(),
   access: z.enum(["r", "rw"]),
+  binding: bindingSchema.optional(),
   computeExpr: computeExprSchema.optional(),
   controlExpr: controlExprSchema.optional(),
   role: z.enum(ROLE_NAMES).optional(),
   index: z.number().int().positive().optional(),
   kind: z.enum(["measurement", "cumulative", "status", "setting"]).optional(),
+  storage: z.enum(["series", "config", "none"]).optional(),
+  // No zero: "no threshold" is absence. A `0` here would be indistinguishable
+  // from "not applicable", the sentinel trap `decode()` avoids one layer down.
+  deadband: z.number().positive().optional(),
   range: z.strictObject({ min: z.number(), max: z.number() }).optional(),
   // JSON object keys are strings; enum keys must be integer-like.
   enumLabels: z.record(z.string().regex(/^-?\d+$/), z.string()).optional(),
   flow: z.strictObject({ positive: z.string(), negative: z.string() }).optional(),
 });
+
+/** A semantic-lint failure: which field of a metric, and why. */
+interface FieldIssue {
+  field: string;
+  message: string;
+}
+
+/** Addresses on a metric that owns no register — one claim too many. */
+function strayAddresses(m: z.infer<typeof metricDataSchema>, what: string): FieldIssue[] {
+  return m.addresses.length === 0
+    ? []
+    : [{ field: "addresses", message: `${what} must have no addresses` }];
+}
+
+/**
+ * Everything that disqualifies a metric bound to a JSON pointer. Registers are
+ * one claim too many, and so is a second *source*: a `computeExpr` or
+ * `controlExpr` beside a pointer means the value is read and then silently
+ * overwritten by the derived one. `access: "rw"` is rejected too — the entity
+ * layer, the MQTT bridge and the manifest all key their write surfaces off it,
+ * and no HTTP transport can write, so a writable http metric offers a control
+ * that cannot work. Rejected here rather than discovered at write time, which is
+ * the whole point of tagging the union.
+ */
+function httpIssues(m: z.infer<typeof metricDataSchema>): FieldIssue[] {
+  const derived: FieldIssue[] =
+    m.computeExpr || m.controlExpr
+      ? [{ field: "binding", message: "http metric cannot also be computed or a control" }]
+      : [];
+  const writable: FieldIssue[] =
+    m.access === "rw"
+      ? [{ field: "access", message: "http metric cannot be writable: no transport can write one" }]
+      : [];
+  return [...derived, ...writable, ...strayAddresses(m, "http metric")];
+}
+
+/**
+ * The arms that own no register: an http metric addressed by pointer, a
+ * composite control, a computed value. Their only width rule is that they claim
+ * no addresses — for an http metric, `type`/`addresses` are the neutral seed the
+ * upcast filled in, and addresses beside a pointer would be two conflicting
+ * claims about where the value lives. `null` means "this metric does own
+ * registers", so {@link widthIssues} should go on and count them.
+ */
+function addresslessIssues(m: z.infer<typeof metricDataSchema>): FieldIssue[] | null {
+  if (m.binding?.via === "http") return httpIssues(m);
+  if (m.controlExpr) {
+    const alsoComputed: FieldIssue[] = m.computeExpr
+      ? [{ field: "controlExpr", message: "metric cannot be both a control and computed" }]
+      : [];
+    return [...alsoComputed, ...strayAddresses(m, "control metric")];
+  }
+  if (m.computeExpr) return strayAddresses(m, "computed metric");
+  return null;
+}
+
+/**
+ * Register-width rules a plain schema can't express: the addressless arms own no
+ * register at all, `RAW` needs at least one word, and the fixed-width types need
+ * exactly the count their encoding implies.
+ */
+function widthIssues(m: z.infer<typeof metricDataSchema>): FieldIssue[] {
+  const addressless = addresslessIssues(m);
+  if (addressless) return addressless;
+  if (m.type === "RAW") {
+    return m.addresses.length >= 1
+      ? []
+      : [{ field: "addresses", message: "RAW metric needs at least one address" }];
+  }
+  const want = m.type === "U_DWORD" ? 2 : 1;
+  return m.addresses.length === want
+    ? []
+    : [
+        {
+          field: "addresses",
+          message: `${m.type} needs ${want} address(es), got ${m.addresses.length}`,
+        },
+      ];
+}
 
 function computeRefs(expr: ComputeExpr): string[] {
   if ("sum" in expr) return expr.sum;
@@ -98,9 +225,132 @@ function controlRefs(expr: ControlExpr): string[] {
   return expr.preset.writes.map((w) => w.target);
 }
 
-export const profileDataSchema = z
+/**
+ * A binding the legacy `type`/`addresses`/`computeExpr`/`controlExpr` mirror can
+ * represent. `http` cannot be one: the mirror speaks in registers, and a pointer
+ * is not one — which is why {@link bindingIssues} never compares it.
+ */
+type MirrorBinding = Exclude<Binding, { via: "http" }>;
+
+/** Structural equality of two bindings (key order and identity aside). */
+function sameBinding(a: MirrorBinding, b: MirrorBinding): boolean {
+  if (a.via !== b.via) return false;
+  if (a.via === "modbus") {
+    const other = b as Extract<Binding, { via: "modbus" }>;
+    return (
+      a.type === other.type &&
+      a.addr.length === other.addr.length &&
+      a.addr.every((x, i) => x === other.addr[i])
+    );
+  }
+  return (
+    JSON.stringify(a.expr) === JSON.stringify((b as Extract<Binding, { via: "compute" }>).expr)
+  );
+}
+
+/**
+ * Per-version binding rules: v1 metrics carry none (the upcast happens on load,
+ * one-way); every later version must carry one that agrees with the legacy
+ * mirror the upcast fills in. A disagreement means an author patched an address
+ * without re-deriving the binding — silently reading the wrong register
+ * otherwise.
+ */
+function bindingIssues(m: z.infer<typeof metricDataSchema>, version: number): FieldIssue[] {
+  if (version === 1) {
+    return m.binding ? [{ field: "binding", message: "binding requires schemaVersion 2" }] : [];
+  }
+  if (!m.binding) {
+    return [{ field: "binding", message: `schemaVersion ${version} requires a binding` }];
+  }
+  // Nothing to disagree with: the mirror can only describe registers, and an
+  // http metric has none. The equivalent check — that it claims no addressing
+  // outside its pointer — is `widthIssues`.
+  if (m.binding.via === "http") return [];
+  // `bindingFor` returns `m.binding` when present, so passing `m` straight in
+  // compared the binding to itself and this arm could never fire. Derive from the
+  // mirror alone — that is the thing we are checking it against.
+  // `MirrorBinding` by construction: with `binding` removed, `bindingFor` reads
+  // only the mirror fields, whose three arms are exactly the ones it can express.
+  const fromMirror = bindingFor({
+    ...(m as Parameters<typeof bindingFor>[0]),
+    binding: undefined,
+  }) as MirrorBinding;
+  return sameBinding(m.binding, fromMirror)
+    ? []
+    : [{ field: "binding", message: "binding disagrees with type/addresses" }];
+}
+
+/**
+ * A `schemaVersion: 2`-or-later profile states its addressing only in `binding`,
+ * so fill the legacy `type`/`addresses`/`computeExpr`/`controlExpr` mirror from
+ * it before validation — every semantic lint below (widths, duplicate addresses,
+ * compute references) then runs unchanged on every version. Explicit fields win,
+ * so a profile that carries both is checked for agreement rather than
+ * overwritten.
+ */
+function fillLegacyMirror(metric: unknown): unknown {
+  if (typeof metric !== "object" || metric === null) return metric;
+  const binding = (metric as { binding?: unknown }).binding;
+  if (typeof binding !== "object" || binding === null) return metric;
+  const b = binding as { via?: unknown; addr?: unknown; type?: unknown; expr?: unknown };
+  const mirror: Record<string, unknown> = { type: "U_WORD", addresses: [] };
+  if (b.via === "modbus") Object.assign(mirror, { type: b.type, addresses: b.addr });
+  if (b.via === "compute") mirror.computeExpr = b.expr;
+  if (b.via === "control") mirror.controlExpr = b.expr;
+  return { ...mirror, ...metric };
+}
+
+function upcastForValidation(input: unknown): unknown {
+  if (typeof input !== "object" || input === null) return input;
+  const data = input as { schemaVersion?: unknown; metrics?: unknown };
+  const versioned = data.schemaVersion === 2 || data.schemaVersion === 3;
+  if (!versioned || !Array.isArray(data.metrics)) return input;
+  return { ...data, metrics: data.metrics.map(fillLegacyMirror) };
+}
+
+/**
+ * Where an authored `deadband` is an error rather than a filter. Rejected here,
+ * at authoring time, instead of being silently dropped by the write path:
+ *
+ * - a metric not stored as a series never reaches the filter at all, so a
+ *   threshold on it is dead configuration that reads as if it were doing
+ *   something;
+ * - a counter filtered by a magnitude threshold *lags* — the stored series
+ *   trails the device's own total until the next increment clears the band;
+ * - a threshold on an enum is meaningless and can swallow a state transition;
+ * - a threshold below `scale` is below the register's quantisation step, so no
+ *   sample can ever fall inside it. That is an authoring mistake, not a no-op.
+ */
+function deadbandIssues(m: z.infer<typeof metricDataSchema>): FieldIssue[] {
+  if (m.deadband === undefined) return [];
+  const storage = resolveStorage(m);
+  if (storage !== "series") {
+    return [{ field: "deadband", message: `deadband needs storage "series", not "${storage}"` }];
+  }
+  const kind = statedKind(m);
+  if (kind === "cumulative" || kind === "status") {
+    return [{ field: "deadband", message: `a ${kind} metric is stored exactly: no deadband` }];
+  }
+  const floor = Math.abs(m.scale);
+  return m.deadband < floor
+    ? [
+        {
+          field: "deadband",
+          message: `deadband ${m.deadband} is below the ${floor} quantisation step`,
+        },
+      ]
+    : [];
+}
+
+const coreProfileSchema = z
   .strictObject({
-    schemaVersion: z.literal(1),
+    schemaVersion: z.union(
+      PROFILE_SCHEMA_VERSIONS.map((v) => z.literal(v)) as [
+        z.ZodLiteral<1>,
+        z.ZodLiteral<2>,
+        z.ZodLiteral<3>,
+      ],
+    ),
     id: z
       .string()
       .min(1)
@@ -109,11 +359,24 @@ export const profileDataSchema = z
     manufacturer: z.string().min(1),
     version: z.string().min(1),
     metrics: z.array(metricDataSchema).min(1),
+    declares: declarationsSchema.optional(),
   })
   .superRefine((data, ctx) => {
     const { metrics } = data;
     const at = (i: number, field: string, message: string) =>
       ctx.addIssue({ code: "custom", path: ["metrics", i, field], message });
+
+    // --- declarations are v3 vocabulary ---
+    // A v1/v2 profile's `load.*` roles already imply a backup output (that is
+    // what they meant when it was authored), so letting one also declare would
+    // put two answers in the same file.
+    if (data.declares && data.schemaVersion < 3) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["declares"],
+        message: "declares requires schemaVersion 3",
+      });
+    }
 
     // --- duplicate keys ---
     const seenKey = new Set<string>();
@@ -135,23 +398,17 @@ export const profileDataSchema = z
 
     // --- register width matches type ---
     metrics.forEach((m, i) => {
-      if (m.controlExpr) {
-        if (m.computeExpr) at(i, "controlExpr", "metric cannot be both a control and computed");
-        if (m.addresses.length !== 0) at(i, "addresses", "control metric must have no addresses");
-        return;
-      }
-      if (m.computeExpr) {
-        if (m.addresses.length !== 0) at(i, "addresses", "computed metric must have no addresses");
-        return;
-      }
-      if (m.type === "RAW") {
-        if (m.addresses.length < 1) at(i, "addresses", "RAW metric needs at least one address");
-        return;
-      }
-      const want = m.type === "U_DWORD" ? 2 : 1;
-      if (m.addresses.length !== want) {
-        at(i, "addresses", `${m.type} needs ${want} address(es), got ${m.addresses.length}`);
-      }
+      for (const issue of widthIssues(m)) at(i, issue.field, issue.message);
+    });
+
+    // --- the binding matches the schema version (and the mirror) ---
+    metrics.forEach((m, i) => {
+      for (const issue of bindingIssues(m, data.schemaVersion)) at(i, issue.field, issue.message);
+    });
+
+    // --- the deadband is only meaningful where it is also safe ---
+    metrics.forEach((m, i) => {
+      for (const issue of deadbandIssues(m)) at(i, issue.field, issue.message);
     });
 
     // --- role-shape rules from the catalog ---
@@ -197,6 +454,13 @@ export const profileDataSchema = z
       }
     });
   });
+
+/**
+ * Strict validator for either schema version. A `schemaVersion: 2` profile has
+ * its legacy mirror filled in first, so the parsed value is the same in-memory
+ * shape a v1 profile yields plus its `binding`.
+ */
+export const profileDataSchema = z.preprocess(upcastForValidation, coreProfileSchema);
 
 /** Validate untrusted input and return typed {@link ProfileData} (throws on failure). */
 export function parseProfileData(input: unknown): ProfileData {

@@ -31,7 +31,7 @@ function baseAbsoluteLinks() {
     hooks: {
       "astro:build:done": async ({ dir, logger }) => {
         let count = 0;
-        // fallow-ignore-next-line complexity
+        // fallow-ignore-next-line complexity -- recursive directory walk: the dir/.html/changed branches are the whole algorithm; splitting them into helpers would only move the same branching behind extra indirection in build-time config code
         const walk = async (d) => {
           for (const entry of await readdir(d, { withFileTypes: true })) {
             const p = join(d, entry.name);
@@ -58,6 +58,15 @@ function baseAbsoluteLinks() {
 export default defineConfig({
   site,
   base,
+  // The costs page became the statistics page; the old URL stays alive for
+  // existing links and bookmarks. Astro emits a static meta-refresh page — the
+  // key is base-relative (it decides where the file is written), but the target
+  // lands verbatim in `<meta http-equiv="refresh">` and in the canonical link,
+  // neither of which Astro or `baseAbsoluteLinks` (href/src only) prefixes. So
+  // the target carries the base itself.
+  redirects: {
+    "/use/costs": `${prefix}/use/statistics`,
+  },
   integrations: [
     baseAbsoluteLinks(),
     starlight({
@@ -98,7 +107,7 @@ export default defineConfig({
             { label: "Dashboard", slug: "use/dashboard" },
             { label: "History & Analytics", slug: "use/history" },
             { label: "Controls", slug: "use/controls" },
-            { label: "Costs & Tariffs", slug: "use/costs" },
+            { label: "Statistics", slug: "use/statistics" },
             { label: "Settings", slug: "use/settings" },
             { label: "Users & Roles", slug: "use/users" },
           ],

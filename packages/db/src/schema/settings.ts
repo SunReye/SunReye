@@ -1,5 +1,7 @@
 import { jsonb, pgTable, text, timestamp } from "drizzle-orm/pg-core";
 
+import { updatedAtTz } from "./columns";
+
 /**
  * Generic key/value application settings, stored as JSONB and validated by a
  * per-key Zod schema at the edge (see `@SunReye/db/tariff`). Keeps runtime
@@ -9,10 +11,7 @@ import { jsonb, pgTable, text, timestamp } from "drizzle-orm/pg-core";
 export const appSettings = pgTable("app_settings", {
   key: text("key").primaryKey(),
   value: jsonb("value").notNull(),
-  updatedAt: timestamp("updated_at", { withTimezone: true })
-    .defaultNow()
-    .$onUpdate(() => /* @__PURE__ */ new Date())
-    .notNull(),
+  updatedAt: updatedAtTz(),
 });
 
 export type AppSettingRow = typeof appSettings.$inferSelect;

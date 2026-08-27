@@ -11,10 +11,10 @@
 	import { inverter } from '$lib/inverter/store.svelte';
 	import * as m from '$lib/paraglide/messages';
 	import GaugeIcon from 'phosphor-svelte/lib/Gauge';
-	import CpuIcon from 'phosphor-svelte/lib/Cpu';
 	import ChartLineIcon from 'phosphor-svelte/lib/ChartLine';
 	import SlidersIcon from 'phosphor-svelte/lib/SlidersHorizontal';
-	import CoinsIcon from 'phosphor-svelte/lib/Coins';
+	import RobotIcon from 'phosphor-svelte/lib/Robot';
+	import ChartBarIcon from 'phosphor-svelte/lib/ChartBar';
 	import GearIcon from 'phosphor-svelte/lib/Gear';
 	import SignOutIcon from 'phosphor-svelte/lib/SignOut';
 	import SignInIcon from 'phosphor-svelte/lib/SignIn';
@@ -36,11 +36,13 @@
 
 	const items = $derived<NavItem[]>([
 		{ href: '/', label: m.nav_overview(), icon: GaugeIcon },
-		{ href: '/system', label: m.nav_system(), icon: CpuIcon },
 		{ href: '/history', label: m.nav_history(), icon: ChartLineIcon },
-		{ href: '/costs', label: m.nav_costs(), icon: CoinsIcon },
+		{ href: '/statistics', label: m.nav_statistics(), icon: ChartBarIcon },
 		...(isAdmin && (inverter.capabilities?.controls.length ?? 0) > 0
 			? ([{ href: '/controls', label: m.nav_controls(), icon: SlidersIcon }] satisfies NavItem[])
+			: []),
+		...(isAdmin
+			? ([{ href: '/automations', label: m.nav_automations(), icon: RobotIcon }] satisfies NavItem[])
 			: [])
 	]);
 
@@ -49,6 +51,23 @@
 	function closeSidebar() {
 		sidebar.setOpenMobile(false);
 	}
+
+	// Identifies the connected inverter until the manifest lands.
+	const subtitle = $derived(
+		inverter.manifest
+			? `${inverter.manifest.manufacturer} · ${inverter.manifest.name}`
+			: m.app_loading()
+	);
+
+	// Settings has subroutes (one per panel); any of them keeps the entry active.
+	const settingsActive = $derived(
+		current === '/settings' || current.startsWith('/settings/')
+	);
+
+	// Sections with subroutes (Automations has one page per automation) stay
+	// active on their children; '/' would otherwise prefix-match everything.
+	const isActive = (href: string) =>
+		current === href || (href !== '/' && current.startsWith(`${href}/`));
 
 	const userName = $derived(
 		$sessionQuery.data?.user?.name ||
@@ -67,11 +86,7 @@
 			<Logo class="size-8 shrink-0 text-primary" />
 			<div class="flex min-w-0 flex-col group-data-[collapsible=icon]:hidden">
 				<span class="text-sm font-semibold leading-tight">SunReye</span>
-				<span class="truncate text-xs text-muted-foreground">
-					{inverter.manifest
-						? `${inverter.manifest.manufacturer} · ${inverter.manifest.name}`
-						: m.app_loading()}
-				</span>
+				<span class="truncate text-xs text-muted-foreground">{subtitle}</span>
 			</div>
 		</div>
 	</Sidebar.Header>
@@ -84,7 +99,7 @@
 					{#each items as item (item.href)}
 						{@const Icon = item.icon}
 						<Sidebar.MenuItem>
-							<Sidebar.MenuButton isActive={current === item.href}>
+							<Sidebar.MenuButton isActive={isActive(item.href)}>
 								{#snippet child({ props })}
 									<a href={resolve(item.href)} onclick={closeSidebar} {...props}>
 										<Icon class="size-4" />
@@ -103,7 +118,7 @@
 		<Sidebar.Menu>
 			{#if isAdmin}
 				<Sidebar.MenuItem>
-					<Sidebar.MenuButton isActive={current === '/settings' || current.startsWith('/settings/')}>
+					<Sidebar.MenuButton isActive={settingsActive}>
 						{#snippet child({ props })}
 							<a href={resolve('/settings')} onclick={closeSidebar} {...props}>
 								<GearIcon class="size-4" />

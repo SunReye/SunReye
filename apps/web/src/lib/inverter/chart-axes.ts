@@ -63,27 +63,43 @@ export function groupSeriesByUnit(series: AxisSeries[]): AxisGrouping {
   };
 }
 
+/** Every plottable reading the group produces across `data`; gaps are dropped. */
+function finiteValues(data: Datum[], group: AxisSeries[]): number[] {
+  return data
+    .flatMap((d) => group.map((s) => s.value(d)))
+    .filter((v): v is number => v != null && Number.isFinite(v));
+}
+
+/** [min, max] of a non-empty list, without spreading it onto the call stack. */
+function extent(values: number[]): [number, number] {
+  let min = Infinity;
+  let max = -Infinity;
+  for (const v of values) {
+    if (v < min) min = v;
+    if (v > max) max = v;
+  }
+  return [min, max];
+}
+
+/**
+ * Domain for a group whose readings are all the same value: give it a band from
+ * zero so a flat line renders mid-plot rather than on the axis itself.
+ */
+function flatDomain(v: number): [number, number] {
+  if (v === 0) return [0, 1];
+  return v > 0 ? [0, v * 1.1] : [v * 1.1, 0];
+}
+
 /**
  * Nice'd [min, max] domain across a series group's values in `data`. Unlike the
  * single-axis chart this does NOT include zero — each axis hugs its own data so a
  * tight-range metric (efficiency 82–84%) fills the plot instead of being squashed.
  */
 export function domainFor(data: Datum[], group: AxisSeries[]): [number, number] {
-  let min = Infinity;
-  let max = -Infinity;
-  for (const d of data) {
-    for (const s of group) {
-      const v = s.value(d);
-      if (v == null || !Number.isFinite(v)) continue;
-      if (v < min) min = v;
-      if (v > max) max = v;
-    }
-  }
-  if (min === Infinity) return [0, 1];
-  if (min === max) {
-    if (min === 0) return [0, 1];
-    return min > 0 ? [0, min * 1.1] : [min * 1.1, 0];
-  }
+  const values = finiteValues(data, group);
+  if (values.length === 0) return [0, 1];
+  const [min, max] = extent(values);
+  if (min === max) return flatDomain(min);
   return scaleLinear().domain([min, max]).nice().domain() as [number, number];
 }
 

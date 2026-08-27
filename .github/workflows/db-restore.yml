@@ -1,0 +1,322 @@
+---
+name: Restore test
+
+# Proves the documented restore path by executing it: seed a database that
+# spans more than the 7-day raw retention (so chunks are compressed and every
+# rollup is materialized), dump it with the addon's own `dump.sh` in BOTH
+# modes, restore each into a fresh database with `scripts/db-restore.sh` — the
+# script DOCS.md points at — and diff a full snapshot of both sides per bucket
+# and per metric (`scripts/db-parity.ts`).
+#
+# A red restore blocks the release: a backup nobody has ever restored is not a
+# backup.
+on:
+  pull_request:
+    paths:
+      - "packages/db/**"
+      - "sunreye/rootfs/usr/lib/sunreye/dump.sh"
+      - "scripts/db-restore.sh"
+      - "scripts/db-parity.ts"
+      - "scripts/ci/bashio-shim.sh"
+      - ".github/workflows/db-restore.yml"
+  push:
+    tags: ["server-v*", "addon-v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: db-restore-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  restore:
+    name: Dump → restore → parity
+    runs-on: ubuntu-latest
+    env:
+      SKIP_ENV_VALIDATION: "1"
+      PGPASSWORD: restore-test
+      PGHOST: localhost
+      PGUSER: postgres
+      SOURCE_URL: postgresql://postgres:restore-test@localhost:5432/source
+      # dump.sh writes to the addon's fixed /data/backups path.
+      BACKUP_DIR: /data/backups
+    services:
+      timescaledb:
+        image: timescale/timescaledb:2.28.2-pg17
+        env:
+          POSTGRES_PASSWORD: restore-test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.0
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      # pg_dump/pg_restore must be >= the server's major (17); ubuntu-latest
+      # ships an older client by default.
+      - name: Install PostgreSQL 17 client
+        run: |
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl -fsSL -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
+            https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] \
+            https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" \
+            | sudo tee /etc/apt/sources.list.d/pgdg.list
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client-17
+          pg_restore --version
+          sudo install -d -o "$USER" "$BACKUP_DIR"
+
+      - name: Migrate the source database
+        run: |
+          psql -d postgres -c "CREATE DATABASE source"
+          DATABASE_URL="$SOURCE_URL" bun run --cwd packages/db db:migrate
+
+      # The fixture deliberately spans more than the 7-day raw retention window,
+      # so the source's own retention job will delete chunks out from under it —
+      # between the snapshot and the dump, which made before/after
+      # non-deterministic (115204 raw rows before, 86320 after; 9 compressed
+      # chunks before, 6 after). Compression is driven manually below for the
+      # same reason.
+      #
+      # Refresh policies stay scheduled on purpose: a refresh is idempotent over
+      # already-materialized data, and the "re-armed" assertion later depends on
+      # them being scheduled.
+      #
+      # The policy rows themselves survive — db-parity snapshots
+      # `proc_name:hypertable`, not `scheduled` — so this is invisible to the
+      # parity comparison. It also carries into the dump, which means the
+      # restored databases inherit the disabled state and cannot race their own
+      # snapshot either.
+      - name: Stop the destructive policies racing the fixture
+        run: |
+          psql -d "$SOURCE_URL" -v ON_ERROR_STOP=1 -tAc \
+            "SELECT alter_job(job_id, scheduled => false)
+               FROM timescaledb_information.jobs
+              WHERE proc_name IN ('policy_retention', 'policy_compression')" > /dev/null
+          psql -d "$SOURCE_URL" -tAc \
+            "SELECT proc_name, coalesce(hypertable_name, '-'), scheduled
+               FROM timescaledb_information.jobs ORDER BY job_id"
+
+      # >7 days at 30 s resolution over two inverters and two metrics: enough
+      # to cross compress_after (2 hours, see #110) and the raw retention window
+      # (7 days), small enough to seed in seconds.
+      - name: Seed a fixture spanning more than the raw retention window
+        run: |
+          psql -d "$SOURCE_URL" -v ON_ERROR_STOP=1 <<'SQL'
+          INSERT INTO metrics_raw (time, inverter_id, metric, value)
+          SELECT t, inv, m, (extract(epoch FROM t)::numeric % 5000) + 1
+          FROM generate_series(now() - INTERVAL '10 days', now(), INTERVAL '30 seconds') t,
+               (VALUES ('inv1'), ('inv2')) AS i(inv),
+               (VALUES ('pv_power'), ('battery_soc')) AS mt(m);
+
+          INSERT INTO app_settings (key, value) VALUES
+            ('display', '{"timeZone":"Europe/Berlin"}'),
+            ('tariff', '{"import":0.32,"export":0.08}'),
+            ('plant', '{"timeZone":"Europe/Berlin"}')
+          ON CONFLICT (key) DO UPDATE SET value = excluded.value;
+
+          INSERT INTO installed_profiles (id, version, source, data)
+          VALUES ('deye-sg05lp3', '1.0.0', 'https://example.invalid/profiles.git', '{"id":"deye-sg05lp3"}'::jsonb)
+          ON CONFLICT (id) DO NOTHING;
+
+          INSERT INTO "user" (id, name, email, email_verified, created_at, updated_at)
+          VALUES ('u1', 'Restore Test', 'restore@example.invalid', true, now(), now())
+          ON CONFLICT (id) DO NOTHING;
+          SQL
+
+          # Materialize every rollup over the whole fixture, then compress the
+          # aged chunks: a compressed chunk in the dump is the case most likely
+          # to break, so the fixture must contain one.
+          #
+          # EVERY tier, including the weighted ones. A continuous aggregate runs
+          # with `materialized_only = false`, so selecting from one that was never
+          # refreshed answers from the real-time arm over raw — rows that exist in
+          # the view and in no table. The snapshot then records buckets a dump
+          # cannot carry, and parity fails after restore with "bucket missing"
+          # for data that was never materialized in the first place. Refreshing
+          # is what makes the comparison about the backup rather than about the
+          # view.
+          psql -d "$SOURCE_URL" -v ON_ERROR_STOP=1 <<'SQL'
+          CALL refresh_continuous_aggregate('minute_rollups', NULL, NULL);
+          CALL refresh_continuous_aggregate('hourly_rollups', NULL, NULL);
+          CALL refresh_continuous_aggregate('daily_rollups', NULL, NULL);
+          CALL refresh_continuous_aggregate('weighted_minute_rollups', NULL, NULL);
+          CALL refresh_continuous_aggregate('weighted_hourly_rollups', NULL, NULL);
+          CALL refresh_continuous_aggregate('weighted_daily_rollups', NULL, NULL);
+          SQL
+          psql -d "$SOURCE_URL" -tAc \
+            "SELECT compress_chunk(c) FROM show_chunks('metrics_raw', older_than => INTERVAL '1 day') c" \
+            > /dev/null
+          compressed=$(psql -d "$SOURCE_URL" -tAc \
+            "SELECT count(*) FROM timescaledb_information.chunks WHERE is_compressed")
+          echo "compressed chunks: $compressed"
+          [ "$compressed" -gt 0 ]
+
+      - name: Snapshot the source
+        run: |
+          bun scripts/db-parity.ts --print-sql > /tmp/snapshot.sql
+          psql -d "$SOURCE_URL" -tAf /tmp/snapshot.sql > /tmp/source.json
+          head -c 400 /tmp/source.json
+
+      # The shipped dump.sh, sourced through the bashio shim — not a copy of it.
+      - name: Dump both modes with the addon's dump.sh
+        run: |
+          # dump.sh reads DATABASE_URL and runs under `set -u`, so it must be
+          # exported explicitly — SOURCE_URL is this workflow's name for it.
+          for mode in excluded full; do
+            full=false; [ "$mode" = full ] && full=true
+            DATABASE_URL="$SOURCE_URL" bash -c "source scripts/ci/bashio-shim.sh
+                     BACKUP_FULL=$full BACKUPS_KEEP=5 . sunreye/rootfs/usr/lib/sunreye/dump.sh $mode"
+          done
+          ls -l "$BACKUP_DIR"
+          test -s "$BACKUP_DIR/full.dump"
+          test -s "$BACKUP_DIR/excluded.dump"
+          # Under the SHIPPED policies the two are the same dump. `backup_full:
+          # false` excludes raw only while raw is redundant, and the minute
+          # aggregates are frozen — raw is the only minute-resolution record, so
+          # dropping it would restore an hourly-only history. The exclusion
+          # machinery is exercised below, on a database where it does apply.
+          [ "$(stat -c%s "$BACKUP_DIR/excluded.dump")" = "$(stat -c%s "$BACKUP_DIR/full.dump")" ]
+
+      - name: Restore the full dump and assert parity
+        run: |
+          psql -d postgres -c "CREATE DATABASE restored_full"
+          DATABASE_URL=postgresql://postgres:restore-test@localhost:5432/restored_full \
+            scripts/db-restore.sh "$BACKUP_DIR/full.dump"
+          psql -d postgresql://postgres:restore-test@localhost:5432/restored_full \
+            -tAf /tmp/snapshot.sql > /tmp/restored-full.json
+          bun scripts/db-parity.ts /tmp/source.json /tmp/restored-full.json --require-data
+
+      - name: Restore the excluded dump and assert it lost nothing
+        run: |
+          # Same file as the full dump under the shipped policies, so it must
+          # restore to full parity. A raw window missing HERE would be the bug
+          # the size check above is guarding against.
+          psql -d postgres -c "CREATE DATABASE restored_excluded"
+          DATABASE_URL=postgresql://postgres:restore-test@localhost:5432/restored_excluded \
+            scripts/db-restore.sh "$BACKUP_DIR/excluded.dump"
+          psql -d postgresql://postgres:restore-test@localhost:5432/restored_excluded \
+            -tAf /tmp/snapshot.sql > /tmp/restored-excluded.json
+          bun scripts/db-parity.ts /tmp/source.json /tmp/restored-excluded.json --require-data
+
+      # …and the exclusion itself still works, on a database where it applies:
+      # re-arm the minute refresh policy and raw becomes redundant again.
+      - name: With a live minute tier, raw IS excluded and exactly that is lost
+        run: |
+          psql -d "$SOURCE_URL" -v ON_ERROR_STOP=1 -tAc \
+            "SELECT add_continuous_aggregate_policy('minute_rollups',
+               start_offset => INTERVAL '10 minutes',
+               end_offset => INTERVAL '1 minute',
+               schedule_interval => INTERVAL '1 minute',
+               if_not_exists => TRUE)" > /dev/null
+          # Raw must also not outlive the tier it is being excluded in favour of.
+          psql -d "$SOURCE_URL" -v ON_ERROR_STOP=1 -tAc \
+            "SELECT remove_retention_policy('metrics_raw', if_exists => TRUE);
+             SELECT add_retention_policy('metrics_raw', INTERVAL '90 days')" > /dev/null
+          DATABASE_URL="$SOURCE_URL" bash -c "source scripts/ci/bashio-shim.sh
+                   BACKUP_FULL=false BACKUPS_KEEP=5 . sunreye/rootfs/usr/lib/sunreye/dump.sh thinned"
+          ls -l "$BACKUP_DIR"
+          [ "$(stat -c%s "$BACKUP_DIR/thinned.dump")" -lt "$(stat -c%s "$BACKUP_DIR/full.dump")" ]
+          psql -d postgres -c "CREATE DATABASE restored_thinned"
+          DATABASE_URL=postgresql://postgres:restore-test@localhost:5432/restored_thinned \
+            scripts/db-restore.sh "$BACKUP_DIR/thinned.dump"
+          psql -d postgresql://postgres:restore-test@localhost:5432/restored_thinned \
+            -tAf /tmp/snapshot.sql > /tmp/restored-thinned.json
+          bun scripts/db-parity.ts /tmp/source.json /tmp/restored-thinned.json \
+            --expect-raw-loss --require-data
+
+      - name: Continuous-aggregate policies are present and re-armed
+        run: |
+          for db in restored_full restored_excluded; do
+            url="postgresql://postgres:restore-test@localhost:5432/$db"
+            echo "== $db"
+            psql -d "$url" -tAc \
+              "SELECT proc_name, hypertable_name, scheduled FROM timescaledb_information.jobs ORDER BY 1,2"
+            # Every refresh policy the source had, still scheduled here. The
+            # minute tier is NOT among them: it is frozen, and a restore that
+            # re-armed it would start re-materializing a tier raw now answers.
+            missing=$(psql -d "$url" -tAc \
+              "SELECT count(*) FROM (VALUES ('hourly_rollups'),('daily_rollups')) v(h)
+               WHERE NOT EXISTS (SELECT 1 FROM timescaledb_information.jobs j
+                 WHERE j.proc_name = 'policy_refresh_continuous_aggregate'
+                   AND j.hypertable_name = v.h AND j.scheduled)")
+            echo "missing refresh policies: $missing"
+            [ "$missing" = "0" ]
+            revived=$(psql -d "$url" -tAc \
+              "SELECT count(*) FROM timescaledb_information.jobs
+                WHERE proc_name = 'policy_refresh_continuous_aggregate'
+                  AND hypertable_name IN ('minute_rollups','weighted_minute_rollups')")
+            echo "revived minute refresh policies: $revived"
+            [ "$revived" = "0" ]
+          done
+
+      - name: A newer-schema target is refused, not half-applied
+        run: |
+          psql -d postgres -c "CREATE DATABASE newer"
+          url="postgresql://postgres:restore-test@localhost:5432/newer"
+          DATABASE_URL="$url" bun run --cwd packages/db db:migrate
+          # Pretend a future release migrated it.
+          psql -d "$url" -c \
+            "INSERT INTO drizzle.__drizzle_migrations (hash, created_at) VALUES ('future', 9999999999999)"
+          before=$(psql -d "$url" -tAc "SELECT count(*) FROM metrics_raw")
+          if DATABASE_URL="$url" scripts/db-restore.sh --force "$BACKUP_DIR/full.dump"; then
+            echo "::error::restore into a newer-schema database was allowed"
+            exit 1
+          fi
+          after=$(psql -d "$url" -tAc "SELECT count(*) FROM metrics_raw")
+          echo "rows before=$before after=$after"
+          [ "$before" = "$after" ]
+
+      - name: A populated target is refused without --force
+        run: |
+          url="postgresql://postgres:restore-test@localhost:5432/restored_full"
+          if DATABASE_URL="$url" scripts/db-restore.sh "$BACKUP_DIR/full.dump"; then
+            echo "::error::restore over a populated database was allowed without --force"
+            exit 1
+          fi
+
+      - name: An empty database dumps and restores as an empty database
+        run: |
+          psql -d postgres -c "CREATE DATABASE zero"
+          zero="postgresql://postgres:restore-test@localhost:5432/zero"
+          DATABASE_URL="$zero" bun run --cwd packages/db db:migrate
+          DATABASE_URL="$zero" bash -c "source scripts/ci/bashio-shim.sh
+            BACKUP_FULL=true BACKUPS_KEEP=5 . sunreye/rootfs/usr/lib/sunreye/dump.sh zero"
+          psql -d "$zero" -tAf /tmp/snapshot.sql > /tmp/zero.json
+
+          psql -d postgres -c "CREATE DATABASE zero_restored"
+          DATABASE_URL=postgresql://postgres:restore-test@localhost:5432/zero_restored \
+            scripts/db-restore.sh "$BACKUP_DIR/zero.dump"
+          psql -d postgresql://postgres:restore-test@localhost:5432/zero_restored \
+            -tAf /tmp/snapshot.sql > /tmp/zero-restored.json
+          bun scripts/db-parity.ts /tmp/zero.json /tmp/zero-restored.json
+
+      # The sanitizer and the rotation loop are unit-tested against the shipped
+      # dump.sh text (scripts/dump-rotation.test.ts); here they run for real
+      # against the real backup directory.
+      - name: backups_keep of 0 and of a non-numeric value
+        run: |
+          DATABASE_URL="$SOURCE_URL" bash -c "source scripts/ci/bashio-shim.sh
+            BACKUP_FULL=false BACKUPS_KEEP=nonsense . sunreye/rootfs/usr/lib/sunreye/dump.sh keep-bad"
+          echo "after a non-numeric keep (defaults to 3):"
+          ls -1 "$BACKUP_DIR"
+          [ "$(ls -1 "$BACKUP_DIR"/*.dump | wc -l)" = "3" ]
+
+          DATABASE_URL="$SOURCE_URL" bash -c "source scripts/ci/bashio-shim.sh
+            BACKUP_FULL=false BACKUPS_KEEP=0 . sunreye/rootfs/usr/lib/sunreye/dump.sh keep-zero"
+          echo "after keep=0:"
+          ls -1 "$BACKUP_DIR" || true
+          [ "$(ls -1 "$BACKUP_DIR"/*.dump 2>/dev/null | wc -l)" = "0" ]

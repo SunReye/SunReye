@@ -1,4 +1,5 @@
 import { api } from "$lib/api";
+import { payloadOrNull } from "$lib/api-payload";
 
 /**
  * Dashboard visibility preferences shape. Mirrors the server's `uiPrefsSchema`
@@ -58,7 +59,7 @@ class UiPrefsStore {
   async save(next: UiPrefs): Promise<boolean> {
     const { data, error } = await api.api.settings.ui.put(next);
     if (error) return false;
-    this.config = (data as UiPrefs | null) ?? next;
+    this.config = payloadOrNull<UiPrefs>(data) ?? next;
     return true;
   }
 }

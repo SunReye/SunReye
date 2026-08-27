@@ -5,6 +5,7 @@
 	import * as m from '$lib/paraglide/messages';
 	import AvailableProfilesBrowser from './available-profiles-browser.svelte';
 	import ProfileSourcesEditor from './profile-sources-editor.svelte';
+	import { apiErrorMessage } from './api-error';
 	import type { AvailableProfile, Source } from './profile-types';
 
 	// Self-contained "add an external profile" surface: manage git repo sources,
@@ -28,16 +29,6 @@
 		if (data) sources = data.sources;
 	}
 
-	// Elysia returns validation/other failures as `status(4xx, { error })`, so
-	// the useful message lives at `error.value.error` — not `error.value` (an
-	// object, which stringifies to "[object Object]").
-	function errorMessage(value: unknown): string {
-		if (typeof value === 'string') return value;
-		if (value && typeof value === 'object' && 'error' in value && typeof value.error === 'string')
-			return value.error;
-		return m.error_unknown();
-	}
-
 	// Persist optimistically: apply `next` locally, save, and roll back to the
 	// previous set if the server rejects it — so add/remove/toggle each save
 	// without a manual button.
@@ -49,7 +40,9 @@
 		savingSources = false;
 		if (error) {
 			sources = prev;
-			toast.error(m.profiles_toast_save_failed({ error: errorMessage(error.value) }));
+			toast.error(
+				m.profiles_toast_save_failed({ error: apiErrorMessage(error.value, m.error_unknown()) })
+			);
 		}
 	}
 

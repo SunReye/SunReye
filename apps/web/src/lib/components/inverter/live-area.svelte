@@ -1,35 +1,60 @@
 <script lang="ts">
-	import { AreaChart, Area, ChartClipPath, Highlight } from 'layerchart';
-	import { curveCatmullRom } from 'd3-shape';
+	import { AreaChart, ChartClipPath, Highlight } from 'layerchart';
 	import DivergingArea from '$lib/components/inverter/diverging-area.svelte';
-	import { untrack } from 'svelte';
-	import { Tween } from 'svelte/motion';
-	import { linear } from 'svelte/easing';
+	import PowerArea from '$lib/components/inverter/power-area.svelte';
 	import * as Chart from '$lib/components/ui/chart';
-	import { fractionDigits } from '$lib/inverter/format';
+	import MetricTooltipRow from '$lib/components/inverter/_shared/metric-tooltip-row.svelte';
+	import { liveCursor } from '$lib/components/inverter/_shared/live-cursor.svelte';
+	import {
+		bufferStart,
+		glideTransform,
+		pixelQuantum,
+		sampleInterval
+	} from '$lib/components/inverter/_shared/live-window';
 	import { display } from '$lib/display.svelte';
+	import PlotFrame from '$lib/components/layout/plot-frame.svelte';
+	import { fittedPadding, shouldRenderPlot } from '$lib/charts/plot-padding';
+	import { downsample, pointBudget } from '$lib/components/inverter/_shared/downsample';
 	import type { LivePoint } from '$lib/inverter/types';
+
+	// The sparkline's own gutters: a power figure on the left, no x-axis at all,
+	// so top/bottom/right are hairlines. Its own base — the cost family's 60px
+	// left gutter would be a third of a 412px live card.
+	const PADDING = { top: 6, bottom: 6, left: 44, right: 6 };
+
+	// Step grid the glide snaps to — see `pixelQuantum`. Read once: a dpr change
+	// (browser zoom, monitor swap) only alters the step size, never the position,
+	// so a stale value is harmless.
+	const quantum = pixelQuantum(typeof window === 'undefined' ? 1 : window.devicePixelRatio);
 
 	let {
 		points = [],
-		accent = 'var(--color-chart-2)',
+		accent = 'var(--chart-2)',
 		diverging = false,
 		windowMs = 2 * 60 * 1000,
 		height = 'h-40',
 		label = 'Value',
-		unit = ''
+		unit = '',
+		maxPoints
 	}: {
 		points?: LivePoint[];
 		accent?: string;
 		/** Split the fill red (above 0) / green (below 0) around a zero baseline. */
 		diverging?: boolean;
 		windowMs?: number;
-		/** Tailwind height class for the chart box (fixed height — not h-full). */
+		/** Tailwind height class for the chart box; `h-full` to fill the caller's box. */
 		height?: string;
 		/** Series name shown in the hover tooltip. */
 		label?: string;
 		/** Unit suffix appended to the tooltip value. */
 		unit?: string;
+		/**
+		 * Samples to draw at most, after the window filter. Defaults to the
+		 * MEASURED plot's own pixel budget; a caller with a wider box (the
+		 * overview's sparklines) states its own, and `Infinity` keeps every
+		 * sample the window holds.
+		 */
+		maxPoints?: number;
 	} = $props();
 
 	// AreaChart's `marks` context isn't exposed in the public types; type just the
@@ -46,63 +71,65 @@
 	const lastT = $derived(points.at(-1)?.t);
 
 	// Spacing between samples, clamped, used to size the off-screen buffer below.
-	const interval = $derived.by(() => {
-		const a = points.at(-1)?.t;
-		const b = points.at(-2)?.t;
-		return a !== undefined && b !== undefined ? Math.min(Math.max(a - b, 250), 5000) : 1000;
-	});
+	const interval = $derived(sampleInterval(points.at(-1)?.t, points.at(-2)?.t));
 
-	// A real-time cursor that drifts continuously toward the newest sample instead of
-	// snapping to it once a second. Mirrors AnimatedNumber: stretch every transition
-	// across the real gap since the previous sample and ease it linearly, so the plot
-	// glides rather than updating on a visible once-a-second cadence. Only the marks'
-	// translate (below) reads `cursor` — never `data`/`xDomain` — so the chart itself
-	// does NOT re-render per animation frame.
-	const cursor = new Tween(untrack(() => lastT) ?? 0);
-	let lastAt = performance.now();
-	$effect(() => {
-		const t = lastT; // track live updates
-		if (t === undefined) return;
-		const now = performance.now();
-		const gap = now - lastAt;
-		lastAt = now;
-		void cursor.set(t, { duration: Math.min(2000, Math.max(300, gap)), easing: linear });
-	});
-
-	// The chart renders with a FIXED window anchored to the newest sample, so `data`
-	// and `xDomain` change only when a sample lands (~1 Hz). That bounds LayerChart's
-	// work — scale recompute, spline path, and the tooltip quadtree rebuild — to sample
-	// cadence instead of every animation frame. `data` keeps a few intervals of buffer
-	// past the left edge so the continuous glide never reveals empty space, and
-	// ChartClipPath around the marks hides everything outside the window.
-	const xDomain = $derived(lastT === undefined ? undefined : [lastT - windowMs, lastT]);
-	const data = $derived(
-		lastT === undefined ? points : points.filter((p) => p.t >= lastT - windowMs - 6 * interval)
+	// The glide cursor the marks below scroll by — shared with custom-live-chart,
+	// see _shared/live-cursor.svelte.ts for why it trails the newest sample.
+	const cursor = liveCursor(
+		() => lastT,
+		() => interval
 	);
 
-	// Per-frame smooth scroll WITHOUT re-rendering the chart: translate the marks group
-	// so the visible right edge tracks the interpolated cursor. `xScale` maps time→pixel
-	// for the fixed domain, so this resolves to a compositor-friendly transform on a
-	// single <g> — no path/scale/quadtree recompute. The newest sample trails one
-	// interval off-screen to the right and glides in under the feathered edge.
-	function glideX(xScale: (t: number) => number): number {
-		if (lastT === undefined) return 0;
-		return xScale(lastT) - xScale(cursor.current - interval);
-	}
+	// Fixed window anchored to the newest sample, with an off-screen buffer past the
+	// left edge — see _shared/live-window.ts for why.
+	const xDomain = $derived(lastT === undefined ? undefined : [lastT - windowMs, lastT]);
+	const cutoff = $derived(lastT === undefined ? -Infinity : bufferStart(lastT, windowMs, interval));
+
+	// Fitted to the MEASURED plot: these cards render one-up on a phone and four
+	// across the overview, so no breakpoint knows how wide this one got.
+	let plotWidth = $state(0);
+	const padding = $derived(fittedPadding(PADDING, plotWidth));
+
+	// The window filter above decides which samples are IN FRAME; this decides
+	// how many of those the frame can resolve — one per device pixel, LTTB so a
+	// one-sample spike survives the reduction instead of being strided away. A
+	// two-minute live window rarely reaches the budget, so this normally hands
+	// back the filtered series untouched; a slow feed backfilled over a long
+	// window is what it is here for.
+	const dpr = typeof window === 'undefined' ? 1 : window.devicePixelRatio;
+	const data = $derived(
+		downsample(
+			points.filter((p) => p.t >= cutoff),
+			maxPoints ?? pointBudget(plotWidth, dpr),
+			{ x: (p) => p.t, y: (p) => p.v }
+		)
+	);
+
+	// The edge fade has to start where the axis-label gutter ENDS, so it follows
+	// the fitted left gutter instead of repeating 44px: clamped to 34px on a
+	// phone, a fade pinned at 44 would eat the first 10px of the plotted line.
+	const edgeFade = $derived(
+		`linear-gradient(to right, #000 0, #000 ${padding.left - 2}px, transparent ${padding.left}px, #000 ${padding.left + 52}px, #000 calc(100% - 58px), transparent calc(100% - 6px))`
+	);
 </script>
 
 {#snippet clippedMarks({ context }: MarksContext)}
+	<!-- The SVG transform attribute, snapped to a quarter-pixel grid: the string is
+	     identical on the four frames in five that move less than a quarter pixel, so
+	     Svelte's `!==` equality drops the write, and with it the style invalidation,
+	     paint and raster it would have cost. -->
+	{@const glide = glideTransform(context.xScale, lastT, cursor.current, interval, quantum)}
 	<ChartClipPath>
-		<g transform={`translate(${glideX(context.xScale)}, 0)`}>
+		<g transform={glide}>
 			{#if diverging}
 				<DivergingArea {context} />
 			{:else}
-				<Area
-					curve={curveCatmullRom}
-					line={{ stroke: accent, 'stroke-width': 1.5 }}
-					fill={accent}
-					fillOpacity={0.3}
-				/>
+				<!-- `power`: one instantaneous measure, so the house fill is the accent
+				     fading downward to transparent. It used to be a flat 0.3 wash here
+				     and a 0.9 gradient on the history card, which read as two different
+				     measures; the SAME component draws both now, so they cannot drift
+				     apart again. -->
+				<PowerArea {accent} />
 			{/if}
 			<!-- Render the hover highlight INSIDE the glide-translated group so the
 			     point/crosshair track the visible line. The chart's built-in highlight
@@ -113,53 +140,80 @@
 	</ChartClipPath>
 {/snippet}
 
-<Chart.Container
-	config={{ v: { label, color: accent } }}
-	class={[
-		'aspect-auto w-full',
-		height,
-		// Feather the plot's horizontal edges so data glides in/out instead of ending on
-		// a hard cut. The mask is pinned to layerchart's fixed-size container (not the
-		// moving data path) so the fade stays put while the series scrolls under it. The
-		// gradient keeps the left ~44px axis-label gutter opaque and feathers only inside
-		// the plot area.
-		'[&_.lc-root-container]:mask-(--edge-fade)'
-	]}
-	style="--color-primary: {accent}; --edge-fade: linear-gradient(to right, #000 0, #000 42px, transparent 44px, #000 96px, #000 calc(100% - 58px), transparent calc(100% - 6px))"
->
-	<!--
-		`tooltipContext` mode: the default `quadtree-x` rebuilds a d3-quadtree (async
-		import + full re-index) on every sample — with a 1 Hz feed and 4 always-on
-		sparklines that allocation dominated the heap. `bisect-x` allocates nothing per
-		sample (it binary-searches the sorted series at pointer-move) and gives the same
-		nearest-x hover.
-	-->
-	<AreaChart
-		{data}
-		x="t"
-		{xDomain}
-		y="v"
-		axis="y"
-		grid
-		rule={false}
-		legend={false}
-		padding={{ top: 6, bottom: 6, left: 44, right: 6 }}
-		marks={clippedMarks}
-		highlight={false}
-		tooltipContext={{ mode: 'bisect-x' }}
-	>
-		{#snippet tooltip()}
-			<Chart.Tooltip
-				labelFormatter={(value) => display.timeWithSeconds(new Date(Number(value)))}
-				formatter={tooltipValue}
-			/>
-		{/snippet}
-	</AreaChart>
-</Chart.Container>
+<!-- A measuring box around the plot: the chart container is layerchart's own
+     fixed-size element, so the width the gutters follow is read here.
+     `h-full` and not `w-full` alone: /history hands this component `h-full`,
+     which resolves against THIS div — an unsized wrapper made every live chart
+     on that page render at 0px. -->
+<!-- Framed, like the historical plot next door in `metric-card-plot.svelte`: a
+     /history card shows THIS component while its range is live, and without a
+     frame that card offered full screen and drew no button — which the unit
+     sweep in `charts/fullscreen-coverage.test.ts` cannot see, because it reads
+     imports and this is one of two branches. `e2e/plot-corner-controls.spec.ts`
+     is what caught it.
+
+     Safe in the other use too, and this is why the frame is unconditional: the
+     dashboard KPI tile draws this same component as a 40px decorative sparkline
+     with no enclosing card, so no `FullscreenBox` reaches it through context and
+     the frame renders no control there. The distinction the sweep documents as
+     "a chart here, an ornament there" costs nothing at this end. -->
+<div class="h-full w-full" bind:clientWidth={plotWidth}>
+	<PlotFrame>
+	{#if !shouldRenderPlot(plotWidth)}
+		<!-- One frame, before `bind:clientWidth` lands. Rendering the plot here
+		     would build every scale, tick, grid line and area path at width 0 and
+		     throw all of it away when the fitted padding changed a frame later.
+		     The spacer carries the caller's own height class so the box the chart
+		     is about to fill is already the right size and nothing shifts. -->
+		<div class={['w-full', height]} aria-hidden="true"></div>
+	{:else}
+		<Chart.Container
+			config={{ v: { label, color: accent } }}
+			class={[
+				'aspect-auto w-full',
+				height,
+				// Feather the plot's horizontal edges so data glides in/out instead of ending on
+				// a hard cut. The mask is pinned to layerchart's fixed-size container (not the
+				// moving data path) so the fade stays put while the series scrolls under it. The
+				// gradient keeps the left axis-label gutter opaque and feathers only inside the
+				// plot area — see `edgeFade`, which follows that gutter's fitted width.
+				'[&_.lc-root-container]:mask-(--edge-fade)'
+			]}
+			style="--color-primary: {accent}; --edge-fade: {edgeFade}"
+		>
+			<!--
+				`tooltipContext` mode: the default `quadtree-x` rebuilds a d3-quadtree (async
+				import + full re-index) on every sample — with a 1 Hz feed and 4 always-on
+				sparklines that allocation dominated the heap. `bisect-x` allocates nothing per
+				sample (it binary-searches the sorted series at pointer-move) and gives the same
+				nearest-x hover.
+			-->
+			<AreaChart
+				{data}
+				x="t"
+				{xDomain}
+				y="v"
+				axis="y"
+				grid
+				rule={false}
+				legend={false}
+				padding={padding}
+				marks={clippedMarks}
+				highlight={false}
+				tooltipContext={{ mode: 'bisect-x' }}
+			>
+				{#snippet tooltip()}
+					<Chart.Tooltip
+						labelFormatter={(value) => display.timeWithSeconds(new Date(Number(value)))}
+						formatter={tooltipValue}
+					/>
+				{/snippet}
+			</AreaChart>
+		</Chart.Container>
+	{/if}
+	</PlotFrame>
+</div>
 
 {#snippet tooltipValue({ value }: { value: unknown })}
-	<span class="text-muted-foreground">{label}</span>
-	<span class="ml-auto font-mono font-medium tabular-nums text-foreground">
-		{Number(value).toLocaleString(undefined, fractionDigits(unit))}{unit ? ` ${unit}` : ''}
-	</span>
+	<MetricTooltipRow {label} {value} {unit} />
 {/snippet}

@@ -1,5 +1,6 @@
 import type { CanonicalRole } from "./roles";
 import { ROLE_CATALOG } from "./roles";
+import { bindingFor, declarationsOf } from "./profile-data";
 import type {
   AggregateExpr,
   AggregateMatch,
@@ -9,7 +10,16 @@ import type {
   ProfileData,
   TopicToKey,
 } from "./profile-data";
-import type { MetricAccess, MetricFlow, MetricKind, MetricRange, RegisterType } from "./types";
+import type {
+  Binding,
+  MetricAccess,
+  MetricFlow,
+  MetricKind,
+  MetricRange,
+  MetricStorage,
+  ProfileDeclarations,
+  RegisterType,
+} from "./types";
 
 /**
  * Authoring SDK for inverter profiles. `metric()` mirrors the terse register-map
@@ -21,11 +31,17 @@ import type { MetricAccess, MetricFlow, MetricKind, MetricRange, RegisterType } 
  */
 
 /** Fields every metric shares, independent of role. */
-interface BaseMetricOpts {
+export interface BaseMetricOpts {
   label: string;
   group: string;
   /** Single address, `[low, high]` for `U_DWORD`, N words for `RAW`. Omit for computed. */
   addr?: number | number[];
+  /**
+   * RFC 6901 JSON pointer into the device's HTTP response, e.g.
+   * `/em:0/total_act_power`. Mutually exclusive with {@link addr}: a value
+   * cannot live in a register and in a JSON body at once.
+   */
+  pointer?: string;
   type?: RegisterType;
   unit?: string | null;
   scale?: number;
@@ -39,14 +55,30 @@ interface BaseMetricOpts {
    */
   computeExpr?: ComputeExpr | AggregateExpr;
   kind?: MetricKind;
+  /** Overrides the storage class derived from the resolved kind. */
+  storage?: MetricStorage;
+  /**
+   * Minimum change worth persisting, in this metric's own unit — set it where
+   * the register is noisy. Absent (the default) stores every change.
+   */
+  deadband?: number;
   range?: MetricRange;
   flow?: MetricFlow;
 }
 
-type RoleEntry<R extends CanonicalRole> = (typeof ROLE_CATALOG)[R];
+/**
+ * The {@link ROLE_CATALOG} entry for one role.
+ *
+ * @internal
+ */
+export type RoleEntry<R extends CanonicalRole> = (typeof ROLE_CATALOG)[R];
 
-/** Companions a role forces, read from its {@link ROLE_CATALOG} shape flags. */
-type RoleRequirements<R extends CanonicalRole> = (RoleEntry<R> extends { indexed: true }
+/**
+ * Companions a role forces, read from its {@link ROLE_CATALOG} shape flags.
+ *
+ * @internal
+ */
+export type RoleRequirements<R extends CanonicalRole> = (RoleEntry<R> extends { indexed: true }
   ? { index: number }
   : { index?: number }) &
   (RoleEntry<R> extends { needsEnumLabels: true }
@@ -55,12 +87,12 @@ type RoleRequirements<R extends CanonicalRole> = (RoleEntry<R> extends { indexed
   (RoleEntry<R> extends { writable: true } ? { access: "rw" } : object);
 
 /** Options when a role is supplied: base + the role + its required companions. */
-type RoledMetricOpts = {
+export type RoledMetricOpts = {
   [R in CanonicalRole]: BaseMetricOpts & { role: R } & RoleRequirements<R>;
 }[CanonicalRole];
 
 /** Options for a plain, unmapped metric — valid, just not rendered by role. */
-type UnroledMetricOpts = BaseMetricOpts & {
+export type UnroledMetricOpts = BaseMetricOpts & {
   role?: undefined;
   index?: number;
   enumLabels?: Record<number, string>;
@@ -99,6 +131,14 @@ export function sumOf(match: AggregateMatch): AggregateExpr {
 }
 
 /**
+ * A metric a builder produced: its {@link Binding} is always present, so the
+ * result satisfies the runtime {@link MetricDef} without going through the
+ * upcast. (On a serialized `MetricDataDef` the binding is optional — a v1
+ * profile carries none.)
+ */
+export type BoundMetricDef = MetricDataDef & { binding: Binding };
+
+/**
  * Build one metric. The canonical `key` is the topic with `/` → `.`. Generic on
  * the topic literal so the returned `key` is a literal type ({@link TopicToKey}):
  * profiles can derive their key union (`typeof metrics[number]["key"]`) and feed
@@ -107,9 +147,12 @@ export function sumOf(match: AggregateMatch): AggregateExpr {
 export function metric<const T extends string>(
   topic: T,
   opts: MetricOpts,
-): MetricDataDef & { key: TopicToKey<T> } {
-  const { addr } = opts;
-  return {
+): BoundMetricDef & { key: TopicToKey<T> } {
+  const { addr, pointer } = opts;
+  if (addr !== undefined && pointer !== undefined) {
+    throw new Error(`${topic}: a metric cannot have both an address and a pointer`);
+  }
+  const def: MetricDataDef & { key: TopicToKey<T> } = {
     // The runtime `replaceAll` produces exactly `TopicToKey<T>` by construction;
     // assert it so the literal key type survives (String#replaceAll widens to string).
     key: topic.replaceAll("/", ".") as TopicToKey<T>,
@@ -126,14 +169,26 @@ export function metric<const T extends string>(
     role: opts.role,
     index: opts.index,
     kind: opts.kind,
+    storage: opts.storage,
+    deadband: opts.deadband,
     range: opts.range,
     enumLabels: opts.enumLabels,
     flow: opts.flow,
   };
+  return { ...def, binding: bindingOf(def, pointer) };
+}
+
+/**
+ * The binding for a metric being authored. A pointer states it outright, because
+ * there is nothing on the metric for {@link bindingFor} to derive it from — the
+ * legacy `type`/`addresses` mirror speaks only in registers.
+ */
+function bindingOf(def: MetricDataDef, pointer: string | undefined): Binding {
+  return pointer === undefined ? bindingFor(def) : { via: "http", pointer };
 }
 
 /** Options for a composite control built by {@link control}. */
-interface ControlOpts<K extends string> {
+export interface ControlOpts<K extends string> {
   label: string;
   group: string;
   /** The declarative action; every `target` is constrained to a profile key `K`. */
@@ -142,6 +197,12 @@ interface ControlOpts<K extends string> {
   enumLabels?: Record<number, string>;
   unit?: string | null;
   kind?: MetricKind;
+  /**
+   * Overrides the storage class. A composite control owns no register, so the
+   * derivation sends it to the config change-log; `none` keeps it off disk
+   * entirely, which is usually what a snapshot toggle wants.
+   */
+  storage?: MetricStorage;
   /** Optional bounds; renders a capped slider and clamps writes when present. */
   range?: MetricRange;
   /** Writable by definition; defaults to `"rw"`. */
@@ -157,8 +218,8 @@ interface ControlOpts<K extends string> {
 export function control<const K extends string>(
   topic: string,
   opts: ControlOpts<K>,
-): MetricDataDef {
-  return {
+): BoundMetricDef {
+  const def: MetricDataDef = {
     key: topic.replaceAll("/", "."),
     topic,
     label: opts.label,
@@ -171,8 +232,44 @@ export function control<const K extends string>(
     controlExpr: opts.controlExpr,
     enumLabels: opts.enumLabels,
     kind: opts.kind,
+    storage: opts.storage,
     range: opts.range,
   };
+  return { ...def, binding: bindingFor(def) };
+}
+
+/**
+ * Re-derive every metric's {@link MetricDataDef.binding} from its final fields.
+ * Run at emit time, after overlays and aggregate resolution, so a patched
+ * address or a restated compute can never leave a stale binding behind — the
+ * one place addressing is stated twice is the one place it is re-synced.
+ */
+function bound(metrics: MetricDataDef[]): MetricDataDef[] {
+  return metrics.map((m) => ({
+    // An http binding is exempt, and not as a special case: re-deriving exists
+    // because addressing is stated twice, and a pointer is stated once. There is
+    // nothing in the mirror to re-sync it against, so carrying it through is the
+    // same rule, not an exception to it.
+    ...m,
+    binding: m.binding?.via === "http" ? m.binding : bindingFor({ ...m, binding: undefined }),
+  }));
+}
+
+/**
+ * The version every authored profile is emitted at — the vocabulary this SDK
+ * writes, not the oldest one the runtime still reads.
+ */
+const EMIT_SCHEMA_VERSION = 3 as const;
+
+/**
+ * A declarations block, or nothing at all. An emitted profile is a JSON artifact
+ * that gets diffed against its own baseline, so an absent declaration must leave
+ * no key behind rather than serialize as `"declares": undefined`.
+ */
+function declaresPart(declares: ProfileDeclarations | undefined): {
+  declares?: ProfileDeclarations;
+} {
+  return declares ? { declares } : {};
 }
 
 /** Assemble a {@link ProfileData} from identity + a metric list, resolving any
@@ -183,13 +280,19 @@ export function defineProfile(input: {
   manufacturer: string;
   version: string;
   metrics: MetricDataDef[];
+  /** Hardware the metric set cannot imply — see {@link ProfileDeclarations}. */
+  declares?: ProfileDeclarations;
 }): ProfileData {
+  const { declares, ...identity } = input;
   return {
-    schemaVersion: 1,
-    ...input,
-    metrics: resolveAggregates(
-      input.metrics.map((m) => ({ ...m })),
-      input.id,
+    schemaVersion: EMIT_SCHEMA_VERSION,
+    ...identity,
+    ...declaresPart(declares),
+    metrics: bound(
+      resolveAggregates(
+        input.metrics.map((m) => ({ ...m })),
+        input.id,
+      ),
     ),
   };
 }
@@ -235,6 +338,11 @@ export interface ModelOverrides<K extends string = string> {
   version?: string;
   manufacturer?: string;
   metrics?: MetricsOverlay<K>;
+  /**
+   * Restated hardware declarations — a model of the same family without the
+   * backup output, say. Omitted inherits the base's.
+   */
+  declares?: ProfileDeclarations;
 }
 
 function normalizeAddr(addr: number | number[]): number[] {
@@ -308,6 +416,71 @@ function controlRefs(expr: ControlExpr): string[] {
     : expr.preset.writes.map((w) => w.target);
 }
 
+/** The one error shape every un-prunable reference reports. */
+function refStillNeeded(metricKey: string, ref: string, why: string): never {
+  throw new Error(
+    `overlay removed "${ref}" but computed metric "${metricKey}" still needs it (${why}); ` +
+      `patch its computeExpr or remove "${metricKey}" too`,
+  );
+}
+
+/** Drop `removed` from a variadic operand list; emptying it entirely throws. */
+function shrinkOperands(
+  keys: string[],
+  removed: Set<string>,
+  metricKey: string,
+  why: string,
+): string[] {
+  const kept = keys.filter((k) => !removed.has(k));
+  if (kept.length === 0) refStillNeeded(metricKey, keys.find((k) => removed.has(k))!, why);
+  return kept;
+}
+
+/** True when any of `keys` was removed — i.e. this expr needs rewriting at all. */
+function anyRemoved(keys: string[], removed: Set<string>): boolean {
+  return keys.some((k) => removed.has(k));
+}
+
+/**
+ * The operands of a *fixed-arity* expr (`diff`, `scale`, `clamp`) plus the label
+ * used when one of them was removed; `undefined` for the variadic kinds.
+ */
+function fixedArityOperands(
+  expr: ComputeExpr,
+): { refs: readonly string[]; why: string } | undefined {
+  if ("diff" in expr) return { refs: expr.diff, why: "fixed-arity diff" };
+  if ("scale" in expr) return { refs: [expr.scale[0]], why: "fixed-arity scale" };
+  if ("clamp" in expr) return { refs: [expr.clamp.key], why: "single-key clamp" };
+  return undefined;
+}
+
+/** Prune a `combine`: `add` must keep an operand, `sub` may empty out. */
+function pruneCombine(
+  expr: { combine: { add: string[]; sub?: string[] } },
+  removed: Set<string>,
+  metricKey: string,
+): ComputeExpr {
+  const sub = expr.combine.sub ?? [];
+  if (!anyRemoved([...expr.combine.add, ...sub], removed)) return expr;
+  const add = shrinkOperands(expr.combine.add, removed, metricKey, "empties combine.add");
+  const keptSub = sub.filter((k) => !removed.has(k));
+  return { combine: keptSub.length > 0 ? { add, sub: keptSub } : { add } };
+}
+
+/** Prune a `ratio`: both `num` and `den` must keep at least one operand. */
+function pruneRatio(
+  expr: { ratio: { num: string[]; den: string[]; scale?: number } },
+  removed: Set<string>,
+  metricKey: string,
+): ComputeExpr {
+  const { num, den, scale } = expr.ratio;
+  if (!anyRemoved([...num, ...den], removed)) return expr;
+  const keptNum = shrinkOperands(num, removed, metricKey, "empties ratio.num");
+  const keptDen = shrinkOperands(den, removed, metricKey, "empties ratio.den");
+  const pruned = { num: keptNum, den: keptDen };
+  return { ratio: scale !== undefined ? { ...pruned, scale } : pruned };
+}
+
 /**
  * Rewrite one concrete {@link ComputeExpr} with `removed` keys dropped. A
  * removed key in a *variadic* list (`sum`, `combine.add/sub`, `ratio.num/den`)
@@ -319,44 +492,17 @@ function controlRefs(expr: ControlExpr): string[] {
  * changes; the original (base-owned) object is never mutated.
  */
 function pruneComputeExpr(expr: ComputeExpr, removed: Set<string>, metricKey: string): ComputeExpr {
-  const fail = (ref: string, why: string): never => {
-    throw new Error(
-      `overlay removed "${ref}" but computed metric "${metricKey}" still needs it (${why}); ` +
-        `patch its computeExpr or remove "${metricKey}" too`,
-    );
-  };
-  const shrink = (keys: string[], why: string): string[] => {
-    const kept = keys.filter((k) => !removed.has(k));
-    if (kept.length === 0) fail(keys.find((k) => removed.has(k))!, why);
-    return kept;
-  };
-
   if ("sum" in expr) {
-    return expr.sum.some((k) => removed.has(k)) ? { sum: shrink(expr.sum, "empties a sum") } : expr;
+    if (!anyRemoved(expr.sum, removed)) return expr;
+    return { sum: shrinkOperands(expr.sum, removed, metricKey, "empties a sum") };
   }
-  if ("diff" in expr) {
-    const hit = expr.diff.find((k) => removed.has(k));
-    return hit ? fail(hit, "fixed-arity diff") : expr;
-  }
-  if ("scale" in expr) {
-    return removed.has(expr.scale[0]) ? fail(expr.scale[0], "fixed-arity scale") : expr;
-  }
-  if ("clamp" in expr) {
-    return removed.has(expr.clamp.key) ? fail(expr.clamp.key, "single-key clamp") : expr;
-  }
-  if ("combine" in expr) {
-    const sub = expr.combine.sub ?? [];
-    if (![...expr.combine.add, ...sub].some((k) => removed.has(k))) return expr;
-    const add = shrink(expr.combine.add, "empties combine.add");
-    const keptSub = sub.filter((k) => !removed.has(k));
-    return { combine: keptSub.length ? { add, sub: keptSub } : { add } };
-  }
-  if (![...expr.ratio.num, ...expr.ratio.den].some((k) => removed.has(k))) return expr;
-  const num = shrink(expr.ratio.num, "empties ratio.num");
-  const den = shrink(expr.ratio.den, "empties ratio.den");
-  return {
-    ratio: expr.ratio.scale !== undefined ? { num, den, scale: expr.ratio.scale } : { num, den },
-  };
+  if ("combine" in expr) return pruneCombine(expr, removed, metricKey);
+  if ("ratio" in expr) return pruneRatio(expr, removed, metricKey);
+  // Only the fixed-arity kinds are left, so this is always defined.
+  const { refs, why } = fixedArityOperands(expr)!;
+  const hit = refs.find((k) => removed.has(k));
+  if (hit !== undefined) refStillNeeded(metricKey, hit, why);
+  return expr;
 }
 
 /**
@@ -418,29 +564,62 @@ function resolveAggregates(metrics: MetricDataDef[], profileId: string): MetricD
   return metrics;
 }
 
+/**
+ * Base keys the overlay's `null` entries delete, with every trailing-`.*`
+ * wildcard already expanded to the subtree it matches.
+ */
+function collectRemovals(
+  overlay: MetricsOverlay,
+  baseMetrics: MetricDataDef[],
+  baseId: string,
+): Set<string> {
+  const removed = new Set<string>();
+  for (const [rawKey, value] of Object.entries(overlay)) {
+    if (value !== null) continue;
+    for (const key of resolveRemoval(rawKey, baseMetrics, baseId)) removed.add(key);
+  }
+  return removed;
+}
+
+/** The two ways a value-carrying overlay entry lands: over a base metric, or beside it. */
+interface OverlayUpserts {
+  /** Derived replacements for metrics the base already has, keyed by base key. */
+  patched: Map<string, MetricDataDef>;
+  /** Metrics the overlay introduces, in overlay order. */
+  added: MetricDataDef[];
+}
+
+/**
+ * Resolve the overlay's value-carrying entries into patches of existing base
+ * metrics and brand-new additions. An entry set to `undefined` is skipped, so an
+ * optional overlay key spread in as `undefined` reads as "not mentioned".
+ */
+function collectUpserts(
+  overlay: MetricsOverlay,
+  baseMetrics: MetricDataDef[],
+  baseId: string,
+): OverlayUpserts {
+  const byKey = new Map(baseMetrics.map((m) => [m.key, m]));
+  const patched = new Map<string, MetricDataDef>();
+  const added: MetricDataDef[] = [];
+  for (const [rawKey, value] of Object.entries(overlay)) {
+    if (value === null || value === undefined) continue;
+    const existing = byKey.get(rawKey);
+    const derived = resolveUpsert(rawKey, value, existing, baseId);
+    if (existing) patched.set(rawKey, derived);
+    else added.push(derived);
+  }
+  return { patched, added };
+}
+
 /** Apply a keyed overlay over a clone of `baseMetrics`, returning fresh metrics. */
 function deriveMetrics(
   baseMetrics: MetricDataDef[],
   overlay: MetricsOverlay,
   baseId: string,
 ): MetricDataDef[] {
-  const byKey = new Map(baseMetrics.map((m) => [m.key, m]));
-  const removed = new Set<string>();
-  const patched = new Map<string, MetricDataDef>();
-  const added: MetricDataDef[] = [];
-
-  for (const [rawKey, value] of Object.entries(overlay)) {
-    if (value === undefined) continue;
-    if (value === null) {
-      for (const key of resolveRemoval(rawKey, baseMetrics, baseId)) removed.add(key);
-      continue;
-    }
-    const existing = byKey.get(rawKey);
-    const derived = resolveUpsert(rawKey, value, existing, baseId);
-    if (existing) patched.set(rawKey, derived);
-    else added.push(derived);
-  }
-
+  const removed = collectRemovals(overlay, baseMetrics, baseId);
+  const { patched, added } = collectUpserts(overlay, baseMetrics, baseId);
   const kept = baseMetrics
     .filter((m) => !removed.has(m.key))
     .map((m) => patched.get(m.key) ?? { ...m });
@@ -469,12 +648,16 @@ export function defineVariant(
     overrides.id,
   );
   return {
-    schemaVersion: 1,
+    schemaVersion: EMIT_SCHEMA_VERSION,
     id: overrides.id,
     name: overrides.name ?? base.name,
     manufacturer: overrides.manufacturer ?? base.manufacturer,
     version: overrides.version ?? base.version,
-    metrics,
+    // `declarationsOf` rather than `base.declares`: a legacy base states its
+    // backup output through its `load.*` roles, and the variant is emitted at a
+    // version where that is no longer read.
+    ...declaresPart(overrides.declares ?? declarationsOf(base)),
+    metrics: bound(metrics),
   };
 }
 
@@ -490,6 +673,8 @@ export function defineFamily<const M extends readonly MetricDataDef[]>(def: {
   manufacturer: string;
   version: string;
   metrics: M;
+  /** The family's hardware declarations; a model may restate them. */
+  declares?: ProfileDeclarations;
   models: Record<string, ModelOverrides<M[number]["key"]>>;
 }): ProfileData[] {
   // Keep the base metrics UNRESOLVED (aggregate tokens intact) and derive every
@@ -497,11 +682,12 @@ export function defineFamily<const M extends readonly MetricDataDef[]>(def: {
   // base up front (via defineProfile) would bake in the base's own key list, so
   // a model that drops a string could no longer self-heal its aggregates.
   const unresolvedBase: ProfileData = {
-    schemaVersion: 1,
+    schemaVersion: EMIT_SCHEMA_VERSION,
     id: def.id,
     name: def.name,
     manufacturer: def.manufacturer,
     version: def.version,
+    ...declaresPart(def.declares),
     metrics: def.metrics.map((m) => ({ ...m })),
   };
   const base = defineVariant(unresolvedBase, { id: def.id });

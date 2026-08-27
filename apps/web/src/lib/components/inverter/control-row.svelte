@@ -1,13 +1,10 @@
 <script lang="ts">
-	import { Slider } from '$lib/components/ui/slider';
-	import { Switch } from '$lib/components/ui/switch';
-	import * as Select from '$lib/components/ui/select';
-	import { Input } from '$lib/components/ui/input';
-	import { Button } from '$lib/components/ui/button';
 	import { toast } from 'svelte-sonner';
 	import { api } from '$lib/api';
 	import * as m from '$lib/paraglide/messages';
 	import { inverter } from '$lib/inverter/store.svelte';
+	import ControlEnum from './_shared/control-enum.svelte';
+	import ControlNumeric from './_shared/control-numeric.svelte';
 	import type { ManifestMetric } from '$lib/inverter/types';
 
 	let { metric }: { metric: ManifestMetric } = $props();
@@ -17,18 +14,13 @@
 		metric.enumLabels ? Object.keys(metric.enumLabels).map(Number).sort((a, b) => a - b) : []
 	);
 
-	// Boolean enums render as a switch, larger enums as a select, ranged numbers
-	// as a slider, everything else as a numeric input.
-	const control = $derived.by(() => {
-		if (metric.enumLabels) {
-			return enumKeys.length === 2 && enumKeys[0] === 0 && enumKeys[1] === 1 ? 'switch' : 'select';
-		}
-		return metric.range ? 'slider' : 'number';
-	});
-
 	// Local pending value wins over the streamed value once the user acts.
 	let pending = $state<number | null>(null);
 	const value = $derived(pending ?? live ?? metric.range?.min ?? 0);
+
+	/** Enum settings read out as their label; everything else as the raw number. */
+	const valueLabel = (v: number) => metric.enumLabels?.[v] ?? v;
+	const readout = $derived(`${valueLabel(value)}${metric.unit ? ` ${metric.unit}` : ''}`);
 
 	// Seed the number field with the live value so the browser's native up/down
 	// stepper increments from the current reading instead of starting at 1.
@@ -51,7 +43,7 @@
 		try {
 			const { error } = await api.api.commands.setting.post({ key: metric.key, value: v });
 			if (error) throw error;
-			toast.success(`${metric.label} → ${metric.enumLabels?.[v] ?? v}`);
+			toast.success(`${metric.label} → ${valueLabel(v)}`);
 		} catch {
 			toast.error(m.controls_toast_update_failed({ name: metric.label }));
 			pending = null;
@@ -64,44 +56,19 @@
 <div class="flex flex-col gap-2 border-b border-border/40 py-3 last:border-b-0">
 	<div class="flex items-center justify-between gap-4">
 		<span class="text-sm font-medium">{metric.label}</span>
-		<span class="text-xs tabular-nums text-muted-foreground">
-			{metric.enumLabels?.[value] ?? value}{metric.unit ? ` ${metric.unit}` : ''}
-		</span>
+		<span class="text-xs tabular-nums text-muted-foreground">{readout}</span>
 	</div>
 
-	{#if control === 'switch'}
-		<Switch checked={value === 1} onCheckedChange={(c) => write(c ? 1 : 0)} disabled={busy} />
-	{:else if control === 'select'}
-		<Select.Root type="single" value={String(value)} onValueChange={(v) => write(Number(v))}>
-			<Select.Trigger class="w-full">{metric.enumLabels?.[value] ?? m.option_select_placeholder()}</Select.Trigger>
-			<Select.Content>
-				{#each enumKeys as k (k)}
-					<Select.Item value={String(k)}>{metric.enumLabels?.[k]}</Select.Item>
-				{/each}
-			</Select.Content>
-		</Select.Root>
-	{:else if control === 'slider' && metric.range}
-		<Slider
-			type="single"
-			{value}
-			min={metric.range.min}
-			max={metric.range.max}
-			step={1}
-			onValueChange={(v) => (pending = v)}
-			onValueCommit={(v) => write(v)}
-			disabled={busy}
-		/>
+	{#if metric.enumLabels}
+		<ControlEnum enumLabels={metric.enumLabels} {enumKeys} {value} {busy} onWrite={write} />
 	{:else}
-		<div class="flex items-center gap-2">
-			<Input type="number" bind:value={inputValue} class="w-32" />
-			<Button
-				size="sm"
-				variant="secondary"
-				disabled={busy || inputValue === '' || Number(inputValue) === value}
-				onclick={() => write(Number(inputValue))}
-			>
-				{m.action_apply()}
-			</Button>
-		</div>
+		<ControlNumeric
+			range={metric.range}
+			{value}
+			bind:inputValue
+			{busy}
+			onWrite={write}
+			onDrag={(v) => (pending = v)}
+		/>
 	{/if}
 </div>

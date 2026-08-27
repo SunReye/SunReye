@@ -1,0 +1,30 @@
+diff --git a/dist/utils/rect.svelte.js b/dist/utils/rect.svelte.js
+index 42e82cb8126dafa64c6087744d11f4a58e0fdd96..8e06f8d22ed1f4a2bba151d30550bc526a646231 100644
+--- a/dist/utils/rect.svelte.js
++++ b/dist/utils/rect.svelte.js
+@@ -99,7 +99,11 @@ export function createDimensionGetter(ctx, getOptions) {
+                 [top, bottom] = [bottom, top];
+             }
+             const y = ctx.yScale(top) + insets.top;
+-            const height = ctx.yScale(bottom) - ctx.yScale(top) - insets.bottom - insets.top;
++            // Clamp like the horizontal branch above: a stack segment shorter
++            // than its own insets otherwise yields a negative <rect height>,
++            // which SVG rejects outright (the bar vanishes and the console
++            // fills). Only the width branch was guarded upstream.
++            const height = Math.max(0, ctx.yScale(bottom) - ctx.yScale(top) - insets.bottom - insets.top);
+             return { x, y, width, height };
+         }
+         else if (ctx.xInterval) {
+@@ -135,7 +139,11 @@ export function createDimensionGetter(ctx, getOptions) {
+                 bottom = yValue;
+             }
+             const y = ctx.yScale(top) + insets.top;
+-            const height = ctx.yScale(bottom) - ctx.yScale(top) - insets.bottom - insets.top;
++            // Clamp like the horizontal branch above: a stack segment shorter
++            // than its own insets otherwise yields a negative <rect height>,
++            // which SVG rejects outright (the bar vanishes and the console
++            // fills). Only the width branch was guarded upstream.
++            const height = Math.max(0, ctx.yScale(bottom) - ctx.yScale(top) - insets.bottom - insets.top);
+             return { x, y, width, height };
+         }
+         else if (ctx.yInterval) {

@@ -1,60 +1,345 @@
 {
   "$schema": "https://docs.fallow.tools/schema.json",
   "ignorePatterns": [
+    "apps/server/db-tests/**",
+    "apps/web/e2e/**",
+    "apps/web/playwright.config.ts",
     "apps/web/src/lib/components/ui/**",
     "apps/web/src/lib/hooks/**",
     "apps/web/src/lib/utils.ts",
-    "packages/backend/data/**"
+    "packages/backend/data/**",
+    "**/target/**"
   ],
   "ignoreDependencies": [
-    "bits-ui",
-    "tailwind-variants",
-    "svelte-sonner",
-    "mode-watcher",
-    "@internationalized/date",
-    "phosphor-svelte",
     "sharp",
-    "clsx",
-    "tailwind-merge",
-    "zod"
+    "zod",
+    "openapi-types"
   ],
-  "dynamicallyLoaded": ["apps/docs/src/styles/theme.css"],
-  "usedClassMembers": [{ "implements": "InverterSource", "members": ["read"] }],
+  "dynamicallyLoaded": [
+    "apps/docs/src/styles/theme.css",
+    "scripts/db-parity.ts"
+  ],
+  "usedClassMembers": [
+    {
+      "implements": "InverterSource",
+      "members": [
+        "read"
+      ]
+    }
+  ],
+  "production": {
+    "deadCode": true
+  },
+  "audit": {
+    "gate": "all"
+  },
+  "includeEntryExports": true,
+  "publicPackages": [
+    "@sunreye/profile-sdk",
+    "@SunReye/inverter-core"
+  ],
+  "ignoreExports": [
+    {
+      "file": "apps/docs/astro.config.mjs",
+      "exports": [
+        "*"
+      ]
+    },
+    {
+      "file": "packages/db/src/index.ts",
+      "exports": [
+        "createDbAt"
+      ]
+    },
+    {
+      "file": "packages/db/src/schema-parity.ts",
+      "exports": [
+        "*"
+      ]
+    },
+    {
+      "file": "apps/server/tsdown.config.ts",
+      "exports": [
+        "*"
+      ]
+    },
+    {
+      "file": "apps/web/svelte.config.js",
+      "exports": [
+        "*"
+      ]
+    },
+    {
+      "file": "packages/db/drizzle.config.ts",
+      "exports": [
+        "*"
+      ]
+    },
+    {
+      "file": "packages/profile-sdk/tsdown.config.ts",
+      "exports": [
+        "*"
+      ]
+    },
+    {
+      "file": "scripts/require-tests.ts",
+      "exports": [
+        "*"
+      ]
+    },
+    {
+      "file": "scripts/coverage-floor.ts",
+      "exports": [
+        "*"
+      ]
+    },
+    {
+      "file": "scripts/mock-hygiene.ts",
+      "exports": [
+        "*"
+      ]
+    },
+    {
+      "file": "scripts/nginx-locations.ts",
+      "exports": [
+        "*"
+      ]
+    },
+    {
+      "file": "scripts/storage-tuning.ts",
+      "exports": [
+        "*"
+      ]
+    },
+    {
+      "file": "scripts/storage-wear.ts",
+      "exports": [
+        "*"
+      ]
+    },
+    {
+      "file": "scripts/db-parity.ts",
+      "exports": [
+        "*"
+      ]
+    }
+  ],
+  "boundaries": {
+    "zones": [
+      {
+        "name": "web",
+        "patterns": [
+          "apps/web/src/**"
+        ]
+      },
+      {
+        "name": "server",
+        "patterns": [
+          "apps/server/src/**"
+        ]
+      },
+      {
+        "name": "docs",
+        "patterns": [
+          "apps/docs/src/**"
+        ]
+      },
+      {
+        "name": "db",
+        "patterns": [
+          "packages/db/src/**"
+        ]
+      },
+      {
+        "name": "auth",
+        "patterns": [
+          "packages/auth/src/**"
+        ]
+      },
+      {
+        "name": "contracts",
+        "patterns": [
+          "packages/contracts/src/**"
+        ]
+      },
+      {
+        "name": "env",
+        "patterns": [
+          "packages/env/src/**"
+        ]
+      },
+      {
+        "name": "inverter-core",
+        "patterns": [
+          "packages/inverter-core/src/**"
+        ]
+      },
+      {
+        "name": "profile-sdk",
+        "patterns": [
+          "packages/profile-sdk/src/**"
+        ]
+      },
+      {
+        "name": "tooling",
+        "patterns": [
+          "scripts/**",
+          "apps/*/scripts/**",
+          "packages/*/scripts/**",
+          "**/*.config.*"
+        ]
+      }
+    ],
+    "rules": [
+      {
+        "from": "web",
+        "allow": [
+          "env",
+          "auth",
+          "inverter-core",
+          "contracts"
+        ]
+      },
+      {
+        "from": "server",
+        "allow": [
+          "db",
+          "auth",
+          "env",
+          "inverter-core",
+          "profile-sdk",
+          "contracts"
+        ]
+      },
+      {
+        "from": "contracts",
+        "allow": [],
+        "allowTypeOnly": [
+          "db",
+          "inverter-core"
+        ]
+      },
+      {
+        "from": "db",
+        "allow": [
+          "env"
+        ]
+      },
+      {
+        "from": "auth",
+        "allow": [
+          "db",
+          "env"
+        ]
+      },
+      {
+        "from": "inverter-core",
+        "allow": []
+      },
+      {
+        "from": "profile-sdk",
+        "allow": [
+          "inverter-core"
+        ]
+      },
+      {
+        "from": "env",
+        "allow": []
+      },
+      {
+        "from": "docs",
+        "allow": []
+      },
+      {
+        "from": "tooling",
+        "allow": [
+          "web",
+          "server",
+          "docs",
+          "db",
+          "auth",
+          "env",
+          "inverter-core",
+          "profile-sdk",
+          "contracts"
+        ]
+      }
+    ],
+    "coverage": {
+      "requireAllFiles": true
+    },
+    "calls": {
+      "forbidden": [
+        {
+          "from": "web",
+          "callee": [
+            "fs.*",
+            "node:fs.*",
+            "child_process.*",
+            "eval"
+          ]
+        },
+        {
+          "from": "inverter-core",
+          "callee": [
+            "fetch",
+            "fs.*",
+            "node:fs.*",
+            "child_process.*"
+          ]
+        },
+        {
+          "from": "db",
+          "callee": [
+            "fetch",
+            "child_process.*"
+          ]
+        },
+        {
+          "from": "env",
+          "callee": [
+            "fetch",
+            "child_process.*"
+          ]
+        },
+        {
+          "from": "server",
+          "callee": [
+            "eval"
+          ]
+        }
+      ]
+    }
+  },
   "rules": {
-    "unused-dependencies": "warn",
-    "unused-dev-dependencies": "warn"
+    "private-type-leaks": "error",
+    "unused-dev-dependencies": "error",
+    "unused-optional-dependencies": "error",
+    "unused-store-members": "error",
+    "unused-svelte-events": "error",
+    "unused-load-data-keys": "error",
+    "type-only-dependencies": "error",
+    "test-only-dependencies": "error",
+    "re-export-cycle": "error",
+    "stale-suppressions": "error",
+    "require-suppression-reason": "error",
+    "unused-catalog-entries": "error",
+    "empty-catalog-groups": "error",
+    "unused-dependency-overrides": "error",
+    "policy-violation": "error",
+    "invalid-client-export": "error",
+    "mixed-client-server-barrel": "error",
+    "misplaced-directive": "error",
+    "security-client-server-leak": "error",
+    "security-sink": "error"
   },
   "health": {
-    "thresholdOverrides": [
-      {
-        "files": ["packages/inverter-core/**"],
-        "maxCyclomatic": 15,
-        "maxCognitive": 20,
-        "maxCrap": 200,
-        "reason": "WIP inverter integration scaffold; CRAP scores are inflated estimates while test coverage is absent. Tighten once these modules stabilize and are covered."
-      },
-      {
-        "files": [
-          "apps/web/src/routes/(app)/**",
-          "apps/web/src/routes/setup/**",
-          "apps/web/src/lib/components/inverter/**",
-          "apps/web/src/lib/components/settings/**",
-          "apps/web/src/lib/components/setup/**",
-          "apps/web/src/lib/components/app-sidebar.svelte",
-          "apps/web/src/lib/inverter/**",
-          "apps/web/src/lib/cost/**",
-          "apps/web/src/components/**"
-        ],
-        "maxCyclomatic": 25,
-        "maxCognitive": 30,
-        "maxCrap": 700,
-        "reason": "Manifest-driven dashboard UI: high CRAP is inflated by presentational template branching over the metric catalog with no unit-test coverage. Tighten once the render layer stabilizes and is covered."
-      },
-      {
-        "files": ["apps/server/src/**"],
-        "maxCrap": 120,
-        "reason": "CRAP is estimated without coverage data; the DB-bound modules (cost, energy, inverter routes) have no unit coverage yet, so small functions with cyclomatic 5-9 estimate above the default 30. Tighten once coverage reporting is wired into fallow."
-      }
-    ]
+    "maxCyclomatic": 10,
+    "maxCognitive": 10,
+    "maxCrap": 30
+  },
+  "duplicates": {
+    "minTokens": 40,
+    "minLines": 5
   }
 }

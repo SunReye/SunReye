@@ -1,4 +1,4 @@
-// fallow-ignore-file unused-file
+// fallow-ignore-file unused-file -- compile-time-only assertions; nothing imports this by design, tsc is the consumer
 // Type-only assertions, imported by nothing on purpose (checked by tsc).
 /**
  * Compile-time assertions for the `metric()` builder's role-shape enforcement.

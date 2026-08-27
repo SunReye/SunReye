@@ -30,9 +30,18 @@
 
   --muted-foreground: oklch(0.556 0 0);
 
-  --accent: oklch(0.488 0.243 264.376);
+  /* A SUBTLE surface, not the brand colour. `accent` is what shadcn paints a
+     hover or a highlighted menu row with, and its foreground is the text on
+     top of that. Both were set to the primary pair, which made every
+     `bg-accent` surface solid brand blue and — worse — left
+     `text-accent-foreground` near-white in light mode. A select's highlighted
+     row overrides the background to `bg-foreground/10` but keeps that
+     foreground, so the row read as white text on near-white. Same collision
+     behind the calendar's phantom-selected day. Brand blue is `--primary`,
+     which is still one token away wherever it is actually wanted. */
+  --accent: oklch(0.97 0 0);
 
-  --accent-foreground: oklch(0.97 0.014 254.604);
+  --accent-foreground: oklch(0.21 0.006 285.885);
 
   --destructive: oklch(0.577 0.245 27.325);
 
@@ -42,15 +51,31 @@
 
   --ring: oklch(0.708 0 0);
 
-  --chart-1: oklch(0.809 0.105 251.813);
+  /* Categorical series palette. shadcn ships --chart-1..5 as ONE hue at five
+     lightnesses (oklch 251-265) — a correct sequential ramp for a quantity that
+     has an order, and the wrong thing for series drawn on top of each other,
+     where the only job is telling them apart. On a phone it read as five shades
+     of blue.
 
-  --chart-2: oklch(0.623 0.214 259.815);
+     Eight hues, spaced so consecutive entries are far apart on the wheel: a
+     two-series overlay (the common case) gets the two least alike. Lightness
+     sits mid-range so one set works on both surfaces, and red/green are not
+     adjacent, which is the pair a red-green deficiency loses first. */
+  --chart-1: oklch(0.62 0.19 255);
 
-  --chart-3: oklch(0.546 0.245 262.881);
+  --chart-2: oklch(0.72 0.17 62);
 
-  --chart-4: oklch(0.488 0.243 264.376);
+  --chart-3: oklch(0.68 0.13 195);
 
-  --chart-5: oklch(0.424 0.199 265.638);
+  --chart-4: oklch(0.63 0.23 330);
+
+  --chart-5: oklch(0.66 0.16 145);
+
+  --chart-6: oklch(0.55 0.22 295);
+
+  --chart-7: oklch(0.79 0.15 88);
+
+  --chart-8: oklch(0.62 0.21 25);
 
   /* Semantic energy-flow colors (validated categorical set, dataviz skill).
      grid = grid dependence, solar = on-site supply, self-used = production kept
@@ -62,6 +87,35 @@
   --energy-selfused: #2f9e63;
 
   --energy-export: #4478c4;
+
+  /* Battery charge/absorption in the automation charts. Magenta: the only hue
+     that clears CVD separation against solar + self-used + export, which is the
+     set it is plotted with (validated, dataviz skill). */
+  --energy-battery: #b5468f;
+
+  /* House consumption. Violet, and deliberately NOT green: green already means
+     production kept on-site, and the two sit next to each other on the
+     power-flow diagram and on the overview tiles. */
+  --energy-load: #6a57b3;
+
+  /* EV charging. Teal — the remaining gap between self-used green and export
+     blue that clears CVD separation against both. */
+  --energy-ev: #3b9d9d;
+
+  /* Generator. Deep brown: separated from solar amber by lightness rather than
+     hue, since the warm end of the wheel is already spent. */
+  --energy-generator: #643d20;
+
+  /* Direction and judgement: energy arriving or leaving, a meter importing or
+     exporting, money earned or spent, a battery healthy or flat. These were
+     Tailwind literals (emerald-500 / red-500 / amber-500) and three rgb() stops
+     baked into the SOC ramp, which put the most red/green dependent thing in
+     the app outside the theme. They are tokens so a palette can reach them. */
+  --sign-good: #10b981;
+
+  --sign-warn: #f59e0b;
+
+  --sign-bad: #ef4444;
 
   /* Fixed grid-connection fee in the cost charts. Teal: distinct from the four
      energy-flow hues under CVD (validated with grid + export, dataviz skill). */
@@ -111,9 +165,10 @@
 
   --muted-foreground: oklch(0.708 0 0);
 
-  --accent: oklch(0.424 0.199 265.638);
+  /* The dark half of the same pair — see the note in the light block. */
+  --accent: oklch(0.269 0 0);
 
-  --accent-foreground: oklch(0.97 0.014 254.604);
+  --accent-foreground: oklch(0.985 0 0);
 
   --destructive: oklch(0.704 0.191 22.216);
 
@@ -123,7 +178,8 @@
 
   --ring: oklch(0.556 0 0);
 
-  /* --chart-1..5 inherit from :root (same ramp on both surfaces). */
+  /* --chart-1..8 inherit from :root: the categorical palette is mid-lightness
+     by design, so one set reads on both surfaces. */
 
   /* Lifted energy-flow steps for the dark surface (dataviz-validated). */
   --energy-grid: #d65a4c;
@@ -133,6 +189,23 @@
   --energy-selfused: #33a86e;
 
   --energy-export: #5586cc;
+
+  /* Lifted battery magenta for the dark surface (dataviz-validated). */
+  --energy-battery: #c25a9c;
+
+  /* Lifted load / EV / generator for the dark surface. */
+  --energy-load: #7b69c6;
+
+  --energy-ev: #50b0b0;
+
+  --energy-generator: #764d30;
+
+  /* Lifted direction/judgement colours for the dark surface. */
+  --sign-good: #34d399;
+
+  --sign-warn: #fbbf24;
+
+  --sign-bad: #f87171;
 
   /* Lifted standing-charge teal for the dark surface (dataviz-validated). */
   --cost-standing: #14a385;
@@ -175,6 +248,12 @@
 
   --color-sidebar: var(--sidebar);
 
+  --color-chart-8: var(--chart-8);
+
+  --color-chart-7: var(--chart-7);
+
+  --color-chart-6: var(--chart-6);
+
   --color-chart-5: var(--chart-5);
 
   --color-chart-4: var(--chart-4);
@@ -192,6 +271,20 @@
   --color-energy-selfused: var(--energy-selfused);
 
   --color-energy-export: var(--energy-export);
+
+  --color-energy-battery: var(--energy-battery);
+
+  --color-energy-load: var(--energy-load);
+
+  --color-energy-ev: var(--energy-ev);
+
+  --color-energy-generator: var(--energy-generator);
+
+  --color-sign-good: var(--sign-good);
+
+  --color-sign-warn: var(--sign-warn);
+
+  --color-sign-bad: var(--sign-bad);
 
   --color-cost-standing: var(--cost-standing);
 
@@ -250,10 +343,188 @@
   * {
     @apply border-border outline-ring/50;
   }
+  /* Scrollbars are never painted app-wide; scrolling itself stays intact
+     (wheel, touch, keyboard, and programmatic scroll all still work). */
+  * {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  *::-webkit-scrollbar {
+    display: none;
+    width: 0;
+    height: 0;
+  }
+  /* Same for the bits-ui ScrollArea's custom scrollbar track/thumb. */
+  [data-slot="scroll-area-scrollbar"] {
+    display: none;
+  }
   body {
     @apply bg-background text-foreground;
   }
   html {
     @apply font-mono;
   }
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Palette presets.
+
+   A preset re-points the tokens that carry MEANING — the eight energy roles and
+   the three direction/judgement colours — and nothing else. Chrome, text and
+   surfaces are the theme's business, not the palette's.
+
+   Stamped as `data-palette` on <html> from the saved setting; the shipped
+   `categorical` palette stamps nothing, because it IS `:root`.
+
+   Every preset authors LIGHT and DARK values for every token, which is the
+   reason this is a preset and not eight colour pickers: one colour chosen by
+   hand cannot be right on both surfaces. `vivid` and `muted` keep each token's
+   shipped HUE and vary only lightness and chroma, so "solar is amber" and "grid
+   is warm" stay true; `colorblind` abandons the red/green axis entirely for a
+   blue/orange/purple one and separates the rest by lightness.
+
+   Every block is checked by energy-tokens.test.ts: each has to author every
+   token, and each has to keep the colours that share a screen apart under three
+   dichromacies. `colorblind` scores ~0.12 against the shipped palette's 0.04.
+   ───────────────────────────────────────────────────────────────────────────── */
+
+[data-palette="colorblind"] {
+  --energy-grid: #8f4f3f;
+  --energy-solar: #cca369;
+  --energy-selfused: #39b5ff;
+  --energy-export: #1762b6;
+  --energy-battery: #ba93fb;
+  --energy-load: #857db9;
+  --energy-ev: #116d8a;
+  --energy-generator: #b37458;
+  --sign-good: #326893;
+  --sign-warn: #e19b1b;
+  --sign-bad: #a63c0c;
+  --chart-1: #6e3c41;
+  --chart-2: #c28efb;
+  --chart-3: #f28f29;
+  --chart-4: #4c55bc;
+  --chart-5: #a06b62;
+  --chart-6: #d3999d;
+  --chart-7: #4d427f;
+  --chart-8: #9d4616;
+  --cost-standing: #5a6a86;
+}
+
+.dark[data-palette="colorblind"],
+.dark [data-palette="colorblind"] {
+  --energy-grid: #a96655;
+  --energy-solar: #e7bc81;
+  --energy-selfused: #39b5ff;
+  --energy-export: #337bd0;
+  --energy-battery: #ba93fb;
+  --energy-load: #9d95d3;
+  --energy-ev: #3285a2;
+  --energy-generator: #ce8d6f;
+  --sign-good: #4980ac;
+  --sign-warn: #fcb442;
+  --sign-bad: #c1552c;
+  --chart-1: #835054;
+  --chart-2: #c0b6fe;
+  --chart-3: #fcb02b;
+  --chart-4: #3a74d4;
+  --chart-5: #c87a30;
+  --chart-6: #605595;
+  --chart-7: #ebafb2;
+  --chart-8: #9985b2;
+  --cost-standing: #8496b4;
+}
+
+[data-palette="vivid"] {
+  --energy-grid: #925654;
+  --energy-solar: #c09568;
+  --energy-selfused: #2d9049;
+  --energy-export: #326ca6;
+  --energy-battery: #e864cb;
+  --energy-load: #8558e2;
+  --energy-ev: #358890;
+  --energy-generator: #c17a00;
+  --sign-good: #417654;
+  --sign-warn: #c59711;
+  --sign-bad: #d73817;
+  --chart-1: #9f3960;
+  --chart-2: #6b89f9;
+  --chart-3: #24ae56;
+  --chart-4: #e253ae;
+  --chart-5: #8c2faf;
+  --chart-6: #ba0d01;
+  --chart-7: #ba5277;
+  --chart-8: #8f54dc;
+  --cost-standing: #0f9878;
+}
+
+.dark[data-palette="vivid"],
+.dark [data-palette="vivid"] {
+  --energy-grid: #ab6d6b;
+  --energy-solar: #daae80;
+  --energy-selfused: #4aa961;
+  --energy-export: #4a84c0;
+  --energy-battery: #e864cb;
+  --energy-load: #9c72fe;
+  --energy-ev: #4fa1a9;
+  --energy-generator: #dc932e;
+  --sign-good: #588e6a;
+  --sign-warn: #dfb03b;
+  --sign-bad: #f45536;
+  --chart-1: #b74e74;
+  --chart-2: #68aafe;
+  --chart-3: #06c95e;
+  --chart-4: #a247c6;
+  --chart-5: #f077c0;
+  --chart-6: #d33222;
+  --chart-7: #d2678c;
+  --chart-8: #a46bf5;
+  --cost-standing: #14a385;
+}
+
+[data-palette="muted"] {
+  --energy-grid: #745d5c;
+  --energy-solar: #a59585;
+  --energy-selfused: #4c8357;
+  --energy-export: #5f7791;
+  --energy-battery: #965f88;
+  --energy-load: #9a90c0;
+  --energy-ev: #628f94;
+  --energy-generator: #875726;
+  --sign-good: #56695c;
+  --sign-warn: #b19454;
+  --sign-bad: #aa9190;
+  --chart-1: #704c57;
+  --chart-2: #889cd7;
+  --chart-3: #bf965d;
+  --chart-4: #5a6ca3;
+  --chart-5: #457d52;
+  --chart-6: #57b1a0;
+  --chart-7: #927d9b;
+  --chart-8: #7c4a1c;
+  --cost-standing: #5f8d84;
+}
+
+.dark[data-palette="muted"],
+.dark [data-palette="muted"] {
+  --energy-grid: #8b7472;
+  --energy-solar: #bfae9d;
+  --energy-selfused: #649c6e;
+  --energy-export: #768faa;
+  --energy-battery: #af77a0;
+  --energy-load: #b3a9da;
+  --energy-ev: #7aa8ad;
+  --energy-generator: #9f6e3e;
+  --sign-good: #6d8072;
+  --sign-warn: #cbad6d;
+  --sign-bad: #c4aaa9;
+  --chart-1: #85606a;
+  --chart-2: #9eb2ee;
+  --chart-3: #d6ac72;
+  --chart-4: #6e80ba;
+  --chart-5: #5a9266;
+  --chart-6: #6ec7b6;
+  --chart-7: #a792b1;
+  --chart-8: #657334;
+  --cost-standing: #7aa79e;
 }

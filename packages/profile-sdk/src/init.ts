@@ -74,8 +74,10 @@ export function scaffoldProject(opts: InitOptions): Record<string, string> {
  *   only overwritten with `--force`.
  * - `ensure-import` — we only need the file to *contain* our content (the
  *   `CLAUDE.md` → `@AGENTS.md` import); a richer user file is left untouched.
+ *
+ * @internal
  */
-interface GuideFile {
+export interface GuideFile {
   path: string;
   contents: string;
   mode: "managed" | "ensure-import";
@@ -137,7 +139,11 @@ export function planUpgrade(
   });
 }
 
-/** Derive a safe JS identifier from a profile id, e.g. `acme-hybrid` → `acmeHybrid`. */
+/**
+ * Derive a safe JS identifier from a profile id, e.g. `acme-hybrid` → `acmeHybrid`.
+ *
+ * @internal
+ */
 export function toIdentifier(id: string): string {
   const parts = id.split(/[^a-zA-Z0-9]+/).filter(Boolean);
   if (parts.length === 0) return "profile";
@@ -346,6 +352,26 @@ function agentsTemplate(): string {
     "value that just isn't rendered by role. See the full catalog of role names and their",
     "expected units in the concept doc (link below), or run `bunx profile coverage` to see",
     "which roles you've mapped and which are missing.",
+    "",
+    "### House load vs. backup output",
+    "",
+    "`load.*` is **whole-house consumption**, wherever your device measures it: a hybrid's",
+    "load output, a grid-tied plant's consumption meter, or a computed residual. It says",
+    "nothing about a UPS.",
+    "",
+    "The islanded (EPS/backup) output is hardware, so the profile states it:",
+    "",
+    "```ts",
+    "defineProfile({",
+    '  id: "acme-hybrid", name: "ACME Hybrid", manufacturer: "ACME", version: "1.0.0",',
+    "  declares: { backupOutput: true },   // renders the Backup section",
+    "  metrics,",
+    "});",
+    "```",
+    "",
+    "Map the `backup.*` roles **only** when the output is metered separately from the house",
+    "(a critical-loads sub-panel). On a whole-home UPS the two are the same registers —",
+    "map them as `load.*` and declare the output.",
     "",
     "### Registers & encoding gotchas",
     "",

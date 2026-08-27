@@ -1,37 +1,40 @@
 <script lang="ts">
-	import { BarChart } from 'layerchart';
 	import { fade } from 'svelte/transition';
-	import * as Chart from '$lib/components/ui/chart';
 	import * as msg from '$lib/paraglide/messages';
-	import ChartLegend from '$lib/components/inverter/chart-legend.svelte';
+	import Section from '$lib/components/layout/section.svelte';
+	import PanelReadoutRow from '$lib/components/layout/panel-readout-row.svelte';
 	import RangeSwitcher from '$lib/components/inverter/range-switcher.svelte';
-	import { api } from '$lib/api';
-	import { COST_X_TICKS, periodLabel, type CostBucket, type CostRange } from '$lib/cost/ranges';
+	import EnergySplitBlock, {
+		type SplitSeries
+	} from '$lib/components/inverter/energy-split-block.svelte';
+	import type { PeriodEnergy } from '@SunReye/contracts/energy';
+	import { periodKeyLabel, type CostBucket } from '$lib/cost/ranges';
 
-	// One period of energy, split for the two stacked bars. Mirrors the server's
-	// PeriodEnergy (apps/server/src/energy-calc.ts).
-	type Period = {
-		bucket: string;
-		importKwh: number;
-		exportKwh: number;
-		loadKwh: number;
-		productionKwh: number;
-		gridToLoadKwh: number;
-		solarToLoadKwh: number;
-		selfConsumedKwh: number;
-		exportedKwh: number;
-		selfSufficiency: number | null;
-		selfConsumption: number | null;
-	};
+	// One period of energy, split for the two stacked bars.
+	type Period = PeriodEnergy;
 
-	// Follows the page's range picker: same window/granularity as the net-cost chart.
-	let { chart, caption }: { chart: CostRange['chart']; caption: string } = $props();
-
-	// Periods + the granularity they were fetched at, updated together so labels
-	// never mix stale periods with a freshly-picked bucket.
-	let view = $state<{ periods: Period[]; bucket: CostBucket }>({ periods: [], bucket: 'day' });
-	const periods = $derived(view.periods);
-	let loading = $state(true);
+	// Where the household's energy came from and where its solar went, side by
+	// side over the section's window. The caller owns the fetch — the energy
+	// section reads one series for all its charts — so this only shapes it.
+	let {
+		caption,
+		periods,
+		bucket,
+		deltas
+	}: {
+		caption: string;
+		periods: Period[];
+		bucket: CostBucket;
+		/** Change of each ratio against the reference window, for the chips beside
+		 *  the averages. Omitted when the chart is not plotting the picked window
+		 *  (zoomed out to context), where a delta would compare two different
+		 *  things. */
+		deltas?: {
+			selfSufficiency: number | null;
+			selfConsumption: number | null;
+			baseline: string;
+		};
+	} = $props();
 
 	// The two stacks are read the same way whether shown as absolute kWh or as a
 	// 100%-normalized share — only the LayerChart series layout changes.
@@ -42,38 +45,25 @@
 	let layoutId = $state<(typeof LAYOUTS)[number]['id']>('kwh');
 	const seriesLayout = $derived(layoutId === 'percent' ? 'stackExpand' : 'stack');
 
-	$effect(() => {
-		const query = {
-			from: chart.from.toISOString(),
-			to: chart.to.toISOString(),
-			bucket: chart.bucket
-		};
-		let cancelled = false;
-		loading = true;
-		api.api.energy.series.get({ query }).then(({ data }) => {
-			if (cancelled) return;
-			view = { periods: (data ?? []) as Period[], bucket: chart.bucket };
-			loading = false;
-		});
-		return () => {
-			cancelled = true;
-		};
-	});
-
-	const data = $derived(periods.map((p) => ({ ...p, label: periodLabel(p.bucket, view.bucket) })));
+	const data = $derived(periods.map((p) => ({ ...p, label: periodKeyLabel(p.bucket, bucket) })));
 	const hasData = $derived(periods.some((p) => p.loadKwh > 0 || p.productionKwh > 0));
 
 	// Window-average ratio (mean over periods that have the relevant flow), shown
-	// as a caption so the charts tie back to the headline tiles above.
+	// beside each chart so they tie back to the headline tiles above.
 	const avg = (vals: (number | null)[]) => {
 		const present = vals.filter((v): v is number => v !== null);
 		return present.length ? present.reduce((a, b) => a + b, 0) / present.length : null;
 	};
 	const avgSelfSufficiency = $derived(avg(periods.map((m) => m.selfSufficiency)));
 	const avgSelfConsumption = $derived(avg(periods.map((m) => m.selfConsumption)));
-	const pct = (v: number | null) => (v === null ? '—' : `${Math.round(v * 100)}%`);
 
-	type Series = { key: string; label: string; color: string; value: (d: Period) => number };
+	// Resolved once: an undefined delta means "no chip", which is what a chart
+	// plotting something other than the picked window wants.
+	const chips = $derived(
+		deltas ?? { selfSufficiency: undefined, selfConsumption: undefined, baseline: undefined }
+	);
+
+	type Series = SplitSeries<Period & { label: string }>;
 
 	const consumptionSeries: Series[] = [
 		{ key: 'grid', label: msg.chart_from_grid(), color: 'var(--color-energy-grid)', value: (d) => d.gridToLoadKwh },
@@ -94,68 +84,52 @@
 		{ key: 'export', label: msg.chart_exported(), color: 'var(--color-energy-export)', value: (d) => d.exportedKwh }
 	];
 
-	const configOf = (series: Series[]): Chart.ChartConfig =>
-		Object.fromEntries(series.map((s) => [s.key, { label: s.label, color: s.color }]));
 </script>
 
-{#snippet chartBlock(title: string, subtitle: string, series: Series[], ratio: number | null)}
-	<!-- min-w-0 lets the grid column shrink below the chart's intrinsic width;
-	     without it the block overflows the section edge on narrow screens. -->
-	<div class="flex min-w-0 flex-col gap-3">
-		<div class="flex items-baseline justify-between gap-3">
-			<div class="flex flex-col">
-				<h3 class="text-sm font-medium">{title}</h3>
-				<span class="text-xs text-muted-foreground">{subtitle}</span>
+{#if hasData}
+	<!-- The fade sits on a wrapper because the root is a component now: the chart
+	     comes and goes with the window's data, and the transition has to be on an
+	     element this file owns. `nested` — it is one panel among the statistics
+	     section's, all of which are inside the page shell. -->
+	<div transition:fade={{ duration: 200 }}>
+		<Section title={msg.chart_energy_split()} {caption} nested fullscreen>
+			<!-- kWh or a 100% share is a choice about these two plots, worn as two
+			     text labels — the card's own control, not chrome, so it reads above
+			     them rather than in the header cluster, which on a card holding a
+			     plot is icons only. The row's left cell is unspent here: each
+			     block states its own average ratio beside its own bars, where the
+			     chip that qualifies it can sit next to it. -->
+			<PanelReadoutRow {controls} />
+
+			<!-- The window used to be glued onto the title with an em dash, which
+			     made the long German heading truncate before its own name was
+			     readable. It is the caption above — its own line, under the title. -->
+			<div class="grid grid-cols-1 gap-8 lg:grid-cols-2">
+				<EnergySplitBlock
+					title={msg.energy_consumption()}
+					subtitle={msg.chart_consumption_sub()}
+					series={consumptionSeries}
+					{data}
+					{seriesLayout}
+					ratio={avgSelfSufficiency}
+					delta={chips.selfSufficiency}
+					baseline={chips.baseline}
+				/>
+				<EnergySplitBlock
+					title={msg.energy_production()}
+					subtitle={msg.chart_production_sub()}
+					series={productionSeries}
+					{data}
+					{seriesLayout}
+					ratio={avgSelfConsumption}
+					delta={chips.selfConsumption}
+					baseline={chips.baseline}
+				/>
 			</div>
-			<span class="shrink-0 whitespace-nowrap text-sm tabular-nums text-muted-foreground">
-				{msg.chart_avg()} <span class="font-semibold text-foreground">{pct(ratio)}</span>
-			</span>
-		</div>
-		<Chart.Container config={configOf(series)} class="h-55 w-full">
-			<BarChart
-				{data}
-				x="label"
-				{series}
-				{seriesLayout}
-				bandPadding={0.25}
-				stackPadding={2}
-				padding={{ top: 8, right: 8, bottom: 20, left: 44 }}
-				props={{ xAxis: { ticks: COST_X_TICKS[view.bucket] } }}
-			>
-				{#snippet tooltip()}
-					<Chart.Tooltip />
-				{/snippet}
-			</BarChart>
-		</Chart.Container>
-		<ChartLegend items={series} />
+		</Section>
 	</div>
-{/snippet}
-
-{#if !loading && hasData}
-	<section
-		class="flex flex-col gap-4 border border-border p-4"
-		transition:fade={{ duration: 200 }}
-	>
-		<div class="flex flex-wrap items-center justify-between gap-3">
-			<h2 class="text-sm font-medium uppercase tracking-wide text-muted-foreground">
-				{msg.chart_energy_split()} — {caption}
-			</h2>
-			<RangeSwitcher options={LAYOUTS} bind:value={layoutId} />
-		</div>
-
-		<div class="grid gap-8 lg:grid-cols-2">
-			{@render chartBlock(
-				msg.energy_consumption(),
-				msg.chart_consumption_sub(),
-				consumptionSeries,
-				avgSelfSufficiency
-			)}
-			{@render chartBlock(
-				msg.energy_production(),
-				msg.chart_production_sub(),
-				productionSeries,
-				avgSelfConsumption
-			)}
-		</div>
-	</section>
 {/if}
+
+{#snippet controls()}
+	<RangeSwitcher options={LAYOUTS} bind:value={layoutId} label={msg.range_select_unit_aria()} />
+{/snippet}

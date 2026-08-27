@@ -14,7 +14,7 @@ export const WEATHER_KEY = "weather";
  * One PV array (a group of panels sharing an orientation). Plants with strings
  * facing different directions add one entry per orientation.
  */
-export const pvArraySchema = z.object({
+const pvArraySchema = z.object({
   /** Peak DC power of this array in kWp. */
   kwp: z.number().positive().max(100_000),
   /** Panel tilt from horizontal in degrees (0 = flat, 90 = vertical). */
@@ -25,9 +25,57 @@ export const pvArraySchema = z.object({
    */
   azimuth: z.number().min(-180).max(180),
 });
-export type PvArray = z.infer<typeof pvArraySchema>;
 
-/** Production-forecast settings for the plant (provider-agnostic PV model). */
+/**
+ * Battery parameters for the forecast's clipping model. Present only when the
+ * plant has storage the forecast should account for; `usableKwh` drives how
+ * much above-cap surplus the battery can soak up before the rest is curtailed.
+ */
+const forecastBatterySchema = z.object({
+  /** Usable (not nominal) battery energy in kWh — the DoD-limited window. */
+  usableKwh: z.number().positive().max(10_000),
+  /**
+   * Max charge power in W, or `null` for "unbounded within the hour" (the daily
+   * kWh total is dominated by total headroom vs surplus, not the intra-hour
+   * rate, so `null` is a fine default).
+   */
+  maxChargeW: z.number().positive().max(10_000_000).nullable().default(null),
+  /** Reserve floor in % the battery is not discharged below (overnight drain). */
+  minSoc: z.number().min(0).max(100).default(10),
+  /**
+   * Nominal pack voltage in V — what the peak-shaving engine converts watts to
+   * charge-current amps with when no `battery.voltage` metric is mapped.
+   *
+   * `null`, not a default, so "never stated" stays distinguishable from "stated
+   * as 51.2". A plant that predates this field keeps whatever it set on the
+   * automations page, which is where this used to live; the engine falls back to
+   * that value while this is null (see peak-shaving-engine's `liveBatteryV`).
+   * Getting it wrong is not cosmetic — every commanded current is scaled by it,
+   * so a 48 V pack driven at 51.2 V is charged 7 % below what was asked for.
+   */
+  nominalV: z.number().positive().max(1_500).nullable().default(null),
+});
+
+/**
+ * Learned bias-correction ("site adaptation") settings. The correction *learns*
+ * in the background whenever the forecast is configured; this flag only gates
+ * whether the learned multiplier is *applied* to the live forecast — so the
+ * operator can inspect the learned factors and measured skill before trusting
+ * them. The learning math (half-life, clamp, shrinkage) is not user-tunable.
+ */
+const forecastCorrectionConfigSchema = z.object({
+  /** Apply the learned correction to the forecast (off = learn but don't apply). */
+  enabled: z.boolean().default(false),
+});
+
+/**
+ * Production-forecast settings for the plant (provider-agnostic PV model).
+ *
+ * Reached in production through {@link weatherConfigSchema}; exported only so
+ * `apps/server/src/forecast/solar-forecast.test.ts` can build a forecast config directly.
+ *
+ * @internal
+ */
 export const solarForecastConfigSchema = z.object({
   /** Enable the production forecast on the weather tile. */
   enabled: z.boolean().default(false),
@@ -44,8 +92,34 @@ export const solarForecastConfigSchema = z.object({
    * PVWatts' default assumption is 14.
    */
   systemLoss: z.number().min(0).max(90).default(14),
+  /**
+   * Max power the plant can feed to the grid in W (the inverter's "solar sell" /
+   * feed-in cap), or `null` to model no export limit. Once the battery is full,
+   * PV beyond `load + this` has nowhere to go and is curtailed — the correction
+   * that stops the forecast overstating output on bright, full-battery hours.
+   */
+  maxOutputW: z.number().positive().max(10_000_000).nullable().default(null),
+  /** Battery storage for the clipping model, or `null` for no buffer. */
+  battery: forecastBatterySchema.nullable().default(null),
+  /**
+   * Average house load in W used by the clipping model (PV serves load before
+   * it can be curtailed). `null` means infer it from recent history.
+   */
+  houseLoadW: z.number().min(0).max(10_000_000).nullable().default(null),
+  /**
+   * Date a smart meter gateway (iMSys) was installed, `YYYY-MM-DD`, or null.
+   *
+   * A plant fact, not an automation knob, which is why it lives here beside the
+   * export limit it is bound up with: installing one is what lifts the 60 %
+   * Wirkleistungsbegrenzung to 100 %, and it marks the plant as belonging to the
+   * cohort §51 EEG applies to. Price-aware automation is gated on it — that is
+   * the whole "only for people who got the gateway" condition, expressed as
+   * something true about the plant rather than a second switch.
+   */
+  smartMeterSince: z.string().nullable().default(null),
+  /** Learned bias-correction; learns in the background, applied only when enabled. */
+  correction: forecastCorrectionConfigSchema.default(forecastCorrectionConfigSchema.parse({})),
 });
-export type SolarForecastConfig = z.infer<typeof solarForecastConfigSchema>;
 
 export const weatherConfigSchema = z.object({
   /** Enable the weather tile + Open-Meteo fetch. Off until a location is set. */

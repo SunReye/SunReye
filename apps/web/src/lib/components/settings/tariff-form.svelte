@@ -5,59 +5,45 @@
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
 	import { Label } from '$lib/components/ui/label';
-	import SettingsSection from './settings-section.svelte';
+	import Section from '$lib/components/layout/section.svelte';
+	import EmptyState from '$lib/components/layout/empty-state.svelte';
 	import ActionBar from './action-bar.svelte';
+	import TariffBandDays from './tariff-band-days.svelte';
+	import TariffSpotFields from './tariff-spot-fields.svelte';
+	import {
+		ALL_DAYS,
+		type BandDraft,
+		type TariffDraft,
+		type TariffResponse
+	} from '$lib/tariff/draft';
 	import PlusIcon from 'phosphor-svelte/lib/Plus';
 	import TrashIcon from 'phosphor-svelte/lib/Trash';
 	import * as m from '$lib/paraglide/messages';
 
-	type Band = {
-		name: string;
-		pricePerKwh: number;
-		startHour: number;
-		endHour: number;
-		days: number[];
-	};
-	type Tariff = {
-		currency: string;
-		standingChargeMonthly: number;
-		import: { defaultPricePerKwh: number; bands: Band[] };
-		export: { feedInPerKwh: number };
-	};
-
-	const WEEKDAYS = [
-		{ n: 1, label: m.tariff_day_mon() },
-		{ n: 2, label: m.tariff_day_tue() },
-		{ n: 3, label: m.tariff_day_wed() },
-		{ n: 4, label: m.tariff_day_thu() },
-		{ n: 5, label: m.tariff_day_fri() },
-		{ n: 6, label: m.tariff_day_sat() },
-		{ n: 7, label: m.tariff_day_sun() }
-	];
-
-	let tariff = $state<Tariff | null>(null);
-	let loading = $state(true);
+	// `null` until the config has loaded — there is no other empty state.
+	let tariff = $state<TariffDraft | null>(null);
 	let saving = $state(false);
+
+	// Bands may omit `days` (= every day); normalize to a full array for editing.
+	const toBand = (b: TariffResponse['import']['bands'][number]): BandDraft => ({
+		name: b.name,
+		pricePerKwh: b.pricePerKwh,
+		startHour: b.startHour,
+		endHour: b.endHour,
+		days: b.days ?? ALL_DAYS
+	});
+
+	/** The response, with only the bands reshaped; every other field carried through. */
+	const toTariff = (data: TariffResponse): TariffDraft => ({
+		...data,
+		import: { ...data.import, bands: (data.import.bands ?? []).map(toBand) }
+	});
 
 	onMount(async () => {
 		const { data } = await api.api.settings.tariff.get();
-		// Bands may omit `days` (= every day); normalize to a full array for editing.
-		tariff = {
-			currency: data?.currency ?? 'EUR',
-			standingChargeMonthly: data?.standingChargeMonthly ?? 0,
-			import: {
-				defaultPricePerKwh: data?.import.defaultPricePerKwh ?? 0,
-				bands: (data?.import.bands ?? []).map((b) => ({
-					name: b.name,
-					pricePerKwh: b.pricePerKwh,
-					startHour: b.startHour,
-					endHour: b.endHour,
-					days: b.days ?? [1, 2, 3, 4, 5, 6, 7]
-				}))
-			},
-			export: { feedInPerKwh: data?.export.feedInPerKwh ?? 0 }
-		};
-		loading = false;
+		// Deliberately stays null on a failed read: offering to overwrite a tariff
+		// we could not read is how a stored config gets wiped.
+		if (data) tariff = toTariff(data);
 	});
 
 	function addBand() {
@@ -74,9 +60,7 @@
 		tariff?.import.bands.splice(i, 1);
 	}
 
-	function toggleDay(band: Band, n: number) {
-		band.days = band.days.includes(n) ? band.days.filter((d) => d !== n) : [...band.days, n].sort();
-	}
+	const saveLabel = $derived(saving ? m.action_saving() : m.tariff_save());
 
 	async function save() {
 		if (!tariff) return;
@@ -102,19 +86,17 @@
 	}
 </script>
 
-{#if loading || !tariff}
-	<div class="flex h-40 items-center justify-center border border-border text-sm text-muted-foreground">
-		{m.tariff_loading()}
-	</div>
+{#if !tariff}
+	<EmptyState message={m.tariff_loading()} />
 {:else}
 	<ActionBar>
 		<Button onclick={save} disabled={saving}>
-			{saving ? m.action_saving() : m.tariff_save()}
+			{saveLabel}
 		</Button>
 	</ActionBar>
 
-	<SettingsSection title={m.tariff_general()}>
-		<div class="grid gap-4 sm:grid-cols-3">
+	<Section title={m.tariff_general()}>
+		<div class="grid grid-cols-1 gap-4 sm:grid-cols-3">
 			<div class="flex flex-col gap-1.5">
 				<Label for="currency">{m.tariff_currency()}</Label>
 				<Input id="currency" maxlength={3} bind:value={tariff.currency} class="uppercase" />
@@ -128,9 +110,13 @@
 				<Input id="feedin" type="number" step="0.001" bind:value={tariff.export.feedInPerKwh} />
 			</div>
 		</div>
-	</SettingsSection>
+	</Section>
 
-	<SettingsSection title={m.tariff_import_price()}>
+	<Section title={m.tariff_market_prices()}>
+		<TariffSpotFields bind:tariff />
+	</Section>
+
+	<Section title={m.tariff_import_price()}>
 		{#snippet actions()}
 			<Button variant="ghost" size="sm" onclick={addBand}>
 				<PlusIcon class="size-4" /> {m.tariff_add_band()}
@@ -180,18 +166,8 @@
 						<TrashIcon class="size-4" />
 					</Button>
 				</div>
-				<div class="flex flex-wrap gap-1">
-					{#each WEEKDAYS as d (d.n)}
-						<Button
-							variant={band.days.includes(d.n) ? 'default' : 'outline'}
-							size="sm"
-							onclick={() => toggleDay(band, d.n)}
-						>
-							{d.label}
-						</Button>
-					{/each}
-				</div>
+				<TariffBandDays bind:days={band.days} />
 			</div>
 		{/each}
-	</SettingsSection>
+	</Section>
 {/if}

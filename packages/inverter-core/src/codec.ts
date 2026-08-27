@@ -1,4 +1,11 @@
+import { getLogger } from "@logtape/logtape";
+
 import type { MetricDef, RegisterType } from "./types";
+
+/**
+ * Library logger — a no-op until the host app configures LogTape.
+ */
+const log = getLogger(["inverter-core", "codec"]);
 
 /** Number of 16-bit registers a type occupies (for contiguous-read planning). */
 export function registerWidth(type: RegisterType, addresses: number[]): number {
@@ -17,35 +24,146 @@ function toSigned16(v: number): number {
 }
 
 /**
- * Decode a metric from raw register words keyed by absolute address.
- * Returns `undefined` for `RAW`/unreadable metrics.
+ * The raw integer a metric's register(s) hold, before `scale`/`offset`.
+ * `undefined` when there is nothing numeric to read: a `RAW` metric, a metric
+ * whose profile entry is missing the address(es) its type needs, or — the
+ * important one — an address the device did not answer. An absent register must
+ * never decode as 0: zero is a legitimate reading for `grid.power` (balanced
+ * house) and `battery.power` (idle), so a fabricated zero is indistinguishable
+ * from the real thing and would steer the automation engines.
  */
-export function decode(def: MetricDef, regs: ReadonlyMap<number, number>): number | undefined {
-  const [a0, a1] = def.addresses;
-  const offset = def.offset ?? 0;
-  switch (def.type) {
+function rawValue(def: MetricDef, regs: ReadonlyMap<number, number>): number | undefined {
+  // Addressing comes from the binding: a metric bound to anything but Modbus
+  // has no register to read, whatever the legacy mirror still says.
+  if (def.binding.via !== "modbus") return undefined;
+  const [a0, a1] = def.binding.addr;
+  const w0 = a0 === undefined ? undefined : regs.get(a0);
+  if (w0 === undefined) return undefined;
+  return fromWords(def.binding.type, w0, a1 === undefined ? undefined : regs.get(a1));
+}
+
+/** Combine the answered word(s) per encoding; `undefined` when one is missing. */
+function fromWords(type: RegisterType, w0: number, w1: number | undefined): number | undefined {
+  switch (type) {
     case "U_WORD":
-      return a0 === undefined ? undefined : (regs.get(a0) ?? 0) * def.scale + offset;
+      return w0;
     case "S_WORD":
-      return a0 === undefined ? undefined : toSigned16(regs.get(a0) ?? 0) * def.scale + offset;
-    case "U_DWORD": {
-      if (a0 === undefined || a1 === undefined) return undefined;
+      return toSigned16(w0);
+    case "U_DWORD":
       // Low word first, high word second (LW,HW). Avoid bit-shift so the
       // 32-bit value stays an exact double rather than a signed int32.
-      const raw = (regs.get(a0) ?? 0) + (regs.get(a1) ?? 0) * 0x10000;
-      return raw * def.scale + offset;
-    }
+      return w1 === undefined ? undefined : w0 + w1 * 0x10000;
     case "RAW":
       return undefined;
   }
 }
 
+/** A metric whose decoded value has been clamped to its declared `range`. */
+export interface ClampReport {
+  key: string;
+  /** How many reads have been clamped since the last reset. */
+  count: number;
+  /** The unclamped value of the most recent clamped read. */
+  lastValue: number;
+}
+
+/**
+ * Clamps seen so far, keyed by metric. A clamp means a device fault or a wrong
+ * profile, both worth surfacing — but it repeats every poll, so it is counted
+ * per key and logged only the first time rather than once per read.
+ */
+const clamps = new Map<string, ClampReport>();
+
+/** Every metric clamped since the last {@link resetClampReports}, in first-seen order. */
+export function clampReports(): readonly ClampReport[] {
+  return [...clamps.values()];
+}
+
+/** Forget the clamp history — the next clamp of a key logs and counts afresh. */
+export function resetClampReports(): void {
+  clamps.clear();
+}
+
+function reportClamp(def: MetricDef, value: number, clamped: number): void {
+  const seen = clamps.get(def.key);
+  if (seen) {
+    seen.count += 1;
+    seen.lastValue = value;
+    return;
+  }
+  clamps.set(def.key, { key: def.key, count: 1, lastValue: value });
+  log.warn("{key} read {value}, outside range — clamped to {clamped}", {
+    key: def.key,
+    value,
+    clamped,
+  });
+}
+
+/**
+ * Raw value → engineering units: scale, offset, and the declared `range` clamp.
+ *
+ * Deliberately knows nothing about where the raw number came from. Registers are
+ * one way to obtain one; a JSON body answering `236.402` is another, and it
+ * arrives already fractional with no word width to widen. Every transport shares
+ * this tail rather than reimplementing it — that is what makes "an HTTP source
+ * is scaled and clamped identically to a register" a fact about the code instead
+ * of a claim about two copies, and it keeps one clamp ledger for both.
+ *
+ * Every value here originates outside the process, so a declared `range` is
+ * enforced at this one boundary: a cold or error-state register answering
+ * `0xFFFF` would otherwise persist a 655.35 % state of charge. A metric without
+ * a `range` gets no bounds at all — never an invented default.
+ *
+ * `undefined` when the result is not finite. A register word cannot reach that,
+ * but a device-supplied float times a scale can (`1e308 * 10`), and Infinity is
+ * not a reading: it JSON-serializes to `null` and turns into a hole three layers
+ * away, indistinguishable from a decode bug.
+ */
+export function applyScaling(def: MetricDef, raw: number): number | undefined {
+  const value = raw * def.scale + (def.offset ?? 0);
+  if (!Number.isFinite(value)) return undefined;
+  if (!def.range) return value;
+  const clamped = Math.min(def.range.max, Math.max(def.range.min, value));
+  if (clamped !== value) reportClamp(def, value, clamped);
+  return clamped;
+}
+
+/**
+ * Decode a metric from raw register words keyed by absolute address.
+ * Returns `undefined` for `RAW`/unreadable metrics.
+ *
+ * The Modbus-specific half is {@link rawValue}: which words to look up and how
+ * to combine them. Everything after it is {@link applyScaling}, shared.
+ */
+export function decode(def: MetricDef, regs: ReadonlyMap<number, number>): number | undefined {
+  const raw = rawValue(def, regs);
+  if (raw === undefined) return undefined;
+  return applyScaling(def, raw);
+}
+
+/** Inclusive raw-value limits of each writable register type. */
+const WORD_LIMITS: Record<"U_WORD" | "S_WORD", { min: number; max: number }> = {
+  U_WORD: { min: 0, max: 0xffff },
+  S_WORD: { min: -0x8000, max: 0x7fff },
+};
+
 /**
  * Encode an engineering value back to a single 16-bit register word.
  * Only `U_WORD`/`S_WORD` settings are writable.
+ *
+ * Throws when the rounded raw value does not fit the register type. This is the
+ * unconditional last line of defence on the write path: a silent 16-bit wrap
+ * turns a rejected 70000 into a plausible 4464 on live grid-tied hardware, and
+ * not every caller passes through the API's range validation.
  */
 export function encodeWord(def: MetricDef, value: number): number {
+  const type = def.binding.via === "modbus" && def.binding.type === "S_WORD" ? "S_WORD" : "U_WORD";
   const raw = Math.round((value - (def.offset ?? 0)) / def.scale);
-  if (def.type === "S_WORD") return raw < 0 ? raw + 0x10000 : raw;
-  return raw & 0xffff;
+  const { min, max } = WORD_LIMITS[type];
+  if (!Number.isFinite(raw) || raw < min || raw > max) {
+    throw new RangeError(
+      `${def.key}: ${value} encodes to raw ${raw}, outside ${type} range [${min}, ${max}]`,
+    );
+  }
+  return raw < 0 ? raw + 0x10000 : raw;
 }

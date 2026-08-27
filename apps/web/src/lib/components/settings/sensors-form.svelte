@@ -1,9 +1,8 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { toast } from 'svelte-sonner';
-	import { Switch } from '$lib/components/ui/switch';
-	import { Label } from '$lib/components/ui/label';
-	import SettingsSection from './settings-section.svelte';
+	import SensorGroup from './sensor-group.svelte';
+	import Section from '$lib/components/layout/section.svelte';
 	import SaveBar from './save-bar.svelte';
 	import { inverter } from '$lib/inverter/store.svelte';
 	import type { ManifestMetric } from '$lib/inverter/types';
@@ -77,65 +76,37 @@
 		if (ok) toast.success(m.toast_sensors_saved());
 		else toast.error(m.toast_sensors_error());
 	}
+
+	const fieldsDisabled = $derived(!isAdmin || saving);
+	// `null` = the catalog is ready to render.
+	const message = $derived(
+		!draft ? m.app_loading() : groups.length === 0 ? m.settings_sensors_empty() : null
+	);
 </script>
 
 <SaveBar {isAdmin} {saving} disabled={!draft} onsave={save} />
 
-<SettingsSection title={m.settings_sensors_title()}>
+<Section title={m.settings_sensors_title()}>
 	<p class="max-w-prose text-sm text-muted-foreground">{m.settings_sensors_desc()}</p>
 
-	{#if !draft}
-		<p class="text-sm text-muted-foreground">{m.app_loading()}</p>
-	{:else if groups.length === 0}
-		<p class="text-sm text-muted-foreground">{m.settings_sensors_empty()}</p>
+	{#if message !== null}
+		<p class="text-sm text-muted-foreground">{message}</p>
 	{:else}
 		<!-- The catalog scrolls inside its own box so long profiles don't push the
 		     page (and the Save action) out of reach; group headers stick to the top
 		     of the box until the next group scrolls up to replace them. -->
 		<div class="max-h-[60vh] overflow-y-auto rounded-md border border-border">
 			{#each groups as group (group.id)}
-				{@const visibleCount = group.metrics.filter(isMetricVisible).length}
-				<div class="border-b border-border last:border-b-0">
-					<div
-						class="sticky top-0 z-10 flex items-center justify-between gap-4 border-b border-border bg-background/95 px-3 py-2 backdrop-blur supports-backdrop-filter:bg-background/80"
-					>
-						<div class="flex flex-col gap-0.5">
-							<span class="text-sm font-medium">{group.label}</span>
-							<span class="text-xs text-muted-foreground tabular-nums">
-								{m.settings_sensors_count({ visible: visibleCount, total: group.metrics.length })}
-							</span>
-						</div>
-						<Switch
-							checked={isGroupVisible(group.id)}
-							disabled={!isAdmin || saving}
-							aria-label={group.label}
-							onCheckedChange={(v) => setGroupVisible(group.id, v)}
-						/>
-					</div>
-
-					{#if isGroupVisible(group.id)}
-						<div class="divide-y divide-border">
-							{#each group.metrics as metric (metric.key)}
-								<div class="flex items-center justify-between gap-4 px-3 py-2">
-									<div class="flex min-w-0 flex-col">
-										<Label for="sensor-{metric.key}" class="truncate">{metric.label}</Label>
-										<span class="truncate font-mono text-xs text-muted-foreground">{metric.key}</span>
-									</div>
-									<Switch
-										id="sensor-{metric.key}"
-										size="sm"
-										checked={isMetricVisible(metric)}
-										disabled={!isAdmin || saving}
-										onCheckedChange={(v) => setMetricVisible(metric.key, v)}
-									/>
-								</div>
-							{/each}
-						</div>
-					{:else}
-						<p class="px-3 py-2 text-xs text-muted-foreground">{m.settings_sensors_group_hidden()}</p>
-					{/if}
-				</div>
+				<SensorGroup
+					label={group.label}
+					metrics={group.metrics}
+					visible={isGroupVisible(group.id)}
+					disabled={fieldsDisabled}
+					{isMetricVisible}
+					onGroupChange={(v) => setGroupVisible(group.id, v)}
+					onMetricChange={setMetricVisible}
+				/>
 			{/each}
 		</div>
 	{/if}
-</SettingsSection>
+</Section>

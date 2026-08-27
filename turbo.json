@@ -19,6 +19,37 @@
         "build/**"
       ]
     },
+    "build:static": {
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        ".env*"
+      ],
+      "outputs": [
+        "build/**",
+        ".svelte-kit/**"
+      ]
+    },
+    "compile": {
+      "dependsOn": [
+        "web#build:static"
+      ],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        ".env*"
+      ],
+      "outputs": [
+        "server",
+        "index.js.map"
+      ]
+    },
+    "start:binary": {
+      "dependsOn": [
+        "compile",
+        "//#db:start"
+      ],
+      "cache": false,
+      "persistent": true
+    },
     "lint": {
       "dependsOn": [
         "^lint"

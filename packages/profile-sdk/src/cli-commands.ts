@@ -10,13 +10,22 @@ import { readdir } from "node:fs/promises";
 import { basename, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
-import { coverage, groupByPrefix, isIndexedRole, suggestAggregates } from "./coverage";
+import {
+  coverage,
+  groupByPrefix,
+  isIndexedRole,
+  missingRequiredRoles,
+  parseRequiredRoles,
+  suggestAggregates,
+  type AggregateSuggestion,
+} from "./coverage";
 import {
   aiGuideFiles,
   planUpgrade,
   scaffoldProject,
   titleFromId,
   type InitOptions,
+  type UpgradeAction,
   type UpgradeStatus,
 } from "./init";
 import {
@@ -27,19 +36,45 @@ import {
   type VersionStatus,
 } from "./repo";
 import { scaffoldFromCsv } from "./scaffold";
-import { validateProfile } from "./validate";
+import { captureSchema, replayCapture, type Capture, type ReplayResult } from "./replay";
+import { lintProfile, validateProfile } from "./validate";
 import pkg from "../package.json";
-import type { BumpLevel, ProfileData } from "@SunReye/inverter-core";
+import { hydrateProfile, parseProfileData, PROFILE_SCHEMA_VERSIONS } from "@SunReye/inverter-core";
+import type {
+  BumpLevel,
+  CanonicalRole,
+  InverterProfile,
+  ProfileData,
+} from "@SunReye/inverter-core";
 
 async function readJson(path: string): Promise<unknown> {
   const file = Bun.file(path);
   if (!(await file.exists())) fail(`file not found: ${path}`);
-  return JSON.parse(await file.text());
+  const text = await file.text();
+  try {
+    return JSON.parse(text);
+  } catch (error) {
+    // A truncated or hand-mangled file is a user error, not a crash: keep the
+    // `error: …` + exit 1 contract instead of dumping a parser stack trace.
+    fail(`${path} is not valid JSON: ${error instanceof Error ? error.message : String(error)}`);
+  }
 }
 
 function fail(message: string): never {
   console.error(`error: ${message}`);
   process.exit(1);
+}
+
+/** Report a header plus one bullet per issue on stderr, then exit 1. */
+function failIssues(header: string, issues: readonly string[]): never {
+  console.error(header);
+  for (const issue of issues) console.error(`  • ${issue}`);
+  process.exit(1);
+}
+
+/** Write a `{ relativePath: contents }` map under `dir`. */
+async function writeFiles(dir: string, files: Record<string, string>): Promise<void> {
+  for (const [rel, contents] of Object.entries(files)) await Bun.write(join(dir, rel), contents);
 }
 
 /** Parse `--flag value` pairs from the tail args. */
@@ -52,48 +87,113 @@ export function flags(args: string[]): Record<string, string> {
   return out;
 }
 
-export async function cmdValidate(path: string | undefined): Promise<void> {
+/**
+ * Strict validation plus the semantic lints. Lint findings are warnings by
+ * default and a hard failure under `--strict`, so the same command can advise
+ * an author and gate a CI run.
+ */
+export async function cmdValidate(
+  path: string | undefined,
+  opts: Record<string, string> = {},
+): Promise<void> {
   if (!path) fail("usage: profile validate <file>");
-  const { ok, issues } = validateProfile(await readJson(path));
-  if (ok) {
-    console.log(`✓ ${path} is a valid profile`);
+  const data = await readJson(path);
+  const { ok, issues } = validateProfile(data);
+  if (!ok) failIssues(`✗ ${path} is invalid:`, issues);
+
+  const profile = data as ProfileData;
+  const warnings = lintProfile(profile);
+  if (warnings.length > 0 && "strict" in opts) {
+    failIssues(`✗ ${path} failed ${warnings.length} lint(s):`, warnings);
+  }
+  console.log(`✓ ${path} is a valid profile`);
+  if (warnings.length > 0) {
+    console.log(`\n⚠ ${warnings.length} lint warning(s) — re-run with --strict to gate on them:`);
+    for (const w of warnings) console.log(`  • ${w}`);
+  }
+  // Coverage advice is never a gate — an inverter without a generator is not a
+  // broken profile — so it prints after the lints and does not affect the exit.
+  const report = coverage(profile);
+  if (report.missing.length > 0) {
+    console.log("");
+    printMissingRoles(report.missing);
+  }
+  printAggregateHints(suggestAggregates(profile));
+}
+
+/** Print the unmapped-role section of a coverage report, grouped by role prefix. */
+function printMissingRoles(missing: CanonicalRole[]): void {
+  if (missing.length === 0) {
+    console.log("✓ every renderable role is mapped");
     return;
   }
-  console.error(`✗ ${path} is invalid:`);
-  for (const issue of issues) console.error(`  • ${issue}`);
-  process.exit(1);
+  console.log("Unmapped roles (these UI areas render empty):");
+  for (const [prefix, roles] of groupByPrefix(missing)) {
+    const list = roles.map((r) => (isIndexedRole(r) ? `${r}[]` : r)).join(", ");
+    console.log(`  ${prefix}: ${list}`);
+  }
+}
+
+/** Print the `sumOf` suggestions for hand-listed sums, when there are any. */
+function printAggregateHints(hints: readonly AggregateSuggestion[]): void {
+  if (hints.length === 0) return;
+  console.log("\nOptimization hints:");
+  for (const h of hints) {
+    console.log(
+      `  • "${h.key}" sums every ${h.role} (${h.count} metrics) — consider ` +
+        `sumOf({ role: "${h.role}" }) so model variants self-heal.`,
+    );
+  }
 }
 
 export async function cmdCoverage(path: string | undefined): Promise<void> {
   if (!path) fail("usage: profile coverage <file>");
   const data = await readJson(path);
   const { ok, issues } = validateProfile(data);
-  if (!ok) {
-    console.error("✗ profile is invalid — fix validation first:");
-    for (const issue of issues) console.error(`  • ${issue}`);
-    process.exit(1);
-  }
+  if (!ok) failIssues("✗ profile is invalid — fix validation first:", issues);
+
   const report = coverage(data as ProfileData);
   console.log(`Role coverage: ${report.mappedCount}/${report.total} canonical roles mapped\n`);
-  if (report.missing.length === 0) {
-    console.log("✓ every renderable role is mapped");
-  } else {
-    console.log("Unmapped roles (these UI areas render empty):");
-    for (const [prefix, roles] of groupByPrefix(report.missing)) {
-      const list = roles.map((r) => (isIndexedRole(r) ? `${r}[]` : r)).join(", ");
-      console.log(`  ${prefix}: ${list}`);
-    }
-  }
+  printMissingRoles(report.missing);
+  printAggregateHints(suggestAggregates(data as ProfileData));
+}
 
-  const hints = suggestAggregates(data as ProfileData);
-  if (hints.length > 0) {
-    console.log("\nOptimization hints:");
-    for (const h of hints) {
-      console.log(
-        `  • "${h.key}" sums every ${h.role} (${h.count} metrics) — consider ` +
-          `sumOf({ role: "${h.role}" }) so model variants self-heal.`,
-      );
-    }
+/** Current contents of every managed AI-guide file under `targetDir` (`null` when absent). */
+async function readExistingGuides(targetDir: string): Promise<Record<string, string | null>> {
+  const existing: Record<string, string | null> = {};
+  for (const f of aiGuideFiles()) {
+    const file = Bun.file(join(targetDir, f.path));
+    existing[f.path] = (await file.exists()) ? await file.text() : null;
+  }
+  return existing;
+}
+
+/** Persist the writes an upgrade plan asks for; `write: null` means "leave it alone". */
+async function applyUpgradePlan(targetDir: string, plan: readonly UpgradeAction[]): Promise<void> {
+  for (const action of plan) {
+    if (action.write !== null) await Bun.write(join(targetDir, action.path), action.write);
+  }
+}
+
+/** Print the per-file upgrade outcome, plus the follow-up hints the statuses imply. */
+function reportUpgrade(targetDir: string, plan: readonly UpgradeAction[]): void {
+  const mark: Record<UpgradeStatus, string> = {
+    created: "＋ created",
+    updated: "↻ updated",
+    unchanged: "✓ up to date",
+    diverged: "⚠ kept your edited copy",
+    manual: "⚠ needs a manual edit",
+  };
+  console.log(`AI authoring guide in ${targetDir}:`);
+  for (const action of plan) console.log(`  ${mark[action.status]} — ${action.path}`);
+
+  if (plan.some((a) => a.status === "diverged")) {
+    console.log(
+      "\nA managed file has local edits and was left as-is — re-run with --force to overwrite.",
+    );
+  }
+  if (plan.some((a) => a.status === "manual")) {
+    console.log("\nAdd `@AGENTS.md` to the top of your CLAUDE.md so Claude Code reads the guide.");
   }
 }
 
@@ -116,34 +216,9 @@ export async function cmdUpgrade(
   }
   const force = "force" in opts && opts.force !== "false";
 
-  const existing: Record<string, string | null> = {};
-  for (const f of aiGuideFiles()) {
-    const file = Bun.file(join(targetDir, f.path));
-    existing[f.path] = (await file.exists()) ? await file.text() : null;
-  }
-  const plan = planUpgrade(existing, force);
-  for (const action of plan) {
-    if (action.write !== null) await Bun.write(join(targetDir, action.path), action.write);
-  }
-
-  const mark: Record<UpgradeStatus, string> = {
-    created: "＋ created",
-    updated: "↻ updated",
-    unchanged: "✓ up to date",
-    diverged: "⚠ kept your edited copy",
-    manual: "⚠ needs a manual edit",
-  };
-  console.log(`AI authoring guide in ${targetDir}:`);
-  for (const action of plan) console.log(`  ${mark[action.status]} — ${action.path}`);
-
-  if (plan.some((a) => a.status === "diverged")) {
-    console.log(
-      "\nA managed file has local edits and was left as-is — re-run with --force to overwrite.",
-    );
-  }
-  if (plan.some((a) => a.status === "manual")) {
-    console.log("\nAdd `@AGENTS.md` to the top of your CLAUDE.md so Claude Code reads the guide.");
-  }
+  const plan = planUpgrade(await readExistingGuides(targetDir), force);
+  await applyUpgradePlan(targetDir, plan);
+  reportUpgrade(targetDir, plan);
 }
 
 export async function cmdScaffold(
@@ -174,7 +249,7 @@ function isProfileLike(value: unknown): value is ProfileData {
   return (
     typeof value === "object" &&
     value !== null &&
-    (value as ProfileData).schemaVersion === 1 &&
+    (PROFILE_SCHEMA_VERSIONS as readonly number[]).includes((value as ProfileData).schemaVersion) &&
     typeof (value as ProfileData).id === "string" &&
     Array.isArray((value as ProfileData).metrics)
   );
@@ -277,10 +352,34 @@ function reportBuild(result: RepoBuildResult, out: string): void {
   }
 }
 
+/**
+ * Refuse to publish a profile that leaves a required renderable role unmapped —
+ * the section it feeds would render empty on every dashboard. The floor is
+ * `--require a,b` when given, otherwise the per-family anchors
+ * ({@link FAMILY_ANCHOR_ROLES}), so a machine without a battery is never asked
+ * for `battery.soc`. Every refusal names the profile and the missing role(s).
+ */
+function enforceRoleFloor(entries: readonly RepoEntryInput[], require: string | undefined): void {
+  const { roles, unknown } = parseRequiredRoles(require);
+  if (unknown.length > 0) {
+    fail(`--require lists unknown role(s): ${unknown.join(", ")}`);
+  }
+  const issues: string[] = [];
+  for (const entry of entries) {
+    const missing = missingRequiredRoles(entry.profile, roles);
+    if (missing.length > 0) {
+      issues.push(`${entry.profile.id}: missing required role(s) ${missing.join(", ")}`);
+    }
+  }
+  if (issues.length > 0) {
+    failIssues("✗ repo build failed — required roles are unmapped:", issues);
+  }
+}
+
 export async function cmdBuild(paths: string[], opts: Record<string, string>): Promise<void> {
   if (paths.length === 0) {
     fail(
-      "usage: profile build <module.ts|profile.json ...> --out <dir> [--name n] [--maintainer m] [--bump patch|minor|major]",
+      "usage: profile build <module.ts|profile.json ...> --out <dir> [--name n] [--maintainer m] [--bump patch|minor|major] [--require role,role]",
     );
   }
   const out = opts.out;
@@ -298,15 +397,10 @@ export async function cmdBuild(paths: string[], opts: Record<string, string>): P
     previous,
     bump,
   });
-  if (!result.ok) {
-    console.error("✗ repo build failed:");
-    for (const issue of result.issues) console.error(`  • ${issue}`);
-    process.exit(1);
-  }
+  if (!result.ok) failIssues("✗ repo build failed:", result.issues);
 
-  for (const [relPath, contents] of Object.entries(result.files)) {
-    await Bun.write(join(out, relPath), contents);
-  }
+  enforceRoleFloor(entries, opts.require);
+  await writeFiles(out, result.files);
   reportBuild(result, out);
 }
 
@@ -383,6 +477,54 @@ async function runStep(
 }
 
 /**
+ * Whether an optional post-scaffold step runs: `--<flag>` forces the choice (any
+ * value but `"false"`), `--yes` skips it, otherwise ask with a default of yes.
+ */
+function decideStep(
+  flag: string,
+  message: string,
+  opts: Record<string, string>,
+  confirmFn: NonNullable<InitDeps["confirm"]>,
+): boolean {
+  if (flag in opts) return opts[flag] !== "false";
+  if ("yes" in opts) return false;
+  return confirmFn(message, true);
+}
+
+/** Run the optional `bun install` / `git init` steps after a successful scaffold. */
+async function runPostInitSteps(
+  targetDir: string,
+  opts: Record<string, string>,
+  deps: InitDeps,
+): Promise<void> {
+  const confirmFn = deps.confirm ?? defaultConfirm;
+  const run = deps.run ?? defaultRun;
+
+  await runStep(
+    decideStep("install", "Install dependencies with bun now?", opts, confirmFn),
+    ["bun", "install"],
+    targetDir,
+    run,
+    {
+      start: "\nInstalling dependencies (bun install)…",
+      ok: "✓ dependencies installed",
+      fail: "⚠ bun install failed — run it yourself",
+    },
+  );
+
+  const wantGit = decideStep("git", "Initialize a git repository?", opts, confirmFn);
+  if (wantGit && existsSync(join(targetDir, ".git"))) {
+    console.log("• git repository already initialized — skipping");
+    return;
+  }
+  await runStep(wantGit, ["git", "init"], targetDir, run, {
+    start: "\nInitializing git repository (git init)…",
+    ok: "✓ git repository initialized",
+    fail: "⚠ git init failed",
+  });
+}
+
+/**
  * Scaffold a new profile-authoring project. Values come from `--flags` when
  * given, otherwise from interactive prompts; then it optionally runs
  * `bun install` and `git init`. Non-interactive when `--yes` is set (missing
@@ -394,51 +536,95 @@ export async function cmdInit(
   opts: Record<string, string>,
   deps: InitDeps = {},
 ): Promise<void> {
-  const ask = deps.prompt ?? defaultPrompt;
-  const confirmFn = deps.confirm ?? defaultConfirm;
-  const run = deps.run ?? defaultRun;
-
   const targetDir = resolve(dir ?? ".");
   if (existsSync(join(targetDir, "package.json"))) {
     fail(`${targetDir} already contains a package.json — refusing to overwrite`);
   }
 
   const files = scaffoldProject(
-    gatherInitOptions(targetDir, opts, ask, deps.sdkVersion ?? pkg.version),
+    gatherInitOptions(
+      targetDir,
+      opts,
+      deps.prompt ?? defaultPrompt,
+      deps.sdkVersion ?? pkg.version,
+    ),
   );
-  for (const [rel, contents] of Object.entries(files)) {
-    await Bun.write(join(targetDir, rel), contents);
-  }
+  await writeFiles(targetDir, files);
   console.log(`✓ scaffolded profile project in ${targetDir}`);
   for (const rel of Object.keys(files).sort()) console.log(`  • ${rel}`);
 
-  // `--install`/`--git` force the choice (any value but "false"); else prompt
-  // (default yes), or skip under `--yes`.
-  const decide = (flag: string, message: string): boolean =>
-    flag in opts ? opts[flag] !== "false" : "yes" in opts ? false : confirmFn(message, true);
+  await runPostInitSteps(targetDir, opts, deps);
+  console.log(`\nNext: cd ${dir ?? "."} && bun run build`);
+}
 
-  await runStep(
-    decide("install", "Install dependencies with bun now?"),
-    ["bun", "install"],
-    targetDir,
-    run,
-    {
-      start: "\nInstalling dependencies (bun install)…",
-      ok: "✓ dependencies installed",
-      fail: "⚠ bun install failed — run it yourself",
-    },
-  );
+/**
+ * `profile replay <capture.json...>` — run golden register captures through the
+ * real decode path and diff against their expectations.
+ *
+ * This is the only authoring check that can prove a value is *correct* rather
+ * than merely present: `exerciseProfile()` drives the generic simulator, so it
+ * shows every metric produces a number and can never show the number is right.
+ * A capture taken from a real device is therefore the regression test for the
+ * highest-risk profile edit there is — a changed `scale`, `offset` or address.
+ *
+ * Exit 1 if any capture fails, so it is usable as a CI gate next to the profile.
+ */
+/**
+ * The profile a capture is replayed against. An explicit `--profile` is what a
+ * profile repo uses: the profile under test is a file in the working tree, not
+ * something installed in this process. Absent, `replayCapture` resolves the
+ * capture's own id from the registry.
+ */
+async function replayProfile(path: string | undefined): Promise<InverterProfile | undefined> {
+  if (!path) return undefined;
+  const data = await readJson(path);
+  const { ok, issues } = validateProfile(data);
+  if (!ok) failIssues(`✗ ${path} is invalid:`, issues);
+  return hydrateProfile(parseProfileData(data));
+}
 
-  const wantGit = decide("git", "Initialize a git repository?");
-  if (wantGit && existsSync(join(targetDir, ".git"))) {
-    console.log("• git repository already initialized — skipping");
+/** Read and validate one capture file, failing readably rather than throwing. */
+async function readCapture(path: string): Promise<Capture> {
+  try {
+    return captureSchema.parse(JSON.parse(await Bun.file(path).text()));
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    fail(`invalid capture file ${path}: ${message}`);
+  }
+}
+
+/** Print one capture's outcome. Returns whether it failed. */
+function reportReplay(path: string, r: ReplayResult): boolean {
+  if (r.ok) {
+    const keys = r.matched.map((m) => m.key).join(", ");
+    console.log(`✓ ${path} — ${r.expectationCount} expectation(s) matched: ${keys}`);
   } else {
-    await runStep(wantGit, ["git", "init"], targetDir, run, {
-      start: "\nInitializing git repository (git init)…",
-      ok: "✓ git repository initialized",
-      fail: "⚠ git init failed",
-    });
+    console.error(`✗ ${path}`);
+    for (const m of r.mismatched) {
+      console.error(`  • ${m.key}: expected ${m.expected}, got ${m.actual}`);
+    }
+    for (const e of r.errors) console.error(`  • ${e}`);
+  }
+  // Informational either way: a capture may legitimately cover a subset of the
+  // profile's registers, and after #63 an unanswered address decodes to
+  // `undefined` rather than 0 — worth surfacing so it is not mistaken for one.
+  for (const miss of r.missingRegisters) {
+    console.error(`  ⚠ ${miss.key}: no value — registers absent: ${miss.missing.join(", ")}`);
+  }
+  return !r.ok;
+}
+
+export async function cmdReplay(paths: string[], opts: Record<string, string> = {}): Promise<void> {
+  if (paths.length === 0) {
+    fail("usage: profile replay <capture.json...> [--profile <file>] [--json]");
   }
 
-  console.log(`\nNext: cd ${dir ?? "."} && bun run build`);
+  const profile = await replayProfile(opts.profile);
+  const results: ReplayResult[] = [];
+  for (const path of paths) results.push(replayCapture(await readCapture(path), profile));
+
+  if ("json" in opts) console.log(JSON.stringify(results, null, 2));
+
+  const failed = results.filter((r, i) => reportReplay(paths[i]!, r)).length;
+  if (failed > 0) fail(`${failed} of ${results.length} capture(s) failed`);
 }

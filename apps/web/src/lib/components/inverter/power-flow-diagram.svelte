@@ -2,17 +2,21 @@
 	import CpuIcon from 'phosphor-svelte/lib/Cpu';
 	import GaugeIcon from 'phosphor-svelte/lib/Gauge';
 	import type { CanonicalRole } from '$lib/inverter/types';
-	import AnimatedNumber from './animated-number.svelte';
 	import PowerFlowNode from './power-flow-node.svelte';
+	import PowerFlowRails, { type RailLine } from './_shared/power-flow-rails.svelte';
+	import HubMetrics from './_shared/hub-metrics.svelte';
 	import { inverter } from '$lib/inverter/store.svelte';
-	import { evcc } from '$lib/evcc/store.svelte';
-	import * as msg from '$lib/paraglide/messages';
+	import { evcc, type EvccLoadpoint } from '$lib/evcc/store.svelte';
+	import { pulseShare, railPulse, throughputWatts } from '$lib/inverter/flow-pulse';
+	import { plantCeiling } from '$lib/inverter/plant-ceiling.svelte';
 	import {
 		buildPowerGraph,
 		type ChargerDatum,
-		type Flow,
+		type NodeKind,
 		type Pt
 	} from '$lib/inverter/power-graph';
+	import { nodeDetail } from '$lib/inverter/node-details';
+	import NodeDetailDialog from './node-detail-dialog.svelte';
 
 	function power(role: CanonicalRole, index?: number): number | undefined {
 		const m = inverter.byRole(role, index);
@@ -27,32 +31,41 @@
 
 	const caps = $derived(inverter.capabilities);
 
-	// Computed metrics shown on the hub itself: self-consumption (conversion
-	// losses + standby draw) and the share of drawn power that reaches the load.
+	// Readings shown on the hub itself: total DC in (the sum the inverter
+	// converts — no node carries it once per-string power is mapped), the
+	// inverter's own draw (conversion losses + standby) and the share of drawn
+	// power that reaches the load.
 	const selfUse = $derived(power('inverter.power'));
 	const efficiency = $derived(power('inverter.efficiency'));
+	const dcInput = $derived(power('pv.total.power'));
 
-	// Battery state-of-charge (0..100) drives the circular gauge on the battery node.
+	// Battery state-of-charge (0..100) drives the square gauge on the battery node.
 	const batterySoc = $derived.by(() => {
 		const m = inverter.byRole('battery.soc');
 		const v = m ? inverter.value(m.key) : undefined;
 		return v === undefined ? undefined : Math.min(100, Math.max(0, v));
 	});
 
-	// EV charger (external EVCC): lease the store's live stream while the diagram
-	// is mounted; the node appears only while EVCC is reachable with loadpoints.
-	$effect(() => evcc.connect());
+	// EV charger (external EVCC): lease the store's topic while the diagram is
+	// mounted; the node appears only while EVCC is reachable with loadpoints.
+	$effect(() => evcc.lease());
+	/** One vehicle → its SoC rings the node; several → no single truthful value. */
+	function singleVehicleSoc(lps: EvccLoadpoint[]): number | undefined {
+		if (lps.length !== 1) return undefined;
+		return lps[0].vehicleSoc ?? undefined;
+	}
+	const subtractsFromHome = () => evcc.state?.subtractFromHome ?? false;
+
 	const charger = $derived.by<ChargerDatum | undefined>(() => {
 		if (!evcc.active) return undefined;
 		const lps = evcc.loadpoints;
-		// One vehicle → its SoC rings the node; several → no single truthful value.
-		const soc = lps.length === 1 ? (lps[0].vehicleSoc ?? undefined) : undefined;
+		const soc = singleVehicleSoc(lps);
 		return {
 			power: evcc.chargePower,
 			...(soc === undefined ? {} : { soc }),
 			connected: lps.some((lp) => lp.connected),
 			charging: lps.some((lp) => lp.charging),
-			subtractFromHome: evcc.state?.subtractFromHome ?? false
+			subtractFromHome: subtractsFromHome()
 		};
 	});
 	const vehicleSoc = $derived(charger?.soc);
@@ -76,7 +89,12 @@
 
 	const graph = $derived.by(() => buildPowerGraph(caps, power, orientation, has, charger));
 
-	type Line = { id: string; flow: Flow; color: string; dur: number; d: string };
+	/** The hub box, shared by the plain and the tappable variant so the two can
+	 *  never drift apart in size — the ring and the rails anchor on it. */
+	const HUB_BOX_CLASS =
+		'relative flex size-14 items-center justify-center border-2 border-primary bg-background sm:size-16 2xl:size-20';
+	const HUB_BOX_STYLE =
+		'box-shadow:0 0 40px -8px color-mix(in oklab, var(--primary) 55%, transparent)';
 
 	/** Segment pts → SVG path: 2 pts line, 3 quadratic, 4 cubic (see power-graph). */
 	function toPath(px: Pt[]): string {
@@ -86,154 +104,152 @@
 		return `M ${c[0]} L ${c[1]}`;
 	}
 
-	const lines = $derived.by<Line[]>(() => {
-		if (w === 0 || h === 0) return [];
+	// Anchors are fractions; the rails need real pixels, so hold off until the safe
+	// box has been measured.
+	const measured = $derived(w > 0 && h > 0);
+
+	// The reference every rail is drawn against: the plant's remembered peak, not
+	// the biggest cable right now — that one pins the busiest rail at 1.0 forever
+	// and paints 300 W at midnight like 9 kW at noon (see flow-pulse.ts). Folded
+	// on the feed's own edge: `inverter.latest` is a fresh object per sample
+	// (store.svelte.ts:30), so touching it here is what makes this run at the
+	// live cadence rather than only when the graph's shape changes. The fold is
+	// idempotent in wall-clock time, so an extra run cannot age the plant.
+	//
+	// An effect rather than a $derived on purpose: the ceiling is a MEMORY of
+	// samples already gone, which nothing derivable from the current graph can
+	// reconstruct.
+	$effect(() => {
+		void inverter.latest;
+		plantCeiling.observe(throughputWatts(graph.segments));
+	});
+	const ceiling = $derived(plantCeiling.watts);
+
+	/** How hard the whole plant is working, 0..1, quantized to 1/20 by
+	 *  `pulseShare` so a 1 Hz wobble writes no style at all. The hub ring's beat
+	 *  and the background wash answer this, and nothing else does: it is set on
+	 *  those two leaves alone, never on an ancestor whose subtree would then
+	 *  re-resolve style every second. */
+	const plantLevel = $derived(pulseShare(throughputWatts(graph.segments), ceiling));
+
+	const lines = $derived.by<RailLine[]>(() => {
+		if (!measured) return [];
 		return graph.segments.map((s) => {
 			const px = s.pts.map((p) => ({ x: p.x * w, y: p.y * h }));
+			const pulse = railPulse(s.value, ceiling);
 			return {
 				id: s.id,
 				flow: s.flow,
 				color: s.color,
-				dur: flowDuration(s.value),
+				pulse,
 				d: toPath(px)
 			};
 		});
 	});
+	const flowing = $derived(lines.filter((l) => l.flow !== 'idle'));
 
-	/** Map magnitude → dash travel time (s). More watts = faster stream.
-	 *  Quantized to coarse steps: changing a CSS animation-duration mid-flight
-	 *  remaps the elapsed time and makes the dots visibly jump, so with a 1 Hz
-	 *  live feed a continuous mapping stutters every sample. Steps keep the
-	 *  duration stable until the power moves materially. */
-	function flowDuration(watts: number | undefined): number {
-		const a = Math.abs(watts ?? 0);
-		const ms = 2600 / (1 + a / 130);
-		const stepped = Math.round(ms / 200) * 200;
-		return Math.min(2600, Math.max(400, stepped)) / 1000;
-	}
+	/** Only the battery and the EV charger ring a state-of-charge. */
+	const socFor = (kind: NodeKind) =>
+		kind === 'battery' ? batterySoc : kind === 'charger' ? vehicleSoc : undefined;
+
+	// What each node opens onto: its subsystem's readings, which used to be a page
+	// of panels at /system. Resolved from the manifest here — the store is already
+	// filtered by Settings → Sensors, so a hidden group takes its dialog with it.
+	const detailFor = (id: string) => nodeDetail(id, inverter.metrics, caps) ?? undefined;
+	const hubDetail = $derived(detailFor('hub'));
+
+	// Per-node extras the diagram supplies, resolved up front so the markup below
+	// stays branch-free.
+	const renderNodes = $derived(
+		graph.nodes.map((n) => ({
+			node: n,
+			detail: detailFor(n.id),
+			soc: socFor(n.kind),
+			// The node's own power against the same remembered plant the rails are
+			// drawn against, so box and cable agree on what "busy" means.
+			share: pulseShare(n.value, ceiling),
+			// The EVCC feed has its own cadence; the rest follow the inverter's.
+			intervalMs: n.kind === 'charger' ? evcc.cadenceMs : undefined
+		}))
+	);
 </script>
 
 <div class="relative h-full w-full" bind:clientWidth={ow} bind:clientHeight={oh}>
 	<!-- Soft ambience centred on the hub — gives the wall display depth without
-	     competing with the flow lines. -->
+	     competing with the flow lines. Its strength follows the plant: the layer's
+	     own opacity fades, so the gradient itself is painted once. -->
 	<div
-		class="pointer-events-none absolute inset-0"
-		style={`background:radial-gradient(60% 55% at 50% ${graph.hub.y * 100}%, color-mix(in oklab, var(--primary) 8%, transparent), transparent 75%)`}
+		class="wash pointer-events-none absolute inset-0"
+		style={`--plant-level:${plantLevel};background:radial-gradient(60% 55% at 50% ${graph.hub.y * 100}%, color-mix(in oklab, var(--primary) 8%, transparent), transparent 75%)`}
 	></div>
 
 	<!-- Safe box: everything anchors inside these insets. -->
 	<div class={`absolute ${INSETS[orientation]}`}>
 	<div class="relative h-full w-full" bind:clientWidth={w} bind:clientHeight={h}>
-	{#if w > 0 && h > 0}
-		<svg class="absolute inset-0" width={w} height={h} viewBox={`0 0 ${w} ${h}`} aria-hidden="true">
-			<!-- Static dotted rails first (all segments) so a later segment's idle rail
-			     never overpaints an earlier segment's coloured flow where routes cross. -->
-			{#each lines as l (l.id)}
-				<path
-					class="text-border"
-					d={l.d}
-					fill="none"
-					stroke="currentColor"
-					stroke-width="2"
-					stroke-linecap="round"
-					stroke-dasharray="0.1 8"
-				/>
-			{/each}
-			<!-- Travelling energy dots on top. -->
-			{#each lines as l (`flow-${l.id}`)}
-				{#if l.flow !== 'idle'}
-					<path
-						class={`flow-line ${l.flow === 'in' ? 'flow-in' : 'flow-out'} ${l.color}`}
-						d={l.d}
-						fill="none"
-						stroke="currentColor"
-						stroke-width="4"
-						stroke-linecap="round"
-						stroke-dasharray="0.1 13.9"
-						style={`animation-duration:${l.dur}s`}
-					/>
-				{/if}
-			{/each}
-		</svg>
+	{#if measured}
+		<PowerFlowRails {lines} {flowing} width={w} height={h} />
 	{/if}
 
-	<!-- Inverter hub. Only the circle is centred on the anchor; the metric pill
+	<!-- Inverter hub. Only the box is centred on the anchor; the metric pill
 	     floats above it on a translucent backdrop so connector rails can pass
 	     underneath without colliding with text. -->
 	<div
 		class="absolute -translate-x-1/2 -translate-y-1/2"
 		style={`left:${graph.hub.x * 100}%;top:${graph.hub.y * 100}%`}
 	>
-		{#if (efficiency !== undefined && efficiency > 0) || selfUse !== undefined}
-			<div
-				class="absolute bottom-full left-1/2 mb-2.5 flex -translate-x-1/2 justify-center gap-4 rounded-xl border border-border/60 bg-background/85 px-3 py-1.5 leading-tight backdrop-blur-[2px]"
-			>
-				{#if efficiency !== undefined && efficiency > 0}
-					<div class="flex flex-col items-center whitespace-nowrap">
-						<span
-							class="flex items-center gap-0.5 text-sm font-semibold tabular-nums text-primary 2xl:text-base"
-						>
-							<GaugeIcon class="size-3" weight="duotone" />
-							<AnimatedNumber value={efficiency} unit="%" />%
-						</span>
-						<span class="text-[0.6rem] uppercase tracking-wide text-muted-foreground">{msg.flow_efficiency()}</span>
-					</div>
-				{/if}
-				{#if selfUse !== undefined}
-					<div class="flex flex-col items-center whitespace-nowrap">
-						<span class="text-sm font-medium tabular-nums 2xl:text-base">
-							<AnimatedNumber value={Math.abs(selfUse)} unit="W" /><span
-								class="ml-0.5 text-[0.6rem] font-normal text-muted-foreground">W</span
-							>
-						</span>
-						<span class="text-[0.6rem] uppercase tracking-wide text-muted-foreground">{msg.flow_self_use()}</span>
-					</div>
-				{/if}
-			</div>
-		{/if}
-		<div
-			class="relative flex size-14 items-center justify-center rounded-full border-2 border-primary bg-background sm:size-16 2xl:size-20"
-			style="box-shadow:0 0 40px -8px color-mix(in oklab, var(--primary) 55%, transparent)"
-		>
-			<span class="hub-ring absolute -inset-1 rounded-full border border-primary/50"></span>
+		<HubMetrics {efficiency} {selfUse} {dcInput} />
+		{#snippet hubBox()}
+			<span
+				class="hub-ring absolute -inset-1 border border-primary/50"
+				style={`--plant-level:${plantLevel}`}
+			></span>
 			<CpuIcon class="size-7 text-primary sm:size-8 2xl:size-10" weight="duotone" />
-		</div>
+		{/snippet}
+		{#if hubDetail}
+			<NodeDetailDialog
+				detail={hubDetail}
+				triggerClass={`${HUB_BOX_CLASS} cursor-pointer`}
+				triggerStyle={HUB_BOX_STYLE}
+			>
+				{@render hubBox()}
+			</NodeDetailDialog>
+		{:else}
+			<div class={HUB_BOX_CLASS} style={HUB_BOX_STYLE}>{@render hubBox()}</div>
+		{/if}
 	</div>
 
-	{#each graph.nodes as n (n.id)}
-		<PowerFlowNode
-			node={n}
-			soc={n.kind === 'battery' ? batterySoc : n.kind === 'charger' ? vehicleSoc : undefined}
-		/>
+	{#each renderNodes as r (r.node.id)}
+		<PowerFlowNode {...r} />
 	{/each}
 	</div>
 	</div>
 </div>
 
 <style>
-	.flow-line {
-		filter: drop-shadow(0 0 5px currentColor);
+	/* How hard the plant is working, 0..1. Registered so the ring's keyframe can
+	   read it as a number, and `inherits: false` so setting it on the ring and on
+	   the wash cannot restyle a subtree — the node boxes and their AnimatedNumber
+	   readouts would otherwise re-resolve style every second. */
+	@property --plant-level {
+		syntax: '<number>';
+		inherits: false;
+		initial-value: 0;
 	}
-	.flow-in {
-		animation: flow-in linear infinite;
+
+	/* One layer, painted once; only its opacity answers the plant. Mixing the
+	   level into the gradient's own colour stops would repaint a hero-sized
+	   radial gradient on every sample instead of compositing an existing layer. */
+	.wash {
+		opacity: calc(0.4 + 0.6 * var(--plant-level));
+		transition: opacity 900ms linear;
 	}
-	.flow-out {
-		animation: flow-out linear infinite;
-	}
+
 	.hub-ring {
 		animation: hub-pulse 2.6s ease-in-out infinite;
 	}
-	/* One dash period (0.1 + 13.9) per keyframe cycle for a seamless loop. */
-	@keyframes flow-in {
-		to {
-			stroke-dashoffset: -14;
-		}
-	}
-	@keyframes flow-out {
-		to {
-			stroke-dashoffset: 14;
-		}
-	}
+	/* Same period at every load — a timing property is never a datum here. What
+	   the plant changes is the AMPLITUDE: at night the ring barely ticks, at noon
+	   it flashes to the full swing this diagram has always had. */
 	@keyframes hub-pulse {
 		0%,
 		100% {
@@ -241,15 +257,17 @@
 			transform: scale(1);
 		}
 		50% {
-			opacity: 0.75;
-			transform: scale(1.12);
+			opacity: calc(0.35 + 0.4 * var(--plant-level));
+			transform: scale(calc(1 + 0.12 * var(--plant-level)));
 		}
 	}
 	@media (prefers-reduced-motion: reduce) {
-		.flow-in,
-		.flow-out,
 		.hub-ring {
 			animation: none;
+		}
+		/* A 900 ms fade is motion too, however soft. */
+		.wash {
+			transition: none;
 		}
 	}
 </style>

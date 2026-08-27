@@ -95,90 +95,110 @@ function byRole(profile: InverterProfile, role: CanonicalRole): MetricDef[] {
     .sort((a, b) => (a.index ?? 0) - (b.index ?? 0));
 }
 
-export function genericSimulate(
-  profile: InverterProfile,
-  { now, dtSec, state }: SimContext,
-): MetricValues {
-  const s = state as unknown as PlantState;
-  initState(s);
-  resetDaily(s, now);
+/** Everything the per-subsystem stages of one tick share. */
+interface PlantTick {
+  profile: InverterProfile;
+  /** The sample being built. */
+  out: MetricValues;
+  /**
+   * Write one value to *every* metric carrying `role`, rounded to `d` decimals
+   * (roles the profile doesn't map are silently skipped).
+   */
+  set: (role: CanonicalRole, value: number, d?: number) => void;
+  /** Sun strength for this tick: 0 at night, ~1 at solar noon. */
+  irr: number;
+  /** Seconds since the previous sample. */
+  dtSec: number;
+  state: PlantState;
+}
 
-  const out: MetricValues = {};
-  /** Set every metric of a role to one value (e.g. all phase voltages ≈ 230). */
-  const setAll = (role: CanonicalRole, value: number, d = 0): void => {
-    for (const m of byRole(profile, role)) out[m.key] = round(value, d);
-  };
-  /** Set the (single) metric of a role, if the profile has one. */
-  const setOne = setAll;
-
-  const irr = irradiance(now);
-
-  // --- PV: split the plant peak across however many strings the profile has ---
-  const strings = byRole(profile, "pv.string.power");
-  const stringPeak = strings.length > 0 ? PV_PLANT_PEAK_W / strings.length : PV_PLANT_PEAK_W;
-  let pvTotal = 0;
-  if (strings.length > 0) {
-    const voltages = byRole(profile, "pv.string.voltage");
-    const currents = byRole(profile, "pv.string.current");
-    strings.forEach((m, i) => {
-      const p = irr > 0 ? stringPeak * irr * jitter(0.08) : 0;
-      out[m.key] = round(p);
-      pvTotal += p;
-      const v = irr > 0.02 ? PV_STRING_V * jitter(0.05) : 0;
-      if (voltages[i]) out[voltages[i]!.key] = round(v, 1);
-      if (currents[i]) out[currents[i]!.key] = round(v > 0 ? p / v : 0, 2);
-    });
-  } else {
-    pvTotal = irr > 0 ? PV_PLANT_PEAK_W * irr * jitter(0.08) : 0;
-  }
-  setOne("pv.total.power", pvTotal);
-
-  // --- Load: base draw + daytime activity + occasional spikes ---
-  const spike = Math.random() < 0.05 ? 1500 * Math.random() : 0;
-  const load = BASE_LOAD_W + 350 * irr + spike + BASE_LOAD_W * (jitter(0.2) - 1);
-
-  // --- Battery dispatch to balance PV vs. load (only if the profile has one) ---
-  const hasBattery =
-    byRole(profile, "battery.soc").length + byRole(profile, "battery.power").length > 0;
-  let battPower = 0; // + charge / - discharge
-  if (hasBattery) {
-    const surplus = pvTotal - load;
-    if (surplus > 0 && s.soc < 100) battPower = Math.min(surplus, MAX_CHARGE_W);
-    else if (surplus < 0 && s.soc > MIN_SOC) battPower = Math.max(surplus, -MAX_DISCHARGE_W);
-
-    const battEnergyKwh = (battPower * dtSec) / 3_600_000;
-    s.soc = Math.min(100, Math.max(MIN_SOC, s.soc + (battEnergyKwh / BATTERY_CAPACITY_KWH) * 100));
-    const battV = BATTERY_NOMINAL_V + (s.soc - 50) * 0.03;
-    setOne("battery.power", battPower);
-    setOne("battery.soc", s.soc);
-    setOne("battery.voltage", battV, 2);
-    setAll("battery.current", battPower / battV, 2);
-    setOne("battery.temperature", 22 + 8 * irr + 4 * (Math.abs(battPower) / MAX_DISCHARGE_W), 1);
+/**
+ * PV production. With mapped strings the plant peak is split across them (each
+ * also getting a voltage/current pair); with none, only the plant total is
+ * synthesized. Returns the plant total in W.
+ */
+function simulatePv(t: PlantTick): number {
+  const strings = byRole(t.profile, "pv.string.power");
+  if (strings.length === 0) {
+    const total = t.irr > 0 ? PV_PLANT_PEAK_W * t.irr * jitter(0.08) : 0;
+    t.set("pv.total.power", total);
+    return total;
   }
 
-  // --- Grid balances the remainder ---
-  const grid = load + battPower - pvTotal; // >0 import, <0 export
-  setOne("grid.power", grid);
-  const gridPhases = byRole(profile, "grid.phase.power");
+  const stringPeak = PV_PLANT_PEAK_W / strings.length;
+  const voltages = byRole(t.profile, "pv.string.voltage");
+  const currents = byRole(t.profile, "pv.string.current");
+  let total = 0;
+  strings.forEach((m, i) => {
+    const p = t.irr > 0 ? stringPeak * t.irr * jitter(0.08) : 0;
+    t.out[m.key] = round(p);
+    total += p;
+    const v = t.irr > 0.02 ? PV_STRING_V * jitter(0.05) : 0;
+    if (voltages[i]) t.out[voltages[i]!.key] = round(v, 1);
+    if (currents[i]) t.out[currents[i]!.key] = round(v > 0 ? p / v : 0, 2);
+  });
+  t.set("pv.total.power", total);
+  return total;
+}
+
+/**
+ * Battery dispatch that soaks up PV surplus and covers a deficit within the SoC
+ * window, advancing the persisted SoC. Returns W: `> 0` charging, `< 0`
+ * discharging, `0` when the profile maps no battery at all.
+ */
+function simulateBattery(t: PlantTick, pvTotal: number, load: number): number {
+  const mapped =
+    byRole(t.profile, "battery.soc").length + byRole(t.profile, "battery.power").length > 0;
+  if (!mapped) return 0;
+
+  const s = t.state;
+  const surplus = pvTotal - load;
+  let battPower = 0;
+  if (surplus > 0 && s.soc < 100) battPower = Math.min(surplus, MAX_CHARGE_W);
+  else if (surplus < 0 && s.soc > MIN_SOC) battPower = Math.max(surplus, -MAX_DISCHARGE_W);
+
+  const battEnergyKwh = (battPower * t.dtSec) / 3_600_000;
+  s.soc = Math.min(100, Math.max(MIN_SOC, s.soc + (battEnergyKwh / BATTERY_CAPACITY_KWH) * 100));
+  const battV = BATTERY_NOMINAL_V + (s.soc - 50) * 0.03;
+  t.set("battery.power", battPower);
+  t.set("battery.soc", s.soc);
+  t.set("battery.voltage", battV, 2);
+  t.set("battery.current", battPower / battV, 2);
+  t.set("battery.temperature", 22 + 8 * t.irr + 4 * (Math.abs(battPower) / MAX_DISCHARGE_W), 1);
+  return battPower;
+}
+
+/** Grid + load, aggregate and per phase (an unmapped phase count reads as 1). */
+function simulateAcSide(t: PlantTick, grid: number, load: number): void {
+  t.set("grid.power", grid);
+  const gridPhases = byRole(t.profile, "grid.phase.power");
   const nGrid = gridPhases.length || 1;
-  gridPhases.forEach((m) => (out[m.key] = round(grid / nGrid)));
-  setAll("grid.phase.voltage", GRID_PHASE_V * jitter(0.02), 1);
-  for (const m of byRole(profile, "grid.phase.current")) {
-    out[m.key] = round(grid / nGrid / GRID_PHASE_V, 2);
+  gridPhases.forEach((m) => (t.out[m.key] = round(grid / nGrid)));
+  t.set("grid.phase.voltage", GRID_PHASE_V * jitter(0.02), 1);
+  for (const m of byRole(t.profile, "grid.phase.current")) {
+    t.out[m.key] = round(grid / nGrid / GRID_PHASE_V, 2);
   }
 
-  // --- Load metrics ---
-  setOne("load.power", load);
-  const loadPhases = byRole(profile, "load.phase.power");
+  t.set("load.power", load);
+  const loadPhases = byRole(t.profile, "load.phase.power");
   const nLoad = loadPhases.length || 1;
-  loadPhases.forEach((m) => (out[m.key] = round(load / nLoad)));
+  loadPhases.forEach((m) => (t.out[m.key] = round(load / nLoad)));
+}
 
-  // --- Inverter thermals ---
-  setOne("inverter.temperature.dc", 30 + 20 * irr + 5 * (load / 5000), 1);
-  setOne("inverter.temperature.ac", 26 + 20 * irr + 5 * (load / 5000), 1);
-
-  // --- Energy integration (W over dtSec → kWh) ---
-  const wh = (w: number) => (Math.max(w, 0) * dtSec) / 3_600_000;
+/**
+ * Integrate this tick's power (W over `dtSec`) into the day + lifetime kWh
+ * counters and publish them. Each counter takes only the positive part of its
+ * signal, so charge/discharge and import/export stay separate odometers.
+ */
+function integrateEnergy(
+  t: PlantTick,
+  pvTotal: number,
+  battPower: number,
+  grid: number,
+  load: number,
+): void {
+  const s = t.state;
+  const wh = (w: number) => (Math.max(w, 0) * t.dtSec) / 3_600_000;
   s.productionDay += wh(pvTotal);
   s.productionTotal += wh(pvTotal);
   s.chargeDay += wh(battPower);
@@ -192,18 +212,52 @@ export function genericSimulate(
   s.loadDay += wh(load);
   s.loadTotal += wh(load);
 
-  setOne("production.today", s.productionDay, 1);
-  setOne("production.total", s.productionTotal, 1);
-  setOne("battery.energy.charged.today", s.chargeDay, 1);
-  setOne("battery.energy.charged.total", s.chargeTotal, 1);
-  setOne("battery.energy.discharged.today", s.dischargeDay, 1);
-  setOne("battery.energy.discharged.total", s.dischargeTotal, 1);
-  setOne("grid.energy.imported.today", s.importDay, 1);
-  setOne("grid.energy.imported.total", s.importTotal, 1);
-  setOne("grid.energy.exported.today", s.exportDay, 1);
-  setOne("grid.energy.exported.total", s.exportTotal, 1);
-  setOne("load.energy.today", s.loadDay, 1);
-  setOne("load.energy.total", s.loadTotal, 1);
+  t.set("production.today", s.productionDay, 1);
+  t.set("production.total", s.productionTotal, 1);
+  t.set("battery.energy.charged.today", s.chargeDay, 1);
+  t.set("battery.energy.charged.total", s.chargeTotal, 1);
+  t.set("battery.energy.discharged.today", s.dischargeDay, 1);
+  t.set("battery.energy.discharged.total", s.dischargeTotal, 1);
+  t.set("grid.energy.imported.today", s.importDay, 1);
+  t.set("grid.energy.imported.total", s.importTotal, 1);
+  t.set("grid.energy.exported.today", s.exportDay, 1);
+  t.set("grid.energy.exported.total", s.exportTotal, 1);
+  t.set("load.energy.today", s.loadDay, 1);
+  t.set("load.energy.total", s.loadTotal, 1);
+}
 
+export function genericSimulate(
+  profile: InverterProfile,
+  { now, dtSec, state }: SimContext,
+): MetricValues {
+  const s = state as unknown as PlantState;
+  initState(s);
+  resetDaily(s, now);
+
+  const out: MetricValues = {};
+  const t: PlantTick = {
+    profile,
+    out,
+    set: (role, value, d = 0) => {
+      for (const m of byRole(profile, role)) out[m.key] = round(value, d);
+    },
+    irr: irradiance(now),
+    dtSec,
+    state: s,
+  };
+
+  const pvTotal = simulatePv(t);
+  // Load: base draw + daytime activity + occasional spikes.
+  const spike = Math.random() < 0.05 ? 1500 * Math.random() : 0;
+  const load = BASE_LOAD_W + 350 * t.irr + spike + BASE_LOAD_W * (jitter(0.2) - 1);
+  const battPower = simulateBattery(t, pvTotal, load);
+  // The grid balances whatever PV and the battery didn't: >0 import, <0 export.
+  const grid = load + battPower - pvTotal;
+  simulateAcSide(t, grid, load);
+
+  t.set("inverter.temperature.dc", 30 + 20 * t.irr + 5 * (load / 5000), 1);
+  t.set("inverter.temperature.ac", 26 + 20 * t.irr + 5 * (load / 5000), 1);
+
+  integrateEnergy(t, pvTotal, battPower, grid, load);
   return out;
 }

@@ -1,5 +1,6 @@
 import { createEnv } from "@t3-oss/env-core";
 
+// fallow-ignore-next-line unused-export -- placeholder entry with an empty client schema, so it has no importer yet by construction; packages/env/AGENTS.md requires the `./web` package export be preserved for future build-time PUBLIC_ vars rather than deleted and re-added
 export const env = createEnv({
   clientPrefix: "PUBLIC_",
   // No schema-validated browser vars right now. `PUBLIC_SERVER_URL` (optional

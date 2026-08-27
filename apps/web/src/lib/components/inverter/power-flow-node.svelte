@@ -9,15 +9,33 @@
 	import ArrowDown from 'phosphor-svelte/lib/ArrowDown';
 	import ArrowUp from 'phosphor-svelte/lib/ArrowUp';
 	import AnimatedNumber from './animated-number.svelte';
-	import { socColor, type GraphNode, type NodeKind } from '$lib/inverter/power-graph';
+	import SocGauge from './_shared/soc-gauge.svelte';
+	import NodeDetailDialog from './node-detail-dialog.svelte';
+	import type { GraphNode, NodeKind } from '$lib/inverter/power-graph';
+	import type { NodeDetail } from '$lib/inverter/node-details';
+	import { nodeGlow } from '$lib/inverter/flow-pulse';
 
 	let {
 		node,
-		soc
+		soc,
+		share = 0,
+		intervalMs,
+		detail
 	}: {
 		node: GraphNode;
-		/** Battery/vehicle state-of-charge (0..100); renders the circular gauge when set. */
+		/** Battery/vehicle state-of-charge (0..100); renders the square gauge when set. */
 		soc?: number;
+		/** This node's power as a share (0..1) of the plant's remembered peak. The
+		 *  glow answers it, so a 300 W night import does not blaze like noon. */
+		share?: number;
+		/** Sample cadence (ms) of the feed behind `node.value`; forwarded to the
+		 *  animated readout so, e.g., the EVCC charger node glides at EVCC's rate
+		 *  rather than the inverter feed's. Falls back to the inverter cadence. */
+		intervalMs?: number;
+		/** This subsystem's readings; the box opens onto them. Absent (the profile
+		 *  maps none, or Settings → Sensors hid them) leaves a plain box — a
+		 *  trigger that opens an empty dialog is worse than no trigger. */
+		detail?: NodeDetail;
 	} = $props();
 
 	// Node kind → icon; the graph builder stays a pure module without component
@@ -34,21 +52,39 @@
 
 	const active = $derived(node.flow !== 'idle');
 	// The ring renders battery SoC — and vehicle SoC on the EV charger node.
-	const hasSoc = $derived((node.kind === 'battery' || node.kind === 'charger') && soc !== undefined);
+	const gauged = $derived(node.kind === 'battery' || node.kind === 'charger');
+	const hasSoc = $derived(gauged && soc !== undefined);
+	/** SoC handed to the gauge: `undefined` on nodes that don't show one. */
+	const ringSoc = $derived(gauged ? soc : undefined);
 
-	// SOC ring geometry: drawn inside the node circle (viewBox 56×56, scaled with
-	// the circle) so the battery keeps the same footprint as every other node.
-	const SOC_R = 26;
-	const SOC_C = 2 * Math.PI * SOC_R;
+	const iconColor = $derived(active ? node.accent : 'var(--muted-foreground)');
 
-	/** Node circle treatment: accent ring + tint + soft glow while power moves. */
+	/** The node box, shared by the plain and the tappable variant so the two can
+	 *  never drift apart in size — the anchors are computed against this box. */
+	const BOX_CLASS = 'relative block size-14 sm:size-16 2xl:size-20';
+
+	// Direction chevron beside the state caption; idle nodes show none.
+	const FlowIcon = $derived(
+		node.flow === 'in' ? ArrowDown : node.flow === 'out' ? ArrowUp : undefined
+	);
+
+	// The caption stack sits above or below the box depending on the node's place in
+	// the diagram, flipping the flex order so label/value keep their reading order.
+	const labelBoxClass = $derived(
+		node.labelSide === 'above' ? 'bottom-full mb-2 flex-col-reverse' : 'top-full mt-2'
+	);
+
+	/** Node box treatment: accent ring + tint + soft glow while power moves. The
+	 *  glow's strength is the node's share of the plant, so the box brightens and
+	 *  dims with real load — riding the box-shadow transition already on the box
+	 *  rather than a halo element of its own. */
 	const circleStyle = $derived.by(() => {
 		const border = hasSoc ? 'transparent' : active ? node.accent : 'var(--border)';
 		if (!active) return `border-color:${border};background:var(--background)`;
 		return [
 			`border-color:${border}`,
 			`background:color-mix(in oklab, ${node.accent} 10%, var(--background))`,
-			`box-shadow:0 0 34px -6px color-mix(in oklab, ${node.accent} 60%, transparent)`
+			`box-shadow:0 0 34px -6px ${nodeGlow(node.accent, share)}`
 		].join(';');
 	});
 </script>
@@ -58,55 +94,25 @@
 	style={`left:${node.at.x * 100}%;top:${node.at.y * 100}%`}
 	class:opacity-70={!active}
 >
-	<div class="relative size-14 sm:size-16 2xl:size-20">
+	{#snippet box()}
 		<div
-			class="flex size-full items-center justify-center rounded-full border-2 transition-[box-shadow,border-color,background] duration-500"
+			class="flex size-full items-center justify-center border-2 transition-[box-shadow,border-color,background] duration-500"
 			style={circleStyle}
 		>
-			<Icon
-				class="size-7 sm:size-8 2xl:size-10"
-				weight="duotone"
-				style={`color:${active ? node.accent : 'var(--muted-foreground)'}`}
-			/>
+			<Icon class="size-7 sm:size-8 2xl:size-10" weight="duotone" style={`color:${iconColor}`} />
 		</div>
-		{#if hasSoc && soc !== undefined}
-			<!-- Circular SOC gauge inset to the circle edge so the battery keeps the
-			     same footprint as the other nodes. -->
-			<svg class="absolute inset-0 size-full -rotate-90" viewBox="0 0 56 56" aria-hidden="true">
-				<circle
-					class="text-border"
-					cx="28"
-					cy="28"
-					r={SOC_R}
-					fill="none"
-					stroke="currentColor"
-					stroke-width="2.5"
-				/>
-				<circle
-					cx="28"
-					cy="28"
-					r={SOC_R}
-					fill="none"
-					stroke={socColor(soc)}
-					stroke-width="2.5"
-					stroke-linecap="round"
-					stroke-dasharray={SOC_C}
-					stroke-dashoffset={SOC_C * (1 - soc / 100)}
-					style="transition:stroke-dashoffset 500ms linear, stroke 500ms linear"
-				/>
-			</svg>
-			<span
-				class="absolute bottom-0 left-1/2 -translate-x-1/2 translate-y-1/2 rounded-full border border-border bg-background px-1.5 text-[0.62rem] font-semibold tabular-nums leading-tight"
-				style={`color:${socColor(soc)}`}
-			>
-				{Math.round(soc)}%
-			</span>
-		{/if}
-	</div>
+		<SocGauge soc={ringSoc} />
+	{/snippet}
+
+	{#if detail}
+		<NodeDetailDialog {detail} triggerClass={`${BOX_CLASS} cursor-pointer`}>
+			{@render box()}
+		</NodeDetailDialog>
+	{:else}
+		<div class={BOX_CLASS}>{@render box()}</div>
+	{/if}
 	<div
-		class={`absolute left-1/2 flex w-24 -translate-x-1/2 flex-col items-center gap-0.5 leading-tight 2xl:w-32 ${
-			node.labelSide === 'above' ? 'bottom-full mb-2 flex-col-reverse' : 'top-full mt-2'
-		}`}
+		class={`absolute left-1/2 flex w-24 -translate-x-1/2 flex-col items-center gap-0.5 leading-tight 2xl:w-32 ${labelBoxClass}`}
 	>
 		<span
 			class="text-[0.65rem] font-medium uppercase tracking-wide text-muted-foreground sm:text-xs 2xl:text-sm"
@@ -119,17 +125,15 @@
 			{#if node.value === undefined}
 				—
 			{:else}
-				<AnimatedNumber value={Math.abs(node.value)} unit="W" />
+				<AnimatedNumber value={Math.abs(node.value)} unit="W" {intervalMs} />
 			{/if}
 			<span class="text-[0.6rem] font-normal text-muted-foreground 2xl:text-xs">W</span>
 		</span>
 		<span
 			class={`flex items-center gap-0.5 text-[0.6rem] uppercase tracking-wide 2xl:text-xs ${node.color}`}
 		>
-			{#if node.flow === 'in'}
-				<ArrowDown class="size-2.5" />
-			{:else if node.flow === 'out'}
-				<ArrowUp class="size-2.5" />
+			{#if FlowIcon}
+				<FlowIcon class="size-2.5" />
 			{/if}
 			{node.state}
 		</span>

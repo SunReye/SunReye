@@ -1,9 +1,16 @@
 import { describe, expect, test } from "bun:test";
 
 import { control, defineProfile, metric } from "./define";
-import { compileComputeExpr, hydrateProfile, type ProfileData } from "./profile-data";
+import { resolveStorage } from "./capabilities";
+import {
+  compileComputeExpr,
+  hydrateProfile,
+  type MetricDataDef,
+  type ProfileData,
+} from "./profile-data";
 import { ROLE_CATALOG, ROLE_NAMES } from "./roles";
 import { profileDataSchema, safeParseProfileData } from "./schema";
+import type { MetricStorage, RegisterType } from "./types";
 
 /** A minimal valid profile built via the SDK, reused across cases. */
 function goodProfile(): ProfileData {
@@ -65,11 +72,15 @@ function goodProfile(): ProfileData {
 describe("role catalog", () => {
   test("CanonicalRole vocabulary is complete and lists the expected roles", () => {
     // Guards against accidental deletion when editing the catalog.
-    expect(ROLE_NAMES.length).toBe(46);
+    expect(ROLE_NAMES.length).toBe(57);
     for (const r of [
       "pv.string.power",
       "battery.power",
       "grid.power",
+      "load.power",
+      "backup.power",
+      "grid.frequency",
+      "pv.string.energy.today",
       "setting.work_mode",
       "inverter.power",
       "inverter.efficiency",
@@ -80,6 +91,11 @@ describe("role catalog", () => {
 
   test("indexed / writable / enum flags are set for representative roles", () => {
     expect(ROLE_CATALOG["pv.string.power"].indexed).toBe(true);
+    // A per-string counter is both indexed and cumulative — one metric per MPPT.
+    expect(ROLE_CATALOG["pv.string.energy.total"]).toMatchObject({
+      indexed: true,
+      kind: "cumulative",
+    });
     expect(ROLE_CATALOG["setting.work_mode"].writable).toBe(true);
     expect(ROLE_CATALOG["inverter.status"].needsEnumLabels).toBe(true);
     expect(ROLE_CATALOG["battery.power"].signed).toBe(true);
@@ -106,6 +122,59 @@ describe("metric() builder defaults", () => {
     expect(m.addresses).toEqual([]);
     expect(m.computeExpr).toEqual({ sum: ["a", "b"] });
   });
+
+  test("a pointer authors an http metric, with the register mirror left neutral", () => {
+    const m = metric("grid/power", {
+      label: "Grid power",
+      group: "grid",
+      unit: "W",
+      pointer: "/em:0/total_act_power",
+      role: "grid.power",
+    });
+
+    expect(m.binding).toEqual({ via: "http", pointer: "/em:0/total_act_power" });
+    expect(m.addresses).toEqual([]);
+  });
+
+  test("refuses a metric that is both addressed and pointed at", () => {
+    // Author-time, because it is a contradiction rather than a preference: the
+    // value cannot live in register 633 and in a JSON body at once.
+    expect(() =>
+      metric("grid/power", {
+        label: "Grid power",
+        group: "grid",
+        addr: 633,
+        pointer: "/em:0/total_act_power",
+      }),
+    ).toThrow("both");
+  });
+
+  test("survives the emit-time binding re-derive that the mirror cannot express", () => {
+    // `defineProfile` re-derives every binding from the final mirror fields so a
+    // patched address cannot leave a stale binding behind. There is no mirror to
+    // re-derive an http binding from, so it must be carried through untouched.
+    const data = defineProfile({
+      id: "meter",
+      name: "Meter",
+      manufacturer: "ACME",
+      version: "1.0.0",
+      metrics: [
+        metric("grid/power", {
+          label: "Grid power",
+          group: "grid",
+          unit: "W",
+          pointer: "/em:0/total_act_power",
+          role: "grid.power",
+        }),
+      ],
+    });
+
+    expect(data.metrics[0]?.binding).toEqual({
+      via: "http",
+      pointer: "/em:0/total_act_power",
+    });
+    expect(safeParseProfileData(data).success).toBe(true);
+  });
 });
 
 describe("profileDataSchema", () => {
@@ -121,7 +190,7 @@ describe("profileDataSchema", () => {
 
   test("rejects duplicate wire addresses", () => {
     const p = goodProfile();
-    p.metrics[2]!.addresses = [672]; // clash with pv1 power
+    setAddressing(p, 2, { addresses: [672] }); // clash with pv1 power
     expect(safeParseProfileData(p).success).toBe(false);
   });
 
@@ -145,13 +214,13 @@ describe("profileDataSchema", () => {
 
   test("rejects a U_DWORD without exactly two addresses", () => {
     const p = goodProfile();
-    p.metrics[2]!.type = "U_DWORD"; // soc has a single address
+    setAddressing(p, 2, { type: "U_DWORD" }); // soc has a single address
     expect(safeParseProfileData(p).success).toBe(false);
   });
 
   test("rejects computeExpr referencing an unknown key", () => {
     const p = goodProfile();
-    p.metrics[5]!.computeExpr = { sum: ["dc.pv1.power", "does.not.exist"] };
+    setCompute(p, 5, { sum: ["dc.pv1.power", "does.not.exist"] });
     expect(safeParseProfileData(p).success).toBe(false);
   });
 
@@ -165,7 +234,7 @@ describe("profileDataSchema", () => {
         computeExpr: { scale: ["dc.total_power", 2] },
       }),
     );
-    p.metrics[5]!.computeExpr = { sum: ["dc.derived"] };
+    setCompute(p, 5, { sum: ["dc.derived"] });
     expect(safeParseProfileData(p).success).toBe(false);
   });
 
@@ -176,20 +245,128 @@ describe("profileDataSchema", () => {
 
   test("accepts a valid clamp computeExpr", () => {
     const p = goodProfile();
-    p.metrics[5]!.computeExpr = { clamp: { key: "dc.pv1.power", min: 0 } };
+    setCompute(p, 5, { clamp: { key: "dc.pv1.power", min: 0 } });
     expect(safeParseProfileData(p).success).toBe(true);
   });
 
   test("rejects a clamp with neither min nor max (no-op)", () => {
     const p = goodProfile();
-    p.metrics[5]!.computeExpr = { clamp: { key: "dc.pv1.power" } } as never;
+    setCompute(p, 5, { clamp: { key: "dc.pv1.power" } });
     expect(safeParseProfileData(p).success).toBe(false);
   });
 
   test("rejects a clamp referencing an unknown key", () => {
     const p = goodProfile();
-    p.metrics[5]!.computeExpr = { clamp: { key: "does.not.exist", min: 0 } };
+    setCompute(p, 5, { clamp: { key: "does.not.exist", min: 0 } });
     expect(safeParseProfileData(p).success).toBe(false);
+  });
+});
+
+/**
+ * Patch a metric's addressing the way an author re-deriving it would.
+ *
+ * After #76 the binding is the source of truth and `defineProfile` emits v2, so
+ * moving only the legacy `type`/`addresses` mirror is invalid authoring — the
+ * agreement check fires and masks whichever lint the test is actually about.
+ * (Before that check was live, `rejects duplicate wire addresses` had started
+ * passing for the wrong reason.)
+ */
+function setAddressing(
+  p: ProfileData,
+  i: number,
+  over: { type?: RegisterType; addresses?: number[] },
+): void {
+  const m = p.metrics[i]!;
+  const type = over.type ?? m.type;
+  const addresses = over.addresses ?? m.addresses;
+  m.type = type;
+  m.addresses = addresses;
+  m.binding = { via: "modbus", addr: addresses, type };
+}
+
+/**
+ * Drop to the v1 wire shape: addressing lives only in `type`/`addresses`, so a
+ * test can patch the mirror freely without the v2 agreement check weighing in.
+ * Useful for the lints that are version-independent.
+ */
+function asV1(p: ProfileData): ProfileData {
+  return {
+    ...p,
+    schemaVersion: 1,
+    metrics: p.metrics.map(({ binding: _binding, ...rest }) => rest as (typeof p.metrics)[number]),
+  };
+}
+
+/**
+ * Set a metric's compute expression and its binding together — the same
+ * re-derivation `setAddressing` does, for the compute arm.
+ */
+function setCompute(p: ProfileData, i: number, expr: unknown): void {
+  const m = p.metrics[i]!;
+  m.computeExpr = expr as never;
+  m.binding = { via: "compute", expr: expr as never };
+}
+
+/** As {@link setCompute}, for the control arm. */
+function setControl(p: ProfileData, i: number, expr: unknown): void {
+  const m = p.metrics[i]!;
+  m.controlExpr = expr as never;
+  m.binding = { via: "control", expr: expr as never };
+}
+
+/** Every issue message the parse produced, so a rule is pinned to its wording. */
+const issues = (p: unknown): string[] => {
+  const r = safeParseProfileData(p);
+  return r.success ? [] : r.error.issues.map((i) => i.message);
+};
+
+describe("profileDataSchema — register width", () => {
+  test("a computed metric carrying addresses is rejected by name", () => {
+    const p = goodProfile();
+    setAddressing(p, 5, { addresses: [700] });
+    expect(issues(p)).toContain("computed metric must have no addresses");
+  });
+
+  test("RAW needs at least one address", () => {
+    const p = goodProfile();
+    setAddressing(p, 2, { type: "RAW" });
+    expect(issues(p)).toEqual([]);
+    setAddressing(p, 2, { addresses: [] });
+    expect(issues(p)).toContain("RAW metric needs at least one address");
+  });
+
+  test("RAW accepts an arbitrary word count", () => {
+    const p = goodProfile();
+    setAddressing(p, 2, { type: "RAW", addresses: [700, 701, 702] });
+    expect(issues(p)).toEqual([]);
+  });
+
+  test("a single-word type reports the count it wanted and got", () => {
+    const p = goodProfile();
+    setAddressing(p, 2, { addresses: [700, 701] });
+    expect(issues(p)).toContain("U_WORD needs 1 address(es), got 2");
+  });
+
+  test("U_DWORD wants exactly two addresses", () => {
+    const p = goodProfile();
+    setAddressing(p, 2, { type: "U_DWORD" });
+    expect(issues(p)).toContain("U_DWORD needs 2 address(es), got 1");
+    setAddressing(p, 2, { addresses: [700, 701] });
+    expect(issues(p)).toEqual([]);
+  });
+
+  test("a control that is also computed and addressed reports both faults", () => {
+    // Asserted at v1. The faults are version-independent, but a metric that is
+    // simultaneously a control, computed AND addressed has no coherent binding
+    // either — so at v2 the agreement check adds a third issue and this
+    // assertion would stop being about the two faults it names.
+    const p = asV1(controlProfile());
+    p.metrics[1]!.computeExpr = { sum: ["settings.max_discharge"] };
+    p.metrics[1]!.addresses = [200];
+    expect(issues(p)).toEqual([
+      "metric cannot be both a control and computed",
+      "control metric must have no addresses",
+    ]);
   });
 });
 
@@ -248,15 +425,15 @@ describe("profileDataSchema — controlExpr", () => {
 
   test("accepts a valid preset control", () => {
     const p = controlProfile();
-    p.metrics[1]!.controlExpr = {
+    setControl(p, 1, {
       preset: { writes: [{ target: "settings.max_discharge", value: 5 }] },
-    };
+    });
     expect(safeParseProfileData(p).success).toBe(true);
   });
 
   test("rejects a control targeting an unknown key", () => {
     const p = controlProfile();
-    p.metrics[1]!.controlExpr = { snapshotToggle: { target: "does.not.exist", lockedValue: 0 } };
+    setControl(p, 1, { snapshotToggle: { target: "does.not.exist", lockedValue: 0 } });
     expect(safeParseProfileData(p).success).toBe(false);
   });
 
@@ -280,13 +457,13 @@ describe("profileDataSchema — controlExpr", () => {
 
   test("rejects a control metric that carries addresses", () => {
     const p = controlProfile();
-    p.metrics[1]!.addresses = [200];
+    setAddressing(p, 1, { addresses: [200] });
     expect(safeParseProfileData(p).success).toBe(false);
   });
 
   test("rejects a metric that is both a control and computed", () => {
     const p = controlProfile();
-    p.metrics[1]!.computeExpr = { sum: ["settings.max_discharge"] };
+    setCompute(p, 1, { sum: ["settings.max_discharge"] });
     expect(safeParseProfileData(p).success).toBe(false);
   });
 });
@@ -356,5 +533,105 @@ describe("compileComputeExpr", () => {
     expect(both({ a: -5 })).toBe(0);
     expect(both({ a: 150 })).toBe(100);
     expect(both({ a: 60 })).toBe(60);
+  });
+});
+
+describe("profileDataSchema — storage and deadband", () => {
+  /** The PV1 measurement of {@link goodProfile}, with storage fields applied. */
+  function withStorage(patch: Partial<MetricDataDef>): ReturnType<typeof safeParseProfileData> {
+    const p = goodProfile();
+    Object.assign(p.metrics[0]!, patch);
+    return safeParseProfileData(p);
+  }
+
+  test("a profile with no storage field parses, and every metric resolves to its default", () => {
+    // The backwards-compatibility proof: the field is optional precisely so no
+    // published profile has to be rebuilt to keep parsing.
+    const parsed = safeParseProfileData(goodProfile());
+    expect(parsed.success).toBe(true);
+    const metrics = parsed.data!.metrics;
+    expect(metrics.every((m) => m.storage === undefined)).toBe(true);
+    expect(resolveStorage(metrics.find((m) => m.key === "settings.workmode")!)).toBe("config");
+    expect(resolveStorage(metrics.find((m) => m.key === "dc.pv1.power")!)).toBe("series");
+  });
+
+  test("accepts each declared storage class", () => {
+    for (const storage of ["series", "config", "none"] as const) {
+      expect(withStorage({ storage }).success).toBe(true);
+    }
+  });
+
+  test("an unknown storage value fails rather than silently defaulting", () => {
+    expect(withStorage({ storage: "ephemeral" as MetricStorage }).success).toBe(false);
+  });
+
+  test("accepts a deadband in the metric's own unit, at and above the scale floor", () => {
+    expect(withStorage({ deadband: 1 }).success).toBe(true);
+    expect(withStorage({ scale: 0.1, deadband: 0.1 }).success).toBe(true);
+  });
+
+  test("deadband 0 fails validation — there is no zero threshold", () => {
+    // `0` as a stand-in for "not applicable" makes it indistinguishable from a
+    // real threshold of zero. Absence means no filtering; nothing else does.
+    expect(withStorage({ deadband: 0 }).success).toBe(false);
+  });
+
+  test("a negative deadband fails validation", () => {
+    expect(withStorage({ deadband: -1 }).success).toBe(false);
+  });
+
+  test("a deadband below the register's quantisation step fails validation", () => {
+    // Unrepresentable, so it is an authoring error rather than a no-op.
+    expect(withStorage({ scale: 0.1, deadband: 0.05 }).success).toBe(false);
+  });
+
+  test("a deadband on a counter or a status enum fails validation", () => {
+    // Both are stored exactly: a threshold makes a counter lag, and on an enum
+    // it can swallow a genuine state transition. Rejected at authoring time
+    // rather than quietly ignored at write time.
+    // Roleless: a mapped role's kind wins over the kWh unit, and this profile's
+    // PV metric is role-mapped as a measurement.
+    expect(
+      withStorage({ role: undefined, index: undefined, unit: "kWh", deadband: 5 }).success,
+    ).toBe(false);
+    expect(withStorage({ kind: "status", deadband: 1 }).success).toBe(false);
+  });
+
+  test("a deadband on a metric that is not stored as a series fails validation", () => {
+    expect(withStorage({ storage: "none", deadband: 1 }).success).toBe(false);
+    expect(withStorage({ storage: "config", deadband: 1 }).success).toBe(false);
+  });
+
+  test("a deadband is accepted on a setting explicitly stored as a series", () => {
+    // The awkward direction, and the reason storage is a field rather than a
+    // derivation: `settings.battery.maximum_charge_current` is written by the
+    // automation engine and worth charting.
+    const p = goodProfile();
+    Object.assign(p.metrics[4]!, { storage: "series", deadband: 1, kind: "measurement" });
+    expect(safeParseProfileData(p).success).toBe(true);
+  });
+
+  test("the metric() builder carries storage and deadband through", () => {
+    const built = metric("ac/l1/voltage", {
+      label: "L1",
+      unit: "V",
+      group: "grid",
+      addr: 598,
+      scale: 0.1,
+      storage: "series",
+      deadband: 1,
+    });
+    expect(built.storage).toBe("series");
+    expect(built.deadband).toBe(1);
+  });
+
+  test("the control() builder carries storage through", () => {
+    const built = control("settings/battery/lock", {
+      label: "Lock",
+      group: "settings",
+      controlExpr: { snapshotToggle: { target: "settings.workmode", lockedValue: 1 } },
+      storage: "none",
+    });
+    expect(built.storage).toBe("none");
   });
 });

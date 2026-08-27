@@ -1,6 +1,11 @@
 export * from "./types";
-export { decode, encodeWord, registerWidth } from "./codec";
-export { ModbusInverter, planReads } from "./driver";
+export { decode, encodeWord, registerWidth, clampReports, resetClampReports } from "./codec";
+export type { ClampReport } from "./codec";
+export { ModbusInverter } from "./driver";
+export { ModbusTransport, planReads } from "./modbus-transport";
+export type { ReadBlock } from "./modbus-transport";
+export { HttpReadError, HttpTransport } from "./http-transport";
+export type { HttpFailureKind } from "./http-transport";
 export { applyComputed } from "./computed";
 export { SimulatedInverter } from "./simulator";
 export { genericSimulate } from "./generic-sim";
@@ -12,15 +17,51 @@ export {
   listProfiles,
   createInverter,
 } from "./registry";
-export { resolveKind, deriveCapabilities, toManifestMetric, buildManifest } from "./capabilities";
+export {
+  resolveKind,
+  resolveStorage,
+  resolveDeadband,
+  statedKind,
+  hasResolvableKind,
+  kindFallbackKeys,
+  kindFallbackReports,
+  resetKindFallbacks,
+  deriveCapabilities,
+  toManifestMetric,
+  buildManifest,
+} from "./capabilities";
+export type {
+  DeadbandInputs,
+  KindFallbackReport,
+  KindInputs,
+  KindResolvable,
+  StorageInputs,
+} from "./capabilities";
 export { entityConstraint, writableMetrics, metricByKey } from "./entities";
 export type { EntityConstraint, EntityValueType } from "./entities";
 // Profile authoring SDK + serializable data model + validator.
 export { ROLE_CATALOG, ROLE_NAMES } from "./roles";
 export type { CanonicalRole, RoleSpec } from "./roles";
 export { control, defineFamily, defineProfile, defineVariant, metric, sumOf } from "./define";
-export type { MetricAdd, MetricOpts, MetricPatch, MetricsOverlay, ModelOverrides } from "./define";
-export { compileComputeExpr, hydrateProfile } from "./profile-data";
+export type {
+  BaseMetricOpts,
+  BoundMetricDef,
+  ControlOpts,
+  MetricAdd,
+  MetricOpts,
+  MetricPatch,
+  MetricsOverlay,
+  ModelOverrides,
+  RoledMetricOpts,
+  UnroledMetricOpts,
+} from "./define";
+export {
+  bindingFor,
+  compileComputeExpr,
+  declarationsOf,
+  hydrateProfile,
+  PROFILE_SCHEMA_VERSIONS,
+} from "./profile-data";
 export type {
   AggregateExpr,
   AggregateMatch,
@@ -28,6 +69,7 @@ export type {
   ControlExpr,
   MetricDataDef,
   ProfileData,
+  ProfileSchemaVersion,
   TopicToKey,
 } from "./profile-data";
 export { profileDataSchema, parseProfileData, safeParseProfileData } from "./schema";

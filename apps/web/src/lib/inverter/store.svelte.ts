@@ -1,6 +1,9 @@
+import { untrack } from "svelte";
 import { SvelteMap } from "svelte/reactivity";
 import { api } from "$lib/api";
 import { uiPrefs } from "$lib/ui-prefs.svelte";
+import { bus } from "$lib/ws/bus.svelte";
+import { backfillSeconds, isFullBackfill, LiveSeries, MetricsFeed } from "./live-metrics";
 import type {
   CanonicalRole,
   InverterCapabilities,
@@ -10,40 +13,39 @@ import type {
   ManifestMetric,
 } from "./types";
 
-/** Trailing time window kept per metric for live sparklines. */
-const WINDOW_MS = 5 * 60 * 1000;
-/** Hard per-metric point cap so a faster-than-1 Hz feed can't grow unbounded. */
-const MAX_POINTS = 5000;
-
-/** Reconnect backoff: first retry, then doubling, capped. */
-const RECONNECT_BASE_MS = 500;
-const RECONNECT_MAX_MS = 30_000;
-
-type Status = "idle" | "connecting" | "live" | "closed";
-
-/** The live-metrics socket handle (Eden `EdenWS`). */
-type MetricsSocket = ReturnType<typeof api.ws.metrics.subscribe>;
-
 /**
  * Single source of truth for the active inverter on the client. Holds the
  * capability manifest (fetched once) and the live sample stream, plus small
  * per-metric ring buffers so KPI cards can draw live sparklines. Everything the
  * UI renders is keyed off `manifest` — no vendor-specific code lives here.
+ *
+ * Transport is not this store's business: samples arrive on the `metrics` topic
+ * of the app's one live socket, which the shell leases. Reconnect replay, the
+ * pre-open send queue and frame parsing all live in the bus; the mechanism that
+ * is left — the ring buffers and the backfill-before-frames ordering — lives in
+ * `live-metrics.ts`, plain TS so it can be tested. What remains here is the
+ * reactive surface and the manifest.
  */
 class InverterStore {
   manifest = $state<InverterManifest | null>(null);
   latest = $state<LiveSample | null>(null);
-  status = $state<Status>("idle");
 
   // Reactive map: metric key → recent points. Plain `Map` in `$state` is NOT
   // reactive on get/set — SvelteMap tracks per-key mutations so sparklines
   // update the instant a new point lands.
   #series = new SvelteMap<string, LivePoint[]>();
-  #ws: MetricsSocket | null = null;
+  #live = new LiveSeries(this.#series);
   #started = false;
-  #reconnectTimer: ReturnType<typeof setTimeout> | null = null;
-  #reconnectAttempts = 0;
   #onVisibility: (() => void) | null = null;
+
+  #feed = new MetricsFeed({
+    backfill: () => this.#backfill(),
+    subscribe: (on) => bus.subscribe("metrics", on),
+    onSample: (sample) => {
+      this.latest = sample;
+      this.#live.appendSample(sample);
+    },
+  });
 
   get capabilities(): InverterCapabilities | null {
     return this.manifest?.capabilities ?? null;
@@ -92,45 +94,38 @@ class InverterStore {
     return this.metrics.filter((m) => m.group === group);
   }
 
-  /** Fetch the manifest, backfill live buffers, and open the live stream. Idempotent. */
-  start(): void {
-    if (this.#started) return;
+  /**
+   * Fetch the manifest and lease the `metrics` topic; the returned disposer
+   * gives the topic back and detaches the visibility listener. Held once, by the
+   * app shell, alongside its lease on the socket itself. Idempotent — a second
+   * call while leased is a no-op that returns the same release.
+   */
+  start(): () => void {
+    if (this.#started) return () => {};
     this.#started = true;
     if (typeof document !== "undefined") {
-      this.#onVisibility = () => this.#handleVisibility();
+      this.#onVisibility = () => this.#feed.setHidden(document.visibilityState === "hidden");
       document.addEventListener("visibilitychange", this.#onVisibility);
     }
-    void this.#init();
-  }
-
-  /**
-   * On tab hide, close the socket so the browser doesn't buffer a backlog of 1 Hz
-   * samples to flush (and animate through) on return. On show, reconnect and
-   * backfill so the buffers jump straight to the newest data instead of replaying
-   * the gap. A tab that was only briefly hidden simply reconnects immediately.
-   */
-  #handleVisibility(): void {
-    if (typeof document === "undefined") return;
-    if (document.visibilityState === "hidden") {
-      this.#teardownSocket();
-      this.status = "idle";
-    } else if (this.#started && this.#ws === null) {
-      this.#clearReconnectTimer();
-      this.#reconnectAttempts = 0;
-      void this.#reconnect();
-    }
-  }
-
-  async #init(): Promise<void> {
     // Load visibility prefs so the metric getter filters from the first render;
     // fire-and-forget — a default (nothing hidden) is the safe fallback and the
     // reactive getter re-filters once it resolves.
     void uiPrefs.load();
-    await this.#loadManifest();
-    // Seed sparklines with the last window of raw samples so they're populated
-    // on load, then attach the live stream which appends from here on.
-    await this.#backfill();
-    this.#connect();
+    void this.#loadManifest();
+    // The lease seeds the sparklines from history before it takes the topic, so
+    // the buffers are populated on load and appended to from there.
+    const release = this.#feed.lease();
+    return () => {
+      release();
+      this.#detachVisibility();
+      this.#started = false;
+    };
+  }
+
+  #detachVisibility(): void {
+    if (!this.#onVisibility || typeof document === "undefined") return;
+    document.removeEventListener("visibilitychange", this.#onVisibility);
+    this.#onVisibility = null;
   }
 
   async #loadManifest(): Promise<void> {
@@ -138,144 +133,47 @@ class InverterStore {
     if (data) this.manifest = data as unknown as InverterManifest;
   }
 
+  /**
+   * Seed the sparkline buffers from history. This is *not* a prime for the live
+   * stream — the `metrics` topic carries no server snapshot, because the 5-minute
+   * window is rows in the database rather than something the socket holds — so it
+   * cannot race one. It runs before the topic's first frame, and again whenever
+   * the tab comes back, so the buffers land on current data.
+   */
   async #backfill(): Promise<void> {
-    // Over-fetch: pull the whole 5-minute buffer across every metric at the
-    // endpoint's max row cap. `desc + limit` returns the most-recent rows, so a
-    // small cap would only reach back a few seconds under a dense/multi-metric
-    // feed and leave the sparkline window unfilled. Downsample-to-1Hz keeps the
-    // client cheap regardless of how many rows come back.
+    // Ask only for what is actually missing. On first load nothing is held, so
+    // this is the whole window; on a resume after a short hide it is the gap
+    // plus a small overlap — by far the most frequent case, and previously the
+    // full 5-minute refetch. The endpoint buckets server-side and answers in a
+    // compact offset encoding, so there is no client row cap to pick any more:
+    // the row count is bounded by window ÷ step, per metric.
+    //
+    // UNTRACKED, and this is load-bearing rather than an optimisation.
+    // `newestHeldMs` walks the `SvelteMap` of buffers, and `lease()` calls this
+    // synchronously from inside the shell's `$effect` (see `(app)/+layout.svelte`
+    // — the await chain has not suspended yet at this line). A tracked read there
+    // makes the effect depend on the very map that `seedBackfill`/`mergeBackfill`
+    // and every live frame then WRITE: the effect invalidates, its cleanup
+    // releases the socket and the metrics lease, it re-runs, re-leases, re-fetches
+    // and writes again. That shipped, and it was a hot restart loop — ~12 cycles a
+    // second of `/api/profile` + `/api/history/recent`, a socket closed before it
+    // could finish opening, and `#consuming` never latching, so not one live frame
+    // was ever applied and every reading on the dashboard rendered as an em dash.
+    // The gap width is an input to a fetch, never a reason to re-run the shell.
+    const seconds = backfillSeconds(
+      untrack(() => this.#live.newestHeldMs()),
+      Date.now(),
+    );
     const { data } = await api.api.history.recent.get({
-      query: { seconds: WINDOW_MS / 1000, limit: 200000 },
+      query: { seconds, stepSeconds: 1 },
     });
     if (!data) return;
-    const byMetric = new Map<string, LivePoint[]>();
-    for (const row of data) {
-      const points = byMetric.get(row.metric) ?? [];
-      points.push({ t: new Date(row.time).getTime(), v: row.value });
-      byMetric.set(row.metric, points);
-    }
-    for (const [key, points] of byMetric) {
-      // Rows arrive newest-first; sort ascending and keep the trailing window.
-      points.sort((a, b) => a.t - b.t);
-      this.#series.set(key, this.#trim(this.#downsampleToHz(points)));
-    }
-  }
-
-  /**
-   * Collapse the backfill to ~1 point/second so it matches the live stream's
-   * density. The raw table can hold denser-than-1 Hz rows, which would make a
-   * reloaded sparkline look far more compressed than one built live. Points are
-   * ascending; keep the last sample in each 1-second bucket.
-   */
-  #downsampleToHz(points: LivePoint[]): LivePoint[] {
-    const out: LivePoint[] = [];
-    let bucket = Number.NaN;
-    for (const p of points) {
-      const b = Math.floor(p.t / 1000);
-      if (b === bucket) out[out.length - 1] = p;
-      else {
-        out.push(p);
-        bucket = b;
-      }
-    }
-    return out;
-  }
-
-  /** Keep points within the trailing window, bounded by the hard cap. */
-  #trim(points: LivePoint[]): LivePoint[] {
-    const cutoff = (points.at(-1)?.t ?? 0) - WINDOW_MS;
-    const windowed = points.filter((p) => p.t >= cutoff);
-    return windowed.length > MAX_POINTS ? windowed.slice(-MAX_POINTS) : windowed;
-  }
-
-  #connect(): void {
-    // Drop any prior socket first; its handlers are identity-guarded on `#ws`, so
-    // once it's no longer the current socket they become no-ops (no stray
-    // reconnect from a superseded connection).
-    this.#teardownSocket();
-    this.status = "connecting";
-    const ws = api.ws.metrics.subscribe();
-    ws.subscribe((message: { data: unknown }) => {
-      if (this.#ws !== ws) return; // superseded socket flushing late
-      const sample = message.data as LiveSample;
-      this.latest = sample;
-      this.status = "live";
-      const t = new Date(sample.time).getTime();
-      const cutoff = t - WINDOW_MS;
-      for (const [key, v] of Object.entries(sample.metrics)) {
-        // One copy per metric per tick (new reference so consumers re-render):
-        // slice off expired points from the front and append the new one. At a
-        // 1 Hz feed this runs every second for every metric, so the old
-        // spread + filter pair (two full copies each) was the main source of
-        // GC pressure — periodic collection pauses showed up as animation hiccups.
-        const prev = this.#series.get(key) ?? [];
-        let start = 0;
-        while (start < prev.length && prev[start]!.t < cutoff) start++;
-        if (prev.length - start >= MAX_POINTS) start = prev.length - MAX_POINTS + 1;
-        const next = prev.slice(start);
-        next.push({ t, v });
-        this.#series.set(key, next);
-      }
-    });
-    ws.on("open", () => {
-      if (this.#ws !== ws) return;
-      this.#reconnectAttempts = 0; // healthy connection resets backoff
-    });
-    ws.on("close", () => {
-      if (this.#ws !== ws) return; // intentional/superseded close — don't retry
-      this.#ws = null;
-      this.status = "connecting";
-      this.#scheduleReconnect();
-    });
-    // Surface transport errors as a close so the single reconnect path handles them.
-    ws.on("error", () => ws.close());
-    this.#ws = ws;
-  }
-
-  /** Reconnect after an unexpected drop: backfill the gap, then reopen the stream. */
-  async #reconnect(): Promise<void> {
-    if (!this.#started) return;
-    // Backfill first so the buffers land on the newest data; nothing stale is
-    // queued because the socket was closed while we were away.
-    await this.#backfill();
-    if (!this.#started) return;
-    this.#connect();
-  }
-
-  #scheduleReconnect(): void {
-    if (this.#reconnectTimer !== null || !this.#started) return;
-    const delay = Math.min(RECONNECT_MAX_MS, RECONNECT_BASE_MS * 2 ** this.#reconnectAttempts);
-    this.#reconnectAttempts += 1;
-    this.#reconnectTimer = setTimeout(() => {
-      this.#reconnectTimer = null;
-      void this.#reconnect();
-    }, delay);
-  }
-
-  #clearReconnectTimer(): void {
-    if (this.#reconnectTimer !== null) {
-      clearTimeout(this.#reconnectTimer);
-      this.#reconnectTimer = null;
-    }
-  }
-
-  /** Close the current socket without scheduling a reconnect (identity-guarded). */
-  #teardownSocket(): void {
-    const ws = this.#ws;
-    this.#ws = null; // clear first so the socket's close handler no-ops
-    ws?.close();
-  }
-
-  /** Close the stream and detach listeners (call on shell teardown). */
-  stop(): void {
-    this.#clearReconnectTimer();
-    this.#teardownSocket();
-    if (this.#onVisibility && typeof document !== "undefined") {
-      document.removeEventListener("visibilitychange", this.#onVisibility);
-      this.#onVisibility = null;
-    }
-    this.#started = false;
-    this.status = "closed";
+    // A full-width request is authoritative about the window and replaces the
+    // buffers; a gap request only describes the gap and merges. The predicate is
+    // `isFullBackfill` rather than an inline comparison so the suite exercises
+    // THIS branch instead of a copy of it.
+    if (isFullBackfill(seconds)) this.#live.seedBackfill(data);
+    else this.#live.mergeBackfill(data);
   }
 }
 

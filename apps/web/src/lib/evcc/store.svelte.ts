@@ -1,10 +1,25 @@
-import type { EvccLoadpoint, EvccState } from "server/src/evcc";
+import type { EvccLoadpoint, EvccState } from "@SunReye/contracts/evcc";
 import { api } from "$lib/api";
 import * as m from "$lib/paraglide/messages";
+import { bus } from "$lib/ws/bus.svelte";
+import { EvccFeed, isActive, leaseEvcc, totalChargePower } from "./feed";
 
 export type { EvccLoadpoint };
 
 export type EvccMode = "off" | "pv" | "minpv" | "now";
+
+/**
+ * The charge limit to display for a loadpoint, in % (0 = no limit).
+ *
+ * EVCC resolves three layers into one: the durable per-vehicle limit, the
+ * per-session loadpoint override, and `effectiveLimitSoc` as the result. Prefer
+ * the effective value — it is what EVCC's own UI shows — and only fall back to
+ * the session override on an EVCC old enough not to publish it. A `0` from
+ * either layer is genuinely "no limit", so it must not fall through.
+ */
+export function displayLimitSoc(lp: EvccLoadpoint): number {
+  return lp.effectiveLimitSoc ?? lp.limitSoc ?? 0;
+}
 
 /** EVCC charge modes with their display labels, in EVCC's own UI order. */
 export const EVCC_MODES: { value: EvccMode; label: () => string }[] = [
@@ -14,37 +29,46 @@ export const EVCC_MODES: { value: EvccMode; label: () => string }[] = [
   { value: "now", label: m.evcc_mode_now },
 ];
 
-type EvccSocket = ReturnType<typeof api.ws.evcc.subscribe>;
-
-/** Reconnect backoff after an unexpected socket drop. */
-const RECONNECT_BASE_MS = 1000;
-const RECONNECT_MAX_MS = 15_000;
-
 /**
- * Server-held EVCC state on the client, streamed over a WebSocket. The server
- * ingests EVCC's MQTT push, coalesces it, and broadcasts each fresh snapshot;
- * the socket's `open` handler also sends the current snapshot so a new
- * subscriber paints immediately. Consumers (power-flow diagram, EV card) each
- * hold a {@link connect} lease from an `$effect`; the socket is open while at
- * least one lease is live, with exponential-backoff reconnect on drops.
+ * Server-held EVCC state on the client, fed by the `evcc` topic of the app's
+ * one live socket. The server ingests EVCC's MQTT push, coalesces it, and
+ * broadcasts each fresh snapshot; it also replays the current snapshot to a new
+ * subscriber, so the first paint comes off the subscribe itself — there is no
+ * HTTP prime to race it.
  *
- * An initial `GET /api/evcc` fetch on connect covers the brief window before the
- * socket handshake completes, so the first paint never waits on the WS.
+ * Consumers (power-flow diagram, EV card, peak-shaving panel) each hold a
+ * {@link lease} from an `$effect`. The bus refcounts the topic, so those three
+ * cost one `sub` frame between them and none of them touches the connection —
+ * that is leased once, by the app shell.
+ *
+ * Transport, reconnect replay and frame parsing all live in the bus; what is
+ * left here is EVCC's domain: the snapshot, the derived views of it, and the
+ * command writes.
  */
 class EvccStore {
   state = $state<EvccState | null>(null);
-  /** True once the first snapshot (fetch or socket) has arrived. */
-  loaded = $state(false);
 
-  #leases = 0;
-  #ws: EvccSocket | null = null;
-  #reconnectTimer: ReturnType<typeof setTimeout> | null = null;
-  #reconnectAttempts = 0;
+  /**
+   * Exponentially-smoothed gap between live EVCC pushes (ms). `AnimatedNumber`
+   * stretches its glide across it so EVCC-fed numbers (charge power, session
+   * energy) drift continuously between pushes instead of snapping and freezing.
+   * Measured and bounded in {@link EvccFeed} — EVCC's push rhythm is its own,
+   * not the metrics feed's.
+   */
+  cadenceMs = $state(1000);
+
+  #feed = new EvccFeed({
+    onState: (next) => {
+      this.state = next;
+    },
+    onCadence: (cadenceMs) => {
+      this.cadenceMs = cadenceMs;
+    },
+  });
 
   /** Integration on + EVCC publishing + at least one loadpoint to show. */
   get active(): boolean {
-    const s = this.state;
-    return s !== null && s.reachable && s.loadpoints.length > 0;
+    return isActive(this.state);
   }
 
   get loadpoints(): EvccLoadpoint[] {
@@ -53,85 +77,15 @@ class EvccStore {
 
   /** Total charge power across loadpoints (W) — the diagram's charger node. */
   get chargePower(): number {
-    return this.loadpoints.reduce((sum, lp) => sum + lp.chargePower, 0);
-  }
-
-  #apply(next: EvccState | null): void {
-    this.state = next;
-    this.loaded = true;
-  }
-
-  /** One-shot HTTP read for the first paint (and the post-reconnect backfill). */
-  async #refresh(): Promise<void> {
-    const { data, error } = await api.api.evcc.get();
-    if (error) return; // Transient: keep the last snapshot.
-    this.#apply((data as EvccState | null) ?? null);
+    return totalChargePower(this.state);
   }
 
   /**
-   * Lease the live stream from a component `$effect`; returns the cleanup. The
-   * socket opens with the first lease and closes with the last, so any number of
-   * consumers share one connection.
+   * Lease the EVCC topic from a component `$effect`; returns the cleanup. Any
+   * number of consumers share one subscription, and the socket is untouched.
    */
-  connect(): () => void {
-    if (this.#leases++ === 0) {
-      void this.#refresh();
-      this.#openSocket();
-    }
-    return () => {
-      if (--this.#leases === 0) this.#teardown();
-    };
-  }
-
-  #openSocket(): void {
-    this.#teardownSocket();
-    const ws = api.ws.evcc.subscribe();
-    ws.subscribe((message: { data: unknown }) => {
-      if (this.#ws !== ws) return; // superseded socket flushing late
-      const raw = message.data;
-      this.#apply((typeof raw === "string" ? JSON.parse(raw) : raw) as EvccState | null);
-    });
-    ws.on("open", () => {
-      if (this.#ws !== ws) return;
-      this.#reconnectAttempts = 0; // healthy connection resets backoff
-    });
-    ws.on("close", () => {
-      if (this.#ws !== ws) return; // intentional/superseded close — don't retry
-      this.#ws = null;
-      this.#scheduleReconnect();
-    });
-    // Surface transport errors as a close so the single reconnect path handles them.
-    ws.on("error", () => ws.close());
-    this.#ws = ws;
-  }
-
-  #scheduleReconnect(): void {
-    if (this.#reconnectTimer !== null || this.#leases === 0) return;
-    const delay = Math.min(RECONNECT_MAX_MS, RECONNECT_BASE_MS * 2 ** this.#reconnectAttempts);
-    this.#reconnectAttempts += 1;
-    this.#reconnectTimer = setTimeout(() => {
-      this.#reconnectTimer = null;
-      if (this.#leases === 0) return;
-      // Backfill over the gap, then reopen (the socket's open handler re-sends
-      // the current snapshot too, but this covers a slow handshake).
-      void this.#refresh();
-      this.#openSocket();
-    }, delay);
-  }
-
-  #teardownSocket(): void {
-    const ws = this.#ws;
-    this.#ws = null; // drop identity first so its handlers become no-ops
-    ws?.close();
-  }
-
-  #teardown(): void {
-    if (this.#reconnectTimer !== null) {
-      clearTimeout(this.#reconnectTimer);
-      this.#reconnectTimer = null;
-    }
-    this.#reconnectAttempts = 0;
-    this.#teardownSocket();
+  lease(): () => void {
+    return leaseEvcc(bus, this.#feed);
   }
 
   /** Send a loadpoint command; state converges via EVCC's republish over WS. */

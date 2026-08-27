@@ -24,25 +24,36 @@ Motion should clarify:
 
 Avoid decorative animation that delays reading or makes the app feel noisy.
 
+One thing here moves continuously and is not decoration: the power-flow diagram's comet streams.
+They are the reading — see "Continuous motion as a status display" below before touching them.
+
 ### 4. Use the right menu for the job
 
 Do not force every section into the same navigation shape.
 
-This app will likely need all of these:
+This app uses:
 
-- top navigation for broad product areas
-- sidebar navigation for dense workspace flows
-- breadcrumb navigation for deep object hierarchies
-- tabs for sibling views inside one entity
+- the sidebar for every top-level destination
+- the settings rail for that section's fourteen panels
+- a back link (or a breadcrumb, past one hop) for drill-in
+- tabs only for two renderings of the same data
 
 ### 5. Preserve reading flow
 
-This product is content-heavy. Summaries, transcripts, chunk analysis, and review screens should prioritize:
+This product is number-heavy: live power flows, day counters, cost and energy charts, automation
+plans. Those screens should prioritize:
 
 - readable widths
 - clear section hierarchy
 - sticky context where useful
-- minimal layout jumping
+- minimal layout jumping — an empty or loading block is the same height as the thing it replaces
+
+### 5a. Spend the layout vocabulary, do not invent one
+
+Measure, gutter, rhythm, grid columns and chart heights are decided once in
+`src/lib/layout/tokens.ts` and rendered by the primitives in `src/lib/components/layout/`. Pages
+compose those; they do not hand-roll containers. This is enforced by tests, not by review — see
+"Styling and spacing guidance" below and the `layout-system` skill.
 
 ### 6. Prefer shadcn composition over custom UI
 
@@ -61,50 +72,47 @@ This repo should default to **shadcn-svelte-first** UI implementation.
 
 ### Root layout: app-wide shell
 
-Keep the existing responsibility of `apps/web/src/routes/+layout.svelte`:
+`apps/web/src/routes/+layout.svelte` owns app providers and global state only. The authenticated
+chrome lives one level down.
 
-- app providers
-- global header
-- full-height shell
-- scroll container for page content
+### `(app)/+layout.svelte`: the workspace shell
 
-This is the correct place for:
-
-- global theme state
-- auth/session shell later
-- mobile nav trigger later
+- the sidebar (`lib/components/app-sidebar.svelte`) and the top header
+- the header height, published once as `[--app-header-h: …]` and consumed by both the header and
+  the overview's viewport calc — never restated as a literal in a second file
+- `<main … overflow-x-clip>`: horizontal overflow is clipped, never scrolled
 
 ### Nested layouts: section shells
 
-As the app grows, use nested layouts for the major sections instead of building everything in the root layout.
-
-Recommended direction:
+The one section shell today is `(app)/settings/+layout.svelte`: it renders the nav rail plus the
+`PageShell`, so the fourteen settings panels are bare content with no shell of their own.
 
 ```text
-apps/web/src/routes/
-  +layout.svelte                  # global providers + global shell
-  (marketing)/
-    +layout.svelte                # optional public/landing shell
-    +page.svelte
-  (app)/
-    +layout.svelte                # authenticated workspace shell
-    dashboard/+page.svelte
-    meetings/
-      +page.svelte                # meetings list
-      [meetingId]/
-        +layout.svelte            # meeting header + breadcrumb + tabs
-        +page.svelte              # summary tab default route
-        timeline/+page.svelte
-        speakers/+page.svelte
-        files/+page.svelte
+apps/web/src/routes/(app)/
+  +layout.svelte                  # sidebar + header + main
+  +page.svelte                    # overview (bespoke, viewport-pinned on lg+)
+  statistics/+page.svelte         # wide
+  history/+page.svelte            # wide
+  system/+page.svelte             # wide
+  controls/+page.svelte           # narrow
+  automations/
+    +page.svelte                  # wide
+    peak-shaving/+page.svelte     # wide, back link in PageShell's `lead`
+  settings/
+    +layout.svelte                # nav rail + the shell for every panel
+    inverter/+page.svelte         # nested: no shell of its own
+    …thirteen more panels
 ```
 
 ### Why this structure works
 
-- the **root layout** owns app-wide chrome
-- the **workspace layout** owns dense navigation like a sidebar
-- the **meeting layout** owns context for one meeting record
+- the **root layout** owns providers
+- the **(app) layout** owns app-wide chrome
+- the **settings layout** owns the rail and the shell its panels share
 - the **child pages** stay small and focused
+
+`routes/(app)/page-shells.test.ts` discovers these pages from disk and fails on a new one until its
+shape is declared, so the tree above cannot silently go stale.
 
 ---
 
@@ -112,437 +120,114 @@ apps/web/src/routes/
 
 ## 1. Top navigation
 
-Use for broad, low-density sections.
+The `(app)` header is thin on purpose: sidebar trigger, then the active page's title and subtitle,
+which each page sets through the `pageHeader` store (`lib/page-header.svelte.ts`). It is not a
+navigation surface — with a sidebar in place, a second row of destinations only splits the answer to
+"where am I".
 
-Good for:
-
-- Home
-- Dashboard
-- Meetings
-- Templates
-- Settings
-
-Recommended component:
-
-- start with the current `Header.svelte`
-- move to **shadcn-svelte `navigation-menu`** when the header needs grouped destinations or richer dropdowns
-
-Use top navigation when:
-
-- there are only a few primary destinations
-- the user should always understand the overall app structure
-- the section does not require many nested menu items
-
-Do **not** use top navigation alone for dense workspace navigation once meetings, transcripts, runs, outputs, and review tools expand.
-
-### shadcn-svelte note
-
-`NavigationMenu` is best when the header has grouped links or richer dropdown content.
-
-Install when needed:
-
-```bash
-bun x shadcn-svelte@latest add navigation-menu
-```
-
-Basic usage:
-
-```svelte
-<script lang="ts">
-	import * as NavigationMenu from "$lib/components/ui/navigation-menu/index.js";
-</script>
-
-<NavigationMenu.Root>
-	<NavigationMenu.List>
-		<NavigationMenu.Item>
-			<NavigationMenu.Trigger>Meetings</NavigationMenu.Trigger>
-			<NavigationMenu.Content>
-				<NavigationMenu.Link href="/meetings">All meetings</NavigationMenu.Link>
-			</NavigationMenu.Content>
-		</NavigationMenu.Item>
-	</NavigationMenu.List>
-</NavigationMenu.Root>
-```
-
-If custom anchors are needed, use the component's child/snippet pattern rather than replacing its internal structure.
+`navigation-menu` is deliberately NOT installed. Add it only if the header ever needs grouped
+dropdown destinations, which it does not today.
 
 ---
 
 ## 2. Sidebar navigation
 
-Use for the authenticated workspace once the app becomes more tool-like.
+This is the app's primary navigation, and it is already built: `lib/components/app-sidebar.svelte`
+inside `Sidebar.Provider` in `(app)/+layout.svelte` — `collapsible="icon"`, one monitoring group
+whose items are role-gated, and Settings in the footer for admins.
 
-Good for:
-
-- dashboard/workspace shell
-- meeting collections
-- jobs/runs/history
-- admin/settings areas
-
-Recommended component:
-
-- **shadcn-svelte `sidebar`**
-
-Install when needed:
-
-```bash
-bun x shadcn-svelte@latest add sidebar
-```
-
-Use sidebar navigation when:
-
-- users spend long sessions in the product
-- there are multiple work areas
-- the app is more like a workspace than a marketing site
-
-Recommended placement:
-
-- top header stays thin
-- sidebar owns section-level navigation
-- main content area stays route-driven
-
-The sidebar component is designed to live in a layout, which maps well to SvelteKit.
-
-Example shape:
-
-```svelte
-<script lang="ts">
-	import * as Sidebar from "$lib/components/ui/sidebar/index.js";
-	import AppSidebar from "$lib/components/app-sidebar.svelte";
-
-	let { children } = $props();
-</script>
-
-<Sidebar.Provider>
-	<AppSidebar />
-
-	<main class="min-w-0 flex-1">
-		<Sidebar.Trigger />
-		{@render children()}
-	</main>
-</Sidebar.Provider>
-```
+Extend it rather than adding a parallel navigation surface: a new top-level screen is a new
+`Sidebar.MenuItem`. Settings is the one exception — its fourteen panels would swamp the sidebar, so
+they live in the settings layout's own rail.
 
 ---
 
 ## 3. Breadcrumb navigation
 
-Use breadcrumbs for deep drill-in paths.
+Use breadcrumbs for deep drill-in paths, near the page title, as a supplement to the sidebar.
 
-Good for:
-
-- `Meetings / Q1 planning / Speakers`
-- `Templates / Management summary / Edit`
-- `Runs / Job 42 / Chunk 7`
-
-Recommended component:
-
-- **shadcn-svelte `breadcrumb`**
-
-Install when needed:
-
-```bash
-bun x shadcn-svelte@latest add breadcrumb
-```
-
-Breadcrumbs should supplement top nav or sidebar nav, not replace them.
-
-Use them near the page title for orientation inside deep content.
+There is exactly one drill-in today (`Automations / Peak shaving`), and it spends a back link in
+`PageShell`'s `lead` snippet rather than a full breadcrumb — one hop does not need a trail. Reach
+for `breadcrumb` (already installed) at two hops.
 
 ---
 
 ## 4. Tabs
 
-Use tabs for sibling views of the **same entity**.
+Use tabs for sibling views of the **same data**, where the switch is a way of looking rather than a
+place to be.
 
-Good for:
-
-- Summary / Timeline / Speakers / Files
-- Overview / Prompt / Output settings
-- Run details / Logs / Metrics
-
-Recommended component:
-
-- **shadcn-svelte `tabs`**
-
-Install when needed:
-
-```bash
-bun x shadcn-svelte@latest add tabs
-```
-
-Official composition is:
-
-- `Tabs.Root`
-- `Tabs.List`
-- `Tabs.Trigger`
-- `Tabs.Content`
-
-Basic usage:
+The app has exactly one, and it is the shape to copy: `lib/components/inverter/time-of-use.svelte`
+switches the time-of-use schedule between `visual` and `table`. Same slots, two renderings, no URL
+worth linking to.
 
 ```svelte
 <script lang="ts">
-	import * as Tabs from "$lib/components/ui/tabs/index.js";
+	import * as Tabs from '$lib/components/ui/tabs';
+	import * as m from '$lib/paraglide/messages';
 </script>
 
-<Tabs.Root value="summary" class="w-full">
-	<Tabs.List>
-		<Tabs.Trigger value="summary">Summary</Tabs.Trigger>
-		<Tabs.Trigger value="speakers">Speakers</Tabs.Trigger>
+<Tabs.Root value="visual">
+	<Tabs.List variant="line">
+		<Tabs.Trigger value="visual">{m.tou_tab_visual()}</Tabs.Trigger>
+		<Tabs.Trigger value="table">{m.tou_tab_table()}</Tabs.Trigger>
 	</Tabs.List>
-
-	<Tabs.Content value="summary">Summary content</Tabs.Content>
-	<Tabs.Content value="speakers">Speakers content</Tabs.Content>
+	<Tabs.Content value="visual" class="pt-2">…</Tabs.Content>
+	<Tabs.Content value="table" class="pt-2">…</Tabs.Content>
 </Tabs.Root>
 ```
 
 ### Tabs rule for this app
 
-Use `Tabs` for **local content switching inside a route**.
+Use `Tabs` for **local content switching inside a route**. Use SvelteKit **subroutes** for anything
+that deserves its own URL — the sidebar and the settings rail are both link navigation, not tabs.
+Never repurpose the ARIA tabs widget for page navigation: style links to look like tabs instead.
 
-Use SvelteKit **subroutes** for major views that deserve their own URL.
+Three more distinctions this app has already had to make:
 
-That means:
-
-- use `Tabs.Root` + `Tabs.Content` for local panels
-- use nested layouts + child routes for linkable screens
-- if route navigation should look like tabs, style normal links like tabs instead of repurposing an ARIA tabs widget for page navigation
-
-#### Good use of `Tabs`
-
-- a summary page switching between `Overview`, `Action items`, and `Risks`
-- a settings page switching between `General` and `Advanced`
-- a side panel switching between `Raw output` and `Rendered preview`
-
-#### Good use of subroutes
-
-- `Summary`, `Timeline`, `Speakers`, and `Files` as real meeting views
-- template editor sections with their own loaders/actions
-- run detail screens with shareable URLs
+- **Tabs vs. a range switcher.** Picking "7 days / 30 days / 12 months" is not a tab, it is a
+  parameter. That is `RangeSwitcher`, which becomes a `Select` on a phone past three options
+  (`needsCompactSwitcher`).
+- **Tabs vs. collapsible sections.** Long screens like /statistics stack `Section`s the reader
+  folds, so several groups can be open at once. Tabs would hide the comparison.
+- **Tabs vs. a subroute.** Peak shaving is a screen with its own live feeds and its own toolbar,
+  so it is `automations/peak-shaving/+page.svelte`, not a fourth tab on /automations.
 
 ---
 
-## Layouts + subroutes + Tabs: recommended pattern
+## Layout patterns by screen type
 
-This is the preferred pattern for meeting detail pages.
+Every screen picks one of four shapes, and `routes/(app)/page-shells.test.ts` holds it to the choice
+— along with the two shapes that are not screens at all, a nested settings panel and a redirect stub.
+The measure is always stated on the tag, even when it matches the default — an unstated width is a
+width nobody chose.
 
-### Route structure
+### 1. Dashboard screens — `<PageShell width="wide">`
 
-```text
-apps/web/src/routes/(app)/meetings/[meetingId]/
-  +layout.svelte
-  +page.svelte              # default tab: summary
-  timeline/+page.svelte
-  speakers/+page.svelte
-  files/+page.svelte
-```
+/statistics, /history, /system, /automations, /automations/peak-shaving. Charts and dense readouts
+inside stacked `Section` cards. `max-w-7xl`, uncapped again at 2xl.
 
-### Why this is the right pattern
+### 2. Form and list screens — `<PageShell width="narrow">`
 
-- the meeting header stays mounted
-- the tab bar stays mounted
-- each tab is a real route
-- deep-linking works
-- reloading works
-- each child page can fetch only what it needs
+/controls. Read line by line, so the measure caps at `max-w-3xl`; two inputs side by side is worse
+than stacked at 412px.
 
-### Example meeting layout with subroute navigation
+### 3. Settings panels — no shell at all
 
-```svelte
-<script lang="ts">
-	import { page } from "$app/state";
-	import * as Breadcrumb from "$lib/components/ui/breadcrumb/index.js";
+The settings layout supplies the `PageShell` and caps the panel column at the narrow measure beside
+its `md:` rail. A panel that grows a shell of its own doubles the gutter and caps the measure twice,
+so panels root at their content.
 
-	let { children } = $props();
+### 4. Bespoke — the overview
 
-	const basePath = $derived(`/meetings/${page.params.meetingId}`);
-	const items = $derived([
-		{ href: basePath, label: "Summary" },
-		{ href: `${basePath}/timeline`, label: "Timeline" },
-		{ href: `${basePath}/speakers`, label: "Speakers" },
-		{ href: `${basePath}/files`, label: "Files" }
-	]);
+`(app)/+page.svelte` is a kiosk grid pinned to the viewport on lg+. The grid, the height and the
+overflow all belong on the very element `PageShell` owns, and `PageShell` deliberately takes no
+`class` prop — so the overview owns its root and still spends `{SHELL_PAD}`, `{SHELL_GAP}` and the
+header-height variable. It is the documented exception, not a precedent: the next page that wants
+one has to argue it into that test.
 
-	function isActive(href: string) {
-		return page.url.pathname === href;
-	}
-</script>
-
-<div class="mx-auto flex w-full max-w-6xl flex-col gap-6 px-4 py-6">
-	<Breadcrumb.Root>
-		<Breadcrumb.List>
-			<Breadcrumb.Item>
-				<Breadcrumb.Link href="/meetings">Meetings</Breadcrumb.Link>
-			</Breadcrumb.Item>
-			<Breadcrumb.Separator />
-			<Breadcrumb.Item>
-				<Breadcrumb.Page>Current meeting</Breadcrumb.Page>
-			</Breadcrumb.Item>
-		</Breadcrumb.List>
-	</Breadcrumb.Root>
-
-	<header class="flex flex-col gap-2">
-		<h1 class="text-2xl font-semibold">Meeting title</h1>
-		<p class="text-sm text-neutral-400">
-			Transcript, summary, and analysis views for one meeting.
-		</p>
-	</header>
-
-	<nav class="border-b border-neutral-800">
-		<ul class="flex flex-wrap gap-2">
-			{#each items as item (item.href)}
-				<li>
-					<a
-						href={item.href}
-						class={`inline-flex rounded-t-md border border-b-0 px-3 py-2 text-sm transition-colors ${
-							isActive(item.href)
-								? "border-neutral-700 bg-neutral-900 text-neutral-100"
-								: "border-transparent text-neutral-400 hover:text-neutral-200"
-						}`}
-					>
-						{item.label}
-					</a>
-				</li>
-			{/each}
-		</ul>
-	</nav>
-
-	<section>
-		{@render children()}
-	</section>
-</div>
-```
-
-### Example local `Tabs` usage inside the default meeting summary route
-
-`apps/web/src/routes/(app)/meetings/[meetingId]/+page.svelte`
-
-```svelte
-<script lang="ts">
-	import * as Tabs from "$lib/components/ui/tabs/index.js";
-</script>
-
-<Tabs.Root value="overview" class="w-full">
-	<Tabs.List class="w-full justify-start">
-		<Tabs.Trigger value="overview">Overview</Tabs.Trigger>
-		<Tabs.Trigger value="actions">Action items</Tabs.Trigger>
-		<Tabs.Trigger value="risks">Risks</Tabs.Trigger>
-	</Tabs.List>
-
-	<Tabs.Content value="overview" class="pt-4">
-		<p class="text-sm text-neutral-300">Management-ready summary content.</p>
-	</Tabs.Content>
-
-	<Tabs.Content value="actions" class="pt-4">
-		<p class="text-sm text-neutral-300">Action items extracted from the meeting.</p>
-	</Tabs.Content>
-
-	<Tabs.Content value="risks" class="pt-4">
-		<p class="text-sm text-neutral-300">Open questions, blockers, and risk signals.</p>
-	</Tabs.Content>
-</Tabs.Root>
-```
-
-### Practical note
-
-This pattern keeps responsibilities clear:
-
-- the nested `+layout.svelte` owns breadcrumb + subroute navigation
-- the child route owns the actual screen content
-- `Tabs` still exist, but only where the UI is switching local panels inside one route
-
----
-
-## Suggested layout patterns by screen type
-
-## 1. Public / lightweight pages
-
-Examples:
-
-- landing page
-- sign-in page
-- about/help pages
-
-Pattern:
-
-- top navigation only
-- centered content width
-- minimal chrome
-
-Use:
-
-- `Header.svelte` or `navigation-menu`
-- no sidebar
-- limited motion
-
----
-
-## 2. Workspace home / dashboard
-
-Examples:
-
-- dashboard
-- meetings list
-- recent runs
-
-Pattern:
-
-- sidebar + top bar
-- large content area
-- cards, tables, filters
-
-Use:
-
-- `sidebar`
-- `breadcrumb` only if depth increases
-- optional `tabs` inside cards or detail panes
-
----
-
-## 3. Detail workspace pages
-
-Examples:
-
-- meeting detail
-- template detail
-- run detail
-
-Pattern:
-
-- breadcrumb near title
-- sticky local header if useful
-- subroute navigation near the title, optionally styled like tabs
-
-Use:
-
-- `breadcrumb`
-- `tabs`
-- nested `+layout.svelte`
-
-This will likely be the dominant pattern for the real product.
-
----
-
-## 4. Long-form reading/review pages
-
-Examples:
-
-- transcript review
-- final summary review
-- chunk-by-chunk QA
-
-Pattern:
-
-- stable outer shell
-- reading column with good line length
-- sticky metadata/actions
-- avoid cramped, dashboard-like density
-
-Use:
-
-- sidebar only for global navigation
-- local page header
-- tabs only if there are a few sibling reading modes
+Whatever the shape, page-level controls go in `PageShell`'s `toolbar` snippet and "where I came
+from" goes in `lead`; both share one row, so a back link never costs a second one.
 
 ---
 
@@ -561,70 +246,39 @@ Recommended primitives:
 
 Good uses in this app:
 
-- mobile menu opening
-- inline alerts
+- the sidebar sheet opening on a phone
+- inline alerts and connection-lost banners
 - empty states appearing
-- filter panels expanding
-- route content changing inside a stable shell
+- a `Section` folding — `SectionBody` already does this, with reduced motion handled
+- route content changing inside the stable `(app)` shell
 
-Example:
-
-```svelte
-<script lang="ts">
-	import { prefersReducedMotion } from "svelte/motion";
-	import { fade, fly } from "svelte/transition";
-
-	let open = $state(false);
-</script>
-
-{#if open}
-	<div
-		in:fly={{ y: prefersReducedMotion.current ? 0 : 8, duration: 180 }}
-		out:fade={{ duration: 120 }}
-	>
-		Animated panel
-	</div>
-{/if}
-```
+Distance stays small and the duration short: `in:fly={{ y: 8, duration: 180 }}` paired with
+`out:fade`, with the `y` dropped to `0` under `prefersReducedMotion.current`.
 
 ### Use `animate:flip` for reordering lists
 
 Use this when rows/cards change position because of:
 
-- sorting
-- filtering
-- status changes
-- drag-and-drop later
+- sorting or filtering an automation list
+- a status change reordering entries
+- the customize mode on /statistics moving a section
 
-Example:
-
-```svelte
-<script lang="ts">
-	import { flip } from "svelte/animate";
-
-	let items = $state([
-		{ id: "1", label: "Chunk 1" },
-		{ id: "2", label: "Chunk 2" }
-	]);
-</script>
-
-{#each items as item (item.id)}
-	<div animate:flip>
-		{item.label}
-	</div>
-{/each}
-```
+`animate:flip` only moves what it can identify, so the `{#each}` needs a real key — `(item.id)`,
+never the index, which renumbers as the list reorders and animates nothing.
 
 ### Use `Spring` or `Tween` for value motion
 
 Use `svelte/motion` when the thing that changes is a value, not a DOM mount/unmount.
 
-Good uses:
+Good uses, all of them already in the codebase:
 
-- progress meters
-- analysis progress percentages
-- panel resize indicators
-- subtle drag position or scrubber feedback
+- a live reading gliding to its next sample (`AnimatedNumber`)
+- the battery SOC bar (`battery-bar.svelte`)
+- a chart's live cursor (`_shared/live-cursor.svelte.ts`)
+
+A glide is only honest over a value that is actually arriving at that cadence. Animating a number
+the engine decided on 30 seconds ago makes a stale reading look live — see the live-value ownership
+rule in `lib/live/ownership.ts`, and `animatable()`, which withholds a stale reading from the glide.
 
 Prefer the modern Svelte 5 classes:
 
@@ -642,7 +296,7 @@ This is especially important for:
 - route transitions
 - sidebar movement
 - large panel shifts
-- repeated animations inside review flows
+- anything that repeats on every poll — a 1 Hz feed animating twice is a flicker
 
 ---
 
@@ -670,160 +324,461 @@ Animate the **inner content**, not the whole shell.
 
 The header/sidebar/breadcrumbs should feel stable. Only the changing content region should move.
 
+### Continuous motion as a status display
+
+The rules above govern **UI transitions** — motion that answers "what just changed". The
+power-flow diagram's rails are not that. A cable carrying 6 kW and a cable carrying 300 W are
+different facts about the plant right now, and on a wall panel read from across a room the
+motion on the rail is how that fact arrives. Stopping it does not calm the diagram; it deletes
+the reading. So the 120–220 ms budget, "no bouncing animations on frequently updated content"
+and "anything that repeats on every poll is a flicker" do not apply to it, and it is the only
+place in this app they do not.
+
+What earns the carve-out is that the diagram obeys four constraints instead — each one the
+reason a specific complaint about continuous motion does not land here:
+
+- **Amplitude-modulated by real throughput.** Every rail is drawn against the plant's remembered
+  peak (`lib/inverter/flow-pulse.ts`), not against the busiest cable of the moment. At 300 W a
+  rail's charge drifts across small and dim; at 6 kW it snaps across, bigger and blooming. An
+  idle plant is nearly still, which is exactly what "avoid a noisy app" is asking for. A diagram
+  pinned at full throttle all night would be the violation.
+- **The speed IS the reading, and it is quantized.** One charge per rail, and its crossing time
+  carries the magnitude — so unlike everything else in this app, a timing property here is
+  derived from a datum. What keeps that honest is `crossingSeconds()`: the duration lands on a
+  quarter-second grid, so an unchanged-enough sample emits a byte-identical `dur` and the running
+  animation is never touched. Nothing accelerates once a second; it changes speed only when the
+  power really moved.
+- **Nothing jumps between samples.** A duration step rebuilds the mover (`{#key l.pulse.dur}`)
+  rather than remapping a running animation into a new elapsed time, which is what would teleport
+  the charge mid-flight. Size and bloom are `@property`-registered and glide over 700 ms; a flow
+  reversal crosses over on a fade rather than mirroring. That is what makes it readable at 1 Hz
+  instead of twitchy.
+- **It degrades to a still picture.** The motion is SMIL (`<animateMotion>` down the rail's own
+  cable), which no `@media` block can stop — so under `prefers-reduced-motion: reduce` the rails
+  render no mover at all and state their magnitude as a still coloured overlay whose width and
+  opacity encode the same power. The status survives; only the movement goes. Anything continuous
+  added here has to keep that property.
+
+A charge is a **chain of beads**, each with its own `<animateMotion>` down the same cable, lagging
+the one ahead of it and fused by a blur into one tapered streak with an incandescent head. That is
+not decoration for its own sake: a dash pattern can only taper by opacity, and a single sprite can
+only be placed and rotated — on this diagram's Béziers it cuts the corner and reads as a straight
+splinter laid across a curved wire. Every part of the comet being separately on the path is what
+makes it bend with the rail.
+
+This carve-out is for a status display, and it is not a licence to loop an animation elsewhere.
+If a new one is proposed, it has to meet all four constraints — and be the reading, not a
+decoration on top of one.
+
 ---
+
+## Gestures on a chart
+
+Four charts zoom — the /history metric charts, /statistics' period chart, the price track and the
+year-over-year bars. The gesture is a design decision with a cost on a phone, not a library
+default: `lib/charts/zoom.svelte.ts` holds the state, `lib/charts/zoom-range.ts` holds what a
+selection *means*, and `lib/charts/zoom-wiring.test.ts` holds every chart to both.
+
+- **A horizontal drag selects a range; a vertical swipe still scrolls the page.** LayerChart's
+  brush layer covers the whole plot and declares `touch-action: none` on itself, and /history and
+  /statistics are tall stacks of full-width charts — so that rule breaks the gesture people use
+  most with the one they use least. `[&_.lc-brush-context]:touch-pan-y` in
+  `ui/chart/chart-container.svelte` hands the vertical axis back to the browser and keeps the
+  horizontal one, which is the only axis a selection is drawn on anyway.
+- **Pinch is ARMED per chart, never always on.** A live pointer transform sets an inline
+  `touch-action: none` *and* calls `preventDefault()` on every touchmove, so an always-on pinch
+  would stop the page scrolling on every chart in the stack. The brush is the resting state; pinch
+  is something the viewer switches on for one chart (`toggle()`). The two cannot both be live
+  anyway — LayerChart wires brushing and panning to the same pointer — so arming pinch disables the
+  brush, which is the library's fact and this app's preference at the same time.
+- **A zoom REFETCHES at a finer bucket; it never magnifies what was already fetched.** Every mapper
+  in `zoom-range.ts` ends at the app's existing range state with the granularity re-derived from the
+  selected span, so twenty minutes out of an hourly window comes back as minute rollups, and the
+  chart's local transform is reset the moment the owner accepts the range — otherwise the finer data
+  would arrive magnified through the old gesture. A selection under `minExtent` is a mis-tap and is
+  dropped. Where there is no finer series to fetch the selection narrows the domain in place
+  instead: the price track is already quarter-hourly, and the year-over-year comparison *is* its
+  twelve months.
+- **Every zoomable chart owns a visible way back.** `ZoomControls` sits over the plot rather than in
+  a row of its own — these charts are as short as 176px — and its reset button appears the moment
+  anything is zoomed, including a zoom the *owner* is holding as a refetched range, which the
+  chart's own transform can no longer see. A chart left narrowed with no control does not read as
+  zoomed; it reads as wrong numbers.
+- **Two charts deliberately do not zoom**, and must stay that way: the custom *live* chart and the
+  automations decision chart. Each already runs a transform of its own inside a `ChartClipPath` — a
+  gliding live window, a decision timeline — and a second one composes badly. The overlay's two
+  *historical* forms do zoom, and hand the selection up like any other /history chart: a drag on a
+  saved custom chart or on a draft moves the whole page onto the finer range.
+### The house style for marks
+
+**The mark follows what the data IS, not which file the chart lives in.** The table is
+`src/lib/charts/house-style.ts`; a component states a `kind` and the table answers with the curve,
+the fill, the stroke weight and the dash. Before it existed the dashboard carried three smoothings
+and four fills across nineteen plots, none of it decided: `curveCatmullRom` on the live and history
+areas, `curveMonotoneX` on the decision plots, no curve at all on the statistics lines; fills at
+0.9 gradient, 0.3 flat, 0.2 flat and none; strokes at 1.5 and 2. Read together they claim a
+difference that does not exist.
+
+| kind       | the data                                                     | mark  | curve         | fill            |
+| ---------- | ------------------------------------------------------------ | ----- | ------------- | --------------- |
+| `power`    | one instantaneous measure over time (W, A, %)                 | area  | monotone-x    | accent gradient |
+| `flow`     | the same, SIGNED around zero                                  | area  | monotone-x    | split at zero   |
+| `overlay`  | several measures compared on one plot                         | line  | monotone-x    | none            |
+| `stack`    | a decomposition of one total into its parts                   | area  | monotone-x    | flat 0.75       |
+| `energy`   | a quantity belonging to a BUCKET (kWh, money, the price)       | bars  | — (no interp) | solid           |
+| `setpoint` | a decided value, held until it is written again                | line  | step-after    | none            |
+| `heat`     | a matrix of buckets, read by colour                          | cells | — (no interp) | ramp            |
+
+- **No kind smooths with `curveCatmullRom`, ever.** Not taste — the spline overshoots its control
+  points, so a PV area drawn through a sunny day's samples bulges *above* the highest sample and the
+  chart reports a watt figure the plant never produced, disagreeing with its own tooltip.
+  `curveMonotoneX` is the smoothing that cannot do that: between two samples it stays inside their
+  range. It is the only smoothing in the house.
+- **A quantity that belongs to a bucket is bars.** kWh accrued over a day is not a rate between two
+  instants; a line through bucket totals paints a slope the data does not carry, and the eye reads
+  the area under that line as a total. `period-series-chart` draws the same periods as bars or as a
+  line depending on the kind it is handed — the energy flows are bars, the two self-consumption
+  ratios stay a line, because a share varies *through* its bucket rather than accruing over it.
+- **A setpoint is a step.** A ceiling written to a register holds its value until the next write, so
+  the step is the truth and a slope between two writes is a fiction.
+- **Overlaid series carry no fill.** Two translucent fills over each other mix into a third colour
+  belonging to neither, and the plot grows a hue nobody assigned. A chart that wants one series
+  filled as *context* says so per series (`decision-chart`'s `PlotSeries.fill`).
+- **One stroke weight, two dash patterns.** `1.5` everywhere, so a heavier line is still available
+  to mean something. `DASH.secondary` is a line that is not the primary measurement (a projection, a
+  register readback, a context series); `DASH.reference` is a line that is not a measurement at all
+  (a limit, a plateau, the "now" marker). They were four literals across three files, `'5 4'`
+  meaning three different things.
+- **Grouped bars carry no outline.** LayerChart strokes every bar 1px in the foreground colour; six
+  series over thirty-one days at 390px puts each bar under two pixels wide, the strokes of
+  neighbours meet, and the plot renders as a black comb with the hues invisible behind it. Both the
+  width and the colour have to go — `ctx.lineWidth = 0` is a no-op in the 2D context. A *stacked*
+  bar keeps its edge, where it separates the segments of one bar.
+
+### Series colour
+
+**A fixed meaning never draws from the categorical palette.** `--chart-N` means "the Nth series,
+order arbitrary"; `--energy-*` means grid, solar, battery, load, export, self-used, EV, generator.
+Painting a meaning from the categorical set is why re-ordering it put battery beside load in nearly
+the same green on /overview, and gave the generator and the EV charger the identical orange.
+
+- The semantic set is chosen as a **set**, not pair by pair — fixing one pair moves it next to
+  another. `energy-tokens.test.ts` scores every group that shares a screen (diagram, overview tiles,
+  /system, statistics) by its **weakest pair**, in both themes, under all three dichromacies, against
+  the floor the shipped set already reached. It is a ratchet: eight-way separation under dichromacy
+  does not exist, so the rule is only that the set never gets worse.
+- **The palette is a setting.** `Settings → Display → Chart colours` chooses between designed
+  presets — `categorical` (shipped), `colorblind`, `vivid`, `muted` — as an id, never colours. Two
+  levels: an instance setting an admin sets for the plant, and a per-browser override kept in
+  `localStorage` and sent nowhere, so a reader who cannot separate the plant's palette can help
+  themselves without being an admin and without changing the wall display. The resolved preset is
+  stamped as `data-palette` on `<html>`; `categorical` stamps nothing, because it IS `:root`.
+- A preset re-points **every token that carries meaning** — the eight energy roles, the three sign
+  colours, the standing-charge hue, AND the eight categorical accents. Leaving the categorical set
+  out meant "Colour-blind safe" re-hued the diagram while every custom chart and history accent kept
+  a red/green confusion pair, under a setting labelled *Chart colours*. A preset that fixes half the
+  screen is worse than one that admits its scope.
+- A preset re-points **only the tokens that carry meaning** — the eight energy roles and the three
+  sign colours. Chrome, text and surfaces belong to the theme. Every preset authors light AND dark
+  values for every token, which is the reason presets exist rather than eight colour pickers: one
+  colour chosen by hand cannot be right on both surfaces, and separation is a property of the set.
+- **`--chart-1..8` is a categorical palette, not a ramp.** shadcn ships five steps of one hue, which
+  is right for a quantity that has an order and wrong for series drawn on top of each other. Eight
+  hues, spaced so consecutive entries are the least alike, mid-lightness so one set reads on both
+  surfaces, red and green not adjacent.
+- **Reference it as `var(--chart-N)`, never `var(--color-chart-N)`.** The `--color-` spelling is
+  Tailwind's `@theme inline` mapping, and that is only re-emitted when Tailwind finds the name in
+  scanned source. Colours composed at runtime are invisible to it: `--chart-6` resolved to nothing
+  and its series drew colourless, while 7 and 8 survived only because a test file spelled them out.
+  Same trap as a composed class name.
+- **A pinned colour is a palette id, never a CSS value.** It round-trips through the server into a
+  `style` attribute and into SVG fill/stroke; the schema accepts the eight ids and nothing else,
+  which is also why the picker offers swatches rather than a free-form field.
+- Overrides are **keyed by metric key, not by position**, so reordering or thinning a chart keeps
+  the colours the user chose. An unpinned series takes the palette entry for its position, and a
+  chart with nothing pinned persists no colours at all.
+
+- **A zoomable chart must not draw its own axes from the `marks` snippet.** LayerChart clips that
+  layer to the plot rect as soon as a chart carries a brush or a `domain` transform, and axis labels
+  live in the padding gutter outside it — so the series keep rendering and the axes silently vanish.
+  Draw them from the `axis` snippet, which renders outside the clip.
+
+## Full screen on a chart
+
+Every chart can take the whole screen, and the control is **in the section card's header**, beside
+the title that already names it. Not floating over the plot: that corner is the brush surface these
+charts drag-select with, and a button there swallows the start of a drag.
+
+- **`<Section fullscreen>`** is the whole vocabulary for a chart that lives in a card. For a chart
+  that has no card — the two dialogs, the forecast-correction panel, the four decision plots —
+  wrap the plot in **`<ChartFullscreen title>`**.
+- **One control per plot, not per card**, when a card holds more than one. `decision-charts` has two
+  plots and three paragraphs; expanding the card split a landscape screen five ways and left each
+  plot 59px tall.
+- The same rule survived a **control-count cut on /statistics**, where hoisting nine panel controls
+  into the four section headers would have removed five buttons. It was measured first, on a 390x844
+  phone: with the control on the section card, Costs & savings gave its one plot **69px**, Energy
+  **0px** for each of its four, Spot prices **0/0**, Records **0** — against the **192px** every one
+  of those plots already has in the scrolling page. A card's tiles, nested panel headers and legends
+  keep their content height; the plots divide whatever is left, and on that page nothing is left. A
+  control that makes the plot smaller than not pressing it is not a saving.
+  `lib/charts/fullscreen-coverage.test.ts` pins both ends now: every chart has a control, and the
+  statistics section cards do not offer one.
+- **A control over a box with no plot in it** is the same defect from the other side. The
+  negative-price-window history is a grouped list, height-unconstrained and already fully visible;
+  it went through `ChartPanel` and inherited an expand button that promised a bigger view of a list.
+  It is a plain `Section` now.
+- The card is **not replaced by a bigger copy of itself**. Same header, same body, the same chart
+  component with its brush and pinch still bound. Only classes change, and they are one token —
+  `expandedSectionClass` / `expandedChartClass` in `tokens.ts`.
+- Those classes are **written out literally, never composed with `map`/`join`**. Tailwind finds
+  classes by scanning source text, so a name this codebase builds at runtime is a name with no rule
+  behind it: present in the DOM, silently doing nothing. That exact mistake shipped a full-screen
+  card with a 192px chart in it. A test reads the token's source file back and rejects a composed
+  name.
+- The expansion grows the **whole chain** from the section body down to the plot, picked out with
+  `:has([data-slot=chart])`, because the depth differs per chart and a legend beside the plot has to
+  keep its content height.
+- **What goes full screen is `<html>`, never the card.** This is the load-bearing rule. In native
+  full screen the browser renders *only* the full-screen element's subtree, and every popup in this
+  app — layerchart's tooltip, and bits-ui's dropdown, select and popover content — is portalled to
+  `document.body`, outside any one card. Full-screening the card therefore hid every tooltip and
+  left every menu opening invisibly, so the controls read as dead. `fullscreenTarget()` returns the
+  document element and there is no way to ask for anything else.
+- **The card is lifted by `fixed inset-0`, always** — in both paths, because the browser does nothing
+  to lift it. The native call buys exactly one thing on top: the browser's own chrome goes away.
+  Losing it (Safari on iPhone implements the API for nothing but `<video>`; under Home Assistant
+  ingress the app is a cross-origin iframe Chrome refuses the request in) costs only that, which is
+  why `expanded` is set *before* the request and never depends on its outcome.
+### Draft charts
+
+A reader can pull a second metric onto any history card without saving anything — "compare with…"
+in the card's header, at every size. It replaced an "add to chart" menu that asked which *saved*
+chart should own the metric: a question you can only answer if you already know what that chart is
+for, where drafting answers the one actually in front of you and ends at the same saved chart by way
+of the editor.
+
+- **One renderer.** A draft draws through `OverlayChartView`, the same component a *saved* custom
+  chart uses. The only difference between the two is where the key list came from. Two renderers
+  would be two things to keep in step, and the mixed-unit dual axis is the kind of thing that only
+  works in one of them.
+- **The draft is component state on the card**, not a store: it is one reader looking at one chart,
+  and a store would make every card share one draft.
+- **It lasts until it is cleared or saved**, which is what the line under the plot promises. Not
+  discarded on leaving full screen: the control is in the header whether the card is expanded or
+  not, so that gesture has nothing to do with the draft.
+- **Two icon controls under the plot**, discard and save, with no sentence beside them. The legend
+  above already names a second series on a card titled after one metric, which is the tell that this
+  is not the card's own chart. Bare 16px icons, so the labels travel with them (`title` + `sr-only`)
+  and `TAP` provides the 44px hit area the words used to.
+- **Saving goes through the editor that already writes custom charts**, seeded — not a second
+  create path. That keeps naming, validation and the admin gate in one place.
+- The card's own metric is the base: always first (so it keeps chart accent 1 while others come and
+  go), and its row in the picker is **disabled**, not silently ignored — a checkbox that does
+  nothing when tapped reads as broken.
+- A card taken full screen **mounts its chart whether or not the lazy-mount observer fired**. Once
+  the card is `fixed`, its in-flow wrapper collapses to nothing, so that observer can never fire
+  while it is expanded.
+
+- **An expanded frame leaves its subtree.** `fixed inset-0` resolves against the nearest ancestor
+  that establishes a containing block, and a CSS `transform` does — `Dialog.Content` centres itself
+  with one, so a chart taken full screen from inside the energy or forecast dialog filled the
+  *dialog*, not the screen. The frame is portalled to `document.body` while expanded (`use:portal`),
+  which covers `filter`, `backdrop-filter` and `contain` too, without changing a vendored primitive
+  every dialog shares. It goes back into its original slot on collapse — Svelte still owns the node.
+- Known limit: in **portrait** on a phone the plot is still 412px wide, so the 34px narrow gutter
+  applies and a two-digit `kWh` label can clip. Landscape — the orientation a full-screen chart is
+  actually read in — gets the designed 60px gutter.
+
+---
+
+## A section header is a row of controls
+
+The header's right-hand cluster is **controls only**. /statistics put a panel's headline figure
+there, and a row reading `€6.62 ▼15%   By day   12 months   ⤢` is four items at one weight: the
+reader counts four controls where there are two, and the complaint that came back was "many buttons,
+it's confusing". Data goes in the body — the figure now sits directly above the plot it describes,
+where it reads as the plot's headline instead of as a button.
+
+- **Page state gets a page control.** The comparison reference ("Previous period" / "Year ago") is a
+  parameter of the request the page makes and it re-bases every section's delta chips, so it belongs
+  in `PageShell`'s `toolbar`, beside the navigator whose window it measures. Inside one of four
+  section headers it read as that section's own filter and gave that section a control row the other
+  three do not have. The paragraph beside it went too: it restated the baseline half of the caption
+  `rangeCaption` already prints under every section title.
+- **One switcher asks one question.** `By day | 12 months` was a bucket beside a span — "how
+  finely?" beside "over what span?" — and the lit chip was the only clue which was showing. It is
+  one button that names the window the reader is *not* looking at ("12 months", then "Aug 2026"), so
+  pressing it has one obvious outcome and there is no state to read. The bucket was never a choice:
+  every calendar grain has exactly one granularity inside it (`PERIOD_DETAIL_BUCKET`), and the
+  caption under the title already says which one is drawn.
+- The wider window stays reachable **only through that toggle**, never as a second range control.
+  The period navigator owns range selection on this page; a chip that silently replaced the window
+  with a trailing twelve months — contradicting the tiles above it, the caption, and the live pill —
+  was one, which is why it is now named after where it goes.
 
 ## Styling and spacing guidance
 
-### Page widths
+Everything in this section is a constant in `src/lib/layout/tokens.ts` and a case in
+`tokens.test.ts`. Read the numbers here, spend the token in the code — a literal that happens to
+match today is a literal that drifts tomorrow.
 
-Use different widths intentionally:
+### The three measures
 
-- reading-heavy screens: `max-w-3xl` to `max-w-4xl`
-- hybrid detail screens: `max-w-5xl` to `max-w-6xl`
-- dashboard/list screens: full-width with comfortable padding
+`SHELL_WIDTH`, named by intent rather than by size, chosen with `<PageShell width="…">`:
 
-### Section spacing
+| Intent   | Class                    | For                                                     |
+| -------- | ------------------------ | ------------------------------------------------------- |
+| `narrow` | `max-w-3xl`              | forms, lists, prose — anything read line by line         |
+| `wide`   | `max-w-7xl 2xl:max-w-384` | dashboards and charts; uncapped again on very large screens |
+| `full`   | `max-w-none`             | bespoke full-bleed layouts (the overview's grid)         |
 
-Default vertical rhythm should feel roomy.
+There is no fourth. Seven pages once shipped four different measures, and /automations
+(`max-w-3xl`) sat next to its own detail page (`max-w-7xl`), so the measure jumped mid-navigation.
 
-Good defaults:
+### Padding and rhythm
 
-- `gap-4` for small grouped controls
-- `gap-6` for section spacing
-- `gap-8` for page-level blocks
+| Token         | Value              | What it separates                                   |
+| ------------- | ------------------ | --------------------------------------------------- |
+| `SHELL_PAD`   | `p-4 sm:p-6`       | page gutter — grows where the gutter is cheap        |
+| `SHELL_GAP`   | `gap-6`            | one section from the next                            |
+| `SECTION_PAD` | `p-3 sm:p-4`       | section gutter — **steps down on mobile**            |
+| `SECTION_GAP` | `gap-4`            | a section's header from its content, block to block  |
+| `CLUSTER_GAP` | `gap-x-3 gap-y-2`  | a wrapping row of controls                           |
+
+The shell pads *up* and the section pads *down* because they nest. Shell + section + chart panel is
+three boxes deep; three `p-4`s cost 50px per side at 390px, a quarter of the screen spent on chrome.
+The outermost box can afford the gutter, the innermost cannot — so `Section nested` drops its border
+and its phone pad entirely and takes both back at `sm`.
+
+Those five are the whole rhythm. `gap-8` and `gap-2` between sections are not options.
+
+### Grids
+
+`GRID` in the tokens, `<SectionGrid variant="…">` in markup:
+
+| Variant | Ramp                                         | For                                    |
+| ------- | -------------------------------------------- | -------------------------------------- |
+| `tiles` | `grid-cols-2 sm:grid-cols-3 lg:grid-cols-4`  | dense readouts: stat tiles, metric pairs |
+| `pair`  | `grid-cols-1 lg:grid-cols-2`                 | two charts, side by side once there is room |
+| `wall`  | `grid-cols-1 sm:grid-cols-2 xl:grid-cols-3`  | many cards of equal weight              |
+
+Every variant states a **base** column count and carries `[&>*]:min-w-0`. `grid sm:grid-cols-2` is
+not "two columns from sm up, one below" — below `sm` the utility simply does not apply and the grid
+falls back to its implicit single column, which nobody decided. That omission is what stacked 31
+statistics tiles one-up on a phone; the missing `min-w-0` is what let one long kWh total widen its
+column past the viewport.
+
+### Breakpoints
+
+**`sm` / `lg` / `xl` / `2xl` only.** A token that changes twice between a phone and a laptop
+produces the in-between states nobody designed, so `tokens.test.ts` fails on any `md:` in the
+vocabulary.
+
+The one grandfathered `md:` in first-party layout code is the settings nav rail
+(`settings/+layout.svelte`, `settings-nav.svelte`): a 13rem rail plus a usable panel does not fit
+below 768px, and no `sm`/`lg` pair lands the rail in the same place. The file says so in a comment,
+and the census test checks that it still does. Vendored shadcn components under
+`lib/components/ui/` carry upstream `md:` utilities; leave them alone.
 
 ### Borders and surfaces
 
-The app currently uses a dark neutral shell.
-
-Keep surfaces simple:
-
-- slightly raised cards
-- consistent border opacity
-- avoid too many nested outlines
-
-The visual hierarchy should come more from spacing and typography than from heavy decoration.
+One frame: `border border-border`, square, drawn by `Section` and nothing else. Hierarchy comes from
+spacing and typography, not from stacked outlines — which is why a card inside a card gives up its
+frame on a phone. An element outside `lib/components/layout/` that combines `border border-border`
+with a pad is a hand-rolled card, and `section-migration.test.ts` treats it as one.
 
 ---
 
 ## Typography and readability
 
-This app is primarily a reading and review interface, so typography matters more than ornamental UI.
+This app is read at a glance and in a hurry — often on a phone, in a plant room. Numbers carry the
+meaning; the type around them exists to say which number this is.
 
-### Priorities
-
-- strong heading hierarchy for scanability
-- comfortable paragraph line length for summaries
-- easy differentiation between metadata and primary content
-- visible but quiet timestamps, speaker labels, and system status text
-
-### Recommended usage
-
-- page title: clear, compact, high contrast
-- section headings: consistent and scannable
-- body copy: avoid ultra-small text for transcript or summary content
-- metadata: muted, but still readable against the dark shell
-
-For transcript-heavy screens, prefer a dedicated reading column over packing everything into bordered cards.
+- **Section title:** `text-sm font-medium uppercase tracking-wide text-muted-foreground`, drawn by
+  `SectionHeader` and nowhere else. The optional caption under it is `text-xs`.
+- **Readouts:** the value is the loud element; its label is muted and small, never smaller than the
+  floor below.
+- **Never below `text-xs` (12px) on a phone.** A stat tile's uppercase tracked label is its only
+  identification, and `text-[0.65rem]` is 10.4px. Where the desktop scale goes tighter it does so
+  from `sm` up: `text-xs sm:text-[0.65rem]`.
+- **A label that does not fit wraps; it does not truncate.** `truncate` on a phone loses the end of
+  the word that identified the thing — "Netzeinspeisegrenze" became "Netzeinspei…". German is the
+  long language here, so check the German string, not the English one. `SectionHeader` truncates
+  its title on desktop only and takes it back with `max-sm:whitespace-normal`.
 
 ---
 
 ## Responsive strategy
 
-The desktop and mobile shells should not be identical.
+The app is designed at 412x961 first. Everything below is a floor, enforced by
+`lib/layout/mobile-density.test.ts` over the whole `src` tree — so a rule broken in a component
+written next year fails too.
+
+### Mobile floors
+
+- **Every grid states its phone column count.** Readouts go two-up, not one-up; a form is allowed to
+  stack, but it has to say so.
+- **44px touch targets.** Interactive sizes gain a step below `sm` and hand it back at `sm`
+  (`h-9 sm:h-8`, `size-9 sm:size-8`, calendar cells `--cell-size` 9 then 7). An icon-only trigger
+  has no label to widen its hit area, so it spends `TAP` — an invisible `::after` that reaches
+  44x44 around a 16px icon without moving the icon. `tapTargetPx()` measures that from the token
+  rather than restating it.
+- **Chart plot boxes are `CHART_BOX` (`h-48 sm:h-64`)**, or `CHART_BOX_SHORT` (`h-44 sm:h-55`) where
+  a chart ships shorter by design. Header + plot + legend at `h-64` is ~340px, so a 961px phone
+  fitted two and a half charts and /statistics measured 7371px end to end. An empty or loading state
+  uses the same box, or the page jumps by the difference when data lands.
+- **Chart gutters follow the measured plot width**, not a breakpoint: the same component renders
+  full-bleed on /history and two-up inside a statistics section. Bind `clientWidth` and pass *that
+  variable* to `chartPaddingFor` / `xTickSpacingFor` / `stackedBarProps`. The rule is over the whole
+  tree, not over the charts that had the bug — the callers are discovered from disk, so a component
+  that does not exist yet is already covered, and writing the gutter out longhand as
+  `padding={{ left: 60 }}` fails the same way. The charts outside the cost/statistics family carry
+  hand-tuned gutters of their own; each is listed by name with the left value it actually writes, so
+  that set cannot grow and no chart can be moved onto another family's padding unnoticed.
+- **Nothing scrolls sideways.** `<main>` clips horizontal overflow, grid children carry `min-w-0`,
+  and a popover caps itself at `max-w-(--bits-popover-content-available-width)`.
+- **Reading order is a decision.** Stacked, a two-column page reads top to bottom in source order —
+  which put peak shaving's configuration form between the reader and the live status it configures.
+  `order-*` with an `xl:order-*` pair fixes the phone order without moving the desktop columns.
 
 ### Desktop
 
-- sidebar for dense navigation
-- breadcrumb + local section nav near the title
-- multi-column layouts only where comparison actually helps
-
-### Mobile
-
-- collapse sidebar into a `sheet` or drawer-style menu
-- keep breadcrumb short or partially collapsed
-- allow local tab bars to wrap or scroll horizontally
-- stack dense metadata blocks vertically
-
-If a horizontal tab/nav row becomes cramped, prefer:
-
-1. horizontal scrolling
-2. wrapping when labels are short
-3. a `select` fallback only when the list gets too large
+- the sidebar is permanent (icon-collapsed at most); on a phone it becomes the sheet the trigger
+  opens
+- multi-column layouts only where comparison actually helps — `GRID.pair` starts at `lg`
+- a control row that would cramp wraps (`flex-wrap` plus `CLUSTER_GAP`); past three options a
+  segmented switcher offers a `Select` on a phone instead of wrapping to a second line that reads
+  as an unrelated control
 
 ---
 
 ## Loading and empty states
 
-Because many screens will depend on backed data, loading states should be designed up front.
+Both are layout, and both are where the page jumps if you improvise them.
 
-### Use skeletons when layout is known
+### Skeletons when the layout is known
 
-Examples:
+A readout that will arrive renders a `Skeleton` of its eventual size — see
+`inverter/_shared/chart-state-view.svelte`, `kpi-slot-row.svelte`, `energy-headline.svelte`. A chart
+placeholder is the same `CHART_BOX` as the plot it replaces.
 
-- meeting list rows
-- summary cards
-- transcript blocks
-- metadata side panels
+### Spinners only for small indeterminate actions
 
-### Use spinners only for small indeterminate actions
+Button-level submit states, retries, a short background refresh. Never a spinner where the shape of
+the result is already known.
 
-Examples:
+### Empty states are `EmptyState`, and they are actionable
 
-- button-level submit states
-- retry actions
-- short background refresh states
+`lib/components/layout/empty-state.svelte` — a message, an optional icon, an optional recovery
+action. `min-h-32` is a floor rather than a fixed height: a fixed 160px reserves a fifth of a phone
+screen to say nothing, and clips a two-line message that carries a button.
 
-### Empty states should be actionable
+Say why the screen is empty and what to do next. "No data." is not an empty state; "No readings yet
+— the inverter has not been polled since 14:02" is. The copy goes through paraglide like every other
+user-visible string.
 
-Bad empty state:
-
-- “No data.”
-
-Good empty state:
-
-- explain why the screen is empty
-- say what the user can do next
-- keep the layout stable so the page does not jump after loading
-
----
-
-## Recommended shadcn-svelte install list for the next phase
-
-When the UI starts expanding beyond the current POC, these are the first components worth adding:
-
-```bash
-bun x shadcn-svelte@latest add tabs navigation-menu sidebar breadcrumb sheet separator
-```
-
-Likely follow-ups after that:
-
-- `button`
-- `card`
-- `input`
-- `textarea`
-- `select`
-- `dialog`
-- `dropdown-menu`
-- `scroll-area`
-
----
-
-## Implementation guidance for this repo
-
-### Near-term
-
-1. Keep `apps/web/src/routes/+layout.svelte` as the global shell.
-2. Keep `Header.svelte` simple until more destinations exist.
-3. Introduce route groups and nested layouts before the app gets many pages.
-4. Use nested subroutes for meeting/template/run detail screens, with link bars styled like tabs where helpful.
-
-### Medium-term
-
-1. Add a workspace route group such as `(app)`.
-2. Move dense product navigation into `sidebar`.
-3. Add `breadcrumb` + subroute navigation to detail pages, and use local `Tabs` inside the child views where needed.
-4. Use subtle motion only inside changing content regions.
+`section-migration.test.ts` fails on a re-copy of the old hand-rolled empty-state block.
 
 ---
 
@@ -831,6 +786,15 @@ Likely follow-ups after that:
 
 - **Layouts** own persistent chrome.
 - **Routes** own meaningful screen state.
-- **Tabs** present local sibling panels; meaningful screen state should live in subroutes.
-- **Sidebar/top nav/breadcrumbs** each solve different navigation problems.
+- **Tabs** present two renderings of one thing; anything worth a URL is a subroute.
+- **Tokens and the layout primitives** own measure, gutter, rhythm, columns and chart heights. If
+  you are typing one of those as a literal, you are adding the sixth variant of something that
+  already exists.
 - **Animations** should guide attention, never compete with the content.
+
+The design decisions above are executable: `lib/layout/tokens.test.ts`,
+`lib/layout/mobile-density.test.ts`, `lib/layout/section-migration.test.ts`,
+`lib/layout/primitives.test.ts`, `lib/components/layout/header-and-toolbar-rows.test.ts`,
+`routes/(app)/page-shells.test.ts`, `lib/live/wiring.test.ts` and `lib/charts/zoom-wiring.test.ts`
+run in `bun run test`. Read the
+`layout-system` skill before writing a page; read the failing test when one of them rejects you.

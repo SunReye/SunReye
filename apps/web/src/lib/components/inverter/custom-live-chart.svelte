@@ -1,19 +1,18 @@
 <script lang="ts">
 	import { AreaChart, Area, ChartClipPath, Highlight } from 'layerchart';
-	import { curveCatmullRom } from 'd3-shape';
-	import { untrack } from 'svelte';
-	import { Tween } from 'svelte/motion';
-	import { linear } from 'svelte/easing';
+	import { houseLine } from '$lib/charts/house-style';
 	import * as Chart from '$lib/components/ui/chart';
-	import ChartYAxes from '$lib/components/inverter/chart-y-axes.svelte';
+	import DualYAxes from '$lib/components/inverter/_shared/dual-y-axes.svelte';
 	import CustomChartTooltip from '$lib/components/inverter/custom-chart-tooltip.svelte';
+	import { resolveAxes } from '$lib/components/inverter/_shared/chart-series';
+	import { liveCursor } from '$lib/components/inverter/_shared/live-cursor.svelte';
 	import {
-		groupSeriesByUnit,
-		domainFor,
-		normalizeSeries,
-		type AxisSeries,
-		type Datum
-	} from '$lib/inverter/chart-axes';
+		bufferStart,
+		glideTransform,
+		pixelQuantum,
+		sampleInterval
+	} from '$lib/components/inverter/_shared/live-window';
+	import type { AxisSeries, Datum } from '$lib/inverter/chart-axes';
 
 	let {
 		data = [],
@@ -45,89 +44,80 @@
 	const lastT = $derived(times.at(-1));
 
 	// Spacing between samples, clamped, used to size the off-screen buffer below.
-	const interval = $derived.by(() => {
-		const a = times.at(-1);
-		const b = times.at(-2);
-		return a !== undefined && b !== undefined ? Math.min(Math.max(a - b, 250), 5000) : 1000;
-	});
+	const interval = $derived(sampleInterval(times.at(-1), times.at(-2)));
 
-	// Fixed window anchored to the newest sample: `data`/`xDomain` change only when a
-	// sample lands (~1 Hz), bounding LayerChart's scale/path/quadtree work to sample
-	// cadence. A few intervals of buffer past the left edge keep the glide from
-	// revealing empty space; ChartClipPath hides everything outside the window.
+	// Fixed window anchored to the newest sample, with an off-screen buffer past the
+	// left edge — see _shared/live-window.ts for why.
 	const xDomain = $derived(
 		lastT === undefined ? undefined : [new Date(lastT - windowMs), new Date(lastT)]
 	);
-	const windowed = $derived(
-		lastT === undefined
-			? data
-			: data.filter((d) => (d.date as Date).getTime() >= lastT - windowMs - 6 * interval)
-	);
+	const cutoff = $derived(lastT === undefined ? -Infinity : bufferStart(lastT, windowMs, interval));
+	const windowed = $derived(data.filter((d) => (d.date as Date).getTime() >= cutoff));
 
 	// Split by unit; a second unit means an independent right axis, and every series
 	// plots against a normalized [0,1] scale so both real axes stay aligned.
-	const grouping = $derived(groupSeriesByUnit(series));
-	const leftDomain = $derived(domainFor(windowed, grouping.left));
-	const rightDomain = $derived(grouping.dualAxis ? domainFor(windowed, grouping.right) : null);
-	const plotSeries = $derived(
-		grouping.dualAxis
-			? [
-					...normalizeSeries(grouping.left, leftDomain),
-					...normalizeSeries(grouping.right, rightDomain ?? [0, 1])
-				]
-			: series
+	const axes = $derived(resolveAxes(windowed, series));
+	const dualAxis = $derived(axes.grouping.dualAxis);
+
+	// With two axes the chart's own y-axis/grid step aside for the real-valued left and
+	// right axes drawn in `marks`, and the right gutter widens to fit their labels.
+	const scaleProps = $derived(
+		dualAxis
+			? {
+					yDomain: [0, 1],
+					axis: false as const,
+					grid: false,
+					padding: { top: 8, right: 44, bottom: 6, left: 44 }
+				}
+			: {
+					yDomain: undefined,
+					axis: 'y' as const,
+					grid: true,
+					padding: { top: 8, right: 6, bottom: 6, left: 44 }
+				}
 	);
-	const fillOpacity = $derived(grouping.dualAxis ? 0 : 0.2);
 
-	// A real-time cursor that drifts continuously toward the newest sample instead of
-	// snapping to it once a second. Only the marks' translate (below) reads `cursor` —
-	// never `data`/`xDomain` — so the chart itself does NOT re-render per frame. Mirrors
-	// live-area.svelte; here the marks group holds every overlaid series.
-	const cursor = new Tween(untrack(() => lastT) ?? 0);
-	let lastAt = performance.now();
-	$effect(() => {
-		const t = lastT; // track live updates
-		if (t === undefined) return;
-		const now = performance.now();
-		const gap = now - lastAt;
-		lastAt = now;
-		void cursor.set(t, { duration: Math.min(2000, Math.max(300, gap)), easing: linear });
-	});
+	// The glide cursor the marks below scroll by — shared with live-area, see
+	// _shared/live-cursor.svelte.ts. Same behaviour here; the difference is only
+	// that this marks group holds every overlaid series.
+	const cursor = liveCursor(
+		() => lastT,
+		() => interval
+	);
 
-	// Per-frame smooth scroll WITHOUT re-rendering the chart: translate the marks group
-	// so the visible right edge tracks the interpolated cursor. Resolves to a
-	// compositor-friendly transform on a single <g>. Matches live-area.svelte.
-	function glideX(xScale: (t: number) => number): number {
-		if (lastT === undefined) return 0;
-		return xScale(lastT) - xScale(cursor.current - interval);
-	}
+	// Step grid the glide snaps to — see `pixelQuantum`. Read once: a dpr change
+	// only alters the step size, never the position.
+	const quantum = pixelQuantum(typeof window === 'undefined' ? 1 : window.devicePixelRatio);
 
 	// Keep the right axis gutter opaque too when a second axis is present.
 	const edgeFade = $derived(
-		grouping.dualAxis
+		dualAxis
 			? 'linear-gradient(to right, #000 0, #000 42px, transparent 44px, #000 96px, #000 calc(100% - 96px), transparent calc(100% - 46px), #000 calc(100% - 44px))'
 			: 'linear-gradient(to right, #000 0, #000 42px, transparent 44px, #000 96px, #000 calc(100% - 20px), transparent calc(100% - 6px))'
 	);
 </script>
 
 {#snippet clippedMarks({ context }: MarksContext)}
-	{#if grouping.dualAxis}
-		<ChartYAxes
-			height={context.height}
-			left={leftDomain}
-			right={rightDomain}
-			leftUnit={grouping.leftUnit}
-			rightUnit={grouping.rightUnit}
-		/>
+	{#if dualAxis}
+		<DualYAxes height={context.height} {axes} />
 	{/if}
+	<!-- The SVG transform attribute, snapped to a quarter-pixel grid: the string is
+	     identical on the four frames in five that move less than a quarter pixel, so
+	     Svelte's `!==` equality drops the write, and with it the style invalidation,
+	     paint and raster it would have cost. -->
+	{@const glide = glideTransform(context.xScale, lastT, cursor.current, interval, quantum)}
 	<ChartClipPath>
-		<g transform={`translate(${glideX(context.xScale)}, 0)`}>
+		<g transform={glide}>
 			{#each context.series.visibleSeries as s (s.key)}
-				<Area seriesKey={s.key} curve={curveCatmullRom} {fillOpacity} line={{ 'stroke-width': 1.5 }} />
+				<!-- `overlay`: a stroke per series and no fill ($lib/charts/house-style).
+				     A translucent fill under each of several overlaid series mixes into a
+				     colour that belongs to none of them, and with two axes the fill was
+				     already being switched off — so it is off for both forms now. -->
+				<Area seriesKey={s.key} {...houseLine('overlay')} />
 			{/each}
 			<!-- Highlight inside the glide-translated group so the point/crosshair track
 			     the visible line (the chart's own highlight sits in untranslated data
-			     space, offset by exactly `glideX`). -->
+			     space, offset by exactly the glide offset). -->
 			<Highlight points lines />
 		</g>
 	</ChartClipPath>
@@ -153,15 +143,12 @@
 	<AreaChart
 		data={windowed}
 		x="date"
-		series={plotSeries}
+		series={axes.plotSeries}
 		{xDomain}
-		yDomain={grouping.dualAxis ? [0, 1] : undefined}
+		{...scaleProps}
 		seriesLayout="overlap"
-		axis={grouping.dualAxis ? false : 'y'}
-		grid={!grouping.dualAxis}
 		rule={false}
 		legend={false}
-		padding={{ top: 8, right: grouping.dualAxis ? 44 : 6, bottom: 6, left: 44 }}
 		marks={clippedMarks}
 		highlight={false}
 		tooltipContext={{ mode: 'bisect-x' }}

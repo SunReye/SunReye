@@ -34,7 +34,9 @@ Variables below are marked:
 | `NODE_ENV` | `development` \| `production` \| `test` | `development` | | Runtime environment. |
 | `PORT` | number | `3000` | | HTTP port the core engine listens on. |
 | `HOST` | string | `0.0.0.0` | | Interface the core engine binds (the HA addon sets `127.0.0.1` behind its proxy). |
-| `LOG_LEVEL` | `trace` … `fatal` | `debug` (dev) / `info` | | Lowest LogTape severity written to the console. |
+| `TZ` | IANA zone | host zone (`UTC` in containers) | | The site's time zone. Read by the runtime, not by SunReye's own config, but every day, month and tariff-band boundary is cut in it — see [Docker](/deploy/docker/#set-the-time-zone). |
+| `LOG_LEVEL` | `trace` … `fatal` | `debug` (dev) / `info` | | Boot default for the lowest LogTape severity written to the console. Overridable at runtime in Settings → Logs (which persists across restarts). |
+| `LOG_LEVEL_MQTT` | `trace` … `fatal` | inherits `LOG_LEVEL` | | Per-category override for the MQTT transport (`server.mqtt`) — turn MQTT logging up or down without touching the rest. |
 
 ## Auth
 
@@ -102,7 +104,7 @@ Some domains are configured entirely from the UI, with defaults from their schem
 var exists:
 
 - **Tariff** — currency, standing charge, import bands, feed-in rate. See
-  [Costs & Tariffs](/use/costs/).
+  [Statistics](/use/statistics/).
 - **Profile sources** — the list of git repos to browse for downloadable profiles. See
   [Distributing Profiles](/profiles/distribution/).
 

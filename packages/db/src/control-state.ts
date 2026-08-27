@@ -14,10 +14,12 @@ import { z } from "zod";
 export const CONTROL_STATE_KEY = "controlState";
 
 /** One engaged lock: the value to restore, and when it was captured. */
-export const controlLockSchema = z.object({
+const controlLockSchema = z.object({
   previousValue: z.number(),
   lockedAt: z.string(),
 });
+
+/** One engaged lock as stored, consumed by the server's snapshot-toggle helpers. */
 export type ControlLock = z.infer<typeof controlLockSchema>;
 
 /** Map of `${profileId}:${metricKey}` → engaged lock. Absent key = released. */

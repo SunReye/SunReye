@@ -1,15 +1,23 @@
 import type { CanonicalRole } from "./roles";
 import type {
+  Binding,
   InverterProfile,
-  MetricAccess,
+  MetricBase,
   MetricDef,
-  MetricFlow,
-  MetricKind,
-  MetricRange,
   MetricValues,
-  RegisterType,
+  ProfileDeclarations,
   SimulateFn,
 } from "./types";
+
+/**
+ * Every schema version this runtime reads, oldest first. One list, so the
+ * validator's union and the CLI's "is this a profile?" probe cannot disagree
+ * about what a profile may claim to be.
+ */
+export const PROFILE_SCHEMA_VERSIONS = [1, 2, 3] as const;
+
+/** A version this runtime reads. */
+export type ProfileSchemaVersion = (typeof PROFILE_SCHEMA_VERSIONS)[number];
 
 /**
  * Serializable inverter profile — the downloadable artifact and DB row. It is a
@@ -20,14 +28,44 @@ import type {
  * downstream of the registry has to know a profile came from data vs. code.
  */
 export interface ProfileData {
-  /** Bumped when the serialized shape changes; validated on load. */
-  schemaVersion: 1;
+  /**
+   * Bumped when the serialized shape changes; validated on load.
+   *
+   * - `1` addressing as `type` + `addresses` on every metric.
+   * - `2` addressing as a tagged {@link Binding}.
+   * - `3` the profile states its own hardware declarations, and `load.*` means
+   *   whole-house consumption rather than "the inverter's load output".
+   *
+   * A v1 profile is upcast to v2 on load ({@link hydrateProfile}) so every
+   * already-published profile keeps working. The upcast is one-way: nothing
+   * downcasts a binding back to `type` + `addresses`.
+   *
+   * `storage`/`deadband` deliberately did **not** bump this. Decided rather than
+   * omitted: both are optional with a derivation behind them, so an existing
+   * published profile parses unchanged and resolves to the same policy it would
+   * have had — which is the whole reason the fields are optional. A bump is owed
+   * only when an older runtime would *misread* a newer profile, and an older
+   * runtime does not read these fields at all.
+   *
+   * `declares` *did* owe the bump to `3`, by that same rule: a v2 runtime reads
+   * a backup output out of `load.*`, so a v3 profile that maps house
+   * consumption and no UPS would be misread by it — and, in the other
+   * direction, this runtime must keep reading every published v1/v2 profile the
+   * way its author meant it ({@link hydrateProfile}).
+   */
+  schemaVersion: ProfileSchemaVersion;
   id: string;
   name: string;
   manufacturer: string;
   /** Semver of the profile content itself (drives update detection). */
   version: string;
   metrics: MetricDataDef[];
+  /**
+   * Hardware facts the metric set cannot imply. `schemaVersion: 3` and above
+   * only — a legacy profile predates the vocabulary, so stating one would be
+   * ambiguous rather than helpful.
+   */
+  declares?: ProfileDeclarations;
 }
 
 /**
@@ -102,19 +140,16 @@ export type TopicToKey<T extends string> = T extends `${infer H}/${infer R}`
   ? `${H}.${TopicToKey<R>}`
   : T;
 
-/** {@link MetricDef} without runtime-only fields: `compute` → `computeExpr`. */
-export interface MetricDataDef {
-  key: string;
-  topic: string;
-  label: string;
-  unit: string | null;
-  group: string;
-  type: RegisterType;
-  addresses: number[];
-  scale: number;
-  /** Post-scale additive offset (`raw * scale + offset`); 0 when absent. */
-  offset?: number;
-  access: MetricAccess;
+/**
+ * {@link MetricDef} without runtime-only fields: `compute` → `computeExpr`.
+ * Everything else is shared, so it comes from {@link MetricBase}.
+ */
+export interface MetricDataDef extends Omit<MetricBase, "binding"> {
+  /**
+   * Addressing as a tagged union. Required at `schemaVersion: 2`, forbidden at
+   * `1` — a v1 metric gets its binding from the upcast in {@link hydrateProfile}.
+   */
+  binding?: Binding;
   /** Declarative derived value; mutually exclusive with reading from the wire. */
   computeExpr?: ComputeExpr;
   /**
@@ -123,14 +158,22 @@ export interface MetricDataDef {
    * profile is emitted. Never present in a validated profile.
    */
   computeAggregate?: AggregateExpr;
-  /** Declarative composite control; mutually exclusive with a register + `computeExpr`. */
-  controlExpr?: ControlExpr;
-  role?: CanonicalRole;
-  index?: number;
-  kind?: MetricKind;
-  range?: MetricRange;
-  enumLabels?: Record<number, string>;
-  flow?: MetricFlow;
+}
+
+/**
+ * Metric keys a {@link ComputeExpr} reads. Kept alongside the compiled closure
+ * (as {@link MetricDef.computeInputs}) so the read planner can group a computed
+ * metric's raw registers into one atomic Modbus read.
+ *
+ * @internal
+ */
+export function computeExprInputs(expr: ComputeExpr): string[] {
+  if ("sum" in expr) return [...expr.sum];
+  if ("diff" in expr) return [...expr.diff];
+  if ("scale" in expr) return [expr.scale[0]];
+  if ("combine" in expr) return [...expr.combine.add, ...(expr.combine.sub ?? [])];
+  if ("clamp" in expr) return [expr.clamp.key];
+  return [...expr.ratio.num, ...expr.ratio.den];
 }
 
 /** Compile a {@link ComputeExpr} into the `compute` closure the engine runs. */
@@ -168,11 +211,32 @@ export function compileComputeExpr(expr: ComputeExpr): (values: MetricValues) =>
   };
 }
 
+/**
+ * The {@link Binding} a serialized metric describes — its own when it carries
+ * one (v2), otherwise derived from the legacy `type`/`addresses`/expression
+ * fields (v1). This is the whole v1 -> v2 upcast: a control or computed metric
+ * owns no register, so it becomes a `control`/`compute` arm rather than a modbus
+ * binding with an empty address list.
+ */
+export function bindingFor(m: MetricDataDef): Binding {
+  if (m.binding) return m.binding;
+  if (m.controlExpr) return { via: "control", expr: m.controlExpr };
+  if (m.computeExpr) return { via: "compute", expr: m.computeExpr };
+  return { via: "modbus", addr: [...m.addresses], type: m.type };
+}
+
 function toMetricDef(m: MetricDataDef): MetricDef {
   // `computeAggregate` is author-time only; resolution strips it, but drop it
   // here too so a stray token can never leak into the runtime metric.
   const { computeExpr, computeAggregate: _computeAggregate, ...rest } = m;
-  return computeExpr ? { ...rest, compute: compileComputeExpr(computeExpr) } : rest;
+  const base = { ...rest, binding: bindingFor(m) };
+  return computeExpr
+    ? {
+        ...base,
+        compute: compileComputeExpr(computeExpr),
+        computeInputs: computeExprInputs(computeExpr),
+      }
+    : base;
 }
 
 /**
@@ -189,6 +253,26 @@ export function hydrateProfile(
     name: data.name,
     manufacturer: data.manufacturer,
     metrics: data.metrics.map(toMetricDef),
+    declares: declarationsOf(data),
     simulate: opts?.simulate,
   };
+}
+
+/**
+ * The profile's declarations, filled in for the versions that could not state
+ * them.
+ *
+ * Every v1/v2 profile was authored against a vocabulary in which `load.*` was
+ * the inverter's own (UPS) load output — that is what the capability was derived
+ * from — so reading `backupOutput: true` out of those roles is not a guess about
+ * the hardware, it is the author's meaning. A v3 profile says so itself, and
+ * saying nothing there means no backup output.
+ *
+ * Exported because the authoring side needs the same reading: a v3 variant
+ * derived from a published legacy base must inherit what that base's `load.*`
+ * roles meant, not lose it in the version step.
+ */
+export function declarationsOf(data: ProfileData): ProfileDeclarations | undefined {
+  if (data.schemaVersion >= 3) return data.declares;
+  return data.metrics.some((m) => m.role?.startsWith("load.")) ? { backupOutput: true } : undefined;
 }

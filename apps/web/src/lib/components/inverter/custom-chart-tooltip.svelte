@@ -1,5 +1,6 @@
 <script lang="ts">
-	import { getChartContext, Tooltip as TooltipPrimitive } from 'layerchart';
+	import { getChartContext } from 'layerchart';
+	import ChartTooltipRoot from '$lib/charts/chart-tooltip-root.svelte';
 	import { fractionDigits } from '$lib/inverter/format';
 
 	// Tooltip that reads each series' RAW value from the hovered datum rather than
@@ -18,15 +19,23 @@
 	const datum = $derived(ctx.tooltip.data as Record<string, number | Date> | null);
 	const label = $derived(datum ? labelFormatter(ctx.x(datum)) : '');
 
+	const unitSuffix = (unit: string) => (unit ? ` ${unit}` : '');
+
 	const shown = $derived(
 		series
 			.map((s) => ({ ...s, value: datum?.[s.key] }))
 			.filter((s): s is typeof s & { value: number } => typeof s.value === 'number')
+			.map((s) => ({
+				...s,
+				text: s.value.toLocaleString(undefined, fractionDigits(s.unit)) + unitSuffix(s.unit)
+			}))
 	);
+
+	const visible = $derived(datum !== null && shown.length > 0);
 </script>
 
-{#if datum && shown.length > 0}
-	<TooltipPrimitive.Root variant="none">
+{#if visible}
+	<ChartTooltipRoot variant="none">
 		<div
 			class="grid min-w-[9rem] items-start gap-1.5 rounded-lg border border-border/50 bg-background px-2.5 py-1.5 text-xs shadow-xl"
 		>
@@ -41,14 +50,12 @@
 						<div class="flex flex-1 items-center justify-between gap-3 leading-none">
 							<span class="text-muted-foreground">{s.label}</span>
 							<span class="font-mono font-medium tabular-nums text-foreground">
-								{s.value.toLocaleString(undefined, fractionDigits(s.unit))}{s.unit
-									? ` ${s.unit}`
-									: ''}
+								{s.text}
 							</span>
 						</div>
 					</div>
 				{/each}
 			</div>
 		</div>
-	</TooltipPrimitive.Root>
+	</ChartTooltipRoot>
 {/if}

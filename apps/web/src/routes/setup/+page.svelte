@@ -3,7 +3,6 @@
 	import { resolve } from '$lib/resolve';
 	import { onMount } from 'svelte';
 	import { toast } from 'svelte-sonner';
-	import Check from 'phosphor-svelte/lib/Check';
 	import { api } from '$lib/api';
 	import Logo from '$lib/components/logo.svelte';
 	import { Button } from '$lib/components/ui/button';
@@ -11,6 +10,7 @@
 	import type { RegisteredProfile } from '$lib/components/settings/profile-types';
 	import ActivateStep from '$lib/components/setup/activate-step.svelte';
 	import ProfileStep from '$lib/components/setup/profile-step.svelte';
+	import SetupStepper from '$lib/components/setup/setup-stepper.svelte';
 	import { firstRunGate } from '$lib/setup';
 	import * as m from '$lib/paraglide/messages';
 	import { useAppSession } from '$lib/session';
@@ -78,6 +78,12 @@
 		{ key: 'activate', label: m.setup_step_activate }
 	];
 	const currentStep = $derived(steps.findIndex((s) => s.key === step));
+	const stepItems = $derived(steps.map((s) => ({ key: s.key, label: s.label() })));
+
+	// The connection form test-reads against the chosen profile; `undefined`
+	// lets the server fall back to the active one.
+	const testProfileId = $derived(selectedId ?? undefined);
+	const selectedName = $derived(selected?.name);
 </script>
 
 <div class="relative min-h-svh overflow-y-auto bg-background p-4">
@@ -97,50 +103,7 @@
 			</div>
 		</div>
 
-		<ol class="flex items-start">
-			{#each steps as s, i (s.key)}
-				{@const state = i < currentStep ? 'done' : i === currentStep ? 'current' : 'upcoming'}
-				<li class="flex flex-1 flex-col items-center gap-2">
-					<div class="flex w-full items-center">
-						<span
-							class="h-px flex-1 {i === 0
-								? 'bg-transparent'
-								: i <= currentStep
-									? 'bg-primary'
-									: 'bg-border'}"
-						></span>
-						<span
-							class="flex size-8 shrink-0 items-center justify-center rounded-full border text-sm font-medium transition-colors {state ===
-							'done'
-								? 'border-primary bg-primary text-primary-foreground'
-								: state === 'current'
-									? 'border-primary text-primary'
-									: 'border-border text-muted-foreground'}"
-						>
-							{#if state === 'done'}
-								<Check class="size-4" weight="bold" />
-							{:else}
-								{i + 1}
-							{/if}
-						</span>
-						<span
-							class="h-px flex-1 {i === steps.length - 1
-								? 'bg-transparent'
-								: i < currentStep
-									? 'bg-primary'
-									: 'bg-border'}"
-						></span>
-					</div>
-					<span
-						class="text-center text-xs {state === 'upcoming'
-							? 'text-muted-foreground'
-							: 'font-medium text-foreground'}"
-					>
-						{s.label()}
-					</span>
-				</li>
-			{/each}
-		</ol>
+		<SetupStepper steps={stepItems} current={currentStep} />
 
 		{#if step === 'profile'}
 			<ProfileStep
@@ -150,14 +113,14 @@
 				{onExternalInstalled}
 			/>
 		{:else if step === 'connect'}
-			<InverterForm bind:this={connectForm} profileId={selectedId ?? undefined} />
+			<InverterForm bind:this={connectForm} profileId={testProfileId} />
 			<div class="flex justify-between">
 				<Button variant="ghost" onclick={() => (step = 'profile')}>{m.action_back()}</Button>
 				<Button onclick={continueFromConnect}>{m.action_continue()}</Button>
 			</div>
 		{:else}
 			<ActivateStep
-				profileName={selected?.name}
+				profileName={selectedName}
 				{activating}
 				{activated}
 				onActivate={activate}

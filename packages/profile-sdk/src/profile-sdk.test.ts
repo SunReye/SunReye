@@ -55,7 +55,11 @@ describe("coverage", () => {
   test("Deye maps most roles; tiny maps almost none", () => {
     const deye = coverage(deyeSg05lp3Data);
     expect(deye.mappedCount).toBeGreaterThan(30);
-    expect(deye.total).toBe(deye.mapped.length + deye.missing.length);
+    // Not an equality: the Deye sets its battery ceilings in amps, so the watt
+    // twins of those roles are neither mapped nor actionable — they are covered
+    // by the ampere role and dropped from `missing` (see ROLE_ALTERNATIVES).
+    expect(deye.mapped.length + deye.missing.length).toBeLessThanOrEqual(deye.total);
+    expect(deye.missing).not.toContain("setting.battery.max_charge_power");
 
     const tiny = coverage(tinyProfile());
     expect(tiny.mapped).toEqual(["battery.soc"]);

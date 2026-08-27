@@ -2,13 +2,14 @@
 	import type { Snippet } from 'svelte';
 	import * as Dialog from '$lib/components/ui/dialog';
 	import HourlyBarChart from './hourly-bar-chart.svelte';
+	import ChartFullscreen from '$lib/components/layout/chart-fullscreen.svelte';
 	import { api } from '$lib/api';
-	import { periodLabel, COST_X_TICKS } from '$lib/cost/ranges';
+	import { periodKeyLabel, COST_X_TICKS } from '$lib/cost/ranges';
 	import { Skeleton } from '$lib/components/ui/skeleton';
 	import * as m from '$lib/paraglide/messages';
 
 	// One period of today's hourly energy — the fields the four detail charts read.
-	// Mirrors the server's PeriodEnergy (apps/server/src/energy-calc.ts).
+	// Mirrors the server's PeriodEnergy (apps/server/src/energy/energy-calc.ts).
 	type Period = {
 		bucket: string;
 		importKwh: number;
@@ -60,7 +61,7 @@
 	});
 
 	const data = $derived(
-		(periods ?? []).map((p) => ({ ...p, label: periodLabel(p.bucket, 'hour') }))
+		(periods ?? []).map((p) => ({ ...p, label: periodKeyLabel(p.bucket, 'hour') }))
 	);
 
 	type Series = { key: string; label: string; color: string; value: (d: Period) => number };
@@ -131,13 +132,15 @@
 		{#if periods === null}
 			<Skeleton class="h-64 w-full rounded" />
 		{:else}
-			<HourlyBarChart
-				{data}
-				{series}
-				unit="kWh"
-				xTicks={COST_X_TICKS.hour}
-				empty={m.overview_no_data_today()}
-			/>
+			<ChartFullscreen {title}>
+				<HourlyBarChart
+					{data}
+					{series}
+					unit="kWh"
+					xTicks={COST_X_TICKS.hour}
+					empty={m.overview_no_data_today()}
+				/>
+			</ChartFullscreen>
 		{/if}
 	</Dialog.Content>
 </Dialog.Root>

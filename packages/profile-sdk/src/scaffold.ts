@@ -1,4 +1,9 @@
-import type { MetricDataDef, ProfileData, RegisterType } from "@SunReye/inverter-core";
+import {
+  bindingFor,
+  type MetricDataDef,
+  type ProfileData,
+  type RegisterType,
+} from "@SunReye/inverter-core";
 
 export interface ScaffoldMeta {
   id: string;
@@ -42,7 +47,7 @@ export function scaffoldFromCsv(csv: string, meta: ScaffoldMeta): ProfileData {
 
     const type = parseType(get("type"));
     const unit = get("unit");
-    return {
+    const def: MetricDataDef = {
       key: topic.replaceAll("/", "."),
       topic,
       label: get("label") || topic,
@@ -53,9 +58,10 @@ export function scaffoldFromCsv(csv: string, meta: ScaffoldMeta): ProfileData {
       scale: Number(get("scale") ?? "1") || 1,
       access: get("access") === "rw" ? "rw" : "r",
     };
+    return { ...def, binding: bindingFor(def) };
   });
 
-  return { schemaVersion: 1, ...meta, metrics };
+  return { schemaVersion: 2, ...meta, metrics };
 }
 
 /** Minimal CSV row split (no quoted-field support — register tables don't need it). */

@@ -9,9 +9,11 @@
 	import { useAppSession } from '$lib/session';
 	import { firstRunGate, publicDashboardEnabled, type FirstRunGate } from '$lib/setup';
 	import { inverter } from '$lib/inverter/store.svelte';
+	import { bus } from '$lib/ws/bus.svelte';
 	import { display } from '$lib/display.svelte';
+	import { chartPalette } from '$lib/chart-palette.svelte';
 	import { pageHeader } from '$lib/page-header.svelte';
-	import * as m from '$lib/paraglide/messages';
+	import { resolveView } from './app-view';
 
 	const { children } = $props();
 
@@ -36,20 +38,24 @@
 	let anonAllowed = $state<boolean | null>(null);
 	const isAnon = $derived(!$sessionQuery.isPending && !$sessionQuery.data && anonAllowed === true);
 
+	/** A logged-out visitor the public dashboard does not cover belongs at login. */
+	function applyAnonDecision(allowed: boolean): void {
+		if (!allowed) goto(resolve('/login'));
+	}
+
 	$effect(() => {
 		if ($sessionQuery.isPending || $sessionQuery.data) return;
 		// Logged out. Decide read-only dashboard vs login.
-		if (anonAllowed === false) {
-			goto(resolve('/login'));
+		if (anonAllowed !== null) {
+			applyAnonDecision(anonAllowed);
 			return;
 		}
-		if (anonAllowed !== null) return;
 		publicDashboardEnabled().then((ok) => {
 			// A session may have arrived mid-probe (e.g. we just signed in) — defer to
 			// the authenticated path rather than treating the visitor as anonymous.
 			if ($sessionQuery.data) return;
 			anonAllowed = ok;
-			if (!ok) goto(resolve('/login'));
+			applyAnonDecision(ok);
 		});
 	});
 
@@ -73,12 +79,12 @@
 	// viewers alike — who reaches the page by direct URL. The nav hides these
 	// entries too (app-sidebar.svelte).
 	const ADMIN_ONLY = ['/settings', '/controls'];
+	// Skip while a logged-out visitor is still being classified (login vs anon); the
+	// access effect above sends unauthorised anonymous users to /login.
+	const accessSettled = $derived(Boolean($sessionQuery.data) || anonAllowed === true);
+	const guardAdminOnly = $derived(!$sessionQuery.isPending && !isAdmin && accessSettled);
 	$effect(() => {
-		if ($sessionQuery.isPending || isAdmin) return;
-		// Skip while a logged-out visitor is still being classified (login vs anon);
-		// the access effect above sends unauthorised anonymous users to /login.
-		if (!$sessionQuery.data && anonAllowed !== true) return;
-		if (ADMIN_ONLY.includes(topSegment)) goto(resolve('/'));
+		if (guardAdminOnly && ADMIN_ONLY.includes(topSegment)) goto(resolve('/'));
 	});
 
 	// Open the manifest + live stream once the instance is fully configured
@@ -86,26 +92,63 @@
 	// for an anonymous read-only viewer (reads + stream are anon-allowed).
 	$effect(() => {
 		if (gate === 'ready' || isAnon) {
-			inverter.start();
+			// The multiplexed socket is leased here and nowhere else: the shell owns
+			// the connection for as long as the workspace is on screen, while pages
+			// and cards subscribe to topics on top of it (bus.subscribe) without
+			// ever opening or closing one.
+			const releaseBus = bus.connect();
+			// The metrics TOPIC, on top of that connection — the dashboard's live
+			// numbers are read from nearly every page, so the shell holds this one
+			// too instead of every card re-taking it.
+			const releaseMetrics = inverter.start();
 			// Load the instance-wide clock/time-zone preference so charts render in
 			// the configured format from first paint.
 			display.load();
+			// The palette: this browser's own choice first (synchronous, so the
+			// first paint is already right), then the instance setting.
+			chartPalette.loadOverride();
+			void chartPalette.load();
+			return () => {
+				releaseMetrics();
+				releaseBus();
+			};
 		}
 	});
+
+	// Re-stamp whenever either half of the palette changes, so switching it in
+	// settings re-hues the whole app without a reload.
+	$effect(() => chartPalette.stamp());
 
 	// Subtle route-to-route motion: the shell (sidebar) stays put while the inner
 	// content cross-fades up on each navigation. Honour reduced-motion.
 	const reduceMotion = new MediaQuery('prefers-reduced-motion: reduce');
 	const contentIn = $derived(reduceMotion.current ? { duration: 0 } : { duration: 200 });
+
+	// Workspace vs status message, in access-then-gate precedence order.
+	const view = $derived(
+		resolveView({
+			pending: $sessionQuery.isPending,
+			authed: Boolean($sessionQuery.data),
+			anonAllowed,
+			gate
+		})
+	);
 </script>
 
 {#snippet shell()}
 	<Sidebar.Provider>
 		<AppSidebar />
-		<Sidebar.Inset>
+		<!-- The header's height is declared once, here, and read by both the header
+		     itself and the overview's `100svh - header` viewport grid. It used to be
+		     an `h-14` here and a hand-copied `3.5rem` in a calc two files away, with
+		     nothing connecting them: changing the header silently made the kiosk
+		     screen scroll. -->
+		<Sidebar.Inset class="[--app-header-h:3.5rem]">
 			<!-- Persistent top header on every viewport: sidebar trigger + the active
 			     page's title/subtitle (set by each page via the page-header store). -->
-			<header class="flex h-14 shrink-0 items-center gap-3 border-b border-border px-4">
+			<header
+				class="sticky top-0 z-10 flex h-[var(--app-header-h)] shrink-0 items-center gap-3 border-b border-border bg-background px-4"
+			>
 				<Sidebar.Trigger />
 				<div class="flex min-w-0 flex-col">
 					<h1 class="truncate text-base font-semibold leading-tight">{pageHeader.title}</h1>
@@ -116,7 +159,12 @@
 					{/if}
 				</div>
 			</header>
-			<main class="min-h-0 flex-1 overflow-y-auto">
+			<!-- `overflow-x-clip`, not `auto`: at 412px /automations ran past the
+			     viewport and the whole page could be dragged sideways. A sideways
+			     scrollbar on the page is never the fix — anything genuinely too wide
+			     (a table, a chart, a code block) scrolls inside its own box, so
+			     clipping here only ever hides an accident. -->
+			<main class="min-h-0 flex-1 overflow-y-auto overflow-x-clip">
 				{#key topSegment}
 					<div in:fade={contentIn}>
 						{@render children()}
@@ -127,20 +175,8 @@
 	</Sidebar.Provider>
 {/snippet}
 
-{#if $sessionQuery.isPending}
-	<div class="grid h-svh place-items-center text-muted-foreground">{m.app_loading()}</div>
-{:else if !$sessionQuery.data}
-	{#if anonAllowed === null}
-		<div class="grid h-svh place-items-center text-muted-foreground">{m.app_loading()}</div>
-	{:else if anonAllowed}
-		{@render shell()}
-	{:else}
-		<div class="grid h-svh place-items-center text-muted-foreground">{m.app_redirecting_login()}</div>
-	{/if}
-{:else if gate === null}
-	<div class="grid h-svh place-items-center text-muted-foreground">{m.app_loading()}</div>
-{:else if gate !== 'ready'}
-	<div class="grid h-svh place-items-center text-muted-foreground">{m.app_redirecting()}</div>
-{:else}
+{#if view.kind === 'shell'}
 	{@render shell()}
+{:else}
+	<div class="grid h-svh place-items-center text-muted-foreground">{view.text()}</div>
 {/if}

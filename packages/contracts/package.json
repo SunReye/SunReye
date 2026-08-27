@@ -1,0 +1,21 @@
+{
+  "name": "@SunReye/contracts",
+  "version": "0.0.0",
+  "license": "AGPL-3.0-only",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./*": {
+      "default": "./src/*/types.ts"
+    }
+  },
+  "devDependencies": {
+    "@SunReye/config": "workspace:*",
+    "@SunReye/db": "workspace:*",
+    "@SunReye/inverter-core": "workspace:*",
+    "typescript": "catalog:"
+  },
+  "scripts": {
+    "check-types": "tsc --noEmit"
+  }
+}

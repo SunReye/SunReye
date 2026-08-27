@@ -1,0 +1,1317 @@
+{
+  "id": "deye-sg05lp3",
+  "name": "SG05LP3",
+  "manufacturer": "Deye",
+  "capabilities": {
+    "battery": true,
+    "pvStrings": 2,
+    "phases": 3,
+    "grid": true,
+    "generator": true,
+    "backupLoad": true,
+    "features": [
+      "solar_sell",
+      "grid_charge",
+      "time_of_use"
+    ],
+    "controls": [
+      "settings.battery.maximum_charge_current",
+      "settings.battery.maximum_discharge_current",
+      "settings.battery.maximum_grid_charge_current",
+      "settings.battery.grid_charge",
+      "settings.workmode",
+      "settings.solar_sell_max_power",
+      "settings.solar_sell",
+      "timeofuse.selling",
+      "timeofuse.time.1",
+      "timeofuse.time.2",
+      "timeofuse.time.3",
+      "timeofuse.time.4",
+      "timeofuse.time.5",
+      "timeofuse.time.6",
+      "timeofuse.power.1",
+      "timeofuse.power.2",
+      "timeofuse.power.3",
+      "timeofuse.power.4",
+      "timeofuse.power.5",
+      "timeofuse.power.6",
+      "timeofuse.voltage.1",
+      "timeofuse.voltage.2",
+      "timeofuse.voltage.3",
+      "timeofuse.voltage.4",
+      "timeofuse.voltage.5",
+      "timeofuse.voltage.6",
+      "timeofuse.soc.1",
+      "timeofuse.soc.2",
+      "timeofuse.soc.3",
+      "timeofuse.soc.4",
+      "timeofuse.soc.5",
+      "timeofuse.soc.6",
+      "timeofuse.enabled.1",
+      "timeofuse.enabled.2",
+      "timeofuse.enabled.3",
+      "timeofuse.enabled.4",
+      "timeofuse.enabled.5",
+      "timeofuse.enabled.6",
+      "settings.battery.lock"
+    ]
+  },
+  "metrics": [
+    {
+      "key": "inverter.status",
+      "topic": "inverter/status",
+      "label": "Running status",
+      "unit": null,
+      "group": "inverter",
+      "kind": "status",
+      "writable": false,
+      "role": "inverter.status",
+      "enumLabels": {
+        "0": "Standby",
+        "1": "Self-check",
+        "2": "Normal",
+        "3": "Alarm",
+        "4": "Fault"
+      },
+      "storage": "series"
+    },
+    {
+      "key": "ac.relay_status",
+      "topic": "ac/relay_status",
+      "label": "AC relays status",
+      "unit": null,
+      "group": "inverter",
+      "kind": "status",
+      "writable": false,
+      "role": "inverter.relay_status",
+      "enumLabels": {
+        "0": "Open",
+        "1": "Closed"
+      },
+      "storage": "series"
+    },
+    {
+      "key": "dc.pv1.power",
+      "topic": "dc/pv1/power",
+      "label": "PV1 Power",
+      "unit": "W",
+      "group": "inverter",
+      "kind": "measurement",
+      "writable": false,
+      "role": "pv.string.power",
+      "index": 1,
+      "storage": "series"
+    },
+    {
+      "key": "dc.pv2.power",
+      "topic": "dc/pv2/power",
+      "label": "PV2 Power",
+      "unit": "W",
+      "group": "inverter",
+      "kind": "measurement",
+      "writable": false,
+      "role": "pv.string.power",
+      "index": 2,
+      "storage": "series"
+    },
+    {
+      "key": "dc.pv1.voltage",
+      "topic": "dc/pv1/voltage",
+      "label": "PV1 Voltage",
+      "unit": "V",
+      "group": "inverter",
+      "kind": "measurement",
+      "writable": false,
+      "role": "pv.string.voltage",
+      "index": 1,
+      "storage": "series"
+    },
+    {
+      "key": "dc.pv2.voltage",
+      "topic": "dc/pv2/voltage",
+      "label": "PV2 Voltage",
+      "unit": "V",
+      "group": "inverter",
+      "kind": "measurement",
+      "writable": false,
+      "role": "pv.string.voltage",
+      "index": 2,
+      "storage": "series"
+    },
+    {
+      "key": "dc.pv1.current",
+      "topic": "dc/pv1/current",
+      "label": "PV1 Current",
+      "unit": "A",
+      "group": "inverter",
+      "kind": "measurement",
+      "writable": false,
+      "role": "pv.string.current",
+      "index": 1,
+      "storage": "series"
+    },
+    {
+      "key": "dc.pv2.current",
+      "topic": "dc/pv2/current",
+      "label": "PV2 Current",
+      "unit": "A",
+      "group": "inverter",
+      "kind": "measurement",
+      "writable": false,
+      "role": "pv.string.current",
+      "index": 2,
+      "storage": "series"
+    },
+    {
+      "key": "day_energy",
+      "topic": "day_energy",
+      "label": "Daily Production",
+      "unit": "kWh",
+      "group": "inverter",
+      "kind": "cumulative",
+      "writable": false,
+      "role": "production.today",
+      "storage": "series"
+    },
+    {
+      "key": "total_energy",
+      "topic": "total_energy",
+      "label": "Total Production",
+      "unit": "kWh",
+      "group": "inverter",
+      "kind": "cumulative",
+      "writable": false,
+      "role": "production.total",
+      "storage": "series"
+    },
+    {
+      "key": "ac.total_power",
+      "topic": "ac/total_power",
+      "label": "Total Grid Power",
+      "unit": "W",
+      "group": "inverter",
+      "kind": "measurement",
+      "writable": false,
+      "role": "grid.power",
+      "flow": {
+        "positive": "Importing",
+        "negative": "Exporting"
+      },
+      "storage": "series"
+    },
+    {
+      "key": "ac.l1.voltage",
+      "topic": "ac/l1/voltage",
+      "label": "Grid Voltage L1",
+      "unit": "V",
+      "group": "inverter",
+      "kind": "measurement",
+      "writable": false,
+      "role": "grid.phase.voltage",
+      "index": 1,
+      "storage": "series"
+    },
+    {
+      "key": "ac.l2.voltage",
+      "topic": "ac/l2/voltage",
+      "label": "Grid Voltage L2",
+      "unit": "V",
+      "group": "inverter",
+      "kind": "measurement",
+      "writable": false,
+      "role": "grid.phase.voltage",
+      "index": 2,
+      "storage": "series"
+    },
+    {
+      "key": "ac.l3.voltage",
+      "topic": "ac/l3/voltage",
+      "label": "Grid Voltage L3",
+      "unit": "V",
+      "group": "inverter",
+      "kind": "measurement",
+      "writable": false,
+      "role": "grid.phase.voltage",
+      "index": 3,
+      "storage": "series"
+    },
+    {
+      "key": "ac.l1.ct.internal",
+      "topic": "ac/l1/ct/internal",
+      "label": "Internal CT L1 Power",
+      "unit": "W",
+      "group": "inverter",
+      "kind": "measurement",
+      "writable": false,
+      "role": "grid.phase.power",
+      "index": 1,
+      "flow": {
+        "positive": "Importing",
+        "negative": "Exporting"
+      },
+      "storage": "series"
+    },
+    {
+      "key": "ac.l2.ct.internal",
+      "topic": "ac/l2/ct/internal",
+      "label": "Internal CT L2 Power",
+      "unit": "W",
+      "group": "inverter",
+      "kind": "measurement",
+      "writable": false,
+      "role": "grid.phase.power",
+      "index": 2,
+      "flow": {
+        "positive": "Importing",
+        "negative": "Exporting"
+      },
+      "storage": "series"
+    },
+    {
+      "key": "ac.l3.ct.internal",
+      "topic": "ac/l3/ct/internal",
+      "label": "Internal CT L3 Power",
+      "unit": "W",
+      "group": "inverter",
+      "kind": "measurement",
+      "writable": false,
+      "role": "grid.phase.power",
+      "index": 3,
+      "flow": {
+        "positive": "Importing",
+        "negative": "Exporting"
+      },
+      "storage": "series"
+    },
+    {
+      "key": "ac.total_internal_power",
+      "topic": "ac/total_internal_power",
+      "label": "Total Internal Power",
+      "unit": "W",
+      "group": "inverter",
+      "kind": "measurement",
+      "writable": false,
+      "storage": "series"
+    },
+    {
+      "key": "ac.l1.ct.external",
+      "topic": "ac/l1/ct/external",
+      "label": "External CT L1 Power",
+      "unit": "W",
+      "group": "inverter",
+      "kind": "measurement",
+      "writable": false,
+      "storage": "series"
+    },
+    {
+      "key": "ac.l2.ct.external",
+      "topic": "ac/l2/ct/external",
+      "label": "External CT L2 Power",
+      "unit": "W",
+      "group": "inverter",
+      "kind": "measurement",
+      "writable": false,
+      "storage": "series"
+    },
+    {
+      "key": "ac.l3.ct.external",
+      "topic": "ac/l3/ct/external",
+      "label": "External CT L3 Power",
+      "unit": "W",
+      "group": "inverter",
+      "kind": "measurement",
+      "writable": false,
+      "storage": "series"
+    },
+    {
+      "key": "ac.daily_energy_bought",
+      "topic": "ac/daily_energy_bought",
+      "label": "Daily Energy Bought",
+      "unit": "kWh",
+      "group": "inverter",
+      "kind": "cumulative",
+      "writable": false,
+      "role": "grid.energy.imported.today",
+      "storage": "series"
+    },
+    {
+      "key": "ac.total_energy_bought",
+      "topic": "ac/total_energy_bought",
+      "label": "Total Energy Bought",
+      "unit": "kWh",
+      "group": "inverter",
+      "kind": "cumulative",
+      "writable": false,
+      "role": "grid.energy.imported.total",
+      "storage": "series"
+    },
+    {
+      "key": "ac.daily_energy_sold",
+      "topic": "ac/daily_energy_sold",
+      "label": "Daily Energy Sold",
+      "unit": "kWh",
+      "group": "inverter",
+      "kind": "cumulative",
+      "writable": false,
+      "role": "grid.energy.exported.today",
+      "storage": "series"
+    },
+    {
+      "key": "ac.total_energy_sold",
+      "topic": "ac/total_energy_sold",
+      "label": "Total Energy Sold",
+      "unit": "kWh",
+      "group": "inverter",
+      "kind": "cumulative",
+      "writable": false,
+      "role": "grid.energy.exported.total",
+      "storage": "series"
+    },
+    {
+      "key": "ac.l1.current",
+      "topic": "ac/l1/current",
+      "label": "Current L1",
+      "unit": "A",
+      "group": "inverter",
+      "kind": "measurement",
+      "writable": false,
+      "role": "grid.phase.current",
+      "index": 1,
+      "flow": {
+        "positive": "Importing",
+        "negative": "Exporting"
+      },
+      "storage": "series"
+    },
+    {
+      "key": "ac.l2.current",
+      "topic": "ac/l2/current",
+      "label": "Current L2",
+      "unit": "A",
+      "group": "inverter",
+      "kind": "measurement",
+      "writable": false,
+      "role": "grid.phase.current",
+      "index": 2,
+      "flow": {
+        "positive": "Importing",
+        "negative": "Exporting"
+      },
+      "storage": "series"
+    },
+    {
+      "key": "ac.l3.current",
+      "topic": "ac/l3/current",
+      "label": "Current L3",
+      "unit": "A",
+      "group": "inverter",
+      "kind": "measurement",
+      "writable": false,
+      "role": "grid.phase.current",
+      "index": 3,
+      "flow": {
+        "positive": "Importing",
+        "negative": "Exporting"
+      },
+      "storage": "series"
+    },
+    {
+      "key": "ac.l1.power",
+      "topic": "ac/l1/power",
+      "label": "Inverter L1 Power",
+      "unit": "W",
+      "group": "inverter",
+      "kind": "measurement",
+      "writable": false,
+      "storage": "series"
+    },
+    {
+      "key": "ac.l2.power",
+      "topic": "ac/l2/power",
+      "label": "Inverter L2 Power",
+      "unit": "W",
+      "group": "inverter",
+      "kind": "measurement",
+      "writable": false,
+      "storage": "series"
+    },
+    {
+      "key": "ac.l3.power",
+      "topic": "ac/l3/power",
+      "label": "Inverter L3 Power",
+      "unit": "W",
+      "group": "inverter",
+      "kind": "measurement",
+      "writable": false,
+      "storage": "series"
+    },
+    {
+      "key": "radiator_temp",
+      "topic": "radiator_temp",
+      "label": "DC Temperature",
+      "unit": "\u00b0C",
+      "group": "inverter",
+      "kind": "measurement",
+      "writable": false,
+      "role": "inverter.temperature.dc",
+      "storage": "series"
+    },
+    {
+      "key": "ac.temperature",
+      "topic": "ac/temperature",
+      "label": "AC Temperature",
+      "unit": "\u00b0C",
+      "group": "inverter",
+      "kind": "measurement",
+      "writable": false,
+      "role": "inverter.temperature.ac",
+      "storage": "series"
+    },
+    {
+      "key": "dc.total_power",
+      "topic": "dc/total_power",
+      "label": "DC Total Power",
+      "unit": "W",
+      "group": "inverter",
+      "kind": "measurement",
+      "writable": false,
+      "role": "pv.total.power",
+      "storage": "series"
+    },
+    {
+      "key": "inverter.power",
+      "topic": "inverter/power",
+      "label": "Inverter Self-Consumption",
+      "unit": "W",
+      "group": "inverter",
+      "kind": "measurement",
+      "writable": false,
+      "role": "inverter.power",
+      "storage": "series"
+    },
+    {
+      "key": "inverter.efficiency",
+      "topic": "inverter/efficiency",
+      "label": "Inverter Efficiency",
+      "unit": "%",
+      "group": "inverter",
+      "kind": "measurement",
+      "writable": false,
+      "role": "inverter.efficiency",
+      "range": {
+        "min": 0,
+        "max": 100
+      },
+      "storage": "series"
+    },
+    {
+      "key": "battery.daily_charge",
+      "topic": "battery/daily_charge",
+      "label": "Daily Battery Charge",
+      "unit": "kWh",
+      "group": "battery",
+      "kind": "cumulative",
+      "writable": false,
+      "role": "battery.energy.charged.today",
+      "storage": "series"
+    },
+    {
+      "key": "battery.daily_discharge",
+      "topic": "battery/daily_discharge",
+      "label": "Daily Battery Discharge",
+      "unit": "kWh",
+      "group": "battery",
+      "kind": "cumulative",
+      "writable": false,
+      "role": "battery.energy.discharged.today",
+      "storage": "series"
+    },
+    {
+      "key": "battery.total_charge",
+      "topic": "battery/total_charge",
+      "label": "Total Battery Charge",
+      "unit": "kWh",
+      "group": "battery",
+      "kind": "cumulative",
+      "writable": false,
+      "role": "battery.energy.charged.total",
+      "storage": "series"
+    },
+    {
+      "key": "battery.total_discharge",
+      "topic": "battery/total_discharge",
+      "label": "Total Battery Discharge",
+      "unit": "kWh",
+      "group": "battery",
+      "kind": "cumulative",
+      "writable": false,
+      "role": "battery.energy.discharged.total",
+      "storage": "series"
+    },
+    {
+      "key": "battery.power",
+      "topic": "battery/power",
+      "label": "Battery Power",
+      "unit": "W",
+      "group": "battery",
+      "kind": "measurement",
+      "writable": false,
+      "role": "battery.power",
+      "flow": {
+        "positive": "Discharging",
+        "negative": "Charging"
+      },
+      "storage": "series"
+    },
+    {
+      "key": "battery.voltage",
+      "topic": "battery/voltage",
+      "label": "Battery Voltage",
+      "unit": "V",
+      "group": "battery",
+      "kind": "measurement",
+      "writable": false,
+      "role": "battery.voltage",
+      "storage": "series"
+    },
+    {
+      "key": "battery.soc",
+      "topic": "battery/soc",
+      "label": "Battery SOC",
+      "unit": "%",
+      "group": "battery",
+      "kind": "measurement",
+      "writable": false,
+      "role": "battery.soc",
+      "range": {
+        "min": 0,
+        "max": 100
+      },
+      "storage": "series"
+    },
+    {
+      "key": "battery.1.current",
+      "topic": "battery/1/current",
+      "label": "Battery 1 Current",
+      "unit": "A",
+      "group": "battery",
+      "kind": "measurement",
+      "writable": false,
+      "flow": {
+        "positive": "Discharging",
+        "negative": "Charging"
+      },
+      "storage": "series"
+    },
+    {
+      "key": "battery.2.current",
+      "topic": "battery/2/current",
+      "label": "Battery 2 Current",
+      "unit": "A",
+      "group": "battery",
+      "kind": "measurement",
+      "writable": false,
+      "flow": {
+        "positive": "Discharging",
+        "negative": "Charging"
+      },
+      "storage": "series"
+    },
+    {
+      "key": "battery.current",
+      "topic": "battery/current",
+      "label": "Battery Current",
+      "unit": "A",
+      "group": "battery",
+      "kind": "measurement",
+      "writable": false,
+      "role": "battery.current",
+      "flow": {
+        "positive": "Discharging",
+        "negative": "Charging"
+      },
+      "storage": "series"
+    },
+    {
+      "key": "battery.temperature",
+      "topic": "battery/temperature",
+      "label": "Battery Temperature",
+      "unit": "\u00b0C",
+      "group": "battery",
+      "kind": "measurement",
+      "writable": false,
+      "role": "battery.temperature",
+      "storage": "series"
+    },
+    {
+      "key": "battery.mode",
+      "topic": "battery/mode",
+      "label": "Battery Mode",
+      "unit": null,
+      "group": "battery",
+      "kind": "status",
+      "writable": false,
+      "role": "battery.mode",
+      "enumLabels": {
+        "0": "Lead-acid (voltage)",
+        "1": "Lithium (SOC)"
+      },
+      "storage": "series"
+    },
+    {
+      "key": "ac.generator.a.voltage",
+      "topic": "ac/generator/a/voltage",
+      "label": "Gen port A Voltage",
+      "unit": "V",
+      "group": "generator",
+      "kind": "measurement",
+      "writable": false,
+      "role": "generator.phase.voltage",
+      "index": 1,
+      "storage": "series"
+    },
+    {
+      "key": "ac.generator.b.voltage",
+      "topic": "ac/generator/b/voltage",
+      "label": "Gen port B Voltage",
+      "unit": "V",
+      "group": "generator",
+      "kind": "measurement",
+      "writable": false,
+      "role": "generator.phase.voltage",
+      "index": 2,
+      "storage": "series"
+    },
+    {
+      "key": "ac.generator.c.voltage",
+      "topic": "ac/generator/c/voltage",
+      "label": "Gen port C Voltage",
+      "unit": "V",
+      "group": "generator",
+      "kind": "measurement",
+      "writable": false,
+      "role": "generator.phase.voltage",
+      "index": 3,
+      "storage": "series"
+    },
+    {
+      "key": "ac.generator.a.power",
+      "topic": "ac/generator/a/power",
+      "label": "Gen port A Power",
+      "unit": "W",
+      "group": "generator",
+      "kind": "measurement",
+      "writable": false,
+      "role": "generator.phase.power",
+      "index": 1,
+      "storage": "series"
+    },
+    {
+      "key": "ac.generator.b.power",
+      "topic": "ac/generator/b/power",
+      "label": "Gen port B Power",
+      "unit": "W",
+      "group": "generator",
+      "kind": "measurement",
+      "writable": false,
+      "role": "generator.phase.power",
+      "index": 2,
+      "storage": "series"
+    },
+    {
+      "key": "ac.generator.c.power",
+      "topic": "ac/generator/c/power",
+      "label": "Gen port C Power",
+      "unit": "W",
+      "group": "generator",
+      "kind": "measurement",
+      "writable": false,
+      "role": "generator.phase.power",
+      "index": 3,
+      "storage": "series"
+    },
+    {
+      "key": "ac.generator.total_power",
+      "topic": "ac/generator/total_power",
+      "label": "Total Power of Gen Ports",
+      "unit": "W",
+      "group": "generator",
+      "kind": "measurement",
+      "writable": false,
+      "role": "generator.power",
+      "storage": "series"
+    },
+    {
+      "key": "ac.generator.daily_energy",
+      "topic": "ac/generator/daily_energy",
+      "label": "Daily Generator Production",
+      "unit": "kWh",
+      "group": "generator",
+      "kind": "cumulative",
+      "writable": false,
+      "role": "generator.energy.today",
+      "storage": "series"
+    },
+    {
+      "key": "settings.battery.maximum_charge_current",
+      "topic": "settings/battery/maximum_charge_current",
+      "label": "Max battery charge current",
+      "unit": "A",
+      "group": "settings",
+      "kind": "setting",
+      "writable": true,
+      "role": "setting.battery.max_charge_current",
+      "range": {
+        "min": 0,
+        "max": 350
+      },
+      "storage": "config"
+    },
+    {
+      "key": "settings.battery.maximum_discharge_current",
+      "topic": "settings/battery/maximum_discharge_current",
+      "label": "Max battery discharge current",
+      "unit": "A",
+      "group": "settings",
+      "kind": "setting",
+      "writable": true,
+      "role": "setting.battery.max_discharge_current",
+      "range": {
+        "min": 0,
+        "max": 350
+      },
+      "storage": "config"
+    },
+    {
+      "key": "settings.battery.maximum_grid_charge_current",
+      "topic": "settings/battery/maximum_grid_charge_current",
+      "label": "Max battery grid-charge current",
+      "unit": "A",
+      "group": "settings",
+      "kind": "setting",
+      "writable": true,
+      "role": "setting.battery.max_grid_charge_current",
+      "storage": "config"
+    },
+    {
+      "key": "settings.battery.grid_charge",
+      "topic": "settings/battery/grid_charge",
+      "label": "Grid Charge enabled",
+      "unit": null,
+      "group": "settings",
+      "kind": "setting",
+      "writable": true,
+      "role": "setting.battery.grid_charge",
+      "enumLabels": {
+        "0": "Off",
+        "1": "On"
+      },
+      "storage": "config"
+    },
+    {
+      "key": "settings.workmode",
+      "topic": "settings/workmode",
+      "label": "Work Mode",
+      "unit": null,
+      "group": "settings",
+      "kind": "setting",
+      "writable": true,
+      "role": "setting.work_mode",
+      "enumLabels": {
+        "0": "Selling First",
+        "1": "Zero Export to Load",
+        "2": "Zero Export to CT"
+      },
+      "storage": "config"
+    },
+    {
+      "key": "settings.solar_sell_max_power",
+      "topic": "settings/solar_sell_max_power",
+      "label": "Max Solar Sell Power",
+      "unit": "W",
+      "group": "settings",
+      "kind": "setting",
+      "writable": true,
+      "role": "setting.solar_sell.max_power",
+      "storage": "config"
+    },
+    {
+      "key": "settings.solar_sell",
+      "topic": "settings/solar_sell",
+      "label": "Solar sell enabled",
+      "unit": null,
+      "group": "settings",
+      "kind": "setting",
+      "writable": true,
+      "role": "setting.solar_sell.enabled",
+      "enumLabels": {
+        "0": "Off",
+        "1": "On"
+      },
+      "storage": "config"
+    },
+    {
+      "key": "settings.system_time",
+      "topic": "settings/system_time",
+      "label": "System time",
+      "unit": null,
+      "group": "system",
+      "kind": "measurement",
+      "writable": false,
+      "storage": "series"
+    },
+    {
+      "key": "timeofuse.selling",
+      "topic": "timeofuse/selling",
+      "label": "TOU Weekly Selling Schedule",
+      "unit": null,
+      "group": "timeofuse",
+      "kind": "setting",
+      "writable": true,
+      "storage": "config"
+    },
+    {
+      "key": "timeofuse.time.1",
+      "topic": "timeofuse/time/1",
+      "label": "TOU Time 1",
+      "unit": null,
+      "group": "timeofuse",
+      "kind": "setting",
+      "writable": true,
+      "storage": "config"
+    },
+    {
+      "key": "timeofuse.time.2",
+      "topic": "timeofuse/time/2",
+      "label": "TOU Time 2",
+      "unit": null,
+      "group": "timeofuse",
+      "kind": "setting",
+      "writable": true,
+      "storage": "config"
+    },
+    {
+      "key": "timeofuse.time.3",
+      "topic": "timeofuse/time/3",
+      "label": "TOU Time 3",
+      "unit": null,
+      "group": "timeofuse",
+      "kind": "setting",
+      "writable": true,
+      "storage": "config"
+    },
+    {
+      "key": "timeofuse.time.4",
+      "topic": "timeofuse/time/4",
+      "label": "TOU Time 4",
+      "unit": null,
+      "group": "timeofuse",
+      "kind": "setting",
+      "writable": true,
+      "storage": "config"
+    },
+    {
+      "key": "timeofuse.time.5",
+      "topic": "timeofuse/time/5",
+      "label": "TOU Time 5",
+      "unit": null,
+      "group": "timeofuse",
+      "kind": "setting",
+      "writable": true,
+      "storage": "config"
+    },
+    {
+      "key": "timeofuse.time.6",
+      "topic": "timeofuse/time/6",
+      "label": "TOU Time 6",
+      "unit": null,
+      "group": "timeofuse",
+      "kind": "setting",
+      "writable": true,
+      "storage": "config"
+    },
+    {
+      "key": "timeofuse.power.1",
+      "topic": "timeofuse/power/1",
+      "label": "TOU Power 1",
+      "unit": "W",
+      "group": "timeofuse",
+      "kind": "setting",
+      "writable": true,
+      "range": {
+        "min": 0,
+        "max": 20000
+      },
+      "storage": "config"
+    },
+    {
+      "key": "timeofuse.power.2",
+      "topic": "timeofuse/power/2",
+      "label": "TOU Power 2",
+      "unit": "W",
+      "group": "timeofuse",
+      "kind": "setting",
+      "writable": true,
+      "range": {
+        "min": 0,
+        "max": 20000
+      },
+      "storage": "config"
+    },
+    {
+      "key": "timeofuse.power.3",
+      "topic": "timeofuse/power/3",
+      "label": "TOU Power 3",
+      "unit": "W",
+      "group": "timeofuse",
+      "kind": "setting",
+      "writable": true,
+      "range": {
+        "min": 0,
+        "max": 20000
+      },
+      "storage": "config"
+    },
+    {
+      "key": "timeofuse.power.4",
+      "topic": "timeofuse/power/4",
+      "label": "TOU Power 4",
+      "unit": "W",
+      "group": "timeofuse",
+      "kind": "setting",
+      "writable": true,
+      "range": {
+        "min": 0,
+        "max": 20000
+      },
+      "storage": "config"
+    },
+    {
+      "key": "timeofuse.power.5",
+      "topic": "timeofuse/power/5",
+      "label": "TOU Power 5",
+      "unit": "W",
+      "group": "timeofuse",
+      "kind": "setting",
+      "writable": true,
+      "range": {
+        "min": 0,
+        "max": 20000
+      },
+      "storage": "config"
+    },
+    {
+      "key": "timeofuse.power.6",
+      "topic": "timeofuse/power/6",
+      "label": "TOU Power 6",
+      "unit": "W",
+      "group": "timeofuse",
+      "kind": "setting",
+      "writable": true,
+      "range": {
+        "min": 0,
+        "max": 20000
+      },
+      "storage": "config"
+    },
+    {
+      "key": "timeofuse.voltage.1",
+      "topic": "timeofuse/voltage/1",
+      "label": "TOU Voltage 1",
+      "unit": "V",
+      "group": "timeofuse",
+      "kind": "setting",
+      "writable": true,
+      "storage": "config"
+    },
+    {
+      "key": "timeofuse.voltage.2",
+      "topic": "timeofuse/voltage/2",
+      "label": "TOU Voltage 2",
+      "unit": "V",
+      "group": "timeofuse",
+      "kind": "setting",
+      "writable": true,
+      "storage": "config"
+    },
+    {
+      "key": "timeofuse.voltage.3",
+      "topic": "timeofuse/voltage/3",
+      "label": "TOU Voltage 3",
+      "unit": "V",
+      "group": "timeofuse",
+      "kind": "setting",
+      "writable": true,
+      "storage": "config"
+    },
+    {
+      "key": "timeofuse.voltage.4",
+      "topic": "timeofuse/voltage/4",
+      "label": "TOU Voltage 4",
+      "unit": "V",
+      "group": "timeofuse",
+      "kind": "setting",
+      "writable": true,
+      "storage": "config"
+    },
+    {
+      "key": "timeofuse.voltage.5",
+      "topic": "timeofuse/voltage/5",
+      "label": "TOU Voltage 5",
+      "unit": "V",
+      "group": "timeofuse",
+      "kind": "setting",
+      "writable": true,
+      "storage": "config"
+    },
+    {
+      "key": "timeofuse.voltage.6",
+      "topic": "timeofuse/voltage/6",
+      "label": "TOU Voltage 6",
+      "unit": "V",
+      "group": "timeofuse",
+      "kind": "setting",
+      "writable": true,
+      "storage": "config"
+    },
+    {
+      "key": "timeofuse.soc.1",
+      "topic": "timeofuse/soc/1",
+      "label": "TOU SOC 1",
+      "unit": "%",
+      "group": "timeofuse",
+      "kind": "setting",
+      "writable": true,
+      "storage": "config"
+    },
+    {
+      "key": "timeofuse.soc.2",
+      "topic": "timeofuse/soc/2",
+      "label": "TOU SOC 2",
+      "unit": "%",
+      "group": "timeofuse",
+      "kind": "setting",
+      "writable": true,
+      "storage": "config"
+    },
+    {
+      "key": "timeofuse.soc.3",
+      "topic": "timeofuse/soc/3",
+      "label": "TOU SOC 3",
+      "unit": "%",
+      "group": "timeofuse",
+      "kind": "setting",
+      "writable": true,
+      "storage": "config"
+    },
+    {
+      "key": "timeofuse.soc.4",
+      "topic": "timeofuse/soc/4",
+      "label": "TOU SOC 4",
+      "unit": "%",
+      "group": "timeofuse",
+      "kind": "setting",
+      "writable": true,
+      "storage": "config"
+    },
+    {
+      "key": "timeofuse.soc.5",
+      "topic": "timeofuse/soc/5",
+      "label": "TOU SOC 5",
+      "unit": "%",
+      "group": "timeofuse",
+      "kind": "setting",
+      "writable": true,
+      "storage": "config"
+    },
+    {
+      "key": "timeofuse.soc.6",
+      "topic": "timeofuse/soc/6",
+      "label": "TOU SOC 6",
+      "unit": "%",
+      "group": "timeofuse",
+      "kind": "setting",
+      "writable": true,
+      "storage": "config"
+    },
+    {
+      "key": "timeofuse.enabled.1",
+      "topic": "timeofuse/enabled/1",
+      "label": "TOU Charge Enable 1",
+      "unit": null,
+      "group": "timeofuse",
+      "kind": "setting",
+      "writable": true,
+      "storage": "config"
+    },
+    {
+      "key": "timeofuse.enabled.2",
+      "topic": "timeofuse/enabled/2",
+      "label": "TOU Charge Enable 2",
+      "unit": null,
+      "group": "timeofuse",
+      "kind": "setting",
+      "writable": true,
+      "storage": "config"
+    },
+    {
+      "key": "timeofuse.enabled.3",
+      "topic": "timeofuse/enabled/3",
+      "label": "TOU Charge Enable 3",
+      "unit": null,
+      "group": "timeofuse",
+      "kind": "setting",
+      "writable": true,
+      "storage": "config"
+    },
+    {
+      "key": "timeofuse.enabled.4",
+      "topic": "timeofuse/enabled/4",
+      "label": "TOU Charge Enable 4",
+      "unit": null,
+      "group": "timeofuse",
+      "kind": "setting",
+      "writable": true,
+      "storage": "config"
+    },
+    {
+      "key": "timeofuse.enabled.5",
+      "topic": "timeofuse/enabled/5",
+      "label": "TOU Charge Enable 5",
+      "unit": null,
+      "group": "timeofuse",
+      "kind": "setting",
+      "writable": true,
+      "storage": "config"
+    },
+    {
+      "key": "timeofuse.enabled.6",
+      "topic": "timeofuse/enabled/6",
+      "label": "TOU Charge Enable 6",
+      "unit": null,
+      "group": "timeofuse",
+      "kind": "setting",
+      "writable": true,
+      "storage": "config"
+    },
+    {
+      "key": "ac.ups.total_power",
+      "topic": "ac/ups/total_power",
+      "label": "Total Load Power",
+      "unit": "W",
+      "group": "load",
+      "kind": "measurement",
+      "writable": false,
+      "role": "load.power",
+      "storage": "series"
+    },
+    {
+      "key": "ac.ups.l1.power",
+      "topic": "ac/ups/l1/power",
+      "label": "Load L1 Power",
+      "unit": "W",
+      "group": "load",
+      "kind": "measurement",
+      "writable": false,
+      "role": "load.phase.power",
+      "index": 1,
+      "storage": "series"
+    },
+    {
+      "key": "ac.ups.l2.power",
+      "topic": "ac/ups/l2/power",
+      "label": "Load L2 Power",
+      "unit": "W",
+      "group": "load",
+      "kind": "measurement",
+      "writable": false,
+      "role": "load.phase.power",
+      "index": 2,
+      "storage": "series"
+    },
+    {
+      "key": "ac.ups.l3.power",
+      "topic": "ac/ups/l3/power",
+      "label": "Load L3 Power",
+      "unit": "W",
+      "group": "load",
+      "kind": "measurement",
+      "writable": false,
+      "role": "load.phase.power",
+      "index": 3,
+      "storage": "series"
+    },
+    {
+      "key": "ac.ups.l1.voltage",
+      "topic": "ac/ups/l1/voltage",
+      "label": "Load Voltage L1",
+      "unit": "V",
+      "group": "load",
+      "kind": "measurement",
+      "writable": false,
+      "role": "load.phase.voltage",
+      "index": 1,
+      "storage": "series"
+    },
+    {
+      "key": "ac.ups.l2.voltage",
+      "topic": "ac/ups/l2/voltage",
+      "label": "Load Voltage L2",
+      "unit": "V",
+      "group": "load",
+      "kind": "measurement",
+      "writable": false,
+      "role": "load.phase.voltage",
+      "index": 2,
+      "storage": "series"
+    },
+    {
+      "key": "ac.ups.l3.voltage",
+      "topic": "ac/ups/l3/voltage",
+      "label": "Load Voltage L3",
+      "unit": "V",
+      "group": "load",
+      "kind": "measurement",
+      "writable": false,
+      "role": "load.phase.voltage",
+      "index": 3,
+      "storage": "series"
+    },
+    {
+      "key": "ac.ups.daily_energy",
+      "topic": "ac/ups/daily_energy",
+      "label": "Daily Load Consumption",
+      "unit": "kWh",
+      "group": "load",
+      "kind": "cumulative",
+      "writable": false,
+      "role": "load.energy.today",
+      "storage": "series"
+    },
+    {
+      "key": "ac.ups.total_energy",
+      "topic": "ac/ups/total_energy",
+      "label": "Total Load Consumption",
+      "unit": "kWh",
+      "group": "load",
+      "kind": "cumulative",
+      "writable": false,
+      "role": "load.energy.total",
+      "storage": "series"
+    },
+    {
+      "key": "settings.battery.lock",
+      "topic": "settings/battery/lock",
+      "label": "Battery discharge lock",
+      "unit": null,
+      "group": "settings",
+      "kind": "setting",
+      "writable": true,
+      "enumLabels": {
+        "0": "Unlocked",
+        "1": "Locked"
+      },
+      "storage": "config"
+    }
+  ]
+}

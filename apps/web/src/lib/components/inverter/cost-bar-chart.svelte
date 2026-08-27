@@ -3,10 +3,15 @@
 	import * as Chart from '$lib/components/ui/chart';
 	import * as m from '$lib/paraglide/messages';
 	import ChartLegend from '$lib/components/inverter/chart-legend.svelte';
-	import { COST_X_TICKS, periodLabel, type CostBucket } from '$lib/cost/ranges';
+	import { costFormatters } from '$lib/cost/format';
+	import TooltipSeriesRow from '$lib/components/inverter/_shared/tooltip-series-row.svelte';
+	import { seriesConfig, stackedBarProps } from '$lib/components/inverter/_shared/chart-series';
+	import { CHART_BOX } from '$lib/layout/tokens';
+	import PlotFrame from '$lib/components/layout/plot-frame.svelte';
+	import { periodKeyLabel, type CostBucket } from '$lib/cost/ranges';
 
 	// One diverging stack per period. Mirrors the server's CostSeriesPoint
-	// (apps/server/src/cost.ts): net = importCost − exportEarnings + standingCharge.
+	// (apps/server/src/energy/cost.ts): net = importCost − exportEarnings + standingCharge.
 	type Point = {
 		bucket: string;
 		importCost: number;
@@ -27,79 +32,85 @@
 	// the energy-split chart: grid red = grid dependence, export blue = exported
 	// production; standing teal is its own slot (all three CVD-validated,
 	// dataviz skill).
-	type Series = { key: string; label: string; color: string; value: (d: Point) => number };
+	type Series = { key: string; label: string; color: string; value: (d: Point) => number | null };
+
+	// An empty segment is left out of the stack rather than laid out at zero
+	// height, so the tooltip doesn't carry a "0.00 €" row for a series that had
+	// nothing in the period. (Segments too SHORT to survive `stackPadding` are a
+	// layerchart issue, fixed in patches/layerchart@2.0.1.patch.)
+	const nonZero = (v: number): number | null => (v === 0 ? null : v);
+
 	const series: Series[] = [
 		{
 			key: 'importCost',
 			label: m.chart_grid_usage(),
 			color: 'var(--color-energy-grid)',
-			value: (d) => d.importCost
+			value: (d) => nonZero(d.importCost)
 		},
 		{
 			key: 'standingCharge',
 			label: m.chart_standing_charge(),
 			color: 'var(--color-cost-standing)',
-			value: (d) => d.standingCharge
+			value: (d) => nonZero(d.standingCharge)
 		},
 		{
 			key: 'exportEarnings',
 			label: m.chart_export_earnings(),
 			color: 'var(--color-energy-export)',
-			value: (d) => -d.exportEarnings
+			value: (d) => nonZero(-d.exportEarnings)
 		}
 	];
 
-	const config: Chart.ChartConfig = Object.fromEntries(
-		series.map((s) => [s.key, { label: s.label, color: s.color }])
-	);
+	const config: Chart.ChartConfig = seriesConfig(series);
 
-	const money = (v: number) =>
-		new Intl.NumberFormat(undefined, { style: 'currency', currency }).format(v);
+	const { money } = $derived(costFormatters(currency));
 
-	const data = $derived(points.map((p) => ({ ...p, label: periodLabel(p.bucket, bucket) })));
+	// Earnings are already negative in the stack, so the sum of the tooltip rows is
+	// the period's net — same figure as the Net cost tile.
+	const netOf = (rows: readonly { value?: unknown }[]) =>
+		rows.reduce((sum, p) => sum + Number(p.value ?? 0), 0);
+
+	const data = $derived(points.map((p) => ({ ...p, label: periodKeyLabel(p.bucket, bucket) })));
+
+	// The gutters follow the plot's MEASURED width, not a breakpoint: this chart
+	// renders full-bleed on one page and inside a two-up grid on another, so only
+	// the element knows how much room it got. 0 until it is in the document,
+	// which stackedBarProps reads as the desktop case.
+	let plotWidth = $state(0);
 </script>
 
-<div class="flex flex-col gap-3">
-	<Chart.Container {config} class="h-64 w-full">
-		<BarChart
-			{data}
-			x="label"
-			{series}
-			seriesLayout="stackDiverging"
-			bandPadding={0.25}
-			stackPadding={2}
-			padding={{ top: 8, right: 8, bottom: 20, left: 52 }}
-			props={{ xAxis: { ticks: COST_X_TICKS[bucket] } }}
-		>
-			{#snippet tooltip()}
-				<Chart.Tooltip>
-					{#snippet formatter({ value, name, item, index, payload })}
-						<div
-							class="size-2.5 shrink-0 rounded-xs"
-							style="background: {item.config?.color ?? item.color}"
-						></div>
-						<div class="flex flex-1 items-center justify-between gap-4 leading-none">
-							<span class="text-muted-foreground">{name}</span>
-							<span class="font-mono font-medium tabular-nums text-foreground">
-								{money(Number(value))}
-							</span>
-						</div>
-						{#if index === payload.length - 1}
-							<!-- Earnings are already negative in the stack, so the sum of the
-							     rows is the period's net — same figure as the Net cost tile. -->
-							<div
-								class="mt-0.5 flex basis-full items-center justify-between gap-4 border-t border-border/50 pt-1.5 leading-none"
-							>
-								<span class="text-muted-foreground">{m.chart_net()}</span>
-								<span class="font-mono font-medium tabular-nums text-foreground">
-									{money(payload.reduce((sum, p) => sum + Number(p.value ?? 0), 0))}
-								</span>
-							</div>
-						{/if}
-					{/snippet}
-				</Chart.Tooltip>
-			{/snippet}
-		</BarChart>
-	</Chart.Container>
+<div class="flex min-w-0 flex-col gap-3" bind:clientWidth={plotWidth}>
+	<!-- The plot's own box. No gesture here, so no chips — the frame is present
+	     for the corner full-screen control, and it adds no height: the container's
+	     `CHART_BOX` is still what sizes the plot. -->
+	<PlotFrame>
+		<Chart.Container {config} class="{CHART_BOX} w-full">
+			<BarChart
+				{data}
+				x="label"
+				{series}
+				seriesLayout="stackDiverging"
+				{...stackedBarProps(data.length, plotWidth)}
+			>
+				{#snippet tooltip()}
+					<Chart.Tooltip>
+						{#snippet formatter({ value, name, item, index, payload })}
+							<TooltipSeriesRow {item} {name} value={money(Number(value))} />
+							{#if index === payload.length - 1}
+								<div
+									class="mt-0.5 flex basis-full items-center justify-between gap-4 border-t border-border/50 pt-1.5 leading-none"
+								>
+									<span class="text-muted-foreground">{m.chart_net()}</span>
+									<span class="font-mono font-medium tabular-nums text-foreground">
+										{money(netOf(payload))}
+									</span>
+								</div>
+							{/if}
+						{/snippet}
+					</Chart.Tooltip>
+				{/snippet}
+			</BarChart>
+		</Chart.Container>
+	</PlotFrame>
 	<ChartLegend items={series} />
 </div>

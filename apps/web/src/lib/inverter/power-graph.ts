@@ -1,9 +1,11 @@
+import { flowClass, gridClass, type Flow } from "./sign-colors";
 import type { CanonicalRole, InverterCapabilities } from "$lib/inverter/types";
 import * as m from "$lib/paraglide/messages";
 
 // Flow relative to the inverter: `in` = power arriving (production / discharge
 // / import), `out` = leaving it (load / charge / export).
-export type Flow = "in" | "out" | "idle";
+// Declared with the colours that read it — see ./sign-colors.
+export type { Flow };
 /** Anchor as a fraction (0..1) of the diagram box — node anchors are circle centres. */
 export type Pt = { x: number; y: number };
 
@@ -69,6 +71,13 @@ export type GraphSegment = {
 
 export type PowerGraph = { hub: Pt; nodes: GraphNode[]; segments: GraphSegment[] };
 
+/** Live watts for a canonical role, or undefined when unavailable. */
+type PowerLookup = (role: CanonicalRole, index?: number) => number | undefined;
+/** Whether a role's driving metric is *visible* (Settings → Sensors). */
+type VisibleLookup = (role: CanonicalRole, index?: number) => boolean;
+/** A slice of the graph, concatenated in render order by {@link buildPowerGraph}. */
+type GraphPart = { nodes: GraphNode[]; segments: GraphSegment[] };
+
 // Anchors are fractions of the *safe box* — the hero minus the component's
 // caption insets — so a node centre at y=0/y=1 sits exactly one caption-stack
 // away from the hero's edge and text can never clip, however short the box.
@@ -77,7 +86,8 @@ const HUBS: Record<Orientation, Pt> = {
   portrait: { x: 0.5, y: 0.5 },
 };
 
-export function sense(
+/** Direction of a signed reading, with a ±0.5 W dead band around zero. */
+function sense(
   value: number | undefined,
   positive: { flow: Flow; state: string },
   negative: { flow: Flow; state: string },
@@ -88,44 +98,10 @@ export function sense(
   return { flow: "idle", state: m.flow_idle() };
 }
 
-// Default flow hue by direction relative to the inverter: arriving = green,
-// leaving = amber, idle = the static rail colour.
-export function flowColor(flow: Flow): string {
-  return flow === "in" ? "text-emerald-500" : flow === "out" ? "text-amber-500" : "text-border";
-}
-
-// Grid uses cost semantics instead of raw direction: exporting (feeding energy
-// into the grid) is green, importing (pulling from it) is red.
-export function gridColor(watts: number | undefined): string {
-  const v = watts ?? 0;
-  if (v < -0.5) return "text-emerald-500"; // exporting
-  if (v > 0.5) return "text-red-500"; // importing
-  return "text-border";
-}
-
-// SOC → colour: red when low, fading through orange to green when healthy.
-// Interpolated between stops so the ring literally fades across the 30/60 bands.
-export function socColor(soc: number): string {
-  const stops = [
-    { p: 0, rgb: [239, 68, 68] }, // red-500
-    { p: 30, rgb: [249, 115, 22] }, // orange-500
-    { p: 60, rgb: [34, 197, 94] }, // green-500
-    { p: 100, rgb: [34, 197, 94] },
-  ];
-  const s = Math.min(100, Math.max(0, soc));
-  let lo = stops[0];
-  let hi = stops[stops.length - 1];
-  for (let i = 0; i < stops.length - 1; i++) {
-    if (s >= stops[i].p && s <= stops[i + 1].p) {
-      lo = stops[i];
-      hi = stops[i + 1];
-      break;
-    }
-  }
-  const t = hi.p === lo.p ? 0 : (s - lo.p) / (hi.p - lo.p);
-  const c = lo.rgb.map((v, i) => Math.round(v + (hi.rgb[i] - v) * t));
-  return `rgb(${c[0]}, ${c[1]}, ${c[2]})`;
-}
+// Direction, cost and battery-health colours live in ./sign-colors, where they
+// are tokens rather than Tailwind literals and can be exercised.
+const flowColor = flowClass;
+const gridColor = gridClass;
 
 /**
  * Evenly place `k` anchors along one axis inside [lo, hi], shrinking the span
@@ -166,8 +142,8 @@ function sweep(from: Pt, hub: Pt): Pt[] {
  */
 function pvSources(
   count: number,
-  power: (role: CanonicalRole, index?: number) => number | undefined,
-  has: (role: CanonicalRole, index?: number) => boolean,
+  power: PowerLookup,
+  has: VisibleLookup,
 ): { id: string; label: string; value: number | undefined }[] {
   const strings = Array.from({ length: count }, (_, i) => i + 1)
     .filter((idx) => has("pv.string.power", idx))
@@ -212,8 +188,8 @@ function homeBottom(
 /** The battery bottom-row entry, or null when absent/hidden. */
 function batteryBottom(
   caps: InverterCapabilities | null,
-  power: (role: CanonicalRole, index?: number) => number | undefined,
-  has: (role: CanonicalRole, index?: number) => boolean,
+  power: PowerLookup,
+  has: VisibleLookup,
 ): BottomSpec | null {
   if (!caps?.battery || !has("battery.power")) return null;
   const v = power("battery.power");
@@ -229,14 +205,76 @@ function batteryBottom(
     kind: "battery",
     type: "DC",
     value: v,
-    accent: "var(--color-chart-3)",
+    accent: "var(--energy-battery)",
+    color: flowColor(s.flow),
+    ...s,
+  };
+}
+
+/**
+ * Whether the home node renders: its metric is mapped and visible, full stop.
+ *
+ * Deliberately not gated on `backupLoad`: house consumption and a backup output
+ * are different things, and a grid-tied plant meters the first while having none
+ * of the second. Gating on the capability dropped the biggest sink out of those
+ * plants' diagrams.
+ */
+function loadVisible(has: VisibleLookup): boolean {
+  return has("load.power");
+}
+
+/** The load/home bottom-row entry, or null when absent/hidden. */
+function loadBottom(
+  power: PowerLookup,
+  has: VisibleLookup,
+  charger: ChargerDatum | undefined,
+): BottomSpec | null {
+  if (!loadVisible(has)) return null;
+  const { value, label } = homeBottom(power("load.power"), charger);
+  const s = sense(
+    value,
+    { flow: "out", state: m.flow_consuming() },
+    { flow: "out", state: m.flow_consuming() },
+  );
+  return {
+    id: "load",
+    label,
+    kind: "load",
+    type: "AC",
+    value,
+    accent: "var(--energy-load)",
+    color: flowColor(s.flow),
+    ...s,
+  };
+}
+
+/** The generator bottom-row entry, or null when absent/hidden. */
+function generatorBottom(
+  caps: InverterCapabilities | null,
+  power: PowerLookup,
+  has: VisibleLookup,
+): BottomSpec | null {
+  if (!caps?.generator || !has("generator.power")) return null;
+  const v = power("generator.power");
+  const s = sense(
+    v,
+    { flow: "in", state: m.flow_running() },
+    { flow: "idle", state: m.flow_off() },
+  );
+  return {
+    id: "generator",
+    label: m.label_generator(),
+    kind: "generator",
+    type: "AC",
+    value: v,
+    accent: "var(--energy-generator)",
     color: flowColor(s.flow),
     ...s,
   };
 }
 
 /** The EV charger's bottom-row entry (state text mirrors EVCC's semantics). */
-function chargerBottom(charger: ChargerDatum): BottomSpec {
+function chargerRow(charger: ChargerDatum): BottomSpec {
   const flow: Flow = charger.power > 0.5 ? "out" : "idle";
   const state = charger.charging
     ? m.flow_charging()
@@ -251,9 +289,66 @@ function chargerBottom(charger: ChargerDatum): BottomSpec {
     value: charger.power,
     flow,
     state,
-    accent: "var(--color-chart-2)",
+    accent: "var(--energy-ev)",
     color: flowColor(flow),
   };
+}
+
+/**
+ * The charger's bottom-row entry, or null when there is no charger or no visible
+ * load node for it to belong to.
+ */
+function chargerBottom(has: VisibleLookup, charger: ChargerDatum | undefined): BottomSpec | null {
+  if (!charger || !loadVisible(has)) return null;
+  return chargerRow(charger);
+}
+
+/**
+ * Informational mode: the EV hangs off the load node rather than the hub, because
+ * its draw is already inside `load.power` and a hub rail would double-count it.
+ * Residual-home mode makes it a real sibling with its own rail.
+ */
+function evIsSubBranch(has: VisibleLookup, charger: ChargerDatum | undefined): boolean {
+  if (!charger || charger.subtractFromHome) return false;
+  return loadVisible(has);
+}
+
+/** Grid presence, reading and flow sense — shared by both orientations. */
+type GridSpec = { visible: boolean; value: number | undefined; flow: Flow; state: string };
+
+function gridSpec(
+  caps: InverterCapabilities | null,
+  power: PowerLookup,
+  has: VisibleLookup,
+): GridSpec {
+  const visible = Boolean(caps?.grid) && has("grid.power");
+  const value = visible ? power("grid.power") : undefined;
+  const s = sense(
+    value,
+    { flow: "in", state: m.flow_importing() },
+    { flow: "out", state: m.flow_exporting() },
+  );
+  return { visible, value, ...s };
+}
+
+/** The grid's row shape (ungated) — cost colours, not raw flow direction. */
+function gridRow(g: GridSpec): BottomSpec {
+  return {
+    id: "grid",
+    label: m.label_grid(),
+    kind: "grid",
+    type: "AC",
+    value: g.value,
+    accent: "var(--energy-grid)",
+    color: gridColor(g.value),
+    flow: g.flow,
+    state: g.state,
+  };
+}
+
+/** The grid joins the sink row in portrait only; landscape gives it the spine's end. */
+function gridBottom(g: GridSpec, portrait: boolean): BottomSpec | null {
+  return g.visible && portrait ? gridRow(g) : null;
 }
 
 /**
@@ -280,6 +375,126 @@ function bottomSegment(
   };
 }
 
+const SOLAR_ACCENT = "var(--energy-solar)";
+/** The sink row sits on the safe box's bottom edge. */
+const BOTTOM_Y = 1;
+
+/**
+ * Anchors for the PV source row: a row along the top in portrait (captions above,
+ * clear of the connectors), stacked down the left edge in landscape — where a lone
+ * string sits on the hub's row so its rail runs straight.
+ */
+function pvAnchors(count: number, portrait: boolean, hubY: number): Pt[] {
+  if (portrait) return rowPositions(count, 0.02, 0.98).map((x) => ({ x, y: 0 }));
+  const ys = count === 1 ? [hubY] : rowPositions(count, 0.02, 0.78);
+  return ys.map((y) => ({ x: 0, y }));
+}
+
+/** Nodes + rails for the visible PV sources (strings, or the aggregate). */
+function pvGraph(
+  caps: InverterCapabilities | null,
+  power: PowerLookup,
+  has: VisibleLookup,
+  portrait: boolean,
+  hub: Pt,
+): GraphPart {
+  const pv = pvSources(caps?.pvStrings ?? 0, power, has);
+  const anchors = pvAnchors(pv.length, portrait, hub.y);
+  const nodes: GraphNode[] = [];
+  const segments: GraphSegment[] = [];
+  pv.forEach((p, i) => {
+    const s = sense(
+      p.value,
+      { flow: "in", state: m.flow_producing() },
+      { flow: "idle", state: m.flow_idle() },
+    );
+    const at = anchors[i];
+    nodes.push({
+      ...p,
+      kind: "pv",
+      accent: SOLAR_ACCENT,
+      color: flowColor(s.flow),
+      at,
+      labelSide: portrait ? "above" : "below",
+      ...s,
+    });
+    segments.push({
+      id: `${p.id}-hub`,
+      type: "DC",
+      flow: s.flow,
+      value: p.value,
+      color: flowColor(s.flow),
+      pts: portrait ? drop(at, hub) : sweep(at, hub),
+    });
+  });
+  return { nodes, segments };
+}
+
+/**
+ * The sink/storage row below the hub, in display order. Each builder decides for
+ * itself whether it belongs in the row, so adding a node is one entry here.
+ */
+function collectBottoms(
+  caps: InverterCapabilities | null,
+  power: PowerLookup,
+  has: VisibleLookup,
+  grid: GridSpec,
+  portrait: boolean,
+  charger: ChargerDatum | undefined,
+): BottomSpec[] {
+  return [
+    batteryBottom(caps, power, has),
+    gridBottom(grid, portrait),
+    loadBottom(power, has, charger),
+    chargerBottom(has, charger),
+    generatorBottom(caps, power, has),
+  ].filter((b): b is BottomSpec => b !== null);
+}
+
+/**
+ * X anchors for the sink row. Portrait spreads it across the full safe box —
+ * phones need every pixel of width; the caption insets already keep the outermost
+ * captions legal. Landscape insets the row so it clears the spine's ends.
+ */
+function bottomXs(count: number, portrait: boolean): number[] {
+  if (!portrait) return rowPositions(count, 0.16, 0.84);
+  if (count === 1) return [0.5];
+  return Array.from({ length: count }, (_, i) => i / (count - 1));
+}
+
+/** Nodes + rails for the sink/storage row. */
+function bottomGraph(
+  bottoms: BottomSpec[],
+  portrait: boolean,
+  hub: Pt,
+  evAsSubBranch: boolean,
+): GraphPart {
+  const xs = bottomXs(bottoms.length, portrait);
+  const loadAt = { x: xs[bottoms.findIndex((b) => b.id === "load")], y: BOTTOM_Y };
+  const nodes: GraphNode[] = [];
+  const segments: GraphSegment[] = [];
+  bottoms.forEach((b, i) => {
+    const at = { x: xs[i], y: BOTTOM_Y };
+    const { type: _type, ...node } = b;
+    nodes.push({ ...node, at, labelSide: "below" });
+    segments.push(bottomSegment(b, at, hub, loadAt, evAsSubBranch));
+  });
+  return { nodes, segments };
+}
+
+/** In landscape the grid takes the right end of the spine instead of the sink row. */
+function landscapeGrid(g: GridSpec, portrait: boolean, hub: Pt): GraphPart {
+  if (!g.visible || portrait) return { nodes: [], segments: [] };
+  const at = { x: 1, y: hub.y };
+  const { type, ...node } = gridRow(g);
+  return {
+    nodes: [{ ...node, at, labelSide: "below" }],
+    segments: [
+      { id: "grid-hub", type, flow: g.flow, value: g.value, color: node.color, pts: [at, hub] },
+    ],
+  };
+}
+
 /**
  * Build the schematic graph for the power-flow diagram from the profile's
  * capabilities and a live power lookup. Pure — the caller injects `power`
@@ -301,153 +516,16 @@ export function buildPowerGraph(
 ): PowerGraph {
   const hub = HUBS[orientation];
   const portrait = orientation === "portrait";
-  const nodes: GraphNode[] = [];
-  const segments: GraphSegment[] = [];
-  const solarAccent = "var(--color-chart-1)";
-
-  // --- Sources: PV strings (or the aggregate) fan into the hub. Portrait puts
-  // them in a row along the top (captions above, clear of the connectors);
-  // landscape stacks them down the left edge.
-  const pv = pvSources(caps?.pvStrings ?? 0, power, has);
-  const pvXs = portrait ? rowPositions(pv.length, 0.02, 0.98) : pv.map(() => 0);
-  const pvYs = portrait
-    ? pv.map(() => 0)
-    : pv.length === 1
-      ? [hub.y]
-      : rowPositions(pv.length, 0.02, 0.78);
-  pv.forEach((p, i) => {
-    const s = sense(
-      p.value,
-      { flow: "in", state: m.flow_producing() },
-      { flow: "idle", state: m.flow_idle() },
-    );
-    const at = { x: pvXs[i], y: pvYs[i] };
-    nodes.push({
-      ...p,
-      kind: "pv",
-      accent: solarAccent,
-      color: flowColor(s.flow),
-      at,
-      labelSide: portrait ? "above" : "below",
-      ...s,
-    });
-    segments.push({
-      id: `${p.id}-hub`,
-      type: "DC",
-      flow: s.flow,
-      value: p.value,
-      color: flowColor(s.flow),
-      pts: portrait ? drop(at, hub) : sweep(at, hub),
-    });
-  });
-
-  // --- Sinks/storage row below the hub. The grid joins it in portrait; in
-  // landscape the grid gets the right end of the spine instead.
-  const bottoms: BottomSpec[] = [];
-
-  const battery = batteryBottom(caps, power, has);
-  if (battery) bottoms.push(battery);
-
-  const gridVisible = Boolean(caps?.grid) && has("grid.power");
-  const gridValue = gridVisible ? power("grid.power") : undefined;
-  const gridSense = sense(
-    gridValue,
-    { flow: "in", state: m.flow_importing() },
-    { flow: "out", state: m.flow_exporting() },
-  );
-  if (gridVisible && portrait) {
-    bottoms.push({
-      id: "grid",
-      label: m.label_grid(),
-      kind: "grid",
-      type: "AC",
-      value: gridValue,
-      accent: "var(--color-chart-4)",
-      color: gridColor(gridValue),
-      ...gridSense,
-    });
-  }
-
-  const loadVisible = Boolean(caps?.backupLoad) && has("load.power");
-  if (loadVisible) {
-    const { value: v, label } = homeBottom(power("load.power"), charger);
-    const s = sense(
-      v,
-      { flow: "out", state: m.flow_consuming() },
-      { flow: "out", state: m.flow_consuming() },
-    );
-    bottoms.push({
-      id: "load",
-      label,
-      kind: "load",
-      type: "AC",
-      value: v,
-      accent: "var(--color-chart-5)",
-      color: flowColor(s.flow),
-      ...s,
-    });
-  }
-
-  // The EV renders whenever the load node does. Informational mode hangs it off
-  // the load node (see bottomSegment); residual-home mode makes it a hub sibling.
-  if (loadVisible && charger) bottoms.push(chargerBottom(charger));
-  const evAsSubBranch = loadVisible && charger !== undefined && !charger.subtractFromHome;
-
-  if (caps?.generator && has("generator.power")) {
-    const v = power("generator.power");
-    const s = sense(
-      v,
-      { flow: "in", state: m.flow_running() },
-      { flow: "idle", state: m.flow_off() },
-    );
-    bottoms.push({
-      id: "generator",
-      label: m.label_generator(),
-      kind: "generator",
-      type: "AC",
-      value: v,
-      accent: "var(--color-chart-2)",
-      color: flowColor(s.flow),
-      ...s,
-    });
-  }
-
-  // Portrait spreads the sink row across the full safe box — phones need every
-  // pixel of width; the insets already keep the outermost captions legal.
-  const bottomXs = portrait
-    ? bottoms.map((_, i) => (bottoms.length === 1 ? 0.5 : i / (bottoms.length - 1)))
-    : rowPositions(bottoms.length, 0.16, 0.84);
-  const bottomY = 1;
-  const loadAt = { x: bottomXs[bottoms.findIndex((b) => b.id === "load")], y: bottomY };
-  bottoms.forEach((b, i) => {
-    const at = { x: bottomXs[i], y: bottomY };
-    const { type: _type, ...node } = b;
-    nodes.push({ ...node, at, labelSide: "below" });
-    segments.push(bottomSegment(b, at, hub, loadAt, evAsSubBranch));
-  });
-
-  if (gridVisible && !portrait) {
-    const at = { x: 1, y: hub.y };
-    nodes.push({
-      id: "grid",
-      label: m.label_grid(),
-      kind: "grid",
-      value: gridValue,
-      accent: "var(--color-chart-4)",
-      color: gridColor(gridValue),
-      at,
-      labelSide: "below",
-      ...gridSense,
-    });
-    segments.push({
-      id: "grid-hub",
-      type: "AC",
-      flow: gridSense.flow,
-      value: gridValue,
-      color: gridColor(gridValue),
-      pts: [at, hub],
-    });
-  }
-
-  return { hub, nodes, segments };
+  const grid = gridSpec(caps, power, has);
+  const bottoms = collectBottoms(caps, power, has, grid, portrait, charger);
+  const parts = [
+    pvGraph(caps, power, has, portrait, hub),
+    bottomGraph(bottoms, portrait, hub, evIsSubBranch(has, charger)),
+    landscapeGrid(grid, portrait, hub),
+  ];
+  return {
+    hub,
+    nodes: parts.flatMap((p) => p.nodes),
+    segments: parts.flatMap((p) => p.segments),
+  };
 }

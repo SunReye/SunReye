@@ -31,10 +31,16 @@ export const LEGACY_DEFAULT_SOURCE_URL = "https://github.com/sunreye/inverter-pr
  * source: merge-on-read always ensures it's present, so it can be disabled (via
  * its `enabled` flag) but never removed. This is where inverter profiles live
  * now that the core ships no bundled profile.
+ *
+ * Consumers should go through {@link isOfficialSource} / {@link mergeOfficialSource};
+ * the constant is exported only so `profiles.test.ts` can assert the recognizer
+ * against the canonical URL.
+ *
+ * @internal
  */
 export const OFFICIAL_SOURCE_URL = "https://github.com/SunReye/SunReye-Official-Profiles";
 
-export const OFFICIAL_SOURCE: ProfileSource = {
+const OFFICIAL_SOURCE: ProfileSource = {
   url: OFFICIAL_SOURCE_URL,
   label: "SunReye Official Profiles",
   enabled: true,
@@ -70,6 +76,12 @@ export function mergeOfficialSource(sources: ProfileSource[]): ProfileSource[] {
  */
 const gitUrlSchema = z.url().refine((u) => u.startsWith("https://"), "must be an https git URL");
 
+/**
+ * Reached in production through {@link profileSourcesSchema}; exported only so
+ * `profiles.test.ts` can assert the https/`.git` URL rules on a single entry.
+ *
+ * @internal
+ */
 export const profileSourceSchema = z.object({
   url: gitUrlSchema,
   /** Optional friendly name for the UI. */
@@ -90,4 +102,3 @@ export type ProfileSources = z.infer<typeof profileSourcesSchema>;
 export const activeProfileSchema = z.object({
   id: z.string().min(1),
 });
-export type ActiveProfile = z.infer<typeof activeProfileSchema>;

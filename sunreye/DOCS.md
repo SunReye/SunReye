@@ -67,13 +67,23 @@ automatic.
   days; all long-horizon history lives in the rollups, which are included).
   Set `backup_full: true` to dump everything.
 
-To restore a dump into a fresh addon install, from the addon's terminal:
+To restore a dump into a fresh addon install, run the restore script — it is the
+only place the sequence lives (the TimescaleDB pre/post-restore bracket, the
+`pg_restore` invocation, and the refusals), and CI restores real dumps with it on
+every release:
 
 ```sh
-psql -d "$DATABASE_URL" -c "SELECT timescaledb_pre_restore();"
-pg_restore -d "$DATABASE_URL" --no-owner /data/backups/<file>.dump
-psql -d "$DATABASE_URL" -c "SELECT timescaledb_post_restore();"
+scripts/db-restore.sh /data/backups/<file>.dump
 ```
+
+It refuses, before writing anything, when the target database was migrated by a
+newer SunReye release than the dump, or when it already holds SunReye data —
+pass `--force` to overwrite the latter deliberately. Restore into a fresh
+database and start SunReye afterwards; migrations bring the schema current.
+
+A dump taken with the default `backup_full: false` restores all history (the
+rollups) but no raw 1 Hz samples: the last days of second-resolution detail are
+gone and collection resumes from now.
 
 ## Upgrades
 
@@ -98,3 +108,12 @@ Upgrades are designed to be boring:
   plain-HTTP Home Assistant.
 - **Watchdog restarts**: `/healthz` (through the ingress port) fails when the
   database stops answering; look at the database log lines first.
+- **Spikes in computed metrics (efficiency, self-consumption)**: the registers
+  feeding a computed metric are sampled in one spanning Modbus read so they all
+  reflect the same instant; that read also touches the unmapped register
+  addresses between them. Two limitations: (a) a device that rejects such a
+  read (illegal data address) automatically falls back to split reads — visible
+  as a warning in the log; (b) input registers more than 120 apart can never
+  share a transaction (Modbus caps a single read). In both cases the inputs are
+  sampled milliseconds apart, so a fast power swing between those reads can/will
+  produce a transient spike in the computed value for one sample.

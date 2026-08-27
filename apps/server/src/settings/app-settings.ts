@@ -1,0 +1,71 @@
+/**
+ * Thin typed accessor over the `app_settings` key/value table. Each setting is
+ * validated against its Zod schema on read (falling back to a default when the
+ * row is missing or invalid) and upserted on write. Callers layer their own
+ * in-memory cache on top (see settings.ts / config.ts).
+ */
+
+import { db } from "@SunReye/db";
+import { appSettings } from "@SunReye/db/schema/settings";
+import { eq } from "drizzle-orm";
+import type { ZodType } from "zod";
+import { mergeSetting } from "./merge-setting";
+
+export async function readSetting<T>(key: string, schema: ZodType<T>, fallback: T): Promise<T> {
+  const [row] = await db.select().from(appSettings).where(eq(appSettings.key, key)).limit(1);
+  const parsed = row ? schema.safeParse(row.value) : null;
+  return parsed?.success ? parsed.data : fallback;
+}
+
+export async function writeSetting<T>(key: string, value: T): Promise<void> {
+  await db
+    .insert(appSettings)
+    .values({ key, value })
+    .onConflictDoUpdate({ target: appSettings.key, set: { value, updatedAt: new Date() } });
+}
+
+/** A single instance-wide setting: read (cached, validated) + validated write. */
+export interface CachedSetting<T> {
+  /** Active value, falling back to the default when unset/invalid. Cached. */
+  get(): Promise<T>;
+  /** Validate and persist (upsert), refreshing the cache. */
+  set(input: unknown): Promise<T>;
+  /**
+   * Apply a PARTIAL update: merge onto the stored record, then validate and
+   * persist as {@link set} does.
+   *
+   * For a record edited from more than one place. Two forms each sending the
+   * whole record means the second save writes back whatever the first had
+   * loaded, so one page silently undoes the other; sending only what a form owns
+   * cannot. See ./merge-setting for what merges and what replaces.
+   */
+  patch(input: unknown): Promise<T>;
+}
+
+/**
+ * Build a memory-cached accessor for one `app_settings` row (invalidated on
+ * write). The shared shape behind display/access/weather/... so each is one
+ * declaration rather than a copy of the same get/set pair.
+ */
+export function cachedSetting<T>(key: string, schema: ZodType<T>, fallback: T): CachedSetting<T> {
+  let cache: T | null = null;
+  const accessor: CachedSetting<T> = {
+    async get() {
+      cache ??= await readSetting(key, schema, fallback);
+      return cache;
+    },
+    async set(input: unknown) {
+      // Cache only once the row is safely written: a failed write must not
+      // leave a value being served as the active setting that the database
+      // never accepted (config.ts orders its own caches the same way).
+      const value = schema.parse(input);
+      await writeSetting(key, value);
+      cache = value;
+      return value;
+    },
+    async patch(input: unknown) {
+      return accessor.set(mergeSetting(await accessor.get(), input));
+    },
+  };
+  return accessor;
+}

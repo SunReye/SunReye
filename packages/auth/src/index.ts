@@ -25,7 +25,12 @@ function proxiedRequestOrigin(request: Request | undefined): string[] {
   return origin ? [origin] : [];
 }
 
-export function createAuth() {
+/**
+ * Build the Better Auth instance. Not exported: the package's public surface is
+ * the singleton {@link auth} below, and a second instance would open a second
+ * connection pool against the same database.
+ */
+function createAuth() {
   const db = createDb();
 
   /** Row count of the `user` table — drives first-run admin + closed signup. */
@@ -58,6 +63,15 @@ export function createAuth() {
     trustedOrigins: (request) => [...staticTrustedOrigins(), ...proxiedRequestOrigin(request)],
     emailAndPassword: {
       enabled: true,
+    },
+    session: {
+      // Long session lifetime so a "keep me signed in" login stays valid
+      // effectively indefinitely: the default `updateAge` (1 day) rolls the
+      // expiry forward on each visit, so an active user is never logged out.
+      // Persistence is opt-in per login via the sign-in `rememberMe` flag — an
+      // un-remembered session still uses a browser-session cookie and ends when
+      // the browser closes, regardless of this server-side expiry.
+      expiresIn: 60 * 60 * 24 * 365, // 1 year (seconds)
     },
     secret: env.BETTER_AUTH_SECRET,
     baseURL: env.BETTER_AUTH_URL,

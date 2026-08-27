@@ -2,7 +2,8 @@
 	import { cn, type WithElementRef, type WithoutChildren } from "$lib/utils.js";
 	import type { HTMLAttributes } from "svelte/elements";
 	import { getPayloadConfigFromPayload, useChart, type TooltipPayload } from "./chart-utils.js";
-	import { getChartContext, Tooltip as TooltipPrimitive } from "layerchart";
+	import { getChartContext } from "layerchart";
+	import ChartTooltipRoot from "$lib/charts/chart-tooltip-root.svelte";
 	import type { Snippet } from "svelte";
 
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -102,7 +103,7 @@
 	{/if}
 {/snippet}
 
-<TooltipPrimitive.Root variant="none">
+<ChartTooltipRoot variant="none">
 	<div
 		bind:this={ref}
 		class={cn(
@@ -181,4 +182,4 @@
 			{/each}
 		</div>
 	</div>
-</TooltipPrimitive.Root>
+</ChartTooltipRoot>

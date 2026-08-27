@@ -3,6 +3,10 @@
   "compilerOptions": {
     "composite": true,
     "outDir": "dist",
+    // `tsc -b` must emit something, but its .js output of the test files would
+    // double-run the suite (`bun test src` also matches dist/src). Declarations
+    // satisfy build mode and contain nothing runnable.
+    "emitDeclarationOnly": true,
     "paths": {
       "@/*": ["./src/*"]
     },

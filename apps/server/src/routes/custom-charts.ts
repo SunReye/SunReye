@@ -1,8 +1,9 @@
 import { type CustomChartInput, customChartInputSchema } from "@SunReye/db/custom-charts";
 import { Elysia, t } from "elysia";
-import { createChart, deleteChart, listCharts, updateChart } from "../custom-charts";
-import type { ProfileContext } from "../inverter";
+import { createChart, deleteChart, listCharts, updateChart } from "../charts/custom-charts";
+import type { ProfileContext } from "../inverter/inverter";
 import { adminGuard } from "./admin-guard";
+import { errorMessage } from "./write-attempt";
 
 // 503 payload for a write attempted before a profile is active (can't validate
 // metric keys without a manifest).
@@ -31,14 +32,9 @@ function validateChart(ctx: ProfileContext | null, body: unknown): ChartValidati
   try {
     const input = customChartInputSchema.parse(body);
     const bad = unknownMetric(ctx, input.metrics);
-    if (bad) return { ok: false, status: 400, error: bad };
-    return { ok: true, input };
+    return bad ? { ok: false, status: 400, error: bad } : { ok: true, input };
   } catch (error) {
-    return {
-      ok: false,
-      status: 400,
-      error: error instanceof Error ? error.message : "Invalid chart",
-    };
+    return { ok: false, status: 400, error: errorMessage(error, "Invalid chart") };
   }
 }
 
@@ -51,32 +47,32 @@ function validateChart(ctx: ProfileContext | null, body: unknown): ChartValidati
 export function customChartsRoutes({ ctx }: CustomChartRoutesDeps) {
   return new Elysia({ name: "custom-charts-routes" })
     .use(adminGuard)
-    .get("/api/custom-charts", () => listCharts(), { requireSession: true })
+    .get("/api/custom-charts", { requireSession: true }, () => listCharts())
     .post(
       "/api/custom-charts",
+      { requireAdmin: true, body: t.Unknown() },
       async ({ body, status }) => {
         const v = validateChart(ctx, body);
         if (!v.ok) return status(v.status, { error: v.error });
         return await createChart(v.input);
       },
-      { requireAdmin: true, body: t.Unknown() },
     )
     .put(
       "/api/custom-charts/:id",
+      { requireAdmin: true, params: t.Object({ id: t.String() }), body: t.Unknown() },
       async ({ params, body, status }) => {
         const v = validateChart(ctx, body);
         if (!v.ok) return status(v.status, { error: v.error });
         const chart = await updateChart(params.id, v.input);
         return chart ?? status(404, { error: "Chart not found" });
       },
-      { requireAdmin: true, params: t.Object({ id: t.String() }), body: t.Unknown() },
     )
     .delete(
       "/api/custom-charts/:id",
+      { requireAdmin: true, params: t.Object({ id: t.String() }) },
       async ({ params, status }) => {
         const ok = await deleteChart(params.id);
         return ok ? { ok: true, id: params.id } : status(404, { error: "Chart not found" });
       },
-      { requireAdmin: true, params: t.Object({ id: t.String() }) },
     );
 }

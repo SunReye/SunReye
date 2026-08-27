@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 
 import { deriveCapabilities } from "./capabilities";
 import { control, defineFamily, defineProfile, defineVariant, metric, sumOf } from "./define";
-import { hydrateProfile, type ProfileData } from "./profile-data";
+import { hydrateProfile, type MetricDataDef, type ProfileData } from "./profile-data";
 import { safeParseProfileData } from "./schema";
 
 /** A base with 2 PV strings, a ranged writable setting, and a computed PV total. */
@@ -166,6 +166,38 @@ describe("defineVariant — guards", () => {
     expect(() => defineVariant(base(), { id: "x", metrics: { "nope.*": null } })).toThrow(
       /matched no metrics/,
     );
+  });
+
+  test("removing a key absent from the base throws", () => {
+    // A typo'd removal is indistinguishable from an add at the type level, so
+    // this guard is the only thing standing between a fat-fingered key and a
+    // model that silently keeps the metric its author meant to drop.
+    expect(() => defineVariant(base(), { id: "x", metrics: { "dc.pv9.power": null } })).toThrow(
+      /cannot remove "dc\.pv9\.power": no such metric in base "acme-hybrid"/,
+    );
+  });
+
+  test("a removal that only differs in case is still an absent key", () => {
+    expect(() => defineVariant(base(), { id: "x", metrics: { "DC.pv1.power": null } })).toThrow(
+      /cannot remove/,
+    );
+  });
+
+  test("a wildcard carrying a patch instead of null throws", () => {
+    // `.*` only ever means "remove the subtree"; patching a subtree in one entry
+    // is not supported, and reading it as an add would invent a metric keyed `.*`.
+    expect(() =>
+      defineVariant(base(), { id: "x", metrics: { "dc.pv2.*": { scale: 0.1 } } }),
+    ).toThrow(/wildcard "dc\.pv2\.\*" must be null \(remove\); got a value/);
+  });
+
+  test("a wildcard carrying a full definition is refused too, not added as a metric", () => {
+    expect(() =>
+      defineVariant(base(), {
+        id: "x",
+        metrics: { "dc.pv3.*": { label: "PV3", group: "solar", addr: 674 } },
+      }),
+    ).toThrow(/must be null \(remove\)/);
   });
 
   test("an incomplete add (partial object on an unknown key) throws", () => {
@@ -418,6 +450,111 @@ describe("defineVariant — dependency-aware removal", () => {
     );
   });
 
+  /** A base whose computed metrics cover every remaining `ComputeExpr` kind. */
+  function exprBase(computed: MetricDataDef[]): ProfileData {
+    return defineProfile({
+      id: "acme-expr",
+      name: "x",
+      manufacturer: "x",
+      version: "1.0.0",
+      metrics: [
+        metric("a/x", { label: "A", unit: "W", group: "g", addr: 1 }),
+        metric("b/y", { label: "B", unit: "W", group: "g", addr: 2 }),
+        metric("c/z", { label: "C", unit: "W", group: "g", addr: 3 }),
+        ...computed,
+      ],
+    });
+  }
+
+  const derived = (key: string, computeExpr: MetricDataDef["computeExpr"]) =>
+    metric(key, { label: key, unit: "W", group: "g", computeExpr });
+
+  test("removing a scale's operand throws", () => {
+    const p = exprBase([derived("scaled", { scale: ["a.x", 0.1] })]);
+    expect(() => defineVariant(p, { id: "x", metrics: { "a.x": null } })).toThrow(
+      /fixed-arity scale/,
+    );
+  });
+
+  test("removing a clamp's key throws", () => {
+    const p = exprBase([derived("clamped", { clamp: { key: "a.x", min: 0 } })]);
+    expect(() => defineVariant(p, { id: "x", metrics: { "a.x": null } })).toThrow(
+      /single-key clamp/,
+    );
+  });
+
+  test("combine prunes both add and sub, dropping an emptied sub", () => {
+    const p = exprBase([derived("net", { combine: { add: ["a.x", "b.y"], sub: ["c.z"] } })]);
+    const v = defineVariant(p, { id: "x", metrics: { "b.y": null, "c.z": null } });
+    expect(byKey(v, "net")?.computeExpr).toEqual({ combine: { add: ["a.x"] } });
+  });
+
+  test("combine keeps a surviving sub operand", () => {
+    const p = exprBase([derived("net", { combine: { add: ["a.x", "b.y"], sub: ["c.z"] } })]);
+    const v = defineVariant(p, { id: "x", metrics: { "b.y": null } });
+    expect(byKey(v, "net")?.computeExpr).toEqual({ combine: { add: ["a.x"], sub: ["c.z"] } });
+  });
+
+  test("emptying combine.add throws", () => {
+    const p = exprBase([derived("net", { combine: { add: ["a.x"], sub: ["c.z"] } })]);
+    expect(() => defineVariant(p, { id: "x", metrics: { "a.x": null } })).toThrow(
+      /empties combine\.add/,
+    );
+  });
+
+  test("ratio prunes num and den, preserving an explicit scale", () => {
+    const p = exprBase([
+      derived("eff", { ratio: { num: ["a.x", "b.y"], den: ["b.y", "c.z"], scale: 100 } }),
+    ]);
+    const v = defineVariant(p, { id: "x", metrics: { "b.y": null } });
+    expect(byKey(v, "eff")?.computeExpr).toEqual({
+      ratio: { num: ["a.x"], den: ["c.z"], scale: 100 },
+    });
+  });
+
+  test("ratio without a scale prunes to a bare num/den", () => {
+    const p = exprBase([derived("eff", { ratio: { num: ["a.x", "b.y"], den: ["c.z"] } })]);
+    const v = defineVariant(p, { id: "x", metrics: { "b.y": null } });
+    expect(byKey(v, "eff")?.computeExpr).toEqual({ ratio: { num: ["a.x"], den: ["c.z"] } });
+  });
+
+  test("emptying ratio.den throws", () => {
+    const p = exprBase([derived("eff", { ratio: { num: ["a.x"], den: ["c.z"] } })]);
+    expect(() => defineVariant(p, { id: "x", metrics: { "c.z": null } })).toThrow(
+      /empties ratio\.den/,
+    );
+  });
+
+  test("an expr untouched by the removal keeps its original operands", () => {
+    const p = exprBase([derived("net", { combine: { add: ["a.x"], sub: ["b.y"] } })]);
+    const v = defineVariant(p, { id: "x", metrics: { "c.z": null } });
+    expect(byKey(v, "net")?.computeExpr).toEqual({ combine: { add: ["a.x"], sub: ["b.y"] } });
+  });
+
+  test("a fixed-arity expr untouched by the removal keeps its operands", () => {
+    // `diff`/`scale`/`clamp` can never shrink, so the only safe outcome when the
+    // removal misses them is the original expr, byte for byte.
+    const p = exprBase([
+      derived("delta", { diff: ["a.x", "b.y"] }),
+      derived("scaled", { scale: ["a.x", 0.1] }),
+      derived("clamped", { clamp: { key: "b.y", min: 0 } }),
+    ]);
+    const v = defineVariant(p, { id: "x", metrics: { "c.z": null } });
+    expect(byKey(v, "delta")?.computeExpr).toEqual({ diff: ["a.x", "b.y"] });
+    expect(byKey(v, "scaled")?.computeExpr).toEqual({ scale: ["a.x", 0.1] });
+    expect(byKey(v, "clamped")?.computeExpr).toEqual({ clamp: { key: "b.y", min: 0 } });
+  });
+
+  test("a compute kind the pruner does not know is refused, never passed through", () => {
+    // Guards the day a new ComputeExpr kind is added and the pruner is not
+    // taught about it: failing loudly is the only safe answer, because keeping
+    // the expr would leave it referencing a metric this model no longer has.
+    const p = exprBase([
+      derived("weird", { max: ["a.x", "c.z"] } as unknown as MetricDataDef["computeExpr"]),
+    ]);
+    expect(() => defineVariant(p, { id: "x", metrics: { "c.z": null } })).toThrow();
+  });
+
   test("removing a control's target throws", () => {
     const withControl = defineProfile({
       id: "acme-ctl",
@@ -455,6 +592,69 @@ describe("defineVariant — dependency-aware removal", () => {
     ).toThrow(/control .* targets it/);
   });
 
+  function presetBase(): ProfileData {
+    return defineProfile({
+      id: "acme-preset",
+      name: "x",
+      manufacturer: "x",
+      version: "1.0.0",
+      metrics: [
+        metric("settings/grid_charge", {
+          label: "Grid charge",
+          unit: null,
+          group: "settings",
+          addr: 130,
+          access: "rw",
+        }),
+        metric("settings/max_charge_current", {
+          label: "Max charge current",
+          unit: "A",
+          group: "settings",
+          addr: 108,
+          access: "rw",
+        }),
+        metric("dc/pv2/power", { label: "PV2", unit: "W", group: "solar", addr: 673 }),
+        control("settings/force_charge", {
+          label: "Force charge",
+          group: "settings",
+          enumLabels: { 0: "Off", 1: "On" },
+          controlExpr: {
+            preset: {
+              writes: [
+                { target: "settings.grid_charge", value: 1 },
+                { target: "settings.max_charge_current", value: 40 },
+              ],
+            },
+          },
+        }),
+      ],
+    });
+  }
+
+  test("removing any one of a preset control's targets throws", () => {
+    // A preset writes several registers as one action; losing the second target
+    // would half-apply the preset on real hardware, which is worse than a build
+    // failure.
+    expect(() =>
+      defineVariant(presetBase(), { id: "x", metrics: { "settings.max_charge_current": null } }),
+    ).toThrow(/removed "settings\.max_charge_current" but control "settings\.force_charge"/);
+    expect(() =>
+      defineVariant(presetBase(), { id: "x", metrics: { "settings.grid_charge": null } }),
+    ).toThrow(/control "settings\.force_charge" targets it/);
+  });
+
+  test("a preset control survives a removal that touches none of its targets", () => {
+    const v = defineVariant(presetBase(), { id: "x", metrics: { "dc.pv2.power": null } });
+    expect(byKey(v, "settings.force_charge")?.controlExpr).toEqual({
+      preset: {
+        writes: [
+          { target: "settings.grid_charge", value: 1 },
+          { target: "settings.max_charge_current", value: 40 },
+        ],
+      },
+    });
+  });
+
   test("does not mutate the base's aggregate tokens across a family", () => {
     const metrics = [
       metric("dc/pv1/power", {
@@ -483,5 +683,84 @@ describe("defineVariant — dependency-aware removal", () => {
       models: { "acme-y": { metrics: {} } },
     });
     expect(metrics).toEqual(before);
+  });
+});
+
+// deriveMetrics resolves removals and value-carrying entries in two independent
+// passes over the overlay, so neither the mix of entry kinds nor their order in
+// the object literal may change the outcome.
+describe("defineVariant — mixed overlay entries", () => {
+  test("one overlay can remove, patch and add at the same time", () => {
+    const v = defineVariant(base(), {
+      id: "acme-mixed",
+      metrics: {
+        "dc.pv2.voltage": null,
+        "dc.pv1.power": { addr: 690 },
+        "dc.pv3.power": {
+          label: "PV3 Power",
+          unit: "W",
+          group: "solar",
+          addr: 674,
+          role: "pv.string.power",
+          index: 3,
+        },
+      },
+    });
+    expect(byKey(v, "dc.pv2.voltage")).toBeUndefined();
+    expect(byKey(v, "dc.pv1.power")?.addresses).toEqual([690]);
+    expect(byKey(v, "dc.pv3.power")?.label).toBe("PV3 Power");
+  });
+
+  test("a removal listed after an add still applies (entry order is irrelevant)", () => {
+    const added = {
+      label: "PV3 Power",
+      unit: "W",
+      group: "solar",
+      addr: 674,
+      role: "pv.string.power",
+      index: 3,
+    } as const;
+    const addFirst = defineVariant(base(), {
+      id: "acme-a",
+      metrics: { "dc.pv3.power": added, "dc.pv2.voltage": null },
+    });
+    const removeFirst = defineVariant(base(), {
+      id: "acme-a",
+      metrics: { "dc.pv2.voltage": null, "dc.pv3.power": added },
+    });
+    expect(addFirst.metrics).toEqual(removeFirst.metrics);
+    expect(byKey(addFirst, "dc.pv2.voltage")).toBeUndefined();
+    expect(byKey(addFirst, "dc.pv3.power")).toBeDefined();
+  });
+
+  test("an entry set to undefined is ignored rather than treated as a removal", () => {
+    const v = defineVariant(base(), {
+      id: "acme-u",
+      metrics: { "dc.pv2.voltage": undefined },
+    });
+    expect(byKey(v, "dc.pv2.voltage")?.addresses).toEqual([678]);
+    expect(v.metrics).toEqual(base().metrics);
+  });
+
+  test("a wildcard removal and an add under the same prefix both land", () => {
+    const v = defineVariant(base(), {
+      id: "acme-w",
+      metrics: {
+        "dc.pv2.*": null,
+        "dc.pv2.current": {
+          label: "PV2 Current",
+          unit: "A",
+          group: "solar",
+          addr: 679,
+          role: "pv.string.current",
+          index: 2,
+        },
+      },
+    });
+    expect(byKey(v, "dc.pv2.power")).toBeUndefined();
+    expect(byKey(v, "dc.pv2.voltage")).toBeUndefined();
+    expect(byKey(v, "dc.pv2.current")?.addresses).toEqual([679]);
+    // The removed string is pruned out of the surviving PV total.
+    expect(byKey(v, "dc.total_power")?.computeExpr).toEqual({ sum: ["dc.pv1.power"] });
   });
 });
