@@ -8,7 +8,7 @@
  * every dashboard load while the unit suite stayed green.
  */
 import { afterAll, beforeAll, describe, expect, mock, test } from "bun:test";
-import { metricsRaw } from "@SunReye/db/schema/metrics";
+import { sql } from "drizzle-orm";
 import { databaseReachable, resetTestDatabase } from "./harness";
 
 const reachable = await databaseReachable();
@@ -38,25 +38,103 @@ suite("queryRecentBuckets against a real TimescaleDB", () => {
   let queryRecentBuckets: typeof import("../src/shared/history").queryRecentBuckets;
   let raw: ReturnType<typeof realDbExports.createDbAt>;
 
+  /**
+   * The device SLUG the read layer is asked for — a name, which is the whole
+   * point: `metrics_raw` is keyed by `device_id int2`, and the query layer
+   * resolves the name to it (`../src/shared/identity-sql.ts`). These cases prove
+   * that round trip against a real database, which is the one thing a SQL-text
+   * assertion cannot do.
+   *
+   * The harness shares ONE database across spec files, so every row here is
+   * scoped by this suite's own slugs rather than assuming an empty table.
+   */
   const inverterId = "inv-db-test";
+  /** The device's `metrics_raw.device_id`, resolved once the row exists. */
+  let deviceId = 0;
+  /** `metric key -> metric_keys.id`, so a seed can name a metric. */
+  const metricIds = new Map<string, number>();
 
   beforeAll(async () => {
     const url = await resetTestDatabase();
     raw = realDbExports.createDbAt(url);
     mock.module("@SunReye/db", () => ({ ...realDbExports, db: raw }));
     ({ queryRecentBuckets } = await import("../src/shared/history"));
+
+    // The dimension rows every reading now has a foreign key to. `id` is
+    // GENERATED ALWAYS AS IDENTITY on all three, so none of them may be assigned
+    // — the ids have to be read back.
+    await raw.execute(sql`
+      insert into plants (name, slug, time_zone) values ('hist', 'hist-db-test', 'UTC')`);
+    const device = await raw.execute<{ id: number }>(sql`
+      insert into devices (plant_id, connection_id, unit_id, slug, name, profile_id, role)
+      select id, null, 1, ${inverterId}, 'history probe', 'test-profile', 'inverter'
+      from plants where slug = 'hist-db-test'
+      returning id`);
+    deviceId = Number((device.rows[0] as { id: number }).id);
   });
 
   afterAll(() => {
     mock.module("@SunReye/db", () => ({ ...realDbExports }));
   });
 
+  /** Register a metric key on demand and remember its id. */
+  async function metricId(key: string): Promise<number> {
+    const known = metricIds.get(key);
+    if (known !== undefined) return known;
+    // `on conflict do update` rather than `do nothing`, so the statement returns
+    // a row even when a previous case in this file already registered the key.
+    const row = await raw.execute<{ id: number }>(sql`
+      insert into metric_keys (key, is_counter) values (${key}, false)
+      on conflict (key) do update set is_counter = excluded.is_counter
+      returning id`);
+    const id = Number((row.rows[0] as { id: number }).id);
+    metricIds.set(key, id);
+    return id;
+  }
+
   /** Insert samples at explicit instants, so assertions are not clock-dependent. */
   async function seed(rows: Array<{ metric: string; at: Date; value: number }>) {
-    await raw
-      .insert(metricsRaw)
-      .values(rows.map((r) => ({ time: r.at, inverterId, metric: r.metric, value: r.value })));
+    const values = await Promise.all(
+      rows.map(async (r) => ({ ...r, metricId: await metricId(r.metric) })),
+    );
+    await raw.execute(sql`
+      insert into metrics_raw (time, value, dur_ms, device_id, metric_id)
+      values ${sql.join(
+        values.map((v) => sql`(${v.at}, ${v.value}, null, ${deviceId}, ${v.metricId})`),
+        sql`, `,
+      )}`);
   }
+
+  /**
+   * A window far from the wall clock, for the two cases below.
+   *
+   * The harness shares one database across this whole file, and the clock-relative
+   * cases here assert an EXACT metric set inside "the last 300 s". So these two
+   * seed a fixed historical window and pass `now` explicitly, rather than adding
+   * their own metrics to everyone else's window.
+   */
+  const PAST = new Date("2026-01-01T12:00:00Z");
+  const inPast = { inverterId, seconds: 300, stepSeconds: 1, now: PAST } as const;
+
+  test("the device slug resolves to the int2 the readings were written under", async () => {
+    // The boundary itself: a name in, an id in the table, and the name back out.
+    // If `deviceIdOf` and the writer ever disagreed, every case below would read
+    // as "no data" — which is indistinguishable from a working empty database.
+    await seed([{ metric: "db.resolve", at: new Date(PAST.getTime() - 5_000), value: 42 }]);
+    const out = await queryRecentBuckets(inPast);
+    expect(out.metrics["db.resolve"]?.v).toEqual([42]);
+    expect(deviceId).toBeGreaterThan(0);
+  });
+
+  test("the payload is keyed by metric NAME, never by metric_id", async () => {
+    // `/api/history/recent`'s shape is an external contract: the client indexes
+    // this map by the metric key it knows. An integer key would break every
+    // sparkline and no type would notice.
+    await seed([{ metric: "db.named", at: new Date(PAST.getTime() - 5_000), value: 1 }]);
+    const out = await queryRecentBuckets(inPast);
+    expect(Object.keys(out.metrics)).toContain("db.named");
+    for (const key of Object.keys(out.metrics)) expect(Number.isNaN(Number(key))).toBe(true);
+  });
 
   // The bug that shipped: an uncast bound parameter in `time_bucket`'s second
   // position. Postgres rejects the statement outright, so ANY result at all
@@ -149,7 +227,10 @@ suite("queryRecentBuckets against a real TimescaleDB", () => {
     }
   });
 
-  test("an inverter with no rows is an empty metric map, never an error", async () => {
+  test("a source id that names no device at all is an empty metric map, never an error", async () => {
+    // `deviceIdOf` resolves to NULL, and `device_id = NULL` is false — so an
+    // unknown device reads as "no data", which is what it is. A stale dashboard
+    // bookmark must not be a 500.
     const out = await queryRecentBuckets({
       inverterId: "inv-absent",
       seconds: 300,

@@ -19,15 +19,17 @@ import type { InverterConfig } from "@SunReye/db/inverter-config";
 import type { MqttConfig } from "@SunReye/db/mqtt-config";
 import { metricsConfigLog, metricsRaw } from "@SunReye/db/schema/metrics";
 import { env } from "@SunReye/env/server";
-import type { InverterSample, InverterSource } from "@SunReye/inverter-core";
+import { type InverterSample, type InverterSource, statedKind } from "@SunReye/inverter-core";
 import mqtt from "mqtt";
 import { startAutomations, stopAutomations } from "../automation/automation";
 import { getInverterConfig, getMqttConfig } from "../settings/config";
 import type { ControlStore } from "./control-expr";
 import { dbControlStore } from "./control-store";
 import { createControlWriter } from "./control-writer";
-import { type HistoryBuffer, type MetricRow, createHistoryBuffer } from "./history-buffer";
+import { type HistoryBuffer, createHistoryBuffer } from "./history-buffer";
 import { type StoragePolicy, type StorageRow, createStoragePolicy } from "./storage-policy";
+import { createIdentifiedCommit, createRowIdentifier } from "./storage-identity";
+import { createIdentityResolver } from "../shared/identity";
 import { type JobScheduler, createJobScheduler } from "./job-scheduler";
 import { evccOnLoadSample } from "../evcc/evcc";
 import {
@@ -96,8 +98,12 @@ export interface RuntimeDeps {
    * The batched history writer. Defaults to one committing to the real db — the
    * only collaborator the runtime holds mutable buffer state for, lifted out so
    * it owns its own cap/drop/re-queue boundaries and is tested without a runtime.
+   *
+   * It buffers {@link StorageRow}s — the NAME-carrying shape the storage policy
+   * produces — and the id translation happens inside the commit. See
+   * `./storage-identity.ts` for why the boundary is there and not in the policy.
    */
-  history?: HistoryBuffer<MetricRow>;
+  history?: HistoryBuffer<StorageRow>;
   /**
    * The batched writer for the configuration change-log — the second
    * destination the storage policy routes to. Same batching contract as
@@ -138,12 +144,34 @@ export interface RuntimeDeps {
  */
 // fallow-ignore-next-line unused-export -- the injection seam exercised by runtime.test.ts (which builds its own instance with a fake history buffer); test files aren't traced as consumers
 export function createRuntime(deps: RuntimeDeps = {}) {
+  /**
+   * The name -> int2 resolution both commits go through. One resolver for both
+   * buffers, so a device or metric id is looked up once per process rather than
+   * once per table, and closure-local like every other field here.
+   */
+  const identity = createIdentityResolver({ db });
+  const rowIdentifier = createRowIdentifier({ resolver: identity, logger });
+  /**
+   * Commit one batch to `table`, resolving the identity first.
+   *
+   * These two commits are the ONLY INSERTs into the timeseries and the config
+   * change-log, which is exactly why the translation belongs on this path: one
+   * place, on the way out, with the in-memory routing above it still keyed by
+   * name. The resolve-then-insert step itself lives in `./storage-identity.ts`,
+   * where it is reachable by a test — this suite injects both buffers, so a
+   * closure built here never runs under test.
+   */
+  const commitIdentified = (table: typeof metricsRaw | typeof metricsConfigLog) =>
+    createIdentifiedCommit({
+      identify: (rows) => rowIdentifier.identify(rows),
+      insert: (values) => db.insert(table).values(values),
+    });
   const historyBuffer =
     deps.history ??
-    createHistoryBuffer({ commit: (rows) => db.insert(metricsRaw).values(rows), logger });
+    createHistoryBuffer<StorageRow>({ commit: commitIdentified(metricsRaw), logger });
   const configLogBuffer =
     deps.configLog ??
-    createHistoryBuffer({ commit: (rows) => db.insert(metricsConfigLog).values(rows), logger });
+    createHistoryBuffer<StorageRow>({ commit: commitIdentified(metricsConfigLog), logger });
   const scheduler = deps.scheduler ?? createJobScheduler();
   const onLoadSample = deps.onLoadSample ?? evccOnLoadSample;
   let ctx: ProfileContext | null = null;
@@ -248,6 +276,25 @@ export function createRuntime(deps: RuntimeDeps = {}) {
         ctx: current,
         policy: createStoragePolicy({ metrics: current.profile.metrics }),
       };
+      // EAGER metric registration, on the same hook and against the same list:
+      // the ids then exist before the first poll, so the writer's own fallback
+      // (`./storage-identity.ts`) is only ever reached by a key this list did not
+      // contain — a computed metric, a replayed capture, a profile edited under a
+      // running server. Not awaited, because this function is synchronous by
+      // design and the fallback is what makes that safe.
+      void identity
+        .registerMetrics(
+          current.profile.metrics.map((m) => ({
+            key: m.key,
+            // `is_counter` is what decides whether a `counter_agg` partial means
+            // anything for this metric, and a continuous aggregate cannot ask the
+            // profile — so the class has to be recorded with the key.
+            isCounter: statedKind(m) === "cumulative",
+          })),
+        )
+        .catch((error: unknown) => {
+          logger.warn("metric key registration failed: {error}", { error });
+        });
     }
     return policyCache.policy;
   }

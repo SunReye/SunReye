@@ -591,10 +591,22 @@ let hourlyRows: unknown[] = [];
 /** Learned correction cells `getCorrectionCells` answers with. */
 let correctionRows: { month: number; hour: number; ratio: number; weight: number }[] = [];
 
+/**
+ * The device this plant's readings are stored under.
+ *
+ * Both reads below name a SOURCE (a device slug, or the profile id a live sample
+ * carries) and the query layer resolves it to the int2 `metrics_raw` is keyed by
+ * — see `../shared/identity-sql.ts`. The correction store resolves the same id
+ * before it can read a grid at all, so the stub has to answer that lookup or the
+ * learned correction reads as "no grid".
+ */
+const DEVICE_ID = 1;
+
 const proxy = drizzle(async (sqlText: string, params: unknown[]) => {
   queries.push({ sql: sqlText.replace(/\s+/g, " ").trim(), params });
   if (sqlText.includes("percentile_cont")) return { rows: medianRows };
   if (sqlText.includes("avg_value")) return { rows: hourlyRows };
+  if (sqlText.includes("from devices")) return { rows: [{ id: DEVICE_ID }] };
   return { rows: [] };
 });
 
@@ -604,8 +616,13 @@ const dbStub = {
   execute: async (q: never) => ({ rows: await proxy.execute(q) }),
   // `getCorrectionCells` is the only `select()` this suite reaches, and the
   // proxy driver maps selects positionally; answer the chain with the row
-  // objects drizzle would hand back instead.
-  select: () => ({ from: () => ({ where: async () => correctionRows }) }),
+  // objects drizzle would hand back instead. The rows are stamped with the
+  // device id the resolution above returns, because the store filters on it.
+  select: () => ({
+    from: () => ({
+      where: async () => correctionRows.map((r) => ({ ...r, deviceId: DEVICE_ID })),
+    }),
+  }),
 };
 mock.module("@SunReye/db", () => ({ ...realDb, db: dbStub }));
 
@@ -945,13 +962,21 @@ describe("fetchSolarForecast clipping inputs", () => {
     medianRows = [{ median: 800 }];
     const f = must(await fetchSolarForecast(clipped()));
 
-    const [metric, inverterId, since] = firstParams(medianQueries(), "median house-load");
+    // [source, source, metric, widened from, exact from]: `deviceIdOf` binds the
+    // source id twice (slug, then profile id) and the scan is read one bucket
+    // wider than the window so the interpolation has neighbours.
+    const [, inverterId, metric, , since] = firstParams(medianQueries(), "median house-load");
     expect(metric).toBe("load.power");
     expect(inverterId).toBe("live-inverter"); // the live sample names the plant
     expect(Date.now() - (since as Date).getTime()).toBe(14 * 24 * HOUR);
 
     // The day-start SOC is read for the series' own first hour (11:00 local).
-    const [socMetric, socInverter, from, to] = firstParams(hourlyQueries(), "day-start SOC rollup");
+    // Bounded window, so: [source, source, metric, widened from, widened to,
+    // exact from, exact to].
+    const [, socInverter, socMetric, , , from, to] = firstParams(
+      hourlyQueries(),
+      "day-start SOC rollup",
+    );
     expect(socMetric).toBe("battery.soc");
     expect(socInverter).toBe("live-inverter");
     expect((from as Date).toISOString()).toBe(`${localDate()}T09:00:00.000Z`);

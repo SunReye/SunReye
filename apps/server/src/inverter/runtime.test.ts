@@ -107,8 +107,14 @@ function untapRuntimeLogger(): void {
   for (const level of LEVELS) delete runtimeLogger[level];
 }
 
-/** Row batches the injected history buffer committed, in flush order. */
-const inserted: Record<string, unknown>[][] = [];
+/**
+ * Row batches the injected history buffer committed, in flush order.
+ *
+ * `StorageRow`, not the table's insert shape: the buffer carries the NAMES the
+ * storage policy produces, and the id translation happens inside the real
+ * commit (`./storage-identity.ts`), past this seam.
+ */
+const inserted: StorageRow[][] = [];
 
 /**
  * Stands in for the injected history buffer. The runtime enqueues each poll's
@@ -120,8 +126,8 @@ const inserted: Record<string, unknown>[][] = [];
  * right moments. Injecting it is why this file no longer mocks `@SunReye/db`.
  */
 const historyDouble = {
-  rows: [] as Record<string, unknown>[],
-  enqueue(next: Record<string, unknown>[]): void {
+  rows: [] as StorageRow[],
+  enqueue(next: StorageRow[]): void {
     this.rows.push(...next);
   },
   async flush(): Promise<void> {

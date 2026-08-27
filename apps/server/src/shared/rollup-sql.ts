@@ -1,289 +1,165 @@
 /**
- * The rollup read cutover (#116): which source answers a bucket.
+ * Which relation answers a bucket, and how a bucket's average is computed.
  *
- * `avg(value)` in `minute_rollups` / `hourly_rollups` / `daily_rollups` is an
- * *unweighted* mean. Over a complete 3-second series that is implicitly
- * time-weighted; over the change-only series the storage rewrite produces
- * (#117) it is not, and the error is largest exactly where the data matters
- * most. The fix is a second set of aggregates that materialize
- * `sum(value * dur_ms)` and `sum(dur_ms)` — but an aggregate's SELECT list
- * cannot be corrected in place, because recreating it could only re-materialize
- * the last N days of raw and would silently destroy every older bucket
- * (`packages/db/src/timescale/0000_bootstrap.sql`).
+ * WHAT THIS FILE USED TO BE
  *
- * So both sets exist, and this module is the rule that keeps them from
- * double-counting: serve each bucket from exactly one source, preferring the
- * time-weighted one.
+ * 1.x carried TWO generations of aggregates per tier — `avg(value)` (an
+ * unweighted mean, wrong over a change-only series) and `weighted_*` (materialized
+ * `sum(value * dur_ms)` / `sum(dur_ms)`) — because an aggregate's SELECT list
+ * cannot be corrected in place and recreating one would have destroyed every
+ * bucket older than raw retention. Both had to be refreshed forever, and this
+ * module was the rule that stopped them double-counting: a
+ * `DISTINCT ON (bucket) … ORDER BY bucket, pref` over the UNION of a tier's
+ * sources, with raw as a third arm for the frozen minute tier.
  *
- * **The minute tier has a third source: raw itself.** Once a raw row became an
- * interval, the minute aggregates stopped being cheaper than the rows they
- * summarize — measured at 361 MB/device-year for raw against 333 MB for the
- * minute pair — and they were also the ceiling on raw retention, since raw may
- * not outlive the shortest aggregate. So `policies.sql` stopped refreshing them:
- * they hold what was materialized before the freeze and age out under their own
- * retention, while raw answers every bucket from here on.
+ * All of that is GONE. 2.0.0 spends its one clean break on three aggregates that
+ * are right from birth, so a tier has exactly one source and there is nothing to
+ * prefer. The arms, the preference ranks and the union are deleted rather than
+ * ported — a second source appearing again would mean a second generation, which
+ * is the debt this release paid off.
  *
- * That freeze is why this arm is composed here rather than left to the frozen
- * aggregate's own real-time union. A continuous aggregate unions its
- * materialized rows with a live aggregation of everything past its watermark,
- * and the predicate it pushes down is on `time_bucket(time)`, which does not
- * prune chunks. A watermark that never advances would therefore make every
- * minute read scan raw from the freeze forward, growing without bound. The arm
- * below bounds raw on `time` with plain timestamps, so the planner excludes
- * chunks.
+ * WHY THE AVERAGE IS INTERPOLATED
  *
- * **No watermark, no cached boundary.** The preference is derived per query by a
- * `DISTINCT ON (bucket) … ORDER BY bucket, pref` over the union of a tier's
- * sources: raw wins where raw reaches, the weighted aggregate next, the legacy
- * aggregate answers what neither covers. That is self-healing — as raw retention
- * grows the raw arm reaches further back on its own — and no stored state
- * records a boundary that could be wrong.
+ * `tw` is a `timescaledb_toolkit` TimeWeightSummary — an aggregate PARTIAL, not
+ * a finished number — and `average(tw)` over a bucket holding a SINGLE sample is
+ * NULL, because a point has no duration. A change-only writer leaves most
+ * buckets holding one sample or none, so a plain `average(tw)` would blank most
+ * of the chart.
+ *
+ * `interpolated_average(tw, bucket, width, lag(tw) over w, lead(tw) over w)` is
+ * the fix, and it is also the CORRECTNESS the `dur_ms` pair could not express: a
+ * value held from 23:50 to 00:10 is attributed to both hours in proportion
+ * (100 held from 23:50 then 200 from 00:10 reads 100 for the 23:00 hour and
+ * (100·10 + 200·50)/60 = 183.333… for the 00:00 hour), where `dur_ms` weighting
+ * billed the whole hold to the hour the ROW was stamped in. Getting this wrong
+ * reintroduces, silently, the bug the release exists to fix.
+ *
+ * That is why the window is read one bucket wider than it is returned: `lag` and
+ * `lead` can only see rows the inner query produced, so trimming first would
+ * leave the first bucket with no predecessor and the last with no successor —
+ * exactly the two buckets a chart's edges are made of.
+ *
+ * Names in, ids out: the caller names a metric and a source, and
+ * `./identity-sql.ts` turns them into the int2 predicate. See that module for why
+ * the translation is a SQL expression rather than an awaited number.
  *
  * Pure: it composes SQL and touches no database, so every branch is unit-tested
- * (`rollup-sql.test.ts`) instead of only reachable through a live query.
+ * (`rollup-sql.test.ts`).
  */
 
-import { type SQL, getTableName, getViewName, sql } from "drizzle-orm";
-import { metricsRaw } from "@SunReye/db/schema/metrics";
-import { interval as bucketWidth, timeBucket } from "@SunReye/db/timescale-fns";
-import {
-  dailyRollups,
-  hourlyRollups,
-  minuteRollups,
-  weightedDailyRollups,
-  weightedHourlyRollups,
-  weightedMinuteRollups,
-} from "@SunReye/db/schema/rollups";
+import { type SQL, getViewName, sql } from "drizzle-orm";
+import { dailyRollups, hourlyRollups, minuteRollups } from "@SunReye/db/schema/rollups";
+
+import { deviceIdOf, metricIdOf } from "./identity-sql";
 
 /**
  * Every rollup granularity. `minute` is a live API option; all three are read
  * paths. The list is the source of truth and {@link RollupBucket} is derived
- * from it, so a fourth tier cannot be added to one without the other.
+ * from it, so a fourth tier cannot be added to one without the other — and
+ * `rollup-sql.test.ts` iterates it, so a fourth tier cannot be added with an
+ * untested source either.
  */
-// fallow-ignore-next-line unused-export -- the tier list is the module's exhaustiveness seam: rollup-sql.test.ts iterates it so a fourth tier cannot be added with an untested arm. The API's typebox literals cannot consume it without a type-level widening this change does not need.
+// fallow-ignore-next-line unused-export -- the tier list is the module's exhaustiveness seam: rollup-sql.test.ts iterates it so a fourth tier cannot be added untested. The API's typebox literals cannot consume it without a type-level widening this change does not need.
 export const ROLLUP_BUCKETS = ["minute", "hour", "day"] as const;
 
 /** Rollup granularity. */
 export type RollupBucket = (typeof ROLLUP_BUCKETS)[number];
 
-/** Where an arm's rows come from: the raw hypertable, or a continuous aggregate. */
-export type RollupSource = "raw" | "view";
-
-/**
- * One source of a bucket's row.
- *
- * Described as data rather than baked straight into a template so the
- * composition itself is assertable: which sources a tier reads, which of them
- * are time-weighted, and which one wins a tie.
- */
-export interface RollupArm {
-  /** The relation this arm reads — an aggregate's name, or `metrics_raw`. */
+/** The one source of a tier's buckets, and what it can answer. */
+export interface RollupTier {
+  /** The continuous aggregate this tier reads. */
   view: string;
-  /** SQL expression yielding the bucket's average from that arm's columns. */
-  avgExpr: string;
+  /** The `time_bucket` width, as the interval literal the aggregate used. */
+  width: string;
+  /** The same width in milliseconds — what the widened scan bounds are built from. */
+  ms: number;
   /**
-   * Tie-break rank for `DISTINCT ON (bucket) … ORDER BY bucket, pref`; lower
-   * wins. Must be unique across a tier's arms, or the surviving row is
-   * arbitrary.
+   * Whether the tier carries a `CounterSummary` (`ctr`), i.e. whether an energy
+   * total can be read from it at all.
+   *
+   * False for `minute`, and that is a storage decision: a CounterSummary is
+   * 184 B, so a minute bucket per metric per device costs ~28 MB per device-day
+   * uncompressed — the hot window this release exists to shrink. A counter read
+   * at minute resolution must go to `metrics_raw`, which still holds every
+   * sample.
    */
-  pref: number;
-  /** Whether this arm's average is time-weighted (#116). */
-  weighted: boolean;
-  /** Whether the arm aggregates raw rows itself or reads materialized ones. */
-  source: RollupSource;
+  counters: boolean;
 }
 
 /** The window one tier's read is bounded by. `to` absent = open-ended. */
 export interface RollupWindow {
+  /** Metric KEY — a name, resolved to `metric_id` at the boundary. */
   metric: string;
+  /** Device slug (or, transitionally, the profile id) — see `./identity-sql.ts`. */
   inverterId: string;
   from: Date;
   to?: Date;
 }
 
 /**
- * `bucket` → the pair of aggregates that tier is materialized into.
+ * `bucket` → its tier.
  *
- * Names come from the drizzle declarations rather than literals here: those
+ * Relation names come from the drizzle declarations rather than literals: those
  * declarations are checked against the live relations by
  * `apps/server/db-tests/schema-parity.test.ts`, so a rename in
  * `packages/db/src/timescale/*.sql` cannot leave this module addressing a
  * relation that no longer exists — which a string literal silently would.
  */
-const VIEWS: Record<RollupBucket, { weighted: string; legacy: string }> = {
-  minute: {
-    weighted: getViewName(weightedMinuteRollups),
-    legacy: getViewName(minuteRollups),
-  },
-  hour: { weighted: getViewName(weightedHourlyRollups), legacy: getViewName(hourlyRollups) },
-  day: { weighted: getViewName(weightedDailyRollups), legacy: getViewName(dailyRollups) },
+const TIERS: Record<RollupBucket, RollupTier> = {
+  minute: { view: getViewName(minuteRollups), width: "1 minute", ms: 60_000, counters: false },
+  hour: { view: getViewName(hourlyRollups), width: "1 hour", ms: 3_600_000, counters: true },
+  day: { view: getViewName(dailyRollups), width: "1 day", ms: 86_400_000, counters: true },
 };
 
-/** `bucket` → the `time_bucket` width, as a literal and in milliseconds. */
-const WIDTHS: Record<RollupBucket, { interval: string; ms: number }> = {
-  minute: { interval: "1 minute", ms: 60_000 },
-  hour: { interval: "1 hour", ms: 3_600_000 },
-  day: { interval: "1 day", ms: 86_400_000 },
-};
-
-/**
- * Tiers whose buckets raw can answer directly.
- *
- * Only `minute`: the hour and day aggregates are the long-horizon record, kept
- * far past raw's retention, and re-deriving them from raw would be both slower
- * and — beyond raw's horizon — impossible.
- */
-const RAW_TIERS: readonly RollupBucket[] = ["minute"];
-
-/** The raw hypertable, as the raw arm's `view`. From the schema, not a literal. */
-const RAW_RELATION = getTableName(metricsRaw);
-
-/**
- * The weighted mean, computed at read time from the two sums.
- *
- * `nullif(weight, 0)`: a bucket whose weights sum to zero is degenerate — it can
- * only happen if a writer records a zero-width hold — and the three things it
- * could produce are a division-by-zero error, a fabricated number, or NULL. NULL
- * is the only one that does not read as data, and the row is then dropped by the
- * caller rather than charted as a value nothing measured.
- *
- * Note what this does NOT do: it does not fall through to the legacy arm. The
- * weighted row still wins the preference for that bucket, so a degenerate bucket
- * becomes a gap rather than the legacy view's unweighted number. That is
- * deliberate — over a change-only series the unweighted number is not a better
- * answer than no answer — and it costs nothing, because `dur_ms = 0` is a
- * zero-width hold no writer may record.
- */
-const WEIGHTED_AVG = "weighted_sum / nullif(weight, 0)";
-
-/**
- * `coalesce(dur_ms, 1000)`: a row written before #117 has no duration and must
- * read as one shipped poll interval, which is what makes the weighted mean equal
- * the legacy plain mean over a complete pre-rewrite series. The constant, and
- * the measurements behind it, are documented in
- * `packages/db/src/timescale/0002_weighted_rollups.sql` — it must stay identical
- * here, or a bucket changes value depending on which arm answered it.
- */
-const RAW_WEIGHT = "coalesce(dur_ms, 1000)";
-
-/**
- * The sources for one granularity, in preference order: most time-weighted and
- * furthest-reaching first.
- *
- * Exported so the ordering is a testable fact rather than an implementation
- * detail of the template below.
- */
-// fallow-ignore-next-line unused-export -- exported so the composition is assertable rather than an implementation detail of preferredRollup; rollup-sql.test.ts is the consumer, and test files are not traced as consumers.
-export function rollupArms(bucket: RollupBucket): RollupArm[] {
-  const { weighted, legacy } = VIEWS[bucket];
-  const arms: RollupArm[] = [];
-  if (RAW_TIERS.includes(bucket)) {
-    // Raw first: it is the only source still growing, and it carries the same
-    // two sums the weighted aggregate materialized, so a bucket that moves from
-    // the aggregate to raw cannot change value.
-    arms.push({
-      view: RAW_RELATION,
-      avgExpr: WEIGHTED_AVG,
-      pref: arms.length,
-      weighted: true,
-      source: "raw",
-    });
-  }
-  arms.push({
-    view: weighted,
-    avgExpr: WEIGHTED_AVG,
-    pref: arms.length,
-    weighted: true,
-    source: "view",
-  });
-  arms.push({
-    view: legacy,
-    avgExpr: "avg_value",
-    pref: arms.length,
-    weighted: false,
-    source: "view",
-  });
-  return arms;
-}
-
-/** Floor an instant to the start of the bucket containing it. */
-function floorTo(ms: number, at: Date): Date {
-  return new Date(Math.floor(at.getTime() / ms) * ms);
+/** The source and shape of one tier. Exported so it is an assertable fact. */
+// fallow-ignore-next-line unused-export -- exported so the tier table is assertable rather than an implementation detail of rollupSeries; rollup-sql.test.ts is the consumer, and test files are not traced as consumers.
+export function rollupTier(bucket: RollupBucket): RollupTier {
+  return TIERS[bucket];
 }
 
 /**
- * The exact bucket predicate — the same one an aggregate arm is filtered by, so
- * every arm returns the same set of buckets.
- */
-function bucketWindow(w: RollupWindow): SQL {
-  return w.to ? sql`bucket >= ${w.from} and bucket < ${w.to}` : sql`bucket >= ${w.from}`;
-}
-
-/**
- * An arm reading already-materialized buckets out of a continuous aggregate.
+ * The interpolated time-weighted mean of a bucket.
  *
- * The predicates are applied here rather than by the caller: an unfiltered arm
- * would scan the whole aggregate and then be discarded, and (worse) would let a
- * bucket outside the window win the preference for one inside it.
+ * One expression shared by every tier — it must be, or a bucket's value would
+ * depend on which tier answered it. `interpolated_average` needs the bucket's own
+ * start, the tier's width and the two neighbouring partials; the neighbours come
+ * from `WINDOW w AS (ORDER BY bucket)`, declared by {@link rollupSeries}.
  */
-function viewArm(arm: RollupArm, w: RollupWindow): SQL {
-  return sql`
-      select bucket, ${sql.raw(arm.avgExpr)} as avg_value, max_value, min_value, ${sql.raw(String(arm.pref))} as pref
-      from ${sql.raw(arm.view)}
-      where metric = ${w.metric} and inverter_id = ${w.inverterId} and ${bucketWindow(w)}`;
-}
-
-/**
- * An arm aggregating raw rows into buckets at read time.
- *
- * Two predicates, deliberately: the inner one bounds `time` so chunks are
- * excluded, and is generous by one bucket at each end so a window edge landing
- * mid-bucket still reads that bucket's whole set of rows — a truncated bucket
- * would report a `max`/`min` the minute never had. The outer one is the exact
- * bucket predicate every other arm uses, which trims the generosity back off.
- */
-function rawArm(arm: RollupArm, bucket: RollupBucket, w: RollupWindow): SQL {
-  const { ms } = WIDTHS[bucket];
-  // Through the shared wrapper rather than a local fragment, so this call cannot
-  // drift from the rules in @SunReye/db/timescale-fns. `make_interval(secs => N)`
-  // replaces the previous `'1 minute'::interval` spelling: the same interval
-  // value, and measured to plan identically (same chunks excluded), so bucket
-  // alignment with the aggregates is unchanged.
-  const width = bucketWidth(ms / 1000);
-  const scan = [sql`"time" >= ${floorTo(ms, w.from)}`];
-  // One bucket past `to`, since the exact filter admits the bucket `to` lands in
-  // whenever `to` is not itself bucket-aligned.
-  if (w.to) scan.push(sql`"time" < ${new Date(floorTo(ms, w.to).getTime() + ms)}`);
-  return sql`
-      select bucket, ${sql.raw(arm.avgExpr)} as avg_value, max_value, min_value, ${sql.raw(String(arm.pref))} as pref
-      from (
-        select ${timeBucket(width, metricsRaw.time)} as bucket,
-               sum(value * ${sql.raw(RAW_WEIGHT)}) as weighted_sum,
-               sum(${sql.raw(RAW_WEIGHT)}) as weight,
-               max(value) as max_value,
-               min(value) as min_value
-        from ${sql.raw(RAW_RELATION)}
-        where metric = ${w.metric} and inverter_id = ${w.inverterId}
-          and ${sql.join(scan, sql.raw(" and "))}
-        group by 1
-      ) raw_buckets
-      where ${bucketWindow(w)}`;
+function interpolatedAverage(width: string): SQL {
+  return sql`interpolated_average(tw, bucket, ${sql.raw(`'${width}'`)}::interval,
+                                  lag(tw) over w, lead(tw) over w)`;
 }
 
 /**
  * A derived table of one row per bucket — `(bucket, avg_value, max_value,
  * min_value)` — for the given tier and window.
  *
- * `UNION ALL`, never a join: a join would drop every bucket only one side holds,
- * which is every bucket outside raw's retention window.
+ * Two levels, and both are load-bearing. The inner query reads the tier one
+ * bucket WIDER than the caller asked for, because the window functions can only
+ * interpolate from rows it returned; the outer one trims back to the exact
+ * window, so the caller gets the buckets it asked for and no more.
  */
-export function preferredRollup(bucket: RollupBucket, w: RollupWindow): SQL {
-  const arms = rollupArms(bucket).map((arm) =>
-    arm.source === "raw" ? rawArm(arm, bucket, w) : viewArm(arm, w),
-  );
+export function rollupSeries(bucket: RollupBucket, w: RollupWindow): SQL {
+  const tier = TIERS[bucket];
+  // The identity predicate: ids in SQL, names bound as parameters.
+  const identity = sql`device_id = ${deviceIdOf(w.inverterId)} and metric_id = ${metricIdOf(w.metric)}`;
+  const scan = [sql`bucket >= ${new Date(w.from.getTime() - tier.ms)}`];
+  const exact = [sql`bucket >= ${w.from}`];
+  if (w.to) {
+    scan.push(sql`bucket < ${new Date(w.to.getTime() + tier.ms)}`);
+    exact.push(sql`bucket < ${w.to}`);
+  }
   return sql`(
-    select distinct on (bucket) bucket, avg_value, max_value, min_value
-    from (${sql.join(arms, sql.raw(" union all "))}) u
-    order by bucket, pref
+    select bucket, avg_value, max_value, min_value
+    from (
+      select bucket,
+             ${interpolatedAverage(tier.width)} as avg_value,
+             max_value,
+             min_value
+      from ${sql.raw(tier.view)}
+      where ${identity} and ${sql.join(scan, sql.raw(" and "))}
+      window w as (order by bucket)
+    ) s
+    where ${sql.join(exact, sql.raw(" and "))}
   )`;
 }
