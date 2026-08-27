@@ -1,6 +1,5 @@
-import { cors } from "@elysiajs/cors";
-import { openapi } from "@elysiajs/openapi";
-import { elysiaLogger } from "@logtape/elysia";
+import { cors } from "@elysia/cors";
+import { openapi } from "@elysia/openapi";
 import { auth } from "@SunReye/auth";
 import { db } from "@SunReye/db";
 import { metricsRaw } from "@SunReye/db/schema/metrics";
@@ -17,6 +16,7 @@ import { isPublicDashboard } from "./settings/access-settings";
 import { buildProfileContext, initProfiles } from "./inverter/inverter";
 import { WriteRejectedError } from "./inverter/control-writer";
 import { log, recentLogs, setupLogging } from "./shared/logging";
+import { requestLogger } from "./shared/request-log";
 import { createStreams } from "./shared/streams";
 import { initLogLevel } from "./settings/logging-settings";
 import { adminRoutes } from "./routes/admin";
@@ -165,10 +165,7 @@ const app = new Elysia()
   // Structured HTTP request logging. Health/liveness probes are noisy and
   // uninteresting, so skip them.
   .use(
-    elysiaLogger({
-      // Log under the app root (as `server.http`) instead of the plugin's
-      // default `elysia` category, so HTTP lines read like every other source.
-      category: ["server", "http"],
+    requestLogger({
       // `/` is the dashboard page (served from the embedded build) and
       // `/healthz` the readiness probe — both are high-frequency and say
       // nothing about what the engine is doing.
@@ -227,17 +224,13 @@ const app = new Elysia()
   // which turns on body parsing app-wide, and a parsed (consumed) stream makes
   // Better Auth's own body read throw `ERR_BODY_ALREADY_USED`. This is the same
   // technique Elysia's own `.mount()` uses to forward to a sub-handler.
-  .all(
-    "/api/auth/*",
-    async (context) => {
-      const { request, status } = context;
-      if (["POST", "GET"].includes(request.method)) {
-        return auth.handler(request);
-      }
-      return status(405);
-    },
-    { parse: "none" },
-  )
+  .all("/api/auth/*", { parse: "none" }, async (context) => {
+    const { request, status } = context;
+    if (["POST", "GET"].includes(request.method)) {
+      return auth.handler(request);
+    }
+    return status(405);
+  })
   // Readiness: proves the process is up *and* the database answers. Target of
   // the --healthcheck self-probe, compose healthchecks, and the Home Assistant
   // addon watchdog. Onboarding state doesn't matter here — a booted
@@ -273,9 +266,13 @@ const app = new Elysia()
   // Capability manifest for the active inverter profile: capabilities + a
   // render-ready metric catalog (role, kind, range, enum labels, flow). The UI
   // builds itself from this — no per-inverter code. 503 until a profile is active.
-  .get("/api/profile", ({ status }) => manifest ?? status(503, ONBOARDING_REQUIRED), {
-    requireSession: true,
-  })
+  .get(
+    "/api/profile",
+    {
+      requireSession: true,
+    },
+    ({ status }) => manifest ?? status(503, ONBOARDING_REQUIRED),
+  )
   // Historical data (long form). Filter by metric / inverter; rollups live in
   // TimescaleDB continuous aggregates, this reads the raw hypertable. The
   // 720-hour cap is no longer the raw retention window — raw is kept 1825 days
@@ -285,6 +282,15 @@ const app = new Elysia()
   // bucketed and time-weighted (apps/server/src/shared/rollup-sql.ts).
   .get(
     "/api/history",
+    {
+      requireSession: true,
+      query: t.Object({
+        hours: t.Number({ default: 24, minimum: 1, maximum: 720 }),
+        limit: t.Number({ default: 5000, minimum: 1, maximum: 50000 }),
+        metric: t.Optional(t.String()),
+        inverterId: t.Optional(t.String()),
+      }),
+    },
     async ({ query }) => {
       const since = new Date(Date.now() - query.hours * 60 * 60 * 1000);
       const filters = [gte(metricsRaw.time, since)];
@@ -296,15 +302,6 @@ const app = new Elysia()
         .where(and(...filters))
         .orderBy(desc(metricsRaw.time))
         .limit(query.limit);
-    },
-    {
-      requireSession: true,
-      query: t.Object({
-        hours: t.Number({ default: 24, minimum: 1, maximum: 720 }),
-        limit: t.Number({ default: 5000, minimum: 1, maximum: 50000 }),
-        metric: t.Optional(t.String()),
-        inverterId: t.Optional(t.String()),
-      }),
     },
   )
   // Recent samples across all metrics, bucketed server-side and returned in the
@@ -321,6 +318,14 @@ const app = new Elysia()
   // send 200000 to reach back five minutes at all.
   .get(
     "/api/history/recent",
+    {
+      requireSession: true,
+      query: t.Object({
+        seconds: t.Number({ default: 300, minimum: 1, maximum: 3600 }),
+        stepSeconds: t.Number({ default: 1, minimum: 1, maximum: 60 }),
+        inverterId: t.Optional(t.String()),
+      }),
+    },
     async ({ query, status }) => {
       const inverterId = query.inverterId ?? activeInverterId;
       if (!inverterId) return status(503, ONBOARDING_REQUIRED);
@@ -329,14 +334,6 @@ const app = new Elysia()
         seconds: query.seconds,
         stepSeconds: query.stepSeconds,
       });
-    },
-    {
-      requireSession: true,
-      query: t.Object({
-        seconds: t.Number({ default: 300, minimum: 1, maximum: 3600 }),
-        stepSeconds: t.Number({ default: 1, minimum: 1, maximum: 60 }),
-        inverterId: t.Optional(t.String()),
-      }),
     },
   )
   // Downsampled history for charts. Reads TimescaleDB continuous aggregates
@@ -347,17 +344,6 @@ const app = new Elysia()
   // rather than a drizzle table.
   .get(
     "/api/history/rollup",
-    async ({ query, status }) => {
-      const inverterId = query.inverterId ?? activeInverterId;
-      if (!inverterId) return status(503, ONBOARDING_REQUIRED);
-      return queryRollup({
-        metric: query.metric,
-        inverterId,
-        limit: query.limit,
-        bucket: query.bucket ?? "hour",
-        ...historyWindow(query),
-      });
-    },
     {
       requireSession: true,
       query: t.Object({
@@ -370,12 +356,24 @@ const app = new Elysia()
         limit: t.Number({ default: 5000, minimum: 1, maximum: 50000 }),
       }),
     },
+    async ({ query, status }) => {
+      const inverterId = query.inverterId ?? activeInverterId;
+      if (!inverterId) return status(503, ONBOARDING_REQUIRED);
+      return queryRollup({
+        metric: query.metric,
+        inverterId,
+        limit: query.limit,
+        bucket: query.bucket ?? "hour",
+        ...historyWindow(query),
+      });
+    },
   )
   // Internal write pipeline for the (session-authed) web app. The write funnel
   // validates the key and value against the entity's metadata before touching
   // the inverter — the external `/api/v1` surface travels the same funnel.
   .post(
     "/api/commands/setting",
+    { requireAdmin: true, body: t.Object({ key: t.String(), value: t.Number() }) },
     async ({ body, status }) => {
       if (!ctx) return status(503, ONBOARDING_REQUIRED);
       try {
@@ -398,7 +396,6 @@ const app = new Elysia()
       }
       return { ok: true, key: body.key, value: body.value };
     },
-    { requireAdmin: true, body: t.Object({ key: t.String(), value: t.Number() }) },
   )
   // EVCC loadpoint commands, relayed as MQTT `/set` publishes. EVCC applies
   // the change and republishes its state, so reads converge via the ingest —
@@ -406,15 +403,6 @@ const app = new Elysia()
   // enum is checked here; limitSoc bounds are enforced by the schema.
   .post(
     "/api/commands/evcc",
-    ({ body, status }) => {
-      if (unknownEvccMode(body)) return status(400, { error: `Invalid mode "${body.value}"` });
-      try {
-        evccControl(body.loadpoint, body.action, String(body.value));
-      } catch (err) {
-        return status(503, { error: messageOf(err) });
-      }
-      return { ok: true };
-    },
     {
       requireAdmin: true,
       body: t.Union([
@@ -430,6 +418,15 @@ const app = new Elysia()
         }),
       ]),
     },
+    ({ body, status }) => {
+      if (unknownEvccMode(body)) return status(400, { error: `Invalid mode "${body.value}"` });
+      try {
+        evccControl(body.loadpoint, body.action, String(body.value));
+      } catch (err) {
+        return status(503, { error: messageOf(err) });
+      }
+      return { ok: true };
+    },
   )
   // Runtime configuration (tariff, inverter, MQTT) + connection status.
   .use(settingsRoutes)
@@ -439,11 +436,6 @@ const app = new Elysia()
   // an explicit [from, to) window. Prices stored energy with the active tariff.
   .get(
     "/api/cost",
-    ({ query, status }) => {
-      if (!profile) return status(503, ONBOARDING_REQUIRED);
-      const { from, to } = costWindow(query);
-      return computeCost(profile, { from, to, inverterId: query.inverterId });
-    },
     {
       requireSession: true,
       query: t.Object({
@@ -453,24 +445,23 @@ const app = new Elysia()
         inverterId: t.Optional(t.String()),
       }),
     },
+    ({ query, status }) => {
+      if (!profile) return status(503, ONBOARDING_REQUIRED);
+      const { from, to } = costWindow(query);
+      return computeCost(profile, { from, to, inverterId: query.inverterId });
+    },
   )
   // Net-cost time-series over an explicit [from, to) window, one point per
   // `bucket` (hour / day / month). Feeds the Costs page's range-driven bar chart;
   // band-accurate and cheap (delta + rollup done in SQL, bounded matrix returned).
-  .get(
-    "/api/cost/series",
-    ({ query, status }) =>
-      profile ? computeCostSeries(profile, seriesArgs(query)) : status(503, ONBOARDING_REQUIRED),
-    { requireSession: true, query: seriesQuery },
+  .get("/api/cost/series", { requireSession: true, query: seriesQuery }, ({ query, status }) =>
+    profile ? computeCostSeries(profile, seriesArgs(query)) : status(503, ONBOARDING_REQUIRED),
   )
   // Per-period energy split (grid-vs-solar consumption, self-consumed-vs-exported
   // production) over the same window/bucket. Feeds the Costs page energy chart;
   // derived at query time from the rollups, zero-filled so the x-axis stays stable.
-  .get(
-    "/api/energy/series",
-    ({ query, status }) =>
-      profile ? energySeries(profile, seriesArgs(query)) : status(503, ONBOARDING_REQUIRED),
-    { requireSession: true, query: seriesQuery },
+  .get("/api/energy/series", { requireSession: true, query: seriesQuery }, ({ query, status }) =>
+    profile ? energySeries(profile, seriesArgs(query)) : status(503, ONBOARDING_REQUIRED),
   )
   // Statistics-page aggregates (hour×weekday heatmap, …) over the same rollups.
   .use(statisticsRoutes({ profile }))

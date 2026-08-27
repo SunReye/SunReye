@@ -22,7 +22,7 @@
   },
   "dependencies": {
     "@SunReye/inverter-core": "workspace:*",
-    "@elysiajs/eden": "^1.4.1",
+    "@elysia/eden": "2.0.0-beta.5",
     "better-auth": "catalog:",
     "d3-scale": "^4.0.2",
     "d3-shape": "^3.2.0",

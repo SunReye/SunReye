@@ -30,6 +30,7 @@ export const adminRoutes = new Elysia({ name: "admin-routes" })
   // nuke the history.
   .post(
     "/api/admin/reset-data",
+    { requireAdmin: true, body: t.Object({ confirm: t.String() }) },
     async ({ body, status }) => {
       if (body.confirm !== RESET_DATA_CONFIRM) {
         return status(400, { error: "Confirmation phrase does not match" });
@@ -40,42 +41,49 @@ export const adminRoutes = new Elysia({ name: "admin-routes" })
       });
       return { ok: true, ...result };
     },
-    { requireAdmin: true, body: t.Object({ confirm: t.String() }) },
   )
   // API-key administration. Admin-only surface for issuing/listing/revoking
   // keys on behalf of any user (see ../api-keys). The generated key is returned
   // exactly once, on create.
-  .get("/api/admin/api-keys", ({ query }) => listApiKeys(query.userId), {
-    requireAdmin: true,
-    query: t.Object({ userId: t.Optional(t.String()) }),
-  })
-  .post("/api/admin/api-keys", ({ body }) => createApiKeyForUser(body), {
-    requireAdmin: true,
-    body: t.Object({
-      userId: t.String(),
-      name: t.String({ minLength: 1 }),
-      expiresIn: t.Optional(t.Nullable(t.Number({ minimum: 1 }))),
-    }),
-  })
-  .post("/api/admin/api-keys/revoke", ({ body }) => revokeApiKey(body.id), {
-    requireAdmin: true,
-    body: t.Object({ id: t.String() }),
-  })
+  .get(
+    "/api/admin/api-keys",
+    {
+      requireAdmin: true,
+      query: t.Object({ userId: t.Optional(t.String()) }),
+    },
+    ({ query }) => listApiKeys(query.userId),
+  )
+  .post(
+    "/api/admin/api-keys",
+    {
+      requireAdmin: true,
+      body: t.Object({
+        userId: t.String(),
+        name: t.String({ minLength: 1 }),
+        expiresIn: t.Optional(t.Nullable(t.Number({ minimum: 1 }))),
+      }),
+    },
+    ({ body }) => createApiKeyForUser(body),
+  )
+  .post(
+    "/api/admin/api-keys/revoke",
+    {
+      requireAdmin: true,
+      body: t.Object({ id: t.String() }),
+    },
+    ({ body }) => revokeApiKey(body.id),
+  )
   // Restart the process so a boot-time change (chiefly a newly activated inverter
   // profile, which reshapes the routes/manifest/topics built once at boot) takes
   // effect. Responds first, then releases the runtime and exits with the restart
   // sentinel for the supervisor to relaunch. The client polls until the server
   // answers again, then reloads.
-  .post(
-    "/api/admin/restart",
-    () => {
-      adminLog.warn("server restart requested via admin API — exiting for supervised relaunch");
-      // Defer past the response flush, then shut down gracefully and exit.
-      setTimeout(async () => {
-        await runtime.stop();
-        process.exit(RESTART_EXIT_CODE);
-      }, 150);
-      return { ok: true };
-    },
-    { requireAdmin: true },
-  );
+  .post("/api/admin/restart", { requireAdmin: true }, () => {
+    adminLog.warn("server restart requested via admin API — exiting for supervised relaunch");
+    // Defer past the response flush, then shut down gracefully and exit.
+    setTimeout(async () => {
+      await runtime.stop();
+      process.exit(RESTART_EXIT_CODE);
+    }, 150);
+    return { ok: true };
+  });

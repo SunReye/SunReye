@@ -3,16 +3,21 @@
  *
  * Split out of the route module so the parts that can go wrong are exercised
  * against a plain fake socket instead of a running Elysia server. What can go
- * wrong here is almost entirely *timing*, because Elysia awaits neither handler
- * — `websocket.open(ws) { ws.data.open?.(ws) }`, and `message` likewise — so
- * every `await` inside them is a window during which the next client frame is
- * already being handled:
+ * wrong here is almost entirely *timing*: every `await` inside a handler is a
+ * window during which the next client frame may already be being handled.
  *
  * - **`open` registers synchronously.** Authorization is two DB round-trips,
  *   and a conformant client sends its first `sub` from `onopen`. Registering
  *   the connection after the await meant that frame found no state and was
  *   dropped without an ack, an error or a retry — a live socket subscribed to
  *   nothing, forever.
+ *
+ *   Under Elysia 1 nothing prevented that: neither handler was awaited. Elysia
+ *   2 does hold `message` behind a pending `open` (it parks the promise on
+ *   `ws.data.opening` and re-dispatches after it settles — see
+ *   `elysia/dist/ws/route.mjs`), so the framework now closes this race itself.
+ *   Registering synchronously stays: it is what makes the guarantee ours rather
+ *   than a version's, and it is free.
  * - **Frames are serialised per connection.** The `unsub` path is synchronous
  *   and the `sub` path awaits the access lookup, so `sub` immediately followed
  *   by `unsub` (a component that mounts and unmounts, or a navigation) used to
@@ -141,7 +146,7 @@ interface ConnectionState {
 /** The socket surface this module uses — structural, so it needs no Elysia types. */
 export interface WsSocket {
   readonly id: string;
-  readonly data: { request: { headers: Headers } };
+  readonly request: { headers: Headers };
   send(data: string): unknown;
   subscribe(topic: string): unknown;
   unsubscribe(topic: string): unknown;
@@ -161,7 +166,7 @@ export interface WsConnectionHandlers {
 }
 
 export function createWsConnections(deps: WsRoutesDeps): WsConnectionHandlers {
-  // Keyed by socket id rather than held on `ws.data`: Elysia hands a fresh
+  // Keyed by socket id rather than held on the socket: Elysia hands a fresh
   // context object to each handler, so the map is the only place per-connection
   // state survives from `open` to `message`. Dropped in `close`.
   const connections = new Map<string, ConnectionState>();
@@ -200,7 +205,7 @@ export function createWsConnections(deps: WsRoutesDeps): WsConnectionHandlers {
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {
       return await Promise.race([
-        deps.access(ws.data.request.headers),
+        deps.access(ws.request.headers),
         new Promise<never>((_resolve, reject) => {
           timer = setTimeout(() => reject(new AccessTimeoutError(ms)), ms);
         }),

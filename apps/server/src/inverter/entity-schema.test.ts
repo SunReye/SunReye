@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { EntityConstraint } from "@SunReye/inverter-core";
-import { Value } from "@sinclair/typebox/value";
+import { Value } from "typebox/value";
 import { rangeNote, valueSchema } from "./entity-schema";
 
 const constraint = (over: Partial<EntityConstraint> = {}): EntityConstraint => ({

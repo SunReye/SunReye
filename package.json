@@ -94,6 +94,7 @@
   "packageManager": "bun@1.4.0",
   "patchedDependencies": {
     "svelte@5.56.4": "patches/svelte@5.56.4.patch",
-    "layerchart@2.2.0": "patches/layerchart@2.2.0.patch"
+    "layerchart@2.2.0": "patches/layerchart@2.2.0.patch",
+    "@elysia/openapi@2.0.0-beta.1": "patches/@elysia%2Fopenapi@2.0.0-beta.1.patch"
   }
 }

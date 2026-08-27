@@ -1,6 +1,6 @@
 import { browser } from "$app/environment";
 import { goto } from "$app/navigation";
-import { treaty } from "@elysiajs/eden";
+import { treaty } from "@elysia/eden";
 // fallow-ignore-next-line boundary-violation -- Eden treaty needs the live Elysia app type (`typeof app`); it cannot be restated in @SunReye/contracts
 import type { App } from "server";
 import { resolve, routePath } from "./resolve";

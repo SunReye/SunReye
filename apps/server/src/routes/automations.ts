@@ -18,9 +18,10 @@ import { attempt } from "./write-attempt";
 // them. Saving hot-applies via one immediate engine tick; no restart needed.
 export const automationRoutes = new Elysia({ name: "automation-routes" })
   .use(adminGuard)
-  .get("/api/settings/automations", () => getAutomationConfig(), { requireAdmin: true })
+  .get("/api/settings/automations", { requireAdmin: true }, () => getAutomationConfig())
   .put(
     "/api/settings/automations",
+    { requireAdmin: true, body: t.Unknown() },
     async ({ body, status }) => {
       const checked = await attempt(async () => {
         // Validate the shape first so the enable-guard reasons about the exact
@@ -42,12 +43,11 @@ export const automationRoutes = new Elysia({ name: "automation-routes" })
       }, "Invalid config");
       return saved.ok ? saved.value : status(400, { error: saved.error });
     },
-    { requireAdmin: true, body: t.Unknown() },
   )
   // Live engine state for the automations tab (poll-friendly, in-memory only).
-  .get("/api/automations/status", () => automationStatus(), { requireAdmin: true })
+  .get("/api/automations/status", { requireAdmin: true }, () => automationStatus())
   // Rolling decision history behind the automation charts; also in-memory only,
   // so it starts empty after a restart and needs no retention policy.
-  .get("/api/automations/history", () => automationHistory(), { requireAdmin: true })
+  .get("/api/automations/history", { requireAdmin: true }, () => automationHistory())
   // Forward projection of the rest of today (charge windows + SOC trajectory).
-  .get("/api/automations/plan", () => automationPlan(), { requireAdmin: true });
+  .get("/api/automations/plan", { requireAdmin: true }, () => automationPlan());

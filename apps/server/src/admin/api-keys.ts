@@ -18,6 +18,7 @@ import { auth } from "@SunReye/auth";
 import { db } from "@SunReye/db";
 import { apikey, user } from "@SunReye/db/schema/auth";
 import { desc, eq } from "drizzle-orm";
+import { serializeApiKey } from "./api-key-view";
 
 /** List keys (optionally for one user), joined to their owner. Never exposes the key hash. */
 export async function listApiKeys(userId?: string) {
@@ -39,7 +40,8 @@ export async function listApiKeys(userId?: string) {
     .innerJoin(user, eq(apikey.referenceId, user.id));
 
   const filtered = userId ? base.where(eq(apikey.referenceId, userId)) : base;
-  return filtered.orderBy(desc(apikey.createdAt));
+  const rows = await filtered.orderBy(desc(apikey.createdAt));
+  return rows.map(serializeApiKey);
 }
 
 /**

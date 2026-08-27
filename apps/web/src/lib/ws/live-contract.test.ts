@@ -123,7 +123,7 @@ function bridge(options: { backfill?: Record<string, () => unknown> } = {}) {
     const id = `socket-${sockets}`;
     const ws: WsSocket = {
       id,
-      data: { request: { headers: new Headers() } },
+      request: { headers: new Headers() },
       send(data: string) {
         serverWrote.push(data);
         deliver(data);

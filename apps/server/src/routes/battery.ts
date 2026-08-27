@@ -31,6 +31,7 @@ export function batteryRoutes({ profile }: BatteryRoutesDeps) {
       .use(adminGuard)
       .get(
         "/api/battery/health",
+        { requireSession: true, query: t.Object({ inverterId: t.Optional(t.String()) }) },
         async ({ query, status }) => {
           if (!profile) return status(503, ONBOARDING_REQUIRED);
           const keys = batteryKeys(profile);
@@ -43,7 +44,6 @@ export function batteryRoutes({ profile }: BatteryRoutesDeps) {
             nameplateKwh: forecast.battery?.usableKwh ?? null,
           });
         },
-        { requireSession: true, query: t.Object({ inverterId: t.Optional(t.String()) }) },
       )
       // Re-measure a window of raw history and store whatever segments it holds.
       // Idempotent (the segment's end instant is the key), so a widened window
@@ -51,6 +51,14 @@ export function batteryRoutes({ profile }: BatteryRoutesDeps) {
       // safe to expose rather than ship as a one-shot script.
       .post(
         "/api/battery/rescore",
+        {
+          requireAdmin: true,
+          body: t.Object({
+            from: t.String(),
+            to: t.String(),
+            inverterId: t.Optional(t.String()),
+          }),
+        },
         async ({ body, status }) => {
           if (!profile) return status(503, ONBOARDING_REQUIRED);
           const keys = batteryKeys(profile);
@@ -61,14 +69,6 @@ export function batteryRoutes({ profile }: BatteryRoutesDeps) {
           const segments = await measureSegments(inverterId, from, to, keys);
           const stored = await recordSegments(inverterId, segments);
           return { measured: segments.length, stored };
-        },
-        {
-          requireAdmin: true,
-          body: t.Object({
-            from: t.String(),
-            to: t.String(),
-            inverterId: t.Optional(t.String()),
-          }),
         },
       )
   );

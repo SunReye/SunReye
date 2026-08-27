@@ -51,38 +51,38 @@ export function statisticsRoutes({ profile }: StatisticsRoutesDeps) {
       // client switches metric without refetching.
       .get(
         "/api/statistics/heatmap",
+        { requireSession: true, query: windowQuery },
         ({ query, status }) =>
           profile ? computeHeatmap(profile, windowArgs(query)) : status(503, ONBOARDING_REQUIRED),
-        { requireSession: true, query: windowQuery },
       )
       // Cost breakdowns for a window and its reference window (previous /
       // yearAgo) side by side, plus how far back recorded data reaches.
       .get(
         "/api/statistics/comparison",
+        { requireSession: true, query: comparisonQuery },
         ({ query, status }) =>
           profile
             ? computeComparison(profile, { ...windowArgs(query), mode: query.mode })
             : status(503, ONBOARDING_REQUIRED),
-        { requireSession: true, query: comparisonQuery },
       )
       // All-time per-day energy + money records (rangeless; cached per local
       // day server-side since the in-progress day is excluded).
       .get(
         "/api/statistics/records",
+        { requireSession: true, query: t.Object({ inverterId: t.Optional(t.String()) }) },
         ({ query, status }) =>
           profile
             ? computeRecords(profile, { inverterId: query.inverterId })
             : status(503, ONBOARDING_REQUIRED),
-        { requireSession: true, query: t.Object({ inverterId: t.Optional(t.String()) }) },
       )
       // Day-ahead market analytics over an explicit window: price shape, the
       // negative-price windows, and how the plant's own import compares.
       // `null` when the price feed isn't configured — the section self-hides.
       .get(
         "/api/statistics/prices",
+        { requireSession: true, query: windowQuery },
         ({ query, status }) =>
           profile ? computeSpotStats(profile, windowArgs(query)) : status(503, ONBOARDING_REQUIRED),
-        { requireSession: true, query: windowQuery },
       )
   );
 }

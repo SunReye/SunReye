@@ -15,6 +15,7 @@ import { auth } from "@SunReye/auth";
 import { env } from "@SunReye/env/server";
 import { entityConstraint, writableMetrics } from "@SunReye/inverter-core";
 import { Elysia, t } from "elysia";
+import { entityErrorResponse } from "./entity-errors";
 import { rangeNote, valueSchema } from "./entity-schema";
 import { queryRawHistory, queryRollup } from "../shared/history";
 import type { ProfileContext } from "./inverter";
@@ -95,25 +96,16 @@ export function entitiesApi(deps: EntitiesApiDeps) {
   if (!deps.ctx) return new Elysia({ prefix: "/api/v1", name: "entities" });
   const { profile, manifest, metaByKey } = deps.ctx;
   const app = new Elysia({ prefix: "/api/v1", name: "entities" })
-    .onError(({ error, code, set }) => {
+    .error(({ error, set }) => {
       // Preserve the status of known request errors; sanitize everything else to
-      // a generic 500 so internal stack traces never leak to third parties.
-      if (code === "VALIDATION") {
-        set.status = 422;
-        return { error: "Validation failed", detail: error.message };
-      }
-      if (code === "PARSE") {
-        set.status = 400;
-        return { error: "Malformed request body" };
-      }
-      logger.error("{code}: {error}", {
-        code,
-        error: error instanceof Error ? error.stack : error,
-      });
-      set.status = 500;
-      return { error: "Internal server error" };
+      // a generic 500 so internal stack traces never leak to third parties. The
+      // mapping is ./entity-errors, which is where it can be tested.
+      const failure = entityErrorResponse(error);
+      if (failure.log !== null) logger.error("{error}", { error: failure.log });
+      set.status = failure.status;
+      return failure.body;
     })
-    .onBeforeHandle(async ({ request, set }) => {
+    .beforeHandle(async ({ request, set }) => {
       const denied = await checkApiKey(request);
       if (denied) {
         set.status = denied.status;
@@ -124,13 +116,6 @@ export function entitiesApi(deps: EntitiesApiDeps) {
     // bounds/enum. The discovery endpoint a consumer reads first.
     .get(
       "/entities",
-      () => ({
-        id: manifest.id,
-        name: manifest.name,
-        manufacturer: manifest.manufacturer,
-        capabilities: manifest.capabilities,
-        entities: manifest.metrics,
-      }),
       {
         detail: {
           tags: ["Entities"],
@@ -138,10 +123,24 @@ export function entitiesApi(deps: EntitiesApiDeps) {
           description: "Full catalog of entities the active inverter exposes.",
         },
       },
+      () => ({
+        id: manifest.id,
+        name: manifest.name,
+        manufacturer: manifest.manufacturer,
+        capabilities: manifest.capabilities,
+        entities: manifest.metrics,
+      }),
     )
     // Current value of every entity in one snapshot (from the live poll cache).
     .get(
       "/state",
+      {
+        detail: {
+          tags: ["Entities"],
+          summary: "Current state",
+          description: "Latest value of every entity from the most recent poll.",
+        },
+      },
       ({ set }) => {
         const sample = liveState.latest;
         if (!sample) {
@@ -150,25 +149,10 @@ export function entitiesApi(deps: EntitiesApiDeps) {
         }
         return { time: sample.time, inverterId: sample.inverterId, values: sample.metrics };
       },
-      {
-        detail: {
-          tags: ["Entities"],
-          summary: "Current state",
-          description: "Latest value of every entity from the most recent poll.",
-        },
-      },
     )
     // One entity's metadata plus its latest value.
     .get(
       "/entities/:key",
-      ({ params, set }) => {
-        const meta = metaByKey.get(params.key);
-        if (!meta) {
-          set.status = 404;
-          return { error: `Unknown entity: ${params.key}` };
-        }
-        return { ...meta, value: liveState.latest?.metrics[params.key] ?? null };
-      },
       {
         params: t.Object({ key: t.String() }),
         detail: {
@@ -177,23 +161,19 @@ export function entitiesApi(deps: EntitiesApiDeps) {
           description: "Metadata and latest value for a single entity.",
         },
       },
+      ({ params, set }) => {
+        const meta = metaByKey.get(params.key);
+        if (!meta) {
+          set.status = 404;
+          return { error: `Unknown entity: ${params.key}` };
+        }
+        return { ...meta, value: liveState.latest?.metrics[params.key] ?? null };
+      },
     )
     // Time series for one entity. Raw samples by default; pass `bucket` to read
     // the pre-aggregated TimescaleDB rollups (cheap over long windows).
     .get(
       "/entities/:key/history",
-      async ({ params, query, set }) => {
-        if (!metaByKey.has(params.key)) {
-          set.status = 404;
-          return { error: `Unknown entity: ${params.key}` };
-        }
-        const inverterId = query.inverterId ?? profile.id;
-        const since = new Date(Date.now() - query.hours * 60 * 60 * 1000);
-        const base = { metric: params.key, inverterId, since, limit: query.limit };
-        return query.bucket
-          ? queryRollup({ ...base, bucket: query.bucket })
-          : queryRawHistory(base);
-      },
       {
         params: t.Object({ key: t.String() }),
         query: t.Object({
@@ -209,6 +189,18 @@ export function entitiesApi(deps: EntitiesApiDeps) {
             "Time series for one entity: raw samples, or aggregated rollups when `bucket` is set.",
         },
       },
+      async ({ params, query, set }) => {
+        if (!metaByKey.has(params.key)) {
+          set.status = 404;
+          return { error: `Unknown entity: ${params.key}` };
+        }
+        const inverterId = query.inverterId ?? profile.id;
+        const since = new Date(Date.now() - query.hours * 60 * 60 * 1000);
+        const base = { metric: params.key, inverterId, since, limit: query.limit };
+        return query.bucket
+          ? queryRollup({ ...base, bucket: query.bucket })
+          : queryRawHistory(base);
+      },
     );
 
   // One validated write route per writable entity. Bounds/enum come from the
@@ -223,6 +215,14 @@ export function entitiesApi(deps: EntitiesApiDeps) {
       const accepts = rangeNote(constraint, metric.unit);
       return acc.put(
         `/entities/${metric.key}`,
+        {
+          body: t.Object({ value: valueSchema(constraint) }),
+          detail: {
+            tags: ["Commands"],
+            summary: `Set ${metric.label}`,
+            description: `Write the "${metric.key}" setting. ${accepts}`,
+          },
+        },
         async ({ body, status }: { body: { value: number }; status: StatusFn }) => {
           try {
             await deps.write(metric.key, body.value);
@@ -235,14 +235,6 @@ export function entitiesApi(deps: EntitiesApiDeps) {
             throw err;
           }
           return { ok: true, key: metric.key, value: body.value };
-        },
-        {
-          body: t.Object({ value: valueSchema(constraint) }),
-          detail: {
-            tags: ["Commands"],
-            summary: `Set ${metric.label}`,
-            description: `Write the "${metric.key}" setting. ${accepts}`,
-          },
         },
       ) as unknown as Elysia;
     },

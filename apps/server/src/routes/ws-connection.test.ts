@@ -2,13 +2,13 @@
  * The per-connection state machine of the multiplexed `/ws` endpoint.
  *
  * Everything proven here is about *timing*, which is why it is tested against a
- * plain fake socket rather than a running server: Elysia does not await either
- * the `open` or the `message` handler (`websocket.open(ws) { ws.data.open?.(ws) }`),
- * so every await inside them is a window in which the next client frame is
- * already being processed. The bugs that live in those windows — a first `sub`
- * dropped, an `unsub` overtaking the `sub` it follows, a stale backfill landing
- * on top of a fresh one — are indistinguishable from "the feed is just quiet"
- * in production, so they are pinned here.
+ * plain fake socket rather than a running server: every await inside a handler
+ * is a window in which the next client frame may already be being processed.
+ * The bugs that live in those windows — a first `sub` dropped, an `unsub`
+ * overtaking the `sub` it follows, a stale backfill landing on top of a fresh
+ * one — are indistinguishable from "the feed is just quiet" in production, so
+ * they are pinned here, against this module rather than against whatever the
+ * running framework currently serialises for us.
  *
  * No mocking: every collaborator is a hook on the deps object.
  */
@@ -73,7 +73,7 @@ function fakeSocket(id = "socket-1") {
 
   const ws: WsSocket = {
     id,
-    data: { request: { headers: new Headers() } },
+    request: { headers: new Headers() },
     send(data: string) {
       const frame = JSON.parse(data) as { topic: string; data: unknown };
       if (failing.has(frame.topic)) throw new Error("socket is closing");

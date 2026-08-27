@@ -37,6 +37,7 @@
  */
 
 import { Elysia } from "elysia";
+import { websocket } from "elysia/websocket";
 import { adminGuard } from "./admin-guard";
 import { type WsRoutesDeps, createWsConnections } from "./ws-connection";
 
@@ -45,17 +46,21 @@ export type { WsRoutesDeps } from "./ws-connection";
 export function wsRoutes(deps: WsRoutesDeps) {
   const handlers = createWsConnections(deps);
 
-  return new Elysia({ name: "ws-routes" }).use(adminGuard).ws("/ws", {
-    // The weakest of the five policies, because one upgrade cannot run five.
-    // Everything above a dashboard read is decided per frame below.
-    requireSession: true,
+  return new Elysia({ name: "ws-routes" })
+    .use(websocket())
+    .use(adminGuard)
+    .ws("/ws", {
+      // The weakest of the five policies, because one upgrade cannot run five.
+      // Everything above a dashboard read is decided per frame below.
+      requireSession: true,
 
-    // Not awaited by Elysia (`websocket.open(ws) { ws.data.open?.(ws) }`), which
-    // is why `open` must register the connection synchronously before it awaits
-    // anything: a conformant client sends its first `sub` from `onopen`, and
-    // that frame can be delivered while this handler is still suspended.
-    open: (ws) => handlers.open(ws),
-    close: (ws) => handlers.close(ws),
-    message: (ws, raw) => handlers.message(ws, raw),
-  });
+      // `open` registers the connection synchronously before it awaits anything:
+      // a conformant client sends its first `sub` from `onopen`. Elysia 2 parks a
+      // pending `open` and re-dispatches `message` after it settles, so it also
+      // guards this — see the note in ./ws-connection for why we still don't
+      // depend on that.
+      open: (ws) => handlers.open(ws),
+      close: (ws) => handlers.close(ws),
+      message: (ws, raw) => handlers.message(ws, raw),
+    });
 }

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import type { ApiKeyView as KeyRow } from '@SunReye/contracts/api-keys';
 	import { onMount } from 'svelte';
 	import { toast } from 'svelte-sonner';
 	import { api } from '$lib/api';
@@ -17,19 +18,6 @@
 	import CopyIcon from 'phosphor-svelte/lib/Copy';
 	import * as m from '$lib/paraglide/messages';
 
-	type KeyRow = {
-		id: string;
-		name: string | null;
-		prefix: string | null;
-		start: string | null;
-		enabled: boolean;
-		expiresAt: string | null;
-		lastRequest: string | null;
-		createdAt: string;
-		userId: string;
-		userEmail: string;
-		userName: string;
-	};
 	type UserRow = { id: string; name: string; email: string };
 
 	// Expiry presets → seconds (null = never expires).
@@ -89,7 +77,7 @@
 			query: filterUserId ? { userId: filterUserId } : {}
 		});
 		if (error) toast.error(m.apikeys_toast_load_error());
-		else keys = (data ?? []) as KeyRow[];
+		else keys = data ?? [];
 		loading = false;
 	}
 

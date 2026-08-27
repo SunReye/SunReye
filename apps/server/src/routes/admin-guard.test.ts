@@ -34,8 +34,8 @@ const { adminGuard } = await import("./admin-guard");
 
 const app = new Elysia()
   .use(adminGuard)
-  .get("/read", () => "ok", { requireSession: true })
-  .get("/config", () => "ok", { requireAdmin: true });
+  .get("/read", { requireSession: true }, () => "ok")
+  .get("/config", { requireAdmin: true }, () => "ok");
 
 const status = (path: string) =>
   app.handle(new Request(`http://localhost${path}`)).then((r) => r.status);

@@ -47,32 +47,32 @@ function validateChart(ctx: ProfileContext | null, body: unknown): ChartValidati
 export function customChartsRoutes({ ctx }: CustomChartRoutesDeps) {
   return new Elysia({ name: "custom-charts-routes" })
     .use(adminGuard)
-    .get("/api/custom-charts", () => listCharts(), { requireSession: true })
+    .get("/api/custom-charts", { requireSession: true }, () => listCharts())
     .post(
       "/api/custom-charts",
+      { requireAdmin: true, body: t.Unknown() },
       async ({ body, status }) => {
         const v = validateChart(ctx, body);
         if (!v.ok) return status(v.status, { error: v.error });
         return await createChart(v.input);
       },
-      { requireAdmin: true, body: t.Unknown() },
     )
     .put(
       "/api/custom-charts/:id",
+      { requireAdmin: true, params: t.Object({ id: t.String() }), body: t.Unknown() },
       async ({ params, body, status }) => {
         const v = validateChart(ctx, body);
         if (!v.ok) return status(v.status, { error: v.error });
         const chart = await updateChart(params.id, v.input);
         return chart ?? status(404, { error: "Chart not found" });
       },
-      { requireAdmin: true, params: t.Object({ id: t.String() }), body: t.Unknown() },
     )
     .delete(
       "/api/custom-charts/:id",
+      { requireAdmin: true, params: t.Object({ id: t.String() }) },
       async ({ params, status }) => {
         const ok = await deleteChart(params.id);
         return ok ? { ok: true, id: params.id } : status(404, { error: "Chart not found" });
       },
-      { requireAdmin: true, params: t.Object({ id: t.String() }) },
     );
 }

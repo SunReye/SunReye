@@ -1,0 +1,11 @@
+diff --git a/dist/gen/index.mjs b/dist/gen/index.mjs
+index 27baa3f4900963856809d0b13dc49e91f454a1d3..27a57585cea11e275cc1bc4ea38921cf35a7280f 100644
+--- a/dist/gen/index.mjs
++++ b/dist/gen/index.mjs
+@@ -1,5 +1,4 @@
+-import { Script } from "../node_modules/typebox/build/type/script/script.mjs";
+-import "../node_modules/typebox/build/type/index.mjs";
++import { Script } from "elysia/type";
+ 
+ //#region src/gen/index.ts
+ const matchRoute = /: Elysia<(.*)>/gs;
