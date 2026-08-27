@@ -55,7 +55,6 @@ export function holdDiscovery(reason: string): void {
  * A no-op when it was not held, so a second confirmation does not republish every
  * retained config for no reason.
  */
-// fallow-ignore-next-line unused-export -- lifted by migration onboarding when the operator confirms their names — that route is the one piece of this upgrade still unbuilt. Proved by ./discovery-gate.test.ts and ../inverter/mqtt.test.ts; test files are not traced as consumers.
 export function releaseDiscovery(): void {
   if (heldReason === null) return;
   heldReason = null;

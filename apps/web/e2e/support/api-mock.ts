@@ -144,7 +144,51 @@ export interface BackendOptions {
   prices?: "view" | null;
   /** `evcc` topic payload. `null` is ingest disabled — the EV card self-hides. */
   evcc?: "state" | null;
+  /**
+   * `/api/migration/status`. Absent (the default) is an instance that never ran a
+   * 1.x upgrade: nothing outstanding, no banner, the onboarding form unreachable.
+   *
+   * Overriding it is how a spec reaches the two states the shell only has in the
+   * middle of a migration — the diversion to `/#/migration` when the plant and
+   * device are unnamed, and the app-wide banner when history before the cutover
+   * has not been carried across.
+   */
+  migration?: Partial<MigrationStatusFixture>;
 }
+
+/** The migration status payload, as `apps/server/src/routes/migration.ts` sends it. */
+export interface MigrationStatusFixture {
+  onboardingRequired: boolean;
+  backfillOutstanding: boolean;
+  banner: string | null;
+  historyFrom: string | null;
+  plantName: string;
+  deviceName: string;
+  plantSlug: string;
+  deviceSlug: string;
+  slugEditable: boolean;
+  bannerSnoozed: boolean;
+  backfillRunning: boolean;
+}
+
+/**
+ * A healthy install. Every field false or null, deliberately: the shell must be
+ * unaffected by this endpoint on the overwhelming majority of instances, and a
+ * default that showed anything would put a banner on every existing spec.
+ */
+const NO_MIGRATION: MigrationStatusFixture = {
+  onboardingRequired: false,
+  backfillOutstanding: false,
+  banner: null,
+  historyFrom: null,
+  plantName: "Test plant",
+  deviceName: "Test inverter",
+  plantSlug: "test-plant",
+  deviceSlug: "inverter",
+  slugEditable: false,
+  bannerSnoozed: false,
+  backfillRunning: false,
+};
 
 export interface MockBackend {
   /** The manifest this instance serves. */
@@ -494,6 +538,17 @@ export async function mockBackend(page: Page, options: BackendOptions = {}): Pro
     if (at("access-status")) {
       return json(route, { publicDashboard: options.publicDashboard ?? false });
     }
+    // The 1.2.0 -> 2.0.0 migration status. Read by the app shell on every load
+    // (the gate) and by the app-wide notice banner, so it has to answer for every
+    // spec, not just the ones about migrations.
+    if (at("migration/status")) {
+      return json(route, { ...NO_MIGRATION, ...options.migration });
+    }
+    if (at("migration/notice/snooze")) {
+      return json(route, { snoozedUntil: method === "DELETE" ? null : nowIso() });
+    }
+    if (at("migration/backfill")) return json(route, { backfill: "started" });
+    if (at("migration/names")) return json(route, { ok: true, ...body() });
 
     // ── Instance settings the shell loads before it renders ─────────────────
     if (at("settings/ui")) {

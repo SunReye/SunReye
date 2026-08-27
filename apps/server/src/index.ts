@@ -29,6 +29,7 @@ import { initLogLevel } from "./settings/logging-settings";
 import { adminRoutes } from "./routes/admin";
 import { adminGuard } from "./routes/admin-guard";
 import { customChartsRoutes } from "./routes/custom-charts";
+import { migrationRoutes } from "./routes/migration";
 import { startBatteryScoring } from "./battery/scoring";
 import { startUpdateChecks, stopUpdateChecks } from "./inverter/profiles";
 import { batteryRoutes } from "./routes/battery";
@@ -615,6 +616,10 @@ const app = new Elysia()
   .use(profileRoutes)
   // User-defined custom charts for the history page (multi-metric overlays).
   .use(customChartsRoutes({ ctx }))
+  // The 1.2.0 -> 2.0.0 migration's onboarding surface: the status every page load
+  // reads, the two names that release Home Assistant discovery, the one-time slug
+  // correction, and "migrate history now / later".
+  .use(migrationRoutes({ manifest }))
   // Admin-only maintenance: data reset + API-key administration.
   .use(adminRoutes)
   // The live socket: one connection carrying every topic, gated per subscribe

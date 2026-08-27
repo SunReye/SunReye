@@ -382,6 +382,136 @@ suite("the dimension spine", () => {
     expect(await repo.readRawSetting(db, "spine-absent")).toBeUndefined();
   });
 
+  /**
+   * THE ONE-TIME SLUG CORRECTION, which exists nowhere else in the repository.
+   *
+   * `updatePlant` and `updateDevice` cannot express a slug and never will — a
+   * slug exists so it never has to change. `reslugForMigrationOnboarding` is the
+   * separate, narrow path the 1.2.0 -> 2.0.0 onboarding form writes through, open
+   * only while Home Assistant discovery is still held
+   * (`apps/server/src/migration/onboarding-plan.ts` decides that; this is only the
+   * statement). It is proved HERE because both of its interesting properties are
+   * the engine's: whether `plants_slug_unique` really refuses a collision, and
+   * whether the update leaves the row's id — and therefore five years of
+   * `metrics_raw.device_id` — exactly where it was.
+   */
+  test("reslugForMigrationOnboarding moves both slugs and keeps both ids", async () => {
+    const plant = await freshPlant("spine-reslug");
+    const device = await repo.ensureDevice(db, {
+      plantId: plant.id,
+      connectionId: null,
+      unitId: 1,
+      slug: "inverter",
+      name: "Inverter",
+      profileId: "spine-reslug-profile",
+      role: "inverter",
+    });
+
+    await repo.reslugForMigrationOnboarding(db, {
+      plantId: plant.id,
+      plantSlug: "haus-sud",
+      deviceId: device.id,
+      deviceSlug: "wechselrichter",
+    });
+
+    const { rows } = await db.execute(
+      sql`select p.id as plant_id, p.slug as plant_slug, d.id as device_id, d.slug as device_slug
+            from plants p join devices d on d.plant_id = p.id
+           where p.id = ${plant.id}`,
+    );
+    expect(rows[0]).toMatchObject({
+      plant_id: plant.id,
+      plant_slug: "haus-sud",
+      device_id: device.id,
+      device_slug: "wechselrichter",
+    });
+  });
+
+  test("each half is optional, so correcting one slug leaves the other alone", async () => {
+    const plant = await freshPlant("spine-reslug-half");
+    const device = await repo.ensureDevice(db, {
+      plantId: plant.id,
+      connectionId: null,
+      unitId: 1,
+      slug: "inverter",
+      name: "Inverter",
+      profileId: "spine-reslug-half-profile",
+      role: "inverter",
+    });
+    await repo.reslugForMigrationOnboarding(db, {
+      plantId: plant.id,
+      deviceId: device.id,
+      deviceSlug: "wr-1",
+    });
+    const { rows } = await db.execute(
+      sql`select p.slug as plant_slug, d.slug as device_slug
+            from plants p join devices d on d.plant_id = p.id where p.id = ${plant.id}`,
+    );
+    expect(rows[0]).toMatchObject({ plant_slug: "spine-reslug-half", device_slug: "wr-1" });
+  });
+
+  test("naming nothing executes nothing — `set` with no assignments is a syntax error", async () => {
+    const plant = await freshPlant("spine-reslug-none");
+    await repo.reslugForMigrationOnboarding(db, { plantId: plant.id, deviceId: null });
+    const { rows } = await db.execute(sql`select slug from plants where id = ${plant.id}`);
+    expect((rows[0] as { slug: string }).slug).toBe("spine-reslug-none");
+  });
+
+  test("a slug already taken by another plant is refused BY THE ENGINE", async () => {
+    // The reason this needs a real Postgres: the refusal is `plants_slug_key`, not
+    // a check in TypeScript. Without it the correction would either 500 or, worse,
+    // succeed against a database whose unique index had been lost.
+    await freshPlant("spine-reslug-taken");
+    const plant = await freshPlant("spine-reslug-mover");
+    let message = "";
+    try {
+      await repo.reslugForMigrationOnboarding(db, {
+        plantId: plant.id,
+        plantSlug: "spine-reslug-taken",
+        deviceId: null,
+      });
+    } catch (error) {
+      const cause = (error as { cause?: unknown }).cause;
+      message = `${(error as Error).message} ${cause instanceof Error ? cause.message : ""}`;
+    }
+    expect(message).toContain("plants_slug_unique");
+  });
+
+  test("and a device slug already used inside the same plant is refused too", async () => {
+    const plant = await freshPlant("spine-reslug-dev-dup");
+    const taken = await repo.ensureDevice(db, {
+      plantId: plant.id,
+      connectionId: null,
+      unitId: 1,
+      slug: "inverter",
+      name: "A",
+      profileId: "spine-reslug-dup-a",
+      role: "inverter",
+    });
+    const mover = await repo.ensureDevice(db, {
+      plantId: plant.id,
+      connectionId: null,
+      unitId: 2,
+      slug: "controller",
+      name: "B",
+      profileId: "spine-reslug-dup-b",
+      role: "controller",
+    });
+    expect(mover.id).not.toBe(taken.id);
+    let message = "";
+    try {
+      await repo.reslugForMigrationOnboarding(db, {
+        plantId: plant.id,
+        deviceId: mover.id,
+        deviceSlug: "inverter",
+      });
+    } catch (error) {
+      const cause = (error as { cause?: unknown }).cause;
+      message = `${(error as Error).message} ${cause instanceof Error ? cause.message : ""}`;
+    }
+    expect(message).toContain("devices_plant_slug_key");
+  });
+
   test("a device row is what lets a reading be stored at all", async () => {
     // The end-to-end point of this wave: before provisioning, the writer's
     // resolve returns null and drops the batch.
