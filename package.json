@@ -25,6 +25,8 @@
     "dev:web": "turbo run dev -F web",
     "dev:server": "turbo run dev -F server",
     "preview": "turbo run db:migrate -F @SunReye/db && turbo run preview -F web -F server",
+    "compile": "turbo run compile -F server",
+    "binary": "turbo run start:binary -F server",
     "db:push": "turbo run db:push -F @SunReye/db",
     "db:studio": "turbo run db:studio -F @SunReye/db",
     "db:generate": "turbo run db:generate -F @SunReye/db",
