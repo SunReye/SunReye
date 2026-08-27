@@ -78,7 +78,6 @@ export interface MetricKeyWriter {
  * the kind of failure that only shows up on the one install whose profile
  * declares no metrics.
  */
-// fallow-ignore-next-line unused-export -- the metric dimension's write side; wave 3 calls it from the runtime's profile-activation hook and from the writer. Proved against a live database by apps/server/db-tests/baseline.test.ts.
 export async function ensureMetricKeys(
   db: MetricKeyWriter,
   specs: readonly MetricKeySpec[],

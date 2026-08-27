@@ -3,6 +3,7 @@ import { openapi } from "@elysia/openapi";
 import { auth } from "@SunReye/auth";
 import { db } from "@SunReye/db";
 import { metricsRaw } from "@SunReye/db/schema/metrics";
+import { devices, metricKeys } from "@SunReye/db/schema/plants";
 import { user } from "@SunReye/db/schema/auth";
 import { env } from "@SunReye/env/server";
 import { and, count, desc, eq, gte, sql } from "drizzle-orm";
@@ -13,6 +14,7 @@ import { type CostBucket, computeCost, computeCostSeries, resolveRange } from ".
 import { energySeries } from "./energy/energy";
 import { entitiesApi } from "./inverter/entities";
 import { evccControl, evccSnapshot, rebuildEvcc, stopEvcc } from "./evcc/evcc";
+import { deviceIdOf, metricIdOf } from "./shared/identity-sql";
 import { queryRecentBuckets, queryRollup } from "./shared/history";
 import { isPublicDashboard } from "./settings/access-settings";
 import { buildProfileContext, initProfiles } from "./inverter/inverter";
@@ -306,11 +308,27 @@ const app = new Elysia()
     async ({ query }) => {
       const since = new Date(Date.now() - query.hours * 60 * 60 * 1000);
       const filters = [gte(metricsRaw.time, since)];
-      if (query.metric) filters.push(eq(metricsRaw.metric, query.metric));
-      if (query.inverterId) filters.push(eq(metricsRaw.inverterId, query.inverterId));
+      // Filtered BY id, resolved from the name the caller sent. `metric` and
+      // `inverterId` stay the query vocabulary: the int2 is a storage detail, and
+      // an integer in a URL would be renumbered by a database restore.
+      if (query.metric) filters.push(eq(metricsRaw.metricId, metricIdOf(query.metric)));
+      if (query.inverterId) filters.push(eq(metricsRaw.deviceId, deviceIdOf(query.inverterId)));
+      // An EXPLICIT projection, joining the two dimensions back to their names.
+      // This was `select *`, which after the 2.0.0 re-key would have started
+      // returning `deviceId: 3, metricId: 41` to every client of a documented
+      // endpoint — a silent wire-shape break, and two integers no consumer could
+      // interpret. The response keeps the field names it always had.
       return db
-        .select()
+        .select({
+          time: metricsRaw.time,
+          inverterId: devices.slug,
+          metric: metricKeys.key,
+          value: metricsRaw.value,
+          durMs: metricsRaw.durMs,
+        })
         .from(metricsRaw)
+        .innerJoin(devices, eq(devices.id, metricsRaw.deviceId))
+        .innerJoin(metricKeys, eq(metricKeys.id, metricsRaw.metricId))
         .where(and(...filters))
         .orderBy(desc(metricsRaw.time))
         .limit(query.limit);
