@@ -14,13 +14,23 @@ import {
   DEFAULT_OPTIONS,
   DEV_DB_PORT,
   FIXTURE_PORT,
+  LEGACY_COLUMNS,
   LEGACY_RELATION,
   TIER_OF,
   assertRehearsalTarget,
+  type DockerCopy,
+  type RehearsalIo,
+  type RehearsalMode,
   type Replayed,
   type UnsafeSql,
   DEFAULT_OPTIONS as OPTS,
   checkAggregates,
+  cli,
+  copyLegacyTier,
+  copyStatements,
+  legacyTableDdl,
+  recreateTarget,
+  rehearse,
   classifyProfile,
   configProblems,
   hazardProblems,
@@ -724,13 +734,447 @@ describe("main", () => {
     expect(lines.join(" ")).toMatch(/replay-rehearsal\.ts/);
   });
 
-  test("a bad argument becomes an exit code, not an unhandled rejection", async () => {
-    const real = console.error;
-    console.error = () => {};
-    try {
-      expect(await main(["--nonsense"])).toBe(1);
-    } finally {
-      console.error = real;
+  test("a bad argument throws — turning it into an exit code is cli's job", async () => {
+    await expect(main(["--nonsense"])).rejects.toThrow(/unknown argument: --nonsense/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The rig itself, behind the RehearsalIo seam.
+//
+// `recreateTarget`, `copyLegacyTier` and `rehearse` are Docker and Postgres
+// orchestration: what a `docker exec` DOES cannot be proved without Docker, and
+// the three real end-to-end runs against the fixture are what prove that. What
+// CAN be proved without either — and is what a mistake here would cost — is the
+// order the rig is built in, the column mapping the binary pipe depends on, and
+// that the guard runs before anything is touched. Those are below.
+// ---------------------------------------------------------------------------
+
+/** A connection double: records every statement, and every release. */
+function fakeConn(route: Route) {
+  const issued: { query: string; values?: unknown[] }[] = [];
+  let ends = 0;
+  return {
+    issued,
+    ended: () => ends,
+    async unsafe(query: string, values?: unknown[]) {
+      issued.push({ query, values });
+      const rows = route(query, values);
+      if (rows instanceof Error) throw rows;
+      return rows ?? [];
+    },
+    async end() {
+      ends += 1;
+    },
+  };
+}
+
+type Route = (query: string, values?: unknown[]) => unknown[] | Error | undefined;
+
+type FakeIo = RehearsalIo & {
+  /** Every side effect, in order — this is what the wiring tests assert on. */
+  readonly steps: string[];
+  readonly conns: ReturnType<typeof fakeConn>[];
+  readonly copies: DockerCopy[];
+  readonly logs: string[];
+  readonly errors: string[];
+};
+
+function fakeIo(options: { route?: Route; truth?: unknown; copyThrows?: Error } = {}): FakeIo {
+  const steps: string[] = [];
+  const conns: ReturnType<typeof fakeConn>[] = [];
+  const copies: DockerCopy[] = [];
+  const logs: string[] = [];
+  const errors: string[] = [];
+  const connect = (url: string) => {
+    steps.push(`connect:${new URL(url).pathname.slice(1)}`);
+    const conn = fakeConn(options.route ?? (() => []));
+    conns.push(conn);
+    return conn as unknown as ReturnType<RehearsalIo["connect"]>;
+  };
+  return {
+    steps,
+    conns,
+    copies,
+    logs,
+    errors,
+    connect,
+    // The two pools differ only in bun's idle timeout, which a double has no
+    // notion of; both are recorded on the same list so the ORDER the rig opens
+    // and releases connections in is one sequence to assert on.
+    connectBriefly: connect,
+    async migrate(url: string) {
+      steps.push(`migrate:${new URL(url).pathname.slice(1)}`);
+    },
+    async copyBinary(command: DockerCopy) {
+      steps.push("copyBinary");
+      copies.push(command);
+      if (options.copyThrows) throw options.copyThrows;
+    },
+    async readGroundTruth(mode: RehearsalMode) {
+      steps.push(`groundTruth:${mode}`);
+      return (options.truth ?? RIG_TRUTH) as Awaited<ReturnType<RehearsalIo["readGroundTruth"]>>;
+    },
+    log: (message: string) => logs.push(message),
+    error: (message: string) => errors.push(message),
+  };
+}
+
+describe("the legacy bucket table", () => {
+  test("the CREATE TABLE and the COPY column list are ONE list, in ONE order", () => {
+    // `COPY … BINARY` matches columns by POSITION, never by name. A column added
+    // to the DDL and not to the SELECT — or reordered in one of them — would not
+    // fail: it would silently write min_value into max_value and every energy
+    // check downstream would still pass. So both are generated from the same
+    // list, and this is the test that says so.
+    const ddl = legacyTableDdl("minute");
+    const { from } = copyStatements("minute");
+    const inDdl = LEGACY_COLUMNS.map((c) => c.name);
+    const inSelect = from
+      .replace(/^COPY \(select /, "")
+      .replace(/ from .*$/s, "")
+      .split(", ");
+    expect(inSelect).toEqual(inDdl);
+    for (const column of LEGACY_COLUMNS) expect(ddl).toContain(`${column.name} ${column.type}`);
+  });
+
+  test("the DDL is the 1.2.0 bucket shape, verbatim", () => {
+    expect(legacyTableDdl("hourly")).toBe(
+      `create table legacy_hourly_rollups (
+      bucket timestamptz not null,
+      inverter_id text not null,
+      metric text not null,
+      avg_value double precision,
+      max_value double precision,
+      min_value double precision
+    )`,
+    );
+  });
+
+  test("each tier copies FROM its 2.0.0 aggregate INTO its own legacy relation", () => {
+    for (const tier of ["minute", "hourly", "daily"] as const) {
+      const { from, to } = copyStatements(tier);
+      expect(from).toContain(` from ${TIER_OF[tier]}) TO STDOUT BINARY`);
+      expect(to).toBe(`COPY ${LEGACY_RELATION[tier]} FROM STDIN BINARY`);
+      // The source is the aggregate, the sink is the plain copy — never swapped.
+      expect(from).not.toContain(LEGACY_RELATION[tier]);
     }
+  });
+
+  test("the minute pipe is byte-for-byte the command the real runs used", () => {
+    expect(copyStatements("minute")).toEqual({
+      from:
+        "COPY (select bucket, inverter_id, metric, avg_value, max_value, min_value " +
+        "from minute_rollups) TO STDOUT BINARY",
+      to: "COPY legacy_minute_rollups FROM STDIN BINARY",
+    });
+  });
+});
+
+describe("recreateTarget", () => {
+  test("refuses a forbidden target BEFORE opening any connection", async () => {
+    const io = fakeIo();
+    await expect(recreateTarget({ ...OPTS, port: DEV_DB_PORT }, io)).rejects.toThrow(
+      /live\s+inverter/,
+    );
+    // The guard is worthless if the drop has already been sent.
+    expect(io.steps).toEqual([]);
+  });
+
+  test("refuses a target database whose name is not a rehearsal database", async () => {
+    const io = fakeIo();
+    await expect(recreateTarget({ ...OPTS, targetDb: "sunreye" }, io)).rejects.toThrow(
+      /only builds databases/,
+    );
+    expect(io.steps).toEqual([]);
+  });
+
+  test("drops with FORCE then creates, from the maintenance database", async () => {
+    const io = fakeIo();
+    const url = await recreateTarget(OPTS, io);
+    expect(url).toBe(`postgres://postgres:fixture@localhost:5436/sunreye_replay_200`);
+    // The maintenance database, never the one being dropped.
+    expect(io.steps).toEqual(["connect:postgres"]);
+    const issued = io.conns[0]?.issued.map((i) => i.query) ?? [];
+    // WITH (FORCE): a rehearsal re-run happens while the previous run's own
+    // connection may still be draining, and a plain DROP would just fail.
+    expect(issued).toEqual([
+      "DROP DATABASE IF EXISTS sunreye_replay_200 WITH (FORCE)",
+      "CREATE DATABASE sunreye_replay_200",
+    ]);
+  });
+
+  test("releases the maintenance connection even when the drop fails", async () => {
+    const io = fakeIo({ route: () => new Error("database is being accessed by other users") });
+    await expect(recreateTarget(OPTS, io)).rejects.toThrow(/other users/);
+    // A leaked maintenance connection is itself what makes the NEXT drop fail.
+    expect(io.conns[0]?.ended()).toBe(1);
+  });
+});
+
+describe("copyLegacyTier", () => {
+  const counted =
+    (n: string): Route =>
+    (query) =>
+      /count\(\*\)::bigint as n from legacy_/.test(query) ? [{ n }] : [];
+
+  test("recreates the relation, pipes the copy, and indexes only afterwards", async () => {
+    const io = fakeIo({ route: counted("9072000") });
+    expect(await copyLegacyTier(OPTS, "minute", io)).toBe(9_072_000);
+    expect(io.steps).toEqual([
+      "connect:sunreye_replay_200",
+      "copyBinary",
+      "connect:sunreye_replay_200",
+    ]);
+    // Stale relation dropped first: a re-run must not append to the last run's
+    // copy, which would double every bucket and pass no check at all.
+    expect(io.conns[0]?.issued[0]?.query).toBe("drop table if exists legacy_minute_rollups");
+    expect(io.conns[0]?.issued[1]?.query).toBe(legacyTableDdl("minute"));
+    expect(io.conns[0]?.ended()).toBe(1);
+    // The index comes AFTER the copy — the replay reads one inverter-day per
+    // chunk, and indexing first would make the copy itself pay for it.
+    const second = io.conns[1]?.issued.map((i) => i.query) ?? [];
+    expect(second[0]).toContain("count(*)::bigint as n from legacy_minute_rollups");
+    expect(second[1]).toBe("create index on legacy_minute_rollups (inverter_id, bucket)");
+    expect(io.conns[1]?.ended()).toBe(1);
+  });
+
+  test("hands the copy chokepoint the container, the port and both statements", async () => {
+    const io = fakeIo({ route: counted("1") });
+    await copyLegacyTier({ ...OPTS, container: "c9", port: 5437 }, "daily", io);
+    expect(io.copies).toEqual([
+      {
+        container: "c9",
+        port: 5437,
+        from: { db: OPTS.sourceDb, statement: copyStatements("daily").from },
+        to: { db: OPTS.targetDb, statement: copyStatements("daily").to },
+      },
+    ]);
+  });
+
+  test("a copy that moved nothing returns 0 rather than NaN", async () => {
+    // The count query answering nothing at all is the shape a later `toFixed`
+    // would turn into "NaN buckets" instead of a number verifySource can fail on.
+    const io = fakeIo({ route: () => [] });
+    expect(await copyLegacyTier(OPTS, "minute", io)).toBe(0);
+  });
+
+  test("releases the target connection when the pipe itself fails", async () => {
+    const io = fakeIo({ route: counted("1"), copyThrows: new Error("psql: no such container") });
+    await expect(copyLegacyTier(OPTS, "minute", io)).rejects.toThrow(/no such container/);
+    expect(io.conns[0]?.ended()).toBe(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The driver, end to end, with Docker and Postgres replaced.
+// ---------------------------------------------------------------------------
+
+/** A ground truth whose numbers the faithful route below reproduces exactly. */
+const TIER = {
+  minBucket: "2026-06-28 00:00:00+00",
+  maxBucket: "2026-08-26 23:59:00+00",
+  count: 9_072_000,
+  digest: "64d318eccb3dda61f7bfd74bd7123d26",
+};
+
+const RIG_TRUTH = {
+  fixture: { spanDays: 60, metricCount: 105 },
+  tiers: {
+    minute_rollups: TIER,
+    hourly_rollups: { minBucket: null, maxBucket: null, count: 0, digest: null },
+    daily_rollups: { minBucket: null, maxBucket: null, count: 0, digest: null },
+  },
+  perMetricPerDayEnergy: [CLIFF],
+  restarts: [
+    { metric: "total_energy", at: "2026-07-28T12:00:00.000Z", valueBefore: 1, valueAfter: 0 },
+  ],
+};
+
+/**
+ * Everything the rig asks, answered the way a FAITHFUL replay would answer it —
+ * so `rehearse` returning `[]` means every verification agreed, and any single
+ * answer overridden below makes exactly one of them speak up.
+ *
+ * A table keyed on the fragment that identifies each statement, the same shape
+ * as `fakeSql` above; the queries themselves are proved by the real runs against
+ * the fixture.
+ */
+const RIG_ANSWERS: Array<[RegExp, unknown[]]> = [
+  // The replay client, reached through bunSqlClient.
+  [/min\(b\./, [{ from: "2026-07-01T00:00:00Z", to: "2026-07-01T23:59:00Z" }]],
+  [/insert into metrics_raw/, [{ n: "155520" }]],
+  // The rig.
+  [/count\(\*\)::bigint as n from legacy_/, [{ n: String(TIER.count) }]],
+  [/min\(bucket\)/, [TIER]],
+  [/insert into devices/, [{ id: 1 }]],
+  [/on conflict \(key\) do update/i, [{ id: 1, key: "total_energy" }]],
+  // The verifications.
+  [/count\(\*\)::bigint as n from metrics_raw/, [{ n: "0" }]],
+  [/from metrics_config_log/, [{ n: "39" }]],
+  [
+    /select r\.time, r\.value from metrics_raw/,
+    [
+      { time: "2026-07-27T23:59:00Z", value: 0 },
+      { time: "2026-07-28T00:00:00Z", value: CLIFF.energy },
+      { time: "2026-07-28T00:01:00Z", value: 0 },
+    ],
+  ],
+  // Keyed on the projection, not the relation: `unregisteredMetrics` reads the
+  // same legacy relation and must fall through to "nothing missing".
+  [
+    /as "avgValue"/,
+    [
+      {
+        bucket: "2026-07-28T12:00:00Z",
+        avgValue: 3800.5,
+        time: "2026-07-28T12:00:00Z",
+        value: 3800.5,
+        durMs: 60_000,
+      },
+    ],
+  ],
+  [/max_value - d\.min_value/, [{ naive: CLIFF.naive, ctr_delta: 41.942, resets: 1 }]],
+  [/rollup\(d\.ctr\)/, [{ ctr_delta: CLIFF.energy }]],
+];
+
+function faithfulRoute(over: Array<[RegExp, unknown[]]> = []): Route {
+  // The completed-chunk watermark is the one stateful answer: it reports nothing
+  // until a chunk has committed, which is what makes the SECOND runReplay a
+  // no-op instead of a double insert.
+  let committed = 0;
+  const answers = [...over, ...RIG_ANSWERS];
+  return (query) => {
+    if (/^\s*commit/i.test(query)) committed += 1;
+    if (/select chunk_start/.test(query))
+      return committed > 0 ? [{ chunk_start: "2026-07-01T00:00:00Z" }] : [];
+    return answers.find(([pattern]) => pattern.test(query))?.[1] ?? [];
+  };
+}
+
+describe("rehearse", () => {
+  test("builds the rig in order, and a faithful replay leaves no findings", async () => {
+    const io = fakeIo({ route: faithfulRoute() });
+    expect(await rehearse(OPTS, io)).toEqual([]);
+    // The order is the behaviour: the ground truth is read before anything is
+    // dropped, the schema exists before the buckets are copied into it, and the
+    // target is only opened once the rig stands.
+    expect(io.steps).toEqual([
+      "groundTruth:full",
+      "connect:postgres",
+      "migrate:sunreye_replay_200",
+      "connect:sunreye_replay_200",
+      "copyBinary",
+      "connect:sunreye_replay_200",
+      "connect:sunreye_replay_200",
+    ]);
+    expect(io.conns.at(-1)?.ended()).toBe(1);
+  });
+
+  test("replays the tier it was asked for, not the default one", async () => {
+    const io = fakeIo({ route: faithfulRoute([[/min\(bucket\)/, [TIER]]]) });
+    await rehearse({ ...OPTS, tier: "hourly", skipAggregates: true }, io);
+    expect(io.copies[0]?.from.statement).toBe(copyStatements("hourly").from);
+  });
+
+  test("--skip-aggregates leaves the tier refresh — and its assertions — out", async () => {
+    const io = fakeIo({ route: faithfulRoute() });
+    expect(await rehearse({ ...OPTS, skipAggregates: true }, io)).toEqual([]);
+    const asked = io.conns.flatMap((c) => c.issued.map((i) => i.query));
+    expect(asked.some((q) => q.includes("refresh_continuous_aggregate"))).toBe(false);
+    // …and it IS asked for by default, or the flag would prove nothing.
+    const full = fakeIo({ route: faithfulRoute() });
+    await rehearse(OPTS, full);
+    expect(
+      full.conns
+        .flatMap((c) => c.issued)
+        .some((i) => i.query.includes("refresh_continuous_aggregate")),
+    ).toBe(true);
+  });
+
+  test("carries every verification's findings out, not just the first", async () => {
+    const io = fakeIo({
+      // A drifted source digest AND a config row in the hypertable.
+      route: faithfulRoute([
+        [/min\(bucket\)/, [{ ...TIER, digest: "deadbeef" }]],
+        [/count\(\*\)::bigint as n from metrics_raw/, [{ n: "7" }]],
+      ]),
+    });
+    const problems = await rehearse({ ...OPTS, skipAggregates: true }, io);
+    expect(problems.join(" ")).toMatch(/digest/);
+    expect(problems.join(" ")).toMatch(/7 config rows reached metrics_raw/);
+  });
+
+  test("releases the target connection when a verification throws", async () => {
+    const io = fakeIo({
+      route: (query) =>
+        /min\(bucket\)/.test(query) ? new Error("relation does not exist") : undefined,
+    });
+    await expect(rehearse(OPTS, io)).rejects.toThrow(/does not exist/);
+    // The rehearsal is re-run until it passes; a leaked connection on the target
+    // is what makes the next run's DROP DATABASE hang instead of failing fast.
+    expect(io.conns.at(-1)?.ended()).toBe(1);
+  });
+
+  test("refuses a forbidden target before migrating or copying anything", async () => {
+    const io = fakeIo({ route: faithfulRoute() });
+    await expect(rehearse({ ...OPTS, port: FIXTURE_PORT }, io)).rejects.toThrow(/READ-ONLY/);
+    expect(io.steps).toEqual(["groundTruth:full"]);
+  });
+});
+
+describe("cli", () => {
+  test("a faithful rehearsal is exit 0, and says so", async () => {
+    const io = fakeIo({ route: faithfulRoute() });
+    expect(await cli([], io)).toBe(0);
+    expect(io.logs.join(" ")).toMatch(/rehearsal PASSED/);
+    expect(io.errors).toEqual([]);
+  });
+
+  test("a finding is exit 1, reported to stderr", async () => {
+    const io = fakeIo({
+      route: faithfulRoute([[/count\(\*\)::bigint as n from metrics_raw/, [{ n: "7" }]]]),
+    });
+    expect(await cli(["--skip-aggregates"], io)).toBe(1);
+    expect(io.errors.join(" ")).toMatch(/config rows reached metrics_raw/);
+  });
+
+  test("a bad flag is its own message and exit 1, never a stack trace", async () => {
+    const io = fakeIo();
+    expect(await cli(["--fas"], io)).toBe(1);
+    expect(io.errors.join(" ")).toMatch(/unknown argument: --fas/);
+    expect(io.steps).toEqual([]);
+  });
+
+  test("a refused target is exit 1 with the guard's own message", async () => {
+    const io = fakeIo({ route: faithfulRoute() });
+    expect(await cli(["--port=5432"], io)).toBe(1);
+    expect(io.errors.join(" ")).toMatch(/live\s+inverter/);
+  });
+
+  test("--tier only accepts a tier the script can replay", async () => {
+    const io = fakeIo();
+    expect(await cli(["--tier=weekly"], io)).toBe(1);
+    expect(io.errors.join(" ")).toMatch(/not one of minute, hourly, daily/);
+  });
+
+  test("--port must be a number, or the guard would compare against NaN", async () => {
+    const io = fakeIo();
+    expect(await cli(["--port=abc"], io)).toBe(1);
+    expect(io.errors.join(" ")).toMatch(/--port: not an integer/);
+  });
+
+  test("--help prints the help and touches nothing", async () => {
+    const io = fakeIo();
+    const real = console.log;
+    const lines: string[] = [];
+    console.log = (line: string) => lines.push(line);
+    try {
+      expect(await cli(["--help"], io)).toBe(0);
+    } finally {
+      console.log = real;
+    }
+    expect(lines.join(" ")).toMatch(/replay-rehearsal\.ts/);
+    expect(io.steps).toEqual([]);
   });
 });
