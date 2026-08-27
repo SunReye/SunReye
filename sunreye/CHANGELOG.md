@@ -1,5 +1,53 @@
 # Changelog
 
+<!--
+  This preamble is hand-written and version-independent. release-please owns the
+  "## [version]" sections below it, and scripts/addon-changelog.mjs rewrites the
+  body of one of those sections in place — neither touches anything above the
+  first "## [", so this survives a release. Fold it into the generated 2.0.0
+  section (or delete it) once 2.0.0 is out and the note has done its job.
+-->
+
+## Read this before updating to 2.0.0
+
+**2.0.0 rebuilds how readings are stored.** This is the one breaking change in the release, and
+it is a change to the *database*, not to anything you have wired up outside SunReye.
+
+- **Your Home Assistant entities are unaffected.** The MQTT `unique_id` scheme, the topics and the
+  Home Assistant device identifier are all unchanged. Every `sensor.sunreye_*` entity keeps its id,
+  so dashboards, automations, scripts and recorder history keep working. Nothing needs re-pointing.
+- **The upgrade is in place and automatic.** There is nothing to export, reinstall or restore. Update
+  the addon and it happens.
+- **Take a backup first anyway.** This release moves data. The addon writes one for you; keep it
+  until you have seen a few days of charts.
+
+### Your history comes back in two stages
+
+The update itself is a catalogue-only step that takes under a second, and live data works from the
+moment it finishes. Your **pre-update history is replayed separately**, out of the boot chain,
+because on a Home Assistant box that part takes minutes rather than seconds.
+
+Until that backfill has run, charts and statistics cover only the time since the update. SunReye
+tells you so rather than drawing a partial answer: a range that reaches back past the update is
+refused with an explanation instead of quietly reporting a smaller number. **You can defer the
+backfill** and run it when it suits you; it is resumable, so interrupting it — including a power cut
+— loses nothing and duplicates nothing.
+
+### You are asked for two names, once
+
+1.2.0 had a single inverter setting and no notion of a site or a device. 2.0.0 needs both, and it can
+create the records but not invent the names, so on first open after the update it asks for a **plant
+name** and an **inverter name** (pre-filled from your profile) on one short form. Home Assistant MQTT
+discovery is held until both are set, so nothing is announced under a placeholder.
+
+### Also new: take your whole instance out as one file
+
+`export` writes every reading, your plant setup and your settings to one portable archive, and
+`import` reads it back — into another machine, or into a future SunReye whose storage layout has
+changed again. The archive names devices and metrics the way the API and your Home Assistant
+entities already do, and refers to no internal id, which is why an upgrade like this one should not
+be needed again.
+
 ## [1.2.0](https://github.com/SunReye/SunReye/compare/addon-v1.1.1...addon-v1.2.0) (2026-07-19)
 
 

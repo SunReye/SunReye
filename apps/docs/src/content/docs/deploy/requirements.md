@@ -96,52 +96,76 @@ Three levers act on that, in the order they matter:
    carrying no information.
 3. **Change-only storage with per-metric deadbands**, the largest lever, and rate-independent.
 
-Long-horizon history lives in the rollups, each built directly from the raw table:
+Long-horizon history lives in the rollups. There is **one generation** of them in 2.0.0, and
+they form a chain: the minute and hourly tiers are built from `metrics_raw`, and the daily tier is
+built from the hourly tier (a hierarchical continuous aggregate). Every tier stores time-weighted
+`time_weight` / `counter_agg` **partials** rather than finished numbers, which is what lets a new
+accessor or a coarser tier be added later without re-materializing anything:
 
 | Data | Resolution | Retention |
 | --- | --- | --- |
-| `metrics_raw` | change-only | 5 years |
-| `minute_rollups` | 1 min | frozen — decaying, 90 days |
-| `hourly_rollups` | 1 hour | 10 years |
+| `metrics_raw` | change-only | 5 years (1825 days) |
+| `minute_rollups` | 1 min | 90 days |
+| `hourly_rollups` | 1 hour | 10 years (3650 days) |
 | `daily_rollups` | 1 day | forever |
 
 Every interval is tunable in `packages/db/src/timescale/policies.sql`, which is re-applied on every
 migration run. Raw was 7 days when a day of raw cost 5–9 GB uncompressed; at the measured footprint
 that was discarding second-resolution replay to save single-digit megabytes.
 
-### Why the minute tier is frozen
+### Why the minute tier is refreshed again
 
-Change-only storage removed the reason the minute rollups existed. Measured on 30 days of
-change-only traffic at the authored deadbands, compressed, one device:
+1.x shipped **two** generations of aggregates — an unweighted `avg(value)` set and a `weighted_*`
+set — and then *froze* the minute pair, because on 30 days of change-only traffic at the authored
+deadbands, compressed, one device, the two minute aggregates cost 174 + 159 MB per device-year
+against raw's 361 MB. A tier that existed because it was ~15x cheaper per day of coverage than raw
+cost about the same as raw, while also capping raw's retention (raw may not outlive the shortest
+aggregate it is materialized into). Raw answered minute reads instead.
 
-| tier | per device-year |
-| --- | --- |
-| `metrics_raw` | 361 MB |
-| `minute_rollups` + `weighted_minute_rollups` | 333 MB |
+2.0.0 removes two of that argument's three premises:
 
-The tier that was built because it was ~15x cheaper per day of coverage than raw now costs about
-the same as raw — while also being the *ceiling* on raw retention, since raw may not outlive the
-shortest aggregate it is materialized into. So the two minute aggregates are no longer refreshed,
-and raw answers minute-resolution reads directly, bucketed and time-weighted at read time. Raw's
-retention is then bounded by the hourly tier's 10 years instead of the minute tier's 90 days, and
-5 years costs about **1.8 GB per device**.
+- There is now **one** minute aggregate, not two, and its row is a 49 B `TimeWeightSummary` plus two
+  doubles rather than six doubles — so the comparison is against roughly a quarter of that 333 MB.
+- Raw is now kept **1825 days**, so "raw answers minute reads" would mean every short-horizon chart
+  scans a five-year hypertable.
 
-They are frozen rather than dropped: every bucket already materialized keeps answering reads until
-its own retention ages it out. On a deployment whose raw does not yet reach back that far, those
-buckets are the only minute-resolution record of the days raw no longer covers.
+So the minute tier is refreshed again, and it is what keeps a six-hour chart off raw. Its 90-day
+retention is a **resolution window, not a coverage horizon**: past 90 days a minute-resolution read
+goes to raw and a wider read goes to hourly, so nothing is lost when a minute bucket ages out. That
+exemption from the coverage rule is declared deliberately, in `RAW_MAY_OUTLIVE_TIERS`
+(`scripts/storage-tuning.ts`), and `bun run test:storage` fails if a policy edit breaks it.
 
-This assumes the installed profile actually carries deadbands. Without them raw runs about 5.5x
-heavier and five years does not fit the footprint budget.
+Honest status: **~85 MB per device-year is a re-derivation from measured components, not a fresh
+measurement of the new shape.** It is to be confirmed on the first month of 2.0.0 traffic. If it
+disappoints, freezing the tier again is an edit to `policies.sql`, which is re-applied on every
+migration run and so reaches every deployment on the next start.
 
 ### What that costs backups
 
 Raw used to be excluded from the addon's default backup because it was fully materialized into the
-rollups — the backup kept the span at coarser resolution, which is exactly what `backup_full: false`
-is for. With the minute tier frozen, raw is the only minute-resolution record, so excluding it would
-restore an hourly-only history. `dump.sh` derives this from the database rather than assuming it:
-if the minute tier is not being refreshed, raw is included whatever the retention numbers say.
-Backups are correspondingly larger. `bun run test:storage` fails if a policy edit breaks the
-invariant.
+rollups — the backup kept the span at coarser resolution, which is what `backup_full: false` is for.
+That is no longer safe: raw is kept five years and the minute tier only ninety days, so a backup
+without raw would restore a history that stops at the hourly tier's resolution after three months.
+`dump.sh` derives this from the database rather than assuming it — `safe_to_exclude_raw` compares
+the live retention intervals *and* checks whether the minute tier is refreshed at all — so a backup
+taken under the shipped policies includes raw, and backups are correspondingly larger.
+
+### Row identity, and why it is two `int2`s
+
+A reading is `(time, value, dur_ms, device_id, metric_id)`. Until 2.0.0 the identity was two `text`
+columns — an `inverter_id` that actually held the *profile* id, and a metric key — and both sat on
+the write path. Measured on 200,000 rows, one device, 108 metrics:
+
+| identity | heap | `(id, metric, time)` index | total |
+| --- | --- | --- | --- |
+| `text`, `text` | 16 MB | 11 MB | 32 MB |
+| `int2`, `int2` | 9.95 MB | 6.04 MB | 20 MB |
+
+The saving is on the **uncompressed** path — the write-ahead log, the two-hour hot window, and both
+indexes — and not on compressed chunks, where `compress_segmentby` already stores the repeated text
+once per segment. That is the point: the objective is SSD/eMMC endurance, not footprint. The larger
+reason is correctness, though: `inverter_id` held the profile id, so two identical inverters
+collided and a profile swap orphaned all history.
 
 ### SSD endurance (TBW)
 

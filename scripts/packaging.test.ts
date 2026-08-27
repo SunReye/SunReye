@@ -293,6 +293,45 @@ describe("the images that no longer exist", () => {
       for (const path of retired) expect(text).not.toContain(path);
     }
   });
+
+  // A retired Dockerfile is gone from the tree, so referencing it fails loudly.
+  // A retired *published image* is worse: the reference stays syntactically
+  // valid and keeps working from the registry's leftovers until someone deletes
+  // the tag, at which point an unrelated workflow fails with `manifest unknown`
+  // and nothing connects it to the packaging change months earlier. Exactly that
+  // broke `upgrade-test.yml`, which pinned `sunreye-migrate:latest` to shape a
+  // pre-upgrade database long after the image stopped being published.
+  const retiredImages = ["sunreye-migrate", "sunreye-web"];
+
+  /**
+   * Comment lines removed, so the assertion is about what the runner executes.
+   * Explaining WHY an image was retired must stay allowed — that prose is the
+   * only thing standing between the next author and re-adding the reference.
+   */
+  const executable = (yaml: string) =>
+    yaml
+      .split("\n")
+      .filter((line) => !line.trimStart().startsWith("#"))
+      .join("\n");
+
+  it("no workflow pulls one from the registry", async () => {
+    const dir = new Bun.Glob("*.yml").scan({
+      cwd: new URL("../.github/workflows", import.meta.url).pathname,
+    });
+    for await (const file of dir) {
+      const text = executable(await read(`.github/workflows/${file}`));
+      for (const image of retiredImages) {
+        expect(text, `${file} references the retired ${image} image`).not.toContain(
+          `ghcr.io/sunreye/${image}`,
+        );
+      }
+    }
+  });
+
+  it.each(["docker-compose.yml", "docker/docker-compose.yml"])("%s pulls neither", async (path) => {
+    const text = executable(await read(path));
+    for (const image of retiredImages) expect(text).not.toContain(`ghcr.io/sunreye/${image}`);
+  });
 });
 
 describe.each(["docker-compose.yml", "docker/docker-compose.yml"])("%s", (path) => {

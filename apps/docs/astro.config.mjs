@@ -99,6 +99,7 @@ export default defineConfig({
             { label: "Manual Setup", slug: "deploy/manual-setup" },
             { label: "Docker Compose", slug: "deploy/docker" },
             { label: "Home Assistant Addon", slug: "deploy/home-assistant" },
+            { label: "Upgrading to 2.0.0", slug: "deploy/upgrading-to-2" },
           ],
         },
         {
