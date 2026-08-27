@@ -175,7 +175,9 @@
         "SPOOL_DIR",
         "exportFilename",
         "isStaleSpool",
-        "pickSpoolRoot"
+        "pickSpoolRoot",
+        "productionIo",
+        "sweep"
       ]
     },
     {
@@ -189,6 +191,9 @@
         "parseDeviceMap",
         "parseExportArgs",
         "parseImportArgs",
+        "productionIo",
+        "profileVocabulary",
+        "readShape",
         "runExport",
         "runImport",
         "sourceForShape"

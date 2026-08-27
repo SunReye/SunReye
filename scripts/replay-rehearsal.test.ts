@@ -49,6 +49,7 @@ import {
   verifySource,
   throughput,
   worstNaiveError,
+  productionIo,
 } from "./replay-rehearsal";
 
 const url = (port: number, database = "sunreye_replay_200") =>
@@ -331,8 +332,17 @@ describe("replayedEnergy", () => {
     const { db, asked } = fakeSql([[/from metrics_raw/, []]]);
     await replayedEnergy(db, 9, ["a", "b"]);
     expect(asked).toHaveLength(2);
-    expect(asked[0]?.values).toEqual([9, "a"]);
-    expect(asked[1]?.values).toEqual([9, "b"]);
+    expect(asked[0]?.values).toEqual(["a", 9]);
+    expect(asked[1]?.values).toEqual(["b", 9]);
+  });
+
+  test("a NULL device is every device — what an archive round trip needs", async () => {
+    // The rehearsal always names one, because its target also holds the rows the
+    // blocking upgrade carried across; an archive import lands in an empty
+    // database whose device ids it did not choose.
+    const { db, asked } = fakeSql([[/from metrics_raw/, []]]);
+    await replayedEnergy(db, null, ["a"]);
+    expect(asked[0]?.values).toEqual(["a"]);
   });
 
   test("a metric with no replayed rows contributes nothing rather than a zero day", async () => {
@@ -1176,5 +1186,64 @@ describe("cli", () => {
     }
     expect(lines.join(" ")).toMatch(/replay-rehearsal\.ts/);
     expect(io.steps).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The production wiring itself.
+//
+// `copyBinary` and `migrate` are deliberately NOT exercised: one runs
+// `docker exec` against the shared 1.2.0 fixture container and the other applies
+// a schema to a real database. That is exactly why they hold nothing but the one
+// command each, and why every decision that used to sit beside them is proved
+// above.
+// ---------------------------------------------------------------------------
+describe("productionIo", () => {
+  test("connect holds the pool OPEN and connectBriefly does not", () => {
+    // The verification pass holds one connection across the whole run; the three
+    // brief ones are the maintenance connection and the copy's bookends, and an
+    // idle one of those is what makes the next run's DROP hang.
+    const held = productionIo.connect("postgres://postgres:x@localhost:5434/target");
+    expect(typeof held.unsafe).toBe("function");
+    expect(typeof held.end).toBe("function");
+    const brief = productionIo.connectBriefly("postgres://postgres:x@localhost:5434/postgres");
+    expect(typeof brief.end).toBe("function");
+    // Nothing may dial out at construction time: the target assertion runs on the
+    // URL only after the handle exists.
+    expect(held).not.toBe(brief);
+  });
+
+  test("readGroundTruth reads the COMMITTED truth, restarts and all", async () => {
+    const truth = await productionIo.readGroundTruth("fast");
+    expect(truth.perMetricPerDayEnergy.length).toBeGreaterThan(0);
+    // A truth with no counter restart would leave the headline case unproven.
+    expect(truth.restarts.length).toBeGreaterThan(0);
+  });
+
+  test("log is prefixed so a rehearsal line is identifiable in a build log", () => {
+    const out: string[] = [];
+    const err: string[] = [];
+    const realLog = console.log;
+    const realError = console.error;
+    const realEnv = process.env.NODE_ENV;
+    console.log = (...a: unknown[]) => void out.push(a.join(" "));
+    console.error = (...a: unknown[]) => void err.push(a.join(" "));
+    try {
+      // SILENT under the test environment: this script logs a line per copied
+      // tier and per verified metric, and a suite that ran it would bury its own
+      // output.
+      productionIo.log("not this one");
+      expect(out).toEqual([]);
+      process.env.NODE_ENV = "development";
+      productionIo.log("copied 9,072,000 minute buckets");
+      productionIo.error("rehearsal: 3 difference(s)");
+    } finally {
+      console.log = realLog;
+      console.error = realError;
+      process.env.NODE_ENV = realEnv;
+    }
+    expect(out).toEqual(["[rehearsal] copied 9,072,000 minute buckets"]);
+    // Failures go to stderr unprefixed, the way the CLI's own errors do.
+    expect(err).toEqual(["rehearsal: 3 difference(s)"]);
   });
 });

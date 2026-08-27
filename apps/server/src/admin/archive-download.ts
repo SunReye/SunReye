@@ -20,6 +20,15 @@
  * `packages/db/src/archive-file.ts`. The spool is the price, and it buys a
  * `Content-Length` that a chunked stream could not offer anyway.
  *
+ * ## The IO seam
+ *
+ * The filesystem, the connection, the exporter and the log all go through
+ * {@link DownloadIo}, defaulted to {@link productionIo} as a parameter so the
+ * route does not change — the same seam `apps/server/src/archive-cli.ts` and
+ * `scripts/archive-round-trip.ts` use. What it buys is that the SPOOL LOCATION,
+ * the sweep's refusals, and the cleanup on failure are provable without writing
+ * 53 MB anywhere.
+ *
  * ## Why NOT `/tmp`
  *
  * On a Home Assistant box `/tmp` is a TMPFS. Spooling 53 MB there does not use
@@ -35,9 +44,107 @@ import { mkdir, mkdtemp, readdir, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import type { ExportRequest, ExportResult } from "@SunReye/db/archive-export";
+
 import { log } from "../shared/logging";
 
 const downloadLog = log();
+
+/** A single connection the exporter can drive. Never the shared pool. */
+export interface DownloadClient {
+  query(text: string, values?: readonly unknown[]): Promise<{ rows: unknown[] }>;
+  end(): Promise<void>;
+}
+
+/** Everything this module touches that is not a decision. */
+export interface DownloadIo {
+  exists(path: string): boolean;
+  readdir(path: string): Promise<string[]>;
+  statOf(path: string): Promise<Pick<Stats, "mtimeMs">>;
+  remove(path: string): Promise<void>;
+  mkdir(path: string): Promise<void>;
+  /** A fresh spool directory under `root`, named so a sweep can find it. */
+  makeSpool(root: string): Promise<string>;
+  /** Last resort when no candidate root exists. A TMPFS on a HA box. */
+  tmpRoot(): string;
+  now(): Date;
+  /**
+   * ITS OWN CONNECTION, not the shared pool, and for two independent reasons.
+   *
+   * `ReplayClient` speaks positional `$n` parameters — it is `pg.Client`'s own
+   * shape — so a drizzle client would have to have its statements rewritten to
+   * reach it, which means interpolating values into SQL text. There is no version
+   * of that worth writing on a path this size.
+   *
+   * And a full export is tens of seconds of queries. Holding a pooled connection
+   * for that long would starve the poll loop, which is writing to the same
+   * database at 1 Hz.
+   */
+  connect(): Promise<DownloadClient>;
+  exportArchive(client: DownloadClient, request: ExportRequest): Promise<ExportResult>;
+  /**
+   * The configuration keys, from the installed profile.
+   *
+   * A NATIVE export reads `metric_keys` out of the database, so this is belt: it
+   * only matters when the two disagree, and then the profile is the authority on
+   * which metrics are configuration (`resolveStorage`) — never a `settings.%`
+   * prefix match, which is one vendor's naming and stops applying on the next.
+   */
+  configKeys(): Promise<string[]>;
+  appVersion(): string | undefined;
+  info(message: string, fields: Record<string, unknown>): void;
+}
+
+/**
+ * The real wiring. The dynamic imports stay dynamic: this module is reached from
+ * an admin route, and a static import of the exporter and `pg` would load both
+ * into every server boot.
+ */
+export const productionIo: DownloadIo = {
+  exists: existsSync,
+  readdir: (path) => readdir(path),
+  statOf: (path) => stat(path),
+  remove: async (path) => {
+    await rm(path, { recursive: true, force: true });
+  },
+  mkdir: async (path) => {
+    await mkdir(path, { recursive: true });
+  },
+  makeSpool: (root) => mkdtemp(join(root, "export-")),
+  tmpRoot: () => tmpdir(),
+  now: () => new Date(),
+  connect: async () => {
+    const { productionRuntime } = await import("@SunReye/db/migrate");
+    const { env } = await import("@SunReye/env/server");
+    const client = productionRuntime.createClient(env.DATABASE_URL);
+    await client.connect();
+    return client as unknown as DownloadClient;
+  },
+  exportArchive: async (client, request) => {
+    const { exportArchive } = await import("@SunReye/db/archive-export");
+    return exportArchive(client, request);
+  },
+  configKeys: async () => {
+    try {
+      const { resolveStorage } = await import("@SunReye/inverter-core");
+      const { db } = await import("@SunReye/db");
+      const { sql } = await import("drizzle-orm");
+      const rows = await db.execute(
+        sql`select data from installed_profiles order by installed_at desc limit 1`,
+      );
+      const data = (rows.rows[0] as { data?: { metrics?: unknown[] } } | undefined)?.data;
+      const metrics = (data?.metrics ?? []) as never[];
+      return metrics
+        .filter((metric) => resolveStorage(metric) === "config")
+        .map((metric) => (metric as { key: string }).key);
+    } catch {
+      // No profile installed. A native export still carries every metric key.
+      return [];
+    }
+  },
+  appVersion: () => process.env.SUNREYE_VERSION,
+  info: (message, fields) => downloadLog.info(message, fields),
+};
 
 /**
  * Spool roots in priority order: real disk before the tmpfs, PRIVATE before
@@ -96,13 +203,13 @@ export function isStaleSpool(entry: Pick<Stats, "mtimeMs">, now: number): boolea
 }
 
 /** Remove spools a previous download finished with. Best effort, never fatal. */
-async function sweep(root: string): Promise<void> {
+export async function sweep(root: string, io: DownloadIo = productionIo): Promise<void> {
   try {
-    const now = Date.now();
-    for (const name of await readdir(root)) {
+    const now = io.now().getTime();
+    for (const name of await io.readdir(root)) {
       const path = join(root, name);
       try {
-        if (isStaleSpool(await stat(path), now)) await rm(path, { recursive: true, force: true });
+        if (isStaleSpool(await io.statOf(path), now)) await io.remove(path);
       } catch {
         // A spool another process is mid-way through removing. Not ours to fix.
       }
@@ -121,55 +228,22 @@ export interface ArchiveDownload {
 }
 
 /**
- * The metric vocabulary and configuration keys, from the installed profile.
- *
- * A NATIVE export reads `metric_keys` out of the database, so this is belt: it
- * only matters when the two disagree, and then the profile is the authority on
- * which metrics are configuration (`resolveStorage`) — never a `settings.%`
- * prefix match, which is one vendor's naming and stops applying on the next.
- */
-async function vocabulary(): Promise<{ configKeys: string[] }> {
-  try {
-    const { resolveStorage } = await import("@SunReye/inverter-core");
-    const { db } = await import("@SunReye/db");
-    const { sql } = await import("drizzle-orm");
-    const rows = await db.execute(
-      sql`select data from installed_profiles order by installed_at desc limit 1`,
-    );
-    const data = (rows.rows[0] as { data?: { metrics?: unknown[] } } | undefined)?.data;
-    const metrics = (data?.metrics ?? []) as never[];
-    return {
-      configKeys: metrics
-        .filter((metric) => resolveStorage(metric) === "config")
-        .map((metric) => (metric as { key: string }).key),
-    };
-  } catch {
-    // No profile installed. A native export still carries every metric key.
-    return { configKeys: [] };
-  }
-}
-
-/**
  * Build the archive and return where it is, for the route to stream.
  *
  * NOT `resetTimeseries`'s neighbour by accident: this is the counterpart the
  * Danger Zone was missing. "Delete all data" without "take a copy first" is a
  * button nobody should be asked to press.
  */
-export async function buildExportArchive(): Promise<ArchiveDownload> {
-  const { exportArchive } = await import("@SunReye/db/archive-export");
-  const { productionRuntime } = await import("@SunReye/db/migrate");
-  const { env } = await import("@SunReye/env/server");
+export async function buildExportArchive(io: DownloadIo = productionIo): Promise<ArchiveDownload> {
+  const base = pickSpoolRoot(SPOOL_CANDIDATES, io.exists);
+  const root = base === null ? join(io.tmpRoot(), SPOOL_DIR) : join(base, SPOOL_DIR);
+  await sweep(root, io);
+  await io.mkdir(root);
+  const workDir = await io.makeSpool(root);
 
-  const base = pickSpoolRoot(SPOOL_CANDIDATES, existsSync);
-  const root = base === null ? join(tmpdir(), SPOOL_DIR) : join(base, SPOOL_DIR);
-  await sweep(root);
-  await mkdir(root, { recursive: true });
-  const workDir = await mkdtemp(join(root, "export-"));
-
-  const filename = exportFilename(new Date());
+  const filename = exportFilename(io.now());
   const out = join(workDir, filename);
-  const { configKeys } = await vocabulary();
+  const configKeys = await io.configKeys();
 
   /**
    * ITS OWN CONNECTION, not the shared pool, and for two independent reasons.
@@ -183,17 +257,16 @@ export async function buildExportArchive(): Promise<ArchiveDownload> {
    * for that long would starve the poll loop, which is writing to the same
    * database at 1 Hz.
    */
-  const client = productionRuntime.createClient(env.DATABASE_URL);
-  await client.connect();
+  const client = await io.connect();
   try {
-    const result = await exportArchive(client, {
+    const result = await io.exportArchive(client, {
       source: "native",
       out,
       workDir,
       configKeys,
-      appVersion: process.env.SUNREYE_VERSION,
+      appVersion: io.appVersion(),
     });
-    downloadLog.info("archive export built: {rows} readings, {bytes} bytes, {ms} ms", {
+    io.info("archive export built: {rows} readings, {bytes} bytes, {ms} ms", {
       rows: result.manifest.rows,
       bytes: result.bytes,
       ms: result.elapsedMs,
@@ -202,7 +275,7 @@ export async function buildExportArchive(): Promise<ArchiveDownload> {
   } catch (error) {
     // The spool is useless without a finished archive, and leaving it would make
     // the next sweep the only thing that ever removed it.
-    await rm(workDir, { recursive: true, force: true });
+    await io.remove(workDir);
     throw error;
   } finally {
     // Always: a leaked connection here is one fewer backend for the poll loop,
