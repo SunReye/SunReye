@@ -14,7 +14,16 @@ ENV HUSKY=0 SKIP_ENV_VALIDATION=1 NODE_ENV=production
 COPY . .
 RUN --mount=type=cache,target=/root/.bun/install/cache bun install --frozen-lockfile
 
+# The dashboard the binary serves. Must run BEFORE the compile below: --asset
+# reads the directory at build time, and a missing one is a hard build error.
+RUN cd apps/web && bun run build:static
+
 ARG TARGETARCH
+# NOTE for the planned alpine runtime: these targets emit glibc binaries
+# (interpreter /lib64/ld-linux-x86-64.so.2). On a musl base the binary fails to
+# exec with a bare "No such file or directory" — the missing file is the
+# interpreter, not the binary. Switch to bun-linux-{x64,arm64}-musl with the base
+# image, not after.
 RUN case "$TARGETARCH" in \
       amd64) BUN_TARGET=bun-linux-x64 ;; \
       arm64) BUN_TARGET=bun-linux-arm64 ;; \
@@ -25,7 +34,9 @@ RUN case "$TARGETARCH" in \
     # RTU-over-serial connectors (never used — SunReye speaks TCP), and bun's
     # bundler emits a syntax error into the bundled @serialport/bindings-cpp
     # wrapper that breaks parsing of the whole binary at startup.
-    bun build --compile --minify --external serialport --target="$BUN_TARGET" ./src/index.ts --outfile /app/server
+    # --asset embeds the whole build tree; bun keeps only its BASENAME, so it
+    # arrives as build/… inside the binary — see src/web/loaded.ts.
+    bun build --compile --minify --external serialport --target="$BUN_TARGET" --asset ../web/build ./src/index.ts --outfile /app/server
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Runtime stage

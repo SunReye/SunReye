@@ -1,6 +1,5 @@
 import { describe, expect, it } from "bun:test";
 import { Elysia } from "elysia";
-import { variantKey } from "./encoding";
 
 /** The header values the addon's nginx sent, asserted literally on purpose. */
 const IMMUTABLE_CACHE_CONTROL = "public, max-age=31536000, immutable";
@@ -108,89 +107,5 @@ describe("webRoutes alongside the engine's own wildcards", () => {
   it("does not shadow a concrete engine route", async () => {
     const res = await withEngine().handle(new Request("http://localhost/api/live"));
     expect(await res.text()).toBe("engine");
-  });
-});
-
-describe("webRoutes content negotiation", () => {
-  const gz = bytes("GZIPPED");
-  const br = bytes("BROTLID");
-  const negotiable = new Map([
-    ...assets,
-    [variantKey("gzip", "/_app/immutable/entry/app.CAFEBABE.js"), gz],
-    [variantKey("br", "/_app/immutable/entry/app.CAFEBABE.js"), br],
-    [variantKey("gzip", "/index.html"), gz],
-  ]);
-  const fetchAsset = (path: string, accept?: string) =>
-    webRoutes(negotiable).handle(
-      new Request(`http://localhost${path}`, {
-        headers: accept === undefined ? {} : { "accept-encoding": accept },
-      }),
-    );
-
-  it("serves the brotli variant to a browser", async () => {
-    const res = await fetchAsset("/_app/immutable/entry/app.CAFEBABE.js", "gzip, deflate, br");
-    expect(res.headers.get("content-encoding")).toBe("br");
-    expect(await res.text()).toBe("BROTLID");
-  });
-
-  it("serves gzip when that is all the client takes", async () => {
-    const res = await fetchAsset("/_app/immutable/entry/app.CAFEBABE.js", "gzip");
-    expect(res.headers.get("content-encoding")).toBe("gzip");
-    expect(await res.text()).toBe("GZIPPED");
-  });
-
-  it("serves the raw bytes when no encoding is acceptable", async () => {
-    const res = await fetchAsset("/_app/immutable/entry/app.CAFEBABE.js");
-    expect(res.headers.get("content-encoding")).toBeNull();
-    expect(await res.text()).toBe("console.log(1)");
-  });
-
-  it("keeps the asset's own content-type on a compressed reply", async () => {
-    const res = await fetchAsset("/_app/immutable/entry/app.CAFEBABE.js", "br");
-    expect(res.headers.get("content-type")).toBe("text/javascript; charset=utf-8");
-  });
-
-  // Without this a shared cache can hand a gzip body to a client that never
-  // asked for one.
-  it("varies on Accept-Encoding whether or not it compressed", async () => {
-    expect((await fetchAsset("/index.html", "gzip")).headers.get("vary")).toBe("Accept-Encoding");
-    expect((await fetchAsset("/favicon.svg")).headers.get("vary")).toBe("Accept-Encoding");
-  });
-
-  it("serves an asset with no variants raw even to a browser", async () => {
-    const res = await fetchAsset("/favicon.svg", "gzip, br");
-    expect(res.headers.get("content-encoding")).toBeNull();
-    expect(await res.text()).toBe("<svg/>");
-  });
-
-  it("negotiates the fallback page for a deep-linked route", async () => {
-    const res = await fetchAsset("/statistics", "gzip");
-    expect(res.headers.get("content-encoding")).toBe("gzip");
-  });
-
-  // A variant key is reachable as a URL only by smuggling the NUL in
-  // percent-encoded. Such a path is simply not in the manifest, so it takes the
-  // SPA fallback — what must never happen is the raw compressed blob coming
-  // back as an asset of its own, with no content-encoding to describe it.
-  it("never serves a variant key as an asset of its own", async () => {
-    const res = await fetchAsset("/%00gzip/index.html");
-    expect(res.headers.get("content-encoding")).toBeNull();
-    expect(await res.text()).toBe("<!doctype html><body>SunReye</body>");
-  });
-
-  it("does not let a smuggled variant key reach the immutable arm either", async () => {
-    const res = await fetchAsset("/%00br/_app/immutable/entry/app.CAFEBABE.js");
-    expect(await res.text()).not.toBe("BROTLID");
-  });
-
-  it("sends no body for HEAD but still reports the encoding", async () => {
-    const res = await webRoutes(negotiable).handle(
-      new Request("http://localhost/index.html", {
-        method: "HEAD",
-        headers: { "accept-encoding": "gzip" },
-      }),
-    );
-    expect(res.headers.get("content-encoding")).toBe("gzip");
-    expect(await res.text()).toBe("");
   });
 });

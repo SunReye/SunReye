@@ -67,3 +67,34 @@ export function resolveAsset(
   if (key.startsWith(IMMUTABLE_PREFIX)) return null;
   return { key: FALLBACK, cacheControl: PAGE_CACHE_CONTROL };
 }
+
+/**
+ * Response content type per extension. The bytes come out of the build raw, so
+ * nothing else can infer this — and a wrong type on the bundle or the page
+ * stops the app from booting in the browser.
+ */
+const CONTENT_TYPES: Record<string, string> = {
+  html: "text/html; charset=utf-8",
+  js: "text/javascript; charset=utf-8",
+  css: "text/css; charset=utf-8",
+  json: "application/json",
+  webmanifest: "application/manifest+json",
+  svg: "image/svg+xml",
+  png: "image/png",
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  webp: "image/webp",
+  avif: "image/avif",
+  ico: "image/x-icon",
+  woff2: "font/woff2",
+  woff: "font/woff",
+  ttf: "font/ttf",
+  txt: "text/plain; charset=utf-8",
+  map: "application/json",
+};
+
+export function contentTypeFor(path: string): string {
+  const dot = path.lastIndexOf(".");
+  if (dot === -1) return "application/octet-stream";
+  return CONTENT_TYPES[path.slice(dot + 1).toLowerCase()] ?? "application/octet-stream";
+}

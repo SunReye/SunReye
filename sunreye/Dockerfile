@@ -38,6 +38,9 @@ RUN case "$TARGETARCH" in \
     # that cost for nothing.
     # --external serialport: see apps/server/Dockerfile — bun's bundler breaks
     # on @serialport/bindings-cpp, and the serial path is never used.
+    # Deliberately NO --asset here: nginx serves the SPA off /opt/sunreye/web
+    # below, so this binary is API-only and src/web/loaded.ts finds nothing
+    # embedded — every asset path 404s and nginx never asks it for one.
     bun build --compile --minify --external serialport --target="$BUN_TARGET" apps/server/src/main.ts --outfile /out/sunreye
 
 # Static SPA build (hash router, no server routes) — nginx serves the files

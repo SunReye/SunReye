@@ -22,7 +22,6 @@
   "publicPackages": ["@sunreye/profile-sdk", "@SunReye/inverter-core"],
   "ignoreExports": [
     { "file": "apps/docs/astro.config.mjs", "exports": ["*"] },
-    { "file": "apps/server/src/web/pack-file.d.ts", "exports": ["*"] },
     { "file": "packages/db/src/index.ts", "exports": ["createDbAt"] },
     { "file": "packages/db/src/schema-parity.ts", "exports": ["*"] },
     { "file": "apps/server/tsdown.config.ts", "exports": ["*"] },

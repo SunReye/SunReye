@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { resolveAsset } from "./static-assets";
+import { contentTypeFor, resolveAsset } from "./static-assets";
 
 /** The header values the addon's nginx sent, asserted literally on purpose. */
 const IMMUTABLE_CACHE_CONTROL = "public, max-age=31536000, immutable";
@@ -69,5 +69,26 @@ describe("resolveAsset", () => {
   it("returns null for every path when nothing is embedded", () => {
     expect(resolveAsset(new Set<string>(), "/")).toBeNull();
     expect(resolveAsset(new Set<string>(), "/statistics")).toBeNull();
+  });
+});
+
+describe("contentTypeFor", () => {
+  it("types the asset kinds the build emits", () => {
+    expect(contentTypeFor("/index.html")).toBe("text/html; charset=utf-8");
+    expect(contentTypeFor("/_app/immutable/app.js")).toBe("text/javascript; charset=utf-8");
+    expect(contentTypeFor("/_app/immutable/app.css")).toBe("text/css; charset=utf-8");
+    expect(contentTypeFor("/favicon.svg")).toBe("image/svg+xml");
+    expect(contentTypeFor("/fonts/geist.woff2")).toBe("font/woff2");
+    expect(contentTypeFor("/manifest.webmanifest")).toBe("application/manifest+json");
+    expect(contentTypeFor("/data.json")).toBe("application/json");
+  });
+
+  it("falls back to a byte stream for an unknown extension", () => {
+    expect(contentTypeFor("/weird.qqq")).toBe("application/octet-stream");
+    expect(contentTypeFor("/noextension")).toBe("application/octet-stream");
+  });
+
+  it("matches the extension case-insensitively", () => {
+    expect(contentTypeFor("/LOGO.SVG")).toBe("image/svg+xml");
   });
 });

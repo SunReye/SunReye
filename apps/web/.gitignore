@@ -23,5 +23,3 @@ Thumbs.db
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 
-# Embedded asset pack, written by `bun run build:static` (see scripts/pack-build.ts)
-/build.pack

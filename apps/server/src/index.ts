@@ -37,7 +37,7 @@ import { publishLiveTopics } from "./routes/ws-publish";
 import { topicAccessFrom } from "./routes/ws-subscribe";
 import { todayStatistics } from "./statistics/statistics";
 import * as runtime from "./inverter/runtime";
-import { embeddedAssets } from "./web/embedded";
+import { loadAssets } from "./web/loaded";
 import { webRoutes } from "./web/static";
 
 // Shared query for the per-period series endpoints (cost + energy): an explicit
@@ -510,11 +510,11 @@ const app = new Elysia()
       }),
     }),
   )
-  // The dashboard itself, served from the build packed into this binary. Mounted
+  // The dashboard itself, served from the build embedded in this binary. Mounted
   // LAST so every engine route above claims its path first: this answers GET on
   // whatever is left, with the SPA page as the fallback (hash router). Absent in
-  // an API-only build (empty pack) — then these paths simply 404.
-  .use(webRoutes(await embeddedAssets()))
+  // an API-only build (compiled without --asset) — then these paths simply 404.
+  .use(webRoutes(await loadAssets()))
   .listen({ port: env.PORT, hostname: env.HOST }, () => {
     serverLog.info("server running on http://localhost:{port} — profile {profile}", {
       port: env.PORT,
