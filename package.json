@@ -50,6 +50,8 @@
     "test:static-env": "bun scripts/static-build-env.ts",
     "test:storage": "bun scripts/storage-tuning.ts",
     "test:wear": "bun scripts/storage-wear.ts",
+    "fixture:1.2.0": "bun scripts/fixture-1-2-0.ts",
+    "fixture:1.2.0:fast": "bun scripts/fixture-1-2-0.ts --fast --reset",
     "e2e": "bun run --cwd apps/web e2e",
     "e2e:install": "bun run --cwd apps/web e2e:install",
     "e2e:types": "bun run --cwd apps/web e2e:types",

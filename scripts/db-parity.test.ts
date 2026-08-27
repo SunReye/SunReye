@@ -1,5 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import {
+  SIDE_TABLES,
+  SNAPSHOT_SQL,
+  buildSnapshotSql,
   type Snapshot,
   type WeightedRollupName,
   compareSnapshots,
@@ -392,5 +395,78 @@ describe("weightedMatchesLegacy", () => {
     const s = weighted();
     for (const name of WEIGHTED) s.weightedRollups[name][0]!.avg = 42;
     expect(weightedMatchesLegacy(s)).toHaveLength(WEIGHTED.length);
+  });
+});
+
+/**
+ * A pre-2.0.0 database is missing tables the current schema has (`spot_prices`,
+ * `forecast_correction_cells` do not exist in addon 1.2.0 at all), so the
+ * snapshot has to be *takeable* on the old side — a snapshot that cannot be
+ * taken proves nothing, and the pre-migration one is the only irreplaceable one.
+ * An absent table therefore snapshots as null, and null carries the meaning
+ * "there was nothing here to compare", not "zero rows".
+ */
+describe("absent side tables", () => {
+  test("a table absent before the migration is not compared, and may appear after", () => {
+    const before = snapshot({
+      tables: { app_settings: 4, spot_prices: null },
+      digests: { app_settings: "a1", spot_prices: null },
+    });
+    const after = snapshot({
+      tables: { app_settings: 4, spot_prices: 17 },
+      digests: { app_settings: "a1", spot_prices: "z9" },
+    });
+    expect(compareSnapshots(before, after, { expectRawLoss: false })).toEqual([]);
+  });
+
+  test("a table that was there before and is absent after is a finding", () => {
+    const before = snapshot({ tables: { app_settings: 4 }, digests: { app_settings: "a1" } });
+    const after = snapshot({ tables: { app_settings: null }, digests: { app_settings: null } });
+    expect(compareSnapshots(before, after, { expectRawLoss: false }).join(" ")).toMatch(
+      /app_settings.*missing/,
+    );
+  });
+
+  test("an absent table is still not the same as an empty one", () => {
+    const before = snapshot({ tables: { app_settings: 0 }, digests: { app_settings: "e0" } });
+    const after = snapshot({ tables: { app_settings: null }, digests: { app_settings: "e0" } });
+    expect(compareSnapshots(before, after, { expectRawLoss: false }).length).toBeGreaterThan(0);
+  });
+
+  test("the snapshot SQL guards every side table, so a missing one cannot fail the query", () => {
+    for (const table of SIDE_TABLES) {
+      expect(SNAPSHOT_SQL).toContain(`to_regclass('public."${table}"')`);
+    }
+  });
+});
+
+/**
+ * The rollup arrays are the whole point of a restore comparison and completely
+ * infeasible for a two-month fixture: 60 days of per-minute buckets across 105
+ * metrics is 9.07 M rows, and `json_agg`-ing them into one value is an
+ * out-of-memory error, which is exactly how it was found.
+ */
+describe("buildSnapshotSql", () => {
+  test("the default snapshot still aggregates every bucket", () => {
+    const sql = buildSnapshotSql();
+    expect(sql).toBe(SNAPSHOT_SQL);
+    expect(sql).toContain("FROM minute_rollups) r");
+  });
+
+  test("without rollups the tiers are present but empty, so the shape is unchanged", () => {
+    const sql = buildSnapshotSql({ includeRollups: false });
+    expect(sql).not.toContain("FROM minute_rollups) r");
+    for (const tier of ["minute_rollups", "hourly_rollups", "daily_rollups"]) {
+      expect(sql).toContain(`'${tier}', '[]'::json`);
+    }
+    // The parts that are cheap at any scale must still be there.
+    expect(sql).toContain("compressedChunks");
+    expect(sql).toContain("timescaledb_information.jobs");
+    expect(sql).toContain(`to_regclass('public."app_settings"')`);
+  });
+
+  test("the weighted views are dropped too — they are the same unbounded shape", () => {
+    const sql = buildSnapshotSql({ includeRollups: false });
+    expect(sql).not.toContain("weighted_sum / nullif");
   });
 });
