@@ -2,11 +2,18 @@
 
 ## [unreleased]
 
-Unreleased work on `dev` since 1.2.0, shipped in `beta.20260826-309f93c`.
+Unreleased work on `dev` since 1.2.0, shipped in `beta.20260827-39db7f8`.
 
 
 ### Features
 
+* **inverter-core:** add per-string yield and grid frequency roles ([452d165](https://github.com/SunReye/SunReye/commit/452d16537b3077db83a5bc5e4ae9790e8ee9b8b2))
+* **automation:** steer battery limits in watts as well as amps ([b6bd8d8](https://github.com/SunReye/SunReye/commit/b6bd8d851364a02d68505affcc5f3522f91e5830))
+* **server:** imply house consumption when nothing meters it ([7404790](https://github.com/SunReye/SunReye/commit/7404790920519232f9e1f5ba89a221ad52d3082d))
+* **web:** render the home node from the load metric, not the UPS capability ([f076931](https://github.com/SunReye/SunReye/commit/f076931e40211ecfd3deee77dffda724f510ecf3))
+* **inverter-core:** separate the backup output from house load ([4ae4d04](https://github.com/SunReye/SunReye/commit/4ae4d044b060c8a8299141b197948062486e12d6))
+* **db:** freeze the minute aggregates and keep raw for five years ([554ca75](https://github.com/SunReye/SunReye/commit/554ca75cae43888ebee21bd29b88d91291e7a147))
+* **server:** answer minute buckets from raw ([e7604e7](https://github.com/SunReye/SunReye/commit/e7604e7589587600aaeeea775b5ab84de8583ba7))
 * **db:** re-derive retention against the measured footprint ([82eeaf0](https://github.com/SunReye/SunReye/commit/82eeaf0f68bc1d8a843b3c3d81922d37b30bec4d))
 * **server:** serve each rollup bucket from one source, preferring the weighted one ([c4b9631](https://github.com/SunReye/SunReye/commit/c4b9631b1c8981fd851ae81d9eedfb3a070cece4))
 * **db:** time-weighted rollups, and the compression every tier was missing ([8d61780](https://github.com/SunReye/SunReye/commit/8d6178018345b94fd60b2a859323897fb50b75de))
@@ -97,6 +104,7 @@ Unreleased work on `dev` since 1.2.0, shipped in `beta.20260826-309f93c`.
 
 ### Bug Fixes
 
+* **addon:** keep raw in the default backup once the minute tier is frozen ([3d159df](https://github.com/SunReye/SunReye/commit/3d159dfd0e3b1c8d88716f90f857502dc8dac944))
 * **web:** tolerate a manifest with no storage, and teach the e2e fixture the field ([a388f9e](https://github.com/SunReye/SunReye/commit/a388f9ebbac42177870413038449c30cf7970dbe))
 * **ci:** run the cutover assertion from apps/server, where its deps are declared ([78d6beb](https://github.com/SunReye/SunReye/commit/78d6beb337b42073d821d158374d83b500b119ad))
 * **ci:** materialize the weighted tiers in the restore fixture ([eeadfec](https://github.com/SunReye/SunReye/commit/eeadfec886cc115003430314e11aabdc2a0c78da))
@@ -305,6 +313,7 @@ Unreleased work on `dev` since 1.2.0, shipped in `beta.20260826-309f93c`.
 
 ### Tests
 
+* **ci:** the database workflows assert the frozen minute tier, not the old one ([87fa788](https://github.com/SunReye/SunReye/commit/87fa7881e3d79d1d711dae6507383de74242e94e))
 * **server:** teach the runtime's buffer doubles the dropped-row counter ([6730706](https://github.com/SunReye/SunReye/commit/6730706118ab5d755219dbf2df2658892e416549))
 * **db:** a real-database gate for the weighted rollups ([5a7cec5](https://github.com/SunReye/SunReye/commit/5a7cec51ba8cecca224c4f9e42e0289921a5cf01))
 * **db:** actually restore a dump in CI and assert parity ([54cd5c5](https://github.com/SunReye/SunReye/commit/54cd5c551057b0be8952cd8f56578614a542e37d))
