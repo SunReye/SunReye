@@ -671,20 +671,31 @@ export async function seedDimensions(
  * One query per counter rather than one for all of them: the fixture's counters
  * are 13 x 86 400 rows, and streaming them per metric keeps the peak in this
  * process bounded — the same reason `fixture-1-2-0.ts` reads them that way.
+ *
+ * `deviceId` of `null` means EVERY device, which is what an archive round trip
+ * needs: it imports into an empty database whose device ids it did not choose.
+ * The rehearsal always names one, because its target also holds the rows the
+ * blocking upgrade carried across and mixing the two would compare a sum against
+ * one of its terms.
+ *
+ * Shared with `./archive-round-trip.ts` rather than copied: a second
+ * implementation would be comparing a migration against a copy of its own bug,
+ * which is the same reason `energyOf` itself is imported rather than rewritten.
  */
 export async function replayedEnergy(
   db: UnsafeSql,
-  deviceId: number,
+  deviceId: number | null,
   counters: readonly string[],
 ): Promise<{ energy: EnergyRow[]; restarts: RestartRow[] }> {
   const energy: EnergyRow[] = [];
   const restarts: RestartRow[] = [];
+  const scope = deviceId === null ? "" : "and r.device_id = $2";
   for (const metric of counters) {
     const rows = (await db.unsafe(
       `select r.time, r.value from metrics_raw r
        join metric_keys mk on mk.id = r.metric_id
-       where r.device_id = $1 and mk.key = $2 order by r.time`,
-      [deviceId, metric],
+       where mk.key = $1 ${scope} order by r.time`,
+      deviceId === null ? [metric] : [metric, deviceId],
     )) as CounterRow[];
     const analysed = energyOf(metric, rows);
     energy.push(...analysed.energy);

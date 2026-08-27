@@ -36,6 +36,7 @@ import {
   parseManifest,
   parseTarHeader,
   tarEnd,
+  tarHeader,
   tarMember,
   tarPadding,
   unknownIdentities,
@@ -363,3 +364,83 @@ describe("the members a v1 archive holds", () => {
 
 const _typecheck: ArchiveManifest = buildManifest(MANIFEST_INPUT);
 void _typecheck;
+
+// ---------------------------------------------------------------------------
+// The refusals a CORRUPT or FOREIGN file gets.
+//
+// Each one exists because the alternative is silent: a row read as an object when
+// it is an array, a member size read from a garbage octal, a newer format read
+// for the fields this build happens to recognise. All three write wrong history
+// while reporting success.
+// ---------------------------------------------------------------------------
+
+describe("decodeReading: a line that is not a row", () => {
+  test("valid JSON that is not an OBJECT is refused by line number", () => {
+    // `JSON.parse` accepts a bare number and an array quite happily, and a `row`
+    // that is an array reads every field as undefined.
+    expect(() => decodeReading("123", 4)).toThrow(/line 4 is not a readable row/);
+    expect(() => decodeReading("[1,2,3]", 5)).toThrow(/line 5 is not a readable row/);
+    expect(() => decodeReading("null", 6)).toThrow(/line 6 is not a readable row/);
+  });
+
+  test("a row with no device slug is refused rather than imported as nothing", () => {
+    // An empty slug resolves to no device, and a join that finds no match drops
+    // the row and reports success.
+    const line = JSON.stringify({
+      time: "2026-08-20T00:00:00.000Z",
+      device_slug: "",
+      metric_key: "pv.power",
+      value: 1,
+      dur_ms: null,
+      source_tier: "raw",
+    });
+    expect(() => decodeReading(line, 8)).toThrow(/line 8 has no readable device_slug/);
+  });
+
+  test("a row with an unreadable dur_ms is refused — a wrong hold is a wrong kWh", () => {
+    const line = JSON.stringify({
+      time: "2026-08-20T00:00:00.000Z",
+      device_slug: "deye-1",
+      metric_key: "pv.power",
+      value: 1,
+      dur_ms: "1000",
+      source_tier: "raw",
+    });
+    expect(() => decodeReading(line, 11)).toThrow(/line 11 has an unreadable dur_ms/);
+  });
+});
+
+describe("manifestProblems: a file that is not one of ours", () => {
+  test("something that is not a JSON object at all", () => {
+    expect(manifestProblems(null)).toEqual([`manifest.json: not a JSON object`]);
+    expect(manifestProblems([1, 2])).toEqual([`manifest.json: not a JSON object`]);
+    expect(manifestProblems("a string")).toEqual([`manifest.json: not a JSON object`]);
+  });
+
+  test("a formatVersion that is not an integer, which no version rule can compare", () => {
+    const base = buildManifest(MANIFEST_INPUT);
+    expect(manifestProblems({ ...base, formatVersion: "1" })).toEqual([
+      `manifest.json: formatVersion "1" is not an integer`,
+    ]);
+    expect(manifestProblems({ ...base, formatVersion: 1.5 })).toEqual([
+      `manifest.json: formatVersion 1.5 is not an integer`,
+    ]);
+  });
+});
+
+describe("the tar container's own refusals", () => {
+  test("a member size a tar header cannot declare is refused before anything is written", () => {
+    // A tar header must declare its member's size UP FRONT, so a size that is not
+    // a whole number of bytes cannot be written at all — and a negative one would
+    // make a reader seek backwards.
+    expect(() => tarHeader("readings.ndjson.gz", -1)).toThrow(/invalid size -1/);
+    expect(() => tarHeader("readings.ndjson.gz", 1.5)).toThrow(/invalid size 1.5/);
+  });
+
+  test("a truncated tar header is refused rather than read as a short one", () => {
+    // Reading a partial block would take the name and the size from whatever
+    // followed it in memory, which is how a reader ends up allocating a terabyte.
+    expect(() => parseTarHeader(new Uint8Array(TAR_BLOCK - 1))).toThrow(/truncated tar header/);
+    expect(() => parseTarHeader(new Uint8Array(0))).toThrow(/511 bytes|0 bytes/);
+  });
+});

@@ -356,49 +356,156 @@ re-importing the same archive is a no-op.
 `;
 
 // ---------------------------------------------------------------------------
-// The IO half. Everything above is proved by `./archive-cli.test.ts`; everything
-// below is proved by running it (`apps/server/db-tests/archive.test.ts` for the
-// statements, `scripts/archive-round-trip.ts` for the whole loop).
+// The IO half.
+//
+// Every connection, every module load, every scratch directory and every line of
+// output goes through {@link ArchiveCliIo}, defaulted to {@link productionIo} as
+// a parameter so no call site changes — the same seam
+// `scripts/archive-round-trip.ts` (`RoundTripIo`) and `scripts/fixture-1-2-0.ts`
+// (`FixtureIo`) use. What that buys is that the ORDER of the steps, the flag
+// handling, the detection, the vocabulary and the exit codes are provable here,
+// while what a real statement does stays proved by running it
+// (`apps/server/db-tests/archive.test.ts` for the statements,
+// `scripts/archive-round-trip.ts` for the whole loop).
+//
+// The module loads stay DYNAMIC and stay inside `productionIo`: `./main.ts`
+// imports this file on every boot to reach `routeSubcommand`, so a static import
+// of the exporter, the importer or `pg` would load all three into a plain server
+// start.
 // ---------------------------------------------------------------------------
 
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import type { ExportRequest, ExportResult } from "@SunReye/db/archive-export";
+import type { ImportRequest, ImportResult } from "@SunReye/db/archive-import";
+
 /**
- * The metric vocabulary and the configuration keys, from the ACTIVE PROFILE.
+ * A SINGLE connection — never a pool.
  *
- * `statedKind` and `resolveStorage`, the profile's own answers — never a
- * `settings.%` prefix match, which is one vendor's naming and silently stops
- * applying on the next (issue #150). Falls back to whatever
- * `installed_profiles` holds when no profile is active, and to nothing at all
- * when there is none: a NATIVE export reads `metric_keys` from the database
- * anyway, and only a legacy export truly needs this.
+ * The bucket replay expresses its per-chunk transaction as `begin`/`commit`
+ * statements, and on a pool those could land on different backends, which would
+ * silently drop the one property resumability rests on
+ * (`packages/db/src/replay-run.ts`).
  */
-async function profileVocabulary(client: {
+export interface CliClient {
   query(text: string, values?: readonly unknown[]): Promise<{ rows: unknown[] }>;
-}): Promise<{
+  end(): Promise<void>;
+}
+
+/** The archive modules, loaded only when a subcommand actually runs. */
+export interface ArchiveModules {
+  exportArchive(client: CliClient, request: ExportRequest): Promise<ExportResult>;
+  importArchive(client: CliClient, request: ImportRequest): Promise<ImportResult>;
+  defaultWorkDir(file: string): string;
+}
+
+/**
+ * The profile's own answers about a metric.
+ *
+ * `statedKind` and `resolveStorage`, never a `settings.%` prefix match — that is
+ * one vendor's naming and silently stops applying on the next (issue #150).
+ * `unwrapSetting` because a 1.x database stores `installed_profiles.data` as a
+ * jsonb STRING holding the profile rather than as the profile.
+ */
+export interface ProfileHelpers {
+  statedKind(metric: unknown): string;
+  resolveStorage(metric: unknown): string;
+  unwrapSetting(value: unknown): unknown;
+}
+
+export interface ArchiveCliIo {
+  connect(databaseUrl: string): Promise<CliClient>;
+  archiveModules(): Promise<ArchiveModules>;
+  profileHelpers(): Promise<ProfileHelpers>;
+  /** Scratch directory for the export spools. Removed by the caller. */
+  makeWorkDir(): Promise<string>;
+  remove(path: string): Promise<void>;
+  now(): Date;
+  cwd(): string;
+  log(message: string): void;
+  warn(message: string): void;
+  error(message: string): void;
+}
+
+/**
+ * The real wiring.
+ *
+ * `connect` goes through `productionRuntime.createClient` rather than
+ * `new Client` directly: `pg` is a dependency of `@SunReye/db`, not of
+ * `apps/server`, and the factory that already exists there is the one place that
+ * knows how this project builds a client.
+ */
+export const productionIo: ArchiveCliIo = {
+  connect: async (databaseUrl) => {
+    const { productionRuntime } = await import("@SunReye/db/migrate");
+    const client = productionRuntime.createClient(databaseUrl);
+    await client.connect();
+    return client as unknown as CliClient;
+  },
+  archiveModules: async () => {
+    const exporter = await import("@SunReye/db/archive-export");
+    const importer = await import("@SunReye/db/archive-import");
+    return {
+      exportArchive: exporter.exportArchive as ArchiveModules["exportArchive"],
+      importArchive: importer.importArchive as ArchiveModules["importArchive"],
+      defaultWorkDir: importer.defaultWorkDir,
+    };
+  },
+  profileHelpers: async () => {
+    const { resolveStorage, statedKind } = await import("@SunReye/inverter-core");
+    const { unwrapSetting } = await import("@SunReye/db/archive-config");
+    return {
+      statedKind: statedKind as ProfileHelpers["statedKind"],
+      resolveStorage: resolveStorage as ProfileHelpers["resolveStorage"],
+      unwrapSetting,
+    };
+  },
+  makeWorkDir: () => mkdtemp(join(tmpdir(), "sunreye-export-")),
+  remove: async (path) => {
+    await rm(path, { recursive: true, force: true });
+  },
+  now: () => new Date(),
+  cwd: () => process.cwd(),
+  log: (message) => console.log(message),
+  warn: (message) => console.warn(message),
+  error: (message) => console.error(message),
+};
+
+/** The vocabulary and the configuration keys an export needs. */
+export interface Vocabulary {
   profileId: string | null;
   metricKeys: { key: string; isCounter: boolean }[];
   configKeys: string[];
-}> {
-  const { resolveStorage, statedKind } = await import("@SunReye/inverter-core");
+}
+
+/**
+ * The metric vocabulary and the configuration keys, from the ACTIVE PROFILE.
+ *
+ * Falls back to whatever `installed_profiles` holds when no profile is active,
+ * and to nothing at all when there is none: a NATIVE export reads `metric_keys`
+ * from the database anyway, and only a legacy export truly needs this.
+ */
+export async function profileVocabulary(
+  client: CliClient,
+  io: ArchiveCliIo = productionIo,
+): Promise<Vocabulary> {
   let rows: { id: string; data: unknown }[] = [];
   try {
     rows = (
       await client.query("select id, data from installed_profiles order by installed_at desc")
     ).rows as { id: string; data: unknown }[];
   } catch {
+    // No such table: a database that predates it, which a legacy export then
+    // refuses for a reason of its own rather than crashing here.
     rows = [];
   }
   const first = rows[0];
   if (!first) return { profileId: null, metricKeys: [], configKeys: [] };
-  // `unwrapSetting`: a 1.x database stores this column as a jsonb STRING holding
-  // the profile rather than as the profile, so a direct read finds no `metrics`
-  // and the legacy export refuses for a reason that looks like a missing profile.
-  const { unwrapSetting } = await import("@SunReye/db/archive-config");
+  const { statedKind, resolveStorage, unwrapSetting } = await io.profileHelpers();
   const data = unwrapSetting(first.data) as { id?: string; metrics?: unknown[] } | null;
-  const metrics = (data?.metrics ?? []) as never[];
+  const metrics = (data?.metrics ?? []) as unknown[];
   return {
     profileId: data?.id ?? first.id,
     metricKeys: metrics.map((metric) => ({
@@ -412,47 +519,29 @@ async function profileVocabulary(client: {
 }
 
 /** Does this database have the 2.0.0 dimension spine? */
-async function readShape(client: {
-  query(text: string, values?: readonly unknown[]): Promise<{ rows: unknown[] }>;
-}): Promise<{ hasDevices: boolean }> {
+export async function readShape(client: CliClient): Promise<{ hasDevices: boolean }> {
   const result = await client.query(`select to_regclass('public.devices') is not null as present`);
   return { hasDevices: (result.rows[0] as { present: boolean } | undefined)?.present === true };
 }
 
-/**
- * Open a SINGLE connection — never a pool.
- *
- * The bucket replay expresses its per-chunk transaction as `begin`/`commit`
- * statements, and on a pool those could land on different backends, which would
- * silently drop the one property resumability rests on
- * (`packages/db/src/replay-run.ts`).
- *
- * Through `productionRuntime.createClient` rather than `new Client` directly: `pg`
- * is a dependency of `@SunReye/db`, not of `apps/server`, and the factory that
- * already exists there is the one place that knows how this project builds a
- * client.
- */
-async function connect(databaseUrl: string) {
-  const { productionRuntime } = await import("@SunReye/db/migrate");
-  const client = productionRuntime.createClient(databaseUrl);
-  await client.connect();
-  return client;
-}
-
-export async function runExport(argv: readonly string[], databaseUrl: string): Promise<number> {
+export async function runExport(
+  argv: readonly string[],
+  databaseUrl: string,
+  io: ArchiveCliIo = productionIo,
+): Promise<number> {
   const options = parseExportArgs(argv);
   if (options.help) {
-    console.log(EXPORT_HELP);
+    io.log(EXPORT_HELP);
     return 0;
   }
-  const { exportArchive } = await import("@SunReye/db/archive-export");
-  const out = options.out ?? join(process.cwd(), defaultArchiveName(new Date()));
-  const workDir = await mkdtemp(join(tmpdir(), "sunreye-export-"));
-  const client = await connect(databaseUrl);
+  const { exportArchive } = await io.archiveModules();
+  const out = options.out ?? join(io.cwd(), defaultArchiveName(io.now()));
+  const workDir = await io.makeWorkDir();
+  const client = await io.connect(databaseUrl);
   try {
     const source = sourceForShape(await readShape(client), options.source);
-    const vocabulary = await profileVocabulary(client);
-    console.log(`Exporting the ${source === "legacy" ? "pre-2.0.0" : "2.0.0"} schema to ${out}`);
+    const vocabulary = await profileVocabulary(client, io);
+    io.log(`Exporting the ${source === "legacy" ? "pre-2.0.0" : "2.0.0"} schema to ${out}`);
     const result = await exportArchive(client, {
       source,
       out,
@@ -463,41 +552,45 @@ export async function runExport(argv: readonly string[], databaseUrl: string): P
       metricKeys: vocabulary.metricKeys.length > 0 ? vocabulary.metricKeys : undefined,
       configKeys: vocabulary.configKeys,
       onProgress: ({ tier, window, total }) =>
-        console.log(
+        io.log(
           `  ${tier} ${window.start.toISOString().slice(0, 10)}: ${total.toLocaleString("en-US")} readings so far`,
         ),
     });
     const ratio = result.uncompressedBytes / Math.max(1, result.bytes);
-    console.log(
+    io.log(
       `Wrote ${out}: ${result.manifest.rows.toLocaleString("en-US")} readings, ` +
         `${(result.bytes / 1024 / 1024).toFixed(1)} MB (${ratio.toFixed(1)}x compression), ` +
         `${(result.elapsedMs / 1000).toFixed(1)}s`,
     );
     for (const gap of result.plan.gaps) {
-      console.warn(
+      io.warn(
         `  no source covered ${gap.start.toISOString()}..${gap.end.toISOString()} — that day is ` +
           `NOT in the archive`,
       );
     }
     for (const chunk of result.barren) {
-      console.warn(`  ${chunk.start.toISOString().slice(0, 10)}: ${chunk.reason}`);
+      io.warn(`  ${chunk.start.toISOString().slice(0, 10)}: ${chunk.reason}`);
     }
     return 0;
   } finally {
     await client.end();
-    await rm(workDir, { recursive: true, force: true });
+    await io.remove(workDir);
   }
 }
 
-export async function runImport(argv: readonly string[], databaseUrl: string): Promise<number> {
+export async function runImport(
+  argv: readonly string[],
+  databaseUrl: string,
+  io: ArchiveCliIo = productionIo,
+): Promise<number> {
   const options = parseImportArgs(argv);
   if (options.help) {
-    console.log(IMPORT_HELP);
+    io.log(IMPORT_HELP);
     return 0;
   }
-  const { importArchive, defaultWorkDir } = await import("@SunReye/db/archive-import");
+  const { importArchive, defaultWorkDir } = await io.archiveModules();
   const workDir = defaultWorkDir(options.file);
-  const client = await connect(databaseUrl);
+  const client = await io.connect(databaseUrl);
   try {
     const result = await importArchive(client, {
       file: options.file,
@@ -507,24 +600,24 @@ export async function runImport(argv: readonly string[], databaseUrl: string): P
       applyConfig: options.applyConfig,
       deviceMap: options.deviceMap,
       onProgress: ({ stage, rows }) =>
-        console.log(`  ${stage}${rows > 0 ? `: ${rows.toLocaleString("en-US")} rows` : ""}`),
+        io.log(`  ${stage}${rows > 0 ? `: ${rows.toLocaleString("en-US")} rows` : ""}`),
     });
     if (result.skipped !== null) {
-      console.log(`Nothing to do: ${result.skipped}`);
+      io.log(`Nothing to do: ${result.skipped}`);
       return 0;
     }
-    console.log(
+    io.log(
       `Imported ${result.manifest.rows.toLocaleString("en-US")} readings and ` +
         `${result.inserted.configLog.toLocaleString("en-US")} config changes from ` +
         `${options.file} in ${(result.elapsedMs / 1000).toFixed(1)}s`,
     );
     // Printed AFTER the success line and never swallowed: the retention warning is
     // the one consequence nothing else in the system would ever surface.
-    for (const problem of result.problems) console.warn(`  ! ${problem}`);
+    for (const problem of result.problems) io.warn(`  ! ${problem}`);
     return 0;
   } finally {
     await client.end();
-    await rm(workDir, { recursive: true, force: true });
+    await io.remove(workDir);
   }
 }
 
@@ -541,13 +634,14 @@ export async function runArchiveCommand(
   route: "export" | "import",
   argv: readonly string[],
   databaseUrl: string,
+  io: ArchiveCliIo = productionIo,
 ): Promise<number> {
   try {
     return route === "export"
-      ? await runExport(argv, databaseUrl)
-      : await runImport(argv, databaseUrl);
+      ? await runExport(argv, databaseUrl, io)
+      : await runImport(argv, databaseUrl, io);
   } catch (error) {
-    console.error(error instanceof Error ? error.message : String(error));
+    io.error(error instanceof Error ? error.message : String(error));
     return 1;
   }
 }

@@ -32,6 +32,17 @@
  * to rebuild and must stay read-only. Both are refused, in the same spirit as
  * `fixture-1-2-0.ts` and `replay-rehearsal.ts` pinning theirs.
  *
+ * ## The IO seam
+ *
+ * Every database connection, every file and every line of output goes through
+ * {@link RoundTripIo}, defaulted to {@link productionIo} as a parameter so no
+ * call site changes — the same shape `./replay-rehearsal.ts` (`RehearsalIo`) and
+ * `./fixture-1-2-0.ts` (`FixtureIo`) already use. What the seam buys is that the
+ * ORDER of the phases, the refusals, the arithmetic in the report and the exit
+ * code are provable without a Postgres, while what a real `COPY` or a real
+ * `counter_agg` does stays provable only by running it — which is what this
+ * script is for.
+ *
  * Run `bun scripts/archive-round-trip.ts --help`.
  */
 process.env.SKIP_ENV_VALIDATION ??= "1";
@@ -41,13 +52,21 @@ import { mkdir, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { type CounterRow, energyOf } from "../packages/db/src/counter-energy";
-import { exportArchive } from "../packages/db/src/archive-export";
-import { importArchive } from "../packages/db/src/archive-import";
-import { openArchive } from "../packages/db/src/archive-file";
-import { bunSqlClient } from "../packages/db/src/replay-run";
+import {
+  type ExportRequest,
+  type ExportResult,
+  exportArchive,
+} from "../packages/db/src/archive-export";
+import {
+  type ImportRequest,
+  type ImportResult,
+  importArchive,
+} from "../packages/db/src/archive-import";
+import { type OpenArchive, openArchive } from "../packages/db/src/archive-file";
+import { type ReplayClient, bunSqlClient } from "../packages/db/src/replay-run";
 import { totalReadings } from "../packages/db/src/archive";
 import { compareStreamCounts } from "./db-parity";
+import { replayedEnergy } from "./replay-rehearsal";
 import {
   type EnergyRow,
   type FixtureMode,
@@ -182,12 +201,95 @@ export function throughput(rows: number, elapsedMs: number): number | null {
   return elapsedMs <= 0 ? null : Math.round((rows / elapsedMs) * 1000);
 }
 
+const urlFor = (o: Options, database: string) =>
+  `postgres://postgres:${o.password}@localhost:${o.port}/${database}`;
+
+/** What the fixture's profile declares, as this script reads it. */
+export interface ProfileDoc {
+  id: string;
+  metrics: { key: string; unit?: string | null }[];
+}
+
+/** The metric vocabulary of the fixture's profile, with its counter class. */
+export interface Vocabulary {
+  profileId: string;
+  metricKeys: { key: string; isCounter: boolean }[];
+  counters: string[];
+}
+
+/** The committed ground truth this run compares against. */
+export interface GroundTruth {
+  tiers: Record<string, { count: number }>;
+  perMetricPerDayEnergy: EnergyRow[];
+  restarts: RestartRow[];
+}
+
+/** A pool this script can run one statement at a time on. */
+export interface UnsafeSql {
+  unsafe(query: string, values?: unknown[]): Promise<unknown>;
+}
+
+/**
+ * Everything this script touches that is not arithmetic.
+ *
+ * Named methods rather than a driver handle so a double can answer them: what a
+ * real `counter_agg` or a real `COPY` does cannot be proved by a unit test — only
+ * by running this script against the real fixture, which is how it was proved.
+ * Which phase runs WHEN, what it refuses, and what it reports are decisions, and
+ * every one of those is proved against a double.
+ */
+export interface RoundTripIo {
+  /** A pool for one database. Closed by the caller. */
+  connect(url: string): UnsafeSql & { end(): Promise<void> };
+  /** Apply the 2.0.0 schema with the shipped migration runner. */
+  migrate(url: string): Promise<void>;
+  /** The committed ground truth for `mode`. */
+  readGroundTruth(mode: FixtureMode): Promise<GroundTruth>;
+  /** The profile whose metrics the fixture was seeded from. */
+  readProfile(): Promise<ProfileDoc>;
+  exportArchive(client: ReplayClient, request: ExportRequest): Promise<ExportResult>;
+  importArchive(client: ReplayClient, request: ImportRequest): Promise<ImportResult>;
+  openArchive(path: string, workDir: string): Promise<OpenArchive>;
+  mkdir(path: string): Promise<void>;
+  remove(path: string): Promise<void>;
+  /** Size of a finished file, for the line that reports where it was kept. */
+  sizeOf(path: string): Promise<number>;
+  log(message: string): void;
+  /** `--help` on stdout, unprefixed and unsuppressed. It is the documentation. */
+  help(text: string): void;
+  error(message: string): void;
+}
+
 const log = (message: string) => {
   if (process.env.NODE_ENV !== "test") console.log(`[round-trip] ${message}`);
 };
 
-const urlFor = (o: Options, database: string) =>
-  `postgres://postgres:${o.password}@localhost:${o.port}/${database}`;
+/** The real wiring. Every driver and every filesystem call lives here. */
+export const productionIo: RoundTripIo = {
+  connect: (url) => new SQL(url, { max: 1 }),
+  migrate: async (url) => {
+    const { runMigrations } = await import("../packages/db/src/migrate");
+    await runMigrations(url);
+  },
+  readGroundTruth: (mode) => Bun.file(groundTruthPath(mode)).json() as Promise<GroundTruth>,
+  readProfile: () =>
+    Bun.file(
+      join(import.meta.dir, "..", "packages/profile-sdk/src/__fixtures__/sample-profile.json"),
+    ).json() as Promise<ProfileDoc>,
+  exportArchive,
+  importArchive,
+  openArchive,
+  mkdir: async (path) => {
+    await mkdir(path, { recursive: true });
+  },
+  remove: async (path) => {
+    await rm(path, { recursive: true, force: true });
+  },
+  sizeOf: async (path) => (await stat(path)).size,
+  log,
+  help: (text) => console.log(text),
+  error: (message) => console.error(message),
+};
 
 /**
  * The metric vocabulary of the fixture's profile, with its counter class.
@@ -198,10 +300,11 @@ const urlFor = (o: Options, database: string) =>
  * and the truth disagree about which series `counter_agg` belongs on, which is
  * the 1532x error wearing a different hat.
  */
-async function profileVocabulary(mode: FixtureMode) {
-  const profile = (await Bun.file(
-    join(import.meta.dir, "..", "packages/profile-sdk/src/__fixtures__/sample-profile.json"),
-  ).json()) as { id: string; metrics: { key: string; unit?: string | null }[] };
+export async function profileVocabulary(
+  mode: FixtureMode,
+  io: RoundTripIo = productionIo,
+): Promise<Vocabulary> {
+  const profile = await io.readProfile();
   const shaped = assignShapes(profile.metrics as never, mode === "fast" ? 10 : 60);
   return {
     profileId: profile.id,
@@ -211,42 +314,33 @@ async function profileVocabulary(mode: FixtureMode) {
 }
 
 /** Recreate the 2.0.0 target and bring it to the shipped schema. */
-async function recreateTarget(o: Options): Promise<string> {
+export async function recreateTarget(o: Options, io: RoundTripIo = productionIo): Promise<string> {
   const url = urlFor(o, o.targetDb);
   assertRoundTripTarget(url);
-  const admin = new SQL(urlFor(o, "postgres"), { max: 1 });
+  const admin = io.connect(urlFor(o, "postgres"));
   try {
     await admin.unsafe(`DROP DATABASE IF EXISTS ${o.targetDb} WITH (FORCE)`);
     await admin.unsafe(`CREATE DATABASE ${o.targetDb}`);
   } finally {
     await admin.end();
   }
-  const { runMigrations } = await import("../packages/db/src/migrate");
-  await runMigrations(url);
-  log(`recreated ${o.targetDb} and applied the 2.0.0 baseline`);
+  await io.migrate(url);
+  io.log(`recreated ${o.targetDb} and applied the 2.0.0 baseline`);
   return url;
 }
 
-/** Per-metric per-day energy of the IMPORTED series, one counter at a time. */
-async function importedEnergy(
-  db: SQL,
+/**
+ * Per-metric per-day energy of the IMPORTED series, one counter at a time.
+ *
+ * `replayedEnergy` with no device narrowing — the ONE implementation, shared with
+ * the rehearsal. A second copy here would be comparing this migration against a
+ * copy of its own bug, which is the same reason `energyOf` is imported rather
+ * than rewritten.
+ */
+export const importedEnergy = (
+  db: UnsafeSql,
   counters: readonly string[],
-): Promise<{ energy: EnergyRow[]; restarts: RestartRow[] }> {
-  const energy: EnergyRow[] = [];
-  const restarts: RestartRow[] = [];
-  for (const metric of counters) {
-    const rows = (await db.unsafe(
-      `select r.time, r.value from metrics_raw r
-       join metric_keys mk on mk.id = r.metric_id
-       where mk.key = $1 order by r.time`,
-      [metric],
-    )) as CounterRow[];
-    const analysed = energyOf(metric, rows);
-    energy.push(...analysed.energy);
-    restarts.push(...analysed.restarts);
-  }
-  return { energy, restarts };
-}
+): Promise<{ energy: EnergyRow[]; restarts: RestartRow[] }> => replayedEnergy(db, null, counters);
 
 /**
  * Rows the 1.2.0 source holds for each tier, over exactly the days the export
@@ -257,9 +351,10 @@ async function importedEnergy(
  * tier because the plan splits the span between tiers, and a whole-tier count
  * would be comparing against days another tier answered.
  */
-async function countSourceRows(
+export async function countSourceRows(
   options: Options,
   chunks: readonly { tier: string; start: Date; end: Date }[],
+  io: RoundTripIo = productionIo,
 ): Promise<Record<string, number>> {
   const relation: Record<string, { table: string; column: string }> = {
     raw: { table: "metrics_raw", column: "time" },
@@ -268,7 +363,7 @@ async function countSourceRows(
     daily: { table: "daily_rollups", column: "bucket" },
   };
   const totals: Record<string, number> = {};
-  const source = new SQL(urlFor(options, options.sourceDb), { max: 1 });
+  const source = io.connect(urlFor(options, options.sourceDb));
   try {
     for (const chunk of chunks) {
       const target = relation[chunk.tier];
@@ -287,30 +382,29 @@ async function countSourceRows(
 }
 
 /** What the round trip carries between its phases. */
-interface Run {
+export interface Run {
   options: Options;
   workRoot: string;
   archivePath: string;
-  truth: {
-    tiers: Record<string, { count: number }>;
-    perMetricPerDayEnergy: EnergyRow[];
-    restarts: RestartRow[];
-  };
-  vocabulary: Awaited<ReturnType<typeof profileVocabulary>>;
+  truth: GroundTruth;
+  vocabulary: Vocabulary;
 }
 
 /** PHASE 1: read the 1.2.0 fixture into an archive, and report the file. */
-async function exportPhase(run: Run): Promise<{
+export async function exportPhase(
+  run: Run,
+  io: RoundTripIo = productionIo,
+): Promise<{
   problems: string[];
   plan: { tier: string; start: Date; end: Date }[];
   streams: Record<string, number>;
 }> {
   const problems: string[] = [];
-  const source = new SQL(urlFor(run.options, run.options.sourceDb), { max: 1 });
-  let exported: Awaited<ReturnType<typeof exportArchive>>;
+  const source = io.connect(urlFor(run.options, run.options.sourceDb));
+  let exported: ExportResult;
   try {
-    log(`exporting ${run.options.sourceDb} (1.2.0) -> ${run.archivePath}`);
-    exported = await exportArchive(bunSqlClient(source), {
+    io.log(`exporting ${run.options.sourceDb} (1.2.0) -> ${run.archivePath}`);
+    exported = await io.exportArchive(bunSqlClient(source), {
       source: "legacy",
       out: run.archivePath,
       workDir: run.workRoot,
@@ -318,7 +412,7 @@ async function exportPhase(run: Run): Promise<{
       metricKeys: run.vocabulary.metricKeys,
       appVersion: "1.2.0-legacy",
       onProgress: ({ tier, window, total }) =>
-        log(
+        io.log(
           `  ${tier} ${window.start.toISOString().slice(0, 10)}..` +
             `${window.end.toISOString().slice(0, 10)}: ${total.toLocaleString("en-US")} rows so far`,
         ),
@@ -329,25 +423,25 @@ async function exportPhase(run: Run): Promise<{
 
   const readings = totalReadings(exported.manifest.streams);
   const ratio = exported.uncompressedBytes / Math.max(1, exported.bytes);
-  log(
+  io.log(
     `EXPORT: ${readings.toLocaleString("en-US")} readings + ` +
       `${exported.manifest.streams.configLog.toLocaleString("en-US")} config changes in ` +
       `${(exported.elapsedMs / 1000).toFixed(1)}s ` +
       `(${throughput(readings, exported.elapsedMs)?.toLocaleString("en-US")} rows/s)`,
   );
-  log(
+  io.log(
     `EXPORT SIZE: ${humanBytes(exported.bytes)} on disk, ` +
       `${humanBytes(exported.uncompressedBytes)} of NDJSON — ${ratio.toFixed(1)}x compression`,
   );
-  log(
+  io.log(
     `EXPORT PLAN: ${exported.plan.chunks.length} day-chunk(s), ${exported.plan.gaps.length} gap(s)`,
   );
   const byTier = exported.plan.chunks.reduce<Record<string, number>>((acc, chunk) => {
     acc[chunk.tier] = (acc[chunk.tier] ?? 0) + 1;
     return acc;
   }, {});
-  log(`EXPORT TIERS: ${JSON.stringify(byTier)}`);
-  log(`EXPORT STREAMS: ${JSON.stringify(exported.manifest.streams)}`);
+  io.log(`EXPORT TIERS: ${JSON.stringify(byTier)}`);
+  io.log(`EXPORT STREAMS: ${JSON.stringify(exported.manifest.streams)}`);
 
   for (const chunk of exported.barren) {
     // A planned day that produced nothing is a finding, not a log line: it is the
@@ -356,7 +450,7 @@ async function exportPhase(run: Run): Promise<{
   }
 
   // The archive must be readable as a FILE by something that did not write it.
-  const reopened = await openArchive(run.archivePath, join(run.workRoot, "verify"));
+  const reopened = await io.openArchive(run.archivePath, join(run.workRoot, "verify"));
   try {
     if (reopened.manifest.rows !== exported.manifest.rows) {
       problems.push(
@@ -381,41 +475,52 @@ async function exportPhase(run: Run): Promise<{
 }
 
 /** PHASE 2: apply the 2.0.0 baseline to an empty database and import. */
-async function importPhase(run: Run, target: SQL): Promise<string[]> {
-  log(`importing into ${run.options.targetDb} (2.0.0)`);
-  const result = await importArchive(bunSqlClient(target), {
+export async function importPhase(
+  run: Run,
+  target: UnsafeSql,
+  io: RoundTripIo = productionIo,
+): Promise<string[]> {
+  io.log(`importing into ${run.options.targetDb} (2.0.0)`);
+  const result = await io.importArchive(bunSqlClient(target), {
     file: run.archivePath,
     workDir: join(run.workRoot, "import"),
     onProgress: ({ stage, rows }) =>
-      log(`  ${stage}${rows > 0 ? `: ${rows.toLocaleString("en-US")} rows` : ""}`),
+      io.log(`  ${stage}${rows > 0 ? `: ${rows.toLocaleString("en-US")} rows` : ""}`),
   });
   const importedRows = totalReadings(result.inserted);
-  log(
+  io.log(
     `IMPORT: ${importedRows.toLocaleString("en-US")} readings staged/inserted in ` +
       `${(result.elapsedMs / 1000).toFixed(1)}s ` +
       `(${throughput(importedRows, result.elapsedMs)?.toLocaleString("en-US")} rows/s)`,
   );
-  log(`IMPORT STREAMS: ${JSON.stringify(result.inserted)}`);
+  io.log(`IMPORT STREAMS: ${JSON.stringify(result.inserted)}`);
   for (const replay of result.replays) {
-    log(
+    io.log(
       `  replay: ${replay.chunks.length} chunk(s), ${replay.seriesRows.toLocaleString("en-US")} ` +
         `series rows, ${replay.configRows} config rows, ${replay.skipped} skipped`,
     );
   }
-  for (const problem of result.problems) log(`  note: ${problem}`);
+  for (const problem of result.problems) io.log(`  note: ${problem}`);
+  // Deliberately empty: an import's own `problems` are NOTES (a retention
+  // warning, a config oddity), not differences. The verdict is the energy
+  // comparison in PHASE 3, and letting a note fail the run would make the script
+  // red for something that is not a data difference.
   return [];
 }
 
 /** What the target holds after the import — the numbers a human wants to see. */
-async function reportTarget(target: SQL): Promise<void> {
+export async function reportTarget(
+  target: UnsafeSql,
+  io: RoundTripIo = productionIo,
+): Promise<void> {
   const count = async (relation: string) =>
     Number(
       ((await target.unsafe(`select count(*)::bigint as n from ${relation}`)) as { n: string }[])[0]
         ?.n ?? 0,
     );
-  log(`TARGET metrics_raw: ${(await count("metrics_raw")).toLocaleString("en-US")} rows`);
+  io.log(`TARGET metrics_raw: ${(await count("metrics_raw")).toLocaleString("en-US")} rows`);
   for (const view of ["minute_rollups", "hourly_rollups", "daily_rollups"]) {
-    log(`TARGET ${view}: ${(await count(view)).toLocaleString("en-US")} buckets`);
+    io.log(`TARGET ${view}: ${(await count(view)).toLocaleString("en-US")} buckets`);
   }
 }
 
@@ -425,8 +530,12 @@ async function reportTarget(target: SQL): Promise<void> {
  * Per-metric per-day energy of the imported series against the committed ground
  * truth, through the same unit-tested `energyOf` the truth was written with.
  */
-async function comparePhase(run: Run, target: SQL): Promise<string[]> {
-  log(`comparing per-metric per-day energy against ${groundTruthPath(run.options.mode)}`);
+export async function comparePhase(
+  run: Run,
+  target: UnsafeSql,
+  io: RoundTripIo = productionIo,
+): Promise<string[]> {
+  io.log(`comparing per-metric per-day energy against ${groundTruthPath(run.options.mode)}`);
   const measured = await importedEnergy(target, run.vocabulary.counters);
   const problems = [
     ...compareEnergy(run.truth.perMetricPerDayEnergy, measured.energy),
@@ -440,7 +549,7 @@ async function comparePhase(run: Run, target: SQL): Promise<string[]> {
     const check = measured.energy.find(
       (row) => row.metric === worst.row.metric && row.day === worst.row.day,
     );
-    log(
+    io.log(
       `RESET HAZARD: ${worst.row.metric} on ${worst.row.day} — truth ` +
         `${worst.row.energy.toFixed(3)} kWh, naive max-minus-min ${worst.row.naive.toFixed(3)} kWh ` +
         `(${(worst.row.naive / worst.row.energy).toFixed(0)}x), round trip reports ` +
@@ -450,9 +559,15 @@ async function comparePhase(run: Run, target: SQL): Promise<string[]> {
   return problems;
 }
 
-export async function main(argv: readonly string[]): Promise<number> {
+/** How many problems the report spells out before it summarises the rest. */
+export const PROBLEMS_SHOWN = 40;
+
+export async function main(
+  argv: readonly string[],
+  io: RoundTripIo = productionIo,
+): Promise<number> {
   if (argv.includes("--help")) {
-    console.log(HELP);
+    io.help(HELP);
     return 0;
   }
   const options = parseArgs(argv);
@@ -461,17 +576,17 @@ export async function main(argv: readonly string[]): Promise<number> {
   const workRoot = options.out
     ? `${options.out}.work`
     : join(tmpdir(), `sunreye-round-trip-${process.pid}`);
-  await mkdir(workRoot, { recursive: true });
+  await io.mkdir(workRoot);
 
   const run: Run = {
     options,
     workRoot,
     archivePath: options.out ?? join(workRoot, "sunreye-export.tar.gz"),
-    truth: (await Bun.file(groundTruthPath(options.mode)).json()) as Run["truth"],
-    vocabulary: await profileVocabulary(options.mode),
+    truth: await io.readGroundTruth(options.mode),
+    vocabulary: await profileVocabulary(options.mode, io),
   };
 
-  const exported = await exportPhase(run);
+  const exported = await exportPhase(run, io);
   const problems = [...exported.problems];
 
   // Did every row the SOURCE held for the days the plan assigned to a tier make it
@@ -479,31 +594,33 @@ export async function main(argv: readonly string[]): Promise<number> {
   // tier's whole bucket count: the plan deliberately gives the last days to `raw`,
   // so the minute tier's 9.07 M buckets are NOT all exported, and comparing
   // against them would fail for the right reason with the wrong message.
-  const expectedStreams = await countSourceRows(options, exported.plan);
-  log(`SOURCE ROWS for the planned days: ${JSON.stringify(expectedStreams)}`);
+  const expectedStreams = await countSourceRows(options, exported.plan, io);
+  io.log(`SOURCE ROWS for the planned days: ${JSON.stringify(expectedStreams)}`);
   problems.push(...compareStreamCounts(expectedStreams, exported.streams));
 
-  const targetUrl = await recreateTarget(options);
-  const target = new SQL(targetUrl, { max: 1 });
+  const targetUrl = await recreateTarget(options, io);
+  const target = io.connect(targetUrl);
   try {
-    problems.push(...(await importPhase(run, target)));
-    await reportTarget(target);
-    problems.push(...(await comparePhase(run, target)));
+    problems.push(...(await importPhase(run, target, io)));
+    await reportTarget(target, io);
+    problems.push(...(await comparePhase(run, target, io)));
   } finally {
     await target.end();
   }
 
-  if (!options.keep && !options.out) await rm(workRoot, { recursive: true, force: true });
+  if (!options.keep && !options.out) await io.remove(workRoot);
   else
-    log(`archive kept at ${run.archivePath} (${humanBytes((await stat(run.archivePath)).size)})`);
+    io.log(`archive kept at ${run.archivePath} (${humanBytes(await io.sizeOf(run.archivePath))})`);
 
   if (problems.length === 0) {
-    log("ROUND TRIP: no differences — the archive preserves the history it claims to");
+    io.log("ROUND TRIP: no differences — the archive preserves the history it claims to");
     return 0;
   }
-  console.error(`round trip: ${problems.length} problem(s)`);
-  for (const problem of problems.slice(0, 40)) console.error(`  - ${problem}`);
-  if (problems.length > 40) console.error(`  ... and ${problems.length - 40} more`);
+  io.error(`round trip: ${problems.length} problem(s)`);
+  for (const problem of problems.slice(0, PROBLEMS_SHOWN)) io.error(`  - ${problem}`);
+  if (problems.length > PROBLEMS_SHOWN) {
+    io.error(`  ... and ${problems.length - PROBLEMS_SHOWN} more`);
+  }
   return 1;
 }
 
