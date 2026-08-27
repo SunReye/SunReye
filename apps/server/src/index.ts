@@ -6,6 +6,7 @@ import { metricsRaw } from "@SunReye/db/schema/metrics";
 import { user } from "@SunReye/db/schema/auth";
 import { env } from "@SunReye/env/server";
 import { and, count, desc, eq, gte, sql } from "drizzle-orm";
+import { setupStaticTypebox } from "./shared/typebox-static";
 import { Elysia, t } from "elysia";
 import { autoHead } from "elysia/auto-head";
 import { type CostBucket, computeCost, computeCostSeries, resolveRange } from "./energy/cost";
@@ -161,6 +162,11 @@ const audience = createTopicAudience({ server: () => app.server ?? undefined });
  * is negligible — and it is skipped entirely with no subscribers.
  */
 const STATISTICS_INTERVAL_MS = 15_000;
+
+// Before any route is registered: Elysia 2 would otherwise `require()` TypeBox
+// the first time it compiles a route with a schema, which a compiled binary
+// cannot do. See ./shared/typebox-static.
+setupStaticTypebox();
 
 const app = new Elysia()
   // Structured HTTP request logging. Health/liveness probes are noisy and
