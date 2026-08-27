@@ -74,12 +74,35 @@ export async function databaseReachable(): Promise<boolean> {
 }
 
 /**
+ * Memoized so the database is built exactly ONCE per process.
+ *
+ * Every spec file in this directory needs a migrated database, and bun runs them
+ * in one process. Without this, the second file's `DROP DATABASE ... WITH
+ * (FORCE)` terminates the connections the first file's pool still holds — the
+ * pool is never closed, because a spec has no reason to close it — and whichever
+ * query lands next fails for reasons that have nothing to do with the code under
+ * test. Sharing one database also halves the setup cost.
+ *
+ * The trade: specs share state, so each must scope its rows (an `inverterId` of
+ * its own) rather than assume an empty table.
+ */
+let building: Promise<string> | null = null;
+
+/**
  * Drop and recreate {@link TEST_DB}, then bring it to the shipped schema with
  * the same runner production uses — drizzle migrations followed by the journaled
  * TimescaleDB pipeline. Recreating rather than truncating is what makes the
  * aggregates and policies part of what is under test.
+ *
+ * Safe to call from every spec file: the work happens once and later callers
+ * await the same promise.
  */
-export async function resetTestDatabase(): Promise<string> {
+export function resetTestDatabase(): Promise<string> {
+  building ??= buildTestDatabase();
+  return building;
+}
+
+async function buildTestDatabase(): Promise<string> {
   const base = baseUrl();
   if (base === null) throw new Error("no DB_TEST_URL or DATABASE_URL configured");
   const url = withDatabase(base, TEST_DB);
