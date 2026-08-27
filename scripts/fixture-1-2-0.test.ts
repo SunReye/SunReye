@@ -18,11 +18,11 @@ import {
   build,
   buildPlan,
   cli,
+  compareEnergy,
   compareGroundTruth,
+  compareRestarts,
   compress,
   containerState,
-  counterIncrement,
-  describeRestarts,
   ensureContainer,
   type FixtureIo,
   groundTruthOnly,
@@ -32,7 +32,6 @@ import {
   materialize,
   paritySnapshotPath,
   parseArgs,
-  perDayEnergy,
   planRowCount,
   productionIo,
   readEnergy,
@@ -334,118 +333,6 @@ describe("value model", () => {
       expect(expr).not.toContain("undefined");
       expect(expr).not.toContain("NaN");
     }
-  });
-});
-
-describe("counterIncrement", () => {
-  test("a normal step is the delta", () => {
-    expect(counterIncrement(10, 12.5)).toBe(2.5);
-  });
-
-  test("a flat step contributes nothing", () => {
-    expect(counterIncrement(10, 10)).toBe(0);
-  });
-
-  test("a reset contributes the post-reset value, not a negative delta", () => {
-    expect(counterIncrement(45_000, 0)).toBe(0);
-    expect(counterIncrement(45_000, 1.5)).toBe(1.5);
-  });
-
-  test("zero-to-zero and a negative reading never produce a negative increment", () => {
-    expect(counterIncrement(0, 0)).toBe(0);
-    expect(counterIncrement(5, -3)).toBe(0);
-    expect(counterIncrement(-3, 0)).toBe(0);
-  });
-});
-
-describe("perDayEnergy", () => {
-  const reading = (metric: string, time: string, value: number) => ({ metric, time, value });
-
-  test("an empty payload aggregates to nothing rather than throwing", () => {
-    expect(perDayEnergy([])).toEqual([]);
-  });
-
-  test("a single reading has no delta to attribute, so the day is absent", () => {
-    expect(perDayEnergy([reading("e", "2026-08-01T00:00:00Z", 5)])).toEqual([]);
-  });
-
-  test("a partial window sums only the deltas it has", () => {
-    const rows = perDayEnergy([
-      reading("e", "2026-08-01T10:00:00Z", 5),
-      reading("e", "2026-08-01T11:00:00Z", 7),
-      reading("e", "2026-08-01T12:00:00Z", 8),
-    ]);
-    expect(rows).toHaveLength(1);
-    expect(rows[0]?.energy).toBeCloseTo(3, 9);
-    expect(rows[0]?.naive).toBeCloseTo(3, 9);
-    expect(rows[0]?.resets).toBe(0);
-  });
-
-  test("a step across midnight belongs to the later day", () => {
-    const rows = perDayEnergy([
-      reading("e", "2026-08-01T23:59:00Z", 10),
-      reading("e", "2026-08-02T00:00:00Z", 11),
-      reading("e", "2026-08-02T23:59:00Z", 20),
-    ]);
-    expect(rows.map((r) => r.day)).toEqual(["2026-08-02"]);
-    expect(rows[0]?.energy).toBeCloseTo(10, 9);
-  });
-
-  test("unordered input is sorted before differencing", () => {
-    const ordered = perDayEnergy([
-      reading("e", "2026-08-01T02:00:00Z", 3),
-      reading("e", "2026-08-01T01:00:00Z", 1),
-      reading("e", "2026-08-01T03:00:00Z", 6),
-    ]);
-    expect(ordered[0]?.energy).toBeCloseTo(5, 9);
-    expect(ordered[0]?.resets).toBe(0);
-  });
-
-  test("metrics are aggregated independently", () => {
-    const rows = perDayEnergy([
-      reading("a", "2026-08-01T01:00:00Z", 1),
-      reading("b", "2026-08-01T01:00:00Z", 100),
-      reading("a", "2026-08-01T02:00:00Z", 2),
-      reading("b", "2026-08-01T02:00:00Z", 130),
-    ]);
-    expect(rows.map((r) => [r.metric, r.energy])).toEqual([
-      ["a", 1],
-      ["b", 30],
-    ]);
-  });
-
-  test("a counter reset makes naive max-minus-min wrong by orders of magnitude", () => {
-    const rows = perDayEnergy([
-      reading("total_energy", "2026-08-01T10:00:00Z", 45_000),
-      reading("total_energy", "2026-08-01T11:00:00Z", 45_001),
-      reading("total_energy", "2026-08-01T12:00:00Z", 0),
-      reading("total_energy", "2026-08-01T13:00:00Z", 1),
-    ]);
-    expect(rows).toHaveLength(1);
-    const row = rows[0]!;
-    expect(row.resets).toBe(1);
-    expect(row.energy).toBeCloseTo(2, 9);
-    expect(row.naive).toBeCloseTo(45_001, 9);
-    expect(row.naive / row.energy).toBeGreaterThan(1000);
-  });
-
-  test("describeRestarts locates each reset and quantifies the naive error", () => {
-    const restarts = describeRestarts([
-      reading("total_energy", "2026-08-01T11:00:00Z", 45_001),
-      reading("total_energy", "2026-08-01T12:00:00Z", 0),
-      reading("day_energy", "2026-08-01T12:00:00Z", 3),
-    ]);
-    expect(restarts).toHaveLength(1);
-    expect(restarts[0]).toMatchObject({
-      metric: "total_energy",
-      at: "2026-08-01T12:00:00.000Z",
-      valueBefore: 45_001,
-      valueAfter: 0,
-    });
-  });
-
-  test("no reset means no restart rows — and that is reportable, not silent", () => {
-    expect(describeRestarts([reading("e", "2026-08-01T01:00:00Z", 1)])).toEqual([]);
   });
 });
 
@@ -2144,5 +2031,53 @@ describe("buildPlan: an empty selection", () => {
     expect(() =>
       buildPlan({ mode: "full", endsAt: FIXED_END, profileMetrics: [], inverterId: "x" }),
     ).toThrow(/refusing to seed an empty fixture/);
+  });
+});
+
+/**
+ * The two comparators the replay rehearsal calls DIRECTLY.
+ *
+ * They are reached through `compareGroundTruth` above as well, but the rehearsal
+ * has no 1.2.0 tier summaries to put beside a 2.0.0 database and so calls these
+ * two on their own. A public entry point that only one caller exercises is a
+ * public entry point nothing pins.
+ */
+describe("compareEnergy and compareRestarts, called on their own", () => {
+  const rows = (energy: number) => [
+    { metric: "total_energy", day: "2026-07-28", energy, naive: 64_280.97, resets: 1 },
+  ];
+
+  test("identical rows compare clean", () => {
+    expect(compareEnergy(rows(41.97), rows(41.97))).toEqual([]);
+  });
+
+  test("a drifted total is reported with both numbers", () => {
+    const problems = compareEnergy(rows(41.97), rows(64_280.97));
+    expect(problems).toHaveLength(1);
+    expect(problems[0]).toMatch(/total_energy 2026-07-28: 41\.97 before, 64280\.97 after/);
+  });
+
+  test("floating-point noise below the epsilon is not a finding", () => {
+    expect(compareEnergy(rows(41.97), rows(41.97 + 1e-9))).toEqual([]);
+  });
+
+  test("a metric-day that vanished, and one that appeared, are different findings", () => {
+    expect(compareEnergy(rows(41.97), []).join(" ")).toMatch(/missing after/);
+    expect(compareEnergy([], rows(41.97)).join(" ")).toMatch(/appeared after/);
+  });
+
+  test("two empty sides compare clean — an empty span is not a loss", () => {
+    expect(compareEnergy([], [])).toEqual([]);
+  });
+
+  test("compareRestarts counts them, and says why the count matters", () => {
+    const restart = {
+      metric: "total_energy",
+      at: "2026-07-28T12:00:00.000Z",
+      valueBefore: 1,
+      valueAfter: 0,
+    };
+    expect(compareRestarts([restart], [restart])).toEqual([]);
+    expect(compareRestarts([restart], []).join(" ")).toMatch(/1 before, 0 after/);
   });
 });
