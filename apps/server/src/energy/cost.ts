@@ -23,7 +23,7 @@ import type { TariffConfig } from "@SunReye/db/tariff";
 import type { CanonicalRole, InverterProfile, InverterSample } from "@SunReye/inverter-core";
 import { sql } from "drizzle-orm";
 import { type ZeroValueShare, allocateCost, priceSeriesRows, rollUpToMonths } from "./cost-calc";
-import { emptyTotals, replaceTodaySlice } from "./energy-calc";
+import { emptyTotals, impliedLoadKwh, replaceTodaySlice, withImpliedHourLoad } from "./energy-calc";
 import { getPlantTimeZone } from "../settings/display-settings";
 import { getTariff } from "../settings/settings";
 import { liveState } from "../shared/state";
@@ -147,6 +147,25 @@ const ENERGY_TODAY_FIELDS = {
   batteryDischarge: "battery.energy.discharged.today",
   batteryCharge: "battery.energy.charged.today",
 } as const satisfies Record<EnergyField, CanonicalRole>;
+
+/**
+ * Whether the plant meters house consumption as energy at all.
+ *
+ * False for most non-hybrid installs — a grid-tied inverter reports production
+ * and a meter reports grid flow, and nothing counts the house. Those plants have
+ * their consumption implied from the surrounding flows
+ * ({@link withImpliedHourLoad}); a plant that does meter it always keeps the
+ * measured figure, including a genuine zero.
+ */
+export function metersLoadEnergy(profile: InverterProfile): boolean {
+  // Either counter counts: a profile may map the cumulative total, the
+  // current-day twin, or both. Checking only the total would overwrite a live
+  // `load.energy.today` register with a derived figure.
+  return (
+    keyForRole(profile, ENERGY_FIELDS.load) !== undefined ||
+    keyForRole(profile, ENERGY_TODAY_FIELDS.load) !== undefined
+  );
+}
 
 /** {@link EnergyField} → the {@link EnergyTotals} kWh key it feeds. Shared with
  *  the energy-split accumulator in {@link ./energy}. */
@@ -335,7 +354,8 @@ export async function fetchBucketEnergy(
     hour[field] += Math.max(0, max - prior);
     byBucket.set(time.getTime(), hour);
   }
-  return [...byBucket.values()];
+  const hours = [...byBucket.values()];
+  return metersLoadEnergy(profile) ? hours : withImpliedHourLoad(hours);
 }
 
 /** Read hourly energy for cost banding. Thin wrapper over {@link fetchBucketEnergy}. */
@@ -752,13 +772,22 @@ function todayFromHours(hours: HourEnergy[], midnight: Date): EnergyTotals {
  * `*.total` deltas and stay authoritative for money — a day register can't be
  * banded — so the reported kWh and its priced cost may diverge slightly while
  * the day is in progress.
+ *
+ * `impliedLoad` says the plant meters no consumption at all
+ * ({@link metersLoadEnergy}), so its house figure is derived rather than read.
  */
 function reportLiveTodayTotals(
   totals: CostTotals,
   today: Partial<EnergyTotals>,
   deltaToday: EnergyTotals,
+  impliedLoad: boolean,
 ): CostTotals {
-  const energy = replaceTodaySlice(totals, deltaToday, today);
+  const swapped = replaceTodaySlice(totals, deltaToday, today);
+  // An implied consumption has to be re-implied from the swapped flows: it was
+  // computed per hour off the counter deltas, and leaving it there would report
+  // a house figure that contradicts the import/export/production printed beside
+  // it. A metered plant has nothing to re-derive.
+  const energy = impliedLoad ? { ...swapped, loadKwh: impliedLoadKwh(swapped) } : swapped;
   const { importKwh, exportKwh, loadKwh, productionKwh } = energy;
   return {
     ...totals,
@@ -850,6 +879,7 @@ export async function computeCost(
         totals,
         liveTodayTotals(profile, inverterId, now),
         todayFromHours(hours, startOfLocalDay(now, tz)),
+        !metersLoadEnergy(profile),
       )
     : totals;
 

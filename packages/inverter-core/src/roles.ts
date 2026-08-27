@@ -33,6 +33,10 @@ export const ROLE_CATALOG = {
   "pv.string.voltage": { kind: "measurement", indexed: true, unitHint: "V" },
   "pv.string.current": { kind: "measurement", indexed: true, unitHint: "A" },
   "pv.total.power": { kind: "measurement", unitHint: "W" },
+  // Per-string yield, for the inverters that count each MPPT separately (4-input
+  // hybrids, and every string inverter with per-tracker energy registers).
+  "pv.string.energy.today": { kind: "cumulative", indexed: true, unitHint: "kWh" },
+  "pv.string.energy.total": { kind: "cumulative", indexed: true, unitHint: "kWh" },
   "production.today": { kind: "cumulative", unitHint: "kWh" },
   "production.total": { kind: "cumulative", unitHint: "kWh" },
   // --- Battery ---
@@ -50,6 +54,9 @@ export const ROLE_CATALOG = {
   "battery.energy.discharged.total": { kind: "cumulative", unitHint: "kWh" },
   // --- Grid ---
   "grid.power": { kind: "measurement", signed: true, unitHint: "W" },
+  // Reported by essentially every grid-tied device (SunSpec, Sungrow, Victron)
+  // and the first thing an installer looks at on an islanding fault.
+  "grid.frequency": { kind: "measurement", unitHint: "Hz" },
   "grid.phase.voltage": { kind: "measurement", indexed: true, unitHint: "V" },
   "grid.phase.current": { kind: "measurement", indexed: true, signed: true, unitHint: "A" },
   "grid.phase.power": { kind: "measurement", indexed: true, signed: true, unitHint: "W" },
@@ -57,12 +64,27 @@ export const ROLE_CATALOG = {
   "grid.energy.imported.total": { kind: "cumulative", unitHint: "kWh" },
   "grid.energy.exported.today": { kind: "cumulative", unitHint: "kWh" },
   "grid.energy.exported.total": { kind: "cumulative", unitHint: "kWh" },
-  // --- Backup / load ---
+  // --- House load ---
+  // Whole-house consumption, wherever it is measured: a hybrid's load output, a
+  // grid-tied plant's consumption meter, or a computed residual. Never "the UPS
+  // socket" — that is `backup.*` below, and conflating the two makes a
+  // grid-tied inverter claim hardware it does not have.
   "load.power": { kind: "measurement", unitHint: "W" },
   "load.phase.power": { kind: "measurement", indexed: true, unitHint: "W" },
   "load.phase.voltage": { kind: "measurement", indexed: true, unitHint: "V" },
   "load.energy.today": { kind: "cumulative", unitHint: "kWh" },
   "load.energy.total": { kind: "cumulative", unitHint: "kWh" },
+  // --- Backup / EPS output ---
+  // The islanded output that keeps running through a grid failure, metered
+  // separately from the house. On a whole-home UPS these repeat `load.*`, so a
+  // profile maps them only when the two genuinely differ (a critical-loads
+  // sub-panel), and states the output it does not meter via
+  // `declares.backupOutput` instead.
+  "backup.power": { kind: "measurement", unitHint: "W" },
+  "backup.phase.power": { kind: "measurement", indexed: true, unitHint: "W" },
+  "backup.phase.voltage": { kind: "measurement", indexed: true, unitHint: "V" },
+  "backup.energy.today": { kind: "cumulative", unitHint: "kWh" },
+  "backup.energy.total": { kind: "cumulative", unitHint: "kWh" },
   // --- Generator ---
   "generator.power": { kind: "measurement", unitHint: "W" },
   "generator.phase.power": { kind: "measurement", indexed: true, unitHint: "W" },
@@ -78,9 +100,17 @@ export const ROLE_CATALOG = {
   "inverter.power": { kind: "measurement", unitHint: "W" },
   "inverter.efficiency": { kind: "measurement", unitHint: "%" },
   // --- Settings / controls ---
+  // Battery limits come in two denominations and a profile maps whichever its
+  // device actually exposes: a current ceiling (Deye/Sunsynk and most
+  // high-voltage hybrids) or a power ceiling (Victron ESS, SMA, and every device
+  // whose limits are set in watts). Never both for the same limit — the pair
+  // would give the automation two registers to steer for one quantity.
   "setting.battery.max_charge_current": { kind: "setting", writable: true, unitHint: "A" },
   "setting.battery.max_discharge_current": { kind: "setting", writable: true, unitHint: "A" },
   "setting.battery.max_grid_charge_current": { kind: "setting", writable: true, unitHint: "A" },
+  "setting.battery.max_charge_power": { kind: "setting", writable: true, unitHint: "W" },
+  "setting.battery.max_discharge_power": { kind: "setting", writable: true, unitHint: "W" },
+  "setting.battery.max_grid_charge_power": { kind: "setting", writable: true, unitHint: "W" },
   "setting.battery.grid_charge": { kind: "setting", writable: true, needsEnumLabels: true },
   "setting.work_mode": { kind: "setting", writable: true, needsEnumLabels: true },
   "setting.solar_sell.max_power": { kind: "setting", writable: true, unitHint: "W" },

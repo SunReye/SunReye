@@ -39,7 +39,7 @@ import { scaffoldFromCsv } from "./scaffold";
 import { captureSchema, replayCapture, type Capture, type ReplayResult } from "./replay";
 import { lintProfile, validateProfile } from "./validate";
 import pkg from "../package.json";
-import { hydrateProfile, parseProfileData } from "@SunReye/inverter-core";
+import { hydrateProfile, parseProfileData, PROFILE_SCHEMA_VERSIONS } from "@SunReye/inverter-core";
 import type {
   BumpLevel,
   CanonicalRole,
@@ -249,7 +249,7 @@ function isProfileLike(value: unknown): value is ProfileData {
   return (
     typeof value === "object" &&
     value !== null &&
-    [1, 2].includes((value as ProfileData).schemaVersion) &&
+    (PROFILE_SCHEMA_VERSIONS as readonly number[]).includes((value as ProfileData).schemaVersion) &&
     typeof (value as ProfileData).id === "string" &&
     Array.isArray((value as ProfileData).metrics)
   );

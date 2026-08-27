@@ -40,10 +40,86 @@ const THRESHOLD_SEARCH_STEPS = 32;
 // --- Blockers ----------------------------------------------------------------
 
 const REQUIRED_ROLES = [
-  "setting.battery.max_charge_current",
   "pv.total.power",
   "battery.soc",
 ] as const satisfies readonly CanonicalRole[];
+
+/**
+ * How a device denominates a battery limit. Hybrids built around a current
+ * ceiling (Deye/Sunsynk and most of the low-voltage market) expose amps;
+ * Victron ESS, SMA and the high-voltage stacks expose watts. Same quantity, two
+ * registers, and the automation must be able to steer either.
+ */
+export type LimitUnit = "A" | "W";
+
+/** A limit register the automation steers, and the unit it speaks. */
+export interface SteeredLimit {
+  key: string;
+  unit: LimitUnit;
+}
+
+/**
+ * The role pairs behind one limit, current first.
+ *
+ * Current wins when a profile maps both: the engine plans in amps (its config
+ * limits are amps and the pack sizes them), so the ampere register is the one
+ * that needs no conversion — and steering two registers for one quantity would
+ * have them fight.
+ */
+const CHARGE_LIMIT_ROLES = [
+  "setting.battery.max_charge_current",
+  "setting.battery.max_charge_power",
+] as const satisfies readonly CanonicalRole[];
+
+const GRID_CHARGE_LIMIT_ROLES = [
+  "setting.battery.max_grid_charge_current",
+  "setting.battery.max_grid_charge_power",
+] as const satisfies readonly CanonicalRole[];
+
+/** The conventional role named when a plant maps neither denomination. */
+const CHARGE_LIMIT_ROLE = CHARGE_LIMIT_ROLES[0];
+
+function resolveLimit(
+  profile: InverterProfile,
+  roles: readonly [CanonicalRole, CanonicalRole],
+): SteeredLimit | null {
+  const [currentRole, powerRole] = roles;
+  const currentKey = keyForRole(profile, currentRole);
+  if (currentKey) return { key: currentKey, unit: "A" };
+  const powerKey = keyForRole(profile, powerRole);
+  return powerKey ? { key: powerKey, unit: "W" } : null;
+}
+
+/** The charge ceiling this profile lets the automation steer, if any. */
+export function resolveChargeLimit(profile: InverterProfile): SteeredLimit | null {
+  return resolveLimit(profile, CHARGE_LIMIT_ROLES);
+}
+
+/** The grid-charge ceiling, if any. Absent simply disables grid charging. */
+export function resolveGridChargeLimit(profile: InverterProfile): SteeredLimit | null {
+  return resolveLimit(profile, GRID_CHARGE_LIMIT_ROLES);
+}
+
+/**
+ * An amps plan in the register's own unit. `P = I·V` at the pack voltage the
+ * decision was sized against, so the watts written mean the same current the
+ * engine chose.
+ */
+export function limitValue(limit: SteeredLimit, amps: number, batteryV: number): number {
+  return limit.unit === "A" ? amps : amps * batteryV;
+}
+
+/**
+ * A register reading back in amps — the inverse of {@link limitValue}, so
+ * everything the engine reports and charts stays one unit.
+ *
+ * A zero or absent pack voltage would divide by zero; the caller's voltage
+ * always falls back to the configured nominal, and this guards the rest.
+ */
+export function limitAmps(limit: SteeredLimit, value: number, batteryV: number): number {
+  if (limit.unit === "A") return value;
+  return batteryV > 0 ? value / batteryV : 0;
+}
 
 /**
  * The feed-in ceiling register. `grid-friendly` steers it — the charge current
@@ -52,10 +128,8 @@ const REQUIRED_ROLES = [
  * plant's configured limit.
  */
 export const SELL_LIMIT_ROLE = "setting.solar_sell.max_power" satisfies CanonicalRole;
-/** Registers grid-charging needs; absent from a profile simply disables it. */
+/** The grid-charge enable register; absent from a profile simply disables it. */
 export const GRID_CHARGE_ROLE = "setting.battery.grid_charge" satisfies CanonicalRole;
-export const GRID_CHARGE_CURRENT_ROLE =
-  "setting.battery.max_grid_charge_current" satisfies CanonicalRole;
 
 /** The profile's metric key for a canonical role, or null when unmapped. */
 export function keyForRole(profile: InverterProfile, role: CanonicalRole): string | null {
@@ -78,6 +152,9 @@ export function resolvePeakShavingBlockers(
   for (const role of REQUIRED_ROLES) {
     if (!keyForRole(profile, role)) blockers.push({ kind: "role", role });
   }
+  // Either denomination satisfies the charge ceiling; the ampere role is named
+  // when neither is mapped, since it is the conventional one to add.
+  if (!resolveChargeLimit(profile)) blockers.push({ kind: "role", role: CHARGE_LIMIT_ROLE });
   // Holding feed-in *below* the plant's own limit needs that limit as an
   // actuator; the charge register alone cannot stop the inverter from selling.
   if (mode === "grid-friendly" && !keyForRole(profile, SELL_LIMIT_ROLE)) {

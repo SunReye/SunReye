@@ -230,8 +230,32 @@ export interface InverterProfile {
   name: string;
   manufacturer: string;
   metrics: MetricDef[];
+  /** Hardware facts no metric's presence can express. */
+  declares?: ProfileDeclarations;
   /** Optional coherent simulator; falls back to generic synthesis if absent. */
   simulate?: SimulateFn;
+}
+
+/**
+ * What a profile states about its hardware, for the facts the metric set cannot
+ * imply. Presence of a role is the signal wherever a role exists; this is for
+ * where it is not.
+ *
+ * The first entry is the reason the type exists: a backup output is hardware,
+ * not a measurement. A hybrid with a whole-home UPS meters it through the same
+ * registers as house consumption (`load.*`), and a grid-tied inverter with a
+ * consumption meter maps the identical role while having no backup output at
+ * all — so nothing in the metric set separates the two, and inferring from
+ * `load.*` made every grid-tied profile claim a UPS.
+ */
+export interface ProfileDeclarations {
+  /**
+   * The inverter has an islanded backup/EPS output, whether or not it is
+   * metered. Omitted means "no" for a profile authored under the current
+   * vocabulary; a legacy (v1/v2) profile's `load.*` roles imply it, since that
+   * is what they were authored to mean.
+   */
+  backupOutput?: boolean;
 }
 
 /** Which optional subsystems a specific inverter exposes. */
