@@ -2,11 +2,13 @@
 
 ## [unreleased]
 
-Unreleased work on `dev` since 1.2.0, shipped in `beta.20260827-186968e`.
+Unreleased work on `dev` since 1.2.0, shipped in `beta.20260827-22ae4e5`.
 
 
 ### Features
 
+* **web:** the home node carries a separately metered backup output ([d066040](https://github.com/SunReye/SunReye/commit/d06604059fb50f7d5ae16a6b8f14bc080cac6efa))
+* **web:** open each power-flow node onto its own readings, and retire /system ([dd77bcb](https://github.com/SunReye/SunReye/commit/dd77bcbca06e063750b8b40c2597b45f259124af))
 * **web:** the battery's nominal voltage moves to the plant settings ([6714eca](https://github.com/SunReye/SunReye/commit/6714ecabe1717daf203c2bb949798f425c33e52f))
 * **web:** nameplate setting and the capacity degradation chart ([bb35d49](https://github.com/SunReye/SunReye/commit/bb35d4987846962d439df44fc47ba1daacb565b4))
 * **web:** capacity and health tiles for the measured battery ([10abc21](https://github.com/SunReye/SunReye/commit/10abc21bd31e1be194ee3dcf88876c849d1a2a15))
@@ -110,6 +112,7 @@ Unreleased work on `dev` since 1.2.0, shipped in `beta.20260827-186968e`.
 ### Bug Fixes
 
 * **automation:** the live limit readback resolves voltage like the target does ([5470d42](https://github.com/SunReye/SunReye/commit/5470d42f9d3fb81a1981d42858b4e3241cc0e573))
+* **web:** type the node-trigger helper for a pattern, not just a string ([9a83369](https://github.com/SunReye/SunReye/commit/9a83369697efe812bc719236067f6097d7e80d13))
 * **web:** stub the battery-health read in the browser layer ([dcdf2d0](https://github.com/SunReye/SunReye/commit/dcdf2d0568bf69cf3710977abb2882cf8714a0e3))
 * **web:** accent stops being an alias of primary, which made selects unreadable ([b90af82](https://github.com/SunReye/SunReye/commit/b90af82dcbd10382faf0dbfb812052bd59f24f79))
 * **web:** carry the pack voltage forward instead of explaining where it went ([0235af8](https://github.com/SunReye/SunReye/commit/0235af8b8b4c390c60ff50600bed385d9451da96))
