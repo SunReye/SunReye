@@ -331,7 +331,6 @@ const GOOD_FILES: Record<string, string> = {
   "docker-compose.db.yml": TUNED_COMPOSE,
   ".github/workflows/ci.yml": `        image: ${REQUIRED_DB_IMAGE}\n`,
   ".github/workflows/db-restore.yml": `        image: ${REQUIRED_DB_IMAGE}\n`,
-  ".github/workflows/db-weighted-rollups.yml": `        image: ${REQUIRED_DB_IMAGE}\n`,
   ".github/workflows/db-image.yml":
     "  IMAGE: ghcr.io/sunreye/timescaledb\n          file: docker/timescaledb/Dockerfile\n",
   "sunreye/Dockerfile": TUNED_DOCKERFILE,
@@ -673,7 +672,10 @@ describe("checkStorageTuning — rollup compression (#134)", () => {
     // The 1.x identity, specifically: a tier left on 'metric, inverter_id' after
     // the re-key would compress by columns the hypertable no longer has.
     const { code, errors } = run({
-      "packages/db/src/timescale/0000_baseline.sql": SEGMENTBY_SQL(GATE_ROLLUP_TIERS, "metric, inverter_id"),
+      "packages/db/src/timescale/0000_baseline.sql": SEGMENTBY_SQL(
+        GATE_ROLLUP_TIERS,
+        "metric, inverter_id",
+      ),
     });
     expect(code).toBe(1);
     expect(errors.join("\n")).toMatch(/metric, inverter_id/);
@@ -961,7 +963,7 @@ describe("timescaledbPin", () => {
  *
  * The dev/CI database and the addon must carry the SAME extensions, or a
  * migration that needs `timescaledb_toolkit` passes in one and fails in the
- * other — precisely the class of bug apps/server/db-tests exists to catch. Six
+ * other — precisely the class of bug apps/server/db-tests exists to catch. Five
  * separate files name that image and nothing linked them together.
  */
 describe("one database image across every surface", () => {
@@ -979,7 +981,7 @@ describe("one database image across every surface", () => {
 });
 
 describe("checkStorageTuning — one database image", () => {
-  test("reads every one of the six image surfaces", () => {
+  test("reads every one of the five image surfaces", () => {
     const seen: string[] = [];
     checkStorageTuning({
       read: (path) => {
