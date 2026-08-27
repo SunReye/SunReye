@@ -48,6 +48,7 @@ export interface SettingRow extends Record<string, unknown> {
  * the record is written (`@SunReye/db/upgrade-120-run`'s `writeMigrationRecord`),
  * so the double-encoded form is the NORMAL one — see `@SunReye/db/json-value`.
  */
+// fallow-ignore-next-line unused-export -- the pure half, proved on its own by ./record.test.ts (double-encoded, null and unparseable values); readMigrationRecord below is its production caller.
 export function migrationRecordFrom(rows: readonly SettingRow[]): MigrationRecord {
   const raw = rows[0]?.value;
   if (raw === undefined || raw === null) return noMigration;

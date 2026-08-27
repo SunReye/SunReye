@@ -42,6 +42,7 @@ import { z } from "zod";
 export const MIGRATION_KEY = "migration.v2";
 
 /** How far the upgrade has got. See the module note. */
+// fallow-ignore-next-line unused-export -- the stage list the zod enum below is built from; exported so ./upgrade-state.test.ts can walk every stage rather than restating them.
 export const MIGRATION_STAGES = [
   "none",
   "cutover",
@@ -52,6 +53,7 @@ export const MIGRATION_STAGES = [
   "dropped",
 ] as const;
 
+// fallow-ignore-next-line unused-type -- the stage union, derived from MIGRATION_STAGES above and used across this module's own signatures; ./upgrade-state.test.ts imports it to type its fixtures.
 export type MigrationStage = (typeof MIGRATION_STAGES)[number];
 
 /**

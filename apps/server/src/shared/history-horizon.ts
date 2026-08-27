@@ -52,6 +52,7 @@ export type HistoryTier = "raw" | "minute" | "hour" | "day";
  * keeps 90 days and the hourly one 3650, so a swap either refuses valid reads or
  * lets partial ones through, which is the whole defect.
  */
+// fallow-ignore-next-line unused-export -- the tier-to-relation map, proved by ./history-horizon.test.ts because getting it backwards enforces the wrong tier's retention; retentionDaysFor below is its caller.
 export const BUCKET_RELATION: Record<HistoryTier, string> = {
   raw: "metrics_raw",
   minute: "minute_rollups",
@@ -73,6 +74,7 @@ export interface RetentionRow {
  * no retention policy at all — and is the opposite of `0`. Conflating them would
  * refuse every read of the one tier that holds the whole history.
  */
+// fallow-ignore-next-line unused-export -- read by incompleteRangeProblem below; exported so ./history-horizon.test.ts can pin null (kept forever) against 0, which are opposites.
 export function retentionDaysFor(rows: readonly RetentionRow[], tier: HistoryTier): number | null {
   const relation = BUCKET_RELATION[tier];
   const row = rows.find((r) => r.hypertableName === relation);
@@ -100,6 +102,7 @@ export interface TieredHorizonProblem extends HorizonProblem {
  * own validation owns it. Turning it into a story about missing history would
  * send an operator looking for a migration button over a typo.
  */
+// fallow-ignore-next-line unused-export -- the pure decision behind refuseIncompleteRange below; exported so ./history-horizon.test.ts can drive it without a database.
 export function incompleteRangeProblem(
   tier: HistoryTier,
   range: { from: Date; to: Date },
@@ -128,11 +131,13 @@ const TTL_MS = 30_000;
 let cached: { at: number; limits: HistoryLimits } | null = null;
 
 /** Forget the memo — called by whatever advances the migration's stage. */
+// fallow-ignore-next-line unused-export -- called by whatever advances the migration's stage — the onboarding route, still unbuilt; without it a finished backfill reports as pending for the memo's TTL.
 export function invalidateHistoryLimits(): void {
   cached = null;
 }
 
 /** The retention policies and the migration record, from the database. */
+// fallow-ignore-next-line unused-export -- the uncached read behind historyLimits below; exported so a test can bypass the memo.
 export async function readHistoryLimits(): Promise<HistoryLimits> {
   const retention = await db.execute<{ hypertable_name: string; days: string | null }>(sql`
     select hypertable_name,
@@ -160,6 +165,7 @@ export async function readHistoryLimits(): Promise<HistoryLimits> {
 }
 
 /** The limits, from the memo when it is fresh. */
+// fallow-ignore-next-line unused-export -- the memoized read refuseIncompleteRange below uses; exported for the same reason.
 export async function historyLimits(): Promise<HistoryLimits> {
   if (cached !== null && Date.now() - cached.at < TTL_MS) {
     // `now` is re-read even on a cache hit: the retention HORIZON slides with the

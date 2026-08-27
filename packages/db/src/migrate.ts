@@ -198,6 +198,31 @@ async function databaseShape(client: Client): Promise<DatabaseShape> {
 }
 
 /**
+ * The journal's baseline entry, its SQL, and the stamp row that records it.
+ *
+ * One reader for both users — {@link stampBaseline}, which records the baseline
+ * without executing it, and `upgradeInPlace`, which executes the parts a 1.2.0
+ * database is missing and then records it. They must agree on the HASH: two
+ * readers that hashed differently would let a database be stamped with a hash
+ * drizzle's migrator would not recognise, and the next migration would try to
+ * apply the baseline again.
+ */
+function readBaseline(entries: JournalEntry[]): {
+  tag: string;
+  content: string;
+  stamp: { when: number; hash: string };
+} {
+  const baseline = entries[0];
+  if (!baseline) throw new Error("migration journal is empty");
+  const content = readFileSync(join(MIGRATIONS_DIR, `${baseline.tag}.sql`), "utf8");
+  return {
+    tag: baseline.tag,
+    content,
+    stamp: { when: baseline.when, hash: sha256(content) },
+  };
+}
+
+/**
  * Pre-journal databases (created via `drizzle-kit push`) already contain the
  * baseline schema. Record the baseline migration as applied — same table DDL,
  * hash, and timestamp drizzle-orm's migrator writes — without executing it.
@@ -225,17 +250,12 @@ export async function stampBaseline(client: Client, entries: JournalEntry[]) {
   }
   if (shape !== "push-era") return; // fresh or already journaled
 
-  const baseline = entries[0];
-  if (!baseline) throw new Error("migration journal is empty");
-  const content = readFileSync(join(MIGRATIONS_DIR, `${baseline.tag}.sql`), "utf8");
+  const baseline = readBaseline(entries);
 
   // The same insert the in-place upgrade uses, so there is one implementation of
   // "record a migration as applied without executing it" rather than two that
   // could disagree about the hash or the table's DDL.
-  await stampDrizzleBaseline(pgUpgradeClient(client), {
-    when: baseline.when,
-    hash: sha256(content),
-  });
+  await stampDrizzleBaseline(pgUpgradeClient(client), baseline.stamp);
   console.log(
     `Baselined pre-journal database: stamped ${baseline.tag} as applied without executing it.`,
   );
@@ -399,12 +419,10 @@ export const productionRuntime: MigrateRuntime = {
  * from a database test with a statement list of its own.
  */
 async function upgradeInPlace(client: Client, entries: JournalEntry[]): Promise<void> {
-  const baseline = entries[0];
-  if (!baseline) throw new Error("migration journal is empty");
-  const content = readFileSync(join(MIGRATIONS_DIR, `${baseline.tag}.sql`), "utf8");
+  const baseline = readBaseline(entries);
   await runBlockingUpgrade(pgUpgradeClient(client), {
-    baselineStatements: splitStatements(content),
-    baseline: { when: baseline.when, hash: sha256(content) },
+    baselineStatements: splitStatements(baseline.content),
+    baseline: baseline.stamp,
     logger: { log: (message) => console.log(message) },
   });
 }

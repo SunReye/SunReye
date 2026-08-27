@@ -33,6 +33,7 @@ import { jsonDocument } from "./json-value";
 
 import {
   type CatalogState,
+  type UpgradePhase,
   LEGACY_AGGREGATES,
   LEGACY_NAME,
   baselinePlan,
@@ -124,6 +125,7 @@ export interface RelationWindow {
  * not produce (it polled one inverter) and is reported rather than silently
  * halved.
  */
+// fallow-ignore-next-line unused-export -- the 1.2.0 raw window's bounds, read before the schema moves; runBlockingUpgrade below is its caller and scripts/upgrade-rehearsal.ts reads it too.
 export async function readLegacyRaw(
   client: UpgradeClient,
 ): Promise<RelationWindow & { sourceIds: string[] }> {
@@ -197,6 +199,69 @@ export interface BlockingUpgradeResult {
 }
 
 /**
+ * Refuse a database holding BOTH generations of `metrics_raw`.
+ *
+ * Its own function because it is a REFUSAL, not a branch: there is no correct way
+ * to guess which of the two tables holds the history, and picking one would either
+ * migrate the empty table (losing everything) or double-count. The only safe
+ * output is a stop with an instruction.
+ */
+function assertUnambiguous(phase: UpgradePhase): void {
+  if (phase !== "ambiguous") return;
+  throw new Error(
+    `Refusing to migrate: this database has BOTH a legacy-shaped metrics_raw and a ` +
+      `${LEGACY_NAME.metrics_raw}, so the 1.2.0 -> 2.0.0 upgrade cannot tell which one holds ` +
+      `the history. Restore the pre-upgrade backup and start again.`,
+  );
+}
+
+/**
+ * Policies off, then the rename — in that order, and the order is the point.
+ *
+ * A retention policy FOLLOWS a rename, so detaching afterwards would have to know
+ * the legacy names; detaching at all is what stops the old minute tier's 90-day
+ * retention from eating the history while the operator decides whether to
+ * migrate. The catalog is re-read between the two because detaching changes it.
+ */
+async function detachAndRename(
+  client: UpgradeClient,
+  run: (statement: string) => Promise<void>,
+  logger: UpgradeLogger,
+): Promise<void> {
+  logger.log("1.2.0 database detected: detaching its policies and renaming its relations");
+  for (const statement of detachPolicyStatements()) await run(statement);
+  for (const statement of renameStatements(await readCatalog(client))) await run(statement);
+}
+
+/**
+ * The ONE `inverter_id` the 1.2.0 history carries, or `null` when it carries none.
+ *
+ * Falls back from the retained raw window to the BUCKETS, because raw is only
+ * seven days on 1.2.0 and an instance whose inverter has been offline for a week
+ * has an empty raw window and two months of buckets.
+ *
+ * More than one is a refusal rather than a choice. 1.2.0 could not produce it —
+ * it had a single `inverter` setting — so a database that has it was assembled by
+ * something this upgrade does not model, and each distinct id is a separate
+ * physical device whose mapping to the new `devices` rows nothing here can guess.
+ */
+async function resolveSourceId(
+  client: UpgradeClient,
+  rawSourceIds: readonly string[],
+): Promise<string | null> {
+  const sourceIds =
+    rawSourceIds.length > 0 ? rawSourceIds : await readLegacyBucketSourceIds(client);
+  if (sourceIds.length > 1) {
+    throw new Error(
+      `Refusing to migrate: the 1.2.0 history carries ${sourceIds.length} distinct inverter_id ` +
+        `values (${sourceIds.join(", ")}), which 1.2.0 could not produce. Each one is a separate ` +
+        `device and mapping them is not something this upgrade can guess.`,
+    );
+  }
+  return sourceIds[0] ?? null;
+}
+
+/**
  * THE BLOCKING STEP. Catalog only; no row of history moves.
  *
  * Returns `null` for a database that is not a 1.x one — a fresh install and an
@@ -234,13 +299,7 @@ export async function runBlockingUpgrade(
   const logger = input.logger ?? silent;
   const phase = classifyUpgrade(await readCatalog(client));
   if (phase === "not-needed") return null;
-  if (phase === "ambiguous") {
-    throw new Error(
-      `Refusing to migrate: this database has BOTH a legacy-shaped metrics_raw and a ` +
-        `${LEGACY_NAME.metrics_raw}, so the 1.2.0 -> 2.0.0 upgrade cannot tell which one holds ` +
-        `the history. Restore the pre-upgrade backup and start again.`,
-    );
-  }
+  assertUnambiguous(phase);
 
   const applied: string[] = [];
   const run = async (statement: string): Promise<void> => {
@@ -248,22 +307,10 @@ export async function runBlockingUpgrade(
     applied.push(statement);
   };
 
-  if (phase === "rename-pending") {
-    logger.log("1.2.0 database detected: detaching its policies and renaming its relations");
-    for (const statement of detachPolicyStatements()) await run(statement);
-    for (const statement of renameStatements(await readCatalog(client))) await run(statement);
-  }
+  if (phase === "rename-pending") await detachAndRename(client, run, logger);
 
   const raw = await readLegacyRaw(client);
-  const sourceIds =
-    raw.sourceIds.length > 0 ? raw.sourceIds : await readLegacyBucketSourceIds(client);
-  if (sourceIds.length > 1) {
-    throw new Error(
-      `Refusing to migrate: the 1.2.0 history carries ${sourceIds.length} distinct inverter_id ` +
-        `values (${sourceIds.join(", ")}), which 1.2.0 could not produce. Each one is a separate ` +
-        `device and mapping them is not something this upgrade can guess.`,
-    );
-  }
+  const sourceId = await resolveSourceId(client, raw.sourceIds);
   const now = input.now ?? new Date();
 
   const plan = baselinePlan(input.baselineStatements, await readCatalog(client));
@@ -279,7 +326,7 @@ export async function runBlockingUpgrade(
   const record = migrationRecordSchema.parse({
     stage: "cutover",
     cutoverAt: now.toISOString(),
-    sourceId: sourceIds[0] ?? null,
+    sourceId,
     legacyRawFrom: raw.from?.toISOString() ?? null,
     legacyRawTo: raw.to?.toISOString() ?? null,
     replayTo: replayEnd(raw.from, now).toISOString(),
@@ -373,6 +420,7 @@ export async function readMigrationRecord(client: UpgradeClient): Promise<Migrat
  * chunk_start)`. Sharing a namespace would let the carry's completed days mark the
  * replay's as done.
  */
+// fallow-ignore-next-line unused-export -- the replay_progress key for the raw carry, asserted by apps/server/db-tests/upgrade.test.ts, which .fallowrc.json excludes from tracing.
 export const RAW_CARRY_SOURCE = "legacy-1.2.0-raw";
 
 /** The 1.2.0 raw columns, as `./replay-run.ts` addresses a bucket relation. */

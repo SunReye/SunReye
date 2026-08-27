@@ -132,6 +132,7 @@ export const weatherConfigSchema = z.object({
 });
 export type WeatherConfig = z.infer<typeof weatherConfigSchema>;
 
+// fallow-ignore-next-line unused-export -- PRE-EXISTING and unrelated to the 1.2.0 upgrade: consumed only by ./weather.test.ts and ./plant-facts.test.ts, and test files are not traced. Surfaced here because this wave changed plant-facts.test.ts and pulled the file into audit scope.
 export const defaultWeather: WeatherConfig = weatherConfigSchema.parse({});
 
 /** Whether the config has everything needed to fetch (enabled + coordinates). */

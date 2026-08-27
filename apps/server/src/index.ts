@@ -566,6 +566,7 @@ const app = new Elysia()
         range: t.Optional(t.Union([t.Literal("today"), t.Literal("month"), t.Literal("year")])),
         from: t.Optional(t.String()),
         to: t.Optional(t.String()),
+        // fallow-ignore-next-line code-duplication -- dup:639f0435 — this is Elysia's handler preamble (an inverterId query field, then the onboarding-only 503 guard), shared with routes/battery.ts. Abstracting a route's signature to remove six lines would cost more clarity than the repetition does, and the guard is deliberately visible at every route that needs a profile.
         inverterId: t.Optional(t.String()),
       }),
     },

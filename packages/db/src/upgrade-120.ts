@@ -286,6 +286,7 @@ function declaredColumns(text: string): string[] {
  * `0000_baseline.sql` and asserts every statement classifies, so a future
  * baseline that grows a new shape fails in `bun run test` rather than mid-upgrade.
  */
+// fallow-ignore-next-line unused-export -- the baseline statement classifier, proved by ./upgrade-120.test.ts and reused by ./migrate.test.ts's catalog fake; planStatement below is its production caller.
 export function classifyBaselineStatement(text: string): BaselineStatement {
   const trimmed = text.trim();
   const table = CREATE_TABLE.exec(trimmed);
@@ -332,42 +333,53 @@ export interface BaselineApplyPlan {
  * names it. Extra columns are allowed — a 1.x database may carry more, and
  * nothing 2.0.0 does is harmed by one.
  */
+/** Where one statement belongs. Exactly one of the three, so nothing is lost. */
+type PlanEntry = { run: string } | { skipped: string } | { refusal: string };
+
+/**
+ * What to do with one baseline statement whose object may already exist.
+ *
+ * A TABLE that exists is checked rather than assumed — see {@link baselinePlan}'s
+ * note. An index or a constraint is a name that either exists or does not, and
+ * there is nothing inside it to disagree about.
+ */
+function planStatement(text: string, state: CatalogState): PlanEntry {
+  let parsed: BaselineStatement;
+  try {
+    parsed = classifyBaselineStatement(text);
+  } catch (error) {
+    return { refusal: (error as Error).message };
+  }
+  if (parsed.kind !== "table") {
+    const present =
+      parsed.kind === "index" ? state.indexes.has(parsed.name) : state.constraints.has(parsed.name);
+    return present ? { skipped: `${parsed.kind} ${parsed.name} (already present)` } : { run: text };
+  }
+  const live = state.columns.get(parsed.name);
+  if (!live) return { run: text };
+  const missing = parsed.columns.filter((column) => !live.has(column));
+  if (missing.length > 0) {
+    return {
+      refusal:
+        `upgrade-120: table "${parsed.name}" already exists but is missing the column(s) ` +
+        `${missing.join(", ")} that the 2.0.0 baseline declares. Stamping the baseline over ` +
+        `it would record success for a schema the app cannot query. Restore the ` +
+        `pre-upgrade backup.`,
+    };
+  }
+  return { skipped: `table ${parsed.name} (already present)` };
+}
+
 export function baselinePlan(
   statements: readonly string[],
   state: CatalogState,
 ): BaselineApplyPlan {
   const plan: BaselineApplyPlan = { run: [], skipped: [], refusals: [] };
   for (const text of statements) {
-    let parsed: BaselineStatement;
-    try {
-      parsed = classifyBaselineStatement(text);
-    } catch (error) {
-      plan.refusals.push((error as Error).message);
-      continue;
-    }
-    if (parsed.kind === "table") {
-      const live = state.columns.get(parsed.name);
-      if (!live) {
-        plan.run.push(text);
-        continue;
-      }
-      const missing = parsed.columns.filter((column) => !live.has(column));
-      if (missing.length > 0) {
-        plan.refusals.push(
-          `upgrade-120: table "${parsed.name}" already exists but is missing the column(s) ` +
-            `${missing.join(", ")} that the 2.0.0 baseline declares. Stamping the baseline over ` +
-            `it would record success for a schema the app cannot query. Restore the ` +
-            `pre-upgrade backup.`,
-        );
-        continue;
-      }
-      plan.skipped.push(`table ${parsed.name} (already present)`);
-      continue;
-    }
-    const present =
-      parsed.kind === "index" ? state.indexes.has(parsed.name) : state.constraints.has(parsed.name);
-    if (present) plan.skipped.push(`${parsed.kind} ${parsed.name} (already present)`);
-    else plan.run.push(text);
+    const entry = planStatement(text, state);
+    if ("run" in entry) plan.run.push(entry.run);
+    else if ("skipped" in entry) plan.skipped.push(entry.skipped);
+    else plan.refusals.push(entry.refusal);
   }
   return plan;
 }

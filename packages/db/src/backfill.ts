@@ -59,6 +59,7 @@ import { type MigrationRecord, mayDropLegacy, migrationRecordSchema } from "./up
  * of hourly ever revisits it. `minute` is independent (it reads raw) and goes
  * last because it is by far the biggest and a kill during it costs the least.
  */
+// fallow-ignore-next-line unused-export -- the order the tiers must materialize in (daily reads hourly, so never daily first); pinned by ./backfill.test.ts.
 export const REFRESH_ORDER = ["hourly_rollups", "daily_rollups", "minute_rollups"] as const;
 
 export type NewTier = (typeof REFRESH_ORDER)[number];
@@ -89,6 +90,7 @@ const DAY_MS = 86_400_000;
  * `refresh_continuous_aggregate(x, NULL, NULL)`, which advances the watermark
  * past everything.
  */
+// fallow-ignore-next-line unused-export -- the bounded refresh windows, proved by ./backfill.test.ts — an unbounded refresh advances the watermark past everything and makes those tests unable to fail.
 export function refreshWindows(span: Span, tier: NewTier, chunkDays = 7): Span[] {
   if (span.end.getTime() <= span.start.getTime()) return [];
   const pad = TIER_BUCKET_MS[tier];
@@ -110,6 +112,7 @@ export function refreshWindows(span: Span, tier: NewTier, chunkDays = 7): Span[]
  * `./replay.ts`'s `assertIdentifier` applies for the same reason. The bounds are
  * bound.
  */
+// fallow-ignore-next-line unused-export -- the refresh statement itself, pinned by ./backfill.test.ts; runBackfill below is its caller.
 export function refreshCall(tier: NewTier, window: Span): { text: string; params: string[] } {
   if (!REFRESH_ORDER.includes(tier)) {
     throw new Error(`backfill: ${JSON.stringify(tier)} is not one of this schema's tiers`);
@@ -176,6 +179,63 @@ const MEAN_EPSILON = 1e-9;
  * proves nothing, and this is the one place where the consequence of a vacuous
  * green is permanent.
  */
+/**
+ * What is wrong with ONE metric-day, or `null`.
+ *
+ * The checks are ordered cheapest-and-most-decisive first and each one RETURNS: a
+ * metric-day with no new buckets has no meaningful mean to compare, and reporting
+ * both would bury the finding that matters under a derived one.
+ */
+function coverageRowProblem(row: CoverageRow): string | null {
+  const label = `${row.metric} ${row.day}`;
+  if (row.newBuckets === 0) {
+    return `${label}: ${row.legacyBuckets} legacy buckets, no new buckets at all`;
+  }
+  if (row.newBuckets !== row.legacyBuckets) {
+    return (
+      `${label}: ${row.legacyBuckets} legacy buckets, ${row.newBuckets} after — ` +
+      (row.newBuckets > row.legacyBuckets ? "a double write" : "history was lost")
+    );
+  }
+  return meanProblem(row, label) ?? spreadProblem(row, label);
+}
+
+/**
+ * Whether the bucket's MEAN survived, which is replay's whole claim.
+ *
+ * `time_weight('LOCF', …)` over a flat interval row reproduces the bucket's mean
+ * to the bit, so a drift means the values were re-based, smoothed, or read from
+ * the wrong column.
+ */
+function meanProblem(row: CoverageRow, label: string): string | null {
+  const before = row.legacyMean;
+  const after = row.newMean;
+  if (before === null || after === null) {
+    // One null and one number is a real disagreement; both null is a metric that
+    // legitimately has no mean on that day.
+    return before === after ? null : `${label}: mean ${before} legacy, ${after} after`;
+  }
+  return Math.abs(before - after) > MEAN_EPSILON * Math.max(1, Math.abs(before))
+    ? `${label}: mean ${before} legacy, ${after} after — the values are not the same`
+    : null;
+}
+
+/**
+ * A double write the BUCKET COUNT cannot see.
+ *
+ * The replay writes exactly one row per bucket, so a replayed bucket's min and
+ * max are the same number. Any spread means a second row landed in it — and the
+ * count stays right, because both rows are still one bucket.
+ */
+function spreadProblem(row: CoverageRow, label: string): string | null {
+  if (typeof row.newSpread !== "number" || row.newSpread === 0) return null;
+  return (
+    `${label}: a replayed bucket spans ${row.newSpread} between its min and max, so more than ` +
+    `one row landed in it — a double write the bucket count cannot see`
+  );
+}
+
+// fallow-ignore-next-line unused-export -- the drop gate's comparison, proved by ./backfill.test.ts; verifyMigration below is its caller. It decides whether an instance's only copy of two months of history may be deleted, so it is tested directly rather than through the query around it.
 export function compareCoverage(rows: readonly CoverageRow[]): string[] {
   if (rows.length === 0) {
     return [
@@ -183,40 +243,9 @@ export function compareCoverage(rows: readonly CoverageRow[]): string[] {
         "The legacy objects must NOT be dropped.",
     ];
   }
-  const problems: string[] = [];
-  for (const row of rows) {
-    const label = `${row.metric} ${row.day}`;
-    if (row.newBuckets === 0) {
-      problems.push(`${label}: ${row.legacyBuckets} legacy buckets, no new buckets at all`);
-      continue;
-    }
-    if (row.newBuckets !== row.legacyBuckets) {
-      problems.push(
-        `${label}: ${row.legacyBuckets} legacy buckets, ${row.newBuckets} after — ` +
-          (row.newBuckets > row.legacyBuckets ? "a double write" : "history was lost"),
-      );
-      continue;
-    }
-    const before = row.legacyMean;
-    const after = row.newMean;
-    if (before === null || after === null) {
-      if (before !== after) problems.push(`${label}: mean ${before} legacy, ${after} after`);
-      continue;
-    }
-    if (Math.abs(before - after) > MEAN_EPSILON * Math.max(1, Math.abs(before))) {
-      problems.push(
-        `${label}: mean ${before} legacy, ${after} after — the values are not the same`,
-      );
-      continue;
-    }
-    if (typeof row.newSpread === "number" && row.newSpread !== 0) {
-      problems.push(
-        `${label}: a replayed bucket spans ${row.newSpread} between its min and max, so more than ` +
-          `one row landed in it — a double write the bucket count cannot see`,
-      );
-    }
-  }
-  return problems;
+  return rows
+    .map((row) => coverageRowProblem(row))
+    .filter((problem): problem is string => problem !== null);
 }
 
 /** What the backfill needs that it cannot read for itself. */
@@ -235,9 +264,11 @@ export interface BackfillInput {
 }
 
 /** The watermark namespace the bucket replay records its days under. */
+// fallow-ignore-next-line unused-export -- the replay_progress source key; changing it silently restarts a finished backfill, so it is asserted by apps/server/db-tests/upgrade.test.ts — a directory .fallowrc.json excludes from tracing entirely.
 export const BUCKET_REPLAY_SOURCE = "legacy-1.2.0-buckets";
 
 /** The watermark namespace the aggregate refresh records its windows under. */
+// fallow-ignore-next-line unused-export -- as above: the refresh arm's progress key, asserted in the database tests, which are not traced.
 export const REFRESH_SOURCE = "legacy-1.2.0-refresh";
 
 /** The legacy relations the bucket replay reads, by tier. */
@@ -290,11 +321,7 @@ export async function runBackfill(
   const carried =
     record.legacyRawFrom === null ? null : await carryLegacyRaw(client, identity, options);
   if (carried) {
-    logger.log(
-      `carried ${carried.seriesRows.toLocaleString("en-US")} retained raw rows + ` +
-        `${carried.configRows} config changes in ${(carried.elapsedMs / 1000).toFixed(1)}s ` +
-        `(${carried.skipped} day(s) already done)`,
-    );
+    logger.log(carriedLine(carried));
     record = await advance(client, record, "carried");
   }
 
@@ -309,16 +336,39 @@ export async function runBackfill(
     },
     options,
   );
-  logger.log(
-    `replayed ${replayed.seriesRows.toLocaleString("en-US")} bucket rows + ` +
-      `${replayed.configRows} config changes across ${replayed.chunks.length} day(s) in ` +
-      `${(replayed.elapsedMs / 1000).toFixed(1)}s (${replayed.skipped} already done)` +
-      (replayed.gaps.length > 0 ? ` — ${replayed.gaps.length} day(s) no tier could answer` : ""),
-  );
+  logger.log(replayedLine(replayed));
 
   const refreshed = await refreshTiers(client, input, logger);
   record = await advance(client, record, "backfilled");
   return { carried, replayed, refreshed, record, elapsedMs: Date.now() - began };
+}
+
+/**
+ * The carry's one log line. `skipped` is in it deliberately: on a resumed run it
+ * is the number that says the carry was not redone.
+ */
+function carriedLine(carried: ReplayResult): string {
+  return (
+    `carried ${carried.seriesRows.toLocaleString("en-US")} retained raw rows + ` +
+    `${carried.configRows} config changes in ${(carried.elapsedMs / 1000).toFixed(1)}s ` +
+    `(${carried.skipped} day(s) already done)`
+  );
+}
+
+/**
+ * The bucket replay's one log line.
+ *
+ * GAPS are appended only when there are some — a day no legacy tier could answer
+ * is the one outcome here that needs a human to look, and a trailing "0 gaps" on
+ * every successful run is how that stops being noticed.
+ */
+function replayedLine(replayed: ReplayResult): string {
+  return (
+    `replayed ${replayed.seriesRows.toLocaleString("en-US")} bucket rows + ` +
+    `${replayed.configRows} config changes across ${replayed.chunks.length} day(s) in ` +
+    `${(replayed.elapsedMs / 1000).toFixed(1)}s (${replayed.skipped} already done)` +
+    (replayed.gaps.length > 0 ? ` — ${replayed.gaps.length} day(s) no tier could answer` : "")
+  );
 }
 
 /** Persist a stage transition and hand back the record that was written. */
@@ -548,6 +598,7 @@ async function readCoverage(
  * coverage comparison would not see it (it stopped looking) and the storage
  * budget this release exists to fix would be quietly back.
  */
+// fallow-ignore-next-line unused-export -- the config-register leak check, proved by ./backfill.test.ts; verifyMigration below is its caller.
 export function configLeak(rowsInRaw: number): string[] {
   if (rowsInRaw === 0) return [];
   return [
@@ -582,4 +633,5 @@ export function chunkLine(chunk: ChunkResult, index: number, total: number): str
   );
 }
 
+// fallow-ignore-next-line unused-export -- re-exported so the backfill's callers get the drop gate from the module that owns the backfill; covered by ./backfill.test.ts.
 export { mayDropLegacy };

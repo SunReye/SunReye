@@ -152,29 +152,38 @@ function probeAnswer(
  * Only the three shapes this module emits are modelled. Anything else is
  * swallowed, exactly as the fake swallows every other statement.
  */
-function applyDdl(catalog: Catalog, text: string): void {
+/** Move a relation and every column recorded under its name. */
+function renameRelation(catalog: Catalog, from: string, to: string): void {
+  catalog.relations.delete(`public.${from}`);
+  catalog.relations.add(`public.${to}`);
+  // The spread is NOT useless: the loop DELETES from the set it is iterating,
+  // and mutating a Set mid-iteration skips entries. Snapshot first.
+  // oxlint-disable-next-line unicorn/no-useless-spread
+  for (const pair of [...catalog.columns]) {
+    if (!pair.startsWith(`${from}.`)) continue;
+    catalog.columns.delete(pair);
+    catalog.columns.add(`${to}.${pair.slice(from.length + 1)}`);
+  }
+}
+
+/** `ALTER … RENAME TO`, or `false` when the statement is not one. */
+function applyRename(catalog: Catalog, text: string): boolean {
   const rename = /^\s*alter\s+(table|materialized view|index)\s+(\w+)\s+rename to\s+(\w+)/i.exec(
     text,
   );
-  if (rename) {
-    const [, kind, from, to] = rename as unknown as [string, string, string, string];
-    if (kind.toLowerCase() === "index") {
-      catalog.indexes.delete(from);
-      catalog.indexes.add(to);
-      return;
-    }
-    catalog.relations.delete(`public.${from}`);
-    catalog.relations.add(`public.${to}`);
-    // The spread is NOT useless: the loop DELETES from the set it is iterating,
-    // and mutating a Set mid-iteration skips entries. Snapshot first.
-    // oxlint-disable-next-line unicorn/no-useless-spread
-    for (const pair of [...catalog.columns]) {
-      if (!pair.startsWith(`${from}.`)) continue;
-      catalog.columns.delete(pair);
-      catalog.columns.add(`${to}.${pair.slice(from.length + 1)}`);
-    }
-    return;
+  if (!rename) return false;
+  const [, kind, from, to] = rename as unknown as [string, string, string, string];
+  if (kind.toLowerCase() === "index") {
+    catalog.indexes.delete(from);
+    catalog.indexes.add(to);
+    return true;
   }
+  renameRelation(catalog, from, to);
+  return true;
+}
+
+/** `CREATE TABLE` / `CREATE INDEX`, or `false` when the statement is neither. */
+function applyCreate(catalog: Catalog, text: string): boolean {
   const created = /^\s*CREATE TABLE "(\w+)"/i.exec(text);
   if (created?.[1]) {
     const parsed = classifyBaselineStatement(text);
@@ -182,10 +191,17 @@ function applyDdl(catalog: Catalog, text: string): void {
     if (parsed.kind === "table") {
       for (const column of parsed.columns) catalog.columns.add(`${created[1]}.${column}`);
     }
-    return;
+    return true;
   }
   const index = /^\s*CREATE (?:UNIQUE )?INDEX "(\w+)"/i.exec(text);
-  if (index?.[1]) catalog.indexes.add(index[1]);
+  if (!index?.[1]) return false;
+  catalog.indexes.add(index[1]);
+  return true;
+}
+
+function applyDdl(catalog: Catalog, text: string): void {
+  if (applyRename(catalog, text)) return;
+  applyCreate(catalog, text);
 }
 
 /**
