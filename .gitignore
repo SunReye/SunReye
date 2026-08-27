@@ -66,3 +66,10 @@ core
 # Agent worktrees. Checkouts of this repo living inside it: never committable,
 # and oxlint would otherwise walk the copies and report the same file twice.
 .claude/worktrees/
+
+# fixture-1-2-0.ts build artifacts. The ground-truth summaries ARE committed;
+# these two are not: the per-bucket parity snapshot is tens of MB (GBs for the
+# full span) and is regenerated per run, and a --ground-truth recheck is an
+# ad-hoc read of a live fixture, not a record.
+scripts/fixtures/parity-1-2-0.*.json
+scripts/fixtures/ground-truth-1-2-0.*.recheck.json

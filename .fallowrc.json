@@ -17,7 +17,8 @@
   ],
   "dynamicallyLoaded": [
     "apps/docs/src/styles/theme.css",
-    "scripts/db-parity.ts"
+    "scripts/db-parity.ts",
+    "scripts/fixture-1-2-0.ts"
   ],
   "usedClassMembers": [
     {
@@ -119,6 +120,12 @@
     },
     {
       "file": "scripts/db-parity.ts",
+      "exports": [
+        "*"
+      ]
+    },
+    {
+      "file": "scripts/fixture-1-2-0.ts",
       "exports": [
         "*"
       ]
