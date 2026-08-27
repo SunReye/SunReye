@@ -1,5 +1,34 @@
 # Changelog
 
+## [2.1.0](https://github.com/SunReye/SunReye/compare/profile-sdk-v2.0.1...profile-sdk-v2.1.0) (2026-08-27)
+
+
+### Features
+
+* **automation:** steer battery limits in watts as well as amps ([b6bd8d8](https://github.com/SunReye/SunReye/commit/b6bd8d851364a02d68505affcc5f3522f91e5830))
+* **inverter-core:** add per-string yield and grid frequency roles ([452d165](https://github.com/SunReye/SunReye/commit/452d16537b3077db83a5bc5e4ae9790e8ee9b8b2))
+* **inverter-core:** separate the backup output from house load ([4ae4d04](https://github.com/SunReye/SunReye/commit/4ae4d044b060c8a8299141b197948062486e12d6))
+* **inverter-core:** storage class and deadband as authored profile fields ([3640187](https://github.com/SunReye/SunReye/commit/3640187f5522d10b7a252cac444ea462b2e3a88a))
+* make the role vocabulary fit non-Deye inverters ([39db7f8](https://github.com/SunReye/SunReye/commit/39db7f805c9ae02b774cce2fd06555417c029d57))
+* **profile-sdk:** add `profile replay` — golden register captures ([915ad49](https://github.com/SunReye/SunReye/commit/915ad497d2a990eb27ab8442633dabb28aefeb76)), closes [#73](https://github.com/SunReye/SunReye/issues/73)
+* **profile-sdk:** author a real meter against the http arm ([76c57b5](https://github.com/SunReye/SunReye/commit/76c57b52570952c966ce5bf2b6e1c145e7e6eb50))
+* **profile-sdk:** lint the silent resolveKind fallback ([383c9c0](https://github.com/SunReye/SunReye/commit/383c9c08843a36c7f421911d236f6f558dd052ad))
+* **profile-sdk:** six plausibility lints and a required-role build floor ([0b34134](https://github.com/SunReye/SunReye/commit/0b34134fe636018cd73c11666b8dd5eaf3a9e7e2))
+
+
+### Bug Fixes
+
+* green the suite, stop the weather tile printing NaN, and enforce TDD ([37d8e9b](https://github.com/SunReye/SunReye/commit/37d8e9b9531ef15e07bcba82bd968b358b5c590f))
+* **inverter-core:** close dead-code findings on the authoring surface ([adcdc0c](https://github.com/SunReye/SunReye/commit/adcdc0c82eaabbd9c6b28cb942b3134314bbceba))
+* **test:** run the suites against a valid env and the real sources ([b442100](https://github.com/SunReye/SunReye/commit/b442100df65ac579e12d46c09bf5eb6c7d065fc7))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @SunReye/inverter-core bumped to 1.1.0
+
 ## [2.0.1](https://github.com/SunReye/SunReye/compare/profile-sdk-v2.0.0...profile-sdk-v2.0.1) (2026-07-18)
 
 
