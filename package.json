@@ -47,7 +47,6 @@
     "test:db": "bun test apps/server/db-tests",
     "test:mocks": "bun scripts/mock-hygiene.ts",
     "test:binary": "bun scripts/compiled-binary.ts",
-    "test:nginx": "bun scripts/nginx-locations.ts",
     "test:static-env": "bun scripts/static-build-env.ts",
     "test:storage": "bun scripts/storage-tuning.ts",
     "test:wear": "bun scripts/storage-wear.ts",
