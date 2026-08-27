@@ -2,7 +2,7 @@
 
 ## [unreleased]
 
-Unreleased work on `dev` since 1.2.0, shipped in `beta.20260827-05370ce`.
+Unreleased work on `dev` since 1.2.0, shipped in `beta.20260827-b87b0d1`.
 
 
 ### Features
@@ -357,6 +357,7 @@ Unreleased work on `dev` since 1.2.0, shipped in `beta.20260827-05370ce`.
 
 ### Build System
 
+* **docker:** ship one image, a musl binary on scratch ([ac61240](https://github.com/SunReye/SunReye/commit/ac61240c62b8d986ab6b76a46fd6bb45554646d1))
 * make the single-binary compile a turbo task ([b42839d](https://github.com/SunReye/SunReye/commit/b42839d780e0eeeaa7ffe534e0bdf19d1502c0fe))
 
 
