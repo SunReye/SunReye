@@ -43,6 +43,8 @@ import {
 import { runForecastCorrectionLearn } from "../forecast/forecast-correction-job";
 import { log } from "../shared/logging";
 import { type MqttBridge, startMqttBridge } from "./mqtt";
+import type { MqttNamespace } from "./mqtt-discovery";
+import { MissingMqttNamespaceError, readMqttNamespace } from "./mqtt-namespace";
 import { fetchSolarForecast, toForecastExport } from "../forecast/solar-forecast";
 import { runSpotPriceSync } from "../prices/spot-price-job";
 import { getSpotPriceConfig } from "../settings/spot-price-settings";
@@ -122,6 +124,17 @@ export interface RuntimeDeps {
    */
   scheduler?: JobScheduler;
   /**
+   * Resolves the plant/device slugs the MQTT bridge and every Home Assistant
+   * `unique_id` are named after. Defaults to the real read.
+   *
+   * Injected for the same reason {@link identity} is: the production reader
+   * queries the dimension spine, so a unit test that did not stub it would fail
+   * on a missing database client rather than on the behaviour it names — and
+   * worse, it would fail identically whether the bridge was named correctly or
+   * not.
+   */
+  mqttNamespace?: (profileId: string) => Promise<MqttNamespace>;
+  /**
    * Persistent state for composite (`controlExpr`) controls, consumed by both
    * the write funnel and the per-poll state injection. Defaults to the
    * `app_settings`-backed store; injected so a test drives the funnel against an
@@ -159,6 +172,7 @@ export function createRuntime(deps: RuntimeDeps = {}) {
    * once per table, and closure-local like every other field here.
    */
   const identity = deps.identity ?? createIdentityResolver({ db });
+  const mqttNamespaceOf = deps.mqttNamespace ?? readMqttNamespace;
   const rowIdentifier = createRowIdentifier({ resolver: identity, logger });
   /**
    * Commit one batch to `table`, resolving the identity first.
@@ -431,9 +445,52 @@ export function createRuntime(deps: RuntimeDeps = {}) {
     if (previous) await previous.close();
   }
 
+  /**
+   * (Re)build the MQTT bridge, naming it by the plant's and device's FROZEN slugs.
+   *
+   * The namespace is read HERE, once per rebuild, and that cadence is the whole
+   * design: the slugs are frozen, so re-reading them per publish would be a
+   * query for a value that cannot change, while never re-reading them would
+   * leave the bridge on the old namespace after a profile swap (which
+   * `readMqttNamespace` resolves through its second arm).
+   *
+   * A MISSING NAMESPACE TURNS MQTT OFF; IT DOES NOT TAKE THE POLL LOOP DOWN.
+   * `syncProvisioning` swallows its own failures and returns null, so "the spine
+   * has no device row yet" is genuinely reachable at boot — and this function is
+   * awaited from `start()`, where an unguarded throw would abort the runtime and,
+   * on the one deployment target (a Home Assistant addon), hand its supervisor a
+   * crash loop. Readings still matter without a broker, so the bridge stays null
+   * and the next boot picks it up.
+   *
+   * What this must NEVER do is fall back to `profile.id`. That fallback is the
+   * defect: Home Assistant keys entities on `unique_id`, a discovery
+   * announcement is retained, and a profile-keyed identity therefore renames
+   * every entity — irreversibly — the first time a profile changes. Silence is
+   * recoverable; a wrong permanent identity is not. The `ctx` type has no
+   * optional form precisely so this cannot be reintroduced by accident.
+   */
   async function rebuildBridge(config: MqttConfig): Promise<void> {
     const previous = bridge;
-    bridge = startMqttBridge(config, { ctx: context(), write });
+    const ctx = context();
+    let namespace: MqttNamespace | null = null;
+    try {
+      namespace = await mqttNamespaceOf(ctx.profile.id);
+    } catch (error) {
+      // EVERY failure, not just MissingMqttNamespaceError. An unprovisioned spine
+      // and an unreachable database are equally recoverable — both are fixed by
+      // the next boot — and neither is a reason to abort `start()` and hand the
+      // addon's supervisor a crash loop. Narrowing this to the one error class
+      // was the first version of this guard and it was wrong: a DrizzleQueryError
+      // from a missing client took the whole runtime down.
+      const reason = error instanceof MissingMqttNamespaceError ? error.message : String(error);
+      logger.warn(
+        "MQTT is off: {reason}. Home Assistant entities are named after the plant and device " +
+          "slugs, so the bridge waits for those rows rather than announcing under a name that " +
+          "could never be corrected.",
+        { reason },
+      );
+    }
+    bridge = namespace === null ? null : startMqttBridge(config, { ctx: { ...ctx, ...namespace }, write });
     if (previous) await previous.close();
     // Seed a fresh bridge with the current forecast instead of waiting a full
     // interval; harmless when the forecast is disabled (publishes null → no-op).

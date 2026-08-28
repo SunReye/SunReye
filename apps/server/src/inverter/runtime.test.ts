@@ -273,6 +273,8 @@ class FakeBridge {
 const bridges: FakeBridge[] = [];
 /** The `write` the runtime injected into the bridge — MQTT's command path. */
 let bridgeWrite: ((key: string, value: number) => Promise<void>) | null = null;
+/** The `ctx` the runtime injected — carries the namespace every HA id is built from. */
+let bridgeCtx: { profile: { id: string }; plantSlug?: string; deviceSlug?: string } | null = null;
 const latestBridge = () => bridges.at(-1) as FakeBridge;
 
 const realBridgeModule = await import("./mqtt");
@@ -287,6 +289,7 @@ mock.module("./mqtt", () => ({
     if (!intercepting) return realStartMqttBridge(config, deps);
     if (!config.enabled) return null;
     bridgeWrite = deps.write;
+    bridgeCtx = deps.ctx;
     const built = new FakeBridge(config);
     bridges.push(built);
     return built;
@@ -761,6 +764,17 @@ const runtime = createRuntime({
   configLog: configDouble,
   controlStore,
   identity: identityDouble,
+  // The MQTT namespace, injected for the same reason the resolver is: the real
+  // reader queries the dimension spine, so without a double every bridge spec
+  // would fail on a missing database client — and the runtime's own guard turns
+  // that failure into "MQTT is off", which looks identical to a bridge that was
+  // never built. `namespaceReads` records the profile id it was asked for, so a
+  // rebuild-cadence claim can be asserted rather than assumed.
+  mqttNamespace: async (profileId) => {
+    namespaceReads.push(profileId);
+    if (namespaceOutcome instanceof Error) throw namespaceOutcome;
+    return namespaceOutcome;
+  },
   // The EV charge-power estimator hook, injected as a spy instead of mocking
   // `../evcc/evcc`: every poll's house-load value is recorded here, which is why
   // this suite no longer installs (or has to unwind) an evcc module mock.
@@ -788,6 +802,23 @@ const { createStreams } = await import("../shared/streams");
  * never made it into the registration would look exactly like a unit that did.
  */
 let registeredSpecs: MetricKeySpec[][] = [];
+
+/** Profile ids the bridge asked the namespace reader for, one per rebuild. */
+let namespaceReads: string[] = [];
+
+/**
+ * What the namespace reader does next: hand back slugs, or throw.
+ *
+ * Both failure shapes matter and they are NOT the same test. A
+ * `MissingMqttNamespaceError` is "the spine has no device row yet"; anything
+ * else is "the database did not answer". The runtime must treat them
+ * identically — MQTT off, poll loop up — and the first version of that guard did
+ * not, so a missing client aborted `start()`.
+ */
+let namespaceOutcome: { plantSlug: string; deviceSlug: string } | Error = {
+  plantSlug: "test-plant",
+  deviceSlug: "inverter",
+};
 
 /** Samples emitted on the `metrics` topic, in poll order. */
 let published: InverterSample[] = [];
@@ -831,6 +862,9 @@ beforeEach(() => {
   configDouble.rows = [];
   configInserted.length = 0;
   bridges.length = 0;
+  bridgeCtx = null;
+  namespaceReads = [];
+  namespaceOutcome = { plantSlug: "test-plant", deviceSlug: "inverter" };
   sources.length = 0;
   published = [];
   loadSamples = [];
@@ -1436,6 +1470,66 @@ describe("the MQTT bridge", () => {
       watts: 3000,
     });
     expect(published0.raw.detailedForecast[1]?.watts).toBe(5000);
+  });
+
+  test("the bridge is named by the plant and device slugs, never by the profile id", async () => {
+    await boot();
+    await settle();
+
+    expect(bridgeCtx?.plantSlug).toBe("test-plant");
+    expect(bridgeCtx?.deviceSlug).toBe("inverter");
+    // The point of the whole change: Home Assistant keys entities on `unique_id`
+    // and a discovery announcement is retained, so an identity built from the
+    // profile id is renamed — irreversibly — the first time the profile changes.
+    expect(bridgeCtx?.plantSlug).not.toBe(bridgeCtx?.profile.id);
+    expect(bridgeCtx?.deviceSlug).not.toBe(bridgeCtx?.profile.id);
+  });
+
+  test("the namespace is read once per bridge rebuild, not once per publish", async () => {
+    await boot();
+    await settle();
+    const afterBoot = namespaceReads.length;
+    expect(afterBoot).toBe(1);
+
+    // Several forecast publishes go out on the seeded bridge; none of them may
+    // re-read a value the schema freezes.
+    await settle();
+    expect(namespaceReads.length).toBe(afterBoot);
+
+    await applyMqttConfig(baseMqttConfig({ brokerUrl: "mqtt://elsewhere:1883" }));
+    await settle();
+    expect(namespaceReads.length).toBe(afterBoot + 1);
+  });
+
+  test("an unprovisioned spine turns MQTT OFF and leaves the poll loop running", async () => {
+    const { MissingMqttNamespaceError } = await import("./mqtt-namespace");
+    namespaceOutcome = new MissingMqttNamespaceError("no device row can name the MQTT namespace");
+
+    await boot();
+    await poll();
+    await settle();
+
+    // No bridge — and crucially not a bridge announced under a name that could
+    // never be corrected.
+    expect(bridges).toHaveLength(0);
+    // The readings are what the plant is for; they must survive a broker-less boot.
+    expect(published.length).toBeGreaterThan(0);
+    expect(status().inverter.lastError).toBeNull();
+  });
+
+  test("a DATABASE failure is treated the same as a missing row, not thrown into start()", async () => {
+    // Not a MissingMqttNamespaceError. The first version of this guard rethrew
+    // anything else, so a missing database client aborted the runtime and handed
+    // the addon's supervisor a crash loop — on the one deployment target whose
+    // supervisor restarts forever.
+    namespaceOutcome = new Error("connection refused");
+
+    await boot();
+    await poll();
+    await settle();
+
+    expect(bridges).toHaveLength(0);
+    expect(published.length).toBeGreaterThan(0);
   });
 
   test("a disabled forecast publishes null rather than a stale curve", async () => {
