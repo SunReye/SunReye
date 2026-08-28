@@ -181,3 +181,86 @@ describe("plantTextsFrom", () => {
     });
   });
 });
+
+/**
+ * The per-array overrides — `deviceSlug`, `tempCoefficient`, `systemLoss` — have
+ * NO input on this form, and that is the decision. They are datasheet and
+ * per-string numbers an operator sets once from a document, and the plant
+ * columns beside them remain the answer for the uniform single-array plant this
+ * form is shaped for.
+ *
+ * Which makes the round trip below the whole risk of that decision. This form
+ * does a read-modify-write of the `arrays` list and NAMES it in the request
+ * (`plant-form.svelte`, and `plant-fields-placement.test.ts` on why it names
+ * rather than spreads), so a parser that rebuilt each entry from its three text
+ * boxes would erase every override on the next unrelated save — an operator
+ * changing the export limit silently reverting the east string's 25 % loss. That
+ * is the exact bug class the placement test exists for, one layer in.
+ *
+ * So the overrides ride through as an opaque `overrides` bag: not text, not
+ * editable, not defaulted, and byte-identical on the way out.
+ */
+describe("per-array overrides the form does not edit", () => {
+  const withOverrides = (): StoredPlant => ({
+    arrays: [
+      { kwp: 5, tilt: 20, azimuth: -90, deviceSlug: "east-inv", systemLoss: 25 },
+      { kwp: 9.8, tilt: 30, azimuth: 0, tempCoefficient: -0.29 },
+    ],
+    tempCoefficient: -0.4,
+    systemLoss: 14,
+    maxOutputW: 10_000,
+    houseLoadW: null,
+    battery: null,
+    smartMeterSince: null,
+  });
+
+  test("survive a save round-trip untouched", () => {
+    const original = withOverrides();
+    expect(parsePlantFields(plantTextsFrom(original))?.arrays).toEqual(original.arrays);
+  });
+
+  test("survive a save that EDITS the array's geometry", () => {
+    // The realistic case: the operator retilts the east string, and the loss
+    // figure they entered from the installer's report has to still be there.
+    const texts = plantTextsFrom(withOverrides());
+    texts.arrays[0]!.tilt = "35";
+    expect(parsePlantFields(texts)?.arrays[0]).toEqual({
+      kwp: 5,
+      tilt: 35,
+      azimuth: -90,
+      deviceSlug: "east-inv",
+      systemLoss: 25,
+    });
+  });
+
+  test("do not appear on an array that never had them", () => {
+    // No key, not `undefined`: the value is round-tripped into JSONB and
+    // re-validated, and an invented `systemLoss: undefined` would read as a
+    // stated field to anything that inspects keys.
+    const parsed = parsePlantFields(plantTextsFrom(withOverrides()));
+    expect(Object.keys(parsed?.arrays[1] ?? {}).sort()).toEqual([
+      "azimuth",
+      "kwp",
+      "tempCoefficient",
+      "tilt",
+    ]);
+    const plain = parsePlantFields(texts({ arrays: [{ kwp: "1", tilt: "1", azimuth: "1" }] }));
+    expect(Object.keys(plain?.arrays[0] ?? {}).sort()).toEqual(["azimuth", "kwp", "tilt"]);
+  });
+
+  test("are dropped along with the array when its geometry is unparseable", () => {
+    // All-or-nothing is unchanged: a half-typed tilt still fails the whole save
+    // rather than writing an array with overrides and no orientation.
+    const texts = plantTextsFrom(withOverrides());
+    texts.arrays[0]!.tilt = "";
+    expect(parsePlantFields(texts)).toBeNull();
+  });
+
+  test("a newly added array carries none, and that is not a blank statement", () => {
+    // The form's own "add array" button produces three empty text boxes and no
+    // `overrides` key. Absent must stay absent: a `{}` bag or a zeroed one would
+    // make every new array claim a 0 % loss.
+    const parsed = parsePlantFields(texts({ arrays: [{ kwp: "3", tilt: "10", azimuth: "0" }] }));
+    expect(parsed?.arrays).toEqual([{ kwp: 3, tilt: 10, azimuth: 0 }]);
+  });
+});

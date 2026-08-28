@@ -197,6 +197,87 @@ describe("the plant facts accessor", () => {
     expect(await accessor.battery()).toBeNull();
   });
 
+  /**
+   * The STATED pack voltage, as the pack rows say it — the number the
+   * peak-shaving engine scales every commanded charge current by.
+   *
+   * Separate from `battery().nominalV` on purpose. That one is the AGGREGATE's,
+   * and the aggregate takes "the first stated value" across packs, which is an
+   * arbitrary pick when they disagree (`@SunReye/db/batteries` says so in as many
+   * words: mixed voltages are a configuration it cannot express). An arbitrary
+   * pick is fine for a forecast and is not fine for a register write, so the
+   * engine asks this instead and gets `null` — "cannot say" — rather than a coin
+   * toss, and then falls back to what the operator actually stated somewhere.
+   */
+  test("the stated pack voltage is the packs' one agreed value", async () => {
+    const { accessor, store } = await facts();
+    await store.upsertDeviceBattery(100, {
+      usableKwh: 30,
+      maxChargeW: null,
+      minSoc: 5,
+      nominalV: 48,
+    });
+    accessor.invalidate();
+    expect(await accessor.packNominalV()).toBe(48);
+  });
+
+  test("is null when no pack states one", async () => {
+    const { accessor, store } = await facts();
+    // A pack row that exists before its voltage is entered. Null keeps the
+    // engine on whatever this install was already charging at, instead of
+    // silently rescaling every current to a 51.2 V default.
+    await store.upsertDeviceBattery(100, {
+      usableKwh: 30,
+      maxChargeW: null,
+      minSoc: 5,
+      nominalV: null,
+    });
+    accessor.invalidate();
+    expect(await accessor.packNominalV()).toBeNull();
+  });
+
+  test("is null on a plant with no pack at all", async () => {
+    const { accessor } = await facts();
+    expect(await accessor.packNominalV()).toBeNull();
+  });
+
+  test("is null when two packs disagree, and the agreed value when they do not", async () => {
+    const { accessor, store, devices, plants } = await facts();
+    devices.push({
+      id: 101,
+      plantId: plants[0]?.id ?? 1,
+      slug: "inverter-2",
+      name: "Second",
+      profileId: "p",
+      role: "inverter",
+      retiredAt: null,
+      unitId: 2,
+      connectionId: null,
+    });
+    const pack = (nominalV: number | null) => ({
+      usableKwh: 10,
+      maxChargeW: null,
+      minSoc: 10,
+      nominalV,
+    });
+    await store.upsertDeviceBattery(100, pack(48));
+    await store.upsertDeviceBattery(101, pack(51.2));
+    accessor.invalidate();
+    expect(await accessor.packNominalV()).toBeNull();
+
+    // Two packs at the same voltage is not a disagreement — that is one answer
+    // stated twice, and refusing it would drop a two-pack plant to the legacy
+    // default for no reason.
+    await store.upsertDeviceBattery(101, pack(48));
+    accessor.invalidate();
+    expect(await accessor.packNominalV()).toBe(48);
+
+    // One silent pack does not veto the one that spoke: nothing contradicts 48.
+    await store.upsertDeviceBattery(101, pack(null));
+    accessor.invalidate();
+    expect(await accessor.packNominalV()).toBe(48);
+  });
+
   test("writing a battery lands on the plant's single inverter device", async () => {
     const { accessor, batteries } = await facts();
     await accessor.writeBattery({ usableKwh: 12, maxChargeW: null, minSoc: 8, nominalV: null });

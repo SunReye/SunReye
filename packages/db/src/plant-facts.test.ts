@@ -338,6 +338,74 @@ describe("columnsFromPlantRow", () => {
       columnsFromPlantRow({ ...base, arrays: [{ kwp: 1, tilt: 1, azimuth: 999 }] }).arrays,
     ).toEqual([]);
   });
+
+  /**
+   * The per-array overrides survive the COLUMN READ.
+   *
+   * This is the load-bearing half of the per-array physics change: the reader
+   * below is the only path from the `arrays` JSONB column to the forecast, and it
+   * rebuilds each entry field by field. A reader that kept mining three fields
+   * would parse a stored override without complaint and then hand the model an
+   * array that never mentioned it — the override written on Monday silently
+   * ignored on Tuesday, with a forecast that is merely a bit wrong.
+   */
+  test("carries a stored array's per-array overrides through", () => {
+    const base = {
+      latitude: null,
+      longitude: null,
+      label: "",
+      tempCoefficient: -0.4,
+      systemLoss: 14,
+      maxOutputW: null,
+      houseLoadW: null,
+      smartMeterSince: null,
+    };
+    expect(
+      columnsFromPlantRow({
+        ...base,
+        arrays: [
+          { kwp: 5, tilt: 20, azimuth: -90, deviceSlug: "east-inv", tempCoefficient: -0.29 },
+          { kwp: 9.8, tilt: 30, azimuth: 0, systemLoss: 8 },
+        ],
+      }).arrays,
+    ).toEqual([
+      { kwp: 5, tilt: 20, azimuth: -90, deviceSlug: "east-inv", tempCoefficient: -0.29 },
+      { kwp: 9.8, tilt: 30, azimuth: 0, systemLoss: 8 },
+    ]);
+  });
+
+  test("drops an override the schema would refuse, keeping the array itself", () => {
+    // Bounds first: mining a value `weatherConfigSchema` rejects would seed a
+    // column the plant form then cannot save. But a bad OVERRIDE is not a bad
+    // ARRAY — the three real fields describe a surface that exists, and dropping
+    // the whole entry would model a smaller plant (see `maybeArrays`, which is
+    // all-or-nothing for exactly that reason). So the override falls away and the
+    // plant default takes over, which is where it was before anyone stated one.
+    const base = {
+      latitude: null,
+      longitude: null,
+      label: "",
+      tempCoefficient: -0.4,
+      systemLoss: 14,
+      maxOutputW: null,
+      houseLoadW: null,
+      smartMeterSince: null,
+    };
+    expect(
+      columnsFromPlantRow({
+        ...base,
+        arrays: [{ kwp: 5, tilt: 20, azimuth: 0, tempCoefficient: 5, systemLoss: 200 }],
+      }).arrays,
+    ).toEqual([{ kwp: 5, tilt: 20, azimuth: 0 }]);
+    expect(
+      columnsFromPlantRow({ ...base, arrays: [{ kwp: 5, tilt: 20, azimuth: 0, deviceSlug: "" }] })
+        .arrays,
+    ).toEqual([{ kwp: 5, tilt: 20, azimuth: 0 }]);
+    expect(
+      columnsFromPlantRow({ ...base, arrays: [{ kwp: 5, tilt: 20, azimuth: 0, deviceSlug: 7 }] })
+        .arrays,
+    ).toEqual([{ kwp: 5, tilt: 20, azimuth: 0 }]);
+  });
 });
 
 describe("plantBatteryFrom", () => {

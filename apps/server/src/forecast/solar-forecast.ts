@@ -303,6 +303,12 @@ function slotGrid(times: string[], utcOffsetSeconds: number): SlotGrid {
  * sun position feeds the per-array incidence angle so the IAM split (when DNI is
  * available) can bite. A learned correction (when supplied) then scales the
  * sample by its (month, hour) factor.
+ *
+ * Each array is modelled with ITS OWN temperature coefficient and system loss,
+ * falling back to the plant's. The model's seam was always per array; it used to
+ * be handed the same plant-wide pair eight times over, so a shaded east string
+ * and a clean south one shared one 14 % — the fudge factor
+ * `./forecast-correction.ts` then had to learn its way out of.
  */
 function instantPowerW(
   config: WeatherConfig["forecast"],
@@ -322,8 +328,12 @@ function instantPowerW(
       watts += pvPowerW(
         { ...env, gtiWm2: data.gti[a]?.[i] ?? 0, cosAoi: cosAoi(sun, arr.tilt, arr.azimuth) },
         arr.kwp,
-        config.tempCoefficient,
-        config.systemLoss,
+        // `??`, never `||`: 0 %/°C and 0 % loss are legal STATEMENTS about a
+        // string, and `||` would swap either for the plant default silently.
+        // The plant column is the fallback and stays the answer for the uniform
+        // single-array plant that never states anything per array.
+        arr.tempCoefficient ?? config.tempCoefficient,
+        arr.systemLoss ?? config.systemLoss,
       );
     });
     return correction ? watts * correctionFactor(correction, monthOf(time), hourOf(time)) : watts;

@@ -119,7 +119,15 @@ export function isRetired(device: Pick<DeviceRecord, "retiredAt">): boolean {
   return device.retiredAt !== null;
 }
 
-/** The in-service devices of a list, in the order given. */
+/**
+ * The in-service devices of a list, in the order given.
+ *
+ * The in-memory half of the retirement filter, for device lists held without
+ * re-reading them. Both callers are that shape: `provisionDevice`'s adoption
+ * candidates in `apps/server/src/inverter/provision.ts`, and the plant's devices
+ * as `./custom-charts.ts` sees them when it resolves which inverter an
+ * unqualified saved chart means.
+ */
 export function activeDevices<T extends Pick<DeviceRecord, "retiredAt">>(
   devices: readonly T[],
 ): T[] {
