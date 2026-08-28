@@ -17,6 +17,7 @@ import {
   topicsFor,
 } from "./mqtt-discovery";
 import { holdDiscovery, releaseDiscovery, resetDiscoveryGate } from "../migration/discovery-gate";
+import type { LegacyRetirementState, LegacyRetirementStore } from "./mqtt-legacy-retire";
 import type { ProfileContext } from "./inverter";
 import { createControlWriter } from "./control-writer";
 import type { ForecastVariant, SolarForecastExport } from "../forecast/solar-forecast";
@@ -372,9 +373,39 @@ const baseConfig: MqttConfig = {
   haDiscoveryPrefix: "homeassistant",
 };
 
+/**
+ * The legacy sweep's state and profile-id lookup, in memory.
+ *
+ * ALWAYS injected, in every test: the production default reaches `app_settings`
+ * and the plant spine, and a unit suite must never need a Postgres to prove what
+ * lands on the broker.
+ */
+function fakeLegacyStore(
+  profileIds: string[] = ["deye-sg05lp3"],
+  initial: LegacyRetirementState | null = null,
+): LegacyRetirementStore & { state: LegacyRetirementState | null; reads: number } {
+  const store = {
+    state: initial,
+    reads: 0,
+    readState: async () => {
+      store.reads += 1;
+      return store.state;
+    },
+    writeState: async (s: LegacyRetirementState) => {
+      store.state = s;
+    },
+    legacyProfileIds: async () => profileIds,
+  };
+  return store;
+}
+
+/** Let the fire-and-forget legacy sweep settle before asserting on the wire. */
+const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+
 type Harness = {
   bridge: NonNullable<ReturnType<typeof startMqttBridge>>;
   client: FakeClient;
+  legacy: ReturnType<typeof fakeLegacyStore>;
   writes: { key: string; value: number }[];
   /** Simulate the broker completing the connection handshake. */
   connect(): void;
@@ -392,6 +423,7 @@ function start(
     defByKey?: Map<string, MetricDef>;
     plantSlug?: string;
     deviceSlug?: string;
+    legacy?: ReturnType<typeof fakeLegacyStore>;
   } = {},
 ): Harness {
   const writes: { key: string; value: number }[] = [];
@@ -420,13 +452,18 @@ function start(
     store: { get: async () => ({}), set: async () => {} },
     readLive: () => undefined,
   });
-  const bridge = startMqttBridge({ ...baseConfig, ...over }, { ctx, write: funnel.write });
+  const legacy = opts.legacy ?? fakeLegacyStore();
+  const bridge = startMqttBridge(
+    { ...baseConfig, ...over },
+    { ctx, write: funnel.write, legacyRetirement: legacy },
+  );
   if (!bridge) throw new Error("bridge was disabled");
   const client = clients.at(-1);
   if (!client) throw new Error("no client was created");
   return {
     bridge,
     client,
+    legacy,
     writes,
     connect() {
       client.connected = true;
@@ -554,6 +591,7 @@ describe("connecting", () => {
         ...ns,
       },
       write: async () => {},
+      legacyRetirement: fakeLegacyStore(),
     });
     expect(bridge).not.toBeNull();
     const client = clients.at(-1);
@@ -944,6 +982,7 @@ describe("swapping the profile", () => {
           ...ns,
         },
         write: async () => {},
+        legacyRetirement: fakeLegacyStore(),
       },
     );
     expect(bridge).not.toBeNull();
@@ -1000,6 +1039,7 @@ describe("swapping the profile", () => {
           deviceSlug: "inverter",
         },
         write: async () => {},
+        legacyRetirement: fakeLegacyStore(),
       },
     );
     expect(other).not.toBeNull();
@@ -1012,6 +1052,200 @@ describe("swapping the profile", () => {
     );
     expect(config.unique_id).toBe("sunreye_ferienhaus_inverter_pv_power");
     expect(client!.topics()).toContain("sunreye/ferienhaus/inverter/status");
+  });
+});
+
+/**
+ * RETIRING THE PROFILE-KEYED ENTITIES. Destructive and irreversible on a live
+ * broker, so every fence is asserted here as (topic, payload, retain) tuples on
+ * the wire rather than as a string built in a test.
+ */
+describe("retiring the legacy HA entities", () => {
+  const legacyClears = (client: FakeClient) =>
+    client.published.filter((p) => p.payload === "" && p.topic.startsWith("homeassistant/"));
+
+  test("clears the old profile-keyed configs with an empty RETAINED payload", async () => {
+    const h = start({ haDiscoveryEnabled: true });
+    h.connect();
+    await settle();
+    expect(legacyClears(h.client)).toEqual([
+      {
+        topic: "homeassistant/sensor/sunreye_deye-sg05lp3/pv_power/config",
+        payload: "",
+        opts: { retain: true },
+      },
+      {
+        topic: "homeassistant/sensor/sunreye_deye-sg05lp3/battery_temperature/config",
+        payload: "",
+        opts: { retain: true },
+      },
+      {
+        topic: "homeassistant/sensor/sunreye_deye-sg05lp3/grid_import/config",
+        payload: "",
+        opts: { retain: true },
+      },
+      {
+        topic: "homeassistant/number/sunreye_deye-sg05lp3/setting_charge_current/config",
+        payload: "",
+        opts: { retain: true },
+      },
+      {
+        topic: "homeassistant/select/sunreye_deye-sg05lp3/setting_mode/config",
+        payload: "",
+        opts: { retain: true },
+      },
+      {
+        topic: "homeassistant/sensor/sunreye_deye-sg05lp3/system_time/config",
+        payload: "",
+        opts: { retain: true },
+      },
+      {
+        topic: "homeassistant/sensor/sunreye_deye-sg05lp3/forecast/config",
+        payload: "",
+        opts: { retain: true },
+      },
+      {
+        topic: "homeassistant/sensor/sunreye_deye-sg05lp3/forecast_usable/config",
+        payload: "",
+        opts: { retain: true },
+      },
+    ]);
+  });
+
+  test("THE NEW CONFIG IS ON THE WIRE BEFORE ITS OLD ONE IS CLEARED", async () => {
+    // Otherwise the operator is momentarily left with no entity at all.
+    const h = start({ haDiscoveryEnabled: true });
+    h.connect();
+    await settle();
+    const announce = h.client
+      .topics()
+      .indexOf("homeassistant/sensor/sunreye_haus-sud_inverter/pv_power/config");
+    const clear = h.client
+      .topics()
+      .indexOf("homeassistant/sensor/sunreye_deye-sg05lp3/pv_power/config");
+    expect(announce).toBeGreaterThanOrEqual(0);
+    expect(clear).toBeGreaterThan(announce);
+  });
+
+  test("it never publishes outside the nodes this software owns", async () => {
+    const h = start({ haDiscoveryEnabled: true });
+    h.connect();
+    await settle();
+    for (const { topic } of h.client.published) {
+      const owned =
+        topic.startsWith("sunreye/haus-sud/inverter/") ||
+        /^homeassistant\/[a-z]+\/sunreye_[^/]+\/[^/]+\/config$/.test(topic);
+      expect({ topic, owned }).toEqual({ topic, owned: true });
+    }
+    // And never a wildcard, which would take another integration's entities.
+    expect(h.client.topics().some((t) => t.includes("#") || t.includes("+"))).toBe(false);
+  });
+
+  test("a SECOND bridge start is a no-op — the state row says it ran", async () => {
+    const legacy = fakeLegacyStore();
+    const first = start({ haDiscoveryEnabled: true }, { legacy });
+    first.connect();
+    await settle();
+    expect(legacy.state?.topics).toBe(8);
+
+    const second = start({ haDiscoveryEnabled: true }, { legacy });
+    second.connect();
+    await settle();
+    expect(legacyClears(second.client)).toEqual([]);
+  });
+
+  test("a RECONNECT does not re-sweep, and does not even re-read the state", async () => {
+    const h = start({ haDiscoveryEnabled: true });
+    h.connect();
+    await settle();
+    h.drop();
+    h.client.published.length = 0;
+    h.connect();
+    await settle();
+    expect(legacyClears(h.client)).toEqual([]);
+    expect(h.legacy.reads).toBe(1);
+  });
+
+  test("A HELD GATE SWEEPS NOTHING — identity is not settled yet", async () => {
+    holdDiscovery("migration onboarding not completed");
+    const h = start({ haDiscoveryEnabled: true });
+    h.connect();
+    await settle();
+    expect(legacyClears(h.client)).toEqual([]);
+    expect(h.legacy.state).toBeNull();
+  });
+
+  test("and it sweeps once the operator's names release the gate", async () => {
+    holdDiscovery("migration onboarding not completed");
+    const h = start({ haDiscoveryEnabled: true });
+    h.connect();
+    await settle();
+    releaseDiscovery();
+    await settle();
+    expect(legacyClears(h.client).map((p) => p.topic)).toContain(
+      "homeassistant/sensor/sunreye_deye-sg05lp3/pv_power/config",
+    );
+  });
+
+  test("discovery turned off sweeps nothing — nothing was ever announced by us", async () => {
+    const h = start({ haDiscoveryEnabled: false });
+    h.connect();
+    await settle();
+    expect(legacyClears(h.client)).toEqual([]);
+    expect(h.legacy.reads).toBe(0);
+  });
+
+  test("every profile id the install has is swept, not only the active one", async () => {
+    const h = start(
+      { haDiscoveryEnabled: true },
+      { legacy: fakeLegacyStore(["deye-sg05lp3", "sofar-hyd-6000"]) },
+    );
+    h.connect();
+    await settle();
+    const topics = legacyClears(h.client).map((p) => p.topic);
+    expect(topics).toContain("homeassistant/sensor/sunreye_deye-sg05lp3/pv_power/config");
+    expect(topics).toContain("homeassistant/sensor/sunreye_sofar-hyd-6000/pv_power/config");
+  });
+
+  test("a custom discovery prefix moves the sweep too", async () => {
+    const h = start({ haDiscoveryEnabled: true, haDiscoveryPrefix: "ha" });
+    h.connect();
+    await settle();
+    expect(h.client.published.filter((p) => p.payload === "").map((p) => p.topic)).toContain(
+      "ha/sensor/sunreye_deye-sg05lp3/pv_power/config",
+    );
+  });
+
+  test("a legacy id that IS the current node is not cleared — it is the live entity", async () => {
+    // The degenerate collision: the slugs spell the profile id, so the legacy
+    // topic and the new one are the same string. Clearing it would delete the
+    // entity that had just been announced.
+    const h = start(
+      { haDiscoveryEnabled: true },
+      { legacy: fakeLegacyStore(["haus-sud_inverter"]) },
+    );
+    h.connect();
+    await settle();
+    expect(legacyClears(h.client)).toEqual([]);
+    // The live announcement is untouched and still carries its config.
+    expect(
+      h.client.payloadOf("homeassistant/sensor/sunreye_haus-sud_inverter/pv_power/config"),
+    ).toContain('"unique_id"');
+  });
+
+  test("a database that cannot be read leaves the announcement intact", async () => {
+    const legacy = fakeLegacyStore();
+    legacy.readState = async () => {
+      throw new Error("connection refused");
+    };
+    const h = start({ haDiscoveryEnabled: true }, { legacy });
+    h.connect();
+    await settle();
+    expect(legacyClears(h.client)).toEqual([]);
+    expect(h.client.topics()).toContain(
+      "homeassistant/sensor/sunreye_haus-sud_inverter/pv_power/config",
+    );
+    expect(h.bridge.status().connected).toBe(true);
   });
 });
 
