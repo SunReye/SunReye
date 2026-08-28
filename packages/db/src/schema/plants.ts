@@ -61,7 +61,7 @@ import {
   uniqueIndex,
 } from "drizzle-orm/pg-core";
 
-import { createdAtTz } from "./columns";
+import { createdAtTz, retiredAtTz } from "./columns";
 
 /**
  * The plant (site).
@@ -299,6 +299,42 @@ export const devices = pgTable(
     serial: text("serial"),
     /** `inverter` | `controller` | `meter` | `charger`. */
     role: text("role").notNull(),
+    /**
+     * When this device was taken out of service, or null while it is in service.
+     *
+     * THE LIFECYCLE FLAG `ON DELETE RESTRICT` MAKES NECESSARY.
+     *
+     * `metrics_raw.device_id` references this table `ON DELETE RESTRICT`, and
+     * that is correct: the readings are the point, and deleting the device would
+     * destroy the meaning of every row it ever wrote. The consequence is that a
+     * device with history can NEVER be deleted — so without this column there is
+     * no way to take one out of service at all. A replaced inverter would go on
+     * being polled forever (a connection that times out on every cycle), or the
+     * row would be worked around by editing its endpoint to something dead,
+     * which loses the fact that it was retired.
+     *
+     * SEMANTICS, and the third one is the load-bearing one:
+     *
+     *  1. A retired device is not polled.
+     *  2. Its history is RETAINED and stays readable. Nothing is hidden: the
+     *     rows are still in `metrics_raw`, still in the aggregates, still
+     *     exported. Retirement is about the future, not the past.
+     *  3. It must never be re-ADOPTED. Provisioning matches an existing device
+     *     by slug and by `(connection, unit)`, and those uniques are
+     *     unconditional on purpose — a retired device's slug is written into
+     *     years of exports and saved charts, so re-using it would make two
+     *     machines share one name. That means `ensureDevice` on a retired slug
+     *     hands back the RETIRED row, and a boot that ignored this column would
+     *     resurrect it. Callers filter on it (`../plant-repo.ts`'s
+     *     `activeDevices` / `readDevices({ includeRetired: false })`) rather
+     *     than assuming what they got back is pollable.
+     *
+     * A TIMESTAMP rather than a boolean, and nullable rather than defaulted: the
+     * date is the only record of WHEN the machine left the plant, which is what
+     * makes a gap in the history explicable a year later — and null keeps "in
+     * service" distinguishable from "retired at an unknown time".
+     */
+    retiredAt: retiredAtTz(),
     createdAt: createdAtTz(),
   },
   (t) => [

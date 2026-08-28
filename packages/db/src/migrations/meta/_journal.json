@@ -29,6 +29,13 @@
       "when": 1787900863694,
       "tag": "0003_rapid_galactus",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1787901121032,
+      "tag": "0004_huge_betty_ross",
+      "breakpoints": true
     }
   ]
 }

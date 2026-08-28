@@ -91,6 +91,41 @@ export interface DeviceRecord {
   role: string;
   unitId: number;
   connectionId: number | null;
+  /**
+   * When the device was taken out of service, or null while it is in service.
+   *
+   * See `./schema/plants.ts` for why the column exists at all (`ON DELETE
+   * RESTRICT` leaves no other way out of service) and for the three semantics it
+   * carries. Read it before treating a device as pollable or adoptable —
+   * {@link isRetired} and {@link activeDevices} are that check, spelled once.
+   */
+  retiredAt: Date | null;
+}
+
+/**
+ * Whether a device has been taken out of service.
+ *
+ * A named predicate rather than an inline `!== null` at each site: the server
+ * holds device lists it did not fetch itself — a cached runtime roster, a set of
+ * adoption candidates — and every one of them has to apply the SAME rule as the
+ * SQL arm below. Two spellings of "is this device in service" is exactly how a
+ * retired device gets polled again.
+ *
+ * Not compared against the clock. The flag is a lifecycle STATE, not a schedule:
+ * a date the operator typed ahead of time retires the device now, because
+ * nothing in the poll loop would revisit the decision later.
+ */
+// fallow-ignore-next-line unused-export -- the DB-layer seam for retirement; the poll loop and provisioning adopt it in the server wave that restructures `apps/server/src/inverter/provision*.ts`, and `activeDevices` below is its only in-package caller today.
+export function isRetired(device: Pick<DeviceRecord, "retiredAt">): boolean {
+  return device.retiredAt !== null;
+}
+
+/** The in-service devices of a list, in the order given. */
+// fallow-ignore-next-line unused-export -- same seam: the in-memory half of the retirement filter, for the device lists the server holds without re-reading them.
+export function activeDevices<T extends Pick<DeviceRecord, "retiredAt">>(
+  devices: readonly T[],
+): T[] {
+  return devices.filter((d) => !isRetired(d));
 }
 
 /**
@@ -102,6 +137,17 @@ export interface DeviceRecord {
 const int = (value: unknown): number => Number(value);
 const maybeNum = (value: unknown): number | null =>
   value === null || value === undefined ? null : Number(value);
+/**
+ * A nullable `timestamptz`, as a `Date`.
+ *
+ * Same reason as {@link maybeNum}: the driver decides the JS type, and a
+ * timestamp that arrived as a STRING would fail every date comparison at the
+ * call site instead of here.
+ */
+const maybeDate = (value: unknown): Date | null => {
+  if (value === null || value === undefined) return null;
+  return value instanceof Date ? value : new Date(String(value));
+};
 
 /** The plant columns, selected under the names {@link PlantRecord} uses. */
 const PLANT_COLUMNS = sql`
@@ -354,7 +400,7 @@ export async function ensureConnection(
 
 const DEVICE_COLUMNS = sql`
   id, slug, name, profile_id as "profileId", role, unit_id as "unitId",
-  connection_id as "connectionId"`;
+  connection_id as "connectionId", retired_at as "retiredAt"`;
 
 function toDevice(row: Record<string, unknown>): DeviceRecord {
   return {
@@ -365,13 +411,41 @@ function toDevice(row: Record<string, unknown>): DeviceRecord {
     role: String(row.role),
     unitId: int(row.unitId),
     connectionId: maybeNum(row.connectionId),
+    retiredAt: maybeDate(row.retiredAt),
   };
 }
 
-/** The plant's devices, lowest id first. */
-export async function readDevices(db: PlantDb, plantId: number): Promise<DeviceRecord[]> {
+/** How {@link readDevices} treats devices that are out of service. */
+export interface ReadDevicesOptions {
+  /**
+   * Whether retired devices are listed. Defaults to TRUE.
+   *
+   * The default lists them because the settings page, the export and every
+   * history read need them — a retired device's readings are retained, and a
+   * device the UI cannot see is a device nobody can un-retire. The poll loop and
+   * provisioning pass `false`.
+   */
+  includeRetired?: boolean;
+}
+
+/**
+ * The plant's devices, lowest id first.
+ *
+ * `includeRetired: false` narrows the STATEMENT rather than filtering what comes
+ * back: filtering afterwards would still hand the caller every retired device,
+ * and the caller that asks for this is the one whose list must not contain one.
+ * {@link activeDevices} is the same rule for a list already in hand.
+ */
+export async function readDevices(
+  db: PlantDb,
+  plantId: number,
+  options: ReadDevicesOptions = {},
+): Promise<DeviceRecord[]> {
+  const retired = options.includeRetired === false ? sql` and retired_at is null` : sql``;
   const { rows } = await db.execute(
-    sql`select ${DEVICE_COLUMNS} from devices where plant_id = ${plantId} order by id asc`,
+    sql`select ${DEVICE_COLUMNS} from devices
+        where plant_id = ${plantId}${retired}
+        order by id asc`,
   );
   return (rows as Record<string, unknown>[]).map(toDevice);
 }
@@ -423,6 +497,16 @@ export interface DevicePatch {
   role?: string;
   unitId?: number;
   connectionId?: number | null;
+  /**
+   * Take the device out of service, or (with `null`) bring it back.
+   *
+   * The retirement path is an UPDATE and never a DELETE: `ON DELETE RESTRICT`
+   * refuses to delete a device that has readings, which is the whole reason the
+   * column exists. `undefined` leaves the flag untouched — the same distinction
+   * {@link connectionId} draws, and the reason an unrelated rename cannot
+   * accidentally resurrect a retired device.
+   */
+  retiredAt?: Date | null;
 }
 
 /**
@@ -447,6 +531,7 @@ export async function updateDevice(
   if (patch.connectionId !== undefined) {
     assignments.push(sql`connection_id = ${patch.connectionId}`);
   }
+  if (patch.retiredAt !== undefined) assignments.push(sql`retired_at = ${patch.retiredAt}`);
   if (assignments.length > 0) {
     await db.execute(sql`update devices set ${sql.join(assignments, sql`, `)} where id = ${id}`);
   }

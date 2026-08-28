@@ -57,6 +57,8 @@ function recordingStore(fail = false) {
         name: "Deye",
         profileId: "deye",
         role: "inverter",
+        // A freshly provisioned device is in service.
+        retiredAt: null,
         unitId: 1,
         connectionId: 2,
       };

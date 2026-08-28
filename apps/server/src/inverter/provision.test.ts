@@ -100,7 +100,9 @@ function memoryStore(seed: { settings?: Record<string, unknown> } = {}) {
       calls.push("ensureDevice");
       const existing = devices.find((d) => d.plantId === spec.plantId && d.slug === spec.slug);
       if (existing) return existing;
-      const created = { ...spec, id: nextId++ };
+      // `retiredAt: null` because a `DeviceSpec` carries no lifecycle flag: a
+      // device is created in service, and retirement is an UPDATE.
+      const created = { ...spec, id: nextId++, retiredAt: null };
       devices.push(created);
       return created;
     },

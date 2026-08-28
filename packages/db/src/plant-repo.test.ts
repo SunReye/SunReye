@@ -3,6 +3,7 @@ import type { SQL } from "drizzle-orm";
 import { PgDialect } from "drizzle-orm/pg-core";
 
 import {
+  activeDevices,
   createPlant,
   deleteDeviceBattery,
   ensureConnection,
@@ -12,6 +13,7 @@ import {
   readDevices,
   readPlant,
   readPlantBatteries,
+  isRetired,
   readRawSetting,
   updateDevice,
   updatePlant,
@@ -283,6 +285,71 @@ describe("devices", () => {
     expect(devices[1]?.connectionId).toBeNull();
   });
 
+  test("an in-service device reads back with retiredAt null, not undefined", async () => {
+    // The column is the lifecycle flag, and a missing property would make every
+    // `retiredAt === null` check in a caller pass by accident.
+    const { client } = fakeClient([[deviceRow()]]);
+    const devices = await readDevices(client, 7);
+    expect(devices[0]?.retiredAt).toBeNull();
+  });
+
+  test("a retired device's timestamp survives the mapping as a Date", async () => {
+    const at = new Date("2026-08-01T10:00:00Z");
+    const { client } = fakeClient([[deviceRow({ retiredAt: at })]]);
+    const devices = await readDevices(client, 7);
+    expect(devices[0]?.retiredAt?.toISOString()).toBe("2026-08-01T10:00:00.000Z");
+  });
+
+  test("a timestamp the driver hands back as a STRING is still a Date", async () => {
+    // Every other coercion in this module exists for the same reason: the driver
+    // decides the JS type, and a string here would silently fail a date
+    // comparison at the call site rather than here.
+    const { client } = fakeClient([[deviceRow({ retiredAt: "2026-08-01T10:00:00Z" })]]);
+    const devices = await readDevices(client, 7);
+    expect(devices[0]?.retiredAt?.toISOString()).toBe("2026-08-01T10:00:00.000Z");
+  });
+
+  test("readDevices lists retired devices by DEFAULT — their history is the point", async () => {
+    const { client, executed } = fakeClient([[deviceRow({ retiredAt: new Date() })]]);
+    const devices = await readDevices(client, 7);
+    expect(devices).toHaveLength(1);
+    expect(rendered(executed[0])).not.toContain("retired_at is null");
+  });
+
+  test("includeRetired: false narrows the statement instead of filtering in JS", async () => {
+    // Filtering after the fact would still ship every retired device's row to
+    // the caller, and the poll loop's list is the one that must not contain one.
+    const { client, executed } = fakeClient([[deviceRow()]]);
+    await readDevices(client, 7, { includeRetired: false });
+    expect(rendered(executed[0])).toContain("retired_at is null");
+  });
+
+  test("retiring is an UPDATE of the flag, never a DELETE", async () => {
+    // `ON DELETE RESTRICT` means a device with readings can never be deleted —
+    // which is correct — so this column is the only way out of service.
+    const at = new Date("2026-08-01T10:00:00Z");
+    const { client, executed } = fakeClient([[], [deviceRow({ retiredAt: at })]]);
+    const device = await updateDevice(client, 4, { retiredAt: at });
+    expect(device.retiredAt?.toISOString()).toBe("2026-08-01T10:00:00.000Z");
+    const text = rendered(executed[0]);
+    expect(text).toContain("retired_at");
+    expect(text).not.toContain("delete");
+  });
+
+  test("un-retiring is possible: null is a patched value, not an absent one", async () => {
+    // `retiredAt: undefined` means "leave it alone" while `null` means "bring it
+    // back into service" — the same distinction `connectionId` already draws.
+    const { client, executed } = fakeClient([[], [deviceRow()]]);
+    await updateDevice(client, 4, { retiredAt: null });
+    expect(rendered(executed[0])).toContain("retired_at");
+  });
+
+  test("an untouched retiredAt is not named in the UPDATE", async () => {
+    const { client, executed } = fakeClient([[], [deviceRow({ retiredAt: new Date() })]]);
+    await updateDevice(client, 4, { name: "Garage" });
+    expect(rendered(executed[0])).not.toContain("retired_at");
+  });
+
   test("ensureDevice inserts ON CONFLICT DO NOTHING, then reads the row back", async () => {
     // `DO NOTHING` and not `DO UPDATE`: the conflicting row already has an id in
     // five years of readings, and its name may have been edited by the operator.
@@ -443,5 +510,71 @@ describe("readRawSetting: a jsonb value wrapped in a JSON string", () => {
   test("a plain string setting comes back as itself", async () => {
     const db = { execute: async () => ({ rows: [{ value: "Europe/Berlin" }] }) };
     expect(await readRawSetting(db, "tz")).toBe("Europe/Berlin");
+  });
+});
+
+/**
+ * The retirement predicate and filter.
+ *
+ * Pure, and separate from the read, because the server holds lists of devices it
+ * did not fetch itself — a cached runtime roster, a set of adoption candidates —
+ * and those must apply the same rule as the SQL arm. Two spellings of "is this
+ * device in service" is exactly how a retired device gets polled again.
+ */
+describe("device retirement", () => {
+  const device = (retiredAt: Date | null) => ({
+    id: 1,
+    slug: "inverter",
+    name: "Inverter",
+    profileId: "deye",
+    role: "inverter",
+    unitId: 1,
+    connectionId: null,
+    retiredAt,
+  });
+
+  test("a device with no retirement date is in service", () => {
+    expect(isRetired(device(null))).toBe(false);
+  });
+
+  test("a device with a retirement date is retired", () => {
+    expect(isRetired(device(new Date("2026-08-01T00:00:00Z")))).toBe(true);
+  });
+
+  test("the epoch is a retirement date, not a falsy nothing", () => {
+    // `new Date(0)` is truthy, but the same flag held as a NUMBER would not be —
+    // the trap this pins, since the column is read through a driver that decides
+    // the JS type.
+    expect(isRetired(device(new Date(0)))).toBe(true);
+  });
+
+  test("a FUTURE retirement date still counts as retired", () => {
+    // The flag is a lifecycle state, not a schedule: nothing compares it to the
+    // clock, so a date typed ahead of time must not leave the device polled
+    // until then.
+    expect(isRetired(device(new Date("2099-01-01T00:00:00Z")))).toBe(true);
+  });
+
+  test("activeDevices keeps the in-service ones, in order", () => {
+    const rows = [
+      { ...device(null), id: 1 },
+      { ...device(new Date("2026-01-01T00:00:00Z")), id: 2 },
+      { ...device(null), id: 3 },
+    ];
+    expect(activeDevices(rows).map((d) => d.id)).toEqual([1, 3]);
+  });
+
+  test("activeDevices on an all-retired plant is empty, not the input", () => {
+    expect(activeDevices([device(new Date("2026-01-01T00:00:00Z"))])).toEqual([]);
+  });
+
+  test("activeDevices on no devices is no devices", () => {
+    expect(activeDevices([])).toEqual([]);
+  });
+
+  test("activeDevices leaves its input alone", () => {
+    const rows = [device(null), device(new Date())];
+    activeDevices(rows);
+    expect(rows).toHaveLength(2);
   });
 });

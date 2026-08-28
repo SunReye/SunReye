@@ -75,7 +75,9 @@ function memoryStore(seed: { settings?: Record<string, unknown> } = {}) {
       return devices.filter((d) => d.plantId === plantId);
     },
     async ensureDevice(spec: DeviceSpec) {
-      const created = { ...spec, id: nextId++ };
+      // A `DeviceSpec` carries no lifecycle flag: a device is created in
+      // service, and retirement is an UPDATE.
+      const created = { ...spec, id: nextId++, retiredAt: null };
       devices.push(created);
       return created;
     },
@@ -126,6 +128,7 @@ async function facts(seed: Parameters<typeof memoryStore>[0] = {}) {
     name: "Inverter",
     profileId: "p",
     role: "inverter",
+    retiredAt: null,
     unitId: 1,
     connectionId: null,
   });
@@ -161,6 +164,7 @@ describe("the plant facts accessor", () => {
       name: "Second",
       profileId: "p",
       role: "inverter",
+      retiredAt: null,
       unitId: 2,
       connectionId: null,
     });
@@ -223,6 +227,7 @@ describe("the plant facts accessor", () => {
       name: "Second",
       profileId: "p",
       role: "inverter",
+      retiredAt: null,
       unitId: 2,
       connectionId: null,
     });
@@ -269,6 +274,7 @@ describe("the plant facts accessor", () => {
       name: "GX",
       profileId: "victron",
       role: "controller",
+      retiredAt: null,
       unitId: 100,
       connectionId: null,
     });
