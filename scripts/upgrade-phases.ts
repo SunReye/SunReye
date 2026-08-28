@@ -168,7 +168,7 @@ export async function provision(o: Options): Promise<string[]> {
     });
     if (record.sourceId === null) return ["the migration record carries no source id"];
 
-    const { metrics, configKeys } = await classifyProfile();
+    const { metrics, configKeys } = await classifyProfile(await installedProfile(raw));
     const plant = await ensurePlant(store, {
       name: "Rehearsal plant",
       slug: "rehearsal-plant",
@@ -197,6 +197,23 @@ export async function provision(o: Options): Promise<string[]> {
 }
 
 /** The device the legacy history belongs to, and the profile's classification. */
+/**
+ * The profile the TARGET has installed, or null when it holds none.
+ *
+ * A real 1.x database carries its own `installed_profiles` row, and that — not
+ * the repo's sample fixture — is the profile whose metrics must be registered
+ * before the replay. See `./replay-rehearsal.ts`'s `classifyProfile` for what
+ * reading the fixture against a real database cost.
+ */
+async function installedProfile(db: SQL): Promise<{ id: string; metrics: [] } | null> {
+  const rows = (await db.unsafe(
+    `select id, data from installed_profiles order by installed_at limit 1`,
+  )) as { id: string; data: { id?: string; metrics?: [] } }[];
+  const row = rows[0];
+  if (!row?.data?.metrics) return null;
+  return { id: row.data.id ?? row.id, metrics: row.data.metrics };
+}
+
 async function backfillInputs(o: Options, db: SQL) {
   const { readLegacyCadenceMs, readMigrationRecord } =
     await import("../packages/db/src/upgrade-120-run");
@@ -210,7 +227,7 @@ async function backfillInputs(o: Options, db: SQL) {
   if (!Number.isInteger(deviceId)) {
     throw new Error(`no device names profile ${record.sourceId} — run --phase=provision first`);
   }
-  const { configKeys } = await classifyProfile();
+  const { configKeys } = await classifyProfile(await installedProfile(db));
   const cadence = await readLegacyCadenceMs(client);
   log(`device ${deviceId}, measured legacy poll cadence ${cadence ?? "unknown"} ms`);
   return { client, record, deviceId, configKeys, cadence };

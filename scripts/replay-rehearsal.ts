@@ -610,16 +610,33 @@ interface ProfileMetricDef {
  * design constraint issue #150 names, because a prefix list is one vendor's
  * naming and silently stops applying on the next.
  */
-export async function classifyProfile(): Promise<{
+export async function classifyProfile(installed?: {
+  id: string;
+  metrics: ProfileMetricDef[];
+} | null): Promise<{
   metrics: { key: string; isCounter: boolean }[];
   configKeys: string[];
   inverterId: string;
 }> {
   const { resolveStorage, statedKind } = await import("@SunReye/inverter-core");
-  const profile = (await Bun.file(join(REPO_ROOT, PROFILE_FILE)).json()) as {
-    id: string;
-    metrics: ProfileMetricDef[];
-  };
+  // THE TARGET'S OWN PROFILE WINS, and the repo fixture is only the fallback.
+  //
+  // This used to read the fixture unconditionally, which is right for the
+  // synthetic fixture (the fixture IS that profile) and WRONG for any real
+  // database. Rehearsing the real 1.2.0 install found it the hard way: production
+  // runs `deye-sun15k-sg05lp3` v1.0.1 with 109 metrics, the repo fixture declares
+  // 105, and the four it omits — battery.charge_power, battery.discharge_power,
+  // grid.export_power, grid.import_power — are all in the production history. So
+  // provisioning registered 105 keys and the replay's guard then refused to run,
+  // reporting four "unregistered" metrics that the installed profile declares
+  // perfectly well. The product was never wrong; this harness was, and it
+  // reported the harness's gap as a release blocker.
+  const profile =
+    installed ??
+    ((await Bun.file(join(REPO_ROOT, PROFILE_FILE)).json()) as {
+      id: string;
+      metrics: ProfileMetricDef[];
+    });
   const metrics = profile.metrics.map((m) => ({
     key: m.key,
     isCounter: statedKind(m as never) === "cumulative",
