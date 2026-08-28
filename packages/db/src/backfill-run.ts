@@ -103,6 +103,66 @@ function mergeReplayed<T extends { seriesRows: number; configRows: number; elaps
   };
 }
 
+/**
+ * Replay every legacy source id onto the one device, and fold the results.
+ *
+ * Split out of {@link runBackfill} because the multi-source loop pushed it past
+ * the repo's complexity ceiling — fairly: staging the record, carrying raw and
+ * refreshing tiers are the backfill's shape, while "which ids exist and how do
+ * their totals combine" is a separate question.
+ *
+ * `inverter_id` held the PROFILE id, so a database that ever renamed a profile
+ * carries several ids, all the same machine. The legacy relations are DROPPED at
+ * the end of the upgrade, so an id not replayed here is not "left for later", it
+ * is gone — the exact failure this release exists to end, committed by the
+ * migration meant to fix it.
+ */
+async function replayEverySource(
+  client: UpgradeClient,
+  record: MigrationRecord,
+  input: BackfillInput,
+  sourceId: string,
+  logger: UpgradeLogger,
+  options: ReplayOptions,
+): Promise<ReplayResult | null> {
+  const relations = input.tiers ?? { ...LEGACY_TIERS };
+  const base = {
+    source: BUCKET_REPLAY_SOURCE,
+    relations,
+    identity: { sourceId, deviceId: input.deviceId },
+    configKeys: input.configKeys,
+  };
+  const discovered = await legacySourceIds(client, base);
+  const ordered = discovered.length === 0 ? [sourceId] : discovered;
+  if (ordered.length > 1) {
+    logger.log(
+      `legacy history carries ${ordered.length} source ids — ${ordered.join(", ")} — ` +
+        `all replaying onto device ${input.deviceId}`,
+    );
+  }
+
+  let folded: ReplayResult | null = null;
+  for (const id of ordered) {
+    const one = await runReplay(
+      client,
+      {
+        ...base,
+        source: replayWatermarkSource(BUCKET_REPLAY_SOURCE, id, sourceId),
+        identity: { sourceId: id, deviceId: input.deviceId },
+        to: record.replayTo === null ? undefined : new Date(record.replayTo),
+        // `replayTo` is one bound for every legacy id, so for an orphaned id it
+        // reaches far past the hours that id actually holds. Without this, each
+        // day beyond its history is planned, matches no tier, and is reported as
+        // a gap — burying a real gap in noise.
+        clampToCoverage: true,
+      },
+      options,
+    );
+    folded = folded === null ? one : mergeReplayed(folded, one);
+  }
+  return folded;
+}
+
 export async function runBackfill(
   client: UpgradeClient,
   input: BackfillInput,
@@ -145,42 +205,7 @@ export async function runBackfill(
   // One pass per id, each under its own watermark (see `replayWatermarkSource`),
   // because the spans meet inside a day-chunk and a shared watermark would make
   // the second pass skip it.
-  const relations = input.tiers ?? { ...LEGACY_TIERS };
-  const probe = {
-    source: BUCKET_REPLAY_SOURCE,
-    relations,
-    identity: { sourceId, deviceId: input.deviceId },
-    configKeys: input.configKeys,
-  };
-  const sourceIds = await legacySourceIds(client, probe);
-  const ordered = sourceIds.length === 0 ? [sourceId] : sourceIds;
-  if (ordered.length > 1) {
-    logger.log(
-      `legacy history carries ${ordered.length} source ids — ${ordered.join(", ")} — ` +
-        `all replaying onto device ${input.deviceId}`,
-    );
-  }
-
-  let replayed: Awaited<ReturnType<typeof runReplay>> | null = null;
-  for (const id of ordered) {
-    const one = await runReplay(
-      client,
-      {
-        source: replayWatermarkSource(BUCKET_REPLAY_SOURCE, id, sourceId),
-        relations,
-        identity: { sourceId: id, deviceId: input.deviceId },
-        configKeys: input.configKeys,
-        to: record.replayTo === null ? undefined : new Date(record.replayTo),
-        // `replayTo` is one bound for every legacy id, so for an orphaned id it
-        // reaches far past the hours that id actually holds. Without this, each
-        // day beyond its history is planned, matches no tier, and is reported as
-        // a gap — burying a real gap in noise.
-        clampToCoverage: true,
-      },
-      options,
-    );
-    replayed = replayed === null ? one : mergeReplayed(replayed, one);
-  }
+  const replayed = await replayEverySource(client, record, input, sourceId, logger, options);
   if (replayed !== null) logger.log(replayedLine(replayed));
 
   const refreshed = await refreshTiers(client, input, logger);

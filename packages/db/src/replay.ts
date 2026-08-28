@@ -202,23 +202,40 @@ function clipToTierAtEdge(
 ): { tier: BucketTier; span: Span } | null {
   for (const tier of TIERS) {
     const window = windows.find((w) => w.tier === tier);
-    if (!window) continue;
-    const from = Math.max(window.from.getTime(), span.start.getTime());
-    const to = Math.min(window.to.getTime(), span.end.getTime());
-    if (from >= to) continue;
-    // Whole coverage still wins outright when the finest tier has it; the two
-    // edge cases below are what let a FINER tier beat a coarser one that covers
-    // the chunk completely. That preference is the fix: at 2026-07-12 the daily
-    // tier covered the whole day and the minute tier covered only its last two
-    // hours, and the minute tier is the one holding the day's real readings.
-    const covers =
-      window.from.getTime() <= span.start.getTime() && window.to.getTime() >= span.end.getTime();
-    const leading = edge.isFirst && window.to.getTime() >= span.end.getTime();
-    const trailing = edge.isLast && window.from.getTime() <= span.start.getTime();
-    if (!covers && !leading && !trailing) continue;
-    return { tier, span: { start: new Date(from), end: new Date(to) } };
+    if (window && usableAtEdge(window, span, edge)) {
+      return {
+        tier,
+        span: {
+          start: new Date(Math.max(window.from.getTime(), span.start.getTime())),
+          end: new Date(Math.min(window.to.getTime(), span.end.getTime())),
+        },
+      };
+    }
   }
   return null;
+}
+
+/**
+ * Whether one tier's window can answer this edge chunk.
+ *
+ * Whole coverage still wins outright when the finest tier has it. The two edge
+ * cases are what let a FINER tier beat a coarser one that covers the chunk
+ * completely: at 2026-07-12 the daily tier covered the whole day while the minute
+ * tier covered only its last two hours, and the minute tier is the one holding
+ * the day's real readings.
+ */
+function usableAtEdge(
+  window: TierWindow,
+  span: Span,
+  edge: { isFirst: boolean; isLast: boolean },
+): boolean {
+  const overlaps =
+    Math.max(window.from.getTime(), span.start.getTime()) <
+    Math.min(window.to.getTime(), span.end.getTime());
+  if (!overlaps) return false;
+  const reachesEnd = window.to.getTime() >= span.end.getTime();
+  const reachesStart = window.from.getTime() <= span.start.getTime();
+  return (reachesStart && reachesEnd) || (edge.isFirst && reachesEnd) || (edge.isLast && reachesStart);
 }
 
 /**
@@ -292,6 +309,40 @@ const DAY_MS = 86_400_000;
  * inside it on the same series, which is a double count — the one error a replay
  * must never make.
  */
+/**
+ * One day-chunk's outcome: the work it produced, and the spans it could not
+ * answer.
+ *
+ * Split out of {@link planReplay} so the loop stays a loop and the DECISION stays
+ * a decision. Both were one function until the edge-clipping arrived and pushed
+ * it past the repo's complexity ceiling — which was a fair reading, because the
+ * cursor arithmetic and the tier choice have nothing to do with each other.
+ */
+function planOneChunk(
+  windows: readonly TierWindow[],
+  span: Span,
+  edge: { isFirst: boolean; isLast: boolean },
+): { chunk: ReplayChunk | null; gaps: Span[] } {
+  const atEdge = edge.isFirst || edge.isLast;
+  if (!atEdge) {
+    const tier = finestTierCovering(windows, span);
+    return tier === null ? { chunk: null, gaps: [span] } : { chunk: { tier, ...span }, gaps: [] };
+  }
+  const clipped = clipToTierAtEdge(windows, span, edge);
+  if (clipped === null) return { chunk: null, gaps: [span] };
+
+  // The uncovered remainder is REPORTED, never silently dropped — the whole point
+  // of `gaps` is that a day no tier could answer stays visible.
+  const gaps: Span[] = [];
+  if (clipped.span.start.getTime() > span.start.getTime()) {
+    gaps.push({ start: span.start, end: clipped.span.start });
+  }
+  if (clipped.span.end.getTime() < span.end.getTime()) {
+    gaps.push({ start: clipped.span.end, end: span.end });
+  }
+  return { chunk: { tier: clipped.tier, ...clipped.span }, gaps };
+}
+
 export function planReplay(input: ReplayPlanInput): ReplayPlan {
   const chunks: ReplayChunk[] = [];
   const gaps: Span[] = [];
@@ -300,27 +351,12 @@ export function planReplay(input: ReplayPlanInput): ReplayPlan {
   while (cursor < end) {
     const dayEnd = Math.floor(cursor / DAY_MS) * DAY_MS + DAY_MS;
     const span: Span = { start: new Date(cursor), end: new Date(Math.min(dayEnd, end)) };
-    const edge = { isFirst: cursor === input.from.getTime(), isLast: dayEnd >= end };
-    const tier = edge.isFirst || edge.isLast ? null : finestTierCovering(input.windows, span);
-    if (tier !== null) {
-      chunks.push({ tier, ...span });
-    } else {
-      const clipped =
-        edge.isFirst || edge.isLast ? clipToTierAtEdge(input.windows, span, edge) : null;
-      if (clipped === null) {
-        gaps.push(span);
-      } else {
-        // The uncovered remainder is reported, never silently dropped — the whole
-        // point of `gaps` is that a day no tier could answer is visible.
-        if (clipped.span.start.getTime() > span.start.getTime()) {
-          gaps.push({ start: span.start, end: clipped.span.start });
-        }
-        if (clipped.span.end.getTime() < span.end.getTime()) {
-          gaps.push({ start: clipped.span.end, end: span.end });
-        }
-        chunks.push({ tier: clipped.tier, ...clipped.span });
-      }
-    }
+    const planned = planOneChunk(input.windows, span, {
+      isFirst: cursor === input.from.getTime(),
+      isLast: dayEnd >= end,
+    });
+    if (planned.chunk !== null) chunks.push(planned.chunk);
+    gaps.push(...planned.gaps);
     cursor = dayEnd;
   }
   return { chunks, gaps };

@@ -594,7 +594,7 @@ export async function copyLegacyTier(
   }
 }
 
-interface ProfileMetricDef {
+export interface ProfileMetricDef {
   key: string;
   unit?: string | null;
   kind?: string;

@@ -206,6 +206,13 @@ jobs:
           --health-retries 20
     steps:
       - uses: actions/checkout@v4
+        with:
+          # `scripts/fixture-1-2-0.ts` recovers the 1.2.0 schema from the
+          # `addon-v1.2.0` TAG rather than transcribing it — `git show
+          # addon-v1.2.0:packages/db/src/...`. A shallow checkout carries no
+          # tags, so the fixture cannot be built and the upgrade specs fail in
+          # CI while passing on every full clone.
+          fetch-depth: 0
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -230,6 +237,13 @@ jobs:
       SKIP_ENV_VALIDATION: "1"
     steps:
       - uses: actions/checkout@v4
+        with:
+          # `scripts/fixture-1-2-0.ts` recovers the 1.2.0 schema from the
+          # `addon-v1.2.0` TAG rather than transcribing it — `git show
+          # addon-v1.2.0:packages/db/src/...`. A shallow checkout carries no
+          # tags, so the fixture cannot be built and the upgrade specs fail in
+          # CI while passing on every full clone.
+          fetch-depth: 0
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2

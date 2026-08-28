@@ -108,6 +108,7 @@ function pickDevice(devices: readonly NamespaceDevice[], profileId: string): Nam
  * can be absent — is provable without a Postgres. {@link readMqttNamespace} is the
  * thin IO around it.
  */
+// fallow-ignore-next-line unused-export -- the pure half of the namespace read, exercised by mqtt-namespace.test.ts (device-choice arms, blank slugs, retired devices); `readMqttNamespace` below is its only production caller and test files are not traced as consumers.
 export function resolveMqttNamespace(
   plant: NamespacePlant | null,
   devices: readonly NamespaceDevice[],
