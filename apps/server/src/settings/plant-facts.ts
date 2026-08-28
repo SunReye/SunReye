@@ -36,6 +36,22 @@ export interface PlantFacts {
   plant(): Promise<PlantRecord>;
   /** The DERIVED plant battery, or null when no device reports a pack. Cached. */
   battery(): Promise<PlantBattery | null>;
+  /**
+   * The pack voltage the device rows STATE, or null when they cannot agree.
+   *
+   * Not `battery().nominalV`, which is the aggregate's — and the aggregate takes
+   * "the first stated value" across packs, an arbitrary pick when two packs
+   * disagree (`@SunReye/db/batteries` says as much: mixed voltages are a
+   * configuration the derivation cannot express, and averaging them would hide
+   * that rather than leave it visible).
+   *
+   * An arbitrary pick is acceptable in a forecast and is not acceptable here: the
+   * peak-shaving engine multiplies this by an amp figure and writes the result to
+   * a charge-current register on a real battery. So a disagreement reads as
+   * "cannot say" and the engine falls back to what the operator stated
+   * explicitly, rather than to whichever pack row happened to sort first.
+   */
+  packNominalV(): Promise<number | null>;
   /** Update only the named columns, then drop the cache. */
   patch(patch: PlantPatch): Promise<void>;
   /** Describe the plant's storage, or `null` for "there is none". */
@@ -101,6 +117,16 @@ export function createPlantFacts(deps: PlantFactsDeps): PlantFacts {
     plant,
     async battery() {
       return plantBatteryFrom(await packs());
+    },
+    async packNominalV() {
+      const stated = new Set(
+        (await packs()).map((p) => p.nominalV).filter((v): v is number => v !== null),
+      );
+      // A Set, so two packs stating the SAME voltage is one answer given twice
+      // rather than a disagreement — refusing that would drop a two-pack plant to
+      // the legacy default for no reason. A silent pack does not veto a stated
+      // one either: nothing about it contradicts the value.
+      return stated.size === 1 ? ([...stated][0] ?? null) : null;
     },
     async patch(patch: PlantPatch) {
       const row = await plant();
