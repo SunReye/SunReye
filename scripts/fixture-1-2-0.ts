@@ -1495,6 +1495,11 @@ export async function snapshot(io: FixtureIo = productionIo): Promise<number> {
 export async function restore(io: FixtureIo = productionIo): Promise<number> {
   await waitReady(io);
   await recreateDatabase(io);
+  // `recreateDatabase` just made an empty database, and the database image
+  // installs timescaledb only into the databases it initdbs — never into
+  // template1 — so the extension is absent and `timescaledb_pre_restore()`
+  // would not resolve. Same first step as `scripts/db-restore.sh`.
+  await io.docker({ kind: "psql", sql: "CREATE EXTENSION IF NOT EXISTS timescaledb;" });
   await io.docker({ kind: "psql", sql: "SELECT timescaledb_pre_restore();" });
   const { exitCode } = await io.docker({ kind: "restore" });
   await io.docker({ kind: "psql", sql: "SELECT timescaledb_post_restore();" });

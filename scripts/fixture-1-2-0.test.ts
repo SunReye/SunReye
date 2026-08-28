@@ -1583,6 +1583,10 @@ describe("restore", () => {
     expect(io.calls).toEqual([
       "ready",
       "connectAdmin",
+      // The database was just recreated, and the image only installs the
+      // extension into the databases it initdbs — not into template1 — so
+      // `timescaledb_pre_restore()` would not resolve without this.
+      "psql:CREATE EXTENSION IF NOT EXISTS timescaledb;",
       "psql:SELECT timescaledb_pre_restore();",
       "restore",
       "psql:SELECT timescaledb_post_restore();",

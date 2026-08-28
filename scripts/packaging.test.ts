@@ -30,6 +30,7 @@ interface ComposeService {
   image?: string;
   build?: { dockerfile?: string };
   command?: string[];
+  ports?: string[];
   environment?: Record<string, string>;
   depends_on?: Record<string, { condition?: string }>;
 }
@@ -352,6 +353,50 @@ describe.each(["docker-compose.yml", "docker/docker-compose.yml"])("%s", (path) 
   it("holds the server back until the migration has exited 0", async () => {
     const server = (await yaml(path)).services.server;
     expect(server?.depends_on?.migrate?.condition).toBe("service_completed_successfully");
+  });
+});
+
+// The upgrade test shapes its pre-upgrade database by running the OLD tag's
+// migrator, and that migrator is a host-side `bun` process, not a container —
+// so it reaches Postgres over a published port. `docker/docker-compose.yml`
+// deliberately publishes none (the production stack keeps the database off the
+// host), which the workflow has to make up for in an override. Miss that and
+// the job fails with a bare `ECONNREFUSED 127.0.0.1:5432` that says nothing
+// about compose.
+describe("upgrade-test.yml reaches Postgres over a port that is actually published", () => {
+  const workflow = () => read(".github/workflows/upgrade-test.yml");
+
+  /** Every `cat > docker-compose.override.yml <<'EOF' … EOF` heredoc, parsed. */
+  async function overrides(): Promise<ComposeFile[]> {
+    const text = await workflow();
+    const blocks = [
+      ...text.matchAll(/cat > docker-compose\.override\.yml <<'EOF'\n([\s\S]*?)\n\s*EOF/g),
+    ];
+    return blocks.map((m) => {
+      // The heredoc is indented inside the `run:` block scalar; strip that.
+      const lines = m[1].split("\n");
+      const indent = Math.min(
+        ...lines.filter((l) => l.trim()).map((l) => l.length - l.trimStart().length),
+      );
+      return Bun.YAML.parse(lines.map((l) => l.slice(indent)).join("\n")) as ComposeFile;
+    });
+  }
+
+  it("the production compose file publishes no database port", async () => {
+    const postgres = (await yaml("docker/docker-compose.yml")).services.postgres;
+    expect(postgres?.ports).toBeUndefined();
+  });
+
+  it("shapes the pre-upgrade schema from the host", async () => {
+    expect(await workflow()).toContain("@localhost:5432/SunReye");
+  });
+
+  it("every override it writes publishes 5432, so no `up` can take the port away", async () => {
+    const written = await overrides();
+    expect(written.length).toBeGreaterThan(0);
+    for (const file of written) {
+      expect(file.services.postgres?.ports).toContain("5432:5432");
+    }
   });
 });
 

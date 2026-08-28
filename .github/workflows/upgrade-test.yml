@@ -88,6 +88,18 @@ jobs:
       # test. Data is seeded directly instead of via the poll loop.
       - name: Shape a database with the last released schema
         run: |
+          # The migrator below is a host-side `bun` process, not a container, so
+          # it needs a published port. docker/docker-compose.yml deliberately
+          # publishes none — the production stack keeps the database off the
+          # host — and this override is CI's only reason to. Every later
+          # override must carry it too (scripts/packaging.test.ts asserts that),
+          # or the next `docker compose up` recreates postgres without it.
+          cat > docker-compose.override.yml <<'EOF'
+          services:
+            postgres:
+              ports:
+                - "5432:5432"
+          EOF
           SUNREYE_TAG=latest docker compose up -d --quiet-pull postgres
           for i in $(seq 1 60); do
             docker compose exec -T postgres pg_isready -U postgres && break
@@ -188,6 +200,9 @@ jobs:
           # compose file's `command: ["migrate"]` against the new dispatcher.
           cat > docker-compose.override.yml <<'EOF'
           services:
+            postgres:
+              ports:
+                - "5432:5432"
             migrate:
               image: sunreye-server:pr
             server:
