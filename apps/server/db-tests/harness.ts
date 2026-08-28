@@ -13,6 +13,29 @@
  * database-free and fast. Run with `bun run test:db`.
  */
 import { SQL } from "bun";
+import dotenv from "dotenv";
+
+/**
+ * Load `apps/server/.env` BEFORE anything reads {@link baseUrl}.
+ *
+ * Without this, whether the database layer runs at all depended on whether some
+ * *other* module in the file set happened to pull `dotenv/config` in first — the
+ * server env package does, `bun:test` and `drizzle-orm` do not. The symptom was
+ * silent and asymmetric: `bun run test:db` reported "124 pass, 61 skip, 0 fail"
+ * with `toolkit-constructs.test.ts` and `archive.test.ts` skipped in full, and
+ * `bun test <a single db-test file>` — the normal way to iterate on one — skipped
+ * EVERY time. A skip is not a failure, so every gate stayed green while the 61
+ * specs that pin the toolkit results the rollup design rests on ran nowhere.
+ *
+ * The path is explicit rather than `dotenv/config` because that resolves `.env`
+ * from the process cwd, which is the repo root for `bun run test:db` and the
+ * package directory otherwise — the same order-dependence in another costume.
+ *
+ * `override: false` is the default and is load-bearing: a `DB_TEST_URL` or
+ * `DATABASE_URL` exported by CI, or by an operator pointing this at a throwaway
+ * container, must always win over the checked-out file.
+ */
+dotenv.config({ path: new URL("../.env", import.meta.url).pathname, quiet: true });
 
 /**
  * The ONLY database this layer may touch. Hardcoded, not configurable: the
