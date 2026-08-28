@@ -11,6 +11,7 @@ import type {
 import { buildManifest, entityConstraint, metricByKey } from "@SunReye/inverter-core";
 import {
   type HaDevice,
+  type MqttNamespace,
   discoveryConfig,
   forecastDiscoveryConfig,
   topicsFor,
@@ -20,10 +21,11 @@ import type { ProfileContext } from "./inverter";
 import { createControlWriter } from "./control-writer";
 import type { ForecastVariant, SolarForecastExport } from "../forecast/solar-forecast";
 
-const topics = topicsFor("sunreye", "deye");
+const ns: MqttNamespace = { plantSlug: "haus-sud", deviceSlug: "inverter" };
+const topics = topicsFor("sunreye", ns);
 
 const haDevice: HaDevice = {
-  identifiers: ["sunreye_deye"],
+  identifiers: ["sunreye_haus-sud_inverter"],
   name: "Deye",
   manufacturer: "Deye",
   model: "deye",
@@ -47,7 +49,7 @@ const constraint = (over: Partial<EntityConstraint> = {}): EntityConstraint => (
 });
 
 const configFor = (m: ManifestMetric, c: EntityConstraint) =>
-  discoveryConfig(m, c, topics, "deye", haDevice);
+  discoveryConfig(m, c, topics, ns, haDevice);
 
 describe("discoveryConfig", () => {
   test("a read-only measurement becomes a sensor with device + state class", () => {
@@ -56,10 +58,10 @@ describe("discoveryConfig", () => {
       constraint(),
     );
     expect(component).toBe("sensor");
-    expect(config.state_topic).toBe("sunreye/deye/pv/power");
-    expect(config.availability_topic).toBe("sunreye/deye/status");
-    expect(config.unique_id).toBe("sunreye_deye_pv_power");
-    expect(config.default_entity_id).toBe("sensor.sunreye_pv_power");
+    expect(config.state_topic).toBe("sunreye/haus-sud/inverter/pv/power");
+    expect(config.availability_topic).toBe("sunreye/haus-sud/inverter/status");
+    expect(config.unique_id).toBe("sunreye_haus-sud_inverter_pv_power");
+    expect(config.default_entity_id).toBe("sensor.sunreye_inverter_pv_power");
     expect(config.device_class).toBe("power");
     expect(config.state_class).toBe("measurement");
     expect(config.command_topic).toBeUndefined();
@@ -90,10 +92,10 @@ describe("discoveryConfig", () => {
       constraint({ writable: true, min: 0, max: 185 }),
     );
     expect(bounded.component).toBe("number");
-    expect(bounded.config.command_topic).toBe("sunreye/deye/setting/charge/set");
+    expect(bounded.config.command_topic).toBe("sunreye/haus-sud/inverter/setting/charge/set");
     expect(bounded.config.min).toBe(0);
     expect(bounded.config.max).toBe(185);
-    expect(bounded.config.default_entity_id).toBe("number.sunreye_setting_charge");
+    expect(bounded.config.default_entity_id).toBe("number.sunreye_inverter_setting_charge");
 
     const unbounded = configFor(
       metric({ key: "setting.power", writable: true }),
@@ -124,24 +126,84 @@ describe("discoveryConfig", () => {
   });
 });
 
+/**
+ * THE DEFECT THIS RELEASE EXISTS TO END. Identity is keyed on the FROZEN slugs,
+ * never on the profile id, so correcting or swapping a profile cannot rename a
+ * single Home Assistant entity.
+ */
+describe("identity is slug-derived, description is profile-derived", () => {
+  test("the topic namespace is <prefix>/<plant-slug>/<device-slug>", () => {
+    expect(topics.base).toBe("sunreye/haus-sud/inverter");
+    expect(topics.availability).toBe("sunreye/haus-sud/inverter/status");
+    expect(topics.state(metric({ key: "pv.power" }))).toBe("sunreye/haus-sud/inverter/pv/power");
+    expect(topics.command(metric({ key: "pv.power" }))).toBe(
+      "sunreye/haus-sud/inverter/pv/power/set",
+    );
+    expect(topics.forecastState("raw")).toBe("sunreye/haus-sud/inverter/forecast/raw");
+  });
+
+  test("the unique_id carries the plant slug as well as the device slug", () => {
+    // The schema's own uniqueness is (plant_id, slug) — a device slug is unique
+    // only WITHIN its plant — so an id without the plant is not a key.
+    const { config } = configFor(metric({ key: "pv.power", unit: "W" }), constraint());
+    expect(config.unique_id).toBe("sunreye_haus-sud_inverter_pv_power");
+  });
+
+  test("the suggested entity_id omits the plant and folds a dashed slug to underscores", () => {
+    // `default_entity_id` is only a SUGGESTION and HA de-duplicates it visibly,
+    // so it stays short and typeable. It must still be a LEGAL entity id: only
+    // [a-z0-9_], which a slug's dashes are not.
+    const dashed = discoveryConfig(
+      metric({ key: "pv.power", unit: "W" }),
+      constraint(),
+      topics,
+      { plantSlug: "haus-sud", deviceSlug: "inverter-2" },
+      haDevice,
+    );
+    expect(dashed.config.default_entity_id).toBe("sensor.sunreye_inverter_2_pv_power");
+    expect(String(dashed.config.default_entity_id)).toMatch(/^[a-z]+\.[a-z0-9_]+$/);
+    // …and the unique_id keeps the raw slugs, where dashes are legal.
+    expect(dashed.config.unique_id).toBe("sunreye_haus-sud_inverter-2_pv_power");
+  });
+
+  test("a slug that is nothing but separators still yields a legal entity id", () => {
+    const odd = discoveryConfig(
+      metric({ key: "pv.power" }),
+      constraint(),
+      topics,
+      { plantSlug: "p", deviceSlug: "--" },
+      haDevice,
+    );
+    expect(odd.config.default_entity_id).toBe("sensor.sunreye_pv_power");
+  });
+
+  test("the forecast sensors are namespaced the same way", () => {
+    const { config } = forecastDiscoveryConfig(topics, ns, haDevice, "usable");
+    expect(config.unique_id).toBe("sunreye_haus-sud_inverter_forecast_usable");
+    expect(config.default_entity_id).toBe("sensor.sunreye_inverter_forecast_usable");
+  });
+});
+
 describe("forecastDiscoveryConfig", () => {
   test("raw variant is an energy sensor exposing the forecast via json attributes", () => {
-    const { component, config } = forecastDiscoveryConfig(topics, "deye", haDevice, "raw");
+    const { component, config } = forecastDiscoveryConfig(topics, ns, haDevice, "raw");
     expect(component).toBe("sensor");
-    expect(config.state_topic).toBe("sunreye/deye/forecast/raw");
-    expect(config.json_attributes_topic).toBe("sunreye/deye/forecast/raw/attributes");
-    expect(config.availability_topic).toBe("sunreye/deye/status");
+    expect(config.state_topic).toBe("sunreye/haus-sud/inverter/forecast/raw");
+    expect(config.json_attributes_topic).toBe("sunreye/haus-sud/inverter/forecast/raw/attributes");
+    expect(config.availability_topic).toBe("sunreye/haus-sud/inverter/status");
     expect(config.unit_of_measurement).toBe("kWh");
     expect(config.device_class).toBe("energy");
-    expect(config.unique_id).toBe("sunreye_deye_forecast");
+    expect(config.unique_id).toBe("sunreye_haus-sud_inverter_forecast");
     expect(config.device).toBe(haDevice);
   });
 
   test("usable variant gets its own topics, unique_id and name", () => {
-    const { config } = forecastDiscoveryConfig(topics, "deye", haDevice, "usable");
-    expect(config.state_topic).toBe("sunreye/deye/forecast/usable");
-    expect(config.json_attributes_topic).toBe("sunreye/deye/forecast/usable/attributes");
-    expect(config.unique_id).toBe("sunreye_deye_forecast_usable");
+    const { config } = forecastDiscoveryConfig(topics, ns, haDevice, "usable");
+    expect(config.state_topic).toBe("sunreye/haus-sud/inverter/forecast/usable");
+    expect(config.json_attributes_topic).toBe(
+      "sunreye/haus-sud/inverter/forecast/usable/attributes",
+    );
+    expect(config.unique_id).toBe("sunreye_haus-sud_inverter_forecast_usable");
     expect(config.name).toBe("Solar forecast (usable)");
   });
 });
@@ -328,15 +390,19 @@ function start(
     validateWrite?: ProfileContext["validateWrite"];
     write?: (key: string, value: number) => Promise<void>;
     defByKey?: Map<string, MetricDef>;
+    plantSlug?: string;
+    deviceSlug?: string;
   } = {},
 ): Harness {
   const writes: { key: string; value: number }[] = [];
-  const ctx: ProfileContext = {
+  const ctx: ProfileContext & MqttNamespace = {
     profile,
     manifest,
     defByKey: opts.defByKey ?? defByKey,
     metaByKey,
     validateWrite: opts.validateWrite ?? domainValidateWrite,
+    plantSlug: opts.plantSlug ?? ns.plantSlug,
+    deviceSlug: opts.deviceSlug ?? ns.deviceSlug,
   };
   // The bridge writes through the production funnel (which owns the validation
   // every entry point shares), so only the transport underneath it is a double.
@@ -430,7 +496,7 @@ describe("enabling the bridge", () => {
     expect(call?.opts.password).toBe("s3cret");
     // Without the LWT, HA keeps showing the last value of a dead bridge.
     expect(call?.opts.will).toEqual({
-      topic: "sunreye/deye-sg05lp3/status",
+      topic: "sunreye/haus-sud/inverter/status",
       payload: "offline",
       qos: 0,
       retain: true,
@@ -447,8 +513,8 @@ describe("enabling the bridge", () => {
     const h = start({ topicPrefix: "house/pv" });
     h.connect();
     h.bridge.publishSample(sample({ "pv.power": 1200 }));
-    expect(h.client.topics()).toContain("house/pv/deye-sg05lp3/status");
-    expect(h.client.topics()).toContain("house/pv/deye-sg05lp3/pv/power");
+    expect(h.client.topics()).toContain("house/pv/haus-sud/inverter/status");
+    expect(h.client.topics()).toContain("house/pv/haus-sud/inverter/pv/power");
   });
 });
 
@@ -456,7 +522,7 @@ describe("connecting", () => {
   test("announces availability as retained online", () => {
     const h = start();
     h.connect();
-    const status = h.client.published.find((p) => p.topic === "sunreye/deye-sg05lp3/status");
+    const status = h.client.published.find((p) => p.topic === "sunreye/haus-sud/inverter/status");
     expect(status?.payload).toBe("online");
     expect(status?.opts).toEqual({ retain: true });
   });
@@ -466,9 +532,9 @@ describe("connecting", () => {
     h.connect();
     expect(h.client.subscribed).toEqual([
       [
-        "sunreye/deye-sg05lp3/setting/charge/current/set",
-        "sunreye/deye-sg05lp3/setting/mode/set",
-        "sunreye/deye-sg05lp3/system/time/set",
+        "sunreye/haus-sud/inverter/setting/charge/current/set",
+        "sunreye/haus-sud/inverter/setting/mode/set",
+        "sunreye/haus-sud/inverter/system/time/set",
       ],
     ]);
   });
@@ -485,6 +551,7 @@ describe("connecting", () => {
         defByKey: metricByKey(readOnly),
         metaByKey: new Map(),
         validateWrite: domainValidateWrite,
+        ...ns,
       },
       write: async () => {},
     });
@@ -507,7 +574,7 @@ describe("connecting", () => {
     h.drop();
     h.connect();
     const online = h.client.published.filter(
-      (p) => p.topic === "sunreye/deye-sg05lp3/status" && p.payload === "online",
+      (p) => p.topic === "sunreye/haus-sud/inverter/status" && p.payload === "online",
     );
     expect(online).toHaveLength(2);
     expect(h.client.subscribed).toHaveLength(2);
@@ -564,8 +631,8 @@ describe("publishing samples", () => {
     h.client.published.length = 0;
     h.bridge.publishSample(sample({ "pv.power": 1234, "grid.import": 87.5 }));
     expect(h.client.published).toEqual([
-      { topic: "sunreye/deye-sg05lp3/pv/power", payload: "1234", opts: { retain: true } },
-      { topic: "sunreye/deye-sg05lp3/grid/import", payload: "87.5", opts: { retain: true } },
+      { topic: "sunreye/haus-sud/inverter/pv/power", payload: "1234", opts: { retain: true } },
+      { topic: "sunreye/haus-sud/inverter/grid/import", payload: "87.5", opts: { retain: true } },
     ]);
   });
 
@@ -574,8 +641,8 @@ describe("publishing samples", () => {
     h.connect();
     h.client.published.length = 0;
     h.bridge.publishSample(sample({ "pv.power": 0, "battery.temperature": -7.5 }));
-    expect(h.client.payloadOf("sunreye/deye-sg05lp3/pv/power")).toBe("0");
-    expect(h.client.payloadOf("sunreye/deye-sg05lp3/battery/temperature")).toBe("-7.5");
+    expect(h.client.payloadOf("sunreye/haus-sud/inverter/pv/power")).toBe("0");
+    expect(h.client.payloadOf("sunreye/haus-sud/inverter/battery/temperature")).toBe("-7.5");
   });
 
   test("a metric missing from the sample publishes nothing, leaving its retained value", () => {
@@ -583,7 +650,7 @@ describe("publishing samples", () => {
     h.connect();
     h.client.published.length = 0;
     h.bridge.publishSample(sample({ "pv.power": 10 }));
-    expect(h.client.topics()).not.toContain("sunreye/deye-sg05lp3/battery/temperature");
+    expect(h.client.topics()).not.toContain("sunreye/haus-sud/inverter/battery/temperature");
   });
 
   test("an empty sample publishes nothing", () => {
@@ -620,15 +687,17 @@ describe("publishing the forecast", () => {
     const f = forecast(31.5, 24.25);
     h.bridge.publishForecast(f);
     expect(h.client.published.map((p) => p.topic)).toEqual([
-      "sunreye/deye-sg05lp3/forecast/raw",
-      "sunreye/deye-sg05lp3/forecast/raw/attributes",
-      "sunreye/deye-sg05lp3/forecast/usable",
-      "sunreye/deye-sg05lp3/forecast/usable/attributes",
+      "sunreye/haus-sud/inverter/forecast/raw",
+      "sunreye/haus-sud/inverter/forecast/raw/attributes",
+      "sunreye/haus-sud/inverter/forecast/usable",
+      "sunreye/haus-sud/inverter/forecast/usable/attributes",
     ]);
-    expect(h.client.payloadOf("sunreye/deye-sg05lp3/forecast/raw")).toBe("31.5");
-    expect(h.client.payloadOf("sunreye/deye-sg05lp3/forecast/usable")).toBe("24.25");
+    expect(h.client.payloadOf("sunreye/haus-sud/inverter/forecast/raw")).toBe("31.5");
+    expect(h.client.payloadOf("sunreye/haus-sud/inverter/forecast/usable")).toBe("24.25");
     expect(
-      JSON.parse(h.client.payloadOf("sunreye/deye-sg05lp3/forecast/usable/attributes") ?? "null"),
+      JSON.parse(
+        h.client.payloadOf("sunreye/haus-sud/inverter/forecast/usable/attributes") ?? "null",
+      ),
     ).toEqual(f.usable);
     expect(h.client.published.every((p) => p.opts.retain === true)).toBe(true);
   });
@@ -638,7 +707,7 @@ describe("publishing the forecast", () => {
     h.connect();
     h.client.published.length = 0;
     h.bridge.publishForecast(forecast(0, 0));
-    expect(h.client.payloadOf("sunreye/deye-sg05lp3/forecast/raw")).toBe("0");
+    expect(h.client.payloadOf("sunreye/haus-sud/inverter/forecast/raw")).toBe("0");
   });
 
   test("no forecast at all publishes nothing", () => {
@@ -654,8 +723,8 @@ describe("publishing the forecast", () => {
     h.bridge.publishForecast(forecast(12, 9));
     expect(h.client.published).toEqual([]);
     h.connect();
-    expect(h.client.payloadOf("sunreye/deye-sg05lp3/forecast/raw")).toBe("12");
-    expect(h.client.payloadOf("sunreye/deye-sg05lp3/forecast/usable")).toBe("9");
+    expect(h.client.payloadOf("sunreye/haus-sud/inverter/forecast/raw")).toBe("12");
+    expect(h.client.payloadOf("sunreye/haus-sud/inverter/forecast/usable")).toBe("9");
   });
 
   test("a reconnect restores the latest forecast rather than the first one", () => {
@@ -666,7 +735,7 @@ describe("publishing the forecast", () => {
     h.drop();
     h.client.published.length = 0;
     h.connect();
-    expect(h.client.payloadOf("sunreye/deye-sg05lp3/forecast/raw")).toBe("20");
+    expect(h.client.payloadOf("sunreye/haus-sud/inverter/forecast/raw")).toBe("20");
   });
 
   test("a null forecast does not erase the one kept for reconnect", () => {
@@ -677,7 +746,7 @@ describe("publishing the forecast", () => {
     h.drop();
     h.client.published.length = 0;
     h.connect();
-    expect(h.client.payloadOf("sunreye/deye-sg05lp3/forecast/raw")).toBe("12");
+    expect(h.client.payloadOf("sunreye/haus-sud/inverter/forecast/raw")).toBe("12");
   });
 
   test("a connect with no forecast yet publishes only availability", () => {
@@ -699,14 +768,14 @@ describe("home assistant discovery", () => {
     h.connect();
     const discovery = h.client.published.filter((p) => p.topic.startsWith("homeassistant/"));
     expect(discovery.map((p) => p.topic)).toEqual([
-      "homeassistant/sensor/sunreye_deye-sg05lp3/pv_power/config",
-      "homeassistant/sensor/sunreye_deye-sg05lp3/battery_temperature/config",
-      "homeassistant/sensor/sunreye_deye-sg05lp3/grid_import/config",
-      "homeassistant/number/sunreye_deye-sg05lp3/setting_charge_current/config",
-      "homeassistant/select/sunreye_deye-sg05lp3/setting_mode/config",
-      "homeassistant/sensor/sunreye_deye-sg05lp3/system_time/config",
-      "homeassistant/sensor/sunreye_deye-sg05lp3/forecast/config",
-      "homeassistant/sensor/sunreye_deye-sg05lp3/forecast_usable/config",
+      "homeassistant/sensor/sunreye_haus-sud_inverter/pv_power/config",
+      "homeassistant/sensor/sunreye_haus-sud_inverter/battery_temperature/config",
+      "homeassistant/sensor/sunreye_haus-sud_inverter/grid_import/config",
+      "homeassistant/number/sunreye_haus-sud_inverter/setting_charge_current/config",
+      "homeassistant/select/sunreye_haus-sud_inverter/setting_mode/config",
+      "homeassistant/sensor/sunreye_haus-sud_inverter/system_time/config",
+      "homeassistant/sensor/sunreye_haus-sud_inverter/forecast/config",
+      "homeassistant/sensor/sunreye_haus-sud_inverter/forecast_usable/config",
     ]);
     // Retained, so HA re-reads them when *it* restarts, not only when we do.
     expect(discovery.every((p) => p.opts.retain === true)).toBe(true);
@@ -717,12 +786,12 @@ describe("home assistant discovery", () => {
     h.connect();
     const config = JSON.parse(
       h.client.payloadOf(
-        "homeassistant/number/sunreye_deye-sg05lp3/setting_charge_current/config",
+        "homeassistant/number/sunreye_haus-sud_inverter/setting_charge_current/config",
       ) ?? "null",
     );
-    expect(config.state_topic).toBe("sunreye/deye-sg05lp3/setting/charge/current");
-    expect(config.command_topic).toBe("sunreye/deye-sg05lp3/setting/charge/current/set");
-    expect(config.availability_topic).toBe("sunreye/deye-sg05lp3/status");
+    expect(config.state_topic).toBe("sunreye/haus-sud/inverter/setting/charge/current");
+    expect(config.command_topic).toBe("sunreye/haus-sud/inverter/setting/charge/current/set");
+    expect(config.availability_topic).toBe("sunreye/haus-sud/inverter/status");
     expect(config.min).toBe(0);
     expect(config.max).toBe(185);
   });
@@ -730,7 +799,7 @@ describe("home assistant discovery", () => {
   test("a custom discovery prefix moves every announcement", () => {
     const h = start({ haDiscoveryEnabled: true, haDiscoveryPrefix: "ha" });
     h.connect();
-    expect(h.client.topics()).toContain("ha/sensor/sunreye_deye-sg05lp3/pv_power/config");
+    expect(h.client.topics()).toContain("ha/sensor/sunreye_haus-sud_inverter/pv_power/config");
   });
 
   test("a metric with no register definition is skipped instead of crashing the announcement", () => {
@@ -739,8 +808,12 @@ describe("home assistant discovery", () => {
     const h = start({ haDiscoveryEnabled: true }, { defByKey: partial });
     h.connect();
     const discovery = h.client.topics().filter((t) => t.startsWith("homeassistant/"));
-    expect(discovery).not.toContain("homeassistant/sensor/sunreye_deye-sg05lp3/pv_power/config");
-    expect(discovery).toContain("homeassistant/sensor/sunreye_deye-sg05lp3/grid_import/config");
+    expect(discovery).not.toContain(
+      "homeassistant/sensor/sunreye_haus-sud_inverter/pv_power/config",
+    );
+    expect(discovery).toContain(
+      "homeassistant/sensor/sunreye_haus-sud_inverter/grid_import/config",
+    );
   });
 
   // THE MIGRATION GATE. A discovery announcement is retained on the broker and
@@ -764,7 +837,7 @@ describe("home assistant discovery", () => {
     holdDiscovery("migration onboarding not completed");
     const h = start({ haDiscoveryEnabled: true });
     h.connect();
-    expect(h.client.published.map((p) => p.topic)).toContain("sunreye/deye-sg05lp3/status");
+    expect(h.client.published.map((p) => p.topic)).toContain("sunreye/haus-sud/inverter/status");
   });
 
   test("a reconnect while held STAYS silent — a retry is not a release", () => {
@@ -785,7 +858,7 @@ describe("home assistant discovery", () => {
     h.connect();
     releaseDiscovery();
     expect(h.client.topics()).toContain(
-      "homeassistant/sensor/sunreye_deye-sg05lp3/pv_power/config",
+      "homeassistant/sensor/sunreye_haus-sud_inverter/pv_power/config",
     );
   });
 
@@ -801,7 +874,7 @@ describe("home assistant discovery", () => {
     expect(h.client.topics().some((t) => t.startsWith("homeassistant/"))).toBe(false);
     h.connect();
     expect(h.client.topics()).toContain(
-      "homeassistant/sensor/sunreye_deye-sg05lp3/pv_power/config",
+      "homeassistant/sensor/sunreye_haus-sud_inverter/pv_power/config",
     );
   });
 
@@ -837,8 +910,108 @@ describe("home assistant discovery", () => {
     expect(
       h.client
         .topics()
-        .filter((t) => t === "homeassistant/sensor/sunreye_deye-sg05lp3/pv_power/config"),
+        .filter((t) => t === "homeassistant/sensor/sunreye_haus-sud_inverter/pv_power/config"),
     ).toHaveLength(1);
+  });
+});
+
+/**
+ * A PROFILE SWAP MUST RENAME NOTHING. This is the whole reason identity moved to
+ * the slugs: Home Assistant keys entities on `unique_id` and a discovery
+ * announcement is RETAINED, so a renamed `unique_id` does not migrate an entity —
+ * it strands the old one and adds a new one beside it, taking every dashboard
+ * card and automation that named the old id with it.
+ */
+describe("swapping the profile", () => {
+  /** The same plant and the same device, described by an entirely other profile. */
+  const swapped: InverterProfile = {
+    id: "sofar-hyd-6000",
+    name: "Sofar HYD 6000",
+    manufacturer: "Sofar",
+    metrics: profile.metrics,
+  };
+
+  function announce(p: InverterProfile) {
+    const bridge = startMqttBridge(
+      { ...baseConfig, haDiscoveryEnabled: true },
+      {
+        ctx: {
+          profile: p,
+          manifest: buildManifest(p),
+          defByKey: metricByKey(p),
+          metaByKey: new Map(),
+          validateWrite: domainValidateWrite,
+          ...ns,
+        },
+        write: async () => {},
+      },
+    );
+    expect(bridge).not.toBeNull();
+    const client = clients.at(-1);
+    if (!client) throw new Error("no client was created");
+    client.connected = true;
+    client.emit("connect");
+    return client;
+  }
+
+  test("every topic, unique_id and HA device identifier is byte-identical", () => {
+    const before = announce(profile);
+    const after = announce(swapped);
+    expect(after.topics()).toEqual(before.topics());
+
+    const configOf = (c: FakeClient) =>
+      JSON.parse(
+        c.payloadOf("homeassistant/sensor/sunreye_haus-sud_inverter/pv_power/config") ?? "null",
+      );
+    const a = configOf(before);
+    const b = configOf(after);
+    expect(b.unique_id).toBe(a.unique_id);
+    expect(b.default_entity_id).toBe(a.default_entity_id);
+    expect(b.state_topic).toBe(a.state_topic);
+    expect(b.device.identifiers).toEqual(["sunreye_haus-sud_inverter"]);
+    expect(b.device.identifiers).toEqual(a.device.identifiers);
+  });
+
+  test("but the DESCRIPTION follows the hardware — that is the point of the split", () => {
+    const before = announce(profile);
+    const after = announce(swapped);
+    const deviceOf = (c: FakeClient) =>
+      JSON.parse(
+        c.payloadOf("homeassistant/sensor/sunreye_haus-sud_inverter/pv_power/config") ?? "null",
+      ).device;
+    expect(deviceOf(before)).toMatchObject({ manufacturer: "Deye", model: "deye-sg05lp3" });
+    expect(deviceOf(after)).toMatchObject({ manufacturer: "Sofar", model: "sofar-hyd-6000" });
+  });
+
+  test("a second plant's device of the SAME slug gets its own unique_id", () => {
+    // `devices.slug` is unique per (plant_id, slug) only. Two instances reporting
+    // into one Home Assistant would collide on `unique_id` — and HA drops the
+    // loser silently — if the plant slug were not part of it.
+    const other = startMqttBridge(
+      { ...baseConfig, haDiscoveryEnabled: true },
+      {
+        ctx: {
+          profile,
+          manifest,
+          defByKey,
+          metaByKey,
+          validateWrite: domainValidateWrite,
+          plantSlug: "ferienhaus",
+          deviceSlug: "inverter",
+        },
+        write: async () => {},
+      },
+    );
+    expect(other).not.toBeNull();
+    const client = clients.at(-1);
+    client!.connected = true;
+    client!.emit("connect");
+    const config = JSON.parse(
+      client!.payloadOf("homeassistant/sensor/sunreye_ferienhaus_inverter/pv_power/config") ??
+        "null",
+    );
+    expect(config.unique_id).toBe("sunreye_ferienhaus_inverter_pv_power");
+    expect(client!.topics()).toContain("sunreye/ferienhaus/inverter/status");
   });
 });
 
@@ -846,35 +1019,35 @@ describe("inbound commands", () => {
   test("a valid setpoint is written to the inverter", async () => {
     const h = start();
     h.connect();
-    await h.deliver("sunreye/deye-sg05lp3/setting/charge/current/set", "40");
+    await h.deliver("sunreye/haus-sud/inverter/setting/charge/current/set", "40");
     expect(h.writes).toEqual([{ key: "setting.charge.current", value: 40 }]);
   });
 
   test("zero is a legitimate setpoint, not a missing value", async () => {
     const h = start();
     h.connect();
-    await h.deliver("sunreye/deye-sg05lp3/setting/charge/current/set", "0");
+    await h.deliver("sunreye/haus-sud/inverter/setting/charge/current/set", "0");
     expect(h.writes).toEqual([{ key: "setting.charge.current", value: 0 }]);
   });
 
   test("surrounding whitespace from a hand-typed payload is tolerated", async () => {
     const h = start();
     h.connect();
-    await h.deliver("sunreye/deye-sg05lp3/setting/charge/current/set", "  60\n");
+    await h.deliver("sunreye/haus-sud/inverter/setting/charge/current/set", "  60\n");
     expect(h.writes).toEqual([{ key: "setting.charge.current", value: 60 }]);
   });
 
   test("a fractional setpoint reaches the inverter unrounded", async () => {
     const h = start();
     h.connect();
-    await h.deliver("sunreye/deye-sg05lp3/setting/charge/current/set", "12.5");
+    await h.deliver("sunreye/haus-sud/inverter/setting/charge/current/set", "12.5");
     expect(h.writes).toEqual([{ key: "setting.charge.current", value: 12.5 }]);
   });
 
   test("a message on a topic the bridge does not own is ignored", async () => {
     const h = start();
     h.connect();
-    await h.deliver("sunreye/deye-sg05lp3/pv/power", "1234");
+    await h.deliver("sunreye/haus-sud/inverter/pv/power", "1234");
     await h.deliver("evcc/loadpoints/1/limitSoc", "80");
     expect(h.writes).toEqual([]);
   });
@@ -882,14 +1055,14 @@ describe("inbound commands", () => {
   test("the state topic of a writable entity is not a command topic", async () => {
     const h = start();
     h.connect();
-    await h.deliver("sunreye/deye-sg05lp3/setting/charge/current", "40");
+    await h.deliver("sunreye/haus-sud/inverter/setting/charge/current", "40");
     expect(h.writes).toEqual([]);
   });
 
   test("a non-numeric payload is refused rather than coerced", async () => {
     const h = start();
     h.connect();
-    await h.deliver("sunreye/deye-sg05lp3/setting/charge/current/set", "ON");
+    await h.deliver("sunreye/haus-sud/inverter/setting/charge/current/set", "ON");
     expect(h.writes).toEqual([]);
   });
 
@@ -898,38 +1071,38 @@ describe("inbound commands", () => {
     h.connect();
     // Deleting a retained message is a zero-length publish. `Number("")` is 0,
     // so an unguarded bridge would drive max charge current to 0 A on a tidy-up.
-    await h.deliver("sunreye/deye-sg05lp3/setting/charge/current/set", "");
-    await h.deliver("sunreye/deye-sg05lp3/setting/charge/current/set", "   ");
+    await h.deliver("sunreye/haus-sud/inverter/setting/charge/current/set", "");
+    await h.deliver("sunreye/haus-sud/inverter/setting/charge/current/set", "   ");
     expect(h.writes).toEqual([]);
   });
 
   test("a setpoint above the profile's range is rejected before it reaches the wire", async () => {
     const h = start();
     h.connect();
-    await h.deliver("sunreye/deye-sg05lp3/setting/charge/current/set", "300");
+    await h.deliver("sunreye/haus-sud/inverter/setting/charge/current/set", "300");
     expect(h.writes).toEqual([]);
   });
 
   test("a negative setpoint below the profile's minimum is rejected", async () => {
     const h = start();
     h.connect();
-    await h.deliver("sunreye/deye-sg05lp3/setting/charge/current/set", "-5");
+    await h.deliver("sunreye/haus-sud/inverter/setting/charge/current/set", "-5");
     expect(h.writes).toEqual([]);
   });
 
   test("an enum accepts a declared raw value and refuses an undeclared one", async () => {
     const h = start();
     h.connect();
-    await h.deliver("sunreye/deye-sg05lp3/setting/mode/set", "1");
-    await h.deliver("sunreye/deye-sg05lp3/setting/mode/set", "7");
+    await h.deliver("sunreye/haus-sud/inverter/setting/mode/set", "1");
+    await h.deliver("sunreye/haus-sud/inverter/setting/mode/set", "7");
     expect(h.writes).toEqual([{ key: "setting.mode", value: 1 }]);
   });
 
   test("a rw RAW register is refused by the validator even though it has a command topic", async () => {
     const h = start();
     h.connect();
-    expect(h.client.subscribed[0]).toContain("sunreye/deye-sg05lp3/system/time/set");
-    await h.deliver("sunreye/deye-sg05lp3/system/time/set", "1");
+    expect(h.client.subscribed[0]).toContain("sunreye/haus-sud/inverter/system/time/set");
+    await h.deliver("sunreye/haus-sud/inverter/system/time/set", "1");
     expect(h.writes).toEqual([]);
   });
 
@@ -945,7 +1118,7 @@ describe("inbound commands", () => {
       },
     );
     h.connect();
-    await h.deliver("sunreye/deye-sg05lp3/setting/charge/current/set", "40");
+    await h.deliver("sunreye/haus-sud/inverter/setting/charge/current/set", "40");
     expect(seen).toEqual([{ key: "setting.charge.current", value: 40 }]);
     expect(h.writes).toEqual([]);
   });
@@ -961,9 +1134,9 @@ describe("inbound commands", () => {
       },
     );
     h.connect();
-    await h.deliver("sunreye/deye-sg05lp3/setting/charge/current/set", "40");
+    await h.deliver("sunreye/haus-sud/inverter/setting/charge/current/set", "40");
     fail = false;
-    await h.deliver("sunreye/deye-sg05lp3/setting/charge/current/set", "50");
+    await h.deliver("sunreye/haus-sud/inverter/setting/charge/current/set", "50");
     expect(h.writes).toEqual([
       { key: "setting.charge.current", value: 40 },
       { key: "setting.charge.current", value: 50 },
@@ -974,8 +1147,12 @@ describe("inbound commands", () => {
   test("two commands arriving back to back both reach the inverter, in order", async () => {
     const h = start();
     h.connect();
-    h.client.emit("message", "sunreye/deye-sg05lp3/setting/charge/current/set", Buffer.from("10"));
-    h.client.emit("message", "sunreye/deye-sg05lp3/setting/mode/set", Buffer.from("0"));
+    h.client.emit(
+      "message",
+      "sunreye/haus-sud/inverter/setting/charge/current/set",
+      Buffer.from("10"),
+    );
+    h.client.emit("message", "sunreye/haus-sud/inverter/setting/mode/set", Buffer.from("0"));
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(h.writes).toEqual([
       { key: "setting.charge.current", value: 10 },
@@ -991,7 +1168,7 @@ describe("shutting down", () => {
     h.client.published.length = 0;
     await h.bridge.close();
     expect(h.client.published).toEqual([
-      { topic: "sunreye/deye-sg05lp3/status", payload: "offline", opts: { retain: true } },
+      { topic: "sunreye/haus-sud/inverter/status", payload: "offline", opts: { retain: true } },
     ]);
     expect(h.client.ended).toBe(1);
   });

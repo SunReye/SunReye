@@ -2,8 +2,8 @@
  * MQTT integration bridge.
  *
  * Publishes every entity's latest value (retained) to
- * `<prefix>/<inverterId>/<topic>` and accepts writes on `.../set` for writable
- * entities — the same topics the vendor docs describe. Optionally publishes
+ * `<prefix>/<plant-slug>/<device-slug>/<topic>` and accepts writes on `.../set`
+ * for writable entities. Optionally publishes
  * Home Assistant MQTT Discovery configs so SunReye auto-populates in HA with no
  * manual entity setup.
  *
@@ -16,6 +16,17 @@
  * Config-driven and hot-swappable: `startMqttBridge(config, deps)` returns
  * `null` when disabled. The runtime controller owns the lifecycle and injects
  * the inverter `write`, so this module has no singleton/env coupling.
+ *
+ * ## THE NAMESPACE IS THE FROZEN SLUGS, NOT THE PROFILE ID
+ *
+ * Every identifying name — the topic root, each `unique_id`, the discovery object
+ * node, the HA device `identifiers` — comes from `deps.ctx.plantSlug` and
+ * `deps.ctx.deviceSlug`. Before 2.0.0 all of it came from `profile.id`, so
+ * correcting or swapping a profile renamed every entity in the operator's Home
+ * Assistant — and because a discovery announcement is RETAINED, the old entities
+ * did not disappear, they orphaned. {@link ./mqtt-discovery} carries the full
+ * argument and the shape; {@link ./mqtt-legacy-retire} clears what the old scheme
+ * left behind, once.
  */
 
 import type { MqttConfig } from "@SunReye/db/mqtt-config";
@@ -30,9 +41,11 @@ import { log } from "../shared/logging";
 import {
   FORECAST_VARIANTS,
   type HaDevice,
+  type MqttNamespace,
   discoveryConfig,
   forecastDiscoveryConfig,
   forecastObjectId,
+  identityPrefix,
   slug,
   topicsFor,
 } from "./mqtt-discovery";
@@ -55,8 +68,24 @@ export interface MqttBridge {
 }
 
 export interface MqttBridgeDeps {
-  /** The active profile context (manifest, catalog, write validator). */
-  ctx: ProfileContext;
+  /**
+   * The active profile context, PLUS the frozen slugs the namespace is built
+   * from.
+   *
+   * An intersection rather than two sibling fields, and required rather than
+   * optional, because that makes forgetting to supply them a COMPILE error at the
+   * one call site (`./runtime.ts`'s `rebuildBridge`). The alternative shape —
+   * optional slugs falling back to `profile.id` — would keep publishing happily
+   * under the old, profile-keyed identity, and a silent fallback that keeps
+   * working is precisely how this defect survived from 1.0 to 2.0 without anyone
+   * filing it.
+   *
+   * The slugs travel on `ctx` rather than beside it so a PROFILE SWAP replaces the
+   * profile and its namespace in one atomic value. A separate field could be
+   * updated on one path and not the other, and a bridge holding last profile's
+   * catalog with this profile's slugs would announce entities that never publish.
+   */
+  ctx: ProfileContext & MqttNamespace;
   /** Apply an inbound command write — the funnel validates it. */
   write(key: string, value: number): Promise<void>;
 }
@@ -69,14 +98,19 @@ export interface MqttBridgeDeps {
 export function startMqttBridge(config: MqttConfig, deps: MqttBridgeDeps): MqttBridge | null {
   if (!config.enabled) return null;
 
-  const { profile, manifest, defByKey } = deps.ctx;
+  const { profile, manifest, defByKey, plantSlug, deviceSlug } = deps.ctx;
+  const ns: MqttNamespace = { plantSlug, deviceSlug };
   const haDevice: HaDevice = {
-    identifiers: [`sunreye_${profile.id}`],
+    // IDENTITY — slug-derived, so it survives a profile swap. HA matches an
+    // existing device on this and updates the rest of the block in place.
+    identifiers: [identityPrefix(ns)],
+    // DESCRIPTION — profile-derived on purpose: a corrected profile should
+    // correct what the device says it is.
     name: manifest.name,
     manufacturer: manifest.manufacturer,
     model: profile.id,
   };
-  const topics = topicsFor(config.topicPrefix, profile.id);
+  const topics = topicsFor(config.topicPrefix, ns);
   let connected = false;
   let lastError: string | null = null;
   // Latest forecast (both variants), kept so a reconnect can restore its retained
@@ -117,7 +151,7 @@ export function startMqttBridge(config: MqttConfig, deps: MqttBridgeDeps): MqttB
 
   /** The retained discovery topic one announcement is published to. */
   const discoveryTopic = (component: string, objectId: string): string =>
-    `${config.haDiscoveryPrefix}/${component}/sunreye_${profile.id}/${objectId}/config`;
+    `${config.haDiscoveryPrefix}/${component}/${identityPrefix(ns)}/${objectId}/config`;
 
   /** (Re)publish the retained HA discovery configs: one per entity, plus the
    *  two forecast sensors. Called on every connect so they survive a broker
@@ -126,13 +160,13 @@ export function startMqttBridge(config: MqttConfig, deps: MqttBridgeDeps): MqttB
     for (const m of manifest.metrics) {
       const def = defByKey.get(m.key);
       if (!def) continue;
-      const disc = discoveryConfig(m, entityConstraint(def), topics, profile.id, haDevice);
+      const disc = discoveryConfig(m, entityConstraint(def), topics, ns, haDevice);
       client.publish(discoveryTopic(disc.component, slug(m.key)), JSON.stringify(disc.config), {
         retain: true,
       });
     }
     for (const variant of FORECAST_VARIANTS) {
-      const disc = forecastDiscoveryConfig(topics, profile.id, haDevice, variant);
+      const disc = forecastDiscoveryConfig(topics, ns, haDevice, variant);
       client.publish(
         discoveryTopic(disc.component, forecastObjectId(variant)),
         JSON.stringify(disc.config),
