@@ -250,16 +250,22 @@ describe("runBackfill stages", () => {
     await runBackfill(client, { ...input, tiers: { minute: "some_other_relation" } });
     // Exactly one legacy relation was asked for its span, and it was that one.
     const asked = calls
-      .filter((call) => /min\(b\./.test(call.text))
+      .filter((call) => /min\(b\..*as "from"/s.test(call.text))
       .map((call) => relationOf(call.text));
     expect(asked).toEqual(["some_other_relation"]);
+    // The source-id discovery pass walks the SAME configured relations — a
+    // hard-coded tier list there would quietly skip a caller's staging table.
+    const discovered = calls
+      .filter((call) => /as first/.test(call.text))
+      .map((call) => relationOf(call.text));
+    expect(discovered).toEqual(["some_other_relation"]);
   });
 
   test("defaults to all three 1.2.0 aggregates when no tiers are named", async () => {
     const { client, calls } = fake({ record: record(), written: null });
     await runBackfill(client, input);
     const asked = calls
-      .filter((call) => /min\(b\./.test(call.text))
+      .filter((call) => /min\(b\..*as "from"/s.test(call.text))
       .map((call) => relationOf(call.text));
     expect(asked).toEqual([
       "legacy_minute_rollups",

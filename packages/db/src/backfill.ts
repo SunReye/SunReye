@@ -33,6 +33,31 @@ import type { Span } from "./replay";
  * of hourly ever revisits it. `minute` is independent (it reads raw) and goes
  * last because it is by far the biggest and a kill during it costs the least.
  */
+/**
+ * The watermark key one legacy source id replays under.
+ *
+ * A 1.x database can hold MORE THAN ONE `inverter_id`, because that column held
+ * the PROFILE id and a profile swap silently started a new series — the bug this
+ * release exists to end. Production is such a database: it carries
+ * `deye-sg05lp3` for the first 3 h 48 m and `deye-sun15k-sg05lp3` for everything
+ * after the swap on 2026-07-13. Both belong to the same physical machine and both
+ * must land on the same `device_id`.
+ *
+ * They therefore replay as separate passes, and each needs its OWN watermark: the
+ * two spans meet inside one day-chunk, and `replay_progress` is keyed by
+ * `(source, device_id, chunk_start)`, so a shared key would make the second pass
+ * treat that day as already done and drop its history — the quietest possible
+ * data loss, in the middle of the migration whose whole point is to stop exactly
+ * that.
+ *
+ * The PRIMARY id keeps the bare key so a run already part-way through resumes
+ * against the rows it has already written, rather than starting over under a new
+ * name.
+ */
+export function replayWatermarkSource(base: string, sourceId: string, primary: string): string {
+  return sourceId === primary ? base : `${base}#${sourceId}`;
+}
+
 export const REFRESH_ORDER = ["hourly_rollups", "daily_rollups", "minute_rollups"] as const;
 
 export type NewTier = (typeof REFRESH_ORDER)[number];
@@ -66,8 +91,25 @@ const DAY_MS = 86_400_000;
 export function refreshWindows(span: Span, tier: NewTier, chunkDays = 7): Span[] {
   if (span.end.getTime() <= span.start.getTime()) return [];
   const pad = TIER_BUCKET_MS[tier];
-  const from = span.start.getTime() - pad;
-  const to = span.end.getTime() + pad;
+  // ALIGNED TO BUCKET BOUNDARIES, and this is not tidiness.
+  //
+  // `refresh_continuous_aggregate` materializes only the buckets a window FULLY
+  // CONTAINS. An unaligned window therefore leaves the bucket straddling each
+  // seam refreshed by neither the window before it nor the one after — and
+  // nothing reports it, because every raw row is present and only the aggregate
+  // is short.
+  //
+  // Production hit exactly that. Its replayed span begins at 21:00, so 7-day
+  // windows ran 07-11 21:00 -> 07-18 21:00 -> 07-25 21:00 …, and the daily
+  // buckets starting 07-18, 07-25, 08-01 and 08-08 fell between two windows.
+  // Four whole days were missing from `daily_rollups` while their raw rows sat
+  // there untouched. The span had previously started at midnight, which is the
+  // only reason this had never shown up.
+  //
+  // Flooring the start and ceiling the end also keeps the padding honest: every
+  // bucket overlapping the span still lands strictly inside some window.
+  const from = Math.floor((span.start.getTime() - pad) / pad) * pad;
+  const to = Math.ceil((span.end.getTime() + pad) / pad) * pad;
   const step = Math.max(1, chunkDays) * DAY_MS;
   const windows: Span[] = [];
   for (let cursor = from; cursor < to; cursor += step) {

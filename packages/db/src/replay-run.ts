@@ -43,6 +43,7 @@ import { PgDialect } from "drizzle-orm/pg-core";
 import type { MetricKeyWriter } from "./metric-keys";
 
 import {
+  clampToCoverage,
   type BucketTier,
   type ReplayChunk,
   type Span,
@@ -156,6 +157,16 @@ export interface ReplayRequest {
   columns?: LegacyColumns;
   /** The 1.2.0 `inverter_id` to replay, and the `devices.id` it now means. */
   identity: { sourceId: string; deviceId: number };
+  /**
+   * Narrow the requested span to this source's own coverage instead of reporting
+   * the remainder as gaps. Default false, which keeps the safety net: a caller
+   * that names a span the tiers do not cover is told so.
+   *
+   * Set only where the bound is SHARED rather than a claim about this source —
+   * the multi-source backfill passes one `replayTo` for every legacy id, and an
+   * orphaned id may hold hours of it. See `./backfill-run.ts`.
+   */
+  clampToCoverage?: boolean;
   /** Metric keys the profile stores as configuration. Never a prefix match. */
   configKeys?: readonly string[];
   /** Replay only from here. Defaults to the earliest bucket any tier holds. */
@@ -225,6 +236,44 @@ function relationFor(request: ReplayRequest, tier: BucketTier): string {
  * stamped 23:00 covers up to 00:00, and treating `max(bucket)` as the end would
  * leave the final hour of history unreplayed on every run.
  */
+/**
+ * Every distinct legacy source id the bucket relations hold, oldest span first.
+ *
+ * `inverter_id` held the PROFILE id, so a 1.x database that ever swapped or
+ * renamed a profile carries more than one — and every one of them is the same
+ * physical machine. Production carries two. Replaying only the id the migration
+ * record names would leave the rest behind, and the legacy relations are dropped
+ * at the end of the upgrade, so "left behind" means gone.
+ *
+ * Ordered by first bucket so the oldest history replays first, which keeps the
+ * log readable and makes a partial run's watermarks contiguous in time.
+ */
+export async function legacySourceIds(
+  client: ReplayClient,
+  request: ReplayRequest,
+): Promise<string[]> {
+  const columns = columnsOf(request);
+  const seen = new Map<string, number>();
+  // Over the relations the REQUEST configures, rather than a tier list of our
+  // own: the second transport over this module (`sunreye import`) supplies its
+  // own staging relations, and a hard-coded tier list would quietly skip them.
+  for (const relation of Object.values(request.relations)) {
+    if (relation === undefined) continue;
+    const result = await client.query(
+      `select b.${columns.sourceId} as id, min(b.${columns.bucket}) as first
+       from ${assertIdentifier(relation)} b
+       where b.${columns.sourceId} is not null
+       group by 1`,
+    );
+    for (const row of result.rows as { id: string; first: string | Date }[]) {
+      const at = new Date(row.first as string).getTime();
+      const previous = seen.get(row.id);
+      if (previous === undefined || at < previous) seen.set(row.id, at);
+    }
+  }
+  return [...seen.entries()].sort((a, b) => a[1] - b[1]).map(([id]) => id);
+}
+
 export async function readTierWindows(
   client: ReplayClient,
   request: ReplayRequest,
@@ -477,11 +526,16 @@ export async function runReplay(
   }
   const earliest = new Date(Math.min(...windows.map((w) => w.from.getTime())));
   const latest = new Date(Math.max(...windows.map((w) => w.to.getTime())));
-  const plan = planReplay({
-    from: request.from ?? earliest,
-    to: request.to ?? latest,
-    windows,
-  });
+  // Clamped to this source's own coverage: `request.to` is the migration
+  // record's `replayTo` and is the same for every source id, while an orphaned id
+  // may hold only hours. See `clampToCoverage`.
+  const span = request.clampToCoverage
+    ? clampToCoverage(
+        { from: request.from ?? earliest, to: request.to ?? latest },
+        { from: earliest, to: latest },
+      )
+    : { from: request.from ?? earliest, to: request.to ?? latest };
+  const plan = planReplay({ from: span.from, to: span.to, windows });
 
   const tiers = [...new Set(plan.chunks.map((chunk) => chunk.tier))];
   const missing = await unregisteredMetrics(client, request, tiers);

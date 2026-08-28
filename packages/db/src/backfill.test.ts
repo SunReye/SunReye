@@ -7,6 +7,7 @@ import {
   configLeak,
   refreshCall,
   refreshWindows,
+  replayWatermarkSource,
 } from "./backfill";
 
 const span = (from: string, to: string) => ({ start: new Date(from), end: new Date(to) });
@@ -33,6 +34,30 @@ describe("REFRESH_ORDER", () => {
   });
 });
 
+describe("replayWatermarkSource", () => {
+  test("the primary source keeps the bare key, so a run already in progress resumes", () => {
+    expect(replayWatermarkSource("legacy-buckets", "deye-sun15k", "deye-sun15k")).toBe(
+      "legacy-buckets",
+    );
+  });
+
+  test("an orphaned source id gets its own key, so the two never share a watermark", () => {
+    // Production carries TWO ids in its rollups: the profile was renamed on
+    // 2026-07-13 and `deye-sg05lp3` holds the 3h48m before it. Both replay onto
+    // the same device over an overlapping day, so a shared watermark would make
+    // the second one look already done and drop its history.
+    expect(replayWatermarkSource("legacy-buckets", "deye-sg05lp3", "deye-sun15k")).toBe(
+      "legacy-buckets#deye-sg05lp3",
+    );
+  });
+
+  test("two orphaned ids never collide with each other", () => {
+    const a = replayWatermarkSource("legacy-buckets", "old-a", "current");
+    const b = replayWatermarkSource("legacy-buckets", "old-b", "current");
+    expect(a).not.toBe(b);
+  });
+});
+
 describe("refreshWindows", () => {
   test("a short span is one window, padded by a bucket on each side", () => {
     const windows = refreshWindows(
@@ -43,6 +68,35 @@ describe("refreshWindows", () => {
     expect(windows).toHaveLength(1);
     expect(windows[0]?.start.toISOString()).toBe("2026-07-31T00:00:00.000Z");
     expect(windows[0]?.end.toISOString()).toBe("2026-08-04T00:00:00.000Z");
+  });
+
+  test("windows are BUCKET-ALIGNED, so no bucket straddles a seam and goes unrefreshed", () => {
+    // `refresh_continuous_aggregate` only materializes buckets it FULLY contains.
+    // Production's replayed span begins at 21:00, so unaligned 7-day windows ran
+    // 07-11 21:00 -> 07-18 21:00 -> 07-25 21:00 …, and the daily bucket starting
+    // 07-18 00:00 fell inside neither: it ends after the first window and starts
+    // before the second. Four whole days — 07-18, 07-25, 08-01, 08-08 — were
+    // silently absent from the daily tier while their raw rows were all present.
+    const windows = refreshWindows(
+      span("2026-07-12T19:00:00Z", "2026-08-14T19:37:42.178Z"),
+      "daily_rollups",
+      7,
+    );
+    const DAY = 86_400_000;
+    for (const w of windows) {
+      expect(w.start.getTime() % DAY).toBe(0);
+      expect(w.end.getTime() % DAY).toBe(0);
+    }
+    // And still contiguous, and still covering the whole padded span.
+    for (let i = 1; i < windows.length; i++) {
+      expect(windows[i]?.start.getTime()).toBe(windows[i - 1]?.end.getTime());
+    }
+    expect(windows[0]!.start.getTime()).toBeLessThanOrEqual(
+      Date.parse("2026-07-12T19:00:00Z") - DAY,
+    );
+    expect(windows.at(-1)!.end.getTime()).toBeGreaterThanOrEqual(
+      Date.parse("2026-08-14T19:37:42.178Z") + DAY,
+    );
   });
 
   test("a trailing remainder shorter than one bucket is merged, not left as its own window", () => {
@@ -62,10 +116,13 @@ describe("refreshWindows", () => {
     for (const w of windows) {
       expect(w.end.getTime() - w.start.getTime()).toBeGreaterThanOrEqual(86_400_000);
     }
-    // Still contiguous, and still reaches the padded end — a merge that trimmed
-    // the tail would leave the last day unmaterialized, which is the failure the
-    // narrow window was trying to avoid.
-    expect(windows.at(-1)?.end.toISOString()).toBe("2026-08-15T19:37:42.178Z");
+    // Still contiguous, and still reaches PAST the padded end — a merge that
+    // trimmed the tail would leave the last day unmaterialized, which is the
+    // failure the narrow window was trying to avoid. The end is a bucket
+    // boundary at or beyond it, never short of it.
+    expect(windows.at(-1)!.end.getTime()).toBeGreaterThanOrEqual(
+      Date.parse("2026-08-15T19:37:42.178Z"),
+    );
     for (let i = 1; i < windows.length; i++) {
       expect(windows[i]?.start.getTime()).toBe(windows[i - 1]?.end.getTime());
     }

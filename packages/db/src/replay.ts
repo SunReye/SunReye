@@ -172,6 +172,79 @@ function finestTierCovering(windows: readonly TierWindow[], span: Span): BucketT
   return null;
 }
 
+
+/**
+ * At the OUTER EDGES of the replay span only: the finest tier that overlaps the
+ * chunk, and the chunk narrowed to what that tier actually holds.
+ *
+ * {@link finestTierCovering} demands whole-chunk coverage, and for a chunk in the
+ * MIDDLE of the span that is right — the minute tier's retention boundary leaves
+ * it covering a morning while `daily` covers the day, and clipping there would
+ * throw the afternoon away. At the first and last chunk the situation is the
+ * opposite: the uncovered part is not a hole in the middle of the history, it is
+ * before the history starts (or after it ends), so there is nothing there to lose.
+ *
+ * Production made the difference concrete. Its history begins at 21:38 on
+ * 2026-07-12, so the minute tier starts mid-day and the whole-chunk rule fell
+ * back to `daily` — one bucket for the day. A single replayed row cannot express
+ * a within-day counter delta, so every counter read 0 for the first day of
+ * history while 142 real minute buckets per metric sat unused.
+ *
+ * `isFirst` may only extend the start forward and `isLast` may only pull the end
+ * back, which is what keeps this from becoming the mid-span clip the whole-chunk
+ * rule exists to prevent. The remainder is returned to the caller as a GAP rather
+ * than dropped, so a genuine hole is still reported.
+ */
+function clipToTierAtEdge(
+  windows: readonly TierWindow[],
+  span: Span,
+  edge: { isFirst: boolean; isLast: boolean },
+): { tier: BucketTier; span: Span } | null {
+  for (const tier of TIERS) {
+    const window = windows.find((w) => w.tier === tier);
+    if (!window) continue;
+    const from = Math.max(window.from.getTime(), span.start.getTime());
+    const to = Math.min(window.to.getTime(), span.end.getTime());
+    if (from >= to) continue;
+    // Whole coverage still wins outright when the finest tier has it; the two
+    // edge cases below are what let a FINER tier beat a coarser one that covers
+    // the chunk completely. That preference is the fix: at 2026-07-12 the daily
+    // tier covered the whole day and the minute tier covered only its last two
+    // hours, and the minute tier is the one holding the day's real readings.
+    const covers =
+      window.from.getTime() <= span.start.getTime() && window.to.getTime() >= span.end.getTime();
+    const leading = edge.isFirst && window.to.getTime() >= span.end.getTime();
+    const trailing = edge.isLast && window.from.getTime() <= span.start.getTime();
+    if (!covers && !leading && !trailing) continue;
+    return { tier, span: { start: new Date(from), end: new Date(to) } };
+  }
+  return null;
+}
+
+/**
+ * Narrow a requested span to what the source's tiers actually hold.
+ *
+ * A caller's `to` is the migration record's `replayTo` — the point where the
+ * retained raw window takes over — and it is the same for every source id. But a
+ * 1.x database can hold SEVERAL ids (a profile swap started a new series under a
+ * new name), and an orphaned one may cover only hours. Without this, every day
+ * beyond that id's history is planned, matches no tier, and is reported as a gap:
+ * 28 lines saying "no tier could answer" about days the source never had, in the
+ * middle of a migration where a real gap is the thing an operator must not miss.
+ *
+ * Only the OUTER bounds move. A genuine hole inside the coverage still produces a
+ * gap, which is the whole point of reporting them.
+ */
+export function clampToCoverage(
+  requested: { from: Date; to: Date },
+  coverage: { from: Date; to: Date },
+): { from: Date; to: Date } {
+  return {
+    from: new Date(Math.max(requested.from.getTime(), coverage.from.getTime())),
+    to: new Date(Math.min(requested.to.getTime(), coverage.to.getTime())),
+  };
+}
+
 /** One unit of replay work: a span, and the tier that answers it. */
 export interface ReplayChunk extends Span {
   tier: BucketTier;
@@ -227,9 +300,27 @@ export function planReplay(input: ReplayPlanInput): ReplayPlan {
   while (cursor < end) {
     const dayEnd = Math.floor(cursor / DAY_MS) * DAY_MS + DAY_MS;
     const span: Span = { start: new Date(cursor), end: new Date(Math.min(dayEnd, end)) };
-    const tier = finestTierCovering(input.windows, span);
-    if (tier === null) gaps.push(span);
-    else chunks.push({ tier, ...span });
+    const edge = { isFirst: cursor === input.from.getTime(), isLast: dayEnd >= end };
+    const tier = edge.isFirst || edge.isLast ? null : finestTierCovering(input.windows, span);
+    if (tier !== null) {
+      chunks.push({ tier, ...span });
+    } else {
+      const clipped =
+        edge.isFirst || edge.isLast ? clipToTierAtEdge(input.windows, span, edge) : null;
+      if (clipped === null) {
+        gaps.push(span);
+      } else {
+        // The uncovered remainder is reported, never silently dropped — the whole
+        // point of `gaps` is that a day no tier could answer is visible.
+        if (clipped.span.start.getTime() > span.start.getTime()) {
+          gaps.push({ start: span.start, end: clipped.span.start });
+        }
+        if (clipped.span.end.getTime() < span.end.getTime()) {
+          gaps.push({ start: clipped.span.end, end: span.end });
+        }
+        chunks.push({ tier: clipped.tier, ...clipped.span });
+      }
+    }
     cursor = dayEnd;
   }
   return { chunks, gaps };

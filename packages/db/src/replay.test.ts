@@ -5,6 +5,7 @@ import {
   bucketToInterval,
   bucketWidthMs,
   pendingChunks,
+  clampToCoverage,
   planReplay,
 } from "./replay";
 
@@ -85,6 +86,50 @@ describe("choosing a tier", () => {
     expect(tierFor("2026-05-31T00:00:00Z", "2026-06-01T00:00:00Z")).toBe("hourly");
   });
 
+  test("the FIRST chunk is clipped to a finer tier that reaches the day's end", () => {
+    // Production's leading edge, exactly: history begins mid-day, so the minute
+    // tier starts at 21:38 on 2026-07-12 and runs on from there. The whole-span
+    // rule fell back to `daily`, which for that day is ONE bucket — and a single
+    // replayed row per day cannot express a within-day counter delta, so every
+    // counter read 0 for the first day of history. 142 real minute buckets per
+    // metric were discarded to avoid a partial chunk that has no data in it.
+    const edge = windows([
+      ["minute", "2026-07-12T21:38:00Z", "2026-08-14T00:00:00Z"],
+      ["daily", "2026-07-12T00:00:00Z", "2026-08-14T00:00:00Z"],
+    ]);
+    const plan = planReplay({
+      from: at("2026-07-12T00:00:00Z"),
+      to: at("2026-07-14T00:00:00Z"),
+      windows: edge,
+    });
+    expect(plan.chunks[0]?.tier).toBe("minute");
+    expect(plan.chunks[0]?.start.toISOString()).toBe("2026-07-12T21:38:00.000Z");
+    expect(plan.chunks[0]?.end.toISOString()).toBe("2026-07-13T00:00:00.000Z");
+    // Nothing is silently dropped: the part before the tier's coverage is
+    // reported, so a real hole would still be visible.
+    expect(plan.gaps[0]?.start.toISOString()).toBe("2026-07-12T00:00:00.000Z");
+    expect(plan.gaps[0]?.end.toISOString()).toBe("2026-07-12T21:38:00.000Z");
+  });
+
+  test("a MID-span chunk still falls back rather than clipping away the rest of the day", () => {
+    // The minute tier's retention boundary: minute covers the MORNING and daily
+    // covers the whole day. Clipping here would throw the afternoon away, which
+    // is the case the whole-span rule exists for. Only the outer edges of the
+    // replay span may be clipped.
+    const boundary = windows([
+      ["minute", "2026-07-12T12:00:00Z", "2026-08-14T00:00:00Z"],
+      ["daily", "2026-06-01T00:00:00Z", "2026-08-14T00:00:00Z"],
+    ]);
+    const plan = planReplay({
+      from: at("2026-07-10T00:00:00Z"),
+      to: at("2026-07-14T00:00:00Z"),
+      windows: boundary,
+    });
+    const chunk = plan.chunks.find((c) => c.start.toISOString() === "2026-07-12T00:00:00.000Z");
+    expect(chunk?.tier).toBe("daily");
+    expect(chunk?.end.toISOString()).toBe("2026-07-13T00:00:00.000Z");
+  });
+
   test("falls back to daily when neither finer tier reaches", () => {
     expect(tierFor("2021-01-01T00:00:00Z", "2021-01-02T00:00:00Z")).toBe("daily");
   });
@@ -100,6 +145,40 @@ describe("choosing a tier", () => {
   test("a window whose end IS the span's end still covers it — the end is exclusive", () => {
     const only = windows([["minute", "2026-07-01T00:00:00Z", "2026-07-02T00:00:00Z"]]);
     expect(tierFor("2026-07-01T00:00:00Z", "2026-07-02T00:00:00Z", only)).toBe("minute");
+  });
+});
+
+describe("clampToCoverage", () => {
+  const cover = { from: at("2026-07-12T19:38:00Z"), to: at("2026-07-12T23:26:00Z") };
+
+  test("a request reaching past a source's history is not a span of gaps", () => {
+    // The orphaned-profile case: `deye-sg05lp3` holds 3h48m, but the migration
+    // record's replayTo is three weeks later. Without clamping, every day beyond
+    // that source's coverage is reported as "no tier could answer" — 28 alarming
+    // lines describing days that source never had.
+    const span = clampToCoverage(
+      { from: at("2026-07-12T00:00:00Z"), to: at("2026-08-07T00:00:00Z") },
+      cover,
+    );
+    expect(span.from.toISOString()).toBe("2026-07-12T19:38:00.000Z");
+    expect(span.to.toISOString()).toBe("2026-07-12T23:26:00.000Z");
+  });
+
+  test("a request INSIDE the coverage is left alone — the caller's bound still wins", () => {
+    const span = clampToCoverage(
+      { from: at("2026-07-12T20:00:00Z"), to: at("2026-07-12T22:00:00Z") },
+      cover,
+    );
+    expect(span.from.toISOString()).toBe("2026-07-12T20:00:00.000Z");
+    expect(span.to.toISOString()).toBe("2026-07-12T22:00:00.000Z");
+  });
+
+  test("no overlap at all collapses to an empty span rather than an inverted one", () => {
+    const span = clampToCoverage(
+      { from: at("2026-09-01T00:00:00Z"), to: at("2026-09-02T00:00:00Z") },
+      cover,
+    );
+    expect(span.to.getTime()).toBeLessThanOrEqual(span.from.getTime());
   });
 });
 
