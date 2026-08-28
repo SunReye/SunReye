@@ -9,9 +9,40 @@
  * empty box never coerces to 0. Parsing happens once, here, on save.
  */
 
-export type ArrayText = { kwp: string; tilt: string; azimuth: string };
+/**
+ * The per-array fields this form does NOT edit, carried through a save.
+ *
+ * `tempCoefficient` is a module datasheet number and `systemLoss` is per-string
+ * (soiling, shading, mismatch, DC wiring), so both can differ between a shaded
+ * east string and a clean south one; `deviceSlug` says which inverter the string
+ * is wired into. The record can state all three per array. This form does not
+ * ask for them — the plant-wide columns beside them are the right default for
+ * the uniform single-array plant, and these are numbers read off a document.
+ *
+ * They still have to SURVIVE this form. It read-modify-writes the whole `arrays`
+ * list and names it in the request, so rebuilding each entry from its three text
+ * boxes would erase the overrides on the next unrelated save — the export limit
+ * edited, the east string's 25 % silently back to 14. Hence an opaque bag: no
+ * input, no default, no normalisation, out exactly as it came in.
+ *
+ * Mirrors `pvArraySchema` in `packages/db/src/weather.ts` (the web app cannot
+ * import from that package).
+ */
+export type PvArrayOverrides = {
+  deviceSlug?: string;
+  tempCoefficient?: number;
+  systemLoss?: number;
+};
 
-export type PvArray = { kwp: number; tilt: number; azimuth: number };
+export type ArrayText = {
+  kwp: string;
+  tilt: string;
+  azimuth: string;
+  /** Carried, never edited — see {@link PvArrayOverrides}. Absent when none. */
+  overrides?: PvArrayOverrides;
+};
+
+export type PvArray = { kwp: number; tilt: number; azimuth: number } & PvArrayOverrides;
 export type PlantBattery = {
   usableKwh: number;
   maxChargeW: number | null;
@@ -71,7 +102,10 @@ function parseArray(t: ArrayText): PvArray | null {
   const tilt = num(t.tilt);
   const azimuth = num(t.azimuth);
   if (kwp === null || tilt === null || azimuth === null) return null;
-  return { kwp, tilt, azimuth };
+  // Spread last but never defaulted: an array that stated nothing gets no keys,
+  // because `systemLoss: undefined` re-validates as a stated field to anything
+  // reading keys, and a `{}` bag would make every new array claim 0 %.
+  return { kwp, tilt, azimuth, ...t.overrides };
 }
 
 /**
@@ -159,10 +193,14 @@ const kwText = (w: number | null | undefined) => (w == null ? "" : (w / 1000).to
 export function plantTextsFrom(stored: StoredPlant, legacyNominalV?: number | null): PlantTexts {
   const battery = stored.battery;
   return {
-    arrays: stored.arrays.map((a) => ({
-      kwp: a.kwp.toString(),
-      tilt: a.tilt.toString(),
-      azimuth: a.azimuth.toString(),
+    arrays: stored.arrays.map(({ kwp, tilt, azimuth, ...overrides }) => ({
+      kwp: kwp.toString(),
+      tilt: tilt.toString(),
+      azimuth: azimuth.toString(),
+      // Destructured rest rather than three named copies: a field added to the
+      // record and forgotten here would be silently erased on the next save,
+      // which is a bug with no failing test to find it.
+      ...(Object.keys(overrides).length > 0 ? { overrides } : {}),
     })),
     tempCoeff: stored.tempCoefficient.toString(),
     loss: stored.systemLoss.toString(),

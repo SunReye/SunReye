@@ -245,14 +245,52 @@ const upTo =
 /** Any string at all — a date field's format is the form's business, not this. */
 const anyString: Reader<string> = (value) => (typeof value === "string" ? value : undefined);
 
-/** One PV array, or undefined when any of its three numbers is unusable. */
+/** A non-empty string no longer than `max` — see `pvArraySchema.deviceSlug`. */
+const slug =
+  (max: number): Reader<string> =>
+  (value) =>
+    typeof value === "string" && value.length > 0 && value.length <= max ? value : undefined;
+
+/**
+ * The three OPTIONAL fields of a PV array, and the reader each is.
+ *
+ * Split out from the three required ones because they fail differently: a
+ * missing or out-of-bounds `kwp` means the entry describes no surface, while a
+ * missing or out-of-bounds override means only that nobody stated one — and the
+ * plant column, which is where the value came from before overrides existed, is
+ * the answer. Folding them into the all-or-nothing check would let one typo'd
+ * datasheet number delete a whole string from the plant's capacity.
+ */
+const ARRAY_OVERRIDES = {
+  deviceSlug: slug(120),
+  tempCoefficient: between(-2, 0),
+  systemLoss: between(0, 90),
+} as const satisfies { [K in keyof PvArrayOverrides]-?: Reader<NonNullable<PvArrayOverrides[K]>> };
+
+/** Just the optional half of {@link PvArray}, so the reader table can be typed. */
+type PvArrayOverrides = Omit<PvArray, "kwp" | "tilt" | "azimuth">;
+
+/**
+ * One PV array, or undefined when any of its three REQUIRED numbers is unusable.
+ *
+ * The overrides are copied only when present and in bounds, and an absent one is
+ * left off the object entirely rather than written as `undefined`: this value is
+ * round-tripped back into JSONB, and "the key is not there" is the same thing the
+ * schema means by optional. `undefined` would survive a `??` identically today
+ * and read as a stated field in a `Object.keys` or a diff tomorrow.
+ */
 function maybeArray(entry: unknown): PvArray | undefined {
   if (!isPlainObject(entry)) return undefined;
   const kwp = positive(100_000)(entry.kwp);
   const tilt = between(0, 90)(entry.tilt);
   const azimuth = between(-180, 180)(entry.azimuth);
   if (kwp === undefined || tilt === undefined || azimuth === undefined) return undefined;
-  return { kwp, tilt, azimuth };
+  const array: PvArray = { kwp, tilt, azimuth };
+  for (const [key, read] of Object.entries(ARRAY_OVERRIDES)) {
+    const value = read(entry[key]);
+    if (value !== undefined) Object.assign(array, { [key]: value });
+  }
+  return array;
 }
 
 /**
