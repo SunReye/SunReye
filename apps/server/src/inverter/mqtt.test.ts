@@ -228,6 +228,8 @@ class FakeClient extends EventEmitter {
   ended = 0;
   /** Publish acks are withheld until released, to observe close()'s ordering. */
   deferAcks = false;
+  /** Make `publish` throw for matching topics, as a broker rejection would. */
+  failPublishOn: ((topic: string) => boolean) | null = null;
   #pendingAcks: (() => void)[] = [];
 
   subscribe(topics: string[], cb: (err?: Error | null) => void): void {
@@ -236,6 +238,7 @@ class FakeClient extends EventEmitter {
   }
 
   publish(topic: string, payload: string, opts: Record<string, unknown>, cb?: () => void): void {
+    if (this.failPublishOn?.(topic)) throw new Error(`publish refused: ${topic}`);
     this.published.push({ topic, payload, opts });
     if (!cb) return;
     if (this.deferAcks) this.#pendingAcks.push(cb);
@@ -1231,6 +1234,22 @@ describe("retiring the legacy HA entities", () => {
     expect(
       h.client.payloadOf("homeassistant/sensor/sunreye_haus-sud_inverter/pv_power/config"),
     ).toContain('"unique_id"');
+  });
+
+  test("a broker that refuses a clear leaves no state row, so the next boot retries", async () => {
+    // The clear is what makes this destructive, so a half-finished sweep must not
+    // be recorded as done — and it must not take the bridge down either.
+    const h = start({ haDiscoveryEnabled: true });
+    h.client.failPublishOn = (topic) =>
+      topic === "homeassistant/sensor/sunreye_deye-sg05lp3/pv_power/config";
+    h.connect();
+    await settle();
+    expect(h.legacy.state).toBeNull();
+    expect(h.bridge.status().connected).toBe(true);
+    // The new announcement went out before the sweep, so the entities exist.
+    expect(h.client.topics()).toContain(
+      "homeassistant/sensor/sunreye_haus-sud_inverter/pv_power/config",
+    );
   });
 
   test("a database that cannot be read leaves the announcement intact", async () => {

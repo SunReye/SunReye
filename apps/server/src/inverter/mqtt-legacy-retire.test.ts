@@ -1,8 +1,12 @@
 import { describe, expect, test } from "bun:test";
+import type { PlantDb } from "@SunReye/db/plant-repo";
 import {
   type AnnouncedEntity,
+  LEGACY_RETIREMENT_KEY,
   type LegacyRetirementState,
   type LegacyRetirementStore,
+  type SettingsIo,
+  dbLegacyRetirementStore,
   legacyDiscoveryTopics,
   retireLegacyEntities,
 } from "./mqtt-legacy-retire";
@@ -266,5 +270,153 @@ describe("retireLegacyEntities", () => {
     expect(await run(h)).toBe(2);
     expect(h.cleared).toHaveLength(2);
     expect(h.warnings.join(" ")).toContain("legacy");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The production store. Its two lookups are the only IO in this module, and both
+// are load-bearing: a mis-read state row re-runs a destructive sweep, and a
+// mis-read device list decides which topics that sweep publishes to.
+// ---------------------------------------------------------------------------
+
+const deviceRow = (over: Record<string, unknown> = {}) => ({
+  id: 1,
+  slug: "inverter",
+  name: "Deye SG05LP3",
+  profileId: "deye-sg05lp3",
+  role: "inverter",
+  unitId: 1,
+  connectionId: 1,
+  retiredAt: null,
+  ...over,
+});
+
+const plantRow = {
+  id: 1,
+  name: "Haus Süd",
+  slug: "haus-sud",
+  timeZone: "Europe/Berlin",
+  latitude: null,
+  longitude: null,
+  label: "",
+  arrays: [],
+  tempCoefficient: -0.4,
+  systemLoss: 14,
+  maxOutputW: null,
+  houseLoadW: null,
+  smartMeterSince: null,
+  biddingZone: null,
+  tariffKey: null,
+};
+
+/** Answers the plant read first, then the device read — the order the store uses. */
+function fakeDb(plants: unknown[], devices: unknown[]): PlantDb & { calls: number } {
+  const db = {
+    calls: 0,
+    execute: async () => {
+      db.calls += 1;
+      return { rows: db.calls === 1 ? plants : devices };
+    },
+  };
+  return db;
+}
+
+function fakeSettings(stored: unknown = undefined) {
+  const io = {
+    stored,
+    written: [] as { key: string; value: unknown }[],
+    read: async <T>(
+      _key: string,
+      schema: { safeParse(v: unknown): { success: boolean; data?: T } },
+      fallback: T,
+    ) => {
+      if (io.stored === undefined) return fallback;
+      const parsed = schema.safeParse(io.stored);
+      return parsed.success && parsed.data !== undefined ? parsed.data : fallback;
+    },
+    write: async <T>(key: string, value: T) => {
+      io.written.push({ key, value });
+    },
+  };
+  return io as typeof io & SettingsIo;
+}
+
+describe("dbLegacyRetirementStore", () => {
+  test("no state row reads as 'never ran'", async () => {
+    const store = dbLegacyRetirementStore("deye-sg05lp3", fakeDb([], []), fakeSettings());
+    expect(await store.readState()).toBeNull();
+  });
+
+  test("a stored row is returned as-is, extra fields and all", async () => {
+    const settings = fakeSettings({
+      at: "2026-08-01T00:00:00.000Z",
+      profileIds: ["deye"],
+      topics: 8,
+      somethingLater: true,
+    });
+    const store = dbLegacyRetirementStore("x", fakeDb([], []), settings);
+    expect(await store.readState()).toMatchObject({ at: "2026-08-01T00:00:00.000Z", topics: 8 });
+  });
+
+  test("A ROW THIS SCHEMA CANNOT PARSE READS AS 'NEVER RAN'", async () => {
+    // `readSetting` falls back silently, so the only question is WHICH direction
+    // the fallback points. "never ran" repeats an idempotent broker no-op; the
+    // other direction would skip the sweep forever.
+    const store = dbLegacyRetirementStore("x", fakeDb([], []), fakeSettings({ at: "" }));
+    expect(await store.readState()).toBeNull();
+  });
+
+  test("the state is written under the documented key", async () => {
+    const settings = fakeSettings();
+    const store = dbLegacyRetirementStore("x", fakeDb([], []), settings);
+    const state: LegacyRetirementState = { at: "now", profileIds: ["a"], topics: 3 };
+    await store.writeState(state);
+    expect(settings.written).toEqual([{ key: LEGACY_RETIREMENT_KEY, value: state }]);
+  });
+
+  test("the legacy profile ids are the active profile plus every device row's", async () => {
+    const store = dbLegacyRetirementStore(
+      "sofar-hyd-6000",
+      fakeDb([plantRow], [deviceRow(), deviceRow({ id: 2, profileId: "deye-sg05lp3" })]),
+      fakeSettings(),
+    );
+    expect(await store.legacyProfileIds()).toEqual(["sofar-hyd-6000", "deye-sg05lp3"]);
+  });
+
+  test("a RETIRED device's profile is swept too — its entities are the orphans", async () => {
+    const store = dbLegacyRetirementStore(
+      "deye-sg05lp3",
+      fakeDb(
+        [plantRow],
+        [deviceRow({ id: 2, profileId: "old-model", retiredAt: "2026-01-01T00:00:00Z" })],
+      ),
+      fakeSettings(),
+    );
+    expect(await store.legacyProfileIds()).toContain("old-model");
+  });
+
+  test("a duplicate profile id appears once", async () => {
+    const store = dbLegacyRetirementStore(
+      "deye-sg05lp3",
+      fakeDb([plantRow], [deviceRow(), deviceRow({ id: 2 })]),
+      fakeSettings(),
+    );
+    expect(await store.legacyProfileIds()).toEqual(["deye-sg05lp3"]);
+  });
+
+  test("no plant yet still yields the active profile, without a device query", async () => {
+    const db = fakeDb([], [deviceRow()]);
+    const store = dbLegacyRetirementStore("deye-sg05lp3", db, fakeSettings());
+    expect(await store.legacyProfileIds()).toEqual(["deye-sg05lp3"]);
+    expect(db.calls).toBe(1);
+  });
+
+  test("a blank profile id is dropped — `sunreye_/` is not a topic node", async () => {
+    const store = dbLegacyRetirementStore(
+      "   ",
+      fakeDb([plantRow], [deviceRow({ profileId: "" })]),
+      fakeSettings(),
+    );
+    expect(await store.legacyProfileIds()).toEqual([]);
   });
 });

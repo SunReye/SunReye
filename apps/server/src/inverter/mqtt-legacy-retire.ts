@@ -56,7 +56,7 @@
 
 import { db } from "@SunReye/db";
 import { type PlantDb, readDevices, readPlant } from "@SunReye/db/plant-repo";
-import { z } from "zod";
+import { type ZodType, z } from "zod";
 import { readSetting, writeSetting } from "../settings/app-settings";
 
 /** `app_settings` key recording that the legacy sweep has run. */
@@ -210,23 +210,42 @@ export async function retireLegacyEntities(input: RetireLegacyInput): Promise<nu
 }
 
 /**
+ * The `app_settings` accessors this store needs.
+ *
+ * Injected with a production default for the same reason `database` below is: the
+ * two lookups here are the only IO in the module and BOTH are load-bearing — a
+ * mis-read state row re-runs a destructive sweep, and a mis-read device list
+ * decides which topics that sweep publishes to. Neither is provable while they are
+ * hard-wired to the global client.
+ */
+export interface SettingsIo {
+  read<T>(key: string, schema: ZodType<T>, fallback: T): Promise<T>;
+  write<T>(key: string, value: T): Promise<void>;
+}
+
+/** The real `app_settings` pair. */
+const dbSettingsIo: SettingsIo = { read: readSetting, write: writeSetting };
+
+/**
  * The production store.
  *
  * The profile ids are the ACTIVE profile plus the `profile_id` of every device row
  * on the plant — retired devices INCLUDED, because a retired inverter's
- * announcements are exactly the orphans that need clearing. Read-only: nothing
- * here writes to the spine.
+ * announcements are exactly the orphans that need clearing. Read-only against the
+ * spine: nothing here writes to a plant or a device, and in particular nothing
+ * touches a frozen slug.
  */
 export function dbLegacyRetirementStore(
   activeProfileId: string,
   database: PlantDb = db,
+  settings: SettingsIo = dbSettingsIo,
 ): LegacyRetirementStore {
   return {
     // `.nullable()` so "no row" and "a row this schema rejects" both land on null
     // — "never ran" — the direction whose worst case is a repeat of an idempotent
     // no-op rather than a sweep silently skipped.
-    readState: () => readSetting(LEGACY_RETIREMENT_KEY, stateSchema.nullable(), null),
-    writeState: (state) => writeSetting(LEGACY_RETIREMENT_KEY, state),
+    readState: () => settings.read(LEGACY_RETIREMENT_KEY, stateSchema.nullable(), null),
+    writeState: (state) => settings.write(LEGACY_RETIREMENT_KEY, state),
     legacyProfileIds: async () => {
       const plant = await readPlant(database);
       const ids = new Set<string>([activeProfileId]);
