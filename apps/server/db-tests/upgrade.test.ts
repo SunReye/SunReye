@@ -435,7 +435,9 @@ suite("the in-place 1.2.0 -> 2.0.0 upgrade", () => {
         store: dbProvisionStore({ execute: (query) => db.execute(query) }),
         logger,
         profile: { id: SOURCE_ID, name: "Upgrade probe" },
-        config: {
+        // The SEED, i.e. the 1.2.0 `app_settings.inverter` document this upgrade
+        // is carrying into the spine. It creates the rows; nothing writes it back.
+        seed: {
           host: "192.168.1.50",
           port: 502,
           transport: "tcp",
@@ -444,6 +446,7 @@ suite("the in-place 1.2.0 -> 2.0.0 upgrade", () => {
           pollIntervalMs: 1000,
         },
       });
+      if (!result) throw new Error("the upgrade probe provisioned no device");
       deviceId = result.deviceId;
       await ensureMetricKeys(
         db,

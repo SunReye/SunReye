@@ -222,6 +222,55 @@ suite("the dimension spine", () => {
     expect((rows[0] as { n: number }).n).toBe(1);
   });
 
+  test("readConnections lists EVERY endpoint of the plant, and only that plant's", async () => {
+    // The poll loop resolves each device's endpoint through its own
+    // `connection_id` (`apps/server/src/inverter/endpoint.ts`), so it needs the
+    // whole set. Against a real engine because the claim is about what the
+    // statement returns and in what order — `connections` has no unique key, so
+    // two gateways really are two rows, and a plant filter that leaked would
+    // point one plant's device at another plant's address.
+    const plant = await freshPlant("spine-conns");
+    const other = await freshPlant("spine-conns-other");
+    const first = await repo.ensureConnection(db, plant.id, {
+      name: "GX gateway",
+      host: "10.0.0.5",
+      port: 502,
+      transport: "tcp",
+      timeoutMs: 2000,
+      pollIntervalMs: 1000,
+    });
+    // A SECOND endpoint on the same plant — two gateways, which `ensureConnection`
+    // deliberately cannot create (it edits in place), so this is a raw insert.
+    await db.execute(sql`
+      insert into connections (plant_id, name, host, port, transport, timeout_ms, poll_interval_ms)
+      values (${plant.id}, 'RS485 bridge', '10.0.0.6', 8899, 'rtu-over-tcp', 3000, 5000)`);
+    await repo.ensureConnection(db, other.id, {
+      name: "Elsewhere",
+      host: "10.9.9.9",
+      port: 502,
+      transport: "tcp",
+      timeoutMs: 2000,
+      pollIntervalMs: 1000,
+    });
+
+    const listed = await repo.readConnections(db, plant.id);
+    expect(listed.map((c) => c.host)).toEqual(["10.0.0.5", "10.0.0.6"]);
+    expect(listed[0]?.id).toBe(first.id);
+    // Coercions, which only a real driver can prove: these columns are `integer`.
+    expect(listed[1]).toMatchObject({
+      port: 8899,
+      transport: "rtu-over-tcp",
+      timeoutMs: 3000,
+      pollIntervalMs: 5000,
+    });
+    // The single-endpoint reader is the first of the same list.
+    expect((await repo.readConnection(db, plant.id))?.id).toBe(first.id);
+
+    const none = await freshPlant("spine-conns-none");
+    expect(await repo.readConnections(db, none.id)).toEqual([]);
+    expect(await repo.readConnection(db, none.id)).toBeNull();
+  });
+
   test("ensureDevice creates once, keeps the id and the slug, and re-points the profile", async () => {
     // A profile SWAP is the headline bug of 2.0.0: in 1.x it orphaned every row
     // of history. The device must survive it with its id intact.

@@ -34,6 +34,10 @@ function recordingStore(fail = false) {
     async updatePlant() {
       calls.push("updatePlant");
     },
+    async readConnection() {
+      calls.push("readConnection");
+      return null;
+    },
     async ensureConnection() {
       calls.push("ensureConnection");
       return {
@@ -94,7 +98,7 @@ const logger = {
 const deps = (store: ProvisionStore) => ({
   store,
   logger,
-  config: async () => inverterConfigSchema.parse({ host: "10.0.0.5", unitId: 1 }),
+  seed: async () => inverterConfigSchema.parse({ host: "10.0.0.5", unitId: 1 }),
 });
 
 describe("syncProvisioning", () => {
@@ -141,8 +145,9 @@ describe("defaultDeps", () => {
     // the path every boot takes. Nothing is invoked here, so no query runs.
     const wired = defaultDeps();
     expect(typeof wired.store.ensurePlant).toBe("function");
+    expect(typeof wired.store.readConnection).toBe("function");
     expect(typeof wired.store.readRawSetting).toBe("function");
     expect(typeof wired.logger.warn).toBe("function");
-    expect(typeof wired.config).toBe("function");
+    expect(typeof wired.seed).toBe("function");
   });
 });

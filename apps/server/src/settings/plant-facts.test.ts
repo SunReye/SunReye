@@ -66,6 +66,9 @@ function memoryStore(seed: { settings?: Record<string, unknown> } = {}) {
       const plant = plants.find((p) => p.id === id);
       if (plant) Object.assign(plant, patch);
     },
+    async readConnection(plantId: number) {
+      return connections.find((c) => c.plantId === plantId) ?? null;
+    },
     async ensureConnection(plantId: number, cfg: ConnectionSettings) {
       const created = { ...cfg, id: nextId++, plantId };
       connections.push(created);

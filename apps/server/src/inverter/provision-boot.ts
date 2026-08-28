@@ -8,12 +8,18 @@
  *     writer resolves nothing, drops every batch with one warning, and records
  *     no history at all. It runs whether or not a profile is active — see
  *     {@link syncProvisioning} on why the plant does not wait for one.
- *  2. SAVING THE CONNECTION (`../routes/settings.ts`, the inverter PUT). The
- *     host, port, transport, timeout and unit id the operator just typed are the
- *     `connections` row and the device's `unit_id`. Re-running provisioning there
- *     EDITS those in place — it never adds a second endpoint — so the row keeps
- *     describing where the machine actually is instead of drifting from the
- *     config the poll loop is using.
+ *  2. SAVING THE CONNECTION (`../routes/settings.ts`, the inverter PUT) — and
+ *     NOT for the reason it used to be. This call site once re-ran provisioning
+ *     so it would copy the just-saved `app_settings.inverter` document into
+ *     `connections` and `devices.unit_id`: the WRITE-BACK that made a JSONB blob
+ *     the authority over the spine and silently undid every endpoint edit on the
+ *     next boot. `./endpoint.ts` documents that defect and now owns the write.
+ *     What is left for this call is the one thing the save cannot do on its own:
+ *     an install that had no profile — and therefore no `devices` row — when it
+ *     first saved a connection needs the DEVICE created the moment one is
+ *     active, and the operator's typed unit id is the only sensible seed for it.
+ *     The route passes that as {@link BootProvisionDeps.seed}; a device that
+ *     already exists is adopted and left alone.
  *
  * NOTHING HERE THROWS
  *
@@ -26,11 +32,11 @@
  */
 
 import { db } from "@SunReye/db";
-import type { InverterConfig } from "@SunReye/db/inverter-config";
 
 import { getInverterConfig } from "../settings/config";
 import { log } from "../shared/logging";
 import {
+  type EndpointSeed,
   type ProvisionLogger,
   type ProvisionProfile,
   type ProvisionResult,
@@ -43,7 +49,15 @@ import {
 export interface BootProvisionDeps {
   store: ProvisionStore;
   logger: ProvisionLogger;
-  config: () => Promise<InverterConfig>;
+  /**
+   * Values for the rows this install has NONE of yet — never an edit.
+   *
+   * Named `seed` rather than `config` because the difference is the whole defect:
+   * as a "config" it was re-applied on every boot and outranked the
+   * `connections` row the operator had edited. `./provision.ts`'s `endpointFor`
+   * is where the rule lives.
+   */
+  seed: () => Promise<EndpointSeed>;
 }
 
 /**
@@ -54,14 +68,18 @@ export interface BootProvisionDeps {
  * Building here also means a `DATABASE_URL` change (there is none today, but a
  * reconnect is the obvious next thing) does not need this module reloaded.
  */
-// fallow-ignore-next-line unused-export -- the default wiring, exercised by provision-boot.test.ts; test files are not traced as consumers.
 export function defaultDeps(): BootProvisionDeps {
   return {
     // `db` read per call — see `../settings/plant-facts-instance.ts` for what
     // capturing it at module evaluation costs.
     store: dbProvisionStore({ execute: (query) => db.execute(query) }),
     logger: log("provision"),
-    config: getInverterConfig,
+    // THE ONE-WAY LEGACY READER (`../settings/config.ts`). This is the boot's
+    // seed and the only remaining reason that `app_settings` document is read at
+    // all: a 1.2.0 install's endpoint lives nowhere else, and the first boot
+    // after the in-place upgrade is the one chance to carry it into the spine.
+    // Nothing writes it back.
+    seed: getInverterConfig,
   };
 }
 
@@ -80,8 +98,9 @@ export function defaultDeps(): BootProvisionDeps {
  * live during an onboarding-only boot. A device is the thing a profile describes
  * how to talk to, so it waits for one.
  *
- * Returns the provisioned ids, or null when there was no profile (or the attempt
- * failed).
+ * Returns the provisioned ids, or null when there was no profile, the attempt
+ * failed, or the frozen device slug belongs to a RETIRED device (`./provision.ts`
+ * refuses to resurrect one, and that refusal is not an error).
  */
 export async function syncProvisioning(
   profile: ProvisionProfile | null,
@@ -92,7 +111,7 @@ export async function syncProvisioning(
       await provisionPlantRow(deps);
       return null;
     }
-    return await provisionDevice({ ...deps, profile, config: await deps.config() });
+    return await provisionDevice({ ...deps, profile, seed: await deps.seed() });
   } catch (error) {
     deps.logger.warn(
       "plant provisioning failed: {error} — readings cannot be stored until this succeeds",

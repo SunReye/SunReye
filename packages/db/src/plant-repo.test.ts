@@ -10,6 +10,7 @@ import {
   ensureDevice,
   ensurePlant,
   readConnection,
+  readConnections,
   readDevices,
   readPlant,
   readPlantBatteries,
@@ -218,6 +219,26 @@ describe("connections", () => {
     expect(read?.pollIntervalMs).toBe(1000);
     const absent = fakeClient([[]]);
     expect(await readConnection(absent.client, 7)).toBeNull();
+  });
+
+  test("readConnections lists every endpoint of the plant, coerced", async () => {
+    // The poll loop resolves a device's endpoint by `connection_id`, so it needs
+    // the whole set rather than the first row: one gateway with three unit ids is
+    // one connection, two gateways are two, and a device bound to the second one
+    // must not be polled at the first one's address.
+    const { client, executed } = fakeClient([
+      [connectionRow, { ...connectionRow, id: "4", host: "10.0.0.6" }],
+    ]);
+    const read = await readConnections(client, 7);
+    expect(read.map((c) => c.id)).toEqual([3, 4]);
+    expect(read[1]?.host).toBe("10.0.0.6");
+    expect(read[0]?.timeoutMs).toBe(2000);
+    // No LIMIT: the single-endpoint reader is the one that takes the first row.
+    expect(rendered(executed[0])).not.toContain("limit");
+  });
+
+  test("readConnections reports a plant with no endpoint as an empty list", async () => {
+    expect(await readConnections(fakeClient([[]]).client, 7)).toEqual([]);
   });
 
   test("an existing endpoint is UPDATED and keeps its id", async () => {

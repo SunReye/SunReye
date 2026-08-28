@@ -115,13 +115,11 @@ export interface DeviceRecord {
  * a date the operator typed ahead of time retires the device now, because
  * nothing in the poll loop would revisit the decision later.
  */
-// fallow-ignore-next-line unused-export -- the DB-layer seam for retirement; the poll loop and provisioning adopt it in the server wave that restructures `apps/server/src/inverter/provision*.ts`, and `activeDevices` below is its only in-package caller today.
 export function isRetired(device: Pick<DeviceRecord, "retiredAt">): boolean {
   return device.retiredAt !== null;
 }
 
 /** The in-service devices of a list, in the order given. */
-// fallow-ignore-next-line unused-export -- same seam: the in-memory half of the retirement filter, for the device lists the server holds without re-reading them.
 export function activeDevices<T extends Pick<DeviceRecord, "retiredAt">>(
   devices: readonly T[],
 ): T[] {
@@ -347,17 +345,37 @@ function toConnection(row: Record<string, unknown>): ConnectionRecord {
   };
 }
 
-/** The plant's endpoint, or null when it has none (simulate, imported history). */
-// fallow-ignore-next-line unused-export -- used by `ensureConnection` in this file and asserted directly by `apps/server/db-tests/plant-spine.test.ts`; the device-settings wave reads it to render the endpoint.
+/**
+ * EVERY endpoint of the plant, lowest id first.
+ *
+ * Plural because a connection is NOT a device (`./schema/plants.ts`): a Victron
+ * GX multiplexes many devices behind one endpoint by unit id, and a plant with
+ * two gateways has two rows. The poll loop resolves each device's endpoint
+ * through its own `connection_id`, so it needs the SET — taking the first row
+ * would silently poll a device bound to the second gateway at the first
+ * gateway's address, which reads plausible values from the wrong machine.
+ */
+export async function readConnections(db: PlantDb, plantId: number): Promise<ConnectionRecord[]> {
+  const { rows } = await db.execute(
+    sql`select ${CONNECTION_COLUMNS} from connections where plant_id = ${plantId} order by id asc`,
+  );
+  return (rows as Record<string, unknown>[]).map(toConnection);
+}
+
+/**
+ * The plant's FIRST endpoint, or null when it has none (simulate, imported
+ * history).
+ *
+ * The single-endpoint view of {@link readConnections}, kept because the two
+ * writers that only ever deal with one — `ensureConnection` below, and the
+ * settings save — would otherwise each pick the first row themselves and could
+ * disagree about which one that is.
+ */
 export async function readConnection(
   db: PlantDb,
   plantId: number,
 ): Promise<ConnectionRecord | null> {
-  const { rows } = await db.execute(
-    sql`select ${CONNECTION_COLUMNS} from connections where plant_id = ${plantId} order by id asc limit 1`,
-  );
-  const row = rows[0] as Record<string, unknown> | undefined;
-  return row ? toConnection(row) : null;
+  return (await readConnections(db, plantId))[0] ?? null;
 }
 
 /**
