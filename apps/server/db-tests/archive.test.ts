@@ -42,7 +42,7 @@ import { type CounterRow, energyOf } from "@SunReye/db/counter-energy";
 import { ensureMetricKeys } from "@SunReye/db/metric-keys";
 import { type ReplayClient, bunSqlClient, metricKeyWriter } from "@SunReye/db/replay-run";
 import { exportArchive } from "@SunReye/db/archive-export";
-import { importArchive } from "@SunReye/db/archive-import";
+import { importArchive, upsertDevice } from "@SunReye/db/archive-import";
 import { MEMBERS, buildManifest, emptyStreamCounts, tarEnd, tarMember } from "@SunReye/db/archive";
 import { createLineSpool, writeArchive } from "@SunReye/db/archive-file";
 import { databaseReachable, resetTestDatabase } from "./harness";
@@ -462,6 +462,92 @@ suite("the portable archive against a real TimescaleDB", () => {
     expect(warning).toMatch(/2015-01-01/);
     expect(warning).toMatch(/DELETED/);
   }, 120_000);
+
+  test("RETIREMENT IS STICKY: an archive cannot un-retire a device and start polling it", async () => {
+    const slug = "arch-sticky";
+    const plantId = Number(
+      (await pool`select min(id) as id from plants where slug = ${PLANT}`)[0].id,
+    );
+
+    // Arrives retired, from an archive that recorded it out of service.
+    await upsertDevice(
+      client,
+      plantId,
+      {
+        slug,
+        name: "Sticky",
+        profileId: "arch.profile",
+        serial: null,
+        role: "inverter",
+        unitId: 91,
+        connection: null,
+        retiredAt: "2026-02-01T00:00:00.000Z",
+        battery: null,
+      },
+      new Map(),
+    );
+    const [first] = await pool`select retired_at, id from devices where slug = ${slug}`;
+    expect(first.retired_at).not.toBeNull();
+
+    // The same device re-imported from an OLDER archive that predates retirement.
+    // Clearing the flag here would put a machine the operator stopped talking to
+    // back on the poll loop, on the strength of a backup file.
+    await upsertDevice(
+      client,
+      plantId,
+      {
+        slug,
+        name: "Sticky renamed",
+        profileId: "arch.profile",
+        serial: null,
+        role: "inverter",
+        unitId: 91,
+        connection: null,
+        retiredAt: null,
+        battery: null,
+      },
+      new Map(),
+    );
+    const [second] = await pool`select retired_at, id, name from devices where slug = ${slug}`;
+    expect(second.retired_at).not.toBeNull();
+    // Everything else DID merge, so this is the one field held back, not a
+    // statement that silently failed.
+    expect(String(second.name)).toBe("Sticky renamed");
+    // And the id never moved — it is written into every reading.
+    expect(Number(second.id)).toBe(Number(first.id));
+  });
+
+  test("an archived retirement DOES reach a device that is in service here", async () => {
+    const slug = "arch-sticky-2";
+    const plantId = Number(
+      (await pool`select min(id) as id from plants where slug = ${PLANT}`)[0].id,
+    );
+    const live = {
+      slug,
+      name: "Live",
+      profileId: "arch.profile",
+      serial: null,
+      role: "inverter",
+      unitId: 92,
+      connection: null,
+      retiredAt: null,
+      battery: null,
+    };
+    await upsertDevice(client, plantId, live, new Map());
+    expect((await pool`select retired_at from devices where slug = ${slug}`)[0].retired_at).toBeNull();
+
+    // Applying a retirement only ever STOPS a poll, so this direction is safe
+    // and is applied.
+    await upsertDevice(
+      client,
+      plantId,
+      { ...live, retiredAt: "2026-04-05T06:07:08.000Z" },
+      new Map(),
+    );
+    expect(
+      (await pool`select retired_at from devices where slug = ${slug}`)[0].retired_at,
+    ).not.toBeNull();
+  });
 
   test("an EMPTY database exports a valid, empty archive", async () => {
     // Nothing to export must still produce a readable file — this is the state a

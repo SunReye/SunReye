@@ -404,6 +404,52 @@ describe("exportArchive: the file it writes", () => {
 });
 
 describe("exportArchive: the configuration it carries", () => {
+  test("a retired device carries its retirement out, as an ISO instant", async () => {
+    const { config } = await run({
+      absent: /select min\(/,
+      plants: [{ id: 1, name: "Home", slug: "home", time_zone: "auto" }],
+      connections: [],
+      devices: [
+        {
+          slug: "old",
+          name: "Old",
+          profile_id: "deye.sun-12k",
+          serial: null,
+          role: "inverter",
+          unit_id: 1,
+          connection_id: null,
+          // A Date, which is what this driver hands back for a timestamptz —
+          // `String(date)` would emit "Wed Mar 04 2026 …" instead.
+          retired_at: new Date("2026-03-04T05:06:07.000Z"),
+          usable_kwh: null,
+        },
+      ],
+    });
+    expect(config.plant?.devices[0]?.retiredAt).toBe("2026-03-04T05:06:07.000Z");
+  });
+
+  test("an in-service device carries null, not a stringified null", async () => {
+    const { config } = await run({
+      absent: /select min\(/,
+      plants: [{ id: 1, name: "Home", slug: "home", time_zone: "auto" }],
+      connections: [],
+      devices: [
+        {
+          slug: "live",
+          name: "Live",
+          profile_id: "deye.sun-12k",
+          serial: null,
+          role: "inverter",
+          unit_id: 1,
+          connection_id: null,
+          retired_at: null,
+          usable_kwh: null,
+        },
+      ],
+    });
+    expect(config.plant?.devices[0]?.retiredAt).toBeNull();
+  });
+
   test("the native plant graph comes out by NAME, with its endpoints and packs", async () => {
     const { config } = await run({
       absent: /select min\(/,
