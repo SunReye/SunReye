@@ -60,6 +60,7 @@ import { type ZodType, z } from "zod";
 import { readSetting, writeSetting } from "../settings/app-settings";
 
 /** `app_settings` key recording that the legacy sweep has run. */
+// fallow-ignore-next-line unused-export -- the key the state row lives under, asserted by ./mqtt-legacy-retire.test.ts so a rename cannot silently re-arm a destructive sweep; test files are not traced as consumers.
 export const LEGACY_RETIREMENT_KEY = "mqtt.legacyEntitiesRetired";
 
 /** What the state row records — a diagnosis aid as much as a latch. */
@@ -130,6 +131,7 @@ const legacyTopic = (prefix: string, profileId: string, e: AnnouncedEntity): str
  * Pure, so the ONE thing that must never be wrong — which topics a destructive
  * publish goes to — is provable exhaustively without a broker.
  */
+// fallow-ignore-next-line unused-export -- the pure half, proved exhaustively on its own by ./mqtt-legacy-retire.test.ts (dedup, the keep set, the wildcard-free shape); retireLegacyEntities below is its production caller, and test files are not traced as consumers.
 export function legacyDiscoveryTopics(input: LegacyDiscoveryTopicsInput): string[] {
   const seen = new Set<string>();
   for (const profileId of new Set(input.profileIds)) {
