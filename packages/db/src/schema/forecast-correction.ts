@@ -1,4 +1,13 @@
-import { doublePrecision, integer, pgTable, primaryKey, smallint, text } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
+import {
+  check,
+  doublePrecision,
+  integer,
+  pgTable,
+  primaryKey,
+  smallint,
+  text,
+} from "drizzle-orm/pg-core";
 
 import { devices } from "./plants";
 
@@ -46,7 +55,22 @@ export const forecastCorrectionCells = pgTable(
     weight: doublePrecision("weight").notNull(),
     updatedAt: updatedAtTz(),
   },
-  (t) => [primaryKey({ columns: [t.deviceId, t.month, t.hour] })],
+  (t) => [
+    primaryKey({ columns: [t.deviceId, t.month, t.hour] }),
+    /**
+     * The cell is inside the calendar.
+     *
+     * A cell outside it is never read back: the learner writes month 13, and the
+     * forecast — which looks up the month and hour it is actually in — finds
+     * nothing, so the site bias silently stops being corrected rather than
+     * failing. Months are 1-based here (plant-local calendar months), unlike
+     * JavaScript's `getMonth()`, which is the off-by-one this check catches.
+     */
+    check(
+      "forecast_correction_cells_month_hour_check",
+      sql`${t.month} between 1 and 12 and ${t.hour} between 0 and 23`,
+    ),
+  ],
 );
 
 export type ForecastCorrectionCellRow = typeof forecastCorrectionCells.$inferSelect;
