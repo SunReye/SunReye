@@ -22,6 +22,7 @@ export {
   resolveStorage,
   resolveDeadband,
   statedKind,
+  metricKeySpecs,
   hasResolvableKind,
   kindFallbackKeys,
   kindFallbackReports,
@@ -35,6 +36,7 @@ export type {
   KindFallbackReport,
   KindInputs,
   KindResolvable,
+  MetricKeyFacts,
   StorageInputs,
 } from "./capabilities";
 export { entityConstraint, writableMetrics, metricByKey } from "./entities";

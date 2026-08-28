@@ -121,6 +121,56 @@ export function statedKind(def: KindInputs): MetricKind | undefined {
   return undefined;
 }
 
+/**
+ * One metric-dimension row per metric: the two facts about a metric that must
+ * outlive the profile declaring them.
+ *
+ * Structurally a `MetricKeySpec` (`packages/db/src/metric-keys.ts`), spelled out
+ * here rather than imported so this package keeps no dependency on the database.
+ */
+export interface MetricKeyFacts {
+  key: string;
+  /** Whether the metric is a monotonic counter (an energy total). */
+  isCounter: boolean;
+  /** The unit as stated, or null when the profile stated none. */
+  unit: string | null;
+}
+
+/**
+ * The `metric_keys` rows a profile's metric list implies.
+ *
+ * WHY THE DATABASE NEEDS THESE AT ALL
+ *
+ * Both facts are stored beside the key rather than looked up, because both are
+ * needed when the profile that declared them is gone. A profile is installed
+ * from a URL the operator typed and can be uninstalled at any time, while raw
+ * retention is five years. `is_counter` decides whether a `counter_agg` partial
+ * means anything for a series, and a continuous aggregate cannot ask another
+ * table what class a row is. The unit is worse: nothing else in the database
+ * records whether a column of numbers was watts or kilowatts, so a unit lost
+ * with its profile cannot be recovered — only re-stated by a human who
+ * remembers.
+ *
+ * The unit is passed through EXACTLY. A metric always HAS the field (`schema.ts`
+ * declares it `z.string().nullable()`), so its two values are the two facts that
+ * matter: `null` — none stated — and a string, `""` included, which is what a
+ * dimensionless metric (a status code, a count, a ratio) legitimately states.
+ * The upsert acts on that difference: it writes a stated value, empty string
+ * included, and leaves the stored unit alone for a null. Normalizing `""` to
+ * null here would erase a real statement; normalizing null to `""` would invent
+ * one.
+ */
+export function metricKeySpecs(metrics: readonly KindResolvable[]): MetricKeyFacts[] {
+  return metrics.map((m) => ({
+    key: m.key,
+    // {@link statedKind}, not {@link resolveKind}: the guess has a per-key side
+    // effect (it is recorded and logged), and registering a key must not trip
+    // it — the profile validator avoids it for the same reason.
+    isCounter: statedKind(m) === "cumulative",
+    unit: m.unit,
+  }));
+}
+
 /** The fields {@link resolveStorage} reads. */
 export type StorageInputs = KindInputs & Pick<MetricDef, "storage">;
 

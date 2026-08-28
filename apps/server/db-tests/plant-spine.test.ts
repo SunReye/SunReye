@@ -222,6 +222,55 @@ suite("the dimension spine", () => {
     expect((rows[0] as { n: number }).n).toBe(1);
   });
 
+  test("readConnections lists EVERY endpoint of the plant, and only that plant's", async () => {
+    // The poll loop resolves each device's endpoint through its own
+    // `connection_id` (`apps/server/src/inverter/endpoint.ts`), so it needs the
+    // whole set. Against a real engine because the claim is about what the
+    // statement returns and in what order — `connections` has no unique key, so
+    // two gateways really are two rows, and a plant filter that leaked would
+    // point one plant's device at another plant's address.
+    const plant = await freshPlant("spine-conns");
+    const other = await freshPlant("spine-conns-other");
+    const first = await repo.ensureConnection(db, plant.id, {
+      name: "GX gateway",
+      host: "10.0.0.5",
+      port: 502,
+      transport: "tcp",
+      timeoutMs: 2000,
+      pollIntervalMs: 1000,
+    });
+    // A SECOND endpoint on the same plant — two gateways, which `ensureConnection`
+    // deliberately cannot create (it edits in place), so this is a raw insert.
+    await db.execute(sql`
+      insert into connections (plant_id, name, host, port, transport, timeout_ms, poll_interval_ms)
+      values (${plant.id}, 'RS485 bridge', '10.0.0.6', 8899, 'rtu-over-tcp', 3000, 5000)`);
+    await repo.ensureConnection(db, other.id, {
+      name: "Elsewhere",
+      host: "10.9.9.9",
+      port: 502,
+      transport: "tcp",
+      timeoutMs: 2000,
+      pollIntervalMs: 1000,
+    });
+
+    const listed = await repo.readConnections(db, plant.id);
+    expect(listed.map((c) => c.host)).toEqual(["10.0.0.5", "10.0.0.6"]);
+    expect(listed[0]?.id).toBe(first.id);
+    // Coercions, which only a real driver can prove: these columns are `integer`.
+    expect(listed[1]).toMatchObject({
+      port: 8899,
+      transport: "rtu-over-tcp",
+      timeoutMs: 3000,
+      pollIntervalMs: 5000,
+    });
+    // The single-endpoint reader is the first of the same list.
+    expect((await repo.readConnection(db, plant.id))?.id).toBe(first.id);
+
+    const none = await freshPlant("spine-conns-none");
+    expect(await repo.readConnections(db, none.id)).toEqual([]);
+    expect(await repo.readConnection(db, none.id)).toBeNull();
+  });
+
   test("ensureDevice creates once, keeps the id and the slug, and re-points the profile", async () => {
     // A profile SWAP is the headline bug of 2.0.0: in 1.x it orphaned every row
     // of history. The device must survive it with its id intact.
@@ -530,5 +579,136 @@ suite("the dimension spine", () => {
     // Resolved by SLUG, and by the transitional profile_id arm alike.
     expect(await resolveDeviceId(db, "spine-write-dev")).toBe(device.id);
     expect(await resolveDeviceId(db, "spine-write-profile")).toBe(device.id);
+  });
+
+  describe("retirement: the only way a device leaves service", () => {
+    /**
+     * Why the column has to exist.
+     *
+     * `metrics_raw.device_id` references `devices` `ON DELETE RESTRICT`, which is
+     * correct — the readings are the point, and deleting the device would
+     * destroy the meaning of every row it wrote. The consequence is that there
+     * was NO way to take a device out of service: it would be polled forever, or
+     * the row worked around. `retired_at` is the lifecycle flag RESTRICT makes
+     * necessary, and every claim below is about what Postgres does with it.
+     */
+    async function retiredFixture(slug: string) {
+      const plant = await freshPlant(`${slug}-plant`);
+      const device = await repo.ensureDevice(db, {
+        plantId: plant.id,
+        connectionId: null,
+        unitId: 90,
+        slug,
+        name: slug,
+        profileId: "p",
+        role: "inverter",
+      });
+      return { plant, device };
+    }
+
+    test("a new device is in service — the column defaults to NULL, not to now()", async () => {
+      const { device } = await retiredFixture("retire-fresh");
+      expect(device.retiredAt).toBeNull();
+    });
+
+    test("retiring keeps the row and its id", async () => {
+      const { device } = await retiredFixture("retire-keeps-id");
+      const at = new Date("2026-08-01T10:00:00Z");
+      const updated = await repo.updateDevice(db, device.id, { retiredAt: at });
+      expect(updated.id).toBe(device.id);
+      expect(updated.retiredAt?.toISOString()).toBe("2026-08-01T10:00:00.000Z");
+    });
+
+    test("a retired device is excluded from the active list and present in the full one", async () => {
+      const { plant, device } = await retiredFixture("retire-listing");
+      await repo.updateDevice(db, device.id, { retiredAt: new Date() });
+      const all = await repo.readDevices(db, plant.id);
+      const active = await repo.readDevices(db, plant.id, { includeRetired: false });
+      expect(all.map((d) => d.id)).toContain(device.id);
+      expect(active.map((d) => d.id)).not.toContain(device.id);
+    });
+
+    test("its readings stay readable — retirement retains history, it does not hide it", async () => {
+      const { plant, device } = await retiredFixture("retire-history");
+      const { ensureMetricKeys } = await import("@SunReye/db/metric-keys");
+      const ids = await ensureMetricKeys(db, [
+        { key: "retire.power", isCounter: false, unit: "W" },
+      ]);
+      const metricId = ids.get("retire.power") ?? 0;
+      await db.execute(sql`
+        insert into metrics_raw (time, value, dur_ms, device_id, metric_id)
+        values (now(), 1234, 1000, ${device.id}, ${metricId})`);
+      await repo.updateDevice(db, device.id, { retiredAt: new Date() });
+      const { rows } = await db.execute(sql`
+        select count(*)::int as n from metrics_raw where device_id = ${device.id}`);
+      expect(Number((rows[0] as { n: number }).n)).toBe(1);
+      // And the plant still has exactly one device row, retired or not.
+      const all = await repo.readDevices(db, plant.id);
+      expect(all).toHaveLength(1);
+    });
+
+    test("a retired device with readings still cannot be DELETEd — RESTRICT is why this column exists", async () => {
+      const { device } = await retiredFixture("retire-restrict");
+      const { ensureMetricKeys } = await import("@SunReye/db/metric-keys");
+      const ids = await ensureMetricKeys(db, [{ key: "retire.restrict", isCounter: false }]);
+      await db.execute(sql`
+        insert into metrics_raw (time, value, dur_ms, device_id, metric_id)
+        values (now(), 1, 1000, ${device.id}, ${ids.get("retire.restrict") ?? 0})`);
+      await repo.updateDevice(db, device.id, { retiredAt: new Date() });
+      expect(await failure(sql`delete from devices where id = ${device.id}`)).toContain("violates");
+    });
+
+    test("un-retiring is an UPDATE back to NULL, and the device returns to the active list", async () => {
+      const { plant, device } = await retiredFixture("retire-return");
+      await repo.updateDevice(db, device.id, { retiredAt: new Date() });
+      const back = await repo.updateDevice(db, device.id, { retiredAt: null });
+      expect(back.retiredAt).toBeNull();
+      const active = await repo.readDevices(db, plant.id, { includeRetired: false });
+      expect(active.map((d) => d.id)).toContain(device.id);
+    });
+
+    test("retirement does not free the (connection, unit) slot or the slug", async () => {
+      // The uniqueness constraints are unconditional on purpose: a retired
+      // device's slug is still written into years of exports and saved charts,
+      // and re-using it would make two different machines share one name.
+      const plant = await freshPlant("retire-unique-plant");
+      const conn = await repo.ensureConnection(db, plant.id, {
+        name: "gx",
+        host: "10.0.0.7",
+        port: 502,
+        transport: "tcp",
+        timeoutMs: 2000,
+        pollIntervalMs: 1000,
+      });
+      const device = await repo.ensureDevice(db, {
+        plantId: plant.id,
+        connectionId: conn.id,
+        unitId: 91,
+        slug: "retire-unique",
+        name: "u",
+        profileId: "p",
+        role: "inverter",
+      });
+      await repo.updateDevice(db, device.id, { retiredAt: new Date() });
+      expect(
+        await failure(sql`
+          insert into devices (plant_id, connection_id, unit_id, slug, name, profile_id, role)
+          values (${plant.id}, ${conn.id}, 91, 'retire-unique-2', 'u2', 'p', 'inverter')`),
+      ).toContain("devices_connection_unit_key");
+      // `ensureDevice` on the retired slug ADOPTS the retired row rather than
+      // inserting a second one, which is exactly why the caller must consult the
+      // flag before treating what it gets back as pollable.
+      const readopted = await repo.ensureDevice(db, {
+        plantId: plant.id,
+        connectionId: conn.id,
+        unitId: 91,
+        slug: "retire-unique",
+        name: "u",
+        profileId: "p",
+        role: "inverter",
+      });
+      expect(readopted.id).toBe(device.id);
+      expect(readopted.retiredAt).not.toBeNull();
+    });
   });
 });

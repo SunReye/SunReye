@@ -2,13 +2,8 @@ import { inverterConfigSchema } from "@SunReye/db/inverter-config";
 import { maskMqttConfig } from "@SunReye/db/mqtt-config";
 import { spotPriceConfigSchema } from "@SunReye/db/spot-price-config";
 import { Elysia, t } from "elysia";
-import {
-  getInverterConfig,
-  getMqttConfig,
-  mergeMqttConfig,
-  setInverterConfig,
-  setMqttConfig,
-} from "../settings/config";
+import { getMqttConfig, mergeMqttConfig, setMqttConfig } from "../settings/config";
+import { applyConnectionSave, readConnectionSettings } from "../inverter/endpoint";
 import { getAccess, setAccess } from "../settings/access-settings";
 import { getChartPalette, setChartPalette } from "../settings/chart-palette-settings";
 import { getDisplay, setDisplay } from "../settings/display-settings";
@@ -18,7 +13,7 @@ import { evccSnapshot, rebuildEvcc } from "../evcc/evcc";
 import { getEvccConfig, setEvccConfig } from "../settings/evcc-settings";
 import { getCorrectionView } from "../forecast/forecast-correction-job";
 import { getActiveProfileOrNull } from "../inverter/inverter";
-import { syncProvisioning } from "../inverter/provision-boot";
+import { defaultDeps, syncProvisioning } from "../inverter/provision-boot";
 import * as runtime from "../inverter/runtime";
 import { getTariff, setTariff } from "../settings/settings";
 import {
@@ -105,19 +100,28 @@ export const settingsRoutes = new Elysia({ name: "settings-routes" })
       }
     },
   )
-  .get("/api/settings/inverter", { requireAdmin: true }, () => getInverterConfig())
+  // The Modbus connection. The `connections` row and the device's `unit_id` ARE
+  // this setting — there is no `app_settings` copy of it any more, which is the
+  // dual-authority defect `../inverter/endpoint.ts` documents. The request and
+  // response shape is unchanged (`inverterConfigSchema`): what moved is where the
+  // numbers live.
+  .get("/api/settings/inverter", { requireAdmin: true }, () => readConnectionSettings())
   .put("/api/settings/inverter", adminWrite, async ({ body, status }) => {
-    const saved = await attempt(async () => {
-      const config = await setInverterConfig(body);
-      // The endpoint the operator just described IS the `connections` row (and
-      // the device's `unit_id`), so keep the spine in step with the config the
-      // poll loop is about to use. Idempotent and never throws: it EDITS the
-      // existing endpoint rather than adding a second one, which is why moving a
-      // gateway cannot leave the device pointing at the old address.
-      await syncProvisioning(getActiveProfileOrNull());
-      await runtime.applyInverterConfig(config);
-      return config;
-    }, "Invalid config");
+    const saved = await attempt(
+      () =>
+        // Validated before anything touches the spine, so a bad body is a 400.
+        // The ordered sequence itself lives in `../inverter/endpoint.ts`, where it
+        // is tested — this layer has no automated cover.
+        applyConnectionSave(inverterConfigSchema.parse(body), {
+          provision: (seed) =>
+            syncProvisioning(getActiveProfileOrNull(), {
+              ...defaultDeps(),
+              seed: async () => seed,
+            }),
+          reload: () => runtime.reloadEndpoint(),
+        }),
+      "Invalid config",
+    );
     return saved.ok ? saved.value : status(400, { error: saved.error });
   })
   // Test a connection against a *chosen* profile (onboarding passes the profile

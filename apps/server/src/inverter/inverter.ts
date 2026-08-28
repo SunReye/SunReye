@@ -1,5 +1,4 @@
 import { db } from "@SunReye/db";
-import type { InverterConfig } from "@SunReye/db/inverter-config";
 import { ACTIVE_PROFILE_KEY, activeProfileSchema } from "@SunReye/db/profiles";
 import { installedProfiles } from "@SunReye/db/schema/settings";
 import { env } from "@SunReye/env/server";
@@ -131,11 +130,29 @@ export function getActiveProfileOrNull(): InverterProfile | null {
 }
 
 /**
- * Build a live source for a profile + connection config. Whether it's the
- * simulator or a real Modbus source is a deploy-level choice (`INVERTER_SIMULATE`),
- * not part of the saved config.
+ * What building a source needs to know about where the machine is.
+ *
+ * Structural, so both of its producers satisfy it without either becoming the
+ * other: the poll loop's `PollEndpoint` (resolved from the `connections` +
+ * `devices` spine — `./endpoint.ts`) and the connection-test route's
+ * `InverterConfig` (a body the operator typed and has not saved). `host` is
+ * optional because the second one's is: a test read can be attempted against a
+ * half-filled form.
  */
-export function buildSource(profile: InverterProfile, config: InverterConfig): InverterSource {
+export interface SourceConnection {
+  host?: string;
+  port: number;
+  transport: "tcp" | "rtu-over-tcp";
+  unitId: number;
+  timeoutMs: number;
+}
+
+/**
+ * Build a live source for a profile + endpoint. Whether it's the simulator or a
+ * real Modbus source is a deploy-level choice (`INVERTER_SIMULATE`), not part of
+ * the saved connection.
+ */
+export function buildSource(profile: InverterProfile, config: SourceConnection): InverterSource {
   return createInverter(profile, {
     simulate: env.INVERTER_SIMULATE,
     connection: {

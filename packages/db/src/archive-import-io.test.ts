@@ -140,7 +140,7 @@ interface Recorded {
   settings: [string, string][];
   profiles: string[];
   charts: string[];
-  metricKeys: [string, boolean][];
+  metricKeys: [string, boolean, string | null][];
   plants: unknown[][];
   connections: unknown[][];
   devices: unknown[][];
@@ -267,14 +267,17 @@ const ROUTES: [RegExp, Route][] = [
       return [];
     },
   ],
-  // `ensureMetricKeys`, rendered by drizzle: (key, is_counter) pairs, ids back.
+  // `ensureMetricKeys`, rendered by drizzle: (key, is_counter, unit) triples,
+  // ids back. The stride is the point — a parameter added to that VALUES list
+  // and not to this walk silently re-reads the next row's key as a unit.
   [
     /insert into "metric_keys"/,
     (target, rec, _x, values) => {
       const rows: Rows = [];
-      for (let i = 0; i < values.length; i += 2) {
+      for (let i = 0; i < values.length; i += 3) {
         const key = String(values[i]);
-        rec.metricKeys.push([key, values[i + 1] === true]);
+        const unit = values[i + 2];
+        rec.metricKeys.push([key, values[i + 1] === true, unit === null ? null : String(unit)]);
         rows.push({ id: target.metricIds?.[key] ?? 0, key });
       }
       return rows;
@@ -926,9 +929,12 @@ describe("importArchive: applying config.json", () => {
     expect(rec.charts).toEqual(["c1"]);
     // Through `ensureMetricKeys`, whose `on conflict do update` is what keeps ids
     // REUSED rather than renumbered — int2 caps the dimension at 32767.
+    // The unit binds as NULL: an archive's config records the counter class but
+    // not the unit, and a null is the one value the upsert will not write over
+    // a unit an installed profile already supplied.
     expect(rec.metricKeys).toEqual([
-      ["pv.power", false],
-      ["total.energy", true],
+      ["pv.power", false, null],
+      ["total.energy", true, null],
     ]);
   });
 
