@@ -510,6 +510,7 @@ async function readNativePlant(client: ReplayClient): Promise<ArchivePlant | nul
   const devices = await rowsOf(
     client,
     `select d.slug, d.name, d.profile_id, d.serial, d.role, d.unit_id, d.connection_id,
+            d.retired_at,
             b.usable_kwh, b.max_charge_w, b.min_soc, b.nominal_v
      from devices d left join batteries b on b.device_id = d.id
      where d.plant_id = ${plantId} order by d.id`,
@@ -518,6 +519,15 @@ async function readNativePlant(client: ReplayClient): Promise<ArchivePlant | nul
     value === null || value === undefined ? null : Number(value);
   const optionalText = (value: unknown) =>
     value === null || value === undefined ? null : String(value);
+  // Explicitly ISO, not `String(value)`: this driver hands a timestamptz back as
+  // a Date, and `String(new Date())` is "Wed Mar 04 2026 …" — a string the
+  // importer's `Date` parse would accept in some locales and mangle in others.
+  // The archive is JSON, so the wire form has to be stated, not inherited.
+  const optionalInstant = (value: unknown) => {
+    if (value === null || value === undefined) return null;
+    const at = value instanceof Date ? value : new Date(String(value));
+    return Number.isNaN(at.getTime()) ? null : at.toISOString();
+  };
   return {
     name: String(plant.name),
     slug: String(plant.slug),
@@ -549,6 +559,7 @@ async function readNativePlant(client: ReplayClient): Promise<ArchivePlant | nul
       role: String(d.role),
       unitId: Number(d.unit_id),
       connection: d.connection_id === null ? null : (byId.get(String(d.connection_id)) ?? null),
+      retiredAt: optionalInstant(d.retired_at),
       battery:
         d.usable_kwh === null || d.usable_kwh === undefined
           ? null

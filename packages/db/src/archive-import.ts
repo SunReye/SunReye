@@ -451,7 +451,16 @@ async function upsertConnections(
 }
 
 /** One device and, when it reports one, its battery pack. */
-async function upsertDevice(
+/**
+ * Insert or merge one archived device, with its pack.
+ *
+ * Exported ONLY so the sticky-retirement rule below can be proved against a real
+ * Postgres — the rule lives in a `coalesce` inside the `on conflict` clause, and
+ * no SQL-text assertion can show what the engine does with it. See
+ * `apps/server/db-tests/archive.test.ts`.
+ */
+// fallow-ignore-next-line unused-export -- reached only by apps/server/db-tests/archive.test.ts, which proves the sticky-retirement merge against a real database; test files are not traced as consumers.
+export async function upsertDevice(
   client: ReplayClient,
   plantId: number,
   device: ArchiveDevice,
@@ -462,12 +471,29 @@ async function upsertDevice(
   const deviceId = num(
     await scalar(
       client,
-      `insert into devices (plant_id, connection_id, unit_id, slug, name, profile_id, serial, role)
-       values ($1,$2,$3,$4,$5,$6,$7,$8)
+      // RETIREMENT IS STICKY, and that asymmetry is deliberate.
+      //
+      // `retired_at` gates polling, so the two directions of this merge are not
+      // equally safe. Applying the archive's retirement to a device that is in
+      // service here only STOPS a poll — nothing reaches the hardware. Clearing
+      // it, because the archive happens to predate the retirement, would START
+      // dialling a machine whose operator deliberately took it out of service,
+      // silently, on the strength of a backup file.
+      //
+      // `coalesce(devices.retired_at, excluded.retired_at)` therefore keeps a
+      // local retirement and adopts an archived one. A restore into an empty
+      // database is unaffected — there is no conflicting row, so the archive's
+      // value is used verbatim, which is what makes a full restore faithful.
+      // Only a merge over an existing device takes the safe side, and a merge is
+      // the case where "faithful" has two answers.
+      `insert into devices (plant_id, connection_id, unit_id, slug, name, profile_id, serial, role,
+                            retired_at)
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9)
        on conflict (plant_id, slug) do update set
          connection_id = excluded.connection_id, unit_id = excluded.unit_id,
          name = excluded.name, profile_id = excluded.profile_id,
-         serial = excluded.serial, role = excluded.role
+         serial = excluded.serial, role = excluded.role,
+         retired_at = coalesce(devices.retired_at, excluded.retired_at)
        returning id`,
       [
         plantId,
@@ -478,6 +504,7 @@ async function upsertDevice(
         device.profileId,
         device.serial,
         device.role,
+        device.retiredAt,
       ],
     ),
   );

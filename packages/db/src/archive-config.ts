@@ -63,6 +63,21 @@ export interface ArchiveDevice {
   unitId: number;
   /** The {@link ArchiveConnection.name} this device is reached through, or null. */
   connection: string | null;
+  /**
+   * When this device was taken out of service, ISO 8601, or null for in service.
+   *
+   * Carried because `devices.retired_at` GATES POLLING. Without it an
+   * export/import round trip returns a retired device IN SERVICE, and the
+   * importing install starts dialling hardware its operator had deliberately
+   * stopped talking to — silently, because nothing about a restored row says it
+   * used to be retired.
+   *
+   * An ISO string rather than a Date: this crosses JSON, where a Date is not a
+   * type. An archive written before the column existed simply omits the field
+   * and parses as null, which is correct — retirement did not exist then, so no
+   * device could have been retired.
+   */
+  retiredAt: string | null;
   battery: ArchiveBattery | null;
 }
 
@@ -320,6 +335,8 @@ export function synthesiseSpine(input: SynthesiseInput): ArchivePlant {
         profileId,
         serial: asOptionalString(connectionConfig.serial),
         role: "inverter",
+        // A 1.x database has no retirement: the column did not exist.
+        retiredAt: null,
         unitId: asNumber(connectionConfig.unitId, 0),
         connection: connections[0]?.name ?? null,
         battery: null,
@@ -382,6 +399,12 @@ function parseDevice(value: unknown): ArchiveDevice | null {
     role: asString(row.role, "inverter"),
     unitId: asNumber(row.unitId, 0),
     connection: asOptionalString(row.connection),
+    // `asOptionalString`, so a number or an object in this field becomes null
+    // rather than a value the importer would bind. Falling back to "in service"
+    // is the direction that cannot invent a retirement the operator never made;
+    // the import's own rule (see `../archive-import.ts`) is what protects a
+    // device that IS retired locally.
+    retiredAt: asOptionalString(row.retiredAt),
     battery: parseBattery(row.battery),
   };
 }

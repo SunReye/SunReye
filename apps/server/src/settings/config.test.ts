@@ -108,6 +108,21 @@ beforeEach(() => {
   for (const key of ENV_KEYS) envOverrides[key] = undefined;
 });
 
+/**
+ * These describe a LEGACY READER, not the poll loop's source.
+ *
+ * `app_settings.inverter` stopped being the authority when 2.0.0's
+ * dual-authority defect was removed: the endpoint lives in `connections` +
+ * `devices.unit_id` and is written only through
+ * `../inverter/endpoint.ts`'s `saveConnectionSettings`. There is no setter here
+ * any more, and its validation tests moved with it — the bounds themselves are
+ * `packages/db/src/inverter-config.test.ts`'s subject, and the route parses with
+ * that same schema.
+ *
+ * What is still tested here is what this reader must keep doing: answer for a
+ * 1.2.0 install whose endpoint lives nowhere else, so the first boot after the
+ * in-place upgrade can seed the spine from it.
+ */
 describe("the inverter connection before anything is saved", () => {
   test("an env-only deployment keeps running on the settings it booted with", async () => {
     Object.assign(envOverrides, {
@@ -185,53 +200,6 @@ describe("the saved inverter connection", () => {
     table.set(INVERTER_KEY, { host: "192.168.1.50", port: 502 });
     const { getInverterConfig } = await freshInstance();
     await expect(getInverterConfig()).rejects.toThrow();
-  });
-});
-
-describe("saving the inverter connection", () => {
-  test("a port outside the addressable range is refused and the poller keeps its target", async () => {
-    table.set(INVERTER_KEY, { host: "192.168.1.50" });
-    const { getInverterConfig, setInverterConfig } = await freshInstance();
-    await getInverterConfig();
-    await expect(setInverterConfig({ host: "192.168.1.51", port: 70000 })).rejects.toThrow();
-    await expect(setInverterConfig({ host: "192.168.1.51", port: 0 })).rejects.toThrow();
-    expect(writes()).toHaveLength(0);
-    expect((await getInverterConfig()).host).toBe("192.168.1.50");
-  });
-
-  test("a unit id must fit in a byte, and 0 is a legitimate one", async () => {
-    const { setInverterConfig } = await freshInstance();
-    await expect(setInverterConfig({ host: "192.168.1.50", unitId: 256 })).rejects.toThrow();
-    expect((await setInverterConfig({ host: "192.168.1.50", unitId: 0 })).unitId).toBe(0);
-  });
-
-  test("a poll interval below the one-second floor is refused; exactly one second is not", async () => {
-    const { setInverterConfig } = await freshInstance();
-    await expect(
-      setInverterConfig({ host: "192.168.1.50", pollIntervalMs: 999 }),
-    ).rejects.toThrow();
-    expect(
-      (await setInverterConfig({ host: "192.168.1.50", pollIntervalMs: 1000 })).pollIntervalMs,
-    ).toBe(1000);
-  });
-
-  test("a per-request timeout under 100 ms is refused", async () => {
-    const { setInverterConfig } = await freshInstance();
-    await expect(setInverterConfig({ host: "192.168.1.50", timeoutMs: 50 })).rejects.toThrow();
-    expect(writes()).toHaveLength(0);
-  });
-
-  test("the saved row is the parsed connection: defaults filled, unknown fields dropped", async () => {
-    const { setInverterConfig } = await freshInstance();
-    await setInverterConfig({ host: "192.168.1.50", simulate: true });
-    expect(table.get(INVERTER_KEY)).toEqual({
-      host: "192.168.1.50",
-      port: 502,
-      unitId: 0,
-      transport: "tcp",
-      timeoutMs: 2000,
-      pollIntervalMs: 1000,
-    });
   });
 });
 
@@ -364,18 +332,20 @@ describe("saving the MQTT bridge", () => {
   // Deliberately the last test in the file: bun attributes a file's coverage to
   // the last instance of it loaded in the process, so the final instance loaded
   // here is the one that has to exercise the whole module.
-  test("the two configs are saved and cached independently of each other", async () => {
+  test("the two configs are cached independently, and only MQTT is written", async () => {
+    // The asymmetry is the point: saving the broker must not touch the legacy
+    // inverter row, and there is no path here that could — the endpoint is
+    // written into the spine by `../inverter/endpoint.ts` instead.
     envOverrides.INVERTER_HOST = "10.0.0.7";
+    table.set(INVERTER_KEY, { host: "192.168.1.50", unitId: 1 });
     const config = await freshInstance();
 
-    expect((await config.getInverterConfig()).host).toBe("10.0.0.7");
+    expect((await config.getInverterConfig()).host).toBe("192.168.1.50");
     expect((await config.getMqttConfig()).enabled).toBe(false);
 
-    const inverter = await config.setInverterConfig({ host: "192.168.1.50", unitId: 1 });
-    expect(inverter.host).toBe("192.168.1.50");
     const mqtt = await config.setMqttConfig({ enabled: true, brokerUrl: "mqtt://hass.lan:1883" });
     expect(mqtt.enabled).toBe(true);
-    expect(new Set(writes().map((w) => w.params[0]))).toEqual(new Set([INVERTER_KEY, MQTT_KEY]));
+    expect(new Set(writes().map((w) => w.params[0]))).toEqual(new Set([MQTT_KEY]));
 
     queries.length = 0;
     expect((await config.getInverterConfig()).host).toBe("192.168.1.50");

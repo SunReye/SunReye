@@ -241,6 +241,9 @@ function harness(over: { config?: AutomationConfig; profile?: InverterProfile } 
         return cfg;
       },
       getWeather: async () => wx,
+      // No pack row states a voltage, so these cases keep resolving down the
+      // legacy chain they were written against.
+      getPackNominalV: async () => null,
       getForecast: async () => {
         forecastReads++;
         return fc;
@@ -829,6 +832,7 @@ function recordingMods(): RecordingMods {
     mods: {
       getAutomationConfig: async () => config(),
       getWeatherConfig: async () => weather(),
+      packNominalV: async () => 48,
       fetchSolarForecast: async () => null,
       representativeHouseLoadW: async () => null,
       evccSnapshot: () => null,
@@ -932,6 +936,10 @@ describe("production IO wiring", () => {
     expect(io.write).toBe(plant.write);
     expect(io.getConfig).toBe(r.mods.getAutomationConfig);
     expect(io.getWeather).toBe(r.mods.getWeatherConfig);
+    // The pack voltage's newest home. An unwired arm here is the failure the
+    // whole chain exists to prevent: the engine would fall to a legacy value and
+    // scale every commanded charge current by it, silently.
+    expect(io.getPackNominalV).toBe(r.mods.packNominalV);
     expect(io.getForecast).toBe(r.mods.fetchSolarForecast);
     expect(io.getBaselineLoadW).toBe(r.mods.representativeHouseLoadW);
     expect(io.getEvcc).toBe(r.mods.evccSnapshot);

@@ -39,9 +39,34 @@
  *  - the plant is ADOPTED whatever it is called (`ensurePlant`);
  *  - the device is found by frozen slug, then by profile id, then as the plant's
  *    existing `role = 'inverter'` row, and only inserted when none of those hit;
- *  - the endpoint is EDITED in place, because moving a gateway must move one row
- *    rather than leave the device bound to the old one;
+ *  - the endpoint is ADOPTED as it stands and only SEEDED when the plant has
+ *    none (see below);
  *  - the legacy pack is seeded only when the plant has no pack rows at all.
+ *
+ * THIS DOES NOT OWN THE ENDPOINT. IT SEEDS ONE.
+ *
+ * It used to. `provisionDevice` took the `app_settings.inverter` document and
+ * wrote it into `connections` and `devices.unit_id` on EVERY boot and on every
+ * settings save, which made that document the authority and silently undid every
+ * edit an operator made to the endpoint — two writable homes for one fact, with
+ * the JSONB one winning. `./endpoint.ts` documents the defect in full and is now
+ * the only writer.
+ *
+ * What survives here is the SEED, and it is load-bearing for exactly one case: a
+ * 1.2.0 install's endpoint lives only in `app_settings`, and the first boot after
+ * the in-place upgrade is the one chance to carry it into the spine. So the seed
+ * CREATES rows the plant does not have and never edits one it does. Same shape as
+ * the plant facts and the legacy pack below — "create with these" is the only
+ * thing that can be re-run every boot without overwriting an operator's edit.
+ *
+ * RETIRED DEVICES ARE NOT ADOPTABLE
+ *
+ * `devices.retired_at` is what taking a machine out of service means (`ON DELETE
+ * RESTRICT` leaves no other way, and its history is retained). The device search
+ * therefore looks at ACTIVE devices only — otherwise all three arms below would
+ * hand back the retired row and the next boot would resurrect it. The uniques are
+ * unconditional by design, so `ensureDevice` on a retired SLUG hands that row
+ * straight back too; that answer is checked rather than trusted.
  *
  * SLUGS ARE FROZEN, NAMES ARE NOT
  *
@@ -71,7 +96,6 @@
 
 import { AUTOMATION_KEY } from "@SunReye/db/automation-config";
 import { type DeviceBattery, resolveNominalV } from "@SunReye/db/batteries";
-import type { InverterConfig } from "@SunReye/db/inverter-config";
 import {
   type ConnectionRecord,
   type ConnectionSettings,
@@ -82,9 +106,12 @@ import {
   type PlantDefaults,
   type PlantPatch,
   type PlantRecord,
+  activeDevices,
   ensureConnection,
   ensureDevice,
   ensurePlant,
+  isRetired,
+  readConnection,
   readDevices,
   deleteDeviceBattery,
   readPlantBatteries,
@@ -111,7 +138,10 @@ import { WEATHER_KEY } from "@SunReye/db/weather";
 export interface ProvisionStore {
   ensurePlant(defaults: PlantDefaults): Promise<PlantRecord>;
   updatePlant(id: number, patch: PlantPatch): Promise<void>;
+  /** The plant's endpoint as it stands — what makes the seed a seed. */
+  readConnection(plantId: number): Promise<ConnectionRecord | null>;
   ensureConnection(plantId: number, settings: ConnectionSettings): Promise<ConnectionRecord>;
+  /** ACTIVE devices only in the production wiring — see the module note. */
   readDevices(plantId: number): Promise<DeviceRecord[]>;
   ensureDevice(spec: DeviceSpec): Promise<DeviceRecord>;
   updateDevice(id: number, patch: DevicePatch): Promise<DeviceRecord>;
@@ -133,8 +163,11 @@ export function dbProvisionStore(db: ProvisionDb): ProvisionStore {
   return {
     ensurePlant: (defaults) => ensurePlant(db, defaults),
     updatePlant: (id, patch) => updatePlant(db, id, patch),
+    readConnection: (plantId) => readConnection(db, plantId),
     ensureConnection: (plantId, settings) => ensureConnection(db, plantId, settings),
-    readDevices: (plantId) => readDevices(db, plantId),
+    // Narrowed in the STATEMENT as well as filtered in `findDevice`: a retired
+    // row that never reaches this code cannot be adopted by a future arm either.
+    readDevices: (plantId) => readDevices(db, plantId, { includeRetired: false }),
     ensureDevice: (spec) => ensureDevice(db, spec),
     updateDevice: (id, patch) => updateDevice(db, id, patch),
     readPlantBatteries: (plantId) => readPlantBatteries(db, plantId),
@@ -285,9 +318,28 @@ export interface ProvisionProfile {
   name?: string;
 }
 
+/**
+ * The endpoint facts a SEED states.
+ *
+ * Structurally the legacy `InverterConfig`, and named separately on purpose: the
+ * only thing this module may do with these values is CREATE rows that do not
+ * exist yet. Calling the field `config` is what made it read like the poll
+ * loop's source of truth, which is exactly the defect `./endpoint.ts` names.
+ * `host` is optional because the legacy document may never have been saved.
+ */
+export interface EndpointSeed {
+  host?: string;
+  port: number;
+  transport: string;
+  unitId: number;
+  timeoutMs: number;
+  pollIntervalMs: number;
+}
+
 export interface ProvisionDeviceDeps extends ProvisionPlantDeps {
   profile: ProvisionProfile;
-  config: InverterConfig;
+  /** Used ONLY where the spine has no row yet. Never an edit. */
+  seed: EndpointSeed;
 }
 
 export interface ProvisionResult {
@@ -314,17 +366,22 @@ export interface ProvisionResult {
  *     inserting would strand every reading the machine has ever written.
  *
  * Controllers and meters are unreachable from arm 3 on purpose — see the module
- * note on roles.
+ * note on roles. RETIRED devices are unreachable from ALL THREE: a machine that
+ * has left the plant must not be adopted back by the arm that happens to still
+ * match it. The production store already narrows the statement, so this filter is
+ * the in-memory half of the same rule — two spellings of "in service" is exactly
+ * how a retired device gets polled again.
  */
 function findDevice(
   devices: readonly DeviceRecord[],
   slug: string,
   profileId: string,
 ): DeviceRecord | null {
+  const active = activeDevices(devices);
   return (
-    devices.find((d) => d.slug === slug) ??
-    devices.find((d) => d.profileId === profileId) ??
-    devices.find((d) => d.role === INVERTER_ROLE) ??
+    active.find((d) => d.slug === slug) ??
+    active.find((d) => d.profileId === profileId) ??
+    active.find((d) => d.role === INVERTER_ROLE) ??
     null
   );
 }
@@ -332,10 +389,19 @@ function findDevice(
 /**
  * The endpoint this device is reached through, or null for no endpoint at all.
  *
- * A blank host means there is nothing to connect to — a fresh install whose
- * connection step was never saved, or `INVERTER_SIMULATE`. `devices.connection_id`
- * is nullable for exactly that, and NULLs are distinct in
- * `devices_connection_unit_key`, so any number of endpoint-less devices coexist.
+ * THREE ANSWERS, IN THIS ORDER, AND THE ORDER IS THE POINT:
+ *
+ *  1. the endpoint the plant ALREADY HAS, untouched. It is the operator's — the
+ *    settings PUT wrote it — and re-stating the legacy document over it every
+ *    boot is the write-back this release deletes. Moving a gateway therefore
+ *    moves one row, once, from the one place that owns it.
+ *  2. otherwise the SEED creates one, which is what carries a 1.2.0 install's
+ *    endpoint into the spine on the first boot after the upgrade.
+ *  3. a blank host means there is nothing to connect to — a fresh install whose
+ *    connection step was never saved, or `INVERTER_SIMULATE`.
+ *    `devices.connection_id` is nullable for exactly that, and NULLs are
+ *    distinct in `devices_connection_unit_key`, so any number of endpoint-less
+ *    devices coexist.
  *
  * Crucially this does NOT clear an existing binding. Turning on simulate mode on
  * a real install must not silently detach the device from the gateway it is
@@ -345,18 +411,20 @@ function findDevice(
 async function endpointFor(
   store: ProvisionStore,
   plantId: number,
-  config: InverterConfig,
+  seed: EndpointSeed,
   existing: DeviceRecord | null,
 ): Promise<number | null> {
-  const host = config.host?.trim() ?? "";
+  const current = await store.readConnection(plantId);
+  if (current) return existing ? (existing.connectionId ?? current.id) : current.id;
+  const host = seed.host?.trim() ?? "";
   if (host === "") return existing?.connectionId ?? null;
   const connection = await store.ensureConnection(plantId, {
     name: "Inverter",
     host,
-    port: config.port,
-    transport: config.transport,
-    timeoutMs: config.timeoutMs,
-    pollIntervalMs: config.pollIntervalMs,
+    port: seed.port,
+    transport: seed.transport,
+    timeoutMs: seed.timeoutMs,
+    pollIntervalMs: seed.pollIntervalMs,
   });
   return connection.id;
 }
@@ -393,40 +461,78 @@ async function seedLegacyPack(
 }
 
 /**
+ * Why a retired slug stops provisioning instead of being worked around.
+ *
+ * `devices_plant_slug_key` is unconditional by design — the slug is written into
+ * years of exports, saved charts and Home Assistant `unique_id`s, so two machines
+ * may never share one — which means `ensureDevice` on a retired slug hands the
+ * RETIRED row straight back. Every way out of that is worse than declining:
+ *
+ *  - returning the row makes the writer stamp new readings with a device that
+ *    left the plant, and re-reads it every second forever;
+ *  - clearing `retired_at` is precisely the resurrection the column exists to
+ *    prevent;
+ *  - inserting under a fresh slug still has to claim the same
+ *    `(connection_id, unit_id)`, which the retired row holds — so the insert
+ *    fails anyway, and the new slug would be a name the operator never chose,
+ *    frozen forever.
+ *
+ * So the boot says so and provisions no device. The writer's existing
+ * degradation takes over (`./storage-identity.ts` drops the batch with one
+ * warning), which is the same state a fresh install is in before onboarding, and
+ * the operator's next move — adding the replacement device, or un-retiring this
+ * one — is a decision only they can make.
+ */
+const RETIRED_SLUG_WARNING =
+  "device slug {deviceSlug} belongs to device {deviceId}, RETIRED at {retiredAt} — not " +
+  "resurrecting it; no device is provisioned and readings are not stored until the " +
+  "replacement is added or this device is returned to service";
+
+/**
  * Ensure this install has a plant, an endpoint and the device the poll loop's
  * readings belong to.
  *
  * Safe on every boot, and that is the requirement rather than a convenience:
  * this is the only thing standing between a fresh 2.0.0 install and a database
  * that records nothing.
+ *
+ * Returns null in exactly one case: the frozen slug belongs to a RETIRED device.
+ * See {@link RETIRED_SLUG_WARNING} for why that is a refusal and not a fixup.
  */
-export async function provisionDevice(deps: ProvisionDeviceDeps): Promise<ProvisionResult> {
+export async function provisionDevice(deps: ProvisionDeviceDeps): Promise<ProvisionResult | null> {
   const legacy = await readLegacyPlant(deps.store);
   const plant = await provisionPlantRow(deps);
 
   const devices = await deps.store.readDevices(plant.id);
   const existing = findDevice(devices, INVERTER_ROLE, deps.profile.id);
-  const connectionId = await endpointFor(deps.store, plant.id, deps.config, existing);
+  const connectionId = await endpointFor(deps.store, plant.id, deps.seed, existing);
 
   const device = existing
-    ? // NOT `role`, and NOT `name`: the role of an adopted device is its own
-      // (arm 3 only ever adopts an inverter, and arms 1–2 could be anything), and
-      // the name may have been edited by the operator. `slug` cannot even be
-      // named here — it is frozen.
-      await deps.store.updateDevice(existing.id, {
-        profileId: deps.profile.id,
-        unitId: deps.config.unitId,
-        connectionId,
-      })
+    ? // ONLY the profile. Not `role` or `name` — the role of an adopted device is
+      // its own (arm 3 only ever adopts an inverter, and arms 1–2 could be
+      // anything) and the name may have been edited by the operator; `slug`
+      // cannot even be named here, being frozen. And NOT `unitId` or
+      // `connectionId`: those are the spine's own, and re-stating a legacy
+      // document over them on every boot is the write-back this release deletes.
+      await deps.store.updateDevice(existing.id, { profileId: deps.profile.id })
     : await deps.store.ensureDevice({
         plantId: plant.id,
         connectionId,
-        unitId: deps.config.unitId,
+        unitId: deps.seed.unitId,
         slug: INVERTER_ROLE,
         name: deps.profile.name?.trim() || deps.profile.id,
         profileId: deps.profile.id,
         role: INVERTER_ROLE,
       });
+
+  if (isRetired(device)) {
+    deps.logger.warn(RETIRED_SLUG_WARNING, {
+      deviceSlug: device.slug,
+      deviceId: device.id,
+      retiredAt: device.retiredAt?.toISOString(),
+    });
+    return null;
+  }
 
   if (!existing) {
     deps.logger.info(

@@ -149,6 +149,8 @@ export interface PlantDeps {
 export interface AutomationModules {
   getAutomationConfig: AutomationIO["getConfig"];
   getWeatherConfig: AutomationIO["getWeather"];
+  /** `batteries.nominal_v`, the pack voltage's newest home — see the IO field. */
+  packNominalV: AutomationIO["getPackNominalV"];
   fetchSolarForecast: AutomationIO["getForecast"];
   representativeHouseLoadW: AutomationIO["getBaselineLoadW"];
   evccSnapshot: AutomationIO["getEvcc"];
@@ -176,6 +178,7 @@ export function composeAutomationIO(deps: PlantDeps, mods: AutomationModules): A
     write: deps.write,
     getConfig: mods.getAutomationConfig,
     getWeather: mods.getWeatherConfig,
+    getPackNominalV: mods.packNominalV,
     getForecast: mods.fetchSolarForecast,
     getBaselineLoadW: mods.representativeHouseLoadW,
     getEvcc: mods.evccSnapshot,
@@ -208,6 +211,7 @@ export async function buildProductionIO(deps: PlantDeps): Promise<AutomationIO> 
   const [
     { getAutomationConfig },
     { getWeatherConfig },
+    { plantFacts },
     { fetchSolarForecast, representativeHouseLoadW },
     { evccSnapshot, evccControl },
     { liveState },
@@ -219,6 +223,7 @@ export async function buildProductionIO(deps: PlantDeps): Promise<AutomationIO> 
   ] = await Promise.all([
     import("../settings/automation-settings"),
     import("../settings/weather-settings"),
+    import("../settings/plant-facts-instance"),
     import("../forecast/solar-forecast"),
     import("../evcc/evcc"),
     import("../shared/state"),
@@ -231,6 +236,9 @@ export async function buildProductionIO(deps: PlantDeps): Promise<AutomationIO> 
   return composeAutomationIO(deps, {
     getAutomationConfig,
     getWeatherConfig,
+    // Through `plantFacts`, whose pack read is cached, so asking once per tick
+    // costs one query per invalidation rather than one per tick.
+    packNominalV: () => plantFacts.packNominalV(),
     fetchSolarForecast,
     representativeHouseLoadW,
     evccSnapshot,

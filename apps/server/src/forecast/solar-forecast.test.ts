@@ -1388,3 +1388,95 @@ describe("buildSolarForecast array orientation", () => {
     expect(oriented(0, at, 60)).toBeGreaterThan(oriented(0, at, 0));
   });
 });
+
+/**
+ * Per-array physics: the model's `pvPowerW(sample, kwp, tempCoefficient,
+ * systemLoss)` seam has always been per array, and until now storage handed the
+ * SAME plant-wide pair to every one of them — a shaded east string and a clean
+ * south one modelled with one 14 %, which is the fudge factor the learned bias
+ * correction exists to paper over.
+ *
+ * No `dni`, so the IAM split stays out of it and each array's expected power is
+ * exactly `pvPowerW({ gtiWm2, ambientC }, kwp, tc, loss)` — the assertions below
+ * compare against the model itself rather than against a baked number, so a
+ * change to the physics moves both sides together and only the ROUTING is pinned.
+ */
+describe("buildSolarForecast per-array overrides", () => {
+  const AT = "2026-07-18T12:00";
+  const GTI = 500;
+  const AMBIENT = 20;
+
+  /** One instantaneous sample, summed over however many arrays are configured. */
+  const wattsOf = (arrays: object[], plant: object = {}) => {
+    const data: IrradianceForecast = {
+      times: [AT],
+      utcOffsetSeconds: 7200,
+      location: { latitude: 48, longitude: 9 },
+      temperature: [AMBIENT],
+      gti: arrays.map(() => [GTI]),
+    };
+    const at = Date.parse(`${AT}:00Z`) - 7200_000;
+    const cfg = config({ arrays, ...plant });
+    return buildSolarForecast(cfg, data, "test", at).series[0]?.watts ?? 0;
+  };
+
+  /** What the model says one array should make, given the pair it was handed. */
+  const expected = (kwp: number, tc: number, loss: number) =>
+    pvPowerW({ gtiWm2: GTI, ambientC: AMBIENT }, kwp, tc, loss);
+
+  test("an array stating neither still gets the plant's pair", () => {
+    expect(wattsOf([{ kwp: 10, tilt: 30, azimuth: 0 }])).toBeCloseTo(expected(10, -0.4, 14), 6);
+  });
+
+  test("a per-array systemLoss replaces the plant's", () => {
+    expect(wattsOf([{ kwp: 10, tilt: 30, azimuth: 0, systemLoss: 25 }])).toBeCloseTo(
+      expected(10, -0.4, 25),
+      6,
+    );
+  });
+
+  test("a per-array tempCoefficient replaces the plant's", () => {
+    expect(wattsOf([{ kwp: 10, tilt: 30, azimuth: 0, tempCoefficient: -0.29 }])).toBeCloseTo(
+      expected(10, -0.29, 14),
+      6,
+    );
+  });
+
+  test("a stated ZERO override is honoured, not treated as absent", () => {
+    // The boundary that separates `??` from `||`, and it is not academic: 0 %
+    // loss and 0 %/°C are both legal statements, and `||` would silently swap
+    // them for the plant's 14 % and -0.4 — a wrong forecast with no error and
+    // nothing in the document to explain it.
+    expect(
+      wattsOf([{ kwp: 10, tilt: 30, azimuth: 0, systemLoss: 0, tempCoefficient: 0 }]),
+    ).toBeCloseTo(expected(10, 0, 0), 6);
+    // …and it must not be the plant's value, or the assertion above could pass
+    // for the wrong reason on a plant whose defaults happened to be zero.
+    expect(
+      wattsOf([{ kwp: 10, tilt: 30, azimuth: 0, systemLoss: 0, tempCoefficient: 0 }]),
+    ).not.toBeCloseTo(expected(10, -0.4, 14), 6);
+  });
+
+  test("two arrays are modelled with their OWN pairs, not one collapsed pair", () => {
+    // The whole defect in one assertion: a shaded east string at 25 % beside a
+    // clean south one on the plant's 14 %. Both plant-wide readings — 14/14 and
+    // 25/25 — are wrong, and in opposite directions.
+    const mixed = wattsOf([
+      { kwp: 5, tilt: 20, azimuth: -90, systemLoss: 25, tempCoefficient: -0.45 },
+      { kwp: 9.8, tilt: 30, azimuth: 0 },
+    ]);
+    expect(mixed).toBeCloseTo(expected(5, -0.45, 25) + expected(9.8, -0.4, 14), 6);
+    expect(mixed).not.toBeCloseTo(expected(5, -0.4, 14) + expected(9.8, -0.4, 14), 3);
+    expect(mixed).not.toBeCloseTo(expected(5, -0.45, 25) + expected(9.8, -0.45, 25), 3);
+  });
+
+  test("a deviceSlug alone changes nothing about the power", () => {
+    // Recordable, not yet consumed: per-device forecast and clipping need it, and
+    // the shape change is free today where a JSONB migration later is not. If it
+    // ever starts moving a number, this test says so.
+    expect(wattsOf([{ kwp: 10, tilt: 30, azimuth: 0, deviceSlug: "east-inv" }])).toBeCloseTo(
+      wattsOf([{ kwp: 10, tilt: 30, azimuth: 0 }]),
+      9,
+    );
+  });
+});

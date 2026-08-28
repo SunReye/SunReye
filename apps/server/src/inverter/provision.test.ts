@@ -93,6 +93,9 @@ function memoryStore(seed: { settings?: Record<string, unknown> } = {}) {
       connections.push(created);
       return created;
     },
+    async readConnection(plantId: number) {
+      return connections.find((c) => c.plantId === plantId) ?? null;
+    },
     async readDevices(plantId: number) {
       return devices.filter((d) => d.plantId === plantId);
     },
@@ -100,7 +103,9 @@ function memoryStore(seed: { settings?: Record<string, unknown> } = {}) {
       calls.push("ensureDevice");
       const existing = devices.find((d) => d.plantId === spec.plantId && d.slug === spec.slug);
       if (existing) return existing;
-      const created = { ...spec, id: nextId++ };
+      // `retiredAt: null` because a `DeviceSpec` carries no lifecycle flag: a
+      // device is created in service, and retirement is an UPDATE.
+      const created = { ...spec, id: nextId++, retiredAt: null };
       devices.push(created);
       return created;
     },
@@ -146,7 +151,7 @@ beforeEach(() => {
 });
 
 const profile = { id: "deye-sun-12k", name: "Deye SUN-12K" };
-const config = (over: Record<string, unknown> = {}) =>
+const seed = (over: Record<string, unknown> = {}) =>
   inverterConfigSchema.parse({ host: "10.0.0.5", unitId: 1, ...over });
 
 describe("slugify", () => {
@@ -260,14 +265,14 @@ describe("provisionPlantRow", () => {
 describe("provisionDevice", () => {
   test("a fresh install gets a plant, a connection and one role='inverter' device", async () => {
     const { store, devices, connections } = memoryStore();
-    const result = await provisionDevice({ store, logger, profile, config: config() });
+    const result = await provisionDevice({ store, logger, profile, seed: seed() });
     expect(connections.length).toBe(1);
     expect(devices.length).toBe(1);
     expect(devices[0]?.role).toBe("inverter");
     expect(devices[0]?.profileId).toBe("deye-sun-12k");
     expect(devices[0]?.unitId).toBe(1);
     expect(devices[0]?.connectionId).toBe(connections[0]?.id);
-    expect(result.deviceId).toBe(devices[0]?.id ?? -1);
+    expect(result?.deviceId).toBe(devices[0]?.id ?? -1);
   });
 
   test("the device is named from the profile and slugged from its ROLE", async () => {
@@ -276,7 +281,7 @@ describe("provisionDevice", () => {
     // topic and orphan every discovered Home Assistant entity. The role is
     // stable across swaps; the NAME is where the model belongs.
     const { store, devices } = memoryStore();
-    await provisionDevice({ store, logger, profile, config: config() });
+    await provisionDevice({ store, logger, profile, seed: seed() });
     expect(devices[0]?.slug).toBe("inverter");
     expect(devices[0]?.name).toBe("Deye SUN-12K");
   });
@@ -285,9 +290,9 @@ describe("provisionDevice", () => {
     // The requirement, stated as its consequence: an int2 renumber silently
     // rebinds every historical reading to a different machine.
     const { store, devices, connections, plants } = memoryStore();
-    const first = await provisionDevice({ store, logger, profile, config: config() });
-    const second = await provisionDevice({ store, logger, profile, config: config() });
-    const third = await provisionDevice({ store, logger, profile, config: config() });
+    const first = await provisionDevice({ store, logger, profile, seed: seed() });
+    const second = await provisionDevice({ store, logger, profile, seed: seed() });
+    const third = await provisionDevice({ store, logger, profile, seed: seed() });
     expect(plants.length).toBe(1);
     expect(connections.length).toBe(1);
     expect(devices.length).toBe(1);
@@ -297,9 +302,9 @@ describe("provisionDevice", () => {
 
   test("an operator's rename survives every later boot", async () => {
     const { store, devices } = memoryStore();
-    const first = await provisionDevice({ store, logger, profile, config: config() });
-    await store.updateDevice(first.deviceId, { name: "Garage inverter" });
-    await provisionDevice({ store, logger, profile, config: config() });
+    const first = await provisionDevice({ store, logger, profile, seed: seed() });
+    await store.updateDevice(first?.deviceId ?? -1, { name: "Garage inverter" });
+    await provisionDevice({ store, logger, profile, seed: seed() });
     expect(devices[0]?.name).toBe("Garage inverter");
   });
 
@@ -307,42 +312,106 @@ describe("provisionDevice", () => {
     // In 1.x the profile id WAS the stored identity, so a swap orphaned all of
     // history. The device must keep its id and its frozen slug.
     const { store, devices } = memoryStore();
-    const first = await provisionDevice({ store, logger, profile, config: config() });
+    const first = await provisionDevice({ store, logger, profile, seed: seed() });
     const swapped = await provisionDevice({
       store,
       logger,
       profile: { id: "sigenergy-hybrid", name: "Sigenergy" },
-      config: config(),
+      seed: seed(),
     });
     expect(devices.length).toBe(1);
-    expect(swapped.deviceId).toBe(first.deviceId);
+    expect(swapped?.deviceId).toBe(first?.deviceId);
     expect(devices[0]?.slug).toBe("inverter");
     expect(devices[0]?.profileId).toBe("sigenergy-hybrid");
   });
 
-  test("moving the gateway EDITS the endpoint — the device keeps pointing at it", async () => {
+  test("a later boot NEVER overwrites the endpoint the spine already holds", async () => {
+    // THE WRITE-BACK, DELETED. Provisioning used to copy the legacy
+    // `app_settings.inverter` document into `connections` and `devices.unit_id`
+    // on every boot, which made that document the authority and silently undid
+    // every edit an operator made to the endpoint. The seed CREATES rows; it
+    // never edits one. `../routes/settings.ts` -> `./endpoint.ts` is the only
+    // writer.
     const { store, connections, devices } = memoryStore();
-    const first = await provisionDevice({ store, logger, profile, config: config() });
+    const first = await provisionDevice({ store, logger, profile, seed: seed() });
+    // The operator moves the gateway (what the settings PUT does).
+    await store.ensureConnection(1, {
+      name: "Inverter",
+      host: "10.0.0.9",
+      port: 8899,
+      transport: "rtu-over-tcp",
+      timeoutMs: 3000,
+      pollIntervalMs: 2000,
+    });
+    await store.updateDevice(first?.deviceId ?? -1, { unitId: 3 });
+    // ...and a boot later the stale legacy document says something else entirely.
+    await provisionDevice({ store, logger, profile, seed: seed({ host: "10.0.0.5", unitId: 1 }) });
+    expect(connections.length).toBe(1);
+    expect(connections[0]?.host).toBe("10.0.0.9");
+    expect(connections[0]?.port).toBe(8899);
+    expect(connections[0]?.pollIntervalMs).toBe(2000);
+    expect(devices[0]?.unitId).toBe(3);
+    expect(devices[0]?.connectionId).toBe(first?.connectionId);
+  });
+
+  test("the adopt patch names the PROFILE and nothing else about the endpoint", async () => {
+    // Stated as the patch itself, because the patch is the write-back: `unitId`
+    // or `connectionId` appearing here is the defect coming back. A profile swap
+    // must still re-point the driver.
+    const { store, calls } = memoryStore();
+    await provisionDevice({ store, logger, profile, seed: seed() });
+    await provisionDevice({ store, logger, profile, seed: seed() });
+    expect(calls).toContain("updateDevice:profileId");
+    expect(calls.filter((c) => c.startsWith("updateDevice")).join(" ")).not.toContain("unitId");
+  });
+
+  test("the endpoint is still SEEDED when the plant has none — the 1.2.0 upgrade", async () => {
+    // The other half of the same rule: a 1.2.0 install's endpoint lives ONLY in
+    // `app_settings`, and the first boot after the upgrade is the one chance to
+    // carry it across. Not seeding would leave the plant with no address at all.
+    const { store, connections } = memoryStore();
     await provisionDevice({
       store,
       logger,
       profile,
-      config: config({ host: "10.0.0.9", port: 8899, transport: "rtu-over-tcp", unitId: 3 }),
+      seed: seed({ host: "10.0.0.5", port: 8899, transport: "rtu-over-tcp", pollIntervalMs: 5000 }),
     });
     expect(connections.length).toBe(1);
+    expect(connections[0]).toMatchObject({
+      host: "10.0.0.5",
+      port: 8899,
+      transport: "rtu-over-tcp",
+      pollIntervalMs: 5000,
+    });
+  });
+
+  test("a device created against an existing endpoint adopts it rather than adding one", async () => {
+    // The onboarding order: the operator saves the connection first (no profile
+    // active, so no device), then a profile is activated and this boot creates
+    // the device. It must bind to the endpoint that is already there.
+    const { store, connections, devices } = memoryStore();
+    const plant = await store.ensurePlant({ name: "P", slug: "p" });
+    const saved = await store.ensureConnection(plant.id, {
+      name: "Inverter",
+      host: "10.0.0.9",
+      port: 502,
+      transport: "tcp",
+      timeoutMs: 2000,
+      pollIntervalMs: 1000,
+    });
+    await provisionDevice({ store, logger, profile, seed: seed({ host: "10.0.0.5" }) });
+    expect(connections.length).toBe(1);
     expect(connections[0]?.host).toBe("10.0.0.9");
-    expect(connections[0]?.port).toBe(8899);
-    expect(devices[0]?.connectionId).toBe(first.connectionId);
-    expect(devices[0]?.unitId).toBe(3);
+    expect(devices[0]?.connectionId).toBe(saved.id);
   });
 
   test("with no host there is no endpoint at all — the simulate case", async () => {
     // `connection_id` is nullable precisely for this, and NULLs are distinct in
     // `devices_connection_unit_key`, so simulate installs coexist.
     const { store, connections, devices } = memoryStore();
-    const result = await provisionDevice({ store, logger, profile, config: config({ host: "" }) });
+    const result = await provisionDevice({ store, logger, profile, seed: seed({ host: "" }) });
     expect(connections.length).toBe(0);
-    expect(result.connectionId).toBeNull();
+    expect(result?.connectionId).toBeNull();
     expect(devices[0]?.connectionId).toBeNull();
   });
 
@@ -350,9 +419,9 @@ describe("provisionDevice", () => {
     // Turning on INVERTER_SIMULATE on a real install must not silently detach
     // the device from the gateway it is physically wired to.
     const { store, devices } = memoryStore();
-    const first = await provisionDevice({ store, logger, profile, config: config() });
-    await provisionDevice({ store, logger, profile, config: config({ host: "   " }) });
-    expect(devices[0]?.connectionId).toBe(first.connectionId);
+    const first = await provisionDevice({ store, logger, profile, seed: seed() });
+    await provisionDevice({ store, logger, profile, seed: seed({ host: "   " }) });
+    expect(devices[0]?.connectionId).toBe(first?.connectionId);
   });
 
   test("a role='controller' device is never hijacked into being the inverter", async () => {
@@ -370,11 +439,11 @@ describe("provisionDevice", () => {
       profileId: "victron-gx",
       role: "controller",
     });
-    const result = await provisionDevice({ store, logger, profile, config: config() });
+    const result = await provisionDevice({ store, logger, profile, seed: seed() });
     expect(devices.length).toBe(2);
     expect(devices.find((d) => d.slug === "gx")?.role).toBe("controller");
     expect(devices.find((d) => d.slug === "gx")?.profileId).toBe("victron-gx");
-    expect(devices.find((d) => d.id === result.deviceId)?.role).toBe("inverter");
+    expect(devices.find((d) => d.id === result?.deviceId)?.role).toBe("inverter");
   });
 
   test("the legacy 1.x pack is moved onto the device's battery row, once", async () => {
@@ -385,7 +454,7 @@ describe("provisionDevice", () => {
         },
       },
     });
-    await provisionDevice({ store, logger, profile, config: config() });
+    await provisionDevice({ store, logger, profile, seed: seed() });
     expect(batteries.length).toBe(1);
     expect(batteries[0]).toMatchObject({
       usableKwh: 30,
@@ -405,7 +474,7 @@ describe("provisionDevice", () => {
         automations: { peakShaving: { nominalBatteryV: 48 } },
       },
     });
-    await provisionDevice({ store, logger, profile, config: config() });
+    await provisionDevice({ store, logger, profile, seed: seed() });
     expect(batteries[0]?.nominalV).toBe(48);
   });
 
@@ -413,7 +482,7 @@ describe("provisionDevice", () => {
     const { store, batteries } = memoryStore({
       settings: { weather: { forecast: { battery: { usableKwh: 10 } } } },
     });
-    await provisionDevice({ store, logger, profile, config: config() });
+    await provisionDevice({ store, logger, profile, seed: seed() });
     expect(batteries[0]?.nominalV).toBeNull();
   });
 
@@ -421,14 +490,14 @@ describe("provisionDevice", () => {
     const { store, batteries } = memoryStore({
       settings: { weather: { forecast: { battery: { usableKwh: 30, minSoc: 5 } } } },
     });
-    const first = await provisionDevice({ store, logger, profile, config: config() });
-    await store.upsertDeviceBattery(first.deviceId, {
+    const first = await provisionDevice({ store, logger, profile, seed: seed() });
+    await store.upsertDeviceBattery(first?.deviceId ?? -1, {
       usableKwh: 12,
       maxChargeW: null,
       minSoc: 20,
       nominalV: null,
     });
-    await provisionDevice({ store, logger, profile, config: config() });
+    await provisionDevice({ store, logger, profile, seed: seed() });
     expect(batteries.length).toBe(1);
     expect(batteries[0]?.usableKwh).toBe(12);
     expect(batteries[0]?.minSoc).toBe(20);
@@ -436,8 +505,72 @@ describe("provisionDevice", () => {
 
   test("no legacy pack means no pack row — a plant without storage stays without", async () => {
     const { store, batteries } = memoryStore();
-    await provisionDevice({ store, logger, profile, config: config() });
+    await provisionDevice({ store, logger, profile, seed: seed() });
     expect(batteries).toEqual([]);
+  });
+
+  test("a RETIRED device is not adopted by any of the three search arms", async () => {
+    // `retired_at` exists because ON DELETE RESTRICT leaves no other way out of
+    // service. Its third semantic is the load-bearing one: the row must never be
+    // re-adopted. All three arms would otherwise hit this row — the profile id,
+    // and "the plant's role='inverter' row".
+    const { store, devices } = memoryStore();
+    const plant = await store.ensurePlant({ name: "P", slug: "p" });
+    const dead = await store.ensureDevice({
+      plantId: plant.id,
+      connectionId: null,
+      unitId: 9,
+      slug: "inverter-1",
+      name: "The one that died",
+      profileId: profile.id,
+      role: "inverter",
+    });
+    await store.updateDevice(dead.id, { retiredAt: new Date("2026-08-01T00:00:00Z") });
+    const result = await provisionDevice({ store, logger, profile, seed: seed() });
+    expect(result?.deviceId).not.toBe(dead.id);
+    expect(devices.length).toBe(2);
+    expect(devices.find((d) => d.id === dead.id)?.retiredAt).not.toBeNull();
+  });
+
+  test("a retired device holding the FROZEN slug is not resurrected — nothing is provisioned", async () => {
+    // `devices_plant_slug_key` is unconditional by design (the slug is written
+    // into years of exports), so `ensureDevice` on a retired slug hands the
+    // RETIRED row straight back. Writing readings to it, or clearing its
+    // retirement, would both be the resurrection this column exists to prevent —
+    // and the physical `(connection_id, unit_id)` claim is still the old
+    // machine's. So the boot declines, loudly, and the writer's own "no device
+    // names this source" degradation takes over.
+    const { store, devices } = memoryStore();
+    const plant = await store.ensurePlant({ name: "P", slug: "p" });
+    const dead = await store.ensureDevice({
+      plantId: plant.id,
+      connectionId: null,
+      unitId: 1,
+      slug: "inverter",
+      name: "The one that died",
+      profileId: profile.id,
+      role: "inverter",
+    });
+    await store.updateDevice(dead.id, { retiredAt: new Date("2026-08-01T00:00:00Z") });
+    const result = await provisionDevice({ store, logger, profile, seed: seed() });
+    expect(result).toBeNull();
+    expect(devices.length).toBe(1);
+    expect(devices[0]?.retiredAt).not.toBeNull();
+    expect(warnings.map((w) => w.template).join(" ")).toContain("retired");
+  });
+
+  test("un-retiring a device makes the next boot adopt it again, id intact", async () => {
+    // Retirement is an UPDATE both ways, and the whole point of never deleting
+    // is that the id — and therefore five years of readings — survives.
+    const { store, devices } = memoryStore();
+    const first = await provisionDevice({ store, logger, profile, seed: seed() });
+    await store.updateDevice(first?.deviceId ?? -1, {
+      retiredAt: new Date("2026-08-01T00:00:00Z"),
+    });
+    await store.updateDevice(first?.deviceId ?? -1, { retiredAt: null });
+    const again = await provisionDevice({ store, logger, profile, seed: seed() });
+    expect(again?.deviceId).toBe(first?.deviceId);
+    expect(devices.length).toBe(1);
   });
 
   test("the provisioned device is what the writer's source id resolves to", async () => {
@@ -445,7 +578,7 @@ describe("provisionDevice", () => {
     // `profile_id` second. Both arms must land on this row or the poll loop
     // keeps dropping every batch it buffers.
     const { store, devices } = memoryStore();
-    await provisionDevice({ store, logger, profile, config: config() });
+    await provisionDevice({ store, logger, profile, seed: seed() });
     expect(devices[0]?.slug).toBe("inverter");
     expect(devices[0]?.profileId).toBe("deye-sun-12k");
   });
@@ -469,6 +602,8 @@ describe("dbProvisionStore", () => {
 
     // The reads that tolerate an empty answer.
     expect(await store.readDevices(1)).toEqual([]);
+    // "the plant has no endpoint yet" is the answer that makes the seed a seed.
+    expect(await store.readConnection(1)).toBeNull();
     expect(await store.readPlantBatteries(1)).toEqual([]);
     expect(await store.readRawSetting("weather")).toBeUndefined();
     await store.updatePlant(1, { systemLoss: 11 });

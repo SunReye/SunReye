@@ -546,6 +546,77 @@ suite("the 2.0.0 baseline schema", () => {
       expect(row?.is_counter).toBe(true);
     });
 
+    test("a metric's unit is recorded alongside its class", async () => {
+      const { ensureMetricKeys } = await import("@SunReye/db/metric-keys");
+      const ids = await ensureMetricKeys(db, [{ key: "upsert.unit", isCounter: false, unit: "W" }]);
+      const row = await one<{ id: number; unit: string | null }>(
+        sql`select id, unit from metric_keys where key = 'upsert.unit'`,
+      );
+      expect(row?.unit).toBe("W");
+      expect(ids.get("upsert.unit")).toBe(row?.id ?? -1);
+    });
+
+    test("a key registered without a unit stores NULL, not an empty string", async () => {
+      const { ensureMetricKeys } = await import("@SunReye/db/metric-keys");
+      await ensureMetricKeys(db, [{ key: "upsert.nounit", isCounter: false }]);
+      const row = await one<{ unit: string | null }>(
+        sql`select unit from metric_keys where key = 'upsert.nounit'`,
+      );
+      // "never stated" must stay distinguishable from "stated as empty".
+      expect(row?.unit).toBeNull();
+    });
+
+    test("an empty unit is stored, because a profile may legitimately state one", async () => {
+      const { ensureMetricKeys } = await import("@SunReye/db/metric-keys");
+      await ensureMetricKeys(db, [{ key: "upsert.emptyunit", isCounter: false, unit: "" }]);
+      const row = await one<{ unit: string | null }>(
+        sql`select unit from metric_keys where key = 'upsert.emptyunit'`,
+      );
+      expect(row?.unit).toBe("");
+    });
+
+    test("a later profile that omits the unit cannot erase the one on record", async () => {
+      const { ensureMetricKeys } = await import("@SunReye/db/metric-keys");
+      const first = await ensureMetricKeys(db, [
+        { key: "upsert.keepunit", isCounter: false, unit: "kWh" },
+      ]);
+      // The boundary the whole column exists for: after a profile uninstall the
+      // unit is UNRECOVERABLE, so a spec that states nothing must not clear it.
+      const second = await ensureMetricKeys(db, [{ key: "upsert.keepunit", isCounter: true }]);
+      expect(second.get("upsert.keepunit")).toBe(first.get("upsert.keepunit"));
+      const row = await one<{ unit: string | null; is_counter: boolean }>(
+        sql`select unit, is_counter from metric_keys where key = 'upsert.keepunit'`,
+      );
+      expect(row?.unit).toBe("kWh");
+      // ...while the class correction beside it still lands.
+      expect(row?.is_counter).toBe(true);
+    });
+
+    test("an explicit null unit is also a non-statement, not an erasure", async () => {
+      const { ensureMetricKeys } = await import("@SunReye/db/metric-keys");
+      await ensureMetricKeys(db, [{ key: "upsert.nullunit", isCounter: false, unit: "A" }]);
+      await ensureMetricKeys(db, [{ key: "upsert.nullunit", isCounter: false, unit: null }]);
+      const row = await one<{ unit: string | null }>(
+        sql`select unit from metric_keys where key = 'upsert.nullunit'`,
+      );
+      expect(row?.unit).toBe("A");
+    });
+
+    test("a corrected unit does reach an existing row", async () => {
+      const { ensureMetricKeys } = await import("@SunReye/db/metric-keys");
+      const before = await ensureMetricKeys(db, [
+        { key: "upsert.fixunit", isCounter: false, unit: "kW" },
+      ]);
+      const after = await ensureMetricKeys(db, [
+        { key: "upsert.fixunit", isCounter: false, unit: "W" },
+      ]);
+      expect(after.get("upsert.fixunit")).toBe(before.get("upsert.fixunit"));
+      const row = await one<{ unit: string | null }>(
+        sql`select unit from metric_keys where key = 'upsert.fixunit'`,
+      );
+      expect(row?.unit).toBe("W");
+    });
+
     test("an empty registration is a no-op, not a malformed statement", async () => {
       const { ensureMetricKeys } = await import("@SunReye/db/metric-keys");
       expect((await ensureMetricKeys(db, [])).size).toBe(0);

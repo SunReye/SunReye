@@ -37,17 +37,37 @@
  * registers and resolves. It also lets a corrected `is_counter` reach an existing
  * row — a profile that mislabelled an energy total can be fixed without moving
  * its id.
+ *
+ * WHY THE UNIT RIDES ALONG
+ *
+ * `unit` is written by the same statement and for the same reason `is_counter`
+ * is: it is a fact the read layer needs after the profile that stated it has
+ * been uninstalled. It differs in ONE way, and that way is the whole of the
+ * `coalesce` below — a caller may not know a unit, whereas every caller knows a
+ * counter class. Absence must therefore not erase, because a unit lost with its
+ * profile cannot be recovered from anything else in the database.
  */
 
 import { type SQL, sql } from "drizzle-orm";
 
 import { metricKeys } from "./schema/plants";
 
-/** One metric to register: its key, and the class the aggregates need. */
+/** One metric to register: its key, and the facts that outlive its profile. */
 export interface MetricKeySpec {
   key: string;
   /** Whether the metric is a monotonic counter (an energy total). */
   isCounter: boolean;
+  /**
+   * Display unit as the profile states it (`W`, `kWh`, `%`), or null/absent
+   * when this caller does not know one.
+   *
+   * OPTIONAL on purpose, and absent is NOT the same as `""`. The writer's lazy
+   * fallback registers keys it has only ever seen in a payload, and a required
+   * field would force those call sites to invent a value — which, through the
+   * upsert below, would overwrite a unit an earlier profile did supply. See
+   * `./schema/plants.ts` on why a lost unit cannot be recovered.
+   */
+  unit?: string | null;
 }
 
 /**
@@ -86,16 +106,29 @@ export async function ensureMetricKeys(
   if (unique.size === 0) return new Map();
 
   const values = sql.join(
-    [...unique.values()].map((s) => sql`(${s.key}, ${s.isCounter})`),
+    [...unique.values()].map((s) => sql`(${s.key}, ${s.isCounter}, ${s.unit ?? null})`),
     sql`, `,
   );
 
   // `excluded.is_counter` so a class correction lands, and the id stays put
   // because it is GENERATED ALWAYS AS IDENTITY and nothing here assigns it.
+  //
+  // The unit is `coalesce(excluded.unit, metric_keys.unit)` rather than a plain
+  // assignment, and the asymmetry with `is_counter` is deliberate. `is_counter`
+  // always carries a stated value (the spec's field is required, and `false` is
+  // the safe default), so overwriting it is always a correction. A unit can be
+  // ABSENT: the lazy writer path registers a key it saw in a payload and knows
+  // no unit for, and a profile can drop a `unit` field between versions. Letting
+  // that null land would erase the only surviving record of what the numbers
+  // mean — the profile that stated it may already be uninstalled, and nothing
+  // else in the database remembers. So a null never writes, and a stated value
+  // (including `""`) always does.
   const result = await db.execute(sql`
-    insert into ${metricKeys} (key, is_counter)
+    insert into ${metricKeys} (key, is_counter, unit)
     values ${values}
-    on conflict (key) do update set is_counter = excluded.is_counter
+    on conflict (key) do update set
+      is_counter = excluded.is_counter,
+      unit = coalesce(excluded.unit, ${metricKeys}.unit)
     returning id, key`);
 
   const rows = result.rows as Array<{ id: number | string; key: string }>;

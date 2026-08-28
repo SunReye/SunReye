@@ -1265,6 +1265,8 @@ interface Harness {
     evcc(state: EvccState | null): void;
     baselineLoad(w: number | null): void;
     sample(metrics: Record<string, number>, ageMs?: number): void;
+    /** What `batteries.nominal_v` states, or null for "the packs cannot say". */
+    packNominalV(v: number | null): void;
     now(ms: number): void;
     state(s: AutomationState): void;
     /** Make every EVCC command throw, as an unreachable broker does. */
@@ -1292,6 +1294,10 @@ function harness(over: { config?: AutomationConfig; prices?: SpotSlice | null } 
   let baselineLoadW: number | null = null;
   let nowMs = NOON;
   let sample: InverterSample | null = null;
+  // `batteries.nominal_v`, the pack voltage's newest and now first home. Null by
+  // default so every pre-existing case keeps exercising the legacy chain it was
+  // written against.
+  let packV: number | null = null;
   let state: AutomationState = {};
   const writes: { key: string; value: number }[] = [];
 
@@ -1333,6 +1339,7 @@ function harness(over: { config?: AutomationConfig; prices?: SpotSlice | null } 
         if (evccError) throw new Error(evccError);
         evccCommands.push({ loadpoint, action, value });
       },
+      getPackNominalV: async () => packV,
       getWeather: async () => wx,
       getForecast: async () => fc,
       getBaselineLoadW: async () => baselineLoadW,
@@ -1352,6 +1359,7 @@ function harness(over: { config?: AutomationConfig; prices?: SpotSlice | null } 
       evcc: (state) => (ev = state),
       baselineLoad: (w) => (baselineLoadW = w),
       sample: setSample,
+      packNominalV: (v) => (packV = v),
       now: (ms) => (nowMs = ms),
       state: (s) => (state = s),
       evccError: (message) => (evccError = message),
@@ -1533,6 +1541,98 @@ describe("peak-shaving engine", () => {
     // Live excess 18000 − 8000 = 10000 W at 100 V nominal → 100 A.
     const status = await engine.tick();
     expect(status.targetA).toBe(100);
+  });
+
+  /**
+   * The pack voltage's THREE stated homes, in the order it moved through them.
+   *
+   * It was a peak-shaving field, then the plant's forecast record, and now
+   * `batteries.nominal_v` on the pack row — and the newest one was written by
+   * provisioning and read by nobody. Every commanded charge current is scaled by
+   * this number, so a 48 V pack driven as 51.2 V is charged 7 % below what was
+   * asked for, silently and forever. Which is why the fallback chain is
+   * `resolveNominalV` (`@SunReye/db/batteries`) and not a run of `??` here: one
+   * spelling, so the next move of this value cannot forget an arm.
+   *
+   * Each case below uses 18 kW PV with a 8 kW load → 10 kW of live excess, and
+   * every candidate answer is chosen to land inside the register's own 0–185 A
+   * range so the clamp cannot decide the test instead of the precedence.
+   */
+  test("the pack row's voltage wins over both legacy homes", async () => {
+    h.set.config(config({}, { nominalBatteryV: 100 }));
+    h.set.weather(weather({ battery: { usableKwh: 15, nominalV: 200 } }));
+    h.set.packNominalV(125);
+    h.set.sample({ [PV_KEY]: 18_000, [SOC_KEY]: 50, [CHARGE_KEY]: 120 });
+    const status = await createPeakShavingEngine(h.io).tick();
+    // 10000 W at the pack's 125 V → 80 A. Neither 200 V (50 A) nor 100 V (100 A).
+    expect(status.targetA).toBe(80);
+  });
+
+  test("falls to the legacy plant value when no pack states one", async () => {
+    // The pack row exists but its voltage was never entered, or there is no pack
+    // row at all. The plant record still holds what the operator typed.
+    h.set.config(config({}, { nominalBatteryV: 100 }));
+    h.set.weather(weather({ battery: { usableKwh: 15, nominalV: 200 } }));
+    h.set.packNominalV(null);
+    h.set.sample({ [PV_KEY]: 18_000, [SOC_KEY]: 50, [CHARGE_KEY]: 120 });
+    expect((await createPeakShavingEngine(h.io).tick()).targetA).toBe(50);
+  });
+
+  test("falls all the way to the legacy automation field when neither newer home states one", async () => {
+    h.set.config(config({}, { nominalBatteryV: 100 }));
+    h.set.weather(weather({ battery: { usableKwh: 15 } }));
+    h.set.packNominalV(null);
+    h.set.sample({ [PV_KEY]: 18_000, [SOC_KEY]: 50, [CHARGE_KEY]: 120 });
+    expect((await createPeakShavingEngine(h.io).tick()).targetA).toBe(100);
+  });
+
+  test("a pack voltage that cannot be one is refused, not divided by", async () => {
+    // The safety floor of a chain that ends in arithmetic: the quotient of this
+    // division is written to a charge-current register on a real battery, so a
+    // zero (Infinity), a negative (a negative current) or a NaN must never reach
+    // it. The schemas forbid all three, and `readSetting` silently safe-parses a
+    // hand-edited row back to its default — so "forbidden" is not "impossible",
+    // and the engine states its own floor rather than trusting the layer above.
+    h.set.config(config({}, { nominalBatteryV: 100 }));
+    h.set.weather(weather({ battery: { usableKwh: 15 } }));
+    h.set.sample({ [PV_KEY]: 18_000, [SOC_KEY]: 50, [CHARGE_KEY]: 120 });
+    for (const bad of [0, -48, Number.NaN]) {
+      h.set.packNominalV(bad);
+      // Falls through to the next stated home — 100 V → 100 A — rather than
+      // producing Infinity, a negative target, or NaN.
+      expect((await createPeakShavingEngine(h.io).tick()).targetA).toBe(100);
+    }
+  });
+
+  test("with nothing stated anywhere the target is still a safe, finite number", async () => {
+    // All three homes empty. Unreachable through the schemas (the automation
+    // field defaults to 51.2) and therefore exactly the case nobody would notice
+    // breaking: the engine must not emit NaN or Infinity into a register write.
+    // Written past the schema on purpose — that is the only way this state
+    // arrives, and the engine has to survive arriving at it.
+    // maxChargeA raised past the answer, or the 100 A default ceiling would clamp
+    // the result onto the number this test is trying to distinguish it from.
+    const hollow = config({}, { nominalBatteryV: 100, maxChargeA: 300 });
+    (hollow.peakShaving as { nominalBatteryV: number }).nominalBatteryV = 0;
+    h.set.config(hollow);
+    h.set.weather(weather({ battery: { usableKwh: 15 } }));
+    h.set.packNominalV(null);
+    h.set.sample({ [PV_KEY]: 18_000, [SOC_KEY]: 50, [CHARGE_KEY]: 120 });
+    const status = await createPeakShavingEngine(h.io).tick();
+    expect(Number.isFinite(status.targetA)).toBe(true);
+    expect(status.targetA).toBeGreaterThanOrEqual(0);
+    // 10000 W at the 51.2 V default → 195 A, clamped to the register's 185 A.
+    expect(status.targetA).toBe(185);
+  });
+
+  test("a live voltage reading still beats the pack row", async () => {
+    // Unchanged precedence: the measured value is the pack's actual voltage right
+    // now, and every stated one is a nameplate figure.
+    h.set.config(config({}, { nominalBatteryV: 100, maxChargeA: 300 }));
+    h.set.packNominalV(200);
+    h.set.sample({ [PV_KEY]: 18_000, [SOC_KEY]: 50, [VOLT_KEY]: 62.5, [CHARGE_KEY]: 120 });
+    const status = await createPeakShavingEngine(h.io).tick();
+    expect(status.targetA).toBe(160);
   });
 
   test("the plant's stated voltage wins over the legacy automation field", async () => {

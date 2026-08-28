@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { type MetricKeySpec } from "@SunReye/db/metric-keys";
 
 import { createIdentityResolver } from "./identity";
 
@@ -186,7 +187,7 @@ describe("metric key registration", () => {
   });
 
   test("a corrected counter class is re-sent, because the id must stay put while the class changes", async () => {
-    const sent: Array<readonly { key: string; isCounter: boolean }[]> = [];
+    const sent: Array<readonly MetricKeySpec[]> = [];
     const r = createIdentityResolver({
       db: fakeDb({}),
       ensure: async (_db, s) => {
@@ -198,6 +199,96 @@ describe("metric key registration", () => {
     await r.registerMetrics([{ key: "e.total", isCounter: true }]);
     expect(sent).toHaveLength(2);
     expect(sent[1]).toEqual([{ key: "e.total", isCounter: true }]);
+  });
+
+  test("the stated unit reaches the registration — it is unrecoverable once the profile goes", async () => {
+    const sent: Array<readonly MetricKeySpec[]> = [];
+    const r = createIdentityResolver({
+      db: fakeDb({}),
+      ensure: async (_db, s) => {
+        sent.push([...s]);
+        return new Map(s.map((x) => [x.key, 4]));
+      },
+    });
+    await r.registerMetrics([{ key: "pv.power", isCounter: false, unit: "W" }]);
+    expect(sent[0]).toEqual([{ key: "pv.power", isCounter: false, unit: "W" }]);
+  });
+
+  test("a corrected unit is re-sent even though the key and class are unchanged", async () => {
+    // Without the unit in the staleness check the cache would answer from the
+    // first registration and the correction would never reach the row.
+    const sent: Array<readonly MetricKeySpec[]> = [];
+    const r = createIdentityResolver({
+      db: fakeDb({}),
+      ensure: async (_db, s) => {
+        sent.push([...s]);
+        return new Map(s.map((x) => [x.key, 5]));
+      },
+    });
+    await r.registerMetrics([{ key: "pv.power", isCounter: false, unit: "kW" }]);
+    await r.registerMetrics([{ key: "pv.power", isCounter: false, unit: "W" }]);
+    expect(sent).toHaveLength(2);
+    expect(sent[1]).toEqual([{ key: "pv.power", isCounter: false, unit: "W" }]);
+  });
+
+  test("re-registering the identical unit sends nothing", async () => {
+    const sent: Array<readonly MetricKeySpec[]> = [];
+    const r = createIdentityResolver({
+      db: fakeDb({}),
+      ensure: async (_db, s) => {
+        sent.push([...s]);
+        return new Map(s.map((x) => [x.key, 6]));
+      },
+    });
+    await r.registerMetrics([{ key: "pv.power", isCounter: false, unit: "W" }]);
+    await r.registerMetrics([{ key: "pv.power", isCounter: false, unit: "W" }]);
+    expect(sent).toHaveLength(1);
+  });
+
+  test("a profile that drops a unit does not re-send, so absence never erases", async () => {
+    // The upsert already refuses to write a null over a stated unit; not
+    // re-sending is the cheaper half of the same guarantee.
+    const sent: Array<readonly MetricKeySpec[]> = [];
+    const r = createIdentityResolver({
+      db: fakeDb({}),
+      ensure: async (_db, s) => {
+        sent.push([...s]);
+        return new Map(s.map((x) => [x.key, 7]));
+      },
+    });
+    await r.registerMetrics([{ key: "pv.power", isCounter: false, unit: "W" }]);
+    await r.registerMetrics([{ key: "pv.power", isCounter: false }]);
+    expect(sent).toHaveLength(1);
+  });
+
+  test("the lazy path never invents a unit for a key it has not seen", async () => {
+    const sent: Array<readonly MetricKeySpec[]> = [];
+    const r = createIdentityResolver({
+      db: fakeDb({}),
+      ensure: async (_db, s) => {
+        sent.push([...s]);
+        return new Map(s.map((x) => [x.key, 8]));
+      },
+    });
+    await r.metricId("surprise.metric");
+    expect(sent[0]).toEqual([{ key: "surprise.metric", isCounter: false }]);
+  });
+
+  test("the lazy path re-states the unit the eager path registered", async () => {
+    const sent: Array<readonly MetricKeySpec[]> = [];
+    const r = createIdentityResolver({
+      db: fakeDb({}),
+      ensure: async (_db, s) => {
+        sent.push([...s]);
+        return new Map(s.map((x) => [x.key, 9]));
+      },
+    });
+    await r.registerMetrics([{ key: "pv.power", isCounter: false, unit: "W" }]);
+    // A second batch mentioning the same key must not downgrade it to "unknown
+    // unit" — the row would keep its unit thanks to the upsert, but a needless
+    // re-send on every batch is a round trip on the hottest path.
+    await r.metricIds(["pv.power"]);
+    expect(sent).toHaveLength(1);
   });
 });
 

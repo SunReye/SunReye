@@ -238,6 +238,64 @@ describe("parseArchiveConfig", () => {
     ]);
   });
 
+  test("a retired device stays retired across a parse — it must not come back pollable", () => {
+    const parsed = parseArchiveConfig({
+      plant: {
+        name: "P",
+        slug: "p",
+        timeZone: "auto",
+        devices: [
+          {
+            slug: "old",
+            name: "Old",
+            profileId: "x",
+            role: "inverter",
+            unitId: 1,
+            connection: null,
+            retiredAt: "2026-03-04T05:06:07.000Z",
+          },
+        ],
+      },
+    });
+    expect(parsed.plant?.devices[0]?.retiredAt).toBe("2026-03-04T05:06:07.000Z");
+  });
+
+  test("a device from an archive written before retirement existed parses as in service", () => {
+    const parsed = parseArchiveConfig({
+      plant: {
+        name: "P",
+        slug: "p",
+        timeZone: "auto",
+        devices: [
+          { slug: "d", name: "D", profileId: "x", role: "inverter", unitId: 1, connection: null },
+        ],
+      },
+    });
+    expect(parsed.plant?.devices[0]?.retiredAt).toBeNull();
+  });
+
+  test("a retiredAt that is not a string is dropped rather than trusted", () => {
+    const parsed = parseArchiveConfig({
+      plant: {
+        name: "P",
+        slug: "p",
+        timeZone: "auto",
+        devices: [
+          {
+            slug: "d",
+            name: "D",
+            profileId: "x",
+            role: "inverter",
+            unitId: 1,
+            connection: null,
+            retiredAt: 1772668800000,
+          },
+        ],
+      },
+    });
+    expect(parsed.plant?.devices[0]?.retiredAt).toBeNull();
+  });
+
   test("a device naming a connection that the file does not carry is reported", () => {
     const parsed = parseArchiveConfig({
       plant: {

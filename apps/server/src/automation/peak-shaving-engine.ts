@@ -16,7 +16,8 @@
  *   without a DB or inverter.
  */
 
-import type { AutomationConfig } from "@SunReye/db/automation-config";
+import { type AutomationConfig, defaultAutomations } from "@SunReye/db/automation-config";
+import { resolveNominalV } from "@SunReye/db/batteries";
 import {
   type AutomationState,
   automationStateKey,
@@ -101,6 +102,18 @@ export interface AutomationIO {
   write(key: string, value: number): Promise<void>;
   getConfig(): Promise<AutomationConfig>;
   getWeather(): Promise<WeatherConfig>;
+  /**
+   * The pack voltage `batteries.nominal_v` states, or null when it cannot say.
+   *
+   * Its own accessor rather than a field read off `getWeather()`, because the two
+   * are not the same number. `weather.forecast.battery` is the DERIVED plant pack
+   * and its `nominalV` is "the first stated value" across however many packs
+   * exist — an arbitrary pick when they disagree, which is fine for a forecast
+   * and is not fine for the divisor of a charge-current register write. This one
+   * returns null on a disagreement so the chain falls through to a value the
+   * operator stated explicitly (see `statedBatteryV`).
+   */
+  getPackNominalV(): Promise<number | null>;
   getForecast(weather: WeatherConfig): Promise<SolarForecast | null>;
   /**
    * Representative house load for the rest of the day, W — the same figure the
@@ -871,7 +884,7 @@ async function steer(
   const evcc = io.getEvcc();
   const ev = evccAutomationInputs(evcc);
   const load = loadFrame(live, baselineLoadW);
-  const batteryV = liveBatteryV(live, ps, weather);
+  const batteryV = liveBatteryV(live, ps, weather, await io.getPackNominalV());
   const decision = decideTargetA(
     decisionInputs({
       e,
@@ -970,7 +983,7 @@ async function planInputs(
     ev: evccAutomationInputs(evcc),
     evcc,
     load: loadFrame(live, await io.getBaselineLoadW(weather)),
-    batteryV: liveBatteryV(live, ps, weather),
+    batteryV: liveBatteryV(live, ps, weather, await io.getPackNominalV()),
     prices: await io.getPrices(),
     tariff: await io.getTariff(),
   });
@@ -979,22 +992,69 @@ async function planInputs(
 }
 
 /**
+ * The last-resort pack voltage: the automation field's own schema default.
+ *
+ * Read from `defaultAutomations` rather than written as `51.2`, so the number
+ * cannot drift away from the schema that supplies it everywhere else.
+ */
+const FALLBACK_NOMINAL_V = defaultAutomations.peakShaving.nominalBatteryV;
+
+/**
+ * The pack voltage the plant STATES, across all three places it has lived.
+ *
+ * The value has moved twice — the automations page, then the plant's forecast
+ * record, now `batteries.nominal_v` on the pack row — and until this function
+ * existed the engine read only the two LEGACY homes. The newest one was written
+ * by provisioning and read by nobody, so the newest statement of a number that
+ * scales every commanded charge current was dead.
+ *
+ * The order and the reasons for it live in ONE place,
+ * `resolveNominalV` (`@SunReye/db/batteries`), rather than as a run of `??` here:
+ * this value has now moved twice, and the next move must not be able to forget an
+ * arm. What that function guarantees, and what must not be undone, is that
+ * nothing DEFAULTS on the way down — a default would shadow the legacy value with
+ * 51.2, and an install that set 48 V on the automations page would silently start
+ * charging 7 % below what it asked for, forever, with nothing to show for it.
+ *
+ * The floor at the end is this function's own, and it is not redundant. Every
+ * value below is scaled INTO a register write: a zero divides to Infinity, a
+ * negative to a negative current, a NaN to NaN. All three are refused by the
+ * schemas — and `readSetting` silently safe-parses a hand-edited row back to its
+ * default rather than failing, so "refused by the schema" is not "cannot
+ * arrive". This is register-writing code; it states its own floor.
+ */
+function statedBatteryV(
+  packNominalV: number | null,
+  ps: AutomationConfig["peakShaving"],
+  weather: WeatherConfig,
+): number {
+  const stated = resolveNominalV(
+    usableVolts(packNominalV),
+    usableVolts(weather.forecast.battery?.nominalV),
+    usableVolts(ps.nominalBatteryV),
+  );
+  return stated ?? FALLBACK_NOMINAL_V;
+}
+
+/** A voltage a current can be divided out of, or null so the chain falls onward. */
+const usableVolts = (v: number | null | undefined): number | null =>
+  typeof v === "number" && Number.isFinite(v) && v > 0 ? v : null;
+
+/**
  * The measured pack voltage when the reading is sane, the stated one otherwise.
  *
- * Three sources in order, because the stated value moved. It describes the
- * battery, so it now lives with the plant (Settings -> Inverter); it used to be
- * a peak-shaving field, and an install that set 48 V there must keep charging at
- * 48 V until someone restates it. So: the live reading, then the plant's, then
- * the legacy automation field — which is why the plant's is nullable rather than
- * defaulted, since a default would shadow the legacy value with 51.2.
+ * The live reading wins over every stated value because it is the pack's voltage
+ * right now, where all three stated ones are nameplate figures — see
+ * {@link statedBatteryV} for the order those three resolve in.
  */
 function liveBatteryV(
   live: LiveInputs,
   ps: AutomationConfig["peakShaving"],
   weather: WeatherConfig,
+  packNominalV: number | null,
 ): number {
   if (live.liveVolt !== null && live.liveVolt > 0) return live.liveVolt;
-  return weather.forecast.battery?.nominalV ?? ps.nominalBatteryV;
+  return statedBatteryV(packNominalV, ps, weather);
 }
 
 /**
@@ -1066,12 +1126,19 @@ async function decideTick(
     return status;
   }
   // Reported in amps — the unit every other figure on the automation page uses —
-  // so a watt-denominated register reads back through the pack voltage.
+  // so a watt-denominated register reads back through the pack voltage. Resolved
+  // from the same chain as the target, or the page would report a readback the
+  // engine never steered against.
+  const packNominalV = await io.getPackNominalV();
   status.liveA =
     ready.live.liveLimit === null
       ? null
       : Math.round(
-          limitAmps(ready.limit, ready.live.liveLimit, liveBatteryV(ready.live, ps, weather)),
+          limitAmps(
+            ready.limit,
+            ready.live.liveLimit,
+            liveBatteryV(ready.live, ps, weather, packNominalV),
+          ),
         );
   status.liveSellLimitW = ready.live.sellLimitW;
 
