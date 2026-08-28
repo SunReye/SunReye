@@ -217,6 +217,58 @@ export async function resetLegacyDatabase(): Promise<string> {
 }
 
 /**
+ * The archive layer's OWN database.
+ *
+ * `resetTestDatabase` is memoized: it drops and recreates once per process, so
+ * every spec file after the first SHARES that database and scopes its rows by
+ * its own slugs. That works for every layer except this one. The portable
+ * archive is a WHOLE-DATABASE transport — `exportArchive` walks the plant and
+ * counts what it finds — so its central assertion ("the manifest names exactly
+ * the rows I seeded") is really an assertion about the whole database, and it
+ * silently becomes an assertion about whatever ran first.
+ *
+ * That is not hypothetical. `bun test` orders files by directory read, which
+ * differs between filesystems: locally `archive.test.ts` ran first and saw its
+ * own 17,280 rows, while CI ran seven files before it and the same export
+ * reported 52,146. The spec was correct and the isolation was not.
+ *
+ * Not memoized, for the same reason {@link resetLegacyDatabase} is not: a spec
+ * that exports, imports and re-imports needs to say where it starts from.
+ */
+const ARCHIVE_TEST_DB = "sunreye_dbtest_archive";
+
+/** Refuse any URL that does not name {@link ARCHIVE_TEST_DB}. Same rule, same reason. */
+export function assertArchiveTestDatabase(url: string): void {
+  const name = new URL(url).pathname.replace(/^\//, "");
+  if (name !== ARCHIVE_TEST_DB) {
+    throw new Error(
+      `Refusing to build the archive fixture in ${name || "(no database)"} — only ` +
+        `${ARCHIVE_TEST_DB} is allowed`,
+    );
+  }
+}
+
+/** A migrated 2.0.0 database of the archive layer's own, dropped and rebuilt. */
+export async function resetArchiveDatabase(): Promise<string> {
+  const base = baseUrl();
+  if (base === null) throw new Error("no DB_TEST_URL or DATABASE_URL configured");
+  const url = withDatabase(base, ARCHIVE_TEST_DB);
+  assertArchiveTestDatabase(url);
+
+  const admin = new SQL(withDatabase(base, ADMIN_DB));
+  try {
+    await admin.unsafe(`DROP DATABASE IF EXISTS ${ARCHIVE_TEST_DB} WITH (FORCE)`);
+    await admin.unsafe(`CREATE DATABASE ${ARCHIVE_TEST_DB}`);
+  } finally {
+    await admin.end();
+  }
+
+  const { runMigrations } = await import("@SunReye/db/migrate");
+  await runMigrations(url);
+  return url;
+}
+
+/**
  * `git show addon-v1.2.0:<path>` — the 1.2.0 schema, RECOVERED rather than
  * transcribed.
  *

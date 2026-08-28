@@ -610,10 +610,12 @@ export interface ProfileMetricDef {
  * design constraint issue #150 names, because a prefix list is one vendor's
  * naming and silently stops applying on the next.
  */
-export async function classifyProfile(installed?: {
-  id: string;
-  metrics: ProfileMetricDef[];
-} | null): Promise<{
+export async function classifyProfile(
+  installed?: {
+    id: string;
+    metrics: ProfileMetricDef[];
+  } | null,
+): Promise<{
   metrics: { key: string; isCounter: boolean }[];
   configKeys: string[];
   inverterId: string;

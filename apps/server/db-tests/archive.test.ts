@@ -45,7 +45,7 @@ import { exportArchive } from "@SunReye/db/archive-export";
 import { importArchive, upsertDevice } from "@SunReye/db/archive-import";
 import { MEMBERS, buildManifest, emptyStreamCounts, tarEnd, tarMember } from "@SunReye/db/archive";
 import { createLineSpool, writeArchive } from "@SunReye/db/archive-file";
-import { databaseReachable, resetTestDatabase } from "./harness";
+import { databaseReachable, resetArchiveDatabase } from "./harness";
 
 const reachable = await databaseReachable();
 const realDb = await import("@SunReye/db");
@@ -149,7 +149,9 @@ suite("the portable archive against a real TimescaleDB", () => {
   };
 
   beforeAll(async () => {
-    const url = await resetTestDatabase();
+    // Its OWN database: this layer exports the WHOLE plant, so a shared one
+    // makes every count depend on which spec file ran first. See the harness.
+    const url = await resetArchiveDatabase();
     raw = realDbExports.createDbAt(url);
     // `max: 1`, never a pool: the replay's chunk transaction is `begin`/`commit`
     // statements, and on a pool they could land on different backends.
@@ -534,7 +536,9 @@ suite("the portable archive against a real TimescaleDB", () => {
       battery: null,
     };
     await upsertDevice(client, plantId, live, new Map());
-    expect((await pool`select retired_at from devices where slug = ${slug}`)[0].retired_at).toBeNull();
+    expect(
+      (await pool`select retired_at from devices where slug = ${slug}`)[0].retired_at,
+    ).toBeNull();
 
     // Applying a retirement only ever STOPS a poll, so this direction is safe
     // and is applied.

@@ -89,10 +89,15 @@ const silent: UpgradeLogger = { log: () => {} };
  * one line for the whole replay, and two lines claiming to be "the" replay would
  * be worse than one that is the sum.
  */
-function mergeReplayed<T extends { seriesRows: number; configRows: number; elapsedMs: number; gaps: unknown[]; chunks?: unknown[] }>(
-  a: T,
-  b: T,
-): T {
+function mergeReplayed<
+  T extends {
+    seriesRows: number;
+    configRows: number;
+    elapsedMs: number;
+    gaps: unknown[];
+    chunks?: unknown[];
+  },
+>(a: T, b: T): T {
   return {
     ...a,
     seriesRows: a.seriesRows + b.seriesRows,

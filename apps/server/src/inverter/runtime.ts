@@ -490,7 +490,8 @@ export function createRuntime(deps: RuntimeDeps = {}) {
         { reason },
       );
     }
-    bridge = namespace === null ? null : startMqttBridge(config, { ctx: { ...ctx, ...namespace }, write });
+    bridge =
+      namespace === null ? null : startMqttBridge(config, { ctx: { ...ctx, ...namespace }, write });
     if (previous) await previous.close();
     // Seed a fresh bridge with the current forecast instead of waiting a full
     // interval; harmless when the forecast is disabled (publishes null → no-op).

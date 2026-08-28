@@ -172,7 +172,6 @@ function finestTierCovering(windows: readonly TierWindow[], span: Span): BucketT
   return null;
 }
 
-
 /**
  * At the OUTER EDGES of the replay span only: the finest tier that overlaps the
  * chunk, and the chunk narrowed to what that tier actually holds.
@@ -235,7 +234,9 @@ function usableAtEdge(
   if (!overlaps) return false;
   const reachesEnd = window.to.getTime() >= span.end.getTime();
   const reachesStart = window.from.getTime() <= span.start.getTime();
-  return (reachesStart && reachesEnd) || (edge.isFirst && reachesEnd) || (edge.isLast && reachesStart);
+  return (
+    (reachesStart && reachesEnd) || (edge.isFirst && reachesEnd) || (edge.isLast && reachesStart)
+  );
 }
 
 /**
