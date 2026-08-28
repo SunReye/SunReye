@@ -458,6 +458,21 @@ describe("dump.sh raw-exclusion decision", () => {
     expect(DUMP_SH).toContain("minute_rollups");
   });
 
+  // 2.0.0 refreshes the minute tier again — 1.x froze it, and the exclusion
+  // check's third argument exists because of that freeze. `db-restore.yml`
+  // relies on this: to make raw excludable it now only has to shorten raw's
+  // retention, and the `add_continuous_aggregate_policy` it used to run to
+  // "re-arm" the tier fails outright against a shipped database, because
+  // TimescaleDB rejects a second policy on the same aggregate as an overlap
+  // rather than skipping it under `if_not_exists`.
+  test("the shipped policies already refresh the minute tier", () => {
+    const policies = readFileSync(
+      join(import.meta.dir, "../packages/db/src/timescale/policies.sql"),
+      "utf8",
+    );
+    expect(policies).toMatch(/add_continuous_aggregate_policy\(\s*'minute_rollups'/);
+  });
+
   test("when the data is kept, the reason names both retentions", async () => {
     const warning = DUMP_SH.slice(DUMP_SH.indexOf("bashio::log.warning"));
     expect(warning).toContain("INCLUDED");

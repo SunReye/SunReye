@@ -242,17 +242,18 @@ jobs:
             -tAf /tmp/snapshot.sql > /tmp/restored-excluded.json
           bun scripts/db-parity.ts /tmp/source.json /tmp/restored-excluded.json --require-data
 
-      # …and the exclusion itself still works, on a database where it applies:
-      # re-arm the minute refresh policy and raw becomes redundant again.
+      # …and the exclusion itself still works, on a database where it applies.
+      #
+      # Only ONE of the exclusion's conditions has to be moved to get there:
+      # 2.0.0 refreshes the minute tier itself (policies.sql, pinned by
+      # scripts/dump-rotation.test.ts), so all that stands in the way is raw
+      # OUTLIVING the tier it would be excluded in favour of — 1825 days against
+      # the minute tier's 90. Shortening raw to 90 makes it redundant again.
+      # Adding a second refresh policy here does not work and never has to:
+      # TimescaleDB rejects it as an overlap rather than skipping it under
+      # `if_not_exists`.
       - name: With a live minute tier, raw IS excluded and exactly that is lost
         run: |
-          psql -d "$SOURCE_URL" -v ON_ERROR_STOP=1 -tAc \
-            "SELECT add_continuous_aggregate_policy('minute_rollups',
-               start_offset => INTERVAL '10 minutes',
-               end_offset => INTERVAL '1 minute',
-               schedule_interval => INTERVAL '1 minute',
-               if_not_exists => TRUE)" > /dev/null
-          # Raw must also not outlive the tier it is being excluded in favour of.
           psql -d "$SOURCE_URL" -v ON_ERROR_STOP=1 -tAc \
             "SELECT remove_retention_policy('metrics_raw', if_exists => TRUE);
              SELECT add_retention_policy('metrics_raw', INTERVAL '90 days')" > /dev/null

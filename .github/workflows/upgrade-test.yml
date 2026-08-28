@@ -215,11 +215,43 @@ jobs:
           docker compose logs migrate
           [ "$(docker inspect -f '{{.State.ExitCode}}' "$(docker compose ps -aq migrate)")" = "0" ]
 
-          # Baseline / journal: exactly the shipped migrations are recorded.
-          shipped=$(ls ../packages/db/src/migrations/*.sql | wc -l)
-          recorded=$(docker compose exec -T postgres psql -U postgres -d SunReye -tAc "SELECT count(*) FROM drizzle.__drizzle_migrations")
+          # Baseline / journal: every shipped migration is recorded, matched by
+          # the `created_at` drizzle's own runner compares on.
+          #
+          # NOT a bare `count(*) = number of .sql files`. The pre-upgrade
+          # database is shaped by the 1.2.0 tag's migrator, which wrote its own
+          # two journal rows, and 2.0.0 renumbered the migration folder — so the
+          # rows an upgraded database ends up with are the old ones PLUS the
+          # shipped ones. `stampDrizzleBaseline` inserts alongside them by
+          # design (it is keyed `where not exists … created_at`, not a reset),
+          # which is exactly what a real 1.2.0 → 2.0.0 upgrade leaves behind.
+          whens=$(jq -r '[.entries[].when] | join(",")' ../packages/db/src/migrations/meta/_journal.json)
+          shipped=$(jq -r '.entries | length' ../packages/db/src/migrations/meta/_journal.json)
+          recorded=$(docker compose exec -T postgres psql -U postgres -d SunReye -tAc \
+            "SELECT count(*) FROM drizzle.__drizzle_migrations WHERE created_at IN ($whens)")
           echo "shipped=$shipped recorded=$recorded"
           [ "$recorded" = "$shipped" ]
+
+          # And nothing claims to be NEWER than what this build ships — that is
+          # the value db-restore.sh' downgrade guard reads, so a stray row here
+          # would refuse every future restore.
+          newest=$(jq -r '[.entries[].when] | max' ../packages/db/src/migrations/meta/_journal.json)
+          ahead=$(docker compose exec -T postgres psql -U postgres -d SunReye -tAc \
+            "SELECT count(*) FROM drizzle.__drizzle_migrations WHERE created_at > $newest")
+          echo "rows ahead of the shipped journal: $ahead"
+          [ "$ahead" = "0" ]
+
+          # The 1.2.0 journal rows are still there: the upgrade stamps, it does
+          # not rewrite history, and losing them would change what a database
+          # can say about where it came from.
+          legacy_journal=$(git -C /tmp/pre-upgrade show \
+            "$(cat /tmp/old-tag):packages/db/src/migrations/meta/_journal.json")
+          legacy_whens=$(echo "$legacy_journal" | jq -r '[.entries[].when] | join(",")')
+          legacy_count=$(echo "$legacy_journal" | jq -r '.entries | length')
+          kept=$(docker compose exec -T postgres psql -U postgres -d SunReye -tAc \
+            "SELECT count(*) FROM drizzle.__drizzle_migrations WHERE created_at IN ($legacy_whens)")
+          echo "pre-upgrade journal rows kept: $kept of $legacy_count"
+          [ "$kept" = "$legacy_count" ]
 
           # Data survived.
           after=$(docker compose exec -T postgres psql -U postgres -d SunReye -tAc "SELECT count(*) FROM metrics_raw")
