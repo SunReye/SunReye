@@ -120,8 +120,14 @@ export function isRetired(device: Pick<DeviceRecord, "retiredAt">): boolean {
   return device.retiredAt !== null;
 }
 
-/** The in-service devices of a list, in the order given. */
-// fallow-ignore-next-line unused-export -- same seam: the in-memory half of the retirement filter, for the device lists the server holds without re-reading them.
+/**
+ * The in-service devices of a list, in the order given.
+ *
+ * The in-memory half of the retirement filter, for device lists held without
+ * re-reading them — a cached roster, a set of adoption candidates, or the
+ * plant's devices as `./custom-charts.ts` sees them when it resolves which
+ * inverter an unqualified saved chart means.
+ */
 export function activeDevices<T extends Pick<DeviceRecord, "retiredAt">>(
   devices: readonly T[],
 ): T[] {
