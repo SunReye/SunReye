@@ -113,6 +113,21 @@ export function createIdentityResolver(deps: IdentityDeps): IdentityResolver {
   const metricIdCache = new Map<string, number>();
   /** The counter class each cached key was registered with, so a correction re-sends. */
   const metricClass = new Map<string, boolean>();
+  /**
+   * The unit each cached key was registered with, for the same reason — and for
+   * one more.
+   *
+   * A corrected unit must re-send (the class check alone would answer from the
+   * cache and the correction would never reach the row), and the lazy path must
+   * RE-STATE the unit the eager path already sent rather than downgrading the
+   * key to "unit unknown". The upsert would preserve the stored unit either way,
+   * but a spec that differs from the cached one counts as stale, so downgrading
+   * would re-send the whole batch on every poll.
+   *
+   * `undefined` therefore means "never registered a unit for this key", which is
+   * exactly what the lazy path must send: absence, never an invented value.
+   */
+  const metricUnit = new Map<string, string | null>();
 
   async function deviceId(sourceId: string): Promise<number | null> {
     // `has`, not a truthy check: id 0 cannot be issued by
@@ -133,26 +148,63 @@ export function createIdentityResolver(deps: IdentityDeps): IdentityResolver {
     return query;
   }
 
+  /**
+   * Whether a spec says anything this resolver has not already registered.
+   *
+   * A unit STATED differently from the cached one is a correction and must
+   * re-send. A unit the spec does not state (`undefined`) is not a correction,
+   * so a profile that drops the field re-sends nothing — and erases nothing,
+   * which the upsert guarantees on its side too.
+   */
+  function stale(s: MetricKeySpec): boolean {
+    if (!metricIdCache.has(s.key)) return true;
+    if (metricClass.get(s.key) !== s.isCounter) return true;
+    return s.unit !== undefined && metricUnit.get(s.key) !== s.unit;
+  }
+
+  /**
+   * Cache what a registration resolved, so {@link stale} stops re-sending it.
+   *
+   * A spec the statement returned no id for is skipped rather than cached at a
+   * guess: the next batch retries it, which is the only behaviour that cannot
+   * write readings under an id the database never issued.
+   */
+  function remember(specs: readonly MetricKeySpec[], ids: Map<string, number>): void {
+    for (const spec of specs) {
+      const id = ids.get(spec.key);
+      if (id === undefined) continue;
+      metricIdCache.set(spec.key, id);
+      metricClass.set(spec.key, spec.isCounter);
+      // Only a STATED unit is remembered: caching the absence would make the
+      // next stated value look like a correction of `null` rather than the
+      // first statement, which re-sends a batch for nothing.
+      if (spec.unit !== undefined) metricUnit.set(spec.key, spec.unit);
+    }
+  }
+
   /** Register the specs this resolver does not already hold at that exact class. */
   async function register(specs: readonly MetricKeySpec[]): Promise<Map<string, number>> {
-    const missing = specs.filter(
-      (s) => !metricIdCache.has(s.key) || metricClass.get(s.key) !== s.isCounter,
-    );
-    if (missing.length > 0) {
-      const ids = await ensure(deps.db, missing);
-      for (const spec of missing) {
-        const id = ids.get(spec.key);
-        if (id === undefined) continue;
-        metricIdCache.set(spec.key, id);
-        metricClass.set(spec.key, spec.isCounter);
-      }
-    }
+    const missing = specs.filter(stale);
+    if (missing.length > 0) remember(missing, await ensure(deps.db, missing));
     const out = new Map<string, number>();
     for (const spec of specs) {
       const id = metricIdCache.get(spec.key);
       if (id !== undefined) out.set(spec.key, id);
     }
     return out;
+  }
+
+  /**
+   * The spec the writer's fallback registers a key under: whatever this resolver
+   * already knows, and absence for whatever it does not.
+   */
+  function lazySpec(key: string): MetricKeySpec {
+    const spec: MetricKeySpec = { key, isCounter: metricClass.get(key) ?? false };
+    const unit = metricUnit.get(key);
+    // The field is OMITTED, not set to null, when no unit is known. A stated
+    // null would read as a correction of whatever the cache holds and re-send
+    // the key on every batch — on the hottest path in the app.
+    return unit === undefined ? spec : { ...spec, unit };
   }
 
   return {
@@ -164,11 +216,16 @@ export function createIdentityResolver(deps: IdentityDeps): IdentityResolver {
       // `isCounter: false` for a key nobody declared: the default that cannot
       // corrupt a delta, and the eager path corrects it when the profile does
       // declare one.
+      //
+      // `unit`, by contrast, defaults to NULL rather than to a guess. There is no
+      // safe guess for a unit: writing one the profile never stated would put a
+      // fabricated label on five years of numbers, and the upsert reads null as
+      // "not stated" and leaves whatever is on record alone.
       const unique = [...new Set(keys)];
-      return register(unique.map((key) => ({ key, isCounter: metricClass.get(key) ?? false })));
+      return register(unique.map((key) => lazySpec(key)));
     },
     async metricId(key) {
-      const ids = await register([{ key, isCounter: metricClass.get(key) ?? false }]);
+      const ids = await register([lazySpec(key)]);
       const id = ids.get(key);
       if (id === undefined) throw new Error(`metric key ${key} could not be registered`);
       return id;
@@ -178,6 +235,7 @@ export function createIdentityResolver(deps: IdentityDeps): IdentityResolver {
       pendingDevice.clear();
       metricIdCache.clear();
       metricClass.clear();
+      metricUnit.clear();
     },
   };
 }

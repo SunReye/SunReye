@@ -338,6 +338,29 @@ export const metricKeys = pgTable("metric_keys", {
    * answer that cannot corrupt a delta.
    */
   isCounter: boolean("is_counter").notNull().default(false),
+  /**
+   * Display unit as the profile stated it (`W`, `kWh`, `%`, `V`), or null when
+   * no profile ever stated one.
+   *
+   * Here for the same reason `is_counter` is, and with more at stake. That
+   * column was promoted out of the profile because the aggregates need it while
+   * the profile that declared it may already be uninstalled. The unit has the
+   * identical property — exports, CSV headers, chart axes and the
+   * counter-to-energy conversion all need it — with one difference that decides
+   * the design: `is_counter` guessed wrong is a wrong delta on a live metric,
+   * visible and fixable, whereas a unit lost with an uninstalled profile is
+   * UNRECOVERABLE. Nothing in five years of `metrics_raw` records whether a
+   * column of numbers was watts or kilowatts. Adding the column later is cheap;
+   * recovering the units is impossible, so it is added now.
+   *
+   * NULLABLE, and deliberately NOT defaulted to `''`: "never stated" and
+   * "stated as empty" are different facts. A dimensionless metric (a count, a
+   * ratio, a status code) legitimately states `""`, and a reader that cannot
+   * tell that from an unregistered key would render a unit it invented. The
+   * upsert in `../metric-keys.ts` preserves the distinction by only overwriting
+   * with a non-null incoming value.
+   */
+  unit: text("unit"),
 });
 
 export type MetricKeyRow = typeof metricKeys.$inferSelect;
