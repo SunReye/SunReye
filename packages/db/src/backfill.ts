@@ -73,6 +73,28 @@ export function refreshWindows(span: Span, tier: NewTier, chunkDays = 7): Span[]
   for (let cursor = from; cursor < to; cursor += step) {
     windows.push({ start: new Date(cursor), end: new Date(Math.min(cursor + step, to)) });
   }
+  // THE TRAILING REMAINDER IS MERGED, NOT LEFT ALONE.
+  //
+  // `refresh_continuous_aggregate` REFUSES a window narrower than one bucket
+  // ("The refresh window must cover at least one bucket of data"), and whether
+  // the last window is narrower is pure arithmetic on the span: it happens
+  // whenever `(span + 2 * pad) mod step` lands under one bucket. The synthetic
+  // fixture's span divided evenly and never produced one; the real 1.2.0
+  // database did — 2026-07-12T00:00Z -> 2026-08-14T19:37:42Z leaves a 19h37m
+  // daily remainder, which aborted the upgrade after eight minutes with the data
+  // already carried and replayed.
+  //
+  // Merged into its predecessor rather than dropped: the remainder is the most
+  // RECENT band of buckets, so dropping it would leave the newest day
+  // unmaterialized — the tail a user looks at first. Merging keeps the windows
+  // contiguous and keeps every one of them at least a bucket wide, which is the
+  // only property the engine actually demands.
+  const last = windows.at(-1);
+  const previous = windows.at(-2);
+  if (last && previous && last.end.getTime() - last.start.getTime() < pad) {
+    windows[windows.length - 2] = { start: previous.start, end: last.end };
+    windows.pop();
+  }
   return windows;
 }
 

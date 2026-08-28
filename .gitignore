@@ -73,3 +73,4 @@ core
 # ad-hoc read of a live fixture, not a record.
 scripts/fixtures/parity-1-2-0.*.json
 scripts/fixtures/ground-truth-1-2-0.*.recheck.json
+sunreye_2026-08-27_16.27_30079104.tar

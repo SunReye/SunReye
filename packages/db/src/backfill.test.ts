@@ -45,6 +45,48 @@ describe("refreshWindows", () => {
     expect(windows[0]?.end.toISOString()).toBe("2026-08-04T00:00:00.000Z");
   });
 
+  test("a trailing remainder shorter than one bucket is merged, not left as its own window", () => {
+    // The production 1.2.0 span, exactly: the new `metrics_raw` ran
+    // 2026-07-12T00:00Z -> 2026-08-14T19:37:42Z after the carry and replay.
+    // Padded by a day each side and cut into 7-day steps, the remainder is
+    // 19h37m — and `refresh_continuous_aggregate` REFUSES a window narrower than
+    // one bucket ("The refresh window must cover at least one bucket of data"),
+    // which aborted the real upgrade after eight minutes of work with the data
+    // already carried. The tail must still be covered, so the remainder merges
+    // into the window before it rather than being dropped.
+    const windows = refreshWindows(
+      span("2026-07-12T00:00:00Z", "2026-08-14T19:37:42.178Z"),
+      "daily_rollups",
+      7,
+    );
+    for (const w of windows) {
+      expect(w.end.getTime() - w.start.getTime()).toBeGreaterThanOrEqual(86_400_000);
+    }
+    // Still contiguous, and still reaches the padded end — a merge that trimmed
+    // the tail would leave the last day unmaterialized, which is the failure the
+    // narrow window was trying to avoid.
+    expect(windows.at(-1)?.end.toISOString()).toBe("2026-08-15T19:37:42.178Z");
+    for (let i = 1; i < windows.length; i++) {
+      expect(windows[i]?.start.getTime()).toBe(windows[i - 1]?.end.getTime());
+    }
+  });
+
+  test("a span shorter than one bucket is still refreshable, because the padding covers it", () => {
+    // The invariant is "no window narrower than one bucket", not "no short
+    // span": a 30-minute span padded by a day on each side spans two days, which
+    // Postgres accepts. Returning nothing here would leave those buckets
+    // unmaterialized for no reason.
+    const windows = refreshWindows(
+      span("2026-08-01T00:00:00Z", "2026-08-01T00:30:00Z"),
+      "daily_rollups",
+      7,
+    );
+    expect(windows).toHaveLength(1);
+    expect(windows[0]!.end.getTime() - windows[0]!.start.getTime()).toBeGreaterThanOrEqual(
+      86_400_000,
+    );
+  });
+
   test("a long span is chunked, so a kill loses one chunk rather than the run", () => {
     const windows = refreshWindows(
       span("2026-06-28T00:00:00Z", "2026-08-27T00:00:00Z"),
