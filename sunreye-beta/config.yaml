@@ -9,7 +9,7 @@
 # connection at a time, so stop the stable addon (or set inverter_simulate)
 # before starting this one.
 name: SunReye (beta)
-version: beta.20260827-1b46c25
+version: beta.20260829-9b450c1
 slug: sunreye-beta
 description: >-
   Self-hosted solar / hybrid inverter monitoring, control, and integration —
@@ -55,6 +55,21 @@ ports_description:
 # Auto-wire the Mosquitto broker addon when it's installed.
 services:
   - mqtt:want
+
+# THE ONLY WAY A FILE LEAVES THIS ADDON.
+#
+# Without a `map:` block the addon can hand the user nothing but a Home Assistant
+# backup — which is a restore vehicle, not a file you can copy off the box. The
+# portable export (`sunreye export`, and the Danger Zone's download button) writes
+# a `.tar.gz`, and `share:rw` is what puts it somewhere the Samba add-on and the
+# File Editor can both see it: `/share/sunreye-exports/`.
+#
+# `rw`, not `ro`: the whole point is writing the archive out. It is also where the
+# server spools an export before streaming it to the browser, deliberately rather
+# than `/tmp` — `/tmp` is a tmpfs, so spooling tens of megabytes there would spend
+# RAM on a 2 GB box (see apps/server/src/admin/archive-download.ts).
+map:
+  - share:rw
 
 # /data (embedded postgres datadir + backups) is included in HA backups while
 # the addon keeps running; backup_pre writes the logical dump that is the

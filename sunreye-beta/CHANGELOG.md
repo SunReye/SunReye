@@ -2,11 +2,33 @@
 
 ## [unreleased]
 
-Unreleased work on `dev` since 1.2.0, shipped in `beta.20260827-1b46c25`.
+Unreleased work on `dev` since 1.2.0, shipped in `beta.20260829-9b450c1`.
+
+
+### ⚠ BREAKING CHANGES
+
+* **db:** re-key the timeseries on devices and collapse to one baseline schema ([59de72d](https://github.com/SunReye/SunReye/commit/59de72d8d5912af801534f6ece143a2402744f10))
 
 
 ### Features
 
+* **server:** name the MQTT bridge by the plant and device slugs ([4891a92](https://github.com/SunReye/SunReye/commit/4891a921cc527ccbe1abe2bb616bd402f5c7fa83))
+* **server:** retire the profile-keyed HA announcements, once ([95376d8](https://github.com/SunReye/SunReye/commit/95376d8fd4c80e9c072a93fde3aa15973e0d3ccd))
+* **charts:** let a saved chart name the device each series is read from ([50f6881](https://github.com/SunReye/SunReye/commit/50f6881e0ed9cbe4755823f5a088b1199bd02d71))
+* **forecast:** give each PV array its own physics ([80e7a87](https://github.com/SunReye/SunReye/commit/80e7a87c8e271c818199eaaa9685f602ae984afd))
+* **db:** give a device a retirement date ([4bdb133](https://github.com/SunReye/SunReye/commit/4bdb133a2ccb1e4b2bb28929c99a965dbc4c66e6))
+* **db:** enforce six schema invariants with CHECK constraints ([c9460d1](https://github.com/SunReye/SunReye/commit/c9460d15a7002d3e891caf97c793bbcbd5f5a666))
+* **db:** record a metric's unit alongside its counter class ([084df8c](https://github.com/SunReye/SunReye/commit/084df8c496bb0ab7804a3baae0777970c1449d18))
+* **web:** migration onboarding page, an app-wide missing-history banner, and a loud 422 ([c7c1f84](https://github.com/SunReye/SunReye/commit/c7c1f84be186e7c265ca08a7b0f7c03c338da622))
+* **server:** the migration onboarding routes, with the slug frozen at announcement ([5633f5d](https://github.com/SunReye/SunReye/commit/5633f5d958ee739581c4039d62ea461a05c45ecc))
+* **db:** portable export/import as a permanent, schema-independent feature ([166220b](https://github.com/SunReye/SunReye/commit/166220b80a529be0b992b876af5cb0e1cc4b98e7))
+* **db:** the in-place 1.2.0 -> 2.0.0 upgrade ([dcbdb46](https://github.com/SunReye/SunReye/commit/dcbdb46ed9a6acd2c77cfaab96519e85ba8f9009))
+* **db:** replay 1.2.0 aggregate buckets forward as metrics_raw intervals ([8dc56a0](https://github.com/SunReye/SunReye/commit/8dc56a0a042f2149cdf2c9f7f0cbdf5007cc4563))
+* **db:** provision the plant spine and move plant facts onto columns ([a5ba46a](https://github.com/SunReye/SunReye/commit/a5ba46aba8fe04df24e2754b451c7759f4d423b2))
+* **db:** re-key the timeseries on devices and collapse to one baseline schema ([59de72d](https://github.com/SunReye/SunReye/commit/59de72d8d5912af801534f6ece143a2402744f10))
+* **scripts:** build a reproducible addon-1.2.0 fixture from git ([b65f4d8](https://github.com/SunReye/SunReye/commit/b65f4d890b045e02ac3fd3cb2125f6d2d6fd2256))
+* **scripts:** make the parity snapshot takeable against a 1.2.0 database ([588c394](https://github.com/SunReye/SunReye/commit/588c3943eb2186684f5c715236ca8eee294a6524))
+* **db:** build one database image carrying timescaledb_toolkit ([acafef4](https://github.com/SunReye/SunReye/commit/acafef44e91b1771578b2acc965ba5901e26295b))
 * **server:** compress responses with @elysia/compress ([2a9f59f](https://github.com/SunReye/SunReye/commit/2a9f59f0b9fd13bd35360f9102565113c3fa473e))
 * **server:** restore request correlation lost with @logtape/elysia ([a8bafe9](https://github.com/SunReye/SunReye/commit/a8bafe9c1e6709efbdfba7474a98fa4ce2d85470))
 * **server:** upgrade to Elysia 2 ([d280e20](https://github.com/SunReye/SunReye/commit/d280e20b7f2edef453afeb5175457db69f97fb86))
@@ -116,6 +138,21 @@ Unreleased work on `dev` since 1.2.0, shipped in `beta.20260827-1b46c25`.
 
 ### Bug Fixes
 
+* **ci:** assert the 2.0.0 upgrade contract, not 1.x's ([46af680](https://github.com/SunReye/SunReye/commit/46af6800f092c4f9dc6ad499af1038c4633eae35))
+* **ci:** stop re-arming a live minute policy, and count the journal by hash ([cdb0663](https://github.com/SunReye/SunReye/commit/cdb066310fc109d8a3ab0629a7b0f40bd50ec7fe))
+* **ci:** create timescaledb before restoring, and publish 5432 for the shaping step ([febca3d](https://github.com/SunReye/SunReye/commit/febca3d03515b2fa9c1df7faadee7217915e883c))
+* **db-tests:** give the archive layer a database of its own ([b2f65b8](https://github.com/SunReye/SunReye/commit/b2f65b84840164ac61f6604b86044c591f731e25))
+* **ci:** fetch tags for the database jobs, and clear the code-health gate ([8912ae7](https://github.com/SunReye/SunReye/commit/8912ae71b7ea9d91331f7c42675d1ed5897d48bf))
+* **db:** replay every legacy source id, and align refresh windows to buckets ([fee93b7](https://github.com/SunReye/SunReye/commit/fee93b7dc7218f04c0d80e79584dae7612d41d7d))
+* **scripts:** rehearse against the profile the target has installed ([93d8584](https://github.com/SunReye/SunReye/commit/93d85848bb16f863ac2e9862ea825ccc5a2ea71c))
+* **db:** merge a refresh window shorter than one bucket into its predecessor ([4f4da0b](https://github.com/SunReye/SunReye/commit/4f4da0b84ffd535903e71283a481568414278bab))
+* **db:** carry a device's retirement through export and import ([dc69c19](https://github.com/SunReye/SunReye/commit/dc69c19862701f04ccf57e5757ff09f7bc7c2a98))
+* **server:** poll from connections + devices, not from app_settings ([b54364c](https://github.com/SunReye/SunReye/commit/b54364c237c9eeb469488bf86047a20e6a636bc3))
+* **automation:** steer on the pack voltage the battery row states ([71e4b5c](https://github.com/SunReye/SunReye/commit/71e4b5c241eb7e9591079b8262b802e3c9794bfd))
+* **server:** key Home Assistant identity on the frozen slugs, not the profile ([0804685](https://github.com/SunReye/SunReye/commit/08046851e12fd51da18b295ffc0cb750cf209648))
+* **db-tests:** load the server env in the harness, not by import luck ([26ee8d3](https://github.com/SunReye/SunReye/commit/26ee8d3e9f4ad576b96ede01b5cd23f6190eab45))
+* **test:** treat an empty DB_TEST_URL as unset so the layer skips ([17bcb46](https://github.com/SunReye/SunReye/commit/17bcb464f07f3843b931b3a61a5a4a864f4fdec7))
+* **db:** refuse to stamp a baseline over a database that never got it ([940ebdd](https://github.com/SunReye/SunReye/commit/940ebdd4d8bd4e9f72252ed8f9da9b052615f801))
 * **auth:** trust a request's own origin only when it is same-origin ([ed89a0f](https://github.com/SunReye/SunReye/commit/ed89a0f866c4a65562043412052590a714142860))
 * **server:** declare openapi-types, Elysia 2's last undeclared peer ([f1583e9](https://github.com/SunReye/SunReye/commit/f1583e940f6e05aa7be477a4f747f70d444242db))
 * **server:** wire TypeBox statically so the compiled binary can validate ([34ef44a](https://github.com/SunReye/SunReye/commit/34ef44afb573aaf195122a47441a6f7579c87540))
@@ -203,6 +240,7 @@ Unreleased work on `dev` since 1.2.0, shipped in `beta.20260827-1b46c25`.
 
 ### Performance Improvements
 
+* **addon:** size PostgreSQL memory for a small box ([4435796](https://github.com/SunReye/SunReye/commit/443579645fc7dccaa9576805913a1e97f37c3fe1))
 * **e2e:** run the browser suite fully parallel and sharded, and drop the measurement layer ([44d1e65](https://github.com/SunReye/SunReye/commit/44d1e659cf4fba46a27b5fc789ed688b5a5cd49d))
 * **test:** run the suite with --parallel, and say why coverage must not ([6a5f738](https://github.com/SunReye/SunReye/commit/6a5f73838722d0bb0cee705c0458e374d0bcc749))
 * **db:** compress after 2h, checkpoint every 2h, compress WAL with zstd ([42bac87](https://github.com/SunReye/SunReye/commit/42bac87c62ab92f3f9085d367e687e766dfc4b84))
@@ -214,6 +252,10 @@ Unreleased work on `dev` since 1.2.0, shipped in `beta.20260827-1b46c25`.
 
 ### Documentation
 
+* **db:** record why plant_arrays is deferred and the element shape was not ([7abc830](https://github.com/SunReye/SunReye/commit/7abc83097cf178af7cf968d0521884bec70a19e7))
+* **addon:** name the 2.0.0 Home Assistant entity break ([c36357e](https://github.com/SunReye/SunReye/commit/c36357e1f71521bd3a69733e5139c2dea3063077))
+* **db:** record why app_settings stays instance-wide ([51552c3](https://github.com/SunReye/SunReye/commit/51552c3f954e20fca41f45b52506ae7ae7f18beb))
+* **release:** 2.0.0 release notes, upgrade guide, and schema doc corrections ([e79e8ea](https://github.com/SunReye/SunReye/commit/e79e8ea9940861773102b1348b90f1fbe4b57a50))
 * match the re-derived retention shape ([c5eed53](https://github.com/SunReye/SunReye/commit/c5eed53d14421500d55653df64b46c44d85b22ac))
 * **profiles:** document the storage class and the deadband ([d6c76ce](https://github.com/SunReye/SunReye/commit/d6c76ce88cd5f3cf6d51f4170c1337b2ffad415a))
 * rewrite the storage section around change-only storage ([bc476ca](https://github.com/SunReye/SunReye/commit/bc476caceaa9b0bd7f30cd0eaf69aec8f3d941b8))
@@ -238,6 +280,9 @@ Unreleased work on `dev` since 1.2.0, shipped in `beta.20260827-1b46c25`.
 
 ### Code Refactoring
 
+* **db:** split the backfill and the history horizon along the pure/driver line ([0709db9](https://github.com/SunReye/SunReye/commit/0709db9f93c0721456f1d7df330075edc1a97be5))
+* **upgrade:** split the rehearsal's pure half from its driver, and clear the health gate ([9dbd5eb](https://github.com/SunReye/SunReye/commit/9dbd5eb0e6da6c6e0d65eddd962020529876bd6e))
+* **server:** move identity predicates onto ids, keep every contract on names ([14dae08](https://github.com/SunReye/SunReye/commit/14dae087070a761c40d69a58ba7cba9cc98eda26))
 * **addon:** serve the dashboard from the binary, drop nginx ([02c6da1](https://github.com/SunReye/SunReye/commit/02c6da18a316756e8bcc79ec0d2611b5b47cbfe1))
 * **server:** embed the web build with --asset ([63f8133](https://github.com/SunReye/SunReye/commit/63f81331b406bdd5670b4234f377f5c598e38393))
 * **web:** settings fields explain themselves in a popover ([ed1ebb1](https://github.com/SunReye/SunReye/commit/ed1ebb166115ff9b323276db3654d88668989cc1))
@@ -340,6 +385,14 @@ Unreleased work on `dev` since 1.2.0, shipped in `beta.20260827-1b46c25`.
 
 ### Tests
 
+* **server:** cover the legacy retirement store's two lookups ([0fc779f](https://github.com/SunReye/SunReye/commit/0fc779fb9e5331626735e5a34fd60c07c18a8968))
+* **migration:** prove the backfill's decisions without a database ([7eacf75](https://github.com/SunReye/SunReye/commit/7eacf75926730c26b7a55ba11d0ca0c6432eafdc))
+* **archive:** restore the coverage floor by covering the archive path ([8d92d33](https://github.com/SunReye/SunReye/commit/8d92d335d5ab2b02488cd0ac3d21f34b084ea976))
+* **scripts:** prove the replay rehearsal's rig behind a RehearsalIo seam ([8fee5fa](https://github.com/SunReye/SunReye/commit/8fee5fac27264b044dd0558e23b802532e6ca77c))
+* **db:** give the replay rehearsal's setup hooks a real timeout ([2f52ed7](https://github.com/SunReye/SunReye/commit/2f52ed71d385761956d3658a9cf1f3c75718e490))
+* restore the coverage floor with the release's missing proofs ([a60ce1c](https://github.com/SunReye/SunReye/commit/a60ce1c2abb07c43027390b517b0c437ae3a0ebb))
+* **db:** pin the nine settled toolkit/TimescaleDB spike results ([8663835](https://github.com/SunReye/SunReye/commit/86638355c1df2a53a67a6d52401782a2e294499c))
+* **scripts:** record the addon-1.2.0 fixture ground truth ([bf4e2ea](https://github.com/SunReye/SunReye/commit/bf4e2eabd900a044852c60007a6b077cbb43e4a5))
 * **db:** pin the stale-seed window instead of racing the clock ([1be249a](https://github.com/SunReye/SunReye/commit/1be249a3e346d36d3e34740741f1978e1353717c))
 * **web:** wait for the navigator's stylesheet before measuring it ([25e40d7](https://github.com/SunReye/SunReye/commit/25e40d749c379f65260cca7a07a213117aa9e524))
 * **server:** build the test database once per process ([c5ce219](https://github.com/SunReye/SunReye/commit/c5ce219b9500d49505df1cf08f101e0843a7a1a5))
@@ -368,6 +421,7 @@ Unreleased work on `dev` since 1.2.0, shipped in `beta.20260827-1b46c25`.
 ### Continuous Integration
 
 * **db:** publish the database image carrying timescaledb_toolkit ([43c47a3](https://github.com/SunReye/SunReye/commit/43c47a33cc2148b9f7990eb3f4e8990d4a97bc34))
+* delete the weighted-rollups gate, which 2.0.0 left with nothing to gate ([984ce37](https://github.com/SunReye/SunReye/commit/984ce37d1868b6f56eeba114e8528096e28b7b70))
 * compress only the chunks the upgrade seed has not compressed ([dc37a42](https://github.com/SunReye/SunReye/commit/dc37a4240759b3759f0be488c4db4b73c9ef5126))
 * give the coverage ratchet room for a version skew, not for regressions ([43c0cc8](https://github.com/SunReye/SunReye/commit/43c0cc836d84b3f437cecfa765f777e651f5d70d))
 * make TDD enforceable, not just intended ([782110a](https://github.com/SunReye/SunReye/commit/782110a3952237640027918c43fdc35599596fd6))
@@ -381,6 +435,7 @@ Unreleased work on `dev` since 1.2.0, shipped in `beta.20260827-1b46c25`.
 
 ### Miscellaneous Chores
 
+* **server:** annotate the legacy-retirement exports for fallow ([5fc5368](https://github.com/SunReye/SunReye/commit/5fc5368abd159c4df852630a8c6d7cd21ddabb71))
 * **ci:** pin the weighted-rollups gate to bun 1.4.0 ([0cb8712](https://github.com/SunReye/SunReye/commit/0cb87122eda470354b6dc5342c4961257b59fa40))
 * bun 1.3.13 -> 1.4.0 ([c7ecf18](https://github.com/SunReye/SunReye/commit/c7ecf186f9d9aa4b597443b4a3bc168eb1b96925))
 * **db:** move the schema suites out of the drizzle schema directory ([c0cabba](https://github.com/SunReye/SunReye/commit/c0cabba8876d89dcdd273c3969e150bafceae60d))
