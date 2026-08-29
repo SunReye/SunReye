@@ -36,7 +36,17 @@ jobs:
     env:
       POSTGRES_PASSWORD: upgrade-test
     steps:
+      # fetch-depth: 0 — the pre-upgrade schema is shaped by checking out the
+      # last released tag and running ITS migrator, so the tags and their history
+      # have to be here.
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.0
 
       - name: Log in to GHCR
         uses: docker/login-action@v3
@@ -52,36 +62,70 @@ jobs:
           INVERTER_SIMULATE=true
           EOF
 
-      # Only postgres + the published migrate image run here: the old
-      # `migrate` (db:push + timescale.sql) is what shapes a real pre-upgrade
-      # database. The old *server* is deliberately never started — its
-      # healthchecks predate the compose file, and known-broken old binaries
-      # (e.g. the serialport bundling regression) must not be able to fail the
-      # upgrade test. Data is seeded directly instead of via the poll loop.
-      # The retired migrate image, on purpose. The published release predates the
-      # argv dispatcher, so its server image ignores `migrate` and BOOTS THE
-      # SERVER instead — the database would go unshaped and the upgrade below
-      # would prove nothing. `command: []` clears the compose command so the
-      # old image's own ENTRYPOINT (`bun run db:migrate`) runs alone.
+      # THE PRE-UPGRADE DATABASE IS SHAPED FROM A TAG, NOT FROM A PUBLISHED IMAGE.
       #
-      # Drop this override once the oldest release this test upgrades from
-      # ships the dispatcher.
-      - name: Shape a database with the last published release
+      # It used to run `ghcr.io/sunreye/sunreye-migrate:latest`. That image was
+      # retired when the server became one binary that migrates itself
+      # (`command: ["migrate"]`), nothing publishes it any more, and the day its
+      # tag was deleted from the registry this workflow started failing with
+      # `manifest unknown` on every PR touching packages/db — a failure with no
+      # visible connection to the packaging change that caused it. The published
+      # *server* image cannot stand in for it either: at the last release the
+      # image still compiled `src/index.ts` rather than the `src/main.ts` argv
+      # dispatcher, so it ignores `migrate` and boots the SERVER instead, leaving
+      # the database unshaped and the upgrade below proving nothing.
+      #
+      # Running the tag's own migrator removes the registry from the equation
+      # entirely: the pre-upgrade schema is whatever that release's source says
+      # it is, reproducibly, and no image needs to keep existing for this test to
+      # work. `scripts/require-tests.ts`' sibling gate in
+      # `scripts/packaging.test.ts` now fails if any workflow reaches for a
+      # retired image again.
+      #
+      # The old *server* is still deliberately never started: its healthchecks
+      # predate the compose file, and known-broken old binaries (e.g. the
+      # serialport bundling regression) must not be able to fail the upgrade
+      # test. Data is seeded directly instead of via the poll loop.
+      - name: Shape a database with the last released schema
         run: |
+          # The migrator below is a host-side `bun` process, not a container, so
+          # it needs a published port. docker/docker-compose.yml deliberately
+          # publishes none — the production stack keeps the database off the
+          # host — and this override is CI's only reason to. Every later
+          # override must carry it too (scripts/packaging.test.ts asserts that),
+          # or the next `docker compose up` recreates postgres without it.
           cat > docker-compose.override.yml <<'EOF'
           services:
-            migrate:
-              image: ghcr.io/sunreye/sunreye-migrate:latest
-              command: []
+            postgres:
+              ports:
+                - "5432:5432"
           EOF
-          SUNREYE_TAG=latest docker compose up -d --quiet-pull migrate
+          SUNREYE_TAG=latest docker compose up -d --quiet-pull postgres
           for i in $(seq 1 60); do
-            state=$(docker inspect -f '{{.State.Status}}' "$(docker compose ps -aq migrate)")
-            [ "$state" = "exited" ] && break
+            docker compose exec -T postgres pg_isready -U postgres && break
             sleep 2
           done
-          docker compose logs migrate
-          [ "$(docker inspect -f '{{.State.ExitCode}}' "$(docker compose ps -aq migrate)")" = "0" ]
+
+          # The newest addon release reachable from this ref — the version a user
+          # is actually upgrading FROM.
+          old_tag=$(git describe --tags --abbrev=0 --match 'addon-v*')
+          echo "shaping the pre-upgrade database with $old_tag"
+          echo "$old_tag" > /tmp/old-tag
+
+          git worktree add /tmp/pre-upgrade "$old_tag"
+          ( cd /tmp/pre-upgrade && bun install --frozen-lockfile )
+          SKIP_ENV_VALIDATION=1 \
+          DATABASE_URL="postgresql://postgres:$POSTGRES_PASSWORD@localhost:5432/SunReye" \
+            bun run --cwd /tmp/pre-upgrade/packages/db db:migrate
+
+          # The shaped database must be the OLD one: a text identity on
+          # metrics_raw is what only 1.x has, and shaping it with the wrong tree
+          # would make every assertion below vacuous.
+          legacy=$(docker compose exec -T postgres psql -U postgres -d SunReye -tAc \
+            "SELECT count(*) FROM information_schema.columns
+              WHERE table_name = 'metrics_raw' AND column_name = 'inverter_id'")
+          echo "pre-upgrade metrics_raw has a text identity: $legacy"
+          [ "$legacy" = "1" ]
 
       # Days of data across several chunks, materialized into every rollup, and
       # then COMPRESSED. Compression is the part that matters: the operations an
@@ -156,6 +200,9 @@ jobs:
           # compose file's `command: ["migrate"]` against the new dispatcher.
           cat > docker-compose.override.yml <<'EOF'
           services:
+            postgres:
+              ports:
+                - "5432:5432"
             migrate:
               image: sunreye-server:pr
             server:
@@ -168,25 +215,94 @@ jobs:
           docker compose logs migrate
           [ "$(docker inspect -f '{{.State.ExitCode}}' "$(docker compose ps -aq migrate)")" = "0" ]
 
-          # Baseline / journal: exactly the shipped migrations are recorded.
-          shipped=$(ls ../packages/db/src/migrations/*.sql | wc -l)
-          recorded=$(docker compose exec -T postgres psql -U postgres -d SunReye -tAc "SELECT count(*) FROM drizzle.__drizzle_migrations")
+          # Baseline / journal: every shipped migration is recorded, matched by
+          # the `created_at` drizzle's own runner compares on.
+          #
+          # NOT a bare `count(*) = number of .sql files`. The pre-upgrade
+          # database is shaped by the 1.2.0 tag's migrator, which wrote its own
+          # two journal rows, and 2.0.0 renumbered the migration folder — so the
+          # rows an upgraded database ends up with are the old ones PLUS the
+          # shipped ones. `stampDrizzleBaseline` inserts alongside them by
+          # design (it is keyed `where not exists … created_at`, not a reset),
+          # which is exactly what a real 1.2.0 → 2.0.0 upgrade leaves behind.
+          whens=$(jq -r '[.entries[].when] | join(",")' ../packages/db/src/migrations/meta/_journal.json)
+          shipped=$(jq -r '.entries | length' ../packages/db/src/migrations/meta/_journal.json)
+          recorded=$(docker compose exec -T postgres psql -U postgres -d SunReye -tAc \
+            "SELECT count(*) FROM drizzle.__drizzle_migrations WHERE created_at IN ($whens)")
           echo "shipped=$shipped recorded=$recorded"
           [ "$recorded" = "$shipped" ]
 
-          # Data survived.
-          after=$(docker compose exec -T postgres psql -U postgres -d SunReye -tAc "SELECT count(*) FROM metrics_raw")
-          echo "rows before=$(cat /tmp/rows-before) after=$after"
+          # And nothing claims to be NEWER than what this build ships — that is
+          # the value db-restore.sh' downgrade guard reads, so a stray row here
+          # would refuse every future restore.
+          newest=$(jq -r '[.entries[].when] | max' ../packages/db/src/migrations/meta/_journal.json)
+          ahead=$(docker compose exec -T postgres psql -U postgres -d SunReye -tAc \
+            "SELECT count(*) FROM drizzle.__drizzle_migrations WHERE created_at > $newest")
+          echo "rows ahead of the shipped journal: $ahead"
+          [ "$ahead" = "0" ]
+
+          # The 1.2.0 journal rows are still there: the upgrade stamps, it does
+          # not rewrite history, and losing them would change what a database
+          # can say about where it came from.
+          legacy_journal=$(git -C /tmp/pre-upgrade show \
+            "$(cat /tmp/old-tag):packages/db/src/migrations/meta/_journal.json")
+          legacy_whens=$(echo "$legacy_journal" | jq -r '[.entries[].when] | join(",")')
+          legacy_count=$(echo "$legacy_journal" | jq -r '.entries | length')
+          kept=$(docker compose exec -T postgres psql -U postgres -d SunReye -tAc \
+            "SELECT count(*) FROM drizzle.__drizzle_migrations WHERE created_at IN ($legacy_whens)")
+          echo "pre-upgrade journal rows kept: $kept of $legacy_count"
+          [ "$kept" = "$legacy_count" ]
+
+          # DATA SURVIVED — IN THE LEGACY OBJECTS, WHICH IS THE 2.0.0 CONTRACT.
+          #
+          # The blocking step is a catalog rename, not a data move: `metrics_raw`
+          # becomes `metrics_raw_legacy`, each aggregate a `legacy_` one, and the
+          # 2.0.0 schema is created under the freed names. So the row count to
+          # compare against the pre-upgrade one is the LEGACY table's. Asserting
+          # it on `metrics_raw` asks the new, deliberately empty table to already
+          # hold history the backfill has not replayed yet — the stage this test
+          # never reaches, because the backfill is an operator decision that runs
+          # outside the boot chain (docs: deploy/upgrading-to-2).
+          after=$(docker compose exec -T postgres psql -U postgres -d SunReye -tAc \
+            "SELECT count(*) FROM metrics_raw_legacy")
+          echo "rows before=$(cat /tmp/rows-before) after(legacy)=$after"
           [ "$after" -ge "$(cat /tmp/rows-before)" ]
 
-          # No existing aggregate was re-materialized. Compared to 6 decimal
-          # places rather than exactly: recompressing a chunk changes the order
-          # doubles are summed in, which moves a sum of tens of millions in its
-          # last bits and is not a data change.
+          # …and nothing was invented under the new name. An empty 2.0.0
+          # `metrics_raw` is the correct state before the backfill; rows here
+          # would mean something replayed history this test never asked for.
+          fresh=$(docker compose exec -T postgres psql -U postgres -d SunReye -tAc \
+            "SELECT count(*) FROM metrics_raw")
+          echo "rows in the new metrics_raw: $fresh"
+          [ "$fresh" = "0" ]
+
+          # The new table carries the integer identity, and the text one is gone
+          # from it — the whole point of the release, and the thing that makes
+          # the rename necessary in the first place.
+          identity=$(docker compose exec -T postgres psql -U postgres -d SunReye -tAc \
+            "SELECT string_agg(column_name, ',' ORDER BY column_name)
+               FROM information_schema.columns
+              WHERE table_name = 'metrics_raw'
+                AND column_name IN ('device_id','metric_id','dur_ms','inverter_id','metric')")
+          echo "new metrics_raw identity columns: $identity"
+          [ "$identity" = "device_id,dur_ms,metric_id" ]
+
+          # The migration is at the cutover stage: live data works, history is
+          # still only in the legacy objects, and the backfill has not run. A
+          # stage past this would mean the boot chain replayed rows it must not.
+          stage=$(docker compose exec -T postgres psql -U postgres -d SunReye -tAc \
+            "SELECT value->>'stage' FROM app_settings WHERE key = 'migration.v2'")
+          echo "migration stage after the blocking step: $stage"
+          [ "$stage" = "cutover" ]
+
+          # No legacy bucket was re-materialized or dropped by the rename.
+          # Compared to 6 decimal places rather than exactly: recompressing a
+          # chunk changes the order doubles are summed in, which moves a sum of
+          # tens of millions in its last bits and is not a data change.
           for view in minute_rollups hourly_rollups daily_rollups; do
             now=$(docker compose exec -T postgres psql -U postgres -d SunReye -tAc \
-              "SELECT count(*)||'|'||coalesce(round(avg(avg_value)::numeric,6),0) FROM $view")
-            echo "$view before=$(cat /tmp/$view-before) after=$now"
+              "SELECT count(*)||'|'||coalesce(round(avg(avg_value)::numeric,6),0) FROM legacy_$view")
+            echo "$view before=$(cat /tmp/$view-before) legacy_$view after=$now"
             [ "$now" = "$(cat /tmp/$view-before)" ]
           done
 
@@ -211,45 +327,50 @@ jobs:
             fi
           done < /tmp/retention-after
 
-          # The minute aggregates are FROZEN on an upgraded database, not merely
-          # omitted for fresh installs. `policies.sql` states
-          # `remove_continuous_aggregate_policy` for exactly this reason: leaving
-          # the `add_` out would freeze a new install and leave every existing
-          # deployment refreshing a tier raw now answers — and re-imposing that
-          # tier's 90-day retention as the ceiling on raw's 1825.
-          frozen=$(docker compose exec -T postgres psql -U postgres -d SunReye -tAc \
+          # EVERY 1.2.0 POLICY IS DETACHED. This is the decisive half of the
+          # blocking step rather than tidy-up: a policy is keyed on the
+          # hypertable id and FOLLOWS the rename, so the old minute tier's
+          # 90-day retention would otherwise keep deleting the oldest buckets
+          # out of `legacy_minute_rollups` while the operator takes their time
+          # deciding to run the backfill.
+          stale=$(docker compose exec -T postgres psql -U postgres -d SunReye -tAc \
             "SELECT count(*) FROM timescaledb_information.jobs
-              WHERE proc_name = 'policy_refresh_continuous_aggregate'
-                AND hypertable_name IN ('minute_rollups','weighted_minute_rollups')")
-          echo "minute refresh policies still armed after upgrade: $frozen"
-          [ "$frozen" = "0" ]
+              WHERE hypertable_name LIKE 'legacy\\_%' OR hypertable_name = 'metrics_raw_legacy'")
+          echo "policies left on the legacy objects: $stale"
+          [ "$stale" = "0" ]
 
-          # …while the tiers that are still the long-horizon record keep theirs.
+          # …and the ONE generation 2.0.0 ships is refreshed, minute included.
+          # 1.x froze the minute tier and left raw as the only minute-resolution
+          # record; 2.0.0 keeps raw for five years, so a six-hour chart must not
+          # be reading a five-year hypertable. There is no weighted/unweighted
+          # pair any more either — three aggregates, three policies.
           live=$(docker compose exec -T postgres psql -U postgres -d SunReye -tAc \
             "SELECT count(*) FROM timescaledb_information.jobs
               WHERE proc_name = 'policy_refresh_continuous_aggregate'
-                AND hypertable_name IN ('hourly_rollups','daily_rollups',
-                                        'weighted_hourly_rollups','weighted_daily_rollups')")
-          echo "live refresh policies: $live"
-          [ "$live" = "4" ]
+                AND hypertable_name IN ('minute_rollups','hourly_rollups','daily_rollups')")
+          echo "refresh policies on the 2.0.0 generation: $live"
+          [ "$live" = "3" ]
 
-          # The weight column is present and NULL on every pre-upgrade row: that
-          # NULL is what makes the weighted aggregates read exactly as the old
-          # plain ones over a complete series.
-          nulls=$(docker compose exec -T postgres psql -U postgres -d SunReye -tAc \
-            "SELECT count(*) FILTER (WHERE dur_ms IS NULL) = count(*) FROM metrics_raw")
-          echo "every pre-upgrade row has dur_ms IS NULL: $nulls"
-          [ "$nulls" = "t" ]
+          # …and on nothing else. A `weighted_*` policy resurrected here would be
+          # materializing into an object this release does not ship.
+          extra=$(docker compose exec -T postgres psql -U postgres -d SunReye -tAc \
+            "SELECT count(*) FROM timescaledb_information.jobs
+              WHERE proc_name = 'policy_refresh_continuous_aggregate'
+                AND hypertable_name NOT IN ('minute_rollups','hourly_rollups','daily_rollups')")
+          echo "unexpected refresh policies: $extra"
+          [ "$extra" = "0" ]
 
           # #134 in place: the segmentby reached the already-compressed rollup
           # chunks rather than only future ones (TimescaleDB applies the setting
           # to future compressions and says so in a NOTICE, so a migration that
-          # only ALTERs is silently a no-op for existing data).
+          # only ALTERs is silently a no-op for existing data). The columns are
+          # the 2.0.0 identity now — `(metric, inverter_id)` is what the LEGACY
+          # relations are still segmented by.
           segmented=$(docker compose exec -T postgres psql -U postgres -d SunReye -tAc \
             "SELECT count(DISTINCT hypertable_name) FROM timescaledb_information.compression_settings
-              WHERE attname IN ('metric','inverter_id') AND segmentby_column_index IS NOT NULL")
-          echo "hypertables segmented by (metric, inverter_id): $segmented"
-          [ "$segmented" -ge 7 ]
+              WHERE attname IN ('device_id','metric_id') AND segmentby_column_index IS NOT NULL")
+          echo "hypertables segmented by (device_id, metric_id): $segmented"
+          [ "$segmented" -ge 4 ]
 
       - name: Assert server healthy after upgrade
         run: |
@@ -259,17 +380,60 @@ jobs:
           done
           curl -fsS http://localhost:3000/healthz
 
-      - name: Assert rollups intact
+      - name: Assert the new generation materializes
         run: |
-          # A manual refresh, because the minute tier has no policy any more —
-          # what is asserted is that the aggregate still MATERIALIZES from
-          # upgraded raw rows, not that anything schedules it. The buckets a
-          # deployment already holds keep answering reads while they decay, and
-          # this is the proof they can still be produced at all.
-          docker compose exec -T postgres psql -U postgres -d SunReye -c "CALL refresh_continuous_aggregate('minute_rollups', NULL, NULL);"
-          rollups=$(docker compose exec -T postgres psql -U postgres -d SunReye -tAc "SELECT count(*) FROM minute_rollups")
-          echo "rollup rows=$rollups"
+          # The 2.0.0 aggregates are created empty by the blocking step and stay
+          # empty until something writes a reading in the new shape — and in
+          # this test nothing does: the upgrade creates no plant and no device
+          # (it cannot invent the two names that become permanent identifiers),
+          # so the simulated poll loop has nothing to attribute a sample to.
+          # Asserting `count(*) > 0` on `minute_rollups` therefore asserts the
+          # backfill, which is stage 2 and an operator decision.
+          #
+          # What IS provable here, and is the thing worth proving, is that the
+          # new generation still materializes at all over a migrated database:
+          # seed the spine and one minute of readings the way the app would,
+          # refresh, and require buckets.
+          docker compose exec -T postgres psql -U postgres -d SunReye -v ON_ERROR_STOP=1 <<'SQL'
+          INSERT INTO plants (name, slug) VALUES ('Upgrade Test', 'upgrade-test')
+            ON CONFLICT DO NOTHING;
+
+          INSERT INTO connections (plant_id, name, host)
+          SELECT id, 'c1', '127.0.0.1' FROM plants WHERE slug = 'upgrade-test'
+            ON CONFLICT DO NOTHING;
+
+          INSERT INTO devices (plant_id, connection_id, unit_id, slug, name, profile_id, role)
+          SELECT p.id, c.id, 1, 'inv1', 'Inverter 1', 'deye-sg05lp3', 'inverter'
+          FROM plants p JOIN connections c ON c.plant_id = p.id
+          WHERE p.slug = 'upgrade-test'
+            ON CONFLICT DO NOTHING;
+
+          INSERT INTO installed_profiles (id, version, source, data)
+          VALUES ('deye-sg05lp3', '1.0.0', 'https://example.invalid/profiles.git',
+                  '{"id":"deye-sg05lp3"}'::jsonb)
+            ON CONFLICT (id) DO NOTHING;
+
+          INSERT INTO metric_keys (key) VALUES ('pv_power') ON CONFLICT DO NOTHING;
+
+          INSERT INTO metrics_raw (time, value, dur_ms, device_id, metric_id)
+          SELECT t, 1234.5, 30000, d.id, k.id
+          FROM generate_series(now() - INTERVAL '10 minutes', now(), INTERVAL '30 seconds') t,
+               devices d, metric_keys k
+          WHERE d.slug = 'inv1' AND k.key = 'pv_power';
+          SQL
+          docker compose exec -T postgres psql -U postgres -d SunReye -c \
+            "CALL refresh_continuous_aggregate('minute_rollups', NULL, NULL);"
+          rollups=$(docker compose exec -T postgres psql -U postgres -d SunReye -tAc \
+            "SELECT count(*) FROM minute_rollups")
+          echo "2.0.0 minute buckets materialized from new readings: $rollups"
           [ "$rollups" -gt 0 ]
+
+          # And the pre-upgrade history is still there to be replayed, at its
+          # own resolution, in the object the backfill will read from.
+          legacy=$(docker compose exec -T postgres psql -U postgres -d SunReye -tAc \
+            "SELECT count(*) FROM legacy_minute_rollups")
+          echo "legacy minute buckets still awaiting the backfill: $legacy"
+          [ "$legacy" -gt 0 ]
 
       - name: Dump logs on failure
         if: failure()

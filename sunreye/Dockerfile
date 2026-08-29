@@ -67,7 +67,14 @@ FROM $BUILD_FROM
 # version stamped into the user's database — bump both deliberately with a
 # release (the version guard in init-postgres refuses mismatched datadirs).
 ARG PG_MAJOR=17
-ARG TIMESCALEDB_VERSION=2.28
+# A FULL patch version, not `2.28`: the apt patterns below are wildcards, so a
+# minor-only value floats to whatever patch packagecloud has newest (2.28.3
+# today) and two builds of the same commit can ship different extension binaries.
+# Kept equal to docker/timescaledb/Dockerfile — one extension version across the
+# addon and the dev/CI database — asserted by scripts/storage-tuning.ts.
+ARG TIMESCALEDB_VERSION=2.28.2
+# The toolkit versions independently of the extension.
+ARG TIMESCALEDB_TOOLKIT_VERSION=1.25.0
 ENV PG_MAJOR=${PG_MAJOR}
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
@@ -86,8 +93,12 @@ RUN apt-get update \
     && apt-get update \
     && apt-get install -y --no-install-recommends \
        "postgresql-${PG_MAJOR}" \
-       "timescaledb-2-postgresql-${PG_MAJOR}=${TIMESCALEDB_VERSION}.*" \
-       "timescaledb-2-loader-postgresql-${PG_MAJOR}=${TIMESCALEDB_VERSION}.*" \
+       "timescaledb-2-postgresql-${PG_MAJOR}=${TIMESCALEDB_VERSION}*" \
+       "timescaledb-2-loader-postgresql-${PG_MAJOR}=${TIMESCALEDB_VERSION}*" \
+    # The baseline schema's weighted rollups need time_weight('LOCF', …) and
+    # counter_agg. The addon and the dev/CI image must carry the same extensions
+    # or a migration passes on one and fails on the other.
+       "timescaledb-toolkit-postgresql-${PG_MAJOR}=1:${TIMESCALEDB_TOOLKIT_VERSION}*" \
     # gnupg was only needed to dearmor the repo keys above.
     && apt-get purge -y gnupg && apt-get autoremove -y --purge \
     && apt-get clean && rm -rf /var/lib/apt/lists/* \

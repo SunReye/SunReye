@@ -486,6 +486,34 @@ const ROUTES: readonly SmokeRoute[] = [
     },
   },
   {
+    // Migration onboarding. Reachable ONLY on an instance with an unconfirmed 1.x
+    // migration — its own gate bounces it to /#/ otherwise, which is why the
+    // status has to be overridden here rather than defaulted.
+    file: "migration/+page.svelte",
+    open: {
+      live: false,
+      role: "admin",
+      migration: {
+        onboardingRequired: true,
+        backfillOutstanding: true,
+        slugEditable: true,
+        plantName: "My plant",
+        deviceName: "SG05LP3",
+        plantSlug: "my-plant",
+        deviceSlug: "inverter",
+      },
+    },
+    h1: "Name your plant and inverter",
+    surface: async (page) => {
+      await expect(page.getByLabel("Plant name")).toHaveValue("My plant");
+      await expect(page.getByLabel("Device name")).toHaveValue("SG05LP3");
+      // The live-derived identifier, which is the whole point of the screen: it is
+      // about to be frozen into every MQTT topic and every entity unique_id.
+      await expect(page.getByText("my-plant/inverter")).toBeVisible();
+      await expect(page.getByRole("button", { name: "Confirm and continue" })).toBeVisible();
+    },
+  },
+  {
     file: "setup/+page.svelte",
     // Admin exists, no active profile. `needsSetup` must stay false or the
     // page's own `firstRunGate()` bounces it to /#/onboarding.

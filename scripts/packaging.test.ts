@@ -30,6 +30,7 @@ interface ComposeService {
   image?: string;
   build?: { dockerfile?: string };
   command?: string[];
+  ports?: string[];
   environment?: Record<string, string>;
   depends_on?: Record<string, { condition?: string }>;
 }
@@ -210,6 +211,26 @@ describe("the addon's front door", () => {
     expect(Object.keys(config.ports_description)).toEqual(published);
   });
 
+  it("maps /share read-write, so an export can leave the addon at all", async () => {
+    // Without a `map:` block the addon can hand the user nothing but a Home
+    // Assistant backup, which is a restore vehicle rather than a file you can
+    // copy off the box. `share:rw` is what puts the portable export somewhere the
+    // Samba add-on and the File Editor can both see it.
+    const config = Bun.YAML.parse(await read("sunreye/config.yaml")) as {
+      map?: string[];
+    };
+    expect(config.map).toBeDefined();
+    expect(config.map).toContain("share:rw");
+  });
+
+  it("does not map anything the export does not need", async () => {
+    // A map entry is a hole in the addon's isolation. `/share` is the one the
+    // export needs; `/config`, `/ssl`, `/media`, `/backup` are not, and adding one
+    // "while we are here" is how an addon quietly gains reach over the whole box.
+    const config = Bun.YAML.parse(await read("sunreye/config.yaml")) as { map?: string[] };
+    expect(config.map).toEqual(["share:rw"]);
+  });
+
   it("binds the port the Supervisor actually connects to", async () => {
     expect(await readText(SVC_SERVER)).toContain(`export PORT=${await ingressPort()}`);
   });
@@ -273,6 +294,45 @@ describe("the images that no longer exist", () => {
       for (const path of retired) expect(text).not.toContain(path);
     }
   });
+
+  // A retired Dockerfile is gone from the tree, so referencing it fails loudly.
+  // A retired *published image* is worse: the reference stays syntactically
+  // valid and keeps working from the registry's leftovers until someone deletes
+  // the tag, at which point an unrelated workflow fails with `manifest unknown`
+  // and nothing connects it to the packaging change months earlier. Exactly that
+  // broke `upgrade-test.yml`, which pinned `sunreye-migrate:latest` to shape a
+  // pre-upgrade database long after the image stopped being published.
+  const retiredImages = ["sunreye-migrate", "sunreye-web"];
+
+  /**
+   * Comment lines removed, so the assertion is about what the runner executes.
+   * Explaining WHY an image was retired must stay allowed — that prose is the
+   * only thing standing between the next author and re-adding the reference.
+   */
+  const executable = (yaml: string) =>
+    yaml
+      .split("\n")
+      .filter((line) => !line.trimStart().startsWith("#"))
+      .join("\n");
+
+  it("no workflow pulls one from the registry", async () => {
+    const dir = new Bun.Glob("*.yml").scan({
+      cwd: new URL("../.github/workflows", import.meta.url).pathname,
+    });
+    for await (const file of dir) {
+      const text = executable(await read(`.github/workflows/${file}`));
+      for (const image of retiredImages) {
+        expect(text, `${file} references the retired ${image} image`).not.toContain(
+          `ghcr.io/sunreye/${image}`,
+        );
+      }
+    }
+  });
+
+  it.each(["docker-compose.yml", "docker/docker-compose.yml"])("%s pulls neither", async (path) => {
+    const text = executable(await read(path));
+    for (const image of retiredImages) expect(text).not.toContain(`ghcr.io/sunreye/${image}`);
+  });
 });
 
 describe.each(["docker-compose.yml", "docker/docker-compose.yml"])("%s", (path) => {
@@ -293,6 +353,50 @@ describe.each(["docker-compose.yml", "docker/docker-compose.yml"])("%s", (path) 
   it("holds the server back until the migration has exited 0", async () => {
     const server = (await yaml(path)).services.server;
     expect(server?.depends_on?.migrate?.condition).toBe("service_completed_successfully");
+  });
+});
+
+// The upgrade test shapes its pre-upgrade database by running the OLD tag's
+// migrator, and that migrator is a host-side `bun` process, not a container —
+// so it reaches Postgres over a published port. `docker/docker-compose.yml`
+// deliberately publishes none (the production stack keeps the database off the
+// host), which the workflow has to make up for in an override. Miss that and
+// the job fails with a bare `ECONNREFUSED 127.0.0.1:5432` that says nothing
+// about compose.
+describe("upgrade-test.yml reaches Postgres over a port that is actually published", () => {
+  const workflow = () => read(".github/workflows/upgrade-test.yml");
+
+  /** Every `cat > docker-compose.override.yml <<'EOF' … EOF` heredoc, parsed. */
+  async function overrides(): Promise<ComposeFile[]> {
+    const text = await workflow();
+    const blocks = [
+      ...text.matchAll(/cat > docker-compose\.override\.yml <<'EOF'\n([\s\S]*?)\n\s*EOF/g),
+    ];
+    return blocks.map((m) => {
+      // The heredoc is indented inside the `run:` block scalar; strip that.
+      const lines = m[1].split("\n");
+      const indent = Math.min(
+        ...lines.filter((l) => l.trim()).map((l) => l.length - l.trimStart().length),
+      );
+      return Bun.YAML.parse(lines.map((l) => l.slice(indent)).join("\n")) as ComposeFile;
+    });
+  }
+
+  it("the production compose file publishes no database port", async () => {
+    const postgres = (await yaml("docker/docker-compose.yml")).services.postgres;
+    expect(postgres?.ports).toBeUndefined();
+  });
+
+  it("shapes the pre-upgrade schema from the host", async () => {
+    expect(await workflow()).toContain("@localhost:5432/SunReye");
+  });
+
+  it("every override it writes publishes 5432, so no `up` can take the port away", async () => {
+    const written = await overrides();
+    expect(written.length).toBeGreaterThan(0);
+    for (const file of written) {
+      expect(file.services.postgres?.ports).toContain("5432:5432");
+    }
   });
 });
 

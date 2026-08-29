@@ -1,9 +1,12 @@
 import { describe, expect, test } from "bun:test";
+// The job's row shapes come from the STORE, not from the schema: the schema is
+// keyed by `deviceId: number` and the store is where that becomes the source id
+// this job (and every assertion below) speaks. See ./forecast-correction-store.ts.
 import type {
-  ForecastCorrectionCellInsert,
-  ForecastCorrectionCellRow,
-  ForecastCorrectionStateRow,
-} from "@SunReye/db/schema/forecast-correction";
+  CorrectionCellRow as ForecastCorrectionCellRow,
+  CorrectionCellWrite as ForecastCorrectionCellInsert,
+  CorrectionStateRow as ForecastCorrectionStateRow,
+} from "./forecast-correction-store";
 import { weatherConfigSchema } from "@SunReye/db/weather";
 import type { InverterProfile, InverterSample } from "@SunReye/inverter-core";
 import {
@@ -191,7 +194,7 @@ function harness(options: HarnessOptions = {}) {
     location: { latitude: number; longitude: number };
   }> = [];
   const historyCalls: Array<{ metric: string; inverterId: string; from: number; to: number }> = [];
-  const cellWrites: ForecastCorrectionCellInsert[][] = [];
+  const cellWrites: (readonly ForecastCorrectionCellInsert[])[] = [];
 
   const io: CorrectionIo = {
     now: () => options.now ?? NOW,

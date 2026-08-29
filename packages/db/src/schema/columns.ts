@@ -34,3 +34,13 @@ export const createdAtTz = () =>
 /** `updated_at` as `timestamptz`, defaulted on insert and refreshed on every update. */
 export const updatedAtTz = () =>
   timestamp("updated_at", { withTimezone: true }).defaultNow().$onUpdate(onWrite).notNull();
+
+/**
+ * `retired_at` as `timestamptz`, null while the row is in service.
+ *
+ * A factory beside the other two so the flavour cannot drift: this column is
+ * compared against `created_at` and against reading timestamps, and a
+ * timezone-naive one would compare wrong by the host's offset. No default —
+ * `now()` would retire every row it was added to.
+ */
+export const retiredAtTz = () => timestamp("retired_at", { withTimezone: true });

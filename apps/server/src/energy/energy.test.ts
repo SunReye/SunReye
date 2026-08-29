@@ -17,14 +17,27 @@ const realStateExports = { ...realState };
 afterAll(() => {
   mock.module("@SunReye/db", () => ({ ...realDbExports }));
   mock.module("../shared/state", () => ({ ...realStateExports }));
+  mock.module("../settings/display-settings", () => ({ ...realDisplaySettingsExports }));
 });
+
+// The plant zone now lives in `plants.time_zone`, read through the cached plant
+// accessor, which PROVISIONS the row on first use. That is a write, and this
+// suite's `execute` stand-in answers from a queue meant for the cost queries —
+// so a provisioning round trip here would consume the rows a test queued and
+// then fail on a plant it could not create. The zone is pinned instead, to the
+// host process zone: the same value the `app_settings`-era default resolved to,
+// and the zone the window Dates below are built in, so the period keys stay
+// deterministic per run.
+const realDisplaySettings = await import("../settings/display-settings");
+const realDisplaySettingsExports = { ...realDisplaySettings };
+mock.module("../settings/display-settings", () => ({
+  ...realDisplaySettings,
+  getPlantTimeZone: async () => Intl.DateTimeFormat().resolvedOptions().timeZone,
+}));
 
 let queryResults: Array<Array<Record<string, unknown>>> = [];
 const execute = mock(async () => ({ rows: queryResults.shift() ?? [] }));
 
-// app_settings reads (plant zone) resolve to the stored default (no row), so the
-// plant zone falls back to the host process zone — the same zone the window
-// Dates below are built in, keeping the period keys deterministic per run.
 const select = () => {
   const chain = {
     from: () => chain,

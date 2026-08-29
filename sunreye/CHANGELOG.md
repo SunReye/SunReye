@@ -1,5 +1,101 @@
 # Changelog
 
+<!--
+  This preamble is hand-written and version-independent. release-please owns the
+  "## [version]" sections below it, and scripts/addon-changelog.mjs rewrites the
+  body of one of those sections in place — neither touches anything above the
+  first "## [", so this survives a release. Fold it into the generated 2.0.0
+  section (or delete it) once 2.0.0 is out and the note has done its job.
+-->
+
+## Read this before updating to 2.0.0
+
+**2.0.0 rebuilds how readings are stored, and renames your Home Assistant entities once.** Those are
+the two breaking changes in the release.
+
+- **Your Home Assistant entity ids change — once, and then never again.** Read the section below
+  before you update: **dashboards, automations, scripts and template sensors that name a
+  `sensor.sunreye_*` entity have to be re-pointed one time.** Home Assistant records history against
+  the entity id, so a new entity starts a fresh history; your old recorded data stays under the old
+  entity until you delete it. If keeping one continuous history matters to you, rename the new entity
+  to the old entity id in Home Assistant — it offers to move the long-term statistics across.
+- **The upgrade is in place and automatic.** There is nothing to export, reinstall or restore. Update
+  the addon and it happens.
+- **Take a backup first anyway.** This release moves data. The addon writes one for you; keep it
+  until you have seen a few days of charts.
+
+### Your entities are renamed once, to something that will never move again
+
+Until 2.0.0 every entity was named after the **inverter profile**: the topics, the `unique_id` Home
+Assistant keys entities on, and the Home Assistant device were all built from the profile's id. That
+was a bug, and a bad one. Correcting a typo in a profile id, or switching a mis-detected profile for
+the right one, **renamed every entity you had** — and because a discovery announcement is retained on
+the broker, the old entities did not disappear, they were left behind as permanent duplicates that
+never update again. Nothing warned you; the charts and cards just went quiet.
+
+Identity now comes from your **plant name** and **device name** instead, which are frozen when you
+first set them and cannot move afterwards. Concretely:
+
+| | Before (1.x) | After (2.0.0) |
+| --- | --- | --- |
+| MQTT topic | `sunreye/deye-sg05lp3/pv/power` | `sunreye/<plant>/<device>/pv/power` |
+| `unique_id` | `sunreye_deye-sg05lp3_pv_power` | `sunreye_<plant>_<device>_pv_power` |
+| Entity id | `sensor.sunreye_pv_power` | `sensor.sunreye_<device>_pv_power` |
+| HA device | `sunreye_deye-sg05lp3` | `sunreye_<plant>_<device>` |
+
+`<plant>` and `<device>` are the machine names taken from the plant name and inverter name you are
+asked for on first open (see below) — so with a plant called "Haus Süd" and the default inverter
+name, PV power becomes `sensor.sunreye_inverter_pv_power` and its `unique_id` becomes
+`sunreye_haus-sud_inverter_pv_power`.
+
+**What you need to do, once:** after the update, open Home Assistant, check your dashboards and
+search your automations, scripts and template sensors for `sunreye_` — anything still on an old name
+needs the new one. Searching for `sensor.sunreye_` in Settings → Automations & Scenes, and in your
+`configuration.yaml`, finds all of them. Renaming an entity in Home Assistant is also fine if you
+prefer your old ids: the new entity is the one receiving data, so rename it to whatever your
+automations already say.
+
+**The old entities are cleaned up for you.** SunReye clears the retained announcements it made under
+the old scheme, once, right after it has announced the new ones — so you are never left with no
+entities, and you do not end up with two of everything. It only ever touches announcements it made
+itself; nothing belonging to another integration is affected.
+
+**Nothing is announced under a placeholder.** Home Assistant discovery is held until you have given
+your plant and inverter their names, precisely because a retained announcement under the wrong name
+is not something a later rename can take back. That is why the form below is required rather than
+optional.
+
+### Your history comes back in two stages
+
+The update itself is a catalogue-only step that takes under a second, and live data works from the
+moment it finishes. Your **pre-update history is replayed separately**, out of the boot chain,
+because on a Home Assistant box that part takes minutes rather than seconds.
+
+Until that backfill has run, charts and statistics cover only the time since the update. SunReye
+tells you so rather than drawing a partial answer: a range that reaches back past the update is
+refused with an explanation instead of quietly reporting a smaller number. **You can defer the
+backfill** and run it when it suits you; it is resumable, so interrupting it — including a power cut
+— loses nothing and duplicates nothing.
+
+### You are asked for two names, once
+
+1.2.0 had a single inverter setting and no notion of a site or a device. 2.0.0 needs both, and it can
+create the records but not invent the names, so on first open after the update it asks for a **plant
+name** and an **inverter name** (pre-filled from your profile) on one short form. Home Assistant MQTT
+discovery is held until both are set, so nothing is announced under a placeholder.
+
+These two names are what your entity ids are built from, and they are frozen once set — that is the
+whole point of asking. Their labels stay editable afterwards; only the machine names underneath are
+fixed, so you can rename your plant on screen without renaming a single entity.
+
+### Also new: take your whole instance out as one file
+
+`export` writes every reading, your plant setup and your settings to one portable archive, and
+`import` reads it back — into another machine, or into a future SunReye whose storage layout has
+changed again. The archive names devices and metrics the way the API and your Home Assistant
+entities already do, and refers to no internal id, which is why an upgrade like this one should not
+be needed again.
+
 ## [1.2.0](https://github.com/SunReye/SunReye/compare/addon-v1.1.1...addon-v1.2.0) (2026-07-19)
 
 

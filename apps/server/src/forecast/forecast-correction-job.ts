@@ -23,12 +23,6 @@
 
 import type { WeatherConfig } from "@SunReye/db/weather";
 import { forecastReady } from "@SunReye/db/weather";
-import {
-  getCorrectionCells,
-  getCorrectionState,
-  upsertCorrectionCells,
-  upsertCorrectionState,
-} from "@SunReye/db/forecast-correction";
 import type { InverterProfile, InverterSample } from "@SunReye/inverter-core";
 import {
   type CorrectionModel,
@@ -39,7 +33,13 @@ import {
   learn,
   skillImprovementPct,
 } from "./forecast-correction";
-import { loadCorrectionModel } from "./forecast-correction-store";
+import {
+  loadCorrectionModel,
+  readCorrectionCells,
+  readCorrectionState,
+  writeCorrectionCells,
+  writeCorrectionState,
+} from "./forecast-correction-store";
 import { getActiveProfileOrNull } from "../inverter/inverter";
 import { queryHourlyAvgRange } from "../shared/history";
 import { type SolarForecastPoint, buildSolarForecast } from "./solar-forecast";
@@ -78,13 +78,21 @@ export interface CorrectionIo {
   latestSample(): InverterSample | null;
   fetchArchive: typeof fetchHistoricalIrradiance;
   measuredHourlyAvg: typeof queryHourlyAvgRange;
-  /** The stored cell rows — the view renders each one's weight. */
-  readCells: typeof getCorrectionCells;
+  /**
+   * The stored cell rows — the view renders each one's weight.
+   *
+   * These four go through `./forecast-correction-store`, not
+   * `@SunReye/db/forecast-correction`, and that is the identity boundary: the
+   * data layer is keyed by `deviceId: number`, while everything in this job is
+   * keyed by the SOURCE ID a live sample carries. The store translates, so the
+   * job — and every assertion about it — stays in names.
+   */
+  readCells: typeof readCorrectionCells;
   /** The same cells as the grid a run folds into. */
   loadModel: typeof loadCorrectionModel;
-  readState: typeof getCorrectionState;
-  writeCells: typeof upsertCorrectionCells;
-  writeState: typeof upsertCorrectionState;
+  readState: typeof readCorrectionState;
+  writeCells: typeof writeCorrectionCells;
+  writeState: typeof writeCorrectionState;
 }
 
 /**
@@ -104,11 +112,11 @@ const productionIo: CorrectionIo = {
   latestSample: () => liveState.latest,
   fetchArchive: fetchHistoricalIrradiance,
   measuredHourlyAvg: queryHourlyAvgRange,
-  readCells: getCorrectionCells,
+  readCells: readCorrectionCells,
   loadModel: loadCorrectionModel,
-  readState: getCorrectionState,
-  writeCells: upsertCorrectionCells,
-  writeState: upsertCorrectionState,
+  readState: readCorrectionState,
+  writeCells: writeCorrectionCells,
+  writeState: writeCorrectionState,
 };
 
 /** The in-memory grid built from stored cell rows. */
@@ -136,7 +144,7 @@ export interface ForecastCorrectionView {
 }
 
 /** The persisted correction row shape both the view and the learn run read. */
-type CorrectionStateRow = Awaited<ReturnType<typeof getCorrectionState>>;
+type CorrectionStateRow = Awaited<ReturnType<typeof readCorrectionState>>;
 
 /** Measured skill carried on the state row (zeroed before the first run). */
 const skillOf = (state: CorrectionStateRow): SkillStats => ({

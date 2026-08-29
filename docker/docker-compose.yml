@@ -70,11 +70,18 @@ services:
     restart: unless-stopped
 
   postgres:
-    # Pinned (not latest-pg17): the datadir under the volume is only compatible
+    # Pinned (not a moving tag): the datadir under the volume is only compatible
     # with the pg major it was created by, and the timescaledb extension binary
     # must be >= the extension version stamped in the database. Bump this tag
     # deliberately with a release, never implicitly.
-    image: timescale/timescaledb:2.28.2-pg17
+    #
+    # Built by docker/timescaledb/Dockerfile (postgres:17-bookworm + the pinned
+    # extension + timescaledb_toolkit) and published by
+    # .github/workflows/db-image.yml. Not timescale/timescaledb: that image
+    # carries no timescaledb_toolkit at any tag, and the baseline schema needs
+    # time_weight('LOCF', …) and counter_agg. Dev, CI and the addon must all
+    # carry the same extensions — scripts/storage-tuning.ts asserts they do.
+    image: ghcr.io/sunreye/timescaledb:pg17-ts2.28.2
     # SSD-endurance tuning: cut the writes (TBW) a 1 Hz ingest makes.
     # synchronous_commit=off group-commits WAL (bounded <~0.5s crash-loss window
     # for telemetry — no corruption); wal_compression=zstd shrinks full-page

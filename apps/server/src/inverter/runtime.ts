@@ -16,18 +16,21 @@
 
 import { db } from "@SunReye/db";
 import type { InverterConfig } from "@SunReye/db/inverter-config";
+import { type PollEndpoint, loadPollEndpoint } from "./endpoint";
 import type { MqttConfig } from "@SunReye/db/mqtt-config";
 import { metricsConfigLog, metricsRaw } from "@SunReye/db/schema/metrics";
 import { env } from "@SunReye/env/server";
-import type { InverterSample, InverterSource } from "@SunReye/inverter-core";
+import { type InverterSample, type InverterSource, metricKeySpecs } from "@SunReye/inverter-core";
 import mqtt from "mqtt";
 import { startAutomations, stopAutomations } from "../automation/automation";
-import { getInverterConfig, getMqttConfig } from "../settings/config";
+import { getMqttConfig } from "../settings/config";
 import type { ControlStore } from "./control-expr";
 import { dbControlStore } from "./control-store";
 import { createControlWriter } from "./control-writer";
-import { type HistoryBuffer, type MetricRow, createHistoryBuffer } from "./history-buffer";
+import { type HistoryBuffer, createHistoryBuffer } from "./history-buffer";
 import { type StoragePolicy, type StorageRow, createStoragePolicy } from "./storage-policy";
+import { createIdentifiedCommit, createRowIdentifier } from "./storage-identity";
+import { type IdentityResolver, createIdentityResolver } from "../shared/identity";
 import { type JobScheduler, createJobScheduler } from "./job-scheduler";
 import { evccOnLoadSample } from "../evcc/evcc";
 import {
@@ -40,6 +43,8 @@ import {
 import { runForecastCorrectionLearn } from "../forecast/forecast-correction-job";
 import { log } from "../shared/logging";
 import { type MqttBridge, startMqttBridge } from "./mqtt";
+import type { MqttNamespace } from "./mqtt-discovery";
+import { MissingMqttNamespaceError, readMqttNamespace } from "./mqtt-namespace";
 import { fetchSolarForecast, toForecastExport } from "../forecast/solar-forecast";
 import { runSpotPriceSync } from "../prices/spot-price-job";
 import { getSpotPriceConfig } from "../settings/spot-price-settings";
@@ -96,8 +101,12 @@ export interface RuntimeDeps {
    * The batched history writer. Defaults to one committing to the real db — the
    * only collaborator the runtime holds mutable buffer state for, lifted out so
    * it owns its own cap/drop/re-queue boundaries and is tested without a runtime.
+   *
+   * It buffers {@link StorageRow}s — the NAME-carrying shape the storage policy
+   * produces — and the id translation happens inside the commit. See
+   * `./storage-identity.ts` for why the boundary is there and not in the policy.
    */
-  history?: HistoryBuffer<MetricRow>;
+  history?: HistoryBuffer<StorageRow>;
   /**
    * The batched writer for the configuration change-log — the second
    * destination the storage policy routes to. Same batching contract as
@@ -115,6 +124,17 @@ export interface RuntimeDeps {
    */
   scheduler?: JobScheduler;
   /**
+   * Resolves the plant/device slugs the MQTT bridge and every Home Assistant
+   * `unique_id` are named after. Defaults to the real read.
+   *
+   * Injected for the same reason {@link identity} is: the production reader
+   * queries the dimension spine, so a unit test that did not stub it would fail
+   * on a missing database client rather than on the behaviour it names — and
+   * worse, it would fail identically whether the bridge was named correctly or
+   * not.
+   */
+  mqttNamespace?: (profileId: string) => Promise<MqttNamespace>;
+  /**
    * Persistent state for composite (`controlExpr`) controls, consumed by both
    * the write funnel and the per-poll state injection. Defaults to the
    * `app_settings`-backed store; injected so a test drives the funnel against an
@@ -128,6 +148,14 @@ export interface RuntimeDeps {
    * records the per-poll load through a spy rather than mocking `../evcc/evcc`.
    */
   onLoadSample?: (watts: number | null) => void;
+  /**
+   * The name → int2 resolver both commits and the eager metric registration go
+   * through. Defaults to one bound to the real database; injected so a test can
+   * assert WHAT was registered — the production resolver's registration is a
+   * `void`-ed promise whose rejection is swallowed, so a spec that never arrived
+   * is indistinguishable from one that did.
+   */
+  identity?: IdentityResolver;
 }
 
 /**
@@ -138,12 +166,35 @@ export interface RuntimeDeps {
  */
 // fallow-ignore-next-line unused-export -- the injection seam exercised by runtime.test.ts (which builds its own instance with a fake history buffer); test files aren't traced as consumers
 export function createRuntime(deps: RuntimeDeps = {}) {
+  /**
+   * The name -> int2 resolution both commits go through. One resolver for both
+   * buffers, so a device or metric id is looked up once per process rather than
+   * once per table, and closure-local like every other field here.
+   */
+  const identity = deps.identity ?? createIdentityResolver({ db });
+  const mqttNamespaceOf = deps.mqttNamespace ?? readMqttNamespace;
+  const rowIdentifier = createRowIdentifier({ resolver: identity, logger });
+  /**
+   * Commit one batch to `table`, resolving the identity first.
+   *
+   * These two commits are the ONLY INSERTs into the timeseries and the config
+   * change-log, which is exactly why the translation belongs on this path: one
+   * place, on the way out, with the in-memory routing above it still keyed by
+   * name. The resolve-then-insert step itself lives in `./storage-identity.ts`,
+   * where it is reachable by a test — this suite injects both buffers, so a
+   * closure built here never runs under test.
+   */
+  const commitIdentified = (table: typeof metricsRaw | typeof metricsConfigLog) =>
+    createIdentifiedCommit({
+      identify: (rows) => rowIdentifier.identify(rows),
+      insert: (values) => db.insert(table).values(values),
+    });
   const historyBuffer =
     deps.history ??
-    createHistoryBuffer({ commit: (rows) => db.insert(metricsRaw).values(rows), logger });
+    createHistoryBuffer<StorageRow>({ commit: commitIdentified(metricsRaw), logger });
   const configLogBuffer =
     deps.configLog ??
-    createHistoryBuffer({ commit: (rows) => db.insert(metricsConfigLog).values(rows), logger });
+    createHistoryBuffer<StorageRow>({ commit: commitIdentified(metricsConfigLog), logger });
   const scheduler = deps.scheduler ?? createJobScheduler();
   const onLoadSample = deps.onLoadSample ?? evccOnLoadSample;
   let ctx: ProfileContext | null = null;
@@ -248,6 +299,25 @@ export function createRuntime(deps: RuntimeDeps = {}) {
         ctx: current,
         policy: createStoragePolicy({ metrics: current.profile.metrics }),
       };
+      // EAGER metric registration, on the same hook and against the same list:
+      // the ids then exist before the first poll, so the writer's own fallback
+      // (`./storage-identity.ts`) is only ever reached by a key this list did not
+      // contain — a computed metric, a replayed capture, a profile edited under a
+      // running server. Not awaited, because this function is synchronous by
+      // design and the fallback is what makes that safe.
+      //
+      // `metricKeySpecs` states the key, the COUNTER CLASS and the UNIT together,
+      // and all three have to travel with the key for the same reason: a
+      // continuous aggregate cannot ask the profile what a metric means. The class
+      // decides whether a `counter_agg` partial means anything; the unit is what
+      // every reader labels an axis from. Built by the core rather than inline
+      // here so the one place that knows what a metric declares is the one place
+      // that answers.
+      void identity
+        .registerMetrics(metricKeySpecs(current.profile.metrics))
+        .catch((error: unknown) => {
+          logger.warn("metric key registration failed: {error}", { error });
+        });
     }
     return policyCache.policy;
   }
@@ -341,33 +411,87 @@ export function createRuntime(deps: RuntimeDeps = {}) {
   });
   const { write } = controlWriter;
 
-  async function rebuildInverter(config: InverterConfig): Promise<void> {
+  /**
+   * Point the live source at `endpoint` and re-arm the loop at its cadence.
+   *
+   * The endpoint comes from the `connections` + `devices` spine
+   * (`./endpoint.ts`), never from `app_settings`. Until 2.0.0's dual-authority
+   * defect was removed this took the legacy JSONB document while provisioning
+   * copied that same document into the tables on every boot — so an operator
+   * editing the endpoint row changed nothing and the poll loop could only ever
+   * drive one endpoint and one unit id.
+   */
+  async function rebuildInverter(endpoint: PollEndpoint): Promise<void> {
     // Drain buffered rows before swapping sources so a changed inverterId can't
     // land on rows captured under the previous one.
     closeSeriesIntervals();
     await historyBuffer.flush();
     await configLogBuffer.flush();
     const previous = source;
-    source = buildSource(context().profile, config);
+    source = buildSource(context().profile, endpoint);
     // The simulator is always "connected"; a real Modbus source only proves it on
     // the first successful read, so start pessimistic and let pollOnce flip it.
     inverterStatus.connected = env.INVERTER_SIMULATE;
     inverterStatus.lastError = null;
     lastPollError = null;
-    connectable = env.INVERTER_SIMULATE || Boolean(config.host?.trim());
+    connectable = env.INVERTER_SIMULATE || endpoint.host.trim() !== "";
     if (!connectable) {
       inverterStatus.lastError = "No inverter host configured";
       logger.warn(
         "no inverter host configured — polling idle (set the connection in Settings → Inverter)",
       );
     }
-    restartLoop(config.pollIntervalMs);
+    restartLoop(endpoint.pollIntervalMs);
     if (previous) await previous.close();
   }
 
+  /**
+   * (Re)build the MQTT bridge, naming it by the plant's and device's FROZEN slugs.
+   *
+   * The namespace is read HERE, once per rebuild, and that cadence is the whole
+   * design: the slugs are frozen, so re-reading them per publish would be a
+   * query for a value that cannot change, while never re-reading them would
+   * leave the bridge on the old namespace after a profile swap (which
+   * `readMqttNamespace` resolves through its second arm).
+   *
+   * A MISSING NAMESPACE TURNS MQTT OFF; IT DOES NOT TAKE THE POLL LOOP DOWN.
+   * `syncProvisioning` swallows its own failures and returns null, so "the spine
+   * has no device row yet" is genuinely reachable at boot — and this function is
+   * awaited from `start()`, where an unguarded throw would abort the runtime and,
+   * on the one deployment target (a Home Assistant addon), hand its supervisor a
+   * crash loop. Readings still matter without a broker, so the bridge stays null
+   * and the next boot picks it up.
+   *
+   * What this must NEVER do is fall back to `profile.id`. That fallback is the
+   * defect: Home Assistant keys entities on `unique_id`, a discovery
+   * announcement is retained, and a profile-keyed identity therefore renames
+   * every entity — irreversibly — the first time a profile changes. Silence is
+   * recoverable; a wrong permanent identity is not. The `ctx` type has no
+   * optional form precisely so this cannot be reintroduced by accident.
+   */
   async function rebuildBridge(config: MqttConfig): Promise<void> {
     const previous = bridge;
-    bridge = startMqttBridge(config, { ctx: context(), write });
+    const ctx = context();
+    let namespace: MqttNamespace | null = null;
+    try {
+      namespace = await mqttNamespaceOf(ctx.profile.id);
+    } catch (error) {
+      // EVERY failure, not just MissingMqttNamespaceError. An unprovisioned spine
+      // and an unreachable database are equally recoverable — both are fixed by
+      // the next boot — and neither is a reason to abort `start()` and hand the
+      // addon's supervisor a crash loop. Narrowing this to the one error class
+      // was the first version of this guard and it was wrong: a DrizzleQueryError
+      // from a missing client took the whole runtime down.
+      const reason = error instanceof MissingMqttNamespaceError ? error.message : String(error);
+      logger.warn(
+        "MQTT is off: {reason}. Home Assistant entities are named after the plant and device " +
+          "slugs, so the bridge waits for those rows rather than announcing under a name that " +
+          "could never be corrected.",
+        { reason },
+      );
+    }
+    bridge =
+      namespace === null ? null : startMqttBridge(config, { ctx: { ...ctx, ...namespace }, write });
     if (previous) await previous.close();
     // Seed a fresh bridge with the current forecast instead of waiting a full
     // interval; harmless when the forecast is disabled (publishes null → no-op).
@@ -412,7 +536,7 @@ export function createRuntime(deps: RuntimeDeps = {}) {
         kickMs: SPOT_KICK_DELAY_MS,
       },
     ]);
-    await rebuildInverter(await getInverterConfig());
+    await rebuildInverter(await loadPollEndpoint());
     await rebuildBridge(await getMqttConfig());
     // Automations write through the same funnel as every other path; they only
     // run while a profile is active (this function is never called without one).
@@ -421,14 +545,20 @@ export function createRuntime(deps: RuntimeDeps = {}) {
   }
 
   /**
-   * Rebuild the source (and restart the loop) for updated inverter settings. In
-   * onboarding-only boot the runtime isn't started (no active profile), so the
-   * config is persisted by the caller but there's nothing live to hot-apply yet —
-   * it takes effect on the restart that activates a profile.
+   * Re-resolve the endpoint from the spine and rebuild the source on it.
+   *
+   * Takes no argument, and that is the point: the caller that just saved a
+   * connection does not hand the runtime the values it typed — it writes the
+   * `connections` row and then asks the loop to re-read the authority. Anything
+   * else is the write-back again, one indirection further out.
+   *
+   * In an onboarding-only boot the runtime isn't started (no active profile), so
+   * the save is persisted by the caller but there is nothing live to hot-apply
+   * yet — it takes effect on the restart that activates a profile.
    */
-  async function applyInverterConfig(config: InverterConfig): Promise<void> {
+  async function reloadEndpoint(): Promise<void> {
     if (!ctx) return;
-    await rebuildInverter(config);
+    await rebuildInverter(await loadPollEndpoint());
   }
 
   /** Rebuild the MQTT bridge for updated broker/discovery settings. */
@@ -543,7 +673,7 @@ export function createRuntime(deps: RuntimeDeps = {}) {
     write,
     status,
     stop,
-    applyInverterConfig,
+    reloadEndpoint,
     applyMqttConfig,
     testInverter,
     testMqtt,
@@ -561,7 +691,7 @@ export const start = defaultRuntime.start;
 export const write = defaultRuntime.write;
 export const status = defaultRuntime.status;
 export const stop = defaultRuntime.stop;
-export const applyInverterConfig = defaultRuntime.applyInverterConfig;
+export const reloadEndpoint = defaultRuntime.reloadEndpoint;
 export const applyMqttConfig = defaultRuntime.applyMqttConfig;
 // Annotated (rather than inferred) so the wire type `TestInverterResult` stays
 // a directly-referenced export: it flows into the Eden-inferred `app` type, so

@@ -9,7 +9,10 @@
  * happens to be looking would make two viewers disagree on the same history, so
  * the plant zone is one instance-wide value (issues #46, #52).
  *
- * Stored in `app_settings` under {@link PLANT_KEY}.
+ * Stored in `plants` since 2.0.0 — one column per fact
+ * (`./schema/plants.ts`). {@link PLANT_KEY} is retained as the name of the 1.x
+ * `app_settings` row, which `apps/server/src/inverter/provision.ts` still probes
+ * once, to seed the columns from whatever an upgrading install had set.
  */
 
 import { z } from "zod";
@@ -24,11 +27,22 @@ export const plantConfigSchema = z.object({
    * in, or {@link TIME_ZONE_AUTO} to fall back to the host process zone.
    */
   timeZone: timeZoneField,
+  /**
+   * The plant's user-facing label. Editable, always — and OPTIONAL on a write.
+   *
+   * `plants.name` and `plants.slug` are separate columns for one reason: the slug
+   * becomes the MQTT namespace (`<prefix>/<plant-slug>/<device-slug>/<topic>`)
+   * and Home Assistant keys its entities on `unique_id`, so changing it would
+   * orphan every discovered entity and every retained topic. It is frozen at
+   * onboarding; this is the field that exists so it never has to move.
+   *
+   * Optional because absent means "leave it alone": the Display form sends the
+   * time zone alone, and a required name there would make saving a zone either
+   * fail or blank the plant's label. Never `""` — see `plantPatchFrom`.
+   */
+  name: z.string().trim().min(1).max(120).optional(),
 });
 export type PlantConfig = z.infer<typeof plantConfigSchema>;
-
-/** Defaults used before a plant zone is configured (`"auto"` → host). */
-export const defaultPlant: PlantConfig = plantConfigSchema.parse({});
 
 /**
  * The concrete IANA zone the server buckets plant-local periods in, in priority
@@ -53,4 +67,26 @@ export function resolveServerZone(
   if (plantZone !== TIME_ZONE_AUTO) return plantZone;
   if (displayZone !== TIME_ZONE_AUTO) return displayZone;
   return hostZone;
+}
+
+/**
+ * The plant config as a column patch.
+ *
+ * Deliberately narrow: `timeZone` and `name`, and nothing else this shape could
+ * ever grow into a slug. Renaming a plant must stay a NAME-only operation —
+ * `plants.slug` is the MQTT namespace and is frozen at onboarding — and the way
+ * to guarantee that is for the write path to have no expression for it.
+ *
+ * `name` is included only when it was sent. An `undefined` here means the
+ * `UPDATE` never names the column, which is what lets two forms edit two facts
+ * about one plant without either writing back the other's stale value.
+ */
+export function plantPatchFrom(config: PlantConfig): {
+  timeZone: string;
+  name?: string;
+} {
+  return {
+    timeZone: config.timeZone,
+    ...(config.name === undefined ? {} : { name: config.name }),
+  };
 }

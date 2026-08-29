@@ -1,6 +1,16 @@
 <script lang="ts" module>
-	/** One PV array row as raw input text (parsed by the parent on save). */
-	export type ArrayFields = { kwp: string; tilt: string; azimuth: string };
+	import type { ArrayText } from '$lib/settings/plant-fields';
+
+	/**
+	 * One PV array row as raw input text (parsed by the parent on save).
+	 *
+	 * `ArrayText` itself, not a structural copy: it carries an `overrides` bag
+	 * this form has no input for (a per-array temperature coefficient, system
+	 * loss and device slug — see `plant-fields.ts`). A copy of the three editable
+	 * fields would drop that bag on the way through and erase the overrides on
+	 * every save, and it would type-check perfectly while doing it.
+	 */
+	export type ArrayFields = ArrayText;
 </script>
 
 <script lang="ts">
