@@ -263,23 +263,46 @@ suite("the optimizer's decisions reach metrics_raw and come back out", () => {
     expect(stored.get("optimizer.excess.power")).toBe(0);
   });
 
-  test("the decisions come back out of the /api/history projection, by SLUG", async () => {
-    // The exact projection `GET /api/history` returns — the dimension ids joined
-    // back to the names a client can interpret. That endpoint filters on
-    // `inverterId`, resolved through `deviceIdOf(devices.slug)`, which is the
-    // resolution a SQL-text assertion cannot execute.
-    const { rows } = await raw.execute(sql`
-      select r.time, d.slug as "inverterId", k.key as metric, r.value, r.dur_ms as "durMs"
-        from metrics_raw r
-        join devices d on d.id = r.device_id
-        join metric_keys k on k.id = r.metric_id
-       where d.slug = 'optimizer' and k.key = 'optimizer.threshold.power'
-       order by r.time desc
-       limit 5000`);
-    expect(rows.length).toBeGreaterThan(0);
-    expect(new Set(rows.map((r) => (r as { inverterId: string }).inverterId))).toEqual(
-      new Set(["optimizer"]),
-    );
+  test("the decisions come back out of the /api/history read path, by SLUG", async () => {
+    // THE PRODUCTION FUNCTION, not a hand-written copy of its SELECT.
+    // `queryRawHistory` is what `../src/inverter/entities.ts` invokes for
+    // `/api/history`, and it resolves the device SLUG through
+    // `deviceIdOf(devices.slug)` — a correlated subquery against a table whose
+    // ids are `GENERATED ALWAYS AS IDENTITY`. A device with `connection_id NULL`
+    // and `unit_id 0` is a new SHAPE for that resolution, and a SQL-text
+    // assertion (or a second, hand-written join beside it) can execute none of
+    // it: it would stay green against a read path that had stopped answering.
+    const { queryRawHistory } = await import("../src/shared/history");
+
+    // Its OWN decisions, so the assertion is on values this test wrote rather
+    // than on whatever earlier cases happened to leave behind — a `length > 0`
+    // over shared rows passes in file order and is vacuously green alone.
+    const seam = await bootWriteSeam();
+    await seam.registrar.record(await decided({ thresholdW: 1111 }), 0, at(1200));
+    await seam.registrar.record(await decided({ thresholdW: 2222 }), 0, at(1230));
+    await seam.registrar.record(await decided({ thresholdW: 3333 }), 0, at(1260));
+    await seam.shutdown(at(1290));
+
+    const rows = await queryRawHistory({
+      metric: "optimizer.threshold.power",
+      inverterId: "optimizer",
+      since: at(1200),
+      limit: 5000,
+    });
+    // Newest first — the order the endpoint's contract promises — and every
+    // value is one this test decided.
+    expect(rows.map((r) => r.value)).toEqual([3333, 2222, 1111]);
+
+    // And the slug is doing the filtering, not the metric key alone: the same
+    // read under a device that is not the optimizer answers with nothing, so a
+    // resolution that silently matched everything would fail here.
+    const elsewhere = await queryRawHistory({
+      metric: "optimizer.threshold.power",
+      inverterId: "not-the-optimizer",
+      since: at(1200),
+      limit: 5000,
+    });
+    expect(elsewhere).toEqual([]);
   });
 
   test("a restart does not lose a single decision — the ring lost all of them", async () => {
