@@ -134,6 +134,17 @@ describe("the plant's default chart device", () => {
     expect(soleInverterSlug([device({ slug: "sdm630", role: "meter" }), device()])).toBe("deye-1");
   });
 
+  test("ignores an OPTIMIZER — a virtual device has no series to read", () => {
+    // The optimizer writes decisions, not measurements: it has no registers, so
+    // an unqualified PV or battery series can never mean it. Left in, a plant
+    // with one inverter and one optimizer would look like "two devices" to a
+    // count-based rule and drop every new chart's device to null.
+    expect(soleInverterSlug([device({ slug: "optimizer", role: "optimizer" }), device()])).toBe(
+      "deye-1",
+    );
+    expect(soleInverterSlug([device({ slug: "optimizer", role: "optimizer" })])).toBeNull();
+  });
+
   test("ignores a RETIRED inverter", () => {
     // Retirement is about the future: the old inverter's history stays readable,
     // but a chart saved today means the machine that is running. A replaced

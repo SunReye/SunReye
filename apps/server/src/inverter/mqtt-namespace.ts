@@ -34,7 +34,7 @@
  */
 
 import { db } from "@SunReye/db";
-import { type PlantDb, readDevices, readPlant } from "@SunReye/db/plant-repo";
+import { type PlantDb, physicalDevices, readDevices, readPlant } from "@SunReye/db/plant-repo";
 import type { MqttNamespace } from "./mqtt-discovery";
 
 /** The only plant fields the namespace needs. */
@@ -88,11 +88,16 @@ const usable = (slug: string): boolean => slug.trim() !== "";
  * as `./provision.ts`'s `findDevice`: publishing inverter readings under a
  * controller's slug would make them claim to come from the controller, and slugs
  * are frozen, so the claim would be permanent.
+ *
+ * A VIRTUAL device is never adopted either, and arm 1 is why it has to be said
+ * here: it matches on the profile id alone, so an optimizer sharing one would
+ * take the namespace over. Arm 2's role filter would not be reached.
  */
 function pickDevice(devices: readonly NamespaceDevice[], profileId: string): NamespaceDevice {
-  const byProfile = devices.find((d) => d.profileId === profileId && usable(d.slug));
+  const candidates = physicalDevices(devices);
+  const byProfile = candidates.find((d) => d.profileId === profileId && usable(d.slug));
   if (byProfile) return byProfile;
-  const inverter = devices
+  const inverter = candidates
     .filter((d) => d.role === INVERTER_ROLE && usable(d.slug))
     .sort((a, b) => a.id - b.id)[0];
   if (inverter) return inverter;

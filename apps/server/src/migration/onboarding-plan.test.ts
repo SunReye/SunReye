@@ -233,6 +233,20 @@ describe("migratedDevice", () => {
     expect(migratedDevice([device(2, "gx", "victron-gx", "controller")], "deye")).toBeNull();
   });
 
+  test("never an OPTIMIZER, even when it carries the 1.2.0 source id", () => {
+    // A virtual device has no registers, so five million replayed inverter
+    // readings keyed to it would be measurements attributed to a thing that
+    // never measured anything. Arm 1 matches on profile id, so the role filter
+    // is what stops it — not the absence of a match.
+    const rows = [device(2, "optimizer", "deye", "optimizer")];
+    expect(migratedDevice(rows, "deye")).toBeNull();
+  });
+
+  test("an optimizer alongside the inverter does not shadow it", () => {
+    const rows = [device(2, "optimizer", "deye", "optimizer"), device(3, "inverter", "deye")];
+    expect(migratedDevice(rows, "deye")?.id).toBe(3);
+  });
+
   test("no devices at all is null rather than a guess", () => {
     expect(migratedDevice([], "deye")).toBeNull();
   });
@@ -272,6 +286,16 @@ describe("backfillTarget", () => {
     // class of silent mislabelling 2.0.0 broke its schema to end. Writing nowhere
     // is recoverable; writing to the wrong device is not.
     expect(backfillTarget(mid, { id: 1 }, [device(7, "victron-gx", "controller")])).toEqual({
+      ok: false,
+      reason: "no-device",
+    });
+  });
+
+  test("a plant whose only device is an OPTIMIZER is refused too", () => {
+    // Same rule as the controller, for the stronger reason: the optimizer is
+    // virtual, so the backfill would attribute a real machine's five years of
+    // measurements to a device that has never read a register.
+    expect(backfillTarget(mid, { id: 1 }, [device(7, "deye", "optimizer")])).toEqual({
       ok: false,
       reason: "no-device",
     });

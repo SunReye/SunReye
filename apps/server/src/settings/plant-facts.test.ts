@@ -367,6 +367,28 @@ describe("the plant facts accessor", () => {
     expect(memory.batteries).toEqual([]);
     expect(warnings.join(" ")).toContain("no device");
   });
+
+  test("an optimizer-only plant is refused the same way — a virtual device owns no pack", async () => {
+    warnings.length = 0;
+    const memory = memoryStore();
+    const accessor = createPlantFacts({ store: memory.store, logger });
+    const plant = await accessor.plant();
+    memory.devices.push({
+      id: 201,
+      plantId: plant.id,
+      slug: "optimizer",
+      name: "Optimizer",
+      profileId: "sunreye.optimizer",
+      role: "optimizer",
+      retiredAt: null,
+      unitId: 0,
+      connectionId: null,
+    });
+    accessor.invalidate();
+    await accessor.writeBattery({ usableKwh: 12, maxChargeW: null, minSoc: 8, nominalV: null });
+    expect(memory.batteries).toEqual([]);
+    expect(warnings.join(" ")).toContain("no device");
+  });
 });
 
 describe("a failed read is never cached as a value", () => {

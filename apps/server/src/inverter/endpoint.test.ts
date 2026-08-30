@@ -280,6 +280,19 @@ describe("selectPollTargets", () => {
     expect(targets.map((t) => t.deviceId)).toEqual([21]);
   });
 
+  test("an OPTIMIZER is never polled — there is no machine on the other end", () => {
+    // The virtual device has no endpoint and no registers. Polled, it would
+    // resolve to the offline endpoint and time out on every cycle forever.
+    const targets = selectPollTargets(
+      [
+        device({ id: 30, slug: "optimizer", role: "optimizer", connectionId: null }),
+        device({ id: 31, slug: "inverter", role: "inverter" }),
+      ],
+      [connection()],
+    );
+    expect(targets.map((t) => t.deviceId)).toEqual([31]);
+  });
+
   test("a device pointing at an endpoint that is gone is offline, not mis-addressed", () => {
     const targets = selectPollTargets([device({ connectionId: 99 })], [connection({ id: 10 })]);
     expect(targets[0]?.endpoint.host).toBe("");

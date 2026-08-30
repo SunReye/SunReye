@@ -1236,7 +1236,7 @@
       "checkConstraints": {
         "devices_role_check": {
           "name": "devices_role_check",
-          "value": "\"devices\".\"role\" in ('inverter', 'controller', 'meter', 'charger')"
+          "value": "\"devices\".\"role\" in ('inverter', 'controller', 'meter', 'charger', 'optimizer')"
         }
       },
       "isRLSEnabled": false

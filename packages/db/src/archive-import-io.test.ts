@@ -938,6 +938,41 @@ describe("importArchive: applying config.json", () => {
     ]);
   });
 
+  test("a virtual device is inserted with its own role, not normalised to inverter", async () => {
+    // The role binds VERBATIM: the importer must not decide that a device it has
+    // no profile for is an inverter. `devices_role_check` is what refuses a role
+    // this build does not model — see
+    // `apps/server/db-tests/check-constraints.test.ts`.
+    const withOptimizer = {
+      ...config,
+      plant: {
+        ...(config.plant as NonNullable<ArchiveConfig["plant"]>),
+        devices: [
+          {
+            slug: "optimizer",
+            name: "Optimizer",
+            profileId: "sunreye.optimizer",
+            serial: null,
+            role: "optimizer",
+            unitId: 0,
+            connection: null,
+            retiredAt: null,
+            battery: null,
+          },
+        ],
+      },
+    };
+    const { rec } = await run({ readings: [reading()], config: withOptimizer }, target, {
+      applyConfig: true,
+    });
+    expect(rec.devices).toHaveLength(1);
+    // (plant_id, connection_id, unit_id, slug, name, profile_id, serial, role, retired_at)
+    expect(rec.devices[0]?.[7]).toBe("optimizer");
+    expect(rec.devices[0]?.[1]).toBeNull();
+    // A virtual device owns no pack, so no battery row is written for it.
+    expect(rec.batteries).toEqual([]);
+  });
+
   test("an endpoint the plant already has is REUSED, not duplicated", async () => {
     // `connections` has no unique key on (plant_id, name) — a plant legitimately
     // has two endpoints with the same label on different hosts — so this is a

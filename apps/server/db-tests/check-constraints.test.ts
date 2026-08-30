@@ -94,13 +94,42 @@ suite("the schema's CHECK constraints", () => {
     // device is one of the inverters the total is summed from". A role outside
     // the modelled set makes every read that branches on it fall through
     // silently — the rows are counted in neither arm.
-    test.each(["controller", "meter", "charger"])("%s is a modelled role", async (role) => {
-      const unit = { controller: 10, meter: 11, charger: 12 }[role] ?? 20;
+    test.each(["controller", "meter", "charger", "optimizer"])(
+      "%s is a modelled role",
+      async (role) => {
+        const unit = { controller: 10, meter: 11, charger: 12, optimizer: 13 }[role] ?? 20;
+        expect(
+          await failure(sql`
+            insert into devices (plant_id, connection_id, unit_id, slug, name, profile_id, role)
+            values (${plantId}, ${connectionId}, ${unit}, ${`ok-${role}`}, 'n', 'p', ${role})`),
+        ).toBe("");
+      },
+    );
+
+    test("an optimizer is a device row like any other — it just has no registers", async () => {
+      // The Phase 4.5 optimizer is VIRTUAL: nothing polls it and it has no
+      // endpoint (`connection_id` null, as for INVERTER_SIMULATE). It still
+      // needs a device id, because what it writes are readings and every
+      // reading is keyed to a device. `unit_id` stays NOT NULL and carries 0 —
+      // NULLs are distinct in `devices_connection_unit_key`, so an endpoint-less
+      // device never collides with the ones on a bus.
       expect(
         await failure(sql`
           insert into devices (plant_id, connection_id, unit_id, slug, name, profile_id, role)
-          values (${plantId}, ${connectionId}, ${unit}, ${`ok-${role}`}, 'n', 'p', ${role})`),
+          values (${plantId}, null, 0, 'optimizer', 'Optimizer', 'sunreye.optimizer',
+                  'optimizer')`),
       ).toBe("");
+    });
+
+    test("an UPDATE may walk an existing device INTO the optimizer role", async () => {
+      // The widening is not insert-only: the constraint is re-checked on update,
+      // and a 1.x database upgraded in place gets there by UPDATE.
+      const row = await one<{ id: number }>(sql`
+        insert into devices (plant_id, connection_id, unit_id, slug, name, profile_id, role)
+        values (${plantId}, ${connectionId}, 14, 'to-optimizer', 'n', 'p', 'meter') returning id`);
+      expect(await failure(sql`update devices set role = 'optimizer' where id = ${row?.id}`)).toBe(
+        "",
+      );
     });
 
     test("an unmodelled role is refused", async () => {

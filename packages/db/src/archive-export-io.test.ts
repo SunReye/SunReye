@@ -33,7 +33,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { MEMBERS, type SourceTier, decodeConfigLog, decodeReading } from "./archive";
-import { REDACTED } from "./archive-config";
+import { REDACTED, parseArchiveConfig } from "./archive-config";
 import { type ExportRequest, type ExportResult, exportArchive } from "./archive-export";
 import { openArchive } from "./archive-file";
 import { bucketWidthMs } from "./replay";
@@ -516,6 +516,47 @@ describe("exportArchive: the configuration it carries", () => {
         },
       ],
     });
+  });
+
+  test("a virtual device round-trips: role 'optimizer' survives export and parse", async () => {
+    // The archive is the only path a device's role travels verbatim, in both
+    // directions — no enum narrows it on the way out or on the way back. A
+    // restore that turned an optimizer into an inverter would put a device with
+    // no registers on the poll roster; one that dropped it would lose every
+    // decision the optimizer ever recorded, because the readings are keyed to it.
+    const { config } = await run({
+      absent: /select min\(/,
+      plants: [{ id: 1, name: "Home", slug: "home" }],
+      devices: [
+        {
+          slug: "optimizer",
+          name: "Optimizer",
+          profile_id: "sunreye.optimizer",
+          serial: null,
+          role: "optimizer",
+          unit_id: 0,
+          connection_id: null,
+          usable_kwh: null,
+        },
+      ],
+    });
+    expect((config.plant as { devices: { role: unknown }[] }).devices[0]?.role).toBe("optimizer");
+    // Through the reader the importer actually uses, from the bytes on disk.
+    const parsed = parseArchiveConfig(config);
+    expect(parsed.plant?.devices).toEqual([
+      {
+        slug: "optimizer",
+        name: "Optimizer",
+        profileId: "sunreye.optimizer",
+        serial: null,
+        role: "optimizer",
+        unitId: 0,
+        connection: null,
+        retiredAt: null,
+        battery: null,
+      },
+    ]);
+    expect(parsed.problems).toEqual([]);
   });
 
   test("a device with no pack and no endpoint carries nulls rather than zeroes", async () => {
