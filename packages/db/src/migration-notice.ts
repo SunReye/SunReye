@@ -12,9 +12,10 @@
  * instance-wide preference in this codebase already has.
  *
  * FLAT and every field optional with a `catch`, for the reason spelled out in
- * `./upgrade-state.ts`: `readSetting` `safeParse`s to the DEFAULT with no log
- * line, so a required field turns one unparseable value into "nothing was ever
- * stored". Here that direction is the safe one anyway — the default SHOWS the
+ * `./upgrade-state.ts`: `readSetting` `safeParse`s to the DEFAULT, so a required
+ * field turns one unparseable value into "nothing was ever stored". It now warns
+ * and quarantines the row it rejected, which makes that recoverable by hand —
+ * not something to rely on. Here that direction is the safe one anyway — the default SHOWS the
  * banner — and it stays flat so it cannot become the other kind of accident.
  */
 

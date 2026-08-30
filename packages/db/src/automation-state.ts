@@ -28,9 +28,9 @@ export const AUTOMATION_STATE_KEY = "automationState";
  * keeps the parse **total**: every row written before EV pull-in existed holds a
  * number and still parses unchanged. Turning this record into an object with two
  * sub-maps would have been cleaner to read and catastrophic in practice: every
- * existing row would fail validation, `readSetting` would silently substitute
- * the default, and a held charge-current register would lose the user's original
- * value with no way to restore it.
+ * existing row would fail validation, `readSetting` would substitute the default,
+ * and a held charge-current register would lose the user's original value — only
+ * recoverable by hand, out of the `<key>:rejected` quarantine row.
  */
 const automationSnapshotSchema = z.object({
   previousValue: z.union([z.number(), z.string()]),
