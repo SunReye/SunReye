@@ -141,9 +141,32 @@ jobs:
                     CASE WHEN m = 'pv.power' THEN random()*5000 ELSE 230 + random() END
              FROM generate_series(1, 400000, 3) i,
                   unnest(ARRAY['pv.power','ac.l1.voltage','settings.workmode']) m"
+          # The published release under test is running its own refresh policies
+          # while this step runs, so a manual refresh can lose a race:
+          #   ERROR: could not refresh continuous aggregate "daily_rollups" due
+          #          to a concurrent refresh
+          # That is transient — the policy holding the window finishes in
+          # seconds — so it is retried rather than swallowed. Swallowing would
+          # leave the aggregate unmaterialized and make every fingerprint below
+          # a comparison of two empty sets, which is the failure mode this seed
+          # exists to prevent. Any other error still fails immediately.
+          refresh_view() {
+            for attempt in 1 2 3 4 5 6; do
+              if out=$(docker compose exec -T postgres psql -U postgres -d SunReye -v ON_ERROR_STOP=1 \
+                         -c "CALL refresh_continuous_aggregate('$1', NULL, NULL);" 2>&1); then
+                return 0
+              fi
+              printf '%s\n' "$out"
+              case "$out" in
+                *"concurrent refresh"*) echo "retrying $1 (attempt $attempt)"; sleep 5 ;;
+                *) return 1 ;;
+              esac
+            done
+            echo "$1 never refreshed: a concurrent refresh held it for 30s"
+            return 1
+          }
           for view in minute_rollups hourly_rollups daily_rollups; do
-            docker compose exec -T postgres psql -U postgres -d SunReye -c \
-              "CALL refresh_continuous_aggregate('$view', NULL, NULL);"
+            refresh_view "$view"
           done
           # Compress only what is not compressed already, rather than calling
           # `compress_chunk(..., if_not_compressed => true)` over everything.
