@@ -2,7 +2,7 @@
 
 ## [unreleased]
 
-Unreleased work on `dev` since 1.2.0, shipped in `beta.20260830-f4e2551`.
+Unreleased work on `dev` since 1.2.0, shipped in `beta.20260830-7996531`.
 
 
 ### ⚠ BREAKING CHANGES
@@ -150,6 +150,7 @@ Unreleased work on `dev` since 1.2.0, shipped in `beta.20260830-f4e2551`.
 
 ### Bug Fixes
 
+* **ci:** upgrade from the newest release OLDER than the one under test ([9aacc9b](https://github.com/SunReye/SunReye/commit/9aacc9b11781ceef4b2f28e959f3b1d232a52590))
 * **ci:** retry the upgrade seed's aggregate refresh when a policy holds it ([2943d3d](https://github.com/SunReye/SunReye/commit/2943d3d0e41388ad57a935606fb3863ba0c8bb03))
 * **ci:** make the upgrade job's seed step survive a lost compression race ([83a8136](https://github.com/SunReye/SunReye/commit/83a8136a9d1a82cabddbfa76696fb42d6399ddcd))
 * **scripts:** make the anonymous sweep actually ask the write surface's gates ([096cfa5](https://github.com/SunReye/SunReye/commit/096cfa5719e4b53c5027544511024bcb31f6940a))
