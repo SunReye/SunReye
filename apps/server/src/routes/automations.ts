@@ -1,11 +1,6 @@
 import { automationConfigSchema } from "@SunReye/db/automation-config";
 import { Elysia, t } from "elysia";
-import {
-  automationHistory,
-  automationPlan,
-  automationStatus,
-  applyAutomationConfig,
-} from "../automation/automation";
+import { automationPlan, automationStatus, applyAutomationConfig } from "../automation/automation";
 import { getAutomationConfig, setAutomationConfig } from "../settings/automation-settings";
 import { deviceRegistry } from "../devices/registry-instance";
 import { validateAutomationEnable } from "../automation/peak-shaving";
@@ -48,8 +43,15 @@ export const automationRoutes = new Elysia({ name: "automation-routes" })
   )
   // Live engine state for the automations tab (poll-friendly, in-memory only).
   .get("/api/automations/status", { requireAdmin: true }, () => automationStatus())
-  // Rolling decision history behind the automation charts; also in-memory only,
-  // so it starts empty after a restart and needs no retention policy.
-  .get("/api/automations/history", { requireAdmin: true }, () => automationHistory())
+  // There is deliberately NO `/api/automations/history` any more (#172). The
+  // optimizer is a device, its decisions are rows in `metrics_raw` keyed to the
+  // slug `optimizer`, and `GET /api/history` and `GET /api/history/rollup`
+  // answer for it exactly as they do for an inverter — with rollups, CSV export,
+  // custom charts, an archive round trip, and a history that survives a restart.
+  // The endpoint it replaced could offer none of those: it read a 2 880-slot
+  // in-memory ring.
+  //
   // Forward projection of the rest of today (charge windows + SOC trajectory).
+  // This one STAYS: it is a forecast, not a measurement, and writing the future
+  // into a hypertable would be a lie about what was observed.
   .get("/api/automations/plan", { requireAdmin: true }, () => automationPlan());

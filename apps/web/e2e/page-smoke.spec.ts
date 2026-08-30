@@ -96,7 +96,9 @@
  *   - `/#/automations/peak-shaving` asserted the form switch only, while the
  *     decision charts under it were drawing zero rows off a fixture whose
  *     `history` was not `DecisionPoint`-shaped. It now asserts both plots
- *     mounted.
+ *     mounted — and since #172 those plots come from the optimizer's stored
+ *     series rather than from the socket frame, so this also catches a page
+ *     that never asked the read path for them.
  *
  * The absent-payload half of those questions — what the page does when weather,
  * prices or EVCC are switched OFF — is `e2e/payload-states.spec.ts`, because
@@ -304,10 +306,10 @@ const ROUTES: readonly SmokeRoute[] = [
     surface: async (page) => {
       await expect(page.getByRole("link", { name: "All automations" })).toBeVisible();
       await switchNamed(page, "Enable peak shaving");
-      // The decision charts are the stream's payload rendered. `toDecisionRows`
-      // windows the ring off `newest.t`, so a history whose points are not
-      // `DecisionPoint`s yields zero rows and this section shows its empty
-      // state instead — which is exactly what the fixture used to produce.
+      // The decision charts are the OPTIMIZER'S STORED SERIES rendered — read
+      // from `/api/history/rollup` under the `optimizer` slug, not from the
+      // socket frame. A page that never issued that request, or issued it
+      // without the slug, shows this section's empty state instead.
       const charts = sectionNamed(page, "Decision history");
       await expect(charts.getByText("Nothing recorded yet", { exact: false })).toBeHidden();
       // Both plots MOUNTED, not both labels present: the labels are rendered by

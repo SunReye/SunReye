@@ -1,40 +1,64 @@
 import { describe, expect, test } from "bun:test";
-import type { DecisionPoint } from "$lib/automations";
-import {
-  DECISION_WINDOWS,
-  MAX_PLOT_POINTS,
-  hasLoad,
-  hasRegister,
-  toDecisionRows,
-} from "./decision-series";
+import { MAX_PLOT_POINTS } from "$lib/history/series";
+import { type DecisionSeries, hasLoad, hasRegister, toDecisionRows } from "./decision-series";
 
 const T0 = Date.parse("2026-07-27T12:00:00Z");
 
-const point = (over: Partial<DecisionPoint> = {}): DecisionPoint => ({
-  t: T0,
-  shadow: false,
-  pvW: 8000,
-  loadW: 1000,
-  evChargeW: null,
-  localSinkW: 1000,
-  thresholdW: 5500,
-  targetA: 20,
-  liveA: 20,
-  batteryV: 50,
-  chargeW: null,
-  exportW: null,
-  socPct: 50,
-  ...over,
-});
+/** An empty series — the shape a plant that meters nothing hands over. */
+const none = (): Map<number, number> => new Map();
+
+/** One series from `[t, value]` pairs. */
+const series = (...points: [number, number][]): Map<number, number> => new Map(points);
+
+/**
+ * One bucket's worth of every series, at `t`. Minute buckets are the join key,
+ * so every series in a row shares one timestamp by construction.
+ */
+function bucket(t: number, over: Partial<Record<keyof DecisionSeries, number | null>> = {}) {
+  const values: Record<string, number | null> = {
+    targetA: 20,
+    appliedA: 20,
+    thresholdW: 5500,
+    localSinkW: 1000,
+    // 3 == "active" in the frozen run-state vocabulary.
+    state: 3,
+    pvW: 8000,
+    loadW: 1000,
+    batteryV: 50,
+    batteryW: null,
+    gridW: null,
+    ...over,
+  };
+  return Object.fromEntries(
+    Object.entries(values).map(([name, value]) => [
+      name,
+      value === null ? none() : series([t, value]),
+    ]),
+  ) as DecisionSeries;
+}
+
+const empty = (): DecisionSeries =>
+  bucket(0, {
+    targetA: null,
+    appliedA: null,
+    thresholdW: null,
+    localSinkW: null,
+    state: null,
+    pvW: null,
+    loadW: null,
+    batteryV: null,
+    batteryW: null,
+    gridW: null,
+  });
 
 describe("toDecisionRows", () => {
-  test("no points → nothing to plot", () => {
-    expect(toDecisionRows([], DECISION_WINDOWS["24h"])).toEqual([]);
+  test("no decisions → nothing to plot", () => {
+    expect(toDecisionRows(empty())).toEqual([]);
   });
 
   test("scales to kW and derives the export the decision implies", () => {
     // 8 kW PV − 1 kW local sink − (20 A × 50 V = 1 kW) charging → 6 kW exported.
-    const [row] = toDecisionRows([point()], DECISION_WINDOWS["1h"]);
+    const [row] = toDecisionRows(bucket(T0));
     expect(row).toMatchObject({
       pvKw: 8,
       loadKw: 1,
@@ -49,50 +73,99 @@ describe("toDecisionRows", () => {
   });
 
   test("never reports a negative export", () => {
-    const [row] = toDecisionRows(
-      [point({ pvW: 1000, localSinkW: 1500, targetA: 20 })],
-      DECISION_WINDOWS["1h"],
-    );
+    const [row] = toDecisionRows(bucket(T0, { pvW: 1000, localSinkW: 1500 }));
     expect(row?.exportKw).toBe(0);
   });
 
-  test("unknown load plots as zero, measured readings stay null", () => {
-    const [row] = toDecisionRows([point({ loadW: null })], DECISION_WINDOWS["1h"]);
+  test("a plant that meters no house load plots zero, and no measured tooltip", () => {
+    const [row] = toDecisionRows(bucket(T0, { loadW: null }));
     expect(row).toMatchObject({ loadKw: 0, measuredExportKw: null, measuredChargeKw: null });
   });
 
-  test("measured readings ride along for the tooltip", () => {
-    const [row] = toDecisionRows([point({ exportW: 4200, chargeW: 900 })], DECISION_WINDOWS["1h"]);
+  test("measured readings ride along for the tooltip, on the power-flow signs", () => {
+    // `grid.power` > 0 imports and `battery.power` > 0 discharges, so exporting
+    // and charging are the negative halves.
+    const [row] = toDecisionRows(bucket(T0, { gridW: -4200, batteryW: -900 }));
     expect(row).toMatchObject({ measuredExportKw: 4.2, measuredChargeKw: 0.9 });
   });
 
-  test("the window is anchored to the newest sample", () => {
-    const points = [
-      point({ t: T0 - 3 * 3600_000 }), // 3 h old — outside a 1 h window
-      point({ t: T0 - 600_000 }),
-      point({ t: T0 }),
-    ];
-    const rows = toDecisionRows(points, DECISION_WINDOWS["1h"]);
-    expect(rows.map((r) => r.t.getTime())).toEqual([T0 - 600_000, T0]);
+  test("importing and discharging are not negative export and charge", () => {
+    const [row] = toDecisionRows(bucket(T0, { gridW: 2000, batteryW: 1500 }));
+    expect(row).toMatchObject({ measuredExportKw: 0, measuredChargeKw: 0 });
   });
 
-  test("long windows are strided down but keep the newest sample", () => {
+  test("a plant that meters no pack voltage cannot convert the ceiling to power", () => {
+    // …and says so with a flat zero rather than inventing a nominal voltage.
+    const [row] = toDecisionRows(bucket(T0, { batteryV: null }));
+    expect(row).toMatchObject({ batteryKw: 0, targetA: 20 });
+  });
+
+  test("a shadow bucket is marked so the chart can label it", () => {
+    // 4 == "shadow", 5 == "simulating": both write nothing to the register.
+    expect(toDecisionRows(bucket(T0, { state: 4 }))[0]?.shadow).toBe(true);
+    expect(toDecisionRows(bucket(T0, { state: 5 }))[0]?.shadow).toBe(true);
+    // A bucket holding one of each averages between them, and is still shadow.
+    expect(toDecisionRows(bucket(T0, { state: 4.5 }))[0]?.shadow).toBe(true);
+  });
+
+  test("rows are anchored on the DECISION, not on what the plant measured", () => {
+    // A bucket the optimizer said nothing in is not a decision: plotting the
+    // plant's readings there would draw a ceiling it never asked for.
+    const rows = toDecisionRows({
+      ...bucket(T0),
+      targetA: series([T0, 20]),
+      thresholdW: series([T0, 5500]),
+      pvW: series([T0 - 60_000, 9000], [T0, 8000], [T0 + 60_000, 7000]),
+    });
+    expect(rows.map((r) => r.t.getTime())).toEqual([T0]);
+  });
+
+  test("a bucket the plant reported nothing in still plots the decision", () => {
+    const rows = toDecisionRows({
+      ...bucket(T0),
+      targetA: series([T0, 20], [T0 + 60_000, 12]),
+      thresholdW: series([T0, 5500]),
+    });
+    expect(rows.map((r) => [r.t.getTime(), r.targetA])).toEqual([
+      [T0, 20],
+      [T0 + 60_000, 12],
+    ]);
+    // Nothing measured is zero on the power plane, never a carried-forward value.
+    expect(rows[1]?.pvKw).toBe(0);
+  });
+
+  test("a decision with no ceiling of its own still plots its threshold", () => {
+    // The two are separate series and either may be the one that changed.
+    const rows = toDecisionRows({ ...empty(), thresholdW: series([T0, 4000]) });
+    expect(rows.map((r) => [r.t.getTime(), r.thresholdKw, r.targetA])).toEqual([[T0, 4, 0]]);
+  });
+
+  test("a long window is strided down but keeps the newest sample", () => {
     const count = MAX_PLOT_POINTS * 3 + 7;
-    const points = Array.from({ length: count }, (_, i) =>
-      point({ t: T0 - (count - 1 - i) * 30_000 }),
+    const targetA = new Map(
+      Array.from(
+        { length: count },
+        (_, i) => [T0 - (count - 1 - i) * 60_000, i] as [number, number],
+      ),
     );
-    const rows = toDecisionRows(points, DECISION_WINDOWS["24h"]);
+    const rows = toDecisionRows({ ...empty(), targetA });
     expect(rows.length).toBeLessThanOrEqual(MAX_PLOT_POINTS + 1);
     expect(rows.at(-1)?.t.getTime()).toBe(T0);
-    expect(rows[0]?.t.getTime()).toBe(points[0]?.t);
+    expect(rows[0]?.t.getTime()).toBe(T0 - (count - 1) * 60_000);
   });
 });
 
 describe("series availability", () => {
-  test("a series is only plotted when some point carries its reading", () => {
-    expect(hasLoad([point({ loadW: null })])).toBe(false);
-    expect(hasLoad([point({ loadW: null }), point({ loadW: 800 })])).toBe(true);
-    expect(hasRegister([point({ liveA: null })])).toBe(false);
-    expect(hasRegister([point()])).toBe(true);
+  test("a series is only plotted when the rows carry its reading", () => {
+    expect(hasLoad(toDecisionRows(bucket(T0, { loadW: null })))).toBe(false);
+    expect(hasLoad(toDecisionRows(bucket(T0)))).toBe(true);
+    expect(hasRegister(toDecisionRows(bucket(T0, { appliedA: null })))).toBe(false);
+    expect(hasRegister(toDecisionRows(bucket(T0)))).toBe(true);
+  });
+
+  test("a written zero is still a written value", () => {
+    // `0 A` is the automation holding the battery off, which is a decision it
+    // made — not an absence of one.
+    expect(hasRegister(toDecisionRows(bucket(T0, { appliedA: 0 })))).toBe(true);
   });
 });

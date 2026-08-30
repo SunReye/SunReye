@@ -28,13 +28,10 @@ import {
 import type { SpotPriceConfig } from "@SunReye/db/spot-price-config";
 import type { ZodType } from "zod";
 import type {
-  AutomationHistoryView,
   AutomationPlanView,
   AutomationStatusView,
   AutomationStreamMessage,
-  DecisionPoint,
 } from "@SunReye/contracts/automation";
-import { HISTORY_CAPACITY } from "./automation-history";
 import type { SpotSlice } from "@SunReye/contracts/prices";
 import { log } from "../shared/logging";
 import type { Streams } from "../shared/streams";
@@ -55,8 +52,6 @@ let timer: ReturnType<typeof setTimeout> | null = null;
 let tickMs = DEFAULT_TICK_MS;
 /** The production config reader, kept for the cadence re-read each tick. */
 let readConfig: (() => Promise<AutomationConfig>) | null = null;
-/** `t` of the last decision point already streamed, for the delta framing. */
-let streamedT: number | null = null;
 /**
  * The read-side bus the tick outcome is emitted onto, injected by
  * {@link startAutomations}. Null until the loop is started (and in the
@@ -95,29 +90,16 @@ async function tickAndBroadcast(): Promise<void> {
     // The config read above is an await; a stop (or restart) may have run in
     // between, so re-check we are still the live engine before emitting.
     if (engine !== eng) return;
-    // Checked before `nextStreamPoint`, which *consumes* the delta: marking a
-    // point streamed that was never sent would lose it, since a later tick only
-    // ever streams the newest one.
+    // The plan projection below re-models the rest of the day and is by far the
+    // most expensive thing on this path, so it is skipped when nobody is there
+    // to receive it.
     if (!hasAudience()) return;
-    streams?.emit("automations", {
-      tickMs,
-      status: eng.status(),
-      point: nextStreamPoint(eng),
-      plan: await eng.plan(),
-    });
+    streams?.emit("automations", { tickMs, status: eng.status(), plan: await eng.plan() });
   } catch (error) {
     // A failed broadcast (config read, plan projection) must never kill the
     // loop — the tick itself already ran and reported into the status.
     logger.warn("automation stream broadcast failed: {error}", { error });
   }
-}
-
-/** The newest decision point not yet streamed, marking it streamed; else null. */
-function nextStreamPoint(eng: PeakShavingEngine): DecisionPoint | null {
-  const latest = eng.history().at(-1) ?? null;
-  if (!latest || latest.t === streamedT) return null;
-  streamedT = latest.t;
-  return latest;
 }
 
 /** (Re)arm the loop timer at the current cadence. */
@@ -142,6 +124,12 @@ export interface PlantDeps {
   /** The register bounds seam; see {@link AutomationIO.constraint}. */
   constraint: AutomationIO["constraint"];
   write: (key: string, value: number) => Promise<void>;
+  /**
+   * Where a decided tick is STORED — the runtime's optimizer registrar, which
+   * ends at the same `createDeviceWriter` every other reading goes through
+   * (#172). Omitted, the loop still steers the plant and records nothing.
+   */
+  recordDecision?: AutomationIO["recordDecision"];
 }
 
 /**
@@ -218,6 +206,7 @@ export function composeAutomationIO(deps: PlantDeps, mods: AutomationModules): A
     device: deps.device,
     constraint: deps.constraint,
     write: deps.write,
+    ...(deps.recordDecision ? { recordDecision: deps.recordDecision } : {}),
     getConfig: mods.getAutomationConfig,
     getWeather: mods.getWeatherConfig,
     getPackNominalV: mods.packNominalV,
@@ -334,7 +323,6 @@ export async function stopAutomations(): Promise<void> {
   timer = null;
   engine = null;
   readConfig = null;
-  streamedT = null;
   // Released with the loop: the predicate closes over the server that owned it.
   hasAudience = () => true;
 }
@@ -351,16 +339,20 @@ export async function applyAutomationConfig(): Promise<void> {
   scheduleNext();
 }
 
+/**
+ * There is no `automationHistory()` any more (#172).
+ *
+ * What each tick decided is a READING now: it goes through the runtime's write
+ * seam into `metrics_raw` under the device slug `optimizer`, and `GET
+ * /api/history` and `GET /api/history/rollup` answer for it like they do for any
+ * other device. The function this replaced read a 2 880-slot ring — 24 hours,
+ * gone on restart, invisible to rollups, statistics, CSV export and the archive.
+ */
 /** Live status for `GET /api/automations/status` (tolerates not-started boot). */
 export function automationStatus(): AutomationStatusView {
   return { peakShaving: engine?.status() ?? initialStatus() };
 }
 
-/**
- * Rolling decision history for `GET /api/automations/history` — what each tick
- * decided and what the plant did with it, for the automation charts. In-memory
- * only (see ./automation-history), so it is empty right after a restart.
- */
 /**
  * Projection of the rest of today for `GET /api/automations/plan`: when the
  * automation expects to charge and what SOC it expects to reach. Computed on
@@ -371,25 +363,21 @@ export async function automationPlan(): Promise<AutomationPlanView> {
   return { peakShaving: (await engine?.plan()) ?? null };
 }
 
-export function automationHistory(): AutomationHistoryView {
-  return {
-    tickMs,
-    capacity: HISTORY_CAPACITY,
-    peakShaving: engine?.history() ?? [],
-  };
-}
-
 /**
- * The subscribe-time frame for a new `automations` subscriber: current status,
- * the full decision ring, and the projection — everything the page needs to
+ * The subscribe-time frame for a new `automations` subscriber: current status
+ * and the projection — everything about the LIVE engine that a page needs to
  * paint before the next tick lands. Tolerates not-started boot.
+ *
+ * It no longer carries a decision backfill, and there is no longer a variant to
+ * tell apart: what each tick decided is history in `metrics_raw`, fetched over
+ * `GET /api/history/rollup` under the `optimizer` slug like every other device's
+ * series. This topic carries only what a hypertable must never hold — live
+ * engine state (error strings, blockers, a countdown) and a FORECAST.
  */
 export async function automationStreamSnapshot(): Promise<AutomationStreamMessage> {
   return {
     tickMs,
     status: engine?.status() ?? initialStatus(),
-    point: null,
-    history: engine?.history() ?? [],
     plan: (await engine?.plan()) ?? null,
   };
 }
