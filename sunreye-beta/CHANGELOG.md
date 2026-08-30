@@ -2,7 +2,7 @@
 
 ## [unreleased]
 
-Unreleased work on `dev` since 1.2.0, shipped in `beta.20260830-60996a8`.
+Unreleased work on `dev` since 1.2.0, shipped in `beta.20260830-f4e2551`.
 
 
 ### ⚠ BREAKING CHANGES
@@ -467,6 +467,7 @@ Unreleased work on `dev` since 1.2.0, shipped in `beta.20260830-60996a8`.
 
 ### Miscellaneous Chores
 
+* **release:** state the schemaVersion break, and cut profile-sdk 3.0.0 ([b8ff1e6](https://github.com/SunReye/SunReye/commit/b8ff1e683a5f78b90d7eb97d68af8a3fcf7987fd))
 * **server:** annotate the legacy-retirement exports for fallow ([5fc5368](https://github.com/SunReye/SunReye/commit/5fc5368abd159c4df852630a8c6d7cd21ddabb71))
 * **ci:** pin the weighted-rollups gate to bun 1.4.0 ([0cb8712](https://github.com/SunReye/SunReye/commit/0cb87122eda470354b6dc5342c4961257b59fa40))
 * bun 1.3.13 -> 1.4.0 ([c7ecf18](https://github.com/SunReye/SunReye/commit/c7ecf186f9d9aa4b597443b4a3bc168eb1b96925))
