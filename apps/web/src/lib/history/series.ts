@@ -18,9 +18,19 @@ export interface SeriesWindow {
   bucket?: SeriesBucket;
 }
 
+/** Which per-bucket aggregate of a rollup a caller wants. */
+export type SeriesAggregate = "avg" | "min" | "max";
+
 /** One series of one device: what the caller names, resolved by the server. */
 export interface SeriesRef {
   metric: string;
+  /**
+   * Which aggregate of each bucket to keep. `avg` (the default) is what a
+   * measurement wants; an ENUM ordinal has no meaningful average and has to be
+   * read through `min`/`max` instead — see `isShadow` in
+   * `$lib/components/automations/decision-series.ts`.
+   */
+  agg?: SeriesAggregate;
   /**
    * `devices.slug`. Omitted, the server answers for the plant's default source —
    * which is what an inverter metric wants and what an `optimizer.*` metric must

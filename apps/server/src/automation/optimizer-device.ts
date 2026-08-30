@@ -57,6 +57,13 @@
 
 import type { PeakShavingMode, PeakShavingStatus } from "@SunReye/contracts/automation";
 import type { DeviceMetric } from "@SunReye/inverter-core";
+// The `/optimizer` SUBPATH, not the barrel: the web chart reads these same
+// ordinals back, and the barrel drags `modbus-serial` into whatever imports it.
+import {
+  OPTIMIZER_MODES,
+  OPTIMIZER_PRICE_REGIMES,
+  OPTIMIZER_RUN_STATES,
+} from "@SunReye/inverter-core/optimizer";
 
 import type { DeviceSample } from "../inverter/device-writer";
 
@@ -83,38 +90,19 @@ export const OPTIMIZER_PROFILE = "sunreye.optimizer";
  */
 export const OPTIMIZER_DEVICE_ID = "optimizer";
 
-/**
- * The run states, as the integers stored under `optimizer.state`.
+/*
+ * The stored vocabularies this writes by — `OPTIMIZER_RUN_STATES`,
+ * `OPTIMIZER_PRICE_REGIMES`, `OPTIMIZER_MODES` — are FROZEN BY POSITION and live
+ * in `@SunReye/inverter-core/optimizer`, imported above.
  *
- * FROZEN BY POSITION. `metrics_raw` holds an int for five years and this array
- * is the only thing that can say what it meant; reordering it silently re-labels
- * every row ever written. Append at the end, never insert, never reorder — the
- * same rule an enum column in any database follows.
+ * Not here, and not re-exported from here, because they are not only this side's:
+ * the web chart reads the same ordinals back out of the rollup, and the hand copy
+ * it used to keep would have let a state inserted on this side silently re-label
+ * five years of stored rows over there. `inverter-core` is the one value-carrying
+ * package both zones may import (`@SunReye/contracts` is type-only by invariant),
+ * and the `/optimizer` subpath keeps its Node-only transports out of the browser
+ * bundle.
  */
-// fallow-ignore-next-line unused-export -- the frozen vocabulary is what optimizer-device.test.ts asserts; test files aren't traced as consumers
-export const OPTIMIZER_RUN_STATES = [
-  "disabled",
-  "blocked",
-  "idle",
-  "active",
-  "shadow",
-  "simulating",
-  "stale",
-] as const;
-
-/** The price regimes, as the integers stored under `optimizer.price.regime`. Frozen by position. */
-// fallow-ignore-next-line unused-export -- as above: the ordering IS the contract, and only its test names it
-export const OPTIMIZER_PRICE_REGIMES = [
-  "none",
-  "waiting",
-  "pre-shape",
-  "spend-down",
-  "absorb",
-] as const;
-
-/** The modes, as the integers stored under `optimizer.mode`. Frozen by position. */
-// fallow-ignore-next-line unused-export -- as above
-export const OPTIMIZER_MODES = ["maximize-exports", "grid-friendly"] as const;
 
 /** A decision output: read-only, keyed by its own role, in the optimizer's group. */
 function decided(

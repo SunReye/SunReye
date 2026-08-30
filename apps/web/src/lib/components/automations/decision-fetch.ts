@@ -38,7 +38,12 @@ export async function fetchDecisionSeries(from: Date, to: Date): Promise<Decisio
       appliedA: decisionRef("optimizer.applied.current"),
       thresholdW: decisionRef("optimizer.threshold.power"),
       localSinkW: decisionRef("optimizer.local.sink.power"),
-      state: decisionRef("optimizer.state"),
+      // ONE metric, read as both extremes of each bucket: the mean of an enum
+      // ordinal is not an enum (see `./decision-series.ts`'s `isShadow`). Both
+      // aliases name the same metric on the same device, so `fetchSeriesSet`
+      // answers them out of a single request.
+      stateMin: { ...decisionRef("optimizer.state"), agg: "min" },
+      stateMax: { ...decisionRef("optimizer.state"), agg: "max" },
       pvW: roleRef("pv.total.power"),
       loadW: roleRef("load.power"),
       batteryV: roleRef("battery.voltage"),

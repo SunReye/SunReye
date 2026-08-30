@@ -1,8 +1,17 @@
 import { describe, expect, test } from "bun:test";
+import { OPTIMIZER_RUN_STATES } from "@SunReye/inverter-core/optimizer";
 import { MAX_PLOT_POINTS } from "$lib/history/series";
 import { type DecisionSeries, hasLoad, hasRegister, toDecisionRows } from "./decision-series";
 
 const T0 = Date.parse("2026-07-27T12:00:00Z");
+
+/** Run-state ordinals by name, straight out of the vocabulary both sides share. */
+const ORDINAL = {
+  active: OPTIMIZER_RUN_STATES.indexOf("active"),
+  shadow: OPTIMIZER_RUN_STATES.indexOf("shadow"),
+  simulating: OPTIMIZER_RUN_STATES.indexOf("simulating"),
+  stale: OPTIMIZER_RUN_STATES.indexOf("stale"),
+};
 
 /** An empty series — the shape a plant that meters nothing hands over. */
 const none = (): Map<number, number> => new Map();
@@ -20,8 +29,10 @@ function bucket(t: number, over: Partial<Record<keyof DecisionSeries, number | n
     appliedA: 20,
     thresholdW: 5500,
     localSinkW: 1000,
-    // 3 == "active" in the frozen run-state vocabulary.
-    state: 3,
+    // The ordinals come from the SHARED frozen vocabulary, never a literal: the
+    // number in the database means whatever that list says at that position.
+    stateMin: ORDINAL.active,
+    stateMax: ORDINAL.active,
     pvW: 8000,
     loadW: 1000,
     batteryV: 50,
@@ -43,7 +54,8 @@ const empty = (): DecisionSeries =>
     appliedA: null,
     thresholdW: null,
     localSinkW: null,
-    state: null,
+    stateMin: null,
+    stateMax: null,
     pvW: null,
     loadW: null,
     batteryV: null,
@@ -101,11 +113,32 @@ describe("toDecisionRows", () => {
   });
 
   test("a shadow bucket is marked so the chart can label it", () => {
-    // 4 == "shadow", 5 == "simulating": both write nothing to the register.
-    expect(toDecisionRows(bucket(T0, { state: 4 }))[0]?.shadow).toBe(true);
-    expect(toDecisionRows(bucket(T0, { state: 5 }))[0]?.shadow).toBe(true);
-    // A bucket holding one of each averages between them, and is still shadow.
-    expect(toDecisionRows(bucket(T0, { state: 4.5 }))[0]?.shadow).toBe(true);
+    // `shadow` and `simulating` both write nothing to the register, so a bucket
+    // that held only those two is a bucket the automation did not touch.
+    const held = (min: number, max: number) =>
+      toDecisionRows(bucket(T0, { stateMin: min, stateMax: max }))[0]?.shadow;
+    expect(held(ORDINAL.shadow, ORDINAL.shadow)).toBe(true);
+    expect(held(ORDINAL.simulating, ORDINAL.simulating)).toBe(true);
+    expect(held(ORDINAL.shadow, ORDINAL.simulating)).toBe(true);
+  });
+
+  test("a bucket that STEERED is not shadow, however its ordinals average out", () => {
+    // The defect this closes: read as a time-weighted MEAN, a minute holding
+    // `active` (3) and `stale` (6) averages to 4.5 — squarely inside
+    // shadow…simulating — and the chart told the operator the register had not
+    // been touched in a minute where it had. The bucket's EXTREMES answer it
+    // exactly: the register was written unless every sample in the bucket was
+    // one of the two states that write nothing.
+    const held = (min: number, max: number) =>
+      toDecisionRows(bucket(T0, { stateMin: min, stateMax: max }))[0]?.shadow;
+    expect(held(ORDINAL.active, ORDINAL.stale)).toBe(false);
+    // And the mixed cases either side of the range, for the same reason.
+    expect(held(ORDINAL.active, ORDINAL.shadow)).toBe(false);
+    expect(held(ORDINAL.simulating, ORDINAL.stale)).toBe(false);
+  });
+
+  test("a bucket the optimizer reported no state in is not called shadow", () => {
+    expect(toDecisionRows(bucket(T0, { stateMin: null, stateMax: null }))[0]?.shadow).toBe(false);
   });
 
   test("rows are anchored on the DECISION, not on what the plant measured", () => {

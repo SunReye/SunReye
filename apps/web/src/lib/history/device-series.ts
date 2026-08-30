@@ -28,7 +28,7 @@
 
 import { api } from "$lib/api";
 import { payloadOrNull } from "$lib/api-payload";
-import type { MetricSeries, SeriesRef, SeriesWindow } from "./series";
+import type { MetricSeries, SeriesAggregate, SeriesRef, SeriesWindow } from "./series";
 
 /**
  * Row cap per series. A day of minute buckets is 1 440, so this admits a full
@@ -36,13 +36,17 @@ import type { MetricSeries, SeriesRef, SeriesWindow } from "./series";
  */
 const SERIES_LIMIT = 1441;
 
+/** One bucket as the rollup answers it: every aggregate, in one row. */
+type RollupPoint = { time: string; avg: number; min: number; max: number };
+
 /**
- * Fetch one series. An empty map on any failure — a chart draws nothing, loudly.
+ * Fetch one metric's buckets. An empty list on any failure — a chart draws
+ * nothing, loudly.
  *
  * Not exported: every caller wants several series over one window, and reaching
  * for this directly is how a page ends up issuing them in sequence.
  */
-async function fetchMetricSeries(ref: SeriesRef, window: SeriesWindow): Promise<MetricSeries> {
+async function fetchRollup(ref: SeriesRef, window: SeriesWindow): Promise<RollupPoint[]> {
   const { data } = await api.api.history.rollup.get({
     query: {
       metric: ref.metric,
@@ -53,8 +57,34 @@ async function fetchMetricSeries(ref: SeriesRef, window: SeriesWindow): Promise<
       limit: SERIES_LIMIT,
     },
   });
-  const points = payloadOrNull<{ time: string; avg: number }[]>(data) ?? [];
-  return new Map(points.map((p) => [Date.parse(p.time), p.avg]));
+  return payloadOrNull<RollupPoint[]>(data) ?? [];
+}
+
+/** One aggregate of one metric's buckets, as the series a builder joins on. */
+function seriesOf(points: readonly RollupPoint[], agg: SeriesAggregate): MetricSeries {
+  return new Map(points.map((p) => [Date.parse(p.time), p[agg]]));
+}
+
+/**
+ * What identifies a REQUEST, as opposed to a series.
+ *
+ * The window is shared by every ref in one call, so the metric and the device
+ * are the whole of it. Two aliases naming the same metric on the same device are
+ * two views of ONE response — the run state read as both its `min` and its `max`
+ * — and issuing that read twice would double a chart's refresh cost for numbers
+ * the server already sent in the same row.
+ */
+const requestKey = (ref: SeriesRef): string => `${ref.inverterId ?? ""}|${ref.metric}`;
+
+/**
+ * One alias's series, out of what the requests answered.
+ *
+ * A `null` ref is a series this plant does not have and answers with an empty
+ * map, so a caller never has to tell "absent" from "not asked for".
+ */
+function seriesFor(ref: SeriesRef | null, answered: ReadonlyMap<string, RollupPoint[]>) {
+  if (!ref) return new Map<number, number>();
+  return seriesOf(answered.get(requestKey(ref)) ?? [], ref.agg ?? "avg");
 }
 
 /**
@@ -71,11 +101,21 @@ export async function fetchSeriesSet<K extends string>(
   window: SeriesWindow,
 ): Promise<Record<K, MetricSeries>> {
   const names = Object.keys(refs) as K[];
-  const series = await Promise.all(
-    names.map((name) => {
-      const ref = refs[name];
-      return ref ? fetchMetricSeries(ref, window) : Promise.resolve(new Map<number, number>());
-    }),
+  // One request per (metric, device), however many aliases read it: the rollup
+  // answers with all three aggregates in the same row, so two aliases over one
+  // metric are two reads of one response rather than two round trips.
+  const requests = new Map<string, Promise<RollupPoint[]>>();
+  for (const name of names) {
+    const ref = refs[name];
+    if (!ref) continue;
+    const key = requestKey(ref);
+    if (!requests.has(key)) requests.set(key, fetchRollup(ref, window));
+  }
+  const answered = new Map(
+    await Promise.all([...requests].map(async ([key, points]) => [key, await points] as const)),
   );
-  return Object.fromEntries(names.map((name, i) => [name, series[i]!])) as Record<K, MetricSeries>;
+  return Object.fromEntries(names.map((name) => [name, seriesFor(refs[name], answered)])) as Record<
+    K,
+    MetricSeries
+  >;
 }

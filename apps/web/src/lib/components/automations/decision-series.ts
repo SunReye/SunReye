@@ -30,6 +30,7 @@
  * `apps/web/TESTING.md`.
  */
 
+import { OPTIMIZER_RUN_STATES } from "@SunReye/inverter-core/optimizer";
 import { type MetricSeries, decimate, seriesTimestamps } from "$lib/history/series";
 
 // A type alias, not an interface: the chart takes any `ChartRow` (timestamp plus
@@ -67,26 +68,16 @@ export const DECISION_WINDOWS = {
 export type DecisionWindow = keyof typeof DECISION_WINDOWS;
 
 /**
- * The run states, as the integers the server stores under `optimizer.state`.
+ * The run-state ordinals this reads back, out of the SHARED frozen vocabulary.
  *
- * FROZEN BY POSITION, and the same list `apps/server/src/automation/
- * optimizer-device.ts` writes by. A rollup returns the time-weighted MEAN of a
- * bucket, so a minute holding one shadow tick and one active tick averages to
- * something between them — which is why the only question asked of it here is
- * "was any of this bucket shadow", never "which state exactly".
+ * `@SunReye/inverter-core` is where the list lives, because the server writes
+ * these ordinals (`apps/server/src/automation/optimizer-device.ts`) and this
+ * reads them: the copy that used to sit here would have gone on labelling
+ * `shadow` buckets `simulating` for five years of stored rows the moment a state
+ * was inserted on the other side, silently, with nothing to fail.
  */
-const RUN_STATES = [
-  "disabled",
-  "blocked",
-  "idle",
-  "active",
-  "shadow",
-  "simulating",
-  "stale",
-] as const;
-
-const SHADOW_STATE = RUN_STATES.indexOf("shadow");
-const SIMULATING_STATE = RUN_STATES.indexOf("simulating");
+const SHADOW_STATE = OPTIMIZER_RUN_STATES.indexOf("shadow");
+const SIMULATING_STATE = OPTIMIZER_RUN_STATES.indexOf("simulating");
 
 /** The series one row is assembled from — the optimizer's, plus the plant's. */
 export type DecisionSeries = {
@@ -94,7 +85,12 @@ export type DecisionSeries = {
   appliedA: MetricSeries;
   thresholdW: MetricSeries;
   localSinkW: MetricSeries;
-  state: MetricSeries;
+  /**
+   * `optimizer.state`, as the bucket's LOWEST and HIGHEST ordinal — never its
+   * average. See {@link isShadow}: the mean of an enum is not an enum.
+   */
+  stateMin: MetricSeries;
+  stateMax: MetricSeries;
   pvW: MetricSeries;
   loadW: MetricSeries;
   batteryV: MetricSeries;
@@ -129,14 +125,20 @@ function drawnOff(one: MetricSeries, t: number): number | null {
 }
 
 /**
- * Whether this bucket's run state is one that wrote nothing.
+ * Whether the automation wrote NOTHING to the register anywhere in this bucket.
  *
- * A rollup returns the time-weighted MEAN, so a minute holding one shadow tick
- * and one simulating tick averages between them — hence a range rather than an
- * equality. Both ends mean the register was not touched.
+ * Asked of the bucket's EXTREMES, because the mean of an enum ordinal is not an
+ * enum: read as a time-weighted average, a minute holding `active` (3) and
+ * `stale` (6) came out at 4.5 — squarely inside shadow…simulating — and the
+ * chart told the operator the register had not been moved in a minute where it
+ * had. The rollup already carries `min` and `max` per bucket, so the exact
+ * question is answerable: true only when EVERY sample in the bucket was one of
+ * the two states that write nothing. A bucket that mixes them with a steering
+ * tick is a bucket that steered.
  */
-function isShadow(state: number | null): boolean {
-  return state !== null && state >= SHADOW_STATE && state <= SIMULATING_STATE;
+function isShadow(low: number | null, high: number | null): boolean {
+  if (low === null || high === null) return false;
+  return low >= SHADOW_STATE && high <= SIMULATING_STATE;
 }
 
 /** One bucket of every series, as one plotted row. */
@@ -159,7 +161,7 @@ function decisionRow(series: DecisionSeries, t: number): DecisionRow {
     registerA: at(series.appliedA, t),
     measuredExportKw: drawnOff(series.gridW, t),
     measuredChargeKw: drawnOff(series.batteryW, t),
-    shadow: isShadow(at(series.state, t)),
+    shadow: isShadow(at(series.stateMin, t), at(series.stateMax, t)),
   };
 }
 

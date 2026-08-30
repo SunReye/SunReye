@@ -1,14 +1,16 @@
 import { describe, expect, test } from "bun:test";
 import { ROLE_CATALOG, resolveDeadband, resolveStorage } from "@SunReye/inverter-core";
+// The frozen vocabularies come from the SHARED subpath, not from the module
+// under test: the web chart reads the same ordinals back, and the assertions
+// below are about the list both sides agree on.
+import { OPTIMIZER_PRICE_REGIMES, OPTIMIZER_RUN_STATES } from "@SunReye/inverter-core/optimizer";
 import type { PeakShavingStatus } from "@SunReye/contracts/automation";
 
 import {
   OPTIMIZER_DEVICE_ID,
   OPTIMIZER_INTEGRATION,
   OPTIMIZER_METRICS,
-  OPTIMIZER_PRICE_REGIMES,
   OPTIMIZER_PROFILE,
-  OPTIMIZER_RUN_STATES,
   optimizerDeviceSpec,
   optimizerSample,
 } from "./optimizer-device";
