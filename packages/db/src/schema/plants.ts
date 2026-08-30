@@ -328,7 +328,7 @@ export const devices = pgTable(
     profileId: text("profile_id").notNull(),
     /** Vendor identity where offered (VRM instance, nameplate serial). Never the key. */
     serial: text("serial"),
-    /** `inverter` | `controller` | `meter` | `charger`. */
+    /** `inverter` | `controller` | `meter` | `charger` | `optimizer`. */
     role: text("role").notNull(),
     /**
      * When this device was taken out of service, or null while it is in service.
@@ -377,17 +377,41 @@ export const devices = pgTable(
     uniqueIndex("devices_connection_unit_key").on(t.connectionId, t.unitId),
     index("devices_plant_role_idx").on(t.plantId, t.role),
     /**
-     * The four roles the read layer branches on.
+     * The five roles the read layer branches on.
      *
      * The role is what tells "this device REPORTS the plant total" from "this
      * device is one of the inverters the total is summed FROM" — see the note
-     * above on controllers. A fifth value falls through both arms: the rows are
-     * counted in neither, so a plant quietly loses a device's contribution
-     * instead of failing. Only `'inverter'` is written today (provisioning, the
-     * archive import, the 1.2.0 upgrade); the other three are modelled and are
-     * what a Victron GX or a Sigenergy controller will be written as.
+     * above on controllers.
+     *
+     * THE RULE FOR A VALUE THAT IS NEITHER. A role outside those two arms is
+     * counted in neither, so a plant would quietly lose a device's contribution
+     * instead of failing. `'optimizer'` is that value, and it is admitted here
+     * because it is neither BY CONSTRUCTION: the optimizer is VIRTUAL — a device
+     * row so that the decisions it records have a `device_id`, with no
+     * registers, no endpoint and no unit on a bus. Nothing it writes is a
+     * measurement, so it must never be SUMMED into a plant total and never be
+     * selected as the reporting inverter.
+     *
+     * Every reader enforces that positively (`role = 'inverter'`), and the arms
+     * that match on a slug or a profile id instead — `../plant-repo.ts`'s
+     * `physicalDevices`, applied in `apps/server/src/inverter/provision.ts` and
+     * `.../mqtt-namespace.ts` — exclude it explicitly. A SIXTH value arrives the
+     * same way: name it here, decide which of the two arms it belongs to, and if
+     * it is neither, add it to `VIRTUAL_ROLES` in `../plant-repo.ts` with the
+     * consumer audit that makes "neither" safe. A generic `'virtual'` was
+     * rejected on purpose — it invites consumers to branch on something other
+     * than role semantics.
+     *
+     * Only `'inverter'` and `'optimizer'` are written today (provisioning, the
+     * archive import, the 1.2.0 upgrade, and Phase 4.5); the other three are
+     * modelled and are what a Victron GX or a Sigenergy controller will be
+     * written as. `../plant-repo.ts`'s `DEVICE_ROLES` mirrors this list, and
+     * `apps/server/db-tests/check-constraints.test.ts` proves the engine agrees.
      */
-    check("devices_role_check", sql`${t.role} in ('inverter', 'controller', 'meter', 'charger')`),
+    check(
+      "devices_role_check",
+      sql`${t.role} in ('inverter', 'controller', 'meter', 'charger', 'optimizer')`,
+    ),
   ],
 );
 

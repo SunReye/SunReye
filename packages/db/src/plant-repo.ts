@@ -135,6 +135,65 @@ export function activeDevices<T extends Pick<DeviceRecord, "retiredAt">>(
 }
 
 /**
+ * Every role `devices_role_check` admits, in the order the schema states them.
+ *
+ * The list is a MIRROR of the constraint (`./schema/plants.ts`), not its source:
+ * the database is the authority, and `apps/server/db-tests/check-constraints.test.ts`
+ * is what proves the two agree. It is spelled here because a role the engine
+ * accepts and nothing in the read layer names is a value every branch falls
+ * through in silence — the failure the CHECK exists to make loud.
+ */
+// fallow-ignore-next-line unused-export -- the mirror of `devices_role_check`, walked by ./plant-repo.test.ts so the list and the constraint cannot drift apart in silence; test files are not traced as consumers.
+export const DEVICE_ROLES = [
+  "inverter",
+  "controller",
+  "meter",
+  "charger",
+  "optimizer",
+] as const satisfies readonly string[];
+
+// fallow-ignore-next-line unused-type -- the role union derived from DEVICE_ROLES above and used by this module's own VIRTUAL_ROLES; exported so a consumer typing a role has one spelling to reach for.
+export type DeviceRole = (typeof DEVICE_ROLES)[number];
+
+/**
+ * Roles with NO MACHINE BEHIND THEM.
+ *
+ * `optimizer` (Phase 4.5) is a device row because what it produces are readings
+ * and every reading is keyed to a device — but it has no registers, no endpoint
+ * and no unit on a bus. So it must never be reached by the arms that look for
+ * "the device this plant's readings come from": the poll roster, the MQTT
+ * namespace, provisioning's adoption, the history backfill, a chart's default
+ * device. Each of those already narrows to `role = 'inverter'` positively; the
+ * ones that also match on a slug or a profile id need this rule as well.
+ */
+const VIRTUAL_ROLES: ReadonlySet<string> = new Set<DeviceRole>(["optimizer"]);
+
+/**
+ * Whether this device is virtual — a row that stands for a computation rather
+ * than a machine.
+ *
+ * An unknown role answers FALSE, deliberately. The safe direction is to treat a
+ * role this build does not model as physical: a value invented by a newer
+ * version would otherwise vanish out of the poll roster and the export by
+ * default. Refusing an unmodelled role is the database's job, not this
+ * predicate's.
+ */
+// fallow-ignore-next-line unused-export -- the predicate `physicalDevices` below composes, and the seam where the "an unknown role is PHYSICAL" rule is testable (./plant-repo.test.ts); test files are not traced as consumers.
+export function isVirtualDevice(device: Pick<DeviceRecord, "role">): boolean {
+  return VIRTUAL_ROLES.has(device.role);
+}
+
+/**
+ * The devices of a list that stand for real hardware, in the order given.
+ *
+ * The companion to {@link activeDevices}, and used the same way: composed onto a
+ * roster before any "which device is the inverter" arm runs.
+ */
+export function physicalDevices<T extends Pick<DeviceRecord, "role">>(devices: readonly T[]): T[] {
+  return devices.filter((d) => !isVirtualDevice(d));
+}
+
+/**
  * `smallint` and `double precision` come back as numbers through this driver,
  * but a `count(*)` or a bigint would arrive as a STRING — and a Map or a
  * comparison keyed by "3" instead of 3 fails silently at the call site rather

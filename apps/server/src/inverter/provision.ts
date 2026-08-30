@@ -111,6 +111,7 @@ import {
   ensureDevice,
   ensurePlant,
   isRetired,
+  physicalDevices,
   readConnection,
   readDevices,
   deleteDeviceBattery,
@@ -371,13 +372,20 @@ export interface ProvisionResult {
  * match it. The production store already narrows the statement, so this filter is
  * the in-memory half of the same rule — two spellings of "in service" is exactly
  * how a retired device gets polled again.
+ *
+ * VIRTUAL devices are unreachable from all three as well ({@link physicalDevices}).
+ * Arms 1 and 2 match on a slug and a profile id, neither of which says anything
+ * about what is on the other end, so nothing else stops the optimizer's row from
+ * being adopted and re-pointed at the inverter profile. The result would not
+ * look like a failure: the device has no registers, `selectPollTargets` filters
+ * it out by role, and the install would boot cleanly and store nothing at all.
  */
 function findDevice(
   devices: readonly DeviceRecord[],
   slug: string,
   profileId: string,
 ): DeviceRecord | null {
-  const active = activeDevices(devices);
+  const active = physicalDevices(activeDevices(devices));
   return (
     active.find((d) => d.slug === slug) ??
     active.find((d) => d.profileId === profileId) ??

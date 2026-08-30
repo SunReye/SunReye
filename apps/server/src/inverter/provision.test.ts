@@ -446,6 +446,51 @@ describe("provisionDevice", () => {
     expect(devices.find((d) => d.id === result?.deviceId)?.role).toBe("inverter");
   });
 
+  test("an OPTIMIZER is never hijacked, even when it carries the active profile id", async () => {
+    // The virtual device has no endpoint and no registers. Re-pointing it at the
+    // inverter profile would leave the install with a device the poll loop
+    // filters out (`selectPollTargets` takes `role = 'inverter'` only) — so the
+    // boot would look successful and store nothing at all.
+    const { store, devices } = memoryStore();
+    const plant = await store.ensurePlant({ name: "P", slug: "p" });
+    await store.ensureDevice({
+      plantId: plant.id,
+      connectionId: null,
+      unitId: 0,
+      slug: "optimizer",
+      name: "Optimizer",
+      profileId: profile.id,
+      role: "optimizer",
+    });
+    const result = await provisionDevice({ store, logger, profile, seed: seed() });
+    expect(devices).toHaveLength(2);
+    const optimizer = devices.find((d) => d.slug === "optimizer");
+    expect(optimizer?.role).toBe("optimizer");
+    expect(result?.deviceId).not.toBe(optimizer?.id);
+    expect(devices.find((d) => d.id === result?.deviceId)?.role).toBe("inverter");
+  });
+
+  test("a RETIRED optimizer changes nothing — provisioning still gets its inverter", async () => {
+    // Both filters at once: the virtual role and retirement. The refusal that
+    // returns null is about the frozen INVERTER slug, and a retired virtual
+    // device must not trip it.
+    const { store, devices } = memoryStore();
+    const plant = await store.ensurePlant({ name: "P", slug: "p" });
+    const created = await store.ensureDevice({
+      plantId: plant.id,
+      connectionId: null,
+      unitId: 0,
+      slug: "optimizer",
+      name: "Optimizer",
+      profileId: profile.id,
+      role: "optimizer",
+    });
+    await store.updateDevice(created.id, { retiredAt: new Date("2026-01-01T00:00:00Z") });
+    const result = await provisionDevice({ store, logger, profile, seed: seed() });
+    expect(devices).toHaveLength(2);
+    expect(devices.find((d) => d.id === result?.deviceId)?.slug).toBe("inverter");
+  });
+
   test("the legacy 1.x pack is moved onto the device's battery row, once", async () => {
     const { store, batteries } = memoryStore({
       settings: {

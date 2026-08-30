@@ -3,6 +3,7 @@ import type { SQL } from "drizzle-orm";
 import { PgDialect } from "drizzle-orm/pg-core";
 
 import {
+  DEVICE_ROLES,
   activeDevices,
   createPlant,
   deleteDeviceBattery,
@@ -15,6 +16,8 @@ import {
   readPlant,
   readPlantBatteries,
   isRetired,
+  isVirtualDevice,
+  physicalDevices,
   readRawSetting,
   updateDevice,
   updatePlant,
@@ -597,5 +600,57 @@ describe("device retirement", () => {
     const rows = [device(null), device(new Date())];
     activeDevices(rows);
     expect(rows).toHaveLength(2);
+  });
+});
+
+/**
+ * The role vocabulary, spelled ONCE.
+ *
+ * `devices_role_check` is the authority, and this list mirrors it — a value the
+ * database admits but nothing here names is a role every read branches past in
+ * silence, which is the exact failure the CHECK was added to make loud.
+ */
+describe("device roles", () => {
+  const device = (role: string) => ({ id: 1, slug: role, role, retiredAt: null });
+
+  test("the modelled roles are the five the CHECK admits", () => {
+    // Kept in step with `./schema/plants.ts`'s `devices_role_check` and with
+    // `apps/server/db-tests/check-constraints.test.ts`, which proves the engine
+    // agrees. 'optimizer' is the fifth: Phase 4.5's virtual device.
+    expect([...DEVICE_ROLES]).toEqual(["inverter", "controller", "meter", "charger", "optimizer"]);
+  });
+
+  test("an optimizer is virtual — there is no machine behind it", () => {
+    expect(isVirtualDevice(device("optimizer"))).toBe(true);
+  });
+
+  test.each(["inverter", "controller", "meter", "charger"])(
+    "a %s is physical: it has registers, an endpoint and a unit id",
+    (role) => {
+      expect(isVirtualDevice(device(role))).toBe(false);
+    },
+  );
+
+  test("an unknown role is treated as PHYSICAL, not silently virtualised", () => {
+    // The safe direction: a role this build does not know about must not be
+    // dropped out of the poll roster and the export by a predicate that
+    // defaults to "virtual". It is refused at the database edge instead.
+    expect(isVirtualDevice(device("pump"))).toBe(false);
+  });
+
+  test("physicalDevices drops the virtual ones, in order", () => {
+    const rows = [device("inverter"), device("optimizer"), device("meter")];
+    expect(physicalDevices(rows).map((d) => d.slug)).toEqual(["inverter", "meter"]);
+  });
+
+  test("physicalDevices on a plant of nothing but an optimizer is empty", () => {
+    expect(physicalDevices([device("optimizer")])).toEqual([]);
+  });
+
+  test("physicalDevices on no devices is no devices, and leaves its input alone", () => {
+    const rows = [device("optimizer")];
+    expect(physicalDevices([])).toEqual([]);
+    physicalDevices(rows);
+    expect(rows).toHaveLength(1);
   });
 });

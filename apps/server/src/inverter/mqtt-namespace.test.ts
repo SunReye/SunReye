@@ -65,6 +65,23 @@ describe("resolveMqttNamespace", () => {
     expect(() => resolveMqttNamespace(plant, devices, "none")).toThrow(MissingMqttNamespaceError);
   });
 
+  test("an OPTIMIZER is never the namespace, not even by profile id", () => {
+    // The virtual device publishes nothing of its own, and the bridge's topics
+    // carry the INVERTER's readings. Arm 1 matches on profile id alone, so an
+    // optimizer sharing it would silently take the namespace over — and slugs
+    // are frozen, so the wrong topic tree would be permanent.
+    const devices = [
+      device({ id: 1, role: "optimizer", slug: "optimizer", profileId: "deye-sg05lp3" }),
+      device({ id: 2, slug: "inverter-2", profileId: "other" }),
+    ];
+    expect(resolveMqttNamespace(plant, devices, "deye-sg05lp3").deviceSlug).toBe("inverter-2");
+  });
+
+  test("a plant of nothing but an optimizer has no namespace at all", () => {
+    const devices = [device({ role: "optimizer", slug: "optimizer" })];
+    expect(() => resolveMqttNamespace(plant, devices, "none")).toThrow(MissingMqttNamespaceError);
+  });
+
   test("no plant at all is an error, never a guessed namespace", () => {
     expect(() => resolveMqttNamespace(null, [device()], "x")).toThrow(MissingMqttNamespaceError);
   });
