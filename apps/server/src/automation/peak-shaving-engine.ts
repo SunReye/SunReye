@@ -3,8 +3,8 @@
  * battery max-charge-current register while active.
  *
  * Design rules:
- * - Registers are addressed by canonical *role*, never by raw key; a profile
- *   that doesn't map a required role blocks the automation entirely.
+ * - Registers are addressed by canonical *role*, never by raw key; a device
+ *   that doesn't bind a required role blocks the automation entirely.
  * - Every write goes through the injected `write` (the runtime funnel), so the
  *   engine can never race the poll loop or open its own Modbus client.
  * - The user's charge-current value is snapshotted when the engine takes the
@@ -26,9 +26,13 @@ import {
   numericSnapshot,
 } from "@SunReye/db/automation-state";
 import type { WeatherConfig } from "@SunReye/db/weather";
-import { entityConstraint } from "@SunReye/inverter-core";
 import { WriteRejectedError } from "../inverter/control-writer";
-import type { CanonicalRole, InverterSample } from "@SunReye/inverter-core";
+import type {
+  CanonicalRole,
+  DeviceInstance,
+  EntityConstraint,
+  InverterSample,
+} from "@SunReye/inverter-core";
 import type {
   DecisionPoint,
   PeakShavingPlans,
@@ -39,7 +43,6 @@ import type {
 import { type DecisionLog, createDecisionLog } from "./automation-history";
 import type { EvccState } from "@SunReye/contracts/evcc";
 import type { EvccAction } from "../evcc/evcc";
-import type { ProfileContext } from "../inverter/inverter";
 import { log } from "../shared/logging";
 import {
   type Decision,
@@ -56,7 +59,7 @@ import {
   decideTargetA,
   effectivePriceConfig,
   evccAutomationInputs,
-  keyForRole,
+  roleKey,
   resolvePeakShavingBlockers,
   resolvePriceAwareBlockers,
 } from "./peak-shaving";
@@ -98,7 +101,26 @@ const INEFFECTIVE_TICKS = 3;
  * machine with fakes (no DB, no inverter, no clock).
  */
 export interface AutomationIO {
-  ctx: ProfileContext;
+  /**
+   * The device this engine steers — `../devices/registry.ts`'s instance.
+   *
+   * The engine reads ROLES off it and nothing else. There is deliberately no
+   * profile here: which integration tier described the machine is provenance,
+   * never a behavioural input, and the state below is namespaced by
+   * {@link DeviceInstance.id} so a corrected or swapped profile cannot orphan a
+   * held register.
+   */
+  device: DeviceInstance;
+  /**
+   * The bounds a register declares, or null when nothing declares any.
+   *
+   * A seam rather than the profile it comes from: the engine clamps a target
+   * into the register's own range before writing, which is a TRANSPORT fact
+   * (min/max/enum on a register map) and not something a role can express. A
+   * device with no register map behind it simply declares none, and the write
+   * funnel remains the authority that refuses an out-of-range write.
+   */
+  constraint(key: string): EntityConstraint | null;
   write(key: string, value: number): Promise<void>;
   getConfig(): Promise<AutomationConfig>;
   getWeather(): Promise<WeatherConfig>;
@@ -221,21 +243,21 @@ interface Eng {
   lastWrittenRegister: number | null;
 }
 
-const stateKeyOf = (io: AutomationIO) => automationStateKey(io.ctx.profile.id, PEAK_SHAVING_ID);
+const stateKeyOf = (io: AutomationIO) => automationStateKey(io.device.id, PEAK_SHAVING_ID);
 /**
  * The charge ceiling this plant is steered through, and the unit it speaks —
  * amps on a current-denominated hybrid, watts on a Victron/SMA-style device. The
  * engine plans in amps either way; only the register write and its readback
  * change unit.
  */
-const chargeLimitOf = (io: AutomationIO) => resolveChargeLimit(io.ctx.profile);
+const chargeLimitOf = (io: AutomationIO) => resolveChargeLimit(io.device);
 /** The feed-in ceiling register `grid-friendly` steers; null when unmapped. */
-const sellKeyOf = (io: AutomationIO) => keyForRole(io.ctx.profile, SELL_LIMIT_ROLE);
+const sellKeyOf = (io: AutomationIO) => roleKey(io.device, SELL_LIMIT_ROLE);
 /** Its own snapshot slot — the two registers are taken and given back separately. */
 const sellSlotOf = (io: AutomationIO) => `${stateKeyOf(io)}:sell`;
-const gridChargeKeyOf = (io: AutomationIO) => keyForRole(io.ctx.profile, GRID_CHARGE_ROLE);
+const gridChargeKeyOf = (io: AutomationIO) => roleKey(io.device, GRID_CHARGE_ROLE);
 /** The grid-charge ceiling, in whichever unit this device sets it. */
-const gridChargeLimitOf = (io: AutomationIO) => resolveGridChargeLimit(io.ctx.profile);
+const gridChargeLimitOf = (io: AutomationIO) => resolveGridChargeLimit(io.device);
 const gridChargeSlotOf = (io: AutomationIO) => `${stateKeyOf(io)}:gridcharge`;
 const gridChargeASlotOf = (io: AutomationIO) => `${stateKeyOf(io)}:gridchargeA`;
 
@@ -269,7 +291,8 @@ async function replaySnapshot(
   snapshot: number | string,
 ): Promise<boolean> {
   const { io, status } = e;
-  // Role unmapped (profile changed): the snapshot can't be replayed — orphan
+  // Role no longer bound (the device was re-described): the snapshot cannot
+  // be replayed — orphan
   // it rather than writing to a guessed register.
   if (!key) return false;
   // The state map also holds non-register snapshots (borrowed EVCC modes). One
@@ -362,7 +385,7 @@ interface LiveInputs {
    */
   liveLimit: number | null;
   liveVolt: number | null;
-  /** Measured house load, W; null when the profile maps no `load.power`. */
+  /** Measured house load, W; null when the device binds no `load.power`. */
   loadW: number | null;
   /** Power flowing *into* the battery, W; null when `battery.power` is unmapped. */
   chargeW: number | null;
@@ -370,7 +393,7 @@ interface LiveInputs {
   exportW: number | null;
   /** Current feed-in ceiling in the solar-sell register, W; null when unmapped. */
   sellLimitW: number | null;
-  /** Grid-charge enable register; null when the profile doesn't map it. */
+  /** Grid-charge enable register; null when the device does not bind it. */
   gridChargeOn: number | null;
   /** Grid-charge limit register, in its own unit; null when unmapped. */
   gridChargeLimit: number | null;
@@ -385,8 +408,8 @@ function readLive(io: AutomationIO, key: string): LiveInputs | null {
   if (nowMs - Date.parse(sample.time) > STALE_SAMPLE_MS) return null;
   /** A role's finite value from this sample; null when unmapped or unusable. */
   const byRole = (role: CanonicalRole): number | null => {
-    const roleKey = keyForRole(io.ctx.profile, role);
-    return roleKey ? finite(sample.metrics[roleKey]) : null;
+    const key = roleKey(io.device, role);
+    return key ? finite(sample.metrics[key]) : null;
   };
   const pvW = byRole("pv.total.power");
   const socPct = byRole("battery.soc");
@@ -406,7 +429,7 @@ function readLive(io: AutomationIO, key: string): LiveInputs | null {
     sellLimitW: byRole(SELL_LIMIT_ROLE),
     gridChargeOn: byRole(GRID_CHARGE_ROLE),
     gridChargeLimit: (() => {
-      const limit = resolveGridChargeLimit(io.ctx.profile);
+      const limit = resolveGridChargeLimit(io.device);
       return limit ? finite(sample.metrics[limit.key]) : null;
     })(),
     nowMs,
@@ -415,9 +438,8 @@ function readLive(io: AutomationIO, key: string): LiveInputs | null {
 
 /** Clamp a target into the register's own declared bounds. */
 function clampToRegister(io: AutomationIO, key: string, targetA: number): number {
-  const def = io.ctx.defByKey.get(key);
-  if (!def) return targetA;
-  const c = entityConstraint(def);
+  const c = io.constraint(key);
+  if (!c) return targetA;
   let clamped = targetA;
   if (c.min !== undefined) clamped = Math.max(clamped, c.min);
   if (c.max !== undefined) clamped = Math.min(clamped, c.max);
@@ -494,7 +516,7 @@ async function steerSellLimit(e: Eng, thresholdW: number, live: LiveInputs): Pro
  * readback holds the whole thing — half-claiming would leave the enable flag on
  * with no record of the current the user had set.
  *
- * The profile not mapping these roles is not an error: grid charging is simply
+ * The device not binding these roles is not an error: grid charging is simply
  * unavailable on that inverter, and the rest of price awareness works without it.
  */
 async function steerGridCharge(
@@ -716,7 +738,7 @@ function decisionInputs(args: {
 
 /** Loadpoints whose mode this automation currently holds, from persisted state. */
 function heldLoadpoints(io: AutomationIO, state: AutomationState): number[] {
-  const prefix = evccModeStateKey(io.ctx.profile.id, 0).slice(0, -1);
+  const prefix = evccModeStateKey(io.device.id, 0).slice(0, -1);
   return Object.keys(state)
     .filter((k) => k.startsWith(prefix))
     .map((k) => Number(k.slice(prefix.length)))
@@ -749,14 +771,14 @@ function claimLoadpoints(
   plan: EvPullInPlan,
   capturedAt: string,
 ): void {
-  const profileId = e.io.ctx.profile.id;
+  const deviceId = e.io.device.id;
   for (const claim of plan.claim) {
     const { loadpoint, remember } = claim;
     try {
       publishClaim(e.io, claim);
       if (!remember) continue;
-      next[evccModeStateKey(profileId, loadpoint)] = { previousValue: remember.mode, capturedAt };
-      next[evccBoostLimitStateKey(profileId, loadpoint)] = {
+      next[evccModeStateKey(deviceId, loadpoint)] = { previousValue: remember.mode, capturedAt };
+      next[evccBoostLimitStateKey(deviceId, loadpoint)] = {
         previousValue: remember.boostLimitPct,
         capturedAt,
       };
@@ -776,10 +798,10 @@ function claimLoadpoints(
  * flag, which it forgets on its own.
  */
 function releaseLoadpoints(e: Eng, next: AutomationState, plan: EvPullInPlan): void {
-  const profileId = e.io.ctx.profile.id;
+  const deviceId = e.io.device.id;
   for (const { loadpoint, restoreMode } of plan.release) {
-    const modeSlot = evccModeStateKey(profileId, loadpoint);
-    const limitSlot = evccBoostLimitStateKey(profileId, loadpoint);
+    const modeSlot = evccModeStateKey(deviceId, loadpoint);
+    const limitSlot = evccBoostLimitStateKey(deviceId, loadpoint);
     const snap = next[modeSlot];
     if (!snap) continue;
     const limit = numericSnapshot(next[limitSlot]?.previousValue) ?? BOOST_LIMIT_DISABLED;
@@ -964,7 +986,7 @@ async function planInputs(
 ): Promise<{ inputs: DecisionInputs & { forecast: ForecastSlice }; limits: PlanLimits } | null> {
   const { io } = e;
   const [cfg, weather] = await Promise.all([io.getConfig(), io.getWeather()]);
-  if (resolvePeakShavingBlockers(io.ctx.profile, weather, cfg.peakShaving.mode).length > 0) {
+  if (resolvePeakShavingBlockers(io.device, weather, cfg.peakShaving.mode).length > 0) {
     return null;
   }
   const ready = liveOrHold(io);
@@ -1195,7 +1217,7 @@ async function runTick(e: Eng): Promise<PeakShavingStatus> {
     // Blockers are resolved for disabled runs too: the settings form gates its
     // enable switch on them, and the simulation needs the same go/no-go call.
     const weather = await io.getWeather();
-    status.blockers = resolvePeakShavingBlockers(io.ctx.profile, weather, ps.mode);
+    status.blockers = resolvePeakShavingBlockers(io.device, weather, ps.mode);
     status.priceBlockers = resolvePriceAwareBlockers(weather);
     status.usableKwh = weather.forecast.battery?.usableKwh ?? null;
     if (!status.enabled) return await simulateTick(e, ps, weather);

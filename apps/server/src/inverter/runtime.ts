@@ -20,7 +20,13 @@ import { type PollEndpoint, loadPollEndpoint } from "./endpoint";
 import type { MqttConfig } from "@SunReye/db/mqtt-config";
 import { metricsConfigLog, metricsRaw } from "@SunReye/db/schema/metrics";
 import { env } from "@SunReye/env/server";
-import type { DeviceInstance, InverterSample, InverterSource } from "@SunReye/inverter-core";
+import {
+  type DeviceInstance,
+  type EntityConstraint,
+  type InverterSample,
+  type InverterSource,
+  entityConstraint,
+} from "@SunReye/inverter-core";
 import mqtt from "mqtt";
 import { startAutomations, stopAutomations } from "../automation/automation";
 import { getMqttConfig } from "../settings/config";
@@ -601,6 +607,19 @@ export function createRuntime(deps: RuntimeDeps = {}) {
    * passed straight through to the engine loop, which skips the frame (and the
    * plan projection built for it) when nobody is listening.
    */
+  /**
+   * The bounds a register declares, for the automation loop's clamp.
+   *
+   * A register range is a TRANSPORT fact — it lives on the map that says how to
+   * talk to the device — so it is read off the profile context here and handed
+   * to the loop as a function, rather than the loop being given a profile it
+   * would then be able to resolve roles from.
+   */
+  function constraintOf(profileCtx: ProfileContext, key: string): EntityConstraint | null {
+    const def = profileCtx.defByKey.get(key);
+    return def ? entityConstraint(def) : null;
+  }
+
   async function start(
     streamBus: Streams,
     profileCtx: ProfileContext,
@@ -638,10 +657,27 @@ export function createRuntime(deps: RuntimeDeps = {}) {
     ]);
     await rebuildInverter(await loadPollEndpoint());
     await rebuildBridge(await getMqttConfig());
-    // Automations write through the same funnel as every other path; they only
-    // run while a profile is active (this function is never called without one).
-    // They push their tick outcomes onto the same injected bus.
-    await startAutomations({ ctx: profileCtx, write }, streamBus, undefined, automationsWatched);
+    // Automations write through the same funnel as every other path, and steer
+    // the registry's primary inverter. They push their tick outcomes onto the
+    // same injected bus.
+    //
+    // NO DEVICE, NO LOOP. Every register the automation takes is snapshotted
+    // under a device id and handed back from it; with nothing registered there
+    // is no identity to key that by, so steering the plant would mean steering
+    // it with no way back to the user's own values.
+    const steered = pollDevice();
+    if (!steered) {
+      logger.warn(
+        "no registered inverter — the automation loop is not started; it starts on the next boot after a device is provisioned",
+      );
+      return;
+    }
+    await startAutomations(
+      { device: steered, constraint: (key) => constraintOf(profileCtx, key), write },
+      streamBus,
+      undefined,
+      automationsWatched,
+    );
   }
 
   /**

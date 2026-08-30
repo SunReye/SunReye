@@ -313,7 +313,8 @@ mock.module("./mqtt", () => ({
 const automation = {
   started: 0,
   stopped: 0,
-  profileId: null as string | null,
+  /** The registered device the loop was handed — `devices.slug`, never a profile id. */
+  deviceId: null as string | null,
   /**
    * How many timers had already been torn down when `stopAutomations` was
    * called. Automations write through the same funnel as everything else, so
@@ -344,7 +345,7 @@ mock.module("../automation/automation", () => ({
   ) => {
     if (!intercepting) return realStartAutomations(deps, streamBus, buildIO, watching);
     automation.started++;
-    automation.profileId = deps.ctx.profile.id;
+    automation.deviceId = deps.device.id;
     automation.watching = watching ?? null;
   },
   stopAutomations: async () => {
@@ -821,6 +822,10 @@ const devicesDouble: DeviceRegistry = {
   driverProfile: () => registryProfile,
   profileIds: () => (registryProfile ? [registryProfile.id] : []),
   usesProfile: (id) => registryProfile?.id === id,
+  bindings: () =>
+    registryProfile && registryDevice
+      ? [{ deviceId: DEVICE_SLUG, profileId: registryProfile.id }]
+      : [],
 };
 
 const identityDouble: IdentityResolver = {
@@ -990,6 +995,7 @@ beforeEach(() => {
   bridgeWrite = null;
   automation.started = 0;
   automation.stopped = 0;
+  automation.deviceId = null;
   automation.clearedAtStop = -1;
   automation.watching = null;
   shortenBrokerTimeout = false;
@@ -2025,6 +2031,8 @@ describe("shutdown", () => {
 
   test("the automations audience predicate reaches the engine that short-circuits on it", async () => {
     const ctx = buildProfileContext(mainProfile());
+    // The loop only starts once a device is registered to key its state by.
+    registryProfile = mainProfile();
     streams = createStreams();
     let watched = false;
 
@@ -2041,7 +2049,9 @@ describe("shutdown", () => {
   test("automations are stopped before the loop that feeds them", async () => {
     await boot();
     expect(automation.started).toBe(1);
-    expect(automation.profileId).toBe(PROFILE_ID);
+    // The loop is handed the registered DEVICE — the identity its state is
+    // namespaced by — not the profile that happens to describe it.
+    expect(automation.deviceId).toBe(DEVICE_SLUG);
     const pollHandle = timerFor(pollEndpoint.pollIntervalMs).handle;
     // Nothing has been torn down yet, so the count below starts from zero.
     expect(cleared).toHaveLength(0);
@@ -2055,6 +2065,19 @@ describe("shutdown", () => {
     // anywhere later, timers would already have been cleared by this moment.
     expect(automation.clearedAtStop).toBe(0);
     expect(cleared).toContain(pollHandle);
+  });
+
+  test("with no registered inverter the automation loop is not started at all", async () => {
+    // Every register the loop takes is snapshotted under a device id. With no
+    // device there is no identity to key that snapshot by, so starting would
+    // mean steering the plant with no way to hand the user's value back.
+    registryProfile = null;
+    streams = createStreams();
+
+    await start(streams, buildProfileContext(mainProfile()));
+
+    expect(automation.started).toBe(0);
+    expect(automation.deviceId).toBeNull();
   });
 
   test("stopping twice is safe", async () => {

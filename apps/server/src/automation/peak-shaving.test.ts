@@ -6,7 +6,15 @@ import {
 } from "@SunReye/db/automation-config";
 import type { AutomationState } from "@SunReye/db/automation-state";
 import { type WeatherConfig, weatherConfigSchema } from "@SunReye/db/weather";
-import type { InverterProfile, InverterSample, MetricDef } from "@SunReye/inverter-core";
+import {
+  type DeviceInstance,
+  type InverterProfile,
+  type InverterSample,
+  type MetricDef,
+  deviceInstance,
+  entityConstraint,
+  instanceFromProfile,
+} from "@SunReye/inverter-core";
 import {
   decideTargetA,
   evccAutomationInputs,
@@ -22,7 +30,7 @@ import { projectPeakShaving } from "./peak-shaving-plan";
 import { type AutomationIO, createPeakShavingEngine, planLimits } from "./peak-shaving-engine";
 import type { EvccLoadpoint, EvccState } from "@SunReye/contracts/evcc";
 import type { EvccAction } from "../evcc/evcc";
-import { buildProfileContext, type ProfileContext } from "../inverter/inverter";
+import { buildProfileContext } from "../inverter/inverter";
 import { createControlWriter } from "../inverter/control-writer";
 import type { SolarForecast } from "../forecast/solar-forecast";
 
@@ -56,8 +64,30 @@ const metric = ({
   ...over,
 });
 
+/**
+ * The one device every engine case steers. Its id is `devices.slug` — never a
+ * profile id, which is the whole point of the state keys below.
+ */
+const DEVICE_ID = "inv-1";
+
+/** The registry's instance for a profile, as `../devices/registry.ts` builds it. */
+const deviceFor = (profile: InverterProfile): DeviceInstance =>
+  instanceFromProfile({
+    id: DEVICE_ID,
+    deviceClass: "inverter",
+    integration: "profile",
+    profile,
+  });
+
+/** The same device, straight from a role map — see {@link profileWith}. */
+const deviceWith = (roles: Partial<Record<string, string>> = {}): DeviceInstance =>
+  deviceFor(profileWith(roles));
+
 /** A synthetic profile mapping the peak-shaving roles (charge register 0–185 A). */
-function profileWith(roles: Partial<Record<string, string>> = {}): InverterProfile {
+function profileWith(
+  roles: Partial<Record<string, string>> = {},
+  id = "test-profile",
+): InverterProfile {
   const defaults: Record<string, string> = {
     "setting.battery.max_charge_current": CHARGE_KEY,
     "pv.total.power": PV_KEY,
@@ -85,7 +115,7 @@ function profileWith(roles: Partial<Record<string, string>> = {}): InverterProfi
       }),
     );
   }
-  return { id: "test-profile", name: "Test", manufacturer: "Test", metrics };
+  return { id, name: "Test", manufacturer: "Test", metrics };
 }
 
 const weather = (forecastOver: object = {}): WeatherConfig =>
@@ -616,7 +646,7 @@ describe("decideTargetA — grid-friendly export budget", () => {
   });
 
   test("solar-sell max power is required for grid-friendly", () => {
-    const without = profileWith({ "setting.solar_sell.max_power": "" });
+    const without = deviceWith({ "setting.solar_sell.max_power": "" });
     expect(resolvePeakShavingBlockers(without, weather(), "grid-friendly")).toEqual([
       { kind: "role", role: "setting.solar_sell.max_power" },
     ]);
@@ -1184,41 +1214,41 @@ describe("decideTargetA — EV interplay", () => {
 
 describe("resolvePeakShavingBlockers", () => {
   test("all mapped and configured → no blockers", () => {
-    expect(resolvePeakShavingBlockers(profileWith(), weather())).toEqual([]);
+    expect(resolvePeakShavingBlockers(deviceWith(), weather())).toEqual([]);
   });
 
   test.each(["pv.total.power", "battery.soc"] as const)("missing role %s blocks", (role) => {
-    const profile = profileWith({ [role]: undefined });
-    expect(resolvePeakShavingBlockers(profile, weather())).toEqual([{ kind: "role", role }]);
+    const device = deviceWith({ [role]: undefined });
+    expect(resolvePeakShavingBlockers(device, weather())).toEqual([{ kind: "role", role }]);
   });
 
   test("a power-denominated charge ceiling satisfies the same requirement", () => {
     // Victron/SMA and friends set the battery limit in watts. The requirement is
     // "a charge ceiling this automation can steer", not "an ampere register".
-    const profile = profileWith({
+    const device = deviceWith({
       "setting.battery.max_charge_current": "",
       "setting.battery.max_charge_power": CHARGE_KEY,
     });
-    expect(resolvePeakShavingBlockers(profile, weather())).toEqual([]);
+    expect(resolvePeakShavingBlockers(device, weather())).toEqual([]);
   });
 
   test("neither denomination mapped blocks, naming the conventional role", () => {
-    const profile = profileWith({ "setting.battery.max_charge_current": "" });
-    expect(resolvePeakShavingBlockers(profile, weather())).toEqual([
+    const device = deviceWith({ "setting.battery.max_charge_current": "" });
+    expect(resolvePeakShavingBlockers(device, weather())).toEqual([
       { kind: "role", role: "setting.battery.max_charge_current" },
     ]);
   });
 
   test("battery.voltage is optional", () => {
-    const profile = profileWith({ "battery.voltage": undefined });
-    expect(resolvePeakShavingBlockers(profile, weather())).toEqual([]);
+    const device = deviceWith({ "battery.voltage": undefined });
+    expect(resolvePeakShavingBlockers(device, weather())).toEqual([]);
   });
 
   test("missing plant config blocks", () => {
-    expect(resolvePeakShavingBlockers(profileWith(), weather({ maxOutputW: null }))).toEqual([
+    expect(resolvePeakShavingBlockers(deviceWith(), weather({ maxOutputW: null }))).toEqual([
       { kind: "config", what: "export-limit" },
     ]);
-    expect(resolvePeakShavingBlockers(profileWith(), weather({ battery: null }))).toEqual([
+    expect(resolvePeakShavingBlockers(deviceWith(), weather({ battery: null }))).toEqual([
       { kind: "config", what: "battery" },
     ]);
   });
@@ -1227,25 +1257,25 @@ describe("resolvePeakShavingBlockers", () => {
 describe("validateAutomationEnable", () => {
   test("master enable without accepted disclaimer is rejected", () => {
     const cfg = config({ disclaimerAcceptedAt: null }, { enabled: false });
-    expect(validateAutomationEnable(cfg, profileWith(), weather())?.error).toContain("disclaimer");
+    expect(validateAutomationEnable(cfg, deviceWith(), weather())?.error).toContain("disclaimer");
   });
 
   test("peak shaving without the master gate is rejected", () => {
     const cfg = config({ enabled: false, disclaimerAcceptedAt: null });
-    expect(validateAutomationEnable(cfg, profileWith(), weather())?.error).toContain("master");
+    expect(validateAutomationEnable(cfg, deviceWith(), weather())?.error).toContain("master");
   });
 
   test("peak shaving with blockers is rejected and carries them", () => {
-    const result = validateAutomationEnable(config(), profileWith(), weather({ battery: null }));
+    const result = validateAutomationEnable(config(), deviceWith(), weather({ battery: null }));
     expect(result?.blockers).toEqual([{ kind: "config", what: "battery" }]);
   });
 
   test("no active profile is rejected", () => {
-    expect(validateAutomationEnable(config(), null, weather())?.error).toContain("profile");
+    expect(validateAutomationEnable(config(), null, weather())?.error).toContain("inverter");
   });
 
   test("valid enables pass", () => {
-    expect(validateAutomationEnable(config(), profileWith(), weather())).toBeNull();
+    expect(validateAutomationEnable(config(), deviceWith(), weather())).toBeNull();
     const offCfg = config({ enabled: false, disclaimerAcceptedAt: null }, { enabled: false });
     expect(validateAutomationEnable(offCfg, null, weather())).toBeNull();
   });
@@ -1272,18 +1302,18 @@ interface Harness {
     /** Make every EVCC command throw, as an unreachable broker does. */
     evccError(message: string | null): void;
     /**
-     * Point the write funnel at another profile context — pair it with an
-     * `{ ...h.io, ctx }` override so the engine and the funnel it writes
-     * through agree on which profile is active.
+     * Re-describe the SAME device with another profile — a corrected mapping, a
+     * swapped vendor profile. The engine's role resolution and the write funnel
+     * move together, and the device id does not move at all.
      */
-    ctx(c: ProfileContext): void;
+    profile(p: InverterProfile): void;
   };
   state(): AutomationState;
 }
 
 function harness(over: { config?: AutomationConfig; prices?: SpotSlice | null } = {}): Harness {
-  const ctx = buildProfileContext(profileWith());
-  let writeCtx: ProfileContext = ctx;
+  let writeCtx = buildProfileContext(profileWith());
+  let device = deviceFor(profileWith());
   let cfg = over.config ?? config();
   let wx = weather();
   let prices: SpotSlice | null = over.prices ?? null;
@@ -1312,12 +1342,20 @@ function harness(over: { config?: AutomationConfig; prices?: SpotSlice | null } 
 
   return {
     io: {
-      ctx,
+      // Read through a getter, so a profile swap mid-run reaches the engine the
+      // way a reload does — the device object is never re-bound.
+      get device() {
+        return device;
+      },
+      constraint: (key) => {
+        const def = writeCtx.defByKey.get(key);
+        return def ? entityConstraint(def) : null;
+      },
       // The engine writes through the production funnel, which owns the
       // validation every entry point shares; only the transport is a double.
       write: createControlWriter({
         getSource: () => ({
-          profile: ctx.profile,
+          profile: writeCtx.profile,
           read: async () => ({ time: "", inverterId: "test-profile", metrics: {} }),
           write: async (key, value) => {
             writes.push({ key, value });
@@ -1363,7 +1401,10 @@ function harness(over: { config?: AutomationConfig; prices?: SpotSlice | null } 
       now: (ms) => (nowMs = ms),
       state: (s) => (state = s),
       evccError: (message) => (evccError = message),
-      ctx: (c) => (writeCtx = c),
+      profile: (p) => {
+        writeCtx = buildProfileContext(p);
+        device = deviceFor(p);
+      },
     },
     evccCommands,
     state: () => state,
@@ -1381,7 +1422,7 @@ describe("peak-shaving engine", () => {
     const status = await engine.tick();
     expect(status.state).toBe("active");
     expect(status.restorePending).toBe(true);
-    expect(h.state()["test-profile:peakShaving"]?.previousValue).toBe(120);
+    expect(h.state()["inv-1:peakShaving"]?.previousValue).toBe(120);
     // 50% SOC, small forecast surplus → fallback rate (default 50 A).
     expect(h.writes).toEqual([{ key: CHARGE_KEY, value: 50 }]);
   });
@@ -1435,7 +1476,7 @@ describe("peak-shaving engine", () => {
     h.set.forecast(asForecast(slice(12, [500, 3000, 6000, 6000]), 500));
     const dawn = await engine.tick();
     expect(dawn.state).toBe("active");
-    expect(h.state()["test-profile:peakShaving"]?.previousValue).toBe(120);
+    expect(h.state()["inv-1:peakShaving"]?.previousValue).toBe(120);
   });
 
   test("disable restores the snapshot and falls back to simulating", async () => {
@@ -1498,12 +1539,12 @@ describe("peak-shaving engine", () => {
   test("a persisted snapshot survives a restart without re-capture", async () => {
     const first = createPeakShavingEngine(h.io);
     await first.tick();
-    expect(h.state()["test-profile:peakShaving"]?.previousValue).toBe(120);
+    expect(h.state()["inv-1:peakShaving"]?.previousValue).toBe(120);
     // "Restart": new engine over the same persisted state; the register now
     // holds the automation's own value (50), which must NOT become the snapshot.
     const second = createPeakShavingEngine(h.io);
     await second.tick();
-    expect(h.state()["test-profile:peakShaving"]?.previousValue).toBe(120);
+    expect(h.state()["inv-1:peakShaving"]?.previousValue).toBe(120);
   });
 
   test("failed restore keeps the snapshot for a retry", async () => {
@@ -1516,7 +1557,7 @@ describe("peak-shaving engine", () => {
     h.set.config(config({}, { enabled: false }));
     const failed = await engine.tick();
     expect(failed.lastError).toContain("modbus timeout");
-    expect(h.state()["test-profile:peakShaving"]?.previousValue).toBe(120);
+    expect(h.state()["inv-1:peakShaving"]?.previousValue).toBe(120);
     h.io.write = originalWrite;
     const retried = await engine.tick();
     expect(retried.restorePending).toBe(false);
@@ -1675,17 +1716,16 @@ describe("peak-shaving engine", () => {
     // reports every figure in amps. A watt-denominated plant with no voltage
     // metric has only the plant's stated voltage to divide by — the one place
     // the readback and the target resolve it from different call sites.
-    const ctx = buildProfileContext(
+    h.set.profile(
       profileWith({
         "setting.battery.max_charge_current": "",
         "setting.battery.max_charge_power": CHARGE_KEY,
         "battery.voltage": undefined,
       }),
     );
-    h.set.ctx(ctx);
     h.set.weather(weather({ battery: { usableKwh: 15, nominalV: 200 } }));
     h.set.sample({ [PV_KEY]: 18_000, [SOC_KEY]: 50, [CHARGE_KEY]: 10_000 });
-    const status = await createPeakShavingEngine({ ...h.io, ctx }).tick();
+    const status = await createPeakShavingEngine(h.io).tick();
     // The 10000 W the register held, read back at 200 V → 50 A.
     expect(status.liveA).toBe(50);
   });
@@ -1885,7 +1925,7 @@ describe("peak-shaving engine — shadow mode", () => {
     h.set.config(config());
     const engine = createPeakShavingEngine(h.io);
     await engine.tick();
-    expect(h.state()["test-profile:peakShaving"]?.previousValue).toBe(120);
+    expect(h.state()["inv-1:peakShaving"]?.previousValue).toBe(120);
     h.set.config(config({}, { shadowMode: true }));
     const status = await engine.tick();
     expect(h.writes[1]).toEqual({ key: CHARGE_KEY, value: 120 }); // restored
@@ -1952,8 +1992,8 @@ describe("peak-shaving engine — feed-in ceiling", () => {
     expect(write?.value).toBe(status.thresholdW!);
     expect(status.sellLimitW).toBe(status.thresholdW!);
     // Both registers are held, each in its own slot, so each can be given back.
-    expect(h.state()["test-profile:peakShaving"]?.previousValue).toBe(120);
-    expect(h.state()["test-profile:peakShaving:sell"]?.previousValue).toBe(8000);
+    expect(h.state()["inv-1:peakShaving"]?.previousValue).toBe(120);
+    expect(h.state()["inv-1:peakShaving:sell"]?.previousValue).toBe(8000);
   });
 
   test("hands both registers back on disable", async () => {
@@ -1981,21 +2021,20 @@ describe("peak-shaving engine — feed-in ceiling", () => {
   test("switching to maximize-exports gives the feed-in ceiling back", async () => {
     const engine = createPeakShavingEngine(h.io);
     await engine.tick();
-    expect(h.state()["test-profile:peakShaving:sell"]).toBeDefined();
+    expect(h.state()["inv-1:peakShaving:sell"]).toBeDefined();
     h.set.config(config()); // maximize-exports sells everything it can
     await engine.tick();
     expect(h.writes.at(-1)).toEqual({ key: SELL_KEY, value: 8000 });
     // …and keeps the charge register it is still steering.
-    expect(h.state()["test-profile:peakShaving:sell"]).toBeUndefined();
-    expect(h.state()["test-profile:peakShaving"]).toBeDefined();
+    expect(h.state()["inv-1:peakShaving:sell"]).toBeUndefined();
+    expect(h.state()["inv-1:peakShaving"]).toBeDefined();
   });
 
   test("a plant without the register cannot run grid-friendly", async () => {
     const bare = harness({ config: gridCfg() });
     // Same setup, minus the mapping.
-    const ctx = buildProfileContext(profileWith({ "setting.solar_sell.max_power": "" }));
-    bare.set.ctx(ctx);
-    const engine = createPeakShavingEngine({ ...bare.io, ctx });
+    bare.set.profile(profileWith({ "setting.solar_sell.max_power": "" }));
+    const engine = createPeakShavingEngine(bare.io);
     const status = await engine.tick();
     expect(status.state).toBe("blocked");
     expect(status.blockers).toEqual([{ kind: "role", role: "setting.solar_sell.max_power" }]);
@@ -2452,8 +2491,8 @@ describe("peak-shaving engine — borrowing the car", () => {
     })),
   });
 
-  const MODE_SLOT = "test-profile:evccMode:1";
-  const LIMIT_SLOT = "test-profile:evccBoostLimit:1";
+  const MODE_SLOT = "inv-1:evccMode:1";
+  const LIMIT_SLOT = "inv-1:evccBoostLimit:1";
 
   /** A plant an hour ahead of a three-hour window, too full to make room alone. */
   function spendDown(pullInEv = true): Harness {
@@ -2597,7 +2636,7 @@ describe("peak-shaving engine — borrowing the car", () => {
 describe("validateAutomationEnable — price awareness", () => {
   test("price-aware charging without a smart-meter install date is rejected", () => {
     const cfg = config({}, { priceAware: { enabled: true } });
-    const result = validateAutomationEnable(cfg, profileWith(), weather());
+    const result = validateAutomationEnable(cfg, deviceWith(), weather());
     expect(result?.error).toContain("smart meter");
     expect(result?.blockers).toEqual([{ kind: "config", what: "smart-meter" }]);
   });
@@ -2605,7 +2644,7 @@ describe("validateAutomationEnable — price awareness", () => {
   test("the install date is the whole gate", () => {
     const cfg = config({}, { priceAware: { enabled: true } });
     const wx = weather({ smartMeterSince: "2026-06-01" });
-    expect(validateAutomationEnable(cfg, profileWith(), wx)).toBeNull();
+    expect(validateAutomationEnable(cfg, deviceWith(), wx)).toBeNull();
   });
 
   test("the gate applies with peak shaving itself switched off", () => {
@@ -2626,14 +2665,13 @@ describe("peak-shaving engine — a register it may not write", () => {
     // a register this firmware exposes read-only only shows up at the write.
     const h = harness();
     const bare = profileWith();
-    const ctx = buildProfileContext({
+    h.set.profile({
       ...bare,
       metrics: bare.metrics.map((m) =>
         m.role === "setting.battery.max_charge_current" ? { ...m, access: "r" as const } : m,
       ),
     });
-    h.set.ctx(ctx);
-    const status = await createPeakShavingEngine({ ...h.io, ctx }).tick();
+    const status = await createPeakShavingEngine(h.io).tick();
     expect(h.writes).toEqual([]);
     expect(status.lastError).toContain("not writable");
     expect(status.lastWrittenA).toBeNull();
@@ -2641,6 +2679,87 @@ describe("peak-shaving engine — a register it may not write", () => {
     // write revealed it could not be steered.
     expect(status.targetA).toBe(50);
     expect(status.restorePending).toBe(true);
+  });
+});
+
+// --- The engine is keyed by the DEVICE, and reads the DEVICE's roles ---------------
+
+describe("peak-shaving engine — the device is the identity", () => {
+  test("the held snapshot is keyed by the device, never by the profile", async () => {
+    const h = harness();
+    await createPeakShavingEngine(h.io).tick();
+    expect(Object.keys(h.state())).toEqual([`${DEVICE_ID}:peakShaving`]);
+    // The profile id must appear in no key at all: it is what 1.x namespaced by.
+    expect(Object.keys(h.state()).some((k) => k.startsWith("test-profile:"))).toBe(false);
+  });
+
+  test("a profile swap on the same device keeps the snapshot, and restores it", async () => {
+    // The exact 1.x bug: the operator corrects the mapping (or the vendor ships
+    // a new profile id for the same machine) while the automation holds the
+    // charge register. Keyed by profile, the snapshot is orphaned and the user's
+    // own 120 A can never be handed back.
+    const h = harness();
+    const engine = createPeakShavingEngine(h.io);
+    await engine.tick();
+    expect(h.state()[`${DEVICE_ID}:peakShaving`]?.previousValue).toBe(120);
+
+    h.set.profile(profileWith({}, "deye-sg04lp3-v2"));
+    await engine.release();
+
+    expect(h.writes.at(-1)).toEqual({ key: CHARGE_KEY, value: 120 });
+    expect(h.state()[`${DEVICE_ID}:peakShaving`]).toBeUndefined();
+    expect(engine.status().restorePending).toBe(false);
+  });
+
+  test("the borrowed EVCC loadpoint slots are the device's too", async () => {
+    const h = harness();
+    // The car is on OUR settings ("pv", the sink mode) with the user's own
+    // values remembered under the device's slots.
+    h.set.state({
+      [`${DEVICE_ID}:evccMode:1`]: { previousValue: "now", capturedAt: "2026-07-25T11:00:00Z" },
+      [`${DEVICE_ID}:evccBoostLimit:1`]: { previousValue: 80, capturedAt: "2026-07-25T11:00:00Z" },
+    });
+    h.set.evcc(evccState([loadpoint({ mode: "pv" })]));
+
+    await createPeakShavingEngine(h.io).release();
+
+    // Read back under the device id and handed back — a profile-keyed lookup
+    // would have found nothing and left the car on our settings.
+    expect(h.evccCommands).toEqual([
+      { loadpoint: 1, action: "batteryBoost", value: "false" },
+      { loadpoint: 1, action: "batteryBoostLimit", value: "80" },
+      { loadpoint: 1, action: "mode", value: "now" },
+    ]);
+    expect(h.state()).toEqual({});
+  });
+
+  test("a hand-built device decides exactly what the profile that generated it does", async () => {
+    // The #87 parity proof, applied to the engine: a coded integration declares
+    // roles and keys and has no register map at all. The engine must not be able
+    // to tell the two apart — if it could, every consumer would grow a branch
+    // per integration tier and the contract would buy nothing.
+    const profile = profileWith();
+    const coded = deviceInstance({
+      id: DEVICE_ID,
+      deviceClass: "inverter",
+      integration: "coded",
+      metrics: profile.metrics.map((m) => ({
+        key: m.key,
+        unit: m.unit,
+        group: m.group,
+        access: m.access,
+        ...(m.role ? { role: m.role } : {}),
+      })),
+    });
+
+    const fromProfile = harness();
+    const fromCoded = harness();
+    const decided = await createPeakShavingEngine(fromProfile.io).tick();
+    const codedDecided = await createPeakShavingEngine({ ...fromCoded.io, device: coded }).tick();
+
+    expect(codedDecided).toEqual(decided);
+    expect(fromCoded.writes).toEqual(fromProfile.writes);
+    expect(fromCoded.state()).toEqual(fromProfile.state());
   });
 });
 
@@ -2652,39 +2771,38 @@ describe("peak-shaving engine — snapshots it cannot replay", () => {
     // it was wider. Writing it anyway is not an option, and dropping it would
     // silently lose the user's own setting.
     const h = harness();
-    h.set.state({ "test-profile:peakShaving": { previousValue: 250, capturedAt: CAPTURED } });
+    h.set.state({ "inv-1:peakShaving": { previousValue: 250, capturedAt: CAPTURED } });
     const engine = createPeakShavingEngine(h.io);
     await engine.release();
     expect(h.writes).toEqual([]);
     expect(engine.status().lastError).toContain("above maximum 185");
     expect(engine.status().restorePending).toBe(true);
-    expect(h.state()["test-profile:peakShaving"]?.previousValue).toBe(250);
+    expect(h.state()["inv-1:peakShaving"]?.previousValue).toBe(250);
   });
 
   test("a non-numeric snapshot in a register slot is refused as corrupt", async () => {
     // The same state map holds borrowed EVCC modes; one landing in a register
     // slot means the state is corrupt, and a string is never coerced to a write.
     const h = harness();
-    h.set.state({ "test-profile:peakShaving": { previousValue: "pv", capturedAt: CAPTURED } });
+    h.set.state({ "inv-1:peakShaving": { previousValue: "pv", capturedAt: CAPTURED } });
     const engine = createPeakShavingEngine(h.io);
     await engine.release();
     expect(h.writes).toEqual([]);
     expect(engine.status().lastError).toContain("not a register value");
-    expect(h.state()["test-profile:peakShaving"]).toBeDefined();
+    expect(h.state()["inv-1:peakShaving"]).toBeDefined();
   });
 
   test("a snapshot for a role the profile no longer maps is never guessed at", async () => {
     // The feed-in ceiling was held under a profile that mapped it; the new one
     // does not, so there is no register to give it back to.
     const h = harness();
-    h.set.state({ "test-profile:peakShaving:sell": { previousValue: 8000, capturedAt: CAPTURED } });
-    const ctx = buildProfileContext(profileWith({ "setting.solar_sell.max_power": "" }));
-    h.set.ctx(ctx);
-    const engine = createPeakShavingEngine({ ...h.io, ctx });
+    h.set.state({ "inv-1:peakShaving:sell": { previousValue: 8000, capturedAt: CAPTURED } });
+    h.set.profile(profileWith({ "setting.solar_sell.max_power": "" }));
+    const engine = createPeakShavingEngine(h.io);
     await engine.release();
     expect(h.writes).toEqual([]);
     expect(engine.status().restorePending).toBe(true);
-    expect(h.state()["test-profile:peakShaving:sell"]).toBeDefined();
+    expect(h.state()["inv-1:peakShaving:sell"]).toBeDefined();
   });
 });
 
@@ -2702,7 +2820,7 @@ describe("peak-shaving engine — no readback of the register it steers", () => 
     // Once the poll delivers it, the same engine takes over and snapshots it.
     h.set.sample({ [PV_KEY]: 5000, [SOC_KEY]: 50, [VOLT_KEY]: 50, [CHARGE_KEY]: 120 });
     expect((await engine.tick()).state).toBe("active");
-    expect(h.state()["test-profile:peakShaving"]?.previousValue).toBe(120);
+    expect(h.state()["inv-1:peakShaving"]?.previousValue).toBe(120);
   });
 });
 
@@ -2712,8 +2830,8 @@ describe("peak-shaving engine — grid charging inside a window", () => {
   const HOUR = 3_600_000;
   const GRID_CHARGE_KEY = "settings.grid_charge";
   const GRID_CHARGE_A_KEY = "settings.max_grid_charge_current";
-  const ENABLE_SLOT = "test-profile:peakShaving:gridcharge";
-  const CURRENT_SLOT = "test-profile:peakShaving:gridchargeA";
+  const ENABLE_SLOT = "inv-1:peakShaving:gridcharge";
+  const CURRENT_SLOT = "inv-1:peakShaving:gridchargeA";
 
   /** `slots` quarter-hours of negative prices from `fromHour` (UTC == local here). */
   const negativeWindow = (fromHour: number, slots: number): SpotSlice => ({
@@ -2763,16 +2881,14 @@ describe("peak-shaving engine — grid charging inside a window", () => {
         [GRID_CHARGE_A_KEY]: 40,
       },
     );
-    const ctx = buildProfileContext(
+    h.set.profile(
       profileWith({
         "setting.battery.grid_charge": GRID_CHARGE_KEY,
         "setting.battery.max_grid_charge_current": GRID_CHARGE_A_KEY,
       }),
     );
-    h.set.ctx(ctx);
     const io: AutomationIO = {
       ...h.io,
-      ctx,
       getTariff: async () =>
         tariffConfigSchema.parse({
           import: { mode: over.spotTariff === false ? "static" : "spot" },
