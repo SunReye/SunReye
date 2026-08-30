@@ -14,6 +14,7 @@ import {
   tryGetProfile,
 } from "@SunReye/inverter-core";
 import type {
+  CapabilityInputs,
   InverterManifest,
   InverterProfile,
   InverterSample,
@@ -196,8 +197,21 @@ export interface ProfileContext {
   validateWrite(key: string, value: number): string | null;
 }
 
-export function buildProfileContext(profile: InverterProfile): ProfileContext {
-  const manifest = buildManifest(profile);
+/**
+ * Build the transports' context.
+ *
+ * `device` is the REGISTERED device the manifest describes — `../devices/registry.ts`'s
+ * instance, whose capabilities `deriveCapabilities` computes from the roles it
+ * binds. Optional, and defaulting to the profile, because the two callers that
+ * run before a device exists (a connection test against a form the operator has
+ * not saved, a boot with no provisioned spine) have nothing else to name; a
+ * profile satisfies the same structural input, so their answer is unchanged.
+ */
+export function buildProfileContext(
+  profile: InverterProfile,
+  device?: CapabilityInputs,
+): ProfileContext {
+  const manifest = buildManifest(profile, device ?? profile);
   const defByKey = metricByKey(profile);
   const metaByKey = new Map(manifest.metrics.map((m) => [m.key, m]));
 

@@ -316,13 +316,31 @@ export function toManifestMetric(def: MetricDef): ManifestMetric {
   };
 }
 
-/** Build the full client contract: identity + capabilities + metric catalog. */
-export function buildManifest(profile: InverterProfile): InverterManifest {
+/**
+ * Build the full client contract: identity + capabilities + metric catalog.
+ *
+ * TWO INPUTS, BECAUSE THEY ANSWER TWO QUESTIONS. The capabilities describe what
+ * a DEVICE binds, and come from {@link deriveCapabilities} applied to whatever
+ * the caller registered — a `DeviceInstance` from the device registry, a coded
+ * integration with no register map at all. Identity and the render-ready catalog
+ * describe the PROFILE, and can come from nowhere else: a `ManifestMetric`
+ * carries a topic, a label, a range and enum labels, and only an authored
+ * register map states those.
+ *
+ * `device` defaults to the profile so the pre-registry answer is literally the
+ * same expression — a profile satisfies {@link CapabilityInputs} structurally,
+ * which is the property that makes the contract a generalisation of what this
+ * function already did rather than a second model beside it.
+ */
+export function buildManifest(
+  profile: InverterProfile,
+  device: CapabilityInputs = profile,
+): InverterManifest {
   return {
     id: profile.id,
     name: profile.name,
     manufacturer: profile.manufacturer,
-    capabilities: deriveCapabilities(profile),
+    capabilities: deriveCapabilities(device),
     metrics: profile.metrics.map(toManifestMetric),
   };
 }
