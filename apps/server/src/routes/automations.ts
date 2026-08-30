@@ -7,7 +7,7 @@ import {
   applyAutomationConfig,
 } from "../automation/automation";
 import { getAutomationConfig, setAutomationConfig } from "../settings/automation-settings";
-import { getActiveProfileOrNull } from "../inverter/inverter";
+import { deviceRegistry } from "../devices/registry-instance";
 import { validateAutomationEnable } from "../automation/peak-shaving";
 import { getWeatherConfig } from "../settings/weather-settings";
 import { adminGuard } from "./admin-guard";
@@ -27,7 +27,10 @@ export const automationRoutes = new Elysia({ name: "automation-routes" })
         // Validate the shape first so the enable-guard reasons about the exact
         // config that would be persisted (defaults applied, unknowns stripped).
         const parsed = automationConfigSchema.parse(body);
-        const profile = getActiveProfileOrNull();
+        // The engine still reasons in profiles (#171 moves it onto the
+        // registry's instances); what changed is WHERE the profile comes from —
+        // the plant's primary inverter, not a module global.
+        const profile = deviceRegistry.primaryProfile();
         return {
           parsed,
           rejected: validateAutomationEnable(parsed, profile, await getWeatherConfig()),

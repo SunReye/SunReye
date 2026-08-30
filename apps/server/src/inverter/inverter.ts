@@ -69,15 +69,20 @@ export async function resolveProfileById(id: string): Promise<InverterProfile | 
 }
 
 /**
- * Active profile id: the saved setting wins, else the `INVERTER_PROFILE` env
- * seed, else `null` when neither is set (a fresh install with no config yet).
+ * The profile id this install is CONFIGURED to use: the saved setting wins, else
+ * the `INVERTER_PROFILE` env seed, else `null` when neither is set (a fresh
+ * install with no config yet).
+ *
+ * This setting is not the answer to "what is this device", and nothing outside
+ * this module should ask it as though it were — that is the `devices` table's
+ * job, and `../devices/registry.ts` is what reads it. It survives as the SEED:
+ * an install with no device row yet has nothing else to say which profile its
+ * first device should be provisioned from.
  */
-async function activeProfileId(): Promise<string | null> {
+async function configuredProfileId(): Promise<string | null> {
   const stored = await readSetting(ACTIVE_PROFILE_KEY, activeProfileSchema, { id: "" });
   return stored.id || env.INVERTER_PROFILE || null;
 }
-
-let activeProfile: InverterProfile | null = null;
 
 /**
  * Resolve the active profile for this process. Runs the two-phase boot: built-in
@@ -93,12 +98,30 @@ let activeProfile: InverterProfile | null = null;
 export async function initProfiles(): Promise<InverterProfile | null> {
   await dropLegacyDefaultSource();
   await loadInstalledProfiles();
-  const id = await activeProfileId();
+  return configuredProfile();
+}
+
+/**
+ * The configured profile, resolved fresh from the setting on every call.
+ *
+ * A READ, not a cached global, and that is the whole point of this change. What
+ * stood here was `let activeProfile: InverterProfile | null` — one profile for
+ * the process, written once at boot, reachable from a forecast, an automation
+ * and four routes. It could not describe a plant with two machines, it had no
+ * relationship to the ids `metrics_raw` is keyed by, and every consumer that
+ * only wanted a role or an id took the whole profile because it was there.
+ *
+ * The consumers that wanted a DEVICE now ask `../devices/registry.ts`. What is
+ * left here is the two that genuinely ask about the INSTALL's configuration —
+ * provisioning the first device row, and naming it — and neither of them can be
+ * served by the registry, because both run before there is a device to register.
+ */
+export async function configuredProfile(): Promise<InverterProfile | null> {
+  const id = await configuredProfileId();
   if (!id) {
     logger.warn(
       "no active inverter profile configured — booting onboarding-only (choose one in the UI, then restart)",
     );
-    activeProfile = null;
     return null;
   }
   // The saved id may point at a profile that's no longer available — e.g. an
@@ -109,24 +132,12 @@ export async function initProfiles(): Promise<InverterProfile | null> {
   const resolved = tryGetProfile(id);
   if (!resolved) {
     logger.warn(
-      'active inverter profile "{id}" is not installed — booting onboarding-only (reinstall it from a profile source, then restart)',
+      'the configured inverter profile "{id}" is not installed — booting onboarding-only (reinstall it from a profile source, then restart)',
       { id },
     );
-    activeProfile = null;
     return null;
   }
-  activeProfile = resolved;
-  return activeProfile;
-}
-
-/**
- * The resolved active profile, or `null` when none is configured (degraded
- * onboarding-only boot). Callers that hold a non-null {@link ProfileContext}
- * already have the profile; this is for the routes that must tolerate its
- * absence.
- */
-export function getActiveProfileOrNull(): InverterProfile | null {
-  return activeProfile;
+  return resolved;
 }
 
 /**

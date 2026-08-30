@@ -7,6 +7,7 @@ import type {
   InverterManifest,
   InverterProfile,
   ManifestMetric,
+  ProfileDeclarations,
   MetricDef,
   MetricKind,
   MetricStorage,
@@ -213,8 +214,32 @@ export function resolveDeadband(def: DeadbandInputs): number | undefined {
   return kind === "cumulative" || kind === "status" ? undefined : def.deadband;
 }
 
+/**
+ * The fields {@link deriveCapabilities} reads off one metric.
+ *
+ * Deliberately narrower than `MetricDef`, for the same reason {@link KindInputs}
+ * is: capability derivation asks nothing about addressing, so requiring a
+ * `binding` (or the legacy Modbus mirror) would make it uncallable for a device
+ * that has no register map at all — a coded integration, a user's custom
+ * mapping. Both a `MetricDef` and a `DeviceMetric` satisfy it structurally, so
+ * neither tier needs a translation step.
+ */
+export type CapabilityMetric = Pick<MetricDef, "key" | "group" | "access"> &
+  Partial<Pick<MetricDef, "role" | "index">>;
+
+/**
+ * Everything {@link deriveCapabilities} needs: a metric list and the hardware
+ * declarations no metric can imply. An `InverterProfile` and a `DeviceInstance`
+ * both satisfy it — which is the whole point, since a capability set computed
+ * two different ways is two tiers disagreeing about what "has a battery" means.
+ */
+export interface CapabilityInputs {
+  metrics: readonly CapabilityMetric[];
+  declares?: ProfileDeclarations;
+}
+
 /** Count distinct 1-based indices for an indexed role (e.g. PV strings). */
-function countIndices(metrics: MetricDef[], role: string): number {
+function countIndices(metrics: readonly CapabilityMetric[], role: string): number {
   const seen = new Set<number>();
   for (const m of metrics) {
     if (m.role === role && m.index !== undefined) seen.add(m.index);
@@ -222,14 +247,14 @@ function countIndices(metrics: MetricDef[], role: string): number {
   return seen.size;
 }
 
-const hasRole = (metrics: MetricDef[], prefix: string): boolean =>
+const hasRole = (metrics: readonly CapabilityMetric[], prefix: string): boolean =>
   metrics.some((m) => m.role?.startsWith(prefix));
 
 /**
  * A feature is present when any metric in the profile matches its rule. Order
  * here is the order features appear in {@link InverterCapabilities.features}.
  */
-const FEATURE_RULES: { feature: InverterFeature; match: (m: MetricDef) => boolean }[] = [
+const FEATURE_RULES: { feature: InverterFeature; match: (m: CapabilityMetric) => boolean }[] = [
   { feature: "solar_sell", match: (m) => m.role === "setting.solar_sell.enabled" },
   { feature: "grid_charge", match: (m) => m.role === "setting.battery.grid_charge" },
   { feature: "time_of_use", match: (m) => m.group === "timeofuse" },
@@ -252,8 +277,8 @@ const SUBSYSTEMS: Record<SubsystemKey, string> = {
  * Derive what the inverter can do from the roles/groups present in its profile.
  * Presence of a canonical role is the signal — no per-inverter probing in the UI.
  */
-export function deriveCapabilities(profile: InverterProfile): InverterCapabilities {
-  const metrics = profile.metrics;
+export function deriveCapabilities(device: CapabilityInputs): InverterCapabilities {
+  const metrics = device.metrics;
 
   const features = FEATURE_RULES.filter((rule) => metrics.some(rule.match)).map((r) => r.feature);
   const has = (key: SubsystemKey): boolean => hasRole(metrics, SUBSYSTEMS[key]);
@@ -266,7 +291,7 @@ export function deriveCapabilities(profile: InverterProfile): InverterCapabiliti
     generator: has("generator"),
     // A declaration is a statement about the hardware and wins over the metric
     // set — including an explicit `false` on a profile that meters `backup.*`.
-    backupLoad: profile.declares?.backupOutput ?? has("backupLoad"),
+    backupLoad: device.declares?.backupOutput ?? has("backupLoad"),
     features,
     controls: metrics.filter((m) => m.access === "rw").map((m) => m.key),
   };

@@ -31,7 +31,19 @@ export {
   toManifestMetric,
   buildManifest,
 } from "./capabilities";
+export { deviceInstance, instanceFromProfile, roleBindings } from "./device-instance";
 export type {
+  DeviceClass,
+  DeviceInstance,
+  DeviceInstanceSpec,
+  DeviceMetric,
+  ProfileInstanceSpec,
+  RoleBinding,
+  RoleKey,
+} from "./device-instance";
+export type {
+  CapabilityInputs,
+  CapabilityMetric,
   DeadbandInputs,
   KindFallbackReport,
   KindInputs,
