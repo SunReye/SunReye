@@ -39,9 +39,14 @@ green.
   it, seeds the sample profile, boots the server with `INVERTER_SIMULATE=true` until real rows
   exist, and hits every route in the OpenAPI listing — a 5xx or a dead connection fails, a 4xx
   passes. It then sweeps the same listing **with no credentials**, where everything outside the
-  declared public list (`PUBLIC_LABELS` in `scripts/route-smoke-plan.ts`) must refuse, and probes
-  the `/ws` upgrade both ways. A route left ungated is invisible to every other gate we have — it
-  answers 200 to a stranger and passes. Nothing else executes a route handler: the unit suite stops below
+  declared public list (`PUBLIC_LABELS` in `scripts/route-smoke-plan.ts`) must refuse, and again as
+  a plain **non-admin** session, where every `requireSession` route (`SESSION_LABELS`) must be
+  reachable and everything else must still refuse; the `/ws` upgrade is probed all three ways. A
+  route left ungated is invisible to every other gate we have — it answers 200 to a stranger and
+  passes — and so is the mirror defect, a dashboard read raised to admin, which works for the only
+  person who tests it. Both credentialled passes send a body synthesised from the route's own
+  OpenAPI schema, because Elysia validates a declared body *before* the guard: a write answered 422
+  proves nothing about its gate, so the run reports it UNPROVEN and fails. Nothing else executes a route handler: the unit suite stops below
   `apps/server/src/routes/*` and the browser suite fakes the backend. Run it for route-layer
   work; CI runs it on every PR (job **Route smoke**).
 - Exemptions to the "a test changed with it" rule live in `scripts/require-tests.ts` and are

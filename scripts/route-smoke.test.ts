@@ -3,8 +3,10 @@ import { describe, expect, test } from "bun:test";
 import {
   DEFAULT_DB_PORT,
   DEV_DB_PORT,
+  MAX_UNPROVEN_GATES,
   MIN_ROUTES,
   PUBLIC_LABELS,
+  SESSION_LABELS,
   SKIP_LABELS,
   SmokeTargetError,
   UPGRADE_LABEL,
@@ -14,8 +16,10 @@ import {
   classifyUpgrade,
   fillPath,
   isPublicLabel,
+  isSessionLabel,
   parseArgs,
   planProbes,
+  sampleBody,
   generatedSurface,
   generatedSurfaceProblem,
   probeLabel,
@@ -591,6 +595,22 @@ describe("classifying an ANONYMOUS probe", () => {
     expect(anonWrite("PUT /api/settings/tariff", 422).ok).toBe(true);
   });
 
+  test("...but it is UNPROVEN, not a passing gate — the guard was never asked", () => {
+    // The blind spot this half was reviewed for: a 422 says the SCHEMA refused
+    // the payload. A gated write and an UNGATED write answer it identically, so
+    // counting it as a pass blanks the whole write surface — the register
+    // writes, the admin resets, the profile installs — under a summary line
+    // reading "every gate held".
+    const verdict = anonWrite("POST /api/commands/setting", 422);
+    expect(verdict.unproven).toBe(true);
+    expect(verdict.detail).toMatch(/unproven/i);
+  });
+
+  test("a refusal is a pass and is never unproven", () => {
+    expect(anonWrite("POST /api/commands/setting", 401).unproven).toBeFalsy();
+    expect(anon("GET /api/status", 401).unproven).toBeFalsy();
+  });
+
   test("the allowance is for 422 alone, and only where a body was sent", () => {
     // A write route answering anything else without credentials really did run.
     expect(anonWrite("PUT /api/settings/tariff", 200).ok).toBe(false);
@@ -705,5 +725,325 @@ describe("summarising the auth sweep", () => {
   test("the verdict says which credentials the sweep carried", () => {
     expect(summarizeAuth([green("GET /x")], "anonymous").text).toMatch(/anonymous|no credentials/i);
     expect(summarizeAuth([green("GET /x")], "authenticated").text).toMatch(/authenticated|admin/i);
+    expect(summarizeAuth([green("GET /x")], "member").text).toMatch(/non-admin|member/i);
+  });
+
+  const unproven = (label: string): ProbeResult => ({
+    label,
+    ok: true,
+    unproven: true,
+    detail: "422 (schema refused the payload before the gate) — UNPROVEN",
+  });
+
+  test("an unproven gate must never be reported as a gate that held", () => {
+    // The summary is the only thing a reader sees. A route whose guard was
+    // never consulted has proved nothing, and saying "every gate held" over it
+    // is the failure mode this whole harness exists to refuse.
+    const verdict = summarizeAuth(
+      [green("GET /api/history"), unproven("POST /api/commands/setting")],
+      "anonymous",
+      1,
+    );
+    expect(verdict.text).not.toMatch(/every gate held/i);
+    expect(verdict.text).toMatch(/unproven/i);
+    expect(verdict.text).toContain("POST /api/commands/setting");
+  });
+
+  test("more unproven gates than the floor fails the run", () => {
+    const results = [green("GET /api/history"), unproven("POST /api/commands/setting")];
+    const verdict = summarizeAuth(results, "anonymous", 0);
+    expect(verdict.ok).toBe(false);
+    expect(verdict.exitCode).toBe(1);
+    expect(verdict.text).toContain("POST /api/commands/setting");
+  });
+
+  test("the floor is ZERO: every gate the sweep counts must have been asked", () => {
+    // Every body-carrying route in the listing gets a schema-valid payload
+    // synthesised from its own `requestBody`, so there is no route left whose
+    // gate cannot be reached. A floor above zero would be a licence to stop
+    // proving the next one.
+    expect(MAX_UNPROVEN_GATES).toBe(0);
+    expect(summarizeAuth([green("GET /x"), unproven("POST /y")], "anonymous").ok).toBe(false);
+  });
+
+  test("a leak outranks an unproven gate in the report", () => {
+    const verdict = summarizeAuth(
+      [red("GET /api/profiles/updates"), unproven("POST /y")],
+      "anonymous",
+    );
+    expect(verdict.ok).toBe(false);
+    expect(verdict.text).toContain("GET /api/profiles/updates");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Synthesising a body. The anonymous and non-admin passes send a payload the
+// route's own schema ACCEPTS, so validation cannot answer before the guard does
+// and the 401/403 the gate owes is the thing actually measured.
+// ---------------------------------------------------------------------------
+
+describe("synthesising a schema-valid body", () => {
+  const body = (schema: unknown) =>
+    sampleBody({ requestBody: { content: { "application/json": { schema } } } }, NOW);
+  const parsed = (schema: unknown) => JSON.parse(body(schema) as string) as Record<string, unknown>;
+
+  test("an operation with no declared body needs no synthesis — {} already validates", () => {
+    // `t.Unknown()` and a route with no body schema both accept the empty
+    // object the probe already sends, so those gates were never blind.
+    expect(sampleBody({}, NOW)).toBe("{}");
+    expect(body({})).toBe("{}");
+  });
+
+  test("a required string property gets a value", () => {
+    expect(
+      parsed({ type: "object", properties: { id: { type: "string" } }, required: ["id"] }).id,
+    ).toBeTruthy();
+  });
+
+  test("a required number takes its minimum, never a value the route rejects", () => {
+    expect(
+      parsed({
+        type: "object",
+        properties: { value: { type: "number", minimum: 5, maximum: 350 } },
+        required: ["value"],
+      }),
+    ).toEqual({ value: 5 });
+  });
+
+  test("an enum member is sent AS THE JSON VALUE IT IS, not stringified", () => {
+    // The generated register writes declare `{"value": {"type":"string","enum":[0,1]}}`
+    // — the members are numbers whatever the `type` says, and `"0"` is refused.
+    expect(
+      parsed({
+        type: "object",
+        properties: { value: { type: "string", enum: [0, 1] } },
+        required: ["value"],
+      }),
+    ).toEqual({ value: 0 });
+  });
+
+  test("only REQUIRED properties are sent — an optional one is the route's own default path", () => {
+    const built = parsed({
+      type: "object",
+      properties: { key: { type: "string" }, note: { type: "string" } },
+      required: ["key"],
+    });
+    expect(Object.keys(built)).toEqual(["key"]);
+  });
+
+  test("a union body takes its first branch, whole", () => {
+    // POST /api/commands/evcc is an anyOf of per-action shapes; half of one
+    // branch would be refused by every branch.
+    const built = parsed({
+      anyOf: [
+        {
+          type: "object",
+          properties: {
+            loadpoint: { type: "integer", minimum: 1 },
+            action: { type: "string", const: "mode" },
+            value: { type: "string" },
+          },
+          required: ["loadpoint", "action", "value"],
+        },
+        { type: "object", properties: { other: { type: "string" } }, required: ["other"] },
+      ],
+    });
+    expect(built.loadpoint).toBe(1);
+    expect(built.action).toBe("mode");
+    expect(typeof built.value).toBe("string");
+  });
+
+  test("a required window is a real, ordered pair of instants", () => {
+    const built = parsed({
+      type: "object",
+      properties: { from: { type: "string" }, to: { type: "string" } },
+      required: ["from", "to"],
+    });
+    expect(Date.parse(built.from as string)).toBeLessThan(Date.parse(built.to as string));
+  });
+
+  test("a nested object is built, not left as a placeholder string", () => {
+    const built = parsed({
+      type: "object",
+      properties: {
+        window: { type: "object", properties: { hour: { type: "integer" } }, required: ["hour"] },
+      },
+      required: ["window"],
+    });
+    expect(built.window).toEqual({ hour: 1 });
+  });
+
+  test("a required array is a real array", () => {
+    const built = parsed({
+      type: "object",
+      properties: { ids: { type: "array", items: { type: "string" } } },
+      required: ["ids"],
+    });
+    expect(Array.isArray(built.ids)).toBe(true);
+  });
+
+  test("a nullable union takes the branch that is not null", () => {
+    const built = parsed({
+      type: "object",
+      properties: { expiresIn: { anyOf: [{ type: "number", minimum: 1 }, { type: "null" }] } },
+      required: ["expiresIn"],
+    });
+    expect(built.expiresIn).toBe(1);
+  });
+
+  test("a schema no rule understands yields NO synthesis rather than a guess", () => {
+    // The honest fallback: the probe falls back to `{}`, its 422 is reported
+    // UNPROVEN, and the run fails rather than claiming a gate held.
+    expect(
+      sampleBody(
+        { requestBody: { content: { "application/json": { schema: { type: "string" } } } } },
+        NOW,
+      ),
+    ).toBeUndefined();
+  });
+
+  test("a body that is not JSON is not synthesised", () => {
+    expect(
+      sampleBody(
+        { requestBody: { content: { "multipart/form-data": { schema: { type: "object" } } } } },
+        NOW,
+      ),
+    ).toBeUndefined();
+  });
+});
+
+describe("planning carries both bodies", () => {
+  test("a write carries the empty body for the run, and a valid one for the gate", () => {
+    const [probe] = plan({
+      "/api/commands/setting": {
+        post: {
+          requestBody: {
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: { key: { type: "string" }, value: { type: "number" } },
+                  required: ["key", "value"],
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+    // The authenticated pass must NOT write real registers: it keeps `{}`.
+    expect(probe?.body).toBe("{}");
+    const gate = JSON.parse(probe?.gateBody as string) as Record<string, unknown>;
+    expect(gate.key).toBeTruthy();
+    expect(typeof gate.value).toBe("number");
+  });
+
+  test("a write whose schema cannot be synthesised has no gate body", () => {
+    const [probe] = plan({
+      "/api/x": {
+        post: { requestBody: { content: { "application/json": { schema: { type: "string" } } } } },
+      },
+    });
+    expect(probe?.body).toBe("{}");
+    expect(probe?.gateBody).toBeUndefined();
+  });
+
+  test("a read carries neither", () => {
+    const [probe] = plan({ "/a": { get: {} } });
+    expect(probe?.body).toBeUndefined();
+    expect(probe?.gateBody).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The NON-ADMIN pass. Both other passes carry an admin session, so a dashboard
+// read wrongly raised to `requireAdmin` sweeps green — the "broken dashboard"
+// half of the same asymmetry, and the one a user reports rather than an
+// attacker finds.
+// ---------------------------------------------------------------------------
+
+describe("the session surface is a closed list", () => {
+  test("the dashboard reads a plain signed-in user must be able to make", () => {
+    for (const label of [
+      "GET /api/profile",
+      "GET /api/history",
+      "GET /api/history/rollup",
+      "GET /api/cost",
+      "GET /api/energy/series",
+      "GET /api/statistics/heatmap",
+      "GET /api/custom-charts",
+      "GET /api/settings/display",
+    ]) {
+      expect(isSessionLabel(label)).toBe(true);
+    }
+  });
+
+  test("no configuration read is on it — those are admin", () => {
+    for (const label of [
+      "GET /api/status",
+      "GET /api/settings/inverter",
+      "GET /api/settings/tariff",
+      "GET /api/profiles/updates",
+      "GET /api/admin/api-keys",
+    ]) {
+      expect(isSessionLabel(label)).toBe(false);
+    }
+  });
+
+  test("no write is on it: every mutation in this app is admin-only", () => {
+    for (const label of SESSION_LABELS) expect(label.startsWith("GET ")).toBe(true);
+  });
+
+  test("a public route is not a session route — it needs no credentials at all", () => {
+    for (const label of PUBLIC_LABELS) expect(isSessionLabel(label)).toBe(false);
+  });
+});
+
+describe("classifying a NON-ADMIN probe", () => {
+  const member = (label: string, status: number) =>
+    classifyAuth({ label }, { status, body: "" }, "member");
+  const memberWrite = (label: string, status: number) =>
+    classifyAuth({ label, body: "{}" }, { status, body: "" }, "member");
+
+  test("a dashboard read that refuses a signed-in user FAILS — that is over-gating", () => {
+    const verdict = member("GET /api/history", 403);
+    expect(verdict.ok).toBe(false);
+    expect(verdict.detail).toMatch(/over-gat|non-admin|dashboard/i);
+    expect(member("GET /api/history", 401).ok).toBe(false);
+  });
+
+  test("a dashboard read the user reaches passes, whatever the handler then says", () => {
+    expect(member("GET /api/history", 200).ok).toBe(true);
+    expect(member("GET /api/profile", 503).ok).toBe(true);
+  });
+
+  test("an admin route must still refuse a plain user", () => {
+    expect(member("GET /api/settings/inverter", 403).ok).toBe(true);
+    const verdict = member("GET /api/settings/inverter", 200);
+    expect(verdict.ok).toBe(false);
+    expect(verdict.detail).toMatch(/non-admin|admin/i);
+  });
+
+  test("an admin WRITE answering 422 to a plain user is unproven here too", () => {
+    const verdict = memberWrite("POST /api/commands/setting", 422);
+    expect(verdict.unproven).toBe(true);
+  });
+
+  test("a public route must not refuse a signed-in user either", () => {
+    expect(member("GET /healthz", 401).ok).toBe(false);
+    expect(member("GET /api/setup-status", 200).ok).toBe(true);
+  });
+
+  test("the API-key surface refusing a cookie-only user is correct", () => {
+    expect(member("GET /api/v1/entities", 401).ok).toBe(true);
+  });
+});
+
+describe("the live socket for a non-admin", () => {
+  test("the upgrade is requireSession, so a plain user must get one", () => {
+    expect(classifyUpgrade("opened", "member").ok).toBe(true);
+    const verdict = classifyUpgrade("refused", "member");
+    expect(verdict.ok).toBe(false);
+    expect(verdict.detail).toMatch(/dashboard|refused/i);
   });
 });

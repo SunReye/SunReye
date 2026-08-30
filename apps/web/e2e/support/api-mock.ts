@@ -199,7 +199,16 @@ export interface MockBackend {
   readonly unhandled: readonly string[];
   /** Control frames the client wrote to the live socket, parsed. */
   readonly clientFrames: readonly unknown[];
-  /** How many times the app opened the live socket. More than one is a bug. */
+  /**
+   * How many times the app opened the live socket.
+   *
+   * Within a steady session it must stay at 1 — a second open while the first
+   * is healthy is the shell tearing its own connection down
+   * (`shell-lease-loop.spec.ts`). It is NOT a bug per se: after the server
+   * drops the socket, RECONNECTING is the required behaviour, and
+   * `ws-reconnect-backoff.spec.ts` asserts the count climbs to 2 and no
+   * further until the backoff elapses.
+   */
   readonly socketOpens: number;
   /** How many requests so far match `pattern` (substring, or regex). */
   requestCount(pattern: string | RegExp): number;

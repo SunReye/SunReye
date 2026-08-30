@@ -24,7 +24,10 @@
  *     their real SQL over them.
  *  5. an admin account (the first sign-up bootstraps one) plus an API key, so
  *     session-guarded and `/api/v1` routes are probed authenticated rather
- *     than all answering 401.
+ *     than all answering 401 — and a second, PLAIN NON-ADMIN account, minted
+ *     through the admin plugin because self-registration closes behind the
+ *     first user. Without it, over-gating is invisible: every other pass
+ *     carries an admin session.
  *  6. the sweep itself, over whatever `/openapi/json` lists — but only once
  *     `generatedSurfaceProblem` confirms the document carries the routes that
  *     step 3 was for. A seeding slip is otherwise invisible: the hand-written
@@ -68,6 +71,19 @@ const PROFILE_FILE = "packages/profile-sdk/src/__fixtures__/sample-profile.json"
 
 const API_KEY = "route-smoke-api-key";
 const ADMIN = { name: "Route Smoke", email: "smoke@route.invalid", password: "route-smoke-pw-1" };
+/**
+ * A plain, non-admin account — the third pass's whole subject.
+ *
+ * Self-registration closes after the first account (`packages/auth`: "invite-
+ * only after setup"), so this one cannot sign up; it is created THROUGH the
+ * admin session with Better Auth's admin plugin, which is how a real second
+ * user is made, and then signs in normally for a session of its own.
+ */
+const MEMBER = {
+  name: "Route Smoke User",
+  email: "user@route.invalid",
+  password: "route-smoke-pw-2",
+};
 
 /**
  * Statuses a named route may answer with despite being a 5xx.
@@ -269,9 +285,45 @@ async function signUp(base: string): Promise<string> {
   if (!response.ok) {
     throw new Error(`sign-up failed (${response.status}): ${await response.text()}`);
   }
+  return sessionCookie(response, "sign-up");
+}
+
+/** The session cookie from any Better Auth response that set one. */
+function sessionCookie(response: Response, what: string): string {
   const cookie = response.headers.getSetCookie().map((c) => c.split(";")[0]);
-  if (cookie.length === 0) throw new Error("sign-up returned no session cookie");
+  if (cookie.length === 0) throw new Error(`${what} returned no session cookie`);
   return cookie.join("; ");
+}
+
+/**
+ * Create a plain non-admin user with the admin plugin and sign in as them.
+ *
+ * The admin's own session is the only thing that can mint this account: the
+ * first sign-up bootstraps the instance admin and closes registration, so a
+ * second `sign-up/email` is answered 403 "Registration is closed".
+ */
+async function signUpMember(base: string, adminCookie: string): Promise<string> {
+  const created = await fetch(`${base}/api/auth/admin/create-user`, {
+    method: "POST",
+    // Better Auth refuses a cookie-authenticated POST with no `Origin`
+    // (MISSING_OR_NULL_ORIGIN) — a browser always sends one, `fetch` here does not.
+    headers: { "content-type": "application/json", cookie: adminCookie, origin: base },
+    body: JSON.stringify({ ...MEMBER, role: "user" }),
+  });
+  if (!created.ok) {
+    throw new Error(
+      `creating the non-admin user failed (${created.status}): ${await created.text()}`,
+    );
+  }
+  const signedIn = await fetch(`${base}/api/auth/sign-in/email`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ email: MEMBER.email, password: MEMBER.password }),
+  });
+  if (!signedIn.ok) {
+    throw new Error(`non-admin sign-in failed (${signedIn.status}): ${await signedIn.text()}`);
+  }
+  return sessionCookie(signedIn, "the non-admin sign-in");
 }
 
 /**
@@ -351,9 +403,25 @@ async function passOver(
 }
 
 const report = (results: readonly ProbeResult[]) => {
-  for (const verdict of results) if (!verdict.ok) log(`FAIL ${verdict.label} -> ${verdict.detail}`);
+  for (const verdict of results) {
+    if (!verdict.ok) log(`FAIL ${verdict.label} -> ${verdict.detail}`);
+    else if (verdict.unproven) log(`UNPROVEN ${verdict.label} -> ${verdict.detail}`);
+  }
   return results;
 };
+
+/**
+ * One pass with credentials: the same plan, but each write carries the payload
+ * its schema accepts, so the guard answers instead of the validator. Falls back
+ * to the empty body where nothing could be synthesised — that probe's 422 is
+ * then reported UNPROVEN and fails the run.
+ */
+const gatePass = (base: string, probes: readonly Probe[], headers: HeadersInit) =>
+  passOver(
+    base,
+    probes.map((probe) => (probe.gateBody ? { ...probe, body: probe.gateBody } : probe)),
+    headers,
+  );
 
 /**
  * Everything the harness can prove it is. The session cookie is named
@@ -374,16 +442,26 @@ interface SweepReport {
 }
 
 /**
- * Walk the whole listing twice — or refuse to, when the document shows the
- * profile never seeded.
+ * Walk the whole listing three times — or refuse to, when the document shows
+ * the profile never seeded.
  *
- * The ANONYMOUS pass runs first and deliberately so: every one of its write
- * probes is expected to be refused before it reaches a handler, so it cannot
- * disturb the state the authenticated pass then reads. It is also the pass that
- * can fail on its own terms — a route that answers a stranger is a leak whether
- * or not it also 500s for an admin.
+ * The ANONYMOUS and NON-ADMIN passes run first and deliberately so: every one
+ * of their write probes is expected to be refused before it reaches a handler,
+ * so neither can disturb the state the authenticated pass then reads. They are
+ * also the passes that can fail on their own terms — a route that answers a
+ * stranger is a leak whether or not it also 500s for an admin, and a dashboard
+ * read that refuses an ordinary user is broken whether or not it works for one.
+ *
+ * Both of them carry {@link Probe.gateBody}: a payload the route's own schema
+ * accepts, so a write's guard is what answers rather than its validator. Only
+ * the authenticated pass still sends `{}`, because it is the only pass whose
+ * requests would actually run.
  */
-async function sweep(base: string, headers: SmokeCredentials): Promise<SweepReport | undefined> {
+async function sweep(
+  base: string,
+  headers: SmokeCredentials,
+  memberCookie: string,
+): Promise<SweepReport | undefined> {
   const doc = (await fetch(`${base}/openapi/json`, { headers }).then((r) =>
     r.json(),
   )) as Parameters<typeof planProbes>[0];
@@ -404,8 +482,8 @@ async function sweep(base: string, headers: SmokeCredentials): Promise<SweepRepo
   });
 
   log(`probing ${probes.length} routes with no credentials`);
-  const anonymous = await passOver(base, probes, {});
-  const access = [
+  const anonymous = await gatePass(base, probes, {});
+  const access: SweepReport["access"] = [
     {
       mode: "anonymous" as const,
       results: report([
@@ -414,6 +492,16 @@ async function sweep(base: string, headers: SmokeCredentials): Promise<SweepRepo
       ]),
     },
   ];
+
+  log(`probing ${probes.length} routes as a plain signed-in NON-ADMIN session`);
+  const member = await gatePass(base, probes, { cookie: memberCookie });
+  access.push({
+    mode: "member" as const,
+    results: report([
+      ...member.map((a) => classifyAuth(a.probe, a.response, "member")),
+      classifyUpgrade(await probeUpgrade(base, memberCookie), "member"),
+    ]),
+  });
 
   log(`probing ${probes.length} routes as the admin session + API key`);
   const authenticated = await passOver(base, probes, headers);
@@ -446,6 +534,7 @@ export async function run(options: SmokeOptions): Promise<number> {
     });
     const cookie = await signUp(base);
     const headers = { cookie, "x-api-key": API_KEY };
+    const memberCookie = await signUpMember(base, cookie);
     log(`warming up the simulator for ${options.warmupMs} ms`);
     await sleep(options.warmupMs);
     const rows = await rawRows(databaseUrl);
@@ -458,7 +547,7 @@ export async function run(options: SmokeOptions): Promise<number> {
       );
       return 1;
     }
-    const report = await sweep(base, headers);
+    const report = await sweep(base, headers, memberCookie);
     // The generated surface was missing: `sweep` already said which half and
     // why, and probing the hand-written remainder would only produce a green
     // report over a listing that proves nothing.
