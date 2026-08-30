@@ -346,9 +346,20 @@ export function createRuntime(deps: RuntimeDeps = {}) {
     return devices.primary();
   }
 
-  /** Re-read the plant's roster. */
+  /**
+   * Re-read the plant's roster, and drop what is no longer on it.
+   *
+   * The forget half is what makes a device RETIRED under a running server a
+   * complete event: its policy holds open series intervals, and an interval is
+   * written when it closes. Left to `stop()` they would be flushed under the
+   * retired slug at shutdown — hours later, timestamped now, keyed to a device
+   * the operator removed. Forgetting writes them out at the moment the roster
+   * says the device is gone, which is the last moment they are history.
+   */
   async function reloadDevices(): Promise<void> {
-    await devices.reload();
+    const before = devices.list().map((d) => d.id);
+    const after = new Set((await devices.reload()).map((d) => d.id));
+    for (const id of before) if (!after.has(id)) writer.forget(id);
   }
 
   /**
@@ -766,6 +777,30 @@ export function createRuntime(deps: RuntimeDeps = {}) {
   return {
     start,
     write,
+    /**
+     * THE WRITE SEAM: store one registered device's readings, through the ONE
+     * wired writer.
+     *
+     * On the runtime rather than closure-local because the seam exists for the
+     * integrations that have no poll loop — #88's EVCC samples off MQTT, #172's
+     * optimizer decisions. A caller that could not reach this would have to
+     * build a second `createDeviceWriter`, and with it a second pair of history
+     * buffers, a second identity resolver and a second flush cadence: one
+     * buffering regime per integration, each with its own cap and its own drop
+     * policy, writing into the same two tables.
+     *
+     * The device must be one the registry knows — the identity is `devices.slug`
+     * and `./storage-identity.ts` drops rows naming a device with no row.
+     */
+    commit: writer.commit,
+    /**
+     * Drop a device, writing out what it held open.
+     *
+     * The runtime calls this itself for a device the roster no longer lists;
+     * exposed for an integration that knows its device is gone before a reload
+     * does.
+     */
+    forgetDevice: writer.forget,
     status,
     stop,
     reloadEndpoint,
@@ -784,6 +819,12 @@ const defaultRuntime = createRuntime();
 
 export const start = defaultRuntime.start;
 export const write = defaultRuntime.write;
+// The write seam, on the process's one runtime — the whole point of it being on
+// the runtime at all (see `commit` above).
+// fallow-ignore-next-line unused-export -- the seam #88 and #172 are built on; its only consumers today are the specs that prove it works
+export const commit = defaultRuntime.commit;
+// fallow-ignore-next-line unused-export -- same seam: an integration that retires its own device before a roster reload does
+export const forgetDevice = defaultRuntime.forgetDevice;
 export const status = defaultRuntime.status;
 export const stop = defaultRuntime.stop;
 export const reloadEndpoint = defaultRuntime.reloadEndpoint;

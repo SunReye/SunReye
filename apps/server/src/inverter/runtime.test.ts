@@ -772,7 +772,7 @@ afterAll(() => {
 // in-memory doubles above rather than the module's default instance — which is
 // why no `@SunReye/db` and no `./control-store` mock is needed.
 const { createRuntime } = await import("./runtime");
-const { instanceFromProfile } = await import("@SunReye/inverter-core");
+const { deviceInstance, instanceFromProfile } = await import("@SunReye/inverter-core");
 /**
  * The plant's roster, as the registry answers it.
  *
@@ -1556,6 +1556,70 @@ describe("the history write buffer", () => {
     // flushed to the change-log by the same shutdown path.
     expect(inserted[0]).toHaveLength(2);
     expect(configInserted[0]).toHaveLength(2);
+  });
+});
+
+describe("the write seam is reachable from outside the poll loop", () => {
+  /** A registered device with no endpoint, no registers and no poll — #172's shape. */
+  const optimizer = deviceInstance({
+    id: "optimizer",
+    deviceClass: "optimizer",
+    integration: "optimizer",
+    metrics: [{ key: "decision.target", unit: "A", group: "misc", access: "r" }],
+  });
+  const commitTime = new Date("2026-08-15T10:00:00.000Z");
+  const laterTime = new Date("2026-08-15T10:00:05.000Z");
+
+  test("a device with no endpoint is written through the runtime's OWN writer", async () => {
+    // #88 (EVCC pushing samples off MQTT) and #172 (the optimizer recording its
+    // decisions) have an instance and a set of readings, and no poll loop. If
+    // the seam is not reachable from the runtime they each have to stand up a
+    // second `createDeviceWriter` — a second set of history buffers, a second
+    // identity resolver and a second flush cadence per integration.
+    await boot();
+
+    runtime.commit(optimizer, { time: commitTime, metrics: { "decision.target": 16 } });
+    runtime.commit(optimizer, { time: laterTime, metrics: { "decision.target": 10 } });
+    await stop();
+
+    const rows = inserted.flat().filter((r) => r.inverterId === "optimizer");
+    // Two intervals: the first closed by the second commit, the second by the
+    // shutdown flush — the same change-encoding every polled device gets, from
+    // the same buffers and the same flush cadence.
+    expect(rows.map((r) => [r.metric, r.value])).toEqual([
+      ["decision.target", 16],
+      ["decision.target", 10],
+    ]);
+    expect(rows[0]).toEqual({
+      inverterId: "optimizer",
+      metric: "decision.target",
+      time: commitTime,
+      value: 16,
+      durMs: 5000,
+    });
+  });
+
+  test("a device retired under a running server is forgotten when the roster says so", async () => {
+    // `writer.forget` was dead in production: a retired device kept its policy
+    // and its open intervals until `stop()`, which then flushed them under the
+    // retired slug — hours later, timestamped now.
+    await boot();
+    extraDevices = [optimizer];
+    await reloadEndpoint();
+    runtime.commit(optimizer, { time: commitTime, metrics: { "decision.target": 16 } });
+
+    // The operator retires it. The roster re-read is where that becomes true.
+    extraDevices = [];
+    await reloadEndpoint();
+
+    const rows = inserted.flat().filter((r) => r.inverterId === "optimizer");
+    expect(rows.map((r) => r.value)).toEqual([16]);
+
+    // And nothing of its is still held: shutdown adds no second copy.
+    const before = inserted.flat().length;
+    await stop();
+    expect(inserted.flat().filter((r) => r.inverterId === "optimizer")).toHaveLength(1);
+    expect(inserted.flat().length).toBeGreaterThanOrEqual(before);
   });
 });
 
