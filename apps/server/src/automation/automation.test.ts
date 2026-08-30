@@ -846,6 +846,9 @@ function recordingMods(): RecordingMods {
         return { zone } as SpotSlice;
       },
       latestSample: () => null,
+      // The plant's one device, running the fixture profile — the binding the
+      // one-time state re-key adopts a 1.x blob by.
+      deviceProfileBindings: () => [{ deviceId: "inv-1", profileId: profile.id }],
       readSetting: async (key, schema, fallback) => {
         reads.push(key);
         readArgs.push({ key, schema, fallback });
@@ -859,6 +862,9 @@ function recordingMods(): RecordingMods {
 }
 
 const plant = { ctx: buildProfileContext(profile), write: async () => {} };
+
+/** Capture stamp for the stored-blob fixtures; the migration never reads it. */
+const CAPTURED = "2026-07-25T12:00:00Z";
 
 describe("production IO wiring", () => {
   test("the persisted snapshot is read once and served from memory after that", async () => {
@@ -893,7 +899,7 @@ describe("production IO wiring", () => {
     const io = composeAutomationIO(plant, r.mods);
     await io.loadState();
     const next: AutomationState = {
-      "test-profile:peakShaving": { previousValue: 120, capturedAt: "2026-07-25T12:00:00Z" },
+      "inv-1:peakShaving": { previousValue: 120, capturedAt: CAPTURED },
     };
 
     await io.saveState(next);
@@ -903,10 +909,69 @@ describe("production IO wiring", () => {
     expect(r.reads).toEqual([AUTOMATION_STATE_KEY]);
   });
 
+  test("a 1.x profile-keyed blob is adopted by its device, once and only once", async () => {
+    // The 1.x shape: namespaced by the profile the device was running. Left
+    // alone, the held charge-current value can never be handed back once the
+    // profile is corrected or swapped.
+    const r = recordingMods();
+    r.set.stored({
+      "test-profile:peakShaving": { previousValue: 90, capturedAt: CAPTURED },
+      "test-profile:evccMode:1": { previousValue: "pv", capturedAt: CAPTURED },
+    });
+    const migrated: AutomationState = {
+      "inv-1:peakShaving": { previousValue: 90, capturedAt: CAPTURED },
+      "inv-1:evccMode:1": { previousValue: "pv", capturedAt: CAPTURED },
+    };
+    const io = composeAutomationIO(plant, r.mods);
+
+    expect(await io.loadState()).toEqual(migrated);
+    expect(r.writes).toEqual([{ key: AUTOMATION_STATE_KEY, value: migrated }]);
+
+    // A second read is served from the cache: no re-read, and above all no
+    // second write of a blob that is already in the new shape.
+    expect(await io.loadState()).toEqual(migrated);
+    expect(r.reads).toEqual([AUTOMATION_STATE_KEY]);
+    expect(r.writes).toHaveLength(1);
+  });
+
+  test("re-reading an already-migrated blob writes nothing at all", async () => {
+    // The pass runs on every boot; it must be inert once there is nothing left
+    // to adopt, or every restart would rewrite the settings row.
+    const r = recordingMods();
+    const held: AutomationState = {
+      "inv-1:peakShaving": { previousValue: 90, capturedAt: CAPTURED },
+    };
+    r.set.stored(held);
+
+    expect(await composeAutomationIO(plant, r.mods).loadState()).toEqual(held);
+    expect(r.writes).toEqual([]);
+  });
+
+  test("a blob no device can adopt is kept exactly as it was, and named", async () => {
+    // The profile is not bound to any device any more. The entry is still the
+    // user's own register value, so it is never dropped — and never rewritten
+    // under a guessed device either.
+    const r = recordingMods();
+    const orphaned: AutomationState = {
+      "gone-profile:peakShaving": { previousValue: 90, capturedAt: CAPTURED },
+    };
+    r.set.stored(orphaned);
+
+    expect(await composeAutomationIO(plant, r.mods).loadState()).toEqual(orphaned);
+    expect(r.writes).toEqual([]);
+  });
+
+  test("an empty blob needs no migration and no write", async () => {
+    const r = recordingMods();
+    r.set.stored({});
+    expect(await composeAutomationIO(plant, r.mods).loadState()).toEqual({});
+    expect(r.writes).toEqual([]);
+  });
+
   test("a stored snapshot survives the restart it was written for", async () => {
     const r = recordingMods();
     const held: AutomationState = {
-      "test-profile:peakShaving": { previousValue: 90, capturedAt: "2026-07-25T12:00:00Z" },
+      "inv-1:peakShaving": { previousValue: 90, capturedAt: CAPTURED },
     };
     r.set.stored(held);
 

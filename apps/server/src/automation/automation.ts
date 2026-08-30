@@ -20,8 +20,10 @@ import type { AutomationConfig } from "@SunReye/db/automation-config";
 import {
   AUTOMATION_STATE_KEY,
   type AutomationState,
+  type DeviceProfileBinding,
   automationStateSchema,
   defaultAutomationState,
+  migrateAutomationState,
 } from "@SunReye/db/automation-state";
 import type { SpotPriceConfig } from "@SunReye/db/spot-price-config";
 import type { ZodType } from "zod";
@@ -160,8 +162,45 @@ export interface AutomationModules {
   spotPricesReady(config: SpotPriceConfig): boolean;
   loadSpotSlice(zone: string): Promise<SpotSlice>;
   latestSample: AutomationIO["latestSample"];
+  /**
+   * Which profile each registered device's row names — the ONE input the
+   * one-time re-key of a 1.x, profile-keyed state blob needs. Nothing else on
+   * this surface may look at it: profile identity is not a behavioural input.
+   */
+  deviceProfileBindings(): readonly DeviceProfileBinding[];
   readSetting<T>(key: string, schema: ZodType<T>, fallback: T): Promise<T>;
   writeSetting<T>(key: string, value: T): Promise<void>;
+}
+
+/**
+ * Read the persisted state, re-keying a 1.x profile-namespaced blob onto the
+ * devices that hold those registers today — once, on the first read.
+ *
+ * The read itself is the validating one, so a hand-mangled row still goes down
+ * the quarantine road `readSetting` owns rather than being silently replaced by
+ * the default. The re-key never parses anything: it moves keys, and only when
+ * exactly one registered device names the profile a key was written under.
+ * Anything it cannot place is left untouched and named in the log — every one of
+ * those entries is a register value the user themselves set, which the
+ * automation borrowed and has not handed back, and it exists nowhere else.
+ */
+async function readMigratedState(mods: AutomationModules): Promise<AutomationState> {
+  const stored = await mods.readSetting(
+    AUTOMATION_STATE_KEY,
+    automationStateSchema,
+    defaultAutomationState,
+  );
+  const migrated = migrateAutomationState(stored, mods.deviceProfileBindings());
+  if (migrated.orphans.length > 0) {
+    logger.warn(
+      "automation state holds {count} entr(y/ies) no registered device can claim — left in place, restore by hand if needed: {keys}",
+      { count: migrated.orphans.length, keys: migrated.orphans.join(", ") },
+    );
+  }
+  // Written only when something actually moved, so the pass is inert on every
+  // boot after the first and cannot churn the settings row.
+  if (migrated.changed) await mods.writeSetting(AUTOMATION_STATE_KEY, migrated.state);
+  return migrated.state;
 }
 
 /**
@@ -190,11 +229,7 @@ export function composeAutomationIO(deps: PlantDeps, mods: AutomationModules): A
     },
     latestSample: mods.latestSample,
     async loadState() {
-      stateCache ??= await mods.readSetting(
-        AUTOMATION_STATE_KEY,
-        automationStateSchema,
-        defaultAutomationState,
-      );
+      stateCache ??= await readMigratedState(mods);
       return stateCache;
     },
     async saveState(next) {
@@ -220,6 +255,7 @@ export async function buildProductionIO(deps: PlantDeps): Promise<AutomationIO> 
     { getSpotPriceConfig },
     { loadSpotSlice },
     { spotPricesReady },
+    { deviceRegistry },
   ] = await Promise.all([
     import("../settings/automation-settings"),
     import("../settings/weather-settings"),
@@ -232,6 +268,7 @@ export async function buildProductionIO(deps: PlantDeps): Promise<AutomationIO> 
     import("../settings/spot-price-settings"),
     import("../prices/spot-price-store"),
     import("@SunReye/db/spot-price-config"),
+    import("../devices/registry-instance"),
   ]);
   return composeAutomationIO(deps, {
     getAutomationConfig,
@@ -248,6 +285,7 @@ export async function buildProductionIO(deps: PlantDeps): Promise<AutomationIO> 
     spotPricesReady,
     loadSpotSlice,
     latestSample: () => liveState.latest,
+    deviceProfileBindings: () => deviceRegistry.bindings(),
     readSetting,
     writeSetting,
   });

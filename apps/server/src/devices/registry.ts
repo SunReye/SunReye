@@ -35,6 +35,7 @@ import {
   instanceFromProfile,
 } from "@SunReye/inverter-core";
 import { DEVICE_ROLES, type DeviceRecord, activeDevices } from "@SunReye/db/plant-repo";
+import type { DeviceProfileBinding } from "@SunReye/db/automation-state";
 
 /** The one failure path this logs; kept minimal so any logger satisfies it. */
 export interface RegistryLogger {
@@ -91,6 +92,20 @@ export interface DeviceRegistry {
   driverProfile(id: string): InverterProfile | null;
   /** Every profile id in use by a registered device, each listed once. */
   profileIds(): readonly string[];
+  /**
+   * Which profile each registered device's row NAMES, in roster order.
+   *
+   * The one place profile identity is handed out per device, and it exists for
+   * exactly one job: the one-time re-key of state blobs that 1.x namespaced by
+   * profile id (`@SunReye/db/automation-state`'s `migrateAutomationState`). It
+   * names the id even when nothing resolves it — an uninstalled profile is
+   * still the namespace an old blob was written under, and a device that cannot
+   * be told which profile it named could never adopt its own snapshot.
+   *
+   * NOT a behavioural input: nothing may branch on it, for the same reason
+   * `DeviceInstance.integration` may not.
+   */
+  bindings(): readonly DeviceProfileBinding[];
   /** Whether any registered device is described by this profile (the uninstall guard). */
   usesProfile(profileId: string): boolean;
 }
@@ -110,6 +125,8 @@ export function createDeviceRegistry(deps: DeviceRegistryDeps): DeviceRegistry {
   let byId = new Map<string, DeviceInstance>();
   /** The driver profile behind each registered device, when one resolved. */
   let profiles = new Map<string, InverterProfile>();
+  /** The profile id each device's ROW names, resolved or not — see `bindings`. */
+  let bindings: readonly DeviceProfileBinding[] = [];
 
   async function reload(): Promise<readonly DeviceInstance[]> {
     let rows: readonly DeviceRecord[];
@@ -128,6 +145,7 @@ export function createDeviceRegistry(deps: DeviceRegistryDeps): DeviceRegistry {
 
     const built: DeviceInstance[] = [];
     const nextProfiles = new Map<string, InverterProfile>();
+    const nextBindings: DeviceProfileBinding[] = [];
     for (const row of activeDevices(rows)) {
       const deviceClass = deviceClassOf(row.role);
       if (!deviceClass) {
@@ -144,6 +162,7 @@ export function createDeviceRegistry(deps: DeviceRegistryDeps): DeviceRegistry {
       }
       const profile = await deps.resolveProfile(row.profileId);
       if (profile) nextProfiles.set(row.slug, profile);
+      nextBindings.push({ deviceId: row.slug, profileId: row.profileId });
       built.push(
         instanceFromProfile({
           id: row.slug,
@@ -163,6 +182,7 @@ export function createDeviceRegistry(deps: DeviceRegistryDeps): DeviceRegistry {
     instances = built;
     byId = new Map(built.map((d) => [d.id, d]));
     profiles = nextProfiles;
+    bindings = nextBindings;
     return instances;
   }
 
@@ -181,6 +201,7 @@ export function createDeviceRegistry(deps: DeviceRegistryDeps): DeviceRegistry {
     },
     driverProfile: (id) => profiles.get(id) ?? null,
     profileIds: () => [...new Set([...profiles.values()].map((p) => p.id))],
+    bindings: () => bindings,
     usesProfile: (profileId) => [...profiles.values()].some((p) => p.id === profileId),
   };
 }

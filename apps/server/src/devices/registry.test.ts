@@ -219,3 +219,26 @@ describe("the single-inverter consumers the registry replaces", () => {
     expect(registry.usesProfile("other")).toBe(false);
   });
 });
+
+describe("what each device is bound to, for the one-time state re-key", () => {
+  test("every registered device names its profile, installed or not", async () => {
+    const registry = registryOver([
+      row({ id: 1, slug: "inverter-1" }),
+      row({ id: 2, slug: "inverter-2", profileId: "uninstalled-profile" }),
+      row({ id: 3, slug: "retired-1", retiredAt: new Date("2026-01-01T00:00:00Z") }),
+    ]);
+    await registry.reload();
+
+    // The uninstalled profile is still NAMED: `devices.profile_id` carries no
+    // foreign key, and a state blob keyed by that id is exactly the blob the
+    // re-key has to be able to adopt.
+    expect(registry.bindings()).toEqual([
+      { deviceId: "inverter-1", profileId: "deye-sg04lp3" },
+      { deviceId: "inverter-2", profileId: "uninstalled-profile" },
+    ]);
+  });
+
+  test("nothing is bound before the first reload", () => {
+    expect(registryOver([row({ id: 1, slug: "inverter-1" })]).bindings()).toEqual([]);
+  });
+});

@@ -821,6 +821,10 @@ const devicesDouble: DeviceRegistry = {
   driverProfile: () => registryProfile,
   profileIds: () => (registryProfile ? [registryProfile.id] : []),
   usesProfile: (id) => registryProfile?.id === id,
+  bindings: () =>
+    registryProfile && registryDevice
+      ? [{ deviceId: DEVICE_SLUG, profileId: registryProfile.id }]
+      : [],
 };
 
 const identityDouble: IdentityResolver = {
