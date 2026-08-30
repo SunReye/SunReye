@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
+import { OPTIMIZER_METRICS, OPTIMIZER_PROFILE } from "../automation/optimizer-device";
 import { EVCC_LOADPOINT_PROFILE } from "../evcc/evcc-devices";
 import { resolveCoded } from "./coded";
 
@@ -14,6 +15,15 @@ describe("the coded-integration table", () => {
       "ev.connected",
       "ev.charging",
     ]);
+  });
+
+  test("resolves the optimizer — a device with no machine behind it at all", () => {
+    const declaration = resolveCoded(OPTIMIZER_PROFILE);
+    expect(declaration?.integration).toBe("optimizer");
+    // Every declaration is an `optimizer.*` decision and nothing else: the
+    // plant's own measurements stay on the devices that measured them.
+    expect(declaration?.metrics.every((m) => m.key.startsWith("optimizer."))).toBe(true);
+    expect(declaration?.metrics.map((m) => m.key)).toEqual(OPTIMIZER_METRICS.map((m) => m.key));
   });
 
   test("an ordinary profile id is not a coded declaration", () => {

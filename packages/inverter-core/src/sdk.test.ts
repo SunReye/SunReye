@@ -72,7 +72,7 @@ function goodProfile(): ProfileData {
 describe("role catalog", () => {
   test("CanonicalRole vocabulary is complete and lists the expected roles", () => {
     // Guards against accidental deletion when editing the catalog.
-    expect(ROLE_NAMES.length).toBe(62);
+    expect(ROLE_NAMES.length).toBe(82);
     for (const r of [
       "pv.string.power",
       "battery.power",

@@ -24,8 +24,7 @@ import {
 import { tariffConfigSchema } from "@SunReye/db/tariff";
 import type { ForecastSlice } from "./slot-window";
 import type { SpotSlice } from "@SunReye/contracts/prices";
-import type { DecisionPoint } from "@SunReye/contracts/automation";
-import { createDecisionLog } from "./automation-history";
+import type { PeakShavingStatus } from "@SunReye/contracts/automation";
 import { projectPeakShaving } from "./peak-shaving-plan";
 import { type AutomationIO, createPeakShavingEngine, planLimits } from "./peak-shaving-engine";
 import type { EvccLoadpoint, EvccState } from "@SunReye/contracts/evcc";
@@ -214,23 +213,6 @@ const baseInputs = {
   minSocPct: 10,
   importFollowsMarket: false,
   nowMs: NOON,
-};
-
-/** A filled decision point; the ring tests override only what they assert on. */
-const logPoint: DecisionPoint = {
-  t: 0,
-  shadow: false,
-  pvW: 0,
-  loadW: null,
-  evChargeW: null,
-  localSinkW: 0,
-  thresholdW: 0,
-  targetA: 0,
-  liveA: null,
-  batteryV: 50,
-  chargeW: null,
-  exportW: null,
-  socPct: 50,
 };
 
 /** A connected pv-mode loadpoint; override what the case needs. */
@@ -1288,6 +1270,12 @@ interface Harness {
   writes: { key: string; value: number }[];
   /** Every EVCC command the engine published, in order — the order is contractual. */
   evccCommands: { loadpoint: number; action: EvccAction; value: string }[];
+  /**
+   * Every decision the engine handed to the write seam, in order. The ring this
+   * replaced was engine-private; a decision is now a READING, so the engine's
+   * job ends at handing it over.
+   */
+  decisions: { status: PeakShavingStatus; localSinkW: number; at: Date }[];
   set: {
     config(c: AutomationConfig): void;
     weather(w: WeatherConfig): void;
@@ -1318,6 +1306,7 @@ function harness(over: { config?: AutomationConfig; prices?: SpotSlice | null } 
   let wx = weather();
   let prices: SpotSlice | null = over.prices ?? null;
   const evccCommands: Harness["evccCommands"] = [];
+  const decisions: Harness["decisions"] = [];
   let evccError: string | null = null;
   let fc: SolarForecast | null = asForecast(slice(12, [6000, 6000, 6000, 6000]));
   let ev: EvccState | null = null;
@@ -1388,6 +1377,11 @@ function harness(over: { config?: AutomationConfig; prices?: SpotSlice | null } 
         state = next;
       },
       now: () => nowMs,
+      recordDecision: async (status, localSinkW, at) => {
+        // Snapshotted BY VALUE: the engine mutates its status in place, and a
+        // consumer that kept the reference would read every later tick's numbers.
+        decisions.push({ status: { ...status }, localSinkW, at });
+      },
     },
     writes,
     set: {
@@ -1407,6 +1401,7 @@ function harness(over: { config?: AutomationConfig; prices?: SpotSlice | null } 
       },
     },
     evccCommands,
+    decisions,
     state: () => state,
   };
 }
@@ -1516,12 +1511,15 @@ describe("peak-shaving engine", () => {
     expect(h.writes).toHaveLength(0);
   });
 
-  test("simulation logs shadow points for the charts", async () => {
+  test("simulation records its decision, and calls itself simulating", async () => {
     h.set.config(config({ enabled: false }));
     const engine = createPeakShavingEngine(h.io);
     await engine.tick();
-    expect(engine.history()).toHaveLength(1);
-    expect(engine.history()[0]?.shadow).toBe(true);
+    expect(h.decisions).toHaveLength(1);
+    // The state the tick SETTLED on: a simulated tick decides in shadow and only
+    // afterwards renames itself, so a decision stored mid-flight would have said
+    // "shadow" for five years about a plant that was switched off.
+    expect(h.decisions[0]?.status.state).toBe("simulating");
   });
 
   test("blocked mid-run restores and reports the blockers", async () => {
@@ -2041,31 +2039,15 @@ describe("peak-shaving engine — feed-in ceiling", () => {
   });
 });
 
-// --- Decision log --------------------------------------------------------------------
+// --- Recorded decisions --------------------------------------------------------------
 
-describe("decision log", () => {
-  test("keeps the newest points up to its capacity", () => {
-    const log = createDecisionLog(3);
-    for (let t = 1; t <= 5; t++) log.push({ ...logPoint, t });
-    expect(log.points().map((p) => p.t)).toEqual([3, 4, 5]);
-  });
-
-  test("starts empty and preserves push order", () => {
-    const log = createDecisionLog(10);
-    expect(log.points()).toEqual([]);
-    log.push({ ...logPoint, t: 2 });
-    log.push({ ...logPoint, t: 1 });
-    expect(log.points().map((p) => p.t)).toEqual([2, 1]);
-  });
-});
-
-describe("peak-shaving engine — decision log", () => {
+describe("peak-shaving engine — recorded decisions", () => {
   let h: Harness;
   beforeEach(() => {
     h = harness();
   });
 
-  test("records one point per steering tick with the chart's ingredients", async () => {
+  test("hands one decision per steering tick to the write seam", async () => {
     h.set.baselineLoad(400);
     h.set.sample({
       [PV_KEY]: 11_000,
@@ -2078,37 +2060,32 @@ describe("peak-shaving engine — decision log", () => {
     });
     const engine = createPeakShavingEngine(h.io);
     const status = await engine.tick();
-    const [point] = engine.history();
-    expect(engine.history()).toHaveLength(1);
-    expect(point).toMatchObject({
-      t: NOON,
-      shadow: false,
-      pvW: 11_000,
-      loadW: 1000,
-      localSinkW: 1000,
-      socPct: 50,
-      batteryV: 50,
-      chargeW: 2600,
-      exportW: 4000,
-      liveA: 120, // the register as read before this tick's write
+    expect(h.decisions).toHaveLength(1);
+    const [decision] = h.decisions;
+    // Stamped with the READING's instant, not the wall clock: the decision is
+    // keyed to the sample it was made from, exactly as every other reading is.
+    expect(decision?.at).toEqual(new Date(NOON));
+    expect(decision?.localSinkW).toBe(1000);
+    expect(decision?.status).toMatchObject({
+      state: "active",
       targetA: status.targetA,
       thresholdW: status.thresholdW,
     });
     await engine.tick();
-    expect(engine.history()).toHaveLength(2);
+    expect(h.decisions).toHaveLength(2);
   });
 
-  test("marks shadow ticks so the chart can label them", async () => {
+  test("a shadow tick is recorded, and says so in its state", async () => {
     h.set.config(config({}, { shadowMode: true }));
     const engine = createPeakShavingEngine(h.io);
     await engine.tick();
-    expect(engine.history()[0]?.shadow).toBe(true);
+    expect(h.decisions[0]?.status.state).toBe("shadow");
   });
 
   test("nothing is recorded unless the tick actually decided", async () => {
     const engine = createPeakShavingEngine(h.io);
-    // Blocked and stale ticks have no decision to log — disabled or not
-    // (a disabled *runnable* tick simulates and does log).
+    // Blocked and stale ticks have no decision to record — disabled or not
+    // (a disabled *runnable* tick simulates and does record).
     h.set.weather(weather({ battery: null }));
     h.set.config(config({}, { enabled: false }));
     await engine.tick();
@@ -2117,14 +2094,30 @@ describe("peak-shaving engine — decision log", () => {
     h.set.weather(weather());
     h.set.sample({ [PV_KEY]: 5000, [SOC_KEY]: 50, [CHARGE_KEY]: 120 }, 60_000);
     await engine.tick();
-    expect(engine.history()).toEqual([]);
+    expect(h.decisions).toEqual([]);
   });
 
-  test("unmapped optional metrics are logged as null", async () => {
-    h.set.sample({ [PV_KEY]: 9000, [SOC_KEY]: 50, [VOLT_KEY]: 50, [CHARGE_KEY]: 120 });
-    const engine = createPeakShavingEngine(h.io);
-    await engine.tick();
-    expect(engine.history()[0]).toMatchObject({ loadW: null, chargeW: null, exportW: null });
+  test("a recorder that fails never stops the plant being steered", async () => {
+    // The register write is the job; storing what it decided is bookkeeping. A
+    // database that is down must not become an inverter that is unsteered.
+    const io = {
+      ...h.io,
+      recordDecision: async () => {
+        throw new Error("the buffer is on fire");
+      },
+    };
+    const engine = createPeakShavingEngine(io);
+    const status = await engine.tick();
+    expect(status.state).toBe("active");
+    expect(status.lastError).toBeNull();
+    expect(h.writes.length).toBeGreaterThan(0);
+  });
+
+  test("an engine with no recorder at all still ticks", async () => {
+    // The seam is optional: a harness, and the runtime mock, own no write path.
+    const { recordDecision: _omitted, ...io } = h.io;
+    const engine = createPeakShavingEngine(io);
+    expect((await engine.tick()).state).toBe("active");
   });
 });
 

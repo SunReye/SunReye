@@ -29,6 +29,9 @@ import {
 } from "@SunReye/inverter-core";
 import mqtt from "mqtt";
 import { startAutomations, stopAutomations } from "../automation/automation";
+import { OPTIMIZER_DEVICE_ID, optimizerDeviceSpec } from "../automation/optimizer-device";
+import { type DeviceRowState, createOptimizerRegistrar } from "../automation/optimizer-registrar";
+import { ensureDevice, isRetired, readPlant } from "@SunReye/db/plant-repo";
 import { getMqttConfig } from "../settings/config";
 import type { ControlStore } from "./control-expr";
 import { dbControlStore } from "./control-store";
@@ -61,6 +64,28 @@ import { getWeatherConfig } from "../settings/weather-settings";
 import type { Streams } from "../shared/streams";
 
 const logger = log("runtime");
+
+/**
+ * The optimizer's `devices` row, over the real plant spine.
+ *
+ * RETIRED IS NOT REGISTERED. `ensureDevice` is `ON CONFLICT DO NOTHING` +
+ * SELECT, so it answers "the row is there" for a row the operator retired in
+ * Settings → Devices — while the roster read excludes exactly that row. The
+ * registrar has to be told the difference or it waits for an instance that is
+ * never coming.
+ *
+ * `"absent"` is a legal answer: the automation loop can be armed on a boot that
+ * has no plant yet, and taking it down over a missing device row would be worse
+ * than storing nothing until the next tick.
+ */
+async function ensureOptimizerRow(): Promise<DeviceRowState> {
+  const plantDb = { execute: (query: Parameters<typeof db.execute>[0]) => db.execute(query) };
+  const plant = await readPlant(plantDb);
+  if (!plant) return "absent";
+  return isRetired(await ensureDevice(plantDb, optimizerDeviceSpec(plant.id)))
+    ? "retired"
+    : "ready";
+}
 
 /** Re-log an unchanged, ongoing poll failure at most this often. */
 const POLL_ERROR_RELOG_MS = 300_000;
@@ -172,6 +197,15 @@ export interface RuntimeDeps {
    */
   onLoadSample?: (watts: number | null) => void;
   /**
+   * Create the optimizer's `devices` row if absent, and say what the table now
+   * holds for it (#172). Defaults to the real plant read + upsert.
+   *
+   * Injected for the same reason {@link identity} is: the production version
+   * queries the plant spine, so a unit test that did not stub it would fail on a
+   * missing database client rather than on the behaviour it names.
+   */
+  ensureOptimizerDevice?: () => Promise<DeviceRowState>;
+  /**
    * The name → int2 resolver both commits and the eager metric registration go
    * through. Defaults to one bound to the real database; injected so a test can
    * assert WHAT was registered — the production resolver's registration is a
@@ -250,6 +284,22 @@ export function createRuntime(deps: RuntimeDeps = {}) {
     },
   });
   const onLoadSample = deps.onLoadSample ?? evccOnLoadSample;
+  /**
+   * The optimizer's path to the write seam above — one device, ensured once,
+   * committed to on every tick that decided something.
+   *
+   * Built here rather than in `../index.ts` (where EVCC's registrar is
+   * composed), because the engine it feeds is started by {@link start} and
+   * nothing outside this file holds both that and `writer.commit`. Nothing about
+   * it is armed until a decision arrives.
+   */
+  const optimizer = createOptimizerRegistrar({
+    ensureDevice: deps.ensureOptimizerDevice ?? ensureOptimizerRow,
+    reloadRegistry: () => reloadDevices(),
+    device: () => devices.get(OPTIMIZER_DEVICE_ID),
+    commit: writer.commit,
+    logger,
+  });
   let ctx: ProfileContext | null = null;
   let source: InverterSource | null = null;
   let pollTimer: ReturnType<typeof setInterval> | null = null;
@@ -702,7 +752,14 @@ export function createRuntime(deps: RuntimeDeps = {}) {
       return;
     }
     await startAutomations(
-      { device: steered, constraint: (key) => constraintOf(profileCtx, key), write },
+      {
+        device: steered,
+        constraint: (key) => constraintOf(profileCtx, key),
+        write,
+        // #172: what the loop DECIDES is a reading too, and it goes through the
+        // one seam above rather than into a private in-memory ring.
+        recordDecision: optimizer.record,
+      },
       streamBus,
       undefined,
       automationsWatched,
@@ -824,6 +881,12 @@ export function createRuntime(deps: RuntimeDeps = {}) {
     // Stops the tick only — deliberately no register restore, so a reboot with
     // the automation enabled resumes seamlessly (its snapshot is persisted).
     await stopAutomations();
+    // The optimizer's device is NOT retired by a stop — the plant still has one,
+    // its row, its history and its open intervals stay exactly as they are, and
+    // `closeSeriesIntervals` below writes out what it was holding. Forgetting the
+    // registration only means the next start re-registers immediately rather
+    // than waiting out the retry interval.
+    optimizer.suspend();
     if (pollTimer) clearInterval(pollTimer);
     pollTimer = null;
     // Clears the flush, forecast, learn and price schedules (and their kicks) —

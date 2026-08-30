@@ -16,6 +16,11 @@
  * failure this deliverable is written against.
  */
 
+import {
+  OPTIMIZER_INTEGRATION,
+  OPTIMIZER_METRICS,
+  OPTIMIZER_PROFILE,
+} from "../automation/optimizer-device";
 import { EVCC_INTEGRATION, EVCC_LOADPOINT_PROFILE, LOADPOINT_METRICS } from "../evcc/evcc-devices";
 import type { CodedDeclaration } from "./registry";
 
@@ -28,6 +33,11 @@ import type { CodedDeclaration } from "./registry";
  */
 const CODED_INTEGRATIONS = new Map<string, CodedDeclaration>([
   [EVCC_LOADPOINT_PROFILE, { integration: EVCC_INTEGRATION, metrics: LOADPOINT_METRICS }],
+  // The optimizer qualifies for the coded tier on the same count EVCC does, and
+  // then some: what it declares are the outputs of a control loop — a forecast
+  // model, a price-window search and a register-bounds resolution — and there is
+  // no register map to express any of it. It has no machine behind it at all.
+  [OPTIMIZER_PROFILE, { integration: OPTIMIZER_INTEGRATION, metrics: OPTIMIZER_METRICS }],
 ]);
 
 /** The coded declaration a `profile_id` names, or null when it names a profile. */
