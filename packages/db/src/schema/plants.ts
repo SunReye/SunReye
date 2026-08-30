@@ -286,7 +286,8 @@ export type ConnectionInsert = typeof connections.$inferInsert;
  *    NO foreign key to `installed_profiles`: a profile can be uninstalled while
  *    raw retention is five years, and the previous schema's answer to that —
  *    keying history by the profile id — is the bug being fixed. The device
- *    outlives the profile that describes how to talk to it.
+ *    outlives the profile that describes how to talk to it. The full invariant,
+ *    including who resolves the id instead, is on the column below.
  *
  * CONTROLLERS AND GATEWAYS ARE DEVICES. Sigenergy's plant controller and
  * Victron's GX have their own registers — plant SOC, total power, setpoints —
@@ -324,7 +325,42 @@ export const devices = pgTable(
     slug: text("slug").notNull(),
     /** User-facing label. Editable, unlike the slug. */
     name: text("name").notNull(),
-    /** `ProfileData.id` describing how to talk to this device. No FK — see above. */
+    /**
+     * `ProfileData.id` — WHICH DRIVER TALKS TO THIS DEVICE. A soft reference,
+     * and the absence of the foreign key is a decision, not an oversight.
+     *
+     * WHO RESOLVES IT: the runtime profile registry, never this database.
+     * `apps/server/src/inverter/inverter.ts`'s `resolveProfileById` answers in
+     * that order — a REGISTERED profile first (built-ins that self-register, and
+     * DB rows loaded into the registry at boot), and only then a row hydrated
+     * out of `installed_profiles` on the fly, so a profile downloaded seconds
+     * ago can be test-read before the restart that registers it. An id that
+     * resolves to neither is `null`: the device is simply not polled, and the
+     * server boots onboarding-only rather than crashing.
+     *
+     * WHY NO FK TO `installed_profiles`, three reasons and each is sufficient:
+     *
+     *  1. NOT EVERY VALID ID HAS A ROW. `installed_profiles` holds only what was
+     *     downloaded from a source. A built-in profile is registered in-process
+     *     and has no row at all — `apps/server/src/routes/profiles.ts` badges
+     *     "Built in" by exactly that absence — and the virtual devices the
+     *     optimizer introduces (Phase 4.5) carry a built-in id that will never
+     *     have one. An FK would make those rows unwritable.
+     *  2. A PROFILE MUST STAY REMOVABLE. `uninstallProfile` is a plain DELETE.
+     *     With an FK it is either RESTRICTed forever by the first device that
+     *     ever used the profile, or it CASCADEs into the device rows — and
+     *     `metrics_raw.device_id` references those `ON DELETE RESTRICT`, so the
+     *     cascade takes five years of readings with it or fails at 3 a.m.
+     *  3. THE DEVICE OUTLIVES THE PROFILE. Raw retention is five years and
+     *     profiles are swapped, uninstalled and re-downloaded inside that.
+     *     Keying history by the profile id is the 1.x bug this release exists to
+     *     fix; the id is a mutable ATTRIBUTE of the device (see
+     *     `../plant-repo.ts`'s `updateDevice`), and its identity is `id`.
+     *
+     * So a dangling id is a legal, expected state, and every reader treats it as
+     * one. The invariant is pinned by `../device-profile-id.test.ts`, which goes
+     * red if the FK is ever added.
+     */
     profileId: text("profile_id").notNull(),
     /** Vendor identity where offered (VRM instance, nameplate serial). Never the key. */
     serial: text("serial"),
