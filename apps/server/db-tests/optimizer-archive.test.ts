@@ -51,6 +51,15 @@ const OPTIMIZER = "optimizer";
 const RESTORED = "opt-arch-restored";
 const DECISION = "optimizer.target.current";
 const REGIME = "optimizer.price.regime";
+/**
+ * The operator's half of the optimizer's record: `metrics_config_log`, not the
+ * hypertable. A round trip that carried only the decisions would restore a plant
+ * that could say what ceiling it chose at 10:00 and not whether the automation
+ * was even switched on.
+ */
+const ENABLED = "optimizer.enabled";
+const MODE = "optimizer.mode";
+const RESTORE = "optimizer.restore.pending";
 
 suite("the optimizer round-trips through the portable archive", () => {
   let pool: SQL;
@@ -95,6 +104,9 @@ suite("the optimizer round-trips through the portable archive", () => {
     await ensureMetricKeys(metricKeyWriter(client), [
       { key: DECISION, isCounter: false },
       { key: REGIME, isCounter: false },
+      { key: ENABLED, isCounter: false },
+      { key: MODE, isCounter: false },
+      { key: RESTORE, isCounter: false },
     ]);
 
     // Three decisions and one regime transition, as INTERVALS — the shape the
@@ -116,6 +128,26 @@ suite("the optimizer round-trips through the portable archive", () => {
     await raw.execute(sql`
       insert into metrics_raw (time, value, dur_ms, device_id, metric_id) values
       ${sql.join(values, sql`, `)}`);
+
+    // The CONFIG half, in its own table: the operator switched the optimizer on,
+    // moved it to `grid-friendly` (ordinal 1) and left a held register owed back.
+    // These are CHANGES, so there is one row per change and no `dur_ms` at all —
+    // a different shape from the readings above, travelling in a different
+    // archive member, and nothing in the readings' round trip speaks for it.
+    const configRows = (
+      [
+        [ENABLED, "2026-06-01T09:59:00Z", 1],
+        [MODE, "2026-06-01T09:59:00Z", 1],
+        [RESTORE, "2026-06-01T10:00:30Z", 1],
+      ] as const
+    ).map(
+      ([key, time, value]) => sql`(${time}::timestamptz, ${value},
+        (select min(id) from devices where slug = ${OPTIMIZER}),
+        (select min(id) from metric_keys where key = ${key}))`,
+    );
+    await raw.execute(sql`
+      insert into metrics_config_log (time, value, device_id, metric_id) values
+      ${sql.join(configRows, sql`, `)}`);
   }, 120_000);
 
   afterAll(async () => {
@@ -137,6 +169,10 @@ suite("the optimizer round-trips through the portable archive", () => {
     expect(result.manifest.streams.raw).toBe(4);
     expect(result.manifest.devices).toContain(OPTIMIZER);
     expect(result.manifest.metrics).toEqual(expect.arrayContaining([DECISION, REGIME]));
+    // The change-log half, counted separately because a config change is not a
+    // reading — and exported whatever `tiers` says, since it is not a tier.
+    expect(result.manifest.streams.configLog).toBe(3);
+    expect(result.manifest.metrics).toEqual(expect.arrayContaining([ENABLED, MODE, RESTORE]));
   }, 120_000);
 
   test("IMPORT: every decision comes back, with its interval intact", async () => {
@@ -149,6 +185,11 @@ suite("the optimizer round-trips through the portable archive", () => {
     });
     expect(result.skipped).toBeNull();
     expect(result.inserted.raw).toBe(4);
+    // The change-log travels on its own member and is inserted directly, so its
+    // count is its own — and it is not zero, which is what this import used to
+    // be unable to reach at all: the config-log metrics were absent from the
+    // manifest, so nothing resolved their ids and the insert failed NOT NULL.
+    expect(result.inserted.configLog).toBe(3);
 
     const { rows } = await raw.execute<{ key: string; value: number; dur_ms: number }>(sql`
       select k.key, r.value, r.dur_ms from metrics_raw r
@@ -164,14 +205,39 @@ suite("the optimizer round-trips through the portable archive", () => {
     ]);
   }, 300_000);
 
+  test("IMPORT: the operator's settings come back too, as a change-log", async () => {
+    // The other half of "the optimizer and its series round-trip". `enabled`,
+    // `mode` and `restore.pending` never touch `metrics_raw` — they are the one
+    // part of the optimizer's record that lives in `metrics_config_log`, so a
+    // round trip proved only over the readings proves nothing about them, and a
+    // restored plant would have decisions with no idea what mode made them.
+    const { rows } = await raw.execute<{ key: string; value: number; time: Date }>(sql`
+      select k.key, c.value, c.time from metrics_config_log c
+        join metric_keys k on k.id = c.metric_id
+        join devices d on d.id = c.device_id
+       where d.slug = ${RESTORED}
+       order by c.time, k.key`);
+    expect(rows.map((r) => [r.key, r.value, new Date(r.time).toISOString()])).toEqual([
+      [ENABLED, 1, "2026-06-01T09:59:00.000Z"],
+      [MODE, 1, "2026-06-01T09:59:00.000Z"],
+      [RESTORE, 1, "2026-06-01T10:00:30.000Z"],
+    ]);
+  });
+
   test("a decision is not a counter on the far side either", async () => {
     // `is_counter` travels with the KEY, and an importer that guessed would make
     // `delta(counter_agg)` invent energy out of a charge-current ceiling.
     const { rows } = await raw.execute<{ key: string; is_counter: boolean }>(
       sql`select key, is_counter from metric_keys where key like 'optimizer.%' order by key`,
     );
+    // Every optimizer key the round trip carried, readings and configuration
+    // alike — a `1` in the change-log is a boolean, and one guessed as a counter
+    // would have `delta(counter_agg)` read a switch being flicked as energy.
     expect(rows).toEqual([
+      { key: ENABLED, is_counter: false },
+      { key: MODE, is_counter: false },
       { key: REGIME, is_counter: false },
+      { key: RESTORE, is_counter: false },
       { key: DECISION, is_counter: false },
     ]);
   });

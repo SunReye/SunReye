@@ -895,6 +895,16 @@ async function writeNativeConfigLog(client: ReplayClient, sink: ExportSink): Pro
   )) {
     const at = asDate(row.t);
     if (at === null || row.v === null) continue;
+    // NAMED IN THE MANIFEST, exactly as a reading's identities are. The import
+    // resolves `metric_keys` and `devices` from `manifest.metrics` /
+    // `manifest.devices` alone, so a metric that only ever appears in the config
+    // log — `optimizer.enabled`, `optimizer.mode`, `optimizer.restore.pending`,
+    // and every `setting.*` on a device whose readings fell outside the exported
+    // window — reached the far side with no id to key it to. That is not a
+    // silent drop: `metrics_config_log.metric_id` is NOT NULL, so the whole
+    // import fails on the insert.
+    sink.devices.add(String(row.device));
+    sink.metrics.add(String(row.metric));
     write(
       sink,
       sink.configLog,
