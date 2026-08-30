@@ -149,19 +149,35 @@ jobs:
           # `compress_chunk(..., if_not_compressed => true)` over everything.
           # That flag is not the guard it looks like: it downgrades the newer
           # "already converted to columnstore" case to a NOTICE but still
-          # ERRORs on "chunk ... is already compressed", and the published
-          # release's own compression policy may have compressed a chunk before
-          # this step runs. Skipping compressed chunks cannot hit either
-          # wording. `show_chunks` is kept because it resolves a continuous
-          # aggregate to its materialized hypertable, which
-          # `chunks.hypertable_name` does not.
+          # ERRORs on "chunk ... is already compressed". `show_chunks` is kept
+          # because it resolves a continuous aggregate to its materialized
+          # hypertable, which `chunks.hypertable_name` does not.
+          #
+          # The is_compressed filter alone is NOT enough, and this job went red
+          # twice proving it: the published release's own compression policy is
+          # running while this step is, so a chunk that was uncompressed when
+          # the filter read it can be compressed by the policy before
+          # compress_chunk reaches it — and one such chunk aborted the whole
+          # statement. So each chunk is compressed in its own subtransaction and
+          # a lost race is swallowed: what matters is that the chunk ends up
+          # compressed, not who compressed it. Anything else still raises.
           compress_uncompressed() {
-            docker compose exec -T postgres psql -U postgres -d SunReye -c \
-              "SELECT compress_chunk(c) FROM $1 c
-                WHERE NOT EXISTS (
-                  SELECT 1 FROM timescaledb_information.chunks ch
-                   WHERE format('%I.%I', ch.chunk_schema, ch.chunk_name)::regclass = c
-                     AND ch.is_compressed)"
+            docker compose exec -T postgres psql -U postgres -d SunReye -v ON_ERROR_STOP=1 -c \
+              "DO \$\$
+               DECLARE c regclass;
+               BEGIN
+                 FOR c IN SELECT * FROM $1 LOOP
+                   BEGIN
+                     PERFORM compress_chunk(c);
+                   EXCEPTION WHEN OTHERS THEN
+                     IF SQLERRM NOT LIKE '%already compressed%'
+                        AND SQLERRM NOT LIKE '%already converted to columnstore%' THEN
+                       RAISE;
+                     END IF;
+                   END;
+                 END LOOP;
+               END
+               \$\$"
           }
           compress_uncompressed "show_chunks('metrics_raw', older_than => INTERVAL '2 hours')"
           compress_uncompressed "show_chunks('minute_rollups')"
