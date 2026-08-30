@@ -8,7 +8,8 @@
  *
  * ## Why a FLAT tagged record and not a discriminated union
  *
- * `readSetting` `safeParse`s and falls back to the DEFAULT with no log line. A
+ * `readSetting` `safeParse`s and falls back to the DEFAULT (warning once and
+ * quarantining the rejected row, which recovers the bytes but not the state). A
  * `z.discriminatedUnion` — or any required field — therefore turns one
  * unparseable field into "no migration ever happened here", silently, on the
  * document that decides whether an instance's only copy of two months of history
