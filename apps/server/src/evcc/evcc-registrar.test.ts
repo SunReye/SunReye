@@ -322,6 +322,23 @@ describe("EVCC's loadpoints become devices with history", () => {
     expect(warnings).toHaveLength(2);
   });
 
+  test("a device table that THROWS waits out the retry interval like any other failure", async () => {
+    // The attempt used to be recorded only once `ensureDevice` RESOLVED, so an
+    // unreachable device table skipped the gate entirely and re-ensured every
+    // loadpoint on every snapshot — up to 5 Hz at the emit debounce, which is
+    // the same query storm the retry cadence exists to prevent. A throw is a
+    // failed attempt like any other and has to be remembered as one.
+    const { registrar, calls, control } = registrarOver({ ensureFails: true });
+    for (let i = 0; i < 10; i += 1) await registrar.sync([loadpoint(1)], later(i * 0.5));
+
+    expect(calls.filter((c) => c.startsWith("ensure:"))).toHaveLength(1);
+
+    control.ensureFails = false;
+    await registrar.sync([loadpoint(1)], later(6));
+
+    expect(calls.filter((c) => c.startsWith("ensure:"))).toHaveLength(2);
+  });
+
   test("a suspended registrar registers the roster again on the next snapshot", async () => {
     const { registrar, calls } = registrarOver();
     await registrar.sync([loadpoint(1)], T0);

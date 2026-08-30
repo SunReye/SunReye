@@ -199,7 +199,16 @@ export interface MockBackend {
   readonly unhandled: readonly string[];
   /** Control frames the client wrote to the live socket, parsed. */
   readonly clientFrames: readonly unknown[];
-  /** How many times the app opened the live socket. More than one is a bug. */
+  /**
+   * How many times the app opened the live socket.
+   *
+   * Within a steady session it must stay at 1 — a second open while the first
+   * is healthy is the shell tearing its own connection down
+   * (`shell-lease-loop.spec.ts`). It is NOT a bug per se: after the server
+   * drops the socket, RECONNECTING is the required behaviour, and
+   * `ws-reconnect-backoff.spec.ts` asserts the count climbs to 2 and no
+   * further until the backoff elapses.
+   */
   readonly socketOpens: number;
   /** How many requests so far match `pattern` (substring, or regex). */
   requestCount(pattern: string | RegExp): number;
@@ -222,6 +231,22 @@ export interface MockBackend {
   readonly deniedTopics: readonly string[];
   /** Stop the automatic feed (idempotent; also runs at test end). */
   stopFeed(): void;
+  /**
+   * Drop the live socket from the SERVER side, as a restart or a proxy timeout
+   * does. The client's `close` handler is the only thing that can notice, which
+   * is why reconnection cannot be proven anywhere but here.
+   */
+  dropSocket(): void;
+  /**
+   * Delete the session server-side without telling the client.
+   *
+   * Every `/api/**` read then answers 401 — except `/api/auth/**`, which keeps
+   * serving the session the client already cached. That asymmetry is the point:
+   * it is the state a real expired or revoked session produces (the query cache
+   * still believes it is signed in), and the only one in which the Eden
+   * `onResponse` bounce is what redirects rather than the shell's own gate.
+   */
+  expireSession(): void;
 }
 
 /** Deterministic PRNG — a perf number that moves because of the fixture is noise. */
@@ -365,6 +390,8 @@ export async function mockBackend(page: Page, options: BackendOptions = {}): Pro
   const clientFrames: unknown[] = [];
   let sockets: WebSocketRoute[] = [];
   let socketOpens = 0;
+  /** Set by {@link MockBackend.expireSession}: every non-auth read 401s after it. */
+  let sessionExpired = false;
   const subscribed = new Set<string>();
   const denied: string[] = [];
   const evccSnapshot = options.evcc === null ? null : fixture.EVCC_STATE;
@@ -473,6 +500,11 @@ export async function mockBackend(page: Page, options: BackendOptions = {}): Pro
     });
     ws.onClose(() => {
       sockets = sockets.filter((s) => s !== ws);
+      // A subscription belongs to the CONNECTION, exactly as on the server: the
+      // topic list is per-socket state there too. Leaving it set would make
+      // `waitForLive` return instantly after a drop and quietly turn every
+      // reconnection assertion into a no-op.
+      if (sockets.length === 0) subscribed.clear();
     });
   });
 
@@ -523,6 +555,13 @@ export async function mockBackend(page: Page, options: BackendOptions = {}): Pro
     }
     if (at("auth/sign-out")) return json(route, { success: true });
     if (path.includes("/api/auth/")) return json(route, null);
+
+    // A session revoked or expired server-side. Below the auth block on
+    // purpose: the client keeps the session it already cached, so the shell's
+    // own gate is satisfied and the 401 is the ONLY thing that can redirect.
+    if (sessionExpired) {
+      return json(route, { error: "Authentication required" }, 401);
+    }
 
     // ── Boot gates ──────────────────────────────────────────────────────────
     // These three decide which of the 26 routes is even reachable: `(app)`'s
@@ -866,6 +905,20 @@ export async function mockBackend(page: Page, options: BackendOptions = {}): Pro
       return denied;
     },
     stopFeed,
+    dropSocket() {
+      // Forget the connection BEFORE closing it, rather than waiting for
+      // `onClose` to arrive. That callback lands a tick or two later, and until
+      // it does `waitForLive` still sees a live socket with `metrics` on it —
+      // so a spec that dropped the socket and immediately waited for the next
+      // one was answered by the corpse of the previous one.
+      const closing = sockets;
+      sockets = [];
+      subscribed.clear();
+      for (const ws of closing) ws.close();
+    },
+    expireSession() {
+      sessionExpired = true;
+    },
   };
   return backend;
 }

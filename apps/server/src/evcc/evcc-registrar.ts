@@ -156,6 +156,12 @@ export function createLoadpointRegistrar(deps: LoadpointRegistrarDeps): Loadpoin
       if (known.has(id)) continue;
       const previous = attempts.get(id);
       if (previous && at.getTime() - previous.at < RETRY_INTERVAL_MS) continue;
+      // Recorded BEFORE the await, and as a failure: an `ensureDevice` that
+      // THROWS is a failed attempt like any other, and remembering it only once
+      // it resolved let an unreachable device table skip the gate and re-ensure
+      // every loadpoint on every snapshot — the very storm this gate exists to
+      // stop. The resolved state overwrites it a line later.
+      attempts.set(id, { at: at.getTime(), state: "absent" });
       const state = await deps.ensureDevice(id, loadpoint.index, loadpoint.title);
       attempts.set(id, { at: at.getTime(), state });
       // No plant at all: nothing after this one would fare better either.

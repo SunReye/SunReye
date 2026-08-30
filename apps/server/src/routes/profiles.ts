@@ -56,8 +56,12 @@ export const profileRoutes = new Elysia({ name: "profile-routes" })
     },
   )
   // Cached result of the background update checker (see `startUpdateChecks`).
-  // Public read — just version info; the checker itself runs server-side.
-  .get("/api/profiles/updates", () => getUpdateCheck())
+  // Admin, like every other profile read: "just version info" was the reason it
+  // shipped public, and it is the wrong reason. The payload names which inverter
+  // profiles this plant runs and which versions are behind — an inventory of the
+  // hardware and of what is out of date on it, handed to anyone who asks. It is
+  // read only by the settings page, which is admin-only anyway.
+  .get("/api/profiles/updates", { requireAdmin: true }, () => getUpdateCheck())
   // Browse profiles across enabled repos (clones/pulls each — admin only).
   .get("/api/profiles/available", { requireAdmin: true }, () => browseAvailable())
   // Download + validate + persist a profile, registering it immediately so it
