@@ -59,6 +59,21 @@ const logger = log("runtime");
 /** Re-log an unchanged, ongoing poll failure at most this often. */
 const POLL_ERROR_RELOG_MS = 300_000;
 
+/**
+ * Re-read the plant's roster at most this often while samples have nowhere to
+ * go.
+ *
+ * The registry is otherwise re-read twice in the process's life (at boot, and
+ * on a settings save), and a failed read deliberately keeps the last good
+ * roster — which at boot is the EMPTY one. So a database that is slow to accept
+ * connections used to cost the whole process's history: 1 Hz polling, live
+ * frames, `connected: true`, and not one row stored until someone restarted it.
+ * A dropped sample is the evidence that the roster is wrong, so it is also when
+ * to re-read one — rate-limited, because the alternative at 1 Hz is a query per
+ * dropped sample, which is a second failure on top of the first.
+ */
+const ROSTER_RECOVERY_INTERVAL_MS = 30_000;
+
 // The PV forecast changes slowly (provider cache is 30 min) and its topics are
 // retained, so re-publishing every 5 minutes keeps HA fresh without churn.
 const FORECAST_PUBLISH_INTERVAL_MS = 5 * 60_000;
@@ -251,6 +266,12 @@ export function createRuntime(deps: RuntimeDeps = {}) {
   /** Last logged poll failure, to collapse an identical error repeating at 1 Hz. */
   let lastPollError: string | null = null;
   let lastPollErrorAt = 0;
+  /** Whether the "nothing to key this sample to" warning has been said already. */
+  let missingDeviceWarned = false;
+  /** When the roster was last re-read because a sample had nowhere to go. */
+  let lastRosterRecoveryAt = 0;
+  /** Whether such a re-read is in flight, so ticks do not stack them up. */
+  let rosterRecovering = false;
 
   const inverterStatus = {
     connected: false,
@@ -325,6 +346,41 @@ export function createRuntime(deps: RuntimeDeps = {}) {
     return devices.primary();
   }
 
+  /** Re-read the plant's roster. */
+  async function reloadDevices(): Promise<void> {
+    await devices.reload();
+  }
+
+  /**
+   * A sample had no device to key it to: say so once, and try to fix it.
+   *
+   * Once, not once a second — `./storage-identity.ts` warns once per
+   * unresolvable source one layer down for the same reason, and the flag is
+   * cleared on the next stored sample so a roster lost LATER warns again.
+   */
+  function noDeviceForSample(): void {
+    if (!missingDeviceWarned) {
+      missingDeviceWarned = true;
+      logger.warn(
+        "no registered device to key this plant's readings to — nothing is being stored. " +
+          "Re-reading the plant's devices; live frames are unaffected.",
+      );
+    }
+    const now = Date.now();
+    if (rosterRecovering || now - lastRosterRecoveryAt < ROSTER_RECOVERY_INTERVAL_MS) return;
+    lastRosterRecoveryAt = now;
+    rosterRecovering = true;
+    // Not awaited: the poll loop must not wait on a query, and the sample that
+    // triggered this one is dropped either way — the reload is for the next.
+    void reloadDevices()
+      .catch((error: unknown) => {
+        logger.warn("could not re-read the plant's devices: {error}", { error });
+      })
+      .finally(() => {
+        rosterRecovering = false;
+      });
+  }
+
   /**
    * Flush every registered device's open series intervals into the history
    * buffer. Called before a source swap and at shutdown: a series row is
@@ -370,9 +426,14 @@ export function createRuntime(deps: RuntimeDeps = {}) {
     // PROFILE's id there (`packages/inverter-core/src/driver.ts`), and a profile
     // is swapped, uninstalled and re-downloaded inside the five years a reading
     // is retained. With no device row there is nothing to key a row to, so
-    // nothing is routed — provisioning creates the row, and the next reload
-    // picks it up.
-    if (device) writer.commit(device, sample);
+    // nothing is routed — and that is said out loud and retried, because a
+    // process that polls, publishes and reports `connected: true` while storing
+    // nothing is otherwise indistinguishable from a healthy one.
+    if (device) {
+      // Cleared on success, so a roster lost later warns again.
+      missingDeviceWarned = false;
+      writer.commit(device, sample);
+    } else noDeviceForSample();
     streams?.emit("metrics", sample);
     bridge?.publishSample(sample);
   }
@@ -540,7 +601,7 @@ export function createRuntime(deps: RuntimeDeps = {}) {
     // provisions the plant's device rows immediately before this call, and a
     // registry built before them would hold an empty plant for the life of the
     // process.
-    await devices.reload();
+    await reloadDevices();
     // The scheduler arms each of these once and is idempotent while running, so
     // a re-boot re-points the source without stacking a second set of jobs. The
     // flush cadence is read here (env is dynamic) rather than baked in.
@@ -590,7 +651,7 @@ export function createRuntime(deps: RuntimeDeps = {}) {
     // asks for this is also how a device is added, renamed or retired, and a
     // loop polling the new endpoint under the old roster would key its readings
     // to a device that is no longer there.
-    await devices.reload();
+    await reloadDevices();
     await rebuildInverter(await loadPollEndpoint());
   }
 

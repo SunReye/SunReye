@@ -191,5 +191,31 @@ suite("a sample committed for any registered device", () => {
       { key: "seam.decision.mode", unit: null, is_counter: false },
       { key: "seam.decision.target", unit: "A", is_counter: false },
     ]);
+
+    // --- and a roster reload does not invent history -----------------------
+    //
+    // `reload()` mints a brand-new instance per row, and every
+    // inverter-connection PUT reloads. If the writer read that as "the device
+    // changed" it would rebuild the storage policy, whose last-value memory is
+    // what makes a change-log a log of CHANGES — and the next commit of an
+    // unchanged setting would append a second "changed" row saying the value is
+    // what it already was. Against the real table, because the row this is
+    // about is one nobody would ever notice: it is well-formed, it is in the
+    // history the UI renders as events, and it is not true.
+    await registry.reload();
+    const afterReload = registry.get("seam-optimizer");
+    if (!afterReload) throw new Error("the optimizer is not registered after a reload");
+    expect(afterReload).not.toBe(optimizer);
+    writer.commit(afterReload, {
+      time: new Date("2026-08-30T10:00:02.000Z"),
+      metrics: { "seam.decision.target": 10, "seam.decision.mode": 2 },
+    });
+    await series.flush();
+    await config.flush();
+
+    const { rows: loggedAfter } = await db.execute(sql`
+      select k.key, l.value from metrics_config_log l join metric_keys k on k.id = l.metric_id
+       where k.key like 'seam.%'`);
+    expect(loggedAfter).toEqual([{ key: "seam.decision.mode", value: 2 }]);
   });
 });

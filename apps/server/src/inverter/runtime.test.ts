@@ -756,6 +756,8 @@ afterAll(() => {
   untapRuntimeLogger();
   registryProfile = null;
   registryDevice = null;
+  extraDevices = [];
+  rosterReadFails = false;
   resolveOverride = null;
   Object.assign(globalThis, timers);
   if (originalFlushInterval === undefined) delete process.env.HISTORY_FLUSH_INTERVAL_MS;
@@ -782,8 +784,26 @@ const { instanceFromProfile } = await import("@SunReye/inverter-core");
  * a double that minted a new object per call would hide a broken cache.
  */
 let registryDevice: DeviceInstance | null = null;
+/**
+ * Registered devices that are NOT the polled inverter — an optimizer, an EV
+ * charger: a row in the same table, with no endpoint and no poll of its own.
+ * Mutated by a test to add or retire one between reloads.
+ */
+let extraDevices: DeviceInstance[] = [];
+/** How often the roster was re-read, so a recovery attempt can be counted. */
+let deviceReloads = 0;
+/**
+ * Whether the roster read fails. The real registry keeps its LAST GOOD snapshot
+ * when the query throws — which at boot is the empty one, so a database that is
+ * slow to accept connections leaves the process polling with nowhere to store.
+ */
+let rosterReadFails = false;
+const roster = () => (registryDevice ? [registryDevice, ...extraDevices] : extraDevices);
 const devicesDouble: DeviceRegistry = {
   reload: async () => {
+    deviceReloads += 1;
+    // A failed read keeps the last good roster rather than emptying the plant.
+    if (rosterReadFails) return roster();
     registryDevice = registryProfile
       ? instanceFromProfile({
           id: DEVICE_SLUG,
@@ -792,10 +812,10 @@ const devicesDouble: DeviceRegistry = {
           profile: registryProfile,
         })
       : null;
-    return registryDevice ? [registryDevice] : [];
+    return roster();
   },
-  list: () => (registryDevice ? [registryDevice] : []),
-  get: (id) => (registryDevice?.id === id ? registryDevice : undefined),
+  list: () => roster(),
+  get: (id) => roster().find((d) => d.id === id),
   primary: () => registryDevice,
   primaryProfile: () => registryProfile,
   driverProfile: () => registryProfile,
@@ -962,6 +982,9 @@ beforeEach(() => {
   spotSyncNotifications = 0;
   registryProfile = null;
   registryDevice = null;
+  extraDevices = [];
+  deviceReloads = 0;
+  rosterReadFails = false;
   resolveOverride = null;
   mqttClient = null;
   bridgeWrite = null;
@@ -1150,6 +1173,55 @@ describe("the poll loop", () => {
     // The live surfaces are unaffected: what is stored and what is shown are
     // different questions.
     expect(published).toHaveLength(1);
+  });
+
+  test("a sample with no device to key it to says so — once, not once a second", async () => {
+    // Storing NOTHING while reporting `connected: true` and serving live frames
+    // is the loudest possible failure and the quietest possible log line. One
+    // layer down, `./storage-identity.ts` warns once per unresolvable source
+    // for exactly this reason; this path must be at least as loud.
+    await boot();
+    registryProfile = null;
+    await devicesDouble.reload();
+    const reloadsBefore = deviceReloads;
+
+    await poll();
+    await settle();
+    await poll();
+    await settle();
+
+    expect(inserted.flat()).toHaveLength(0);
+    expect(linesStartingWith("no registered device")).toHaveLength(1);
+    // And the recovery attempt is one, not one per sample: at 1 Hz, a query per
+    // dropped sample is a second failure on top of the first.
+    expect(deviceReloads - reloadsBefore).toBe(1);
+  });
+
+  test("a roster lost to a failed read at boot is re-read, not lost for the process's life", async () => {
+    // `readPlantDevices()` throws on both boot calls (a statement timeout, a
+    // lock, Postgres still starting) and the registry keeps its last good
+    // roster — which at boot is the EMPTY one. Without a retry the process
+    // polls at 1 Hz, serves live frames and stores nothing until someone
+    // restarts it.
+    rosterReadFails = true;
+    await boot();
+    await poll();
+    await settle();
+    expect(inserted.flat()).toHaveLength(0);
+
+    // The database answers again. The next dropped sample re-reads the roster
+    // (the recovery is rate-limited, so time has to pass) and the poll after it
+    // stores.
+    rosterReadFails = false;
+    setSystemTime(new Date(Date.now() + 60_000));
+    await poll();
+    await settle();
+    await poll();
+    await stop();
+
+    const rows = inserted.flat();
+    expect(rows.length).toBeGreaterThan(0);
+    expect(rows.every((r) => r.inverterId === DEVICE_SLUG)).toBe(true);
   });
 
   test("repeated polls of an unchanged reading write no history row at all", async () => {
