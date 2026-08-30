@@ -1,6 +1,6 @@
 {
   "name": "@sunreye/profile-sdk",
-  "version": "2.0.1",
+  "version": "2.1.0",
   "description": "Authoring SDK + CLI for SunReye inverter profiles: define, validate, scaffold, and exercise ProfileData without hardware.",
   "license": "AGPL-3.0-only",
   "type": "module",

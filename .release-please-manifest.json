@@ -1,7 +1,7 @@
 {
-  ".": "1.2.0",
-  "apps/web": "1.2.0",
-  "packages/inverter-core": "1.0.0",
-  "packages/profile-sdk": "2.0.1",
-  "sunreye": "1.2.0"
+  ".": "2.0.0",
+  "apps/web": "2.0.0",
+  "packages/inverter-core": "1.1.0",
+  "packages/profile-sdk": "2.1.0",
+  "sunreye": "2.0.0"
 }
