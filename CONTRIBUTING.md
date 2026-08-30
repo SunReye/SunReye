@@ -217,6 +217,20 @@ Schema work additionally:
 bun run db:generate    # commit the generated migration — CI has a migration drift gate
 ```
 
+Route work additionally:
+
+```bash
+bun run test:routes    # boot the real server on a throwaway TimescaleDB, hit every route
+```
+
+That one starts its own TimescaleDB on port 5433 (never 5432 — see §8), migrates it, seeds
+the committed sample profile, boots the server with `INVERTER_SIMULATE=true` until the
+simulator has written real rows, then walks the OpenAPI listing. A 5xx or a dead connection
+fails; a 4xx passes, because the handler ran and refused the input. `--db-port=` moves the
+database if something already holds 5433. It is the only layer that executes a route handler
+at all: the unit suite stops below `apps/server/src/routes/*`, the browser suite fakes the
+backend, and the database suite proves statements without the handlers that compose them.
+
 CI runs four required jobs on every PR: **Tests required** (source changed ⇒ a test changed),
 **Lint, type-check & build** (Fallow gate, oxlint, oxfmt `--check`, `check-types`, i18n lint,
 migration drift gate, build), **Test & coverage** (the suite plus the coverage floor), and —
