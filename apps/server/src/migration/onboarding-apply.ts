@@ -35,7 +35,7 @@ import { updateDevice, updatePlant } from "@SunReye/db/plant-repo";
 import { type MigrationRecord, migrationRecordSchema } from "@SunReye/db/upgrade-state";
 import { type UpgradeClient, writeMigrationRecord } from "@SunReye/db/upgrade-120-run";
 
-import { getActiveProfileOrNull } from "../inverter/inverter";
+import { configuredProfile } from "../inverter/inverter";
 import { invalidateHistoryLimits } from "../shared/history-horizon-live";
 import { log } from "../shared/logging";
 import { getMigrationNotice } from "../settings/migration-notice-settings";
@@ -124,7 +124,9 @@ async function gateState(): Promise<GateState> {
 export async function readMigrationView(): Promise<MigrationView> {
   const state = await gateState();
   const { plant, device } = await spine();
-  const profile = getActiveProfileOrNull();
+  // The CONFIGURED profile: this names a device that onboarding has not
+  // created yet, so there is nothing registered to ask.
+  const profile = await configuredProfile();
   const status = migrationStatus(state.record, {
     plantName: plant.name,
     deviceName:

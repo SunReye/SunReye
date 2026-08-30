@@ -15,10 +15,12 @@ import {
 } from "@SunReye/db/weather";
 import {
   type CanonicalRole,
+  type DeviceInstance,
   type InverterProfile,
   type InverterSample,
   type ProfileData,
   hydrateProfile,
+  instanceFromProfile,
 } from "@SunReye/inverter-core";
 import { drizzle } from "drizzle-orm/pg-proxy";
 import { type CorrectionModel, correctionFactor } from "./forecast-correction";
@@ -569,17 +571,17 @@ describe("forecastProviderCatalog", () => {
 // ---------------------------------------------------------------------------
 //
 // And each stub is handed back in `afterAll` below, because a spread mock is
-// still permanent: `db`, `getActiveProfileOrNull` and `liveState` would stay
-// swapped for every later file, including `../shared/state`'s and
-// `../inverter/inverter`'s own suites. A module namespace is live — after the
-// mocks, `realState.liveState` IS `poll` — so the real exports are snapshotted
-// by value here, at load time, before anything is installed.
+// still permanent: `db`, `deviceRegistry` and `liveState` would stay swapped for
+// every later file, including `../shared/state`'s and `../devices/registry`'s
+// own suites. A module namespace is live — after the mocks,
+// `realState.liveState` IS `poll` — so the real exports are snapshotted by value
+// here, at load time, before anything is installed.
 const realDb = await import("@SunReye/db");
-const realInverter = await import("../inverter/inverter");
+const realRegistry = await import("../devices/registry-instance");
 const realState = await import("../shared/state");
 
 const realDbExports = { ...realDb };
-const realInverterExports = { ...realInverter };
+const realRegistryExports = { ...realRegistry };
 const realStateExports = { ...realState };
 
 /** Every statement `db.execute` was handed, flattened for substring matching. */
@@ -626,10 +628,19 @@ const dbStub = {
 };
 mock.module("@SunReye/db", () => ({ ...realDb, db: dbStub }));
 
-let activeProfile: InverterProfile | null = null;
-mock.module("../inverter/inverter", () => ({
-  ...realInverter,
-  getActiveProfileOrNull: () => activeProfile,
+/**
+ * The plant's primary device, as the registry answers it.
+ *
+ * The forecast reads TWO ROLES and an ID off it — `battery.soc`, `load.power`
+ * and the identity its history is stored under. It used to reach into the
+ * module-global profile for a whole register map and then scan its metric
+ * list for the same two roles, keyed by whatever id a live sample happened to
+ * carry.
+ */
+let pollDevice: DeviceInstance | null = null;
+mock.module("../devices/registry-instance", () => ({
+  ...realRegistry,
+  deviceRegistry: { ...realRegistry.deviceRegistry, primary: () => pollDevice },
 }));
 
 // A faithful stand-in for the poll cache, not a bare `{ latest }` bag: the real
@@ -655,11 +666,27 @@ mock.module("../shared/state", () => ({ ...realState, liveState: poll }));
 // modules back.
 afterAll(() => {
   mock.module("@SunReye/db", () => ({ ...realDbExports }));
-  mock.module("../inverter/inverter", () => ({ ...realInverterExports }));
+  mock.module("../devices/registry-instance", () => ({ ...realRegistryExports }));
   mock.module("../shared/state", () => ({ ...realStateExports }));
 });
 
 const HOUR = 3_600_000;
+
+/** `devices.slug` — what the plant's readings are stored under. */
+const DEVICE_SLUG = "inverter-1";
+
+/**
+ * A registered device mapping one metric per canonical role, built through the
+ * PROFILE tier so the roles the forecast reads are resolved exactly as
+ * production resolves them.
+ */
+const deviceWith = (...roles: CanonicalRole[]): DeviceInstance =>
+  instanceFromProfile({
+    id: DEVICE_SLUG,
+    deviceClass: "inverter",
+    integration: "profile",
+    profile: profileWith(...roles),
+  });
 
 /** A profile mapping one metric per canonical role, keyed by the role itself. */
 const profileWith = (...roles: CanonicalRole[]): InverterProfile => {
@@ -733,7 +760,7 @@ function resetHarness(): void {
   medianRows = [];
   hourlyRows = [];
   correctionRows = [];
-  activeProfile = null;
+  pollDevice = null;
   poll.reset(null);
   urls = [];
   body = sunnySeries;
@@ -756,7 +783,7 @@ function resetHarness(): void {
 function restoreHarness(): void {
   globalThis.fetch = nativeFetch;
   setSystemTime();
-  activeProfile = null;
+  pollDevice = null;
   poll.reset(null);
 }
 
@@ -957,7 +984,7 @@ describe("fetchSolarForecast clipping inputs", () => {
     plant({ maxOutputW: 3000, battery: { usableKwh: 4, minSoc: 0 }, ...over });
 
   test("the live SOC and the 14-day median house load drive the clipping model", async () => {
-    activeProfile = profileWith("battery.soc", "load.power");
+    pollDevice = deviceWith("battery.soc", "load.power");
     poll.reset(liveSample({ "battery.soc": 95 }));
     medianRows = [{ median: 800 }];
     const f = must(await fetchSolarForecast(clipped()));
@@ -967,7 +994,9 @@ describe("fetchSolarForecast clipping inputs", () => {
     // wider than the window so the interpolation has neighbours.
     const [, inverterId, metric, , since] = firstParams(medianQueries(), "median house-load");
     expect(metric).toBe("load.power");
-    expect(inverterId).toBe("live-inverter"); // the live sample names the plant
+    // The DEVICE names the source, not the live sample: the id a sample carries
+    // is the profile's, and a profile is not an identity.
+    expect(inverterId).toBe(DEVICE_SLUG);
     expect(Date.now() - (since as Date).getTime()).toBe(14 * 24 * HOUR);
 
     // The day-start SOC is read for the series' own first hour (11:00 local).
@@ -978,7 +1007,7 @@ describe("fetchSolarForecast clipping inputs", () => {
       "day-start SOC rollup",
     );
     expect(socMetric).toBe("battery.soc");
-    expect(socInverter).toBe("live-inverter");
+    expect(socInverter).toBe(DEVICE_SLUG);
     expect((from as Date).toISOString()).toBe(`${localDate()}T09:00:00.000Z`);
     expect((to as Date).toISOString()).toBe(`${localDate()}T10:00:00.000Z`);
 
@@ -990,7 +1019,7 @@ describe("fetchSolarForecast clipping inputs", () => {
   });
 
   test("a configured house load wins over history, and a cap-only plant skips the SOC read", async () => {
-    activeProfile = profileWith("battery.soc", "load.power");
+    pollDevice = deviceWith("battery.soc", "load.power");
     poll.reset(liveSample({ "battery.soc": 50 }));
     medianRows = [{ median: 800 }];
     const f = must(await fetchSolarForecast(plant({ maxOutputW: 3000, houseLoadW: 2000 })));
@@ -1002,7 +1031,7 @@ describe("fetchSolarForecast clipping inputs", () => {
   });
 
   test("with no clipping limit configured the live inputs are never read at all", async () => {
-    activeProfile = profileWith("battery.soc", "load.power");
+    pollDevice = deviceWith("battery.soc", "load.power");
     poll.reset(liveSample({ "battery.soc": 50 }));
     medianRows = [{ median: 800 }];
     const f = must(await fetchSolarForecast(plant()));
@@ -1011,7 +1040,7 @@ describe("fetchSolarForecast clipping inputs", () => {
   });
 
   test("a plant with no active profile still forecasts, just without live inputs", async () => {
-    activeProfile = null;
+    pollDevice = null;
     medianRows = [{ median: 800 }];
     const f = must(await fetchSolarForecast(plant({ maxOutputW: 3000 })));
     expect(queries).toEqual([]);
@@ -1020,7 +1049,7 @@ describe("fetchSolarForecast clipping inputs", () => {
   });
 
   test("a plant that maps no SOC metric leaves the day-start SOC unread", async () => {
-    activeProfile = profileWith("load.power");
+    pollDevice = deviceWith("load.power");
     poll.reset(liveSample({ "load.power": 700 }));
     medianRows = [{ median: 400 }];
     const f = must(await fetchSolarForecast(clipped()));
@@ -1030,7 +1059,7 @@ describe("fetchSolarForecast clipping inputs", () => {
   });
 
   test("a measured day-start SOC lets the sim curtail the morning too", async () => {
-    activeProfile = profileWith("battery.soc", "load.power");
+    pollDevice = deviceWith("battery.soc", "load.power");
     poll.reset(liveSample({ "battery.soc": 100 }));
     medianRows = [{ median: 0 }];
     hourlyRows = [{ bucket: `${localDate()}T09:00:00.000Z`, avg_value: 100 }];
@@ -1041,7 +1070,7 @@ describe("fetchSolarForecast clipping inputs", () => {
   });
 
   test("a day-start SOC is read as a percentage of the pack, not as kWh", async () => {
-    activeProfile = profileWith("battery.soc", "load.power");
+    pollDevice = deviceWith("battery.soc", "load.power");
     poll.reset(liveSample({ "battery.soc": 100 }));
     medianRows = [{ median: 0 }];
     // 1 % of a 4 kWh pack is 0.04 kWh — all but empty at sunrise. The pack
@@ -1065,7 +1094,7 @@ describe("fetchSolarForecast clipping inputs", () => {
   });
 
   test("the live SOC re-seeding the seam is a percentage of the pack too", async () => {
-    activeProfile = profileWith("battery.soc", "load.power");
+    pollDevice = deviceWith("battery.soc", "load.power");
     medianRows = [{ median: 0 }];
     // Full at sunrise, all but empty now: the reconstructed morning clips on the
     // export cap, then 12:00 hands the sim the measured 1 % — 0.04 kWh — and the
@@ -1089,7 +1118,7 @@ describe("fetchSolarForecast clipping inputs", () => {
   });
 
   test("the battery's charge ceiling caps how much surplus it can absorb", async () => {
-    activeProfile = profileWith("battery.soc", "load.power");
+    pollDevice = deviceWith("battery.soc", "load.power");
     poll.reset(liveSample({})); // no live SOC → the simulated state runs the day
     medianRows = [{ median: 0 }];
     hourlyRows = [{ bucket: `${localDate()}T09:00:00.000Z`, avg_value: 0 }];
@@ -1108,7 +1137,7 @@ describe("fetchSolarForecast clipping inputs", () => {
   });
 
   test("no rollup covering the first hour leaves the morning at its raw estimate", async () => {
-    activeProfile = profileWith("battery.soc", "load.power");
+    pollDevice = deviceWith("battery.soc", "load.power");
     poll.reset(liveSample({ "battery.soc": 100 }));
     medianRows = [{ median: 0 }];
     hourlyRows = [];
@@ -1122,7 +1151,7 @@ describe("fetchSolarForecast clipping inputs", () => {
   });
 
   test("a measured 0 % day-start SOC is a reading; an unreadable row is not", async () => {
-    activeProfile = profileWith("battery.soc", "load.power");
+    pollDevice = deviceWith("battery.soc", "load.power");
     poll.reset(liveSample({ "battery.soc": 100 }));
     medianRows = [{ median: 0 }];
     const p = clipped({ battery: { usableKwh: 0.5, minSoc: 0 } });
@@ -1142,7 +1171,7 @@ describe("fetchSolarForecast clipping inputs", () => {
   });
 
   test("a live SOC of 0 % is a real reading, not a missing one", async () => {
-    activeProfile = profileWith("battery.soc", "load.power");
+    pollDevice = deviceWith("battery.soc", "load.power");
     hourlyRows = [];
     const p = clipped({ houseLoadW: 0, battery: { usableKwh: 4, minSoc: 60 } });
 
@@ -1188,7 +1217,7 @@ describe("fetchSolarForecast reserve floor", () => {
    */
   const afternoon = async (minSoc: number): Promise<number[]> => {
     body = darkThenSun;
-    activeProfile = profileWith("battery.soc", "load.power");
+    pollDevice = deviceWith("battery.soc", "load.power");
     poll.reset(liveSample({})); // no live SOC → nothing to re-seed with
     hourlyRows = [{ bucket: `${localDate()}T09:00:00.000Z`, avg_value: 100 }];
     const f = must(
@@ -1237,7 +1266,7 @@ describe("fetchSolarForecast learned correction", () => {
   const learnedCell = { ratio: 1.4, weight: 100 };
 
   test("a learned model that is not enabled is never even loaded", async () => {
-    activeProfile = profileWith("battery.soc");
+    pollDevice = deviceWith("battery.soc");
     correctionRows = [{ month: 7, hour: 12, ...learnedCell }];
     const f = must(await fetchSolarForecast(plant()));
     expect(queries).toEqual([]);
@@ -1245,7 +1274,7 @@ describe("fetchSolarForecast learned correction", () => {
   });
 
   test("an enabled correction scales only the slots its (month, hour) cell covers", async () => {
-    activeProfile = profileWith("battery.soc");
+    pollDevice = deviceWith("battery.soc");
     poll.reset(null); // no live sample → the active profile names the plant
     const month = Number(localDate().slice(5, 7));
     correctionRows = [{ month, hour: 12, ...learnedCell }];
@@ -1268,14 +1297,14 @@ describe("fetchSolarForecast learned correction", () => {
   });
 
   test("an enabled correction with nothing learned yet changes nothing", async () => {
-    activeProfile = profileWith("battery.soc");
+    pollDevice = deviceWith("battery.soc");
     correctionRows = [];
     const f = must(await fetchSolarForecast(plant({ correction: { enabled: true } })));
     for (const p of f.series) expect(p.watts).toBeCloseTo(SLOT_W, 6);
   });
 
   test("without an active profile there is no plant to correct for", async () => {
-    activeProfile = null;
+    pollDevice = null;
     correctionRows = [{ month: 7, hour: 12, ...learnedCell }];
     const f = must(await fetchSolarForecast(plant({ correction: { enabled: true } })));
     expect(queries).toEqual([]);
@@ -1289,7 +1318,7 @@ describe("representativeHouseLoadW", () => {
   afterAll(restoreHarness);
 
   test("the configured load wins over history — including a configured zero", async () => {
-    activeProfile = profileWith("load.power");
+    pollDevice = deviceWith("load.power");
     medianRows = [{ median: 800 }];
     expect(await representativeHouseLoadW(plant({ houseLoadW: 250 }))).toBe(250);
     expect(await representativeHouseLoadW(plant({ houseLoadW: 0 }))).toBe(0);
@@ -1297,31 +1326,32 @@ describe("representativeHouseLoadW", () => {
   });
 
   test("without an active profile there is no load to represent", async () => {
-    activeProfile = null;
+    pollDevice = null;
     medianRows = [{ median: 800 }];
     expect(await representativeHouseLoadW(plant())).toBeNull();
     expect(medianQueries()).toEqual([]);
   });
 
   test("a plant that maps no load metric reports none, without querying", async () => {
-    activeProfile = profileWith("battery.soc");
+    pollDevice = deviceWith("battery.soc");
     medianRows = [{ median: 900 }];
     expect(await representativeHouseLoadW(plant())).toBeNull();
     expect(medianQueries()).toEqual([]);
   });
 
   test("empty rollups report no load rather than a load of zero", async () => {
-    activeProfile = profileWith("load.power");
+    pollDevice = deviceWith("load.power");
     medianRows = [];
     expect(await representativeHouseLoadW(plant())).toBeNull();
     expect(medianQueries()).toHaveLength(1);
   });
 
   test("the median is queried once and reused until its 6-hour TTL lapses", async () => {
-    activeProfile = profileWith("load.power");
+    pollDevice = deviceWith("load.power");
     medianRows = [{ median: 900 }];
     expect(await representativeHouseLoadW(plant())).toBe(900);
-    expect(medianQueries()[0]?.params?.[1]).toBe("test-inverter"); // no live sample
+    // The DEVICE names the source; there is no live-sample fallback any more.
+    expect(medianQueries()[0]?.params?.[1]).toBe(DEVICE_SLUG);
 
     medianRows = [{ median: 150 }]; // history moves on…
     expect(await representativeHouseLoadW(plant())).toBe(900); // …the cache holds

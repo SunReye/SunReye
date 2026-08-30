@@ -20,6 +20,7 @@ import type { HistoryTier } from "./shared/history-horizon";
 import { refuseIncompleteRange } from "./shared/history-horizon-live";
 import { isPublicDashboard } from "./settings/access-settings";
 import { buildProfileContext, initProfiles } from "./inverter/inverter";
+import { deviceRegistry } from "./devices/registry-instance";
 import { syncProvisioning } from "./inverter/provision-boot";
 import { WriteRejectedError } from "./inverter/control-writer";
 import { log, recentLogs, setupLogging } from "./shared/logging";
@@ -185,8 +186,6 @@ const ctx = profile ? buildProfileContext(profile) : null;
 const manifest = ctx?.manifest ?? null;
 // 503 payload for a profile-dependent surface hit before onboarding is done.
 const ONBOARDING_REQUIRED = { error: "No active inverter profile — onboarding required" } as const;
-// Default inverter id for history reads that don't name one; null until onboarded.
-const activeInverterId = profile?.id ?? null;
 
 // Provision the dimension spine: the plant, and — once a profile is active — its
 // connection and the device every reading is FROM.
@@ -203,6 +202,22 @@ const activeInverterId = profile?.id ?? null;
 // plant, and never a renumbered device id, which would rebind five years of
 // readings to a different machine. Never throws.
 await syncProvisioning(profile);
+
+// The device roster, read AFTER provisioning created the rows and before any
+// route can serve a history read from it. `runtime.start` reloads it again (it
+// is idempotent) so a boot that never reaches the runtime — onboarding-only —
+// still has one.
+await deviceRegistry.reload();
+
+/**
+ * The device a history read means when the request names none.
+ *
+ * The registry's primary inverter, by `devices.slug` — the id every row is
+ * written under. It used to be `profile.id`, which worked only because both
+ * resolvers carry a transitional `profile_id` arm; a plant with two inverters
+ * has no answer in that spelling at all.
+ */
+const defaultSourceId = (): string | null => deviceRegistry.primary()?.id ?? null;
 
 // HOLD HOME ASSISTANT DISCOVERY when a 1.x -> 2.0.0 migration has not been
 // through onboarding yet. Before the MQTT bridge starts, necessarily: the
@@ -445,7 +460,7 @@ const app = new Elysia()
       }),
     },
     async ({ query, status }) => {
-      const inverterId = query.inverterId ?? activeInverterId;
+      const inverterId = query.inverterId ?? defaultSourceId();
       if (!inverterId) return status(503, ONBOARDING_REQUIRED);
       return queryRecentBuckets({
         inverterId,
@@ -475,7 +490,7 @@ const app = new Elysia()
       }),
     },
     async ({ query, status }) => {
-      const inverterId = query.inverterId ?? activeInverterId;
+      const inverterId = query.inverterId ?? defaultSourceId();
       if (!inverterId) return status(503, ONBOARDING_REQUIRED);
       const bucket = query.bucket ?? "hour";
       const window = historyWindow(query);

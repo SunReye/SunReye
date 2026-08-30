@@ -23,7 +23,7 @@
 
 import type { WeatherConfig } from "@SunReye/db/weather";
 import { forecastReady } from "@SunReye/db/weather";
-import type { InverterProfile, InverterSample } from "@SunReye/inverter-core";
+import type { DeviceInstance } from "@SunReye/inverter-core";
 import {
   type CorrectionModel,
   type Observation,
@@ -40,11 +40,10 @@ import {
   writeCorrectionCells,
   writeCorrectionState,
 } from "./forecast-correction-store";
-import { getActiveProfileOrNull } from "../inverter/inverter";
+import { deviceRegistry } from "../devices/registry-instance";
 import { queryHourlyAvgRange } from "../shared/history";
 import { type SolarForecastPoint, buildSolarForecast } from "./solar-forecast";
 import { fetchHistoricalIrradiance } from "./providers/open-meteo-archive";
-import { liveState } from "../shared/state";
 import { log } from "../shared/logging";
 
 const logger = log("forecast-correction");
@@ -72,10 +71,15 @@ const addDays = (date: string, n: number): string => isoDate(dayMs(date) + n * D
 export interface CorrectionIo {
   /** Wall clock, ms. Decides which days have settled — nothing else does. */
   now(): number;
-  /** The active plant profile, or null when none is configured. */
-  activeProfile(): InverterProfile | null;
-  /** Newest poll sample; its inverter id is what the data is keyed to. */
-  latestSample(): InverterSample | null;
+  /**
+   * The device the correction is learned for, or null when the plant has none.
+   *
+   * A {@link DeviceInstance}, not a profile: this job needs exactly one role
+   * binding (`pv.total.power`) and the id its readings are stored under, and
+   * both are on the contract. Taking the whole profile is what made this
+   * reachable only for the one machine a module global could describe.
+   */
+  device(): DeviceInstance | null;
   fetchArchive: typeof fetchHistoricalIrradiance;
   measuredHourlyAvg: typeof queryHourlyAvgRange;
   /**
@@ -108,8 +112,7 @@ export interface CorrectionIo {
  */
 const productionIo: CorrectionIo = {
   now: () => Date.now(),
-  activeProfile: getActiveProfileOrNull,
-  latestSample: () => liveState.latest,
+  device: () => deviceRegistry.primary(),
   fetchArchive: fetchHistoricalIrradiance,
   measuredHourlyAvg: queryHourlyAvgRange,
   readCells: readCorrectionCells,
@@ -188,13 +191,20 @@ export async function getCorrectionView(
   };
 }
 
-/** Which inverter id + `pv.total.power` metric key the correction is keyed to. */
+/**
+ * Which device id + `pv.total.power` metric key the correction is keyed to.
+ *
+ * The id is the DEVICE's. It used to be whatever the newest live sample carried
+ * — the profile id a driver stamps — with the profile id again as the fallback,
+ * so a correction grid was keyed to a profile that can be uninstalled while the
+ * grid it names is retained.
+ */
 function resolvePvSource(io: CorrectionIo): { inverterId: string; pvKey: string } | null {
-  const profile = io.activeProfile();
-  if (!profile) return null;
-  const pvKey = profile.metrics.find((m) => m.role === "pv.total.power")?.key;
+  const device = io.device();
+  if (!device) return null;
+  const pvKey = device.roles.get("pv.total.power")?.metrics[0]?.key;
   if (!pvKey) return null;
-  return { inverterId: io.latestSample()?.inverterId ?? profile.id, pvKey };
+  return { inverterId: device.id, pvKey };
 }
 
 export interface LearnRunResult {
