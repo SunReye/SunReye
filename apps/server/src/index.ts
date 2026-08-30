@@ -182,8 +182,6 @@ function describeWriteError(err: unknown): string {
 // the admin picks a profile from the first-run flow, then restarts into the
 // full API.
 const profile = await initProfiles();
-const ctx = profile ? buildProfileContext(profile) : null;
-const manifest = ctx?.manifest ?? null;
 // 503 payload for a profile-dependent surface hit before onboarding is done.
 const ONBOARDING_REQUIRED = { error: "No active inverter profile — onboarding required" } as const;
 
@@ -208,6 +206,26 @@ await syncProvisioning(profile);
 // is idempotent) so a boot that never reaches the runtime — onboarding-only —
 // still has one.
 await deviceRegistry.reload();
+
+// The transports' context, built AFTER the roster exists — the one reason this
+// moved down from beside `initProfiles`.
+//
+// `/api/profile` serves a capability block, and that block now describes the
+// registered DEVICE (`deriveCapabilities` over the roles it binds) rather than
+// the boot profile object. For the only tier that exists today the two are the
+// same expression over the same metric list, which is the parity this step is
+// here to prove; what changes is that a tier with no register map at all (#88,
+// #172) has something to serve, and that a device binding less than its profile
+// describes stops claiming its profile's hardware.
+//
+// Identity and the metric catalog stay the profile's: a `ManifestMetric` carries
+// a topic, a label, a range and enum labels, and only an authored register map
+// states those. The primary inverter is the Phase 2b seam (`registry.primary`) —
+// one manifest for the plant is the answer this deliverable deliberately does
+// not revisit. It falls back to the profile when nothing registered, which is
+// the pre-registry answer unchanged.
+const ctx = profile ? buildProfileContext(profile, deviceRegistry.primary() ?? profile) : null;
+const manifest = ctx?.manifest ?? null;
 
 /**
  * The device a history read means when the request names none.

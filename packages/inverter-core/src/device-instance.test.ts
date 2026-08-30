@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { deriveCapabilities } from "./capabilities";
+import { buildManifest, deriveCapabilities } from "./capabilities";
 import {
   type DeviceMetric,
   deviceInstance,
@@ -185,5 +185,69 @@ describe("deriveCapabilities is reachable for any DeviceInstance", () => {
       profile: p,
     });
     expect(deriveCapabilities(instance)).toEqual(deriveCapabilities(p));
+  });
+});
+
+describe("the manifest reports the DEVICE's capabilities", () => {
+  /**
+   * The last profile-shaped path #175 left: `/api/profile` served ONE manifest
+   * whose `capabilities` block was computed straight off the boot profile. A
+   * consumer therefore saw what the register map says, not what the registered
+   * device binds — and a tier with no profile at all (#88, #172) had nothing to
+   * serve. The catalog and the identity stay the profile's, because a
+   * `ManifestMetric` needs a topic, a label, a range and enum labels, and only a
+   * register map carries those.
+   */
+  test("capabilities come from the registered device, not the profile object", () => {
+    // A register map that describes MORE than this device binds — the shape a
+    // second device sharing one profile, or a partially-bound device, produces.
+    const p = profile([
+      m({ key: "battery.soc", role: "battery.soc" }),
+      m({ key: "grid.power", role: "grid.power" }),
+    ]);
+    const device = deviceInstance({
+      id: "meter-1",
+      deviceClass: "meter",
+      integration: "profile",
+      metrics: [dm({ key: "grid.power", role: "grid.power" })],
+    });
+
+    const manifest = buildManifest(p, device);
+
+    expect(manifest.capabilities).toEqual(deriveCapabilities(device));
+    expect(manifest.capabilities.battery).toBe(false);
+    // Identity and catalog are still the profile's — the manifest is the render
+    // contract, and only a register map can supply it.
+    expect(manifest.id).toBe(p.id);
+    expect(manifest.metrics.map((mm) => mm.key)).toEqual(["battery.soc", "grid.power"]);
+  });
+
+  test("a hand-built device and its profile-backed twin manifest identically", () => {
+    const p = profile([
+      m({ key: "pv1", role: "pv.string.power", index: 1 }),
+      m({ key: "battery.soc", role: "battery.soc" }),
+    ]);
+    const backed = instanceFromProfile({
+      id: "inverter-1",
+      deviceClass: "inverter",
+      integration: "profile",
+      profile: p,
+    });
+    const handBuilt = deviceInstance({
+      id: "coded-1",
+      deviceClass: "inverter",
+      integration: "evcc",
+      metrics: [
+        dm({ key: "pv1", role: "pv.string.power", index: 1 }),
+        dm({ key: "battery.soc", role: "battery.soc" }),
+      ],
+    });
+
+    expect(buildManifest(p, handBuilt).capabilities).toEqual(buildManifest(p, backed).capabilities);
+  });
+
+  test("no device named falls back to the profile — the pre-registry answer, unchanged", () => {
+    const p = profile([m({ key: "battery.soc", role: "battery.soc" })]);
+    expect(buildManifest(p).capabilities).toEqual(deriveCapabilities(p));
   });
 });
