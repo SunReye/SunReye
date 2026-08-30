@@ -1,7 +1,7 @@
 import { isOfficialSource } from "@SunReye/db/profiles";
 import { listProfiles } from "@SunReye/inverter-core";
 import { Elysia, t } from "elysia";
-import { getActiveProfileOrNull } from "../inverter/inverter";
+import { deviceRegistry } from "../devices/registry-instance";
 import {
   browseAvailable,
   getProfileSources,
@@ -22,13 +22,16 @@ export const profileRoutes = new Elysia({ name: "profile-routes" })
   // A profile registered but absent from `installed_profiles` is a built-in
   // (shipped in-repo), which the UI badges "Built in".
   .get("/api/profiles", { requireAdmin: true }, async () => {
-    const activeId = getActiveProfileOrNull()?.id ?? null;
+    // "Active" is now a fact about the PLANT, not about a process global: a
+    // profile is in use when a registered, non-retired device is described by
+    // it. Two devices sharing one profile list it once.
+    const inUse = new Set(deviceRegistry.profileIds());
     const installed = new Map((await listInstalled()).map((p) => [p.id, p]));
     return listProfiles().map((p) => ({
       id: p.id,
       name: p.name,
       manufacturer: p.manufacturer,
-      active: p.id === activeId,
+      active: inUse.has(p.id),
       installed: installed.has(p.id),
       builtin: !installed.has(p.id),
       version: installed.get(p.id)?.version,
@@ -75,7 +78,10 @@ export const profileRoutes = new Elysia({ name: "profile-routes" })
     "/api/profiles/:id",
     { requireAdmin: true, params: t.Object({ id: t.String() }) },
     async ({ params, status }) => {
-      if (params.id === getActiveProfileOrNull()?.id) {
+      // The correct rule is "no device references this profile", not "it is not
+      // the one global": uninstalling a profile a SECOND inverter still uses
+      // would leave that device unable to be polled at all.
+      if (deviceRegistry.usesProfile(params.id)) {
         return status(409, { error: "Cannot uninstall the active profile" });
       }
       await uninstallProfile(params.id);
@@ -90,7 +96,7 @@ export const profileRoutes = new Elysia({ name: "profile-routes" })
     async ({ body, status }) => {
       try {
         const { id } = await setActiveProfile(body);
-        return { id, restartRequired: id !== getActiveProfileOrNull()?.id };
+        return { id, restartRequired: !deviceRegistry.usesProfile(id) };
       } catch (error) {
         return status(400, { error: error instanceof Error ? error.message : "Invalid profile" });
       }

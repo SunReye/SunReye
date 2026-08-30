@@ -12,7 +12,7 @@ import { getLoggingConfig, setLoggingConfig } from "../settings/logging-settings
 import { evccSnapshot, rebuildEvcc } from "../evcc/evcc";
 import { getEvccConfig, setEvccConfig } from "../settings/evcc-settings";
 import { getCorrectionView } from "../forecast/forecast-correction-job";
-import { getActiveProfileOrNull } from "../inverter/inverter";
+import { configuredProfile } from "../inverter/inverter";
 import { defaultDeps, syncProvisioning } from "../inverter/provision-boot";
 import * as runtime from "../inverter/runtime";
 import { getTariff, setTariff } from "../settings/settings";
@@ -113,8 +113,11 @@ export const settingsRoutes = new Elysia({ name: "settings-routes" })
         // The ordered sequence itself lives in `../inverter/endpoint.ts`, where it
         // is tested — this layer has no automated cover.
         applyConnectionSave(inverterConfigSchema.parse(body), {
-          provision: (seed) =>
-            syncProvisioning(getActiveProfileOrNull(), {
+          // The CONFIGURED profile, not a registered device's: this call site
+          // exists for the install that has no device row yet, and asking the
+          // registry would answer null in exactly that case.
+          provision: async (seed) =>
+            syncProvisioning(await configuredProfile(), {
               ...defaultDeps(),
               seed: async () => seed,
             }),
