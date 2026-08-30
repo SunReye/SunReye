@@ -362,8 +362,8 @@ describe("correction learn run — when there is nothing to do", () => {
     // the no-op it must return — it does NOT prove what the default wiring is:
     // `forecastReady` rejects the config before the IO is ever dereferenced, so
     // the assertion below would hold for any default. Proving the production
-    // wiring would mean letting the real `getActiveProfileOrNull`/`liveState`
-    // answer, and those are module state a sibling suite mocks process-globally
+    // wiring would mean letting the real device registry answer, and that is a
+    // process-wide instance a sibling suite mocks process-globally
     // (`solar-forecast.test.ts`) — the result would turn on test file order.
     expect(await runForecastCorrectionLearn(weatherConfigSchema.parse({}))).toEqual({
       learned: 0,
