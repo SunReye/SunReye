@@ -37,17 +37,22 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
+  type AuthMode,
   type Probe,
   type ProbeResponse,
   type ProbeResult,
   type SmokeOptions,
   type StatusAllowList,
+  type UpgradeOutcome,
   assertSmokeTarget,
   classify,
+  classifyAuth,
+  classifyUpgrade,
   generatedSurface,
   generatedSurfaceProblem,
   planProbes,
   summarize,
+  summarizeAuth,
 } from "./route-smoke-plan";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -307,10 +312,78 @@ async function probeOnce(base: string, probe: Probe, headers: HeadersInit): Prom
 }
 
 /**
- * Walk the whole listing, in order, one request at a time — or refuse to,
- * when the document shows the profile never seeded.
+ * Try to open the live socket, and say whether the handshake completed.
+ *
+ * Not a `fetch`: an upgrade cannot be expressed as one (the runtime forbids
+ * setting `Connection`/`Upgrade` by hand), and a plain GET to `/ws` is a
+ * protocol error rather than an answer. A real client is the only probe that
+ * asks the real question. A socket that opens is closed immediately.
  */
-async function sweep(base: string, headers: HeadersInit): Promise<ProbeResult[] | undefined> {
+async function probeUpgrade(base: string, cookie?: string): Promise<UpgradeOutcome> {
+  const url = `${base.replace(/^http/, "ws")}/ws`;
+  const socket = new WebSocket(url, cookie ? { headers: { cookie } } : undefined);
+  return new Promise<UpgradeOutcome>((resolve) => {
+    const settle = (outcome: UpgradeOutcome) => {
+      clearTimeout(timer);
+      socket.close();
+      resolve(outcome);
+    };
+    // A handshake that neither opens nor errors within the timeout is a refusal
+    // for this harness's purposes: nothing was granted.
+    const timer = setTimeout(() => settle("refused"), 10_000);
+    socket.addEventListener("open", () => settle("opened"));
+    socket.addEventListener("error", () => settle("refused"));
+    socket.addEventListener("close", () => settle("refused"));
+  });
+}
+
+/** One pass over the plan: every probe, in order, one request at a time. */
+async function passOver(
+  base: string,
+  probes: readonly Probe[],
+  headers: HeadersInit,
+): Promise<{ probe: Probe; response: ProbeResponse }[]> {
+  const answers: { probe: Probe; response: ProbeResponse }[] = [];
+  for (const probe of probes) {
+    answers.push({ probe, response: await probeOnce(base, probe, headers) });
+  }
+  return answers;
+}
+
+const report = (results: readonly ProbeResult[]) => {
+  for (const verdict of results) if (!verdict.ok) log(`FAIL ${verdict.label} -> ${verdict.detail}`);
+  return results;
+};
+
+/**
+ * Everything the harness can prove it is. The session cookie is named
+ * separately because the WebSocket handshake needs it on its own — a socket
+ * carries no API key.
+ */
+interface SmokeCredentials {
+  cookie: string;
+  "x-api-key": string;
+}
+
+/** What one full run of the harness concluded. */
+interface SweepReport {
+  /** Did the handler run — the 5xx sweep, over the AUTHENTICATED pass. */
+  execution: ProbeResult[];
+  /** Was the caller allowed to make it run, once per set of credentials. */
+  access: { mode: AuthMode; results: ProbeResult[] }[];
+}
+
+/**
+ * Walk the whole listing twice — or refuse to, when the document shows the
+ * profile never seeded.
+ *
+ * The ANONYMOUS pass runs first and deliberately so: every one of its write
+ * probes is expected to be refused before it reaches a handler, so it cannot
+ * disturb the state the authenticated pass then reads. It is also the pass that
+ * can fail on its own terms — a route that answers a stranger is a leak whether
+ * or not it also 500s for an admin.
+ */
+async function sweep(base: string, headers: SmokeCredentials): Promise<SweepReport | undefined> {
   const doc = (await fetch(`${base}/openapi/json`, { headers }).then((r) =>
     r.json(),
   )) as Parameters<typeof planProbes>[0];
@@ -329,14 +402,33 @@ async function sweep(base: string, headers: HeadersInit): Promise<ProbeResult[] 
     samples,
     nowMs: Date.now(),
   });
-  log(`probing ${probes.length} routes`);
-  const results: ProbeResult[] = [];
-  for (const probe of probes) {
-    const verdict = classify(probe, await probeOnce(base, probe, headers), ALLOW);
-    if (!verdict.ok) log(`FAIL ${verdict.label} -> ${verdict.detail}`);
-    results.push(verdict);
-  }
-  return results;
+
+  log(`probing ${probes.length} routes with no credentials`);
+  const anonymous = await passOver(base, probes, {});
+  const access = [
+    {
+      mode: "anonymous" as const,
+      results: report([
+        ...anonymous.map((a) => classifyAuth(a.probe, a.response, "anonymous")),
+        classifyUpgrade(await probeUpgrade(base), "anonymous"),
+      ]),
+    },
+  ];
+
+  log(`probing ${probes.length} routes as the admin session + API key`);
+  const authenticated = await passOver(base, probes, headers);
+  access.push({
+    mode: "authenticated" as const,
+    results: report([
+      ...authenticated.map((a) => classifyAuth(a.probe, a.response, "authenticated")),
+      classifyUpgrade(await probeUpgrade(base, headers.cookie), "authenticated"),
+    ]),
+  });
+
+  return {
+    execution: report(authenticated.map((a) => classify(a.probe, a.response, ALLOW))),
+    access,
+  };
 }
 
 export async function run(options: SmokeOptions): Promise<number> {
@@ -366,14 +458,20 @@ export async function run(options: SmokeOptions): Promise<number> {
       );
       return 1;
     }
-    const results = await sweep(base, headers);
+    const report = await sweep(base, headers);
     // The generated surface was missing: `sweep` already said which half and
     // why, and probing the hand-written remainder would only produce a green
     // report over a listing that proves nothing.
-    if (!results) return 1;
-    const verdict = summarize(results);
-    console.log(`[route-smoke] ${verdict.text}`);
-    return verdict.exitCode;
+    if (!report) return 1;
+    // Every verdict is printed before any of them decides the exit code: a run
+    // that both leaks a route and 500s on another should say so once, not hide
+    // the second behind whichever check happened to be evaluated first.
+    const verdicts = [
+      summarize(report.execution),
+      ...report.access.map(({ mode, results }) => summarizeAuth(results, mode)),
+    ];
+    for (const verdict of verdicts) console.log(`[route-smoke] ${verdict.text}`);
+    return verdicts.some((v) => !v.ok) ? 1 : 0;
   } finally {
     server?.kill();
     if (options.keep) log(`leaving ${CONTAINER} up (--keep); DATABASE_URL=${databaseUrl}`);

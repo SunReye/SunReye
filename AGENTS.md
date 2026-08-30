@@ -38,7 +38,10 @@ green.
   `bun run test:routes`. It starts its own throwaway TimescaleDB on 5433 (never 5432), migrates
   it, seeds the sample profile, boots the server with `INVERTER_SIMULATE=true` until real rows
   exist, and hits every route in the OpenAPI listing — a 5xx or a dead connection fails, a 4xx
-  passes. Nothing else executes a route handler: the unit suite stops below
+  passes. It then sweeps the same listing **with no credentials**, where everything outside the
+  declared public list (`PUBLIC_LABELS` in `scripts/route-smoke-plan.ts`) must refuse, and probes
+  the `/ws` upgrade both ways. A route left ungated is invisible to every other gate we have — it
+  answers 200 to a stranger and passes. Nothing else executes a route handler: the unit suite stops below
   `apps/server/src/routes/*` and the browser suite fakes the backend. Run it for route-layer
   work; CI runs it on every PR (job **Route smoke**).
 - Exemptions to the "a test changed with it" rule live in `scripts/require-tests.ts` and are

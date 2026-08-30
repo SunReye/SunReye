@@ -4,11 +4,16 @@ import {
   DEFAULT_DB_PORT,
   DEV_DB_PORT,
   MIN_ROUTES,
+  PUBLIC_LABELS,
   SKIP_LABELS,
   SmokeTargetError,
+  UPGRADE_LABEL,
   assertSmokeTarget,
   classify,
+  classifyAuth,
+  classifyUpgrade,
   fillPath,
+  isPublicLabel,
   parseArgs,
   planProbes,
   generatedSurface,
@@ -16,6 +21,7 @@ import {
   probeLabel,
   sampleQuery,
   summarize,
+  summarizeAuth,
   type OpenApiDoc,
   type ProbeResult,
 } from "./route-smoke-plan";
@@ -479,5 +485,225 @@ describe("the command line", () => {
       console.error = real;
     }
     expect(printed.join("\n")).toContain(String(DEV_DB_PORT));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The AUTH half of the sweep. `classify` answers "did the handler run"; these
+// answer "was it allowed to". A route silently left public is the failure this
+// exists for, and it is invisible to a 5xx check: an ungated config read
+// answers 200 to a stranger and sweeps green.
+// ---------------------------------------------------------------------------
+
+describe("the public surface is a closed list", () => {
+  test("only the pre-auth routes are declared public", () => {
+    // Anything not on this list must refuse a request with no credentials.
+    // `/openapi`, `/api/auth/*` and `/ws` never reach the classifier — the plan
+    // skips them (see SKIP) — so they are deliberately absent here.
+    expect([...PUBLIC_LABELS].sort()).toEqual(
+      [
+        "GET /api/access-status",
+        "GET /api/profile-status",
+        "GET /api/setup-status",
+        "GET /healthz",
+      ].sort(),
+    );
+  });
+
+  test("no configuration read is on it", () => {
+    for (const label of [
+      "GET /api/status",
+      "GET /api/profiles",
+      "GET /api/profiles/updates",
+      "GET /api/settings/profile-sources",
+      "GET /api/settings/tariff",
+      "GET /api/settings/inverter",
+    ]) {
+      expect(isPublicLabel(label)).toBe(false);
+    }
+  });
+
+  test("no dashboard read is on it either — those need a session", () => {
+    for (const label of [
+      "GET /api/profile",
+      "GET /api/history",
+      "GET /api/history/rollup",
+      "GET /api/cost",
+      "GET /api/cost/series",
+      "GET /api/energy/series",
+      "GET /api/statistics/heatmap",
+    ]) {
+      expect(isPublicLabel(label)).toBe(false);
+    }
+  });
+
+  test("the generated third-party surface is not public — it is API-key gated", () => {
+    expect(isPublicLabel("GET /api/v1/entities")).toBe(false);
+    expect(isPublicLabel("GET /api/v1/state")).toBe(false);
+  });
+
+  test("the SPA shell is public on every method — it is the web app itself", () => {
+    // `/*` is the SvelteKit build. A logged-out visitor must be able to load it
+    // to reach the login page at all; the engine paths it must not swallow are
+    // refused inside the handler (see apps/server/src/web/static.ts).
+    expect(isPublicLabel("GET /*")).toBe(true);
+    expect(isPublicLabel("POST /*")).toBe(true);
+    expect(isPublicLabel("DELETE /*")).toBe(true);
+  });
+
+  test("the wildcard does not make everything under it public", () => {
+    expect(isPublicLabel("GET /api/history")).toBe(false);
+    expect(isPublicLabel("GET /*/settings")).toBe(false);
+  });
+});
+
+describe("classifying an ANONYMOUS probe", () => {
+  const anon = (label: string, status: number) =>
+    classifyAuth({ label }, { status, body: "" }, "anonymous");
+
+  /** A probe that carries a payload, i.e. one whose route declares a body schema. */
+  const anonWrite = (label: string, status: number) =>
+    classifyAuth({ label, body: "{}" }, { status, body: "" }, "anonymous");
+
+  test("a gated route that answers 200 to a stranger FAILS, and says it is public", () => {
+    const verdict = anon("GET /api/settings/tariff", 200);
+    expect(verdict.ok).toBe(false);
+    expect(verdict.detail).toMatch(/public|no credentials|unauthenticated/i);
+  });
+
+  test("401 and 403 are the pass — the gate refused", () => {
+    expect(anon("GET /api/settings/tariff", 401).ok).toBe(true);
+    expect(anon("GET /api/settings/tariff", 403).ok).toBe(true);
+  });
+
+  test("a 2xx is not the only leak: any answer that is not a refusal fails", () => {
+    expect(anon("GET /api/history", 503).ok).toBe(false);
+    expect(anon("GET /api/history", 200).ok).toBe(false);
+    expect(anon("DELETE /api/profiles/{id}", 404).ok).toBe(false);
+  });
+
+  test("a 422 on a probe that CARRIES A BODY is the framework, not a leak", () => {
+    // Elysia 2 validates a declared body before `beforeHandle`, where the guard
+    // lives, so a malformed anonymous payload is answered 422 with the guard
+    // never consulted. The handler still never runs. Pinned in
+    // apps/server/src/routes/admin-guard.test.ts, and explained in
+    // apps/server/src/routes/admin-guard.ts.
+    expect(anonWrite("PUT /api/settings/tariff", 422).ok).toBe(true);
+  });
+
+  test("the allowance is for 422 alone, and only where a body was sent", () => {
+    // A write route answering anything else without credentials really did run.
+    expect(anonWrite("PUT /api/settings/tariff", 200).ok).toBe(false);
+    expect(anonWrite("POST /api/admin/reset-data", 409).ok).toBe(false);
+    expect(anonWrite("DELETE /api/profiles/{id}", 404).ok).toBe(false);
+    // A GET has no body to validate, so its 422 came from somewhere past the gate.
+    expect(anon("GET /api/history", 422).ok).toBe(false);
+  });
+
+  test("a public route must NOT refuse — that is the half a regression hides", () => {
+    expect(anon("GET /healthz", 401).ok).toBe(false);
+    expect(anon("GET /api/setup-status", 403).ok).toBe(false);
+    expect(anon("GET /api/profile-status", 200).ok).toBe(true);
+    expect(anon("GET /api/access-status", 200).ok).toBe(true);
+  });
+
+  test("a public route may still be 5xx-broken without the AUTH sweep claiming a leak", () => {
+    // `classify` owns 5xx. Doubling the claim here would report one defect twice
+    // and, worse, make an outage look like an auth regression.
+    expect(anon("GET /healthz", 503).ok).toBe(true);
+  });
+
+  test("silence fails — a server that died mid-sweep proves nothing about the gate", () => {
+    const verdict = classifyAuth(
+      { label: "GET /api/history" },
+      { error: "connection refused" },
+      "anonymous",
+    );
+    expect(verdict.ok).toBe(false);
+    expect(verdict.detail).toContain("connection refused");
+  });
+});
+
+describe("classifying an AUTHENTICATED probe", () => {
+  const auth = (label: string, status: number) =>
+    classifyAuth({ label }, { status, body: "" }, "authenticated");
+
+  test("a gated route that still 401s means the harness's credentials miss it", () => {
+    const verdict = auth("GET /api/profiles", 401);
+    expect(verdict.ok).toBe(false);
+    expect(verdict.detail).toMatch(/credential|admin|session|api key/i);
+  });
+
+  test("403 fails too — an admin session that is refused is a wrongly-gated route", () => {
+    expect(auth("GET /api/settings/display", 403).ok).toBe(false);
+  });
+
+  test("anything the handler itself answers passes — this sweep only asks about the gate", () => {
+    expect(auth("GET /api/profiles", 200).ok).toBe(true);
+    expect(auth("PUT /api/settings/tariff", 422).ok).toBe(true);
+    expect(auth("GET /api/profile", 503).ok).toBe(true);
+    expect(auth("DELETE /api/profiles/{id}", 404).ok).toBe(true);
+  });
+
+  test("a public route answering 401 to a CREDENTIALED caller is still wrong", () => {
+    expect(auth("GET /healthz", 401).ok).toBe(false);
+  });
+});
+
+describe("the live socket's upgrade", () => {
+  // `/ws` is skipped by the HTTP plan — a plain GET there is a protocol error,
+  // not a route bug — so the one thing that can be asked of it is whether the
+  // handshake completes, and for whom.
+  test("a stranger who gets a socket FAILS the run", () => {
+    const verdict = classifyUpgrade("opened", "anonymous");
+    expect(verdict.ok).toBe(false);
+    expect(verdict.label).toBe(UPGRADE_LABEL);
+    expect(verdict.detail).toMatch(/no credentials|anonymous|public/i);
+  });
+
+  test("a refused handshake is the pass, anonymously", () => {
+    expect(classifyUpgrade("refused", "anonymous").ok).toBe(true);
+  });
+
+  test("the admin session must get one — a refused upgrade is a dead dashboard", () => {
+    expect(classifyUpgrade("refused", "authenticated").ok).toBe(false);
+    expect(classifyUpgrade("opened", "authenticated").ok).toBe(true);
+  });
+
+  test("the upgrade is reported under the same label the plan skips", () => {
+    expect(UPGRADE_LABEL).toBe("WS /ws");
+  });
+});
+
+describe("summarising the auth sweep", () => {
+  const green = (label: string): ProbeResult => ({ label, ok: true, detail: "401" });
+  const red = (label: string): ProbeResult => ({ label, ok: false, detail: "200 (public)" });
+
+  test("all gates holding passes", () => {
+    const verdict = summarizeAuth(
+      [green("GET /api/history"), green("GET /api/status")],
+      "anonymous",
+    );
+    expect(verdict.ok).toBe(true);
+    expect(verdict.exitCode).toBe(0);
+  });
+
+  test("one leak fails the run and names the route", () => {
+    const verdict = summarizeAuth(
+      [green("GET /api/history"), red("GET /api/profiles/updates")],
+      "anonymous",
+    );
+    expect(verdict.ok).toBe(false);
+    expect(verdict.exitCode).toBe(1);
+    expect(verdict.text).toContain("GET /api/profiles/updates");
+  });
+
+  test("an empty anonymous sweep FAILS — no routes checked is not a clean bill", () => {
+    expect(summarizeAuth([], "anonymous").ok).toBe(false);
+  });
+
+  test("the verdict says which credentials the sweep carried", () => {
+    expect(summarizeAuth([green("GET /x")], "anonymous").text).toMatch(/anonymous|no credentials/i);
+    expect(summarizeAuth([green("GET /x")], "authenticated").text).toMatch(/authenticated|admin/i);
   });
 });

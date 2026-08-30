@@ -19,11 +19,22 @@
  *
  * ## What counts as a failure
  *
- * A 5xx, and a request that never came back. Nothing else — a 4xx means the
- * handler RAN and refused the input, which is exactly what a probe carrying an
- * empty body and a placeholder id should get. Response shapes are out of scope
- * by design; correctness stays in the unit and database suites. This layer
- * answers one question: does the route execute.
+ * Two questions, asked over the same plan.
+ *
+ * **Does the route execute** ({@link classify}): a 5xx fails, and so does a
+ * request that never came back. Nothing else — a 4xx means the handler RAN and
+ * refused the input, which is exactly what a probe carrying an empty body and a
+ * placeholder id should get. Response shapes are out of scope by design;
+ * correctness stays in the unit and database suites.
+ *
+ * **Was the caller allowed to make it execute** ({@link classifyAuth}): the
+ * listing is swept a second time with NO credentials, and everything outside
+ * {@link PUBLIC_LABELS} must refuse. That half exists because the first one
+ * cannot see the defect it is aimed at — a configuration read left ungated
+ * answers 200 to a stranger and sweeps perfectly green (issue #174). The
+ * authenticated pass carries the mirror claim: nothing may 401 the harness's
+ * own admin session and API key, or the sweep would be reporting refusals as
+ * passes and proving nothing about the handlers behind them.
  *
  * ## Proving the sweep had something to sweep
  *
@@ -483,10 +494,227 @@ export function classify(
   return { label, ok, detail: `${response.status}${excerpt}`.trimEnd() };
 }
 
+// ---------------------------------------------------------------------------
+// THE AUTH SWEEP
+//
+// `classify` above answers one question — did the handler run. It cannot answer
+// the other one: was the caller allowed to make it run. A configuration read
+// left ungated answers 200 to a stranger and sweeps green, which is exactly the
+// defect this half exists to make impossible (issue #174).
+//
+// Two passes over the same plan, with different credentials:
+//
+//   anonymous     — everything must refuse (401/403) EXCEPT {@link PUBLIC_LABELS}.
+//   authenticated — nothing may refuse: the harness's admin session and API key
+//                   between them have to cover every gate, or the sweep is
+//                   reporting 401s as passes and proving nothing about the
+//                   handlers behind them.
+//
+// `/openapi*`, `/api/auth/*` and `/ws` never reach here: {@link planProbes}
+// skips them, so they need no entry on either side.
+// ---------------------------------------------------------------------------
+
+/** Which credentials a sweep carried. */
+export type AuthMode = "anonymous" | "authenticated";
+
+/**
+ * The closed list of routes that must answer WITHOUT credentials, and the whole
+ * public surface of the engine's JSON API.
+ *
+ * Every one of them is a PRE-AUTH gate the web shell has to read before it can
+ * know whether to show a login page at all:
+ *
+ *  * `/healthz` — the addon watchdog and compose healthcheck probe it, neither
+ *    of which has a session.
+ *  * `/api/setup-status` — true until the first (admin) account exists. The
+ *    onboarding flow cannot authenticate to ask whether it should run.
+ *  * `/api/profile-status` — true until a profile is active, read by the same
+ *    unauthenticated onboarding flow.
+ *  * `/api/access-status` — the anonymous-dashboard toggle ALONE, as a boolean,
+ *    so a logged-out visitor can be sent to the kiosk view or the login page.
+ *    Deliberately not the rest of the access config, which stays admin-only
+ *    behind `/api/settings/access`.
+ *
+ * Anything added here widens the unauthenticated surface of the product. It is
+ * a list, not a prefix rule, on purpose: a prefix would silently adopt the next
+ * route mounted underneath it.
+ */
+export const PUBLIC_LABELS: readonly string[] = [
+  "GET /healthz",
+  "GET /api/setup-status",
+  "GET /api/profile-status",
+  "GET /api/access-status",
+];
+
+const PUBLIC_SET = new Set(PUBLIC_LABELS);
+
+/**
+ * The SvelteKit build, served by `apps/server/src/web/static.ts` — public on
+ * every method, because a logged-out visitor has to be able to load the app
+ * before there is anything to log in to. It is a wildcard the ROUTER matches,
+ * not a prefix rule: the handler refuses `/api`, `/openapi`, `/ws` and
+ * `/healthz` itself so an API typo cannot fall through to a page of HTML, and
+ * only `GET`/`HEAD` ever return bytes.
+ */
+const SPA_WILDCARD = "/*";
+
+/** Whether `METHOD /path` is declared public. Exact match — never a prefix. */
+export const isPublicLabel = (label: string): boolean =>
+  PUBLIC_SET.has(label) || label.endsWith(` ${SPA_WILDCARD}`);
+
+/** What a gate looks like from outside: it refused, without running the handler. */
+const REFUSALS = new Set([401, 403]);
+
+/**
+ * The one status an anonymous WRITE probe may answer that is not a refusal.
+ *
+ * Elysia 2 validates a route's declared body BEFORE `beforeHandle`, where this
+ * app's gates live, so a malformed anonymous payload comes back as a 422 from
+ * the schema with the guard never consulted. The handler still does not run —
+ * nothing privileged is reachable — and the ordering is not fixable from the
+ * guard (`apps/server/src/routes/admin-guard.ts` records what was tried).
+ *
+ * Allowed only for a probe that actually carried a body, so a GET's 422 still
+ * fails: that one could only have come from past the gate.
+ */
+const SCHEMA_BEFORE_GATE = 422;
+
+const pass = (label: string, detail: string): ProbeResult => ({ label, ok: true, detail });
+const fail = (label: string, detail: string): ProbeResult => ({ label, ok: false, detail });
+
+/**
+ * A route on {@link PUBLIC_LABELS}. It must not refuse ANYONE — that is the
+ * half of a regression nobody notices, because the dashboard still works for
+ * the developer who is logged in while the onboarding flow is dead for everyone
+ * who is not.
+ */
+const publicVerdict = (label: string, status: number): ProbeResult =>
+  REFUSALS.has(status)
+    ? fail(label, `${status} — declared PUBLIC but refused the caller`)
+    : pass(label, `${status}`);
+
+/**
+ * A gated route asked WITHOUT credentials. Not "a 2xx leaked": anything that is
+ * not a refusal means the request reached the handler, so a 404 from a missing
+ * id is the route RUNNING for a stranger. The one exception is
+ * {@link SCHEMA_BEFORE_GATE}.
+ */
+function anonymousVerdict(label: string, status: number, sentBody: boolean): ProbeResult {
+  if (sentBody && status === SCHEMA_BEFORE_GATE) {
+    return pass(label, `${status} (schema, before the gate)`);
+  }
+  if (REFUSALS.has(status)) return pass(label, `${status}`);
+  return fail(label, `${status} — answered a request with NO CREDENTIALS; this route is public`);
+}
+
+/** A gated route asked WITH the harness's admin session and API key. */
+const authenticatedVerdict = (label: string, status: number): ProbeResult =>
+  REFUSALS.has(status)
+    ? fail(
+        label,
+        `${status} — refused the harness's admin session and API key. Either the sweep's ` +
+          `credentials do not cover this gate, or the route is gated wrongly.`,
+      )
+    : pass(label, `${status}`);
+
+/**
+ * The verdict on one probe's ACCESS, given the credentials it carried.
+ *
+ * Deliberately silent about 5xx: {@link classify} owns those. Reporting an
+ * outage as an auth regression would send the next reader looking at the guards
+ * for a database that was down.
+ */
+export function classifyAuth(
+  probe: Pick<Probe, "label" | "body">,
+  response: ProbeResponse,
+  mode: AuthMode,
+): ProbeResult {
+  const { label } = probe;
+  const status = response.status;
+  if (status === undefined) {
+    return fail(label, `no response: ${response.error ?? "unknown error"}`);
+  }
+  if (isPublicLabel(label)) return publicVerdict(label, status);
+  return mode === "anonymous"
+    ? anonymousVerdict(label, status, probe.body !== undefined)
+    : authenticatedVerdict(label, status);
+}
+
+/** The live socket, reported under the label the HTTP plan skips. */
+export const UPGRADE_LABEL = "WS /ws";
+
+/** What happened when the harness tried to open the live socket. */
+export type UpgradeOutcome = "opened" | "refused";
+
+/**
+ * The verdict on the `/ws` handshake.
+ *
+ * The multiplexed socket carries the `logs` topic (config values, hostnames,
+ * error internals) and `automations` (what the engine writes to the inverter's
+ * registers). The upgrade itself runs the weakest policy — `requireSession` —
+ * and the per-topic decision is re-evaluated on every subscribe frame
+ * (`apps/server/src/routes/ws-subscribe.ts`); this asks only the first
+ * question, because it is the one no HTTP probe can ask: a plain GET to `/ws`
+ * is a protocol error rather than an answer about access.
+ */
+export function classifyUpgrade(outcome: UpgradeOutcome, mode: AuthMode): ProbeResult {
+  const label = UPGRADE_LABEL;
+  const opened = outcome === "opened";
+  if (mode === "anonymous") {
+    return opened
+      ? { label, ok: false, detail: "the handshake completed with NO CREDENTIALS" }
+      : { label, ok: true, detail: "refused" };
+  }
+  return opened
+    ? { label, ok: true, detail: "opened" }
+    : {
+        label,
+        ok: false,
+        detail: "refused the admin session — the live dashboard would never connect",
+      };
+}
+
 export interface SmokeVerdict {
   ok: boolean;
   exitCode: number;
   text: string;
+}
+
+/** How a mode's sweep describes itself in its own verdict. */
+const MODE_TEXT: Record<AuthMode, string> = {
+  anonymous: "anonymously (no credentials)",
+  authenticated: "as the admin session + API key",
+};
+
+/**
+ * The verdict on one auth pass. An empty pass FAILS in either mode: "nothing
+ * refused me" over zero routes is the same clean-looking report as a sweep that
+ * never ran, and this is the check whose whole value is that it ran.
+ */
+export function summarizeAuth(results: readonly ProbeResult[], mode: AuthMode): SmokeVerdict {
+  const failures = results.filter((r) => !r.ok);
+  if (results.length === 0) {
+    return {
+      ok: false,
+      exitCode: 1,
+      text: `no routes were probed ${MODE_TEXT[mode]} — the access sweep proved nothing`,
+    };
+  }
+  if (failures.length > 0) {
+    const lines = failures.map((r) => `  ${r.label} -> ${r.detail}`);
+    return {
+      ok: false,
+      exitCode: 1,
+      text:
+        `${failures.length} of ${results.length} routes answered wrongly ${MODE_TEXT[mode]}:\n` +
+        lines.join("\n"),
+    };
+  }
+  return {
+    ok: true,
+    exitCode: 0,
+    text: `${results.length} routes probed ${MODE_TEXT[mode]}; every gate held`,
+  };
 }
 
 /**
