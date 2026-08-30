@@ -143,7 +143,6 @@ export function activeDevices<T extends Pick<DeviceRecord, "retiredAt">>(
  * accepts and nothing in the read layer names is a value every branch falls
  * through in silence — the failure the CHECK exists to make loud.
  */
-// fallow-ignore-next-line unused-export -- the mirror of `devices_role_check`, walked by ./plant-repo.test.ts so the list and the constraint cannot drift apart in silence; test files are not traced as consumers.
 export const DEVICE_ROLES = [
   "inverter",
   "controller",
