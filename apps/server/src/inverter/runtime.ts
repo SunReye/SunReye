@@ -820,10 +820,9 @@ const defaultRuntime = createRuntime();
 export const start = defaultRuntime.start;
 export const write = defaultRuntime.write;
 // The write seam, on the process's one runtime — the whole point of it being on
-// the runtime at all (see `commit` above).
-// fallow-ignore-next-line unused-export -- the seam #88 and #172 are built on; its only consumers today are the specs that prove it works
+// the runtime at all (see `commit` above). Wired in `../index.ts` for EVCC's
+// loadpoints (#88); #172's optimizer is the second caller.
 export const commit = defaultRuntime.commit;
-// fallow-ignore-next-line unused-export -- same seam: an integration that retires its own device before a roster reload does
 export const forgetDevice = defaultRuntime.forgetDevice;
 export const status = defaultRuntime.status;
 export const stop = defaultRuntime.stop;

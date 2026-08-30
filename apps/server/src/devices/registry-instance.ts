@@ -20,6 +20,7 @@ import { readDevices, readPlant } from "@SunReye/db/plant-repo";
 
 import { resolveProfileById } from "../inverter/inverter";
 import { log } from "../shared/logging";
+import { resolveCoded } from "./coded";
 import { type DeviceRegistry, createDeviceRegistry } from "./registry";
 
 export type { DeviceRegistry };
@@ -50,5 +51,8 @@ async function readPlantDevices() {
 export const deviceRegistry: DeviceRegistry = createDeviceRegistry({
   readDevices: readPlantDevices,
   resolveProfile: resolveProfileById,
+  // The coded tier (`./coded.ts`): a `profile_id` naming a declaration compiled
+  // into this server resolves here and never reaches the profile store.
+  resolveCoded,
   logger: log("devices"),
 });

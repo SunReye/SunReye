@@ -13,7 +13,9 @@ import { autoHead } from "elysia/auto-head";
 import { type CostBucket, computeCost, computeCostSeries, resolveRange } from "./energy/cost";
 import { energySeries } from "./energy/energy";
 import { entitiesApi } from "./inverter/entities";
+import { ensureDevice, readPlant } from "@SunReye/db/plant-repo";
 import { evccControl, evccSnapshot, rebuildEvcc, stopEvcc } from "./evcc/evcc";
+import { loadpointDeviceSpec } from "./evcc/evcc-devices";
 import { deviceIdOf, metricIdOf } from "./shared/identity-sql";
 import { queryRecentBuckets, queryRollup } from "./shared/history";
 import type { HistoryTier } from "./shared/history-horizon";
@@ -735,7 +737,31 @@ startUpdateChecks();
 // Each coalesced snapshot is emitted on the `evcc` topic (the bus is wired on
 // this boot rebuild); late/new subscribers get the current snapshot from the
 // socket's `open` handler instead.
-void rebuildEvcc(streams);
+//
+// The second argument is the path from a loadpoint to `metrics_raw`: a device
+// row per loadpoint, then the runtime's ONE wired writer. Before it, nothing
+// under `src/evcc/` wrote to the hypertable at all — charge power and session
+// energy were live-feed only, with no history, no rollups and no statistics.
+// Assembled here because it is composition: the ingest owns none of these.
+void rebuildEvcc(streams, {
+  async ensureDevice(_id, index, title) {
+    const plant = await readPlant({ execute: (query) => db.execute(query) });
+    // Onboarding-only boot: EVCC ingest starts before there is a plant to hang a
+    // device on. The live feed runs; storage starts on the next snapshot after
+    // provisioning.
+    if (!plant) return false;
+    await ensureDevice(
+      { execute: (query) => db.execute(query) },
+      loadpointDeviceSpec(plant.id, index, title),
+    );
+    return true;
+  },
+  reloadRegistry: async () => void (await deviceRegistry.reload()),
+  device: (id) => deviceRegistry.get(id),
+  commit: runtime.commit,
+  forgetDevice: runtime.forgetDevice,
+  logger: log("evcc"),
+});
 
 // Statistics stream: republish today's figures on a slow tick; the runtime
 // signals the same topic whenever a price sync stores fresh slots. The tick
