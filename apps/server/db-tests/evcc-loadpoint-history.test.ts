@@ -104,8 +104,11 @@ suite("an EVCC loadpoint's readings reach metrics_raw and come back out", () => 
 
     const registrar = createLoadpointRegistrar({
       async ensureDevice(_id, index, title) {
-        await repo.ensureDevice(raw, loadpointDeviceSpec(plantId, index, title));
-        return true;
+        // The production wiring, over the real table: `ensureDevice` is
+        // `ON CONFLICT DO NOTHING` + SELECT, so it answers for a RETIRED row
+        // too — which the roster read above excludes.
+        const row = await repo.ensureDevice(raw, loadpointDeviceSpec(plantId, index, title));
+        return repo.isRetired(row) ? "retired" : "ready";
       },
       reloadRegistry: async () => void (await registry.reload()),
       device: (id) => registry.get(id),
@@ -254,6 +257,96 @@ suite("an EVCC loadpoint's readings reach metrics_raw and come back out", () => 
     });
     expect(second.metrics["ev.charge.power"]?.v).toEqual([0]);
     expect(second.metrics["ev.vehicle.soc"]).toBeUndefined();
+  });
+
+  test("a retired loadpoint is ensured once and never reloaded for", async () => {
+    // THE ENSURE+RELOAD LOOP, over the real table — and it has to be here,
+    // because both halves of it are statements about Postgres: `ensureDevice` is
+    // `insert … on conflict do nothing` followed by a SELECT with no
+    // `retired_at` predicate, so it answers "the row is there" for a row the
+    // operator retired, while `readDevices(..., { includeRetired: false })`
+    // excludes exactly that row. A unit double can assert what the registrar
+    // does with those two answers; only this can show that Postgres really gives
+    // them.
+    const { createDeviceRegistry } = await import("../src/devices/registry");
+    const { resolveCoded } = await import("../src/devices/coded");
+    const { createLoadpointRegistrar } = await import("../src/evcc/evcc-registrar");
+    const { loadpointDeviceSpec } = await import("../src/evcc/evcc-devices");
+    const repo = await import("@SunReye/db/plant-repo");
+
+    await raw.execute(sql`insert into plants (name, slug) values ('R', 'evcc-retired-plant')`);
+    const { rows: plantRows } = await raw.execute(
+      sql`select id from plants where slug = 'evcc-retired-plant'`,
+    );
+    const plantId = Number((plantRows[0] as { id: number }).id);
+    const created = await repo.ensureDevice(raw, loadpointDeviceSpec(plantId, 1, "Garage"));
+    // The operator retires it in Settings → Devices.
+    await repo.updateDevice(raw, created.id, { retiredAt: new Date() });
+
+    let reloads = 0;
+    const registry = createDeviceRegistry({
+      readDevices: () => repo.readDevices(raw, plantId, { includeRetired: false }),
+      resolveProfile: async () => null,
+      resolveCoded,
+      logger: { warn: () => {} },
+    });
+    const ensures: string[] = [];
+    const warnings: string[] = [];
+    const registrar = createLoadpointRegistrar({
+      async ensureDevice(id, index, title) {
+        ensures.push(id);
+        const row = await repo.ensureDevice(raw, loadpointDeviceSpec(plantId, index, title));
+        return repo.isRetired(row) ? "retired" : "ready";
+      },
+      reloadRegistry: async () => {
+        reloads += 1;
+        await registry.reload();
+      },
+      device: (id) => registry.get(id),
+      commit: () => {
+        throw new Error("a retired device must never be committed to");
+      },
+      forgetDevice: () => {},
+      logger: { warn: (template) => void warnings.push(template) },
+    });
+
+    const loadpoint = (index: number) =>
+      ({
+        index,
+        title: "Garage",
+        mode: "pv",
+        chargePower: 0,
+        chargePowerLive: 0,
+        chargePowerSource: "measured",
+        charging: false,
+        connected: false,
+        vehicleSoc: null,
+        vehicleRange: null,
+        vehicleTitle: null,
+        vehicleName: null,
+        sessionEnergy: null,
+        chargeRemainingEnergy: null,
+        limitSoc: null,
+        effectiveLimitSoc: null,
+        vehicleLimitSoc: null,
+        batteryBoost: false,
+        batteryBoostLimit: null,
+        vehicleCapacityKwh: null,
+        phasesActive: null,
+      }) as never;
+
+    const T = new Date("2026-01-03T12:00:00.000Z");
+    for (let i = 0; i < 5; i++)
+      await registrar.sync([loadpoint(1)], new Date(T.getTime() + i * 200));
+
+    // The row exists — so a boolean answer would have been `true` five times
+    // over, and each one would have re-read the whole device table.
+    expect(
+      repo.isRetired(await repo.ensureDevice(raw, loadpointDeviceSpec(plantId, 1, "Garage"))),
+    ).toBe(true);
+    expect(ensures).toEqual(["evcc-loadpoint-1"]);
+    expect(reloads).toBe(0);
+    expect(warnings).toHaveLength(1);
   });
 
   test("a fed-forward figure is painted but is never stored", async () => {

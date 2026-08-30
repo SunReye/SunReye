@@ -13,7 +13,7 @@ import { type DeviceInstance, deviceInstance } from "@SunReye/inverter-core";
 
 import type { DeviceSample } from "../inverter/device-writer";
 import { LOADPOINT_METRICS } from "./evcc-devices";
-import { createLoadpointRegistrar } from "./evcc-registrar";
+import { type DeviceRowState, createLoadpointRegistrar } from "./evcc-registrar";
 
 function loadpoint(index: number, overrides: Partial<EvccLoadpoint> = {}): EvccLoadpoint {
   return {
@@ -52,17 +52,26 @@ function registrarOver(options: { ensureFails?: boolean; rosterStaysEmpty?: bool
   const forgotten: string[] = [];
   const warnings: string[] = [];
   const instances = new Map<string, DeviceInstance>();
+  /**
+   * What the doubles do NEXT — mutable, so a test can heal (or break) the world
+   * between two syncs, which is the only way to state a retry policy at all.
+   */
+  const control = {
+    ensureFails: options.ensureFails ?? false,
+    rosterStaysEmpty: options.rosterStaysEmpty ?? false,
+    rowState: "ready" as DeviceRowState,
+  };
 
   const registrar = createLoadpointRegistrar({
     async ensureDevice(id, index, title) {
       calls.push(`ensure:${id}:${index}:${title ?? ""}`);
-      if (options.ensureFails) throw new Error("no plant yet");
-      rows.add(id);
-      return true;
+      if (control.ensureFails) throw new Error("no plant yet");
+      if (control.rowState === "ready") rows.add(id);
+      return control.rowState;
     },
     async reloadRegistry() {
       calls.push("reload");
-      if (options.rosterStaysEmpty) return;
+      if (control.rosterStaysEmpty) return;
       for (const id of rows) {
         instances.set(
           id,
@@ -81,7 +90,12 @@ function registrarOver(options: { ensureFails?: boolean; rosterStaysEmpty?: bool
     logger: { warn: (template) => void warnings.push(template) },
   });
 
-  return { registrar, calls, committed, forgotten, warnings };
+  return { registrar, calls, committed, forgotten, warnings, control };
+}
+
+/** `at + minutes`, for stating a retry cadence in the snapshot's own clock. */
+function later(minutes: number): Date {
+  return new Date(T0.getTime() + minutes * 60_000);
 }
 
 describe("EVCC's loadpoints become devices with history", () => {
@@ -210,6 +224,102 @@ describe("EVCC's loadpoints become devices with history", () => {
     const { registrar, committed } = registrarOver({ rosterStaysEmpty: true });
     await registrar.sync([loadpoint(1)], T0);
     expect(committed).toEqual([]);
+  });
+
+  test("a row that never resolves is ensured ONCE, not once per snapshot", async () => {
+    // The ensure+reload loop. `registered` only ever held ids the registry HAD
+    // resolved, so a loadpoint whose row exists but never becomes an instance
+    // was never remembered: every snapshot re-ensured it, every ensure answered
+    // "the row is there", and every sync therefore reloaded the whole device
+    // table — a plant read, an insert attempt, a select and a full registry
+    // reload at up to 5 Hz, for the life of the process, with no log line.
+    const { registrar, calls } = registrarOver({ rosterStaysEmpty: true });
+    for (let i = 0; i < 5; i++) await registrar.sync([loadpoint(1)], T0);
+
+    expect(calls.filter((c) => c.startsWith("ensure:"))).toHaveLength(1);
+    expect(calls.filter((c) => c === "reload")).toHaveLength(1);
+  });
+
+  test("a row that never resolves is reported once, and only once", async () => {
+    const { registrar, warnings } = registrarOver({ rosterStaysEmpty: true });
+    for (let i = 0; i < 5; i++) await registrar.sync([loadpoint(1)], T0);
+
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain("{id}");
+  });
+
+  test("an unresolvable row is retried on a slow cadence, and heals", async () => {
+    // Remembering the attempt must not make it permanent: the row can heal
+    // without EVCC's roster changing at all (the operator restores the device,
+    // a reload that failed succeeds), and only a retry can notice.
+    const { registrar, calls, committed, control } = registrarOver({ rosterStaysEmpty: true });
+    await registrar.sync([loadpoint(1)], T0);
+    await registrar.sync([loadpoint(1)], later(4));
+    expect(calls.filter((c) => c.startsWith("ensure:"))).toHaveLength(1);
+
+    control.rosterStaysEmpty = false;
+    await registrar.sync([loadpoint(1)], later(6));
+
+    expect(calls.filter((c) => c.startsWith("ensure:"))).toHaveLength(2);
+    expect(committed.map((c) => c.id)).toEqual(["evcc-loadpoint-1"]);
+  });
+
+  test("a retired device row is recognised as retired, not re-ensured forever", async () => {
+    // Reachable by an ordinary supported action: the operator retires the
+    // loadpoint's device in Settings → Devices. The roster read excludes retired
+    // rows while `ensureDevice`'s ON CONFLICT DO NOTHING keeps answering "the row
+    // is there", so this is the exact shape that spun the loop above.
+    const { registrar, calls, committed, warnings, control } = registrarOver();
+    control.rowState = "retired";
+    for (let i = 0; i < 5; i++) await registrar.sync([loadpoint(1)], T0);
+
+    expect(calls.filter((c) => c.startsWith("ensure:"))).toHaveLength(1);
+    // Nothing became registerable, so there is nothing for a reload to find.
+    expect(calls.filter((c) => c === "reload")).toHaveLength(0);
+    expect(committed).toEqual([]);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain("retired");
+  });
+
+  test("a device row restored by the operator resumes storing", async () => {
+    const { registrar, committed, control } = registrarOver();
+    control.rowState = "retired";
+    await registrar.sync([loadpoint(1)], T0);
+    expect(committed).toEqual([]);
+
+    control.rowState = "ready";
+    await registrar.sync([loadpoint(1)], later(6));
+
+    expect(committed.map((c) => c.id)).toEqual(["evcc-loadpoint-1"]);
+  });
+
+  test("a loadpoint that vanishes forgets its attempt, so its return re-ensures", async () => {
+    const { registrar, calls, control } = registrarOver({ rosterStaysEmpty: true });
+    await registrar.sync([loadpoint(1)], T0);
+    await registrar.sync([], T0);
+
+    control.rosterStaysEmpty = false;
+    await registrar.sync([loadpoint(1)], T0);
+
+    expect(calls.filter((c) => c.startsWith("ensure:"))).toHaveLength(2);
+  });
+
+  test("a registration failure that heals is warned about again if it recurs", async () => {
+    // The latch was for the process's life, so a second, DIFFERENT failure was
+    // silent — the discipline `./storage-identity.ts` and the runtime's
+    // missing-device warning both follow is to clear the flag on the next
+    // success.
+    const { registrar, warnings, control } = registrarOver({ ensureFails: true });
+    await registrar.sync([loadpoint(1)], T0);
+    expect(warnings).toHaveLength(1);
+
+    control.ensureFails = false;
+    await registrar.sync([loadpoint(1)], later(6));
+
+    control.ensureFails = true;
+    await registrar.sync([loadpoint(2)], later(12));
+
+    expect(warnings).toHaveLength(2);
   });
 
   test("a suspended registrar registers the roster again on the next snapshot", async () => {

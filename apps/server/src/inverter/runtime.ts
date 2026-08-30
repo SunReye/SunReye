@@ -34,7 +34,7 @@ import type { DeviceRegistry } from "../devices/registry";
 import { deviceRegistry } from "../devices/registry-instance";
 import { createIdentifiedCommit, createRowIdentifier } from "./storage-identity";
 import { type IdentityResolver, createIdentityResolver } from "../shared/identity";
-import { type JobScheduler, createJobScheduler } from "./job-scheduler";
+import { type JobScheduler, type ScheduledJob, createJobScheduler } from "./job-scheduler";
 import { evccOnLoadSample } from "../evcc/evcc";
 import {
   buildProfileContext,
@@ -594,6 +594,42 @@ export function createRuntime(deps: RuntimeDeps = {}) {
   }
 
   /**
+   * The job that drains both write buffers into their tables.
+   *
+   * A function rather than a constant so the cadence is READ at arm time — `env`
+   * is dynamic — and so {@link armStorage} arms the identical job rather than a
+   * second copy of it that could drift.
+   */
+  function flushJob(): ScheduledJob {
+    return {
+      run: () => {
+        void historyBuffer.flush();
+        void configLogBuffer.flush();
+      },
+      intervalMs: env.HISTORY_FLUSH_INTERVAL_MS,
+    };
+  }
+
+  /**
+   * Arm the flush cadence WITHOUT booting a poll loop.
+   *
+   * For a boot with no active profile: a fresh install past provisioning, or a
+   * configured profile that failed to load. `start` is skipped there, but the
+   * plant row exists and the integrations that write through {@link commit} —
+   * EVCC's loadpoints (#88), the optimizer (#172) — are wired unconditionally,
+   * because neither has a poll loop and neither is a reason to have one. Without
+   * this their rows accumulate in a 100 000-row buffer that nothing drains until
+   * shutdown, dropping the oldest past the cap: the writer's whole contract,
+   * silently unmet, on exactly the installs least likely to notice.
+   *
+   * Idempotent, and harmless beside `start`: the scheduler arms nothing while
+   * already running. The composition root calls one or the other, never both.
+   */
+  function armStorage(): void {
+    scheduler.start([flushJob()]);
+  }
+
+  /**
    * Boot the controller: build the source + bridge and start polling.
    *
    * `automationsWatched` answers whether anyone is subscribed to the
@@ -614,16 +650,9 @@ export function createRuntime(deps: RuntimeDeps = {}) {
     // process.
     await reloadDevices();
     // The scheduler arms each of these once and is idempotent while running, so
-    // a re-boot re-points the source without stacking a second set of jobs. The
-    // flush cadence is read here (env is dynamic) rather than baked in.
+    // a re-boot re-points the source without stacking a second set of jobs.
     scheduler.start([
-      {
-        run: () => {
-          void historyBuffer.flush();
-          void configLogBuffer.flush();
-        },
-        intervalMs: env.HISTORY_FLUSH_INTERVAL_MS,
-      },
+      flushJob(),
       { run: () => void publishForecastNow(), intervalMs: FORECAST_PUBLISH_INTERVAL_MS },
       {
         run: () => void learnCorrectionNow(),
@@ -776,6 +805,8 @@ export function createRuntime(deps: RuntimeDeps = {}) {
 
   return {
     start,
+    /** Arm the flush cadence for a boot that never calls {@link start}. */
+    armStorage,
     write,
     /**
      * THE WRITE SEAM: store one registered device's readings, through the ONE
@@ -818,6 +849,8 @@ export function createRuntime(deps: RuntimeDeps = {}) {
 const defaultRuntime = createRuntime();
 
 export const start = defaultRuntime.start;
+// Wired in `../index.ts` for the boot that has no profile to poll (#88).
+export const armStorage = defaultRuntime.armStorage;
 export const write = defaultRuntime.write;
 // The write seam, on the process's one runtime — the whole point of it being on
 // the runtime at all (see `commit` above). Wired in `../index.ts` for EVCC's

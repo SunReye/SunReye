@@ -1599,6 +1599,31 @@ describe("the write seam is reachable from outside the poll loop", () => {
     });
   });
 
+  test("a device with no poll loop is flushed on the cadence even though no profile booted", async () => {
+    // `../index.ts` guards `runtime.start` with `if (ctx)`, and the flush
+    // schedule is armed inside `start`. But the plant row is created whether or
+    // not a profile is active, and the EVCC registrar is wired unconditionally —
+    // so on a boot with a plant and no active profile (a fresh install past
+    // provisioning, or a configured profile that failed to load) the seam's rows
+    // went into a buffer that nothing flushed until shutdown, capped at 100 000
+    // rows with the oldest dropped past that.
+    runtime.armStorage();
+    runtime.commit(optimizer, { time: commitTime, metrics: { "decision.target": 16 } });
+    runtime.commit(optimizer, { time: laterTime, metrics: { "decision.target": 10 } });
+
+    await fire(FLUSH_MS);
+
+    const rows = inserted.flat().filter((r) => r.inverterId === "optimizer");
+    expect(rows.map((r) => r.value)).toEqual([16]);
+  });
+
+  test("arming storage twice does not stack a second flush schedule", async () => {
+    runtime.armStorage();
+    runtime.armStorage();
+
+    expect(armedAt(FLUSH_MS)).toHaveLength(1);
+  });
+
   test("a device retired under a running server is forgotten when the roster says so", async () => {
     // `writer.forget` was dead in production: a retired device kept its policy
     // and its open intervals until `stop()`, which then flushed them under the
