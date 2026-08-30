@@ -21,6 +21,9 @@
     "scripts/db-parity.ts",
     "scripts/fixture-1-2-0.ts",
     "scripts/replay-rehearsal.ts",
+    "scripts/route-smoke.ts",
+    "scripts/route-smoke-plan.ts",
+    "scripts/route-smoke-run.ts",
     "scripts/upgrade-rehearsal.ts",
     "scripts/upgrade-phases.ts"
   ],
@@ -143,6 +146,18 @@
     },
     {
       "file": "scripts/replay-rehearsal.ts",
+      "exports": [
+        "*"
+      ]
+    },
+    {
+      "file": "scripts/route-smoke.ts",
+      "exports": [
+        "*"
+      ]
+    },
+    {
+      "file": "scripts/route-smoke-plan.ts",
       "exports": [
         "*"
       ]
