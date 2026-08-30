@@ -90,12 +90,44 @@ export interface DeviceWriter {
 }
 
 /**
+ * What a device DECLARES, as one comparable string — the test for "is this the
+ * same device, or a re-registration?".
+ *
+ * NOT object identity, and that distinction is load-bearing. The registry mints
+ * a brand-new {@link DeviceInstance} for every row on every `reload()`, and
+ * `reload()` runs on every inverter-connection PUT — so an ordinary settings
+ * save hands this writer a different object stating the identical thing.
+ * Rebuilding the policy for it throws away the two pieces of state that cannot
+ * be reconstructed, both silently:
+ *
+ *  - the change-log's LAST-VALUE MEMORY. A first observation is a change, so
+ *    the next poll writes a phantom "changed" row, carrying an unchanged value,
+ *    for every configuration metric — into a five-year change history the UI
+ *    renders as events.
+ *  - the optional-hardware EVIDENCE SET. Until a non-zero reading proves the
+ *    generator is wired up its rows are dropped, so a real series stops being
+ *    stored because someone saved an unrelated setting.
+ *
+ * The fields are exactly the ones the writer reads off a declaration — what
+ * `resolveStorage`/`resolveDeadband` consume (`kind`, `role`, `access`, `unit`,
+ * `storage`, `deadband`), the optional-role grouping (`role`) and metric-key
+ * registration (`key`, `kind`, `unit`) — in declaration order, because order is
+ * what decides which duplicate declaration of a key wins. A field the policy
+ * does not read must not force a rebuild, and a field it does read must.
+ */
+function declarationFingerprint(device: DeviceInstance): string {
+  return JSON.stringify(
+    device.metrics.map((m) => [m.key, m.kind, m.role, m.access, m.unit, m.storage, m.deadband]),
+  );
+}
+
+/**
  * Build a writer. Every field is closure-local, so a second instance shares
  * nothing — the same rule the runtime and the storage policy follow.
  */
 export function createDeviceWriter(deps: DeviceWriterDeps): DeviceWriter {
-  /** One policy per device id, with the instance it was built from. */
-  const policies = new Map<string, { device: DeviceInstance; policy: StoragePolicy }>();
+  /** One policy per device id, with the DECLARATIONS it was built from. */
+  const policies = new Map<string, { declarations: string; policy: StoragePolicy }>();
 
   /**
    * Write out one policy's open intervals. The rows come back already keyed by
@@ -108,13 +140,14 @@ export function createDeviceWriter(deps: DeviceWriterDeps): DeviceWriter {
 
   function policyFor(device: DeviceInstance, at: Date): StoragePolicy {
     const held = policies.get(device.id);
-    if (held?.device === device) return held.policy;
-    // A different instance for the same id is a re-registration — a profile
+    const declarations = declarationFingerprint(device);
+    if (held?.declarations === declarations) return held.policy;
+    // A CHANGED DECLARATION for the same id is a re-registration — a profile
     // swapped, a mapping edited. End the outgoing declarations' intervals under
     // the policy that opened them.
     if (held) closeOne(held.policy, at);
     const policy = createStoragePolicy({ metrics: device.metrics });
-    policies.set(device.id, { device, policy });
+    policies.set(device.id, { declarations, policy });
     // `metricKeySpecs` states the key, the COUNTER CLASS and the UNIT together:
     // a continuous aggregate cannot ask a device what a metric means, so all
     // three have to travel with the key.

@@ -148,6 +148,69 @@ describe("the write seam is callable for any registered device", () => {
     ]);
   });
 
+  test("a re-registration that changes NOTHING keeps the policy's memory", () => {
+    // The registry mints a brand-new `DeviceInstance` for every row on every
+    // `reload()`, and `reload()` runs on every inverter-connection PUT. So an
+    // ordinary settings save hands this writer a different OBJECT declaring the
+    // identical thing — which must not be read as "the device changed".
+    //
+    // Two pieces of policy state are not reconstructible, and both are silent
+    // when they are lost: the change-log's last-value memory (a first
+    // observation is a change, so a rebuilt policy writes a phantom "changed"
+    // row carrying an unchanged value into a five-year history the UI renders
+    // as events) and the optional-hardware evidence set (a rebuilt policy has
+    // seen no proof a generator exists, so its real readings are dropped until
+    // a non-zero one arrives).
+    const { writer, series, config } = writerOver();
+    const declared = [
+      dm({ key: "settings.limit", access: "rw" }),
+      dm({ key: "generator.power", role: "generator.power" }),
+    ];
+    writer.commit(device("inverter-1", declared), {
+      time: T0,
+      metrics: { "settings.limit": 50, "generator.power": 300 },
+    });
+    // The same declarations, deep-copied: a settings save, not a profile swap.
+    const again = device(
+      "inverter-1",
+      declared.map((m) => ({ ...m })),
+    );
+    writer.commit(again, {
+      time: T1,
+      metrics: { "settings.limit": 50, "generator.power": 0 },
+    });
+    writer.close(new Date("2026-08-30T10:00:02Z"));
+
+    // The unchanged setting is not an event.
+    expect(config.rows).toEqual([
+      { inverterId: "inverter-1", metric: "settings.limit", time: T0, value: 50 },
+    ]);
+    // The generator proved it exists at T0; its 0 at T1 is a reading, not an
+    // absence, and the interval it closes is history.
+    expect(series.rows).toEqual([
+      { inverterId: "inverter-1", metric: "generator.power", time: T0, value: 300, durMs: 1000 },
+      { inverterId: "inverter-1", metric: "generator.power", time: T1, value: 0, durMs: 1000 },
+    ]);
+  });
+
+  test("a re-registration that changes a declaration rebuilds the policy", () => {
+    // The other direction: when the device genuinely re-declares a metric, the
+    // policy MUST be rebuilt, and the outgoing declaration's open interval
+    // written out under the policy that opened it.
+    const { writer, series, config } = writerOver();
+    writer.commit(device("inverter-1", [dm({ key: "pv" })]), { time: T0, metrics: { pv: 100 } });
+    writer.commit(device("inverter-1", [dm({ key: "pv", access: "rw" })]), {
+      time: T1,
+      metrics: { pv: 100 },
+    });
+
+    expect(series.rows).toEqual([
+      { inverterId: "inverter-1", metric: "pv", time: T0, value: 100, durMs: 1000 },
+    ]);
+    // The incoming declaration is in force: the same key is now a setting.
+    expect(config.rows).toEqual([{ inverterId: "inverter-1", metric: "pv", time: T1, value: 100 }]);
+  });
+
   test("forgetting a device closes its intervals and stops keying rows to it", () => {
     const { writer, series } = writerOver();
     const gone = device("inverter-2", [dm({ key: "pv" })]);

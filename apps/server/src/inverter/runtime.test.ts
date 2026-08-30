@@ -813,39 +813,58 @@ const identityDouble: IdentityResolver = {
   reset: () => {},
 };
 
-const runtime = createRuntime({
-  devices: devicesDouble,
-  history: historyDouble,
-  configLog: configDouble,
-  controlStore,
-  identity: identityDouble,
-  // The MQTT namespace, injected for the same reason the resolver is: the real
-  // reader queries the dimension spine, so without a double every bridge spec
-  // would fail on a missing database client — and the runtime's own guard turns
-  // that failure into "MQTT is off", which looks identical to a bridge that was
-  // never built. `namespaceReads` records the profile id it was asked for, so a
-  // rebuild-cadence claim can be asserted rather than assumed.
-  mqttNamespace: async (profileId) => {
-    namespaceReads.push(profileId);
-    if (namespaceOutcome instanceof Error) throw namespaceOutcome;
-    return namespaceOutcome;
-  },
-  // The EV charge-power estimator hook, injected as a spy instead of mocking
-  // `../evcc/evcc`: every poll's house-load value is recorded here, which is why
-  // this suite no longer installs (or has to unwind) an evcc module mock.
-  onLoadSample: (watts) => loadSamples.push(watts),
-});
-const {
-  reloadEndpoint,
-  applyMqttConfig,
-  start,
-  status,
-  stop,
-  syncSpotPricesNow,
-  testInverter,
-  testMqtt,
-  write,
-} = runtime;
+/**
+ * A runtime over this file's doubles — ONE PER TEST (see `beforeEach`).
+ *
+ * Per test rather than per file because the runtime owns the write seam, and
+ * the write seam legitimately REMEMBERS: `./device-writer.ts` keeps one storage
+ * policy per device for as long as that device's declarations are unchanged, so
+ * its change-log memory and hardware-evidence set survive a reload — which is
+ * the whole point of it (a settings save must not write a phantom change row).
+ * A single runtime shared by every test in the file would carry that memory
+ * across tests too, and the second spec to poll the same device would see the
+ * first spec's settings already logged.
+ */
+const newRuntime = () =>
+  createRuntime({
+    devices: devicesDouble,
+    history: historyDouble,
+    configLog: configDouble,
+    controlStore,
+    identity: identityDouble,
+    // The MQTT namespace, injected for the same reason the resolver is: the real
+    // reader queries the dimension spine, so without a double every bridge spec
+    // would fail on a missing database client — and the runtime's own guard turns
+    // that failure into "MQTT is off", which looks identical to a bridge that was
+    // never built. `namespaceReads` records the profile id it was asked for, so a
+    // rebuild-cadence claim can be asserted rather than assumed.
+    mqttNamespace: async (profileId) => {
+      namespaceReads.push(profileId);
+      if (namespaceOutcome instanceof Error) throw namespaceOutcome;
+      return namespaceOutcome;
+    },
+    // The EV charge-power estimator hook, injected as a spy instead of mocking
+    // `../evcc/evcc`: every poll's house-load value is recorded here, which is why
+    // this suite no longer installs (or has to unwind) an evcc module mock.
+    onLoadSample: (watts) => loadSamples.push(watts),
+  });
+
+type Runtime = ReturnType<typeof createRuntime>;
+/** The instance the current test is driving; replaced in `beforeEach`. */
+let runtime: Runtime = newRuntime();
+// Delegating wrappers rather than a destructure: the methods below must always
+// reach the CURRENT instance, and a destructured reference would pin every test
+// to the one built at load time.
+const reloadEndpoint: Runtime["reloadEndpoint"] = () => runtime.reloadEndpoint();
+const applyMqttConfig: Runtime["applyMqttConfig"] = (config) => runtime.applyMqttConfig(config);
+const start: Runtime["start"] = (bus, ctx, watched) => runtime.start(bus, ctx, watched);
+const status: Runtime["status"] = () => runtime.status();
+const stop: Runtime["stop"] = () => runtime.stop();
+const syncSpotPricesNow: Runtime["syncSpotPricesNow"] = () => runtime.syncSpotPricesNow();
+const testInverter: Runtime["testInverter"] = (profileId, config) =>
+  runtime.testInverter(profileId, config);
+const testMqtt: Runtime["testMqtt"] = (config) => runtime.testMqtt(config);
+const write: Runtime["write"] = (...args) => runtime.write(...args);
 const { liveState } = await import("../shared/state");
 const { createStreams } = await import("../shared/streams");
 
@@ -908,6 +927,7 @@ async function moveEndpoint(over: Partial<PollEndpoint> = {}): Promise<void> {
 }
 
 beforeEach(() => {
+  runtime = newRuntime();
   pollEndpoint = baseEndpoint();
   legacyConfigReads = 0;
   registeredSpecs = [];
