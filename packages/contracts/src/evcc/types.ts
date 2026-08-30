@@ -6,8 +6,17 @@
  * Type-only — no runtime tail (see AGENTS.md).
  */
 
-/** Where a loadpoint's live charge-power figure comes from (freshness/confidence hint). */
-export type ChargePowerSource = "measured" | "estimated" | "feedforward";
+import type { ValueProvenance } from "../samples/types";
+
+/**
+ * Where a loadpoint's live charge-power figure comes from.
+ *
+ * An ALIAS of the generic {@link ValueProvenance} rather than its own union: this
+ * field was the prototype of the per-value freshness hint every device now
+ * states, and it was promoted rather than duplicated. Kept as a name because the
+ * web app renders it under this one.
+ */
+export type ChargePowerSource = ValueProvenance;
 
 /** The per-loadpoint fields the web app renders (subset of EVCC's topics). */
 export interface EvccLoadpoint {
