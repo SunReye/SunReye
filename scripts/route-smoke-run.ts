@@ -25,7 +25,10 @@
  *  5. an admin account (the first sign-up bootstraps one) plus an API key, so
  *     session-guarded and `/api/v1` routes are probed authenticated rather
  *     than all answering 401.
- *  6. the sweep itself, over whatever `/openapi/json` lists.
+ *  6. the sweep itself, over whatever `/openapi/json` lists — but only once
+ *     `generatedSurfaceProblem` confirms the document carries the routes that
+ *     step 3 was for. A seeding slip is otherwise invisible: the hand-written
+ *     routes mount regardless and would sweep green on their own.
  */
 process.env.SKIP_ENV_VALIDATION ??= "1";
 
@@ -41,6 +44,8 @@ import {
   type StatusAllowList,
   assertSmokeTarget,
   classify,
+  generatedSurface,
+  generatedSurfaceProblem,
   planProbes,
   summarize,
 } from "./route-smoke-plan";
@@ -301,11 +306,26 @@ async function probeOnce(base: string, probe: Probe, headers: HeadersInit): Prom
   }
 }
 
-/** Walk the whole listing, in order, one request at a time. */
-async function sweep(base: string, headers: HeadersInit): Promise<ProbeResult[]> {
-  const doc = await fetch(`${base}/openapi/json`, { headers }).then((r) => r.json());
+/**
+ * Walk the whole listing, in order, one request at a time — or refuse to,
+ * when the document shows the profile never seeded.
+ */
+async function sweep(base: string, headers: HeadersInit): Promise<ProbeResult[] | undefined> {
+  const doc = (await fetch(`${base}/openapi/json`, { headers }).then((r) =>
+    r.json(),
+  )) as Parameters<typeof planProbes>[0];
+  const problem = generatedSurfaceProblem(doc);
+  if (problem) {
+    console.error(`[route-smoke] ${problem}`);
+    return undefined;
+  }
+  const surface = generatedSurface(doc);
+  log(
+    `the active profile generated ${surface.catalog.length} catalog and ` +
+      `${surface.commands.length} command routes`,
+  );
   const samples = await discoverSamples(base, headers);
-  const probes = planProbes(doc as Parameters<typeof planProbes>[0], {
+  const probes = planProbes(doc, {
     samples,
     nowMs: Date.now(),
   });
@@ -346,7 +366,12 @@ export async function run(options: SmokeOptions): Promise<number> {
       );
       return 1;
     }
-    const verdict = summarize(await sweep(base, headers));
+    const results = await sweep(base, headers);
+    // The generated surface was missing: `sweep` already said which half and
+    // why, and probing the hand-written remainder would only produce a green
+    // report over a listing that proves nothing.
+    if (!results) return 1;
+    const verdict = summarize(results);
     console.log(`[route-smoke] ${verdict.text}`);
     return verdict.exitCode;
   } finally {

@@ -11,6 +11,8 @@ import {
   fillPath,
   parseArgs,
   planProbes,
+  generatedSurface,
+  generatedSurfaceProblem,
   probeLabel,
   sampleQuery,
   summarize,
@@ -323,6 +325,86 @@ describe("classifying one response", () => {
   });
 });
 
+describe("the generated surface guard", () => {
+  /** What the document looks like with no active profile: hand-written only. */
+  const handWrittenOnly = (): OpenApiDoc["paths"] => {
+    const paths: NonNullable<OpenApiDoc["paths"]> = {
+      "/healthz": { get: {} },
+      "/api/status": { get: {} },
+      "/api/history": { get: {} },
+      "/api/settings": { get: {}, put: {} },
+      "/api/command": { post: {} },
+      "/api/statistics/today": { get: {} },
+    };
+    // The hand-written surface is ~88 operations and is mounted whether or not a
+    // profile is active, so it alone must never satisfy the guard.
+    for (let i = 0; i < 100; i++) paths[`/api/filler/${i}`] = { get: {} };
+    return paths;
+  };
+
+  /** The routes `entitiesApi()` mounts only when a profile is active. */
+  const generated = (): NonNullable<OpenApiDoc["paths"]> => ({
+    "/api/v1/entities": { get: {} },
+    "/api/v1/state": { get: {} },
+    "/api/v1/entities/{key}": { get: {} },
+    "/api/v1/entities/{key}/history": { get: {} },
+    "/api/v1/entities/settings.workmode": { put: {} },
+    "/api/v1/entities/settings.battery.grid_charge": { put: {} },
+  });
+
+  test("a document of ONLY hand-written routes is rejected", () => {
+    // The failure this guard exists for: seedProfile silently did nothing, so
+    // the entity catalog and every generated command route are absent — while
+    // the hand-written routes (mounted unconditionally, answering 503
+    // ONBOARDING_REQUIRED at worst) still probe well past any raw total floor.
+    const problem = generatedSurfaceProblem(doc(handWrittenOnly()));
+    expect(problem).toBeDefined();
+    expect(problem).toMatch(/profile/i);
+  });
+
+  test("the catalog and at least one generated command route satisfy it", () => {
+    const paths = { ...handWrittenOnly(), ...generated() };
+    expect(generatedSurfaceProblem(doc(paths))).toBeUndefined();
+  });
+
+  test("the entity catalog without a single generated command route is rejected", () => {
+    // A profile that activated but generated no writes is still a broken seed:
+    // the committed sample profile has 39 writable metrics, so zero means the
+    // catalog came from somewhere other than a properly installed profile.
+    const paths = { ...handWrittenOnly(), ...generated() };
+    delete paths["/api/v1/entities/settings.workmode"];
+    delete paths["/api/v1/entities/settings.battery.grid_charge"];
+    expect(generatedSurfaceProblem(doc(paths))).toMatch(/command/i);
+  });
+
+  test("generated command routes without the catalog are rejected", () => {
+    const paths = { ...handWrittenOnly(), ...generated() };
+    delete paths["/api/v1/entities"];
+    expect(generatedSurfaceProblem(doc(paths))).toMatch(/catalog|\/api\/v1\/entities/i);
+  });
+
+  test("a templated path is never counted as a generated command route", () => {
+    // `PUT /api/v1/entities/{key}` would be a hand-written route; the generated
+    // ones spell the entity key out, one route per writable metric.
+    const paths = { ...handWrittenOnly(), ...generated() };
+    delete paths["/api/v1/entities/settings.workmode"];
+    delete paths["/api/v1/entities/settings.battery.grid_charge"];
+    paths["/api/v1/entities/{key}"] = { get: {}, put: {} };
+    expect(generatedSurfaceProblem(doc(paths))).toBeDefined();
+  });
+
+  test("the surface it reports is the generated routes, not the hand-written ones", () => {
+    const surface = generatedSurface(doc({ ...handWrittenOnly(), ...generated() }));
+    expect(surface.catalog).toContain("GET /api/v1/entities");
+    expect(surface.commands).toContain("PUT /api/v1/entities/settings.workmode");
+    expect(surface.commands.some((label) => label.includes("/api/filler/"))).toBe(false);
+  });
+
+  test("an empty document is rejected too", () => {
+    expect(generatedSurfaceProblem(doc({}))).toBeDefined();
+  });
+});
+
 describe("summarising the sweep", () => {
   const result = (label: string, ok: boolean): ProbeResult => ({
     label,
@@ -350,13 +432,22 @@ describe("summarising the sweep", () => {
     expect(summarize([]).text).toMatch(/no routes/i);
   });
 
-  test("a listing that collapsed to a handful fails the floor", () => {
-    // The OpenAPI document is generated from the active profile. If the profile
-    // failed to activate, the entity/command routes vanish and the sweep would
-    // otherwise pass by covering almost nothing.
+  test("a listing far below the measured size fails the floor", () => {
+    // A secondary sanity check only: it catches a listing that shrank wholesale
+    // (a truncated document, a group that failed to mount). A profile seeding
+    // slip is NOT its job — the hand-written surface alone clears this floor,
+    // which is what `generatedSurfaceProblem` is for.
     const few = Array.from({ length: MIN_ROUTES - 1 }, (_, i) => result(`GET /${i}`, true));
     expect(summarize(few).ok).toBe(false);
     expect(summarize(few).text).toMatch(/at least/i);
+  });
+
+  test("the floor sits below the measured total and above the hand-written surface", () => {
+    // Measured 2026-08-30 against the committed sample profile: 131 routes
+    // probed, of which 43 are generated (4 catalog + 39 commands). The floor is
+    // headroom under 131, not a derivation of the generated count.
+    expect(MIN_ROUTES).toBeLessThan(131);
+    expect(MIN_ROUTES).toBeGreaterThan(43);
   });
 
   test("the report counts what it probed", () => {

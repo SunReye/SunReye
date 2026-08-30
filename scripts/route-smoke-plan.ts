@@ -25,12 +25,25 @@
  * by design; correctness stays in the unit and database suites. This layer
  * answers one question: does the route execute.
  *
- * ## Two floors, because a silent shrink is the failure mode
+ * ## Proving the sweep had something to sweep
  *
- * An empty sweep and a nearly-empty one both fail ({@link summarize}). The
- * OpenAPI document is generated from the ACTIVE PROFILE, so a seeding slip
- * would drop every entity and command route and leave a green run that proved
- * almost nothing.
+ * A green run over a listing that lost its profile would be a lie about
+ * coverage, so the run refuses to start one: {@link generatedSurfaceProblem}
+ * asserts POSITIVELY that the routes only an active profile can produce — the
+ * entity catalog and the per-writable-metric command routes — are in the
+ * document. That is the whole seeding guard. It cannot be done by counting: the
+ * hand-written routes are mounted unconditionally (profile-dependent handlers
+ * answer 503 ONBOARDING_REQUIRED rather than vanishing), so an unseeded run
+ * still probes most of the listing.
+ *
+ * {@link summarize} then keeps two coarse floors — an empty sweep, and one far
+ * below the measured size — as a sanity check on the listing itself.
+ *
+ * Measured 2026-08-30 against the committed sample profile: 131 routes probed,
+ * 43 of them generated (4 catalog routes + 39 command routes, one per writable
+ * metric) and 88 hand-written. The same server booted WITHOUT the seeding step
+ * still lists 68 paths / 151 operations and would probe 88 routes — which is
+ * exactly why the guard asks for the generated routes by name.
  *
  * Run `bun scripts/route-smoke.ts --help`.
  */
@@ -45,12 +58,24 @@ export const DEFAULT_DB_PORT = 5433;
 export const DEFAULT_SERVER_PORT = 3999;
 
 /**
- * Below this many probed routes the sweep is not a sweep. The generated
- * `/api/v1` surface alone is far larger; a run that finds fewer has lost the
- * profile, and a green report would be a lie about coverage rather than a
- * result. Measured against the sample profile, which yields ~180.
+ * A raw sanity floor on the size of the listing, and NOTHING MORE.
+ *
+ * It catches a document that shrank wholesale — a truncated `/openapi/json`, a
+ * route group that failed to mount. It is NOT the profile seeding guard, and
+ * must never be relied on as one: the hand-written routes mount unconditionally
+ * (a profile-dependent handler answers 503 ONBOARDING_REQUIRED rather than
+ * disappearing), so their number is unrelated to whether the profile seeded and
+ * grows on its own. {@link generatedSurfaceProblem} is what proves the seeding.
+ *
+ * Derived from measurements taken 2026-08-30, not from a guess: against the
+ * committed sample profile the harness probed 131 routes (43 generated — the
+ * 4-route entity catalog plus one command route per writable metric — and 88
+ * hand-written); booted with the seeding step skipped, the same document
+ * yielded 88 probes. 100 leaves headroom for routes coming and going without
+ * leaving room for the listing to halve unnoticed. That it currently also sits
+ * above the 88 is an accident of today's split, not a second guard.
  */
-export const MIN_ROUTES = 40;
+export const MIN_ROUTES = 100;
 
 /** How long the simulator runs before the sweep, so history reads see rows. */
 export const DEFAULT_WARMUP_MS = 20_000;
@@ -344,6 +369,79 @@ export function planProbes(doc: OpenApiDoc, ctx: PlanContext): Probe[] {
 
 const order = (probe: Probe) => METHOD_ORDER[probe.method.toLowerCase()] ?? 1;
 
+/** Everything `entitiesApi()` mounts, and only while a profile is active. */
+const GENERATED_PREFIX = "/api/v1/";
+/** The generated per-entity write routes: one per writable metric, key spelled out. */
+const COMMAND_PREFIX = "/api/v1/entities/";
+const COMMAND_METHODS = new Set(["put", "post", "patch"]);
+/** The discovery route a consumer reads first; absent without a profile. */
+export const CATALOG_LABEL = "GET /api/v1/entities";
+
+/** The operations in a document that exist ONLY because a profile is active. */
+export interface GeneratedSurface {
+  /** The catalog and the other read routes under `/api/v1`. */
+  catalog: string[];
+  /** `PUT /api/v1/entities/<key>` — one per writable metric, no templating. */
+  commands: string[];
+}
+
+/**
+ * Split the generated surface out of an OpenAPI document.
+ *
+ * A path segment spelled `{like this}` is a hand-written route with a
+ * parameter; the generated command routes name their entity key literally,
+ * because they are built by folding over `writableMetrics(profile)`.
+ */
+export function generatedSurface(doc: OpenApiDoc): GeneratedSurface {
+  const surface: GeneratedSurface = { catalog: [], commands: [] };
+  for (const { path, method } of generatedOperations(doc.paths)) {
+    const bucket = isGeneratedCommand(path, method) ? "commands" : "catalog";
+    surface[bucket].push(`${method.toUpperCase()} ${path}`);
+  }
+  return surface;
+}
+
+/** Every operation the document lists under `/api/v1`, as path/method pairs. */
+const generatedOperations = (paths: OpenApiDoc["paths"]) =>
+  Object.entries(paths ?? {})
+    .filter(([path]) => path.startsWith(GENERATED_PREFIX))
+    .flatMap(([path, operations]) =>
+      METHODS.filter((method) => operations[method]).map((method) => ({ path, method })),
+    );
+
+const isGeneratedCommand = (path: string, method: string) =>
+  COMMAND_METHODS.has(method) && path.startsWith(COMMAND_PREFIX) && !path.includes("{");
+
+/**
+ * Why this document proves nothing, or `undefined` when it does prove
+ * something. THE guard against a profile seeding slip, and the reason
+ * {@link MIN_ROUTES} is not one.
+ *
+ * The check is positive on purpose: it asks whether the routes that can only
+ * come from an active profile are actually there, rather than inferring it from
+ * a total. Counting cannot answer the question — the hand-written routes are
+ * mounted whether or not a profile exists (the profile-dependent ones answer
+ * 503 ONBOARDING_REQUIRED), so a run that seeded nothing still sweeps most of
+ * the listing and reports green over a surface with no entities in it.
+ */
+export function generatedSurfaceProblem(doc: OpenApiDoc): string | undefined {
+  const { catalog, commands } = generatedSurface(doc);
+  const missing: string[] = [];
+  if (!catalog.includes(CATALOG_LABEL)) missing.push(`the entity catalog (${CATALOG_LABEL})`);
+  if (commands.length === 0) {
+    missing.push(
+      "every generated command route (PUT /api/v1/entities/<key>, one per writable metric)",
+    );
+  }
+  if (missing.length === 0) return undefined;
+  return (
+    `the OpenAPI listing is missing ${missing.join(" and ")}. Those routes exist only while a ` +
+    `profile is ACTIVE, so the profile was not seeded or did not activate. The hand-written ` +
+    `routes are mounted either way, so the sweep would otherwise have gone green over a ` +
+    `fraction of the surface it claims to cover.`
+  );
+}
+
 /** What came back from one probe: a status, or the reason there is none. */
 export interface ProbeResponse {
   status?: number;
@@ -392,9 +490,13 @@ export interface SmokeVerdict {
 }
 
 /**
- * The run's verdict. Two floors rather than one: an empty sweep and a shrunken
- * one both fail, because the document is generated from the active profile and
- * a seeding slip would otherwise report a clean run over nothing.
+ * The run's verdict. Two floors rather than one: an empty sweep and a listing
+ * far below its measured size both fail, because a document that shrank
+ * wholesale would otherwise report a clean run over almost nothing.
+ *
+ * Neither floor detects a profile seeding slip; nothing counted here can. That
+ * is {@link generatedSurfaceProblem}'s job, and the run applies it to the
+ * document before any of this.
  */
 export function summarize(results: readonly ProbeResult[], minRoutes = MIN_ROUTES): SmokeVerdict {
   const failures = results.filter((r) => !r.ok);
@@ -412,7 +514,8 @@ export function summarize(results: readonly ProbeResult[], minRoutes = MIN_ROUTE
       exitCode: 1,
       text:
         `only ${results.length} routes were probed; expected at least ${minRoutes}. ` +
-        `The generated API comes from the active profile — check that it was seeded.`,
+        `The listing shrank — check that every route group still mounts and that ` +
+        `/openapi/json was not truncated.`,
     };
   }
   if (failures.length > 0) {
