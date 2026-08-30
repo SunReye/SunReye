@@ -6,6 +6,18 @@ import {
   type RoleSpec,
 } from "@SunReye/inverter-core";
 
+/**
+ * The roles a REGISTER PROFILE can be asked about.
+ *
+ * A profile describes an inverter, so the catalog's other device classes — a
+ * loadpoint's `ev.*` vocabulary, reported by a coded integration that has no
+ * register map at all — are not areas its author has left empty. Reporting them
+ * would ask every author, forever, to map registers their machine does not have.
+ */
+export const PROFILE_ROLES: readonly CanonicalRole[] = ROLE_NAMES.filter(
+  (r) => (ROLE_CATALOG[r] as RoleSpec).deviceClass === undefined,
+);
+
 export interface CoverageReport {
   total: number;
   mappedCount: number;
@@ -54,9 +66,9 @@ export function coverage(data: ProfileData): CoverageReport {
   for (const m of data.metrics) if (m.role) present.add(m.role);
   const covered = coveredByAlternative(present);
 
-  const mapped = ROLE_NAMES.filter((r) => present.has(r));
-  const missing = ROLE_NAMES.filter((r) => !present.has(r) && !covered.has(r));
-  return { total: ROLE_NAMES.length, mappedCount: mapped.length, mapped, missing };
+  const mapped = PROFILE_ROLES.filter((r) => present.has(r));
+  const missing = PROFILE_ROLES.filter((r) => !present.has(r) && !covered.has(r));
+  return { total: PROFILE_ROLES.length, mappedCount: mapped.length, mapped, missing };
 }
 
 /**

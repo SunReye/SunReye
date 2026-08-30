@@ -105,6 +105,44 @@ describe("the write seam is callable for any registered device", () => {
     expect(series.rows.map((r) => r.metric)).toEqual(["surprise"]);
   });
 
+  test("a value the device did not MEASURE is not history", () => {
+    // Provenance is the generalisation of EVCC's `ChargePowerSource`, which was
+    // already exactly this hint for exactly one field. A feed-forward figure is
+    // our own prediction of a command's effect and an estimate is a residual
+    // attribution — neither is a reading, and a five-year hypertable that cannot
+    // tell them apart from one is a history of what we guessed.
+    const { writer, series } = writerOver();
+    const wallbox = device("wallbox-1", [dm({ key: "power" }), dm({ key: "soc" })], "evcc");
+
+    writer.commit(wallbox, {
+      time: T0,
+      metrics: { power: 4200, soc: 55 },
+      provenance: { power: "feedforward" },
+    });
+    writer.commit(wallbox, {
+      time: T1,
+      metrics: { power: 4300, soc: 60 },
+      provenance: { power: "estimated" },
+    });
+    writer.close(new Date("2026-08-30T10:00:02Z"));
+
+    expect(series.rows.map((r) => [r.metric, r.value])).toEqual([
+      ["soc", 55],
+      ["soc", 60],
+    ]);
+  });
+
+  test("provenance a sample does not state is `measured`, so every caller is unchanged", () => {
+    const { writer, series } = writerOver();
+    const wallbox = device("wallbox-1", [dm({ key: "power" })], "evcc");
+
+    writer.commit(wallbox, { time: T0, metrics: { power: 4200 }, provenance: {} });
+    writer.commit(wallbox, { time: T1, metrics: { power: 4300 } });
+    writer.close(new Date("2026-08-30T10:00:02Z"));
+
+    expect(series.rows.map((r) => r.value)).toEqual([4200, 4300]);
+  });
+
   test("a string timestamp is a time, not a string", () => {
     const { writer, series } = writerOver();
     writer.commit(device("inverter-1", [dm({ key: "pv" })]), {

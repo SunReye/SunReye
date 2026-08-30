@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { buildManifest, deriveCapabilities } from "./capabilities";
+import { buildManifest, deriveCapabilities, metricKeySpecs } from "./capabilities";
 import {
   type DeviceMetric,
   deviceInstance,
@@ -39,6 +39,60 @@ function profile(metrics: MetricDef[], declares?: InverterProfile["declares"]): 
     ...(declares ? { declares } : {}),
   };
 }
+
+describe("a charger binds the EV vocabulary and claims no inverter hardware", () => {
+  /** The generic half of a loadpoint — what any wallbox integration reports. */
+  const loadpoint = [
+    dm({ key: "ev.charge.power", role: "ev.charge.power", unit: "W" }),
+    dm({ key: "ev.vehicle.soc", role: "ev.vehicle.soc", unit: "%" }),
+    dm({ key: "ev.session.energy", role: "ev.session.energy", unit: "kWh" }),
+    dm({ key: "ev.connected", role: "ev.connected" }),
+    dm({ key: "ev.charging", role: "ev.charging" }),
+  ];
+
+  test("every EV concept resolves to a binding", () => {
+    const charger = deviceInstance({
+      id: "wallbox-1",
+      deviceClass: "charger",
+      integration: "evcc",
+      metrics: loadpoint,
+    });
+
+    expect([...charger.roles.keys()]).toEqual([
+      "ev.charge.power",
+      "ev.vehicle.soc",
+      "ev.session.energy",
+      "ev.connected",
+      "ev.charging",
+    ]);
+    expect(charger.roles.get("ev.charge.power")?.metrics.map((x) => x.key)).toEqual([
+      "ev.charge.power",
+    ]);
+  });
+
+  test("a wallbox derives no battery, no strings and no phases", () => {
+    // The capability set is DERIVED, so a coded integration cannot declare
+    // hardware it does not have — and a car's pack is not the house battery.
+    const capabilities = deriveCapabilities({ metrics: loadpoint });
+    expect(capabilities.battery).toBe(false);
+    expect(capabilities.pvStrings).toBe(0);
+    expect(capabilities.grid).toBe(false);
+    expect(capabilities.controls).toEqual([]);
+  });
+
+  test("session energy is a counter and charge power is not", () => {
+    // The two facts that must outlive whatever declared them: a session counter
+    // resets to zero on every plug-in, and `is_counter` is what tells the
+    // rollups to read it as one rather than as a level that fell off a cliff.
+    expect(metricKeySpecs(loadpoint)).toEqual([
+      { key: "ev.charge.power", isCounter: false, unit: "W" },
+      { key: "ev.vehicle.soc", isCounter: false, unit: "%" },
+      { key: "ev.session.energy", isCounter: true, unit: "kWh" },
+      { key: "ev.connected", isCounter: false, unit: null },
+      { key: "ev.charging", isCounter: false, unit: null },
+    ]);
+  });
+});
 
 describe("roleBindings", () => {
   test("groups a device's metrics by the role each one maps", () => {

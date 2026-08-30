@@ -13,7 +13,9 @@ import { autoHead } from "elysia/auto-head";
 import { type CostBucket, computeCost, computeCostSeries, resolveRange } from "./energy/cost";
 import { energySeries } from "./energy/energy";
 import { entitiesApi } from "./inverter/entities";
+import { ensureDevice, isRetired, readPlant } from "@SunReye/db/plant-repo";
 import { evccControl, evccSnapshot, rebuildEvcc, stopEvcc } from "./evcc/evcc";
+import { loadpointDeviceSpec } from "./evcc/evcc-devices";
 import { deviceIdOf, metricIdOf } from "./shared/identity-sql";
 import { queryRecentBuckets, queryRollup } from "./shared/history";
 import type { HistoryTier } from "./shared/history-horizon";
@@ -718,6 +720,12 @@ if (ctx) {
   // the `automations` topic. Read per tick, never captured — a page opened an
   // hour from now must start receiving frames on the very next tick.
   runtime.start(streams, ctx, audience.automations);
+} else {
+  // No profile to poll — but the plant row exists (`syncProvisioning` creates it
+  // either way) and the EVCC registrar below is wired unconditionally, so rows
+  // still reach the write seam. `start` is what arms the flush cadence, so
+  // without this they would sit in the buffer until shutdown.
+  runtime.armStorage();
 }
 
 // Measure the battery's usable capacity from the discharge segments in raw
@@ -735,7 +743,36 @@ startUpdateChecks();
 // Each coalesced snapshot is emitted on the `evcc` topic (the bus is wired on
 // this boot rebuild); late/new subscribers get the current snapshot from the
 // socket's `open` handler instead.
-void rebuildEvcc(streams);
+//
+// The second argument is the path from a loadpoint to `metrics_raw`: a device
+// row per loadpoint, then the runtime's ONE wired writer. Before it, nothing
+// under `src/evcc/` wrote to the hypertable at all — charge power and session
+// energy were live-feed only, with no history, no rollups and no statistics.
+// Assembled here because it is composition: the ingest owns none of these.
+void rebuildEvcc(streams, {
+  async ensureDevice(_id, index, title) {
+    const plant = await readPlant({ execute: (query) => db.execute(query) });
+    // Onboarding-only boot: EVCC ingest starts before there is a plant to hang a
+    // device on. The live feed runs; storage starts on the next snapshot after
+    // provisioning.
+    if (!plant) return "absent";
+    const row = await ensureDevice(
+      { execute: (query) => db.execute(query) },
+      loadpointDeviceSpec(plant.id, index, title),
+    );
+    // RETIRED IS NOT REGISTERED. `ensureDevice` is `ON CONFLICT DO NOTHING` +
+    // SELECT, so it answers "the row is there" for a row the operator retired
+    // in Settings → Devices — while the roster read excludes retired rows. The
+    // registrar has to be told the difference or it waits for an instance that
+    // is never coming.
+    return isRetired(row) ? "retired" : "ready";
+  },
+  reloadRegistry: async () => void (await deviceRegistry.reload()),
+  device: (id) => deviceRegistry.get(id),
+  commit: runtime.commit,
+  forgetDevice: runtime.forgetDevice,
+  logger: log("evcc"),
+});
 
 // Statistics stream: republish today's figures on a slow tick; the runtime
 // signals the same topic whenever a price sync stores fresh slots. The tick

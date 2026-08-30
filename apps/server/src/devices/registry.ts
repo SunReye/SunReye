@@ -31,7 +31,10 @@
 import {
   type DeviceClass,
   type DeviceInstance,
+  type DeviceMetric,
   type InverterProfile,
+  type ProfileDeclarations,
+  deviceInstance,
   instanceFromProfile,
 } from "@SunReye/inverter-core";
 import { DEVICE_ROLES, type DeviceRecord, activeDevices } from "@SunReye/db/plant-repo";
@@ -40,6 +43,24 @@ import type { DeviceProfileBinding } from "@SunReye/db/automation-state";
 /** The one failure path this logs; kept minimal so any logger satisfies it. */
 export interface RegistryLogger {
   warn(template: string, values?: Record<string, unknown>): void;
+}
+
+/**
+ * What a CODED integration declares — the tier EVCC (#88) and the optimizer
+ * (#172) are authored in.
+ *
+ * The same two things a profile supplies (a metric list and the hardware facts
+ * no metric can express) and NOT a third: there is no capability field here
+ * either. A coded integration is always tempted to declare its capability set in
+ * TypeScript because that is easier than declaring roles; if it could, two tiers
+ * would be able to disagree about what "has a battery" means and every consumer
+ * would grow a branch per tier.
+ */
+export interface CodedDeclaration {
+  /** Provenance for {@link DeviceInstance.integration} — never branched on. */
+  integration: string;
+  metrics: readonly DeviceMetric[];
+  declares?: ProfileDeclarations;
 }
 
 export interface DeviceRegistryDeps {
@@ -58,6 +79,19 @@ export interface DeviceRegistryDeps {
    * registered and simply binds nothing.
    */
   resolveProfile(profileId: string): Promise<InverterProfile | null>;
+  /**
+   * The CODED declaration a device's `profile_id` names, or null when the id is
+   * an ordinary profile id.
+   *
+   * Asked FIRST, and synchronously: a coded integration is compiled in, so there
+   * is nothing to fetch — and asking the profile store about an id no profile
+   * will ever have would produce a permanent "not installed" for a device that
+   * is working perfectly.
+   *
+   * Optional, because the registry's own rules do not depend on the tier: a test
+   * (and any install with no coded device) needs no table at all.
+   */
+  resolveCoded?(profileId: string): CodedDeclaration | null;
   logger: RegistryLogger;
 }
 
@@ -128,6 +162,47 @@ export function createDeviceRegistry(deps: DeviceRegistryDeps): DeviceRegistry {
   /** The profile id each device's ROW names, resolved or not — see `bindings`. */
   let bindings: readonly DeviceProfileBinding[] = [];
 
+  /**
+   * One row, resolved through whichever tier authored it.
+   *
+   * The CODED tier is asked first: its declarations are compiled in, so a device
+   * whose `profile_id` names one is fully resolved without the profile store
+   * ever being asked — and it must not be, since no profile will ever carry that
+   * id. The `profile` it returns is the DRIVER profile, which a coded device has
+   * none of: it has no register map and nothing to talk to.
+   */
+  async function resolveRow(
+    row: DeviceRecord,
+    deviceClass: DeviceClass,
+  ): Promise<{ instance: DeviceInstance; profile: InverterProfile | null }> {
+    const coded = deps.resolveCoded?.(row.profileId) ?? null;
+    if (coded) {
+      return {
+        instance: deviceInstance({
+          id: row.slug,
+          deviceClass,
+          integration: coded.integration,
+          metrics: coded.metrics,
+          ...(coded.declares ? { declares: coded.declares } : {}),
+        }),
+        profile: null,
+      };
+    }
+    const profile = await deps.resolveProfile(row.profileId);
+    return {
+      instance: instanceFromProfile({
+        id: row.slug,
+        deviceClass,
+        integration: "profile",
+        // A device whose profile is not installed binds NOTHING rather than
+        // vanishing: its history is still readable, its row is still editable,
+        // and the operator can reinstall the profile it names.
+        profile: profile ?? { id: row.profileId, name: row.name, manufacturer: "", metrics: [] },
+      }),
+      profile,
+    };
+  }
+
   async function reload(): Promise<readonly DeviceInstance[]> {
     let rows: readonly DeviceRecord[];
     try {
@@ -160,23 +235,13 @@ export function createDeviceRegistry(deps: DeviceRegistryDeps): DeviceRegistry {
         );
         continue;
       }
-      const profile = await deps.resolveProfile(row.profileId);
+      const { instance, profile } = await resolveRow(row, deviceClass);
       if (profile) nextProfiles.set(row.slug, profile);
+      // The device -> profile binding is what re-keys automation state from a
+      // profile id to a device id (#171). A coded device carries no profile, so
+      // its binding names the id its row holds and adopts nothing.
       nextBindings.push({ deviceId: row.slug, profileId: row.profileId });
-      built.push(
-        instanceFromProfile({
-          id: row.slug,
-          deviceClass,
-          // Every device in this table is described by a profile today. The
-          // field is provenance for the tiers that follow (#88's `evcc`, #172's
-          // `optimizer`) and is never branched on.
-          integration: "profile",
-          // A device whose profile is not installed binds NOTHING rather than
-          // vanishing: its history is still readable, its row is still editable,
-          // and the operator can reinstall the profile it names.
-          profile: profile ?? { id: row.profileId, name: row.name, manufacturer: "", metrics: [] },
-        }),
-      );
+      built.push(instance);
     }
 
     instances = built;

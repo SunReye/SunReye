@@ -191,6 +191,83 @@ describe("the registry reflects the table without a restart", () => {
   });
 });
 
+describe("a coded integration is a tier, not a special case", () => {
+  test("a row naming a coded declaration registers without any profile", async () => {
+    // The registry resolves WHAT a device is. A coded integration authors that
+    // in TypeScript instead of in a register map, and the resulting instance is
+    // indistinguishable — same constructor, same role map, same derivation.
+    const asked: string[] = [];
+    const registry = createDeviceRegistry({
+      readDevices: async () => [
+        row({ id: 1, slug: "inverter-1" }),
+        row({
+          id: 2,
+          slug: "evcc-loadpoint-1",
+          role: "charger",
+          connectionId: null,
+          unitId: 0,
+          profileId: "evcc-loadpoint",
+        }),
+      ],
+      resolveProfile: async (id) => {
+        asked.push(id);
+        return id === deye.id ? deye : null;
+      },
+      resolveCoded: (id) =>
+        id === "evcc-loadpoint"
+          ? {
+              integration: "evcc",
+              metrics: [
+                {
+                  key: "ev.charge.power",
+                  unit: "W",
+                  group: "ev",
+                  access: "r",
+                  role: "ev.charge.power",
+                },
+              ],
+            }
+          : null,
+      logger: { warn: () => {} },
+    });
+    await registry.reload();
+
+    const loadpoint = registry.get("evcc-loadpoint-1");
+    expect(loadpoint?.deviceClass).toBe("charger");
+    expect(loadpoint?.integration).toBe("evcc");
+    expect([...(loadpoint?.roles.keys() ?? [])]).toEqual(["ev.charge.power"]);
+    // And its capabilities are DERIVED, exactly like the inverter's.
+    expect(deriveCapabilities({ metrics: loadpoint?.metrics ?? [] }).battery).toBe(false);
+
+    // The profile store is never asked about a coded id: there is no profile to
+    // install, so a lookup would only ever produce a spurious "not found".
+    expect(asked).toEqual([deye.id]);
+    // ...and it is not counted as a profile in use, so uninstalling a register
+    // map is not blocked by a device that never had one.
+    expect(registry.usesProfile("evcc-loadpoint")).toBe(false);
+    expect(registry.driverProfile("evcc-loadpoint-1")).toBeNull();
+  });
+
+  test("a coded device is never the plant's primary inverter", async () => {
+    const registry = createDeviceRegistry({
+      readDevices: async () => [
+        row({
+          id: 1,
+          slug: "evcc-loadpoint-1",
+          role: "charger",
+          connectionId: null,
+          profileId: "evcc-loadpoint",
+        }),
+      ],
+      resolveProfile: async () => null,
+      resolveCoded: () => ({ integration: "evcc", metrics: [] }),
+      logger: { warn: () => {} },
+    });
+    await registry.reload();
+    expect(registry.primary()).toBeNull();
+  });
+});
+
 describe("the single-inverter consumers the registry replaces", () => {
   test("primary is the lowest-id inverter, ignoring the virtual devices", async () => {
     const registry = registryOver([

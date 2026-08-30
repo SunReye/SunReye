@@ -38,6 +38,7 @@
  */
 
 import { type DeviceInstance, type MetricKeyFacts, metricKeySpecs } from "@SunReye/inverter-core";
+import type { SampleProvenance } from "@SunReye/contracts/samples";
 
 import { type StoragePolicy, type StorageRow, createStoragePolicy } from "./storage-policy";
 
@@ -45,6 +46,36 @@ import { type StoragePolicy, type StorageRow, createStoragePolicy } from "./stor
 export interface DeviceSample {
   time: string | Date;
   metrics: Record<string, number>;
+  /**
+   * Where each value came from — sparse, absent means `"measured"`.
+   *
+   * Only the measured values of a sample become history; see
+   * {@link measuredMetrics} and `@SunReye/contracts/samples`.
+   */
+  provenance?: SampleProvenance;
+}
+
+/**
+ * The half of a sample that is a READING.
+ *
+ * A `feedforward` value is our prediction of a command's effect and an
+ * `estimated` one is an attribution from a residual; both are the right thing to
+ * paint live and the wrong thing to persist. Filtering here rather than in the
+ * policy keeps the policy pure and synchronous, and keeps the rule in one place
+ * for every integration instead of one per producer.
+ *
+ * The common case — no provenance stated at all — returns the metric record
+ * itself, so a poll loop pays nothing for a distinction it never draws.
+ */
+function measuredMetrics(sample: DeviceSample): Record<string, number> {
+  const provenance = sample.provenance;
+  if (!provenance) return sample.metrics;
+  const measured: Record<string, number> = {};
+  for (const [key, value] of Object.entries(sample.metrics)) {
+    const from = provenance[key];
+    if (from === undefined || from === "measured") measured[key] = value;
+  }
+  return measured;
 }
 
 /** Where routed rows go. Structurally a {@link HistoryBuffer}'s enqueue half. */
@@ -159,7 +190,11 @@ export function createDeviceWriter(deps: DeviceWriterDeps): DeviceWriter {
     commit(device, sample) {
       const time = sample.time instanceof Date ? sample.time : new Date(sample.time);
       // The identity is the INSTANCE's, stamped here — see the module note.
-      const routed = policyFor(device, time).route({ ...sample, inverterId: device.id });
+      const routed = policyFor(device, time).route({
+        time,
+        metrics: measuredMetrics(sample),
+        inverterId: device.id,
+      });
       // An empty list is a no-op in the buffer, so neither destination is guarded.
       deps.series.enqueue(routed.series);
       deps.config.enqueue(routed.config);

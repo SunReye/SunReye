@@ -1,3 +1,4 @@
+import type { DeviceClass } from "./device-instance";
 import type { MetricKind } from "./types";
 
 /**
@@ -25,6 +26,17 @@ export interface RoleSpec {
   signed?: boolean;
   /** Conventional unit, for authoring guidance and the coverage report. */
   unitHint?: string;
+  /**
+   * The device class this concept describes, when it is not the inverter a
+   * register profile maps. Absent means `inverter` — the overwhelming majority,
+   * and the only class a register profile can describe at all.
+   *
+   * Read by the profile SDK's coverage report, which asks "which renderable
+   * areas does THIS PROFILE leave empty": a loadpoint's roles are not an area a
+   * hybrid inverter's author has forgotten, and reporting them would ask every
+   * author to map registers their machine does not have.
+   */
+  deviceClass?: DeviceClass;
 }
 
 export const ROLE_CATALOG = {
@@ -90,6 +102,33 @@ export const ROLE_CATALOG = {
   "generator.phase.power": { kind: "measurement", indexed: true, unitHint: "W" },
   "generator.phase.voltage": { kind: "measurement", indexed: true, unitHint: "V" },
   "generator.energy.today": { kind: "cumulative", unitHint: "kWh" },
+  // --- EV charging ---
+  // One loadpoint — one place a car plugs in — regardless of who reports it: an
+  // EVCC instance, a wallbox on Modbus, a user's Home Assistant mapping. These
+  // are the values that are the SAME question for all of them, and therefore the
+  // only ones that belong in the contract.
+  //
+  // What is deliberately NOT here: the three-layer charge limit (a durable
+  // per-vehicle `limitSoc`, a per-session loadpoint override and EVCC's own
+  // resolution of the two, where `0` means "no override" and not "no limit"),
+  // the battery-boost contract, and the feed-forward power estimator. Those are
+  // one integration's semantics, validated against one live instance, and a role
+  // that flattened them would be a role every other integration would have to
+  // fake. An integration may expose MORE than the contract; it may never expose
+  // less — so they stay on EVCC's own surface.
+  "ev.charge.power": { kind: "measurement", unitHint: "W", deviceClass: "charger" },
+  /** State of charge of the car currently plugged in — not the house battery. */
+  "ev.vehicle.soc": { kind: "measurement", unitHint: "%", deviceClass: "charger" },
+  /**
+   * Energy delivered in the current charging session. A counter that RESETS to
+   * zero on every plug-in, which is the same shape the daily `*.today` totals
+   * already have.
+   */
+  "ev.session.energy": { kind: "cumulative", unitHint: "kWh", deviceClass: "charger" },
+  /** A car is plugged in (1/0). No `needsEnumLabels`: a boolean is not an enum. */
+  "ev.connected": { kind: "status", deviceClass: "charger" },
+  /** Current is actually flowing into the car (1/0). */
+  "ev.charging": { kind: "status", deviceClass: "charger" },
   // --- Inverter ---
   "inverter.status": { kind: "status", needsEnumLabels: true },
   "inverter.relay_status": { kind: "status", needsEnumLabels: true },
