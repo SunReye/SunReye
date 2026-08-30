@@ -35,7 +35,6 @@ import type {
   DecisionPoint,
 } from "@SunReye/contracts/automation";
 import { HISTORY_CAPACITY } from "./automation-history";
-import type { ProfileContext } from "../inverter/inverter";
 import type { SpotSlice } from "@SunReye/contracts/prices";
 import { log } from "../shared/logging";
 import type { Streams } from "../shared/streams";
@@ -132,13 +131,16 @@ function scheduleNext(): void {
 }
 
 /**
- * What the plant is written through: the active profile and the register writer.
+ * What the plant is written through: the steered device and the register writer.
  * Exported because it names the parameter of {@link startAutomations},
  * {@link buildProductionIO} and {@link composeAutomationIO} — a caller has to be
  * able to name what it is handing in.
  */
 export interface PlantDeps {
-  ctx: ProfileContext;
+  /** The registered device the loop steers — roles in, `devices.slug` as identity. */
+  device: AutomationIO["device"];
+  /** The register bounds seam; see {@link AutomationIO.constraint}. */
+  constraint: AutomationIO["constraint"];
   write: (key: string, value: number) => Promise<void>;
 }
 
@@ -213,7 +215,8 @@ async function readMigratedState(mods: AutomationModules): Promise<AutomationSta
 export function composeAutomationIO(deps: PlantDeps, mods: AutomationModules): AutomationIO {
   let stateCache: AutomationState | null = null;
   return {
-    ctx: deps.ctx,
+    device: deps.device,
+    constraint: deps.constraint,
     write: deps.write,
     getConfig: mods.getAutomationConfig,
     getWeather: mods.getWeatherConfig,

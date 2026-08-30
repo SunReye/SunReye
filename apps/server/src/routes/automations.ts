@@ -27,13 +27,12 @@ export const automationRoutes = new Elysia({ name: "automation-routes" })
         // Validate the shape first so the enable-guard reasons about the exact
         // config that would be persisted (defaults applied, unknowns stripped).
         const parsed = automationConfigSchema.parse(body);
-        // The engine still reasons in profiles (#171 moves it onto the
-        // registry's instances); what changed is WHERE the profile comes from —
-        // the plant's primary inverter, not a module global.
-        const profile = deviceRegistry.primaryProfile();
+        // The same registered device the engine steers, so "can enable" and
+        // "keeps running" are answered off one description of the machine.
+        const device = deviceRegistry.primary();
         return {
           parsed,
-          rejected: validateAutomationEnable(parsed, profile, await getWeatherConfig()),
+          rejected: validateAutomationEnable(parsed, device, await getWeatherConfig()),
         };
       }, "Invalid config");
       if (!checked.ok) return status(400, { error: checked.error });

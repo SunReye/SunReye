@@ -13,6 +13,7 @@ import { type WeatherConfig, weatherConfigSchema } from "@SunReye/db/weather";
 import type { InverterProfile, InverterSample, MetricDef } from "@SunReye/inverter-core";
 import type { SolarForecast } from "../forecast/solar-forecast";
 import { buildProfileContext } from "../inverter/inverter";
+import { entityConstraint, instanceFromProfile } from "@SunReye/inverter-core";
 import type { SpotSlice } from "@SunReye/contracts/prices";
 import { getAutomationConfig } from "../settings/automation-settings";
 import type { AutomationStreamMessage } from "@SunReye/contracts/automation";
@@ -77,6 +78,26 @@ const powerLimitProfile = (): InverterProfile => ({
     metric(VOLT_KEY, "battery.voltage"),
   ],
 });
+
+/** The plant's one registered device — `devices.slug`, never a profile id. */
+const DEVICE_ID = "inv-1";
+
+/** The registry's instance for a profile, plus the register-bounds seam beside it. */
+const plantOf = (p: InverterProfile) => {
+  const ctx = buildProfileContext(p);
+  return {
+    device: instanceFromProfile({
+      id: DEVICE_ID,
+      deviceClass: "inverter" as const,
+      integration: "profile",
+      profile: p,
+    }),
+    constraint: (key: string) => {
+      const def = ctx.defByKey.get(key);
+      return def ? entityConstraint(def) : null;
+    },
+  };
+};
 
 /** The three roles peak shaving requires, and nothing else. */
 const profile: InverterProfile = {
@@ -205,7 +226,7 @@ interface Harness {
 }
 
 function harness(over: { config?: AutomationConfig; profile?: InverterProfile } = {}): Harness {
-  const ctx = buildProfileContext(over.profile ?? profile);
+  const steered = plantOf(over.profile ?? profile);
   let cfg = over.config ?? config();
   let wx = weather();
   let fc: SolarForecast | null = forecastAt([6000, 6000, 6000, 6000]);
@@ -224,7 +245,7 @@ function harness(over: { config?: AutomationConfig; profile?: InverterProfile } 
 
   return {
     io: {
-      ctx,
+      ...steered,
       write: async (key, value) => {
         writes.push({ key, value });
         // Mirror the register readback the next poll would deliver.
@@ -757,7 +778,7 @@ describe("hot-applying an automation config change", () => {
     // 50 % SOC against a small forecast surplus lands on the fallback rate.
     expect(h.writes).toEqual([{ key: CHARGE_KEY, value: 65 }]);
     // The register the user had set (120 A) is what has to come back.
-    expect(h.state()["test-profile:peakShaving"]?.previousValue).toBe(120);
+    expect(h.state()[`${DEVICE_ID}:peakShaving`]?.previousValue).toBe(120);
     expect(automationStatus().peakShaving.restorePending).toBe(true);
 
     h.set.config(config({ enabled: false }));
@@ -766,7 +787,7 @@ describe("hot-applying an automation config change", () => {
 
     expect(h.writes.at(-1)).toEqual({ key: CHARGE_KEY, value: 120 });
     expect(automationStatus().peakShaving.restorePending).toBe(false);
-    expect(h.state()["test-profile:peakShaving"]).toBeUndefined();
+    expect(h.state()[`${DEVICE_ID}:peakShaving`]).toBeUndefined();
   });
 });
 
@@ -861,7 +882,7 @@ function recordingMods(): RecordingMods {
   };
 }
 
-const plant = { ctx: buildProfileContext(profile), write: async () => {} };
+const plant = { ...plantOf(profile), write: async () => {} };
 
 /** Capture stamp for the stored-blob fixtures; the migration never reads it. */
 const CAPTURED = "2026-07-25T12:00:00Z";
@@ -997,7 +1018,8 @@ describe("production IO wiring", () => {
     const r = recordingMods();
     const io = composeAutomationIO(plant, r.mods);
 
-    expect(io.ctx).toBe(plant.ctx);
+    expect(io.device).toBe(plant.device);
+    expect(io.constraint).toBe(plant.constraint);
     expect(io.write).toBe(plant.write);
     expect(io.getConfig).toBe(r.mods.getAutomationConfig);
     expect(io.getWeather).toBe(r.mods.getWeatherConfig);
@@ -1023,10 +1045,9 @@ describe("production IO wiring", () => {
 
   test("the production IO binds the real settings and live-sample modules", async () => {
     const write = async () => {};
-    const io = await buildProductionIO({ ctx: plant.ctx, write });
+    const io = await buildProductionIO({ ...plantOf(profile), write });
 
     expect(io.getConfig).toBe(getAutomationConfig);
-    expect(io.ctx).toBe(plant.ctx);
     expect(io.write).toBe(write);
 
     // Reads the shared poll state live, rather than capturing it at build time.
