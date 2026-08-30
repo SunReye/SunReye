@@ -112,6 +112,29 @@ describe("the optimizer's decisions reach the write seam", () => {
     expect(h.commits).toHaveLength(1);
   });
 
+  test("a device table that THROWS waits out the retry interval like any other failure", async () => {
+    // The retry gate is what this module exists for, and a THROW is the state it
+    // was skipping: recording the attempt only when `ensureDevice` RESOLVED left
+    // `attempt` null on the path where the database is unreachable, so the row
+    // was ensured on every 30 s tick — 2 880 failing round trips a day against a
+    // database already in trouble, which is the exact cadence the header says
+    // this was born to prevent.
+    let broken = true;
+    const h = harness({ ensureThrows: () => broken });
+    // Twenty ticks at the engine's real 30 s cadence: ten minutes of them.
+    for (let i = 0; i < 20; i++) await h.registrar.record(decided(), 0, at(i * 0.5));
+    expect(h.ensures).toHaveLength(1);
+    expect(h.commits).toHaveLength(0);
+    expect(h.warnings).toHaveLength(1);
+
+    // Past the interval it is retried — a database that comes back must heal
+    // without a restart.
+    broken = false;
+    await h.registrar.record(decided(), 0, at(10.5));
+    expect(h.ensures).toHaveLength(2);
+    expect(h.commits).toHaveLength(1);
+  });
+
   test("suspend forgets the registration without retiring the device", async () => {
     const h = harness();
     await h.registrar.record(decided(), 0, at(0));

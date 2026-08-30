@@ -25,7 +25,9 @@
  * and never resolves — the operator retired the optimizer in Settings → Devices,
  * or a registry reload failed — would otherwise be ensured, and reloaded for,
  * forever. That is the defect the EVCC registrar was fixed for; this one is born
- * with it fixed.
+ * with it fixed. The attempt is recorded for a `ensureDevice` that THREW too:
+ * an unreachable device table is the failure that most needs the cadence, and
+ * remembering only the calls that returned left that one path ungated.
  *
  * WHAT IT DOES NOT NEED, AND EVCC'S DOES
  *
@@ -107,8 +109,16 @@ const RETRY_INTERVAL_MS = 10 * 60_000;
 export function createOptimizerRegistrar(deps: OptimizerRegistrarDeps): OptimizerRegistrar {
   /** True once the row exists AND the registry resolved it. */
   let registered = false;
-  /** When the last `ensureDevice` ran, and what it answered. */
-  let attempt: { at: number; state: DeviceRowState } | null = null;
+  /**
+   * When the last `ensureDevice` ran, and what it answered — `"failed"` when it
+   * answered nothing at all because it threw.
+   *
+   * A throw is a state that needs the gate MOST: an unreachable database is the
+   * one failure that heals without the engine seeing anything, and re-ensuring on
+   * every tick is 2 880 failing round trips a day against a database already in
+   * trouble.
+   */
+  let attempt: { at: number; state: DeviceRowState | "failed" } | null = null;
   /** Situations already reported, so each is said once rather than every tick. */
   const reported = new Set<string>();
   /** So a device table that cannot be reached is reported once, not per tick. */
@@ -137,6 +147,10 @@ export function createOptimizerRegistrar(deps: OptimizerRegistrarDeps): Optimize
     if (registered || registering) return;
     if (attempt && at.getTime() - attempt.at < RETRY_INTERVAL_MS) return;
     registering = true;
+    // Recorded BEFORE the call, not after it: an `await` that throws never
+    // reaches the assignment below, and an attempt that is only remembered when
+    // it succeeded is not a retry gate at all.
+    attempt = { at: at.getTime(), state: "failed" };
     try {
       const state = await deps.ensureDevice();
       attempt = { at: at.getTime(), state };
