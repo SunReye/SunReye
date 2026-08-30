@@ -20,7 +20,7 @@ import { type PollEndpoint, loadPollEndpoint } from "./endpoint";
 import type { MqttConfig } from "@SunReye/db/mqtt-config";
 import { metricsConfigLog, metricsRaw } from "@SunReye/db/schema/metrics";
 import { env } from "@SunReye/env/server";
-import { type InverterSample, type InverterSource, metricKeySpecs } from "@SunReye/inverter-core";
+import type { DeviceInstance, InverterSample, InverterSource } from "@SunReye/inverter-core";
 import mqtt from "mqtt";
 import { startAutomations, stopAutomations } from "../automation/automation";
 import { getMqttConfig } from "../settings/config";
@@ -28,7 +28,10 @@ import type { ControlStore } from "./control-expr";
 import { dbControlStore } from "./control-store";
 import { createControlWriter } from "./control-writer";
 import { type HistoryBuffer, createHistoryBuffer } from "./history-buffer";
-import { type StoragePolicy, type StorageRow, createStoragePolicy } from "./storage-policy";
+import type { StorageRow } from "./storage-policy";
+import { createDeviceWriter } from "./device-writer";
+import type { DeviceRegistry } from "../devices/registry";
+import { deviceRegistry } from "../devices/registry-instance";
 import { createIdentifiedCommit, createRowIdentifier } from "./storage-identity";
 import { type IdentityResolver, createIdentityResolver } from "../shared/identity";
 import { type JobScheduler, createJobScheduler } from "./job-scheduler";
@@ -36,7 +39,6 @@ import { evccOnLoadSample } from "../evcc/evcc";
 import {
   buildProfileContext,
   buildSource,
-  getActiveProfileOrNull,
   resolveProfileById,
   type ProfileContext,
 } from "./inverter";
@@ -156,6 +158,17 @@ export interface RuntimeDeps {
    * is indistinguishable from one that did.
    */
   identity?: IdentityResolver;
+  /**
+   * The plant's registered devices. Defaults to the process registry; injected
+   * so a test drives the loop against a roster it states rather than against
+   * whatever the database holds.
+   *
+   * The loop polls the registry's primary inverter — one endpoint, as this
+   * release does (`./endpoint.ts`) — but every sample it stores goes through
+   * `./device-writer.ts`, which is keyed by the INSTANCE and has no idea a poll
+   * loop exists.
+   */
+  devices?: DeviceRegistry;
 }
 
 /**
@@ -196,6 +209,25 @@ export function createRuntime(deps: RuntimeDeps = {}) {
     deps.configLog ??
     createHistoryBuffer<StorageRow>({ commit: commitIdentified(metricsConfigLog), logger });
   const scheduler = deps.scheduler ?? createJobScheduler();
+  const devices = deps.devices ?? deviceRegistry;
+  /**
+   * THE WRITE SEAM. Every stored reading — this loop's and, from #88 and #172
+   * on, every other integration's — goes through here, keyed by the device
+   * instance rather than by whatever id a driver stamped on its sample.
+   */
+  const writer = createDeviceWriter({
+    series: historyBuffer,
+    config: configLogBuffer,
+    // EAGER metric registration, so the ids exist before the first sample and
+    // the writer's own lazy fallback (`./storage-identity.ts`) is only ever
+    // reached by a key the device never declared. Not awaited: the registration
+    // is a `void`-ed promise whose failure is a warning, not a lost reading.
+    registerMetrics: (specs) => {
+      void identity.registerMetrics(specs).catch((error: unknown) => {
+        logger.warn("metric key registration failed: {error}", { error });
+      });
+    },
+  });
   const onLoadSample = deps.onLoadSample ?? evccOnLoadSample;
   let ctx: ProfileContext | null = null;
   let source: InverterSource | null = null;
@@ -229,8 +261,7 @@ export function createRuntime(deps: RuntimeDeps = {}) {
 
   // The `load.power` metric key of the active profile, memoized per context (the
   // lookup is a linear scan; the poll loop runs at 1 Hz forever).
-  let loadKeyCache: { ctx: ProfileContext; key: string | null } | null = null;
-  let policyCache: { ctx: ProfileContext; policy: StoragePolicy } | null = null;
+  let loadKeyCache: { device: DeviceInstance; key: string | null } | null = null;
 
   /** Fetch the current forecast and hand it to the MQTT bridge (no-op if disabled). */
   async function publishForecastNow(): Promise<void> {
@@ -281,64 +312,69 @@ export function createRuntime(deps: RuntimeDeps = {}) {
   }
 
   /**
-   * The storage policy for the active profile: which metrics are timeseries,
-   * which are configuration, which are not persisted at all. Cached against the
-   * profile context the same way {@link loadPowerOf} caches its key, so a
-   * profile swap rebuilds it (and resets its change-log memory) rather than
-   * carrying one profile's classes into the next.
+   * The device this loop's readings are FROM — the registry's primary inverter,
+   * or null when the plant has no device row yet.
+   *
+   * Read per tick rather than captured, so a device added or retired under a
+   * running server takes effect on the next reload without a restart. This
+   * release polls ONE endpoint (`./endpoint.ts` says so out loud), so the loop
+   * asks for one device; the write path below it does not care how many there
+   * are.
    */
-  function storagePolicy(): StoragePolicy {
-    const current = context();
-    if (policyCache?.ctx !== current) {
-      // A profile swap ends every open interval. Close them under the outgoing
-      // policy first: a series row is written when its interval closes, so
-      // dropping the policy instead would lose the currently-held value of every
-      // metric — and on a restart loop, that is every metric, every time.
-      closeSeriesIntervals();
-      policyCache = {
-        ctx: current,
-        policy: createStoragePolicy({ metrics: current.profile.metrics }),
-      };
-      // EAGER metric registration, on the same hook and against the same list:
-      // the ids then exist before the first poll, so the writer's own fallback
-      // (`./storage-identity.ts`) is only ever reached by a key this list did not
-      // contain — a computed metric, a replayed capture, a profile edited under a
-      // running server. Not awaited, because this function is synchronous by
-      // design and the fallback is what makes that safe.
-      //
-      // `metricKeySpecs` states the key, the COUNTER CLASS and the UNIT together,
-      // and all three have to travel with the key for the same reason: a
-      // continuous aggregate cannot ask the profile what a metric means. The class
-      // decides whether a `counter_agg` partial means anything; the unit is what
-      // every reader labels an axis from. Built by the core rather than inline
-      // here so the one place that knows what a metric declares is the one place
-      // that answers.
-      void identity
-        .registerMetrics(metricKeySpecs(current.profile.metrics))
-        .catch((error: unknown) => {
-          logger.warn("metric key registration failed: {error}", { error });
-        });
-    }
-    return policyCache.policy;
+  function pollDevice(): DeviceInstance | null {
+    return devices.primary();
   }
 
-  /** Flush the open series intervals into the history buffer (no-op when none). */
+  /**
+   * Flush every registered device's open series intervals into the history
+   * buffer. Called before a source swap and at shutdown: a series row is
+   * written when its interval CLOSES, so without this the currently-held value
+   * of every metric is lost — and on a restart loop that is every metric, every
+   * time.
+   */
   function closeSeriesIntervals(): void {
-    if (policyCache) historyBuffer.enqueue(policyCache.policy.close(new Date()));
+    writer.close(new Date());
   }
 
-  /** The house-load value (W) of a sample, or null when the profile has no load role. */
-  function loadPowerOf(sample: InverterSample): number | null {
-    const current = context();
-    if (loadKeyCache?.ctx !== current) {
-      loadKeyCache = {
-        ctx: current,
-        key: current.profile.metrics.find((m) => m.role === "load.power")?.key ?? null,
-      };
+  /** The house-load value (W) of a sample, or null when the device maps no load role. */
+  function loadPowerOf(device: DeviceInstance, sample: InverterSample): number | null {
+    if (loadKeyCache?.device !== device) {
+      // THROUGH THE CONTRACT, not by re-scanning a metric list: a role lookup is
+      // what `DeviceInstance.roles` is for, and it answers the same way for a
+      // device whose mapping was never a profile at all.
+      loadKeyCache = { device, key: device.roles.get("load.power")?.metrics[0]?.key ?? null };
     }
     if (!loadKeyCache.key) return null;
     const value = sample.metrics[loadKeyCache.key];
     return typeof value === "number" && Number.isFinite(value) ? value : null;
+  }
+
+  /**
+   * Everything one good sample causes: the live cache, the EV estimator's load
+   * hook, persistence, the WebSocket frame and the MQTT publish.
+   *
+   * Split out of {@link pollOnce}, which is otherwise the loop's error policy
+   * and this in one function — two subjects, and the tick-collapse logging below
+   * is the half that must stay easy to read.
+   */
+  function fanOut(sample: InverterSample): void {
+    const device = pollDevice();
+    liveState.set(sample);
+    // The EV charge-power estimator refines its estimate from the 1 Hz house
+    // load — between EVCC's much slower publishes (no-op when EVCC is off).
+    onLoadSample(device ? loadPowerOf(device, sample) : null);
+    // Persistence only: the live frame below carries every key regardless of
+    // where — or whether — its value is stored.
+    //
+    // Keyed by the DEVICE, never by `sample.inverterId`: the driver stamps the
+    // PROFILE's id there (`packages/inverter-core/src/driver.ts`), and a profile
+    // is swapped, uninstalled and re-downloaded inside the five years a reading
+    // is retained. With no device row there is nothing to key a row to, so
+    // nothing is routed — provisioning creates the row, and the next reload
+    // picks it up.
+    if (device) writer.commit(device, sample);
+    streams?.emit("metrics", sample);
+    bridge?.publishSample(sample);
   }
 
   /** One poll: read, cache, persist, fan out to WebSocket + MQTT. */
@@ -358,20 +394,7 @@ export function createRuntime(deps: RuntimeDeps = {}) {
       // into the sample so every downstream surface sees it (same store as the
       // write funnel).
       await controlWriter.injectState(sample);
-      liveState.set(sample);
-      // The EV charge-power estimator refines its estimate from the 1 Hz house
-      // load — between EVCC's much slower publishes (no-op when EVCC is off).
-      onLoadSample(loadPowerOf(sample));
-      // Persistence only: the live frame below carries every key regardless of
-      // where — or whether — its value is stored.
-      const routed = storagePolicy().route(sample);
-      // Buffer for a batched flush (see {@link historyBuffer}) rather than
-      // committing one transaction per poll. An empty list is a no-op in the
-      // buffer, so neither destination is guarded here.
-      historyBuffer.enqueue(routed.series);
-      configLogBuffer.enqueue(routed.config);
-      streams?.emit("metrics", sample);
-      bridge?.publishSample(sample);
+      fanOut(sample);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       inverterStatus.connected = false;
@@ -513,6 +536,11 @@ export function createRuntime(deps: RuntimeDeps = {}) {
   ): Promise<void> {
     ctx = profileCtx;
     streams = streamBus;
+    // The roster is read here rather than at construction: `../index.ts`
+    // provisions the plant's device rows immediately before this call, and a
+    // registry built before them would hold an empty plant for the life of the
+    // process.
+    await devices.reload();
     // The scheduler arms each of these once and is idempotent while running, so
     // a re-boot re-points the source without stacking a second set of jobs. The
     // flush cadence is read here (env is dynamic) rather than baked in.
@@ -558,6 +586,11 @@ export function createRuntime(deps: RuntimeDeps = {}) {
    */
   async function reloadEndpoint(): Promise<void> {
     if (!ctx) return;
+    // The roster and the address are re-read together: the settings save that
+    // asks for this is also how a device is added, renamed or retired, and a
+    // loop polling the new endpoint under the old roster would key its readings
+    // to a device that is no longer there.
+    await devices.reload();
     await rebuildInverter(await loadPollEndpoint());
   }
 
@@ -583,15 +616,16 @@ export function createRuntime(deps: RuntimeDeps = {}) {
    * eyeball every value for plausibility before saving.
    *
    * The profile is resolved independent of the running runtime ({@link resolveProfileById}),
-   * so this works during onboarding — before any profile is active — against the
-   * chosen (built-in or freshly-installed) profile. A null `profileId` falls back
-   * to the active profile, for the ordinary settings-page re-test.
+   * so this works during onboarding — before any device is registered — against
+   * the chosen (built-in or freshly-installed) profile. A null `profileId` falls
+   * back to the profile of the registry's primary device, for the ordinary
+   * settings-page re-test.
    */
   async function testInverter(
     profileId: string | null,
     config: InverterConfig,
   ): Promise<TestInverterResult> {
-    const profile = profileId ? await resolveProfileById(profileId) : getActiveProfileOrNull();
+    const profile = profileId ? await resolveProfileById(profileId) : devices.primaryProfile();
     if (!profile) {
       return {
         ok: false,

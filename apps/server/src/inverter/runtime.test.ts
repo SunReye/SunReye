@@ -51,7 +51,13 @@ import type { PollEndpoint } from "./endpoint";
 import type { IdentityResolver } from "../shared/identity";
 import type { MetricKeySpec } from "@SunReye/db/metric-keys";
 import { control, metric } from "@SunReye/inverter-core";
-import type { InverterProfile, InverterSample, InverterSource } from "@SunReye/inverter-core";
+import type {
+  DeviceInstance,
+  InverterProfile,
+  InverterSample,
+  InverterSource,
+} from "@SunReye/inverter-core";
+import type { DeviceRegistry } from "../devices/registry";
 
 import type { StorageRow } from "./storage-policy";
 
@@ -171,7 +177,15 @@ const configDouble = {
   dropped: 0,
 };
 
-const PLANT = "plant-1";
+/**
+ * What the DRIVER stamps on every sample it reads —
+ * `packages/inverter-core/src/driver.ts` uses `profile.id`, and a profile is not
+ * an identity. Kept as its own constant so the specs below can say out loud that
+ * a stored row is NOT keyed by it.
+ */
+const SAMPLE_STAMP = "plant-1";
+/** The `devices.slug` the registry registers, and what every stored row carries. */
+const DEVICE_SLUG = "inverter-1";
 const PROFILE_ID = "test-inverter";
 const LOCK = "settings.lock";
 const TARGET = "settings.max_discharge";
@@ -504,16 +518,24 @@ let readResult: () => Promise<InverterSample> = async () => liveSample();
 /** When set, every register write rejects with this message. */
 let writeError: string | null = null;
 
-/** Overrides for the profile-resolution seams; `null` means "use the real one". */
-let profileOverride: InverterProfile | null | undefined;
+/** Override for the by-id profile lookup; `null` means "use the real one". */
 let resolveOverride: ((id: string) => InverterProfile | null) | null = null;
+
+/**
+ * The profile the registry's primary device is described by — the roster this
+ * runtime polls, as the plant's `devices` rows state it.
+ *
+ * This is what replaced the `activeProfile` module global: the runtime no longer
+ * asks a module which profile is active, it asks the registry which DEVICES
+ * exist and what each one binds.
+ */
+let registryProfile: InverterProfile | null = null;
 
 const realInverter = await import("./inverter");
 type SourceConnection = Parameters<typeof realInverter.buildSource>[1];
 const realInverterExports = { ...realInverter };
 const realBuildSource = realInverter.buildSource;
 const realResolveProfileById = realInverter.resolveProfileById;
-const realGetActiveProfileOrNull = realInverter.getActiveProfileOrNull;
 const { buildProfileContext } = realInverter;
 mock.module("./inverter", () => ({
   ...realInverter,
@@ -528,8 +550,6 @@ mock.module("./inverter", () => ({
   // production behaviour.
   resolveProfileById: async (id: string) =>
     resolveOverride ? resolveOverride(id) : realResolveProfileById(id),
-  getActiveProfileOrNull: () =>
-    profileOverride === undefined ? realGetActiveProfileOrNull() : profileOverride,
 }));
 
 /** Stands in for `mqtt`'s client in the broker probe. */
@@ -636,7 +656,7 @@ function liveSample(
   metrics: Record<string, number> = READINGS,
   time = "2026-08-15T10:00:00.000Z",
 ): InverterSample {
-  return { time, inverterId: PLANT, metrics: { ...metrics } };
+  return { time, inverterId: SAMPLE_STAMP, metrics: { ...metrics } };
 }
 
 // --- timer capture ---------------------------------------------------------
@@ -734,7 +754,8 @@ afterAll(() => {
   mock.module("../prices/spot-price-job", () => ({ ...realSpotJobExports }));
   mock.module("./inverter", () => ({ ...realInverterExports }));
   untapRuntimeLogger();
-  profileOverride = undefined;
+  registryProfile = null;
+  registryDevice = null;
   resolveOverride = null;
   Object.assign(globalThis, timers);
   if (originalFlushInterval === undefined) delete process.env.HISTORY_FLUSH_INTERVAL_MS;
@@ -749,6 +770,39 @@ afterAll(() => {
 // in-memory doubles above rather than the module's default instance — which is
 // why no `@SunReye/db` and no `./control-store` mock is needed.
 const { createRuntime } = await import("./runtime");
+const { instanceFromProfile } = await import("@SunReye/inverter-core");
+/**
+ * The plant's roster, as the registry answers it.
+ *
+ * Injected rather than mocked for the same reason the identity resolver is: the
+ * production registry reads the `devices` table, so a suite without a double
+ * would fail on a missing database client instead of on the behaviour it names.
+ * The instance is rebuilt only on {@link DeviceRegistry.reload}, exactly as the
+ * real one is — the runtime memoizes the load-power key against the INSTANCE, so
+ * a double that minted a new object per call would hide a broken cache.
+ */
+let registryDevice: DeviceInstance | null = null;
+const devicesDouble: DeviceRegistry = {
+  reload: async () => {
+    registryDevice = registryProfile
+      ? instanceFromProfile({
+          id: DEVICE_SLUG,
+          deviceClass: "inverter",
+          integration: "profile",
+          profile: registryProfile,
+        })
+      : null;
+    return registryDevice ? [registryDevice] : [];
+  },
+  list: () => (registryDevice ? [registryDevice] : []),
+  get: (id) => (registryDevice?.id === id ? registryDevice : undefined),
+  primary: () => registryDevice,
+  primaryProfile: () => registryProfile,
+  driverProfile: () => registryProfile,
+  profileIds: () => (registryProfile ? [registryProfile.id] : []),
+  usesProfile: (id) => registryProfile?.id === id,
+};
+
 const identityDouble: IdentityResolver = {
   deviceId: async () => 1,
   registerMetrics: async (specs) => {
@@ -760,6 +814,7 @@ const identityDouble: IdentityResolver = {
 };
 
 const runtime = createRuntime({
+  devices: devicesDouble,
   history: historyDouble,
   configLog: configDouble,
   controlStore,
@@ -830,6 +885,9 @@ let streams: ReturnType<typeof createStreams>;
 /** Boot the runtime with a profile context and hand back that context. */
 async function boot(profile: InverterProfile = mainProfile()) {
   const ctx = buildProfileContext(profile);
+  // The plant's device row names this profile — `start()` reloads the registry,
+  // just as it does in production after `syncProvisioning`.
+  registryProfile = profile;
   streams = createStreams();
   streams.subscribe("metrics", (sample) => published.push(sample));
   await start(streams, ctx);
@@ -882,7 +940,8 @@ beforeEach(() => {
   spotOutcome = "complete";
   spotStored = 0;
   spotSyncNotifications = 0;
-  profileOverride = undefined;
+  registryProfile = null;
+  registryDevice = null;
   resolveOverride = null;
   mqttClient = null;
   bridgeWrite = null;
@@ -935,7 +994,8 @@ describe("before a profile is active", () => {
   });
 
   test("a test read is refused when no profile is selected", async () => {
-    profileOverride = null;
+    // No device registered, so nothing says which profile a bare re-test means.
+    registryProfile = null;
     await expect(testInverter(null, baseEndpoint())).resolves.toEqual({
       ok: false,
       error: "No profile selected",
@@ -1041,6 +1101,37 @@ describe("the poll loop", () => {
     expect(status().mqtt).toEqual({ enabled: true, connected: true, lastError: null });
   });
 
+  test("a stored row is keyed by the DEVICE, never by what the driver stamped", async () => {
+    // The driver labels every sample with `profile.id` — a profile, which is
+    // swapped, uninstalled and re-downloaded inside the five years a reading is
+    // retained. The registry's device id (`devices.slug`) is the identity, and
+    // this is the spec that says the two are not the same string.
+    await boot();
+    await poll();
+    await stop();
+
+    const rows = inserted.flat();
+    expect(rows.length).toBeGreaterThan(0);
+    expect(rows.every((r) => r.inverterId === DEVICE_SLUG)).toBe(true);
+    expect(rows.some((r) => r.inverterId === SAMPLE_STAMP)).toBe(false);
+  });
+
+  test("with no device registered, nothing is keyed to a device that does not exist", async () => {
+    // A boot that raced provisioning, or an install whose device row could not
+    // be created. Previously the rows were routed anyway and dropped one layer
+    // down; either way nothing is stored, and nothing may be invented.
+    await boot();
+    registryProfile = null;
+    await devicesDouble.reload();
+    await poll();
+    await stop();
+
+    expect(inserted.flat()).toHaveLength(0);
+    // The live surfaces are unaffected: what is stored and what is shown are
+    // different questions.
+    expect(published).toHaveLength(1);
+  });
+
   test("repeated polls of an unchanged reading write no history row at all", async () => {
     // 69.8 % of every row this app used to write was a byte-identical repeat of
     // its predecessor. A series row is an interval now, so three polls of an
@@ -1078,7 +1169,7 @@ describe("the poll loop", () => {
     expect(inserted[0]).toHaveLength(1);
     expect(inserted[0]?.[0]).toEqual({
       time: new Date("2026-08-15T10:00:00.000Z"),
-      inverterId: PLANT,
+      inverterId: DEVICE_SLUG,
       metric: "load.power",
       value: 1200,
       durMs: 6000,
@@ -1099,7 +1190,7 @@ describe("the poll loop", () => {
     expect(config.map((r) => r.metric).sort()).toEqual(["settings.lock", "settings.max_discharge"]);
     expect(config.find((r) => r.metric === TARGET)).toEqual({
       time: new Date("2026-08-15T10:00:00.000Z"),
-      inverterId: PLANT,
+      inverterId: DEVICE_SLUG,
       metric: TARGET,
       value: 30,
     });
@@ -1385,7 +1476,7 @@ describe("swapping the live source", () => {
     await moveEndpoint({ host: "10.0.0.8" });
 
     expect(inserted).toHaveLength(1);
-    expect(inserted[0]?.every((row) => row.inverterId === PLANT)).toBe(true);
+    expect(inserted[0]?.every((row) => row.inverterId === DEVICE_SLUG)).toBe(true);
     expect(sources).toHaveLength(2);
   });
 
@@ -1840,7 +1931,7 @@ describe("testing a connection before saving it", () => {
     });
 
   test("the full snapshot comes back sorted by group then label, with enum labels resolved", async () => {
-    profileOverride = mainProfile();
+    registryProfile = mainProfile();
     readResult = async () => probeSample();
 
     const result = await testInverter(null, baseEndpoint());
@@ -1879,7 +1970,7 @@ describe("testing a connection before saving it", () => {
   test("the probe never disturbs the live source, and is always closed", async () => {
     await boot();
     const live = latestSource();
-    profileOverride = mainProfile();
+    registryProfile = mainProfile();
     readResult = async () => probeSample();
 
     await testInverter(null, baseEndpoint({ host: "10.0.0.42" }));
@@ -1893,7 +1984,7 @@ describe("testing a connection before saving it", () => {
   });
 
   test("a failing read is reported, and the probe is still closed", async () => {
-    profileOverride = mainProfile();
+    registryProfile = mainProfile();
     readResult = async () => {
       throw new Error("connect ECONNREFUSED 10.0.0.42:502");
     };
@@ -1905,7 +1996,7 @@ describe("testing a connection before saving it", () => {
   });
 
   test("a thrown non-Error is stringified rather than lost", async () => {
-    profileOverride = mainProfile();
+    registryProfile = mainProfile();
     readResult = async () => {
       throw "gateway timeout";
     };
