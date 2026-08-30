@@ -2,7 +2,7 @@
 
 ## [unreleased]
 
-Unreleased work on `dev` since 1.2.0, shipped in `beta.20260829-9b450c1`.
+Unreleased work on `dev` since 1.2.0, shipped in `beta.20260830-46f5923`.
 
 
 ### ⚠ BREAKING CHANGES
@@ -12,6 +12,18 @@ Unreleased work on `dev` since 1.2.0, shipped in `beta.20260829-9b450c1`.
 
 ### Features
 
+* **server:** prove every route's gate, and close the last public one ([3a353a3](https://github.com/SunReye/SunReye/commit/3a353a35ffd458655cc88ed2c0e67f1a88377db4))
+* **server:** the optimizer is a device, and its decisions are history ([928bc28](https://github.com/SunReye/SunReye/commit/928bc2838f19fb4c2ac55c1a78f6e942352dbf3d))
+* **server:** register EVCC loadpoints as devices, with history ([1d2646a](https://github.com/SunReye/SunReye/commit/1d2646afa6565ae4764c89d019356c7eb4809000))
+* **server:** re-key automation state by device, once, on read ([ace639a](https://github.com/SunReye/SunReye/commit/ace639afa5736c20405d728be4c6fe64b86120ea))
+* **inverter-core:** add the EV role vocabulary, scoped to the charger class ([4bec4c2](https://github.com/SunReye/SunReye/commit/4bec4c296c930fb800c1ff267fdd9aa9a7d6a469))
+* **server:** promote EVCC's charge-power provenance into the sample model ([8cd6e9e](https://github.com/SunReye/SunReye/commit/8cd6e9ef18946f6e88fad195bdc73cccab2ae0c1))
+* **server:** serve the manifest from the device, not the profile object ([4567a8c](https://github.com/SunReye/SunReye/commit/4567a8c4b85b87cdc5fa2efdd358ebe086e8a084))
+* **server:** expose the write seam on the runtime, and wire retire -> forget ([15e9f5f](https://github.com/SunReye/SunReye/commit/15e9f5f3e597bf42459b788efa40831cbbf4637b))
+* **server:** the multi-device write seam, keyed by the device instance ([1a3a1f6](https://github.com/SunReye/SunReye/commit/1a3a1f6d79f4913b4260035a8963bd823576d5d6))
+* **server:** a device registry keyed by the devices table ([253ca49](https://github.com/SunReye/SunReye/commit/253ca4962b375421f08cb78cbcd05ad817461f12))
+* **inverter-core:** the DeviceInstance contract, capabilities derived for any tier ([31c67e5](https://github.com/SunReye/SunReye/commit/31c67e567d5cc4f7d4bbf06c6995ba41774faacf))
+* **db:** admit the virtual 'optimizer' role before the 2.0.0 baseline ships ([37dcc1a](https://github.com/SunReye/SunReye/commit/37dcc1ad737ac64b047ce671b971ef83b2c77d41))
 * **server:** name the MQTT bridge by the plant and device slugs ([4891a92](https://github.com/SunReye/SunReye/commit/4891a921cc527ccbe1abe2bb616bd402f5c7fa83))
 * **server:** retire the profile-keyed HA announcements, once ([95376d8](https://github.com/SunReye/SunReye/commit/95376d8fd4c80e9c072a93fde3aa15973e0d3ccd))
 * **charts:** let a saved chart name the device each series is read from ([50f6881](https://github.com/SunReye/SunReye/commit/50f6881e0ed9cbe4755823f5a088b1199bd02d71))
@@ -138,6 +150,15 @@ Unreleased work on `dev` since 1.2.0, shipped in `beta.20260829-9b450c1`.
 
 ### Bug Fixes
 
+* **ci:** make the upgrade job's seed step survive a lost compression race ([83a8136](https://github.com/SunReye/SunReye/commit/83a8136a9d1a82cabddbfa76696fb42d6399ddcd))
+* **scripts:** make the anonymous sweep actually ask the write surface's gates ([096cfa5](https://github.com/SunReye/SunReye/commit/096cfa5719e4b53c5027544511024bcb31f6940a))
+* **server:** remember an EVCC registration attempt that threw ([feab8f2](https://github.com/SunReye/SunReye/commit/feab8f2ead251c6df5bb07a9d64db3244dbf3f70))
+* **db:** name config-log identities in the archive manifest ([338f86d](https://github.com/SunReye/SunReye/commit/338f86d5900a1c377a6b096cb1de09e6e50d4a25))
+* **server:** gate the optimizer registrar's retry on a THROW too ([4efc874](https://github.com/SunReye/SunReye/commit/4efc874af7e17a9a40b62ea5e130aa59d61611df))
+* **server:** stop the EVCC registrar's permanent ensure+reload loop ([d01e185](https://github.com/SunReye/SunReye/commit/d01e185efb991e5ea94e42d011e7f1b911310952))
+* **server:** never drop a sample silently, and re-read a roster that failed ([1b0a7ee](https://github.com/SunReye/SunReye/commit/1b0a7ee4bf27956f5cd43237856f8ae7ef69040e))
+* **server:** keep a device's storage policy across a reload that changes nothing ([b530750](https://github.com/SunReye/SunReye/commit/b5307509fa035de0356d64c36493a468ff14192d))
+* **settings:** log and quarantine a rejected setting instead of resetting it silently ([d83b471](https://github.com/SunReye/SunReye/commit/d83b471df51db8333e3c19493b59ff4a128618f8))
 * **ci:** assert the 2.0.0 upgrade contract, not 1.x's ([46af680](https://github.com/SunReye/SunReye/commit/46af6800f092c4f9dc6ad499af1038c4633eae35))
 * **ci:** stop re-arming a live minute policy, and count the journal by hash ([cdb0663](https://github.com/SunReye/SunReye/commit/cdb066310fc109d8a3ab0629a7b0f40bd50ec7fe))
 * **ci:** create timescaledb before restoring, and publish 5432 for the shaping step ([febca3d](https://github.com/SunReye/SunReye/commit/febca3d03515b2fa9c1df7faadee7217915e883c))
@@ -252,6 +273,8 @@ Unreleased work on `dev` since 1.2.0, shipped in `beta.20260829-9b450c1`.
 
 ### Documentation
 
+* **server:** correct a comment naming the retired profile global ([052649b](https://github.com/SunReye/SunReye/commit/052649b23486dae43c817aba3b47400d815dcdda))
+* **db:** record the devices.profile_id no-FK invariant ([e2e4645](https://github.com/SunReye/SunReye/commit/e2e4645ce9138ce7690e1fcecb54b1a3014c600e))
 * **db:** record why plant_arrays is deferred and the element shape was not ([7abc830](https://github.com/SunReye/SunReye/commit/7abc83097cf178af7cf968d0521884bec70a19e7))
 * **addon:** name the 2.0.0 Home Assistant entity break ([c36357e](https://github.com/SunReye/SunReye/commit/c36357e1f71521bd3a69733e5139c2dea3063077))
 * **db:** record why app_settings stays instance-wide ([51552c3](https://github.com/SunReye/SunReye/commit/51552c3f954e20fca41f45b52506ae7ae7f18beb))
@@ -280,6 +303,10 @@ Unreleased work on `dev` since 1.2.0, shipped in `beta.20260829-9b450c1`.
 
 ### Code Refactoring
 
+* one frozen run-state vocabulary, and read it as an enum not a mean ([15b28e9](https://github.com/SunReye/SunReye/commit/15b28e982323b7d6397314c334f1d50a71007564))
+* delete the decision ring, its endpoint and its duplicate chart stack ([4ce8057](https://github.com/SunReye/SunReye/commit/4ce8057111828ec8d3877940b2eaa11f53340924))
+* **server:** the automation engine consumes the registry, not a profile ([6d27842](https://github.com/SunReye/SunReye/commit/6d27842ad5f8a2f5cde7145875ace604042058f8))
+* **server:** retire the activeProfile global; consumers take a device ([8add910](https://github.com/SunReye/SunReye/commit/8add910ae79e6265864aaa2e2fdcdf30ac014494))
 * **db:** split the backfill and the history horizon along the pure/driver line ([0709db9](https://github.com/SunReye/SunReye/commit/0709db9f93c0721456f1d7df330075edc1a97be5))
 * **upgrade:** split the rehearsal's pure half from its driver, and clear the health gate ([9dbd5eb](https://github.com/SunReye/SunReye/commit/9dbd5eb0e6da6c6e0d65eddd962020529876bd6e))
 * **server:** move identity predicates onto ids, keep every contract on names ([14dae08](https://github.com/SunReye/SunReye/commit/14dae087070a761c40d69a58ba7cba9cc98eda26))
@@ -385,6 +412,10 @@ Unreleased work on `dev` since 1.2.0, shipped in `beta.20260829-9b450c1`.
 
 ### Tests
 
+* **server:** read the optimizer's decisions through the production read path ([da0d4ea](https://github.com/SunReye/SunReye/commit/da0d4ea7df5fdc61340cee30d89ebd126667c262))
+* **db:** prove a loadpoint's charge power reaches metrics_raw and comes back ([18dd9de](https://github.com/SunReye/SunReye/commit/18dd9de2c4c1c06b73e4814cd880905fccdcd8fb))
+* **ci:** prove the route smoke saw a seeded profile, not a route count ([4b404b4](https://github.com/SunReye/SunReye/commit/4b404b4dde718c0cbb8366172af0ea66b93975d7))
+* **ci:** boot the server against a throwaway TimescaleDB and smoke every route ([526de14](https://github.com/SunReye/SunReye/commit/526de143e999716d6e91dc5dbfc28935bb7efbd5))
 * **server:** cover the legacy retirement store's two lookups ([0fc779f](https://github.com/SunReye/SunReye/commit/0fc779fb9e5331626735e5a34fd60c07c18a8968))
 * **migration:** prove the backfill's decisions without a database ([7eacf75](https://github.com/SunReye/SunReye/commit/7eacf75926730c26b7a55ba11d0ca0c6432eafdc))
 * **archive:** restore the coverage floor by covering the archive path ([8d92d33](https://github.com/SunReye/SunReye/commit/8d92d335d5ab2b02488cd0ac3d21f34b084ea976))
