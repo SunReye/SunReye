@@ -1,3 +1,4 @@
+import type { DeviceClass } from "./device-instance";
 import type { MetricKind } from "./types";
 
 /**
@@ -25,6 +26,17 @@ export interface RoleSpec {
   signed?: boolean;
   /** Conventional unit, for authoring guidance and the coverage report. */
   unitHint?: string;
+  /**
+   * The device class this concept describes, when it is not the inverter a
+   * register profile maps. Absent means `inverter` — the overwhelming majority,
+   * and the only class a register profile can describe at all.
+   *
+   * Read by the profile SDK's coverage report, which asks "which renderable
+   * areas does THIS PROFILE leave empty": a loadpoint's roles are not an area a
+   * hybrid inverter's author has forgotten, and reporting them would ask every
+   * author to map registers their machine does not have.
+   */
+  deviceClass?: DeviceClass;
 }
 
 export const ROLE_CATALOG = {
@@ -90,6 +102,99 @@ export const ROLE_CATALOG = {
   "generator.phase.power": { kind: "measurement", indexed: true, unitHint: "W" },
   "generator.phase.voltage": { kind: "measurement", indexed: true, unitHint: "V" },
   "generator.energy.today": { kind: "cumulative", unitHint: "kWh" },
+  // --- EV charging ---
+  // One loadpoint — one place a car plugs in — regardless of who reports it: an
+  // EVCC instance, a wallbox on Modbus, a user's Home Assistant mapping. These
+  // are the values that are the SAME question for all of them, and therefore the
+  // only ones that belong in the contract.
+  //
+  // What is deliberately NOT here: the three-layer charge limit (a durable
+  // per-vehicle `limitSoc`, a per-session loadpoint override and EVCC's own
+  // resolution of the two, where `0` means "no override" and not "no limit"),
+  // the battery-boost contract, and the feed-forward power estimator. Those are
+  // one integration's semantics, validated against one live instance, and a role
+  // that flattened them would be a role every other integration would have to
+  // fake. An integration may expose MORE than the contract; it may never expose
+  // less — so they stay on EVCC's own surface.
+  "ev.charge.power": { kind: "measurement", unitHint: "W", deviceClass: "charger" },
+  /** State of charge of the car currently plugged in — not the house battery. */
+  "ev.vehicle.soc": { kind: "measurement", unitHint: "%", deviceClass: "charger" },
+  /**
+   * Energy delivered in the current charging session. A counter that RESETS to
+   * zero on every plug-in, which is the same shape the daily `*.today` totals
+   * already have.
+   */
+  "ev.session.energy": { kind: "cumulative", unitHint: "kWh", deviceClass: "charger" },
+  /** A car is plugged in (1/0). No `needsEnumLabels`: a boolean is not an enum. */
+  "ev.connected": { kind: "status", deviceClass: "charger" },
+  /** Current is actually flowing into the car (1/0). */
+  "ev.charging": { kind: "status", deviceClass: "charger" },
+  // --- Optimizer ---
+  // What the peak-shaving optimizer DECIDED, as opposed to what the plant
+  // measured. A decision is a reading about the automation, keyed to a device
+  // like every other reading — which is what makes it rollupable, exportable,
+  // chartable and archivable, and what the 2 880-slot in-memory ring could
+  // never be.
+  //
+  // What is deliberately NOT here: `pv.total.power`, `load.power`,
+  // `battery.power`, `grid.power`, `battery.soc` and the live register readback.
+  // Every one of those is a MEASUREMENT that already has a device and a series
+  // of its own, and re-recording them under the optimizer would be two rows
+  // saying the same thing with no rule about which one wins. The decision log's
+  // ring carried them because it had no other way to draw a chart; the generic
+  // read path does.
+  /** Charge-current ceiling the tick landed on, A — the headline decision. */
+  "optimizer.target.current": { kind: "measurement", unitHint: "A", deviceClass: "optimizer" },
+  /**
+   * The value most recently WRITTEN to the register, A — the audit trail of the
+   * automation's own hand on the plant, and the one series that answers "what
+   * did we actually do" after the fact.
+   */
+  "optimizer.applied.current": { kind: "measurement", unitHint: "A", deviceClass: "optimizer" },
+  /** The shave threshold held this tick, W — the plateau the ceiling chart draws. */
+  "optimizer.threshold.power": { kind: "measurement", unitHint: "W", deviceClass: "optimizer" },
+  /** PV above the threshold the decision had to place somewhere, W. */
+  "optimizer.excess.power": { kind: "measurement", unitHint: "W", deviceClass: "optimizer" },
+  /** PV that can never reach the grid (house load, plus the EV when separate), W. */
+  "optimizer.local.sink.power": { kind: "measurement", unitHint: "W", deviceClass: "optimizer" },
+  /** Battery room the decision believed it had, kWh. */
+  "optimizer.headroom.energy": { kind: "measurement", unitHint: "kWh", deviceClass: "optimizer" },
+  /** Forecast energy still to come above the export limit, kWh. */
+  "optimizer.surplus.energy": { kind: "measurement", unitHint: "kWh", deviceClass: "optimizer" },
+  /** SOC bound the pre-window envelope allows now, % — absent when not shaping. */
+  "optimizer.soc.envelope": { kind: "measurement", unitHint: "%", deviceClass: "optimizer" },
+  /** Energy a negative-price window can push into the pack, kWh. */
+  "optimizer.soakable.energy": { kind: "measurement", unitHint: "kWh", deviceClass: "optimizer" },
+  /** Window energy that will earn nothing whatever the pack does, kWh. */
+  "optimizer.unavoidable.energy": {
+    kind: "measurement",
+    unitHint: "kWh",
+    deviceClass: "optimizer",
+  },
+  /** Remaining EV charge demand the surplus was reduced by, kWh. */
+  "optimizer.ev.demand.energy": { kind: "measurement", unitHint: "kWh", deviceClass: "optimizer" },
+  /** Feed-in ceiling written to the solar-sell register, W — `grid-friendly` only. */
+  "optimizer.sell.limit.power": { kind: "measurement", unitHint: "W", deviceClass: "optimizer" },
+  /** Grid-charge current commanded for a window, A. */
+  "optimizer.grid.charge.current": {
+    kind: "measurement",
+    unitHint: "A",
+    deviceClass: "optimizer",
+  },
+  /** Which run state the tick was in (see `OPTIMIZER_RUN_STATES`). */
+  "optimizer.state": { kind: "status", needsEnumLabels: true, deviceClass: "optimizer" },
+  /** What price awareness was doing (see `OPTIMIZER_PRICE_REGIMES`). */
+  "optimizer.price.regime": { kind: "status", needsEnumLabels: true, deviceClass: "optimizer" },
+  /** The register drifted from our last write (1/0) — a CONCLUSION, not a setting. */
+  "optimizer.override": { kind: "status", deviceClass: "optimizer" },
+  /** The ceiling moved and the battery did not follow (1/0). */
+  "optimizer.ineffective": { kind: "status", deviceClass: "optimizer" },
+  /** The operator's master switch, as the optimizer resolved it (1/0). */
+  "optimizer.enabled": { kind: "setting", deviceClass: "optimizer" },
+  /** Which mode it is steering in (see `OPTIMIZER_MODES`). */
+  "optimizer.mode": { kind: "setting", needsEnumLabels: true, deviceClass: "optimizer" },
+  /** A user register value is held and owed back (1/0). Changes rarely. */
+  "optimizer.restore.pending": { kind: "status", deviceClass: "optimizer" },
   // --- Inverter ---
   "inverter.status": { kind: "status", needsEnumLabels: true },
   "inverter.relay_status": { kind: "status", needsEnumLabels: true },

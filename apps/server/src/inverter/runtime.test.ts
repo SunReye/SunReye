@@ -58,6 +58,10 @@ import type {
   InverterSource,
 } from "@SunReye/inverter-core";
 import type { DeviceRegistry } from "../devices/registry";
+import type { PeakShavingStatus } from "@SunReye/contracts/automation";
+import { OPTIMIZER_DEVICE_ID, OPTIMIZER_METRICS } from "../automation/optimizer-device";
+import type { DeviceRowState } from "../automation/optimizer-registrar";
+import { initialStatus } from "../automation/peak-shaving-engine";
 
 import type { StorageRow } from "./storage-policy";
 
@@ -330,6 +334,14 @@ const automation = {
    * broadcast short-circuit into "never broadcast" and the page goes quiet.
    */
   watching: null as (() => boolean) | null,
+  /**
+   * The decision sink the runtime handed the engine — the optimizer's path to
+   * the one write seam. Null when the runtime forwarded none, which is how a
+   * dropped forward is told from a working one.
+   */
+  recordDecision: null as
+    | ((status: PeakShavingStatus, localSinkW: number, at: Date) => Promise<void>)
+    | null,
 };
 const realAutomation = await import("../automation/automation");
 const realAutomationExports = { ...realAutomation };
@@ -347,6 +359,7 @@ mock.module("../automation/automation", () => ({
     automation.started++;
     automation.deviceId = deps.device.id;
     automation.watching = watching ?? null;
+    automation.recordDecision = deps.recordDecision ?? null;
   },
   stopAutomations: async () => {
     if (!intercepting) return realStopAutomations();
@@ -791,6 +804,24 @@ let registryDevice: DeviceInstance | null = null;
  * Mutated by a test to add or retire one between reloads.
  */
 let extraDevices: DeviceInstance[] = [];
+
+/** What the injected `devices` table says about the optimizer's row. */
+let ensureOptimizerAnswers: DeviceRowState = "absent";
+
+/** The optimizer, declared exactly as the coded tier declares it. */
+const optimizerDevice = deviceInstance({
+  id: OPTIMIZER_DEVICE_ID,
+  deviceClass: "optimizer",
+  integration: "optimizer",
+  metrics: OPTIMIZER_METRICS,
+});
+
+/** A steering tick's status, with only the fields a case asserts on filled in. */
+const decisionStatus = (over: Partial<PeakShavingStatus> = {}): PeakShavingStatus => ({
+  ...initialStatus(),
+  state: "active",
+  ...over,
+});
 /** How often the roster was re-read, so a recovery attempt can be counted. */
 let deviceReloads = 0;
 /**
@@ -872,6 +903,10 @@ const newRuntime = () =>
     // `../evcc/evcc`: every poll's house-load value is recorded here, which is why
     // this suite no longer installs (or has to unwind) an evcc module mock.
     onLoadSample: (watts) => loadSamples.push(watts),
+    // The optimizer's `devices` row, injected for the same reason the identity
+    // resolver is: the production version queries the plant spine, so without a
+    // double every spec here would fail on a missing database client.
+    ensureOptimizerDevice: async () => ensureOptimizerAnswers,
   });
 
 type Runtime = ReturnType<typeof createRuntime>;
@@ -998,6 +1033,8 @@ beforeEach(() => {
   automation.deviceId = null;
   automation.clearedAtStop = -1;
   automation.watching = null;
+  automation.recordDecision = null;
+  ensureOptimizerAnswers = "absent";
   shortenBrokerTimeout = false;
   setSystemTime();
 });
@@ -1605,6 +1642,31 @@ describe("the write seam is reachable from outside the poll loop", () => {
     });
   });
 
+  test("a device with no poll loop is flushed on the cadence even though no profile booted", async () => {
+    // `../index.ts` guards `runtime.start` with `if (ctx)`, and the flush
+    // schedule is armed inside `start`. But the plant row is created whether or
+    // not a profile is active, and the EVCC registrar is wired unconditionally —
+    // so on a boot with a plant and no active profile (a fresh install past
+    // provisioning, or a configured profile that failed to load) the seam's rows
+    // went into a buffer that nothing flushed until shutdown, capped at 100 000
+    // rows with the oldest dropped past that.
+    runtime.armStorage();
+    runtime.commit(optimizer, { time: commitTime, metrics: { "decision.target": 16 } });
+    runtime.commit(optimizer, { time: laterTime, metrics: { "decision.target": 10 } });
+
+    await fire(FLUSH_MS);
+
+    const rows = inserted.flat().filter((r) => r.inverterId === "optimizer");
+    expect(rows.map((r) => r.value)).toEqual([16]);
+  });
+
+  test("arming storage twice does not stack a second flush schedule", async () => {
+    runtime.armStorage();
+    runtime.armStorage();
+
+    expect(armedAt(FLUSH_MS)).toHaveLength(1);
+  });
+
   test("a device retired under a running server is forgotten when the roster says so", async () => {
     // `writer.forget` was dead in production: a retired device kept its policy
     // and its open intervals until `stop()`, which then flushed them under the
@@ -2044,6 +2106,78 @@ describe("shutdown", () => {
     expect(automation.watching?.()).toBe(false);
     watched = true;
     expect(automation.watching?.()).toBe(true);
+  });
+
+  test("the optimizer's decisions are handed the runtime's OWN write seam", async () => {
+    // #172: a decision is a READING, and it goes through the same
+    // `createDeviceWriter` every poll sample does. A second writer here would be
+    // a second identity resolver, a second buffer pair with its own cap and drop
+    // policy, and two buffering regimes writing into the same two tables.
+    ensureOptimizerAnswers = "ready";
+    extraDevices = [optimizerDevice];
+    const ctx = buildProfileContext(mainProfile());
+    registryProfile = mainProfile();
+    await start(createStreams(), ctx);
+
+    const record = automation.recordDecision;
+    expect(record).toBeDefined();
+    const at = (seconds: number) => new Date(Date.UTC(2026, 7, 15, 10, 0, seconds));
+    await record?.(decisionStatus({ targetA: 30 }), 800, at(0));
+    // A second, different decision, so the first interval CLOSES — a series row
+    // is written when its interval ends, not when it opens.
+    await record?.(decisionStatus({ targetA: 12 }), 800, at(30));
+    await stop();
+
+    const rows = inserted.flat().filter((r) => r.inverterId === OPTIMIZER_DEVICE_ID);
+    expect(rows.filter((r) => r.metric === "optimizer.target.current").map((r) => r.value)).toEqual(
+      [30, 12],
+    );
+  });
+
+  test("no optimizer device row means no decisions stored, and the plant is still steered", async () => {
+    // The write path DROPS rows naming a device with no row, so a commit that
+    // beat its row would lose decisions and say so only in a log line.
+    ensureOptimizerAnswers = "absent";
+    extraDevices = [];
+    const ctx = buildProfileContext(mainProfile());
+    registryProfile = mainProfile();
+    await start(createStreams(), ctx);
+
+    await automation.recordDecision?.(decisionStatus({ targetA: 30 }), 0, new Date());
+    await stop();
+    expect(inserted.flat().filter((r) => r.inverterId === OPTIMIZER_DEVICE_ID)).toEqual([]);
+    // The loop that writes the register started regardless.
+    expect(automation.started).toBe(1);
+  });
+
+  test("a restart re-registers the optimizer at once, without waiting out the retry", async () => {
+    // A stop is not a retirement. The registrar backs off for ten minutes after
+    // a failed registration — correct for a plant that is misconfigured, and
+    // wrong for a server that has just come back up, which would then store
+    // nothing for twenty ticks.
+    ensureOptimizerAnswers = "absent";
+    extraDevices = [];
+    const ctx = buildProfileContext(mainProfile());
+    registryProfile = mainProfile();
+    await start(createStreams(), ctx);
+    const at = (seconds: number) => new Date(Date.UTC(2026, 7, 15, 10, 0, seconds));
+    await automation.recordDecision?.(decisionStatus({ targetA: 30 }), 0, at(0));
+    await stop();
+
+    // Onboarding finishes; the plant now has a row for it.
+    ensureOptimizerAnswers = "ready";
+    extraDevices = [optimizerDevice];
+    await start(createStreams(), buildProfileContext(mainProfile()));
+    await automation.recordDecision?.(decisionStatus({ targetA: 30 }), 0, at(30));
+    await automation.recordDecision?.(decisionStatus({ targetA: 12 }), 0, at(60));
+    await stop();
+
+    const rows = inserted
+      .flat()
+      .filter(
+        (r) => r.inverterId === OPTIMIZER_DEVICE_ID && r.metric === "optimizer.target.current",
+      );
+    expect(rows.map((r) => r.value)).toEqual([30, 12]);
   });
 
   test("automations are stopped before the loop that feeds them", async () => {

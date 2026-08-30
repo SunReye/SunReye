@@ -51,11 +51,7 @@
  * section renders, empty.
  */
 
-import type {
-  AutomationStreamMessage,
-  DecisionPoint,
-  PeakShavingStatus,
-} from "@SunReye/contracts/automation";
+import type { AutomationStreamMessage, PeakShavingStatus } from "@SunReye/contracts/automation";
 import type { CostBreakdown, PeriodEnergy } from "@SunReye/contracts/energy";
 import type { EvccState } from "@SunReye/contracts/evcc";
 import type { LogEntry } from "@SunReye/contracts/logs";
@@ -979,46 +975,20 @@ function peakShavingStatus(nowMs: number): PeakShavingStatus {
 }
 
 /**
- * One tick of the engine's decision log — `DecisionPoint`.
+ * `automations` topic — `AutomationStreamMessage`; `status` is `PeakShavingStatus`.
  *
- * Every field of the contract, and no field that is not in it. The shape that
- * shipped here first (`at`/`excessW`/`soc`) meant `toDecisionRows` computed its
- * window from `newest.t === undefined` → `NaN`, filtered every point out, and
- * handed the charts an empty array while `hasRegister` answered `true` on
- * `undefined !== null` — a register series with no data, which the server
- * cannot produce because `liveA` is `number | null`.
+ * THREE FIELDS, and that is the whole frame. It used to carry a `history` array
+ * of `DecisionPoint`s — the server's in-memory decision ring, replayed on every
+ * subscribe — plus a per-tick `point`. The optimizer is a device now, so what it
+ * decided is read from `/api/history/rollup` under the `optimizer` slug, which
+ * the mock backend answers like any other series. `status.lastTickAt` is what
+ * tells the page there is something new to fetch, so it must be a real stamp.
  */
-function decisionPoint(atMs: number, i: number): DecisionPoint {
-  const pvW = 3200 + i * 90;
-  const loadW = 640;
-  return {
-    t: atMs,
-    shadow: false,
-    pvW,
-    loadW,
-    evChargeW: null,
-    localSinkW: loadW,
-    thresholdW: 3000,
-    targetA: 40,
-    liveA: 38 + (i % 3),
-    batteryV: 51.2,
-    chargeW: Math.max(0, pvW - loadW - 3000),
-    exportW: 3000,
-    socPct: 55 + i,
-  };
-}
-
-/** `automations` topic — `AutomationStreamMessage`; `status` is `PeakShavingStatus`. */
 export function automationStream(overrides: Partial<AutomationStreamMessage> = {}) {
-  const now = Date.now();
   return {
     tickMs: 30_000,
-    point: null,
     plan: null,
-    // `history: []` still flips the page's `loaded` flag, but a page that draws
-    // decision charts from an empty ring is a skeleton with a heading on it.
-    history: Array.from({ length: 12 }, (_, i) => decisionPoint(now - (11 - i) * 30_000, i)),
-    status: peakShavingStatus(now),
+    status: peakShavingStatus(Date.now()),
     ...overrides,
   } satisfies AutomationStreamMessage;
 }

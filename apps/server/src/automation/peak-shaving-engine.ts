@@ -34,13 +34,11 @@ import type {
   InverterSample,
 } from "@SunReye/inverter-core";
 import type {
-  DecisionPoint,
   PeakShavingPlans,
   PeakShavingRunState,
   PeakShavingStatus,
   PriceRegime,
 } from "@SunReye/contracts/automation";
-import { type DecisionLog, createDecisionLog } from "./automation-history";
 import type { EvccState } from "@SunReye/contracts/evcc";
 import type { EvccAction } from "../evcc/evcc";
 import { log } from "../shared/logging";
@@ -163,6 +161,23 @@ export interface AutomationIO {
   loadState(): Promise<AutomationState>;
   saveState(next: AutomationState): Promise<void>;
   now(): number;
+  /**
+   * Store one tick's decision — the write seam every other device's readings go
+   * through (`../inverter/device-writer.ts`), reached via
+   * `./optimizer-registrar.ts`.
+   *
+   * Called ONCE per tick that actually decided something, after the status is
+   * final, with the sample's own instant. Blocked, stale and plainly-disabled
+   * ticks decided nothing and record nothing — a gap in the series is the truth
+   * about them, and a row saying "0 A" would not be.
+   *
+   * `localSinkW` is the one number the status does not carry.
+   *
+   * OPTIONAL, and its failures are swallowed. Steering the plant is the job;
+   * recording what was steered is bookkeeping, and a database that is down must
+   * never become an inverter that is unsteered.
+   */
+  recordDecision?(status: PeakShavingStatus, localSinkW: number, at: Date): Promise<void>;
 }
 
 export function initialStatus(): PeakShavingStatus {
@@ -208,8 +223,6 @@ const finite = (v: unknown): number | null =>
 export interface PeakShavingEngine {
   tick(): Promise<PeakShavingStatus>;
   status(): PeakShavingStatus;
-  /** Rolling decision history for the charts, oldest → newest. */
-  history(): DecisionPoint[];
   /**
    * Projections of the rest of today and of the whole of tomorrow, or null
    * when the setup can't produce one (blockers, no forecast, no fresh
@@ -225,8 +238,16 @@ export interface PeakShavingEngine {
 interface Eng {
   io: AutomationIO;
   status: PeakShavingStatus;
-  /** Rolling log of decided ticks, live and shadow alike. */
-  log: DecisionLog;
+  /**
+   * This tick's decision, waiting for the status to be final.
+   *
+   * Recorded at the END of the tick rather than where the decision is made,
+   * because the run state is not settled until then: a simulated tick decides in
+   * shadow and only afterwards calls itself `simulating`, and a decision stored
+   * mid-flight would say the wrong one of those forever. Null when the tick
+   * decided nothing.
+   */
+  pending: { localSinkW: number; at: Date } | null;
   /** Plateau the last decision settled on, W — the slew anchor; null after a release. */
   prevThresholdW: number | null;
   /** Charge ceiling the last decision settled on, A — the ramp anchor; null after a release. */
@@ -853,38 +874,38 @@ async function applyEvPullIn(
 const releaseEvPullIn = (e: Eng): Promise<void> =>
   applyEvPullIn(e, "none", false, BOOST_LIMIT_DISABLED);
 
-/** Append this tick's decision + the readings behind it to the chart log. */
-function logDecision(
-  e: Eng,
-  decision: Decision,
-  live: LiveInputs,
-  args: {
-    shadow: boolean;
-    targetA: number;
-    limit: SteeredLimit;
-    batteryV: number;
-    evcc: EvccState | null;
-  },
-): void {
-  e.log.push({
-    t: live.nowMs,
-    shadow: args.shadow,
-    pvW: live.pvW,
-    // Both already resolved onto the status by `recordDecision` (measured load
-    // else baseline; EV null when EVCC is off).
-    loadW: e.status.loadW,
-    evChargeW: e.status.evChargeW,
-    localSinkW: decision.localSinkW,
-    thresholdW: decision.thresholdW,
-    targetA: args.targetA,
-    // Charted against the plan, so the readback is reported in amps whatever
-    // unit the register itself speaks.
-    liveA: live.liveLimit === null ? null : limitAmps(args.limit, live.liveLimit, args.batteryV),
-    batteryV: args.batteryV,
-    chargeW: live.chargeW,
-    exportW: live.exportW,
-    socPct: live.socPct,
-  });
+/**
+ * Mark this tick as one that DECIDED, so the end of the tick stores it.
+ *
+ * What is deliberately not captured here: `pvW`, `loadW`, `evChargeW`,
+ * `batteryV`, `chargeW`, `exportW`, `socPct` and the register readback. Every
+ * one of them is a MEASUREMENT that already has a device and a series of its
+ * own — `pv.total.power`, `load.power`, `ev.charge.power`, `battery.voltage`,
+ * `battery.power`, `grid.power`, `battery.soc`,
+ * `setting.battery.max_charge_current` — stored at the poll cadence by the
+ * device that measured them. The ring this replaced carried them because it was
+ * the only thing a chart could read; `/api/history` is the other thing.
+ */
+function markDecided(e: Eng, decision: Decision, live: LiveInputs): void {
+  e.pending = { localSinkW: decision.localSinkW, at: new Date(live.nowMs) };
+}
+
+/**
+ * Hand the tick's decision to the write seam, if it decided anything.
+ *
+ * Failures are swallowed on purpose, and loudly: the register write already
+ * happened, so a full buffer or an unreachable database is a gap in the history,
+ * not a plant left unsteered.
+ */
+async function flushDecision(e: Eng): Promise<void> {
+  const pending = e.pending;
+  e.pending = null;
+  if (!pending || !e.io.recordDecision) return;
+  try {
+    await e.io.recordDecision(e.status, pending.localSinkW, pending.at);
+  } catch (error) {
+    logger.warn("storing the optimizer's decision failed: {error}", { error });
+  }
 }
 
 /**
@@ -973,7 +994,7 @@ async function steer(
       boostFloorPct(weather, ps),
     );
   }
-  logDecision(e, decision, live, { shadow: ps.shadowMode, targetA, limit, batteryV, evcc });
+  markDecided(e, decision, live);
 }
 
 /**
@@ -1209,6 +1230,7 @@ async function runTick(e: Eng): Promise<PeakShavingStatus> {
   const { io, status } = e;
   try {
     status.lastError = null;
+    e.pending = null;
     const cfg = await io.getConfig();
     const ps = cfg.peakShaving;
     status.mode = ps.mode;
@@ -1230,6 +1252,9 @@ async function runTick(e: Eng): Promise<PeakShavingStatus> {
     return status;
   } finally {
     status.lastTickAt = new Date(io.now()).toISOString();
+    // Last, so the stored decision carries the settled state and the tick's own
+    // timestamps rather than a half-written status.
+    await flushDecision(e);
   }
 }
 
@@ -1244,7 +1269,7 @@ export function createPeakShavingEngine(io: AutomationIO): PeakShavingEngine {
   const e: Eng = {
     io,
     status: initialStatus(),
-    log: createDecisionLog(),
+    pending: null,
     lastWrittenRegister: null,
     prevThresholdW: null,
     prevTargetA: null,
@@ -1281,7 +1306,6 @@ export function createPeakShavingEngine(io: AutomationIO): PeakShavingEngine {
   return {
     tick,
     status: () => e.status,
-    history: () => e.log.points(),
     plan,
     release: () => release(e, "disabled"),
   };

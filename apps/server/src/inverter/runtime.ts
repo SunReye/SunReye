@@ -29,6 +29,9 @@ import {
 } from "@SunReye/inverter-core";
 import mqtt from "mqtt";
 import { startAutomations, stopAutomations } from "../automation/automation";
+import { OPTIMIZER_DEVICE_ID, optimizerDeviceSpec } from "../automation/optimizer-device";
+import { type DeviceRowState, createOptimizerRegistrar } from "../automation/optimizer-registrar";
+import { ensureDevice, isRetired, readPlant } from "@SunReye/db/plant-repo";
 import { getMqttConfig } from "../settings/config";
 import type { ControlStore } from "./control-expr";
 import { dbControlStore } from "./control-store";
@@ -40,7 +43,7 @@ import type { DeviceRegistry } from "../devices/registry";
 import { deviceRegistry } from "../devices/registry-instance";
 import { createIdentifiedCommit, createRowIdentifier } from "./storage-identity";
 import { type IdentityResolver, createIdentityResolver } from "../shared/identity";
-import { type JobScheduler, createJobScheduler } from "./job-scheduler";
+import { type JobScheduler, type ScheduledJob, createJobScheduler } from "./job-scheduler";
 import { evccOnLoadSample } from "../evcc/evcc";
 import {
   buildProfileContext,
@@ -61,6 +64,28 @@ import { getWeatherConfig } from "../settings/weather-settings";
 import type { Streams } from "../shared/streams";
 
 const logger = log("runtime");
+
+/**
+ * The optimizer's `devices` row, over the real plant spine.
+ *
+ * RETIRED IS NOT REGISTERED. `ensureDevice` is `ON CONFLICT DO NOTHING` +
+ * SELECT, so it answers "the row is there" for a row the operator retired in
+ * Settings → Devices — while the roster read excludes exactly that row. The
+ * registrar has to be told the difference or it waits for an instance that is
+ * never coming.
+ *
+ * `"absent"` is a legal answer: the automation loop can be armed on a boot that
+ * has no plant yet, and taking it down over a missing device row would be worse
+ * than storing nothing until the next tick.
+ */
+async function ensureOptimizerRow(): Promise<DeviceRowState> {
+  const plantDb = { execute: (query: Parameters<typeof db.execute>[0]) => db.execute(query) };
+  const plant = await readPlant(plantDb);
+  if (!plant) return "absent";
+  return isRetired(await ensureDevice(plantDb, optimizerDeviceSpec(plant.id)))
+    ? "retired"
+    : "ready";
+}
 
 /** Re-log an unchanged, ongoing poll failure at most this often. */
 const POLL_ERROR_RELOG_MS = 300_000;
@@ -172,6 +197,15 @@ export interface RuntimeDeps {
    */
   onLoadSample?: (watts: number | null) => void;
   /**
+   * Create the optimizer's `devices` row if absent, and say what the table now
+   * holds for it (#172). Defaults to the real plant read + upsert.
+   *
+   * Injected for the same reason {@link identity} is: the production version
+   * queries the plant spine, so a unit test that did not stub it would fail on a
+   * missing database client rather than on the behaviour it names.
+   */
+  ensureOptimizerDevice?: () => Promise<DeviceRowState>;
+  /**
    * The name → int2 resolver both commits and the eager metric registration go
    * through. Defaults to one bound to the real database; injected so a test can
    * assert WHAT was registered — the production resolver's registration is a
@@ -250,6 +284,22 @@ export function createRuntime(deps: RuntimeDeps = {}) {
     },
   });
   const onLoadSample = deps.onLoadSample ?? evccOnLoadSample;
+  /**
+   * The optimizer's path to the write seam above — one device, ensured once,
+   * committed to on every tick that decided something.
+   *
+   * Built here rather than in `../index.ts` (where EVCC's registrar is
+   * composed), because the engine it feeds is started by {@link start} and
+   * nothing outside this file holds both that and `writer.commit`. Nothing about
+   * it is armed until a decision arrives.
+   */
+  const optimizer = createOptimizerRegistrar({
+    ensureDevice: deps.ensureOptimizerDevice ?? ensureOptimizerRow,
+    reloadRegistry: () => reloadDevices(),
+    device: () => devices.get(OPTIMIZER_DEVICE_ID),
+    commit: writer.commit,
+    logger,
+  });
   let ctx: ProfileContext | null = null;
   let source: InverterSource | null = null;
   let pollTimer: ReturnType<typeof setInterval> | null = null;
@@ -600,6 +650,42 @@ export function createRuntime(deps: RuntimeDeps = {}) {
   }
 
   /**
+   * The job that drains both write buffers into their tables.
+   *
+   * A function rather than a constant so the cadence is READ at arm time — `env`
+   * is dynamic — and so {@link armStorage} arms the identical job rather than a
+   * second copy of it that could drift.
+   */
+  function flushJob(): ScheduledJob {
+    return {
+      run: () => {
+        void historyBuffer.flush();
+        void configLogBuffer.flush();
+      },
+      intervalMs: env.HISTORY_FLUSH_INTERVAL_MS,
+    };
+  }
+
+  /**
+   * Arm the flush cadence WITHOUT booting a poll loop.
+   *
+   * For a boot with no active profile: a fresh install past provisioning, or a
+   * configured profile that failed to load. `start` is skipped there, but the
+   * plant row exists and the integrations that write through {@link commit} —
+   * EVCC's loadpoints (#88), the optimizer (#172) — are wired unconditionally,
+   * because neither has a poll loop and neither is a reason to have one. Without
+   * this their rows accumulate in a 100 000-row buffer that nothing drains until
+   * shutdown, dropping the oldest past the cap: the writer's whole contract,
+   * silently unmet, on exactly the installs least likely to notice.
+   *
+   * Idempotent, and harmless beside `start`: the scheduler arms nothing while
+   * already running. The composition root calls one or the other, never both.
+   */
+  function armStorage(): void {
+    scheduler.start([flushJob()]);
+  }
+
+  /**
    * Boot the controller: build the source + bridge and start polling.
    *
    * `automationsWatched` answers whether anyone is subscribed to the
@@ -633,16 +719,9 @@ export function createRuntime(deps: RuntimeDeps = {}) {
     // process.
     await reloadDevices();
     // The scheduler arms each of these once and is idempotent while running, so
-    // a re-boot re-points the source without stacking a second set of jobs. The
-    // flush cadence is read here (env is dynamic) rather than baked in.
+    // a re-boot re-points the source without stacking a second set of jobs.
     scheduler.start([
-      {
-        run: () => {
-          void historyBuffer.flush();
-          void configLogBuffer.flush();
-        },
-        intervalMs: env.HISTORY_FLUSH_INTERVAL_MS,
-      },
+      flushJob(),
       { run: () => void publishForecastNow(), intervalMs: FORECAST_PUBLISH_INTERVAL_MS },
       {
         run: () => void learnCorrectionNow(),
@@ -673,7 +752,14 @@ export function createRuntime(deps: RuntimeDeps = {}) {
       return;
     }
     await startAutomations(
-      { device: steered, constraint: (key) => constraintOf(profileCtx, key), write },
+      {
+        device: steered,
+        constraint: (key) => constraintOf(profileCtx, key),
+        write,
+        // #172: what the loop DECIDES is a reading too, and it goes through the
+        // one seam above rather than into a private in-memory ring.
+        recordDecision: optimizer.record,
+      },
       streamBus,
       undefined,
       automationsWatched,
@@ -795,6 +881,12 @@ export function createRuntime(deps: RuntimeDeps = {}) {
     // Stops the tick only — deliberately no register restore, so a reboot with
     // the automation enabled resumes seamlessly (its snapshot is persisted).
     await stopAutomations();
+    // The optimizer's device is NOT retired by a stop — the plant still has one,
+    // its row, its history and its open intervals stay exactly as they are, and
+    // `closeSeriesIntervals` below writes out what it was holding. Forgetting the
+    // registration only means the next start re-registers immediately rather
+    // than waiting out the retry interval.
+    optimizer.suspend();
     if (pollTimer) clearInterval(pollTimer);
     pollTimer = null;
     // Clears the flush, forecast, learn and price schedules (and their kicks) —
@@ -812,6 +904,8 @@ export function createRuntime(deps: RuntimeDeps = {}) {
 
   return {
     start,
+    /** Arm the flush cadence for a boot that never calls {@link start}. */
+    armStorage,
     write,
     /**
      * THE WRITE SEAM: store one registered device's readings, through the ONE
@@ -854,12 +948,13 @@ export function createRuntime(deps: RuntimeDeps = {}) {
 const defaultRuntime = createRuntime();
 
 export const start = defaultRuntime.start;
+// Wired in `../index.ts` for the boot that has no profile to poll (#88).
+export const armStorage = defaultRuntime.armStorage;
 export const write = defaultRuntime.write;
 // The write seam, on the process's one runtime — the whole point of it being on
-// the runtime at all (see `commit` above).
-// fallow-ignore-next-line unused-export -- the seam #88 and #172 are built on; its only consumers today are the specs that prove it works
+// the runtime at all (see `commit` above). Wired in `../index.ts` for EVCC's
+// loadpoints (#88); #172's optimizer is the second caller.
 export const commit = defaultRuntime.commit;
-// fallow-ignore-next-line unused-export -- same seam: an integration that retires its own device before a roster reload does
 export const forgetDevice = defaultRuntime.forgetDevice;
 export const status = defaultRuntime.status;
 export const stop = defaultRuntime.stop;

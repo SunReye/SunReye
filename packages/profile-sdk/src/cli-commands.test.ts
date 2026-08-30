@@ -3,7 +3,9 @@ import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { defineProfile, metric, ROLE_NAMES, type ProfileData } from "@SunReye/inverter-core";
+import { defineProfile, metric, type ProfileData } from "@SunReye/inverter-core";
+
+import { PROFILE_ROLES } from "./coverage";
 
 // A real, full profile fixture (the published Deye SG05LP3), snapshotted so the
 // CLI tests build/validate a realistic profile without depending on any inverter
@@ -308,7 +310,7 @@ describe("cmdCoverage", () => {
     await cmdCoverage(sparseProfilePath);
     const out = io.out.join("\n");
 
-    expect(out).toContain(`Role coverage: 2/${ROLE_NAMES.length} canonical roles mapped`);
+    expect(out).toContain(`Role coverage: 2/${PROFILE_ROLES.length} canonical roles mapped`);
     expect(out).toContain("Unmapped roles (these UI areas render empty):");
     // Grouped under the leading segment, in catalog order, `[]` on the roles
     // that need one metric per string/phase.
