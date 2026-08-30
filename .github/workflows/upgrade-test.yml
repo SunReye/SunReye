@@ -106,9 +106,25 @@ jobs:
             sleep 2
           done
 
-          # The newest addon release reachable from this ref — the version a user
-          # is actually upgrading FROM.
-          old_tag=$(git describe --tags --abbrev=0 --match 'addon-v*')
+          # The newest addon release reachable from this ref that is OLDER than
+          # the version under test — the release a user is actually upgrading
+          # FROM.
+          #
+          # `git describe --abbrev=0` would answer with the version under test
+          # itself the moment its own tag exists: on a tag push, and on every
+          # branch cut after the release. The job would then upgrade X over X,
+          # and the `legacy` assertion below — which requires the text
+          # `metrics_raw.inverter_id` that only 1.x has — would fail for a reason
+          # that has nothing to do with the change under test.
+          this_version=$(cat ../sunreye/version.txt)
+          old_tag=addon-v$(
+            { git tag --list 'addon-v*' --merged HEAD | sed 's/^addon-v//'; echo "$this_version"; } \
+              | sort -V -u \
+              | awk -v cur="$this_version" '$0 == cur { print prev; exit } { prev = $0 }'
+          )
+          # An empty answer means there is no older release to upgrade from,
+          # which is not something to paper over with `latest`.
+          [ "$old_tag" != "addon-v" ]
           echo "shaping the pre-upgrade database with $old_tag"
           echo "$old_tag" > /tmp/old-tag
 
