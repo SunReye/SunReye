@@ -2,6 +2,6 @@
   ".": "2.0.0",
   "apps/web": "2.0.0",
   "packages/inverter-core": "1.1.0",
-  "packages/profile-sdk": "2.1.0",
+  "packages/profile-sdk": "3.0.0",
   "sunreye": "2.0.0"
 }

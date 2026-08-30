@@ -1,7 +1,12 @@
 # Changelog
 
-## [2.1.0](https://github.com/SunReye/SunReye/compare/profile-sdk-v2.0.1...profile-sdk-v2.1.0) (2026-08-30)
+## [3.0.0](https://github.com/SunReye/SunReye/compare/profile-sdk-v2.0.1...profile-sdk-v3.0.0) (2026-08-30)
 
+
+### ⚠ BREAKING CHANGES
+
+* **profile-sdk:** built profiles now declare `schemaVersion: 3` (`profile new` scaffolds at 2), where 2.0.1 emitted 1. Every SunReye 1.x validates `schemaVersion: 1` and nothing else, so a profile built with this release is refused outright by any install that has not updated to SunReye 2.0.0 — including installs reading a shared git profile source you publish to. Nothing you published earlier is affected: SunReye 2.0.0 still loads v1 profiles and upcasts them on load. Keep the existing v1 build published until the installs reading it are on 2.0.0. ([4ae4d04](https://github.com/SunReye/SunReye/commit/4ae4d044b060c8a8299141b197948062486e12d6), [0c3a239](https://github.com/SunReye/SunReye/commit/0c3a23909ab73816fb5c2f90a6ffc1988c1f38bf))
+* **profile-sdk:** `profile build` now refuses a profile that leaves a required renderable role unmapped, and writes nothing. With no flag the floor is a per-family anchor — map anything under `battery.*` and `battery.soc` must be there, `pv.*` needs `pv.total.power`, and so on — so a machine without a battery is never asked for one; `--require a,b` replaces the floor entirely. A profile that published cleanly on 2.0.1 while leaving `battery.soc` unmapped now fails the build, which is the point: the section it feeds rendered empty on every dashboard. Map the named role, or state your own floor with `--require`. The same commit adds six plausibility lints to `profile validate`, so a profile that passed `--strict` on 2.0.1 can now exit 1 — the shipped Deye profile does, on six unbounded percentage settings. ([0b34134](https://github.com/SunReye/SunReye/commit/0b34134fe636018cd73c11666b8dd5eaf3a9e7e2))
 
 ### Features
 

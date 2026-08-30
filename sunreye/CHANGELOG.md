@@ -11,7 +11,8 @@
 ## Read this before updating to 2.0.0
 
 **2.0.0 rebuilds how readings are stored, and renames your Home Assistant entities once.** Those are
-the two breaking changes in the release.
+the two breaking changes that touch your instance. A third one only concerns you if you **author or
+share inverter profiles** — see "If you author or share inverter profiles" below.
 
 - **Your Home Assistant entity ids change — once, and then never again.** Read the section below
   before you update: **dashboards, automations, scripts and template sensors that name a
@@ -88,6 +89,25 @@ These two names are what your entity ids are built from, and they are frozen onc
 whole point of asking. Their labels stay editable afterwards; only the machine names underneath are
 fixed, so you can rename your plant on screen without renaming a single entity.
 
+### If you author or share inverter profiles
+
+**Skip this if you only install profiles.** Nothing you have installed stops working: 2.0.0 reads
+every profile published so far, exactly as before.
+
+Profiles carry a `schemaVersion`, and 2.0.0 writes a new one. Profiles built by 2.0.0 — or by
+`@sunreye/profile-sdk` 3.0.0 — declare `schemaVersion: 3`, while **every SunReye 1.x accepts version
+1 and nothing else** and refuses anything newer outright. Because profiles travel through a shared
+git profile source, that break lands on people who have not updated yet: if you rebuild an existing
+profile, or add a new one, to a source others use, every install still on 1.x fails to load it.
+
+What to do, if you maintain a shared source:
+
+- Keep the currently published v1 build where it is until the people using it have updated. It keeps
+  working on 2.0.0 as well, so there is no rush to replace it.
+- Only publish a rebuilt (v3) profile once the installs reading that source are on 2.0.0.
+- If you author with `@sunreye/profile-sdk`, note it is now **3.0.0** — a major, precisely so this
+  does not reach you as an automatic upgrade. See its changelog before moving your range up.
+
 ### Also new: take your whole instance out as one file
 
 `export` writes every reading, your plant setup and your settings to one portable archive, and
@@ -109,6 +129,7 @@ be needed again.
 * **ws:** the five legacy per-topic WebSocket routes are gone. Everything runs over the multiplexed `/ws`, authorization is decided per subscribe frame rather than at the upgrade, and the envelope publishes on the plain topic name — the `mux:` prefix is gone. ([33ec667](https://github.com/SunReye/SunReye/commit/33ec6678d46c76b8ae34b83bc0fb27a4c5dfdca6))
 * **server:** `GET /api/automations/history` is removed, along with the in-memory decision ring behind it and the `DecisionPoint` wire type. The optimizer is a device now, so its decisions are rows in `metrics_raw` read through `/api/history` and `/api/history/rollup` under the `optimizer` slug. The `automations` topic stays; its `history` and `point` fields do not. ([4ce8057](https://github.com/SunReye/SunReye/commit/4ce8057111828ec8d3877940b2eaa11f53340924))
 * **web:** the `/system` page is retired — each power-flow node now opens onto its own readings. ([dd77bcb](https://github.com/SunReye/SunReye/commit/dd77bcbca06e063750b8b40c2597b45f259124af))
+* **inverter-core:** a profile built with 2.0.0 is refused by every SunReye 1.x install. The profile `schemaVersion` moved 1 → 2 ([0c3a239](https://github.com/SunReye/SunReye/commit/0c3a23909ab73816fb5c2f90a6ffc1988c1f38bf)) → 3, and 1.x validates `schemaVersion: 1` and nothing else, so it rejects any profile emitted by these builders or by `@sunreye/profile-sdk` 3.0.0 outright. Profiles are distributed through a shared git profile source, so this lands on people who have *not* updated: rebuild or newly author a profile in a shared source and every install still on 1.x fails to load it. Already-published v1 profiles are unaffected — 2.0.0 still reads them and upcasts on load — so the action is the author's: leave the existing v1 build in place for 1.x users, and have anyone who needs the newer build update to 2.0.0 first. ([4ae4d04](https://github.com/SunReye/SunReye/commit/4ae4d044b060c8a8299141b197948062486e12d6))
 
 ### Features
 
