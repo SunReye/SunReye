@@ -199,6 +199,37 @@ describe("runMigrationBackfill", () => {
     expect(asked).toBe(0);
   });
 
+  test("an install that never ran a 1.x upgrade does not go looking for legacy tables", async () => {
+    // #181: on a FRESH 2.0.0 database `readCadenceMs` reads
+    // `metrics_raw_legacy`, a relation that only exists on a database upgraded
+    // FROM 1.x — so it threw, and the route logged it as an ERROR on a database
+    // that was behaving perfectly. `runBackfill` already answers `null` for a
+    // record in this state, but it is asked one query too late.
+    const { io: deps, seen } = io({
+      readRecord: async () => noMigration,
+      readCadenceMs: async () => {
+        throw new Error('relation "metrics_raw_legacy" does not exist');
+      },
+    });
+    await runMigrationBackfill([], deps);
+
+    expect(seen.connections).toEqual([]);
+    expect(seen.inputs).toEqual([]);
+    expect(seen.warned).toEqual([]);
+    expect(seen.info.at(-1)?.message).toContain("no 1.x history to migrate");
+  });
+
+  test("a record still mid-migration is not mistaken for a fresh install", async () => {
+    // The guard above must key on "never upgraded", not on "has a device": a
+    // deferred migration is exactly the case the button exists for.
+    const { io: deps, seen } = io({
+      readRecord: async () => ({ ...noMigration, stage: "deferred", sourceId: "profile-a" }),
+    });
+    await runMigrationBackfill([], deps);
+    expect(seen.connections).toEqual(["postgres://example/db"]);
+    expect(seen.inputs).toHaveLength(1);
+  });
+
   test("hands the driver the resolved device, the profile's config keys and the measured cadence", async () => {
     // `configKeys` must be the PROFILE's own answer: getting it wrong does not
     // fail, it quietly routes configuration registers back into the hypertable.
@@ -360,7 +391,14 @@ describe("backfillIo", () => {
 
   test("the cadence read goes to the handed-in client", async () => {
     const { io } = wiring();
-    const client = { query: async () => ({ rows: [{ gap: 5000 }, { gap: 5000 }] }) };
+    // Two statements now: the cadence read asks whether the legacy relation
+    // exists before measuring it, because on a fresh install it does not (#181).
+    const client = {
+      query: async (text: string) =>
+        /to_regclass/.test(text)
+          ? { rows: [{ present: true }] }
+          : { rows: [{ gap: 5000 }, { gap: 5000 }] },
+    };
     expect(await io.readCadenceMs(client)).toBe(5_000);
   });
 
