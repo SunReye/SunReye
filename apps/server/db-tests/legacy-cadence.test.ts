@@ -38,10 +38,18 @@ if (!reachable) {
 const suite = reachable ? describe : describe.skip;
 
 suite("the legacy cadence on a database with no legacy schema", () => {
+  // One reset for both cases: the database is shared and rebuilding it is the
+  // expensive part of this layer, so a second reset would buy nothing — neither
+  // test writes anything.
+  let url = "";
+  test("setup: a fresh 2.0.0 database", async () => {
+    url = await resetTestDatabase();
+    expect(url).toContain("sunreye_dbtest");
+  });
+
   test("the premise: a fresh install has no metrics_raw_legacy at all", async () => {
     // Stated rather than assumed. If a future baseline ever created this
     // relation, the test below would pass for the wrong reason.
-    const url = await resetTestDatabase();
     const present = await withUpgradeClient(url, async (client) => {
       const result = await client.query(
         `select count(*)::int as n from information_schema.tables
@@ -53,7 +61,6 @@ suite("the legacy cadence on a database with no legacy schema", () => {
   });
 
   test("reads as null rather than raising, so a healthy install logs no error", async () => {
-    const url = await resetTestDatabase();
     const cadence = await withUpgradeClient(url, (client) => readLegacyCadenceMs(client));
     expect(cadence).toBeNull();
   });
