@@ -1,5 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import type { ConnectionRecord, DevicePatch, DeviceRecord } from "@SunReye/db/plant-repo";
+import type {
+  ConnectionPatch,
+  ConnectionRecord,
+  DevicePatch,
+  DeviceRecord,
+} from "@SunReye/db/plant-repo";
 
 import {
   type DeviceAdminDeps,
@@ -7,7 +12,9 @@ import {
   DeviceAdminError,
   addDevice,
   listDevices,
+  patchConnection,
   patchDevice,
+  removeConnection,
 } from "./device-admin";
 
 /**
@@ -99,15 +106,34 @@ function harness(
         devices.push(created);
         return created;
       }),
+    async updateConnection(id, patch: ConnectionPatch) {
+      calls.push(`updateConnection:${id}`);
+      const index = connections.findIndex((c) => c.id === id);
+      const current = connections[index];
+      if (!current) throw new Error(`connection ${id} does not exist`);
+      const next = { ...current, ...patch } as ConnectionRecord;
+      connections[index] = next;
+      return next;
+    },
+    async deleteConnection(id) {
+      calls.push(`deleteConnection:${id}`);
+      const index = connections.findIndex((c) => c.id === id);
+      if (index < 0) return false;
+      connections.splice(index, 1);
+      return true;
+    },
     async updateDevice(id, patch: DevicePatch) {
       calls.push(`updateDevice:${id}`);
       const index = devices.findIndex((d) => d.id === id);
       const current = devices[index];
       if (!current) throw new Error(`device ${id} does not exist`);
+      const { retiredAt, ...rest } = patch;
       const next: DeviceRecord = {
         ...current,
-        ...(patch.name !== undefined ? { name: patch.name } : {}),
-        ...(patch.retiredAt !== undefined ? { retiredAt: patch.retiredAt } : {}),
+        ...(Object.fromEntries(
+          Object.entries(rest).filter(([, v]) => v !== undefined),
+        ) as Partial<DeviceRecord>),
+        ...(retiredAt !== undefined ? { retiredAt } : {}),
       };
       devices[index] = next;
       return next;
@@ -379,6 +405,51 @@ describe("patchDevice", () => {
     expect(error.status).toBe(404);
   });
 
+  test("re-points the driver, the address and the gateway in one patch", async () => {
+    const other = { ...gateway, id: 4, name: "Gateway 2", host: "10.0.0.9" };
+    const meter = { ...inverter, id: 2, slug: "meter", role: "meter", unitId: 2 };
+    const { deps, devices } = harness({
+      connections: [gateway, other],
+      devices: [inverter, meter],
+    });
+    const updated = await patchDevice(deps, 2, {
+      profileId: "deye-sun15k",
+      unitId: 7,
+      connectionId: 4,
+      role: "charger",
+    });
+    expect(updated.profileId).toBe("deye-sun15k");
+    expect(updated.unitId).toBe(7);
+    expect(updated.connectionId).toBe(4);
+    expect(updated.connection?.host).toBe("10.0.0.9");
+    expect(updated.role).toBe("charger");
+    expect(devices[1]?.slug).toBe("meter"); // the slug never moves
+  });
+
+  test.each([
+    ["a profile that is not installed", { profileId: "nope" }, 400],
+    ["a connection of another plant", { connectionId: 99 }, 400],
+    ["unit id 248", { unitId: 248 }, 400],
+    ["the optimizer role", { role: "optimizer" }, 400],
+  ] as const)("refuses %s", async (_label, patch, status) => {
+    const { deps, calls } = harness();
+    const error = await rejection(() => patchDevice(deps, 1, patch));
+    expect(error.status).toBe(status);
+    expect(calls.some((c) => c.startsWith("updateDevice"))).toBe(false);
+  });
+
+  test("a unit id already taken on the target gateway is a 409 under unitId", async () => {
+    const meter = { ...inverter, id: 2, slug: "meter", role: "meter", unitId: 2 };
+    const { deps } = harness({ devices: [inverter, meter] });
+    // The engine raises; the service names the field.
+    deps.store.updateDevice = async () => {
+      throw violation("devices_connection_unit_key");
+    };
+    const error = await rejection(() => patchDevice(deps, 2, { unitId: 1 }));
+    expect(error.status).toBe(409);
+    expect(error.field).toBe("unitId");
+  });
+
   test.each([
     ["a blank name", { name: " " }],
     ["a name over the slug ceiling", { name: "x".repeat(49) }],
@@ -389,5 +460,67 @@ describe("patchDevice", () => {
     const error = await rejection(() => patchDevice(deps, 1, patch));
     expect(error.status).toBe(400);
     expect(calls.some((c) => c.startsWith("updateDevice"))).toBe(false);
+  });
+});
+
+describe("patchConnection", () => {
+  test("edits the endpoint in place and reloads — every device on it follows", async () => {
+    const { deps, calls } = harness();
+    const updated = await patchConnection(deps, 3, { host: "10.0.0.9", transport: "rtu-over-tcp" });
+    expect(updated.id).toBe(3);
+    expect(updated.host).toBe("10.0.0.9");
+    expect(calls).toContain("updateConnection:3");
+    expect(calls.filter((c) => c === "reload")).toHaveLength(1);
+  });
+
+  test("a connection the plant does not have is a 404", async () => {
+    const { deps } = harness();
+    const error = await rejection(() => patchConnection(deps, 99, { host: "x" }));
+    expect(error.status).toBe(404);
+  });
+
+  test.each([
+    ["a blank host", { host: "  " }],
+    ["a port out of range", { port: 70000 }],
+    ["an unknown transport", { transport: "carrier-pigeon" }],
+    ["a cadence under the loop's floor", { pollIntervalMs: 10 }],
+    ["an empty patch", {}],
+    ["a non-object body", "nope"],
+  ])("refuses %s with 400 and writes nothing", async (_label, patch) => {
+    const { deps, calls } = harness();
+    const error = await rejection(() => patchConnection(deps, 3, patch));
+    expect(error.status).toBe(400);
+    expect(calls.some((c) => c.startsWith("updateConnection"))).toBe(false);
+    expect(calls).not.toContain("reload");
+  });
+});
+
+describe("removeConnection", () => {
+  test("deletes an endpoint no device references and reloads", async () => {
+    const spare = { ...gateway, id: 4, name: "Spare" };
+    const { deps, calls, connections } = harness({ connections: [gateway, spare] });
+    await removeConnection(deps, 4);
+    expect(connections.map((c) => c.id)).toEqual([3]);
+    expect(calls).toContain("deleteConnection:4");
+    expect(calls.filter((c) => c === "reload")).toHaveLength(1);
+  });
+
+  test("refuses with 409 while ANY device — retired included — is still bound to it", async () => {
+    const retired = { ...inverter, id: 2, slug: "old", unitId: 2, retiredAt: new Date() };
+    const spare = { ...gateway, id: 4, name: "Spare" };
+    const { deps, calls } = harness({
+      connections: [gateway, spare],
+      devices: [{ ...retired, connectionId: 4 }],
+    });
+    const error = await rejection(() => removeConnection(deps, 4));
+    expect(error.status).toBe(409);
+    expect(calls).not.toContain("deleteConnection:4");
+    expect(calls).not.toContain("reload");
+  });
+
+  test("a connection the plant does not have is a 404", async () => {
+    const { deps } = harness();
+    const error = await rejection(() => removeConnection(deps, 99));
+    expect(error.status).toBe(404);
   });
 });

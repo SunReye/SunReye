@@ -8,6 +8,7 @@ import {
   createConnection,
   createDevice,
   createPlant,
+  deleteConnection,
   deleteDeviceBattery,
   ensureConnection,
   ensureDevice,
@@ -23,6 +24,7 @@ import {
   readRawSetting,
   updateDevice,
   uniqueViolation,
+  updateConnection,
   updatePlant,
   upsertDeviceBattery,
 } from "./plant-repo";
@@ -310,6 +312,39 @@ describe("connections", () => {
     const insert = rendered(executed[0]);
     expect(insert).toContain("insert into connections");
     expect(insert).not.toContain("update");
+  });
+
+  test("updateConnection names only the patched columns and reads the row back", async () => {
+    const { client, executed } = fakeClient([[], [{ ...connectionRow, host: "10.0.0.9" }]]);
+    const updated = await updateConnection(client, 3, { host: "10.0.0.9", pollIntervalMs: 2000 });
+    expect(updated.host).toBe("10.0.0.9");
+    const update = rendered(executed[0]);
+    expect(update).toContain("update connections set");
+    expect(update).toContain("host = ");
+    expect(update).toContain("poll_interval_ms = ");
+    expect(update).not.toContain("port = ");
+    expect(update).not.toContain("name = ");
+  });
+
+  test("updateConnection with an empty patch executes only the read", async () => {
+    const { client, executed } = fakeClient([[connectionRow]]);
+    await updateConnection(client, 3, {});
+    expect(executed).toHaveLength(1);
+    expect(rendered(executed[0])).toContain("select");
+  });
+
+  test("updating a connection that does not exist says so", async () => {
+    const { client } = fakeClient([[], []]);
+    await expect(updateConnection(client, 99, { host: "x" })).rejects.toThrow(
+      "connection 99 does not exist",
+    );
+  });
+
+  test("deleteConnection is a DELETE by id and reports whether a row went", async () => {
+    const { client, executed } = fakeClient([[{ id: "3" }], []]);
+    expect(await deleteConnection(client, 3)).toBe(true);
+    expect(rendered(executed[0])).toContain("delete from connections where");
+    expect(await deleteConnection(client, 4)).toBe(false);
   });
 
   test("createConnection with nothing returned is an error", async () => {

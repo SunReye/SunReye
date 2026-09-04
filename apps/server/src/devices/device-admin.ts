@@ -23,6 +23,7 @@
  */
 
 import {
+  type ConnectionPatch,
   type ConnectionRecord,
   type ConnectionSettings,
   DEVICE_ROLES,
@@ -47,6 +48,9 @@ export interface DeviceAdminStore {
   createConnection(plantId: number, settings: ConnectionSettings): Promise<ConnectionRecord>;
   createDevice(spec: DeviceSpec): Promise<DeviceRecord>;
   updateDevice(id: number, patch: DevicePatch): Promise<DeviceRecord>;
+  updateConnection(id: number, patch: ConnectionPatch): Promise<ConnectionRecord>;
+  /** True when a row went; a bound connection is refused by the engine's FK. */
+  deleteConnection(id: number): Promise<boolean>;
 }
 
 export interface DeviceAdminDeps {
@@ -87,7 +91,14 @@ export class DeviceAdminError extends Error {
   constructor(
     readonly status: 400 | 404 | 409,
     message: string,
-    readonly field?: "name" | "unitId" | "connection" | "role" | "profileId",
+    readonly field?:
+      | "name"
+      | "unitId"
+      | "connection"
+      | "connectionId"
+      | "role"
+      | "profileId"
+      | "host",
   ) {
     super(message);
     this.name = "DeviceAdminError";
@@ -121,28 +132,56 @@ const nameSchema = z
   .max(SLUG_MAX, `name must be at most ${SLUG_MAX} characters`)
   .refine((name) => slugify(name) !== "", "name must contain a letter or a digit");
 
+const roleSchema = z.enum(ADDABLE_ROLES as [string, ...string[]]);
+const unitIdSchema = z.number().int().min(UNIT_ID_MIN).max(UNIT_ID_MAX);
+
 const addDeviceSchema = z.object({
   connection: z.union([
     z.object({ id: z.number().int().positive() }),
     z.object({ create: connectionSettingsSchema }),
   ]),
-  role: z.enum(ADDABLE_ROLES as [string, ...string[]]),
-  unitId: z.number().int().min(UNIT_ID_MIN).max(UNIT_ID_MAX),
+  role: roleSchema,
+  unitId: unitIdSchema,
   name: nameSchema,
   profileId: z.string().trim().min(1),
 });
 
 type AddDeviceInput = z.infer<typeof addDeviceSchema>;
 
+const nonEmpty = (patch: Record<string, unknown>) =>
+  Object.values(patch).some((value) => value !== undefined);
+
+/**
+ * What may change on a device from the settings page. The slug is absent: it is
+ * frozen. `retired` is the lifecycle flag; everything else re-points the row —
+ * the profile swap and the gateway move that 1.x could not do without
+ * orphaning history.
+ */
 const patchDeviceSchema = z
   .object({
     name: nameSchema.optional(),
+    role: roleSchema.optional(),
+    unitId: unitIdSchema.optional(),
+    connectionId: z.number().int().positive().optional(),
+    profileId: z.string().trim().min(1).optional(),
     retired: z.boolean().optional(),
   })
-  .refine((patch) => patch.name !== undefined || patch.retired !== undefined, "nothing to change");
+  .refine(nonEmpty, "nothing to change");
+
+const patchConnectionSchema = connectionSettingsSchema
+  .partial()
+  .refine(nonEmpty, "nothing to change");
 
 /** Which input field a Zod path points at, for the error's `field`. */
-const FIELDS = new Set(["name", "unitId", "connection", "role", "profileId"] as const);
+const FIELDS = new Set([
+  "name",
+  "unitId",
+  "connection",
+  "connectionId",
+  "role",
+  "profileId",
+  "host",
+] as const);
 type Field = NonNullable<DeviceAdminError["field"]>;
 
 function parse<T>(schema: z.ZodType<T>, body: unknown): T {
@@ -306,10 +345,79 @@ export async function patchDevice(
       "this device is the one being polled; change the inverter connection first",
     );
   }
-  const updated = await deps.store.updateDevice(id, {
-    ...(patch.name !== undefined ? { name: patch.name } : {}),
-    ...(patch.retired !== undefined ? { retiredAt: patch.retired ? new Date() : null } : {}),
-  });
+  await checkRepointing(deps, patch, connections);
+  const { retired, ...fields } = patch;
+  let updated: DeviceRecord;
+  try {
+    updated = await deps.store.updateDevice(id, {
+      ...fields,
+      ...(retired !== undefined ? { retiredAt: retired ? new Date() : null } : {}),
+    });
+  } catch (error) {
+    throw conflictOf(error) ?? error;
+  }
   await deps.reload();
   return view(deps, updated, connections);
+}
+
+/** The two re-pointing checks a device patch shares with an add: the profile is registered, the gateway is the plant's. */
+async function checkRepointing(
+  deps: DeviceAdminDeps,
+  patch: { profileId?: string; connectionId?: number },
+  connections: readonly ConnectionRecord[],
+): Promise<void> {
+  if (patch.profileId !== undefined && (await deps.profileName(patch.profileId)) === null) {
+    throw new DeviceAdminError(400, "profile: not installed on this server", "profileId");
+  }
+  if (patch.connectionId !== undefined && !connections.some((c) => c.id === patch.connectionId)) {
+    throw new DeviceAdminError(400, "connection: not one of this plant's", "connectionId");
+  }
+}
+
+async function requireConnection(
+  deps: DeviceAdminDeps,
+  id: number,
+): Promise<{ plant: PlantRecord; connections: ConnectionRecord[]; connection: ConnectionRecord }> {
+  const plant = await requirePlant(deps);
+  const connections = await deps.store.readConnections(plant.id);
+  const connection = connections.find((c) => c.id === id);
+  if (!connection) throw new DeviceAdminError(404, `connection ${id} does not exist`);
+  return { plant, connections, connection };
+}
+
+/**
+ * Edit a gateway in place. Every device bound to it follows — that is what
+ * "the gateway moved" means, and why this is its own action rather than a
+ * field on one of its devices.
+ */
+export async function patchConnection(
+  deps: DeviceAdminDeps,
+  id: number,
+  body: unknown,
+): Promise<ConnectionRecord> {
+  const patch = parse(patchConnectionSchema, body);
+  await requireConnection(deps, id);
+  const updated = await deps.store.updateConnection(id, patch);
+  await deps.reload();
+  return updated;
+}
+
+/**
+ * Remove a gateway nothing is bound to. Refused while any device — retired
+ * included — still references it: a retired device's readings are keyed to its
+ * row, and its row is keyed to this one. The FK would refuse anyway; saying why
+ * first is the point.
+ */
+export async function removeConnection(deps: DeviceAdminDeps, id: number): Promise<void> {
+  const { plant } = await requireConnection(deps, id);
+  const devices = await deps.store.readDevices(plant.id);
+  const bound = devices.filter((d) => d.connectionId === id);
+  if (bound.length > 0) {
+    throw new DeviceAdminError(
+      409,
+      `connection still has ${bound.length} device(s): ${bound.map((d) => d.slug).join(", ")}`,
+    );
+  }
+  await deps.store.deleteConnection(id);
+  await deps.reload();
 }

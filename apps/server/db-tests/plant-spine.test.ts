@@ -248,6 +248,98 @@ suite("the dimension spine", () => {
     expect(all.map((c) => c.host)).toEqual(["10.0.0.5", "10.0.0.9"]);
   });
 
+  test("updateConnection edits in place — the device bound to it follows, the id stays", async () => {
+    const plant = await freshPlant("spine-conn-update");
+    const gateway = await repo.createConnection(db, plant.id, {
+      name: "G",
+      host: "10.0.0.5",
+      port: 502,
+      transport: "tcp",
+      timeoutMs: 2000,
+      pollIntervalMs: 1000,
+    });
+    const device = await repo.createDevice(db, {
+      plantId: plant.id,
+      connectionId: gateway.id,
+      unitId: 1,
+      slug: "inv",
+      name: "Inv",
+      profileId: "p",
+      role: "inverter",
+    });
+    const moved = await repo.updateConnection(db, gateway.id, {
+      host: "10.0.0.9",
+      transport: "rtu-over-tcp",
+    });
+    expect(moved.id).toBe(gateway.id);
+    expect(moved.host).toBe("10.0.0.9");
+    expect(moved.transport).toBe("rtu-over-tcp");
+    expect(moved.port).toBe(502);
+    const [after] = await repo.readDevices(db, plant.id);
+    expect(after?.id).toBe(device.id);
+    expect(after?.connectionId).toBe(gateway.id);
+  });
+
+  test("updateConnection refuses a transport the CHECK does not admit", async () => {
+    const plant = await freshPlant("spine-conn-update-check");
+    const gateway = await repo.createConnection(db, plant.id, {
+      name: "G",
+      host: "h",
+      port: 502,
+      transport: "tcp",
+      timeoutMs: 2000,
+      pollIntervalMs: 1000,
+    });
+    let message = "";
+    try {
+      await repo.updateConnection(db, gateway.id, { transport: "carrier-pigeon" });
+    } catch (error) {
+      const cause = (error as { cause?: unknown }).cause;
+      message = `${(error as Error).message} ${cause instanceof Error ? cause.message : ""}`;
+    }
+    expect(message).toContain("connections_transport_check");
+  });
+
+  test("deleteConnection removes an unreferenced endpoint and is refused for a bound one BY THE ENGINE", async () => {
+    const plant = await freshPlant("spine-conn-delete");
+    const spare = await repo.createConnection(db, plant.id, {
+      name: "Spare",
+      host: "h",
+      port: 502,
+      transport: "tcp",
+      timeoutMs: 2000,
+      pollIntervalMs: 1000,
+    });
+    const bound = await repo.createConnection(db, plant.id, {
+      name: "Bound",
+      host: "h2",
+      port: 502,
+      transport: "tcp",
+      timeoutMs: 2000,
+      pollIntervalMs: 1000,
+    });
+    await repo.createDevice(db, {
+      plantId: plant.id,
+      connectionId: bound.id,
+      unitId: 1,
+      slug: "inv",
+      name: "Inv",
+      profileId: "p",
+      role: "inverter",
+    });
+    expect(await repo.deleteConnection(db, spare.id)).toBe(true);
+    expect(await repo.deleteConnection(db, spare.id)).toBe(false);
+    let message = "";
+    try {
+      await repo.deleteConnection(db, bound.id);
+    } catch (error) {
+      const cause = (error as { cause?: unknown }).cause;
+      message = `${(error as Error).message} ${cause instanceof Error ? cause.message : ""}`;
+    }
+    expect(message).toContain("devices_connection_id_connections_id_fk");
+    expect((await repo.readConnections(db, plant.id)).map((c) => c.id)).toEqual([bound.id]);
+  });
+
   test("createDevice refuses a second device on the same (connection, unit id) BY THE ENGINE", async () => {
     // `devices_connection_unit_key` — and the violation has to be recognisable so
     // the add-device route can answer 409 with a reason instead of 500.

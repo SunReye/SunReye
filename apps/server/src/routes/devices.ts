@@ -2,9 +2,11 @@ import { db } from "@SunReye/db";
 import {
   createConnection,
   createDevice,
+  deleteConnection,
   readConnections,
   readDevices,
   readPlant,
+  updateConnection,
   updateDevice,
 } from "@SunReye/db/plant-repo";
 import { Elysia, t } from "elysia";
@@ -14,7 +16,9 @@ import {
   DeviceAdminError,
   addDevice,
   listDevices,
+  patchConnection,
   patchDevice,
+  removeConnection,
 } from "../devices/device-admin";
 import { deviceRegistry } from "../devices/registry-instance";
 import { resolveProfileById } from "../inverter/inverter";
@@ -45,6 +49,8 @@ function defaultDeps(): DeviceAdminDeps {
       createConnection: (plantId, settings) => createConnection(client, plantId, settings),
       createDevice: (spec) => createDevice(client, spec),
       updateDevice: (id, patch) => updateDevice(client, id, patch),
+      updateConnection: (id, patch) => updateConnection(client, id, patch),
+      deleteConnection: (id) => deleteConnection(client, id),
     },
     profileName: async (id) => (await resolveProfileById(id))?.name ?? null,
     primarySlug: () => deviceRegistry.primary()?.id ?? null,
@@ -60,6 +66,32 @@ function refusal(error: unknown) {
   throw error;
 }
 
+/** A by-id param, or the 400 it deserves. */
+function parseId(raw: string): number | null {
+  const id = Number(raw);
+  return Number.isInteger(id) && id > 0 ? id : null;
+}
+
+const BAD_ID = { error: "id must be a positive integer", field: null } as const;
+
+/** Run one service call for the route, mapping refusals to their status. */
+async function respond<T>(
+  status: (code: 400 | 404 | 409, body: unknown) => unknown,
+  run: () => Promise<T>,
+) {
+  try {
+    return await run();
+  } catch (error) {
+    const refused = refusal(error);
+    return status(refused.status, refused.body);
+  }
+}
+
+// `id` params are `t.String()`, not `t.Numeric()`: a typed param is validated
+// BEFORE the guard, and the smoke's placeholder would 422 there — see above.
+const byId = { requireAdmin: true, params: t.Object({ id: t.String() }) } as const;
+const byIdWrite = { ...byId, body: t.Unknown() } as const;
+
 export const deviceRoutes = new Elysia({ name: "device-routes" })
   .use(adminGuard)
   .get("/api/devices", { requireAdmin: true }, () => listDevices(defaultDeps()))
@@ -68,29 +100,24 @@ export const deviceRoutes = new Elysia({ name: "device-routes" })
     const plant = await deps.store.readPlant();
     return { connections: plant ? await deps.store.readConnections(plant.id) : [] };
   })
-  .post("/api/devices", { requireAdmin: true, body: t.Unknown() }, async ({ body, status }) => {
-    try {
-      return await addDevice(defaultDeps(), body);
-    } catch (error) {
-      const refused = refusal(error);
-      return status(refused.status, refused.body);
-    }
+  .post("/api/devices", { requireAdmin: true, body: t.Unknown() }, ({ body, status }) =>
+    respond(status, () => addDevice(defaultDeps(), body)),
+  )
+  .patch("/api/devices/:id", byIdWrite, ({ params, body, status }) => {
+    const id = parseId(params.id);
+    if (id === null) return status(400, BAD_ID);
+    return respond(status, () => patchDevice(defaultDeps(), id, body));
   })
-  .patch(
-    "/api/devices/:id",
-    // `t.String()`, not `t.Numeric()`: a typed param is validated BEFORE the
-    // guard, and the smoke's placeholder would 422 there — see the note above.
-    { requireAdmin: true, params: t.Object({ id: t.String() }), body: t.Unknown() },
-    async ({ params, body, status }) => {
-      const id = Number(params.id);
-      if (!Number.isInteger(id) || id <= 0) {
-        return status(400, { error: "device id must be a positive integer", field: null });
-      }
-      try {
-        return await patchDevice(defaultDeps(), id, body);
-      } catch (error) {
-        const refused = refusal(error);
-        return status(refused.status, refused.body);
-      }
-    },
-  );
+  .patch("/api/connections/:id", byIdWrite, ({ params, body, status }) => {
+    const id = parseId(params.id);
+    if (id === null) return status(400, BAD_ID);
+    return respond(status, () => patchConnection(defaultDeps(), id, body));
+  })
+  .delete("/api/connections/:id", byId, ({ params, status }) => {
+    const id = parseId(params.id);
+    if (id === null) return status(400, BAD_ID);
+    return respond(status, async () => {
+      await removeConnection(defaultDeps(), id);
+      return { ok: true, id };
+    });
+  });

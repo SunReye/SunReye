@@ -499,6 +499,60 @@ export async function createConnection(
   return toConnection(row);
 }
 
+/** What may change on an existing endpoint. `plant_id` is not: moving a gateway between plants moves every device on it. */
+export interface ConnectionPatch {
+  name?: string;
+  host?: string;
+  port?: number;
+  transport?: string;
+  timeoutMs?: number;
+  pollIntervalMs?: number;
+}
+
+/**
+ * Edit an endpoint IN PLACE, keeping its id — and with it every device bound
+ * to it. That is the point and the hazard both: one save moves every device on
+ * the gateway, which is right for a gateway that moved and is why the UI edits
+ * a connection as its own thing rather than through one of its devices.
+ */
+export async function updateConnection(
+  db: PlantDb,
+  id: number,
+  patch: ConnectionPatch,
+): Promise<ConnectionRecord> {
+  const assignments: SQL[] = [];
+  if (patch.name !== undefined) assignments.push(sql`name = ${patch.name}`);
+  if (patch.host !== undefined) assignments.push(sql`host = ${patch.host}`);
+  if (patch.port !== undefined) assignments.push(sql`port = ${patch.port}`);
+  if (patch.transport !== undefined) assignments.push(sql`transport = ${patch.transport}`);
+  if (patch.timeoutMs !== undefined) assignments.push(sql`timeout_ms = ${patch.timeoutMs}`);
+  if (patch.pollIntervalMs !== undefined) {
+    assignments.push(sql`poll_interval_ms = ${patch.pollIntervalMs}`);
+  }
+  if (assignments.length > 0) {
+    await db.execute(
+      sql`update connections set ${sql.join(assignments, sql`, `)} where id = ${id}`,
+    );
+  }
+  const { rows } = await db.execute(
+    sql`select ${CONNECTION_COLUMNS} from connections where id = ${id}`,
+  );
+  const row = rows[0] as Record<string, unknown> | undefined;
+  if (!row) throw new Error(`connection ${id} does not exist`);
+  return toConnection(row);
+}
+
+/**
+ * Remove an endpoint no device references. True when a row went, false when
+ * there was none. A device still bound to it is refused BY THE ENGINE
+ * (`ON DELETE RESTRICT`) — the caller decides whether to say so or to retire
+ * the devices first; nothing here cascades.
+ */
+export async function deleteConnection(db: PlantDb, id: number): Promise<boolean> {
+  const { rows } = await db.execute(sql`delete from connections where id = ${id} returning id`);
+  return rows.length > 0;
+}
+
 const DEVICE_COLUMNS = sql`
   id, slug, name, profile_id as "profileId", role, unit_id as "unitId",
   connection_id as "connectionId", retired_at as "retiredAt"`;
