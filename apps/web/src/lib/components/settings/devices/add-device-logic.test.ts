@@ -11,6 +11,7 @@ import {
   groupByConnection,
   emptyForm,
   nameProblem,
+  probeTargetOf,
   profileGroups,
   takenUnitIds,
 } from "./add-device-logic";
@@ -529,5 +530,36 @@ describe("the inverter section of the form", () => {
     const physics = formFromDevice(inv, [gateway]);
     physics.inverter.loss = "9";
     expect(devicePatch(inv, physics)).toEqual({ systemLoss: 9 });
+  });
+});
+
+describe("probeTargetOf", () => {
+  test("the chosen gateway's address with the form's unit id and profile", () => {
+    const form = { ...emptyForm([gateway]), unitId: 3, profileId: "sdm630" };
+    expect(probeTargetOf(form, [gateway])).toEqual({
+      name: "Gateway 1",
+      host: "10.0.0.5",
+      port: 502,
+      transport: "tcp",
+      timeoutMs: 2000,
+      pollIntervalMs: 1000,
+      unitId: 3,
+      profileId: "sdm630",
+    });
+  });
+
+  test("nothing to probe without a profile, or on a gateway that does not exist yet", () => {
+    expect(probeTargetOf({ ...emptyForm([gateway]), profileId: "" }, [gateway])).toBeNull();
+    expect(probeTargetOf({ ...emptyForm([]), profileId: "p" }, [])).toBeNull();
+    expect(
+      probeTargetOf(
+        {
+          ...emptyForm([gateway]),
+          connectionChoice: NEW_CONNECTION,
+          profileId: "p",
+        },
+        [gateway],
+      ),
+    ).toBeNull();
   });
 });

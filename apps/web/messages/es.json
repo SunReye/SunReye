@@ -1003,5 +1003,6 @@
   "devices_test_nothing": "Añade un dispositivo en esta pasarela para probarla.",
   "devices_battery_heading": "Batería",
   "devices_meta_kwp": "{kwp} kWp",
-  "devices_meta_kwh": "{kwh} kWh"
+  "devices_meta_kwh": "{kwh} kWh",
+  "devices_probe_needs_profile": "Elige una pasarela existente y un perfil para probar la conexión."
 }

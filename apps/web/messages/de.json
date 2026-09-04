@@ -1003,5 +1003,6 @@
   "devices_test_nothing": "Füge ein Gerät an diesem Gateway hinzu, um es zu testen.",
   "devices_battery_heading": "Batterie",
   "devices_meta_kwp": "{kwp} kWp",
-  "devices_meta_kwh": "{kwh} kWh"
+  "devices_meta_kwh": "{kwh} kWh",
+  "devices_probe_needs_profile": "Wähle ein vorhandenes Gateway und ein Profil, um die Verbindung zu testen."
 }

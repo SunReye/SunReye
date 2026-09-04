@@ -11,13 +11,15 @@
 		describeRefusal,
 		devicePatch,
 		emptyForm,
-		formFromDevice
+		formFromDevice,
+		probeTargetOf
 	} from './add-device-logic';
 	import AddressFields from './address-fields.svelte';
 	import ConnectionField from './connection-field.svelte';
 	import type { ConnectionView, DeviceView } from './device-types';
 	import InverterSection from './inverter-section.svelte';
 	import NameField from './name-field.svelte';
+	import ProbeTest from './probe-test.svelte';
 	import ProfileField from './profile-field.svelte';
 
 	// The device dialog — add, or edit when `device` is set: pick or create the
@@ -57,6 +59,7 @@
 	);
 	const submitLabel = $derived(editing ? m.action_save() : m.devices_add());
 	const isInverter = $derived(form.role === 'inverter');
+	const probe = $derived(probeTargetOf(form, connections));
 	/** For an add, the whole body; for an edit, the changed fields — null while unsendable. */
 	const body = $derived(device ? devicePatch(device, form) : buildAddDeviceBody(form));
 	/** The other devices, so an edit's own unit id is not shown as taken. */
@@ -128,6 +131,7 @@
 			<AddressFields bind:form devices={others} {refusal} />
 			<NameField bind:form {refusal} />
 			<ProfileField bind:form {registered} {refusal} {onInstalled} />
+			<ProbeTest target={probe} nothing={m.devices_probe_needs_profile()} />
 			{#if isInverter}
 				<InverterSection bind:form />
 			{/if}

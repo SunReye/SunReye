@@ -33,6 +33,16 @@ test.describe("the roster", () => {
     await expect(panel.getByLabel("Host")).toHaveValue("10.0.0.5");
     // Three devices are bound, so there is nothing to delete.
     await expect(panel.getByRole("button", { name: "Delete" })).toHaveCount(0);
+
+    // Test reads through the first device and, on success, opens the snapshot
+    // of the values read — the plausibility check the inverter form always had.
+    await panel.getByRole("button", { name: "Test connection" }).click();
+    const snapshot = page.getByRole("dialog", { name: "Captured snapshot" });
+    await expect(snapshot).toBeVisible();
+    await expect(snapshot.getByRole("row").nth(1)).toBeVisible();
+    await snapshot.getByRole("button", { name: "Close" }).click();
+    await expect(snapshot).toHaveCount(0);
+    await expect(panel.getByRole("button", { name: "View snapshot" })).toBeVisible();
     await panel.getByLabel("Host").fill("10.0.0.7");
     await panel.getByRole("button", { name: "Save" }).click();
     await expect(panel).toHaveCount(0);

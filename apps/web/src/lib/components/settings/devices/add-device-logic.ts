@@ -355,3 +355,28 @@ export function describeProbe(
     };
   return { ok: false, message: words.failed(answer.error ?? "") };
 }
+
+/** What a test-read needs: an address, a slave id, and the driver to read with. */
+export type ProbeTarget = NewConnection & { unitId: number; profileId: string };
+
+/**
+ * The probe the device dialog can run for its form, or null while it cannot: a
+ * gateway that does not exist yet has no address to dial, and without a profile
+ * there is no register map to read. The address is the chosen gateway's row,
+ * not a draft — the dialog edits the device, and the gateway is edited on its own.
+ */
+export function probeTargetOf(
+  form: AddDeviceForm,
+  connections: readonly ConnectionView[],
+): ProbeTarget | null {
+  if (form.profileId === "") return null;
+  const connection = connections.find((c) => String(c.id) === form.connectionChoice);
+  if (!connection) return null;
+  const { id: _id, ...address } = connection;
+  return {
+    ...address,
+    transport: address.transport as NewConnection["transport"],
+    unitId: form.unitId,
+    profileId: form.profileId,
+  };
+}
