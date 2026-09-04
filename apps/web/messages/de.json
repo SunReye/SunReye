@@ -983,5 +983,6 @@
   "devices_field_profile": "Profil",
   "devices_profile_none": "Profil auswählen",
   "devices_profile_download_more": "Weitere Profile herunterladen",
-  "profiles_in_use": "In Verwendung"
+  "profiles_in_use": "In Verwendung",
+  "profiles_remove_aria": "Profil {name} löschen"
 }
