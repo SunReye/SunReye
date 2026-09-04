@@ -1000,9 +1000,10 @@
   "devices_toast_connection_deleted": "{name} supprimée.",
   "devices_toast_connection_delete_failed": "La suppression de la connexion a échoué : {error}",
   "devices_test_ok": "{count} mesures lues en {ms} ms.",
-  "devices_test_nothing": "Ajoutez un appareil sur cette passerelle pour la tester.",
   "devices_battery_heading": "Batterie",
   "devices_meta_kwp": "{kwp} kWp",
   "devices_meta_kwh": "{kwh} kWh",
-  "devices_probe_needs_profile": "Choisissez une passerelle existante et un profil pour tester la connexion."
+  "devices_probe_needs_profile": "Choisissez une passerelle existante et un profil pour tester la connexion.",
+  "devices_ping_ok": "Joignable — port ouvert, {ms} ms.",
+  "devices_ping_failed": "Injoignable : {error}"
 }

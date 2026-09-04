@@ -23,6 +23,7 @@ import {
   patchDevice,
   removeConnection,
 } from "../devices/device-admin";
+import { probeEndpoint } from "../devices/reachability";
 import { deviceRegistry } from "../devices/registry-instance";
 import { resolveProfileById } from "../inverter/inverter";
 import * as runtime from "../inverter/runtime";
@@ -108,6 +109,22 @@ export const deviceRoutes = new Elysia({ name: "device-routes" })
   })
   .post("/api/devices", { requireAdmin: true, body: t.Unknown() }, ({ body, status }) =>
     respond(status, () => addDevice(defaultDeps(), body)),
+  )
+  // Is the gateway there? A TCP connect to host:port — no unit id, no profile,
+  // no register read. The device dialog's test is the one that reads registers.
+  .post(
+    "/api/connections/probe",
+    { requireAdmin: true, body: t.Unknown() },
+    async ({ body, status }) => {
+      try {
+        return await probeEndpoint(body);
+      } catch (error) {
+        return status(400, {
+          error: error instanceof Error ? error.message : "invalid probe",
+          field: null,
+        });
+      }
+    },
   )
   .patch("/api/devices/:id", byIdWrite, ({ params, body, status }) => {
     const id = parseId(params.id);

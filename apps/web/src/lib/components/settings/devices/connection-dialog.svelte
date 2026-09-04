@@ -6,7 +6,7 @@
 	import * as m from '$lib/paraglide/messages';
 	import { apiErrorText } from '../api-error';
 	import ConnectionDeleteDialog from './connection-delete-dialog.svelte';
-	import ProbeTest from './probe-test.svelte';
+	import ConnectionProbe from './connection-probe.svelte';
 	import type { ConnectionView, DeviceView, NewConnection, Transport } from './device-types';
 	import NewConnectionFields from './new-connection-fields.svelte';
 
@@ -21,7 +21,7 @@
 	}: {
 		/** The gateway being edited; null closes the dialog. */
 		connection?: ConnectionView | null;
-		/** The devices on it, for the probe's unit id and the delete guard. */
+		/** The devices on it — the delete guard. */
 		devices: DeviceView[];
 		onSaved: () => void;
 		onDeleted: () => void;
@@ -35,11 +35,6 @@
 	const name = $derived(connection?.name ?? '');
 	const canDelete = $derived(devices.length === 0);
 	const sendable = $derived(draft.host.trim() !== '' && !busy);
-	/** The draft address, read through the first device on this gateway. */
-	const probe = $derived.by(() => {
-		const first = devices[0];
-		return first ? { ...draft, unitId: first.unitId, profileId: first.profileId } : null;
-	});
 
 	function blank(): NewConnection {
 		return { name: '', host: '', port: 502, transport: 'tcp', timeoutMs: 2000, pollIntervalMs: 1000 };
@@ -96,7 +91,7 @@
 		</Dialog.Header>
 		<form class="flex flex-col gap-4" onsubmit={save}>
 			<NewConnectionFields bind:connection={draft} />
-			<ProbeTest target={probe} nothing={m.devices_test_nothing()} />
+			<ConnectionProbe {draft} />
 			<Dialog.Footer class="sm:justify-between">
 				<div>
 					{#if canDelete}

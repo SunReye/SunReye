@@ -778,6 +778,7 @@ export async function mockBackend(page: Page, options: BackendOptions = {}): Pro
     }
 
     // ── Devices ─────────────────────────────────────────────────────────────
+    if (at("connections/probe")) return json(route, { ok: true, ms: 12 });
     if (at("connections")) return json(route, { connections: fixture.CONNECTIONS });
     if (under("connections") && method === "PATCH") {
       const current = fixture.CONNECTIONS.find((c) => String(c.id) === id);

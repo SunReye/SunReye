@@ -1000,9 +1000,10 @@
   "devices_toast_connection_deleted": "{name} eliminada.",
   "devices_toast_connection_delete_failed": "No se pudo eliminar la conexión: {error}",
   "devices_test_ok": "{count} métricas leídas en {ms} ms.",
-  "devices_test_nothing": "Añade un dispositivo en esta pasarela para probarla.",
   "devices_battery_heading": "Batería",
   "devices_meta_kwp": "{kwp} kWp",
   "devices_meta_kwh": "{kwh} kWh",
-  "devices_probe_needs_profile": "Elige una pasarela existente y un perfil para probar la conexión."
+  "devices_probe_needs_profile": "Elige una pasarela existente y un perfil para probar la conexión.",
+  "devices_ping_ok": "Accesible — puerto abierto, {ms} ms.",
+  "devices_ping_failed": "Inaccesible: {error}"
 }

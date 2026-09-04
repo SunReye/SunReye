@@ -1000,9 +1000,10 @@
   "devices_toast_connection_deleted": "{name} gelöscht.",
   "devices_toast_connection_delete_failed": "Verbindung konnte nicht gelöscht werden: {error}",
   "devices_test_ok": "{count} Messwerte in {ms} ms gelesen.",
-  "devices_test_nothing": "Füge ein Gerät an diesem Gateway hinzu, um es zu testen.",
   "devices_battery_heading": "Batterie",
   "devices_meta_kwp": "{kwp} kWp",
   "devices_meta_kwh": "{kwh} kWh",
-  "devices_probe_needs_profile": "Wähle ein vorhandenes Gateway und ein Profil, um die Verbindung zu testen."
+  "devices_probe_needs_profile": "Wähle ein vorhandenes Gateway und ein Profil, um die Verbindung zu testen.",
+  "devices_ping_ok": "Erreichbar — Port offen, {ms} ms.",
+  "devices_ping_failed": "Nicht erreichbar: {error}"
 }
