@@ -486,14 +486,25 @@ export async function upsertDevice(
       // value is used verbatim, which is what makes a full restore faithful.
       // Only a merge over an existing device takes the safe side, and a merge is
       // the case where "faithful" has two answers.
+      //
+      // The PV description is the other coalesce: an archive that predates the
+      // device columns carries null for all three, and null must neither insert
+      // as null (the columns are NOT NULL) nor overwrite what the device here
+      // already says — so it takes the column default on insert and keeps the
+      // existing value on merge. `applyPlant` then hands such an archive's
+      // PLANT-level description to the first inverter.
       `insert into devices (plant_id, connection_id, unit_id, slug, name, profile_id, serial, role,
-                            retired_at)
-       values ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+                            retired_at, arrays, temp_coefficient, system_loss)
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,
+               coalesce($10::jsonb, '[]'::jsonb), coalesce($11, -0.4), coalesce($12, 14))
        on conflict (plant_id, slug) do update set
          connection_id = excluded.connection_id, unit_id = excluded.unit_id,
          name = excluded.name, profile_id = excluded.profile_id,
          serial = excluded.serial, role = excluded.role,
-         retired_at = coalesce(devices.retired_at, excluded.retired_at)
+         retired_at = coalesce(devices.retired_at, excluded.retired_at),
+         arrays = coalesce($10::jsonb, devices.arrays),
+         temp_coefficient = coalesce($11, devices.temp_coefficient),
+         system_loss = coalesce($12, devices.system_loss)
        returning id`,
       [
         plantId,
@@ -505,6 +516,9 @@ export async function upsertDevice(
         device.serial,
         device.role,
         device.retiredAt,
+        device.arrays === null ? null : JSON.stringify(device.arrays),
+        device.tempCoefficient,
+        device.systemLoss,
       ],
     ),
   );
@@ -532,7 +546,34 @@ async function applyPlant(client: ReplayClient, plant: ArchivePlant): Promise<nu
   for (const device of plant.devices) {
     await upsertDevice(client, plantId, device, connectionIds);
   }
+  await adoptLegacyPv(client, plantId, plant);
   return plantId;
+}
+
+/**
+ * A 2.0.x archive describes the roof on the PLANT. Hand it to the first
+ * in-service inverter — the same rule migration 0005 applies to a database
+ * that already had rows — but only when NO device in the file carries its own
+ * description: a file written after the move is authoritative per device, and
+ * its plant-level copy is the legacy column nothing reads.
+ */
+async function adoptLegacyPv(
+  client: ReplayClient,
+  plantId: number,
+  plant: ArchivePlant,
+): Promise<void> {
+  if (plant.devices.some((d) => d.arrays !== null)) return;
+  const arrays = Array.isArray(plant.arrays) ? plant.arrays : [];
+  if (arrays.length === 0 && plant.tempCoefficient === null && plant.systemLoss === null) return;
+  await client.query(
+    `update devices set arrays = $2::jsonb,
+       temp_coefficient = coalesce($3, temp_coefficient),
+       system_loss = coalesce($4, system_loss)
+     where plant_id = $1 and role = 'inverter' and retired_at is null
+       and id = (select min(id) from devices
+                 where plant_id = $1 and role = 'inverter' and retired_at is null)`,
+    [plantId, JSON.stringify(arrays), plant.tempCoefficient, plant.systemLoss],
+  );
 }
 
 /** Settings, profiles, charts and the metric vocabulary. */

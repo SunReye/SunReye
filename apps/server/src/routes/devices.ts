@@ -3,11 +3,14 @@ import {
   createConnection,
   createDevice,
   deleteConnection,
+  deleteDeviceBattery,
   readConnections,
   readDevices,
   readPlant,
+  readPlantBatteries,
   updateConnection,
   updateDevice,
+  upsertDeviceBattery,
 } from "@SunReye/db/plant-repo";
 import { Elysia, t } from "elysia";
 
@@ -51,6 +54,9 @@ function defaultDeps(): DeviceAdminDeps {
       updateDevice: (id, patch) => updateDevice(client, id, patch),
       updateConnection: (id, patch) => updateConnection(client, id, patch),
       deleteConnection: (id) => deleteConnection(client, id),
+      readPlantBatteries: (plantId) => readPlantBatteries(client, plantId),
+      upsertDeviceBattery: (deviceId, battery) => upsertDeviceBattery(client, deviceId, battery),
+      deleteDeviceBattery: (deviceId) => deleteDeviceBattery(client, deviceId),
     },
     profileName: async (id) => (await resolveProfileById(id))?.name ?? null,
     primarySlug: () => deviceRegistry.primary()?.id ?? null,

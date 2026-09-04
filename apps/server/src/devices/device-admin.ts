@@ -22,12 +22,15 @@
  * registered and listed but not read; `DeviceView.polled` says which one is.
  */
 
+import type { DeviceBattery } from "@SunReye/db/batteries";
 import {
   type ConnectionPatch,
   type ConnectionRecord,
   type ConnectionSettings,
   DEVICE_ROLES,
+  type DeviceBatteryRecord,
   type DevicePatch,
+  type DevicePv,
   type DeviceRecord,
   type DeviceSpec,
   type PlantRecord,
@@ -36,6 +39,7 @@ import {
   isVirtualDevice,
   uniqueViolation,
 } from "@SunReye/db/plant-repo";
+import { forecastBatterySchema, pvArraySchema } from "@SunReye/db/weather";
 import { z } from "zod";
 
 import { SLUG_MAX, slugify } from "../inverter/provision";
@@ -51,6 +55,9 @@ export interface DeviceAdminStore {
   updateConnection(id: number, patch: ConnectionPatch): Promise<ConnectionRecord>;
   /** True when a row went; a bound connection is refused by the engine's FK. */
   deleteConnection(id: number): Promise<boolean>;
+  readPlantBatteries(plantId: number): Promise<DeviceBatteryRecord[]>;
+  upsertDeviceBattery(deviceId: number, battery: DeviceBattery): Promise<void>;
+  deleteDeviceBattery(deviceId: number): Promise<void>;
 }
 
 export interface DeviceAdminDeps {
@@ -74,6 +81,8 @@ export interface DeviceAdminDeps {
 export interface DeviceView extends Omit<DeviceRecord, "retiredAt"> {
   retiredAt: string | null;
   connection: ConnectionRecord | null;
+  /** The pack this inverter carries, or null — every other role has none. */
+  battery: DeviceBattery | null;
   profileName: string | null;
   /** Whether the profile the row names is registered on this server. */
   profileKnown: boolean;
@@ -98,7 +107,9 @@ export class DeviceAdminError extends Error {
       | "connectionId"
       | "role"
       | "profileId"
-      | "host",
+      | "host"
+      | "arrays"
+      | "battery",
   ) {
     super(message);
     this.name = "DeviceAdminError";
@@ -135,7 +146,22 @@ const nameSchema = z
 const roleSchema = z.enum(ADDABLE_ROLES as [string, ...string[]]);
 const unitIdSchema = z.number().int().min(UNIT_ID_MIN).max(UNIT_ID_MAX);
 
+/**
+ * The inverter's PV description and pack, as the dialog sends them. Each field
+ * independently optional so an edit can name only what changed; the bounds
+ * mirror `@SunReye/db/weather`'s so a value the forecast schema would refuse is
+ * refused here first.
+ */
+const inverterFieldsSchema = {
+  arrays: z.array(pvArraySchema).max(8).optional(),
+  tempCoefficient: z.number().min(-2).max(0).optional(),
+  systemLoss: z.number().min(0).max(90).optional(),
+  /** `null` says "no pack"; absent says "leave it alone". */
+  battery: forecastBatterySchema.nullable().optional(),
+};
+
 const addDeviceSchema = z.object({
+  ...inverterFieldsSchema,
   connection: z.union([
     z.object({ id: z.number().int().positive() }),
     z.object({ create: connectionSettingsSchema }),
@@ -159,6 +185,7 @@ const nonEmpty = (patch: Record<string, unknown>) =>
  */
 const patchDeviceSchema = z
   .object({
+    ...inverterFieldsSchema,
     name: nameSchema.optional(),
     role: roleSchema.optional(),
     unitId: unitIdSchema.optional(),
@@ -181,6 +208,8 @@ const FIELDS = new Set([
   "role",
   "profileId",
   "host",
+  "arrays",
+  "battery",
 ] as const);
 type Field = NonNullable<DeviceAdminError["field"]>;
 
@@ -199,37 +228,56 @@ function toView(
   connections: readonly ConnectionRecord[],
   profileName: string | null,
   primarySlug: string | null,
+  battery: DeviceBattery | null = null,
 ): DeviceView {
   return {
     ...device,
     retiredAt: device.retiredAt ? device.retiredAt.toISOString() : null,
     connection: connections.find((c) => c.id === device.connectionId) ?? null,
+    battery,
     profileName,
     profileKnown: profileName !== null,
     polled: !isRetired(device) && device.slug === primarySlug,
   };
 }
 
+/** A device's pack out of the plant's pack rows, stripped of its key. */
+function packOf(packs: readonly DeviceBatteryRecord[], deviceId: number): DeviceBattery | null {
+  const pack = packs.find((p) => p.deviceId === deviceId);
+  if (!pack) return null;
+  const { deviceId: _key, ...battery } = pack;
+  return battery;
+}
+
+/** One device as the page shows it, re-read after a write. */
 async function view(
   deps: DeviceAdminDeps,
+  plantId: number,
   device: DeviceRecord,
   connections: readonly ConnectionRecord[],
-) {
-  return toView(device, connections, await deps.profileName(device.profileId), deps.primarySlug());
+): Promise<DeviceView> {
+  const [name, packs] = await Promise.all([
+    deps.profileName(device.profileId),
+    deps.store.readPlantBatteries(plantId),
+  ]);
+  return toView(device, connections, name, deps.primarySlug(), packOf(packs, device.id));
 }
 
 /** Every device of the plant, retired ones included, with their endpoints. */
 export async function listDevices(deps: DeviceAdminDeps): Promise<DeviceRoster> {
   const plant = await deps.store.readPlant();
   if (!plant) return { devices: [], connections: [] };
-  const [devices, connections] = await Promise.all([
+  const [devices, connections, packs] = await Promise.all([
     deps.store.readDevices(plant.id),
     deps.store.readConnections(plant.id),
+    deps.store.readPlantBatteries(plant.id),
   ]);
   const primary = deps.primarySlug();
   const names = await Promise.all(devices.map((d) => deps.profileName(d.profileId)));
   return {
-    devices: devices.map((d, i) => toView(d, connections, names[i] ?? null, primary)),
+    devices: devices.map((d, i) =>
+      toView(d, connections, names[i] ?? null, primary, packOf(packs, d.id)),
+    ),
     connections,
   };
 }
@@ -259,6 +307,51 @@ async function resolveConnection(
     throw new DeviceAdminError(400, "connection: not one of this plant's", "connection");
   }
   return found;
+}
+
+/** The inverter-only fields a body carries, split from the rest. */
+type InverterFields = z.infer<z.ZodObject<typeof inverterFieldsSchema>>;
+
+/**
+ * Only an inverter has strings and a pack. A meter or a charger sent either is
+ * refused rather than silently stored: the forecast would never read it, and
+ * the operator would believe their roof was described.
+ */
+function requireInverterFor(role: string, fields: InverterFields): void {
+  const named = (["arrays", "tempCoefficient", "systemLoss", "battery"] as const).find(
+    (key) => fields[key] !== undefined,
+  );
+  if (named && role !== "inverter") {
+    throw new DeviceAdminError(
+      400,
+      `${named}: only an inverter carries PV arrays and a pack`,
+      named === "battery" ? "battery" : "arrays",
+    );
+  }
+}
+
+/** The three PV columns a body names, as the repository's patch shape. */
+function pvOf(fields: InverterFields): Partial<DevicePv> | undefined {
+  const pv: Partial<DevicePv> = {};
+  if (fields.arrays !== undefined) pv.arrays = fields.arrays;
+  if (fields.tempCoefficient !== undefined) pv.tempCoefficient = fields.tempCoefficient;
+  if (fields.systemLoss !== undefined) pv.systemLoss = fields.systemLoss;
+  return Object.keys(pv).length > 0 ? pv : undefined;
+}
+
+/**
+ * The pack instruction, if the body gave one: an object upserts, `null` removes,
+ * absent leaves the row alone. Three instructions, because "no pack" and "did
+ * not mention storage" must not collapse or a pack could never be removed.
+ */
+async function writeBattery(
+  deps: DeviceAdminDeps,
+  deviceId: number,
+  battery: DeviceBattery | null | undefined,
+): Promise<void> {
+  if (battery === undefined) return;
+  if (battery === null) await deps.store.deleteDeviceBattery(deviceId);
+  else await deps.store.upsertDeviceBattery(deviceId, battery);
 }
 
 /** Which of the two device uniqueness rules a violation broke, as a 409. */
@@ -294,6 +387,7 @@ export async function addDevice(deps: DeviceAdminDeps, body: unknown): Promise<D
   if ((await deps.profileName(input.profileId)) === null) {
     throw new DeviceAdminError(400, "profile: not installed on this server", "profileId");
   }
+  requireInverterFor(input.role, input);
   const connections = await deps.store.readConnections(plant.id);
   const connection = await resolveConnection(deps, plant.id, input.connection, connections);
   let device: DeviceRecord;
@@ -306,17 +400,14 @@ export async function addDevice(deps: DeviceAdminDeps, body: unknown): Promise<D
       name: input.name,
       profileId: input.profileId,
       role: input.role,
+      pv: pvOf(input),
     });
   } catch (error) {
     throw conflictOf(error) ?? error;
   }
+  await writeBattery(deps, device.id, input.battery);
   await deps.reload();
-  return toView(
-    device,
-    [...connections, connection],
-    await deps.profileName(device.profileId),
-    deps.primarySlug(),
-  );
+  return view(deps, plant.id, device, [...connections, connection]);
 }
 
 /**
@@ -346,18 +437,21 @@ export async function patchDevice(
     );
   }
   await checkRepointing(deps, patch, connections);
-  const { retired, ...fields } = patch;
+  requireInverterFor(patch.role ?? current.role, patch);
+  const { retired, arrays, tempCoefficient, systemLoss, battery, ...fields } = patch;
   let updated: DeviceRecord;
   try {
     updated = await deps.store.updateDevice(id, {
       ...fields,
+      pv: pvOf({ arrays, tempCoefficient, systemLoss }),
       ...(retired !== undefined ? { retiredAt: retired ? new Date() : null } : {}),
     });
   } catch (error) {
     throw conflictOf(error) ?? error;
   }
+  await writeBattery(deps, id, battery);
   await deps.reload();
-  return view(deps, updated, connections);
+  return view(deps, plant.id, updated, connections);
 }
 
 /** The two re-pointing checks a device patch shares with an add: the profile is registered, the gateway is the plant's. */

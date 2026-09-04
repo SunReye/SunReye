@@ -531,6 +531,14 @@ export async function provisionDevice(deps: ProvisionDeviceDeps): Promise<Provis
         name: deps.profile.name?.trim() || deps.profile.id,
         profileId: deps.profile.id,
         role: INVERTER_ROLE,
+        // The 1.x roof description lands on the ONE inverter this seed creates
+        // — the same first-inverter rule migration 0005 applies to a plant that
+        // already had rows. Creation only: an adopted device keeps its own.
+        pv: {
+          arrays: legacy.facts.arrays,
+          tempCoefficient: legacy.facts.tempCoefficient,
+          systemLoss: legacy.facts.systemLoss,
+        },
       });
 
   if (isRetired(device)) {

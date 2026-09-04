@@ -85,7 +85,8 @@ function memoryStore(seed: { settings?: Record<string, unknown> } = {}) {
         arrays: [],
         tempCoefficient: -0.4,
         systemLoss: 14,
-        ...pv,
+        // An unstated PV field takes the column default, as the real INSERT does.
+        ...Object.fromEntries(Object.entries(pv ?? {}).filter(([, v]) => v !== undefined)),
         ...fields,
         id: nextId++,
         retiredAt: null,

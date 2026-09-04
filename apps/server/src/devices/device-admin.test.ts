@@ -1,7 +1,9 @@
 import { describe, expect, test } from "bun:test";
+import type { DeviceBattery } from "@SunReye/db/batteries";
 import type {
   ConnectionPatch,
   ConnectionRecord,
+  DeviceBatteryRecord,
   DevicePatch,
   DeviceRecord,
 } from "@SunReye/db/plant-repo";
@@ -66,10 +68,12 @@ function harness(
     knownProfiles?: Record<string, string>;
     primarySlug?: string | null;
     createDevice?: DeviceAdminStore["createDevice"];
+    batteries?: DeviceBatteryRecord[];
   } = {},
 ) {
   const connections = [...(over.connections ?? [gateway])];
   const devices = [...(over.devices ?? [inverter])];
+  const batteries = [...(over.batteries ?? [])];
   const known = over.knownProfiles ?? { "deye-sun15k": "Deye SUN-15K", sdm630: "Eastron SDM630" };
   const calls: string[] = [];
   let nextId = 100;
@@ -104,9 +108,9 @@ function harness(
           role: spec.role,
           unitId: spec.unitId,
           connectionId: spec.connectionId,
-          arrays: [],
-          tempCoefficient: -0.4,
-          systemLoss: 14,
+          arrays: spec.pv?.arrays ?? [],
+          tempCoefficient: spec.pv?.tempCoefficient ?? -0.4,
+          systemLoss: spec.pv?.systemLoss ?? 14,
           retiredAt: null,
         };
         devices.push(created);
@@ -121,6 +125,21 @@ function harness(
       connections[index] = next;
       return next;
     },
+    async readPlantBatteries() {
+      calls.push("readPlantBatteries");
+      return batteries;
+    },
+    async upsertDeviceBattery(deviceId, battery: DeviceBattery) {
+      calls.push(`upsertBattery:${deviceId}`);
+      const index = batteries.findIndex((b) => b.deviceId === deviceId);
+      if (index >= 0) batteries[index] = { deviceId, ...battery };
+      else batteries.push({ deviceId, ...battery });
+    },
+    async deleteDeviceBattery(deviceId) {
+      calls.push(`deleteBattery:${deviceId}`);
+      const index = batteries.findIndex((b) => b.deviceId === deviceId);
+      if (index >= 0) batteries.splice(index, 1);
+    },
     async deleteConnection(id) {
       calls.push(`deleteConnection:${id}`);
       const index = connections.findIndex((c) => c.id === id);
@@ -133,12 +152,13 @@ function harness(
       const index = devices.findIndex((d) => d.id === id);
       const current = devices[index];
       if (!current) throw new Error(`device ${id} does not exist`);
-      const { retiredAt, ...rest } = patch;
+      const { retiredAt, pv, ...rest } = patch;
       const next: DeviceRecord = {
         ...current,
         ...(Object.fromEntries(
           Object.entries(rest).filter(([, v]) => v !== undefined),
         ) as Partial<DeviceRecord>),
+        ...pv,
         ...(retiredAt !== undefined ? { retiredAt } : {}),
       };
       devices[index] = next;
@@ -153,8 +173,10 @@ function harness(
       calls.push("reload");
     },
   };
-  return { deps, calls, connections, devices };
+  return { deps, calls, connections, devices, batteries };
 }
+
+const pack: DeviceBattery = { usableKwh: 10, maxChargeW: 5000, minSoc: 10, nominalV: 51.2 };
 
 const meterInput = {
   connection: { id: 3 },
@@ -528,5 +550,109 @@ describe("removeConnection", () => {
     const { deps } = harness();
     const error = await rejection(() => removeConnection(deps, 99));
     expect(error.status).toBe(404);
+  });
+});
+
+describe("an inverter's PV description and pack", () => {
+  test("listDevices joins each inverter's pack and carries its arrays; a meter has neither", async () => {
+    const meter = { ...inverter, id: 2, slug: "meter", role: "meter", unitId: 2 };
+    const { deps } = harness({
+      devices: [
+        { ...inverter, arrays: [{ kwp: 9.8, tilt: 30, azimuth: 0 }], systemLoss: 11 },
+        meter,
+      ],
+      batteries: [{ deviceId: 1, ...pack }],
+    });
+    const { devices } = await listDevices(deps);
+    expect(devices[0]?.arrays).toEqual([{ kwp: 9.8, tilt: 30, azimuth: 0 }]);
+    expect(devices[0]?.systemLoss).toBe(11);
+    expect(devices[0]?.battery).toEqual(pack);
+    expect(devices[1]?.arrays).toEqual([]);
+    expect(devices[1]?.battery).toBeNull();
+  });
+
+  test("adding an inverter stores its arrays, physics and pack in one go", async () => {
+    const { deps, batteries, calls } = harness();
+    const created = await addDevice(deps, {
+      ...meterInput,
+      role: "inverter",
+      name: "East",
+      arrays: [{ kwp: 3.2, tilt: 20, azimuth: -90 }],
+      tempCoefficient: -0.3,
+      systemLoss: 20,
+      battery: pack,
+    });
+    expect(created.arrays).toEqual([{ kwp: 3.2, tilt: 20, azimuth: -90 }]);
+    expect(created.tempCoefficient).toBe(-0.3);
+    expect(created.systemLoss).toBe(20);
+    expect(created.battery).toEqual(pack);
+    expect(batteries.map((b) => b.deviceId)).toEqual([created.id]);
+    // The row exists before the pack that references it, and the reload comes last.
+    expect(calls.indexOf("createDevice")).toBeLessThan(
+      calls.indexOf(`upsertBattery:${created.id}`),
+    );
+    expect(calls.indexOf(`upsertBattery:${created.id}`)).toBeLessThan(calls.indexOf("reload"));
+  });
+
+  test("a patch re-describes the roof: only the named PV columns move", async () => {
+    const { deps, devices } = harness({ devices: [{ ...inverter, systemLoss: 11 }] });
+    const updated = await patchDevice(deps, 1, { arrays: [{ kwp: 5, tilt: 25, azimuth: 0 }] });
+    expect(updated.arrays).toEqual([{ kwp: 5, tilt: 25, azimuth: 0 }]);
+    expect(updated.systemLoss).toBe(11);
+    expect(devices[0]?.tempCoefficient).toBe(-0.4);
+  });
+
+  test("the pack is three instructions: upsert, remove, leave alone", async () => {
+    const { deps, batteries, calls } = harness({ batteries: [{ deviceId: 1, ...pack }] });
+    const untouched = await patchDevice(deps, 1, { name: "Dach" });
+    expect(untouched.battery).toEqual(pack);
+    expect(calls.some((c) => c.startsWith("upsertBattery") || c.startsWith("deleteBattery"))).toBe(
+      false,
+    );
+
+    const changed = await patchDevice(deps, 1, { battery: { ...pack, usableKwh: 12 } });
+    expect(changed.battery?.usableKwh).toBe(12);
+    expect(batteries[0]?.usableKwh).toBe(12);
+
+    const removed = await patchDevice(deps, 1, { battery: null });
+    expect(removed.battery).toBeNull();
+    expect(batteries).toEqual([]);
+  });
+
+  test.each([
+    ["arrays", { arrays: [{ kwp: 1, tilt: 1, azimuth: 0 }] }, /arrays/],
+    ["a temperature coefficient", { tempCoefficient: -0.3 }, /tempCoefficient/],
+    ["a pack", { battery: pack }, /battery/],
+  ])(
+    "a meter given %s is refused with 400 and nothing is written",
+    async (_label, patch, reason) => {
+      const meter = { ...inverter, id: 2, slug: "meter", role: "meter", unitId: 2 };
+      const { deps, calls } = harness({ devices: [inverter, meter] });
+      const error = await rejection(() => patchDevice(deps, 2, patch));
+      expect(error.status).toBe(400);
+      expect(error.message).toMatch(reason);
+      expect(calls.some((c) => c.startsWith("updateDevice") || c.startsWith("upsertBattery"))).toBe(
+        false,
+      );
+      const added = await rejection(() =>
+        addDevice(deps, { ...meterInput, unitId: 9, name: "M2", ...patch }),
+      );
+      expect(added.status).toBe(400);
+    },
+  );
+
+  test.each([
+    ["a positive coefficient", { tempCoefficient: 0.4 }],
+    ["losses over 90 %", { systemLoss: 95 }],
+    [
+      "a ninth array",
+      { arrays: Array.from({ length: 9 }, () => ({ kwp: 1, tilt: 1, azimuth: 0 })) },
+    ],
+    ["a tilt of 400", { arrays: [{ kwp: 1, tilt: 400, azimuth: 0 }] }],
+    ["a pack with no usable capacity", { battery: { usableKwh: 0 } }],
+  ])("%s is refused by the same bounds the forecast schema applies", async (_label, patch) => {
+    const { deps } = harness();
+    const error = await rejection(() => patchDevice(deps, 1, patch));
+    expect(error.status).toBe(400);
   });
 });

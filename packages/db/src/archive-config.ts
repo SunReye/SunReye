@@ -79,6 +79,15 @@ export interface ArchiveDevice {
    */
   retiredAt: string | null;
   battery: ArchiveBattery | null;
+  /**
+   * The inverter's PV description (see `./schema/plants.ts` on `devices`), or
+   * `null` for each when the archive predates the move — a 2.0.x file describes
+   * the roof on the PLANT, and the importer hands that description to the first
+   * inverter (`../archive-import.ts`), the same rule migration 0005 applies.
+   */
+  arrays: unknown[] | null;
+  tempCoefficient: number | null;
+  systemLoss: number | null;
 }
 
 export interface ArchivePlant {
@@ -340,6 +349,11 @@ export function synthesiseSpine(input: SynthesiseInput): ArchivePlant {
         unitId: asNumber(connectionConfig.unitId, 0),
         connection: connections[0]?.name ?? null,
         battery: null,
+        // A 1.x database describes the roof on the PLANT (the weather blob); the
+        // importer hands it to this one inverter, so the device carries none.
+        arrays: null,
+        tempCoefficient: null,
+        systemLoss: null,
       },
     ],
   };
@@ -406,6 +420,11 @@ function parseDevice(value: unknown): ArchiveDevice | null {
     // device that IS retired locally.
     retiredAt: asOptionalString(row.retiredAt),
     battery: parseBattery(row.battery),
+    // Absent (an older archive) is null; present-but-garbage is an empty list,
+    // the same reading the device row itself gets.
+    arrays: row.arrays == null ? null : Array.isArray(row.arrays) ? row.arrays : [],
+    tempCoefficient: asOptionalNumber(row.tempCoefficient),
+    systemLoss: asOptionalNumber(row.systemLoss),
   };
 }
 

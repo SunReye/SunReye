@@ -145,6 +145,8 @@ interface Recorded {
   connections: unknown[][];
   devices: unknown[][];
   batteries: unknown[][];
+  /** `update devices set arrays` — the legacy plant-level roof handed to the first inverter. */
+  adoptedPv: unknown[][];
   created: string[];
   indexed: string[];
   dropped: string[];
@@ -166,6 +168,7 @@ const emptyRecorded = (): Recorded => ({
   connections: [],
   devices: [],
   batteries: [],
+  adoptedPv: [],
   created: [],
   indexed: [],
   dropped: [],
@@ -243,6 +246,13 @@ const ROUTES: [RegExp, Route][] = [
     /insert into batteries/,
     (_t, rec, _x, values) => {
       rec.batteries.push([...values]);
+      return [];
+    },
+  ],
+  [
+    /update devices set arrays/,
+    (_t, rec, _x, values) => {
+      rec.adoptedPv.push([...values]);
       return [];
     },
   ],
@@ -888,6 +898,10 @@ describe("importArchive: applying config.json", () => {
           unitId: 1,
           connection: "loft",
           battery: { usableKwh: 14.3, maxChargeW: 5000, minSoc: 15, nominalV: 51.2 },
+          retiredAt: null,
+          arrays: [{ kwp: 9.9, tilt: 30, azimuth: 0 }],
+          tempCoefficient: -0.35,
+          systemLoss: 11,
         },
         {
           slug: "meter",
@@ -898,6 +912,10 @@ describe("importArchive: applying config.json", () => {
           unitId: 2,
           connection: null,
           battery: null,
+          retiredAt: null,
+          arrays: [],
+          tempCoefficient: null,
+          systemLoss: null,
         },
       ],
     },
@@ -924,6 +942,12 @@ describe("importArchive: applying config.json", () => {
     // Only the device that reports a pack gets one.
     expect(rec.batteries).toHaveLength(1);
     expect(rec.batteries[0]?.[1]).toBe(14.3);
+    // The inverter's roof binds as jsonb text; the meter's as an empty list, so
+    // the NOT NULL column takes it rather than a null the insert would refuse.
+    expect(rec.devices[0]?.slice(9)).toEqual(['[{"kwp":9.9,"tilt":30,"azimuth":0}]', -0.35, 11]);
+    expect(rec.devices[1]?.slice(9)).toEqual(["[]", null, null]);
+    // A file written after the move carries the roof per device: nothing to adopt.
+    expect(rec.adoptedPv).toEqual([]);
     expect(rec.settings).toEqual([["display.theme", '"dark"']]);
     expect(rec.profiles).toEqual(["deye.sun-12k"]);
     expect(rec.charts).toEqual(["c1"]);
@@ -936,6 +960,57 @@ describe("importArchive: applying config.json", () => {
       ["pv.power", false, null],
       ["total.energy", true, null],
     ]);
+  });
+
+  test("a 2.0.x archive's PLANT-level roof is handed to the first inverter", async () => {
+    // Older files describe the roof on the plant and carry no `arrays` on any
+    // device. The device rows then bind null (→ column default, never an
+    // overwrite) and one follow-up UPDATE moves the plant's description onto
+    // the lowest-id in-service inverter — the rule migration 0005 applies.
+    const legacy = {
+      ...config,
+      plant: {
+        ...config.plant!,
+        arrays: [{ kwp: 9.9, tilt: 30, azimuth: 0 }],
+        tempCoefficient: -0.35,
+        systemLoss: 11,
+        devices: config.plant!.devices.map((d) => ({
+          ...d,
+          arrays: null,
+          tempCoefficient: null,
+          systemLoss: null,
+        })),
+      },
+    };
+    const { rec } = await run({ readings: [reading()], config: legacy }, target, {
+      applyConfig: true,
+    });
+    // The device rows bind NULL for all three, so the insert takes the column
+    // defaults and a merge keeps what the local row already says.
+    expect(rec.devices[0]?.slice(9)).toEqual([null, null, null]);
+    expect(rec.adoptedPv).toEqual([[1, '[{"kwp":9.9,"tilt":30,"azimuth":0}]', -0.35, 11]]);
+  });
+
+  test("a legacy archive with an EMPTY roof adopts nothing — there is nothing to hand over", async () => {
+    const legacy = {
+      ...config,
+      plant: {
+        ...config.plant!,
+        arrays: [],
+        tempCoefficient: null,
+        systemLoss: null,
+        devices: config.plant!.devices.map((d) => ({
+          ...d,
+          arrays: null,
+          tempCoefficient: null,
+          systemLoss: null,
+        })),
+      },
+    };
+    const { rec } = await run({ readings: [reading()], config: legacy }, target, {
+      applyConfig: true,
+    });
+    expect(rec.adoptedPv).toEqual([]);
   });
 
   test("a virtual device is inserted with its own role, not normalised to inverter", async () => {
