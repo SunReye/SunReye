@@ -5,6 +5,8 @@ import { PgDialect } from "drizzle-orm/pg-core";
 import {
   DEVICE_ROLES,
   activeDevices,
+  createConnection,
+  createDevice,
   createPlant,
   deleteDeviceBattery,
   ensureConnection,
@@ -20,6 +22,7 @@ import {
   physicalDevices,
   readRawSetting,
   updateDevice,
+  uniqueViolation,
   updatePlant,
   upsertDeviceBattery,
 } from "./plant-repo";
@@ -287,6 +290,41 @@ describe("connections", () => {
       }),
     ).rejects.toThrow("connection for plant 7 could not be created");
   });
+
+  test("createConnection INSERTs unconditionally — a second gateway is a second row", async () => {
+    // Unlike `ensureConnection`, which edits the plant's first endpoint in place
+    // for the single-inverter form, adding a device to a NEW gateway must not
+    // move the existing one.
+    const { client, executed } = fakeClient([[{ ...connectionRow, id: "9", host: "10.0.0.9" }]]);
+    const created = await createConnection(client, 7, {
+      name: "Gateway 2",
+      host: "10.0.0.9",
+      port: 502,
+      transport: "tcp",
+      timeoutMs: 2000,
+      pollIntervalMs: 1000,
+    });
+    expect(created.id).toBe(9);
+    expect(created.host).toBe("10.0.0.9");
+    expect(executed).toHaveLength(1);
+    const insert = rendered(executed[0]);
+    expect(insert).toContain("insert into connections");
+    expect(insert).not.toContain("update");
+  });
+
+  test("createConnection with nothing returned is an error", async () => {
+    const { client } = fakeClient([[]]);
+    await expect(
+      createConnection(client, 7, {
+        name: "x",
+        host: "h",
+        port: 1,
+        transport: "tcp",
+        timeoutMs: 1,
+        pollIntervalMs: 1000,
+      }),
+    ).rejects.toThrow("connection for plant 7 could not be created");
+  });
 });
 
 describe("devices", () => {
@@ -397,6 +435,44 @@ describe("devices", () => {
     const { client } = fakeClient([[], []]);
     await expect(
       ensureDevice(client, {
+        plantId: 7,
+        connectionId: null,
+        unitId: 1,
+        slug: "gone",
+        name: "x",
+        profileId: "p",
+        role: "inverter",
+      }),
+    ).rejects.toThrow("device gone could not be created");
+  });
+
+  test("createDevice INSERTs with no conflict clause — a collision must surface", async () => {
+    // The add-device path is the one place a duplicate slug or a duplicate
+    // (connection, unit id) must be an ERROR the operator sees, not a silent
+    // adoption of the row that was already there.
+    const { client, executed } = fakeClient([[deviceRow({ id: "11", slug: "meter" })]]);
+    const device = await createDevice(client, {
+      plantId: 7,
+      connectionId: 3,
+      unitId: 2,
+      slug: "meter",
+      name: "Meter",
+      profileId: "deye",
+      role: "meter",
+    });
+    expect(device.id).toBe(11);
+    expect(device.slug).toBe("meter");
+    expect(executed).toHaveLength(1);
+    const insert = rendered(executed[0]);
+    expect(insert).toContain("insert into devices");
+    expect(insert).toContain("returning");
+    expect(insert).not.toContain("on conflict");
+  });
+
+  test("createDevice with nothing returned is an error, not a zero id", async () => {
+    const { client } = fakeClient([[]]);
+    await expect(
+      createDevice(client, {
         plantId: 7,
         connectionId: null,
         unitId: 1,
@@ -652,5 +728,39 @@ describe("device roles", () => {
     expect(physicalDevices([])).toEqual([]);
     physicalDevices(rows);
     expect(rows).toHaveLength(1);
+  });
+});
+
+describe("uniqueViolation", () => {
+  // node-postgres raises a DatabaseError with `code` and `constraint`; drizzle
+  // wraps it, so the facts live on `cause`. Both shapes have to answer.
+  const pgError = (code: string, constraint?: string) =>
+    Object.assign(new Error("duplicate key value violates unique constraint"), {
+      code,
+      constraint,
+    });
+
+  test("names the constraint of a bare 23505", () => {
+    expect(uniqueViolation(pgError("23505", "devices_connection_unit_key"))).toBe(
+      "devices_connection_unit_key",
+    );
+  });
+
+  test("looks through a wrapping error's cause", () => {
+    const wrapped = new Error("Failed query", {
+      cause: pgError("23505", "devices_plant_slug_key"),
+    });
+    expect(uniqueViolation(wrapped)).toBe("devices_plant_slug_key");
+  });
+
+  test("a 23505 with no constraint name is still a violation, reported as an empty name", () => {
+    expect(uniqueViolation(pgError("23505"))).toBe("");
+  });
+
+  test("any other code, a plain Error and a non-error are null", () => {
+    expect(uniqueViolation(pgError("23503", "devices_connection_id_fkey"))).toBeNull();
+    expect(uniqueViolation(new Error("boom"))).toBeNull();
+    expect(uniqueViolation("boom")).toBeNull();
+    expect(uniqueViolation(null)).toBeNull();
   });
 });

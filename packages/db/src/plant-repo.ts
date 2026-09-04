@@ -177,7 +177,6 @@ const VIRTUAL_ROLES: ReadonlySet<string> = new Set<DeviceRole>(["optimizer"]);
  * default. Refusing an unmodelled role is the database's job, not this
  * predicate's.
  */
-// fallow-ignore-next-line unused-export -- the predicate `physicalDevices` below composes, and the seam where the "an unknown role is PHYSICAL" rule is testable (./plant-repo.test.ts); test files are not traced as consumers.
 export function isVirtualDevice(device: Pick<DeviceRecord, "role">): boolean {
   return VIRTUAL_ROLES.has(device.role);
 }
@@ -472,6 +471,24 @@ export async function ensureConnection(
       where id = ${existing.id}`);
     return { ...settings, id: existing.id };
   }
+  return createConnection(db, plantId, settings);
+}
+
+/**
+ * A SECOND (or third) endpoint for the plant — always an INSERT.
+ *
+ * The add-device path's counterpart to {@link ensureConnection}: that one edits
+ * the plant's first row in place because the single-inverter form is MOVING a
+ * gateway, and this one exists because adding a device on a new gateway must
+ * leave the existing one exactly where it is. A caller that wants "the plant's
+ * endpoint" uses the other function; a caller that has decided a new one is
+ * needed uses this.
+ */
+export async function createConnection(
+  db: PlantDb,
+  plantId: number,
+  settings: ConnectionSettings,
+): Promise<ConnectionRecord> {
   const { rows } = await db.execute(sql`
     insert into connections (plant_id, name, host, port, transport, timeout_ms, poll_interval_ms)
     values (${plantId}, ${settings.name}, ${settings.host}, ${settings.port},
@@ -569,6 +586,50 @@ export async function ensureDevice(db: PlantDb, spec: DeviceSpec): Promise<Devic
   const row = rows[0] as Record<string, unknown> | undefined;
   if (!row) throw new Error(`device ${spec.slug} could not be created`);
   return toDevice(row);
+}
+
+/**
+ * A NEW device, and only a new one — no conflict clause.
+ *
+ * {@link ensureDevice} adopts an existing row on a slug collision because it is
+ * the boot-time provisioner and the row it collides with is the one it meant.
+ * This is the operator's add-device action, where a collision on
+ * `devices_plant_slug_key` or `devices_connection_unit_key` is a MISTAKE they
+ * have to see: two devices with one slug would share an MQTT namespace, and two
+ * on one (gateway, unit id) are the same machine twice. So the engine's
+ * violation is left to propagate; {@link uniqueViolation} names it for the
+ * caller that turns it into a reason.
+ */
+export async function createDevice(db: PlantDb, spec: DeviceSpec): Promise<DeviceRecord> {
+  const { rows } = await db.execute(sql`
+    insert into devices (plant_id, connection_id, unit_id, slug, name, profile_id, role)
+    values (${spec.plantId}, ${spec.connectionId}, ${spec.unitId}, ${spec.slug},
+            ${spec.name}, ${spec.profileId}, ${spec.role})
+    returning ${DEVICE_COLUMNS}`);
+  const row = rows[0] as Record<string, unknown> | undefined;
+  if (!row) throw new Error(`device ${spec.slug} could not be created`);
+  return toDevice(row);
+}
+
+/** SQLSTATE for `unique_violation`. */
+const UNIQUE_VIOLATION = "23505";
+
+/**
+ * The constraint a unique violation names, or null when `error` is not one.
+ *
+ * node-postgres raises a `DatabaseError` carrying `code` and `constraint`, and
+ * drizzle wraps it, so the facts live on `cause` — one level down, sometimes
+ * two. Walking the chain here is what lets a route say "that unit id is taken
+ * on this gateway" rather than 500 on a `DrizzleQueryError` whose message is
+ * the SQL. An empty string means "a violation, but the engine named nothing".
+ */
+export function uniqueViolation(error: unknown): string | null {
+  for (let current = error, depth = 0; current instanceof Error && depth < 4; depth += 1) {
+    const { code, constraint } = current as Error & { code?: unknown; constraint?: unknown };
+    if (code === UNIQUE_VIOLATION) return typeof constraint === "string" ? constraint : "";
+    current = current.cause;
+  }
+  return null;
 }
 
 /**

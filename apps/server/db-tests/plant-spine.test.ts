@@ -222,6 +222,102 @@ suite("the dimension spine", () => {
     expect((rows[0] as { n: number }).n).toBe(1);
   });
 
+  test("createConnection adds a SECOND endpoint to the plant — the first is untouched", async () => {
+    // The add-device dialog's "new connection": a second gateway must not move
+    // the first one, which is exactly what `ensureConnection` would have done.
+    const plant = await freshPlant("spine-conn-create");
+    const first = await repo.ensureConnection(db, plant.id, {
+      name: "Gateway 1",
+      host: "10.0.0.5",
+      port: 502,
+      transport: "tcp",
+      timeoutMs: 2000,
+      pollIntervalMs: 1000,
+    });
+    const second = await repo.createConnection(db, plant.id, {
+      name: "Gateway 2",
+      host: "10.0.0.9",
+      port: 8899,
+      transport: "rtu-over-tcp",
+      timeoutMs: 3000,
+      pollIntervalMs: 2000,
+    });
+    expect(second.id).not.toBe(first.id);
+    expect(second.transport).toBe("rtu-over-tcp");
+    const all = await repo.readConnections(db, plant.id);
+    expect(all.map((c) => c.host)).toEqual(["10.0.0.5", "10.0.0.9"]);
+  });
+
+  test("createDevice refuses a second device on the same (connection, unit id) BY THE ENGINE", async () => {
+    // `devices_connection_unit_key` — and the violation has to be recognisable so
+    // the add-device route can answer 409 with a reason instead of 500.
+    const plant = await freshPlant("spine-dev-create-unit");
+    const gateway = await repo.createConnection(db, plant.id, {
+      name: "Gateway",
+      host: "10.0.0.5",
+      port: 502,
+      transport: "tcp",
+      timeoutMs: 2000,
+      pollIntervalMs: 1000,
+    });
+    const spec = {
+      plantId: plant.id,
+      connectionId: gateway.id,
+      unitId: 1,
+      slug: "inverter",
+      name: "Inverter",
+      profileId: "p",
+      role: "inverter",
+    };
+    const created = await repo.createDevice(db, spec);
+    expect(created.id).toBeGreaterThan(0);
+    expect(created.retiredAt).toBeNull();
+    let caught: unknown = null;
+    try {
+      await repo.createDevice(db, { ...spec, slug: "meter", name: "Meter", role: "meter" });
+    } catch (error) {
+      caught = error;
+    }
+    expect(repo.uniqueViolation(caught)).toBe("devices_connection_unit_key");
+  });
+
+  test("createDevice refuses a slug the plant already uses, and names that constraint", async () => {
+    const plant = await freshPlant("spine-dev-create-slug");
+    const spec = {
+      plantId: plant.id,
+      connectionId: null,
+      unitId: 1,
+      slug: "inverter",
+      name: "Inverter",
+      profileId: "p",
+      role: "inverter",
+    };
+    await repo.createDevice(db, spec);
+    let caught: unknown = null;
+    try {
+      await repo.createDevice(db, { ...spec, unitId: 2 });
+    } catch (error) {
+      caught = error;
+    }
+    expect(repo.uniqueViolation(caught)).toBe("devices_plant_slug_key");
+  });
+
+  test("createDevice lets two endpoint-less devices share a unit id — NULLs are distinct", async () => {
+    const plant = await freshPlant("spine-dev-create-null");
+    const spec = {
+      plantId: plant.id,
+      connectionId: null,
+      unitId: 1,
+      slug: "a",
+      name: "A",
+      profileId: "p",
+      role: "inverter",
+    };
+    const a = await repo.createDevice(db, spec);
+    const b = await repo.createDevice(db, { ...spec, slug: "b", name: "B" });
+    expect(b.id).not.toBe(a.id);
+  });
+
   test("readConnections lists EVERY endpoint of the plant, and only that plant's", async () => {
     // The poll loop resolves each device's endpoint through its own
     // `connection_id` (`apps/server/src/inverter/endpoint.ts`), so it needs the

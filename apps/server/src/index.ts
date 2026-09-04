@@ -36,6 +36,7 @@ import { migrationRoutes } from "./routes/migration";
 import { startBatteryScoring } from "./battery/scoring";
 import { startUpdateChecks, stopUpdateChecks } from "./inverter/profiles";
 import { batteryRoutes } from "./routes/battery";
+import { deviceRoutes } from "./routes/devices";
 import { profileRoutes } from "./routes/profiles";
 import { automationStreamSnapshot } from "./automation/automation";
 import { automationRoutes } from "./routes/automations";
@@ -649,6 +650,8 @@ const app = new Elysia()
   // Profile management: registered list, repo sources, browse/install/activate.
   .use(batteryRoutes({ profile }))
   .use(profileRoutes)
+  // The device roster: list, add on an existing or new gateway, rename, retire.
+  .use(deviceRoutes)
   // User-defined custom charts for the history page (multi-metric overlays).
   .use(customChartsRoutes({ ctx }))
   // The 1.2.0 -> 2.0.0 migration's onboarding surface: the status every page load
