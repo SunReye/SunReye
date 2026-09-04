@@ -162,8 +162,26 @@ async function readLegacyBucketSourceIds(client: UpgradeClient): Promise<string[
     .sort();
 }
 
-/** The median inter-sample gap in the retained legacy raw, in ms. */
+/**
+ * The median inter-sample gap in the retained legacy raw, in ms.
+ *
+ * `null` when there is nothing to measure — and an ABSENT legacy relation is one
+ * of those cases, not an error. Two healthy databases have no legacy raw: a
+ * fresh 2.0.0 install that never had one, and an upgraded install past
+ * `verified`, where the upgrade DROPS the legacy hypertable on purpose. Both
+ * used to make this throw `42P01`, which the caller reported as an ERROR against
+ * a database behaving exactly as designed (#181).
+ *
+ * The existence check is a separate statement rather than a caught exception
+ * because a failed query aborts a surrounding transaction — the caller runs
+ * inside `withUpgradeClient`, and swallowing the error here would hand back a
+ * connection whose next statement fails for reasons no log line explains.
+ */
 export async function readLegacyCadenceMs(client: UpgradeClient): Promise<number | null> {
+  const present = await client.query(`select to_regclass($1) is not null as present`, [
+    LEGACY_NAME.metrics_raw,
+  ]);
+  if (!rowsOf<{ present: boolean }>(present)[0]?.present) return null;
   // One metric, one day, ordered — enough to see the cadence and bounded enough
   // that it cannot become the expensive part of a step measured in milliseconds.
   const result = await client.query(

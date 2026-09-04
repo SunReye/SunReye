@@ -49,6 +49,8 @@ interface Answers {
   bucketSourceIds?: string[];
   /** Inter-sample gaps, ms, as the cadence query returns them. */
   gaps?: (number | string)[];
+  /** Whether `metrics_raw_legacy` exists at all. Absent on a fresh install. */
+  legacyRawPresent?: boolean;
   /** `app_settings.value` for the migration key, verbatim. */
   record?: unknown;
   /** Rows the replay's staged read reports for a chunk. */
@@ -70,6 +72,10 @@ const ROUTES: [RegExp, (a: Answers, text: string, values: readonly unknown[]) =>
     /from information_schema\.columns/,
     (a) => (a.rawColumns ?? []).map((c) => ({ t: "metrics_raw", c })),
   ],
+  // Before the cadence query itself: the cadence read asks whether the legacy
+  // relation exists at all, because on a fresh install (and on an upgraded one
+  // past `verified`, where it is dropped on purpose) it does not — see #181.
+  [/to_regclass/, (a) => [{ present: a.legacyRawPresent ?? true }]],
   [/with sample as/, (a) => (a.gaps ?? []).map((gap) => ({ gap }))],
   [/^select min\(time\)/, (a) => [a.rawWindow ?? { from: null, to: null }]],
   [
@@ -123,6 +129,17 @@ describe("readLegacyCadenceMs", () => {
   test("gaps arriving as strings are still numbers — the driver decides which", async () => {
     const { client } = fake({ gaps: ["5000", "5000", "5000"] });
     expect(await readLegacyCadenceMs(client)).toBe(5000);
+  });
+
+  test("no legacy relation at all is no cadence, and asks nothing further", async () => {
+    // #181: a fresh 2.0.0 install never had `metrics_raw_legacy`, and neither
+    // does an upgraded one past `verified`, which drops it on purpose. Both used
+    // to raise 42P01 and be logged as an ERROR against a healthy database.
+    const { client, statements } = fake({ legacyRawPresent: false, gaps: [1000, 1000] });
+    expect(await readLegacyCadenceMs(client)).toBeNull();
+    // The cadence query must not be issued: it is the one that raises, and a
+    // failed statement would also poison the caller's transaction.
+    expect(statements.some((text) => /with sample as/.test(text))).toBe(false);
   });
 
   test("a raw window with no pair of samples has NO cadence, rather than a made-up one", async () => {

@@ -193,6 +193,21 @@ export async function runMigrationBackfill(
   io: BackfillIo = productionBackfillIo,
 ): Promise<void> {
   const record = await io.readRecord();
+  // An install that never ran a 1.x upgrade has no legacy schema to read, and
+  // asking anyway is not free: `readCadenceMs` measures the cadence from
+  // `metrics_raw_legacy`, which exists ONLY on a database upgraded from 1.x. On
+  // a fresh 2.0.0 install that query throws, and the route reports it as an
+  // ERROR on a database that is behaving perfectly (#181).
+  //
+  // `runBackfill` already answers `null` for a record in this state — this is
+  // the same decision, taken one query earlier, where it is knowable from the
+  // record alone. Any other stage is left alone: `dropped` and `verified` mean a
+  // real migration happened, and their legacy relations being gone is the
+  // driver's business, not this guard's.
+  if (record.stage === "none") {
+    io.info("no 1.x history to migrate: this install has no legacy schema", {});
+    return;
+  }
   const plant = await io.readPlant();
   const target = backfillTarget(
     record,
