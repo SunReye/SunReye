@@ -232,6 +232,12 @@ describe("addDevice", () => {
     expect(calls.indexOf("createConnection")).toBeLessThan(calls.indexOf("createDevice"));
   });
 
+  test("unit id 0 is allowed — many gateways answer a single device on it", async () => {
+    const { deps } = harness();
+    const created = await addDevice(deps, { ...meterInput, unitId: 0 });
+    expect(created.unitId).toBe(0);
+  });
+
   test("the slug is derived from the name the way provisioning derives it", async () => {
     const { deps } = harness();
     const created = await addDevice(deps, { ...meterInput, name: "Zähler Süd  (Keller)" });
@@ -242,7 +248,7 @@ describe("addDevice", () => {
   test.each([
     ["an unknown role", { role: "toaster" }, /role/],
     ["the optimizer — virtual, never user-added", { role: "optimizer" }, /role/],
-    ["unit id 0", { unitId: 0 }, /unit id/i],
+    ["unit id -1", { unitId: -1 }, /unit id/i],
     ["unit id 248", { unitId: 248 }, /unit id/i],
     ["a fractional unit id", { unitId: 1.5 }, /unit id/i],
     ["a blank name", { name: "   " }, /name/],

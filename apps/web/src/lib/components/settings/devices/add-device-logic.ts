@@ -16,9 +16,15 @@ import {
 
 export type SelectOption = { value: string; label: string };
 
-/** Modbus slave ids: 0 is broadcast, 248–255 are reserved — the server's bounds. */
-const UNIT_ID_MIN = 1;
+/** Modbus slave ids, the server's bounds: 0 is allowed (gateways answer on it), 248+ reserved. */
+const UNIT_ID_MIN = 0;
 const UNIT_ID_MAX = 247;
+
+/** Every unit id a device may take, for the picker. */
+export const UNIT_IDS: readonly number[] = Array.from(
+  { length: UNIT_ID_MAX - UNIT_ID_MIN + 1 },
+  (_, i) => UNIT_ID_MIN + i,
+);
 
 /** One `<option>` per connection: its name and, when it has one, its address. */
 export function connectionOptions(connections: readonly ConnectionView[]): SelectOption[] {
@@ -34,24 +40,29 @@ function defaultConnectionName(connections: readonly ConnectionView[]): string {
 }
 
 /**
- * The in-service device already on `unitId` of the chosen connection, or null.
+ * The unit ids already taken on the chosen connection, by in-service devices.
  *
- * A hint, not the rule: `devices_connection_unit_key` is the authority and the
- * server answers 409 either way. Retired devices are skipped because the index
- * skips them too — a retired unit id can be reused.
+ * Only THAT connection: `devices_connection_unit_key` is per gateway, so the
+ * same unit id on another gateway is a different machine and stays free. A
+ * retired device does not hold its id — the index skips it too. A new
+ * connection has no devices yet.
  */
-export function unitConflict(
+export function takenUnitIds(
   devices: readonly DeviceView[],
   connectionChoice: string,
-  unitId: number,
-): DeviceView | null {
-  if (connectionChoice === NEW_CONNECTION) return null;
+): ReadonlySet<number> {
+  if (connectionChoice === NEW_CONNECTION) return new Set();
   const connectionId = Number(connectionChoice);
-  return (
-    devices.find(
-      (d) => d.retiredAt === null && d.connectionId === connectionId && d.unitId === unitId,
-    ) ?? null
+  return new Set(
+    devices
+      .filter((d) => d.retiredAt === null && d.connectionId === connectionId)
+      .map((d) => d.unitId),
   );
+}
+
+/** The lowest free unit id on the connection — the picker's default. */
+function firstFreeUnitId(taken: ReadonlySet<number>): number {
+  return UNIT_IDS.find((id) => !taken.has(id)) ?? UNIT_ID_MIN;
 }
 
 /**
@@ -94,11 +105,15 @@ export function profileGroups(
     }));
 }
 
-/** The dialog's starting state: the first gateway if there is one, unit 1, an inverter. */
-export function emptyForm(connections: readonly ConnectionView[]): AddDeviceForm {
+/** The dialog's starting state: the first gateway if there is one, its first free unit id, an inverter. */
+export function emptyForm(
+  connections: readonly ConnectionView[],
+  devices: readonly DeviceView[] = [],
+): AddDeviceForm {
   const first = connections[0];
+  const choice = first ? String(first.id) : NEW_CONNECTION;
   return {
-    connectionChoice: first ? String(first.id) : NEW_CONNECTION,
+    connectionChoice: choice,
     newConnection: {
       name: defaultConnectionName(connections),
       host: "",
@@ -108,7 +123,7 @@ export function emptyForm(connections: readonly ConnectionView[]): AddDeviceForm
       pollIntervalMs: 1000,
     },
     role: "inverter",
-    unitId: 1,
+    unitId: firstFreeUnitId(takenUnitIds(devices, choice)),
     name: "",
     profileId: "",
   };

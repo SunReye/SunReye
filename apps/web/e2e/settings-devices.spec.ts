@@ -50,11 +50,14 @@ test.describe("adding a device", () => {
     const submit = panel.getByRole("button", { name: "Add device" });
     await expect(submit).toBeDisabled();
 
-    // Unit 2 is the meter's on this gateway — the hint says so before the server has to.
-    await panel.getByLabel("Unit ID").fill("2");
-    await expect(panel.getByText("Unit 2 is already used on this connection.")).toBeVisible();
-    await panel.getByLabel("Unit ID").fill("4");
-    await expect(panel.getByText(/already used/)).toHaveCount(0);
+    // Units 1 and 2 are taken on this gateway (the inverter and the meter), so
+    // the picker offers them disabled and defaults to the first free id — 0.
+    const unit = panel.getByLabel("Unit ID");
+    await expect(unit).toHaveValue("0");
+    await expect(unit.locator("option[value='2']")).toBeDisabled();
+    await expect(unit.locator("option[value='4']")).toBeEnabled();
+    await unit.selectOption("4");
+    await expect(unit).toHaveValue("4");
 
     await panel.getByLabel("Name", { exact: true }).fill("Zähler Süd");
     await expect(panel.getByText("Slug: zahler-sud")).toBeVisible();

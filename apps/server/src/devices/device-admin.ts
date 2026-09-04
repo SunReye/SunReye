@@ -94,8 +94,12 @@ export class DeviceAdminError extends Error {
   }
 }
 
-/** Modbus slave ids: 0 is broadcast, 248–255 are reserved. */
-const UNIT_ID_MIN = 1;
+/**
+ * Modbus slave ids. 0 is the spec's broadcast address, but plenty of gateways
+ * (and the Deye this project grew up on) answer a single device on 0, so it is
+ * allowed; 248–255 are reserved and never a device.
+ */
+const UNIT_ID_MIN = 0;
 const UNIT_ID_MAX = 247;
 
 /** The roles an operator may add. `optimizer` is virtual and registers itself. */

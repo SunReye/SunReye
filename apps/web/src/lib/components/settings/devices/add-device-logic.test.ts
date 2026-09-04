@@ -7,7 +7,7 @@ import {
   emptyForm,
   nameProblem,
   profileGroups,
-  unitConflict,
+  takenUnitIds,
 } from "./add-device-logic";
 import { NEW_CONNECTION } from "./device-types";
 import type { ConnectionView, DeviceView } from "./device-types";
@@ -65,9 +65,9 @@ describe("the default connection name", () => {
   });
 });
 
-describe("unitConflict", () => {
+describe("takenUnitIds", () => {
   const devices = [
-    device({}),
+    device({ unitId: 0 }),
     device({ id: 2, slug: "meter", unitId: 2 }),
     device({
       id: 3,
@@ -78,21 +78,29 @@ describe("unitConflict", () => {
     device({ id: 4, slug: "other-gw", unitId: 1, connectionId: 4 }),
   ];
 
-  test("finds the in-service device already on that unit id of that connection", () => {
-    expect(unitConflict(devices, "3", 2)?.slug).toBe("meter");
+  test("collects the in-service unit ids of THAT connection only — 0 included", () => {
+    expect([...takenUnitIds(devices, "3")].sort()).toEqual([0, 2]);
   });
 
-  test("a retired device does not block its unit id — the server's index ignores it too", () => {
-    expect(unitConflict(devices, "3", 5)).toBeNull();
+  test("a retired device does not hold its unit id — the server's index ignores it too", () => {
+    expect(takenUnitIds(devices, "3").has(5)).toBe(false);
   });
 
-  test("the same unit id on another connection is no conflict", () => {
-    expect(unitConflict(devices, "4", 2)).toBeNull();
-    expect(unitConflict(devices, "3", 1)?.slug).toBe("inverter");
+  test("the same unit id on another connection stays free here", () => {
+    expect(takenUnitIds(devices, "4").has(2)).toBe(false);
+    expect(takenUnitIds(devices, "4").has(1)).toBe(true);
   });
 
-  test("a new connection has no devices yet, so nothing conflicts", () => {
-    expect(unitConflict(devices, NEW_CONNECTION, 1)).toBeNull();
+  test("a new connection has no devices yet, so nothing is taken", () => {
+    expect(takenUnitIds(devices, NEW_CONNECTION).size).toBe(0);
+  });
+
+  test("the form defaults to the lowest free id, and 0 counts as an id", () => {
+    expect(emptyForm([gateway], []).unitId).toBe(0);
+    expect(
+      emptyForm([gateway], [device({ unitId: 0 }), device({ id: 2, slug: "m", unitId: 1 })]).unitId,
+    ).toBe(2);
+    expect(emptyForm([gateway], [device({ unitId: 1 })]).unitId).toBe(0);
   });
 });
 
@@ -215,7 +223,7 @@ describe("buildAddDeviceBody", () => {
   test.each([
     ["no profile", { profileId: "" }],
     ["a bad name", { name: "!!!" }],
-    ["unit id 0", { unitId: 0 }],
+    ["unit id -1", { unitId: -1 }],
     ["unit id 248", { unitId: 248 }],
     ["a fractional unit id", { unitId: 1.5 }],
     [
@@ -230,10 +238,13 @@ describe("buildAddDeviceBody", () => {
     expect(buildAddDeviceBody({ ...filled(), ...over })).toBeNull();
   });
 
-  test("the empty form defaults to the first existing connection, unit 1 and the inverter role", () => {
-    const form = emptyForm([gateway]);
+  test("the empty form defaults to the first connection, its first free unit id and the inverter role", () => {
+    const form = emptyForm(
+      [gateway],
+      [device({ unitId: 0 }), device({ id: 2, slug: "m", unitId: 1 })],
+    );
     expect(form.connectionChoice).toBe("3");
-    expect(form.unitId).toBe(1);
+    expect(form.unitId).toBe(2);
     expect(form.role).toBe("inverter");
     expect(form.newConnection.port).toBe(502);
     expect(form.newConnection.name).toBe("Gateway 2");

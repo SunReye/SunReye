@@ -49,7 +49,7 @@
 	// the wrong defaults for the next one, and the connection list may have grown.
 	$effect(() => {
 		if (open) {
-			form = emptyForm(connections);
+			form = emptyForm(connections, devices);
 			refusal = null;
 			void loadRegistered();
 		}
