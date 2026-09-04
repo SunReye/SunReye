@@ -5,29 +5,40 @@
 	import * as Dialog from '$lib/components/ui/dialog';
 	import * as m from '$lib/paraglide/messages';
 	import type { RegisteredProfile } from '../profile-types';
-	import { type Refusal, buildAddDeviceBody, describeRefusal, emptyForm } from './add-device-logic';
+	import {
+		type Refusal,
+		buildAddDeviceBody,
+		describeRefusal,
+		devicePatch,
+		emptyForm,
+		formFromDevice
+	} from './add-device-logic';
 	import AddressFields from './address-fields.svelte';
 	import ConnectionField from './connection-field.svelte';
 	import type { ConnectionView, DeviceView } from './device-types';
 	import NameField from './name-field.svelte';
 	import ProfileField from './profile-field.svelte';
 
-	// The add-device dialog: pick or create the gateway, address the device on
-	// it, name it, pick the profile that speaks to it. Every choice is a NATIVE
-	// select — the operator is on a phone in a cellar as often as at a desk, and
-	// the platform picker is the one that works there. The rules live in
-	// `./add-device-logic.ts`; each field is its own component; this file holds
-	// the form state and the request.
+	// The device dialog — add, or edit when `device` is set: pick or create the
+	// gateway, address the device on it, name it, pick the profile that speaks to
+	// it. Every choice is a NATIVE select — the operator is on a phone in a cellar
+	// as often as at a desk, and the platform picker is the one that works there.
+	// The rules live in `./add-device-logic.ts`; each field is its own component;
+	// this file holds the form state and the request. An edit sends only what
+	// changed, and cannot create a gateway — that is the connection's own dialog.
 	let {
 		open = $bindable(false),
+		device = null,
 		connections,
 		devices,
-		onAdded
+		onSaved
 	}: {
 		open?: boolean;
+		/** The device being edited, or null to add one. */
+		device?: DeviceView | null;
 		connections: ConnectionView[];
 		devices: DeviceView[];
-		onAdded: (device: DeviceView) => void;
+		onSaved: (device: DeviceView) => void;
 	} = $props();
 
 	// Seeded empty and filled by the open effect below, which is the one place
@@ -38,7 +49,16 @@
 	/** The server's refusal, shown under the field it named. */
 	let refusal = $state<Refusal | null>(null);
 
-	const body = $derived(buildAddDeviceBody(form));
+	const editing = $derived(device !== null);
+	const title = $derived(editing ? m.devices_device_dialog_title() : m.devices_dialog_title());
+	const description = $derived(
+		editing ? m.devices_device_dialog_description() : m.devices_dialog_description()
+	);
+	const submitLabel = $derived(editing ? m.action_save() : m.devices_add());
+	/** For an add, the whole body; for an edit, the changed fields — null while unsendable. */
+	const body = $derived(device ? devicePatch(device, form) : buildAddDeviceBody(form));
+	/** The other devices, so an edit's own unit id is not shown as taken. */
+	const others = $derived(devices.filter((d) => d.id !== device?.id));
 
 	async function loadRegistered() {
 		const { data } = await api.api.profiles.get();
@@ -49,7 +69,7 @@
 	// the wrong defaults for the next one, and the connection list may have grown.
 	$effect(() => {
 		if (open) {
-			form = emptyForm(connections, devices);
+			form = device ? formFromDevice(device, connections) : emptyForm(connections, devices);
 			refusal = null;
 			void loadRegistered();
 		}
@@ -63,7 +83,15 @@
 	function report(error: { value: unknown } | null) {
 		const described = describeRefusal(error?.value, m.error_unknown());
 		if (described.field) refusal = described;
-		else toast.error(m.devices_toast_add_failed({ error: described.message }));
+		else toast.error(
+				(editing ? m.devices_toast_update_failed : m.devices_toast_add_failed)({ error: described.message })
+			);
+	}
+
+	/** The one request an add or an edit makes; the treaty types each arm. */
+	function send() {
+		if (device) return api.api.devices({ id: String(device.id) }).patch(body ?? {});
+		return api.api.devices.post(body ?? {});
 	}
 
 	// `submitting` is not re-checked here: the submit button is disabled while it
@@ -73,14 +101,15 @@
 		if (!body) return;
 		submitting = true;
 		refusal = null;
-		const result = await api.api.devices.post(body);
+		const result = await send();
 		submitting = false;
 		if (!result.data) {
 			report(result.error);
 			return;
 		}
-		toast.success(m.devices_toast_added({ name: result.data.name }));
-		onAdded(result.data as DeviceView);
+		const saved = result.data as DeviceView;
+		toast.success(editing ? m.devices_toast_updated({ name: saved.name }) : m.devices_toast_added({ name: saved.name }));
+		onSaved(saved);
 		open = false;
 	}
 </script>
@@ -88,13 +117,13 @@
 <Dialog.Root bind:open>
 	<Dialog.Content class="max-h-[90dvh] overflow-y-auto sm:max-w-xl">
 		<Dialog.Header>
-			<Dialog.Title>{m.devices_dialog_title()}</Dialog.Title>
-			<Dialog.Description>{m.devices_dialog_description()}</Dialog.Description>
+			<Dialog.Title>{title}</Dialog.Title>
+			<Dialog.Description>{description}</Dialog.Description>
 		</Dialog.Header>
 
 		<form class="flex flex-col gap-4" onsubmit={submit}>
-			<ConnectionField bind:form {connections} {refusal} />
-			<AddressFields bind:form {devices} {refusal} />
+			<ConnectionField bind:form {connections} {refusal} allowNew={!editing} />
+			<AddressFields bind:form devices={others} {refusal} />
 			<NameField bind:form {refusal} />
 			<ProfileField bind:form {registered} {refusal} {onInstalled} />
 
@@ -102,7 +131,7 @@
 				<Button type="button" variant="outline" onclick={() => (open = false)}>
 					{m.action_cancel()}
 				</Button>
-				<Button type="submit" disabled={!body || submitting}>{m.devices_add()}</Button>
+				<Button type="submit" disabled={!body || submitting}>{submitLabel}</Button>
 			</Dialog.Footer>
 		</form>
 	</Dialog.Content>

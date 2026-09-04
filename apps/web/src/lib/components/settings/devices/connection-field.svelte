@@ -12,15 +12,20 @@
 	let {
 		form = $bindable(),
 		connections,
-		refusal
+		refusal,
+		allowNew = true
 	}: {
 		form: AddDeviceForm;
 		connections: ConnectionView[];
 		refusal: Refusal | null;
+		/** Whether the "new connection" arm is offered — not when editing a device. */
+		allowNew?: boolean;
 	} = $props();
 
 	const options = $derived(connectionOptions(connections));
 	const isNew = $derived(form.connectionChoice === NEW_CONNECTION);
+	// The server names the add body's field `connection` and the patch's `connectionId`.
+	const problemField = $derived(refusal?.field === 'connectionId' ? 'connectionId' : 'connection');
 </script>
 
 <div class="flex flex-col gap-1.5">
@@ -29,9 +34,11 @@
 		{#each options as option (option.value)}
 			<NativeSelect.Option value={option.value}>{option.label}</NativeSelect.Option>
 		{/each}
-		<NativeSelect.Option value={NEW_CONNECTION}>{m.devices_connection_new()}</NativeSelect.Option>
+		{#if allowNew}
+			<NativeSelect.Option value={NEW_CONNECTION}>{m.devices_connection_new()}</NativeSelect.Option>
+		{/if}
 	</NativeSelect.Root>
-	<FieldProblem field="connection" {refusal} />
+	<FieldProblem field={problemField} {refusal} />
 </div>
 
 {#if isNew}

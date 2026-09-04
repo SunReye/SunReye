@@ -779,6 +779,12 @@ export async function mockBackend(page: Page, options: BackendOptions = {}): Pro
 
     // ── Devices ─────────────────────────────────────────────────────────────
     if (at("connections")) return json(route, { connections: fixture.CONNECTIONS });
+    if (under("connections") && method === "PATCH") {
+      const current = fixture.CONNECTIONS.find((c) => String(c.id) === id);
+      return json(route, { ...current, ...body() });
+    }
+    if (under("connections") && method === "DELETE")
+      return json(route, { ok: true, id: Number(id) });
     if (at("devices")) {
       if (method === "POST") {
         // Echo the body as the row the server would have made: the slug is the
@@ -809,12 +815,12 @@ export async function mockBackend(page: Page, options: BackendOptions = {}): Pro
     }
     if (under("devices") && method === "PATCH") {
       const current = fixture.devices(MANIFEST).devices.find((d) => String(d.id) === id);
-      const b = body();
+      const { retired, ...fields } = body();
       return json(route, {
         ...current,
-        ...(typeof b.name === "string" ? { name: b.name } : {}),
-        ...(typeof b.retired === "boolean"
-          ? { retiredAt: b.retired ? "2026-02-01T00:00:00.000Z" : null }
+        ...fields,
+        ...(typeof retired === "boolean"
+          ? { retiredAt: retired ? "2026-02-01T00:00:00.000Z" : null }
           : {}),
       });
     }

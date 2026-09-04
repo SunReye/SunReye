@@ -59,6 +59,15 @@ export type AddDeviceBody = {
   profileId: string;
 };
 
+/** What `PATCH /api/devices/:id` takes from the edit dialog; `retired` rides the row's own buttons. */
+export type DevicePatchBody = {
+  name?: string;
+  role?: AddableRole;
+  unitId?: number;
+  connectionId?: number;
+  profileId?: string;
+};
+
 /** The dialog's form state, before it is a request. */
 export type AddDeviceForm = {
   /** A connection id as a string (native select values are strings), or {@link NEW_CONNECTION}. */

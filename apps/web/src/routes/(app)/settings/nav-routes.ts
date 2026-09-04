@@ -30,22 +30,39 @@ export type SettingsRoute = {
   group: SettingsGroup;
   titleKey: MessageKey;
   subtitleKey: MessageKey;
+  /**
+   * Kept out of the rail. A route that only redirects (the old `/settings/inverter`
+   * bookmark) still needs a header while it lands, and still has to be in this
+   * table for the census — but a link to it would be a link to somewhere else.
+   */
+  hidden?: true;
 };
 
 export const SETTINGS_ROUTES: readonly SettingsRoute[] = [
-  {
-    id: "inverter",
-    href: "/settings/inverter",
-    group: "connection",
-    titleKey: "label_inverter",
-    subtitleKey: "settings_sub_inverter",
-  },
   {
     id: "devices",
     href: "/settings/devices",
     group: "connection",
     titleKey: "settings_tab_devices",
     subtitleKey: "settings_sub_devices",
+  },
+  // The pre-2.0 inverter panel: connection + plant facts on one page. Both moved
+  // — the connection into Devices (a gateway is one of several), the facts into
+  // Plant — and the path redirects so bookmarks and the setup wizard's link land.
+  {
+    id: "inverter",
+    href: "/settings/inverter",
+    group: "connection",
+    titleKey: "settings_tab_devices",
+    subtitleKey: "settings_sub_inverter",
+    hidden: true,
+  },
+  {
+    id: "plant",
+    href: "/settings/plant",
+    group: "connection",
+    titleKey: "settings_tab_plant",
+    subtitleKey: "settings_sub_plant",
   },
   {
     id: "sensors",
@@ -161,5 +178,8 @@ export type SettingsHeader = { title: () => string; subtitle: () => string };
 export function settingsHeaderFor(path: string): SettingsHeader | null {
   const route = SETTINGS_ROUTES.find((r) => path === r.href || path.startsWith(`${r.href}/`));
   if (!route) return null;
-  return { title: () => message(route.titleKey), subtitle: () => message(route.subtitleKey) };
+  return {
+    title: () => message(route.titleKey),
+    subtitle: () => message(route.subtitleKey),
+  };
 }

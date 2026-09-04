@@ -3,19 +3,19 @@
 	import * as m from '$lib/paraglide/messages';
 	import type { DeviceView } from './device-types';
 
-	// A retired device offers Restore; one in service offers Rename and Retire.
-	// The polled device cannot be retired from here — that would silence the
-	// plant, and WHICH device is polled is the inverter form's decision.
+	// A retired device offers Restore; one in service offers Edit (the dialog:
+	// name, gateway, unit id, profile) and Retire. The polled device cannot be
+	// retired from here — that would silence the plant; re-point it instead.
 	let {
 		device,
 		busy,
-		onRename,
+		onEdit,
 		onRetire,
 		onRestore
 	}: {
 		device: DeviceView;
 		busy: boolean;
-		onRename: () => void;
+		onEdit: (device: DeviceView) => void;
 		onRetire: (device: DeviceView) => void;
 		onRestore: (device: DeviceView) => void;
 	} = $props();
@@ -29,8 +29,8 @@
 			{m.devices_action_restore()}
 		</Button>
 	{:else}
-		<Button variant="outline" size="sm" class="flex-1 sm:flex-none" disabled={busy} onclick={onRename}>
-			{m.devices_action_rename()}
+		<Button variant="outline" size="sm" class="flex-1 sm:flex-none" disabled={busy} onclick={() => onEdit(device)}>
+			{m.devices_action_edit()}
 		</Button>
 		<Button
 			variant="ghost"

@@ -16,6 +16,60 @@ const open = (page: Page) => openPage(page, "/#/settings/devices");
 const dialog = (page: Page) => page.getByRole("dialog");
 
 test.describe("the roster", () => {
+  test("groups devices under their gateway, and the gateway is edited from its header", async ({
+    page,
+  }) => {
+    const opened = await open(page);
+    // One gateway in the fixture; its header carries the address and the cadence.
+    await expect(
+      page.getByRole("heading", { level: 2, name: "Inverter", exact: true }),
+    ).toBeVisible();
+    await expect(page.getByText(/Modbus TCP · 10\.0\.0\.5:502 · every 1 s/)).toBeVisible();
+    await expect(page.locator("[data-connection='1'] [data-device]")).toHaveCount(3);
+
+    await page.getByRole("button", { name: "Edit connection" }).click();
+    const panel = dialog(page);
+    await expect(panel.getByRole("heading", { name: "Edit connection" })).toBeVisible();
+    await expect(panel.getByLabel("Host")).toHaveValue("10.0.0.5");
+    // Three devices are bound, so there is nothing to delete.
+    await expect(panel.getByRole("button", { name: "Delete" })).toHaveCount(0);
+    await panel.getByLabel("Host").fill("10.0.0.7");
+    await panel.getByRole("button", { name: "Save" }).click();
+    await expect(panel).toHaveCount(0);
+    await expect(page.getByText("Inverter saved.")).toBeVisible();
+    expect(opened.backend.unhandled).toEqual([]);
+    expect(opened.consoleErrors).toEqual([]);
+  });
+
+  test("editing a device opens the dialog on its own values and sends only the change", async ({
+    page,
+  }) => {
+    const opened = await open(page);
+    await page.locator("[data-device='meter']").getByRole("button", { name: "Edit" }).click();
+    const panel = dialog(page);
+    await expect(panel.getByRole("heading", { name: "Edit device" })).toBeVisible();
+    await expect(panel.getByLabel("Name", { exact: true })).toHaveValue("Meter");
+    await expect(panel.getByLabel("Unit ID")).toHaveValue("2");
+    await expect(panel.getByLabel("Profile")).toHaveValue("sungrow-sh10rt");
+    // No "new connection" arm on an edit — a gateway is made from its own dialog.
+    await expect(
+      panel.getByLabel("Connection", { exact: true }).locator("option[value='new']"),
+    ).toHaveCount(0);
+    // Its own unit id is not shown as taken; the inverter's (1) is.
+    await expect(panel.getByLabel("Unit ID").locator("option[value='2']")).toBeEnabled();
+    await expect(panel.getByLabel("Unit ID").locator("option[value='1']")).toBeDisabled();
+
+    const save = panel.getByRole("button", { name: "Save" });
+    await expect(save).toBeDisabled(); // nothing changed yet
+    await panel.getByLabel("Unit ID").selectOption("5");
+    await expect(save).toBeEnabled();
+    await save.click();
+    await expect(panel).toHaveCount(0);
+    await expect(page.getByText("Meter updated.")).toBeVisible();
+    expect(opened.backend.unhandled).toEqual([]);
+    expect(opened.consoleErrors).toEqual([]);
+  });
+
   test("lists every device with its state, retired ones included", async ({ page }) => {
     const opened = await open(page);
     const inverter = page.locator("[data-device='inverter']");

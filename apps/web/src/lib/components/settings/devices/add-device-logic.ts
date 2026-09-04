@@ -8,7 +8,10 @@ import type { RegisteredProfile } from "../profile-types";
 import {
   type AddDeviceBody,
   type AddDeviceForm,
+  type AddableRole,
   type ConnectionView,
+  type DevicePatchBody,
+  type DeviceRoster,
   type DeviceView,
   NEW_CONNECTION,
   type NewConnection,
@@ -170,13 +173,22 @@ export function buildAddDeviceBody(form: AddDeviceForm): AddDeviceBody | null {
   };
 }
 
-export type RefusedField = "name" | "unitId" | "connection" | "role" | "profileId";
+export type RefusedField =
+  | "name"
+  | "unitId"
+  | "connection"
+  | "connectionId"
+  | "role"
+  | "profileId"
+  | "host";
 const REFUSED_FIELDS: ReadonlySet<string> = new Set<RefusedField>([
   "name",
   "unitId",
   "connection",
+  "connectionId",
   "role",
   "profileId",
+  "host",
 ]);
 
 /** Which field a `{ error, field }` refusal points at, so the message lands under it. */
@@ -197,4 +209,108 @@ export function describeRefusal(value: unknown, fallback: string): Refusal {
     field: refusedField(value),
     message: typeof error === "string" ? error : fallback,
   };
+}
+
+/** The devices reached through one gateway — or, with `connection` null, through none. */
+export type ConnectionGroup = {
+  connection: ConnectionView | null;
+  devices: DeviceView[];
+};
+
+/**
+ * The roster as the page shows it: one group per connection in id order, each
+ * holding its devices in roster order, then the endpoint-less devices (simulate,
+ * an imported history whose hardware is gone) under no gateway at all.
+ *
+ * A connection with no devices is a group too. It is the only kind that can be
+ * deleted, and a gateway the operator cannot see is one they cannot delete.
+ */
+export function groupByConnection(roster: DeviceRoster): ConnectionGroup[] {
+  const groups = [...roster.connections]
+    .sort((a, b) => a.id - b.id)
+    .map((connection) => ({
+      connection,
+      devices: roster.devices.filter((d) => d.connectionId === connection.id),
+    }));
+  const orphans = roster.devices.filter((d) => d.connectionId === null);
+  return orphans.length > 0 ? [...groups, { connection: null, devices: orphans }] : groups;
+}
+
+const TRANSPORT_LABELS: Record<string, string> = {
+  tcp: "Modbus TCP",
+  "rtu-over-tcp": "Modbus RTU over TCP",
+};
+
+/** The words under a gateway's name: framing, address, cadence. */
+export function connectionCaption(connection: ConnectionView) {
+  return {
+    transport: TRANSPORT_LABELS[connection.transport] ?? connection.transport,
+    host: connection.host,
+    port: connection.port,
+    seconds: connection.pollIntervalMs / 1000,
+  };
+}
+
+/**
+ * The edit form for an existing device: its own values, on its own gateway. An
+ * endpoint-less device starts on the first gateway so the edit can bind it.
+ */
+export function formFromDevice(
+  device: DeviceView,
+  connections: readonly ConnectionView[],
+): AddDeviceForm {
+  const base = emptyForm(connections);
+  return {
+    ...base,
+    connectionChoice:
+      device.connectionId === null ? base.connectionChoice : String(device.connectionId),
+    role: (device.role as AddableRole) ?? "inverter",
+    unitId: device.unitId,
+    name: device.name,
+    profileId: device.profileId,
+  };
+}
+
+/**
+ * What an edit changes, field by field, or null when the form is not sendable
+ * or changes nothing. Only the changed fields go on the wire: the server's
+ * patch is a merge, and an unchanged unit id re-sent alongside a gateway move
+ * would be a collision check the operator never asked for.
+ */
+export function devicePatch(device: DeviceView, form: AddDeviceForm): DevicePatchBody | null {
+  const body = buildAddDeviceBody(form);
+  if (!body || !("id" in body.connection)) return null;
+  const patch: DevicePatchBody = {};
+  if (body.name !== device.name) patch.name = body.name;
+  if (body.role !== device.role) patch.role = body.role;
+  if (body.unitId !== device.unitId) patch.unitId = body.unitId;
+  if (body.connection.id !== device.connectionId) patch.connectionId = body.connection.id;
+  if (body.profileId !== device.profileId) patch.profileId = body.profileId;
+  return Object.keys(patch).length > 0 ? patch : null;
+}
+
+/** The two shapes a probe answers with — the server's, or the transport's failure. */
+export type ProbeAnswer = {
+  ok: boolean;
+  error?: string;
+  metricCount?: number;
+  durationMs?: number;
+};
+
+export type ProbeOutcome = { ok: boolean; message: string };
+
+/** One line for a probe: metrics and time on success, the reason otherwise. */
+export function describeProbe(
+  answer: ProbeAnswer,
+  words: {
+    ok: (count: number, ms: number) => string;
+    failed: (error: string) => string;
+  },
+): ProbeOutcome {
+  if (answer.ok)
+    return {
+      ok: true,
+      message: words.ok(answer.metricCount ?? 0, answer.durationMs ?? 0),
+    };
+  return { ok: false, message: words.failed(answer.error ?? "") };
 }

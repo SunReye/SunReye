@@ -319,27 +319,40 @@ const ROUTES: readonly SmokeRoute[] = [
   },
   {
     file: "(app)/settings/+page.svelte",
-    h1: "Inverter",
-    landsOn: "/#/settings/inverter",
+    h1: "Devices",
+    landsOn: "/#/settings/devices",
     surface: async (page) => {
-      await heading(page, "Connection");
+      await expect(page.locator("[data-device='inverter']")).toBeVisible();
     },
   },
   {
+    // The pre-2.0 inverter panel: a bookmark that has to keep landing.
     file: "(app)/settings/inverter/+page.svelte",
-    h1: "Inverter",
+    h1: "Devices",
+    landsOn: "/#/settings/devices",
     surface: async (page) => {
-      await heading(page, "Connection");
-      await expect(page.getByLabel("Host")).toHaveValue("10.0.0.5");
+      await expect(page.locator("[data-device='inverter']")).toBeVisible();
+    },
+  },
+  {
+    file: "(app)/settings/plant/+page.svelte",
+    h1: "Plant",
+    // The array row is fed by `/api/settings/weather`; a heading alone would pass
+    // over the loading state.
+    surface: async (page) => {
+      await heading(page, "Plant");
+      await expect(page.getByLabel("Peak power (kWp)").first()).toHaveValue("8.4");
     },
   },
   {
     file: "(app)/settings/devices/+page.svelte",
     h1: "Devices",
     // A row from the payload, not the heading: the section renders its title
-    // over the empty state too, so the polled inverter's slug is the proof.
+    // over the empty state too, so the polled inverter's slug is the proof — and
+    // its gateway's header, which is the grouping the page exists for.
     surface: async (page) => {
       await heading(page, "Devices");
+      await heading(page, "Inverter");
       await expect(page.locator("[data-device='inverter']")).toBeVisible();
     },
   },

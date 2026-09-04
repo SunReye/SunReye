@@ -2,8 +2,13 @@ import { describe, expect, test } from "bun:test";
 
 import {
   buildAddDeviceBody,
+  connectionCaption,
   connectionOptions,
+  describeProbe,
   describeRefusal,
+  devicePatch,
+  formFromDevice,
+  groupByConnection,
   emptyForm,
   nameProblem,
   profileGroups,
@@ -281,5 +286,149 @@ describe("describeRefusal", () => {
       field: null,
       message: "Unknown",
     });
+  });
+});
+
+describe("groupByConnection", () => {
+  const other: ConnectionView = {
+    ...gateway,
+    id: 4,
+    name: "Keller",
+    host: "10.0.0.9",
+  };
+  const devices = [
+    device({ id: 1, slug: "inv", connectionId: 3 }),
+    device({ id: 2, slug: "sim", connectionId: null, connection: null }),
+    device({ id: 3, slug: "meter", connectionId: 3 }),
+    device({ id: 4, slug: "hp", connectionId: 4, connection: other }),
+  ];
+
+  test("one group per connection in id order, its devices in roster order, endpoint-less last", () => {
+    const groups = groupByConnection({
+      connections: [other, gateway],
+      devices,
+    });
+    expect(groups.map((g) => [g.connection?.id ?? null, g.devices.map((d) => d.slug)])).toEqual([
+      [3, ["inv", "meter"]],
+      [4, ["hp"]],
+      [null, ["sim"]],
+    ]);
+  });
+
+  test("a connection with no devices is still a group — that is the one that can be deleted", () => {
+    const groups = groupByConnection({
+      connections: [gateway, other],
+      devices: [devices[0]!],
+    });
+    expect(groups.map((g) => [g.connection?.id ?? null, g.devices.length])).toEqual([
+      [3, 1],
+      [4, 0],
+    ]);
+  });
+
+  test("no endpoint-less group when every device has a gateway", () => {
+    const groups = groupByConnection({
+      connections: [gateway],
+      devices: [devices[0]!],
+    });
+    expect(groups.some((g) => g.connection === null)).toBe(false);
+  });
+});
+
+describe("connectionCaption", () => {
+  test("spells transport, address and cadence in seconds", () => {
+    expect(connectionCaption(gateway)).toEqual({
+      transport: "Modbus TCP",
+      host: "10.0.0.5",
+      port: 502,
+      seconds: 1,
+    });
+    expect(
+      connectionCaption({
+        ...gateway,
+        transport: "rtu-over-tcp",
+        pollIntervalMs: 2500,
+      }).transport,
+    ).toBe("Modbus RTU over TCP");
+    expect(connectionCaption({ ...gateway, pollIntervalMs: 2500 }).seconds).toBe(2.5);
+  });
+});
+
+describe("editing a device", () => {
+  const meter = device({
+    id: 2,
+    slug: "meter",
+    name: "Meter",
+    role: "meter",
+    unitId: 2,
+    profileId: "sdm630",
+  });
+
+  test("the form starts from the device's own values, with no new-connection arm", () => {
+    const form = formFromDevice(meter, [gateway]);
+    expect(form.connectionChoice).toBe("3");
+    expect(form.role).toBe("meter");
+    expect(form.unitId).toBe(2);
+    expect(form.name).toBe("Meter");
+    expect(form.profileId).toBe("sdm630");
+  });
+
+  test("an endpoint-less device starts on the first gateway so it can be bound", () => {
+    expect(
+      formFromDevice({ ...meter, connectionId: null, connection: null }, [gateway])
+        .connectionChoice,
+    ).toBe("3");
+  });
+
+  test("the patch carries ONLY what changed, and nothing when nothing did", () => {
+    const form = formFromDevice(meter, [gateway]);
+    expect(devicePatch(meter, form)).toBeNull();
+    form.unitId = 5;
+    form.name = " Meter ";
+    expect(devicePatch(meter, form)).toEqual({ unitId: 5 });
+    form.connectionChoice = "4";
+    form.profileId = "deye";
+    form.role = "charger";
+    form.name = "Zähler";
+    expect(devicePatch(meter, form)).toEqual({
+      unitId: 5,
+      connectionId: 4,
+      profileId: "deye",
+      role: "charger",
+      name: "Zähler",
+    });
+  });
+
+  test("an invalid edit is null — a blank name, a bad unit id, the new-connection choice", () => {
+    const form = formFromDevice(meter, [gateway]);
+    expect(devicePatch(meter, { ...form, name: "!!!" })).toBeNull();
+    expect(devicePatch(meter, { ...form, unitId: 300 })).toBeNull();
+    expect(devicePatch(meter, { ...form, connectionChoice: NEW_CONNECTION })).toBeNull();
+  });
+});
+
+describe("describeProbe", () => {
+  const words = {
+    ok: (c: number, ms: number) => `${c} in ${ms}`,
+    failed: (e: string) => `failed: ${e}`,
+  };
+
+  test("a good read reports metrics and time, defaulting absent numbers to 0", () => {
+    expect(describeProbe({ ok: true, metricCount: 12, durationMs: 84 }, words)).toEqual({
+      ok: true,
+      message: "12 in 84",
+    });
+    expect(describeProbe({ ok: true }, words)).toEqual({
+      ok: true,
+      message: "0 in 0",
+    });
+  });
+
+  test("a failure carries its reason, or an empty one", () => {
+    expect(describeProbe({ ok: false, error: "timeout" }, words)).toEqual({
+      ok: false,
+      message: "failed: timeout",
+    });
+    expect(describeProbe({ ok: false }, words).message).toBe("failed: ");
   });
 });
