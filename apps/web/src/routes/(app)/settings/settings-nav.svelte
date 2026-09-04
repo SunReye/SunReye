@@ -4,6 +4,7 @@
 	import { SETTINGS_ROUTES, message, type SettingsGroup, type SettingsRoute } from './nav-routes';
 	import * as m from '$lib/paraglide/messages';
 	import LightningIcon from 'phosphor-svelte/lib/Lightning';
+	import PlugsConnectedIcon from 'phosphor-svelte/lib/PlugsConnected';
 	import WaveformIcon from 'phosphor-svelte/lib/Waveform';
 	import BroadcastIcon from 'phosphor-svelte/lib/Broadcast';
 	import MonitorIcon from 'phosphor-svelte/lib/Monitor';
@@ -26,6 +27,7 @@
 	// stay loadable outside a bundler.
 	const ICONS: Record<string, Component> = {
 		inverter: LightningIcon,
+		devices: PlugsConnectedIcon,
 		sensors: WaveformIcon,
 		mqtt: BroadcastIcon,
 		display: MonitorIcon,

@@ -38,6 +38,7 @@ const PANELS = [
   "api-keys",
   "automations",
   "danger",
+  "devices",
   "display",
   "inverter",
   "logs",

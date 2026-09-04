@@ -41,6 +41,13 @@ export const SETTINGS_ROUTES: readonly SettingsRoute[] = [
     subtitleKey: "settings_sub_inverter",
   },
   {
+    id: "devices",
+    href: "/settings/devices",
+    group: "connection",
+    titleKey: "settings_tab_devices",
+    subtitleKey: "settings_sub_devices",
+  },
+  {
     id: "sensors",
     href: "/settings/sensors",
     group: "connection",

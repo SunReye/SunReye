@@ -334,6 +334,16 @@ const ROUTES: readonly SmokeRoute[] = [
     },
   },
   {
+    file: "(app)/settings/devices/+page.svelte",
+    h1: "Devices",
+    // A row from the payload, not the heading: the section renders its title
+    // over the empty state too, so the polled inverter's slug is the proof.
+    surface: async (page) => {
+      await heading(page, "Devices");
+      await expect(page.locator("[data-device='inverter']")).toBeVisible();
+    },
+  },
+  {
     file: "(app)/settings/sensors/+page.svelte",
     h1: "Sensors",
     // The heading alone also renders over the `No sensors available yet.`

@@ -777,6 +777,48 @@ export async function mockBackend(page: Page, options: BackendOptions = {}): Pro
       return json(route, { id: body().id, restartRequired: false });
     }
 
+    // ── Devices ─────────────────────────────────────────────────────────────
+    if (at("connections")) return json(route, { connections: fixture.CONNECTIONS });
+    if (at("devices")) {
+      if (method === "POST") {
+        // Echo the body as the row the server would have made: the slug is the
+        // name's, the connection is resolved (an existing id) or created.
+        const b = body();
+        const choice = b.connection as { id?: number; create?: Record<string, unknown> };
+        const connection = choice.create
+          ? { id: 9, ...choice.create }
+          : (fixture.CONNECTIONS.find((c) => c.id === choice.id) ?? null);
+        return json(route, {
+          id: 42,
+          slug: String(b.name)
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, "-"),
+          name: b.name,
+          profileId: b.profileId,
+          role: b.role,
+          unitId: b.unitId,
+          connectionId: connection?.id ?? null,
+          retiredAt: null,
+          connection,
+          profileName: String(b.profileId),
+          profileKnown: true,
+          polled: false,
+        });
+      }
+      return json(route, fixture.devices(MANIFEST));
+    }
+    if (under("devices") && method === "PATCH") {
+      const current = fixture.devices(MANIFEST).devices.find((d) => String(d.id) === id);
+      const b = body();
+      return json(route, {
+        ...current,
+        ...(typeof b.name === "string" ? { name: b.name } : {}),
+        ...(typeof b.retired === "boolean"
+          ? { retiredAt: b.retired ? "2026-02-01T00:00:00.000Z" : null }
+          : {}),
+      });
+    }
+
     // ── Profiles ────────────────────────────────────────────────────────────
     if (at("profiles/updates")) return json(route, fixture.profileUpdates());
     if (at("profiles/available")) return json(route, fixture.AVAILABLE_PROFILES);
