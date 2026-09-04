@@ -100,51 +100,29 @@ export const plants = pgTable(
     label: text("label").notNull().default(""),
 
     /**
-     * PV arrays: `[{ kwp, tilt, azimuth, deviceSlug?, tempCoefficient?,
-     * systemLoss? }]`, azimuth in the Open-Meteo/PV convention (0 = south,
-     * -90 = east, 90 = west).
+     * LEGACY — the plant-wide PV description, superseded by the same three
+     * columns on `devices` (migration 0005, 2026-09-04).
      *
-     * The one field here that stays JSONB, because it is the one field that is a
-     * LIST. It does not reintroduce the clobber the placement test was written
-     * for: that bug was two *different* settings pages writing two halves of one
-     * JSONB document, and the array is written by exactly one form.
+     * A PV array is a property of the INVERTER its strings feed, not of the
+     * site: with two inverters each has its own roof share and its own module
+     * datasheet, and one plant-wide list cannot say which is which. So
+     * `devices.arrays` / `devices.temp_coefficient` / `devices.system_loss` are
+     * now the authority, and `composeForecastArrays` (`../plant-facts.ts`)
+     * assembles the plant's forecast input from every in-service inverter.
      *
-     * WHY THE ELEMENT CARRIES ITS OWN PHYSICS
-     *
-     * `temp_coefficient` and `system_loss` below are the plant-wide DEFAULTS, and
-     * an element may override either. They had to be overridable somewhere,
-     * because neither is a property of a site: a temperature coefficient of Pmax
-     * is a MODULE datasheet number, and system losses are per-string (soiling,
-     * shading, mismatch, DC wiring) plus per-device (inverter conversion). A
-     * plant with a shaded east string and a clean south one has no single honest
-     * value, which is why `../../../apps/server/src/forecast/forecast-correction.ts`
-     * exists to learn the residual. `pvPowerW` already took both per array; only
-     * the storage collapsed them.
-     *
-     * `deviceSlug` records which device a string feeds. Nothing consumes it yet,
-     * and there is a test asserting it moves no number — the point is that it is
-     * RECORDABLE now, because per-device forecast, per-device clipping and
-     * per-device yield attribution are all unexpressible without it.
-     *
-     * WHY THIS IS STILL JSONB AND `plant_arrays` IS DEFERRED
-     *
-     * A real table is defensible and the deferral is deliberate, not an oversight.
-     * The test 2.0.0 applied to every candidate change was: does the window close
-     * with this release? It closes for anything that re-keys `metrics_raw`, and
-     * for `metric_keys.unit`, whose value is unrecoverable once the profile that
-     * stated it is uninstalled. It does NOT close here — no reading is keyed by an
-     * array, so extracting `plant_arrays` later is a plain additive migration with
-     * no relation to rewrite and no history to re-point.
-     *
-     * What could NOT wait was the element SHAPE: adding these three optional
-     * fields to a JSONB document costs nothing today and would cost a migration
-     * after the extraction. So the shape landed now and the table did not — and
-     * once the elements carry `deviceSlug`, the extraction is mechanical.
+     * These columns stay for one release because three readers still write
+     * them with no device in hand yet — the 1.2.0 upgrade's legacy seed, the
+     * archive import of a 2.0.x archive, and `readLegacyPlant`. Nothing reads
+     * them for a forecast any more: `composeWeatherConfig` copies
+     * `temp_coefficient` / `system_loss` into the two plant-level fallback
+     * fields of `WeatherConfig`, and every array it emits carries its device's
+     * own values, so that fallback is never reached. Dropping them is a follow-up
+     * migration once the archive format has bumped.
      */
     arrays: jsonb("arrays").notNull().default([]),
-    /** Power temperature coefficient of Pmax, %/°C (negative). */
+    /** LEGACY, see {@link arrays}. Power temperature coefficient of Pmax, %/°C. */
     tempCoefficient: doublePrecision("temp_coefficient").notNull().default(-0.4),
-    /** Static system losses, % (inverter, wiring, soiling, mismatch). */
+    /** LEGACY, see {@link arrays}. Static system losses, %. */
     systemLoss: doublePrecision("system_loss").notNull().default(14),
     /** Feed-in cap in W ("solar sell" limit), or null to model no export limit. */
     maxOutputW: doublePrecision("max_output_w"),
@@ -367,6 +345,29 @@ export const devices = pgTable(
     /** `inverter` | `controller` | `meter` | `charger` | `optimizer`. */
     role: text("role").notNull(),
     /**
+     * THE PV DESCRIPTION OF THIS INVERTER — the strings it converts, the panel
+     * physics they obey. Meaningful for `role = 'inverter'`; every other role
+     * keeps the empty default and the settings layer refuses to write one.
+     *
+     * `arrays`: `[{ kwp, tilt, azimuth, tempCoefficient?, systemLoss? }]`,
+     * azimuth in the Open-Meteo/PV convention (0 = south, -90 = east, 90 = west).
+     * JSONB because it is the one field that is a LIST, and one form writes it.
+     * An element may override either coefficient below — a shaded east string
+     * and a clean south one have no single honest loss figure — and `pvPowerW`
+     * has always taken both per array. `deviceSlug` is NOT stored: the row IS
+     * the device, and the compose step stamps the slug on the way out.
+     *
+     * These used to live on `plants` (see the LEGACY note there). They moved
+     * because a second inverter made the plant-wide list unable to say whose
+     * strings were whose — and the forecast, clipping and yield attribution per
+     * inverter are all unexpressible without that.
+     */
+    arrays: jsonb("arrays").notNull().default([]),
+    /** Power temperature coefficient of Pmax, %/°C (negative), this inverter's modules. */
+    tempCoefficient: doublePrecision("temp_coefficient").notNull().default(-0.4),
+    /** Static system losses, % (this inverter's conversion, wiring, soiling, mismatch). */
+    systemLoss: doublePrecision("system_loss").notNull().default(14),
+    /**
      * When this device was taken out of service, or null while it is in service.
      *
      * THE LIFECYCLE FLAG `ON DELETE RESTRICT` MAKES NECESSARY.
@@ -412,6 +413,8 @@ export const devices = pgTable(
     // (NULL, 1) in some engines; an index is explicit that NULLs are distinct.
     uniqueIndex("devices_connection_unit_key").on(t.connectionId, t.unitId),
     index("devices_plant_role_idx").on(t.plantId, t.role),
+    /** Same rule and same reasoning as `plants_temp_coefficient_check` above. */
+    check("devices_temp_coefficient_check", sql`${t.tempCoefficient} <= 0`),
     /**
      * The five roles the read layer branches on.
      *

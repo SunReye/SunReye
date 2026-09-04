@@ -300,6 +300,15 @@ function maybeArray(entry: unknown): PvArray | undefined {
  * kWp sums to the plant's capacity), so a silently shortened list would model a
  * smaller plant than the one that exists and understate every forecast.
  */
+/**
+ * The stored `arrays` JSONB of a device row as a list, or `[]` when it holds
+ * anything a reader could not index into. The device side of
+ * {@link columnsFromPlantRow}'s same rule; one spelling for both tables.
+ */
+export function deviceArraysFrom(value: unknown): PvArray[] {
+  return maybeArrays(value) ?? [];
+}
+
 const maybeArrays: Reader<PvArray[]> = (value) => {
   if (!Array.isArray(value)) return undefined;
   const out: PvArray[] = [];

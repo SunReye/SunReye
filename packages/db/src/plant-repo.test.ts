@@ -371,6 +371,9 @@ describe("devices", () => {
     role: "inverter",
     unitId: "1",
     connectionId: "3",
+    arrays: [{ kwp: 8.4, tilt: 35, azimuth: 0 }],
+    tempCoefficient: "-0.4",
+    systemLoss: "14",
     ...over,
   });
 
@@ -380,6 +383,62 @@ describe("devices", () => {
     expect(devices.map((d) => d.id)).toEqual([4, 5]);
     expect(devices[0]?.connectionId).toBe(3);
     expect(devices[1]?.connectionId).toBeNull();
+  });
+
+  test("a device's PV columns read back parsed and coerced", async () => {
+    const { client } = fakeClient([[deviceRow()]]);
+    const [device] = await readDevices(client, 7);
+    expect(device?.arrays).toEqual([{ kwp: 8.4, tilt: 35, azimuth: 0 }]);
+    expect(device?.tempCoefficient).toBe(-0.4);
+    expect(device?.systemLoss).toBe(14);
+  });
+
+  test("a JSONB arrays column holding garbage reads as no arrays — same rule as the plant's", async () => {
+    const { client } = fakeClient([[deviceRow({ arrays: { not: "a list" } })]]);
+    const [device] = await readDevices(client, 7);
+    expect(device?.arrays).toEqual([]);
+  });
+
+  test("createDevice writes the PV description it was given, cast to jsonb, and DEFAULT where unstated", async () => {
+    const { client, executed } = fakeClient([[deviceRow()]]);
+    await createDevice(client, {
+      plantId: 7,
+      connectionId: 3,
+      unitId: 1,
+      slug: "inverter",
+      name: "Inverter",
+      profileId: "deye",
+      role: "inverter",
+      pv: { arrays: [{ kwp: 8.4, tilt: 35, azimuth: 0 }], tempCoefficient: -0.35 },
+    });
+    const insert = rendered(executed[0]);
+    expect(insert).toContain("arrays, temp_coefficient, system_loss");
+    expect(insert).toContain("::jsonb");
+    // system_loss unstated → the column default, never a hard-coded number.
+    expect(insert).toMatch(/\$\d+::jsonb, \$\d+, default\)/);
+  });
+
+  test("a spec with no pv takes every column default", async () => {
+    const { client, executed } = fakeClient([[deviceRow()]]);
+    await createDevice(client, {
+      plantId: 7,
+      connectionId: null,
+      unitId: 1,
+      slug: "m",
+      name: "M",
+      profileId: "p",
+      role: "meter",
+    });
+    expect(rendered(executed[0])).toContain("default, default, default)");
+  });
+
+  test("updateDevice names each PV field it was given and no other", async () => {
+    const { client, executed } = fakeClient([[], [deviceRow()]]);
+    await updateDevice(client, 4, { pv: { systemLoss: 11 } });
+    const update = rendered(executed[0]);
+    expect(update).toContain("system_loss = ");
+    expect(update).not.toContain("arrays = ");
+    expect(update).not.toContain("temp_coefficient = ");
   });
 
   test("an in-service device reads back with retiredAt null, not undefined", async () => {

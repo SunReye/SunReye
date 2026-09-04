@@ -515,6 +515,86 @@ suite("the dimension spine", () => {
     expect(b.id).not.toBe(a.id);
   });
 
+  test("an inverter's PV description lives on its row — written, read back, defaulted", async () => {
+    const plant = await freshPlant("spine-device-pv");
+    const created = await repo.createDevice(db, {
+      plantId: plant.id,
+      connectionId: null,
+      unitId: 1,
+      slug: "inv",
+      name: "Inv",
+      profileId: "p",
+      role: "inverter",
+      pv: {
+        arrays: [
+          { kwp: 8.4, tilt: 35, azimuth: 0 },
+          { kwp: 3.2, tilt: 20, azimuth: 90, systemLoss: 20 },
+        ],
+        tempCoefficient: -0.35,
+      },
+    });
+    expect(created.arrays).toHaveLength(2);
+    expect(created.arrays[1]?.systemLoss).toBe(20);
+    expect(created.tempCoefficient).toBe(-0.35);
+    expect(created.systemLoss).toBe(14); // the column default
+    const meter = await repo.createDevice(db, {
+      plantId: plant.id,
+      connectionId: null,
+      unitId: 2,
+      slug: "meter",
+      name: "M",
+      profileId: "p",
+      role: "meter",
+    });
+    expect(meter.arrays).toEqual([]);
+    const patched = await repo.updateDevice(db, created.id, { pv: { systemLoss: 9, arrays: [] } });
+    expect(patched.systemLoss).toBe(9);
+    expect(patched.arrays).toEqual([]);
+    expect(patched.tempCoefficient).toBe(-0.35);
+  });
+
+  test("migration 0005's backfill moves the plant's PV description onto its FIRST in-service inverter only", async () => {
+    // The statement is read from the migration file itself, so this proves the
+    // SQL that ships — not a re-typed copy of it.
+    const file = await Bun.file(
+      new URL("../../../packages/db/src/migrations/0005_mean_rhodey.sql", import.meta.url),
+    ).text();
+    const backfill = file.slice(file.indexOf("UPDATE"));
+    const plant = await freshPlant("spine-pv-backfill");
+    await db.execute(sql`update plants set arrays = '[{"kwp": 9.8, "tilt": 30, "azimuth": 0}]'::jsonb,
+      temp_coefficient = -0.3, system_loss = 11 where id = ${plant.id}`);
+    const spec = {
+      plantId: plant.id,
+      connectionId: null,
+      unitId: 1,
+      slug: "old",
+      name: "Old",
+      profileId: "p",
+      role: "inverter",
+    };
+    const retired = await repo.createDevice(db, spec);
+    await repo.updateDevice(db, retired.id, { retiredAt: new Date() });
+    const first = await repo.createDevice(db, { ...spec, unitId: 2, slug: "inv-1", name: "One" });
+    const second = await repo.createDevice(db, { ...spec, unitId: 3, slug: "inv-2", name: "Two" });
+    const meter = await repo.createDevice(db, {
+      ...spec,
+      unitId: 4,
+      slug: "meter",
+      name: "M",
+      role: "meter",
+    });
+    await db.execute(sql.raw(backfill));
+    const after = new Map((await repo.readDevices(db, plant.id)).map((d) => [d.slug, d]));
+    expect(after.get("inv-1")?.arrays).toEqual([{ kwp: 9.8, tilt: 30, azimuth: 0 }]);
+    expect(after.get("inv-1")?.tempCoefficient).toBe(-0.3);
+    expect(after.get("inv-1")?.systemLoss).toBe(11);
+    for (const slug of ["old", "inv-2", "meter"]) {
+      expect(after.get(slug)?.arrays).toEqual([]);
+      expect(after.get(slug)?.systemLoss).toBe(14);
+    }
+    expect([retired.id, first.id, second.id, meter.id].every((id) => id > 0)).toBe(true);
+  });
+
   test("readDevices returns the plant's devices with their roles", async () => {
     const plant = await freshPlant("spine-roles");
     await repo.ensureDevice(db, {

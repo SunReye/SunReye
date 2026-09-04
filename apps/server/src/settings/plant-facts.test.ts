@@ -80,7 +80,16 @@ function memoryStore(seed: { settings?: Record<string, unknown> } = {}) {
     async ensureDevice(spec: DeviceSpec) {
       // A `DeviceSpec` carries no lifecycle flag: a device is created in
       // service, and retirement is an UPDATE.
-      const created = { ...spec, id: nextId++, retiredAt: null };
+      const { pv, ...fields } = spec;
+      const created = {
+        arrays: [],
+        tempCoefficient: -0.4,
+        systemLoss: 14,
+        ...pv,
+        ...fields,
+        id: nextId++,
+        retiredAt: null,
+      };
       devices.push(created);
       return created;
     },
@@ -131,6 +140,9 @@ async function facts(seed: Parameters<typeof memoryStore>[0] = {}) {
     name: "Inverter",
     profileId: "p",
     role: "inverter",
+    arrays: [],
+    tempCoefficient: -0.4,
+    systemLoss: 14,
     retiredAt: null,
     unitId: 1,
     connectionId: null,
@@ -167,6 +179,9 @@ describe("the plant facts accessor", () => {
       name: "Second",
       profileId: "p",
       role: "inverter",
+      arrays: [],
+      tempCoefficient: -0.4,
+      systemLoss: 14,
       retiredAt: null,
       unitId: 2,
       connectionId: null,
@@ -250,6 +265,9 @@ describe("the plant facts accessor", () => {
       name: "Second",
       profileId: "p",
       role: "inverter",
+      arrays: [],
+      tempCoefficient: -0.4,
+      systemLoss: 14,
       retiredAt: null,
       unitId: 2,
       connectionId: null,
@@ -311,6 +329,9 @@ describe("the plant facts accessor", () => {
       name: "Second",
       profileId: "p",
       role: "inverter",
+      arrays: [],
+      tempCoefficient: -0.4,
+      systemLoss: 14,
       retiredAt: null,
       unitId: 2,
       connectionId: null,
@@ -358,6 +379,9 @@ describe("the plant facts accessor", () => {
       name: "GX",
       profileId: "victron",
       role: "controller",
+      arrays: [],
+      tempCoefficient: -0.4,
+      systemLoss: 14,
       retiredAt: null,
       unitId: 100,
       connectionId: null,
@@ -380,6 +404,9 @@ describe("the plant facts accessor", () => {
       name: "Optimizer",
       profileId: "sunreye.optimizer",
       role: "optimizer",
+      arrays: [],
+      tempCoefficient: -0.4,
+      systemLoss: 14,
       retiredAt: null,
       unitId: 0,
       connectionId: null,

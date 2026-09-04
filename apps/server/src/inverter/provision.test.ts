@@ -105,7 +105,16 @@ function memoryStore(seed: { settings?: Record<string, unknown> } = {}) {
       if (existing) return existing;
       // `retiredAt: null` because a `DeviceSpec` carries no lifecycle flag: a
       // device is created in service, and retirement is an UPDATE.
-      const created = { ...spec, id: nextId++, retiredAt: null };
+      const { pv, ...fields } = spec;
+      const created = {
+        arrays: [],
+        tempCoefficient: -0.4,
+        systemLoss: 14,
+        ...pv,
+        ...fields,
+        id: nextId++,
+        retiredAt: null,
+      };
       devices.push(created);
       return created;
     },

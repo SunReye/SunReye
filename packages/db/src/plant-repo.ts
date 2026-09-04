@@ -54,7 +54,12 @@ import { type SQL, sql } from "drizzle-orm";
 
 import type { DeviceBattery } from "./batteries";
 import { jsonDocument } from "./json-value";
-import { type PlantFactColumns, columnsFromPlantRow } from "./plant-facts";
+import {
+  type PlantFactColumns,
+  type PvArray,
+  columnsFromPlantRow,
+  deviceArraysFrom,
+} from "./plant-facts";
 
 /** The subset of a drizzle client this module needs — see `./metric-keys.ts`. */
 export interface PlantDb {
@@ -91,6 +96,13 @@ export interface DeviceRecord {
   role: string;
   unitId: number;
   connectionId: number | null;
+  /**
+   * This inverter's PV description — see `./schema/plants.ts` on `devices`. An
+   * empty list and the two defaults for every other role.
+   */
+  arrays: PvArray[];
+  tempCoefficient: number;
+  systemLoss: number;
   /**
    * When the device was taken out of service, or null while it is in service.
    *
@@ -555,7 +567,8 @@ export async function deleteConnection(db: PlantDb, id: number): Promise<boolean
 
 const DEVICE_COLUMNS = sql`
   id, slug, name, profile_id as "profileId", role, unit_id as "unitId",
-  connection_id as "connectionId", retired_at as "retiredAt"`;
+  connection_id as "connectionId", arrays, temp_coefficient as "tempCoefficient",
+  system_loss as "systemLoss", retired_at as "retiredAt"`;
 
 function toDevice(row: Record<string, unknown>): DeviceRecord {
   return {
@@ -566,8 +579,27 @@ function toDevice(row: Record<string, unknown>): DeviceRecord {
     role: String(row.role),
     unitId: int(row.unitId),
     connectionId: maybeNum(row.connectionId),
+    arrays: deviceArraysFrom(row.arrays),
+    tempCoefficient: int(row.tempCoefficient),
+    systemLoss: int(row.systemLoss),
     retiredAt: maybeDate(row.retiredAt),
   };
+}
+
+/** The three PV columns as a partial INSERT/UPDATE fragment list. */
+function pvAssignments(pv: Partial<DevicePv>): SQL[] {
+  const out: SQL[] = [];
+  if (pv.arrays !== undefined) out.push(sql`arrays = ${JSON.stringify(pv.arrays)}::jsonb`);
+  if (pv.tempCoefficient !== undefined) out.push(sql`temp_coefficient = ${pv.tempCoefficient}`);
+  if (pv.systemLoss !== undefined) out.push(sql`system_loss = ${pv.systemLoss}`);
+  return out;
+}
+
+/** The inverter's PV description, as the device row carries it. */
+export interface DevicePv {
+  arrays: PvArray[];
+  tempCoefficient: number;
+  systemLoss: number;
 }
 
 /** How {@link readDevices} treats devices that are out of service. */
@@ -616,6 +648,20 @@ export interface DeviceSpec {
   name: string;
   profileId: string;
   role: string;
+  /**
+   * The inverter's PV description at creation; absent fields take the column
+   * defaults (no arrays, -0.4 %/°C, 14 %). Creation only — see {@link
+   * ensureDevice} for why an existing row is never overwritten.
+   */
+  pv?: Partial<DevicePv>;
+}
+
+/** The PV columns of a spec as a VALUES fragment — defaults where unstated. */
+function pvValues(pv: Partial<DevicePv> | undefined): SQL {
+  const arrays = pv?.arrays === undefined ? sql`default` : sql`${JSON.stringify(pv.arrays)}::jsonb`;
+  const temp = pv?.tempCoefficient === undefined ? sql`default` : sql`${pv.tempCoefficient}`;
+  const loss = pv?.systemLoss === undefined ? sql`default` : sql`${pv.systemLoss}`;
+  return sql`${arrays}, ${temp}, ${loss}`;
 }
 
 /**
@@ -630,9 +676,10 @@ export interface DeviceSpec {
  */
 export async function ensureDevice(db: PlantDb, spec: DeviceSpec): Promise<DeviceRecord> {
   await db.execute(sql`
-    insert into devices (plant_id, connection_id, unit_id, slug, name, profile_id, role)
+    insert into devices (plant_id, connection_id, unit_id, slug, name, profile_id, role,
+                         arrays, temp_coefficient, system_loss)
     values (${spec.plantId}, ${spec.connectionId}, ${spec.unitId}, ${spec.slug},
-            ${spec.name}, ${spec.profileId}, ${spec.role})
+            ${spec.name}, ${spec.profileId}, ${spec.role}, ${pvValues(spec.pv)})
     on conflict (plant_id, slug) do nothing`);
   const { rows } = await db.execute(sql`
     select ${DEVICE_COLUMNS} from devices
@@ -656,9 +703,10 @@ export async function ensureDevice(db: PlantDb, spec: DeviceSpec): Promise<Devic
  */
 export async function createDevice(db: PlantDb, spec: DeviceSpec): Promise<DeviceRecord> {
   const { rows } = await db.execute(sql`
-    insert into devices (plant_id, connection_id, unit_id, slug, name, profile_id, role)
+    insert into devices (plant_id, connection_id, unit_id, slug, name, profile_id, role,
+                         arrays, temp_coefficient, system_loss)
     values (${spec.plantId}, ${spec.connectionId}, ${spec.unitId}, ${spec.slug},
-            ${spec.name}, ${spec.profileId}, ${spec.role})
+            ${spec.name}, ${spec.profileId}, ${spec.role}, ${pvValues(spec.pv)})
     returning ${DEVICE_COLUMNS}`);
   const row = rows[0] as Record<string, unknown> | undefined;
   if (!row) throw new Error(`device ${spec.slug} could not be created`);
@@ -696,6 +744,8 @@ export interface DevicePatch {
   role?: string;
   unitId?: number;
   connectionId?: number | null;
+  /** The inverter's PV description; each field independently, like the rest. */
+  pv?: Partial<DevicePv>;
   /**
    * Take the device out of service, or (with `null`) bring it back.
    *
@@ -730,6 +780,7 @@ export async function updateDevice(
   if (patch.connectionId !== undefined) {
     assignments.push(sql`connection_id = ${patch.connectionId}`);
   }
+  if (patch.pv) assignments.push(...pvAssignments(patch.pv));
   if (patch.retiredAt !== undefined) assignments.push(sql`retired_at = ${patch.retiredAt}`);
   if (assignments.length > 0) {
     await db.execute(sql`update devices set ${sql.join(assignments, sql`, `)} where id = ${id}`);

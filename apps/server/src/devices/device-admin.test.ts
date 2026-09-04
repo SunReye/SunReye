@@ -46,6 +46,9 @@ const inverter: DeviceRecord = {
   role: "inverter",
   unitId: 1,
   connectionId: 3,
+  arrays: [],
+  tempCoefficient: -0.4,
+  systemLoss: 14,
   retiredAt: null,
 };
 
@@ -101,6 +104,9 @@ function harness(
           role: spec.role,
           unitId: spec.unitId,
           connectionId: spec.connectionId,
+          arrays: [],
+          tempCoefficient: -0.4,
+          systemLoss: 14,
           retiredAt: null,
         };
         devices.push(created);

@@ -254,6 +254,26 @@ suite("the schema's CHECK constraints", () => {
     });
   });
 
+  describe("devices.temp_coefficient", () => {
+    // The device column mirrors the plant's rule, for the same reason: a
+    // positive coefficient inverts the derate and the forecast predicts MORE
+    // power on the hottest afternoon.
+    test("zero and a negative coefficient are accepted", async () => {
+      expect(
+        await failure(sql`update devices set temp_coefficient = -0.35 where id = ${deviceId}`),
+      ).toBe("");
+      expect(
+        await failure(sql`update devices set temp_coefficient = 0 where id = ${deviceId}`),
+      ).toBe("");
+    });
+
+    test("a positive coefficient is refused", async () => {
+      const error = await failure(sql`
+        update devices set temp_coefficient = 0.4 where id = ${deviceId}`);
+      expect(error).toContain("devices_temp_coefficient_check");
+    });
+  });
+
   describe("forecast_correction_cells month and hour", () => {
     // The grid is keyed by plant-local `(month, hour)`. A cell outside the
     // calendar is never read back — the learner writes it, the forecast looks
