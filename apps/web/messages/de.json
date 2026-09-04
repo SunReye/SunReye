@@ -284,7 +284,7 @@
   "plant_title": "Anlage",
   "plant_battery_nominal_v": "Nennspannung (V)",
   "plant_battery_nominal_v_desc": "Rechnet Leistung in Ladestrom um, wenn der Wechselrichter keine aktuelle Batteriespannung meldet.",
-  "plant_desc": "Was die Anlage physisch ist: wie viel PV in welche Richtung zeigt, was der Netzanschluss aufnimmt und was der Speicher fasst. Sowohl die Ertragsprognose als auch die Automationen lesen diese Werte.",
+  "plant_desc": "Was der Standort ist: was der Netzanschluss aufnimmt, die Grundlast des Hauses und ob ein Smart-Meter-Gateway installiert ist. Dach und Batterie werden an jedem Wechselrichter unter Geräte beschrieben.",
   "plant_toast_saved": "Anlagendaten gespeichert.",
   "plant_toast_error": "Anlagendaten konnten nicht gespeichert werden.",
   "weather_forecast_plant_hint": "PV-Flächen, Einspeisegrenze, Batterie und iMSys-Einbaudatum stehen unter Einstellungen → Wechselrichter.",
@@ -1000,5 +1000,8 @@
   "devices_toast_connection_deleted": "{name} gelöscht.",
   "devices_toast_connection_delete_failed": "Verbindung konnte nicht gelöscht werden: {error}",
   "devices_test_ok": "{count} Messwerte in {ms} ms gelesen.",
-  "devices_test_nothing": "Füge ein Gerät an diesem Gateway hinzu, um es zu testen."
+  "devices_test_nothing": "Füge ein Gerät an diesem Gateway hinzu, um es zu testen.",
+  "devices_battery_heading": "Batterie",
+  "devices_meta_kwp": "{kwp} kWp",
+  "devices_meta_kwh": "{kwh} kWh"
 }

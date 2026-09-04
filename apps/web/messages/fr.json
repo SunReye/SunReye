@@ -284,7 +284,7 @@
   "plant_title": "Installation",
   "plant_battery_nominal_v": "Tension nominale (V)",
   "plant_battery_nominal_v_desc": "Sert à convertir la puissance en courant de charge quand l'onduleur ne rapporte pas la tension réelle de la batterie.",
-  "plant_desc": "Ce que l'installation est physiquement : quelle puissance PV est orientée dans quelle direction, ce que le raccordement accepte et ce que la batterie contient. La prévision solaire comme les automatisations les lisent.",
+  "plant_desc": "Ce qu'est le site : ce que le raccordement au réseau accepte, la consommation de base de la maison et si une passerelle de compteur intelligent est installée. Le toit et la batterie se décrivent sur chaque onduleur, dans Appareils.",
   "plant_toast_saved": "Réglages de l'installation enregistrés.",
   "plant_toast_error": "Impossible d'enregistrer les réglages de l'installation.",
   "weather_forecast_plant_hint": "Les surfaces PV, la limite d'injection, la batterie et la date du compteur communicant se trouvent dans Réglages → Onduleur.",
@@ -1000,5 +1000,8 @@
   "devices_toast_connection_deleted": "{name} supprimée.",
   "devices_toast_connection_delete_failed": "La suppression de la connexion a échoué : {error}",
   "devices_test_ok": "{count} mesures lues en {ms} ms.",
-  "devices_test_nothing": "Ajoutez un appareil sur cette passerelle pour la tester."
+  "devices_test_nothing": "Ajoutez un appareil sur cette passerelle pour la tester.",
+  "devices_battery_heading": "Batterie",
+  "devices_meta_kwp": "{kwp} kWp",
+  "devices_meta_kwh": "{kwh} kWh"
 }

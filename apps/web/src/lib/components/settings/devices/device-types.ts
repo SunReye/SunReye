@@ -3,6 +3,8 @@
 // treaty carries the same shape, these names exist so components can type a
 // prop without reaching into the treaty's inferred response.
 
+import type { InverterFields, InverterTexts } from "$lib/settings/inverter-fields";
+
 export type Transport = "tcp" | "rtu-over-tcp";
 
 export type ConnectionView = {
@@ -26,6 +28,11 @@ export type DeviceView = {
   /** ISO timestamp while retired, null in service. */
   retiredAt: string | null;
   connection: ConnectionView | null;
+  /** The inverter's roof and pack; empty/defaults/null on every other role. */
+  arrays: InverterFields["arrays"];
+  tempCoefficient: number;
+  systemLoss: number;
+  battery: InverterFields["battery"];
   profileName: string | null;
   profileKnown: boolean;
   /** The one device the poll loop reads in this release. */
@@ -57,7 +64,7 @@ export type AddDeviceBody = {
   unitId: number;
   name: string;
   profileId: string;
-};
+} & Partial<InverterFields>;
 
 /** What `PATCH /api/devices/:id` takes from the edit dialog; `retired` rides the row's own buttons. */
 export type DevicePatchBody = {
@@ -66,7 +73,7 @@ export type DevicePatchBody = {
   unitId?: number;
   connectionId?: number;
   profileId?: string;
-};
+} & Partial<InverterFields>;
 
 /** The dialog's form state, before it is a request. */
 export type AddDeviceForm = {
@@ -77,6 +84,8 @@ export type AddDeviceForm = {
   unitId: number;
   name: string;
   profileId: string;
+  /** The inverter section's texts; only sent when the role is `inverter`. */
+  inverter: InverterTexts;
 };
 
 /** The `<select>` value that means "create a connection". Never a real id. */

@@ -284,7 +284,7 @@
   "plant_title": "Plant",
   "plant_battery_nominal_v": "Nominal voltage (V)",
   "plant_battery_nominal_v_desc": "Used to convert power into charge current when the inverter reports no live battery voltage.",
-  "plant_desc": "What the system physically is: how much PV faces which way, what the grid connection will take, and what the battery holds. The solar forecast and the automations both read these.",
+  "plant_desc": "What the site is: what the grid connection will take, the house's baseline draw, and whether a smart-meter gateway is installed. The roof and the battery are described on each inverter under Devices.",
   "plant_toast_saved": "Plant settings saved.",
   "plant_toast_error": "Could not save the plant settings.",
   "weather_forecast_plant_hint": "The PV surfaces, export limit, battery and smart-meter date the forecast uses live under Settings → Inverter.",
@@ -1000,5 +1000,8 @@
   "devices_toast_connection_deleted": "{name} deleted.",
   "devices_toast_connection_delete_failed": "Deleting the connection failed: {error}",
   "devices_test_ok": "{count} metrics read in {ms} ms.",
-  "devices_test_nothing": "Add a device on this gateway to test it."
+  "devices_test_nothing": "Add a device on this gateway to test it.",
+  "devices_battery_heading": "Battery",
+  "devices_meta_kwp": "{kwp} kWp",
+  "devices_meta_kwh": "{kwh} kWh"
 }

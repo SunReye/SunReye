@@ -70,6 +70,38 @@ test.describe("the roster", () => {
     expect(opened.consoleErrors).toEqual([]);
   });
 
+  test("an inverter's roof and pack are edited in its dialog; a meter has neither", async ({
+    page,
+  }) => {
+    const opened = await open(page);
+    // The row summarises what the dialog edits.
+    await expect(page.locator("[data-device='inverter']").getByText("8.4 kWp")).toBeVisible();
+    await expect(page.locator("[data-device='inverter']").getByText("10 kWh")).toBeVisible();
+
+    await page.locator("[data-device='meter']").getByRole("button", { name: "Edit" }).click();
+    let panel = dialog(page);
+    await expect(panel.getByText("PV arrays")).toHaveCount(0);
+    await panel.getByRole("button", { name: "Cancel" }).click();
+
+    await page.locator("[data-device='inverter']").getByRole("button", { name: "Edit" }).click();
+    panel = dialog(page);
+    await expect(panel.getByLabel("Peak power (kWp)").first()).toHaveValue("8.4");
+    await expect(panel.getByLabel("Usable battery (kWh)")).toHaveValue("10");
+    const save = panel.getByRole("button", { name: "Save" });
+    await expect(save).toBeDisabled();
+
+    await panel.getByRole("button", { name: "Add array" }).click();
+    // Only the first row carries the column labels; later rows are reached by id.
+    await panel.locator("#array-kwp-1").fill("3.2");
+    await panel.getByLabel("Battery reserve (%)").fill("15");
+    await expect(save).toBeEnabled();
+    await save.click();
+    await expect(panel).toHaveCount(0);
+    await expect(page.getByText("Inverter updated.")).toBeVisible();
+    expect(opened.backend.unhandled).toEqual([]);
+    expect(opened.consoleErrors).toEqual([]);
+  });
+
   test("lists every device with its state, retired ones included", async ({ page }) => {
     const opened = await open(page);
     const inverter = page.locator("[data-device='inverter']");

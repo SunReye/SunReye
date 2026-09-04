@@ -337,11 +337,12 @@ const ROUTES: readonly SmokeRoute[] = [
   {
     file: "(app)/settings/plant/+page.svelte",
     h1: "Plant",
-    // The array row is fed by `/api/settings/weather`; a heading alone would pass
-    // over the loading state.
+    // The feed-in field only exists once `/api/settings/weather` arrived; the
+    // cap helper's chips prove the composed arrays (8.4 kWp) came with it.
     surface: async (page) => {
       await heading(page, "Plant");
-      await expect(page.getByLabel("Peak power (kWp)").first()).toHaveValue("8.4");
+      await expect(page.getByLabel("Max grid feed-in (kW)")).toBeVisible();
+      await expect(page.getByRole("button", { name: "60 %" })).toBeVisible();
     },
   },
   {

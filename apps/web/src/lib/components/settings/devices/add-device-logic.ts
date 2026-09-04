@@ -3,6 +3,12 @@
 // name is unusable, and what the form turns into on the wire. The component is
 // left with binding and rendering.
 
+import {
+  DEFAULT_INVERTER_TEXTS,
+  type InverterFields,
+  inverterTextsFrom,
+  parseInverterFields,
+} from "$lib/settings/inverter-fields";
 import { SLUG_MAX, slugify } from "$lib/slug";
 import type { RegisteredProfile } from "../profile-types";
 import {
@@ -129,7 +135,18 @@ export function emptyForm(
     unitId: firstFreeUnitId(takenUnitIds(devices, choice)),
     name: "",
     profileId: "",
+    inverter: { ...DEFAULT_INVERTER_TEXTS, arrays: [] },
   };
+}
+
+/**
+ * The inverter section as the request wants it: the parsed fields for an
+ * inverter, nothing at all for any other role (the server refuses them there),
+ * and `null` when a filled field cannot be read — which blocks the submit.
+ */
+function inverterOf(form: AddDeviceForm): Partial<InverterFields> | null {
+  if (form.role !== "inverter") return {};
+  return parseInverterFields(form.inverter);
 }
 
 function validUnitId(unitId: number): boolean {
@@ -164,12 +181,15 @@ export function buildAddDeviceBody(form: AddDeviceForm): AddDeviceBody | null {
   if (!validUnitId(form.unitId)) return null;
   if (nameProblem(form.name) !== null) return null;
   if (form.profileId === "") return null;
+  const inverter = inverterOf(form);
+  if (inverter === null) return null;
   return {
     connection,
     role: form.role,
     unitId: form.unitId,
     name: form.name.trim(),
     profileId: form.profileId,
+    ...inverter,
   };
 }
 
@@ -268,25 +288,46 @@ export function formFromDevice(
     unitId: device.unitId,
     name: device.name,
     profileId: device.profileId,
+    inverter: inverterTextsFrom(device),
   };
 }
+
+/** Structural equality for the two JSON-shaped inverter fields. */
+const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
+
+/**
+ * The fields an edit may change, each with what the device currently says.
+ * `connectionId` is read off the body's connection arm; the rest are named
+ * alike on both sides. Arrays and the pack compare by value.
+ */
+const PATCHABLE = [
+  "name",
+  "role",
+  "unitId",
+  "profileId",
+  "arrays",
+  "tempCoefficient",
+  "systemLoss",
+  "battery",
+] as const;
 
 /**
  * What an edit changes, field by field, or null when the form is not sendable
  * or changes nothing. Only the changed fields go on the wire: the server's
  * patch is a merge, and an unchanged unit id re-sent alongside a gateway move
- * would be a collision check the operator never asked for.
+ * would be a collision check the operator never asked for. A meter's body
+ * carries no inverter field, so none can be sent for it.
  */
 export function devicePatch(device: DeviceView, form: AddDeviceForm): DevicePatchBody | null {
   const body = buildAddDeviceBody(form);
   if (!body || !("id" in body.connection)) return null;
-  const patch: DevicePatchBody = {};
-  if (body.name !== device.name) patch.name = body.name;
-  if (body.role !== device.role) patch.role = body.role;
-  if (body.unitId !== device.unitId) patch.unitId = body.unitId;
+  const patch: Record<string, unknown> = {};
+  for (const key of PATCHABLE) {
+    const next = body[key];
+    if (next !== undefined && !same(next, device[key])) patch[key] = next;
+  }
   if (body.connection.id !== device.connectionId) patch.connectionId = body.connection.id;
-  if (body.profileId !== device.profileId) patch.profileId = body.profileId;
-  return Object.keys(patch).length > 0 ? patch : null;
+  return Object.keys(patch).length > 0 ? (patch as DevicePatchBody) : null;
 }
 
 /** The two shapes a probe answers with — the server's, or the transport's failure. */

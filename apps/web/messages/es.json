@@ -284,7 +284,7 @@
   "plant_title": "Instalación",
   "plant_battery_nominal_v": "Tensión nominal (V)",
   "plant_battery_nominal_v_desc": "Sirve para convertir potencia en corriente de carga cuando el inversor no informa de la tensión real de la batería.",
-  "plant_desc": "Lo que la instalación es físicamente: cuánta fotovoltaica mira en cada dirección, qué admite la conexión a red y qué almacena la batería. Los leen tanto la previsión solar como las automatizaciones.",
+  "plant_desc": "Qué es el emplazamiento: lo que admite la conexión a red, el consumo base de la casa y si hay instalada una pasarela de contador inteligente. El tejado y la batería se describen en cada inversor, en Dispositivos.",
   "plant_toast_saved": "Ajustes de la instalación guardados.",
   "plant_toast_error": "No se han podido guardar los ajustes de la instalación.",
   "weather_forecast_plant_hint": "Las superficies FV, el límite de inyección, la batería y la fecha del contador inteligente están en Ajustes → Inversor.",
@@ -1000,5 +1000,8 @@
   "devices_toast_connection_deleted": "{name} eliminada.",
   "devices_toast_connection_delete_failed": "No se pudo eliminar la conexión: {error}",
   "devices_test_ok": "{count} métricas leídas en {ms} ms.",
-  "devices_test_nothing": "Añade un dispositivo en esta pasarela para probarla."
+  "devices_test_nothing": "Añade un dispositivo en esta pasarela para probarla.",
+  "devices_battery_heading": "Batería",
+  "devices_meta_kwp": "{kwp} kWp",
+  "devices_meta_kwh": "{kwh} kWh"
 }

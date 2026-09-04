@@ -511,6 +511,28 @@ export async function createConnection(
   return toConnection(row);
 }
 
+/**
+ * `UPDATE … WHERE id` for the assignments given, then the row as it now stands —
+ * or no UPDATE at all when nothing was named, because `set` with no assignments
+ * is a syntax error and an empty patch is a read. Shared by the two by-id
+ * edits so the two cannot disagree about that rule.
+ */
+async function updateThenRead(
+  db: PlantDb,
+  table: SQL,
+  id: number,
+  assignments: readonly SQL[],
+  columns: SQL,
+): Promise<Record<string, unknown> | undefined> {
+  if (assignments.length > 0) {
+    await db.execute(
+      sql`update ${table} set ${sql.join([...assignments], sql`, `)} where id = ${id}`,
+    );
+  }
+  const { rows } = await db.execute(sql`select ${columns} from ${table} where id = ${id}`);
+  return rows[0] as Record<string, unknown> | undefined;
+}
+
 /** What may change on an existing endpoint. `plant_id` is not: moving a gateway between plants moves every device on it. */
 export interface ConnectionPatch {
   name?: string;
@@ -541,15 +563,7 @@ export async function updateConnection(
   if (patch.pollIntervalMs !== undefined) {
     assignments.push(sql`poll_interval_ms = ${patch.pollIntervalMs}`);
   }
-  if (assignments.length > 0) {
-    await db.execute(
-      sql`update connections set ${sql.join(assignments, sql`, `)} where id = ${id}`,
-    );
-  }
-  const { rows } = await db.execute(
-    sql`select ${CONNECTION_COLUMNS} from connections where id = ${id}`,
-  );
-  const row = rows[0] as Record<string, unknown> | undefined;
+  const row = await updateThenRead(db, sql`connections`, id, assignments, CONNECTION_COLUMNS);
   if (!row) throw new Error(`connection ${id} does not exist`);
   return toConnection(row);
 }
@@ -782,11 +796,7 @@ export async function updateDevice(
   }
   if (patch.pv) assignments.push(...pvAssignments(patch.pv));
   if (patch.retiredAt !== undefined) assignments.push(sql`retired_at = ${patch.retiredAt}`);
-  if (assignments.length > 0) {
-    await db.execute(sql`update devices set ${sql.join(assignments, sql`, `)} where id = ${id}`);
-  }
-  const { rows } = await db.execute(sql`select ${DEVICE_COLUMNS} from devices where id = ${id}`);
-  const row = rows[0] as Record<string, unknown> | undefined;
+  const row = await updateThenRead(db, sql`devices`, id, assignments, DEVICE_COLUMNS);
   if (!row) throw new Error(`device ${id} does not exist`);
   return toDevice(row);
 }

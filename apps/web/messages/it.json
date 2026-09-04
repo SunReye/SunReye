@@ -284,7 +284,7 @@
   "plant_title": "Impianto",
   "plant_battery_nominal_v": "Tensione nominale (V)",
   "plant_battery_nominal_v_desc": "Serve a convertire la potenza in corrente di carica quando l'inverter non riporta la tensione reale della batteria.",
-  "plant_desc": "Che cos'è fisicamente l'impianto: quanto fotovoltaico è esposto in quale direzione, cosa accetta la connessione di rete e quanto contiene la batteria. Li leggono sia la previsione solare sia le automazioni.",
+  "plant_desc": "Cos'è il sito: quanto accetta la connessione alla rete, il carico base della casa e se è installato un gateway del contatore intelligente. Tetto e batteria si descrivono su ciascun inverter, in Dispositivi.",
   "plant_toast_saved": "Impostazioni impianto salvate.",
   "plant_toast_error": "Impossibile salvare le impostazioni dell'impianto.",
   "weather_forecast_plant_hint": "Superfici FV, limite di immissione, batteria e data del contatore intelligente si trovano in Impostazioni → Inverter.",
@@ -1000,5 +1000,8 @@
   "devices_toast_connection_deleted": "{name} eliminata.",
   "devices_toast_connection_delete_failed": "Eliminazione della connessione non riuscita: {error}",
   "devices_test_ok": "{count} metriche lette in {ms} ms.",
-  "devices_test_nothing": "Aggiungi un dispositivo su questo gateway per testarlo."
+  "devices_test_nothing": "Aggiungi un dispositivo su questo gateway per testarlo.",
+  "devices_battery_heading": "Batteria",
+  "devices_meta_kwp": "{kwp} kWp",
+  "devices_meta_kwh": "{kwh} kWh"
 }

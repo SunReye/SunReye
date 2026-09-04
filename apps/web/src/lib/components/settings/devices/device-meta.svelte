@@ -5,6 +5,14 @@
 	// Where the device lives: its frozen slug, its profile, its unit id. The
 	// gateway is the group header above it, not repeated per row.
 	let { device }: { device: DeviceView } = $props();
+
+	const kwp = $derived(device.arrays.reduce((sum, a) => sum + a.kwp, 0));
+	const summary = $derived.by(() => {
+		const parts: string[] = [];
+		if (kwp > 0) parts.push(m.devices_meta_kwp({ kwp: String(Math.round(kwp * 100) / 100) }));
+		if (device.battery) parts.push(m.devices_meta_kwh({ kwh: String(device.battery.usableKwh) }));
+		return parts;
+	});
 </script>
 
 <span class="flex flex-wrap gap-x-2 text-xs text-muted-foreground">
@@ -17,4 +25,8 @@
 	{/if}
 	<span>·</span>
 	<span>{m.devices_unit({ id: device.unitId })}</span>
+	{#each summary as part (part)}
+		<span>·</span>
+		<span>{part}</span>
+	{/each}
 </span>

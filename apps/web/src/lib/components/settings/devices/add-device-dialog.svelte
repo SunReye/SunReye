@@ -16,6 +16,7 @@
 	import AddressFields from './address-fields.svelte';
 	import ConnectionField from './connection-field.svelte';
 	import type { ConnectionView, DeviceView } from './device-types';
+	import InverterSection from './inverter-section.svelte';
 	import NameField from './name-field.svelte';
 	import ProfileField from './profile-field.svelte';
 
@@ -55,6 +56,7 @@
 		editing ? m.devices_device_dialog_description() : m.devices_dialog_description()
 	);
 	const submitLabel = $derived(editing ? m.action_save() : m.devices_add());
+	const isInverter = $derived(form.role === 'inverter');
 	/** For an add, the whole body; for an edit, the changed fields — null while unsendable. */
 	const body = $derived(device ? devicePatch(device, form) : buildAddDeviceBody(form));
 	/** The other devices, so an edit's own unit id is not shown as taken. */
@@ -126,6 +128,9 @@
 			<AddressFields bind:form devices={others} {refusal} />
 			<NameField bind:form {refusal} />
 			<ProfileField bind:form {registered} {refusal} {onInstalled} />
+			{#if isInverter}
+				<InverterSection bind:form />
+			{/if}
 
 			<Dialog.Footer>
 				<Button type="button" variant="outline" onclick={() => (open = false)}>

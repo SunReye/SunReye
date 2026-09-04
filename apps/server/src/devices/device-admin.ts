@@ -154,8 +154,10 @@ const unitIdSchema = z.number().int().min(UNIT_ID_MIN).max(UNIT_ID_MAX);
  */
 const inverterFieldsSchema = {
   arrays: z.array(pvArraySchema).max(8).optional(),
-  tempCoefficient: z.number().min(-2).max(0).optional(),
-  systemLoss: z.number().min(0).max(90).optional(),
+  // The device's coefficients have the ARRAY override's bounds, by construction:
+  // the compose step stamps them onto every array that states none of its own.
+  tempCoefficient: pvArraySchema.shape.tempCoefficient,
+  systemLoss: pvArraySchema.shape.systemLoss,
   /** `null` says "no pack"; absent says "leave it alone". */
   battery: forecastBatterySchema.nullable().optional(),
 };

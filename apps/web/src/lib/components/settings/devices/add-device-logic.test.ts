@@ -37,6 +37,10 @@ const device = (over: Partial<DeviceView>): DeviceView => ({
   connectionId: 3,
   retiredAt: null,
   connection: gateway,
+  arrays: [],
+  tempCoefficient: -0.4,
+  systemLoss: 14,
+  battery: null,
   profileName: "Deye",
   profileKnown: true,
   polled: true,
@@ -430,5 +434,100 @@ describe("describeProbe", () => {
       message: "failed: timeout",
     });
     expect(describeProbe({ ok: false }, words).message).toBe("failed: ");
+  });
+});
+
+describe("the inverter section of the form", () => {
+  const filledInverter = () => ({
+    ...emptyForm([gateway]),
+    connectionChoice: "3",
+    role: "inverter" as const,
+    unitId: 2,
+    name: "East",
+    profileId: "deye",
+    inverter: {
+      arrays: [{ kwp: "3.2", tilt: "20", azimuth: "-90" }],
+      tempCoeff: "-0.3",
+      loss: "20",
+      battUsable: "10",
+      battCharge: "5",
+      battReserve: "",
+      battNominalV: "",
+    },
+  });
+
+  test("a new inverter opens on the column defaults and no arrays", () => {
+    const form = emptyForm([gateway]);
+    expect(form.inverter).toEqual({
+      arrays: [],
+      tempCoeff: "-0.4",
+      loss: "14",
+      battUsable: "",
+      battCharge: "",
+      battReserve: "",
+      battNominalV: "",
+    });
+  });
+
+  test("an inverter's body carries its roof and pack, parsed", () => {
+    expect(buildAddDeviceBody(filledInverter())).toMatchObject({
+      role: "inverter",
+      arrays: [{ kwp: 3.2, tilt: 20, azimuth: -90 }],
+      tempCoefficient: -0.3,
+      systemLoss: 20,
+      battery: { usableKwh: 10, maxChargeW: 5000, minSoc: 10, nominalV: null },
+    });
+  });
+
+  test("a meter's body carries NONE of them — the server would refuse", () => {
+    const body = buildAddDeviceBody({ ...filledInverter(), role: "meter" });
+    expect(body).not.toBeNull();
+    expect(Object.keys(body ?? {}).sort()).toEqual([
+      "connection",
+      "name",
+      "profileId",
+      "role",
+      "unitId",
+    ]);
+  });
+
+  test("an unreadable roof field blocks the submit, on an inverter only", () => {
+    const form = filledInverter();
+    form.inverter.loss = "lots";
+    expect(buildAddDeviceBody(form)).toBeNull();
+    expect(buildAddDeviceBody({ ...form, role: "meter" })).not.toBeNull();
+  });
+
+  test("editing starts from the device's own roof and pack", () => {
+    const inv = device({
+      arrays: [{ kwp: 9.8, tilt: 30, azimuth: 0 }],
+      systemLoss: 11,
+      battery: { usableKwh: 15, maxChargeW: null, minSoc: 10, nominalV: 48 },
+    });
+    const form = formFromDevice(inv, [gateway]);
+    expect(form.inverter.arrays).toEqual([{ kwp: "9.8", tilt: "30", azimuth: "0" }]);
+    expect(form.inverter.loss).toBe("11");
+    expect(form.inverter.battUsable).toBe("15");
+    expect(form.inverter.battNominalV).toBe("48");
+    // Nothing changed → nothing to send.
+    expect(devicePatch(inv, form)).toBeNull();
+  });
+
+  test("the patch carries only the roof or pack field that changed, compared by value", () => {
+    const inv = device({
+      arrays: [{ kwp: 9.8, tilt: 30, azimuth: 0 }],
+      battery: { usableKwh: 15, maxChargeW: null, minSoc: 10, nominalV: null },
+    });
+    const form = formFromDevice(inv, [gateway]);
+    form.inverter.arrays[0]!.tilt = "35";
+    expect(devicePatch(inv, form)).toEqual({
+      arrays: [{ kwp: 9.8, tilt: 35, azimuth: 0 }],
+    });
+    const cleared = formFromDevice(inv, [gateway]);
+    cleared.inverter.battUsable = "";
+    expect(devicePatch(inv, cleared)).toEqual({ battery: null });
+    const physics = formFromDevice(inv, [gateway]);
+    physics.inverter.loss = "9";
+    expect(devicePatch(inv, physics)).toEqual({ systemLoss: 9 });
   });
 });
