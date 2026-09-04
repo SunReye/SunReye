@@ -1,7 +1,7 @@
 import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
 
-import type { DeviceBattery, PlantBattery } from "@SunReye/db/batteries";
-import type { PlantPatch, PlantRecord } from "@SunReye/db/plant-repo";
+import type { PlantBattery } from "@SunReye/db/batteries";
+import type { DeviceRecord, PlantPatch, PlantRecord } from "@SunReye/db/plant-repo";
 
 /**
  * The three accessors that used to read three `app_settings` rows and now
@@ -56,7 +56,7 @@ mock.module("@SunReye/db", () => ({ ...realDb, db: { select, insert } }));
 let plantRow: PlantRecord;
 let derivedBattery: PlantBattery | null;
 let patches: PlantPatch[] = [];
-let batteryWrites: Array<DeviceBattery | null> = [];
+let deviceRows: DeviceRecord[] = [];
 
 mock.module("./plant-facts-instance", () => ({
   ...realInstance,
@@ -67,9 +67,7 @@ mock.module("./plant-facts-instance", () => ({
       patches.push(patch);
       plantRow = { ...plantRow, ...patch } as PlantRecord;
     },
-    writeBattery: async (battery: DeviceBattery | null) => {
-      batteryWrites.push(battery);
-    },
+    devices: async () => deviceRows,
     invalidate: () => {},
   },
 }));
@@ -82,8 +80,22 @@ beforeEach(() => {
   storedRow = undefined;
   written = [];
   patches = [];
-  batteryWrites = [];
   derivedBattery = null;
+  deviceRows = [
+    {
+      id: 1,
+      slug: "inverter",
+      name: "Inverter",
+      profileId: "deye",
+      role: "inverter",
+      unitId: 1,
+      connectionId: 1,
+      arrays: [{ kwp: 9.8, tilt: 30, azimuth: 0 }],
+      tempCoefficient: -0.35,
+      systemLoss: 11,
+      retiredAt: null,
+    },
+  ];
   plantRow = {
     id: 1,
     name: "Limburg-Weilburg",
@@ -109,7 +121,18 @@ describe("getWeatherConfig", () => {
     const config = await getWeatherConfig();
     expect(config.latitude).toBe(50.4);
     expect(config.label).toBe("Limburg");
-    expect(config.forecast.arrays).toEqual([{ kwp: 9.8, tilt: 30, azimuth: 0 }]);
+    // The arrays come from the INVERTER rows, stamped with the inverter's slug
+    // and physics — not from the plant columns, which are legacy.
+    expect(config.forecast.arrays).toEqual([
+      {
+        kwp: 9.8,
+        tilt: 30,
+        azimuth: 0,
+        deviceSlug: "inverter",
+        tempCoefficient: -0.35,
+        systemLoss: 11,
+      },
+    ]);
     expect(config.forecast.maxOutputW).toBe(7000);
     expect(config.forecast.smartMeterSince).toBe("2026-03-01");
     expect(config.enabled).toBe(true);
@@ -146,10 +169,8 @@ describe("setWeatherConfig", () => {
   });
 
   test("a plant save patches ONLY the plant columns — the two cannot clobber", async () => {
-    await setWeatherConfig({
-      forecast: { arrays: [{ kwp: 5, tilt: 20, azimuth: -90 }], systemLoss: 12 },
-    });
-    expect(Object.keys(patches[0] ?? {}).sort()).toEqual(["arrays", "systemLoss"]);
+    await setWeatherConfig({ forecast: { maxOutputW: 6000, houseLoadW: 300 } });
+    expect(Object.keys(patches[0] ?? {}).sort()).toEqual(["houseLoadW", "maxOutputW"]);
     expect(patches[0]).not.toHaveProperty("latitude");
   });
 
@@ -174,30 +195,27 @@ describe("setWeatherConfig", () => {
     expect(written.length).toBe(1);
   });
 
-  test("a battery is written to the device that reports it; silence is not a write", async () => {
-    await setWeatherConfig({ latitude: 1 });
-    expect(batteryWrites).toEqual([]);
-    await setWeatherConfig({ forecast: { battery: { usableKwh: 12, minSoc: 8 } } });
-    expect(batteryWrites).toEqual([{ usableKwh: 12, maxChargeW: null, minSoc: 8, nominalV: null }]);
-  });
+  test.each(["arrays", "tempCoefficient", "systemLoss", "battery"])(
+    "a patch naming forecast.%s is REFUSED — it is the inverter's now — and nothing is written",
+    async (key) => {
+      await expect(setWeatherConfig({ forecast: { [key]: null } })).rejects.toThrow(
+        new RegExp(`forecast\\.${key}.*Devices`),
+      );
+      expect(patches).toEqual([]);
+      expect(written).toEqual([]);
+    },
+  );
 
-  test("clearing the battery is a write of null", async () => {
-    await setWeatherConfig({ forecast: { battery: null } });
-    expect(batteryWrites).toEqual([null]);
-  });
-
-  test("validation is unchanged — an impossible tilt is still refused", async () => {
+  test("validation is unchanged — an impossible latitude is still refused", async () => {
     // The patch is merged onto the current record and parsed in full, exactly as
     // it was when the whole thing was one JSONB document.
-    await expect(
-      setWeatherConfig({ forecast: { arrays: [{ kwp: 9.8, tilt: 400, azimuth: 0 }] } }),
-    ).rejects.toThrow();
+    await expect(setWeatherConfig({ latitude: 400 })).rejects.toThrow();
     expect(patches).toEqual([]);
   });
 
   test("the saved record is read back composed, not echoed", async () => {
-    const saved = await setWeatherConfig({ forecast: { systemLoss: 12 } });
-    expect(saved.forecast.systemLoss).toBe(12);
+    const saved = await setWeatherConfig({ forecast: { maxOutputW: 6500 } });
+    expect(saved.forecast.maxOutputW).toBe(6500);
     expect(saved.latitude).toBe(50.4);
   });
 });

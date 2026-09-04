@@ -64,6 +64,25 @@ import {
 import { createdAtTz, retiredAtTz } from "./columns";
 
 /**
+ * The PV description of an inverter — the three columns `devices` carries and
+ * `plants` still carries as LEGACY (see each table's note). One factory so the
+ * two declarations cannot drift while both exist.
+ *
+ *  - `arrays`: `[{ kwp, tilt, azimuth, tempCoefficient?, systemLoss? }]`,
+ *    azimuth 0 = south, -90 = east, 90 = west. JSONB because it is the one
+ *    field that is a LIST; an element may override either coefficient below.
+ *  - `temp_coefficient`: power temperature coefficient of Pmax, %/°C (≤ 0).
+ *  - `system_loss`: static losses, % (conversion, wiring, soiling, mismatch).
+ */
+function pvDescriptionColumns() {
+  return {
+    arrays: jsonb("arrays").notNull().default([]),
+    tempCoefficient: doublePrecision("temp_coefficient").notNull().default(-0.4),
+    systemLoss: doublePrecision("system_loss").notNull().default(14),
+  };
+}
+
+/**
  * The plant (site).
  *
  * `slug` is FROZEN at onboarding: it becomes the MQTT namespace, so changing it
@@ -119,11 +138,7 @@ export const plants = pgTable(
      * own values, so that fallback is never reached. Dropping them is a follow-up
      * migration once the archive format has bumped.
      */
-    arrays: jsonb("arrays").notNull().default([]),
-    /** LEGACY, see {@link arrays}. Power temperature coefficient of Pmax, %/°C. */
-    tempCoefficient: doublePrecision("temp_coefficient").notNull().default(-0.4),
-    /** LEGACY, see {@link arrays}. Static system losses, %. */
-    systemLoss: doublePrecision("system_loss").notNull().default(14),
+    ...pvDescriptionColumns(),
     /** Feed-in cap in W ("solar sell" limit), or null to model no export limit. */
     maxOutputW: doublePrecision("max_output_w"),
     /** Average house load in W for the clipping model; null = infer from history. */
@@ -362,11 +377,7 @@ export const devices = pgTable(
      * strings were whose — and the forecast, clipping and yield attribution per
      * inverter are all unexpressible without that.
      */
-    arrays: jsonb("arrays").notNull().default([]),
-    /** Power temperature coefficient of Pmax, %/°C (negative), this inverter's modules. */
-    tempCoefficient: doublePrecision("temp_coefficient").notNull().default(-0.4),
-    /** Static system losses, % (this inverter's conversion, wiring, soiling, mismatch). */
-    systemLoss: doublePrecision("system_loss").notNull().default(14),
+    ...pvDescriptionColumns(),
     /**
      * When this device was taken out of service, or null while it is in service.
      *

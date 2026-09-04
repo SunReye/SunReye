@@ -296,32 +296,10 @@ describe("the plant facts accessor", () => {
     expect(await accessor.packNominalV()).toBe(48);
   });
 
-  test("writing a battery lands on the plant's single inverter device", async () => {
-    const { accessor, batteries } = await facts();
-    await accessor.writeBattery({ usableKwh: 12, maxChargeW: null, minSoc: 8, nominalV: null });
-    expect(batteries.length).toBe(1);
-    expect(batteries[0]?.deviceId).toBe(100);
-    expect((await accessor.battery())?.usableKwh).toBe(12);
-  });
-
-  test("writing null removes the pack — the plant then has no storage", async () => {
-    const { accessor, batteries, devices } = await facts();
-    await accessor.writeBattery({ usableKwh: 12, maxChargeW: null, minSoc: 8, nominalV: null });
-    await accessor.writeBattery(null);
-    expect(batteries).toEqual([]);
-    // The DEVICE survives: a pack describes storage, not the machine, and every
-    // reading the machine wrote still names it.
-    expect(devices.length).toBe(1);
-    expect(await accessor.battery()).toBeNull();
-  });
-
-  test("with TWO packs the write is REFUSED, not spread across them", async () => {
-    // The plant battery is an AGGREGATE — capacities summed, reserve
-    // capacity-weighted — and that map is not invertible. Splitting 35 kWh back
-    // over a 30 and a 5 would be a guess, and guessing here silently changes what
-    // the engine reserves. Until a devices UI exists, the honest answer is to
-    // decline and say so.
-    const { accessor, store, devices, plants, batteries } = await facts();
+  test("the device rows are read once and served from memory, and a write drops them", async () => {
+    const { accessor, devices, plants } = await facts();
+    const first = await accessor.devices();
+    expect(first.map((d) => d.slug)).toEqual(["inverter"]);
     devices.push({
       id: 101,
       plantId: plants[0]?.id ?? 1,
@@ -336,85 +314,11 @@ describe("the plant facts accessor", () => {
       unitId: 2,
       connectionId: null,
     });
-    await store.upsertDeviceBattery(100, {
-      usableKwh: 30,
-      maxChargeW: null,
-      minSoc: 5,
-      nominalV: null,
-    });
-    await store.upsertDeviceBattery(101, {
-      usableKwh: 5,
-      maxChargeW: null,
-      minSoc: 50,
-      nominalV: null,
-    });
-    accessor.invalidate();
-    await accessor.writeBattery({ usableKwh: 99, maxChargeW: null, minSoc: 1, nominalV: null });
-    expect(batteries.map((b) => b.usableKwh).sort((a, b) => a - b)).toEqual([5, 30]);
-    expect(warnings.join(" ")).toContain("more than one battery");
-  });
-
-  test("with no device at all the write is refused rather than silently dropped", async () => {
-    // Reachable: the settings page is live during an onboarding-only boot, before
-    // any profile is active, so no device has been provisioned yet.
-    warnings.length = 0;
-    const memory = memoryStore();
-    const accessor = createPlantFacts({ store: memory.store, logger });
-    await accessor.writeBattery({ usableKwh: 12, maxChargeW: null, minSoc: 8, nominalV: null });
-    expect(memory.batteries).toEqual([]);
-    expect(warnings.join(" ")).toContain("no device");
-  });
-
-  test("a controller-only plant is not written to as if it were an inverter", async () => {
-    // A Victron GX reports plant-level values from its own registers; it is not
-    // where a pack description belongs.
-    warnings.length = 0;
-    const memory = memoryStore();
-    const accessor = createPlantFacts({ store: memory.store, logger });
-    const plant = await accessor.plant();
-    memory.devices.push({
-      id: 200,
-      plantId: plant.id,
-      slug: "gx",
-      name: "GX",
-      profileId: "victron",
-      role: "controller",
-      arrays: [],
-      tempCoefficient: -0.4,
-      systemLoss: 14,
-      retiredAt: null,
-      unitId: 100,
-      connectionId: null,
-    });
-    accessor.invalidate();
-    await accessor.writeBattery({ usableKwh: 12, maxChargeW: null, minSoc: 8, nominalV: null });
-    expect(memory.batteries).toEqual([]);
-    expect(warnings.join(" ")).toContain("no device");
-  });
-
-  test("an optimizer-only plant is refused the same way — a virtual device owns no pack", async () => {
-    warnings.length = 0;
-    const memory = memoryStore();
-    const accessor = createPlantFacts({ store: memory.store, logger });
-    const plant = await accessor.plant();
-    memory.devices.push({
-      id: 201,
-      plantId: plant.id,
-      slug: "optimizer",
-      name: "Optimizer",
-      profileId: "sunreye.optimizer",
-      role: "optimizer",
-      arrays: [],
-      tempCoefficient: -0.4,
-      systemLoss: 14,
-      retiredAt: null,
-      unitId: 0,
-      connectionId: null,
-    });
-    accessor.invalidate();
-    await accessor.writeBattery({ usableKwh: 12, maxChargeW: null, minSoc: 8, nominalV: null });
-    expect(memory.batteries).toEqual([]);
-    expect(warnings.join(" ")).toContain("no device");
+    // Cached: the push is not seen…
+    expect((await accessor.devices()).length).toBe(1);
+    // …until something invalidates.
+    await accessor.patch({ label: "moved" });
+    expect((await accessor.devices()).map((d) => d.slug)).toEqual(["inverter", "inverter-2"]);
   });
 });
 
