@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { capMatchesRegister, registerCapKw } from "./export-cap-register";
+import { capMatchesRegister, registerCapKw, seedsFromRegister } from "./export-cap-register";
 
 const reading = (value: number | undefined, stale = false) => ({ value, stale });
 
@@ -43,5 +43,29 @@ describe("capMatchesRegister", () => {
     expect(capMatchesRegister("", reading(8000))).toBeNull();
     expect(capMatchesRegister("8", reading(undefined))).toBeNull();
     expect(capMatchesRegister("abc", reading(8000))).toBeNull();
+  });
+});
+
+describe("seedsFromRegister", () => {
+  // The field starts out as the inverter's own ceiling when the plant has never
+  // stored one — a default, and only a default: whatever the operator types or
+  // has saved wins, and the seed happens once per mount so clearing the field
+  // on purpose is not undone by the next poll.
+  test("fills a blank field the first time the register reports", () => {
+    expect(seedsFromRegister({ field: "", registerKw: "8", seeded: false })).toBe(true);
+    expect(seedsFromRegister({ field: "   ", registerKw: "8", seeded: false })).toBe(true);
+  });
+
+  test("never touches a field that already holds a value", () => {
+    expect(seedsFromRegister({ field: "6.6", registerKw: "8", seeded: false })).toBe(false);
+    expect(seedsFromRegister({ field: "0", registerKw: "8", seeded: false })).toBe(false);
+  });
+
+  test("waits while the register has nothing to say", () => {
+    expect(seedsFromRegister({ field: "", registerKw: null, seeded: false })).toBe(false);
+  });
+
+  test("seeds once — a field the operator emptied stays empty", () => {
+    expect(seedsFromRegister({ field: "", registerKw: "8", seeded: true })).toBe(false);
   });
 });

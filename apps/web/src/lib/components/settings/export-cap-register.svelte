@@ -3,7 +3,11 @@
 	import * as Alert from '$lib/components/ui/alert';
 	import { formatReading } from '$lib/live/plant';
 	import { livePlant } from '$lib/live/plant.svelte';
-	import { capMatchesRegister, registerCapKw } from '$lib/settings/export-cap-register';
+	import {
+		capMatchesRegister,
+		registerCapKw,
+		seedsFromRegister
+	} from '$lib/settings/export-cap-register';
 	import * as m from '$lib/paraglide/messages';
 
 	/**
@@ -33,6 +37,15 @@
 	const apply = (): void => {
 		if (sellLimitKw !== null) maxOutput = sellLimitKw;
 	};
+
+	// A blank field starts as the inverter's own ceiling, once per mount. The
+	// operator's value — typed or stored — always wins; see `seedsFromRegister`.
+	let seeded = $state(false);
+	$effect(() => {
+		if (!seedsFromRegister({ field: maxOutput, registerKw: sellLimitKw, seeded })) return;
+		seeded = true;
+		apply();
+	});
 </script>
 
 {#if sellLimitKw !== null}

@@ -22,3 +22,17 @@ export function capMatchesRegister(maxOutputText: string, reading: Reading): boo
   if (!field.ok || field.watts === null || reading.value === undefined) return null;
   return Math.abs(field.watts - reading.value) < 1;
 }
+
+/**
+ * Whether the field should START as the register's value: it is blank, the
+ * register has reported, and this mount has not seeded it yet. A default and
+ * only a default — a stored or typed value is never overwritten, and a field
+ * the operator emptied on purpose is not refilled by the next poll.
+ */
+export function seedsFromRegister(input: {
+  field: string;
+  registerKw: string | null;
+  seeded: boolean;
+}): boolean {
+  return !input.seeded && input.registerKw !== null && input.field.trim() === "";
+}
