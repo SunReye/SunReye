@@ -3,7 +3,9 @@ import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { defineProfile, metric, ROLE_NAMES, type ProfileData } from "@SunReye/inverter-core";
+import { defineProfile, metric, type ProfileData } from "@SunReye/inverter-core";
+
+import { PROFILE_ROLES } from "./coverage";
 
 // A real, full profile fixture (the published Deye SG05LP3), snapshotted so the
 // CLI tests build/validate a realistic profile without depending on any inverter
@@ -67,6 +69,13 @@ const fullCoveragePath = writeFixture(
       backupMetric("grid.frequency", 60005, { unit: "Hz", group: "grid" }),
       backupMetric("pv.string.energy.today", 60006, { unit: "kWh", group: "pv", index: 1 }),
       backupMetric("pv.string.energy.total", 60007, { unit: "kWh", group: "pv", index: 1 }),
+      // Phase currents on every AC output, the islanded output's frequency and
+      // the generator's lifetime total — the Deye maps none of them.
+      backupMetric("backup.phase.current", 60008, { unit: "A", index: 1 }),
+      backupMetric("backup.frequency", 60009, { unit: "Hz" }),
+      backupMetric("load.phase.current", 60010, { unit: "A", group: "load", index: 1 }),
+      backupMetric("generator.phase.current", 60011, { unit: "A", group: "generator", index: 1 }),
+      backupMetric("generator.energy.total", 60012, { unit: "kWh", group: "generator" }),
     ],
   }),
 );
@@ -308,7 +317,7 @@ describe("cmdCoverage", () => {
     await cmdCoverage(sparseProfilePath);
     const out = io.out.join("\n");
 
-    expect(out).toContain(`Role coverage: 2/${ROLE_NAMES.length} canonical roles mapped`);
+    expect(out).toContain(`Role coverage: 2/${PROFILE_ROLES.length} canonical roles mapped`);
     expect(out).toContain("Unmapped roles (these UI areas render empty):");
     // Grouped under the leading segment, in catalog order, `[]` on the roles
     // that need one metric per string/phase.

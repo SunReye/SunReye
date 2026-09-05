@@ -5,6 +5,7 @@ import {
   deriveCapabilities,
   kindFallbackKeys,
   kindFallbackReports,
+  metricKeySpecs,
   resetKindFallbacks,
   resolveDeadband,
   resolveKind,
@@ -455,5 +456,69 @@ describe("toManifestMetric", () => {
   test("carries the resolved storage class so the UI can hide unstored metrics", () => {
     expect(toManifestMetric(m({ key: "settings.workmode", access: "rw" })).storage).toBe("config");
     expect(toManifestMetric(m({ key: "ac.l1.voltage", unit: "V" })).storage).toBe("series");
+  });
+});
+
+/**
+ * The profile → `metric_keys` translation. Its whole job is to preserve two
+ * facts past the uninstall of the profile that stated them, and the unit is the
+ * one that cannot be recovered afterwards — so the null-versus-empty-string
+ * distinction below is the behaviour, not a detail.
+ */
+describe("metricKeySpecs", () => {
+  test("carries the stated unit through", () => {
+    expect(metricKeySpecs([m({ key: "pv.power", unit: "W" })])).toEqual([
+      { key: "pv.power", isCounter: false, unit: "W" },
+    ]);
+  });
+
+  test("a kWh metric registers as a counter — the aggregates read this column", () => {
+    expect(metricKeySpecs([m({ key: "pv.energy", unit: "kWh" })])).toEqual([
+      { key: "pv.energy", isCounter: true, unit: "kWh" },
+    ]);
+  });
+
+  test("an explicitly cumulative kind counts even when the unit does not say so", () => {
+    expect(metricKeySpecs([m({ key: "grid.total", unit: "Wh", kind: "cumulative" })])).toEqual([
+      { key: "grid.total", isCounter: true, unit: "Wh" },
+    ]);
+  });
+
+  test("a writable register is a setting, not a counter, whatever its unit", () => {
+    // A kWh-denominated SETTING must never be fed to `counter_agg`.
+    expect(metricKeySpecs([m({ key: "setting.cap", unit: "kWh", access: "rw" })])).toEqual([
+      { key: "setting.cap", isCounter: false, unit: "kWh" },
+    ]);
+  });
+
+  test("an unstated unit stays null rather than becoming an empty string", () => {
+    // The upsert reads null as "not stated" and keeps whatever is on record;
+    // `""` would overwrite it.
+    expect(metricKeySpecs([m({ key: "status.code" })])).toEqual([
+      { key: "status.code", isCounter: false, unit: null },
+    ]);
+  });
+
+  test("a dimensionless metric's empty unit is a statement and is kept", () => {
+    expect(metricKeySpecs([m({ key: "ratio", unit: "" })])).toEqual([
+      { key: "ratio", isCounter: false, unit: "" },
+    ]);
+  });
+
+  test("order and multiplicity are the profile's, not this function's", () => {
+    const specs = metricKeySpecs([m({ key: "b" }), m({ key: "a", unit: "V" })]);
+    expect(specs.map((s) => s.key)).toEqual(["b", "a"]);
+  });
+
+  test("no metrics is an empty list, not a malformed one", () => {
+    expect(metricKeySpecs([])).toEqual([]);
+  });
+
+  test("resolving a kind here never trips the fallback report", () => {
+    // `statedKind` rather than `resolveKind`: the guess is recorded per key and
+    // surfaces as a profile warning. Registering a key must not manufacture one.
+    resetKindFallbacks();
+    metricKeySpecs([m({ key: "mystery.value" })]);
+    expect(kindFallbackKeys()).toEqual([]);
   });
 });

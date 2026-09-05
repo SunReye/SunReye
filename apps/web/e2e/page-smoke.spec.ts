@@ -96,7 +96,9 @@
  *   - `/#/automations/peak-shaving` asserted the form switch only, while the
  *     decision charts under it were drawing zero rows off a fixture whose
  *     `history` was not `DecisionPoint`-shaped. It now asserts both plots
- *     mounted.
+ *     mounted — and since #172 those plots come from the optimizer's stored
+ *     series rather than from the socket frame, so this also catches a page
+ *     that never asked the read path for them.
  *
  * The absent-payload half of those questions — what the page does when weather,
  * prices or EVCC are switched OFF — is `e2e/payload-states.spec.ts`, because
@@ -304,10 +306,10 @@ const ROUTES: readonly SmokeRoute[] = [
     surface: async (page) => {
       await expect(page.getByRole("link", { name: "All automations" })).toBeVisible();
       await switchNamed(page, "Enable peak shaving");
-      // The decision charts are the stream's payload rendered. `toDecisionRows`
-      // windows the ring off `newest.t`, so a history whose points are not
-      // `DecisionPoint`s yields zero rows and this section shows its empty
-      // state instead — which is exactly what the fixture used to produce.
+      // The decision charts are the OPTIMIZER'S STORED SERIES rendered — read
+      // from `/api/history/rollup` under the `optimizer` slug, not from the
+      // socket frame. A page that never issued that request, or issued it
+      // without the slug, shows this section's empty state instead.
       const charts = sectionNamed(page, "Decision history");
       await expect(charts.getByText("Nothing recorded yet", { exact: false })).toBeHidden();
       // Both plots MOUNTED, not both labels present: the labels are rendered by
@@ -317,18 +319,42 @@ const ROUTES: readonly SmokeRoute[] = [
   },
   {
     file: "(app)/settings/+page.svelte",
-    h1: "Inverter",
-    landsOn: "/#/settings/inverter",
+    h1: "Devices",
+    landsOn: "/#/settings/devices",
     surface: async (page) => {
-      await heading(page, "Connection");
+      await expect(page.locator("[data-device='inverter']")).toBeVisible();
     },
   },
   {
+    // The pre-2.0 inverter panel: a bookmark that has to keep landing.
     file: "(app)/settings/inverter/+page.svelte",
-    h1: "Inverter",
+    h1: "Devices",
+    landsOn: "/#/settings/devices",
     surface: async (page) => {
-      await heading(page, "Connection");
-      await expect(page.getByLabel("Host")).toHaveValue("10.0.0.5");
+      await expect(page.locator("[data-device='inverter']")).toBeVisible();
+    },
+  },
+  {
+    file: "(app)/settings/plant/+page.svelte",
+    h1: "Plant",
+    // The feed-in field only exists once `/api/settings/weather` arrived; the
+    // cap helper's chips prove the composed arrays (8.4 kWp) came with it.
+    surface: async (page) => {
+      await heading(page, "Plant");
+      await expect(page.getByLabel("Max grid feed-in (kW)")).toBeVisible();
+      await expect(page.getByRole("button", { name: "60 %" })).toBeVisible();
+    },
+  },
+  {
+    file: "(app)/settings/devices/+page.svelte",
+    h1: "Devices",
+    // A row from the payload, not the heading: the section renders its title
+    // over the empty state too, so the polled inverter's slug is the proof — and
+    // its gateway's header, which is the grouping the page exists for.
+    surface: async (page) => {
+      await heading(page, "Devices");
+      await heading(page, "Inverter");
+      await expect(page.locator("[data-device='inverter']")).toBeVisible();
     },
   },
   {
@@ -483,6 +509,34 @@ const ROUTES: readonly SmokeRoute[] = [
       await expect(page.getByText("Create the administrator")).toBeVisible();
       await expect(page.getByLabel("Name")).toBeVisible();
       await expect(page.getByRole("button", { name: "Create account" })).toBeVisible();
+    },
+  },
+  {
+    // Migration onboarding. Reachable ONLY on an instance with an unconfirmed 1.x
+    // migration — its own gate bounces it to /#/ otherwise, which is why the
+    // status has to be overridden here rather than defaulted.
+    file: "migration/+page.svelte",
+    open: {
+      live: false,
+      role: "admin",
+      migration: {
+        onboardingRequired: true,
+        backfillOutstanding: true,
+        slugEditable: true,
+        plantName: "My plant",
+        deviceName: "SG05LP3",
+        plantSlug: "my-plant",
+        deviceSlug: "inverter",
+      },
+    },
+    h1: "Name your plant and inverter",
+    surface: async (page) => {
+      await expect(page.getByLabel("Plant name")).toHaveValue("My plant");
+      await expect(page.getByLabel("Device name")).toHaveValue("SG05LP3");
+      // The live-derived identifier, which is the whole point of the screen: it is
+      // about to be frozen into every MQTT topic and every entity unique_id.
+      await expect(page.getByText("my-plant/inverter")).toBeVisible();
+      await expect(page.getByRole("button", { name: "Confirm and continue" })).toBeVisible();
     },
   },
   {

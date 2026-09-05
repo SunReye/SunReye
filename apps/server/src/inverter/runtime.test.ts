@@ -46,10 +46,22 @@ import {
 } from "bun:test";
 import type { ControlState } from "@SunReye/db/control-state";
 import { controlStateKey } from "@SunReye/db/control-state";
-import type { InverterConfig } from "@SunReye/db/inverter-config";
 import type { MqttConfig } from "@SunReye/db/mqtt-config";
+import type { PollEndpoint } from "./endpoint";
+import type { IdentityResolver } from "../shared/identity";
+import type { MetricKeySpec } from "@SunReye/db/metric-keys";
 import { control, metric } from "@SunReye/inverter-core";
-import type { InverterProfile, InverterSample, InverterSource } from "@SunReye/inverter-core";
+import type {
+  DeviceInstance,
+  InverterProfile,
+  InverterSample,
+  InverterSource,
+} from "@SunReye/inverter-core";
+import type { DeviceRegistry } from "../devices/registry";
+import type { PeakShavingStatus } from "@SunReye/contracts/automation";
+import { OPTIMIZER_DEVICE_ID, OPTIMIZER_METRICS } from "../automation/optimizer-device";
+import type { DeviceRowState } from "../automation/optimizer-registrar";
+import { initialStatus } from "../automation/peak-shaving-engine";
 
 import type { StorageRow } from "./storage-policy";
 
@@ -107,8 +119,14 @@ function untapRuntimeLogger(): void {
   for (const level of LEVELS) delete runtimeLogger[level];
 }
 
-/** Row batches the injected history buffer committed, in flush order. */
-const inserted: Record<string, unknown>[][] = [];
+/**
+ * Row batches the injected history buffer committed, in flush order.
+ *
+ * `StorageRow`, not the table's insert shape: the buffer carries the NAMES the
+ * storage policy produces, and the id translation happens inside the real
+ * commit (`./storage-identity.ts`), past this seam.
+ */
+const inserted: StorageRow[][] = [];
 
 /**
  * Stands in for the injected history buffer. The runtime enqueues each poll's
@@ -120,8 +138,8 @@ const inserted: Record<string, unknown>[][] = [];
  * right moments. Injecting it is why this file no longer mocks `@SunReye/db`.
  */
 const historyDouble = {
-  rows: [] as Record<string, unknown>[],
-  enqueue(next: Record<string, unknown>[]): void {
+  rows: [] as StorageRow[],
+  enqueue(next: StorageRow[]): void {
     this.rows.push(...next);
   },
   async flush(): Promise<void> {
@@ -163,17 +181,33 @@ const configDouble = {
   dropped: 0,
 };
 
-const PLANT = "plant-1";
+/**
+ * What the DRIVER stamps on every sample it reads —
+ * `packages/inverter-core/src/driver.ts` uses `profile.id`, and a profile is not
+ * an identity. Kept as its own constant so the specs below can say out loud that
+ * a stored row is NOT keyed by it.
+ */
+const SAMPLE_STAMP = "plant-1";
+/** The `devices.slug` the registry registers, and what every stored row carries. */
+const DEVICE_SLUG = "inverter-1";
 const PROFILE_ID = "test-inverter";
 const LOCK = "settings.lock";
 const TARGET = "settings.max_discharge";
 
-/** Connection settings the runtime boots with, mutable per test. */
-let inverterConfig: InverterConfig;
+/**
+ * The endpoint the SPINE resolves for this install, mutable per test.
+ *
+ * `PollEndpoint`, not `InverterConfig`: the loop's address comes from the
+ * `connections` + `devices` rows through `./endpoint.ts`, and the `app_settings`
+ * document it used to come from is now a one-way legacy reader nothing here
+ * touches. A test "changes the connection" by changing THIS and asking the
+ * runtime to re-read it, which is exactly what the settings PUT does.
+ */
+let pollEndpoint: PollEndpoint;
 /** Broker settings the runtime boots with, mutable per test. */
 let mqttConfig: MqttConfig;
 
-const baseInverterConfig = (over: Partial<InverterConfig> = {}): InverterConfig => ({
+const baseEndpoint = (over: Partial<PollEndpoint> = {}): PollEndpoint => ({
   host: "10.0.0.5",
   port: 502,
   transport: "tcp",
@@ -198,12 +232,41 @@ const baseMqttConfig = (over: Partial<MqttConfig> = {}): MqttConfig => ({
 
 const realConfig = await import("../settings/config");
 const realConfigExports = { ...realConfig };
-const realGetInverterConfig = realConfig.getInverterConfig;
 const realGetMqttConfig = realConfig.getMqttConfig;
+const realGetInverterConfig = realConfig.getInverterConfig;
+/**
+ * How often the LEGACY `app_settings.inverter` reader was consulted.
+ *
+ * Counted rather than merely stubbed: "the poll loop no longer polls from the
+ * JSONB document" is the defect this release closes, and the only way to state it
+ * as a test is that nothing on the boot or reload path asks for that document at
+ * all. A value-based assertion would pass just as well if the runtime read both
+ * and happened to prefer the right one.
+ */
+let legacyConfigReads = 0;
 mock.module("../settings/config", () => ({
   ...realConfig,
-  getInverterConfig: async () => (intercepting ? inverterConfig : realGetInverterConfig()),
+  getInverterConfig: async () => {
+    legacyConfigReads++;
+    return realGetInverterConfig();
+  },
   getMqttConfig: async () => (intercepting ? mqttConfig : realGetMqttConfig()),
+}));
+
+/**
+ * The spine's answer, stubbed at the resolver rather than at the database.
+ *
+ * The rules INSIDE that resolution — which device, whose endpoint, what a
+ * retired row means — are `endpoint.test.ts`'s subject and are proved against an
+ * in-memory spine there. What this file is responsible for is what the loop does
+ * with the answer, and that it re-reads it rather than being handed values.
+ */
+const realEndpoint = await import("./endpoint");
+const realEndpointExports = { ...realEndpoint };
+const realLoadPollEndpoint = realEndpoint.loadPollEndpoint;
+mock.module("./endpoint", () => ({
+  ...realEndpoint,
+  loadPollEndpoint: async () => (intercepting ? pollEndpoint : realLoadPollEndpoint()),
 }));
 
 /** Stands in for the MQTT bridge: records everything the runtime publishes. */
@@ -228,6 +291,8 @@ class FakeBridge {
 const bridges: FakeBridge[] = [];
 /** The `write` the runtime injected into the bridge — MQTT's command path. */
 let bridgeWrite: ((key: string, value: number) => Promise<void>) | null = null;
+/** The `ctx` the runtime injected — carries the namespace every HA id is built from. */
+let bridgeCtx: { profile: { id: string }; plantSlug?: string; deviceSlug?: string } | null = null;
 const latestBridge = () => bridges.at(-1) as FakeBridge;
 
 const realBridgeModule = await import("./mqtt");
@@ -242,6 +307,7 @@ mock.module("./mqtt", () => ({
     if (!intercepting) return realStartMqttBridge(config, deps);
     if (!config.enabled) return null;
     bridgeWrite = deps.write;
+    bridgeCtx = deps.ctx;
     const built = new FakeBridge(config);
     bridges.push(built);
     return built;
@@ -251,7 +317,8 @@ mock.module("./mqtt", () => ({
 const automation = {
   started: 0,
   stopped: 0,
-  profileId: null as string | null,
+  /** The registered device the loop was handed — `devices.slug`, never a profile id. */
+  deviceId: null as string | null,
   /**
    * How many timers had already been torn down when `stopAutomations` was
    * called. Automations write through the same funnel as everything else, so
@@ -267,6 +334,14 @@ const automation = {
    * broadcast short-circuit into "never broadcast" and the page goes quiet.
    */
   watching: null as (() => boolean) | null,
+  /**
+   * The decision sink the runtime handed the engine — the optimizer's path to
+   * the one write seam. Null when the runtime forwarded none, which is how a
+   * dropped forward is told from a working one.
+   */
+  recordDecision: null as
+    | ((status: PeakShavingStatus, localSinkW: number, at: Date) => Promise<void>)
+    | null,
 };
 const realAutomation = await import("../automation/automation");
 const realAutomationExports = { ...realAutomation };
@@ -282,8 +357,9 @@ mock.module("../automation/automation", () => ({
   ) => {
     if (!intercepting) return realStartAutomations(deps, streamBus, buildIO, watching);
     automation.started++;
-    automation.profileId = deps.ctx.profile.id;
+    automation.deviceId = deps.device.id;
     automation.watching = watching ?? null;
+    automation.recordDecision = deps.recordDecision ?? null;
   },
   stopAutomations: async () => {
     if (!intercepting) return realStopAutomations();
@@ -434,7 +510,7 @@ class FakeSource implements InverterSource {
   writes: { key: string; value: number }[] = [];
   constructor(
     readonly profile: InverterProfile,
-    readonly config: InverterConfig,
+    readonly config: SourceConnection,
   ) {}
   async read(): Promise<InverterSample> {
     this.reads++;
@@ -456,19 +532,28 @@ let readResult: () => Promise<InverterSample> = async () => liveSample();
 /** When set, every register write rejects with this message. */
 let writeError: string | null = null;
 
-/** Overrides for the profile-resolution seams; `null` means "use the real one". */
-let profileOverride: InverterProfile | null | undefined;
+/** Override for the by-id profile lookup; `null` means "use the real one". */
 let resolveOverride: ((id: string) => InverterProfile | null) | null = null;
 
+/**
+ * The profile the registry's primary device is described by — the roster this
+ * runtime polls, as the plant's `devices` rows state it.
+ *
+ * This is what replaced the `activeProfile` module global: the runtime no longer
+ * asks a module which profile is active, it asks the registry which DEVICES
+ * exist and what each one binds.
+ */
+let registryProfile: InverterProfile | null = null;
+
 const realInverter = await import("./inverter");
+type SourceConnection = Parameters<typeof realInverter.buildSource>[1];
 const realInverterExports = { ...realInverter };
 const realBuildSource = realInverter.buildSource;
 const realResolveProfileById = realInverter.resolveProfileById;
-const realGetActiveProfileOrNull = realInverter.getActiveProfileOrNull;
 const { buildProfileContext } = realInverter;
 mock.module("./inverter", () => ({
   ...realInverter,
-  buildSource: (profile: InverterProfile, config: InverterConfig) => {
+  buildSource: (profile: InverterProfile, config: SourceConnection) => {
     if (!intercepting) return realBuildSource(profile, config);
     const built = new FakeSource(profile, config);
     sources.push(built);
@@ -479,8 +564,6 @@ mock.module("./inverter", () => ({
   // production behaviour.
   resolveProfileById: async (id: string) =>
     resolveOverride ? resolveOverride(id) : realResolveProfileById(id),
-  getActiveProfileOrNull: () =>
-    profileOverride === undefined ? realGetActiveProfileOrNull() : profileOverride,
 }));
 
 /** Stands in for `mqtt`'s client in the broker probe. */
@@ -587,7 +670,7 @@ function liveSample(
   metrics: Record<string, number> = READINGS,
   time = "2026-08-15T10:00:00.000Z",
 ): InverterSample {
-  return { time, inverterId: PLANT, metrics: { ...metrics } };
+  return { time, inverterId: SAMPLE_STAMP, metrics: { ...metrics } };
 }
 
 // --- timer capture ---------------------------------------------------------
@@ -626,7 +709,7 @@ function timerFor(ms: number, kind: Armed["kind"] = "interval"): Armed {
 }
 
 /** Run one tick of the poll loop and wait for it to finish. */
-const poll = () => timerFor(inverterConfig.pollIntervalMs).fn() as Promise<void>;
+const poll = () => timerFor(pollEndpoint.pollIntervalMs).fn() as Promise<void>;
 
 /** Fire a fire-and-forget timer callback and let its promise chain settle. */
 async function fire(ms: number, kind: Armed["kind"] = "interval"): Promise<void> {
@@ -675,6 +758,7 @@ afterAll(() => {
   // would restore the double instead of the module.
   intercepting = false;
   mock.module("../settings/config", () => ({ ...realConfigExports }));
+  mock.module("./endpoint", () => ({ ...realEndpointExports }));
   mock.module("./mqtt", () => ({ ...realBridgeExports }));
   mock.module("../automation/automation", () => ({ ...realAutomationExports }));
   mock.module("../settings/weather-settings", () => ({ ...realWeatherSettingsExports }));
@@ -684,7 +768,10 @@ afterAll(() => {
   mock.module("../prices/spot-price-job", () => ({ ...realSpotJobExports }));
   mock.module("./inverter", () => ({ ...realInverterExports }));
   untapRuntimeLogger();
-  profileOverride = undefined;
+  registryProfile = null;
+  registryDevice = null;
+  extraDevices = [];
+  rosterReadFails = false;
   resolveOverride = null;
   Object.assign(globalThis, timers);
   if (originalFlushInterval === undefined) delete process.env.HISTORY_FLUSH_INTERVAL_MS;
@@ -699,28 +786,173 @@ afterAll(() => {
 // in-memory doubles above rather than the module's default instance — which is
 // why no `@SunReye/db` and no `./control-store` mock is needed.
 const { createRuntime } = await import("./runtime");
-const runtime = createRuntime({
-  history: historyDouble,
-  configLog: configDouble,
-  controlStore,
-  // The EV charge-power estimator hook, injected as a spy instead of mocking
-  // `../evcc/evcc`: every poll's house-load value is recorded here, which is why
-  // this suite no longer installs (or has to unwind) an evcc module mock.
-  onLoadSample: (watts) => loadSamples.push(watts),
+const { deviceInstance, instanceFromProfile } = await import("@SunReye/inverter-core");
+/**
+ * The plant's roster, as the registry answers it.
+ *
+ * Injected rather than mocked for the same reason the identity resolver is: the
+ * production registry reads the `devices` table, so a suite without a double
+ * would fail on a missing database client instead of on the behaviour it names.
+ * The instance is rebuilt only on {@link DeviceRegistry.reload}, exactly as the
+ * real one is — the runtime memoizes the load-power key against the INSTANCE, so
+ * a double that minted a new object per call would hide a broken cache.
+ */
+let registryDevice: DeviceInstance | null = null;
+/**
+ * Registered devices that are NOT the polled inverter — an optimizer, an EV
+ * charger: a row in the same table, with no endpoint and no poll of its own.
+ * Mutated by a test to add or retire one between reloads.
+ */
+let extraDevices: DeviceInstance[] = [];
+
+/** What the injected `devices` table says about the optimizer's row. */
+let ensureOptimizerAnswers: DeviceRowState = "absent";
+
+/** The optimizer, declared exactly as the coded tier declares it. */
+const optimizerDevice = deviceInstance({
+  id: OPTIMIZER_DEVICE_ID,
+  deviceClass: "optimizer",
+  integration: "optimizer",
+  metrics: OPTIMIZER_METRICS,
 });
-const {
-  applyInverterConfig,
-  applyMqttConfig,
-  start,
-  status,
-  stop,
-  syncSpotPricesNow,
-  testInverter,
-  testMqtt,
-  write,
-} = runtime;
+
+/** A steering tick's status, with only the fields a case asserts on filled in. */
+const decisionStatus = (over: Partial<PeakShavingStatus> = {}): PeakShavingStatus => ({
+  ...initialStatus(),
+  state: "active",
+  ...over,
+});
+/** How often the roster was re-read, so a recovery attempt can be counted. */
+let deviceReloads = 0;
+/**
+ * Whether the roster read fails. The real registry keeps its LAST GOOD snapshot
+ * when the query throws — which at boot is the empty one, so a database that is
+ * slow to accept connections leaves the process polling with nowhere to store.
+ */
+let rosterReadFails = false;
+const roster = () => (registryDevice ? [registryDevice, ...extraDevices] : extraDevices);
+const devicesDouble: DeviceRegistry = {
+  reload: async () => {
+    deviceReloads += 1;
+    // A failed read keeps the last good roster rather than emptying the plant.
+    if (rosterReadFails) return roster();
+    registryDevice = registryProfile
+      ? instanceFromProfile({
+          id: DEVICE_SLUG,
+          deviceClass: "inverter",
+          integration: "profile",
+          profile: registryProfile,
+        })
+      : null;
+    return roster();
+  },
+  list: () => roster(),
+  get: (id) => roster().find((d) => d.id === id),
+  primary: () => registryDevice,
+  primaryProfile: () => registryProfile,
+  driverProfile: () => registryProfile,
+  profileIds: () => (registryProfile ? [registryProfile.id] : []),
+  usesProfile: (id) => registryProfile?.id === id,
+  bindings: () =>
+    registryProfile && registryDevice
+      ? [{ deviceId: DEVICE_SLUG, profileId: registryProfile.id }]
+      : [],
+};
+
+const identityDouble: IdentityResolver = {
+  deviceId: async () => 1,
+  registerMetrics: async (specs) => {
+    registeredSpecs.push([...specs]);
+  },
+  metricIds: async (keys) => new Map(keys.map((k, i) => [k, i + 1])),
+  metricId: async () => 1,
+  reset: () => {},
+};
+
+/**
+ * A runtime over this file's doubles — ONE PER TEST (see `beforeEach`).
+ *
+ * Per test rather than per file because the runtime owns the write seam, and
+ * the write seam legitimately REMEMBERS: `./device-writer.ts` keeps one storage
+ * policy per device for as long as that device's declarations are unchanged, so
+ * its change-log memory and hardware-evidence set survive a reload — which is
+ * the whole point of it (a settings save must not write a phantom change row).
+ * A single runtime shared by every test in the file would carry that memory
+ * across tests too, and the second spec to poll the same device would see the
+ * first spec's settings already logged.
+ */
+const newRuntime = () =>
+  createRuntime({
+    devices: devicesDouble,
+    history: historyDouble,
+    configLog: configDouble,
+    controlStore,
+    identity: identityDouble,
+    // The MQTT namespace, injected for the same reason the resolver is: the real
+    // reader queries the dimension spine, so without a double every bridge spec
+    // would fail on a missing database client — and the runtime's own guard turns
+    // that failure into "MQTT is off", which looks identical to a bridge that was
+    // never built. `namespaceReads` records the profile id it was asked for, so a
+    // rebuild-cadence claim can be asserted rather than assumed.
+    mqttNamespace: async (profileId) => {
+      namespaceReads.push(profileId);
+      if (namespaceOutcome instanceof Error) throw namespaceOutcome;
+      return namespaceOutcome;
+    },
+    // The EV charge-power estimator hook, injected as a spy instead of mocking
+    // `../evcc/evcc`: every poll's house-load value is recorded here, which is why
+    // this suite no longer installs (or has to unwind) an evcc module mock.
+    onLoadSample: (watts) => loadSamples.push(watts),
+    // The optimizer's `devices` row, injected for the same reason the identity
+    // resolver is: the production version queries the plant spine, so without a
+    // double every spec here would fail on a missing database client.
+    ensureOptimizerDevice: async () => ensureOptimizerAnswers,
+  });
+
+type Runtime = ReturnType<typeof createRuntime>;
+/** The instance the current test is driving; replaced in `beforeEach`. */
+let runtime: Runtime = newRuntime();
+// Delegating wrappers rather than a destructure: the methods below must always
+// reach the CURRENT instance, and a destructured reference would pin every test
+// to the one built at load time.
+const reloadEndpoint: Runtime["reloadEndpoint"] = () => runtime.reloadEndpoint();
+const applyMqttConfig: Runtime["applyMqttConfig"] = (config) => runtime.applyMqttConfig(config);
+const start: Runtime["start"] = (bus, ctx, watched) => runtime.start(bus, ctx, watched);
+const status: Runtime["status"] = () => runtime.status();
+const stop: Runtime["stop"] = () => runtime.stop();
+const syncSpotPricesNow: Runtime["syncSpotPricesNow"] = () => runtime.syncSpotPricesNow();
+const testInverter: Runtime["testInverter"] = (profileId, config) =>
+  runtime.testInverter(profileId, config);
+const testMqtt: Runtime["testMqtt"] = (config) => runtime.testMqtt(config);
+const write: Runtime["write"] = (...args) => runtime.write(...args);
 const { liveState } = await import("../shared/state");
 const { createStreams } = await import("../shared/streams");
+
+/**
+ * Metric specs the runtime EAGERLY registered, per call.
+ *
+ * The resolver is injected rather than mocked because the real one talks to the
+ * database on a `void`-ed promise whose rejection is swallowed — so a unit that
+ * never made it into the registration would look exactly like a unit that did.
+ */
+let registeredSpecs: MetricKeySpec[][] = [];
+
+/** Profile ids the bridge asked the namespace reader for, one per rebuild. */
+let namespaceReads: string[] = [];
+
+/**
+ * What the namespace reader does next: hand back slugs, or throw.
+ *
+ * Both failure shapes matter and they are NOT the same test. A
+ * `MissingMqttNamespaceError` is "the spine has no device row yet"; anything
+ * else is "the database did not answer". The runtime must treat them
+ * identically — MQTT off, poll loop up — and the first version of that guard did
+ * not, so a missing client aborted `start()`.
+ */
+let namespaceOutcome: { plantSlug: string; deviceSlug: string } | Error = {
+  plantSlug: "test-plant",
+  deviceSlug: "inverter",
+};
 
 /** Samples emitted on the `metrics` topic, in poll order. */
 let published: InverterSample[] = [];
@@ -732,14 +964,33 @@ let streams: ReturnType<typeof createStreams>;
 /** Boot the runtime with a profile context and hand back that context. */
 async function boot(profile: InverterProfile = mainProfile()) {
   const ctx = buildProfileContext(profile);
+  // The plant's device row names this profile — `start()` reloads the registry,
+  // just as it does in production after `syncProvisioning`.
+  registryProfile = profile;
   streams = createStreams();
   streams.subscribe("metrics", (sample) => published.push(sample));
   await start(streams, ctx);
   return ctx;
 }
 
+/**
+ * Move the plant's endpoint and let the runtime re-read it.
+ *
+ * Two steps on purpose: the settings PUT writes the `connections` row and then
+ * asks the loop to re-resolve. A helper that handed values straight to the
+ * runtime would be the write-back this release deleted, re-created in the test
+ * double.
+ */
+async function moveEndpoint(over: Partial<PollEndpoint> = {}): Promise<void> {
+  pollEndpoint = baseEndpoint(over);
+  await reloadEndpoint();
+}
+
 beforeEach(() => {
-  inverterConfig = baseInverterConfig();
+  runtime = newRuntime();
+  pollEndpoint = baseEndpoint();
+  legacyConfigReads = 0;
+  registeredSpecs = [];
   mqttConfig = baseMqttConfig();
   armed = [];
   cleared = [];
@@ -749,6 +1000,9 @@ beforeEach(() => {
   configDouble.rows = [];
   configInserted.length = 0;
   bridges.length = 0;
+  bridgeCtx = null;
+  namespaceReads = [];
+  namespaceOutcome = { plantSlug: "test-plant", deviceSlug: "inverter" };
   sources.length = 0;
   published = [];
   loadSamples = [];
@@ -766,14 +1020,21 @@ beforeEach(() => {
   spotOutcome = "complete";
   spotStored = 0;
   spotSyncNotifications = 0;
-  profileOverride = undefined;
+  registryProfile = null;
+  registryDevice = null;
+  extraDevices = [];
+  deviceReloads = 0;
+  rosterReadFails = false;
   resolveOverride = null;
   mqttClient = null;
   bridgeWrite = null;
   automation.started = 0;
   automation.stopped = 0;
+  automation.deviceId = null;
   automation.clearedAtStop = -1;
   automation.watching = null;
+  automation.recordDecision = null;
+  ensureOptimizerAnswers = "absent";
   shortenBrokerTimeout = false;
   setSystemTime();
 });
@@ -805,7 +1066,7 @@ describe("before a profile is active", () => {
   });
 
   test("saved connection settings are persisted but not hot-applied", async () => {
-    await applyInverterConfig(baseInverterConfig({ host: "10.0.0.9" }));
+    await moveEndpoint({ host: "10.0.0.9" });
     await applyMqttConfig(baseMqttConfig());
     expect(sources).toHaveLength(0);
     expect(bridges).toHaveLength(0);
@@ -819,8 +1080,9 @@ describe("before a profile is active", () => {
   });
 
   test("a test read is refused when no profile is selected", async () => {
-    profileOverride = null;
-    await expect(testInverter(null, baseInverterConfig())).resolves.toEqual({
+    // No device registered, so nothing says which profile a bare re-test means.
+    registryProfile = null;
+    await expect(testInverter(null, baseEndpoint())).resolves.toEqual({
       ok: false,
       error: "No profile selected",
     });
@@ -839,10 +1101,69 @@ describe("before a profile is active", () => {
 
   test("a test read against an uninstalled profile names the id", async () => {
     resolveOverride = () => null;
-    await expect(testInverter("gone-with-the-upgrade", baseInverterConfig())).resolves.toEqual({
+    await expect(testInverter("gone-with-the-upgrade", baseEndpoint())).resolves.toEqual({
       ok: false,
       error: 'Unknown profile "gone-with-the-upgrade"',
     });
+  });
+});
+
+describe("eager metric registration", () => {
+  test("registers the profile's keys WITH their units and counter class", async () => {
+    // `metric_keys.unit` is what every reader labels an axis from, and a
+    // continuous aggregate cannot ask the profile what a key means — so the unit
+    // and the counter class have to be recorded alongside the key, at the one hook
+    // that already walks `profile.metrics`. Until this was wired the column
+    // existed, the upsert existed, and every row held NULL.
+    await boot();
+    await poll();
+    const specs = registeredSpecs.at(0) ?? [];
+    expect(specs).toContainEqual({ key: "battery.soc", isCounter: false, unit: "%" });
+    expect(specs).toContainEqual({ key: "load.power", isCounter: false, unit: "W" });
+  });
+
+  test("a metric with no unit registers null — never an empty string", async () => {
+    // `undefined`/`null` is "I do not know" and never erases a stored unit; `""`
+    // is a STATEMENT that the metric is dimensionless. Collapsing the two would
+    // let a profile that says nothing overwrite one that said something.
+    await boot();
+    await poll();
+    const specs = registeredSpecs.at(0) ?? [];
+    const lock = specs.find((spec) => spec.key === LOCK);
+    expect(lock).toBeDefined();
+    expect(lock?.unit ?? null).toBeNull();
+  });
+});
+
+describe("where the endpoint comes from", () => {
+  test("boot resolves the address from the SPINE and never reads the legacy blob", async () => {
+    // 2.0.0's dual-authority defect: the loop read `app_settings.inverter` while
+    // provisioning copied that same document into `connections` and
+    // `devices.unit_id` on every boot, so the JSONB one won and editing the
+    // endpoint row did nothing. The document is a one-way legacy reader now —
+    // used by the upgrade seed, never by the loop.
+    pollEndpoint = baseEndpoint({ host: "10.1.2.3", unitId: 7, port: 8899 });
+    await boot();
+    expect(latestSource().config).toMatchObject({ host: "10.1.2.3", unitId: 7, port: 8899 });
+    expect(legacyConfigReads).toBe(0);
+  });
+
+  test("a reload RE-READS the spine instead of being handed the values", async () => {
+    // `reloadEndpoint()` takes no argument on purpose: the settings PUT writes the
+    // `connections` row and then asks the loop to look again. Passing the typed
+    // values in would be the same write-back one indirection further out.
+    await boot();
+    await moveEndpoint({ host: "10.4.5.6", unitId: 9 });
+    expect(latestSource().config).toMatchObject({ host: "10.4.5.6", unitId: 9 });
+    expect(legacyConfigReads).toBe(0);
+  });
+
+  test("the cadence the loop arms is the ENDPOINT's, not the process default", async () => {
+    // `connections.poll_interval_ms` is a per-endpoint fact — a slow RS485 bridge
+    // and a GX on Ethernet do not share a cadence.
+    pollEndpoint = baseEndpoint({ pollIntervalMs: 15_000 });
+    await boot();
+    expect(armedAt(15_000)).toHaveLength(1);
   });
 });
 
@@ -864,6 +1185,86 @@ describe("the poll loop", () => {
       profile: PROFILE_ID,
     });
     expect(status().mqtt).toEqual({ enabled: true, connected: true, lastError: null });
+  });
+
+  test("a stored row is keyed by the DEVICE, never by what the driver stamped", async () => {
+    // The driver labels every sample with `profile.id` — a profile, which is
+    // swapped, uninstalled and re-downloaded inside the five years a reading is
+    // retained. The registry's device id (`devices.slug`) is the identity, and
+    // this is the spec that says the two are not the same string.
+    await boot();
+    await poll();
+    await stop();
+
+    const rows = inserted.flat();
+    expect(rows.length).toBeGreaterThan(0);
+    expect(rows.every((r) => r.inverterId === DEVICE_SLUG)).toBe(true);
+    expect(rows.some((r) => r.inverterId === SAMPLE_STAMP)).toBe(false);
+  });
+
+  test("with no device registered, nothing is keyed to a device that does not exist", async () => {
+    // A boot that raced provisioning, or an install whose device row could not
+    // be created. Previously the rows were routed anyway and dropped one layer
+    // down; either way nothing is stored, and nothing may be invented.
+    await boot();
+    registryProfile = null;
+    await devicesDouble.reload();
+    await poll();
+    await stop();
+
+    expect(inserted.flat()).toHaveLength(0);
+    // The live surfaces are unaffected: what is stored and what is shown are
+    // different questions.
+    expect(published).toHaveLength(1);
+  });
+
+  test("a sample with no device to key it to says so — once, not once a second", async () => {
+    // Storing NOTHING while reporting `connected: true` and serving live frames
+    // is the loudest possible failure and the quietest possible log line. One
+    // layer down, `./storage-identity.ts` warns once per unresolvable source
+    // for exactly this reason; this path must be at least as loud.
+    await boot();
+    registryProfile = null;
+    await devicesDouble.reload();
+    const reloadsBefore = deviceReloads;
+
+    await poll();
+    await settle();
+    await poll();
+    await settle();
+
+    expect(inserted.flat()).toHaveLength(0);
+    expect(linesStartingWith("no registered device")).toHaveLength(1);
+    // And the recovery attempt is one, not one per sample: at 1 Hz, a query per
+    // dropped sample is a second failure on top of the first.
+    expect(deviceReloads - reloadsBefore).toBe(1);
+  });
+
+  test("a roster lost to a failed read at boot is re-read, not lost for the process's life", async () => {
+    // `readPlantDevices()` throws on both boot calls (a statement timeout, a
+    // lock, Postgres still starting) and the registry keeps its last good
+    // roster — which at boot is the EMPTY one. Without a retry the process
+    // polls at 1 Hz, serves live frames and stores nothing until someone
+    // restarts it.
+    rosterReadFails = true;
+    await boot();
+    await poll();
+    await settle();
+    expect(inserted.flat()).toHaveLength(0);
+
+    // The database answers again. The next dropped sample re-reads the roster
+    // (the recovery is rate-limited, so time has to pass) and the poll after it
+    // stores.
+    rosterReadFails = false;
+    setSystemTime(new Date(Date.now() + 60_000));
+    await poll();
+    await settle();
+    await poll();
+    await stop();
+
+    const rows = inserted.flat();
+    expect(rows.length).toBeGreaterThan(0);
+    expect(rows.every((r) => r.inverterId === DEVICE_SLUG)).toBe(true);
   });
 
   test("repeated polls of an unchanged reading write no history row at all", async () => {
@@ -903,7 +1304,7 @@ describe("the poll loop", () => {
     expect(inserted[0]).toHaveLength(1);
     expect(inserted[0]?.[0]).toEqual({
       time: new Date("2026-08-15T10:00:00.000Z"),
-      inverterId: PLANT,
+      inverterId: DEVICE_SLUG,
       metric: "load.power",
       value: 1200,
       durMs: 6000,
@@ -924,7 +1325,7 @@ describe("the poll loop", () => {
     expect(config.map((r) => r.metric).sort()).toEqual(["settings.lock", "settings.max_discharge"]);
     expect(config.find((r) => r.metric === TARGET)).toEqual({
       time: new Date("2026-08-15T10:00:00.000Z"),
-      inverterId: PLANT,
+      inverterId: DEVICE_SLUG,
       metric: TARGET,
       value: 30,
     });
@@ -1005,7 +1406,7 @@ describe("the poll loop", () => {
   });
 
   test("a config with no host idles instead of dialling localhost every second", async () => {
-    inverterConfig = baseInverterConfig({ host: "   " });
+    pollEndpoint = baseEndpoint({ host: "   " });
     await boot();
 
     expect(status().inverter.lastError).toBe("No inverter host configured");
@@ -1019,13 +1420,12 @@ describe("the poll loop", () => {
   });
 
   test("polling resumes as soon as a host is saved", async () => {
-    inverterConfig = baseInverterConfig({ host: undefined });
+    pollEndpoint = baseEndpoint({ host: "" });
     await boot();
     await poll();
     expect(published).toHaveLength(0);
 
-    inverterConfig = baseInverterConfig({ host: "10.0.0.7" });
-    await applyInverterConfig(inverterConfig);
+    await moveEndpoint({ host: "10.0.0.7" });
     await poll();
 
     expect(published).toHaveLength(1);
@@ -1202,16 +1602,105 @@ describe("the history write buffer", () => {
   });
 });
 
+describe("the write seam is reachable from outside the poll loop", () => {
+  /** A registered device with no endpoint, no registers and no poll — #172's shape. */
+  const optimizer = deviceInstance({
+    id: "optimizer",
+    deviceClass: "optimizer",
+    integration: "optimizer",
+    metrics: [{ key: "decision.target", unit: "A", group: "misc", access: "r" }],
+  });
+  const commitTime = new Date("2026-08-15T10:00:00.000Z");
+  const laterTime = new Date("2026-08-15T10:00:05.000Z");
+
+  test("a device with no endpoint is written through the runtime's OWN writer", async () => {
+    // #88 (EVCC pushing samples off MQTT) and #172 (the optimizer recording its
+    // decisions) have an instance and a set of readings, and no poll loop. If
+    // the seam is not reachable from the runtime they each have to stand up a
+    // second `createDeviceWriter` — a second set of history buffers, a second
+    // identity resolver and a second flush cadence per integration.
+    await boot();
+
+    runtime.commit(optimizer, { time: commitTime, metrics: { "decision.target": 16 } });
+    runtime.commit(optimizer, { time: laterTime, metrics: { "decision.target": 10 } });
+    await stop();
+
+    const rows = inserted.flat().filter((r) => r.inverterId === "optimizer");
+    // Two intervals: the first closed by the second commit, the second by the
+    // shutdown flush — the same change-encoding every polled device gets, from
+    // the same buffers and the same flush cadence.
+    expect(rows.map((r) => [r.metric, r.value])).toEqual([
+      ["decision.target", 16],
+      ["decision.target", 10],
+    ]);
+    expect(rows[0]).toEqual({
+      inverterId: "optimizer",
+      metric: "decision.target",
+      time: commitTime,
+      value: 16,
+      durMs: 5000,
+    });
+  });
+
+  test("a device with no poll loop is flushed on the cadence even though no profile booted", async () => {
+    // `../index.ts` guards `runtime.start` with `if (ctx)`, and the flush
+    // schedule is armed inside `start`. But the plant row is created whether or
+    // not a profile is active, and the EVCC registrar is wired unconditionally —
+    // so on a boot with a plant and no active profile (a fresh install past
+    // provisioning, or a configured profile that failed to load) the seam's rows
+    // went into a buffer that nothing flushed until shutdown, capped at 100 000
+    // rows with the oldest dropped past that.
+    runtime.armStorage();
+    runtime.commit(optimizer, { time: commitTime, metrics: { "decision.target": 16 } });
+    runtime.commit(optimizer, { time: laterTime, metrics: { "decision.target": 10 } });
+
+    await fire(FLUSH_MS);
+
+    const rows = inserted.flat().filter((r) => r.inverterId === "optimizer");
+    expect(rows.map((r) => r.value)).toEqual([16]);
+  });
+
+  test("arming storage twice does not stack a second flush schedule", async () => {
+    runtime.armStorage();
+    runtime.armStorage();
+
+    expect(armedAt(FLUSH_MS)).toHaveLength(1);
+  });
+
+  test("a device retired under a running server is forgotten when the roster says so", async () => {
+    // `writer.forget` was dead in production: a retired device kept its policy
+    // and its open intervals until `stop()`, which then flushed them under the
+    // retired slug — hours later, timestamped now.
+    await boot();
+    extraDevices = [optimizer];
+    await reloadEndpoint();
+    runtime.commit(optimizer, { time: commitTime, metrics: { "decision.target": 16 } });
+
+    // The operator retires it. The roster re-read is where that becomes true.
+    extraDevices = [];
+    await reloadEndpoint();
+
+    const rows = inserted.flat().filter((r) => r.inverterId === "optimizer");
+    expect(rows.map((r) => r.value)).toEqual([16]);
+
+    // And nothing of its is still held: shutdown adds no second copy.
+    const before = inserted.flat().length;
+    await stop();
+    expect(inserted.flat().filter((r) => r.inverterId === "optimizer")).toHaveLength(1);
+    expect(inserted.flat().length).toBeGreaterThanOrEqual(before);
+  });
+});
+
 describe("swapping the live source", () => {
   test("buffered history is drained before a new inverter id can claim it", async () => {
     await boot();
     await poll();
     expect(inserted).toHaveLength(0);
 
-    await applyInverterConfig(baseInverterConfig({ host: "10.0.0.8" }));
+    await moveEndpoint({ host: "10.0.0.8" });
 
     expect(inserted).toHaveLength(1);
-    expect(inserted[0]?.every((row) => row.inverterId === PLANT)).toBe(true);
+    expect(inserted[0]?.every((row) => row.inverterId === DEVICE_SLUG)).toBe(true);
     expect(sources).toHaveLength(2);
   });
 
@@ -1220,7 +1709,7 @@ describe("swapping the live source", () => {
     const first = latestSource();
     const firstTimer = timerFor(60_000);
 
-    await applyInverterConfig(baseInverterConfig({ pollIntervalMs: 5000 }));
+    await moveEndpoint({ pollIntervalMs: 5000 });
 
     expect(first.closed).toBe(1);
     expect(cleared).toContain(firstTimer.handle);
@@ -1245,7 +1734,7 @@ describe("swapping the live source", () => {
     process.env.INVERTER_SIMULATE = "true";
     try {
       await boot();
-      await applyInverterConfig(baseInverterConfig({ host: "" }));
+      await moveEndpoint({ host: "" });
 
       expect(status().inverter.connected).toBeTruthy();
       expect(status().inverter.lastError).toBeNull();
@@ -1267,7 +1756,7 @@ describe("swapping the live source", () => {
     await poll();
     expect(status().inverter.lastError).toBe("ECONNREFUSED");
 
-    await applyInverterConfig(baseInverterConfig({ host: "10.0.0.8" }));
+    await moveEndpoint({ host: "10.0.0.8" });
 
     expect(status().inverter.lastError).toBeNull();
     // …and the same error on the new source is logged again rather than collapsed.
@@ -1296,6 +1785,66 @@ describe("the MQTT bridge", () => {
       watts: 3000,
     });
     expect(published0.raw.detailedForecast[1]?.watts).toBe(5000);
+  });
+
+  test("the bridge is named by the plant and device slugs, never by the profile id", async () => {
+    await boot();
+    await settle();
+
+    expect(bridgeCtx?.plantSlug).toBe("test-plant");
+    expect(bridgeCtx?.deviceSlug).toBe("inverter");
+    // The point of the whole change: Home Assistant keys entities on `unique_id`
+    // and a discovery announcement is retained, so an identity built from the
+    // profile id is renamed — irreversibly — the first time the profile changes.
+    expect(bridgeCtx?.plantSlug).not.toBe(bridgeCtx?.profile.id);
+    expect(bridgeCtx?.deviceSlug).not.toBe(bridgeCtx?.profile.id);
+  });
+
+  test("the namespace is read once per bridge rebuild, not once per publish", async () => {
+    await boot();
+    await settle();
+    const afterBoot = namespaceReads.length;
+    expect(afterBoot).toBe(1);
+
+    // Several forecast publishes go out on the seeded bridge; none of them may
+    // re-read a value the schema freezes.
+    await settle();
+    expect(namespaceReads.length).toBe(afterBoot);
+
+    await applyMqttConfig(baseMqttConfig({ brokerUrl: "mqtt://elsewhere:1883" }));
+    await settle();
+    expect(namespaceReads.length).toBe(afterBoot + 1);
+  });
+
+  test("an unprovisioned spine turns MQTT OFF and leaves the poll loop running", async () => {
+    const { MissingMqttNamespaceError } = await import("./mqtt-namespace");
+    namespaceOutcome = new MissingMqttNamespaceError("no device row can name the MQTT namespace");
+
+    await boot();
+    await poll();
+    await settle();
+
+    // No bridge — and crucially not a bridge announced under a name that could
+    // never be corrected.
+    expect(bridges).toHaveLength(0);
+    // The readings are what the plant is for; they must survive a broker-less boot.
+    expect(published.length).toBeGreaterThan(0);
+    expect(status().inverter.lastError).toBeNull();
+  });
+
+  test("a DATABASE failure is treated the same as a missing row, not thrown into start()", async () => {
+    // Not a MissingMqttNamespaceError. The first version of this guard rethrew
+    // anything else, so a missing database client aborted the runtime and handed
+    // the addon's supervisor a crash loop — on the one deployment target whose
+    // supervisor restarts forever.
+    namespaceOutcome = new Error("connection refused");
+
+    await boot();
+    await poll();
+    await settle();
+
+    expect(bridges).toHaveLength(0);
+    expect(published.length).toBeGreaterThan(0);
   });
 
   test("a disabled forecast publishes null rather than a stale curve", async () => {
@@ -1458,7 +2007,7 @@ describe("the background jobs", () => {
     expect(armedAt(LEARN_MS)).toHaveLength(1);
     expect(armedAt(SPOT_MS)).toHaveLength(1);
     // Only the poll loop is rebuilt, because the connection config was re-read.
-    expect(armedAt(inverterConfig.pollIntervalMs)).toHaveLength(2);
+    expect(armedAt(pollEndpoint.pollIntervalMs)).toHaveLength(2);
   });
 
   test("the forecast correction is kicked shortly after boot and twice a day after that", async () => {
@@ -1525,7 +2074,7 @@ describe("shutdown", () => {
     const source = latestSource();
     const bridge = latestBridge();
     const handles = [
-      timerFor(inverterConfig.pollIntervalMs).handle,
+      timerFor(pollEndpoint.pollIntervalMs).handle,
       timerFor(FLUSH_MS).handle,
       timerFor(FORECAST_MS).handle,
       timerFor(LEARN_MS).handle,
@@ -1544,6 +2093,8 @@ describe("shutdown", () => {
 
   test("the automations audience predicate reaches the engine that short-circuits on it", async () => {
     const ctx = buildProfileContext(mainProfile());
+    // The loop only starts once a device is registered to key its state by.
+    registryProfile = mainProfile();
     streams = createStreams();
     let watched = false;
 
@@ -1557,11 +2108,85 @@ describe("shutdown", () => {
     expect(automation.watching?.()).toBe(true);
   });
 
+  test("the optimizer's decisions are handed the runtime's OWN write seam", async () => {
+    // #172: a decision is a READING, and it goes through the same
+    // `createDeviceWriter` every poll sample does. A second writer here would be
+    // a second identity resolver, a second buffer pair with its own cap and drop
+    // policy, and two buffering regimes writing into the same two tables.
+    ensureOptimizerAnswers = "ready";
+    extraDevices = [optimizerDevice];
+    const ctx = buildProfileContext(mainProfile());
+    registryProfile = mainProfile();
+    await start(createStreams(), ctx);
+
+    const record = automation.recordDecision;
+    expect(record).toBeDefined();
+    const at = (seconds: number) => new Date(Date.UTC(2026, 7, 15, 10, 0, seconds));
+    await record?.(decisionStatus({ targetA: 30 }), 800, at(0));
+    // A second, different decision, so the first interval CLOSES — a series row
+    // is written when its interval ends, not when it opens.
+    await record?.(decisionStatus({ targetA: 12 }), 800, at(30));
+    await stop();
+
+    const rows = inserted.flat().filter((r) => r.inverterId === OPTIMIZER_DEVICE_ID);
+    expect(rows.filter((r) => r.metric === "optimizer.target.current").map((r) => r.value)).toEqual(
+      [30, 12],
+    );
+  });
+
+  test("no optimizer device row means no decisions stored, and the plant is still steered", async () => {
+    // The write path DROPS rows naming a device with no row, so a commit that
+    // beat its row would lose decisions and say so only in a log line.
+    ensureOptimizerAnswers = "absent";
+    extraDevices = [];
+    const ctx = buildProfileContext(mainProfile());
+    registryProfile = mainProfile();
+    await start(createStreams(), ctx);
+
+    await automation.recordDecision?.(decisionStatus({ targetA: 30 }), 0, new Date());
+    await stop();
+    expect(inserted.flat().filter((r) => r.inverterId === OPTIMIZER_DEVICE_ID)).toEqual([]);
+    // The loop that writes the register started regardless.
+    expect(automation.started).toBe(1);
+  });
+
+  test("a restart re-registers the optimizer at once, without waiting out the retry", async () => {
+    // A stop is not a retirement. The registrar backs off for ten minutes after
+    // a failed registration — correct for a plant that is misconfigured, and
+    // wrong for a server that has just come back up, which would then store
+    // nothing for twenty ticks.
+    ensureOptimizerAnswers = "absent";
+    extraDevices = [];
+    const ctx = buildProfileContext(mainProfile());
+    registryProfile = mainProfile();
+    await start(createStreams(), ctx);
+    const at = (seconds: number) => new Date(Date.UTC(2026, 7, 15, 10, 0, seconds));
+    await automation.recordDecision?.(decisionStatus({ targetA: 30 }), 0, at(0));
+    await stop();
+
+    // Onboarding finishes; the plant now has a row for it.
+    ensureOptimizerAnswers = "ready";
+    extraDevices = [optimizerDevice];
+    await start(createStreams(), buildProfileContext(mainProfile()));
+    await automation.recordDecision?.(decisionStatus({ targetA: 30 }), 0, at(30));
+    await automation.recordDecision?.(decisionStatus({ targetA: 12 }), 0, at(60));
+    await stop();
+
+    const rows = inserted
+      .flat()
+      .filter(
+        (r) => r.inverterId === OPTIMIZER_DEVICE_ID && r.metric === "optimizer.target.current",
+      );
+    expect(rows.map((r) => r.value)).toEqual([30, 12]);
+  });
+
   test("automations are stopped before the loop that feeds them", async () => {
     await boot();
     expect(automation.started).toBe(1);
-    expect(automation.profileId).toBe(PROFILE_ID);
-    const pollHandle = timerFor(inverterConfig.pollIntervalMs).handle;
+    // The loop is handed the registered DEVICE — the identity its state is
+    // namespaced by — not the profile that happens to describe it.
+    expect(automation.deviceId).toBe(DEVICE_SLUG);
+    const pollHandle = timerFor(pollEndpoint.pollIntervalMs).handle;
     // Nothing has been torn down yet, so the count below starts from zero.
     expect(cleared).toHaveLength(0);
 
@@ -1574,6 +2199,19 @@ describe("shutdown", () => {
     // anywhere later, timers would already have been cleared by this moment.
     expect(automation.clearedAtStop).toBe(0);
     expect(cleared).toContain(pollHandle);
+  });
+
+  test("with no registered inverter the automation loop is not started at all", async () => {
+    // Every register the loop takes is snapshotted under a device id. With no
+    // device there is no identity to key that snapshot by, so starting would
+    // mean steering the plant with no way to hand the user's value back.
+    registryProfile = null;
+    streams = createStreams();
+
+    await start(streams, buildProfileContext(mainProfile()));
+
+    expect(automation.started).toBe(0);
+    expect(automation.deviceId).toBeNull();
   });
 
   test("stopping twice is safe", async () => {
@@ -1606,10 +2244,10 @@ describe("testing a connection before saving it", () => {
     });
 
   test("the full snapshot comes back sorted by group then label, with enum labels resolved", async () => {
-    profileOverride = mainProfile();
+    registryProfile = mainProfile();
     readResult = async () => probeSample();
 
-    const result = await testInverter(null, baseInverterConfig());
+    const result = await testInverter(null, baseEndpoint());
 
     expect(result.ok).toBe(true);
     expect(result.metricCount).toBe(5);
@@ -1636,7 +2274,7 @@ describe("testing a connection before saving it", () => {
     resolveOverride = (id) => (id === PROFILE_ID ? mainProfile() : null);
     readResult = async () => liveSample({ "battery.soc": 55 });
 
-    const result = await testInverter(PROFILE_ID, baseInverterConfig({ host: "10.0.0.99" }));
+    const result = await testInverter(PROFILE_ID, baseEndpoint({ host: "10.0.0.99" }));
 
     expect(result.ok).toBe(true);
     expect(latestSource().config.host).toBe("10.0.0.99");
@@ -1645,10 +2283,10 @@ describe("testing a connection before saving it", () => {
   test("the probe never disturbs the live source, and is always closed", async () => {
     await boot();
     const live = latestSource();
-    profileOverride = mainProfile();
+    registryProfile = mainProfile();
     readResult = async () => probeSample();
 
-    await testInverter(null, baseInverterConfig({ host: "10.0.0.42" }));
+    await testInverter(null, baseEndpoint({ host: "10.0.0.42" }));
     const probe = latestSource();
 
     expect(probe).not.toBe(live);
@@ -1659,24 +2297,24 @@ describe("testing a connection before saving it", () => {
   });
 
   test("a failing read is reported, and the probe is still closed", async () => {
-    profileOverride = mainProfile();
+    registryProfile = mainProfile();
     readResult = async () => {
       throw new Error("connect ECONNREFUSED 10.0.0.42:502");
     };
 
-    const result = await testInverter(null, baseInverterConfig());
+    const result = await testInverter(null, baseEndpoint());
 
     expect(result).toEqual({ ok: false, error: "connect ECONNREFUSED 10.0.0.42:502" });
     expect(latestSource().closed).toBe(1);
   });
 
   test("a thrown non-Error is stringified rather than lost", async () => {
-    profileOverride = mainProfile();
+    registryProfile = mainProfile();
     readResult = async () => {
       throw "gateway timeout";
     };
 
-    await expect(testInverter(null, baseInverterConfig())).resolves.toEqual({
+    await expect(testInverter(null, baseEndpoint())).resolves.toEqual({
       ok: false,
       error: "gateway timeout",
     });

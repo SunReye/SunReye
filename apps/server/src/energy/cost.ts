@@ -22,6 +22,7 @@ import { db } from "@SunReye/db";
 import type { TariffConfig } from "@SunReye/db/tariff";
 import type { CanonicalRole, InverterProfile, InverterSample } from "@SunReye/inverter-core";
 import { sql } from "drizzle-orm";
+import { deviceIdOf, metricIdsOf, metricKeyColumn, metricKeyJoin } from "../shared/identity-sql";
 import { type ZeroValueShare, allocateCost, priceSeriesRows, rollUpToMonths } from "./cost-calc";
 import { emptyTotals, impliedLoadKwh, replaceTodaySlice, withImpliedHourLoad } from "./energy-calc";
 import { getPlantTimeZone } from "../settings/display-settings";
@@ -223,19 +224,36 @@ export function liveTodayTotals(
 
 /**
  * Shared scaffolding for queries against the rollup views: the profile's
- * energy-key map plus the SQL fragments both readers interpolate. `view` is a
- * fixed internal literal (not user input), so it is safe to interpolate as a
- * raw identifier; the metric keys stay parameterized.
+ * energy-key map plus the source fragment both readers select `from`.
+ *
+ * `srcSql` is a DERIVED TABLE, not a bare relation name, and that is the whole
+ * identity boundary for this module. 2.0.0 keys the aggregates by
+ * `(device_id int2, metric_id int2)`, but every query below reads a `metric`
+ * COLUMN and dispatches on it (`fieldByKey.get(r.metric)`), and the profile hands
+ * this module metric KEYS. So the sub-select resolves the identity on the way in
+ * (`device_id in`, `metric_id in`) and joins `metric_keys` back on the way out,
+ * exposing exactly the four columns the callers already read — `bucket`, `metric`,
+ * `max_value`, `min_value`. Nothing downstream of here sees an integer.
+ *
+ * Both predicates are pushed INSIDE the sub-select rather than left to the outer
+ * query: a derived table filtered only on its output columns would read the whole
+ * aggregate for every device and every metric, then throw most of it away.
+ *
+ * `view` is a fixed internal literal (not user input), so it is safe to
+ * interpolate as a raw identifier; the metric keys and the source id stay
+ * parameterized.
  */
-function rollupQueryParts(profile: InverterProfile, view: RollupView) {
+function rollupQueryParts(profile: InverterProfile, view: RollupView, inverterId: string) {
   const fieldByKey = resolveEnergyKeys(profile);
+  const keys = [...fieldByKey.keys()];
   return {
     fieldByKey,
-    viewSql: sql.raw(view),
-    keyList: sql.join(
-      [...fieldByKey.keys()].map((k) => sql`${k}`),
-      sql`, `,
-    ),
+    srcSql: sql`(
+      select r.bucket, ${metricKeyColumn("mk")}, r.max_value, r.min_value
+      from ${sql.raw(view)} r ${metricKeyJoin("r", "mk")}
+      where r.device_id = ${deviceIdOf(inverterId)}
+        and r.metric_id in ${metricIdsOf(keys)}
+    ) src`,
   };
 }
 
@@ -283,7 +301,7 @@ export async function fetchBucketEnergy(
   to: Date,
   view: RollupView,
 ): Promise<HourEnergy[]> {
-  const { fieldByKey, viewSql, keyList } = rollupQueryParts(profile, view);
+  const { fieldByKey, srcSql } = rollupQueryParts(profile, view, inverterId);
   if (fieldByKey.size === 0) return [];
 
   // Cumulative counter level entering the window, per metric (last bucket before
@@ -296,10 +314,8 @@ export async function fetchBucketEnergy(
   }>(
     sql`
       select distinct on (metric) metric, bucket, max_value as last_max
-      from ${viewSql}
-      where inverter_id = ${inverterId}
-        and metric in (${keyList})
-        and bucket < ${from}
+      from ${srcSql}
+      where bucket < ${from}
       order by metric, bucket desc
     `,
   );
@@ -318,10 +334,8 @@ export async function fetchBucketEnergy(
     min_value: number;
   }>(sql`
     select bucket, metric, max_value, min_value
-    from ${viewSql}
-    where inverter_id = ${inverterId}
-      and metric in (${keyList})
-      and bucket >= ${from}
+    from ${srcSql}
+    where bucket >= ${from}
       and bucket < ${to}
     order by bucket asc
   `);
@@ -565,7 +579,7 @@ export async function fetchCounterDeltaMatrix(
   // Plant zone so SQL wall-clock and the JS zero-fill keys agree, and neither
   // depends on the host process zone (issues #46, #52).
   const tz = opts.tz ?? hostTimeZone();
-  const { fieldByKey, viewSql, keyList } = rollupQueryParts(profile, view);
+  const { fieldByKey, srcSql } = rollupQueryParts(profile, view, inverterId);
   const periods = periodKeysInRange(from, to, bucket, tz);
   if (fieldByKey.size === 0) return { rows: [], fieldByKey, periods };
 
@@ -581,10 +595,8 @@ export async function fetchCounterDeltaMatrix(
     with src as (
       -- Buckets inside the window.
       select bucket, metric, max_value, min_value
-      from ${viewSql}
-      where inverter_id = ${inverterId}
-        and metric in (${keyList})
-        and bucket >= ${from}
+      from ${srcSql}
+      where bucket >= ${from}
         and bucket < ${to}
       union all
       -- Baseline: last bucket strictly before the window, per metric. Seeds the
@@ -593,10 +605,8 @@ export async function fetchCounterDeltaMatrix(
       select bucket, metric, max_value, min_value
       from (
         select distinct on (metric) bucket, metric, max_value, min_value
-        from ${viewSql}
-        where inverter_id = ${inverterId}
-          and metric in (${keyList})
-          and bucket < ${from}
+        from ${srcSql}
+        where bucket < ${from}
         order by metric, bucket desc
       ) baseline
     ),

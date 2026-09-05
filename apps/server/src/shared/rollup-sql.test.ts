@@ -1,42 +1,30 @@
 import { describe, expect, test } from "bun:test";
 import { PgDialect } from "drizzle-orm/pg-core";
-import { getTableName, getViewName, sql } from "drizzle-orm";
+import { getViewName, sql } from "drizzle-orm";
 import { declaredColumns } from "@SunReye/db/schema-parity";
-import { metricsRaw } from "@SunReye/db/schema/metrics";
-import {
-  dailyRollups,
-  hourlyRollups,
-  minuteRollups,
-  weightedDailyRollups,
-  weightedHourlyRollups,
-  weightedMinuteRollups,
-} from "@SunReye/db/schema/rollups";
-import { ROLLUP_BUCKETS, preferredRollup, rollupArms } from "./rollup-sql";
+import { dailyRollups, hourlyRollups, minuteRollups } from "@SunReye/db/schema/rollups";
+import { ROLLUP_BUCKETS, rollupSeries, rollupTier } from "./rollup-sql";
 
 /**
- * The read cutover (#116) is a *composition* — the sources for a tier unioned
- * under a per-bucket preference — so it is built by a pure function and asserted
- * here as a composition, on the arms it produces and on the statement they
- * render to. Nothing in this file greps a source text: `render` runs the real
- * drizzle dialect, so what is asserted is the statement the database would
- * actually receive, and the semantic half of the same claim (no gap, no
- * double-counted bucket, the weighted side winning) is proved against a real
- * TimescaleDB in `.github/workflows/db-weighted-rollups.yml`.
+ * A tier now has exactly ONE source, so this file no longer asserts a
+ * composition of competing arms — it asserts the SHAPE of the one statement each
+ * tier renders. `render` runs the real drizzle dialect, so what is checked is
+ * what the database would receive, and the semantic half (that the numbers are
+ * right across a bucket boundary) is proved against a real TimescaleDB in
+ * `apps/server/db-tests/`.
  *
- * The minute tier has three arms rather than two since the minute aggregates
- * stopped being refreshed: raw answers every bucket it covers, and the two
- * frozen aggregates answer the ones materialized before the freeze, until
- * retention ages them out.
+ * `ROLLUP_BUCKETS` is the exhaustiveness seam: every `describe("every tier")`
+ * case iterates it, so a fourth tier cannot be added without a test covering it.
  */
 const dialect = new PgDialect();
 const FROM = new Date("2026-01-01T00:00:00Z");
 const TO = new Date("2026-01-08T00:00:00Z");
 const render = (
-  bucket: Parameters<typeof preferredRollup>[0],
-  window: Partial<Parameters<typeof preferredRollup>[1]> = {},
+  bucket: Parameters<typeof rollupSeries>[0],
+  window: Partial<Parameters<typeof rollupSeries>[1]> = {},
 ) => {
   const query = dialect.sqlToQuery(
-    sql`select bucket, avg_value from ${preferredRollup(bucket, {
+    sql`select bucket, avg_value from ${rollupSeries(bucket, {
       metric: "pv.power",
       inverterId: "deye-1",
       from: FROM,
@@ -46,197 +34,146 @@ const render = (
   return { sql: query.sql.replace(/\s+/g, " ").trim(), params: query.params };
 };
 
-// The relation names an arm reads are no longer literals in this module: they
-// come from the drizzle declarations in @SunReye/db/schema/rollups, whose
-// agreement with the database is proved by apps/server/db-tests. These tests pin
-// that the derivation still yields the names the SQL files create.
-describe("relation names come from the declarations", () => {
-  test("every arm reads a relation that is actually declared", () => {
+describe("rollupTier", () => {
+  test("every tier reads a relation the drizzle declarations name", () => {
+    // Not literals here: those declarations are checked against the live
+    // relations by apps/server/db-tests/schema-parity.test.ts, so a rename in
+    // packages/db/src/timescale/*.sql cannot leave this module addressing a
+    // relation that no longer exists — which a string literal silently would.
     const declared = new Set<string>([
-      getTableName(metricsRaw),
-      ...[
-        minuteRollups,
-        hourlyRollups,
-        dailyRollups,
-        weightedMinuteRollups,
-        weightedHourlyRollups,
-        weightedDailyRollups,
-      ].map((v) => getViewName(v)),
+      getViewName(minuteRollups),
+      getViewName(hourlyRollups),
+      getViewName(dailyRollups),
     ]);
-    for (const bucket of ROLLUP_BUCKETS) {
-      for (const arm of rollupArms(bucket)) expect(declared).toContain(arm.view);
-    }
+    for (const bucket of ROLLUP_BUCKETS) expect(declared).toContain(rollupTier(bucket).view);
   });
 
-  // `WEIGHTED_AVG` is one expression shared by the view arms and the raw arm —
-  // it must be, or a bucket changes value depending on which arm answered it.
-  // That means it cannot be built from qualified column objects, so this is what
-  // stops the column names in it from drifting away from the aggregates.
-  test("the weighted average references only columns the weighted views declare", () => {
-    const columns = new Set(declaredColumns(weightedHourlyRollups).map((c) => c.name));
-    const weighted = rollupArms("hour").find((a) => a.weighted);
-    const identifiers = weighted?.avgExpr.match(/[a-z_][a-z0-9_]*/g) ?? [];
-    const referenced = identifiers.filter((id) => id !== "nullif");
-    expect(referenced.length).toBeGreaterThan(0);
-    for (const id of referenced) expect(columns).toContain(id);
-  });
-});
-
-describe("rollupArms", () => {
-  test("the hour and day tiers read exactly their aggregate pair", () => {
-    for (const bucket of ["hour", "day"] as const) {
-      const arms = rollupArms(bucket);
-      expect(arms).toHaveLength(2);
-      expect(arms.filter((a) => a.weighted)).toHaveLength(1);
-      expect(arms.map((a) => a.source)).toEqual(["view", "view"]);
-    }
-  });
-
-  test("the minute tier reads raw first, then the two frozen aggregates", () => {
-    // `policies.sql` stopped refreshing both minute aggregates: raw now holds
-    // every minute bucket within its own (much longer) retention, and the
-    // aggregates hold only what was materialized before the freeze. Raw is
-    // preferred because it is the one source that keeps growing.
-    const arms = rollupArms("minute");
-    expect(arms.map((a) => a.source)).toEqual(["raw", "view", "view"]);
-    expect(arms.map((a) => a.view)).toEqual([
-      "metrics_raw",
-      "weighted_minute_rollups",
+  test("each tier maps to its own aggregate, with no pair and no fallback", () => {
+    // 1.x carried two generations per tier and a per-bucket preference rule to
+    // pick between them. 2.0.0 has one aggregate per tier that is right from
+    // birth; if this ever grows a second source again, that is a new generation.
+    expect(ROLLUP_BUCKETS.map((b) => rollupTier(b).view)).toEqual([
       "minute_rollups",
+      "hourly_rollups",
+      "daily_rollups",
     ]);
   });
 
-  test("every minute arm but the legacy one is time-weighted", () => {
-    // Raw is aggregated with the same two sums the weighted views materialize,
-    // so switching a bucket from the aggregate to raw cannot change its value.
-    const arms = rollupArms("minute");
-    expect(arms.filter((a) => a.weighted).map((a) => a.view)).toEqual([
-      "metrics_raw",
-      "weighted_minute_rollups",
-    ]);
+  test("the widths are the widths the aggregates bucket by", () => {
+    expect(ROLLUP_BUCKETS.map((b) => rollupTier(b).width)).toEqual(["1 minute", "1 hour", "1 day"]);
+    expect(ROLLUP_BUCKETS.map((b) => rollupTier(b).ms)).toEqual([60_000, 3_600_000, 86_400_000]);
   });
 
-  test("the weighted arm sorts first, so DISTINCT ON keeps it wherever it exists", () => {
-    for (const bucket of ROLLUP_BUCKETS) {
-      const [first, second] = rollupArms(bucket);
-      expect(first?.weighted).toBe(true);
-      expect(first?.pref).toBeLessThan(second?.pref ?? Number.NEGATIVE_INFINITY);
-    }
-  });
-
-  test("every arm has a distinct preference rank — a tie would make the winner arbitrary", () => {
-    for (const bucket of ROLLUP_BUCKETS) {
-      const prefs = rollupArms(bucket).map((a) => a.pref);
-      expect(new Set(prefs).size).toBe(prefs.length);
-    }
-  });
-
-  test("the weighted view arm divides the two materialized sums and guards a zero weight", () => {
-    const weighted = rollupArms("hour").find((a) => a.weighted);
-    expect(weighted?.avgExpr).toBe("weighted_sum / nullif(weight, 0)");
-  });
-
-  test("the legacy arm reads its already-materialized avg_value untouched", () => {
-    expect(rollupArms("day").find((a) => !a.weighted)?.avgExpr).toBe("avg_value");
+  test("only the hourly and daily tiers carry a counter partial", () => {
+    // A CounterSummary is 184 B, so a minute bucket per metric per device is
+    // ~28 MB/device-day — the hot window this release exists to shrink. Counter
+    // reads at minute resolution go to raw, which still has every sample.
+    expect(rollupTier("minute").counters).toBe(false);
+    expect(rollupTier("hour").counters).toBe(true);
+    expect(rollupTier("day").counters).toBe(true);
   });
 });
 
-describe("preferredRollup", () => {
-  test("reads both sources for an aggregate-only tier", () => {
+describe("the average is interpolated, never plain", () => {
+  test("uses interpolated_average with the tier's own width and both neighbours", () => {
+    // THE bug this release exists to fix. `average(tw)` over a bucket holding a
+    // single sample is NULL — a point has no duration — and a change-only writer
+    // leaves most buckets holding one sample or none. `interpolated_average`
+    // brings in the neighbouring partials, which is also what attributes a value
+    // held across midnight to BOTH buckets in proportion. Proved numerically
+    // (100 held from 23:50, 200 from 00:10 → 183.333… for the 00:00 hour) in
+    // apps/server/db-tests/baseline.test.ts.
     const { sql: text } = render("hour");
-    expect(text).toContain("from weighted_hourly_rollups");
-    expect(text).toContain("from hourly_rollups");
+    expect(text).toContain("interpolated_average(tw, bucket, '1 hour'::interval");
+    expect(text).toContain("lag(tw) over w");
+    expect(text).toContain("lead(tw) over w");
+    expect(text).toContain("window w as (order by bucket)");
   });
 
-  test("unions the arms — never joins them, which would drop unmatched buckets", () => {
-    expect(render("minute").sql).toContain("union all");
+  test("never emits a plain average(tw), at any tier", () => {
+    for (const bucket of ROLLUP_BUCKETS) {
+      expect(render(bucket).sql).not.toMatch(/[^_]average\(tw\)/);
+    }
   });
 
-  test("collapses to one row per bucket, ordered so the preferred arm wins", () => {
-    const { sql: text } = render("day");
-    expect(text).toContain("distinct on (bucket)");
-    expect(text).toMatch(/order by bucket, pref/);
-  });
-
-  test("selects the caller-facing columns from every arm, so the row shape is one shape", () => {
-    const { sql: text } = render("hour");
-    expect(text).toContain("bucket, avg_value, max_value, min_value");
-  });
-
-  test("emits no expression an aggregate could have materialized instead", () => {
-    expect(render("hour").sql).toContain("weighted_sum / nullif(weight, 0) as avg_value");
+  test("references only columns the aggregate actually declares", () => {
+    // The expression cannot be built from qualified column objects (it is one
+    // string shared by all three tiers), so this is what stops its column names
+    // from drifting away from the aggregates.
+    const columns = new Set(declaredColumns(hourlyRollups).map((c) => c.name));
+    for (const id of ["tw", "bucket", "max_value", "min_value"]) expect(columns).toContain(id);
   });
 });
 
-describe("the raw minute arm", () => {
-  test("buckets raw rows with the same time_bucket width the aggregate used", () => {
-    // Spelled `make_interval(secs => 60)` because the call goes through the
-    // shared wrapper now (@SunReye/db/timescale-fns) rather than a local
-    // fragment. Same interval value as the aggregate's own `'1 minute'`, and
-    // measured to produce an identical plan — what matters is that the WIDTH
-    // matches, not how it is written.
-    expect(render("minute").sql).toContain(
-      'time_bucket(make_interval(secs => 60), "metrics_raw"."time")',
-    );
+describe("the window", () => {
+  test("filters on the identity by ID, with the caller's NAMES bound as parameters", () => {
+    // Names stay the API vocabulary; the int2 is resolved at the boundary. The
+    // metric key and the source id must therefore appear as bound parameters and
+    // the columns as `device_id` / `metric_id`.
+    const { sql: text, params } = render("hour");
+    expect(text).toContain("device_id =");
+    expect(text).toContain("metric_id =");
+    expect(text).not.toContain("inverter_id");
+    expect(params).toContain("pv.power");
+    expect(params).toContain("deye-1");
   });
 
-  test("weights each row by its own dur_ms, defaulting a pre-#117 row to one second", () => {
-    // Identical to the aggregates' SELECT list. A plain avg(value) over a
-    // change-only series is 4.2x wrong on a measured upgrade day, and reading a
-    // NULL dur_ms as anything but the shipped poll interval moves every bucket
-    // that spans the storage rewrite.
-    const { sql: text } = render("minute");
-    expect(text).toContain("sum(value * coalesce(dur_ms, 1000))");
-    expect(text).toContain("sum(coalesce(dur_ms, 1000))");
+  test("reads one bucket beyond each end, then trims back to the exact window", () => {
+    // `lag`/`lead` can only see rows the inner query returned, so a window
+    // trimmed before the window function runs would leave the FIRST bucket with
+    // no predecessor and the LAST with no successor — exactly the two buckets a
+    // chart's edges are made of.
+    const { sql: text, params } = render("hour", { to: TO });
+    // Compared as instants: a bound Date parameter is a distinct object, so
+    // `toContain` on the array itself would compare by identity and never match.
+    const bound = params.map((p) => (p instanceof Date ? p.getTime() : p));
+    expect(bound).toContain(FROM.getTime() - 3_600_000);
+    expect(bound).toContain(TO.getTime() + 3_600_000);
+    // …and the exact bounds are still applied, outside.
+    expect(bound).toContain(FROM.getTime());
+    expect(bound).toContain(TO.getTime());
+    expect(text).toMatch(/\) s where bucket >= \$\d+ and bucket < \$\d+ \)/);
   });
 
-  test("bounds the raw scan on `time`, not on the bucket, so chunks are excluded", () => {
-    // The whole reason this arm exists rather than leaning on the frozen
-    // aggregate's own real-time union: a predicate on time_bucket(time) does not
-    // prune chunks, so a frozen watermark would make every minute read scan raw
-    // from the freeze forward.
-    const { sql: text } = render("minute", { to: TO });
-    expect(text).toMatch(/"time" >= \$\d/);
-    expect(text).toMatch(/"time" < \$\d/);
+  test("an open-ended window has no upper bound at all", () => {
+    const { sql: text } = render("hour");
+    expect(text).not.toContain("bucket <");
   });
 
-  test("widens the scan by one bucket at each end, then filters on the bucket exactly", () => {
-    // The scan bounds are generous by one bucket so a window edge that lands
-    // mid-bucket still reads that bucket's whole set of rows — a truncated
-    // bucket would report a max/min the minute never had. The exact bucket
-    // predicate is applied after grouping, so the arm returns the same buckets
-    // an aggregate arm would.
-    const { sql: text } = render("minute", { to: TO });
-    expect(text).toContain("bucket >= ");
-    expect(text).toContain("bucket < ");
-  });
-
-  test("omits the upper bound entirely for an open-ended window", () => {
-    const { sql: text } = render("minute");
-    expect(text).not.toMatch(/"time" < \$\d/);
-  });
-
-  test("filters raw by metric and inverter before grouping", () => {
-    const { params } = render("minute");
-    expect(params.slice(0, 2)).toEqual(["pv.power", "deye-1"]);
+  test("widens by the tier's OWN width, not a fixed interval", () => {
+    const { params } = render("day", { to: TO });
+    const bound = params.map((p) => (p instanceof Date ? p.getTime() : p));
+    expect(bound).toContain(FROM.getTime() - 86_400_000);
   });
 });
 
 describe("every tier", () => {
-  test("renders one row per bucket under a preference, whatever its sources", () => {
+  test("renders the caller-facing row shape, one shape for all three", () => {
     for (const bucket of ROLLUP_BUCKETS) {
-      const { sql: text } = render(bucket);
-      expect(text).toContain("distinct on (bucket)");
-      expect(text).toContain("union all");
+      expect(render(bucket).sql).toContain("select bucket, avg_value, max_value, min_value");
     }
   });
 
-  test("applies the caller's metric and inverter to every arm it renders", () => {
+  test("applies the caller's metric and source id exactly once — one source, one arm", () => {
     for (const bucket of ROLLUP_BUCKETS) {
       const { params } = render(bucket);
-      const arms = rollupArms(bucket).length;
-      expect(params.filter((p) => p === "pv.power")).toHaveLength(arms);
-      expect(params.filter((p) => p === "deye-1")).toHaveLength(arms);
+      expect(params.filter((p) => p === "pv.power")).toHaveLength(1);
+      // Twice: `deviceIdOf` tries the slug and then the profile id, binding both.
+      expect(params.filter((p) => p === "deye-1")).toHaveLength(2);
+    }
+  });
+
+  test("emits no union and no per-bucket preference — there is nothing to prefer", () => {
+    for (const bucket of ROLLUP_BUCKETS) {
+      const { sql: text } = render(bucket);
+      expect(text).not.toContain("union all");
+      expect(text).not.toContain("distinct on");
+    }
+  });
+
+  test("interpolates at every tier, including minute", () => {
+    for (const bucket of ROLLUP_BUCKETS) {
+      expect(render(bucket).sql).toContain("interpolated_average(tw, bucket,");
     }
   });
 });

@@ -41,7 +41,7 @@
 							     battery, the smart-meter date — and those are edited with the
 							     inverter that has them, not on the weather page the forecast
 							     once shared them with. -->
-							<a class="underline underline-offset-2" href={resolve('/settings/inverter')}>
+							<a class="underline underline-offset-2" href={resolve('/settings/devices')}>
 								{m.automations_blocker_config_link()}
 							</a>
 						{/if}

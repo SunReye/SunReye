@@ -20,6 +20,7 @@ import { describe, expect, test } from "bun:test";
 
 const LIVE = new URL("./", import.meta.url);
 const AUTOMATIONS = new URL("../components/automations/", import.meta.url);
+const SETTINGS = new URL("../components/settings/", import.meta.url);
 
 async function source(base: URL, file: string): Promise<string> {
   return await Bun.file(new URL(file, base)).text();
@@ -28,10 +29,12 @@ async function source(base: URL, file: string): Promise<string> {
 const shell = await source(LIVE, "plant.svelte.ts");
 const panel = await source(AUTOMATIONS, "peak-shaving-status.svelte");
 const tiles = await source(AUTOMATIONS, "stat-tiles.svelte");
+const siteFields = await source(SETTINGS, "plant-site-fields.svelte");
 
 const CONSUMERS: [string, string][] = [
   ["peak-shaving-status", panel],
   ["stat-tiles", tiles],
+  ["plant-site-fields", siteFields],
 ];
 
 describe("the reactive shell is plugged into the real feeds", () => {
@@ -87,6 +90,19 @@ describe("the peak-shaving panel reads every 'now' value from its owner", () => 
 
   test.each(OWNED)("%s comes from livePlant", (_name, id) => {
     expect(panel).toContain(`livePlant.read('${id}')`);
+  });
+});
+
+describe("the plant form's export-cap field reads the sell register from its owner", () => {
+  // The inverter's own feed-in ceiling is the field's placeholder. Without the
+  // lease the reading never arrives and the placeholder is a bare "10" — on a
+  // plant whose profile maps the register perfectly well.
+  test("it leases the feeds for as long as it is mounted", () => {
+    expect(siteFields).toMatch(/\$effect\(\(\)\s*=>\s*livePlant\.lease\(\)\)/);
+  });
+
+  test("the solar-sell register comes from livePlant", () => {
+    expect(siteFields).toContain("livePlant.read('setting.solar_sell.max_power')");
   });
 });
 

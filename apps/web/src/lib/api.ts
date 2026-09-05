@@ -42,5 +42,26 @@ export const api = treaty<App>(serverUrl, {
     ) {
       void goto(resolve("/login"));
     }
+    // A range this instance cannot answer COMPLETELY comes back as a 422 naming
+    // the oldest instant it could have started at. Noticed here and nowhere else:
+    // every one of the ten-odd `const { data } = await api.api.history…` call
+    // sites destructures only `data`, so a refusal used to arrive as `undefined`
+    // and paint an empty chart — the silent partial answer, back in its quietest
+    // form. Reading it once, here, is what makes no call site have to opt in.
+    //
+    // `clone()`, because Eden goes on to parse this body itself and a stream can
+    // only be read once. Fire-and-forget: nothing may await inside this hook, and
+    // the banner is allowed to appear a tick after the empty chart does.
+    if (response.status === 422) {
+      void response
+        .clone()
+        .json()
+        .then(async (body: unknown) => {
+          const { historyIncomplete } = await import("$lib/history-incomplete.svelte");
+          historyIncomplete.observe(422, body);
+        })
+        // A 422 with a non-JSON body is somebody else's 422. Nothing to report.
+        .catch(() => {});
+    }
   },
 });

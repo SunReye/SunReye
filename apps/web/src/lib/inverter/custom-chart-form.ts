@@ -18,6 +18,16 @@ export interface CustomChartFormInput {
   name: string;
   metrics: string[];
   colors?: Record<string, SeriesColor>;
+  /**
+   * Per-series device slugs, keyed by metric key — CARRIED, never edited here.
+   *
+   * There is no device picker in this editor, so the only thing it can do to
+   * them is lose them: it read-modify-writes the whole chart, and a payload
+   * omitting this key erases the slugs on any unrelated edit. Losing them is
+   * unrecoverable — on a two-inverter plant nobody can say afterwards which one
+   * an old chart meant, which is the entire reason the field exists.
+   */
+  devices?: Record<string, string>;
 }
 
 /**
@@ -49,13 +59,21 @@ export function chartFormInput(
   name: string,
   metrics: readonly string[],
   colors: Readonly<Record<string, SeriesColor>>,
+  devices: Readonly<Record<string, string>> = {},
 ): CustomChartFormInput {
   const pinned: Record<string, SeriesColor> = {};
+  const named: Record<string, string> = {};
   for (const key of metrics) {
     const color = colors[key];
     if (color) pinned[key] = color;
+    // Pruned to the metrics still drawn and COPIED key by key, for both of the
+    // colour record's reasons: a slug left behind returns the day the metric is
+    // re-added, and the caller's map is live state the editor keeps mutating.
+    const device = devices[key];
+    if (device) named[key] = device;
   }
   const input: CustomChartFormInput = { name: name.trim(), metrics: [...metrics] };
   if (Object.keys(pinned).length > 0) input.colors = pinned;
+  if (Object.keys(named).length > 0) input.devices = named;
   return input;
 }

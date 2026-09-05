@@ -51,11 +51,7 @@
  * section renders, empty.
  */
 
-import type {
-  AutomationStreamMessage,
-  DecisionPoint,
-  PeakShavingStatus,
-} from "@SunReye/contracts/automation";
+import type { AutomationStreamMessage, PeakShavingStatus } from "@SunReye/contracts/automation";
 import type { CostBreakdown, PeriodEnergy } from "@SunReye/contracts/energy";
 import type { EvccState } from "@SunReye/contracts/evcc";
 import type { LogEntry } from "@SunReye/contracts/logs";
@@ -738,7 +734,18 @@ export const WEATHER_CONFIG = {
   forecast: {
     enabled: true,
     provider: "open-meteo",
-    arrays: [{ name: "Roof south", kwp: 8.4, tilt: 35, azimuth: 0 }],
+    // The COMPOSED view: every inverter's arrays, each stamped with its device's
+    // slug and physics (`packages/db/src/plant-facts.ts`). Matches `devices()`.
+    arrays: [
+      {
+        kwp: 8.4,
+        tilt: 35,
+        azimuth: 0,
+        deviceSlug: "inverter",
+        tempCoefficient: -0.4,
+        systemLoss: 14,
+      },
+    ],
     tempCoefficient: -0.4,
     systemLoss: 14,
     maxOutputW: null,
@@ -833,6 +840,87 @@ export function profiles(manifest: FixtureManifest) {
       version: "1.4.2",
     },
   ];
+}
+
+/** `GET /api/connections` — the plant's one gateway, matching `INVERTER_CONFIG`. */
+export const CONNECTIONS = [
+  {
+    id: 1,
+    name: "Inverter",
+    host: INVERTER_CONFIG.host,
+    port: INVERTER_CONFIG.port,
+    transport: INVERTER_CONFIG.transport,
+    timeoutMs: INVERTER_CONFIG.timeoutMs,
+    pollIntervalMs: INVERTER_CONFIG.pollIntervalMs,
+  },
+];
+
+/**
+ * `GET /api/devices` — `DeviceRoster` (`apps/server/src/devices/device-admin.ts`):
+ * the polled inverter, a stored-but-unpolled meter, and a retired one, so the
+ * three badge states all render.
+ */
+export function devices(manifest: FixtureManifest) {
+  const connection = CONNECTIONS[0]!;
+  return {
+    connections: CONNECTIONS,
+    devices: [
+      {
+        id: 1,
+        slug: "inverter",
+        name: "Inverter",
+        profileId: manifest.id,
+        role: "inverter",
+        unitId: 1,
+        connectionId: connection.id,
+        retiredAt: null,
+        connection,
+        arrays: [{ kwp: 8.4, tilt: 35, azimuth: 0 }],
+        tempCoefficient: -0.4,
+        systemLoss: 14,
+        battery: { usableKwh: 10, maxChargeW: 5000, minSoc: 10, nominalV: 51.2 },
+        profileName: manifest.name,
+        profileKnown: true,
+        polled: true,
+      },
+      {
+        id: 2,
+        slug: "meter",
+        name: "Meter",
+        profileId: "sungrow-sh10rt",
+        role: "meter",
+        unitId: 2,
+        connectionId: connection.id,
+        retiredAt: null,
+        connection,
+        arrays: [],
+        tempCoefficient: -0.4,
+        systemLoss: 14,
+        battery: null,
+        profileName: "Sungrow SH10RT",
+        profileKnown: true,
+        polled: false,
+      },
+      {
+        id: 3,
+        slug: "old-inverter",
+        name: "Old inverter",
+        profileId: "gone-profile",
+        role: "inverter",
+        unitId: 3,
+        connectionId: connection.id,
+        retiredAt: "2026-01-01T00:00:00.000Z",
+        connection,
+        arrays: [],
+        tempCoefficient: -0.4,
+        systemLoss: 14,
+        battery: null,
+        profileName: null,
+        profileKnown: false,
+        polled: false,
+      },
+    ],
+  };
 }
 
 /** `GET /api/profiles/updates` — `UpdateCheckResult`, the "checked, nothing new" state. */
@@ -979,46 +1067,20 @@ function peakShavingStatus(nowMs: number): PeakShavingStatus {
 }
 
 /**
- * One tick of the engine's decision log — `DecisionPoint`.
+ * `automations` topic — `AutomationStreamMessage`; `status` is `PeakShavingStatus`.
  *
- * Every field of the contract, and no field that is not in it. The shape that
- * shipped here first (`at`/`excessW`/`soc`) meant `toDecisionRows` computed its
- * window from `newest.t === undefined` → `NaN`, filtered every point out, and
- * handed the charts an empty array while `hasRegister` answered `true` on
- * `undefined !== null` — a register series with no data, which the server
- * cannot produce because `liveA` is `number | null`.
+ * THREE FIELDS, and that is the whole frame. It used to carry a `history` array
+ * of `DecisionPoint`s — the server's in-memory decision ring, replayed on every
+ * subscribe — plus a per-tick `point`. The optimizer is a device now, so what it
+ * decided is read from `/api/history/rollup` under the `optimizer` slug, which
+ * the mock backend answers like any other series. `status.lastTickAt` is what
+ * tells the page there is something new to fetch, so it must be a real stamp.
  */
-function decisionPoint(atMs: number, i: number): DecisionPoint {
-  const pvW = 3200 + i * 90;
-  const loadW = 640;
-  return {
-    t: atMs,
-    shadow: false,
-    pvW,
-    loadW,
-    evChargeW: null,
-    localSinkW: loadW,
-    thresholdW: 3000,
-    targetA: 40,
-    liveA: 38 + (i % 3),
-    batteryV: 51.2,
-    chargeW: Math.max(0, pvW - loadW - 3000),
-    exportW: 3000,
-    socPct: 55 + i,
-  };
-}
-
-/** `automations` topic — `AutomationStreamMessage`; `status` is `PeakShavingStatus`. */
 export function automationStream(overrides: Partial<AutomationStreamMessage> = {}) {
-  const now = Date.now();
   return {
     tickMs: 30_000,
-    point: null,
     plan: null,
-    // `history: []` still flips the page's `loaded` flag, but a page that draws
-    // decision charts from an empty ring is a skeleton with a heading on it.
-    history: Array.from({ length: 12 }, (_, i) => decisionPoint(now - (11 - i) * 30_000, i)),
-    status: peakShavingStatus(now),
+    status: peakShavingStatus(Date.now()),
     ...overrides,
   } satisfies AutomationStreamMessage;
 }

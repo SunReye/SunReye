@@ -1,15 +1,21 @@
 # SunReye — deploy from published images
 
-Runs SunReye using the container images built and pushed to GHCR by the CI
-pipelines. No source checkout or local build required — just Docker.
+Runs SunReye using the container image built and pushed to GHCR by the CI
+pipeline. No source checkout or local build required — just Docker.
 
-Images:
+One image, `ghcr.io/sunreye/sunreye-server`, is the whole application:
 
-- `ghcr.io/sunreye/sunreye-server` — core engine / API (Elysia, ~60 MB)
-- `ghcr.io/sunreye/sunreye-web` — SvelteKit dashboard (~130 MB)
-- `ghcr.io/sunreye/sunreye-migrate` — run-once schema initializer (bun + drizzle-kit)
+| what | how |
+| --- | --- |
+| dashboard | the SvelteKit build is embedded in the binary |
+| REST API + OpenAPI + live socket | same process, same port |
+| schema migrator | the same image, run as `migrate` |
 
-All are multi-arch (`linux/amd64`, `linux/arm64`).
+It is a single compiled binary on an empty (`scratch`) filesystem — no shell, no
+package manager, no JS runtime, ~35 MB — and multi-arch (`linux/amd64`,
+`linux/arm64`). The separate `sunreye-web` and `sunreye-migrate` images are
+retired; they cost a Node runtime and a 430 MB bun toolchain respectively, and
+having one artifact is what makes schema-vs-code skew impossible.
 
 ## Quick start
 
@@ -19,8 +25,11 @@ cp .env.example .env
 docker compose up -d
 ```
 
-- Dashboard → http://localhost:3001
-- API + OpenAPI docs → http://localhost:3000
+Everything is on <http://localhost:3000> — dashboard, API and OpenAPI docs.
+
+> The embedded dashboard is the **hash-router** build (the same one the Home
+> Assistant addon serves, so it survives a reverse-proxy path prefix). Routes
+> therefore read `http://localhost:3000/#/statistics`.
 
 Defaults to a simulated inverter (`INVERTER_SIMULATE=true`), so it runs with no
 hardware. Point it at a real inverter by setting `INVERTER_SIMULATE=false` and
@@ -35,16 +44,17 @@ SUNREYE_TAG=v1.2.3 docker compose up -d
 ```
 
 > Keep the compose file and the image tag from the same era. This compose file
-> healthchecks the server with `/app/server --healthcheck` (added together with
-> the `/healthz` endpoint); images from releases *older* than that flag fail
-> the probe and `web` will refuse to start with "server is unhealthy". Either
+> runs migrations as `sunreye-server migrate`, which only exists in releases
+> that ship the argv dispatcher; against an older tag that argument is ignored
+> and the container boots a *second server* instead of migrating. It also
+> healthchecks with `/app/server --healthcheck`, which older images lack. Either
 > upgrade the tag or check out the matching older compose file.
 
 ## Database schema
 
-Handled automatically. A one-shot **`migrate`** service
-(`ghcr.io/sunreye/sunreye-migrate`) runs the journaled migration runner against
-the database, and the `server` waits for it to finish
+Handled automatically. A one-shot **`migrate`** service — the server image with
+`command: ["migrate"]` — runs the journaled migration runner against the
+database, and the `server` waits for it to finish
 (`service_completed_successfully`) before starting. No repo checkout or manual
 step needed.
 
@@ -59,11 +69,14 @@ the `sunreye_pg` volume across restarts.
 
 ## Notes
 
-- **`PUBLIC_SERVER_URL` is read at runtime** (container start). It tells the
-  browser where to reach the API; override it in `.env` or the environment when
-  that isn't `http://localhost:3000`.
-- The server image is distroless (no shell/curl), so there is no in-container
-  healthcheck. Dependents use `service_started`; add a TCP/HTTP probe at your
-  orchestrator/reverse-proxy layer in production.
+- **Leave `CORS_ORIGIN` unset.** The dashboard is served by the server itself,
+  so this stack is same-origin and browsers enforce that for you. Set it only if
+  you serve the dashboard from a different host.
+- **Set `TZ`.** Days, months and tariff-band boundaries are cut in the server's
+  local clock; left on UTC, a peak-rate evening lands on the following day.
+- The image has no shell or curl, so the server probes *itself*:
+  `/app/server --healthcheck` fetches `/healthz`, which round-trips the
+  database. That is the healthcheck compose uses, and dependents can rely on
+  `service_healthy`.
 - Pulling private GHCR packages requires `docker login ghcr.io` first. If the
   packages are public, no login is needed.

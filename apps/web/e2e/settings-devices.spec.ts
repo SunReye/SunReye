@@ -1,0 +1,191 @@
+/**
+ * Settings → Devices: the roster and the add-device dialog.
+ *
+ * A browser claim because the dialog is a running document — native `<select>`s
+ * bound to form state, a "new connection" branch that appears on one option,
+ * a submit button whose `disabled` follows a derived body, and a server
+ * refusal that has to land under the field it names. The rules themselves
+ * (`add-device-logic.test.ts`) are proven in milliseconds; what only exists
+ * here is whether the bindings wire them to the controls.
+ */
+
+import { expect, type Page, test } from "@playwright/test";
+import { openPage } from "./support/open-page";
+
+const open = (page: Page) => openPage(page, "/#/settings/devices");
+const dialog = (page: Page) => page.getByRole("dialog");
+
+test.describe("the roster", () => {
+  test("groups devices under their gateway, and the gateway is edited from its header", async ({
+    page,
+  }) => {
+    const opened = await open(page);
+    // One gateway in the fixture; its header carries the address and the cadence.
+    await expect(
+      page.getByRole("heading", { level: 2, name: "Inverter", exact: true }),
+    ).toBeVisible();
+    await expect(page.getByText(/Modbus TCP · 10\.0\.0\.5:502 · every 1 s/)).toBeVisible();
+    await expect(page.locator("[data-connection='1'] [data-device]")).toHaveCount(3);
+
+    await page.getByRole("button", { name: "Edit connection" }).click();
+    const panel = dialog(page);
+    await expect(panel.getByRole("heading", { name: "Edit connection" })).toBeVisible();
+    await expect(panel.getByLabel("Host")).toHaveValue("10.0.0.5");
+    // Three devices are bound, so there is nothing to delete.
+    await expect(panel.getByRole("button", { name: "Delete" })).toHaveCount(0);
+
+    // Test here is a port probe — is something listening at host:port — not a
+    // register read; that one belongs to the device dialog, which has a profile.
+    await panel.getByRole("button", { name: "Test connection" }).click();
+    await expect(panel.getByText(/Reachable — port open, 12 ms/)).toBeVisible();
+    await expect(page.getByRole("dialog", { name: "Captured snapshot" })).toHaveCount(0);
+    await panel.getByLabel("Host").fill("10.0.0.7");
+    await panel.getByRole("button", { name: "Save" }).click();
+    await expect(panel).toHaveCount(0);
+    await expect(page.getByText("Inverter saved.")).toBeVisible();
+    expect(opened.backend.unhandled).toEqual([]);
+    expect(opened.consoleErrors).toEqual([]);
+  });
+
+  test("editing a device opens the dialog on its own values and sends only the change", async ({
+    page,
+  }) => {
+    const opened = await open(page);
+    await page.locator("[data-device='meter']").getByRole("button", { name: "Edit" }).click();
+    const panel = dialog(page);
+    await expect(panel.getByRole("heading", { name: "Edit device" })).toBeVisible();
+    await expect(panel.getByLabel("Name", { exact: true })).toHaveValue("Meter");
+    await expect(panel.getByLabel("Unit ID")).toHaveValue("2");
+    await expect(panel.getByLabel("Profile")).toHaveValue("sungrow-sh10rt");
+    // No "new connection" arm on an edit — a gateway is made from its own dialog.
+    await expect(
+      panel.getByLabel("Connection", { exact: true }).locator("option[value='new']"),
+    ).toHaveCount(0);
+    // Its own unit id is not shown as taken; the inverter's (1) is.
+    await expect(panel.getByLabel("Unit ID").locator("option[value='2']")).toBeEnabled();
+    await expect(panel.getByLabel("Unit ID").locator("option[value='1']")).toBeDisabled();
+
+    const save = panel.getByRole("button", { name: "Save" });
+    await expect(save).toBeDisabled(); // nothing changed yet
+    await panel.getByLabel("Unit ID").selectOption("5");
+    await expect(save).toBeEnabled();
+    await save.click();
+    await expect(panel).toHaveCount(0);
+    await expect(page.getByText("Meter updated.")).toBeVisible();
+    expect(opened.backend.unhandled).toEqual([]);
+    expect(opened.consoleErrors).toEqual([]);
+  });
+
+  test("an inverter's roof and pack are edited in its dialog; a meter has neither", async ({
+    page,
+  }) => {
+    const opened = await open(page);
+    // The row summarises what the dialog edits.
+    await expect(page.locator("[data-device='inverter']").getByText("8.4 kWp")).toBeVisible();
+    await expect(page.locator("[data-device='inverter']").getByText("10 kWh")).toBeVisible();
+
+    await page.locator("[data-device='meter']").getByRole("button", { name: "Edit" }).click();
+    let panel = dialog(page);
+    await expect(panel.getByText("PV arrays")).toHaveCount(0);
+    await panel.getByRole("button", { name: "Cancel" }).click();
+
+    await page.locator("[data-device='inverter']").getByRole("button", { name: "Edit" }).click();
+    panel = dialog(page);
+    await expect(panel.getByLabel("Peak power (kWp)").first()).toHaveValue("8.4");
+    await expect(panel.getByLabel("Usable battery (kWh)")).toHaveValue("10");
+    const save = panel.getByRole("button", { name: "Save" });
+    await expect(save).toBeDisabled();
+
+    await panel.getByRole("button", { name: "Add array" }).click();
+    // Only the first row carries the column labels; later rows are reached by id.
+    await panel.locator("#array-kwp-1").fill("3.2");
+    await panel.getByLabel("Battery reserve (%)").fill("15");
+    await expect(save).toBeEnabled();
+    await save.click();
+    await expect(panel).toHaveCount(0);
+    await expect(page.getByText("Inverter updated.")).toBeVisible();
+    expect(opened.backend.unhandled).toEqual([]);
+    expect(opened.consoleErrors).toEqual([]);
+  });
+
+  test("lists every device with its state, retired ones included", async ({ page }) => {
+    const opened = await open(page);
+    const inverter = page.locator("[data-device='inverter']");
+    await expect(inverter.getByText("Polling")).toBeVisible();
+    // The polled device cannot be retired from here.
+    await expect(inverter.getByRole("button", { name: "Retire" })).toBeDisabled();
+
+    const meter = page.locator("[data-device='meter']");
+    await expect(meter.getByText("Not polled")).toBeVisible();
+    await expect(meter.getByText("Unit 2")).toBeVisible();
+
+    const old = page.locator("[data-device='old-inverter']");
+    await expect(old.getByText("Retired")).toBeVisible();
+    await expect(old.getByText(/Profile not installed/)).toBeVisible();
+    await expect(old.getByRole("button", { name: "Restore" })).toBeVisible();
+    expect(opened.consoleErrors).toEqual([]);
+  });
+});
+
+test.describe("adding a device", () => {
+  test("the dialog opens on the existing gateway and the submit waits for a name and a profile", async ({
+    page,
+  }) => {
+    await open(page);
+    await page.getByRole("button", { name: "Add device" }).click();
+    const panel = dialog(page);
+    await expect(panel.getByRole("heading", { name: "Add a device" })).toBeVisible();
+
+    const connection = panel.getByLabel("Connection", { exact: true });
+    await expect(connection).toHaveValue("1");
+    // Nothing to send yet: no name, no profile.
+    const submit = panel.getByRole("button", { name: "Add device" });
+    await expect(submit).toBeDisabled();
+
+    // Units 1 and 2 are taken on this gateway (the inverter and the meter), so
+    // the picker offers them disabled and defaults to the first free id — 0.
+    const unit = panel.getByLabel("Unit ID");
+    await expect(unit).toHaveValue("0");
+    await expect(unit.locator("option[value='2']")).toBeDisabled();
+    await expect(unit.locator("option[value='4']")).toBeEnabled();
+    await unit.selectOption("4");
+    await expect(unit).toHaveValue("4");
+
+    await panel.getByLabel("Name", { exact: true }).fill("Zähler Süd");
+    await expect(panel.getByText("Slug: zahler-sud")).toBeVisible();
+    await expect(submit).toBeDisabled();
+
+    await panel.getByLabel("Profile").selectOption("sungrow-sh10rt");
+    await expect(submit).toBeEnabled();
+  });
+
+  test("choosing a new connection reveals its fields, and the device lands in the list", async ({
+    page,
+  }) => {
+    const opened = await open(page);
+    await page.getByRole("button", { name: "Add device" }).click();
+    const panel = dialog(page);
+
+    await expect(panel.getByLabel("Host")).toHaveCount(0);
+    await panel.getByLabel("Connection", { exact: true }).selectOption("new");
+    await expect(panel.getByLabel("Connection name")).toHaveValue("Gateway 2");
+    await expect(panel.getByLabel("Host")).toBeVisible();
+
+    await panel.getByLabel("Role").selectOption("meter");
+    await panel.getByLabel("Name", { exact: true }).fill("Keller");
+    await panel.getByLabel("Profile").selectOption("sungrow-sh10rt");
+    const submit = panel.getByRole("button", { name: "Add device" });
+    // A new connection with no host is not sendable.
+    await expect(submit).toBeDisabled();
+    await panel.getByLabel("Host").fill("10.0.0.9");
+    await expect(submit).toBeEnabled();
+
+    await submit.click();
+    await expect(panel).toHaveCount(0);
+    // The list reloads from the mock, which serves its fixed roster; the
+    // toast is what proves the POST answered with the echoed device.
+    await expect(page.getByText("Keller added.")).toBeVisible();
+    expect(opened.backend.unhandled).toEqual([]);
+    expect(opened.consoleErrors).toEqual([]);
+  });
+});

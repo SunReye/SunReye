@@ -1,21 +1,20 @@
 /**
- * The automations live picture: the `automations` topic on the app's one
- * socket, shared by the index badge and the peak-shaving page.
+ * The automations LIVE picture: the `automations` topic on the app's one socket,
+ * shared by the index badge and the peak-shaving page.
  *
- * This store used to own a WebSocket of its own, a reconnect loop, a
- * `connected` flag and a `JSON.parse(...) as …`, plus a three-call REST prime
- * (`/status`, `/history`, `/plan`) on every open — the prime existed only
- * because a bare socket had nothing to replay. The multiplexed `/ws` backfills
- * the topic on subscribe with exactly those three facts in one frame, so the
- * prime is gone and with it the race where a slow HTTP answer landed on top of
- * a newer server snapshot. Transport is {@link bus}'s business; what is left
- * here is the domain state, folded by {@link applyAutomationFrame}.
+ * Live, and only live. This store used to carry the engine's decision history
+ * too — a 2 880-point ring the server held in memory and replayed over the
+ * socket on every subscribe. The optimizer is a device now, so its decisions are
+ * rows in `metrics_raw` read through `/api/history/rollup` by whichever chart
+ * wants them, and what is left here is the engine STATE (blockers, errors, the
+ * countdown) and the FORECAST — the two things that are not measurements and
+ * therefore have nowhere else to come from.
  *
- * "Are we live?" is `bus.connected` now — one answer for the whole app rather
- * than a per-store copy that could disagree with the socket it rode on.
+ * "Are we live?" is `bus.connected` — one answer for the whole app rather than a
+ * per-store copy that could disagree with the socket it rode on.
  */
 
-import type { DecisionPoint, PeakShavingPlans, PeakShavingStatus } from "$lib/automations";
+import type { PeakShavingPlans, PeakShavingStatus } from "$lib/automations";
 import { bus } from "$lib/ws/bus.svelte";
 import {
   type AutomationStreamState,
@@ -29,11 +28,6 @@ class AutomationStream {
 
   get status(): PeakShavingStatus | null {
     return this.#state.status;
-  }
-
-  /** Decision ring, oldest → newest — snapshot-seeded, then grown per tick. */
-  get history(): DecisionPoint[] {
-    return this.#state.history;
   }
 
   get plan(): PeakShavingPlans | null {
@@ -50,9 +44,21 @@ class AutomationStream {
     return this.#state.tickArrivedAt;
   }
 
-  /** True once the server's snapshot has landed. */
+  /** True once the server's first frame has landed. */
   get loaded(): boolean {
     return this.#state.loaded;
+  }
+
+  /**
+   * When the engine last decided anything, as the server stamped it — the cue a
+   * chart re-reads the optimizer's stored series on.
+   *
+   * A STAMP rather than a signal: a component that re-fetches when this value
+   * changes refetches once per decision, and a reconnect that replays the same
+   * frame changes nothing and costs nothing.
+   */
+  get lastTickAt(): string | null {
+    return this.#state.status?.lastTickAt ?? null;
   }
 
   /**

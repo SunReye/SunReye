@@ -82,6 +82,13 @@ if [ "$force" != true ]; then
 fi
 
 echo "Restoring $dump"
+# A freshly created target has no timescaledb extension — the database image is
+# stock postgres plus the extension packages, and nothing installs it into
+# template1 — so `timescaledb_pre_restore()` would not resolve. The dump creates
+# the extension itself, but only once pg_restore is already running, which is
+# too late. Creating it first is Timescale's documented restore order, and it is
+# a no-op on a target that has it.
+psql -X -q -d "$DATABASE_URL" -c "CREATE EXTENSION IF NOT EXISTS timescaledb;"
 psql -X -q -d "$DATABASE_URL" -c "SELECT timescaledb_pre_restore();"
 
 status=0
