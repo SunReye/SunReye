@@ -69,6 +69,13 @@ const fullCoveragePath = writeFixture(
       backupMetric("grid.frequency", 60005, { unit: "Hz", group: "grid" }),
       backupMetric("pv.string.energy.today", 60006, { unit: "kWh", group: "pv", index: 1 }),
       backupMetric("pv.string.energy.total", 60007, { unit: "kWh", group: "pv", index: 1 }),
+      // Phase currents on every AC output, the islanded output's frequency and
+      // the generator's lifetime total — the Deye maps none of them.
+      backupMetric("backup.phase.current", 60008, { unit: "A", index: 1 }),
+      backupMetric("backup.frequency", 60009, { unit: "Hz" }),
+      backupMetric("load.phase.current", 60010, { unit: "A", group: "load", index: 1 }),
+      backupMetric("generator.phase.current", 60011, { unit: "A", group: "generator", index: 1 }),
+      backupMetric("generator.energy.total", 60012, { unit: "kWh", group: "generator" }),
     ],
   }),
 );

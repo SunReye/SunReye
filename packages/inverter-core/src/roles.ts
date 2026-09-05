@@ -84,6 +84,7 @@ export const ROLE_CATALOG = {
   "load.power": { kind: "measurement", unitHint: "W" },
   "load.phase.power": { kind: "measurement", indexed: true, unitHint: "W" },
   "load.phase.voltage": { kind: "measurement", indexed: true, unitHint: "V" },
+  "load.phase.current": { kind: "measurement", indexed: true, unitHint: "A" },
   "load.energy.today": { kind: "cumulative", unitHint: "kWh" },
   "load.energy.total": { kind: "cumulative", unitHint: "kWh" },
   // --- Backup / EPS output ---
@@ -95,13 +96,18 @@ export const ROLE_CATALOG = {
   "backup.power": { kind: "measurement", unitHint: "W" },
   "backup.phase.power": { kind: "measurement", indexed: true, unitHint: "W" },
   "backup.phase.voltage": { kind: "measurement", indexed: true, unitHint: "V" },
+  "backup.phase.current": { kind: "measurement", indexed: true, unitHint: "A" },
+  // The islanded output makes its own frequency; off-grid it is the only one.
+  "backup.frequency": { kind: "measurement", unitHint: "Hz" },
   "backup.energy.today": { kind: "cumulative", unitHint: "kWh" },
   "backup.energy.total": { kind: "cumulative", unitHint: "kWh" },
   // --- Generator ---
   "generator.power": { kind: "measurement", unitHint: "W" },
   "generator.phase.power": { kind: "measurement", indexed: true, unitHint: "W" },
   "generator.phase.voltage": { kind: "measurement", indexed: true, unitHint: "V" },
+  "generator.phase.current": { kind: "measurement", indexed: true, unitHint: "A" },
   "generator.energy.today": { kind: "cumulative", unitHint: "kWh" },
+  "generator.energy.total": { kind: "cumulative", unitHint: "kWh" },
   // --- EV charging ---
   // One loadpoint — one place a car plugs in — regardless of who reports it: an
   // EVCC instance, a wallbox on Modbus, a user's Home Assistant mapping. These

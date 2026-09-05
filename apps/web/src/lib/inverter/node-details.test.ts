@@ -109,11 +109,12 @@ describe("nodeDetail — which readings belong to which node", () => {
       metric("load.power"),
       metric("load.energy.today"),
       metric("load.phase.power", 1),
+      metric("load.phase.current", 1),
     ];
     const detail = nodeDetail("load", metrics, caps({ backupLoad: true, phases: 1 }));
     expect(detail?.rows.map((m) => m.key)).toEqual(["load.energy.today"]);
     expect(detail?.groups.map((g) => g.metrics.map((m) => m.key))).toEqual([
-      ["load.phase.power#1"],
+      ["load.phase.power#1", "load.phase.current#1"],
     ]);
   });
 
@@ -143,9 +144,19 @@ describe("nodeDetail — which readings belong to which node", () => {
   });
 
   test("the generator node carries its own subsystem", () => {
-    const metrics = [metric("generator.power"), metric("generator.energy.today")];
-    expect(rowsOf("generator", metrics, caps({ generator: true }))).toEqual([
+    const metrics = [
+      metric("generator.power"),
+      metric("generator.energy.today"),
+      metric("generator.energy.total"),
+      metric("generator.phase.current", 1),
+    ];
+    const detail = nodeDetail("generator", metrics, caps({ generator: true, phases: 1 }));
+    expect(detail?.rows.map((m) => m.key)).toEqual([
       "generator.energy.today",
+      "generator.energy.total",
+    ]);
+    expect(detail?.groups.map((g) => g.metrics.map((m) => m.key))).toEqual([
+      ["generator.phase.current#1"],
     ]);
   });
 });
