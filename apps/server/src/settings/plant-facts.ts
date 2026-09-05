@@ -18,7 +18,7 @@
 import type { PlantBattery } from "@SunReye/db/batteries";
 import type { DeviceBattery } from "@SunReye/db/batteries";
 import { plantBatteryFrom } from "@SunReye/db/plant-facts";
-import type { PlantPatch, PlantRecord } from "@SunReye/db/plant-repo";
+import type { DeviceRecord, PlantPatch, PlantRecord } from "@SunReye/db/plant-repo";
 
 import {
   type ProvisionLogger,
@@ -52,16 +52,16 @@ export interface PlantFacts {
    * explicitly, rather than to whichever pack row happened to sort first.
    */
   packNominalV(): Promise<number | null>;
+  /**
+   * The plant's ACTIVE device rows, for the forecast input that is composed
+   * from every inverter's PV description. Cached with the rest.
+   */
+  devices(): Promise<readonly DeviceRecord[]>;
   /** Update only the named columns, then drop the cache. */
   patch(patch: PlantPatch): Promise<void>;
-  /** Describe the plant's storage, or `null` for "there is none". */
-  writeBattery(battery: DeviceBattery | null): Promise<void>;
   /** Drop every cached value. */
   invalidate(): void;
 }
-
-/** The role whose device owns the plant's pack description — see {@link writeBattery}. */
-const INVERTER_ROLE = "inverter";
 
 export function createPlantFacts(deps: PlantFactsDeps): PlantFacts {
   /**
@@ -71,6 +71,7 @@ export function createPlantFacts(deps: PlantFactsDeps): PlantFacts {
    */
   let plantPromise: Promise<PlantRecord> | null = null;
   let packsPromise: Promise<readonly DeviceBattery[]> | null = null;
+  let devicesPromise: Promise<readonly DeviceRecord[]> | null = null;
 
   function plant(): Promise<PlantRecord> {
     plantPromise ??= provisionPlantRow(deps).catch((error: unknown) => {
@@ -93,28 +94,25 @@ export function createPlantFacts(deps: PlantFactsDeps): PlantFacts {
     return packsPromise;
   }
 
+  function devices(): Promise<readonly DeviceRecord[]> {
+    devicesPromise ??= plant()
+      .then((row) => deps.store.readDevices(row.id))
+      .catch((error: unknown) => {
+        devicesPromise = null;
+        throw error;
+      });
+    return devicesPromise;
+  }
+
   function invalidate(): void {
     plantPromise = null;
     packsPromise = null;
-  }
-
-  /**
-   * The device a pack description belongs to, or null when there is no single
-   * answer.
-   *
-   * Only `role = 'inverter'` devices are candidates: a controller or a meter
-   * reports plant-level values from its own registers and is not where storage
-   * is described.
-   */
-  async function packOwner(): Promise<number | null> {
-    const row = await plant();
-    const devices = await deps.store.readDevices(row.id);
-    const inverters = devices.filter((d) => d.role === INVERTER_ROLE);
-    return inverters[0]?.id ?? null;
+    devicesPromise = null;
   }
 
   return {
     plant,
+    devices,
     async battery() {
       return plantBatteryFrom(await packs());
     },
@@ -131,43 +129,6 @@ export function createPlantFacts(deps: PlantFactsDeps): PlantFacts {
     async patch(patch: PlantPatch) {
       const row = await plant();
       await deps.store.updatePlant(row.id, patch);
-      invalidate();
-    },
-    /**
-     * Write the plant's storage description onto the device that reports it.
-     *
-     * THE AGGREGATE IS NOT INVERTIBLE. The plant battery the forms edit is
-     * DERIVED — capacities summed, the reserve capacity-weighted — so with two
-     * packs there is no way back from "35 kWh, 11.43 %" to the 30/5 and 5/50 it
-     * came from. Any split would be a guess, and a guess here silently changes
-     * what the automation engine reserves and what the forecast believes it can
-     * store. So the write is refused and says so, which is the honest answer
-     * until a per-device UI exists to ask the question properly.
-     *
-     * With no inverter device at all — an onboarding-only boot, where the
-     * settings pages are live before any profile is active — there is nothing to
-     * hang a pack off. Also refused, also logged: silently dropping the
-     * operator's input is how a form comes to lie about what it saved.
-     */
-    async writeBattery(battery: DeviceBattery | null) {
-      const row = await plant();
-      const existing = await deps.store.readPlantBatteries(row.id);
-      if (existing.length > 1) {
-        deps.logger.warn(
-          "the plant has more than one battery ({count} packs), so the plant-level battery cannot be written back — edit each device's pack instead",
-          { count: existing.length },
-        );
-        return;
-      }
-      const target = existing[0]?.deviceId ?? (await packOwner());
-      if (target === null) {
-        deps.logger.warn(
-          "no device to attach the battery to — the plant's inverter has not been provisioned yet, so the storage description was not saved",
-        );
-        return;
-      }
-      if (battery === null) await deps.store.deleteDeviceBattery(target);
-      else await deps.store.upsertDeviceBattery(target, battery);
       invalidate();
     },
     invalidate,

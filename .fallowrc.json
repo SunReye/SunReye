@@ -368,7 +368,8 @@
       {
         "from": "db",
         "allow": [
-          "env"
+          "env",
+          "inverter-core"
         ]
       },
       {

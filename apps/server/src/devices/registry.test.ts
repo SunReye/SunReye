@@ -39,6 +39,9 @@ function row(overrides: Partial<DeviceRecord> & { id: number; slug: string }): D
     role: "inverter",
     unitId: 1,
     connectionId: 1,
+    arrays: [],
+    tempCoefficient: -0.4,
+    systemLoss: 14,
     retiredAt: null,
     ...overrides,
   };

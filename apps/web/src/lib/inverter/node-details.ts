@@ -144,7 +144,7 @@ const SPECS: Record<string, NodeSpec> = {
       "backup.energy.total",
     ],
     indexed: {
-      roles: ["load.phase.power", "load.phase.voltage"],
+      roles: ["load.phase.power", "load.phase.voltage", "load.phase.current"],
       label: m.label_phase(),
       count: phases,
     },
@@ -152,9 +152,9 @@ const SPECS: Record<string, NodeSpec> = {
   generator: {
     title: () => m.label_generator(),
     primary: { role: "generator.power", accent: "var(--energy-generator)" },
-    rows: ["generator.power", "generator.energy.today"],
+    rows: ["generator.power", "generator.energy.today", "generator.energy.total"],
     indexed: {
-      roles: ["generator.phase.power", "generator.phase.voltage"],
+      roles: ["generator.phase.power", "generator.phase.voltage", "generator.phase.current"],
       label: m.label_phase(),
       count: phases,
     },

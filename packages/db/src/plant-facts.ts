@@ -90,10 +90,53 @@ export interface WeatherSettingsHalf {
  * goes through the capacity-weighted arithmetic by construction rather than by
  * remembering to.
  */
+/**
+ * What the compose step needs of a device row: which inverter it is, whether it
+ * is in service, and the PV description it carries. A structural subset of
+ * `./plant-repo.ts`'s `DeviceRecord`, spelled here so this module does not
+ * import the repository that imports it.
+ */
+export interface InverterPv {
+  slug: string;
+  role: string;
+  retiredAt: Date | null;
+  arrays: PvArray[];
+  tempCoefficient: number;
+  systemLoss: number;
+}
+
+/**
+ * THE PLANT'S FORECAST INPUT, assembled from its inverters.
+ *
+ * Every in-service `role = 'inverter'` device contributes its arrays in roster
+ * order, and every array leaves here carrying three things the forecast reads
+ * per array: `deviceSlug` (whose strings these are), and the two coefficients —
+ * the array's own override when it states one, else its INVERTER's. So the
+ * plant-level `tempCoefficient` / `systemLoss` fallback in `pvPowerW`'s caller
+ * is never reached for an array this function emitted, and a second inverter
+ * with different modules gets its own physics without touching the first.
+ *
+ * Retired devices and every other role contribute nothing: a meter has no
+ * strings, and a replaced inverter's roof share has moved to its replacement.
+ */
+function composeForecastArrays(devices: readonly InverterPv[]): PvArray[] {
+  return devices
+    .filter((d) => d.role === "inverter" && d.retiredAt === null)
+    .flatMap((d) =>
+      d.arrays.map((array) => ({
+        ...array,
+        deviceSlug: d.slug,
+        tempCoefficient: array.tempCoefficient ?? d.tempCoefficient,
+        systemLoss: array.systemLoss ?? d.systemLoss,
+      })),
+    );
+}
+
 export function composeWeatherConfig(
   stored: WeatherSettingsHalf,
   columns: PlantFactColumns,
   battery: PlantBattery | null,
+  devices: readonly InverterPv[],
 ): WeatherConfig {
   return {
     enabled: stored.enabled,
@@ -104,7 +147,10 @@ export function composeWeatherConfig(
       enabled: stored.forecast.enabled,
       provider: stored.forecast.provider,
       correction: stored.forecast.correction,
-      arrays: columns.arrays,
+      arrays: composeForecastArrays(devices),
+      // The plant columns are LEGACY (see `./schema/plants.ts`); they fill the
+      // two plant-wide fallback fields every reader is typed on, and no array
+      // above can reach them because each carries its inverter's values.
       tempCoefficient: columns.tempCoefficient,
       systemLoss: columns.systemLoss,
       maxOutputW: columns.maxOutputW,
@@ -115,25 +161,28 @@ export function composeWeatherConfig(
   };
 }
 
-/**
- * A battery instruction. `null` on the outer field means the patch did not
- * mention storage; `{ value: null }` means it said there is none.
- *
- * Two levels rather than one nullable because the two are different
- * instructions: "leave the pack alone" and "the plant has no pack" would
- * otherwise collapse, and a pack could never be removed.
- */
-export interface BatteryWrite {
-  value: DeviceBattery | null;
-}
-
 export interface WeatherWriteSplit {
   /** Only the columns the patch named. Everything else must not be UPDATEd. */
   columns: Partial<PlantFactColumns>;
-  /** The pack instruction, or null when the patch was silent about storage. */
-  battery: BatteryWrite | null;
   /** The preference half, whole — it has a single editor. */
   settings: WeatherSettingsHalf;
+}
+
+/**
+ * The `forecast.*` fields that are no longer the plant's to write.
+ *
+ * PV arrays, panel physics and the pack describe an INVERTER and are edited on
+ * its device (`PATCH /api/devices/:id`). A weather patch naming one of them is
+ * refused rather than dropped: a stale client that got a 200 would believe its
+ * save landed, and the legacy plant columns it would have written are read by
+ * nothing any more.
+ */
+const MOVED_TO_DEVICE = ["arrays", "tempCoefficient", "systemLoss", "battery"] as const;
+
+/** The first moved field a weather patch names, or null when it names none. */
+export function movedToDevice(patch: unknown): string | null {
+  const forecastPatch = isPlainObject(patch) ? patch.forecast : undefined;
+  return MOVED_TO_DEVICE.find((key) => named(forecastPatch, key)) ?? null;
 }
 
 /** Whether a value is a plain object — the only thing worth looking into. */
@@ -156,14 +205,7 @@ function named(patch: unknown, key: string): boolean {
 /** Top-level plant facts, and the column each is. */
 const TOP_LEVEL = ["latitude", "longitude", "label"] as const;
 /** Plant facts nested under `forecast`, and the column each is. */
-const FORECAST_LEVEL = [
-  "arrays",
-  "tempCoefficient",
-  "systemLoss",
-  "maxOutputW",
-  "houseLoadW",
-  "smartMeterSince",
-] as const;
+const FORECAST_LEVEL = ["maxOutputW", "houseLoadW", "smartMeterSince"] as const;
 
 /**
  * Route one incoming patch into a column UPDATE, a pack write, and the
@@ -186,13 +228,8 @@ export function splitWeatherWrite(patch: unknown, validated: WeatherConfig): Wea
     if (named(forecastPatch, key)) columns[key] = validated.forecast[key] as never;
   }
 
-  const battery = named(forecastPatch, "battery")
-    ? { value: validated.forecast.battery ?? null }
-    : null;
-
   return {
     columns,
-    battery,
     settings: {
       enabled: validated.enabled,
       forecast: {
@@ -300,6 +337,15 @@ function maybeArray(entry: unknown): PvArray | undefined {
  * kWp sums to the plant's capacity), so a silently shortened list would model a
  * smaller plant than the one that exists and understate every forecast.
  */
+/**
+ * The stored `arrays` JSONB of a device row as a list, or `[]` when it holds
+ * anything a reader could not index into. The device side of
+ * {@link columnsFromPlantRow}'s same rule; one spelling for both tables.
+ */
+export function deviceArraysFrom(value: unknown): PvArray[] {
+  return maybeArrays(value) ?? [];
+}
+
 const maybeArrays: Reader<PvArray[]> = (value) => {
   if (!Array.isArray(value)) return undefined;
   const out: PvArray[] = [];

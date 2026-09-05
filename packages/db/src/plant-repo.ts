@@ -50,11 +50,17 @@
  * Postgres, because every claim above is a claim about what the engine does.
  */
 
+import { DEVICE_CLASSES, type DeviceClass } from "@SunReye/inverter-core/device-class";
 import { type SQL, sql } from "drizzle-orm";
 
 import type { DeviceBattery } from "./batteries";
 import { jsonDocument } from "./json-value";
-import { type PlantFactColumns, columnsFromPlantRow } from "./plant-facts";
+import {
+  type PlantFactColumns,
+  type PvArray,
+  columnsFromPlantRow,
+  deviceArraysFrom,
+} from "./plant-facts";
 
 /** The subset of a drizzle client this module needs — see `./metric-keys.ts`. */
 export interface PlantDb {
@@ -91,6 +97,13 @@ export interface DeviceRecord {
   role: string;
   unitId: number;
   connectionId: number | null;
+  /**
+   * This inverter's PV description — see `./schema/plants.ts` on `devices`. An
+   * empty list and the two defaults for every other role.
+   */
+  arrays: PvArray[];
+  tempCoefficient: number;
+  systemLoss: number;
   /**
    * When the device was taken out of service, or null while it is in service.
    *
@@ -137,22 +150,17 @@ export function activeDevices<T extends Pick<DeviceRecord, "retiredAt">>(
 /**
  * Every role `devices_role_check` admits, in the order the schema states them.
  *
- * The list is a MIRROR of the constraint (`./schema/plants.ts`), not its source:
- * the database is the authority, and `apps/server/db-tests/check-constraints.test.ts`
- * is what proves the two agree. It is spelled here because a role the engine
- * accepts and nothing in the read layer names is a value every branch falls
- * through in silence — the failure the CHECK exists to make loud.
+ * The same array `@SunReye/inverter-core/device-class` publishes — the
+ * constraint in `./schema/plants.ts` is rendered from it, so the engine, this
+ * read layer and the in-memory `DeviceClass` cannot disagree. It is re-exported
+ * under the column's name because a role the engine accepts and nothing in the
+ * read layer names is a value every branch falls through in silence — the
+ * failure the CHECK exists to make loud.
  */
-export const DEVICE_ROLES = [
-  "inverter",
-  "controller",
-  "meter",
-  "charger",
-  "optimizer",
-] as const satisfies readonly string[];
+export const DEVICE_ROLES = DEVICE_CLASSES;
 
 // fallow-ignore-next-line unused-type -- the role union derived from DEVICE_ROLES above and used by this module's own VIRTUAL_ROLES; exported so a consumer typing a role has one spelling to reach for.
-export type DeviceRole = (typeof DEVICE_ROLES)[number];
+export type DeviceRole = DeviceClass;
 
 /**
  * Roles with NO MACHINE BEHIND THEM.
@@ -177,7 +185,6 @@ const VIRTUAL_ROLES: ReadonlySet<string> = new Set<DeviceRole>(["optimizer"]);
  * default. Refusing an unmodelled role is the database's job, not this
  * predicate's.
  */
-// fallow-ignore-next-line unused-export -- the predicate `physicalDevices` below composes, and the seam where the "an unknown role is PHYSICAL" rule is testable (./plant-repo.test.ts); test files are not traced as consumers.
 export function isVirtualDevice(device: Pick<DeviceRecord, "role">): boolean {
   return VIRTUAL_ROLES.has(device.role);
 }
@@ -472,6 +479,24 @@ export async function ensureConnection(
       where id = ${existing.id}`);
     return { ...settings, id: existing.id };
   }
+  return createConnection(db, plantId, settings);
+}
+
+/**
+ * A SECOND (or third) endpoint for the plant — always an INSERT.
+ *
+ * The add-device path's counterpart to {@link ensureConnection}: that one edits
+ * the plant's first row in place because the single-inverter form is MOVING a
+ * gateway, and this one exists because adding a device on a new gateway must
+ * leave the existing one exactly where it is. A caller that wants "the plant's
+ * endpoint" uses the other function; a caller that has decided a new one is
+ * needed uses this.
+ */
+export async function createConnection(
+  db: PlantDb,
+  plantId: number,
+  settings: ConnectionSettings,
+): Promise<ConnectionRecord> {
   const { rows } = await db.execute(sql`
     insert into connections (plant_id, name, host, port, transport, timeout_ms, poll_interval_ms)
     values (${plantId}, ${settings.name}, ${settings.host}, ${settings.port},
@@ -482,9 +507,78 @@ export async function ensureConnection(
   return toConnection(row);
 }
 
+/**
+ * `UPDATE … WHERE id` for the assignments given, then the row as it now stands —
+ * or no UPDATE at all when nothing was named, because `set` with no assignments
+ * is a syntax error and an empty patch is a read. Shared by the two by-id
+ * edits so the two cannot disagree about that rule.
+ */
+async function updateThenRead(
+  db: PlantDb,
+  table: SQL,
+  id: number,
+  assignments: readonly SQL[],
+  columns: SQL,
+): Promise<Record<string, unknown> | undefined> {
+  if (assignments.length > 0) {
+    await db.execute(
+      sql`update ${table} set ${sql.join([...assignments], sql`, `)} where id = ${id}`,
+    );
+  }
+  const { rows } = await db.execute(sql`select ${columns} from ${table} where id = ${id}`);
+  return rows[0] as Record<string, unknown> | undefined;
+}
+
+/** What may change on an existing endpoint. `plant_id` is not: moving a gateway between plants moves every device on it. */
+export interface ConnectionPatch {
+  name?: string;
+  host?: string;
+  port?: number;
+  transport?: string;
+  timeoutMs?: number;
+  pollIntervalMs?: number;
+}
+
+/**
+ * Edit an endpoint IN PLACE, keeping its id — and with it every device bound
+ * to it. That is the point and the hazard both: one save moves every device on
+ * the gateway, which is right for a gateway that moved and is why the UI edits
+ * a connection as its own thing rather than through one of its devices.
+ */
+export async function updateConnection(
+  db: PlantDb,
+  id: number,
+  patch: ConnectionPatch,
+): Promise<ConnectionRecord> {
+  const assignments: SQL[] = [];
+  if (patch.name !== undefined) assignments.push(sql`name = ${patch.name}`);
+  if (patch.host !== undefined) assignments.push(sql`host = ${patch.host}`);
+  if (patch.port !== undefined) assignments.push(sql`port = ${patch.port}`);
+  if (patch.transport !== undefined) assignments.push(sql`transport = ${patch.transport}`);
+  if (patch.timeoutMs !== undefined) assignments.push(sql`timeout_ms = ${patch.timeoutMs}`);
+  if (patch.pollIntervalMs !== undefined) {
+    assignments.push(sql`poll_interval_ms = ${patch.pollIntervalMs}`);
+  }
+  const row = await updateThenRead(db, sql`connections`, id, assignments, CONNECTION_COLUMNS);
+  if (!row) throw new Error(`connection ${id} does not exist`);
+  return toConnection(row);
+}
+
+/**
+ * Remove an endpoint no device references. True when a row went, false when
+ * there was none. A device still bound to it is refused BY THE ENGINE
+ * (`ON DELETE RESTRICT`) — the caller decides whether to say so or to retire
+ * the devices first; nothing here cascades.
+ */
+export async function deleteConnection(db: PlantDb, id: number): Promise<boolean> {
+  const { rows } = await db.execute(sql`delete from connections where id = ${id} returning id`);
+  return rows.length > 0;
+}
+
 const DEVICE_COLUMNS = sql`
   id, slug, name, profile_id as "profileId", role, unit_id as "unitId",
-  connection_id as "connectionId", retired_at as "retiredAt"`;
+  connection_id as "connectionId", arrays, temp_coefficient as "tempCoefficient",
+  system_loss as "systemLoss", retired_at as "retiredAt"`;
 
 function toDevice(row: Record<string, unknown>): DeviceRecord {
   return {
@@ -495,8 +589,27 @@ function toDevice(row: Record<string, unknown>): DeviceRecord {
     role: String(row.role),
     unitId: int(row.unitId),
     connectionId: maybeNum(row.connectionId),
+    arrays: deviceArraysFrom(row.arrays),
+    tempCoefficient: int(row.tempCoefficient),
+    systemLoss: int(row.systemLoss),
     retiredAt: maybeDate(row.retiredAt),
   };
+}
+
+/** The three PV columns as a partial INSERT/UPDATE fragment list. */
+function pvAssignments(pv: Partial<DevicePv>): SQL[] {
+  const out: SQL[] = [];
+  if (pv.arrays !== undefined) out.push(sql`arrays = ${JSON.stringify(pv.arrays)}::jsonb`);
+  if (pv.tempCoefficient !== undefined) out.push(sql`temp_coefficient = ${pv.tempCoefficient}`);
+  if (pv.systemLoss !== undefined) out.push(sql`system_loss = ${pv.systemLoss}`);
+  return out;
+}
+
+/** The inverter's PV description, as the device row carries it. */
+export interface DevicePv {
+  arrays: PvArray[];
+  tempCoefficient: number;
+  systemLoss: number;
 }
 
 /** How {@link readDevices} treats devices that are out of service. */
@@ -545,6 +658,20 @@ export interface DeviceSpec {
   name: string;
   profileId: string;
   role: string;
+  /**
+   * The inverter's PV description at creation; absent fields take the column
+   * defaults (no arrays, -0.4 %/°C, 14 %). Creation only — see {@link
+   * ensureDevice} for why an existing row is never overwritten.
+   */
+  pv?: Partial<DevicePv>;
+}
+
+/** The PV columns of a spec as a VALUES fragment — defaults where unstated. */
+function pvValues(pv: Partial<DevicePv> | undefined): SQL {
+  const arrays = pv?.arrays === undefined ? sql`default` : sql`${JSON.stringify(pv.arrays)}::jsonb`;
+  const temp = pv?.tempCoefficient === undefined ? sql`default` : sql`${pv.tempCoefficient}`;
+  const loss = pv?.systemLoss === undefined ? sql`default` : sql`${pv.systemLoss}`;
+  return sql`${arrays}, ${temp}, ${loss}`;
 }
 
 /**
@@ -559,9 +686,10 @@ export interface DeviceSpec {
  */
 export async function ensureDevice(db: PlantDb, spec: DeviceSpec): Promise<DeviceRecord> {
   await db.execute(sql`
-    insert into devices (plant_id, connection_id, unit_id, slug, name, profile_id, role)
+    insert into devices (plant_id, connection_id, unit_id, slug, name, profile_id, role,
+                         arrays, temp_coefficient, system_loss)
     values (${spec.plantId}, ${spec.connectionId}, ${spec.unitId}, ${spec.slug},
-            ${spec.name}, ${spec.profileId}, ${spec.role})
+            ${spec.name}, ${spec.profileId}, ${spec.role}, ${pvValues(spec.pv)})
     on conflict (plant_id, slug) do nothing`);
   const { rows } = await db.execute(sql`
     select ${DEVICE_COLUMNS} from devices
@@ -569,6 +697,51 @@ export async function ensureDevice(db: PlantDb, spec: DeviceSpec): Promise<Devic
   const row = rows[0] as Record<string, unknown> | undefined;
   if (!row) throw new Error(`device ${spec.slug} could not be created`);
   return toDevice(row);
+}
+
+/**
+ * A NEW device, and only a new one — no conflict clause.
+ *
+ * {@link ensureDevice} adopts an existing row on a slug collision because it is
+ * the boot-time provisioner and the row it collides with is the one it meant.
+ * This is the operator's add-device action, where a collision on
+ * `devices_plant_slug_key` or `devices_connection_unit_key` is a MISTAKE they
+ * have to see: two devices with one slug would share an MQTT namespace, and two
+ * on one (gateway, unit id) are the same machine twice. So the engine's
+ * violation is left to propagate; {@link uniqueViolation} names it for the
+ * caller that turns it into a reason.
+ */
+export async function createDevice(db: PlantDb, spec: DeviceSpec): Promise<DeviceRecord> {
+  const { rows } = await db.execute(sql`
+    insert into devices (plant_id, connection_id, unit_id, slug, name, profile_id, role,
+                         arrays, temp_coefficient, system_loss)
+    values (${spec.plantId}, ${spec.connectionId}, ${spec.unitId}, ${spec.slug},
+            ${spec.name}, ${spec.profileId}, ${spec.role}, ${pvValues(spec.pv)})
+    returning ${DEVICE_COLUMNS}`);
+  const row = rows[0] as Record<string, unknown> | undefined;
+  if (!row) throw new Error(`device ${spec.slug} could not be created`);
+  return toDevice(row);
+}
+
+/** SQLSTATE for `unique_violation`. */
+const UNIQUE_VIOLATION = "23505";
+
+/**
+ * The constraint a unique violation names, or null when `error` is not one.
+ *
+ * node-postgres raises a `DatabaseError` carrying `code` and `constraint`, and
+ * drizzle wraps it, so the facts live on `cause` — one level down, sometimes
+ * two. Walking the chain here is what lets a route say "that unit id is taken
+ * on this gateway" rather than 500 on a `DrizzleQueryError` whose message is
+ * the SQL. An empty string means "a violation, but the engine named nothing".
+ */
+export function uniqueViolation(error: unknown): string | null {
+  for (let current = error, depth = 0; current instanceof Error && depth < 4; depth += 1) {
+    const { code, constraint } = current as Error & { code?: unknown; constraint?: unknown };
+    if (code === UNIQUE_VIOLATION) return typeof constraint === "string" ? constraint : "";
+    current = current.cause;
+  }
+  return null;
 }
 
 /**
@@ -581,6 +754,8 @@ export interface DevicePatch {
   role?: string;
   unitId?: number;
   connectionId?: number | null;
+  /** The inverter's PV description; each field independently, like the rest. */
+  pv?: Partial<DevicePv>;
   /**
    * Take the device out of service, or (with `null`) bring it back.
    *
@@ -615,12 +790,9 @@ export async function updateDevice(
   if (patch.connectionId !== undefined) {
     assignments.push(sql`connection_id = ${patch.connectionId}`);
   }
+  if (patch.pv) assignments.push(...pvAssignments(patch.pv));
   if (patch.retiredAt !== undefined) assignments.push(sql`retired_at = ${patch.retiredAt}`);
-  if (assignments.length > 0) {
-    await db.execute(sql`update devices set ${sql.join(assignments, sql`, `)} where id = ${id}`);
-  }
-  const { rows } = await db.execute(sql`select ${DEVICE_COLUMNS} from devices where id = ${id}`);
-  const row = rows[0] as Record<string, unknown> | undefined;
+  const row = await updateThenRead(db, sql`devices`, id, assignments, DEVICE_COLUMNS);
   if (!row) throw new Error(`device ${id} does not exist`);
   return toDevice(row);
 }

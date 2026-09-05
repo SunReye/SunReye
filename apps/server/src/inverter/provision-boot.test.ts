@@ -62,6 +62,9 @@ function recordingStore(fail = false) {
         profileId: "deye",
         role: "inverter",
         // A freshly provisioned device is in service.
+        arrays: [],
+        tempCoefficient: -0.4,
+        systemLoss: 14,
         retiredAt: null,
         unitId: 1,
         connectionId: 2,

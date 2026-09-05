@@ -319,18 +319,42 @@ const ROUTES: readonly SmokeRoute[] = [
   },
   {
     file: "(app)/settings/+page.svelte",
-    h1: "Inverter",
-    landsOn: "/#/settings/inverter",
+    h1: "Devices",
+    landsOn: "/#/settings/devices",
     surface: async (page) => {
-      await heading(page, "Connection");
+      await expect(page.locator("[data-device='inverter']")).toBeVisible();
     },
   },
   {
+    // The pre-2.0 inverter panel: a bookmark that has to keep landing.
     file: "(app)/settings/inverter/+page.svelte",
-    h1: "Inverter",
+    h1: "Devices",
+    landsOn: "/#/settings/devices",
     surface: async (page) => {
-      await heading(page, "Connection");
-      await expect(page.getByLabel("Host")).toHaveValue("10.0.0.5");
+      await expect(page.locator("[data-device='inverter']")).toBeVisible();
+    },
+  },
+  {
+    file: "(app)/settings/plant/+page.svelte",
+    h1: "Plant",
+    // The feed-in field only exists once `/api/settings/weather` arrived; the
+    // cap helper's chips prove the composed arrays (8.4 kWp) came with it.
+    surface: async (page) => {
+      await heading(page, "Plant");
+      await expect(page.getByLabel("Max grid feed-in (kW)")).toBeVisible();
+      await expect(page.getByRole("button", { name: "60 %" })).toBeVisible();
+    },
+  },
+  {
+    file: "(app)/settings/devices/+page.svelte",
+    h1: "Devices",
+    // A row from the payload, not the heading: the section renders its title
+    // over the empty state too, so the polled inverter's slug is the proof — and
+    // its gateway's header, which is the grouping the page exists for.
+    surface: async (page) => {
+      await heading(page, "Devices");
+      await heading(page, "Inverter");
+      await expect(page.locator("[data-device='inverter']")).toBeVisible();
     },
   },
   {

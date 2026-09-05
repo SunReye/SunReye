@@ -105,7 +105,17 @@ function memoryStore(seed: { settings?: Record<string, unknown> } = {}) {
       if (existing) return existing;
       // `retiredAt: null` because a `DeviceSpec` carries no lifecycle flag: a
       // device is created in service, and retirement is an UPDATE.
-      const created = { ...spec, id: nextId++, retiredAt: null };
+      const { pv, ...fields } = spec;
+      const created = {
+        arrays: [],
+        tempCoefficient: -0.4,
+        systemLoss: 14,
+        // An unstated PV field takes the column default, as the real INSERT does.
+        ...Object.fromEntries(Object.entries(pv ?? {}).filter(([, v]) => v !== undefined)),
+        ...fields,
+        id: nextId++,
+        retiredAt: null,
+      };
       devices.push(created);
       return created;
     },
@@ -489,6 +499,33 @@ describe("provisionDevice", () => {
     const result = await provisionDevice({ store, logger, profile, seed: seed() });
     expect(devices).toHaveLength(2);
     expect(devices.find((d) => d.id === result?.deviceId)?.slug).toBe("inverter");
+  });
+
+  test("the legacy 1.x roof description lands on the inverter this seed creates", async () => {
+    // The plant row keeps its legacy copy (three writers still need it); the
+    // device row is what the forecast reads from now on.
+    const { store, devices } = memoryStore({
+      settings: {
+        weather: {
+          forecast: {
+            arrays: [{ kwp: 9.8, tilt: 30, azimuth: 0 }],
+            systemLoss: 11,
+            tempCoefficient: -0.3,
+          },
+        },
+      },
+    });
+    await provisionDevice({ store, logger, profile, seed: seed() });
+    expect(devices[0]?.arrays).toEqual([{ kwp: 9.8, tilt: 30, azimuth: 0 }]);
+    expect(devices[0]?.systemLoss).toBe(11);
+    expect(devices[0]?.tempCoefficient).toBe(-0.3);
+  });
+
+  test("a blob with no roof description leaves the device on the column defaults", async () => {
+    const { store, devices } = memoryStore();
+    await provisionDevice({ store, logger, profile, seed: seed() });
+    expect(devices[0]?.arrays).toEqual([]);
+    expect(devices[0]?.systemLoss).toBe(14);
   });
 
   test("the legacy 1.x pack is moved onto the device's battery row, once", async () => {

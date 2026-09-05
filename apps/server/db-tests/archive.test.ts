@@ -485,6 +485,9 @@ suite("the portable archive against a real TimescaleDB", () => {
         connection: null,
         retiredAt: "2026-02-01T00:00:00.000Z",
         battery: null,
+        arrays: null,
+        tempCoefficient: null,
+        systemLoss: null,
       },
       new Map(),
     );
@@ -507,6 +510,9 @@ suite("the portable archive against a real TimescaleDB", () => {
         connection: null,
         retiredAt: null,
         battery: null,
+        arrays: null,
+        tempCoefficient: null,
+        systemLoss: null,
       },
       new Map(),
     );
@@ -534,6 +540,9 @@ suite("the portable archive against a real TimescaleDB", () => {
       connection: null,
       retiredAt: null,
       battery: null,
+      arrays: null,
+      tempCoefficient: null,
+      systemLoss: null,
     };
     await upsertDevice(client, plantId, live, new Map());
     expect(

@@ -70,6 +70,9 @@ const device = (over: Partial<DeviceRecord> = {}): DeviceRecord => ({
   role: "inverter",
   unitId: 1,
   connectionId: 10,
+  arrays: [],
+  tempCoefficient: -0.4,
+  systemLoss: 14,
   retiredAt: null,
   ...over,
 });
@@ -736,6 +739,9 @@ describe("dbEndpointStore", () => {
         role: "inverter",
         unitId: "1",
         connectionId: "3",
+        arrays: [],
+        tempCoefficient: -0.4,
+        systemLoss: 14,
         retiredAt: null,
       },
     ]);

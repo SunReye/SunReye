@@ -734,7 +734,18 @@ export const WEATHER_CONFIG = {
   forecast: {
     enabled: true,
     provider: "open-meteo",
-    arrays: [{ name: "Roof south", kwp: 8.4, tilt: 35, azimuth: 0 }],
+    // The COMPOSED view: every inverter's arrays, each stamped with its device's
+    // slug and physics (`packages/db/src/plant-facts.ts`). Matches `devices()`.
+    arrays: [
+      {
+        kwp: 8.4,
+        tilt: 35,
+        azimuth: 0,
+        deviceSlug: "inverter",
+        tempCoefficient: -0.4,
+        systemLoss: 14,
+      },
+    ],
     tempCoefficient: -0.4,
     systemLoss: 14,
     maxOutputW: null,
@@ -829,6 +840,87 @@ export function profiles(manifest: FixtureManifest) {
       version: "1.4.2",
     },
   ];
+}
+
+/** `GET /api/connections` — the plant's one gateway, matching `INVERTER_CONFIG`. */
+export const CONNECTIONS = [
+  {
+    id: 1,
+    name: "Inverter",
+    host: INVERTER_CONFIG.host,
+    port: INVERTER_CONFIG.port,
+    transport: INVERTER_CONFIG.transport,
+    timeoutMs: INVERTER_CONFIG.timeoutMs,
+    pollIntervalMs: INVERTER_CONFIG.pollIntervalMs,
+  },
+];
+
+/**
+ * `GET /api/devices` — `DeviceRoster` (`apps/server/src/devices/device-admin.ts`):
+ * the polled inverter, a stored-but-unpolled meter, and a retired one, so the
+ * three badge states all render.
+ */
+export function devices(manifest: FixtureManifest) {
+  const connection = CONNECTIONS[0]!;
+  return {
+    connections: CONNECTIONS,
+    devices: [
+      {
+        id: 1,
+        slug: "inverter",
+        name: "Inverter",
+        profileId: manifest.id,
+        role: "inverter",
+        unitId: 1,
+        connectionId: connection.id,
+        retiredAt: null,
+        connection,
+        arrays: [{ kwp: 8.4, tilt: 35, azimuth: 0 }],
+        tempCoefficient: -0.4,
+        systemLoss: 14,
+        battery: { usableKwh: 10, maxChargeW: 5000, minSoc: 10, nominalV: 51.2 },
+        profileName: manifest.name,
+        profileKnown: true,
+        polled: true,
+      },
+      {
+        id: 2,
+        slug: "meter",
+        name: "Meter",
+        profileId: "sungrow-sh10rt",
+        role: "meter",
+        unitId: 2,
+        connectionId: connection.id,
+        retiredAt: null,
+        connection,
+        arrays: [],
+        tempCoefficient: -0.4,
+        systemLoss: 14,
+        battery: null,
+        profileName: "Sungrow SH10RT",
+        profileKnown: true,
+        polled: false,
+      },
+      {
+        id: 3,
+        slug: "old-inverter",
+        name: "Old inverter",
+        profileId: "gone-profile",
+        role: "inverter",
+        unitId: 3,
+        connectionId: connection.id,
+        retiredAt: "2026-01-01T00:00:00.000Z",
+        connection,
+        arrays: [],
+        tempCoefficient: -0.4,
+        systemLoss: 14,
+        battery: null,
+        profileName: null,
+        profileKnown: false,
+        polled: false,
+      },
+    ],
+  };
 }
 
 /** `GET /api/profiles/updates` — `UpdateCheckResult`, the "checked, nothing new" state. */

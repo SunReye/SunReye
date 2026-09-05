@@ -30,6 +30,7 @@
 import {
   columnsFromPlantRow,
   composeWeatherConfig,
+  movedToDevice,
   defaultWeatherPrefs,
   splitWeatherWrite,
   weatherPrefsSchema,
@@ -60,12 +61,13 @@ const prefs = cachedSetting(WEATHER_KEY, weatherPrefsSchema, defaultWeatherPrefs
  * invalidating from three places.
  */
 export async function getWeatherConfig(): Promise<WeatherConfig> {
-  const [stored, plant, battery] = await Promise.all([
+  const [stored, plant, battery, devices] = await Promise.all([
     prefs.get(),
     plantFacts.plant(),
     plantFacts.battery(),
+    plantFacts.devices(),
   ]);
-  return composeWeatherConfig(stored, columnsFromPlantRow(plant), battery);
+  return composeWeatherConfig(stored, columnsFromPlantRow(plant), battery, devices);
 }
 
 /**
@@ -81,15 +83,19 @@ export async function getWeatherConfig(): Promise<WeatherConfig> {
  * the WRITE that follows names only the fields the patch itself mentioned.
  */
 export async function setWeatherConfig(patch: unknown): Promise<WeatherConfig> {
+  // PV arrays, panel physics and the pack describe an INVERTER now and are
+  // edited on its device. Refused, not dropped: a 200 would tell a stale client
+  // its save landed while the legacy plant column it wrote is read by nothing.
+  const moved = movedToDevice(patch);
+  if (moved !== null) {
+    throw new Error(`forecast.${moved} is edited on the inverter in Settings → Devices`);
+  }
   const current = await getWeatherConfig();
   const validated = weatherConfigSchema.parse(mergeSetting(current, patch));
   const split = splitWeatherWrite(patch, validated);
 
   await prefs.set(split.settings);
   if (Object.keys(split.columns).length > 0) await plantFacts.patch(split.columns);
-  // Null on the outer field means the patch was SILENT about storage; a
-  // `{ value: null }` means it said there is none. Only the second is a write.
-  if (split.battery) await plantFacts.writeBattery(split.battery.value);
 
   return getWeatherConfig();
 }

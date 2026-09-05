@@ -2,10 +2,14 @@ import { describe, expect, test } from "bun:test";
 import type { SQL } from "drizzle-orm";
 import { PgDialect } from "drizzle-orm/pg-core";
 
+import { DEVICE_CLASSES } from "@SunReye/inverter-core/device-class";
 import {
   DEVICE_ROLES,
   activeDevices,
+  createConnection,
+  createDevice,
   createPlant,
+  deleteConnection,
   deleteDeviceBattery,
   ensureConnection,
   ensureDevice,
@@ -20,6 +24,8 @@ import {
   physicalDevices,
   readRawSetting,
   updateDevice,
+  uniqueViolation,
+  updateConnection,
   updatePlant,
   upsertDeviceBattery,
 } from "./plant-repo";
@@ -287,6 +293,74 @@ describe("connections", () => {
       }),
     ).rejects.toThrow("connection for plant 7 could not be created");
   });
+
+  test("createConnection INSERTs unconditionally — a second gateway is a second row", async () => {
+    // Unlike `ensureConnection`, which edits the plant's first endpoint in place
+    // for the single-inverter form, adding a device to a NEW gateway must not
+    // move the existing one.
+    const { client, executed } = fakeClient([[{ ...connectionRow, id: "9", host: "10.0.0.9" }]]);
+    const created = await createConnection(client, 7, {
+      name: "Gateway 2",
+      host: "10.0.0.9",
+      port: 502,
+      transport: "tcp",
+      timeoutMs: 2000,
+      pollIntervalMs: 1000,
+    });
+    expect(created.id).toBe(9);
+    expect(created.host).toBe("10.0.0.9");
+    expect(executed).toHaveLength(1);
+    const insert = rendered(executed[0]);
+    expect(insert).toContain("insert into connections");
+    expect(insert).not.toContain("update");
+  });
+
+  test("updateConnection names only the patched columns and reads the row back", async () => {
+    const { client, executed } = fakeClient([[], [{ ...connectionRow, host: "10.0.0.9" }]]);
+    const updated = await updateConnection(client, 3, { host: "10.0.0.9", pollIntervalMs: 2000 });
+    expect(updated.host).toBe("10.0.0.9");
+    const update = rendered(executed[0]);
+    expect(update).toContain("update connections set");
+    expect(update).toContain("host = ");
+    expect(update).toContain("poll_interval_ms = ");
+    expect(update).not.toContain("port = ");
+    expect(update).not.toContain("name = ");
+  });
+
+  test("updateConnection with an empty patch executes only the read", async () => {
+    const { client, executed } = fakeClient([[connectionRow]]);
+    await updateConnection(client, 3, {});
+    expect(executed).toHaveLength(1);
+    expect(rendered(executed[0])).toContain("select");
+  });
+
+  test("updating a connection that does not exist says so", async () => {
+    const { client } = fakeClient([[], []]);
+    await expect(updateConnection(client, 99, { host: "x" })).rejects.toThrow(
+      "connection 99 does not exist",
+    );
+  });
+
+  test("deleteConnection is a DELETE by id and reports whether a row went", async () => {
+    const { client, executed } = fakeClient([[{ id: "3" }], []]);
+    expect(await deleteConnection(client, 3)).toBe(true);
+    expect(rendered(executed[0])).toContain("delete from connections where");
+    expect(await deleteConnection(client, 4)).toBe(false);
+  });
+
+  test("createConnection with nothing returned is an error", async () => {
+    const { client } = fakeClient([[]]);
+    await expect(
+      createConnection(client, 7, {
+        name: "x",
+        host: "h",
+        port: 1,
+        transport: "tcp",
+        timeoutMs: 1,
+        pollIntervalMs: 1000,
+      }),
+    ).rejects.toThrow("connection for plant 7 could not be created");
+  });
 });
 
 describe("devices", () => {
@@ -298,6 +372,9 @@ describe("devices", () => {
     role: "inverter",
     unitId: "1",
     connectionId: "3",
+    arrays: [{ kwp: 8.4, tilt: 35, azimuth: 0 }],
+    tempCoefficient: "-0.4",
+    systemLoss: "14",
     ...over,
   });
 
@@ -307,6 +384,62 @@ describe("devices", () => {
     expect(devices.map((d) => d.id)).toEqual([4, 5]);
     expect(devices[0]?.connectionId).toBe(3);
     expect(devices[1]?.connectionId).toBeNull();
+  });
+
+  test("a device's PV columns read back parsed and coerced", async () => {
+    const { client } = fakeClient([[deviceRow()]]);
+    const [device] = await readDevices(client, 7);
+    expect(device?.arrays).toEqual([{ kwp: 8.4, tilt: 35, azimuth: 0 }]);
+    expect(device?.tempCoefficient).toBe(-0.4);
+    expect(device?.systemLoss).toBe(14);
+  });
+
+  test("a JSONB arrays column holding garbage reads as no arrays — same rule as the plant's", async () => {
+    const { client } = fakeClient([[deviceRow({ arrays: { not: "a list" } })]]);
+    const [device] = await readDevices(client, 7);
+    expect(device?.arrays).toEqual([]);
+  });
+
+  test("createDevice writes the PV description it was given, cast to jsonb, and DEFAULT where unstated", async () => {
+    const { client, executed } = fakeClient([[deviceRow()]]);
+    await createDevice(client, {
+      plantId: 7,
+      connectionId: 3,
+      unitId: 1,
+      slug: "inverter",
+      name: "Inverter",
+      profileId: "deye",
+      role: "inverter",
+      pv: { arrays: [{ kwp: 8.4, tilt: 35, azimuth: 0 }], tempCoefficient: -0.35 },
+    });
+    const insert = rendered(executed[0]);
+    expect(insert).toContain("arrays, temp_coefficient, system_loss");
+    expect(insert).toContain("::jsonb");
+    // system_loss unstated → the column default, never a hard-coded number.
+    expect(insert).toMatch(/\$\d+::jsonb, \$\d+, default\)/);
+  });
+
+  test("a spec with no pv takes every column default", async () => {
+    const { client, executed } = fakeClient([[deviceRow()]]);
+    await createDevice(client, {
+      plantId: 7,
+      connectionId: null,
+      unitId: 1,
+      slug: "m",
+      name: "M",
+      profileId: "p",
+      role: "meter",
+    });
+    expect(rendered(executed[0])).toContain("default, default, default)");
+  });
+
+  test("updateDevice names each PV field it was given and no other", async () => {
+    const { client, executed } = fakeClient([[], [deviceRow()]]);
+    await updateDevice(client, 4, { pv: { systemLoss: 11 } });
+    const update = rendered(executed[0]);
+    expect(update).toContain("system_loss = ");
+    expect(update).not.toContain("arrays = ");
+    expect(update).not.toContain("temp_coefficient = ");
   });
 
   test("an in-service device reads back with retiredAt null, not undefined", async () => {
@@ -397,6 +530,44 @@ describe("devices", () => {
     const { client } = fakeClient([[], []]);
     await expect(
       ensureDevice(client, {
+        plantId: 7,
+        connectionId: null,
+        unitId: 1,
+        slug: "gone",
+        name: "x",
+        profileId: "p",
+        role: "inverter",
+      }),
+    ).rejects.toThrow("device gone could not be created");
+  });
+
+  test("createDevice INSERTs with no conflict clause — a collision must surface", async () => {
+    // The add-device path is the one place a duplicate slug or a duplicate
+    // (connection, unit id) must be an ERROR the operator sees, not a silent
+    // adoption of the row that was already there.
+    const { client, executed } = fakeClient([[deviceRow({ id: "11", slug: "meter" })]]);
+    const device = await createDevice(client, {
+      plantId: 7,
+      connectionId: 3,
+      unitId: 2,
+      slug: "meter",
+      name: "Meter",
+      profileId: "deye",
+      role: "meter",
+    });
+    expect(device.id).toBe(11);
+    expect(device.slug).toBe("meter");
+    expect(executed).toHaveLength(1);
+    const insert = rendered(executed[0]);
+    expect(insert).toContain("insert into devices");
+    expect(insert).toContain("returning");
+    expect(insert).not.toContain("on conflict");
+  });
+
+  test("createDevice with nothing returned is an error, not a zero id", async () => {
+    const { client } = fakeClient([[]]);
+    await expect(
+      createDevice(client, {
         plantId: 7,
         connectionId: null,
         unitId: 1,
@@ -618,6 +789,9 @@ describe("device roles", () => {
     // `apps/server/db-tests/check-constraints.test.ts`, which proves the engine
     // agrees. 'optimizer' is the fifth: Phase 4.5's virtual device.
     expect([...DEVICE_ROLES]).toEqual(["inverter", "controller", "meter", "charger", "optimizer"]);
+    // The same array, not a copy: the read layer, the CHECK constraint and the
+    // in-memory `DeviceClass` all derive from `@SunReye/inverter-core/device-class`.
+    expect(DEVICE_ROLES).toBe(DEVICE_CLASSES);
   });
 
   test("an optimizer is virtual — there is no machine behind it", () => {
@@ -652,5 +826,39 @@ describe("device roles", () => {
     expect(physicalDevices([])).toEqual([]);
     physicalDevices(rows);
     expect(rows).toHaveLength(1);
+  });
+});
+
+describe("uniqueViolation", () => {
+  // node-postgres raises a DatabaseError with `code` and `constraint`; drizzle
+  // wraps it, so the facts live on `cause`. Both shapes have to answer.
+  const pgError = (code: string, constraint?: string) =>
+    Object.assign(new Error("duplicate key value violates unique constraint"), {
+      code,
+      constraint,
+    });
+
+  test("names the constraint of a bare 23505", () => {
+    expect(uniqueViolation(pgError("23505", "devices_connection_unit_key"))).toBe(
+      "devices_connection_unit_key",
+    );
+  });
+
+  test("looks through a wrapping error's cause", () => {
+    const wrapped = new Error("Failed query", {
+      cause: pgError("23505", "devices_plant_slug_key"),
+    });
+    expect(uniqueViolation(wrapped)).toBe("devices_plant_slug_key");
+  });
+
+  test("a 23505 with no constraint name is still a violation, reported as an empty name", () => {
+    expect(uniqueViolation(pgError("23505"))).toBe("");
+  });
+
+  test("any other code, a plain Error and a non-error are null", () => {
+    expect(uniqueViolation(pgError("23503", "devices_connection_id_fkey"))).toBeNull();
+    expect(uniqueViolation(new Error("boom"))).toBeNull();
+    expect(uniqueViolation("boom")).toBeNull();
+    expect(uniqueViolation(null)).toBeNull();
   });
 });

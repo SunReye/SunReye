@@ -72,7 +72,7 @@ function goodProfile(): ProfileData {
 describe("role catalog", () => {
   test("CanonicalRole vocabulary is complete and lists the expected roles", () => {
     // Guards against accidental deletion when editing the catalog.
-    expect(ROLE_NAMES.length).toBe(82);
+    expect(ROLE_NAMES.length).toBe(87);
     for (const r of [
       "pv.string.power",
       "battery.power",
@@ -99,6 +99,29 @@ describe("role catalog", () => {
     expect(ROLE_CATALOG["setting.work_mode"].writable).toBe(true);
     expect(ROLE_CATALOG["inverter.status"].needsEnumLabels).toBe(true);
     expect(ROLE_CATALOG["battery.power"].signed).toBe(true);
+  });
+
+  test("every AC output that has phase voltage and power also has phase current", () => {
+    // A load, backup or generator phase without its current cannot size a
+    // breaker or spot an imbalance — the same triple `grid.phase.*` already has.
+    for (const bus of ["load", "backup", "generator"] as const) {
+      expect(ROLE_CATALOG[`${bus}.phase.current`]).toMatchObject({
+        kind: "measurement",
+        indexed: true,
+        unitHint: "A",
+      });
+    }
+  });
+
+  test("the generator counts a lifetime total like every other energy bus", () => {
+    expect(ROLE_CATALOG["generator.energy.total"]).toMatchObject({
+      kind: "cumulative",
+      unitHint: "kWh",
+    });
+  });
+
+  test("the islanded output reports its own frequency", () => {
+    expect(ROLE_CATALOG["backup.frequency"]).toMatchObject({ kind: "measurement", unitHint: "Hz" });
   });
 });
 

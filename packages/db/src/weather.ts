@@ -33,7 +33,7 @@ export const WEATHER_KEY = "weather";
  * defaulted override is indistinguishable from a stated one — which is the
  * difference between "this string really is dirtier" and "nobody said".
  */
-const pvArraySchema = z.object({
+export const pvArraySchema = z.object({
   /** Peak DC power of this array in kWp. */
   kwp: z.number().positive().max(100_000),
   /** Panel tilt from horizontal in degrees (0 = flat, 90 = vertical). */
@@ -72,7 +72,7 @@ const pvArraySchema = z.object({
  * plant has storage the forecast should account for; `usableKwh` drives how
  * much above-cap surplus the battery can soak up before the rest is curtailed.
  */
-const forecastBatterySchema = z.object({
+export const forecastBatterySchema = z.object({
   /** Usable (not nominal) battery energy in kWh — the DoD-limited window. */
   usableKwh: z.number().positive().max(10_000),
   /**

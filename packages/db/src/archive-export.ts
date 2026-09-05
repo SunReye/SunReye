@@ -510,7 +510,7 @@ async function readNativePlant(client: ReplayClient): Promise<ArchivePlant | nul
   const devices = await rowsOf(
     client,
     `select d.slug, d.name, d.profile_id, d.serial, d.role, d.unit_id, d.connection_id,
-            d.retired_at,
+            d.retired_at, d.arrays, d.temp_coefficient, d.system_loss,
             b.usable_kwh, b.max_charge_w, b.min_soc, b.nominal_v
      from devices d left join batteries b on b.device_id = d.id
      where d.plant_id = ${plantId} order by d.id`,
@@ -560,6 +560,9 @@ async function readNativePlant(client: ReplayClient): Promise<ArchivePlant | nul
       unitId: Number(d.unit_id),
       connection: d.connection_id === null ? null : (byId.get(String(d.connection_id)) ?? null),
       retiredAt: optionalInstant(d.retired_at),
+      arrays: Array.isArray(d.arrays) ? d.arrays : [],
+      tempCoefficient: optional(d.temp_coefficient),
+      systemLoss: optional(d.system_loss),
       battery:
         d.usable_kwh === null || d.usable_kwh === undefined
           ? null

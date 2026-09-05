@@ -2,9 +2,11 @@ import { describe, expect, test } from "bun:test";
 
 import { type DeviceBattery, derivePlantBattery } from "./batteries";
 import {
+  type InverterPv,
   type PlantFactColumns,
   columnsFromPlantRow,
   composeWeatherConfig,
+  movedToDevice,
   plantBatteryFrom,
   legacyColumnsFromWeatherRow,
   splitWeatherWrite,
@@ -29,6 +31,17 @@ function columns(overrides: Partial<PlantFactColumns> = {}): PlantFactColumns {
   };
 }
 
+/** An inverter row as the composer sees it. */
+const inverter = (o: Partial<InverterPv> = {}): InverterPv => ({
+  slug: "inverter",
+  role: "inverter",
+  retiredAt: null,
+  arrays: [{ kwp: 9.8, tilt: 30, azimuth: 0 }],
+  tempCoefficient: -0.35,
+  systemLoss: 12,
+  ...o,
+});
+
 /** The derivation under test as the composer will call it. */
 const derived = (packs: DeviceBattery[]) => derivePlantBattery(packs);
 
@@ -41,7 +54,7 @@ const pack = (o: Partial<DeviceBattery> = {}): DeviceBattery => ({
 });
 
 describe("composeWeatherConfig", () => {
-  test("plant facts come from the COLUMNS, not from the app_settings record", () => {
+  test("plant facts come from the COLUMNS and the arrays from the DEVICES, never from the app_settings record", () => {
     // The stored record still carries 1.x values in its plant half. Once the
     // columns own the data those values must be ignored entirely — a fallback
     // that preferred the JSONB would make every column write invisible.
@@ -52,16 +65,34 @@ describe("composeWeatherConfig", () => {
       label: "stale",
       forecast: { enabled: true, arrays: [{ kwp: 1, tilt: 1, azimuth: 1 }], systemLoss: 89 },
     });
-    const composed = composeWeatherConfig(stale, columns(), null);
+    const composed = composeWeatherConfig(stale, columns(), null, [inverter()]);
     expect(composed.latitude).toBe(50.4);
     expect(composed.longitude).toBe(8.06);
     expect(composed.label).toBe("Limburg-Weilburg");
-    expect(composed.forecast.arrays).toEqual([{ kwp: 9.8, tilt: 30, azimuth: 0 }]);
-    expect(composed.forecast.systemLoss).toBe(12);
-    expect(composed.forecast.tempCoefficient).toBe(-0.35);
+    expect(composed.forecast.arrays).toEqual([
+      {
+        kwp: 9.8,
+        tilt: 30,
+        azimuth: 0,
+        deviceSlug: "inverter",
+        tempCoefficient: -0.35,
+        systemLoss: 12,
+      },
+    ]);
     expect(composed.forecast.maxOutputW).toBe(7000);
     expect(composed.forecast.houseLoadW).toBe(400);
     expect(composed.forecast.smartMeterSince).toBe("2026-03-01");
+  });
+
+  test("the plant's LEGACY coefficients fill the fallback fields, which no emitted array reaches", () => {
+    // Every reader is typed on `forecast.tempCoefficient` / `systemLoss` as the
+    // plant-wide fallback in `pvPowerW`'s caller. The columns still fill them, but
+    // every array above carries its inverter's own values, so they are inert.
+    const composed = composeWeatherConfig(defaultWeather, columns(), null, [
+      inverter({ systemLoss: 7 }),
+    ]);
+    expect(composed.forecast.systemLoss).toBe(12);
+    expect(composed.forecast.arrays[0]?.systemLoss).toBe(7);
   });
 
   test("the switches and the provider stay owned by the app_settings record", () => {
@@ -69,7 +100,7 @@ describe("composeWeatherConfig", () => {
       enabled: true,
       forecast: { enabled: true, provider: "forecast-solar", correction: { enabled: true } },
     });
-    const composed = composeWeatherConfig(stored, columns(), null);
+    const composed = composeWeatherConfig(stored, columns(), null, []);
     expect(composed.enabled).toBe(true);
     expect(composed.forecast.enabled).toBe(true);
     expect(composed.forecast.provider).toBe("forecast-solar");
@@ -83,20 +114,88 @@ describe("composeWeatherConfig", () => {
       defaultWeather,
       columns(),
       derived([pack({ usableKwh: 30, minSoc: 5 }), pack({ usableKwh: 5, minSoc: 50 })]),
+      [],
     );
     expect(composed.forecast.battery?.usableKwh).toBe(35);
     expect(composed.forecast.battery?.minSoc).toBeCloseTo(11.4286, 4);
   });
 
   test("no pack rows means no battery — not a battery of zero", () => {
-    expect(composeWeatherConfig(defaultWeather, columns(), null).forecast.battery).toBeNull();
+    expect(composeWeatherConfig(defaultWeather, columns(), null, []).forecast.battery).toBeNull();
   });
 
   test("the composed record still satisfies the weather schema", () => {
     // Every consumer is typed on WeatherConfig; a composition that could not be
     // re-validated would be a shape the readers never see in production.
-    const composed = composeWeatherConfig(defaultWeather, columns(), derived([pack()]));
+    const composed = composeWeatherConfig(defaultWeather, columns(), derived([pack()]), [
+      inverter(),
+    ]);
     expect(() => weatherConfigSchema.parse(composed)).not.toThrow();
+  });
+});
+
+describe("the forecast arrays are composed from the inverters", () => {
+  const composeForecastArrays = (devices: InverterPv[]) =>
+    composeWeatherConfig(defaultWeather, columns(), null, devices).forecast.arrays;
+
+  test("two inverters contribute their arrays in roster order, each stamped with its own slug and physics", () => {
+    const arrays = composeForecastArrays([
+      inverter({ slug: "south", arrays: [{ kwp: 9.8, tilt: 30, azimuth: 0 }] }),
+      inverter({
+        slug: "east",
+        tempCoefficient: -0.3,
+        systemLoss: 20,
+        arrays: [
+          { kwp: 3.2, tilt: 20, azimuth: -90 },
+          { kwp: 2, tilt: 20, azimuth: 90 },
+        ],
+      }),
+    ]);
+    expect(arrays.map((a) => [a.deviceSlug, a.kwp, a.tempCoefficient, a.systemLoss])).toEqual([
+      ["south", 9.8, -0.35, 12],
+      ["east", 3.2, -0.3, 20],
+      ["east", 2, -0.3, 20],
+    ]);
+  });
+
+  test("an array's own override wins over its inverter's value", () => {
+    const [array] = composeForecastArrays([
+      inverter({
+        arrays: [{ kwp: 5, tilt: 20, azimuth: 0, systemLoss: 25, tempCoefficient: -0.5 }],
+      }),
+    ]);
+    expect(array?.systemLoss).toBe(25);
+    expect(array?.tempCoefficient).toBe(-0.5);
+  });
+
+  test("a retired inverter, a meter and a controller contribute nothing", () => {
+    expect(
+      composeForecastArrays([
+        inverter({ retiredAt: new Date("2026-01-01T00:00:00Z") }),
+        inverter({ slug: "meter", role: "meter" }),
+        inverter({ slug: "gx", role: "controller" }),
+      ]),
+    ).toEqual([]);
+  });
+
+  test("no inverters is no arrays — the forecast then reports itself not ready", () => {
+    expect(composeForecastArrays([])).toEqual([]);
+  });
+});
+
+describe("movedToDevice", () => {
+  test.each(["arrays", "tempCoefficient", "systemLoss", "battery"])(
+    "a weather patch naming forecast.%s is named back",
+    (key) => {
+      expect(movedToDevice({ forecast: { [key]: null } })).toBe(key);
+    },
+  );
+
+  test("a patch that stays on plant facts, or is not an object, names nothing", () => {
+    expect(movedToDevice({ forecast: { maxOutputW: 7000, houseLoadW: 400 } })).toBeNull();
+    expect(movedToDevice({ latitude: 1 })).toBeNull();
+    expect(movedToDevice("nope")).toBeNull();
+    expect(movedToDevice(undefined)).toBeNull();
   });
 });
 
@@ -113,13 +212,14 @@ describe("splitWeatherWrite", () => {
     expect(split.columns.latitude).toBe(50.4);
   });
 
-  test("a nested forecast patch routes the plant half to columns", () => {
+  test("a nested forecast patch routes the plant half to columns — and only the plant half", () => {
+    // `arrays` is an INVERTER fact now; even if a patch smuggles it past the
+    // refusal, the split never routes it to a plant column.
     const patch = {
-      forecast: { arrays: [{ kwp: 5, tilt: 20, azimuth: -90 }], maxOutputW: 7000 },
+      forecast: { arrays: [{ kwp: 5, tilt: 20, azimuth: -90 }], maxOutputW: 7000, houseLoadW: 300 },
     };
     const split = splitWeatherWrite(patch, validated(patch));
-    expect(Object.keys(split.columns).sort()).toEqual(["arrays", "maxOutputW"]);
-    expect(split.columns.arrays).toEqual([{ kwp: 5, tilt: 20, azimuth: -90 }]);
+    expect(Object.keys(split.columns).sort()).toEqual(["houseLoadW", "maxOutputW"]);
     expect(split.columns.maxOutputW).toBe(7000);
   });
 
@@ -140,28 +240,6 @@ describe("splitWeatherWrite", () => {
     expect(split.columns.longitude).toBe(8);
   });
 
-  test("the battery is reported only when the patch named it", () => {
-    const untouched = splitWeatherWrite({ latitude: 1 }, validated({ latitude: 1 }));
-    expect(untouched.battery).toBeNull();
-
-    const patch = { forecast: { battery: { usableKwh: 12, minSoc: 8 } } };
-    const named = splitWeatherWrite(patch, validated(patch));
-    expect(named.battery?.value).toEqual({
-      usableKwh: 12,
-      maxChargeW: null,
-      minSoc: 8,
-      nominalV: null,
-    });
-  });
-
-  test("clearing the battery is a named write of null, not an absence", () => {
-    // "The plant has no storage" and "this form did not mention storage" are
-    // different instructions; collapsing them would make a pack unremovable.
-    const patch = { forecast: { battery: null } };
-    const split = splitWeatherWrite(patch, validated(patch));
-    expect(split.battery).toEqual({ value: null });
-  });
-
   test("the settings half carries the switches and never a plant fact", () => {
     const patch = { enabled: true, latitude: 1, forecast: { provider: "x", systemLoss: 3 } };
     const split = splitWeatherWrite(patch, validated(patch));
@@ -175,7 +253,6 @@ describe("splitWeatherWrite", () => {
   test("an empty patch writes nothing at all", () => {
     const split = splitWeatherWrite({}, defaultWeather);
     expect(split.columns).toEqual({});
-    expect(split.battery).toBeNull();
   });
 });
 

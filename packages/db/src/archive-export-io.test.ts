@@ -492,6 +492,9 @@ describe("exportArchive: the configuration it carries", () => {
           role: "inverter",
           unit_id: 1,
           connection_id: 7,
+          arrays: [{ kwp: 9.9, tilt: 30, azimuth: 0 }],
+          temp_coefficient: -0.35,
+          system_loss: 11,
           usable_kwh: 14.3,
           max_charge_w: 5000,
           min_soc: 15,
@@ -513,6 +516,11 @@ describe("exportArchive: the configuration it carries", () => {
           // and the importer re-resolves them on the other side.
           connection: "loft",
           battery: { usableKwh: 14.3, maxChargeW: 5000, minSoc: 15, nominalV: 51.2 },
+          // The roof travels WITH the inverter now; the plant-level copy above
+          // is the legacy column and rides along for older importers.
+          arrays: [{ kwp: 9.9, tilt: 30, azimuth: 0 }],
+          tempCoefficient: -0.35,
+          systemLoss: 11,
         },
       ],
     });
@@ -554,6 +562,11 @@ describe("exportArchive: the configuration it carries", () => {
         connection: null,
         retiredAt: null,
         battery: null,
+        // Column defaults on a row that never had a roof: an empty list, and
+        // the coefficients as the export read them (absent here → null).
+        arrays: [],
+        tempCoefficient: null,
+        systemLoss: null,
       },
     ]);
     expect(parsed.problems).toEqual([]);

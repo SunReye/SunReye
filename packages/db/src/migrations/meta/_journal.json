@@ -36,6 +36,13 @@
       "when": 1787901121032,
       "tag": "0004_huge_betty_ross",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1788556413031,
+      "tag": "0005_mean_rhodey",
+      "breakpoints": true
     }
   ]
 }

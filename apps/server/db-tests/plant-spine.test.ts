@@ -222,6 +222,194 @@ suite("the dimension spine", () => {
     expect((rows[0] as { n: number }).n).toBe(1);
   });
 
+  test("createConnection adds a SECOND endpoint to the plant — the first is untouched", async () => {
+    // The add-device dialog's "new connection": a second gateway must not move
+    // the first one, which is exactly what `ensureConnection` would have done.
+    const plant = await freshPlant("spine-conn-create");
+    const first = await repo.ensureConnection(db, plant.id, {
+      name: "Gateway 1",
+      host: "10.0.0.5",
+      port: 502,
+      transport: "tcp",
+      timeoutMs: 2000,
+      pollIntervalMs: 1000,
+    });
+    const second = await repo.createConnection(db, plant.id, {
+      name: "Gateway 2",
+      host: "10.0.0.9",
+      port: 8899,
+      transport: "rtu-over-tcp",
+      timeoutMs: 3000,
+      pollIntervalMs: 2000,
+    });
+    expect(second.id).not.toBe(first.id);
+    expect(second.transport).toBe("rtu-over-tcp");
+    const all = await repo.readConnections(db, plant.id);
+    expect(all.map((c) => c.host)).toEqual(["10.0.0.5", "10.0.0.9"]);
+  });
+
+  test("updateConnection edits in place — the device bound to it follows, the id stays", async () => {
+    const plant = await freshPlant("spine-conn-update");
+    const gateway = await repo.createConnection(db, plant.id, {
+      name: "G",
+      host: "10.0.0.5",
+      port: 502,
+      transport: "tcp",
+      timeoutMs: 2000,
+      pollIntervalMs: 1000,
+    });
+    const device = await repo.createDevice(db, {
+      plantId: plant.id,
+      connectionId: gateway.id,
+      unitId: 1,
+      slug: "inv",
+      name: "Inv",
+      profileId: "p",
+      role: "inverter",
+    });
+    const moved = await repo.updateConnection(db, gateway.id, {
+      host: "10.0.0.9",
+      transport: "rtu-over-tcp",
+    });
+    expect(moved.id).toBe(gateway.id);
+    expect(moved.host).toBe("10.0.0.9");
+    expect(moved.transport).toBe("rtu-over-tcp");
+    expect(moved.port).toBe(502);
+    const [after] = await repo.readDevices(db, plant.id);
+    expect(after?.id).toBe(device.id);
+    expect(after?.connectionId).toBe(gateway.id);
+  });
+
+  test("updateConnection refuses a transport the CHECK does not admit", async () => {
+    const plant = await freshPlant("spine-conn-update-check");
+    const gateway = await repo.createConnection(db, plant.id, {
+      name: "G",
+      host: "h",
+      port: 502,
+      transport: "tcp",
+      timeoutMs: 2000,
+      pollIntervalMs: 1000,
+    });
+    let message = "";
+    try {
+      await repo.updateConnection(db, gateway.id, { transport: "carrier-pigeon" });
+    } catch (error) {
+      const cause = (error as { cause?: unknown }).cause;
+      message = `${(error as Error).message} ${cause instanceof Error ? cause.message : ""}`;
+    }
+    expect(message).toContain("connections_transport_check");
+  });
+
+  test("deleteConnection removes an unreferenced endpoint and is refused for a bound one BY THE ENGINE", async () => {
+    const plant = await freshPlant("spine-conn-delete");
+    const spare = await repo.createConnection(db, plant.id, {
+      name: "Spare",
+      host: "h",
+      port: 502,
+      transport: "tcp",
+      timeoutMs: 2000,
+      pollIntervalMs: 1000,
+    });
+    const bound = await repo.createConnection(db, plant.id, {
+      name: "Bound",
+      host: "h2",
+      port: 502,
+      transport: "tcp",
+      timeoutMs: 2000,
+      pollIntervalMs: 1000,
+    });
+    await repo.createDevice(db, {
+      plantId: plant.id,
+      connectionId: bound.id,
+      unitId: 1,
+      slug: "inv",
+      name: "Inv",
+      profileId: "p",
+      role: "inverter",
+    });
+    expect(await repo.deleteConnection(db, spare.id)).toBe(true);
+    expect(await repo.deleteConnection(db, spare.id)).toBe(false);
+    let message = "";
+    try {
+      await repo.deleteConnection(db, bound.id);
+    } catch (error) {
+      const cause = (error as { cause?: unknown }).cause;
+      message = `${(error as Error).message} ${cause instanceof Error ? cause.message : ""}`;
+    }
+    expect(message).toContain("devices_connection_id_connections_id_fk");
+    expect((await repo.readConnections(db, plant.id)).map((c) => c.id)).toEqual([bound.id]);
+  });
+
+  test("createDevice refuses a second device on the same (connection, unit id) BY THE ENGINE", async () => {
+    // `devices_connection_unit_key` — and the violation has to be recognisable so
+    // the add-device route can answer 409 with a reason instead of 500.
+    const plant = await freshPlant("spine-dev-create-unit");
+    const gateway = await repo.createConnection(db, plant.id, {
+      name: "Gateway",
+      host: "10.0.0.5",
+      port: 502,
+      transport: "tcp",
+      timeoutMs: 2000,
+      pollIntervalMs: 1000,
+    });
+    const spec = {
+      plantId: plant.id,
+      connectionId: gateway.id,
+      unitId: 1,
+      slug: "inverter",
+      name: "Inverter",
+      profileId: "p",
+      role: "inverter",
+    };
+    const created = await repo.createDevice(db, spec);
+    expect(created.id).toBeGreaterThan(0);
+    expect(created.retiredAt).toBeNull();
+    let caught: unknown = null;
+    try {
+      await repo.createDevice(db, { ...spec, slug: "meter", name: "Meter", role: "meter" });
+    } catch (error) {
+      caught = error;
+    }
+    expect(repo.uniqueViolation(caught)).toBe("devices_connection_unit_key");
+  });
+
+  test("createDevice refuses a slug the plant already uses, and names that constraint", async () => {
+    const plant = await freshPlant("spine-dev-create-slug");
+    const spec = {
+      plantId: plant.id,
+      connectionId: null,
+      unitId: 1,
+      slug: "inverter",
+      name: "Inverter",
+      profileId: "p",
+      role: "inverter",
+    };
+    await repo.createDevice(db, spec);
+    let caught: unknown = null;
+    try {
+      await repo.createDevice(db, { ...spec, unitId: 2 });
+    } catch (error) {
+      caught = error;
+    }
+    expect(repo.uniqueViolation(caught)).toBe("devices_plant_slug_key");
+  });
+
+  test("createDevice lets two endpoint-less devices share a unit id — NULLs are distinct", async () => {
+    const plant = await freshPlant("spine-dev-create-null");
+    const spec = {
+      plantId: plant.id,
+      connectionId: null,
+      unitId: 1,
+      slug: "a",
+      name: "A",
+      profileId: "p",
+      role: "inverter",
+    };
+    const a = await repo.createDevice(db, spec);
+    const b = await repo.createDevice(db, { ...spec, slug: "b", name: "B" });
+    expect(b.id).not.toBe(a.id);
+  });
+
   test("readConnections lists EVERY endpoint of the plant, and only that plant's", async () => {
     // The poll loop resolves each device's endpoint through its own
     // `connection_id` (`apps/server/src/inverter/endpoint.ts`), so it needs the
@@ -325,6 +513,86 @@ suite("the dimension spine", () => {
       role: "controller",
     });
     expect(b.id).not.toBe(a.id);
+  });
+
+  test("an inverter's PV description lives on its row — written, read back, defaulted", async () => {
+    const plant = await freshPlant("spine-device-pv");
+    const created = await repo.createDevice(db, {
+      plantId: plant.id,
+      connectionId: null,
+      unitId: 1,
+      slug: "inv",
+      name: "Inv",
+      profileId: "p",
+      role: "inverter",
+      pv: {
+        arrays: [
+          { kwp: 8.4, tilt: 35, azimuth: 0 },
+          { kwp: 3.2, tilt: 20, azimuth: 90, systemLoss: 20 },
+        ],
+        tempCoefficient: -0.35,
+      },
+    });
+    expect(created.arrays).toHaveLength(2);
+    expect(created.arrays[1]?.systemLoss).toBe(20);
+    expect(created.tempCoefficient).toBe(-0.35);
+    expect(created.systemLoss).toBe(14); // the column default
+    const meter = await repo.createDevice(db, {
+      plantId: plant.id,
+      connectionId: null,
+      unitId: 2,
+      slug: "meter",
+      name: "M",
+      profileId: "p",
+      role: "meter",
+    });
+    expect(meter.arrays).toEqual([]);
+    const patched = await repo.updateDevice(db, created.id, { pv: { systemLoss: 9, arrays: [] } });
+    expect(patched.systemLoss).toBe(9);
+    expect(patched.arrays).toEqual([]);
+    expect(patched.tempCoefficient).toBe(-0.35);
+  });
+
+  test("migration 0005's backfill moves the plant's PV description onto its FIRST in-service inverter only", async () => {
+    // The statement is read from the migration file itself, so this proves the
+    // SQL that ships — not a re-typed copy of it.
+    const file = await Bun.file(
+      new URL("../../../packages/db/src/migrations/0005_mean_rhodey.sql", import.meta.url),
+    ).text();
+    const backfill = file.slice(file.indexOf("UPDATE"));
+    const plant = await freshPlant("spine-pv-backfill");
+    await db.execute(sql`update plants set arrays = '[{"kwp": 9.8, "tilt": 30, "azimuth": 0}]'::jsonb,
+      temp_coefficient = -0.3, system_loss = 11 where id = ${plant.id}`);
+    const spec = {
+      plantId: plant.id,
+      connectionId: null,
+      unitId: 1,
+      slug: "old",
+      name: "Old",
+      profileId: "p",
+      role: "inverter",
+    };
+    const retired = await repo.createDevice(db, spec);
+    await repo.updateDevice(db, retired.id, { retiredAt: new Date() });
+    const first = await repo.createDevice(db, { ...spec, unitId: 2, slug: "inv-1", name: "One" });
+    const second = await repo.createDevice(db, { ...spec, unitId: 3, slug: "inv-2", name: "Two" });
+    const meter = await repo.createDevice(db, {
+      ...spec,
+      unitId: 4,
+      slug: "meter",
+      name: "M",
+      role: "meter",
+    });
+    await db.execute(sql.raw(backfill));
+    const after = new Map((await repo.readDevices(db, plant.id)).map((d) => [d.slug, d]));
+    expect(after.get("inv-1")?.arrays).toEqual([{ kwp: 9.8, tilt: 30, azimuth: 0 }]);
+    expect(after.get("inv-1")?.tempCoefficient).toBe(-0.3);
+    expect(after.get("inv-1")?.systemLoss).toBe(11);
+    for (const slug of ["old", "inv-2", "meter"]) {
+      expect(after.get(slug)?.arrays).toEqual([]);
+      expect(after.get(slug)?.systemLoss).toBe(14);
+    }
+    expect([retired.id, first.id, second.id, meter.id].every((id) => id > 0)).toBe(true);
   });
 
   test("readDevices returns the plant's devices with their roles", async () => {
