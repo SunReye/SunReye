@@ -82,14 +82,7 @@ const flat = (s: string) => s.replace(/\s+/g, " ").trim();
  * test of drizzle rather than of this module.
  */
 const shape = (s: string) =>
-  flat(s)
-    .replaceAll('"', "")
-    .replaceAll("metrics_raw.", "")
-    .replaceAll("u.", "")
-    // `metric_keys.key` is the metric NAME, joined back in — the payload is keyed
-    // by it and that shape is an external contract. Read as plain `metric` here so
-    // these assertions stay about the query's shape rather than the join's alias.
-    .replaceAll("metric_keys.key", "metric");
+  flat(s).replaceAll('"', "").replaceAll("metrics_raw.", "").replaceAll("u.", "");
 
 /**
  * The structural row cap the recent-buckets read carries. It is the query
@@ -112,19 +105,6 @@ const recentRow = (metric: string, bucket: number | string, value: number | stri
   bucket,
   value,
 ];
-
-/**
- * Where each value lands in `params` for a rollup read.
- *
- * The identity is now resolved AT THE BOUNDARY, so a tier's single arm binds the
- * source id twice (`deviceIdOf` tries the slug, then the profile id), then the
- * metric key, then the WIDENED scan bounds, then the exact ones — see
- * `./identity-sql.ts` and `./rollup-sql.ts`. Named here so a layout change
- * shows up as one edit rather than thirty magic indexes.
- */
-const P = { source: 0, metric: 2, scanFrom: 3 } as const;
-/** Index of the exact `from`, which follows the widened bounds. */
-const exactFrom = (bounded: boolean) => (bounded ? 5 : 4);
 
 const ROLLUP = {
   metric: "pv.power",
@@ -151,12 +131,9 @@ describe("queryRollup — window and view selection", () => {
     const from = new Date("2026-03-01T00:00:00Z");
     const to = new Date("2026-03-02T00:00:00Z");
     const [call] = await capture([], () => queryRollup({ ...ROLLUP, from, to }));
-    // The EXACT bounds, applied outside the window function — the inner scan is
-    // deliberately one bucket wider so `lag`/`lead` have neighbours to
-    // interpolate from.
-    expect(flat(call.sql)).toContain("bucket >= $6 and bucket < $7");
-    expect(call.params[5]).toEqual(from);
-    expect(call.params[6]).toEqual(to);
+    expect(flat(call.sql)).toContain("bucket >= $3 and bucket < $4");
+    expect(call.params[2]).toEqual(from);
+    expect(call.params[3]).toEqual(to);
   });
 
   test("an explicit window wins over `since` when both are passed", async () => {
@@ -165,7 +142,7 @@ describe("queryRollup — window and view selection", () => {
     const since = new Date("2020-01-01T00:00:00Z");
     const [call] = await capture([], () => queryRollup({ ...ROLLUP, since, from, to }));
     expect(call.params).not.toContain(since);
-    expect(call.params.slice(5, 7)).toEqual([from, to]);
+    expect(call.params.slice(2, 4)).toEqual([from, to]);
   });
 
   // Hazard: the date-range picker sending only one bound must not silently
@@ -175,20 +152,20 @@ describe("queryRollup — window and view selection", () => {
     const from = new Date("2026-03-01T00:00:00Z");
     const since = new Date("2026-02-01T00:00:00Z");
     const [call] = await capture([], () => queryRollup({ ...ROLLUP, from, since }));
-    expect(flat(call.sql)).toContain("bucket >= $5");
+    expect(flat(call.sql)).toContain("bucket >= $3");
     expect(flat(call.sql)).not.toContain("bucket <");
-    expect(call.params[exactFrom(false)]).toEqual(since);
+    expect(call.params[2]).toEqual(since);
   });
 
   test("only `to` given, no `since`: the read starts at the epoch, not at `to`", async () => {
     const to = new Date("2026-03-02T00:00:00Z");
     const [call] = await capture([], () => queryRollup({ ...ROLLUP, to }));
-    expect(call.params[exactFrom(false)]).toEqual(new Date(0));
+    expect(call.params[2]).toEqual(new Date(0));
   });
 
   test("no window at all reads from the epoch — every retained bucket, capped by `limit`", async () => {
     const [call] = await capture([], () => queryRollup({ ...ROLLUP }));
-    expect(call.params[exactFrom(false)]).toEqual(new Date(0));
+    expect(call.params[2]).toEqual(new Date(0));
   });
 
   test("metric and inverter are bound parameters, not interpolated text", async () => {
@@ -201,8 +178,8 @@ describe("queryRollup — window and view selection", () => {
       }),
     );
     expect(call.sql).not.toContain("drop table");
-    expect(call.params[P.metric]).toBe("battery.soc'; drop table metrics_raw; --");
-    expect(call.params[P.source]).toBe("inv-2");
+    expect(call.params[0]).toBe("battery.soc'; drop table metrics_raw; --");
+    expect(call.params[1]).toBe("inv-2");
   });
 
   test("rows come back ascending — charts plot left to right without re-sorting", async () => {
@@ -216,11 +193,10 @@ describe("queryRollup — window and view selection", () => {
   test("`limit` is passed through verbatim — no clamping happens in this layer", async () => {
     for (const limit of [1, 1600, 50_000]) {
       const [call] = await capture([], () => queryRollup({ ...ROLLUP, limit, since: new Date(0) }));
-      // $6: source id × 2 (slug, then profile id), metric, the widened scan
-      // bound and the exact one — so the limit is the sixth parameter of an
-      // open-ended read, not the fourth.
-      expect(flat(call.sql)).toContain("limit $6");
-      expect(call.params[5]).toBe(limit);
+      // $7: the predicates are bound once per union arm (metric, inverter,
+      // window × 2), so the limit is the seventh parameter, not the fourth.
+      expect(flat(call.sql)).toContain("limit $7");
+      expect(call.params[6]).toBe(limit);
     }
   });
 
@@ -228,7 +204,7 @@ describe("queryRollup — window and view selection", () => {
     const [call] = await capture([], () =>
       queryRollup({ ...ROLLUP, limit: 0, since: new Date(0) }),
     );
-    expect(call.params[5]).toBe(0);
+    expect(call.params[6]).toBe(0);
   });
 });
 
@@ -315,7 +291,7 @@ describe("queryMedianHourlyAvg", () => {
     const before = Date.now();
     const [call] = await capture([{ median: 1 }], () => queryMedianHourlyAvg("load.power", "i", 7));
     const after = Date.now();
-    const since = call.params[exactFrom(false)] as Date;
+    const since = call.params[2] as Date;
     expect(since.getTime()).toBeGreaterThanOrEqual(before - 7 * 24 * 3600 * 1000);
     expect(since.getTime()).toBeLessThanOrEqual(after - 7 * 24 * 3600 * 1000);
   });
@@ -325,15 +301,15 @@ describe("queryMedianHourlyAvg", () => {
     const [call] = await capture([{ median: null }], () =>
       queryMedianHourlyAvg("load.power", "i", 0),
     );
-    expect((call.params[exactFrom(false)] as Date).getTime()).toBeGreaterThanOrEqual(before);
+    expect((call.params[2] as Date).getTime()).toBeGreaterThanOrEqual(before);
   });
 
   test("metric and inverter are bound parameters", async () => {
     const [call] = await capture([{ median: 1 }], () =>
       queryMedianHourlyAvg("load.power", "inv-9", 3),
     );
-    expect(call.params[P.metric]).toBe("load.power");
-    expect(call.params[P.source]).toBe("inv-9");
+    expect(call.params[0]).toBe("load.power");
+    expect(call.params[1]).toBe("inv-9");
     expect(flat(call.sql)).toContain("from hourly_rollups");
   });
 
@@ -388,20 +364,11 @@ describe("queryHourlyAvgRange", () => {
   test("the window is half-open [from, to) so consecutive days never double-count an hour", async () => {
     const [call] = await capture([], () => queryHourlyAvgRange("pv.power", "inv-1", from, to));
     const sqlText = flat(call.sql);
-    // Widened scan bounds first, then the exact ones the caller asked for.
-    expect(sqlText).toContain("bucket >= $4 and bucket < $5");
-    expect(sqlText).toContain("bucket >= $6 and bucket < $7");
-    // One source, one arm: each value is bound exactly once — except the source
-    // id, which `deviceIdOf` tries as a slug and then as a profile id.
-    expect(call.params).toEqual([
-      "inv-1",
-      "inv-1",
-      "pv.power",
-      new Date(from.getTime() - 3_600_000),
-      new Date(to.getTime() + 3_600_000),
-      from,
-      to,
-    ]);
+    expect(sqlText).toContain("bucket >= $3");
+    expect(sqlText).toContain("bucket < $4");
+    // Once per union arm: the weighted aggregate and the legacy one are filtered
+    // by the same window, so an arm can never contribute a bucket outside it.
+    expect(call.params).toEqual(["pv.power", "inv-1", from, to, "pv.power", "inv-1", from, to]);
   });
 
   test("reads the hourly aggregate ascending, unlimited — the caller matches it hour by hour", async () => {
@@ -414,7 +381,8 @@ describe("queryHourlyAvgRange", () => {
 
   test("an inverted window (from after to) is still sent — the caller owns that validation", async () => {
     const [call] = await capture([], () => queryHourlyAvgRange("pv.power", "inv-1", to, from));
-    expect(call.params.slice(5)).toEqual([to, from]);
+    expect(call.params.slice(2, 4)).toEqual([to, from]);
+    expect(call.params.slice(6)).toEqual([to, from]);
   });
 
   test("a gap in the series yields fewer rows, not zero-filled ones", async () => {
@@ -463,33 +431,25 @@ describe("queryRawHistory", () => {
   const since = new Date("2026-04-01T00:00:00Z");
   const q = { metric: "pv.power", inverterId: "inv-1", since, limit: 10 };
 
-  /**
-   * Driver row for the read's PROJECTION — `(time, value)`, not the table's
-   * columns. The projection is explicit precisely because the table's other
-   * columns are the int2 identity, and `select *` would return integers to a
-   * caller whose contract is names.
-   */
-  const row = (time: string, value: number) => [time, value];
+  /** Driver row for metrics_raw, in the table's column order. */
+  const row = (time: string, value: number, metric = "pv.power", inverterId = "inv-1") => [
+    time,
+    inverterId,
+    metric,
+    value,
+  ];
 
   test("filters on time, metric and inverter together — never a neighbour inverter's samples", async () => {
     const [call] = await capture([], () => queryRawHistory(q));
     const sqlText = flat(call.sql).toLowerCase();
     expect(sqlText).toContain('from "metrics_raw"');
     expect(sqlText).toContain('"time" >=');
-    // By ID, resolved from the NAME the caller passed — the whole point of the
-    // boundary. Neither identity column may be selected or compared as text.
-    expect(sqlText).toContain('"metric_id" =');
-    expect(sqlText).toContain('"device_id" =');
-    expect(sqlText).not.toContain('"inverter_id"');
+    expect(sqlText).toContain('"metric" =');
+    expect(sqlText).toContain('"inverter_id" =');
     // The timestamp is encoded by drizzle's column type before it reaches the
     // driver, so compare the instant it denotes rather than the literal shape.
     expect(Date.parse(String(call.params[0]))).toBe(since.getTime());
-    expect(call.params.slice(1)).toEqual(["pv.power", "inv-1", "inv-1", 10]);
-  });
-
-  test("selects only time and value — never `*`, which would return the int2 identity", async () => {
-    const [call] = await capture([], () => queryRawHistory(q));
-    expect(flat(call.sql)).toMatch(/^select "time", "value" from/);
+    expect(call.params.slice(1)).toEqual(["pv.power", "inv-1", 10]);
   });
 
   test("the lower bound is inclusive — a sample exactly at `since` belongs to the window", async () => {
@@ -553,9 +513,6 @@ describe("queryRecentBuckets — the SQL", () => {
     expect(sqlText).toContain("time_bucket(");
     expect(sqlText).toContain("last(value, time)");
     expect(sqlText).toContain("group by metric, bucket");
-    // The name comes from a JOIN, not from a column of metrics_raw: the int2 is
-    // internal, and the payload this feeds is keyed by the name.
-    expect(sqlText).toContain("inner join metric_keys on metric_keys.id = metric_id");
     // Ascending is the default, so the builder omits the keyword; what matters is
     // that the outer ordering is metric-then-bucket and never descending (a
     // global `desc` is what the old client-supplied limit truncated against).
@@ -573,9 +530,8 @@ describe("queryRecentBuckets — the SQL", () => {
     expect(call.sql).not.toContain("drop table");
     expect(call.params[0]).toBe("inv'; drop table metrics_raw; --");
     // Encoded by drizzle's column type before it reaches the driver, so compare
-    // the instant it denotes rather than the literal shape. $3, because
-    // `deviceIdOf` binds the source id twice (slug, then profile id).
-    const since = Date.parse(String(call.params[2]));
+    // the instant it denotes rather than the literal shape.
+    const since = Date.parse(String(call.params[1]));
     expect(since).toBeGreaterThanOrEqual(before - 300_000);
     expect(since).toBeLessThanOrEqual(after - 300_000);
   });
@@ -713,9 +669,7 @@ describe("queryRecentBuckets — carrying the held value into the window", () =>
     // @SunReye/db/timescale-fns proves it is a positive whole number of seconds
     // before rendering it, and a server-derived constant reads better in a log
     // than an opaque `$7`.
-    // $8 rather than $6: the identity predicate now binds the source id twice per
-    // arm (`deviceIdOf` tries the slug, then the profile id).
-    expect(shape(call.sql)).toContain("time >= $8::timestamptz - make_interval(secs => 300)");
+    expect(shape(call.sql)).toContain("time >= $6::timestamptz - make_interval(secs => 300)");
   });
 
   test("a real sample in the first bucket wins over the seed", async () => {
@@ -827,35 +781,30 @@ describe("queryRecentBuckets — row shaping", () => {
 });
 
 /**
- * `rollup-sql.test.ts` proves the statement each tier composes; these prove what
- * this module does with the rows that come back — in particular the one row shape
- * an interpolated average can produce that a plain aggregate never could.
+ * The read cutover (#116). `rollup-sql.test.ts` proves the composition; these
+ * prove what this module does with the rows that come back — in particular the
+ * one row shape a weighted aggregate can produce that the legacy one never
+ * could.
  */
-describe("queryRollup — the single-source tiers", () => {
-  test("each tier reads exactly ONE aggregate, and never a second generation of it", async () => {
-    // 1.x read a PAIR per tier (`weighted_*` plus the legacy unweighted one) under
-    // a per-bucket preference. Those relations no longer exist; a second source
-    // reappearing would mean a second generation, which is the debt 2.0.0 paid off.
-    for (const [bucket, view] of [
-      ["minute", "minute_rollups"],
-      ["hour", "hourly_rollups"],
-      ["day", "daily_rollups"],
+describe("queryRollup — weighted/legacy cutover", () => {
+  test("each tier reads BOTH its weighted aggregate and its legacy one", async () => {
+    for (const [bucket, weighted, legacy] of [
+      ["minute", "weighted_minute_rollups", "minute_rollups"],
+      ["hour", "weighted_hourly_rollups", "hourly_rollups"],
+      ["day", "weighted_daily_rollups", "daily_rollups"],
     ] as const) {
       const [call] = await capture([], () =>
         queryRollup({ ...ROLLUP, bucket, since: new Date(0) }),
       );
-      const text = flat(call.sql);
-      expect(text.match(new RegExp(`from ${view}`, "g"))).toHaveLength(1);
-      expect(text).not.toContain("weighted_");
-      expect(text).not.toContain("union all");
+      expect(flat(call.sql)).toContain(`from ${weighted}`);
+      expect(flat(call.sql)).toContain(`from ${legacy}`);
     }
   });
 
-  test("a bucket with no interpolable average is dropped, never reported as 0 kW", async () => {
-    // `interpolated_average` is NULL where there is nothing to interpolate from at
-    // all — a genuine hole in the recording. `Number(null)` is 0, which would draw
-    // a flat line through the gap and read as a real measurement, so the row is
-    // dropped.
+  test("a degenerate zero-weight bucket is dropped, never reported as 0 kW", async () => {
+    // `nullif(weight, 0)` makes the quotient NULL rather than an error or a
+    // fabricated number. `Number(null)` is 0, which would draw a flat line
+    // through a gap and read as a real measurement — so the row is dropped.
     const [, rows] = await capture(
       [
         { bucket: "2026-01-01T00:00:00.000Z", avg_value: null, max_value: 5, min_value: 5 },
@@ -875,12 +824,11 @@ describe("queryRollup — the single-source tiers", () => {
     expect(rows[0]?.avg).toBe(0);
   });
 
-  test("the metric key is bound ONCE — one source means one predicate", async () => {
+  test("the predicates are bound once per arm, so neither side scans unfiltered", async () => {
     const [call] = await capture([], () =>
       queryRollup({ ...ROLLUP, metric: "battery.power", inverterId: "inv-7", since: new Date(0) }),
     );
-    expect(call.params.filter((p) => p === "battery.power")).toHaveLength(1);
-    // Twice, and only twice: `deviceIdOf` tries the slug and then the profile id.
+    expect(call.params.filter((p) => p === "battery.power")).toHaveLength(2);
     expect(call.params.filter((p) => p === "inv-7")).toHaveLength(2);
   });
 
@@ -893,13 +841,13 @@ describe("queryRollup — the single-source tiers", () => {
   });
 });
 
-describe("queryHourlyAvgRange — the hourly source", () => {
-  test("reads the one hourly aggregate, interpolated", async () => {
+describe("queryHourlyAvgRange — weighted/legacy cutover", () => {
+  test("reads both hourly aggregates", async () => {
     const [call] = await capture([], () =>
       queryHourlyAvgRange("pv.power", "inv-1", new Date(0), new Date(1)),
     );
+    expect(flat(call.sql)).toContain("from weighted_hourly_rollups");
     expect(flat(call.sql)).toContain("from hourly_rollups");
-    expect(flat(call.sql)).toContain("interpolated_average(tw, bucket, '1 hour'::interval");
   });
 
   test("a NULL average is dropped rather than learned from as a zero actual", async () => {
@@ -916,14 +864,11 @@ describe("queryHourlyAvgRange — the hourly source", () => {
   });
 });
 
-describe("queryMedianHourlyAvg — the hourly source", () => {
-  test("takes the median over the interpolated hourly averages", async () => {
-    // `percentile_cont` is an ordered-set aggregate: it ignores NULL inputs, so a
-    // bucket with nothing to interpolate from drops out of the ordering rather
-    // than skewing the median toward zero.
+describe("queryMedianHourlyAvg — weighted/legacy cutover", () => {
+  test("takes the median over the cutover union, not over one aggregate", async () => {
     const [call] = await capture([{ median: 1 }], () => queryMedianHourlyAvg("load.power", "i", 7));
+    expect(flat(call.sql)).toContain("from weighted_hourly_rollups");
     expect(flat(call.sql)).toContain("from hourly_rollups");
-    expect(flat(call.sql)).toContain("interpolated_average(tw, bucket, '1 hour'::interval");
     expect(flat(call.sql)).toContain("percentile_cont(0.5) within group (order by avg_value)");
   });
 });

@@ -10,7 +10,7 @@
  */
 
 import { type WeatherConfig, forecastReady } from "@SunReye/db/weather";
-import type { DeviceInstance, InverterSample, RoleKey } from "@SunReye/inverter-core";
+import type { CanonicalRole, InverterProfile, InverterSample } from "@SunReye/inverter-core";
 import { HOUR_MS, flowStep } from "../energy/energy-flow";
 import { type CorrectionModel, correctionFactor, hourOf, monthOf } from "./forecast-correction";
 import { log } from "../shared/logging";
@@ -24,16 +24,9 @@ const logger = log("solar-forecast");
 const finiteOrNull = (v: unknown): number | null =>
   typeof v === "number" && Number.isFinite(v) ? v : null;
 
-/**
- * A device's metric key for a canonical role; undefined when it maps none.
- *
- * Through the CONTRACT (`DeviceInstance.roles`) rather than by scanning a
- * profile's metric list: the forecast needs two roles and an id, and asking a
- * device for a role is the one question that answers the same way whoever
- * authored the mapping.
- */
-const roleKey = (device: DeviceInstance | null, role: RoleKey): string | undefined =>
-  device?.roles.get(role)?.metrics[0]?.key;
+/** The active profile's metric key for a canonical role; undefined when unmapped. */
+const roleKey = (profile: InverterProfile | null, role: CanonicalRole): string | undefined =>
+  profile?.metrics.find((m) => m.role === role)?.key;
 
 /** One panel orientation a provider must resolve irradiance for. */
 export interface PlaneOfArray {
@@ -310,12 +303,6 @@ function slotGrid(times: string[], utcOffsetSeconds: number): SlotGrid {
  * sun position feeds the per-array incidence angle so the IAM split (when DNI is
  * available) can bite. A learned correction (when supplied) then scales the
  * sample by its (month, hour) factor.
- *
- * Each array is modelled with ITS OWN temperature coefficient and system loss,
- * falling back to the plant's. The model's seam was always per array; it used to
- * be handed the same plant-wide pair eight times over, so a shaded east string
- * and a clean south one shared one 14 % — the fudge factor
- * `./forecast-correction.ts` then had to learn its way out of.
  */
 function instantPowerW(
   config: WeatherConfig["forecast"],
@@ -335,12 +322,8 @@ function instantPowerW(
       watts += pvPowerW(
         { ...env, gtiWm2: data.gti[a]?.[i] ?? 0, cosAoi: cosAoi(sun, arr.tilt, arr.azimuth) },
         arr.kwp,
-        // `??`, never `||`: 0 %/°C and 0 % loss are legal STATEMENTS about a
-        // string, and `||` would swap either for the plant default silently.
-        // The plant column is the fallback and stays the answer for the uniform
-        // single-array plant that never states anything per array.
-        arr.tempCoefficient ?? config.tempCoefficient,
-        arr.systemLoss ?? config.systemLoss,
+        config.tempCoefficient,
+        config.systemLoss,
       );
     });
     return correction ? watts * correctionFactor(correction, monthOf(time), hourOf(time)) : watts;
@@ -594,8 +577,8 @@ const LOAD_MEDIAN_DAYS = 14;
 let loadCache: { at: number; watts: number | null } | null = null;
 
 /** Live battery SOC from the poll cache, %; null when unmapped or unavailable. */
-function liveSocPct(device: DeviceInstance | null, sample: InverterSample | null): number | null {
-  const key = roleKey(device, "battery.soc");
+function liveSocPct(profile: InverterProfile | null, sample: InverterSample | null): number | null {
+  const key = roleKey(profile, "battery.soc");
   return finiteOrNull(key ? sample?.metrics[key] : undefined);
 }
 
@@ -604,11 +587,14 @@ function liveSocPct(device: DeviceInstance | null, sample: InverterSample | null
  * recomputed once past its (long) TTL. `null` when the plant maps no load
  * metric or the rollups have nothing yet.
  */
-async function medianHouseLoadW(device: DeviceInstance): Promise<number | null> {
+async function medianHouseLoadW(
+  profile: InverterProfile,
+  inverterId: string,
+): Promise<number | null> {
   if (loadCache && Date.now() - loadCache.at < LOAD_MEDIAN_TTL_MS) return loadCache.watts;
-  const loadKey = roleKey(device, "load.power");
+  const loadKey = roleKey(profile, "load.power");
   const { queryMedianHourlyAvg } = await import("../shared/history");
-  const watts = loadKey ? await queryMedianHourlyAvg(loadKey, device.id, LOAD_MEDIAN_DAYS) : null;
+  const watts = loadKey ? await queryMedianHourlyAvg(loadKey, inverterId, LOAD_MEDIAN_DAYS) : null;
   loadCache = { at: Date.now(), watts };
   return watts;
 }
@@ -622,10 +608,13 @@ async function medianHouseLoadW(device: DeviceInstance): Promise<number | null> 
 // fallow-ignore-next-line unused-export -- consumed by ./automation through a destructured dynamic `import("./solar-forecast")`, which isn't traced
 export async function representativeHouseLoadW(config: WeatherConfig): Promise<number | null> {
   if (config.forecast.houseLoadW != null) return config.forecast.houseLoadW;
-  const { deviceRegistry } = await import("../devices/registry-instance");
-  const device = deviceRegistry.primary();
-  if (!device) return null;
-  return await medianHouseLoadW(device);
+  const [{ getActiveProfileOrNull }, { liveState }] = await Promise.all([
+    import("../inverter/inverter"),
+    import("../shared/state"),
+  ]);
+  const profile = getActiveProfileOrNull();
+  if (!profile) return null;
+  return await medianHouseLoadW(profile, liveState.latest?.inverterId ?? profile.id);
 }
 
 /**
@@ -635,12 +624,14 @@ export async function representativeHouseLoadW(config: WeatherConfig): Promise<n
  * the DB-free split used by {@link ../energy/energy-calc}.
  */
 async function resolveSimInputs(config: WeatherConfig): Promise<ForecastSimInputs> {
-  const [{ deviceRegistry }, { liveState }] = await Promise.all([
-    import("../devices/registry-instance"),
+  const [{ getActiveProfileOrNull }, { liveState }] = await Promise.all([
+    import("../inverter/inverter"),
     import("../shared/state"),
   ]);
+  const profile = getActiveProfileOrNull();
+  const sample = liveState.latest;
   return {
-    startSocPct: liveSocPct(deviceRegistry.primary(), liveState.latest),
+    startSocPct: liveSocPct(profile, sample),
     houseLoadW: await representativeHouseLoadW(config),
   };
 }
@@ -652,18 +643,19 @@ async function resolveSimInputs(config: WeatherConfig): Promise<ForecastSimInput
  * SOC metric or no rollup covers that hour.
  */
 async function resolveDayStartSoc(data: IrradianceForecast): Promise<number | null> {
-  const [{ deviceRegistry }, { queryHourlyAvgRange }] = await Promise.all([
-    import("../devices/registry-instance"),
+  const [{ getActiveProfileOrNull }, { liveState }, { queryHourlyAvgRange }] = await Promise.all([
+    import("../inverter/inverter"),
+    import("../shared/state"),
     import("../shared/history"),
   ]);
-  const device = deviceRegistry.primary();
-  const socKey = roleKey(device, "battery.soc");
+  const profile = getActiveProfileOrNull();
+  const socKey = roleKey(profile, "battery.soc");
   const startLocal = data.times[0];
-  if (!device || !socKey || startLocal === undefined) return null;
+  if (!profile || !socKey || startLocal === undefined) return null;
   const startMs = Date.parse(`${startLocal}:00Z`) - data.utcOffsetSeconds * 1000;
   const rows = await queryHourlyAvgRange(
     socKey,
-    device.id,
+    liveState.latest?.inverterId ?? profile.id,
     new Date(startMs),
     new Date(startMs + HOUR_MS),
   );
@@ -678,13 +670,14 @@ async function resolveDayStartSoc(data: IrradianceForecast): Promise<number | nu
  */
 async function resolveCorrection(config: WeatherConfig): Promise<CorrectionModel | undefined> {
   if (!config.forecast.correction.enabled) return undefined;
-  const [{ deviceRegistry }, { loadCorrectionModel }] = await Promise.all([
-    import("../devices/registry-instance"),
+  const [{ getActiveProfileOrNull }, { liveState }, { loadCorrectionModel }] = await Promise.all([
+    import("../inverter/inverter"),
+    import("../shared/state"),
     import("./forecast-correction-store"),
   ]);
-  const device = deviceRegistry.primary();
-  if (!device) return undefined;
-  const model = await loadCorrectionModel(device.id);
+  const profile = getActiveProfileOrNull();
+  if (!profile) return undefined;
+  const model = await loadCorrectionModel(liveState.latest?.inverterId ?? profile.id);
   return model.size > 0 ? model : undefined;
 }
 

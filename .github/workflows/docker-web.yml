@@ -1,0 +1,92 @@
+name: Docker · web
+
+# Built when release-please cuts a web release, nightly from master,
+# or manually (optionally promoting the ref to the moving `beta` tag).
+on:
+  push:
+    tags: ["web-v*"]
+  schedule:
+    - cron: "14 3 * * *"
+  workflow_dispatch:
+    inputs:
+      channel:
+        description: "Extra moving tag to apply"
+        type: choice
+        options: ["none", "beta"]
+        default: "none"
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: docker-web-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}-web
+
+jobs:
+  guard:
+    name: Skip stale nightly
+    runs-on: ubuntu-latest
+    outputs:
+      build: ${{ steps.check.outputs.build }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build unless a scheduled run finds master unchanged for 24h
+        id: check
+        run: |
+          if [ "${{ github.event_name }}" != "schedule" ] || [ "$(git log -1 --format=%ct)" -ge "$(( $(date +%s) - 86400 ))" ]; then
+            echo "build=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "no commits since last nightly — skipping"
+          fi
+
+  build:
+    name: Build & push
+    needs: guard
+    if: needs.guard.outputs.build == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=match,pattern=web-v(\d+\.\d+\.\d+),group=1
+            type=match,pattern=web-v(\d+\.\d+)\.,group=1
+            type=sha,format=short
+            type=schedule,pattern=nightly
+            type=raw,value=beta,enable=${{ inputs.channel == 'beta' }}
+            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/web-v') }}
+
+      - name: Build & push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/web/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=web
+          cache-to: type=gha,mode=max,scope=web
+          provenance: false

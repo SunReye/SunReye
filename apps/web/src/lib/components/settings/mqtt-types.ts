@@ -14,15 +14,7 @@ export type MqttForm = {
   haDiscoveryPrefix: string;
 };
 
-export type MqttStatus = {
-  enabled: boolean;
-  connected: boolean;
-  lastError: string | null;
-};
+export type MqttStatus = { enabled: boolean; connected: boolean; lastError: string | null };
 
 /** EVCC rides the same broker, so its knobs live on the MQTT page. */
-export type EvccForm = {
-  enabled: boolean;
-  topicRoot: string;
-  subtractFromHome: boolean;
-};
+export type EvccForm = { enabled: boolean; topicRoot: string; subtractFromHome: boolean };

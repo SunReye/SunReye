@@ -7,10 +7,9 @@
  * ## The parse must stay total
  *
  * `readSetting` validates with `safeParse` and **falls back to the default when
- * it fails**. So a schema change that can reject an already-stored row resets a
- * user's tariff to zeros; the rejected row is warned about and kept under
- * `<key>:rejected`, but nobody notices the reset until a cost figure looks
- * wrong.
+ * it fails, silently**. So a schema change that can reject an already-stored row
+ * would quietly reset a user's tariff to zeros, with no log line and no way for
+ * them to notice until a cost figure looks wrong.
  *
  * That is why the market-price support below is a **flat tagged record** — a
  * `mode` enum with a default, every sub-object always present and always

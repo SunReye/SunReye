@@ -236,17 +236,6 @@ describe("no reading can reach a timing property", () => {
     expect(charge).toMatch(/\{#key pulse\.dur\}/);
   });
 
-  test("the rebuilt mover starts where the old one was, not at the top of the path", () => {
-    // Keying alone trades the teleport for a restart: a reading hovering on a
-    // quantization boundary steps its dur on nearly every 1 Hz sample, and the
-    // comet snaps back to the node each time. The new chain is handed a begin
-    // that puts its head at the phase the old chain had reached, read off the
-    // SVG's own clock — the only clock SMIL's `begin` is resolved against.
-    expect(charge).toContain("carryHead(");
-    expect(charge).toContain("getCurrentTime()");
-    expect(charge).toMatch(/begin=\{beadBegin\(k, pulse\.dur, [a-zA-Z.]+\)\}/);
-  });
-
   test("nothing else in these components animates on a datum", () => {
     // Everything except that one dur stays a constant of the design.
     // The rails are pure structure now — the charge owns the only stylesheet.

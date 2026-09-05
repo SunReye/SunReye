@@ -1,31 +1,26 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtempSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import {
-  SIDE_TABLES,
-  SNAPSHOT_SQL,
-  buildSnapshotSql,
-  cli,
   type Snapshot,
+  type WeightedRollupName,
   compareSnapshots,
-  compareStreamCounts,
-  main,
-  readSnapshot,
   rollupKey,
+  weightedMatchesLegacy,
 } from "./db-parity";
 
 /** A snapshot with one bucket per rollup and one row in every side table. */
 function snapshot(overrides: Partial<Snapshot> = {}): Snapshot {
   const bucket = "2026-08-01T00:00:00Z";
-  // The int2 identity, as of 2.0.0. It was `inverterId: "deye-sg05lp3"` — a
-  // PROFILE id — which is the bug the re-key fixed.
-  const row = { bucket, deviceId: 1, metricId: 7, avg: 1.5, max: 3, min: 0 };
+  const row = { bucket, inverterId: "inv1", metric: "pv_power", avg: 1.5, max: 3, min: 0 };
   return {
     rollups: {
       minute_rollups: [{ ...row }],
       hourly_rollups: [{ ...row }],
       daily_rollups: [{ ...row }],
+    },
+    weightedRollups: {
+      weighted_minute_rollups: [],
+      weighted_hourly_rollups: [],
+      weighted_daily_rollups: [],
     },
     tables: { app_settings: 4, user: 1, tariffs: 2, installed_profiles: 1 },
     digests: { app_settings: "a1", user: "b2", tariffs: "c3", installed_profiles: "d4" },
@@ -41,6 +36,11 @@ function snapshot(overrides: Partial<Snapshot> = {}): Snapshot {
 
 const EMPTY: Snapshot = {
   rollups: { minute_rollups: [], hourly_rollups: [], daily_rollups: [] },
+  weightedRollups: {
+    weighted_minute_rollups: [],
+    weighted_hourly_rollups: [],
+    weighted_daily_rollups: [],
+  },
   tables: {},
   digests: {},
   rawRows: 0,
@@ -49,16 +49,9 @@ const EMPTY: Snapshot = {
 };
 
 describe("rollupKey", () => {
-  test("keys a row by bucket, device and metric so order cannot matter", () => {
+  test("keys a row by bucket, inverter and metric so order cannot matter", () => {
     const row = snapshot().rollups.minute_rollups[0]!;
-    expect(rollupKey(row)).toBe("2026-08-01T00:00:00Z|1|7");
-  });
-
-  test("two devices reporting the same metric in the same bucket are different rows", () => {
-    // The whole point of the re-key: under the profile id these two collided
-    // into one series, and one silently overwrote the other's history.
-    const a = snapshot().rollups.minute_rollups[0]!;
-    expect(rollupKey({ ...a, deviceId: 2 })).not.toBe(rollupKey(a));
+    expect(rollupKey(row)).toBe("2026-08-01T00:00:00Z|inv1|pv_power");
   });
 });
 
@@ -87,7 +80,7 @@ describe("compareSnapshots", () => {
     const after = snapshot({ rollups: { ...snapshot().rollups, hourly_rollups: [] } });
     const problems = compareSnapshots(snapshot(), after, { expectRawLoss: false }).join("\n");
     expect(problems).toContain("hourly_rollups");
-    expect(problems).toContain("2026-08-01T00:00:00Z|1|7");
+    expect(problems).toContain("2026-08-01T00:00:00Z|inv1|pv_power");
   });
 
   test("a drifted rollup value is reported even when the row counts match", () => {
@@ -208,311 +201,196 @@ describe("compareSnapshots", () => {
 });
 
 /**
- * 1.x's second aggregate family — `weighted_*_rollups`, and the migration gate
- * that compared it against the unweighted originals — is gone from this file
- * along with the aggregates themselves. 2.0.0 collapsed both generations into one
- * that is right from birth (`packages/db/src/timescale/0000_baseline.sql`), so
- * there is no shadow family for a parity check to reconcile and no per-bucket
- * source preference to prove correct.
+ * The weighted aggregates (#116) enter the snapshot for two separate jobs.
  *
- * What replaced those tests, and is more important than any of them: the
- * dimension tables are now in {@link SIDE_TABLES}. A restore that brought back
- * every rollup bucket and lost `devices` or `metric_keys` would leave every
- * bucket naming an integer that resolves to nothing — and a parity check keyed on
- * ids alone cannot see that, which is exactly why the digests are checked too.
+ * 1. Restore parity: they hold materialized buckets like any other aggregate, so
+ *    a dump that loses them is a data loss the restore gate must catch.
+ * 2. The migration gate: applying the weighted-rollup migration to a database
+ *    that already holds more than 7 days of history must leave every legacy
+ *    bucket byte-identical (a recreate is forbidden — see 0000_bootstrap.sql)
+ *    while the weighted side legitimately appears from nothing.
  */
-describe("the dimension spine is part of parity", () => {
-  test("every dimension table is a side table whose loss is caught", () => {
-    for (const table of ["plants", "connections", "devices", "batteries", "metric_keys"]) {
-      expect(SIDE_TABLES as readonly string[]).toContain(table);
-    }
-  });
+const WEIGHTED: readonly WeightedRollupName[] = [
+  "weighted_minute_rollups",
+  "weighted_hourly_rollups",
+  "weighted_daily_rollups",
+];
 
-  test("losing the devices table is a mismatch, not a silent success", () => {
-    const before = snapshot({ tables: { devices: 2 }, digests: { devices: "d1" } });
-    const after = snapshot({ tables: {}, digests: {} });
-    const problems = compareSnapshots(before, after, { expectRawLoss: false }).join("\n");
-    expect(problems).toContain("devices");
-  });
-
-  test("devices coming back with different CONTENT is a mismatch even at the same count", () => {
-    // The failure that matters: two rows restored, but the slugs or profile ids
-    // rebound to different ids, so every reading changes meaning.
-    const before = snapshot({ tables: { devices: 2 }, digests: { devices: "d1" } });
-    const after = snapshot({ tables: { devices: 2 }, digests: { devices: "d2" } });
-    expect(compareSnapshots(before, after, { expectRawLoss: false }).join("\n")).toContain(
-      "content digest",
-    );
-  });
-});
-
-/**
- * A pre-2.0.0 database is missing tables the current schema has (`spot_prices`,
- * `forecast_correction_cells` do not exist in addon 1.2.0 at all), so the
- * snapshot has to be *takeable* on the old side — a snapshot that cannot be
- * taken proves nothing, and the pre-migration one is the only irreplaceable one.
- * An absent table therefore snapshots as null, and null carries the meaning
- * "there was nothing here to compare", not "zero rows".
- */
-describe("absent side tables", () => {
-  test("a table absent before the migration is not compared, and may appear after", () => {
-    const before = snapshot({
-      tables: { app_settings: 4, spot_prices: null },
-      digests: { app_settings: "a1", spot_prices: null },
-    });
-    const after = snapshot({
-      tables: { app_settings: 4, spot_prices: 17 },
-      digests: { app_settings: "a1", spot_prices: "z9" },
-    });
-    expect(compareSnapshots(before, after, { expectRawLoss: false })).toEqual([]);
-  });
-
-  test("a table that was there before and is absent after is a finding", () => {
-    const before = snapshot({ tables: { app_settings: 4 }, digests: { app_settings: "a1" } });
-    const after = snapshot({ tables: { app_settings: null }, digests: { app_settings: null } });
-    expect(compareSnapshots(before, after, { expectRawLoss: false }).join(" ")).toMatch(
-      /app_settings.*missing/,
-    );
-  });
-
-  test("an absent table is still not the same as an empty one", () => {
-    const before = snapshot({ tables: { app_settings: 0 }, digests: { app_settings: "e0" } });
-    const after = snapshot({ tables: { app_settings: null }, digests: { app_settings: "e0" } });
-    expect(compareSnapshots(before, after, { expectRawLoss: false }).length).toBeGreaterThan(0);
-  });
-
-  test("the snapshot SQL guards every side table, so a missing one cannot fail the query", () => {
-    for (const table of SIDE_TABLES) {
-      expect(SNAPSHOT_SQL).toContain(`to_regclass('public."${table}"')`);
-    }
-  });
-});
-
-/**
- * The rollup arrays are the whole point of a restore comparison and completely
- * infeasible for a two-month fixture: 60 days of per-minute buckets across 105
- * metrics is 9.07 M rows, and `json_agg`-ing them into one value is an
- * out-of-memory error, which is exactly how it was found.
- */
-describe("buildSnapshotSql", () => {
-  test("the default snapshot still aggregates every bucket", () => {
-    const sql = buildSnapshotSql();
-    expect(sql).toBe(SNAPSHOT_SQL);
-    expect(sql).toContain("FROM minute_rollups) r");
-  });
-
-  test("without rollups the tiers are present but empty, so the shape is unchanged", () => {
-    const sql = buildSnapshotSql({ includeRollups: false });
-    expect(sql).not.toContain("FROM minute_rollups) r");
-    for (const tier of ["minute_rollups", "hourly_rollups", "daily_rollups"]) {
-      expect(sql).toContain(`'${tier}', '[]'::json`);
-    }
-    // The parts that are cheap at any scale must still be there.
-    expect(sql).toContain("compressedChunks");
-    expect(sql).toContain("timescaledb_information.jobs");
-    expect(sql).toContain(`to_regclass('public."app_settings"')`);
-  });
-
-  test("the weighted views are dropped too — they are the same unbounded shape", () => {
-    const sql = buildSnapshotSql({ includeRollups: false });
-    expect(sql).not.toContain("weighted_sum / nullif");
-  });
-});
-
-// ---------------------------------------------------------------------------
-// The CLI: which file is read, which flags reach the comparison, what exit code
-// a given pair of snapshots earns. This is the layer a CI job actually invokes,
-// so a wrong exit code here is a green build over a broken restore.
-// ---------------------------------------------------------------------------
-
-/** Capture what a body writes to the two console streams, and restore them. */
-function captureConsole(body: () => number): { code: number; out: string[]; err: string[] } {
-  const out: string[] = [];
-  const err: string[] = [];
-  const realLog = console.log;
-  const realError = console.error;
-  console.log = (...args: unknown[]) => void out.push(args.join(" "));
-  console.error = (...args: unknown[]) => void err.push(args.join(" "));
-  try {
-    return { code: body(), out, err };
-  } finally {
-    console.log = realLog;
-    console.error = realError;
-  }
+/** A snapshot whose weighted aggregates mirror the legacy ones bucket for bucket. */
+function weighted(overrides: Partial<Snapshot> = {}): Snapshot {
+  const base = snapshot();
+  return {
+    ...base,
+    weightedRollups: {
+      weighted_minute_rollups: base.rollups.minute_rollups.map((r) => ({ ...r })),
+      weighted_hourly_rollups: base.rollups.hourly_rollups.map((r) => ({ ...r })),
+      weighted_daily_rollups: base.rollups.daily_rollups.map((r) => ({ ...r })),
+    },
+    ...overrides,
+  };
 }
 
-describe("compareRollup: a bucket that was not there before", () => {
-  test("a bucket that appeared out of nowhere after restore is a finding", () => {
-    const before = snapshot();
-    const after = snapshot();
-    after.rollups.minute_rollups = [
-      ...after.rollups.minute_rollups,
-      { bucket: "2026-08-02T00:00:00Z", deviceId: 1, metricId: 7, avg: 9, max: 9, min: 9 },
-    ];
-    const problems = compareSnapshots(before, after, { expectRawLoss: false });
-    expect(problems).toContain(
-      "minute_rollups: bucket appeared out of nowhere after restore: 2026-08-02T00:00:00Z|1|7",
+/** The same snapshot as `weighted()` but with no weighted buckets at all. */
+const noWeighted = (): Snapshot =>
+  weighted({
+    weightedRollups: {
+      weighted_minute_rollups: [],
+      weighted_hourly_rollups: [],
+      weighted_daily_rollups: [],
+    },
+  });
+
+describe("compareSnapshots — weighted aggregates in a restore", () => {
+  test("an identical restore of a database holding weighted buckets is parity", () => {
+    expect(compareSnapshots(weighted(), weighted(), { expectRawLoss: false })).toEqual([]);
+  });
+
+  test("a lost weighted bucket is a mismatch, named by its aggregate", () => {
+    const after = weighted({
+      weightedRollups: { ...weighted().weightedRollups, weighted_hourly_rollups: [] },
+    });
+    expect(compareSnapshots(weighted(), after, { expectRawLoss: false }).join("\n")).toContain(
+      "weighted_hourly_rollups",
     );
   });
-});
 
-describe("readSnapshot", () => {
-  test("parses a snapshot written as JSON", () => {
-    const dir = mkdtempSync(join(tmpdir(), "db-parity-read-"));
-    const path = join(dir, "snap.json");
-    const snap = snapshot();
-    writeFileSync(path, JSON.stringify(snap));
-    expect(readSnapshot(path)).toEqual(snap);
+  test("a drifted weighted average is a mismatch even when the counts match", () => {
+    const after = weighted();
+    after.weightedRollups.weighted_daily_rollups[0]!.avg = 99;
+    expect(compareSnapshots(weighted(), after, { expectRawLoss: false }).join("\n")).toContain(
+      "weighted_daily_rollups",
+    );
   });
 
-  test("a snapshot file that is not there throws rather than reading as empty", () => {
-    expect(() => readSnapshot(join(tmpdir(), "db-parity-absent-snapshot.json"))).toThrow();
+  test("a snapshot taken before the migration (no weighted views) is still comparable", () => {
+    expect(compareSnapshots(noWeighted(), noWeighted(), { expectRawLoss: false })).toEqual([]);
   });
 });
 
-describe("main", () => {
-  /** Write a before/after pair to disk and return their paths. */
-  function pair(before: Snapshot, after: Snapshot): [string, string] {
-    const dir = mkdtempSync(join(tmpdir(), "db-parity-main-"));
-    const beforePath = join(dir, "before.json");
-    const afterPath = join(dir, "after.json");
-    writeFileSync(beforePath, JSON.stringify(before));
-    writeFileSync(afterPath, JSON.stringify(after));
-    return [beforePath, afterPath];
-  }
-
-  test("two identical snapshots are parity, exit 0", () => {
-    const [b, a] = pair(snapshot(), snapshot());
-    const { code, out, err } = captureConsole(() => main([b, a]));
-    expect(code).toBe(0);
-    expect(out).toEqual(["restore parity: identical"]);
-    expect(err).toEqual([]);
+describe("compareSnapshots — the migration gate", () => {
+  test("weighted buckets appearing from nothing is expected, and legacy parity still required", () => {
+    expect(
+      compareSnapshots(noWeighted(), weighted(), {
+        expectRawLoss: false,
+        expectWeightedBackfill: true,
+      }),
+    ).toEqual([]);
   });
 
-  test("a mismatch exits 1 and names every problem on stderr", () => {
-    const after = snapshot({ rawRows: 12 });
-    after.tables.tariffs = 1;
-    const [b, a] = pair(snapshot(), after);
-    const { code, out, err } = captureConsole(() => main([b, a]));
-    expect(code).toBe(1);
-    expect(out).toEqual([]);
-    expect(err[0]).toBe("restore parity: 2 mismatch(es)");
-    expect(err.join("\n")).toContain("tariffs: 2 rows before, 1 after");
-    expect(err.join("\n")).toContain("metrics_raw: 700000 raw rows before, 12 after");
-    // Every problem is listed, not just counted.
-    expect(err).toHaveLength(3);
+  test("a migration that recreated a legacy aggregate is still caught", () => {
+    // This is the constraint the whole design exists to respect: metrics_raw has
+    // 7-day retention, so a drop/recreate can only re-materialize the last 7
+    // days and silently destroys every older bucket.
+    const after = weighted({ rollups: { ...weighted().rollups, hourly_rollups: [] } });
+    expect(
+      compareSnapshots(noWeighted(), after, {
+        expectRawLoss: false,
+        expectWeightedBackfill: true,
+      }).join("\n"),
+    ).toContain("hourly_rollups");
   });
 
-  test("no arguments at all is a usage error, exit 2 — never a silent pass", () => {
-    const { code, err } = captureConsole(() => main([]));
-    expect(code).toBe(2);
-    expect(err.join("\n")).toContain("usage: db-parity.ts");
+  test("a legacy value that drifted by more than float noise is caught", () => {
+    const after = weighted();
+    after.rollups.minute_rollups[0]!.avg = 1.5000001;
+    expect(
+      compareSnapshots(noWeighted(), after, {
+        expectRawLoss: false,
+        expectWeightedBackfill: true,
+      }).join("\n"),
+    ).toContain("minute_rollups");
   });
 
-  test("one path without the other is a usage error, not a comparison", () => {
-    const [b] = pair(snapshot(), snapshot());
-    const { code, err } = captureConsole(() => main([b]));
-    expect(code).toBe(2);
-    expect(err.join("\n")).toContain("usage: db-parity.ts");
+  test("compression running during the migration is expected — #134 arms policies that had none", () => {
+    // hourly_rollups and daily_rollups had no compression configuration at all,
+    // so applying the migration legitimately compresses chunks that were never
+    // compressible before. A *gain* is the point of the change.
+    const after = weighted({ compressedChunks: 11 });
+    expect(
+      compareSnapshots(noWeighted(), after, {
+        expectRawLoss: false,
+        expectWeightedBackfill: true,
+      }),
+    ).toEqual([]);
   });
 
-  test("flags alone, with no positional paths, is still a usage error", () => {
-    const { code } = captureConsole(() => main(["--expect-raw-loss", "--require-data"]));
-    expect(code).toBe(2);
+  test("losing a compressed chunk is still a failure, migration or not", () => {
+    const after = weighted({ compressedChunks: 1 });
+    expect(
+      compareSnapshots(noWeighted(), after, {
+        expectRawLoss: false,
+        expectWeightedBackfill: true,
+      }).join("\n"),
+    ).toContain("compressed");
   });
 
-  test("--expect-raw-loss turns a vanished raw window from a failure into the requirement", () => {
-    const [b, a] = pair(snapshot(), snapshot({ rawRows: 0 }));
-    expect(captureConsole(() => main([b, a])).code).toBe(1);
-    expect(captureConsole(() => main([b, a, "--expect-raw-loss"])).code).toBe(0);
-  });
-
-  test("--expect-raw-loss fails when the raw window SURVIVED — the exclusion broke", () => {
-    const [b, a] = pair(snapshot(), snapshot());
-    const { code, err } = captureConsole(() => main([b, a, "--expect-raw-loss"]));
-    expect(code).toBe(1);
-    expect(err.join("\n")).toContain("expected the raw window to be empty after restore");
-  });
-
-  test("--require-data refuses a comparison of two empty databases", () => {
-    const [b, a] = pair(EMPTY, EMPTY);
-    // Without the flag two empty snapshots are trivially identical.
-    expect(captureConsole(() => main([b, a])).code).toBe(0);
-    const { code, err } = captureConsole(() => main([b, a, "--require-data"]));
-    expect(code).toBe(1);
-    expect(err.join("\n")).not.toBe("");
-  });
-
-  test("--across-migration allows MORE compressed chunks but never fewer", () => {
-    const [b, more] = pair(snapshot(), snapshot({ compressedChunks: 9 }));
-    expect(captureConsole(() => main([b, more])).code).toBe(1);
-    expect(captureConsole(() => main([b, more, "--across-migration"])).code).toBe(0);
-
-    const [b2, fewer] = pair(snapshot(), snapshot({ compressedChunks: 2 }));
-    const { code, err } = captureConsole(() => main([b2, fewer, "--across-migration"]));
-    expect(code).toBe(1);
-    expect(err.join("\n")).toContain("compressed chunks: 6 before, 2 after");
-  });
-
-  test("flags may precede the paths — position does not decide which file is which", () => {
-    const [b, a] = pair(snapshot(), snapshot({ rawRows: 0 }));
-    expect(captureConsole(() => main(["--expect-raw-loss", b, a])).code).toBe(0);
-    // Reversed, the "before" is the empty one and raw loss is not satisfied.
-    expect(captureConsole(() => main(["--expect-raw-loss", a, b])).code).toBe(1);
+  test("a migration that created the views but materialized nothing fails loudly", () => {
+    // Otherwise the gate is trivially green: no weighted rows means nothing was
+    // proved about the weighting, and the read cutover would silently serve the
+    // legacy side forever.
+    expect(
+      compareSnapshots(noWeighted(), noWeighted(), {
+        expectRawLoss: false,
+        expectWeightedBackfill: true,
+      }).join("\n"),
+    ).toContain("no weighted");
   });
 });
 
-describe("cli", () => {
-  test("--print-sql prints the snapshot query and exits 0, running no comparison", () => {
-    const { code, out } = captureConsole(() => cli(["--print-sql"]));
-    expect(code).toBe(0);
-    expect(out).toHaveLength(1);
-    expect(out[0]).toBe(SNAPSHOT_SQL);
+describe("weightedMatchesLegacy", () => {
+  /**
+   * The safety property of the whole migration: while every `dur_ms` is NULL the
+   * aggregates read `coalesce(dur_ms, 1000)`, so the weighted mean is *exactly* the
+   * legacy plain mean. Any bucket where the two disagree, over unweighted data,
+   * is a bug in the aggregate definition — and it is checked per bucket rather
+   * than in aggregate, because a compensating pair of errors would cancel.
+   */
+  test("mirrored aggregates agree on every shared bucket", () => {
+    expect(weightedMatchesLegacy(weighted())).toEqual([]);
   });
 
-  test("without --print-sql the arguments go to the comparison", () => {
-    const { code, err } = captureConsole(() => cli([]));
-    expect(code).toBe(2);
-    expect(err.join("\n")).toContain("usage: db-parity.ts");
-  });
-});
-
-describe("compareStreamCounts", () => {
-  test("identical counts are parity", () => {
-    expect(compareStreamCounts({ minute: 100, raw: 20 }, { minute: 100, raw: 20 })).toEqual([]);
+  test("a disagreeing bucket is reported with both values", () => {
+    const s = weighted();
+    s.weightedRollups.weighted_hourly_rollups[0]!.avg = 2.5;
+    const problems = weightedMatchesLegacy(s).join("\n");
+    expect(problems).toContain("2.5");
+    expect(problems).toContain("1.5");
   });
 
-  test("a SHORTFALL is reported with both numbers — that is a row that did not travel", () => {
-    const problems = compareStreamCounts({ minute: 100 }, { minute: 99 });
-    expect(problems).toHaveLength(1);
-    expect(problems[0]).toContain("100");
-    expect(problems[0]).toContain("99");
+  test("float noise below the epsilon is not a disagreement", () => {
+    const s = weighted();
+    s.weightedRollups.weighted_hourly_rollups[0]!.avg = 1.5 + 1e-12;
+    expect(weightedMatchesLegacy(s)).toEqual([]);
   });
 
-  test("a SURPLUS is reported too — an export that duplicates is the worse failure", () => {
-    // A double count does not error anywhere downstream; it just reports a wrong
-    // kWh figure months later. More rows than the source held is never fine.
-    expect(compareStreamCounts({ minute: 100 }, { minute: 101 })[0]).toMatch(/101/);
+  test("a bucket the weighted side does not reach is not compared — that is the whole design", () => {
+    // The weighted aggregate can only be materialized as far back as metrics_raw
+    // reaches. A year-old bucket exists only in the legacy view, and its absence
+    // from the weighted view is correct, not a mismatch.
+    expect(weightedMatchesLegacy(noWeighted())).toEqual([]);
   });
 
-  test("a stream the actual side does not carry at all is reported as absent", () => {
-    expect(compareStreamCounts({ minute: 100 }, {})[0]).toMatch(/no minute/i);
+  test("a weighted bucket with no legacy counterpart is reported", () => {
+    // The legacy aggregates are still refreshed, so the weighted side can never
+    // hold a bucket the legacy side does not. If it does, one of the two refresh
+    // policies has stopped running.
+    const s = weighted();
+    s.rollups.daily_rollups = [];
+    expect(weightedMatchesLegacy(s).join("\n")).toContain("weighted_daily_rollups");
   });
 
-  test("ZERO expected and zero actual is parity, not an absence", () => {
-    // An empty database exports zero rows, and that must compare clean.
-    expect(compareStreamCounts({ minute: 0, raw: 0 }, { minute: 0, raw: 0 })).toEqual([]);
+  test("a NULL weighted average is a disagreement with a real legacy one", () => {
+    // `nullif(weight, 0)` produces NULL for a degenerate bucket. Over unweighted
+    // data every weight is the row count, which is never 0 for a bucket that
+    // exists, so a NULL here means the weight column stopped being summed.
+    const s = weighted();
+    s.weightedRollups.weighted_minute_rollups[0]!.avg = null;
+    expect(weightedMatchesLegacy(s).join("\n")).toContain("weighted_minute_rollups");
   });
 
-  test("zero expected but rows present is reported", () => {
-    expect(compareStreamCounts({ daily: 0 }, { daily: 5 })[0]).toMatch(/5/);
-  });
-
-  test("streams only the ACTUAL side names are ignored — expected is the contract", () => {
-    expect(compareStreamCounts({ minute: 1 }, { minute: 1, hourly: 7 })).toEqual([]);
-  });
-
-  test("an empty expectation compares clean over anything", () => {
-    expect(compareStreamCounts({}, { minute: 5 })).toEqual([]);
+  test("every tier is checked, not just the first that happens to match", () => {
+    const s = weighted();
+    for (const name of WEIGHTED) s.weightedRollups[name][0]!.avg = 42;
+    expect(weightedMatchesLegacy(s)).toHaveLength(WEIGHTED.length);
   });
 });

@@ -35,11 +35,10 @@ mkdir -p /data/backups
 # dump is still smaller than a full one.
 #
 # Arguments: raw retention in days, the SHORTEST retention among the aggregates
-# in days, whether the minute tier is still being refreshed (1/0), and whether
-# this database is still on a PRE-2.0.0 schema (1/0). `-1` means "no policy" on
-# either retention — for raw that is "kept forever" and is never safe to exclude;
-# for the aggregates it means every tier is kept forever, which would otherwise
-# always be safe.
+# in days, and whether the minute tier is still being refreshed (1/0). `-1` means
+# "no policy" on either retention — for raw that is "kept forever" and is never
+# safe to exclude; for the aggregates it means every tier is kept forever, which
+# would otherwise always be safe.
 #
 # The third argument is not redundant with the first two. A comparison of
 # retention numbers asks whether the SPAN is covered; it cannot see that the
@@ -48,35 +47,19 @@ mkdir -p /data/backups
 # raw would then hand back an hourly-only history — and hourly's 3650 days covers
 # the span, so nothing in the numbers would object.
 #
-# The fourth is decisive for exactly one upgrade and it is the most consequential
-# one this addon will ever do. On a 1.2.0 instance every number above says
-# "excludable": raw keeps 7 days, the shortest aggregate retention is 90, and the
-# minute tier is refreshed. But the next thing that happens is a SCHEMA CHANGE —
-# `metrics_raw` is re-keyed from (inverter_id text, metric text) to
-# (device_id int2, metric_id int2), its aggregates are renamed out of the way, and
-# two months of buckets are replayed forward. This dump is the ONLY rollback for
-# that: there is no intermediate release and no user-performed export. Excluding
-# raw would make a mid-migration restore silently lose the last 7 days of
-# SECOND-resolution data, which nothing can regenerate, while the file still
-# looked like a successful smaller backup.
-#
 # What `backup_full: false` still gives up, when it is safe at all, is
 # *resolution* on restore, not coverage: the rollups keep the span, at their own
 # bucket widths. That is the flag's whole purpose — and it is exactly why a
-# frozen minute tier, or a pending schema migration, ends the exclusion rather
-# than shrinking it.
+# frozen minute tier ends the exclusion rather than shrinking it.
 safe_to_exclude_raw() {
-    local raw="$1" rollups="$2" minute_refreshed="$3" pre_2_0_0="${4:-}" arg
+    local raw="$1" rollups="$2" minute_refreshed="$3" arg
     # Each argument on its own: concatenating them would let an empty raw hide
     # behind a numeric rollup value, and awk reads an empty string as 0.
-    for arg in "$raw" "$rollups" "$minute_refreshed" "$pre_2_0_0"; do
+    for arg in "$raw" "$rollups" "$minute_refreshed"; do
         case "$arg" in
             '' | *[!0-9.-]*) return 1 ;;
         esac
     done
-    # A pre-2.0.0 schema is decisive: this dump is the rollback for the in-place
-    # 1.x -> 2.0.0 migration that is about to run.
-    [ "$pre_2_0_0" = "0" ] || return 1
     # An unrefreshed minute tier is decisive on its own: raw is the record.
     [ "$minute_refreshed" = "1" ] || return 1
     awk -v raw="$raw" -v roll="$rollups" \
@@ -87,7 +70,6 @@ exclude_args=()
 raw_retention_days=""
 rollup_retention_days=""
 minute_refreshed=""
-pre_2_0_0=""
 if ! bashio::config.true 'backup_full'; then
     # Both retentions in days, from the policies themselves rather than from an
     # assumption: `-1` where no policy exists, empty when the query could not run.
@@ -124,30 +106,16 @@ if ! bashio::config.true 'backup_full'; then
         t | true) minute_refreshed=1 ;;
         f | false) minute_refreshed=0 ;;
     esac
-    # Whether metrics_raw is still keyed the 1.x way. The SAME discriminator the
-    # migration itself uses (packages/db/src/upgrade-120.ts): both generations
-    # have a `metrics_raw`, so its existence says nothing — the text `inverter_id`
-    # column is what only 1.x has.
-    pre_2_0_0="$(psql -X -d "$DATABASE_URL" -tAc \
-        "SELECT count(*) > 0
-           FROM information_schema.columns
-          WHERE table_schema = 'public' AND table_name = 'metrics_raw'
-            AND column_name = 'inverter_id'" \
-        2>/dev/null | tr -d '[:space:]' || true)"
-    case "$pre_2_0_0" in
-        t | true) pre_2_0_0=1 ;;
-        f | false) pre_2_0_0=0 ;;
-    esac
 fi
 
 if ! bashio::config.true 'backup_full' &&
-    ! safe_to_exclude_raw "$raw_retention_days" "$rollup_retention_days" "$minute_refreshed" "$pre_2_0_0"; then
+    ! safe_to_exclude_raw "$raw_retention_days" "$rollup_retention_days" "$minute_refreshed"; then
     bashio::log.warning \
-        "metrics_raw retention is '${raw_retention_days:-unreadable}' day(s) against a shortest rollup retention of '${rollup_retention_days:-unreadable}', minute tier refreshed: '${minute_refreshed:-unreadable}', pre-2.0.0 schema: '${pre_2_0_0:-unreadable}'. Raw is not fully materialized into the rollups — or a schema migration is pending and this dump is its only rollback — so its chunk data is INCLUDED in this backup despite backup_full: false."
+        "metrics_raw retention is '${raw_retention_days:-unreadable}' day(s) against a shortest rollup retention of '${rollup_retention_days:-unreadable}', minute tier refreshed: '${minute_refreshed:-unreadable}'. Raw is not fully materialized into the rollups, so its chunk data is INCLUDED in this backup despite backup_full: false — excluding it would drop history, or the minute resolution of it, that lives nowhere else."
 fi
 
 if ! bashio::config.true 'backup_full' &&
-    safe_to_exclude_raw "$raw_retention_days" "$rollup_retention_days" "$minute_refreshed" "$pre_2_0_0"; then
+    safe_to_exclude_raw "$raw_retention_days" "$rollup_retention_days" "$minute_refreshed"; then
     # Resolve the raw hypertable's chunk tables dynamically — their
     # _timescaledb_internal names encode a hypertable id we can't hardcode.
     #

@@ -195,7 +195,7 @@ jobs:
       DB_TEST_URL: postgresql://postgres:db-test@localhost:5432/postgres
     services:
       timescaledb:
-        image: ghcr.io/sunreye/timescaledb:pg17-ts2.28.2
+        image: timescale/timescaledb:2.28.2-pg17
         env:
           POSTGRES_PASSWORD: db-test
         ports: ["5432:5432"]
@@ -206,13 +206,6 @@ jobs:
           --health-retries 20
     steps:
       - uses: actions/checkout@v4
-        with:
-          # `scripts/fixture-1-2-0.ts` recovers the 1.2.0 schema from the
-          # `addon-v1.2.0` TAG rather than transcribing it — `git show
-          # addon-v1.2.0:packages/db/src/...`. A shallow checkout carries no
-          # tags, so the fixture cannot be built and the upgrade specs fail in
-          # CI while passing on every full clone.
-          fetch-depth: 0
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -228,39 +221,6 @@ jobs:
       - name: Database query tests
         run: bun run test:db
 
-  # The route layer. Its own job for the same reason `db` and `e2e` are theirs:
-  # `bun run test` is the seconds-long run every commit waits on, and pulling a
-  # TimescaleDB image, migrating it and letting a simulator record for twenty
-  # seconds is not.
-  #
-  # It exists because nothing else covers a booted route. The unit suite stops
-  # below `apps/server/src/routes/*`, the browser suite fakes the backend
-  # entirely (no Elysia, no Postgres, no inverter), and the database suite proves
-  # statements without the handlers that compose them — two 500s shipped through
-  # that gap. This job boots the real server against a throwaway database and
-  # asks every route in the OpenAPI listing whether it can answer at all. A 4xx
-  # passes (the handler ran and refused the input); a 5xx, or no answer, fails.
-  #
-  # No service container: the harness starts and drops its own, so the job and a
-  # developer's `bun run test:routes` run the SAME code path.
-  routes:
-    name: Route smoke
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: 1.4.0
-
-      - name: Install dependencies
-        run: bun install --frozen-lockfile
-
-      - name: Smoke every route
-        run: bun run test:routes
-
   test:
     name: Test & coverage
     runs-on: ubuntu-latest
@@ -270,13 +230,6 @@ jobs:
       SKIP_ENV_VALIDATION: "1"
     steps:
       - uses: actions/checkout@v4
-        with:
-          # `scripts/fixture-1-2-0.ts` recovers the 1.2.0 schema from the
-          # `addon-v1.2.0` TAG rather than transcribing it — `git show
-          # addon-v1.2.0:packages/db/src/...`. A shallow checkout carries no
-          # tags, so the fixture cannot be built and the upgrade specs fail in
-          # CI while passing on every full clone.
-          fetch-depth: 0
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -291,6 +244,12 @@ jobs:
       # order-dependent way — it passed locally and failed here.
       - name: Mock hygiene
         run: bun run test:mocks
+
+      # The addon's front door: `/ws` must reach the server as an upgrade. A
+      # prefix `location /ws/` silently serves index.html instead, and the
+      # dashboard ships with no live socket at all.
+      - name: Addon nginx routing
+        run: bun run test:nginx
 
       - name: Test with coverage
         run: bun run test:coverage

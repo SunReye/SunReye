@@ -1,9 +1,6 @@
 #!/usr/bin/with-contenv bashio
-# SunReye core engine (compiled bun binary) on 0.0.0.0:8099 — dashboard, API
-# and live socket. Must match config.yaml's ingress_port: the Supervisor
-# proxies ingress there, and it is the port a user may publish for direct
-# access. Binds >1024, so running unprivileged below is fine.
-export PORT=8099
+# SunReye core engine (compiled bun binary) on 127.0.0.1:3000.
+export PORT=3000
 # Mapped here instead of globally: a global LOG_LEVEL env var breaks bashio
 # (it reads it as its own setting) — see init-env.
 export LOG_LEVEL="${SUNREYE_LOG_LEVEL:-info}"

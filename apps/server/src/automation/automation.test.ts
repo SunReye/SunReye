@@ -13,13 +13,13 @@ import { type WeatherConfig, weatherConfigSchema } from "@SunReye/db/weather";
 import type { InverterProfile, InverterSample, MetricDef } from "@SunReye/inverter-core";
 import type { SolarForecast } from "../forecast/solar-forecast";
 import { buildProfileContext } from "../inverter/inverter";
-import { entityConstraint, instanceFromProfile } from "@SunReye/inverter-core";
 import type { SpotSlice } from "@SunReye/contracts/prices";
 import { getAutomationConfig } from "../settings/automation-settings";
-import type { AutomationStreamMessage, PeakShavingStatus } from "@SunReye/contracts/automation";
+import type { AutomationStreamMessage } from "@SunReye/contracts/automation";
 import {
   type AutomationModules,
   applyAutomationConfig,
+  automationHistory,
   automationPlan,
   automationStatus,
   automationStreamSnapshot,
@@ -28,6 +28,7 @@ import {
   startAutomations,
   stopAutomations,
 } from "./automation";
+import { HISTORY_CAPACITY } from "./automation-history";
 import type { AutomationIO } from "./peak-shaving-engine";
 import { type Streams, createStreams } from "../shared/streams";
 
@@ -76,26 +77,6 @@ const powerLimitProfile = (): InverterProfile => ({
     metric(VOLT_KEY, "battery.voltage"),
   ],
 });
-
-/** The plant's one registered device — `devices.slug`, never a profile id. */
-const DEVICE_ID = "inv-1";
-
-/** The registry's instance for a profile, plus the register-bounds seam beside it. */
-const plantOf = (p: InverterProfile) => {
-  const ctx = buildProfileContext(p);
-  return {
-    device: instanceFromProfile({
-      id: DEVICE_ID,
-      deviceClass: "inverter" as const,
-      integration: "profile",
-      profile: p,
-    }),
-    constraint: (key: string) => {
-      const def = ctx.defByKey.get(key);
-      return def ? entityConstraint(def) : null;
-    },
-  };
-};
 
 /** The three roles peak shaving requires, and nothing else. */
 const profile: InverterProfile = {
@@ -208,11 +189,6 @@ interface Harness {
    * observed from outside the engine.
    */
   forecastReads(): number;
-  /**
-   * Every decision the loop handed to the write seam, in order — the optimizer's
-   * path to `metrics_raw`, which is where a decision lives now.
-   */
-  decisions: { status: PeakShavingStatus; at: Date }[];
   set: {
     config(c: AutomationConfig): void;
     weather(w: WeatherConfig): void;
@@ -229,7 +205,7 @@ interface Harness {
 }
 
 function harness(over: { config?: AutomationConfig; profile?: InverterProfile } = {}): Harness {
-  const steered = plantOf(over.profile ?? profile);
+  const ctx = buildProfileContext(over.profile ?? profile);
   let cfg = over.config ?? config();
   let wx = weather();
   let fc: SolarForecast | null = forecastAt([6000, 6000, 6000, 6000]);
@@ -240,7 +216,6 @@ function harness(over: { config?: AutomationConfig; profile?: InverterProfile } 
   let gate: Promise<void> | null = null;
   let forecastReads = 0;
   const writes: { key: string; value: number }[] = [];
-  const decisions: Harness["decisions"] = [];
   let sample: InverterSample = {
     time: new Date(nowMs).toISOString(),
     inverterId: "test-profile",
@@ -249,7 +224,7 @@ function harness(over: { config?: AutomationConfig; profile?: InverterProfile } 
 
   return {
     io: {
-      ...steered,
+      ctx,
       write: async (key, value) => {
         writes.push({ key, value });
         // Mirror the register readback the next poll would deliver.
@@ -266,9 +241,6 @@ function harness(over: { config?: AutomationConfig; profile?: InverterProfile } 
         return cfg;
       },
       getWeather: async () => wx,
-      // No pack row states a voltage, so these cases keep resolving down the
-      // legacy chain they were written against.
-      getPackNominalV: async () => null,
       getForecast: async () => {
         forecastReads++;
         return fc;
@@ -284,14 +256,8 @@ function harness(over: { config?: AutomationConfig; profile?: InverterProfile } 
         state = next;
       },
       now: () => nowMs,
-      // Snapshotted BY VALUE: the engine mutates its status in place, so a
-      // consumer holding the reference would read every later tick's numbers.
-      recordDecision: async (status, _localSinkW, at) => {
-        decisions.push({ status: { ...status }, at });
-      },
     },
     writes,
-    decisions,
     forecastReads: () => forecastReads,
     set: {
       config: (c) => (cfg = c),
@@ -356,6 +322,15 @@ describe("automation endpoints before the loop is started", () => {
     expect(automationStatus().peakShaving.enabled).toBe(false);
   });
 
+  test("history is empty and carries the ring size the client paints against", () => {
+    // Nothing has ticked yet, so the cadence is still the pre-config default.
+    expect(automationHistory()).toEqual({
+      tickMs: 30_000,
+      capacity: HISTORY_CAPACITY,
+      peakShaving: [],
+    });
+  });
+
   test("the plan is null instead of a fabricated projection", async () => {
     expect(await automationPlan()).toEqual({ peakShaving: null });
   });
@@ -363,9 +338,9 @@ describe("automation endpoints before the loop is started", () => {
   test("a socket opening during onboarding still gets a paintable snapshot", async () => {
     const snapshot = await automationStreamSnapshot();
     expect(snapshot.status.state).toBe("disabled");
+    expect(snapshot.history).toEqual([]);
+    expect(snapshot.point).toBeNull();
     expect(snapshot.plan).toBeNull();
-    // Nothing has ticked, so the cadence is still the pre-config default.
-    expect(snapshot.tickMs).toBe(30_000);
   });
 
   test("a config apply before the engine exists is a no-op", async () => {
@@ -415,7 +390,7 @@ describe("automation loop", () => {
     expect(pending()).toHaveLength(1);
     expect(pending()[0]?.delayMs).toBe(60_000);
     expect(frames[0]?.tickMs).toBe(60_000);
-    expect((await automationStreamSnapshot()).tickMs).toBe(60_000);
+    expect(automationHistory().tickMs).toBe(60_000);
   });
 
   test("a changed control interval takes effect on the next arm, without a restart", async () => {
@@ -439,33 +414,44 @@ describe("automation loop", () => {
     expect(pending()).toHaveLength(1);
   });
 
-  test("each tick streams the live picture, and the decision goes to the writer", async () => {
-    // The frame carries STATUS and PLAN only — the two things a hypertable must
-    // never hold. What the tick decided went to the write seam instead of into a
-    // ring the frame then had to replay.
+  test("each tick streams the decision it appended, and only once", async () => {
     const h = harness();
     await start(h);
-    expect(frames[0]?.status.state).toBe("active");
-    expect(h.decisions.map((d) => d.at.getTime())).toEqual([NOON]);
+    const first = frames[0]?.point;
+    expect(first?.t).toBe(NOON);
 
     h.set.now(NOON + 60_000);
     await fireTimer();
 
     expect(frames).toHaveLength(2);
-    expect(h.decisions.map((d) => d.at.getTime())).toEqual([NOON, NOON + 60_000]);
+    expect(frames[1]?.point?.t).toBe(NOON + 60_000);
+    // The ring is only backfilled on the socket-open snapshot.
+    expect(frames[1]?.history).toBeUndefined();
+    expect(automationHistory().peakShaving.map((p) => p.t)).toEqual([NOON, NOON + 60_000]);
   });
 
-  test("a tick that decides nothing records nothing, and still streams its status", async () => {
+  test("a tick that decides nothing streams a null point", async () => {
     // No battery capacity configured: the automation is blocked, so the tick
-    // has a status to report but no decision. A gap in the series is the truth
-    // about it, and a row saying "0 A" would not be.
+    // has a status to report but no decision to chart.
     const h = harness();
     h.set.weather(weather({ battery: null }));
     await start(h);
 
     expect(frames).toHaveLength(1);
     expect(frames[0]?.status.state).toBe("blocked");
-    expect(h.decisions).toEqual([]);
+    expect(frames[0]?.point).toBeNull();
+    expect(automationHistory().peakShaving).toEqual([]);
+  });
+
+  test("a second decision in the same millisecond is not streamed twice", async () => {
+    const h = harness();
+    await start(h);
+    // The clock does not move, so the new decision carries the streamed `t`.
+    await fireTimer();
+
+    expect(frames).toHaveLength(2);
+    expect(frames[1]?.point).toBeNull();
+    expect(frames[1]?.status.lastTickAt).toBe(new Date(NOON).toISOString());
   });
 
   test("the plant is never written while the automation is switched off", async () => {
@@ -474,8 +460,8 @@ describe("automation loop", () => {
 
     expect(h.writes).toEqual([]);
     expect(frames[0]?.status.state).toBe("simulating");
-    // A simulated decision is still recorded, so the preview has a history.
-    expect(h.decisions[0]?.status.state).toBe("simulating");
+    // A simulated decision is still charted, so the UI can preview it.
+    expect(frames[0]?.point?.shadow).toBe(true);
   });
 
   test("shadow mode decides and charts but writes nothing", async () => {
@@ -484,7 +470,7 @@ describe("automation loop", () => {
 
     expect(h.writes).toEqual([]);
     expect(frames[0]?.status.state).toBe("shadow");
-    expect(h.decisions[0]?.status.state).toBe("shadow");
+    expect(frames[0]?.point?.shadow).toBe(true);
   });
 
   test("a blocked plant never touches the register", async () => {
@@ -508,9 +494,7 @@ describe("automation loop", () => {
 
     expect(h.writes).toEqual([]);
     expect(frames.at(-1)?.status.state).toBe("stale");
-    // A stale tick decided nothing, so it stored nothing: a gap in the series is
-    // the truth about it.
-    expect(h.decisions).toEqual([]);
+    expect(frames.at(-1)?.point).toBeNull();
   });
 
   test("a tick without a forecast still streams, with no projection", async () => {
@@ -546,7 +530,7 @@ describe("automation loop", () => {
 
     await fireTimer();
 
-    expect((await automationStreamSnapshot()).tickMs).toBe(120_000);
+    expect(automationHistory().tickMs).toBe(120_000);
     expect(pending()[0]?.delayMs).toBe(120_000);
   });
 
@@ -604,6 +588,7 @@ describe("automation loop", () => {
 
     expect(pending()).toEqual([]);
     expect(automationStatus().peakShaving.state).toBe("disabled");
+    expect(automationHistory().peakShaving).toEqual([]);
     expect(await automationPlan()).toEqual({ peakShaving: null });
   });
 
@@ -621,21 +606,17 @@ describe("automation loop", () => {
     expect(frames).toEqual([]);
   });
 
-  test("a restart records its first decision again, even at the same timestamp", async () => {
-    // The dedupe this replaced lived in the STREAM: a module global remembering
-    // which decision had gone out, which a restart had to clear or the first
-    // tick after it went missing. Storage has no such memory to get wrong — a
-    // decision is a row, and a restart writes rows exactly as before it.
+  test("a restart re-streams the first decision even at the same timestamp", async () => {
     const h = harness();
     await start(h);
-    expect(h.decisions.map((d) => d.at.getTime())).toEqual([NOON]);
+    expect(frames[0]?.point?.t).toBe(NOON);
 
     await stopAutomations();
     const again = harness();
     await start(again);
 
-    expect(again.decisions.map((d) => d.at.getTime())).toEqual([NOON]);
     expect(frames).toHaveLength(2);
+    expect(frames[1]?.point?.t).toBe(NOON);
   });
 
   test("without a subscriber the loop still ticks and records", async () => {
@@ -645,7 +626,7 @@ describe("automation loop", () => {
 
     expect(frames).toEqual([]);
     expect(automationStatus().peakShaving.state).toBe("active");
-    expect(h.decisions).toHaveLength(1);
+    expect(automationHistory().peakShaving).toHaveLength(1);
     expect(pending()).toHaveLength(1);
   });
 });
@@ -668,7 +649,7 @@ describe("ticking with nobody watching the automations feed", () => {
 
     expect(h.writes).toEqual([{ key: CHARGE_KEY, value: 50 }]);
     expect(automationStatus().peakShaving.state).toBe("active");
-    expect(h.decisions).toHaveLength(1);
+    expect(automationHistory().peakShaving).toHaveLength(1);
     // And the loop is still armed at the configured cadence, so it keeps going.
     expect(pending()).toHaveLength(1);
     expect(frames).toEqual([]);
@@ -699,12 +680,11 @@ describe("ticking with nobody watching the automations feed", () => {
     expect(unwatched).toBeGreaterThan(0);
   });
 
-  test("a decision taken while nobody watched is STORED, and the viewer reads it back", async () => {
-    // The delta framing this replaced was the fragile part: a module global
-    // marked a decision streamed when it went out, and one marked but never sent
-    // was lost, because the next frame only ever carried the newest. Storage has
-    // no audience: every decision is written whether or not a browser is open,
-    // and the page that opens an hour later reads them from `/api/history`.
+  test("a decision taken while nobody watched is streamed to the viewer that arrives", async () => {
+    // The delta framing marks a point as streamed when it goes out. Marking one
+    // that was never sent would lose it: the tick that follows the viewer's
+    // arrival streams the *newest* point, and the ring is only replayed on the
+    // socket-open snapshot.
     const h = harness();
     let watching = false;
 
@@ -716,15 +696,15 @@ describe("ticking with nobody watching the automations feed", () => {
     );
     await settle();
     expect(frames).toEqual([]);
-    expect(h.decisions.map((d) => d.at.getTime())).toEqual([NOON]);
+    expect(automationHistory().peakShaving.map((p) => p.t)).toEqual([NOON]);
 
     watching = true;
+    // The clock does not move, so this tick appends no new decision — the point
+    // in the frame can only be the one decided while nobody was listening.
     await fireTimer();
 
-    // The viewer's first frame is the live picture; the decision behind it was
-    // already history before they arrived.
     expect(frames).toHaveLength(1);
-    expect(frames[0]?.status.state).toBe("active");
+    expect(frames[0]?.point?.t).toBe(NOON);
   });
 
   test("the cadence is still re-read, so a config change lands unwatched", async () => {
@@ -746,7 +726,7 @@ describe("ticking with nobody watching the automations feed", () => {
     await fireTimer();
 
     expect(pending()[0]?.delayMs).toBe(300_000);
-    expect((await automationStreamSnapshot()).tickMs).toBe(300_000);
+    expect(automationHistory().tickMs).toBe(300_000);
   });
 });
 
@@ -774,7 +754,7 @@ describe("hot-applying an automation config change", () => {
     // 50 % SOC against a small forecast surplus lands on the fallback rate.
     expect(h.writes).toEqual([{ key: CHARGE_KEY, value: 65 }]);
     // The register the user had set (120 A) is what has to come back.
-    expect(h.state()[`${DEVICE_ID}:peakShaving`]?.previousValue).toBe(120);
+    expect(h.state()["test-profile:peakShaving"]?.previousValue).toBe(120);
     expect(automationStatus().peakShaving.restorePending).toBe(true);
 
     h.set.config(config({ enabled: false }));
@@ -783,12 +763,12 @@ describe("hot-applying an automation config change", () => {
 
     expect(h.writes.at(-1)).toEqual({ key: CHARGE_KEY, value: 120 });
     expect(automationStatus().peakShaving.restorePending).toBe(false);
-    expect(h.state()[`${DEVICE_ID}:peakShaving`]).toBeUndefined();
+    expect(h.state()["test-profile:peakShaving"]).toBeUndefined();
   });
 });
 
 describe("the socket-open snapshot", () => {
-  test("carries the current status and plan — and no decision backfill", async () => {
+  test("carries the whole ring plus the current status and plan", async () => {
     const h = harness();
     await start(h);
     h.set.now(NOON + 60_000);
@@ -797,11 +777,21 @@ describe("the socket-open snapshot", () => {
     const snapshot = await automationStreamSnapshot();
 
     expect(snapshot.status.state).toBe("active");
+    expect(snapshot.history?.map((p) => p.t)).toEqual([NOON, NOON + 60_000]);
+    expect(snapshot.point).toBeNull();
+    expect(snapshot.tickMs).toBe(automationHistory().tickMs);
     expect(snapshot.plan).toEqual(await automationPlan().then((p) => p.peakShaving));
-    // ONE VARIANT. There is nothing on this frame a later frame omits, so a
-    // client never has to sniff which kind it is holding: the decisions it used
-    // to replay are in `metrics_raw`, under the `optimizer` device slug.
-    expect(Object.keys(snapshot).sort()).toEqual(["plan", "status", "tickMs"]);
+  });
+
+  test("does not consume the delta the next tick still has to stream", async () => {
+    const h = harness();
+    await start(h);
+    await automationStreamSnapshot();
+
+    h.set.now(NOON + 60_000);
+    await fireTimer();
+
+    expect(frames.at(-1)?.point?.t).toBe(NOON + 60_000);
   });
 });
 
@@ -839,7 +829,6 @@ function recordingMods(): RecordingMods {
     mods: {
       getAutomationConfig: async () => config(),
       getWeatherConfig: async () => weather(),
-      packNominalV: async () => 48,
       fetchSolarForecast: async () => null,
       representativeHouseLoadW: async () => null,
       evccSnapshot: () => null,
@@ -853,9 +842,6 @@ function recordingMods(): RecordingMods {
         return { zone } as SpotSlice;
       },
       latestSample: () => null,
-      // The plant's one device, running the fixture profile — the binding the
-      // one-time state re-key adopts a 1.x blob by.
-      deviceProfileBindings: () => [{ deviceId: "inv-1", profileId: profile.id }],
       readSetting: async (key, schema, fallback) => {
         reads.push(key);
         readArgs.push({ key, schema, fallback });
@@ -868,10 +854,7 @@ function recordingMods(): RecordingMods {
   };
 }
 
-const plant = { ...plantOf(profile), write: async () => {} };
-
-/** Capture stamp for the stored-blob fixtures; the migration never reads it. */
-const CAPTURED = "2026-07-25T12:00:00Z";
+const plant = { ctx: buildProfileContext(profile), write: async () => {} };
 
 describe("production IO wiring", () => {
   test("the persisted snapshot is read once and served from memory after that", async () => {
@@ -906,7 +889,7 @@ describe("production IO wiring", () => {
     const io = composeAutomationIO(plant, r.mods);
     await io.loadState();
     const next: AutomationState = {
-      "inv-1:peakShaving": { previousValue: 120, capturedAt: CAPTURED },
+      "test-profile:peakShaving": { previousValue: 120, capturedAt: "2026-07-25T12:00:00Z" },
     };
 
     await io.saveState(next);
@@ -916,69 +899,10 @@ describe("production IO wiring", () => {
     expect(r.reads).toEqual([AUTOMATION_STATE_KEY]);
   });
 
-  test("a 1.x profile-keyed blob is adopted by its device, once and only once", async () => {
-    // The 1.x shape: namespaced by the profile the device was running. Left
-    // alone, the held charge-current value can never be handed back once the
-    // profile is corrected or swapped.
-    const r = recordingMods();
-    r.set.stored({
-      "test-profile:peakShaving": { previousValue: 90, capturedAt: CAPTURED },
-      "test-profile:evccMode:1": { previousValue: "pv", capturedAt: CAPTURED },
-    });
-    const migrated: AutomationState = {
-      "inv-1:peakShaving": { previousValue: 90, capturedAt: CAPTURED },
-      "inv-1:evccMode:1": { previousValue: "pv", capturedAt: CAPTURED },
-    };
-    const io = composeAutomationIO(plant, r.mods);
-
-    expect(await io.loadState()).toEqual(migrated);
-    expect(r.writes).toEqual([{ key: AUTOMATION_STATE_KEY, value: migrated }]);
-
-    // A second read is served from the cache: no re-read, and above all no
-    // second write of a blob that is already in the new shape.
-    expect(await io.loadState()).toEqual(migrated);
-    expect(r.reads).toEqual([AUTOMATION_STATE_KEY]);
-    expect(r.writes).toHaveLength(1);
-  });
-
-  test("re-reading an already-migrated blob writes nothing at all", async () => {
-    // The pass runs on every boot; it must be inert once there is nothing left
-    // to adopt, or every restart would rewrite the settings row.
-    const r = recordingMods();
-    const held: AutomationState = {
-      "inv-1:peakShaving": { previousValue: 90, capturedAt: CAPTURED },
-    };
-    r.set.stored(held);
-
-    expect(await composeAutomationIO(plant, r.mods).loadState()).toEqual(held);
-    expect(r.writes).toEqual([]);
-  });
-
-  test("a blob no device can adopt is kept exactly as it was, and named", async () => {
-    // The profile is not bound to any device any more. The entry is still the
-    // user's own register value, so it is never dropped — and never rewritten
-    // under a guessed device either.
-    const r = recordingMods();
-    const orphaned: AutomationState = {
-      "gone-profile:peakShaving": { previousValue: 90, capturedAt: CAPTURED },
-    };
-    r.set.stored(orphaned);
-
-    expect(await composeAutomationIO(plant, r.mods).loadState()).toEqual(orphaned);
-    expect(r.writes).toEqual([]);
-  });
-
-  test("an empty blob needs no migration and no write", async () => {
-    const r = recordingMods();
-    r.set.stored({});
-    expect(await composeAutomationIO(plant, r.mods).loadState()).toEqual({});
-    expect(r.writes).toEqual([]);
-  });
-
   test("a stored snapshot survives the restart it was written for", async () => {
     const r = recordingMods();
     const held: AutomationState = {
-      "inv-1:peakShaving": { previousValue: 90, capturedAt: CAPTURED },
+      "test-profile:peakShaving": { previousValue: 90, capturedAt: "2026-07-25T12:00:00Z" },
     };
     r.set.stored(held);
 
@@ -1004,15 +928,10 @@ describe("production IO wiring", () => {
     const r = recordingMods();
     const io = composeAutomationIO(plant, r.mods);
 
-    expect(io.device).toBe(plant.device);
-    expect(io.constraint).toBe(plant.constraint);
+    expect(io.ctx).toBe(plant.ctx);
     expect(io.write).toBe(plant.write);
     expect(io.getConfig).toBe(r.mods.getAutomationConfig);
     expect(io.getWeather).toBe(r.mods.getWeatherConfig);
-    // The pack voltage's newest home. An unwired arm here is the failure the
-    // whole chain exists to prevent: the engine would fall to a legacy value and
-    // scale every commanded charge current by it, silently.
-    expect(io.getPackNominalV).toBe(r.mods.packNominalV);
     expect(io.getForecast).toBe(r.mods.fetchSolarForecast);
     expect(io.getBaselineLoadW).toBe(r.mods.representativeHouseLoadW);
     expect(io.getEvcc).toBe(r.mods.evccSnapshot);
@@ -1031,9 +950,10 @@ describe("production IO wiring", () => {
 
   test("the production IO binds the real settings and live-sample modules", async () => {
     const write = async () => {};
-    const io = await buildProductionIO({ ...plantOf(profile), write });
+    const io = await buildProductionIO({ ctx: plant.ctx, write });
 
     expect(io.getConfig).toBe(getAutomationConfig);
+    expect(io.ctx).toBe(plant.ctx);
     expect(io.write).toBe(write);
 
     // Reads the shared poll state live, rather than capturing it at build time.

@@ -1,4 +1,5 @@
 import { db } from "@SunReye/db";
+import type { InverterConfig } from "@SunReye/db/inverter-config";
 import { ACTIVE_PROFILE_KEY, activeProfileSchema } from "@SunReye/db/profiles";
 import { installedProfiles } from "@SunReye/db/schema/settings";
 import { env } from "@SunReye/env/server";
@@ -14,7 +15,6 @@ import {
   tryGetProfile,
 } from "@SunReye/inverter-core";
 import type {
-  CapabilityInputs,
   InverterManifest,
   InverterProfile,
   InverterSample,
@@ -70,20 +70,15 @@ export async function resolveProfileById(id: string): Promise<InverterProfile | 
 }
 
 /**
- * The profile id this install is CONFIGURED to use: the saved setting wins, else
- * the `INVERTER_PROFILE` env seed, else `null` when neither is set (a fresh
- * install with no config yet).
- *
- * This setting is not the answer to "what is this device", and nothing outside
- * this module should ask it as though it were — that is the `devices` table's
- * job, and `../devices/registry.ts` is what reads it. It survives as the SEED:
- * an install with no device row yet has nothing else to say which profile its
- * first device should be provisioned from.
+ * Active profile id: the saved setting wins, else the `INVERTER_PROFILE` env
+ * seed, else `null` when neither is set (a fresh install with no config yet).
  */
-async function configuredProfileId(): Promise<string | null> {
+async function activeProfileId(): Promise<string | null> {
   const stored = await readSetting(ACTIVE_PROFILE_KEY, activeProfileSchema, { id: "" });
   return stored.id || env.INVERTER_PROFILE || null;
 }
+
+let activeProfile: InverterProfile | null = null;
 
 /**
  * Resolve the active profile for this process. Runs the two-phase boot: built-in
@@ -99,30 +94,12 @@ async function configuredProfileId(): Promise<string | null> {
 export async function initProfiles(): Promise<InverterProfile | null> {
   await dropLegacyDefaultSource();
   await loadInstalledProfiles();
-  return configuredProfile();
-}
-
-/**
- * The configured profile, resolved fresh from the setting on every call.
- *
- * A READ, not a cached global, and that is the whole point of this change. What
- * stood here was `let activeProfile: InverterProfile | null` — one profile for
- * the process, written once at boot, reachable from a forecast, an automation
- * and four routes. It could not describe a plant with two machines, it had no
- * relationship to the ids `metrics_raw` is keyed by, and every consumer that
- * only wanted a role or an id took the whole profile because it was there.
- *
- * The consumers that wanted a DEVICE now ask `../devices/registry.ts`. What is
- * left here is the two that genuinely ask about the INSTALL's configuration —
- * provisioning the first device row, and naming it — and neither of them can be
- * served by the registry, because both run before there is a device to register.
- */
-export async function configuredProfile(): Promise<InverterProfile | null> {
-  const id = await configuredProfileId();
+  const id = await activeProfileId();
   if (!id) {
     logger.warn(
       "no active inverter profile configured — booting onboarding-only (choose one in the UI, then restart)",
     );
+    activeProfile = null;
     return null;
   }
   // The saved id may point at a profile that's no longer available — e.g. an
@@ -133,38 +110,32 @@ export async function configuredProfile(): Promise<InverterProfile | null> {
   const resolved = tryGetProfile(id);
   if (!resolved) {
     logger.warn(
-      'the configured inverter profile "{id}" is not installed — booting onboarding-only (reinstall it from a profile source, then restart)',
+      'active inverter profile "{id}" is not installed — booting onboarding-only (reinstall it from a profile source, then restart)',
       { id },
     );
+    activeProfile = null;
     return null;
   }
-  return resolved;
+  activeProfile = resolved;
+  return activeProfile;
 }
 
 /**
- * What building a source needs to know about where the machine is.
- *
- * Structural, so both of its producers satisfy it without either becoming the
- * other: the poll loop's `PollEndpoint` (resolved from the `connections` +
- * `devices` spine — `./endpoint.ts`) and the connection-test route's
- * `InverterConfig` (a body the operator typed and has not saved). `host` is
- * optional because the second one's is: a test read can be attempted against a
- * half-filled form.
+ * The resolved active profile, or `null` when none is configured (degraded
+ * onboarding-only boot). Callers that hold a non-null {@link ProfileContext}
+ * already have the profile; this is for the routes that must tolerate its
+ * absence.
  */
-export interface SourceConnection {
-  host?: string;
-  port: number;
-  transport: "tcp" | "rtu-over-tcp";
-  unitId: number;
-  timeoutMs: number;
+export function getActiveProfileOrNull(): InverterProfile | null {
+  return activeProfile;
 }
 
 /**
- * Build a live source for a profile + endpoint. Whether it's the simulator or a
- * real Modbus source is a deploy-level choice (`INVERTER_SIMULATE`), not part of
- * the saved connection.
+ * Build a live source for a profile + connection config. Whether it's the
+ * simulator or a real Modbus source is a deploy-level choice (`INVERTER_SIMULATE`),
+ * not part of the saved config.
  */
-export function buildSource(profile: InverterProfile, config: SourceConnection): InverterSource {
+export function buildSource(profile: InverterProfile, config: InverterConfig): InverterSource {
   return createInverter(profile, {
     simulate: env.INVERTER_SIMULATE,
     connection: {
@@ -197,21 +168,8 @@ export interface ProfileContext {
   validateWrite(key: string, value: number): string | null;
 }
 
-/**
- * Build the transports' context.
- *
- * `device` is the REGISTERED device the manifest describes — `../devices/registry.ts`'s
- * instance, whose capabilities `deriveCapabilities` computes from the roles it
- * binds. Optional, and defaulting to the profile, because the two callers that
- * run before a device exists (a connection test against a form the operator has
- * not saved, a boot with no provisioned spine) have nothing else to name; a
- * profile satisfies the same structural input, so their answer is unchanged.
- */
-export function buildProfileContext(
-  profile: InverterProfile,
-  device?: CapabilityInputs,
-): ProfileContext {
-  const manifest = buildManifest(profile, device ?? profile);
+export function buildProfileContext(profile: InverterProfile): ProfileContext {
+  const manifest = buildManifest(profile);
   const defByKey = metricByKey(profile);
   const metaByKey = new Map(manifest.metrics.map((m) => [m.key, m]));
 

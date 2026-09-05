@@ -80,18 +80,11 @@ split reads. See [Profiles → Authoring](/profiles/authoring/#compute-expressio
 
 ## Storage
 
-Telemetry is stored **narrow** — one row per metric per change — in a TimescaleDB hypertable
-(`packages/db`). A row is `(time, value, dur_ms, device_id, metric_id)`: the identity is two
-`int2` foreign keys into the `devices` and `metric_keys` dimension tables, resolved from names
-at the database boundary (`apps/server/src/shared/identity-sql.ts`). Every *external* contract
-still speaks metric **names** — MQTT topics, Home Assistant `unique_id`s, `/api/v1/entities/:key`,
-the WebSocket metrics frame, `/api/history*` — so the integer keys are a storage detail.
-
-One generation of continuous aggregates provides minute / hourly / daily rollups: minute and
-hourly are built from raw, daily from hourly. Each stores time-weighted `time_weight` and
-`counter_agg` **partials** rather than finished averages, because a stored row is an interval
-rather than a sample — a plain `avg` over a change-only series over-weights whatever changed
-most often. Retention and compression policies keep raw bounded while preserving long-range
+Telemetry is stored **narrow** — one row per metric per tick, keyed by `inverterId` and
+metric key — in a TimescaleDB hypertable (`packages/db`). Continuous aggregates provide
+hourly / daily rollups; minute-resolution reads are answered from the raw hypertable itself,
+bucketed and time-weighted at read time, since a stored row is an interval rather than a
+sample. Retention and compression policies keep raw data bounded while preserving long-range
 trends. A new inverter needs **no migration** because nothing is vendor-columned.
 
 Runtime settings (inverter connection, MQTT, tariff, profile sources, active profile) live

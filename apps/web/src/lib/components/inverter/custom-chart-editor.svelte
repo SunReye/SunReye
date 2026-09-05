@@ -74,12 +74,6 @@
 
 	const canSave = $derived(name.trim().length > 0 && selected.size > 0 && !saving);
 
-	// The device slugs the saved chart names, straight from the record. This editor
-	// has no device picker, so they are CARRIED, not edited: leaving them out of
-	// the payload would erase which inverter each series was read from on any
-	// unrelated save (`custom-chart-form.ts`).
-	const carriedDevices = $derived(chart?.devices);
-
 	const title = $derived(chart ? m.chart_edit_chart() : m.chart_new_chart());
 	const saveLabel = $derived(saving ? m.action_saving() : m.action_save());
 	const isSelected = (key: string) => selected.has(key);
@@ -105,7 +99,7 @@
 		if (!canSave) return;
 		saving = true;
 		error = null;
-		const input = chartFormInput(name, [...selected], colors, carriedDevices);
+		const input = chartFormInput(name, [...selected], colors);
 		const err = chart
 			? await customCharts.update(chart.id, input)
 			: await customCharts.create(input);

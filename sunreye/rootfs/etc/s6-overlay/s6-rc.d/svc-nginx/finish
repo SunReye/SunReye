@@ -1,0 +1,8 @@
+#!/bin/sh
+# Halt the container when an essential service dies — the Supervisor restarts
+# the addon and the watchdog reports it. ($1 = exit code; 256 = killed by a
+# signal during normal container shutdown, don't escalate that.)
+if [ "$1" -ne 0 ] && [ "$1" -ne 256 ]; then
+    echo "$1" > /run/s6-linux-init-container-results/exitcode
+    exec /run/s6/basedir/bin/halt
+fi

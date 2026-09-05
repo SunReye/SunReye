@@ -1,6 +1,4 @@
-import { sql } from "drizzle-orm";
 import {
-  check,
   doublePrecision,
   integer,
   pgTable,
@@ -54,28 +52,9 @@ export const spotPrices = pgTable(
     provider: text("provider").notNull(),
     updatedAt: updatedAtTz(),
   },
-  (t) => [
-    // `(zone, slot_start)` is both the upsert conflict target and, being the
-    // primary key, the index every read wants: one zone over one time range.
-    primaryKey({ columns: [t.zone, t.slotStart] }),
-    /**
-     * A slot has a positive width.
-     *
-     * `apps/server/src/statistics/spot-stats.ts` weights the mean price BY this
-     * column — `sum(eur_per_mwh * slot_minutes) / sum(slot_minutes)` — so a zero
-     * divides by zero and a negative flips the sign of a day's average price.
-     * That average is what the §51 cohort's export decisions read.
-     *
-     * NOT `in (15, 60)`, though those are the only two widths shipped today.
-     * `apps/server/src/prices/providers/energy-charts.ts` derives the width from
-     * the first GAP in the payload rather than assuming one — a payload was
-     * observed whose entry count disagreed with its own span — so a market
-     * publishing at any other cadence writes that cadence, and pinning the check
-     * to two values would drop a whole delivery day's prices for such a zone.
-     * Positive width is the invariant the readers actually depend on.
-     */
-    check("spot_prices_slot_minutes_check", sql`${t.slotMinutes} > 0`),
-  ],
+  // `(zone, slot_start)` is both the upsert conflict target and, being the
+  // primary key, the index every read wants: one zone over one time range.
+  (t) => [primaryKey({ columns: [t.zone, t.slotStart] })],
 );
 
 export type SpotPriceRow = typeof spotPrices.$inferSelect;

@@ -32,41 +32,17 @@ panel_icon: mdi:solar-power-variant
 panel_title: SunReye
 panel_admin: false
 
-# Optional direct LAN access, disabled by default (`null` = mapping disabled,
-# so nothing reaches it until a host port is assigned here) — ingress is the
-# primary door. Third-party integrations use http://<host>:<port>/api/v1 with
-# an API key.
-#
-# This is the SAME container port as `ingress_port` above, because the server
-# is one listener now that nginx is gone. The trade that makes: nginx used to
-# answer 8099 with `allow 172.30.32.2; deny all`, which kept sibling add-ons on
-# the internal hassio bridge away from it. One socket cannot both allow-list
-# the Supervisor and accept LAN clients, so that isolation is gone — another
-# add-on can now reach the login page (rate-limited; ingress grants no
-# elevated trust anywhere, so this is not an auth bypass).
+# Optional direct LAN access (UI + API on one port), disabled by default —
+# ingress is the primary door. Third-party integrations use
+# http://<host>:8100/api/v1 with an API key.
 ports:
-  8099/tcp: null
+  8100/tcp: null
 ports_description:
-  8099/tcp: Direct access to the dashboard and REST API (bypasses ingress)
+  8100/tcp: Direct access to the dashboard and REST API (bypasses ingress)
 
 # Auto-wire the Mosquitto broker addon when it's installed.
 services:
   - mqtt:want
-
-# THE ONLY WAY A FILE LEAVES THIS ADDON.
-#
-# Without a `map:` block the addon can hand the user nothing but a Home Assistant
-# backup — which is a restore vehicle, not a file you can copy off the box. The
-# portable export (`sunreye export`, and the Danger Zone's download button) writes
-# a `.tar.gz`, and `share:rw` is what puts it somewhere the Samba add-on and the
-# File Editor can both see it: `/share/sunreye-exports/`.
-#
-# `rw`, not `ro`: the whole point is writing the archive out. It is also where the
-# server spools an export before streaming it to the browser, deliberately rather
-# than `/tmp` — `/tmp` is a tmpfs, so spooling tens of megabytes there would spend
-# RAM on a 2 GB box (see apps/server/src/admin/archive-download.ts).
-map:
-  - share:rw
 
 # /data (embedded postgres datadir + backups) is included in HA backups while
 # the addon keeps running; backup_pre writes the logical dump that is the

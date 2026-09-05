@@ -4,7 +4,6 @@
 	import { SETTINGS_ROUTES, message, type SettingsGroup, type SettingsRoute } from './nav-routes';
 	import * as m from '$lib/paraglide/messages';
 	import LightningIcon from 'phosphor-svelte/lib/Lightning';
-	import PlugsConnectedIcon from 'phosphor-svelte/lib/PlugsConnected';
 	import WaveformIcon from 'phosphor-svelte/lib/Waveform';
 	import BroadcastIcon from 'phosphor-svelte/lib/Broadcast';
 	import MonitorIcon from 'phosphor-svelte/lib/Monitor';
@@ -26,8 +25,7 @@
 	// Only the icons live here: they are `.svelte` imports, and the table has to
 	// stay loadable outside a bundler.
 	const ICONS: Record<string, Component> = {
-		devices: PlugsConnectedIcon,
-		plant: LightningIcon,
+		inverter: LightningIcon,
 		sensors: WaveformIcon,
 		mqtt: BroadcastIcon,
 		display: MonitorIcon,
@@ -51,9 +49,7 @@
 
 	// Profiles/Access/Users/API keys/Danger zone are admin-only management
 	// surfaces; the group appears once we know the viewer is an admin.
-	const visible = $derived(
-		SETTINGS_ROUTES.filter((r) => !r.hidden && (isAdmin || r.group !== 'admin'))
-	);
+	const visible = $derived(SETTINGS_ROUTES.filter((r) => isAdmin || r.group !== 'admin'));
 
 	const groups = $derived(
 		(['connection', 'preferences', 'admin'] as const)

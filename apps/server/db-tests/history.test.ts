@@ -8,7 +8,7 @@
  * every dashboard load while the unit suite stayed green.
  */
 import { afterAll, beforeAll, describe, expect, mock, test } from "bun:test";
-import { sql } from "drizzle-orm";
+import { metricsRaw } from "@SunReye/db/schema/metrics";
 import { databaseReachable, resetTestDatabase } from "./harness";
 
 const reachable = await databaseReachable();
@@ -38,103 +38,25 @@ suite("queryRecentBuckets against a real TimescaleDB", () => {
   let queryRecentBuckets: typeof import("../src/shared/history").queryRecentBuckets;
   let raw: ReturnType<typeof realDbExports.createDbAt>;
 
-  /**
-   * The device SLUG the read layer is asked for — a name, which is the whole
-   * point: `metrics_raw` is keyed by `device_id int2`, and the query layer
-   * resolves the name to it (`../src/shared/identity-sql.ts`). These cases prove
-   * that round trip against a real database, which is the one thing a SQL-text
-   * assertion cannot do.
-   *
-   * The harness shares ONE database across spec files, so every row here is
-   * scoped by this suite's own slugs rather than assuming an empty table.
-   */
   const inverterId = "inv-db-test";
-  /** The device's `metrics_raw.device_id`, resolved once the row exists. */
-  let deviceId = 0;
-  /** `metric key -> metric_keys.id`, so a seed can name a metric. */
-  const metricIds = new Map<string, number>();
 
   beforeAll(async () => {
     const url = await resetTestDatabase();
     raw = realDbExports.createDbAt(url);
     mock.module("@SunReye/db", () => ({ ...realDbExports, db: raw }));
     ({ queryRecentBuckets } = await import("../src/shared/history"));
-
-    // The dimension rows every reading now has a foreign key to. `id` is
-    // GENERATED ALWAYS AS IDENTITY on all three, so none of them may be assigned
-    // — the ids have to be read back.
-    await raw.execute(sql`
-      insert into plants (name, slug, time_zone) values ('hist', 'hist-db-test', 'UTC')`);
-    const device = await raw.execute<{ id: number }>(sql`
-      insert into devices (plant_id, connection_id, unit_id, slug, name, profile_id, role)
-      select id, null, 1, ${inverterId}, 'history probe', 'test-profile', 'inverter'
-      from plants where slug = 'hist-db-test'
-      returning id`);
-    deviceId = Number((device.rows[0] as { id: number }).id);
   });
 
   afterAll(() => {
     mock.module("@SunReye/db", () => ({ ...realDbExports }));
   });
 
-  /** Register a metric key on demand and remember its id. */
-  async function metricId(key: string): Promise<number> {
-    const known = metricIds.get(key);
-    if (known !== undefined) return known;
-    // `on conflict do update` rather than `do nothing`, so the statement returns
-    // a row even when a previous case in this file already registered the key.
-    const row = await raw.execute<{ id: number }>(sql`
-      insert into metric_keys (key, is_counter) values (${key}, false)
-      on conflict (key) do update set is_counter = excluded.is_counter
-      returning id`);
-    const id = Number((row.rows[0] as { id: number }).id);
-    metricIds.set(key, id);
-    return id;
-  }
-
   /** Insert samples at explicit instants, so assertions are not clock-dependent. */
   async function seed(rows: Array<{ metric: string; at: Date; value: number }>) {
-    const values = await Promise.all(
-      rows.map(async (r) => ({ ...r, metricId: await metricId(r.metric) })),
-    );
-    await raw.execute(sql`
-      insert into metrics_raw (time, value, dur_ms, device_id, metric_id)
-      values ${sql.join(
-        values.map((v) => sql`(${v.at}, ${v.value}, null, ${deviceId}, ${v.metricId})`),
-        sql`, `,
-      )}`);
+    await raw
+      .insert(metricsRaw)
+      .values(rows.map((r) => ({ time: r.at, inverterId, metric: r.metric, value: r.value })));
   }
-
-  /**
-   * A window far from the wall clock, for the two cases below.
-   *
-   * The harness shares one database across this whole file, and the clock-relative
-   * cases here assert an EXACT metric set inside "the last 300 s". So these two
-   * seed a fixed historical window and pass `now` explicitly, rather than adding
-   * their own metrics to everyone else's window.
-   */
-  const PAST = new Date("2026-01-01T12:00:00Z");
-  const inPast = { inverterId, seconds: 300, stepSeconds: 1, now: PAST } as const;
-
-  test("the device slug resolves to the int2 the readings were written under", async () => {
-    // The boundary itself: a name in, an id in the table, and the name back out.
-    // If `deviceIdOf` and the writer ever disagreed, every case below would read
-    // as "no data" — which is indistinguishable from a working empty database.
-    await seed([{ metric: "db.resolve", at: new Date(PAST.getTime() - 5_000), value: 42 }]);
-    const out = await queryRecentBuckets(inPast);
-    expect(out.metrics["db.resolve"]?.v).toEqual([42]);
-    expect(deviceId).toBeGreaterThan(0);
-  });
-
-  test("the payload is keyed by metric NAME, never by metric_id", async () => {
-    // `/api/history/recent`'s shape is an external contract: the client indexes
-    // this map by the metric key it knows. An integer key would break every
-    // sparkline and no type would notice.
-    await seed([{ metric: "db.named", at: new Date(PAST.getTime() - 5_000), value: 1 }]);
-    const out = await queryRecentBuckets(inPast);
-    expect(Object.keys(out.metrics)).toContain("db.named");
-    for (const key of Object.keys(out.metrics)) expect(Number.isNaN(Number(key))).toBe(true);
-  });
 
   // The bug that shipped: an uncast bound parameter in `time_bucket`'s second
   // position. Postgres rejects the statement outright, so ANY result at all
@@ -182,31 +104,20 @@ suite("queryRecentBuckets against a real TimescaleDB", () => {
   // outliving a newer one — that is the job of the seed arm's ordering and of
   // the `pref` tie-break together.
   //
-  // The window end is passed EXPLICITLY, which is what makes this deterministic.
-  // It used to blanket the boundary with 20 samples 100 ms apart and reason that
-  // one must share the seed's bucket however the boundary fell. That is not true:
-  // `time_bucket` is epoch-aligned, not `since`-aligned, so when `since` lands in
-  // the last <50 ms of a second the opening bucket ENDS before the first sample,
-  // the seed sits in it alone, and the stale 1 survives — a real failure of a
-  // real assertion, caused by the clock rather than the code. It reproduced 1 run
-  // in 12 on an idle machine and once in CI.
+  // Written to be deterministic rather than clock-lucky: `since` is computed
+  // inside the query from its own `Date.now()`, so the exact bucket boundary is
+  // unknowable here. Blanketing the start of the window with samples 100 ms
+  // apart guarantees one shares the seed's bucket however the boundary falls,
+  // and every one of them is newer than the stale row regardless of drift.
   test("a stale pre-window value never survives alongside newer samples", async () => {
-    // A whole second, so `since` is exactly a 1 s bucket boundary and every
-    // offset below is unambiguous.
-    const now = new Date(Math.ceil(Date.now() / 1000) * 1000);
-    const since = now.getTime() - 300_000;
-
-    await seed([
-      // The only row before the window: whatever the seed arm returns, it is this.
-      { metric: "db.wins", at: new Date(since - 100_000), value: 1 },
-      // In the bucket the window opens in, so it meets the seed head-on and the
-      // `pref` tie-break has to prefer the real sample.
-      { metric: "db.wins", at: new Date(since), value: 999 },
-      // A later bucket, so the seed is not simply overwritten everywhere.
-      { metric: "db.wins", at: new Date(since + 1500), value: 999 },
-    ]);
-
-    const out = await queryRecentBuckets({ inverterId, seconds: 300, stepSeconds: 1, now });
+    const now = Date.now();
+    const fresh = Array.from({ length: 20 }, (_, i) => ({
+      metric: "db.wins",
+      at: new Date(now - 299_950 + i * 100),
+      value: 999,
+    }));
+    await seed([{ metric: "db.wins", at: new Date(now - 400_000), value: 1 }, ...fresh]);
+    const out = await queryRecentBuckets({ inverterId, seconds: 300, stepSeconds: 1 });
     expect(out.metrics["db.wins"]?.v).toContain(999);
     expect(out.metrics["db.wins"]?.v).not.toContain(1);
   });
@@ -227,10 +138,7 @@ suite("queryRecentBuckets against a real TimescaleDB", () => {
     }
   });
 
-  test("a source id that names no device at all is an empty metric map, never an error", async () => {
-    // `deviceIdOf` resolves to NULL, and `device_id = NULL` is false — so an
-    // unknown device reads as "no data", which is what it is. A stale dashboard
-    // bookmark must not be a 500.
+  test("an inverter with no rows is an empty metric map, never an error", async () => {
     const out = await queryRecentBuckets({
       inverterId: "inv-absent",
       seconds: 300,

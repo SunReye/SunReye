@@ -10,12 +10,6 @@ interface CustomChartInput {
   name: string;
   metrics: string[];
   colors?: Record<string, string>;
-  /**
-   * Per-series device slugs, keyed by metric key. Carried through a save rather
-   * than edited — dropping the key here would erase them (see
-   * `custom-chart-form.ts`).
-   */
-  devices?: Record<string, string>;
 }
 
 /** Pull a human message out of an Eden error ({ error } bodies from the API). */

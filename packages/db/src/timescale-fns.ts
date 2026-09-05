@@ -60,7 +60,6 @@ function isColumn(moment: Instant): moment is PgColumn {
  * Anything that is not a column is cast to `timestamptz`, because only a column
  * arrives with a type the planner can resolve the overload against.
  */
-// fallow-ignore-next-line unused-export -- the shared wrapper `bucketEpoch` composes, and the only seam where the "cast anything that is not a column" rule is testable (timescale-fns.test.ts). It lost its last direct caller when the 2.0.0 read path stopped bucketing raw rows itself; the rule it enforces did not go away with it.
 export function timeBucket(width: SQL, moment: Instant): SQL {
   const typed = isColumn(moment) ? moment : sql`${moment}::timestamptz`;
   return sql`time_bucket(${width}, ${typed})`;

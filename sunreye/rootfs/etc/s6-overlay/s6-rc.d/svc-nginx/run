@@ -1,0 +1,4 @@
+#!/usr/bin/with-contenv bashio
+# Single-origin front door: ingress port 8099 (Supervisor-only) and the
+# optional direct port 8100 serve the same proxied app.
+exec nginx -c /etc/nginx/sunreye.conf -g "daemon off;"

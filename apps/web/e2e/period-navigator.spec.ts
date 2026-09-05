@@ -86,23 +86,6 @@ async function openNavigator(page: Page, locale?: string) {
     day: (isoDate: string) => page.locator(`[data-bits-day][data-value="${isoDate}"]`),
   };
   await expect(navigator.trigger).toBeVisible();
-
-  // Visible is NOT laid out. Vite dev serves the harness's stylesheet as its own
-  // module, so the control mounts and paints before Tailwind applies — and
-  // unstyled, every div is `display: block`, which puts the four tabs on one
-  // line and the stepper on the next. That is precisely what the geometry cases
-  // below assert must not happen, so they read a real regression off a document
-  // that simply has no CSS yet.
-  //
-  // It reached CI as an intermittent failure of the 1440px case (shard 4, on dev
-  // as well as here): the trace screenshot is default UA buttons in a serif
-  // document. Local runs pass because nothing competes for the CPU; CI runs four
-  // shards on two cores.
-  //
-  // `[data-slot=period-navigator]` is `flex` at every width — only its direction
-  // is responsive — so this waits for the stylesheet to have applied without
-  // pinning a breakpoint.
-  await expect(page.locator("#harness [data-slot=period-navigator]")).toHaveCSS("display", "flex");
   return navigator;
 }
 

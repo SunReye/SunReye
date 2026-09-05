@@ -51,11 +51,6 @@ import {
   parseLoadpointTopic,
   parseVehicleTopic,
 } from "./evcc-topics";
-import {
-  type LoadpointRegistrar,
-  type LoadpointRegistrarDeps,
-  createLoadpointRegistrar,
-} from "./evcc-registrar";
 import { getEvccConfig } from "../settings/evcc-settings";
 import { log } from "../shared/logging";
 import type { Streams } from "../shared/streams";
@@ -155,45 +150,18 @@ let stream: Streams | null = null;
 let emitTimer: ReturnType<typeof setTimeout> | null = null;
 
 /**
- * The path from a loadpoint to `metrics_raw`, injected by {@link rebuildEvcc} on
- * the boot call. Null until then, and null forever in a build that has no
- * runtime to write through (a test of the ingest alone) — the live feed is
- * unaffected either way.
- */
-let registrar: LoadpointRegistrar | null = null;
-
-/**
  * Coalesce a burst of topic updates into a single push. EVCC delivers its full
  * retained state as ~dozens of individual leaf messages on (re)subscribe, and
  * live changes often touch several related topics at once; a short debounce
  * collapses each burst into one snapshot emit with negligible added latency.
  */
 const EMIT_DEBOUNCE_MS = 200;
-
-/**
- * One snapshot, out to both destinations: the read-side bus, and — through the
- * registrar — the plant's history.
- *
- * The SAME snapshot for both, deliberately. What the dashboard paints live and
- * what `metrics_raw` records are then the same reading by construction, and the
- * one thing that must differ (a fed-forward figure is painted but is not
- * history) is stated as provenance on the sample rather than as a second code
- * path here. See `./evcc-devices.ts`.
- */
-function publish(): void {
-  const snap = evccSnapshot();
-  if (!snap) return;
-  stream?.emit("evcc", snap);
-  // Fire-and-forget: storing readings must never delay painting them, and the
-  // registrar drops a snapshot that overlaps one still in flight.
-  void registrar?.sync(snap.loadpoints, new Date());
-}
-
 function scheduleEmit(): void {
   if (emitTimer) return;
   emitTimer = setTimeout(() => {
     emitTimer = null;
-    publish();
+    const snap = evccSnapshot();
+    if (snap) stream?.emit("evcc", snap);
   }, EMIT_DEBOUNCE_MS);
 }
 
@@ -207,7 +175,8 @@ function emitNow(): void {
     clearTimeout(emitTimer);
     emitTimer = null;
   }
-  publish();
+  const snap = evccSnapshot();
+  if (snap) stream?.emit("evcc", snap);
 }
 
 /** Current EVCC state for `GET /api/evcc` and WS pushes, or `null` when off. */
@@ -356,10 +325,6 @@ async function stopClient(): Promise<void> {
   loadpoints.clear();
   vehicles.clear();
   estimator.reset();
-  // SUSPEND, never retire: the subscription is going away, the chargers are not.
-  // Their rows, their history and the intervals they hold open all stay, and the
-  // next snapshot re-registers them.
-  registrar?.suspend();
   if (emitTimer) {
     clearTimeout(emitTimer);
     emitTimer = null;
@@ -375,12 +340,8 @@ async function stopClient(): Promise<void> {
  * `streamBus` wires the read-side bus and is passed only on the boot call; the
  * settings-save rebuilds omit it and keep the bus wired at boot.
  */
-export async function rebuildEvcc(
-  streamBus?: Streams,
-  storage?: LoadpointRegistrarDeps,
-): Promise<void> {
+export async function rebuildEvcc(streamBus?: Streams): Promise<void> {
   if (streamBus) stream = streamBus;
-  if (storage) registrar = createLoadpointRegistrar(storage);
   const [config, mqttConfig] = await Promise.all([getEvccConfig(), getMqttConfig()]);
   await stopClient();
   subtractFromHome = config.subtractFromHome;

@@ -11,15 +11,12 @@ const view = pgMaterializedView("hourly_rollups", {
 
 describe("declaredColumns", () => {
   test("reads a table's columns as Postgres names and types", () => {
-    // Declaration ORDER, which is the physical column order: the two 8-byte
-    // fields, the 4-byte, then the two 2-byte, so the row packs without padding
-    // (48 B against 56 B for the worst order — see ./schema/metrics.ts).
     expect(declaredColumns(metricsRaw)).toEqual([
       { name: "time", dataType: "timestamp with time zone" },
+      { name: "inverter_id", dataType: "text" },
+      { name: "metric", dataType: "text" },
       { name: "value", dataType: "double precision" },
       { name: "dur_ms", dataType: "integer" },
-      { name: "device_id", dataType: "smallint" },
-      { name: "metric_id", dataType: "smallint" },
     ]);
   });
 

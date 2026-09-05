@@ -1,22 +1,45 @@
 name: SunReye
 
 services:
-  # One-shot schema migrator, run from the *server's own image*: src/main.ts
-  # dispatches `migrate` to the journaled runner (downgrade guard, baseline
-  # stamping for pre-journal databases, pending drizzle migrations, TimescaleDB
-  # pipeline) and exits. One artifact means the schema can never be a different
-  # version from the code that queries it.
-  #
-  # Safe on every `up` — applied migrations are skipped via the journal tables,
-  # and the server waits for this to exit 0.
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    init: true
+    ports:
+      - "3001:3001"
+    env_file:
+      - path: apps/web/.env
+        required: false
+    environment:
+      # Runtime (not build-time): where the *browser* reaches the core engine
+      # in this split-origin topology.
+      PUBLIC_SERVER_URL: http://localhost:3000
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3001/').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    depends_on:
+      server:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # One-shot schema migrator: runs the journaled migration runner (drizzle
+  # migrations + TimescaleDB pipeline, see packages/db/src/migrate.ts) against
+  # the Postgres service, then exits. Safe on every `up`; the server waits for
+  # it to complete before starting.
   migrate:
     build:
       context: .
-      dockerfile: apps/server/Dockerfile
-    command: ["migrate"]
+      dockerfile: docker/migrate.Dockerfile
     environment:
-      # The runner only needs DATABASE_URL; skip the full server env schema
-      # (auth secret, CORS, …) that isn't relevant here.
       SKIP_ENV_VALIDATION: "1"
       DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:-password}@postgres:5432/SunReye
     depends_on:
@@ -35,8 +58,9 @@ services:
       - path: apps/server/.env
         required: false
     environment:
+      CORS_ORIGIN: http://localhost:3001
       DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:-password}@postgres:5432/SunReye
-    # The image is scratch (no shell, no curl), so the server binary probes
+    # The image is distroless (no shell/curl), so the server binary probes
     # itself: `--healthcheck` fetches /healthz (which round-trips the DB).
     healthcheck:
       test: ["CMD", "/app/server", "--healthcheck"]
@@ -52,18 +76,11 @@ services:
     restart: unless-stopped
 
   postgres:
-    # Pinned (not a moving tag): the datadir under the volume is only compatible
+    # Pinned (not latest-pg17): the datadir under the volume is only compatible
     # with the pg major it was created by, and the timescaledb extension binary
     # must be >= the extension version stamped in the database. Bump this tag
     # deliberately with a release, never implicitly.
-    #
-    # Built by docker/timescaledb/Dockerfile (postgres:17-bookworm + the pinned
-    # extension + timescaledb_toolkit) and published by
-    # .github/workflows/db-image.yml. Not timescale/timescaledb: that image
-    # carries no timescaledb_toolkit at any tag, and the baseline schema needs
-    # time_weight('LOCF', …) and counter_agg. Dev, CI and the addon must all
-    # carry the same extensions — scripts/storage-tuning.ts asserts they do.
-    image: ghcr.io/sunreye/timescaledb:pg17-ts2.28.2
+    image: timescale/timescaledb:2.28.2-pg17
     container_name: SunReye-postgres
     # SSD-endurance tuning: cut the writes (TBW) a 1 Hz ingest makes.
     # synchronous_commit=off group-commits WAL (bounded <~0.5s crash-loss window

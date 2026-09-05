@@ -1,13 +1,4 @@
-import {
-  doublePrecision,
-  index,
-  pgTable,
-  primaryKey,
-  smallint,
-  timestamp,
-} from "drizzle-orm/pg-core";
-
-import { devices } from "./plants";
+import { doublePrecision, index, pgTable, primaryKey, text, timestamp } from "drizzle-orm/pg-core";
 
 /**
  * Measured battery capacity, one row per discharge segment.
@@ -29,24 +20,11 @@ import { devices } from "./plants";
  * time-series machinery would cost more than it saves. It IS derived from the
  * time-series, so like the forecast-correction tables it is cleared alongside a
  * data reset.
- *
- * Keyed by `device_id` since 2.0.0. It was `inverter_id text` — the profile id —
- * so two identical packs shared one capacity history and averaged each other's
- * degradation away, and a profile swap orphaned the lot. Nothing else about the
- * table changes: it was already per-device in everything but type.
  */
 export const batteryCapacityEstimates = pgTable(
   "battery_capacity_estimates",
   {
-    /**
-     * The pack's device. `ON DELETE RESTRICT`, like every reference to a
-     * dimension: these rows are the only record of measured degradation, and a
-     * cascade would let removing a device erase it silently. A data reset clears
-     * this table explicitly instead.
-     */
-    deviceId: smallint("device_id")
-      .notNull()
-      .references(() => devices.id, { onDelete: "restrict" }),
+    inverterId: text("inverter_id").notNull(),
     /** End of the discharge segment — the key, so a re-run is idempotent. */
     measuredAt: timestamp("measured_at", { withTimezone: true }).notNull(),
     /** Start of the segment. */
@@ -62,7 +40,7 @@ export const batteryCapacityEstimates = pgTable(
     tempC: doublePrecision("temp_c"),
   },
   (t) => [
-    primaryKey({ columns: [t.deviceId, t.measuredAt] }),
+    primaryKey({ columns: [t.inverterId, t.measuredAt] }),
     index("battery_capacity_estimates_measured_at_idx").on(t.measuredAt),
   ],
 );

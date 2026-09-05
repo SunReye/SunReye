@@ -131,11 +131,11 @@ beforeEach(() => {
 });
 
 describe("initProfiles", () => {
-  // The PROFILE registry is process-wide and outlives this file, so anything
-  // registered here is unregistered again — a suite that runs later and expects
-  // a profile id to resolve to nothing would otherwise pass or fail purely on
-  // the order the runner walked the files in. (The resolved profile itself is
-  // no longer module state: `configuredProfile` re-reads the setting per call.)
+  // `activeProfile` is module state in ./inverter and outlives this file, so a
+  // suite that runs later and expects "nothing is active" (onboarding's
+  // testInverter) would otherwise pass or fail purely on the order the runner
+  // walked the files in. Leave the module as we found it. The registry is
+  // process-wide too, so anything this file installs is removed again.
   afterAll(async () => {
     activeId = "";
     installedRows = [];

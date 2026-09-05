@@ -22,7 +22,6 @@ export {
   resolveStorage,
   resolveDeadband,
   statedKind,
-  metricKeySpecs,
   hasResolvableKind,
   kindFallbackKeys,
   kindFallbackReports,
@@ -31,25 +30,11 @@ export {
   toManifestMetric,
   buildManifest,
 } from "./capabilities";
-export { DEVICE_CLASSES, isDeviceClass } from "./device-class";
-export { deviceInstance, instanceFromProfile, roleBindings } from "./device-instance";
 export type {
-  DeviceClass,
-  DeviceInstance,
-  DeviceInstanceSpec,
-  DeviceMetric,
-  ProfileInstanceSpec,
-  RoleBinding,
-  RoleKey,
-} from "./device-instance";
-export type {
-  CapabilityInputs,
-  CapabilityMetric,
   DeadbandInputs,
   KindFallbackReport,
   KindInputs,
   KindResolvable,
-  MetricKeyFacts,
   StorageInputs,
 } from "./capabilities";
 export { entityConstraint, writableMetrics, metricByKey } from "./entities";
@@ -57,11 +42,6 @@ export type { EntityConstraint, EntityValueType } from "./entities";
 // Profile authoring SDK + serializable data model + validator.
 export { ROLE_CATALOG, ROLE_NAMES } from "./roles";
 export type { CanonicalRole, RoleSpec } from "./roles";
-// The optimizer's stored enums live in `./optimizer-vocabulary.ts` and are
-// deliberately NOT re-exported here: the browser reads them too, and this barrel
-// pulls in `modbus-serial` — a Node transport that dies at import in a browser
-// (`ReferenceError: Buffer is not defined`). They are reached through the
-// package's `/optimizer` subpath instead, by both sides.
 export { control, defineFamily, defineProfile, defineVariant, metric, sumOf } from "./define";
 export type {
   BaseMetricOpts,

@@ -1,1 +1,0 @@
-ALTER TABLE "metric_keys" ADD COLUMN "unit" text;
