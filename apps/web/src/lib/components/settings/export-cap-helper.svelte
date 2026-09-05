@@ -4,7 +4,6 @@
 	import { Label } from '$lib/components/ui/label';
 	import FieldInfo from './field-info.svelte';
 	import * as Alert from '$lib/components/ui/alert';
-	import ExportCapRegister from './export-cap-register.svelte';
 	import * as m from '$lib/paraglide/messages';
 
 	/**
@@ -37,7 +36,6 @@
 	const applyPercent = (pct: number): void => {
 		maxOutput = ((totalKwp * pct) / 100).toFixed(2).replace(/\.?0+$/, '');
 	};
-
 </script>
 
 <div class="flex flex-col gap-3">
@@ -51,8 +49,6 @@
 			{/each}
 		</div>
 	{/if}
-
-	<ExportCapRegister bind:maxOutput {disabled} />
 
 	<div class="flex flex-col gap-1.5">
 		<div class="flex items-center gap-1.5">

@@ -3,6 +3,9 @@
 	import { Label } from '$lib/components/ui/label';
 	import FieldInfo from './field-info.svelte';
 	import ExportCapHelper from './export-cap-helper.svelte';
+	import * as Alert from '$lib/components/ui/alert';
+	import { livePlant } from '$lib/live/plant.svelte';
+	import { capMatchesRegister, registerCapKw } from '$lib/settings/export-cap-register';
 	import * as m from '$lib/paraglide/messages';
 
 	// The site facts the plant still owns: the grid connection's ceiling, the
@@ -25,6 +28,15 @@
 		totalKwp: number;
 		disabled: boolean;
 	} = $props();
+
+	// The inverter's own feed-in ceiling, read off its register by the feed that
+	// owns it (`$lib/live/ownership.ts`). It is the field's PLACEHOLDER — what
+	// the plant inherits when nothing is stored — and a notice when a stored
+	// value disagrees with it. Never written back: the optimizer owns that hand.
+	$effect(() => livePlant.lease());
+	const sellLimit = $derived(livePlant.read('setting.solar_sell.max_power'));
+	const maxOutputPlaceholder = $derived(registerCapKw(sellLimit) ?? '10');
+	const differsFromRegister = $derived(capMatchesRegister(maxOutput, sellLimit) === false);
 </script>
 
 <div class="flex flex-col gap-2">
@@ -35,7 +47,18 @@
 	<div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
 		<div class="flex flex-col gap-1.5">
 			<Label for="forecast-max-output">{m.weather_forecast_max_output()}</Label>
-			<Input id="forecast-max-output" bind:value={maxOutput} {disabled} inputmode="decimal" placeholder="10" />
+			<Input
+				id="forecast-max-output"
+				bind:value={maxOutput}
+				{disabled}
+				inputmode="decimal"
+				placeholder={maxOutputPlaceholder}
+			/>
+			{#if differsFromRegister}
+				<Alert.Root>
+					<Alert.Description>{m.weather_export_cap_register_differs()}</Alert.Description>
+				</Alert.Root>
+			{/if}
 			<ExportCapHelper bind:maxOutput bind:smartMeterSince {totalKwp} {disabled} />
 		</div>
 		<div class="flex flex-col gap-1.5">

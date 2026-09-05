@@ -863,8 +863,6 @@
   "weather_smart_meter_since": "Contador inteligente instalado",
   "weather_smart_meter_since_desc": "Fecha de instalación del iMSys. Déjelo vacío si no tiene uno. Su instalación es lo que levanta el límite de vertido del 60 % y sitúa la instalación en el ámbito del §51 EEG.",
   "weather_export_cap_lifted": "Con contador inteligente el límite del 60 % ya no se aplica — fije el límite de vertido al 100 % de los kWp instalados (o a la potencia del inversor). Tenga en cuenta que al subirlo el recorte de picos clásico queda con mucho menos que hacer: para eso está la carga según precio.",
-  "weather_export_cap_register": "Límite de inyección del inversor:",
-  "weather_export_cap_register_use": "Usar",
   "weather_export_cap_register_differs": "El campo difiere del registro del inversor. El inversor aplica su propio valor; el pronóstico y el optimizador planifican con este.",
   "peak_shaving_pa_title": "Ventanas de precio negativo",
   "peak_shaving_pa_desc": "Hacer hueco en la batería antes de una ventana de precio negativo y absorber el excedente durante ella. Según el §51 EEG la energía vertida entonces no se retribuye, así que almacenarla es la única forma de conservar su valor. Requiere una fuente de precios del mercado diario.",

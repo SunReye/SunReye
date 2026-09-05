@@ -863,8 +863,6 @@
   "weather_smart_meter_since": "Smart-Meter-Gateway installiert",
   "weather_smart_meter_since_desc": "Einbaudatum des iMSys. Leer lassen, wenn keines vorhanden ist. Der Einbau hebt die 60-%-Einspeisebegrenzung auf und ordnet die Anlage dem Geltungsbereich des §51 EEG zu.",
   "weather_export_cap_lifted": "Mit Smart-Meter-Gateway gilt die 60-%-Begrenzung nicht mehr — Einspeisegrenze auf 100 % der installierten kWp (oder die Wechselrichterleistung) setzen. Beachten Sie: dadurch bleibt für klassisches Peak Shaving deutlich weniger zu tun — genau dafür gibt es das preisgesteuerte Laden.",
-  "weather_export_cap_register": "Einspeisegrenze des Wechselrichters:",
-  "weather_export_cap_register_use": "Übernehmen",
   "weather_export_cap_register_differs": "Das Feld weicht vom Register des Wechselrichters ab. Der Wechselrichter setzt seinen eigenen Wert durch; Prognose und Optimierer rechnen mit diesem.",
   "peak_shaving_pa_title": "Fenster mit negativen Preisen",
   "peak_shaving_pa_desc": "Vor einem Fenster mit negativen Preisen Platz im Speicher schaffen und den Überschuss darin aufnehmen. Nach §51 EEG wird dann eingespeiste Energie nicht vergütet, Speichern ist also die einzige Möglichkeit, ihren Wert zu erhalten. Erfordert eine Day-Ahead-Preisquelle.",
