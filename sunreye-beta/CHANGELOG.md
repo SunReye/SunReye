@@ -2,7 +2,7 @@
 
 ## [unreleased]
 
-Unreleased work on `dev` since 1.2.0, shipped in `beta.20260830-7996531`.
+Unreleased work on `dev` since 1.2.0, shipped in `beta.20260905-4b450ce`.
 
 
 ### ⚠ BREAKING CHANGES
@@ -12,6 +12,20 @@ Unreleased work on `dev` since 1.2.0, shipped in `beta.20260830-7996531`.
 
 ### Features
 
+* **web:** the export cap's placeholder is the inverter's sell limit ([dd898f7](https://github.com/SunReye/SunReye/commit/dd898f7ab6b1d3efda43862c258595f723d0eba6))
+* **web:** a blank export cap starts as the inverter's sell limit ([977f82d](https://github.com/SunReye/SunReye/commit/977f82dc8611b7433148f222e07eeba8fe65cca8))
+* **web:** the plant's export cap shows the inverter's sell-limit register beside it ([1d5d7fa](https://github.com/SunReye/SunReye/commit/1d5d7fa9012e5b8835fb5c6cdce6fb42392cdfc4))
+* **inverter-core:** phase currents for load, backup and generator, backup frequency, generator total ([16f7b9b](https://github.com/SunReye/SunReye/commit/16f7b9b14c65ff748779142fc60c4a8df07b2c87))
+* **devices:** the connection dialog's test is a port probe, not a register read ([f4186c4](https://github.com/SunReye/SunReye/commit/f4186c467b79a0c134c13c2970a1231cf03fe755))
+* **web:** the roof and the pack are edited on the inverter, not the plant ([70d9c3c](https://github.com/SunReye/SunReye/commit/70d9c3c545bbe4343f57544cbfbfc3016527311a))
+* **server:** an inverter's arrays, physics and pack are edited on its device ([5f1ef48](https://github.com/SunReye/SunReye/commit/5f1ef48ec5e6c9c976fbd814afe3e99c33fae52e))
+* **server:** the forecast reads its arrays from the inverters, not the plant ([35c8f8c](https://github.com/SunReye/SunReye/commit/35c8f8cac35d2bbec724f55842ed871bedf69564))
+* **db:** an inverter's PV arrays and panel physics live on its device row ([86cd5e8](https://github.com/SunReye/SunReye/commit/86cd5e81a64b12a71f02e59cb75fe4623fb8df0c))
+* **web:** merge the inverter panel into Devices — gateways as groups, dialogs to edit ([f7e8dec](https://github.com/SunReye/SunReye/commit/f7e8decbb82881d2cf8af3f85b7cde28a55f7865))
+* **server:** edit and delete connections; re-point a device from its patch ([4309b5a](https://github.com/SunReye/SunReye/commit/4309b5a8cf20266c6879af9096718c60a247d383))
+* **web:** delete icon on installed profiles no device uses ([6a488e0](https://github.com/SunReye/SunReye/commit/6a488e0ab42fcfef7d0a0e75272909f9a7f45a86))
+* **web:** Settings → Devices tab with an add-device dialog ([f02ca81](https://github.com/SunReye/SunReye/commit/f02ca81df269fed01d374fb946d8397e75fb3bc0))
+* **server:** device roster API — list, add on an existing or new gateway, rename, retire ([dcc7198](https://github.com/SunReye/SunReye/commit/dcc71987177881b8a24eac1adad7fd34cd6b2a59))
 * **server:** prove every route's gate, and close the last public one ([3a353a3](https://github.com/SunReye/SunReye/commit/3a353a35ffd458655cc88ed2c0e67f1a88377db4))
 * **server:** the optimizer is a device, and its decisions are history ([928bc28](https://github.com/SunReye/SunReye/commit/928bc2838f19fb4c2ac55c1a78f6e942352dbf3d))
 * **server:** register EVCC loadpoints as devices, with history ([1d2646a](https://github.com/SunReye/SunReye/commit/1d2646afa6565ae4764c89d019356c7eb4809000))
@@ -150,6 +164,10 @@ Unreleased work on `dev` since 1.2.0, shipped in `beta.20260830-7996531`.
 
 ### Bug Fixes
 
+* **web:** a rail's charge keeps its place when its speed steps ([ee5bd13](https://github.com/SunReye/SunReye/commit/ee5bd131797e5505118126a36f734f073fcf8cf5))
+* **web:** the device probes show the captured snapshot again ([802ad7f](https://github.com/SunReye/SunReye/commit/802ad7f8be22075d4b7f7675acd6fb13622e4268))
+* **devices:** unit id 0 is a valid address, and the picker is a select ([2997982](https://github.com/SunReye/SunReye/commit/29979823cf695c06195ea8a9c5fc632a53e5958f))
+* **server:** stop reading the legacy schema on an install that never had one ([c349c2d](https://github.com/SunReye/SunReye/commit/c349c2d267be4963a1eada283c38fda6326b73eb))
 * **ci:** upgrade from the newest release OLDER than the one under test ([9aacc9b](https://github.com/SunReye/SunReye/commit/9aacc9b11781ceef4b2f28e959f3b1d232a52590))
 * **ci:** retry the upgrade seed's aggregate refresh when a policy holds it ([2943d3d](https://github.com/SunReye/SunReye/commit/2943d3d0e41388ad57a935606fb3863ba0c8bb03))
 * **ci:** make the upgrade job's seed step survive a lost compression race ([83a8136](https://github.com/SunReye/SunReye/commit/83a8136a9d1a82cabddbfa76696fb42d6399ddcd))
@@ -305,6 +323,7 @@ Unreleased work on `dev` since 1.2.0, shipped in `beta.20260830-7996531`.
 
 ### Code Refactoring
 
+* **db:** the device role list has one source, and the CHECK is rendered from it ([c26fa71](https://github.com/SunReye/SunReye/commit/c26fa71320489f4c0c3ac6505d150376e1540fa8))
 * one frozen run-state vocabulary, and read it as an enum not a mean ([15b28e9](https://github.com/SunReye/SunReye/commit/15b28e982323b7d6397314c334f1d50a71007564))
 * delete the decision ring, its endpoint and its duplicate chart stack ([4ce8057](https://github.com/SunReye/SunReye/commit/4ce8057111828ec8d3877940b2eaa11f53340924))
 * **server:** the automation engine consumes the registry, not a profile ([6d27842](https://github.com/SunReye/SunReye/commit/6d27842ad5f8a2f5cde7145875ace604042058f8))
@@ -414,6 +433,7 @@ Unreleased work on `dev` since 1.2.0, shipped in `beta.20260830-7996531`.
 
 ### Tests
 
+* **db:** reset once for both legacy-cadence cases ([0875dcf](https://github.com/SunReye/SunReye/commit/0875dcf6e157045ed953406d2239d98fcfcdfd86))
 * **server:** read the optimizer's decisions through the production read path ([da0d4ea](https://github.com/SunReye/SunReye/commit/da0d4ea7df5fdc61340cee30d89ebd126667c262))
 * **db:** prove a loadpoint's charge power reaches metrics_raw and comes back ([18dd9de](https://github.com/SunReye/SunReye/commit/18dd9de2c4c1c06b73e4814cd880905fccdcd8fb))
 * **ci:** prove the route smoke saw a seeded profile, not a route count ([4b404b4](https://github.com/SunReye/SunReye/commit/4b404b4dde718c0cbb8366172af0ea66b93975d7))
