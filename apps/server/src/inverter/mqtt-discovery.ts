@@ -5,12 +5,44 @@
  * constraint → HA component and config object — with no broker, no client and
  * no lifecycle. That keeps {@link ./mqtt} to connection handling and lets the
  * payload shapes be unit-tested directly (see mqtt.test.ts).
+ *
+ * ## IDENTITY IS THE SLUGS. DESCRIPTION IS THE PROFILE.
+ *
+ * Every name in this file that Home Assistant KEYS ON — the topic namespace, the
+ * `unique_id`, the discovery object node, the HA device `identifiers` — is built
+ * from {@link MqttNamespace}: the FROZEN `plants.slug` and `devices.slug`. Nothing
+ * identifying is built from the profile id any more.
+ *
+ * Until 2.0.0 all of it was `profile.id`, and that is the defect this release
+ * exists to end. HA keys its entities on `unique_id` and a discovery announcement
+ * is RETAINED on the broker, so changing a `unique_id` does not RENAME an entity:
+ * the old announcement is still sitting on the broker, so the old entity stays,
+ * the new one appears beside it, and every dashboard card, automation, script and
+ * statistic that named the old id now points at a thing that will never update
+ * again. Nothing errors. So correcting a typo in a profile id, or swapping a
+ * mis-detected profile for the right one, silently broke the operator's whole
+ * Home Assistant. The slugs cannot move — `packages/db/src/schema/plants.ts` and
+ * `./provision.ts` freeze them at creation precisely so this namespace never has
+ * to — which is why identity hangs off them.
+ *
+ * What DOES follow a profile swap is the DESCRIPTION: `manufacturer` and `model`
+ * on the HA device. Those describe the hardware, and if the profile was wrong the
+ * description was wrong; correcting it must correct them. HA re-reads a device
+ * block on every announcement and updates the fields in place, keyed on
+ * `identifiers` — so a swap re-labels the device the operator already has instead
+ * of creating a second one. That is the entire distinction: identity must be
+ * stable, description should track the hardware.
  */
 
 import type { EntityConstraint, ManifestMetric } from "@SunReye/inverter-core";
 import type { ForecastVariant } from "../forecast/solar-forecast";
 
-/** The stable HA device (per profile) that all entities attach to. */
+/**
+ * The HA device all of one bridge's entities attach to.
+ *
+ * `identifiers` is IDENTITY and is slug-derived; `manufacturer` and `model` are
+ * DESCRIPTION and stay profile-derived. See the module note.
+ */
 export type HaDevice = {
   identifiers: string[];
   name: string;
@@ -18,12 +50,104 @@ export type HaDevice = {
   model: string;
 };
 
+/**
+ * The two frozen slugs every identifying name in this module is built from.
+ *
+ * `plantSlug` is `plants.slug`, `deviceSlug` is `devices.slug` — both written once
+ * at creation and unchangeable afterwards (see `packages/db/src/schema/plants.ts`
+ * and `./provision.ts`, "SLUGS ARE FROZEN, NAMES ARE NOT"). Passed as a value
+ * rather than looked up here so this file stays pure and so the bridge cannot
+ * accidentally use one and not the other.
+ *
+ * Both fields are REQUIRED with no default on purpose. A fallback to the profile
+ * id — "use the slug if we have one" — is how the defect this release fixes
+ * survived so long: it kept working, so nothing ever failed loudly enough to be
+ * noticed. Omitting either slug at the call site is a compile error instead.
+ */
+export interface MqttNamespace {
+  /** FROZEN — `plants.slug`. */
+  plantSlug: string;
+  /** FROZEN — `devices.slug`. */
+  deviceSlug: string;
+}
+
 /** HA object ids / unique ids must be a restricted charset; keys are dotted. */
 export const slug = (s: string): string => s.replace(/[^a-zA-Z0-9_-]/g, "_");
 
-/** Topic builders for a given prefix (`<prefix>/<inverterId>/...`). */
-export function topicsFor(prefix: string, profileId: string) {
-  const base = `${prefix}/${profileId}`;
+/**
+ * The identity prefix every `unique_id` and the HA device `identifiers` share:
+ * `sunreye_<plant-slug>_<device-slug>`.
+ *
+ * THE PLANT SLUG IS IN HERE DELIBERATELY, and it is the one judgement call in the
+ * shape. There is one plant today and it is frozen, so leaving it out would be
+ * shorter and would read fine. It is included because `devices.slug` is unique
+ * per `(plant_id, slug)` and NOT globally — `devices_plant_slug_key` says exactly
+ * that — so "inverter" alone is not a key by the schema's own definition. Home
+ * Assistant is an AGGREGATOR: two SunReye instances (a house and a holiday home,
+ * a test box beside the real one) publishing to one HA is an ordinary deployment,
+ * and both would provision a `role = 'inverter'` device whose default slug is
+ * "inverter". On a `unique_id` collision HA does not warn — it silently refuses
+ * the second entity, so the second plant would simply have no entities and no
+ * message saying why. That failure is invisible and unfixable-in-place (the
+ * `unique_id` is permanent), while the cost of including the plant slug is a
+ * longer string, paid once. Cheap insurance against a silent, permanent loss
+ * beats a shorter id.
+ *
+ * The `sunreye_` prefix stays: it is what makes a topic under the shared
+ * `homeassistant/` discovery prefix identifiably OURS, which is what lets
+ * `./mqtt-legacy-retire.ts` clear the old announcements without touching another
+ * integration's.
+ */
+export const identityPrefix = (ns: MqttNamespace): string =>
+  `sunreye_${ns.plantSlug}_${ns.deviceSlug}`;
+
+/**
+ * A slug as a fragment of an HA `entity_id`.
+ *
+ * `entity_id` accepts ONLY `[a-z0-9_]`, and `slugify` emits dashes ("haus-sud"),
+ * so a slug cannot be dropped into one verbatim — HA would reject the suggestion
+ * and fall back to naming the entity from its friendly label instead, which is
+ * exactly the unpredictable id this change is trying to stop happening. Folded,
+ * not stripped, so "inverter-2" stays two readable tokens.
+ *
+ * Can return `""` (a slug of nothing but separators), which the caller's template
+ * absorbs — a doubled underscore is legal but ugly, so the empty segment is
+ * dropped rather than emitted.
+ */
+const entityIdPart = (s: string): string =>
+  s
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+
+/**
+ * The `entity_id` HA is asked to SUGGEST for an entity, minus its domain.
+ *
+ * Device-scoped, NOT plant-scoped — deliberately narrower than
+ * {@link identityPrefix}. `default_entity_id` is only a suggestion: when two
+ * entities want one, HA appends `_2` and shows both, so a collision here is
+ * visible and repairable, unlike the silent drop a duplicate `unique_id` causes.
+ * That buys the right to keep this short, and an `entity_id` is the string the
+ * operator actually types into automations and dashboard cards. So the plant slug
+ * is paid for where it prevents a silent permanent failure and skipped where it
+ * would only make every entity id longer forever.
+ */
+const suggestedId = (ns: MqttNamespace, objectId: string): string =>
+  ["sunreye", entityIdPart(ns.deviceSlug), entityIdPart(objectId)].filter(Boolean).join("_");
+
+/**
+ * Topic builders for one device: `<prefix>/<plant-slug>/<device-slug>/...`.
+ *
+ * The forecast topics live under the DEVICE namespace even though a PV forecast is
+ * a property of the plant, not of one inverter. They belong to the same HA device
+ * and they hang off the same `availability_topic` — which reports whether THIS
+ * BRIDGE is alive, not whether the plant exists — so hoisting them to
+ * `<prefix>/<plant-slug>/forecast` would give those two entities an availability
+ * topic rooted somewhere their own state topic is not. Worth revisiting only if a
+ * plant ever has two bridges, which would need a plant-level `status` topic first.
+ */
+export function topicsFor(prefix: string, ns: MqttNamespace) {
+  const base = `${prefix}/${ns.plantSlug}/${ns.deviceSlug}`;
   return {
     base,
     availability: `${base}/status`,
@@ -99,7 +223,7 @@ export function discoveryConfig(
   m: ManifestMetric,
   c: EntityConstraint,
   topics: Topics,
-  profileId: string,
+  ns: MqttNamespace,
   haDevice: HaDevice,
 ): Discovery {
   const labels = m.enumLabels;
@@ -109,10 +233,10 @@ export function discoveryConfig(
   const component = c.writable ? (labels ? "select" : "number") : "sensor";
   const shared = clean({
     name: m.label,
-    unique_id: `sunreye_${profileId}_${slug(m.key)}`,
+    unique_id: `${identityPrefix(ns)}_${slug(m.key)}`,
     // Replaces deprecated `object_id` (removed in HA Core 2026.4). HA derives the
     // suggested entity_id from this; it must include the component domain.
-    default_entity_id: `${component}.sunreye_${slug(m.key)}`,
+    default_entity_id: `${component}.${suggestedId(ns, m.key)}`,
     state_topic: topics.state(m),
     availability_topic: topics.availability,
     unit_of_measurement: m.unit ?? undefined,
@@ -182,7 +306,7 @@ export const forecastObjectId = (variant: ForecastVariant): string =>
  */
 export function forecastDiscoveryConfig(
   topics: Topics,
-  profileId: string,
+  ns: MqttNamespace,
   haDevice: HaDevice,
   variant: ForecastVariant,
 ): Discovery {
@@ -191,8 +315,8 @@ export function forecastDiscoveryConfig(
     component: "sensor",
     config: {
       name: FORECAST_VARIANT_LABEL[variant],
-      unique_id: `sunreye_${profileId}_${key}`,
-      default_entity_id: `sensor.sunreye_${profileId}_${key}`,
+      unique_id: `${identityPrefix(ns)}_${key}`,
+      default_entity_id: `sensor.${suggestedId(ns, key)}`,
       state_topic: topics.forecastState(variant),
       json_attributes_topic: topics.forecastAttrs(variant),
       availability_topic: topics.availability,

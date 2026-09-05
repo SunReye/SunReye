@@ -36,33 +36,21 @@ export type Blocker =
  */
 export type PriceRegime = "none" | "waiting" | "pre-shape" | "spend-down" | "absorb";
 
-/** One tick's decision plus the live readings it was made from. */
-export interface DecisionPoint {
-  /** Tick time, epoch ms. */
-  t: number;
-  /** True when the tick only simulated — nothing was written. */
-  shadow: boolean;
-  pvW: number;
-  /** House load the decision used, W; null when the plant offers none. */
-  loadW: number | null;
-  /** Live EV draw, W; null when EVCC is off or unreachable. */
-  evChargeW: number | null;
-  /** PV that can never reach the grid (load + EV when not already in it), W. */
-  localSinkW: number;
-  /** The shave threshold applied this tick, W. */
-  thresholdW: number;
-  /** Charge-current target the decision landed on, A. */
-  targetA: number;
-  /** Register value read *before* this tick's write, A; null when unreadable. */
-  liveA: number | null;
-  /** Battery voltage used for the W→A conversion, V. */
-  batteryV: number;
-  /** Measured charge power, W; null when `battery.power` is unmapped. */
-  chargeW: number | null;
-  /** Measured grid export, W; null when `grid.power` is unmapped. */
-  exportW: number | null;
-  socPct: number;
-}
+/**
+ * There is no `DecisionPoint` any more (#172).
+ *
+ * What a tick decided is a READING now, stored in `metrics_raw` under the device
+ * slug `optimizer` and read back over `/api/history` and `/api/history/rollup`
+ * like any other device's series. The shape this replaced was a wire type for a
+ * 2 880-slot in-memory ring: 24 hours of decisions, gone on restart, with no
+ * rollups, no CSV export, no custom charts and no archive round trip.
+ *
+ * It also carried the plant's own measurements (`pvW`, `loadW`, `evChargeW`,
+ * `batteryV`, `chargeW`, `exportW`, `socPct`) beside the decision, because it
+ * was the only thing a chart could read. Those are `pv.total.power`,
+ * `load.power`, `ev.charge.power`, `battery.voltage`, `battery.power`,
+ * `grid.power` and `battery.soc`, on the devices that measure them.
+ */
 
 /** One projected forecast slot. */
 export interface PlanSlot {
@@ -199,27 +187,21 @@ export interface AutomationPlanView {
   peakShaving: PeakShavingPlans | null;
 }
 
-/** Payload of `GET /api/automations/history`. */
-export interface AutomationHistoryView {
-  /** Engine tick cadence, ms — the nominal spacing between points. */
-  tickMs: number;
-  /** Ring size, i.e. how many points the window can hold at most. */
-  capacity: number;
-  peakShaving: DecisionPoint[];
-}
-
 /**
- * One frame of the `automations` topic: pushed after every engine tick (and once
- * as the subscribe-time snapshot, then carrying the full ring in `history`).
+ * One frame of the `automations` topic: pushed after every engine tick, and once
+ * as the subscribe-time snapshot.
+ *
+ * ONE VARIANT, not two. The snapshot used to carry a whole decision ring in a
+ * `history` field that every later frame omitted, so a client had to sniff which
+ * kind of frame it was holding. What each tick decided is history in
+ * `metrics_raw` now, so this topic carries only the two things a hypertable must
+ * never hold: LIVE ENGINE STATE (error strings, blockers, a countdown) and a
+ * FORECAST.
  */
 export interface AutomationStreamMessage {
   /** Engine cadence, ms — the countdown base for "next decision in …". */
   tickMs: number;
   status: PeakShavingStatus;
-  /** The decision point this tick appended; null when the tick decided nothing. */
-  point: DecisionPoint | null;
-  /** Full ring backfill; present only on the socket-open snapshot. */
-  history?: DecisionPoint[];
   /** Today/tomorrow projections, recomputed per tick; null without a forecast. */
   plan: PeakShavingPlans | null;
 }

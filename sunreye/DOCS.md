@@ -34,10 +34,22 @@ Assistant by themselves. To use a different broker, set `mqtt_broker_url`
 ## Direct access & REST API
 
 Ingress is the primary door. To reach SunReye without ingress — for the
-`/api/v1` REST API or a plain browser tab — map the disabled-by-default port
-**8100** in the addon's network configuration. UI and API share that port;
-third-party integrations call `http://<host>:8100/api/v1/...` with an API key
-from the `api_keys` option (`Authorization: Bearer <key>` or `x-api-key`).
+`/api/v1` REST API or a plain browser tab — assign a host port to the
+disabled-by-default **8099** in the addon's network configuration. Dashboard
+and API share that port; third-party integrations call
+`http://<host>:<port>/api/v1/...` with an API key from the `api_keys` option
+(`Authorization: Bearer <key>` or `x-api-key`).
+
+> **Changed in this release.** The direct port used to be **8100**, served by a
+> separate nginx vhost. The server serves the dashboard itself now, so there is
+> one listener and it is 8099 — the same port ingress uses. If you had mapped
+> 8100, that mapping is gone and you need to assign a host port to 8099
+> instead. Two consequences worth knowing: nginx used to answer 8099 with
+> `allow 172.30.32.2; deny all`, keeping other add-ons on Home Assistant's
+> internal network away from it, and one socket cannot both allow-list the
+> Supervisor and accept your LAN — so another add-on can now reach the login
+> page. It is rate-limited and ingress grants no elevated trust, so this is not
+> a way into your data, but it is less isolation than before.
 
 Leave `secure_cookies` off unless Home Assistant itself is served over HTTPS —
 over plain HTTP the browser drops `Secure` session cookies and login silently

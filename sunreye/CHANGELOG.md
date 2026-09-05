@@ -1,5 +1,159 @@
 # Changelog
 
+<!--
+  This preamble is hand-written and version-independent. release-please owns the
+  "## [version]" sections below it, and scripts/addon-changelog.mjs rewrites the
+  body of one of those sections in place — neither touches anything above the
+  first "## [", so this survives a release. Fold it into the generated 2.0.0
+  section (or delete it) once 2.0.0 is out and the note has done its job.
+-->
+
+## Read this before updating to 2.0.0
+
+**2.0.0 rebuilds how readings are stored, and renames your Home Assistant entities once.** Those are
+the two breaking changes that touch your instance. A third one only concerns you if you **author or
+share inverter profiles** — see "If you author or share inverter profiles" below.
+
+- **Your Home Assistant entity ids change — once, and then never again.** Read the section below
+  before you update: **dashboards, automations, scripts and template sensors that name a
+  `sensor.sunreye_*` entity have to be re-pointed one time.** Home Assistant records history against
+  the entity id, so a new entity starts a fresh history; your old recorded data stays under the old
+  entity until you delete it. If keeping one continuous history matters to you, rename the new entity
+  to the old entity id in Home Assistant — it offers to move the long-term statistics across.
+- **The upgrade is in place and automatic.** There is nothing to export, reinstall or restore. Update
+  the addon and it happens.
+- **Take a backup first anyway.** This release moves data. The addon writes one for you; keep it
+  until you have seen a few days of charts.
+
+### Your entities are renamed once, to something that will never move again
+
+Until 2.0.0 every entity was named after the **inverter profile**: the topics, the `unique_id` Home
+Assistant keys entities on, and the Home Assistant device were all built from the profile's id. That
+was a bug, and a bad one. Correcting a typo in a profile id, or switching a mis-detected profile for
+the right one, **renamed every entity you had** — and because a discovery announcement is retained on
+the broker, the old entities did not disappear, they were left behind as permanent duplicates that
+never update again. Nothing warned you; the charts and cards just went quiet.
+
+Identity now comes from your **plant name** and **device name** instead, which are frozen when you
+first set them and cannot move afterwards. Concretely:
+
+| | Before (1.x) | After (2.0.0) |
+| --- | --- | --- |
+| MQTT topic | `sunreye/deye-sg05lp3/pv/power` | `sunreye/<plant>/<device>/pv/power` |
+| `unique_id` | `sunreye_deye-sg05lp3_pv_power` | `sunreye_<plant>_<device>_pv_power` |
+| Entity id | `sensor.sunreye_pv_power` | `sensor.sunreye_<device>_pv_power` |
+| HA device | `sunreye_deye-sg05lp3` | `sunreye_<plant>_<device>` |
+
+`<plant>` and `<device>` are the machine names taken from the plant name and inverter name you are
+asked for on first open (see below) — so with a plant called "Haus Süd" and the default inverter
+name, PV power becomes `sensor.sunreye_inverter_pv_power` and its `unique_id` becomes
+`sunreye_haus-sud_inverter_pv_power`.
+
+**What you need to do, once:** after the update, open Home Assistant, check your dashboards and
+search your automations, scripts and template sensors for `sunreye_` — anything still on an old name
+needs the new one. Searching for `sensor.sunreye_` in Settings → Automations & Scenes, and in your
+`configuration.yaml`, finds all of them. Renaming an entity in Home Assistant is also fine if you
+prefer your old ids: the new entity is the one receiving data, so rename it to whatever your
+automations already say.
+
+**The old entities are cleaned up for you.** SunReye clears the retained announcements it made under
+the old scheme, once, right after it has announced the new ones — so you are never left with no
+entities, and you do not end up with two of everything. It only ever touches announcements it made
+itself; nothing belonging to another integration is affected.
+
+**Nothing is announced under a placeholder.** Home Assistant discovery is held until you have given
+your plant and inverter their names, precisely because a retained announcement under the wrong name
+is not something a later rename can take back. That is why the form below is required rather than
+optional.
+
+### Your history comes back in two stages
+
+The update itself is a catalogue-only step that takes under a second, and live data works from the
+moment it finishes. Your **pre-update history is replayed separately**, out of the boot chain,
+because on a Home Assistant box that part takes minutes rather than seconds.
+
+Until that backfill has run, charts and statistics cover only the time since the update. SunReye
+tells you so rather than drawing a partial answer: a range that reaches back past the update is
+refused with an explanation instead of quietly reporting a smaller number. **You can defer the
+backfill** and run it when it suits you; it is resumable, so interrupting it — including a power cut
+— loses nothing and duplicates nothing.
+
+### You are asked for two names, once
+
+1.2.0 had a single inverter setting and no notion of a site or a device. 2.0.0 needs both, and it can
+create the records but not invent the names, so on first open after the update it asks for a **plant
+name** and an **inverter name** (pre-filled from your profile) on one short form. Home Assistant MQTT
+discovery is held until both are set, so nothing is announced under a placeholder.
+
+These two names are what your entity ids are built from, and they are frozen once set — that is the
+whole point of asking. Their labels stay editable afterwards; only the machine names underneath are
+fixed, so you can rename your plant on screen without renaming a single entity.
+
+### If you author or share inverter profiles
+
+**Skip this if you only install profiles.** Nothing you have installed stops working: 2.0.0 reads
+every profile published so far, exactly as before.
+
+Profiles carry a `schemaVersion`, and 2.0.0 writes a new one. Profiles built by 2.0.0 — or by
+`@sunreye/profile-sdk` 3.0.0 — declare `schemaVersion: 3`, while **every SunReye 1.x accepts version
+1 and nothing else** and refuses anything newer outright. Because profiles travel through a shared
+git profile source, that break lands on people who have not updated yet: if you rebuild an existing
+profile, or add a new one, to a source others use, every install still on 1.x fails to load it.
+
+What to do, if you maintain a shared source:
+
+- Keep the currently published v1 build where it is until the people using it have updated. It keeps
+  working on 2.0.0 as well, so there is no rush to replace it.
+- Only publish a rebuilt (v3) profile once the installs reading that source are on 2.0.0.
+- If you author with `@sunreye/profile-sdk`, note it is now **3.0.0** — a major, precisely so this
+  does not reach you as an automatic upgrade. See its changelog before moving your range up.
+
+### Also new: take your whole instance out as one file
+
+`export` writes every reading, your plant setup and your settings to one portable archive, and
+`import` reads it back — into another machine, or into a future SunReye whose storage layout has
+changed again. The archive names devices and metrics the way the API and your Home Assistant
+entities already do, and refers to no internal id, which is why an upgrade like this one should not
+be needed again.
+
+## [2.0.0](https://github.com/SunReye/SunReye/compare/addon-v1.2.0...addon-v2.0.0) (2026-08-30)
+
+
+### ⚠ BREAKING CHANGES
+
+* **db:** a reading is identified by a device and a metric instead of a profile id and a metric name. The v2 schema replaces both 1.x rollup generations with one. The upgrade from 1.2.0 is in place and automatic — a sub-second catalogue step during start-up, after which live data works — followed by a separate, resumable backfill that replays your pre-update history and can be deferred. Until that backfill has run, charts cover only the time since the update, and a range reaching further back is refused with an explanation rather than answered partially. ([59de72d](https://github.com/SunReye/SunReye/commit/59de72d8d5912af801534f6ece143a2402744f10))
+* **mqtt:** Home Assistant identity moves off the inverter profile id and onto your plant and device names, so every SunReye entity id, `unique_id`, MQTT topic and Home Assistant device is renamed once. Dashboards, automations, scripts and template sensors naming a `sensor.sunreye_*` entity have to be re-pointed one time; the retained announcements made under the old scheme are cleared for you, once, right after the new ones are announced. Read "Read this before updating to 2.0.0" at the top of the addon changelog before updating. ([0804685](https://github.com/SunReye/SunReye/commit/08046851e12fd51da18b295ffc0cb750cf209648))
+* **server:** on first open after the update the instance asks once for a plant name and an inverter name, and holds Home Assistant MQTT discovery until both are set, so nothing is ever announced under a placeholder. ([5633f5d](https://github.com/SunReye/SunReye/commit/5633f5d958ee739581c4039d62ea461a05c45ecc))
+* **server:** the `activeProfile` global is gone. Devices are read from the `devices` table as `DeviceInstance` values whose capabilities are derived from their roles, so the runtime, the MQTT bridge, the automation engine and the write path address a device rather than the one active profile. ([8add910](https://github.com/SunReye/SunReye/commit/8add910ae79e6265864aaa2e2fdcdf30ac014494))
+* **auth:** configuration reads are admin-gated. `GET /api/profiles/updates` shipped ungated and is now `requireAdmin`, so a client polling a configuration endpoint without admin credentials is now refused. ([3a353a3](https://github.com/SunReye/SunReye/commit/3a353a35ffd458655cc88ed2c0e67f1a88377db4))
+* **ws:** the five legacy per-topic WebSocket routes are gone. Everything runs over the multiplexed `/ws`, authorization is decided per subscribe frame rather than at the upgrade, and the envelope publishes on the plain topic name — the `mux:` prefix is gone. ([33ec667](https://github.com/SunReye/SunReye/commit/33ec6678d46c76b8ae34b83bc0fb27a4c5dfdca6))
+* **server:** `GET /api/automations/history` is removed, along with the in-memory decision ring behind it and the `DecisionPoint` wire type. The optimizer is a device now, so its decisions are rows in `metrics_raw` read through `/api/history` and `/api/history/rollup` under the `optimizer` slug. The `automations` topic stays; its `history` and `point` fields do not. ([4ce8057](https://github.com/SunReye/SunReye/commit/4ce8057111828ec8d3877940b2eaa11f53340924))
+* **web:** the `/system` page is retired — each power-flow node now opens onto its own readings. ([dd77bcb](https://github.com/SunReye/SunReye/commit/dd77bcbca06e063750b8b40c2597b45f259124af))
+* **inverter-core:** a profile built with 2.0.0 is refused by every SunReye 1.x install. The profile `schemaVersion` moved 1 → 2 ([0c3a239](https://github.com/SunReye/SunReye/commit/0c3a23909ab73816fb5c2f90a6ffc1988c1f38bf)) → 3, and 1.x validates `schemaVersion: 1` and nothing else, so it rejects any profile emitted by these builders or by `@sunreye/profile-sdk` 3.0.0 outright. Profiles are distributed through a shared git profile source, so this lands on people who have *not* updated: rebuild or newly author a profile in a shared source and every install still on 1.x fails to load it. Already-published v1 profiles are unaffected — 2.0.0 still reads them and upcasts on load — so the action is the author's: leave the existing v1 build in place for 1.x users, and have anyone who needs the newer build update to 2.0.0 first. ([4ae4d04](https://github.com/SunReye/SunReye/commit/4ae4d044b060c8a8299141b197948062486e12d6))
+
+### Features
+
+* **db:** build one database image carrying timescaledb_toolkit ([acafef4](https://github.com/SunReye/SunReye/commit/acafef44e91b1771578b2acc965ba5901e26295b))
+* **db:** portable export/import as a permanent, schema-independent feature ([166220b](https://github.com/SunReye/SunReye/commit/166220b80a529be0b992b876af5cb0e1cc4b98e7))
+* **db:** re-derive retention against the measured footprint ([82eeaf0](https://github.com/SunReye/SunReye/commit/82eeaf0f68bc1d8a843b3c3d81922d37b30bec4d))
+* **db:** the in-place 1.2.0 -> 2.0.0 upgrade ([dcbdb46](https://github.com/SunReye/SunReye/commit/dcbdb46ed9a6acd2c77cfaab96519e85ba8f9009))
+* **inverter-core:** sample computed-metric inputs in one atomic read ([fea7f48](https://github.com/SunReye/SunReye/commit/fea7f48eacd16930e488386afc20b268f058e7ab))
+
+
+### Bug Fixes
+
+* **addon:** derive the backup's raw-data exclusion from the live retention policy ([c6e68aa](https://github.com/SunReye/SunReye/commit/c6e68aac4a2364b9461e6389525ceac92771db4f))
+* **addon:** exclude compressed chunk data from a non-full dump ([2ec3ec3](https://github.com/SunReye/SunReye/commit/2ec3ec3871ce88981c5977ae73dd2456bec5a2f9))
+* **addon:** keep raw in the default backup once the minute tier is frozen ([3d159df](https://github.com/SunReye/SunReye/commit/3d159dfd0e3b1c8d88716f90f857502dc8dac944))
+* **addon:** restart only the server, and never lose the onboarding connection ([5a26509](https://github.com/SunReye/SunReye/commit/5a26509781a97d2d88c6576308b79ac3384dc201))
+* **addon:** serve the multiplexed live socket at exactly /ws ([ab06deb](https://github.com/SunReye/SunReye/commit/ab06deb285fb5bda0d08b8e84016d32cd41d07be))
+
+
+### Performance Improvements
+
+* **addon:** size PostgreSQL memory for a small box ([4435796](https://github.com/SunReye/SunReye/commit/443579645fc7dccaa9576805913a1e97f37c3fe1))
+* **db:** compress after 2h, checkpoint every 2h, compress WAL with zstd ([42bac87](https://github.com/SunReye/SunReye/commit/42bac87c62ab92f3f9085d367e687e766dfc4b84))
+
 ## [1.2.0](https://github.com/SunReye/SunReye/compare/addon-v1.1.1...addon-v1.2.0) (2026-07-19)
 
 

@@ -3,8 +3,8 @@
  * battery max-charge-current register while active.
  *
  * Design rules:
- * - Registers are addressed by canonical *role*, never by raw key; a profile
- *   that doesn't map a required role blocks the automation entirely.
+ * - Registers are addressed by canonical *role*, never by raw key; a device
+ *   that doesn't bind a required role blocks the automation entirely.
  * - Every write goes through the injected `write` (the runtime funnel), so the
  *   engine can never race the poll loop or open its own Modbus client.
  * - The user's charge-current value is snapshotted when the engine takes the
@@ -16,7 +16,8 @@
  *   without a DB or inverter.
  */
 
-import type { AutomationConfig } from "@SunReye/db/automation-config";
+import { type AutomationConfig, defaultAutomations } from "@SunReye/db/automation-config";
+import { resolveNominalV } from "@SunReye/db/batteries";
 import {
   type AutomationState,
   automationStateKey,
@@ -25,20 +26,21 @@ import {
   numericSnapshot,
 } from "@SunReye/db/automation-state";
 import type { WeatherConfig } from "@SunReye/db/weather";
-import { entityConstraint } from "@SunReye/inverter-core";
 import { WriteRejectedError } from "../inverter/control-writer";
-import type { CanonicalRole, InverterSample } from "@SunReye/inverter-core";
 import type {
-  DecisionPoint,
+  CanonicalRole,
+  DeviceInstance,
+  EntityConstraint,
+  InverterSample,
+} from "@SunReye/inverter-core";
+import type {
   PeakShavingPlans,
   PeakShavingRunState,
   PeakShavingStatus,
   PriceRegime,
 } from "@SunReye/contracts/automation";
-import { type DecisionLog, createDecisionLog } from "./automation-history";
 import type { EvccState } from "@SunReye/contracts/evcc";
 import type { EvccAction } from "../evcc/evcc";
-import type { ProfileContext } from "../inverter/inverter";
 import { log } from "../shared/logging";
 import {
   type Decision,
@@ -55,7 +57,7 @@ import {
   decideTargetA,
   effectivePriceConfig,
   evccAutomationInputs,
-  keyForRole,
+  roleKey,
   resolvePeakShavingBlockers,
   resolvePriceAwareBlockers,
 } from "./peak-shaving";
@@ -97,10 +99,41 @@ const INEFFECTIVE_TICKS = 3;
  * machine with fakes (no DB, no inverter, no clock).
  */
 export interface AutomationIO {
-  ctx: ProfileContext;
+  /**
+   * The device this engine steers — `../devices/registry.ts`'s instance.
+   *
+   * The engine reads ROLES off it and nothing else. There is deliberately no
+   * profile here: which integration tier described the machine is provenance,
+   * never a behavioural input, and the state below is namespaced by
+   * {@link DeviceInstance.id} so a corrected or swapped profile cannot orphan a
+   * held register.
+   */
+  device: DeviceInstance;
+  /**
+   * The bounds a register declares, or null when nothing declares any.
+   *
+   * A seam rather than the profile it comes from: the engine clamps a target
+   * into the register's own range before writing, which is a TRANSPORT fact
+   * (min/max/enum on a register map) and not something a role can express. A
+   * device with no register map behind it simply declares none, and the write
+   * funnel remains the authority that refuses an out-of-range write.
+   */
+  constraint(key: string): EntityConstraint | null;
   write(key: string, value: number): Promise<void>;
   getConfig(): Promise<AutomationConfig>;
   getWeather(): Promise<WeatherConfig>;
+  /**
+   * The pack voltage `batteries.nominal_v` states, or null when it cannot say.
+   *
+   * Its own accessor rather than a field read off `getWeather()`, because the two
+   * are not the same number. `weather.forecast.battery` is the DERIVED plant pack
+   * and its `nominalV` is "the first stated value" across however many packs
+   * exist — an arbitrary pick when they disagree, which is fine for a forecast
+   * and is not fine for the divisor of a charge-current register write. This one
+   * returns null on a disagreement so the chain falls through to a value the
+   * operator stated explicitly (see `statedBatteryV`).
+   */
+  getPackNominalV(): Promise<number | null>;
   getForecast(weather: WeatherConfig): Promise<SolarForecast | null>;
   /**
    * Representative house load for the rest of the day, W — the same figure the
@@ -128,6 +161,23 @@ export interface AutomationIO {
   loadState(): Promise<AutomationState>;
   saveState(next: AutomationState): Promise<void>;
   now(): number;
+  /**
+   * Store one tick's decision — the write seam every other device's readings go
+   * through (`../inverter/device-writer.ts`), reached via
+   * `./optimizer-registrar.ts`.
+   *
+   * Called ONCE per tick that actually decided something, after the status is
+   * final, with the sample's own instant. Blocked, stale and plainly-disabled
+   * ticks decided nothing and record nothing — a gap in the series is the truth
+   * about them, and a row saying "0 A" would not be.
+   *
+   * `localSinkW` is the one number the status does not carry.
+   *
+   * OPTIONAL, and its failures are swallowed. Steering the plant is the job;
+   * recording what was steered is bookkeeping, and a database that is down must
+   * never become an inverter that is unsteered.
+   */
+  recordDecision?(status: PeakShavingStatus, localSinkW: number, at: Date): Promise<void>;
 }
 
 export function initialStatus(): PeakShavingStatus {
@@ -173,8 +223,6 @@ const finite = (v: unknown): number | null =>
 export interface PeakShavingEngine {
   tick(): Promise<PeakShavingStatus>;
   status(): PeakShavingStatus;
-  /** Rolling decision history for the charts, oldest → newest. */
-  history(): DecisionPoint[];
   /**
    * Projections of the rest of today and of the whole of tomorrow, or null
    * when the setup can't produce one (blockers, no forecast, no fresh
@@ -190,8 +238,16 @@ export interface PeakShavingEngine {
 interface Eng {
   io: AutomationIO;
   status: PeakShavingStatus;
-  /** Rolling log of decided ticks, live and shadow alike. */
-  log: DecisionLog;
+  /**
+   * This tick's decision, waiting for the status to be final.
+   *
+   * Recorded at the END of the tick rather than where the decision is made,
+   * because the run state is not settled until then: a simulated tick decides in
+   * shadow and only afterwards calls itself `simulating`, and a decision stored
+   * mid-flight would say the wrong one of those forever. Null when the tick
+   * decided nothing.
+   */
+  pending: { localSinkW: number; at: Date } | null;
   /** Plateau the last decision settled on, W — the slew anchor; null after a release. */
   prevThresholdW: number | null;
   /** Charge ceiling the last decision settled on, A — the ramp anchor; null after a release. */
@@ -208,21 +264,21 @@ interface Eng {
   lastWrittenRegister: number | null;
 }
 
-const stateKeyOf = (io: AutomationIO) => automationStateKey(io.ctx.profile.id, PEAK_SHAVING_ID);
+const stateKeyOf = (io: AutomationIO) => automationStateKey(io.device.id, PEAK_SHAVING_ID);
 /**
  * The charge ceiling this plant is steered through, and the unit it speaks —
  * amps on a current-denominated hybrid, watts on a Victron/SMA-style device. The
  * engine plans in amps either way; only the register write and its readback
  * change unit.
  */
-const chargeLimitOf = (io: AutomationIO) => resolveChargeLimit(io.ctx.profile);
+const chargeLimitOf = (io: AutomationIO) => resolveChargeLimit(io.device);
 /** The feed-in ceiling register `grid-friendly` steers; null when unmapped. */
-const sellKeyOf = (io: AutomationIO) => keyForRole(io.ctx.profile, SELL_LIMIT_ROLE);
+const sellKeyOf = (io: AutomationIO) => roleKey(io.device, SELL_LIMIT_ROLE);
 /** Its own snapshot slot — the two registers are taken and given back separately. */
 const sellSlotOf = (io: AutomationIO) => `${stateKeyOf(io)}:sell`;
-const gridChargeKeyOf = (io: AutomationIO) => keyForRole(io.ctx.profile, GRID_CHARGE_ROLE);
+const gridChargeKeyOf = (io: AutomationIO) => roleKey(io.device, GRID_CHARGE_ROLE);
 /** The grid-charge ceiling, in whichever unit this device sets it. */
-const gridChargeLimitOf = (io: AutomationIO) => resolveGridChargeLimit(io.ctx.profile);
+const gridChargeLimitOf = (io: AutomationIO) => resolveGridChargeLimit(io.device);
 const gridChargeSlotOf = (io: AutomationIO) => `${stateKeyOf(io)}:gridcharge`;
 const gridChargeASlotOf = (io: AutomationIO) => `${stateKeyOf(io)}:gridchargeA`;
 
@@ -256,7 +312,8 @@ async function replaySnapshot(
   snapshot: number | string,
 ): Promise<boolean> {
   const { io, status } = e;
-  // Role unmapped (profile changed): the snapshot can't be replayed — orphan
+  // Role no longer bound (the device was re-described): the snapshot cannot
+  // be replayed — orphan
   // it rather than writing to a guessed register.
   if (!key) return false;
   // The state map also holds non-register snapshots (borrowed EVCC modes). One
@@ -349,7 +406,7 @@ interface LiveInputs {
    */
   liveLimit: number | null;
   liveVolt: number | null;
-  /** Measured house load, W; null when the profile maps no `load.power`. */
+  /** Measured house load, W; null when the device binds no `load.power`. */
   loadW: number | null;
   /** Power flowing *into* the battery, W; null when `battery.power` is unmapped. */
   chargeW: number | null;
@@ -357,7 +414,7 @@ interface LiveInputs {
   exportW: number | null;
   /** Current feed-in ceiling in the solar-sell register, W; null when unmapped. */
   sellLimitW: number | null;
-  /** Grid-charge enable register; null when the profile doesn't map it. */
+  /** Grid-charge enable register; null when the device does not bind it. */
   gridChargeOn: number | null;
   /** Grid-charge limit register, in its own unit; null when unmapped. */
   gridChargeLimit: number | null;
@@ -372,8 +429,8 @@ function readLive(io: AutomationIO, key: string): LiveInputs | null {
   if (nowMs - Date.parse(sample.time) > STALE_SAMPLE_MS) return null;
   /** A role's finite value from this sample; null when unmapped or unusable. */
   const byRole = (role: CanonicalRole): number | null => {
-    const roleKey = keyForRole(io.ctx.profile, role);
-    return roleKey ? finite(sample.metrics[roleKey]) : null;
+    const key = roleKey(io.device, role);
+    return key ? finite(sample.metrics[key]) : null;
   };
   const pvW = byRole("pv.total.power");
   const socPct = byRole("battery.soc");
@@ -393,7 +450,7 @@ function readLive(io: AutomationIO, key: string): LiveInputs | null {
     sellLimitW: byRole(SELL_LIMIT_ROLE),
     gridChargeOn: byRole(GRID_CHARGE_ROLE),
     gridChargeLimit: (() => {
-      const limit = resolveGridChargeLimit(io.ctx.profile);
+      const limit = resolveGridChargeLimit(io.device);
       return limit ? finite(sample.metrics[limit.key]) : null;
     })(),
     nowMs,
@@ -402,9 +459,8 @@ function readLive(io: AutomationIO, key: string): LiveInputs | null {
 
 /** Clamp a target into the register's own declared bounds. */
 function clampToRegister(io: AutomationIO, key: string, targetA: number): number {
-  const def = io.ctx.defByKey.get(key);
-  if (!def) return targetA;
-  const c = entityConstraint(def);
+  const c = io.constraint(key);
+  if (!c) return targetA;
   let clamped = targetA;
   if (c.min !== undefined) clamped = Math.max(clamped, c.min);
   if (c.max !== undefined) clamped = Math.min(clamped, c.max);
@@ -481,7 +537,7 @@ async function steerSellLimit(e: Eng, thresholdW: number, live: LiveInputs): Pro
  * readback holds the whole thing — half-claiming would leave the enable flag on
  * with no record of the current the user had set.
  *
- * The profile not mapping these roles is not an error: grid charging is simply
+ * The device not binding these roles is not an error: grid charging is simply
  * unavailable on that inverter, and the rest of price awareness works without it.
  */
 async function steerGridCharge(
@@ -703,7 +759,7 @@ function decisionInputs(args: {
 
 /** Loadpoints whose mode this automation currently holds, from persisted state. */
 function heldLoadpoints(io: AutomationIO, state: AutomationState): number[] {
-  const prefix = evccModeStateKey(io.ctx.profile.id, 0).slice(0, -1);
+  const prefix = evccModeStateKey(io.device.id, 0).slice(0, -1);
   return Object.keys(state)
     .filter((k) => k.startsWith(prefix))
     .map((k) => Number(k.slice(prefix.length)))
@@ -736,14 +792,14 @@ function claimLoadpoints(
   plan: EvPullInPlan,
   capturedAt: string,
 ): void {
-  const profileId = e.io.ctx.profile.id;
+  const deviceId = e.io.device.id;
   for (const claim of plan.claim) {
     const { loadpoint, remember } = claim;
     try {
       publishClaim(e.io, claim);
       if (!remember) continue;
-      next[evccModeStateKey(profileId, loadpoint)] = { previousValue: remember.mode, capturedAt };
-      next[evccBoostLimitStateKey(profileId, loadpoint)] = {
+      next[evccModeStateKey(deviceId, loadpoint)] = { previousValue: remember.mode, capturedAt };
+      next[evccBoostLimitStateKey(deviceId, loadpoint)] = {
         previousValue: remember.boostLimitPct,
         capturedAt,
       };
@@ -763,10 +819,10 @@ function claimLoadpoints(
  * flag, which it forgets on its own.
  */
 function releaseLoadpoints(e: Eng, next: AutomationState, plan: EvPullInPlan): void {
-  const profileId = e.io.ctx.profile.id;
+  const deviceId = e.io.device.id;
   for (const { loadpoint, restoreMode } of plan.release) {
-    const modeSlot = evccModeStateKey(profileId, loadpoint);
-    const limitSlot = evccBoostLimitStateKey(profileId, loadpoint);
+    const modeSlot = evccModeStateKey(deviceId, loadpoint);
+    const limitSlot = evccBoostLimitStateKey(deviceId, loadpoint);
     const snap = next[modeSlot];
     if (!snap) continue;
     const limit = numericSnapshot(next[limitSlot]?.previousValue) ?? BOOST_LIMIT_DISABLED;
@@ -818,38 +874,38 @@ async function applyEvPullIn(
 const releaseEvPullIn = (e: Eng): Promise<void> =>
   applyEvPullIn(e, "none", false, BOOST_LIMIT_DISABLED);
 
-/** Append this tick's decision + the readings behind it to the chart log. */
-function logDecision(
-  e: Eng,
-  decision: Decision,
-  live: LiveInputs,
-  args: {
-    shadow: boolean;
-    targetA: number;
-    limit: SteeredLimit;
-    batteryV: number;
-    evcc: EvccState | null;
-  },
-): void {
-  e.log.push({
-    t: live.nowMs,
-    shadow: args.shadow,
-    pvW: live.pvW,
-    // Both already resolved onto the status by `recordDecision` (measured load
-    // else baseline; EV null when EVCC is off).
-    loadW: e.status.loadW,
-    evChargeW: e.status.evChargeW,
-    localSinkW: decision.localSinkW,
-    thresholdW: decision.thresholdW,
-    targetA: args.targetA,
-    // Charted against the plan, so the readback is reported in amps whatever
-    // unit the register itself speaks.
-    liveA: live.liveLimit === null ? null : limitAmps(args.limit, live.liveLimit, args.batteryV),
-    batteryV: args.batteryV,
-    chargeW: live.chargeW,
-    exportW: live.exportW,
-    socPct: live.socPct,
-  });
+/**
+ * Mark this tick as one that DECIDED, so the end of the tick stores it.
+ *
+ * What is deliberately not captured here: `pvW`, `loadW`, `evChargeW`,
+ * `batteryV`, `chargeW`, `exportW`, `socPct` and the register readback. Every
+ * one of them is a MEASUREMENT that already has a device and a series of its
+ * own — `pv.total.power`, `load.power`, `ev.charge.power`, `battery.voltage`,
+ * `battery.power`, `grid.power`, `battery.soc`,
+ * `setting.battery.max_charge_current` — stored at the poll cadence by the
+ * device that measured them. The ring this replaced carried them because it was
+ * the only thing a chart could read; `/api/history` is the other thing.
+ */
+function markDecided(e: Eng, decision: Decision, live: LiveInputs): void {
+  e.pending = { localSinkW: decision.localSinkW, at: new Date(live.nowMs) };
+}
+
+/**
+ * Hand the tick's decision to the write seam, if it decided anything.
+ *
+ * Failures are swallowed on purpose, and loudly: the register write already
+ * happened, so a full buffer or an unreachable database is a gap in the history,
+ * not a plant left unsteered.
+ */
+async function flushDecision(e: Eng): Promise<void> {
+  const pending = e.pending;
+  e.pending = null;
+  if (!pending || !e.io.recordDecision) return;
+  try {
+    await e.io.recordDecision(e.status, pending.localSinkW, pending.at);
+  } catch (error) {
+    logger.warn("storing the optimizer's decision failed: {error}", { error });
+  }
 }
 
 /**
@@ -871,7 +927,7 @@ async function steer(
   const evcc = io.getEvcc();
   const ev = evccAutomationInputs(evcc);
   const load = loadFrame(live, baselineLoadW);
-  const batteryV = liveBatteryV(live, ps, weather);
+  const batteryV = liveBatteryV(live, ps, weather, await io.getPackNominalV());
   const decision = decideTargetA(
     decisionInputs({
       e,
@@ -938,7 +994,7 @@ async function steer(
       boostFloorPct(weather, ps),
     );
   }
-  logDecision(e, decision, live, { shadow: ps.shadowMode, targetA, limit, batteryV, evcc });
+  markDecided(e, decision, live);
 }
 
 /**
@@ -951,7 +1007,7 @@ async function planInputs(
 ): Promise<{ inputs: DecisionInputs & { forecast: ForecastSlice }; limits: PlanLimits } | null> {
   const { io } = e;
   const [cfg, weather] = await Promise.all([io.getConfig(), io.getWeather()]);
-  if (resolvePeakShavingBlockers(io.ctx.profile, weather, cfg.peakShaving.mode).length > 0) {
+  if (resolvePeakShavingBlockers(io.device, weather, cfg.peakShaving.mode).length > 0) {
     return null;
   }
   const ready = liveOrHold(io);
@@ -970,7 +1026,7 @@ async function planInputs(
     ev: evccAutomationInputs(evcc),
     evcc,
     load: loadFrame(live, await io.getBaselineLoadW(weather)),
-    batteryV: liveBatteryV(live, ps, weather),
+    batteryV: liveBatteryV(live, ps, weather, await io.getPackNominalV()),
     prices: await io.getPrices(),
     tariff: await io.getTariff(),
   });
@@ -979,22 +1035,69 @@ async function planInputs(
 }
 
 /**
+ * The last-resort pack voltage: the automation field's own schema default.
+ *
+ * Read from `defaultAutomations` rather than written as `51.2`, so the number
+ * cannot drift away from the schema that supplies it everywhere else.
+ */
+const FALLBACK_NOMINAL_V = defaultAutomations.peakShaving.nominalBatteryV;
+
+/**
+ * The pack voltage the plant STATES, across all three places it has lived.
+ *
+ * The value has moved twice — the automations page, then the plant's forecast
+ * record, now `batteries.nominal_v` on the pack row — and until this function
+ * existed the engine read only the two LEGACY homes. The newest one was written
+ * by provisioning and read by nobody, so the newest statement of a number that
+ * scales every commanded charge current was dead.
+ *
+ * The order and the reasons for it live in ONE place,
+ * `resolveNominalV` (`@SunReye/db/batteries`), rather than as a run of `??` here:
+ * this value has now moved twice, and the next move must not be able to forget an
+ * arm. What that function guarantees, and what must not be undone, is that
+ * nothing DEFAULTS on the way down — a default would shadow the legacy value with
+ * 51.2, and an install that set 48 V on the automations page would silently start
+ * charging 7 % below what it asked for, forever, with nothing to show for it.
+ *
+ * The floor at the end is this function's own, and it is not redundant. Every
+ * value below is scaled INTO a register write: a zero divides to Infinity, a
+ * negative to a negative current, a NaN to NaN. All three are refused by the
+ * schemas — and `readSetting` silently safe-parses a hand-edited row back to its
+ * default rather than failing, so "refused by the schema" is not "cannot
+ * arrive". This is register-writing code; it states its own floor.
+ */
+function statedBatteryV(
+  packNominalV: number | null,
+  ps: AutomationConfig["peakShaving"],
+  weather: WeatherConfig,
+): number {
+  const stated = resolveNominalV(
+    usableVolts(packNominalV),
+    usableVolts(weather.forecast.battery?.nominalV),
+    usableVolts(ps.nominalBatteryV),
+  );
+  return stated ?? FALLBACK_NOMINAL_V;
+}
+
+/** A voltage a current can be divided out of, or null so the chain falls onward. */
+const usableVolts = (v: number | null | undefined): number | null =>
+  typeof v === "number" && Number.isFinite(v) && v > 0 ? v : null;
+
+/**
  * The measured pack voltage when the reading is sane, the stated one otherwise.
  *
- * Three sources in order, because the stated value moved. It describes the
- * battery, so it now lives with the plant (Settings -> Inverter); it used to be
- * a peak-shaving field, and an install that set 48 V there must keep charging at
- * 48 V until someone restates it. So: the live reading, then the plant's, then
- * the legacy automation field — which is why the plant's is nullable rather than
- * defaulted, since a default would shadow the legacy value with 51.2.
+ * The live reading wins over every stated value because it is the pack's voltage
+ * right now, where all three stated ones are nameplate figures — see
+ * {@link statedBatteryV} for the order those three resolve in.
  */
 function liveBatteryV(
   live: LiveInputs,
   ps: AutomationConfig["peakShaving"],
   weather: WeatherConfig,
+  packNominalV: number | null,
 ): number {
   if (live.liveVolt !== null && live.liveVolt > 0) return live.liveVolt;
-  return weather.forecast.battery?.nominalV ?? ps.nominalBatteryV;
+  return statedBatteryV(packNominalV, ps, weather);
 }
 
 /**
@@ -1066,12 +1169,19 @@ async function decideTick(
     return status;
   }
   // Reported in amps — the unit every other figure on the automation page uses —
-  // so a watt-denominated register reads back through the pack voltage.
+  // so a watt-denominated register reads back through the pack voltage. Resolved
+  // from the same chain as the target, or the page would report a readback the
+  // engine never steered against.
+  const packNominalV = await io.getPackNominalV();
   status.liveA =
     ready.live.liveLimit === null
       ? null
       : Math.round(
-          limitAmps(ready.limit, ready.live.liveLimit, liveBatteryV(ready.live, ps, weather)),
+          limitAmps(
+            ready.limit,
+            ready.live.liveLimit,
+            liveBatteryV(ready.live, ps, weather, packNominalV),
+          ),
         );
   status.liveSellLimitW = ready.live.sellLimitW;
 
@@ -1120,6 +1230,7 @@ async function runTick(e: Eng): Promise<PeakShavingStatus> {
   const { io, status } = e;
   try {
     status.lastError = null;
+    e.pending = null;
     const cfg = await io.getConfig();
     const ps = cfg.peakShaving;
     status.mode = ps.mode;
@@ -1128,7 +1239,7 @@ async function runTick(e: Eng): Promise<PeakShavingStatus> {
     // Blockers are resolved for disabled runs too: the settings form gates its
     // enable switch on them, and the simulation needs the same go/no-go call.
     const weather = await io.getWeather();
-    status.blockers = resolvePeakShavingBlockers(io.ctx.profile, weather, ps.mode);
+    status.blockers = resolvePeakShavingBlockers(io.device, weather, ps.mode);
     status.priceBlockers = resolvePriceAwareBlockers(weather);
     status.usableKwh = weather.forecast.battery?.usableKwh ?? null;
     if (!status.enabled) return await simulateTick(e, ps, weather);
@@ -1141,6 +1252,9 @@ async function runTick(e: Eng): Promise<PeakShavingStatus> {
     return status;
   } finally {
     status.lastTickAt = new Date(io.now()).toISOString();
+    // Last, so the stored decision carries the settled state and the tick's own
+    // timestamps rather than a half-written status.
+    await flushDecision(e);
   }
 }
 
@@ -1155,7 +1269,7 @@ export function createPeakShavingEngine(io: AutomationIO): PeakShavingEngine {
   const e: Eng = {
     io,
     status: initialStatus(),
-    log: createDecisionLog(),
+    pending: null,
     lastWrittenRegister: null,
     prevThresholdW: null,
     prevTargetA: null,
@@ -1192,7 +1306,6 @@ export function createPeakShavingEngine(io: AutomationIO): PeakShavingEngine {
   return {
     tick,
     status: () => e.status,
-    history: () => e.log.points(),
     plan,
     release: () => release(e, "disabled"),
   };

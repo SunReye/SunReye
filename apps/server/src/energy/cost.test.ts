@@ -1,5 +1,6 @@
 import type { EnergyField } from "@SunReye/contracts/energy";
 import { spotPrices } from "@SunReye/db/schema/spot-price";
+import { defaultSpotPriceConfig } from "@SunReye/db/spot-price-config";
 import { type TariffConfig, tariffConfigSchema } from "@SunReye/db/tariff";
 import type { CanonicalRole, InverterProfile, InverterSample } from "@SunReye/inverter-core";
 import { afterAll, afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
@@ -36,7 +37,36 @@ afterAll(() => {
   mock.module("@SunReye/db", () => ({ ...realDbExports }));
   mock.module("../settings/settings", () => ({ ...realSettingsExports }));
   mock.module("../shared/state", () => ({ ...realStateExports }));
+  mock.module("../settings/display-settings", () => ({ ...realDisplaySettingsExports }));
+  mock.module("../settings/spot-price-settings", () => ({ ...realSpotPriceSettingsExports }));
 });
+
+// The plant zone now lives in `plants.time_zone`, read through the cached plant
+// accessor, which PROVISIONS the row on first use. That is a write, and this
+// suite's `execute` stand-in answers from a queue meant for the cost queries —
+// so a provisioning round trip here would consume the rows a test queued and
+// then fail on a plant it could not create. The zone is pinned instead, to the
+// host process zone: the same value the `app_settings`-era default resolved to,
+// and the zone the window Dates below are built in, so the period keys stay
+// deterministic per run.
+const realDisplaySettings = await import("../settings/display-settings");
+const realDisplaySettingsExports = { ...realDisplaySettings };
+mock.module("../settings/display-settings", () => ({
+  ...realDisplaySettings,
+  getPlantTimeZone: async () => Intl.DateTimeFormat().resolvedOptions().timeZone,
+}));
+
+// Same reason for the bidding zone, which the §51 path reads before it asks for
+// stored prices: it is `plants.bidding_zone` now, behind the same provisioning
+// accessor. Pinned to the schema default — the value the `app_settings`-era
+// "no row" case resolved to — so what these tests are about (which slots make an
+// exported kWh worthless) is unchanged.
+const realSpotPriceSettings = await import("../settings/spot-price-settings");
+const realSpotPriceSettingsExports = { ...realSpotPriceSettings };
+mock.module("../settings/spot-price-settings", () => ({
+  ...realSpotPriceSettings,
+  getSpotPriceConfig: async () => defaultSpotPriceConfig,
+}));
 
 let queryResults: Array<Array<Record<string, unknown>>> = [];
 const execute = mock(async () => ({ rows: queryResults.shift() ?? [] }));

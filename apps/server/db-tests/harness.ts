@@ -13,6 +13,29 @@
  * database-free and fast. Run with `bun run test:db`.
  */
 import { SQL } from "bun";
+import dotenv from "dotenv";
+
+/**
+ * Load `apps/server/.env` BEFORE anything reads {@link baseUrl}.
+ *
+ * Without this, whether the database layer runs at all depended on whether some
+ * *other* module in the file set happened to pull `dotenv/config` in first — the
+ * server env package does, `bun:test` and `drizzle-orm` do not. The symptom was
+ * silent and asymmetric: `bun run test:db` reported "124 pass, 61 skip, 0 fail"
+ * with `toolkit-constructs.test.ts` and `archive.test.ts` skipped in full, and
+ * `bun test <a single db-test file>` — the normal way to iterate on one — skipped
+ * EVERY time. A skip is not a failure, so every gate stayed green while the 61
+ * specs that pin the toolkit results the rollup design rests on ran nowhere.
+ *
+ * The path is explicit rather than `dotenv/config` because that resolves `.env`
+ * from the process cwd, which is the repo root for `bun run test:db` and the
+ * package directory otherwise — the same order-dependence in another costume.
+ *
+ * `override: false` is the default and is load-bearing: a `DB_TEST_URL` or
+ * `DATABASE_URL` exported by CI, or by an operator pointing this at a throwaway
+ * container, must always win over the checked-out file.
+ */
+dotenv.config({ path: new URL("../.env", import.meta.url).pathname, quiet: true });
 
 /**
  * The ONLY database this layer may touch. Hardcoded, not configurable: the
@@ -47,9 +70,17 @@ export function assertTestDatabase(url: string): void {
   }
 }
 
-/** Base URL these tests derive their target from, or null when unset. */
+/**
+ * Base URL these tests derive their target from, or null when unset.
+ *
+ * An EMPTY variable counts as unset. `??` alone accepts `""`, which made
+ * `DB_TEST_URL= bun run test:db` throw out of `new URL("")` instead of skipping
+ * — a footgun on the one layer whose whole safety story is "skip when the
+ * database is unreachable". CI still cannot lose the layer silently: it fails
+ * hard when `CI` is set.
+ */
 function baseUrl(): string | null {
-  return process.env.DB_TEST_URL ?? process.env.DATABASE_URL ?? null;
+  return process.env.DB_TEST_URL || process.env.DATABASE_URL || null;
 }
 
 /** Connection URL for the test database, or null when no base URL is configured. */
@@ -122,4 +153,144 @@ async function buildTestDatabase(): Promise<string> {
   const { runMigrations } = await import("@SunReye/db/migrate");
   await runMigrations(url);
   return url;
+}
+
+/**
+ * The ONLY other database this layer may touch: a scratch one built to look like
+ * an addon-1.2.0 install, so the in-place 1.2.0 -> 2.0.0 upgrade can be run for
+ * real.
+ *
+ * A SECOND database rather than a second shape of the first, because the upgrade
+ * is a migration of a whole database: it renames relations, applies the baseline
+ * selectively and stamps a journal, none of which can share a database with specs
+ * that expect a migrated 2.0.0 schema. Its own name means those specs cannot be
+ * affected by it and it needs no row scoping.
+ */
+const LEGACY_TEST_DB = "sunreye_dbtest_120";
+
+/** Refuse any URL that does not name {@link LEGACY_TEST_DB}. Same rule, same reason. */
+export function assertLegacyTestDatabase(url: string): void {
+  const name = new URL(url).pathname.replace(/^\//, "");
+  if (name !== LEGACY_TEST_DB) {
+    throw new Error(
+      `Refusing to build the 1.2.0 upgrade fixture in ${name || "(no database)"} — only ` +
+        `${LEGACY_TEST_DB} is allowed`,
+    );
+  }
+}
+
+/** Connection URL for {@link LEGACY_TEST_DB}, or null when nothing is configured. */
+export function legacyTestDatabaseUrl(): string | null {
+  const base = baseUrl();
+  return base === null ? null : withDatabase(base, LEGACY_TEST_DB);
+}
+
+/**
+ * Drop and recreate {@link LEGACY_TEST_DB}, EMPTY apart from the TimescaleDB
+ * extension.
+ *
+ * Deliberately NOT memoized, unlike {@link resetTestDatabase}: the upgrade is a
+ * one-way transformation of a database, so a spec that wants to run it again —
+ * or to run it from a different starting state — needs a fresh one, and sharing
+ * would make the second assertion depend on the first having happened.
+ */
+export async function resetLegacyDatabase(): Promise<string> {
+  const base = baseUrl();
+  if (base === null) throw new Error("no DB_TEST_URL or DATABASE_URL configured");
+  const url = withDatabase(base, LEGACY_TEST_DB);
+  assertLegacyTestDatabase(url);
+
+  const admin = new SQL(withDatabase(base, ADMIN_DB));
+  try {
+    await admin.unsafe(`DROP DATABASE IF EXISTS ${LEGACY_TEST_DB} WITH (FORCE)`);
+    await admin.unsafe(`CREATE DATABASE ${LEGACY_TEST_DB}`);
+  } finally {
+    await admin.end();
+  }
+  const db = new SQL(url, { max: 1 });
+  try {
+    await db.unsafe("CREATE EXTENSION IF NOT EXISTS timescaledb");
+  } finally {
+    await db.end();
+  }
+  return url;
+}
+
+/**
+ * The archive layer's OWN database.
+ *
+ * `resetTestDatabase` is memoized: it drops and recreates once per process, so
+ * every spec file after the first SHARES that database and scopes its rows by
+ * its own slugs. That works for every layer except this one. The portable
+ * archive is a WHOLE-DATABASE transport — `exportArchive` walks the plant and
+ * counts what it finds — so its central assertion ("the manifest names exactly
+ * the rows I seeded") is really an assertion about the whole database, and it
+ * silently becomes an assertion about whatever ran first.
+ *
+ * That is not hypothetical. `bun test` orders files by directory read, which
+ * differs between filesystems: locally `archive.test.ts` ran first and saw its
+ * own 17,280 rows, while CI ran seven files before it and the same export
+ * reported 52,146. The spec was correct and the isolation was not.
+ *
+ * Not memoized, for the same reason {@link resetLegacyDatabase} is not: a spec
+ * that exports, imports and re-imports needs to say where it starts from.
+ */
+const ARCHIVE_TEST_DB = "sunreye_dbtest_archive";
+
+/** Refuse any URL that does not name {@link ARCHIVE_TEST_DB}. Same rule, same reason. */
+export function assertArchiveTestDatabase(url: string): void {
+  const name = new URL(url).pathname.replace(/^\//, "");
+  if (name !== ARCHIVE_TEST_DB) {
+    throw new Error(
+      `Refusing to build the archive fixture in ${name || "(no database)"} — only ` +
+        `${ARCHIVE_TEST_DB} is allowed`,
+    );
+  }
+}
+
+/** A migrated 2.0.0 database of the archive layer's own, dropped and rebuilt. */
+export async function resetArchiveDatabase(): Promise<string> {
+  const base = baseUrl();
+  if (base === null) throw new Error("no DB_TEST_URL or DATABASE_URL configured");
+  const url = withDatabase(base, ARCHIVE_TEST_DB);
+  assertArchiveTestDatabase(url);
+
+  const admin = new SQL(withDatabase(base, ADMIN_DB));
+  try {
+    await admin.unsafe(`DROP DATABASE IF EXISTS ${ARCHIVE_TEST_DB} WITH (FORCE)`);
+    await admin.unsafe(`CREATE DATABASE ${ARCHIVE_TEST_DB}`);
+  } finally {
+    await admin.end();
+  }
+
+  const { runMigrations } = await import("@SunReye/db/migrate");
+  await runMigrations(url);
+  return url;
+}
+
+/**
+ * `git show addon-v1.2.0:<path>` — the 1.2.0 schema, RECOVERED rather than
+ * transcribed.
+ *
+ * `scripts/fixture-1-2-0.ts` already does this and would be the natural thing to
+ * call, but `apps/server` cannot import from `scripts/` — it is outside tsc's
+ * `rootDir`, and `tsc -b` silently emits `scripts/*.d.ts` when you try. Reading
+ * the same tag through the same command is the next best thing: if the tag says
+ * `metrics_raw` has four columns, that is what this builds, and a future reader
+ * can diff the tag instead of trusting a copy.
+ */
+export async function showAtLegacyTag(path: string): Promise<string> {
+  const proc = Bun.spawn(["git", "show", `addon-v1.2.0:${path}`], {
+    cwd: new URL("../../../", import.meta.url).pathname,
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  const [out, err] = await Promise.all([
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+  ]);
+  if ((await proc.exited) !== 0) {
+    throw new Error(`git show addon-v1.2.0:${path} failed: ${err.trim()}`);
+  }
+  return out;
 }

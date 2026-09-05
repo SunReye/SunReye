@@ -144,7 +144,51 @@ export interface BackendOptions {
   prices?: "view" | null;
   /** `evcc` topic payload. `null` is ingest disabled — the EV card self-hides. */
   evcc?: "state" | null;
+  /**
+   * `/api/migration/status`. Absent (the default) is an instance that never ran a
+   * 1.x upgrade: nothing outstanding, no banner, the onboarding form unreachable.
+   *
+   * Overriding it is how a spec reaches the two states the shell only has in the
+   * middle of a migration — the diversion to `/#/migration` when the plant and
+   * device are unnamed, and the app-wide banner when history before the cutover
+   * has not been carried across.
+   */
+  migration?: Partial<MigrationStatusFixture>;
 }
+
+/** The migration status payload, as `apps/server/src/routes/migration.ts` sends it. */
+export interface MigrationStatusFixture {
+  onboardingRequired: boolean;
+  backfillOutstanding: boolean;
+  banner: string | null;
+  historyFrom: string | null;
+  plantName: string;
+  deviceName: string;
+  plantSlug: string;
+  deviceSlug: string;
+  slugEditable: boolean;
+  bannerSnoozed: boolean;
+  backfillRunning: boolean;
+}
+
+/**
+ * A healthy install. Every field false or null, deliberately: the shell must be
+ * unaffected by this endpoint on the overwhelming majority of instances, and a
+ * default that showed anything would put a banner on every existing spec.
+ */
+const NO_MIGRATION: MigrationStatusFixture = {
+  onboardingRequired: false,
+  backfillOutstanding: false,
+  banner: null,
+  historyFrom: null,
+  plantName: "Test plant",
+  deviceName: "Test inverter",
+  plantSlug: "test-plant",
+  deviceSlug: "inverter",
+  slugEditable: false,
+  bannerSnoozed: false,
+  backfillRunning: false,
+};
 
 export interface MockBackend {
   /** The manifest this instance serves. */
@@ -155,7 +199,16 @@ export interface MockBackend {
   readonly unhandled: readonly string[];
   /** Control frames the client wrote to the live socket, parsed. */
   readonly clientFrames: readonly unknown[];
-  /** How many times the app opened the live socket. More than one is a bug. */
+  /**
+   * How many times the app opened the live socket.
+   *
+   * Within a steady session it must stay at 1 — a second open while the first
+   * is healthy is the shell tearing its own connection down
+   * (`shell-lease-loop.spec.ts`). It is NOT a bug per se: after the server
+   * drops the socket, RECONNECTING is the required behaviour, and
+   * `ws-reconnect-backoff.spec.ts` asserts the count climbs to 2 and no
+   * further until the backoff elapses.
+   */
   readonly socketOpens: number;
   /** How many requests so far match `pattern` (substring, or regex). */
   requestCount(pattern: string | RegExp): number;
@@ -178,6 +231,22 @@ export interface MockBackend {
   readonly deniedTopics: readonly string[];
   /** Stop the automatic feed (idempotent; also runs at test end). */
   stopFeed(): void;
+  /**
+   * Drop the live socket from the SERVER side, as a restart or a proxy timeout
+   * does. The client's `close` handler is the only thing that can notice, which
+   * is why reconnection cannot be proven anywhere but here.
+   */
+  dropSocket(): void;
+  /**
+   * Delete the session server-side without telling the client.
+   *
+   * Every `/api/**` read then answers 401 — except `/api/auth/**`, which keeps
+   * serving the session the client already cached. That asymmetry is the point:
+   * it is the state a real expired or revoked session produces (the query cache
+   * still believes it is signed in), and the only one in which the Eden
+   * `onResponse` bounce is what redirects rather than the shell's own gate.
+   */
+  expireSession(): void;
 }
 
 /** Deterministic PRNG — a perf number that moves because of the fixture is noise. */
@@ -321,6 +390,8 @@ export async function mockBackend(page: Page, options: BackendOptions = {}): Pro
   const clientFrames: unknown[] = [];
   let sockets: WebSocketRoute[] = [];
   let socketOpens = 0;
+  /** Set by {@link MockBackend.expireSession}: every non-auth read 401s after it. */
+  let sessionExpired = false;
   const subscribed = new Set<string>();
   const denied: string[] = [];
   const evccSnapshot = options.evcc === null ? null : fixture.EVCC_STATE;
@@ -429,6 +500,11 @@ export async function mockBackend(page: Page, options: BackendOptions = {}): Pro
     });
     ws.onClose(() => {
       sockets = sockets.filter((s) => s !== ws);
+      // A subscription belongs to the CONNECTION, exactly as on the server: the
+      // topic list is per-socket state there too. Leaving it set would make
+      // `waitForLive` return instantly after a drop and quietly turn every
+      // reconnection assertion into a no-op.
+      if (sockets.length === 0) subscribed.clear();
     });
   });
 
@@ -480,6 +556,13 @@ export async function mockBackend(page: Page, options: BackendOptions = {}): Pro
     if (at("auth/sign-out")) return json(route, { success: true });
     if (path.includes("/api/auth/")) return json(route, null);
 
+    // A session revoked or expired server-side. Below the auth block on
+    // purpose: the client keeps the session it already cached, so the shell's
+    // own gate is satisfied and the 401 is the ONLY thing that can redirect.
+    if (sessionExpired) {
+      return json(route, { error: "Authentication required" }, 401);
+    }
+
     // ── Boot gates ──────────────────────────────────────────────────────────
     // These three decide which of the 26 routes is even reachable: `(app)`'s
     // first-run gate reads them in this order and redirects on the first one
@@ -494,6 +577,17 @@ export async function mockBackend(page: Page, options: BackendOptions = {}): Pro
     if (at("access-status")) {
       return json(route, { publicDashboard: options.publicDashboard ?? false });
     }
+    // The 1.2.0 -> 2.0.0 migration status. Read by the app shell on every load
+    // (the gate) and by the app-wide notice banner, so it has to answer for every
+    // spec, not just the ones about migrations.
+    if (at("migration/status")) {
+      return json(route, { ...NO_MIGRATION, ...options.migration });
+    }
+    if (at("migration/notice/snooze")) {
+      return json(route, { snoozedUntil: method === "DELETE" ? null : nowIso() });
+    }
+    if (at("migration/backfill")) return json(route, { backfill: "started" });
+    if (at("migration/names")) return json(route, { ok: true, ...body() });
 
     // ── Instance settings the shell loads before it renders ─────────────────
     if (at("settings/ui")) {
@@ -683,6 +777,59 @@ export async function mockBackend(page: Page, options: BackendOptions = {}): Pro
       return json(route, { id: body().id, restartRequired: false });
     }
 
+    // ── Devices ─────────────────────────────────────────────────────────────
+    if (at("connections/probe")) return json(route, { ok: true, ms: 12 });
+    if (at("connections")) return json(route, { connections: fixture.CONNECTIONS });
+    if (under("connections") && method === "PATCH") {
+      const current = fixture.CONNECTIONS.find((c) => String(c.id) === id);
+      return json(route, { ...current, ...body() });
+    }
+    if (under("connections") && method === "DELETE")
+      return json(route, { ok: true, id: Number(id) });
+    if (at("devices")) {
+      if (method === "POST") {
+        // Echo the body as the row the server would have made: the slug is the
+        // name's, the connection is resolved (an existing id) or created.
+        const b = body();
+        const choice = b.connection as { id?: number; create?: Record<string, unknown> };
+        const connection = choice.create
+          ? { id: 9, ...choice.create }
+          : (fixture.CONNECTIONS.find((c) => c.id === choice.id) ?? null);
+        return json(route, {
+          id: 42,
+          slug: String(b.name)
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, "-"),
+          name: b.name,
+          profileId: b.profileId,
+          role: b.role,
+          unitId: b.unitId,
+          connectionId: connection?.id ?? null,
+          retiredAt: null,
+          connection,
+          arrays: b.arrays ?? [],
+          tempCoefficient: b.tempCoefficient ?? -0.4,
+          systemLoss: b.systemLoss ?? 14,
+          battery: b.battery ?? null,
+          profileName: String(b.profileId),
+          profileKnown: true,
+          polled: false,
+        });
+      }
+      return json(route, fixture.devices(MANIFEST));
+    }
+    if (under("devices") && method === "PATCH") {
+      const current = fixture.devices(MANIFEST).devices.find((d) => String(d.id) === id);
+      const { retired, ...fields } = body();
+      return json(route, {
+        ...current,
+        ...fields,
+        ...(typeof retired === "boolean"
+          ? { retiredAt: retired ? "2026-02-01T00:00:00.000Z" : null }
+          : {}),
+      });
+    }
+
     // ── Profiles ────────────────────────────────────────────────────────────
     if (at("profiles/updates")) return json(route, fixture.profileUpdates());
     if (at("profiles/available")) return json(route, fixture.AVAILABLE_PROFILES);
@@ -811,6 +958,20 @@ export async function mockBackend(page: Page, options: BackendOptions = {}): Pro
       return denied;
     },
     stopFeed,
+    dropSocket() {
+      // Forget the connection BEFORE closing it, rather than waiting for
+      // `onClose` to arrive. That callback lands a tick or two later, and until
+      // it does `waitForLive` still sees a live socket with `metrics` on it —
+      // so a spec that dropped the socket and immediately waited for the next
+      // one was answered by the corpse of the previous one.
+      const closing = sockets;
+      sockets = [];
+      subscribed.clear();
+      for (const ws of closing) ws.close();
+    },
+    expireSession() {
+      sessionExpired = true;
+    },
   };
   return backend;
 }

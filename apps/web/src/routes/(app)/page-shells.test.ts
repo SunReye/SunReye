@@ -38,10 +38,11 @@ const PANELS = [
   "api-keys",
   "automations",
   "danger",
+  "devices",
   "display",
-  "inverter",
   "logs",
   "mqtt",
+  "plant",
   "prices",
   "profiles",
   "sensors",
@@ -68,6 +69,8 @@ const EXPECTED: Record<string, Shape> = {
   "costs/+page.svelte": "redirect",
   // Settings has no landing screen of its own.
   "settings/+page.svelte": "redirect",
+  // The pre-2.0 inverter panel; its two halves live in Devices and Plant now.
+  "settings/inverter/+page.svelte": "redirect",
   // Settings panels render INSIDE the settings layout's shell. A panel that
   // grew a shell of its own would double the gutter and cap the measure twice.
   ...Object.fromEntries(PANELS.map((p) => [`settings/${p}/+page.svelte`, "nested"] as const)),

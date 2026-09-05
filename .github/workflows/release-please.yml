@@ -34,21 +34,19 @@ jobs:
   build-images:
     name: Dispatch Docker builds
     needs: release-please
-    if: needs.release-please.outputs.server_released == 'true' || needs.release-please.outputs.web_released == 'true' || needs.release-please.outputs.addon_released == 'true'
+    # No web condition: the dashboard ships inside the server binary, so a web
+    # release changes what the *server* image contains, not an image of its own.
+    if: needs.release-please.outputs.server_released == 'true' || needs.release-please.outputs.addon_released == 'true'
     runs-on: ubuntu-latest
     permissions:
       actions: write
     env:
       GH_TOKEN: ${{ github.token }}
     steps:
-      - name: Server + migrate images
+      # One image: dashboard, API, live socket and the schema migrator.
+      - name: Server image
         if: needs.release-please.outputs.server_released == 'true'
-        run: |
-          gh workflow run docker-server.yml --repo "$GITHUB_REPOSITORY" --ref "${{ needs.release-please.outputs.server_tag }}"
-          gh workflow run docker-migrate.yml --repo "$GITHUB_REPOSITORY" --ref "${{ needs.release-please.outputs.server_tag }}"
-      - name: Web image
-        if: needs.release-please.outputs.web_released == 'true'
-        run: gh workflow run docker-web.yml --repo "$GITHUB_REPOSITORY" --ref "${{ needs.release-please.outputs.web_tag }}"
+        run: gh workflow run docker-server.yml --repo "$GITHUB_REPOSITORY" --ref "${{ needs.release-please.outputs.server_tag }}"
       - name: Addon images
         if: needs.release-please.outputs.addon_released == 'true'
         run: gh workflow run docker-addon.yml --repo "$GITHUB_REPOSITORY" --ref "${{ needs.release-please.outputs.addon_tag }}"
