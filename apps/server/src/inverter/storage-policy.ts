@@ -28,7 +28,7 @@
  */
 
 import { resolveDeadband, resolveStorage } from "@SunReye/inverter-core";
-import type { DeadbandInputs, MetricDef, MetricStorage } from "@SunReye/inverter-core";
+import type { MetricDef, MetricStorage } from "@SunReye/inverter-core";
 
 import { type ChangeEncoder, createChangeEncoder } from "./change-encoder";
 
@@ -75,21 +75,9 @@ export interface RoutableSample {
  */
 const DEFAULT_OPTIONAL_ROLES: readonly string[] = ["generator."];
 
-/**
- * What the policy reads off one metric declaration.
- *
- * Narrower than `MetricDef` on purpose: a storage class is a question about
- * kind, role, unit and the two overrides, and nothing about addressing. Taking
- * the full def would make the policy — and with it the whole write path —
- * unreachable for a device that has no register map at all, which is the shape
- * of every device the coded tier registers (`./device-writer.ts`). A `MetricDef`
- * and a `DeviceMetric` both satisfy it.
- */
-export type PolicyMetric = DeadbandInputs & Pick<MetricDef, "key">;
-
 export interface StoragePolicyDeps {
-  /** The device's own metric declarations — the source of every storage class. */
-  metrics: readonly PolicyMetric[];
+  /** The active profile's metrics — the source of every storage class. */
+  metrics: MetricDef[];
   /** Overrides {@link DEFAULT_OPTIONAL_ROLES}. */
   optionalRoles?: readonly string[];
 }

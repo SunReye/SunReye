@@ -14,14 +14,9 @@
 	import PageShell from '$lib/components/layout/page-shell.svelte';
 	import * as m from '$lib/paraglide/messages';
 
-	// One topic lease feeds the LIVE half of the page: the status card, the
-	// form's blocker gating and the plan projection all update the moment the
-	// engine ticks. The socket itself is the app shell's.
-	//
-	// The decision history is not on that topic any more. The optimizer is a
-	// device, so what it decided is read from `/api/history/rollup` under the
-	// `optimizer` slug by the section that plots it — which is why the frame
-	// carries a tick STAMP down instead of a ring of points.
+	// One topic lease feeds everything on the page: the status card, the form's
+	// blocker gating, the plan section and the decision charts all update the
+	// moment the engine ticks — no polls. The socket itself is the app shell's.
 	$effect(() => automationStream.lease());
 	const status = $derived(automationStream.status);
 
@@ -74,13 +69,14 @@
 				<PeakShavingStatus {status} />
 			</div>
 			<div in:fly={rise(1)}>
-				<DecisionPlan plans={automationStream.plan} loaded={automationStream.loaded} />
+				<DecisionPlan
+					plans={automationStream.plan}
+					loaded={automationStream.loaded}
+					history={automationStream.history}
+				/>
 			</div>
 			<div in:fly={rise(2)}>
-				<DecisionCharts
-					loaded={automationStream.loaded}
-					lastTickAt={automationStream.lastTickAt}
-				/>
+				<DecisionCharts points={automationStream.history} loaded={automationStream.loaded} />
 			</div>
 		</div>
 	</div>

@@ -42,13 +42,9 @@ Inverter (Modbus TCP)  ──►  Core engine (Elysia)  ──►  TimescaleDB (
 
 ## Why narrow storage matters
 
-Metrics are stored one row per metric per change, keyed by a device and a metric key —
+Metrics are stored one row per metric per tick, keyed by `inverterId` and metric key —
 not as wide vendor-specific columns. Adding a metric, or a whole new inverter, requires
 **no database migration**. This is the schema-level expression of "an inverter is data."
-
-On disk that identity is two `int2` foreign keys into the `devices` and `metric_keys`
-dimension tables; every external contract still speaks the *names*, resolved at the database
-boundary. See [Internals → Storage](/reference/internals/#storage).
 
 ## Stack
 

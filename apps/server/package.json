@@ -6,7 +6,7 @@
   "scripts": {
     "build": "tsdown",
     "check-types": "tsc -b",
-    "compile": "mkdir -p ../web/build && bun build --compile --minify --sourcemap --external serialport --asset ../web/build ./src/main.ts --outfile server",
+    "compile": "mkdir -p ../web/build && bun build --compile --minify --sourcemap --external serialport --asset ../web/build ./src/index.ts --outfile server",
     "start:binary": "./server",
     "start": "bun run dist/index.mjs",
     "dev": "while true; do bun run --watch src/index.ts; [ $? -eq 75 ] || break; done",

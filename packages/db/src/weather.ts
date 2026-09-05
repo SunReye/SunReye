@@ -13,27 +13,8 @@ export const WEATHER_KEY = "weather";
 /**
  * One PV array (a group of panels sharing an orientation). Plants with strings
  * facing different directions add one entry per orientation.
- *
- * WHY THREE OF THESE SIX FIELDS ARE OPTIONAL
- *
- * `tempCoefficient` and `systemLoss` were plant-wide columns, and two of those
- * three numbers are not plant facts. The temperature coefficient of Pmax is a
- * MODULE datasheet number — two strings of different panels genuinely have
- * different %/°C — and system loss is per-string (soiling, shading, mismatch, DC
- * wiring). One plant-wide 14 % for a plant with a shaded east string and a clean
- * south one is a fudge factor, which is precisely why
- * `apps/server/src/forecast/forecast-correction.ts` exists to learn a
- * multiplicative bias on top of it. The model already had the seam —
- * `pvPowerW(sample, kwp, tempCoefficient, systemLoss)` is per array — and only
- * storage was collapsing it.
- *
- * So these are OVERRIDES, and the plant columns stay as the fallback (a `??` per
- * array at the call site). Optional, never defaulted, for two reasons: every
- * document stored before this field existed has to keep parsing untouched, and a
- * defaulted override is indistinguishable from a stated one — which is the
- * difference between "this string really is dirtier" and "nobody said".
  */
-export const pvArraySchema = z.object({
+const pvArraySchema = z.object({
   /** Peak DC power of this array in kWp. */
   kwp: z.number().positive().max(100_000),
   /** Panel tilt from horizontal in degrees (0 = flat, 90 = vertical). */
@@ -43,28 +24,6 @@ export const pvArraySchema = z.object({
    * 0 = south, -90 = east, 90 = west, ±180 = north.
    */
   azimuth: z.number().min(-180).max(180),
-  /**
-   * `devices.slug` of the device (inverter) this string is wired into.
-   *
-   * A SLUG, never the int2 — this is a saved document, and the integer is a
-   * storage detail a restore or a re-add renumbers (see the `devices.slug`
-   * docblock in `./schema/plants.ts`).
-   *
-   * NOTHING CONSUMES THIS YET, on purpose. Per-device forecast, per-device
-   * clipping and per-device yield attribution are all unexpressible without it,
-   * and making the shape able to say it is free today where a JSONB migration
-   * later is not. Not `.min(1)`-less either: `""` is a slug that matches nothing
-   * while reading as a stated value at every `??`.
-   */
-  deviceSlug: z.string().min(1).max(120).optional(),
-  /**
-   * Per-array power temperature coefficient of Pmax in %/°C, overriding the
-   * plant's. Same bounds as the plant column — a drifted bound here would accept
-   * a value the plant form then refuses.
-   */
-  tempCoefficient: z.number().min(-2).max(0).optional(),
-  /** Per-array static system losses in %, overriding the plant's. */
-  systemLoss: z.number().min(0).max(90).optional(),
 });
 
 /**
@@ -72,7 +31,7 @@ export const pvArraySchema = z.object({
  * plant has storage the forecast should account for; `usableKwh` drives how
  * much above-cap surplus the battery can soak up before the rest is curtailed.
  */
-export const forecastBatterySchema = z.object({
+const forecastBatterySchema = z.object({
   /** Usable (not nominal) battery energy in kWh — the DoD-limited window. */
   usableKwh: z.number().positive().max(10_000),
   /**
@@ -126,17 +85,11 @@ export const solarForecastConfigSchema = z.object({
   /**
    * Power temperature coefficient of Pmax in %/°C (from the panel datasheet,
    * negative — output drops as cells heat up). Typical mono-Si: -0.30 … -0.45.
-   *
-   * The plant-wide DEFAULT. An array may state its own (see `pvArraySchema`),
-   * because this is a module number and a plant can have two kinds of panel.
    */
   tempCoefficient: z.number().min(-2).max(0).default(-0.4),
   /**
    * Static system losses in % (inverter conversion, wiring, soiling, mismatch).
    * PVWatts' default assumption is 14.
-   *
-   * The plant-wide DEFAULT, and per-array override-able for the same reason:
-   * soiling, shading, mismatch and DC wiring are properties of a STRING.
    */
   systemLoss: z.number().min(0).max(90).default(14),
   /**
@@ -179,7 +132,6 @@ export const weatherConfigSchema = z.object({
 });
 export type WeatherConfig = z.infer<typeof weatherConfigSchema>;
 
-// fallow-ignore-next-line unused-export -- PRE-EXISTING and unrelated to the 1.2.0 upgrade: consumed only by ./weather.test.ts and ./plant-facts.test.ts, and test files are not traced. Surfaced here because this wave changed plant-facts.test.ts and pulled the file into audit scope.
 export const defaultWeather: WeatherConfig = weatherConfigSchema.parse({});
 
 /** Whether the config has everything needed to fetch (enabled + coordinates). */

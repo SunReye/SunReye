@@ -110,30 +110,6 @@ describe("db-restore.sh sequence", () => {
     expect(order[2]).toContain("timescaledb_post_restore");
   });
 
-  // A fresh `CREATE DATABASE` target has no timescaledb extension: the database
-  // image is postgres + the extension debs, and nothing installs it into
-  // template1. Without this the very first statement of the restore fails with
-  // `function timescaledb_pre_restore() does not exist` — which is what a user
-  // following DOCS.md hits on any stock Postgres too, not a CI artefact.
-  test("creates the timescaledb extension before pre_restore", async () => {
-    const run = await runRestore([dumpFile()]);
-    expect(run.code).toBe(0);
-    const create = run.calls.findIndex((c) =>
-      c.includes("CREATE EXTENSION IF NOT EXISTS timescaledb"),
-    );
-    const pre = run.calls.findIndex((c) => c.includes("timescaledb_pre_restore"));
-    expect(create).toBeGreaterThanOrEqual(0);
-    expect(create).toBeLessThan(pre);
-  });
-
-  // The extension is a write: it must land on the far side of both refusals, or
-  // a refused restore has already modified the database it refused to touch.
-  test("the extension is not created when the restore is refused", async () => {
-    const run = await runRestore([dumpFile()], { appTables: "t" });
-    expect(run.code).not.toBe(0);
-    expect(run.calls.join("\n")).not.toContain("CREATE EXTENSION");
-  });
-
   test("passes the dump path and the target database url to pg_restore", async () => {
     const file = dumpFile();
     const run = await runRestore([file]);

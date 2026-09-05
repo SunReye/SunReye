@@ -73,20 +73,20 @@ const onlyCall = (): Call => {
 
 /** A `forecast_correction_cells` row in the driver's column order. */
 const cellRow = (
-  deviceId: string,
+  inverterId: string,
   month: number,
   hour: number,
   ratio: unknown,
   weight: unknown,
-) => [deviceId, month, hour, ratio, weight, "2026-06-01 12:00:00+00"];
+) => [inverterId, month, hour, ratio, weight, "2026-06-01 12:00:00+00"];
 
 describe("reading the learned grid", () => {
-  test("the grid is read for one device — a second plant's cells never leak in", async () => {
-    await getCorrectionCells(3);
+  test("the grid is read for one inverter — a second plant's cells never leak in", async () => {
+    await getCorrectionCells("inv-1");
     const call = onlyCall();
     expect(flat(call.sql)).toContain('from "forecast_correction_cells"');
-    expect(flat(call.sql)).toContain('"device_id" = $1');
-    expect(call.params).toEqual([3]);
+    expect(flat(call.sql)).toContain('"inverter_id" = $1');
+    expect(call.params).toEqual(["inv-1"]);
   });
 
   test("the inverter id is a bound parameter, not interpolated text", async () => {
@@ -97,21 +97,21 @@ describe("reading the learned grid", () => {
   });
 
   test("an inverter that has never learned reads back an empty grid, not null", async () => {
-    expect(await getCorrectionCells(9)).toEqual([]);
+    expect(await getCorrectionCells("inv-new")).toEqual([]);
   });
 
   test("a fully-shaded hour keeps its 0.0 ratio — 0 is a learned value, not 'no cell'", async () => {
     // A cell over a chimney legitimately learns "this hour produces nothing".
     // Dropping it would silently restore the uncorrected forecast for that hour.
-    queue.push([cellRow(3, 12, 9, 0, 4.5)]);
-    const [cell] = await getCorrectionCells(3);
+    queue.push([cellRow("inv-1", 12, 9, 0, 4.5)]);
+    const [cell] = await getCorrectionCells("inv-1");
     expect(cell?.ratio).toBe(0);
     expect(cell?.weight).toBe(4.5);
   });
 
   test("midnight and December land as hour 0 and month 12, not as absent cells", async () => {
-    queue.push([cellRow(3, 12, 0, 1.05, 2), cellRow(3, 1, 23, 0.9, 1)]);
-    const cells = await getCorrectionCells(3);
+    queue.push([cellRow("inv-1", 12, 0, 1.05, 2), cellRow("inv-1", 1, 23, 0.9, 1)]);
+    const cells = await getCorrectionCells("inv-1");
     expect(cells.map((c) => [c.month, c.hour])).toEqual([
       [12, 0],
       [1, 23],
@@ -119,8 +119,8 @@ describe("reading the learned grid", () => {
   });
 
   test("double precision arriving as a string is coerced — the grid is multiplied, not concatenated", async () => {
-    queue.push([cellRow(3, 6, 13, "0.87", "12.5")]);
-    const [cell] = await getCorrectionCells(3);
+    queue.push([cellRow("inv-1", 6, 13, "0.87", "12.5")]);
+    const [cell] = await getCorrectionCells("inv-1");
     expect(cell?.ratio).toBe(0.87);
     expect(cell?.weight).toBe(12.5);
   });
@@ -136,22 +136,24 @@ describe("writing the learned grid", () => {
 
   test("a whole batch goes in one statement, in the order it was handed over", async () => {
     await upsertCorrectionCells([
-      { deviceId: 3, month: 6, hour: 12, ratio: 1.1, weight: 3 },
-      { deviceId: 3, month: 6, hour: 13, ratio: 0.95, weight: 2 },
+      { inverterId: "inv-1", month: 6, hour: 12, ratio: 1.1, weight: 3 },
+      { inverterId: "inv-1", month: 6, hour: 13, ratio: 0.95, weight: 2 },
     ]);
     expect(calls).toHaveLength(1);
     const call = onlyCall();
     expect(flat(call.sql)).toContain('insert into "forecast_correction_cells"');
-    expect(call.params).toEqual([3, 6, 12, 1.1, 3, 3, 6, 13, 0.95, 2]);
+    expect(call.params).toEqual(["inv-1", 6, 12, 1.1, 3, "inv-1", 6, 13, 0.95, 2]);
   });
 
   test("re-learning a cell overwrites its ratio and weight instead of duplicating the key", async () => {
     // The grid is keyed (inverter, month, hour); a second learn run for the same
     // hour must land on the same row or the grid grows without bound and the
     // reader picks an arbitrary one of the duplicates.
-    await upsertCorrectionCells([{ deviceId: 3, month: 6, hour: 12, ratio: 1.1, weight: 3 }]);
+    await upsertCorrectionCells([
+      { inverterId: "inv-1", month: 6, hour: 12, ratio: 1.1, weight: 3 },
+    ]);
     const sqlText = flat(onlyCall().sql);
-    expect(sqlText).toContain('on conflict ("device_id","month","hour") do update set');
+    expect(sqlText).toContain('on conflict ("inverter_id","month","hour") do update set');
     expect(sqlText).toContain('"ratio" = excluded.ratio');
     expect(sqlText).toContain('"weight" = excluded.weight');
   });
@@ -159,57 +161,59 @@ describe("writing the learned grid", () => {
   test("the overwrite restamps updated_at from the database clock", async () => {
     // Staleness of the grid is judged from this column; carrying the old value
     // over on conflict would make a freshly-relearned cell look abandoned.
-    await upsertCorrectionCells([{ deviceId: 3, month: 6, hour: 12, ratio: 1.1, weight: 3 }]);
+    await upsertCorrectionCells([
+      { inverterId: "inv-1", month: 6, hour: 12, ratio: 1.1, weight: 3 },
+    ]);
     expect(flat(onlyCall().sql)).toContain('"updated_at" = now()');
   });
 
   test("a cell that has decayed to nothing is written as 0, not left out of the batch", async () => {
-    await upsertCorrectionCells([{ deviceId: 3, month: 1, hour: 0, ratio: 0, weight: 0 }]);
-    expect(onlyCall().params).toEqual([3, 1, 0, 0, 0]);
+    await upsertCorrectionCells([{ inverterId: "inv-1", month: 1, hour: 0, ratio: 0, weight: 0 }]);
+    expect(onlyCall().params).toEqual(["inv-1", 1, 0, 0, 0]);
   });
 });
 
 describe("reading the learn cursor", () => {
   const stateRow = (
-    deviceId: string,
+    inverterId: string,
     learnedThrough: string | null,
     maeRaw: unknown,
     maeCorrected: unknown,
     samples: unknown,
-  ) => [deviceId, learnedThrough, maeRaw, maeCorrected, samples, "2026-06-01 12:00:00+00"];
+  ) => [inverterId, learnedThrough, maeRaw, maeCorrected, samples, "2026-06-01 12:00:00+00"];
 
-  test("the cursor is read for one device", async () => {
-    await getCorrectionState(3);
+  test("the cursor is read for one inverter", async () => {
+    await getCorrectionState("inv-1");
     const call = onlyCall();
     expect(flat(call.sql)).toContain('from "forecast_correction_state"');
-    expect(flat(call.sql)).toContain('"device_id" = $1');
-    expect(call.params).toEqual([3]);
+    expect(flat(call.sql)).toContain('"inverter_id" = $1');
+    expect(call.params).toEqual(["inv-1"]);
   });
 
   test("before the first learn run there is no state — null, so the caller starts from scratch", async () => {
-    expect(await getCorrectionState(3)).toBeNull();
+    expect(await getCorrectionState("inv-1")).toBeNull();
   });
 
   test("a state row created before the first fold reports a null cursor, not an epoch date", async () => {
     // A row can exist with `learned_through` still null; inventing a date here
     // would make the job resume from the wrong day.
-    queue.push([stateRow(3, null, 0, 0, 0)]);
-    const state = await getCorrectionState(3);
+    queue.push([stateRow("inv-1", null, 0, 0, 0)]);
+    const state = await getCorrectionState("inv-1");
     expect(state?.learnedThrough).toBeNull();
     expect(state?.samples).toBe(0);
   });
 
   test("a perfect day is 0 W of error, not a missing statistic", async () => {
-    queue.push([stateRow(3, "2026-06-01", 0, 0, 12)]);
-    const state = await getCorrectionState(3);
+    queue.push([stateRow("inv-1", "2026-06-01", 0, 0, 12)]);
+    const state = await getCorrectionState("inv-1");
     expect(state?.maeRaw).toBe(0);
     expect(state?.maeCorrected).toBe(0);
     expect(state?.samples).toBe(12);
   });
 
   test("skill stats arriving as strings are coerced — the UI subtracts them", async () => {
-    queue.push([stateRow(3, "2026-06-01", "420.5", "310.25", "88")]);
-    const state = await getCorrectionState(3);
+    queue.push([stateRow("inv-1", "2026-06-01", "420.5", "310.25", "88")]);
+    const state = await getCorrectionState("inv-1");
     expect(state?.maeRaw).toBe(420.5);
     expect(state?.maeCorrected).toBe(310.25);
     expect(state?.samples).toBe(88);
@@ -218,7 +222,7 @@ describe("reading the learn cursor", () => {
 
 describe("advancing the learn cursor", () => {
   const state = {
-    deviceId: 3,
+    inverterId: "inv-1",
     learnedThrough: "2026-06-01",
     maeRaw: 420.5,
     maeCorrected: 310.25,
@@ -229,13 +233,13 @@ describe("advancing the learn cursor", () => {
     await upsertCorrectionState(state);
     const call = onlyCall();
     expect(flat(call.sql)).toContain('insert into "forecast_correction_state"');
-    expect(call.params.slice(0, 5)).toEqual([3, "2026-06-01", 420.5, 310.25, 88]);
+    expect(call.params.slice(0, 5)).toEqual(["inv-1", "2026-06-01", 420.5, 310.25, 88]);
   });
 
   test("a later run advances the same row rather than inserting a second cursor", async () => {
     await upsertCorrectionState(state);
     const sqlText = flat(onlyCall().sql);
-    expect(sqlText).toContain('on conflict ("device_id") do update set');
+    expect(sqlText).toContain('on conflict ("inverter_id") do update set');
     expect(sqlText).toContain('"learned_through" = $6');
     expect(sqlText).toContain('"updated_at" = now()');
   });
@@ -245,7 +249,7 @@ describe("advancing the learn cursor", () => {
     // repeat the new cursor — otherwise a second run would leave the old day.
     await upsertCorrectionState({ ...state, learnedThrough: "2026-06-02", samples: 89 });
     expect(onlyCall().params).toEqual([
-      3,
+      "inv-1",
       "2026-06-02",
       420.5,
       310.25,
@@ -259,12 +263,12 @@ describe("advancing the learn cursor", () => {
 
   test("a first fold with zero skill stats writes 0s, not defaults", async () => {
     await upsertCorrectionState({
-      deviceId: 3,
+      inverterId: "inv-1",
       learnedThrough: "2026-06-01",
       maeRaw: 0,
       maeCorrected: 0,
       samples: 0,
     });
-    expect(onlyCall().params).toEqual([3, "2026-06-01", 0, 0, 0, "2026-06-01", 0, 0, 0]);
+    expect(onlyCall().params).toEqual(["inv-1", "2026-06-01", 0, 0, 0, "2026-06-01", 0, 0, 0]);
   });
 });

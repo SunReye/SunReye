@@ -12,10 +12,9 @@
 	// Its own component because the rails' template would otherwise carry two
 	// nested loops and a key block around this, which is the kind of density the
 	// repo's complexity gate rejects — and rightly: the bead chain is one idea.
-	import { untrack } from 'svelte';
-	import { beadBegin, beadShape, BEAD_COUNT, carryHead, moverKeyPoints } from '$lib/inverter/flow-pulse';
+	import { beadBegin, beadShape, BEAD_COUNT, moverKeyPoints } from '$lib/inverter/flow-pulse';
 	import type { Flow } from '$lib/inverter/power-graph';
-	import type { ChainHead, RailPulse } from '$lib/inverter/flow-pulse';
+	import type { RailPulse } from '$lib/inverter/flow-pulse';
 
 	let {
 		pulse,
@@ -33,27 +32,12 @@
 
 	/** The head bead's radius at scale 1, px. Every other bead is a fraction. */
 	const BEAD_RADIUS = 6;
-
-	/** The host group: its SVG's clock is the one `begin` is resolved against. */
-	let host = $state.raw<SVGGElement | undefined>();
-
-	// The head's `begin`, carried across a rebuild so the new chain starts where
-	// the old one was rather than at the top of the path (see `carryHead`). Plain
-	// memory, not state: written only while deriving, read by nothing else.
-	let last: ChainHead | undefined;
-	const head = $derived.by(() => {
-		last = carryHead(last, pulse.dur, () => untrack(() => host)?.ownerSVGElement?.getCurrentTime());
-		return last.head;
-	});
 </script>
 
-<!-- Keyed on the crossing time: a quantized step rebuilds the chain rather than
-     remapping the running animation, which would teleport the charge to
-     wherever the new duration says it should be by now. The rebuilt chain is
-     handed a `begin` that puts its head where the old head was, so the step
-     changes the comet's speed and nothing else — a restart from the node on
-     every step was a visible snap on nearly every sample. -->
-<g bind:this={host}>
+<!-- Keyed on the crossing time: a quantized step rebuilds the chain so SMIL
+     starts the new speed from the top of the path, rather than remapping the
+     running animation and teleporting the charge to wherever the new duration
+     says it should be by now. -->
 {#key pulse.dur}
 	<g class="charge" style={`--mv-blur:${pulse.blur}px;--mv-glow:${pulse.glow}px`}>
 		{#each beads as k (k)}
@@ -65,7 +49,7 @@
 				<animateMotion
 					dur={`${pulse.dur}s`}
 					repeatCount="indefinite"
-					begin={beadBegin(k, pulse.dur, head)}
+					begin={beadBegin(k, pulse.dur)}
 					keyPoints={moverKeyPoints(flow)}
 					keyTimes="0;1"
 					calcMode="linear"
@@ -76,7 +60,6 @@
 		{/each}
 	</g>
 {/key}
-</g>
 
 <style>
 	/* Registered so they can be transitioned at all: an unregistered custom

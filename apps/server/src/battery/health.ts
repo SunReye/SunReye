@@ -17,9 +17,7 @@
 import { db } from "@SunReye/db";
 import { batteryCapacityEstimates } from "@SunReye/db/schema/battery-health";
 import { metricsRaw } from "@SunReye/db/schema/metrics";
-import { metricKeys } from "@SunReye/db/schema/plants";
 import { and, asc, eq, gte, inArray, lt } from "drizzle-orm";
-import { deviceIdOf } from "../shared/identity-sql";
 import {
   type DischargeSegment,
   type HealthSummary,
@@ -54,22 +52,18 @@ async function readSeries(
   keys: BatteryKeys,
 ): Promise<{ soc: SocSample[]; power: PowerInterval[]; temperature: PowerInterval[] }> {
   const wanted = [keys.soc, keys.power, ...(keys.temperature ? [keys.temperature] : [])];
-  // `metric_keys` is JOINED rather than resolved to a set of ids in process,
-  // because the loop below DISPATCHES on the metric name — the key is data here,
-  // not just a filter, and the int2 would have to be mapped back anyway.
   const rows = await db
     .select({
-      metric: metricKeys.key,
+      metric: metricsRaw.metric,
       time: metricsRaw.time,
       value: metricsRaw.value,
       durMs: metricsRaw.durMs,
     })
     .from(metricsRaw)
-    .innerJoin(metricKeys, eq(metricKeys.id, metricsRaw.metricId))
     .where(
       and(
-        eq(metricsRaw.deviceId, deviceIdOf(inverterId)),
-        inArray(metricKeys.key, wanted),
+        eq(metricsRaw.inverterId, inverterId),
+        inArray(metricsRaw.metric, wanted),
         gte(metricsRaw.time, from),
         lt(metricsRaw.time, to),
       ),
@@ -120,12 +114,8 @@ export async function recordSegments(
   segments: readonly DischargeSegment[],
 ): Promise<number> {
   if (segments.length === 0) return 0;
-  const device = deviceIdOf(inverterId);
   const rows = segments.map((s) => ({
-    // The id as a SQL sub-select rather than an awaited number: an estimate is
-    // written once per discharge segment (a handful a day), so the sub-select
-    // costs nothing, and this way the module keeps its name-shaped signature.
-    deviceId: device,
+    inverterId,
     measuredAt: new Date(s.endMs),
     startedAt: new Date(s.startMs),
     socStart: s.socStart,
@@ -177,7 +167,7 @@ export async function batteryHealthSummary(
   const rows = await db
     .select()
     .from(batteryCapacityEstimates)
-    .where(eq(batteryCapacityEstimates.deviceId, deviceIdOf(inverterId)))
+    .where(eq(batteryCapacityEstimates.inverterId, inverterId))
     .orderBy(asc(batteryCapacityEstimates.measuredAt));
 
   const summary = summariseEstimates(

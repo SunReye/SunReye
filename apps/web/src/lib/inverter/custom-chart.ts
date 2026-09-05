@@ -20,25 +20,6 @@ export interface CustomChart {
   /** Per-series colour overrides, keyed by metric key. Absent keys take the
    *  palette entry for their position — see `chart-palette.ts`. */
   colors?: Record<string, string>;
-  /**
-   * Which DEVICE each series is read from, by `devices.slug`, keyed by metric
-   * key. Absent means nobody said, and the server resolves it on read.
-   *
-   * No editor names these yet; the editor carries them through a save. A bare
-   * metric list means "whichever device", which stops having an answer the day a
-   * second inverter exists — so what the operator meant is recorded while it can
-   * still be known.
-   */
-  devices?: Record<string, string>;
-  /**
-   * `metrics` with each series' device resolved by the server (stated slug, else
-   * the plant's sole inverter; null when it cannot say).
-   *
-   * READ-ONLY and derived per response — never sent back. Persisting it would
-   * turn "the plant had one inverter when this was saved" into "the operator
-   * chose this inverter".
-   */
-  series?: { metric: string; device: string | null }[];
   createdAt: string;
   updatedAt: string;
 }

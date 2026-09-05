@@ -20,18 +20,20 @@ import type { AutomationConfig } from "@SunReye/db/automation-config";
 import {
   AUTOMATION_STATE_KEY,
   type AutomationState,
-  type DeviceProfileBinding,
   automationStateSchema,
   defaultAutomationState,
-  migrateAutomationState,
 } from "@SunReye/db/automation-state";
 import type { SpotPriceConfig } from "@SunReye/db/spot-price-config";
 import type { ZodType } from "zod";
 import type {
+  AutomationHistoryView,
   AutomationPlanView,
   AutomationStatusView,
   AutomationStreamMessage,
+  DecisionPoint,
 } from "@SunReye/contracts/automation";
+import { HISTORY_CAPACITY } from "./automation-history";
+import type { ProfileContext } from "../inverter/inverter";
 import type { SpotSlice } from "@SunReye/contracts/prices";
 import { log } from "../shared/logging";
 import type { Streams } from "../shared/streams";
@@ -52,6 +54,8 @@ let timer: ReturnType<typeof setTimeout> | null = null;
 let tickMs = DEFAULT_TICK_MS;
 /** The production config reader, kept for the cadence re-read each tick. */
 let readConfig: (() => Promise<AutomationConfig>) | null = null;
+/** `t` of the last decision point already streamed, for the delta framing. */
+let streamedT: number | null = null;
 /**
  * The read-side bus the tick outcome is emitted onto, injected by
  * {@link startAutomations}. Null until the loop is started (and in the
@@ -90,16 +94,29 @@ async function tickAndBroadcast(): Promise<void> {
     // The config read above is an await; a stop (or restart) may have run in
     // between, so re-check we are still the live engine before emitting.
     if (engine !== eng) return;
-    // The plan projection below re-models the rest of the day and is by far the
-    // most expensive thing on this path, so it is skipped when nobody is there
-    // to receive it.
+    // Checked before `nextStreamPoint`, which *consumes* the delta: marking a
+    // point streamed that was never sent would lose it, since a later tick only
+    // ever streams the newest one.
     if (!hasAudience()) return;
-    streams?.emit("automations", { tickMs, status: eng.status(), plan: await eng.plan() });
+    streams?.emit("automations", {
+      tickMs,
+      status: eng.status(),
+      point: nextStreamPoint(eng),
+      plan: await eng.plan(),
+    });
   } catch (error) {
     // A failed broadcast (config read, plan projection) must never kill the
     // loop — the tick itself already ran and reported into the status.
     logger.warn("automation stream broadcast failed: {error}", { error });
   }
+}
+
+/** The newest decision point not yet streamed, marking it streamed; else null. */
+function nextStreamPoint(eng: PeakShavingEngine): DecisionPoint | null {
+  const latest = eng.history().at(-1) ?? null;
+  if (!latest || latest.t === streamedT) return null;
+  streamedT = latest.t;
+  return latest;
 }
 
 /** (Re)arm the loop timer at the current cadence. */
@@ -113,23 +130,14 @@ function scheduleNext(): void {
 }
 
 /**
- * What the plant is written through: the steered device and the register writer.
+ * What the plant is written through: the active profile and the register writer.
  * Exported because it names the parameter of {@link startAutomations},
  * {@link buildProductionIO} and {@link composeAutomationIO} — a caller has to be
  * able to name what it is handing in.
  */
 export interface PlantDeps {
-  /** The registered device the loop steers — roles in, `devices.slug` as identity. */
-  device: AutomationIO["device"];
-  /** The register bounds seam; see {@link AutomationIO.constraint}. */
-  constraint: AutomationIO["constraint"];
+  ctx: ProfileContext;
   write: (key: string, value: number) => Promise<void>;
-  /**
-   * Where a decided tick is STORED — the runtime's optimizer registrar, which
-   * ends at the same `createDeviceWriter` every other reading goes through
-   * (#172). Omitted, the loop still steers the plant and records nothing.
-   */
-  recordDecision?: AutomationIO["recordDecision"];
 }
 
 /**
@@ -141,8 +149,6 @@ export interface PlantDeps {
 export interface AutomationModules {
   getAutomationConfig: AutomationIO["getConfig"];
   getWeatherConfig: AutomationIO["getWeather"];
-  /** `batteries.nominal_v`, the pack voltage's newest home — see the IO field. */
-  packNominalV: AutomationIO["getPackNominalV"];
   fetchSolarForecast: AutomationIO["getForecast"];
   representativeHouseLoadW: AutomationIO["getBaselineLoadW"];
   evccSnapshot: AutomationIO["getEvcc"];
@@ -152,45 +158,8 @@ export interface AutomationModules {
   spotPricesReady(config: SpotPriceConfig): boolean;
   loadSpotSlice(zone: string): Promise<SpotSlice>;
   latestSample: AutomationIO["latestSample"];
-  /**
-   * Which profile each registered device's row names — the ONE input the
-   * one-time re-key of a 1.x, profile-keyed state blob needs. Nothing else on
-   * this surface may look at it: profile identity is not a behavioural input.
-   */
-  deviceProfileBindings(): readonly DeviceProfileBinding[];
   readSetting<T>(key: string, schema: ZodType<T>, fallback: T): Promise<T>;
   writeSetting<T>(key: string, value: T): Promise<void>;
-}
-
-/**
- * Read the persisted state, re-keying a 1.x profile-namespaced blob onto the
- * devices that hold those registers today — once, on the first read.
- *
- * The read itself is the validating one, so a hand-mangled row still goes down
- * the quarantine road `readSetting` owns rather than being silently replaced by
- * the default. The re-key never parses anything: it moves keys, and only when
- * exactly one registered device names the profile a key was written under.
- * Anything it cannot place is left untouched and named in the log — every one of
- * those entries is a register value the user themselves set, which the
- * automation borrowed and has not handed back, and it exists nowhere else.
- */
-async function readMigratedState(mods: AutomationModules): Promise<AutomationState> {
-  const stored = await mods.readSetting(
-    AUTOMATION_STATE_KEY,
-    automationStateSchema,
-    defaultAutomationState,
-  );
-  const migrated = migrateAutomationState(stored, mods.deviceProfileBindings());
-  if (migrated.orphans.length > 0) {
-    logger.warn(
-      "automation state holds {count} entr(y/ies) no registered device can claim — left in place, restore by hand if needed: {keys}",
-      { count: migrated.orphans.length, keys: migrated.orphans.join(", ") },
-    );
-  }
-  // Written only when something actually moved, so the pass is inert on every
-  // boot after the first and cannot churn the settings row.
-  if (migrated.changed) await mods.writeSetting(AUTOMATION_STATE_KEY, migrated.state);
-  return migrated.state;
 }
 
 /**
@@ -203,13 +172,10 @@ async function readMigratedState(mods: AutomationModules): Promise<AutomationSta
 export function composeAutomationIO(deps: PlantDeps, mods: AutomationModules): AutomationIO {
   let stateCache: AutomationState | null = null;
   return {
-    device: deps.device,
-    constraint: deps.constraint,
+    ctx: deps.ctx,
     write: deps.write,
-    ...(deps.recordDecision ? { recordDecision: deps.recordDecision } : {}),
     getConfig: mods.getAutomationConfig,
     getWeather: mods.getWeatherConfig,
-    getPackNominalV: mods.packNominalV,
     getForecast: mods.fetchSolarForecast,
     getBaselineLoadW: mods.representativeHouseLoadW,
     getEvcc: mods.evccSnapshot,
@@ -221,7 +187,11 @@ export function composeAutomationIO(deps: PlantDeps, mods: AutomationModules): A
     },
     latestSample: mods.latestSample,
     async loadState() {
-      stateCache ??= await readMigratedState(mods);
+      stateCache ??= await mods.readSetting(
+        AUTOMATION_STATE_KEY,
+        automationStateSchema,
+        defaultAutomationState,
+      );
       return stateCache;
     },
     async saveState(next) {
@@ -238,7 +208,6 @@ export async function buildProductionIO(deps: PlantDeps): Promise<AutomationIO> 
   const [
     { getAutomationConfig },
     { getWeatherConfig },
-    { plantFacts },
     { fetchSolarForecast, representativeHouseLoadW },
     { evccSnapshot, evccControl },
     { liveState },
@@ -247,11 +216,9 @@ export async function buildProductionIO(deps: PlantDeps): Promise<AutomationIO> 
     { getSpotPriceConfig },
     { loadSpotSlice },
     { spotPricesReady },
-    { deviceRegistry },
   ] = await Promise.all([
     import("../settings/automation-settings"),
     import("../settings/weather-settings"),
-    import("../settings/plant-facts-instance"),
     import("../forecast/solar-forecast"),
     import("../evcc/evcc"),
     import("../shared/state"),
@@ -260,14 +227,10 @@ export async function buildProductionIO(deps: PlantDeps): Promise<AutomationIO> 
     import("../settings/spot-price-settings"),
     import("../prices/spot-price-store"),
     import("@SunReye/db/spot-price-config"),
-    import("../devices/registry-instance"),
   ]);
   return composeAutomationIO(deps, {
     getAutomationConfig,
     getWeatherConfig,
-    // Through `plantFacts`, whose pack read is cached, so asking once per tick
-    // costs one query per invalidation rather than one per tick.
-    packNominalV: () => plantFacts.packNominalV(),
     fetchSolarForecast,
     representativeHouseLoadW,
     evccSnapshot,
@@ -277,7 +240,6 @@ export async function buildProductionIO(deps: PlantDeps): Promise<AutomationIO> 
     spotPricesReady,
     loadSpotSlice,
     latestSample: () => liveState.latest,
-    deviceProfileBindings: () => deviceRegistry.bindings(),
     readSetting,
     writeSetting,
   });
@@ -323,6 +285,7 @@ export async function stopAutomations(): Promise<void> {
   timer = null;
   engine = null;
   readConfig = null;
+  streamedT = null;
   // Released with the loop: the predicate closes over the server that owned it.
   hasAudience = () => true;
 }
@@ -339,20 +302,16 @@ export async function applyAutomationConfig(): Promise<void> {
   scheduleNext();
 }
 
-/**
- * There is no `automationHistory()` any more (#172).
- *
- * What each tick decided is a READING now: it goes through the runtime's write
- * seam into `metrics_raw` under the device slug `optimizer`, and `GET
- * /api/history` and `GET /api/history/rollup` answer for it like they do for any
- * other device. The function this replaced read a 2 880-slot ring — 24 hours,
- * gone on restart, invisible to rollups, statistics, CSV export and the archive.
- */
 /** Live status for `GET /api/automations/status` (tolerates not-started boot). */
 export function automationStatus(): AutomationStatusView {
   return { peakShaving: engine?.status() ?? initialStatus() };
 }
 
+/**
+ * Rolling decision history for `GET /api/automations/history` — what each tick
+ * decided and what the plant did with it, for the automation charts. In-memory
+ * only (see ./automation-history), so it is empty right after a restart.
+ */
 /**
  * Projection of the rest of today for `GET /api/automations/plan`: when the
  * automation expects to charge and what SOC it expects to reach. Computed on
@@ -363,21 +322,25 @@ export async function automationPlan(): Promise<AutomationPlanView> {
   return { peakShaving: (await engine?.plan()) ?? null };
 }
 
+export function automationHistory(): AutomationHistoryView {
+  return {
+    tickMs,
+    capacity: HISTORY_CAPACITY,
+    peakShaving: engine?.history() ?? [],
+  };
+}
+
 /**
- * The subscribe-time frame for a new `automations` subscriber: current status
- * and the projection — everything about the LIVE engine that a page needs to
+ * The subscribe-time frame for a new `automations` subscriber: current status,
+ * the full decision ring, and the projection — everything the page needs to
  * paint before the next tick lands. Tolerates not-started boot.
- *
- * It no longer carries a decision backfill, and there is no longer a variant to
- * tell apart: what each tick decided is history in `metrics_raw`, fetched over
- * `GET /api/history/rollup` under the `optimizer` slug like every other device's
- * series. This topic carries only what a hypertable must never hold — live
- * engine state (error strings, blockers, a countdown) and a FORECAST.
  */
 export async function automationStreamSnapshot(): Promise<AutomationStreamMessage> {
   return {
     tickMs,
     status: engine?.status() ?? initialStatus(),
+    point: null,
+    history: engine?.history() ?? [],
     plan: (await engine?.plan()) ?? null,
   };
 }

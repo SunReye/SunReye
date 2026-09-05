@@ -65,12 +65,6 @@ one chart — e.g. all PV strings, or battery vs. grid power together.
 
 ## Retention
 
-Raw readings are kept for **five years**, the minute rollups for 90 days, the hourly rollups
-for ten years, and the daily rollups forever; older telemetry is compressed automatically and
-aged out by retention jobs. The minute tier's 90 days is a *resolution* window rather than a
-coverage horizon — past it, a minute-resolution read falls back to raw and a wider read to the
-hourly tier, so nothing disappears from a chart. Long ranges draw from rollups rather than raw
-rows because a rollup bucket is a few bytes and a five-year raw scan is not.
-
-Every interval is tunable in `packages/db/src/timescale/policies.sql`, which is re-applied on
-every migration run.
+Raw samples are kept for a bounded window (recent history), while the rollups retain
+long-range trends cheaply; older telemetry is compressed and cleaned up automatically. This
+is why the very long ranges draw from rollups rather than raw rows.

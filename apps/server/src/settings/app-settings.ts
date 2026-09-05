@@ -8,77 +8,13 @@
 import { db } from "@SunReye/db";
 import { appSettings } from "@SunReye/db/schema/settings";
 import { eq } from "drizzle-orm";
-import type { ZodError, ZodType } from "zod";
-import { log } from "../shared/logging";
+import type { ZodType } from "zod";
 import { mergeSetting } from "./merge-setting";
-
-const logger = log("settings");
-
-/** Where the raw value of a rejected read is kept for `{@link key}`. */
-// fallow-ignore-next-line unused-export -- asserted by app-settings.test.ts; test files aren't traced as consumers
-export function rejectedKey(key: string): string {
-  return `${key}:rejected`;
-}
-
-/**
- * Keys already warned about on this boot. A rejected row is a *standing*
- * condition, not an event: the poll loop and the API re-read the same settings
- * every few seconds, so warning per read would bury the log viewer's ring buffer
- * under one drifted row. Once per key per boot, and a restart says it again.
- */
-const warnedKeys = new Set<string>();
-/**
- * What is currently in each key's quarantine row, serialised — so a repeat read
- * of the same bad value is a no-op while a *different* bad value still replaces
- * it. Only recorded once the write landed, so a failed quarantine is retried.
- */
-const quarantined = new Map<string, string>();
-
-/** Zod issue paths + messages, flattened to something a log line can carry. */
-function describeIssues(error: ZodError): string {
-  return error.issues
-    .map((issue) => `${issue.path.join(".") || "(root)"}: ${issue.message}`)
-    .join("; ");
-}
-
-/**
- * Announce a row the schema rejected, and keep the raw value.
- *
- * The fallback itself stays — a half-parsed configuration must never reach a
- * register writer — but a silent fallback is how a shape drift wiped a user's
- * configuration once, and this table also holds the held-register snapshot: the
- * charge-current value an automation captured and still has to hand back.
- * Quarantining it under `<key>:rejected` makes that recoverable by hand.
- *
- * Best-effort: a quarantine that cannot be written must not turn a degraded read
- * into a failed boot.
- */
-async function quarantineRejected(key: string, value: unknown, error: ZodError): Promise<void> {
-  const issues = describeIssues(error);
-  if (!warnedKeys.has(key)) {
-    warnedKeys.add(key);
-    logger.warn(
-      "setting {key} failed validation and was replaced by its default; the stored value is kept under {quarantineKey} ({issues})",
-      { key, quarantineKey: rejectedKey(key), issues },
-    );
-  }
-  const serialised = JSON.stringify({ value }); // `undefined` never round-trips a jsonb column
-  if (quarantined.get(key) === serialised) return;
-  try {
-    await writeSetting(rejectedKey(key), { value, issues, rejectedAt: new Date().toISOString() });
-    quarantined.set(key, serialised);
-  } catch (cause) {
-    logger.warn("could not quarantine the rejected value of {key}: {error}", { key, error: cause });
-  }
-}
 
 export async function readSetting<T>(key: string, schema: ZodType<T>, fallback: T): Promise<T> {
   const [row] = await db.select().from(appSettings).where(eq(appSettings.key, key)).limit(1);
-  if (!row) return fallback;
-  const parsed = schema.safeParse(row.value);
-  if (parsed.success) return parsed.data;
-  await quarantineRejected(key, row.value, parsed.error);
-  return fallback;
+  const parsed = row ? schema.safeParse(row.value) : null;
+  return parsed?.success ? parsed.data : fallback;
 }
 
 export async function writeSetting<T>(key: string, value: T): Promise<void> {

@@ -15,7 +15,7 @@ import type {
   PriceAwareConfig,
 } from "@SunReye/db/automation-config";
 import type { WeatherConfig } from "@SunReye/db/weather";
-import type { CanonicalRole, DeviceInstance } from "@SunReye/inverter-core";
+import type { CanonicalRole, InverterProfile } from "@SunReye/inverter-core";
 import { HOUR_MS } from "../energy/energy-flow";
 import type { Blocker, PriceRegime } from "@SunReye/contracts/automation";
 import type { EvccLoadpoint, EvccState } from "@SunReye/contracts/evcc";
@@ -61,7 +61,7 @@ export interface SteeredLimit {
 /**
  * The role pairs behind one limit, current first.
  *
- * Current wins when a device binds both: the engine plans in amps (its config
+ * Current wins when a profile maps both: the engine plans in amps (its config
  * limits are amps and the pack sizes them), so the ampere register is the one
  * that needs no conversion — and steering two registers for one quantity would
  * have them fight.
@@ -80,24 +80,24 @@ const GRID_CHARGE_LIMIT_ROLES = [
 const CHARGE_LIMIT_ROLE = CHARGE_LIMIT_ROLES[0];
 
 function resolveLimit(
-  device: DeviceInstance,
+  profile: InverterProfile,
   roles: readonly [CanonicalRole, CanonicalRole],
 ): SteeredLimit | null {
   const [currentRole, powerRole] = roles;
-  const currentKey = roleKey(device, currentRole);
+  const currentKey = keyForRole(profile, currentRole);
   if (currentKey) return { key: currentKey, unit: "A" };
-  const powerKey = roleKey(device, powerRole);
+  const powerKey = keyForRole(profile, powerRole);
   return powerKey ? { key: powerKey, unit: "W" } : null;
 }
 
-/** The charge ceiling this device lets the automation steer, if any. */
-export function resolveChargeLimit(device: DeviceInstance): SteeredLimit | null {
-  return resolveLimit(device, CHARGE_LIMIT_ROLES);
+/** The charge ceiling this profile lets the automation steer, if any. */
+export function resolveChargeLimit(profile: InverterProfile): SteeredLimit | null {
+  return resolveLimit(profile, CHARGE_LIMIT_ROLES);
 }
 
 /** The grid-charge ceiling, if any. Absent simply disables grid charging. */
-export function resolveGridChargeLimit(device: DeviceInstance): SteeredLimit | null {
-  return resolveLimit(device, GRID_CHARGE_LIMIT_ROLES);
+export function resolveGridChargeLimit(profile: InverterProfile): SteeredLimit | null {
+  return resolveLimit(profile, GRID_CHARGE_LIMIT_ROLES);
 }
 
 /**
@@ -128,48 +128,36 @@ export function limitAmps(limit: SteeredLimit, value: number, batteryV: number):
  * plant's configured limit.
  */
 export const SELL_LIMIT_ROLE = "setting.solar_sell.max_power" satisfies CanonicalRole;
-/** The grid-charge enable register; a device that binds it not simply disables it. */
+/** The grid-charge enable register; absent from a profile simply disables it. */
 export const GRID_CHARGE_ROLE = "setting.battery.grid_charge" satisfies CanonicalRole;
 
-/**
- * The metric key this DEVICE binds a canonical role to, or null when unmapped.
- *
- * Answered off {@link DeviceInstance.roles} — the registry's resolved view —
- * rather than by scanning a profile's metric list. The engine cannot see a
- * profile at all any more, and that is the point: a coded integration binds the
- * same roles with no register map behind them, and the decision has to be the
- * same one.
- *
- * The FIRST metric on the binding, because every role the automation steers is
- * 1:1. An indexed role (four PV strings) is a list, and a caller that means
- * "how many" reads the binding itself.
- */
-export function roleKey(device: DeviceInstance, role: CanonicalRole): string | null {
-  return device.roles.get(role)?.metrics[0]?.key ?? null;
+/** The profile's metric key for a canonical role, or null when unmapped. */
+export function keyForRole(profile: InverterProfile, role: CanonicalRole): string | null {
+  return profile.metrics.find((m) => m.role === role)?.key ?? null;
 }
 
 /**
  * Everything that must be in place before peak shaving may run: the three
- * required roles bound by the DEVICE, plus the export limit and
+ * required roles mapped in the active profile, plus the export limit and
  * battery capacity from the weather (forecast) config — the single source of
  * truth the clipping model already uses. Shared by the PUT enable-guard and
  * the runtime tick, so "can enable" and "keeps running" can never drift.
  */
 export function resolvePeakShavingBlockers(
-  device: DeviceInstance,
+  profile: InverterProfile,
   weather: WeatherConfig,
   mode: PeakShavingMode = "maximize-exports",
 ): Blocker[] {
   const blockers: Blocker[] = [];
   for (const role of REQUIRED_ROLES) {
-    if (!roleKey(device, role)) blockers.push({ kind: "role", role });
+    if (!keyForRole(profile, role)) blockers.push({ kind: "role", role });
   }
   // Either denomination satisfies the charge ceiling; the ampere role is named
   // when neither is mapped, since it is the conventional one to add.
-  if (!resolveChargeLimit(device)) blockers.push({ kind: "role", role: CHARGE_LIMIT_ROLE });
+  if (!resolveChargeLimit(profile)) blockers.push({ kind: "role", role: CHARGE_LIMIT_ROLE });
   // Holding feed-in *below* the plant's own limit needs that limit as an
   // actuator; the charge register alone cannot stop the inverter from selling.
-  if (mode === "grid-friendly" && !roleKey(device, SELL_LIMIT_ROLE)) {
+  if (mode === "grid-friendly" && !keyForRole(profile, SELL_LIMIT_ROLE)) {
     blockers.push({ kind: "role", role: SELL_LIMIT_ROLE });
   }
   if (weather.forecast.maxOutputW == null) blockers.push({ kind: "config", what: "export-limit" });
@@ -220,12 +208,12 @@ export type EnableError = { error: string; blockers?: Blocker[] };
 /** The peak-shaving half of the enable guard. */
 function validatePeakShavingEnable(
   cfg: AutomationConfig,
-  device: DeviceInstance | null,
+  profile: InverterProfile | null,
   weather: WeatherConfig,
 ): EnableError | null {
   if (!cfg.enabled) return { error: "Enable the automations master switch first" };
-  if (!device) return { error: "No registered inverter" };
-  const blockers = resolvePeakShavingBlockers(device, weather, cfg.peakShaving.mode);
+  if (!profile) return { error: "No active inverter profile" };
+  const blockers = resolvePeakShavingBlockers(profile, weather, cfg.peakShaving.mode);
   return blockers.length > 0
     ? { error: "Peak shaving cannot run with this setup", blockers }
     : null;
@@ -233,14 +221,14 @@ function validatePeakShavingEnable(
 
 export function validateAutomationEnable(
   cfg: AutomationConfig,
-  device: DeviceInstance | null,
+  profile: InverterProfile | null,
   weather: WeatherConfig,
 ): EnableError | null {
   if (cfg.enabled && !cfg.disclaimerAcceptedAt) {
     return { error: "Enabling automations requires accepting the disclaimer" };
   }
   if (cfg.peakShaving.enabled) {
-    const failed = validatePeakShavingEnable(cfg, device, weather);
+    const failed = validatePeakShavingEnable(cfg, profile, weather);
     if (failed) return failed;
   }
   if (cfg.peakShaving.priceAware.enabled) {
@@ -354,7 +342,7 @@ export interface DecisionInputs extends EvInputs {
    */
   exportCapW?: number;
   /**
-   * House load right now, W — measured from `load.power` when the device binds
+   * House load right now, W — measured from `load.power` when the profile maps
    * it, else the baseline, else 0. PV is only curtailed above `load + limit`
    * (the frame the forecast's clipping model uses), so every threshold is
    * compared against PV minus this.

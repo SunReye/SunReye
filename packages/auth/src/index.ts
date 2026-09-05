@@ -7,7 +7,23 @@ import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { APIError, createAuthMiddleware } from "better-auth/api";
 import { admin } from "better-auth/plugins/admin";
 import { apiKey } from "@better-auth/api-key";
-import { trustedOriginsFor } from "./trusted-origins";
+
+/** Origins trusted regardless of the request: configured + dev localhost globs. */
+function staticTrustedOrigins(): string[] {
+  const origins = env.CORS_ORIGIN ? [env.CORS_ORIGIN] : [];
+  origins.push(...env.TRUSTED_ORIGINS);
+  if (env.NODE_ENV !== "production") {
+    origins.push("*://localhost:*", "*://127.0.0.1:*");
+  }
+  return origins;
+}
+
+/** The request's own Origin, but only when it came through our reverse proxy. */
+function proxiedRequestOrigin(request: Request | undefined): string[] {
+  if (!request?.headers.get("x-sunreye-proxied")) return [];
+  const origin = request.headers.get("origin");
+  return origin ? [origin] : [];
+}
 
 /**
  * Build the Better Auth instance. Not exported: the package's public surface is
@@ -30,18 +46,21 @@ function createAuth() {
       schema: schema,
     }),
     // Origin allow-list for Better Auth's CSRF/origin check. Mirrors the server
-    // CORS policy (apps/server/src/index.ts): a configured split-origin
-    // dashboard (CORS_ORIGIN) plus any TRUSTED_ORIGINS, and outside production
-    // any localhost port. Same-origin deployments — every shipped one now that
-    // the server serves the dashboard — cannot enumerate their origin up front,
-    // so a request whose Origin matches the Host it was sent to is trusted as
-    // its own. See ./trusted-origins.ts for why that is sound.
-    trustedOrigins: (request) =>
-      trustedOriginsFor(request, {
-        corsOrigin: env.CORS_ORIGIN,
-        trustedOrigins: env.TRUSTED_ORIGINS,
-        isProduction: env.NODE_ENV === "production",
-      }),
+    // CORS policy (apps/server/src/index.ts): production pins to the configured
+    // split-origin web app (CORS_ORIGIN) plus any TRUSTED_ORIGINS; dev also
+    // trusts any localhost/127.0.0.1 origin on any port, since the web app may
+    // be served on a random port (Vite fallback, VS Code port forwarding).
+    // Better Auth glob-matches these patterns per URL segment, so `:*` matches
+    // only the port and never crosses into another host (e.g. `localhostfake.com`
+    // and cross-origin hosts are still rejected).
+    //
+    // Same-origin reverse-proxy deployments (Home Assistant ingress, the
+    // addon's direct-port vhost) can't enumerate their origin up front — the
+    // browser's Origin is the HA host or an arbitrary LAN address. The proxy
+    // strips any client-sent `x-sunreye-proxied` and sets it itself, so a
+    // request carrying that header provably came through our own front door
+    // and its Origin can be trusted.
+    trustedOrigins: (request) => [...staticTrustedOrigins(), ...proxiedRequestOrigin(request)],
     emailAndPassword: {
       enabled: true,
     },

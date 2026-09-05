@@ -15,12 +15,12 @@ import {
   forecastCorrectionState,
 } from "./schema/forecast-correction";
 
-/** All learned cells for one device (the grid rows, unordered). */
-export function getCorrectionCells(deviceId: number): Promise<ForecastCorrectionCellRow[]> {
+/** All learned cells for one inverter (the grid rows, unordered). */
+export function getCorrectionCells(inverterId: string): Promise<ForecastCorrectionCellRow[]> {
   return db
     .select()
     .from(forecastCorrectionCells)
-    .where(eq(forecastCorrectionCells.deviceId, deviceId));
+    .where(eq(forecastCorrectionCells.inverterId, inverterId));
 }
 
 /** Upsert a batch of cells (insert new, overwrite the ratio/weight of existing). */
@@ -31,7 +31,7 @@ export async function upsertCorrectionCells(cells: ForecastCorrectionCellInsert[
     .values(cells)
     .onConflictDoUpdate({
       target: [
-        forecastCorrectionCells.deviceId,
+        forecastCorrectionCells.inverterId,
         forecastCorrectionCells.month,
         forecastCorrectionCells.hour,
       ],
@@ -43,20 +43,20 @@ export async function upsertCorrectionCells(cells: ForecastCorrectionCellInsert[
     });
 }
 
-/** The learn cursor + skill stats for one device, or null before the first run. */
+/** The learn cursor + skill stats for one inverter, or null before the first run. */
 export async function getCorrectionState(
-  deviceId: number,
+  inverterId: string,
 ): Promise<ForecastCorrectionStateRow | null> {
   const [row] = await db
     .select()
     .from(forecastCorrectionState)
-    .where(eq(forecastCorrectionState.deviceId, deviceId));
+    .where(eq(forecastCorrectionState.inverterId, inverterId));
   return row ?? null;
 }
 
-/** Advance the cursor + skill stats for one device. */
+/** Advance the cursor + skill stats for one inverter. */
 export async function upsertCorrectionState(state: {
-  deviceId: number;
+  inverterId: string;
   learnedThrough: string;
   maeRaw: number;
   maeCorrected: number;
@@ -66,7 +66,7 @@ export async function upsertCorrectionState(state: {
     .insert(forecastCorrectionState)
     .values(state)
     .onConflictDoUpdate({
-      target: forecastCorrectionState.deviceId,
+      target: forecastCorrectionState.inverterId,
       set: {
         learnedThrough: state.learnedThrough,
         maeRaw: state.maeRaw,

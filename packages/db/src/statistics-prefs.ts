@@ -4,9 +4,8 @@
  * {@link STATISTICS_PREFS_KEY} and validated with {@link statisticsPrefsSchema}
  * on read/write. A single instance-wide setting, mirroring the uiPrefs pattern.
  *
- * Shape rules (readSetting safeParses to the default — a shape mismatch replaces
- * the stored preference, warning once and keeping the raw row under
- * `<key>:rejected`, but the live value is still gone):
+ * Shape rules (readSetting safeParses to the default silently — a shape
+ * mismatch wipes the stored preference without a log):
  *  - NO discriminated unions in `app_settings` blobs — keep this a flat record.
  *  - Every field (and every nested object) must carry `.default()` so `{}` and
  *    any older stored blob still parse; new fields added later must always

@@ -1,15 +1,11 @@
 import { describe, expect, test } from "bun:test";
-// The job's row shapes come from the STORE, not from the schema: the schema is
-// keyed by `deviceId: number` and the store is where that becomes the source id
-// this job (and every assertion below) speaks. See ./forecast-correction-store.ts.
 import type {
-  CorrectionCellRow as ForecastCorrectionCellRow,
-  CorrectionCellWrite as ForecastCorrectionCellInsert,
-  CorrectionStateRow as ForecastCorrectionStateRow,
-} from "./forecast-correction-store";
+  ForecastCorrectionCellInsert,
+  ForecastCorrectionCellRow,
+  ForecastCorrectionStateRow,
+} from "@SunReye/db/schema/forecast-correction";
 import { weatherConfigSchema } from "@SunReye/db/weather";
-import { deviceInstance } from "@SunReye/inverter-core";
-import type { DeviceInstance, RoleKey } from "@SunReye/inverter-core";
+import type { InverterProfile, InverterSample } from "@SunReye/inverter-core";
 import {
   type CorrectionIo,
   getCorrectionView,
@@ -35,8 +31,7 @@ const CET = 3600;
 const CEST = 2 * 3600;
 
 const LOCATION = { latitude: 50.39, longitude: 8.06 };
-/** `devices.slug` — the identity a grid is keyed by, and never a profile id. */
-const INVERTER_ID = "inverter-1";
+const INVERTER_ID = "deye-hybrid";
 const PV_KEY = "pv.power";
 
 /** A configured plant: weather on, coordinates set, one 10 kWp south array. */
@@ -53,16 +48,16 @@ const plant = (forecast: Record<string, unknown> = {}) =>
     },
   });
 
-/** A registered device mapping the roles named, and nothing else. */
-const deviceWith = (roles: Array<{ key: string; role: RoleKey }>, id = INVERTER_ID) =>
-  deviceInstance({
-    id,
-    deviceClass: "inverter",
-    integration: "profile",
-    metrics: roles.map((r) => ({ ...r, unit: null, group: "inverter", access: "r" as const })),
-  });
+/** Minimal profile mapping the total-PV role to a metric key. */
+const profileWith = (roles: Array<{ key: string; role: string }>): InverterProfile =>
+  ({
+    id: INVERTER_ID,
+    name: "Hybrid",
+    manufacturer: "Deye",
+    metrics: roles,
+  }) as unknown as InverterProfile;
 
-const pvDevice = deviceWith([
+const pvProfile = profileWith([
   { key: "battery.soc", role: "battery.soc" },
   { key: PV_KEY, role: "pv.total.power" },
 ]);
@@ -148,8 +143,8 @@ function expectedAt(
 
 interface HarnessOptions {
   now?: number;
-  /** The registered device the correction is learned for; null for none. */
-  device?: DeviceInstance | null;
+  profile?: InverterProfile | null;
+  sample?: InverterSample | null;
   /** Archive days available upstream; a run only receives those it asks for. */
   samples?: HourSample[];
   /** What Open-Meteo declares as the plant's offset for the whole range. */
@@ -196,11 +191,12 @@ function harness(options: HarnessOptions = {}) {
     location: { latitude: number; longitude: number };
   }> = [];
   const historyCalls: Array<{ metric: string; inverterId: string; from: number; to: number }> = [];
-  const cellWrites: (readonly ForecastCorrectionCellInsert[])[] = [];
+  const cellWrites: ForecastCorrectionCellInsert[][] = [];
 
   const io: CorrectionIo = {
     now: () => options.now ?? NOW,
-    device: () => (options.device === undefined ? pvDevice : options.device),
+    activeProfile: () => (options.profile === undefined ? pvProfile : options.profile),
+    latestSample: () => options.sample ?? null,
     fetchArchive: async (location, planes, startDate, endDate) => {
       archiveCalls.push({ location, planes, startDate, endDate });
       if (options.archiveError !== undefined) throw options.archiveError;
@@ -254,7 +250,7 @@ function harness(options: HarnessOptions = {}) {
 
 describe("forecast correction view", () => {
   test("reports an empty grid when no plant is active", async () => {
-    const h = harness({ device: null });
+    const h = harness({ profile: null });
     const view = await getCorrectionView(plant(), h.io);
 
     expect(view).toEqual({
@@ -267,7 +263,7 @@ describe("forecast correction view", () => {
 
   test("reports an empty grid when the plant measures no total PV power", async () => {
     // A meter-only or battery-only profile has nothing to compare a forecast to.
-    const h = harness({ device: deviceWith([{ key: "battery.soc", role: "battery.soc" }]) });
+    const h = harness({ profile: profileWith([{ key: "battery.soc", role: "battery.soc" }]) });
 
     expect(await getCorrectionView(plant(), h.io)).toMatchObject({
       cells: [],
@@ -277,7 +273,7 @@ describe("forecast correction view", () => {
 
   test("mirrors the apply toggle whether or not anything has been learned", async () => {
     const on = plant({ correction: { enabled: true } });
-    expect((await getCorrectionView(on, harness({ device: null }).io)).enabled).toBe(true);
+    expect((await getCorrectionView(on, harness({ profile: null }).io)).enabled).toBe(true);
     expect((await getCorrectionView(on, harness().io)).enabled).toBe(true);
     expect((await getCorrectionView(plant(), harness().io)).enabled).toBe(false);
   });
@@ -320,14 +316,13 @@ describe("forecast correction view", () => {
     expect(view.cells[0]?.weight).toBe(30);
   });
 
-  test("reads the grid under the DEVICE's id, not the profile's", async () => {
-    // The grid belongs to the machine, so it is keyed by `devices.slug`. It used
-    // to be keyed by whatever the newest live sample carried — the PROFILE id a
-    // driver stamps — which a profile swap silently detaches it from.
+  test("reads the grid under the inverter id the live sample carries", async () => {
+    // The serial-numbered id from the poll wins over the profile slug, so the
+    // grid stays attached to the plant that produced the data.
     const h = harness({
-      device: deviceWith([{ key: PV_KEY, role: "pv.total.power" }], "inverter-2"),
+      sample: { time: "2026-08-15T09:00:00Z", inverterId: "sn-4711", metrics: {} },
       cells: [
-        cellRow({ inverterId: "inverter-2", hour: 12, ratio: 1.3, weight: 20 }),
+        cellRow({ inverterId: "sn-4711", hour: 12, ratio: 1.3, weight: 20 }),
         cellRow({ inverterId: INVERTER_ID, hour: 12, ratio: 0.5, weight: 20 }),
       ],
     });
@@ -362,8 +357,8 @@ describe("correction learn run — when there is nothing to do", () => {
     // the no-op it must return — it does NOT prove what the default wiring is:
     // `forecastReady` rejects the config before the IO is ever dereferenced, so
     // the assertion below would hold for any default. Proving the production
-    // wiring would mean letting the real device registry answer, and that is a
-    // process-wide instance a sibling suite mocks process-globally
+    // wiring would mean letting the real `getActiveProfileOrNull`/`liveState`
+    // answer, and those are module state a sibling suite mocks process-globally
     // (`solar-forecast.test.ts`) — the result would turn on test file order.
     expect(await runForecastCorrectionLearn(weatherConfigSchema.parse({}))).toEqual({
       learned: 0,
@@ -372,8 +367,8 @@ describe("correction learn run — when there is nothing to do", () => {
   });
 
   test("stays out of the way until a plant measures total PV power", async () => {
-    for (const device of [null, deviceWith([{ key: "battery.soc", role: "battery.soc" }])]) {
-      const h = harness({ device, samples: day(SETTLED) });
+    for (const profile of [null, profileWith([{ key: "battery.soc", role: "battery.soc" }])]) {
+      const h = harness({ profile, samples: day(SETTLED) });
       expect(await runForecastCorrectionLearn(plant(), h.io)).toEqual({
         learned: 0,
         learnedThrough: null,
@@ -659,19 +654,19 @@ describe("correction learn run — what it folds", () => {
     expect(h.cellWrites[0]?.[0]).toMatchObject({ inverterId: INVERTER_ID, month: 8 });
   });
 
-  test("keys the grid to the DEVICE, so a second inverter learns its own", async () => {
+  test("keys the grid to the live sample's inverter, not the profile slug", async () => {
     const samples = day(SETTLED);
     const h = harness({
-      device: deviceWith([{ key: PV_KEY, role: "pv.total.power" }], "inverter-2"),
+      sample: { time: "2026-08-15T09:00:00Z", inverterId: "sn-4711", metrics: {} },
       samples,
       measured: measuredOf(samples, config, 1.2),
     });
 
     await runForecastCorrectionLearn(config, h.io);
 
-    expect(h.historyCalls[0]?.inverterId).toBe("inverter-2");
-    expect(h.cell(8, 12, "inverter-2")).toBeDefined();
-    expect(h.stored()?.inverterId).toBe("inverter-2");
+    expect(h.historyCalls[0]?.inverterId).toBe("sn-4711");
+    expect(h.cell(8, 12, "sn-4711")).toBeDefined();
+    expect(h.stored()?.inverterId).toBe("sn-4711");
   });
 });
 

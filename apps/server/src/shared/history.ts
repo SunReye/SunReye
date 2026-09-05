@@ -6,23 +6,14 @@
 
 import { db } from "@SunReye/db";
 import { metricsRaw } from "@SunReye/db/schema/metrics";
-import { metricKeys } from "@SunReye/db/schema/plants";
 import { bucketEpoch, interval, last } from "@SunReye/db/timescale-fns";
 import { and, desc, eq, gte, lt } from "drizzle-orm";
 import { sql } from "drizzle-orm";
-import { deviceIdOf, metricIdOf } from "./identity-sql";
-import { type RollupBucket, rollupSeries } from "./rollup-sql";
+import { type RollupBucket, preferredRollup } from "./rollup-sql";
 
 export type { RollupBucket } from "./rollup-sql";
 
-/**
- * The window one entity's time-series read is bounded by.
- *
- * NAMES, both of them — a metric key and a device slug (or, transitionally, the
- * profile id). The int2 identity `metrics_raw` is keyed by never reaches a
- * caller: it is resolved at the boundary by `./identity-sql.ts` on the way in and
- * joined back to its key on the way out.
- */
+/** The window one entity's time-series read is bounded by. */
 export interface HistoryQuery {
   metric: string;
   inverterId: string;
@@ -48,7 +39,7 @@ export async function queryRollup(
   // `since` branch rather than reading `from` as an open start, which would
   // silently widen a window the caller bounded.
   const range = q.from && q.to ? { from: q.from, to: q.to } : { from: q.since ?? new Date(0) };
-  const source = rollupSeries(q.bucket, {
+  const source = preferredRollup(q.bucket, {
     metric: q.metric,
     inverterId: q.inverterId,
     ...range,
@@ -75,11 +66,12 @@ export async function queryRollup(
 /**
  * Whether a bucket has an average at all.
  *
- * `interpolated_average` returns NULL for a bucket it cannot interpolate at all
- * — one holding no samples with no neighbour to carry a value in from, i.e. a
- * genuine hole in the recording. It must not reach a caller: `Number(null)` is
- * `0`, which would draw a flat line through the gap and read as a measurement. A
- * real `0` is a reading (0 kW of PV at night) and survives.
+ * The weighted aggregates divide two materialized sums, guarded by
+ * `nullif(weight, 0)`, so a degenerate bucket — one whose recorded hold times
+ * sum to zero — yields NULL rather than an error or a fabricated number. It must
+ * not reach a caller: `Number(null)` is `0`, which would draw a flat line
+ * through a gap and read as a measurement. A real `0` is a reading (0 kW of PV
+ * at night) and survives.
  */
 function hasAverage<T extends { avg_value: number | null }>(
   row: T,
@@ -99,7 +91,7 @@ export async function queryMedianHourlyAvg(
   days: number,
 ): Promise<number | null> {
   const since = new Date(Date.now() - days * 24 * 3600 * 1000);
-  const source = rollupSeries("hour", { metric, inverterId, from: since });
+  const source = preferredRollup("hour", { metric, inverterId, from: since });
   // `percentile_cont` is an ordered-set aggregate: it ignores NULL inputs, so a
   // degenerate zero-weight bucket drops out of the ordering rather than skewing
   // the median toward zero.
@@ -123,7 +115,7 @@ export async function queryHourlyAvgRange(
   from: Date,
   to: Date,
 ): Promise<Array<{ bucketMs: number; avg: number }>> {
-  const source = rollupSeries("hour", { metric, inverterId, from, to });
+  const source = preferredRollup("hour", { metric, inverterId, from, to });
   const result = await db.execute<{ bucket: string; avg_value: number | null }>(sql`
     select bucket, avg_value
     from ${source} r
@@ -229,21 +221,10 @@ export async function queryRecentBuckets(q: {
   inverterId: string;
   seconds: number;
   stepSeconds: number;
-  /**
-   * The instant the window ends, for tests that need to know where its buckets
-   * fall. Callers leave it unset; the window is always "the last `seconds`".
-   *
-   * Without it a case cannot place a sample in the bucket the window OPENS in,
-   * because `time_bucket` is epoch-aligned (see below) and `since` is derived
-   * from a clock the case cannot read. Blanketing the boundary with samples
-   * instead is not equivalent — it fails whenever `since` lands in the last
-   * few milliseconds of a bucket, which is what made the db-test intermittent.
-   */
-  now?: Date;
 }): Promise<RecentBackfill> {
   const step = clampInt(q.stepSeconds, 1, 60);
   const seconds = clampInt(q.seconds, 1, 3600);
-  const since = new Date((q.now?.getTime() ?? Date.now()) - seconds * 1000);
+  const since = new Date(Date.now() - seconds * 1000);
   const width = interval(step);
   // `+ 1`: `time_bucket` is EPOCH-aligned, not `since`-aligned, so an N-second
   // window starting mid-bucket spans ceil(N / step) + 1 buckets. Without it the
@@ -255,51 +236,40 @@ export async function queryRecentBuckets(q: {
   const buckets = Math.ceil(seconds / step) + 1;
 
   // Samples inside the window, reduced to one row per (metric, bucket).
-  // `metric_keys` is JOINED rather than mapped in process: this payload is KEYED
-  // by metric name and that shape is an external contract, so the name has to be
-  // in the row — and a join cannot go stale between the query and the mapping.
-  const device = deviceIdOf(q.inverterId);
-  // Aliased to `metric`, deliberately: without it the UNION's output column takes
-  // the COLUMN's name (`key`), and every outer reference — the `distinct on`, the
-  // ordering, the shaper's row field — would silently be about a column called
-  // `key` while this module's row shape and the payload it feeds say `metric`.
-  const metricName = sql<string>`${metricKeys.key}`.as("metric");
   const windowArm = db
     .select({
-      metric: metricName,
+      metric: metricsRaw.metric,
       bucket: bucketEpoch(width, metricsRaw.time).as("bucket"),
       value: last(metricsRaw.value, metricsRaw.time).as("value"),
       pref: sql<number>`0`.as("pref"),
     })
     .from(metricsRaw)
-    .innerJoin(metricKeys, eq(metricKeys.id, metricsRaw.metricId))
-    .where(and(eq(metricsRaw.deviceId, device), gte(metricsRaw.time, since)))
+    .where(and(eq(metricsRaw.inverterId, q.inverterId), gte(metricsRaw.time, since)))
     // The bucket alias, not a re-derivation: Postgres resolves an output name in
     // GROUP BY, and repeating the expression would be a second thing to keep in
     // step with `bucketOf`.
-    .groupBy(metricKeys.key, sql`bucket`);
+    .groupBy(metricsRaw.metric, sql`bucket`);
 
   // The value each metric was already holding when the window opened, so a
   // signal that has not changed recently still draws from the left edge rather
   // than appearing to start mid-chart. `distinct on (metric)` + this arm's own
   // ordering is what makes it the most RECENT such sample.
   const seedArm = db
-    .selectDistinctOn([metricKeys.key], {
-      metric: metricName,
+    .selectDistinctOn([metricsRaw.metric], {
+      metric: metricsRaw.metric,
       bucket: bucketEpoch(width, since).as("bucket"),
       value: metricsRaw.value,
       pref: sql<number>`1`.as("pref"),
     })
     .from(metricsRaw)
-    .innerJoin(metricKeys, eq(metricKeys.id, metricsRaw.metricId))
     .where(
       and(
-        eq(metricsRaw.deviceId, device),
+        eq(metricsRaw.inverterId, q.inverterId),
         lt(metricsRaw.time, since),
         gte(metricsRaw.time, sql`${since}::timestamptz - ${interval(SEED_LOOKBACK_S)}`),
       ),
     )
-    .orderBy(metricKeys.key, desc(metricsRaw.time));
+    .orderBy(metricsRaw.metric, desc(metricsRaw.time));
 
   // `unionAll` parenthesises each arm, which is load-bearing rather than
   // cosmetic: an unparenthesised `order by` after the final arm binds to the
@@ -327,17 +297,14 @@ export async function queryRecentBuckets(q: {
 export async function queryRawHistory(
   q: HistoryQuery,
 ): Promise<Array<{ time: string; value: number }>> {
-  // An explicit projection, never `select *`: the table's other columns are the
-  // int2 identity, and a `select *` here would start returning INTEGERS to a
-  // caller whose contract is names.
   const rows = await db
-    .select({ time: metricsRaw.time, value: metricsRaw.value })
+    .select()
     .from(metricsRaw)
     .where(
       and(
         gte(metricsRaw.time, q.since),
-        eq(metricsRaw.metricId, metricIdOf(q.metric)),
-        eq(metricsRaw.deviceId, deviceIdOf(q.inverterId)),
+        eq(metricsRaw.metric, q.metric),
+        eq(metricsRaw.inverterId, q.inverterId),
       ),
     )
     .orderBy(desc(metricsRaw.time))

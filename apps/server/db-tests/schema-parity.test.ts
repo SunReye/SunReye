@@ -3,11 +3,7 @@
  *
  * The continuous aggregates cannot be managed by drizzle (see
  * `packages/db/src/schema/rollups.ts`), so their declarations are a
- * hand-maintained mirror of `packages/db/src/timescale/0000_baseline.sql`. Since
- * 2.0.0 two of their columns are `timescaledb_toolkit` PARTIALS
- * (`timeweightsummary`, `countersummary`) declared as opaque custom types, which
- * makes this check strictly more valuable: nothing else in the repo would notice
- * a toolkit upgrade that renamed one. Nothing else
+ * hand-maintained mirror of `packages/db/src/timescale/*.sql`. Nothing else
  * checks that mirror. Without this test the typed reads built on it are typed
  * GUESSES: a renamed column in the SQL would leave the declaration describing a
  * relation that no longer exists, and the first query to touch it would fail at
@@ -18,10 +14,15 @@
  * proof that promotion leaves its columns alone.
  */
 import { describe, expect, test } from "bun:test";
-import { metricsConfigLog, metricsRaw } from "@SunReye/db/schema/metrics";
-import { batteries, connections, devices, metricKeys, plants } from "@SunReye/db/schema/plants";
-import { replayProgress } from "@SunReye/db/schema/replay";
-import { dailyRollups, hourlyRollups, minuteRollups } from "@SunReye/db/schema/rollups";
+import { metricsRaw } from "@SunReye/db/schema/metrics";
+import {
+  dailyRollups,
+  hourlyRollups,
+  minuteRollups,
+  weightedDailyRollups,
+  weightedHourlyRollups,
+  weightedMinuteRollups,
+} from "@SunReye/db/schema/rollups";
 import { type ColumnShape, declaredColumns, diffColumns } from "@SunReye/db/schema-parity";
 import { databaseReachable, resetTestDatabase } from "./harness";
 
@@ -39,23 +40,12 @@ if (!reachable) {
  */
 const RELATIONS = [
   { name: "metrics_raw", relation: metricsRaw },
-  { name: "metrics_config_log", relation: metricsConfigLog },
   { name: "minute_rollups", relation: minuteRollups },
   { name: "hourly_rollups", relation: hourlyRollups },
   { name: "daily_rollups", relation: dailyRollups },
-  // The dimensions. Drizzle-managed, so drift is unlikely — but the int2
-  // identity is only as good as the tables it resolves against, and a
-  // hand-written `smallint` that generated as `integer` would silently double
-  // the width of every reading's key.
-  { name: "plants", relation: plants },
-  { name: "connections", relation: connections },
-  { name: "devices", relation: devices },
-  { name: "batteries", relation: batteries },
-  { name: "metric_keys", relation: metricKeys },
-  // The bucket replay's watermark. Its whole job is to be read back by a
-  // resumed run, and a column this declaration got wrong would surface as a
-  // replay that either redid a day or skipped one.
-  { name: "replay_progress", relation: replayProgress },
+  { name: "weighted_minute_rollups", relation: weightedMinuteRollups },
+  { name: "weighted_hourly_rollups", relation: weightedHourlyRollups },
+  { name: "weighted_daily_rollups", relation: weightedDailyRollups },
 ] as const;
 
 const suite = reachable ? describe : describe.skip;

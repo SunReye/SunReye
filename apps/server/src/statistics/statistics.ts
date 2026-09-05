@@ -18,7 +18,6 @@ import type {
 import { db } from "@SunReye/db";
 import type { InverterProfile } from "@SunReye/inverter-core";
 import { sql } from "drizzle-orm";
-import { deviceIdOf } from "../shared/identity-sql";
 import {
   ENERGY_FIELDS,
   computeCost,
@@ -89,7 +88,7 @@ async function earliestDailyBucket(inverterId: string): Promise<Date | null> {
   const res = await db.execute<{ first: string | Date | null }>(sql`
     select min(bucket) as first
     from daily_rollups
-    where device_id = ${deviceIdOf(inverterId)}
+    where inverter_id = ${inverterId}
   `);
   const first = res.rows[0]?.first;
   return first ? new Date(first) : null;
