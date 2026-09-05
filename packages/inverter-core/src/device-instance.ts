@@ -30,6 +30,7 @@
  * automation engine's battery controls) read instead of re-scanning a list.
  */
 
+import type { DeviceClass } from "./device-class";
 import type { CanonicalRole } from "./roles";
 import type { MetricBase, ProfileDeclarations, InverterProfile } from "./types";
 
@@ -39,17 +40,7 @@ import type { MetricBase, ProfileDeclarations, InverterProfile } from "./types";
  */
 export type RoleKey = CanonicalRole;
 
-/**
- * What a device IS, for the read layer that must tell "this device reports the
- * plant total" from "this device is one of the inverters the total is summed
- * FROM".
- *
- * Mirrors the `devices_role_check` constraint and `packages/db`'s `DEVICE_ROLES`
- * — the database is the authority and this is the in-memory spelling of it.
- * `packages/db/src/plant-repo.test.ts` and `apps/server/db-tests` prove the
- * three agree; a sixth value is added in all of them or in none.
- */
-export type DeviceClass = "inverter" | "controller" | "meter" | "charger" | "optimizer";
+export type { DeviceClass } from "./device-class";
 
 /**
  * What a device declares about one of its metrics — everything EXCEPT how to

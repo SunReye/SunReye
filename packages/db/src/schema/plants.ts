@@ -46,6 +46,7 @@
  * by rejection in `apps/server/db-tests/check-constraints.test.ts`.
  */
 
+import { DEVICE_CLASSES } from "@SunReye/inverter-core/device-class";
 import { sql } from "drizzle-orm";
 import {
   boolean,
@@ -446,7 +447,7 @@ export const devices = pgTable(
      * that match on a slug or a profile id instead — `../plant-repo.ts`'s
      * `physicalDevices`, applied in `apps/server/src/inverter/provision.ts` and
      * `.../mqtt-namespace.ts` — exclude it explicitly. A SIXTH value arrives the
-     * same way: name it here, decide which of the two arms it belongs to, and if
+     * same way: name it in `DEVICE_CLASSES`, decide which of the two arms it belongs to, and if
      * it is neither, add it to `VIRTUAL_ROLES` in `../plant-repo.ts` with the
      * consumer audit that makes "neither" safe. A generic `'virtual'` was
      * rejected on purpose — it invites consumers to branch on something other
@@ -455,12 +456,18 @@ export const devices = pgTable(
      * Only `'inverter'` and `'optimizer'` are written today (provisioning, the
      * archive import, the 1.2.0 upgrade, and Phase 4.5); the other three are
      * modelled and are what a Victron GX or a Sigenergy controller will be
-     * written as. `../plant-repo.ts`'s `DEVICE_ROLES` mirrors this list, and
+     * written as. The list is `DEVICE_CLASSES` from
+     * `@SunReye/inverter-core/device-class` — the constraint is RENDERED from it,
+     * `../plant-repo.ts`'s `DEVICE_ROLES` re-exports it, and
      * `apps/server/db-tests/check-constraints.test.ts` proves the engine agrees.
      */
     check(
       "devices_role_check",
-      sql`${t.role} in ('inverter', 'controller', 'meter', 'charger', 'optimizer')`,
+      // `sql.raw`, not bound params: drizzle-kit snapshots a check's text
+      // verbatim, and `$1, $2…` would read as a changed constraint and emit a
+      // DROP/ADD on every generate. `src/plants-schema.test.ts` pins the render
+      // to the shipped migration.
+      sql`${t.role} in (${sql.raw(DEVICE_CLASSES.map((c) => `'${c}'`).join(", "))})`,
     ),
   ],
 );

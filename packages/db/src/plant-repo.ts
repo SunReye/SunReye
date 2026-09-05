@@ -50,6 +50,7 @@
  * Postgres, because every claim above is a claim about what the engine does.
  */
 
+import { DEVICE_CLASSES, type DeviceClass } from "@SunReye/inverter-core/device-class";
 import { type SQL, sql } from "drizzle-orm";
 
 import type { DeviceBattery } from "./batteries";
@@ -149,22 +150,17 @@ export function activeDevices<T extends Pick<DeviceRecord, "retiredAt">>(
 /**
  * Every role `devices_role_check` admits, in the order the schema states them.
  *
- * The list is a MIRROR of the constraint (`./schema/plants.ts`), not its source:
- * the database is the authority, and `apps/server/db-tests/check-constraints.test.ts`
- * is what proves the two agree. It is spelled here because a role the engine
- * accepts and nothing in the read layer names is a value every branch falls
- * through in silence — the failure the CHECK exists to make loud.
+ * The same array `@SunReye/inverter-core/device-class` publishes — the
+ * constraint in `./schema/plants.ts` is rendered from it, so the engine, this
+ * read layer and the in-memory `DeviceClass` cannot disagree. It is re-exported
+ * under the column's name because a role the engine accepts and nothing in the
+ * read layer names is a value every branch falls through in silence — the
+ * failure the CHECK exists to make loud.
  */
-export const DEVICE_ROLES = [
-  "inverter",
-  "controller",
-  "meter",
-  "charger",
-  "optimizer",
-] as const satisfies readonly string[];
+export const DEVICE_ROLES = DEVICE_CLASSES;
 
 // fallow-ignore-next-line unused-type -- the role union derived from DEVICE_ROLES above and used by this module's own VIRTUAL_ROLES; exported so a consumer typing a role has one spelling to reach for.
-export type DeviceRole = (typeof DEVICE_ROLES)[number];
+export type DeviceRole = DeviceClass;
 
 /**
  * Roles with NO MACHINE BEHIND THEM.

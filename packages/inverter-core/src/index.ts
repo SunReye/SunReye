@@ -31,6 +31,7 @@ export {
   toManifestMetric,
   buildManifest,
 } from "./capabilities";
+export { DEVICE_CLASSES, isDeviceClass } from "./device-class";
 export { deviceInstance, instanceFromProfile, roleBindings } from "./device-instance";
 export type {
   DeviceClass,

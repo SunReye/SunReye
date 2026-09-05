@@ -30,6 +30,7 @@
 
 import {
   type DeviceClass,
+  isDeviceClass,
   type DeviceInstance,
   type DeviceMetric,
   type InverterProfile,
@@ -37,7 +38,7 @@ import {
   deviceInstance,
   instanceFromProfile,
 } from "@SunReye/inverter-core";
-import { DEVICE_ROLES, type DeviceRecord, activeDevices } from "@SunReye/db/plant-repo";
+import { type DeviceRecord, activeDevices } from "@SunReye/db/plant-repo";
 import type { DeviceProfileBinding } from "@SunReye/db/automation-state";
 
 /** The one failure path this logs; kept minimal so any logger satisfies it. */
@@ -146,7 +147,7 @@ export interface DeviceRegistry {
 
 /** Whether a row's role is one the read layer knows how to treat. */
 function deviceClassOf(role: string): DeviceClass | null {
-  return (DEVICE_ROLES as readonly string[]).includes(role) ? (role as DeviceClass) : null;
+  return isDeviceClass(role) ? role : null;
 }
 
 /**
@@ -224,8 +225,8 @@ export function createDeviceRegistry(deps: DeviceRegistryDeps): DeviceRegistry {
     for (const row of activeDevices(rows)) {
       const deviceClass = deviceClassOf(row.role);
       if (!deviceClass) {
-        // The CHECK constraint admits five roles and `DEVICE_ROLES` mirrors
-        // them, so this is only reachable when the two have drifted. Say so:
+        // The CHECK constraint is rendered from `DEVICE_CLASSES`, so this is
+        // only reachable on a database migrated ahead of this build. Say so:
         // a device nothing can classify is a device silently dropped from the
         // roster, which is exactly the failure the constraint exists to make
         // loud.

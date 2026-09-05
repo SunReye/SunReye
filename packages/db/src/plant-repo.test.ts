@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type { SQL } from "drizzle-orm";
 import { PgDialect } from "drizzle-orm/pg-core";
 
+import { DEVICE_CLASSES } from "@SunReye/inverter-core/device-class";
 import {
   DEVICE_ROLES,
   activeDevices,
@@ -788,6 +789,9 @@ describe("device roles", () => {
     // `apps/server/db-tests/check-constraints.test.ts`, which proves the engine
     // agrees. 'optimizer' is the fifth: Phase 4.5's virtual device.
     expect([...DEVICE_ROLES]).toEqual(["inverter", "controller", "meter", "charger", "optimizer"]);
+    // The same array, not a copy: the read layer, the CHECK constraint and the
+    // in-memory `DeviceClass` all derive from `@SunReye/inverter-core/device-class`.
+    expect(DEVICE_ROLES).toBe(DEVICE_CLASSES);
   });
 
   test("an optimizer is virtual — there is no machine behind it", () => {
