@@ -48,6 +48,7 @@
 
 	// `cancelled` guards against an earlier request resolving after a later one
 	// and clobbering fresher data.
+	// fallow-ignore-next-line code-duplication -- dup:61e6ac8e — the cost and energy sections fetch their series the same way (invalidation signal, source-scoped query, cancel-on-rerun) but into two differently typed results; a shared effect helper would need a generic rune wrapper for two call sites.
 	$effect(() => {
 		// Shared invalidation signal: a live push on a now-inclusive wider range
 		// bumps it (at most once a minute), which refetches these bars in place.
