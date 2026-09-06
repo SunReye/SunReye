@@ -2,7 +2,7 @@
 
 ## [unreleased]
 
-Unreleased work on `dev` since 1.2.0, shipped in `beta.20260906-a5fa786`.
+Unreleased work on `dev` since 1.2.0, shipped in `beta.20260906-cff531f`.
 
 
 ### ⚠ BREAKING CHANGES
@@ -12,6 +12,7 @@ Unreleased work on `dev` since 1.2.0, shipped in `beta.20260906-a5fa786`.
 
 ### Features
 
+* amortisation statistics from the lifetime counters ([31a3bbb](https://github.com/SunReye/SunReye/commit/31a3bbbdbd87714c015a0e4440b8d6ddf726b13d))
 * **server:** the live sample is stamped with the device slug, not the profile id ([932240e](https://github.com/SunReye/SunReye/commit/932240eb6f1140cb3ef7a600fcadde152b595fdc))
 * **web:** choose the plant or one device, and every read follows ([4e2f9d3](https://github.com/SunReye/SunReye/commit/4e2f9d3f65aec4eca5134683b95d687c23fb1e0c))
 * **server:** plant and device sources on every history, energy and statistics read ([04e95d7](https://github.com/SunReye/SunReye/commit/04e95d77067f7f60ebd7248a7ff25d9b91adc347))
@@ -167,6 +168,9 @@ Unreleased work on `dev` since 1.2.0, shipped in `beta.20260906-a5fa786`.
 
 ### Bug Fixes
 
+* **server:** drop the plant facts cache on device writes ([589fe1b](https://github.com/SunReye/SunReye/commit/589fe1bcf852725eb5cd8281cd95253f79caed6e))
+* **server:** allow PATCH through CORS ([76d65d7](https://github.com/SunReye/SunReye/commit/76d65d74d15e174c2458af456cdbc2bebf375726))
+* **server:** today's money follows the live day registers ([08dd482](https://github.com/SunReye/SunReye/commit/08dd4825121b7ad407c6147d3a70ffe800b3c9b8))
 * **server,web:** the live fold finds a member by the profile id the driver stamps ([6897f80](https://github.com/SunReye/SunReye/commit/6897f806f16d645a4d6e889fd4a0f485042170bf))
 * **server:** a profile shared by two devices resolves to neither device ([f95a142](https://github.com/SunReye/SunReye/commit/f95a142cd5c09fd0ae17be3f3869025ad7abede2))
 * **web:** a rail's charge keeps its place when its speed steps ([ee5bd13](https://github.com/SunReye/SunReye/commit/ee5bd131797e5505118126a36f734f073fcf8cf5))
