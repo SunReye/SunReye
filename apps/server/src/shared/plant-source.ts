@@ -27,12 +27,10 @@ export interface PlantMember {
   /** `devices.slug` — the storage identity. */
   slug: string;
   /**
-   * `devices.profile_id` — the name a live sample carries TODAY: the driver
-   * stamps `InverterSample.inverterId` with its profile id
-   * (`packages/inverter-core/src/driver.ts`), not the slug. The live fold
-   * matches a sample to its member by either. Two devices on one profile are
-   * indistinguishable on the wire until the sample carries the slug; the
-   * storage identity already handles that arm (`ensureDevice` by slug).
+   * `devices.profile_id`. The runtime re-stamps every polled sample with the
+   * device SLUG (`apps/server/src/inverter/runtime.ts`, `fanOut`), so a sample
+   * normally matches by `slug`; this is the fallback for a source that still
+   * speaks the driver's profile-id spelling (the simulator, a coded tier).
    */
   profileId?: string;
   /**

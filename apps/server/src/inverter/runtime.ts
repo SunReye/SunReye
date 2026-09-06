@@ -480,8 +480,15 @@ export function createRuntime(deps: RuntimeDeps = {}) {
    * and this in one function — two subjects, and the tick-collapse logging below
    * is the half that must stay easy to read.
    */
-  function fanOut(sample: InverterSample): void {
+  function fanOut(read: InverterSample): void {
     const device = pollDevice();
+    // The driver stamps the PROFILE's id (`packages/inverter-core/src/driver.ts`);
+    // the sample every downstream surface sees carries the DEVICE's slug — the
+    // identity history is keyed by, the name `/api/sources` lists, and what the
+    // plant fold matches a member on (#202). Two devices on one profile are
+    // two samples, not one, from here on. With no device row the stamp stays
+    // as read: nothing is stored for it anyway (see below).
+    const sample: InverterSample = device ? { ...read, inverterId: device.id } : read;
     liveState.set(sample);
     // The EV charge-power estimator refines its estimate from the 1 Hz house
     // load — between EVCC's much slower publishes (no-op when EVCC is off).
@@ -489,13 +496,12 @@ export function createRuntime(deps: RuntimeDeps = {}) {
     // Persistence only: the live frame below carries every key regardless of
     // where — or whether — its value is stored.
     //
-    // Keyed by the DEVICE, never by `sample.inverterId`: the driver stamps the
-    // PROFILE's id there (`packages/inverter-core/src/driver.ts`), and a profile
-    // is swapped, uninstalled and re-downloaded inside the five years a reading
-    // is retained. With no device row there is nothing to key a row to, so
-    // nothing is routed — and that is said out loud and retried, because a
-    // process that polls, publishes and reports `connected: true` while storing
-    // nothing is otherwise indistinguishable from a healthy one.
+    // Keyed by the DEVICE object, not by the stamp: a profile is swapped,
+    // uninstalled and re-downloaded inside the five years a reading is retained.
+    // With no device row there is nothing to key a row to, so nothing is routed
+    // — and that is said out loud and retried, because a process that polls,
+    // publishes and reports `connected: true` while storing nothing is
+    // otherwise indistinguishable from a healthy one.
     if (device) {
       // Cleared on success, so a roster lost later warns again.
       missingDeviceWarned = false;

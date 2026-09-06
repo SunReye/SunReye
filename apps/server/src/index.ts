@@ -265,12 +265,21 @@ const sourceRequest = (q: { source?: string; inverterId?: string }): SeriesSourc
   return slug ? { kind: "device", slug } : null;
 };
 
-/** The energy readers' target for a request, or `undefined` to take the profile default. */
+/**
+ * The energy readers' target for a request. Nothing named → the primary device
+ * by SLUG, which is also what the live sample is stamped with, so the live
+ * `*.today` override keeps matching; the profile-id default is only the
+ * fallback of an install with no device row yet.
+ */
 const energyTarget = async (q: { source?: string; inverterId?: string }) => {
-  const req = parseSeriesSource(q);
+  const req = sourceRequest(q);
   if (!req) return q.inverterId;
   return targetOf(req, req.kind === "plant" ? await historyMembers() : []);
 };
+
+/** Today's statistics for the primary device — the slug the live sample carries. */
+const todayStatisticsForPrimary = (p: Parameters<typeof todayStatistics>[0]) =>
+  todayStatistics(p, defaultSourceId() ?? undefined);
 
 /** The role-derived aggregate of a metric key, through the plant's manifest. */
 const aggregateOf = aggregateOfMetric(ctx?.metaByKey ?? new Map());
@@ -742,7 +751,7 @@ const app = new Elysia()
       backfill: createTopicBackfill({
         profile,
         evccSnapshot,
-        todayStatistics,
+        todayStatistics: todayStatisticsForPrimary,
         automationStreamSnapshot,
         recentLogs,
         plantSnapshot: () => plantLive.snapshot(),
@@ -847,7 +856,7 @@ setInterval(
       profile,
       watched: audience.statistics,
       streams,
-      todayStatistics,
+      todayStatistics: todayStatisticsForPrimary,
     }),
   STATISTICS_INTERVAL_MS,
 );
