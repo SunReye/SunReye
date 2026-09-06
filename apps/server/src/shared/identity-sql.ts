@@ -70,11 +70,18 @@ const METRIC_KEYS = getTableName(metricKeys);
  * `min` returns exactly one row (NULL when there are none) and is deterministic.
  * With one plant it is exact; the multi-plant read layer must pass a plant-scoped
  * device slug, which is the device-settings wave's job.
+ *
+ * The profile arm carries `having count(*) = 1`: a profile SHARED by several
+ * devices (two Deye inverters on one plant) names none of them, so the arm
+ * resolves to NULL rather than to whichever device happens to have the lower
+ * id. `min()` with a HAVING still yields exactly one row — an empty one — so
+ * the coalesce stays well-formed. `identity.ts`'s `resolveDeviceId` composes
+ * the same text; both test files pin the arm.
  */
 export function deviceIdOf(sourceId: string): SQL {
   return sql`coalesce(
     (select min(id) from ${sql.raw(DEVICES)} where slug = ${sourceId}),
-    (select min(id) from ${sql.raw(DEVICES)} where profile_id = ${sourceId})
+    (select min(id) from ${sql.raw(DEVICES)} where profile_id = ${sourceId} having count(*) = 1)
   )`;
 }
 

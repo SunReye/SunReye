@@ -240,6 +240,26 @@ suite("queryRecentBuckets against a real TimescaleDB", () => {
     expect(Number.isFinite(out.t0)).toBe(true);
   });
 
+  test("a profile id shared by two devices names NEITHER — never the lower id", async () => {
+    // Before this pinned it, the transitional `profile_id` arm answered `min(id)`:
+    // two Deye inverters on one profile read as whichever was provisioned first,
+    // silently. A shared profile now resolves to nothing; the slug arm is the
+    // only way to name one of them, and it still works.
+    await seed([{ metric: "db.shared", at: new Date(PAST.getTime() - 5_000), value: 7 }]);
+    await raw.execute(sql`
+      insert into devices (plant_id, connection_id, unit_id, slug, name, profile_id, role)
+      select id, null, 2, 'inv-db-test-twin', 'twin', 'test-profile', 'inverter'
+      from plants where slug = 'hist-db-test'`);
+    try {
+      const byProfile = await queryRecentBuckets({ ...inPast, inverterId: "test-profile" });
+      expect(byProfile.metrics).toEqual({});
+      const bySlug = await queryRecentBuckets(inPast);
+      expect(bySlug.metrics["db.shared"]?.v).toEqual([7]);
+    } finally {
+      await raw.execute(sql`delete from devices where slug = 'inv-db-test-twin'`);
+    }
+  });
+
   test("a wider bucket width still resolves and groups", async () => {
     const now = Date.now();
     await seed([

@@ -47,6 +47,17 @@ describe("deviceIdOf", () => {
     expect(text).not.toContain("deye-1");
   });
 
+  test("the profile arm resolves ONLY when exactly one device carries the profile", () => {
+    // Two inverters on the same profile used to resolve to `min(id)` — an
+    // arbitrary device, silently. A profile shared by several devices names none
+    // of them; the caller has to use a slug.
+    const { sql: text } = render(deviceIdOf("deye-sun"));
+    const profileArm = text.slice(text.indexOf("profile_id ="));
+    expect(profileArm).toContain("having count(*) = 1");
+    // The slug arm is per plant and stays unconditional.
+    expect(text.slice(0, text.indexOf("profile_id ="))).not.toContain("having");
+  });
+
   test("aggregates with min(), so a slug repeated across plants cannot raise at runtime", () => {
     // `devices.slug` is unique per PLANT. A bare scalar sub-select would raise
     // "more than one row returned by a subquery" the day a second plant exists —
