@@ -56,6 +56,8 @@ export { entityConstraint, writableMetrics, metricByKey } from "./entities";
 export type { EntityConstraint, EntityValueType } from "./entities";
 // Profile authoring SDK + serializable data model + validator.
 export { ROLE_CATALOG, ROLE_NAMES } from "./roles";
+export { PLANT_AGGREGATES, plantAggregateOf } from "./plant-aggregate";
+export type { PlantAggregate } from "./plant-aggregate";
 export type { CanonicalRole, RoleSpec } from "./roles";
 // The optimizer's stored enums live in `./optimizer-vocabulary.ts` and are
 // deliberately NOT re-exported here: the browser reads them too, and this barrel

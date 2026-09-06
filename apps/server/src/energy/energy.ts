@@ -7,6 +7,7 @@
  */
 
 import type { EnergyField, EnergyTotals, PeriodEnergy } from "@SunReye/contracts/energy";
+import type { SeriesTarget } from "../shared/plant-source";
 import type { InverterProfile } from "@SunReye/inverter-core";
 import {
   type CostBucket,
@@ -53,7 +54,7 @@ export function accumulateTotals(
 function overrideTodayPeriod(
   totals: Map<string, EnergyTotals>,
   profile: InverterProfile,
-  inverterId: string,
+  inverterId: SeriesTarget,
   tz: string,
 ): void {
   const now = new Date();
@@ -91,7 +92,7 @@ export function derivePeriods(
  */
 export async function energySeries(
   profile: InverterProfile,
-  opts: { from: Date; to: Date; bucket: CostBucket; inverterId?: string },
+  opts: { from: Date; to: Date; bucket: CostBucket; inverterId?: SeriesTarget },
 ): Promise<PeriodEnergy[]> {
   const view = opts.bucket === "hour" ? "hourly_rollups" : "daily_rollups";
   const tz = await getPlantTimeZone();

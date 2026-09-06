@@ -53,7 +53,7 @@ function deferred<T>() {
  * every topic that has a backfill except `logs`, which reads a synchronous ring
  * buffer and opts out (see the server's `ws-topics.ts`).
  */
-const BUFFERED: readonly WsTopic[] = ["evcc", "statistics", "automations"];
+const BUFFERED: readonly WsTopic[] = ["plant", "evcc", "statistics", "automations"];
 
 /**
  * The topics whose bus payload goes on the wire unchanged — everything but
@@ -61,7 +61,7 @@ const BUFFERED: readonly WsTopic[] = ["evcc", "statistics", "automations"];
  * it has no snapshot: it is republished like the rest, and leaving it out is
  * how a "metrics never arrives" harness quietly proves nothing.
  */
-const REPUBLISHED: readonly WsTopic[] = ["metrics", "evcc", "statistics", "automations"];
+const REPUBLISHED: readonly WsTopic[] = ["metrics", "plant", "evcc", "statistics", "automations"];
 
 /**
  * Marker payloads rather than real `EvccState`/`InverterSample` values.

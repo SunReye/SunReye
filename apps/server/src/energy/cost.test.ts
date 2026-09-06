@@ -4,6 +4,8 @@ import { defaultSpotPriceConfig } from "@SunReye/db/spot-price-config";
 import { type TariffConfig, tariffConfigSchema } from "@SunReye/db/tariff";
 import type { CanonicalRole, InverterProfile, InverterSample } from "@SunReye/inverter-core";
 import { afterAll, afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import type { SQL } from "drizzle-orm";
+import { PgDialect } from "drizzle-orm/pg-core";
 
 /** How an energy figure is derived from stored data — see `ENERGY_ROLE_DERIVATION`. */
 type EnergyDerivation = "counter" | "integral";
@@ -186,6 +188,28 @@ describe("liveTodayTotals", () => {
   test("stale sample from a previous local day → empty (no override across midnight)", () => {
     const s = sample(yesterday, liveMetrics);
     expect(overlayFor(fullProfile, s, "inv-1", now)).toEqual({});
+  });
+
+  test("a plant of ONE member is spoken for by that member's sample", () => {
+    const s = sample(today, liveMetrics, "inv-1");
+    const plant = { plant: [{ id: 1, slug: "inv-1", weight: 1 }] };
+    expect(liveTodayTotals(fullProfile, plant, now, s)).toEqual({
+      importKwh: 1.1,
+      exportKwh: 2.2,
+      loadKwh: 8.6,
+      productionKwh: 5.5,
+    });
+  });
+
+  test("a plant of TWO members takes no live override — one device's register is not the plant's", () => {
+    const s = sample(today, liveMetrics, "inv-1");
+    const plant = {
+      plant: [
+        { id: 1, slug: "inv-1", weight: 1 },
+        { id: 2, slug: "inv-2", weight: 1 },
+      ],
+    };
+    expect(liveTodayTotals(fullProfile, plant, now, s)).toEqual({});
   });
 
   test("all guards pass → every mapped, finite field is returned", () => {
@@ -404,6 +428,32 @@ describe("computeCost and the live today registers", () => {
     time: clock.toISOString(),
     inverterId: "inv-1",
     metrics: { impToday: kwh },
+  });
+
+  test("a plant target reads the members' counters SUMMED per bucket, by id", async () => {
+    liveState.latest = null;
+    queryResults = [todaySeed, buckets.slice(1)];
+    execute.mockClear();
+    await computeCost(profile, {
+      from: midnight,
+      to: new Date(),
+      inverterId: {
+        plant: [
+          { id: 1, slug: "inv-1", weight: 1 },
+          { id: 2, slug: "inv-2", weight: 1 },
+        ],
+      },
+    });
+    const first = (execute.mock.calls as unknown as Array<[SQL]>)[0]?.[0];
+    if (!first) throw new Error("no query was issued");
+    const { sql: text, params } = new PgDialect().sqlToQuery(first);
+    const flatText = text.replace(/\s+/g, " ");
+    expect(flatText).toContain("r.device_id in ($");
+    expect(flatText).toContain("sum(r.max_value) as max_value");
+    expect(flatText).toContain("group by r.bucket, mk.key");
+    expect(params).toContain(1);
+    expect(params).toContain(2);
+    expect(params).not.toContain("inv-1");
   });
 
   test("without a live sample both windows stay on the counter deltas", async () => {

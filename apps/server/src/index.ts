@@ -6,7 +6,7 @@ import { metricsRaw } from "@SunReye/db/schema/metrics";
 import { devices, metricKeys } from "@SunReye/db/schema/plants";
 import { user } from "@SunReye/db/schema/auth";
 import { env } from "@SunReye/env/server";
-import { and, count, desc, eq, gte, sql } from "drizzle-orm";
+import { and, count, desc, eq, getTableName, gte, sql } from "drizzle-orm";
 import { setupStaticTypebox } from "./shared/typebox-static";
 import { Elysia, t } from "elysia";
 import { autoHead } from "elysia/auto-head";
@@ -16,8 +16,13 @@ import { entitiesApi } from "./inverter/entities";
 import { ensureDevice, isRetired, readPlant } from "@SunReye/db/plant-repo";
 import { evccControl, evccSnapshot, rebuildEvcc, stopEvcc } from "./evcc/evcc";
 import { loadpointDeviceSpec } from "./evcc/evcc-devices";
-import { deviceIdOf, metricIdOf } from "./shared/identity-sql";
+import { metricIdOf } from "./shared/identity-sql";
 import { queryRecentBuckets, queryRollup } from "./shared/history";
+import { aggregateOfMetric, isRefusal, plantFoldFor, targetOf } from "./shared/plant-read";
+import { deviceScope } from "./shared/identity-sql";
+import { type SeriesSourceRequest, parseSeriesSource } from "./shared/plant-source";
+import { historyMembers, liveMembers, sourcesRoutes } from "./routes/sources";
+import { startPlantLive } from "./inverter/plant-live";
 import type { HistoryTier } from "./shared/history-horizon";
 import { refuseIncompleteRange } from "./shared/history-horizon-live";
 import { isPublicDashboard } from "./settings/access-settings";
@@ -59,13 +64,20 @@ const seriesQuery = t.Object({
   from: t.String(),
   to: t.String(),
   bucket: t.Union([t.Literal("hour"), t.Literal("day"), t.Literal("month")]),
+  source: t.Optional(t.String()),
   inverterId: t.Optional(t.String()),
 });
-const seriesArgs = (q: { from: string; to: string; bucket: CostBucket; inverterId?: string }) => ({
+const seriesArgs = async (q: {
+  from: string;
+  to: string;
+  bucket: CostBucket;
+  source?: string;
+  inverterId?: string;
+}) => ({
   from: new Date(q.from),
   to: new Date(q.to),
   bucket: q.bucket,
-  inverterId: q.inverterId,
+  inverterId: await energyTarget(q),
 });
 
 /** Default span of a rollup read without an explicit window, hours (one week). */
@@ -239,6 +251,38 @@ const manifest = ctx?.manifest ?? null;
  * has no answer in that spelling at all.
  */
 const defaultSourceId = (): string | null => deviceRegistry.primary()?.id ?? null;
+
+/**
+ * WHERE a read is from: `source=plant`, `source=<slug>`, the `inverterId` alias,
+ * or — nothing named — the primary device, which is what every request meant
+ * before the plant had a spelling (#202). A single-device plant reads the same
+ * either way; the web chooses `plant` when there is more than one member.
+ */
+const sourceRequest = (q: { source?: string; inverterId?: string }): SeriesSourceRequest | null => {
+  const named = parseSeriesSource(q);
+  if (named) return named;
+  const slug = defaultSourceId();
+  return slug ? { kind: "device", slug } : null;
+};
+
+/** The energy readers' target for a request, or `undefined` to take the profile default. */
+const energyTarget = async (q: { source?: string; inverterId?: string }) => {
+  const req = parseSeriesSource(q);
+  if (!req) return q.inverterId;
+  return targetOf(req, req.kind === "plant" ? await historyMembers() : []);
+};
+
+/** The role-derived aggregate of a metric key, through the plant's manifest. */
+const aggregateOf = aggregateOfMetric(ctx?.metaByKey ?? new Map());
+
+/** The metric readers' arguments for a request, or the plant-level refusal. */
+const metricReadArgs = async (req: SeriesSourceRequest, metric: string) =>
+  plantFoldFor(req, req.kind === "plant" ? await historyMembers() : [], metric, aggregateOf);
+
+// The plant's live reading, folded from every member's latest sample. Wired
+// before any `/ws` connection can subscribe, so the snapshot table below has
+// something to replay by the time the first dashboard asks.
+const plantLive = startPlantLive({ streams, members: liveMembers, aggregateOf });
 
 // HOLD HOME ASSISTANT DISCOVERY when a 1.x -> 2.0.0 migration has not been
 // through onboarding yet. Before the MQTT bridge starts, necessarily: the
@@ -424,6 +468,7 @@ const app = new Elysia()
         hours: t.Number({ default: 24, minimum: 1, maximum: 720 }),
         limit: t.Number({ default: 5000, minimum: 1, maximum: 50000 }),
         metric: t.Optional(t.String()),
+        source: t.Optional(t.String()),
         inverterId: t.Optional(t.String()),
       }),
     },
@@ -433,10 +478,16 @@ const app = new Elysia()
       if (refused !== undefined) return refused;
       const filters = [gte(metricsRaw.time, since)];
       // Filtered BY id, resolved from the name the caller sent. `metric` and
-      // `inverterId` stay the query vocabulary: the int2 is a storage detail, and
-      // an integer in a URL would be renumbered by a database restore.
+      // `source` stay the query vocabulary: the int2 is a storage detail, and an
+      // integer in a URL would be renumbered by a database restore. Absent, this
+      // route means EVERY device; `source=plant` narrows to the members' own rows
+      // (unfolded — the raw rows are per device by construction).
       if (query.metric) filters.push(eq(metricsRaw.metricId, metricIdOf(query.metric)));
-      if (query.inverterId) filters.push(eq(metricsRaw.deviceId, deviceIdOf(query.inverterId)));
+      const req = parseSeriesSource(query);
+      if (req) {
+        const target = targetOf(req, req.kind === "plant" ? await historyMembers() : []);
+        filters.push(deviceScope(target, getTableName(metricsRaw)));
+      }
       // An EXPLICIT projection, joining the two dimensions back to their names.
       // This was `select *`, which after the 2.0.0 re-key would have started
       // returning `deviceId: 3, metricId: 41` to every client of a documented
@@ -477,16 +528,23 @@ const app = new Elysia()
       query: t.Object({
         seconds: t.Number({ default: 300, minimum: 1, maximum: 3600 }),
         stepSeconds: t.Number({ default: 1, minimum: 1, maximum: 60 }),
+        source: t.Optional(t.String()),
         inverterId: t.Optional(t.String()),
       }),
     },
     async ({ query, status }) => {
-      const inverterId = query.inverterId ?? defaultSourceId();
-      if (!inverterId) return status(503, ONBOARDING_REQUIRED);
+      const req = sourceRequest(query);
+      if (!req) return status(503, ONBOARDING_REQUIRED);
+      // The plant's backfill carries only the metrics that HAVE a plant value;
+      // a per-device metric is simply absent from it, the way it is absent from
+      // the plant's live reading.
+      const plant =
+        req.kind === "plant" ? { members: await historyMembers(), aggregateOf } : undefined;
       return queryRecentBuckets({
-        inverterId,
+        inverterId: req.kind === "device" ? req.slug : "plant",
         seconds: query.seconds,
         stepSeconds: query.stepSeconds,
+        ...(plant ? { plant } : {}),
       });
     },
   )
@@ -502,6 +560,7 @@ const app = new Elysia()
       requireSession: true,
       query: t.Object({
         metric: t.String(),
+        source: t.Optional(t.String()),
         inverterId: t.Optional(t.String()),
         bucket: t.Optional(t.Union([t.Literal("minute"), t.Literal("hour"), t.Literal("day")])),
         hours: t.Optional(t.Number({ minimum: 1 })),
@@ -511,8 +570,8 @@ const app = new Elysia()
       }),
     },
     async ({ query, status }) => {
-      const inverterId = query.inverterId ?? defaultSourceId();
-      if (!inverterId) return status(503, ONBOARDING_REQUIRED);
+      const req = sourceRequest(query);
+      if (!req) return status(503, ONBOARDING_REQUIRED);
       const bucket = query.bucket ?? "hour";
       const window = historyWindow(query);
       const refused = await guardRange(
@@ -521,13 +580,11 @@ const app = new Elysia()
         status,
       );
       if (refused !== undefined) return refused;
-      return queryRollup({
-        metric: query.metric,
-        inverterId,
-        limit: query.limit,
-        bucket,
-        ...window,
-      });
+      const args = await metricReadArgs(req, query.metric);
+      // A voltage, a phase, a status word: one machine's own state. The plant
+      // has no such value, and an empty series would draw as a flat zero.
+      if (isRefusal(args)) return status(422, args);
+      return queryRollup({ metric: query.metric, limit: query.limit, bucket, ...window, ...args });
     },
   )
   // Internal write pipeline for the (session-authed) web app. The write funnel
@@ -604,7 +661,7 @@ const app = new Elysia()
         range: t.Optional(t.Union([t.Literal("today"), t.Literal("month"), t.Literal("year")])),
         from: t.Optional(t.String()),
         to: t.Optional(t.String()),
-        // fallow-ignore-next-line code-duplication -- dup:639f0435 — this is Elysia's handler preamble (an inverterId query field, then the onboarding-only 503 guard), shared with routes/battery.ts. Abstracting a route's signature to remove six lines would cost more clarity than the repetition does, and the guard is deliberately visible at every route that needs a profile.
+        source: t.Optional(t.String()),
         inverterId: t.Optional(t.String()),
       }),
     },
@@ -616,7 +673,7 @@ const app = new Elysia()
       // partial number labelled "month to date".
       const refused = await guardRange("hour", { from, to }, status);
       if (refused !== undefined) return refused;
-      return computeCost(profile, { from, to, inverterId: query.inverterId });
+      return computeCost(profile, { from, to, inverterId: await energyTarget(query) });
     },
   )
   // Net-cost time-series over an explicit [from, to) window, one point per
@@ -627,7 +684,7 @@ const app = new Elysia()
     { requireSession: true, query: seriesQuery },
     async ({ query, status }) => {
       if (!profile) return status(503, ONBOARDING_REQUIRED);
-      const args = seriesArgs(query);
+      const args = await seriesArgs(query);
       const refused = await guardRange(TIER_OF[query.bucket] ?? "day", args, status);
       return refused ?? computeCostSeries(profile, args);
     },
@@ -640,13 +697,14 @@ const app = new Elysia()
     { requireSession: true, query: seriesQuery },
     async ({ query, status }) => {
       if (!profile) return status(503, ONBOARDING_REQUIRED);
-      const args = seriesArgs(query);
+      const args = await seriesArgs(query);
       const refused = await guardRange(TIER_OF[query.bucket] ?? "day", args, status);
       return refused ?? energySeries(profile, args);
     },
   )
   // Statistics-page aggregates (hour×weekday heatmap, …) over the same rollups.
-  .use(statisticsRoutes({ profile }))
+  .use(statisticsRoutes({ profile, target: energyTarget }))
+  .use(sourcesRoutes)
   // Profile management: registered list, repo sources, browse/install/activate.
   .use(batteryRoutes({ profile }))
   .use(profileRoutes)
@@ -686,6 +744,7 @@ const app = new Elysia()
         todayStatistics,
         automationStreamSnapshot,
         recentLogs,
+        plantSnapshot: () => plantLive.snapshot(),
       }),
     }),
   )

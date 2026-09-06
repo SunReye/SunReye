@@ -18,7 +18,8 @@ import type {
 import { db } from "@SunReye/db";
 import type { InverterProfile } from "@SunReye/inverter-core";
 import { sql } from "drizzle-orm";
-import { deviceIdOf } from "../shared/identity-sql";
+import { deviceScope } from "../shared/identity-sql";
+import { type SeriesTarget, targetKey } from "../shared/plant-source";
 import {
   ENERGY_FIELDS,
   computeCost,
@@ -67,7 +68,7 @@ const ALL_ENERGY_FIELDS = Object.keys(ENERGY_FIELDS) as EnergyField[];
  */
 export async function computeHeatmap(
   profile: InverterProfile,
-  opts: { from: Date; to: Date; inverterId?: string },
+  opts: { from: Date; to: Date; inverterId?: SeriesTarget },
 ): Promise<HeatmapCell[]> {
   const from = clampToHourlyRetention(opts.from);
   const tz = await getPlantTimeZone();
@@ -85,11 +86,11 @@ export async function computeHeatmap(
 /** Earliest daily-rollup bucket for an inverter — the start of recorded
  *  history. `daily_rollups` is retained forever, so this is the true first
  *  day of data. */
-async function earliestDailyBucket(inverterId: string): Promise<Date | null> {
+async function earliestDailyBucket(inverterId: SeriesTarget): Promise<Date | null> {
   const res = await db.execute<{ first: string | Date | null }>(sql`
     select min(bucket) as first
     from daily_rollups
-    where device_id = ${deviceIdOf(inverterId)}
+    where ${deviceScope(inverterId)}
   `);
   const first = res.rows[0]?.first;
   return first ? new Date(first) : null;
@@ -104,7 +105,7 @@ async function earliestDailyBucket(inverterId: string): Promise<Date | null> {
  */
 export async function computeComparison(
   profile: InverterProfile,
-  opts: { from: Date; to: Date; mode: CompareMode; inverterId?: string },
+  opts: { from: Date; to: Date; mode: CompareMode; inverterId?: SeriesTarget },
 ): Promise<ComparisonResponse> {
   const inverterId = opts.inverterId ?? profile.id;
   const prev = previousWindow(opts.from, opts.to, opts.mode);
@@ -134,22 +135,23 @@ const recordsCache = new Map<string, { day: string; value: RecordsResponse }>();
 /** All-time per-day records (cached per inverter per local day). */
 export async function computeRecords(
   profile: InverterProfile,
-  opts: { inverterId?: string } = {},
+  opts: { inverterId?: SeriesTarget } = {},
 ): Promise<RecordsResponse> {
   const inverterId = opts.inverterId ?? profile.id;
   const tz = await getPlantTimeZone();
   const day = currentPeriodKey("day", new Date(), tz);
-  const hit = recordsCache.get(inverterId);
+  const cacheKey = targetKey(inverterId);
+  const hit = recordsCache.get(cacheKey);
   if (hit && hit.day === day) return hit.value;
   const value = await buildRecords(profile, inverterId, tz);
-  recordsCache.set(inverterId, { day, value });
+  recordsCache.set(cacheKey, { day, value });
   return value;
 }
 
 /** Uncached records build over `[first day of data, today midnight)`. */
 async function buildRecords(
   profile: InverterProfile,
-  inverterId: string,
+  inverterId: SeriesTarget,
   tz: string,
 ): Promise<RecordsResponse> {
   const firstDay = await earliestDailyBucket(inverterId);
@@ -167,7 +169,7 @@ async function buildRecords(
  *  uses, then reduced to records by the pure picker. */
 async function energyRecords(
   profile: InverterProfile,
-  inverterId: string,
+  inverterId: SeriesTarget,
   from: Date,
   to: Date,
   tz: string,
@@ -192,7 +194,7 @@ async function energyRecords(
  */
 export async function todayStatistics(
   profile: InverterProfile,
-  inverterId?: string,
+  inverterId?: SeriesTarget,
 ): Promise<StatisticsTodayMessage> {
   const { from, to } = resolveRange("today");
   const [cost, periods, tz] = await Promise.all([
@@ -216,7 +218,7 @@ export async function todayStatistics(
  *  hourly-rollup retention horizon. */
 async function moneyRecords(
   profile: InverterProfile,
-  inverterId: string,
+  inverterId: SeriesTarget,
   firstDay: Date,
   to: Date,
 ): Promise<MoneyRecords> {

@@ -3,7 +3,7 @@ import { PgDialect } from "drizzle-orm/pg-core";
 import { getViewName, sql } from "drizzle-orm";
 import { declaredColumns } from "@SunReye/db/schema-parity";
 import { dailyRollups, hourlyRollups, minuteRollups } from "@SunReye/db/schema/rollups";
-import { ROLLUP_BUCKETS, rollupSeries, rollupTier } from "./rollup-sql";
+import { ROLLUP_BUCKETS, plantRollupSeries, rollupSeries, rollupTier } from "./rollup-sql";
 
 /**
  * A tier now has exactly ONE source, so this file no longer asserts a
@@ -175,5 +175,66 @@ describe("every tier", () => {
     for (const bucket of ROLLUP_BUCKETS) {
       expect(render(bucket).sql).toContain("interpolated_average(tw, bucket,");
     }
+  });
+});
+
+describe("plantRollupSeries — the fold across a plant's devices", () => {
+  const renderPlant = (
+    aggregate: Parameters<typeof plantRollupSeries>[1]["aggregate"],
+    members = [
+      { id: 1, slug: "inv-1", weight: 10 },
+      { id: 2, slug: "inv-2", weight: 5 },
+    ],
+  ) => {
+    const query = dialect.sqlToQuery(
+      sql`select bucket, avg_value from ${plantRollupSeries("hour", {
+        metric: "battery.soc",
+        members,
+        aggregate,
+        from: FROM,
+        to: TO,
+      })} r`,
+    );
+    return { sql: query.sql.replace(/\s+/g, " ").trim(), params: query.params };
+  };
+
+  test("the device set is an IN list of ids, each bound", () => {
+    const { sql: text, params } = renderPlant("sum");
+    expect(text).toContain("device_id in ($");
+    expect(params).toContain(1);
+    expect(params).toContain(2);
+  });
+
+  test("interpolation is per device: the window partitions by device_id", () => {
+    expect(renderPlant("sum").sql).toContain("partition by device_id order by bucket");
+  });
+
+  test("`sum` folds avg, max and min by addition, grouped per bucket", () => {
+    const { sql: text } = renderPlant("sum");
+    expect(text).toContain("sum(avg_value) as avg_value");
+    expect(text).toContain("sum(max_value) as max_value");
+    expect(text).toContain("sum(min_value) as min_value");
+    expect(text).toMatch(/group by bucket \) r$/);
+  });
+
+  test("`weighted-mean` weights each device's mean by its member weight", () => {
+    const { sql: text, params } = renderPlant("weighted-mean");
+    expect(text).toContain("sum(avg_value * w.weight) / sum(w.weight) as avg_value");
+    // Extrema of a mean are the member extrema, not their sum.
+    expect(text).toContain("max(max_value) as max_value");
+    expect(text).toContain("min(min_value) as min_value");
+    expect(params).toContain(10);
+    expect(params).toContain(5);
+  });
+
+  test("an EMPTY member set renders `where false`, never the syntax error `in ()`", () => {
+    const { sql: text } = renderPlant("sum", []);
+    expect(text).toContain("where false");
+    expect(text).not.toContain("in ()");
+  });
+
+  test("the metric key is still resolved by name, bound", () => {
+    const { params } = renderPlant("sum");
+    expect(params).toContain("battery.soc");
   });
 });

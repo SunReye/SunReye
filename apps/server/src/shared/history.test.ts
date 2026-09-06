@@ -927,3 +927,109 @@ describe("queryMedianHourlyAvg — the hourly source", () => {
     expect(flat(call.sql)).toContain("percentile_cont(0.5) within group (order by avg_value)");
   });
 });
+
+describe("the plant arm — one metric folded across a device set", () => {
+  const members = [
+    { id: 1, slug: "inv-1", weight: 10 },
+    { id: 2, slug: "inv-2", weight: 5 },
+  ];
+
+  test("queryRollup with a plant target reads an IN list and sums per bucket", async () => {
+    const [call, rows] = await capture(
+      [{ bucket: "2026-04-01T00:00:00Z", avg_value: "3", max_value: "5", min_value: "1" }],
+      () =>
+        queryRollup({
+          metric: "pv.power",
+          inverterId: "ignored",
+          limit: 10,
+          bucket: "hour",
+          since: new Date("2026-04-01T00:00:00Z"),
+          plant: { members, aggregate: "sum" },
+        }),
+    );
+    const text = flat(call.sql);
+    expect(text).toContain("device_id in ($");
+    expect(text).toContain("sum(avg_value) as avg_value");
+    expect(text).toContain("partition by device_id");
+    expect(call.params).not.toContain("ignored");
+    expect(rows).toEqual([{ time: "2026-04-01T00:00:00.000Z", avg: 3, max: 5, min: 1 }]);
+  });
+
+  test("queryRollup with a weighted plant target joins the member weights", async () => {
+    const [call] = await capture([], () =>
+      queryRollup({
+        metric: "battery.soc",
+        inverterId: "ignored",
+        limit: 10,
+        bucket: "day",
+        since: new Date("2026-04-01T00:00:00Z"),
+        plant: { members, aggregate: "weighted-mean" },
+      }),
+    );
+    expect(flat(call.sql)).toContain("sum(avg_value * w.weight) / sum(w.weight)");
+    expect(call.params).toContain(10);
+    expect(call.params).toContain(5);
+  });
+
+  test("queryRecentBuckets with a plant target issues one read PER MEMBER, by id, then folds", async () => {
+    calls.length = 0;
+    queue.length = 0;
+    // Member 1's rows, then member 2's — the fold adds them per bucket.
+    queue.push([recentRow("pv.power", 100, 1), recentRow("pv.power", 101, 2)]);
+    queue.push([recentRow("pv.power", 100, 10), recentRow("grid.voltage", 100, 230)]);
+    const out = await queryRecentBuckets({
+      inverterId: "ignored",
+      seconds: 60,
+      stepSeconds: 1,
+      now: new Date(200_000),
+      plant: {
+        members,
+        aggregateOf: (m) => (m === "pv.power" ? "sum" : "per-device"),
+      },
+    });
+    expect(calls).toHaveLength(2);
+    for (const call of calls) {
+      // Filtered by the member's int2 directly — no slug round trip.
+      expect(flat(call.sql)).toContain('"device_id" = $');
+      expect(call.params).not.toContain("ignored");
+    }
+    expect(calls[0]!.params).toContain(1);
+    expect(calls[1]!.params).toContain(2);
+    expect(out.metrics).toEqual({ "pv.power": { o: [0, 1], v: [11, 12] } });
+  });
+
+  test("queryRecentBuckets with NO members is an empty backfill and no query", async () => {
+    calls.length = 0;
+    const out = await queryRecentBuckets({
+      inverterId: "ignored",
+      seconds: 60,
+      stepSeconds: 1,
+      plant: { members: [], aggregateOf: () => "sum" },
+    });
+    expect(calls).toHaveLength(0);
+    expect(out.metrics).toEqual({});
+  });
+
+  test("queryRawHistory with a plant target reads per member and folds at one-second grid", async () => {
+    calls.length = 0;
+    queue.length = 0;
+    queue.push([
+      ["2026-04-01T00:00:01.000Z", 2],
+      ["2026-04-01T00:00:00.000Z", 1],
+    ]);
+    queue.push([["2026-04-01T00:00:00.000Z", 10]]);
+    const rows = await queryRawHistory({
+      metric: "pv.power",
+      inverterId: "ignored",
+      since: new Date("2026-04-01T00:00:00Z"),
+      limit: 10,
+      plant: { members, aggregate: "sum" },
+    });
+    expect(calls).toHaveLength(2);
+    // Most-recent-first, like the device arm; member 2 held at 10 for second 1.
+    expect(rows).toEqual([
+      { time: "2026-04-01T00:00:01.000Z", value: 12 },
+      { time: "2026-04-01T00:00:00.000Z", value: 11 },
+    ]);
+  });
+});

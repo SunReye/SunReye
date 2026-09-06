@@ -79,6 +79,7 @@ describe("the pub/sub name each topic fans out on", () => {
     const h = harness();
 
     h.streams.emit("metrics", sample);
+    h.streams.emit("plant", { time: sample.time, metrics: {}, members: [], stale: [] });
     h.streams.emit("evcc", { loadpoints: [] } as unknown as WsTopicPayloads["evcc"]);
     h.streams.emit("statistics", { type: "prices" });
     h.streams.emit("automations", { tickMs: 30_000 } as unknown as WsTopicPayloads["automations"]);

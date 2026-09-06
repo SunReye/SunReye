@@ -5,6 +5,7 @@ import { devices, metricKeys } from "@SunReye/db/schema/plants";
 
 import {
   deviceIdOf,
+  deviceScope,
   metricIdOf,
   metricIdsOf,
   metricKeyColumn,
@@ -111,5 +112,33 @@ describe("projecting the id back to a name", () => {
     const { sql: text } = render(sql`0 ${metricKeyJoin("r", "k")} ${metricKeyColumn("k")}`);
     expect(text).toContain("k on k.id = r.metric_id");
     expect(text).toContain("k.key as metric");
+  });
+});
+
+describe("deviceScope", () => {
+  const members = [
+    { id: 3, slug: "a", weight: 1 },
+    { id: 7, slug: "b", weight: 1 },
+  ];
+
+  test("a slug is the single-device equality, resolved by name", () => {
+    const { sql: text, params } = render(deviceScope("inv-1"));
+    expect(text).toContain("device_id = coalesce(");
+    expect(params).toEqual(["inv-1", "inv-1"]);
+  });
+
+  test("a plant is an IN list of bound ids", () => {
+    const { sql: text, params } = render(deviceScope({ plant: members }));
+    expect(text).toContain("device_id in ($1, $2)");
+    expect(params).toEqual([3, 7]);
+  });
+
+  test("a plant of no members is `false`, never `in ()`", () => {
+    expect(render(deviceScope({ plant: [] })).sql).toContain("select false");
+  });
+
+  test("an alias qualifies the column", () => {
+    expect(render(deviceScope({ plant: members }, "r")).sql).toContain("r.device_id in");
+    expect(render(deviceScope("x", "r")).sql).toContain("r.device_id = coalesce(");
   });
 });

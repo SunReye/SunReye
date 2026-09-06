@@ -29,7 +29,14 @@ describe("TOPIC_POLICY", () => {
     // The type gate is `satisfies Record<WsTopic, TopicPolicy>`; this pins the
     // set at runtime so a topic quietly dropped from the union shows up as a
     // failing test rather than a silently smaller table.
-    expect([...WS_TOPICS].sort()).toEqual(["automations", "evcc", "logs", "metrics", "statistics"]);
+    expect([...WS_TOPICS].sort()).toEqual([
+      "automations",
+      "evcc",
+      "logs",
+      "metrics",
+      "plant",
+      "statistics",
+    ]);
   });
 
   test("logs and automations are the admin-only topics", () => {
@@ -37,9 +44,9 @@ describe("TOPIC_POLICY", () => {
     expect(adminTopics).toEqual(["automations", "logs"]);
   });
 
-  test("the dashboard topics are exactly the three the old routes session-gated", () => {
+  test("the dashboard topics are the three the old routes session-gated, plus the plant fold", () => {
     const dashboardTopics = WS_TOPICS.filter((topic) => TOPIC_POLICY[topic] === "dashboard").sort();
-    expect(dashboardTopics).toEqual(["evcc", "metrics", "statistics"]);
+    expect(dashboardTopics).toEqual(["evcc", "metrics", "plant", "statistics"]);
   });
 
   test("no topic is left without a policy", () => {

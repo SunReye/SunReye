@@ -30,8 +30,25 @@ import type { StatisticsLiveMessage } from "../statistics/types";
  * in bursts, so they are coalesced at the socket boundary into one frame per
  * flush. Every other topic publishes a single object per emit.
  */
+/**
+ * The plant's live reading — every member's latest sample folded by the role's
+ * aggregate (issue #202). `metrics` stays one DEVICE's sample; this is what a
+ * dashboard reads when it shows the plant.
+ */
+export interface PlantSample {
+  /** The newest contributing sample's instant; the fold time when none did. */
+  time: string;
+  /** Metric key → folded value; a per-device metric is absent, never zero. */
+  metrics: Record<string, number>;
+  /** Every member's slug, roster order. */
+  members: string[];
+  /** Members left out because their last sample is older than the stale rule. */
+  stale: string[];
+}
+
 export interface WsTopicPayloads {
   metrics: InverterSample;
+  plant: PlantSample;
   evcc: EvccState;
   statistics: StatisticsLiveMessage;
   automations: AutomationStreamMessage;
