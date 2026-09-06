@@ -38,6 +38,10 @@ export function plantFoldFor(
   aggregateOf: AggregateOf,
 ): MetricReadArgs | typeof NO_PLANT_VALUE {
   if (req.kind === "device") return { inverterId: req.slug };
+  // A plant of ONE member is that member: read it as the device, every metric
+  // included. Refusing a voltage here would blank a single-inverter install.
+  const sole = members.length === 1 ? members[0] : undefined;
+  if (sole) return { inverterId: sole.slug };
   const aggregate = aggregateOf(metric);
   if (aggregate === "per-device") return NO_PLANT_VALUE;
   return { inverterId: "plant", plant: { members, aggregate } };

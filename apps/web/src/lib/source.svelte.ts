@@ -81,7 +81,7 @@ class SourceStore {
 
   /** Whether a live `metrics` frame belongs to the current source. */
   acceptsFrame(inverterId: string | undefined): boolean {
-    return acceptsMetricsFrame(this.current, inverterId);
+    return acceptsMetricsFrame(this.current, inverterId, this.sources);
   }
 
   #saved(): string | null {

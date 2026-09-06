@@ -23,7 +23,10 @@ const metaByKey = new Map([
   meta("vendor_x", undefined),
 ]);
 const aggregateOf = aggregateOfMetric(metaByKey);
-const members = [{ id: 1, slug: "inv-1", weight: 1 }];
+const members = [
+  { id: 1, slug: "inv-1", weight: 1 },
+  { id: 2, slug: "inv-2", weight: 1 },
+];
 
 describe("aggregateOfMetric", () => {
   test("goes through the manifest's role, never the key's spelling", () => {
@@ -51,6 +54,16 @@ describe("plantFoldFor", () => {
     expect(plantFoldFor({ kind: "plant" }, members, "pv_power", aggregateOf)).toEqual({
       inverterId: "plant",
       plant: { members, aggregate: "sum" },
+    });
+  });
+
+  test("a plant of ONE member is read as that device — every metric, no refusal", () => {
+    const sole = [members[0]!];
+    expect(plantFoldFor({ kind: "plant" }, sole, "grid_v", aggregateOf)).toEqual({
+      inverterId: "inv-1",
+    });
+    expect(plantFoldFor({ kind: "plant" }, sole, "pv_power", aggregateOf)).toEqual({
+      inverterId: "inv-1",
     });
   });
 

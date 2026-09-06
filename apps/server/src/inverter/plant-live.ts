@@ -65,10 +65,14 @@ export function startPlantLive(deps: PlantLiveDeps): PlantLive {
     return pending;
   };
 
+  /** A member's latest sample, by the slug or by the profile id the driver stamps. */
+  const sampleOf = (m: PlantMember): InverterSample | null =>
+    latest.get(m.slug) ?? (m.profileId !== undefined ? latest.get(m.profileId) : undefined) ?? null;
+
   const fold = (): void => {
     const nowMs = now();
     last = foldLiveSamples(
-      members.map((m) => ({ slug: m.slug, weight: m.weight, sample: latest.get(m.slug) ?? null })),
+      members.map((m) => ({ slug: m.slug, weight: m.weight, sample: sampleOf(m) })),
       { nowMs, staleAfterMs, aggregateOf: deps.aggregateOf },
     );
     deps.streams.emit("plant", last);

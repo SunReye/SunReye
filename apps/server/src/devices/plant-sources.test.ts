@@ -46,7 +46,12 @@ describe("listSources", () => {
     const out = await listSources(
       store([device(1, "inverter"), device(2, "inverter", { retiredAt: new Date("2026-01-01Z") })]),
     );
-    expect(out.devices[1]).toMatchObject({ slug: "dev-2", retired: true, member: true });
+    expect(out.devices[1]).toMatchObject({
+      slug: "dev-2",
+      profileId: "p",
+      retired: true,
+      member: true,
+    });
   });
 
   test("no plant yet is an empty answer, never a throw", async () => {
@@ -65,8 +70,8 @@ describe("readPlantMembers", () => {
       store([device(1, "inverter"), device(2, "inverter")], [{ deviceId: 1, usableKwh: 10 }]),
     );
     expect(members).toEqual([
-      { id: 1, slug: "dev-1", weight: 10 },
-      { id: 2, slug: "dev-2", weight: 1 },
+      { id: 1, slug: "dev-1", profileId: "p", weight: 10 },
+      { id: 2, slug: "dev-2", profileId: "p", weight: 1 },
     ]);
   });
 

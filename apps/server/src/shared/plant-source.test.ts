@@ -11,6 +11,7 @@ const inverter = (id: number, extra: Partial<PlantMember> & { role?: string } = 
   id,
   slug: `inv-${id}`,
   name: `Inverter ${id}`,
+  profileId: "deye-sun",
   role: extra.role ?? "inverter",
   retiredAt: null,
   batteryKwh: extra.weight ?? null,
@@ -63,6 +64,10 @@ describe("plantMembers — the device set a plant value is read from", () => {
   test("a retired device leaves the LIVE set", () => {
     const rows = [inverter(1), { ...inverter(2), retiredAt: new Date("2026-01-01Z") }];
     expect(plantMembers(rows, { live: true }).map((m) => m.id)).toEqual([1]);
+  });
+
+  test("a member carries its profile id — the name a live sample is stamped with", () => {
+    expect(plantMembers([inverter(1)])[0]?.profileId).toBe("deye-sun");
   });
 
   test("a member's weight is its battery capacity, 1 when it has none", () => {

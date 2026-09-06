@@ -15,7 +15,15 @@ export const PLANT: SourceId = "plant";
 /** `GET /api/sources` — what may be read from. */
 export interface SourcesResponse {
   plant: { members: string[] };
-  devices: Array<{ slug: string; name: string; role: string; retired: boolean; member: boolean }>;
+  devices: Array<{
+    slug: string;
+    name: string;
+    /** The id a live `metrics` frame carries for this device — the profile id, today. */
+    profileId?: string;
+    role: string;
+    retired: boolean;
+    member: boolean;
+  }>;
 }
 
 export const STORAGE_KEY = "sunreye.source";
@@ -76,9 +84,17 @@ export function sourceOptions(
 
 /**
  * Whether a live `metrics` frame belongs to the selected source. The plant's
- * own frames arrive on the `plant` topic; a device frame counts only for its
- * own slug. Undefined `inverterId` on the sample (a coded tier) never matches.
+ * own frames arrive on the `plant` topic; a device frame counts for its own
+ * slug — or for the profile id the driver stamps it with today, looked up
+ * through the source list. Undefined `inverterId` never matches.
  */
-export function acceptsMetricsFrame(current: SourceId, inverterId: string | undefined): boolean {
-  return current !== PLANT && inverterId === current;
+export function acceptsMetricsFrame(
+  current: SourceId,
+  inverterId: string | undefined,
+  sources: SourcesResponse | null = null,
+): boolean {
+  if (current === PLANT || inverterId === undefined) return false;
+  if (inverterId === current) return true;
+  const device = sources?.devices.find((d) => d.slug === current);
+  return device?.profileId !== undefined && device.profileId === inverterId;
 }

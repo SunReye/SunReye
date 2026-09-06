@@ -18,7 +18,7 @@ const KIND = (m: string) =>
   m === "pv.power" ? "sum" : m === "battery.soc" ? "weighted-mean" : "per-device";
 
 function harness(
-  members = [
+  members: Array<{ id: number; slug: string; profileId?: string; weight: number }> = [
     { id: 1, slug: "a", weight: 10 },
     { id: 2, slug: "b", weight: 5 },
   ],

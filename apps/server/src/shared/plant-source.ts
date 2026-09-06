@@ -24,8 +24,17 @@ import { activeDevices } from "@SunReye/db/plant-repo";
 export interface PlantMember {
   /** `devices.id` — the int2 every reading is keyed by. */
   id: number;
-  /** `devices.slug` — the name the live sample carries. */
+  /** `devices.slug` — the storage identity. */
   slug: string;
+  /**
+   * `devices.profile_id` — the name a live sample carries TODAY: the driver
+   * stamps `InverterSample.inverterId` with its profile id
+   * (`packages/inverter-core/src/driver.ts`), not the slug. The live fold
+   * matches a sample to its member by either. Two devices on one profile are
+   * indistinguishable on the wire until the sample carries the slug; the
+   * storage identity already handles that arm (`ensureDevice` by slug).
+   */
+  profileId?: string;
   /**
    * The member's weight for a `weighted-mean` metric — its battery's usable kWh,
    * or 1 when it has no battery, so a plant of batteryless inverters still has a
@@ -71,6 +80,7 @@ export interface MemberRow {
   id: number;
   slug: string;
   name: string;
+  profileId: string;
   role: string;
   retiredAt: Date | null;
   /** `batteries.usable_kwh` for this device, or null when it has no battery. */
@@ -88,5 +98,10 @@ export function plantMembers(
   const pool = opts.live ? activeDevices(rows) : rows;
   const controllers = pool.filter((r) => r.role === "controller");
   const chosen = controllers.length > 0 ? controllers : pool.filter((r) => r.role === "inverter");
-  return chosen.map((r) => ({ id: r.id, slug: r.slug, weight: r.batteryKwh ?? 1 }));
+  return chosen.map((r) => ({
+    id: r.id,
+    slug: r.slug,
+    profileId: r.profileId,
+    weight: r.batteryKwh ?? 1,
+  }));
 }

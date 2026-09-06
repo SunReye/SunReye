@@ -25,6 +25,8 @@ export interface PlantSourcesStore {
 export interface SourceView {
   slug: string;
   name: string;
+  /** The id a live `metrics` frame carries for this device (see `PlantMember.profileId`). */
+  profileId: string;
   role: string;
   retired: boolean;
   /** Whether the plant series is read from this device. */
@@ -50,6 +52,7 @@ async function memberRows(store: PlantSourcesStore): Promise<MemberRow[]> {
     id: d.id,
     slug: d.slug,
     name: d.name,
+    profileId: d.profileId,
     role: d.role,
     retiredAt: d.retiredAt,
     batteryKwh: kwh.get(d.id) ?? null,
@@ -72,6 +75,7 @@ export async function listSources(store: PlantSourcesStore): Promise<SourcesResp
     devices: physicalDevices(rows).map((r) => ({
       slug: r.slug,
       name: r.name,
+      profileId: r.profileId,
       role: r.role,
       retired: isRetired(r),
       member: members.has(r.id),

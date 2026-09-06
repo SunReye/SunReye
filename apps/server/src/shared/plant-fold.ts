@@ -80,14 +80,24 @@ function foldOnGrid(
   return out;
 }
 
+/**
+ * A plant of ONE member IS that member: every metric passes through, the
+ * per-device ones included. The plant has no voltage only when there are two
+ * machines to disagree about it; with one, refusing would blank the very
+ * readings a single-inverter install has always shown.
+ */
+const soleMember = (count: number, aggregateOf: AggregateOf): AggregateOf =>
+  count === 1 ? (m) => (aggregateOf(m) === "per-device" ? "sum" : aggregateOf(m)) : aggregateOf;
+
 /** Fold every member's compact backfill onto one grid. */
 export function foldRecentBackfills(
   members: readonly MemberBackfill[],
-  aggregateOf: AggregateOf,
+  aggregate: AggregateOf,
 ): RecentBackfill {
   const step = members[0]?.backfill.step ?? 1;
   const withData = members.filter((m) => Object.keys(m.backfill.metrics).length > 0);
   if (withData.length === 0) return { t0: 0, step, metrics: {} };
+  const aggregateOf = soleMember(members.length, aggregate);
   const t0 = Math.min(...withData.map((m) => m.backfill.t0));
   const stepMs = step * 1000;
   const metricNames = new Set(withData.flatMap((m) => Object.keys(m.backfill.metrics)));
@@ -153,9 +163,10 @@ export function foldLiveSamples(
 ): PlantLiveReading {
   const { fresh, stale } = partitionFresh(members, opts.nowMs, opts.staleAfterMs);
   const keys = new Set(fresh.flatMap((m) => Object.keys(m.sample.metrics)));
+  const aggregateOf = soleMember(members.length, opts.aggregateOf);
   const metrics: Record<string, number> = {};
   for (const key of keys) {
-    const kind = opts.aggregateOf(key);
+    const kind = aggregateOf(key);
     if (kind === "per-device") continue;
     const value = foldMetric(kind, key, fresh);
     if (value !== null) metrics[key] = value;

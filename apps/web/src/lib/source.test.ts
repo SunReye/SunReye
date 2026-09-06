@@ -92,4 +92,14 @@ describe("acceptsMetricsFrame", () => {
     expect(acceptsMetricsFrame(PLANT, "a")).toBe(false);
     expect(acceptsMetricsFrame("a", undefined)).toBe(false);
   });
+
+  test("a frame stamped with the device's PROFILE id — what the driver sends — counts too", () => {
+    const sources: SourcesResponse = {
+      plant: { members: ["a"] },
+      devices: [{ ...two.devices[0]!, profileId: "deye-sun" }],
+    };
+    expect(acceptsMetricsFrame("a", "deye-sun", sources)).toBe(true);
+    expect(acceptsMetricsFrame("a", "other-profile", sources)).toBe(false);
+    expect(acceptsMetricsFrame("a", "deye-sun", null)).toBe(false);
+  });
 });

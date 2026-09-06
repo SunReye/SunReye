@@ -103,7 +103,15 @@ describe("foldRecentBackfills — the raw arm, aligned per device before summing
     expect(out.metrics["battery.soc"]).toEqual({ o: [0], v: [80] });
   });
 
-  test("a per-device metric is DROPPED from the plant payload", () => {
+  test("a per-device metric is DROPPED from a plant of several", () => {
+    const voltage = (v: number) => ({
+      weight: 1,
+      backfill: { t0: 0, step: 1, metrics: { "grid.voltage": { o: [0], v: [v] } } },
+    });
+    expect(foldRecentBackfills([voltage(230), voltage(231)], kindOf).metrics).toEqual({});
+  });
+
+  test("a plant of ONE member passes a per-device metric through — it IS that member", () => {
     const out = foldRecentBackfills(
       [
         {
@@ -113,7 +121,7 @@ describe("foldRecentBackfills — the raw arm, aligned per device before summing
       ],
       kindOf,
     );
-    expect(out.metrics).toEqual({});
+    expect(out.metrics["grid.voltage"]).toEqual({ o: [0], v: [230] });
   });
 
   test("a metric only one device reports is that device's series", () => {
@@ -160,6 +168,15 @@ describe("foldLiveSamples — the plant's live reading", () => {
     expect(out.members).toEqual(["a", "b"]);
     expect(out.stale).toEqual([]);
     expect(out.time).toBe(at(10_500));
+  });
+
+  test("a plant of ONE member keeps its per-device readings", () => {
+    const out = foldLiveSamples([member("a", 10_000, { "pv.power": 100, "grid.voltage": 230 })], {
+      nowMs: 11_000,
+      staleAfterMs: 5_000,
+      aggregateOf: kindOf,
+    });
+    expect(out.metrics).toEqual({ "pv.power": 100, "grid.voltage": 230 });
   });
 
   test("a stale member is EXCLUDED and named, never counted as zero", () => {
