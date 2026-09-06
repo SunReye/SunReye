@@ -129,6 +129,8 @@ const {
   computeCostSeries,
   currentPeriodKey,
   fetchBucketEnergy,
+  fetchLatestCounterLevels,
+  liveCounterLevels,
   liveTodayTotals,
   metersLoadEnergy,
 } = await import("./cost");
@@ -174,6 +176,109 @@ const today = new Date(2024, 5, 15, 12, 30, 0);
 const yesterday = new Date(2024, 5, 14, 23, 59, 0);
 
 const liveMetrics = { imp: 1.1, exp: 2.2, load: 8.6, prod: 5.5 };
+
+describe("liveCounterLevels — the lifetime registers", () => {
+  const counters = profileWith({
+    "grid.energy.imported.total": "impT",
+    "grid.energy.exported.total": "expT",
+    "production.total": "prodT",
+  });
+  const levels = { impT: 4_321.5, expT: 9_876, prodT: 15_000 };
+
+  test("reads every mapped *.total role the sample carries, zero-filling the rest", () => {
+    expect(liveCounterLevels(counters, "inv-1", sample(today, levels))).toEqual({
+      importKwh: 4_321.5,
+      exportKwh: 9_876,
+      loadKwh: 0,
+      productionKwh: 15_000,
+      batteryDischargeKwh: 0,
+      batteryChargeKwh: 0,
+    });
+  });
+
+  test("a lifetime counter is not a day figure: yesterday's sample still counts", () => {
+    expect(liveCounterLevels(counters, "inv-1", sample(yesterday, levels))?.importKwh).toBe(
+      4_321.5,
+    );
+  });
+
+  test("no sample, or a sample that does not speak for the target → null", () => {
+    expect(liveCounterLevels(counters, "inv-1", null)).toBeNull();
+    expect(liveCounterLevels(counters, "inv-1", sample(today, levels, "other"))).toBeNull();
+    const two = {
+      plant: [
+        { id: 1, slug: "inv-1", weight: 1 },
+        { id: 2, slug: "inv-2", weight: 1 },
+      ],
+    };
+    expect(liveCounterLevels(counters, two, sample(today, levels))).toBeNull();
+  });
+
+  test("a register the sample lacks is not zero-filled into a level of 0 — the whole read is partial", () => {
+    // Only production came through: the caller must not price 0 kWh imported
+    // as "the plant never bought anything".
+    expect(liveCounterLevels(counters, "inv-1", sample(today, { prodT: 15_000 }))).toBeNull();
+  });
+});
+
+describe("fetchLatestCounterLevels — the lifetime registers from the rollups", () => {
+  const counters = profileWith({
+    "grid.energy.imported.total": "impT",
+    "grid.energy.exported.total": "expT",
+  });
+
+  test("takes each counter's latest daily high, zero-filling unmapped fields", async () => {
+    queryResults = [
+      [
+        { metric: "impT", max_value: "4321.5" },
+        { metric: "expT", max_value: 9876 },
+      ],
+    ];
+    execute.mockClear();
+    const levels = await fetchLatestCounterLevels(counters, "inv-1");
+    expect(levels).toEqual({
+      importKwh: 4_321.5,
+      exportKwh: 9_876,
+      loadKwh: 0,
+      productionKwh: 0,
+      batteryDischargeKwh: 0,
+      batteryChargeKwh: 0,
+    });
+    const first = (execute.mock.calls as unknown as Array<[SQL]>)[0]?.[0];
+    if (!first) throw new Error("no query was issued");
+    const text = new PgDialect().sqlToQuery(first).sql.replace(/\s+/g, " ");
+    // The forever-retained tier, newest bucket per metric.
+    expect(text).toContain("daily_rollups");
+    expect(text).toContain("distinct on (metric)");
+    expect(text).toContain("order by metric, bucket desc");
+  });
+
+  test("a plant target sums the members' levels per bucket, like every other read", async () => {
+    queryResults = [[]];
+    execute.mockClear();
+    await fetchLatestCounterLevels(counters, {
+      plant: [
+        { id: 1, slug: "inv-1", weight: 1 },
+        { id: 2, slug: "inv-2", weight: 1 },
+      ],
+    });
+    const first = (execute.mock.calls as unknown as Array<[SQL]>)[0]?.[0];
+    if (!first) throw new Error("no query was issued");
+    const text = new PgDialect().sqlToQuery(first).sql.replace(/\s+/g, " ");
+    expect(text).toContain("sum(r.max_value) as max_value");
+  });
+
+  test("no rows at all → null, so an empty database is not a plant that saved nothing", async () => {
+    queryResults = [[]];
+    expect(await fetchLatestCounterLevels(counters, "inv-1")).toBeNull();
+  });
+
+  test("a profile mapping no counters issues no query", async () => {
+    execute.mockClear();
+    expect(await fetchLatestCounterLevels(profileWith({}), "inv-1")).toBeNull();
+    expect(execute).not.toHaveBeenCalled();
+  });
+});
 
 describe("liveTodayTotals", () => {
   test("null live sample → empty (no override)", () => {
@@ -481,10 +586,20 @@ describe("computeCost and the live today registers", () => {
     expect(month.importKwh).toBeGreaterThanOrEqual(day.importKwh);
   });
 
-  test("the money stays priced from the counter deltas, not the register", async () => {
+  test("today's money follows the register at the slice's effective rate", async () => {
     liveState.latest = liveImport(5);
-    // 3 kWh at 0.30 — a whole-day register can't be split into tariff bands.
-    expect((await monthToDate()).importCost).toBeCloseTo(0.9, 10);
+    // Yesterday's 2 kWh stay at 0.30; today's 1 kWh delta (0.30) becomes the
+    // register's 5 kWh at the same effective rate — 0.60 + 1.50.
+    expect((await monthToDate()).importCost).toBeCloseTo(2.1, 10);
+    expect((await today()).importCost).toBeCloseTo(1.5, 10);
+  });
+
+  test("a register the deltas have not seen yet is priced at the current band", async () => {
+    // No rows since midnight: the only price available is the tariff's own.
+    liveState.latest = liveImport(2);
+    const early = await costOver(midnight, todaySeed, []);
+    expect(early.importKwh).toBe(2);
+    expect(early.importCost).toBeCloseTo(0.6, 10);
   });
 
   test("a window that starts after midnight takes no override", async () => {
@@ -595,9 +710,13 @@ describe("computeCost — the live registers keep the tiles coherent", () => {
     expect(totals.solarToLoadKwh).toBe(8);
     expect(totals.selfSufficiency).toBeCloseTo(0.8, 10);
     expect(totals.selfConsumption).toBeCloseTo(0.75, 10);
-    // Money stays banded from the counter deltas: 1 kWh at 0.30, 2 kWh at 0.08.
-    expect(totals.importCost).toBeCloseTo(0.3, 10);
-    expect(totals.exportEarnings).toBeCloseTo(0.16, 10);
+    // Money follows the registers at the deltas' effective rate: 2 kWh at 0.30,
+    // 3 kWh at 0.08, and the house's 10 kWh at 0.30 had it all been bought.
+    expect(totals.importCost).toBeCloseTo(0.6, 10);
+    expect(totals.exportEarnings).toBeCloseTo(0.24, 10);
+    expect(totals.gridOnlyCost).toBeCloseTo(3.0, 10);
+    expect(totals.solarSavings).toBeCloseTo(2.4, 10);
+    expect(totals.savings).toBeCloseTo(2.64, 10);
   });
 
   test("registers that lead each other never push a ratio below zero", async () => {

@@ -63,6 +63,11 @@ Configure pricing for the [Statistics](/use/statistics/) screen: currency, stand
 rate, a default import price, and **time-of-use bands** (name, price, hour range, weekday
 selection). Add or remove bands and **Save tariff**.
 
+**Investment** — what the plant cost all in and the day it went live. Both feed the
+[Amortisation](/use/statistics/#amortisation) section; a total cost of 0 leaves it showing the
+lifetime savings alone, and without a commissioning day the savings rate runs from the first
+recorded day instead.
+
 **Market-linked prices** is the half that needs a [price source](#day-ahead-prices):
 
 - **Export remuneration** — a fixed feed-in tariff (the default, market ignored); *§51*, where a

@@ -2,7 +2,13 @@ import type { EnergyField, HourEnergy } from "@SunReye/contracts/energy";
 import { type TariffConfig, tariffConfigSchema } from "@SunReye/db/tariff";
 import { describe, expect, test } from "bun:test";
 import type { CostSeriesPoint } from "./cost";
-import { allocateCost, priceSeriesRows, resolveRange, rollUpToMonths } from "./cost-calc";
+import {
+  allocateCost,
+  priceSeriesRows,
+  repriceTodaySlice,
+  resolveRange,
+  rollUpToMonths,
+} from "./cost-calc";
 
 /** A tariff: 0.40 peak (08–20 weekdays), 0.10 off-peak default, 0.05 feed-in. */
 const tariff: TariffConfig = tariffConfigSchema.parse({
@@ -290,5 +296,106 @@ describe("rollUpToMonths", () => {
     expect(months[0]?.zeroValueExportKwh).toBe(2);
     expect(months[0]?.net).toBeCloseTo(3 - 0.5 + 2, 10);
     expect(months[1]?.net).toBe(5);
+  });
+});
+
+describe("repriceTodaySlice", () => {
+  /** A window that already priced 2 kWh yesterday at 0.10 and 1 kWh today at 0.40. */
+  const window = {
+    importKwh: 3,
+    exportKwh: 4,
+    loadKwh: 6,
+    productionKwh: 8,
+    batteryDischargeKwh: 0,
+    batteryChargeKwh: 0,
+    importCost: 0.6, // 2 × 0.10 + 1 × 0.40
+    exportEarnings: 0.2, // 4 × 0.05
+    zeroValueExportKwh: 0,
+    zeroValueExportEur: 0,
+    standingCharge: 1,
+    net: 1.4,
+    gridOnlyCost: 1.5, // 3 × 0.10 (yesterday) + 3 × 0.40 (today)
+    savings: 1.1,
+    solarSavings: 0.9,
+    solarToLoadKwh: 3,
+    selfSufficiency: 0.5,
+    selfConsumption: 0.5,
+    byDay: [],
+    byBand: [],
+  };
+  /** Today's own contribution to that window: 1 kWh in at 0.40, 2 kWh out, 3 kWh load. */
+  const slice = {
+    ...window,
+    importKwh: 1,
+    exportKwh: 2,
+    loadKwh: 3,
+    importCost: 0.4,
+    exportEarnings: 0.1,
+    gridOnlyCost: 1.2,
+  };
+  const fallback = { importPrice: 0.1, exportPrice: 0.05 };
+
+  test("today's money follows the live kWh at the slice's effective price", () => {
+    // The register says 5 kWh in, 4 kWh out, 10 kWh load — the deltas said 1 / 2 / 3.
+    const live = { ...slice, importKwh: 5, exportKwh: 4, loadKwh: 10 };
+    const r = repriceTodaySlice(window, slice, live, fallback);
+    // Yesterday's 0.20 stays; today becomes 5 kWh × 0.40.
+    expect(r.importCost).toBeCloseTo(0.2 + 2.0, 10);
+    // 2 × 0.05 yesterday + 4 × 0.05 today.
+    expect(r.exportEarnings).toBeCloseTo(0.1 + 0.2, 10);
+    // 0.30 yesterday + 10 kWh × 0.40 today.
+    expect(r.gridOnlyCost).toBeCloseTo(0.3 + 4.0, 10);
+    expect(r.net).toBeCloseTo(r.importCost - r.exportEarnings + r.standingCharge, 10);
+    expect(r.savings).toBeCloseTo(r.gridOnlyCost - r.importCost + r.exportEarnings, 10);
+    expect(r.solarSavings).toBeCloseTo(r.gridOnlyCost - r.importCost, 10);
+  });
+
+  test("a slice with no energy yet prices the register at the fallback rate", () => {
+    // First minutes after midnight: no delta rows, so no effective price exists.
+    const empty = {
+      ...slice,
+      importKwh: 0,
+      exportKwh: 0,
+      loadKwh: 0,
+      importCost: 0,
+      exportEarnings: 0,
+      gridOnlyCost: 0,
+    };
+    const window0 = {
+      ...window,
+      importKwh: 2,
+      exportKwh: 2,
+      loadKwh: 3,
+      importCost: 0.2,
+      exportEarnings: 0.1,
+      gridOnlyCost: 0.3,
+    };
+    const live = { ...empty, importKwh: 1, exportKwh: 2, loadKwh: 4 };
+    const r = repriceTodaySlice(window0, empty, live, fallback);
+    expect(r.importCost).toBeCloseTo(0.2 + 0.1, 10);
+    expect(r.exportEarnings).toBeCloseTo(0.1 + 0.1, 10);
+    expect(r.gridOnlyCost).toBeCloseTo(0.3 + 0.4, 10);
+  });
+
+  test("unchanged kWh leaves the money exactly where the deltas put it", () => {
+    const r = repriceTodaySlice(window, slice, slice, fallback);
+    expect(r.importCost).toBeCloseTo(window.importCost, 10);
+    expect(r.exportEarnings).toBeCloseTo(window.exportEarnings, 10);
+    expect(r.gridOnlyCost).toBeCloseTo(window.gridOnlyCost, 10);
+    expect(r.net).toBeCloseTo(window.net, 10);
+  });
+
+  test("the §51 forgone revenue is not double counted into the effective rate", () => {
+    // 2 kWh exported, half of it in negative slots: 0.05 earned in total, so the
+    // effective rate is 0.025 — the same share of a 4 kWh register earns 0.10.
+    const eeg = { ...slice, exportEarnings: 0.05, zeroValueExportKwh: 1, zeroValueExportEur: 0.05 };
+    const win = {
+      ...window,
+      exportEarnings: 0.15,
+      zeroValueExportKwh: 1,
+      zeroValueExportEur: 0.05,
+    };
+    const r = repriceTodaySlice(win, eeg, { ...eeg, exportKwh: 4 }, fallback);
+    expect(r.exportEarnings).toBeCloseTo(0.1 + 0.1, 10);
   });
 });

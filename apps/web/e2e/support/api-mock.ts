@@ -710,9 +710,15 @@ export async function mockBackend(page: Page, options: BackendOptions = {}): Pro
     }
     if (at("statistics/heatmap")) return json(route, fixture.heatmap());
     if (at("statistics/records")) return json(route, fixture.records());
+    if (at("statistics/amortisation")) return json(route, fixture.amortisation());
     if (at("statistics/prices")) {
       if (options.prices === null) return emptyBody(route);
       return json(route, fixture.spotStats(query.from ?? "", query.to ?? ""));
+    }
+    if (at("settings/investment")) {
+      const stored = { totalCost: 14_800, commissionedOn: "2024-05-17" };
+      if (method === "PUT") return json(route, saved(stored, body()));
+      return json(route, stored);
     }
     if (at("settings/statistics")) {
       if (method === "PUT") return json(route, saved(fixture.STATISTICS_PREFS, body()));

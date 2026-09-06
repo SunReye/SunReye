@@ -2,7 +2,12 @@ import type { InverterProfile } from "@SunReye/inverter-core";
 import { Elysia, t } from "elysia";
 import { computeSpotStats } from "../statistics/spot-stats";
 import type { SeriesTarget } from "../shared/plant-source";
-import { computeComparison, computeHeatmap, computeRecords } from "../statistics/statistics";
+import {
+  computeAmortisation,
+  computeComparison,
+  computeHeatmap,
+  computeRecords,
+} from "../statistics/statistics";
 import { adminGuard } from "./admin-guard";
 
 // 503 payload for a statistics read attempted before onboarding is done (no
@@ -82,6 +87,16 @@ export function statisticsRoutes({ profile, target }: StatisticsRoutesDeps) {
         async ({ query, status }) =>
           profile
             ? computeRecords(profile, { inverterId: await target(query) })
+            : status(503, ONBOARDING_REQUIRED),
+      )
+      // Lifetime savings against the configured investment, from the device's
+      // own `*.total` counters (rangeless — the plant predates its recording).
+      .get(
+        "/api/statistics/amortisation",
+        { requireSession: true, query: t.Object(sourceQuery) },
+        async ({ query, status }) =>
+          profile
+            ? computeAmortisation(profile, { inverterId: await target(query) })
             : status(503, ONBOARDING_REQUIRED),
       )
       // Day-ahead market analytics over an explicit window: price shape, the

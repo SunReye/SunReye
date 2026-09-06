@@ -164,6 +164,38 @@ only cover the horizon the server can still price, and are omitted outside it.
 
 Last, **this year against last**, month by month, for net cost or production.
 
+### Amortisation
+
+What the plant cost against what it has saved over its **whole life**, and when the two meet.
+The savings are read from the device's lifetime energy counters (`grid.energy.imported.total`,
+`grid.energy.exported.total`, `load.energy.total`, `production.total`), not from the recorded
+history, so they cover the years before SunReye was installed. They are priced at the tariff's
+flat rates — the default import price for the solar the house used itself (load − import), the
+feed-in rate for everything exported — because a lifetime counter has no hour to band by.
+
+The bar at the top shows the share of the investment recovered. The tiles restate it: invested,
+saved so far (split into import savings and export earnings), paid back, the projected payback
+day, the average saving per year and per month, the average feed-in earnings per year (with
+the energy behind them), and the self-consumed energy per year against the house's consumption per
+year. Under a full year of history every annualised tile is greyed and marked *projected from
+n days*: whatever weighting applies, a partial season is an estimate. The projection assumes
+the savings keep coming at the average rate since commissioning — or, when no commissioning day
+is set, since the first recorded day. A plant that has paid for itself says so instead of a
+date.
+
+The average is **seasonally weighted** when the plant's location and PV arrays are configured
+(Settings → Weather and Settings → Devices): elapsed time is measured in *solar years*, each
+day counting for the share of a clear-sky year this roof collects on it, so a plant that has
+only seen a summer is not annualised as if the summer were the whole year. The weighting
+models the geometry (day length, sun height, incidence on each array) and not the climate, so
+a summer-only history still reads slightly optimistic — winter is also cloudier — but by a
+fraction of the error it removes. Without a location or arrays the calendar is used, and the
+tiles' sub-line says which.
+
+Until a total cost is entered in [Settings → Tariff → Investment](/use/settings/#tariff), the
+section shows the lifetime savings alone and, to admins, a link to the field. On a plant of
+several devices the counters are summed from the newest daily rollup.
+
 ## Live updates
 
 While the picked range includes *now*, the page holds a lease on the `statistics`
@@ -249,3 +281,6 @@ computed per day and rolled up instead.
 Set currency, standing charge, feed-in rate, a default import price, and time-of-use import
 bands (each with a price, hour range, and weekday selection) in
 [Settings → Tariff](/use/settings/). Everything on this screen updates from that model.
+
+The **Investment** block on the same page — total cost and commissioning day — feeds the
+[Amortisation](#amortisation) section.

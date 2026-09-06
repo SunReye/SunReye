@@ -7,6 +7,7 @@
 
 import type { EnergyField } from "@SunReye/contracts/energy";
 import type {
+  AmortisationResponse,
   CompareMode,
   ComparisonResponse,
   EnergyRecords,
@@ -26,13 +27,20 @@ import {
   computeCostSeries,
   currentPeriodKey,
   fetchCounterDeltaMatrix,
+  fetchLatestCounterLevels,
+  liveCounterLevels,
+  metersLoadEnergy,
   resolveRange,
 } from "../energy/cost";
 import { accumulateTotals, derivePeriods, emptyTotals, energySeries } from "../energy/energy";
 import { derivePeriodEnergy } from "../energy/energy-calc";
 import { startOfZonedDay } from "../energy/zoned-time";
 import { getPlantTimeZone } from "../settings/display-settings";
+import { getInvestment } from "../settings/investment-settings";
 import { getTariff } from "../settings/settings";
+import { getWeatherConfig } from "../settings/weather-settings";
+import { amortisation, amortisationOrigin } from "./amortisation-calc";
+import { seasonalGaps, solarYears } from "./seasonal-weight";
 import {
   heatmapCells,
   hodDowOccurrences,
@@ -228,4 +236,60 @@ async function moneyRecords(
     computeCostSeries(profile, { from: since, to, bucket: "day", inverterId }),
   ]);
   return { since: since.toISOString(), currency: tariff.currency, ...pickMoneyRecords(points) };
+}
+
+/**
+ * Lifetime savings against the configured investment. The energy comes from the
+ * device's own `*.total` counters — the poll cache when it speaks for the
+ * target, the newest daily rollup otherwise — because a plant usually predates
+ * its recording and the banded history cannot reach back to commissioning. It
+ * is priced at the tariff's FLAT rates (the default import price and the feed-in
+ * rate): a lifetime counter has no hour to band by. A plant with no counters at
+ * all reports zero energy, which the tiles then say plainly. The elapsed time
+ * the savings are spread over is measured in solar years where the roof is
+ * known, so a summer-only history is not annualised as a whole year.
+ */
+export async function computeAmortisation(
+  profile: InverterProfile,
+  opts: { inverterId?: SeriesTarget } = {},
+): Promise<AmortisationResponse> {
+  const inverterId = opts.inverterId ?? profile.id;
+  const [tariff, investment, recordedSince, weather] = await Promise.all([
+    getTariff(),
+    getInvestment(),
+    earliestDailyBucket(inverterId),
+    getWeatherConfig(),
+  ]);
+  const lifetime =
+    liveCounterLevels(profile, inverterId) ??
+    (await fetchLatestCounterLevels(profile, inverterId)) ??
+    emptyTotals();
+  const now = new Date();
+  // Seasonal weighting needs the roof: coordinates and at least one array. A
+  // plant without them is annualised by the calendar (see seasonal-weight.ts).
+  const origin = amortisationOrigin(investment, recordedSince).at;
+  const gaps = seasonalGaps(weather);
+  const seasonal =
+    origin && gaps.length === 0 && weather.latitude !== null && weather.longitude !== null
+      ? solarYears(
+          { latitude: weather.latitude, longitude: weather.longitude },
+          weather.forecast.arrays,
+          origin,
+          now,
+        )
+      : null;
+  return amortisation({
+    currency: tariff.currency,
+    investment,
+    lifetime,
+    metersLoad: metersLoadEnergy(profile),
+    rates: {
+      importPrice: tariff.import.defaultPricePerKwh,
+      exportPrice: tariff.export.feedInPerKwh,
+    },
+    recordedSince,
+    solarYears: seasonal,
+    seasonalGaps: gaps,
+    now,
+  });
 }
