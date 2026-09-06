@@ -5,6 +5,7 @@
 	import EnergySection from './energy-section.svelte';
 	import PricesSection from './prices-section.svelte';
 	import RecordsSection from './records-section.svelte';
+	import AmortisationSection from './amortisation-section.svelte';
 
 	// Maps a section id to its content. Every body takes the same shared
 	// {@link SectionData} bag and fetches its own chart series from the picked
@@ -13,7 +14,8 @@
 		cost: CostSection,
 		energy: EnergySection,
 		prices: PricesSection,
-		records: RecordsSection
+		records: RecordsSection,
+		amortisation: AmortisationSection
 	};
 
 	let { id, data }: { id: SectionId; data: SectionData } = $props();

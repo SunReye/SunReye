@@ -16,6 +16,7 @@ import { configuredProfile } from "../inverter/inverter";
 import { defaultDeps, syncProvisioning } from "../inverter/provision-boot";
 import * as runtime from "../inverter/runtime";
 import { getTariff, setTariff } from "../settings/settings";
+import { getInvestment, setInvestment } from "../settings/investment-settings";
 import {
   fetchSolarForecast,
   forecastProviderCatalog,
@@ -45,6 +46,14 @@ export const settingsRoutes = new Elysia({ name: "settings-routes" })
   .get("/api/settings/tariff", { requireAdmin: true }, () => getTariff())
   .put("/api/settings/tariff", adminWrite, async ({ body, status }) => {
     const saved = await attempt(() => setTariff(body), "Invalid tariff");
+    return saved.ok ? saved.value : status(400, { error: saved.error });
+  })
+  // What the plant cost and when it went live — the amortisation statistics
+  // inputs. Admin-only like the tariff it sits beside on the settings page; the
+  // statistics endpoint that prices it is the session-level read.
+  .get("/api/settings/investment", { requireAdmin: true }, () => getInvestment())
+  .put("/api/settings/investment", adminWrite, async ({ body, status }) => {
+    const saved = await attempt(() => setInvestment(body), "Invalid investment");
     return saved.ok ? saved.value : status(400, { error: saved.error });
   })
   // Display preferences (clock format + time zone) for the web app. A shared,

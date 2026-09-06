@@ -57,6 +57,7 @@ import type { EvccState } from "@SunReye/contracts/evcc";
 import type { LogEntry } from "@SunReye/contracts/logs";
 import type { PricedSlot, SpotPriceView, SpotStats } from "@SunReye/contracts/prices";
 import type {
+  AmortisationResponse,
   ComparisonResponse,
   HeatmapCell,
   RecordsResponse,
@@ -1136,3 +1137,35 @@ export const SOURCES_TWO = {
     { slug: "west", name: "West roof", role: "inverter", retired: false, member: true },
   ],
 };
+
+/** `GET /api/statistics/amortisation` — `AmortisationResponse`. A plant two
+ *  years in and a fifth of the way to paying for itself. */
+export function amortisation(): AmortisationResponse {
+  return {
+    currency: "EUR",
+    configured: true,
+    investment: { totalCost: 14_800, commissionedOn: "2024-05-17" },
+    since: "2024-05-17",
+    elapsedDays: 730,
+    lifetime: {
+      importKwh: 2_140,
+      exportKwh: 6_380,
+      productionKwh: 12_910,
+      loadKwh: 7_260,
+      selfConsumedKwh: 5_120,
+    },
+    rates: { importPrice: 0.32, exportPrice: 0.082 },
+    importSavings: 1_638.4,
+    exportEarnings: 523.16,
+    savings: 2_161.56,
+    progress: 0.146,
+    remaining: 12_638.44,
+    elapsedYears: 1.96,
+    weighting: "solar",
+    seasonalGaps: [],
+    annualRate: 2_161.56 / 1.96,
+    paidOff: false,
+    paybackDate: "2037-12-02T00:00:00.000Z",
+    paybackYears: 13.7,
+  };
+}

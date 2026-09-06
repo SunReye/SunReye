@@ -783,6 +783,7 @@ export const SESSION_LABELS: readonly string[] = [
   "GET /api/settings/statistics",
   "GET /api/settings/ui",
   "GET /api/sources",
+  "GET /api/statistics/amortisation",
   "GET /api/statistics/comparison",
   "GET /api/statistics/heatmap",
   "GET /api/statistics/prices",

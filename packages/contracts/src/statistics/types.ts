@@ -93,3 +93,76 @@ export type StatisticsLiveMessage =
   | StatisticsTodayMessage
   /** A price sync stored fresh slots: everything price-derived is now stale. */
   | { type: "prices" };
+
+/** A prerequisite of seasonal weighting that is not configured. */
+export type SeasonalGap = "weather" | "location" | "arrays";
+
+/**
+ * Response of `GET /api/statistics/amortisation`: what the plant has saved over
+ * its whole life against what it cost, and when it pays for itself.
+ *
+ * Savings are priced from the device's LIFETIME `*.total` counters at the
+ * current flat rates — the plant usually predates its recording, so the
+ * hour-banded history cannot reach back to commissioning; the counters can.
+ */
+export interface AmortisationResponse {
+  currency: string;
+  /** False until a total cost is configured; the tiles then show a call to set it. */
+  configured: boolean;
+  investment: {
+    totalCost: number;
+    /** Commissioning day (`YYYY-MM-DD`), null when unknown. */
+    commissionedOn: string | null;
+  };
+  /**
+   * The day the savings run from (ISO): the commissioning day when set, else
+   * the first day of recorded history, else null when neither is known.
+   */
+  since: string | null;
+  /** Whole days from `since` to now, 0 when `since` is null. */
+  elapsedDays: number;
+  /** Lifetime counters as the device reports them; 0 for a role the profile lacks. */
+  lifetime: {
+    importKwh: number;
+    exportKwh: number;
+    productionKwh: number;
+    loadKwh: number;
+    /** Solar the house used instead of buying: load − import (or production − export unmetered). */
+    selfConsumedKwh: number;
+  };
+  /** Per-kWh rates the lifetime figures were priced at. */
+  rates: { importPrice: number; exportPrice: number };
+  /** selfConsumedKwh × importPrice. */
+  importSavings: number;
+  /** exportKwh × exportPrice. */
+  exportEarnings: number;
+  /** importSavings + exportEarnings. */
+  savings: number;
+  /** savings / totalCost, clamped 0..1; null when not configured. */
+  progress: number | null;
+  /** totalCost − savings, floored at 0; null when not configured. */
+  remaining: number | null;
+  /**
+   * Elapsed time since `since`, in years. `solar` weighting measures it in
+   * solar years — each day worth the share of a clear-sky year this roof would
+   * collect on it — so a plant that has only seen a summer is not annualised
+   * as if the summer were the whole year. `calendar` is days / 365.25, used
+   * when the plant has no location or arrays to weight by. 0 when `since` is null.
+   */
+  elapsedYears: number;
+  weighting: "solar" | "calendar";
+  /**
+   * What keeps the weighting on the calendar, so the page can say what to
+   * configure: the weather integration switched off, no plant location, no
+   * PV arrays on any active inverter. Empty under `solar`.
+   */
+  seasonalGaps: SeasonalGap[];
+  /** savings / elapsedYears; null before a full day has passed. */
+  annualRate: number | null;
+  /** True once savings have reached the total cost. */
+  paidOff: boolean;
+  /** Projected day the plant pays for itself (ISO); null when unknowable. */
+  paybackDate: string | null;
+  /** Years from `since` to `paybackDate`; null when unknowable. */
+  paybackYears: number | null;
+}
