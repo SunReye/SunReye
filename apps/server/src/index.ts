@@ -7,6 +7,7 @@ import { devices, metricKeys } from "@SunReye/db/schema/plants";
 import { user } from "@SunReye/db/schema/auth";
 import { env } from "@SunReye/env/server";
 import { and, count, desc, eq, getTableName, gte, sql } from "drizzle-orm";
+import { CORS_METHODS } from "./shared/cors-methods";
 import { setupStaticTypebox } from "./shared/typebox-static";
 import { Elysia, t } from "elysia";
 import { autoHead } from "elysia/auto-head";
@@ -375,7 +376,7 @@ const app = new Elysia()
               /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/,
               ...(env.CORS_ORIGIN ? [env.CORS_ORIGIN] : []),
             ],
-      methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+      methods: [...CORS_METHODS],
       allowedHeaders: ["Content-Type", "Authorization"],
       credentials: true,
     }),
