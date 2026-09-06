@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { source } from '$lib/source.svelte';
 	import type { Snippet } from 'svelte';
 	import * as Dialog from '$lib/components/ui/dialog';
 	import HourlyBarChart from './hourly-bar-chart.svelte';
@@ -51,7 +52,9 @@
 		const from = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 		let cancelled = false;
 		api.api.energy.series
-			.get({ query: { from: from.toISOString(), to: now.toISOString(), bucket: 'hour' } })
+			.get({
+				query: { from: from.toISOString(), to: now.toISOString(), bucket: 'hour', ...source.query }
+			})
 			.then(({ data }) => {
 				if (!cancelled) periods = (data ?? []) as Period[];
 			});

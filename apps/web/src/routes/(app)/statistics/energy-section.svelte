@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { source } from '$lib/source.svelte';
 	import type { BatteryHealth, PeriodEnergy } from '@SunReye/contracts/energy';
 	import { api } from '$lib/api';
 	import * as m from '$lib/paraglide/messages';
@@ -48,7 +49,7 @@
 		// Shared invalidation signal: a live push on a now-inclusive wider range
 		// bumps it (at most once a minute), which refetches the series in place.
 		void statisticsLive.revision;
-		const query = specQuery(view.spec);
+		const query = { ...specQuery(view.spec), ...source.query };
 		let cancelled = false;
 		api.api.energy.series.get({ query }).then(({ data: payload }) => {
 			if (cancelled) return;

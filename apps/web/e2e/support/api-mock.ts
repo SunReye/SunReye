@@ -130,6 +130,12 @@ export interface BackendOptions {
    */
   needsProfile?: boolean;
   /**
+   * `/api/sources`. The default roster has one physical inverter, so the
+   * header's source switcher renders nothing; `fixture.SOURCES_TWO` is the
+   * two-inverter plant that shows it.
+   */
+  sources?: typeof fixture.SOURCES;
+  /**
    * `/api/weather`. `"reading"` (default) is a full, readable reading;
    * `null` is weather switched off, which the server answers with an EMPTY
    * BODY — the case `payloadOrNull` exists for, and the case in which the tile
@@ -452,6 +458,7 @@ export async function mockBackend(page: Page, options: BackendOptions = {}): Pro
    */
   const TOPIC_POLICY: Record<string, "dashboard" | "admin"> = {
     metrics: "dashboard",
+    plant: "dashboard",
     evcc: "dashboard",
     statistics: "dashboard",
     logs: "admin",
@@ -786,6 +793,7 @@ export async function mockBackend(page: Page, options: BackendOptions = {}): Pro
     }
     if (under("connections") && method === "DELETE")
       return json(route, { ok: true, id: Number(id) });
+    if (at("sources")) return json(route, options.sources ?? fixture.SOURCES);
     if (at("devices")) {
       if (method === "POST") {
         // Echo the body as the row the server would have made: the slug is the

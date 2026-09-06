@@ -950,6 +950,8 @@
   "devices_load_failed": "Impossibile caricare i dispositivi.",
   "devices_badge_polling": "Interrogato",
   "devices_badge_not_polled": "Non interrogato",
+  "source_plant": "Impianto",
+  "source_switcher_label": "Sorgente",
   "devices_not_polled_hint": "Questa versione interroga un solo dispositivo; gli altri vengono salvati ma non letti.",
   "devices_badge_retired": "Ritirato",
   "devices_profile_missing": "Profilo non installato",

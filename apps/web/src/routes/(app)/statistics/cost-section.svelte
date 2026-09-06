@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { source } from '$lib/source.svelte';
 	import * as m from '$lib/paraglide/messages';
 	import CostBarChart from '$lib/components/inverter/cost-bar-chart.svelte';
 	import { api } from '$lib/api';
@@ -51,7 +52,7 @@
 		// Shared invalidation signal: a live push on a now-inclusive wider range
 		// bumps it (at most once a minute), which refetches these bars in place.
 		void statisticsLive.revision;
-		const query = specQuery(view.spec);
+		const query = { ...specQuery(view.spec), ...source.query };
 		let cancelled = false;
 		api.api.cost.series.get({ query }).then(({ data: payload }) => {
 			if (cancelled) return;

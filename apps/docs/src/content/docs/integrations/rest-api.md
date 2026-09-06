@@ -78,7 +78,8 @@ path.
 | `hours` | number ≥ 1 | `24` | Look-back window. |
 | `limit` | 1–50000 | `5000` | Max points. |
 | `bucket` | `minute` \| `hour` \| `day` | — | If set, returns downsampled rollups. |
-| `inverterId` | string | active | Filter by inverter. |
+| `source` | string | primary device | `plant` for the whole plant (members summed by role; a per-device metric such as a voltage is refused with 422), or a device slug. |
+| `inverterId` | string | — | Alias of `source` for one release; a device slug. |
 
 With `bucket`, each point is `{ time, avg, max, min }`; without it, raw `{ time, value }`.
 

@@ -142,7 +142,7 @@ export class PlantReadings {
 
 /** The one bus method this module needs — injected, so the wiring is testable. */
 export interface PlantTopicBus {
-  subscribe<K extends "metrics" | "evcc">(
+  subscribe<K extends "metrics" | "plant" | "evcc">(
     topic: K,
     on: (data: WsTopicPayloads[K]) => void,
   ): () => void;
@@ -157,6 +157,14 @@ export interface PlantFeedHooks extends PlantTopicBus {
   metricKey(id: LiveValueId): string | undefined;
   /** A frame landed; the reactive shell repaints. */
   onChange(): void;
+  /**
+   * Whether a device's `metrics` frame is the selected source's. The plant's
+   * own frames arrive on the `plant` topic and are taken when the plant is
+   * selected — so a two-inverter plant reads its sum, not the last device to
+   * speak (#202).
+   */
+  acceptsFrame(inverterId: string | undefined): boolean;
+  isPlant(): boolean;
   /** Arrival clock, injected so freshness is testable. Defaults to `Date.now`. */
   now?(): number;
 }
@@ -187,7 +195,12 @@ export class PlantFeed {
   // fallow-ignore-next-line unused-class-member -- called as `this.#readings.x()` / `this.#feed.x()` from the rune shell; calls through a private-field receiver aren't traced
   lease(): () => void {
     const disposers = [
-      this.#hooks.subscribe("metrics", (sample) => this.#applyMetrics(sample)),
+      this.#hooks.subscribe("metrics", (sample) => {
+        if (this.#hooks.acceptsFrame(sample.inverterId)) this.#applyMetrics(sample.metrics);
+      }),
+      this.#hooks.subscribe("plant", (fold) => {
+        if (this.#hooks.isPlant()) this.#applyMetrics(fold.metrics);
+      }),
       this.#hooks.subscribe("evcc", (state) => this.#applyEvcc(state)),
     ];
     let released = false;
@@ -204,14 +217,14 @@ export class PlantFeed {
     return this.#hooks.now?.() ?? Date.now();
   }
 
-  #applyMetrics(sample: WsTopicPayloads["metrics"]): void {
+  #applyMetrics(metrics: WsTopicPayloads["metrics"]["metrics"]): void {
     const at = this.#now();
     for (const id of OWNERSHIP.metrics) {
       const key = this.#hooks.metricKey(id);
       // An unmapped role and a mapped-but-unsampled register are the same fact
       // to a reader: this plant has no number for that. Neither is a reason to
       // go looking at another topic.
-      this.#readings.observe("metrics", id, key ? sample.metrics[key] : undefined, at);
+      this.#readings.observe("metrics", id, key ? metrics[key] : undefined, at);
     }
     this.#hooks.onChange();
   }

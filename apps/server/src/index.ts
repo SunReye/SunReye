@@ -396,7 +396,7 @@ const app = new Elysia()
   // Auto-generated `/api/v1` integration surface (entity catalog, state,
   // history, and one validated write route per writable entity). Writes go
   // through the runtime controller's live source.
-  .use(entitiesApi({ ctx, write: runtime.write }))
+  .use(entitiesApi({ ctx, write: runtime.write, members: historyMembers }))
   // Admin gate for privileged mutations — see ./routes/admin-guard.
   .use(adminGuard)
   // Hand the raw request to Better Auth. `parse: "none"` stops Elysia from

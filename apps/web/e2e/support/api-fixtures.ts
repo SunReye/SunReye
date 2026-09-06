@@ -1115,3 +1115,24 @@ export function logBatch(): LogEntry[] {
     },
   ];
 }
+
+/**
+ * `GET /api/sources` — what a dashboard may read a series from
+ * (`apps/server/src/devices/plant-sources.ts`). The default is a plant of ONE
+ * inverter, so the header's source switcher renders nothing and every other
+ * spec's control surface is unchanged. A spec that wants the switcher passes
+ * `sources: SOURCES_TWO`.
+ */
+export const SOURCES = {
+  plant: { members: ["inverter"] },
+  devices: [{ slug: "inverter", name: "Inverter", role: "inverter", retired: false, member: true }],
+};
+
+/** Two live inverters — the plant the switcher exists for. */
+export const SOURCES_TWO = {
+  plant: { members: ["east", "west"] },
+  devices: [
+    { slug: "east", name: "East roof", role: "inverter", retired: false, member: true },
+    { slug: "west", name: "West roof", role: "inverter", retired: false, member: true },
+  ],
+};

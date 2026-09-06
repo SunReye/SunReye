@@ -27,6 +27,7 @@
  */
 
 import { api } from "$lib/api";
+import { source } from "$lib/source.svelte";
 import { payloadOrNull } from "$lib/api-payload";
 import type { MetricSeries, SeriesAggregate, SeriesRef, SeriesWindow } from "./series";
 
@@ -50,7 +51,9 @@ async function fetchRollup(ref: SeriesRef, window: SeriesWindow): Promise<Rollup
   const { data } = await api.api.history.rollup.get({
     query: {
       metric: ref.metric,
-      ...(ref.inverterId ? { inverterId: ref.inverterId } : {}),
+      // A ref that names a device (the optimizer) is read by slug; every other
+      // series follows the selected source — the plant, or the chosen device.
+      ...(ref.inverterId ? { inverterId: ref.inverterId } : source.query),
       bucket: window.bucket ?? "minute",
       from: window.from.toISOString(),
       to: window.to.toISOString(),
