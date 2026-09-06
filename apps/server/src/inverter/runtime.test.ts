@@ -1168,6 +1168,19 @@ describe("where the endpoint comes from", () => {
 });
 
 describe("the poll loop", () => {
+  test("the sample is stamped with the DEVICE slug on every surface, never the profile id", async () => {
+    // The driver stamps `profile.id` (packages/inverter-core/src/driver.ts); a
+    // profile is swapped inside a reading's lifetime and two devices can share
+    // one, so the runtime re-stamps with the device it polled before anything
+    // downstream — the live cache, the `metrics` topic, the bridge — sees it.
+    await boot();
+    await poll();
+    expect(liveState.latest?.inverterId).toBe(DEVICE_SLUG);
+    expect(published[0]?.inverterId).toBe(DEVICE_SLUG);
+    expect(latestBridge().samples[0]?.inverterId).toBe(DEVICE_SLUG);
+    expect(published[0]?.inverterId).not.toBe(SAMPLE_STAMP);
+  });
+
   test("one tick reaches every downstream surface", async () => {
     await boot();
     expect(status().inverter.connected).toBeFalsy();

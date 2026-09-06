@@ -50,7 +50,9 @@
 import { type SQL, getViewName, sql } from "drizzle-orm";
 import { dailyRollups, hourlyRollups, minuteRollups } from "@SunReye/db/schema/rollups";
 
+import type { PlantAggregate } from "@SunReye/inverter-core";
 import { deviceIdOf, metricIdOf } from "./identity-sql";
+import type { PlantMember } from "./plant-source";
 
 /**
  * Every rollup granularity. `minute` is a live API option; all three are read
@@ -161,5 +163,95 @@ export function rollupSeries(bucket: RollupBucket, w: RollupWindow): SQL {
       window w as (order by bucket)
     ) s
     where ${sql.join(exact, sql.raw(" and "))}
+  )`;
+}
+
+export interface PlantRollupWindow {
+  metric: string;
+  /** The plant's member devices — see `./plant-source.ts` for the rule. */
+  members: readonly PlantMember[];
+  /** How the members fold — `per-device` is refused upstream and never reaches here. */
+  aggregate: Exclude<PlantAggregate, "per-device">;
+  from: Date;
+  to?: Date;
+}
+
+/**
+ * Per-bucket scan predicates for a tier — one bucket wider than asked, so the
+ * window functions have neighbours to interpolate from (see {@link rollupSeries}).
+ */
+function scanAndExact(tier: RollupTier, from: Date, to: Date | undefined) {
+  const scan = [sql`bucket >= ${new Date(from.getTime() - tier.ms)}`];
+  const exact = [sql`bucket >= ${from}`];
+  if (to) {
+    scan.push(sql`bucket < ${new Date(to.getTime() + tier.ms)}`);
+    exact.push(sql`bucket < ${to}`);
+  }
+  return { scan: sql.join(scan, sql.raw(" and ")), exact: sql.join(exact, sql.raw(" and ")) };
+}
+
+/**
+ * The plant's series for one metric: {@link rollupSeries} evaluated PER MEMBER,
+ * then folded per bucket.
+ *
+ * Interpolation stays per device (`partition by device_id`) — a machine's
+ * neighbouring partial buckets are its own. The fold is what the role's
+ * aggregate says: addition for power and energy, a weight-averaged mean for a
+ * fraction. For a sum the extrema are summed too — an upper bound on the plant's
+ * true peak rather than the peak itself, which a per-bucket rollup cannot
+ * recover; for a mean they are the members' own extrema. A member with no row
+ * in a bucket simply contributes nothing to that bucket.
+ *
+ * An empty member set renders `where false`: a plant of no inverters is "no
+ * data", not a syntax error.
+ */
+export function plantRollupSeries(bucket: RollupBucket, w: PlantRollupWindow): SQL {
+  const tier = TIERS[bucket];
+  const { scan, exact } = scanAndExact(tier, w.from, w.to);
+  const members =
+    w.members.length === 0
+      ? sql`false`
+      : sql`device_id in (${sql.join(
+          w.members.map((m) => sql`${m.id}`),
+          sql`, `,
+        )})`;
+  const identity = sql`${members} and metric_id = ${metricIdOf(w.metric)}`;
+  const perDevice = sql`(
+    select bucket, device_id,
+           ${interpolatedAverage(tier.width)} as avg_value,
+           max_value,
+           min_value
+    from ${sql.raw(tier.view)}
+    where ${identity} and ${scan}
+    window w as (partition by device_id order by bucket)
+  ) s`;
+  if (w.aggregate === "sum") {
+    return sql`(
+      select bucket,
+             sum(avg_value) as avg_value,
+             sum(max_value) as max_value,
+             sum(min_value) as min_value
+      from ${perDevice}
+      where ${exact}
+      group by bucket
+    )`;
+  }
+  // `weighted-mean`: weights ride in as a VALUES list joined by device id.
+  const weights =
+    w.members.length === 0
+      ? sql`(select null::smallint as device_id, null::double precision as weight where false)`
+      : sql`(values ${sql.join(
+          w.members.map((m) => sql`(${m.id}::smallint, ${m.weight}::double precision)`),
+          sql`, `,
+        )})`;
+  return sql`(
+    select bucket,
+           sum(avg_value * w.weight) / sum(w.weight) as avg_value,
+           max(max_value) as max_value,
+           min(min_value) as min_value
+    from ${perDevice}
+    join ${weights} as w(device_id, weight) on w.device_id = s.device_id
+    where ${exact}
+    group by bucket
   )`;
 }

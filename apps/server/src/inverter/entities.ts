@@ -18,6 +18,8 @@ import { Elysia, t } from "elysia";
 import { entityErrorResponse } from "./entity-errors";
 import { rangeNote, valueSchema } from "./entity-schema";
 import { queryRawHistory, queryRollup } from "../shared/history";
+import { aggregateOfMetric, isRefusal, plantFoldFor } from "../shared/plant-read";
+import { type PlantMember, parseSeriesSource } from "../shared/plant-source";
 import type { ProfileContext } from "./inverter";
 import { WriteRejectedError } from "./write-rejected";
 
@@ -86,6 +88,12 @@ export interface EntitiesApiDeps {
    * in onboarding-only boot, when there's no profile and thus no entity surface.
    */
   ctx: ProfileContext | null;
+  /**
+   * The plant's history members, for `source=plant` on the history route.
+   * Optional: a caller with no plant (the unit suite) reads devices only, and a
+   * plant request then folds an empty set — "no data", never a throw.
+   */
+  members?: () => Promise<readonly PlantMember[]>;
   write(key: string, value: number): Promise<void>;
 }
 
@@ -180,13 +188,15 @@ export function entitiesApi(deps: EntitiesApiDeps) {
           hours: t.Number({ default: 24, minimum: 1 }),
           limit: t.Number({ default: 5000, minimum: 1, maximum: 50000 }),
           bucket: t.Optional(t.Union([t.Literal("minute"), t.Literal("hour"), t.Literal("day")])),
+          source: t.Optional(t.String()),
           inverterId: t.Optional(t.String()),
         }),
         detail: {
           tags: ["Entities"],
           summary: "Entity history",
           description:
-            "Time series for one entity: raw samples, or aggregated rollups when `bucket` is set.",
+            "Time series for one entity: raw samples, or aggregated rollups when `bucket` is set. " +
+            "`source` is `plant` (the members folded by the entity's role) or a device slug.",
         },
       },
       async ({ params, query, set }) => {
@@ -194,9 +204,17 @@ export function entitiesApi(deps: EntitiesApiDeps) {
           set.status = 404;
           return { error: `Unknown entity: ${params.key}` };
         }
-        const inverterId = query.inverterId ?? profile.id;
+        // Absent, the profile id — the pre-#202 spelling, which the identity
+        // boundary still resolves to the one device running that profile.
+        const req = parseSeriesSource(query) ?? { kind: "device" as const, slug: profile.id };
+        const members = req.kind === "plant" ? await (deps.members?.() ?? Promise.resolve([])) : [];
+        const args = plantFoldFor(req, members, params.key, aggregateOfMetric(metaByKey));
+        if (isRefusal(args)) {
+          set.status = 422;
+          return args;
+        }
         const since = new Date(Date.now() - query.hours * 60 * 60 * 1000);
-        const base = { metric: params.key, inverterId, since, limit: query.limit };
+        const base = { metric: params.key, since, limit: query.limit, ...args };
         return query.bucket
           ? queryRollup({ ...base, bucket: query.bucket })
           : queryRawHistory(base);

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { source } from '$lib/source.svelte';
 	import type { RecordsResponse } from '@SunReye/contracts/statistics';
 	import { api } from '$lib/api';
 	import * as m from '$lib/paraglide/messages';
@@ -26,7 +27,7 @@
 	let records = $state<RecordsResponse | null>(null);
 	$effect(() => {
 		let cancelled = false;
-		void api.api.statistics.records.get({ query: {} }).then(({ data: payload }) => {
+		void api.api.statistics.records.get({ query: source.query }).then(({ data: payload }) => {
 			if (!cancelled) records = (payload as RecordsResponse) ?? null;
 		});
 		return () => {

@@ -40,6 +40,7 @@
 
 import { type SQL, getTableName, sql } from "drizzle-orm";
 import { devices, metricKeys } from "@SunReye/db/schema/plants";
+import { isPlantTarget, type SeriesTarget } from "./plant-source";
 
 /**
  * Relation names taken from the drizzle declarations, never spelled as literals.
@@ -70,11 +71,18 @@ const METRIC_KEYS = getTableName(metricKeys);
  * `min` returns exactly one row (NULL when there are none) and is deterministic.
  * With one plant it is exact; the multi-plant read layer must pass a plant-scoped
  * device slug, which is the device-settings wave's job.
+ *
+ * The profile arm carries `having count(*) = 1`: a profile SHARED by several
+ * devices (two Deye inverters on one plant) names none of them, so the arm
+ * resolves to NULL rather than to whichever device happens to have the lower
+ * id. `min()` with a HAVING still yields exactly one row — an empty one — so
+ * the coalesce stays well-formed. `identity.ts`'s `resolveDeviceId` composes
+ * the same text; both test files pin the arm.
  */
 export function deviceIdOf(sourceId: string): SQL {
   return sql`coalesce(
     (select min(id) from ${sql.raw(DEVICES)} where slug = ${sourceId}),
-    (select min(id) from ${sql.raw(DEVICES)} where profile_id = ${sourceId})
+    (select min(id) from ${sql.raw(DEVICES)} where profile_id = ${sourceId} having count(*) = 1)
   )`;
 }
 
@@ -125,4 +133,20 @@ export function metricKeyJoin(alias: string, as = "mk"): SQL {
 /** The projected metric-name column: `<as>.key as metric`. */
 export function metricKeyColumn(as = "mk"): SQL {
   return sql`${sql.raw(as)}.key as metric`;
+}
+
+/**
+ * The device predicate for a {@link SeriesTarget}, on a column named `device_id`
+ * (qualify with `alias` when the statement joins): `= deviceIdOf(slug)` for a
+ * device, an `IN` list of bound ids for the plant, `false` for a plant with no
+ * members — never the syntax error `in ()`.
+ */
+export function deviceScope(target: SeriesTarget, alias?: string): SQL {
+  const column = alias ? sql.raw(`${alias}.device_id`) : sql.raw("device_id");
+  if (!isPlantTarget(target)) return sql`${column} = ${deviceIdOf(target)}`;
+  if (target.plant.length === 0) return sql`false`;
+  return sql`${column} in (${sql.join(
+    target.plant.map((m) => sql`${m.id}`),
+    sql`, `,
+  )})`;
 }

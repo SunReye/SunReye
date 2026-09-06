@@ -5,7 +5,9 @@
 
 import type { InverterFields, InverterTexts } from "$lib/settings/inverter-fields";
 
-export type Transport = "tcp" | "rtu-over-tcp";
+// One spelling of the wire transport for both settings surfaces.
+export type { Transport } from "../inverter-types";
+import type { Transport } from "../inverter-types";
 
 export type ConnectionView = {
   id: number;

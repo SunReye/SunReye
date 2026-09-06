@@ -87,7 +87,7 @@ export async function resolveDeviceId(
   const result = await client.execute(sql`
     select coalesce(
       (select min(id) from ${sql.raw(DEVICES)} where slug = ${sourceId}),
-      (select min(id) from ${sql.raw(DEVICES)} where profile_id = ${sourceId})
+      (select min(id) from ${sql.raw(DEVICES)} where profile_id = ${sourceId} having count(*) = 1)
     ) as id`);
   const row = result.rows[0] as { id: number | string | null } | undefined;
   if (row?.id == null) return null;

@@ -71,6 +71,15 @@ describe("device resolution", () => {
     expect(db.queries).toHaveLength(1);
   });
 
+  test("the profile arm of the statement demands a UNIQUE match, in step with identity-sql", async () => {
+    // Two devices on one profile must not resolve to `min(id)`. The writer and
+    // the read predicate compose the same statement; this pins the writer's half.
+    const db = fakeDb({});
+    await createIdentityResolver({ db }).deviceId("deye-sun");
+    const text = db.queries[0]!.replace(/\s+/g, " ");
+    expect(text.slice(text.indexOf("profile_id ="))).toContain("having count(*) = 1");
+  });
+
   test("id 0 is a resolved id, not a miss", async () => {
     // `smallint GENERATED ALWAYS AS IDENTITY` starts at 1, so this cannot happen
     // today — but a falsy-check would make it a silent data-loss bug if it ever

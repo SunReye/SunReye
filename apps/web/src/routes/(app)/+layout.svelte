@@ -15,6 +15,7 @@
 	import { pageHeader } from '$lib/page-header.svelte';
 	import { migration } from '$lib/migration.svelte';
 	import HistoryNoticeBanner from '$lib/components/migration/history-notice-banner.svelte';
+	import SourceSwitcher from '$lib/components/layout/source-switcher.svelte';
 	import { resolveView } from './app-view';
 
 	const { children } = $props();
@@ -176,6 +177,10 @@
 						</p>
 					{/if}
 				</div>
+				<!-- The plant, or one of its devices: the one choice every read on
+				     every page follows (#202). Renders nothing for a single-device
+				     plant, where the two names read the same. -->
+				<SourceSwitcher />
 			</header>
 			<!-- The app-wide notice slot. Above `main` and below the header, so it is
 			     part of the shell on every screen: a settings-page-scoped warning that

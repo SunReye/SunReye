@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { source } from '$lib/source.svelte';
 	import type { Component } from 'svelte';
 	import Sun from 'phosphor-svelte/lib/Sun';
 	import House from 'phosphor-svelte/lib/House';
@@ -54,7 +55,7 @@
 	$effect(() => {
 		let stop = false;
 		const load = async () => {
-			const { data } = await api.api.cost.get({ query: { range: 'today' } });
+			const { data } = await api.api.cost.get({ query: { range: 'today', ...source.query } });
 			if (!stop) cost = payloadOrNull<CostToday>(data);
 		};
 		load();

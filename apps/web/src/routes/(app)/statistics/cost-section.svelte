@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { source } from '$lib/source.svelte';
 	import * as m from '$lib/paraglide/messages';
 	import CostBarChart from '$lib/components/inverter/cost-bar-chart.svelte';
 	import { api } from '$lib/api';
@@ -47,11 +48,12 @@
 
 	// `cancelled` guards against an earlier request resolving after a later one
 	// and clobbering fresher data.
+	// fallow-ignore-next-line code-duplication -- dup:61e6ac8e — the cost and energy sections fetch their series the same way (invalidation signal, source-scoped query, cancel-on-rerun) but into two differently typed results; a shared effect helper would need a generic rune wrapper for two call sites.
 	$effect(() => {
 		// Shared invalidation signal: a live push on a now-inclusive wider range
 		// bumps it (at most once a minute), which refetches these bars in place.
 		void statisticsLive.revision;
-		const query = specQuery(view.spec);
+		const query = { ...specQuery(view.spec), ...source.query };
 		let cancelled = false;
 		api.api.cost.series.get({ query }).then(({ data: payload }) => {
 			if (cancelled) return;

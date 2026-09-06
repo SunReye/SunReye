@@ -54,6 +54,7 @@ export function publishLiveTopics(deps: LivePublishDeps): void {
     deps.publisher()?.publish(topic, wsFrame(topic, data));
 
   deps.streams.subscribe("metrics", (data) => publish("metrics", data));
+  deps.streams.subscribe("plant", (data) => publish("plant", data));
   deps.streams.subscribe("evcc", (data) => publish("evcc", data));
   deps.streams.subscribe("statistics", (data) => publish("statistics", data));
   deps.streams.subscribe("automations", (data) => publish("automations", data));

@@ -7,7 +7,8 @@
   "exports": {
     ".": "./src/index.ts",
     "./optimizer": "./src/optimizer-vocabulary.ts",
-    "./device-class": "./src/device-class.ts"
+    "./device-class": "./src/device-class.ts",
+    "./plant-aggregate": "./src/plant-aggregate.ts"
   },
   "scripts": {
     "test": "bun test ./src",

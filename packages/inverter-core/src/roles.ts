@@ -37,6 +37,13 @@ export interface RoleSpec {
    * author to map registers their machine does not have.
    */
   deviceClass?: DeviceClass;
+  /**
+   * How the role folds across a plant's devices, when the derivation in
+   * `./plant-aggregate.ts` would get it wrong. Almost never needed: power and
+   * energy sum, fractions and temperatures average, everything else is
+   * per-device.
+   */
+  aggregate?: "sum" | "weighted-mean" | "per-device";
 }
 
 export const ROLE_CATALOG = {

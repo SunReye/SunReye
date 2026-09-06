@@ -950,6 +950,8 @@
   "devices_load_failed": "No se pudieron cargar los dispositivos.",
   "devices_badge_polling": "Sondeando",
   "devices_badge_not_polled": "Sin sondear",
+  "source_plant": "Planta",
+  "source_switcher_label": "Fuente",
   "devices_not_polled_hint": "Esta versión sondea un dispositivo; los demás se guardan pero no se leen.",
   "devices_badge_retired": "Retirado",
   "devices_profile_missing": "Perfil no instalado",

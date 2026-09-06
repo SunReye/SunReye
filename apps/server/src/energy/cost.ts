@@ -22,7 +22,8 @@ import { db } from "@SunReye/db";
 import type { TariffConfig } from "@SunReye/db/tariff";
 import type { CanonicalRole, InverterProfile, InverterSample } from "@SunReye/inverter-core";
 import { sql } from "drizzle-orm";
-import { deviceIdOf, metricIdsOf, metricKeyColumn, metricKeyJoin } from "../shared/identity-sql";
+import { deviceScope, metricIdsOf, metricKeyColumn, metricKeyJoin } from "../shared/identity-sql";
+import { type SeriesTarget, isPlantTarget } from "../shared/plant-source";
 import { type ZeroValueShare, allocateCost, priceSeriesRows, rollUpToMonths } from "./cost-calc";
 import { emptyTotals, impliedLoadKwh, replaceTodaySlice, withImpliedHourLoad } from "./energy-calc";
 import { getPlantTimeZone } from "../settings/display-settings";
@@ -200,14 +201,24 @@ function isSameLocalDay(a: Date, b: Date, tz: string = hostTimeZone()): boolean 
  * AND the sample carries a finite value for that role's metric key; every other
  * field is left to the caller's `*.total`-delta value.
  */
+/**
+ * Whether the poll cache's one sample is the target's own reading. It holds ONE
+ * device's sample, which speaks for the plant only when that device is the
+ * plant's sole member; a two-inverter plant keeps the counter delta, which is
+ * at least the whole plant's.
+ */
+function speaksFor(sample: InverterSample, target: SeriesTarget): boolean {
+  if (!isPlantTarget(target)) return sample.inverterId === target;
+  return target.plant.length === 1 && target.plant[0]?.slug === sample.inverterId;
+}
+
 export function liveTodayTotals(
   profile: InverterProfile,
-  inverterId: string,
+  target: SeriesTarget,
   now: Date = new Date(),
   sample: InverterSample | null = liveState.latest,
 ): Partial<EnergyTotals> {
-  if (!sample) return {};
-  if (sample.inverterId !== inverterId) return {};
+  if (!sample || !speaksFor(sample, target)) return {};
   if (!isSameLocalDay(new Date(sample.time), now)) return {};
 
   const out: Partial<EnergyTotals> = {};
@@ -243,18 +254,29 @@ export function liveTodayTotals(
  * interpolate as a raw identifier; the metric keys and the source id stay
  * parameterized.
  */
-function rollupQueryParts(profile: InverterProfile, view: RollupView, inverterId: string) {
+function rollupQueryParts(profile: InverterProfile, view: RollupView, target: SeriesTarget) {
   const fieldByKey = resolveEnergyKeys(profile);
   const keys = [...fieldByKey.keys()];
-  return {
-    fieldByKey,
-    srcSql: sql`(
+  const scope = deviceScope(target, "r");
+  // A counter is a `sum` role (see `plantAggregateOf`), so the plant's counter
+  // level is the members' levels added per bucket. A member with no row in a
+  // bucket contributes nothing to it; the clamp downstream absorbs the dip.
+  const srcSql = isPlantTarget(target)
+    ? sql`(
+      select r.bucket, ${metricKeyColumn("mk")},
+             sum(r.max_value) as max_value, sum(r.min_value) as min_value
+      from ${sql.raw(view)} r ${metricKeyJoin("r", "mk")}
+      where ${scope}
+        and r.metric_id in ${metricIdsOf(keys)}
+      group by r.bucket, mk.key
+    ) src`
+    : sql`(
       select r.bucket, ${metricKeyColumn("mk")}, r.max_value, r.min_value
       from ${sql.raw(view)} r ${metricKeyJoin("r", "mk")}
-      where r.device_id = ${deviceIdOf(inverterId)}
+      where ${scope}
         and r.metric_id in ${metricIdsOf(keys)}
-    ) src`,
-  };
+    ) src`;
+  return { fieldByKey, srcSql };
 }
 
 /**
@@ -296,7 +318,7 @@ function intraBucketBase(min: number, max: number, staleMax: number | undefined)
  */
 export async function fetchBucketEnergy(
   profile: InverterProfile,
-  inverterId: string,
+  inverterId: SeriesTarget,
   from: Date,
   to: Date,
   view: RollupView,
@@ -375,7 +397,7 @@ export async function fetchBucketEnergy(
 /** Read hourly energy for cost banding. Thin wrapper over {@link fetchBucketEnergy}. */
 function fetchHourlyEnergy(
   profile: InverterProfile,
-  inverterId: string,
+  inverterId: SeriesTarget,
   from: Date,
   to: Date,
 ): Promise<HourEnergy[]> {
@@ -567,7 +589,7 @@ export async function fetchCounterDeltaMatrix(
     from: Date;
     to: Date;
     bucket: CostBucket;
-    inverterId?: string;
+    inverterId?: SeriesTarget;
     view?: RollupView;
     /** Plant IANA zone for period/hour bucketing; defaults to the host zone. */
     tz?: string;
@@ -704,7 +726,7 @@ function standingByPeriod(
  */
 export async function computeCostSeries(
   profile: InverterProfile,
-  opts: { from: Date; to: Date; bucket: CostBucket; inverterId?: string },
+  opts: { from: Date; to: Date; bucket: CostBucket; inverterId?: SeriesTarget },
 ): Promise<CostSeriesPoint[]> {
   const tariff = await getTariff();
   const tz = await getPlantTimeZone();
@@ -861,7 +883,7 @@ export async function computeCost(
   opts: {
     from: Date;
     to: Date;
-    inverterId?: string;
+    inverterId?: SeriesTarget;
   },
 ): Promise<CostBreakdown> {
   const inverterId = opts.inverterId ?? profile.id;

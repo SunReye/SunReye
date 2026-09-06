@@ -130,6 +130,12 @@ export interface BackendOptions {
    */
   needsProfile?: boolean;
   /**
+   * `/api/sources`. The default roster has one physical inverter, so the
+   * header's source switcher renders nothing; `fixture.SOURCES_TWO` is the
+   * two-inverter plant that shows it.
+   */
+  sources?: typeof fixture.SOURCES;
+  /**
    * `/api/weather`. `"reading"` (default) is a full, readable reading;
    * `null` is weather switched off, which the server answers with an EMPTY
    * BODY — the case `payloadOrNull` exists for, and the case in which the tile
@@ -414,6 +420,26 @@ export async function mockBackend(page: Page, options: BackendOptions = {}): Pro
     return { time: new Date().toISOString(), inverterId: MANIFEST.id, metrics };
   }
 
+  /** The last sample sent, for the `plant` topic's subscribe-time snapshot. */
+  let lastSample: ReturnType<typeof sample> | null = null;
+
+  /**
+   * The server's `plant` fold of ONE device (`apps/server/src/inverter/plant-live.ts`):
+   * the same metrics, stamped with the member set. A dashboard showing the
+   * plant — the default — reads this topic and ignores device frames, so a
+   * fixture that only ever sent `metrics` would leave every reading an em dash.
+   */
+  function plantFold(s: ReturnType<typeof sample>) {
+    return { time: s.time, metrics: s.metrics, members: [MANIFEST.id], stale: [] };
+  }
+
+  /** One poll: the device's `metrics` frame and the plant's fold, each to its subscribers. */
+  function sendSample(s: ReturnType<typeof sample>): void {
+    lastSample = s;
+    if (subscribed.has("metrics")) sendFrame("metrics", s);
+    if (subscribed.has("plant")) sendFrame("plant", plantFold(s));
+  }
+
   /**
    * The subscribe-time backfill, per topic — `apps/server/src/routes/ws-backfill.ts`.
    *
@@ -425,6 +451,8 @@ export async function mockBackend(page: Page, options: BackendOptions = {}): Pro
    */
   function backfill(topic: string): void {
     if (topic === "metrics") return sendFrame("metrics", sample());
+    // The server replays the plant's last fold on subscribe (`ws-backfill.ts`).
+    if (topic === "plant") return sendFrame("plant", plantFold(lastSample ?? sample()));
     if (topic === "evcc") {
       // No snapshot means NO FRAME, not a frame carrying `null`: `ws-priming.ts`
       // documents "`undefined`/`null` means there is nothing to send", and
@@ -452,6 +480,7 @@ export async function mockBackend(page: Page, options: BackendOptions = {}): Pro
    */
   const TOPIC_POLICY: Record<string, "dashboard" | "admin"> = {
     metrics: "dashboard",
+    plant: "dashboard",
     evcc: "dashboard",
     statistics: "dashboard",
     logs: "admin",
@@ -786,6 +815,7 @@ export async function mockBackend(page: Page, options: BackendOptions = {}): Pro
     }
     if (under("connections") && method === "DELETE")
       return json(route, { ok: true, id: Number(id) });
+    if (at("sources")) return json(route, options.sources ?? fixture.SOURCES);
     if (at("devices")) {
       if (method === "POST") {
         // Echo the body as the row the server would have made: the slug is the
@@ -888,7 +918,7 @@ export async function mockBackend(page: Page, options: BackendOptions = {}): Pro
 
   if (feedIntervalMs > 0) {
     feed = setInterval(() => {
-      if (subscribed.has("metrics")) sendFrame("metrics", sample());
+      if (subscribed.has("metrics") || subscribed.has("plant")) sendSample(sample());
     }, feedIntervalMs);
     // Node would keep the process alive on this timer alone.
     feed.unref?.();
@@ -941,7 +971,7 @@ export async function mockBackend(page: Page, options: BackendOptions = {}): Pro
     async pushMetrics(overrides) {
       if (sockets.length === 0)
         throw new Error("pushMetrics: no live socket — await waitForLive()");
-      sendFrame("metrics", sample(overrides));
+      sendSample(sample(overrides));
       // Let the frame cross the boundary and the render flush before returning.
       await page.waitForTimeout(0);
     },

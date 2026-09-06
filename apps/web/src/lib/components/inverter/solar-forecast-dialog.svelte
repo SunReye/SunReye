@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { source } from '$lib/source.svelte';
 	import type { Snippet } from 'svelte';
 	import * as Dialog from '$lib/components/ui/dialog';
 	import ForecastChart, { type ForecastSlot } from './forecast-chart.svelte';
@@ -104,7 +105,8 @@
 				from: from.toISOString(),
 				to: to.toISOString(),
 				bucket: 'minute',
-				limit: 1600
+				limit: 1600,
+				...source.query
 			}
 		});
 		return measuredFromRollups((data ?? []) as MinuteRollup[], step);
@@ -112,7 +114,7 @@
 
 	async function fetchHourlyEnergy(from: Date, to: Date, nowIdx: number): Promise<MeasuredDay> {
 		const { data } = await api.api.energy.series.get({
-			query: { from: from.toISOString(), to: to.toISOString(), bucket: 'hour' }
+			query: { from: from.toISOString(), to: to.toISOString(), bucket: 'hour', ...source.query }
 		});
 		return measuredFromHourlyEnergy((data ?? []) as Period[], step, nowIdx);
 	}
