@@ -2,7 +2,7 @@
 
 ## [unreleased]
 
-Unreleased work on `dev` since 1.2.0, shipped in `beta.20260905-4b450ce`.
+Unreleased work on `dev` since 1.2.0, shipped in `beta.20260906-a5fa786`.
 
 
 ### ⚠ BREAKING CHANGES
@@ -12,6 +12,9 @@ Unreleased work on `dev` since 1.2.0, shipped in `beta.20260905-4b450ce`.
 
 ### Features
 
+* **server:** the live sample is stamped with the device slug, not the profile id ([932240e](https://github.com/SunReye/SunReye/commit/932240eb6f1140cb3ef7a600fcadde152b595fdc))
+* **web:** choose the plant or one device, and every read follows ([4e2f9d3](https://github.com/SunReye/SunReye/commit/4e2f9d3f65aec4eca5134683b95d687c23fb1e0c))
+* **server:** plant and device sources on every history, energy and statistics read ([04e95d7](https://github.com/SunReye/SunReye/commit/04e95d77067f7f60ebd7248a7ff25d9b91adc347))
 * **web:** the export cap's placeholder is the inverter's sell limit ([dd898f7](https://github.com/SunReye/SunReye/commit/dd898f7ab6b1d3efda43862c258595f723d0eba6))
 * **web:** a blank export cap starts as the inverter's sell limit ([977f82d](https://github.com/SunReye/SunReye/commit/977f82dc8611b7433148f222e07eeba8fe65cca8))
 * **web:** the plant's export cap shows the inverter's sell-limit register beside it ([1d5d7fa](https://github.com/SunReye/SunReye/commit/1d5d7fa9012e5b8835fb5c6cdce6fb42392cdfc4))
@@ -164,6 +167,8 @@ Unreleased work on `dev` since 1.2.0, shipped in `beta.20260905-4b450ce`.
 
 ### Bug Fixes
 
+* **server,web:** the live fold finds a member by the profile id the driver stamps ([6897f80](https://github.com/SunReye/SunReye/commit/6897f806f16d645a4d6e889fd4a0f485042170bf))
+* **server:** a profile shared by two devices resolves to neither device ([f95a142](https://github.com/SunReye/SunReye/commit/f95a142cd5c09fd0ae17be3f3869025ad7abede2))
 * **web:** a rail's charge keeps its place when its speed steps ([ee5bd13](https://github.com/SunReye/SunReye/commit/ee5bd131797e5505118126a36f734f073fcf8cf5))
 * **web:** the device probes show the captured snapshot again ([802ad7f](https://github.com/SunReye/SunReye/commit/802ad7f8be22075d4b7f7675acd6fb13622e4268))
 * **devices:** unit id 0 is a valid address, and the picker is a select ([2997982](https://github.com/SunReye/SunReye/commit/29979823cf695c06195ea8a9c5fc632a53e5958f))
@@ -433,6 +438,8 @@ Unreleased work on `dev` since 1.2.0, shipped in `beta.20260905-4b450ce`.
 
 ### Tests
 
+* **web:** the browser fixture emits the plant fold, as the server does ([9e2c5c0](https://github.com/SunReye/SunReye/commit/9e2c5c026a68152838c85831ad1528c5872a3cae))
+* **server:** the plant fold against a real TimescaleDB ([7f0f344](https://github.com/SunReye/SunReye/commit/7f0f34474d85092eb6c858dc7907ab2bd60310ae))
 * **db:** reset once for both legacy-cadence cases ([0875dcf](https://github.com/SunReye/SunReye/commit/0875dcf6e157045ed953406d2239d98fcfcdfd86))
 * **server:** read the optimizer's decisions through the production read path ([da0d4ea](https://github.com/SunReye/SunReye/commit/da0d4ea7df5fdc61340cee30d89ebd126667c262))
 * **db:** prove a loadpoint's charge power reaches metrics_raw and comes back ([18dd9de](https://github.com/SunReye/SunReye/commit/18dd9de2c4c1c06b73e4814cd880905fccdcd8fb))
@@ -488,6 +495,7 @@ Unreleased work on `dev` since 1.2.0, shipped in `beta.20260905-4b450ce`.
 
 ### Miscellaneous Chores
 
+* keep the code-health gate's duplicate count where dev left it ([13ca88b](https://github.com/SunReye/SunReye/commit/13ca88b18d7dd87d9b0bd1977f1dd71129eb6155))
 * **release:** state the schemaVersion break, and cut profile-sdk 3.0.0 ([b8ff1e6](https://github.com/SunReye/SunReye/commit/b8ff1e683a5f78b90d7eb97d68af8a3fcf7987fd))
 * **server:** annotate the legacy-retirement exports for fallow ([5fc5368](https://github.com/SunReye/SunReye/commit/5fc5368abd159c4df852630a8c6d7cd21ddabb71))
 * **ci:** pin the weighted-rollups gate to bun 1.4.0 ([0cb8712](https://github.com/SunReye/SunReye/commit/0cb87122eda470354b6dc5342c4961257b59fa40))
