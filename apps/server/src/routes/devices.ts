@@ -23,6 +23,8 @@ import {
   patchDevice,
   removeConnection,
 } from "../devices/device-admin";
+import { afterDeviceWrite } from "../devices/after-device-write";
+import { plantFacts } from "../settings/plant-facts-instance";
 import { probeEndpoint } from "../devices/reachability";
 import { deviceRegistry } from "../devices/registry-instance";
 import { resolveProfileById } from "../inverter/inverter";
@@ -61,7 +63,7 @@ function defaultDeps(): DeviceAdminDeps {
     },
     profileName: async (id) => (await resolveProfileById(id))?.name ?? null,
     primarySlug: () => deviceRegistry.primary()?.id ?? null,
-    reload: () => runtime.reloadEndpoint(),
+    reload: () => afterDeviceWrite(plantFacts, () => runtime.reloadEndpoint()),
   };
 }
 
