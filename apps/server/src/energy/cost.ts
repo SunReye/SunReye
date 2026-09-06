@@ -19,17 +19,24 @@ import type {
   HourEnergy,
 } from "@SunReye/contracts/energy";
 import { db } from "@SunReye/db";
-import type { TariffConfig } from "@SunReye/db/tariff";
+import { type TariffConfig, importPriceForHour } from "@SunReye/db/tariff";
 import type { CanonicalRole, InverterProfile, InverterSample } from "@SunReye/inverter-core";
 import { sql } from "drizzle-orm";
 import { deviceScope, metricIdsOf, metricKeyColumn, metricKeyJoin } from "../shared/identity-sql";
 import { type SeriesTarget, isPlantTarget } from "../shared/plant-source";
-import { type ZeroValueShare, allocateCost, priceSeriesRows, rollUpToMonths } from "./cost-calc";
+import {
+  type FallbackRates,
+  type ZeroValueShare,
+  allocateCost,
+  priceSeriesRows,
+  repriceTodaySlice,
+  rollUpToMonths,
+} from "./cost-calc";
 import { emptyTotals, impliedLoadKwh, replaceTodaySlice, withImpliedHourLoad } from "./energy-calc";
 import { getPlantTimeZone } from "../settings/display-settings";
 import { getTariff } from "../settings/settings";
 import { liveState } from "../shared/state";
-import { startOfZonedDay, zonedFields, zonedInstant } from "./zoned-time";
+import { startOfZonedDay, zonedFields, zonedInstant, zonedIsoWeekday } from "./zoned-time";
 
 const clamp01 = (n: number): number => Math.min(1, Math.max(0, n));
 
@@ -229,6 +236,63 @@ export function liveTodayTotals(
     if (typeof value === "number" && Number.isFinite(value)) {
       out[TOTALS_KEY_BY_FIELD[field]] = value;
     }
+  }
+  return out;
+}
+
+/**
+ * The plant's LIFETIME counters as the poll cache last saw them: every field of
+ * {@link ENERGY_FIELDS} the profile maps, read straight off the `*.total`
+ * registers. Unlike {@link liveTodayTotals} the sample's age is irrelevant — a
+ * lifetime counter read yesterday is still the lifetime counter.
+ *
+ * `null` when the sample cannot answer: none at all, one that does not speak for
+ * the target (a plant of several members), or one missing a mapped register —
+ * a partial set would price the missing counter as 0 kWh, "the plant never
+ * bought anything". Unmapped fields are zero, which IS the right answer for a
+ * role the plant does not have.
+ */
+export function liveCounterLevels(
+  profile: InverterProfile,
+  target: SeriesTarget,
+  sample: InverterSample | null = liveState.latest,
+): EnergyTotals | null {
+  if (!sample || !speaksFor(sample, target)) return null;
+  const out = emptyTotals();
+  for (const field of Object.keys(ENERGY_FIELDS) as EnergyField[]) {
+    const key = keyForRole(profile, ENERGY_FIELDS[field]);
+    if (!key) continue;
+    const value = sample.metrics[key];
+    if (typeof value !== "number" || !Number.isFinite(value)) return null;
+    out[TOTALS_KEY_BY_FIELD[field]] = value;
+  }
+  return out;
+}
+
+/**
+ * The lifetime counters from the forever-retained daily tier: each mapped
+ * metric's high in its newest bucket (real-time aggregation includes today's).
+ * The fallback for {@link liveCounterLevels} — a plant of several members has
+ * no single sample, and a device that has not polled since boot has none.
+ * A plant target reads the members' levels summed per bucket, like every other
+ * rollup read. `null` when nothing has ever been recorded.
+ */
+export async function fetchLatestCounterLevels(
+  profile: InverterProfile,
+  target: SeriesTarget,
+): Promise<EnergyTotals | null> {
+  const { fieldByKey, srcSql } = rollupQueryParts(profile, "daily_rollups", target);
+  if (fieldByKey.size === 0) return null;
+  const res = await db.execute<{ metric: string; max_value: number | string }>(sql`
+    select distinct on (metric) metric, max_value
+    from ${srcSql}
+    order by metric, bucket desc
+  `);
+  if (res.rows.length === 0) return null;
+  const out = emptyTotals();
+  for (const row of res.rows) {
+    const field = fieldByKey.get(row.metric);
+    if (field) out[TOTALS_KEY_BY_FIELD[field]] = Number(row.max_value);
   }
   return out;
 }
@@ -773,37 +837,38 @@ function coversTodaySoFar(from: Date, to: Date, now: Date, tz: string = hostTime
   return from.getTime() <= midnight.getTime() && (to >= now || isSameLocalDay(to, now, tz));
 }
 
-/** The counter-delta energy a window already counted for today, by totals key.
- *  What {@link replaceTodaySlice} exchanges for the live registers. */
-function todayFromHours(hours: HourEnergy[], midnight: Date): EnergyTotals {
-  const out = emptyTotals();
-  for (const h of hours) {
-    if (h.time.getTime() < midnight.getTime()) continue;
-    for (const [field, key] of Object.entries(TOTALS_KEY_BY_FIELD)) {
-      out[key] += h[field as EnergyField];
-    }
-  }
-  return out;
+/** The hours of a window that fall on or after `midnight` — today's slice. */
+function hoursSince(hours: HourEnergy[], midnight: Date): HourEnergy[] {
+  return hours.filter((h) => h.time.getTime() >= midnight.getTime());
+}
+
+/** The tariff's own per-kWh rates at `now` — what prices a register the counter
+ *  deltas have not seen yet (see {@link repriceTodaySlice}). */
+function fallbackRatesAt(tariff: TariffConfig, now: Date, tz: string): FallbackRates {
+  return {
+    importPrice: importPriceForHour(tariff, zonedFields(now, tz).hour, zonedIsoWeekday(now, tz)),
+    exportPrice: tariff.export.feedInPerKwh,
+  };
 }
 
 /**
- * Report the live `*.today` energy on top of a window's per-hour cost totals:
+ * Report the live `*.today` registers on top of a window's per-hour cost totals:
  * exchange today's delta-derived slice for the live registers (only the fields
- * the reader supplied) and RECOMPUTE the pure derived-energy / ratio fields from
+ * the reader supplied), RECOMPUTE the pure derived-energy / ratio fields from
  * the result — mirroring {@link allocateCost}'s formulas exactly so the tiles
- * stay coherent.
+ * stay coherent — and move today's MONEY with the energy.
  *
- * `deltaToday` is today's own contribution to `totals`, so a month-to-date
- * window keeps its earlier days and only its today slice moves. For the `today`
- * window itself that slice IS the whole window, and this reduces to a plain
- * replacement.
+ * `slice` is today's own contribution to `totals` (energy and money alike, as
+ * {@link allocateCost} priced it), so a month-to-date window keeps its earlier
+ * days and only its today slice moves. For the `today` window itself that slice
+ * IS the whole window, and this reduces to a plain replacement.
  *
- * Deliberate split: the MONEY fields (importCost, exportEarnings,
- * standingCharge, net, gridOnlyCost, savings, solarSavings, byDay, byBand) pass
- * through untouched. They are priced per-hour-of-day tariff band from the
- * `*.total` deltas and stay authoritative for money — a day register can't be
- * banded — so the reported kWh and its priced cost may diverge slightly while
- * the day is in progress.
+ * The money moves at the slice's effective rate (see {@link repriceTodaySlice}):
+ * the per-hour banding the deltas established is kept, and the register's kWh
+ * are priced like the recorded part of the day. Before this the money stayed
+ * on the deltas alone, and the dashboard read a day's kWh beside an hour's
+ * euros. `byDay` and `byBand` stay on the deltas — a day register cannot be
+ * apportioned to a band.
  *
  * `impliedLoad` says the plant meters no consumption at all
  * ({@link metersLoadEnergy}), so its house figure is derived rather than read.
@@ -811,19 +876,22 @@ function todayFromHours(hours: HourEnergy[], midnight: Date): EnergyTotals {
 function reportLiveTodayTotals(
   totals: CostTotals,
   today: Partial<EnergyTotals>,
-  deltaToday: EnergyTotals,
+  slice: CostTotals,
   impliedLoad: boolean,
+  fallback: FallbackRates,
 ): CostTotals {
-  const swapped = replaceTodaySlice(totals, deltaToday, today);
+  const swapped = replaceTodaySlice(totals, slice, today);
+  // The live slice on its own: what the registers say happened today.
+  const liveSlice = replaceTodaySlice(slice, slice, today);
   // An implied consumption has to be re-implied from the swapped flows: it was
   // computed per hour off the counter deltas, and leaving it there would report
   // a house figure that contradicts the import/export/production printed beside
   // it. A metered plant has nothing to re-derive.
   const energy = impliedLoad ? { ...swapped, loadKwh: impliedLoadKwh(swapped) } : swapped;
+  const live = impliedLoad ? { ...liveSlice, loadKwh: impliedLoadKwh(liveSlice) } : liveSlice;
   const { importKwh, exportKwh, loadKwh, productionKwh } = energy;
   return {
-    ...totals,
-    ...energy,
+    ...repriceTodaySlice({ ...totals, ...energy }, slice, live, fallback),
     solarToLoadKwh: Math.max(0, loadKwh - importKwh),
     selfSufficiency: loadKwh > 0 ? clamp01((loadKwh - importKwh) / loadKwh) : null,
     selfConsumption:
@@ -891,27 +959,25 @@ export async function computeCost(
   const tz = await getPlantTimeZone();
   const hours = await fetchHourlyEnergy(profile, inverterId, opts.from, opts.to);
   const rangeDays = Math.max(0, (opts.to.getTime() - opts.from.getTime()) / 86_400_000);
-  const totals = allocateCost(
-    hours,
-    tariff,
-    rangeDays,
-    await zeroValueShareFor(tariff, opts.from, opts.to),
-    tz,
-  );
+  const zeroValueShare = await zeroValueShareFor(tariff, opts.from, opts.to);
+  const totals = allocateCost(hours, tariff, rangeDays, zeroValueShare, tz);
 
   // Any window running up to now — today, month-to-date, year-to-date — reports
-  // today's ENERGY kWh from the live *.today registers, which lead the coarse
+  // today's kWh from the live *.today registers, which lead the coarse
   // cross-bucket *.total delta for the in-progress day and match the dashboard
-  // headline; the ratios are recomputed from the result and money stays per-hour
-  // (see reportLiveTodayTotals). The slice is exchanged, not the total, so a
-  // month can never report less energy than the day inside it.
+  // headline; the ratios are recomputed from the result and today's money moves
+  // with its kWh (see reportLiveTodayTotals). The slice is exchanged, not the
+  // total, so a month can never report less energy than the day inside it.
   const now = new Date();
   const reported = coversTodaySoFar(opts.from, opts.to, now, tz)
     ? reportLiveTodayTotals(
         totals,
         liveTodayTotals(profile, inverterId, now),
-        todayFromHours(hours, startOfLocalDay(now, tz)),
+        // Today's slice priced exactly as the window priced it (no standing
+        // charge: that is the window's, prorated once).
+        allocateCost(hoursSince(hours, startOfLocalDay(now, tz)), tariff, 0, zeroValueShare, tz),
         !metersLoadEnergy(profile),
+        fallbackRatesAt(tariff, now, tz),
       )
     : totals;
 
