@@ -255,6 +255,53 @@ describe("runBlockingUpgrade: which database it acts on at all", () => {
   });
 });
 
+describe("runBlockingUpgrade: a second boot on an upgraded database", () => {
+  // The record written on boot 1 and advanced since: names confirmed, backfill
+  // done. Every field here is something a re-run of the blocking step could only
+  // destroy — it has no source for them.
+  const advanced = {
+    stage: "backfilled",
+    cutoverAt: "2026-09-09T20:00:00.000Z",
+    sourceId: "deye-sun15k-sg05lp3",
+    legacyRawFrom: "2026-07-01T00:00:00.000Z",
+    legacyRawTo: "2026-09-09T20:00:00.000Z",
+    replayTo: "2026-07-01T00:00:00.000Z",
+    namesConfirmedAt: "2026-09-09T20:30:00.000Z",
+  };
+
+  test("KEEPS the record it finds — the cutover, the stage and the confirmed names", async () => {
+    // Seen live 2026-09-09: `rename-done` has no early return, so every restart
+    // upserted a fresh `stage: "cutover"` at `now`. The operator's confirmed
+    // names vanished, discovery went back on hold, the onboarding form came back,
+    // and a finished 15-minute backfill lost the record that said it had run.
+    const { client, statements } = fake({
+      ...RENAME_DONE,
+      record: JSON.stringify(advanced),
+      rawWindow: { from: advanced.legacyRawFrom, to: advanced.legacyRawTo },
+      rawSourceIds: [advanced.sourceId],
+    });
+    await runBlockingUpgrade(client, {
+      ...baselineInput,
+      now: new Date("2026-09-09T22:56:13.230Z"),
+    });
+    const writes = statements.filter((text) => text.startsWith("insert into app_settings"));
+    expect(writes).toHaveLength(0);
+  });
+
+  test("a record with NO confirmed names still gets none invented for it", async () => {
+    // The other direction: a genuinely unfinished onboarding must still be asked
+    // for. Preserving the record must not mean stamping `namesConfirmedAt`.
+    const { client } = fake({
+      ...RENAME_DONE,
+      record: JSON.stringify({ ...advanced, stage: "cutover", namesConfirmedAt: null }),
+      rawWindow: { from: advanced.legacyRawFrom, to: advanced.legacyRawTo },
+      rawSourceIds: [advanced.sourceId],
+    });
+    await runBlockingUpgrade(client, baselineInput);
+    expect((await readMigrationRecord(client)).namesConfirmedAt).toBeNull();
+  });
+});
+
 describe("readMigrationRecord", () => {
   const record = {
     stage: "cutover",

@@ -413,6 +413,16 @@ suite("the in-place 1.2.0 -> 2.0.0 upgrade", () => {
       // The dangerous re-run. Renaming again would move the NEW metrics_raw out
       // from under the app and hand the freed name to nothing.
       const before = await one(`select count(*)::bigint as n from legacy_minute_rollups`);
+      // And the record: the operator confirmed the names between the two boots.
+      // A re-run that rewrote the record (seen live 2026-09-09: every restart moved
+      // `cutoverAt` to `now` and dropped `namesConfirmedAt`) puts discovery back on
+      // hold and shows the onboarding form again on every restart.
+      const recordBefore = await readMigrationRecord(client);
+      const confirmedAt = "2026-09-09T20:30:00.000Z";
+      await writeMigrationRecord(
+        client,
+        migrationRecordSchema.parse({ ...recordBefore, namesConfirmedAt: confirmedAt }),
+      );
       await runMigrations(url);
       expect(await one(`select count(*)::bigint as n from legacy_minute_rollups`)).toBe(before);
       const columns = await rows<{ column_name: string }>(
@@ -420,6 +430,10 @@ suite("the in-place 1.2.0 -> 2.0.0 upgrade", () => {
           where table_schema = 'public' and table_name = 'metrics_raw'`,
       );
       expect(columns.map((c) => c.column_name)).toContain("device_id");
+      const recordAfter = await readMigrationRecord(client);
+      expect(recordAfter.cutoverAt).toBe(recordBefore.cutoverAt);
+      expect(recordAfter.stage).toBe(recordBefore.stage);
+      expect(recordAfter.namesConfirmedAt).toBe(confirmedAt);
     }, 120_000);
   });
 
