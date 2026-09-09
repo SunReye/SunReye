@@ -1,7 +1,7 @@
 {
-  ".": "3.0.0",
-  "apps/web": "3.0.0",
+  ".": "3.0.1",
+  "apps/web": "3.0.1",
   "packages/inverter-core": "1.2.0",
   "packages/profile-sdk": "3.1.0",
-  "sunreye": "3.0.0"
+  "sunreye": "3.0.1"
 }
