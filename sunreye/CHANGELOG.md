@@ -119,9 +119,10 @@ be needed again.
 ## [3.0.1](https://github.com/SunReye/SunReye/compare/addon-v3.0.0...addon-v3.0.1) (2026-09-09)
 
 
-### Miscellaneous Chores
+### Bug Fixes
 
-* **addon:** Synchronize sunreye-stack versions
+* **db:** never rewrite the migration record on a re-run of the blocking upgrade ([a736b12](https://github.com/SunReye/SunReye/commit/a736b125604115a826f65ef1603d3141bf3d4bca))
+* **db:** never rewrite the migration record on a re-run of the blocking upgrade ([a95b59c](https://github.com/SunReye/SunReye/commit/a95b59c5333266b8646063c4b560ae69dd9c7059))
 
 ## [3.0.0](https://github.com/SunReye/SunReye/compare/addon-v2.0.0...addon-v3.0.0) (2026-09-09)
 
