@@ -17,7 +17,9 @@ const read = async (file: string) => await Bun.file(new URL(file, import.meta.ur
 const fieldInfo = await read("./field-info.svelte");
 const forms = Object.fromEntries(
   await Promise.all(
-    ["solar-forecast-fields", "export-cap-helper", "weather-form"].map(
+    // The roof and pack fields moved onto the device dialog (2026-09-04); the
+    // rule follows them there.
+    ["pv-fields", "battery-fields", "plant-site-fields", "export-cap-helper", "weather-form"].map(
       async (f) => [f, await read(`./${f}.svelte`)] as const,
     ),
   ),
@@ -47,7 +49,7 @@ describe("the settings field info affordance", () => {
   });
 });
 
-describe("the plant and weather forms", () => {
+describe("the plant, inverter and weather forms", () => {
   test.each(Object.keys(forms))("%s explains its fields through the popover", (name) => {
     expect(forms[name]).toContain("FieldInfo");
   });

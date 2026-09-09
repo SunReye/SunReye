@@ -8,8 +8,11 @@ name: sunreye-db
 
 services:
   timescaledb:
-    # Pinned to match the production compose files — see docker-compose.yml.
-    image: timescale/timescaledb:2.28.2-pg17
+    # Pinned to match the production compose files and the addon — see
+    # docker-compose.yml. Built by docker/timescaledb/Dockerfile: it carries
+    # timescaledb_toolkit, which timescale/timescaledb does not, and which the
+    # baseline schema's weighted rollups need.
+    image: ghcr.io/sunreye/timescaledb:pg17-ts2.28.2
     container_name: SunReye-timescaledb
     network_mode: host
     expose:

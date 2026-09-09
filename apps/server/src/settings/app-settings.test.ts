@@ -56,10 +56,47 @@ afterAll(() => {
   mock.module("@SunReye/db", () => ({ ...realDbExports }));
 });
 
-const { cachedSetting, readSetting, writeSetting } = await import("./app-settings");
+const { cachedSetting, readSetting, rejectedKey, writeSetting } = await import("./app-settings");
 
 const selects = () => queries.filter((q) => q.sql.startsWith("select"));
 const writes = () => queries.filter((q) => q.sql.startsWith("insert"));
+
+/**
+ * Capture what `app-settings.ts` warns while `run` runs. LogTape caches one
+ * logger per category and the module binds its own at import time, so the tap
+ * goes on that shared instance: an own property shadows the prototype method,
+ * forwards to LogTape, and is deleted again afterwards.
+ */
+const { log: settingsLog } = await import("../shared/logging");
+async function warningsDuring(
+  run: () => Promise<unknown>,
+): Promise<{ template: string; values: Record<string, unknown> }[]> {
+  const logger = settingsLog("settings") as unknown as Record<string, unknown>;
+  const captured: { template: string; values: Record<string, unknown> }[] = [];
+  const emit = (logger.warn as (t: string, v?: Record<string, unknown>) => void).bind(logger);
+  logger.warn = (template: string, values: Record<string, unknown> = {}) => {
+    captured.push({ template, values });
+    emit(template, values);
+  };
+  try {
+    await run();
+  } finally {
+    delete logger.warn;
+  }
+  return captured;
+}
+
+/**
+ * A key nothing else in this file uses. The "warn once per key per boot" ledger
+ * is process-wide by design (it is a boot ledger, not a request one), so a test
+ * that wants a *first* rejection has to bring its own key.
+ */
+let keySeq = 0;
+const freshKey = () => `pricing-${++keySeq}`;
+
+/** The raw value kept in a key's quarantine row, or undefined if there is none. */
+const quarantineOf = (key: string) =>
+  (table.get(rejectedKey(key))?.value as { value: unknown } | undefined)?.value;
 
 /** Put a row in the table the way an earlier release would have written it. */
 const seed = (key: string, value: unknown) =>
@@ -135,13 +172,16 @@ describe("readSetting — a saved value", () => {
 });
 
 describe("readSetting — a saved value the schema no longer accepts", () => {
-  // The silent reset this pins is the trap of the whole settings layer: the row
-  // is parsed with `safeParse` and a failure is indistinguishable, to the
-  // caller, from "never configured". A schema change that rejects rows an older
-  // release wrote therefore reverts users to defaults with no log line.
-  test("resets to the default without throwing or logging", async () => {
-    seed("pricing", { currency: "EUR", pricePerKwh: "0.32" }); // was a string once
-    expect(await readSetting("pricing", pricingSchema, neutralPricing)).toBe(neutralPricing);
+  // The silent reset this used to pin is the trap of the whole settings layer:
+  // the row is parsed with `safeParse` and a failure is indistinguishable, to
+  // the caller, from "never configured". A schema change that rejects rows an
+  // older release wrote reverted users to defaults with no trace. It still
+  // falls back — a half-parsed config must not reach a register writer — but it
+  // now says so and keeps the rejected value.
+  test("resets to the default rather than throwing", async () => {
+    const key = freshKey();
+    seed(key, { currency: "EUR", pricePerKwh: "0.32" }); // was a string once
+    expect(await readSetting(key, pricingSchema, neutralPricing)).toBe(neutralPricing);
   });
 
   test("a stored null reads as unset for an object setting", async () => {
@@ -162,13 +202,126 @@ describe("readSetting — a saved value the schema no longer accepts", () => {
   test("the reset is not written back — the row survives a rejecting read", async () => {
     seed("pricing", { currency: "EUR", pricePerKwh: "0.32" });
     await readSetting("pricing", pricingSchema, neutralPricing);
-    expect(writes()).toHaveLength(0);
+    // The setting's own row is untouched; only the quarantine copy is written.
+    expect(writes().every((w) => w.params[0] === rejectedKey("pricing"))).toBe(true);
     // A later release that accepts the old shape again gets the value back.
     const lenient = z.object({ currency: z.string(), pricePerKwh: z.coerce.number() });
     expect(await readSetting("pricing", lenient, { currency: "EUR", pricePerKwh: 0 })).toEqual({
       currency: "EUR",
       pricePerKwh: 0.32,
     });
+  });
+});
+
+describe("readSetting — a rejected value is announced and quarantined", () => {
+  // Losing a setting silently already cost a user their configuration once, and
+  // this store also holds the held-register snapshot: the original charge
+  // current an automation must hand back. A reset there is unrecoverable unless
+  // the raw row is kept somewhere.
+  test("warns, naming the key and the Zod issue path", async () => {
+    const key = freshKey();
+    seed(key, { currency: "EUR", pricePerKwh: "0.32" });
+    const warnings = await warningsDuring(() => readSetting(key, pricingSchema, neutralPricing));
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]?.values.key).toBe(key);
+    expect(String(warnings[0]?.values.issues)).toContain("pricePerKwh");
+  });
+
+  test("keeps the raw rejected value under `<key>:rejected`", async () => {
+    const key = freshKey();
+    const stored = { currency: "EUR", pricePerKwh: "0.32" };
+    seed(key, stored);
+    await readSetting(key, pricingSchema, neutralPricing);
+    expect(quarantineOf(key)).toEqual(stored);
+  });
+
+  test("quarantines a rejected scalar too, not only objects", async () => {
+    const key = freshKey();
+    seed(key, true); // a limit that used to be a flag
+    await readSetting(key, z.number(), 0.42);
+    expect(quarantineOf(key)).toBe(true);
+  });
+
+  test("quarantines a rejected empty payload — `{}` is drift, not absence", async () => {
+    const key = freshKey();
+    seed(key, {});
+    expect(await readSetting(key, z.object({ name: z.string() }), { name: "night" })).toEqual({
+      name: "night",
+    });
+    expect(quarantineOf(key)).toEqual({});
+  });
+
+  test("a well-formed value logs nothing and quarantines nothing", async () => {
+    const key = freshKey();
+    seed(key, { pricePerKwh: 0.32 });
+    const warnings = await warningsDuring(() => readSetting(key, pricingSchema, neutralPricing));
+    expect(warnings).toEqual([]);
+    expect(table.has(`${key}:rejected`)).toBe(false);
+    expect(writes()).toHaveLength(0);
+  });
+
+  test("a missing row is not a rejection — an unconfigured setting is normal", async () => {
+    const key = freshKey();
+    const warnings = await warningsDuring(() => readSetting(key, pricingSchema, neutralPricing));
+    expect(warnings).toEqual([]);
+    expect(table.has(`${key}:rejected`)).toBe(false);
+  });
+
+  test("a second read of the same key in the same boot does not warn again", async () => {
+    // The poll loop reads config every few seconds; a per-read warning would
+    // bury the log viewer and the ring buffer under one drifted row.
+    const key = freshKey();
+    seed(key, { currency: "EUR", pricePerKwh: "0.32" });
+    expect(
+      await warningsDuring(() => readSetting(key, pricingSchema, neutralPricing)),
+    ).toHaveLength(1);
+    expect(await warningsDuring(() => readSetting(key, pricingSchema, neutralPricing))).toEqual([]);
+  });
+
+  test("re-reading the same bad value does not rewrite the quarantine row", async () => {
+    const key = freshKey();
+    seed(key, { currency: "EUR", pricePerKwh: "0.32" });
+    await readSetting(key, pricingSchema, neutralPricing);
+    const after = writes().length;
+    await readSetting(key, pricingSchema, neutralPricing);
+    expect(writes()).toHaveLength(after);
+  });
+
+  test("a later, different bad value replaces what is quarantined", async () => {
+    // The stale copy is worthless: what a hand recovery needs is the row that
+    // was actually thrown away on this boot.
+    const key = freshKey();
+    seed(key, { currency: "EUR", pricePerKwh: "0.32" });
+    await readSetting(key, pricingSchema, neutralPricing);
+    seed(key, { currency: "EUR", pricePerKwh: "0.41" });
+    await readSetting(key, pricingSchema, neutralPricing);
+    expect(quarantineOf(key)).toEqual({ currency: "EUR", pricePerKwh: "0.41" });
+  });
+
+  test("a quarantine write that fails still hands the caller the default", async () => {
+    // The database being unwritable must not turn a degraded read into a crash
+    // on the boot path — the fallback is the whole point.
+    const key = freshKey();
+    seed(key, { currency: "EUR", pricePerKwh: "0.32" });
+    writeFailure = new Error("connection terminated");
+    expect(await readSetting(key, pricingSchema, neutralPricing)).toBe(neutralPricing);
+  });
+
+  test("a quarantine write that failed is retried on the next read", async () => {
+    const key = freshKey();
+    seed(key, { currency: "EUR", pricePerKwh: "0.32" });
+    writeFailure = new Error("connection terminated");
+    await readSetting(key, pricingSchema, neutralPricing);
+    writeFailure = null;
+    await readSetting(key, pricingSchema, neutralPricing);
+    expect(table.has(`${key}:rejected`)).toBe(true);
+  });
+
+  test("the quarantine row is never itself quarantined", async () => {
+    const key = freshKey();
+    seed(key, { currency: "EUR", pricePerKwh: "0.32" });
+    await readSetting(key, pricingSchema, neutralPricing);
+    expect(table.has(`${key}:rejected:rejected`)).toBe(false);
   });
 });
 

@@ -1,8 +1,11 @@
 import type { EnergyField } from "@SunReye/contracts/energy";
 import { spotPrices } from "@SunReye/db/schema/spot-price";
+import { defaultSpotPriceConfig } from "@SunReye/db/spot-price-config";
 import { type TariffConfig, tariffConfigSchema } from "@SunReye/db/tariff";
 import type { CanonicalRole, InverterProfile, InverterSample } from "@SunReye/inverter-core";
 import { afterAll, afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import type { SQL } from "drizzle-orm";
+import { PgDialect } from "drizzle-orm/pg-core";
 
 /** How an energy figure is derived from stored data — see `ENERGY_ROLE_DERIVATION`. */
 type EnergyDerivation = "counter" | "integral";
@@ -36,7 +39,36 @@ afterAll(() => {
   mock.module("@SunReye/db", () => ({ ...realDbExports }));
   mock.module("../settings/settings", () => ({ ...realSettingsExports }));
   mock.module("../shared/state", () => ({ ...realStateExports }));
+  mock.module("../settings/display-settings", () => ({ ...realDisplaySettingsExports }));
+  mock.module("../settings/spot-price-settings", () => ({ ...realSpotPriceSettingsExports }));
 });
+
+// The plant zone now lives in `plants.time_zone`, read through the cached plant
+// accessor, which PROVISIONS the row on first use. That is a write, and this
+// suite's `execute` stand-in answers from a queue meant for the cost queries —
+// so a provisioning round trip here would consume the rows a test queued and
+// then fail on a plant it could not create. The zone is pinned instead, to the
+// host process zone: the same value the `app_settings`-era default resolved to,
+// and the zone the window Dates below are built in, so the period keys stay
+// deterministic per run.
+const realDisplaySettings = await import("../settings/display-settings");
+const realDisplaySettingsExports = { ...realDisplaySettings };
+mock.module("../settings/display-settings", () => ({
+  ...realDisplaySettings,
+  getPlantTimeZone: async () => Intl.DateTimeFormat().resolvedOptions().timeZone,
+}));
+
+// Same reason for the bidding zone, which the §51 path reads before it asks for
+// stored prices: it is `plants.bidding_zone` now, behind the same provisioning
+// accessor. Pinned to the schema default — the value the `app_settings`-era
+// "no row" case resolved to — so what these tests are about (which slots make an
+// exported kWh worthless) is unchanged.
+const realSpotPriceSettings = await import("../settings/spot-price-settings");
+const realSpotPriceSettingsExports = { ...realSpotPriceSettings };
+mock.module("../settings/spot-price-settings", () => ({
+  ...realSpotPriceSettings,
+  getSpotPriceConfig: async () => defaultSpotPriceConfig,
+}));
 
 let queryResults: Array<Array<Record<string, unknown>>> = [];
 const execute = mock(async () => ({ rows: queryResults.shift() ?? [] }));
@@ -97,6 +129,8 @@ const {
   computeCostSeries,
   currentPeriodKey,
   fetchBucketEnergy,
+  fetchLatestCounterLevels,
+  liveCounterLevels,
   liveTodayTotals,
   metersLoadEnergy,
 } = await import("./cost");
@@ -143,6 +177,109 @@ const yesterday = new Date(2024, 5, 14, 23, 59, 0);
 
 const liveMetrics = { imp: 1.1, exp: 2.2, load: 8.6, prod: 5.5 };
 
+describe("liveCounterLevels — the lifetime registers", () => {
+  const counters = profileWith({
+    "grid.energy.imported.total": "impT",
+    "grid.energy.exported.total": "expT",
+    "production.total": "prodT",
+  });
+  const levels = { impT: 4_321.5, expT: 9_876, prodT: 15_000 };
+
+  test("reads every mapped *.total role the sample carries, zero-filling the rest", () => {
+    expect(liveCounterLevels(counters, "inv-1", sample(today, levels))).toEqual({
+      importKwh: 4_321.5,
+      exportKwh: 9_876,
+      loadKwh: 0,
+      productionKwh: 15_000,
+      batteryDischargeKwh: 0,
+      batteryChargeKwh: 0,
+    });
+  });
+
+  test("a lifetime counter is not a day figure: yesterday's sample still counts", () => {
+    expect(liveCounterLevels(counters, "inv-1", sample(yesterday, levels))?.importKwh).toBe(
+      4_321.5,
+    );
+  });
+
+  test("no sample, or a sample that does not speak for the target → null", () => {
+    expect(liveCounterLevels(counters, "inv-1", null)).toBeNull();
+    expect(liveCounterLevels(counters, "inv-1", sample(today, levels, "other"))).toBeNull();
+    const two = {
+      plant: [
+        { id: 1, slug: "inv-1", weight: 1 },
+        { id: 2, slug: "inv-2", weight: 1 },
+      ],
+    };
+    expect(liveCounterLevels(counters, two, sample(today, levels))).toBeNull();
+  });
+
+  test("a register the sample lacks is not zero-filled into a level of 0 — the whole read is partial", () => {
+    // Only production came through: the caller must not price 0 kWh imported
+    // as "the plant never bought anything".
+    expect(liveCounterLevels(counters, "inv-1", sample(today, { prodT: 15_000 }))).toBeNull();
+  });
+});
+
+describe("fetchLatestCounterLevels — the lifetime registers from the rollups", () => {
+  const counters = profileWith({
+    "grid.energy.imported.total": "impT",
+    "grid.energy.exported.total": "expT",
+  });
+
+  test("takes each counter's latest daily high, zero-filling unmapped fields", async () => {
+    queryResults = [
+      [
+        { metric: "impT", max_value: "4321.5" },
+        { metric: "expT", max_value: 9876 },
+      ],
+    ];
+    execute.mockClear();
+    const levels = await fetchLatestCounterLevels(counters, "inv-1");
+    expect(levels).toEqual({
+      importKwh: 4_321.5,
+      exportKwh: 9_876,
+      loadKwh: 0,
+      productionKwh: 0,
+      batteryDischargeKwh: 0,
+      batteryChargeKwh: 0,
+    });
+    const first = (execute.mock.calls as unknown as Array<[SQL]>)[0]?.[0];
+    if (!first) throw new Error("no query was issued");
+    const text = new PgDialect().sqlToQuery(first).sql.replace(/\s+/g, " ");
+    // The forever-retained tier, newest bucket per metric.
+    expect(text).toContain("daily_rollups");
+    expect(text).toContain("distinct on (metric)");
+    expect(text).toContain("order by metric, bucket desc");
+  });
+
+  test("a plant target sums the members' levels per bucket, like every other read", async () => {
+    queryResults = [[]];
+    execute.mockClear();
+    await fetchLatestCounterLevels(counters, {
+      plant: [
+        { id: 1, slug: "inv-1", weight: 1 },
+        { id: 2, slug: "inv-2", weight: 1 },
+      ],
+    });
+    const first = (execute.mock.calls as unknown as Array<[SQL]>)[0]?.[0];
+    if (!first) throw new Error("no query was issued");
+    const text = new PgDialect().sqlToQuery(first).sql.replace(/\s+/g, " ");
+    expect(text).toContain("sum(r.max_value) as max_value");
+  });
+
+  test("no rows at all → null, so an empty database is not a plant that saved nothing", async () => {
+    queryResults = [[]];
+    expect(await fetchLatestCounterLevels(counters, "inv-1")).toBeNull();
+  });
+
+  test("a profile mapping no counters issues no query", async () => {
+    execute.mockClear();
+    expect(await fetchLatestCounterLevels(profileWith({}), "inv-1")).toBeNull();
+    expect(execute).not.toHaveBeenCalled();
+  });
+});
+
 describe("liveTodayTotals", () => {
   test("null live sample → empty (no override)", () => {
     expect(overlayFor(fullProfile, null, "inv-1", now)).toEqual({});
@@ -156,6 +293,28 @@ describe("liveTodayTotals", () => {
   test("stale sample from a previous local day → empty (no override across midnight)", () => {
     const s = sample(yesterday, liveMetrics);
     expect(overlayFor(fullProfile, s, "inv-1", now)).toEqual({});
+  });
+
+  test("a plant of ONE member is spoken for by that member's sample", () => {
+    const s = sample(today, liveMetrics, "inv-1");
+    const plant = { plant: [{ id: 1, slug: "inv-1", weight: 1 }] };
+    expect(liveTodayTotals(fullProfile, plant, now, s)).toEqual({
+      importKwh: 1.1,
+      exportKwh: 2.2,
+      loadKwh: 8.6,
+      productionKwh: 5.5,
+    });
+  });
+
+  test("a plant of TWO members takes no live override — one device's register is not the plant's", () => {
+    const s = sample(today, liveMetrics, "inv-1");
+    const plant = {
+      plant: [
+        { id: 1, slug: "inv-1", weight: 1 },
+        { id: 2, slug: "inv-2", weight: 1 },
+      ],
+    };
+    expect(liveTodayTotals(fullProfile, plant, now, s)).toEqual({});
   });
 
   test("all guards pass → every mapped, finite field is returned", () => {
@@ -376,6 +535,32 @@ describe("computeCost and the live today registers", () => {
     metrics: { impToday: kwh },
   });
 
+  test("a plant target reads the members' counters SUMMED per bucket, by id", async () => {
+    liveState.latest = null;
+    queryResults = [todaySeed, buckets.slice(1)];
+    execute.mockClear();
+    await computeCost(profile, {
+      from: midnight,
+      to: new Date(),
+      inverterId: {
+        plant: [
+          { id: 1, slug: "inv-1", weight: 1 },
+          { id: 2, slug: "inv-2", weight: 1 },
+        ],
+      },
+    });
+    const first = (execute.mock.calls as unknown as Array<[SQL]>)[0]?.[0];
+    if (!first) throw new Error("no query was issued");
+    const { sql: text, params } = new PgDialect().sqlToQuery(first);
+    const flatText = text.replace(/\s+/g, " ");
+    expect(flatText).toContain("r.device_id in ($");
+    expect(flatText).toContain("sum(r.max_value) as max_value");
+    expect(flatText).toContain("group by r.bucket, mk.key");
+    expect(params).toContain(1);
+    expect(params).toContain(2);
+    expect(params).not.toContain("inv-1");
+  });
+
   test("without a live sample both windows stay on the counter deltas", async () => {
     liveState.latest = null;
     expect((await monthToDate()).importKwh).toBe(3);
@@ -401,10 +586,20 @@ describe("computeCost and the live today registers", () => {
     expect(month.importKwh).toBeGreaterThanOrEqual(day.importKwh);
   });
 
-  test("the money stays priced from the counter deltas, not the register", async () => {
+  test("today's money follows the register at the slice's effective rate", async () => {
     liveState.latest = liveImport(5);
-    // 3 kWh at 0.30 — a whole-day register can't be split into tariff bands.
-    expect((await monthToDate()).importCost).toBeCloseTo(0.9, 10);
+    // Yesterday's 2 kWh stay at 0.30; today's 1 kWh delta (0.30) becomes the
+    // register's 5 kWh at the same effective rate — 0.60 + 1.50.
+    expect((await monthToDate()).importCost).toBeCloseTo(2.1, 10);
+    expect((await today()).importCost).toBeCloseTo(1.5, 10);
+  });
+
+  test("a register the deltas have not seen yet is priced at the current band", async () => {
+    // No rows since midnight: the only price available is the tariff's own.
+    liveState.latest = liveImport(2);
+    const early = await costOver(midnight, todaySeed, []);
+    expect(early.importKwh).toBe(2);
+    expect(early.importCost).toBeCloseTo(0.6, 10);
   });
 
   test("a window that starts after midnight takes no override", async () => {
@@ -515,9 +710,13 @@ describe("computeCost — the live registers keep the tiles coherent", () => {
     expect(totals.solarToLoadKwh).toBe(8);
     expect(totals.selfSufficiency).toBeCloseTo(0.8, 10);
     expect(totals.selfConsumption).toBeCloseTo(0.75, 10);
-    // Money stays banded from the counter deltas: 1 kWh at 0.30, 2 kWh at 0.08.
-    expect(totals.importCost).toBeCloseTo(0.3, 10);
-    expect(totals.exportEarnings).toBeCloseTo(0.16, 10);
+    // Money follows the registers at the deltas' effective rate: 2 kWh at 0.30,
+    // 3 kWh at 0.08, and the house's 10 kWh at 0.30 had it all been bought.
+    expect(totals.importCost).toBeCloseTo(0.6, 10);
+    expect(totals.exportEarnings).toBeCloseTo(0.24, 10);
+    expect(totals.gridOnlyCost).toBeCloseTo(3.0, 10);
+    expect(totals.solarSavings).toBeCloseTo(2.4, 10);
+    expect(totals.savings).toBeCloseTo(2.64, 10);
   });
 
   test("registers that lead each other never push a ratio below zero", async () => {

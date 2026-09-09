@@ -28,6 +28,7 @@ type TopicPolicy = "dashboard" | "admin";
 /** The gate each live topic sits behind. Exhaustive over {@link WsTopic}. */
 export const TOPIC_POLICY = {
   metrics: "dashboard",
+  plant: "dashboard",
   evcc: "dashboard",
   statistics: "dashboard",
   logs: "admin",

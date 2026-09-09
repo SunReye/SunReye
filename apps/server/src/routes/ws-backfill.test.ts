@@ -50,6 +50,7 @@ function table(overrides: Partial<TopicBackfillDeps> = {}) {
     todayStatistics: async () => todayMessage,
     automationStreamSnapshot: async () => automationMessage,
     recentLogs: () => [],
+    plantSnapshot: () => null,
     ...overrides,
   });
 }
@@ -61,7 +62,13 @@ describe("which topics have a subscribe-time snapshot", () => {
     // state a fresh subscriber would otherwise have to wait out.
     const backfill = table();
 
-    expect(Object.keys(backfill).sort()).toEqual(["automations", "evcc", "logs", "statistics"]);
+    expect(Object.keys(backfill).sort()).toEqual([
+      "automations",
+      "evcc",
+      "logs",
+      "plant",
+      "statistics",
+    ]);
     expect(Object.hasOwn(backfill, "metrics")).toBe(false);
   });
 

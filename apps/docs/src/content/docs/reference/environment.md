@@ -9,8 +9,9 @@ All environment variables are declared and validated in a single place — `pack
 
 :::note[Only two are truly required]
 `DATABASE_URL` and `BETTER_AUTH_SECRET` are the only variables without a default.
-Everything else is optional — same-origin deployments (dev, the Home Assistant addon)
-don't even need `CORS_ORIGIN` or `PUBLIC_SERVER_URL`.
+Everything else is optional — and every shipped deployment (dev, Docker Compose, the Home
+Assistant addon) is same-origin now that the server serves the dashboard, so none of them
+needs `CORS_ORIGIN` or `PUBLIC_SERVER_URL` at all.
 :::
 
 ## Runtime config has moved into the UI
@@ -90,7 +91,7 @@ Two connection fields are DB-only (no env seed): **transport** (`tcp` / `rtu-ove
 
 | Variable | Type | Default | Required | Purpose |
 | --- | --- | --- | --- | --- |
-| `PUBLIC_SERVER_URL` | url | — (same-origin) | | Where the *browser* reaches the API. Read at **runtime** via `$env/dynamic/public` — nothing is baked into the image. Unset = resolved from the document URL, which keeps reverse-proxy path prefixes (HA ingress) intact; set it only for split-origin deployments like the plain Compose stack. |
+| `PUBLIC_SERVER_URL` | url | — (same-origin) | | Where the *browser* reaches the API. Read at **runtime** via `$env/dynamic/public` — nothing is baked into the image. Unset = resolved from the document URL, which keeps reverse-proxy path prefixes (HA ingress) intact; set it only if you run the SvelteKit app yourself, split-origin. The shipped images do not: the dashboard is embedded in the server binary. |
 
 ## Meta
 

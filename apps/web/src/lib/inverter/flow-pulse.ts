@@ -212,10 +212,49 @@ export function beadShape(k: number): { radius: number; opacity: number } {
  * the crossing time so the comet is the same LENGTH at every speed: a fixed lag
  * in seconds would stretch the comet into a smear whenever the rail slowed down.
  */
-export function beadBegin(k: number, dur: number): string {
+export function beadBegin(k: number, dur: number, headBegin = 0): string {
   const t = BEAD_COUNT <= 1 ? 0 : Math.min(1, Math.max(0, k / (BEAD_COUNT - 1)));
   const lead = COMET_SPAN * (1 - t) * (Number.isFinite(dur) && dur > 0 ? dur : 1);
-  return `-${round4(lead)}s`;
+  if (headBegin === 0) return `-${round4(lead)}s`;
+  return `${round4(headBegin - lead)}s`;
+}
+
+/**
+ * How far through its period (0..1) a repeating animation is at `nowS`, given
+ * the `begin` it was authored with and its `dur` — all in the SVG document's
+ * own seconds, because that is the one clock SMIL resolves `begin` against
+ * (a begin offset counts from the time container's start, not from when the
+ * element was inserted). Not yet begun is 0, and so is anything unreadable.
+ */
+// fallow-ignore-next-line unused-export -- carryHead calls it internally; exported so the phase arithmetic is asserted directly in flow-pulse.test.ts, and web test files are not traced as consumers
+export function animationPhase(nowS: number, beginS: number, dur: number): number {
+  if (![nowS, beginS, dur].every(Number.isFinite) || dur <= 0) return 0;
+  const elapsed = nowS - beginS;
+  if (elapsed <= 0) return 0;
+  return (elapsed % dur) / dur;
+}
+
+/**
+ * The head `begin` that puts a chain at `phase` at `nowS` under a new period.
+ *
+ * This is what lets a change of speed leave the comet where it is: the chain is
+ * rebuilt (SMIL remaps a running animation's elapsed time when its dur changes,
+ * so the old one cannot be kept), and the new one is told to have begun at
+ * exactly the instant that makes its head sit where the old head was. A
+ * quantized step then changes only how fast the comet moves on from there.
+ *
+ * Normalised into (-dur, 0] so it reads like every other lag the chain uses and
+ * can never name an instant that has not happened yet. A nonsense input starts
+ * from the top of the path — the behaviour before rephasing existed.
+ */
+// fallow-ignore-next-line unused-export -- carryHead calls it internally; exported so the re-phasing contract is asserted directly in flow-pulse.test.ts, and web test files are not traced as consumers
+export function rephasedBegin(nowS: number, phase: number, dur: number): number {
+  if (![nowS, phase, dur].every(Number.isFinite) || dur <= 0) return 0;
+  const p = Math.min(1, Math.max(0, phase));
+  if (p === 0) return -0;
+  const begin = nowS - p * dur;
+  // Drop whole periods so the result lands in (-dur, 0].
+  return begin - Math.ceil(begin / dur) * dur;
 }
 
 /**
@@ -225,4 +264,26 @@ export function beadBegin(k: number, dur: number): string {
 export function nodeGlow(accent: string, share: number): string {
   const s = Number.isFinite(share) ? Math.min(1, Math.max(0, share)) : 0;
   return `color-mix(in oklab, ${accent} ${Math.round(20 + s * 60)}%, transparent)`;
+}
+
+/** What a charge remembers across a rebuild: the dur it was built for and its head's `begin`. */
+export type ChainHead = { dur: number; head: number };
+
+/**
+ * The next chain's head, carried from the last one.
+ *
+ * The same dur hands back the same head untouched, so a re-run that changes
+ * nothing moves nothing (and never asks the clock). A new dur reads the SVG's
+ * clock once and re-phases the head so the comet stays where it is. No clock
+ * (the host is not in a document yet) starts from the top of the path.
+ */
+export function carryHead(
+  last: ChainHead | undefined,
+  dur: number,
+  clock: () => number | undefined,
+): ChainHead {
+  if (!last) return { dur, head: 0 };
+  if (last.dur === dur) return last;
+  const now = clock() ?? Number.NaN;
+  return { dur, head: rephasedBegin(now, animationPhase(now, last.head, last.dur), dur) };
 }

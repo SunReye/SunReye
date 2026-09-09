@@ -9,10 +9,11 @@ export const env = createEnv({
     // Base URL Better Auth advertises. Only meaningful for split-origin
     // deployments; same-origin (reverse-proxied) setups can leave it unset.
     BETTER_AUTH_URL: z.url().default("http://localhost:3000"),
-    // Origin of a *split-origin* web app (plain docker-compose: web on :3001,
-    // server on :3000). Unset = same-origin deployment (dev Vite proxy, the
-    // Home Assistant addon's reverse proxy): CORS stays disabled and browsers
-    // enforce same-origin, which is the safe default.
+    // Origin of a *split-origin* web app — someone running the SvelteKit app
+    // themselves, on another host. Unset = same-origin, which is every shipped
+    // deployment (dev Vite proxy, the compose stack and the Home Assistant
+    // addon all serve the dashboard from the server itself): CORS stays
+    // disabled and browsers enforce same-origin, the safe default.
     CORS_ORIGIN: z.url().optional(),
     // Extra origins Better Auth's CSRF/origin check should trust, e.g. an
     // HTTPS reverse proxy in front of a direct-port deployment. Comma-separated.

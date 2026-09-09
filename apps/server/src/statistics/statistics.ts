@@ -7,6 +7,7 @@
 
 import type { EnergyField } from "@SunReye/contracts/energy";
 import type {
+  AmortisationResponse,
   CompareMode,
   ComparisonResponse,
   EnergyRecords,
@@ -18,19 +19,28 @@ import type {
 import { db } from "@SunReye/db";
 import type { InverterProfile } from "@SunReye/inverter-core";
 import { sql } from "drizzle-orm";
+import { deviceScope } from "../shared/identity-sql";
+import { type SeriesTarget, targetKey } from "../shared/plant-source";
 import {
   ENERGY_FIELDS,
   computeCost,
   computeCostSeries,
   currentPeriodKey,
   fetchCounterDeltaMatrix,
+  fetchLatestCounterLevels,
+  liveCounterLevels,
+  metersLoadEnergy,
   resolveRange,
 } from "../energy/cost";
 import { accumulateTotals, derivePeriods, emptyTotals, energySeries } from "../energy/energy";
 import { derivePeriodEnergy } from "../energy/energy-calc";
 import { startOfZonedDay } from "../energy/zoned-time";
 import { getPlantTimeZone } from "../settings/display-settings";
+import { getInvestment } from "../settings/investment-settings";
 import { getTariff } from "../settings/settings";
+import { getWeatherConfig } from "../settings/weather-settings";
+import { amortisation, amortisationOrigin } from "./amortisation-calc";
+import { seasonalGaps, solarYears } from "./seasonal-weight";
 import {
   heatmapCells,
   hodDowOccurrences,
@@ -66,7 +76,7 @@ const ALL_ENERGY_FIELDS = Object.keys(ENERGY_FIELDS) as EnergyField[];
  */
 export async function computeHeatmap(
   profile: InverterProfile,
-  opts: { from: Date; to: Date; inverterId?: string },
+  opts: { from: Date; to: Date; inverterId?: SeriesTarget },
 ): Promise<HeatmapCell[]> {
   const from = clampToHourlyRetention(opts.from);
   const tz = await getPlantTimeZone();
@@ -84,11 +94,11 @@ export async function computeHeatmap(
 /** Earliest daily-rollup bucket for an inverter — the start of recorded
  *  history. `daily_rollups` is retained forever, so this is the true first
  *  day of data. */
-async function earliestDailyBucket(inverterId: string): Promise<Date | null> {
+async function earliestDailyBucket(inverterId: SeriesTarget): Promise<Date | null> {
   const res = await db.execute<{ first: string | Date | null }>(sql`
     select min(bucket) as first
     from daily_rollups
-    where inverter_id = ${inverterId}
+    where ${deviceScope(inverterId)}
   `);
   const first = res.rows[0]?.first;
   return first ? new Date(first) : null;
@@ -103,7 +113,7 @@ async function earliestDailyBucket(inverterId: string): Promise<Date | null> {
  */
 export async function computeComparison(
   profile: InverterProfile,
-  opts: { from: Date; to: Date; mode: CompareMode; inverterId?: string },
+  opts: { from: Date; to: Date; mode: CompareMode; inverterId?: SeriesTarget },
 ): Promise<ComparisonResponse> {
   const inverterId = opts.inverterId ?? profile.id;
   const prev = previousWindow(opts.from, opts.to, opts.mode);
@@ -133,22 +143,23 @@ const recordsCache = new Map<string, { day: string; value: RecordsResponse }>();
 /** All-time per-day records (cached per inverter per local day). */
 export async function computeRecords(
   profile: InverterProfile,
-  opts: { inverterId?: string } = {},
+  opts: { inverterId?: SeriesTarget } = {},
 ): Promise<RecordsResponse> {
   const inverterId = opts.inverterId ?? profile.id;
   const tz = await getPlantTimeZone();
   const day = currentPeriodKey("day", new Date(), tz);
-  const hit = recordsCache.get(inverterId);
+  const cacheKey = targetKey(inverterId);
+  const hit = recordsCache.get(cacheKey);
   if (hit && hit.day === day) return hit.value;
   const value = await buildRecords(profile, inverterId, tz);
-  recordsCache.set(inverterId, { day, value });
+  recordsCache.set(cacheKey, { day, value });
   return value;
 }
 
 /** Uncached records build over `[first day of data, today midnight)`. */
 async function buildRecords(
   profile: InverterProfile,
-  inverterId: string,
+  inverterId: SeriesTarget,
   tz: string,
 ): Promise<RecordsResponse> {
   const firstDay = await earliestDailyBucket(inverterId);
@@ -166,7 +177,7 @@ async function buildRecords(
  *  uses, then reduced to records by the pure picker. */
 async function energyRecords(
   profile: InverterProfile,
-  inverterId: string,
+  inverterId: SeriesTarget,
   from: Date,
   to: Date,
   tz: string,
@@ -191,7 +202,7 @@ async function energyRecords(
  */
 export async function todayStatistics(
   profile: InverterProfile,
-  inverterId?: string,
+  inverterId?: SeriesTarget,
 ): Promise<StatisticsTodayMessage> {
   const { from, to } = resolveRange("today");
   const [cost, periods, tz] = await Promise.all([
@@ -215,7 +226,7 @@ export async function todayStatistics(
  *  hourly-rollup retention horizon. */
 async function moneyRecords(
   profile: InverterProfile,
-  inverterId: string,
+  inverterId: SeriesTarget,
   firstDay: Date,
   to: Date,
 ): Promise<MoneyRecords> {
@@ -225,4 +236,60 @@ async function moneyRecords(
     computeCostSeries(profile, { from: since, to, bucket: "day", inverterId }),
   ]);
   return { since: since.toISOString(), currency: tariff.currency, ...pickMoneyRecords(points) };
+}
+
+/**
+ * Lifetime savings against the configured investment. The energy comes from the
+ * device's own `*.total` counters — the poll cache when it speaks for the
+ * target, the newest daily rollup otherwise — because a plant usually predates
+ * its recording and the banded history cannot reach back to commissioning. It
+ * is priced at the tariff's FLAT rates (the default import price and the feed-in
+ * rate): a lifetime counter has no hour to band by. A plant with no counters at
+ * all reports zero energy, which the tiles then say plainly. The elapsed time
+ * the savings are spread over is measured in solar years where the roof is
+ * known, so a summer-only history is not annualised as a whole year.
+ */
+export async function computeAmortisation(
+  profile: InverterProfile,
+  opts: { inverterId?: SeriesTarget } = {},
+): Promise<AmortisationResponse> {
+  const inverterId = opts.inverterId ?? profile.id;
+  const [tariff, investment, recordedSince, weather] = await Promise.all([
+    getTariff(),
+    getInvestment(),
+    earliestDailyBucket(inverterId),
+    getWeatherConfig(),
+  ]);
+  const lifetime =
+    liveCounterLevels(profile, inverterId) ??
+    (await fetchLatestCounterLevels(profile, inverterId)) ??
+    emptyTotals();
+  const now = new Date();
+  // Seasonal weighting needs the roof: coordinates and at least one array. A
+  // plant without them is annualised by the calendar (see seasonal-weight.ts).
+  const origin = amortisationOrigin(investment, recordedSince).at;
+  const gaps = seasonalGaps(weather);
+  const seasonal =
+    origin && gaps.length === 0 && weather.latitude !== null && weather.longitude !== null
+      ? solarYears(
+          { latitude: weather.latitude, longitude: weather.longitude },
+          weather.forecast.arrays,
+          origin,
+          now,
+        )
+      : null;
+  return amortisation({
+    currency: tariff.currency,
+    investment,
+    lifetime,
+    metersLoad: metersLoadEnergy(profile),
+    rates: {
+      importPrice: tariff.import.defaultPricePerKwh,
+      exportPrice: tariff.export.feedInPerKwh,
+    },
+    recordedSince,
+    solarYears: seasonal,
+    seasonalGaps: gaps,
+    now,
+  });
 }

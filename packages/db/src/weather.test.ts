@@ -59,6 +59,72 @@ describe("weather config", () => {
 });
 
 /**
+ * Per-array physics. `tempCoefficient` is a MODULE datasheet number and
+ * `systemLoss` is per-string (soiling, shading, mismatch, DC wiring) — two
+ * strings of different panels, or a shaded east one beside a clean south one,
+ * genuinely differ. The plant columns stay the DEFAULT, so an operator with one
+ * uniform array never has to touch these.
+ */
+describe("per-array overrides", () => {
+  const withArray = (over: object) =>
+    weatherConfigSchema.safeParse({
+      enabled: true,
+      latitude: 50,
+      longitude: 8,
+      forecast: { enabled: true, arrays: [{ kwp: 10, tilt: 30, azimuth: 0, ...over }] },
+    });
+
+  test("a stored 3-field array still round-trips UNCHANGED", () => {
+    const parsed = weatherConfigSchema.parse({
+      enabled: true,
+      latitude: 50,
+      longitude: 8,
+      forecast: { enabled: true, arrays: [{ kwp: 9.8, tilt: 30, azimuth: -15 }] },
+    });
+    // The key list, not just the values: the point is that nothing was ADDED. A
+    // defaulted override would be the plant-wide fudge factor wearing a
+    // per-array name, and it would make "the operator stated this" unreadable.
+    expect(parsed.forecast.arrays).toEqual([{ kwp: 9.8, tilt: 30, azimuth: -15 }]);
+    expect(Object.keys(parsed.forecast.arrays[0] ?? {}).sort()).toEqual(["azimuth", "kwp", "tilt"]);
+  });
+
+  test("accepts a device slug and both physics overrides", () => {
+    const parsed = withArray({
+      deviceSlug: "deye-sun-12k",
+      tempCoefficient: -0.29,
+      systemLoss: 22,
+    });
+    expect(parsed.success).toBe(true);
+    expect(parsed.data?.forecast.arrays[0]).toEqual({
+      kwp: 10,
+      tilt: 30,
+      azimuth: 0,
+      deviceSlug: "deye-sun-12k",
+      tempCoefficient: -0.29,
+      systemLoss: 22,
+    });
+  });
+
+  test("holds the overrides to the same bounds as the plant columns", () => {
+    expect(withArray({ tempCoefficient: 0.1 }).success).toBe(false);
+    expect(withArray({ tempCoefficient: -2.1 }).success).toBe(false);
+    expect(withArray({ systemLoss: -1 }).success).toBe(false);
+    expect(withArray({ systemLoss: 91 }).success).toBe(false);
+    // The boundaries themselves are legal: 0 %/°C is a (fictional) perfectly
+    // temperature-stable panel, 0 % is a lossless string. Neither is a typo, and
+    // both must stay distinguishable from "not stated".
+    expect(withArray({ tempCoefficient: 0, systemLoss: 0 }).success).toBe(true);
+    expect(withArray({ tempCoefficient: -2, systemLoss: 90 }).success).toBe(true);
+  });
+
+  test("refuses an empty device slug", () => {
+    // `""` is not "no device", it is a slug that matches nothing — and it would
+    // sail through every `?? plantDefault` in the model as a stated value.
+    expect(withArray({ deviceSlug: "" }).success).toBe(false);
+  });
+});
+
+/**
  * Nominal pack voltage, which the peak-shaving engine converts watts into
  * charge-current amps with. It moved here from the automations config because it
  * describes the battery, not the automation — and every commanded current is

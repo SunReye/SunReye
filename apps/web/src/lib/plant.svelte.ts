@@ -12,6 +12,17 @@ const PLANT_ZONE_AUTO = "auto";
 export type PlantConfig = {
   /** IANA zone the SERVER buckets energy/cost/statistics days in, or `"auto"`. */
   timeZone: string;
+  /**
+   * The plant's editable label, present on every read and OPTIONAL on a write.
+   *
+   * Optional because the server writes only the fields a request names: the
+   * Display form sends the time zone alone, and including a stale name there is
+   * exactly the read-modify-write that used to make two settings pages overwrite
+   * each other. There is no editor for it yet — the migration's onboarding step
+   * owns that form. Never the plant's `slug`, which is frozen at onboarding
+   * because it becomes the MQTT namespace.
+   */
+  name?: string;
 };
 
 const defaultPlant: PlantConfig = { timeZone: PLANT_ZONE_AUTO };

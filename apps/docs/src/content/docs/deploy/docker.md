@@ -1,11 +1,16 @@
 ---
 title: Docker Compose
-description: Build and run the SunReye web + server + database with Docker Compose.
+description: Build and run SunReye and its database with Docker Compose.
 ---
 
-The root `docker-compose.yml` builds and runs the full stack: the **web** dashboard, the
-**server** (core engine), and a **TimescaleDB** database. The app Dockerfiles live at
-`apps/web/Dockerfile` and `apps/server/Dockerfile`.
+The root `docker-compose.yml` builds and runs the full stack from one Dockerfile,
+`apps/server/Dockerfile`, plus a **TimescaleDB** database. That single image is the whole
+application — dashboard, REST API, live socket and the schema migrator — because the
+SvelteKit build is embedded in the compiled binary and `src/main.ts` dispatches on argv.
+
+It ships on `scratch`: no shell, no package manager, no JS runtime, ~35 MB. There is no
+longer a separate web image (a Node runtime) or migrate image (a 430 MB bun toolchain), and
+one artifact is what makes the schema unable to drift from the code querying it.
 
 ## Commands
 
@@ -20,27 +25,34 @@ bun run docker:down    # stop
 
 | Service | Image / build | Host port |
 | --- | --- | --- |
-| `web` | `apps/web/Dockerfile` | `3001` |
 | `server` | `apps/server/Dockerfile` | `3000` |
-| `migrate` | `docker/migrate.Dockerfile` (run-once) | — |
-| `postgres` | `timescale/timescaledb:2.28.2-pg17` (pinned) | `5432` |
+| `migrate` | same image, `command: ["migrate"]` (run-once) | — |
+| `postgres` | `ghcr.io/sunreye/timescaledb:pg17-ts2.28.2` (pinned) | `5432` |
 
-The dashboard is served on **[http://localhost:3001](http://localhost:3001)** and the API
-on **[http://localhost:3000](http://localhost:3000)**.
+Everything is on **[http://localhost:3000](http://localhost:3000)** — dashboard, API and
+OpenAPI docs.
+
+The database image is SunReye's own: `postgres:17-bookworm` plus a pinned TimescaleDB and
+**timescaledb_toolkit**, built from `docker/timescaledb/Dockerfile`. The upstream
+`timescale/timescaledb` images carry no toolkit at any tag, and the schema's time-weighted
+rollups need its `time_weight` and `counter_agg` aggregates — the same image is used by the local dev database, by CI and inside the
+Home Assistant addon, so a migration can never pass in one place and fail in another.
+
+The embedded dashboard is the **hash-router** build, the same one the Home Assistant addon
+serves so it survives a reverse-proxy path prefix. Routes therefore read
+`http://localhost:3000/#/statistics`.
 
 ## Configuration
 
-- Each app reads its own `.env` (`apps/web/.env`, `apps/server/.env`), which are optional in
-  Compose (`required: false`).
-- `docker-compose.yml` overrides a few values for container networking:
-  - `server` gets `CORS_ORIGIN=http://localhost:3001` and a `DATABASE_URL` pointing at the
-    `postgres` service.
-  - Set `POSTGRES_PASSWORD` in your environment to override the default (`password`).
-- **`PUBLIC_SERVER_URL` is read at runtime** (container start), not baked into the image.
-  It tells the *browser* where to reach the API and defaults to `http://localhost:3000`;
-  override it in the `web` service environment when the API lives elsewhere. Left unset,
-  the web client falls back to same-origin resolution (used by the Home Assistant addon's
-  reverse proxy).
+- The server reads `apps/server/.env`, which is optional in Compose (`required: false`).
+- `docker-compose.yml` overrides `DATABASE_URL` to point at the `postgres` service. Set
+  `POSTGRES_PASSWORD` in your environment to override the default (`password`).
+- **Leave `CORS_ORIGIN` unset.** The dashboard is same-origin with the API now, so browsers
+  enforce the boundary for you and CORS stays off — the safe default. Set it only if you
+  serve the dashboard from a different host.
+- **`PUBLIC_SERVER_URL` is not used by this stack.** The embedded dashboard resolves the API
+  from the document URL, which is what keeps reverse-proxy path prefixes (HA ingress)
+  intact. It still applies if you run the SvelteKit app yourself, split-origin.
 
 See the [Environment Variables](/reference/environment/) reference for every value.
 
@@ -62,9 +74,11 @@ country will draw the day boundaries where the server put them.
 
 ## Notes
 
-- **The server image is distroless** — no shell, node, or curl inside. Its healthcheck runs
-  the server binary itself (`/app/server --healthcheck`), which probes `/healthz` and
-  round-trips the database; `web` waits for `service_healthy`.
+- **The image is `scratch`** — no shell, node, or curl inside. Its healthcheck runs the
+  server binary itself (`/app/server --healthcheck`), which probes `/healthz` and
+  round-trips the database. The binary is not statically linked, so the image does carry
+  musl's loader, `libstdc++`/`libgcc_s`, the CA bundle and the IANA zone database: without
+  the last two, outbound HTTPS fails and every day boundary is cut in UTC.
 - The `postgres` service has a `pg_isready` healthcheck and the server waits for it
   (`service_healthy`) before starting.
 - The Postgres image tag is **pinned**: the data volume is only compatible with the pg major
@@ -74,9 +88,12 @@ country will draw the day boundaries where the server put them.
 
 ## Schema migrations
 
-Automatic. The **`migrate`** service runs the journaled migration runner
-(`packages/db/src/migrate.ts`) against the Compose Postgres, then exits; the `server` waits
-for it to complete (`service_completed_successfully`) before starting. The runner:
+Automatic. The **`migrate`** service is the server image run as `migrate`; it invokes the
+journaled migration runner (`packages/db/src/migrate.ts`) against the Compose Postgres, then
+exits. The `server` waits for it to complete (`service_completed_successfully`) before
+starting. The runner reads its SQL as plain files, so the image carries
+`packages/db/src/{migrations,timescale}` and points `MIGRATIONS_DIR` / `TIMESCALE_DIR` at
+them. The runner:
 
 1. **Refuses downgrades** — an older release won't start against a database migrated by a
    newer one (restore a backup instead).

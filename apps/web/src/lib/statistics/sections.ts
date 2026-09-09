@@ -1,4 +1,4 @@
-// Section registry for the statistics page: the four sections, in render
+// Section registry for the statistics page: the five sections, in render
 // order. The ids are also the keys the customize preferences hide sections by,
 // so they must not change once shipped.
 
@@ -7,7 +7,7 @@ import type { CompareMode } from "@SunReye/contracts/statistics";
 import type { CostRange } from "$lib/cost/ranges";
 import * as m from "$lib/paraglide/messages";
 
-const SECTION_IDS = ["cost", "energy", "prices", "records"] as const;
+const SECTION_IDS = ["cost", "energy", "prices", "records", "amortisation"] as const;
 export type SectionId = (typeof SECTION_IDS)[number];
 
 export type SectionDef = {
@@ -21,6 +21,7 @@ export const SECTIONS: readonly SectionDef[] = [
   { id: "energy", label: m.statistics_section_energy },
   { id: "prices", label: m.statistics_section_prices },
   { id: "records", label: m.statistics_section_records },
+  { id: "amortisation", label: m.statistics_section_amortisation },
 ];
 
 /** One bar of the contextual cost chart. Mirrors the server's CostSeriesPoint. */

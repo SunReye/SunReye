@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { source } from '$lib/source.svelte';
 	import type { HeatmapCell } from '@SunReye/contracts/statistics';
 	import { api } from '$lib/api';
 	import Section from '$lib/components/layout/section.svelte';
@@ -28,7 +29,7 @@
 	let cells = $state<HeatmapCell[]>([]);
 
 	$effect(() => {
-		const query = { from: from.toISOString(), to: to.toISOString() };
+		const query = { from: from.toISOString(), to: to.toISOString(), ...source.query };
 		let cancelled = false;
 		api.api.statistics.heatmap.get({ query }).then(({ data }) => {
 			if (cancelled) return;

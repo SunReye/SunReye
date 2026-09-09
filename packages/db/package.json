@@ -19,6 +19,7 @@
   },
   "dependencies": {
     "@SunReye/env": "workspace:*",
+    "@SunReye/inverter-core": "workspace:*",
     "dotenv": "catalog:",
     "drizzle-orm": "^0.45.1",
     "pg": "^8.17.1",

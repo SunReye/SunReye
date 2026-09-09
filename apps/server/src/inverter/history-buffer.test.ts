@@ -12,7 +12,12 @@
 
 import { beforeEach, describe, expect, test } from "bun:test";
 
-import { createHistoryBuffer, type HistoryBuffer, type MetricRow } from "./history-buffer";
+import { createHistoryBuffer, type HistoryBuffer } from "./history-buffer";
+// The buffer is generic over its row, and what the runtime actually buffers is a
+// `StorageRow` — names, not the int2 identity, which is resolved inside the
+// commit (see ./storage-identity.ts). Using that shape here keeps these cases
+// about the buffer's boundaries rather than about the table's columns.
+import type { StorageRow } from "./storage-policy";
 
 /** A promise plus its resolver, for parking the injected transaction mid-flight. */
 function deferred(): { promise: Promise<void>; release: () => void } {
@@ -27,15 +32,20 @@ function deferred(): { promise: Promise<void>; release: () => void } {
 const settle = () => Bun.sleep(0);
 
 /** One history row; only the metric key needs to vary between rows. */
-const row = (metric: string, value = 0): MetricRow => ({ inverterId: "plant-1", metric, value });
+const row = (metric: string, value = 0): StorageRow => ({
+  time: new Date("2026-01-01T00:00:00Z"),
+  inverterId: "plant-1",
+  metric,
+  value,
+});
 
 /** `count` rows named `m0…m{count-1}`, in order. */
-const rows = (count: number): MetricRow[] => Array.from({ length: count }, (_, i) => row(`m${i}`));
+const rows = (count: number): StorageRow[] => Array.from({ length: count }, (_, i) => row(`m${i}`));
 
 // --- injected doubles ------------------------------------------------------
 
 /** Batches handed to the injected `commit`, in commit order. */
-let inserted: MetricRow[][] = [];
+let inserted: StorageRow[][] = [];
 /** When set, the next transaction rejects with this message, then clears itself. */
 let insertError: string | null = null;
 /** When set, a transaction parks here until released — a slow/blocked commit. */
@@ -43,7 +53,7 @@ let insertGate: { promise: Promise<void>; release: () => void } | null = null;
 /** Failure lines the buffer logged, in order. */
 let logged: { template: string; values: Record<string, unknown> }[] = [];
 
-const commit = async (batch: MetricRow[]): Promise<void> => {
+const commit = async (batch: StorageRow[]): Promise<void> => {
   if (insertGate) await insertGate.promise;
   if (insertError) {
     const message = insertError;
@@ -59,7 +69,7 @@ const logger = {
   },
 };
 
-const make = (maxPending?: number): HistoryBuffer<MetricRow> =>
+const make = (maxPending?: number): HistoryBuffer<StorageRow> =>
   createHistoryBuffer({ commit, logger, maxPending });
 
 beforeEach(() => {

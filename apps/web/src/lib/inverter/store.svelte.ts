@@ -1,6 +1,7 @@
 import { untrack } from "svelte";
 import { SvelteMap } from "svelte/reactivity";
 import { api } from "$lib/api";
+import { source } from "$lib/source.svelte";
 import { uiPrefs } from "$lib/ui-prefs.svelte";
 import { bus } from "$lib/ws/bus.svelte";
 import { backfillSeconds, isFullBackfill, LiveSeries, MetricsFeed } from "./live-metrics";
@@ -40,7 +41,20 @@ class InverterStore {
 
   #feed = new MetricsFeed({
     backfill: () => this.#backfill(),
-    subscribe: (on) => bus.subscribe("metrics", on),
+    // Both live topics are held; the selected source decides which frames land.
+    // A device frame counts only for its own slug, and the plant's fold arrives
+    // on its own topic shaped like a sample (`inverterId: "plant"`).
+    subscribe: (on) => {
+      const releases = [
+        bus.subscribe("metrics", (sample) => {
+          if (source.acceptsFrame(sample.inverterId)) on(sample);
+        }),
+        bus.subscribe("plant", (fold) => {
+          if (source.isPlant) on({ time: fold.time, inverterId: "plant", metrics: fold.metrics });
+        }),
+      ];
+      return () => releases.forEach((release) => release());
+    },
     onSample: (sample) => {
       this.latest = sample;
       this.#live.appendSample(sample);
@@ -59,7 +73,7 @@ class InverterStore {
    * polled/stored/published; they're only dropped from this view.
    */
   get metrics(): ManifestMetric[] {
-    return this.allMetrics.filter((m) => !uiPrefs.isHidden(m.key, m.group));
+    return this.allMetrics.filter((m) => !uiPrefs.isHidden(m.key, m.group) && source.shows(m));
   }
 
   /** The unfiltered catalog (for the visibility settings form). */
@@ -111,11 +125,20 @@ class InverterStore {
     // fire-and-forget — a default (nothing hidden) is the safe fallback and the
     // reactive getter re-filters once it resolves.
     void uiPrefs.load();
+    void source.load();
     void this.#loadManifest();
     // The lease seeds the sparklines from history before it takes the topic, so
     // the buffers are populated on load and appended to from there.
     const release = this.#feed.lease();
+    // A new source is a new plant: the sparklines are re-seeded from its history
+    // rather than continuing one device's line into another's.
+    const unwatch = source.onSelect(() => {
+      this.latest = null;
+      this.#feed.setHidden(true);
+      this.#feed.setHidden(false);
+    });
     return () => {
+      unwatch();
       release();
       this.#detachVisibility();
       this.#started = false;
@@ -165,7 +188,7 @@ class InverterStore {
       Date.now(),
     );
     const { data } = await api.api.history.recent.get({
-      query: { seconds, stepSeconds: 1 },
+      query: { seconds, stepSeconds: 1, ...source.query },
     });
     if (!data) return;
     // A full-width request is authoritative about the window and replaces the

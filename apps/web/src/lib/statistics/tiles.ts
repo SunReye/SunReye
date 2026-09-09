@@ -6,7 +6,11 @@
 
 import type { BatteryHealth, CostBreakdown, CostTotals } from "@SunReye/contracts/energy";
 import type { SpotStats, SpotWhatIf } from "@SunReye/contracts/prices";
-import type { DayRecord, RecordsResponse } from "@SunReye/contracts/statistics";
+import type {
+  AmortisationResponse,
+  DayRecord,
+  RecordsResponse,
+} from "@SunReye/contracts/statistics";
 import type { CostFormatters } from "$lib/cost/format";
 import { dayKeyDate, dayMonthYear } from "$lib/format/date";
 import { decimal } from "$lib/format/number";
@@ -797,4 +801,196 @@ export const WHATIF_TILES: readonly TileDef<SpotWhatIf>[] = [
     raw: (w) => w.delta,
     goodDirection: "down",
   },
+];
+
+/** A tile with no delta chip: nothing to diff a lifetime figure against. */
+const lifetimeTile = (
+  id: string,
+  label: () => string,
+  explain: () => string,
+  compute: TileDef<AmortisationResponse>["compute"],
+): TileDef<AmortisationResponse> => ({
+  id,
+  label,
+  explain,
+  compute,
+  raw: () => null,
+  goodDirection: "neutral",
+});
+
+/** A lifetime figure as a per-year average over the elapsed (solar or calendar)
+ *  years; null before a full day has passed, as the server's `annualRate` is. */
+const perYear = (a: AmortisationResponse, lifetime: number): number | null =>
+  a.annualRate === null || a.elapsedYears <= 0 ? null : lifetime / a.elapsedYears;
+
+/** A lifetime figure per CALENDAR year — for quantities that do not follow
+ *  the sun (the house's consumption); null before a full day has passed. */
+const perCalendarYear = (a: AmortisationResponse, lifetime: number): number | null =>
+  a.annualRate === null || a.elapsedDays <= 0 ? null : (lifetime / a.elapsedDays) * 365.25;
+
+/** The per-period tiles' sub-line: which clock spread the figure, and from when. */
+const sinceLabel = (a: AmortisationResponse, since: string): string =>
+  a.weighting === "solar"
+    ? m.amortisation_sub_since_seasonal({ date: dateLabel(since) })
+    : m.amortisation_sub_since({ date: dateLabel(since) });
+
+/**
+ * Under a full year every annualised figure is a projection from a partial
+ * season, seasonal weighting or not — say so on the tile and grey it, so a
+ * confident-looking payback date on a plant three months old is read as the
+ * estimate it is.
+ */
+const projected = (a: AmortisationResponse): boolean => a.elapsedDays < 365;
+/** `base`, with the projection note appended while the year is incomplete. */
+const withProjection = (a: AmortisationResponse, base: string): string =>
+  projected(a) ? `${base} · ${m.amortisation_sub_projected({ days: a.elapsedDays })}` : base;
+/** Greyed while projected; `accent` otherwise. */
+const projectedAccent = (a: AmortisationResponse, accent = ""): string =>
+  projected(a) ? "text-muted-foreground" : accent;
+
+/** An ISO instant or `YYYY-MM-DD` day as a formatted calendar date. */
+const dateLabel = (iso: string): string =>
+  dayMonthYear(iso.length === 10 ? dayKeyDate(iso) : new Date(iso));
+
+/**
+ * The amortisation section: what the plant cost against what its lifetime
+ * counters say it saved, and when the two meet. The investment tiles gate on
+ * `configured`; the savings tiles show regardless, since the counters are
+ * there whether or not anyone typed a price.
+ */
+export const AMORTISATION_TILES: readonly TileDef<AmortisationResponse>[] = [
+  lifetimeTile(
+    "amortisation.invested",
+    m.amortisation_tile_invested,
+    m.amortisation_tile_invested_explain,
+    (a, f) =>
+      a.configured
+        ? {
+            value: f.money(a.investment.totalCost),
+            sub: a.investment.commissionedOn
+              ? m.amortisation_sub_commissioned({ date: dateLabel(a.investment.commissionedOn) })
+              : m.amortisation_sub_not_dated(),
+            accent: "",
+          }
+        : null,
+  ),
+  lifetimeTile(
+    "amortisation.savings",
+    m.amortisation_tile_savings,
+    m.amortisation_tile_savings_explain,
+    (a, f) => ({
+      value: f.money(a.savings),
+      sub: m.amortisation_sub_savings({
+        imported: f.money(a.importSavings),
+        exported: f.money(a.exportEarnings),
+      }),
+      accent: goodIf(a.savings > 0),
+    }),
+  ),
+  lifetimeTile(
+    "amortisation.progress",
+    m.amortisation_tile_progress,
+    m.amortisation_tile_progress_explain,
+    (a, f) =>
+      a.progress === null || a.remaining === null
+        ? null
+        : {
+            value: f.pct(a.progress),
+            sub: a.paidOff
+              ? m.amortisation_sub_paid_off()
+              : m.amortisation_sub_remaining({ amount: f.money(a.remaining) }),
+            accent: goodIf(a.paidOff),
+          },
+  ),
+  lifetimeTile(
+    "amortisation.payback",
+    m.amortisation_tile_payback,
+    m.amortisation_tile_payback_explain,
+    (a) =>
+      a.paybackYears === null
+        ? null
+        : {
+            value: a.paidOff
+              ? m.amortisation_value_paid_off()
+              : a.paybackDate
+                ? dateLabel(a.paybackDate)
+                : "—",
+            sub: withProjection(
+              a,
+              m.amortisation_sub_payback_years({ years: decimal(a.paybackYears, 1) }),
+            ),
+            accent: projectedAccent(a, goodIf(a.paidOff)),
+          },
+  ),
+  lifetimeTile(
+    "amortisation.yearlyRate",
+    m.amortisation_tile_yearly_rate,
+    m.amortisation_tile_yearly_rate_explain,
+    (a, f) =>
+      a.annualRate === null || a.since === null
+        ? null
+        : {
+            value: f.money(a.annualRate),
+            sub: withProjection(a, sinceLabel(a, a.since)),
+            accent: projectedAccent(a),
+          },
+  ),
+  lifetimeTile(
+    "amortisation.monthlyRate",
+    m.amortisation_tile_monthly_rate,
+    m.amortisation_tile_monthly_rate_explain,
+    (a, f) =>
+      a.annualRate === null || a.since === null
+        ? null
+        : {
+            value: f.money(a.annualRate / 12),
+            sub: withProjection(a, sinceLabel(a, a.since)),
+            accent: projectedAccent(a),
+          },
+  ),
+  lifetimeTile(
+    "amortisation.yearlyExport",
+    m.amortisation_tile_yearly_export,
+    m.amortisation_tile_yearly_export_explain,
+    (a, f) => {
+      const earnings = perYear(a, a.exportEarnings);
+      const kwh = perYear(a, a.lifetime.exportKwh);
+      return earnings === null || kwh === null
+        ? null
+        : {
+            value: f.money(earnings),
+            sub: withProjection(a, m.amortisation_sub_yearly_export({ energy: f.kwh(kwh) })),
+            accent: projectedAccent(a),
+          };
+    },
+  ),
+  lifetimeTile(
+    "amortisation.selfConsumed",
+    m.amortisation_tile_self_consumed,
+    m.amortisation_tile_self_consumed_explain,
+    // Per year like its neighbours once a rate exists, against the house's
+    // consumption per year (when the plant meters it); before the first full
+    // day only the lifetime totals can be shown.
+    (a, f) => {
+      const yearly = perYear(a, a.lifetime.selfConsumedKwh);
+      // Consumption is not solar-shaped, so it is annualised by the calendar
+      // even when the solar figure beside it is weighted by season — or a
+      // summer-only history would report a house that barely consumes.
+      const load = perCalendarYear(a, a.lifetime.loadKwh);
+      if (yearly === null) {
+        return {
+          value: f.kwh(a.lifetime.selfConsumedKwh),
+          sub: m.amortisation_sub_exported({ energy: f.kwh(a.lifetime.exportKwh) }),
+          accent: "",
+        };
+      }
+      const of =
+        load !== null && load > 0
+          ? m.amortisation_sub_of_consumption({ energy: f.kwh(load) })
+          : m.amortisation_sub_yearly_export({
+              energy: f.kwh(perYear(a, a.lifetime.exportKwh) ?? 0),
+            });
+      return { value: f.kwh(yearly), sub: withProjection(a, of), accent: projectedAccent(a) };
+    },
+  ),
 ];

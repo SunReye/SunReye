@@ -47,8 +47,16 @@ const PHONE = { width: 390, height: 844 };
  * this number's job and never was; that is
  * `e2e/panel-control-placement.spec.ts`, which measures the two edges at 360,
  * 768 and 1440.
+ *
+ * Re-measured again at 76 when the Amortisation section landed. Every one of the
+ * nine it adds is a section the reader can collapse plus the eight "What is …?"
+ * explainers its tiles carry — the same shape every other section on this page
+ * has, and none of them a new KIND of control. A section's worth of tiles is the
+ * one thing this ceiling was written to allow through (see the paragraph above:
+ * pinning it exactly would make an unrelated tile a failure here); the number
+ * moves with a section, not with a control cluster growing inside one.
  */
-const CONTROL_CEILING = 71;
+const CONTROL_CEILING = 76;
 const CONTROL_FLOOR = 55;
 
 /** Everything a thumb can operate, as the document lays it out. */
@@ -194,6 +202,15 @@ test("the comparison reference is a page control, not a section's", async ({ pag
 test("the window control names where it goes, in both directions", async ({ page }) => {
   await openStatistics(page);
   const panel = card(page, "Total cost");
+  // The navigator opens on the month holding `now`, and the panel names it with
+  // `periodLabel` — `{ month: "short", year: "numeric" }` in the reader's own
+  // locale. Written as a literal ("Aug 2026") this test was green in the month
+  // it was written in and red in the next one, which is exactly the decay
+  // `e2e/support/api-fixtures.ts` refuses for the fixtures. Derived in the PAGE
+  // rather than in Node, so the locale is the browser's, as the app's is.
+  const thisMonth = await page.evaluate(() =>
+    new Intl.DateTimeFormat(undefined, { month: "short", year: "numeric" }).format(new Date()),
+  );
   // In the readout row, not the header: a text-labelled choice about the plot is
   // the panel's own data, not chrome. See the previous test.
   const toggle = panel
@@ -205,11 +222,11 @@ test("the window control names where it goes, in both directions", async ({ page
   // beside a span, with the lit chip the only clue which was drawn. One button
   // that names the OTHER window has no such state to read.
   await expect(toggle).toHaveText("12 months");
-  await expect(panel).toContainText("Aug 2026, by day");
+  await expect(panel).toContainText(`${thisMonth}, by day`);
 
   await toggle.click();
   await expect(panel).toContainText("Last 12 months");
-  await expect(toggle).toHaveText("Aug 2026");
+  await expect(toggle).toHaveText(thisMonth);
   // The figure describes the PICKED window, so a chart zoomed out past it drops
   // the figure rather than standing over bars that disagree with it.
   await expect(panel.locator("[data-slot=panel-figure]")).toHaveCount(0);

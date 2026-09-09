@@ -48,6 +48,7 @@ const sample = (inverterId: string): InverterSample => ({
  */
 const WIRE_PAYLOAD_IS_ARRAY = {
   metrics: false,
+  plant: false,
   evcc: false,
   statistics: false,
   automations: false,
@@ -64,6 +65,7 @@ describe("the ws frame union", () => {
       "evcc",
       "logs",
       "metrics",
+      "plant",
       "statistics",
     ]);
   });

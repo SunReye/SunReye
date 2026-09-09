@@ -15,6 +15,7 @@
  */
 
 import { browser } from "$app/environment";
+import { source } from "$lib/source.svelte";
 import { evccStalenessCadenceMs } from "$lib/evcc/feed";
 import { evcc } from "$lib/evcc/store.svelte";
 import { inverter } from "$lib/inverter/store.svelte";
@@ -67,6 +68,8 @@ class LivePlantStore {
       this.#version += 1;
       this.#clock = Date.now();
     },
+    acceptsFrame: (inverterId) => source.acceptsFrame(inverterId),
+    isPlant: () => source.isPlant,
   });
 
   /**

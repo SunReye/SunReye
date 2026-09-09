@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { source } from '$lib/source.svelte';
 	import { api } from '$lib/api';
 	import * as m from '$lib/paraglide/messages';
 	import RangeSwitcher from '$lib/components/inverter/range-switcher.svelte';
@@ -48,8 +49,8 @@
 	$effect(() => {
 		let cancelled = false;
 		void Promise.all([
-			api.api.cost.series.get({ query: seriesWindow }),
-			api.api.energy.series.get({ query: seriesWindow })
+			api.api.cost.series.get({ query: { ...seriesWindow, ...source.query } }),
+			api.api.energy.series.get({ query: { ...seriesWindow, ...source.query } })
 		]).then(([cost, energy]) => {
 			if (cancelled) return;
 			const costPoints = (cost.data ?? []) as CostPoint[];

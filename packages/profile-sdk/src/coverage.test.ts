@@ -3,6 +3,7 @@ import { describe, expect, test } from "bun:test";
 import { defineProfile, metric, ROLE_NAMES, type MetricDataDef } from "@SunReye/inverter-core";
 
 import {
+  PROFILE_ROLES,
   coverage,
   groupByPrefix,
   isIndexedRole,
@@ -50,8 +51,18 @@ describe("coverage", () => {
     const report = coverage(profile([unmapped]));
     expect(report.mapped).toEqual([]);
     expect(report.mappedCount).toBe(0);
-    expect(report.total).toBe(ROLE_NAMES.length);
-    expect(report.missing).toEqual([...ROLE_NAMES]);
+    expect(report.total).toBe(PROFILE_ROLES.length);
+    expect(report.missing).toEqual([...PROFILE_ROLES]);
+  });
+
+  test("another device class's roles are not a register profile's empty UI areas", () => {
+    // A register profile describes an inverter. The EV vocabulary belongs to a
+    // charger — a loadpoint, reported by a coded integration — so listing it as
+    // "unmapped" would tell every profile author to map registers their machine
+    // does not have, forever.
+    const report = coverage(profile([unmapped]));
+    expect(report.missing).not.toContain("ev.charge.power");
+    expect(report.total).toBeLessThan(ROLE_NAMES.length);
   });
 
   test("a role is mapped once however many metrics carry it", () => {

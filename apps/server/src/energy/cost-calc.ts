@@ -157,6 +157,74 @@ export function allocateCost(
   };
 }
 
+/** The money a slice of a window carries — what {@link repriceTodaySlice} moves. */
+export type SliceMoney = Pick<CostTotals, "importCost" | "exportEarnings" | "gridOnlyCost">;
+/** The energy and money of one slice of a window. */
+export type SliceTotals = SliceMoney & Pick<CostTotals, "importKwh" | "exportKwh" | "loadKwh">;
+
+/** Per-kWh rates to price a register with when the slice has no energy of its
+ *  own yet to derive an effective rate from (the first minutes after midnight). */
+export interface FallbackRates {
+  importPrice: number;
+  exportPrice: number;
+}
+
+/** `money / kWh` when the slice has energy, the fallback rate otherwise. */
+const effectiveRate = (money: number, kwh: number, fallback: number): number =>
+  kwh > 0 ? money / kwh : fallback;
+
+/**
+ * Re-price today's slice of a window at the live `*.today` registers.
+ *
+ * The money a window carries is priced per hour-of-day from the `*.total`
+ * counter deltas, which lag the device's own day registers by up to a rollup
+ * bucket — so the dashboard read "5 kWh imported" beside "spent 0.30 €" (one
+ * kWh's worth). A day register cannot be split into tariff bands, so this
+ * keeps the banding the deltas established: each money field moves to
+ * `liveKwh × (sliceMoney / sliceKwh)`, the slice's own effective rate. That is
+ * exact under a flat tariff and, under bands, assumes the unrecorded tail was
+ * priced like the recorded part of the day — a second-order error against the
+ * one it removes. `fallback` prices a register the deltas have not seen at all.
+ *
+ * `slice` is today's contribution to `window` (its energy AND its money) and
+ * `live` the same slice with the register kWh swapped in; both are handed in so
+ * the fold stays pure. The derived money (net, savings, solarSavings) is
+ * recomputed with {@link allocateCost}'s formulas so the tiles stay coherent.
+ */
+export function repriceTodaySlice(
+  window: CostTotals,
+  slice: SliceTotals,
+  live: Pick<SliceTotals, "importKwh" | "exportKwh" | "loadKwh">,
+  fallback: FallbackRates,
+): CostTotals {
+  const move = (field: keyof SliceMoney, kwh: keyof typeof live, rate: number): number =>
+    window[field] - slice[field] + live[kwh] * rate;
+  const importCost = move(
+    "importCost",
+    "importKwh",
+    effectiveRate(slice.importCost, slice.importKwh, fallback.importPrice),
+  );
+  const exportEarnings = move(
+    "exportEarnings",
+    "exportKwh",
+    effectiveRate(slice.exportEarnings, slice.exportKwh, fallback.exportPrice),
+  );
+  const gridOnlyCost = move(
+    "gridOnlyCost",
+    "loadKwh",
+    effectiveRate(slice.gridOnlyCost, slice.loadKwh, fallback.importPrice),
+  );
+  return {
+    ...window,
+    importCost,
+    exportEarnings,
+    gridOnlyCost,
+    net: importCost - exportEarnings + window.standingCharge,
+    savings: gridOnlyCost - importCost + exportEarnings,
+    solarSavings: gridOnlyCost - importCost,
+  };
+}
+
 /**
  * The local wall-clock hour a delta-matrix row describes: the calendar date of
  * its period key plus the row's hour-of-day. Sound for the hour and day buckets

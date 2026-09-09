@@ -22,10 +22,10 @@ function fakeBus() {
   const released: string[] = [];
   return {
     released,
-    push<K extends "metrics" | "evcc">(topic: K, data: WsTopicPayloads[K]): void {
+    push<K extends "metrics" | "plant" | "evcc">(topic: K, data: WsTopicPayloads[K]): void {
       handlers.get(topic)?.(data as never);
     },
-    subscribe<K extends "metrics" | "evcc">(
+    subscribe<K extends "metrics" | "plant" | "evcc">(
       topic: K,
       on: (data: WsTopicPayloads[K]) => void,
     ): () => void {
@@ -170,12 +170,21 @@ describe("what a reading looks like on screen", () => {
   });
 });
 
+/** The source hooks for a dashboard showing one device. */
+const selectedDevice = (slug: string) => ({
+  acceptsFrame: (inverterId: string | undefined) => inverterId === slug,
+  isPlant: () => false,
+});
+/** The source hooks for a dashboard showing the plant. */
+const selectedPlant = () => ({ acceptsFrame: () => false, isPlant: () => true });
+
 describe("the canonical feed's wiring", () => {
   it("a metrics frame becomes the canonical reading for every role the profile maps", () => {
     const bus = fakeBus();
     const readings = new PlantReadings({ cadenceMs: () => 1000 });
     const feed = new PlantFeed(readings, {
       subscribe: (topic, on) => bus.subscribe(topic, on),
+      ...selectedDevice("inv-1"),
       metricKey: (id) => (id === "load.power" ? "load_total_power" : undefined),
       now: () => 0,
       onChange: () => {},
@@ -192,6 +201,7 @@ describe("the canonical feed's wiring", () => {
     const readings = new PlantReadings({ cadenceMs: () => 1000 });
     const feed = new PlantFeed(readings, {
       subscribe: (topic, on) => bus.subscribe(topic, on),
+      ...selectedDevice("inv-1"),
       metricKey: () => undefined,
       now: () => 0,
       onChange: () => {},
@@ -206,6 +216,7 @@ describe("the canonical feed's wiring", () => {
     const readings = new PlantReadings({ cadenceMs: () => 1000 });
     const feed = new PlantFeed(readings, {
       subscribe: (topic, on) => bus.subscribe(topic, on),
+      ...selectedDevice("inv-1"),
       metricKey: () => undefined,
       now: () => 0,
       onChange: () => {},
@@ -225,6 +236,7 @@ describe("the canonical feed's wiring", () => {
     let changes = 0;
     const feed = new PlantFeed(readings, {
       subscribe: (topic, on) => bus.subscribe(topic, on),
+      ...selectedDevice("inv-1"),
       metricKey: () => "k",
       now: () => 0,
       onChange: () => {
@@ -237,21 +249,62 @@ describe("the canonical feed's wiring", () => {
     expect(changes).toBe(2);
   });
 
+  it("under a selected device, another device's frame is not its reading", () => {
+    // Two inverters, one poll loop each: the frame that arrives last must not
+    // overwrite the number of the device the viewer chose.
+    const bus = fakeBus();
+    const readings = new PlantReadings({ cadenceMs: () => 1000 });
+    const feed = new PlantFeed(readings, {
+      subscribe: (topic, on) => bus.subscribe(topic, on),
+      ...selectedDevice("inv-1"),
+      metricKey: () => "k",
+      now: () => 0,
+      onChange: () => {},
+    });
+    feed.lease();
+    bus.push("metrics", { ...sample({ k: 100 }), inverterId: "inv-1" });
+    bus.push("metrics", { ...sample({ k: 5 }), inverterId: "inv-2" });
+    expect(readings.read("load.power", 0).value).toBe(100);
+  });
+
+  it("under the plant, the fold on the `plant` topic is the reading and device frames are not", () => {
+    const bus = fakeBus();
+    const readings = new PlantReadings({ cadenceMs: () => 1000 });
+    const feed = new PlantFeed(readings, {
+      subscribe: (topic, on) => bus.subscribe(topic, on),
+      ...selectedPlant(),
+      metricKey: () => "k",
+      now: () => 0,
+      onChange: () => {},
+    });
+    feed.lease();
+    bus.push("metrics", { ...sample({ k: 100 }), inverterId: "inv-1" });
+    expect(readings.read("load.power", 0).value).toBeUndefined();
+    bus.push("plant", {
+      time: "2026-01-01T00:00:00Z",
+      metrics: { k: 150 },
+      members: ["inv-1", "inv-2"],
+      stale: [],
+    });
+    expect(readings.read("load.power", 0)).toEqual({ value: 150, stale: false });
+  });
+
   it("the lease gives every topic it took back", () => {
     const bus = fakeBus();
     const readings = new PlantReadings({ cadenceMs: () => 1000 });
     const feed = new PlantFeed(readings, {
       subscribe: (topic, on) => bus.subscribe(topic, on),
+      ...selectedDevice("inv-1"),
       metricKey: () => undefined,
       now: () => 0,
       onChange: () => {},
     });
     const release = feed.lease();
     release();
-    expect(bus.released.sort()).toEqual(["evcc", "metrics"]);
+    expect(bus.released.sort()).toEqual(["evcc", "metrics", "plant"]);
     // A Svelte cleanup can run twice; the second must not release a topic a
     // later lease has since taken.
     release();
-    expect(bus.released.length).toBe(2);
+    expect(bus.released.length).toBe(3);
   });
 });

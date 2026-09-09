@@ -1,6 +1,5 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
-	import { Badge } from '$lib/components/ui/badge';
 	import StatusBadge from './status-badge.svelte';
 	import type { RegisteredProfile } from './profile-types';
 	import * as m from '$lib/paraglide/messages';
@@ -11,15 +10,12 @@
 	let {
 		profile,
 		active = false,
-		pending = false,
 		detail = '',
 		actions
 	}: {
 		profile: RegisteredProfile;
-		/** Marks the profile the engine is running. */
+		/** Marks a profile some registered device is described by. */
 		active?: boolean;
-		/** Marks a profile queued to become active on the next restart. */
-		pending?: boolean;
 		/** Appended to the manufacturer/version line. */
 		detail?: string;
 		actions: Snippet;
@@ -33,16 +29,7 @@
 		<span class="flex flex-wrap items-center gap-1.5 text-sm font-medium">
 			<span class="wrap-break-word">{profile.name}</span>
 			{#if active}
-				<StatusBadge ok label={m.profiles_active()} />
-			{/if}
-			{#if pending}
-				<Badge
-					variant="outline"
-					class="border-amber-500/50 bg-amber-500/10 text-amber-700 dark:text-amber-400"
-				>
-					<span class="mr-1.5 inline-block size-1.5 rounded-full bg-amber-500"></span>
-					{m.profiles_restart_to_activate()}
-				</Badge>
+				<StatusBadge ok label={m.profiles_in_use()} />
 			{/if}
 			{#if profile.builtin}
 				<StatusBadge label={m.badge_builtin()} />

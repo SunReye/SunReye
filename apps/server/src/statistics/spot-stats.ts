@@ -6,6 +6,7 @@
  */
 
 import type { SpotStats } from "@SunReye/contracts/prices";
+import type { SeriesTarget } from "../shared/plant-source";
 import { db } from "@SunReye/db";
 import { getSpotPrices } from "@SunReye/db/spot-price";
 import { spotPricesReady } from "@SunReye/db/spot-price-config";
@@ -103,7 +104,7 @@ async function fetchPriceSlots(zone: string, from: Date, to: Date): Promise<Spot
  */
 export async function computeSpotStats(
   profile: InverterProfile,
-  opts: { from: Date; to: Date; inverterId?: string },
+  opts: { from: Date; to: Date; inverterId?: SeriesTarget },
 ): Promise<SpotStats | null> {
   const config = await getSpotPriceConfig();
   if (!spotPricesReady(config)) return null;

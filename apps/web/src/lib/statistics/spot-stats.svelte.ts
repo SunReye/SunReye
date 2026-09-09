@@ -10,6 +10,7 @@
  */
 
 import type { SpotStats } from "@SunReye/contracts/prices";
+import { source } from "$lib/source.svelte";
 import { api } from "$lib/api";
 import { payloadOrNull } from "$lib/api-payload";
 
@@ -33,8 +34,8 @@ class SpotStatsStore {
    * changes the answer for an unchanged window, so it is part of the key.
    */
   load(from: Date, to: Date, revision = 0): void {
-    const query = { from: from.toISOString(), to: to.toISOString() };
-    const key = `${query.from}|${query.to}|${revision}`;
+    const query = { from: from.toISOString(), to: to.toISOString(), ...source.query };
+    const key = `${query.from}|${query.to}|${query.source}|${revision}`;
     if (key === this.#key) return;
     this.#key = key;
     void api.api.statistics.prices.get({ query }).then(({ data }) => {

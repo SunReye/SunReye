@@ -84,6 +84,47 @@ describe("chartFormInput", () => {
     expect(chartFormInput("S", ["other"], colors)).not.toHaveProperty("colors");
   });
 
+  /**
+   * The devices a saved chart names are NOT edited here — there is no device
+   * picker — so the only thing this form can do to them is lose them.
+   *
+   * It read-modify-writes the whole chart, so a payload that omitted `devices`
+   * would erase them on any unrelated edit: rename the chart, and the series
+   * silently stops saying which inverter it was read from. That is unrecoverable
+   * information — on a two-inverter plant nobody can say afterwards what it meant
+   * — and it is the same class of bug the plant form's per-array overrides guard
+   * against.
+   */
+  describe("the devices a chart names", () => {
+    const devices = { pv: "east-inv", soc: "deye-1" };
+
+    test("survive a save that touches nothing else", () => {
+      expect(chartFormInput("S", ["pv", "soc"], {}, devices).devices).toEqual(devices);
+    });
+
+    test("are pruned with the metric they belonged to", () => {
+      // Same rule as the colours, for the same reason: left in, the slug returns
+      // the moment the metric is re-added — the editor remembering a choice the
+      // user does not.
+      expect(chartFormInput("S", ["pv"], {}, devices).devices).toEqual({ pv: "east-inv" });
+    });
+
+    test("are omitted entirely when none is left", () => {
+      // Not `{}`: an empty map is a chart claiming to name devices, and the next
+      // reader cannot tell it from one that named some and lost them.
+      expect(chartFormInput("S", ["other"], {}, devices)).not.toHaveProperty("devices");
+      expect(chartFormInput("S", ["pv"], {}, {})).not.toHaveProperty("devices");
+      expect(chartFormInput("S", ["pv"], {})).not.toHaveProperty("devices");
+    });
+
+    test("are copied, not aliased, so a later edit cannot reach a payload in flight", () => {
+      const live: Record<string, string> = { pv: "east-inv" };
+      const input = chartFormInput("S", ["pv", "soc"], {}, live);
+      live.soc = "deye-2";
+      expect(input.devices).toEqual({ pv: "east-inv" });
+    });
+  });
+
   test("copies the metric list rather than aliasing the caller's", () => {
     // The editor's list is a live `SvelteSet` spread; handing the same array on
     // would let a later edit mutate a payload already in flight.

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { source } from '$lib/source.svelte';
 	import { fade } from 'svelte/transition';
 	import { Skeleton } from '$lib/components/ui/skeleton';
 	import Section from '$lib/components/layout/section.svelte';
@@ -88,7 +89,8 @@
 			// A 7-day window renders as minute rollups (~10k points); cap high
 			// enough that the ascending, limited query isn't truncated to the
 			// oldest slice of the range.
-			limit: 12000
+			limit: 12000,
+			...source.query
 		};
 		let cancelled = false;
 		loading = true;

@@ -1,5 +1,34 @@
 # Changelog
 
+## [1.1.0](https://github.com/SunReye/SunReye/compare/inverter-core-v1.0.0...inverter-core-v1.1.0) (2026-08-30)
+
+
+### Features
+
+* **automation:** steer battery limits in watts as well as amps ([b6bd8d8](https://github.com/SunReye/SunReye/commit/b6bd8d851364a02d68505affcc5f3522f91e5830))
+* **db:** record a metric's unit alongside its counter class ([084df8c](https://github.com/SunReye/SunReye/commit/084df8c496bb0ab7804a3baae0777970c1449d18))
+* **inverter-core:** add per-string yield and grid frequency roles ([452d165](https://github.com/SunReye/SunReye/commit/452d16537b3077db83a5bc5e4ae9790e8ee9b8b2))
+* **inverter-core:** add the EV role vocabulary, scoped to the charger class ([4bec4c2](https://github.com/SunReye/SunReye/commit/4bec4c296c930fb800c1ff267fdd9aa9a7d6a469))
+* **inverter-core:** an HTTP transport behind the same seam ([048dcb6](https://github.com/SunReye/SunReye/commit/048dcb6628ee430e695f224b4cae03b93436aa11))
+* **inverter-core:** an http arm on the binding union ([5f3f051](https://github.com/SunReye/SunReye/commit/5f3f0516b0071a92e50d22ddf71b8a1e022b7e08))
+* **inverter-core:** sample computed-metric inputs in one atomic read ([fea7f48](https://github.com/SunReye/SunReye/commit/fea7f48eacd16930e488386afc20b268f058e7ab))
+* **inverter-core:** say when a sample was not read all at once ([b607cc0](https://github.com/SunReye/SunReye/commit/b607cc0ae37fa9730741dbf21395f8f67aca126e))
+* **inverter-core:** separate the backup output from house load ([4ae4d04](https://github.com/SunReye/SunReye/commit/4ae4d044b060c8a8299141b197948062486e12d6))
+* **inverter-core:** storage class and deadband as authored profile fields ([3640187](https://github.com/SunReye/SunReye/commit/3640187f5522d10b7a252cac444ea462b2e3a88a))
+* **inverter-core:** the DeviceInstance contract, capabilities derived for any tier ([31c67e5](https://github.com/SunReye/SunReye/commit/31c67e567d5cc4f7d4bbf06c6995ba41774faacf))
+* **profile-sdk:** author a real meter against the http arm ([76c57b5](https://github.com/SunReye/SunReye/commit/76c57b52570952c966ce5bf2b6e1c145e7e6eb50))
+* **profile-sdk:** lint the silent resolveKind fallback ([383c9c0](https://github.com/SunReye/SunReye/commit/383c9c08843a36c7f421911d236f6f558dd052ad))
+* **server:** serve the manifest from the device, not the profile object ([4567a8c](https://github.com/SunReye/SunReye/commit/4567a8c4b85b87cdc5fa2efdd358ebe086e8a084))
+* **server:** the optimizer is a device, and its decisions are history ([928bc28](https://github.com/SunReye/SunReye/commit/928bc2838f19fb4c2ac55c1a78f6e942352dbf3d))
+
+
+### Bug Fixes
+
+* **inverter-core:** close dead-code findings on the authoring surface ([adcdc0c](https://github.com/SunReye/SunReye/commit/adcdc0c82eaabbd9c6b28cb942b3134314bbceba))
+* **inverter-core:** never fabricate a reading, never wrap a write ([7f0586b](https://github.com/SunReye/SunReye/commit/7f0586beeec74471bf6c85deafa762632ecd576b))
+* **inverter-core:** three holes an adversarial pass found in the http arm ([9cad2d8](https://github.com/SunReye/SunReye/commit/9cad2d85c53fe2dde8d93b66f26f42ad7a63b113))
+* **test:** run the suites against a valid env and the real sources ([b442100](https://github.com/SunReye/SunReye/commit/b442100df65ac579e12d46c09bf5eb6c7d065fc7))
+
 ## 1.0.0 (2026-07-18)
 
 

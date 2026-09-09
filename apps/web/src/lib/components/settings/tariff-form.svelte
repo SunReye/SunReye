@@ -22,6 +22,11 @@
 
 	// `null` until the config has loaded — there is no other empty state.
 	let tariff = $state<TariffDraft | null>(null);
+	// What the plant cost and when it went live: its own setting (and endpoint),
+	// edited here because it is the other half of the plant's economics. A
+	// cleared date field binds to "" and the server reads that as "not set".
+	type InvestmentDraft = { totalCost: number; commissionedOn: string };
+	let investment = $state<InvestmentDraft>({ totalCost: 0, commissionedOn: '' });
 	let saving = $state(false);
 
 	// Bands may omit `days` (= every day); normalize to a full array for editing.
@@ -40,10 +45,16 @@
 	});
 
 	onMount(async () => {
-		const { data } = await api.api.settings.tariff.get();
+		const [{ data }, { data: invested }] = await Promise.all([
+			api.api.settings.tariff.get(),
+			api.api.settings.investment.get()
+		]);
 		// Deliberately stays null on a failed read: offering to overwrite a tariff
 		// we could not read is how a stored config gets wiped.
 		if (data) tariff = toTariff(data);
+		if (invested) {
+			investment = { totalCost: invested.totalCost, commissionedOn: invested.commissionedOn ?? '' };
+		}
 	});
 
 	function addBand() {
@@ -79,9 +90,13 @@
 				}))
 			}
 		};
-		const { error } = await api.api.settings.tariff.put(payload);
+		const [{ error }, { error: investError }] = await Promise.all([
+			api.api.settings.tariff.put(payload),
+			api.api.settings.investment.put(investment)
+		]);
 		saving = false;
 		if (error) toast.error(m.tariff_toast_error());
+		else if (investError) toast.error(m.tariff_toast_investment_error());
 		else toast.success(m.tariff_toast_saved());
 	}
 </script>
@@ -108,6 +123,21 @@
 			<div class="flex flex-col gap-1.5">
 				<Label for="feedin">{m.tariff_feed_in()}</Label>
 				<Input id="feedin" type="number" step="0.001" bind:value={tariff.export.feedInPerKwh} />
+			</div>
+		</div>
+	</Section>
+
+	<Section title={m.tariff_investment()}>
+		<div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+			<div class="flex flex-col gap-1.5">
+				<Label for="total-cost">{m.tariff_total_cost()}</Label>
+				<Input id="total-cost" type="number" min="0" step="1" bind:value={investment.totalCost} />
+				<span class="text-xs text-muted-foreground">{m.tariff_total_cost_desc()}</span>
+			</div>
+			<div class="flex flex-col gap-1.5">
+				<Label for="commissioned-on">{m.tariff_commissioned_on()}</Label>
+				<Input id="commissioned-on" type="date" bind:value={investment.commissionedOn} />
+				<span class="text-xs text-muted-foreground">{m.tariff_commissioned_on_desc()}</span>
 			</div>
 		</div>
 	</Section>

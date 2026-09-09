@@ -22,6 +22,7 @@ import type { AutomationStreamMessage } from "@SunReye/contracts/automation";
 import type { EvccState } from "@SunReye/contracts/evcc";
 import type { LogEntry } from "@SunReye/contracts/logs";
 import type { StatisticsTodayMessage } from "@SunReye/contracts/statistics";
+import type { PlantSample } from "@SunReye/contracts/ws";
 import type { InverterProfile } from "@SunReye/inverter-core";
 import type { TopicBackfill } from "./ws-connection";
 
@@ -36,12 +37,18 @@ export interface TopicBackfillDeps {
   automationStreamSnapshot: () => Promise<AutomationStreamMessage>;
   /** The in-memory log ring buffer. */
   recentLogs: () => LogEntry[];
+  /** The plant's last folded reading, or `null` before the first sample. */
+  plantSnapshot: () => PlantSample | null;
 }
 
 /** Build the per-topic snapshot readers the `/ws` priming step calls. */
 export function createTopicBackfill(deps: TopicBackfillDeps): TopicBackfill {
   return {
     evcc: () => deps.evccSnapshot(),
+    // Unlike `metrics`, the plant reading is worth replaying: it is the fold of
+    // several devices' last samples, and the next one is a poll away for the
+    // device that polls slowest.
+    plant: () => deps.plantSnapshot(),
     // Onboarding-only boot has nothing to price or aggregate against, so the
     // topic primes empty rather than reading through and throwing inside the
     // query — a fresh install's first subscribe is not a priming failure.

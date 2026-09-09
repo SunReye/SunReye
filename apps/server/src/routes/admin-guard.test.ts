@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, mock, test } from "bun:test";
-import { Elysia } from "elysia";
+import { Elysia, t } from "elysia";
 
 // Mutable stand-ins the mocked modules read at call time, so each test can set
 // the public-dashboard flag and the current session independently.
@@ -35,10 +35,28 @@ const { adminGuard } = await import("./admin-guard");
 const app = new Elysia()
   .use(adminGuard)
   .get("/read", { requireSession: true }, () => "ok")
-  .get("/config", { requireAdmin: true }, () => "ok");
+  .get("/config", { requireAdmin: true }, () => "ok")
+  // A gated route that also declares a body schema — the shape every write in
+  // this app has. The schema is what makes the ordering below observable.
+  .post(
+    "/write",
+    { requireAdmin: true, body: t.Object({ key: t.String() }) },
+    ({ body }) => body.key,
+  );
 
 const status = (path: string) =>
   app.handle(new Request(`http://localhost${path}`)).then((r) => r.status);
+
+const postStatus = (path: string, body: unknown) =>
+  app
+    .handle(
+      new Request(`http://localhost${path}`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      }),
+    )
+    .then((r) => r.status);
 
 // `afterAll`, not `afterEach`: the guard above binds to the stub and every test
 // in this file still needs it. `@SunReye/auth` is not handed back — the real
@@ -84,5 +102,43 @@ describe("requireAdmin (config reads/writes) ignores the public flag", () => {
   test("200 for an admin session", async () => {
     session = { user: { role: "admin" } };
     expect(await status("/config")).toBe(200);
+  });
+});
+
+describe("the gate against a route that also declares a body schema", () => {
+  // Elysia 2 validates the declared body BEFORE `beforeHandle`, so the schema
+  // check wins the race against the guard. These tests pin that ordering
+  // deliberately rather than wishing it away: it is the reason the route-smoke
+  // harness accepts a 422 from an anonymous WRITE probe, and if a future Elysia
+  // reorders the lifecycle this file goes red instead of the change passing
+  // unnoticed. `../routes/admin-guard.ts` records what was tried.
+  test("a malformed body from a stranger is answered by the SCHEMA, before the gate", async () => {
+    publicDashboard = false;
+    session = null;
+    expect(await postStatus("/write", { wrong: 1 })).toBe(422);
+  });
+
+  // The part that actually matters, and the one a leak would break: a request
+  // the route would otherwise ACT on is refused. Nothing privileged runs.
+  test("a well-formed body from a stranger is refused — the handler never runs", async () => {
+    publicDashboard = false;
+    session = null;
+    expect(await postStatus("/write", { key: "ok" })).toBe(401);
+  });
+
+  test("a well-formed body from a non-admin session is refused too", async () => {
+    publicDashboard = true; // irrelevant to an admin gate, and pinned as such
+    session = { user: { role: "user" } };
+    expect(await postStatus("/write", { key: "ok" })).toBe(403);
+  });
+
+  test("an admin with a valid body reaches the handler", async () => {
+    session = { user: { role: "admin" } };
+    expect(await postStatus("/write", { key: "ok" })).toBe(200);
+  });
+
+  test("an admin with a malformed body still gets the validation error", async () => {
+    session = { user: { role: "admin" } };
+    expect(await postStatus("/write", { wrong: 1 })).toBe(422);
   });
 });

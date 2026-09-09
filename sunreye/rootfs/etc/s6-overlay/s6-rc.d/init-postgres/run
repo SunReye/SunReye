@@ -30,7 +30,27 @@ timescaledb.telemetry_level = off
 # retention): the stock max_worker_processes=8 makes job launches fail with
 # "failed to start a background worker".
 max_worker_processes = 16
-timescaledb.max_background_workers = 8
+# 4, not 8: eight concurrent jobs (three cagg refreshes, compression, retention)
+# each decompressing a chunk do not fit in a 2 GB Home Assistant box alongside
+# the server and a 1 Hz ingest. Jobs queue instead of competing for memory.
+timescaledb.max_background_workers = 4
+# Memory sizing for a small box (a 2 GB Pi is the common case), because nothing
+# else sizes it: the compose deployments run on a real machine and can be retuned
+# per host, but this addon has nobody to run timescaledb-tune for it, so without
+# these it silently inherited PostgreSQL's stock 128 MB shared_buffers and 4 MB
+# work_mem. Kept aligned by scripts/storage-tuning.ts.
+#   shared_buffers 256MB       — ~12% of a 2 GB box; the rest is left to the page
+#                                cache, which is what compressed-chunk reads use
+#   effective_cache_size 1GB   — planner hint only, no allocation
+#   work_mem 8MB               — per sort/hash node; a rollup query runs a handful
+#   maintenance_work_mem 128MB — compression and index builds, one at a time
+#   max_connections 40         — the server pool (10) + migrate + psql headroom;
+#                                background workers have their own slots
+shared_buffers = 256MB
+effective_cache_size = 1GB
+work_mem = 8MB
+maintenance_work_mem = 128MB
+max_connections = 40
 # The image ships without LLVM (JIT machinery pruned for size); this must
 # stay off or planner attempts to JIT would fail to load llvmjit.so.
 jit = off

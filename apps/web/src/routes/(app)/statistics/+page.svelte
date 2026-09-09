@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { source } from '$lib/source.svelte';
 	import type { CostBreakdown } from '@SunReye/contracts/energy';
 	import type { CompareMode, ComparisonResponse } from '@SunReye/contracts/statistics';
 	import { onMount } from 'svelte';
@@ -127,7 +128,12 @@
 		// so far against the whole of last month reads as a collapse that never
 		// happened.
 		const window = pricedWindow(range);
-		const query = { from: window.from.toISOString(), to: window.to.toISOString(), mode };
+		const query = {
+			from: window.from.toISOString(),
+			to: window.to.toISOString(),
+			mode,
+			...source.query
+		};
 		const reference = referenceWindow(window.from, window.to, mode);
 		let cancelled = false;
 		loading = true;
