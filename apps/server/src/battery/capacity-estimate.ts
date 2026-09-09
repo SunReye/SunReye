@@ -116,43 +116,81 @@ export const MIN_SEGMENTS = 5;
 /** Energy of one interval, in kWh. */
 const intervalKwh = (i: PowerInterval): number => (i.w * i.durMs) / 3_600_000_000;
 
-/** Duration-weighted mean of a set of intervals overlapping `[from, to)`. */
-function weightedMean(
-  intervals: readonly PowerInterval[],
-  from: number,
-  to: number,
-): number | null {
+/**
+ * The power series, indexed for window lookups.
+ *
+ * Every rule below asks the same question — "which intervals overlap
+ * `[from, to)`?" — once per SOC sample. Answered by scanning the whole series
+ * that is O(samples x intervals): on a backfilled year of second-resolution raw
+ * it put the event loop away for good (seen live 2026-09-09; the watchdog then
+ * restarted the addon every few minutes). Sorted once, the answer is a binary
+ * search plus the handful of intervals that actually overlap.
+ *
+ * `maxDurMs` is what makes the lower bound safe with intervals of unequal
+ * length: an interval can reach into the window from at most that far before it.
+ */
+class PowerIndex {
+  readonly #sorted: readonly PowerInterval[];
+  readonly #maxDurMs: number;
+
+  constructor(intervals: readonly PowerInterval[]) {
+    this.#sorted = [...intervals].sort((a, b) => a.t - b.t);
+    this.#maxDurMs = this.#sorted.reduce((max, i) => Math.max(max, i.durMs), 0);
+  }
+
+  /** Index of the first interval whose start is `>= t`. */
+  #lowerBound(t: number): number {
+    let lo = 0;
+    let hi = this.#sorted.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >>> 1;
+      if ((this.#sorted[mid] as PowerInterval).t < t) lo = mid + 1;
+      else hi = mid;
+    }
+    return lo;
+  }
+
+  /** Every interval overlapping `[from, to)`, with the overlap already clipped. */
+  *overlapping(from: number, to: number): Generator<{ interval: PowerInterval; overlapMs: number }> {
+    for (let i = this.#lowerBound(from - this.#maxDurMs); i < this.#sorted.length; i++) {
+      const interval = this.#sorted[i] as PowerInterval;
+      if (interval.t >= to) return;
+      const overlapMs = Math.min(interval.t + interval.durMs, to) - Math.max(interval.t, from);
+      if (overlapMs > 0) yield { interval, overlapMs };
+    }
+  }
+}
+
+/** Duration-weighted mean of the intervals overlapping `[from, to)`. */
+function weightedMean(power: PowerIndex, from: number, to: number): number | null {
   let sum = 0;
   let weight = 0;
-  for (const i of intervals) {
-    const overlap = Math.min(i.t + i.durMs, to) - Math.max(i.t, from);
-    if (overlap <= 0) continue;
-    sum += i.w * overlap;
-    weight += overlap;
+  for (const { interval, overlapMs } of power.overlapping(from, to)) {
+    sum += interval.w * overlapMs;
+    weight += overlapMs;
   }
   return weight > 0 ? sum / weight : null;
 }
 
-/** Total discharge energy over `[from, to)`, kWh, clipping partial intervals. */
-function energyBetween(intervals: readonly PowerInterval[], from: number, to: number): number {
+/** Energy over `[from, to)`, kWh, each interval counted by its overlap only. */
+function energyBetween(power: PowerIndex, from: number, to: number): number {
   let kwh = 0;
-  for (const i of intervals) {
-    const overlap = Math.min(i.t + i.durMs, to) - Math.max(i.t, from);
-    if (overlap <= 0) continue;
-    kwh += intervalKwh({ t: i.t, durMs: overlap, w: i.w });
+  for (const { interval, overlapMs } of power.overlapping(from, to)) {
+    kwh += intervalKwh({ t: interval.t, durMs: overlapMs, w: interval.w });
   }
   return kwh;
 }
 
 /** True while the pack is charging at any point inside `[from, to)`. */
-function charged(intervals: readonly PowerInterval[], from: number, to: number): boolean {
-  return intervals.some(
-    (i) => i.w < -IDLE_W && Math.min(i.t + i.durMs, to) - Math.max(i.t, from) > 0,
-  );
+function charged(power: PowerIndex, from: number, to: number): boolean {
+  for (const { interval } of power.overlapping(from, to)) {
+    if (interval.w < -IDLE_W) return true;
+  }
+  return false;
 }
 
 /** Whether two consecutive SOC readings can belong to the same segment. */
-function continues(prev: SocSample, next: SocSample, power: readonly PowerInterval[]): boolean {
+function continues(prev: SocSample, next: SocSample, power: PowerIndex): boolean {
   if (next.t - prev.t > MAX_GAP_MS) return false;
   if (next.soc > prev.soc) return false;
   return !charged(power, prev.t, next.t);
@@ -174,6 +212,8 @@ export function dischargeSegments(
   const usable = [...soc]
     .sort((a, b) => a.t - b.t)
     .filter((s) => s.soc >= TRUSTED_SOC.min && s.soc <= TRUSTED_SOC.max);
+  const powerIndex = new PowerIndex(power);
+  const temperatureIndex = opts.temperature ? new PowerIndex(opts.temperature) : null;
 
   const segments: DischargeSegment[] = [];
   let run: SocSample[] = [];
@@ -182,9 +222,9 @@ export function dischargeSegments(
     const first = run[0];
     const last = run.at(-1);
     if (first && last && first.soc - last.soc >= MIN_DELTA_SOC) {
-      const energyKwh = energyBetween(power, first.t, last.t);
-      const meanTempC = opts.temperature
-        ? (weightedMean(opts.temperature, first.t, last.t) ?? undefined)
+      const energyKwh = energyBetween(powerIndex, first.t, last.t);
+      const meanTempC = temperatureIndex
+        ? (weightedMean(temperatureIndex, first.t, last.t) ?? undefined)
         : undefined;
       segments.push({
         startMs: first.t,
@@ -201,7 +241,7 @@ export function dischargeSegments(
 
   for (const sample of usable) {
     const prev = run.at(-1);
-    if (prev && !continues(prev, sample, power)) {
+    if (prev && !continues(prev, sample, powerIndex)) {
       flush();
     }
     run.push(sample);
@@ -232,7 +272,7 @@ export function dischargeSegments(
  * "positive means discharge", `-1` when it contradicts it, `0` when the step
  * says nothing — no SOC movement, an idle pack, or too long a gap to pair.
  */
-function signVote(prev: SocSample, next: SocSample, power: readonly PowerInterval[]): number {
+function signVote(prev: SocSample, next: SocSample, power: PowerIndex): number {
   if (next.soc === prev.soc || next.t - prev.t > SIGN_MAX_GAP_MS) return 0;
   const mean = weightedMean(power, prev.t, next.t);
   if (mean === null || Math.abs(mean) <= IDLE_W) return 0;
@@ -246,9 +286,10 @@ export function dischargeSign(
   power: readonly PowerInterval[],
 ): 1 | -1 | null {
   const ordered = [...soc].sort((a, b) => a.t - b.t);
+  const index = new PowerIndex(power);
   let vote = 0;
   for (let i = 1; i < ordered.length; i++) {
-    vote += signVote(ordered[i - 1] as SocSample, ordered[i] as SocSample, power);
+    vote += signVote(ordered[i - 1] as SocSample, ordered[i] as SocSample, index);
   }
   if (vote === 0) return null;
   return vote > 0 ? 1 : -1;
