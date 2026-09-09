@@ -2,7 +2,7 @@
 
 ## [unreleased]
 
-Unreleased work on `dev` since 1.2.0, shipped in `beta.20260906-cff531f`.
+Unreleased work on `dev` since 1.2.0, shipped in `beta.20260909-39a7304`.
 
 
 ### ⚠ BREAKING CHANGES
@@ -442,6 +442,7 @@ Unreleased work on `dev` since 1.2.0, shipped in `beta.20260906-cff531f`.
 
 ### Tests
 
+* **web:** re-measure the control ceiling, and stop pinning a month literal ([39a7304](https://github.com/SunReye/SunReye/commit/39a7304da6c956c9b5eaba19ef37fce45c4ac822))
 * **web:** the browser fixture emits the plant fold, as the server does ([9e2c5c0](https://github.com/SunReye/SunReye/commit/9e2c5c026a68152838c85831ad1528c5872a3cae))
 * **server:** the plant fold against a real TimescaleDB ([7f0f344](https://github.com/SunReye/SunReye/commit/7f0f34474d85092eb6c858dc7907ab2bd60310ae))
 * **db:** reset once for both legacy-cadence cases ([0875dcf](https://github.com/SunReye/SunReye/commit/0875dcf6e157045ed953406d2239d98fcfcdfd86))
