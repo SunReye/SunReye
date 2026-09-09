@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.0.2](https://github.com/SunReye/SunReye/compare/server-v3.0.1...server-v3.0.2) (2026-09-09)
+
+
+### Bug Fixes
+
+* **server:** chunk the battery scoring pass and index the power series ([65597a0](https://github.com/SunReye/SunReye/commit/65597a030708f1ebf616bad3f4a755eda7efb8cc))
+
 ## [3.0.1](https://github.com/SunReye/SunReye/compare/server-v3.0.0...server-v3.0.1) (2026-09-09)
 
 
