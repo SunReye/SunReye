@@ -151,6 +151,45 @@ describe("dischargeSegments", () => {
   });
 });
 
+describe("dischargeSegments: cost", () => {
+  /** `days` of a pack cycling 90 → 15 → 90 daily, SOC every `socEveryMs`, power every `powerEveryMs`. */
+  function cycling(days: number, socEveryMs: number, powerEveryMs: number) {
+    const soc: SocSample[] = [];
+    const power: PowerInterval[] = [];
+    const day = 86_400_000;
+    for (let t = 0; t < days * day; t += socEveryMs) {
+      const phase = (t % day) / day;
+      // Down through the day, back up through the night.
+      soc.push({ t, soc: phase < 0.5 ? 90 - 150 * phase : 15 + 150 * (phase - 0.5) });
+    }
+    for (let t = 0; t < days * day; t += powerEveryMs) {
+      const phase = (t % day) / day;
+      power.push({ t, durMs: powerEveryMs, w: phase < 0.5 ? 3000 : -3000 });
+    }
+    return { soc, power };
+  }
+
+  test("a week of dense readings is segmented in bounded time, not quadratic", () => {
+    // Seen live 2026-09-09: the boot-time pass read the whole backfilled raw
+    // window and every SOC sample re-scanned the entire power array. Millions
+    // of samples squared put the event loop away for good; the watchdog
+    // restarted the addon every few minutes and it never came back up.
+    const { soc, power } = cycling(7, 60_000, 2_000);
+    const began = performance.now();
+    const segments = dischargeSegments(soc, power);
+    const elapsedMs = performance.now() - began;
+    expect(segments.length).toBe(7);
+    expect(elapsedMs).toBeLessThan(2_000);
+  });
+
+  test("power handed over out of order measures the same as sorted power", () => {
+    const { soc, power } = cycling(2, 60_000, 30_000);
+    const shuffled = [...power].reverse();
+    expect(dischargeSegments(soc, shuffled)).toEqual(dischargeSegments(soc, power));
+    expect(dischargeSign(soc, shuffled)).toBe(dischargeSign(soc, power));
+  });
+});
+
 describe("estimateCapacity", () => {
   /** `n` segments of a 15 kWh pack, each `deltaSoc` deep, with a % error. */
   const segments = (n: number, errPct: (i: number) => number = () => 0, deltaSoc = 40) =>
