@@ -49,6 +49,16 @@ async function headProgress(page: Page): Promise<number> {
   });
 }
 
+/** The `dur` the string-1 rail's chain is currently built for, e.g. `"12.4s"`. */
+async function headDur(page: Page): Promise<string> {
+  return page.evaluate(
+    () =>
+      document
+        .querySelector('circle.bead-hot animateMotion mpath[href$="-cable-pv1-hub"]')
+        ?.parentElement?.getAttribute("dur") ?? "",
+  );
+}
+
 test("a step in a rail's speed keeps its charge where it was", async ({ page }) => {
   const opened = await openPage(page, "/#/", { feedIntervalMs: 0 });
   // A slow trickle, long enough to be mid-rail when the speed changes.
@@ -60,15 +70,28 @@ test("a step in a rail's speed keeps its charge where it was", async ({ page }) 
   };
   for (let i = 0; i < 3; i++) await opened.backend.pushMetrics(slow);
   await expect(page.locator('mpath[href$="-cable-pv1-hub"]').first()).toBeAttached();
-  // Let the head travel to the middle of the cable, away from either end.
-  await page.waitForTimeout(1800);
+  // Let the head travel away from the node before stepping the speed — the step
+  // is only meaningful mid-rail, and "did it snap back" cannot be read at 0.
+  //
+  // Waited FOR rather than waited OUT. A fixed 1800ms says the head covers 15 %
+  // of the cable in 1.8 s of wall clock, which is a statement about the runner's
+  // CPU and not about the code: a contended shard read 0.015 here and failed a
+  // claim it was not making. The timeline's own progress is the thing this
+  // needs, so it polls for it.
+  await expect
+    .poll(() => headProgress(page), { timeout: 15_000, intervals: [50] })
+    .toBeGreaterThan(0.15);
   const before = await headProgress(page);
-  expect(before).toBeGreaterThan(0.15);
   expect(before).toBeLessThan(0.85);
 
   // Peak power: the fastest crossing there is, three-plus seconds shorter.
+  const slowDur = await headDur(page);
   await opened.backend.pushMetrics({ ...slow, "dc.pv1.power": 9000 });
-  await page.waitForTimeout(80);
+  // Waited FOR the rebuild, not for 80ms of wall clock: the rebuild is the event
+  // under test, and the bounds below are tight enough that a runner which took
+  // longer than the sleep to get there would fail the upper one for travelling
+  // legitimately fast. `dur` is the chain's key, so a new one IS the new chain.
+  await expect.poll(() => headDur(page), { timeout: 15_000, intervals: [20] }).not.toBe(slowDur);
   const after = await headProgress(page);
 
   // Continuous: the head has moved on a little at its new speed, not snapped
