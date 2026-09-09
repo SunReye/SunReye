@@ -116,6 +116,42 @@ changed again. The archive names devices and metrics the way the API and your Ho
 entities already do, and refers to no internal id, which is why an upgrade like this one should not
 be needed again.
 
+## [3.0.0](https://github.com/SunReye/SunReye/compare/addon-v2.0.0...addon-v3.0.0) (2026-09-09)
+
+
+### ⚠ BREAKING CHANGES
+
+* **release:** SunReye 2.0.0 rebuilds how readings are stored. A reading is now identified by a device and a metric rather than by a profile id and a metric name, which retires both 1.x rollup generations and resets the schema. The upgrade from 1.2.0 is in place and automatic: a sub-second catalogue step during start-up, after which live data works, followed by a resumable backfill that replays pre-upgrade history and can be deferred. Until that backfill has run, charts cover only the time since the update, and ranges reaching further back are refused with an explanation rather than answered partially. On first open the instance asks once for a plant name and an inverter name, and holds Home Assistant MQTT discovery until both are set. Home Assistant entity ids, MQTT topics and every named API contract are UNCHANGED.
+
+### Features
+
+* **db:** build one database image carrying timescaledb_toolkit ([acafef4](https://github.com/SunReye/SunReye/commit/acafef44e91b1771578b2acc965ba5901e26295b))
+* **db:** portable export/import as a permanent, schema-independent feature ([166220b](https://github.com/SunReye/SunReye/commit/166220b80a529be0b992b876af5cb0e1cc4b98e7))
+* **db:** re-derive retention against the measured footprint ([82eeaf0](https://github.com/SunReye/SunReye/commit/82eeaf0f68bc1d8a843b3c3d81922d37b30bec4d))
+* **db:** the in-place 1.2.0 -&gt; 2.0.0 upgrade ([dcbdb46](https://github.com/SunReye/SunReye/commit/dcbdb46ed9a6acd2c77cfaab96519e85ba8f9009))
+* serve minute buckets from raw, freeze the minute aggregates, keep raw five years ([bcfb46f](https://github.com/SunReye/SunReye/commit/bcfb46fbe9a72483e5e97360a1ed8e91cd51de6c))
+
+
+### Bug Fixes
+
+* **2.0.0:** make the dimension spine the authority, not a mirror ([535a289](https://github.com/SunReye/SunReye/commit/535a28962f44d380122a003d3cb5c4ade7f6f1f6))
+* **addon:** derive the backup's raw-data exclusion from the live retention policy ([c6e68aa](https://github.com/SunReye/SunReye/commit/c6e68aac4a2364b9461e6389525ceac92771db4f))
+* **addon:** exclude compressed chunk data from a non-full dump ([2ec3ec3](https://github.com/SunReye/SunReye/commit/2ec3ec3871ce88981c5977ae73dd2456bec5a2f9))
+* **addon:** keep raw in the default backup once the minute tier is frozen ([3d159df](https://github.com/SunReye/SunReye/commit/3d159dfd0e3b1c8d88716f90f857502dc8dac944))
+* **addon:** restart only the server, and never lose the onboarding connection ([5a26509](https://github.com/SunReye/SunReye/commit/5a26509781a97d2d88c6576308b79ac3384dc201))
+* **addon:** serve the multiplexed live socket at exactly /ws ([ab06deb](https://github.com/SunReye/SunReye/commit/ab06deb285fb5bda0d08b8e84016d32cd41d07be))
+
+
+### Performance Improvements
+
+* **addon:** size PostgreSQL memory for a small box ([4435796](https://github.com/SunReye/SunReye/commit/443579645fc7dccaa9576805913a1e97f37c3fe1))
+* **db:** compress after 2h, checkpoint every 2h, compress WAL with zstd ([42bac87](https://github.com/SunReye/SunReye/commit/42bac87c62ab92f3f9085d367e687e766dfc4b84))
+
+
+### Documentation
+
+* **release:** 2.0.0 release notes, upgrade guide, and schema doc corrections ([e79e8ea](https://github.com/SunReye/SunReye/commit/e79e8ea9940861773102b1348b90f1fbe4b57a50))
+
 ## [2.0.0](https://github.com/SunReye/SunReye/compare/addon-v1.2.0...addon-v2.0.0) (2026-08-30)
 
 

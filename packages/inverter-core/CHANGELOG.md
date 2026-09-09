@@ -1,5 +1,43 @@
 # Changelog
 
+## [1.2.0](https://github.com/SunReye/SunReye/compare/inverter-core-v1.1.0...inverter-core-v1.2.0) (2026-09-09)
+
+
+### Features
+
+* **automation:** steer battery limits in watts as well as amps ([b6bd8d8](https://github.com/SunReye/SunReye/commit/b6bd8d851364a02d68505affcc5f3522f91e5830))
+* **db:** record a metric's unit alongside its counter class ([084df8c](https://github.com/SunReye/SunReye/commit/084df8c496bb0ab7804a3baae0777970c1449d18))
+* **inverter-core:** add per-string yield and grid frequency roles ([452d165](https://github.com/SunReye/SunReye/commit/452d16537b3077db83a5bc5e4ae9790e8ee9b8b2))
+* **inverter-core:** add the EV role vocabulary, scoped to the charger class ([4bec4c2](https://github.com/SunReye/SunReye/commit/4bec4c296c930fb800c1ff267fdd9aa9a7d6a469))
+* **inverter-core:** an http arm on the binding union ([5f3f051](https://github.com/SunReye/SunReye/commit/5f3f0516b0071a92e50d22ddf71b8a1e022b7e08))
+* **inverter-core:** an HTTP transport behind the same seam ([048dcb6](https://github.com/SunReye/SunReye/commit/048dcb6628ee430e695f224b4cae03b93436aa11))
+* **inverter-core:** phase currents for load, backup and generator, backup frequency, generator total ([16f7b9b](https://github.com/SunReye/SunReye/commit/16f7b9b14c65ff748779142fc60c4a8df07b2c87))
+* **inverter-core:** say when a sample was not read all at once ([b607cc0](https://github.com/SunReye/SunReye/commit/b607cc0ae37fa9730741dbf21395f8f67aca126e))
+* **inverter-core:** separate the backup output from house load ([4ae4d04](https://github.com/SunReye/SunReye/commit/4ae4d044b060c8a8299141b197948062486e12d6))
+* **inverter-core:** storage class and deadband as authored profile fields ([3640187](https://github.com/SunReye/SunReye/commit/3640187f5522d10b7a252cac444ea462b2e3a88a))
+* **inverter-core:** the DeviceInstance contract, capabilities derived for any tier ([31c67e5](https://github.com/SunReye/SunReye/commit/31c67e567d5cc4f7d4bbf06c6995ba41774faacf))
+* make the role vocabulary fit non-Deye inverters ([39db7f8](https://github.com/SunReye/SunReye/commit/39db7f805c9ae02b774cce2fd06555417c029d57))
+* plant-level visualization and history across devices, device view on demand ([#202](https://github.com/SunReye/SunReye/issues/202)) ([a5fa786](https://github.com/SunReye/SunReye/commit/a5fa786fe3f04a404c8e421890194faa66ac35df))
+* **profile-sdk:** author a real meter against the http arm ([76c57b5](https://github.com/SunReye/SunReye/commit/76c57b52570952c966ce5bf2b6e1c145e7e6eb50))
+* **profile-sdk:** lint the silent resolveKind fallback ([383c9c0](https://github.com/SunReye/SunReye/commit/383c9c08843a36c7f421911d236f6f558dd052ad))
+* **server:** Phase 2a — DeviceInstance registry, the write seam, and the end of the activeProfile global ([ad77dc5](https://github.com/SunReye/SunReye/commit/ad77dc561814d7e46eb5c985d3454920db8b58ad))
+* **server:** Phase 3 — the profile tier serves capabilities through the DeviceInstance contract ([41d6636](https://github.com/SunReye/SunReye/commit/41d66362f00c7bf6c8083c2983333dfcb75f01e1))
+* **server:** Phase 4.5 — the optimizer becomes a tier-1 device and its decisions land in metrics_raw ([778d1cd](https://github.com/SunReye/SunReye/commit/778d1cdfa618713c9b0c82d0809c356d49c085fe))
+* **server:** plant and device sources on every history, energy and statistics read ([04e95d7](https://github.com/SunReye/SunReye/commit/04e95d77067f7f60ebd7248a7ff25d9b91adc347)), closes [#202](https://github.com/SunReye/SunReye/issues/202)
+* **server:** serve the manifest from the device, not the profile object ([4567a8c](https://github.com/SunReye/SunReye/commit/4567a8c4b85b87cdc5fa2efdd358ebe086e8a084))
+* **server:** the optimizer is a device, and its decisions are history ([928bc28](https://github.com/SunReye/SunReye/commit/928bc2838f19fb4c2ac55c1a78f6e942352dbf3d))
+* **web:** choose the plant or one device, and every read follows ([4e2f9d3](https://github.com/SunReye/SunReye/commit/4e2f9d3f65aec4eca5134683b95d687c23fb1e0c)), closes [#202](https://github.com/SunReye/SunReye/issues/202)
+* **web:** settings devices tab ([4b450ce](https://github.com/SunReye/SunReye/commit/4b450ce589684f2ae22e624407f6942869233266))
+
+
+### Bug Fixes
+
+* **2.0.0:** make the dimension spine the authority, not a mirror ([535a289](https://github.com/SunReye/SunReye/commit/535a28962f44d380122a003d3cb5c4ade7f6f1f6))
+* green the suite, stop the weather tile printing NaN, and enforce TDD ([37d8e9b](https://github.com/SunReye/SunReye/commit/37d8e9b9531ef15e07bcba82bd968b358b5c590f))
+* **inverter-core:** never fabricate a reading, never wrap a write ([7f0586b](https://github.com/SunReye/SunReye/commit/7f0586beeec74471bf6c85deafa762632ecd576b))
+* **inverter-core:** three holes an adversarial pass found in the http arm ([9cad2d8](https://github.com/SunReye/SunReye/commit/9cad2d85c53fe2dde8d93b66f26f42ad7a63b113))
+* **test:** run the suites against a valid env and the real sources ([b442100](https://github.com/SunReye/SunReye/commit/b442100df65ac579e12d46c09bf5eb6c7d065fc7))
+
 ## [1.1.0](https://github.com/SunReye/SunReye/compare/inverter-core-v1.0.0...inverter-core-v1.1.0) (2026-08-30)
 
 
