@@ -2,7 +2,7 @@
 
 ## [unreleased]
 
-Unreleased work on `dev` since 1.2.0, shipped in `beta.20260909-39a7304`.
+Unreleased work on `dev` since 1.2.0, shipped in `beta.20260909-5057f3f`.
 
 
 ### ⚠ BREAKING CHANGES
@@ -442,6 +442,7 @@ Unreleased work on `dev` since 1.2.0, shipped in `beta.20260909-39a7304`.
 
 ### Tests
 
+* **web:** time the charge-phase spec by the timeline, not the wall clock ([5057f3f](https://github.com/SunReye/SunReye/commit/5057f3f239fdd71ba1df682323f435b65f68e7d5))
 * **web:** re-measure the control ceiling, and stop pinning a month literal ([39a7304](https://github.com/SunReye/SunReye/commit/39a7304da6c956c9b5eaba19ef37fce45c4ac822))
 * **web:** the browser fixture emits the plant fold, as the server does ([9e2c5c0](https://github.com/SunReye/SunReye/commit/9e2c5c026a68152838c85831ad1528c5872a3cae))
 * **server:** the plant fold against a real TimescaleDB ([7f0f344](https://github.com/SunReye/SunReye/commit/7f0f34474d85092eb6c858dc7907ab2bd60310ae))
