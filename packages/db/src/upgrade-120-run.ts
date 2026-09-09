@@ -307,7 +307,13 @@ async function resolveSourceId(
  *
  * Killed anywhere in the middle, the next boot resumes: every statement is
  * guarded on the catalog, the renames on the ABSENCE of their target, and the
- * record is an upsert.
+ * record is written ONCE. A record already on disk is the one thing this step
+ * has no business touching: it is where the later steps — the operator's name
+ * confirmation, the carry, the backfill's stage — keep their result, and this
+ * step has no source to rebuild any of it from. Rewriting it "to be safe" is how
+ * an upgraded instance asked for its plant name again on every restart (seen
+ * live: each boot moved `cutoverAt` to `now` and reset the stage to `cutover`,
+ * putting discovery back on hold and hiding a finished backfill).
  */
 export async function runBlockingUpgrade(
   client: UpgradeClient,
@@ -340,6 +346,20 @@ export async function runBlockingUpgrade(
   );
 
   await stampDrizzleBaseline(client, input.baseline);
+
+  // A record on disk means the cutover has already been recorded, on this boot
+  // or an earlier one, and everything after it belongs to later steps. Keep it.
+  // Only a database killed between the stamp and the first record write gets
+  // here with none, and that is the one case that still has to write.
+  const existing = await readMigrationRecord(client);
+  if (existing.stage !== "none") {
+    const elapsedMs = Date.now() - began;
+    logger.log(
+      `blocking upgrade already recorded (stage ${existing.stage}, cutover ${existing.cutoverAt}) — ` +
+        `nothing to redo in ${elapsedMs} ms`,
+    );
+    return { applied, skipped: plan.skipped, record: existing, elapsedMs };
+  }
 
   const record = migrationRecordSchema.parse({
     stage: "cutover",
