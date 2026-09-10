@@ -823,7 +823,7 @@ afterAll(() => {
 // collaborators, so this suite drives its own runtime instance with the
 // in-memory doubles above rather than the module's default instance — which is
 // why no `@SunReye/db` and no `./control-store` mock is needed.
-const { createRuntime } = await import("./runtime");
+const { constraintOf, createRuntime } = await import("./runtime");
 const { deviceInstance, instanceFromProfile } = await import("@SunReye/inverter-core");
 /**
  * The plant's roster, as the registry answers it.
@@ -868,10 +868,22 @@ let deviceReloads = 0;
  * slow to accept connections leaves the process polling with nowhere to store.
  */
 let rosterReadFails = false;
+/**
+ * Whether the roster read REJECTS rather than keeping its last good snapshot.
+ *
+ * A different failure from {@link rosterReadFails}, and the one the recovery
+ * path has to survive: the real registry swallows a query error and answers the
+ * previous roster, but `writer.forget` runs in the same function and a device
+ * whose intervals cannot be flushed rejects. An unhandled rejection there would
+ * leave `rosterRecovering` latched and NO further recovery would ever be tried
+ * for the life of the process.
+ */
+let rosterReloadThrows = false;
 const roster = () => (registryDevice ? [registryDevice, ...extraDevices] : extraDevices);
 const devicesDouble: DeviceRegistry = {
   reload: async () => {
     deviceReloads += 1;
+    if (rosterReloadThrows) throw new Error("statement timeout");
     // A failed read keeps the last good roster rather than emptying the plant.
     if (rosterReadFails) return roster();
     registryDevice = registryProfile
@@ -897,10 +909,20 @@ const devicesDouble: DeviceRegistry = {
       : [],
 };
 
+/**
+ * Why the eager metric registration rejects, or null while it succeeds.
+ *
+ * The runtime `void`s that promise deliberately — a dimension write must not
+ * cost a reading — so the ONLY evidence a rejection leaves is the warning, and
+ * an unhandled rejection is the alternative.
+ */
+let registerMetricsError: Error | null = null;
+
 const identityDouble: IdentityResolver = {
   deviceId: async () => 1,
   registerMetrics: async (specs) => {
     registeredSpecs.push([...specs]);
+    if (registerMetricsError) throw registerMetricsError;
   },
   metricIds: async (keys) => new Map(keys.map((k, i) => [k, i + 1])),
   metricId: async () => 1,
@@ -1064,6 +1086,8 @@ beforeEach(() => {
   extraDevices = [];
   deviceReloads = 0;
   rosterReadFails = false;
+  rosterReloadThrows = false;
+  registerMetricsError = null;
   resolveOverride = null;
   mqttClient = null;
   bridgeWrite = null;
@@ -1159,6 +1183,27 @@ describe("eager metric registration", () => {
     const specs = registeredSpecs.at(0) ?? [];
     expect(specs).toContainEqual({ key: "battery.soc", isCounter: false, unit: "%" });
     expect(specs).toContainEqual({ key: "load.power", isCounter: false, unit: "W" });
+  });
+
+  test("a registration that fails is a warning, never a lost reading", async () => {
+    // The registration is a `void`-ed promise on the write path: the ids it
+    // creates are a convenience (the writer's own lazy fallback resolves a key
+    // it missed), so a dimension table that rejects must cost a log line and
+    // nothing else. Unhandled, the same rejection takes the process's warning
+    // handler instead and the reading it was attached to is still stored — which
+    // is the failure that looks like success.
+    registerMetricsError = new Error("deadlock detected");
+    await boot();
+    await poll();
+    await settle();
+    // A series row is an INTERVAL, written when it closes — so the reading is
+    // proved by shutting the loop down, which flushes what it held open.
+    await stop();
+
+    expect(linesStartingWith("metric key registration failed")).toHaveLength(1);
+    const rows = inserted.flat();
+    expect(rows.length).toBeGreaterThan(0);
+    expect(rows.every((r) => r.inverterId === DEVICE_SLUG)).toBe(true);
   });
 
   test("a metric with no unit registers null — never an empty string", async () => {
@@ -1317,6 +1362,30 @@ describe("the poll loop", () => {
     const rows = inserted.flat();
     expect(rows.length).toBeGreaterThan(0);
     expect(rows.every((r) => r.inverterId === DEVICE_SLUG)).toBe(true);
+  });
+
+  test("a recovery read that REJECTS is reported, and the next one is still tried", async () => {
+    // `reloadDevices` is not awaited, so its rejection has nowhere to go but the
+    // `.catch`. Without the `.finally` beside it the in-flight flag would stay
+    // latched and this plant would never look for its roster again — a process
+    // serving live frames and storing nothing, for good, with one warning.
+    await boot();
+    registryProfile = null;
+    await devicesDouble.reload();
+    rosterReloadThrows = true;
+
+    await poll();
+    await settle();
+    expect(linesStartingWith("could not re-read the plant's devices")).toHaveLength(1);
+
+    // The rate limit is what spaces the attempts, not a latched flag: once the
+    // window has passed, a dropped sample tries again.
+    setSystemTime(new Date(Date.now() + 60_000));
+    const reloadsBefore = deviceReloads;
+    await poll();
+    await settle();
+    expect(deviceReloads - reloadsBefore).toBe(1);
+    expect(linesStartingWith("could not re-read the plant's devices")).toHaveLength(2);
   });
 
   test("repeated polls of an unchanged reading write no history row at all", async () => {
@@ -2432,5 +2501,45 @@ describe("testing a broker before saving it", () => {
 
     await expect(pending).resolves.toEqual({ ok: true });
     expect(mqttClient?.ends).toHaveLength(1);
+  });
+});
+
+/**
+ * THE CLAMP SOURCE the automation loop is handed (`constraint: (key) => …`).
+ *
+ * Asserted directly rather than through a steering tick: the engine reaches it
+ * only on the tick that decides a charge-current write, and what has to be right
+ * here is which bounds a KEY resolves to — a target clamped to another
+ * register's range, or to none because the lookup missed, is a write the device
+ * refuses (or accepts and should not have).
+ */
+describe("the register bounds handed to the automation loop", () => {
+  const ctxOf = () => buildProfileContext(mainProfile());
+
+  test("a bounded register answers its own declared range", () => {
+    expect(constraintOf(ctxOf(), "settings.max_discharge")).toMatchObject({
+      writable: true,
+      valueType: "number",
+      min: 0,
+      max: 185,
+    });
+  });
+
+  test("a key this profile does not declare answers null, so the target is left alone", () => {
+    // The loop clamps only what the profile bounded. A missing key answering a
+    // range — anyone's range — would silently rewrite the operator's target.
+    expect(constraintOf(ctxOf(), "settings.max_charge")).toBeNull();
+  });
+
+  test("an enum register carries its values, not a min and a max", () => {
+    // A work-mode register has no ordering to clamp into: `Math.max`-ing a mode
+    // number towards a bound would select a DIFFERENT mode.
+    const constraint = constraintOf(ctxOf(), "settings.mode");
+    expect(constraint).toMatchObject({ valueType: "enum", enumValues: [0, 1] });
+    expect(constraint).not.toHaveProperty("min");
+  });
+
+  test("a read-only metric is not writable, whatever its range", () => {
+    expect(constraintOf(ctxOf(), "battery.soc")).toMatchObject({ writable: false });
   });
 });
