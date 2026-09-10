@@ -26,11 +26,17 @@
 	let dialogOpen = $state(false);
 	/** The device the dialog edits, or null when it adds. */
 	let editing = $state<DeviceView | null>(null);
-	let connection = $state<ConnectionView | null>(null);
+	/** The connection dialog's subject: a row to edit, `'new'` to add, null closed. */
+	let connection = $state<ConnectionView | 'new' | null>(null);
 	let retiring = $state<DeviceView | null>(null);
 
+	const editingConnection = $derived(
+		connection !== null && connection !== 'new' ? connection : null
+	);
 	const onConnection = $derived(
-		roster && connection ? roster.devices.filter((d) => d.connectionId === connection?.id) : []
+		roster && editingConnection
+			? roster.devices.filter((d) => d.connectionId === editingConnection.id)
+			: []
 	);
 
 	async function load() {
@@ -69,6 +75,18 @@
 <Section title={m.devices_section_title()}>
 	{#snippet actions()}
 		<InverterStatusBadge {status} />
+		<!-- A connection is added on its own, not only alongside a device: a broker
+		     has no device to be created with — its loadpoints appear after the EVCC
+		     ingest is bound to it (#217). -->
+		<Button
+			size="sm"
+			variant="outline"
+			class="h-9 sm:h-8"
+			onclick={() => (connection = 'new')}
+			disabled={!roster}
+		>
+			{m.devices_add_connection()}
+		</Button>
 		<Button size="sm" class="h-9 sm:h-8" onclick={() => openDialog(null)} disabled={!roster}>
 			{m.devices_add()}
 		</Button>
@@ -92,7 +110,7 @@
 		devices={roster.devices}
 		onSaved={load}
 	/>
-	<ConnectionDialog bind:connection devices={onConnection} onSaved={load} onDeleted={load} />
+	<ConnectionDialog bind:target={connection} devices={onConnection} onSaved={load} onDeleted={load} />
 {/if}
 
 <RetireDialog device={retiring} onCancel={() => (retiring = null)} onConfirm={confirmRetire} />

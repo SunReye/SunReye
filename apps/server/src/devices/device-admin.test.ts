@@ -16,6 +16,7 @@ import {
   addDevice,
   listConnections,
   listDevices,
+  addConnection,
   patchConnection,
   patchDevice,
   removeConnection,
@@ -893,6 +894,83 @@ describe("what leaves the server", () => {
     const { deps, connections } = harness({ connections: [gateway, broker] });
     await patchConnection(deps, 5, { name: "Renamed" });
     expect(connections.find((c) => c.id === 5)?.params).toMatchObject({ password: "secret" });
+  });
+});
+
+/**
+ * A CONNECTION ON ITS OWN. `POST /api/devices` could only ever create one
+ * ALONGSIDE a device (`connection: { create }`), which was enough while every
+ * connection was a Modbus gateway with a slave on it — and is not enough for a
+ * broker (#217). A broker has no device to be created with: the EVCC loadpoints
+ * appear only once the ingest is bound to it and its first message arrives, and
+ * the mapped devices that will sit on one are #79–#84.
+ */
+describe("addConnection", () => {
+  test("creates the gateway a body describes and answers the masked row", async () => {
+    const { deps, calls } = harness();
+    const created = await addConnection(deps, {
+      name: " Cellar ",
+      kind: "modbus",
+      params: { host: " 10.0.0.9 ", port: 8899 },
+    });
+    expect(created).toEqual({
+      id: 100,
+      name: "Cellar",
+      kind: "modbus",
+      params: {
+        host: "10.0.0.9",
+        port: 8899,
+        transport: "tcp",
+        timeoutMs: 2000,
+        pollIntervalMs: 1000,
+      },
+    });
+    // The runtime has to be told: an endpoint it does not know about is an
+    // endpoint it never opens.
+    expect(calls).toContain("reload");
+  });
+
+  test("creates a broker, and its password never leaves", async () => {
+    const { deps, connections } = harness();
+    const created = await addConnection(deps, {
+      name: "Home broker",
+      kind: "mqtt",
+      params: { brokerUrl: "mqtt://hass.ee.lan:1883", username: "mqtt", password: "secret" },
+    });
+    expect(created).toEqual({
+      id: 100,
+      name: "Home broker",
+      kind: "mqtt",
+      params: { brokerUrl: "mqtt://hass.ee.lan:1883", username: "mqtt", hasPassword: true },
+    });
+    expect(JSON.stringify(created)).not.toContain("secret");
+    // Stored, though — the masking is on the way out only.
+    expect(connections.find((c) => c.id === 100)?.params).toMatchObject({ password: "secret" });
+  });
+
+  test.each([
+    ["an unknown kind", { name: "X", kind: "http", params: { host: "10.0.0.9" } }],
+    ["an empty name", { name: "  ", kind: "modbus", params: { host: "10.0.0.9" } }],
+    ["a gateway with no host", { name: "X", kind: "modbus", params: {} }],
+    ["a broker with no URL", { name: "X", kind: "mqtt", params: {} }],
+    [
+      "broker params on the modbus arm",
+      { name: "X", kind: "modbus", params: { brokerUrl: "mqtt://x" } },
+    ],
+    ["no body at all", null],
+  ])("refuses %s with a 400", async (_label, body) => {
+    const { deps, calls } = harness();
+    const error = await rejection(() => addConnection(deps, body));
+    expect(error.status).toBe(400);
+    expect(calls).not.toContain("createConnection");
+  });
+
+  test("an install with no plant is a 400, not a row on nothing", async () => {
+    const { deps } = harness({ plant: null });
+    const error = await rejection(() =>
+      addConnection(deps, { name: "X", kind: "modbus", params: { host: "10.0.0.9" } }),
+    );
+    expect(error.status).toBe(400);
   });
 });
 

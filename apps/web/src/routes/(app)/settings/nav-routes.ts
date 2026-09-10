@@ -71,12 +71,16 @@ export const SETTINGS_ROUTES: readonly SettingsRoute[] = [
     titleKey: "settings_tab_sensors",
     subtitleKey: "settings_sub_sensors",
   },
+  // The MQTT panel became INTEGRATIONS (#217): the broker moved onto a
+  // connection row, so what is left here is what this plant publishes outwards
+  // (Home Assistant discovery) and what it reads inwards (EVCC). The path keeps
+  // its name — bookmarks, and the badge every MQTT-fed device links to.
   {
     id: "mqtt",
     href: "/settings/mqtt",
     group: "connection",
-    titleKey: "settings_tab_mqtt",
-    subtitleKey: "settings_sub_mqtt",
+    titleKey: "settings_tab_integrations",
+    subtitleKey: "settings_sub_integrations",
   },
   {
     id: "display",

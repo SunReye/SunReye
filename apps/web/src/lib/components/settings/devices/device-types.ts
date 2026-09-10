@@ -4,20 +4,60 @@
 // prop without reaching into the treaty's inferred response.
 
 import type { InverterFields, InverterTexts } from "$lib/settings/inverter-fields";
+import type { ConnectionCreate, ConnectionDraft } from "./connection-draft";
 
 // One spelling of the wire transport for both settings surfaces.
 export type { Transport } from "../inverter-types";
 import type { Transport } from "../inverter-types";
 
-export type ConnectionView = {
-  id: number;
-  name: string;
+/**
+ * Every connection kind this build can open. Mirrors `CONNECTION_KINDS` in
+ * `@SunReye/db/connection-kinds` — the web app cannot import from `@SunReye/db`
+ * (it is not a dependency of this package), so the list is restated and the
+ * server's CHECK constraint is the one that decides.
+ */
+export const CONNECTION_KINDS = ["modbus", "mqtt"] as const;
+export type ConnectionKind = (typeof CONNECTION_KINDS)[number];
+
+/** A Modbus endpoint's addressing — the five columns `params` replaced (#217). */
+export type ModbusParams = {
   host: string;
   port: number;
-  transport: string;
+  transport: Transport;
   timeoutMs: number;
   pollIntervalMs: number;
 };
+
+/**
+ * An MQTT broker's endpoint AS THE API RETURNS IT.
+ *
+ * The password is write-only, exactly as `app_settings.mqtt`'s was: the server
+ * strips it and answers `hasPassword` instead, and a write that omits it keeps
+ * the stored one.
+ */
+export type MqttParamsMasked = {
+  brokerUrl: string;
+  username?: string;
+  clientId?: string;
+  hasPassword: boolean;
+};
+
+/**
+ * A connection as `/api/connections` returns it: the label, plus the params of
+ * its kind. Mirrors the server's `ConnectionView`
+ * (`{ id, name } & ConnectionParamsMasked`).
+ *
+ * Discriminated on `kind` rather than one flat row with optional fields: the two
+ * arms share NOT ONE field, and every reader switches on the kind — a group
+ * caption, the option label, the probe, the dialog's field set.
+ */
+export type ConnectionView = { id: number; name: string } & (
+  | { kind: "modbus"; params: ModbusParams }
+  | { kind: "mqtt"; params: MqttParamsMasked }
+);
+
+/** A connection narrowed to the kind a Modbus device can be addressed on. */
+export type ModbusConnectionView = Extract<ConnectionView, { kind: "modbus" }>;
 
 export type DeviceView = {
   id: number;
@@ -64,18 +104,9 @@ export type DeviceRoster = {
 export const ADDABLE_ROLES = ["inverter", "meter", "charger", "controller"] as const;
 export type AddableRole = (typeof ADDABLE_ROLES)[number];
 
-export type NewConnection = {
-  name: string;
-  host: string;
-  port: number;
-  transport: Transport;
-  timeoutMs: number;
-  pollIntervalMs: number;
-};
-
 /** What `POST /api/devices` takes. */
 export type AddDeviceBody = {
-  connection: { id: number } | { create: NewConnection };
+  connection: { id: number } | { create: ConnectionCreate };
   role: AddableRole;
   unitId: number;
   name: string;
@@ -95,7 +126,8 @@ export type DevicePatchBody = {
 export type AddDeviceForm = {
   /** A connection id as a string (native select values are strings), or {@link NEW_CONNECTION}. */
   connectionChoice: string;
-  newConnection: NewConnection;
+  /** The endpoint the {@link NEW_CONNECTION} arm would create — always a Modbus one. */
+  newConnection: ConnectionDraft;
   role: AddableRole;
   unitId: number;
   name: string;

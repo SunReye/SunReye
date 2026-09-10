@@ -72,7 +72,8 @@ describe("settingsHeaderFor", () => {
   test("gives each panel its own header", () => {
     const mqtt = settingsHeaderFor("/settings/mqtt");
     const danger = settingsHeaderFor("/settings/danger");
-    expect(mqtt?.title()).toBe(messages.settings_tab_mqtt!);
+    // /settings/mqtt keeps its path and became "Integrations" (#217).
+    expect(mqtt?.title()).toBe(messages.settings_tab_integrations!);
     expect(danger?.title()).toBe(messages.settings_tab_danger!);
     expect(mqtt?.subtitle()).not.toBe(danger?.subtitle());
   });

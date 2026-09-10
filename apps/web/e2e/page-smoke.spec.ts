@@ -368,11 +368,16 @@ const ROUTES: readonly SmokeRoute[] = [
     },
   },
   {
+    // The MQTT panel became INTEGRATIONS (#217): no broker URL, no username and
+    // no password on this page at all — the endpoint is a `kind = 'mqtt'`
+    // connection, and the card NAMES one. The unbound fixture is what makes the
+    // select's value load-bearing here.
     file: "(app)/settings/mqtt/+page.svelte",
-    h1: "MQTT & Home Assistant",
+    h1: "Integrations",
     surface: async (page) => {
-      await heading(page, "MQTT broker");
-      await expect(page.getByLabel("Broker URL")).toHaveValue("mqtt://localhost:1883");
+      await heading(page, "Home Assistant discovery");
+      await expect(page.getByLabel("Broker connection").first()).toHaveValue("");
+      await expect(page.getByLabel("Topic prefix")).toHaveValue("sunreye");
     },
   },
   {
