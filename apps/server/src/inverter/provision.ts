@@ -95,6 +95,7 @@
  */
 
 import { AUTOMATION_KEY } from "@SunReye/db/automation-config";
+import type { ConnectionKind, ModbusTransport } from "@SunReye/db/connection-kinds";
 import { type DeviceBattery, resolveNominalV } from "@SunReye/db/batteries";
 import {
   type ConnectionRecord,
@@ -125,6 +126,7 @@ import { type LegacyPlantFacts, legacyColumnsFromWeatherRow } from "@SunReye/db/
 import { PLANT_KEY } from "@SunReye/db/plant";
 import { SPOT_PRICE_KEY } from "@SunReye/db/spot-price-config";
 import { WEATHER_KEY } from "@SunReye/db/weather";
+import { slugify } from "@SunReye/inverter-core/slug";
 
 /**
  * The dimension tables, as this module needs them.
@@ -140,7 +142,7 @@ export interface ProvisionStore {
   ensurePlant(defaults: PlantDefaults): Promise<PlantRecord>;
   updatePlant(id: number, patch: PlantPatch): Promise<void>;
   /** The plant's endpoint as it stands — what makes the seed a seed. */
-  readConnection(plantId: number): Promise<ConnectionRecord | null>;
+  readConnection(plantId: number, kind: ConnectionKind): Promise<ConnectionRecord | null>;
   ensureConnection(plantId: number, settings: ConnectionSettings): Promise<ConnectionRecord>;
   /** ACTIVE devices only in the production wiring — see the module note. */
   readDevices(plantId: number): Promise<DeviceRecord[]>;
@@ -164,7 +166,7 @@ export function dbProvisionStore(db: ProvisionDb): ProvisionStore {
   return {
     ensurePlant: (defaults) => ensurePlant(db, defaults),
     updatePlant: (id, patch) => updatePlant(db, id, patch),
-    readConnection: (plantId) => readConnection(db, plantId),
+    readConnection: (plantId, kind) => readConnection(db, plantId, kind),
     ensureConnection: (plantId, settings) => ensureConnection(db, plantId, settings),
     // Narrowed in the STATEMENT as well as filtered in `findDevice`: a retired
     // row that never reaches this code cannot be adopted by a future arm either.
@@ -182,43 +184,6 @@ export function dbProvisionStore(db: ProvisionDb): ProvisionStore {
 export interface ProvisionLogger {
   info(template: string, values?: Record<string, unknown>): void;
   warn(template: string, values?: Record<string, unknown>): void;
-}
-
-/**
- * The longest slug this will emit — a topic segment, not a free-text field.
- *
- * Exported because migration onboarding refuses a NAME longer than this rather
- * than letting `slugify` silently cut it (`../migration/onboarding.ts`): the slug
- * is the MQTT namespace and it is frozen, so a truncation the operator never
- * chose is permanent.
- */
-export const SLUG_MAX = 48;
-
-/**
- * A typed name as a stable machine name.
- *
- * Diacritics are folded rather than stripped ("Süd" → "sud", not "sd"): the slug
- * is what a German operator sees in their MQTT topics and their Home Assistant
- * entity ids, and a dropped umlaut makes a word unreadable. Everything else
- * non-alphanumeric collapses to a single dash, and the result never begins or
- * ends with one — `<prefix>//<topic>` is not a topic.
- *
- * Returns `""` when nothing survives, which is a real case ("!!!"), and the
- * callers all have a named fallback for it. It never invents one here: the
- * fallback belongs where the meaning is ("plant", "inverter").
- */
-export function slugify(text: string): string {
-  return (
-    text
-      .normalize("NFKD")
-      // Combining marks left by the decomposition above; `Ü` is now `U` + a mark.
-      .replace(/[̀-ͯ]/g, "")
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-+|-+$/g, "")
-      .slice(0, SLUG_MAX)
-      .replace(/-+$/g, "")
-  );
 }
 
 /** What a 1.x install has to say about its plant, mined from the raw rows. */
@@ -331,7 +296,14 @@ export interface ProvisionProfile {
 export interface EndpointSeed {
   host?: string;
   port: number;
-  transport: string;
+  /**
+   * Narrowed to a framing the Modbus client has a branch for, since #217: the
+   * value goes straight into `connections.params`, which no CHECK constraint
+   * guards any more (`../../../packages/db/src/connection-kinds.ts`). Every
+   * supplier already has it typed — `InverterConfig`'s own `z.enum` — so this is
+   * the type the seed always carried in practice.
+   */
+  transport: ModbusTransport;
   unitId: number;
   timeoutMs: number;
   pollIntervalMs: number;
@@ -422,17 +394,20 @@ async function endpointFor(
   seed: EndpointSeed,
   existing: DeviceRecord | null,
 ): Promise<number | null> {
-  const current = await store.readConnection(plantId);
+  const current = await store.readConnection(plantId, "modbus");
   if (current) return existing ? (existing.connectionId ?? current.id) : current.id;
   const host = seed.host?.trim() ?? "";
   if (host === "") return existing?.connectionId ?? null;
   const connection = await store.ensureConnection(plantId, {
     name: "Inverter",
-    host,
-    port: seed.port,
-    transport: seed.transport,
-    timeoutMs: seed.timeoutMs,
-    pollIntervalMs: seed.pollIntervalMs,
+    kind: "modbus",
+    params: {
+      host,
+      port: seed.port,
+      transport: seed.transport,
+      timeoutMs: seed.timeoutMs,
+      pollIntervalMs: seed.pollIntervalMs,
+    },
   });
   return connection.id;
 }

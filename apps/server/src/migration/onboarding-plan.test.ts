@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 
 import { migrationRecordSchema } from "@SunReye/db/upgrade-state";
 
-import { SLUG_MAX } from "../inverter/provision";
+import { SLUG_MAX } from "@SunReye/inverter-core/slug";
 import {
   type GateState,
   type OnboardingInput,

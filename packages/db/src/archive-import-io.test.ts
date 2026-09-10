@@ -881,11 +881,14 @@ describe("importArchive: applying config.json", () => {
       connections: [
         {
           name: "loft",
-          host: "10.0.0.5",
-          port: 502,
-          transport: "tcp",
-          timeoutMs: 2000,
-          pollIntervalMs: 5000,
+          kind: "modbus" as const,
+          params: {
+            host: "10.0.0.5",
+            port: 502,
+            transport: "tcp" as const,
+            timeoutMs: 2000,
+            pollIntervalMs: 5000,
+          },
         },
       ],
       devices: [

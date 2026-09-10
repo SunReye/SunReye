@@ -36,15 +36,22 @@
  * Pure: no database, no filesystem (`./archive-config.test.ts`).
  */
 
-/** A Modbus endpoint, named rather than numbered. */
-export interface ArchiveConnection {
-  name: string;
-  host: string;
-  port: number;
-  transport: string;
-  timeoutMs: number;
-  pollIntervalMs: number;
-}
+import { type ConnectionParams, connectionParamsSchema } from "./connection-kinds";
+
+/**
+ * An endpoint, named rather than keyed by id — and PER KIND since #217.
+ *
+ * `name` is the join key a device's `connection` field points at, because ids
+ * never travel (see the header). `kind` + `params` is the same discriminated
+ * shape the table holds (`./connection-kinds.ts`), so a broker travels as
+ * naturally as a gateway.
+ *
+ * READING AN OLDER ARCHIVE STILL WORKS. A 2.0.x file has `host`, `port` and
+ * `transport` at the TOP level and no `kind` at all, and the archive is a
+ * restore path off a USB stick — refusing it would make yesterday's backup
+ * unrestorable. {@link parseConnection} folds that shape into the `modbus` arm.
+ */
+export type ArchiveConnection = { name: string } & ConnectionParams;
 
 /** A battery pack, nested in the device that reports it — no `deviceId`. */
 export interface ArchiveBattery {
@@ -268,30 +275,40 @@ export interface SynthesiseInput {
   legacy?: boolean;
 }
 
+/** Reads one `app_settings` value, unwrapping the double encoding 1.x used. */
+type Setting = (key: string) => unknown;
+
 /**
- * The plant graph a 1.x database implies: one plant, one connection, one device.
- *
- * The device is synthesised even when there is NO HOST AT ALL. That is not
- * sloppiness: the device is what every exported reading resolves against, and an
- * imported history whose hardware is gone is a case `./schema/plants.ts`
- * explicitly allows for (`connectionId` is nullable precisely for it). Refusing
- * here would make such a history unimportable — the one outcome this whole
- * feature exists to prevent.
+ * The Modbus document a 1.x install kept its one endpoint in, from whichever of
+ * {@link CONNECTION_KEYS} actually holds it. Empty when none does — which is a
+ * real case, not a failure (see {@link synthesiseSpine}).
  */
-export function synthesiseSpine(input: SynthesiseInput): ArchivePlant {
-  const setting = (key: string) => unwrapSetting(input.settings.get(key));
-
-  const connectionRow = CONNECTION_KEYS.map((key) => setting(key)).find(
-    (value) => Object.keys(asRecord(value)).length > 0,
+function legacyConnection(setting: Setting): Record<string, unknown> {
+  return asRecord(
+    CONNECTION_KEYS.map((key) => setting(key)).find(
+      (value) => Object.keys(asRecord(value)).length > 0,
+    ),
   );
-  const connectionConfig = asRecord(connectionRow);
+}
 
-  const profileFromSettings = PROFILE_KEYS.map((key) => setting(key)).find(
+/**
+ * The profile id, from the caller, the settings row, or the connection document
+ * — in that order of authority.
+ *
+ * Refused rather than invented: it is the identity every reading is stamped
+ * with, and a guess produces readings that resolve to no device.
+ */
+function requireProfileId(
+  input: SynthesiseInput,
+  connectionConfig: Record<string, unknown>,
+): string {
+  const setting = (key: string) => unwrapSetting(input.settings.get(key));
+  const fromSettings = PROFILE_KEYS.map((key) => setting(key)).find(
     (value) => typeof value === "string" && value.length > 0,
   );
   const profileId =
     input.profileId ??
-    (typeof profileFromSettings === "string" ? profileFromSettings : null) ??
+    (typeof fromSettings === "string" ? fromSettings : null) ??
     asOptionalString(connectionConfig.profile);
   if (profileId === null) {
     throw new Error(
@@ -300,22 +317,68 @@ export function synthesiseSpine(input: SynthesiseInput): ArchivePlant {
         "inventing one would produce readings that resolve to no device",
     );
   }
+  return profileId;
+}
 
-  const plantConfig = asRecord(setting("plant"));
+/**
+ * The one connection a 1.x install implies, or NONE when it names no host.
+ *
+ * A 1.x install has exactly one endpoint and it is a Modbus gateway: the
+ * `app_settings.inverter` document held host/port/transport and nothing else.
+ */
+function synthesiseConnections(connectionConfig: Record<string, unknown>): ArchiveConnection[] {
   const host = asOptionalString(connectionConfig.host);
-  const connections: ArchiveConnection[] = host
-    ? [
-        {
-          name: SYNTHESISED_CONNECTION,
-          host,
-          port: asNumber(connectionConfig.port, 502),
-          transport: asString(connectionConfig.transport, "tcp"),
-          timeoutMs: asNumber(connectionConfig.timeoutMs, 2000),
-          pollIntervalMs: asNumber(connectionConfig.pollIntervalMs, 1000),
-        },
-      ]
-    : [];
+  if (!host) return [];
+  return [
+    {
+      name: SYNTHESISED_CONNECTION,
+      kind: "modbus",
+      params: {
+        host,
+        port: asNumber(connectionConfig.port, 502),
+        transport:
+          asString(connectionConfig.transport, "tcp") === "rtu-over-tcp" ? "rtu-over-tcp" : "tcp",
+        timeoutMs: asNumber(connectionConfig.timeoutMs, 2000),
+        pollIntervalMs: asNumber(connectionConfig.pollIntervalMs, 1000),
+      },
+    },
+  ];
+}
 
+/** The one device every exported reading resolves against. */
+function synthesiseDevice(
+  profileId: string,
+  connectionConfig: Record<string, unknown>,
+  connections: readonly ArchiveConnection[],
+): ArchiveDevice {
+  return {
+    // THE SLUG IS THE PROFILE ID, verbatim where it already is a slug. This is
+    // what makes the exported readings (stamped with the 1.x `inverter_id`,
+    // which IS the profile id) resolve on import with no mapping table.
+    slug: slugifyId(profileId),
+    name: asString(connectionConfig.name, "Inverter"),
+    profileId,
+    serial: asOptionalString(connectionConfig.serial),
+    role: "inverter",
+    // A 1.x database has no retirement: the column did not exist.
+    retiredAt: null,
+    unitId: asNumber(connectionConfig.unitId, 0),
+    connection: connections[0]?.name ?? null,
+    battery: null,
+    // A 1.x database describes the roof on the PLANT (the weather blob); the
+    // importer hands it to this one inverter, so the device carries none.
+    arrays: null,
+    tempCoefficient: null,
+    systemLoss: null,
+  };
+}
+
+/** The plant row, read off the 1.x `plant` document. */
+function synthesisePlant(
+  plantConfig: Record<string, unknown>,
+  connections: ArchiveConnection[],
+  devices: ArchiveDevice[],
+): ArchivePlant {
   return {
     name: asString(plantConfig.name, "Imported plant"),
     slug: asString(plantConfig.slug, "plant"),
@@ -334,29 +397,28 @@ export function synthesiseSpine(input: SynthesiseInput): ArchivePlant {
     biddingZone: asOptionalString(plantConfig.biddingZone),
     tariffKey: asOptionalString(plantConfig.tariffKey),
     connections,
-    devices: [
-      {
-        // THE SLUG IS THE PROFILE ID, verbatim where it already is a slug. This is
-        // what makes the exported readings (stamped with the 1.x `inverter_id`,
-        // which IS the profile id) resolve on import with no mapping table.
-        slug: slugifyId(profileId),
-        name: asString(connectionConfig.name, "Inverter"),
-        profileId,
-        serial: asOptionalString(connectionConfig.serial),
-        role: "inverter",
-        // A 1.x database has no retirement: the column did not exist.
-        retiredAt: null,
-        unitId: asNumber(connectionConfig.unitId, 0),
-        connection: connections[0]?.name ?? null,
-        battery: null,
-        // A 1.x database describes the roof on the PLANT (the weather blob); the
-        // importer hands it to this one inverter, so the device carries none.
-        arrays: null,
-        tempCoefficient: null,
-        systemLoss: null,
-      },
-    ],
+    devices,
   };
+}
+
+/**
+ * The plant graph a 1.x database implies: one plant, one connection, one device.
+ *
+ * The device is synthesised even when there is NO HOST AT ALL. That is not
+ * sloppiness: the device is what every exported reading resolves against, and an
+ * imported history whose hardware is gone is a case `./schema/plants.ts`
+ * explicitly allows for (`connectionId` is nullable precisely for it). Refusing
+ * here would make such a history unimportable — the one outcome this whole
+ * feature exists to prevent.
+ */
+export function synthesiseSpine(input: SynthesiseInput): ArchivePlant {
+  const setting: Setting = (key) => unwrapSetting(input.settings.get(key));
+  const connectionConfig = legacyConnection(setting);
+  const profileId = requireProfileId(input, connectionConfig);
+  const connections = synthesiseConnections(connectionConfig);
+  return synthesisePlant(asRecord(setting("plant")), connections, [
+    synthesiseDevice(profileId, connectionConfig, connections),
+  ]);
 }
 
 // ---------------------------------------------------------------------------
@@ -373,19 +435,36 @@ export function synthesiseSpine(input: SynthesiseInput): ArchivePlant {
 
 const list = (value: unknown): unknown[] => (Array.isArray(value) ? value : []);
 
+/**
+ * One connection out of an archive, or null when it is not usable.
+ *
+ * NULL RATHER THAN A THROW, and rather than a coerced row. The import writes
+ * into a table whose CHECK admits the kinds this build has a tier for, so a
+ * `kind` from a newer archive — or params its own arm refuses — has to be
+ * dropped here: carrying it would fail the whole restore on one connection
+ * nobody can use, and the caller reports the device that named it as
+ * endpoint-less (which is a state the schema models).
+ *
+ * The pre-#217 flat shape is folded into the `modbus` arm, because that is what
+ * every connection in a 2.0.x archive was.
+ */
 function parseConnection(value: unknown): ArchiveConnection | null {
   const row = asRecord(value);
   const name = asOptionalString(row.name);
-  const host = asOptionalString(row.host);
-  if (name === null || host === null) return null;
-  return {
-    name,
-    host,
-    port: asNumber(row.port, 502),
-    transport: asString(row.transport, "tcp"),
-    timeoutMs: asNumber(row.timeoutMs, 2000),
-    pollIntervalMs: asNumber(row.pollIntervalMs, 1000),
-  };
+  if (name === null) return null;
+  const kind = asOptionalString(row.kind);
+  const params =
+    kind === null
+      ? {
+          host: asOptionalString(row.host),
+          port: asNumber(row.port, 502),
+          transport: asString(row.transport, "tcp"),
+          timeoutMs: asNumber(row.timeoutMs, 2000),
+          pollIntervalMs: asNumber(row.pollIntervalMs, 1000),
+        }
+      : row.params;
+  const parsed = connectionParamsSchema.safeParse({ kind: kind ?? "modbus", params });
+  return parsed.success ? { name, ...parsed.data } : null;
 }
 
 function parseBattery(value: unknown): ArchiveBattery | null {

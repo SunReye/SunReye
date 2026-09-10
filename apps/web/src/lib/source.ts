@@ -71,7 +71,14 @@ export function shownUnder(
   return plantAggregateOf(metric.role) !== "per-device";
 }
 
-/** The switcher's options: the plant first, then every device in roster order. */
+/**
+ * The switcher's options: the plant first, then every device in roster order.
+ *
+ * Exported for `source.test.ts` only — `sourceMenu` below is what the sidebar
+ * menu calls, and the test asserts the menu's list IS this one, unchanged. That
+ * comparison is the point: it fails the moment the menu grows a second list.
+ */
+// fallow-ignore-next-line unused-export -- the list `sourceMenu` renders, compared against it by source.test.ts; test files aren't traced as consumers
 export function sourceOptions(
   sources: SourcesResponse,
   plantLabel: string,
@@ -97,4 +104,39 @@ export function acceptsMetricsFrame(
   if (inverterId === current) return true;
   const device = sources?.devices.find((d) => d.slug === current);
   return device?.profileId !== undefined && device.profileId === inverterId;
+}
+
+/** What the sidebar's source menu renders: the list, the mark, the trigger's line. */
+export interface SourceMenu {
+  /** Every source that may be picked — `sourceOptions`, unchanged. */
+  options: Array<{ id: SourceId; label: string }>;
+  /** The option the menu marks as chosen. */
+  activeId: SourceId;
+  /** The name the trigger shows under "SunReye". */
+  currentLabel: string;
+}
+
+/**
+ * The source menu's model.
+ *
+ * A rendering of `sourceOptions`, never a second list of its own: a menu that
+ * built its own options would quietly keep a retired device, or lose the plant
+ * row, while `sourceOptions` stayed right.
+ *
+ * `current` naming nothing in the list resolves to the plant — the source list
+ * has not landed yet, or a device was retired in settings while this page was
+ * open. Naming a source nothing answers is worse than falling back.
+ */
+export function sourceMenu(
+  sources: SourcesResponse | null,
+  plantLabel: string,
+  current: SourceId,
+): SourceMenu {
+  const options = sources ? sourceOptions(sources, plantLabel) : [];
+  const active = options.find((option) => option.id === current);
+  return {
+    options,
+    activeId: active?.id ?? PLANT,
+    currentLabel: active?.label ?? plantLabel,
+  };
 }

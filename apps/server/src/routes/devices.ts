@@ -1,4 +1,3 @@
-import { db } from "@SunReye/db";
 import {
   createConnection,
   createDevice,
@@ -17,18 +16,23 @@ import { Elysia, t } from "elysia";
 import {
   type DeviceAdminDeps,
   DeviceAdminError,
+  addConnection,
   addDevice,
+  listConnections,
   listDevices,
   patchConnection,
   patchDevice,
   removeConnection,
 } from "../devices/device-admin";
 import { afterDeviceWrite } from "../devices/after-device-write";
+import { reopenPlantRuntime } from "../devices/plant-reload";
+import { resolveCoded } from "../devices/coded";
 import { plantFacts } from "../settings/plant-facts-instance";
-import { probeEndpoint } from "../devices/reachability";
+import { probeConnection } from "../devices/reachability";
 import { deviceRegistry } from "../devices/registry-instance";
 import { resolveProfileById } from "../inverter/inverter";
-import * as runtime from "../inverter/runtime";
+import { plantClient } from "../shared/plant-client";
+import { adminResponder, byId, byIdWrite } from "./admin-refusal";
 import { adminGuard } from "./admin-guard";
 
 /**
@@ -46,7 +50,7 @@ import { adminGuard } from "./admin-guard";
 
 /** Production wiring, built PER CALL so `mock.module` on `@SunReye/db` reaches it. */
 function defaultDeps(): DeviceAdminDeps {
-  const client = { execute: (query: Parameters<typeof db.execute>[0]) => db.execute(query) };
+  const client = plantClient();
   return {
     store: {
       readPlant: () => readPlant(client),
@@ -62,64 +66,44 @@ function defaultDeps(): DeviceAdminDeps {
       deleteDeviceBattery: (deviceId) => deleteDeviceBattery(client, deviceId),
     },
     profileName: async (id) => (await resolveProfileById(id))?.name ?? null,
+    // The coded tier has no profile row to resolve, so the roster asks the
+    // declaration table before reporting a device's profile as missing (#213).
+    coded: (id) => resolveCoded(id),
     primarySlug: () => deviceRegistry.primary()?.id ?? null,
-    reload: () => afterDeviceWrite(plantFacts, () => runtime.reloadEndpoint()),
+    reload: () => afterDeviceWrite(plantFacts, reopenPlantRuntime),
   };
 }
 
-/** A service refusal as its status; anything else is the 500 it deserves. */
-function refusal(error: unknown) {
-  if (error instanceof DeviceAdminError) {
-    return { status: error.status, body: { error: error.message, field: error.field ?? null } };
-  }
-  throw error;
-}
-
-/** A by-id param, or the 400 it deserves. */
-function parseId(raw: string): number | null {
-  const id = Number(raw);
-  return Number.isInteger(id) && id > 0 ? id : null;
-}
-
-const BAD_ID = { error: "id must be a positive integer", field: null } as const;
-
-/** Run one service call for the route, mapping refusals to their status. */
-async function respond<T>(
-  status: (code: 400 | 404 | 409, body: unknown) => unknown,
-  run: () => Promise<T>,
-) {
-  try {
-    return await run();
-  } catch (error) {
-    const refused = refusal(error);
-    return status(refused.status, refused.body);
-  }
-}
-
-// `id` params are `t.String()`, not `t.Numeric()`: a typed param is validated
-// BEFORE the guard, and the smoke's placeholder would 422 there — see above.
-const byId = { requireAdmin: true, params: t.Object({ id: t.String() }) } as const;
-const byIdWrite = { ...byId, body: t.Unknown() } as const;
+const { respond, withId } = adminResponder((error) => error instanceof DeviceAdminError);
 
 export const deviceRoutes = new Elysia({ name: "device-routes" })
   .use(adminGuard)
   .get("/api/devices", { requireAdmin: true }, () => listDevices(defaultDeps()))
-  .get("/api/connections", { requireAdmin: true }, async () => {
-    const deps = defaultDeps();
-    const plant = await deps.store.readPlant();
-    return { connections: plant ? await deps.store.readConnections(plant.id) : [] };
-  })
+  // MASKED: a `kind = 'mqtt'` row carries a broker password, and the masking
+  // follows the secret (#217). `listConnections` is the service call rather than
+  // a store read spelled here, so this route cannot forget it.
+  .get("/api/connections", { requireAdmin: true }, () => listConnections(defaultDeps()))
+  // A connection ON ITS OWN (#217). The `connection: { create }` arm of
+  // `POST /api/devices` can only make one alongside a device, and a broker never
+  // has one at creation time — its loadpoints appear after the ingest is bound
+  // to it and its first message lands.
+  .post("/api/connections", { requireAdmin: true, body: t.Unknown() }, ({ body, status }) =>
+    respond(status, () => addConnection(defaultDeps(), body)),
+  )
   .post("/api/devices", { requireAdmin: true, body: t.Unknown() }, ({ body, status }) =>
     respond(status, () => addDevice(defaultDeps(), body)),
   )
-  // Is the gateway there? A TCP connect to host:port — no unit id, no profile,
-  // no register read. The device dialog's test is the one that reads registers.
+  // Is the endpoint there? PER KIND (#217): a Modbus gateway answers a TCP
+  // connect to host:port, a broker answers an MQTT CONNECT. No unit id, no
+  // profile, no register read — the device dialog's test is the one that reads
+  // registers. A bare `{ host, port }` body is still a Modbus probe, so the
+  // current add-connection dialog keeps working until the web half lands.
   .post(
     "/api/connections/probe",
     { requireAdmin: true, body: t.Unknown() },
     async ({ body, status }) => {
       try {
-        return await probeEndpoint(body);
+        return await probeConnection(body);
       } catch (error) {
         return status(400, {
           error: error instanceof Error ? error.message : "invalid probe",
@@ -128,21 +112,15 @@ export const deviceRoutes = new Elysia({ name: "device-routes" })
       }
     },
   )
-  .patch("/api/devices/:id", byIdWrite, ({ params, body, status }) => {
-    const id = parseId(params.id);
-    if (id === null) return status(400, BAD_ID);
-    return respond(status, () => patchDevice(defaultDeps(), id, body));
-  })
-  .patch("/api/connections/:id", byIdWrite, ({ params, body, status }) => {
-    const id = parseId(params.id);
-    if (id === null) return status(400, BAD_ID);
-    return respond(status, () => patchConnection(defaultDeps(), id, body));
-  })
-  .delete("/api/connections/:id", byId, ({ params, status }) => {
-    const id = parseId(params.id);
-    if (id === null) return status(400, BAD_ID);
-    return respond(status, async () => {
+  .patch("/api/devices/:id", byIdWrite, ({ params, body, status }) =>
+    withId(status, params.id, (id) => patchDevice(defaultDeps(), id, body)),
+  )
+  .patch("/api/connections/:id", byIdWrite, ({ params, body, status }) =>
+    withId(status, params.id, (id) => patchConnection(defaultDeps(), id, body)),
+  )
+  .delete("/api/connections/:id", byId, ({ params, status }) =>
+    withId(status, params.id, async (id) => {
       await removeConnection(defaultDeps(), id);
       return { ok: true, id };
-    });
-  });
+    }),
+  );

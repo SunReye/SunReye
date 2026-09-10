@@ -18,11 +18,20 @@
  * row silently adopted (`createDevice`, not `ensureDevice`).
  *
  * Not the multi-device poll loop either. This release polls one target
- * (`../inverter/endpoint.ts`, `loadPollEndpoint`), so a second device is stored,
- * registered and listed but not read; `DeviceView.polled` says which one is.
+ * (`../inverter/endpoint.ts`, `loadPollEndpoint`), so a second Modbus device is
+ * stored, registered and listed but not read; {@link DeviceView.state} says so.
  */
 
 import type { DeviceBattery } from "@SunReye/db/batteries";
+import {
+  type ConnectionParams,
+  type ConnectionParamsMasked,
+  connectionSettingsSchema,
+  maskConnectionParams,
+  mergeConnectionParams,
+  modbusParamsSchema,
+  mqttParamsSchema,
+} from "@SunReye/db/connection-kinds";
 import {
   type ConnectionPatch,
   type ConnectionRecord,
@@ -42,7 +51,9 @@ import {
 import { forecastBatterySchema, pvArraySchema } from "@SunReye/db/weather";
 import { z } from "zod";
 
-import { SLUG_MAX, slugify } from "../inverter/provision";
+import { SLUG_MAX, slugify } from "@SunReye/inverter-core/slug";
+
+import { parseBody } from "../shared/zod-field";
 
 /** The repository calls this module makes, bound to one client by the caller. */
 export interface DeviceAdminStore {
@@ -60,10 +71,62 @@ export interface DeviceAdminStore {
   deleteDeviceBattery(deviceId: number): Promise<void>;
 }
 
+/**
+ * What the coded tier says about a `profile_id` — `./coded.ts`'s declaration,
+ * narrowed to the two fields the roster shows.
+ *
+ * Injected rather than imported for the reason every other dependency here is:
+ * the route layer has no automated cover, so "a loadpoint is not an unpolled
+ * Modbus device" has to be provable against a double.
+ */
+export interface CodedInfo {
+  /** Provenance, for grouping the row under its integration. Never branched on here. */
+  integration: string;
+  /** The name to show for a device whose profile is code, not an install. */
+  name?: string;
+  /**
+   * Whether an operator may create one of these by hand.
+   *
+   * ABSENT MEANS NO, deliberately. A coded declaration is auto-provisioned
+   * until someone says otherwise — the optimizer writes its own row (#172) and
+   * #197's weather device will too — so the safe reading of a declaration that
+   * never considered the question is "the server owns this row". A second
+   * optimizer is a duplicate nothing would ever poll, and the wizard must not
+   * be able to make one; the opt-in is one word in `./coded.ts`'s table.
+   */
+  addable?: boolean;
+}
+
+/**
+ * How a device is fed. NOT a capability and not a branch anything downstream
+ * takes: it is what the roster has to say out loud, because the three are
+ * indistinguishable on a row that only knows "polled: false".
+ */
+export type DeviceKind = "modbus" | "coded" | "virtual";
+
+/**
+ * What the roster reports about a device, one word per reason it is not being
+ * read. Replaces a `polled` boolean, which reported an MQTT-fed loadpoint and a
+ * computation as broken Modbus hardware.
+ *
+ * `polling` is the one device the loop reads today; #204 extends it to many and
+ * does not change this enum.
+ *
+ * `provided` was called `integration` until integrations became ROWS of their
+ * own (`../integrations/integration-admin.ts`). One list then held both — a
+ * loadpoint badged "integration", and a few lines above it the EVCC ingest that
+ * provides it, also an integration — so the state says what is true of the
+ * DEVICE: something else provides its readings, rather than this server polling
+ * for them.
+ */
+export type DeviceState = "polling" | "idle" | "provided" | "virtual" | "retired";
+
 export interface DeviceAdminDeps {
   store: DeviceAdminStore;
   /** The display name of a registered profile, or null when the id names none. */
   profileName(profileId: string): Promise<string | null>;
+  /** The coded declaration a `profile_id` names, or null when it names a profile. */
+  coded(profileId: string): CodedInfo | null;
   /** The slug of the device the loop polls today, or null when it polls nothing. */
   primarySlug(): string | null;
   /** Ask the runtime to re-read the roster — after a write, never before. */
@@ -80,19 +143,42 @@ export interface DeviceAdminDeps {
  */
 export interface DeviceView extends Omit<DeviceRecord, "retiredAt"> {
   retiredAt: string | null;
-  connection: ConnectionRecord | null;
+  connection: ConnectionView | null;
   /** The pack this inverter carries, or null — every other role has none. */
   battery: DeviceBattery | null;
   profileName: string | null;
-  /** Whether the profile the row names is registered on this server. */
+  /** Whether the name above resolved — an installed profile, or a coded declaration. */
   profileKnown: boolean;
-  /** Whether this is the ONE device the poll loop reads in this release. */
-  polled: boolean;
+  /** How this device is fed. */
+  kind: DeviceKind;
+  /** Why it is, or is not, being read. */
+  state: DeviceState;
+  /**
+   * The integration a coded device belongs to (`evcc`), or null. Provenance for
+   * the roster's grouping and nothing else.
+   */
+  integration: string | null;
+}
+
+/**
+ * A connection AS THE API RETURNS IT — every write-only field stripped.
+ *
+ * The masking follows the secret. It used to live on `app_settings.mqtt`
+ * (`maskMqttConfig`), and since #217 the broker credential lives on a
+ * `kind = 'mqtt'` row — which both `/api/connections` and the device roster
+ * return, and which the archive export reads. `maskConnectionParams` owns the
+ * rule for every kind, so a third kind with a secret cannot forget it.
+ */
+export type ConnectionView = { id: number; name: string } & ConnectionParamsMasked;
+
+/** One row as the API returns it: masked, and still carrying its identity. */
+function toConnectionView(connection: ConnectionRecord): ConnectionView {
+  return { id: connection.id, name: connection.name, ...maskConnectionParams(connection) };
 }
 
 export interface DeviceRoster {
   devices: DeviceView[];
-  connections: ConnectionRecord[];
+  connections: ConnectionView[];
 }
 
 /** A refusal the route turns into its status, with the field it concerns. */
@@ -101,14 +187,19 @@ export class DeviceAdminError extends Error {
     readonly status: 400 | 404 | 409,
     message: string,
     readonly field?:
+      | "via"
       | "name"
       | "unitId"
       | "connection"
       | "connectionId"
+      | "kind"
+      | "params"
       | "role"
       | "profileId"
       | "host"
       | "arrays"
+      | "tempCoefficient"
+      | "systemLoss"
       | "battery",
   ) {
     super(message);
@@ -127,15 +218,6 @@ const UNIT_ID_MAX = 247;
 /** The roles an operator may add. `optimizer` is virtual and registers itself. */
 const ADDABLE_ROLES = DEVICE_ROLES.filter((role) => !isVirtualDevice({ role }));
 
-const connectionSettingsSchema = z.object({
-  name: z.string().trim().min(1).max(64),
-  host: z.string().trim().min(1, "host is required"),
-  port: z.number().int().min(1).max(65535),
-  transport: z.enum(["tcp", "rtu-over-tcp"]),
-  timeoutMs: z.number().int().min(100).max(60_000),
-  pollIntervalMs: z.number().int().min(1000).max(3_600_000),
-}) satisfies z.ZodType<ConnectionSettings>;
-
 const nameSchema = z
   .string()
   .trim()
@@ -143,8 +225,18 @@ const nameSchema = z
   .max(SLUG_MAX, `name must be at most ${SLUG_MAX} characters`)
   .refine((name) => slugify(name) !== "", "name must contain a letter or a digit");
 
-const roleSchema = z.enum(ADDABLE_ROLES as [string, ...string[]]);
-const unitIdSchema = z.number().int().min(UNIT_ID_MIN).max(UNIT_ID_MAX);
+/**
+ * The three fields that address a Modbus device, exported so the wizard's
+ * catalog (`./integration-catalog.ts`) can DESCRIBE the settings step this
+ * module VALIDATES.
+ *
+ * Exported rather than restated there: a second spelling of "unit ids stop at
+ * 247" is a wizard that offers 248 and a route that then refuses it, which is
+ * the same bug as no validation at all — the operator sees a form that lies.
+ */
+export const deviceRoleSchema = z.enum(ADDABLE_ROLES as [string, ...string[]]);
+export const unitIdSchema = z.number().int().min(UNIT_ID_MIN).max(UNIT_ID_MAX);
+export const profileIdSchema = z.string().trim().min(1);
 
 /**
  * The inverter's PV description and pack, as the dialog sends them. Each field
@@ -152,7 +244,7 @@ const unitIdSchema = z.number().int().min(UNIT_ID_MIN).max(UNIT_ID_MAX);
  * mirror `@SunReye/db/weather`'s so a value the forecast schema would refuse is
  * refused here first.
  */
-const inverterFieldsSchema = {
+export const inverterFieldsSchema = {
   arrays: z.array(pvArraySchema).max(8).optional(),
   // The device's coefficients have the ARRAY override's bounds, by construction:
   // the compose step stamps them onto every array that states none of its own.
@@ -162,19 +254,115 @@ const inverterFieldsSchema = {
   battery: forecastBatterySchema.nullable().optional(),
 };
 
-const addDeviceSchema = z.object({
-  ...inverterFieldsSchema,
-  connection: z.union([
-    z.object({ id: z.number().int().positive() }),
-    z.object({ create: connectionSettingsSchema }),
-  ]),
-  role: roleSchema,
-  unitId: unitIdSchema,
+/**
+ * `unitId` IS NOT UNIVERSAL, and that is why the add contract is a union.
+ *
+ * The column carries two unrelated facts today: a MODBUS SLAVE ID for a device
+ * on a bus (0–247, `unitIdSchema`), and an EVCC LOADPOINT'S INDEX for a device
+ * that has no bus at all (`../evcc/evcc-devices.ts` — the index is the frozen
+ * half of the slug, and what makes `devices_connection_unit_key` hold for two
+ * loadpoints on one broker). A schema that validated the second as the first
+ * would cap a loadpoint index at 247 for a Modbus reason, and a schema that
+ * relaxed the first to fit the second would let a bus device be addressed at
+ * 900. So the slave-id bound belongs to the PROFILE ARM alone, and the coded
+ * arm validates an INDEX: a non-negative integer, no ceiling.
+ */
+const codedIndexSchema = z.number().int().min(0);
+
+/**
+ * A device's per-integration settings bag (`devices.params`) on the way in.
+ *
+ * Validated as nothing more than a JSON OBJECT, exactly as `patchDeviceSchema`
+ * validates it and for the same reason: the shapes are per integration and
+ * share nothing, so the consumer that owns a key is the only layer that can
+ * judge it. A scalar, a `null` or a list is refused rather than stored, because
+ * an integration reading a list finds none of its keys.
+ */
+const paramsSchema = z.record(z.string(), z.unknown());
+
+/** Which gateway a new device hangs on: an existing row, or one to create. */
+const connectionChoiceSchema = z.union([
+  z.object({ id: z.number().int().positive() }),
+  z.object({ create: connectionSettingsSchema }),
+]);
+
+/** What every tier states, whatever authors the device behind it. */
+const addCommonShape = {
+  connection: connectionChoiceSchema,
+  role: deviceRoleSchema,
   name: nameSchema,
-  profileId: z.string().trim().min(1),
+  profileId: profileIdSchema,
+};
+
+/**
+ * THE PROFILE ARM: a register map installed from a git source, on a bus.
+ *
+ * Exactly the body this endpoint has always taken, plus the discriminant — the
+ * PV description and pack included, because only a machine with panels and a
+ * pack can have them and only this tier has a machine.
+ */
+const profileAddSchema = z.object({
+  via: z.literal("profile"),
+  ...addCommonShape,
+  ...inverterFieldsSchema,
+  unitId: unitIdSchema,
 });
 
+/**
+ * THE CODED ARM: a declaration compiled into this server (`./coded.ts`).
+ *
+ * No `unitId` requirement — a pushed device has no slave to address — and no PV
+ * fields. `params` is the integration's own settings step (an EVCC loadpoint's
+ * `topicRoot`), and `unitId` stays available as the OPTIONAL index described on
+ * {@link codedIndexSchema}: the index is chosen here rather than tucked inside
+ * `params` because the uniqueness rule the database enforces
+ * (`devices_connection_unit_key`) reads the COLUMN, and an index hidden in the
+ * JSON bag would let two loadpoints collide with nothing to refuse them.
+ */
+const codedAddSchema = z.object({
+  via: z.literal("coded"),
+  ...addCommonShape,
+  unitId: codedIndexSchema.optional(),
+  params: paramsSchema.optional(),
+});
+
+/**
+ * THE MAPPING ARM: a user's own field mapping, declared and REFUSED (#79–#81).
+ *
+ * A declared-and-refused arm is the seam. Leaving it out would make the union a
+ * two-arm type that has to be widened — schema, narrowing, every call site —
+ * the day the tier lands; naming it now means that day adds a body shape and
+ * deletes a refusal. The refusal is a 400: the body is well-formed, the server
+ * simply cannot author a device this way yet.
+ */
+const mappingAddSchema = z.object({ via: z.literal("mapping") });
+
+/**
+ * The add contract, discriminated on the TIER (`via`) — never on the transport;
+ * see `./integration-catalog.ts` for why the two axes stay apart.
+ *
+ * COMPATIBILITY: a body with NO `via` is read as `via: "profile"`
+ * ({@link withDefaultTier}). The shipped `/settings/devices` dialog sends the
+ * un-tiered Modbus body, and an add that started 400-ing the moment this landed
+ * would be a regression nothing on screen explains.
+ */
+const addDeviceSchema = z.discriminatedUnion("via", [
+  profileAddSchema,
+  codedAddSchema,
+  mappingAddSchema,
+]);
+
 type AddDeviceInput = z.infer<typeof addDeviceSchema>;
+
+/** The two arms that actually author a device — the mapping arm never gets here. */
+type AuthoredDevice = z.infer<typeof profileAddSchema> | z.infer<typeof codedAddSchema>;
+
+/** An un-tiered body is the profile tier. See {@link addDeviceSchema}. */
+function withDefaultTier(body: unknown): unknown {
+  if (typeof body !== "object" || body === null) return body;
+  const stated = (body as { via?: unknown }).via;
+  return stated === undefined ? { ...body, via: "profile" } : body;
+}
 
 const nonEmpty = (patch: Record<string, unknown>) =>
   Object.values(patch).some((value) => value !== undefined);
@@ -184,45 +372,109 @@ const nonEmpty = (patch: Record<string, unknown>) =>
  * frozen. `retired` is the lifecycle flag; everything else re-points the row —
  * the profile swap and the gateway move that 1.x could not do without
  * orphaning history.
+ *
+ * `params` is the device's per-integration settings bag (`devices.params`) and
+ * is deliberately validated as nothing more than a JSON OBJECT here. The shapes
+ * are per integration and share nothing — an EVCC loadpoint's `topicRoot` is
+ * the only tenant today — so the consumer that owns a key is the only layer
+ * that can judge it, and a schema here would have to be edited for every
+ * integration added. A PATCH REPLACES the whole document: what the body omits
+ * is gone, not merged over. A scalar, a null or a list is refused (400) rather
+ * than stored, because an integration reading a list finds none of its keys.
  */
 const patchDeviceSchema = z
   .object({
     ...inverterFieldsSchema,
     name: nameSchema.optional(),
-    role: roleSchema.optional(),
+    role: deviceRoleSchema.optional(),
     unitId: unitIdSchema.optional(),
     connectionId: z.number().int().positive().optional(),
-    profileId: z.string().trim().min(1).optional(),
+    profileId: profileIdSchema.optional(),
+    params: paramsSchema.optional(),
     retired: z.boolean().optional(),
   })
   .refine(nonEmpty, "nothing to change");
 
-const patchConnectionSchema = connectionSettingsSchema
-  .partial()
+/**
+ * What may change on an existing connection.
+ *
+ * `kind` is accepted only to be REFUSED with a reason: the dialog round-trips
+ * the whole record, so a PATCH carrying the row's own kind is the normal case
+ * and must not 400 — but a DIFFERENT kind is refused rather than applied. Every
+ * device bound to a connection was provisioned for its tier (a Modbus slave id,
+ * an EVCC loadpoint index), and re-kinding the row in place would leave them
+ * addressed for a bus that no longer exists while their history stays keyed to
+ * them. A different kind is a different connection.
+ *
+ * `params` is `unknown` here and parsed a second time against the ROW's kind
+ * (see {@link patchConnection}): the arm cannot be chosen from the body, or a
+ * write could smuggle broker credentials onto a Modbus gateway.
+ */
+const patchConnectionSchema = z
+  .object({
+    name: z.string().trim().min(1).max(64).optional(),
+    kind: z.string().optional(),
+    params: z.unknown().optional(),
+  })
   .refine(nonEmpty, "nothing to change");
 
 /** Which input field a Zod path points at, for the error's `field`. */
 const FIELDS = new Set([
+  "via",
   "name",
   "unitId",
   "connection",
   "connectionId",
+  "kind",
+  "params",
   "role",
   "profileId",
   "host",
   "arrays",
+  "tempCoefficient",
+  "systemLoss",
   "battery",
 ] as const);
-type Field = NonNullable<DeviceAdminError["field"]>;
 
-function parse<T>(schema: z.ZodType<T>, body: unknown): T {
-  const result = schema.safeParse(body);
-  if (result.success) return result.data;
-  const issue = result.error.issues[0];
-  const head = issue?.path[0];
-  const field = typeof head === "string" && FIELDS.has(head as Field) ? (head as Field) : undefined;
-  const where = field ? `${field === "unitId" ? "unit id" : field}: ` : "";
-  throw new DeviceAdminError(400, `${where}${issue?.message ?? "invalid body"}`, field);
+const parse = <T>(schema: z.ZodType<T>, body: unknown): T =>
+  parseBody(schema, body, FIELDS, (message, field) => {
+    // "unit id", not "unitId": the prefix is read by an operator, and the dialog
+    // labels the control the way the sentence should.
+    const where = field ? `${field === "unitId" ? "unit id" : field}: ` : "";
+    return new DeviceAdminError(400, `${where}${message}`, field);
+  });
+
+/**
+ * How a device is fed, from its role and its profile id.
+ *
+ * Virtual outranks coded, and the optimizer is both: it has a coded declaration
+ * AND no machine behind it, and what an operator needs to know first is the
+ * second one.
+ */
+function kindOf(device: DeviceRecord, coded: CodedInfo | null): DeviceKind {
+  if (isVirtualDevice(device)) return "virtual";
+  return coded !== null ? "coded" : "modbus";
+}
+
+/** Why a device is, or is not, being read. Retirement outranks everything. */
+function stateOf(device: DeviceRecord, kind: DeviceKind, primarySlug: string | null): DeviceState {
+  if (isRetired(device)) return "retired";
+  if (kind === "virtual") return "virtual";
+  if (kind === "coded") return "provided";
+  return device.slug === primarySlug ? "polling" : "idle";
+}
+
+/**
+ * The name the roster shows for a device's profile id.
+ *
+ * A coded id has no profile row and never will (`./coded.ts`), so the
+ * declaration is what answers. Without this the roster flagged every loadpoint
+ * and the optimizer red: "Profile not installed".
+ */
+function profileNameOf(installed: string | null, coded: CodedInfo | null): string | null {
+  if (installed !== null) return installed;
+  if (coded === null) return null;
+  return coded.name ?? coded.integration;
 }
 
 function toView(
@@ -230,16 +482,24 @@ function toView(
   connections: readonly ConnectionRecord[],
   profileName: string | null,
   primarySlug: string | null,
+  coded: CodedInfo | null,
   battery: DeviceBattery | null = null,
 ): DeviceView {
+  const kind = kindOf(device, coded);
+  const name = profileNameOf(profileName, coded);
   return {
     ...device,
     retiredAt: device.retiredAt ? device.retiredAt.toISOString() : null,
-    connection: connections.find((c) => c.id === device.connectionId) ?? null,
+    connection: (() => {
+      const found = connections.find((c) => c.id === device.connectionId);
+      return found ? toConnectionView(found) : null;
+    })(),
     battery,
-    profileName,
-    profileKnown: profileName !== null,
-    polled: !isRetired(device) && device.slug === primarySlug,
+    profileName: name,
+    profileKnown: name !== null,
+    kind,
+    state: stateOf(device, kind, primarySlug),
+    integration: coded?.integration ?? null,
   };
 }
 
@@ -262,7 +522,14 @@ async function view(
     deps.profileName(device.profileId),
     deps.store.readPlantBatteries(plantId),
   ]);
-  return toView(device, connections, name, deps.primarySlug(), packOf(packs, device.id));
+  return toView(
+    device,
+    connections,
+    name,
+    deps.primarySlug(),
+    deps.coded(device.profileId),
+    packOf(packs, device.id),
+  );
 }
 
 /** Every device of the plant, retired ones included, with their endpoints. */
@@ -278,10 +545,50 @@ export async function listDevices(deps: DeviceAdminDeps): Promise<DeviceRoster> 
   const names = await Promise.all(devices.map((d) => deps.profileName(d.profileId)));
   return {
     devices: devices.map((d, i) =>
-      toView(d, connections, names[i] ?? null, primary, packOf(packs, d.id)),
+      toView(
+        d,
+        connections,
+        names[i] ?? null,
+        primary,
+        deps.coded(d.profileId),
+        packOf(packs, d.id),
+      ),
     ),
-    connections,
+    connections: connections.map(toConnectionView),
   };
+}
+
+/**
+ * Every connection of the plant, MASKED — what `/api/connections` answers.
+ *
+ * A service call rather than a store read spelled in the route, so the masking
+ * cannot be forgotten at the one edge that returns these rows on their own.
+ */
+export async function listConnections(
+  deps: DeviceAdminDeps,
+): Promise<{ connections: ConnectionView[] }> {
+  const plant = await deps.store.readPlant();
+  if (!plant) return { connections: [] };
+  return { connections: (await deps.store.readConnections(plant.id)).map(toConnectionView) };
+}
+
+/**
+ * Create a connection ON ITS OWN — a gateway with no device on it yet, or a
+ * broker, which never has one at creation time.
+ *
+ * `POST /api/devices`'s `connection: { create }` arm can only make a connection
+ * ALONGSIDE a device, which was enough while every connection was a Modbus
+ * gateway with a slave behind it. A broker is not: the EVCC loadpoints appear
+ * once the ingest is bound to it and its first message arrives, and the mapped
+ * devices that will sit on one are #79–#84. So the endpoint is provisioned
+ * first and bound to afterwards.
+ */
+export async function addConnection(deps: DeviceAdminDeps, body: unknown): Promise<ConnectionView> {
+  const settings = parse(connectionSettingsSchema, body);
+  const plant = await requirePlant(deps);
+  const created = await deps.store.createConnection(plant.id, settings);
+  await deps.reload();
+  return toConnectionView(created);
 }
 
 async function requirePlant(deps: DeviceAdminDeps): Promise<PlantRecord> {
@@ -300,7 +607,7 @@ async function requirePlant(deps: DeviceAdminDeps): Promise<PlantRecord> {
 async function resolveConnection(
   deps: DeviceAdminDeps,
   plantId: number,
-  choice: AddDeviceInput["connection"],
+  choice: AuthoredDevice["connection"],
   existing: readonly ConnectionRecord[],
 ): Promise<ConnectionRecord> {
   if ("create" in choice) return deps.store.createConnection(plantId, choice.create);
@@ -384,32 +691,95 @@ function conflictOf(error: unknown): DeviceAdminError | null {
  *  4. RELOAD last, so the registry re-resolves against the final state.
  */
 export async function addDevice(deps: DeviceAdminDeps, body: unknown): Promise<DeviceView> {
-  const input = parse(addDeviceSchema, body);
+  const input = requireAuthorable(parse(addDeviceSchema, withDefaultTier(body)));
   const plant = await requirePlant(deps);
-  if ((await deps.profileName(input.profileId)) === null) {
-    throw new DeviceAdminError(400, "profile: not installed on this server", "profileId");
-  }
-  requireInverterFor(input.role, input);
+  await requireTier(deps, input);
   const connections = await deps.store.readConnections(plant.id);
   const connection = await resolveConnection(deps, plant.id, input.connection, connections);
   let device: DeviceRecord;
   try {
-    device = await deps.store.createDevice({
-      plantId: plant.id,
-      connectionId: connection.id,
-      unitId: input.unitId,
-      slug: slugify(input.name),
-      name: input.name,
-      profileId: input.profileId,
-      role: input.role,
-      pv: pvOf(input),
-    });
+    device = await deps.store.createDevice(specOf(input, plant.id, connection.id));
   } catch (error) {
     throw conflictOf(error) ?? error;
   }
-  await writeBattery(deps, device.id, input.battery);
+  await writeBattery(deps, device.id, input.via === "profile" ? input.battery : undefined);
   await deps.reload();
   return view(deps, plant.id, device, [...connections, connection]);
+}
+
+/**
+ * The mapping tier, refused (#79–#81). Everything past this point is a device
+ * this server can actually author.
+ */
+function requireAuthorable(input: AddDeviceInput): AuthoredDevice {
+  if (input.via === "mapping") {
+    throw new DeviceAdminError(
+      400,
+      "via: the mapping tier does not exist yet — add this device as a profile or a coded integration",
+      "via",
+    );
+  }
+  return input;
+}
+
+/**
+ * Resolve the body's `profileId` IN ITS OWN TIER, and refuse it in no other.
+ *
+ * A LOOKUP per arm, never a fallback chain: an id that resolves under neither
+ * is the same 400 this endpoint has always answered, and an id that resolves
+ * under the OTHER tier is that same 400 rather than a quiet re-tiering — a
+ * coded id accepted on the profile arm would store a device the poll loop then
+ * tries to reach over Modbus.
+ */
+async function requireTier(deps: DeviceAdminDeps, input: AuthoredDevice): Promise<void> {
+  if (input.via === "coded") return requireAddableCoded(deps, input.profileId);
+  if ((await deps.profileName(input.profileId)) === null) {
+    throw new DeviceAdminError(400, "profile: not installed on this server", "profileId");
+  }
+  requireInverterFor(input.role, input);
+}
+
+/** A coded id this server declares AND lets an operator add. See {@link CodedInfo.addable}. */
+function requireAddableCoded(deps: DeviceAdminDeps, profileId: string): void {
+  const coded = deps.coded(profileId);
+  if (coded === null) {
+    throw new DeviceAdminError(400, "profile: not a coded integration on this server", "profileId");
+  }
+  if (coded.addable !== true) {
+    throw new DeviceAdminError(
+      409,
+      `profile: ${coded.name ?? profileId} provisions its own device; it cannot be added by hand`,
+      "profileId",
+    );
+  }
+}
+
+/**
+ * The row each tier writes.
+ *
+ * The COMMON half is the whole identity of a device — where it hangs, what it
+ * is called, what authors it — and the slug is derived from the name exactly as
+ * provisioning derives it (`slugify`), so the two paths cannot disagree.
+ */
+function specOf(input: AuthoredDevice, plantId: number, connectionId: number): DeviceSpec {
+  const common = {
+    plantId,
+    connectionId,
+    slug: slugify(input.name),
+    name: input.name,
+    profileId: input.profileId,
+    role: input.role,
+  };
+  if (input.via === "coded") {
+    // 0 where no index was stated: a single pushed device on a connection needs
+    // no index, and the column is NOT NULL.
+    return {
+      ...common,
+      unitId: input.unitId ?? 0,
+      ...(input.params ? { params: input.params } : {}),
+    };
+  }
+  return { ...common, unitId: input.unitId, pv: pvOf(input) };
 }
 
 /**
@@ -432,6 +802,7 @@ export async function patchDevice(
   ]);
   const current = devices.find((d) => d.id === id);
   if (!current) throw new DeviceAdminError(404, `device ${id} does not exist`);
+  requireTopologyUnchanged(current, deps.coded(current.profileId), patch);
   if (patch.retired === true && current.slug === deps.primarySlug()) {
     throw new DeviceAdminError(
       409,
@@ -454,6 +825,59 @@ export async function patchDevice(
   await writeBattery(deps, id, battery);
   await deps.reload();
   return view(deps, plant.id, updated, connections);
+}
+
+/**
+ * The fields that say WHERE a device is and WHAT it is — the ones a row nobody
+ * addresses must never carry.
+ *
+ * Which gateway (`connectionId`), which slave id (`unitId`), which driver
+ * (`profileId`), what it counts as (`role`), and the inverter's physics, which
+ * only a machine with panels and a pack can have.
+ */
+const TOPOLOGY_FIELDS = [
+  "connectionId",
+  "unitId",
+  "profileId",
+  "role",
+  "arrays",
+  "tempCoefficient",
+  "systemLoss",
+  "battery",
+] as const;
+
+/**
+ * A coded or virtual device's TOPOLOGY is frozen; the rest of it is not.
+ *
+ * An edit of such a row seeded the plant's FIRST gateway for its endpoint-less
+ * device and then sent it, so saving an untouched edit bound a loadpoint or the
+ * optimizer to a Modbus endpoint — a change nothing on the screen described
+ * (#213). The refusal behind that used to reject the whole PATCH, and that was
+ * too wide (#219): an EVCC loadpoint could not be RENAMED or RETIRED through
+ * the API at all, and neither could the optimizer, even though a name, a
+ * lifecycle flag and an integration's own settings say nothing about where the
+ * device is. So the gate is per-field now. What it still protects is the
+ * addressing: a row with no endpoint, no slave id and no registers must not
+ * acquire any, because nothing behind it would answer and its history would
+ * stay keyed to a device that claims to be somewhere it is not.
+ *
+ * Modbus rows are untouched — every field is theirs.
+ */
+function requireTopologyUnchanged(
+  device: DeviceRecord,
+  coded: CodedInfo | null,
+  patch: Record<string, unknown>,
+): void {
+  const kind = kindOf(device, coded);
+  if (kind === "modbus") return;
+  const field = TOPOLOGY_FIELDS.find((name) => patch[name] !== undefined);
+  if (field === undefined) return;
+  const why = kind === "virtual" ? "internal" : "fed by an integration";
+  throw new DeviceAdminError(
+    409,
+    `${field}: this device is ${why}; it has no Modbus settings to change`,
+    field,
+  );
 }
 
 /** The two re-pointing checks a device patch shares with an add: the profile is registered, the gateway is the plant's. */
@@ -490,12 +914,40 @@ export async function patchConnection(
   deps: DeviceAdminDeps,
   id: number,
   body: unknown,
-): Promise<ConnectionRecord> {
+): Promise<ConnectionView> {
   const patch = parse(patchConnectionSchema, body);
-  await requireConnection(deps, id);
-  const updated = await deps.store.updateConnection(id, patch);
+  const { connection } = await requireConnection(deps, id);
+  if (patch.kind !== undefined && patch.kind !== connection.kind) {
+    throw new DeviceAdminError(
+      409,
+      `kind: a connection's kind cannot change (this one is ${connection.kind}); add a new connection instead`,
+      "kind",
+    );
+  }
+  const updated = await deps.store.updateConnection(id, {
+    ...(patch.name !== undefined ? { name: patch.name } : {}),
+    ...(patch.params !== undefined ? { params: mergedParams(connection, patch.params) } : {}),
+  });
   await deps.reload();
-  return updated;
+  return toConnectionView(updated);
+}
+
+/**
+ * An incoming `params` document, validated against the ROW's kind and merged
+ * over what is stored.
+ *
+ * Two things at once, and both are load-bearing. The kind comes from the ROW,
+ * never from the body, so a write cannot choose the arm it is validated against.
+ * And the merge preserves the write-only broker password: the dialog reads the
+ * masked record, edits the URL and sends it back with no password, and a plain
+ * replacement would silently disconnect the broker.
+ */
+function mergedParams(connection: ConnectionRecord, params: unknown): ConnectionParams["params"] {
+  const incoming =
+    connection.kind === "modbus"
+      ? ({ kind: "modbus", params: parse(modbusParamsSchema, params) } as const)
+      : ({ kind: "mqtt", params: parse(mqttParamsSchema, params) } as const);
+  return mergeConnectionParams(connection, incoming).params;
 }
 
 /**

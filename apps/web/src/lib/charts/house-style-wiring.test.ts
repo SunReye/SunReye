@@ -104,7 +104,6 @@ const KIND_OF: Record<string, string> = {
   // The same measure when it is signed — the fill splits at zero.
   "lib/components/inverter/diverging-area.svelte": "flow",
   // Several measures compared on one plot.
-  "lib/components/inverter/custom-live-chart.svelte": "overlay",
   "lib/components/inverter/_shared/custom-chart-plot.svelte": "overlay",
   "lib/components/automations/decision-power-chart.svelte": "overlay",
   "lib/components/automations/soc-chart.svelte": "overlay",
@@ -160,8 +159,10 @@ describe("every plot states the kind it plots", () => {
     const allowed = new Set([...Object.keys(KIND_OF), ...SHELLS]);
     expect(drawing.filter((f) => !allowed.has(f))).toEqual([]);
     // And the discovery still finds them: a regex that quietly stops matching
-    // passes exactly as green as one that holds.
-    expect(drawing.length).toBeGreaterThanOrEqual(5);
+    // passes exactly as green as one that holds. The floor was 5 until #216
+    // deleted `custom-live-chart` — the gliding overlay the Day tab used to draw
+    // instead of the day it named.
+    expect(drawing.length).toBeGreaterThanOrEqual(4);
   });
 
   test.each(SHELLS)("%s reads the table with the kind it was handed", (file) => {
@@ -179,7 +180,6 @@ describe("a chart hands on the treatment it asked for", () => {
     "lib/components/inverter/power-area.svelte",
     "lib/components/inverter/diverging-area.svelte",
     "lib/components/inverter/_shared/custom-chart-plot.svelte",
-    "lib/components/inverter/custom-live-chart.svelte",
   ];
 
   test.each(AREA_CALLERS)("%s spreads the treatment onto its mark", (file) => {

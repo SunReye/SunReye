@@ -7,8 +7,13 @@
 	import FieldProblem from './field-problem.svelte';
 	import NewConnectionFields from './new-connection-fields.svelte';
 
-	// Step 1: the gateway. An existing connection, or the "new" option that
-	// reveals the endpoint fields underneath.
+	// Step 1: the gateway. An existing Modbus connection, or the "new" option
+	// that reveals the endpoint fields underneath.
+	//
+	// Modbus only, and `connectionOptions` is where that is decided: a device in
+	// this dialog has a slave id and a register profile, and a broker carries
+	// neither. So the new-connection arm here has no kind switch — a broker is
+	// added from the panel's own "Add connection" (#217).
 	let {
 		form = $bindable(),
 		connections,
@@ -42,5 +47,5 @@
 </div>
 
 {#if isNew}
-	<NewConnectionFields bind:connection={form.newConnection} />
+	<NewConnectionFields bind:connection={form.newConnection} kind="hidden" />
 {/if}

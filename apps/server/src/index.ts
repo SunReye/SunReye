@@ -16,6 +16,7 @@ import { energySeries } from "./energy/energy";
 import { entitiesApi } from "./inverter/entities";
 import { ensureDevice, isRetired, readPlant } from "@SunReye/db/plant-repo";
 import { evccControl, evccSnapshot, rebuildEvcc, stopEvcc } from "./evcc/evcc";
+import { getEvccConfig } from "./settings/evcc-settings";
 import { loadpointDeviceSpec } from "./evcc/evcc-devices";
 import { metricIdOf } from "./shared/identity-sql";
 import { queryRecentBuckets, queryRollup } from "./shared/history";
@@ -30,8 +31,11 @@ import { isPublicDashboard } from "./settings/access-settings";
 import { buildProfileContext, initProfiles } from "./inverter/inverter";
 import { deviceRegistry } from "./devices/registry-instance";
 import { syncProvisioning } from "./inverter/provision-boot";
+import { reloadConnections, stopConnections } from "./devices/connection-runtime";
+import { seedMqttBroker } from "./settings/mqtt-broker-instance";
 import { WriteRejectedError } from "./inverter/control-writer";
 import { log, recentLogs, setupLogging } from "./shared/logging";
+import { plantClient } from "./shared/plant-client";
 import { requestLogger } from "./shared/request-log";
 import { createStreams } from "./shared/streams";
 import { initLogLevel } from "./settings/logging-settings";
@@ -43,6 +47,7 @@ import { startBatteryScoring } from "./battery/scoring";
 import { startUpdateChecks, stopUpdateChecks } from "./inverter/profiles";
 import { batteryRoutes } from "./routes/battery";
 import { deviceRoutes } from "./routes/devices";
+import { integrationRoutes } from "./routes/integrations";
 import { profileRoutes } from "./routes/profiles";
 import { automationStreamSnapshot } from "./automation/automation";
 import { automationRoutes } from "./routes/automations";
@@ -216,6 +221,21 @@ const ONBOARDING_REQUIRED = { error: "No active inverter profile — onboarding 
 // plant, and never a renumbered device id, which would rebind five years of
 // readings to a different machine. Never throws.
 await syncProvisioning(profile);
+
+// The broker, carried from env into the spine ONCE — the MQTT counterpart of the
+// endpoint seed above (#217).
+//
+// `MQTT_BROKER_URL` / `MQTT_USERNAME` / `MQTT_PASSWORD` are documented
+// "seed only" env vars, and until now they seeded a FIELD of `app_settings.mqtt`.
+// The endpoint is a `connections` row now, so without this a docker install that
+// has always set `MQTT_BROKER_URL` would come up with the Home Assistant export
+// silently off. It creates rows this install has none of and never edits one it
+// has: a plant that already carries a broker — the one migration 0006 made — is
+// adopted, and a setting that already names a resolvable broker is untouched.
+//
+// AFTER provisioning, because the connection needs a plant to belong to, and
+// BEFORE `runtime.start` reads the export config to build its bridge.
+await seedMqttBroker();
 
 // The device roster, read AFTER provisioning created the rows and before any
 // route can serve a history read from it. `runtime.start` reloads it again (it
@@ -721,6 +741,10 @@ const app = new Elysia()
   .use(profileRoutes)
   // The device roster: list, add on an existing or new gateway, rename, retire.
   .use(deviceRoutes)
+  // The other half of the same page: what RUNS over those endpoints — the EVCC
+  // ingest and the Home Assistant export as rows, plus the catalog the wizard
+  // renders its add step from.
+  .use(integrationRoutes)
   // User-defined custom charts for the history page (multi-metric overlays).
   .use(customChartsRoutes({ ctx }))
   // The 1.2.0 -> 2.0.0 migration's onboarding surface: the status every page load
@@ -801,6 +825,20 @@ if (ctx) {
   runtime.armStorage();
 }
 
+// THE CONNECTION TIER (#221): one client per `kind = 'mqtt'` row, owned by the
+// connection rather than by whatever happens to publish on it.
+//
+// AFTER `runtime.start`, and that order is deliberate. The Home Assistant export
+// declares a LAST WILL when it takes its client, and an LWT is a connect-time
+// property — a pass that had already opened the broker without one would have to
+// re-dial to add it, flapping a live broker on every boot. The export opens the
+// row it uses; this opens whatever is left, so a broker an operator has added but
+// not yet bound to anything can still be reported as reachable or not.
+//
+// BEFORE `rebuildEvcc`, so the ingest joins a client that already exists instead
+// of opening a second one on the same row. Never throws.
+await reloadConnections();
+
 // Measure the battery's usable capacity from the discharge segments in raw
 // history — one catch-up pass over the retention window, then a slow tick.
 // No-op on a profile that maps no SOC, so a batteryless plant pays nothing.
@@ -824,14 +862,23 @@ startUpdateChecks();
 // Assembled here because it is composition: the ingest owns none of these.
 void rebuildEvcc(streams, {
   async ensureDevice(_id, index, title) {
-    const plant = await readPlant({ execute: (query) => db.execute(query) });
+    const client = plantClient();
+    const plant = await readPlant(client);
     // Onboarding-only boot: EVCC ingest starts before there is a plant to hang a
     // device on. The live feed runs; storage starts on the next snapshot after
     // provisioning.
     if (!plant) return "absent";
+    // The loadpoint is bound to EVCC's OWN broker connection (#217), and its
+    // topic root travels onto the row. Read here rather than captured at boot
+    // because a settings save may have re-pointed either one, and a row created
+    // against the previous broker would sit on an endpoint nothing subscribes to.
+    const config = await getEvccConfig();
     const row = await ensureDevice(
-      { execute: (query) => db.execute(query) },
-      loadpointDeviceSpec(plant.id, index, title),
+      client,
+      loadpointDeviceSpec(plant.id, index, title, {
+        connectionId: config.connectionId,
+        topicRoot: config.topicRoot,
+      }),
     );
     // RETIRED IS NOT REGISTERED. `ensureDevice` is `ON CONFLICT DO NOTHING` +
     // SELECT, so it answers "the row is there" for a row the operator retired
@@ -869,6 +916,10 @@ for (const signal of ["SIGINT", "SIGTERM"] as const) {
     stopUpdateChecks();
     await stopEvcc();
     await runtime.stop();
+    // LAST: both consumers release their hold first, so this closes the sockets
+    // that are genuinely left rather than yanking one out from under a bridge
+    // still publishing its "offline" availability.
+    await stopConnections();
     process.exit(0);
   });
 }

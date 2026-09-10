@@ -114,26 +114,54 @@ export function loadpointDeviceSpec(
   plantId: number,
   index: number,
   title: string | null,
+  binding: LoadpointBinding,
 ): {
   plantId: number;
-  connectionId: null;
+  connectionId: number | null;
   unitId: number;
   slug: string;
   name: string;
   profileId: string;
   role: string;
+  params: { topicRoot: string };
 } {
   return {
     plantId,
-    connectionId: null,
-    unitId: 0,
+    connectionId: binding.connectionId,
+    // THE LOADPOINT'S OWN INDEX, not 0 (#217).
+    //
+    // A pushed device has no slave id, so `unit_id` was 0 for every loadpoint —
+    // which `devices_connection_unit_key` tolerated only because the connection
+    // was null and Postgres treats NULLs as distinct. The index is the addressing
+    // a loadpoint actually has, it is already the frozen half of the slug, and
+    // with it the unique index holds for two loadpoints on one broker.
+    unitId: index,
     slug: loadpointDeviceId(index),
     // A CREATION default the operator may then edit — `ensureDevice` never
     // overwrites an existing name, so a later EVCC rename does not undo theirs.
     name: title ?? `EVCC loadpoint ${index}`,
     profileId: EVCC_LOADPOINT_PROFILE,
     role: "charger",
+    // Creation only, like every other field here: `ensureDevice` is
+    // `ON CONFLICT DO NOTHING`, so an operator who edited the topic root on the
+    // device keeps their value.
+    params: { topicRoot: binding.topicRoot },
   };
+}
+
+/**
+ * Where a loadpoint is reached — the broker connection and the EVCC instance's
+ * topic root.
+ *
+ * A pair rather than two arguments because they are one fact: the root is the
+ * grammar of the topics on THAT broker, and a device carrying one with the other
+ * missing is addressed nowhere. `connectionId` is nullable because the ingest
+ * starts on an install that has no connection yet (a boot before onboarding, or
+ * before the operator picks a broker) and its readings still have to land.
+ */
+export interface LoadpointBinding {
+  connectionId: number | null;
+  topicRoot: string;
 }
 
 /** Wh, as EVCC publishes energy, in the kWh the plant records it in. */

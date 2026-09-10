@@ -15,6 +15,8 @@
  * re-conflate the two zones #46 exists to keep apart.
  */
 
+import { wallClockAsUtc } from "@SunReye/inverter-core/zone-parts";
+
 /** Granularity of a calendar period. */
 export type Grain = "day" | "week" | "month" | "year";
 
@@ -38,55 +40,14 @@ interface CalendarDate {
 const MINUTE = 60_000;
 const DAY = 86_400_000;
 
-/** One `Intl.DateTimeFormat` per zone — constructing one is expensive. */
-const formatters = new Map<string, Intl.DateTimeFormat>();
-
-function formatterFor(timeZone: string): Intl.DateTimeFormat {
-  let f = formatters.get(timeZone);
-  if (!f) {
-    f = new Intl.DateTimeFormat("en-US", {
-      timeZone,
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-      hour: "2-digit",
-      minute: "2-digit",
-      second: "2-digit",
-      hourCycle: "h23",
-    });
-    formatters.set(timeZone, f);
-  }
-  return f;
-}
-
-/**
- * The wall clock at `ms` in `timeZone`, expressed as the UTC timestamp of those
- * same digits. The difference from `ms` is the zone's offset; equality with a
- * target says a wall clock resolves back to itself.
- */
-function wallAsUtc(ms: number, timeZone: string): number {
-  const parts = formatterFor(timeZone).formatToParts(new Date(ms));
-  const get = (type: Intl.DateTimeFormatPartTypes): number =>
-    Number(parts.find((p) => p.type === type)?.value ?? 0);
-  // `h23` renders midnight as 00, but some engines have emitted 24 — normalise.
-  return Date.UTC(
-    get("year"),
-    get("month") - 1,
-    get("day"),
-    get("hour") % 24,
-    get("minute"),
-    get("second"),
-  );
-}
-
 /** Signed offset (ms) of `timeZone` from UTC at `ms` — positive east of Greenwich. */
 function offsetAt(ms: number, timeZone: string): number {
-  return wallAsUtc(ms, timeZone) - ms;
+  return wallClockAsUtc(timeZone, ms) - ms;
 }
 
 /** The calendar date `instant` falls on in `timeZone`. */
 function dateIn(instant: Date, timeZone: string): CalendarDate {
-  const wall = wallAsUtc(instant.getTime(), timeZone);
+  const wall = wallClockAsUtc(timeZone, instant.getTime());
   const d = new Date(wall);
   return { year: d.getUTCFullYear(), month: d.getUTCMonth() + 1, day: d.getUTCDate() };
 }
@@ -126,7 +87,7 @@ function midnightOf(date: CalendarDate, timeZone: string): Date {
   const wall = Date.UTC(date.year, date.month - 1, date.day);
   const offsets = [offsetAt(wall - DAY, timeZone), offsetAt(wall + DAY, timeZone)];
   const candidates = [...new Set(offsets.map((o) => wall - o))];
-  const resolves = candidates.filter((c) => wallAsUtc(c, timeZone) === wall);
+  const resolves = candidates.filter((c) => wallClockAsUtc(timeZone, c) === wall);
   if (resolves.length > 0) return new Date(Math.min(...resolves));
   return transitionBetween(Math.min(...candidates), Math.max(...candidates), timeZone);
 }

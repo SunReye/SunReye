@@ -1,14 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import type { DischargeSegment } from "./capacity-estimate";
-import {
-  BACKFILL_WINDOW_MS,
-  ROUTINE_WINDOW_MS,
-  interiorSegments,
-  planWindows,
-  scoreSpan,
-  startBatteryScoring,
-  type ScoringDeps,
-} from "./scoring";
+import { interiorSegments, planWindows } from "./scoring-plan";
+import { startBatteryScoring } from "./scoring";
+import { BACKFILL_WINDOW_MS, ROUTINE_WINDOW_MS, scoreSpan, type ScoringDeps } from "./scoring-walk";
 
 /**
  * The background scorer used to read the WHOLE raw retention window in one
@@ -17,6 +11,12 @@ import {
  * the event loop was gone, `/healthz` stopped answering, and the watchdog
  * restarted the addon every few minutes (seen live 2026-09-09). The pass is now
  * chunked, sequential and overlapping, and these tests pin the shape of that.
+ *
+ * The geometry (`./scoring-plan.ts`), the walk over it (`./scoring-walk.ts`) and
+ * the schedule that drives the walk (`./scoring.ts`) are covered together, in
+ * one file: the walk and the schedule need the same deps double, and a shared
+ * helper module for it would be a second copy of `fakeDeps` away from the only
+ * two suites that use it.
  */
 
 const DAY = 86_400_000;
@@ -120,7 +120,11 @@ describe("scoreSpan", () => {
   test("walks the chunks ONE AT A TIME — never all queries in flight at once", async () => {
     const { deps, asked, maxInFlight } = fakeDeps();
     const now = 100 * DAY;
-    await scoreSpan(deps, now - 30 * DAY, now, { chunkMs: 7 * DAY, overlapMs: DAY, marginMs: HOUR });
+    await scoreSpan(deps, now - 30 * DAY, now, {
+      chunkMs: 7 * DAY,
+      overlapMs: DAY,
+      marginMs: HOUR,
+    });
     expect(asked.length).toBeGreaterThan(3);
     expect(maxInFlight()).toBe(1);
     expect(asked[0]?.from).toBe(now - 30 * DAY);
@@ -130,12 +134,11 @@ describe("scoreSpan", () => {
   test("a chunk that fails is skipped and the rest are still scored", async () => {
     const log: string[] = [];
     const { deps, asked } = fakeDeps({ fail: (from) => from.getTime() === 6 * DAY });
-    const result = await scoreSpan(
-      { ...deps, log: (m) => log.push(m) },
-      0,
-      20 * DAY,
-      { chunkMs: 7 * DAY, overlapMs: DAY, marginMs: HOUR },
-    );
+    const result = await scoreSpan({ ...deps, log: (m) => log.push(m) }, 0, 20 * DAY, {
+      chunkMs: 7 * DAY,
+      overlapMs: DAY,
+      marginMs: HOUR,
+    });
     expect(asked.map((w) => w.from)).toEqual([0, 6 * DAY, 12 * DAY, 18 * DAY]);
     expect(result.measured).toBe(3);
     expect(log.some((m) => /boom/.test(m))).toBe(true);
@@ -143,7 +146,11 @@ describe("scoreSpan", () => {
 
   test("sums what was measured and what was actually stored", async () => {
     const { deps } = fakeDeps({ segmentsPer: 2 });
-    const result = await scoreSpan(deps, 0, 7 * DAY, { chunkMs: 7 * DAY, overlapMs: DAY, marginMs: HOUR });
+    const result = await scoreSpan(deps, 0, 7 * DAY, {
+      chunkMs: 7 * DAY,
+      overlapMs: DAY,
+      marginMs: HOUR,
+    });
     expect(result).toEqual({ measured: 2, stored: 2 });
   });
 });

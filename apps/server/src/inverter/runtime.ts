@@ -17,6 +17,7 @@
 import { db } from "@SunReye/db";
 import type { InverterConfig } from "@SunReye/db/inverter-config";
 import { type PollEndpoint, loadPollEndpoint } from "./endpoint";
+import type { MqttParams } from "@SunReye/db/connection-kinds";
 import type { MqttConfig } from "@SunReye/db/mqtt-config";
 import { metricsConfigLog, metricsRaw } from "@SunReye/db/schema/metrics";
 import { env } from "@SunReye/env/server";
@@ -59,11 +60,31 @@ import { MissingMqttNamespaceError, readMqttNamespace } from "./mqtt-namespace";
 import { fetchSolarForecast, toForecastExport } from "../forecast/solar-forecast";
 import { runSpotPriceSync } from "../prices/spot-price-job";
 import { getSpotPriceConfig } from "../settings/spot-price-settings";
+import { brokerPool } from "../devices/broker-pool-instance";
+import { readBroker } from "../settings/mqtt-broker-instance";
 import { liveState } from "../shared/state";
 import { getWeatherConfig } from "../settings/weather-settings";
 import type { Streams } from "../shared/streams";
 
 const logger = log("runtime");
+
+/**
+ * The bounds a register declares, for the automation loop's clamp.
+ *
+ * A register range is a TRANSPORT fact — it lives on the map that says how to
+ * talk to the device — so it is read off the profile context here and handed to
+ * the loop as a function, rather than the loop being given a profile it would
+ * then be able to resolve roles from.
+ *
+ * Module scope, not a closure inside {@link createRuntime}: it reads nothing but
+ * its two arguments, and the clamp it feeds is the difference between a target
+ * the device accepts and one it refuses — see `./runtime.test.ts`.
+ */
+// fallow-ignore-next-line unused-export -- the clamp source handed to the automation loop by `createRuntime`, asserted directly in `./runtime.test.ts`; test files aren't traced as consumers.
+export function constraintOf(profileCtx: ProfileContext, key: string): EntityConstraint | null {
+  const def = profileCtx.defByKey.get(key);
+  return def ? entityConstraint(def) : null;
+}
 
 /**
  * The optimizer's `devices` row, over the real plant spine.
@@ -78,7 +99,8 @@ const logger = log("runtime");
  * has no plant yet, and taking it down over a missing device row would be worse
  * than storing nothing until the next tick.
  */
-async function ensureOptimizerRow(): Promise<DeviceRowState> {
+// fallow-ignore-next-line unused-export -- the default behind `RuntimeDeps.ensureOptimizerDevice`, asserted against a stubbed spine in `./optimizer-row.test.ts`; test files aren't traced as consumers.
+export async function ensureOptimizerRow(): Promise<DeviceRowState> {
   const plantDb = { execute: (query: Parameters<typeof db.execute>[0]) => db.execute(query) };
   const plant = await readPlant(plantDb);
   if (!plant) return "absent";
@@ -628,6 +650,11 @@ export function createRuntime(deps: RuntimeDeps = {}) {
    */
   async function rebuildBridge(config: MqttConfig): Promise<void> {
     const previous = bridge;
+    // The broker is a CONNECTION now (#217), resolved per rebuild for the same
+    // reason the namespace is: a settings save may have re-pointed it, and a
+    // bridge holding the previous broker with this config's prefix would publish
+    // into a namespace nobody is watching.
+    const broker = await readBroker(config.connectionId);
     const ctx = context();
     let namespace: MqttNamespace | null = null;
     try {
@@ -648,7 +675,20 @@ export function createRuntime(deps: RuntimeDeps = {}) {
       );
     }
     bridge =
-      namespace === null ? null : startMqttBridge(config, { ctx: { ...ctx, ...namespace }, write });
+      namespace === null
+        ? null
+        : startMqttBridge(config, {
+            ctx: { ...ctx, ...namespace },
+            write,
+            // THE CONNECTION'S CLIENT (#221). Null when the setting names no
+            // resolvable broker, which is what the bridge returns null for —
+            // the export has no on/off flag of its own. The bridge supplies its
+            // own last will, because the availability topic is its namespace's.
+            acquire: ({ will }) =>
+              broker && config.connectionId !== null
+                ? brokerPool.acquire(config.connectionId, broker, { will })
+                : null,
+          });
     if (previous) await previous.close();
     // Seed a fresh bridge with the current forecast instead of waiting a full
     // interval; harmless when the forecast is disabled (publishes null → no-op).
@@ -699,19 +739,6 @@ export function createRuntime(deps: RuntimeDeps = {}) {
    * passed straight through to the engine loop, which skips the frame (and the
    * plan projection built for it) when nobody is listening.
    */
-  /**
-   * The bounds a register declares, for the automation loop's clamp.
-   *
-   * A register range is a TRANSPORT fact — it lives on the map that says how to
-   * talk to the device — so it is read off the profile context here and handed
-   * to the loop as a function, rather than the loop being given a profile it
-   * would then be able to resolve roles from.
-   */
-  function constraintOf(profileCtx: ProfileContext, key: string): EntityConstraint | null {
-    const def = profileCtx.defByKey.get(key);
-    return def ? entityConstraint(def) : null;
-  }
-
   async function start(
     streamBus: Streams,
     profileCtx: ProfileContext,
@@ -860,12 +887,19 @@ export function createRuntime(deps: RuntimeDeps = {}) {
     }
   }
 
-  /** Try connecting to a broker without disturbing the live bridge. */
-  function testMqtt(config: MqttConfig): Promise<{ ok: boolean; error?: string }> {
+  /**
+   * Try connecting to a broker without disturbing the live bridge.
+   *
+   * Takes the BROKER, not the export config: since #217 the endpoint is a
+   * connection, and what an operator tests is a broker — one they may not have
+   * bound to the export yet. The caller resolves it
+   * (`../settings/mqtt-broker.ts`).
+   */
+  function testMqtt(broker: MqttParams): Promise<{ ok: boolean; error?: string }> {
     return new Promise((resolve) => {
-      const client = mqtt.connect(config.brokerUrl, {
-        username: config.username,
-        password: config.password,
+      const client = mqtt.connect(broker.brokerUrl, {
+        username: broker.username,
+        password: broker.password,
         connectTimeout: 4000,
         reconnectPeriod: 0, // one shot — don't loop retrying a bad broker
       });

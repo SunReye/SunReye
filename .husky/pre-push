@@ -1,0 +1,40 @@
+# THE BACKSTOP FOR A BYPASSED PRE-COMMIT.
+#
+# `pre-commit` is thorough and skippable, and it gets skipped for real reasons:
+# lint-staged's fallow audit is scoped to the merge-base with master, so a branch
+# that inherits a finding cannot commit until it pays down debt it did not
+# create. `--no-verify` then skips oxlint and `oxfmt --write` as well, and those
+# only ever saw the STAGED files anyway.
+#
+# That is how PR #218 pushed two unformatted files and learned about it from a
+# red `oxfmt --check` minutes later. Push is the right moment for the whole-repo
+# view: it catches every commit however it was made — bypassed hook, amend,
+# rebase, squash — and it is the last point before the work leaves the machine.
+#
+# Everything here is a check CI also runs, and all of it together takes a couple
+# of seconds. Keep it that way: the slow gates (coverage, the route smoke, the
+# database suite) belong in CI and in a deliberate local run, not here, because
+# a hook that costs minutes is a hook that gets bypassed too. `scripts/git-hooks.test.ts`
+# pins both halves of that bargain.
+#
+# The env stripping is the same backstop as in pre-commit: git exports GIT_DIR &
+# co. into its hooks, and any `git` a test spawns then targets THIS repository
+# whatever its cwd.
+
+# `set -e` of its own, though husky already invokes hooks as `sh -e`. Without it
+# this script's exit code is only its LAST command's, so a failed format check
+# followed by a passing mock-hygiene run exits 0 — which is exactly what
+# happened when this hook was first verified by hand with a plain `sh`: the
+# drift was printed, and the hook said fine. A guard that depends on how it was
+# invoked is a guard that reads as green in the one situation you most want to
+# trust it.
+set -e
+
+bunx oxfmt --check
+bunx oxlint
+
+env -u GIT_DIR -u GIT_WORK_TREE -u GIT_INDEX_FILE -u GIT_PREFIX \
+    -u GIT_COMMON_DIR -u GIT_OBJECT_DIRECTORY -u GIT_NAMESPACE \
+    bun run test
+
+bun run test:mocks

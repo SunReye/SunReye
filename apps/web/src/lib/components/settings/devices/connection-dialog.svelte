@@ -6,50 +6,71 @@
 	import * as m from '$lib/paraglide/messages';
 	import { apiErrorText } from '../api-error';
 	import ConnectionDeleteDialog from './connection-delete-dialog.svelte';
+	import DialogShell from './device-dialog-shell.svelte';
 	import ConnectionProbe from './connection-probe.svelte';
-	import type { ConnectionView, DeviceView, NewConnection, Transport } from './device-types';
+	import {
+		type ConnectionDraft,
+		blankDraft,
+		connectionCreateBody,
+		connectionPatchBody,
+		draftFromConnection
+	} from './connection-draft';
+	import type { ConnectionView, DeviceView } from './device-types';
 	import NewConnectionFields from './new-connection-fields.svelte';
 
-	// Edit one gateway. Every device bound to it follows the save — the
-	// description says so. Delete is offered only when nothing is bound, which is
-	// also the only case the server (and the FK under it) will accept.
+	// Add or edit ONE endpoint: a Modbus gateway, or an MQTT broker (#217). Every
+	// device bound to a gateway follows the save — the description says so.
+	//
+	// A broker is created here and nowhere else. `POST /api/devices` can create a
+	// connection alongside a device, but a broker has no device to be created
+	// with: the EVCC loadpoints appear after the ingest is bound to it.
+	//
+	// Delete is offered only when nothing is bound, which is also the only case
+	// the server (and the FK under it) accepts.
 	let {
-		connection = $bindable(null),
+		target = $bindable(null),
 		devices,
 		onSaved,
 		onDeleted
 	}: {
-		/** The gateway being edited; null closes the dialog. */
-		connection?: ConnectionView | null;
+		/** The connection being edited, `'new'` to add one, or null to close. */
+		target?: ConnectionView | 'new' | null;
 		/** The devices on it — the delete guard. */
 		devices: DeviceView[];
 		onSaved: () => void;
 		onDeleted: () => void;
 	} = $props();
 
-	let draft = $state<NewConnection>(blank());
+	let draft = $state<ConnectionDraft>(blankDraft());
 	let busy = $state(false);
 	let confirmDelete = $state(false);
 
-	const open = $derived(connection !== null);
-	const name = $derived(connection?.name ?? '');
-	const canDelete = $derived(devices.length === 0);
-	const sendable = $derived(draft.host.trim() !== '' && !busy);
+	const open = $derived(target !== null);
+	const existing = $derived(target !== null && target !== 'new' ? target : null);
+	const editing = $derived(existing !== null);
+	const name = $derived(existing?.name ?? '');
+	const canDelete = $derived(editing && devices.length === 0);
+	const body = $derived(editing ? connectionPatchBody(draft) : connectionCreateBody(draft));
+	const sendable = $derived(body !== null && !busy);
+	const title = $derived(
+		editing ? m.devices_connection_dialog_title() : m.devices_connection_new_title()
+	);
+	const description = $derived(
+		editing ? m.devices_connection_dialog_description() : m.devices_connection_new_description()
+	);
 
-	function blank(): NewConnection {
-		return { name: '', host: '', port: 502, transport: 'tcp', timeoutMs: 2000, pollIntervalMs: 1000 };
-	}
-
-	// A fresh draft each time a gateway is opened.
+	// A fresh draft each time the dialog opens: the previous endpoint's values
+	// are the wrong defaults for the next one.
 	$effect(() => {
-		if (connection) {
-			draft = { ...connection, transport: connection.transport as Transport };
-			confirmDelete = false;
-		}
+		if (target === null) return;
+		// A new endpoint starts NAMELESS: "Gateway 3" is a wrong name for a broker,
+		// and the save button is disabled until the operator types one.
+		draft = target === 'new' ? blankDraft() : draftFromConnection(target);
+		confirmDelete = false;
 	});
 
 	function close() {
-		connection = null;
+		target = null;
 	}
 
 	/** The failure toast for either write, from the treaty's error shape. */
@@ -57,56 +78,65 @@
 		toast.error(template({ error: apiErrorText(error?.value, m.error_unknown()) }));
 	}
 
+	/** The one write, addressed at the row when there is one. */
+	function write(sending: NonNullable<typeof body>, row: ConnectionView | null) {
+		if (row) return api.api.connections({ id: String(row.id) }).patch(sending);
+		return api.api.connections.post(sending);
+	}
+
+	function announce(name: string, row: ConnectionView | null) {
+		if (row) return toast.success(m.devices_toast_connection_saved({ name }));
+		toast.success(m.devices_toast_connection_added({ name }));
+	}
+
 	async function save(event: SubmitEvent) {
 		event.preventDefault();
-		const target = connection;
-		if (!target || !sendable) return;
+		const sending = body;
+		if (!sendable || !sending) return;
+		const row = existing;
 		busy = true;
-		const result = await api.api.connections({ id: String(target.id) }).patch({ ...draft, host: draft.host.trim() });
+		const result = await write(sending, row);
 		busy = false;
 		if (!result.data) return failed(m.devices_toast_connection_failed, result.error);
-		toast.success(m.devices_toast_connection_saved({ name: (result.data as ConnectionView).name }));
+		announce((result.data as ConnectionView).name, row);
 		onSaved();
 		close();
 	}
 
 	async function remove() {
-		const target = connection;
-		if (!target) return;
+		const row = existing;
+		if (!row) return;
 		busy = true;
-		const result = await api.api.connections({ id: String(target.id) }).delete();
+		const result = await api.api.connections({ id: String(row.id) }).delete();
 		busy = false;
 		if (!result.data) return failed(m.devices_toast_connection_delete_failed, result.error);
-		toast.success(m.devices_toast_connection_deleted({ name: target.name }));
+		toast.success(m.devices_toast_connection_deleted({ name: row.name }));
 		onDeleted();
 		close();
 	}
 </script>
 
-<Dialog.Root {open} onOpenChange={(v) => !v && close()}>
-	<Dialog.Content class="max-h-[90dvh] overflow-y-auto sm:max-w-xl">
-		<Dialog.Header>
-			<Dialog.Title>{m.devices_connection_dialog_title()}</Dialog.Title>
-			<Dialog.Description>{m.devices_connection_dialog_description()}</Dialog.Description>
-		</Dialog.Header>
-		<form class="flex flex-col gap-4" onsubmit={save}>
-			<NewConnectionFields bind:connection={draft} />
-			<ConnectionProbe {draft} />
-			<Dialog.Footer class="sm:justify-between">
-				<div>
-					{#if canDelete}
-						<Button type="button" variant="destructive" disabled={busy} onclick={() => (confirmDelete = true)}>
-							{m.action_delete()}
-						</Button>
-					{/if}
-				</div>
-				<div class="flex gap-2">
-					<Button type="button" variant="outline" onclick={close}>{m.action_cancel()}</Button>
-					<Button type="submit" disabled={!sendable}>{m.action_save()}</Button>
-				</div>
-			</Dialog.Footer>
-		</form>
-	</Dialog.Content>
-</Dialog.Root>
+<DialogShell {open} {title} {description} onClose={close} onsubmit={save}>
+	<NewConnectionFields bind:connection={draft} kind={editing ? 'locked' : 'choose'} />
+	<ConnectionProbe {draft} />
+	<Dialog.Footer class="sm:justify-between">
+		<div>
+			{#if canDelete}
+				<Button
+					type="button"
+					variant="destructive"
+					disabled={busy}
+					onclick={() => (confirmDelete = true)}
+				>
+					{m.action_delete()}
+				</Button>
+			{/if}
+		</div>
+		<div class="flex gap-2">
+			<Button type="button" variant="outline" onclick={close}>{m.action_cancel()}</Button>
+			<Button type="submit" disabled={!sendable}>{m.action_save()}</Button>
+		</div>
+	</Dialog.Footer>
+</DialogShell>
 
 <ConnectionDeleteDialog bind:open={confirmDelete} {name} {busy} onConfirm={remove} />

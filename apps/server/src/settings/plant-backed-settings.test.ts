@@ -88,6 +88,7 @@ beforeEach(() => {
       name: "Inverter",
       profileId: "deye",
       role: "inverter",
+      params: {},
       unitId: 1,
       connectionId: 1,
       arrays: [{ kwp: 9.8, tilt: 30, azimuth: 0 }],

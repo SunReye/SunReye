@@ -44,6 +44,7 @@ import { type ReplayClient, bunSqlClient, metricKeyWriter } from "@SunReye/db/re
 import { exportArchive } from "@SunReye/db/archive-export";
 import { importArchive, upsertDevice } from "@SunReye/db/archive-import";
 import { MEMBERS, buildManifest, emptyStreamCounts, tarEnd, tarMember } from "@SunReye/db/archive";
+import { openArchive } from "@SunReye/db/archive-file";
 import { createLineSpool, writeArchive } from "@SunReye/db/archive-file";
 import { databaseReachable, resetArchiveDatabase } from "./harness";
 
@@ -163,6 +164,33 @@ suite("the portable archive against a real TimescaleDB", () => {
     await raw.execute(sql`
       insert into plants (name, slug, time_zone) values ('archive', ${PLANT}, 'UTC')
       on conflict (slug) do nothing`);
+    // Both connection KINDS (#217), because both travel as `kind` + `params`
+    // jsonb: the export reads that column and the import writes it back with a
+    // `::jsonb` cast, and neither is a claim a SQL-text assertion can make.
+    for (const connection of [
+      {
+        name: "GX gateway",
+        kind: "modbus",
+        params: {
+          host: "10.20.0.62",
+          port: 8899,
+          transport: "rtu-over-tcp",
+          timeoutMs: 3000,
+          pollIntervalMs: 2000,
+        },
+      },
+      {
+        name: "Home broker",
+        kind: "mqtt",
+        params: { brokerUrl: "mqtt://hass.lan:1883", username: "mqtt", password: "hunter2" },
+      },
+    ]) {
+      await raw.execute(sql`
+        insert into connections (plant_id, name, kind, params)
+        select id, ${connection.name}, ${connection.kind},
+               ${JSON.stringify(connection.params)}::jsonb
+        from plants where slug = ${PLANT}`);
+    }
     for (const slug of [SOURCE_DEVICE, TARGET_DEVICE, SECOND_TARGET, ANCIENT_DEVICE]) {
       await raw.execute(sql`
         insert into devices (plant_id, connection_id, unit_id, slug, name, profile_id, role)
@@ -207,6 +235,42 @@ suite("the portable archive against a real TimescaleDB", () => {
     const worst = truth.energy.find((row) => Math.abs(row.naive - row.energy) > 1000);
     expect(worst).toBeDefined();
     expect(worst?.naive).toBeGreaterThan(worst!.energy * 100);
+  });
+
+  test("both connection KINDS survive the jsonb round trip, and the broker password does NOT", async () => {
+    // Two claims a unit test cannot make: that the driver hands `params` back as
+    // an object rather than a string, and that the export's default masks the
+    // broker credential in a file designed to be copied onto a USB stick.
+    const workDir = await mkdtemp(join(dir, "export-conn-"));
+    const result = await exportArchive(client, {
+      source: "native",
+      out: join(dir, "connections.tar.gz"),
+      workDir,
+      tiers: ["raw"],
+      appVersion: "2.0.0-dbtest",
+    });
+    const opened = await openArchive(result.path, join(dir, "read-conn"));
+    const config = opened.config as {
+      plant?: { connections?: Array<{ name: string; kind: string; params: unknown }> };
+    };
+    const connections = config.plant?.connections ?? [];
+    expect(connections.map((c) => `${c.kind}:${c.name}`)).toEqual([
+      "modbus:GX gateway",
+      "mqtt:Home broker",
+    ]);
+    expect(connections[0]?.params).toEqual({
+      host: "10.20.0.62",
+      port: 8899,
+      transport: "rtu-over-tcp",
+      timeoutMs: 3000,
+      pollIntervalMs: 2000,
+    });
+    expect(connections[1]?.params).toEqual({
+      brokerUrl: "mqtt://hass.lan:1883",
+      username: "mqtt",
+      hasPassword: true,
+    });
+    expect(JSON.stringify(config)).not.toContain("hunter2");
   });
 
   test("a NATIVE export reads the 2.0.0 schema and names everything by slug and key", async () => {
