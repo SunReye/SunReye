@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.1.1](https://github.com/SunReye/SunReye/compare/web-v3.1.0...web-v3.1.1) (2026-09-10)
+
+
+### Miscellaneous Chores
+
+* **web:** Synchronize sunreye-stack versions
+
 ## [3.1.0](https://github.com/SunReye/SunReye/compare/web-v3.0.2...web-v3.1.0) (2026-09-10)
 
 
