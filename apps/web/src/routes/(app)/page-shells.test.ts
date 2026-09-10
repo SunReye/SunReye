@@ -41,7 +41,6 @@ const PANELS = [
   "devices",
   "display",
   "logs",
-  "mqtt",
   "plant",
   "prices",
   "profiles",

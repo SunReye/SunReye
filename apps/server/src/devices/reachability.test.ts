@@ -85,8 +85,8 @@ describe("probeConnection", () => {
   });
 
   test("the LEGACY body — a bare host and port — is still a modbus probe", async () => {
-    // The add-connection dialog is the web half of #217 and ships separately, so
-    // the route has to keep answering the body the current dialog sends.
+    // A client older than the kind column — a stale tab, a script — sends no
+    // `kind` at all, and is dialled rather than answered 400.
     dialing.length = 0;
     const result = await probeConnection({ host: "10.0.0.5", port: 502 }, dials);
     expect(result.ok).toBe(true);

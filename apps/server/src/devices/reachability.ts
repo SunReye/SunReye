@@ -94,10 +94,9 @@ const PROBE_TIMEOUT_MS = 4000;
  * arm, so the two shapes cannot be confused: a `modbus` body carrying a
  * `brokerUrl` is refused rather than dialled at port 502.
  *
- * THE LEGACY ARM IS DELIBERATE. The add-connection dialog is the web half of
- * #217 and ships separately, so a bare `{ host, port }` — what the current
- * dialog sends — still means a Modbus probe. Dropping it would 400 the live
- * dialog the moment this lands.
+ * THE LEGACY ARM IS DELIBERATE. A bare `{ host, port }` with no `kind` still
+ * means a Modbus probe, so a client older than the kind column — a stale tab, a
+ * script, the pre-#217 dialog — is dialled rather than answered 400.
  */
 const probeBodySchema = z.union([
   z.object({ kind: z.literal("modbus"), params: modbusParamsSchema }),

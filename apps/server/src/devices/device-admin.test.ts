@@ -312,11 +312,15 @@ describe("listDevices", () => {
   // "Not polled" with a Modbus release-limit hint, flagged red for a profile
   // that is not installed and never will be, and offering Edit and Retire. All
   // four are this shape being reported as a Modbus device that is not answering.
-  test("a coded device is an integration, not an unpolled Modbus device", async () => {
+  // Renamed from `integration` in the release that made integrations ROWS of
+  // their own: the word named this device's state AND the thing hanging off the
+  // connection it sits under, in one list, and "integration" on a loadpoint gave
+  // the operator no way to tell which of the two was meant.
+  test("a coded device is PROVIDED by something, not an unpolled Modbus device", async () => {
     const { deps } = harness({ devices: [inverter, loadpoint] });
     const view = await listDevices(deps);
     const row = view.devices[1]!;
-    expect([row.kind, row.state]).toEqual(["coded", "integration"]);
+    expect([row.kind, row.state]).toEqual(["coded", "provided"]);
     // The declaration is what answers for the name, so the row is not red: the
     // profile store has never heard of `evcc-loadpoint` and never will.
     expect(row.profileName).toBe("EVCC loadpoint");

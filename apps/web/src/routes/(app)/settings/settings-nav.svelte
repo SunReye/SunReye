@@ -6,7 +6,6 @@
 	import LightningIcon from 'phosphor-svelte/lib/Lightning';
 	import PlugsConnectedIcon from 'phosphor-svelte/lib/PlugsConnected';
 	import WaveformIcon from 'phosphor-svelte/lib/Waveform';
-	import BroadcastIcon from 'phosphor-svelte/lib/Broadcast';
 	import MonitorIcon from 'phosphor-svelte/lib/Monitor';
 	import ReceiptIcon from 'phosphor-svelte/lib/Receipt';
 	import ChartLineIcon from 'phosphor-svelte/lib/ChartLine';
@@ -29,7 +28,6 @@
 		devices: PlugsConnectedIcon,
 		plant: LightningIcon,
 		sensors: WaveformIcon,
-		mqtt: BroadcastIcon,
 		display: MonitorIcon,
 		tariff: ReceiptIcon,
 		prices: ChartLineIcon,

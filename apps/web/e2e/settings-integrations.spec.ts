@@ -1,109 +1,168 @@
 /**
- * Settings → Integrations: the Home Assistant export and the EVCC ingest, each
- * naming a broker CONNECTION.
+ * Settings → Devices: the INTEGRATIONS half of a connection's card.
  *
- * A browser claim because the card is a running document: two native selects
- * over a list fetched from `/api/connections`, a discovery prefix that only
- * exists while a switch is on, and a save button whose `disabled` follows two
- * derived bodies at once. The mappings themselves (`mqtt-config-form.test.ts`)
- * are proven in milliseconds; what only exists here is whether the bindings
- * wire them to the controls — and, in particular, that the PUT carries a
- * `connectionId` and NOT the `brokerUrl`/`username`/`password` the panel used
- * to send (#217).
+ * This spec used to live on `/settings/mqtt`, a tab of two forms writing
+ * `app_settings`. That tab is gone: an integration is a row of `integrations`
+ * now, and it belongs on the page that answers "what is on this endpoint" —
+ * beside the devices that read through the same connection. An operator looking
+ * at a broker used to see its loadpoints and no sign of the EVCC ingest that
+ * provisioned them.
+ *
+ * A browser claim because the row is a running document: a switch that writes
+ * on change, a dialog seeded from the ROW's stored settings rather than the
+ * catalog's defaults, and a confirm that has to name devices it works out from
+ * two separately-fetched lists. What each function decides
+ * (`add-device-logic.test.ts`) is proven in milliseconds; what only exists here
+ * is whether the bindings wire them to the controls, and what actually goes on
+ * the wire.
  */
 
 import { expect, type Page, test } from "@playwright/test";
 import { openPage } from "./support/open-page";
 
-const open = (page: Page) => openPage(page, "/#/settings/mqtt");
+const open = (page: Page) => openPage(page, "/#/settings/devices");
+const dialog = (page: Page) => page.getByRole("dialog");
 
-/** The one PUT the save button makes for a record, as a parsed body. */
-async function capturePut(page: Page, path: string, act: () => Promise<void>) {
+/** The one request a control makes, as a parsed body. */
+async function capture(page: Page, method: string, act: () => Promise<void>) {
   const request = page.waitForRequest(
-    (r) => r.method() === "PUT" && r.url().includes(`/api/settings/${path}`),
+    (r) => r.method() === method && r.url().includes("/api/integrations/"),
   );
   await act();
-  return (await request).postDataJSON() as Record<string, unknown>;
+  const seen = await request;
+  return { url: seen.url(), body: seen.postDataJSON() as Record<string, unknown> | null };
 }
 
-test("the export card names a broker connection, and saves the id — never a URL", async ({
-  page,
-}) => {
+const rows = (page: Page) => page.locator("[data-integrations] [data-integration]");
+
+test("the broker's card lists what runs over it, under what reads through it", async ({ page }) => {
   const opened = await open(page);
-  await expect(
-    page.getByRole("heading", { level: 2, name: "Home Assistant discovery" }),
-  ).toBeVisible();
 
-  // No broker fields on this page at all any more: the endpoint is a
-  // connection, and its password is masked by `/api/connections`.
-  await expect(page.getByLabel("Broker URL")).toHaveCount(0);
-  await expect(page.getByLabel("Username")).toHaveCount(0);
-  await expect(page.getByLabel("Password")).toHaveCount(0);
+  // The broker group holds BOTH halves: two loadpoints and, below them, the two
+  // integration rows. The devices are addressed by `data-device`, the
+  // integrations by `data-integration`, so neither locator can pick up the other.
+  const broker = page.locator("[data-group='gateway-2']");
+  await expect(broker.locator("[data-device]")).toHaveCount(2);
+  await expect(rows(page)).toHaveCount(2);
+  await expect(page.locator("[data-integration='evcc-ingest']")).toBeVisible();
+  await expect(page.locator("[data-integration='ha-export']")).toBeVisible();
 
-  // The fixture leaves the export unbound — a null connection IS "off".
-  const broker = page.locator("select#mqtt-broker");
-  await expect(broker).toHaveValue("");
-  // Only the `kind = 'mqtt'` connections are offered; the Modbus gateway is not.
-  await expect(broker.locator("option")).toHaveText([
-    "Off — nothing is published",
-    "Home broker · hass.ee.lan",
-  ]);
+  // A row's PRESENCE is its configuration, and `enabled` is the off switch —
+  // the fixture has one of each so both states render.
+  await expect(page.locator("[data-integration='evcc-ingest']").getByText("Enabled")).toBeVisible();
+  await expect(page.locator("[data-integration='ha-export']").getByText("Disabled")).toBeVisible();
 
-  await broker.selectOption("2");
-  await page.getByLabel("Topic prefix").fill("haus");
-  const body = await capturePut(page, "mqtt", () =>
-    page.getByRole("button", { name: "Save" }).click(),
-  );
-  expect(body).toEqual({
-    connectionId: 2,
-    topicPrefix: "haus",
-    haDiscoveryEnabled: false,
-    haDiscoveryPrefix: "homeassistant",
-  });
-  await expect(page.getByText("MQTT settings saved — applied live")).toBeVisible();
+  // Nothing hangs off the Modbus gateway, and its card says nothing about
+  // integrations rather than rendering an empty heading.
+  await expect(page.locator("[data-group='gateway-1'] [data-integrations]")).toHaveCount(0);
   expect(opened.backend.unhandled).toEqual([]);
   expect(opened.consoleErrors).toEqual([]);
 });
 
-test("the discovery prefix appears with the switch, and a blank one blocks the save", async ({
+test("the switch turns one off with a PATCH carrying nothing but `enabled`", async ({ page }) => {
+  const opened = await open(page);
+  const row = page.locator("[data-integration='evcc-ingest']");
+  const toggle = row.getByRole("switch");
+  await expect(toggle).toBeChecked();
+
+  const sent = await capture(page, "PATCH", () => toggle.click());
+  expect(sent.url).toContain("/api/integrations/1");
+  // Never a `kind` or a `connectionId`: those are the row's identity and the
+  // server answers 409 for either.
+  expect(sent.body).toEqual({ enabled: false });
+  await expect(page.getByText("EVCC saved.")).toBeVisible();
+  expect(opened.backend.unhandled).toEqual([]);
+  expect(opened.consoleErrors).toEqual([]);
+});
+
+test("Edit opens on the row's own settings and saves them as params", async ({ page }) => {
+  const opened = await open(page);
+  await page
+    .locator("[data-integration='evcc-ingest']")
+    .getByRole("button", { name: "Edit" })
+    .click();
+  const panel = dialog(page);
+  await expect(panel.getByRole("heading", { name: "Configure EVCC" })).toBeVisible();
+
+  // Seeded from the ROW, not from the catalog's default: this is an edit, and a
+  // form that reset to `evcc` would silently undo an operator's topic root.
+  const topicRoot = panel.getByLabel("Topic root");
+  await expect(topicRoot).toHaveValue("evcc");
+  await topicRoot.fill("wallbox");
+
+  const sent = await capture(page, "PATCH", () =>
+    panel.getByRole("button", { name: "Save" }).click(),
+  );
+  expect(sent.url).toContain("/api/integrations/1");
+  expect(sent.body).toEqual({ params: { topicRoot: "wallbox" } });
+  await expect(panel).toHaveCount(0);
+  expect(opened.backend.unhandled).toEqual([]);
+  expect(opened.consoleErrors).toEqual([]);
+});
+
+test("the export's own fields come from the catalog, and the row it edits is its own", async ({
   page,
 }) => {
   await open(page);
-  const prefix = page.getByLabel("Discovery prefix");
-  await expect(prefix).toHaveCount(0);
+  await page
+    .locator("[data-integration='ha-export']")
+    .getByRole("button", { name: "Edit" })
+    .click();
+  const panel = dialog(page);
+  await expect(
+    panel.getByRole("heading", { name: "Configure Home Assistant export" }),
+  ).toBeVisible();
 
-  await page.getByRole("switch").first().click();
-  await expect(prefix).toBeVisible();
-  await expect(prefix).toHaveValue("homeassistant");
-
-  // `min(1)` on the server, so a blank one is a 400 rather than a default.
-  const save = page.getByRole("button", { name: "Save" });
-  await prefix.fill("");
-  await expect(save).toBeDisabled();
-  await prefix.fill("ha");
-  await expect(save).toBeEnabled();
+  // Three fields, rendered from the server's own description of them — the type
+  // picks the control, so the boolean is a checkbox and not a text box.
+  await expect(panel.getByLabel("Topic prefix")).toHaveValue("sunreye");
+  await expect(panel.getByLabel("Discovery prefix")).toHaveValue("homeassistant");
+  await expect(panel.getByRole("checkbox")).not.toBeChecked();
+  // The EVCC row's field is not on this form: each row edits its own kind.
+  await expect(panel.getByLabel("Topic root")).toHaveCount(0);
 });
 
-test("EVCC keeps its OWN broker connection, and its knobs stay on this tab", async ({ page }) => {
+/**
+ * The surprise this dialog exists to prevent.
+ *
+ * `DELETE /api/integrations/:id` RETIRES the devices the integration
+ * provisioned — an EVCC ingest's loadpoints — because their readings are a
+ * foreign key away from a year of `metrics_raw` rows. Nothing on the row lets
+ * the operator see that coming, so the confirm has to say it, by name.
+ */
+test("Remove names the devices it retires, and only then deletes", async ({ page }) => {
   const opened = await open(page);
-  await expect(page.getByRole("heading", { level: 2, name: "EVCC" })).toBeVisible();
+  await page
+    .locator("[data-integration='evcc-ingest']")
+    .getByRole("button", { name: "Remove" })
+    .click();
+  const panel = dialog(page);
+  await expect(panel.getByRole("heading", { name: "Remove EVCC?" })).toBeVisible();
 
-  // Its own select, already bound by the fixture — the ingest and the export
-  // may name different brokers, which is the whole point of #217.
-  const evccBroker = page.locator("select#evcc-broker");
-  await expect(evccBroker).toHaveValue("2");
-  await expect(page.getByLabel("Topic root")).toHaveValue("evcc");
+  const warning = panel.locator("[data-retires]");
+  await expect(warning).toContainText("Carport");
+  await expect(warning).toContainText("Garage");
 
-  await page.getByLabel("Topic root").fill("wallbox");
-  const body = await capturePut(page, "evcc", () =>
-    page.getByRole("button", { name: "Save" }).click(),
+  const sent = await capture(page, "DELETE", () =>
+    panel.getByRole("button", { name: "Remove" }).click(),
   );
-  expect(body).toEqual({
-    enabled: true,
-    connectionId: 2,
-    topicRoot: "wallbox",
-    subtractFromHome: false,
-  });
+  expect(sent.url).toContain("/api/integrations/1");
+  await expect(panel).toHaveCount(0);
+  await expect(page.getByText("EVCC removed.")).toBeVisible();
   expect(opened.backend.unhandled).toEqual([]);
   expect(opened.consoleErrors).toEqual([]);
+});
+
+// The Home Assistant export publishes and provisions nothing, so its Remove is
+// just a Remove. The absence is the assertion: a dialog that named a device here
+// would be promising a retirement that will not happen.
+test("an integration that provisions nothing warns about nothing", async ({ page }) => {
+  await open(page);
+  await page
+    .locator("[data-integration='ha-export']")
+    .getByRole("button", { name: "Remove" })
+    .click();
+  const panel = dialog(page);
+  await expect(panel.getByRole("heading", { name: "Remove Home Assistant export?" })).toBeVisible();
+  await expect(panel.locator("[data-retires]")).toHaveCount(0);
 });

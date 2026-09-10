@@ -7,7 +7,7 @@ import * as m from "$lib/paraglide/messages";
  * This table used to live inside `settings-nav.svelte`, which meant the nav rail
  * was the only thing that knew a panel existed. The shell header therefore had
  * nothing to read and `settings/+layout.svelte` set a single static "Settings"
- * for all fourteen panels — the header said the same word on /settings/mqtt,
+ * for all fourteen panels — the header said the same word on /settings/plant,
  * /settings/users and /settings/danger. Lifting the table out gives the header
  * the same source the rail renders, so a new panel gets its title by existing
  * rather than by someone remembering a second call site.
@@ -70,17 +70,6 @@ export const SETTINGS_ROUTES: readonly SettingsRoute[] = [
     group: "connection",
     titleKey: "settings_tab_sensors",
     subtitleKey: "settings_sub_sensors",
-  },
-  // The MQTT panel became INTEGRATIONS (#217): the broker moved onto a
-  // connection row, so what is left here is what this plant publishes outwards
-  // (Home Assistant discovery) and what it reads inwards (EVCC). The path keeps
-  // its name — bookmarks, and the badge every MQTT-fed device links to.
-  {
-    id: "mqtt",
-    href: "/settings/mqtt",
-    group: "connection",
-    titleKey: "settings_tab_integrations",
-    subtitleKey: "settings_sub_integrations",
   },
   {
     id: "display",

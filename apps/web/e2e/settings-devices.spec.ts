@@ -168,6 +168,8 @@ test.describe("the roster", () => {
     ).toBeVisible();
     await expect(page.getByText("MQTT · hass.ee.lan")).toBeVisible();
     await expect(page.locator("[data-group='gateway-2'] [data-device]")).toHaveCount(2);
+    // The device locator must not pick up the integration rows sharing the card.
+    await expect(page.locator("[data-integrations] [data-integration]")).toHaveCount(2);
     await expect(page.locator("[data-group='integration-evcc']")).toHaveCount(0);
 
     await expect(
@@ -182,10 +184,19 @@ test.describe("the roster", () => {
     // Neither the red profile flag nor the Modbus polling hint belongs on it.
     await expect(carport.getByText(/Profile not installed/)).toHaveCount(0);
     await expect(carport.getByText("Not polled")).toHaveCount(0);
+    // #219 narrowed the coded/virtual PATCH gate to TOPOLOGY — which gateway,
+    // which slave id, which driver — so a loadpoint can be renamed and retired
+    // like anything else. What it still cannot have is the ADDRESSING dialog,
+    // which asks for all three; before the narrowing the whole PATCH was
+    // refused and the row offered a link and nothing else.
     await expect(carport.getByRole("button", { name: "Edit" })).toHaveCount(0);
-    await expect(carport.getByRole("button", { name: "Retire" })).toHaveCount(0);
-    // Its feed is configured on the Integrations tab, and the row says where.
-    await expect(carport.getByRole("link", { name: "Configure" })).toBeVisible();
+    await expect(carport.getByRole("button", { name: "Rename" })).toBeVisible();
+    await expect(carport.getByRole("button", { name: "Retire" })).toBeVisible();
+    // No "Configure" link on any row any more: what provides this loadpoint is
+    // an integration ROW in this very group, a few lines below it, with its own
+    // Edit. `settings-integrations.spec.ts` is that half.
+    await expect(carport.getByRole("link", { name: "Configure" })).toHaveCount(0);
+    await expect(page.locator("[data-integration='evcc-ingest']")).toBeVisible();
 
     const optimizer = page.locator("[data-device='optimizer']");
     await expect(optimizer.getByText("internal", { exact: true })).toBeVisible();
@@ -242,66 +253,33 @@ test.describe("the roster", () => {
   });
 });
 
-test.describe("adding a device", () => {
-  test("the dialog opens on the existing gateway and the submit waits for a name and a profile", async ({
-    page,
-  }) => {
-    await open(page);
-    await page.getByRole("button", { name: "Add device" }).click();
-    const panel = dialog(page);
-    await expect(panel.getByRole("heading", { name: "Add a device" })).toBeVisible();
-
-    const connection = panel.getByLabel("Connection", { exact: true });
-    await expect(connection).toHaveValue("1");
-    // Nothing to send yet: no name, no profile.
-    const submit = panel.getByRole("button", { name: "Add device" });
-    await expect(submit).toBeDisabled();
-
-    // Units 1 and 2 are taken on this gateway (the inverter and the meter), so
-    // the picker offers them disabled and defaults to the first free id — 0.
-    const unit = panel.getByLabel("Unit ID");
-    await expect(unit).toHaveValue("0");
-    await expect(unit.locator("option[value='2']")).toBeDisabled();
-    await expect(unit.locator("option[value='4']")).toBeEnabled();
-    await unit.selectOption("4");
-    await expect(unit).toHaveValue("4");
-
-    await panel.getByLabel("Name", { exact: true }).fill("Zähler Süd");
-    await expect(panel.getByText("Slug: zahler-sud")).toBeVisible();
-    await expect(submit).toBeDisabled();
-
-    await panel.getByLabel("Profile").selectOption("sungrow-sh10rt");
-    await expect(submit).toBeEnabled();
-  });
-
-  test("choosing a new connection reveals its fields, and the device lands in the list", async ({
-    page,
-  }) => {
+/**
+ * ADDING is a route now, not a dialog.
+ *
+ * "Add device" used to open a modal that could only ever add a MODBUS device —
+ * contractually, since its body required a `unitId` and a `profileId` — so a
+ * broker's integrations had no entry point at all. It is a link to the four-step
+ * wizard at `/settings/devices/add`, because four questions is more than a modal
+ * holds at 400px and the browser's Back has to mean "the previous screen".
+ *
+ * What the wizard then does is its own spec's subject. What belongs HERE is the
+ * one thing the panel still owns: that its Add reaches it. The dialog is still
+ * mounted below for EDITING, which "editing a device…" above covers.
+ */
+test.describe("adding", () => {
+  test("the panel's Add is a link to the wizard, and lands on it", async ({ page }) => {
     const opened = await open(page);
-    await page.getByRole("button", { name: "Add device" }).click();
-    const panel = dialog(page);
+    const add = page.getByRole("link", { name: "Add device" });
+    // A LINK, not a button: a button here would need its own navigation call,
+    // and under the hash router a raw one escapes the ingress prefix and 404s.
+    await expect(add).toBeVisible();
+    await expect(page.getByRole("button", { name: "Add device" })).toHaveCount(0);
 
-    await expect(panel.getByLabel("Host")).toHaveCount(0);
-    await panel.getByLabel("Connection", { exact: true }).selectOption("new");
-    // Numbered past every connection the plant has, the broker included: the
-    // name labels an endpoint, not a Modbus bus.
-    await expect(panel.getByLabel("Connection name")).toHaveValue("Gateway 3");
-    await expect(panel.getByLabel("Host")).toBeVisible();
-
-    await panel.getByLabel("Role").selectOption("meter");
-    await panel.getByLabel("Name", { exact: true }).fill("Keller");
-    await panel.getByLabel("Profile").selectOption("sungrow-sh10rt");
-    const submit = panel.getByRole("button", { name: "Add device" });
-    // A new connection with no host is not sendable.
-    await expect(submit).toBeDisabled();
-    await panel.getByLabel("Host").fill("10.0.0.9");
-    await expect(submit).toBeEnabled();
-
-    await submit.click();
-    await expect(panel).toHaveCount(0);
-    // The list reloads from the mock, which serves its fixed roster; the
-    // toast is what proves the POST answered with the echoed device.
-    await expect(page.getByText("Keller added.")).toBeVisible();
+    await add.click();
+    await expect(page).toHaveURL(/#\/settings\/devices\/add$/);
+    await expect(page.getByRole("heading", { name: "Add to this plant" })).toBeVisible();
+    // No dialog opened on the way: the wizard IS the screen.
+    await expect(dialog(page)).toHaveCount(0);
     expect(opened.backend.unhandled).toEqual([]);
     expect(opened.consoleErrors).toEqual([]);
   });
