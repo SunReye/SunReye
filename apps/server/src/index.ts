@@ -16,6 +16,7 @@ import { energySeries } from "./energy/energy";
 import { entitiesApi } from "./inverter/entities";
 import { ensureDevice, isRetired, readPlant } from "@SunReye/db/plant-repo";
 import { evccControl, evccSnapshot, rebuildEvcc, stopEvcc } from "./evcc/evcc";
+import { getEvccConfig } from "./settings/evcc-settings";
 import { loadpointDeviceSpec } from "./evcc/evcc-devices";
 import { metricIdOf } from "./shared/identity-sql";
 import { queryRecentBuckets, queryRollup } from "./shared/history";
@@ -30,6 +31,7 @@ import { isPublicDashboard } from "./settings/access-settings";
 import { buildProfileContext, initProfiles } from "./inverter/inverter";
 import { deviceRegistry } from "./devices/registry-instance";
 import { syncProvisioning } from "./inverter/provision-boot";
+import { seedMqttBroker } from "./settings/mqtt-broker-instance";
 import { WriteRejectedError } from "./inverter/control-writer";
 import { log, recentLogs, setupLogging } from "./shared/logging";
 import { requestLogger } from "./shared/request-log";
@@ -216,6 +218,21 @@ const ONBOARDING_REQUIRED = { error: "No active inverter profile — onboarding 
 // plant, and never a renumbered device id, which would rebind five years of
 // readings to a different machine. Never throws.
 await syncProvisioning(profile);
+
+// The broker, carried from env into the spine ONCE — the MQTT counterpart of the
+// endpoint seed above (#217).
+//
+// `MQTT_BROKER_URL` / `MQTT_USERNAME` / `MQTT_PASSWORD` are documented
+// "seed only" env vars, and until now they seeded a FIELD of `app_settings.mqtt`.
+// The endpoint is a `connections` row now, so without this a docker install that
+// has always set `MQTT_BROKER_URL` would come up with the Home Assistant export
+// silently off. It creates rows this install has none of and never edits one it
+// has: a plant that already carries a broker — the one migration 0006 made — is
+// adopted, and a setting that already names a resolvable broker is untouched.
+//
+// AFTER provisioning, because the connection needs a plant to belong to, and
+// BEFORE `runtime.start` reads the export config to build its bridge.
+await seedMqttBroker();
 
 // The device roster, read AFTER provisioning created the rows and before any
 // route can serve a history read from it. `runtime.start` reloads it again (it
@@ -824,14 +841,23 @@ startUpdateChecks();
 // Assembled here because it is composition: the ingest owns none of these.
 void rebuildEvcc(streams, {
   async ensureDevice(_id, index, title) {
-    const plant = await readPlant({ execute: (query) => db.execute(query) });
+    const client = { execute: (query: Parameters<typeof db.execute>[0]) => db.execute(query) };
+    const plant = await readPlant(client);
     // Onboarding-only boot: EVCC ingest starts before there is a plant to hang a
     // device on. The live feed runs; storage starts on the next snapshot after
     // provisioning.
     if (!plant) return "absent";
+    // The loadpoint is bound to EVCC's OWN broker connection (#217), and its
+    // topic root travels onto the row. Read here rather than captured at boot
+    // because a settings save may have re-pointed either one, and a row created
+    // against the previous broker would sit on an endpoint nothing subscribes to.
+    const config = await getEvccConfig();
     const row = await ensureDevice(
-      { execute: (query) => db.execute(query) },
-      loadpointDeviceSpec(plant.id, index, title),
+      client,
+      loadpointDeviceSpec(plant.id, index, title, {
+        connectionId: config.connectionId,
+        topicRoot: config.topicRoot,
+      }),
     );
     // RETIRED IS NOT REGISTERED. `ensureDevice` is `ON CONFLICT DO NOTHING` +
     // SELECT, so it answers "the row is there" for a row the operator retired

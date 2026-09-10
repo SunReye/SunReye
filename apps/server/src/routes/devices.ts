@@ -25,7 +25,7 @@ import {
 } from "../devices/device-admin";
 import { afterDeviceWrite } from "../devices/after-device-write";
 import { plantFacts } from "../settings/plant-facts-instance";
-import { probeEndpoint } from "../devices/reachability";
+import { probeConnection } from "../devices/reachability";
 import { deviceRegistry } from "../devices/registry-instance";
 import { resolveProfileById } from "../inverter/inverter";
 import * as runtime from "../inverter/runtime";
@@ -112,14 +112,17 @@ export const deviceRoutes = new Elysia({ name: "device-routes" })
   .post("/api/devices", { requireAdmin: true, body: t.Unknown() }, ({ body, status }) =>
     respond(status, () => addDevice(defaultDeps(), body)),
   )
-  // Is the gateway there? A TCP connect to host:port — no unit id, no profile,
-  // no register read. The device dialog's test is the one that reads registers.
+  // Is the endpoint there? PER KIND (#217): a Modbus gateway answers a TCP
+  // connect to host:port, a broker answers an MQTT CONNECT. No unit id, no
+  // profile, no register read — the device dialog's test is the one that reads
+  // registers. A bare `{ host, port }` body is still a Modbus probe, so the
+  // current add-connection dialog keeps working until the web half lands.
   .post(
     "/api/connections/probe",
     { requireAdmin: true, body: t.Unknown() },
     async ({ body, status }) => {
       try {
-        return await probeEndpoint(body);
+        return await probeConnection(body);
       } catch (error) {
         return status(400, {
           error: error instanceof Error ? error.message : "invalid probe",

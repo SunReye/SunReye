@@ -207,14 +207,14 @@ async function connections(db: Db): Promise<ConnectionRow[]> {
   const { rows } = await db.execute(
     sql`select id, name, kind, params from connections order by id asc`,
   );
-  return rows as ConnectionRow[];
+  return rows as unknown as ConnectionRow[];
 }
 
 async function devices(db: Db): Promise<DeviceRow[]> {
   const { rows } = await db.execute(
     sql`select slug, connection_id, unit_id, params from devices order by slug asc`,
   );
-  return rows as DeviceRow[];
+  return rows as unknown as DeviceRow[];
 }
 
 async function setting(db: Db, key: string): Promise<unknown> {
@@ -260,7 +260,9 @@ suite("migration 0006: connections get a kind and params", () => {
       const { rows } = await db.execute(sql`
         select column_name from information_schema.columns
         where table_name = 'connections'`);
-      const names = (rows as Array<{ column_name: string }>).map((row) => row.column_name);
+      const names = (rows as unknown as Array<{ column_name: string }>).map(
+        (row) => row.column_name,
+      );
       expect(names).toContain("kind");
       expect(names).toContain("params");
       for (const dropped of ["host", "port", "transport", "timeout_ms", "poll_interval_ms"]) {
@@ -287,7 +289,8 @@ suite("migration 0006: connections get a kind and params", () => {
       // migration's own INSERTs are accepted IS the proof the key now holds.
       const broker = brokerOf(await connections(db));
       const loadpoints = loadpointsOf(await devices(db));
-      expect(loadpoints.map((row) => row.connection_id)).toEqual([broker?.id, broker?.id]);
+      const brokerId = broker?.id ?? null;
+      expect(loadpoints.map((row) => row.connection_id)).toEqual([brokerId, brokerId]);
       expect(loadpoints.map((row) => row.unit_id)).toEqual([1, 2]);
     });
 

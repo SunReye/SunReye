@@ -4,10 +4,12 @@
  *
  * EVCC publishes its full state as individual *retained* leaf topics under a
  * root (default `evcc`), so a fresh subscription receives a complete snapshot
- * immediately. This module runs its **own** MQTT client on the broker
- * configured in the MQTT settings — deliberately decoupled from the inverter
- * bridge (mqtt.ts) and its profile lifecycle, so EVCC ingest works even when
- * inverter→MQTT publishing is disabled.
+ * immediately. This module runs its **own** MQTT client on its OWN broker
+ * connection (`evcc.connectionId`, #217) — deliberately decoupled from the
+ * inverter bridge (mqtt.ts) and its profile lifecycle, so EVCC ingest works even
+ * when the Home Assistant export is off, and so a second EVCC on a second
+ * broker is two connection rows rather than a schema change. It used to reuse
+ * the export's broker, which made those two facts one.
  *
  * Contract notes (validated against a live EVCC 0.3x instance):
  * - loadpoint topics are `<root>/loadpoints/<n>/<key>` with **1-based** `n`
@@ -38,7 +40,7 @@
 import { evccReady } from "@SunReye/db/evcc-config";
 import mqtt from "mqtt";
 import type { MqttClient } from "mqtt";
-import { getMqttConfig } from "../settings/config";
+import { readBroker } from "../settings/mqtt-broker-instance";
 import type { EvccLoadpoint, EvccState } from "@SunReye/contracts/evcc";
 import {
   createEvPowerEstimator,
@@ -381,15 +383,17 @@ export async function rebuildEvcc(
 ): Promise<void> {
   if (streamBus) stream = streamBus;
   if (storage) registrar = createLoadpointRegistrar(storage);
-  const [config, mqttConfig] = await Promise.all([getEvccConfig(), getMqttConfig()]);
+  const config = await getEvccConfig();
+  const broker = await readBroker(config.connectionId);
   await stopClient();
   subtractFromHome = config.subtractFromHome;
-  if (!evccReady(config, mqttConfig)) return;
+  if (!evccReady(config, broker) || !broker) return;
 
   topicRoot = config.topicRoot;
-  const next = mqtt.connect(mqttConfig.brokerUrl, {
-    username: mqttConfig.username,
-    password: mqttConfig.password,
+  const next = mqtt.connect(broker.brokerUrl, {
+    username: broker.username,
+    password: broker.password,
+    ...(broker.clientId ? { clientId: broker.clientId } : {}),
   });
   client = next;
 
@@ -402,7 +406,7 @@ export async function rebuildEvcc(
       },
     );
     logger.info('connected to {brokerUrl} (root "{root}")', {
-      brokerUrl: mqttConfig.brokerUrl,
+      brokerUrl: broker.brokerUrl,
       root: topicRoot,
     });
   });

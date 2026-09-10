@@ -1,5 +1,6 @@
 import { EventEmitter } from "node:events";
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+import type { MqttParams } from "@SunReye/db/connection-kinds";
 import type { MqttConfig } from "@SunReye/db/mqtt-config";
 import type {
   EntityConstraint,
@@ -367,13 +368,21 @@ function domainValidateWrite(key: string, value: number): string | null {
 }
 
 const baseConfig: MqttConfig = {
-  enabled: true,
-  brokerUrl: "mqtt://broker.test:1883",
-  username: "solar",
-  password: "s3cret",
+  connectionId: 3,
   topicPrefix: "sunreye",
   haDiscoveryEnabled: false,
   haDiscoveryPrefix: "homeassistant",
+};
+
+/**
+ * The broker the export dials — a `kind = 'mqtt'` connection's params, resolved
+ * by the caller (#217). `null` is what "the export is off" means now, and it
+ * replaces the retired `enabled` flag.
+ */
+const baseBroker: MqttParams = {
+  brokerUrl: "mqtt://broker.test:1883",
+  username: "solar",
+  password: "s3cret",
 };
 
 /**
@@ -427,6 +436,7 @@ function start(
     plantSlug?: string;
     deviceSlug?: string;
     legacy?: ReturnType<typeof fakeLegacyStore>;
+    broker?: Partial<MqttParams>;
   } = {},
 ): Harness {
   const writes: { key: string; value: number }[] = [];
@@ -458,7 +468,12 @@ function start(
   const legacy = opts.legacy ?? fakeLegacyStore();
   const bridge = startMqttBridge(
     { ...baseConfig, ...over },
-    { ctx, write: funnel.write, legacyRetirement: legacy },
+    {
+      ctx,
+      write: funnel.write,
+      legacyRetirement: legacy,
+      broker: { ...baseBroker, ...opts.broker },
+    },
   );
   if (!bridge) throw new Error("bridge was disabled");
   const client = clients.at(-1);
@@ -517,12 +532,12 @@ beforeEach(() => {
 });
 
 describe("enabling the bridge", () => {
-  test("a disabled config dials nothing and yields no bridge", () => {
+  test("no broker connection dials nothing and yields no bridge", () => {
+    // The retired `enabled` flag, as absence. A config naming a connection that
+    // does not resolve arrives here as `broker: null` — and there is no second
+    // field that could claim the export is on.
     expect(
-      startMqttBridge(
-        { ...baseConfig, enabled: false },
-        { ctx: null as never, write: async () => {} },
-      ),
+      startMqttBridge(baseConfig, { ctx: null as never, write: async () => {}, broker: null }),
     ).toBeNull();
     expect(connectCalls).toHaveLength(0);
   });
@@ -544,7 +559,7 @@ describe("enabling the bridge", () => {
   });
 
   test("an absent username and password are simply not sent", () => {
-    start({ username: undefined, password: undefined });
+    start({}, { broker: { username: undefined, password: undefined } });
     expect(connectCalls[0]?.opts.username).toBeUndefined();
     expect(connectCalls[0]?.opts.password).toBeUndefined();
   });
@@ -595,6 +610,7 @@ describe("connecting", () => {
       },
       write: async () => {},
       legacyRetirement: fakeLegacyStore(),
+      broker: baseBroker,
     });
     expect(bridge).not.toBeNull();
     const client = clients.at(-1);
@@ -986,6 +1002,7 @@ describe("swapping the profile", () => {
         },
         write: async () => {},
         legacyRetirement: fakeLegacyStore(),
+        broker: baseBroker,
       },
     );
     expect(bridge).not.toBeNull();
@@ -1043,6 +1060,7 @@ describe("swapping the profile", () => {
         },
         write: async () => {},
         legacyRetirement: fakeLegacyStore(),
+        broker: baseBroker,
       },
     );
     expect(other).not.toBeNull();

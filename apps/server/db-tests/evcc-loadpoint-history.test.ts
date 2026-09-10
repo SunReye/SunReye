@@ -17,6 +17,17 @@ import { afterAll, beforeAll, describe, expect, mock, test } from "bun:test";
 import { sql } from "drizzle-orm";
 import { databaseReachable, resetTestDatabase } from "./harness";
 
+/**
+ * A loadpoint on NO broker connection.
+ *
+ * These specs are about the history a loadpoint writes, not about where it is
+ * reached, and `connection_id` is nullable for exactly that (an ingest that
+ * starts before the operator picks a broker). NULLs are distinct in
+ * `devices_connection_unit_key`, so an unbound loadpoint stays writable at any
+ * unit id.
+ */
+const UNBOUND = { connectionId: null, topicRoot: "evcc" } as const;
+
 const reachable = await databaseReachable();
 
 // The real module namespace is live, so the real exports have to be snapshotted
@@ -107,7 +118,10 @@ suite("an EVCC loadpoint's readings reach metrics_raw and come back out", () => 
         // The production wiring, over the real table: `ensureDevice` is
         // `ON CONFLICT DO NOTHING` + SELECT, so it answers for a RETIRED row
         // too — which the roster read above excludes.
-        const row = await repo.ensureDevice(raw, loadpointDeviceSpec(plantId, index, title));
+        const row = await repo.ensureDevice(
+          raw,
+          loadpointDeviceSpec(plantId, index, title, UNBOUND),
+        );
         return repo.isRetired(row) ? "retired" : "ready";
       },
       reloadRegistry: async () => void (await registry.reload()),
@@ -279,7 +293,10 @@ suite("an EVCC loadpoint's readings reach metrics_raw and come back out", () => 
       sql`select id from plants where slug = 'evcc-retired-plant'`,
     );
     const plantId = Number((plantRows[0] as { id: number }).id);
-    const created = await repo.ensureDevice(raw, loadpointDeviceSpec(plantId, 1, "Garage"));
+    const created = await repo.ensureDevice(
+      raw,
+      loadpointDeviceSpec(plantId, 1, "Garage", UNBOUND),
+    );
     // The operator retires it in Settings → Devices.
     await repo.updateDevice(raw, created.id, { retiredAt: new Date() });
 
@@ -295,7 +312,10 @@ suite("an EVCC loadpoint's readings reach metrics_raw and come back out", () => 
     const registrar = createLoadpointRegistrar({
       async ensureDevice(id, index, title) {
         ensures.push(id);
-        const row = await repo.ensureDevice(raw, loadpointDeviceSpec(plantId, index, title));
+        const row = await repo.ensureDevice(
+          raw,
+          loadpointDeviceSpec(plantId, index, title, UNBOUND),
+        );
         return repo.isRetired(row) ? "retired" : "ready";
       },
       reloadRegistry: async () => {
@@ -342,7 +362,9 @@ suite("an EVCC loadpoint's readings reach metrics_raw and come back out", () => 
     // The row exists — so a boolean answer would have been `true` five times
     // over, and each one would have re-read the whole device table.
     expect(
-      repo.isRetired(await repo.ensureDevice(raw, loadpointDeviceSpec(plantId, 1, "Garage"))),
+      repo.isRetired(
+        await repo.ensureDevice(raw, loadpointDeviceSpec(plantId, 1, "Garage", UNBOUND)),
+      ),
     ).toBe(true);
     expect(ensures).toEqual(["evcc-loadpoint-1"]);
     expect(reloads).toBe(0);

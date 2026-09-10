@@ -46,6 +46,7 @@ import {
 } from "bun:test";
 import type { ControlState } from "@SunReye/db/control-state";
 import { controlStateKey } from "@SunReye/db/control-state";
+import type { MqttParams } from "@SunReye/db/connection-kinds";
 import type { MqttConfig } from "@SunReye/db/mqtt-config";
 import type { PollEndpoint } from "./endpoint";
 import type { IdentityResolver } from "../shared/identity";
@@ -220,13 +221,26 @@ const baseEndpoint = (over: Partial<PollEndpoint> = {}): PollEndpoint => ({
 });
 
 const baseMqttConfig = (over: Partial<MqttConfig> = {}): MqttConfig => ({
-  enabled: true,
-  brokerUrl: "mqtt://broker.test:1883",
-  username: "user",
-  password: "secret",
+  connectionId: 3,
   topicPrefix: "sunreye",
   haDiscoveryEnabled: false,
   haDiscoveryPrefix: "homeassistant",
+  ...over,
+});
+
+/**
+ * The broker the export's connection resolves to, mutable per test.
+ *
+ * Since #217 the endpoint is a `connections` row and the runtime resolves it
+ * per rebuild, so "the broker moved" and "the export was turned off" are both
+ * changes to THIS rather than to the config document. `null` is off.
+ */
+let mqttBroker: MqttParams | null;
+
+const baseBroker = (over: Partial<MqttParams> = {}): MqttParams => ({
+  brokerUrl: "mqtt://broker.test:1883",
+  username: "user",
+  password: "secret",
   ...over,
 });
 
@@ -269,12 +283,33 @@ mock.module("./endpoint", () => ({
   loadPollEndpoint: async () => (intercepting ? pollEndpoint : realLoadPollEndpoint()),
 }));
 
+/**
+ * The broker resolution, stubbed at the RESOLVER rather than at the database.
+ *
+ * `readBroker` is a plant read (`../settings/mqtt-broker-instance.ts`), and the
+ * rules inside it — a dangling id, a connection of another kind — are
+ * `../settings/mqtt-broker.test.ts`'s subject. What this file is responsible for
+ * is what the runtime does with the answer, and that it re-reads it per rebuild
+ * rather than being handed a broker once at boot.
+ */
+const realBrokerModule = await import("../settings/mqtt-broker-instance");
+const realBrokerExports = { ...realBrokerModule };
+const realReadBroker = realBrokerModule.readBroker;
+mock.module("../settings/mqtt-broker-instance", () => ({
+  ...realBrokerModule,
+  readBroker: async (connectionId: number | null) =>
+    intercepting ? mqttBroker : realReadBroker(connectionId),
+}));
+
 /** Stands in for the MQTT bridge: records everything the runtime publishes. */
 class FakeBridge {
   samples: InverterSample[] = [];
   forecasts: unknown[] = [];
   closed = 0;
-  constructor(readonly config: MqttConfig) {}
+  constructor(
+    readonly config: MqttConfig,
+    readonly broker: MqttParams,
+  ) {}
   publishSample(sample: InverterSample): void {
     this.samples.push(sample);
   }
@@ -305,10 +340,12 @@ mock.module("./mqtt", () => ({
     deps: Parameters<typeof realBridgeModule.startMqttBridge>[1],
   ) => {
     if (!intercepting) return realStartMqttBridge(config, deps);
-    if (!config.enabled) return null;
+    // The real bridge's own rule: no broker, no bridge. That is what the retired
+    // `enabled` flag became.
+    if (!deps.broker) return null;
     bridgeWrite = deps.write;
     bridgeCtx = deps.ctx;
-    const built = new FakeBridge(config);
+    const built = new FakeBridge(config, deps.broker);
     bridges.push(built);
     return built;
   },
@@ -760,6 +797,7 @@ afterAll(() => {
   mock.module("../settings/config", () => ({ ...realConfigExports }));
   mock.module("./endpoint", () => ({ ...realEndpointExports }));
   mock.module("./mqtt", () => ({ ...realBridgeExports }));
+  mock.module("../settings/mqtt-broker-instance", () => ({ ...realBrokerExports }));
   mock.module("../automation/automation", () => ({ ...realAutomationExports }));
   mock.module("../settings/weather-settings", () => ({ ...realWeatherSettingsExports }));
   mock.module("../forecast/solar-forecast", () => ({ ...realSolarForecastExports }));
@@ -992,6 +1030,7 @@ beforeEach(() => {
   legacyConfigReads = 0;
   registeredSpecs = [];
   mqttConfig = baseMqttConfig();
+  mqttBroker = baseBroker();
   armed = [];
   cleared = [];
   logLines = [];
@@ -1824,7 +1863,8 @@ describe("the MQTT bridge", () => {
     await settle();
     expect(namespaceReads.length).toBe(afterBoot);
 
-    await applyMqttConfig(baseMqttConfig({ brokerUrl: "mqtt://elsewhere:1883" }));
+    mqttBroker = baseBroker({ brokerUrl: "mqtt://elsewhere:1883" });
+    await applyMqttConfig(baseMqttConfig({ connectionId: 4 }));
     await settle();
     expect(namespaceReads.length).toBe(afterBoot + 1);
   });
@@ -1895,16 +1935,20 @@ describe("the MQTT bridge", () => {
     await boot();
     const first = latestBridge();
 
-    await applyMqttConfig(baseMqttConfig({ brokerUrl: "mqtt://other.test:1883" }));
+    mqttBroker = baseBroker({ brokerUrl: "mqtt://other.test:1883" });
+    await applyMqttConfig(baseMqttConfig({ connectionId: 4 }));
     await settle();
 
     expect(first.closed).toBe(1);
     expect(latestBridge()).not.toBe(first);
-    expect(latestBridge().config.brokerUrl).toBe("mqtt://other.test:1883");
+    // The broker is RE-RESOLVED per rebuild: a bridge holding the previous
+    // broker with this config's prefix would publish where nobody is watching.
+    expect(latestBridge().broker.brokerUrl).toBe("mqtt://other.test:1883");
   });
 
-  test("disabling MQTT leaves no bridge, and nothing is published to one", async () => {
-    mqttConfig = baseMqttConfig({ enabled: false });
+  test("an export with no broker connection leaves no bridge, and nothing is published to one", async () => {
+    mqttConfig = baseMqttConfig({ connectionId: null });
+    mqttBroker = null;
     forecastResult = forecastFixture();
 
     await boot();
@@ -2335,7 +2379,9 @@ describe("testing a connection before saving it", () => {
 });
 
 describe("testing a broker before saving it", () => {
-  const config = () => baseMqttConfig({ brokerUrl: "mqtt://probe.test:1883" });
+  // The BROKER, not the export config: what an operator tests is a connection,
+  // which they may not have bound to the export yet (#217).
+  const config = () => baseBroker({ brokerUrl: "mqtt://probe.test:1883" });
 
   test("a successful connect reports ok and hangs up the throwaway client", async () => {
     const pending = testMqtt(config());
