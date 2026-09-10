@@ -453,8 +453,11 @@ jobs:
           INSERT INTO plants (name, slug) VALUES ('Upgrade Test', 'upgrade-test')
             ON CONFLICT DO NOTHING;
 
-          INSERT INTO connections (plant_id, name, host)
-          SELECT id, 'c1', '127.0.0.1' FROM plants WHERE slug = 'upgrade-test'
+          INSERT INTO connections (plant_id, name, kind, params)
+          SELECT id, 'c1', 'modbus',
+                 jsonb_build_object('host', '127.0.0.1', 'port', 502, 'transport', 'tcp',
+                                    'timeoutMs', 2000, 'pollIntervalMs', 1000)
+          FROM plants WHERE slug = 'upgrade-test'
             ON CONFLICT DO NOTHING;
 
           INSERT INTO devices (plant_id, connection_id, unit_id, slug, name, profile_id, role)

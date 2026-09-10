@@ -739,6 +739,24 @@ function pvValues(pv: Partial<DevicePv> | undefined): SQL {
 }
 
 /**
+ * The columns and values both device inserts write.
+ *
+ * The two below differ only in what follows the VALUES tuple — a conflict
+ * clause on one, a RETURNING on the other — so the column list itself is said
+ * once. It grew a `params` column in #217 and two of the three PV fields
+ * before that; keeping two copies means the next column is added in one of
+ * them and silently defaulted in the other.
+ */
+function deviceInsert(spec: DeviceSpec) {
+  return sql`
+    insert into devices (plant_id, connection_id, unit_id, slug, name, profile_id, role,
+                         params, arrays, temp_coefficient, system_loss)
+    values (${spec.plantId}, ${spec.connectionId}, ${spec.unitId}, ${spec.slug},
+            ${spec.name}, ${spec.profileId}, ${spec.role}, ${paramsValue(spec.params)},
+            ${pvValues(spec.pv)})`;
+}
+
+/**
  * The device `(plantId, slug)` names, creating it if it is not there.
  *
  * `ON CONFLICT (plant_id, slug) DO NOTHING` and then a SELECT, rather than
@@ -749,13 +767,7 @@ function pvValues(pv: Partial<DevicePv> | undefined): SQL {
  * the conflict target and is frozen.
  */
 export async function ensureDevice(db: PlantDb, spec: DeviceSpec): Promise<DeviceRecord> {
-  await db.execute(sql`
-    insert into devices (plant_id, connection_id, unit_id, slug, name, profile_id, role,
-                         params, arrays, temp_coefficient, system_loss)
-    values (${spec.plantId}, ${spec.connectionId}, ${spec.unitId}, ${spec.slug},
-            ${spec.name}, ${spec.profileId}, ${spec.role}, ${paramsValue(spec.params)},
-            ${pvValues(spec.pv)})
-    on conflict (plant_id, slug) do nothing`);
+  await db.execute(sql`${deviceInsert(spec)} on conflict (plant_id, slug) do nothing`);
   const { rows } = await db.execute(sql`
     select ${DEVICE_COLUMNS} from devices
     where plant_id = ${spec.plantId} and slug = ${spec.slug}`);
@@ -777,13 +789,7 @@ export async function ensureDevice(db: PlantDb, spec: DeviceSpec): Promise<Devic
  * caller that turns it into a reason.
  */
 export async function createDevice(db: PlantDb, spec: DeviceSpec): Promise<DeviceRecord> {
-  const { rows } = await db.execute(sql`
-    insert into devices (plant_id, connection_id, unit_id, slug, name, profile_id, role,
-                         params, arrays, temp_coefficient, system_loss)
-    values (${spec.plantId}, ${spec.connectionId}, ${spec.unitId}, ${spec.slug},
-            ${spec.name}, ${spec.profileId}, ${spec.role}, ${paramsValue(spec.params)},
-            ${pvValues(spec.pv)})
-    returning ${DEVICE_COLUMNS}`);
+  const { rows } = await db.execute(sql`${deviceInsert(spec)} returning ${DEVICE_COLUMNS}`);
   const row = rows[0] as Record<string, unknown> | undefined;
   if (!row) throw new Error(`device ${spec.slug} could not be created`);
   return toDevice(row);
