@@ -5,7 +5,7 @@
 	import { goto } from '$app/navigation';
 	import { resolve, routePath } from '$lib/resolve';
 	import * as Sidebar from '$lib/components/ui/sidebar';
-	import Logo from '$lib/components/logo.svelte';
+	import SourceMenu from '$lib/components/layout/source-menu.svelte';
 	import { authClient } from '$lib/auth-client';
 	import { useAppSession } from '$lib/session';
 	import { inverter } from '$lib/inverter/store.svelte';
@@ -52,7 +52,8 @@
 		sidebar.setOpenMobile(false);
 	}
 
-	// Identifies the connected inverter until the manifest lands.
+	// Identifies the connected inverter until the manifest lands. Shown in the
+	// footer since #215 gave the header's second line to the current source.
 	const subtitle = $derived(
 		inverter.manifest
 			? `${inverter.manifest.manufacturer} · ${inverter.manifest.name}`
@@ -82,13 +83,11 @@
 
 <Sidebar.Root collapsible="icon">
 	<Sidebar.Header>
-		<div class="flex items-center gap-2 px-1 py-1.5">
-			<Logo class="size-8 shrink-0 text-primary" />
-			<div class="flex min-w-0 flex-col group-data-[collapsible=icon]:hidden">
-				<span class="text-sm font-semibold leading-tight">SunReye</span>
-				<span class="truncate text-xs text-muted-foreground">{subtitle}</span>
-			</div>
-		</div>
+		<!-- Brand and source in one row, org-switcher style (#215). The source
+		     used to be a segmented switcher in the page header, where three
+		     options ran off a 400px phone; it is global client state every page
+		     reads, so it belongs in the navigation chrome. -->
+		<SourceMenu />
 	</Sidebar.Header>
 
 	<Sidebar.Content>
@@ -116,6 +115,14 @@
 
 	<Sidebar.Footer>
 		<Sidebar.Menu>
+			<Sidebar.MenuItem>
+				<div
+					class="px-2 py-1.5 text-xs text-muted-foreground group-data-[collapsible=icon]:hidden"
+					data-slot="sidebar-device-subtitle"
+				>
+					<span class="block truncate">{subtitle}</span>
+				</div>
+			</Sidebar.MenuItem>
 			{#if isAdmin}
 				<Sidebar.MenuItem>
 					<Sidebar.MenuButton isActive={settingsActive}>
