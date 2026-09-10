@@ -1092,5 +1092,9 @@
   "wizard_back": "Atrás",
   "wizard_next": "Siguiente",
   "wizard_finish": "Añadir",
-  "wizard_added": "Añadido."
+  "wizard_added": "Añadido.",
+  "wizard_field_topicRoot": "Topic raíz",
+  "wizard_field_topicPrefix": "Prefijo de topic",
+  "wizard_field_haDiscoveryEnabled": "Anunciar el descubrimiento de Home Assistant",
+  "wizard_field_haDiscoveryPrefix": "Prefijo de descubrimiento"
 }

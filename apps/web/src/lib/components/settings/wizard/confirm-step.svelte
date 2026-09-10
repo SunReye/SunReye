@@ -3,6 +3,7 @@
 	import { connectionAddress } from '../devices/connection-draft';
 	import type { ConnectionView } from '../devices/device-types';
 	import type { CatalogEntryView } from './add-wizard';
+	import { fieldLabel } from './field-label';
 
 	// STEP 4 — what is about to be created, in one list, before the request goes
 	// out. The wizard puts three earlier answers behind a Back button; this is
@@ -31,7 +32,7 @@
 		{ key: 'attach', label: m.wizard_step_attach(), value: entry?.label ?? NOT_SET, mono: false },
 		...Object.entries(values).map(([key, value]) => ({
 			key,
-			label: key,
+			label: fieldLabel(key),
 			value: String(value),
 			mono: true
 		}))

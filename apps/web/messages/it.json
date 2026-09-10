@@ -1092,5 +1092,9 @@
   "wizard_back": "Indietro",
   "wizard_next": "Avanti",
   "wizard_finish": "Aggiungi",
-  "wizard_added": "Aggiunto."
+  "wizard_added": "Aggiunto.",
+  "wizard_field_topicRoot": "Topic radice",
+  "wizard_field_topicPrefix": "Prefisso topic",
+  "wizard_field_haDiscoveryEnabled": "Annuncia il rilevamento Home Assistant",
+  "wizard_field_haDiscoveryPrefix": "Prefisso di rilevamento"
 }

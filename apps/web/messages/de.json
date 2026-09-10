@@ -1092,5 +1092,9 @@
   "wizard_back": "Zurück",
   "wizard_next": "Weiter",
   "wizard_finish": "Hinzufügen",
-  "wizard_added": "Hinzugefügt."
+  "wizard_added": "Hinzugefügt.",
+  "wizard_field_topicRoot": "Basis-Topic",
+  "wizard_field_topicPrefix": "Topic-Präfix",
+  "wizard_field_haDiscoveryEnabled": "Home-Assistant-Discovery ankündigen",
+  "wizard_field_haDiscoveryPrefix": "Discovery-Präfix"
 }

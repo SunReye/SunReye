@@ -2,6 +2,7 @@
 	import EmptyState from '$lib/components/layout/empty-state.svelte';
 	import * as m from '$lib/paraglide/messages';
 	import type { CatalogEntryView } from './add-wizard';
+	import { fieldLabel } from './field-label';
 	import WizardField from './wizard-field.svelte';
 
 	// STEP 3 — the entry's own settings, rendered from the field list the catalog
@@ -25,7 +26,7 @@
 {:else}
 	<div class="flex flex-col gap-4">
 		{#each fields as field (field.name)}
-			<WizardField {field} label={field.name} bind:value={values[field.name]} />
+			<WizardField {field} label={fieldLabel(field.name)} bind:value={values[field.name]} />
 		{/each}
 	</div>
 {/if}
