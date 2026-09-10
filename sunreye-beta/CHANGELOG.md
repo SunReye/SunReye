@@ -2,7 +2,7 @@
 
 ## [unreleased]
 
-Unreleased work on `dev` since 3.0.2, shipped in `beta.20260910-d7f2bb4`.
+Unreleased work on `dev` since 3.0.2, shipped in `beta.20260910-e9bf06d`.
 
 
 ### Features
