@@ -53,6 +53,8 @@ import { z } from "zod";
 
 import { SLUG_MAX, slugify } from "@SunReye/inverter-core/slug";
 
+import { parseBody } from "../shared/zod-field";
+
 /** The repository calls this module makes, bound to one client by the caller. */
 export interface DeviceAdminStore {
   readPlant(): Promise<PlantRecord | null>;
@@ -317,17 +319,14 @@ const FIELDS = new Set([
   "systemLoss",
   "battery",
 ] as const);
-type Field = NonNullable<DeviceAdminError["field"]>;
 
-function parse<T>(schema: z.ZodType<T>, body: unknown): T {
-  const result = schema.safeParse(body);
-  if (result.success) return result.data;
-  const issue = result.error.issues[0];
-  const head = issue?.path[0];
-  const field = typeof head === "string" && FIELDS.has(head as Field) ? (head as Field) : undefined;
-  const where = field ? `${field === "unitId" ? "unit id" : field}: ` : "";
-  throw new DeviceAdminError(400, `${where}${issue?.message ?? "invalid body"}`, field);
-}
+const parse = <T>(schema: z.ZodType<T>, body: unknown): T =>
+  parseBody(schema, body, FIELDS, (message, field) => {
+    // "unit id", not "unitId": the prefix is read by an operator, and the dialog
+    // labels the control the way the sentence should.
+    const where = field ? `${field === "unitId" ? "unit id" : field}: ` : "";
+    return new DeviceAdminError(400, `${where}${message}`, field);
+  });
 
 /**
  * How a device is fed, from its role and its profile id.

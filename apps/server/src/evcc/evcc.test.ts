@@ -51,6 +51,7 @@ let fake = new FakeClient();
 // override only what this suite stubs.
 const realBrokerInstance = await import("../settings/mqtt-broker-instance");
 const realEvccSettings = await import("../settings/evcc-settings");
+const realTopicRoot = await import("../integrations/evcc-topic-root");
 
 // ...and the spread is only half of it: the stub itself is permanent too, so
 // `readBroker`/`getEvccConfig` would stay installed for every later file —
@@ -61,6 +62,17 @@ const realEvccSettings = await import("../settings/evcc-settings");
 // before any mock exists, or the restore restores the stub.
 const realBrokerInstanceExports = { ...realBrokerInstance };
 const realEvccSettingsExports = { ...realEvccSettings };
+const realTopicRootExports = { ...realTopicRoot };
+
+/**
+ * What the `evcc-ingest` INTEGRATION ROW says the topic root is, or null when
+ * this install has no row and the setting still answers.
+ *
+ * The reader is stubbed rather than the database, because that is the whole
+ * seam under test: `rebuildEvcc` must subscribe under the ROW's root and fall
+ * back to `app_settings.evcc` only when there is none.
+ */
+let topicRootRow: string | null = null;
 
 /** The EVCC config the next `rebuildEvcc` reads; restored after every test. */
 // `connectionId` since #217: EVCC dials its OWN broker connection rather than
@@ -93,6 +105,10 @@ mock.module("../settings/mqtt-broker-instance", () => ({
 mock.module("../settings/evcc-settings", () => ({
   ...realEvccSettings,
   getEvccConfig: async () => evccConfig,
+}));
+mock.module("../integrations/evcc-topic-root", () => ({
+  ...realTopicRoot,
+  readEvccTopicRoot: async (fallback: string) => topicRootRow ?? fallback,
 }));
 
 const { evccControl, evccOnLoadSample, evccSnapshot, rebuildEvcc, stopEvcc } =
@@ -176,6 +192,7 @@ function sendLimitLayers(): void {
 afterEach(async () => {
   await stopEvcc();
   evccConfig = { ...DEFAULT_EVCC_CONFIG };
+  topicRootRow = null;
 });
 
 // `afterAll`, not `afterEach`: this file's own tests need the stubs until the
@@ -184,12 +201,47 @@ afterAll(() => {
   mock.module("mqtt", () => ({ ...realMqttExports }));
   mock.module("../settings/mqtt-broker-instance", () => ({ ...realBrokerInstanceExports }));
   mock.module("../settings/evcc-settings", () => ({ ...realEvccSettingsExports }));
+  mock.module("../integrations/evcc-topic-root", () => ({ ...realTopicRootExports }));
 });
 
 describe("subscriptions", () => {
   test("covers the status, loadpoint and vehicle trees", async () => {
     await connectEvcc();
     expect(fake.subscriptions).toEqual(["evcc/status", "evcc/loadpoints/#", "evcc/vehicles/#"]);
+  });
+
+  test("the root comes from the `evcc-ingest` ROW, not from `app_settings.evcc`", async () => {
+    // The row is the operator's topic root now. The setting still says "evcc"
+    // here, so a subscription under "evcc/…" would mean the reader is not wired
+    // in at all — which is exactly the defect that would ship silently: it works
+    // for every install whose row happens to match the setting.
+    topicRootRow = "garage";
+    await connectEvcc();
+    expect(fake.subscriptions).toEqual([
+      "garage/status",
+      "garage/loadpoints/#",
+      "garage/vehicles/#",
+    ]);
+  });
+
+  test("a control write is published under the ROW's root too", async () => {
+    // The root is the grammar of every topic, writes included — a `/set` sent to
+    // the wrong tree is a command EVCC never sees and nothing ever reports.
+    topicRootRow = "garage";
+    await connectEvcc();
+    evccControl(0, "mode", "pv");
+    expect(fake.published[0]?.topic).toBe("garage/loadpoints/0/mode/set");
+  });
+
+  test("with NO row the setting still answers — an install upgraded but not migrated", async () => {
+    topicRootRow = null;
+    evccConfig = { ...DEFAULT_EVCC_CONFIG, topicRoot: "from-settings" };
+    await connectEvcc();
+    expect(fake.subscriptions).toEqual([
+      "from-settings/status",
+      "from-settings/loadpoints/#",
+      "from-settings/vehicles/#",
+    ]);
   });
 });
 

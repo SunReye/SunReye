@@ -1,7 +1,3 @@
-// fallow-ignore-file unused-file -- the wizard's catalog, proved entry by entry in
-// `./integration-catalog.test.ts`. No route reads it yet, deliberately: the
-// `/settings/devices` wizard and its endpoint ship separately, and the catalog
-// lands first so the route has something to be written against.
 /**
  * THE INTEGRATION CATALOG — what can attach to a connection of a given kind,
  * and with what settings.
@@ -175,18 +171,29 @@ const CATALOG: Partial<Record<ConnectionKind, readonly CatalogEntry[]>> = {
  * the first of those PRs, silently — the device would work and simply never
  * appear on the page. Adding a row to `CODED_INTEGRATIONS` is the whole change.
  *
+ * ONLY THE CONNECTION-LESS ONES. The projection used to take every coded
+ * declaration, which put the EVCC LOADPOINT in this group — and a loadpoint is
+ * connection-BOUND: it is pushed over one particular broker and its device row
+ * carries that connection's id. Listing it as "internal" offered an operator an
+ * EVCC with no broker, which nothing would ever subscribe for. The filter reads
+ * the declaration's own `connectionless` flag, so the group stays DERIVED: a
+ * declaration added to `./coded.ts` appears here, or does not, according to what
+ * it says about itself, with no second list to keep in step.
+ *
  * Rebuilt per call, so a declaration added to the table at import time by a
  * later module is still reflected, and so no caller holds a shared array.
  */
 function internalEntries(): readonly CatalogEntry[] {
-  return codedIntegrations().map((coded) => ({
-    id: coded.profileId,
-    label: coded.name,
-    via: "coded" as const,
-    addable: false,
-    multiInstance: false,
-    fields: noFields,
-  }));
+  return codedIntegrations()
+    .filter((coded) => coded.connectionless)
+    .map((coded) => ({
+      id: coded.profileId,
+      label: coded.name,
+      via: "coded" as const,
+      addable: false,
+      multiInstance: false,
+      fields: noFields,
+    }));
 }
 
 /**
@@ -318,6 +325,7 @@ const RENDERABLE = new Set<string>(["string", "number", "boolean", "enum", "arra
  * with a validation error naming a control the operator never saw. A future
  * entry that needs a union or a date fails loudly, here, with the field named.
  */
+// fallow-ignore-next-line unused-export -- the derivation itself, asserted directly in `./integration-catalog.test.ts` (a union, a date, a wrapped date); `catalogViewFor` is how production reaches it, and test files are not traced as consumers.
 export function describeFields(schema: FieldSchema): readonly CatalogField[] {
   return Object.entries(schema.shape).map(([name, raw]) => {
     const { inner, wrappers } = unwrap(raw);

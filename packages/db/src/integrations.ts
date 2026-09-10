@@ -59,7 +59,6 @@ import { z } from "zod";
  * a runtime that reads it, and a CHECK rewrite migration. No column changes.
  */
 export const INTEGRATION_KINDS = ["evcc-ingest", "ha-export"] as const;
-// fallow-ignore-next-line unused-type -- the kind a reader narrows on; the runtimes move onto this table in a later step of the unified-connections plan.
 export type IntegrationKind = (typeof INTEGRATION_KINDS)[number];
 
 /**
@@ -120,7 +119,6 @@ export type IntegrationParams = z.infer<typeof integrationParamsSchema>;
  * a silent default is the wrong answer for a row. The mirror of
  * `./connection-kinds.ts`'s `parseConnectionParams`, and for the same reasons.
  */
-// fallow-ignore-next-line unused-export -- the parse boundary every reader of an `integrations` row goes through; those readers move here in a later step.
 export function parseIntegrationParams(kind: unknown, params: unknown): IntegrationParams {
   return integrationParamsSchema.parse({ kind, params });
 }

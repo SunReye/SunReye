@@ -34,6 +34,7 @@ import { syncProvisioning } from "./inverter/provision-boot";
 import { seedMqttBroker } from "./settings/mqtt-broker-instance";
 import { WriteRejectedError } from "./inverter/control-writer";
 import { log, recentLogs, setupLogging } from "./shared/logging";
+import { plantClient } from "./shared/plant-client";
 import { requestLogger } from "./shared/request-log";
 import { createStreams } from "./shared/streams";
 import { initLogLevel } from "./settings/logging-settings";
@@ -45,6 +46,7 @@ import { startBatteryScoring } from "./battery/scoring";
 import { startUpdateChecks, stopUpdateChecks } from "./inverter/profiles";
 import { batteryRoutes } from "./routes/battery";
 import { deviceRoutes } from "./routes/devices";
+import { integrationRoutes } from "./routes/integrations";
 import { profileRoutes } from "./routes/profiles";
 import { automationStreamSnapshot } from "./automation/automation";
 import { automationRoutes } from "./routes/automations";
@@ -738,6 +740,10 @@ const app = new Elysia()
   .use(profileRoutes)
   // The device roster: list, add on an existing or new gateway, rename, retire.
   .use(deviceRoutes)
+  // The other half of the same page: what RUNS over those endpoints — the EVCC
+  // ingest and the Home Assistant export as rows, plus the catalog the wizard
+  // renders its add step from.
+  .use(integrationRoutes)
   // User-defined custom charts for the history page (multi-metric overlays).
   .use(customChartsRoutes({ ctx }))
   // The 1.2.0 -> 2.0.0 migration's onboarding surface: the status every page load
@@ -841,7 +847,7 @@ startUpdateChecks();
 // Assembled here because it is composition: the ingest owns none of these.
 void rebuildEvcc(streams, {
   async ensureDevice(_id, index, title) {
-    const client = { execute: (query: Parameters<typeof db.execute>[0]) => db.execute(query) };
+    const client = plantClient();
     const plant = await readPlant(client);
     // Onboarding-only boot: EVCC ingest starts before there is a plant to hang a
     // device on. The live feed runs; storage starts on the next snapshot after

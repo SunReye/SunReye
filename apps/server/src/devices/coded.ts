@@ -25,13 +25,27 @@ import { EVCC_INTEGRATION, EVCC_LOADPOINT_PROFILE, LOADPOINT_METRICS } from "../
 import type { CodedDeclaration } from "./registry";
 
 /**
+ * A declaration plus the one fact a CATALOG needs that the runtime does not:
+ * whether the thing has an endpoint at all.
+ *
+ * On the declaration's row rather than in a list beside it, for the same reason
+ * the table itself exists — see {@link codedIntegrations}. A `connectionless`
+ * declaration is one nobody configures a URL, a host or a broker for: the
+ * optimizer is a control loop with no machine behind it, and #197's weather
+ * device dials a vendor URL that is not an endpoint anyone picks. An EVCC
+ * loadpoint is NOT one: it is pushed over a specific broker, and its device row
+ * carries that connection's id.
+ */
+type CodedRow = CodedDeclaration & { connectionless?: true };
+
+/**
  * Every coded declaration, keyed by the `profile_id` its device rows name.
  *
  * A `Map` rather than an object literal because the key arrives from a database
  * column: a row saying `profile_id = 'constructor'` must resolve to nothing, and
  * against an object it would resolve to a function.
  */
-const CODED_INTEGRATIONS = new Map<string, CodedDeclaration>([
+const CODED_INTEGRATIONS = new Map<string, CodedRow>([
   [
     EVCC_LOADPOINT_PROFILE,
     { integration: EVCC_INTEGRATION, name: "EVCC loadpoint", metrics: LOADPOINT_METRICS },
@@ -42,7 +56,12 @@ const CODED_INTEGRATIONS = new Map<string, CodedDeclaration>([
   // no register map to express any of it. It has no machine behind it at all.
   [
     OPTIMIZER_PROFILE,
-    { integration: OPTIMIZER_INTEGRATION, name: "SunReye Optimizer", metrics: OPTIMIZER_METRICS },
+    {
+      integration: OPTIMIZER_INTEGRATION,
+      name: "SunReye Optimizer",
+      metrics: OPTIMIZER_METRICS,
+      connectionless: true,
+    },
   ],
 ]);
 
@@ -67,6 +86,17 @@ export interface CodedCatalogEntry {
   integration: string;
   /** What to call it on screen. */
   name: string;
+  /**
+   * Whether it runs over NO connection — what puts it in the catalog's
+   * "internal" group.
+   *
+   * The null arm used to project EVERY coded declaration, which listed the EVCC
+   * loadpoint as connection-less. It is not: a loadpoint is pushed over a
+   * particular broker, and its device row is bound to that connection. Offering
+   * it under "internal" invited an operator to add one with no broker, which
+   * nothing would ever subscribe for.
+   */
+  connectionless: boolean;
 }
 
 /**
@@ -86,5 +116,6 @@ export function codedIntegrations(): readonly CodedCatalogEntry[] {
     profileId,
     integration: declaration.integration,
     name: declaration.name ?? declaration.integration,
+    connectionless: declaration.connectionless === true,
   }));
 }
