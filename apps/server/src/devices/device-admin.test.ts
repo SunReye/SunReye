@@ -85,7 +85,7 @@ function harness(
     devices?: DeviceRecord[];
     knownProfiles?: Record<string, string>;
     primarySlug?: string | null;
-    coded?: Record<string, { integration: string; name?: string }>;
+    coded?: Record<string, { integration: string; name?: string; addable?: boolean }>;
     createDevice?: DeviceAdminStore["createDevice"];
     batteries?: DeviceBatteryRecord[];
   } = {},
@@ -203,8 +203,8 @@ function harness(
  * `profile_id`, with the name the roster shows for a device that has no
  * installed profile and never will.
  */
-const CODED: Record<string, { integration: string; name?: string }> = {
-  "evcc-loadpoint": { integration: "evcc", name: "EVCC loadpoint" },
+const CODED: Record<string, { integration: string; name?: string; addable?: boolean }> = {
+  "evcc-loadpoint": { integration: "evcc", name: "EVCC loadpoint", addable: true },
   "sunreye.optimizer": { integration: "optimizer", name: "SunReye Optimizer" },
 };
 
@@ -495,6 +495,195 @@ describe("addDevice", () => {
     const error = await rejection(() => addDevice(deps, meterInput));
     expect(error.status).toBe(400);
     expect(error.message).toMatch(/plant/);
+  });
+});
+
+/**
+ * The add contract as a TIER UNION (`via`) — the seam #79–#81 needs.
+ *
+ * What is proven here is that the three tiers are three SHAPES, not one shape
+ * with optional halves: a Modbus body still validates its slave id, a coded
+ * body needs no slave id at all and carries its integration's settings, and the
+ * mapping tier is declared and refused rather than absent.
+ */
+describe("addDevice: the tier union", () => {
+  /** An EVCC loadpoint as the wizard would add it: a broker, no slave id. */
+  const codedInput = {
+    via: "coded",
+    connection: { id: 5 },
+    role: "charger",
+    name: "Carport",
+    profileId: "evcc-loadpoint",
+    params: { topicRoot: "evcc" },
+  } as const;
+
+  const withBroker = () => harness({ connections: [gateway, broker] });
+
+  test("a body with NO `via` is the profile tier — the shipped dialog keeps working", async () => {
+    const { deps, devices } = harness();
+    const created = await addDevice(deps, meterInput);
+    expect(created.slug).toBe("meter");
+    expect(created.unitId).toBe(2);
+    expect(created.kind).toBe("modbus");
+    expect(devices.at(-1)?.profileId).toBe("sdm630");
+  });
+
+  test('`via: "profile"` explicit adds exactly the same row', async () => {
+    const { deps } = harness();
+    const implicit = await addDevice(deps, { ...meterInput, name: "Meter A" });
+    const explicit = await addDevice(deps, { ...meterInput, via: "profile", name: "Meter B" });
+    const shape = ({ id: _id, slug: _slug, name: _name, ...rest }: typeof implicit) => rest;
+    expect(shape(explicit)).toEqual(shape(implicit));
+  });
+
+  test('`via: "coded"` adds a row, names it from the declaration and writes params', async () => {
+    const { deps, devices, calls } = withBroker();
+    const created = await addDevice(deps, codedInput);
+    expect(created.slug).toBe("carport");
+    expect(created.kind).toBe("coded");
+    expect(created.integration).toBe("evcc");
+    // The name comes from `./coded.ts`'s declaration: there is no profile row.
+    expect(created.profileName).toBe("EVCC loadpoint");
+    expect(created.profileKnown).toBe(true);
+    expect(devices.at(-1)?.params).toEqual({ topicRoot: "evcc" });
+    expect(calls.filter((c) => c === "reload")).toHaveLength(1);
+  });
+
+  test("a coded body needs no unit id — a loadpoint has no slave", async () => {
+    const { deps } = withBroker();
+    const { unitId: _unused, ...rest } = { ...codedInput, unitId: undefined };
+    const created = await addDevice(deps, rest);
+    expect(created.unitId).toBe(0);
+  });
+
+  test("a coded body MAY carry an index, and it lands in unit id", async () => {
+    const { deps } = withBroker();
+    const created = await addDevice(deps, { ...codedInput, unitId: 3 });
+    expect(created.unitId).toBe(3);
+  });
+
+  test("params are optional on a coded body", async () => {
+    const { deps, devices } = withBroker();
+    const { params: _params, ...noParams } = codedInput;
+    await addDevice(deps, noParams);
+    expect(devices.at(-1)?.params).toEqual({});
+  });
+
+  test("the optimizer provisions itself — adding one by hand is a 409", async () => {
+    const { deps, calls } = withBroker();
+    const error = await rejection(() =>
+      addDevice(deps, { ...codedInput, role: "meter", profileId: "sunreye.optimizer" }),
+    );
+    expect(error.status).toBe(409);
+    expect(error.field).toBe("profileId");
+    expect(calls).not.toContain("createDevice");
+    expect(calls).not.toContain("reload");
+  });
+
+  test('`via: "coded"` with a PROFILE id is a 400 — the tiers do not overlap', async () => {
+    const { deps, calls } = withBroker();
+    const error = await rejection(() => addDevice(deps, { ...codedInput, profileId: "sdm630" }));
+    expect(error.status).toBe(400);
+    expect(error.field).toBe("profileId");
+    expect(calls).not.toContain("createDevice");
+  });
+
+  test('`via: "profile"` with a CODED id is a 400 — the same rule the other way', async () => {
+    const { deps, calls } = harness();
+    const error = await rejection(() =>
+      addDevice(deps, { ...meterInput, via: "profile", profileId: "evcc-loadpoint" }),
+    );
+    expect(error.status).toBe(400);
+    expect(error.field).toBe("profileId");
+    expect(calls).not.toContain("createDevice");
+  });
+
+  test('`via: "mapping"` is declared and refused — the tier does not exist yet', async () => {
+    const { deps, calls } = harness();
+    const error = await rejection(() => addDevice(deps, { ...meterInput, via: "mapping" }));
+    expect(error.status).toBe(400);
+    expect(error.message).toMatch(/mapping tier/i);
+    expect(error.message).toMatch(/yet/i);
+    expect(calls).not.toContain("createDevice");
+    expect(calls).not.toContain("reload");
+  });
+
+  test("an unknown tier is a 400 naming `via`", async () => {
+    const { deps } = harness();
+    const error = await rejection(() => addDevice(deps, { ...meterInput, via: "telepathy" }));
+    expect(error.status).toBe(400);
+    expect(error.field).toBe("via");
+  });
+
+  test.each([
+    ["-1", -1],
+    ["248", 248],
+    ["a fraction", 1.5],
+  ] as const)("the profile arm still refuses unit id %s", async (_label, unitId) => {
+    const { deps, calls } = harness();
+    const error = await rejection(() =>
+      addDevice(deps, { ...meterInput, via: "profile", unitId } as never),
+    );
+    expect(error.status).toBe(400);
+    expect(error.message).toMatch(/unit id/i);
+    expect(calls).not.toContain("createDevice");
+  });
+
+  test("the profile arm still REQUIRES a unit id", async () => {
+    const { deps } = harness();
+    const { unitId: _unitId, ...noUnit } = meterInput;
+    const error = await rejection(() => addDevice(deps, { ...noUnit, via: "profile" }));
+    expect(error.status).toBe(400);
+    expect(error.message).toMatch(/unit id/i);
+  });
+
+  test("a coded index may not be negative — it is an index, not a slave id", async () => {
+    const { deps } = withBroker();
+    const error = await rejection(() => addDevice(deps, { ...codedInput, unitId: -1 }));
+    expect(error.status).toBe(400);
+    expect(error.field).toBe("unitId");
+  });
+
+  test("a coded index is NOT capped at the Modbus ceiling", async () => {
+    const { deps } = withBroker();
+    const created = await addDevice(deps, { ...codedInput, unitId: 248 });
+    expect(created.unitId).toBe(248);
+  });
+
+  test.each([
+    ["null", null],
+    ["a list", []],
+    ["a scalar", 7],
+    ["a string", "topicRoot=evcc"],
+  ] as const)("params that are %s are refused — an integration reads keys", async (_l, params) => {
+    const { deps, calls } = withBroker();
+    const error = await rejection(() => addDevice(deps, { ...codedInput, params } as never));
+    expect(error.status).toBe(400);
+    expect(error.field).toBe("params");
+    expect(calls).not.toContain("createDevice");
+  });
+
+  test("a coded add is refused before any write when the connection is not the plant's", async () => {
+    const { deps, calls } = withBroker();
+    const error = await rejection(() => addDevice(deps, { ...codedInput, connection: { id: 99 } }));
+    expect(error.status).toBe(400);
+    expect(error.field).toBe("connection");
+    expect(calls).not.toContain("createDevice");
+  });
+
+  test.each([
+    ["devices_plant_slug_key", "name"],
+    ["devices_connection_unit_key", "unitId"],
+  ] as const)("a coded add keeps the %s refusal", async (constraint, field) => {
+    const { deps } = harness({
+      connections: [gateway, broker],
+      createDevice: async () => {
+        throw violation(constraint);
+      },
+    });
+    const error = await rejection(() => addDevice(deps, codedInput));
+    expect(error.status).toBe(409);
+    expect(error.field).toBe(field);
   });
 });
 

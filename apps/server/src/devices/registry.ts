@@ -66,6 +66,16 @@ export interface CodedDeclaration {
    * reported as an uninstalled profile (#213).
    */
   name?: string;
+  /**
+   * Whether an operator may create one of these by hand — the add contract's
+   * coded arm (`./device-admin.ts`) reads it, and nothing at runtime does.
+   *
+   * ABSENT MEANS NO. A coded declaration is auto-provisioned until it says
+   * otherwise: the optimizer writes its own row and never wants a second, so
+   * the safe reading of a declaration that never considered the question is
+   * "the server owns this row".
+   */
+  addable?: boolean;
   metrics: readonly DeviceMetric[];
   declares?: ProfileDeclarations;
 }
