@@ -47,6 +47,7 @@ import {
 import type { ControlState } from "@SunReye/db/control-state";
 import { controlStateKey } from "@SunReye/db/control-state";
 import type { MqttParams } from "@SunReye/db/connection-kinds";
+import { type BrokerClient, type BrokerLink, createBrokerPool } from "../devices/broker-pool";
 import type { MqttConfig } from "@SunReye/db/mqtt-config";
 import type { PollEndpoint } from "./endpoint";
 import type { IdentityResolver } from "../shared/identity";
@@ -301,6 +302,32 @@ mock.module("../settings/mqtt-broker-instance", () => ({
     intercepting ? mqttBroker : realReadBroker(connectionId),
 }));
 
+/**
+ * The process's broker pool, doubled (#221).
+ *
+ * The export takes its client from its CONNECTION now, so the fake bridge below
+ * has to be handed a real {@link BrokerLink} to prove that the runtime re-resolved
+ * the row — a link carries the endpoint it is actually on. The dial is inert and
+ * the retry timer never fires: what a pool does with a socket is
+ * `../devices/broker-pool.test.ts`'s subject, not this file's.
+ */
+class InertClient extends EventEmitter {
+  subscribe(): void {}
+  publish(): void {}
+  async endAsync(): Promise<void> {}
+}
+
+const realBrokerPoolModule = await import("../devices/broker-pool-instance");
+const realBrokerPoolExports = { ...realBrokerPoolModule };
+const testBrokerPool = createBrokerPool({
+  dial: () => new InertClient() as unknown as BrokerClient,
+  schedule: () => () => {},
+});
+mock.module("../devices/broker-pool-instance", () => ({
+  ...realBrokerPoolModule,
+  brokerPool: testBrokerPool,
+}));
+
 /** Stands in for the MQTT bridge: records everything the runtime publishes. */
 class FakeBridge {
   samples: InverterSample[] = [];
@@ -308,8 +335,13 @@ class FakeBridge {
   closed = 0;
   constructor(
     readonly config: MqttConfig,
-    readonly broker: MqttParams,
+    /** The connection's client, taken exactly as the real bridge takes it. */
+    readonly link: BrokerLink,
   ) {}
+  /** The endpoint the runtime actually resolved for this rebuild. */
+  get broker(): { brokerUrl: string } {
+    return { brokerUrl: this.link.brokerUrl };
+  }
   publishSample(sample: InverterSample): void {
     this.samples.push(sample);
   }
@@ -321,6 +353,7 @@ class FakeBridge {
   }
   async close(): Promise<void> {
     this.closed++;
+    await this.link.release();
   }
 }
 const bridges: FakeBridge[] = [];
@@ -340,12 +373,16 @@ mock.module("./mqtt", () => ({
     deps: Parameters<typeof realBridgeModule.startMqttBridge>[1],
   ) => {
     if (!intercepting) return realStartMqttBridge(config, deps);
-    // The real bridge's own rule: no broker, no bridge. That is what the retired
-    // `enabled` flag became.
-    if (!deps.broker) return null;
+    // The real bridge's own rule: no client, no bridge. That is what the retired
+    // `enabled` flag became — and since #221 it is the CONNECTION that answers,
+    // so the fake takes its link the same way the real one does.
+    const link = deps.acquire({
+      will: { topic: "test/status", payload: "offline", qos: 0, retain: true },
+    });
+    if (!link) return null;
     bridgeWrite = deps.write;
     bridgeCtx = deps.ctx;
-    const built = new FakeBridge(config, deps.broker);
+    const built = new FakeBridge(config, link);
     bridges.push(built);
     return built;
   },
@@ -801,6 +838,7 @@ afterAll(() => {
   mock.module("./endpoint", () => ({ ...realEndpointExports }));
   mock.module("./mqtt", () => ({ ...realBridgeExports }));
   mock.module("../settings/mqtt-broker-instance", () => ({ ...realBrokerExports }));
+  mock.module("../devices/broker-pool-instance", () => ({ ...realBrokerPoolExports }));
   mock.module("../automation/automation", () => ({ ...realAutomationExports }));
   mock.module("../settings/weather-settings", () => ({ ...realWeatherSettingsExports }));
   mock.module("../forecast/solar-forecast", () => ({ ...realSolarForecastExports }));

@@ -60,6 +60,7 @@ import { MissingMqttNamespaceError, readMqttNamespace } from "./mqtt-namespace";
 import { fetchSolarForecast, toForecastExport } from "../forecast/solar-forecast";
 import { runSpotPriceSync } from "../prices/spot-price-job";
 import { getSpotPriceConfig } from "../settings/spot-price-settings";
+import { brokerPool } from "../devices/broker-pool-instance";
 import { readBroker } from "../settings/mqtt-broker-instance";
 import { liveState } from "../shared/state";
 import { getWeatherConfig } from "../settings/weather-settings";
@@ -676,7 +677,18 @@ export function createRuntime(deps: RuntimeDeps = {}) {
     bridge =
       namespace === null
         ? null
-        : startMqttBridge(config, { ctx: { ...ctx, ...namespace }, write, broker });
+        : startMqttBridge(config, {
+            ctx: { ...ctx, ...namespace },
+            write,
+            // THE CONNECTION'S CLIENT (#221). Null when the setting names no
+            // resolvable broker, which is what the bridge returns null for —
+            // the export has no on/off flag of its own. The bridge supplies its
+            // own last will, because the availability topic is its namespace's.
+            acquire: ({ will }) =>
+              broker && config.connectionId !== null
+                ? brokerPool.acquire(config.connectionId, broker, { will })
+                : null,
+          });
     if (previous) await previous.close();
     // Seed a fresh bridge with the current forecast instead of waiting a full
     // interval; harmless when the forecast is disabled (publishes null → no-op).

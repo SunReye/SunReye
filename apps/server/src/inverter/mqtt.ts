@@ -29,12 +29,10 @@
  * left behind, once, and carries the four fences that makes that safe.
  */
 
-import type { MqttParams } from "@SunReye/db/connection-kinds";
 import type { MqttConfig } from "@SunReye/db/mqtt-config";
 import type { InverterSample } from "@SunReye/inverter-core";
 import { entityConstraint } from "@SunReye/inverter-core";
-import mqtt from "mqtt";
-import type { MqttClient } from "mqtt";
+import type { BrokerLink, BrokerWill } from "../devices/broker-pool";
 import { discoveryHeld, onDiscoveryRelease } from "../migration/discovery-gate";
 import type { ProfileContext } from "./inverter";
 import { WriteRejectedError } from "./control-writer";
@@ -94,8 +92,8 @@ export interface MqttBridgeDeps {
    */
   ctx: ProfileContext & MqttNamespace;
   /**
-   * THE BROKER THIS EXPORT DIALS — the `kind = 'mqtt'` connection
-   * {@link MqttConfig.connectionId} names, resolved by the caller.
+   * TAKE THIS EXPORT'S CLIENT FROM ITS CONNECTION — the `kind = 'mqtt'` row
+   * {@link MqttConfig.connectionId} names (#221).
    *
    * `null` is "there is no broker", and it is what {@link startMqttBridge}
    * returns null for. It replaces `config.enabled`: the export used to hold its
@@ -104,11 +102,18 @@ export interface MqttBridgeDeps {
    * consumer had to decide which won. A connection either resolves or it does
    * not (`../settings/mqtt-broker.ts`).
    *
-   * RESOLVED BY THE CALLER, not read here: this module is handed everything it
-   * publishes with, exactly as it is handed the frozen slugs, so a bridge cannot
-   * be built against one broker and a namespace from another.
+   * A FUNCTION, and not a link already taken, because the LAST WILL is a
+   * connect-time property built from the namespace this module owns: the
+   * availability topic is `topicsFor(...)`, which the caller would have to spell
+   * a second time to hand over a ready client. Handing the will to the
+   * connection instead keeps one opinion about the topic tree, and lets the pool
+   * decide whether declaring it costs a re-dial.
+   *
+   * THE CLIENT IS NOT THIS BRIDGE'S. The EVCC ingest may be on the same row and
+   * share the socket; {@link MqttBridge.close} therefore RELEASES rather than
+   * disconnects.
    */
-  broker: MqttParams | null;
+  acquire(options: { will: BrokerWill }): BrokerLink | null;
   /** Apply an inbound command write — the funnel validates it. */
   write(key: string, value: number): Promise<void>;
   /**
@@ -130,9 +135,6 @@ export interface MqttBridgeDeps {
  * on every `connect` so they survive broker restarts and reconnects.
  */
 export function startMqttBridge(config: MqttConfig, deps: MqttBridgeDeps): MqttBridge | null {
-  const broker = deps.broker;
-  if (!broker) return null;
-
   const { profile, manifest, defByKey, plantSlug, deviceSlug } = deps.ctx;
   const ns: MqttNamespace = { plantSlug, deviceSlug };
   const haDevice: HaDevice = {
@@ -146,8 +148,17 @@ export function startMqttBridge(config: MqttConfig, deps: MqttBridgeDeps): MqttB
     model: profile.id,
   };
   const topics = topicsFor(config.topicPrefix, ns);
-  let connected = false;
-  let lastError: string | null = null;
+  // THE CLIENT THIS CONNECTION OWNS, taken before anything below closes over it.
+  //
+  // The LWT goes out with it: the broker flips us to "offline" if the connection
+  // drops, so HA marks the entities unavailable instead of showing a stale last
+  // value. Null is "no broker" and the export is simply off.
+  const acquired = deps.acquire({
+    will: { topic: topics.availability, payload: "offline", qos: 0, retain: true },
+  });
+  if (!acquired) return null;
+  const client: BrokerLink = acquired;
+
   // Latest forecast (both variants), kept so a reconnect can restore its retained
   // topics promptly (the runtime otherwise only re-publishes on its slow interval).
   let lastForecast: Record<ForecastVariant, SolarForecastExport> | null = null;
@@ -161,28 +172,10 @@ export function startMqttBridge(config: MqttConfig, deps: MqttBridgeDeps): MqttB
     }
   }
 
-  const client: MqttClient = mqtt.connect(broker.brokerUrl, {
-    username: broker.username,
-    password: broker.password,
-    ...(broker.clientId ? { clientId: broker.clientId } : {}),
-    // LWT: the broker flips us to "offline" if the connection drops, so HA
-    // marks the entities unavailable instead of showing a stale last value.
-    will: { topic: topics.availability, payload: "offline", qos: 0, retain: true },
-  });
-
   // Writable entities, indexed by their command topic for O(1) inbound dispatch.
   const keyByCommandTopic = new Map<string, string>();
   for (const m of manifest.metrics) {
     if (m.writable) keyByCommandTopic.set(topics.command(m), m.key);
-  }
-
-  /** Subscribe to every writable entity's command topic (no-op when none). */
-  function subscribeCommands(): void {
-    const commandTopics = [...keyByCommandTopic.keys()];
-    if (commandTopics.length === 0) return;
-    client.subscribe(commandTopics, (err) => {
-      if (err) logger.error("subscribe failed: {error}", { error: err });
-    });
   }
 
   /** The retained discovery topic one announcement is published to. */
@@ -296,28 +289,42 @@ export function startMqttBridge(config: MqttConfig, deps: MqttBridgeDeps): MqttB
     if (client.connected) announceIfAllowed();
   });
 
-  client.on("connect", () => {
-    connected = true;
-    lastError = null;
-    client.publish(topics.availability, "online", { retain: true });
-    subscribeCommands();
-    announceIfAllowed();
-    // Restore the retained forecast topics on (re)connect.
-    if (lastForecast) emitForecast(lastForecast);
+  /**
+   * Everything this export wants off its connection, in ONE registration.
+   *
+   * The command topics travel as `topics` rather than being subscribed by hand
+   * on each connect: the pool re-subscribes what is registered on every
+   * reconnect, so a broker restart cannot leave the export publishing state and
+   * silently deaf to commands — which is exactly what a hand-rolled subscribe
+   * forgets.
+   */
+  client.subscribe({
+    topics: [...keyByCommandTopic.keys()],
+    onConnect: () => {
+      client.publish(topics.availability, "online", { retain: true });
+      announceIfAllowed();
+      // Restore the retained forecast topics on (re)connect.
+      if (lastForecast) emitForecast(lastForecast);
 
-    logger.info('connected to {brokerUrl} (prefix "{prefix}")', {
-      brokerUrl: broker.brokerUrl,
-      prefix: topics.base,
-    });
+      logger.info('exporting on connection {id} (prefix "{prefix}")', {
+        id: client.connectionId,
+        prefix: topics.base,
+      });
+    },
+    onSubscribeError: (err) => {
+      logger.error("subscribe failed: {error}", { error: err });
+    },
+    // The pool's dispatch is synchronous, so the write is handed to a floating
+    // promise HERE and not by making every subscriber's handler async.
+    onMessage: (topic, payload) => {
+      const key = keyByCommandTopic.get(topic);
+      if (!key) return; // Not a command topic we own.
+      void handleCommand(key, topic, payload);
+    },
   });
 
-  client.on("close", () => {
-    connected = false;
-  });
-
-  client.on("message", async (topic, payload) => {
-    const key = keyByCommandTopic.get(topic);
-    if (!key) return; // Not a command topic we own.
+  /** Apply one inbound command from a topic this bridge owns. */
+  async function handleCommand(key: string, topic: string, payload: Buffer): Promise<void> {
     // An empty payload is how MQTT *deletes* a retained message, not a command:
     // `Number("")` is 0, so without this guard tidying up a retained setpoint
     // would drive the register to zero (e.g. max charge current → 0 A).
@@ -346,12 +353,7 @@ export function startMqttBridge(config: MqttConfig, deps: MqttBridgeDeps): MqttB
       }
       logger.error("write {key}={value} failed: {error}", { key, value, error: err });
     }
-  });
-
-  client.on("error", (err) => {
-    lastError = err instanceof Error ? err.message : String(err);
-    logger.error("client error: {error}", { error: err });
-  });
+  }
 
   return {
     publishSample(sample) {
@@ -372,6 +374,10 @@ export function startMqttBridge(config: MqttConfig, deps: MqttBridgeDeps): MqttB
       if (client.connected) emitForecast(forecast);
     },
     status() {
+      // OBSERVED ON THE CONNECTION (#221), not tracked here. Two consumers on
+      // one broker used to keep two opinions of whether it was up, and only the
+      // export's reached `/api/status`; there is one socket and one answer now.
+      const { connected, lastError } = client.status();
       return { connected, lastError };
     },
     async close() {
@@ -385,7 +391,9 @@ export function startMqttBridge(config: MqttConfig, deps: MqttBridgeDeps): MqttB
       await new Promise<void>((resolve) => {
         client.publish(topics.availability, "offline", { retain: true }, () => resolve());
       });
-      await client.endAsync();
+      // RELEASE, not disconnect: the EVCC ingest may hold the same connection,
+      // and the pool closes the socket only when its last holder lets go.
+      await client.release();
     },
   };
 }

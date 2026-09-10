@@ -47,6 +47,7 @@ import type {
 import { isRetired } from "@SunReye/db/plant-repo";
 import { z } from "zod";
 
+import type { ConnectionStatus } from "../devices/connection-tier";
 import type { CatalogEntry } from "../devices/integration-catalog";
 import { EVCC_LOADPOINT_PROFILE } from "../evcc/evcc-devices";
 import { parseBody } from "../shared/zod-field";
@@ -75,6 +76,17 @@ export interface IntegrationAdminDeps {
   catalog(kind: ConnectionKind | null): readonly CatalogEntry[];
   /** Ask the runtime to re-read what is configured — after a write, never before. */
   reload(): Promise<void>;
+  /**
+   * What is OBSERVED of a connection right now — `connectionStatus` over the
+   * process's broker pool (`../devices/connection-runtime.ts`).
+   *
+   * Injected, and optional, for the same reason everything else here is: the
+   * status is a fact about a live socket, and a service that reached for the
+   * pool directly could not be tested against a stated one. Absent (or null)
+   * means "this build holds no client for that row" — see
+   * {@link IntegrationView.status}.
+   */
+  connectionStatus?(connectionId: number | null): ConnectionStatus | null;
 }
 
 /**
@@ -95,6 +107,17 @@ export interface IntegrationView {
   label: string;
   addable: boolean;
   multiInstance: boolean;
+  /**
+   * What is OBSERVED of the connection this integration runs over, or null when
+   * nothing in this process holds a client for it (#221).
+   *
+   * NULL IS NOT "DOWN". It is "not known here" — an integration on no
+   * connection at all, a `modbus` row the poll loop still owns, or a boot that
+   * has not opened anything yet. A settings page that painted it red would be
+   * making a measurement up, which is worse than the config-derived status this
+   * replaces, because it looks like one.
+   */
+  status: ConnectionStatus | null;
 }
 
 /** A refusal the route turns into its status, with the field it concerns. */
@@ -171,6 +194,21 @@ function connectionOf(
   return connections.find((c) => c.id === connectionId) ?? null;
 }
 
+/**
+ * The three facts a row cannot answer about itself, read off its catalog entry.
+ *
+ * Its own function so a build with NO entry for the row — a database migrated
+ * ahead of the binary — has exactly one place that decides what the settings
+ * page shows instead, rather than three `??` arms inline.
+ */
+function catalogFacts(
+  entry: CatalogEntry | null,
+  kind: string,
+): Pick<IntegrationView, "label" | "addable" | "multiInstance"> {
+  if (!entry) return { label: kind, addable: false, multiInstance: false };
+  return { label: entry.label, addable: entry.addable, multiInstance: entry.multiInstance };
+}
+
 /** One row as the API returns it, with its catalog facts folded in. */
 function toView(
   deps: IntegrationAdminDeps,
@@ -178,16 +216,14 @@ function toView(
   connections: readonly ConnectionRecord[],
 ): IntegrationView {
   const connection = connectionOf(connections, row.connectionId);
-  const entry = entryFor(deps, connection?.kind ?? null, row.kind);
   return {
     id: row.id,
     kind: row.kind,
     connectionId: row.connectionId,
     enabled: row.enabled,
     params: row.params as Record<string, unknown>,
-    label: entry?.label ?? row.kind,
-    addable: entry?.addable ?? false,
-    multiInstance: entry?.multiInstance ?? false,
+    ...catalogFacts(entryFor(deps, connection?.kind ?? null, row.kind), row.kind),
+    status: deps.connectionStatus?.(row.connectionId) ?? null,
   };
 }
 
