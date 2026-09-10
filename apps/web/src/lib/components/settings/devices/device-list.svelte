@@ -13,6 +13,7 @@
 		busyId,
 		onEditConnection,
 		onEdit,
+		onRename,
 		onRetire,
 		onRestore
 	}: {
@@ -21,6 +22,7 @@
 		busyId: number | null;
 		onEditConnection: (connection: ConnectionView) => void;
 		onEdit: (device: DeviceView) => void;
+		onRename: (device: DeviceView) => void;
 		onRetire: (device: DeviceView) => void;
 		onRestore: (device: DeviceView) => void;
 	} = $props();
@@ -36,7 +38,15 @@
 {:else}
 	<div class="flex flex-col {SECTION_GAP}">
 		{#each groups as group (group.key)}
-			<DeviceGroupCard {group} {busyId} {onEditConnection} {onEdit} {onRetire} {onRestore} />
+			<DeviceGroupCard
+				{group}
+				{busyId}
+				{onEditConnection}
+				{onEdit}
+				{onRename}
+				{onRetire}
+				{onRestore}
+			/>
 		{/each}
 	</div>
 {/if}

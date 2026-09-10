@@ -1074,5 +1074,8 @@
   "mqtt_broker_off": "Desactivado: no se publica nada",
   "mqtt_broker_none": "Aún no hay conexión MQTT: añade una en Dispositivos.",
   "mqtt_topic_prefix": "Prefijo de tema",
-  "mqtt_discovery_prefix": "Prefijo de discovery"
+  "mqtt_discovery_prefix": "Prefijo de discovery",
+  "devices_action_rename": "Renombrar",
+  "devices_rename_dialog_title": "Renombrar dispositivo",
+  "devices_rename_dialog_description": "Cambia la etiqueta con la que se muestra este dispositivo. Su dirección y su histórico no cambian."
 }

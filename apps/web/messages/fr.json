@@ -1074,5 +1074,8 @@
   "mqtt_broker_off": "Désactivé — rien n'est publié",
   "mqtt_broker_none": "Aucune connexion MQTT — ajoutez-en une dans Appareils.",
   "mqtt_topic_prefix": "Préfixe de topic",
-  "mqtt_discovery_prefix": "Préfixe de discovery"
+  "mqtt_discovery_prefix": "Préfixe de discovery",
+  "devices_action_rename": "Renommer",
+  "devices_rename_dialog_title": "Renommer l'appareil",
+  "devices_rename_dialog_description": "Modifie le libellé sous lequel cet appareil est affiché. Son adresse et son historique restent inchangés."
 }

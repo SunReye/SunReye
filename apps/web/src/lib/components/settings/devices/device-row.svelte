@@ -7,18 +7,21 @@
 	import { roleLabel } from './role-label';
 
 	// One device of its gateway's group: identity on the left (name, role, state,
-	// where it lives), the operator's controls on the right. Editing is the
-	// dialog's job; retire and restore are the parent's, since retiring asks first.
+	// where it lives), the operator's controls on the right. Editing and renaming
+	// are the dialogs' job; retire and restore are the parent's, since retiring
+	// asks first.
 	let {
 		device,
 		busy,
 		onEdit,
+		onRename,
 		onRetire,
 		onRestore
 	}: {
 		device: DeviceView;
 		busy: boolean;
 		onEdit: (device: DeviceView) => void;
+		onRename: (device: DeviceView) => void;
 		onRetire: (device: DeviceView) => void;
 		onRestore: (device: DeviceView) => void;
 	} = $props();
@@ -37,5 +40,5 @@
 		</span>
 		<DeviceMeta {device} />
 	</div>
-	<DeviceActions {device} {busy} {onEdit} {onRetire} {onRestore} />
+	<DeviceActions {device} {busy} {onEdit} {onRename} {onRetire} {onRestore} />
 </div>

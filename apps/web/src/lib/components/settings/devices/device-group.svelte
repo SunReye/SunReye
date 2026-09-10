@@ -19,6 +19,7 @@
 		busyId,
 		onEditConnection,
 		onEdit,
+		onRename,
 		onRetire,
 		onRestore
 	}: {
@@ -26,6 +27,7 @@
 		busyId: number | null;
 		onEditConnection: (connection: ConnectionView) => void;
 		onEdit: (device: DeviceView) => void;
+		onRename: (device: DeviceView) => void;
 		onRetire: (device: DeviceView) => void;
 		onRestore: (device: DeviceView) => void;
 	} = $props();
@@ -50,7 +52,7 @@
 	{:else}
 		<div class="flex flex-col divide-y divide-border" data-group={group.key}>
 			{#each group.devices as device (device.id)}
-				<DeviceRow {device} busy={busyId === device.id} {onEdit} {onRetire} {onRestore} />
+				<DeviceRow {device} busy={busyId === device.id} {onEdit} {onRename} {onRetire} {onRestore} />
 			{/each}
 		</div>
 	{/if}

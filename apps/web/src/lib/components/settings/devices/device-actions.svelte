@@ -1,39 +1,48 @@
 <script lang="ts">
-	import { Button } from '$lib/components/ui/button';
-	import * as m from '$lib/paraglide/messages';
-	import { resolve } from '$lib/resolve';
+	import { type DeviceActionId, actionsFor } from './device-actions-logic';
+	import DeviceActionButton from './device-action-button.svelte';
 	import type { DeviceView } from './device-types';
-	import ModbusActions from './modbus-actions.svelte';
 
-	// Only a MODBUS device offers the roster's controls. The edit dialog changes
-	// a gateway, a unit id and a profile, none of which a coded or a virtual
-	// device has: it opened seeded on the plant's FIRST gateway, so saving an
-	// untouched edit bound the loadpoint or the optimizer to that gateway (#213
-	// — the server answers 409 for one now). A coded device is configured where
-	// its feed is instead; EVCC's settings live on the MQTT tab until #217.
+	// The controls a row offers. WHICH ones, and in what order, is decided in
+	// `./device-actions-logic.ts` — a rule with boundaries (a retired row, the
+	// polled row, an integration with no page of its own) belongs somewhere a
+	// test can reach it, not in an `{#if}` chain. Each control renders itself.
+	//
+	// The split that matters: EDIT opens the addressing dialog (gateway, unit id,
+	// profile) and only a Modbus row has any of those; RENAME opens the name-only
+	// dialog, which is exactly what the narrowed server gate allows on a coded or
+	// a virtual row (#219). Before that narrowing those rows offered a link and
+	// nothing else — an EVCC loadpoint could not be renamed at all.
 	let {
 		device,
 		busy,
 		onEdit,
+		onRename,
 		onRetire,
 		onRestore
 	}: {
 		device: DeviceView;
 		busy: boolean;
 		onEdit: (device: DeviceView) => void;
+		onRename: (device: DeviceView) => void;
 		onRetire: (device: DeviceView) => void;
 		onRestore: (device: DeviceView) => void;
 	} = $props();
 
-	const configurable = $derived(device.kind === 'coded' && device.integration === 'evcc');
+	// `configure` is a link and runs nothing.
+	const RUN: Record<DeviceActionId, (device: DeviceView) => void> = {
+		restore: onRestore,
+		edit: onEdit,
+		rename: onRename,
+		configure: () => {},
+		retire: onRetire
+	};
+
+	const actions = $derived(actionsFor(device));
 </script>
 
 <div class="flex shrink-0 flex-wrap items-center gap-2">
-	{#if device.kind === 'modbus'}
-		<ModbusActions {device} {busy} {onEdit} {onRetire} {onRestore} />
-	{:else if configurable}
-		<Button variant="outline" size="sm" class="flex-1 sm:flex-none" href={resolve('/settings/mqtt')}>
-			{m.devices_action_configure()}
-		</Button>
-	{/if}
+	{#each actions as action (action.id)}
+		<DeviceActionButton {action} {busy} onclick={() => RUN[action.id](device)} />
+	{/each}
 </div>

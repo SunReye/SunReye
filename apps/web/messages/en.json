@@ -1074,5 +1074,8 @@
   "mqtt_broker_off": "Off — nothing is published",
   "mqtt_broker_none": "No MQTT connection yet — add one under Devices.",
   "mqtt_topic_prefix": "Topic prefix",
-  "mqtt_discovery_prefix": "Discovery prefix"
+  "mqtt_discovery_prefix": "Discovery prefix",
+  "devices_action_rename": "Rename",
+  "devices_rename_dialog_title": "Rename device",
+  "devices_rename_dialog_description": "Change the label this device is shown under. Its address and its history stay where they are."
 }

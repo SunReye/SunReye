@@ -1074,5 +1074,8 @@
   "mqtt_broker_off": "Aus — es wird nichts veröffentlicht",
   "mqtt_broker_none": "Noch keine MQTT-Verbindung — unter Geräte eine anlegen.",
   "mqtt_topic_prefix": "Topic-Präfix",
-  "mqtt_discovery_prefix": "Discovery-Präfix"
+  "mqtt_discovery_prefix": "Discovery-Präfix",
+  "devices_action_rename": "Umbenennen",
+  "devices_rename_dialog_title": "Gerät umbenennen",
+  "devices_rename_dialog_description": "Ändert die Bezeichnung, unter der dieses Gerät angezeigt wird. Adresse und Verlauf bleiben unverändert."
 }

@@ -12,6 +12,7 @@
 	import ConnectionDialog from './connection-dialog.svelte';
 	import DeviceList from './device-list.svelte';
 	import type { ConnectionView, DeviceRoster, DeviceView } from './device-types';
+	import RenameDialog from './rename-dialog.svelte';
 	import RetireDialog from './retire-dialog.svelte';
 
 	// The devices panel: the plant's gateways and the devices on each, retired
@@ -29,6 +30,9 @@
 	/** The connection dialog's subject: a row to edit, `'new'` to add, null closed. */
 	let connection = $state<ConnectionView | 'new' | null>(null);
 	let retiring = $state<DeviceView | null>(null);
+	/** The row the name-only dialog is open on, or null. A coded or virtual row
+	    has no addressing to edit; #219 left `name` as the one thing it may set. */
+	let renaming = $state<DeviceView | null>(null);
 
 	const editingConnection = $derived(
 		connection !== null && connection !== 'new' ? connection : null
@@ -97,6 +101,7 @@
 		{busyId}
 		onEditConnection={(c) => (connection = c)}
 		onEdit={openDialog}
+		onRename={(d) => (renaming = d)}
 		onRetire={(d) => (retiring = d)}
 		onRestore={(d) => setRetired(d, false)}
 	/>
@@ -112,5 +117,7 @@
 	/>
 	<ConnectionDialog bind:target={connection} devices={onConnection} onSaved={load} onDeleted={load} />
 {/if}
+
+<RenameDialog bind:device={renaming} onSaved={load} />
 
 <RetireDialog device={retiring} onCancel={() => (retiring = null)} onConfirm={confirmRetire} />
