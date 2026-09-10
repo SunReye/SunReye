@@ -57,6 +57,13 @@
       "when": 1789054931339,
       "tag": "0007_add_integrations",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1789054931340,
+      "tag": "0008_bind_evcc_ingest",
+      "breakpoints": true
     }
   ]
 }

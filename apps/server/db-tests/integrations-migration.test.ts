@@ -84,8 +84,15 @@ async function rewind(db: Db): Promise<void> {
   await db.execute(
     sql.raw(`
     drop table if exists integrations;
+    -- Keep the seven entries 0007 expects to find (0000-0006) and drop every
+    -- row after them, so 0007 itself re-runs. NOT a delete of the row with the
+    -- greatest created_at: that meant "the last migration", which was 0007 only
+    -- until 0008 existed -- and then this rewind dropped the table, left 0007
+    -- marked applied, and ran 0008 against nothing. The 0006 spec was bitten by
+    -- the same idiom the day 0007 landed; an offset counts the migrations this
+    -- file depends on and is stable against every one that comes later.
     delete from drizzle.__drizzle_migrations
-      where created_at = (select max(created_at) from drizzle.__drizzle_migrations);
+      where id > (select id from drizzle.__drizzle_migrations order by id limit 1 offset 6);
   `),
   );
 }
@@ -435,15 +442,26 @@ suite("migration 0007: the integrations table", () => {
   });
 
   describe("an install whose EVCC names no broker", () => {
-    test("still gets a row — connection_id is NULLABLE, unlike the export's", async () => {
-      // The ingest is configured (enabled) and simply has no broker bound yet.
-      // The column is nullable for the connection-LESS kinds to come anyway, so
-      // there is nothing to invent here.
-      const { db, url } = await seeded({ mqtt: null, evcc: { connectionId: null } });
+    // 0007 writes the row with `connection_id = null` — the column is nullable
+    // for the connection-LESS kinds to come, and 0007 invents nothing. 0008
+    // then BINDS it, because this plant has exactly one MQTT connection and an
+    // unbound ingest on a single-broker plant has only one thing it could have
+    // been reading. That repair is the point of 0008: an upgrade from 3.0.x
+    // left every ingest unbound, and an unbound ingest does not subscribe.
+    //
+    // Asserted at the end of the CHAIN, because that is what a database has.
+    // 0008's refusal to guess when the evidence is ambiguous is proved in
+    // `upgrade-3-0-to-3-1.test.ts`.
+    test("gets a row, and the chain binds it to the plant's only broker", async () => {
+      const { db, url, brokerId } = await seeded({ mqtt: null, evcc: { connectionId: null } });
       await migrate(url);
       const rows = await integrations(db);
       expect(rows).toHaveLength(1);
-      expect(rows[0]).toMatchObject({ kind: "evcc-ingest", connection_id: null, enabled: true });
+      expect(rows[0]).toMatchObject({
+        kind: "evcc-ingest",
+        connection_id: brokerId,
+        enabled: true,
+      });
     });
   });
 
