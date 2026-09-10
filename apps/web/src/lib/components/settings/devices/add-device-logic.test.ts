@@ -12,11 +12,13 @@ import {
   groupIsEmpty,
   emptyForm,
   nameProblem,
+  nestIntegrations,
   probeTargetOf,
   profileGroups,
   retiredByRemoving,
   takenUnitIds,
 } from "./add-device-logic";
+import type { DeviceGroup } from "./add-device-logic";
 import { NEW_CONNECTION } from "./device-types";
 import type { ConnectionView, DeviceView, IntegrationView } from "./device-types";
 
@@ -802,6 +804,7 @@ describe("the integrations a group carries", () => {
     label: "EVCC",
     addable: true,
     multiInstance: true,
+    status: null,
     ...over,
   });
 
@@ -905,6 +908,7 @@ describe("retiredByRemoving", () => {
     label: "EVCC",
     addable: true,
     multiInstance: true,
+    status: null,
   } satisfies IntegrationView;
   const onBroker = (over: Partial<DeviceView> = {}) =>
     loadpoint({ connectionId: 7, connection: broker, ...over });
@@ -952,5 +956,119 @@ describe("retiredByRemoving", () => {
         onBroker({ id: 25, slug: "evcc-loadpoint-1" }),
       ]),
     ).toEqual([]);
+  });
+});
+
+/**
+ * NESTING — the shape the owner asked for, and the complaint it answers.
+ *
+ * The shipped card listed `Carport` (a loadpoint) above `EVCC` (the ingest that
+ * discovered it) as unrelated siblings, with a "via MQTT" badge as the only
+ * hint that one exists BECAUSE of the other. So a device an integration
+ * provided belongs UNDER that integration, and only the devices read directly
+ * through the endpoint stay at the top of the card.
+ *
+ * The link is `YIELDED_PROFILES` — already the web mirror of the server's own
+ * table, and already what `retiredByRemoving` decides from. One rule, two
+ * readers: a second "which devices does this integration provide" would be free
+ * to disagree with the confirm dialog about what a Remove takes with it.
+ */
+describe("nestIntegrations", () => {
+  const broker = brokerConn;
+  const ingest = (over: Partial<IntegrationView> = {}): IntegrationView => ({
+    id: 1,
+    kind: "evcc-ingest",
+    connectionId: 7,
+    enabled: true,
+    params: {},
+    label: "EVCC",
+    addable: true,
+    multiInstance: true,
+    status: null,
+    ...over,
+  });
+  const onBroker = (over: Partial<DeviceView> = {}) =>
+    loadpoint({ connectionId: 7, connection: broker, ...over });
+  const group = (over: Partial<DeviceGroup> = {}): DeviceGroup => ({
+    key: "gateway-7",
+    kind: "gateway",
+    title: "Home broker",
+    caption: null,
+    connection: broker,
+    integration: null,
+    devices: [],
+    integrations: [],
+    ...over,
+  });
+
+  test("a loadpoint moves under the ingest that provided it", () => {
+    const carport = onBroker({ id: 20, slug: "evcc-loadpoint-1", name: "Carport" });
+    const nested = nestIntegrations(group({ devices: [carport], integrations: [ingest()] }));
+    expect(nested.devices).toEqual([]);
+    expect(
+      nested.integrations.map((row) => [row.integration.id, row.devices.map((d) => d.name)]),
+    ).toEqual([[1, ["Carport"]]]);
+  });
+
+  // A Modbus device on a gateway is READ through the endpoint; nothing provided
+  // it, and burying it under an integration would be a second lie in place of
+  // the first.
+  test("a device read directly through the connection stays at the top", () => {
+    const meter = device({ id: 2, slug: "meter", connectionId: 7, connection: broker });
+    const nested = nestIntegrations(group({ devices: [meter], integrations: [ingest()] }));
+    expect(nested.devices.map((d) => d.slug)).toEqual(["meter"]);
+    expect(nested.integrations[0]!.devices).toEqual([]);
+  });
+
+  // The card must keep showing a retired loadpoint — a device nobody can see is
+  // a device nobody can restore — and it belongs under its provider like any
+  // other. `retiredByRemoving` drops it because the SERVER skips it; that is a
+  // question about a delete, not about where a row is drawn.
+  test("a retired loadpoint is still the integration's, unlike what a Remove would retire", () => {
+    const gone = onBroker({
+      id: 21,
+      slug: "evcc-loadpoint-2",
+      retiredAt: "2026-01-01T00:00:00.000Z",
+    });
+    const nested = nestIntegrations(group({ devices: [gone], integrations: [ingest()] }));
+    expect(nested.integrations[0]!.devices.map((d) => d.id)).toEqual([21]);
+    expect(nested.devices).toEqual([]);
+    expect(retiredByRemoving(ingest(), [gone])).toEqual([]);
+  });
+
+  // An integration that yields nothing (the Home Assistant export publishes and
+  // provisions nothing) is a row with no children — not a row that swallows
+  // whatever else is on the broker.
+  test("an integration that provisions nothing owns nothing", () => {
+    const carport = onBroker({ id: 20 });
+    const nested = nestIntegrations(
+      group({
+        devices: [carport],
+        integrations: [ingest({ id: 3, kind: "ha-export", label: "HA" })],
+      }),
+    );
+    expect(nested.integrations[0]!.devices).toEqual([]);
+    // …and the loadpoint is not silently hidden: with no provider on this card
+    // it stays visible at the top, where it was before.
+    expect(nested.devices.map((d) => d.id)).toEqual([20]);
+  });
+
+  /**
+   * TWO EVCC ingests on ONE broker is expressible — the entry is
+   * `multiInstance` — and `YIELDED_PROFILES` cannot tell their loadpoints
+   * apart: both claim the same profile on the same connection. A device drawn
+   * twice is a roster that reports more chargers than the plant has, so it is
+   * claimed by the FIRST row in list order and by that one only.
+   */
+  test("two ingests on one broker do not both claim the same loadpoint", () => {
+    const carport = onBroker({ id: 20 });
+    const nested = nestIntegrations(
+      group({ devices: [carport], integrations: [ingest(), ingest({ id: 2 })] }),
+    );
+    expect(nested.integrations.map((row) => row.devices.map((d) => d.id))).toEqual([[20], []]);
+  });
+
+  test("an empty card nests nothing and hides nothing", () => {
+    expect(nestIntegrations(group())).toEqual({ devices: [], integrations: [] });
   });
 });

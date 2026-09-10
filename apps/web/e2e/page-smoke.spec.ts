@@ -128,6 +128,13 @@ type SmokeRoute = {
    * The URL is DERIVED from it; storing both would let them disagree.
    */
   file: string;
+  /**
+   * The URL to open, when the file path cannot produce it: a route with a
+   * PARAMETER (`[id]`) has no single address, so the case names one that the
+   * fixture can actually answer. Derived from `file` otherwise, because storing
+   * both for a static route would let them disagree.
+   */
+  url?: string;
   /** Mock deltas. `live: false` for the routes that never lease the socket. */
   open?: OpenPageOptions;
   /** The shell header this route sets, resolved from `messages/en.json`. */
@@ -332,6 +339,38 @@ const ROUTES: readonly SmokeRoute[] = [
     landsOn: "/#/settings/devices",
     surface: async (page) => {
       await expect(page.locator("[data-device='inverter']")).toBeVisible();
+    },
+  },
+  {
+    // There is no list of integrations of its own — a connection is the thing
+    // that fails, so "what is configured" stays on Devices. The bare path only
+    // redirects, so a truncated URL lands on the list rather than on nothing.
+    file: "(app)/settings/integrations/+page.svelte",
+    h1: "Devices",
+    landsOn: "/#/settings/devices",
+    surface: async (page) => {
+      await expect(page.locator("[data-device='inverter']")).toBeVisible();
+    },
+  },
+  {
+    // ONE integration's page. The only parameterised route in the app, so it is
+    // the only case that names its own URL: the fixture's EVCC ingest is id 1.
+    file: "(app)/settings/integrations/[id]/+page.svelte",
+    url: "/#/settings/integrations/1",
+    h1: "Integrations",
+    // The provided-device rows are the proof BOTH payloads landed and were
+    // joined: the row comes from `/api/integrations`, the loadpoints from
+    // `/api/devices`, and nothing renders here until the two are put together.
+    // A heading would pass with either of them unanswered.
+    surface: async (page) => {
+      await heading(page, "EVCC");
+      await expect(page.locator("[data-provided] [data-provided-device]")).toHaveCount(2);
+      // `exact`: "Last connected Sep 10, 2026, 06:02" sits in the same block,
+      // and a substring match makes this a strict-mode violation rather than
+      // an assertion.
+      await expect(
+        page.locator("[data-integration-status]").getByText("Connected", { exact: true }),
+      ).toBeVisible();
     },
   },
   {
@@ -575,7 +614,7 @@ test("every page in src/routes has a smoke case", () => {
 
 // Playwright has no `test.each`; a `for` over the table is the idiom.
 for (const route of ROUTES) {
-  const url = hashUrlFor(route.file);
+  const url = route.url ?? hashUrlFor(route.file);
   test(`${url} renders`, async ({ page }) => {
     const opened = await openPage(page, url, route.open);
 

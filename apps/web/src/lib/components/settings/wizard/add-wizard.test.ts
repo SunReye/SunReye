@@ -6,6 +6,7 @@ import {
   type WizardState,
   advance,
   blockedAt,
+  catalogEntryFor,
   connectionChoice,
   emptyWizard,
   entriesFor,
@@ -393,5 +394,43 @@ describe("the order the finish button works in", () => {
         body: { kind: "evcc-ingest", connectionId: 9, params: { topicRoot: "evcc" } },
       },
     });
+  });
+});
+
+/**
+ * The entry a CONFIGURED row belongs to.
+ *
+ * `entriesFor` answers "what may be attached HERE" and filters to the addable
+ * ones on one connection kind. This is the other direction: a row already
+ * exists, its kind is stored, and the form editing it has to find the entry
+ * whose fields the server will validate the write against. Searching all three
+ * arms is the point — a row's own connection kind is not in the question, and a
+ * form that looked in only one would refuse to edit a connection-less entry.
+ *
+ * Both editors call it (the row dialog on the devices page, the integration's
+ * own page), which is why it is one function: two copies would be free to
+ * disagree about what "this build has no entry for that" looks like.
+ */
+describe("catalogEntryFor", () => {
+  test("finds an entry whichever arm of the catalog it lives on", () => {
+    expect(catalogEntryFor(catalog, "modbus-device")?.label).toBe("Modbus device");
+    expect(catalogEntryFor(catalog, "evcc-ingest")?.label).toBe("EVCC");
+    expect(catalogEntryFor(catalog, "sunreye.optimizer")?.label).toBe("SunReye Optimizer");
+  });
+
+  // A database migrated ahead of the binary. The server refuses to validate
+  // such a row's settings too (409), so the editor has to be able to say there
+  // is nothing to edit rather than render a form no write can land.
+  test("a kind this build has no entry for is null, not a throw", () => {
+    expect(catalogEntryFor(catalog, "from-the-future")).toBeNull();
+  });
+
+  // The caller reads the kind off a row that may not have arrived yet.
+  test("no kind at all is null", () => {
+    expect(catalogEntryFor(catalog, undefined)).toBeNull();
+  });
+
+  test("an empty catalog — the state before the fetch answers — is null", () => {
+    expect(catalogEntryFor({ modbus: [], mqtt: [], internal: [] }, "evcc-ingest")).toBeNull();
   });
 });

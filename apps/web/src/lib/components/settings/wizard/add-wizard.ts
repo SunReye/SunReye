@@ -51,6 +51,31 @@ export type Catalog = {
   internal: readonly CatalogEntryView[];
 };
 
+/**
+ * The catalog entry a CONFIGURED row belongs to, searched across all three arms.
+ *
+ * {@link entriesFor} answers the wizard's question — what may be attached to a
+ * connection of THIS kind — and filters accordingly. This answers the editors'
+ * question, which is the other direction: the row exists, its kind is stored,
+ * and the form has to find the entry whose fields the server will validate the
+ * write against. The connection kind is not part of that question, so all three
+ * arms are searched; looking in only one would refuse to edit a connection-less
+ * entry.
+ *
+ * Null rather than a throw for a kind this build has no entry for — a database
+ * migrated ahead of the binary. The server refuses to validate that row's
+ * settings either (409), so the editor says there is nothing to edit rather
+ * than rendering a form no write can land.
+ */
+export function catalogEntryFor(
+  catalog: Catalog,
+  kind: string | undefined,
+): CatalogEntryView | null {
+  if (kind === undefined) return null;
+  const arms = [catalog.modbus, catalog.mqtt, catalog.internal];
+  return arms.flat().find((entry) => entry.id === kind) ?? null;
+}
+
 export const WIZARD_STEPS = ["connection", "attach", "settings", "confirm"] as const;
 export type WizardStep = (typeof WIZARD_STEPS)[number];
 

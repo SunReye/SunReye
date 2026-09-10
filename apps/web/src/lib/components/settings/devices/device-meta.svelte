@@ -1,9 +1,11 @@
 <script lang="ts">
-	import * as m from '$lib/paraglide/messages';
+	import { deviceMetaParts } from './device-meta-parts';
 	import type { DeviceView } from './device-types';
 
-	// Where the device lives: its frozen slug, its profile, its unit id. The
-	// gateway is the group header above it, not repeated per row.
+	// Where the device lives. WHICH parts those are is `deviceMetaParts`' decision
+	// and its test's — notably that the frozen slug is not one of them on any
+	// kind of device, and that a unit id belongs only to a device genuinely
+	// addressed by one. This renders the list and nothing else.
 	//
 	// The `·` separators are CSS on every item but the first, never text nodes.
 	// As interleaved `<span>·</span>`s they were flex items like any other, so a
@@ -12,27 +14,14 @@
 	// cannot dangle: it wraps with the item it belongs to.
 	let { device }: { device: DeviceView } = $props();
 
-	const kwp = $derived(device.arrays.reduce((sum, a) => sum + a.kwp, 0));
-	const summary = $derived.by(() => {
-		const parts: string[] = [];
-		if (kwp > 0) parts.push(m.devices_meta_kwp({ kwp: String(Math.round(kwp * 100) / 100) }));
-		if (device.battery) parts.push(m.devices_meta_kwh({ kwh: String(device.battery.usableKwh) }));
-		return parts;
-	});
+	const parts = $derived(deviceMetaParts(device));
 </script>
 
 <span
 	data-slot="device-meta"
 	class="flex flex-wrap gap-x-2 text-xs text-muted-foreground [&>*:not(:first-child)]:before:mr-2 [&>*:not(:first-child)]:before:content-['·']"
 >
-	<span class="font-mono">{device.slug}</span>
-	{#if device.profileKnown}
-		<span>{device.profileName}</span>
-	{:else}
-		<span class="text-destructive">{m.devices_profile_missing()} ({device.profileId})</span>
-	{/if}
-	<span>{m.devices_unit({ id: device.unitId })}</span>
-	{#each summary as part (part)}
-		<span>{part}</span>
+	{#each parts as part (part.text)}
+		<span class={part.missing ? 'text-destructive' : ''}>{part.text}</span>
 	{/each}
 </span>
