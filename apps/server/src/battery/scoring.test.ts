@@ -1,14 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import type { DischargeSegment } from "./capacity-estimate";
+import { interiorSegments, planWindows } from "./scoring-plan";
+import { startBatteryScoring } from "./scoring";
 import {
   BACKFILL_WINDOW_MS,
   ROUTINE_WINDOW_MS,
-  interiorSegments,
-  planWindows,
   scoreSpan,
-  startBatteryScoring,
   type ScoringDeps,
-} from "./scoring";
+} from "./scoring-walk";
 
 /**
  * The background scorer used to read the WHOLE raw retention window in one
@@ -17,6 +16,12 @@ import {
  * the event loop was gone, `/healthz` stopped answering, and the watchdog
  * restarted the addon every few minutes (seen live 2026-09-09). The pass is now
  * chunked, sequential and overlapping, and these tests pin the shape of that.
+ *
+ * The geometry (`./scoring-plan.ts`), the walk over it (`./scoring-walk.ts`) and
+ * the schedule that drives the walk (`./scoring.ts`) are covered together, in
+ * one file: the walk and the schedule need the same deps double, and a shared
+ * helper module for it would be a second copy of `fakeDeps` away from the only
+ * two suites that use it.
  */
 
 const DAY = 86_400_000;
