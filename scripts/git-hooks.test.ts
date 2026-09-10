@@ -53,6 +53,15 @@ describe("pre-push carries the whole-repo checks a bypassed pre-commit would mis
     expect(commands(await hook())).toContain("oxfmt --check");
   });
 
+  // Husky invokes hooks as `sh -e`, so this is belt AND braces — but the braces
+  // are load-bearing: without `set -e` the script's status is only its LAST
+  // command's, and this very hook reported success while `oxfmt --check` was
+  // printing "Format issues found" two commands earlier, because it was being
+  // exercised by hand with a plain `sh`.
+  test("it fails on the first failing command, whoever invoked it", async () => {
+    expect(commands(await hook())).toContain("set -e");
+  });
+
   test("it lints, runs the suite, and checks mock hygiene", async () => {
     const run = commands(await hook());
     expect(run).toContain("oxlint");

@@ -21,6 +21,15 @@
 # co. into its hooks, and any `git` a test spawns then targets THIS repository
 # whatever its cwd.
 
+# `set -e` of its own, though husky already invokes hooks as `sh -e`. Without it
+# this script's exit code is only its LAST command's, so a failed format check
+# followed by a passing mock-hygiene run exits 0 — which is exactly what
+# happened when this hook was first verified by hand with a plain `sh`: the
+# drift was printed, and the hook said fine. A guard that depends on how it was
+# invoked is a guard that reads as green in the one situation you most want to
+# trust it.
+set -e
+
 bunx oxfmt --check
 bunx oxlint
 
