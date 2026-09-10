@@ -48,12 +48,18 @@
 	<div class="flex min-w-0 flex-col gap-1">
 		<span class="flex flex-wrap items-center gap-1.5 text-sm font-medium">
 			<a class="wrap-break-word underline-offset-4 hover:underline" {href}>{integration.label}</a>
-			<StatusBadge
-				ok={integration.enabled}
-				label={integration.enabled ? m.label_enabled() : m.devices_integration_disabled()}
-			/>
+			<!-- Only the OFF state carries a pill. The switch to the right already
+			     says "enabled", and saying it twice on one row put the loudest
+			     colour on the case that needs no attention. -->
+			{#if !integration.enabled}
+				<StatusBadge ok={false} label={m.devices_integration_disabled()} />
+			{/if}
 		</span>
-		<span class="text-xs text-muted-foreground">{status.label}</span>
+		<!-- The endpoint's state, when it is not the healthy one. A row that says
+		     nothing about its connection is a row whose connection is fine. -->
+		{#if !status.ok}
+			<span class="text-xs text-muted-foreground">{status.label}</span>
+		{/if}
 	</div>
 	<div class="flex shrink-0 flex-wrap items-center gap-2">
 		<Switch

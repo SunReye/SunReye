@@ -68,9 +68,13 @@ test("the broker's loadpoints hang UNDER the ingest that provided them", async (
   await expect(page.locator("[data-integration='evcc-ingest']")).toBeVisible();
   await expect(page.locator("[data-integration='ha-export']")).toBeVisible();
 
-  // A row's PRESENCE is its configuration, and `enabled` is the off switch —
-  // the fixture has one of each so both states render.
-  await expect(page.locator("[data-integration='evcc-ingest']").getByText("Enabled")).toBeVisible();
+  // A row's PRESENCE is its configuration, and `enabled` is the off switch. Only
+  // the OFF state says so: the switch on the right already reports "enabled",
+  // and a green pill repeating it put the loudest colour on the case that needs
+  // no attention.
+  await expect(
+    page.locator("[data-integration='evcc-ingest']").getByText("Enabled", { exact: true }),
+  ).toHaveCount(0);
   await expect(page.locator("[data-integration='ha-export']").getByText("Disabled")).toBeVisible();
 
   // Nothing hangs off the Modbus gateway, and its card says nothing about
@@ -108,12 +112,12 @@ test("no kind key and no device slug survives on the card", async ({ page }) => 
   expect(text).toContain("Garage");
   expect(text).toContain("EVCC loadpoint");
 
-  // What the kind key's line became: what is OBSERVED of the endpoint. The
-  // fixture's ingest is connected, its export has never opened once — two
-  // different sentences, because they are two different faults.
+  // What the kind key's line became: what is OBSERVED of the endpoint, and ONLY
+  // when it is worth acting on. The fixture's ingest is connected and therefore
+  // says nothing at all; its export has never opened once and says exactly that.
   await expect(
     page.locator("[data-integration='evcc-ingest']").getByText("Connected", { exact: true }),
-  ).toBeVisible();
+  ).toHaveCount(0);
   await expect(
     page.locator("[data-integration='ha-export']").getByText("Never connected"),
   ).toBeVisible();

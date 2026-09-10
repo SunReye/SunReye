@@ -1,7 +1,7 @@
 <script lang="ts">
 	import * as m from '$lib/paraglide/messages';
 	import { resolve } from '$lib/resolve';
-	import StatusBadge from '../status-badge.svelte';
+	import IntegrationPills from './integration-pills.svelte';
 	import type { ConnectionView, IntegrationView } from '../devices/device-types';
 	import { integrationStatus } from './integration-detail';
 	import IntegrationStatusDetail from './integration-status-detail.svelte';
@@ -26,16 +26,11 @@
 	} = $props();
 
 	const status = $derived(integrationStatus(integration));
-	const enabledLabel = $derived(
-		integration.enabled ? m.label_enabled() : m.devices_integration_disabled()
-	);
+	const enabledLabel = $derived(m.devices_integration_disabled());
 </script>
 
 <div class="flex flex-col gap-3 text-sm" data-integration-status>
-	<div class="flex flex-wrap items-center gap-2">
-		<StatusBadge ok={status.ok} label={status.label} />
-		<StatusBadge ok={integration.enabled} label={enabledLabel} />
-	</div>
+	<IntegrationPills {status} enabled={integration.enabled} disabledLabel={enabledLabel} />
 
 	<IntegrationStatusDetail {status} />
 

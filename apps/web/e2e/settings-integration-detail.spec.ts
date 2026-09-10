@@ -32,9 +32,12 @@ test("the page names the integration, its live state and the endpoint it runs ov
   await expect(page.getByRole("heading", { level: 2, name: "EVCC", exact: true })).toBeVisible();
 
   const status = page.locator("[data-integration-status]");
-  // OBSERVED from the broker pool, not derived from "a broker id is set".
-  await expect(status.getByText("Connected", { exact: true })).toBeVisible();
-  await expect(status.getByText("Enabled", { exact: true })).toBeVisible();
+  // A healthy endpoint carries no pill — neither "Connected" nor "Enabled". The
+  // page still reports it, in the line that says WHEN it last connected, which
+  // is the sentence with something in it: OBSERVED from the broker pool, not
+  // derived from "a broker id is set".
+  await expect(status.getByText("Connected", { exact: true })).toHaveCount(0);
+  await expect(status.getByText("Enabled", { exact: true })).toHaveCount(0);
   await expect(status.getByText(/Last connected/)).toBeVisible();
 
   // A healed failure is still shown: it is the whole content of "it reconnects

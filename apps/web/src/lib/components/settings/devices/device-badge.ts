@@ -5,7 +5,7 @@ import type { DeviceView } from "./device-types";
 /** The one badge a device row carries, as the row renders it. */
 export type DeviceBadge = {
   label: string;
-  /** Painted as healthy — reserved for the device actually being read. */
+  /** Painted as healthy. Nothing sets it today: the healthy row has no badge. */
   ok: boolean;
   /** Hover text, or null. Only the Modbus release limit has one. */
   hint: string | null;
@@ -15,6 +15,12 @@ export type DeviceBadge = {
 
 /**
  * What a device's state says on its row.
+ *
+ * THE HEALTHY STATE SAYS NOTHING. A green "Polling" pill on the one row that is
+ * working is the state an operator never has to act on, and it was the loudest
+ * thing in the card — so `polling` answers null and the row renders no badge.
+ * Every other state still speaks, because each of those is a reason a reading
+ * is missing.
  *
  * A decision, not markup: `idle` explains itself on hover because "not polled"
  * reads as a fault and is a release limit, while a PROVIDED and an internal
@@ -30,12 +36,12 @@ export type DeviceBadge = {
  * because a badge that DOES lead somewhere (an integration with a page of its
  * own) is a plausible next arm, and the renderer already handles it.
  */
-export function deviceBadge(device: DeviceView): DeviceBadge {
+export function deviceBadge(device: DeviceView): DeviceBadge | null {
   switch (device.state) {
     case "retired":
       return { label: m.devices_badge_retired(), ok: false, hint: null, href: null };
     case "polling":
-      return { label: m.devices_badge_polling(), ok: true, hint: null, href: null };
+      return null;
     case "provided":
       return { label: m.devices_badge_provided(), ok: false, hint: null, href: null };
     case "virtual":

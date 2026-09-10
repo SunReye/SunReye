@@ -127,7 +127,10 @@ test.describe("the roster", () => {
   test("lists every device with its state, retired ones included", async ({ page }) => {
     const opened = await open(page);
     const inverter = page.locator("[data-device='inverter']");
-    await expect(inverter.getByText("Polling")).toBeVisible();
+    // The polled device carries NO badge: a green pill on the one row that is
+    // working is the state nobody acts on. Every state that is not the healthy
+    // one still speaks, which the meter and the retired row below prove.
+    await expect(inverter.getByText("Polling")).toHaveCount(0);
     // The polled device cannot be retired from here.
     await expect(inverter.getByRole("button", { name: "Retire" })).toBeDisabled();
 
