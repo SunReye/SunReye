@@ -99,7 +99,7 @@ export async function getMqttConfig(): Promise<MqttConfig> {
  * Turning it off explicitly still works: `connectionId: null` is a key that is
  * present, and it wins.
  */
-export async function mergeMqttConfig(input: unknown): Promise<MqttConfig> {
+async function mergeMqttConfig(input: unknown): Promise<MqttConfig> {
   const stored = await getMqttConfig();
   const named = typeof input === "object" && input !== null ? input : {};
   return mqttConfigSchema.parse({ ...stored, ...named });

@@ -25,7 +25,9 @@
 import type { DeviceBattery } from "@SunReye/db/batteries";
 import {
   type ConnectionParams,
+  type ConnectionParamsMasked,
   connectionSettingsSchema,
+  maskConnectionParams,
   mergeConnectionParams,
   modbusParamsSchema,
   mqttParamsSchema,
@@ -87,7 +89,7 @@ export interface DeviceAdminDeps {
  */
 export interface DeviceView extends Omit<DeviceRecord, "retiredAt"> {
   retiredAt: string | null;
-  connection: ConnectionRecord | null;
+  connection: ConnectionView | null;
   /** The pack this inverter carries, or null — every other role has none. */
   battery: DeviceBattery | null;
   profileName: string | null;
@@ -97,9 +99,25 @@ export interface DeviceView extends Omit<DeviceRecord, "retiredAt"> {
   polled: boolean;
 }
 
+/**
+ * A connection AS THE API RETURNS IT — every write-only field stripped.
+ *
+ * The masking follows the secret. It used to live on `app_settings.mqtt`
+ * (`maskMqttConfig`), and since #217 the broker credential lives on a
+ * `kind = 'mqtt'` row — which both `/api/connections` and the device roster
+ * return, and which the archive export reads. `maskConnectionParams` owns the
+ * rule for every kind, so a third kind with a secret cannot forget it.
+ */
+export type ConnectionView = { id: number; name: string } & ConnectionParamsMasked;
+
+/** One row as the API returns it: masked, and still carrying its identity. */
+function toConnectionView(connection: ConnectionRecord): ConnectionView {
+  return { id: connection.id, name: connection.name, ...maskConnectionParams(connection) };
+}
+
 export interface DeviceRoster {
   devices: DeviceView[];
-  connections: ConnectionRecord[];
+  connections: ConnectionView[];
 }
 
 /** A refusal the route turns into its status, with the field it concerns. */
@@ -256,7 +274,10 @@ function toView(
   return {
     ...device,
     retiredAt: device.retiredAt ? device.retiredAt.toISOString() : null,
-    connection: connections.find((c) => c.id === device.connectionId) ?? null,
+    connection: (() => {
+      const found = connections.find((c) => c.id === device.connectionId);
+      return found ? toConnectionView(found) : null;
+    })(),
     battery,
     profileName,
     profileKnown: profileName !== null,
@@ -301,8 +322,22 @@ export async function listDevices(deps: DeviceAdminDeps): Promise<DeviceRoster> 
     devices: devices.map((d, i) =>
       toView(d, connections, names[i] ?? null, primary, packOf(packs, d.id)),
     ),
-    connections,
+    connections: connections.map(toConnectionView),
   };
+}
+
+/**
+ * Every connection of the plant, MASKED — what `/api/connections` answers.
+ *
+ * A service call rather than a store read spelled in the route, so the masking
+ * cannot be forgotten at the one edge that returns these rows on their own.
+ */
+export async function listConnections(
+  deps: DeviceAdminDeps,
+): Promise<{ connections: ConnectionView[] }> {
+  const plant = await deps.store.readPlant();
+  if (!plant) return { connections: [] };
+  return { connections: (await deps.store.readConnections(plant.id)).map(toConnectionView) };
 }
 
 async function requirePlant(deps: DeviceAdminDeps): Promise<PlantRecord> {
@@ -511,7 +546,7 @@ export async function patchConnection(
   deps: DeviceAdminDeps,
   id: number,
   body: unknown,
-): Promise<ConnectionRecord> {
+): Promise<ConnectionView> {
   const patch = parse(patchConnectionSchema, body);
   const { connection } = await requireConnection(deps, id);
   if (patch.kind !== undefined && patch.kind !== connection.kind) {
@@ -526,7 +561,7 @@ export async function patchConnection(
     ...(patch.params !== undefined ? { params: mergedParams(connection, patch.params) } : {}),
   });
   await deps.reload();
-  return updated;
+  return toConnectionView(updated);
 }
 
 /**

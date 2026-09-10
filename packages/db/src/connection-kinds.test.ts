@@ -5,7 +5,6 @@ import {
   type ConnectionParams,
   connectionParamsSchema,
   connectionSettingsSchema,
-  isConnectionKind,
   maskConnectionParams,
   mergeConnectionParams,
   modbusParamsSchema,
@@ -19,15 +18,6 @@ const broker = { brokerUrl: "mqtt://hass.ee.lan:1883", username: "mqtt", passwor
 describe("CONNECTION_KINDS", () => {
   test("names exactly the two kinds the CHECK constraint admits", () => {
     expect([...CONNECTION_KINDS]).toEqual(["modbus", "mqtt"]);
-  });
-
-  test("isConnectionKind admits the two and refuses a future one", () => {
-    expect(isConnectionKind("modbus")).toBe(true);
-    expect(isConnectionKind("mqtt")).toBe(true);
-    // `http` is the next kind the seam is left open for (#217) — until its
-    // migration lands, a row claiming it must not parse.
-    expect(isConnectionKind("http")).toBe(false);
-    expect(isConnectionKind("")).toBe(false);
   });
 });
 

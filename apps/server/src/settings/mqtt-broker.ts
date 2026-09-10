@@ -80,6 +80,7 @@ export type BrokerSeed = { create: MqttParams } | { bind: number } | null;
  * Pure: `./mqtt-broker.test.ts` covers every branch, and the wiring that turns
  * the answer into writes lives at the composition root.
  */
+// fallow-ignore-next-line unused-export -- the pure decision behind `applyBrokerSeed`, asserted branch by branch in `./mqtt-broker.test.ts`; test files are not traced as consumers.
 export function envBrokerSeed(
   env: BrokerEnv,
   connections: readonly ConnectionRecord[],

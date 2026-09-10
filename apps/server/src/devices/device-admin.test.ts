@@ -14,6 +14,7 @@ import {
   type DeviceAdminStore,
   DeviceAdminError,
   addDevice,
+  listConnections,
   listDevices,
   patchConnection,
   patchDevice,
@@ -584,10 +585,11 @@ describe("patchConnection", () => {
     const updated = await patchConnection(deps, 5, {
       params: { brokerUrl: "mqtt://moved:1883", username: "mqtt" },
     });
+    // The ANSWER is masked; the STORED row is what kept the password.
     expect(updated.kind === "mqtt" && updated.params).toEqual({
       brokerUrl: "mqtt://moved:1883",
       username: "mqtt",
-      password: "secret",
+      hasPassword: true,
     });
     expect(connections.find((c) => c.id === 5)?.params).toMatchObject({ password: "secret" });
   });
@@ -745,5 +747,63 @@ describe("an inverter's PV description and pack", () => {
     const { deps } = harness();
     const error = await rejection(() => patchDevice(deps, 1, patch));
     expect(error.status).toBe(400);
+  });
+});
+
+describe("what leaves the server", () => {
+  test("a broker's password is never in a listed connection", async () => {
+    // `/api/connections` and the device roster both return connection rows, and
+    // since #217 one of those rows can hold a broker credential. The masking
+    // that used to live on `app_settings.mqtt` has to follow the secret.
+    const { deps } = harness({ connections: [gateway, broker] });
+    const roster = await listDevices(deps);
+    expect(JSON.stringify(roster)).not.toContain("secret");
+    const listed = roster.connections.find((c) => c.id === 5);
+    expect(listed).toEqual({
+      id: 5,
+      name: "Home broker",
+      kind: "mqtt",
+      params: { brokerUrl: "mqtt://hass.lan:1883", username: "mqtt", hasPassword: true },
+    });
+  });
+
+  test("a device's connection is masked too — it is the same row", async () => {
+    const bound = { ...inverter, id: 9, slug: "loadpoint", role: "charger", connectionId: 5 };
+    const { deps } = harness({ connections: [gateway, broker], devices: [bound] });
+    const roster = await listDevices(deps);
+    expect(JSON.stringify(roster.devices)).not.toContain("secret");
+  });
+
+  test("a modbus connection is unchanged by masking — it holds no secret", async () => {
+    const { deps } = harness();
+    const roster = await listDevices(deps);
+    expect(roster.connections[0]).toEqual(gateway);
+  });
+
+  test("a PATCH answer is masked as well", async () => {
+    const { deps } = harness({ connections: [gateway, broker] });
+    const updated = await patchConnection(deps, 5, { name: "Renamed" });
+    expect(JSON.stringify(updated)).not.toContain("secret");
+    expect(updated.kind === "mqtt" && updated.params.hasPassword).toBe(true);
+  });
+
+  test("the STORED row keeps its password — only the answer is masked", async () => {
+    const { deps, connections } = harness({ connections: [gateway, broker] });
+    await patchConnection(deps, 5, { name: "Renamed" });
+    expect(connections.find((c) => c.id === 5)?.params).toMatchObject({ password: "secret" });
+  });
+});
+
+describe("listConnections", () => {
+  test("answers the plant's rows, masked", async () => {
+    const { deps } = harness({ connections: [gateway, broker] });
+    const { connections } = await listConnections(deps);
+    expect(connections.map((c) => c.id)).toEqual([3, 5]);
+    expect(JSON.stringify(connections)).not.toContain("secret");
+  });
+
+  test("an install with no plant has no connections, and does not throw", async () => {
+    const { deps } = harness({ plant: null });
+    expect(await listConnections(deps)).toEqual({ connections: [] });
   });
 });

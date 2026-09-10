@@ -54,15 +54,5 @@ export const mqttConfigSchema = z.object({
 });
 export type MqttConfig = z.infer<typeof mqttConfigSchema>;
 
+// fallow-ignore-next-line unused-export -- the record's own defaults, asserted directly in `../../../apps/server/src/settings/mqtt-config.test.ts` and used by the Integrations card; the web half of #217 ships separately.
 export const defaultMqtt: MqttConfig = mqttConfigSchema.parse({});
-
-/**
- * Whether the export has a broker to dial at all.
- *
- * Spelled once, here, rather than as `connectionId !== null` at each call site:
- * that is the comparison the retired `enabled` flag used to hide, and a reader
- * that got it backwards would publish nothing while reporting itself on.
- */
-export function mqttExportConfigured(config: MqttConfig): boolean {
-  return config.connectionId !== null;
-}

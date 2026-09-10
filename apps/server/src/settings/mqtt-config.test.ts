@@ -1,4 +1,4 @@
-import { defaultMqtt, mqttConfigSchema, mqttExportConfigured } from "@SunReye/db/mqtt-config";
+import { defaultMqtt, mqttConfigSchema } from "@SunReye/db/mqtt-config";
 import { describe, expect, test } from "bun:test";
 
 /**
@@ -46,19 +46,5 @@ describe("mqttConfigSchema", () => {
   test("refuses an empty prefix — every topic is built on it", () => {
     expect(mqttConfigSchema.safeParse({ topicPrefix: "" }).success).toBe(false);
     expect(mqttConfigSchema.safeParse({ haDiscoveryPrefix: "" }).success).toBe(false);
-  });
-});
-
-describe("mqttExportConfigured", () => {
-  test("a bound connection is on, a null one is off", () => {
-    expect(mqttExportConfigured({ ...defaultMqtt, connectionId: 3 })).toBe(true);
-    expect(mqttExportConfigured(defaultMqtt)).toBe(false);
-  });
-
-  test("HA discovery alone does NOT make the export configured", () => {
-    // The pairing the retired `enabled` flag used to allow to disagree with
-    // itself: discovery on with nothing to publish through announced entities
-    // that never got a value.
-    expect(mqttExportConfigured({ ...defaultMqtt, haDiscoveryEnabled: true })).toBe(false);
   });
 });

@@ -54,11 +54,6 @@ import { z } from "zod";
 export const CONNECTION_KINDS = ["modbus", "mqtt"] as const;
 export type ConnectionKind = (typeof CONNECTION_KINDS)[number];
 
-/** Whether a `kind` column value is one this build can open. */
-export function isConnectionKind(value: unknown): value is ConnectionKind {
-  return typeof value === "string" && (CONNECTION_KINDS as readonly string[]).includes(value);
-}
-
 /**
  * The framing modes the Modbus client actually implements.
  *
@@ -67,6 +62,7 @@ export function isConnectionKind(value: unknown): value is ConnectionKind {
  * repository refuses a write that fails it — a third value is not a validation
  * nicety, the client has no branch for it and the endpoint simply never polls.
  */
+// fallow-ignore-next-line unused-export -- the framing list the add-connection dialog renders; the web half of #217 ships separately.
 export const MODBUS_TRANSPORTS = ["tcp", "rtu-over-tcp"] as const;
 export type ModbusTransport = (typeof MODBUS_TRANSPORTS)[number];
 
@@ -113,6 +109,7 @@ export type MqttParams = z.infer<typeof mqttParamsSchema>;
  * THE union. One `z.discriminatedUnion` on `kind`, and the only place the two
  * param shapes are related to each other.
  */
+// fallow-ignore-next-line unused-export -- THE union #217 names, consumed through `parseConnectionParams` here and directly by the add-connection dialog; pinned arm-by-arm in `./connection-kinds.test.ts`.
 export const connectionParamsSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("modbus"), params: modbusParamsSchema }),
   z.object({ kind: z.literal("mqtt"), params: mqttParamsSchema }),
@@ -134,6 +131,7 @@ export const connectionSettingsSchema = z.discriminatedUnion("kind", [
   z.object({ name: nameSchema, kind: z.literal("modbus"), params: modbusParamsSchema }),
   z.object({ name: nameSchema, kind: z.literal("mqtt"), params: mqttParamsSchema }),
 ]);
+// fallow-ignore-next-line unused-type -- the add-connection dialog's body type; the web half of #217 ships separately.
 export type ConnectionSettingsInput = z.infer<typeof connectionSettingsSchema>;
 
 /**

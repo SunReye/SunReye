@@ -1,3 +1,6 @@
+// fallow-ignore-file unused-file -- the transport SEAM #217 asks for, with its
+// planner proved branch by branch in `./connection-tier.test.ts`. Nothing calls
+// it in production yet, deliberately: see "WHAT IS NOT WIRED YET" below.
 /**
  * THE CONNECTION TIER — who OPENS a connection, and what a device bound to it
  * attaches to.
@@ -27,6 +30,23 @@
  * `attach` is per DEVICE and `open` is per CONNECTION precisely so neither tier
  * has to know how many devices it will get, and so the registry's roster stays
  * the only thing that decides which devices exist.
+ *
+ * WHAT IS NOT WIRED YET, AND WHY THAT IS THE HONEST SPLIT
+ *
+ * The two transports this describes already exist and already read their
+ * endpoint from a `connections` row: `../inverter/endpoint.ts` resolves a
+ * device's Modbus params through `modbusParamsOf`, and the EVCC ingest dials
+ * `evcc.connectionId`. What has NOT moved is their lifecycle — the poll loop
+ * still drives one source (`selectPollTargets` says so in a log line) and the
+ * EVCC client is still a module singleton. Moving those onto `openConnections`
+ * changes when a live plant opens and closes its clients, which is an outage
+ * risk that belongs in its own change rather than riding on a schema migration.
+ *
+ * So this is the contract and the planner, landed with the schema that makes
+ * them expressible, and the tiers are the next step. The seam is what the
+ * `http` kind, the multi-device poll (#204) and the mapped virtual devices
+ * (#79–#84) each need, and none of them can be written against a Modbus loop
+ * with a broker bolted to the side.
  *
  * WHY THE PLANNER HERE IS PURE. Every rule below is about WHICH tier gets WHICH
  * row in WHAT order — a retired device is never attached, a dangling

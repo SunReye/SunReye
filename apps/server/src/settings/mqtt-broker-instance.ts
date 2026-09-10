@@ -24,14 +24,25 @@ import { applyBrokerSeed, brokerFrom } from "./mqtt-broker";
 
 const logger = log("mqtt");
 
+/**
+ * The plant and a client bound to it, or null when this install has none.
+ *
+ * `db` is read PER CALL, never captured at module evaluation, so `mock.module`
+ * on `@SunReye/db` reaches both callers below.
+ */
+async function plantClient() {
+  const client = { execute: (query: Parameters<typeof db.execute>[0]) => db.execute(query) };
+  const plant = await readPlant(client);
+  return plant ? { client, plantId: plant.id } : null;
+}
+
 /** The broker a `connectionId` names, or null for every way of not resolving. */
 export async function readBroker(connectionId: number | null): Promise<MqttParams | null> {
   if (connectionId === null) return null;
   try {
-    const client = { execute: (query: Parameters<typeof db.execute>[0]) => db.execute(query) };
-    const plant = await readPlant(client);
-    if (!plant) return null;
-    return brokerFrom(await readConnections(client, plant.id), connectionId);
+    const spine = await plantClient();
+    if (!spine) return null;
+    return brokerFrom(await readConnections(spine.client, spine.plantId), connectionId);
   } catch (error) {
     logger.warn("could not resolve MQTT connection {id}: {error} — treating it as no broker", {
       id: connectionId,
@@ -51,16 +62,15 @@ export async function readBroker(connectionId: number | null): Promise<MqttParam
  */
 export async function seedMqttBroker(): Promise<void> {
   try {
-    const client = { execute: (query: Parameters<typeof db.execute>[0]) => db.execute(query) };
-    const plant = await readPlant(client);
     // No plant yet is an onboarding-only boot: there is nothing for a connection
     // to belong to, and the next boot after provisioning does this.
-    if (!plant) return;
+    const spine = await plantClient();
+    if (!spine) return;
+    const { client, plantId } = spine;
     await applyBrokerSeed(env, {
-      readConnections: () => readConnections(client, plant.id),
+      readConnections: () => readConnections(client, plantId),
       createBroker: async (params) =>
-        (await createConnection(client, plant.id, { name: "MQTT broker", kind: "mqtt", params }))
-          .id,
+        (await createConnection(client, plantId, { name: "MQTT broker", kind: "mqtt", params })).id,
       readConfig: () => getMqttConfig(),
       bind: async (connectionId) => void (await bindMqttConnection(connectionId)),
       logger,

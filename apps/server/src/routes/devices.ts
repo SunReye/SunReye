@@ -18,6 +18,7 @@ import {
   type DeviceAdminDeps,
   DeviceAdminError,
   addDevice,
+  listConnections,
   listDevices,
   patchConnection,
   patchDevice,
@@ -104,11 +105,10 @@ const byIdWrite = { ...byId, body: t.Unknown() } as const;
 export const deviceRoutes = new Elysia({ name: "device-routes" })
   .use(adminGuard)
   .get("/api/devices", { requireAdmin: true }, () => listDevices(defaultDeps()))
-  .get("/api/connections", { requireAdmin: true }, async () => {
-    const deps = defaultDeps();
-    const plant = await deps.store.readPlant();
-    return { connections: plant ? await deps.store.readConnections(plant.id) : [] };
-  })
+  // MASKED: a `kind = 'mqtt'` row carries a broker password, and the masking
+  // follows the secret (#217). `listConnections` is the service call rather than
+  // a store read spelled here, so this route cannot forget it.
+  .get("/api/connections", { requireAdmin: true }, () => listConnections(defaultDeps()))
   .post("/api/devices", { requireAdmin: true, body: t.Unknown() }, ({ body, status }) =>
     respond(status, () => addDevice(defaultDeps(), body)),
   )

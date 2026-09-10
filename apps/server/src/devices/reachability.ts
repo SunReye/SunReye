@@ -1,5 +1,6 @@
 /**
- * Is the gateway THERE? A TCP connect to host:port, nothing more.
+ * Is the ENDPOINT there? Per KIND — a TCP connect for a Modbus gateway, an MQTT
+ * CONNECT for a broker (#217).
  *
  * The connection dialog edits an address, not a device: it has no unit id and
  * no profile of its own to read registers with, and a gateway can carry three
@@ -42,22 +43,6 @@ const tcpDial: Dial = (host, port, timeoutMs) =>
       socket.once("error", (error) => done(error));
     });
   });
-
-/** Validate, dial once, and say how it went and how long it took. Throws on a bad body. */
-export async function probeEndpoint(body: unknown, dial: Dial = tcpDial): Promise<ProbeResult> {
-  const { host, port, timeoutMs } = probeSchema.parse(body);
-  const started = performance.now();
-  try {
-    await dial(host, port, timeoutMs);
-    return { ok: true, ms: Math.round(performance.now() - started) };
-  } catch (error) {
-    return {
-      ok: false,
-      ms: Math.round(performance.now() - started),
-      error: error instanceof Error ? error.message : String(error),
-    };
-  }
-}
 
 /**
  * Dial a BROKER: connect, and close again, or throw with the reason.
