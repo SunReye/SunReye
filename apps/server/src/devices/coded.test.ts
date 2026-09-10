@@ -26,6 +26,14 @@ describe("the coded-integration table", () => {
     expect(declaration?.metrics.map((m) => m.key)).toEqual(OPTIMIZER_METRICS.map((m) => m.key));
   });
 
+  // The roster shows this name. Without one, a device whose profile is code and
+  // never an install reads "Profile not installed (evcc-loadpoint)" in red — a
+  // fault report for the intended state (#213).
+  test("every declaration carries the name the roster shows", () => {
+    expect(resolveCoded(EVCC_LOADPOINT_PROFILE)?.name).toBe("EVCC loadpoint");
+    expect(resolveCoded(OPTIMIZER_PROFILE)?.name).toBe("SunReye Optimizer");
+  });
+
   test("an ordinary profile id is not a coded declaration", () => {
     // The answer that sends the registry on to the profile store. A table that
     // guessed here would shadow a real profile with a coded one.

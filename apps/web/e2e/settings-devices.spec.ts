@@ -24,8 +24,10 @@ test.describe("the roster", () => {
     await expect(
       page.getByRole("heading", { level: 2, name: "Inverter", exact: true }),
     ).toBeVisible();
-    await expect(page.getByText(/Modbus TCP · 10\.0\.0\.5:502 · every 1 s/)).toBeVisible();
-    await expect(page.locator("[data-connection='1'] [data-device]")).toHaveCount(3);
+    // A non-breaking space between the number and its unit: a plain one broke
+    // "every 1" onto one line and "s" onto the next at phone width (#214).
+    await expect(page.getByText(/Modbus TCP · 10\.0\.0\.5:502 · every 1\u00a0s/)).toBeVisible();
+    await expect(page.locator("[data-group='gateway-1'] [data-device]")).toHaveCount(3);
 
     await page.getByRole("button", { name: "Edit connection" }).click();
     const panel = dialog(page);
@@ -123,6 +125,48 @@ test.describe("the roster", () => {
     await expect(old.getByText("Retired")).toBeVisible();
     await expect(old.getByText(/Profile not installed/)).toBeVisible();
     await expect(old.getByRole("button", { name: "Restore" })).toBeVisible();
+    expect(opened.consoleErrors).toEqual([]);
+  });
+
+  /**
+   * #213: the EVCC loadpoint and the optimizer both landed under "No
+   * connection", badged "Not polled" with the Modbus release-limit hint, red
+   * for a profile that is not installed and never will be, and both offering
+   * Edit — which opened seeded on the plant's first gateway and bound them to
+   * it on save.
+   */
+  test("a coded device sits under its integration, an internal one under Internal, and neither is edited here", async ({
+    page,
+  }) => {
+    const opened = await open(page);
+
+    // Neither is an orphan: "No connection" is for a device with no endpoint
+    // and no reason for it, and nothing in the fixture is one.
+    await expect(page.getByRole("heading", { level: 2, name: "No connection" })).toHaveCount(0);
+    await expect(page.getByRole("heading", { level: 2, name: "EVCC", exact: true })).toBeVisible();
+    await expect(
+      page.getByRole("heading", { level: 2, name: "Internal", exact: true }),
+    ).toBeVisible();
+    await expect(page.locator("[data-group='integration-evcc'] [data-device]")).toHaveCount(1);
+    await expect(page.locator("[data-group='internal'] [data-device]")).toHaveCount(1);
+
+    const carport = page.locator("[data-device='evcc-loadpoint-1']");
+    await expect(carport.getByText("via MQTT")).toBeVisible();
+    // Neither the red profile flag nor the Modbus polling hint belongs on it.
+    await expect(carport.getByText(/Profile not installed/)).toHaveCount(0);
+    await expect(carport.getByText("Not polled")).toHaveCount(0);
+    await expect(carport.getByRole("button", { name: "Edit" })).toHaveCount(0);
+    await expect(carport.getByRole("button", { name: "Retire" })).toHaveCount(0);
+    // Its feed is configured on the MQTT tab, and the row says where.
+    await expect(carport.getByRole("link", { name: "Configure" })).toBeVisible();
+
+    const optimizer = page.locator("[data-device='optimizer']");
+    await expect(optimizer.getByText("internal", { exact: true })).toBeVisible();
+    await expect(optimizer.getByText("Optimizer", { exact: true }).first()).toBeVisible();
+    await expect(optimizer.getByRole("button", { name: "Edit" })).toHaveCount(0);
+    await expect(optimizer.getByRole("button", { name: "Retire" })).toHaveCount(0);
+    // Nothing to configure: it is this server's own control loop.
+    await expect(optimizer.getByRole("link", { name: "Configure" })).toHaveCount(0);
     expect(opened.consoleErrors).toEqual([]);
   });
 });

@@ -3,6 +3,7 @@
 // name is unusable, and what the form turns into on the wire. The component is
 // left with binding and rendering.
 
+import * as m from "$lib/paraglide/messages";
 import {
   DEFAULT_INVERTER_TEXTS,
   type InverterFields,
@@ -231,29 +232,113 @@ export function describeRefusal(value: unknown, fallback: string): Refusal {
   };
 }
 
-/** The devices reached through one gateway — or, with `connection` null, through none. */
-export type ConnectionGroup = {
+/**
+ * One card of the roster: a gateway and its devices, an integration and its
+ * devices, the internal ones, or the devices that genuinely have no endpoint.
+ *
+ * `kind` is what the card renders from — a gateway is edited from its header, an
+ * integration is configured elsewhere, and neither of the last two has anything
+ * to edit at all.
+ */
+export type DeviceGroup = {
+  /** Stable `{#each}` key, and the `data-connection` handle a spec addresses. */
+  key: string;
+  kind: "gateway" | "integration" | "internal" | "orphan";
+  title: string;
+  /** The gateway, on a `gateway` group; null on the other three. */
   connection: ConnectionView | null;
+  /** The integration's provenance name, on an `integration` group; null otherwise. */
+  integration: string | null;
   devices: DeviceView[];
 };
 
 /**
- * The roster as the page shows it: one group per connection in id order, each
- * holding its devices in roster order, then the endpoint-less devices (simulate,
- * an imported history whose hardware is gone) under no gateway at all.
+ * The display name of an integration.
+ *
+ * A label table, not a branch: an integration this build has no name for shows
+ * as its own provenance string rather than as an empty header. (`integration`
+ * is provenance and the settings UI is the sanctioned reader of it — see
+ * `apps/server/src/evcc/evcc-devices.ts`.)
+ */
+const INTEGRATION_LABELS: Record<string, string> = {
+  evcc: "EVCC",
+  optimizer: "SunReye Optimizer",
+};
+
+function integrationLabel(integration: string): string {
+  return INTEGRATION_LABELS[integration] ?? integration;
+}
+
+/**
+ * The roster as the page shows it: one group per connection in id order, then
+ * one per integration by name, then the internal devices, then the devices that
+ * have no endpoint for no reason anything here can name (simulate, an imported
+ * history whose hardware is gone).
+ *
+ * All four used to be one group. A `connectionId === null` device was an orphan
+ * whatever fed it, so the EVCC loadpoint and the optimizer sat under "No
+ * connection" beside a simulated inverter — three unrelated reasons told as one
+ * (#213).
  *
  * A connection with no devices is a group too. It is the only kind that can be
- * deleted, and a gateway the operator cannot see is one they cannot delete.
+ * deleted, and a gateway the operator cannot see is one they cannot delete. An
+ * integration with no devices is not: nothing is registered under it.
  */
-export function groupByConnection(roster: DeviceRoster): ConnectionGroup[] {
-  const groups = [...roster.connections]
+export function groupByConnection(roster: DeviceRoster): DeviceGroup[] {
+  const gateways: DeviceGroup[] = [...roster.connections]
     .sort((a, b) => a.id - b.id)
     .map((connection) => ({
+      key: `gateway-${connection.id}`,
+      kind: "gateway" as const,
+      title: connection.name,
       connection,
+      integration: null,
       devices: roster.devices.filter((d) => d.connectionId === connection.id),
     }));
-  const orphans = roster.devices.filter((d) => d.connectionId === null);
-  return orphans.length > 0 ? [...groups, { connection: null, devices: orphans }] : groups;
+  const endpointless = roster.devices.filter((d) => d.connectionId === null);
+  return [
+    ...gateways,
+    ...integrationGroups(endpointless.filter((d) => d.kind === "coded")),
+    ...loose(
+      "internal",
+      m.devices_group_internal(),
+      endpointless.filter((d) => d.kind === "virtual"),
+    ),
+    ...loose(
+      "orphan",
+      m.devices_group_no_connection(),
+      endpointless.filter((d) => d.kind === "modbus"),
+    ),
+  ];
+}
+
+/** One group per integration, by label, each in roster order. */
+function integrationGroups(coded: readonly DeviceView[]): DeviceGroup[] {
+  const byIntegration = new Map<string, DeviceView[]>();
+  for (const device of coded) {
+    const key = device.integration ?? "";
+    byIntegration.set(key, [...(byIntegration.get(key) ?? []), device]);
+  }
+  return [...byIntegration.entries()]
+    .map(([integration, devices]) => ({
+      key: `integration-${integration}`,
+      kind: "integration" as const,
+      title: integrationLabel(integration),
+      connection: null,
+      integration,
+      devices,
+    }))
+    .sort((a, b) => a.title.localeCompare(b.title));
+}
+
+/** A group that exists only while it holds something. */
+function loose(
+  kind: "internal" | "orphan",
+  title: string,
+  devices: readonly DeviceView[],
+): DeviceGroup[] {
+  if (devices.length === 0) return [];
+  return [{ key: kind, kind, title, connection: null, integration: null, devices: [...devices] }];
 }
 
 const TRANSPORT_LABELS: Record<string, string> = {

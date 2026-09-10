@@ -66,25 +66,23 @@
 	}
 </script>
 
-<div class="flex flex-col gap-6">
-	<Section title={m.devices_section_title()}>
-		{#snippet actions()}
-			<InverterStatusBadge {status} />
-			<Button size="sm" class="h-9 sm:h-8" onclick={() => openDialog(null)} disabled={!roster}>
-				{m.devices_add()}
-			</Button>
-		{/snippet}
-		<DeviceList
-			{roster}
-			{loadFailed}
-			{busyId}
-			onEditConnection={(c) => (connection = c)}
-			onEdit={openDialog}
-			onRetire={(d) => (retiring = d)}
-			onRestore={(d) => setRetired(d, false)}
-		/>
-	</Section>
-</div>
+<Section title={m.devices_section_title()}>
+	{#snippet actions()}
+		<InverterStatusBadge {status} />
+		<Button size="sm" class="h-9 sm:h-8" onclick={() => openDialog(null)} disabled={!roster}>
+			{m.devices_add()}
+		</Button>
+	{/snippet}
+	<DeviceList
+		{roster}
+		{loadFailed}
+		{busyId}
+		onEditConnection={(c) => (connection = c)}
+		onEdit={openDialog}
+		onRetire={(d) => (retiring = d)}
+		onRestore={(d) => setRetired(d, false)}
+	/>
+</Section>
 
 {#if roster}
 	<AddDeviceDialog

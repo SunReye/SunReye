@@ -1,11 +1,16 @@
 <script lang="ts">
 	import { Button } from '$lib/components/ui/button';
 	import * as m from '$lib/paraglide/messages';
+	import { resolve } from '$lib/resolve';
 	import type { DeviceView } from './device-types';
+	import ModbusActions from './modbus-actions.svelte';
 
-	// A retired device offers Restore; one in service offers Edit (the dialog:
-	// name, gateway, unit id, profile) and Retire. The polled device cannot be
-	// retired from here — that would silence the plant; re-point it instead.
+	// Only a MODBUS device offers the roster's controls. The edit dialog changes
+	// a gateway, a unit id and a profile, none of which a coded or a virtual
+	// device has: it opened seeded on the plant's FIRST gateway, so saving an
+	// untouched edit bound the loadpoint or the optimizer to that gateway (#213
+	// — the server answers 409 for one now). A coded device is configured where
+	// its feed is instead; EVCC's settings live on the MQTT tab until #217.
 	let {
 		device,
 		busy,
@@ -20,27 +25,15 @@
 		onRestore: (device: DeviceView) => void;
 	} = $props();
 
-	const retireBlocked = $derived(busy || device.polled);
+	const configurable = $derived(device.kind === 'coded' && device.integration === 'evcc');
 </script>
 
-<div class="flex shrink-0 items-center gap-2">
-	{#if device.retiredAt !== null}
-		<Button variant="outline" size="sm" class="flex-1 sm:flex-none" disabled={busy} onclick={() => onRestore(device)}>
-			{m.devices_action_restore()}
-		</Button>
-	{:else}
-		<Button variant="outline" size="sm" class="flex-1 sm:flex-none" disabled={busy} onclick={() => onEdit(device)}>
-			{m.devices_action_edit()}
-		</Button>
-		<Button
-			variant="ghost"
-			size="sm"
-			class="flex-1 sm:flex-none"
-			disabled={retireBlocked}
-			title={device.polled ? m.devices_not_polled_hint() : undefined}
-			onclick={() => onRetire(device)}
-		>
-			{m.devices_action_retire()}
+<div class="flex shrink-0 flex-wrap items-center gap-2">
+	{#if device.kind === 'modbus'}
+		<ModbusActions {device} {busy} {onEdit} {onRetire} {onRestore} />
+	{:else if configurable}
+		<Button variant="outline" size="sm" class="flex-1 sm:flex-none" href={resolve('/settings/mqtt')}>
+			{m.devices_action_configure()}
 		</Button>
 	{/if}
 </div>

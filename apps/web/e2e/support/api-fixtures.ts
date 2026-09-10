@@ -858,8 +858,12 @@ export const CONNECTIONS = [
 
 /**
  * `GET /api/devices` — `DeviceRoster` (`apps/server/src/devices/device-admin.ts`):
- * the polled inverter, a stored-but-unpolled meter, and a retired one, so the
- * three badge states all render.
+ * the polled inverter, a stored-but-unpolled meter, a retired one, an EVCC
+ * loadpoint and the optimizer — so all five states, and all four groups, render.
+ *
+ * The last two are the shape #213 was about: both are endpoint-less, and a
+ * roster that only ever held Modbus rows reported them as Modbus hardware that
+ * is not answering.
  */
 export function devices(manifest: FixtureManifest) {
   const connection = CONNECTIONS[0]!;
@@ -882,7 +886,9 @@ export function devices(manifest: FixtureManifest) {
         battery: { usableKwh: 10, maxChargeW: 5000, minSoc: 10, nominalV: 51.2 },
         profileName: manifest.name,
         profileKnown: true,
-        polled: true,
+        kind: "modbus",
+        state: "polling",
+        integration: null,
       },
       {
         id: 2,
@@ -900,7 +906,9 @@ export function devices(manifest: FixtureManifest) {
         battery: null,
         profileName: "Sungrow SH10RT",
         profileKnown: true,
-        polled: false,
+        kind: "modbus",
+        state: "idle",
+        integration: null,
       },
       {
         id: 3,
@@ -918,7 +926,49 @@ export function devices(manifest: FixtureManifest) {
         battery: null,
         profileName: null,
         profileKnown: false,
-        polled: false,
+        kind: "modbus",
+        state: "retired",
+        integration: null,
+      },
+      {
+        id: 4,
+        slug: "evcc-loadpoint-1",
+        name: "Carport",
+        profileId: "evcc-loadpoint",
+        role: "charger",
+        unitId: 0,
+        connectionId: null,
+        retiredAt: null,
+        connection: null,
+        arrays: [],
+        tempCoefficient: -0.4,
+        systemLoss: 14,
+        battery: null,
+        profileName: "EVCC loadpoint",
+        profileKnown: true,
+        kind: "coded",
+        state: "integration",
+        integration: "evcc",
+      },
+      {
+        id: 5,
+        slug: "optimizer",
+        name: "Optimizer",
+        profileId: "sunreye.optimizer",
+        role: "optimizer",
+        unitId: 0,
+        connectionId: null,
+        retiredAt: null,
+        connection: null,
+        arrays: [],
+        tempCoefficient: -0.4,
+        systemLoss: 14,
+        battery: null,
+        profileName: "SunReye Optimizer",
+        profileKnown: true,
+        kind: "virtual",
+        state: "virtual",
+        integration: "optimizer",
       },
     ],
   };

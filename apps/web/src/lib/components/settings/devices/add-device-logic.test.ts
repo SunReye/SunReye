@@ -44,9 +44,47 @@ const device = (over: Partial<DeviceView>): DeviceView => ({
   battery: null,
   profileName: "Deye",
   profileKnown: true,
-  polled: true,
+  kind: "modbus",
+  state: "polling",
+  integration: null,
   ...over,
 });
+
+/** An EVCC loadpoint: MQTT-fed, so no gateway, no unit, no installed profile. */
+const loadpoint = (over: Partial<DeviceView> = {}): DeviceView =>
+  device({
+    id: 10,
+    slug: "evcc-loadpoint-1",
+    name: "Carport",
+    profileId: "evcc-loadpoint",
+    role: "charger",
+    unitId: 0,
+    connectionId: null,
+    connection: null,
+    profileName: "EVCC loadpoint",
+    kind: "coded",
+    state: "integration",
+    integration: "evcc",
+    ...over,
+  });
+
+/** The optimizer: coded as well, but virtual — it belongs under Internal. */
+const optimizerDevice = (over: Partial<DeviceView> = {}): DeviceView =>
+  device({
+    id: 11,
+    slug: "optimizer",
+    name: "Optimizer",
+    profileId: "sunreye.optimizer",
+    role: "optimizer",
+    unitId: 0,
+    connectionId: null,
+    connection: null,
+    profileName: "SunReye Optimizer",
+    kind: "virtual",
+    state: "virtual",
+    integration: "optimizer",
+    ...over,
+  });
 
 describe("connectionOptions", () => {
   test("labels each connection by name and address, values are the id as a string", () => {
@@ -336,7 +374,71 @@ describe("groupByConnection", () => {
       connections: [gateway],
       devices: [devices[0]!],
     });
-    expect(groups.some((g) => g.connection === null)).toBe(false);
+    expect(groups.some((g) => g.kind === "orphan")).toBe(false);
+  });
+
+  // #213: every `connectionId === null` device fell into ONE orphan group, so a
+  // loadpoint and the optimizer sat under "No connection" beside a simulated
+  // inverter — three unrelated reasons for having no gateway, told as one.
+  test("a coded device is grouped under its integration, not under No connection", () => {
+    const groups = groupByConnection({
+      connections: [gateway],
+      devices: [devices[0]!, loadpoint(), loadpoint({ id: 12, slug: "evcc-loadpoint-2" })],
+    });
+    expect(groups.map((g) => [g.kind, g.title, g.devices.map((d) => d.slug)])).toEqual([
+      ["gateway", "Gateway 1", ["inv"]],
+      ["integration", "EVCC", ["evcc-loadpoint-1", "evcc-loadpoint-2"]],
+    ]);
+  });
+
+  test("the optimizer is internal — virtual outranks its coded declaration", () => {
+    const groups = groupByConnection({
+      connections: [],
+      devices: [optimizerDevice()],
+    });
+    expect(groups.map((g) => [g.kind, g.devices.map((d) => d.slug)])).toEqual([
+      ["internal", ["optimizer"]],
+    ]);
+  });
+
+  test("gateways first, then each integration by name, then Internal, then the true orphans", () => {
+    const groups = groupByConnection({
+      connections: [other, gateway],
+      devices: [
+        device({ id: 1, slug: "inv", connectionId: 3 }),
+        optimizerDevice(),
+        loadpoint(),
+        device({ id: 2, slug: "sim", connectionId: null, connection: null }),
+        loadpoint({ id: 13, slug: "zoe", integration: "zoe-cloud", profileName: "Zoe" }),
+      ],
+    });
+    expect(groups.map((g) => g.kind)).toEqual([
+      "gateway",
+      "gateway",
+      "integration",
+      "integration",
+      "internal",
+      "orphan",
+    ]);
+    // An integration this build has no label for shows as its own name rather
+    // than as nothing: the group is data, not a branch.
+    expect(groups.map((g) => g.title)).toEqual([
+      "Gateway 1",
+      "Keller",
+      "EVCC",
+      "zoe-cloud",
+      "Internal",
+      "No connection",
+    ]);
+    expect(groups.at(-1)!.devices.map((d) => d.slug)).toEqual(["sim"]);
+  });
+
+  test("a retired coded device still groups under its integration", () => {
+    const groups = groupByConnection({
+      connections: [],
+      devices: [loadpoint({ state: "retired", retiredAt: "2026-01-01T00:00:00.000Z" })],
+    });
+    expect(groups.map((g) => g.kind)).toEqual(["integration"]);
   });
 });
 

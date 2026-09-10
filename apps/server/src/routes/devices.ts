@@ -24,6 +24,7 @@ import {
   removeConnection,
 } from "../devices/device-admin";
 import { afterDeviceWrite } from "../devices/after-device-write";
+import { resolveCoded } from "../devices/coded";
 import { plantFacts } from "../settings/plant-facts-instance";
 import { probeEndpoint } from "../devices/reachability";
 import { deviceRegistry } from "../devices/registry-instance";
@@ -62,6 +63,9 @@ function defaultDeps(): DeviceAdminDeps {
       deleteDeviceBattery: (deviceId) => deleteDeviceBattery(client, deviceId),
     },
     profileName: async (id) => (await resolveProfileById(id))?.name ?? null,
+    // The coded tier has no profile row to resolve, so the roster asks the
+    // declaration table before reporting a device's profile as missing (#213).
+    coded: (id) => resolveCoded(id),
     primarySlug: () => deviceRegistry.primary()?.id ?? null,
     reload: () => afterDeviceWrite(plantFacts, () => runtime.reloadEndpoint()),
   };
