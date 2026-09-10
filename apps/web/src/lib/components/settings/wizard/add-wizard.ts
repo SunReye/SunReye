@@ -19,7 +19,7 @@
  * one. The component owns the requests.
  */
 
-import type { ConnectionKind } from "../devices/device-types";
+import { NEW_CONNECTION, type ConnectionKind } from "../devices/device-types";
 
 /** One field of an entry's settings step, as the server describes it. */
 export type CatalogField = {
@@ -78,6 +78,25 @@ export function emptyWizard(): WizardState {
 
 /** A connection as the picker knows it — the roster's row, narrowed. */
 export type PickableConnection = { id: number; name: string; kind: ConnectionKind };
+
+/**
+ * What step 1's select value names: a row, the create arm, or no answer.
+ *
+ * The create arm is a sentinel option rather than a second control ­— it is one
+ * more answer to the same question, and an operator with no endpoint yet must
+ * not have to find a different affordance to make their first. The sentinel is
+ * the device dialog's own {@link NEW_CONNECTION}: one spelling of "not an id"
+ * for both selects.
+ *
+ * `kind` is the kind the new-connection form is currently showing. The create
+ * arm has to state one, because the kind is the catalog's key and step 2 would
+ * otherwise be unreachable until the row was saved.
+ */
+export function connectionChoice(value: string, kind: ConnectionKind): WizardConnection | null {
+  if (value === NEW_CONNECTION) return { mode: "create", kind };
+  const id = Number(value);
+  return Number.isFinite(id) && id > 0 ? { mode: "existing", id } : null;
+}
 
 /** The catalog key the current connection implies, or null while there is none. */
 export function wizardKind(
@@ -146,23 +165,39 @@ function entryOf(state: WizardState, catalog: Catalog): CatalogEntryView | null 
  * The step the wizard cannot leave, or null when it may advance. A step's
  * answer is the only thing that unblocks it — validation of step 3's fields is
  * the server's, which refuses with the field named.
+ *
+ * `connectionReady` is the new-connection form's own answer to "could this be
+ * saved" — a boolean, so these rules never learn what a broker URL is. It says
+ * nothing about a row that already exists, and defaults to true for every
+ * caller that is not on the create arm.
  */
 export function blockedAt(
   state: WizardState,
   connections: readonly PickableConnection[],
   catalog: Catalog,
+  connectionReady = true,
 ): WizardStep | null {
-  if (state.step === "connection") return state.connection === null ? "connection" : null;
+  if (state.step === "connection") {
+    return connectionAnswered(state, connectionReady) ? null : "connection";
+  }
   if (state.step === "attach") return entryOf(state, catalog) === null ? "attach" : null;
   return null;
+}
+
+/** Step 1 is answered by a chosen row, or by a draft that could be saved. */
+function connectionAnswered(state: WizardState, connectionReady: boolean): boolean {
+  const chosen = state.connection;
+  if (chosen === null) return false;
+  return chosen.mode === "existing" || connectionReady;
 }
 
 export function advance(
   state: WizardState,
   connections: readonly PickableConnection[],
   catalog: Catalog,
+  connectionReady = true,
 ): WizardState {
-  if (blockedAt(state, connections, catalog) !== null) return state;
+  if (blockedAt(state, connections, catalog, connectionReady) !== null) return state;
   const next = WIZARD_STEPS[WIZARD_STEPS.indexOf(state.step) + 1];
   if (next === undefined) return state;
   const scoped = withScopedEntry(state, connections, catalog);
@@ -235,4 +270,46 @@ export function submissionOf(
     target: "device",
     body: { via: "profile", connection: { id: chosen.id }, ...state.values },
   };
+}
+
+/**
+ * WHAT THE FINISH BUTTON DOES, IN THE ORDER IT MUST HAPPEN.
+ *
+ * A connection being created is created HERE, at finish, and never when step 1
+ * was left: a wizard abandoned at step 3 would otherwise leave an orphan
+ * endpoint row behind that nothing polls and nobody remembers making. So the
+ * create arm plans `create-connection` first; the caller saves the row, folds
+ * the id back in with {@link withSavedConnection}, and asks again — which then
+ * answers `send`, addressed at the row that now exists.
+ *
+ * The sequencing lives here rather than inside the component so it can be
+ * asserted without a browser: which request goes first, and what turns the
+ * first one's answer into the second one's address, is a rule and not a render.
+ */
+export type SubmitPlan =
+  | { do: "create-connection"; kind: ConnectionKind }
+  | { do: "send"; submission: Submission }
+  | { do: "nothing" };
+
+export function submitPlan(
+  state: WizardState,
+  connections: readonly PickableConnection[],
+  catalog: Catalog,
+): SubmitPlan {
+  const chosen = state.connection;
+  if (chosen?.mode === "create") return { do: "create-connection", kind: chosen.kind };
+  const submission = submissionOf(state, connections, catalog);
+  return submission === null ? { do: "nothing" } : { do: "send", submission };
+}
+
+/**
+ * The wizard after its connection was saved: the same answers, now addressed at
+ * the row that came back.
+ *
+ * Also the recovery from a HALF-SUCCESS — the connection created and the thing
+ * on it refused. Pressing Add again then attaches to that row rather than
+ * creating a second endpoint with the same name.
+ */
+export function withSavedConnection(state: WizardState, id: number): WizardState {
+  return { ...state, connection: { mode: "existing", id } };
 }

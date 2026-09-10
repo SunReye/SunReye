@@ -1,4 +1,5 @@
 <script lang="ts">
+	import type { ConnectionDraft } from '../devices/connection-draft';
 	import type { ConnectionView } from '../devices/device-types';
 	import type { AttachOption, CatalogEntryView, WizardConnection, WizardStep } from './add-wizard';
 	import AttachStep from './attach-step.svelte';
@@ -16,6 +17,7 @@
 		entry,
 		chosenConnection,
 		chosen = $bindable(),
+		draft = $bindable(),
 		entryId = $bindable(),
 		values = $bindable()
 	}: {
@@ -26,13 +28,15 @@
 		entry: CatalogEntryView | null;
 		chosenConnection: ConnectionView | null;
 		chosen: WizardConnection | null;
+		/** The endpoint step 1 is creating, while it is creating one. */
+		draft: ConnectionDraft;
 		entryId: string | null;
 		values: Record<string, unknown>;
 	} = $props();
 </script>
 
 {#if step === 'connection'}
-	<ConnectionStep {connections} bind:chosen />
+	<ConnectionStep {connections} bind:chosen bind:draft />
 {:else if step === 'attach'}
 	<AttachStep {options} bind:entryId />
 {:else if step === 'settings'}
