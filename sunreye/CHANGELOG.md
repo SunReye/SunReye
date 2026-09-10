@@ -119,9 +119,9 @@ be needed again.
 ## [3.1.1](https://github.com/SunReye/SunReye/compare/addon-v3.1.0...addon-v3.1.1) (2026-09-10)
 
 
-### Miscellaneous Chores
+### Bug Fixes
 
-* **addon:** Synchronize sunreye-stack versions
+* **db:** bind the EVCC ingest to its broker after a 3.0.x upgrade ([77aa369](https://github.com/SunReye/SunReye/commit/77aa3698fb0df653fc276d8c932f47a45883c558))
 
 ## [3.1.0](https://github.com/SunReye/SunReye/compare/addon-v3.0.2...addon-v3.1.0) (2026-09-10)
 

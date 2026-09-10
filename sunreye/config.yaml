@@ -5,7 +5,7 @@
 # touch it — docker-addon.yml bumps it (and rewrites CHANGELOG.md) on master
 # only after every arch image for the release tag has been pushed.
 name: SunReye
-version: 3.1.0
+version: 3.1.1
 slug: sunreye
 description: >-
   Self-hosted solar / hybrid inverter monitoring, control, and integration —
