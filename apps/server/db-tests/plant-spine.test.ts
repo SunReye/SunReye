@@ -520,8 +520,14 @@ suite("the dimension spine", () => {
     // A SECOND endpoint on the same plant — two gateways, which `ensureConnection`
     // deliberately cannot create (it edits in place), so this is a raw insert.
     await db.execute(sql`
-      insert into connections (plant_id, name, host, port, transport, timeout_ms, poll_interval_ms)
-      values (${plant.id}, 'RS485 bridge', '10.0.0.6', 8899, 'rtu-over-tcp', 3000, 5000)`);
+      insert into connections (plant_id, name, kind, params)
+      values (${plant.id}, 'RS485 bridge', 'modbus', ${JSON.stringify({
+        host: "10.0.0.6",
+        port: 8899,
+        transport: "rtu-over-tcp",
+        timeoutMs: 3000,
+        pollIntervalMs: 5000,
+      })}::jsonb)`);
     await repo.ensureConnection(db, other.id, {
       name: "Elsewhere",
       kind: "modbus",
@@ -540,8 +546,11 @@ suite("the dimension spine", () => {
       "10.0.0.6",
     ]);
     expect(listed[0]?.id).toBe(first.id);
-    // Coercions, which only a real driver can prove: these columns are `integer`.
-    expect(listed[1]).toMatchObject({
+    // The jsonb round trip, which only a real driver can prove: these were
+    // `integer` columns and are now numbers inside one document, so a driver
+    // that handed them back as strings would break every consumer silently.
+    expect(listed[1]?.params).toEqual({
+      host: "10.0.0.6",
       port: 8899,
       transport: "rtu-over-tcp",
       timeoutMs: 3000,

@@ -294,3 +294,55 @@ export async function showAtLegacyTag(path: string): Promise<string> {
   }
   return out;
 }
+
+/**
+ * A database of the CONNECTION-KIND migration's own (#217).
+ *
+ * A fourth database, and for the same reason the archive layer needed a third:
+ * this spec has to REWIND the schema to the shape migration 0006 expects, seed a
+ * 2.0.0 install into it, and then run the migration for real. None of that can
+ * share the memoized {@link resetTestDatabase}, whose whole contract with every
+ * other spec file is "the shipped schema, already applied".
+ *
+ * Not memoized: the migration is a one-way transformation, and a spec that wants
+ * to run it from a different starting state needs a fresh database or its second
+ * assertion depends on the first having happened.
+ */
+const MIGRATION_TEST_DB = "sunreye_dbtest_migration";
+
+/** Refuse any URL that does not name {@link MIGRATION_TEST_DB}. Same rule, same reason. */
+export function assertMigrationTestDatabase(url: string): void {
+  const name = new URL(url).pathname.replace(/^\//, "");
+  if (name !== MIGRATION_TEST_DB) {
+    throw new Error(
+      `Refusing to build the migration fixture in ${name || "(no database)"} — only ` +
+        `${MIGRATION_TEST_DB} is allowed`,
+    );
+  }
+}
+
+/** Connection URL for {@link MIGRATION_TEST_DB}, or null when nothing is configured. */
+export function migrationTestDatabaseUrl(): string | null {
+  const base = baseUrl();
+  return base === null ? null : withDatabase(base, MIGRATION_TEST_DB);
+}
+
+/** A migrated database of the migration layer's own, dropped and rebuilt. */
+export async function resetMigrationDatabase(): Promise<string> {
+  const base = baseUrl();
+  if (base === null) throw new Error("no DB_TEST_URL or DATABASE_URL configured");
+  const url = withDatabase(base, MIGRATION_TEST_DB);
+  assertMigrationTestDatabase(url);
+
+  const admin = new SQL(withDatabase(base, ADMIN_DB));
+  try {
+    await admin.unsafe(`DROP DATABASE IF EXISTS ${MIGRATION_TEST_DB} WITH (FORCE)`);
+    await admin.unsafe(`CREATE DATABASE ${MIGRATION_TEST_DB}`);
+  } finally {
+    await admin.end();
+  }
+
+  const { runMigrations } = await import("@SunReye/db/migrate");
+  await runMigrations(url);
+  return url;
+}

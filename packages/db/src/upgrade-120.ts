@@ -337,6 +337,36 @@ export interface BaselineApplyPlan {
 type PlanEntry = { run: string } | { skipped: string } | { refusal: string };
 
 /**
+ * COLUMNS THE BASELINE DECLARES THAT A LATER MIGRATION DROPS.
+ *
+ * The baseline is journal entry 0 and is never edited (`AGENTS.md`), so it goes
+ * on declaring columns the schema has since retired. That is fine for a fresh
+ * install — 0006 drops them right after — but this planner runs on a database
+ * that ALREADY HAS the table, and `upgradeInPlace` re-runs on every boot
+ * because recognition is a pure function of the catalog. So an install upgraded
+ * from 1.2.0 and then migrated past 0006 arrives here with `connections`
+ * correctly missing the five Modbus columns, and without this list the boot is
+ * refused with "restore the pre-upgrade backup" over a schema that is exactly
+ * right. There is ONE production instance and it is an upgraded 1.2.0 database.
+ *
+ * Keyed by `(table, column)` and nothing wider: a `connections` row missing
+ * `name` is still a schema the app cannot query, and must still be loud.
+ *
+ * A future migration that drops a baseline column adds its entries here, and
+ * `./upgrade-120.test.ts` is where that is pinned.
+ */
+const RETIRED_BASELINE_COLUMNS: Readonly<Record<string, readonly string[]>> = {
+  // Migration 0006 (#217): the five typed Modbus columns became `params` jsonb
+  // under a `kind`, so a connection can be a broker as well as a gateway.
+  connections: ["host", "port", "transport", "timeout_ms", "poll_interval_ms"],
+};
+
+/** Whether a declared column is absent because a later migration retired it. */
+function retired(table: string, column: string): boolean {
+  return (RETIRED_BASELINE_COLUMNS[table] ?? []).includes(column);
+}
+
+/**
  * What to do with one baseline statement whose object may already exist.
  *
  * A TABLE that exists is checked rather than assumed — see {@link baselinePlan}'s
@@ -357,7 +387,9 @@ function planStatement(text: string, state: CatalogState): PlanEntry {
   }
   const live = state.columns.get(parsed.name);
   if (!live) return { run: text };
-  const missing = parsed.columns.filter((column) => !live.has(column));
+  const missing = parsed.columns.filter(
+    (column) => !live.has(column) && !retired(parsed.name, column),
+  );
   if (missing.length > 0) {
     return {
       refusal:
