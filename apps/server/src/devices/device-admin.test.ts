@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import type { ModbusParams } from "@SunReye/db/connection-kinds";
 import type { DeviceBattery } from "@SunReye/db/batteries";
 import type {
   ConnectionPatch,
@@ -30,14 +31,28 @@ import {
 
 const PLANT = { id: 7 };
 
-const gateway: ConnectionRecord = {
-  id: 3,
-  name: "Gateway 1",
+const modbusParams = (over: Partial<ModbusParams> = {}): ModbusParams => ({
   host: "10.0.0.5",
   port: 502,
   transport: "tcp",
   timeoutMs: 2000,
   pollIntervalMs: 1000,
+  ...over,
+});
+
+const gateway: ConnectionRecord = {
+  id: 3,
+  name: "Gateway 1",
+  kind: "modbus",
+  params: modbusParams(),
+};
+
+/** A broker row — the kind that arrived with #217, and the kind a PATCH may not become. */
+const broker: ConnectionRecord = {
+  id: 5,
+  name: "Home broker",
+  kind: "mqtt",
+  params: { brokerUrl: "mqtt://hass.lan:1883", username: "mqtt", password: "secret" },
 };
 
 const inverter: DeviceRecord = {
@@ -48,6 +63,7 @@ const inverter: DeviceRecord = {
   role: "inverter",
   unitId: 1,
   connectionId: 3,
+  params: {},
   arrays: [],
   tempCoefficient: -0.4,
   systemLoss: 14,
@@ -108,6 +124,7 @@ function harness(
           role: spec.role,
           unitId: spec.unitId,
           connectionId: spec.connectionId,
+          params: spec.params ?? {},
           arrays: spec.pv?.arrays ?? [],
           tempCoefficient: spec.pv?.tempCoefficient ?? -0.4,
           systemLoss: spec.pv?.systemLoss ?? 14,
@@ -258,7 +275,7 @@ describe("addDevice", () => {
     const created = await addDevice(deps, meterInput);
     expect(created.slug).toBe("meter");
     expect(created.connectionId).toBe(3);
-    expect(created.connection?.host).toBe("10.0.0.5");
+    expect(created.connection?.params).toEqual(modbusParams());
     expect(created.polled).toBe(false);
     expect(calls.filter((c) => c === "reload")).toHaveLength(1);
     expect(calls.indexOf("createDevice")).toBeLessThan(calls.indexOf("reload"));
@@ -272,17 +289,22 @@ describe("addDevice", () => {
       connection: {
         create: {
           name: "Gateway 2",
-          host: "10.0.0.9",
-          port: 8899,
-          transport: "rtu-over-tcp",
-          timeoutMs: 3000,
-          pollIntervalMs: 2000,
+          kind: "modbus",
+          params: {
+            host: "10.0.0.9",
+            port: 8899,
+            transport: "rtu-over-tcp",
+            timeoutMs: 3000,
+            pollIntervalMs: 2000,
+          },
         },
       },
     });
     expect(connections).toHaveLength(2);
     expect(created.connectionId).toBe(connections[1]?.id ?? null);
-    expect(created.connection?.transport).toBe("rtu-over-tcp");
+    expect(created.connection?.kind === "modbus" && created.connection.params.transport).toBe(
+      "rtu-over-tcp",
+    );
     expect(calls.indexOf("createConnection")).toBeLessThan(calls.indexOf("createDevice"));
   });
 
@@ -316,11 +338,14 @@ describe("addDevice", () => {
         connection: {
           create: {
             name: "G",
-            host: "  ",
-            port: 502,
-            transport: "tcp",
-            timeoutMs: 2000,
-            pollIntervalMs: 1000,
+            kind: "modbus",
+            params: {
+              host: "  ",
+              port: 502,
+              transport: "tcp",
+              timeoutMs: 2000,
+              pollIntervalMs: 1000,
+            },
           },
         },
       },
@@ -434,7 +459,13 @@ describe("patchDevice", () => {
   });
 
   test("re-points the driver, the address and the gateway in one patch", async () => {
-    const other = { ...gateway, id: 4, name: "Gateway 2", host: "10.0.0.9" };
+    const other: ConnectionRecord = {
+      ...gateway,
+      id: 4,
+      name: "Gateway 2",
+      kind: "modbus",
+      params: modbusParams({ host: "10.0.0.9" }),
+    };
     const meter = { ...inverter, id: 2, slug: "meter", role: "meter", unitId: 2 };
     const { deps, devices } = harness({
       connections: [gateway, other],
@@ -449,7 +480,9 @@ describe("patchDevice", () => {
     expect(updated.profileId).toBe("deye-sun15k");
     expect(updated.unitId).toBe(7);
     expect(updated.connectionId).toBe(4);
-    expect(updated.connection?.host).toBe("10.0.0.9");
+    expect(updated.connection?.kind === "modbus" && updated.connection.params.host).toBe(
+      "10.0.0.9",
+    );
     expect(updated.role).toBe("charger");
     expect(devices[1]?.slug).toBe("meter"); // the slug never moves
   });
@@ -494,24 +527,82 @@ describe("patchDevice", () => {
 describe("patchConnection", () => {
   test("edits the endpoint in place and reloads — every device on it follows", async () => {
     const { deps, calls } = harness();
-    const updated = await patchConnection(deps, 3, { host: "10.0.0.9", transport: "rtu-over-tcp" });
+    const updated = await patchConnection(deps, 3, {
+      params: {
+        host: "10.0.0.9",
+        port: 502,
+        transport: "rtu-over-tcp",
+        timeoutMs: 2000,
+        pollIntervalMs: 1000,
+      },
+    });
     expect(updated.id).toBe(3);
-    expect(updated.host).toBe("10.0.0.9");
+    expect(updated.kind === "modbus" && updated.params.host).toBe("10.0.0.9");
     expect(calls).toContain("updateConnection:3");
     expect(calls.filter((c) => c === "reload")).toHaveLength(1);
   });
 
+  test("renaming alone touches nothing else", async () => {
+    const { deps } = harness();
+    const updated = await patchConnection(deps, 3, { name: "Cellar gateway" });
+    expect(updated.name).toBe("Cellar gateway");
+    expect(updated.params).toEqual(modbusParams());
+  });
+
+  test("the row's OWN kind may be echoed back — the dialog round-trips the record", async () => {
+    const { deps } = harness();
+    const updated = await patchConnection(deps, 3, { kind: "modbus", name: "Same kind" });
+    expect(updated.kind).toBe("modbus");
+  });
+
+  test("a DIFFERENT kind is refused with 409 under `kind`, and nothing is written", async () => {
+    // Every device bound to this row was provisioned for its tier: a Modbus
+    // slave id means nothing on a broker, and re-kinding in place would leave
+    // them addressed for a bus that no longer exists while their history stays
+    // keyed to them.
+    const { deps, calls } = harness();
+    const error = await rejection(() =>
+      patchConnection(deps, 3, { kind: "mqtt", params: { brokerUrl: "mqtt://x:1883" } }),
+    );
+    expect(error.status).toBe(409);
+    expect(error.field).toBe("kind");
+    expect(calls.some((c) => c.startsWith("updateConnection"))).toBe(false);
+  });
+
+  test("params are validated against the ROW's kind, not the body's", async () => {
+    // A Modbus row sent broker params is a 400: the arm cannot be chosen from
+    // the body, or a write could smuggle credentials onto a gateway.
+    const { deps } = harness();
+    const error = await rejection(() =>
+      patchConnection(deps, 3, { params: { brokerUrl: "mqtt://x:1883" } }),
+    );
+    expect(error.status).toBe(400);
+  });
+
+  test("a broker keeps its password when the write omits one — the masking round trip", async () => {
+    const { deps, connections } = harness({ connections: [gateway, broker] });
+    const updated = await patchConnection(deps, 5, {
+      params: { brokerUrl: "mqtt://moved:1883", username: "mqtt" },
+    });
+    expect(updated.kind === "mqtt" && updated.params).toEqual({
+      brokerUrl: "mqtt://moved:1883",
+      username: "mqtt",
+      password: "secret",
+    });
+    expect(connections.find((c) => c.id === 5)?.params).toMatchObject({ password: "secret" });
+  });
+
   test("a connection the plant does not have is a 404", async () => {
     const { deps } = harness();
-    const error = await rejection(() => patchConnection(deps, 99, { host: "x" }));
+    const error = await rejection(() => patchConnection(deps, 99, { name: "x" }));
     expect(error.status).toBe(404);
   });
 
   test.each([
-    ["a blank host", { host: "  " }],
-    ["a port out of range", { port: 70000 }],
-    ["an unknown transport", { transport: "carrier-pigeon" }],
-    ["a cadence under the loop's floor", { pollIntervalMs: 10 }],
+    ["a blank host", { params: { host: "  " } }],
+    ["a port out of range", { params: { host: "h", port: 70000 } }],
+    ["an unknown transport", { params: { host: "h", transport: "carrier-pigeon" } }],
+    ["a cadence under the loop's floor", { params: { host: "h", pollIntervalMs: 10 } }],
     ["an empty patch", {}],
     ["a non-object body", "nope"],
   ])("refuses %s with 400 and writes nothing", async (_label, patch) => {

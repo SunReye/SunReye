@@ -95,6 +95,7 @@
  */
 
 import { AUTOMATION_KEY } from "@SunReye/db/automation-config";
+import type { ConnectionKind, ModbusTransport } from "@SunReye/db/connection-kinds";
 import { type DeviceBattery, resolveNominalV } from "@SunReye/db/batteries";
 import {
   type ConnectionRecord,
@@ -140,7 +141,7 @@ export interface ProvisionStore {
   ensurePlant(defaults: PlantDefaults): Promise<PlantRecord>;
   updatePlant(id: number, patch: PlantPatch): Promise<void>;
   /** The plant's endpoint as it stands — what makes the seed a seed. */
-  readConnection(plantId: number): Promise<ConnectionRecord | null>;
+  readConnection(plantId: number, kind: ConnectionKind): Promise<ConnectionRecord | null>;
   ensureConnection(plantId: number, settings: ConnectionSettings): Promise<ConnectionRecord>;
   /** ACTIVE devices only in the production wiring — see the module note. */
   readDevices(plantId: number): Promise<DeviceRecord[]>;
@@ -164,7 +165,7 @@ export function dbProvisionStore(db: ProvisionDb): ProvisionStore {
   return {
     ensurePlant: (defaults) => ensurePlant(db, defaults),
     updatePlant: (id, patch) => updatePlant(db, id, patch),
-    readConnection: (plantId) => readConnection(db, plantId),
+    readConnection: (plantId, kind) => readConnection(db, plantId, kind),
     ensureConnection: (plantId, settings) => ensureConnection(db, plantId, settings),
     // Narrowed in the STATEMENT as well as filtered in `findDevice`: a retired
     // row that never reaches this code cannot be adopted by a future arm either.
@@ -331,7 +332,14 @@ export interface ProvisionProfile {
 export interface EndpointSeed {
   host?: string;
   port: number;
-  transport: string;
+  /**
+   * Narrowed to a framing the Modbus client has a branch for, since #217: the
+   * value goes straight into `connections.params`, which no CHECK constraint
+   * guards any more (`../../../packages/db/src/connection-kinds.ts`). Every
+   * supplier already has it typed — `InverterConfig`'s own `z.enum` — so this is
+   * the type the seed always carried in practice.
+   */
+  transport: ModbusTransport;
   unitId: number;
   timeoutMs: number;
   pollIntervalMs: number;
@@ -422,17 +430,20 @@ async function endpointFor(
   seed: EndpointSeed,
   existing: DeviceRecord | null,
 ): Promise<number | null> {
-  const current = await store.readConnection(plantId);
+  const current = await store.readConnection(plantId, "modbus");
   if (current) return existing ? (existing.connectionId ?? current.id) : current.id;
   const host = seed.host?.trim() ?? "";
   if (host === "") return existing?.connectionId ?? null;
   const connection = await store.ensureConnection(plantId, {
     name: "Inverter",
-    host,
-    port: seed.port,
-    transport: seed.transport,
-    timeoutMs: seed.timeoutMs,
-    pollIntervalMs: seed.pollIntervalMs,
+    kind: "modbus",
+    params: {
+      host,
+      port: seed.port,
+      transport: seed.transport,
+      timeoutMs: seed.timeoutMs,
+      pollIntervalMs: seed.pollIntervalMs,
+    },
   });
   return connection.id;
 }

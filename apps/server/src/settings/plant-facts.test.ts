@@ -82,6 +82,7 @@ function memoryStore(seed: { settings?: Record<string, unknown> } = {}) {
       // service, and retirement is an UPDATE.
       const { pv, ...fields } = spec;
       const created = {
+        params: {},
         arrays: [],
         tempCoefficient: -0.4,
         systemLoss: 14,
@@ -139,6 +140,7 @@ async function facts(seed: Parameters<typeof memoryStore>[0] = {}) {
     plantId: plant.id,
     slug: "inverter",
     name: "Inverter",
+    params: {},
     profileId: "p",
     role: "inverter",
     arrays: [],
@@ -180,6 +182,7 @@ describe("the plant facts accessor", () => {
       name: "Second",
       profileId: "p",
       role: "inverter",
+      params: {},
       arrays: [],
       tempCoefficient: -0.4,
       systemLoss: 14,
@@ -266,6 +269,7 @@ describe("the plant facts accessor", () => {
       name: "Second",
       profileId: "p",
       role: "inverter",
+      params: {},
       arrays: [],
       tempCoefficient: -0.4,
       systemLoss: 14,
@@ -308,6 +312,7 @@ describe("the plant facts accessor", () => {
       name: "Second",
       profileId: "p",
       role: "inverter",
+      params: {},
       arrays: [],
       tempCoefficient: -0.4,
       systemLoss: 14,

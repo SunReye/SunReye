@@ -95,14 +95,23 @@ export interface ChunkPlan {
   marginMs: number;
 }
 
-const DEFAULT_PLAN: ChunkPlan = { chunkMs: CHUNK_MS, overlapMs: OVERLAP_MS, marginMs: EDGE_MARGIN_MS };
+const DEFAULT_PLAN: ChunkPlan = {
+  chunkMs: CHUNK_MS,
+  overlapMs: OVERLAP_MS,
+  marginMs: EDGE_MARGIN_MS,
+};
 
 /**
  * Split `[from, to)` into chunks of at most `chunkMs`, each starting `overlapMs`
  * before the previous one ended. The first starts at `from`, the last ends at
  * `to`, and an empty span is no chunks.
  */
-export function planWindows(from: number, to: number, chunkMs: number, overlapMs: number): Window[] {
+export function planWindows(
+  from: number,
+  to: number,
+  chunkMs: number,
+  overlapMs: number,
+): Window[] {
   if (overlapMs >= chunkMs) throw new Error("chunk overlap must be shorter than the chunk");
   const windows: Window[] = [];
   let start = from;
@@ -165,7 +174,10 @@ export async function scoreSpan(
 }
 
 /** The database-backed deps for one profile, or null when it maps no battery. */
-function productionDeps(profile: InverterProfile, log: (message: string) => void): ScoringDeps | null {
+function productionDeps(
+  profile: InverterProfile,
+  log: (message: string) => void,
+): ScoringDeps | null {
   const keys = batteryKeys(profile);
   if (!keys) return null;
   return {

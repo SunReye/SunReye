@@ -54,6 +54,12 @@ import { DEVICE_CLASSES, type DeviceClass } from "@SunReye/inverter-core/device-
 import { type SQL, sql } from "drizzle-orm";
 
 import type { DeviceBattery } from "./batteries";
+import {
+  type ConnectionKind,
+  type ConnectionParams,
+  type ModbusParams,
+  parseConnectionParams,
+} from "./connection-kinds";
 import { jsonDocument } from "./json-value";
 import {
   type PlantFactColumns,
@@ -77,16 +83,17 @@ export interface PlantRecord extends PlantFactColumns {
   tariffKey: string | null;
 }
 
-/** A Modbus endpoint. */
-export interface ConnectionRecord {
-  id: number;
-  name: string;
-  host: string;
-  port: number;
-  transport: string;
-  timeoutMs: number;
-  pollIntervalMs: number;
-}
+/**
+ * An endpoint something is reached through, per kind.
+ *
+ * A DISCRIMINATED UNION on `kind`, not a bag of nullable fields: a Modbus
+ * gateway has no broker URL and a broker has no unit-id space, and the row used
+ * to be able to express only the first (see `./schema/plants.ts` and
+ * `./connection-kinds.ts`). Consumers switch on `kind`, so a tier added later
+ * cannot be silently mishandled — the compiler names every site that has to
+ * grow an arm.
+ */
+export type ConnectionRecord = { id: number; name: string } & ConnectionParams;
 
 /** A device — the thing every reading is FROM. */
 export interface DeviceRecord {
@@ -97,6 +104,15 @@ export interface DeviceRecord {
   role: string;
   unitId: number;
   connectionId: number | null;
+  /**
+   * PER-DEVICE INTEGRATION CONFIG — an EVCC loadpoint's `topicRoot` today; see
+   * `./schema/plants.ts` on `devices.params`.
+   *
+   * A validated document rather than `unknown`: the shape is per integration, so
+   * this module cannot know which schema applies, and the consumer that does
+   * parses it. `{}` is the normal value for every device that needs none.
+   */
+  params: Record<string, unknown>;
   /**
    * This inverter's PV description — see `./schema/plants.ts` on `devices`. An
    * empty list and the two defaults for every other role.
@@ -392,29 +408,26 @@ export async function updatePlant(db: PlantDb, id: number, patch: PlantPatch): P
   await db.execute(sql`update plants set ${sql.join(assignments, sql`, `)} where id = ${id}`);
 }
 
-/** The endpoint settings a connection row holds. */
-export interface ConnectionSettings {
-  name: string;
-  host: string;
-  port: number;
-  transport: string;
-  timeoutMs: number;
-  pollIntervalMs: number;
-}
+/** The settings a connection row holds — the label plus its kind's params. */
+export type ConnectionSettings = { name: string } & ConnectionParams;
 
-const CONNECTION_COLUMNS = sql`
-  id, name, host, port, transport, timeout_ms as "timeoutMs",
-  poll_interval_ms as "pollIntervalMs"`;
+const CONNECTION_COLUMNS = sql`id, name, kind, params`;
 
+/**
+ * A row as the readers want it, with its params validated against its own
+ * `kind`.
+ *
+ * THROWS on a kind this build has no arm for, and that is the point: a database
+ * migrated ahead of the binary is loud here rather than yielding a connection
+ * nothing can open — which would simply never poll and never subscribe, with no
+ * error anyone reads. See `./connection-kinds.ts` on why a row must not take the
+ * silent-default treatment `app_settings` gets.
+ */
 function toConnection(row: Record<string, unknown>): ConnectionRecord {
   return {
     id: int(row.id),
     name: String(row.name),
-    host: String(row.host),
-    port: int(row.port),
-    transport: String(row.transport),
-    timeoutMs: int(row.timeoutMs),
-    pollIntervalMs: int(row.pollIntervalMs),
+    ...parseConnectionParams(row.kind, row.params),
   };
 }
 
@@ -436,19 +449,32 @@ export async function readConnections(db: PlantDb, plantId: number): Promise<Con
 }
 
 /**
- * The plant's FIRST endpoint, or null when it has none (simulate, imported
- * history).
+ * The plant's FIRST endpoint of a kind, or null when it has none (simulate,
+ * imported history).
  *
  * The single-endpoint view of {@link readConnections}, kept because the two
  * writers that only ever deal with one — `ensureConnection` below, and the
  * settings save — would otherwise each pick the first row themselves and could
  * disagree about which one that is.
+ *
+ * `kind` IS NOT OPTIONAL SUGAR. Since #217 a plant's rows are not all Modbus
+ * gateways, and "the plant's first connection" is only a meaningful answer
+ * within a kind: a plant whose broker happened to take the lower id would
+ * otherwise hand the single-inverter form an MQTT row to edit in place, and the
+ * settings save would overwrite the broker with a host and a port. Callers name
+ * the kind they mean.
  */
 export async function readConnection(
   db: PlantDb,
   plantId: number,
+  kind: ConnectionKind,
 ): Promise<ConnectionRecord | null> {
-  return (await readConnections(db, plantId))[0] ?? null;
+  return (await readConnections(db, plantId)).find((c) => c.kind === kind) ?? null;
+}
+
+/** A connection's Modbus addressing, or null when it is not a Modbus endpoint. */
+export function modbusParamsOf(connection: ConnectionRecord | null): ModbusParams | null {
+  return connection?.kind === "modbus" ? connection.params : null;
 }
 
 /**
@@ -463,19 +489,25 @@ export async function readConnection(
  * `name` IS overwritten here, unlike a plant's or a device's: the endpoint has no
  * UI that names it yet, so there is no operator choice to preserve. When one
  * arrives it moves out of this call the same way the device name did.
+ *
+ * WITHIN THE KIND. The row it edits is the plant's first of `settings.kind`, not
+ * its first row: since #217 a plant can hold a Modbus gateway and a broker, and
+ * "the plant's endpoint" is only well defined per kind. A save that ignored the
+ * kind would move whichever row happened to take the lower id — writing a host
+ * and a port over a broker, and leaving every loadpoint bound to it addressed
+ * for a bus that does not exist.
  */
 export async function ensureConnection(
   db: PlantDb,
   plantId: number,
   settings: ConnectionSettings,
 ): Promise<ConnectionRecord> {
-  const existing = await readConnection(db, plantId);
+  const existing = await readConnection(db, plantId, settings.kind);
   if (existing) {
     await db.execute(sql`
       update connections set
-        name = ${settings.name}, host = ${settings.host}, port = ${settings.port},
-        transport = ${settings.transport}, timeout_ms = ${settings.timeoutMs},
-        poll_interval_ms = ${settings.pollIntervalMs}
+        name = ${settings.name}, kind = ${settings.kind},
+        params = ${JSON.stringify(settings.params)}::jsonb
       where id = ${existing.id}`);
     return { ...settings, id: existing.id };
   }
@@ -498,9 +530,9 @@ export async function createConnection(
   settings: ConnectionSettings,
 ): Promise<ConnectionRecord> {
   const { rows } = await db.execute(sql`
-    insert into connections (plant_id, name, host, port, transport, timeout_ms, poll_interval_ms)
-    values (${plantId}, ${settings.name}, ${settings.host}, ${settings.port},
-            ${settings.transport}, ${settings.timeoutMs}, ${settings.pollIntervalMs})
+    insert into connections (plant_id, name, kind, params)
+    values (${plantId}, ${settings.name}, ${settings.kind},
+            ${JSON.stringify(settings.params)}::jsonb)
     returning ${CONNECTION_COLUMNS}`);
   const row = rows[0] as Record<string, unknown> | undefined;
   if (!row) throw new Error(`connection for plant ${plantId} could not be created`);
@@ -529,14 +561,23 @@ async function updateThenRead(
   return rows[0] as Record<string, unknown> | undefined;
 }
 
-/** What may change on an existing endpoint. `plant_id` is not: moving a gateway between plants moves every device on it. */
+/**
+ * What may change on an existing endpoint.
+ *
+ * `plant_id` is not: moving a gateway between plants moves every device on it.
+ * NEITHER IS `kind`, and that is a rule rather than an omission — the devices
+ * bound to a connection were provisioned for its tier (a Modbus slave id, an
+ * EVCC loadpoint index), and re-kinding the row in place would leave them
+ * addressed for a bus that no longer exists while their history stays keyed to
+ * them. A different kind is a different connection; the route refuses the patch
+ * (`apps/server/src/devices/device-admin.ts`).
+ *
+ * `params` is therefore WHOLE, not per-field: it is the row's own kind's shape,
+ * already validated by the caller against that kind.
+ */
 export interface ConnectionPatch {
   name?: string;
-  host?: string;
-  port?: number;
-  transport?: string;
-  timeoutMs?: number;
-  pollIntervalMs?: number;
+  params?: ConnectionParams["params"];
 }
 
 /**
@@ -552,12 +593,8 @@ export async function updateConnection(
 ): Promise<ConnectionRecord> {
   const assignments: SQL[] = [];
   if (patch.name !== undefined) assignments.push(sql`name = ${patch.name}`);
-  if (patch.host !== undefined) assignments.push(sql`host = ${patch.host}`);
-  if (patch.port !== undefined) assignments.push(sql`port = ${patch.port}`);
-  if (patch.transport !== undefined) assignments.push(sql`transport = ${patch.transport}`);
-  if (patch.timeoutMs !== undefined) assignments.push(sql`timeout_ms = ${patch.timeoutMs}`);
-  if (patch.pollIntervalMs !== undefined) {
-    assignments.push(sql`poll_interval_ms = ${patch.pollIntervalMs}`);
+  if (patch.params !== undefined) {
+    assignments.push(sql`params = ${JSON.stringify(patch.params)}::jsonb`);
   }
   const row = await updateThenRead(db, sql`connections`, id, assignments, CONNECTION_COLUMNS);
   if (!row) throw new Error(`connection ${id} does not exist`);
@@ -577,7 +614,7 @@ export async function deleteConnection(db: PlantDb, id: number): Promise<boolean
 
 const DEVICE_COLUMNS = sql`
   id, slug, name, profile_id as "profileId", role, unit_id as "unitId",
-  connection_id as "connectionId", arrays, temp_coefficient as "tempCoefficient",
+  connection_id as "connectionId", params, arrays, temp_coefficient as "tempCoefficient",
   system_loss as "systemLoss", retired_at as "retiredAt"`;
 
 function toDevice(row: Record<string, unknown>): DeviceRecord {
@@ -589,6 +626,7 @@ function toDevice(row: Record<string, unknown>): DeviceRecord {
     role: String(row.role),
     unitId: int(row.unitId),
     connectionId: maybeNum(row.connectionId),
+    params: deviceParamsFrom(row.params),
     arrays: deviceArraysFrom(row.arrays),
     tempCoefficient: int(row.tempCoefficient),
     systemLoss: int(row.systemLoss),
@@ -659,11 +697,37 @@ export interface DeviceSpec {
   profileId: string;
   role: string;
   /**
+   * Per-device integration config at creation, or absent for the `{}` default.
+   * Creation only, for the same reason `pv` is — see {@link ensureDevice}.
+   */
+  params?: Record<string, unknown>;
+  /**
    * The inverter's PV description at creation; absent fields take the column
    * defaults (no arrays, -0.4 %/°C, 14 %). Creation only — see {@link
    * ensureDevice} for why an existing row is never overwritten.
    */
   pv?: Partial<DevicePv>;
+}
+
+/** A spec's `params` as a VALUES fragment — the column default where unstated. */
+function paramsValue(params: Record<string, unknown> | undefined): SQL {
+  return params === undefined ? sql`default` : sql`${JSON.stringify(params)}::jsonb`;
+}
+
+/**
+ * A device's `params` jsonb as a plain object.
+ *
+ * `{}` for anything that is not one — a null, an array, a scalar left by a
+ * hand-edited row. This is the read of a column that carries a DIFFERENT shape
+ * per integration, so there is no schema to apply here; the consumer that owns
+ * the shape parses what it recognises and ignores the rest. `jsonDocument`
+ * first, because a jsonb column can legitimately hold a JSON *string* whose
+ * content is the document (see `./json-value.ts`).
+ */
+function deviceParamsFrom(value: unknown): Record<string, unknown> {
+  const document = jsonDocument(value);
+  if (typeof document !== "object" || document === null || Array.isArray(document)) return {};
+  return document as Record<string, unknown>;
 }
 
 /** The PV columns of a spec as a VALUES fragment — defaults where unstated. */
@@ -687,9 +751,10 @@ function pvValues(pv: Partial<DevicePv> | undefined): SQL {
 export async function ensureDevice(db: PlantDb, spec: DeviceSpec): Promise<DeviceRecord> {
   await db.execute(sql`
     insert into devices (plant_id, connection_id, unit_id, slug, name, profile_id, role,
-                         arrays, temp_coefficient, system_loss)
+                         params, arrays, temp_coefficient, system_loss)
     values (${spec.plantId}, ${spec.connectionId}, ${spec.unitId}, ${spec.slug},
-            ${spec.name}, ${spec.profileId}, ${spec.role}, ${pvValues(spec.pv)})
+            ${spec.name}, ${spec.profileId}, ${spec.role}, ${paramsValue(spec.params)},
+            ${pvValues(spec.pv)})
     on conflict (plant_id, slug) do nothing`);
   const { rows } = await db.execute(sql`
     select ${DEVICE_COLUMNS} from devices
@@ -714,9 +779,10 @@ export async function ensureDevice(db: PlantDb, spec: DeviceSpec): Promise<Devic
 export async function createDevice(db: PlantDb, spec: DeviceSpec): Promise<DeviceRecord> {
   const { rows } = await db.execute(sql`
     insert into devices (plant_id, connection_id, unit_id, slug, name, profile_id, role,
-                         arrays, temp_coefficient, system_loss)
+                         params, arrays, temp_coefficient, system_loss)
     values (${spec.plantId}, ${spec.connectionId}, ${spec.unitId}, ${spec.slug},
-            ${spec.name}, ${spec.profileId}, ${spec.role}, ${pvValues(spec.pv)})
+            ${spec.name}, ${spec.profileId}, ${spec.role}, ${paramsValue(spec.params)},
+            ${pvValues(spec.pv)})
     returning ${DEVICE_COLUMNS}`);
   const row = rows[0] as Record<string, unknown> | undefined;
   if (!row) throw new Error(`device ${spec.slug} could not be created`);
@@ -754,6 +820,8 @@ export interface DevicePatch {
   role?: string;
   unitId?: number;
   connectionId?: number | null;
+  /** Per-device integration config, WHOLE — the consumer that owns the shape merges. */
+  params?: Record<string, unknown>;
   /** The inverter's PV description; each field independently, like the rest. */
   pv?: Partial<DevicePv>;
   /**
@@ -789,6 +857,9 @@ export async function updateDevice(
   if (patch.unitId !== undefined) assignments.push(sql`unit_id = ${patch.unitId}`);
   if (patch.connectionId !== undefined) {
     assignments.push(sql`connection_id = ${patch.connectionId}`);
+  }
+  if (patch.params !== undefined) {
+    assignments.push(sql`params = ${JSON.stringify(patch.params)}::jsonb`);
   }
   if (patch.pv) assignments.push(...pvAssignments(patch.pv));
   if (patch.retiredAt !== undefined) assignments.push(sql`retired_at = ${patch.retiredAt}`);

@@ -151,7 +151,10 @@ class PowerIndex {
   }
 
   /** Every interval overlapping `[from, to)`, with the overlap already clipped. */
-  *overlapping(from: number, to: number): Generator<{ interval: PowerInterval; overlapMs: number }> {
+  *overlapping(
+    from: number,
+    to: number,
+  ): Generator<{ interval: PowerInterval; overlapMs: number }> {
     for (let i = this.#lowerBound(from - this.#maxDurMs); i < this.#sorted.length; i++) {
       const interval = this.#sorted[i] as PowerInterval;
       if (interval.t >= to) return;

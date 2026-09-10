@@ -354,11 +354,14 @@ suite("the schema's CHECK constraints", () => {
       const repo = await import("@SunReye/db/plant-repo");
       const conn = await repo.ensureConnection(db, plantId, {
         name: "gx",
-        host: "10.0.0.9",
-        port: 502,
-        transport: "tcp",
-        timeoutMs: 2000,
-        pollIntervalMs: 1000,
+        kind: "modbus",
+        params: {
+          host: "10.0.0.9",
+          port: 502,
+          transport: "tcp",
+          timeoutMs: 2000,
+          pollIntervalMs: 1000,
+        },
       });
       const device = await repo.ensureDevice(db, {
         plantId,
