@@ -32,9 +32,18 @@ import type { CodedDeclaration } from "./registry";
  * against an object it would resolve to a function.
  */
 const CODED_INTEGRATIONS = new Map<string, CodedDeclaration>([
+  // Addable: the MQTT ingest discovers loadpoints on its own, but an operator
+  // may also declare one ahead of the broker — `ensureDevice` is
+  // `ON CONFLICT DO NOTHING`, so discovery adopts the row they made rather than
+  // fighting it, and a plant whose EVCC is offline can still be configured.
   [
     EVCC_LOADPOINT_PROFILE,
-    { integration: EVCC_INTEGRATION, name: "EVCC loadpoint", metrics: LOADPOINT_METRICS },
+    {
+      integration: EVCC_INTEGRATION,
+      name: "EVCC loadpoint",
+      addable: true,
+      metrics: LOADPOINT_METRICS,
+    },
   ],
   // The optimizer qualifies for the coded tier on the same count EVCC does, and
   // then some: what it declares are the outputs of a control loop — a forecast

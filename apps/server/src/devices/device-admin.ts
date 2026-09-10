@@ -82,6 +82,17 @@ export interface CodedInfo {
   integration: string;
   /** The name to show for a device whose profile is code, not an install. */
   name?: string;
+  /**
+   * Whether an operator may create one of these by hand.
+   *
+   * ABSENT MEANS NO, deliberately. A coded declaration is auto-provisioned
+   * until someone says otherwise — the optimizer writes its own row (#172) and
+   * #197's weather device will too — so the safe reading of a declaration that
+   * never considered the question is "the server owns this row". A second
+   * optimizer is a duplicate nothing would ever poll, and the wizard must not
+   * be able to make one; the opt-in is one word in `./coded.ts`'s table.
+   */
+  addable?: boolean;
 }
 
 /**
@@ -167,6 +178,7 @@ export class DeviceAdminError extends Error {
     readonly status: 400 | 404 | 409,
     message: string,
     readonly field?:
+      | "via"
       | "name"
       | "unitId"
       | "connection"
@@ -233,19 +245,115 @@ export const inverterFieldsSchema = {
   battery: forecastBatterySchema.nullable().optional(),
 };
 
-const addDeviceSchema = z.object({
-  ...inverterFieldsSchema,
-  connection: z.union([
-    z.object({ id: z.number().int().positive() }),
-    z.object({ create: connectionSettingsSchema }),
-  ]),
+/**
+ * `unitId` IS NOT UNIVERSAL, and that is why the add contract is a union.
+ *
+ * The column carries two unrelated facts today: a MODBUS SLAVE ID for a device
+ * on a bus (0–247, `unitIdSchema`), and an EVCC LOADPOINT'S INDEX for a device
+ * that has no bus at all (`../evcc/evcc-devices.ts` — the index is the frozen
+ * half of the slug, and what makes `devices_connection_unit_key` hold for two
+ * loadpoints on one broker). A schema that validated the second as the first
+ * would cap a loadpoint index at 247 for a Modbus reason, and a schema that
+ * relaxed the first to fit the second would let a bus device be addressed at
+ * 900. So the slave-id bound belongs to the PROFILE ARM alone, and the coded
+ * arm validates an INDEX: a non-negative integer, no ceiling.
+ */
+const codedIndexSchema = z.number().int().min(0);
+
+/**
+ * A device's per-integration settings bag (`devices.params`) on the way in.
+ *
+ * Validated as nothing more than a JSON OBJECT, exactly as `patchDeviceSchema`
+ * validates it and for the same reason: the shapes are per integration and
+ * share nothing, so the consumer that owns a key is the only layer that can
+ * judge it. A scalar, a `null` or a list is refused rather than stored, because
+ * an integration reading a list finds none of its keys.
+ */
+const paramsSchema = z.record(z.string(), z.unknown());
+
+/** Which gateway a new device hangs on: an existing row, or one to create. */
+const connectionChoiceSchema = z.union([
+  z.object({ id: z.number().int().positive() }),
+  z.object({ create: connectionSettingsSchema }),
+]);
+
+/** What every tier states, whatever authors the device behind it. */
+const addCommonShape = {
+  connection: connectionChoiceSchema,
   role: deviceRoleSchema,
-  unitId: unitIdSchema,
   name: nameSchema,
   profileId: profileIdSchema,
+};
+
+/**
+ * THE PROFILE ARM: a register map installed from a git source, on a bus.
+ *
+ * Exactly the body this endpoint has always taken, plus the discriminant — the
+ * PV description and pack included, because only a machine with panels and a
+ * pack can have them and only this tier has a machine.
+ */
+const profileAddSchema = z.object({
+  via: z.literal("profile"),
+  ...addCommonShape,
+  ...inverterFieldsSchema,
+  unitId: unitIdSchema,
 });
 
+/**
+ * THE CODED ARM: a declaration compiled into this server (`./coded.ts`).
+ *
+ * No `unitId` requirement — a pushed device has no slave to address — and no PV
+ * fields. `params` is the integration's own settings step (an EVCC loadpoint's
+ * `topicRoot`), and `unitId` stays available as the OPTIONAL index described on
+ * {@link codedIndexSchema}: the index is chosen here rather than tucked inside
+ * `params` because the uniqueness rule the database enforces
+ * (`devices_connection_unit_key`) reads the COLUMN, and an index hidden in the
+ * JSON bag would let two loadpoints collide with nothing to refuse them.
+ */
+const codedAddSchema = z.object({
+  via: z.literal("coded"),
+  ...addCommonShape,
+  unitId: codedIndexSchema.optional(),
+  params: paramsSchema.optional(),
+});
+
+/**
+ * THE MAPPING ARM: a user's own field mapping, declared and REFUSED (#79–#81).
+ *
+ * A declared-and-refused arm is the seam. Leaving it out would make the union a
+ * two-arm type that has to be widened — schema, narrowing, every call site —
+ * the day the tier lands; naming it now means that day adds a body shape and
+ * deletes a refusal. The refusal is a 400: the body is well-formed, the server
+ * simply cannot author a device this way yet.
+ */
+const mappingAddSchema = z.object({ via: z.literal("mapping") });
+
+/**
+ * The add contract, discriminated on the TIER (`via`) — never on the transport;
+ * see `./integration-catalog.ts` for why the two axes stay apart.
+ *
+ * COMPATIBILITY: a body with NO `via` is read as `via: "profile"`
+ * ({@link withDefaultTier}). The shipped `/settings/devices` dialog sends the
+ * un-tiered Modbus body, and an add that started 400-ing the moment this landed
+ * would be a regression nothing on screen explains.
+ */
+const addDeviceSchema = z.discriminatedUnion("via", [
+  profileAddSchema,
+  codedAddSchema,
+  mappingAddSchema,
+]);
+
 type AddDeviceInput = z.infer<typeof addDeviceSchema>;
+
+/** The two arms that actually author a device — the mapping arm never gets here. */
+type AuthoredDevice = z.infer<typeof profileAddSchema> | z.infer<typeof codedAddSchema>;
+
+/** An un-tiered body is the profile tier. See {@link addDeviceSchema}. */
+function withDefaultTier(body: unknown): unknown {
+  if (typeof body !== "object" || body === null) return body;
+  const stated = (body as { via?: unknown }).via;
+  return stated === undefined ? { ...body, via: "profile" } : body;
+}
 
 const nonEmpty = (patch: Record<string, unknown>) =>
   Object.values(patch).some((value) => value !== undefined);
@@ -273,7 +381,7 @@ const patchDeviceSchema = z
     unitId: unitIdSchema.optional(),
     connectionId: z.number().int().positive().optional(),
     profileId: profileIdSchema.optional(),
-    params: z.record(z.string(), z.unknown()).optional(),
+    params: paramsSchema.optional(),
     retired: z.boolean().optional(),
   })
   .refine(nonEmpty, "nothing to change");
@@ -303,6 +411,7 @@ const patchConnectionSchema = z
 
 /** Which input field a Zod path points at, for the error's `field`. */
 const FIELDS = new Set([
+  "via",
   "name",
   "unitId",
   "connection",
@@ -492,7 +601,7 @@ async function requirePlant(deps: DeviceAdminDeps): Promise<PlantRecord> {
 async function resolveConnection(
   deps: DeviceAdminDeps,
   plantId: number,
-  choice: AddDeviceInput["connection"],
+  choice: AuthoredDevice["connection"],
   existing: readonly ConnectionRecord[],
 ): Promise<ConnectionRecord> {
   if ("create" in choice) return deps.store.createConnection(plantId, choice.create);
@@ -576,32 +685,95 @@ function conflictOf(error: unknown): DeviceAdminError | null {
  *  4. RELOAD last, so the registry re-resolves against the final state.
  */
 export async function addDevice(deps: DeviceAdminDeps, body: unknown): Promise<DeviceView> {
-  const input = parse(addDeviceSchema, body);
+  const input = requireAuthorable(parse(addDeviceSchema, withDefaultTier(body)));
   const plant = await requirePlant(deps);
-  if ((await deps.profileName(input.profileId)) === null) {
-    throw new DeviceAdminError(400, "profile: not installed on this server", "profileId");
-  }
-  requireInverterFor(input.role, input);
+  await requireTier(deps, input);
   const connections = await deps.store.readConnections(plant.id);
   const connection = await resolveConnection(deps, plant.id, input.connection, connections);
   let device: DeviceRecord;
   try {
-    device = await deps.store.createDevice({
-      plantId: plant.id,
-      connectionId: connection.id,
-      unitId: input.unitId,
-      slug: slugify(input.name),
-      name: input.name,
-      profileId: input.profileId,
-      role: input.role,
-      pv: pvOf(input),
-    });
+    device = await deps.store.createDevice(specOf(input, plant.id, connection.id));
   } catch (error) {
     throw conflictOf(error) ?? error;
   }
-  await writeBattery(deps, device.id, input.battery);
+  await writeBattery(deps, device.id, input.via === "profile" ? input.battery : undefined);
   await deps.reload();
   return view(deps, plant.id, device, [...connections, connection]);
+}
+
+/**
+ * The mapping tier, refused (#79–#81). Everything past this point is a device
+ * this server can actually author.
+ */
+function requireAuthorable(input: AddDeviceInput): AuthoredDevice {
+  if (input.via === "mapping") {
+    throw new DeviceAdminError(
+      400,
+      "via: the mapping tier does not exist yet — add this device as a profile or a coded integration",
+      "via",
+    );
+  }
+  return input;
+}
+
+/**
+ * Resolve the body's `profileId` IN ITS OWN TIER, and refuse it in no other.
+ *
+ * A LOOKUP per arm, never a fallback chain: an id that resolves under neither
+ * is the same 400 this endpoint has always answered, and an id that resolves
+ * under the OTHER tier is that same 400 rather than a quiet re-tiering — a
+ * coded id accepted on the profile arm would store a device the poll loop then
+ * tries to reach over Modbus.
+ */
+async function requireTier(deps: DeviceAdminDeps, input: AuthoredDevice): Promise<void> {
+  if (input.via === "coded") return requireAddableCoded(deps, input.profileId);
+  if ((await deps.profileName(input.profileId)) === null) {
+    throw new DeviceAdminError(400, "profile: not installed on this server", "profileId");
+  }
+  requireInverterFor(input.role, input);
+}
+
+/** A coded id this server declares AND lets an operator add. See {@link CodedInfo.addable}. */
+function requireAddableCoded(deps: DeviceAdminDeps, profileId: string): void {
+  const coded = deps.coded(profileId);
+  if (coded === null) {
+    throw new DeviceAdminError(400, "profile: not a coded integration on this server", "profileId");
+  }
+  if (coded.addable !== true) {
+    throw new DeviceAdminError(
+      409,
+      `profile: ${coded.name ?? profileId} provisions its own device; it cannot be added by hand`,
+      "profileId",
+    );
+  }
+}
+
+/**
+ * The row each tier writes.
+ *
+ * The COMMON half is the whole identity of a device — where it hangs, what it
+ * is called, what authors it — and the slug is derived from the name exactly as
+ * provisioning derives it (`slugify`), so the two paths cannot disagree.
+ */
+function specOf(input: AuthoredDevice, plantId: number, connectionId: number): DeviceSpec {
+  const common = {
+    plantId,
+    connectionId,
+    slug: slugify(input.name),
+    name: input.name,
+    profileId: input.profileId,
+    role: input.role,
+  };
+  if (input.via === "coded") {
+    // 0 where no index was stated: a single pushed device on a connection needs
+    // no index, and the column is NOT NULL.
+    return {
+      ...common,
+      unitId: input.unitId ?? 0,
+      ...(input.params ? { params: input.params } : {}),
+    };
+  }
+  return { ...common, unitId: input.unitId, pv: pvOf(input) };
 }
 
 /**
