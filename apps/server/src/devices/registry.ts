@@ -60,6 +60,12 @@ export interface RegistryLogger {
 export interface CodedDeclaration {
   /** Provenance for {@link DeviceInstance.integration} — never branched on. */
   integration: string;
+  /**
+   * The name the settings roster shows for a device whose profile is code.
+   * There is no profile row to read one from, and a nameless coded device is
+   * reported as an uninstalled profile (#213).
+   */
+  name?: string;
   metrics: readonly DeviceMetric[];
   declares?: ProfileDeclarations;
 }

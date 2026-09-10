@@ -18,8 +18,8 @@
  * row silently adopted (`createDevice`, not `ensureDevice`).
  *
  * Not the multi-device poll loop either. This release polls one target
- * (`../inverter/endpoint.ts`, `loadPollEndpoint`), so a second device is stored,
- * registered and listed but not read; `DeviceView.polled` says which one is.
+ * (`../inverter/endpoint.ts`, `loadPollEndpoint`), so a second Modbus device is
+ * stored, registered and listed but not read; {@link DeviceView.state} says so.
  */
 
 import type { DeviceBattery } from "@SunReye/db/batteries";
@@ -60,10 +60,44 @@ export interface DeviceAdminStore {
   deleteDeviceBattery(deviceId: number): Promise<void>;
 }
 
+/**
+ * What the coded tier says about a `profile_id` — `./coded.ts`'s declaration,
+ * narrowed to the two fields the roster shows.
+ *
+ * Injected rather than imported for the reason every other dependency here is:
+ * the route layer has no automated cover, so "a loadpoint is not an unpolled
+ * Modbus device" has to be provable against a double.
+ */
+export interface CodedInfo {
+  /** Provenance, for grouping the row under its integration. Never branched on here. */
+  integration: string;
+  /** The name to show for a device whose profile is code, not an install. */
+  name?: string;
+}
+
+/**
+ * How a device is fed. NOT a capability and not a branch anything downstream
+ * takes: it is what the roster has to say out loud, because the three are
+ * indistinguishable on a row that only knows "polled: false".
+ */
+export type DeviceKind = "modbus" | "coded" | "virtual";
+
+/**
+ * What the roster reports about a device, one word per reason it is not being
+ * read. Replaces a `polled` boolean, which reported an MQTT-fed loadpoint and a
+ * computation as broken Modbus hardware.
+ *
+ * `polling` is the one device the loop reads today; #204 extends it to many and
+ * does not change this enum.
+ */
+export type DeviceState = "polling" | "idle" | "integration" | "virtual" | "retired";
+
 export interface DeviceAdminDeps {
   store: DeviceAdminStore;
   /** The display name of a registered profile, or null when the id names none. */
   profileName(profileId: string): Promise<string | null>;
+  /** The coded declaration a `profile_id` names, or null when it names a profile. */
+  coded(profileId: string): CodedInfo | null;
   /** The slug of the device the loop polls today, or null when it polls nothing. */
   primarySlug(): string | null;
   /** Ask the runtime to re-read the roster — after a write, never before. */
@@ -84,10 +118,17 @@ export interface DeviceView extends Omit<DeviceRecord, "retiredAt"> {
   /** The pack this inverter carries, or null — every other role has none. */
   battery: DeviceBattery | null;
   profileName: string | null;
-  /** Whether the profile the row names is registered on this server. */
+  /** Whether the name above resolved — an installed profile, or a coded declaration. */
   profileKnown: boolean;
-  /** Whether this is the ONE device the poll loop reads in this release. */
-  polled: boolean;
+  /** How this device is fed. */
+  kind: DeviceKind;
+  /** Why it is, or is not, being read. */
+  state: DeviceState;
+  /**
+   * The integration a coded device belongs to (`evcc`), or null. Provenance for
+   * the roster's grouping and nothing else.
+   */
+  integration: string | null;
 }
 
 export interface DeviceRoster {
@@ -225,21 +266,59 @@ function parse<T>(schema: z.ZodType<T>, body: unknown): T {
   throw new DeviceAdminError(400, `${where}${issue?.message ?? "invalid body"}`, field);
 }
 
+/**
+ * How a device is fed, from its role and its profile id.
+ *
+ * Virtual outranks coded, and the optimizer is both: it has a coded declaration
+ * AND no machine behind it, and what an operator needs to know first is the
+ * second one.
+ */
+function kindOf(device: DeviceRecord, coded: CodedInfo | null): DeviceKind {
+  if (isVirtualDevice(device)) return "virtual";
+  return coded !== null ? "coded" : "modbus";
+}
+
+/** Why a device is, or is not, being read. Retirement outranks everything. */
+function stateOf(device: DeviceRecord, kind: DeviceKind, primarySlug: string | null): DeviceState {
+  if (isRetired(device)) return "retired";
+  if (kind === "virtual") return "virtual";
+  if (kind === "coded") return "integration";
+  return device.slug === primarySlug ? "polling" : "idle";
+}
+
+/**
+ * The name the roster shows for a device's profile id.
+ *
+ * A coded id has no profile row and never will (`./coded.ts`), so the
+ * declaration is what answers. Without this the roster flagged every loadpoint
+ * and the optimizer red: "Profile not installed".
+ */
+function profileNameOf(installed: string | null, coded: CodedInfo | null): string | null {
+  if (installed !== null) return installed;
+  if (coded === null) return null;
+  return coded.name ?? coded.integration;
+}
+
 function toView(
   device: DeviceRecord,
   connections: readonly ConnectionRecord[],
   profileName: string | null,
   primarySlug: string | null,
+  coded: CodedInfo | null,
   battery: DeviceBattery | null = null,
 ): DeviceView {
+  const kind = kindOf(device, coded);
+  const name = profileNameOf(profileName, coded);
   return {
     ...device,
     retiredAt: device.retiredAt ? device.retiredAt.toISOString() : null,
     connection: connections.find((c) => c.id === device.connectionId) ?? null,
     battery,
-    profileName,
-    profileKnown: profileName !== null,
-    polled: !isRetired(device) && device.slug === primarySlug,
+    profileName: name,
+    profileKnown: name !== null,
+    kind,
+    state: stateOf(device, kind, primarySlug),
+    integration: coded?.integration ?? null,
   };
 }
 
@@ -262,7 +341,14 @@ async function view(
     deps.profileName(device.profileId),
     deps.store.readPlantBatteries(plantId),
   ]);
-  return toView(device, connections, name, deps.primarySlug(), packOf(packs, device.id));
+  return toView(
+    device,
+    connections,
+    name,
+    deps.primarySlug(),
+    deps.coded(device.profileId),
+    packOf(packs, device.id),
+  );
 }
 
 /** Every device of the plant, retired ones included, with their endpoints. */
@@ -278,7 +364,14 @@ export async function listDevices(deps: DeviceAdminDeps): Promise<DeviceRoster> 
   const names = await Promise.all(devices.map((d) => deps.profileName(d.profileId)));
   return {
     devices: devices.map((d, i) =>
-      toView(d, connections, names[i] ?? null, primary, packOf(packs, d.id)),
+      toView(
+        d,
+        connections,
+        names[i] ?? null,
+        primary,
+        deps.coded(d.profileId),
+        packOf(packs, d.id),
+      ),
     ),
     connections,
   };
@@ -432,6 +525,7 @@ export async function patchDevice(
   ]);
   const current = devices.find((d) => d.id === id);
   if (!current) throw new DeviceAdminError(404, `device ${id} does not exist`);
+  requireModbus(current, deps.coded(current.profileId));
   if (patch.retired === true && current.slug === deps.primarySlug()) {
     throw new DeviceAdminError(
       409,
@@ -454,6 +548,22 @@ export async function patchDevice(
   await writeBattery(deps, id, battery);
   await deps.reload();
   return view(deps, plant.id, updated, connections);
+}
+
+/**
+ * Only a Modbus device has the fields this patch writes.
+ *
+ * An edit of a coded or virtual row seeded the plant's FIRST gateway for its
+ * endpoint-less device and then sent it, so saving an untouched edit bound a
+ * loadpoint or the optimizer to a Modbus endpoint — a change nothing on the
+ * screen described (#213). The row hides Edit and Retire now; this is the
+ * refusal behind it, because the route is reachable without the row.
+ */
+function requireModbus(device: DeviceRecord, coded: CodedInfo | null): void {
+  const kind = kindOf(device, coded);
+  if (kind === "modbus") return;
+  const why = kind === "virtual" ? "internal" : "fed by an integration";
+  throw new DeviceAdminError(409, `this device is ${why}; it has no Modbus settings to change`);
 }
 
 /** The two re-pointing checks a device patch shares with an add: the profile is registered, the gateway is the plant's. */

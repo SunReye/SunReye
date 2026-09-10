@@ -67,6 +67,7 @@ function harness(
     devices?: DeviceRecord[];
     knownProfiles?: Record<string, string>;
     primarySlug?: string | null;
+    coded?: Record<string, { integration: string; name?: string }>;
     createDevice?: DeviceAdminStore["createDevice"];
     batteries?: DeviceBatteryRecord[];
   } = {},
@@ -165,9 +166,11 @@ function harness(
       return next;
     },
   };
+  const coded = over.coded ?? CODED;
   const deps: DeviceAdminDeps = {
     store,
     profileName: async (id) => known[id] ?? null,
+    coded: (id) => coded[id] ?? null,
     primarySlug: () => (over.primarySlug === undefined ? "inverter" : over.primarySlug),
     reload: async () => {
       calls.push("reload");
@@ -175,6 +178,40 @@ function harness(
   };
   return { deps, calls, connections, devices, batteries };
 }
+
+/**
+ * The coded tier as the route hands it over (`./coded.ts`): a declaration per
+ * `profile_id`, with the name the roster shows for a device that has no
+ * installed profile and never will.
+ */
+const CODED: Record<string, { integration: string; name?: string }> = {
+  "evcc-loadpoint": { integration: "evcc", name: "EVCC loadpoint" },
+  "sunreye.optimizer": { integration: "optimizer", name: "SunReye Optimizer" },
+};
+
+/** An EVCC loadpoint: fed over MQTT, so no gateway, no unit and no profile row. */
+const loadpoint: DeviceRecord = {
+  ...inverter,
+  id: 4,
+  slug: "evcc-loadpoint-1",
+  name: "Carport",
+  profileId: "evcc-loadpoint",
+  role: "charger",
+  unitId: 0,
+  connectionId: null,
+};
+
+/** The optimizer: a virtual device, no machine behind it at all. */
+const optimizer: DeviceRecord = {
+  ...inverter,
+  id: 5,
+  slug: "optimizer",
+  name: "Optimizer",
+  profileId: "sunreye.optimizer",
+  role: "optimizer",
+  unitId: 0,
+  connectionId: null,
+};
 
 const pack: DeviceBattery = { usableKwh: 10, maxChargeW: 5000, minSoc: 10, nominalV: 51.2 };
 
@@ -197,7 +234,7 @@ async function rejection(run: () => Promise<unknown>): Promise<DeviceAdminError>
 }
 
 describe("listDevices", () => {
-  test("joins each device to its connection and profile, and marks the one that is polled", async () => {
+  test("joins each device to its connection and profile, and names the state of each", async () => {
     const { deps } = harness({
       devices: [
         inverter,
@@ -225,15 +262,16 @@ describe("listDevices", () => {
     expect(
       view.devices.map((d) => [
         d.slug,
-        d.polled,
+        d.kind,
+        d.state,
         d.profileName,
         d.profileKnown,
         d.connection?.id ?? null,
       ]),
     ).toEqual([
-      ["inverter", true, "Deye SUN-15K", true, 3],
-      ["meter", false, "Eastron SDM630", true, 3],
-      ["sim", false, null, false, null],
+      ["inverter", "modbus", "polling", "Deye SUN-15K", true, 3],
+      ["meter", "modbus", "idle", "Eastron SDM630", true, 3],
+      ["sim", "modbus", "retired", null, false, null],
     ]);
     // Retirement is carried through as an ISO string, never dropped.
     expect(view.devices[2]?.retiredAt).toBe("2026-01-01T00:00:00.000Z");
@@ -245,10 +283,53 @@ describe("listDevices", () => {
     expect(await listDevices(deps)).toEqual({ devices: [], connections: [] });
   });
 
-  test("nothing is polled when the registry has no primary", async () => {
+  test("nothing polls when the registry has no primary", async () => {
     const { deps } = harness({ primarySlug: null });
     const view = await listDevices(deps);
-    expect(view.devices.every((d) => !d.polled)).toBe(true);
+    expect(view.devices.every((d) => d.state === "idle")).toBe(true);
+  });
+
+  // #213: the loadpoint and the optimizer landed under "No connection", badged
+  // "Not polled" with a Modbus release-limit hint, flagged red for a profile
+  // that is not installed and never will be, and offering Edit and Retire. All
+  // four are this shape being reported as a Modbus device that is not answering.
+  test("a coded device is an integration, not an unpolled Modbus device", async () => {
+    const { deps } = harness({ devices: [inverter, loadpoint] });
+    const view = await listDevices(deps);
+    const row = view.devices[1]!;
+    expect([row.kind, row.state]).toEqual(["coded", "integration"]);
+    // The declaration is what answers for the name, so the row is not red: the
+    // profile store has never heard of `evcc-loadpoint` and never will.
+    expect(row.profileName).toBe("EVCC loadpoint");
+    expect(row.profileKnown).toBe(true);
+    expect(row.integration).toBe("evcc");
+  });
+
+  test("the optimizer is virtual — coded as well, and virtual wins", async () => {
+    const { deps } = harness({ devices: [inverter, optimizer] });
+    const row = (await listDevices(deps)).devices[1]!;
+    expect([row.kind, row.state]).toEqual(["virtual", "virtual"]);
+    expect(row.profileName).toBe("SunReye Optimizer");
+    expect(row.profileKnown).toBe(true);
+    expect(row.integration).toBe("optimizer");
+  });
+
+  test("a retired coded device reads retired, not integration", async () => {
+    const { deps } = harness({
+      devices: [inverter, { ...loadpoint, retiredAt: new Date("2026-01-01T00:00:00Z") }],
+    });
+    const row = (await listDevices(deps)).devices[1]!;
+    expect(row.kind).toBe("coded");
+    expect(row.state).toBe("retired");
+  });
+
+  test("a device whose profile id is neither installed nor coded stays unknown", async () => {
+    const { deps } = harness({ devices: [{ ...inverter, profileId: "vanished" }] });
+    const row = (await listDevices(deps)).devices[0]!;
+    expect(row.kind).toBe("modbus");
+    expect(row.profileName).toBeNull();
+    expect(row.profileKnown).toBe(false);
+    expect(row.integration).toBeNull();
   });
 });
 
@@ -259,7 +340,7 @@ describe("addDevice", () => {
     expect(created.slug).toBe("meter");
     expect(created.connectionId).toBe(3);
     expect(created.connection?.host).toBe("10.0.0.5");
-    expect(created.polled).toBe(false);
+    expect(created.state).toBe("idle");
     expect(calls.filter((c) => c === "reload")).toHaveLength(1);
     expect(calls.indexOf("createDevice")).toBeLessThan(calls.indexOf("reload"));
     expect(calls).not.toContain("createConnection");
@@ -411,6 +492,25 @@ describe("patchDevice", () => {
     expect(error.status).toBe(409);
     expect(calls).not.toContain("updateDevice:1");
     expect(calls).not.toContain("reload");
+  });
+
+  // #213: `formFromDevice` seeds the FIRST gateway for an endpoint-less device,
+  // so saving an untouched edit of a loadpoint or the optimizer sent
+  // `connectionId` and bound a device with no registers to a Modbus gateway.
+  // The row hides Edit now; this is the refusal behind it.
+  test("refuses to patch a coded device with 409 — it has no Modbus fields to edit", async () => {
+    const { deps, calls } = harness({ devices: [inverter, loadpoint] });
+    const error = await rejection(() => patchDevice(deps, 4, { connectionId: 3 }));
+    expect(error.status).toBe(409);
+    expect(calls).not.toContain("updateDevice:4");
+    expect(calls).not.toContain("reload");
+  });
+
+  test("refuses to patch the virtual optimizer with 409, retirement included", async () => {
+    const { deps, calls } = harness({ devices: [inverter, optimizer] });
+    expect((await rejection(() => patchDevice(deps, 5, { name: "Brain" }))).status).toBe(409);
+    expect((await rejection(() => patchDevice(deps, 5, { retired: true }))).status).toBe(409);
+    expect(calls).not.toContain("updateDevice:5");
   });
 
   test("restores a retired device", async () => {
