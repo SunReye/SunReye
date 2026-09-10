@@ -8,10 +8,17 @@
 	import * as m from '$lib/paraglide/messages';
 	import { resolve } from '$lib/resolve';
 	import { apiErrorText } from '../api-error';
+	import {
+		type ConnectionDraft,
+		blankDraft,
+		connectionCreateBody
+	} from '../devices/connection-draft';
 	import type { ConnectionView, DeviceRoster } from '../devices/device-types';
 	import {
 		type Catalog,
 		type ExistingIntegration,
+		type Submission,
+		type SubmitPlan,
 		WIZARD_STEPS,
 		advance,
 		blockedAt,
@@ -19,6 +26,8 @@
 		entriesFor,
 		goBack,
 		submissionOf,
+		submitPlan,
+		withSavedConnection,
 		wizardKind
 	} from './add-wizard';
 	import WizardBody from './wizard-body.svelte';
@@ -30,6 +39,10 @@
 	// `./add-wizard.ts` and the step bodies render themselves; this file owns the
 	// two things neither can: what is loaded, and what is sent.
 	let wizard = $state(emptyWizard());
+	// The endpoint step 1 is creating, when it is creating one. Held here rather
+	// than in the step body because THIS file is what sends it, and because a
+	// step body is unmounted the moment the operator walks forward.
+	let draft = $state<ConnectionDraft>(blankDraft());
 	let connections = $state<ConnectionView[]>([]);
 	let integrations = $state<ExistingIntegration[]>([]);
 	let catalog = $state<Catalog>({ modbus: [], mqtt: [], internal: [] });
@@ -49,7 +62,9 @@
 	const options = $derived(entriesFor(kind, catalog, integrations, chosenId ?? undefined));
 	const entry = $derived(options.find((o) => o.entry.id === wizard.entryId)?.entry ?? null);
 	const chosenConnection = $derived(connections.find((c) => c.id === chosenId) ?? null);
-	const blocked = $derived(blockedAt(wizard, connections, catalog) !== null);
+	/** The new endpoint's create body, or null while the form could not be sent. */
+	const createBody = $derived(connectionCreateBody(draft));
+	const blocked = $derived(blockedAt(wizard, connections, catalog, createBody !== null) !== null);
 	const last = $derived(wizard.step === 'confirm');
 
 	onMount(load);
@@ -71,29 +86,74 @@
 
 	function next() {
 		if (last) return void submit();
-		wizard = advance(wizard, connections, catalog);
+		wizard = advance(wizard, connections, catalog, createBody !== null);
 	}
 
 	async function submit() {
-		const submission = submissionOf(wizard, connections, catalog);
-		if (submission === null) return;
+		const plan = submitPlan(wizard, connections, catalog);
+		if (plan.do === 'nothing') return;
 		submitting = true;
-		const result = await send(submission);
+		const failure = await run(plan);
 		submitting = false;
-		if (result === null) return leave();
-		toast.error(result);
+		if (failure === null) return leave();
+		toast.error(failure);
+	}
+
+	/**
+	 * THE ORDER THE TWO REQUESTS GO OUT IN, AND WHY.
+	 *
+	 * A connection the operator described in step 1 is created HERE, at finish —
+	 * not when step 1 was left. A wizard abandoned at step 3 would otherwise
+	 * leave an orphan endpoint row behind: nothing is attached to it, nothing
+	 * polls it, and the operator who backed out has no reason to suspect it
+	 * exists. So the endpoint is written first only once there is certainly
+	 * something to hang off it, and the device or integration is posted second,
+	 * against the id that came back.
+	 */
+	async function run(plan: Exclude<SubmitPlan, { do: 'nothing' }>): Promise<string | null> {
+		if (plan.do === 'send') return await send(plan.submission, null);
+		return await createConnection();
+	}
+
+	/** The FIRST request: the endpoint the operator described in step 1. */
+	async function createConnection(): Promise<string | null> {
+		if (createBody === null) return m.wizard_connection_incomplete();
+		const answer = await api.api.connections.post(createBody);
+		if (!answer.data) return apiErrorText(answer.error?.value, m.error_unknown());
+		return await attachTo(answer.data as ConnectionView);
+	}
+
+	/**
+	 * The endpoint exists now — so say so in the state before the second request,
+	 * whatever that one does. A failure here is a HALF-SUCCESS, and re-creating
+	 * the same connection on the next press is exactly the duplicate the operator
+	 * would then have to find and delete by hand.
+	 */
+	async function attachTo(row: ConnectionView): Promise<string | null> {
+		connections = [...connections, row];
+		wizard = withSavedConnection(wizard, row.id);
+		const submission = submissionOf(wizard, connections, catalog);
+		if (submission === null) return m.wizard_half_saved({ name: row.name, error: m.error_unknown() });
+		return await send(submission, row.name);
 	}
 
 	/** The request, and what it leaves behind: an error to show, or nothing. */
-	async function send(
-		submission: NonNullable<ReturnType<typeof submissionOf>>
-	): Promise<string | null> {
+	async function send(submission: Submission, created: string | null): Promise<string | null> {
 		const answer =
 			submission.target === 'integration'
 				? await api.api.integrations.post(submission.body)
 				: await api.api.devices.post(submission.body);
 		if (answer.data) return added();
-		return apiErrorText(answer.error?.value, m.error_unknown());
+		return refusal(apiErrorText(answer.error?.value, m.error_unknown()), created);
+	}
+
+	/**
+	 * What the operator is told when the second request failed: plainly WHICH
+	 * half happened. A bare "could not add" after a connection was written reads
+	 * as "nothing was saved", and the next attempt makes a second endpoint.
+	 */
+	function refusal(error: string, created: string | null): string {
+		return created === null ? error : m.wizard_half_saved({ name: created, error });
 	}
 
 	function added(): null {
@@ -112,6 +172,7 @@
 			{entry}
 			{chosenConnection}
 			bind:chosen={wizard.connection}
+			bind:draft
 			bind:entryId={wizard.entryId}
 			bind:values={wizard.values}
 		/>

@@ -824,6 +824,15 @@ export async function mockBackend(page: Page, options: BackendOptions = {}): Pro
     // ── Devices ─────────────────────────────────────────────────────────────
     // One probe for both kinds: a TCP connect for a gateway, an MQTT CONNECT for
     // a broker. The answer shape is the same either way.
+    // What the add wizard renders step 2 from, and the rows it greys out.
+    // Before the catalog, because `at("integrations")` would swallow it.
+    if (at("integrations/catalog")) return json(route, fixture.INTEGRATION_CATALOG);
+    if (at("integrations")) {
+      // A coded thing bound to a connection. The wizard posts this SECOND, after
+      // the endpoint exists, so the id it carries is the created row's.
+      if (method === "POST") return json(route, { id: 7, enabled: true, ...body() });
+      return json(route, { integrations: fixture.INTEGRATIONS });
+    }
     if (at("connections/probe")) return json(route, { ok: true, ms: 12 });
     if (at("connections")) {
       // A connection created ON ITS OWN — the only way to add a broker, which

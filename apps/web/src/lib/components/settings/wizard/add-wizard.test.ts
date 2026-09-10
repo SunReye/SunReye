@@ -1,15 +1,19 @@
 import { describe, expect, test } from "bun:test";
 
+import { NEW_CONNECTION } from "../devices/device-types";
 import {
   type CatalogEntryView,
   type WizardState,
   advance,
   blockedAt,
+  connectionChoice,
   emptyWizard,
   entriesFor,
   goBack,
   submissionOf,
+  submitPlan,
   wizardKind,
+  withSavedConnection,
 } from "./add-wizard";
 
 const catalog = {
@@ -264,5 +268,130 @@ describe("what the wizard finally sends", () => {
       values: {},
     });
     expect(submissionOf(state, connections, catalog)).toBeNull();
+  });
+});
+
+describe("step 1's answer", () => {
+  test("an option naming a row is that row", () => {
+    expect(connectionChoice("2", "modbus")).toEqual({ mode: "existing", id: 2 });
+  });
+
+  // The placeholder is not an answer, and neither is a value that is not a
+  // positive id — `Number("")` is 0 and `Number("x")` is NaN.
+  test("the placeholder, and anything that is not an id, answer nothing", () => {
+    expect(connectionChoice("", "modbus")).toBeNull();
+    expect(connectionChoice("x", "modbus")).toBeNull();
+    expect(connectionChoice("0", "modbus")).toBeNull();
+  });
+
+  // The one option that is not a row: the endpoint does not exist yet, and the
+  // kind it is being created as is what step 2 is keyed by.
+  test("the create option answers the create arm, on the kind the form shows", () => {
+    expect(connectionChoice(NEW_CONNECTION, "mqtt")).toEqual({ mode: "create", kind: "mqtt" });
+  });
+});
+
+describe("a connection that does not exist yet", () => {
+  // The whole point of the create arm carrying its kind: step 2 is the catalog
+  // for that kind, with no row saved and no id to key anything by.
+  test("the create arm reaches step 2 on its kind's catalog", () => {
+    const state = at({ connection: { mode: "create", kind: "mqtt" } });
+    const moved = advance(state, connections, catalog);
+    expect(moved.step).toBe("attach");
+    expect(entriesFor(wizardKind(moved, connections), catalog, []).map((o) => o.entry.id)).toEqual([
+      "evcc-ingest",
+      "ha-export",
+    ]);
+  });
+
+  // An entry picked on a broker means nothing on a gateway, saved row or not.
+  test("going back and switching the kind clears the entry and its values", () => {
+    const state = at({
+      step: "settings",
+      connection: { mode: "create", kind: "mqtt" },
+      entryId: "ha-export",
+      values: { topicPrefix: "x" },
+    });
+    const switched = {
+      ...goBack(goBack(state)),
+      connection: { mode: "create" as const, kind: "modbus" as const },
+    };
+    const cleared = advance(switched, connections, catalog);
+    expect(cleared.entryId).toBeNull();
+    expect(cleared.values).toEqual({});
+  });
+
+  // The draft's completeness is the FORM's answer, handed in as a boolean so
+  // these rules never learn what a broker URL is.
+  test("step 1 holds while the new connection could not be saved", () => {
+    const state = at({ connection: { mode: "create", kind: "mqtt" } });
+    expect(blockedAt(state, connections, catalog, false)).toBe("connection");
+    expect(advance(state, connections, catalog, false).step).toBe("connection");
+    expect(blockedAt(state, connections, catalog, true)).toBeNull();
+  });
+
+  test("a chosen row is never held by the new-connection form's state", () => {
+    const state = at({ connection: { mode: "existing", id: 2 } });
+    expect(blockedAt(state, connections, catalog, false)).toBeNull();
+  });
+});
+
+describe("the order the finish button works in", () => {
+  const created = at({
+    step: "confirm",
+    connection: { mode: "create", kind: "mqtt" },
+    entryId: "evcc-ingest",
+    values: { topicRoot: "evcc" },
+  });
+
+  // The endpoint is created at FINISH and not when step 1 was left: a wizard
+  // abandoned at step 3 must leave no orphan connection row behind.
+  test("an unsaved connection is created before anything is attached to it", () => {
+    expect(submitPlan(created, connections, catalog)).toEqual({
+      do: "create-connection",
+      kind: "mqtt",
+    });
+  });
+
+  test("a saved connection is sent straight out", () => {
+    const state = at({
+      step: "confirm",
+      connection: { mode: "existing", id: 2 },
+      entryId: "evcc-ingest",
+      values: { topicRoot: "evcc" },
+    });
+    expect(submitPlan(state, connections, catalog)).toEqual({
+      do: "send",
+      submission: {
+        target: "integration",
+        body: { kind: "evcc-ingest", connectionId: 2, params: { topicRoot: "evcc" } },
+      },
+    });
+  });
+
+  test("an incomplete wizard plans nothing at all", () => {
+    expect(submitPlan(at(), connections, catalog)).toEqual({ do: "nothing" });
+  });
+
+  // The row exists now — on a retry after a failed attach, and on the ordinary
+  // path. Either way the wizard must point at it rather than create a second.
+  test("the saved row's id turns the create arm into that row", () => {
+    const next = withSavedConnection(created, 9);
+    expect(next.connection).toEqual({ mode: "existing", id: 9 });
+    expect(next.entryId).toBe("evcc-ingest");
+    expect(next.values).toEqual({ topicRoot: "evcc" });
+    expect(next.step).toBe("confirm");
+  });
+
+  test("and the plan that follows it sends against that id", () => {
+    const next = withSavedConnection(created, 9);
+    const withRow = [...connections, { id: 9, name: "New broker", kind: "mqtt" as const }];
+    expect(submitPlan(next, withRow, catalog)).toEqual({
+      do: "send",
+      submission: {
+        target: "integration",
+        body: { kind: "evcc-ingest", connectionId: 9, params: { topicRoot: "evcc" } },
+      },
+    });
   });
 });

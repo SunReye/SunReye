@@ -358,6 +358,24 @@ const ROUTES: readonly SmokeRoute[] = [
     },
   },
   {
+    file: "(app)/settings/devices/add/+page.svelte",
+    // A child of /settings/devices, so it wears that section's header.
+    h1: "Devices",
+    // The stepper alone renders before anything is fetched. The connection
+    // select is the proof that `/api/devices` arrived, and its last option is
+    // the create arm — the one answer that needs no roster at all.
+    surface: async (page) => {
+      await heading(page, "Add to this plant");
+      const connection = page.locator("select#wizard-connection");
+      await expect(connection.locator("option")).toContainText([
+        "Choose a connection…",
+        "Inverter · 10.0.0.5:502",
+        "Home broker · hass.ee.lan",
+        "Create a new connection…",
+      ]);
+    },
+  },
+  {
     file: "(app)/settings/sensors/+page.svelte",
     h1: "Sensors",
     // The heading alone also renders over the `No sensors available yet.`

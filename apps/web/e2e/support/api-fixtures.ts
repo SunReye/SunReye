@@ -890,6 +890,101 @@ export const CONNECTIONS = [
 ];
 
 /**
+ * `GET /api/integrations/catalog` — what may attach to a connection of each
+ * kind (`apps/server/src/devices/integration-catalog.ts`), with each entry's
+ * settings step already described as JSON.
+ *
+ * The add wizard renders THIS and knows no integration by name, so the fixture
+ * is the only thing that decides what step 2 offers. All three arms, because
+ * the third one is not an edge case: `internal` is the connection-less group,
+ * and its single entry is `addable: false` — the wizard must list nothing from
+ * it, which is a claim only a populated arm can prove.
+ */
+export const INTEGRATION_CATALOG = {
+  modbus: [
+    {
+      id: "modbus-device",
+      label: "Modbus device",
+      via: "profile",
+      addable: true,
+      multiInstance: true,
+      fields: [
+        {
+          name: "role",
+          type: "enum",
+          required: true,
+          options: ["inverter", "meter", "battery", "sensor"],
+        },
+        { name: "profileId", type: "string", required: true },
+        { name: "unitId", type: "number", required: true, min: 1, max: 247 },
+      ],
+    },
+  ],
+  mqtt: [
+    {
+      id: "evcc-ingest",
+      label: "EVCC",
+      via: "coded",
+      addable: true,
+      multiInstance: true,
+      fields: [
+        { name: "topicRoot", type: "string", required: false, default: "evcc", min: 1, max: 120 },
+      ],
+    },
+    {
+      id: "ha-export",
+      label: "Home Assistant export",
+      via: "coded",
+      addable: true,
+      multiInstance: false,
+      fields: [
+        { name: "topicPrefix", type: "string", required: false, default: "sunreye", min: 1 },
+        { name: "haDiscoveryEnabled", type: "boolean", required: false, default: false },
+        {
+          name: "haDiscoveryPrefix",
+          type: "string",
+          required: false,
+          default: "homeassistant",
+          min: 1,
+        },
+      ],
+    },
+  ],
+  internal: [
+    {
+      id: "sunreye.optimizer",
+      label: "SunReye Optimizer",
+      via: "coded",
+      addable: false,
+      multiInstance: false,
+      fields: [],
+    },
+  ],
+};
+
+/**
+ * `GET /api/integrations` — `{ integrations: IntegrationView[] }`.
+ *
+ * The EVCC ingest the roster's two loadpoints come from, on the broker. It is
+ * `multiInstance`, so it takes nothing away from the wizard's list; the
+ * single-instance `ha-export` is deliberately ABSENT, so the "already on this
+ * connection" branch is a thing a spec can create rather than a thing the
+ * fixture asserts by default.
+ */
+export const INTEGRATIONS = [
+  {
+    id: 1,
+    kind: "evcc-ingest",
+    connectionId: 2,
+    enabled: true,
+    params: { topicRoot: "evcc" },
+    label: "EVCC",
+    addable: true,
+    multiInstance: true,
+  },
+];
+
+/**
  * `GET /api/devices` — `DeviceRoster` (`apps/server/src/devices/device-admin.ts`):
  * the polled inverter, a stored-but-unpolled meter, a retired one, TWO EVCC
  * loadpoints on the broker connection, and the optimizer — so all five states,
