@@ -50,3 +50,41 @@ const CODED_INTEGRATIONS = new Map<string, CodedDeclaration>([
 export function resolveCoded(profileId: string): CodedDeclaration | null {
   return CODED_INTEGRATIONS.get(profileId) ?? null;
 }
+
+/**
+ * One coded integration as a CATALOG reads it: what it is called, and nothing
+ * about what it can do.
+ *
+ * Deliberately not `CodedDeclaration` itself. A declaration carries `metrics`,
+ * which is the register-level truth the runtime needs and the wizard has no
+ * business rendering; a projection is what keeps a catalog from growing a
+ * dependency on it.
+ */
+export interface CodedCatalogEntry {
+  /** The `devices.profile_id` value that resolves to this declaration. */
+  profileId: string;
+  /** Provenance. Grouping only — nothing branches on it. */
+  integration: string;
+  /** What to call it on screen. */
+  name: string;
+}
+
+/**
+ * Every coded declaration, projected for a catalog, in table order.
+ *
+ * THE POINT OF THIS EXPORT is that `./integration-catalog.ts`'s "internal"
+ * group is DERIVED rather than hand-maintained. Two lists of coded ids would
+ * drift on the first PR that adds one — #197's weather device is already queued
+ * — and the drift is silent: the device works and the wizard simply never
+ * mentions it. Adding a row to {@link CODED_INTEGRATIONS} is the whole change.
+ *
+ * A fresh array each call: the map is module state, and a shared array would let
+ * a caller mutate the catalog for every other caller in the process.
+ */
+export function codedIntegrations(): readonly CodedCatalogEntry[] {
+  return [...CODED_INTEGRATIONS].map(([profileId, declaration]) => ({
+    profileId,
+    integration: declaration.integration,
+    name: declaration.name ?? declaration.integration,
+  }));
+}
