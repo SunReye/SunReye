@@ -68,6 +68,24 @@ import type { Streams } from "../shared/streams";
 const logger = log("runtime");
 
 /**
+ * The bounds a register declares, for the automation loop's clamp.
+ *
+ * A register range is a TRANSPORT fact — it lives on the map that says how to
+ * talk to the device — so it is read off the profile context here and handed to
+ * the loop as a function, rather than the loop being given a profile it would
+ * then be able to resolve roles from.
+ *
+ * Module scope, not a closure inside {@link createRuntime}: it reads nothing but
+ * its two arguments, and the clamp it feeds is the difference between a target
+ * the device accepts and one it refuses — see `./runtime.test.ts`.
+ */
+// fallow-ignore-next-line unused-export -- the clamp source handed to the automation loop by `createRuntime`, asserted directly in `./runtime.test.ts`; test files aren't traced as consumers.
+export function constraintOf(profileCtx: ProfileContext, key: string): EntityConstraint | null {
+  const def = profileCtx.defByKey.get(key);
+  return def ? entityConstraint(def) : null;
+}
+
+/**
  * The optimizer's `devices` row, over the real plant spine.
  *
  * RETIRED IS NOT REGISTERED. `ensureDevice` is `ON CONFLICT DO NOTHING` +
@@ -80,7 +98,8 @@ const logger = log("runtime");
  * has no plant yet, and taking it down over a missing device row would be worse
  * than storing nothing until the next tick.
  */
-async function ensureOptimizerRow(): Promise<DeviceRowState> {
+// fallow-ignore-next-line unused-export -- the default behind `RuntimeDeps.ensureOptimizerDevice`, asserted against a stubbed spine in `./optimizer-row.test.ts`; test files aren't traced as consumers.
+export async function ensureOptimizerRow(): Promise<DeviceRowState> {
   const plantDb = { execute: (query: Parameters<typeof db.execute>[0]) => db.execute(query) };
   const plant = await readPlant(plantDb);
   if (!plant) return "absent";
@@ -708,19 +727,6 @@ export function createRuntime(deps: RuntimeDeps = {}) {
    * passed straight through to the engine loop, which skips the frame (and the
    * plan projection built for it) when nobody is listening.
    */
-  /**
-   * The bounds a register declares, for the automation loop's clamp.
-   *
-   * A register range is a TRANSPORT fact — it lives on the map that says how to
-   * talk to the device — so it is read off the profile context here and handed
-   * to the loop as a function, rather than the loop being given a profile it
-   * would then be able to resolve roles from.
-   */
-  function constraintOf(profileCtx: ProfileContext, key: string): EntityConstraint | null {
-    const def = profileCtx.defByKey.get(key);
-    return def ? entityConstraint(def) : null;
-  }
-
   async function start(
     streamBus: Streams,
     profileCtx: ProfileContext,
