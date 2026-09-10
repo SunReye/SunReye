@@ -1,5 +1,43 @@
 # Changelog
 
+## [3.1.0](https://github.com/SunReye/SunReye/compare/server-v3.0.2...server-v3.1.0) (2026-09-10)
+
+
+### Features
+
+* **db:** add the connection-kind discriminated union ([599e8a7](https://github.com/SunReye/SunReye/commit/599e8a7b07b9bf98a97ef774eb5c6b210614bef3))
+* **db:** an integrations table, with the mqtt and evcc settings backfilled in ([40bc74b](https://github.com/SunReye/SunReye/commit/40bc74b15a469807b91a595d555ebeef375a52ae))
+* **db:** give connections a kind and params, devices a params ([d8bb1ed](https://github.com/SunReye/SunReye/commit/d8bb1ed33a5284a1c6f386f1f04f9be4c0600a1e))
+* integrations are rows under their connection, and the MQTT tab is gone ([6d3c414](https://github.com/SunReye/SunReye/commit/6d3c414cbc1164e654142f5458208304211df1d1))
+* **server:** a connection owns its client, so integration status is observed ([2984093](https://github.com/SunReye/SunReye/commit/2984093ed7181446ed8397ea8588a0cce7032c82))
+* **server:** an integration catalog keyed by connection kind ([8cdd139](https://github.com/SunReye/SunReye/commit/8cdd1399050aa944e5ff153027a027f822179a64))
+* **server:** create a connection on its own ([1774605](https://github.com/SunReye/SunReye/commit/177460595eb10b067fae49ead49f535e26776259))
+* **server:** integrations as rows — service, routes and the EVCC topic root ([564baf4](https://github.com/SunReye/SunReye/commit/564baf484842bfde34ed13aa066a7a138d9982f9))
+* **server:** the add-device contract becomes a tier union ([79ee70c](https://github.com/SunReye/SunReye/commit/79ee70c1b63216d14d31a13e16b63f3b03734ee2))
+* **server:** the broker is a connection, and the tier is picked by kind ([cedc749](https://github.com/SunReye/SunReye/commit/cedc749f0b885247900e69d0b8e20061b0e5d2c0))
+
+
+### Bug Fixes
+
+* **ci:** seed a connection by kind and params, not by a dropped column ([fd0f554](https://github.com/SunReye/SunReye/commit/fd0f5540c6c0c9cdcef216e71c29890a652f5797))
+* **ci:** shape the upgrade test from the last 1.x release, not the previous one ([de71425](https://github.com/SunReye/SunReye/commit/de7142504143436db62bdeeda64b2bdac70faa0c))
+* **db:** carry a connection's kind through the archive, and mask its password ([7b42301](https://github.com/SunReye/SunReye/commit/7b42301ba15711827fd89594b3b1f23ec6c496b6))
+* **db:** keep invariant C1 absolute — integrations.plant_id RESTRICTs ([c118136](https://github.com/SunReye/SunReye/commit/c118136c40ea1555dc438fe463154cb90a0f0894))
+* **repo:** a pre-push hook, so a bypassed pre-commit cannot reach the remote ([c395514](https://github.com/SunReye/SunReye/commit/c395514d2730e9de87edf2e277d1c72cd90adade))
+* **repo:** make the pre-push hook fail on its own, not on its caller's -e ([e5887a6](https://github.com/SunReye/SunReye/commit/e5887a628c92dcc10c8dbda36debb34554fb33e5))
+* **server:** disarm the broker probe's watchdog when the dial settles ([3189bac](https://github.com/SunReye/SunReye/commit/3189bac1abda36a8b6119b28b54693e271866ece))
+* **server:** mask the broker password on every edge that returns a connection ([6350810](https://github.com/SunReye/SunReye/commit/6350810fa73f16ebc5dc19a3edf19fcbcfeff787))
+* **server:** narrow the coded-device patch gate to topology only ([893ee8e](https://github.com/SunReye/SunReye/commit/893ee8ecdcf9757a54c2d1608d9330fc273a4595)), closes [#219](https://github.com/SunReye/SunReye/issues/219)
+* **server:** report a device's kind and state, and refuse a Modbus patch on a coded one ([43cf521](https://github.com/SunReye/SunReye/commit/43cf521266c1362722f4ae4dfb7bbc5a0bbf7681))
+* **test:** police every mock.module target, not only the first-party ones ([53feb1e](https://github.com/SunReye/SunReye/commit/53feb1eb8f60358d44d28da0f852ae2c15e6048f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @SunReye/inverter-core bumped to 1.2.1
+
 ## [3.0.2](https://github.com/SunReye/SunReye/compare/server-v3.0.1...server-v3.0.2) (2026-09-09)
 
 
