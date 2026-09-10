@@ -28,13 +28,28 @@
 	$effect(() => livePlant.lease());
 
 	const readings = $derived(integrationReadings(integration));
+
+	/** One column per reading, up to the full row. Literal, for Tailwind's scan. */
+	const COLUMNS = {
+		1: 'grid-cols-1',
+		2: 'grid-cols-2',
+		3: 'grid-cols-2 sm:grid-cols-3'
+	} as const;
+	const columns = $derived(Math.min(readings.length, 3) as 1 | 2 | 3);
 </script>
 
 {#if readings.length === 0}
 	<EmptyState message={m.integration_live_none()} />
 {:else}
 	<div class="flex flex-col gap-2">
-		<div class="grid grid-cols-2 gap-px border border-border bg-border sm:grid-cols-3">
+		<!-- The hairline-gap trick (a `gap-px` grid over a `bg-border` parent) draws
+		     the parent's colour through every cell the readings do not fill, and
+		     an integration with one reading against three columns rendered a grey
+		     slab beside the only number on the page. So the row is only as wide as
+		     it has readings. The classes are written out because Tailwind scans
+		     source text — a name built by interpolation reaches the DOM with no
+		     rule behind it. -->
+		<div class="grid gap-px border border-border bg-border {COLUMNS[columns]}">
 			{#each readings as reading (reading.id)}
 				<div class="flex flex-col gap-1 bg-background p-3" data-reading={reading.id}>
 					<span class="text-xs text-muted-foreground">{reading.label()}</span>
