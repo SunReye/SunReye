@@ -717,6 +717,12 @@ export const INVERTER_CONFIG = {
  *
  * `label`, `addable` and `multiInstance` are derived by the server per response
  * from the catalog entry the kind resolves to; they are not stored.
+ *
+ * `status` is OBSERVED from the broker pool (#221) and is deliberately
+ * DIFFERENT on the two rows: the ingest is connected and has a healed failure
+ * behind it, the export has never opened at all. Both had to be renderable —
+ * "connected", "never connected" and a last error are three separate things the
+ * detail page says, and a fixture where every row is healthy proves one of them.
  */
 export const INTEGRATIONS = [
   {
@@ -728,6 +734,12 @@ export const INTEGRATIONS = [
     label: "EVCC",
     addable: true,
     multiInstance: true,
+    status: {
+      connected: true,
+      lastError: "ECONNREFUSED hass.ee.lan:1883",
+      lastErrorAt: "2026-09-09T21:14:00.000Z",
+      lastConnectedAt: "2026-09-10T06:02:00.000Z",
+    },
   },
   {
     id: 2,
@@ -742,6 +754,12 @@ export const INTEGRATIONS = [
     label: "Home Assistant export",
     addable: true,
     multiInstance: false,
+    status: {
+      connected: false,
+      lastError: null,
+      lastErrorAt: null,
+      lastConnectedAt: null,
+    },
   },
 ];
 

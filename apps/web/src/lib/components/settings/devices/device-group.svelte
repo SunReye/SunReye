@@ -3,7 +3,7 @@
 	import Section from '$lib/components/layout/section.svelte';
 	import EmptyState from '$lib/components/layout/empty-state.svelte';
 	import * as m from '$lib/paraglide/messages';
-	import { type DeviceGroup, groupIsEmpty } from './add-device-logic';
+	import { type DeviceGroup, groupIsEmpty, nestIntegrations } from './add-device-logic';
 	import DeviceRows from './device-rows.svelte';
 	import type { ConnectionView, DeviceView, IntegrationView } from './device-types';
 	import IntegrationList from './integration-list.svelte';
@@ -54,6 +54,11 @@
 	// Empty means BOTH halves empty — a broker whose EVCC ingest is configured and
 	// whose first message has not landed yet has something to show.
 	const empty = $derived(groupIsEmpty(group));
+	// The devices an integration PROVIDED move under it; what is left at the top
+	// is what is read straight through the endpoint. `nestIntegrations` owns that
+	// split, and its test owns the awkward cases — a retired loadpoint, an
+	// integration that provisions nothing, two ingests on one broker.
+	const nested = $derived(nestIntegrations(group));
 </script>
 
 <Section title={group.title} {caption} nested collapsible open>
@@ -68,7 +73,7 @@
 		<EmptyState message={m.devices_empty()} />
 	{:else}
 		<DeviceRows
-			devices={group.devices}
+			devices={nested.devices}
 			{busyId}
 			groupKey={group.key}
 			{onEdit}
@@ -77,11 +82,16 @@
 			{onRestore}
 		/>
 		<IntegrationList
-			integrations={group.integrations}
-			busyId={busyIntegrationId}
-			onEdit={onEditIntegration}
-			onToggle={onToggleIntegration}
-			onRemove={onRemoveIntegration}
+			entries={nested.integrations}
+			{busyId}
+			{busyIntegrationId}
+			{onEdit}
+			{onRename}
+			{onRetire}
+			{onRestore}
+			{onEditIntegration}
+			{onToggleIntegration}
+			{onRemoveIntegration}
 		/>
 	{/if}
 </Section>

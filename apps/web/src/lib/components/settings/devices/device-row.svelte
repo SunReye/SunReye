@@ -1,15 +1,13 @@
 <script lang="ts">
-	import { Badge } from '$lib/components/ui/badge';
 	import DeviceActions from './device-actions.svelte';
 	import DeviceMeta from './device-meta.svelte';
-	import DeviceStateBadge from './device-state-badge.svelte';
+	import DeviceNameLine from './device-name-line.svelte';
 	import type { DeviceView } from './device-types';
-	import { roleLabel } from './role-label';
 
-	// One device of its gateway's group: identity on the left (name, role, state,
-	// where it lives), the operator's controls on the right. Editing and renaming
-	// are the dialogs' job; retire and restore are the parent's, since retiring
-	// asks first.
+	// One device of its group: identity on the left (name, role, state, where it
+	// lives), the operator's controls on the right. Editing and renaming are the
+	// dialogs' job; retire and restore are the parent's, since retiring asks
+	// first.
 	let {
 		device,
 		busy,
@@ -33,11 +31,7 @@
 	data-device={device.slug}
 >
 	<div class="flex min-w-0 flex-col gap-1">
-		<span class="flex flex-wrap items-center gap-1.5 text-sm font-medium">
-			<span class="wrap-break-word">{device.name}</span>
-			<Badge variant="outline">{roleLabel(device.role)}</Badge>
-			<DeviceStateBadge {device} />
-		</span>
+		<DeviceNameLine {device} />
 		<DeviceMeta {device} />
 	</div>
 	<DeviceActions {device} {busy} {onEdit} {onRename} {onRetire} {onRestore} />

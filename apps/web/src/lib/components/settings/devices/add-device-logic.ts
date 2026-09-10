@@ -450,13 +450,69 @@ export function retiredByRemoving(
   integration: IntegrationView,
   devices: readonly DeviceView[],
 ): DeviceView[] {
+  return providedBy(integration, devices).filter((device) => device.retiredAt === null);
+}
+
+/**
+ * The devices an integration PROVIDED: its profiles, on its own endpoint,
+ * retired rows INCLUDED.
+ *
+ * The same rule {@link retiredByRemoving} is built on, lifted out so the card's
+ * nesting and the Remove dialog's warning cannot drift apart. They differ in
+ * exactly one thing, and it is not the rule: a retired loadpoint is still this
+ * integration's to DRAW (a device nobody can see is a device nobody can
+ * restore), and is not something a Remove will retire, because the server skips
+ * a row that already left service rather than re-stamping the moment it did.
+ */
+export function providedBy(
+  integration: IntegrationView,
+  devices: readonly DeviceView[],
+): DeviceView[] {
   const profiles = YIELDED_PROFILES[integration.kind] ?? [];
   return devices.filter(
     (device) =>
-      device.retiredAt === null &&
-      device.connectionId === integration.connectionId &&
-      profiles.includes(device.profileId),
+      device.connectionId === integration.connectionId && profiles.includes(device.profileId),
   );
+}
+
+/** An integration row together with the devices it yielded. */
+export type IntegrationWithDevices = {
+  integration: IntegrationView;
+  devices: DeviceView[];
+};
+
+/** A card's two halves once the provided devices have moved under their provider. */
+export type NestedGroup = {
+  /** Read straight THROUGH the endpoint — a Modbus device on a gateway. */
+  devices: DeviceView[];
+  /** What RUNS over it, each owning what it provided. */
+  integrations: IntegrationWithDevices[];
+};
+
+/**
+ * A group's devices, redrawn under the integration that provided them.
+ *
+ * The complaint this answers, in the owner's words: the card listed `Carport`
+ * (a loadpoint) above `EVCC` (the ingest that discovered it) as unrelated
+ * siblings, with a "via MQTT" badge as the only hint that one exists BECAUSE of
+ * the other. A provided device is not a sibling of its provider.
+ *
+ * A device is claimed by the FIRST row that can claim it and by that one only.
+ * Two EVCC ingests on one broker is expressible — the catalog entry is
+ * `multiInstance` — and `YIELDED_PROFILES` cannot tell their loadpoints apart,
+ * since both are the same profile on the same connection. Drawing the device
+ * under both would report more chargers than the plant has.
+ */
+export function nestIntegrations(group: DeviceGroup): NestedGroup {
+  const claimed = new Set<number>();
+  const integrations = group.integrations.map((integration) => {
+    const devices = providedBy(integration, group.devices).filter(
+      (device) => !claimed.has(device.id),
+    );
+    for (const device of devices) claimed.add(device.id);
+    return { integration, devices };
+  });
+  return { devices: group.devices.filter((device) => !claimed.has(device.id)), integrations };
 }
 
 const TRANSPORT_LABELS: Record<string, string> = {

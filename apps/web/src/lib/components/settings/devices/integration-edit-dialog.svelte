@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { Button } from '$lib/components/ui/button';
 	import * as m from '$lib/paraglide/messages';
-	import type { Catalog, CatalogEntryView } from '../wizard/add-wizard';
+	import { type Catalog, catalogEntryFor } from '../wizard/add-wizard';
 	import CatalogFields from '../wizard/catalog-fields.svelte';
 	import DialogShell from './device-dialog-shell.svelte';
 	import type { IntegrationView } from './device-types';
@@ -35,16 +35,11 @@
 	/** The row the fields were last seeded from, so re-opening reseeds exactly once. */
 	let seeded: number | null = null;
 
-	const entries = $derived([...catalog.modbus, ...catalog.mqtt, ...catalog.internal]);
-	/**
-	 * The catalog entry this row belongs to, or null when this build has none —
-	 * a database migrated ahead of the binary. The server refuses to validate
-	 * such a row's settings either (409), so the dialog says there is nothing to
-	 * edit rather than rendering a blank form that cannot be saved.
-	 */
-	const entry = $derived<CatalogEntryView | null>(
-		entries.find((e) => e.id === integration?.kind) ?? null
-	);
+	// Null when this build has no entry for the row — a database migrated ahead
+	// of the binary. `catalogEntryFor` owns that answer, and the Save button is
+	// what acts on it: the server refuses to validate such a row's settings too
+	// (409), so an editable form here would be one no write can land.
+	const entry = $derived(catalogEntryFor(catalog, integration?.kind));
 	const label = $derived(integration?.label ?? '');
 
 	$effect(() => {

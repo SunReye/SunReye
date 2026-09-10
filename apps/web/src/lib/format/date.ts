@@ -36,3 +36,30 @@ export const weekdayShortDate = (date: Date): string =>
 /** Local midday of a `YYYY-MM-DD` key — parsing at noon keeps the calendar day
  *  intact under any timezone shift. */
 export const dayKeyDate = (key: string): Date => new Date(`${key}T12:00:00`);
+
+/**
+ * "Sep 10, 2026, 14:05" — a MOMENT, day and clock time together.
+ *
+ * Everything above formats a calendar day. This exists for the two facts that
+ * make a connection status actionable — when it last connected, and when it
+ * last failed — where "four seconds ago" and "in March" are different problems
+ * and a bare date cannot tell them apart.
+ *
+ * Takes what the wire actually carries (an ISO string, or nothing) as readily
+ * as a `Date`, and answers null for an absent or unparseable one: "never
+ * connected" and "nothing has failed" are real states, and rendering "Invalid
+ * Date" at an operator is worse than saying nothing.
+ */
+export const dateTime = (at: Date | string | null | undefined): string | null => {
+  if (at === null || at === undefined) return null;
+  const date = typeof at === "string" ? new Date(at) : at;
+  if (Number.isNaN(date.getTime())) return null;
+  return format(date, {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  });
+};

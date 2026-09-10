@@ -167,7 +167,12 @@ test.describe("the roster", () => {
       page.getByRole("heading", { level: 2, name: "Home broker", exact: true }),
     ).toBeVisible();
     await expect(page.getByText("MQTT · hass.ee.lan")).toBeVisible();
-    await expect(page.locator("[data-group='gateway-2'] [data-device]")).toHaveCount(2);
+    // Both loadpoints are on the broker's card — nested UNDER the EVCC ingest
+    // that provided them rather than floating above it as siblings, which is
+    // `settings-integrations.spec.ts`'s subject. Nothing is read straight
+    // through the broker, so its own top-half group does not exist at all.
+    await expect(page.locator("[data-group='gateway-2']")).toHaveCount(0);
+    await expect(page.locator("[data-provided-by='1'] [data-device]")).toHaveCount(2);
     // The device locator must not pick up the integration rows sharing the card.
     await expect(page.locator("[data-integrations] [data-integration]")).toHaveCount(2);
     await expect(page.locator("[data-group='integration-evcc']")).toHaveCount(0);
@@ -192,9 +197,9 @@ test.describe("the roster", () => {
     await expect(carport.getByRole("button", { name: "Edit" })).toHaveCount(0);
     await expect(carport.getByRole("button", { name: "Rename" })).toBeVisible();
     await expect(carport.getByRole("button", { name: "Retire" })).toBeVisible();
-    // No "Configure" link on any row any more: what provides this loadpoint is
-    // an integration ROW in this very group, a few lines below it, with its own
-    // Edit. `settings-integrations.spec.ts` is that half.
+    // No "Configure" link on the row: what provides this loadpoint is the
+    // integration the row now hangs UNDER, whose own name is the link into it.
+    // `settings-integrations.spec.ts` is that half.
     await expect(carport.getByRole("link", { name: "Configure" })).toHaveCount(0);
     await expect(page.locator("[data-integration='evcc-ingest']")).toBeVisible();
 

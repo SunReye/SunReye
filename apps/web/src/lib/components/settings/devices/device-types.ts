@@ -116,6 +116,29 @@ export type IntegrationView = {
   label: string;
   addable: boolean;
   multiInstance: boolean;
+  /** Live socket health, or null — read {@link ConnectionStatus} before using it. */
+  status: ConnectionStatus | null;
+};
+
+/**
+ * What the broker pool observed of one connection at the moment of the request.
+ * Mirrors `ConnectionStatus` in `apps/server/src/devices/connection-tier.ts`.
+ *
+ * Whoever renders this owes the reader three separate answers, not two. A
+ * `false` here is a socket that is shut; a null on the field above is a socket
+ * this build never held — a Modbus row the poll loop still owns, an integration
+ * bound to no endpoint, a process that has opened nothing yet — and drawing
+ * that as a fault reports a measurement nobody made. `lastConnectedAt: null`
+ * splits the shut case again, into "dropped" and "never once opened", which
+ * send an operator to two different places.
+ */
+export type ConnectionStatus = {
+  connected: boolean;
+  lastError: string | null;
+  /** ISO-8601 of that failure; null while nothing has failed. */
+  lastErrorAt: string | null;
+  /** ISO-8601 of the newest completed connect; null when there has been none. */
+  lastConnectedAt: string | null;
 };
 
 /** What `PATCH /api/integrations/:id` takes. Never `kind` or `connectionId`:

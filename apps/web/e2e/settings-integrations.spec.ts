@@ -35,14 +35,35 @@ async function capture(page: Page, method: string, act: () => Promise<void>) {
 
 const rows = (page: Page) => page.locator("[data-integrations] [data-integration]");
 
-test("the broker's card lists what runs over it, under what reads through it", async ({ page }) => {
+/**
+ * THE RESTRUCTURED CARD — the owner's complaint, as a test.
+ *
+ * What shipped read: "MQTT · hass.ee.lan / Carport / Charger / via MQTT /
+ * evcc-loadpoint-1 / EVCC loadpoint / Unit 1 / Integrations / Home Assistant
+ * export / Enabled / ha-export / EVCC / Enabled / evcc-ingest". Three faults,
+ * and they are one fault: the raw identifiers are on the primary surface, and
+ * the provided device is a SIBLING of the thing that provided it.
+ *
+ * A browser claim rather than a unit one because the nesting is a resolved
+ * document: `nestIntegrations` decides which device belongs to which row (in
+ * milliseconds, in `add-device-logic.test.ts`), and what only exists here is
+ * whether the card actually draws it that way.
+ */
+test("the broker's loadpoints hang UNDER the ingest that provided them", async ({ page }) => {
   const opened = await open(page);
 
-  // The broker group holds BOTH halves: two loadpoints and, below them, the two
-  // integration rows. The devices are addressed by `data-device`, the
-  // integrations by `data-integration`, so neither locator can pick up the other.
-  const broker = page.locator("[data-group='gateway-2']");
-  await expect(broker.locator("[data-device]")).toHaveCount(2);
+  // Nothing is read straight through the broker, so the top half of its card is
+  // empty and there is no `data-group` for it at all.
+  await expect(page.locator("[data-group='gateway-2']")).toHaveCount(0);
+  // Both loadpoints are inside the EVCC row's own subtree, keyed by the
+  // integration's id — not floating above it as siblings.
+  const provided = page.locator("[data-provided-by='1'] [data-device]");
+  await expect(provided).toHaveCount(2);
+  await expect(provided.filter({ hasText: "Carport" })).toBeVisible();
+  await expect(provided.filter({ hasText: "Garage" })).toBeVisible();
+  // The export provisions nothing, so its row owns nothing.
+  await expect(page.locator("[data-provided-by='2'] [data-device]")).toHaveCount(0);
+
   await expect(rows(page)).toHaveCount(2);
   await expect(page.locator("[data-integration='evcc-ingest']")).toBeVisible();
   await expect(page.locator("[data-integration='ha-export']")).toBeVisible();
@@ -56,6 +77,69 @@ test("the broker's card lists what runs over it, under what reads through it", a
   // integrations rather than rendering an empty heading.
   await expect(page.locator("[data-group='gateway-1'] [data-integrations]")).toHaveCount(0);
   expect(opened.backend.unhandled).toEqual([]);
+  expect(opened.consoleErrors).toEqual([]);
+});
+
+/**
+ * THE SLUGS ARE OFF THE PRIMARY SURFACE.
+ *
+ * `evcc-ingest` and `ha-export` are kind keys, `evcc-loadpoint-1` is a frozen
+ * device slug, and none of the three is what a human calls the thing — the
+ * labels beside them already say "EVCC" and "Home Assistant export". Asserted
+ * as an absence from the card's rendered TEXT (not from a locator that a moved
+ * element would silently empty), plus the presence of what replaced them: the
+ * observed connection state.
+ */
+test("no kind key and no device slug survives on the card", async ({ page }) => {
+  await open(page);
+  const card = page
+    .locator("section")
+    .filter({ has: page.getByRole("heading", { level: 2, name: "Home broker", exact: true }) })
+    .last();
+  const text = await card.innerText();
+
+  expect(text).not.toContain("evcc-ingest");
+  expect(text).not.toContain("ha-export");
+  expect(text).not.toContain("evcc-loadpoint-1");
+  expect(text).not.toContain("evcc-loadpoint-2");
+  // The names, the roles and the profile stay: those are what tell two rows
+  // apart, and dropping them would have been the opposite mistake.
+  expect(text).toContain("Carport");
+  expect(text).toContain("Garage");
+  expect(text).toContain("EVCC loadpoint");
+
+  // What the kind key's line became: what is OBSERVED of the endpoint. The
+  // fixture's ingest is connected, its export has never opened once — two
+  // different sentences, because they are two different faults.
+  await expect(
+    page.locator("[data-integration='evcc-ingest']").getByText("Connected", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.locator("[data-integration='ha-export']").getByText("Never connected"),
+  ).toBeVisible();
+});
+
+// A loadpoint's `unit_id` is its index in EVCC's config, not a slave address,
+// and nothing addresses it by that number — it was pure noise beside a name.
+// The Modbus meter keeps its unit id, because there it is the addressing.
+test("a unit id stays only where something is addressed by one", async ({ page }) => {
+  await open(page);
+  await expect(page.locator("[data-device='meter']").getByText("Unit 2")).toBeVisible();
+  await expect(page.locator("[data-device='evcc-loadpoint-1']").getByText(/Unit /)).toHaveCount(0);
+  await expect(page.locator("[data-device='optimizer']").getByText(/Unit /)).toHaveCount(0);
+});
+
+// The row's name is the way in. An integration has an inside now — its live
+// status, its settings and the devices it provides — and this is the click that
+// reaches it.
+test("an integration's name opens its own page", async ({ page }) => {
+  const opened = await open(page);
+  await page
+    .locator("[data-integration='evcc-ingest']")
+    .getByRole("link", { name: "EVCC" })
+    .click();
+  await expect(page).toHaveURL(/#\/settings\/integrations\/1$/);
+  await expect(page.getByRole("heading", { level: 2, name: "EVCC", exact: true })).toBeVisible();
   expect(opened.consoleErrors).toEqual([]);
 });
 

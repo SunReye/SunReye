@@ -2,17 +2,25 @@
 	import { Button } from '$lib/components/ui/button';
 	import { Switch } from '$lib/components/ui/switch';
 	import * as m from '$lib/paraglide/messages';
+	import { resolve } from '$lib/resolve';
 	import StatusBadge from '../status-badge.svelte';
+	import { integrationStatus } from '../integrations/integration-detail';
 	import type { IntegrationView } from './device-types';
 
-	// ONE integration of its connection's card: what it is on the left, its three
-	// controls on the right. A row's PRESENCE is its configuration — there is no
-	// "not configured" placeholder to render — so the state this shows is only
-	// whether it is currently running.
+	// ONE integration's own line: what it is on the left, its controls on the
+	// right. What it PROVIDES hangs below it, rendered by the parent — the
+	// devices an integration yielded are not its siblings.
 	//
-	// The switch writes immediately (a `PATCH { enabled }`); Edit and Remove open
-	// the parent's dialogs, because one asks for settings and the other asks
-	// first. Nothing decides anything here: the parent owns every request.
+	// The kind key (`evcc-ingest`, `ha-export`) used to be the subtitle here. It
+	// is a slug: the label already says "EVCC" and "Home Assistant export", and a
+	// database column read as an explanation of one. What replaces it is the one
+	// thing the row could not previously answer — whether the thing is actually
+	// CONNECTED, which is observed from the broker pool rather than derived from
+	// the fact that a broker id is set.
+	//
+	// The name is a link, because an integration now has an inside: its live
+	// status, its settings, and every device it provides, at
+	// `/settings/integrations/:id`.
 	let {
 		integration,
 		busy,
@@ -28,6 +36,8 @@
 	} = $props();
 
 	const switchId = $derived(`integration-enabled-${integration.id}`);
+	const status = $derived(integrationStatus(integration));
+	const href = $derived(resolve(`/settings/integrations/${integration.id}`));
 </script>
 
 <div
@@ -37,13 +47,13 @@
 >
 	<div class="flex min-w-0 flex-col gap-1">
 		<span class="flex flex-wrap items-center gap-1.5 text-sm font-medium">
-			<span class="wrap-break-word">{integration.label}</span>
+			<a class="wrap-break-word underline-offset-4 hover:underline" {href}>{integration.label}</a>
 			<StatusBadge
 				ok={integration.enabled}
 				label={integration.enabled ? m.label_enabled() : m.devices_integration_disabled()}
 			/>
 		</span>
-		<span class="text-xs text-muted-foreground">{integration.kind}</span>
+		<span class="text-xs text-muted-foreground">{status.label}</span>
 	</div>
 	<div class="flex shrink-0 flex-wrap items-center gap-2">
 		<Switch

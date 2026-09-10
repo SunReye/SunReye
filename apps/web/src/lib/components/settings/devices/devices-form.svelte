@@ -7,6 +7,7 @@
 	import * as m from '$lib/paraglide/messages';
 	import { resolve } from '$lib/resolve';
 	import { apiErrorText } from '../api-error';
+	import { readCatalog, readIntegrations, refuseIntegration } from '../integrations/integration-io';
 	import InverterStatusBadge from '../inverter-status-badge.svelte';
 	import type { InverterStatus } from '../inverter-types';
 	import type { Catalog } from '../wizard/add-wizard';
@@ -74,13 +75,13 @@
 
 	/** The integration rows, reloaded after every write. */
 	async function loadIntegrations() {
-		const { data } = await api.api.integrations.get();
-		if (data) integrations = (data as { integrations: IntegrationView[] }).integrations;
+		const rows = await readIntegrations();
+		if (rows) integrations = rows;
 	}
 
 	onMount(async () => {
-		const shelf = await api.api.integrations.catalog.get();
-		if (shelf.data) catalog = shelf.data as Catalog;
+		const shelf = await readCatalog();
+		if (shelf) catalog = shelf;
 		await Promise.all([load(), loadIntegrations()]);
 	});
 
@@ -117,15 +118,9 @@
 		busyIntegrationId = row.id;
 		const result = await api.api.integrations({ id: String(row.id) }).patch(body);
 		busyIntegrationId = null;
-		if (!result.data) return refuse(result.error?.value);
+		if (!result.data) return refuseIntegration(result.error?.value);
 		toast.success(success);
 		await Promise.all([load(), loadIntegrations()]);
-	}
-
-	function refuse(error: unknown) {
-		toast.error(
-			m.devices_integration_toast_failed({ error: apiErrorText(error, m.error_unknown()) })
-		);
 	}
 
 	const toggle = (row: IntegrationView, enabled: boolean) =>
@@ -141,7 +136,7 @@
 		busyIntegrationId = row.id;
 		const result = await api.api.integrations({ id: String(row.id) }).delete();
 		busyIntegrationId = null;
-		if (!result.data) return refuse(result.error?.value);
+		if (!result.data) return refuseIntegration(result.error?.value);
 		toast.success(m.devices_integration_toast_removed({ label: row.label }));
 		await Promise.all([load(), loadIntegrations()]);
 	}
