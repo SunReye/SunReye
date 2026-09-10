@@ -19,7 +19,15 @@
  * one. The component owns the requests.
  */
 
-import { NEW_CONNECTION, type ConnectionKind } from "../devices/device-types";
+import { buildAddDeviceBody, deviceFieldsOf, emptyForm } from "../devices/add-device-logic";
+import {
+  type AddDeviceBody,
+  type AddDeviceForm,
+  type ConnectionKind,
+  type ConnectionView,
+  type DeviceView,
+  NEW_CONNECTION,
+} from "../devices/device-types";
 
 /** One field of an entry's settings step, as the server describes it. */
 export type CatalogField = {
@@ -63,18 +71,55 @@ export type WizardConnection =
   | { mode: "existing"; id: number }
   | { mode: "create"; kind: ConnectionKind };
 
+/**
+ * STEP 3'S ANSWERS, DISCRIMINATED BY THE TIER THAT ASKED THEM.
+ *
+ * A coded integration's settings are two or three scalars the server described,
+ * so a bag keyed by field name is exactly the right shape and the generic
+ * renderer draws it.
+ *
+ * A DEVICE is not that. It is a name, a role, a slave id, a register profile and
+ * — for an inverter — a roof and a pack, which is the add dialog's own form and
+ * nothing less. Asked as a catalog form it rendered "arrays: array" and
+ * "battery: object", offered a text box where the profile picker belongs, and
+ * never asked for the NAME that `POST /api/devices` requires, so the whole
+ * Modbus arm could not succeed. Carrying the dialog's `AddDeviceForm` here is
+ * what lets step 3 render the dialog's own fields and reuse its rules.
+ */
+export type WizardAnswers =
+  | { via: "coded"; values: Record<string, unknown> }
+  | { via: "profile"; form: AddDeviceForm };
+
+/** No answers yet: what step 3 holds before an entry has seeded it. */
+const NO_ANSWERS: WizardAnswers = { via: "coded", values: {} };
+
 export type WizardState = {
   step: WizardStep;
   connection: WizardConnection | null;
   /** The catalog entry picked in step 2. */
   entryId: string | null;
-  /** Step 3's answers, keyed by field name. */
-  values: Record<string, unknown>;
+  /** Step 3's answers, in the shape the picked entry's tier calls for. */
+  answers: WizardAnswers;
 };
 
 export function emptyWizard(): WizardState {
-  return { step: "connection", connection: null, entryId: null, values: {} };
+  return { step: "connection", connection: null, entryId: null, answers: NO_ANSWERS };
 }
+
+/**
+ * What seeding a DEVICE form needs — the roster the panel has already loaded.
+ *
+ * Handed in rather than fetched here for the reason the whole module exists:
+ * these are rules, and the component owns the requests. The gateway list gives
+ * the form its endpoint, the device list gives it the first unit id that is
+ * free ON THAT endpoint.
+ */
+export type DeviceSeed = {
+  connections: readonly ConnectionView[];
+  devices: readonly DeviceView[];
+};
+
+const NO_SEED: DeviceSeed = { connections: [], devices: [] };
 
 /** A connection as the picker knows it — the roster's row, narrowed. */
 export type PickableConnection = { id: number; name: string; kind: ConnectionKind };
@@ -162,14 +207,16 @@ function entryOf(state: WizardState, catalog: Catalog): CatalogEntryView | null 
 }
 
 /**
- * The step the wizard cannot leave, or null when it may advance. A step's
- * answer is the only thing that unblocks it — validation of step 3's fields is
- * the server's, which refuses with the field named.
+ * The step the wizard cannot leave, or null when it may advance.
  *
  * `connectionReady` is the new-connection form's own answer to "could this be
  * saved" — a boolean, so these rules never learn what a broker URL is. It says
  * nothing about a row that already exists, and defaults to true for every
  * caller that is not on the create arm.
+ *
+ * One answer per step, in a table rather than a chain of branches: the chain
+ * was a `return null` at the bottom that quietly let step 3 through, and step 3
+ * on the device arm is exactly where a hold is needed.
  */
 export function blockedAt(
   state: WizardState,
@@ -177,11 +224,25 @@ export function blockedAt(
   catalog: Catalog,
   connectionReady = true,
 ): WizardStep | null {
-  if (state.step === "connection") {
-    return connectionAnswered(state, connectionReady) ? null : "connection";
-  }
-  if (state.step === "attach") return entryOf(state, catalog) === null ? "attach" : null;
-  return null;
+  const answered: Record<WizardStep, boolean> = {
+    connection: connectionAnswered(state, connectionReady),
+    attach: entryOf(state, catalog) !== null,
+    settings: settingsAnswered(state.answers),
+    confirm: true,
+  };
+  return answered[state.step] ? null : state.step;
+}
+
+/**
+ * Step 3 holds ONLY on the device arm.
+ *
+ * A coded integration's params are the server's to validate — it refuses with
+ * the field named, and the settings step shows the refusal. A device cannot be
+ * refused that usefully from here: without a name the add is a 400 the operator
+ * has no field to fix, so the form's own "could this be submitted" holds Next.
+ */
+function settingsAnswered(answers: WizardAnswers): boolean {
+  return answers.via !== "profile" || deviceFieldsOf(answers.form) !== null;
 }
 
 /** Step 1 is answered by a chosen row, or by a draft that could be saved. */
@@ -196,13 +257,14 @@ export function advance(
   connections: readonly PickableConnection[],
   catalog: Catalog,
   connectionReady = true,
+  seed: DeviceSeed = NO_SEED,
 ): WizardState {
   if (blockedAt(state, connections, catalog, connectionReady) !== null) return state;
   const next = WIZARD_STEPS[WIZARD_STEPS.indexOf(state.step) + 1];
   if (next === undefined) return state;
   const scoped = withScopedEntry(state, connections, catalog);
   return next === "settings"
-    ? { ...scoped, step: next, values: valuesFor(scoped, catalog) }
+    ? { ...scoped, step: next, answers: answersFor(scoped, catalog, seed) }
     : { ...scoped, step: next };
 }
 
@@ -219,12 +281,32 @@ function withScopedEntry(
 ): WizardState {
   const kind = wizardKind(state, connections);
   const offered = entriesFor(kind, catalog, []).some((o) => o.entry.id === state.entryId);
-  return offered ? state : { ...state, entryId: null, values: {} };
+  return offered ? state : { ...state, entryId: null, answers: NO_ANSWERS };
 }
 
-function valuesFor(state: WizardState, catalog: Catalog): Record<string, unknown> {
+/** Step 3's starting answers, in the shape the entry's tier calls for. */
+function answersFor(state: WizardState, catalog: Catalog, seed: DeviceSeed): WizardAnswers {
   const entry = entryOf(state, catalog);
-  return entry === null ? {} : seedValues(entry);
+  if (entry === null) return NO_ANSWERS;
+  return entry.via === "profile"
+    ? { via: "profile", form: seedForm(state, seed) }
+    : { via: "coded", values: seedValues(entry) };
+}
+
+/**
+ * A device form opened ON THE ENDPOINT STEP 1 ALREADY CHOSE.
+ *
+ * The dialog's own starting state, with the connection forced rather than
+ * defaulted: the wizard asked that question first, and the form's own gateway
+ * select is not rendered here. A connection still being created is the
+ * {@link NEW_CONNECTION} sentinel — nothing is addressed on a row that does not
+ * exist, so every unit id is free, which is the answer `takenUnitIds` already
+ * gives for it. The id itself is folded in at submission, once there is one.
+ */
+function seedForm(state: WizardState, seed: DeviceSeed): AddDeviceForm {
+  const chosen = state.connection;
+  const choice = chosen?.mode === "existing" ? String(chosen.id) : NEW_CONNECTION;
+  return emptyForm(seed.connections, seed.devices, choice);
 }
 
 export function goBack(state: WizardState): WizardState {
@@ -243,7 +325,7 @@ function targetOf(entry: CatalogEntryView): "device" | "integration" {
 }
 
 export type Submission =
-  | { target: "device"; body: Record<string, unknown> }
+  | { target: "device"; body: AddDeviceBody & { via: "profile" } }
   | {
       target: "integration";
       body: { kind: string; connectionId: number; params: Record<string, unknown> };
@@ -263,13 +345,33 @@ export function submissionOf(
   if (targetOf(entry) === "integration") {
     return {
       target: "integration",
-      body: { kind: entry.id, connectionId: chosen.id, params: { ...state.values } },
+      body: { kind: entry.id, connectionId: chosen.id, params: codedValues(state.answers) },
     };
   }
-  return {
-    target: "device",
-    body: { via: "profile", connection: { id: chosen.id }, ...state.values },
-  };
+  return deviceSubmission(state.answers, chosen.id);
+}
+
+/** A coded entry's answers; nothing at all if step 3 was never on that arm. */
+function codedValues(answers: WizardAnswers): Record<string, unknown> {
+  return answers.via === "coded" ? { ...answers.values } : {};
+}
+
+/**
+ * The device body, built through the DIALOG'S OWN builder.
+ *
+ * Not assembled here: `buildAddDeviceBody` is where the unit-id bounds, the
+ * name trim, the "no PV fields on a meter" rule and the connection arm are
+ * decided, and a second spelling of them in the wizard is a form that offers
+ * what the route then refuses. The chosen row's id is substituted for the
+ * form's own gateway choice, which may still be the create sentinel.
+ *
+ * Null while the form is incomplete, exactly as an unsaved connection is null:
+ * the caller sends nothing rather than a body it knows will 400.
+ */
+function deviceSubmission(answers: WizardAnswers, connectionId: number): Submission | null {
+  if (answers.via !== "profile") return null;
+  const body = buildAddDeviceBody({ ...answers.form, connectionChoice: String(connectionId) });
+  return body === null ? null : { target: "device", body: { via: "profile", ...body } };
 }
 
 /**

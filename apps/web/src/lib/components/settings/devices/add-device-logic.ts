@@ -136,13 +136,26 @@ export function profileGroups(
     }));
 }
 
-/** The dialog's starting state: the first gateway if there is one, its first free unit id, an inverter. */
+/** The gateway a fresh form starts on: the first one there is, else "create one". */
+function defaultChoice(connections: readonly ConnectionView[]): string {
+  const first = modbusConnections(connections)[0];
+  return first ? String(first.id) : NEW_CONNECTION;
+}
+
+/**
+ * The dialog's starting state: the first gateway if there is one, its first free
+ * unit id, an inverter.
+ *
+ * `choice` overrides which gateway that is, for the ADD WIZARD: there, step 1
+ * has already asked which endpoint, so the form must open on that one — and the
+ * free unit id must be computed against that one's devices rather than the
+ * first gateway's. The dialog passes nothing and keeps its own default.
+ */
 export function emptyForm(
   connections: readonly ConnectionView[],
   devices: readonly DeviceView[] = [],
+  choice: string = defaultChoice(connections),
 ): AddDeviceForm {
-  const first = modbusConnections(connections)[0];
-  const choice = first ? String(first.id) : NEW_CONNECTION;
   return {
     connectionChoice: choice,
     newConnection: blankDraft(defaultConnectionName(connections)),
@@ -178,6 +191,30 @@ function connectionOf(form: AddDeviceForm): AddDeviceBody["connection"] | null {
 }
 
 /**
+ * The DEVICE half of the request — everything but which endpoint it hangs on —
+ * or null while one of its fields is not yet sendable.
+ *
+ * Split out for the add wizard's step 3, which asks these fields and only these:
+ * the endpoint was step 1's question, and on the create arm it has no id yet, so
+ * a gate that ran {@link connectionOf} would hold the step for a question the
+ * operator has already answered.
+ */
+export function deviceFieldsOf(form: AddDeviceForm): Omit<AddDeviceBody, "connection"> | null {
+  if (!validUnitId(form.unitId)) return null;
+  if (nameProblem(form.name) !== null) return null;
+  if (form.profileId === "") return null;
+  const inverter = inverterOf(form);
+  if (inverter === null) return null;
+  return {
+    role: form.role,
+    unitId: form.unitId,
+    name: form.name.trim(),
+    profileId: form.profileId,
+    ...inverter,
+  };
+}
+
+/**
  * The request the form describes, or null while it is not yet sendable.
  *
  * Null rather than a list of problems on purpose: the fields show their own
@@ -186,20 +223,9 @@ function connectionOf(form: AddDeviceForm): AddDeviceBody["connection"] | null {
  */
 export function buildAddDeviceBody(form: AddDeviceForm): AddDeviceBody | null {
   const connection = connectionOf(form);
-  if (!connection) return null;
-  if (!validUnitId(form.unitId)) return null;
-  if (nameProblem(form.name) !== null) return null;
-  if (form.profileId === "") return null;
-  const inverter = inverterOf(form);
-  if (inverter === null) return null;
-  return {
-    connection,
-    role: form.role,
-    unitId: form.unitId,
-    name: form.name.trim(),
-    profileId: form.profileId,
-    ...inverter,
-  };
+  const fields = deviceFieldsOf(form);
+  if (connection === null || fields === null) return null;
+  return { connection, ...fields };
 }
 
 export type RefusedField =

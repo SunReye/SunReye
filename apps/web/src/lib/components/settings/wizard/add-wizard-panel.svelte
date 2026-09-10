@@ -13,7 +13,8 @@
 		blankDraft,
 		connectionCreateBody
 	} from '../devices/connection-draft';
-	import type { ConnectionView, DeviceRoster } from '../devices/device-types';
+	import type { ConnectionView, DeviceRoster, DeviceView } from '../devices/device-types';
+	import type { RegisteredProfile } from '../profile-types';
 	import {
 		type Catalog,
 		type ExistingIntegration,
@@ -44,6 +45,11 @@
 	// step body is unmounted the moment the operator walks forward.
 	let draft = $state<ConnectionDraft>(blankDraft());
 	let connections = $state<ConnectionView[]>([]);
+	// The roster and the installed profiles: what step 3 needs when the picked
+	// entry is a DEVICE — which unit ids are taken on the chosen gateway, and
+	// which register maps this install can speak.
+	let devices = $state<DeviceView[]>([]);
+	let registered = $state<RegisteredProfile[]>([]);
 	let integrations = $state<ExistingIntegration[]>([]);
 	let catalog = $state<Catalog>({ modbus: [], mqtt: [], internal: [] });
 	let submitting = $state(false);
@@ -73,11 +79,31 @@
 		const [roster, rows, shelf] = await Promise.all([
 			api.api.devices.get(),
 			api.api.integrations.get(),
-			api.api.integrations.catalog.get()
+			api.api.integrations.catalog.get(),
+			loadRegistered()
 		]);
-		if (roster.data) connections = (roster.data as DeviceRoster).connections;
+		if (roster.data) {
+			const loaded = roster.data as DeviceRoster;
+			connections = loaded.connections;
+			devices = loaded.devices;
+		}
 		if (rows.data) integrations = (rows.data as { integrations: ExistingIntegration[] }).integrations;
 		if (shelf.data) catalog = shelf.data as Catalog;
+	}
+
+	async function loadRegistered() {
+		const { data } = await api.api.profiles.get();
+		if (data) registered = data as RegisteredProfile[];
+	}
+
+	/**
+	 * A profile downloaded from inside step 3 lands in the picker above it, the
+	 * way it does in the device dialog. Only the device arm has a form to point
+	 * at one; the guard is the narrowing, not a defensive check.
+	 */
+	async function onInstalled(id: string) {
+		await loadRegistered();
+		if (wizard.answers.via === 'profile') wizard.answers.form.profileId = id;
 	}
 
 	function leave() {
@@ -86,7 +112,7 @@
 
 	function next() {
 		if (last) return void submit();
-		wizard = advance(wizard, connections, catalog, createBody !== null);
+		wizard = advance(wizard, connections, catalog, createBody !== null, { connections, devices });
 	}
 
 	async function submit() {
@@ -174,7 +200,10 @@
 			bind:chosen={wizard.connection}
 			bind:draft
 			bind:entryId={wizard.entryId}
-			bind:values={wizard.values}
+			bind:answers={wizard.answers}
+			{devices}
+			{registered}
+			{onInstalled}
 		/>
 		<WizardNav
 			first={wizard.step === 'connection'}
