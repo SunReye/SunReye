@@ -37,9 +37,23 @@ export type DeviceView = {
   battery: InverterFields["battery"];
   profileName: string | null;
   profileKnown: boolean;
-  /** The one device the poll loop reads in this release. */
-  polled: boolean;
+  /** How the device is fed: a Modbus endpoint, a coded integration, or nothing. */
+  kind: DeviceKind;
+  /** Why it is, or is not, being read. */
+  state: DeviceState;
+  /** The integration a coded device belongs to (`evcc`), or null. */
+  integration: string | null;
 };
+
+/** Mirrors the server's `DeviceKind`. */
+export type DeviceKind = "modbus" | "coded" | "virtual";
+
+/**
+ * Mirrors the server's `DeviceState`. One word per reason a device is not being
+ * read — a `polled` boolean reported an MQTT-fed loadpoint and a computation as
+ * broken Modbus hardware (#213).
+ */
+export type DeviceState = "polling" | "idle" | "integration" | "virtual" | "retired";
 
 export type DeviceRoster = {
   devices: DeviceView[];

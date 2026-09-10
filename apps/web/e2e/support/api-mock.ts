@@ -849,7 +849,9 @@ export async function mockBackend(page: Page, options: BackendOptions = {}): Pro
           battery: b.battery ?? null,
           profileName: String(b.profileId),
           profileKnown: true,
-          polled: false,
+          kind: "modbus",
+          state: "idle",
+          integration: null,
         });
       }
       return json(route, fixture.devices(MANIFEST));

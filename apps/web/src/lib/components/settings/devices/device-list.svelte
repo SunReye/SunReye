@@ -2,7 +2,7 @@
 	import EmptyState from '$lib/components/layout/empty-state.svelte';
 	import * as m from '$lib/paraglide/messages';
 	import { groupByConnection } from './add-device-logic';
-	import ConnectionGroup from './connection-group.svelte';
+	import DeviceGroupCard from './device-group.svelte';
 	import type { ConnectionView, DeviceRoster, DeviceView } from './device-types';
 
 	// The roster's three states — failed to load, empty, groups — and the groups.
@@ -34,8 +34,8 @@
 	<EmptyState message={m.devices_empty()} />
 {:else}
 	<div class="flex flex-col gap-4">
-		{#each groups as group (group.connection?.id ?? 'none')}
-			<ConnectionGroup {group} {busyId} {onEditConnection} {onEdit} {onRetire} {onRestore} />
+		{#each groups as group (group.key)}
+			<DeviceGroupCard {group} {busyId} {onEditConnection} {onEdit} {onRetire} {onRestore} />
 		{/each}
 	</div>
 {/if}
