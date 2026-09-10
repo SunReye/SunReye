@@ -158,12 +158,19 @@ export function readoutRowClass(): string {
  * the readout row ({@link readoutRowClass}). Settings panels, which have no
  * plot and no readout row, legitimately keep a text button here.
  *
+ * It WRAPS, which is why {@link CLUSTER_GAP} carries a `gap-y` at all. The
+ * devices panel's header is the case: a status badge and an "Add device" button
+ * in one `auto` track squeezed the title to nothing at 400px (#214). Wrapping
+ * inside the cluster's own column keeps every control at full size and cannot
+ * move the column — the placement argument above is untouched, because a
+ * wrapped line here is still hard right in track two.
+ *
  * The collapse caret is still deliberately NOT in here (see
  * `section-collapse-trigger.svelte`): grouped with the chrome it reads as a
  * "show more" button rather than as the section's own affordance.
  */
 export function sectionActionsClass(): string {
-  return `flex items-center justify-end ${CLUSTER_GAP}`;
+  return `flex flex-wrap items-center justify-end ${CLUSTER_GAP}`;
 }
 
 /**

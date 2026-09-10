@@ -6,6 +6,7 @@ import {
   offersChoice,
   resolveSaved,
   shownUnder,
+  sourceMenu,
   sourceOptions,
   sourceQuery,
 } from "./source";
@@ -82,6 +83,52 @@ describe("sourceOptions", () => {
       { id: "a", label: "East" },
       { id: "b", label: "West" },
     ]);
+  });
+});
+
+describe("sourceMenu — what the sidebar's source menu renders", () => {
+  // The menu is a rendering of `sourceOptions`. The regression this guards is a
+  // second list: a menu that builds its own options (and so quietly keeps a
+  // retired device, or loses the plant row) while `sourceOptions` stays right.
+  test("the option list is sourceOptions, unchanged", () => {
+    expect(sourceMenu(two, "Plant", PLANT).options).toEqual(sourceOptions(two, "Plant"));
+    expect(sourceMenu(retiredTwin, "Plant", "a").options).toEqual(
+      sourceOptions(retiredTwin, "Plant"),
+    );
+  });
+
+  test("the mark and the trigger's second line follow the current source", () => {
+    const menu = sourceMenu(two, "Plant", "b");
+    expect(menu.activeId).toBe("b");
+    expect(menu.currentLabel).toBe("West");
+    expect(menu.options.map((o) => o.id === menu.activeId)).toEqual([false, false, true]);
+  });
+
+  test("the plant is marked when the plant is current", () => {
+    const menu = sourceMenu(two, "Anlage", PLANT);
+    expect(menu.activeId).toBe(PLANT);
+    expect(menu.currentLabel).toBe("Anlage");
+  });
+
+  // Boundary: the source list has not landed yet. The button still renders — it
+  // is the sidebar's brand row — so it needs a label and a mark that resolve
+  // without an option to point at, and an empty list rather than a crash.
+  test("before the source list lands there are no options and the plant is named", () => {
+    const menu = sourceMenu(null, "Plant", PLANT);
+    expect(menu.options).toEqual([]);
+    expect(menu.activeId).toBe(PLANT);
+    expect(menu.currentLabel).toBe("Plant");
+  });
+
+  // Boundary: a device retired or renamed between the saved choice and this
+  // render. `resolveSaved` normally prevents it, but a device retired in
+  // settings while the page is open reaches exactly this state — the menu must
+  // fall back to the plant rather than name a source nothing answers.
+  test("a current source no longer in the list falls back to the plant", () => {
+    const menu = sourceMenu(retiredTwin, "Plant", "old");
+    expect(menu.activeId).toBe(PLANT);
+    expect(menu.currentLabel).toBe("Plant");
+    expect(menu.options.map((o) => o.id)).toEqual(["plant", "a"]);
   });
 });
 

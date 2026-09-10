@@ -128,6 +128,13 @@ type SmokeRoute = {
    * The URL is DERIVED from it; storing both would let them disagree.
    */
   file: string;
+  /**
+   * The URL to open, when the file path cannot produce it: a route with a
+   * PARAMETER (`[id]`) has no single address, so the case names one that the
+   * fixture can actually answer. Derived from `file` otherwise, because storing
+   * both for a static route would let them disagree.
+   */
+  url?: string;
   /** Mock deltas. `live: false` for the routes that never lease the socket. */
   open?: OpenPageOptions;
   /** The shell header this route sets, resolved from `messages/en.json`. */
@@ -335,6 +342,39 @@ const ROUTES: readonly SmokeRoute[] = [
     },
   },
   {
+    // There is no list of integrations of its own — a connection is the thing
+    // that fails, so "what is configured" stays on Devices. The bare path only
+    // redirects, so a truncated URL lands on the list rather than on nothing.
+    file: "(app)/settings/integrations/+page.svelte",
+    h1: "Devices",
+    landsOn: "/#/settings/devices",
+    surface: async (page) => {
+      await expect(page.locator("[data-device='inverter']")).toBeVisible();
+    },
+  },
+  {
+    // ONE integration's page. The only parameterised route in the app, so it is
+    // the only case that names its own URL: the fixture's EVCC ingest is id 1.
+    file: "(app)/settings/integrations/[id]/+page.svelte",
+    url: "/#/settings/integrations/1",
+    h1: "Integrations",
+    // The provided-device rows are the proof BOTH payloads landed and were
+    // joined: the row comes from `/api/integrations`, the loadpoints from
+    // `/api/devices`, and nothing renders here until the two are put together.
+    // A heading would pass with either of them unanswered.
+    surface: async (page) => {
+      await heading(page, "EVCC");
+      await expect(page.locator("[data-provided] [data-provided-device]")).toHaveCount(2);
+      // The status payload's proof is the moment it carries, not a pill: a
+      // healthy endpoint no longer says "Connected" — that was the state nobody
+      // acts on. `lastConnectedAt` comes from `/api/integrations` and renders
+      // only once it has, which is what this case is here to establish.
+      await expect(
+        page.locator("[data-integration-status]").getByText(/Last connected/),
+      ).toBeVisible();
+    },
+  },
+  {
     file: "(app)/settings/plant/+page.svelte",
     h1: "Plant",
     // The feed-in field only exists once `/api/settings/weather` arrived; the
@@ -358,6 +398,27 @@ const ROUTES: readonly SmokeRoute[] = [
     },
   },
   {
+    // The add WIZARD, a route rather than a dialog: four questions is more than
+    // a modal holds at 400px. A child of /settings/devices, so it wears that
+    // section's header.
+    file: "(app)/settings/devices/add/+page.svelte",
+    h1: "Devices",
+    // The stepper alone renders before anything is fetched, so a heading would
+    // pass with `/api/devices` unanswered. The connection select is the proof
+    // the roster arrived, and its last option is the create arm — the one
+    // answer that needs no roster at all.
+    surface: async (page) => {
+      await heading(page, "Add to this plant");
+      const connection = page.locator("select#wizard-connection");
+      await expect(connection.locator("option")).toContainText([
+        "Choose a connection…",
+        "Inverter · 10.0.0.5:502",
+        "Home broker · hass.ee.lan",
+        "Create a new connection…",
+      ]);
+    },
+  },
+  {
     file: "(app)/settings/sensors/+page.svelte",
     h1: "Sensors",
     // The heading alone also renders over the `No sensors available yet.`
@@ -365,14 +426,6 @@ const ROUTES: readonly SmokeRoute[] = [
     surface: async (page) => {
       await heading(page, "Sensor visibility");
       await expect(page.getByRole("switch").first()).toBeVisible();
-    },
-  },
-  {
-    file: "(app)/settings/mqtt/+page.svelte",
-    h1: "MQTT & Home Assistant",
-    surface: async (page) => {
-      await heading(page, "MQTT broker");
-      await expect(page.getByLabel("Broker URL")).toHaveValue("mqtt://localhost:1883");
     },
   },
   {
@@ -562,7 +615,7 @@ test("every page in src/routes has a smoke case", () => {
 
 // Playwright has no `test.each`; a `for` over the table is the idiom.
 for (const route of ROUTES) {
-  const url = hashUrlFor(route.file);
+  const url = route.url ?? hashUrlFor(route.file);
   test(`${url} renders`, async ({ page }) => {
     const opened = await openPage(page, url, route.open);
 

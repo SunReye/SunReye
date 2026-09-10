@@ -14,12 +14,7 @@ import {
   type InverterConfig,
   inverterConfigSchema,
 } from "@SunReye/db/inverter-config";
-import {
-  MQTT_KEY,
-  type MqttConfig,
-  mergeMqttWrite,
-  mqttConfigSchema,
-} from "@SunReye/db/mqtt-config";
+import { MQTT_KEY, type MqttConfig, mqttConfigSchema } from "@SunReye/db/mqtt-config";
 import { readSetting, writeSetting } from "./app-settings";
 
 /** Defaults seeded from env the first time a config is read (pre-save). */
@@ -32,12 +27,14 @@ const envInverterConfig = (): InverterConfig =>
     pollIntervalMs: env.POLL_INTERVAL_MS,
   });
 
+/**
+ * The EXPORT half only. The broker half of these env vars — `MQTT_ENABLED`,
+ * `MQTT_BROKER_URL`, `MQTT_USERNAME`, `MQTT_PASSWORD` — seeds a `connections`
+ * row instead since #217, in `./mqtt-broker.ts`'s `envBrokerSeed`: the endpoint
+ * is a row now, and there is no field here left to put it in.
+ */
 const envMqttConfig = (): MqttConfig =>
   mqttConfigSchema.parse({
-    enabled: env.MQTT_ENABLED,
-    brokerUrl: env.MQTT_BROKER_URL,
-    username: env.MQTT_USERNAME,
-    password: env.MQTT_PASSWORD,
     topicPrefix: env.MQTT_TOPIC_PREFIX,
     haDiscoveryEnabled: env.HA_DISCOVERY_ENABLED,
     haDiscoveryPrefix: env.HA_DISCOVERY_PREFIX,
@@ -87,12 +84,25 @@ export async function getMqttConfig(): Promise<MqttConfig> {
 }
 
 /**
- * Validate an incoming MQTT config and merge it over the stored one (preserving
- * the write-only password when absent) — without persisting. Used by both the
- * save path and the connection test.
+ * Validate an incoming MQTT export write, merged over the stored config, without
+ * persisting.
+ *
+ * The password merge is gone — there is no secret in this record any more
+ * (#217), and `mergeConnectionParams` owns write-only fields once for every
+ * connection kind. What replaced it is an ABSENT-KEY merge, and it is
+ * load-bearing for exactly one reason: `connectionId` defaults to `null`, and
+ * `null` means "the export is off". A body that simply does not mention the
+ * field — the pre-#217 settings form, which sends a broker URL and an `enabled`
+ * flag that no longer exist — would otherwise UNBIND the broker on every save
+ * and turn the Home Assistant export off with nothing in the log.
+ *
+ * Turning it off explicitly still works: `connectionId: null` is a key that is
+ * present, and it wins.
  */
-export async function mergeMqttConfig(input: unknown): Promise<MqttConfig> {
-  return mergeMqttWrite(await getMqttConfig(), mqttConfigSchema.parse(input));
+async function mergeMqttConfig(input: unknown): Promise<MqttConfig> {
+  const stored = await getMqttConfig();
+  const named = typeof input === "object" && input !== null ? input : {};
+  return mqttConfigSchema.parse({ ...stored, ...named });
 }
 
 export async function setMqttConfig(input: unknown): Promise<MqttConfig> {
@@ -100,4 +110,15 @@ export async function setMqttConfig(input: unknown): Promise<MqttConfig> {
   await writeSetting(MQTT_KEY, config);
   mqttCache = config;
   return config;
+}
+
+/**
+ * Point the export at a broker connection, keeping every other field.
+ *
+ * The one write the boot-time seed makes (`./mqtt-broker.ts`), and its own
+ * function so the seed cannot accidentally replace the whole document with
+ * defaults on an install that has customised its topic prefix.
+ */
+export async function bindMqttConnection(connectionId: number): Promise<MqttConfig> {
+  return setMqttConfig({ ...(await getMqttConfig()), connectionId });
 }

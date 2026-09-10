@@ -43,6 +43,20 @@
       "when": 1788556413031,
       "tag": "0005_mean_rhodey",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1789029726323,
+      "tag": "0006_add_connection_kind",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1789054931339,
+      "tag": "0007_add_integrations",
+      "breakpoints": true
     }
   ]
 }

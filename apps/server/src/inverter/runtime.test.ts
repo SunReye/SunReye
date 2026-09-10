@@ -46,6 +46,8 @@ import {
 } from "bun:test";
 import type { ControlState } from "@SunReye/db/control-state";
 import { controlStateKey } from "@SunReye/db/control-state";
+import type { MqttParams } from "@SunReye/db/connection-kinds";
+import { type BrokerClient, type BrokerLink, createBrokerPool } from "../devices/broker-pool";
 import type { MqttConfig } from "@SunReye/db/mqtt-config";
 import type { PollEndpoint } from "./endpoint";
 import type { IdentityResolver } from "../shared/identity";
@@ -220,13 +222,26 @@ const baseEndpoint = (over: Partial<PollEndpoint> = {}): PollEndpoint => ({
 });
 
 const baseMqttConfig = (over: Partial<MqttConfig> = {}): MqttConfig => ({
-  enabled: true,
-  brokerUrl: "mqtt://broker.test:1883",
-  username: "user",
-  password: "secret",
+  connectionId: 3,
   topicPrefix: "sunreye",
   haDiscoveryEnabled: false,
   haDiscoveryPrefix: "homeassistant",
+  ...over,
+});
+
+/**
+ * The broker the export's connection resolves to, mutable per test.
+ *
+ * Since #217 the endpoint is a `connections` row and the runtime resolves it
+ * per rebuild, so "the broker moved" and "the export was turned off" are both
+ * changes to THIS rather than to the config document. `null` is off.
+ */
+let mqttBroker: MqttParams | null;
+
+const baseBroker = (over: Partial<MqttParams> = {}): MqttParams => ({
+  brokerUrl: "mqtt://broker.test:1883",
+  username: "user",
+  password: "secret",
   ...over,
 });
 
@@ -269,12 +284,64 @@ mock.module("./endpoint", () => ({
   loadPollEndpoint: async () => (intercepting ? pollEndpoint : realLoadPollEndpoint()),
 }));
 
+/**
+ * The broker resolution, stubbed at the RESOLVER rather than at the database.
+ *
+ * `readBroker` is a plant read (`../settings/mqtt-broker-instance.ts`), and the
+ * rules inside it — a dangling id, a connection of another kind — are
+ * `../settings/mqtt-broker.test.ts`'s subject. What this file is responsible for
+ * is what the runtime does with the answer, and that it re-reads it per rebuild
+ * rather than being handed a broker once at boot.
+ */
+const realBrokerModule = await import("../settings/mqtt-broker-instance");
+const realBrokerExports = { ...realBrokerModule };
+const realReadBroker = realBrokerModule.readBroker;
+mock.module("../settings/mqtt-broker-instance", () => ({
+  ...realBrokerModule,
+  readBroker: async (connectionId: number | null) =>
+    intercepting ? mqttBroker : realReadBroker(connectionId),
+}));
+
+/**
+ * The process's broker pool, doubled (#221).
+ *
+ * The export takes its client from its CONNECTION now, so the fake bridge below
+ * has to be handed a real {@link BrokerLink} to prove that the runtime re-resolved
+ * the row — a link carries the endpoint it is actually on. The dial is inert and
+ * the retry timer never fires: what a pool does with a socket is
+ * `../devices/broker-pool.test.ts`'s subject, not this file's.
+ */
+class InertClient extends EventEmitter {
+  subscribe(): void {}
+  publish(): void {}
+  async endAsync(): Promise<void> {}
+}
+
+const realBrokerPoolModule = await import("../devices/broker-pool-instance");
+const realBrokerPoolExports = { ...realBrokerPoolModule };
+const testBrokerPool = createBrokerPool({
+  dial: () => new InertClient() as unknown as BrokerClient,
+  schedule: () => () => {},
+});
+mock.module("../devices/broker-pool-instance", () => ({
+  ...realBrokerPoolModule,
+  brokerPool: testBrokerPool,
+}));
+
 /** Stands in for the MQTT bridge: records everything the runtime publishes. */
 class FakeBridge {
   samples: InverterSample[] = [];
   forecasts: unknown[] = [];
   closed = 0;
-  constructor(readonly config: MqttConfig) {}
+  constructor(
+    readonly config: MqttConfig,
+    /** The connection's client, taken exactly as the real bridge takes it. */
+    readonly link: BrokerLink,
+  ) {}
+  /** The endpoint the runtime actually resolved for this rebuild. */
+  get broker(): { brokerUrl: string } {
+    return { brokerUrl: this.link.brokerUrl };
+  }
   publishSample(sample: InverterSample): void {
     this.samples.push(sample);
   }
@@ -286,6 +353,7 @@ class FakeBridge {
   }
   async close(): Promise<void> {
     this.closed++;
+    await this.link.release();
   }
 }
 const bridges: FakeBridge[] = [];
@@ -305,10 +373,16 @@ mock.module("./mqtt", () => ({
     deps: Parameters<typeof realBridgeModule.startMqttBridge>[1],
   ) => {
     if (!intercepting) return realStartMqttBridge(config, deps);
-    if (!config.enabled) return null;
+    // The real bridge's own rule: no client, no bridge. That is what the retired
+    // `enabled` flag became — and since #221 it is the CONNECTION that answers,
+    // so the fake takes its link the same way the real one does.
+    const link = deps.acquire({
+      will: { topic: "test/status", payload: "offline", qos: 0, retain: true },
+    });
+    if (!link) return null;
     bridgeWrite = deps.write;
     bridgeCtx = deps.ctx;
-    const built = new FakeBridge(config);
+    const built = new FakeBridge(config, link);
     bridges.push(built);
     return built;
   },
@@ -581,10 +655,12 @@ class FakeMqttClient extends EventEmitter {
   }
 }
 let mqttClient: FakeMqttClient | null = null;
-// Third-party, so no spread rule applies — but `mqtt` is mocked by the bridge
-// suite too, so this still hands back whatever was in place before when this
-// suite is not the one running.
+// `mqtt` is mocked by the bridge suite too, so this spreads the real module and
+// passes calls through when it is not intercepting. The by-value snapshot is
+// what `afterAll` hands back: the namespace itself is live, so returning
+// `upstreamMqtt` would reinstall this very stub for every later file.
 const upstreamMqtt = await import("mqtt");
+const upstreamMqttExports = { ...upstreamMqtt };
 const upstreamConnect = upstreamMqtt.default.connect;
 mock.module("mqtt", () => ({
   ...upstreamMqtt,
@@ -757,9 +833,12 @@ afterAll(() => {
   // `realInverter.buildSource` is by now the stub, and `() => realInverter`
   // would restore the double instead of the module.
   intercepting = false;
+  mock.module("mqtt", () => ({ ...upstreamMqttExports }));
   mock.module("../settings/config", () => ({ ...realConfigExports }));
   mock.module("./endpoint", () => ({ ...realEndpointExports }));
   mock.module("./mqtt", () => ({ ...realBridgeExports }));
+  mock.module("../settings/mqtt-broker-instance", () => ({ ...realBrokerExports }));
+  mock.module("../devices/broker-pool-instance", () => ({ ...realBrokerPoolExports }));
   mock.module("../automation/automation", () => ({ ...realAutomationExports }));
   mock.module("../settings/weather-settings", () => ({ ...realWeatherSettingsExports }));
   mock.module("../forecast/solar-forecast", () => ({ ...realSolarForecastExports }));
@@ -785,7 +864,7 @@ afterAll(() => {
 // collaborators, so this suite drives its own runtime instance with the
 // in-memory doubles above rather than the module's default instance — which is
 // why no `@SunReye/db` and no `./control-store` mock is needed.
-const { createRuntime } = await import("./runtime");
+const { constraintOf, createRuntime } = await import("./runtime");
 const { deviceInstance, instanceFromProfile } = await import("@SunReye/inverter-core");
 /**
  * The plant's roster, as the registry answers it.
@@ -830,10 +909,22 @@ let deviceReloads = 0;
  * slow to accept connections leaves the process polling with nowhere to store.
  */
 let rosterReadFails = false;
+/**
+ * Whether the roster read REJECTS rather than keeping its last good snapshot.
+ *
+ * A different failure from {@link rosterReadFails}, and the one the recovery
+ * path has to survive: the real registry swallows a query error and answers the
+ * previous roster, but `writer.forget` runs in the same function and a device
+ * whose intervals cannot be flushed rejects. An unhandled rejection there would
+ * leave `rosterRecovering` latched and NO further recovery would ever be tried
+ * for the life of the process.
+ */
+let rosterReloadThrows = false;
 const roster = () => (registryDevice ? [registryDevice, ...extraDevices] : extraDevices);
 const devicesDouble: DeviceRegistry = {
   reload: async () => {
     deviceReloads += 1;
+    if (rosterReloadThrows) throw new Error("statement timeout");
     // A failed read keeps the last good roster rather than emptying the plant.
     if (rosterReadFails) return roster();
     registryDevice = registryProfile
@@ -859,10 +950,20 @@ const devicesDouble: DeviceRegistry = {
       : [],
 };
 
+/**
+ * Why the eager metric registration rejects, or null while it succeeds.
+ *
+ * The runtime `void`s that promise deliberately — a dimension write must not
+ * cost a reading — so the ONLY evidence a rejection leaves is the warning, and
+ * an unhandled rejection is the alternative.
+ */
+let registerMetricsError: Error | null = null;
+
 const identityDouble: IdentityResolver = {
   deviceId: async () => 1,
   registerMetrics: async (specs) => {
     registeredSpecs.push([...specs]);
+    if (registerMetricsError) throw registerMetricsError;
   },
   metricIds: async (keys) => new Map(keys.map((k, i) => [k, i + 1])),
   metricId: async () => 1,
@@ -992,6 +1093,7 @@ beforeEach(() => {
   legacyConfigReads = 0;
   registeredSpecs = [];
   mqttConfig = baseMqttConfig();
+  mqttBroker = baseBroker();
   armed = [];
   cleared = [];
   logLines = [];
@@ -1025,6 +1127,8 @@ beforeEach(() => {
   extraDevices = [];
   deviceReloads = 0;
   rosterReadFails = false;
+  rosterReloadThrows = false;
+  registerMetricsError = null;
   resolveOverride = null;
   mqttClient = null;
   bridgeWrite = null;
@@ -1120,6 +1224,27 @@ describe("eager metric registration", () => {
     const specs = registeredSpecs.at(0) ?? [];
     expect(specs).toContainEqual({ key: "battery.soc", isCounter: false, unit: "%" });
     expect(specs).toContainEqual({ key: "load.power", isCounter: false, unit: "W" });
+  });
+
+  test("a registration that fails is a warning, never a lost reading", async () => {
+    // The registration is a `void`-ed promise on the write path: the ids it
+    // creates are a convenience (the writer's own lazy fallback resolves a key
+    // it missed), so a dimension table that rejects must cost a log line and
+    // nothing else. Unhandled, the same rejection takes the process's warning
+    // handler instead and the reading it was attached to is still stored — which
+    // is the failure that looks like success.
+    registerMetricsError = new Error("deadlock detected");
+    await boot();
+    await poll();
+    await settle();
+    // A series row is an INTERVAL, written when it closes — so the reading is
+    // proved by shutting the loop down, which flushes what it held open.
+    await stop();
+
+    expect(linesStartingWith("metric key registration failed")).toHaveLength(1);
+    const rows = inserted.flat();
+    expect(rows.length).toBeGreaterThan(0);
+    expect(rows.every((r) => r.inverterId === DEVICE_SLUG)).toBe(true);
   });
 
   test("a metric with no unit registers null — never an empty string", async () => {
@@ -1278,6 +1403,30 @@ describe("the poll loop", () => {
     const rows = inserted.flat();
     expect(rows.length).toBeGreaterThan(0);
     expect(rows.every((r) => r.inverterId === DEVICE_SLUG)).toBe(true);
+  });
+
+  test("a recovery read that REJECTS is reported, and the next one is still tried", async () => {
+    // `reloadDevices` is not awaited, so its rejection has nowhere to go but the
+    // `.catch`. Without the `.finally` beside it the in-flight flag would stay
+    // latched and this plant would never look for its roster again — a process
+    // serving live frames and storing nothing, for good, with one warning.
+    await boot();
+    registryProfile = null;
+    await devicesDouble.reload();
+    rosterReloadThrows = true;
+
+    await poll();
+    await settle();
+    expect(linesStartingWith("could not re-read the plant's devices")).toHaveLength(1);
+
+    // The rate limit is what spaces the attempts, not a latched flag: once the
+    // window has passed, a dropped sample tries again.
+    setSystemTime(new Date(Date.now() + 60_000));
+    const reloadsBefore = deviceReloads;
+    await poll();
+    await settle();
+    expect(deviceReloads - reloadsBefore).toBe(1);
+    expect(linesStartingWith("could not re-read the plant's devices")).toHaveLength(2);
   });
 
   test("repeated polls of an unchanged reading write no history row at all", async () => {
@@ -1824,7 +1973,8 @@ describe("the MQTT bridge", () => {
     await settle();
     expect(namespaceReads.length).toBe(afterBoot);
 
-    await applyMqttConfig(baseMqttConfig({ brokerUrl: "mqtt://elsewhere:1883" }));
+    mqttBroker = baseBroker({ brokerUrl: "mqtt://elsewhere:1883" });
+    await applyMqttConfig(baseMqttConfig({ connectionId: 4 }));
     await settle();
     expect(namespaceReads.length).toBe(afterBoot + 1);
   });
@@ -1895,16 +2045,20 @@ describe("the MQTT bridge", () => {
     await boot();
     const first = latestBridge();
 
-    await applyMqttConfig(baseMqttConfig({ brokerUrl: "mqtt://other.test:1883" }));
+    mqttBroker = baseBroker({ brokerUrl: "mqtt://other.test:1883" });
+    await applyMqttConfig(baseMqttConfig({ connectionId: 4 }));
     await settle();
 
     expect(first.closed).toBe(1);
     expect(latestBridge()).not.toBe(first);
-    expect(latestBridge().config.brokerUrl).toBe("mqtt://other.test:1883");
+    // The broker is RE-RESOLVED per rebuild: a bridge holding the previous
+    // broker with this config's prefix would publish where nobody is watching.
+    expect(latestBridge().broker.brokerUrl).toBe("mqtt://other.test:1883");
   });
 
-  test("disabling MQTT leaves no bridge, and nothing is published to one", async () => {
-    mqttConfig = baseMqttConfig({ enabled: false });
+  test("an export with no broker connection leaves no bridge, and nothing is published to one", async () => {
+    mqttConfig = baseMqttConfig({ connectionId: null });
+    mqttBroker = null;
     forecastResult = forecastFixture();
 
     await boot();
@@ -2335,7 +2489,9 @@ describe("testing a connection before saving it", () => {
 });
 
 describe("testing a broker before saving it", () => {
-  const config = () => baseMqttConfig({ brokerUrl: "mqtt://probe.test:1883" });
+  // The BROKER, not the export config: what an operator tests is a connection,
+  // which they may not have bound to the export yet (#217).
+  const config = () => baseBroker({ brokerUrl: "mqtt://probe.test:1883" });
 
   test("a successful connect reports ok and hangs up the throwaway client", async () => {
     const pending = testMqtt(config());
@@ -2386,5 +2542,45 @@ describe("testing a broker before saving it", () => {
 
     await expect(pending).resolves.toEqual({ ok: true });
     expect(mqttClient?.ends).toHaveLength(1);
+  });
+});
+
+/**
+ * THE CLAMP SOURCE the automation loop is handed (`constraint: (key) => …`).
+ *
+ * Asserted directly rather than through a steering tick: the engine reaches it
+ * only on the tick that decides a charge-current write, and what has to be right
+ * here is which bounds a KEY resolves to — a target clamped to another
+ * register's range, or to none because the lookup missed, is a write the device
+ * refuses (or accepts and should not have).
+ */
+describe("the register bounds handed to the automation loop", () => {
+  const ctxOf = () => buildProfileContext(mainProfile());
+
+  test("a bounded register answers its own declared range", () => {
+    expect(constraintOf(ctxOf(), "settings.max_discharge")).toMatchObject({
+      writable: true,
+      valueType: "number",
+      min: 0,
+      max: 185,
+    });
+  });
+
+  test("a key this profile does not declare answers null, so the target is left alone", () => {
+    // The loop clamps only what the profile bounded. A missing key answering a
+    // range — anyone's range — would silently rewrite the operator's target.
+    expect(constraintOf(ctxOf(), "settings.max_charge")).toBeNull();
+  });
+
+  test("an enum register carries its values, not a min and a max", () => {
+    // A work-mode register has no ordering to clamp into: `Math.max`-ing a mode
+    // number towards a bound would select a DIFFERENT mode.
+    const constraint = constraintOf(ctxOf(), "settings.mode");
+    expect(constraint).toMatchObject({ valueType: "enum", enumValues: [0, 1] });
+    expect(constraint).not.toHaveProperty("min");
+  });
+
+  test("a read-only metric is not writable, whatever its range", () => {
+    expect(constraintOf(ctxOf(), "battery.soc")).toMatchObject({ writable: false });
   });
 });

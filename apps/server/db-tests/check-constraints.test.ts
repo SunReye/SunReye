@@ -78,7 +78,8 @@ suite("the schema's CHECK constraints", () => {
       insert into plants (name, slug) values ('Checks', 'checks') returning id`);
     plantId = Number(plant?.id);
     const conn = await one<{ id: number }>(sql`
-      insert into connections (plant_id, name, host) values (${plantId}, 'gx', '10.0.0.2')
+      insert into connections (plant_id, name, kind, params)
+      values (${plantId}, 'gx', 'modbus', '{"host":"10.0.0.2"}'::jsonb)
       returning id`);
     connectionId = Number(conn?.id);
     const device = await one<{ id: number }>(sql`
@@ -159,29 +160,63 @@ suite("the schema's CHECK constraints", () => {
     });
   });
 
-  describe("connections.transport", () => {
-    // Mirrors `inverterConfigSchema`'s `z.enum(["tcp", "rtu-over-tcp"])`
-    // exactly. A third value reaches the Modbus client as a framing mode it
-    // does not implement, so the endpoint never polls.
-    test("rtu-over-tcp is accepted", async () => {
+  describe("connections.kind", () => {
+    // The `transport` CHECK moved into `../../../packages/db/src/connection-kinds.ts`
+    // with the column (#217): `params` is jsonb, so the framing mode is a Zod
+    // rule now. What the ENGINE still guards is the tier — a `kind` no tier
+    // exists for is a connection that is silently never polled and never
+    // subscribed, which is the same failure one level up.
+    //
+    // The list is rendered from `CONNECTION_KINDS`, so this is also the test
+    // that goes red if the constraint and the constant drift.
+    // Params the kind's Zod arm accepts, because every later read of this
+    // plant's connections parses EVERY row (`readConnections` is strict on
+    // purpose) — an `{}` left behind here would break the writer test below.
+    const OK_PARAMS: Record<string, string> = {
+      modbus:
+        '{"host":"10.0.0.3","port":502,"transport":"rtu-over-tcp","timeoutMs":2000,"pollIntervalMs":1000}',
+      mqtt: '{"brokerUrl":"mqtt://hass.lan:1883"}',
+    };
+
+    test.each(["modbus", "mqtt"])("%s is a kind a tier exists for", async (kind) => {
       expect(
         await failure(sql`
-          insert into connections (plant_id, name, host, transport)
-          values (${plantId}, 'rtu', '10.0.0.3', 'rtu-over-tcp')`),
+          insert into connections (plant_id, name, kind, params)
+          values (${plantId}, ${`ok-${kind}`}, ${kind}, ${OK_PARAMS[kind] ?? "{}"}::jsonb)`),
       ).toBe("");
     });
 
-    test("a transport the client cannot frame is refused", async () => {
-      const error = await failure(sql`
-        insert into connections (plant_id, name, host, transport)
-        values (${plantId}, 'serial', '10.0.0.4', 'rtu')`);
-      expect(error).toContain("connections_transport_check");
+    test("a kind no tier can open is refused, `http` included", async () => {
+      // The seam #217 leaves open: `http` costs an entry in the constant, a Zod
+      // arm, a tier and a CHECK rewrite — and until that migration lands the
+      // engine must refuse the row rather than store a dead connection.
+      for (const kind of ["http", "", "Modbus"]) {
+        const error = await failure(sql`
+          insert into connections (plant_id, name, kind, params)
+          values (${plantId}, 'nope', ${kind}, '{}'::jsonb)`);
+        expect(error).toContain("connections_kind_check");
+      }
     });
 
     test("an UPDATE is checked as well", async () => {
       const error = await failure(sql`
-        update connections set transport = 'udp' where id = ${connectionId}`);
-      expect(error).toContain("connections_transport_check");
+        update connections set kind = 'http' where id = ${connectionId}`);
+      expect(error).toContain("connections_kind_check");
+    });
+
+    test("params defaults to an empty document rather than null", async () => {
+      // `NOT NULL DEFAULT '{}'` so no reader is a null-check away from a crash:
+      // an empty object simply fails to parse and says which kind it was.
+      const row = await one<{ id: number; params: unknown }>(sql`
+        insert into connections (plant_id, name) values (${plantId}, 'defaulted')
+        returning id, params`);
+      expect(row?.params).toEqual({});
+      // Removed again: the row is deliberately UNPARSEABLE (an empty document
+      // satisfies no arm), and `readConnections` is strict on purpose — a
+      // database migrated ahead of the build must be loud. Every spec in this
+      // directory shares one database, so leaving it behind would break every
+      // later read of this plant's connections.
+      await db.execute(sql`delete from connections where id = ${row?.id}`);
     });
   });
 
@@ -354,11 +389,14 @@ suite("the schema's CHECK constraints", () => {
       const repo = await import("@SunReye/db/plant-repo");
       const conn = await repo.ensureConnection(db, plantId, {
         name: "gx",
-        host: "10.0.0.9",
-        port: 502,
-        transport: "tcp",
-        timeoutMs: 2000,
-        pollIntervalMs: 1000,
+        kind: "modbus",
+        params: {
+          host: "10.0.0.9",
+          port: 502,
+          transport: "tcp",
+          timeoutMs: 2000,
+          pollIntervalMs: 1000,
+        },
       });
       const device = await repo.ensureDevice(db, {
         plantId,

@@ -2,36 +2,43 @@
 	import { api } from '$lib/api';
 	import { Button } from '$lib/components/ui/button';
 	import * as m from '$lib/paraglide/messages';
-	import type { NewConnection } from './device-types';
+	import { connectionProbeAnswer, describeConnectionProbe } from './add-device-logic';
+	import { type ConnectionDraft, connectionParamsOf } from './connection-draft';
 
-	// Is the gateway there? One TCP connect to the draft's host:port. No unit id,
-	// no profile, no register read — an address can answer nothing more, and the
-	// register read lives on the device dialog, which knows what to read with.
-	let { draft }: { draft: NewConnection } = $props();
+	// Is the endpoint there? PER KIND (#217): a Modbus gateway answers a TCP
+	// connect to host:port, a broker answers an MQTT CONNECT — and a TCP connect
+	// to a broker's port succeeds for every broker that is running, credentials
+	// wrong or not, which is the exact misconfiguration the operator opened the
+	// dialog to find.
+	//
+	// No unit id, no profile, no register read: an address can answer nothing
+	// more, and the register read lives on the device dialog, which knows what to
+	// read with. The wording is decided in `./add-device-logic.ts`.
+	let { draft }: { draft: ConnectionDraft } = $props();
 
 	let probing = $state(false);
 	let outcome = $state<{ ok: boolean; message: string } | null>(null);
 
-	const host = $derived(draft.host.trim());
-	const blocked = $derived(probing || host === '');
+	const body = $derived(connectionParamsOf(draft));
+	const blocked = $derived(probing || body === null);
 	const outcomeClass = $derived(outcome?.ok ? 'text-emerald-500' : 'text-destructive');
 
-	async function probe() {
-		probing = true;
-		outcome = null;
-		const { data, error } = await api.api.connections.probe.post({
-			host,
-			port: draft.port,
-			timeoutMs: draft.timeoutMs
-		});
-		probing = false;
-		outcome = describe(data ?? { ok: false, error: error ? String(error.value) : m.conn_request_failed() });
+	/** What to say when the REQUEST failed, so there is no answer body to read. */
+	function failureText(error: { value: unknown } | null): string {
+		return error ? String(error.value) : m.conn_request_failed();
 	}
 
-	function describe(result: { ok: boolean; ms?: number; error?: string }) {
-		return result.ok
-			? { ok: true, message: m.devices_ping_ok({ ms: result.ms ?? 0 }) }
-			: { ok: false, message: m.devices_ping_failed({ error: result.error ?? '' }) };
+	async function probe() {
+		const target = body;
+		if (!target) return;
+		probing = true;
+		outcome = null;
+		const { data, error } = await api.api.connections.probe.post(target);
+		probing = false;
+		outcome = describeConnectionProbe(
+			target.kind,
+			connectionProbeAnswer(data, failureText(error))
+		);
 	}
 </script>
 

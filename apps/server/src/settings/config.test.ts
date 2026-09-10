@@ -92,12 +92,10 @@ let instances = 0;
 const freshInstance = async () => (await import(`./config?${++instances}`)) as Config;
 
 /** A saved broker config, complete with the write-only password. */
+/** A saved EXPORT config — no broker fields, which is the point of #217. */
 const savedBroker = {
-  enabled: true,
-  brokerUrl: "mqtt://hass.lan:1883",
-  username: "sunreye",
-  password: "secret",
-  topicPrefix: "sunreye",
+  connectionId: 3,
+  topicPrefix: "solar",
   haDiscoveryEnabled: true,
   haDiscoveryPrefix: "homeassistant",
 };
@@ -203,21 +201,21 @@ describe("the saved inverter connection", () => {
   });
 });
 
-describe("the MQTT bridge before anything is saved", () => {
-  test("no broker is dialled until one is configured", async () => {
+describe("the MQTT export before anything is saved", () => {
+  test("no broker is bound until one is picked", async () => {
     const { getMqttConfig } = await freshInstance();
     expect(await getMqttConfig()).toEqual({
-      enabled: false,
-      brokerUrl: "mqtt://localhost:1883",
-      username: undefined,
-      password: undefined,
+      connectionId: null,
       topicPrefix: "sunreye",
       haDiscoveryEnabled: false,
       haDiscoveryPrefix: "homeassistant",
     });
   });
 
-  test("a broker configured through env is bridged before anything is saved", async () => {
+  test("the env seeds the EXPORT half only — the broker half seeds a connection", async () => {
+    // `MQTT_BROKER_URL` / `MQTT_USERNAME` / `MQTT_PASSWORD` are carried into a
+    // `connections` row instead (#217): the endpoint is a row now, and there is
+    // no field here left to put it in. `./mqtt-broker.test.ts` owns that seed.
     Object.assign(envOverrides, {
       MQTT_ENABLED: true,
       MQTT_BROKER_URL: "mqtt://hass.lan:1883",
@@ -228,30 +226,27 @@ describe("the MQTT bridge before anything is saved", () => {
       HA_DISCOVERY_PREFIX: "ha",
     });
     const { getMqttConfig } = await freshInstance();
-    expect(await getMqttConfig()).toEqual({
-      enabled: true,
-      brokerUrl: "mqtt://hass.lan:1883",
-      username: "sunreye",
-      password: "secret",
+    const config = await getMqttConfig();
+    expect(config).toEqual({
+      connectionId: null,
       topicPrefix: "solar",
       haDiscoveryEnabled: true,
       haDiscoveryPrefix: "ha",
     });
+    expect(JSON.stringify(config)).not.toContain("secret");
     expect(writes()).toHaveLength(0);
   });
 });
 
-describe("the saved MQTT bridge", () => {
-  test("a saved broker wins over env, and the bridge itself still sees the password", async () => {
-    envOverrides.MQTT_BROKER_URL = "mqtt://from-env:1883";
+describe("the saved MQTT export", () => {
+  test("a saved export wins over env", async () => {
+    envOverrides.MQTT_TOPIC_PREFIX = "from-env";
     table.set(MQTT_KEY, savedBroker);
     const { getMqttConfig } = await freshInstance();
-    const config = await getMqttConfig();
-    expect(config.brokerUrl).toBe("mqtt://hass.lan:1883");
-    expect(config.password).toBe("secret"); // masking happens at the API edge
+    expect((await getMqttConfig()).topicPrefix).toBe("solar");
   });
 
-  test("the broker config is read once and then served from memory", async () => {
+  test("the export config is read once and then served from memory", async () => {
     table.set(MQTT_KEY, savedBroker);
     const { getMqttConfig } = await freshInstance();
     await getMqttConfig();
@@ -259,74 +254,95 @@ describe("the saved MQTT bridge", () => {
     expect(selects()).toHaveLength(1);
   });
 
-  test("a saved broker the schema rejects falls back to the env bridge", async () => {
-    envOverrides.MQTT_BROKER_URL = "mqtt://from-env:1883";
+  test("a saved export the schema rejects falls back to the env one", async () => {
+    envOverrides.MQTT_TOPIC_PREFIX = "from-env";
     table.set(MQTT_KEY, { ...savedBroker, topicPrefix: "" });
     const { getMqttConfig } = await freshInstance();
-    expect((await getMqttConfig()).brokerUrl).toBe("mqtt://from-env:1883");
+    expect((await getMqttConfig()).topicPrefix).toBe("from-env");
   });
 });
 
-describe("merging an MQTT edit", () => {
-  test("an edit that omits the password keeps the stored one, and saves nothing", async () => {
+describe("an MQTT write that does not mention the connection", () => {
+  test("keeps the bound broker — the pre-#217 form must not turn the export off", async () => {
+    // `connectionId` defaults to null and null means OFF, so a body that omits
+    // the field (the old settings form, which sends a broker URL and an
+    // `enabled` flag that no longer exist) would unbind the broker on every save
+    // with nothing in the log.
     table.set(MQTT_KEY, savedBroker);
-    const { mergeMqttConfig } = await freshInstance();
-    const merged = await mergeMqttConfig({ enabled: true, brokerUrl: "mqtt://new:1883" });
-    expect(merged.password).toBe("secret");
-    expect(merged.brokerUrl).toBe("mqtt://new:1883");
-    expect(writes()).toHaveLength(0); // the connection test must not persist
-  });
-
-  test("an empty password field means leave it alone, not clear it", async () => {
-    table.set(MQTT_KEY, savedBroker);
-    const { mergeMqttConfig } = await freshInstance();
-    expect((await mergeMqttConfig({ ...savedBroker, password: "" })).password).toBe("secret");
-  });
-
-  test("a password that is actually supplied replaces the stored one", async () => {
-    table.set(MQTT_KEY, savedBroker);
-    const { mergeMqttConfig } = await freshInstance();
-    expect((await mergeMqttConfig({ ...savedBroker, password: "rotated" })).password).toBe(
-      "rotated",
-    );
-  });
-
-  test("an edit the schema rejects is refused before any broker is dialled", async () => {
-    table.set(MQTT_KEY, savedBroker);
-    const { mergeMqttConfig } = await freshInstance();
-    await expect(mergeMqttConfig({ brokerUrl: "" })).rejects.toThrow();
-    expect(writes()).toHaveLength(0);
-  });
-});
-
-describe("saving the MQTT bridge", () => {
-  test("a broker-only edit is persisted with the password it never sent back", async () => {
-    table.set(MQTT_KEY, savedBroker);
-    const { getMqttConfig, setMqttConfig } = await freshInstance();
-    await setMqttConfig({ enabled: true, brokerUrl: "mqtt://new:1883", username: "sunreye" });
-    expect(table.get(MQTT_KEY)).toMatchObject({
-      brokerUrl: "mqtt://new:1883",
-      password: "secret",
+    const { setMqttConfig } = await freshInstance();
+    const saved = await setMqttConfig({
+      enabled: true,
+      brokerUrl: "mqtt://legacy:1883",
+      username: "u",
+      password: "p",
+      topicPrefix: "roof",
+      haDiscoveryEnabled: false,
+      haDiscoveryPrefix: "homeassistant",
     });
-    queries.length = 0;
-    expect((await getMqttConfig()).brokerUrl).toBe("mqtt://new:1883");
-    expect(selects()).toHaveLength(0); // served from the cache the save refreshed
+    expect(saved.connectionId).toBe(3);
+    expect(saved.topicPrefix).toBe("roof");
+    expect(JSON.stringify(saved)).not.toContain("legacy");
   });
 
-  test("a rejected edit changes neither the stored broker nor the live one", async () => {
+  test("turning it off EXPLICITLY still works — a present null wins", async () => {
     table.set(MQTT_KEY, savedBroker);
-    const { getMqttConfig, setMqttConfig } = await freshInstance();
-    await expect(setMqttConfig({ brokerUrl: "" })).rejects.toThrow();
+    const { setMqttConfig } = await freshInstance();
+    expect((await setMqttConfig({ connectionId: null })).connectionId).toBeNull();
+  });
+
+  test("a non-object body is merged as though it named nothing", async () => {
+    table.set(MQTT_KEY, savedBroker);
+    const { setMqttConfig } = await freshInstance();
+    expect(await setMqttConfig("nope")).toEqual(savedBroker);
+  });
+});
+
+describe("binding the export to a connection", () => {
+  test("bindMqttConnection keeps every other field", async () => {
+    // The one write the boot-time seed makes. Replacing the whole document with
+    // defaults would silently undo a customised topic prefix.
+    table.set(MQTT_KEY, savedBroker);
+    const { bindMqttConnection, getMqttConfig } = await freshInstance();
+    const bound = await bindMqttConnection(9);
+    expect(bound).toEqual({ ...savedBroker, connectionId: 9 });
+    expect((await getMqttConfig()).connectionId).toBe(9);
+  });
+
+  test("an edit the schema rejects is refused before anything is written", async () => {
+    table.set(MQTT_KEY, savedBroker);
+    const { setMqttConfig } = await freshInstance();
+    await expect(setMqttConfig({ topicPrefix: "" })).rejects.toThrow();
     expect(writes()).toHaveLength(0);
-    expect((await getMqttConfig()).brokerUrl).toBe("mqtt://hass.lan:1883");
   });
+});
 
-  test("turning the bridge off is a save, not the absence of one", async () => {
+describe("saving the MQTT export", () => {
+  test("an edit is persisted and then served from the cache the save refreshed", async () => {
     table.set(MQTT_KEY, savedBroker);
     const { getMqttConfig, setMqttConfig } = await freshInstance();
-    await setMqttConfig({ ...savedBroker, enabled: false, haDiscoveryEnabled: false });
-    expect(table.get(MQTT_KEY)).toMatchObject({ enabled: false, haDiscoveryEnabled: false });
-    expect((await getMqttConfig()).enabled).toBe(false);
+    await setMqttConfig({ connectionId: 4, topicPrefix: "roof" });
+    expect(table.get(MQTT_KEY)).toMatchObject({ connectionId: 4, topicPrefix: "roof" });
+    queries.length = 0;
+    expect((await getMqttConfig()).topicPrefix).toBe("roof");
+    expect(selects()).toHaveLength(0);
+  });
+
+  test("a rejected edit changes neither the stored export nor the live one", async () => {
+    table.set(MQTT_KEY, savedBroker);
+    const { getMqttConfig, setMqttConfig } = await freshInstance();
+    await expect(setMqttConfig({ topicPrefix: "" })).rejects.toThrow();
+    expect(writes()).toHaveLength(0);
+    expect((await getMqttConfig()).topicPrefix).toBe("solar");
+  });
+
+  test("turning the export off is a save, not the absence of one", async () => {
+    // And it is ONE field: a null connection is the only way to be off, so the
+    // two-field disagreement the retired `enabled` flag allowed is gone.
+    table.set(MQTT_KEY, savedBroker);
+    const { getMqttConfig, setMqttConfig } = await freshInstance();
+    await setMqttConfig({ ...savedBroker, connectionId: null, haDiscoveryEnabled: false });
+    expect(table.get(MQTT_KEY)).toMatchObject({ connectionId: null, haDiscoveryEnabled: false });
+    expect((await getMqttConfig()).connectionId).toBeNull();
   });
 
   // Deliberately the last test in the file: bun attributes a file's coverage to
@@ -341,15 +357,15 @@ describe("saving the MQTT bridge", () => {
     const config = await freshInstance();
 
     expect((await config.getInverterConfig()).host).toBe("192.168.1.50");
-    expect((await config.getMqttConfig()).enabled).toBe(false);
+    expect((await config.getMqttConfig()).connectionId).toBeNull();
 
-    const mqtt = await config.setMqttConfig({ enabled: true, brokerUrl: "mqtt://hass.lan:1883" });
-    expect(mqtt.enabled).toBe(true);
+    const mqtt = await config.setMqttConfig({ connectionId: 3 });
+    expect(mqtt.connectionId).toBe(3);
     expect(new Set(writes().map((w) => w.params[0]))).toEqual(new Set([MQTT_KEY]));
 
     queries.length = 0;
     expect((await config.getInverterConfig()).host).toBe("192.168.1.50");
-    expect((await config.getMqttConfig()).brokerUrl).toBe("mqtt://hass.lan:1883");
+    expect((await config.getMqttConfig()).connectionId).toBe(3);
     expect(selects()).toHaveLength(0);
   });
 });

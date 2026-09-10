@@ -8,7 +8,13 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { mergePoints, overlaySeries, resolveMetrics } from "./overlay-chart";
+import {
+  mergePoints,
+  overlayDatums,
+  overlayDelta,
+  overlaySeries,
+  resolveMetrics,
+} from "./overlay-chart";
 import type { Datum } from "./chart-axes";
 import type { ManifestMetric } from "./types";
 
@@ -197,5 +203,144 @@ describe("mergePoints", () => {
       { key: "a", points: [{ t: 1000, v: 2 }] },
     ]);
     expect(rows[0]!.a).toBe(2);
+  });
+});
+
+/**
+ * The overlay's half of #216.
+ *
+ * `entity-history-card` was moved onto `$lib/inverter/live-tail` for the single
+ * metric case, which left `overlay-chart-view` still reading `range.live` the
+ * old way — no fetch at all, the five-minute RAM buffer drawn instead. On
+ * /history's Day tab standing on today that put a two-minute custom chart at
+ * the top of a page of full-day cards.
+ *
+ * The overlay is the multi-metric case of the same two mechanisms, and both
+ * boundaries it adds are about the keys disagreeing: a delta window has to be
+ * wide enough for the LAGGING key (one answer refetched for all of them beats N
+ * windows), and the splice has to happen per key or a key whose rollup reaches
+ * further gets another key's tail written onto its own row.
+ */
+describe("overlay windows that are still filling in", () => {
+  const MINUTE = 60_000;
+  const from = new Date("2026-09-10T00:00:00.000Z");
+  const to = new Date("2026-09-11T00:00:00.000Z");
+  const window = { from, to, bucket: "minute" as const };
+  const at = (iso: string) => new Date(iso).getTime();
+
+  const row = (iso: string, avg: number) => ({ time: iso, avg, min: avg, max: avg });
+
+  describe("overlayDelta", () => {
+    test("names one window wide enough for the key that lags behind", () => {
+      const delta = overlayDelta(
+        [
+          { key: "a", rows: [row("2026-09-10T10:00:00.000Z", 1)], live: [] },
+          { key: "b", rows: [row("2026-09-10T09:30:00.000Z", 2)], live: [] },
+        ],
+        window,
+        at("2026-09-10T10:01:30.000Z"),
+        at("2026-09-10T10:00:30.000Z"),
+      );
+      // The newest bucket of the LAGGING key, not of the leading one: a window
+      // starting at 10:00 would leave b's half hour hole permanently unfilled.
+      expect(delta?.from.toISOString()).toBe("2026-09-10T09:30:00.000Z");
+      expect(delta?.to).toEqual(to);
+    });
+
+    test("is null while every key already reaches the ticking bucket", () => {
+      const rows = [row("2026-09-10T10:01:00.000Z", 1)];
+      expect(
+        overlayDelta(
+          [
+            { key: "a", rows, live: [] },
+            { key: "b", rows, live: [] },
+          ],
+          window,
+          at("2026-09-10T10:01:30.000Z"),
+          at("2026-09-10T10:00:30.000Z"),
+        ),
+      ).toBeNull();
+    });
+
+    test("is null before the clock leaves the minute the rows were synced at", () => {
+      expect(
+        overlayDelta(
+          [{ key: "a", rows: [row("2026-09-10T09:00:00.000Z", 1)], live: [] }],
+          window,
+          at("2026-09-10T10:00:10.000Z"),
+          at("2026-09-10T10:00:30.000Z"),
+        ),
+      ).toBeNull();
+    });
+
+    test("asks for the whole window when a key holds nothing yet", () => {
+      const delta = overlayDelta(
+        [
+          { key: "a", rows: [row("2026-09-10T10:00:00.000Z", 1)], live: [] },
+          { key: "b", rows: [], live: [] },
+        ],
+        window,
+        at("2026-09-10T10:01:30.000Z"),
+        at("2026-09-10T10:00:30.000Z"),
+      );
+      expect(delta?.from).toEqual(from);
+    });
+
+    test("is null with no feeds at all", () => {
+      expect(overlayDelta([], window, at("2026-09-10T10:01:30.000Z"), 0)).toBeNull();
+    });
+  });
+
+  describe("overlayDatums", () => {
+    test("merges each key's rollup rows by bucket", () => {
+      const rows = overlayDatums(
+        [
+          { key: "a", rows: [row("2026-09-10T10:00:00.000Z", 1)], live: [] },
+          { key: "b", rows: [row("2026-09-10T10:00:00.000Z", 2)], live: [] },
+        ],
+        window,
+      );
+      expect(rows).toHaveLength(1);
+      expect(rows[0]!.a).toBe(1);
+      expect(rows[0]!.b).toBe(2);
+    });
+
+    test("splices each key's own closed live buckets after its own last row", () => {
+      const base = at("2026-09-10T10:00:00.000Z");
+      const rows = overlayDatums(
+        [
+          {
+            key: "a",
+            rows: [row("2026-09-10T10:00:00.000Z", 1)],
+            // 10:01 closes (a frame lands inside 10:02), 10:02 is still running.
+            live: [
+              { t: base + MINUTE, v: 4 },
+              { t: base + 2 * MINUTE + 1000, v: 9 },
+            ],
+          },
+          // b's rollup already covers 10:01, so its 10:01 frames must not be
+          // spliced on top of the fetched answer.
+          {
+            key: "b",
+            rows: [row("2026-09-10T10:00:00.000Z", 2), row("2026-09-10T10:01:00.000Z", 5)],
+            live: [
+              { t: base + MINUTE, v: 99 },
+              { t: base + 2 * MINUTE + 1000, v: 99 },
+            ],
+          },
+        ],
+        window,
+      );
+      const minute = rows.find((d) => (d.date as Date).getTime() === base + MINUTE);
+      expect(minute?.a).toBe(4);
+      expect(minute?.b).toBe(5);
+      // The running bucket is nobody's, on either key.
+      expect(rows.some((d) => (d.date as Date).getTime() === base + 2 * MINUTE)).toBe(false);
+    });
+
+    test("is empty with no feeds and with feeds that hold nothing", () => {
+      expect(overlayDatums([], window)).toEqual([]);
+      expect(overlayDatums([{ key: "a", rows: [], live: [] }], window)).toEqual([]);
+    });
   });
 });

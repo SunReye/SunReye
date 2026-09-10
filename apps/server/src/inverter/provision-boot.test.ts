@@ -43,11 +43,14 @@ function recordingStore(fail = false) {
       return {
         id: 2,
         name: "Inverter",
-        host: "10.0.0.5",
-        port: 502,
-        transport: "tcp",
-        timeoutMs: 2000,
-        pollIntervalMs: 1000,
+        kind: "modbus",
+        params: {
+          host: "10.0.0.5",
+          port: 502,
+          transport: "tcp",
+          timeoutMs: 2000,
+          pollIntervalMs: 1000,
+        },
       };
     },
     async readDevices() {
@@ -61,6 +64,7 @@ function recordingStore(fail = false) {
         name: "Deye",
         profileId: "deye",
         role: "inverter",
+        params: {},
         // A freshly provisioned device is in service.
         arrays: [],
         tempCoefficient: -0.4,

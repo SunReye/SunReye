@@ -160,6 +160,13 @@ export interface BackendOptions {
    * has not been carried across.
    */
   migration?: Partial<MigrationStatusFixture>;
+  /**
+   * `/api/custom-charts`. Empty by default, which is why the overlay renderer
+   * went uncovered while `/history`'s cards were being tested: an overlay only
+   * mounts for a SAVED chart or a full-screen draft. One entry here puts the
+   * custom-chart section at the top of `/history` (#216).
+   */
+  customCharts?: { id: string; name: string; metrics: string[] }[];
 }
 
 /** The migration status payload, as `apps/server/src/routes/migration.ts` sends it. */
@@ -643,7 +650,7 @@ export async function mockBackend(page: Page, options: BackendOptions = {}): Pro
       if (method === "POST") {
         return json(route, { id: "chart-1", ...body() });
       }
-      return json(route, []);
+      return json(route, options.customCharts ?? []);
     }
     if (under("custom-charts")) {
       if (method === "DELETE") return json(route, { ok: true, id });
@@ -778,17 +785,11 @@ export async function mockBackend(page: Page, options: BackendOptions = {}): Pro
       if (method === "PUT") return json(route, saved(fixture.INVERTER_CONFIG, body()));
       return json(route, fixture.INVERTER_CONFIG);
     }
-    if (at("settings/mqtt/test")) return json(route, { ok: true });
-    if (at("settings/mqtt")) {
-      // The server masks the password on the way out, both on read and on save.
-      if (method === "PUT")
-        return json(route, { ...fixture.MQTT_CONFIG, ...body(), password: undefined });
-      return json(route, fixture.MQTT_CONFIG);
-    }
-    if (at("settings/evcc")) {
-      if (method === "PUT") return json(route, saved(fixture.EVCC_CONFIG, body()));
-      return json(route, fixture.EVCC_CONFIG);
-    }
+    // `/api/settings/mqtt` and `/api/settings/evcc` are deliberately NOT mocked:
+    // the routes still exist and still serve `app_settings`, but nothing in the
+    // browser reads them since the Integrations tab became integration ROWS. An
+    // absent route here is the assertion — a page that fetched one again would
+    // land in `backend.unhandled`, which every spec checks.
     if (at("settings/logging")) {
       if (method === "PUT") {
         const level = (body().level ?? null) as string | null;
@@ -813,13 +814,46 @@ export async function mockBackend(page: Page, options: BackendOptions = {}): Pro
     }
 
     // ── Devices ─────────────────────────────────────────────────────────────
+    // One probe for both kinds: a TCP connect for a gateway, an MQTT CONNECT for
+    // a broker. The answer shape is the same either way.
     if (at("connections/probe")) return json(route, { ok: true, ms: 12 });
-    if (at("connections")) return json(route, { connections: fixture.CONNECTIONS });
+    if (at("connections")) {
+      // A connection created ON ITS OWN — the only way to add a broker, which
+      // never has a device to be created alongside (#217).
+      if (method === "POST") return json(route, { id: 9, ...body() });
+      return json(route, { connections: fixture.CONNECTIONS });
+    }
     if (under("connections") && method === "PATCH") {
       const current = fixture.CONNECTIONS.find((c) => String(c.id) === id);
-      return json(route, { ...current, ...body() });
+      // A patch carries `{ name?, params? }` and never a `kind` — the server
+      // answers 409 for a different one — so the params MERGE onto the row's.
+      const { params, ...rest } = body();
+      return json(route, {
+        ...current,
+        ...rest,
+        params: { ...current?.params, ...(params as Record<string, unknown> | undefined) },
+      });
     }
     if (under("connections") && method === "DELETE")
+      return json(route, { ok: true, id: Number(id) });
+    // The integration rows, what the wizard renders step 2 from, and the rows it
+    // greys out — all admin-only on the server. `catalog` is matched FIRST:
+    // `at("integrations")` would swallow it.
+    if (at("integrations/catalog")) return json(route, fixture.INTEGRATION_CATALOG);
+    if (at("integrations")) {
+      // A coded thing bound to a connection. The wizard posts this SECOND, after
+      // the endpoint exists, so the `connectionId` it carries is a real row's.
+      if (method === "POST") return json(route, { id: 9, enabled: true, ...body() });
+      return json(route, { integrations: fixture.INTEGRATIONS });
+    }
+    if (under("integrations") && method === "PATCH") {
+      const current = fixture.INTEGRATIONS.find((i) => String(i.id) === id);
+      // A patch carries `{ enabled?, params? }` and never a `kind` or a
+      // `connectionId` — the server answers 409 for either — so it merges onto
+      // the row exactly as the service's `updateIntegration` does.
+      return json(route, { ...current, ...body() });
+    }
+    if (under("integrations") && method === "DELETE")
       return json(route, { ok: true, id: Number(id) });
     if (at("sources")) return json(route, options.sources ?? fixture.SOURCES);
     if (at("devices")) {
@@ -849,7 +883,9 @@ export async function mockBackend(page: Page, options: BackendOptions = {}): Pro
           battery: b.battery ?? null,
           profileName: String(b.profileId),
           profileKnown: true,
-          polled: false,
+          kind: "modbus",
+          state: "idle",
+          integration: null,
         });
       }
       return json(route, fixture.devices(MANIFEST));

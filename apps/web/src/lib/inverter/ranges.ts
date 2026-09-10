@@ -1,6 +1,7 @@
 // Time-range model shared by the history page and its period navigator. A
-// `HistoryRange` is either the realtime `live` buffer or a concrete `[from, to)`
-// window. A named window states its own rollup bucket — a calendar grain through
+// `HistoryRange` is a concrete `[from, to)` window, `live` when its right edge
+// is the future and the chart keeps appending to it. A named window states its
+// own rollup bucket — a calendar grain through
 // `GRAIN_BUCKET`, the `6mo` preset in its own entry — and an arbitrary span gets
 // one from `bucketForSpan`, so a 12-month chart stays cheap while an hour chart
 // stays detailed.
@@ -14,7 +15,11 @@ export type RollupBucket = "minute" | "hour" | "day";
 export type HistoryRange = {
   id: string;
   label: string;
-  /** true = realtime live-buffer mode (no rollup fetch, gliding chart). */
+  /**
+   * true = the right edge is the future, so the chart keeps appending to this
+   * window as the period fills in (`$lib/inverter/live-tail`). NOT "draw the
+   * five-minute RAM buffer instead" — see {@link historyPeriodRange}.
+   */
   live: boolean;
   from: Date;
   to: Date;
@@ -65,10 +70,10 @@ const PRESETS: readonly Preset[] = [
 /**
  * The presets the navigator offers behind its calendar button.
  *
- * Derived from {@link PRESETS} rather than written out again: the live buffer is
- * not a pickable window any more (standing on the current day IS live — see
- * {@link historyPeriodRange}), and a second hand-kept list is how the popover
- * and the resolver drift apart.
+ * Derived from {@link PRESETS} rather than written out again: the five-minute
+ * buffer is not a pickable window any more (standing on the current day is the
+ * elapsed day, still appending — see {@link historyPeriodRange}), and a second
+ * hand-kept list is how the popover and the resolver drift apart.
  */
 export const KEPT_PRESETS: readonly Preset[] = PRESETS.filter((p) => p.live !== true);
 
@@ -193,7 +198,7 @@ const GRAIN_BUCKET: Record<Grain, RollupBucket> = {
  * `$lib/cost/labels`): the model stays free of the message catalogue, and the
  * navigator renders `periodTitle` instead.
  */
-// fallow-ignore-next-line unused-export -- the period-to-window rule is the unit under test; its only in-module caller reaches it through `historyPeriodRange`'s live branch, which cannot exercise the day case at all
+// fallow-ignore-next-line unused-export -- the period-to-window rule is the unit under test; its only caller is `historyPeriodRange`, which marks the current day live and so cannot assert the never-live half
 export function historyRangeFor(
   period: Period,
   timeZone: string = browserTimeZone(),
@@ -212,32 +217,31 @@ export function historyRangeFor(
  * The window /history renders for a calendar period — what the navigator's tabs
  * and arrows resolve to.
  *
- * The current DAY is the live view. The design has no "Live" tab because
- * standing on the current period IS live, and at day granularity that has to
- * mean the same gliding chart the deleted `live` preset used to reach: this is
- * the only thing left that sets `range.live`, which four components fork their
- * whole render path on (`entity-history-card`, `overlay-chart-view`,
- * `metric-card-plot`, `chart-format#xTick`).
+ * EVERY period is its own `[start, end)`, the current one included. The window
+ * is the whole period and not the part of it that has happened, for the two
+ * reasons `costRangeFor` spells out on /statistics: a window clamped at `now`
+ * stops containing the clock one tick later, and an axis that grows a pixel a
+ * second is not a chart a reader can hold still in their eye.
  *
- * Above day grain it never is. A five-minute trailing sparkline is not what
- * "this month" means, so the current week, month and year are rollup windows
- * whose right edge is in the future — which is what lets one chart carry a
- * period that is still filling in. The navigator still prints the live pill and
- * kills the forward arrow there; that signal is `containsNow` and it is a
- * different question from which renderer draws the card.
+ * `live` marks the one whose right edge is the future — "keep appending", the
+ * only thing it means. It used to mean "substitute the five-minute RAM buffer",
+ * which is how the Day tab standing on today came to show the last two minutes
+ * of the day it claimed to be showing (issue #216): a reader had no way to see
+ * 00:00 → now at all. The appending is `$lib/inverter/live-tail`, and it grows
+ * this window rather than replacing it.
  *
- * Composed from {@link resolvePreset} and {@link historyRangeFor} rather than
- * building a third window, so "how long is the live buffer" and "how is a period
- * bucketed" each keep exactly one answer.
+ * Above day grain nothing is marked at all. A week, a month and a year fill in
+ * far too slowly for a delta fetch to be worth a timer, and the navigator's own
+ * live pill is a different question (`containsNow`, which is about the period,
+ * not the render path).
  */
 export function historyPeriodRange(
   period: Period,
   now: Date = new Date(),
   timeZone: string = browserTimeZone(),
 ): HistoryRange {
-  return period.grain === "day" && containsNow(period, now)
-    ? resolvePreset("live", now)
-    : historyRangeFor(period, timeZone);
+  const range = historyRangeFor(period, timeZone);
+  return period.grain === "day" && containsNow(period, now) ? { ...range, live: true } : range;
 }
 
 /**

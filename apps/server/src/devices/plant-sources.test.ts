@@ -10,6 +10,7 @@ const device = (id: number, role: string, extra: Partial<DeviceRecord> = {}): De
   role,
   unitId: id,
   connectionId: null,
+  params: {},
   arrays: [],
   tempCoefficient: -0.004,
   systemLoss: 0.14,

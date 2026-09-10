@@ -46,6 +46,12 @@
 
 import { type LineSpool, createLineSpool, writeArchive } from "./archive-file";
 import {
+  type ConnectionParams,
+  type ConnectionParamsMasked,
+  connectionParamsSchema,
+  maskConnectionParams,
+} from "./connection-kinds";
+import {
   type ArchiveConfig,
   type ArchivePlant,
   emptyArchiveConfig,
@@ -491,7 +497,10 @@ async function rowsOf(client: ReplayClient, query: string): Promise<Record<strin
 }
 
 /** The 2.0.0 plant graph, by name. Null when there is no plant row. */
-async function readNativePlant(client: ReplayClient): Promise<ArchivePlant | null> {
+async function readNativePlant(
+  client: ReplayClient,
+  redact: (params: ConnectionParams) => ConnectionParams | ConnectionParamsMasked,
+): Promise<ArchivePlant | null> {
   const plants = await rowsOf(
     client,
     `select id, name, slug, time_zone, latitude, longitude, label, arrays, temp_coefficient,
@@ -503,8 +512,7 @@ async function readNativePlant(client: ReplayClient): Promise<ArchivePlant | nul
   const plantId = Number(plant.id);
   const connections = await rowsOf(
     client,
-    `select id, name, host, port, transport, timeout_ms, poll_interval_ms
-     from connections where plant_id = ${plantId} order by id`,
+    `select id, name, kind, params from connections where plant_id = ${plantId} order by id`,
   );
   const byId = new Map(connections.map((c) => [String(c.id), String(c.name)]));
   const devices = await rowsOf(
@@ -543,14 +551,16 @@ async function readNativePlant(client: ReplayClient): Promise<ArchivePlant | nul
     smartMeterSince: optionalText(plant.smart_meter_since),
     biddingZone: optionalText(plant.bidding_zone),
     tariffKey: optionalText(plant.tariff_key),
-    connections: connections.map((c) => ({
-      name: String(c.name),
-      host: String(c.host),
-      port: Number(c.port),
-      transport: String(c.transport),
-      timeoutMs: Number(c.timeout_ms),
-      pollIntervalMs: Number(c.poll_interval_ms),
-    })),
+    // A `kind = 'mqtt'` row carries a BROKER PASSWORD, and this file is designed
+    // to be copied onto a USB stick (on the Home Assistant addon it lands in
+    // `/share`, which the Samba addon serves to the whole LAN). So the same rule
+    // `app_settings` obeys applies here: redacted unless the caller asked for
+    // secrets. A connection whose params no arm accepts is dropped rather than
+    // exported half-formed — the importer would refuse it anyway.
+    connections: connections.flatMap((c) => {
+      const parsed = connectionParamsSchema.safeParse({ kind: c.kind, params: c.params });
+      return parsed.success ? [{ name: String(c.name), ...redact(parsed.data) }] : [];
+    }),
     devices: devices.map((d) => ({
       slug: String(d.slug),
       name: String(d.name),
@@ -589,6 +599,25 @@ async function readNativePlant(client: ReplayClient): Promise<ArchivePlant | nul
  * The native path never unwraps: a 2.0.0 setting whose real value IS a string
  * must stay that string.
  */
+/**
+ * How a connection's params leave the database.
+ *
+ * The SAME choice `canonicaliser` makes for settings, spelled separately because
+ * a connection's secret is a TYPED field rather than a name in a free-form
+ * document: `maskConnectionParams` is the one rule for it, so a third kind with
+ * a credential cannot forget to be masked here.
+ *
+ * Masked rather than `REDACTED`-stamped, deliberately: the importer parses these
+ * against the kind's own Zod arm, and a sentinel string would either fail that
+ * parse or be written to the broker as a password. `hasPassword: false` imports
+ * as "no password was set", which is the truth about what travelled — and the
+ * settings sentinel stays the mechanism for the free-form documents.
+ */
+const connectionRedactor = (
+  request: ExportRequest,
+): ((params: ConnectionParams) => ConnectionParams | ConnectionParamsMasked) =>
+  request.includeSecrets === true ? (params) => params : maskConnectionParams;
+
 const canonicaliser = (request: ExportRequest): ((value: unknown) => unknown) => {
   const unwrap = request.source === "legacy" ? unwrapSetting : (value: unknown) => value;
   // Redaction is applied AFTER unwrapping, and it has to be: a 1.x setting is a
@@ -635,7 +664,7 @@ async function readNativeConfig(
   request: ExportRequest,
   config: ArchiveConfig,
 ): Promise<void> {
-  config.plant = await readNativePlant(client);
+  config.plant = await readNativePlant(client, connectionRedactor(request));
   config.metricKeys = request.metricKeys
     ? [...request.metricKeys]
     : (await rowsOf(client, "select key, is_counter from metric_keys order by key")).map((row) => ({

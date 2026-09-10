@@ -512,6 +512,16 @@ describe("header action placement", () => {
     expect(utilities).not.toContain("ml-auto");
   });
 
+  // #214: at 400px the devices panel's header put a status badge and an "Add
+  // device" button in the one `auto` track, and the title column was squeezed
+  // to nothing. The cluster wraps instead — inside its own column, so nothing
+  // above about its placement changes.
+  test("the cluster wraps inside its column rather than squeezing the title", () => {
+    expect(sectionActionsClass().split(/\s+/)).toContain("flex-wrap");
+    // The `gap-y` half of the cluster gap only ever does anything because of it.
+    expect(CLUSTER_GAP).toContain("gap-y-");
+  });
+
   test("an EMPTY cluster claims no row and no gap", () => {
     // Every statistics section passes an `actions` snippet (`SectionControls`)
     // that renders nothing outside customize mode, so a `hasActions` prop is

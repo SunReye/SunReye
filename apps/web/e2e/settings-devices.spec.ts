@@ -15,6 +15,16 @@ import { openPage } from "./support/open-page";
 const open = (page: Page) => openPage(page, "/#/settings/devices");
 const dialog = (page: Page) => page.getByRole("dialog");
 
+/**
+ * The "Edit connection" button of the nth group, in id order.
+ *
+ * There is more than one since #217 — the plant has a Modbus gateway AND an
+ * MQTT broker — so an unscoped `getByRole` is a strict-mode violation, not a
+ * click.
+ */
+const editConnection = (page: Page, index: number) =>
+  page.getByRole("button", { name: "Edit connection" }).nth(index);
+
 test.describe("the roster", () => {
   test("groups devices under their gateway, and the gateway is edited from its header", async ({
     page,
@@ -24,13 +34,19 @@ test.describe("the roster", () => {
     await expect(
       page.getByRole("heading", { level: 2, name: "Inverter", exact: true }),
     ).toBeVisible();
-    await expect(page.getByText(/Modbus TCP · 10\.0\.0\.5:502 · every 1 s/)).toBeVisible();
-    await expect(page.locator("[data-connection='1'] [data-device]")).toHaveCount(3);
+    // A non-breaking space between the number and its unit: a plain one broke
+    // "every 1" onto one line and "s" onto the next at phone width (#214).
+    await expect(page.getByText(/Modbus TCP · 10\.0\.0\.5:502 · every 1\u00a0s/)).toBeVisible();
+    await expect(page.locator("[data-group='gateway-1'] [data-device]")).toHaveCount(3);
 
-    await page.getByRole("button", { name: "Edit connection" }).click();
+    await editConnection(page, 0).click();
     const panel = dialog(page);
     await expect(panel.getByRole("heading", { name: "Edit connection" })).toBeVisible();
     await expect(panel.getByLabel("Host")).toHaveValue("10.0.0.5");
+    // The kind is shown, never offered: a PATCH carrying a different one is
+    // answered 409, because every device below was provisioned for this tier.
+    await expect(panel.getByText("Modbus gateway")).toBeVisible();
+    await expect(panel.locator("select#connection-kind")).toHaveCount(0);
     // Three devices are bound, so there is nothing to delete.
     await expect(panel.getByRole("button", { name: "Delete" })).toHaveCount(0);
 
@@ -111,7 +127,10 @@ test.describe("the roster", () => {
   test("lists every device with its state, retired ones included", async ({ page }) => {
     const opened = await open(page);
     const inverter = page.locator("[data-device='inverter']");
-    await expect(inverter.getByText("Polling")).toBeVisible();
+    // The polled device carries NO badge: a green pill on the one row that is
+    // working is the state nobody acts on. Every state that is not the healthy
+    // one still speaks, which the meter and the retired row below prove.
+    await expect(inverter.getByText("Polling")).toHaveCount(0);
     // The polled device cannot be retired from here.
     await expect(inverter.getByRole("button", { name: "Retire" })).toBeDisabled();
 
@@ -125,66 +144,150 @@ test.describe("the roster", () => {
     await expect(old.getByRole("button", { name: "Restore" })).toBeVisible();
     expect(opened.consoleErrors).toEqual([]);
   });
-});
 
-test.describe("adding a device", () => {
-  test("the dialog opens on the existing gateway and the submit waits for a name and a profile", async ({
-    page,
-  }) => {
-    await open(page);
-    await page.getByRole("button", { name: "Add device" }).click();
-    const panel = dialog(page);
-    await expect(panel.getByRole("heading", { name: "Add a device" })).toBeVisible();
-
-    const connection = panel.getByLabel("Connection", { exact: true });
-    await expect(connection).toHaveValue("1");
-    // Nothing to send yet: no name, no profile.
-    const submit = panel.getByRole("button", { name: "Add device" });
-    await expect(submit).toBeDisabled();
-
-    // Units 1 and 2 are taken on this gateway (the inverter and the meter), so
-    // the picker offers them disabled and defaults to the first free id — 0.
-    const unit = panel.getByLabel("Unit ID");
-    await expect(unit).toHaveValue("0");
-    await expect(unit.locator("option[value='2']")).toBeDisabled();
-    await expect(unit.locator("option[value='4']")).toBeEnabled();
-    await unit.selectOption("4");
-    await expect(unit).toHaveValue("4");
-
-    await panel.getByLabel("Name", { exact: true }).fill("Zähler Süd");
-    await expect(panel.getByText("Slug: zahler-sud")).toBeVisible();
-    await expect(submit).toBeDisabled();
-
-    await panel.getByLabel("Profile").selectOption("sungrow-sh10rt");
-    await expect(submit).toBeEnabled();
-  });
-
-  test("choosing a new connection reveals its fields, and the device lands in the list", async ({
+  /**
+   * #213 gave a coded device its own group; #217 gave it an ENDPOINT.
+   *
+   * The loadpoints are bound to the broker they arrive on, so they belong to
+   * that connection's group — there is no "Integrations" group beside it any
+   * more. Before the schema change they sat at `connection_id = null` and
+   * shared `unit_id = 0`, which the `devices(connection_id, unit_id)` unique
+   * index tolerated only because the connection was null.
+   *
+   * What #213 decided still holds on the rows themselves: no Modbus polling
+   * hint, no red profile flag, and no Edit or Retire.
+   */
+  test("loadpoints sit under their broker, the optimizer under Internal, and neither is edited here", async ({
     page,
   }) => {
     const opened = await open(page);
-    await page.getByRole("button", { name: "Add device" }).click();
+
+    // Neither is an orphan: "No connection" is for a device with no endpoint
+    // and no reason for it, and nothing in the fixture is one.
+    await expect(page.getByRole("heading", { level: 2, name: "No connection" })).toHaveCount(0);
+    // The group is the BROKER, labelled by its kind and the host it dials.
+    await expect(
+      page.getByRole("heading", { level: 2, name: "Home broker", exact: true }),
+    ).toBeVisible();
+    await expect(page.getByText("MQTT · hass.ee.lan")).toBeVisible();
+    // Both loadpoints are on the broker's card — nested UNDER the EVCC ingest
+    // that provided them rather than floating above it as siblings, which is
+    // `settings-integrations.spec.ts`'s subject. Nothing is read straight
+    // through the broker, so its own top-half group does not exist at all.
+    await expect(page.locator("[data-group='gateway-2']")).toHaveCount(0);
+    await expect(page.locator("[data-provided-by='1'] [data-device]")).toHaveCount(2);
+    // The device locator must not pick up the integration rows sharing the card.
+    await expect(page.locator("[data-integrations] [data-integration]")).toHaveCount(2);
+    await expect(page.locator("[data-group='integration-evcc']")).toHaveCount(0);
+
+    await expect(
+      page.getByRole("heading", { level: 2, name: "Internal", exact: true }),
+    ).toBeVisible();
+    await expect(page.locator("[data-group='internal'] [data-device]")).toHaveCount(1);
+
+    const carport = page.locator("[data-device='evcc-loadpoint-1']");
+    await expect(carport).toBeVisible();
+    await expect(page.locator("[data-device='evcc-loadpoint-2']")).toBeVisible();
+    await expect(carport.getByText("via MQTT")).toBeVisible();
+    // Neither the red profile flag nor the Modbus polling hint belongs on it.
+    await expect(carport.getByText(/Profile not installed/)).toHaveCount(0);
+    await expect(carport.getByText("Not polled")).toHaveCount(0);
+    // #219 narrowed the coded/virtual PATCH gate to TOPOLOGY — which gateway,
+    // which slave id, which driver — so a loadpoint can be renamed and retired
+    // like anything else. What it still cannot have is the ADDRESSING dialog,
+    // which asks for all three; before the narrowing the whole PATCH was
+    // refused and the row offered a link and nothing else.
+    await expect(carport.getByRole("button", { name: "Edit" })).toHaveCount(0);
+    await expect(carport.getByRole("button", { name: "Rename" })).toBeVisible();
+    await expect(carport.getByRole("button", { name: "Retire" })).toBeVisible();
+    // No "Configure" link on the row: what provides this loadpoint is the
+    // integration the row now hangs UNDER, whose own name is the link into it.
+    // `settings-integrations.spec.ts` is that half.
+    await expect(carport.getByRole("link", { name: "Configure" })).toHaveCount(0);
+    await expect(page.locator("[data-integration='evcc-ingest']")).toBeVisible();
+
+    const optimizer = page.locator("[data-device='optimizer']");
+    await expect(optimizer.getByText("internal", { exact: true })).toBeVisible();
+    await expect(optimizer.getByText("Optimizer", { exact: true }).first()).toBeVisible();
+    await expect(optimizer.getByRole("button", { name: "Edit" })).toHaveCount(0);
+    await expect(optimizer.getByRole("button", { name: "Retire" })).toHaveCount(0);
+    // Nothing to configure: it is this server's own control loop.
+    await expect(optimizer.getByRole("link", { name: "Configure" })).toHaveCount(0);
+    expect(opened.consoleErrors).toEqual([]);
+  });
+
+  /**
+   * #217: a broker is added HERE, on its own.
+   *
+   * `POST /api/devices`'s `connection: { create }` arm can only make a
+   * connection alongside a device, and a broker has none at creation time — its
+   * loadpoints appear after the EVCC ingest is bound to it and its first message
+   * lands. Without a way to add one, the whole feature is unreachable from the
+   * UI.
+   */
+  test("an MQTT broker is added from the panel, and its fields replace the Modbus ones", async ({
+    page,
+  }) => {
+    const opened = await open(page);
+    await page.getByRole("button", { name: "Add connection" }).click();
     const panel = dialog(page);
+    await expect(panel.getByRole("heading", { name: "Add a connection" })).toBeVisible();
 
-    await expect(panel.getByLabel("Host")).toHaveCount(0);
-    await panel.getByLabel("Connection", { exact: true }).selectOption("new");
-    await expect(panel.getByLabel("Connection name")).toHaveValue("Gateway 2");
+    // Opens on Modbus, and the save waits for a name.
+    const save = panel.getByRole("button", { name: "Save" });
     await expect(panel.getByLabel("Host")).toBeVisible();
+    await expect(save).toBeDisabled();
 
-    await panel.getByLabel("Role").selectOption("meter");
-    await panel.getByLabel("Name", { exact: true }).fill("Keller");
-    await panel.getByLabel("Profile").selectOption("sungrow-sh10rt");
-    const submit = panel.getByRole("button", { name: "Add device" });
-    // A new connection with no host is not sendable.
-    await expect(submit).toBeDisabled();
-    await panel.getByLabel("Host").fill("10.0.0.9");
-    await expect(submit).toBeEnabled();
+    await panel.getByLabel("Kind").selectOption("mqtt");
+    // The kind switch swaps the field SET, it does not add to it.
+    await expect(panel.getByLabel("Host")).toHaveCount(0);
+    await expect(panel.getByLabel("Broker URL")).toBeVisible();
+    await expect(panel.getByLabel("Client ID")).toBeVisible();
 
-    await submit.click();
+    await panel.getByLabel("Connection name").fill("Cellar broker");
+    await expect(save).toBeDisabled(); // no broker URL yet
+    await panel.getByLabel("Broker URL").fill("mqtt://10.0.0.4:1883");
+    await expect(save).toBeEnabled();
+
+    // The probe is the broker's, not a port knock: it dials an MQTT CONNECT.
+    await panel.getByRole("button", { name: "Test connection" }).click();
+    await expect(panel.getByText(/Broker reachable — connected in 12 ms/)).toBeVisible();
+
+    await save.click();
     await expect(panel).toHaveCount(0);
-    // The list reloads from the mock, which serves its fixed roster; the
-    // toast is what proves the POST answered with the echoed device.
-    await expect(page.getByText("Keller added.")).toBeVisible();
+    await expect(page.getByText("Cellar broker added.")).toBeVisible();
+    expect(opened.backend.unhandled).toEqual([]);
+    expect(opened.consoleErrors).toEqual([]);
+  });
+});
+
+/**
+ * ADDING is a route now, not a dialog.
+ *
+ * "Add device" used to open a modal that could only ever add a MODBUS device —
+ * contractually, since its body required a `unitId` and a `profileId` — so a
+ * broker's integrations had no entry point at all. It is a link to the four-step
+ * wizard at `/settings/devices/add`, because four questions is more than a modal
+ * holds at 400px and the browser's Back has to mean "the previous screen".
+ *
+ * What the wizard then does is its own spec's subject. What belongs HERE is the
+ * one thing the panel still owns: that its Add reaches it. The dialog is still
+ * mounted below for EDITING, which "editing a device…" above covers.
+ */
+test.describe("adding", () => {
+  test("the panel's Add is a link to the wizard, and lands on it", async ({ page }) => {
+    const opened = await open(page);
+    const add = page.getByRole("link", { name: "Add device" });
+    // A LINK, not a button: a button here would need its own navigation call,
+    // and under the hash router a raw one escapes the ingress prefix and 404s.
+    await expect(add).toBeVisible();
+    await expect(page.getByRole("button", { name: "Add device" })).toHaveCount(0);
+
+    await add.click();
+    await expect(page).toHaveURL(/#\/settings\/devices\/add$/);
+    await expect(page.getByRole("heading", { name: "Add to this plant" })).toBeVisible();
+    // No dialog opened on the way: the wizard IS the screen.
+    await expect(dialog(page)).toHaveCount(0);
     expect(opened.backend.unhandled).toEqual([]);
     expect(opened.consoleErrors).toEqual([]);
   });

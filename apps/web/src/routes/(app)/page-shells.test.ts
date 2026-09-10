@@ -41,7 +41,6 @@ const PANELS = [
   "devices",
   "display",
   "logs",
-  "mqtt",
   "plant",
   "prices",
   "profiles",
@@ -71,6 +70,19 @@ const EXPECTED: Record<string, Shape> = {
   "settings/+page.svelte": "redirect",
   // The pre-2.0 inverter panel; its two halves live in Devices and Plant now.
   "settings/inverter/+page.svelte": "redirect",
+  // There is no list of integrations of its own: a connection is the thing that
+  // fails, so "what is configured" stays on Devices, grouped by endpoint. The
+  // bare path only redirects there, so a truncated URL lands on the list.
+  "settings/integrations/+page.svelte": "redirect",
+  // ONE integration's page, reached from its row — its live status, its
+  // settings and the devices it provides. A settings panel like any other, so
+  // the settings layout owns its shell.
+  "settings/integrations/[id]/+page.svelte": "nested",
+  // The add wizard is a ROUTE, not a dialog: four questions is more than a
+  // modal holds at 400px, Back has to mean the previous step, and a half-filled
+  // wizard should survive a reload. It is still a settings panel, so the
+  // settings layout owns its shell like any other.
+  "settings/devices/add/+page.svelte": "nested",
   // Settings panels render INSIDE the settings layout's shell. A panel that
   // grew a shell of its own would double the gutter and cap the measure twice.
   ...Object.fromEntries(PANELS.map((p) => [`settings/${p}/+page.svelte`, "nested"] as const)),

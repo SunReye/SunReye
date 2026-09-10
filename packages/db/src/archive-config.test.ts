@@ -106,7 +106,10 @@ describe("synthesiseSpine — the 1.x path", () => {
     expect(plant.connections).toHaveLength(1);
     expect(plant.devices).toHaveLength(1);
     const [connection] = plant.connections;
-    expect(connection).toMatchObject({ host: "192.168.1.50", port: 502, transport: "tcp" });
+    expect(connection).toMatchObject({
+      kind: "modbus",
+      params: { host: "192.168.1.50", port: 502, transport: "tcp" },
+    });
     const [device] = plant.devices;
     expect(device).toMatchObject({
       slug: "deye-sg05lp3",
@@ -137,7 +140,7 @@ describe("synthesiseSpine — the 1.x path", () => {
       ["plant", JSON.stringify({ timeZone: "Europe/Berlin" })],
     ]);
     const plant = synthesiseSpine({ legacy: true, settings: legacy, profileId: null });
-    expect(plant.connections[0]).toMatchObject({ host: "10.0.0.9", port: 8899 });
+    expect(plant.connections[0]?.params).toMatchObject({ host: "10.0.0.9", port: 8899 });
     expect(plant.devices[0]).toMatchObject({ slug: "deye-sg05lp3", unitId: 3 });
   });
 
@@ -165,7 +168,7 @@ describe("synthesiseSpine — the 1.x path", () => {
       ["inverter", { host: "h", port: "not a port", unitId: null }],
     ]);
     const plant = synthesiseSpine({ settings: odd, profileId: "p" });
-    expect(plant.connections[0]?.port).toBe(502);
+    expect(plant.connections[0]?.kind === "modbus" && plant.connections[0]?.params.port).toBe(502);
     expect(plant.devices[0]?.unitId).toBe(0);
   });
 
@@ -404,5 +407,91 @@ describe("redactSecrets", () => {
 
   test("a zero or false value under a safe name survives", () => {
     expect(redactSecrets({ port: 0, enabled: false })).toEqual({ port: 0, enabled: false });
+  });
+});
+
+describe("a connection in an archive, since the kind arrived (#217)", () => {
+  test("the kind and its params are carried through", () => {
+    const parsed = parseArchiveConfig({
+      plant: {
+        name: "P",
+        slug: "p",
+        timeZone: "auto",
+        connections: [
+          {
+            name: "Home broker",
+            kind: "mqtt",
+            params: { brokerUrl: "mqtt://hass.lan:1883", username: "u" },
+          },
+        ],
+        devices: [],
+      },
+    });
+    expect(parsed.plant?.connections[0]).toEqual({
+      name: "Home broker",
+      kind: "mqtt",
+      params: { brokerUrl: "mqtt://hass.lan:1883", username: "u" },
+    });
+  });
+
+  test("a 2.0.x archive's FLAT Modbus fields still import, as the modbus arm", () => {
+    // The archive is a transport between installs and a restore path off a USB
+    // stick. A file written before #217 has `host`/`port`/`transport` at the top
+    // level and no `kind`, and refusing it would make yesterday's backup
+    // unrestorable.
+    const parsed = parseArchiveConfig({
+      plant: {
+        name: "P",
+        slug: "p",
+        timeZone: "auto",
+        connections: [
+          { name: "GX", host: "10.0.0.5", port: 8899, transport: "rtu-over-tcp", timeoutMs: 3000 },
+        ],
+        devices: [],
+      },
+    });
+    expect(parsed.plant?.connections[0]).toEqual({
+      name: "GX",
+      kind: "modbus",
+      params: {
+        host: "10.0.0.5",
+        port: 8899,
+        transport: "rtu-over-tcp",
+        timeoutMs: 3000,
+        pollIntervalMs: 1000,
+      },
+    });
+  });
+
+  test("a kind this build cannot open is dropped, not stored as a dead row", () => {
+    // The import writes into a table whose CHECK admits two kinds. A row the
+    // engine would refuse has to be dropped here, or the whole restore fails on
+    // one connection nobody can use.
+    const parsed = parseArchiveConfig({
+      plant: {
+        name: "P",
+        slug: "p",
+        timeZone: "auto",
+        connections: [{ name: "Future", kind: "http", params: { host: "h", port: 80 } }],
+        devices: [],
+      },
+    });
+    expect(parsed.plant?.connections).toEqual([]);
+  });
+
+  test("params the kind's own schema refuses are dropped too", () => {
+    const parsed = parseArchiveConfig({
+      plant: {
+        name: "P",
+        slug: "p",
+        timeZone: "auto",
+        connections: [
+          { name: "Broken", kind: "mqtt", params: {} },
+          { name: "Nameless", kind: "modbus", params: { host: "  " } },
+        ],
+        devices: [],
+      },
+    });
+    expect(parsed.plant?.connections).toEqual([]);
   });
 });

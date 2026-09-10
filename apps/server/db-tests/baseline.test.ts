@@ -249,11 +249,18 @@ suite("the 2.0.0 baseline schema", () => {
       // Invariant C1 as a schema-wide statement: a cascade from any table into
       // devices / metric_keys / plants would let one delete renumber history's
       // meaning. `c` is CASCADE, `n` is SET NULL, `d` is SET DEFAULT.
+      //
+      // NO EXCEPTIONS, and `integrations` (0007) is the one that asked for one:
+      // it is configuration, nothing is keyed by it, and cascading it with its
+      // plant would lose nothing. It RESTRICTs anyway — an invariant with a
+      // named exception is a list, and the second entry is always easier to
+      // argue than the first.
       const bad = await rows<{ conname: string; confdeltype: string }>(sql`
         select conname, confdeltype from pg_constraint
         where contype = 'f'
           and confrelid in ('devices'::regclass, 'metric_keys'::regclass, 'plants'::regclass)
-          and confdeltype in ('c', 'n', 'd')`);
+          and confdeltype in ('c', 'n', 'd')
+        order by conname`);
       expect(bad).toEqual([]);
     });
 

@@ -1,20 +1,28 @@
 <script lang="ts">
-	import * as m from '$lib/paraglide/messages';
+	import { resolve } from '$lib/resolve';
 	import StatusBadge from '../status-badge.svelte';
+	import { deviceBadge } from './device-badge';
 	import type { DeviceView } from './device-types';
 
-	// The one badge a device carries: retired, polled, or stored-but-not-polled.
-	// The last one explains itself on hover, because "not polled" reads as a
-	// fault and is a release limit.
+	// The one badge a device carries, or NOTHING — the device being read has no
+	// badge at all, because a row with nothing to say is a row that is fine.
+	// Which badge is `device-badge.ts`'s decision (and its test's); what is left
+	// here is whether it is a link, a hover hint or neither.
 	let { device }: { device: DeviceView } = $props();
+
+	const badge = $derived(deviceBadge(device));
 </script>
 
-{#if device.retiredAt !== null}
-	<StatusBadge label={m.devices_badge_retired()} />
-{:else if device.polled}
-	<StatusBadge ok label={m.devices_badge_polling()} />
-{:else}
-	<span title={m.devices_not_polled_hint()}>
-		<StatusBadge label={m.devices_badge_not_polled()} />
+{#if !badge}
+	<!-- The healthy state. Nothing to report, so nothing is rendered. -->
+{:else if badge.href}
+	<a href={resolve(badge.href)} class="rounded-md">
+		<StatusBadge ok={badge.ok} label={badge.label} />
+	</a>
+{:else if badge.hint}
+	<span title={badge.hint}>
+		<StatusBadge ok={badge.ok} label={badge.label} />
 	</span>
+{:else}
+	<StatusBadge ok={badge.ok} label={badge.label} />
 {/if}

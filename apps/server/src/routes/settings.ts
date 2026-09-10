@@ -1,8 +1,10 @@
 import { inverterConfigSchema } from "@SunReye/db/inverter-config";
-import { maskMqttConfig } from "@SunReye/db/mqtt-config";
+
 import { spotPriceConfigSchema } from "@SunReye/db/spot-price-config";
 import { Elysia, t } from "elysia";
-import { getMqttConfig, mergeMqttConfig, setMqttConfig } from "../settings/config";
+import { z } from "zod";
+import { getMqttConfig, setMqttConfig } from "../settings/config";
+import { readBroker } from "../settings/mqtt-broker-instance";
 import { applyConnectionSave, readConnectionSettings } from "../inverter/endpoint";
 import { getAccess, setAccess } from "../settings/access-settings";
 import { getChartPalette, setChartPalette } from "../settings/chart-palette-settings";
@@ -38,6 +40,12 @@ const adminWrite = { requireAdmin: true, body: t.Unknown() } as const;
 // persists and hot-applies via the runtime controller; no restart needed. Every
 // write funnels through `attempt` so a rejected body becomes a 400 with its
 // reason instead of a 500 — see ./write-attempt.
+/**
+ * The broker-test body. A connection ID, because what an operator tests is a
+ * CONNECTION — not the export document, which no longer holds a broker.
+ */
+const brokerTestSchema = z.object({ connectionId: z.number().int().positive() });
+
 export const settingsRoutes = new Elysia({ name: "settings-routes" })
   .use(adminGuard)
   // Tariff config for the web app: read the active economic model, or replace
@@ -150,31 +158,36 @@ export const settingsRoutes = new Elysia({ name: "settings-routes" })
     }, "Invalid config");
     return tested.ok ? tested.value : status(400, { error: tested.error });
   })
-  // MQTT config: the password is masked on read and preserved on write when the
-  // client omits it (write-only secret).
-  .get(
-    "/api/settings/mqtt",
-    {
-      requireAdmin: true,
-    },
-    async () => maskMqttConfig(await getMqttConfig()),
-  )
+  // The Home Assistant EXPORT config. No masking any more: since #217 the
+  // broker — the only secret this ever carried — is a `kind = 'mqtt'`
+  // connection, and `/api/connections` masks its password. What is left here is
+  // which connection to publish to, under which prefix.
+  .get("/api/settings/mqtt", { requireAdmin: true }, () => getMqttConfig())
   .put("/api/settings/mqtt", adminWrite, async ({ body, status }) => {
     const saved = await attempt(async () => {
       const config = await setMqttConfig(body);
       await runtime.applyMqttConfig(config);
-      // The EVCC ingest dials the same broker on its own client, so a broker
-      // change must rebuild it too.
+      // The EVCC ingest runs its OWN client on its OWN connection now, so a
+      // change here no longer touches it. It is still rebuilt, because the
+      // connection this export was re-pointed to may be the one EVCC is on and
+      // its params may have moved with it.
       await rebuildEvcc();
-      return maskMqttConfig(config);
+      return config;
     }, "Invalid config");
     return saved.ok ? saved.value : status(400, { error: saved.error });
   })
+  // Dial the broker a connection names, without disturbing the live bridge.
+  // The body is `{ connectionId }`: the operator tests a CONNECTION, which they
+  // may not have bound to the export yet.
   .post("/api/settings/mqtt/test", adminWrite, async ({ body, status }) => {
-    const tested = await attempt(
-      async () => runtime.testMqtt(await mergeMqttConfig(body)),
-      "Invalid config",
-    );
+    const tested = await attempt(async () => {
+      const { connectionId } = brokerTestSchema.parse(body);
+      const broker = await readBroker(connectionId);
+      if (!broker) {
+        return { ok: false as const, error: `connection ${connectionId} is not an MQTT broker` };
+      }
+      return runtime.testMqtt(broker);
+    }, "Invalid config");
     return tested.ok ? tested.value : status(400, { error: tested.error });
   })
   // Live connection health (inverter + MQTT) for the settings dashboard.

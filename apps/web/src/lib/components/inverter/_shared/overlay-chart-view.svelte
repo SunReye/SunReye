@@ -10,19 +10,25 @@
 	// full-screened card, that no server has seen) render through exactly the
 	// same path as a saved chart. Two renderers would have been two things to
 	// keep in step.
+	import { untrack } from 'svelte';
 	import { fade } from 'svelte/transition';
 	import * as msg from '$lib/paraglide/messages';
 	import ChartLegend from '$lib/components/inverter/chart-legend.svelte';
 	import CustomChartPlot from '$lib/components/inverter/_shared/custom-chart-plot.svelte';
-	import CustomLiveChart from '$lib/components/inverter/custom-live-chart.svelte';
 	import ChartStateView from '$lib/components/inverter/_shared/chart-state-view.svelte';
 	import { api } from '$lib/api';
 	import { inverter } from '$lib/inverter/store.svelte';
 	import { tooltipLabel, xTick } from '$lib/inverter/chart-format';
 	import { resolveAxes, seriesConfig } from '$lib/components/inverter/_shared/chart-series';
-	import { mergePoints, overlaySeries, resolveMetrics } from '$lib/inverter/overlay-chart';
+	import {
+		overlayDatums,
+		overlayDelta,
+		overlaySeries,
+		resolveMetrics
+	} from '$lib/inverter/overlay-chart';
+	import { fetchWindow, mergeRollup, type RollupRow } from '$lib/inverter/live-tail';
+	import { liveClock } from '$lib/time/live-clock.svelte';
 	import { CHART_BOX } from '$lib/layout/tokens';
-	import type { Datum } from '$lib/inverter/chart-axes';
 	import type { HistoryRange } from '$lib/inverter/ranges';
 
 	let {
@@ -64,46 +70,120 @@
 	const config = $derived(seriesConfig(series));
 	const legendItems = $derived(series.map((s) => ({ key: s.key, label: s.label, color: s.color })));
 
-	// ── Historical mode: one rollup fetch per metric, merged by bucket. ──────────
-	type Row = { time: string; avg: number };
-	let historical = $state<Datum[]>([]);
+	// ── The window's rows, one fetch per metric, merged by bucket ────────────────
+	// EVERY range is fetched, the current day included. It used to be skipped when
+	// `range.live` and the gliding five-minute `CustomLiveChart` drawn instead —
+	// so on /history's Day tab standing on today, the custom-chart section at the
+	// top of the page showed the last two minutes above a grid of full-day cards
+	// (#216). `live` now means only "the right edge is the future, keep
+	// appending", the same as it does for a single-metric card.
+	/** Fetched rows per metric key — the keys are asked for together. */
+	let rows = $state<Record<string, RollupRow[]>>({});
 	let loading = $state(true);
+	/** The clock minute those rows were last brought up to. */
+	let syncedTick = 0;
+	const span = $derived(fetchWindow(range));
 
-	$effect(() => {
-		if (range.live) return;
-		const keys = [...metrics];
-		const query = { from: range.from.toISOString(), to: range.to.toISOString(), bucket: range.bucket };
-		let cancelled = false;
-		loading = true;
-		Promise.all(
+	const rollupQuery = (metric: string, from: Date, to: Date) => ({
+		metric,
+		from: from.toISOString(),
+		to: to.toISOString(),
+		bucket: range.bucket,
+		limit: 12000
+	});
+
+	async function fetchRows(
+		keys: readonly string[],
+		from: Date,
+		to: Date
+	): Promise<Record<string, RollupRow[]>> {
+		const answers = await Promise.all(
 			keys.map((metric) =>
 				api.api.history.rollup
-					.get({ query: { metric, ...query, limit: 12000 } })
-					.then(({ data }) => ({
-						key: metric,
-						points: ((data ?? []) as Row[]).map((r) => ({ t: new Date(r.time).getTime(), v: r.avg }))
-					}))
+					.get({ query: rollupQuery(metric, from, to) })
+					.then(({ data }) => [metric, (data ?? []) as RollupRow[]] as const)
 			)
-		).then((results) => {
+		);
+		return Object.fromEntries(answers);
+	}
+
+	$effect(() => {
+		const keys = [...metrics];
+		const from = range.from;
+		const to = range.to;
+		// Untracked: bookkeeping for the delta effect below. A tracked read of the
+		// clock here would refetch the whole window every minute.
+		syncedTick = untrack(() => liveClock.now.getTime());
+		let cancelled = false;
+		loading = true;
+		void fetchRows(keys, from, to).then((answer) => {
 			if (cancelled) return;
-			historical = mergePoints(results);
+			rows = answer;
 			loading = false;
+			syncedTick = liveClock.now.getTime();
 		});
 		return () => {
 			cancelled = true;
 		};
 	});
 
-	// ── Live mode: merge the store's in-memory buffers (shared timestamps). ──────
-	const live = $derived.by(() =>
-		range.live ? mergePoints(metrics.map((key) => ({ key, points: inverter.series(key) }))) : []
-	);
+	// ── Keeping a still-running window up to date ────────────────────────────────
+	// One delta query per tick, sized for the key that lags furthest behind
+	// (`overlayDelta`), merged into each key's rows. `liveClock` is the TICK and
+	// never the window: re-deriving `range` from it is the PR #60 refetch loop —
+	// see the comment on `range` in /history's `+page.svelte`. `rows` is read
+	// through `untrack` because this effect writes it, and `syncedTick` gates the
+	// first run so landing the initial fetch cannot trigger a second request.
+	const appending = $derived(range.live && !loading);
 
-	const chartData = $derived(range.live ? live : historical);
+	$effect(() => {
+		if (!appending) return;
+		const tick = liveClock.now.getTime();
+		const held = untrack(() => rows);
+		const keys = [...metrics];
+		const delta = overlayDelta(
+			keys.map((key) => ({ key, rows: held[key] ?? [], live: [] })),
+			span,
+			tick,
+			syncedTick
+		);
+		if (!delta) return;
+		syncedTick = tick;
+		let cancelled = false;
+		void fetchRows(keys, delta.from, delta.to).then((fresh) => {
+			if (cancelled) return;
+			rows = Object.fromEntries(
+				keys.map((key) => [key, mergeRollup(held[key] ?? [], fresh[key] ?? [])])
+			);
+		});
+		return () => {
+			cancelled = true;
+		};
+	});
+
+	// Live frames past each key's last fetched bucket, so the lines reach the
+	// present between deltas even while the server's continuous aggregate lags.
+	// Keyed on the minute tick and on `rows`, with the buffers read UNTRACKED:
+	// re-deriving a day of points on every ~1 Hz frame is the cost the lazy-mount
+	// queue exists to avoid.
+	const chartData = $derived.by(() => {
+		const held = rows;
+		if (range.live) void liveClock.now;
+		return untrack(() =>
+			overlayDatums(
+				metrics.map((key) => ({
+					key,
+					rows: held[key] ?? [],
+					live: range.live ? inverter.series(key) : []
+				})),
+				span
+			)
+		);
+	});
 
 	// Pin the x-axis to the whole selected window so a partial day (e.g. "Today"
 	// before the day is over) still spans the full range instead of stretching to
-	// fit only the data present. Live mode uses its own gliding window.
+	// fit only the data present.
 	const xDomain = $derived<[Date, Date]>([range.from, range.to]);
 
 	const labelFmt = (v: unknown) => tooltipLabel(range, v);
@@ -113,15 +193,12 @@
 	// [0,1] scale so a small-magnitude metric (efficiency) isn't drowned by a large
 	// one (power). Single-unit charts keep the plain filled area on one axis.
 	//
-	// Resolved from the data actually DRAWN, not from `historical`. In live mode
-	// `historical` is empty, so axes resolved from it are empty too — inert only
-	// because the plot checks `live` before it reads them. A draft is built live
-	// and saved into the historical path, so it would be the first thing to walk
-	// into that.
+	// Resolved from the data actually DRAWN. There is one data path now, so this
+	// can no longer be handed an empty list that the plot happens not to read.
 	const axes = $derived(resolveAxes(chartData, series));
 
-	// A historical query is in flight (live mode streams instead of fetching).
-	const fetching = $derived(!range.live && loading);
+	/** The window's query is in flight. */
+	const fetching = $derived(loading);
 	const plottable = $derived(resolved.length > 0 && !fetching && chartData.length > 0);
 	const emptyMessage = $derived(
 		resolved.length === 0 ? msg.chart_none_available() : msg.chart_no_data()
@@ -137,26 +214,19 @@
 <div class="{height} w-full">
 	{#if plottable}
 		<div class="h-full w-full" in:fade={{ duration: 300 }}>
-			<!-- The live form glides its own window through a transform inside a
-			     ChartClipPath, so it takes neither the zoom controller nor the
-			     reset control — a second transform composes badly. -->
-			{#if range.live}
-				<CustomLiveChart data={chartData} {series} {config} labelFormatter={labelFmt} />
-			{:else}
-				<CustomChartPlot
-					data={chartData}
-					{series}
-					{config}
-					{axes}
-					{xDomain}
-					labelFormatter={labelFmt}
-					{xTickFormat}
-					bucket={range.bucket}
-					{onZoom}
-					{onResetZoom}
-					{zoomed}
-				/>
-			{/if}
+			<CustomChartPlot
+				data={chartData}
+				{series}
+				{config}
+				{axes}
+				{xDomain}
+				labelFormatter={labelFmt}
+				{xTickFormat}
+				bucket={range.bucket}
+				{onZoom}
+				{onResetZoom}
+				{zoomed}
+			/>
 		</div>
 	{:else}
 		<ChartStateView loading={fetching} message={emptyMessage} />

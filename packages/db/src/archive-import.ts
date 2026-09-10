@@ -430,18 +430,9 @@ async function upsertConnections(
         ? num(
             await scalar(
               client,
-              `insert into connections (plant_id, name, host, port, transport, timeout_ms,
-                                        poll_interval_ms)
-               values ($1,$2,$3,$4,$5,$6,$7) returning id`,
-              [
-                plantId,
-                connection.name,
-                connection.host,
-                connection.port,
-                connection.transport,
-                connection.timeoutMs,
-                connection.pollIntervalMs,
-              ],
+              `insert into connections (plant_id, name, kind, params)
+               values ($1,$2,$3,$4::jsonb) returning id`,
+              [plantId, connection.name, connection.kind, JSON.stringify(connection.params)],
             ),
           )
         : num(existing);
@@ -633,6 +624,18 @@ async function knownMetricKeys(client: ReplayClient): Promise<Set<string>> {
 }
 
 /**
+ * Each tier's staging table, as a name that has been checked as an identifier.
+ *
+ * All three staging steps — create, index, drop — walk the same tiers and need
+ * the same resolved name, and all three had written that walk out. The
+ * `assertIdentifier` is what keeps an interpolated table name safe, so it
+ * belongs to the resolution rather than to each caller.
+ */
+function stagingTables(tiers: readonly string[]): string[] {
+  return tiers.map((tier) => assertIdentifier(STAGE_TABLE[tier as Exclude<SourceTier, "raw">]));
+}
+
+/**
  * Create the staging tables, dropped first so a previous run's rows can never be
  * replayed a second time.
  *
@@ -651,8 +654,7 @@ async function knownMetricKeys(client: ReplayClient): Promise<Set<string>> {
  */
 async function createStaging(client: ReplayClient, tiers: readonly string[]): Promise<void> {
   const columns = stageColumns();
-  for (const tier of tiers) {
-    const table = assertIdentifier(STAGE_TABLE[tier as Exclude<SourceTier, "raw">]);
+  for (const table of stagingTables(tiers)) {
     await client.query(`drop table if exists ${table}`);
     await client.query(
       `create unlogged table ${table} (
@@ -668,17 +670,14 @@ async function createStaging(client: ReplayClient, tiers: readonly string[]): Pr
 /** The index the replay's per-day, per-source read needs. Created AFTER the load. */
 async function indexStaging(client: ReplayClient, tiers: readonly string[]): Promise<void> {
   const columns = stageColumns();
-  for (const tier of tiers) {
-    const table = assertIdentifier(STAGE_TABLE[tier as Exclude<SourceTier, "raw">]);
+  for (const table of stagingTables(tiers)) {
     await client.query(`create index on ${table} (${columns.sourceId}, ${columns.bucket})`);
   }
 }
 
 async function dropStaging(client: ReplayClient, tiers: readonly string[]): Promise<void> {
-  for (const tier of tiers) {
-    await client.query(
-      `drop table if exists ${assertIdentifier(STAGE_TABLE[tier as Exclude<SourceTier, "raw">])}`,
-    );
+  for (const table of stagingTables(tiers)) {
+    await client.query(`drop table if exists ${table}`);
   }
 }
 

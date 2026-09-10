@@ -53,6 +53,7 @@ import { join } from "node:path";
 import { type CounterRow, energyOf } from "../packages/db/src/counter-energy";
 import { type BucketTier, bucketToInterval } from "../packages/db/src/replay";
 import { bunSqlClient } from "../packages/db/src/replay-run";
+import { recreateDatabase } from "./lib/recreate-database";
 import {
   type EnergyRow,
   type GroundTruth,
@@ -532,13 +533,7 @@ export async function recreateTarget(
 ): Promise<string> {
   const url = urlFor(o, o.targetDb);
   assertRehearsalTarget(url);
-  const admin = io.connectBriefly(urlFor(o, "postgres"));
-  try {
-    await admin.unsafe(`DROP DATABASE IF EXISTS ${o.targetDb} WITH (FORCE)`);
-    await admin.unsafe(`CREATE DATABASE ${o.targetDb}`);
-  } finally {
-    await admin.end();
-  }
+  await recreateDatabase(io.connectBriefly(urlFor(o, "postgres")), o.targetDb);
   io.log(`recreated ${o.targetDb} (2.0.0 target)`);
   return url;
 }

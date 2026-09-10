@@ -30,11 +30,13 @@ const shell = await source(LIVE, "plant.svelte.ts");
 const panel = await source(AUTOMATIONS, "peak-shaving-status.svelte");
 const tiles = await source(AUTOMATIONS, "stat-tiles.svelte");
 const siteFields = await source(SETTINGS, "plant-site-fields.svelte");
+const integrationLive = await source(SETTINGS, "integrations/integration-live.svelte");
 
 const CONSUMERS: [string, string][] = [
   ["peak-shaving-status", panel],
   ["stat-tiles", tiles],
   ["plant-site-fields", siteFields],
+  ["integration-live", integrationLive],
 ];
 
 describe("the reactive shell is plugged into the real feeds", () => {
@@ -103,6 +105,44 @@ describe("the plant form's export-cap field reads the sell register from its own
 
   test("the solar-sell register comes from livePlant", () => {
     expect(siteFields).toContain("livePlant.read('setting.solar_sell.max_power')");
+  });
+});
+
+/**
+ * The integration detail page's readings.
+ *
+ * The temptation this block is written against is specific and strong: the page
+ * lists an EVCC ingest's loadpoints by name, so a per-loadpoint charge power
+ * looks like the obvious thing to put beside each one — and it is reachable, in
+ * `$lib/evcc/store.svelte.ts`, one import away. Ownership names PLANT-WIDE ids
+ * only, so that number would be a second producer of a quantity `evcc` already
+ * owns, arriving on a different cadence, rendered as if it were this row's. The
+ * page shows the owned total instead, labelled as the integration's.
+ */
+describe("the integration page reads its live values from their owner", () => {
+  test("it leases the feeds for as long as it is mounted", () => {
+    expect(integrationLive).toMatch(/\$effect\(\(\)\s*=>\s*livePlant\.lease\(\)\)/);
+  });
+
+  // Through the store, and through the reading table that decides WHICH ids an
+  // integration may claim — never a literal id typed into the template.
+  test("every value goes through livePlant, off the reading table", () => {
+    expect(integrationLive).toContain("livePlant.read(reading.id)");
+    expect(integrationLive).toContain("integrationReadings(integration)");
+  });
+
+  // The store is the only way in. An import of the EVCC store here is the
+  // per-loadpoint shortcut, and it is the whole shape of the original bug.
+  test("it never reaches past the store into the EVCC feed for a per-device number", () => {
+    expect(integrationLive).not.toContain("$lib/evcc/store");
+    expect(integrationLive).not.toContain("loadpoints");
+  });
+
+  // `formatReading` is handed the whole Reading, so a number that stopped being
+  // refreshed wears its marker instead of sitting there looking current.
+  test("the whole Reading reaches the formatter, freshness included", () => {
+    expect(integrationLive).toContain("formatReading(");
+    expect(integrationLive).toContain("m.live_reading_stale()");
   });
 });
 

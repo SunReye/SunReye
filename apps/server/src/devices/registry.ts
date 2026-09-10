@@ -60,6 +60,22 @@ export interface RegistryLogger {
 export interface CodedDeclaration {
   /** Provenance for {@link DeviceInstance.integration} — never branched on. */
   integration: string;
+  /**
+   * The name the settings roster shows for a device whose profile is code.
+   * There is no profile row to read one from, and a nameless coded device is
+   * reported as an uninstalled profile (#213).
+   */
+  name?: string;
+  /**
+   * Whether an operator may create one of these by hand — the add contract's
+   * coded arm (`./device-admin.ts`) reads it, and nothing at runtime does.
+   *
+   * ABSENT MEANS NO. A coded declaration is auto-provisioned until it says
+   * otherwise: the optimizer writes its own row and never wants a second, so
+   * the safe reading of a declaration that never considered the question is
+   * "the server owns this row".
+   */
+  addable?: boolean;
   metrics: readonly DeviceMetric[];
   declares?: ProfileDeclarations;
 }

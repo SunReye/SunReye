@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { type Locale, overwriteGetLocale } from "$lib/paraglide/runtime";
-import { dayKeyDate, weekdayShortDate } from "./date";
+import { dateTime, dayKeyDate, weekdayShortDate } from "./date";
 
 // Same arrangement as format.test.ts: the locale strategies (localStorage,
 // Accept-Language, …) have nothing to read outside a browser, so drive the
@@ -64,5 +64,48 @@ describe("dayKeyDate", () => {
     // The two are always used together: `weekdayShortDate(dayKeyDate(key))`.
     useLocale("en");
     expect(weekdayShortDate(dayKeyDate("2026-08-02"))).toBe("Sun, Aug 2");
+  });
+});
+
+/**
+ * A moment, not a day.
+ *
+ * "Last connected" and "last error at" are the two facts that make a connection
+ * status actionable — "it dropped four seconds ago" and "it dropped in March"
+ * are different problems — and a date with no clock time cannot tell them
+ * apart. Everything else in this file formats a calendar day, so this is its
+ * own export rather than an option on one of them.
+ */
+describe("dateTime", () => {
+  test("carries the clock time, not only the day", () => {
+    const at = new Date(2026, 8, 10, 14, 5);
+    const shown = dateTime(at);
+    expect(shown).toContain("14:05");
+    expect(shown).toContain("Sep");
+  });
+
+  test("follows the UI locale, not the runtime default", () => {
+    const at = new Date(2026, 8, 10, 14, 5);
+    useLocale("de");
+    expect(dateTime(at)).toBe("10. Sept. 2026, 14:05");
+    useLocale("en");
+    expect(dateTime(at)).toBe("Sep 10, 2026, 14:05");
+  });
+
+  // The two callers hand it an ISO string straight off the wire, and a null one
+  // is a real state — a connection that has never opened, an integration that
+  // has never failed. Formatting `null` as "Invalid Date" is worse than saying
+  // nothing.
+  test("an absent moment formats as nothing at all", () => {
+    expect(dateTime(null)).toBeNull();
+  });
+
+  test("an unparseable moment formats as nothing rather than 'Invalid Date'", () => {
+    expect(dateTime("not a date")).toBeNull();
+  });
+
+  test("an ISO string is accepted as readily as a Date", () => {
+    useLocale("en");
+    expect(dateTime(new Date(2026, 8, 10, 14, 5).toISOString())).toBe("Sep 10, 2026, 14:05");
   });
 });

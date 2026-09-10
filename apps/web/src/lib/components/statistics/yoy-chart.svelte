@@ -2,11 +2,9 @@
 	// Canvas render context like every other chart added to the statistics page:
 	// grouped bars over twelve months are cheap today, but the SVG context is
 	// what froze weak devices once the band count grew (see price-track-chart).
-	import { BarChart } from 'layerchart/canvas';
-	import type { ChartState } from 'layerchart';
 	import * as Chart from '$lib/components/ui/chart';
 	import ChartLegend from '$lib/components/inverter/chart-legend.svelte';
-	import SeriesTooltip from './series-tooltip.svelte';
+	import GroupedBarPlot from './grouped-bar-plot.svelte';
 	import { groupedBarProps, seriesConfig } from '$lib/components/inverter/_shared/chart-series';
 	import { canvasHighlight } from '$lib/components/inverter/_shared/canvas-highlight.svelte';
 	import { periodKeyLabel } from '$lib/cost/ranges';
@@ -74,32 +72,20 @@
 	const zoom = chartZoom();
 </script>
 
-<!-- The chart context, taken where it is reachable. LayerChart's canvas
-     wrappers do not re-export `context` as bindable, and the reset control has
-     to reach the transform state to undo a gesture. `belowContext` renders
-     outside the drawing layer, so capturing here adds no mark of its own. -->
-{#snippet belowContext({ context }: { context: ChartState<YoyRow> })}{zoom.capture(context)}{/snippet}
-
 <div class="flex min-w-0 flex-col gap-3" bind:this={highlight.el} bind:clientWidth={plotWidth}>
 	<!-- The plot's own box: the same `relative` ancestor the zoom chips were
 	     already positioned against, now also the anchor for full screen in the
 	     opposite corner. The height stays the container's (`CHART_BOX`). -->
 	<PlotFrame {zoom}>
 		<Chart.Container {config} class="{CHART_BOX} w-full min-w-0">
-			<BarChart
+			<GroupedBarPlot
 				{data}
-				x="label"
 				{series}
-				seriesLayout="group"
-				{...groupedBarProps(data.length, plotWidth)}
-				highlight={highlight.props}
-				{...zoom.props}
-				{belowContext}
-			>
-				{#snippet tooltip()}
-					<SeriesTooltip {format} />
-				{/snippet}
-			</BarChart>
+				{format}
+				{highlight}
+				{zoom}
+				layout={groupedBarProps(data.length, plotWidth)}
+			/>
 		</Chart.Container>
 	</PlotFrame>
 	<ChartLegend items={series} />

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
 
 import type {
   DeviceTransport,
@@ -80,7 +80,16 @@ class FakeModbusRTU {
 }
 
 const realModbus = await import("modbus-serial");
+// By value, before the mock: a namespace is live, so `() => realModbus` after
+// this line hands back the fake rather than the driver.
+const realModbusExports = { ...realModbus };
 mock.module("modbus-serial", () => ({ ...realModbus, default: FakeModbusRTU }));
+
+// The fake is permanent until it is handed back, and it would be the transport
+// any later suite got instead of the driver.
+afterAll(() => {
+  mock.module("modbus-serial", () => ({ ...realModbusExports }));
+});
 
 const { ModbusInverter } = await import("./driver");
 // Planning lives in the Modbus transport now; these tests are unchanged.

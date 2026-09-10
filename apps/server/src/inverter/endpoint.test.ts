@@ -15,6 +15,7 @@
 
 import { describe, expect, test } from "bun:test";
 
+import type { ModbusParams } from "@SunReye/db/connection-kinds";
 import type { ConnectionRecord, DeviceRecord, PlantRecord } from "@SunReye/db/plant-repo";
 
 import {
@@ -51,19 +52,36 @@ const PLANT: PlantRecord = {
   smartMeterSince: null,
 };
 
-const connection = (over: Partial<ConnectionRecord> = {}): ConnectionRecord => ({
-  id: 10,
+/**
+ * A Modbus endpoint row. The overrides name PARAMS, not columns: since #217 the
+ * addressing lives in `params` under `kind`, and every call site here is about
+ * an address.
+ */
+const connection = (params: Partial<ModbusParams> = {}, id = 10): ConnectionRecord => ({
+  id,
   name: "Inverter",
-  host: "10.0.0.5",
-  port: 502,
-  transport: "tcp",
-  timeoutMs: 2000,
-  pollIntervalMs: 1000,
-  ...over,
+  kind: "modbus",
+  params: {
+    host: "10.0.0.5",
+    port: 502,
+    transport: "tcp",
+    timeoutMs: 2000,
+    pollIntervalMs: 1000,
+    ...params,
+  },
+});
+
+/** A broker row — a connection an inverter has no way to poll. */
+const brokerConnection = (id = 11): ConnectionRecord => ({
+  id,
+  name: "Home broker",
+  kind: "mqtt",
+  params: { brokerUrl: "mqtt://hass.lan:1883" },
 });
 
 const device = (over: Partial<DeviceRecord> = {}): DeviceRecord => ({
   id: 20,
+  params: {},
   slug: "inverter",
   name: "Deye",
   profileId: "deye-sun-12k",
@@ -110,7 +128,10 @@ function memoryStore(
     },
     async ensureConnection(_plantId, settings) {
       calls.push("ensureConnection");
-      const existing = state.connections[0];
+      // WITHIN THE KIND, as the repository does: "the plant's endpoint" is only
+      // well defined per kind now, and a double that edited the first row of any
+      // kind would hide the very defect `readConnection(plantId, kind)` fixes.
+      const existing = state.connections.find((c) => c.kind === settings.kind);
       if (existing) {
         Object.assign(existing, settings);
         return existing;
@@ -213,7 +234,10 @@ describe("endpointOf", () => {
   test("clamps the stored cadence and narrows the stored framing", () => {
     const resolved = endpointOf(
       device(),
-      connection({ pollIntervalMs: 10, transport: "nonsense" }),
+      // `transport` is a jsonb field now, so a value the client has no branch
+      // for can only arrive from a hand-edited row or a database migrated ahead
+      // of the build — which is exactly what `transportOf` narrows.
+      connection({ pollIntervalMs: 10, transport: "nonsense" as ModbusParams["transport"] }),
     );
     expect(resolved.pollIntervalMs).toBe(1000);
     expect(resolved.transport).toBe("tcp");
@@ -237,7 +261,7 @@ describe("selectPollTargets", () => {
         device({ id: 20, connectionId: 10 }),
         device({ id: 21, slug: "inverter-2", connectionId: 11, unitId: 2 }),
       ],
-      [connection({ id: 10, host: "10.0.0.5" }), connection({ id: 11, host: "10.0.0.6" })],
+      [connection({ host: "10.0.0.5" }, 10), connection({ host: "10.0.0.6" }, 11)],
     );
     expect(targets.map((t) => t.endpoint.host)).toEqual(["10.0.0.5", "10.0.0.6"]);
     expect(targets.map((t) => t.endpoint.unitId)).toEqual([1, 2]);
@@ -297,7 +321,15 @@ describe("selectPollTargets", () => {
   });
 
   test("a device pointing at an endpoint that is gone is offline, not mis-addressed", () => {
-    const targets = selectPollTargets([device({ connectionId: 99 })], [connection({ id: 10 })]);
+    const targets = selectPollTargets([device({ connectionId: 99 })], [connection({}, 10)]);
+    expect(targets[0]?.endpoint.host).toBe("");
+  });
+
+  test("an inverter bound to a BROKER is offline, not mis-addressed", () => {
+    // A connection of the wrong kind is as unpollable as none at all: there is
+    // no host on a broker row, and a poll loop that took `params.brokerUrl` for
+    // an address would dial nothing and report it as a timeout forever.
+    const targets = selectPollTargets([device({ connectionId: 11 })], [brokerConnection(11)]);
     expect(targets[0]?.endpoint.host).toBe("");
   });
 
@@ -476,17 +508,46 @@ const typed = (over: Record<string, unknown> = {}) => ({
   ...over,
 });
 
+describe("saveConnectionSettings across kinds", () => {
+  test("a plant whose only connection is a BROKER gets a new Modbus row, not an overwritten broker", async () => {
+    // The failure this pins: `ensureConnection` used to edit the plant's FIRST
+    // row. With a broker at the lower id, saving the inverter form would write a
+    // host and a port over it — disconnecting the export and every loadpoint
+    // bound to it, with nothing in the log.
+    const { store, state } = memoryStore({ connections: [brokerConnection(11)] });
+    await saveConnectionSettings(typed(), deps(store));
+    expect(state.connections.length).toBe(2);
+    const broker = state.connections.find((c) => c.kind === "mqtt");
+    expect(broker?.params).toEqual({ brokerUrl: "mqtt://hass.lan:1883" });
+    const gateway = state.connections.find((c) => c.kind === "modbus");
+    expect(gateway?.params as ModbusParams | undefined).toMatchObject({ host: "10.0.0.9" });
+  });
+
+  test("what the form shows ignores a broker row entirely", async () => {
+    // `readConnectionSettings` answers the legacy document when the plant has no
+    // MODBUS endpoint, even though it has a connection.
+    const { store } = memoryStore({ connections: [brokerConnection(11)] });
+    const fallback = legacyConfig();
+    expect(await readConnectionSettings({ store, logger, legacy: async () => fallback })).toEqual(
+      fallback,
+    );
+  });
+});
+
 describe("saveConnectionSettings", () => {
   test("writes the operator's endpoint straight into the connections row", async () => {
     const { store, state } = memoryStore({ devices: [device()], connections: [connection()] });
     const saved = await saveConnectionSettings(typed(), deps(store));
     expect(state.connections[0]).toMatchObject({
       id: 10, // EDITED in place: the device's binding must survive the save.
-      host: "10.0.0.9",
-      port: 8899,
-      transport: "rtu-over-tcp",
-      timeoutMs: 3000,
-      pollIntervalMs: 2000,
+      kind: "modbus",
+      params: {
+        host: "10.0.0.9",
+        port: 8899,
+        transport: "rtu-over-tcp",
+        timeoutMs: 3000,
+        pollIntervalMs: 2000,
+      },
     });
     expect(saved.host).toBe("10.0.0.9");
   });
@@ -512,7 +573,7 @@ describe("saveConnectionSettings", () => {
   test("a device already bound is never re-pointed by a save", async () => {
     const { store, state, calls } = memoryStore({
       devices: [device({ connectionId: 10 })],
-      connections: [connection({ id: 10 })],
+      connections: [connection({}, 10)],
     });
     await saveConnectionSettings(typed(), deps(store));
     expect(state.devices[0]?.connectionId).toBe(10);
@@ -541,11 +602,11 @@ describe("saveConnectionSettings", () => {
     // to the row whose address the operator can put back.
     const { store, state } = memoryStore({
       devices: [device({ connectionId: 10 })],
-      connections: [connection({ id: 10 })],
+      connections: [connection({}, 10)],
     });
     await saveConnectionSettings(typed({ host: "" }), deps(store));
     expect(state.connections[0]?.id).toBe(10);
-    expect(state.connections[0]?.host).toBe("");
+    expect((state.connections[0]?.params as ModbusParams | undefined)?.host).toBe("");
     expect(state.devices[0]?.connectionId).toBe(10);
   });
 
@@ -567,7 +628,7 @@ describe("saveConnectionSettings", () => {
     // id. The address is still the operator's answer and must be kept.
     const { store, state } = memoryStore({ devices: [] });
     const saved = await saveConnectionSettings(typed(), deps(store));
-    expect(state.connections[0]?.host).toBe("10.0.0.9");
+    expect((state.connections[0]?.params as ModbusParams | undefined)?.host).toBe("10.0.0.9");
     expect(saved.unitId).toBe(3);
   });
 
@@ -619,7 +680,7 @@ describe("applyConnectionSave", () => {
     };
     await applyConnectionSave(typed(), recorded.effects, { store: wrapped, logger });
     expect(recorded.order).toEqual(["write", "provision", "reload"]);
-    expect(state.connections[0]?.host).toBe("10.0.0.9");
+    expect((state.connections[0]?.params as ModbusParams | undefined)?.host).toBe("10.0.0.9");
   });
 
   test("provisioning is seeded with what was STORED, not with the raw body", async () => {
@@ -709,11 +770,14 @@ describe("dbEndpointStore", () => {
       {
         id: "3",
         name: "Inverter",
-        host: "10.0.0.5",
-        port: "502",
-        transport: "tcp",
-        timeoutMs: "2000",
-        pollIntervalMs: "1000",
+        kind: "modbus",
+        params: {
+          host: "10.0.0.5",
+          port: 502,
+          transport: "tcp",
+          timeoutMs: 2000,
+          pollIntervalMs: 1000,
+        },
       },
     ]);
     const wired = dbEndpointStore(client);
@@ -721,11 +785,14 @@ describe("dbEndpointStore", () => {
       (
         await wired.ensureConnection(1, {
           name: "Inverter",
-          host: "10.0.0.5",
-          port: 502,
-          transport: "tcp",
-          timeoutMs: 2000,
-          pollIntervalMs: 1000,
+          kind: "modbus",
+          params: {
+            host: "10.0.0.5",
+            port: 502,
+            transport: "tcp",
+            timeoutMs: 2000,
+            pollIntervalMs: 1000,
+          },
         })
       ).id,
     ).toBe(3);

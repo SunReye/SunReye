@@ -1,46 +1,46 @@
 <script lang="ts">
-	import { Button } from '$lib/components/ui/button';
-	import * as m from '$lib/paraglide/messages';
+	import { type DeviceActionId, actionsFor } from './device-actions-logic';
+	import DeviceActionButton from './device-action-button.svelte';
 	import type { DeviceView } from './device-types';
 
-	// A retired device offers Restore; one in service offers Edit (the dialog:
-	// name, gateway, unit id, profile) and Retire. The polled device cannot be
-	// retired from here — that would silence the plant; re-point it instead.
+	// The controls a row offers. WHICH ones, and in what order, is decided in
+	// `./device-actions-logic.ts` — a rule with boundaries (a retired row, the
+	// polled row, an integration with no page of its own) belongs somewhere a
+	// test can reach it, not in an `{#if}` chain. Each control renders itself.
+	//
+	// The split that matters: EDIT opens the addressing dialog (gateway, unit id,
+	// profile) and only a Modbus row has any of those; RENAME opens the name-only
+	// dialog, which is exactly what the narrowed server gate allows on a coded or
+	// a virtual row (#219). Before that narrowing those rows offered a link and
+	// nothing else — an EVCC loadpoint could not be renamed at all.
 	let {
 		device,
 		busy,
 		onEdit,
+		onRename,
 		onRetire,
 		onRestore
 	}: {
 		device: DeviceView;
 		busy: boolean;
 		onEdit: (device: DeviceView) => void;
+		onRename: (device: DeviceView) => void;
 		onRetire: (device: DeviceView) => void;
 		onRestore: (device: DeviceView) => void;
 	} = $props();
 
-	const retireBlocked = $derived(busy || device.polled);
+	const RUN: Record<DeviceActionId, (device: DeviceView) => void> = {
+		restore: onRestore,
+		edit: onEdit,
+		rename: onRename,
+		retire: onRetire
+	};
+
+	const actions = $derived(actionsFor(device));
 </script>
 
-<div class="flex shrink-0 items-center gap-2">
-	{#if device.retiredAt !== null}
-		<Button variant="outline" size="sm" class="flex-1 sm:flex-none" disabled={busy} onclick={() => onRestore(device)}>
-			{m.devices_action_restore()}
-		</Button>
-	{:else}
-		<Button variant="outline" size="sm" class="flex-1 sm:flex-none" disabled={busy} onclick={() => onEdit(device)}>
-			{m.devices_action_edit()}
-		</Button>
-		<Button
-			variant="ghost"
-			size="sm"
-			class="flex-1 sm:flex-none"
-			disabled={retireBlocked}
-			title={device.polled ? m.devices_not_polled_hint() : undefined}
-			onclick={() => onRetire(device)}
-		>
-			{m.devices_action_retire()}
-		</Button>
-	{/if}
+<div class="flex shrink-0 flex-wrap items-center gap-2">
+	{#each actions as action (action.id)}
+		<DeviceActionButton {action} {busy} onclick={() => RUN[action.id](device)} />
+	{/each}
 </div>

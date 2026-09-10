@@ -229,7 +229,6 @@ const MIGRATED_BESPOKE_CARDS = [
 
 const MIGRATED_EMPTY_STATES = [
   "lib/components/settings/inverter-form.svelte",
-  "lib/components/settings/mqtt-form.svelte",
   "lib/components/settings/tariff-form.svelte",
   "routes/(app)/statistics/statistics-body.svelte",
 ];
@@ -262,6 +261,10 @@ const HEADINGS_NOT_YET_MIGRATED = [
   // three statistics groups that share one section header. A Section here would
   // put a second card inside the first.
   "lib/components/inverter/energy-split-block.svelte",
+  // The integrations half of a connection's card, under its devices: the card
+  // is the CONNECTION, and this labels the second of the two things hanging off
+  // it. A Section here would frame a second card inside the gateway's own.
+  "lib/components/settings/devices/integration-list.svelte",
   "lib/components/inverter/tou-slot-editor.svelte",
   "routes/(app)/statistics/price-whatif.svelte",
   "routes/(app)/statistics/records-section.svelte",

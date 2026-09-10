@@ -705,18 +705,135 @@ export const INVERTER_CONFIG = {
   pollIntervalMs: 1000,
 };
 
-/** `packages/db/src/mqtt-config.ts` → `maskMqttConfig(mqttConfigSchema.parse({}))`. */
-export const MQTT_CONFIG = {
-  enabled: false,
-  brokerUrl: "mqtt://localhost:1883",
-  topicPrefix: "sunreye",
-  haDiscoveryEnabled: false,
-  haDiscoveryPrefix: "homeassistant",
-  hasPassword: false,
-};
+/**
+ * `GET /api/integrations` — `IntegrationView[]`
+ * (`apps/server/src/integrations/integration-admin.ts`).
+ *
+ * TWO rows on the broker (id 2), so the devices page has both halves of a card
+ * to render and the two are told apart by more than position: the EVCC ingest,
+ * enabled and provisioning the loadpoints below, and the Home Assistant export,
+ * DISABLED — an integration's row is its configuration and `enabled` is the off
+ * switch, so a fixture with only enabled rows never renders the off state.
+ *
+ * `label`, `addable` and `multiInstance` are derived by the server per response
+ * from the catalog entry the kind resolves to; they are not stored.
+ *
+ * `status` is OBSERVED from the broker pool (#221) and is deliberately
+ * DIFFERENT on the two rows: the ingest is connected and has a healed failure
+ * behind it, the export has never opened at all. Both had to be renderable —
+ * "connected", "never connected" and a last error are three separate things the
+ * detail page says, and a fixture where every row is healthy proves one of them.
+ */
+export const INTEGRATIONS = [
+  {
+    id: 1,
+    kind: "evcc-ingest",
+    connectionId: 2,
+    enabled: true,
+    params: { topicRoot: "evcc" },
+    label: "EVCC",
+    addable: true,
+    multiInstance: true,
+    status: {
+      connected: true,
+      lastError: "ECONNREFUSED hass.ee.lan:1883",
+      lastErrorAt: "2026-09-09T21:14:00.000Z",
+      lastConnectedAt: "2026-09-10T06:02:00.000Z",
+    },
+  },
+  {
+    id: 2,
+    kind: "ha-export",
+    connectionId: 2,
+    enabled: false,
+    params: {
+      topicPrefix: "sunreye",
+      haDiscoveryEnabled: false,
+      haDiscoveryPrefix: "homeassistant",
+    },
+    label: "Home Assistant export",
+    addable: true,
+    multiInstance: false,
+    status: {
+      connected: false,
+      lastError: null,
+      lastErrorAt: null,
+      lastConnectedAt: null,
+    },
+  },
+];
 
-/** `packages/db/src/evcc-config.ts` → `defaultEvcc`. */
-export const EVCC_CONFIG = { enabled: false, topicRoot: "evcc", subtractFromHome: false };
+/**
+ * `GET /api/integrations/catalog` — `catalogViewFor` per connection kind
+ * (`apps/server/src/devices/integration-catalog.ts`), with each entry's zod
+ * schema already DESCRIBED as field rows.
+ *
+ * The wizard renders this, and so does the edit dialog: the fields an
+ * integration's settings step asks for are the catalog's, never the web app's,
+ * which is what keeps the form from offering what the route then refuses. Only
+ * the three fields the specs actually type into are described.
+ */
+export const INTEGRATION_CATALOG = {
+  modbus: [
+    {
+      id: "modbus-device",
+      label: "Modbus device",
+      via: "profile",
+      addable: true,
+      multiInstance: true,
+      fields: [
+        {
+          name: "role",
+          type: "enum",
+          required: true,
+          options: ["inverter", "meter", "battery", "sensor"],
+        },
+        { name: "profileId", type: "string", required: true },
+        { name: "unitId", type: "number", required: true, min: 1, max: 247 },
+      ],
+    },
+  ],
+  mqtt: [
+    {
+      id: "evcc-ingest",
+      label: "EVCC",
+      via: "coded",
+      addable: true,
+      multiInstance: true,
+      fields: [
+        { name: "topicRoot", type: "string", required: false, default: "evcc", min: 1, max: 120 },
+      ],
+    },
+    {
+      id: "ha-export",
+      label: "Home Assistant export",
+      via: "coded",
+      addable: true,
+      multiInstance: false,
+      fields: [
+        { name: "topicPrefix", type: "string", required: false, default: "sunreye", min: 1 },
+        { name: "haDiscoveryEnabled", type: "boolean", required: false, default: false },
+        {
+          name: "haDiscoveryPrefix",
+          type: "string",
+          required: false,
+          default: "homeassistant",
+          min: 1,
+        },
+      ],
+    },
+  ],
+  internal: [
+    {
+      id: "sunreye.optimizer",
+      label: "SunReye Optimizer",
+      via: "coded",
+      addable: false,
+      multiInstance: false,
+      fields: [],
+    },
+  ],
+};
 
 /** `apps/server/src/settings/logging-settings.ts` — config plus resolved level. */
 export const LOGGING = { level: null, effective: "info", default: "info" };
@@ -843,26 +960,51 @@ export function profiles(manifest: FixtureManifest) {
   ];
 }
 
-/** `GET /api/connections` — the plant's one gateway, matching `INVERTER_CONFIG`. */
+/**
+ * `GET /api/connections` — `ConnectionView[]`
+ * (`{ id, name } & ConnectionParamsMasked`): the plant's Modbus gateway,
+ * matching `INVERTER_CONFIG`, and the MQTT broker its EVCC loadpoints are bound
+ * to.
+ *
+ * Both kinds, because #217 is the release where a connection stopped being "a
+ * Modbus endpoint": the five addressing columns became a `params` document
+ * under a `kind`, and the broker credential is masked to `hasPassword` on the
+ * way out exactly as `app_settings.mqtt`'s was.
+ */
 export const CONNECTIONS = [
   {
     id: 1,
     name: "Inverter",
-    host: INVERTER_CONFIG.host,
-    port: INVERTER_CONFIG.port,
-    transport: INVERTER_CONFIG.transport,
-    timeoutMs: INVERTER_CONFIG.timeoutMs,
-    pollIntervalMs: INVERTER_CONFIG.pollIntervalMs,
+    kind: "modbus",
+    params: {
+      host: INVERTER_CONFIG.host,
+      port: INVERTER_CONFIG.port,
+      transport: INVERTER_CONFIG.transport,
+      timeoutMs: INVERTER_CONFIG.timeoutMs,
+      pollIntervalMs: INVERTER_CONFIG.pollIntervalMs,
+    },
+  },
+  {
+    id: 2,
+    name: "Home broker",
+    kind: "mqtt",
+    params: { brokerUrl: "mqtt://hass.ee.lan:1883", username: "mqtt", hasPassword: true },
   },
 ];
 
 /**
  * `GET /api/devices` — `DeviceRoster` (`apps/server/src/devices/device-admin.ts`):
- * the polled inverter, a stored-but-unpolled meter, and a retired one, so the
- * three badge states all render.
+ * the polled inverter, a stored-but-unpolled meter, a retired one, TWO EVCC
+ * loadpoints on the broker connection, and the optimizer — so all five states,
+ * and the gateway / broker / internal groups, render.
+ *
+ * The last two are the shape #213 was about: both are endpoint-less, and a
+ * roster that only ever held Modbus rows reported them as Modbus hardware that
+ * is not answering.
  */
 export function devices(manifest: FixtureManifest) {
   const connection = CONNECTIONS[0]!;
+  const brokerConnection = CONNECTIONS[1]!;
   return {
     connections: CONNECTIONS,
     devices: [
@@ -882,7 +1024,9 @@ export function devices(manifest: FixtureManifest) {
         battery: { usableKwh: 10, maxChargeW: 5000, minSoc: 10, nominalV: 51.2 },
         profileName: manifest.name,
         profileKnown: true,
-        polled: true,
+        kind: "modbus",
+        state: "polling",
+        integration: null,
       },
       {
         id: 2,
@@ -900,7 +1044,9 @@ export function devices(manifest: FixtureManifest) {
         battery: null,
         profileName: "Sungrow SH10RT",
         profileKnown: true,
-        polled: false,
+        kind: "modbus",
+        state: "idle",
+        integration: null,
       },
       {
         id: 3,
@@ -918,7 +1064,74 @@ export function devices(manifest: FixtureManifest) {
         battery: null,
         profileName: null,
         profileKnown: false,
-        polled: false,
+        kind: "modbus",
+        state: "retired",
+        integration: null,
+      },
+      // TWO loadpoints on ONE broker (#217). They used to sit at
+      // `connectionId: null` sharing `unitId: 0`, which the
+      // `devices(connection_id, unit_id)` unique index tolerated only because
+      // the connection was null; bound to their broker, the index holds and the
+      // unit id means what it always should have — the loadpoint's index.
+      {
+        id: 4,
+        slug: "evcc-loadpoint-1",
+        name: "Carport",
+        profileId: "evcc-loadpoint",
+        role: "charger",
+        unitId: 0,
+        connectionId: brokerConnection.id,
+        retiredAt: null,
+        connection: brokerConnection,
+        arrays: [],
+        tempCoefficient: -0.4,
+        systemLoss: 14,
+        battery: null,
+        profileName: "EVCC loadpoint",
+        profileKnown: true,
+        kind: "coded",
+        state: "provided",
+        integration: "evcc",
+      },
+      {
+        id: 6,
+        slug: "evcc-loadpoint-2",
+        name: "Garage",
+        profileId: "evcc-loadpoint",
+        role: "charger",
+        unitId: 1,
+        connectionId: brokerConnection.id,
+        retiredAt: null,
+        connection: brokerConnection,
+        arrays: [],
+        tempCoefficient: -0.4,
+        systemLoss: 14,
+        battery: null,
+        profileName: "EVCC loadpoint",
+        profileKnown: true,
+        kind: "coded",
+        state: "provided",
+        integration: "evcc",
+      },
+      {
+        id: 5,
+        slug: "optimizer",
+        name: "Optimizer",
+        profileId: "sunreye.optimizer",
+        role: "optimizer",
+        unitId: 0,
+        connectionId: null,
+        retiredAt: null,
+        connection: null,
+        arrays: [],
+        tempCoefficient: -0.4,
+        systemLoss: 14,
+        battery: null,
+        profileName: "SunReye Optimizer",
+        profileKnown: true,
+        kind: "virtual",
+        state: "virtual",
+        integration: "optimizer",
       },
     ],
   };

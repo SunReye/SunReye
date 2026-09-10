@@ -7,7 +7,7 @@ import * as m from "$lib/paraglide/messages";
  * This table used to live inside `settings-nav.svelte`, which meant the nav rail
  * was the only thing that knew a panel existed. The shell header therefore had
  * nothing to read and `settings/+layout.svelte` set a single static "Settings"
- * for all fourteen panels — the header said the same word on /settings/mqtt,
+ * for all fourteen panels — the header said the same word on /settings/plant,
  * /settings/users and /settings/danger. Lifting the table out gives the header
  * the same source the rail renders, so a new panel gets its title by existing
  * rather than by someone remembering a second call site.
@@ -57,6 +57,22 @@ export const SETTINGS_ROUTES: readonly SettingsRoute[] = [
     subtitleKey: "settings_sub_inverter",
     hidden: true,
   },
+  // Integrations are ROWS on the Devices panel — a connection is the thing that
+  // fails, so "what is on this endpoint" stays grouped by connection. What lives
+  // here is one integration's own page (`/settings/integrations/:id`), reached
+  // by clicking its row: its live status, its settings, and the devices it
+  // provides. It is a drilldown, not a panel, so it is kept OUT of the rail for
+  // the same reason `/settings/inverter` is — a rail link would have nowhere to
+  // point, since no single integration is "the" one. `/settings/integrations`
+  // itself only redirects back to the list it came from.
+  {
+    id: "integrations",
+    href: "/settings/integrations",
+    group: "connection",
+    titleKey: "settings_tab_integrations",
+    subtitleKey: "settings_sub_integrations",
+    hidden: true,
+  },
   {
     id: "plant",
     href: "/settings/plant",
@@ -70,13 +86,6 @@ export const SETTINGS_ROUTES: readonly SettingsRoute[] = [
     group: "connection",
     titleKey: "settings_tab_sensors",
     subtitleKey: "settings_sub_sensors",
-  },
-  {
-    id: "mqtt",
-    href: "/settings/mqtt",
-    group: "connection",
-    titleKey: "settings_tab_mqtt",
-    subtitleKey: "settings_sub_mqtt",
   },
   {
     id: "display",

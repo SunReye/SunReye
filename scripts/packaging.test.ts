@@ -391,6 +391,30 @@ describe("upgrade-test.yml reaches Postgres over a port that is actually publish
     expect(await workflow()).toContain("@localhost:5432/SunReye");
   });
 
+  // THE PRE-UPGRADE TAG IS PINNED TO THE 1.x LINE, and it has to be.
+  //
+  // The step used to shape from "the newest release older than the version under
+  // test". That was right while every release was 1.x, and became silently wrong
+  // the moment 3.0.0 shipped: the newest older release is then itself
+  // post-rename, `metrics_raw` has `device_id` rather than the text
+  // `inverter_id`, and the job died on its own guard — `pre-upgrade metrics_raw
+  // has a text identity: 0` — on every PR touching packages/db, for a reason
+  // that has nothing to do with the change under test.
+  //
+  // Everything this job asserts after the seed is about the 1.x → current
+  // upgrade specifically: the rename to `metrics_raw_legacy`, the `legacy_*`
+  // aggregates, the 1.2.0 journal rows being kept. There is exactly one
+  // production instance and it IS an upgraded 1.2.0 database, so that is the
+  // path worth proving. A ≥2.0.0 → current run would be a different (and much
+  // thinner) test, and is not this one.
+  it("shapes the pre-upgrade database from the last 1.x release, not merely the previous one", async () => {
+    const text = await workflow();
+    expect(text).toMatch(/git tag --list ['"]addon-v1\.\*['"]/);
+    // And the guard that the answer is non-empty stays: no older release to
+    // upgrade from is not something to paper over.
+    expect(text).toContain('[ "$old_tag" != "addon-v" ]');
+  });
+
   it("every override it writes publishes 5432, so no `up` can take the port away", async () => {
     const written = await overrides();
     expect(written.length).toBeGreaterThan(0);
