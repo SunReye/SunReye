@@ -365,11 +365,12 @@ const ROUTES: readonly SmokeRoute[] = [
     surface: async (page) => {
       await heading(page, "EVCC");
       await expect(page.locator("[data-provided] [data-provided-device]")).toHaveCount(2);
-      // `exact`: "Last connected Sep 10, 2026, 06:02" sits in the same block,
-      // and a substring match makes this a strict-mode violation rather than
-      // an assertion.
+      // The status payload's proof is the moment it carries, not a pill: a
+      // healthy endpoint no longer says "Connected" — that was the state nobody
+      // acts on. `lastConnectedAt` comes from `/api/integrations` and renders
+      // only once it has, which is what this case is here to establish.
       await expect(
-        page.locator("[data-integration-status]").getByText("Connected", { exact: true }),
+        page.locator("[data-integration-status]").getByText(/Last connected/),
       ).toBeVisible();
     },
   },
