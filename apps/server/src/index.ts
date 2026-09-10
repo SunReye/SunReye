@@ -31,6 +31,7 @@ import { isPublicDashboard } from "./settings/access-settings";
 import { buildProfileContext, initProfiles } from "./inverter/inverter";
 import { deviceRegistry } from "./devices/registry-instance";
 import { syncProvisioning } from "./inverter/provision-boot";
+import { reloadConnections, stopConnections } from "./devices/connection-runtime";
 import { seedMqttBroker } from "./settings/mqtt-broker-instance";
 import { WriteRejectedError } from "./inverter/control-writer";
 import { log, recentLogs, setupLogging } from "./shared/logging";
@@ -824,6 +825,20 @@ if (ctx) {
   runtime.armStorage();
 }
 
+// THE CONNECTION TIER (#221): one client per `kind = 'mqtt'` row, owned by the
+// connection rather than by whatever happens to publish on it.
+//
+// AFTER `runtime.start`, and that order is deliberate. The Home Assistant export
+// declares a LAST WILL when it takes its client, and an LWT is a connect-time
+// property — a pass that had already opened the broker without one would have to
+// re-dial to add it, flapping a live broker on every boot. The export opens the
+// row it uses; this opens whatever is left, so a broker an operator has added but
+// not yet bound to anything can still be reported as reachable or not.
+//
+// BEFORE `rebuildEvcc`, so the ingest joins a client that already exists instead
+// of opening a second one on the same row. Never throws.
+await reloadConnections();
+
 // Measure the battery's usable capacity from the discharge segments in raw
 // history — one catch-up pass over the retention window, then a slow tick.
 // No-op on a profile that maps no SOC, so a batteryless plant pays nothing.
@@ -901,6 +916,10 @@ for (const signal of ["SIGINT", "SIGTERM"] as const) {
     stopUpdateChecks();
     await stopEvcc();
     await runtime.stop();
+    // LAST: both consumers release their hold first, so this closes the sockets
+    // that are genuinely left rather than yanking one out from under a bridge
+    // still publishing its "offline" availability.
+    await stopConnections();
     process.exit(0);
   });
 }

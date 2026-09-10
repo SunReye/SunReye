@@ -697,21 +697,17 @@ describe("rebuilds", () => {
     expect(fake.published).toEqual([{ topic: "evcc/loadpoints/1/mode/set", payload: "pv" }]);
   });
 
-  test("a client error is logged, not thrown", async () => {
+  test("a client error does not disturb the ingest — the CONNECTION owns it now", async () => {
     await connectEvcc();
     send("evcc/loadpoints/1/mode", "pv");
 
+    // MOVED, deliberately (#221): the client belongs to the connection, so a
+    // transport error is logged and recorded as the connection's `lastError` by
+    // `../devices/broker-pool.ts` — asserted there, over a pool whose status is
+    // readable. What stays this module's business is that the error reaches no
+    // further: the ingest keeps its state and nothing throws out of the handler.
     const err = new Error("ECONNRESET");
-    const lines = loggedDuring(() => {
-      expect(() => fake.emit("error", err)).not.toThrow();
-    });
-
-    // The "logged" half of the name: a swallowed broker error leaves an ingest
-    // that has silently stopped tracking, with nothing in the log viewer to say so.
-    expect(lines).toHaveLength(1);
-    expect(lines[0]?.template).toContain("client error");
-    expect(lines[0]?.values.error).toBe(err);
-    // The client stays; reconnect/backoff is the mqtt lib's job.
+    expect(() => fake.emit("error", err)).not.toThrow();
     expect(evccSnapshot()?.loadpoints).toHaveLength(1);
   });
 });

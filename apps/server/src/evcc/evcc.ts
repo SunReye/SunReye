@@ -4,12 +4,12 @@
  *
  * EVCC publishes its full state as individual *retained* leaf topics under a
  * root (default `evcc`), so a fresh subscription receives a complete snapshot
- * immediately. This module runs its **own** MQTT client on its OWN broker
- * connection (`evcc.connectionId`, #217) — deliberately decoupled from the
- * inverter bridge (mqtt.ts) and its profile lifecycle, so EVCC ingest works even
- * when the Home Assistant export is off, and so a second EVCC on a second
- * broker is two connection rows rather than a schema change. It used to reuse
- * the export's broker, which made those two facts one.
+ * immediately. This module SUBSCRIBES ON THE CLIENT ITS CONNECTION OWNS
+ * (`evcc.connectionId`, #217 + #221) — it no longer dials one. The lifetime, the
+ * reconnect backoff and the observed status all belong to
+ * `../devices/broker-pool.ts`, so the ingest works whether or not the Home
+ * Assistant export is on, shares one socket with it when both sit on the same
+ * broker row, and gets its own when they do not.
  *
  * Contract notes (validated against a live EVCC 0.3x instance):
  * - loadpoint topics are `<root>/loadpoints/<n>/<key>` with **1-based** `n`
@@ -38,8 +38,8 @@
  */
 
 import { evccReady } from "@SunReye/db/evcc-config";
-import mqtt from "mqtt";
-import type { MqttClient } from "mqtt";
+import type { BrokerLink } from "../devices/broker-pool";
+import { brokerPool } from "../devices/broker-pool-instance";
 import { readBroker } from "../settings/mqtt-broker-instance";
 import type { EvccLoadpoint, EvccState } from "@SunReye/contracts/evcc";
 import {
@@ -131,7 +131,14 @@ function toLoadpoint(
   };
 }
 
-let client: MqttClient | null = null;
+/**
+ * This ingest's hold on its connection's client, or null when it is off.
+ *
+ * A LINK, not a client: the socket underneath can be re-dialled by a broker edit
+ * or a reconnect without the ingest noticing, and the subscription registered
+ * below travels with it.
+ */
+let link: BrokerLink | null = null;
 let topicRoot = "evcc";
 /** Snapshot of the config flag, refreshed on each rebuild (see rebuildEvcc). */
 let subtractFromHome = false;
@@ -215,7 +222,7 @@ function emitNow(): void {
 
 /** Current EVCC state for `GET /api/evcc` and WS pushes, or `null` when off. */
 export function evccSnapshot(): EvccState | null {
-  if (!client) return null;
+  if (!link) return null;
   return {
     reachable: connected && evccStatus === "online",
     loadpoints: [...loadpoints.entries()]
@@ -252,12 +259,12 @@ function limitSocTopic(loadpoint: number): string {
  * {@link limitSocTopic}.
  */
 export function evccControl(loadpoint: number, action: EvccAction, value: string): void {
-  if (!client || !connected) throw new Error("EVCC MQTT is not connected");
+  if (!link || !connected) throw new Error("EVCC MQTT is not connected");
   const topic =
     action === "limitSoc"
       ? limitSocTopic(loadpoint)
       : `${topicRoot}/loadpoints/${loadpoint}/${action}/set`;
-  client.publish(topic, value);
+  link.publish(topic, value);
 }
 
 /**
@@ -347,13 +354,13 @@ function handleMessage(topic: string, payload: Buffer): void {
  * it the charger never shows in the load signal and steps would be misread.
  */
 export function evccOnLoadSample(loadW: number | null): void {
-  if (!client || !subtractFromHome) return;
+  if (!link || !subtractFromHome) return;
   if (estimator.onLoadSample(loadW)) scheduleEmit();
 }
 
 async function stopClient(): Promise<void> {
-  const previous = client;
-  client = null;
+  const previous = link;
+  link = null;
   connected = false;
   evccStatus = null;
   loadpoints.clear();
@@ -367,13 +374,18 @@ async function stopClient(): Promise<void> {
     clearTimeout(emitTimer);
     emitTimer = null;
   }
-  if (previous) await previous.endAsync();
+  // RELEASE, not close: the connection may carry the Home Assistant export too,
+  // and the pool closes the socket only when its last holder lets go.
+  if (previous) await previous.release();
 }
 
 /**
  * (Re)build the EVCC subscriber from the current EVCC + MQTT settings. Called
  * at boot and whenever either config is saved; tears down to "off" when
- * disabled. Reconnect/backoff on a live client is the mqtt lib's job.
+ * disabled. Reconnect and backoff belong to the CONNECTION now
+ * (`../devices/broker-pool.ts`), so a rebuild is a re-subscription and not a
+ * re-dial — and a broker shared with the Home Assistant export is not flapped
+ * by an EVCC settings save.
  *
  * `streamBus` wires the read-side bus and is passed only on the boot call; the
  * settings-save rebuilds omit it and keep the bus wired at boot.
@@ -397,33 +409,33 @@ export async function rebuildEvcc(
   // to the setting so an install that has not written a row yet keeps
   // subscribing under the root its operator chose.
   topicRoot = await readEvccTopicRoot(config.topicRoot);
-  const next = mqtt.connect(broker.brokerUrl, {
-    username: broker.username,
-    password: broker.password,
-    ...(broker.clientId ? { clientId: broker.clientId } : {}),
-  });
-  client = next;
-
-  next.on("connect", () => {
-    connected = true;
-    next.subscribe(
-      [`${topicRoot}/status`, `${topicRoot}/loadpoints/#`, `${topicRoot}/vehicles/#`],
-      (err) => {
-        if (err) logger.error("subscribe failed: {error}", { error: err });
-      },
-    );
-    logger.info('connected to {brokerUrl} (root "{root}")', {
-      brokerUrl: broker.brokerUrl,
-      root: topicRoot,
-    });
-  });
-  next.on("close", () => {
-    connected = false;
-    scheduleEmit(); // dropped connection → push reachable:false
-  });
-  next.on("message", handleMessage);
-  next.on("error", (err) => {
-    logger.error("client error: {error}", { error: err });
+  // THE CONNECTION'S CLIENT, not one of ours (#221). `connectionId` is non-null
+  // whenever `readBroker` resolved a broker, which is what `evccReady` gated on
+  // above; the guard is what tells the compiler so.
+  if (config.connectionId === null) return;
+  const next = brokerPool.acquire(config.connectionId, broker);
+  link = next;
+  next.subscribe({
+    topics: [`${topicRoot}/status`, `${topicRoot}/loadpoints/#`, `${topicRoot}/vehicles/#`],
+    onConnect: () => {
+      connected = true;
+      logger.info('subscribed on {brokerUrl} (root "{root}")', {
+        brokerUrl: broker.brokerUrl,
+        root: topicRoot,
+      });
+    },
+    onClose: () => {
+      connected = false;
+      scheduleEmit(); // dropped connection → push reachable:false
+    },
+    onMessage: handleMessage,
+    // Reported to US rather than logged by the pool: a refused subtree means
+    // this ingest goes silent while its writes keep working, which is a
+    // different failure from the export losing its command path on the same
+    // broker. The client stays up — a broker ACL may be fixed a second later.
+    onSubscribeError: (error) => {
+      logger.error("subscribe failed: {error}", { error });
+    },
   });
 }
 

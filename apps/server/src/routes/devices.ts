@@ -25,12 +25,12 @@ import {
   removeConnection,
 } from "../devices/device-admin";
 import { afterDeviceWrite } from "../devices/after-device-write";
+import { reopenPlantRuntime } from "../devices/plant-reload";
 import { resolveCoded } from "../devices/coded";
 import { plantFacts } from "../settings/plant-facts-instance";
 import { probeConnection } from "../devices/reachability";
 import { deviceRegistry } from "../devices/registry-instance";
 import { resolveProfileById } from "../inverter/inverter";
-import * as runtime from "../inverter/runtime";
 import { plantClient } from "../shared/plant-client";
 import { adminResponder, byId, byIdWrite } from "./admin-refusal";
 import { adminGuard } from "./admin-guard";
@@ -70,7 +70,7 @@ function defaultDeps(): DeviceAdminDeps {
     // declaration table before reporting a device's profile as missing (#213).
     coded: (id) => resolveCoded(id),
     primarySlug: () => deviceRegistry.primary()?.id ?? null,
-    reload: () => afterDeviceWrite(plantFacts, () => runtime.reloadEndpoint()),
+    reload: () => afterDeviceWrite(plantFacts, reopenPlantRuntime),
   };
 }
 

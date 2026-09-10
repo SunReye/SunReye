@@ -1,6 +1,7 @@
 import { EventEmitter } from "node:events";
-import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
+import { beforeEach, describe, expect, test } from "bun:test";
 import type { MqttParams } from "@SunReye/db/connection-kinds";
+import { type BrokerPool, createBrokerPool } from "../devices/broker-pool";
 import type { MqttConfig } from "@SunReye/db/mqtt-config";
 import type {
   EntityConstraint,
@@ -268,31 +269,28 @@ class FakeClient extends EventEmitter {
 let clients: FakeClient[] = [];
 let connectCalls: { url: string; opts: Record<string, unknown> }[] = [];
 
-// A dependency, and mocked the same way a workspace module has to be: the real
-// exports spread in so nothing else of `mqtt` is deleted, and snapshotted by
-// value so `afterAll` can hand the real module back to every later file.
-const realMqtt = await import("mqtt");
-const realMqttExports = { ...realMqtt };
-
-mock.module("mqtt", () => ({
-  ...realMqtt,
-  default: {
-    ...realMqtt.default,
-    connect: (url: string, opts: Record<string, unknown>) => {
-      connectCalls.push({ url, opts });
+/**
+ * The bridge takes its client from its CONNECTION now (#221), so the double is
+ * a POOL with a fake dial rather than a `mock.module("mqtt")` — one process-
+ * global mock fewer, and the dial's options (credentials, the last will) are
+ * still exactly what this suite asserts, because the pool builds them.
+ *
+ * `schedule` never fires: reconnect backoff is the pool's behaviour and is
+ * proved in `../devices/broker-pool.test.ts`. A live timer here would re-dial
+ * into a later test's `clients` array a second after a test that dropped a
+ * connection.
+ */
+function fakePool(): BrokerPool {
+  return createBrokerPool({
+    dial: (url, opts) => {
+      connectCalls.push({ url, opts: { ...opts } });
       const client = new FakeClient();
       clients.push(client);
       return client;
     },
-  },
-}));
-
-// `afterAll`, not `afterEach`: this file's own tests need the double until the
-// last of them has run. From here on `mqtt` is the real module again for every
-// file that loads later — including the one that dials a real broker.
-afterAll(() => {
-  mock.module("mqtt", () => ({ ...realMqttExports }));
-});
+    schedule: () => () => {},
+  });
+}
 
 const { startMqttBridge } = await import("./mqtt");
 
@@ -481,13 +479,16 @@ function start(
     readLive: () => undefined,
   });
   const legacy = opts.legacy ?? fakeLegacyStore();
+  const pool = fakePool();
   const bridge = startMqttBridge(
     { ...baseConfig, ...over },
     {
       ctx,
       write: funnel.write,
       legacyRetirement: legacy,
-      broker: { ...baseBroker, ...opts.broker },
+      // The export takes the client its connection owns (#221) — connection 1
+      // here — and declares its own last will onto it.
+      acquire: (options) => pool.acquire(1, { ...baseBroker, ...opts.broker }, options),
     },
   );
   if (!bridge) throw new Error("bridge was disabled");
@@ -549,10 +550,14 @@ beforeEach(() => {
 describe("enabling the bridge", () => {
   test("no broker connection dials nothing and yields no bridge", () => {
     // The retired `enabled` flag, as absence. A config naming a connection that
-    // does not resolve arrives here as `broker: null` — and there is no second
-    // field that could claim the export is on.
+    // does not resolve leaves the connection with no client to hand over — and
+    // there is no second field that could claim the export is on.
     expect(
-      startMqttBridge(baseConfig, { ctx: null as never, write: async () => {}, broker: null }),
+      startMqttBridge(baseConfig, {
+        ctx: { profile, manifest, defByKey, metaByKey, validateWrite: domainValidateWrite, ...ns },
+        write: async () => {},
+        acquire: () => null,
+      }),
     ).toBeNull();
     expect(connectCalls).toHaveLength(0);
   });
@@ -625,7 +630,7 @@ describe("connecting", () => {
       },
       write: async () => {},
       legacyRetirement: fakeLegacyStore(),
-      broker: baseBroker,
+      acquire: (options) => fakePool().acquire(1, baseBroker, options),
     });
     expect(bridge).not.toBeNull();
     const client = clients.at(-1);
@@ -1017,7 +1022,7 @@ describe("swapping the profile", () => {
         },
         write: async () => {},
         legacyRetirement: fakeLegacyStore(),
-        broker: baseBroker,
+        acquire: (options) => fakePool().acquire(1, baseBroker, options),
       },
     );
     expect(bridge).not.toBeNull();
@@ -1075,7 +1080,7 @@ describe("swapping the profile", () => {
         },
         write: async () => {},
         legacyRetirement: fakeLegacyStore(),
-        broker: baseBroker,
+        acquire: (options) => fakePool().acquire(1, baseBroker, options),
       },
     );
     expect(other).not.toBeNull();

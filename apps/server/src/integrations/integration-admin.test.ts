@@ -79,6 +79,7 @@ function harness(
     connections?: ConnectionRecord[];
     integrations?: IntegrationRecord[];
     devices?: DeviceRecord[];
+    connectionStatus?: IntegrationAdminDeps["connectionStatus"];
   } = {},
 ) {
   const connections = [...(over.connections ?? [gateway, broker])];
@@ -143,6 +144,7 @@ function harness(
     store,
     catalog: catalogFor,
     reload: async () => void calls.push("reload"),
+    ...(over.connectionStatus ? { connectionStatus: over.connectionStatus } : {}),
   };
   return { deps, calls, integrations, devices, connections };
 }
@@ -182,8 +184,35 @@ describe("listIntegrations", () => {
         label: "EVCC",
         addable: true,
         multiInstance: true,
+        status: null,
       },
     ]);
+  });
+
+  test("a row carries what is OBSERVED of its connection, not what its config says", async () => {
+    // The point of #221. Before it, "configured" was the only fact available:
+    // the page said the same thing for a broker that had been off for a week.
+    const observed = {
+      connected: true,
+      lastError: "not authorized",
+      lastErrorAt: "2026-09-10T07:00:00.000Z",
+      lastConnectedAt: "2026-09-10T08:00:00.000Z",
+    };
+    const { deps } = harness({
+      integrations: [ingest],
+      connectionStatus: (connectionId) => (connectionId === 5 ? observed : null),
+    });
+    const [only] = (await listIntegrations(deps)).integrations;
+    expect(only?.status).toEqual(observed);
+  });
+
+  test("a connection this process holds no client for reports null, never a false 'down'", async () => {
+    // A `modbus` row, or a boot that has not opened anything yet. Rendering that
+    // as disconnected would be a worse lie than the config-derived status it
+    // replaces, because it looks like a measurement.
+    const { deps } = harness({ integrations: [ingest], connectionStatus: () => null });
+    const [only] = (await listIntegrations(deps)).integrations;
+    expect(only?.status).toBeNull();
   });
 
   test("the single-instance export reports multiInstance false", async () => {

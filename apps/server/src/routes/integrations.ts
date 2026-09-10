@@ -8,6 +8,8 @@ import { readConnections, readDevices, readPlant, updateDevice } from "@SunReye/
 import { Elysia, t } from "elysia";
 
 import { afterDeviceWrite } from "../devices/after-device-write";
+import { reopenPlantRuntime } from "../devices/plant-reload";
+import { connectionStatus } from "../devices/connection-runtime";
 import { catalogFor, catalogViewFor } from "../devices/integration-catalog";
 import {
   type IntegrationAdminDeps,
@@ -17,7 +19,6 @@ import {
   listIntegrations,
   patchIntegration,
 } from "../integrations/integration-admin";
-import * as runtime from "../inverter/runtime";
 import { plantClient } from "../shared/plant-client";
 import { plantFacts } from "../settings/plant-facts-instance";
 import { adminResponder, byId, byIdWrite } from "./admin-refusal";
@@ -54,7 +55,10 @@ function defaultDeps(): IntegrationAdminDeps {
       updateDevice: (id, patch) => updateDevice(client, id, patch),
     },
     catalog: catalogFor,
-    reload: () => afterDeviceWrite(plantFacts, () => runtime.reloadEndpoint()),
+    // OBSERVED, not derived (#221): the process's broker pool is asked whether
+    // the row's client is up right now.
+    connectionStatus,
+    reload: () => afterDeviceWrite(plantFacts, reopenPlantRuntime),
   };
 }
 
