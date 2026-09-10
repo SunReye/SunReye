@@ -49,6 +49,7 @@
 import { DEVICE_CLASSES } from "@SunReye/inverter-core/device-class";
 import { sql } from "drizzle-orm";
 import { CONNECTION_KINDS } from "../connection-kinds";
+import { INTEGRATION_KINDS } from "../integrations";
 import {
   boolean,
   check,
@@ -62,7 +63,7 @@ import {
   uniqueIndex,
 } from "drizzle-orm/pg-core";
 
-import { createdAtTz, retiredAtTz } from "./columns";
+import { createdAtTz, retiredAtTz, updatedAtTz } from "./columns";
 
 /**
  * The PV description of an inverter — the three columns `devices` carries and
@@ -299,6 +300,156 @@ export const connections = pgTable(
 
 export type ConnectionRow = typeof connections.$inferSelect;
 export type ConnectionInsert = typeof connections.$inferInsert;
+
+/**
+ * A CODED THING ATTACHED TO A CONNECTION — the EVCC ingest, the Home Assistant
+ * export, and the connection-less kinds to come.
+ *
+ * **Not a device and not an endpoint.** A connection is WHERE something is
+ * reached; a device is WHAT reports; an integration is the code that runs over
+ * a connection and may YIELD devices (the EVCC ingest yields loadpoints) or
+ * none at all (the export publishes and yields nothing).
+ *
+ * WHY THIS IS A TABLE AND NOT TWO `app_settings` DOCUMENTS
+ *
+ * Both integrations lived in `app_settings.mqtt` and `app_settings.evcc`, which
+ * inherited two defects rows do not have:
+ *
+ *  - THE SILENT RESET. `readSetting` safe-parses to the DEFAULT with no log, so
+ *    one drifted field resets the whole document — an operator's topic prefix,
+ *    their discovery choice and their broker binding gone with nothing in the
+ *    log (the settings-schema-silent-reset note). `../integrations.ts`'s
+ *    `parseIntegrationParams` THROWS instead, because a row that will not parse
+ *    must be loud.
+ *  - THE SOFT REFERENCE. `mqtt.connectionId` is an id inside a JSONB document
+ *    with no foreign key, so the connection it names can be deleted out from
+ *    under it — and `apps/server/src/settings/mqtt-broker.ts` carries a whole
+ *    re-bind-on-dangling policy for exactly that. {@link integrations.connectionId}
+ *    is a real reference with `ON DELETE RESTRICT`, so the dangling state is not
+ *    a policy anyone has to agree on: it is unrepresentable, and that re-bind
+ *    logic goes away with the readers.
+ *
+ * A ROW'S PRESENCE MEANS "CONFIGURED". {@link integrations.enabled} is the off
+ * switch for a configured integration; "not configured" is the ABSENCE of a
+ * row. There is no null sentinel — which is what `mqtt.connectionId = null`,
+ * meaning both "off" and "never set up", had become.
+ */
+export const integrations = pgTable(
+  "integrations",
+  {
+    id: identityKey(),
+    /**
+     * The plant this integration belongs to, `ON DELETE CASCADE` — and the ONE
+     * place in this file that does not use {@link plantRef}.
+     *
+     * `connections` and `devices` RESTRICT because a reading's meaning dies with
+     * them: `metrics_raw` is keyed by `device_id`, and a cascade would let one
+     * `DELETE` take years of history's interpretation with it. An integration is
+     * CONFIGURATION — nothing is keyed by it, nothing was ever measured by it —
+     * so restricting here would only make a plant undeletable for the sake of a
+     * row that means nothing without it.
+     */
+    plantId: smallint("plant_id")
+      .notNull()
+      .references(() => plants.id, { onDelete: "cascade" }),
+    /**
+     * The endpoint this integration runs over, or null for a kind that needs
+     * none.
+     *
+     * NULLABLE, because the next kinds are connection-less: a weather provider
+     * dials a vendor URL that is not an endpoint anyone configures, and forcing
+     * a placeholder connection for it would put a row on the settings page that
+     * the operator can neither edit nor explain.
+     *
+     * `ON DELETE RESTRICT`, and this is the deliberate half: an integration row
+     * PINS its connection. Deleting a broker that something publishes on is
+     * refused by the engine rather than silently turning the export off, which
+     * is what the soft reference in `app_settings.mqtt` did.
+     */
+    connectionId: smallint("connection_id").references(() => connections.id, {
+      onDelete: "restrict",
+    }),
+    /**
+     * WHICH CODE RUNS — `evcc-ingest` (subscribe, yield loadpoints) or
+     * `ha-export` (publish, yield nothing).
+     *
+     * TEXT + CHECK, deliberately NOT a Postgres enum, for the reason spelled out
+     * on {@link connections.kind}: adding `weather` later is a CHECK rewrite
+     * inside the migration's transaction and rolls back like any other
+     * statement, where `ALTER TYPE … ADD VALUE` cannot.
+     *
+     * The list is `INTEGRATION_KINDS` from `../integrations.ts` — the constraint
+     * is RENDERED from it.
+     */
+    kind: text("kind").notNull(),
+    /**
+     * The off switch for a CONFIGURED integration.
+     *
+     * Distinct from the row's absence, which is "not configured": an operator
+     * pausing the EVCC ingest keeps their topic root and their broker binding,
+     * and the loadpoint devices the ingest provisioned keep meaning something.
+     * Defaults true, because a row nobody asked to be off was created to run.
+     */
+    enabled: boolean("enabled").notNull().default(true),
+    /**
+     * The integration's own settings, per {@link integrations.kind} — validated
+     * by `../integrations.ts`'s `z.discriminatedUnion("kind", …)`, which is the
+     * only place the shapes are related to each other.
+     *
+     * JSONB rather than a nullable column per field of every kind, for the same
+     * reason as {@link connections.params}: the kinds share NOTHING — an export
+     * has no topic root and an ingest has no discovery prefix. `NOT NULL DEFAULT
+     * '{}'` so a row is never a null-check away from a crash; an empty object
+     * simply parses to the arm's defaults.
+     */
+    params: jsonb("params").notNull().default({}),
+    createdAt: createdAtTz(),
+    /**
+     * `updated_at`, which {@link connections} deliberately does NOT have.
+     *
+     * A connection's address is edited through one code path that logs; an
+     * integration is toggled and re-pointed from the settings page, and "when
+     * did the export stop publishing" is a question an operator actually asks.
+     */
+    updatedAt: updatedAtTz(),
+  },
+  (t) => [
+    /**
+     * ONE `ha-export` PER CONNECTION.
+     *
+     * Two exports on one broker publish every entity twice under two prefixes
+     * and announce two Home Assistant devices for one plant — a duplicate that
+     * shows up in someone else's system, not in ours, so nothing here would ever
+     * report it.
+     *
+     * PARTIAL, so `evcc-ingest` may repeat: two EVCC instances on one broker
+     * under different topic roots is a supported shape, and a plain unique index
+     * would have forbidden it. Rows with a null `connection_id` are not covered
+     * either way — Postgres treats NULLs as distinct — which is correct: a
+     * connection-less kind has no connection to be single on.
+     */
+    uniqueIndex("integrations_ha_export_connection_idx")
+      .on(t.connectionId)
+      .where(sql`${t.kind} = 'ha-export'`),
+    /**
+     * The kinds a runtime exists for.
+     *
+     * A value outside this list is an integration nothing starts: never
+     * subscribed, never published, and no error anyone reads — the same failure
+     * `connections_kind_check` guards one level down.
+     */
+    check(
+      "integrations_kind_check",
+      // `sql.raw`, not bound params: drizzle-kit snapshots a check's text
+      // verbatim, and `$1, $2…` would read as a changed constraint and emit a
+      // DROP/ADD on every generate. Same rule as `connections_kind_check`.
+      sql`${t.kind} in (${sql.raw(INTEGRATION_KINDS.map((k) => `'${k}'`).join(", "))})`,
+    ),
+  ],
+);
+
+export type IntegrationRow = typeof integrations.$inferSelect;
+export type IntegrationInsert = typeof integrations.$inferInsert;
 
 /**
  * A device — the thing a reading is FROM, and the int2 written into every row of
