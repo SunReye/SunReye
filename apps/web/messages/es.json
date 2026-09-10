@@ -1077,5 +1077,20 @@
   "mqtt_discovery_prefix": "Prefijo de discovery",
   "devices_action_rename": "Renombrar",
   "devices_rename_dialog_title": "Renombrar dispositivo",
-  "devices_rename_dialog_description": "Cambia la etiqueta con la que se muestra este dispositivo. Su dirección y su histórico no cambian."
+  "devices_rename_dialog_description": "Cambia la etiqueta con la que se muestra este dispositivo. Su dirección y su histórico no cambian.",
+  "wizard_title": "Añadir a esta planta",
+  "wizard_caption": "Elige el punto de conexión y luego lo que cuelga de él.",
+  "wizard_step_connection": "Conexión",
+  "wizard_step_attach": "Qué añadir",
+  "wizard_step_settings": "Ajustes",
+  "wizard_step_confirm": "Confirmar",
+  "wizard_connection_placeholder": "Elige una conexión…",
+  "wizard_connection_hint": "Todos los puntos de conexión de la planta. Lo que puede añadirse depende de cuál elijas.",
+  "wizard_attach_empty": "Todavía no hay nada que añadir a una conexión de este tipo.",
+  "wizard_attach_taken": "Ya está en esta conexión",
+  "wizard_settings_none": "Nada que configurar: esto no tiene ajustes propios.",
+  "wizard_back": "Atrás",
+  "wizard_next": "Siguiente",
+  "wizard_finish": "Añadir",
+  "wizard_added": "Añadido."
 }

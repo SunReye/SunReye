@@ -1077,5 +1077,20 @@
   "mqtt_discovery_prefix": "Préfixe de discovery",
   "devices_action_rename": "Renommer",
   "devices_rename_dialog_title": "Renommer l'appareil",
-  "devices_rename_dialog_description": "Modifie le libellé sous lequel cet appareil est affiché. Son adresse et son historique restent inchangés."
+  "devices_rename_dialog_description": "Modifie le libellé sous lequel cet appareil est affiché. Son adresse et son historique restent inchangés.",
+  "wizard_title": "Ajouter à cette installation",
+  "wizard_caption": "Choisis le point de connexion, puis ce qui s'y rattache.",
+  "wizard_step_connection": "Connexion",
+  "wizard_step_attach": "Quoi ajouter",
+  "wizard_step_settings": "Réglages",
+  "wizard_step_confirm": "Confirmer",
+  "wizard_connection_placeholder": "Choisir une connexion…",
+  "wizard_connection_hint": "Tous les points de connexion de l'installation. Ce qui peut être ajouté dépend de celui choisi.",
+  "wizard_attach_empty": "Rien ne peut encore être rattaché à une connexion de ce type.",
+  "wizard_attach_taken": "Déjà sur cette connexion",
+  "wizard_settings_none": "Rien à régler — celui-ci n'a pas de réglages propres.",
+  "wizard_back": "Retour",
+  "wizard_next": "Suivant",
+  "wizard_finish": "Ajouter",
+  "wizard_added": "Ajouté."
 }

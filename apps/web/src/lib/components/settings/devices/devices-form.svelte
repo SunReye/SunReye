@@ -5,6 +5,7 @@
 	import { Button } from '$lib/components/ui/button';
 	import Section from '$lib/components/layout/section.svelte';
 	import * as m from '$lib/paraglide/messages';
+	import { resolve } from '$lib/resolve';
 	import { apiErrorText } from '../api-error';
 	import InverterStatusBadge from '../inverter-status-badge.svelte';
 	import type { InverterStatus } from '../inverter-types';
@@ -91,7 +92,11 @@
 		>
 			{m.devices_add_connection()}
 		</Button>
-		<Button size="sm" class="h-9 sm:h-8" onclick={() => openDialog(null)} disabled={!roster}>
+		<!-- ONE "Add…", and it is the wizard (`/settings/devices/add`). The old
+		     dialog added a Modbus device and nothing else — contractually, not by
+		     oversight — so a broker's integrations had no entry point at all. It
+		     stays mounted below for EDITING an existing row. -->
+		<Button size="sm" class="h-9 sm:h-8" href={resolve('/settings/devices/add')} disabled={!roster}>
 			{m.devices_add()}
 		</Button>
 	{/snippet}

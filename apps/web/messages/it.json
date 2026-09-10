@@ -1077,5 +1077,20 @@
   "mqtt_discovery_prefix": "Prefisso discovery",
   "devices_action_rename": "Rinomina",
   "devices_rename_dialog_title": "Rinomina dispositivo",
-  "devices_rename_dialog_description": "Cambia l'etichetta con cui questo dispositivo viene mostrato. Indirizzo e cronologia restano invariati."
+  "devices_rename_dialog_description": "Cambia l'etichetta con cui questo dispositivo viene mostrato. Indirizzo e cronologia restano invariati.",
+  "wizard_title": "Aggiungi a questo impianto",
+  "wizard_caption": "Scegli il punto di connessione, poi cosa vi si collega.",
+  "wizard_step_connection": "Connessione",
+  "wizard_step_attach": "Cosa aggiungere",
+  "wizard_step_settings": "Impostazioni",
+  "wizard_step_confirm": "Conferma",
+  "wizard_connection_placeholder": "Scegli una connessione…",
+  "wizard_connection_hint": "Tutti i punti di connessione dell'impianto. Cosa si può aggiungere dipende da quale scegli.",
+  "wizard_attach_empty": "A una connessione di questo tipo non si può ancora collegare nulla.",
+  "wizard_attach_taken": "Già su questa connessione",
+  "wizard_settings_none": "Niente da configurare — questo non ha impostazioni proprie.",
+  "wizard_back": "Indietro",
+  "wizard_next": "Avanti",
+  "wizard_finish": "Aggiungi",
+  "wizard_added": "Aggiunto."
 }

@@ -1077,5 +1077,20 @@
   "mqtt_discovery_prefix": "Discovery prefix",
   "devices_action_rename": "Rename",
   "devices_rename_dialog_title": "Rename device",
-  "devices_rename_dialog_description": "Change the label this device is shown under. Its address and its history stay where they are."
+  "devices_rename_dialog_description": "Change the label this device is shown under. Its address and its history stay where they are.",
+  "wizard_title": "Add to this plant",
+  "wizard_caption": "Pick the endpoint, then what hangs off it.",
+  "wizard_step_connection": "Connection",
+  "wizard_step_attach": "What to attach",
+  "wizard_step_settings": "Settings",
+  "wizard_step_confirm": "Confirm",
+  "wizard_connection_placeholder": "Choose a connection…",
+  "wizard_connection_hint": "Every endpoint this plant talks to. What can be attached depends on which one you pick.",
+  "wizard_attach_empty": "Nothing can be attached to a connection of this kind yet.",
+  "wizard_attach_taken": "Already on this connection",
+  "wizard_settings_none": "Nothing to configure — this one has no settings of its own.",
+  "wizard_back": "Back",
+  "wizard_next": "Next",
+  "wizard_finish": "Add",
+  "wizard_added": "Added."
 }

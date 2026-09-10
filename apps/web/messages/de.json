@@ -1077,5 +1077,20 @@
   "mqtt_discovery_prefix": "Discovery-Präfix",
   "devices_action_rename": "Umbenennen",
   "devices_rename_dialog_title": "Gerät umbenennen",
-  "devices_rename_dialog_description": "Ändert die Bezeichnung, unter der dieses Gerät angezeigt wird. Adresse und Verlauf bleiben unverändert."
+  "devices_rename_dialog_description": "Ändert die Bezeichnung, unter der dieses Gerät angezeigt wird. Adresse und Verlauf bleiben unverändert.",
+  "wizard_title": "Zur Anlage hinzufügen",
+  "wizard_caption": "Erst den Endpunkt wählen, dann was daran hängt.",
+  "wizard_step_connection": "Verbindung",
+  "wizard_step_attach": "Was hinzufügen",
+  "wizard_step_settings": "Einstellungen",
+  "wizard_step_confirm": "Bestätigen",
+  "wizard_connection_placeholder": "Verbindung wählen…",
+  "wizard_connection_hint": "Alle Endpunkte dieser Anlage. Was hinzugefügt werden kann, hängt von der Wahl ab.",
+  "wizard_attach_empty": "An eine Verbindung dieser Art lässt sich noch nichts anhängen.",
+  "wizard_attach_taken": "Bereits an dieser Verbindung",
+  "wizard_settings_none": "Nichts einzustellen — das hier hat keine eigenen Einstellungen.",
+  "wizard_back": "Zurück",
+  "wizard_next": "Weiter",
+  "wizard_finish": "Hinzufügen",
+  "wizard_added": "Hinzugefügt."
 }
