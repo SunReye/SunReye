@@ -66,6 +66,7 @@ import { type OpenArchive, openArchive } from "../packages/db/src/archive-file";
 import { type ReplayClient, bunSqlClient } from "../packages/db/src/replay-run";
 import { totalReadings } from "../packages/db/src/archive";
 import { compareStreamCounts } from "./db-parity";
+import { recreateDatabase } from "./lib/recreate-database";
 import { replayedEnergy } from "./replay-rehearsal";
 import {
   type EnergyRow,
@@ -317,13 +318,7 @@ export async function profileVocabulary(
 export async function recreateTarget(o: Options, io: RoundTripIo = productionIo): Promise<string> {
   const url = urlFor(o, o.targetDb);
   assertRoundTripTarget(url);
-  const admin = io.connect(urlFor(o, "postgres"));
-  try {
-    await admin.unsafe(`DROP DATABASE IF EXISTS ${o.targetDb} WITH (FORCE)`);
-    await admin.unsafe(`CREATE DATABASE ${o.targetDb}`);
-  } finally {
-    await admin.end();
-  }
+  await recreateDatabase(io.connect(urlFor(o, "postgres")), o.targetDb);
   await io.migrate(url);
   io.log(`recreated ${o.targetDb} and applied the 2.0.0 baseline`);
   return url;

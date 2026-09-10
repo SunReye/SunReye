@@ -6,7 +6,7 @@
 	import { migration } from '$lib/migration.svelte';
 	import HistoryChoice from '$lib/components/migration/history-choice.svelte';
 	import IdentifierPanel from '$lib/components/migration/identifier-panel.svelte';
-	import { slugify } from '$lib/slug';
+	import { slugify } from '@SunReye/inverter-core/slug';
 	import { slugFields } from '$lib/migration-submit';
 	import LabelledField from '$lib/components/migration/labelled-field.svelte';
 	import * as m from '$lib/paraglide/messages';
@@ -75,8 +75,9 @@
 	//
 	// Either can still be corrected by hand, which is what the fields below are for.
 	// What is SHOWN is always what will be submitted — a preview that disagreed
-	// would show a consequence that is not the one about to happen. See
-	// `$lib/slug.ts` on why this derivation is a port and not a guess.
+	// would show a consequence that is not the one about to happen, which is why
+	// `slugify` is now ONE implementation shared with the server that writes it
+	// (`@SunReye/inverter-core/slug`) rather than a port of it.
 	let plantSlugOverride = $state<string | null>(null);
 	let deviceSlugOverride = $state<string | null>(null);
 	const plantSlug = $derived(plantSlugOverride ?? (slugify(plantName) || (status?.plantSlug ?? '')));

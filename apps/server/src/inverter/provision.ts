@@ -126,6 +126,7 @@ import { type LegacyPlantFacts, legacyColumnsFromWeatherRow } from "@SunReye/db/
 import { PLANT_KEY } from "@SunReye/db/plant";
 import { SPOT_PRICE_KEY } from "@SunReye/db/spot-price-config";
 import { WEATHER_KEY } from "@SunReye/db/weather";
+import { slugify } from "@SunReye/inverter-core/slug";
 
 /**
  * The dimension tables, as this module needs them.
@@ -183,43 +184,6 @@ export function dbProvisionStore(db: ProvisionDb): ProvisionStore {
 export interface ProvisionLogger {
   info(template: string, values?: Record<string, unknown>): void;
   warn(template: string, values?: Record<string, unknown>): void;
-}
-
-/**
- * The longest slug this will emit — a topic segment, not a free-text field.
- *
- * Exported because migration onboarding refuses a NAME longer than this rather
- * than letting `slugify` silently cut it (`../migration/onboarding.ts`): the slug
- * is the MQTT namespace and it is frozen, so a truncation the operator never
- * chose is permanent.
- */
-export const SLUG_MAX = 48;
-
-/**
- * A typed name as a stable machine name.
- *
- * Diacritics are folded rather than stripped ("Süd" → "sud", not "sd"): the slug
- * is what a German operator sees in their MQTT topics and their Home Assistant
- * entity ids, and a dropped umlaut makes a word unreadable. Everything else
- * non-alphanumeric collapses to a single dash, and the result never begins or
- * ends with one — `<prefix>//<topic>` is not a topic.
- *
- * Returns `""` when nothing survives, which is a real case ("!!!"), and the
- * callers all have a named fallback for it. It never invents one here: the
- * fallback belongs where the meaning is ("plant", "inverter").
- */
-export function slugify(text: string): string {
-  return (
-    text
-      .normalize("NFKD")
-      // Combining marks left by the decomposition above; `Ü` is now `U` + a mark.
-      .replace(/[̀-ͯ]/g, "")
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-+|-+$/g, "")
-      .slice(0, SLUG_MAX)
-      .replace(/-+$/g, "")
-  );
 }
 
 /** What a 1.x install has to say about its plant, mined from the raw rows. */

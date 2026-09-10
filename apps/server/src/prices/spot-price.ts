@@ -22,6 +22,7 @@
 
 import type { SlotCoverage, SpotAvailability, SpotSlice } from "@SunReye/contracts/prices";
 import type { SpotPriceInsert, SpotPriceRow } from "@SunReye/db/schema/spot-price";
+import { zoneParts } from "@SunReye/inverter-core/zone-parts";
 
 const MINUTE_MS = 60_000;
 const HOUR_MS = 3_600_000;
@@ -92,51 +93,9 @@ export function zoneTimeZone(zone: string): string {
   return "Europe/Berlin";
 }
 
-const partsFormatter = (timeZone: string) =>
-  new Intl.DateTimeFormat("en-US", {
-    timeZone,
-    hourCycle: "h23",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-
-const formatterCache = new Map<string, Intl.DateTimeFormat>();
-const formatterFor = (timeZone: string): Intl.DateTimeFormat => {
-  let f = formatterCache.get(timeZone);
-  if (!f) {
-    f = partsFormatter(timeZone);
-    formatterCache.set(timeZone, f);
-  }
-  return f;
-};
-
-interface LocalParts {
-  year: number;
-  month: number;
-  day: number;
-  hour: number;
-  minute: number;
-}
-
-function localParts(timeZone: string, atMs: number): LocalParts {
-  const parts = formatterFor(timeZone).formatToParts(new Date(atMs));
-  const get = (type: Intl.DateTimeFormatPartTypes): number =>
-    Number(parts.find((p) => p.type === type)?.value ?? 0);
-  return {
-    year: get("year"),
-    month: get("month"),
-    day: get("day"),
-    hour: get("hour"),
-    minute: get("minute"),
-  };
-}
-
 /** Offset of `timeZone` at an instant, ms east of UTC. */
 function zoneOffsetMs(timeZone: string, atMs: number): number {
-  const p = localParts(timeZone, atMs);
+  const p = zoneParts(timeZone, atMs);
   return (
     Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute) -
     Math.floor(atMs / MINUTE_MS) * MINUTE_MS
@@ -165,7 +124,7 @@ export function nextLocalDayStartMs(timeZone: string, atMs: number): number {
 
 /** Local wall-clock label, `YYYY-MM-DDTHH:mm` — the shape `SolarForecastPoint.time` uses. */
 function localLabel(timeZone: string, atMs: number): string {
-  const p = localParts(timeZone, atMs);
+  const p = zoneParts(timeZone, atMs);
   const pad = (n: number) => String(n).padStart(2, "0");
   return `${p.year}-${pad(p.month)}-${pad(p.day)}T${pad(p.hour)}:${pad(p.minute)}`;
 }

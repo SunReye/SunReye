@@ -19,7 +19,6 @@ import {
   dbProvisionStore,
   provisionDevice,
   provisionPlantRow,
-  slugify,
 } from "./provision";
 
 /** The `plants` column defaults, as `packages/db/src/schema/plants.ts` declares them. */
@@ -165,25 +164,6 @@ beforeEach(() => {
 const profile = { id: "deye-sun-12k", name: "Deye SUN-12K" };
 const seed = (over: Record<string, unknown> = {}) =>
   inverterConfigSchema.parse({ host: "10.0.0.5", unitId: 1, ...over });
-
-describe("slugify", () => {
-  test("makes a stable machine name out of a typed one", () => {
-    expect(slugify("Haus Müller — Dach Süd")).toBe("haus-muller-dach-sud");
-    expect(slugify("  My Plant  ")).toBe("my-plant");
-    expect(slugify("A/B\\C")).toBe("a-b-c");
-  });
-
-  test("never yields an empty or edge-dashed slug", () => {
-    // The slug becomes an MQTT topic segment and a URL vocabulary word; a
-    // leading dash or an empty string would produce `prefix//topic`.
-    expect(slugify("!!!")).toBe("");
-    expect(slugify("---x---")).toBe("x");
-  });
-
-  test("is bounded, because a topic segment is not a free-text field", () => {
-    expect(slugify("x".repeat(200)).length).toBeLessThanOrEqual(48);
-  });
-});
 
 describe("provisionPlantRow", () => {
   test("creates the plant a fresh install has none of", async () => {
@@ -337,16 +317,22 @@ describe("provisionDevice", () => {
     expect(devices[0]?.profileId).toBe("sigenergy-hybrid");
   });
 
-  test("a later boot NEVER overwrites the endpoint the spine already holds", async () => {
-    // THE WRITE-BACK, DELETED. Provisioning used to copy the legacy
-    // `app_settings.inverter` document into `connections` and `devices.unit_id`
-    // on every boot, which made that document the authority and silently undid
-    // every edit an operator made to the endpoint. The seed CREATES rows; it
-    // never edits one. `../routes/settings.ts` -> `./endpoint.ts` is the only
-    // writer.
+  /**
+   * THE WRITE-BACK, DELETED — the state it used to destroy.
+   *
+   * Provisioning used to copy the legacy `app_settings.inverter` document into
+   * `connections` and `devices.unit_id` on every boot, which made that document
+   * the authority and silently undid every edit an operator made to the
+   * endpoint. The seed CREATES rows; it never edits one.
+   * `../routes/settings.ts` -> `./endpoint.ts` is the only writer.
+   *
+   * So: provision, let the operator move the gateway (what the settings PUT
+   * does), then boot again with a stale legacy document that says something
+   * else entirely. The two cases below read the two halves of what survives.
+   */
+  async function bootAfterTheOperatorMovedTheGateway() {
     const { store, connections, devices } = memoryStore();
     const first = await provisionDevice({ store, logger, profile, seed: seed() });
-    // The operator moves the gateway (what the settings PUT does).
     await store.ensureConnection(1, {
       name: "Inverter",
       kind: "modbus",
@@ -359,14 +345,23 @@ describe("provisionDevice", () => {
       },
     });
     await store.updateDevice(first?.deviceId ?? -1, { unitId: 3 });
-    // ...and a boot later the stale legacy document says something else entirely.
     await provisionDevice({ store, logger, profile, seed: seed({ host: "10.0.0.5", unitId: 1 }) });
+    return { connections, devices, connectionId: first?.connectionId };
+  }
+
+  test("a later boot NEVER overwrites the endpoint the spine already holds", async () => {
+    const { connections } = await bootAfterTheOperatorMovedTheGateway();
     expect(connections.length).toBe(1);
-    expect((connections[0]?.params as ModbusParams | undefined)?.host).toBe("10.0.0.9");
-    expect((connections[0]?.params as ModbusParams | undefined)?.port).toBe(8899);
-    expect((connections[0]?.params as ModbusParams | undefined)?.pollIntervalMs).toBe(2000);
+    const params = connections[0]!.params as ModbusParams;
+    expect(params.host).toBe("10.0.0.9");
+    expect(params.port).toBe(8899);
+    expect(params.pollIntervalMs).toBe(2000);
+  });
+
+  test("nor the unit id and the connection the device already points at", async () => {
+    const { devices, connectionId } = await bootAfterTheOperatorMovedTheGateway();
     expect(devices[0]?.unitId).toBe(3);
-    expect(devices[0]?.connectionId).toBe(first?.connectionId);
+    expect(devices[0]?.connectionId).toBe(connectionId);
   });
 
   test("the adopt patch names the PROFILE and nothing else about the endpoint", async () => {

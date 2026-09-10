@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { Input } from '$lib/components/ui/input';
 	import { Label } from '$lib/components/ui/label';
-	import { SLUG_MAX } from '$lib/slug';
+	import { SLUG_MAX } from '@SunReye/inverter-core/slug';
 
 	/**
 	 * One labelled text field with its own error line.

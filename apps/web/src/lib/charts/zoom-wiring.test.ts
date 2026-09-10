@@ -138,6 +138,67 @@ const ZOOMABLE: string[] = [
   "lib/components/inverter/_shared/custom-chart-plot.svelte",
 ];
 
+/**
+ * Which components a file renders, as `Tag → file` — `$lib/…` and relative
+ * `.svelte` imports only, in the style of `charts/fullscreen-coverage.test.ts`.
+ */
+function importsOf(file: string): Map<string, string> {
+  const out = new Map<string, string>();
+  for (const m of svelte(file).matchAll(
+    /import\s+(\w+)(?:,\s*\{[^}]*\})?\s+from\s+['"]([^'"]+)['"]/g,
+  )) {
+    const [, tag, path] = m;
+    if (!path!.endsWith(".svelte")) continue;
+    if (path!.startsWith("$lib/")) out.set(tag!, path!.replace("$lib/", "lib/"));
+    else if (path!.startsWith("."))
+      out.set(tag!, new URL(path!, `file:///${file}`).pathname.slice(1));
+  }
+  return out;
+}
+
+/** The open `<Tag …>` tags of a component in a file, attribute braces consumed whole. */
+function openTags(code: string, tag: string): string[] {
+  return [...code.matchAll(new RegExp(`<${tag}(?=[\\s/>])(?:[^<>]|\\{[^{}]*\\})*?>`, "g"))].map(
+    (m) => m[0],
+  );
+}
+
+/**
+ * Does this file spend the controller bound to `name` — itself, or through a
+ * component it HANDS the controller to?
+ *
+ * The grouped bar mark is one component now (`statistics/grouped-bar-plot.svelte`,
+ * shared by the two statistics bar charts), so for those two the spread and the
+ * context capture live one hop down. The hop is FOLLOWED, not assumed: `{zoom}`
+ * on a tag whose file never spreads it is exactly the silent failure these cases
+ * exist to catch, and it would pass a "hands it to something" check.
+ */
+function spends(
+  file: string,
+  name: string,
+  claim: (code: string, bound: string) => boolean,
+): boolean {
+  const code = svelte(file);
+  if (claim(code, name)) return true;
+  for (const [tag, target] of importsOf(file)) {
+    const handed = openTags(code, tag).some((t) =>
+      new RegExp(`\\{${name}\\}|\\w+=\\{${name}\\}`).test(t),
+    );
+    // In the target the controller is a prop, and the prop is named `zoom`.
+    if (handed && spends(target, "zoom", claim)) return true;
+  }
+  return false;
+}
+
+/** The spread that carries brush, transform and the transform callback. */
+const spreadsProps = (code: string, bound: string) => code.includes(`{...${bound}.props}`);
+
+/** The `belowContext` capture the reset control's transform state comes from. */
+const capturesContext = (code: string, bound: string) =>
+  /\{#snippet belowContext\(/.test(code) &&
+  code.includes(`${bound}.capture(context)`) &&
+  code.includes("{belowContext}");
+
 describe("the charts that zoom", () => {
   test("are exactly the ones that were meant to", () => {
     // A census rather than a list check: a chart that starts brushing without
@@ -178,12 +239,25 @@ describe("the charts that zoom", () => {
   });
 
   test.each(ZOOMABLE)("%s spends the controller it built", (file) => {
-    const code = svelte(file);
-    const zoom = controller(code);
+    const zoom = controller(svelte(file));
     expect(zoom, `${file} builds no chartZoom controller`).not.toBeNull();
     // The spread is the whole configuration — brush, transform and the
-    // transform callback the reset control's visibility hangs off.
-    expect(code).toContain(`{...${zoom}.props}`);
+    // transform callback the reset control's visibility hangs off. In the file
+    // itself, or in the mark component it hands the controller to.
+    expect(spends(file, zoom!, spreadsProps)).toBe(true);
+  });
+
+  test("the delegation is followed, not assumed", () => {
+    // The guard on the guard: if `spends` stopped following the hop it would
+    // pass every case above by finding the spread in the chart's own text, and
+    // the one chart that does not have it would go unnoticed.
+    const yoy = "lib/components/statistics/yoy-chart.svelte";
+    expect(svelte(yoy)).not.toContain("{...zoom.props}");
+    expect(spends(yoy, "zoom", spreadsProps)).toBe(true);
+    // And a component that is handed nothing spends nothing.
+    expect(spends("lib/components/statistics/series-tooltip.svelte", "zoom", spreadsProps)).toBe(
+      false,
+    );
   });
 
   // The reset control is `layout/plot-frame.svelte`'s now, not each chart's:
@@ -213,14 +287,11 @@ describe("the charts that zoom", () => {
   });
 
   test.each(ZOOMABLE)("%s captures the context its reset needs", (file) => {
-    const code = svelte(file);
-    const zoom = controller(code)!;
+    const zoom = controller(svelte(file))!;
     // Without the capture the reset control renders and does nothing: the
     // canvas wrappers expose no bindable `context`, so `belowContext` is the
-    // only route to the transform state.
-    expect(code).toMatch(new RegExp(`\\{#snippet belowContext\\(`));
-    expect(code).toContain(`${zoom}.capture(context)`);
-    expect(code).toContain("{belowContext}");
+    // only route to the transform state. Same hop as the spread above.
+    expect(spends(file, zoom, capturesContext)).toBe(true);
   });
 
   // This one already owns a transform inside a ChartClipPath (a decision

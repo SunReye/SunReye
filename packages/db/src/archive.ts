@@ -234,6 +234,24 @@ function requireTime(row: Record<string, unknown>, lineNo: number, member: strin
   return time;
 }
 
+/**
+ * The four fields BOTH members carry: when, which device, which metric, what
+ * value — each refused rather than defaulted (see the `require*` helpers above).
+ *
+ * `ConfigLogRow` is exactly that shape, because the config log is a stream of
+ * the common fields and nothing else; a readings line is this plus its width
+ * and its tier. Written once so the two decoders cannot drift into disagreeing
+ * about which of these is optional — none of them is.
+ */
+function decodeCommon(row: Record<string, unknown>, lineNo: number, member: string): ConfigLogRow {
+  return {
+    time: requireTime(row, lineNo, member),
+    deviceSlug: requireString(row, "device_slug", lineNo, member),
+    metricKey: requireString(row, "metric_key", lineNo, member),
+    value: requireNumber(row, "value", lineNo, member),
+  };
+}
+
 /** One `readings.ndjson` line, or `null` for a blank one. */
 export function decodeReading(line: string, lineNo: number): ReadingRow | null {
   if (isBlank(line)) return null;
@@ -252,27 +270,14 @@ export function decodeReading(line: string, lineNo: number): ReadingRow | null {
   if (durMs !== null && (typeof durMs !== "number" || !Number.isFinite(durMs))) {
     throw new Error(`${member}: line ${lineNo} has an unreadable dur_ms ${JSON.stringify(durMs)}`);
   }
-  return {
-    time: requireTime(row, lineNo, member),
-    deviceSlug: requireString(row, "device_slug", lineNo, member),
-    metricKey: requireString(row, "metric_key", lineNo, member),
-    value: requireNumber(row, "value", lineNo, member),
-    durMs,
-    sourceTier: tier as SourceTier,
-  };
+  return { ...decodeCommon(row, lineNo, member), durMs, sourceTier: tier as SourceTier };
 }
 
 /** One `config-log.ndjson` line, or `null` for a blank one. */
 export function decodeConfigLog(line: string, lineNo: number): ConfigLogRow | null {
   if (isBlank(line)) return null;
   const member = MEMBERS.configLog;
-  const row = parseLine(line, lineNo, member);
-  return {
-    time: requireTime(row, lineNo, member),
-    deviceSlug: requireString(row, "device_slug", lineNo, member),
-    metricKey: requireString(row, "metric_key", lineNo, member),
-    value: requireNumber(row, "value", lineNo, member),
-  };
+  return decodeCommon(parseLine(line, lineNo, member), lineNo, member);
 }
 
 /**
