@@ -160,6 +160,13 @@ export interface BackendOptions {
    * has not been carried across.
    */
   migration?: Partial<MigrationStatusFixture>;
+  /**
+   * `/api/custom-charts`. Empty by default, which is why the overlay renderer
+   * went uncovered while `/history`'s cards were being tested: an overlay only
+   * mounts for a SAVED chart or a full-screen draft. One entry here puts the
+   * custom-chart section at the top of `/history` (#216).
+   */
+  customCharts?: { id: string; name: string; metrics: string[] }[];
 }
 
 /** The migration status payload, as `apps/server/src/routes/migration.ts` sends it. */
@@ -643,7 +650,7 @@ export async function mockBackend(page: Page, options: BackendOptions = {}): Pro
       if (method === "POST") {
         return json(route, { id: "chart-1", ...body() });
       }
-      return json(route, []);
+      return json(route, options.customCharts ?? []);
     }
     if (under("custom-charts")) {
       if (method === "DELETE") return json(route, { ok: true, id });

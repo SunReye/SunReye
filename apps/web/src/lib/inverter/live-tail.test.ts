@@ -1,6 +1,13 @@
 import { describe, expect, it } from "bun:test";
 import type { LivePoint } from "./types";
-import { dueRefresh, liveTailPoints, mergeRollup, rollupPoints, type RollupRow } from "./live-tail";
+import {
+  dueRefresh,
+  fetchWindow,
+  liveTailPoints,
+  mergeRollup,
+  rollupPoints,
+  type RollupRow,
+} from "./live-tail";
 
 const MINUTE = 60_000;
 
@@ -229,5 +236,18 @@ describe("liveTailPoints — the frames spliced after the last rollup bucket", (
       { date: MIDNIGHT, avg: 20, min: 10, max: 30 },
       { date: new Date(MIDNIGHT.getTime() + 3_600_000), avg: 50, min: 50, max: 50 },
     ]);
+  });
+});
+
+describe("fetchWindow", () => {
+  it("keeps the three fields the appending functions read, and nothing else", () => {
+    const range = {
+      from: new Date("2026-09-10T00:00:00.000Z"),
+      to: new Date("2026-09-11T00:00:00.000Z"),
+      bucket: "minute" as const,
+      live: true,
+      label: "Today",
+    };
+    expect(fetchWindow(range)).toEqual({ from: range.from, to: range.to, bucket: "minute" });
   });
 });

@@ -223,17 +223,19 @@ describe("the charts that zoom", () => {
     expect(code).toContain("{belowContext}");
   });
 
-  // Both of these already own a transform inside a ChartClipPath (a gliding
-  // live window, a decision timeline). A second one composes badly, so they
-  // were deliberately left out and must stay out.
-  test.each([
-    "lib/components/inverter/custom-live-chart.svelte",
-    "lib/components/automations/decision-chart.svelte",
-  ])("%s keeps its own transform and takes no second one", (file) => {
-    const code = svelte(file);
-    expect(code).toContain("ChartClipPath");
-    expect(code).not.toContain("chartZoom");
-  });
+  // This one already owns a transform inside a ChartClipPath (a decision
+  // timeline). A second one composes badly, so it was deliberately left out
+  // and must stay out. `custom-live-chart` was the other entry here; #216 gave
+  // the overlay a single fetched-and-appended path, so the gliding overlay it
+  // drew no longer exists.
+  test.each(["lib/components/automations/decision-chart.svelte"])(
+    "%s keeps its own transform and takes no second one",
+    (file) => {
+      const code = svelte(file);
+      expect(code).toContain("ChartClipPath");
+      expect(code).not.toContain("chartZoom");
+    },
+  );
 });
 
 describe("the resting gesture follows the pointer", () => {

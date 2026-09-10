@@ -25,7 +25,10 @@ const HERE = new URL("./", import.meta.url);
 
 const read = async (file: string) => await Bun.file(new URL(file, HERE)).text();
 
-const CHARTS = ["../live-area.svelte", "../custom-live-chart.svelte"];
+// `../custom-live-chart.svelte` was the second entry until #216: the overlay
+// now fetches its window and appends to it like every other chart, so the KPI
+// sparkline is the only gliding one left.
+const CHARTS = ["../live-area.svelte"];
 const sources = new Map<string, string>(
   await Promise.all(CHARTS.map(async (f) => [f, await read(f)] as [string, string])),
 );

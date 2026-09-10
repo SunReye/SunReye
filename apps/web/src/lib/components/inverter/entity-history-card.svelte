@@ -20,6 +20,7 @@
 	import { tooltipLabel, xTick } from '$lib/inverter/chart-format';
 	import {
 		dueRefresh,
+		fetchWindow,
 		liveTailPoints,
 		mergeRollup,
 		rollupPoints,
@@ -95,7 +96,7 @@
 	let syncedTick = 0;
 
 	/** The window being fetched, in the shape `$lib/inverter/live-tail` takes. */
-	const span = $derived({ from: range.from, to: range.to, bucket: range.bucket });
+	const span = $derived(fetchWindow(range));
 
 	const rollupQuery = (from: Date, to: Date) => ({
 		metric: metric.key,

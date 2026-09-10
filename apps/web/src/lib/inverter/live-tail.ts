@@ -55,6 +55,17 @@ export interface LiveWindow {
 }
 
 /**
+ * The window a range is fetching, in the shape this module takes.
+ *
+ * `HistoryRange` carries a label and a `live` flag as well, and both of the
+ * components that append (a metric card, an overlay) were declaring the same
+ * three-field copy of it inline.
+ */
+export function fetchWindow(range: { from: Date; to: Date; bucket: RollupBucket }): LiveWindow {
+  return { from: range.from, to: range.to, bucket: range.bucket };
+}
+
+/**
  * Width of each rollup bucket, for grouping live frames the way the server
  * grouped the rows they are spliced onto.
  *
