@@ -177,6 +177,8 @@ export class DeviceAdminError extends Error {
       | "profileId"
       | "host"
       | "arrays"
+      | "tempCoefficient"
+      | "systemLoss"
       | "battery",
   ) {
     super(message);
@@ -243,6 +245,15 @@ const nonEmpty = (patch: Record<string, unknown>) =>
  * frozen. `retired` is the lifecycle flag; everything else re-points the row —
  * the profile swap and the gateway move that 1.x could not do without
  * orphaning history.
+ *
+ * `params` is the device's per-integration settings bag (`devices.params`) and
+ * is deliberately validated as nothing more than a JSON OBJECT here. The shapes
+ * are per integration and share nothing — an EVCC loadpoint's `topicRoot` is
+ * the only tenant today — so the consumer that owns a key is the only layer
+ * that can judge it, and a schema here would have to be edited for every
+ * integration added. A PATCH REPLACES the whole document: what the body omits
+ * is gone, not merged over. A scalar, a null or a list is refused (400) rather
+ * than stored, because an integration reading a list finds none of its keys.
  */
 const patchDeviceSchema = z
   .object({
@@ -252,6 +263,7 @@ const patchDeviceSchema = z
     unitId: unitIdSchema.optional(),
     connectionId: z.number().int().positive().optional(),
     profileId: z.string().trim().min(1).optional(),
+    params: z.record(z.string(), z.unknown()).optional(),
     retired: z.boolean().optional(),
   })
   .refine(nonEmpty, "nothing to change");
@@ -291,6 +303,8 @@ const FIELDS = new Set([
   "profileId",
   "host",
   "arrays",
+  "tempCoefficient",
+  "systemLoss",
   "battery",
 ] as const);
 type Field = NonNullable<DeviceAdminError["field"]>;
@@ -600,7 +614,7 @@ export async function patchDevice(
   ]);
   const current = devices.find((d) => d.id === id);
   if (!current) throw new DeviceAdminError(404, `device ${id} does not exist`);
-  requireModbus(current, deps.coded(current.profileId));
+  requireTopologyUnchanged(current, deps.coded(current.profileId), patch);
   if (patch.retired === true && current.slug === deps.primarySlug()) {
     throw new DeviceAdminError(
       409,
@@ -626,19 +640,56 @@ export async function patchDevice(
 }
 
 /**
- * Only a Modbus device has the fields this patch writes.
+ * The fields that say WHERE a device is and WHAT it is — the ones a row nobody
+ * addresses must never carry.
  *
- * An edit of a coded or virtual row seeded the plant's FIRST gateway for its
- * endpoint-less device and then sent it, so saving an untouched edit bound a
- * loadpoint or the optimizer to a Modbus endpoint — a change nothing on the
- * screen described (#213). The row hides Edit and Retire now; this is the
- * refusal behind it, because the route is reachable without the row.
+ * Which gateway (`connectionId`), which slave id (`unitId`), which driver
+ * (`profileId`), what it counts as (`role`), and the inverter's physics, which
+ * only a machine with panels and a pack can have.
  */
-function requireModbus(device: DeviceRecord, coded: CodedInfo | null): void {
+const TOPOLOGY_FIELDS = [
+  "connectionId",
+  "unitId",
+  "profileId",
+  "role",
+  "arrays",
+  "tempCoefficient",
+  "systemLoss",
+  "battery",
+] as const;
+
+/**
+ * A coded or virtual device's TOPOLOGY is frozen; the rest of it is not.
+ *
+ * An edit of such a row seeded the plant's FIRST gateway for its endpoint-less
+ * device and then sent it, so saving an untouched edit bound a loadpoint or the
+ * optimizer to a Modbus endpoint — a change nothing on the screen described
+ * (#213). The refusal behind that used to reject the whole PATCH, and that was
+ * too wide (#219): an EVCC loadpoint could not be RENAMED or RETIRED through
+ * the API at all, and neither could the optimizer, even though a name, a
+ * lifecycle flag and an integration's own settings say nothing about where the
+ * device is. So the gate is per-field now. What it still protects is the
+ * addressing: a row with no endpoint, no slave id and no registers must not
+ * acquire any, because nothing behind it would answer and its history would
+ * stay keyed to a device that claims to be somewhere it is not.
+ *
+ * Modbus rows are untouched — every field is theirs.
+ */
+function requireTopologyUnchanged(
+  device: DeviceRecord,
+  coded: CodedInfo | null,
+  patch: Record<string, unknown>,
+): void {
   const kind = kindOf(device, coded);
   if (kind === "modbus") return;
+  const field = TOPOLOGY_FIELDS.find((name) => patch[name] !== undefined);
+  if (field === undefined) return;
   const why = kind === "virtual" ? "internal" : "fed by an integration";
-  throw new DeviceAdminError(409, `this device is ${why}; it has no Modbus settings to change`);
+  throw new DeviceAdminError(
+    409,
+    `${field}: this device is ${why}; it has no Modbus settings to change`,
+    field,
+  );
 }
 
 /** The two re-pointing checks a device patch shares with an add: the profile is registered, the gateway is the plant's. */

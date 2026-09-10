@@ -526,19 +526,80 @@ describe("patchDevice", () => {
   // #213: `formFromDevice` seeds the FIRST gateway for an endpoint-less device,
   // so saving an untouched edit of a loadpoint or the optimizer sent
   // `connectionId` and bound a device with no registers to a Modbus gateway.
-  // The row hides Edit now; this is the refusal behind it.
-  test("refuses to patch a coded device with 409 — it has no Modbus fields to edit", async () => {
+  // The refusal behind that is now per-FIELD (#219): topology is frozen on a row
+  // no operator addresses, but its label, its lifecycle and its integration
+  // settings are theirs to change.
+  test("renames a coded device", async () => {
+    const { deps, calls, devices } = harness({ devices: [inverter, loadpoint] });
+    const updated = await patchDevice(deps, 4, { name: "Carport left" });
+    expect(updated.name).toBe("Carport left");
+    expect(devices[1]?.name).toBe("Carport left");
+    expect(calls).toContain("updateDevice:4");
+    expect(calls).toContain("reload");
+  });
+
+  test("retires a coded device", async () => {
+    const { deps, devices } = harness({ devices: [inverter, loadpoint] });
+    const updated = await patchDevice(deps, 4, { retired: true });
+    expect(updated.retiredAt).not.toBeNull();
+    expect(devices[1]?.retiredAt).toBeInstanceOf(Date);
+  });
+
+  test("writes a coded device's integration settings, whole", async () => {
+    const carport = { ...loadpoint, params: { topicRoot: "evcc", stale: true } };
+    const { deps, devices } = harness({ devices: [inverter, carport] });
+    const updated = await patchDevice(deps, 4, { params: { topicRoot: "evcc-garage" } });
+    // A PATCH REPLACES the document — the dropped key is gone, not merged over.
+    expect(updated.params).toEqual({ topicRoot: "evcc-garage" });
+    expect(devices[1]?.params).toEqual({ topicRoot: "evcc-garage" });
+  });
+
+  test("accepts params on a Modbus device too", async () => {
+    const { deps, devices } = harness();
+    const updated = await patchDevice(deps, 1, { params: { note: "roof" } });
+    expect(updated.params).toEqual({ note: "roof" });
+    expect(devices[0]?.params).toEqual({ note: "roof" });
+  });
+
+  test("renames and retires the virtual optimizer", async () => {
+    const { deps, devices } = harness({ devices: [inverter, optimizer] });
+    expect((await patchDevice(deps, 5, { name: "Brain" })).name).toBe("Brain");
+    expect((await patchDevice(deps, 5, { retired: true })).retiredAt).not.toBeNull();
+    expect(devices[1]?.name).toBe("Brain");
+  });
+
+  test.each([
+    ["connectionId", { connectionId: 3 }],
+    ["unitId", { unitId: 2 }],
+    ["profileId", { profileId: "deye-sun15k" }],
+    ["role", { role: "meter" }],
+    ["arrays", { arrays: [{ kwp: 5, tilt: 25, azimuth: 0 }] }],
+    ["tempCoefficient", { tempCoefficient: -0.3 }],
+    ["systemLoss", { systemLoss: 12 }],
+    ["battery", { battery: null }],
+  ] as const)("refuses %s on a coded device with 409, naming the field", async (field, patch) => {
     const { deps, calls } = harness({ devices: [inverter, loadpoint] });
-    const error = await rejection(() => patchDevice(deps, 4, { connectionId: 3 }));
+    const error = await rejection(() => patchDevice(deps, 4, patch));
     expect(error.status).toBe(409);
+    expect(error.field).toBe(field);
     expect(calls).not.toContain("updateDevice:4");
     expect(calls).not.toContain("reload");
   });
 
-  test("refuses to patch the virtual optimizer with 409, retirement included", async () => {
+  test.each([
+    ["connectionId", { connectionId: 3 }],
+    ["unitId", { unitId: 2 }],
+    ["profileId", { profileId: "deye-sun15k" }],
+    ["role", { role: "meter" }],
+    ["arrays", { arrays: [{ kwp: 5, tilt: 25, azimuth: 0 }] }],
+    ["tempCoefficient", { tempCoefficient: -0.3 }],
+    ["systemLoss", { systemLoss: 12 }],
+    ["battery", { battery: null }],
+  ] as const)("refuses %s on the virtual optimizer with 409", async (field, patch) => {
     const { deps, calls } = harness({ devices: [inverter, optimizer] });
-    expect((await rejection(() => patchDevice(deps, 5, { name: "Brain" }))).status).toBe(409);
-    expect((await rejection(() => patchDevice(deps, 5, { retired: true }))).status).toBe(409);
+    const error = await rejection(() => patchDevice(deps, 5, patch));
+    expect(error.status).toBe(409);
+    expect(error.field).toBe(field);
     expect(calls).not.toContain("updateDevice:5");
   });
 
@@ -624,6 +685,28 @@ describe("patchDevice", () => {
     const { deps, calls } = harness();
     const error = await rejection(() => patchDevice(deps, 1, patch));
     expect(error.status).toBe(400);
+    expect(calls.some((c) => c.startsWith("updateDevice"))).toBe(false);
+  });
+
+  test("an empty patch says nothing to change", async () => {
+    const { deps } = harness();
+    expect((await rejection(() => patchDevice(deps, 1, {}))).message).toContain(
+      "nothing to change",
+    );
+  });
+
+  // `params` is a DOCUMENT. A scalar, a null or a list is a caller that thinks it
+  // is something else, and silently storing it would hand the integration a bag
+  // it cannot read.
+  test.each([
+    ["null", null],
+    ["a list", []],
+    ["a string", "x"],
+  ])("refuses params that are %s with 400 under params", async (_label, params) => {
+    const { deps, calls } = harness();
+    const error = await rejection(() => patchDevice(deps, 1, { params }));
+    expect(error.status).toBe(400);
+    expect(error.field).toBe("params");
     expect(calls.some((c) => c.startsWith("updateDevice"))).toBe(false);
   });
 });
