@@ -93,11 +93,47 @@ export type DeviceKind = "modbus" | "coded" | "virtual";
  * read — a `polled` boolean reported an MQTT-fed loadpoint and a computation as
  * broken Modbus hardware (#213).
  */
-export type DeviceState = "polling" | "idle" | "integration" | "virtual" | "retired";
+export type DeviceState = "polling" | "idle" | "provided" | "virtual" | "retired";
+
+/**
+ * An integration as `/api/integrations` returns it. Mirrors the server's
+ * `IntegrationView` (`apps/server/src/integrations/integration-admin.ts`).
+ *
+ * `label`, `addable` and `multiInstance` are DERIVED per response from the
+ * catalog entry the row's kind resolves to — they are not stored, so a build
+ * that renames "EVCC" is not contradicted by every row written before it. A row
+ * this build has no entry for still comes back, labelled with its raw kind: it
+ * is configured and running, and a page that hid it would leave the operator
+ * nothing to turn off.
+ */
+export type IntegrationView = {
+  id: number;
+  kind: string;
+  /** The endpoint it runs over, or null for a coded thing that needs none. */
+  connectionId: number | null;
+  enabled: boolean;
+  params: Record<string, unknown>;
+  label: string;
+  addable: boolean;
+  multiInstance: boolean;
+};
+
+/** What `PATCH /api/integrations/:id` takes. Never `kind` or `connectionId`:
+    those are the row's identity and the server answers 409 for either. */
+export type IntegrationPatchBody = {
+  enabled?: boolean;
+  params?: Record<string, unknown>;
+};
 
 export type DeviceRoster = {
   devices: DeviceView[];
   connections: ConnectionView[];
+  /**
+   * Optional because it arrives from a SECOND request. The page renders the
+   * roster as soon as `/api/devices` answers, and `/api/integrations` lands
+   * after it — an absent list is "not yet", never "none configured".
+   */
+  integrations?: readonly IntegrationView[];
 };
 
 /** The roles an operator may add; the optimizer is virtual and adds itself. */

@@ -21,7 +21,7 @@
 
 import type { DeviceView } from "./device-types";
 
-export type DeviceActionId = "restore" | "edit" | "rename" | "configure" | "retire";
+export type DeviceActionId = "restore" | "edit" | "rename" | "retire";
 
 export type DeviceAction = {
   id: DeviceActionId;
@@ -35,26 +35,18 @@ export type DeviceAction = {
 
 const act = (id: DeviceActionId, blocked = false): DeviceAction => ({ id, blocked });
 
-/**
- * Integrations with a page of their own. A coded row from an integration that
- * has none must not link at a tab that says nothing about it — the link would
- * promise a setting the operator then cannot find.
- */
-const CONFIGURABLE_INTEGRATIONS = new Set(["evcc"]);
-
-/** A coded row's controls: what it may change, then its feed's page. */
-function codedActions(device: DeviceView, retired: boolean): DeviceAction[] {
-  const own = retired ? [act("restore")] : [act("rename"), act("retire")];
-  return CONFIGURABLE_INTEGRATIONS.has(device.integration ?? "") ? [...own, act("configure")] : own;
-}
-
 export function actionsFor(device: DeviceView): readonly DeviceAction[] {
   const retired = device.retiredAt !== null;
   if (device.kind === "modbus") {
     // Re-point the polled device rather than retiring it — which Edit does.
     return retired ? [act("restore")] : [act("edit"), act("retire", device.state === "polling")];
   }
-  if (device.kind === "coded") return codedActions(device, retired);
+  // A coded row: what the narrowed gate allows, and nothing else. There used to
+  // be a "Configure" link here for the integrations that had a page — it pointed
+  // at `/settings/mqtt`, and what lived there is now an integration ROW in this
+  // device's own connection group, a few lines up, with its own Edit. The link
+  // had nowhere left to lead but the page the operator is already reading.
+  if (device.kind === "coded") return retired ? [act("restore")] : [act("rename"), act("retire")];
   // Virtual: the optimizer. Renaming is safe. Retiring it would stop the
   // control loop from a control that looks like a label, so it is withheld —
   // the Automations panel is where that decision belongs.

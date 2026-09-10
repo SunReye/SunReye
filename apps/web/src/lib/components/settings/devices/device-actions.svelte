@@ -29,12 +29,10 @@
 		onRestore: (device: DeviceView) => void;
 	} = $props();
 
-	// `configure` is a link and runs nothing.
 	const RUN: Record<DeviceActionId, (device: DeviceView) => void> = {
 		restore: onRestore,
 		edit: onEdit,
 		rename: onRename,
-		configure: () => {},
 		retire: onRetire
 	};
 

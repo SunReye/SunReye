@@ -111,8 +111,15 @@ export type DeviceKind = "modbus" | "coded" | "virtual";
  *
  * `polling` is the one device the loop reads today; #204 extends it to many and
  * does not change this enum.
+ *
+ * `provided` was called `integration` until integrations became ROWS of their
+ * own (`../integrations/integration-admin.ts`). One list then held both — a
+ * loadpoint badged "integration", and a few lines above it the EVCC ingest that
+ * provides it, also an integration — so the state says what is true of the
+ * DEVICE: something else provides its readings, rather than this server polling
+ * for them.
  */
-export type DeviceState = "polling" | "idle" | "integration" | "virtual" | "retired";
+export type DeviceState = "polling" | "idle" | "provided" | "virtual" | "retired";
 
 export interface DeviceAdminDeps {
   store: DeviceAdminStore;
@@ -453,7 +460,7 @@ function kindOf(device: DeviceRecord, coded: CodedInfo | null): DeviceKind {
 function stateOf(device: DeviceRecord, kind: DeviceKind, primarySlug: string | null): DeviceState {
   if (isRetired(device)) return "retired";
   if (kind === "virtual") return "virtual";
-  if (kind === "coded") return "integration";
+  if (kind === "coded") return "provided";
   return device.slug === primarySlug ? "polling" : "idle";
 }
 

@@ -67,5 +67,5 @@ export const mqttConfigSchema = z.object({
 });
 export type MqttConfig = z.infer<typeof mqttConfigSchema>;
 
-// fallow-ignore-next-line unused-export -- the record's own defaults, asserted directly in `../../../apps/server/src/settings/mqtt-config.test.ts` and used by the Integrations card; the web half of #217 ships separately.
+// fallow-ignore-next-line unused-export -- the record's own defaults, asserted directly in `../../../apps/server/src/settings/mqtt-config.test.ts`; the settings route still serves this record, and `integrations` (migration 0007) is what retires it.
 export const defaultMqtt: MqttConfig = mqttConfigSchema.parse({});

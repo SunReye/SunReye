@@ -3,7 +3,7 @@
  * shell header.
  *
  * Before this, `settings/+layout.svelte` set one static "Settings" title for the
- * whole area, so the header read "Settings" on /settings/mqtt, /settings/users
+ * whole area, so the header read "Settings" on /settings/plant, /settings/users
  * and /settings/danger alike — fourteen panels, one label, and no page ever
  * called `setPageHeader`. Adding a per-page call to each of the fourteen would
  * have produced a fifteenth panel with no title at all, so the titles come from
@@ -70,12 +70,18 @@ describe("settings route table", () => {
 
 describe("settingsHeaderFor", () => {
   test("gives each panel its own header", () => {
-    const mqtt = settingsHeaderFor("/settings/mqtt");
+    const devices = settingsHeaderFor("/settings/devices");
     const danger = settingsHeaderFor("/settings/danger");
-    // /settings/mqtt keeps its path and became "Integrations" (#217).
-    expect(mqtt?.title()).toBe(messages.settings_tab_integrations!);
+    expect(devices?.title()).toBe(messages.settings_tab_devices!);
     expect(danger?.title()).toBe(messages.settings_tab_danger!);
-    expect(mqtt?.subtitle()).not.toBe(danger?.subtitle());
+    expect(devices?.subtitle()).not.toBe(danger?.subtitle());
+  });
+
+  // The Integrations panel is GONE: its two forms are integration ROWS under
+  // their connection on /settings/devices, so the path is not a panel any more
+  // and must not resolve to a header of its own.
+  test("the retired Integrations path is not a panel", () => {
+    expect(settingsHeaderFor("/settings/mqtt")).toBeNull();
   });
 
   // /settings itself only redirects to the first panel; there is no header to

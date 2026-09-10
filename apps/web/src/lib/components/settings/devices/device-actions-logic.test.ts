@@ -38,29 +38,34 @@ describe("what a device row offers its operator", () => {
   // that the whole PATCH was refused, so the row offered a link and nothing
   // else — an EVCC loadpoint could not even be renamed.
   test("a coded row offers rename and retire, never the addressing dialog", () => {
-    expect(ids({ kind: "coded", state: "integration", integration: "evcc" })).toEqual([
+    expect(ids({ kind: "coded", state: "provided", integration: "evcc" })).toEqual([
       "rename",
       "retire",
-      "configure",
     ]);
   });
 
-  test("a retired coded row offers Restore, and its feed's page either way", () => {
+  test("a retired coded row offers Restore and nothing else", () => {
     expect(
       ids({ kind: "coded", state: "retired", integration: "evcc", retiredAt: "2026-09-10" }),
-    ).toEqual(["restore", "configure"]);
+    ).toEqual(["restore"]);
   });
 
-  // Only EVCC has a page to be configured on. A coded row from another
-  // integration must not link at a tab that says nothing about it.
-  test("a coded row of an unknown integration offers no Configure link", () => {
-    expect(ids({ kind: "coded", state: "integration", integration: "acme" })).toEqual([
-      "rename",
-      "retire",
-    ]);
-    expect(ids({ kind: "coded", state: "integration", integration: null })).not.toContain(
-      "configure",
-    );
+  /**
+   * The Configure link is GONE, on every row.
+   *
+   * It pointed at `/settings/mqtt`, and what lived there is now an integration
+   * ROW rendered in this device's own connection group — a few lines above the
+   * device, with its own Edit. So the link had nowhere left to lead that was not
+   * the page the operator is already on, and a per-row list of "integrations
+   * with a page of their own" was a second place to remember when one is added.
+   */
+  test("no row offers a Configure link, whatever provides it", () => {
+    for (const integration of ["evcc", "acme", null]) {
+      expect(ids({ kind: "coded", state: "provided", integration })).not.toContain("configure");
+      expect(
+        ids({ kind: "coded", state: "retired", integration, retiredAt: "2026-09-10" }),
+      ).not.toContain("configure");
+    }
   });
 
   // A virtual row is the optimizer. Renaming it is safe; retiring it would stop

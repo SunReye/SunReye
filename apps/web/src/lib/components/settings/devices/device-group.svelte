@@ -3,13 +3,20 @@
 	import Section from '$lib/components/layout/section.svelte';
 	import EmptyState from '$lib/components/layout/empty-state.svelte';
 	import * as m from '$lib/paraglide/messages';
-	import type { DeviceGroup } from './add-device-logic';
-	import DeviceRow from './device-row.svelte';
-	import type { ConnectionView, DeviceView } from './device-types';
+	import { type DeviceGroup, groupIsEmpty } from './add-device-logic';
+	import DeviceRows from './device-rows.svelte';
+	import type { ConnectionView, DeviceView, IntegrationView } from './device-types';
+	import IntegrationList from './integration-list.svelte';
 
 	// One group of the roster as a collapsible card: a gateway and the devices
 	// reached through it, an integration and the devices it feeds, the internal
 	// devices, or the ones with no endpoint and no reason for it.
+	//
+	// A card answers one question — WHAT IS ON THIS ENDPOINT — and that has two
+	// halves: the devices READ through the connection, and, below them, the
+	// integrations that RUN over it. They used to live on separate tabs, so an
+	// operator looking at a broker saw its loadpoints and no sign of the EVCC
+	// ingest that provisioned them.
 	//
 	// A gateway is edited from HERE, not from one of its devices: one save moves
 	// every device below, and the header is where that is visible. The other three
@@ -17,26 +24,36 @@
 	let {
 		group,
 		busyId,
+		busyIntegrationId,
 		onEditConnection,
 		onEdit,
 		onRename,
 		onRetire,
-		onRestore
+		onRestore,
+		onEditIntegration,
+		onToggleIntegration,
+		onRemoveIntegration
 	}: {
 		group: DeviceGroup;
 		busyId: number | null;
+		busyIntegrationId: number | null;
 		onEditConnection: (connection: ConnectionView) => void;
 		onEdit: (device: DeviceView) => void;
 		onRename: (device: DeviceView) => void;
 		onRetire: (device: DeviceView) => void;
 		onRestore: (device: DeviceView) => void;
+		onEditIntegration: (integration: IntegrationView) => void;
+		onToggleIntegration: (integration: IntegrationView, enabled: boolean) => void;
+		onRemoveIntegration: (integration: IntegrationView) => void;
 	} = $props();
 
 	const connection = $derived(group.connection);
 	// The caption is decided in `add-device-logic.ts`, per KIND: a gateway says
 	// how it is framed and how often it is read, a broker says which broker it is.
 	const caption = $derived(group.caption ?? undefined);
-	const empty = $derived(group.devices.length === 0);
+	// Empty means BOTH halves empty — a broker whose EVCC ingest is configured and
+	// whose first message has not landed yet has something to show.
+	const empty = $derived(groupIsEmpty(group));
 </script>
 
 <Section title={group.title} {caption} nested collapsible open>
@@ -50,10 +67,21 @@
 	{#if empty}
 		<EmptyState message={m.devices_empty()} />
 	{:else}
-		<div class="flex flex-col divide-y divide-border" data-group={group.key}>
-			{#each group.devices as device (device.id)}
-				<DeviceRow {device} busy={busyId === device.id} {onEdit} {onRename} {onRetire} {onRestore} />
-			{/each}
-		</div>
+		<DeviceRows
+			devices={group.devices}
+			{busyId}
+			groupKey={group.key}
+			{onEdit}
+			{onRename}
+			{onRetire}
+			{onRestore}
+		/>
+		<IntegrationList
+			integrations={group.integrations}
+			busyId={busyIntegrationId}
+			onEdit={onEditIntegration}
+			onToggle={onToggleIntegration}
+			onRemove={onRemoveIntegration}
+		/>
 	{/if}
 </Section>

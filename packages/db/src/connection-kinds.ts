@@ -62,7 +62,7 @@ export type ConnectionKind = (typeof CONNECTION_KINDS)[number];
  * repository refuses a write that fails it — a third value is not a validation
  * nicety, the client has no branch for it and the endpoint simply never polls.
  */
-// fallow-ignore-next-line unused-export -- the framing list the add-connection dialog renders; the web half of #217 ships separately.
+// fallow-ignore-next-line unused-export -- the framing list the add-connection dialog renders; the web app restates it (it does not depend on @SunReye/db) and this is the constraint the repository enforces.
 export const MODBUS_TRANSPORTS = ["tcp", "rtu-over-tcp"] as const;
 export type ModbusTransport = (typeof MODBUS_TRANSPORTS)[number];
 
@@ -130,7 +130,7 @@ export const connectionSettingsSchema = z.discriminatedUnion("kind", [
   z.object({ name: nameSchema, kind: z.literal("modbus"), params: modbusParamsSchema }),
   z.object({ name: nameSchema, kind: z.literal("mqtt"), params: mqttParamsSchema }),
 ]);
-// fallow-ignore-next-line unused-type -- the add-connection dialog's body type; the web half of #217 ships separately.
+// fallow-ignore-next-line unused-type -- the add-connection dialog's body type, named by the route that parses it.
 export type ConnectionSettingsInput = z.infer<typeof connectionSettingsSchema>;
 
 /**

@@ -358,6 +358,22 @@ const ROUTES: readonly SmokeRoute[] = [
     },
   },
   {
+    // The add WIZARD, a route rather than a dialog: four questions is more than
+    // a modal holds at 400px. Its first step is a picker over the plant's own
+    // connections, so the option list is the payload proof — a heading alone
+    // would pass with `/api/devices` unanswered.
+    file: "(app)/settings/devices/add/+page.svelte",
+    h1: "Devices",
+    surface: async (page) => {
+      await heading(page, "Add to this plant");
+      // The plant's own endpoints, grouped by kind — both of them, so the
+      // payload is what is on screen rather than the placeholder option.
+      await expect(page.getByLabel("Connection", { exact: true }).locator("optgroup")).toHaveCount(
+        2,
+      );
+    },
+  },
+  {
     file: "(app)/settings/sensors/+page.svelte",
     h1: "Sensors",
     // The heading alone also renders over the `No sensors available yet.`
@@ -365,19 +381,6 @@ const ROUTES: readonly SmokeRoute[] = [
     surface: async (page) => {
       await heading(page, "Sensor visibility");
       await expect(page.getByRole("switch").first()).toBeVisible();
-    },
-  },
-  {
-    // The MQTT panel became INTEGRATIONS (#217): no broker URL, no username and
-    // no password on this page at all — the endpoint is a `kind = 'mqtt'`
-    // connection, and the card NAMES one. The unbound fixture is what makes the
-    // select's value load-bearing here.
-    file: "(app)/settings/mqtt/+page.svelte",
-    h1: "Integrations",
-    surface: async (page) => {
-      await heading(page, "Home Assistant discovery");
-      await expect(page.getByLabel("Broker connection").first()).toHaveValue("");
-      await expect(page.getByLabel("Topic prefix")).toHaveValue("sunreye");
     },
   },
   {

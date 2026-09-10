@@ -27,6 +27,7 @@ import {
   type DevicePatchBody,
   type DeviceRoster,
   type DeviceView,
+  type IntegrationView,
   type ModbusConnectionView,
   NEW_CONNECTION,
 } from "./device-types";
@@ -259,7 +260,28 @@ export type DeviceGroup = {
   /** The integration's provenance name, on an `integration` group; null otherwise. */
   integration: string | null;
   devices: DeviceView[];
+  /**
+   * The integration ROWS that hang off this group's endpoint — what the plant
+   * runs OVER the connection, as opposed to the devices it reads THROUGH it.
+   *
+   * Only a `gateway` group and `internal` can carry any: a row names a
+   * connection or names none, and the other two group kinds are neither. Every
+   * group has the field so the card renders one shape.
+   */
+  integrations: IntegrationView[];
 };
+
+/**
+ * A card with nothing in it — BOTH halves empty.
+ *
+ * Its own function because "empty" stopped being `devices.length === 0` the day
+ * a card grew a second half: a broker with an EVCC ingest and no loadpoint yet
+ * (its first message has not landed) would otherwise render "No devices" over
+ * the top of the integration it is running.
+ */
+export function groupIsEmpty(group: DeviceGroup): boolean {
+  return group.devices.length === 0 && group.integrations.length === 0;
+}
 
 /**
  * The display name of an integration.
@@ -294,6 +316,7 @@ function integrationLabel(integration: string): string {
  * integration with no devices is not: nothing is registered under it.
  */
 export function groupByConnection(roster: DeviceRoster): DeviceGroup[] {
+  const rows = roster.integrations ?? [];
   const gateways: DeviceGroup[] = [...roster.connections]
     .sort((a, b) => a.id - b.id)
     .map((connection) => ({
@@ -304,6 +327,7 @@ export function groupByConnection(roster: DeviceRoster): DeviceGroup[] {
       connection,
       integration: null,
       devices: roster.devices.filter((d) => d.connectionId === connection.id),
+      integrations: rows.filter((i) => i.connectionId === connection.id),
     }));
   const endpointless = roster.devices.filter((d) => d.connectionId === null);
   return [
@@ -313,11 +337,13 @@ export function groupByConnection(roster: DeviceRoster): DeviceGroup[] {
       "internal",
       m.devices_group_internal(),
       endpointless.filter((d) => d.kind === "virtual"),
+      rows.filter((i) => i.connectionId === null),
     ),
     ...loose(
       "orphan",
       m.devices_group_no_connection(),
       endpointless.filter((d) => d.kind === "modbus"),
+      [],
     ),
   ];
 }
@@ -338,17 +364,25 @@ function integrationGroups(coded: readonly DeviceView[]): DeviceGroup[] {
       connection: null,
       integration,
       devices,
+      integrations: [],
     }))
     .sort((a, b) => a.title.localeCompare(b.title));
 }
 
-/** A group that exists only while it holds something. */
+/**
+ * A group that exists only while it holds something — in EITHER half.
+ *
+ * Internal takes the connection-less integration rows, so it can be a card with
+ * no device in it at all: a coded thing running over no endpoint, configured and
+ * with nowhere else on the page to be seen.
+ */
 function loose(
   kind: "internal" | "orphan",
   title: string,
   devices: readonly DeviceView[],
+  integrations: readonly IntegrationView[],
 ): DeviceGroup[] {
-  if (devices.length === 0) return [];
+  if (devices.length === 0 && integrations.length === 0) return [];
   return [
     {
       key: kind,
@@ -358,8 +392,45 @@ function loose(
       connection: null,
       integration: null,
       devices: [...devices],
+      integrations: [...integrations],
     },
   ];
+}
+
+/**
+ * The `devices.profile_id` values an integration KIND provisions.
+ *
+ * The web half of the server's `YIELDED_PROFILES`
+ * (`apps/server/src/integrations/integration-admin.ts`). A table, and only the
+ * kinds that yield anything appear: the Home Assistant export publishes and
+ * yields nothing, so it is absent and its confirm dialog names nothing without a
+ * branch. The server is what actually retires — this exists so the dialog can
+ * say what is about to happen before the operator agrees to it.
+ */
+const YIELDED_PROFILES: Record<string, readonly string[]> = {
+  "evcc-ingest": ["evcc-loadpoint"],
+};
+
+/**
+ * The IN-SERVICE devices a `DELETE /api/integrations/:id` will retire: this
+ * integration's profiles, on this integration's own endpoint.
+ *
+ * Its own endpoint and no other's — two EVCC instances on two brokers is the
+ * arrangement the connection column made expressible. Already-retired rows are
+ * skipped because the server skips them too: `retired_at` is when the device
+ * left service, and naming one here would promise a change that will not happen.
+ */
+export function retiredByRemoving(
+  integration: IntegrationView,
+  devices: readonly DeviceView[],
+): DeviceView[] {
+  const profiles = YIELDED_PROFILES[integration.kind] ?? [];
+  return devices.filter(
+    (device) =>
+      device.retiredAt === null &&
+      device.connectionId === integration.connectionId &&
+      profiles.includes(device.profileId),
+  );
 }
 
 const TRANSPORT_LABELS: Record<string, string> = {

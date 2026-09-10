@@ -17,11 +17,18 @@ export type DeviceBadge = {
  * What a device's state says on its row.
  *
  * A decision, not markup: `idle` explains itself on hover because "not polled"
- * reads as a fault and is a release limit, while an integration and an internal
+ * reads as a fault and is a release limit, while a PROVIDED and an internal
  * device carry NO such hint — neither is polled by design, and the Modbus hint
  * told an EVCC loadpoint's owner their charger was waiting for a release
- * (#213). The integration badge links to where its feed is configured instead,
- * which is the MQTT tab until #217 gives EVCC a home of its own.
+ * (#213).
+ *
+ * NOTHING here is a link any more. The provided badge used to point at the MQTT
+ * tab, which is gone: what provides this device is an integration ROW, listed in
+ * the same connection group a few lines away, with its own Edit, toggle and
+ * Remove. A link from the devices page back to the devices page is a no-op
+ * dressed as navigation, so `href` stays null on every arm — the field is kept
+ * because a badge that DOES lead somewhere (an integration with a page of its
+ * own) is a plausible next arm, and the renderer already handles it.
  */
 export function deviceBadge(device: DeviceView): DeviceBadge {
   switch (device.state) {
@@ -29,13 +36,8 @@ export function deviceBadge(device: DeviceView): DeviceBadge {
       return { label: m.devices_badge_retired(), ok: false, hint: null, href: null };
     case "polling":
       return { label: m.devices_badge_polling(), ok: true, hint: null, href: null };
-    case "integration":
-      return {
-        label: m.devices_badge_integration(),
-        ok: false,
-        hint: null,
-        href: "/settings/mqtt",
-      };
+    case "provided":
+      return { label: m.devices_badge_provided(), ok: false, hint: null, href: null };
     case "virtual":
       return { label: m.devices_badge_internal(), ok: false, hint: null, href: null };
     default:

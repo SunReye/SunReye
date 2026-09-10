@@ -706,30 +706,108 @@ export const INVERTER_CONFIG = {
 };
 
 /**
- * `packages/db/src/mqtt-config.ts` → `mqttConfigSchema.parse({})`.
+ * `GET /api/integrations` — `IntegrationView[]`
+ * (`apps/server/src/integrations/integration-admin.ts`).
  *
- * Four fields and no secret since #217: the broker is a `kind = 'mqtt'`
- * CONNECTION, and `connectionId: null` IS "the export is off" — there is no
- * `enabled` flag left. Left unbound on purpose, so a spec that binds it proves
- * the select is wired.
+ * TWO rows on the broker (id 2), so the devices page has both halves of a card
+ * to render and the two are told apart by more than position: the EVCC ingest,
+ * enabled and provisioning the loadpoints below, and the Home Assistant export,
+ * DISABLED — an integration's row is its configuration and `enabled` is the off
+ * switch, so a fixture with only enabled rows never renders the off state.
+ *
+ * `label`, `addable` and `multiInstance` are derived by the server per response
+ * from the catalog entry the kind resolves to; they are not stored.
  */
-export const MQTT_CONFIG = {
-  connectionId: null,
-  topicPrefix: "sunreye",
-  haDiscoveryEnabled: false,
-  haDiscoveryPrefix: "homeassistant",
-};
+export const INTEGRATIONS = [
+  {
+    id: 1,
+    kind: "evcc-ingest",
+    connectionId: 2,
+    enabled: true,
+    params: { topicRoot: "evcc" },
+    label: "EVCC",
+    addable: true,
+    multiInstance: true,
+  },
+  {
+    id: 2,
+    kind: "ha-export",
+    connectionId: 2,
+    enabled: false,
+    params: {
+      topicPrefix: "sunreye",
+      haDiscoveryEnabled: false,
+      haDiscoveryPrefix: "homeassistant",
+    },
+    label: "Home Assistant export",
+    addable: true,
+    multiInstance: false,
+  },
+];
 
 /**
- * `packages/db/src/evcc-config.ts` → `defaultEvcc`, bound to the broker the
- * loadpoints below sit on and switched ON — the disabled default renders none
- * of the card's controls.
+ * `GET /api/integrations/catalog` — `catalogViewFor` per connection kind
+ * (`apps/server/src/devices/integration-catalog.ts`), with each entry's zod
+ * schema already DESCRIBED as field rows.
+ *
+ * The wizard renders this, and so does the edit dialog: the fields an
+ * integration's settings step asks for are the catalog's, never the web app's,
+ * which is what keeps the form from offering what the route then refuses. Only
+ * the three fields the specs actually type into are described.
  */
-export const EVCC_CONFIG = {
-  enabled: true,
-  connectionId: 2,
-  topicRoot: "evcc",
-  subtractFromHome: false,
+export const INTEGRATION_CATALOG = {
+  modbus: [
+    {
+      id: "modbus-device",
+      label: "Modbus device",
+      via: "profile",
+      addable: true,
+      multiInstance: true,
+      fields: [],
+    },
+  ],
+  mqtt: [
+    {
+      id: "evcc-ingest",
+      label: "EVCC",
+      via: "coded",
+      addable: true,
+      multiInstance: true,
+      fields: [
+        { name: "topicRoot", type: "string", required: false, default: "evcc", min: 1, max: 120 },
+      ],
+    },
+    {
+      id: "ha-export",
+      label: "Home Assistant export",
+      via: "coded",
+      addable: true,
+      multiInstance: false,
+      fields: [
+        { name: "topicPrefix", type: "string", required: false, default: "sunreye", min: 1 },
+        { name: "haDiscoveryEnabled", type: "boolean", required: false, default: false },
+        {
+          name: "haDiscoveryPrefix",
+          type: "string",
+          required: false,
+          default: "homeassistant",
+          min: 1,
+        },
+      ],
+    },
+  ],
+  // The catalog's null arm: the coded things that run over no connection at all.
+  // `addable: false` — the server provisions them itself.
+  internal: [
+    {
+      id: "sunreye.optimizer",
+      label: "SunReye Optimizer",
+      via: "coded",
+      addable: false,
+      multiInstance: false,
+      fields: [],
+    },
+  ],
 };
 
 /** `apps/server/src/settings/logging-settings.ts` — config plus resolved level. */
@@ -987,7 +1065,7 @@ export function devices(manifest: FixtureManifest) {
         profileName: "EVCC loadpoint",
         profileKnown: true,
         kind: "coded",
-        state: "integration",
+        state: "provided",
         integration: "evcc",
       },
       {
@@ -1007,7 +1085,7 @@ export function devices(manifest: FixtureManifest) {
         profileName: "EVCC loadpoint",
         profileKnown: true,
         kind: "coded",
-        state: "integration",
+        state: "provided",
         integration: "evcc",
       },
       {

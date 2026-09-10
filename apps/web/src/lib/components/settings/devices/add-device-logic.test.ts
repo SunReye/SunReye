@@ -9,14 +9,16 @@ import {
   devicePatch,
   formFromDevice,
   groupByConnection,
+  groupIsEmpty,
   emptyForm,
   nameProblem,
   probeTargetOf,
   profileGroups,
+  retiredByRemoving,
   takenUnitIds,
 } from "./add-device-logic";
 import { NEW_CONNECTION } from "./device-types";
-import type { ConnectionView, DeviceView } from "./device-types";
+import type { ConnectionView, DeviceView, IntegrationView } from "./device-types";
 
 const gateway = {
   id: 3,
@@ -74,7 +76,7 @@ const loadpoint = (over: Partial<DeviceView> = {}): DeviceView =>
     connection: null,
     profileName: "EVCC loadpoint",
     kind: "coded",
-    state: "integration",
+    state: "provided",
     integration: "evcc",
     ...over,
   });
@@ -777,5 +779,178 @@ describe("probeTargetOf", () => {
         [gateway],
       ),
     ).toBeNull();
+  });
+});
+
+/**
+ * WHAT HANGS OFF A CONNECTION, beside what reads through it.
+ *
+ * An integration is a row of its own now (`integrations`, migration 0007), and
+ * the page that answers "what is on this endpoint" has to show both halves: the
+ * devices reached THROUGH the connection, and the integrations that sit ON it.
+ * Before this they were on a separate tab, so an operator looking at a broker
+ * saw its loadpoints and no sign of the EVCC ingest that provisioned them.
+ */
+describe("the integrations a group carries", () => {
+  const broker = brokerConn;
+  const integration = (over: Partial<IntegrationView> = {}): IntegrationView => ({
+    id: 1,
+    kind: "evcc-ingest",
+    connectionId: 7,
+    enabled: true,
+    params: { topicRoot: "evcc" },
+    label: "EVCC",
+    addable: true,
+    multiInstance: true,
+    ...over,
+  });
+
+  test("an integration is listed under the connection it names", () => {
+    const groups = groupByConnection({
+      connections: [gateway, broker],
+      devices: [],
+      integrations: [integration(), integration({ id: 2, kind: "ha-export", label: "HA" })],
+    });
+    expect(groups.map((g) => [g.title, g.integrations.map((i) => i.id)])).toEqual([
+      ["Gateway 1", []],
+      ["Home broker", [1, 2]],
+    ]);
+  });
+
+  // A row with no connection is a coded thing running over no endpoint at all —
+  // the catalog's null arm. "Internal" is where the devices of that shape
+  // already live, so it is where the integrations of that shape belong too.
+  test("a connection-less integration belongs to Internal", () => {
+    const groups = groupByConnection({
+      connections: [gateway],
+      devices: [optimizerDevice()],
+      integrations: [integration({ id: 5, connectionId: null, kind: "sunreye.optimizer" })],
+    });
+    expect(groups.map((g) => [g.kind, g.integrations.map((i) => i.id)])).toEqual([
+      ["gateway", []],
+      ["internal", [5]],
+    ]);
+  });
+
+  // Internal used to exist only while it held a DEVICE. A connection-less
+  // integration with no device would then have nowhere to be rendered at all —
+  // configured, running, and invisible.
+  test("Internal appears for a connection-less integration even with no device in it", () => {
+    const groups = groupByConnection({
+      connections: [],
+      devices: [],
+      integrations: [integration({ id: 5, connectionId: null })],
+    });
+    expect(groups.map((g) => [g.kind, g.devices.length, g.integrations.length])).toEqual([
+      ["internal", 0, 1],
+    ]);
+  });
+
+  // The devices a coded integration provisioned are grouped by their OWN
+  // `connectionId`, which is the integration's; the two halves of the card are
+  // read off different roster arms and must not be conflated.
+  test("a broker's card holds both what it provisions and what reads through it", () => {
+    const groups = groupByConnection({
+      connections: [broker],
+      devices: [loadpoint({ id: 20, slug: "evcc-loadpoint-1", connectionId: 7, unitId: 0 })],
+      integrations: [integration()],
+    });
+    expect(groups[0]!.devices.map((d) => d.slug)).toEqual(["evcc-loadpoint-1"]);
+    expect(groups[0]!.integrations.map((i) => i.label)).toEqual(["EVCC"]);
+  });
+
+  // The page loads the roster and the integration list separately, so it renders
+  // once with the devices and no rows yet. That is an empty list, never a crash.
+  test("a roster with no integration list at all carries empty lists", () => {
+    const groups = groupByConnection({ connections: [gateway], devices: [] });
+    expect(groups.map((g) => g.integrations)).toEqual([[]]);
+  });
+
+  // Both halves empty is the only thing that makes a card empty. A gateway with
+  // no devices but an integration on it has something to show.
+  test("a group is empty only when neither half holds anything", () => {
+    const withRow = groupByConnection({
+      connections: [broker],
+      devices: [],
+      integrations: [integration()],
+    });
+    expect(groupIsEmpty(withRow[0]!)).toBe(false);
+    const bare = groupByConnection({ connections: [broker], devices: [] });
+    expect(groupIsEmpty(bare[0]!)).toBe(true);
+  });
+});
+
+/**
+ * WHAT A REMOVE TAKES WITH IT.
+ *
+ * `DELETE /api/integrations/:id` retires the devices the integration
+ * provisioned — an EVCC ingest's loadpoints — because their readings are a
+ * foreign key away from a year of `metrics_raw` rows and deleting them would
+ * take the history with it (`integration-admin.ts`, `retireYielded`). The
+ * confirm dialog has to SAY so: a Remove that silently retires two chargers is
+ * the wrong surprise, and the operator cannot see it coming from the row.
+ *
+ * Mirrors the server's `YIELDED_PROFILES` table, and is a TABLE here for the
+ * same reason: an integration that yields nothing is absent from it, so the
+ * dialog for a Home Assistant export names nothing rather than branching.
+ */
+describe("retiredByRemoving", () => {
+  const broker = brokerConn;
+  const ingest = {
+    id: 1,
+    kind: "evcc-ingest",
+    connectionId: 7,
+    enabled: true,
+    params: {},
+    label: "EVCC",
+    addable: true,
+    multiInstance: true,
+  } satisfies IntegrationView;
+  const onBroker = (over: Partial<DeviceView> = {}) =>
+    loadpoint({ connectionId: 7, connection: broker, ...over });
+
+  test("an EVCC ingest names the live loadpoints on its own broker", () => {
+    expect(
+      retiredByRemoving(ingest, [
+        onBroker({ id: 20, slug: "evcc-loadpoint-1", name: "Carport" }),
+        onBroker({ id: 21, slug: "evcc-loadpoint-2", name: "Garage" }),
+      ]).map((d) => d.name),
+    ).toEqual(["Carport", "Garage"]);
+  });
+
+  // Its own broker, and no other's: two EVCC instances on two brokers is the
+  // arrangement the connection column made expressible, and removing one must
+  // not claim the other's chargers.
+  test("a loadpoint on another broker is not this integration's to retire", () => {
+    expect(
+      retiredByRemoving(ingest, [onBroker({ id: 22, connectionId: 9, slug: "other" })]),
+    ).toEqual([]);
+  });
+
+  // `retired_at` is when the device left service, and the server skips a row
+  // that already has one rather than re-stamping it. Naming it in the dialog
+  // would promise a change that will not happen.
+  test("an already-retired loadpoint is not named again", () => {
+    expect(
+      retiredByRemoving(ingest, [onBroker({ id: 23, retiredAt: "2026-01-01T00:00:00.000Z" })]),
+    ).toEqual([]);
+  });
+
+  test("only the profiles the integration provisions, never every device on the broker", () => {
+    expect(
+      retiredByRemoving(ingest, [
+        onBroker({ id: 24, slug: "meter", profileId: "sungrow-sh10rt", kind: "modbus" }),
+      ]),
+    ).toEqual([]);
+  });
+
+  // The Home Assistant export publishes and provisions nothing, so its Remove
+  // is just a Remove — and it is absent from the table rather than special-cased.
+  test("an integration that provisions nothing retires nothing", () => {
+    expect(
+      retiredByRemoving({ ...ingest, kind: "ha-export" }, [
+        onBroker({ id: 25, slug: "evcc-loadpoint-1" }),
+      ]),
+    ).toEqual([]);
   });
 });
