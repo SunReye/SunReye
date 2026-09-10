@@ -433,6 +433,25 @@ export async function listConnections(
   return { connections: (await deps.store.readConnections(plant.id)).map(toConnectionView) };
 }
 
+/**
+ * Create a connection ON ITS OWN — a gateway with no device on it yet, or a
+ * broker, which never has one at creation time.
+ *
+ * `POST /api/devices`'s `connection: { create }` arm can only make a connection
+ * ALONGSIDE a device, which was enough while every connection was a Modbus
+ * gateway with a slave behind it. A broker is not: the EVCC loadpoints appear
+ * once the ingest is bound to it and its first message arrives, and the mapped
+ * devices that will sit on one are #79–#84. So the endpoint is provisioned
+ * first and bound to afterwards.
+ */
+export async function addConnection(deps: DeviceAdminDeps, body: unknown): Promise<ConnectionView> {
+  const settings = parse(connectionSettingsSchema, body);
+  const plant = await requirePlant(deps);
+  const created = await deps.store.createConnection(plant.id, settings);
+  await deps.reload();
+  return toConnectionView(created);
+}
+
 async function requirePlant(deps: DeviceAdminDeps): Promise<PlantRecord> {
   const plant = await deps.store.readPlant();
   if (!plant) throw new DeviceAdminError(400, "this install has no plant yet");

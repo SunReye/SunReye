@@ -17,6 +17,7 @@ import { Elysia, t } from "elysia";
 import {
   type DeviceAdminDeps,
   DeviceAdminError,
+  addConnection,
   addDevice,
   listConnections,
   listDevices,
@@ -113,6 +114,13 @@ export const deviceRoutes = new Elysia({ name: "device-routes" })
   // follows the secret (#217). `listConnections` is the service call rather than
   // a store read spelled here, so this route cannot forget it.
   .get("/api/connections", { requireAdmin: true }, () => listConnections(defaultDeps()))
+  // A connection ON ITS OWN (#217). The `connection: { create }` arm of
+  // `POST /api/devices` can only make one alongside a device, and a broker never
+  // has one at creation time — its loadpoints appear after the ingest is bound
+  // to it and its first message lands.
+  .post("/api/connections", { requireAdmin: true, body: t.Unknown() }, ({ body, status }) =>
+    respond(status, () => addConnection(defaultDeps(), body)),
+  )
   .post("/api/devices", { requireAdmin: true, body: t.Unknown() }, ({ body, status }) =>
     respond(status, () => addDevice(defaultDeps(), body)),
   )
