@@ -1,8 +1,15 @@
 import { describe, expect, test } from "bun:test";
 
-import { NEW_CONNECTION } from "../devices/device-types";
+import { emptyForm } from "../devices/add-device-logic";
+import {
+  type AddDeviceForm,
+  type ConnectionView,
+  type DeviceView,
+  NEW_CONNECTION,
+} from "../devices/device-types";
 import {
   type CatalogEntryView,
+  type DeviceSeed,
   type WizardState,
   advance,
   blockedAt,
@@ -24,7 +31,18 @@ const catalog = {
       via: "profile",
       addable: true,
       multiInstance: true,
-      fields: [],
+      // What `integration-catalog.ts` actually describes for the profile tier —
+      // and what step 3 must NOT render as a catalog form: `arrays` is an array
+      // and `battery` an object (the generic renderer can only report those),
+      // `profileId` needs the picker, and there is no `name` at all, which is
+      // the field `POST /api/devices` requires.
+      fields: [
+        { name: "role", type: "enum", required: true, options: ["inverter", "meter"] },
+        { name: "profileId", type: "string", required: true },
+        { name: "unitId", type: "number", required: true, min: 0, max: 247 },
+        { name: "arrays", type: "array", required: false },
+        { name: "battery", type: "object", required: false },
+      ],
     },
   ],
   mqtt: [
@@ -62,10 +80,46 @@ const catalog = {
   ],
 } satisfies Record<string, CatalogEntryView[]>;
 
-const connections = [
-  { id: 1, name: "Inverter", kind: "modbus" as const },
-  { id: 2, name: "Broker", kind: "mqtt" as const },
+/**
+ * The two endpoints as `/api/connections` returns them — full rows rather than
+ * the picker's narrowing, because the device arm seeds its form off the roster.
+ */
+const connections: ConnectionView[] = [
+  {
+    id: 1,
+    name: "Inverter",
+    kind: "modbus",
+    params: {
+      host: "10.0.0.5",
+      port: 502,
+      transport: "tcp",
+      timeoutMs: 2000,
+      pollIntervalMs: 1000,
+    },
+  },
+  {
+    id: 2,
+    name: "Broker",
+    kind: "mqtt",
+    params: { brokerUrl: "mqtt://b:1883", hasPassword: false },
+  },
 ];
+
+/** An in-service device holding one unit id on the gateway. */
+const onBus = (unitId: number): DeviceView =>
+  ({ id: unitId + 1, unitId, connectionId: 1, retiredAt: null }) as DeviceView;
+
+const seed = (devices: DeviceView[] = []): DeviceSeed => ({ connections, devices });
+
+/** A device form the add body accepts, so a case can spoil one field at a time. */
+const deviceForm = (over: Partial<AddDeviceForm> = {}): AddDeviceForm => ({
+  ...emptyForm(connections, [], "1"),
+  role: "meter",
+  unitId: 3,
+  name: "Cellar meter",
+  profileId: "acme.meter",
+  ...over,
+});
 
 const at = (over: Partial<WizardState> = {}): WizardState => ({ ...emptyWizard(), ...over });
 
@@ -136,13 +190,75 @@ describe("what may be attached", () => {
 describe("where the entry's settings come from", () => {
   // Seeding happens on the way INTO step 3, so it is asserted through the step
   // rather than against a helper nothing else calls.
-  test("an entry with no fields opens step 3 with nothing to answer", () => {
+  test("a coded entry with no fields opens step 3 with nothing to answer", () => {
+    const bare = {
+      ...catalog,
+      mqtt: [{ ...catalog.mqtt[1], id: "bare", fields: [] }],
+    } as typeof catalog;
+    const state = advance(
+      at({ step: "attach", connection: { mode: "existing", id: 2 }, entryId: "bare" }),
+      connections,
+      bare,
+    );
+    expect(state.answers).toEqual({ via: "coded", values: {} });
+  });
+
+  /**
+   * THE BUG THIS FILE WAS WRITTEN FOR.
+   *
+   * The profile tier is a DEVICE, and a device is not two or three scalars: it
+   * is the add dialog's own form. Rendered as a catalog form, step 3 printed
+   * "arrays: array" and "battery: object", offered a free-text box where the
+   * profile picker belongs, and asked for no NAME at all — which
+   * `POST /api/devices` requires, so the whole Modbus arm could not succeed.
+   */
+  test("a profile-tier entry opens step 3 on a DEVICE form, not on catalog values", () => {
     const state = advance(
       at({ step: "attach", connection: { mode: "existing", id: 1 }, entryId: "modbus-device" }),
       connections,
       catalog,
+      true,
+      seed(),
     );
-    expect(state.values).toEqual({});
+    expect(state.answers.via).toBe("profile");
+    if (state.answers.via !== "profile") throw new Error("unreachable");
+    // Addressed at the endpoint step 1 already answered, so the operator is
+    // never asked the same question twice — and so the taken-unit-id set is
+    // this gateway's.
+    expect(state.answers.form.connectionChoice).toBe("1");
+    expect(state.answers.form.name).toBe("");
+    expect(state.answers.form.role).toBe("inverter");
+  });
+
+  test("the seeded unit id is the lowest free one ON THAT gateway", () => {
+    const state = advance(
+      at({ step: "attach", connection: { mode: "existing", id: 1 }, entryId: "modbus-device" }),
+      connections,
+      catalog,
+      true,
+      seed([onBus(0), onBus(1)]),
+    );
+    if (state.answers.via !== "profile") throw new Error("expected the device arm");
+    expect(state.answers.form.unitId).toBe(2);
+  });
+
+  // The endpoint does not exist yet, so nothing is addressed on it and every
+  // unit id is free — the same answer `takenUnitIds` gives the dialog.
+  test("a connection still being created seeds the form on the create arm", () => {
+    const state = advance(
+      at({
+        step: "attach",
+        connection: { mode: "create", kind: "modbus" },
+        entryId: "modbus-device",
+      }),
+      connections,
+      catalog,
+      true,
+      seed([onBus(0)]),
+    );
+    if (state.answers.via !== "profile") throw new Error("expected the device arm");
+    expect(state.answers.form.connectionChoice).toBe(NEW_CONNECTION);
+    expect(state.answers.form.unitId).toBe(0);
   });
 });
 
@@ -170,7 +286,10 @@ describe("stepping", () => {
       catalog,
     );
     expect(state.step).toBe("settings");
-    expect(state.values).toEqual({ topicPrefix: "sunreye", haDiscoveryEnabled: false });
+    expect(state.answers).toEqual({
+      via: "coded",
+      values: { topicPrefix: "sunreye", haDiscoveryEnabled: false },
+    });
   });
 
   test("confirm is the last step and advancing again stays there", () => {
@@ -195,12 +314,88 @@ describe("stepping", () => {
       step: "settings",
       connection: { mode: "existing", id: 2 },
       entryId: "ha-export",
-      values: { topicPrefix: "x" },
+      answers: { via: "coded" as const, values: { topicPrefix: "x" } },
     });
     const moved = { ...goBack(goBack(state)), connection: { mode: "existing" as const, id: 1 } };
     const cleared = advance(moved, connections, catalog);
     expect(cleared.entryId).toBeNull();
-    expect(cleared.values).toEqual({});
+    expect(cleared.answers).toEqual({ via: "coded", values: {} });
+  });
+});
+
+/**
+ * STEP 3'S GATE, ON THE DEVICE ARM.
+ *
+ * The coded arm keeps its old rule — the server validates an integration's
+ * params and refuses with the field named. A device cannot: `Next` there leads
+ * straight to the confirm screen and then to a 400 the operator cannot act on,
+ * so the form's own answer to "could this be submitted" holds the step.
+ */
+describe("step 3 on the device arm", () => {
+  const onSettings = (form: AddDeviceForm): WizardState =>
+    at({
+      step: "settings",
+      connection: { mode: "existing", id: 1 },
+      entryId: "modbus-device",
+      answers: { via: "profile", form },
+    });
+
+  test("a complete device form lets the wizard through to confirm", () => {
+    const state = onSettings(deviceForm());
+    expect(blockedAt(state, connections, catalog)).toBeNull();
+    expect(advance(state, connections, catalog, true, seed()).step).toBe("confirm");
+  });
+
+  test("the freshly seeded form holds the step — it has no name and no profile", () => {
+    const state = onSettings(emptyForm(connections, [], "1"));
+    expect(blockedAt(state, connections, catalog)).toBe("settings");
+    expect(advance(state, connections, catalog, true, seed()).step).toBe("settings");
+  });
+
+  test.each([
+    ["an empty name", { name: "" }],
+    ["a name of nothing but spaces", { name: "   " }],
+    // `slugify` keeps nothing from these, so the row would get a slug the
+    // operator never chose — the server's own `nameSchema` refuses them too.
+    ["a name that slugifies to nothing", { name: "###" }],
+    ["no profile", { profileId: "" }],
+    ["unit id 248, one past the reserved boundary", { unitId: 248 }],
+    ["unit id -1", { unitId: -1 }],
+    ["a fractional unit id", { unitId: 1.5 }],
+  ])("%s holds step 3", (_why, over) => {
+    expect(blockedAt(onSettings(deviceForm(over)), connections, catalog)).toBe("settings");
+  });
+
+  // The two ends that ARE addressable: a gateway answers on 0, and 247 is the
+  // last slave id before the reserved range.
+  test.each([0, 247])("unit id %i is addressable and passes", (unitId) => {
+    expect(blockedAt(onSettings(deviceForm({ unitId })), connections, catalog)).toBeNull();
+  });
+
+  /**
+   * A unit id already taken on this gateway is NOT held here.
+   *
+   * The picker disables the ids it knows about and the database index is the
+   * authority (409 on a stale list). Blocking on the roster the page happens to
+   * hold would refuse a legitimate add whenever a device was retired in another
+   * tab, with nothing on screen to explain it.
+   */
+  test("a duplicate unit id is left to the server's index, not held by the gate", () => {
+    const state = onSettings(deviceForm({ unitId: 0 }));
+    expect(blockedAt(state, connections, catalog)).toBeNull();
+    expect(submissionOf(state, connections, catalog)).not.toBeNull();
+  });
+
+  // The coded arm's params are the server's to validate; step 3 never held it
+  // and must not start.
+  test("a coded entry's settings step is never held", () => {
+    const state = at({
+      step: "settings",
+      connection: { mode: "existing", id: 2 },
+      entryId: "ha-export",
+      answers: { via: "coded", values: {} },
+    });
+    expect(blockedAt(state, connections, catalog)).toBeNull();
   });
 });
 
@@ -208,24 +403,89 @@ describe("what the wizard finally sends", () => {
   // The TIER decides the endpoint: a profile-tier entry is a register map on an
   // address, so it is a DEVICE; a coded entry attached to a connection is an
   // INTEGRATION, which may yield devices later or none at all.
-  test("a profile-tier entry is posted as a device", () => {
-    const state = at({
+  const onConfirm = (form: AddDeviceForm, id = 1): WizardState =>
+    at({
       step: "confirm",
-      connection: { mode: "existing", id: 1 },
+      connection: { mode: "existing", id },
       entryId: "modbus-device",
-      values: { role: "meter", name: "Meter", unitId: 3, profileId: "acme.meter" },
+      answers: { via: "profile", form },
     });
-    expect(submissionOf(state, connections, catalog)).toEqual({
+
+  // Exactly the body `POST /api/devices` accepts, built through the dialog's own
+  // `buildAddDeviceBody` — so the unit-id rule, the trim and the per-role
+  // inverter fields cannot drift between the two surfaces.
+  test("a profile-tier entry is posted as the device body the route accepts", () => {
+    expect(submissionOf(onConfirm(deviceForm()), connections, catalog)).toEqual({
       target: "device",
       body: {
         via: "profile",
         connection: { id: 1 },
         role: "meter",
-        name: "Meter",
+        name: "Cellar meter",
         unitId: 3,
         profileId: "acme.meter",
       },
     });
+  });
+
+  // A meter carries no roof and no pack, and the server refuses those fields on
+  // any role but `inverter` — so the body must not carry them.
+  test("an inverter's body carries its arrays and its pack; a meter's carries neither", () => {
+    const inverter = deviceForm({
+      role: "inverter",
+      name: "Cellar inverter",
+      inverter: {
+        ...deviceForm().inverter,
+        arrays: [{ kwp: "8.4", tilt: "35", azimuth: "0" }],
+      },
+    });
+    const submission = submissionOf(onConfirm(inverter), connections, catalog);
+    expect(submission?.body).toMatchObject({
+      role: "inverter",
+      arrays: [{ kwp: 8.4, tilt: 35, azimuth: 0 }],
+    });
+    expect(submissionOf(onConfirm(deviceForm()), connections, catalog)?.body).not.toHaveProperty(
+      "arrays",
+    );
+  });
+
+  test("the name is trimmed on the way out, exactly as the dialog trims it", () => {
+    const submission = submissionOf(
+      onConfirm(deviceForm({ name: "  Cellar meter  " })),
+      connections,
+      catalog,
+    );
+    expect(submission?.body).toMatchObject({ name: "Cellar meter" });
+  });
+
+  test.each([
+    ["an empty name", { name: "" }],
+    ["a name that slugifies to nothing", { name: "###" }],
+    ["no profile", { profileId: "" }],
+    ["unit id 248", { unitId: 248 }],
+    ["unit id -1", { unitId: -1 }],
+  ])("%s sends nothing at all", (_why, over) => {
+    expect(submissionOf(onConfirm(deviceForm(over)), connections, catalog)).toBeNull();
+  });
+
+  // The form's own `connectionChoice` is step 1's answer, not a second question:
+  // whatever it was seeded with, the body is addressed at the chosen row.
+  test("the body is addressed at the wizard's connection, not the form's", () => {
+    const strayed = deviceForm({ connectionChoice: NEW_CONNECTION });
+    expect(submissionOf(onConfirm(strayed, 1), connections, catalog)?.body).toMatchObject({
+      connection: { id: 1 },
+    });
+  });
+
+  // A profile entry whose step 3 never ran has no form to send.
+  test("a profile-tier entry with coded answers sends nothing", () => {
+    const state = at({
+      step: "confirm",
+      connection: { mode: "existing", id: 1 },
+      entryId: "modbus-device",
+      answers: { via: "coded", values: {} },
+    });
+    expect(submissionOf(state, connections, catalog)).toBeNull();
   });
 
   test("a coded entry on a connection is posted as an integration", () => {
@@ -233,7 +493,7 @@ describe("what the wizard finally sends", () => {
       step: "confirm",
       connection: { mode: "existing", id: 2 },
       entryId: "ha-export",
-      values: { topicPrefix: "sunreye" },
+      answers: { via: "coded", values: { topicPrefix: "sunreye" } },
     });
     expect(submissionOf(state, connections, catalog)?.target).toBe("integration");
   });
@@ -243,7 +503,7 @@ describe("what the wizard finally sends", () => {
       step: "confirm",
       connection: { mode: "existing", id: 2 },
       entryId: "evcc-ingest",
-      values: { topicRoot: "evcc" },
+      answers: { via: "coded", values: { topicRoot: "evcc" } },
     });
     expect(submissionOf(state, connections, catalog)).toEqual({
       target: "integration",
@@ -265,7 +525,7 @@ describe("what the wizard finally sends", () => {
       step: "confirm",
       connection: { mode: "create", kind: "mqtt" },
       entryId: "evcc-ingest",
-      values: {},
+      answers: { via: "coded", values: {} },
     });
     expect(submissionOf(state, connections, catalog)).toBeNull();
   });
@@ -310,7 +570,7 @@ describe("a connection that does not exist yet", () => {
       step: "settings",
       connection: { mode: "create", kind: "mqtt" },
       entryId: "ha-export",
-      values: { topicPrefix: "x" },
+      answers: { via: "coded" as const, values: { topicPrefix: "x" } },
     });
     const switched = {
       ...goBack(goBack(state)),
@@ -318,7 +578,7 @@ describe("a connection that does not exist yet", () => {
     };
     const cleared = advance(switched, connections, catalog);
     expect(cleared.entryId).toBeNull();
-    expect(cleared.values).toEqual({});
+    expect(cleared.answers).toEqual({ via: "coded", values: {} });
   });
 
   // The draft's completeness is the FORM's answer, handed in as a boolean so
@@ -341,7 +601,7 @@ describe("the order the finish button works in", () => {
     step: "confirm",
     connection: { mode: "create", kind: "mqtt" },
     entryId: "evcc-ingest",
-    values: { topicRoot: "evcc" },
+    answers: { via: "coded" as const, values: { topicRoot: "evcc" } },
   });
 
   // The endpoint is created at FINISH and not when step 1 was left: a wizard
@@ -358,7 +618,7 @@ describe("the order the finish button works in", () => {
       step: "confirm",
       connection: { mode: "existing", id: 2 },
       entryId: "evcc-ingest",
-      values: { topicRoot: "evcc" },
+      answers: { via: "coded", values: { topicRoot: "evcc" } },
     });
     expect(submitPlan(state, connections, catalog)).toEqual({
       do: "send",
@@ -379,7 +639,7 @@ describe("the order the finish button works in", () => {
     const next = withSavedConnection(created, 9);
     expect(next.connection).toEqual({ mode: "existing", id: 9 });
     expect(next.entryId).toBe("evcc-ingest");
-    expect(next.values).toEqual({ topicRoot: "evcc" });
+    expect(next.answers).toEqual({ via: "coded", values: { topicRoot: "evcc" } });
     expect(next.step).toBe("confirm");
   });
 
@@ -392,6 +652,63 @@ describe("the order the finish button works in", () => {
         target: "integration",
         body: { kind: "evcc-ingest", connectionId: 9, params: { topicRoot: "evcc" } },
       },
+    });
+  });
+
+  /**
+   * The DEVICE arm over a connection the wizard is creating.
+   *
+   * Same two requests in the same order — and the device body must end up
+   * addressed at the gateway that came back, never at the {@link NEW_CONNECTION}
+   * sentinel its form was seeded with (which would ask `POST /api/devices` to
+   * create a SECOND endpoint out of the form's blank draft).
+   */
+  describe("a device on a gateway that does not exist yet", () => {
+    const drafted = at({
+      step: "confirm",
+      connection: { mode: "create", kind: "modbus" },
+      entryId: "modbus-device",
+      answers: { via: "profile", form: deviceForm({ connectionChoice: NEW_CONNECTION }) },
+    });
+
+    test("the gateway is created first", () => {
+      expect(submitPlan(drafted, connections, catalog)).toEqual({
+        do: "create-connection",
+        kind: "modbus",
+      });
+    });
+
+    test("then the device is posted against the id it answered", () => {
+      const next = withSavedConnection(drafted, 9);
+      const withRow: ConnectionView[] = [
+        ...connections,
+        {
+          id: 9,
+          name: "New gateway",
+          kind: "modbus",
+          params: {
+            host: "10.0.0.9",
+            port: 502,
+            transport: "tcp",
+            timeoutMs: 2000,
+            pollIntervalMs: 1000,
+          },
+        },
+      ];
+      expect(submitPlan(next, withRow, catalog)).toEqual({
+        do: "send",
+        submission: {
+          target: "device",
+          body: {
+            via: "profile",
+            connection: { id: 9 },
+            role: "meter",
+            name: "Cellar meter",
+            unitId: 3,
+            profileId: "acme.meter",
+          },
+        },
+      });
     });
   });
 });

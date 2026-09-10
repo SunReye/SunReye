@@ -2,16 +2,18 @@
 	import { Button } from '$lib/components/ui/button';
 	import * as m from '$lib/paraglide/messages';
 	import type { Catalog, CatalogEntryView } from '../wizard/add-wizard';
-	import SettingsStep from '../wizard/settings-step.svelte';
+	import CatalogFields from '../wizard/catalog-fields.svelte';
 	import DialogShell from './device-dialog-shell.svelte';
 	import type { IntegrationView } from './device-types';
 
 	// A configured integration's SETTINGS, edited in place.
 	//
-	// The same fields the wizard's third step asks for, rendered by the same
-	// component off the same catalog: the server validates a write against the
-	// catalog entry the row's kind resolves to, so a second form here would be a
-	// form that offers what the route then refuses.
+	// The same fields the wizard's third step asks a CODED entry for, rendered by
+	// the same component off the same catalog: the server validates a write
+	// against the catalog entry the row's kind resolves to, so a second form here
+	// would be a form that offers what the route then refuses. (A row here is
+	// always coded — the profile tier writes a device, not an integration — so
+	// this reaches for `CatalogFields` and not the wizard's whole step.)
 	//
 	// Its kind and its connection are NOT here. They are the row's identity and
 	// `PATCH /api/integrations/:id` answers 409 for either — re-pointing an EVCC
@@ -77,7 +79,7 @@
 	onClose={close}
 	onsubmit={submit}
 >
-	<SettingsStep {entry} bind:values />
+	<CatalogFields {entry} bind:values />
 	<div class="flex justify-end gap-2">
 		<Button type="button" variant="ghost" onclick={close}>{m.action_cancel()}</Button>
 		<Button type="submit" disabled={entry === null}>{m.action_save()}</Button>

@@ -1,7 +1,14 @@
 <script lang="ts">
 	import type { ConnectionDraft } from '../devices/connection-draft';
-	import type { ConnectionView } from '../devices/device-types';
-	import type { AttachOption, CatalogEntryView, WizardConnection, WizardStep } from './add-wizard';
+	import type { ConnectionView, DeviceView } from '../devices/device-types';
+	import type { RegisteredProfile } from '../profile-types';
+	import type {
+		AttachOption,
+		CatalogEntryView,
+		WizardAnswers,
+		WizardConnection,
+		WizardStep
+	} from './add-wizard';
 	import AttachStep from './attach-step.svelte';
 	import ConfirmStep from './confirm-step.svelte';
 	import ConnectionStep from './connection-step.svelte';
@@ -19,7 +26,10 @@
 		chosen = $bindable(),
 		draft = $bindable(),
 		entryId = $bindable(),
-		values = $bindable()
+		answers = $bindable(),
+		devices,
+		registered,
+		onInstalled
 	}: {
 		step: WizardStep;
 		connections: readonly ConnectionView[];
@@ -31,7 +41,11 @@
 		/** The endpoint step 1 is creating, while it is creating one. */
 		draft: ConnectionDraft;
 		entryId: string | null;
-		values: Record<string, unknown>;
+		answers: WizardAnswers;
+		/** The roster and the installed profiles — what a DEVICE's step 3 asks with. */
+		devices: DeviceView[];
+		registered: RegisteredProfile[];
+		onInstalled: (id: string) => void;
 	} = $props();
 </script>
 
@@ -40,7 +54,7 @@
 {:else if step === 'attach'}
 	<AttachStep {options} bind:entryId />
 {:else if step === 'settings'}
-	<SettingsStep {entry} bind:values />
+	<SettingsStep {entry} bind:answers {devices} {registered} {onInstalled} />
 {:else}
-	<ConfirmStep {entry} connection={chosenConnection} {values} />
+	<ConfirmStep {entry} connection={chosenConnection} {answers} {registered} />
 {/if}

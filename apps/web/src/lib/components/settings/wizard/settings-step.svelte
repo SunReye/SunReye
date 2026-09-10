@@ -1,32 +1,38 @@
 <script lang="ts">
-	import EmptyState from '$lib/components/layout/empty-state.svelte';
-	import * as m from '$lib/paraglide/messages';
-	import type { CatalogEntryView } from './add-wizard';
-	import { fieldLabel } from './field-label';
-	import WizardField from './wizard-field.svelte';
+	import type { DeviceView } from '../devices/device-types';
+	import type { RegisteredProfile } from '../profile-types';
+	import type { CatalogEntryView, WizardAnswers } from './add-wizard';
+	import CatalogFields from './catalog-fields.svelte';
+	import DeviceStep from './device-step.svelte';
 
-	// STEP 3 — the entry's own settings, rendered from the field list the catalog
-	// carries. An entry with no fields (a coded thing that configures itself) is
-	// a step with nothing to answer, and says so rather than showing a blank card.
+	// STEP 3 — what the picked entry needs, asked in the shape its TIER calls for.
+	//
+	// A coded integration's settings are the scalars the catalog described, and
+	// `CatalogFields` draws them from that description alone — which is why a new
+	// integration is a server change and no edit here. A DEVICE is not
+	// describable that way: `arrays` is an array, `battery` an object, the
+	// profile is a picker, and the required `name` is not in the catalog at all.
+	// Rendered generically it printed "arrays: array" over a form that could
+	// never be submitted, so the profile tier gets the add dialog's own fields.
 	let {
 		entry,
-		values = $bindable()
+		answers = $bindable(),
+		devices,
+		registered,
+		onInstalled
 	}: {
 		/** Null only if step 2 were skipped, which `blockedAt` prevents — a step
 		    body still cannot assume its predecessor ran. */
 		entry: CatalogEntryView | null;
-		values: Record<string, unknown>;
+		answers: WizardAnswers;
+		devices: DeviceView[];
+		registered: RegisteredProfile[];
+		onInstalled: (id: string) => void;
 	} = $props();
-
-	const fields = $derived(entry?.fields ?? []);
 </script>
 
-{#if fields.length === 0}
-	<EmptyState message={m.wizard_settings_none()} />
+{#if answers.via === 'profile'}
+	<DeviceStep bind:form={answers.form} {devices} {registered} {onInstalled} />
 {:else}
-	<div class="flex flex-col gap-4">
-		{#each fields as field (field.name)}
-			<WizardField {field} label={fieldLabel(field.name)} bind:value={values[field.name]} />
-		{/each}
-	</div>
+	<CatalogFields {entry} bind:values={answers.values} />
 {/if}

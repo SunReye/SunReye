@@ -2,21 +2,29 @@
 	import * as m from '$lib/paraglide/messages';
 	import { connectionAddress } from '../devices/connection-draft';
 	import type { ConnectionView } from '../devices/device-types';
-	import type { CatalogEntryView } from './add-wizard';
-	import { fieldLabel } from './field-label';
+	import type { RegisteredProfile } from '../profile-types';
+	import type { CatalogEntryView, WizardAnswers } from './add-wizard';
+	import { answerRows } from './confirm-rows';
 
 	// STEP 4 — what is about to be created, in one list, before the request goes
 	// out. The wizard puts three earlier answers behind a Back button; this is
 	// the only screen that shows all of them at once.
+	//
+	// How step 3's answers are said differs per tier and lives in
+	// `./confirm-rows.ts`: a device is a name, a role, a profile and an address,
+	// not the form object it was collected in.
 	let {
 		entry,
 		connection,
-		values
+		answers,
+		registered
 	}: {
 		/** Null only if step 2 were skipped, which `blockedAt` prevents. */
 		entry: CatalogEntryView | null;
 		connection: ConnectionView | null;
-		values: Record<string, unknown>;
+		answers: WizardAnswers;
+		/** The installed profiles, so a device's profile is named rather than keyed. */
+		registered: RegisteredProfile[];
 	} = $props();
 
 	const NOT_SET = '—';
@@ -26,16 +34,11 @@
 	);
 
 	// One list, built in the script: the two answers the wizard always has, then
-	// whatever the entry's own settings step asked for.
+	// whatever step 3 asked for.
 	const rows = $derived([
 		{ key: 'connection', label: m.wizard_step_connection(), value: endpoint, mono: false },
 		{ key: 'attach', label: m.wizard_step_attach(), value: entry?.label ?? NOT_SET, mono: false },
-		...Object.entries(values).map(([key, value]) => ({
-			key,
-			label: fieldLabel(key),
-			value: String(value),
-			mono: true
-		}))
+		...answerRows(answers, registered)
 	]);
 </script>
 
