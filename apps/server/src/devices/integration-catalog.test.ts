@@ -41,16 +41,35 @@ describe("catalogFor", () => {
   });
 
   test("the null arm is DERIVED from the coded table, not a second list", () => {
-    // The proof of derivation: the ids ARE the coded table's keys, in its order.
-    // A weather declaration added to `./coded.ts` for #197 appears here with no
-    // edit to this module — and no assertion here needs updating either.
-    expect(ids(catalogFor(null))).toEqual(codedIntegrations().map((c) => c.profileId));
+    // The proof of derivation: the ids ARE the coded table's CONNECTION-LESS
+    // keys, in its order. A weather declaration added to `./coded.ts` for #197
+    // appears here with no edit to this module — and no assertion here needs
+    // updating either.
+    const connectionless = codedIntegrations().filter((c) => c.connectionless);
+    expect(ids(catalogFor(null))).toEqual(connectionless.map((c) => c.profileId));
     expect(catalogFor(null).length).toBeGreaterThan(0);
+  });
+
+  test("the null arm holds ONLY connection-less declarations — never the EVCC loadpoint", () => {
+    // A loadpoint is pushed over one particular broker and its device row
+    // carries that connection's id. Listing it under "internal" offered an
+    // operator an EVCC with no broker, which nothing would ever subscribe for.
+    expect(ids(catalogFor(null))).not.toContain("evcc-loadpoint");
+    expect(ids(catalogFor(null))).toContain("sunreye.optimizer");
+  });
+
+  test("the loadpoint declaration is still in the coded table — it is just not internal", () => {
+    // The defect would come back as a DELETED declaration just as easily as a
+    // wrong filter, and the runtime resolves loadpoint devices through it.
+    const loadpoint = codedIntegrations().find((c) => c.profileId === "evcc-loadpoint");
+    expect(loadpoint).toBeDefined();
+    expect(loadpoint?.connectionless).toBe(false);
   });
 
   test("every coded declaration's label comes from the declaration itself", () => {
     const labels = catalogFor(null).map((e) => e.label);
-    expect(labels).toEqual(codedIntegrations().map((c) => c.name));
+    const connectionless = codedIntegrations().filter((c) => c.connectionless);
+    expect(labels).toEqual(connectionless.map((c) => c.name));
   });
 
   test("every internal entry is via coded and not addable", () => {

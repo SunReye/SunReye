@@ -58,6 +58,7 @@ import {
   type LoadpointRegistrarDeps,
   createLoadpointRegistrar,
 } from "./evcc-registrar";
+import { readEvccTopicRoot } from "../integrations/evcc-topic-root";
 import { getEvccConfig } from "../settings/evcc-settings";
 import { log } from "../shared/logging";
 import type { Streams } from "../shared/streams";
@@ -389,7 +390,13 @@ export async function rebuildEvcc(
   subtractFromHome = config.subtractFromHome;
   if (!evccReady(config, broker) || !broker) return;
 
-  topicRoot = config.topicRoot;
+  // THE ROW, not the setting (#217 follow-up). The topic root is the grammar of
+  // every topic below — subscriptions and `/set` writes both — and it lives on
+  // the `evcc-ingest` integration row now. Read AFTER the readiness check so an
+  // install with the ingest switched off pays no query for it, and falling back
+  // to the setting so an install that has not written a row yet keeps
+  // subscribing under the root its operator chose.
+  topicRoot = await readEvccTopicRoot(config.topicRoot);
   const next = mqtt.connect(broker.brokerUrl, {
     username: broker.username,
     password: broker.password,

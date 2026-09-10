@@ -1,4 +1,3 @@
-import { db } from "@SunReye/db";
 import {
   createConnection,
   createDevice,
@@ -32,6 +31,8 @@ import { probeConnection } from "../devices/reachability";
 import { deviceRegistry } from "../devices/registry-instance";
 import { resolveProfileById } from "../inverter/inverter";
 import * as runtime from "../inverter/runtime";
+import { plantClient } from "../shared/plant-client";
+import { adminResponder, byId, byIdWrite } from "./admin-refusal";
 import { adminGuard } from "./admin-guard";
 
 /**
@@ -49,7 +50,7 @@ import { adminGuard } from "./admin-guard";
 
 /** Production wiring, built PER CALL so `mock.module` on `@SunReye/db` reaches it. */
 function defaultDeps(): DeviceAdminDeps {
-  const client = { execute: (query: Parameters<typeof db.execute>[0]) => db.execute(query) };
+  const client = plantClient();
   return {
     store: {
       readPlant: () => readPlant(client),
@@ -73,39 +74,7 @@ function defaultDeps(): DeviceAdminDeps {
   };
 }
 
-/** A service refusal as its status; anything else is the 500 it deserves. */
-function refusal(error: unknown) {
-  if (error instanceof DeviceAdminError) {
-    return { status: error.status, body: { error: error.message, field: error.field ?? null } };
-  }
-  throw error;
-}
-
-/** A by-id param, or the 400 it deserves. */
-function parseId(raw: string): number | null {
-  const id = Number(raw);
-  return Number.isInteger(id) && id > 0 ? id : null;
-}
-
-const BAD_ID = { error: "id must be a positive integer", field: null } as const;
-
-/** Run one service call for the route, mapping refusals to their status. */
-async function respond<T>(
-  status: (code: 400 | 404 | 409, body: unknown) => unknown,
-  run: () => Promise<T>,
-) {
-  try {
-    return await run();
-  } catch (error) {
-    const refused = refusal(error);
-    return status(refused.status, refused.body);
-  }
-}
-
-// `id` params are `t.String()`, not `t.Numeric()`: a typed param is validated
-// BEFORE the guard, and the smoke's placeholder would 422 there — see above.
-const byId = { requireAdmin: true, params: t.Object({ id: t.String() }) } as const;
-const byIdWrite = { ...byId, body: t.Unknown() } as const;
+const { respond, withId } = adminResponder((error) => error instanceof DeviceAdminError);
 
 export const deviceRoutes = new Elysia({ name: "device-routes" })
   .use(adminGuard)
@@ -143,21 +112,15 @@ export const deviceRoutes = new Elysia({ name: "device-routes" })
       }
     },
   )
-  .patch("/api/devices/:id", byIdWrite, ({ params, body, status }) => {
-    const id = parseId(params.id);
-    if (id === null) return status(400, BAD_ID);
-    return respond(status, () => patchDevice(defaultDeps(), id, body));
-  })
-  .patch("/api/connections/:id", byIdWrite, ({ params, body, status }) => {
-    const id = parseId(params.id);
-    if (id === null) return status(400, BAD_ID);
-    return respond(status, () => patchConnection(defaultDeps(), id, body));
-  })
-  .delete("/api/connections/:id", byId, ({ params, status }) => {
-    const id = parseId(params.id);
-    if (id === null) return status(400, BAD_ID);
-    return respond(status, async () => {
+  .patch("/api/devices/:id", byIdWrite, ({ params, body, status }) =>
+    withId(status, params.id, (id) => patchDevice(defaultDeps(), id, body)),
+  )
+  .patch("/api/connections/:id", byIdWrite, ({ params, body, status }) =>
+    withId(status, params.id, (id) => patchConnection(defaultDeps(), id, body)),
+  )
+  .delete("/api/connections/:id", byId, ({ params, status }) =>
+    withId(status, params.id, async (id) => {
       await removeConnection(defaultDeps(), id);
       return { ok: true, id };
-    });
-  });
+    }),
+  );
