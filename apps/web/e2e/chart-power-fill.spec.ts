@@ -131,13 +131,15 @@ async function waitForMarks(page: Page): Promise<void> {
 }
 
 /**
- * Both cases run on /history, which is where the same metric is drawn BOTH ways:
- * a card on the live range glides `live-area`, and the same card on a fetched
- * window draws `metric-history-chart`. Two routes would have compared two
- * metrics; this compares the two renderings of one.
+ * Both cases run on /history, and both now draw `metric-history-chart`: the day
+ * the page opens on used to be answered with the gliding `live-area`, and since
+ * #216 it is a rollup window like any other. They are kept as two cases because
+ * they are two WINDOWS — the day still filling in, and a settled week — and the
+ * fill has to be the same on both. `live-area`'s own remaining use is the KPI
+ * headline inside a power-flow node detail, which this file does not reach.
  */
 
-test("the live sparkline draws the house power fill", async ({ page }) => {
+test("the card's area draws the house power fill on the day it opens on", async ({ page }) => {
   const backend = await openHistory(page);
   // Samples, so the plot has a series to fade under rather than an empty box.
   for (let i = 0; i < 4; i++) {
@@ -145,7 +147,7 @@ test("the live sparkline draws the house power fill", async ({ page }) => {
     await page.waitForTimeout(150);
   }
   await waitForMarks(page);
-  expectHouseFill(await powerFills(page), "live sparklines");
+  expectHouseFill(await powerFills(page), "today's areas");
 });
 
 test("and the same card's historical area draws that same fill", async ({ page }) => {

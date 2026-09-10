@@ -330,15 +330,81 @@ describe("historyPeriodRange — what /history renders for a calendar period", (
   const OPTS = { timeZone: BERLIN, weekStartsOn: 1 as const };
   const period = (instant: Date, grain: Grain) => periodWindow(instant, grain, OPTS);
 
-  it("is the realtime buffer on the day holding now — standing on today IS live", () => {
-    // The design has no "Live" tab: the reader is live because they are standing
-    // on the current period, and on a DAY that has to mean the gliding chart the
-    // deleted `live` preset used to reach. `range.live` forks the render path in
-    // four components, and this is the only thing that still turns it on.
-    const range = historyPeriodRange(period(NOW, "day"), NOW, BERLIN);
+  it("is the ELAPSED DAY on the day holding now, marked live", () => {
+    // The bug this replaced: today resolved to `resolvePreset("live")`, a
+    // five-minute trailing window, so the Day tab standing on today showed the
+    // last couple of minutes and there was no way to see 00:00 → now except a
+    // custom range. /statistics has always shown the elapsed day for the same
+    // tab (`cost/ranges#costRangeFor`), and this is the same window.
+    //
+    // `live` is still true, and it now means ONE thing: the right edge is the
+    // future, so the render path keeps appending to it. It does not mean
+    // "substitute the RAM buffer".
+    const today = period(NOW, "day");
+    const range = historyPeriodRange(today, NOW, BERLIN);
     expect(range.live).toBe(true);
+    expect(range.id).toBe("day");
     expect(range.bucket).toBe("minute");
-    expect(NOW.getTime() - range.from.getTime()).toBe(5 * 60_000);
+    expect(range.from).toEqual(today.start);
+    expect(range.to).toEqual(today.end);
+  });
+
+  it("spans the whole civil day, not the part of it that has happened", () => {
+    // `to: now` would be a window that stops being live one tick later — the
+    // defect `costRangeFor` documents at length — and an axis that grows a
+    // pixel a second. Hours still to come are genuinely empty.
+    const today = period(NOW, "day");
+    const range = historyPeriodRange(today, NOW, BERLIN);
+    expect(wall(range.from, BERLIN)).toBe("2026-05-14 00:00");
+    expect(wall(range.to, BERLIN)).toBe("2026-05-15 00:00");
+    expect(range.to.getTime()).toBeGreaterThan(NOW.getTime());
+  });
+
+  it("keeps today one civil day long across a spring-forward", () => {
+    // 29 March 2026 is 23 hours in Berlin. A trailing window, or one built by
+    // adding 86_400_000, is 24 — which is an hour of the 30th on the axis.
+    const noon = new Date("2026-03-29T09:00:00Z");
+    const range = historyPeriodRange(period(noon, "day"), noon, BERLIN);
+    expect(range.live).toBe(true);
+    expect(wall(range.from, BERLIN)).toBe("2026-03-29 00:00");
+    expect(wall(range.to, BERLIN)).toBe("2026-03-30 00:00");
+    expect(range.to.getTime() - range.from.getTime()).toBe(23 * HOUR);
+  });
+
+  it("keeps today one civil day long across a fall-back", () => {
+    // …and 25 October 2026 is 25 hours, where a flat day drops the last one.
+    const noon = new Date("2026-10-25T10:00:00Z");
+    const range = historyPeriodRange(period(noon, "day"), noon, BERLIN);
+    expect(range.live).toBe(true);
+    expect(wall(range.from, BERLIN)).toBe("2026-10-25 00:00");
+    expect(wall(range.to, BERLIN)).toBe("2026-10-26 00:00");
+    expect(range.to.getTime() - range.from.getTime()).toBe(25 * HOUR);
+  });
+
+  it("resolves today in the ZONE it is handed, not the one the host runs in", () => {
+    // The plant's zone and the viewer's browser are different questions (see
+    // the server's `getPlantTimeZone`), and this resolver takes the zone as an
+    // argument for exactly that reason. Asserted through two zones at one
+    // instant rather than by moving `process.env.TZ`, which leaks into every
+    // test file that runs after it.
+    const instant = new Date("2026-05-14T00:30:00Z"); // 02:30 Berlin, 14 May; 17:30 LA, 13 May
+    const LA = "America/Los_Angeles";
+    const berlin = historyPeriodRange(
+      periodWindow(instant, "day", { timeZone: BERLIN, weekStartsOn: 1 }),
+      instant,
+      BERLIN,
+    );
+    const la = historyPeriodRange(
+      periodWindow(instant, "day", { timeZone: LA, weekStartsOn: 1 }),
+      instant,
+      LA,
+    );
+    expect(berlin.live).toBe(true);
+    expect(la.live).toBe(true);
+    // Same instant, two civil days — and each window is its own zone's midnight.
+    expect(wall(berlin.from, BERLIN)).toBe("2026-05-14 00:00");
+    expect(wall(la.from, LA)).toBe("2026-05-13 00:00");
+    expect(berlin.from.getTime()).not.toBe(la.from.getTime());
   });
 
   it("is a rollup window on any other day", () => {

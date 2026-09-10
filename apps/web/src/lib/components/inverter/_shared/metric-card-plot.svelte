@@ -1,17 +1,22 @@
 <script lang="ts">
-	// Which chart a history card draws, of the four it can: a draft overlay, the
-	// gliding live sparkline, the historical rollup, or a loading/empty state.
+	// Which chart a history card draws, of the three it can: a draft overlay, the
+	// rollup window, or a loading/empty state.
 	//
 	// Its own file because the card's template branched five ways once drafting
-	// joined the other three, and the branch has nothing to do with the card's
+	// joined the others, and the branch has nothing to do with the card's
 	// header, its lazy mount or its draft bookkeeping.
+	//
+	// There is no live branch any more. `range.live` used to select the gliding
+	// five-minute `LiveArea` here, which is how the Day tab standing on today
+	// showed two minutes of the day it named (#216); a live range is a rollup
+	// window that keeps appending now (`$lib/inverter/live-tail`), so it draws
+	// through the same plot as every other window. `LiveArea` itself is unchanged
+	// and still draws the sparkline under a power-flow node detail's KPI.
 	import type { Snippet } from 'svelte';
-	import LiveArea from '$lib/components/inverter/live-area.svelte';
 	import MetricHistoryChart from '$lib/components/inverter/_shared/metric-history-chart.svelte';
 	import ChartStateView from '$lib/components/inverter/_shared/chart-state-view.svelte';
 	import OverlayChartView from '$lib/components/inverter/_shared/overlay-chart-view.svelte';
 	import * as m from '$lib/paraglide/messages';
-	import { inverter } from '$lib/inverter/store.svelte';
 	import type { HistoryRange } from '$lib/inverter/ranges';
 	import type { ManifestMetric } from '$lib/inverter/types';
 
@@ -19,7 +24,6 @@
 		metric,
 		range,
 		accent,
-		unit,
 		diverging,
 		overlay,
 		drafting,
@@ -36,12 +40,11 @@
 		metric: ManifestMetric;
 		range: HistoryRange;
 		accent: string;
-		unit: string;
 		diverging: boolean;
 		/** The full key list while drafting: this metric first, then the rest. */
 		overlay: string[];
 		drafting: boolean;
-		/** The historical rollup rows, already carrying a parsed `date`. */
+		/** The rollup points, plus any live buckets spliced past the last one. */
 		data: { date: Date; avg: number; min: number; max: number }[];
 		loading: boolean;
 		plottable: boolean;
@@ -65,15 +68,6 @@
 		{onZoom}
 		{onResetZoom}
 		zoomed={range.id === 'zoom'}
-	/>
-{:else if range.live}
-	<LiveArea
-		points={inverter.series(metric.key)}
-		label={metric.label}
-		{unit}
-		{accent}
-		{diverging}
-		height="h-full"
 	/>
 {:else if plottable}
 	<MetricHistoryChart
