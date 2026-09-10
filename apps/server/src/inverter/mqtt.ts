@@ -29,6 +29,7 @@
  * left behind, once, and carries the four fences that makes that safe.
  */
 
+import type { MqttParams } from "@SunReye/db/connection-kinds";
 import type { MqttConfig } from "@SunReye/db/mqtt-config";
 import type { InverterSample } from "@SunReye/inverter-core";
 import { entityConstraint } from "@SunReye/inverter-core";
@@ -92,6 +93,22 @@ export interface MqttBridgeDeps {
    * catalog with this profile's slugs would announce entities that never publish.
    */
   ctx: ProfileContext & MqttNamespace;
+  /**
+   * THE BROKER THIS EXPORT DIALS — the `kind = 'mqtt'` connection
+   * {@link MqttConfig.connectionId} names, resolved by the caller.
+   *
+   * `null` is "there is no broker", and it is what {@link startMqttBridge}
+   * returns null for. It replaces `config.enabled`: the export used to hold its
+   * own broker URL and its own on/off flag, which could disagree — enabled with
+   * nothing to dial, or a configured broker with the flag off — and every
+   * consumer had to decide which won. A connection either resolves or it does
+   * not (`../settings/mqtt-broker.ts`).
+   *
+   * RESOLVED BY THE CALLER, not read here: this module is handed everything it
+   * publishes with, exactly as it is handed the frozen slugs, so a bridge cannot
+   * be built against one broker and a namespace from another.
+   */
+  broker: MqttParams | null;
   /** Apply an inbound command write — the funnel validates it. */
   write(key: string, value: number): Promise<void>;
   /**
@@ -113,7 +130,8 @@ export interface MqttBridgeDeps {
  * on every `connect` so they survive broker restarts and reconnects.
  */
 export function startMqttBridge(config: MqttConfig, deps: MqttBridgeDeps): MqttBridge | null {
-  if (!config.enabled) return null;
+  const broker = deps.broker;
+  if (!broker) return null;
 
   const { profile, manifest, defByKey, plantSlug, deviceSlug } = deps.ctx;
   const ns: MqttNamespace = { plantSlug, deviceSlug };
@@ -143,9 +161,10 @@ export function startMqttBridge(config: MqttConfig, deps: MqttBridgeDeps): MqttB
     }
   }
 
-  const client: MqttClient = mqtt.connect(config.brokerUrl, {
-    username: config.username,
-    password: config.password,
+  const client: MqttClient = mqtt.connect(broker.brokerUrl, {
+    username: broker.username,
+    password: broker.password,
+    ...(broker.clientId ? { clientId: broker.clientId } : {}),
     // LWT: the broker flips us to "offline" if the connection drops, so HA
     // marks the entities unavailable instead of showing a stale last value.
     will: { topic: topics.availability, payload: "offline", qos: 0, retain: true },
@@ -287,7 +306,7 @@ export function startMqttBridge(config: MqttConfig, deps: MqttBridgeDeps): MqttB
     if (lastForecast) emitForecast(lastForecast);
 
     logger.info('connected to {brokerUrl} (prefix "{prefix}")', {
-      brokerUrl: config.brokerUrl,
+      brokerUrl: broker.brokerUrl,
       prefix: topics.base,
     });
   });

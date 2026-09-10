@@ -120,7 +120,11 @@ describe("scoreSpan", () => {
   test("walks the chunks ONE AT A TIME — never all queries in flight at once", async () => {
     const { deps, asked, maxInFlight } = fakeDeps();
     const now = 100 * DAY;
-    await scoreSpan(deps, now - 30 * DAY, now, { chunkMs: 7 * DAY, overlapMs: DAY, marginMs: HOUR });
+    await scoreSpan(deps, now - 30 * DAY, now, {
+      chunkMs: 7 * DAY,
+      overlapMs: DAY,
+      marginMs: HOUR,
+    });
     expect(asked.length).toBeGreaterThan(3);
     expect(maxInFlight()).toBe(1);
     expect(asked[0]?.from).toBe(now - 30 * DAY);
@@ -130,12 +134,11 @@ describe("scoreSpan", () => {
   test("a chunk that fails is skipped and the rest are still scored", async () => {
     const log: string[] = [];
     const { deps, asked } = fakeDeps({ fail: (from) => from.getTime() === 6 * DAY });
-    const result = await scoreSpan(
-      { ...deps, log: (m) => log.push(m) },
-      0,
-      20 * DAY,
-      { chunkMs: 7 * DAY, overlapMs: DAY, marginMs: HOUR },
-    );
+    const result = await scoreSpan({ ...deps, log: (m) => log.push(m) }, 0, 20 * DAY, {
+      chunkMs: 7 * DAY,
+      overlapMs: DAY,
+      marginMs: HOUR,
+    });
     expect(asked.map((w) => w.from)).toEqual([0, 6 * DAY, 12 * DAY, 18 * DAY]);
     expect(result.measured).toBe(3);
     expect(log.some((m) => /boom/.test(m))).toBe(true);
@@ -143,7 +146,11 @@ describe("scoreSpan", () => {
 
   test("sums what was measured and what was actually stored", async () => {
     const { deps } = fakeDeps({ segmentsPer: 2 });
-    const result = await scoreSpan(deps, 0, 7 * DAY, { chunkMs: 7 * DAY, overlapMs: DAY, marginMs: HOUR });
+    const result = await scoreSpan(deps, 0, 7 * DAY, {
+      chunkMs: 7 * DAY,
+      overlapMs: DAY,
+      marginMs: HOUR,
+    });
     expect(result).toEqual({ measured: 2, stored: 2 });
   });
 });

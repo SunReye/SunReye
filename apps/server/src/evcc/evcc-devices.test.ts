@@ -113,25 +113,56 @@ describe("one EVCC source, N loadpoints, N devices", () => {
 });
 
 describe("the `devices` row a loadpoint needs", () => {
-  test("is an endpoint-less charger on no connection and no bus", () => {
-    // The shape a poll loop can never serve: no `connections` row, no unit on a
-    // bus, and a `profile_id` that names a coded declaration rather than an
-    // installable register map.
-    expect(loadpointDeviceSpec(7, 1, "Carport")).toEqual({
+  test("is a charger on the BROKER connection, at its own loadpoint index", () => {
+    // The `profile_id` names a coded declaration rather than an installable
+    // register map — a poll loop can never serve this device. What it does have
+    // since #217 is an endpoint: the broker is a connection, and `unit_id` is
+    // the loadpoint's own index, which is what makes
+    // `devices_connection_unit_key` express the addressing for two loadpoints
+    // instead of tolerating two `(null, 0)` rows.
+    expect(loadpointDeviceSpec(7, 1, "Carport", { connectionId: 3, topicRoot: "evcc" })).toEqual({
       plantId: 7,
-      connectionId: null,
-      unitId: 0,
+      connectionId: 3,
+      unitId: 1,
       slug: "evcc-loadpoint-1",
       name: "Carport",
       profileId: "evcc-loadpoint",
       role: "charger",
+      params: { topicRoot: "evcc" },
     });
+  });
+
+  test("two loadpoints on one broker differ in their unit id", () => {
+    // The whole reason `unit_id` had to change. With both at 0 the unique index
+    // rejects the second row the moment the connection is not null — which is
+    // exactly what binding them to a broker does.
+    const bound = { connectionId: 3, topicRoot: "evcc" };
+    expect(loadpointDeviceSpec(7, 1, "A", bound).unitId).toBe(1);
+    expect(loadpointDeviceSpec(7, 2, "B", bound).unitId).toBe(2);
+  });
+
+  test("the topic ROOT travels onto the device, because the grammar is per EVCC instance", () => {
+    // Not per broker: two EVCC instances can share one broker under two roots,
+    // which `app_settings.evcc` could not express at all.
+    expect(loadpointDeviceSpec(7, 1, "A", { connectionId: 3, topicRoot: "garage" }).params).toEqual(
+      { topicRoot: "garage" },
+    );
+  });
+
+  test("an unbound install still gets a row — the ingest starts before a connection exists", () => {
+    // `connection_id` is nullable for exactly this, and NULLs are distinct in
+    // the unique index, so the pre-#217 shape stays writable.
+    const spec = loadpointDeviceSpec(7, 1, "A", { connectionId: null, topicRoot: "evcc" });
+    expect(spec.connectionId).toBeNull();
+    expect(spec.unitId).toBe(1);
   });
 
   test("an untitled loadpoint still gets a name a human can pick out", () => {
     // `name` is a CREATION default the operator may then edit, so it must never
     // be empty — but the slug is frozen, so the fallback cannot be the slug.
-    expect(loadpointDeviceSpec(7, 2, null).name).toBe("EVCC loadpoint 2");
+    expect(loadpointDeviceSpec(7, 2, null, { connectionId: null, topicRoot: "evcc" }).name).toBe(
+      "EVCC loadpoint 2",
+    );
   });
 });
 

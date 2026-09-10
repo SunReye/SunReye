@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, test } from "bun:test";
+import type { ConnectionKind, ModbusParams } from "@SunReye/db/connection-kinds";
 
 import type {
   ConnectionRecord,
@@ -93,8 +94,8 @@ function memoryStore(seed: { settings?: Record<string, unknown> } = {}) {
       connections.push(created);
       return created;
     },
-    async readConnection(plantId: number) {
-      return connections.find((c) => c.plantId === plantId) ?? null;
+    async readConnection(plantId: number, kind: ConnectionKind) {
+      return connections.find((c) => c.plantId === plantId && c.kind === kind) ?? null;
     },
     async readDevices(plantId: number) {
       return devices.filter((d) => d.plantId === plantId);
@@ -107,6 +108,7 @@ function memoryStore(seed: { settings?: Record<string, unknown> } = {}) {
       // device is created in service, and retirement is an UPDATE.
       const { pv, ...fields } = spec;
       const created = {
+        params: {},
         arrays: [],
         tempCoefficient: -0.4,
         systemLoss: 14,
@@ -347,19 +349,22 @@ describe("provisionDevice", () => {
     // The operator moves the gateway (what the settings PUT does).
     await store.ensureConnection(1, {
       name: "Inverter",
-      host: "10.0.0.9",
-      port: 8899,
-      transport: "rtu-over-tcp",
-      timeoutMs: 3000,
-      pollIntervalMs: 2000,
+      kind: "modbus",
+      params: {
+        host: "10.0.0.9",
+        port: 8899,
+        transport: "rtu-over-tcp",
+        timeoutMs: 3000,
+        pollIntervalMs: 2000,
+      },
     });
     await store.updateDevice(first?.deviceId ?? -1, { unitId: 3 });
     // ...and a boot later the stale legacy document says something else entirely.
     await provisionDevice({ store, logger, profile, seed: seed({ host: "10.0.0.5", unitId: 1 }) });
     expect(connections.length).toBe(1);
-    expect(connections[0]?.host).toBe("10.0.0.9");
-    expect(connections[0]?.port).toBe(8899);
-    expect(connections[0]?.pollIntervalMs).toBe(2000);
+    expect((connections[0]?.params as ModbusParams | undefined)?.host).toBe("10.0.0.9");
+    expect((connections[0]?.params as ModbusParams | undefined)?.port).toBe(8899);
+    expect((connections[0]?.params as ModbusParams | undefined)?.pollIntervalMs).toBe(2000);
     expect(devices[0]?.unitId).toBe(3);
     expect(devices[0]?.connectionId).toBe(first?.connectionId);
   });
@@ -388,10 +393,13 @@ describe("provisionDevice", () => {
     });
     expect(connections.length).toBe(1);
     expect(connections[0]).toMatchObject({
-      host: "10.0.0.5",
-      port: 8899,
-      transport: "rtu-over-tcp",
-      pollIntervalMs: 5000,
+      kind: "modbus",
+      params: {
+        host: "10.0.0.5",
+        port: 8899,
+        transport: "rtu-over-tcp",
+        pollIntervalMs: 5000,
+      },
     });
   });
 
@@ -403,15 +411,18 @@ describe("provisionDevice", () => {
     const plant = await store.ensurePlant({ name: "P", slug: "p" });
     const saved = await store.ensureConnection(plant.id, {
       name: "Inverter",
-      host: "10.0.0.9",
-      port: 502,
-      transport: "tcp",
-      timeoutMs: 2000,
-      pollIntervalMs: 1000,
+      kind: "modbus",
+      params: {
+        host: "10.0.0.9",
+        port: 502,
+        transport: "tcp",
+        timeoutMs: 2000,
+        pollIntervalMs: 1000,
+      },
     });
     await provisionDevice({ store, logger, profile, seed: seed({ host: "10.0.0.5" }) });
     expect(connections.length).toBe(1);
-    expect(connections[0]?.host).toBe("10.0.0.9");
+    expect((connections[0]?.params as ModbusParams | undefined)?.host).toBe("10.0.0.9");
     expect(devices[0]?.connectionId).toBe(saved.id);
   });
 
@@ -685,7 +696,7 @@ describe("dbProvisionStore", () => {
     // The reads that tolerate an empty answer.
     expect(await store.readDevices(1)).toEqual([]);
     // "the plant has no endpoint yet" is the answer that makes the seed a seed.
-    expect(await store.readConnection(1)).toBeNull();
+    expect(await store.readConnection(1, "modbus")).toBeNull();
     expect(await store.readPlantBatteries(1)).toEqual([]);
     expect(await store.readRawSetting("weather")).toBeUndefined();
     await store.updatePlant(1, { systemLoss: 11 });
@@ -701,11 +712,14 @@ describe("dbProvisionStore", () => {
     await expect(
       store.ensureConnection(1, {
         name: "n",
-        host: "h",
-        port: 502,
-        transport: "tcp",
-        timeoutMs: 2000,
-        pollIntervalMs: 1000,
+        kind: "modbus",
+        params: {
+          host: "h",
+          port: 502,
+          transport: "tcp",
+          timeoutMs: 2000,
+          pollIntervalMs: 1000,
+        },
       }),
     ).rejects.toThrow();
     await expect(

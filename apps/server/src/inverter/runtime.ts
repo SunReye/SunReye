@@ -17,6 +17,7 @@
 import { db } from "@SunReye/db";
 import type { InverterConfig } from "@SunReye/db/inverter-config";
 import { type PollEndpoint, loadPollEndpoint } from "./endpoint";
+import type { MqttParams } from "@SunReye/db/connection-kinds";
 import type { MqttConfig } from "@SunReye/db/mqtt-config";
 import { metricsConfigLog, metricsRaw } from "@SunReye/db/schema/metrics";
 import { env } from "@SunReye/env/server";
@@ -59,6 +60,7 @@ import { MissingMqttNamespaceError, readMqttNamespace } from "./mqtt-namespace";
 import { fetchSolarForecast, toForecastExport } from "../forecast/solar-forecast";
 import { runSpotPriceSync } from "../prices/spot-price-job";
 import { getSpotPriceConfig } from "../settings/spot-price-settings";
+import { readBroker } from "../settings/mqtt-broker-instance";
 import { liveState } from "../shared/state";
 import { getWeatherConfig } from "../settings/weather-settings";
 import type { Streams } from "../shared/streams";
@@ -628,6 +630,11 @@ export function createRuntime(deps: RuntimeDeps = {}) {
    */
   async function rebuildBridge(config: MqttConfig): Promise<void> {
     const previous = bridge;
+    // The broker is a CONNECTION now (#217), resolved per rebuild for the same
+    // reason the namespace is: a settings save may have re-pointed it, and a
+    // bridge holding the previous broker with this config's prefix would publish
+    // into a namespace nobody is watching.
+    const broker = await readBroker(config.connectionId);
     const ctx = context();
     let namespace: MqttNamespace | null = null;
     try {
@@ -648,7 +655,9 @@ export function createRuntime(deps: RuntimeDeps = {}) {
       );
     }
     bridge =
-      namespace === null ? null : startMqttBridge(config, { ctx: { ...ctx, ...namespace }, write });
+      namespace === null
+        ? null
+        : startMqttBridge(config, { ctx: { ...ctx, ...namespace }, write, broker });
     if (previous) await previous.close();
     // Seed a fresh bridge with the current forecast instead of waiting a full
     // interval; harmless when the forecast is disabled (publishes null → no-op).
@@ -860,12 +869,19 @@ export function createRuntime(deps: RuntimeDeps = {}) {
     }
   }
 
-  /** Try connecting to a broker without disturbing the live bridge. */
-  function testMqtt(config: MqttConfig): Promise<{ ok: boolean; error?: string }> {
+  /**
+   * Try connecting to a broker without disturbing the live bridge.
+   *
+   * Takes the BROKER, not the export config: since #217 the endpoint is a
+   * connection, and what an operator tests is a broker — one they may not have
+   * bound to the export yet. The caller resolves it
+   * (`../settings/mqtt-broker.ts`).
+   */
+  function testMqtt(broker: MqttParams): Promise<{ ok: boolean; error?: string }> {
     return new Promise((resolve) => {
-      const client = mqtt.connect(config.brokerUrl, {
-        username: config.username,
-        password: config.password,
+      const client = mqtt.connect(broker.brokerUrl, {
+        username: broker.username,
+        password: broker.password,
         connectTimeout: 4000,
         reconnectPeriod: 0, // one shot — don't loop retrying a bad broker
       });

@@ -24,6 +24,15 @@
 
 import type { DeviceBattery } from "@SunReye/db/batteries";
 import {
+  type ConnectionParams,
+  type ConnectionParamsMasked,
+  connectionSettingsSchema,
+  maskConnectionParams,
+  mergeConnectionParams,
+  modbusParamsSchema,
+  mqttParamsSchema,
+} from "@SunReye/db/connection-kinds";
+import {
   type ConnectionPatch,
   type ConnectionRecord,
   type ConnectionSettings,
@@ -114,7 +123,7 @@ export interface DeviceAdminDeps {
  */
 export interface DeviceView extends Omit<DeviceRecord, "retiredAt"> {
   retiredAt: string | null;
-  connection: ConnectionRecord | null;
+  connection: ConnectionView | null;
   /** The pack this inverter carries, or null — every other role has none. */
   battery: DeviceBattery | null;
   profileName: string | null;
@@ -131,9 +140,25 @@ export interface DeviceView extends Omit<DeviceRecord, "retiredAt"> {
   integration: string | null;
 }
 
+/**
+ * A connection AS THE API RETURNS IT — every write-only field stripped.
+ *
+ * The masking follows the secret. It used to live on `app_settings.mqtt`
+ * (`maskMqttConfig`), and since #217 the broker credential lives on a
+ * `kind = 'mqtt'` row — which both `/api/connections` and the device roster
+ * return, and which the archive export reads. `maskConnectionParams` owns the
+ * rule for every kind, so a third kind with a secret cannot forget it.
+ */
+export type ConnectionView = { id: number; name: string } & ConnectionParamsMasked;
+
+/** One row as the API returns it: masked, and still carrying its identity. */
+function toConnectionView(connection: ConnectionRecord): ConnectionView {
+  return { id: connection.id, name: connection.name, ...maskConnectionParams(connection) };
+}
+
 export interface DeviceRoster {
   devices: DeviceView[];
-  connections: ConnectionRecord[];
+  connections: ConnectionView[];
 }
 
 /** A refusal the route turns into its status, with the field it concerns. */
@@ -146,6 +171,8 @@ export class DeviceAdminError extends Error {
       | "unitId"
       | "connection"
       | "connectionId"
+      | "kind"
+      | "params"
       | "role"
       | "profileId"
       | "host"
@@ -167,15 +194,6 @@ const UNIT_ID_MAX = 247;
 
 /** The roles an operator may add. `optimizer` is virtual and registers itself. */
 const ADDABLE_ROLES = DEVICE_ROLES.filter((role) => !isVirtualDevice({ role }));
-
-const connectionSettingsSchema = z.object({
-  name: z.string().trim().min(1).max(64),
-  host: z.string().trim().min(1, "host is required"),
-  port: z.number().int().min(1).max(65535),
-  transport: z.enum(["tcp", "rtu-over-tcp"]),
-  timeoutMs: z.number().int().min(100).max(60_000),
-  pollIntervalMs: z.number().int().min(1000).max(3_600_000),
-}) satisfies z.ZodType<ConnectionSettings>;
 
 const nameSchema = z
   .string()
@@ -238,8 +256,27 @@ const patchDeviceSchema = z
   })
   .refine(nonEmpty, "nothing to change");
 
-const patchConnectionSchema = connectionSettingsSchema
-  .partial()
+/**
+ * What may change on an existing connection.
+ *
+ * `kind` is accepted only to be REFUSED with a reason: the dialog round-trips
+ * the whole record, so a PATCH carrying the row's own kind is the normal case
+ * and must not 400 — but a DIFFERENT kind is refused rather than applied. Every
+ * device bound to a connection was provisioned for its tier (a Modbus slave id,
+ * an EVCC loadpoint index), and re-kinding the row in place would leave them
+ * addressed for a bus that no longer exists while their history stays keyed to
+ * them. A different kind is a different connection.
+ *
+ * `params` is `unknown` here and parsed a second time against the ROW's kind
+ * (see {@link patchConnection}): the arm cannot be chosen from the body, or a
+ * write could smuggle broker credentials onto a Modbus gateway.
+ */
+const patchConnectionSchema = z
+  .object({
+    name: z.string().trim().min(1).max(64).optional(),
+    kind: z.string().optional(),
+    params: z.unknown().optional(),
+  })
   .refine(nonEmpty, "nothing to change");
 
 /** Which input field a Zod path points at, for the error's `field`. */
@@ -248,6 +285,8 @@ const FIELDS = new Set([
   "unitId",
   "connection",
   "connectionId",
+  "kind",
+  "params",
   "role",
   "profileId",
   "host",
@@ -312,7 +351,10 @@ function toView(
   return {
     ...device,
     retiredAt: device.retiredAt ? device.retiredAt.toISOString() : null,
-    connection: connections.find((c) => c.id === device.connectionId) ?? null,
+    connection: (() => {
+      const found = connections.find((c) => c.id === device.connectionId);
+      return found ? toConnectionView(found) : null;
+    })(),
     battery,
     profileName: name,
     profileKnown: name !== null,
@@ -373,8 +415,22 @@ export async function listDevices(deps: DeviceAdminDeps): Promise<DeviceRoster> 
         packOf(packs, d.id),
       ),
     ),
-    connections,
+    connections: connections.map(toConnectionView),
   };
+}
+
+/**
+ * Every connection of the plant, MASKED — what `/api/connections` answers.
+ *
+ * A service call rather than a store read spelled in the route, so the masking
+ * cannot be forgotten at the one edge that returns these rows on their own.
+ */
+export async function listConnections(
+  deps: DeviceAdminDeps,
+): Promise<{ connections: ConnectionView[] }> {
+  const plant = await deps.store.readPlant();
+  if (!plant) return { connections: [] };
+  return { connections: (await deps.store.readConnections(plant.id)).map(toConnectionView) };
 }
 
 async function requirePlant(deps: DeviceAdminDeps): Promise<PlantRecord> {
@@ -600,12 +656,40 @@ export async function patchConnection(
   deps: DeviceAdminDeps,
   id: number,
   body: unknown,
-): Promise<ConnectionRecord> {
+): Promise<ConnectionView> {
   const patch = parse(patchConnectionSchema, body);
-  await requireConnection(deps, id);
-  const updated = await deps.store.updateConnection(id, patch);
+  const { connection } = await requireConnection(deps, id);
+  if (patch.kind !== undefined && patch.kind !== connection.kind) {
+    throw new DeviceAdminError(
+      409,
+      `kind: a connection's kind cannot change (this one is ${connection.kind}); add a new connection instead`,
+      "kind",
+    );
+  }
+  const updated = await deps.store.updateConnection(id, {
+    ...(patch.name !== undefined ? { name: patch.name } : {}),
+    ...(patch.params !== undefined ? { params: mergedParams(connection, patch.params) } : {}),
+  });
   await deps.reload();
-  return updated;
+  return toConnectionView(updated);
+}
+
+/**
+ * An incoming `params` document, validated against the ROW's kind and merged
+ * over what is stored.
+ *
+ * Two things at once, and both are load-bearing. The kind comes from the ROW,
+ * never from the body, so a write cannot choose the arm it is validated against.
+ * And the merge preserves the write-only broker password: the dialog reads the
+ * masked record, edits the URL and sends it back with no password, and a plain
+ * replacement would silently disconnect the broker.
+ */
+function mergedParams(connection: ConnectionRecord, params: unknown): ConnectionParams["params"] {
+  const incoming =
+    connection.kind === "modbus"
+      ? ({ kind: "modbus", params: parse(modbusParamsSchema, params) } as const)
+      : ({ kind: "mqtt", params: parse(mqttParamsSchema, params) } as const);
+  return mergeConnectionParams(connection, incoming).params;
 }
 
 /**

@@ -54,11 +54,14 @@ suite("a sample committed for any registered device", () => {
     const plant = { id: Number((plantRows[0] as { id: number }).id) };
     const connection = await repo.ensureConnection(db, plant.id, {
       name: "bus",
-      host: "10.0.0.5",
-      port: 502,
-      transport: "tcp",
-      timeoutMs: 2000,
-      pollIntervalMs: 1000,
+      kind: "modbus",
+      params: {
+        host: "10.0.0.5",
+        port: 502,
+        transport: "tcp",
+        timeoutMs: 2000,
+        pollIntervalMs: 1000,
+      },
     });
     await repo.ensureDevice(db, {
       plantId: plant.id,

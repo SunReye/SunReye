@@ -198,24 +198,34 @@ suite("the dimension spine", () => {
     const plant = await freshPlant("spine-conn");
     const first = await repo.ensureConnection(db, plant.id, {
       name: "Inverter",
-      host: "10.0.0.5",
-      port: 502,
-      transport: "tcp",
-      timeoutMs: 2000,
-      pollIntervalMs: 1000,
+      kind: "modbus",
+      params: {
+        host: "10.0.0.5",
+        port: 502,
+        transport: "tcp",
+        timeoutMs: 2000,
+        pollIntervalMs: 1000,
+      },
     });
     const second = await repo.ensureConnection(db, plant.id, {
       name: "Inverter",
+      kind: "modbus",
+      params: {
+        host: "10.0.0.9",
+        port: 8899,
+        transport: "rtu-over-tcp",
+        timeoutMs: 3000,
+        pollIntervalMs: 2000,
+      },
+    });
+    expect(second.id).toBe(first.id);
+    expect(second.params).toEqual({
       host: "10.0.0.9",
       port: 8899,
       transport: "rtu-over-tcp",
       timeoutMs: 3000,
       pollIntervalMs: 2000,
     });
-    expect(second.id).toBe(first.id);
-    expect(second.host).toBe("10.0.0.9");
-    expect(second.port).toBe(8899);
-    expect(second.transport).toBe("rtu-over-tcp");
     const { rows } = await db.execute(
       sql`select count(*)::int as n from connections where plant_id = ${plant.id}`,
     );
@@ -228,35 +238,47 @@ suite("the dimension spine", () => {
     const plant = await freshPlant("spine-conn-create");
     const first = await repo.ensureConnection(db, plant.id, {
       name: "Gateway 1",
-      host: "10.0.0.5",
-      port: 502,
-      transport: "tcp",
-      timeoutMs: 2000,
-      pollIntervalMs: 1000,
+      kind: "modbus",
+      params: {
+        host: "10.0.0.5",
+        port: 502,
+        transport: "tcp",
+        timeoutMs: 2000,
+        pollIntervalMs: 1000,
+      },
     });
     const second = await repo.createConnection(db, plant.id, {
       name: "Gateway 2",
-      host: "10.0.0.9",
-      port: 8899,
-      transport: "rtu-over-tcp",
-      timeoutMs: 3000,
-      pollIntervalMs: 2000,
+      kind: "modbus",
+      params: {
+        host: "10.0.0.9",
+        port: 8899,
+        transport: "rtu-over-tcp",
+        timeoutMs: 3000,
+        pollIntervalMs: 2000,
+      },
     });
     expect(second.id).not.toBe(first.id);
-    expect(second.transport).toBe("rtu-over-tcp");
+    expect(second.kind === "modbus" && second.params.transport).toBe("rtu-over-tcp");
     const all = await repo.readConnections(db, plant.id);
-    expect(all.map((c) => c.host)).toEqual(["10.0.0.5", "10.0.0.9"]);
+    expect(all.map((c) => (c.kind === "modbus" ? c.params.host : null))).toEqual([
+      "10.0.0.5",
+      "10.0.0.9",
+    ]);
   });
 
   test("updateConnection edits in place — the device bound to it follows, the id stays", async () => {
     const plant = await freshPlant("spine-conn-update");
     const gateway = await repo.createConnection(db, plant.id, {
       name: "G",
-      host: "10.0.0.5",
-      port: 502,
-      transport: "tcp",
-      timeoutMs: 2000,
-      pollIntervalMs: 1000,
+      kind: "modbus",
+      params: {
+        host: "10.0.0.5",
+        port: 502,
+        transport: "tcp",
+        timeoutMs: 2000,
+        pollIntervalMs: 1000,
+      },
     });
     const device = await repo.createDevice(db, {
       plantId: plant.id,
@@ -268,55 +290,117 @@ suite("the dimension spine", () => {
       role: "inverter",
     });
     const moved = await repo.updateConnection(db, gateway.id, {
-      host: "10.0.0.9",
-      transport: "rtu-over-tcp",
+      params: {
+        host: "10.0.0.9",
+        port: 502,
+        transport: "rtu-over-tcp",
+        timeoutMs: 2000,
+        pollIntervalMs: 1000,
+      },
     });
     expect(moved.id).toBe(gateway.id);
-    expect(moved.host).toBe("10.0.0.9");
-    expect(moved.transport).toBe("rtu-over-tcp");
-    expect(moved.port).toBe(502);
+    expect(moved.params).toEqual({
+      host: "10.0.0.9",
+      port: 502,
+      transport: "rtu-over-tcp",
+      timeoutMs: 2000,
+      pollIntervalMs: 1000,
+    });
     const [after] = await repo.readDevices(db, plant.id);
     expect(after?.id).toBe(device.id);
     expect(after?.connectionId).toBe(gateway.id);
   });
 
-  test("updateConnection refuses a transport the CHECK does not admit", async () => {
-    const plant = await freshPlant("spine-conn-update-check");
-    const gateway = await repo.createConnection(db, plant.id, {
-      name: "G",
-      host: "h",
-      port: 502,
-      transport: "tcp",
-      timeoutMs: 2000,
-      pollIntervalMs: 1000,
+  test("ensureConnection is PER KIND — a broker and a gateway coexist, neither overwrites the other", async () => {
+    // The defect this pins: `ensureConnection` used to edit the plant's FIRST
+    // row whatever it was. With a broker at the lower id, saving the inverter
+    // form wrote a host and a port over it — and every loadpoint bound to that
+    // row was then addressed for a bus that does not exist.
+    const plant = await freshPlant("spine-conn-kinds");
+    const broker = await repo.ensureConnection(db, plant.id, {
+      name: "Broker",
+      kind: "mqtt",
+      params: { brokerUrl: "mqtt://hass.lan:1883", username: "u", password: "p" },
     });
-    let message = "";
-    try {
-      await repo.updateConnection(db, gateway.id, { transport: "carrier-pigeon" });
-    } catch (error) {
-      const cause = (error as { cause?: unknown }).cause;
-      message = `${(error as Error).message} ${cause instanceof Error ? cause.message : ""}`;
+    const gateway = await repo.ensureConnection(db, plant.id, {
+      name: "Gateway",
+      kind: "modbus",
+      params: {
+        host: "10.0.0.5",
+        port: 502,
+        transport: "tcp",
+        timeoutMs: 2000,
+        pollIntervalMs: 1000,
+      },
+    });
+    expect(gateway.id).not.toBe(broker.id);
+    // A second Modbus save edits the gateway and leaves the broker alone.
+    const moved = await repo.ensureConnection(db, plant.id, {
+      name: "Gateway",
+      kind: "modbus",
+      params: {
+        host: "10.0.0.9",
+        port: 502,
+        transport: "tcp",
+        timeoutMs: 2000,
+        pollIntervalMs: 1000,
+      },
+    });
+    expect(moved.id).toBe(gateway.id);
+    const all = await repo.readConnections(db, plant.id);
+    expect(all.map((c) => c.kind)).toEqual(["mqtt", "modbus"]);
+    expect(all[0]?.params).toEqual({
+      brokerUrl: "mqtt://hass.lan:1883",
+      username: "u",
+      password: "p",
+    });
+    expect(await repo.readConnection(db, plant.id, "mqtt")).toMatchObject({ id: broker.id });
+    expect(await repo.readConnection(db, plant.id, "modbus")).toMatchObject({ id: gateway.id });
+  });
+
+  test("the kind CHECK refuses a value no tier can open, `http` included", async () => {
+    // The seam #217 leaves open: `http` becomes legal by a CHECK rewrite plus a
+    // zod arm plus a tier, and until that migration lands the engine must refuse
+    // the row rather than store a connection nothing will ever poll.
+    const plant = await freshPlant("spine-conn-kind-check");
+    for (const kind of ["http", "", "MODBUS"]) {
+      let message = "";
+      try {
+        await db.execute(
+          sql`insert into connections (plant_id, name, kind, params)
+              values (${plant.id}, 'X', ${kind}, '{}'::jsonb)`,
+        );
+      } catch (error) {
+        const cause = (error as { cause?: unknown }).cause;
+        message = `${(error as Error).message} ${cause instanceof Error ? cause.message : ""}`;
+      }
+      expect(message).toContain("connections_kind_check");
     }
-    expect(message).toContain("connections_transport_check");
   });
 
   test("deleteConnection removes an unreferenced endpoint and is refused for a bound one BY THE ENGINE", async () => {
     const plant = await freshPlant("spine-conn-delete");
     const spare = await repo.createConnection(db, plant.id, {
       name: "Spare",
-      host: "h",
-      port: 502,
-      transport: "tcp",
-      timeoutMs: 2000,
-      pollIntervalMs: 1000,
+      kind: "modbus",
+      params: {
+        host: "h",
+        port: 502,
+        transport: "tcp",
+        timeoutMs: 2000,
+        pollIntervalMs: 1000,
+      },
     });
     const bound = await repo.createConnection(db, plant.id, {
       name: "Bound",
-      host: "h2",
-      port: 502,
-      transport: "tcp",
-      timeoutMs: 2000,
-      pollIntervalMs: 1000,
+      kind: "modbus",
+      params: {
+        host: "h2",
+        port: 502,
+        transport: "tcp",
+        timeoutMs: 2000,
+        pollIntervalMs: 1000,
+      },
     });
     await repo.createDevice(db, {
       plantId: plant.id,
@@ -346,11 +430,14 @@ suite("the dimension spine", () => {
     const plant = await freshPlant("spine-dev-create-unit");
     const gateway = await repo.createConnection(db, plant.id, {
       name: "Gateway",
-      host: "10.0.0.5",
-      port: 502,
-      transport: "tcp",
-      timeoutMs: 2000,
-      pollIntervalMs: 1000,
+      kind: "modbus",
+      params: {
+        host: "10.0.0.5",
+        port: 502,
+        transport: "tcp",
+        timeoutMs: 2000,
+        pollIntervalMs: 1000,
+      },
     });
     const spec = {
       plantId: plant.id,
@@ -421,42 +508,60 @@ suite("the dimension spine", () => {
     const other = await freshPlant("spine-conns-other");
     const first = await repo.ensureConnection(db, plant.id, {
       name: "GX gateway",
-      host: "10.0.0.5",
-      port: 502,
-      transport: "tcp",
-      timeoutMs: 2000,
-      pollIntervalMs: 1000,
+      kind: "modbus",
+      params: {
+        host: "10.0.0.5",
+        port: 502,
+        transport: "tcp",
+        timeoutMs: 2000,
+        pollIntervalMs: 1000,
+      },
     });
     // A SECOND endpoint on the same plant — two gateways, which `ensureConnection`
     // deliberately cannot create (it edits in place), so this is a raw insert.
     await db.execute(sql`
-      insert into connections (plant_id, name, host, port, transport, timeout_ms, poll_interval_ms)
-      values (${plant.id}, 'RS485 bridge', '10.0.0.6', 8899, 'rtu-over-tcp', 3000, 5000)`);
+      insert into connections (plant_id, name, kind, params)
+      values (${plant.id}, 'RS485 bridge', 'modbus', ${JSON.stringify({
+        host: "10.0.0.6",
+        port: 8899,
+        transport: "rtu-over-tcp",
+        timeoutMs: 3000,
+        pollIntervalMs: 5000,
+      })}::jsonb)`);
     await repo.ensureConnection(db, other.id, {
       name: "Elsewhere",
-      host: "10.9.9.9",
-      port: 502,
-      transport: "tcp",
-      timeoutMs: 2000,
-      pollIntervalMs: 1000,
+      kind: "modbus",
+      params: {
+        host: "10.9.9.9",
+        port: 502,
+        transport: "tcp",
+        timeoutMs: 2000,
+        pollIntervalMs: 1000,
+      },
     });
 
     const listed = await repo.readConnections(db, plant.id);
-    expect(listed.map((c) => c.host)).toEqual(["10.0.0.5", "10.0.0.6"]);
+    expect(listed.map((c) => (c.kind === "modbus" ? c.params.host : null))).toEqual([
+      "10.0.0.5",
+      "10.0.0.6",
+    ]);
     expect(listed[0]?.id).toBe(first.id);
-    // Coercions, which only a real driver can prove: these columns are `integer`.
-    expect(listed[1]).toMatchObject({
+    // The jsonb round trip, which only a real driver can prove: these were
+    // `integer` columns and are now numbers inside one document, so a driver
+    // that handed them back as strings would break every consumer silently.
+    expect(listed[1]?.params).toEqual({
+      host: "10.0.0.6",
       port: 8899,
       transport: "rtu-over-tcp",
       timeoutMs: 3000,
       pollIntervalMs: 5000,
     });
     // The single-endpoint reader is the first of the same list.
-    expect((await repo.readConnection(db, plant.id))?.id).toBe(first.id);
+    expect((await repo.readConnection(db, plant.id, "modbus"))?.id).toBe(first.id);
 
     const none = await freshPlant("spine-conns-none");
     expect(await repo.readConnections(db, none.id)).toEqual([]);
-    expect(await repo.readConnection(db, none.id)).toBeNull();
+    expect(await repo.readConnection(db, none.id, "modbus")).toBeNull();
   });
 
   test("ensureDevice creates once, keeps the id and the slug, and re-points the profile", async () => {
@@ -942,11 +1047,14 @@ suite("the dimension spine", () => {
       const plant = await freshPlant("retire-unique-plant");
       const conn = await repo.ensureConnection(db, plant.id, {
         name: "gx",
-        host: "10.0.0.7",
-        port: 502,
-        transport: "tcp",
-        timeoutMs: 2000,
-        pollIntervalMs: 1000,
+        kind: "modbus",
+        params: {
+          host: "10.0.0.7",
+          port: 502,
+          transport: "tcp",
+          timeoutMs: 2000,
+          pollIntervalMs: 1000,
+        },
       });
       const device = await repo.ensureDevice(db, {
         plantId: plant.id,

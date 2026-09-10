@@ -48,12 +48,12 @@
 
 import { DEVICE_CLASSES } from "@SunReye/inverter-core/device-class";
 import { sql } from "drizzle-orm";
+import { CONNECTION_KINDS } from "../connection-kinds";
 import {
   boolean,
   check,
   doublePrecision,
   index,
-  integer,
   jsonb,
   pgTable,
   smallint,
@@ -218,7 +218,7 @@ const plantRef = () =>
     .references(() => plants.id, { onDelete: "restrict" });
 
 /**
- * A Modbus ENDPOINT. **Not a device.**
+ * AN ENDPOINT SOMETHING IS REACHED THROUGH. **Not a device.**
  *
  * This distinction is the entire reason the table exists:
  *
@@ -232,34 +232,68 @@ const plantRef = () =>
  * touch ONE row rather than N. The old `app_settings.inverter` record conflated
  * the two: it held `host`, `port`, `transport`, `unitId` and `pollIntervalMs`
  * together, which is exactly a one-device-per-endpoint assumption written down.
+ *
+ * NOT ONLY MODBUS, SINCE #217. The row used to hold `host`, `port`,
+ * `transport`, `timeout_ms` and `poll_interval_ms` as typed columns and its
+ * comment called it a Modbus endpoint — so the MQTT broker the HA export
+ * publishes to and the EVCC ingest subscribes on lived in `app_settings.mqtt`
+ * instead, every MQTT-fed device sat at `connection_id = null`, and two EVCC
+ * loadpoints shared `unit_id = 0` (which `devices_connection_unit_key` tolerated
+ * ONLY because the connection was null). The five columns became `params`
+ * jsonb under a {@link connections.kind}, and the broker became a kind.
  */
 export const connections = pgTable(
   "connections",
   {
     id: identityKey(),
     plantId: plantRef(),
-    /** Label for the endpoint ("GX gateway", "RS485 bridge"). */
+    /** Label for the endpoint ("GX gateway", "RS485 bridge", "Home broker"). */
     name: text("name").notNull(),
-    host: text("host").notNull(),
-    port: integer("port").notNull().default(502),
-    /** `tcp`, or `rtu-over-tcp` (RTU frames tunneled over TCP). */
-    transport: text("transport").notNull().default("tcp"),
-    /** Per-request Modbus timeout, ms. */
-    timeoutMs: integer("timeout_ms").notNull().default(2000),
-    /** Poll cadence for this endpoint, ms. Floored at 1000 by the runtime. */
-    pollIntervalMs: integer("poll_interval_ms").notNull().default(1000),
+    /**
+     * WHICH TIER OPENS THIS ROW — `modbus` (poll) or `mqtt` (push).
+     *
+     * TEXT + CHECK, deliberately NOT a Postgres enum. Adding `http` later is a
+     * CHECK rewrite inside the migration's transaction and rolls back like any
+     * other statement; `ALTER TYPE … ADD VALUE` cannot be rolled back and, on
+     * older servers, cannot run in a transaction block at all — which would make
+     * the one thing this seam exists to keep cheap the one thing that is not.
+     *
+     * The list is `CONNECTION_KINDS` from `../connection-kinds.ts` — the
+     * constraint is RENDERED from it, and
+     * `apps/server/db-tests/check-constraints.test.ts` proves the engine agrees.
+     */
+    kind: text("kind").notNull().default("modbus"),
+    /**
+     * The endpoint's addressing, per {@link connections.kind} — validated by
+     * `../connection-kinds.ts`'s `z.discriminatedUnion("kind", …)`, which is the
+     * only place the two shapes are related to each other.
+     *
+     * JSONB rather than a nullable column per field of every kind, because the
+     * kinds share NOTHING: a broker has no unit id and a Modbus gateway has no
+     * client id, and half-typed columns are exactly what an `http` kind (also
+     * host, also port, also polling — and yet not a Modbus frame) would be
+     * tempted to reuse. `NOT NULL DEFAULT '{}'` so a row is never a null-check
+     * away from a crash; an empty object simply fails to parse and says so.
+     */
+    params: jsonb("params").notNull().default({}),
     createdAt: createdAtTz(),
   },
   (t) => [
     /**
-     * The framing modes the Modbus client actually implements.
+     * The kinds a tier exists for.
      *
-     * Mirrors `../inverter-config.ts`'s `z.enum(["tcp", "rtu-over-tcp"])` exactly.
-     * A third value is not a validation nicety: the client has no branch for it,
-     * so the endpoint simply never polls, and the plant goes quiet with no error
-     * anyone reads.
+     * A value outside this list is a connection nothing can open: no tier is
+     * picked, so it is silently never polled and never subscribed, and the
+     * plant goes quiet with no error anyone reads. That is the same failure the
+     * dropped `connections_transport_check` guarded, one level up.
      */
-    check("connections_transport_check", sql`${t.transport} in ('tcp', 'rtu-over-tcp')`),
+    check(
+      "connections_kind_check",
+      // `sql.raw`, not bound params: drizzle-kit snapshots a check's text
+      // verbatim, and `$1, $2…` would read as a changed constraint and emit a
+      // DROP/ADD on every generate. Same rule as `devices_role_check` below.
+      sql`${t.kind} in (${sql.raw(CONNECTION_KINDS.map((k) => `'${k}'`).join(", "))})`,
+    ),
   ],
 );
 
@@ -306,8 +340,34 @@ export const devices = pgTable(
     connectionId: smallint("connection_id").references(() => connections.id, {
       onDelete: "restrict",
     }),
-    /** The Modbus slave id behind {@link connectionId}. Many devices per endpoint. */
+    /**
+     * WHICH DEVICE BEHIND {@link connectionId} — a Modbus slave id on a poll
+     * connection, and the integration's own index on a push one (an EVCC
+     * loadpoint's 1-based index). Many devices per endpoint, either way.
+     *
+     * Naming the loadpoint index here is what makes
+     * `devices_connection_unit_key` HOLD for MQTT-fed devices. Before #217 every
+     * loadpoint was `(null, 0)`, and the unique index tolerated that only
+     * because Postgres treats NULLs as distinct — so the constraint was not
+     * expressing the addressing at all for the one integration that had two
+     * devices behind one endpoint.
+     */
     unitId: smallint("unit_id").notNull(),
+    /**
+     * PER-DEVICE INTEGRATION CONFIG — what the addressing cannot say.
+     *
+     * An EVCC loadpoint's `topicRoot` is the first tenant: the topic grammar is
+     * per EVCC instance, not per broker, and it used to live in
+     * `app_settings.evcc` where a second EVCC on the same broker could not be
+     * expressed. `subtractFromHome` deliberately did NOT move here — it is a
+     * rule about how the plant's house-load figure is composed, not a property
+     * of any device, and it stays a plant-level setting.
+     *
+     * JSONB and `NOT NULL DEFAULT '{}'` for the same reasons as
+     * `connections.params`: the shapes are per integration and share nothing, and
+     * a row is never a null-check away from a crash.
+     */
+    params: jsonb("params").notNull().default({}),
     /**
      * Stable machine name — THE API AND EXPORT VOCABULARY.
      *

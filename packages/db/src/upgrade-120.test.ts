@@ -325,6 +325,43 @@ describe("baselinePlan", () => {
     expect(plan.refusals[0]).toContain("nickname");
   });
 
+  test("a column a LATER migration retires is not missing — it is gone on purpose", () => {
+    // The failure this prevents, which is a production boot failure and not a
+    // hypothetical: `upgradeInPlace` re-runs on every boot (recognition is a
+    // pure catalog check), so an install upgraded from 1.2.0 and then migrated
+    // past 0006 comes back here with `connections` no longer carrying the five
+    // Modbus columns the BASELINE declares. Refusing there tells the operator
+    // to restore a backup over a schema that is exactly right.
+    const migrated = state({
+      relations: ["connections"],
+      columns: [
+        ["connections", new Set(["id", "plant_id", "name", "kind", "params", "created_at"])],
+      ],
+    });
+    const create =
+      'CREATE TABLE "connections" (\n\t"id" smallint,\n\t"plant_id" smallint,\n\t"name" text,' +
+      '\n\t"host" text,\n\t"port" integer,\n\t"transport" text,\n\t"timeout_ms" integer,' +
+      '\n\t"poll_interval_ms" integer,\n\t"created_at" timestamp\n);';
+    const plan = baselinePlan([create], migrated);
+    expect(plan.refusals).toEqual([]);
+    expect(plan.skipped).toHaveLength(1);
+  });
+
+  test("a column NOT on the retired list is still a refusal on the same table", () => {
+    // The allowance is per (table, column) and nothing wider: a `connections`
+    // row missing `name` is still a schema the app cannot query.
+    const broken = state({
+      relations: ["connections"],
+      columns: [["connections", new Set(["id", "plant_id", "kind", "params"])]],
+    });
+    const create =
+      'CREATE TABLE "connections" (\n\t"id" smallint,\n\t"name" text,\n\t"host" text\n);';
+    const plan = baselinePlan([create], broken);
+    expect(plan.refusals).toHaveLength(1);
+    expect(plan.refusals[0]).toContain("name");
+    expect(plan.refusals[0]).not.toContain("host");
+  });
+
   test("extra columns on an existing table are fine — 1.x may have more", () => {
     const plan = baselinePlan(['CREATE TABLE "user" (\n\t"id" text\n);'], LEGACY_120);
     expect(plan.refusals).toEqual([]);

@@ -13,6 +13,10 @@ Configure MQTT from [Settings → MQTT & Home Assistant](/use/settings/) (recomm
 seed it from [environment variables](/reference/environment/) (`MQTT_ENABLED`,
 `MQTT_BROKER_URL`, `MQTT_TOPIC_PREFIX`, `MQTT_USERNAME`, `MQTT_PASSWORD`).
 
+The broker itself is a **connection**, like a Modbus gateway: the first boot
+creates one from `MQTT_BROKER_URL` and the export names it by id, so several
+brokers can coexist and the EVCC ingest can subscribe on its own.
+
 Enabling, disabling, or changing the config takes effect **live** — the bridge is rebuilt
 without a restart. The Settings tab has a **Test connection** button and a live status
 badge.

@@ -49,27 +49,36 @@ let fake = new FakeClient();
 // found in module config.ts", which also took down that file's own mock
 // registrations and failed four unrelated tests. Spread the real module and
 // override only what this suite stubs.
-const realConfig = await import("../settings/config");
+const realBrokerInstance = await import("../settings/mqtt-broker-instance");
 const realEvccSettings = await import("../settings/evcc-settings");
 
 // ...and the spread is only half of it: the stub itself is permanent too, so
-// `getMqttConfig`/`getEvccConfig` would stay installed for every later file —
+// `readBroker`/`getEvccConfig` would stay installed for every later file —
 // including the suites that unit-test those very modules, which would then
 // assert against this double (red in the full run, green alone). The `afterAll`
 // below hands the modules back. A namespace is LIVE, so once the mock is
-// installed `realConfig.getMqttConfig` IS the stub: snapshot by value here,
+// installed `realBrokerInstance.readBroker` IS the stub: snapshot by value here,
 // before any mock exists, or the restore restores the stub.
-const realConfigExports = { ...realConfig };
+const realBrokerInstanceExports = { ...realBrokerInstance };
 const realEvccSettingsExports = { ...realEvccSettings };
 
 /** The EVCC config the next `rebuildEvcc` reads; restored after every test. */
-const DEFAULT_EVCC_CONFIG = { enabled: true, topicRoot: "evcc", subtractFromHome: false };
+// `connectionId` since #217: EVCC dials its OWN broker connection rather than
+// reusing the Home Assistant export's, so the ingest and the export can be on
+// two brokers and two EVCC instances are two rows.
+const DEFAULT_EVCC_CONFIG = {
+  enabled: true,
+  connectionId: 3,
+  topicRoot: "evcc",
+  subtractFromHome: false,
+};
 let evccConfig = { ...DEFAULT_EVCC_CONFIG };
 
 mock.module("mqtt", () => ({ default: { connect: () => fake } }));
-mock.module("../settings/config", () => ({
-  ...realConfig,
-  getMqttConfig: async () => ({ brokerUrl: "mqtt://broker.test:1883" }),
+mock.module("../settings/mqtt-broker-instance", () => ({
+  ...realBrokerInstance,
+  readBroker: async (connectionId: number | null) =>
+    connectionId === null ? null : { brokerUrl: "mqtt://broker.test:1883" },
 }));
 mock.module("../settings/evcc-settings", () => ({
   ...realEvccSettings,
@@ -162,7 +171,7 @@ afterEach(async () => {
 // `afterAll`, not `afterEach`: this file's own tests need the stubs until the
 // last one has run. From here on the real modules are back for everyone else.
 afterAll(() => {
-  mock.module("../settings/config", () => ({ ...realConfigExports }));
+  mock.module("../settings/mqtt-broker-instance", () => ({ ...realBrokerInstanceExports }));
   mock.module("../settings/evcc-settings", () => ({ ...realEvccSettingsExports }));
 });
 

@@ -213,21 +213,32 @@ describe("connections", () => {
   const connectionRow = {
     id: "3",
     name: "Inverter",
-    host: "10.0.0.5",
-    port: "502",
-    transport: "tcp",
-    timeoutMs: "2000",
-    pollIntervalMs: "1000",
+    kind: "modbus",
+    params: {
+      host: "10.0.0.5",
+      port: 502,
+      transport: "tcp",
+      timeoutMs: 2000,
+      pollIntervalMs: 1000,
+    },
+  };
+
+  /** An MQTT broker row, as the migration writes one. */
+  const brokerRow = {
+    id: "5",
+    name: "MQTT broker",
+    kind: "mqtt",
+    params: { brokerUrl: "mqtt://hass.lan:1883", username: "u", password: "p" },
   };
 
   test("readConnection coerces the endpoint's numbers and reports absence as null", async () => {
     const present = fakeClient([[connectionRow]]);
-    const read = await readConnection(present.client, 7);
+    const read = await readConnection(present.client, 7, "modbus");
     expect(read?.id).toBe(3);
-    expect(read?.port).toBe(502);
-    expect(read?.pollIntervalMs).toBe(1000);
+    expect(read?.kind === "modbus" && read.params.port).toBe(502);
+    expect(read?.kind === "modbus" && read.params.pollIntervalMs).toBe(1000);
     const absent = fakeClient([[]]);
-    expect(await readConnection(absent.client, 7)).toBeNull();
+    expect(await readConnection(absent.client, 7, "modbus")).toBeNull();
   });
 
   test("readConnections lists every endpoint of the plant, coerced", async () => {
@@ -236,12 +247,15 @@ describe("connections", () => {
     // one connection, two gateways are two, and a device bound to the second one
     // must not be polled at the first one's address.
     const { client, executed } = fakeClient([
-      [connectionRow, { ...connectionRow, id: "4", host: "10.0.0.6" }],
+      [
+        connectionRow,
+        { ...connectionRow, id: "4", params: { ...connectionRow.params, host: "10.0.0.6" } },
+      ],
     ]);
     const read = await readConnections(client, 7);
     expect(read.map((c) => c.id)).toEqual([3, 4]);
-    expect(read[1]?.host).toBe("10.0.0.6");
-    expect(read[0]?.timeoutMs).toBe(2000);
+    expect(read[1]?.kind === "modbus" && read[1]?.params.host).toBe("10.0.0.6");
+    expect(read[0]?.kind === "modbus" && read[0]?.params.timeoutMs).toBe(2000);
     // No LIMIT: the single-endpoint reader is the one that takes the first row.
     expect(rendered(executed[0])).not.toContain("limit");
   });
@@ -256,14 +270,17 @@ describe("connections", () => {
     const { client, executed } = fakeClient([[connectionRow]]);
     const result = await ensureConnection(client, 7, {
       name: "Inverter",
-      host: "10.0.0.9",
-      port: 8899,
-      transport: "rtu-over-tcp",
-      timeoutMs: 3000,
-      pollIntervalMs: 2000,
+      kind: "modbus",
+      params: {
+        host: "10.0.0.9",
+        port: 8899,
+        transport: "rtu-over-tcp",
+        timeoutMs: 3000,
+        pollIntervalMs: 2000,
+      },
     });
     expect(result.id).toBe(3);
-    expect(result.host).toBe("10.0.0.9");
+    expect(result.kind === "modbus" && result.params.host).toBe("10.0.0.9");
     expect(rendered(executed[1])).toContain("update");
   });
 
@@ -271,11 +288,14 @@ describe("connections", () => {
     const { client } = fakeClient([[], [connectionRow]]);
     const result = await ensureConnection(client, 7, {
       name: "Inverter",
-      host: "10.0.0.5",
-      port: 502,
-      transport: "tcp",
-      timeoutMs: 2000,
-      pollIntervalMs: 1000,
+      kind: "modbus",
+      params: {
+        host: "10.0.0.5",
+        port: 502,
+        transport: "tcp",
+        timeoutMs: 2000,
+        pollIntervalMs: 1000,
+      },
     });
     expect(result.id).toBe(3);
   });
@@ -285,11 +305,14 @@ describe("connections", () => {
     await expect(
       ensureConnection(client, 7, {
         name: "x",
-        host: "h",
-        port: 1,
-        transport: "tcp",
-        timeoutMs: 1,
-        pollIntervalMs: 1000,
+        kind: "modbus",
+        params: {
+          host: "h",
+          port: 1,
+          transport: "tcp",
+          timeoutMs: 1,
+          pollIntervalMs: 1000,
+        },
       }),
     ).rejects.toThrow("connection for plant 7 could not be created");
   });
@@ -298,17 +321,22 @@ describe("connections", () => {
     // Unlike `ensureConnection`, which edits the plant's first endpoint in place
     // for the single-inverter form, adding a device to a NEW gateway must not
     // move the existing one.
-    const { client, executed } = fakeClient([[{ ...connectionRow, id: "9", host: "10.0.0.9" }]]);
+    const { client, executed } = fakeClient([
+      [{ ...connectionRow, id: "9", params: { ...connectionRow.params, host: "10.0.0.9" } }],
+    ]);
     const created = await createConnection(client, 7, {
       name: "Gateway 2",
-      host: "10.0.0.9",
-      port: 502,
-      transport: "tcp",
-      timeoutMs: 2000,
-      pollIntervalMs: 1000,
+      kind: "modbus",
+      params: {
+        host: "10.0.0.9",
+        port: 502,
+        transport: "tcp",
+        timeoutMs: 2000,
+        pollIntervalMs: 1000,
+      },
     });
     expect(created.id).toBe(9);
-    expect(created.host).toBe("10.0.0.9");
+    expect(created.kind === "modbus" && created.params.host).toBe("10.0.0.9");
     expect(executed).toHaveLength(1);
     const insert = rendered(executed[0]);
     expect(insert).toContain("insert into connections");
@@ -316,15 +344,26 @@ describe("connections", () => {
   });
 
   test("updateConnection names only the patched columns and reads the row back", async () => {
-    const { client, executed } = fakeClient([[], [{ ...connectionRow, host: "10.0.0.9" }]]);
-    const updated = await updateConnection(client, 3, { host: "10.0.0.9", pollIntervalMs: 2000 });
-    expect(updated.host).toBe("10.0.0.9");
+    const moved = { ...connectionRow.params, host: "10.0.0.9" };
+    const { client, executed } = fakeClient([[], [{ ...connectionRow, params: moved }]]);
+    const updated = await updateConnection(client, 3, { params: moved });
+    expect(updated.kind === "modbus" && updated.params.host).toBe("10.0.0.9");
     const update = rendered(executed[0]);
     expect(update).toContain("update connections set");
-    expect(update).toContain("host = ");
-    expect(update).toContain("poll_interval_ms = ");
-    expect(update).not.toContain("port = ");
+    expect(update).toContain("params = ");
     expect(update).not.toContain("name = ");
+    // The five columns are gone; the addressing travels as ONE jsonb value, so
+    // a partial edit cannot leave a row half-moved.
+    expect(update).not.toContain("host = ");
+  });
+
+  test("updateConnection carries the mqtt arm too, password included", async () => {
+    const { client, executed } = fakeClient([[], [brokerRow]]);
+    const updated = await updateConnection(client, 5, {
+      params: { brokerUrl: "mqtt://hass.lan:1883", username: "u", password: "p" },
+    });
+    expect(updated.kind).toBe("mqtt");
+    expect(rendered(executed[0])).toContain("params = ");
   });
 
   test("updateConnection with an empty patch executes only the read", async () => {
@@ -336,7 +375,7 @@ describe("connections", () => {
 
   test("updating a connection that does not exist says so", async () => {
     const { client } = fakeClient([[], []]);
-    await expect(updateConnection(client, 99, { host: "x" })).rejects.toThrow(
+    await expect(updateConnection(client, 99, { name: "x" })).rejects.toThrow(
       "connection 99 does not exist",
     );
   });
@@ -353,11 +392,14 @@ describe("connections", () => {
     await expect(
       createConnection(client, 7, {
         name: "x",
-        host: "h",
-        port: 1,
-        transport: "tcp",
-        timeoutMs: 1,
-        pollIntervalMs: 1000,
+        kind: "modbus",
+        params: {
+          host: "h",
+          port: 1,
+          transport: "tcp",
+          timeoutMs: 1,
+          pollIntervalMs: 1000,
+        },
       }),
     ).rejects.toThrow("connection for plant 7 could not be created");
   });

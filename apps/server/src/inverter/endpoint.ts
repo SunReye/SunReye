@@ -53,6 +53,7 @@ import {
   type ReadDevicesOptions,
   activeDevices,
   ensureConnection,
+  modbusParamsOf,
   isRetired,
   readConnections,
   readDevices,
@@ -174,14 +175,19 @@ export function endpointOf(
   device: Pick<DeviceRecord, "unitId">,
   connection: ConnectionRecord | null,
 ): PollEndpoint {
-  if (!connection) return { ...offlineEndpoint(), unitId: device.unitId };
+  // A connection of ANOTHER KIND is as unpollable as none at all, and answering
+  // the offline endpoint is the same choice as for a dangling `connection_id`:
+  // an inverter bound to a broker has no address to dial, and inventing one
+  // would read a plausible-looking nothing.
+  const params = modbusParamsOf(connection);
+  if (!params) return { ...offlineEndpoint(), unitId: device.unitId };
   return {
-    host: connection.host,
-    port: connection.port,
-    transport: transportOf(connection.transport),
+    host: params.host,
+    port: params.port,
+    transport: transportOf(params.transport),
     unitId: device.unitId,
-    timeoutMs: connection.timeoutMs,
-    pollIntervalMs: pollCadence(connection.pollIntervalMs),
+    timeoutMs: params.timeoutMs,
+    pollIntervalMs: pollCadence(params.pollIntervalMs),
   };
 }
 
@@ -361,7 +367,11 @@ async function primaryPair(
     store.readConnections(plantId),
   ]);
   const active = activeDevices(devices).filter((d) => d.role === INVERTER_ROLE);
-  return { connection: connections[0] ?? null, device: active[0] ?? null };
+  // The first MODBUS row, not the first row: the single-inverter form edits a
+  // gateway in place, and a plant whose broker took the lower id would otherwise
+  // have its broker overwritten with a host and a port.
+  const modbus = connections.find((c) => c.kind === "modbus") ?? null;
+  return { connection: modbus, device: active[0] ?? null };
 }
 
 /**
@@ -384,14 +394,15 @@ export async function readConnectionSettings(
   const plant = await deps.store.readPlant();
   if (!plant) return legacy();
   const { connection, device } = await primaryPair(deps.store, plant.id);
-  if (!connection) return legacy();
+  const params = modbusParamsOf(connection);
+  if (!params) return legacy();
   return {
-    host: connection.host,
-    port: connection.port,
-    transport: transportOf(connection.transport),
+    host: params.host,
+    port: params.port,
+    transport: transportOf(params.transport),
     unitId: device ? device.unitId : (await legacy()).unitId,
-    timeoutMs: connection.timeoutMs,
-    pollIntervalMs: pollCadence(connection.pollIntervalMs),
+    timeoutMs: params.timeoutMs,
+    pollIntervalMs: pollCadence(params.pollIntervalMs),
   };
 }
 
@@ -515,11 +526,14 @@ async function writeEndpoint(
   if (!connection && config.host === "") return null;
   const saved = await deps.store.ensureConnection(plantId, {
     name: connection?.name ?? CONNECTION_NAME,
-    host: config.host,
-    port: config.port,
-    transport: config.transport,
-    timeoutMs: config.timeoutMs,
-    pollIntervalMs: config.pollIntervalMs,
+    kind: "modbus",
+    params: {
+      host: config.host,
+      port: config.port,
+      transport: config.transport,
+      timeoutMs: config.timeoutMs,
+      pollIntervalMs: config.pollIntervalMs,
+    },
   });
   return saved.id;
 }
