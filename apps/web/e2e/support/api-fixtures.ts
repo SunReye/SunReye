@@ -705,18 +705,32 @@ export const INVERTER_CONFIG = {
   pollIntervalMs: 1000,
 };
 
-/** `packages/db/src/mqtt-config.ts` → `maskMqttConfig(mqttConfigSchema.parse({}))`. */
+/**
+ * `packages/db/src/mqtt-config.ts` → `mqttConfigSchema.parse({})`.
+ *
+ * Four fields and no secret since #217: the broker is a `kind = 'mqtt'`
+ * CONNECTION, and `connectionId: null` IS "the export is off" — there is no
+ * `enabled` flag left. Left unbound on purpose, so a spec that binds it proves
+ * the select is wired.
+ */
 export const MQTT_CONFIG = {
-  enabled: false,
-  brokerUrl: "mqtt://localhost:1883",
+  connectionId: null,
   topicPrefix: "sunreye",
   haDiscoveryEnabled: false,
   haDiscoveryPrefix: "homeassistant",
-  hasPassword: false,
 };
 
-/** `packages/db/src/evcc-config.ts` → `defaultEvcc`. */
-export const EVCC_CONFIG = { enabled: false, topicRoot: "evcc", subtractFromHome: false };
+/**
+ * `packages/db/src/evcc-config.ts` → `defaultEvcc`, bound to the broker the
+ * loadpoints below sit on and switched ON — the disabled default renders none
+ * of the card's controls.
+ */
+export const EVCC_CONFIG = {
+  enabled: true,
+  connectionId: 2,
+  topicRoot: "evcc",
+  subtractFromHome: false,
+};
 
 /** `apps/server/src/settings/logging-settings.ts` — config plus resolved level. */
 export const LOGGING = { level: null, effective: "info", default: "info" };
@@ -843,23 +857,43 @@ export function profiles(manifest: FixtureManifest) {
   ];
 }
 
-/** `GET /api/connections` — the plant's one gateway, matching `INVERTER_CONFIG`. */
+/**
+ * `GET /api/connections` — `ConnectionView[]`
+ * (`{ id, name } & ConnectionParamsMasked`): the plant's Modbus gateway,
+ * matching `INVERTER_CONFIG`, and the MQTT broker its EVCC loadpoints are bound
+ * to.
+ *
+ * Both kinds, because #217 is the release where a connection stopped being "a
+ * Modbus endpoint": the five addressing columns became a `params` document
+ * under a `kind`, and the broker credential is masked to `hasPassword` on the
+ * way out exactly as `app_settings.mqtt`'s was.
+ */
 export const CONNECTIONS = [
   {
     id: 1,
     name: "Inverter",
-    host: INVERTER_CONFIG.host,
-    port: INVERTER_CONFIG.port,
-    transport: INVERTER_CONFIG.transport,
-    timeoutMs: INVERTER_CONFIG.timeoutMs,
-    pollIntervalMs: INVERTER_CONFIG.pollIntervalMs,
+    kind: "modbus",
+    params: {
+      host: INVERTER_CONFIG.host,
+      port: INVERTER_CONFIG.port,
+      transport: INVERTER_CONFIG.transport,
+      timeoutMs: INVERTER_CONFIG.timeoutMs,
+      pollIntervalMs: INVERTER_CONFIG.pollIntervalMs,
+    },
+  },
+  {
+    id: 2,
+    name: "Home broker",
+    kind: "mqtt",
+    params: { brokerUrl: "mqtt://hass.ee.lan:1883", username: "mqtt", hasPassword: true },
   },
 ];
 
 /**
  * `GET /api/devices` — `DeviceRoster` (`apps/server/src/devices/device-admin.ts`):
- * the polled inverter, a stored-but-unpolled meter, a retired one, an EVCC
- * loadpoint and the optimizer — so all five states, and all four groups, render.
+ * the polled inverter, a stored-but-unpolled meter, a retired one, TWO EVCC
+ * loadpoints on the broker connection, and the optimizer — so all five states,
+ * and the gateway / broker / internal groups, render.
  *
  * The last two are the shape #213 was about: both are endpoint-less, and a
  * roster that only ever held Modbus rows reported them as Modbus hardware that
@@ -867,6 +901,7 @@ export const CONNECTIONS = [
  */
 export function devices(manifest: FixtureManifest) {
   const connection = CONNECTIONS[0]!;
+  const brokerConnection = CONNECTIONS[1]!;
   return {
     connections: CONNECTIONS,
     devices: [
@@ -930,6 +965,11 @@ export function devices(manifest: FixtureManifest) {
         state: "retired",
         integration: null,
       },
+      // TWO loadpoints on ONE broker (#217). They used to sit at
+      // `connectionId: null` sharing `unitId: 0`, which the
+      // `devices(connection_id, unit_id)` unique index tolerated only because
+      // the connection was null; bound to their broker, the index holds and the
+      // unit id means what it always should have — the loadpoint's index.
       {
         id: 4,
         slug: "evcc-loadpoint-1",
@@ -937,9 +977,29 @@ export function devices(manifest: FixtureManifest) {
         profileId: "evcc-loadpoint",
         role: "charger",
         unitId: 0,
-        connectionId: null,
+        connectionId: brokerConnection.id,
         retiredAt: null,
-        connection: null,
+        connection: brokerConnection,
+        arrays: [],
+        tempCoefficient: -0.4,
+        systemLoss: 14,
+        battery: null,
+        profileName: "EVCC loadpoint",
+        profileKnown: true,
+        kind: "coded",
+        state: "integration",
+        integration: "evcc",
+      },
+      {
+        id: 6,
+        slug: "evcc-loadpoint-2",
+        name: "Garage",
+        profileId: "evcc-loadpoint",
+        role: "charger",
+        unitId: 1,
+        connectionId: brokerConnection.id,
+        retiredAt: null,
+        connection: brokerConnection,
         arrays: [],
         tempCoefficient: -0.4,
         systemLoss: 14,

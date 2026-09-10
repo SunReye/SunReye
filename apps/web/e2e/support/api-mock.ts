@@ -785,11 +785,13 @@ export async function mockBackend(page: Page, options: BackendOptions = {}): Pro
       if (method === "PUT") return json(route, saved(fixture.INVERTER_CONFIG, body()));
       return json(route, fixture.INVERTER_CONFIG);
     }
+    // `{ connectionId }` since #217: the operator tests a CONNECTION, which they
+    // may not have bound to the export yet.
     if (at("settings/mqtt/test")) return json(route, { ok: true });
     if (at("settings/mqtt")) {
-      // The server masks the password on the way out, both on read and on save.
-      if (method === "PUT")
-        return json(route, { ...fixture.MQTT_CONFIG, ...body(), password: undefined });
+      // Nothing to mask any more — the broker credential lives on the
+      // connection row, and `/api/connections` is what masks it.
+      if (method === "PUT") return json(route, saved(fixture.MQTT_CONFIG, body()));
       return json(route, fixture.MQTT_CONFIG);
     }
     if (at("settings/evcc")) {
@@ -820,11 +822,25 @@ export async function mockBackend(page: Page, options: BackendOptions = {}): Pro
     }
 
     // ── Devices ─────────────────────────────────────────────────────────────
+    // One probe for both kinds: a TCP connect for a gateway, an MQTT CONNECT for
+    // a broker. The answer shape is the same either way.
     if (at("connections/probe")) return json(route, { ok: true, ms: 12 });
-    if (at("connections")) return json(route, { connections: fixture.CONNECTIONS });
+    if (at("connections")) {
+      // A connection created ON ITS OWN — the only way to add a broker, which
+      // never has a device to be created alongside (#217).
+      if (method === "POST") return json(route, { id: 9, ...body() });
+      return json(route, { connections: fixture.CONNECTIONS });
+    }
     if (under("connections") && method === "PATCH") {
       const current = fixture.CONNECTIONS.find((c) => String(c.id) === id);
-      return json(route, { ...current, ...body() });
+      // A patch carries `{ name?, params? }` and never a `kind` — the server
+      // answers 409 for a different one — so the params MERGE onto the row's.
+      const { params, ...rest } = body();
+      return json(route, {
+        ...current,
+        ...rest,
+        params: { ...current?.params, ...(params as Record<string, unknown> | undefined) },
+      });
     }
     if (under("connections") && method === "DELETE")
       return json(route, { ok: true, id: Number(id) });

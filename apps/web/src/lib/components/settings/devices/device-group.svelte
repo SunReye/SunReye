@@ -3,7 +3,7 @@
 	import Section from '$lib/components/layout/section.svelte';
 	import EmptyState from '$lib/components/layout/empty-state.svelte';
 	import * as m from '$lib/paraglide/messages';
-	import { type DeviceGroup, connectionCaption } from './add-device-logic';
+	import type { DeviceGroup } from './add-device-logic';
 	import DeviceRow from './device-row.svelte';
 	import type { ConnectionView, DeviceView } from './device-types';
 
@@ -31,9 +31,9 @@
 	} = $props();
 
 	const connection = $derived(group.connection);
-	const caption = $derived(
-		connection ? m.devices_group_caption(connectionCaption(connection)) : undefined
-	);
+	// The caption is decided in `add-device-logic.ts`, per KIND: a gateway says
+	// how it is framed and how often it is read, a broker says which broker it is.
+	const caption = $derived(group.caption ?? undefined);
 	const empty = $derived(group.devices.length === 0);
 </script>
 

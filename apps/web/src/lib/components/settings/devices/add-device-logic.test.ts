@@ -2,8 +2,8 @@ import { describe, expect, test } from "bun:test";
 
 import {
   buildAddDeviceBody,
-  connectionCaption,
   connectionOptions,
+  describeConnectionProbe,
   describeProbe,
   describeRefusal,
   devicePatch,
@@ -18,15 +18,26 @@ import {
 import { NEW_CONNECTION } from "./device-types";
 import type { ConnectionView, DeviceView } from "./device-types";
 
-const gateway: ConnectionView = {
+const gateway = {
   id: 3,
   name: "Gateway 1",
-  host: "10.0.0.5",
-  port: 502,
-  transport: "tcp",
-  timeoutMs: 2000,
-  pollIntervalMs: 1000,
-};
+  kind: "modbus",
+  params: {
+    host: "10.0.0.5",
+    port: 502,
+    transport: "tcp",
+    timeoutMs: 2000,
+    pollIntervalMs: 1000,
+  },
+} satisfies ConnectionView;
+
+/** A broker is a connection too since #217 — and not one a Modbus device sits on. */
+const brokerConn = {
+  id: 7,
+  name: "Home broker",
+  kind: "mqtt",
+  params: { brokerUrl: "mqtt://hass.ee.lan:1883", hasPassword: false },
+} satisfies ConnectionView;
 
 const device = (over: Partial<DeviceView>): DeviceView => ({
   id: 1,
@@ -91,7 +102,12 @@ describe("connectionOptions", () => {
     expect(
       connectionOptions([
         gateway,
-        { ...gateway, id: 4, name: "Keller", host: "10.0.0.9", port: 8899 },
+        {
+          ...gateway,
+          id: 4,
+          name: "Keller",
+          params: { ...gateway.params, host: "10.0.0.9", port: 8899 },
+        },
       ]),
     ).toEqual([
       { value: "3", label: "Gateway 1 · 10.0.0.5:502" },
@@ -100,9 +116,18 @@ describe("connectionOptions", () => {
   });
 
   test("a blank host reads as the name alone — an addressless row is a real state", () => {
-    expect(connectionOptions([{ ...gateway, host: "" }])).toEqual([
+    expect(connectionOptions([{ ...gateway, params: { ...gateway.params, host: "" } }])).toEqual([
       { value: "3", label: "Gateway 1" },
     ]);
+  });
+
+  // A device in this dialog is a Modbus slave: it has a unit id and a register
+  // profile. A broker carries neither, and the mapped devices that will sit on
+  // one are #79–#84 — so offering it here would offer an address that cannot be
+  // written (#217).
+  test("a broker is not offered — this dialog addresses a Modbus slave", () => {
+    expect(connectionOptions([brokerConn, gateway]).map((o) => o.value)).toEqual(["3"]);
+    expect(connectionOptions([brokerConn])).toEqual([]);
   });
 });
 
@@ -110,6 +135,9 @@ describe("the default connection name", () => {
   test("numbers past the connections that exist", () => {
     expect(emptyForm([]).newConnection.name).toBe("Gateway 1");
     expect(emptyForm([gateway, gateway]).newConnection.name).toBe("Gateway 3");
+    // A broker counts as a connection for the numbering — the name is a label
+    // on the plant's endpoints, not on its Modbus buses.
+    expect(emptyForm([brokerConn]).newConnection.name).toBe("Gateway 2");
   });
 });
 
@@ -252,18 +280,22 @@ describe("buildAddDeviceBody", () => {
     form.connectionChoice = NEW_CONNECTION;
     form.newConnection = {
       ...form.newConnection,
-      host: " 10.0.0.9 ",
-      port: 8899,
+      modbus: { ...form.newConnection.modbus, host: " 10.0.0.9 ", port: 8899 },
     };
     const body = buildAddDeviceBody(form);
+    // A device dialog only ever makes a Modbus endpoint; a broker is added on
+    // its own, from the panel that lists the connections.
     expect(body?.connection).toEqual({
       create: {
         name: "Gateway 2",
-        host: "10.0.0.9",
-        port: 8899,
-        transport: "tcp",
-        timeoutMs: 2000,
-        pollIntervalMs: 1000,
+        kind: "modbus",
+        params: {
+          host: "10.0.0.9",
+          port: 8899,
+          transport: "tcp",
+          timeoutMs: 2000,
+          pollIntervalMs: 1000,
+        },
       },
     });
   });
@@ -278,7 +310,10 @@ describe("buildAddDeviceBody", () => {
       "a new connection with no host",
       {
         connectionChoice: NEW_CONNECTION,
-        newConnection: { ...emptyForm([]).newConnection, host: " " },
+        newConnection: {
+          ...emptyForm([]).newConnection,
+          modbus: { ...emptyForm([]).newConnection.modbus, host: " " },
+        },
       },
     ],
     ["a connection choice that is not a number", { connectionChoice: "abc" }],
@@ -294,7 +329,7 @@ describe("buildAddDeviceBody", () => {
     expect(form.connectionChoice).toBe("3");
     expect(form.unitId).toBe(2);
     expect(form.role).toBe("inverter");
-    expect(form.newConnection.port).toBe(502);
+    expect(form.newConnection.modbus.port).toBe(502);
     expect(form.newConnection.name).toBe("Gateway 2");
   });
 
@@ -333,12 +368,12 @@ describe("describeRefusal", () => {
 });
 
 describe("groupByConnection", () => {
-  const other: ConnectionView = {
+  const other = {
     ...gateway,
     id: 4,
     name: "Keller",
-    host: "10.0.0.9",
-  };
+    params: { ...gateway.params, host: "10.0.0.9" },
+  } satisfies ConnectionView;
   const devices = [
     device({ id: 1, slug: "inv", connectionId: 3 }),
     device({ id: 2, slug: "sim", connectionId: null, connection: null }),
@@ -433,6 +468,34 @@ describe("groupByConnection", () => {
     expect(groups.at(-1)!.devices.map((d) => d.slug)).toEqual(["sim"]);
   });
 
+  /**
+   * #217: the loadpoints are BOUND to their broker now, so they belong to that
+   * connection's group and not to an "Integrations" group beside it. Before the
+   * schema change they sat at `connection_id = null` and shared `unit_id = 0`,
+   * which the `devices(connection_id, unit_id)` unique index tolerated only
+   * because the connection was null.
+   */
+  test("loadpoints on a broker sit under that broker, not in an integration group", () => {
+    const groups = groupByConnection({
+      connections: [gateway, brokerConn],
+      devices: [
+        device({ id: 1, slug: "inv", connectionId: 3 }),
+        loadpoint({ id: 20, slug: "evcc-loadpoint-1", connectionId: 7, unitId: 0 }),
+        loadpoint({ id: 21, slug: "evcc-loadpoint-2", connectionId: 7, unitId: 1 }),
+        optimizerDevice(),
+        device({ id: 30, slug: "sim", connectionId: null, connection: null }),
+      ],
+    });
+    expect(groups.map((g) => [g.kind, g.title, g.caption, g.devices.map((d) => d.slug)])).toEqual([
+      ["gateway", "Gateway 1", "Modbus TCP · 10.0.0.5:502 · every 1\u00a0s", ["inv"]],
+      ["gateway", "Home broker", "MQTT · hass.ee.lan", ["evcc-loadpoint-1", "evcc-loadpoint-2"]],
+      ["internal", "Internal", null, ["optimizer"]],
+      ["orphan", "No connection", null, ["sim"]],
+    ]);
+    // Nothing is left over for an integration group: the endpoint is the group.
+    expect(groups.some((g) => g.kind === "integration")).toBe(false);
+  });
+
   test("a retired coded device still groups under its integration", () => {
     const groups = groupByConnection({
       connections: [],
@@ -442,22 +505,70 @@ describe("groupByConnection", () => {
   });
 });
 
-describe("connectionCaption", () => {
-  test("spells transport, address and cadence in seconds", () => {
-    expect(connectionCaption(gateway)).toEqual({
-      transport: "Modbus TCP",
-      host: "10.0.0.5",
-      port: 502,
-      seconds: 1,
-    });
+// The group is labelled by its KIND (#217): a gateway says how it is framed and
+// how often it is read, a broker says which broker it is. Read through the
+// group, because that is the only thing that renders it — a `kind = 'mqtt'`
+// group used to be impossible, and rendering the Modbus caption for one would
+// read "undefined:undefined · every NaN s".
+describe("a group's caption", () => {
+  const captionOf = (connection: ConnectionView) =>
+    groupByConnection({ connections: [connection], devices: [] })[0]!.caption;
+
+  test("a gateway spells transport, address and cadence in seconds", () => {
+    expect(captionOf(gateway)).toBe("Modbus TCP · 10.0.0.5:502 · every 1\u00a0s");
     expect(
-      connectionCaption({
+      captionOf({
         ...gateway,
-        transport: "rtu-over-tcp",
-        pollIntervalMs: 2500,
-      }).transport,
-    ).toBe("Modbus RTU over TCP");
-    expect(connectionCaption({ ...gateway, pollIntervalMs: 2500 }).seconds).toBe(2.5);
+        params: { ...gateway.params, transport: "rtu-over-tcp", pollIntervalMs: 2500 },
+      }),
+    ).toBe("Modbus RTU over TCP · 10.0.0.5:502 · every 2.5\u00a0s");
+  });
+
+  test("a broker spells MQTT and the broker's host, scheme and port dropped", () => {
+    expect(captionOf(brokerConn)).toBe("MQTT · hass.ee.lan");
+  });
+
+  test("a broker with no URL yet still reads as MQTT", () => {
+    expect(captionOf({ ...brokerConn, params: { brokerUrl: "", hasPassword: false } })).toBe(
+      "MQTT · ",
+    );
+  });
+
+  test("only a connection group has one", () => {
+    const groups = groupByConnection({ connections: [], devices: [optimizerDevice()] });
+    expect(groups[0]!.caption).toBeNull();
+  });
+});
+
+/**
+ * A gateway's success says its PORT is open; a broker's says it accepted an
+ * MQTT CONNECT. Reporting the Modbus wording for a broker would tell the
+ * operator it is reachable when their password is what is broken — a TCP
+ * connect to a broker's port succeeds for every broker that is running.
+ */
+describe("describeConnectionProbe", () => {
+  test("each kind gets its own success line, with the time it took", () => {
+    expect(describeConnectionProbe("modbus", { ok: true, ms: 12 })).toEqual({
+      ok: true,
+      message: "Reachable — port open, 12 ms.",
+    });
+    expect(describeConnectionProbe("mqtt", { ok: true, ms: 12 })).toEqual({
+      ok: true,
+      message: "Broker reachable — connected in 12 ms.",
+    });
+  });
+
+  test("a failure carries its reason, whichever kind it was", () => {
+    for (const kind of ["modbus", "mqtt"] as const) {
+      expect(describeConnectionProbe(kind, { ok: false, ms: 4000, error: "timed out" })).toEqual({
+        ok: false,
+        message: "Unreachable: timed out",
+      });
+    }
+  });
+
+  test("a zero-millisecond success is still a success, not a falsy one", () => {
+    expect(describeConnectionProbe("mqtt", { ok: true, ms: 0 }).ok).toBe(true);
   });
 });
 
@@ -639,7 +750,6 @@ describe("probeTargetOf", () => {
   test("the chosen gateway's address with the form's unit id and profile", () => {
     const form = { ...emptyForm([gateway]), unitId: 3, profileId: "sdm630" };
     expect(probeTargetOf(form, [gateway])).toEqual({
-      name: "Gateway 1",
       host: "10.0.0.5",
       port: 502,
       transport: "tcp",
@@ -648,6 +758,10 @@ describe("probeTargetOf", () => {
       unitId: 3,
       profileId: "sdm630",
     });
+  });
+
+  test("a broker cannot be test-read — there is no register map on one", () => {
+    expect(probeTargetOf({ ...emptyForm([brokerConn]), profileId: "p" }, [brokerConn])).toBeNull();
   });
 
   test("nothing to probe without a profile, or on a gateway that does not exist yet", () => {

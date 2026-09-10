@@ -13,15 +13,22 @@ import {
 import { SLUG_MAX, slugify } from "$lib/slug";
 import type { RegisteredProfile } from "../profile-types";
 import {
+  blankDraft,
+  brokerHost,
+  connectionAddress,
+  connectionCreateBody,
+} from "./connection-draft";
+import {
   type AddDeviceBody,
   type AddDeviceForm,
   type AddableRole,
+  type ConnectionKind,
   type ConnectionView,
   type DevicePatchBody,
   type DeviceRoster,
   type DeviceView,
+  type ModbusConnectionView,
   NEW_CONNECTION,
-  type NewConnection,
 } from "./device-types";
 
 export type SelectOption = { value: string; label: string };
@@ -36,12 +43,25 @@ export const UNIT_IDS: readonly number[] = Array.from(
   (_, i) => UNIT_ID_MIN + i,
 );
 
-/** One `<option>` per connection: its name and, when it has one, its address. */
+/**
+ * The connections a device in this dialog can be addressed on.
+ *
+ * Modbus only, and that is the whole rule: a device here has a slave id and a
+ * register profile, and a broker carries neither. The devices that WILL sit on
+ * a broker are the mapped ones (#79–#84) and the coded loadpoints, which the
+ * EVCC registrar creates — never this dialog. Offering a broker would offer an
+ * address that no `POST /api/devices` body can describe.
+ */
+function modbusConnections(connections: readonly ConnectionView[]): ModbusConnectionView[] {
+  return connections.filter((c): c is ModbusConnectionView => c.kind === "modbus");
+}
+
+/** One `<option>` per addressable connection: its name and, when it has one, its address. */
 export function connectionOptions(connections: readonly ConnectionView[]): SelectOption[] {
-  return connections.map((c) => ({
-    value: String(c.id),
-    label: c.host ? `${c.name} · ${c.host}:${c.port}` : c.name,
-  }));
+  return modbusConnections(connections).map((c) => {
+    const address = connectionAddress(c);
+    return { value: String(c.id), label: address === "" ? c.name : `${c.name} · ${address}` };
+  });
 }
 
 /** "Gateway N" past the connections that exist — a default the operator can overwrite. */
@@ -120,18 +140,11 @@ export function emptyForm(
   connections: readonly ConnectionView[],
   devices: readonly DeviceView[] = [],
 ): AddDeviceForm {
-  const first = connections[0];
+  const first = modbusConnections(connections)[0];
   const choice = first ? String(first.id) : NEW_CONNECTION;
   return {
     connectionChoice: choice,
-    newConnection: {
-      name: defaultConnectionName(connections),
-      host: "",
-      port: 502,
-      transport: "tcp",
-      timeoutMs: 2000,
-      pollIntervalMs: 1000,
-    },
+    newConnection: blankDraft(defaultConnectionName(connections)),
     role: "inverter",
     unitId: firstFreeUnitId(takenUnitIds(devices, choice)),
     name: "",
@@ -156,14 +169,8 @@ function validUnitId(unitId: number): boolean {
 
 function connectionOf(form: AddDeviceForm): AddDeviceBody["connection"] | null {
   if (form.connectionChoice === NEW_CONNECTION) {
-    const host = form.newConnection.host.trim();
-    if (host === "") return null;
-    const create: NewConnection = {
-      ...form.newConnection,
-      host,
-      name: form.newConnection.name.trim(),
-    };
-    return { create };
+    const create = connectionCreateBody(form.newConnection);
+    return create === null ? null : { create };
   }
   const id = Number(form.connectionChoice);
   return Number.isInteger(id) && id > 0 ? { id } : null;
@@ -245,6 +252,8 @@ export type DeviceGroup = {
   key: string;
   kind: "gateway" | "integration" | "internal" | "orphan";
   title: string;
+  /** The words under the title — a connection's kind and address, or null. */
+  caption: string | null;
   /** The gateway, on a `gateway` group; null on the other three. */
   connection: ConnectionView | null;
   /** The integration's provenance name, on an `integration` group; null otherwise. */
@@ -291,6 +300,7 @@ export function groupByConnection(roster: DeviceRoster): DeviceGroup[] {
       key: `gateway-${connection.id}`,
       kind: "gateway" as const,
       title: connection.name,
+      caption: connectionCaption(connection),
       connection,
       integration: null,
       devices: roster.devices.filter((d) => d.connectionId === connection.id),
@@ -324,6 +334,7 @@ function integrationGroups(coded: readonly DeviceView[]): DeviceGroup[] {
       key: `integration-${integration}`,
       kind: "integration" as const,
       title: integrationLabel(integration),
+      caption: null,
       connection: null,
       integration,
       devices,
@@ -338,7 +349,17 @@ function loose(
   devices: readonly DeviceView[],
 ): DeviceGroup[] {
   if (devices.length === 0) return [];
-  return [{ key: kind, kind, title, connection: null, integration: null, devices: [...devices] }];
+  return [
+    {
+      key: kind,
+      kind,
+      title,
+      caption: null,
+      connection: null,
+      integration: null,
+      devices: [...devices],
+    },
+  ];
 }
 
 const TRANSPORT_LABELS: Record<string, string> = {
@@ -346,14 +367,25 @@ const TRANSPORT_LABELS: Record<string, string> = {
   "rtu-over-tcp": "Modbus RTU over TCP",
 };
 
-/** The words under a gateway's name: framing, address, cadence. */
-export function connectionCaption(connection: ConnectionView) {
-  return {
-    transport: TRANSPORT_LABELS[connection.transport] ?? connection.transport,
-    host: connection.host,
-    port: connection.port,
-    seconds: connection.pollIntervalMs / 1000,
-  };
+/**
+ * The words under a connection's name, PER KIND (#217).
+ *
+ * A gateway says how it is framed, where it is and how often it is read. A
+ * broker says which broker it is — it has no framing, no slave ids and no
+ * cadence of its own, and rendering the Modbus caption for one produced
+ * "undefined:undefined · every NaN s" the moment the second kind existed.
+ */
+function connectionCaption(connection: ConnectionView): string {
+  if (connection.kind === "mqtt") {
+    return m.devices_group_caption_mqtt({ broker: brokerHost(connection.params.brokerUrl) });
+  }
+  const { transport, host, port, pollIntervalMs } = connection.params;
+  return m.devices_group_caption({
+    transport: TRANSPORT_LABELS[transport] ?? transport,
+    host,
+    port,
+    seconds: pollIntervalMs / 1000,
+  });
 }
 
 /**
@@ -441,8 +473,61 @@ export function describeProbe(
   return { ok: false, message: words.failed(answer.error ?? "") };
 }
 
-/** What a test-read needs: an address, a slave id, and the driver to read with. */
-export type ProbeTarget = NewConnection & { unitId: number; profileId: string };
+/** What a connection probe answers with: reachable and how long it took, or why not. */
+export type ConnectionProbeAnswer =
+  | { ok: true; ms: number }
+  | { ok: false; ms: number; error: string };
+
+type RawProbe = { ok?: unknown; ms?: unknown; error?: unknown };
+
+/** The elapsed millisecond count an answer states, or 0 when it states none. */
+function probeMs(value: unknown): number {
+  return typeof value === "number" ? value : 0;
+}
+
+/**
+ * A `POST /api/connections/probe` response as the discriminated answer the
+ * describer takes, with `fallback` standing in when the request itself failed
+ * (a dead connection has no body to read a reason out of).
+ */
+export function connectionProbeAnswer(data: unknown, fallback: string): ConnectionProbeAnswer {
+  const raw = (data ?? {}) as RawProbe;
+  if (raw.ok === true) return { ok: true, ms: probeMs(raw.ms) };
+  return {
+    ok: false,
+    ms: probeMs(raw.ms),
+    error: typeof raw.error === "string" ? raw.error : fallback,
+  };
+}
+
+/** The success line each kind gets. A table, so a third kind is one entry. */
+const PROBE_OK: Record<ConnectionKind, (args: { ms: number }) => string> = {
+  modbus: m.devices_ping_ok,
+  mqtt: m.devices_broker_ok,
+};
+
+/**
+ * One line for a CONNECTION probe, per kind.
+ *
+ * A gateway's success says its port is open; a broker's says it accepted an
+ * MQTT CONNECT — a materially stronger claim, since a TCP connect to a broker's
+ * port succeeds for every broker that is running, credentials wrong or not.
+ * Reporting the Modbus wording for one would tell the operator their broker is
+ * reachable when their password is what is broken.
+ */
+export function describeConnectionProbe(
+  kind: ConnectionKind,
+  answer: ConnectionProbeAnswer,
+): ProbeOutcome {
+  if (answer.ok) return { ok: true, message: PROBE_OK[kind]({ ms: answer.ms }) };
+  return { ok: false, message: m.devices_ping_failed({ error: answer.error }) };
+}
+
+/** What a test-read needs: a Modbus address, a slave id, and the driver to read with. */
+export type ProbeTarget = ModbusConnectionView["params"] & {
+  unitId: number;
+  profileId: string;
+};
 
 /**
  * The probe the device dialog can run for its form, or null while it cannot: a
@@ -455,13 +540,9 @@ export function probeTargetOf(
   connections: readonly ConnectionView[],
 ): ProbeTarget | null {
   if (form.profileId === "") return null;
-  const connection = connections.find((c) => String(c.id) === form.connectionChoice);
+  const connection = modbusConnections(connections).find(
+    (c) => String(c.id) === form.connectionChoice,
+  );
   if (!connection) return null;
-  const { id: _id, ...address } = connection;
-  return {
-    ...address,
-    transport: address.transport as NewConnection["transport"],
-    unitId: form.unitId,
-    profileId: form.profileId,
-  };
+  return { ...connection.params, unitId: form.unitId, profileId: form.profileId };
 }

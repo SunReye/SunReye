@@ -16,6 +16,7 @@
 	} from './add-device-logic';
 	import AddressFields from './address-fields.svelte';
 	import ConnectionField from './connection-field.svelte';
+	import DialogShell from './device-dialog-shell.svelte';
 	import type { ConnectionView, DeviceView } from './device-types';
 	import InverterSection from './inverter-section.svelte';
 	import NameField from './name-field.svelte';
@@ -119,29 +120,20 @@
 	}
 </script>
 
-<Dialog.Root bind:open>
-	<Dialog.Content class="max-h-[90dvh] overflow-y-auto sm:max-w-xl">
-		<Dialog.Header>
-			<Dialog.Title>{title}</Dialog.Title>
-			<Dialog.Description>{description}</Dialog.Description>
-		</Dialog.Header>
+<DialogShell {open} {title} {description} onClose={() => (open = false)} onsubmit={submit}>
+	<ConnectionField bind:form {connections} {refusal} allowNew={!editing} />
+	<AddressFields bind:form devices={others} {refusal} />
+	<NameField bind:form {refusal} />
+	<ProfileField bind:form {registered} {refusal} {onInstalled} />
+	<ProbeTest target={probe} nothing={m.devices_probe_needs_profile()} />
+	{#if isInverter}
+		<InverterSection bind:form />
+	{/if}
 
-		<form class="flex flex-col gap-4" onsubmit={submit}>
-			<ConnectionField bind:form {connections} {refusal} allowNew={!editing} />
-			<AddressFields bind:form devices={others} {refusal} />
-			<NameField bind:form {refusal} />
-			<ProfileField bind:form {registered} {refusal} {onInstalled} />
-			<ProbeTest target={probe} nothing={m.devices_probe_needs_profile()} />
-			{#if isInverter}
-				<InverterSection bind:form />
-			{/if}
-
-			<Dialog.Footer>
-				<Button type="button" variant="outline" onclick={() => (open = false)}>
-					{m.action_cancel()}
-				</Button>
-				<Button type="submit" disabled={!body || submitting}>{submitLabel}</Button>
-			</Dialog.Footer>
-		</form>
-	</Dialog.Content>
-</Dialog.Root>
+	<Dialog.Footer>
+		<Button type="button" variant="outline" onclick={() => (open = false)}>
+			{m.action_cancel()}
+		</Button>
+		<Button type="submit" disabled={!body || submitting}>{submitLabel}</Button>
+	</Dialog.Footer>
+</DialogShell>
