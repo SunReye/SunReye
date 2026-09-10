@@ -476,11 +476,14 @@ describe("exportArchive: the configuration it carries", () => {
         {
           id: 7,
           name: "loft",
-          host: "10.0.0.5",
-          port: 502,
-          transport: "tcp",
-          timeout_ms: 2000,
-          poll_interval_ms: 5000,
+          kind: "modbus",
+          params: {
+            host: "10.0.0.5",
+            port: 502,
+            transport: "tcp",
+            timeoutMs: 2000,
+            pollIntervalMs: 5000,
+          },
         },
       ],
       devices: [
@@ -508,7 +511,13 @@ describe("exportArchive: the configuration it carries", () => {
       timeZone: "Europe/Berlin",
       latitude: 51.1,
       arrays: [{ kwp: 9.9 }],
-      connections: [{ name: "loft", host: "10.0.0.5", port: 502, pollIntervalMs: 5000 }],
+      connections: [
+        {
+          name: "loft",
+          kind: "modbus",
+          params: { host: "10.0.0.5", port: 502, pollIntervalMs: 5000 },
+        },
+      ],
       devices: [
         {
           slug: "deye-1",
@@ -729,6 +738,60 @@ describe("exportArchive: secrets", () => {
       { key: "forecast.provider", value: { name: "solcast", apiKey: "sk-live-1234" } },
       { key: "mqtt.config", value: { host: "hass.lan", username: "mqtt", password: "hunter2" } },
     ]);
+  });
+
+  /**
+   * The broker password moved OUT of `app_settings` and onto a
+   * `kind = 'mqtt'` connection (#217), so the redaction had to follow it. The
+   * name-matching rule above never applied to `connections` — it walks settings
+   * values — and without this the credential would have started travelling in a
+   * file designed to be copied onto a USB stick.
+   */
+  const brokerSeed = {
+    absent: /select min\(/,
+    plants: [{ id: 1, name: "Home", slug: "home" }],
+    connections: [
+      {
+        id: 9,
+        name: "Home broker",
+        kind: "mqtt",
+        params: { brokerUrl: "mqtt://hass.lan:1883", username: "mqtt", password: "hunter2" },
+      },
+    ],
+  } satisfies Seed;
+
+  test("a BROKER connection's password is masked by default", async () => {
+    const { config } = await run(brokerSeed);
+    expect(JSON.stringify(config)).not.toContain("hunter2");
+    expect((config.plant as { connections: unknown[] }).connections).toEqual([
+      {
+        name: "Home broker",
+        kind: "mqtt",
+        params: { brokerUrl: "mqtt://hass.lan:1883", username: "mqtt", hasPassword: true },
+      },
+    ]);
+  });
+
+  test("--include-secrets carries the broker password too", async () => {
+    const { config } = await run(brokerSeed, { includeSecrets: true });
+    expect((config.plant as { connections: unknown[] }).connections).toEqual([
+      {
+        name: "Home broker",
+        kind: "mqtt",
+        params: { brokerUrl: "mqtt://hass.lan:1883", username: "mqtt", password: "hunter2" },
+      },
+    ]);
+  });
+
+  test("a connection whose params no arm accepts is dropped, not exported half-formed", async () => {
+    // The importer parses these against the kind's own arm and would refuse it
+    // anyway; dropping it here keeps the rest of the restore possible.
+    const { config } = await run({
+      absent: /select min\(/,
+      plants: [{ id: 1, name: "Home", slug: "home" }],
+      connections: [{ id: 9, name: "Broken", kind: "mqtt", params: {} }],
+    });
+    expect((config.plant as { connections: unknown[] }).connections).toEqual([]);
   });
 });
 

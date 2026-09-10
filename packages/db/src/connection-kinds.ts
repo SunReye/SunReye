@@ -109,7 +109,6 @@ export type MqttParams = z.infer<typeof mqttParamsSchema>;
  * THE union. One `z.discriminatedUnion` on `kind`, and the only place the two
  * param shapes are related to each other.
  */
-// fallow-ignore-next-line unused-export -- THE union #217 names, consumed through `parseConnectionParams` here and directly by the add-connection dialog; pinned arm-by-arm in `./connection-kinds.test.ts`.
 export const connectionParamsSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("modbus"), params: modbusParamsSchema }),
   z.object({ kind: z.literal("mqtt"), params: mqttParamsSchema }),

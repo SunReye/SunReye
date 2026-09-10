@@ -36,15 +36,22 @@
  * Pure: no database, no filesystem (`./archive-config.test.ts`).
  */
 
-/** A Modbus endpoint, named rather than numbered. */
-export interface ArchiveConnection {
-  name: string;
-  host: string;
-  port: number;
-  transport: string;
-  timeoutMs: number;
-  pollIntervalMs: number;
-}
+import { type ConnectionParams, connectionParamsSchema } from "./connection-kinds";
+
+/**
+ * An endpoint, named rather than keyed by id — and PER KIND since #217.
+ *
+ * `name` is the join key a device's `connection` field points at, because ids
+ * never travel (see the header). `kind` + `params` is the same discriminated
+ * shape the table holds (`./connection-kinds.ts`), so a broker travels as
+ * naturally as a gateway.
+ *
+ * READING AN OLDER ARCHIVE STILL WORKS. A 2.0.x file has `host`, `port` and
+ * `transport` at the TOP level and no `kind` at all, and the archive is a
+ * restore path off a USB stick — refusing it would make yesterday's backup
+ * unrestorable. {@link parseConnection} folds that shape into the `modbus` arm.
+ */
+export type ArchiveConnection = { name: string } & ConnectionParams;
 
 /** A battery pack, nested in the device that reports it — no `deviceId`. */
 export interface ArchiveBattery {
@@ -303,15 +310,23 @@ export function synthesiseSpine(input: SynthesiseInput): ArchivePlant {
 
   const plantConfig = asRecord(setting("plant"));
   const host = asOptionalString(connectionConfig.host);
+  // A 1.x install has exactly one endpoint and it is a Modbus gateway: the
+  // `app_settings.inverter` document held host/port/transport and nothing else.
   const connections: ArchiveConnection[] = host
     ? [
         {
           name: SYNTHESISED_CONNECTION,
-          host,
-          port: asNumber(connectionConfig.port, 502),
-          transport: asString(connectionConfig.transport, "tcp"),
-          timeoutMs: asNumber(connectionConfig.timeoutMs, 2000),
-          pollIntervalMs: asNumber(connectionConfig.pollIntervalMs, 1000),
+          kind: "modbus",
+          params: {
+            host,
+            port: asNumber(connectionConfig.port, 502),
+            transport:
+              asString(connectionConfig.transport, "tcp") === "rtu-over-tcp"
+                ? "rtu-over-tcp"
+                : "tcp",
+            timeoutMs: asNumber(connectionConfig.timeoutMs, 2000),
+            pollIntervalMs: asNumber(connectionConfig.pollIntervalMs, 1000),
+          },
         },
       ]
     : [];
@@ -373,19 +388,36 @@ export function synthesiseSpine(input: SynthesiseInput): ArchivePlant {
 
 const list = (value: unknown): unknown[] => (Array.isArray(value) ? value : []);
 
+/**
+ * One connection out of an archive, or null when it is not usable.
+ *
+ * NULL RATHER THAN A THROW, and rather than a coerced row. The import writes
+ * into a table whose CHECK admits the kinds this build has a tier for, so a
+ * `kind` from a newer archive — or params its own arm refuses — has to be
+ * dropped here: carrying it would fail the whole restore on one connection
+ * nobody can use, and the caller reports the device that named it as
+ * endpoint-less (which is a state the schema models).
+ *
+ * The pre-#217 flat shape is folded into the `modbus` arm, because that is what
+ * every connection in a 2.0.x archive was.
+ */
 function parseConnection(value: unknown): ArchiveConnection | null {
   const row = asRecord(value);
   const name = asOptionalString(row.name);
-  const host = asOptionalString(row.host);
-  if (name === null || host === null) return null;
-  return {
-    name,
-    host,
-    port: asNumber(row.port, 502),
-    transport: asString(row.transport, "tcp"),
-    timeoutMs: asNumber(row.timeoutMs, 2000),
-    pollIntervalMs: asNumber(row.pollIntervalMs, 1000),
-  };
+  if (name === null) return null;
+  const kind = asOptionalString(row.kind);
+  const params =
+    kind === null
+      ? {
+          host: asOptionalString(row.host),
+          port: asNumber(row.port, 502),
+          transport: asString(row.transport, "tcp"),
+          timeoutMs: asNumber(row.timeoutMs, 2000),
+          pollIntervalMs: asNumber(row.pollIntervalMs, 1000),
+        }
+      : row.params;
+  const parsed = connectionParamsSchema.safeParse({ kind: kind ?? "modbus", params });
+  return parsed.success ? { name, ...parsed.data } : null;
 }
 
 function parseBattery(value: unknown): ArchiveBattery | null {

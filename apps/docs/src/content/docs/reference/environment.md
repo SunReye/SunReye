@@ -74,11 +74,11 @@ Two connection fields are DB-only (no env seed): **transport** (`tcp` / `rtu-ove
 
 | Variable | Type | Default | Status | Purpose |
 | --- | --- | --- | --- | --- |
-| `MQTT_ENABLED` | boolean | `false` | seed only | Enable the MQTT bridge. |
-| `MQTT_BROKER_URL` | string | `mqtt://localhost:1883` | seed only | Broker URL. |
+| `MQTT_ENABLED` | boolean | `false` | seed only | Whether the first boot creates an MQTT *connection* from the broker vars below. |
+| `MQTT_BROKER_URL` | string | `mqtt://localhost:1883` | seed only | Broker URL. Seeds a `kind = 'mqtt'` connection once; edit it under Settings → Devices afterwards. |
 | `MQTT_TOPIC_PREFIX` | string | `sunreye` | seed only | Root topic segment: `<prefix>/<inverterId>/<topic>`. |
 | `MQTT_USERNAME` | string | — | seed only | Broker username. |
-| `MQTT_PASSWORD` | string | — | seed only | Broker password (the DB copy is write-only / masked). |
+| `MQTT_PASSWORD` | string | — | seed only | Broker password (the stored copy is write-only / masked on read). |
 
 ## Home Assistant discovery
 

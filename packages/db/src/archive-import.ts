@@ -430,18 +430,9 @@ async function upsertConnections(
         ? num(
             await scalar(
               client,
-              `insert into connections (plant_id, name, host, port, transport, timeout_ms,
-                                        poll_interval_ms)
-               values ($1,$2,$3,$4,$5,$6,$7) returning id`,
-              [
-                plantId,
-                connection.name,
-                connection.host,
-                connection.port,
-                connection.transport,
-                connection.timeoutMs,
-                connection.pollIntervalMs,
-              ],
+              `insert into connections (plant_id, name, kind, params)
+               values ($1,$2,$3,$4::jsonb) returning id`,
+              [plantId, connection.name, connection.kind, JSON.stringify(connection.params)],
             ),
           )
         : num(existing);
