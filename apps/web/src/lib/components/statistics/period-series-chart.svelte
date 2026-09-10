@@ -14,12 +14,13 @@
 	// Canvas render context: a year window is hundreds of points across up to six
 	// series, far past the band count where the SVG context freezes weak devices
 	// (see forecast-chart.svelte).
-	import { BarChart, LineChart } from 'layerchart/canvas';
+	import { LineChart } from 'layerchart/canvas';
 	import type { ChartState } from 'layerchart';
 	import { scalePoint } from 'd3-scale';
 	import * as Chart from '$lib/components/ui/chart';
 	import ChartLegend from '$lib/components/inverter/chart-legend.svelte';
 	import SeriesTooltip from './series-tooltip.svelte';
+	import GroupedBarPlot from './grouped-bar-plot.svelte';
 	import {
 		groupedBarProps,
 		seriesConfig,
@@ -123,21 +124,15 @@
 			{#if bars}
 				<!-- A quantity that belongs to the bucket: one bar per period per
 				     series, grouped so the periods stay comparable. -->
-				<BarChart
+				<GroupedBarPlot
 					{data}
-					x="label"
 					{series}
-					seriesLayout="group"
+					{format}
 					{yDomain}
-					{...barProps}
-					highlight={highlight.props}
-					{...zoom.props}
-					{belowContext}
-				>
-					{#snippet tooltip()}
-						<SeriesTooltip {format} />
-					{/snippet}
-				</BarChart>
+					{highlight}
+					{zoom}
+					layout={barProps}
+				/>
 			{:else}
 				<LineChart
 					{data}

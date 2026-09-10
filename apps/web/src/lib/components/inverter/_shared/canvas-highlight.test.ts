@@ -55,6 +55,46 @@ const HELPER = "lib/components/inverter/_shared/canvas-highlight.svelte.ts";
  */
 const canvasCharts = files.filter((f) => f !== HELPER && read(f).includes("canvasHighlight("));
 
+/**
+ * Which components a file renders, as `Tag → file` — relative and `$lib/…`
+ * `.svelte` imports, in the style of `charts/fullscreen-coverage.test.ts`.
+ */
+function importsOf(file: string): Map<string, string> {
+  const out = new Map<string, string>();
+  for (const m of read(file).matchAll(
+    /import\s+(\w+)(?:,\s*\{[^}]*\})?\s+from\s+['"]([^'"]+)['"]/g,
+  )) {
+    const [, tag, path] = m;
+    if (!path!.endsWith(".svelte")) continue;
+    if (path!.startsWith("$lib/")) out.set(tag!, path!.replace("$lib/", "lib/"));
+    else if (path!.startsWith("."))
+      out.set(tag!, new URL(path!, `file:///${file}`).pathname.slice(1));
+  }
+  return out;
+}
+
+/**
+ * Does the wash bound to `name` reach a `highlight` prop — in this file, or in
+ * a mark component this file HANDS it to?
+ *
+ * The hop exists because the grouped bar mark is one component shared by the
+ * two statistics bar charts. It is followed rather than assumed: a `{highlight}`
+ * handed to a component that never spends it is the same opaque slab this whole
+ * file is about.
+ */
+function spendsHighlight(file: string, name: string): boolean {
+  if (!sources.has(file)) return false;
+  const code = read(file);
+  if (code.includes(`highlight={${name}.props}`)) return true;
+  for (const [tag, target] of importsOf(file)) {
+    const tags = [...code.matchAll(new RegExp(`<${tag}(?=[\\s/>])(?:[^<>]|\\{[^{}]*\\})*?>`, "g"))];
+    const handed = tags.some((t) => new RegExp(`\\{${name}\\}|\\w+=\\{${name}\\}`).test(t[0]));
+    // In the target the wash arrives as a prop, and the prop is `highlight`.
+    if (handed && spendsHighlight(target, "highlight")) return true;
+  }
+  return false;
+}
+
 describe("the hovered-band wash", () => {
   test("the sweep finds the canvas charts, not a handful of them", () => {
     // A discovery that quietly stops matching passes exactly as green as one
@@ -77,7 +117,21 @@ describe("the hovered-band wash", () => {
     // literal still on the chart, is the state this undoes.
     const helper = /const\s+(\w+)\s*=\s*canvasHighlight\(\)/.exec(code)?.[1];
     expect(helper, `${file} binds no canvasHighlight controller`).toBeDefined();
-    expect(code).toContain(`highlight={${helper}.props}`);
+    expect(spendsHighlight(file, helper!)).toBe(true);
+  });
+
+  test("the hop to a shared mark is followed, not assumed", () => {
+    // The two statistics bar charts draw through one mark component now
+    // (`statistics/grouped-bar-plot.svelte`), so for them the prop is one hop
+    // down. Without following the hop the case above would pass on the chart's
+    // own text; without CHECKING the hop it would pass on `{highlight}` handed
+    // to a component that drops it.
+    const yoy = "lib/components/statistics/yoy-chart.svelte";
+    expect(read(yoy)).not.toContain("highlight={highlight.props}");
+    expect(spendsHighlight(yoy, "highlight")).toBe(true);
+    expect(spendsHighlight("lib/components/statistics/series-tooltip.svelte", "highlight")).toBe(
+      false,
+    );
   });
 
   test("and the opacity lives in the helper, once", () => {
