@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
 	import { source } from '$lib/source.svelte';
 	import { fade } from 'svelte/transition';
 	import { Skeleton } from '$lib/components/ui/skeleton';
@@ -17,6 +18,14 @@
 	import { FullscreenBox } from '$lib/charts/fullscreen.svelte';
 	import { draftMetrics } from '$lib/inverter/chart-draft';
 	import { tooltipLabel, xTick } from '$lib/inverter/chart-format';
+	import {
+		dueRefresh,
+		liveTailPoints,
+		mergeRollup,
+		rollupPoints,
+		type RollupRow
+	} from '$lib/inverter/live-tail';
+	import { liveClock } from '$lib/time/live-clock.svelte';
 	import type { HistoryRange } from '$lib/inverter/ranges';
 	import type { ManifestMetric } from '$lib/inverter/types';
 
@@ -74,37 +83,103 @@
 	// with no way out of it.
 	const mounted = $derived(visible || screen.expanded);
 
-	// ── Historical mode ─────────────────────────────────────────────────────────
-	type Row = { time: string; avg: number; min: number; max: number };
-	let rows = $state<Row[]>([]);
+	// ── The window's rows ───────────────────────────────────────────────────────
+	// EVERY range is fetched, the current day included. It used to be skipped
+	// when `range.live`, and `metric-card-plot` answered that with the gliding
+	// five-minute sparkline — so the Day tab standing on today showed the last
+	// two minutes of the day it named (#216).
+	let rows = $state<RollupRow[]>([]);
 	let loading = $state(true);
 
+	/** The clock minute the held rows were last brought up to. */
+	let syncedTick = 0;
+
+	/** The window being fetched, in the shape `$lib/inverter/live-tail` takes. */
+	const span = $derived({ from: range.from, to: range.to, bucket: range.bucket });
+
+	const rollupQuery = (from: Date, to: Date) => ({
+		metric: metric.key,
+		from: from.toISOString(),
+		to: to.toISOString(),
+		bucket: range.bucket,
+		// A 7-day window renders as minute rollups (~10k points); cap high
+		// enough that the ascending, limited query isn't truncated to the
+		// oldest slice of the range.
+		limit: 12000,
+		...source.query
+	});
+
 	$effect(() => {
-		if (!mounted || range.live) return;
-		const query = {
-			metric: metric.key,
-			from: range.from.toISOString(),
-			to: range.to.toISOString(),
-			bucket: range.bucket,
-			// A 7-day window renders as minute rollups (~10k points); cap high
-			// enough that the ascending, limited query isn't truncated to the
-			// oldest slice of the range.
-			limit: 12000,
-			...source.query
-		};
+		if (!mounted) return;
+		const query = rollupQuery(range.from, range.to);
+		// Untracked: this is bookkeeping for the refresh below, and a tracked
+		// read of the clock here would refetch the WHOLE window every minute.
+		syncedTick = untrack(() => liveClock.now.getTime());
 		let cancelled = false;
 		loading = true;
 		api.api.history.rollup.get({ query }).then(({ data }) => {
 			if (cancelled) return;
-			rows = (data ?? []) as Row[];
+			rows = (data ?? []) as RollupRow[];
 			loading = false;
+			syncedTick = liveClock.now.getTime();
 		});
 		return () => {
 			cancelled = true;
 		};
 	});
 
-	const chartData = $derived(rows.map((r) => ({ ...r, date: new Date(r.time) })));
+	// ── Keeping a still-running window up to date ────────────────────────────────
+	// A live range's right edge is the future, so the rows it holds go stale a
+	// minute at a time. The window is fetched in full exactly once, above; this
+	// asks only for the DELTA (`dueRefresh`, from the newest bucket held) and
+	// merges it in.
+
+	/** Worth refreshing at all: mounted, still filling in, and already loaded. */
+	const appending = $derived(mounted && range.live && !loading);
+
+	async function appendDelta(from: Date, to: Date, run: { cancelled: boolean }) {
+		const { data } = await api.api.history.rollup.get({ query: rollupQuery(from, to) });
+		const fresh = (data ?? []) as RollupRow[];
+		if (run.cancelled || fresh.length === 0) return;
+		rows = mergeRollup(rows, fresh);
+	}
+
+	// `liveClock` is the TICK and never the window. It is already coarsened to the
+	// minute and driven by the live feed, so this costs no interval per card
+	// (there are ~60 of them) and nothing on the ~1 Hz frames in between. What it
+	// must NOT do is re-derive `range`, which is the PR #60 refetch loop — see the
+	// comment on `range` in /history's `+page.svelte`.
+	//
+	// `rows` is read through `untrack` because this effect WRITES `rows`: a
+	// tracked read makes the effect invalidate on its own answer, which is that
+	// same loop one level down. `syncedTick` gates the first run, so landing the
+	// initial fetch cannot itself trigger a second request.
+	$effect(() => {
+		if (!appending) return;
+		const tick = liveClock.now.getTime();
+		const delta = untrack(() => dueRefresh(rows, span, tick, syncedTick));
+		if (!delta) return;
+		syncedTick = tick;
+		const run = { cancelled: false };
+		void appendDelta(delta.from, delta.to, run);
+		return () => {
+			run.cancelled = true;
+		};
+	});
+
+	// Live frames past the last fetched bucket, so the line reaches the present
+	// between deltas even while the server's continuous aggregate lags. Keyed on
+	// the minute tick and on `rows`, with the buffer itself read UNTRACKED: at
+	// ~1 Hz across sixty cards, re-deriving a day of points per frame is the cost
+	// the whole lazy-mount queue exists to avoid.
+	const tail = $derived.by(() => {
+		if (!range.live) return [];
+		void liveClock.now;
+		const held = rows;
+		return untrack(() => liveTailPoints(inverter.series(metric.key), held, span));
+	});
+
+	const chartData = $derived([...rollupPoints(rows), ...tail]);
 
 	const labelFmt = (value: unknown) => tooltipLabel(range, value);
 	const xTickFormat = (value: unknown) => xTick(range, value);
@@ -190,7 +265,6 @@
 					{metric}
 					{range}
 					{accent}
-					{unit}
 					{diverging}
 					{overlay}
 					{drafting}

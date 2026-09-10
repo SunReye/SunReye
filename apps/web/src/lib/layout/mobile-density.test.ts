@@ -787,10 +787,17 @@ describe("a measuring wrapper does not break the height chain", () => {
 
   const passthrough = heightPassthroughFiles();
 
-  test("the sweep still finds the history card's live chart", () => {
+  test("the sweep still finds the history card's chart", () => {
     // A discovery that quietly stops matching passes exactly as green as one
-    // that holds; this is the pair the 0px bug was measured on.
-    expect(passthrough).toContain("lib/components/inverter/live-area.svelte");
+    // that holds.
+    //
+    // The pair the 0px bug was measured on was `live-area`, which the history
+    // card used to reach whenever the range was live. It does not any more —
+    // a live range is a rollup window that keeps appending (#216), so the card
+    // draws one plot for every window and `live-area` is only the dashboard's
+    // KPI sparkline, which sizes itself. The card still hands `h-full` down
+    // one branch, the draft overlay, so the rule below still has a subject.
+    expect(passthrough).toContain("lib/components/inverter/_shared/overlay-chart-view.svelte");
   });
 
   test.each(passthrough)("%s keeps every measuring wrapper full-height", (file) => {

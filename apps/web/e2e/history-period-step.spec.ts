@@ -3,6 +3,13 @@
  *
  * Neither claim is a value a unit test can read.
  *
+ *  0. TODAY IS THE ELAPSED DAY. The Day tab standing on today used to resolve to
+ *     the five-minute live buffer and issue no rollup call at all (#216). What
+ *     replaced it is a `[00:00, next midnight)` window that keeps appending, and
+ *     neither half of that is a value: "fetched exactly once" is a count in a
+ *     settled window, and "the domain starts at local midnight" is the query the
+ *     cards actually sent.
+ *
  *  1. THE REQUEST STORM. `historyRangeFor` is called from a `$effect` chain that
  *     runs on every one of ~60 mounted cards, and the failure mode this page has
  *     already shipped once (PR #60: the shell's lease `$effect` refetching
@@ -52,10 +59,51 @@ test("stepping the period refetches once per chart, not in a storm", async ({ pa
   const backend = await openHistory(page);
   const nav = periodNavigator(page);
 
-  // The page opens on the current day, which IS the live view: no rollup call at
-  // all. One back-press is therefore the first rollup window it ever asks for.
+  // ── TODAY IS THE ELAPSED DAY (#216) ───────────────────────────────────────
+  // The page opens on the current day. That used to be answered with the
+  // five-minute RAM buffer and NO rollup call at all, so the Day tab showed the
+  // last two minutes of the day it named. It is a rollup window now, and the
+  // two things that have to hold about it are both invisible to a unit test:
+  // that it is fetched (once), and that the window it fetches is the civil day.
   await expect(nav.forward).toBeDisabled();
-  expect(backend.requestCount("/api/history/rollup")).toBe(0);
+  await expect(mountedCharts(page).first()).toBeVisible();
+  await page.waitForTimeout(SETTLE_MS);
+
+  const today = rollupCalls(backend);
+  expect(today.length).toBeGreaterThan(3);
+  // ONE window, and ONE request per chart. A second ask per card is the shape
+  // of the delta refresh firing on its own answer.
+  expect(new Set(today.map((c) => c.from)).size).toBe(1);
+  expect(new Set(today.map((c) => c.metric)).size).toBe(today.length);
+  expect(today[0].bucket).toBe("minute");
+
+  // The x domain IS this window (`entity-history-card` pins it to
+  // `[range.from, range.to]`), so this reads the domain by reading the query.
+  // Computed from date parts INSIDE the page, so no clock or zone the runner
+  // happens to be in can make it a lie.
+  const civilDay = await page.evaluate(
+    ([from, to]) => {
+      const start = new Date(from);
+      const midnight = new Date(start.getFullYear(), start.getMonth(), start.getDate());
+      const next = new Date(start.getFullYear(), start.getMonth(), start.getDate() + 1);
+      return {
+        startsAtMidnight: start.getTime() === midnight.getTime(),
+        endsAtNextMidnight: new Date(to).getTime() === next.getTime(),
+      };
+    },
+    [today[0].from, today[0].to],
+  );
+  expect(civilDay).toEqual({ startsAtMidnight: true, endsAtNextMidnight: true });
+
+  // …and therefore it reaches data far older than the RAM buffer holds. Stated
+  // as the WIDTH of the window rather than as "a point before now - 5 min",
+  // which is a claim a run started at 00:03 could not make about a correct
+  // page. A civil day is 23, 24 or 25 hours; the buffer is five minutes.
+  const spanMs = Date.parse(today[0].to) - Date.parse(today[0].from);
+  expect(spanMs).toBeGreaterThanOrEqual(23 * 3600_000);
+
+  // The rest of this case is about STEPPING, so today's calls stop counting here.
+  backend.resetRequests();
 
   await nav.back.click();
   await expect(nav.forward).toBeEnabled();
@@ -106,6 +154,13 @@ test("a Year-grain card builds inside the same budget a preset one does", async 
   // cards, each over a whole year, on the page whose scroll cost was the subject
   // of three recent commits. Nobody had a number for it.
   const backend = await openHistory(page, { rollupRows: YEAR_ROWS });
+  // The page opens on today, which is a minute-bucketed rollup window in its
+  // own right now (#216) — so let those calls land and drop them, or the
+  // bucket assertion below reads the Day grain's answer as well as the Year's.
+  await expect(mountedCharts(page).first()).toBeVisible();
+  await page.waitForTimeout(SETTLE_MS);
+  backend.resetRequests();
+
   await selectRange(page, "Year");
   await expect(metricCards(page)).toHaveCount(CHARTABLE_METRIC_COUNT);
   await expect(mountedCharts(page).first()).toBeVisible();
