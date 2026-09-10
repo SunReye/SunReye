@@ -33,9 +33,21 @@
 
 import { z } from "zod";
 
+import { haExportParamsSchema } from "./integrations";
+
 /** `app_settings.key` under which the MQTT export config is stored. */
 export const MQTT_KEY = "mqtt";
 
+/**
+ * THIS DOCUMENT IS BEING RETIRED. Its fields are
+ * `./integrations.ts`'s `haExportParamsSchema`, spread in rather than restated
+ * — so the two cannot drift while both exist, and the `ha-export` row migration
+ * 0007 backfills is key-for-key what this parses.
+ *
+ * `connectionId` is the only field that does NOT move into `params`: it becomes
+ * `integrations.connection_id`, a real column with a real foreign key, which is
+ * the whole point of the table.
+ */
 export const mqttConfigSchema = z.object({
   /**
    * The `kind = 'mqtt'` connection this export publishes to, or null for "off".
@@ -44,13 +56,14 @@ export const mqttConfigSchema = z.object({
    * lives in a JSONB document and a deleted connection must leave the export
    * turned off rather than make the row undeletable. Every reader resolves it
    * and treats "no such connection" exactly as it treats null.
+   *
+   * `integrations.connection_id` (migration 0007) is the hard reference that
+   * replaces this, and `ON DELETE RESTRICT` is what makes the dangling case —
+   * and `apps/server/src/settings/mqtt-broker.ts`'s re-bind policy for it —
+   * unrepresentable rather than merely handled.
    */
   connectionId: z.number().int().positive().nullable().default(null),
-  /** Root topic segment: `<prefix>/<plant-slug>/<device-slug>/<topic>`. */
-  topicPrefix: z.string().min(1).default("sunreye"),
-  /** Publish Home Assistant MQTT Discovery configs. */
-  haDiscoveryEnabled: z.boolean().default(false),
-  haDiscoveryPrefix: z.string().min(1).default("homeassistant"),
+  ...haExportParamsSchema.shape,
 });
 export type MqttConfig = z.infer<typeof mqttConfigSchema>;
 

@@ -74,6 +74,15 @@ async function failure(db: Db, query: ReturnType<typeof sql>): Promise<string> {
  * also why it is the one part of this spec that could go wrong without the
  * migration being wrong; each assertion below therefore names a fact about the
  * FORWARD direction only.
+ *
+ * IT REWINDS PAST 0006, NOT "ONE STEP". The journal row was found by
+ * `max(created_at)`, which silently became the NEXT migration's the moment 0007
+ * shipped: every case here then re-ran 0007 against a schema still holding
+ * `connections.host`, and the whole file went red for a reason that had nothing
+ * to do with 0006. Keeping the first SIX rows (0000–0005) and dropping whatever
+ * follows says what is meant and does not rot. `integrations` goes with them —
+ * it is 0007's table, and its `ON DELETE RESTRICT` on `connection_id` would
+ * otherwise refuse the broker delete below.
  */
 async function rewind(db: Db): Promise<void> {
   // `sql.raw`, so pg sends this as ONE simple-protocol query: the extended
@@ -81,6 +90,7 @@ async function rewind(db: Db): Promise<void> {
   // multi-statement script fails (or, with some clients, never resolves).
   await db.execute(
     sql.raw(`
+    drop table if exists integrations;
     alter table connections
       add column host text,
       add column port integer not null default 502,
@@ -103,7 +113,7 @@ async function rewind(db: Db): Promise<void> {
     alter table connections add constraint connections_transport_check
       check (transport in ('tcp', 'rtu-over-tcp'));
     delete from drizzle.__drizzle_migrations
-      where created_at = (select max(created_at) from drizzle.__drizzle_migrations);
+      where id > (select id from drizzle.__drizzle_migrations order by id limit 1 offset 5);
   `),
   );
 }
