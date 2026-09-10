@@ -24,7 +24,9 @@ test.describe("the roster", () => {
     await expect(
       page.getByRole("heading", { level: 2, name: "Inverter", exact: true }),
     ).toBeVisible();
-    await expect(page.getByText(/Modbus TCP · 10\.0\.0\.5:502 · every 1 s/)).toBeVisible();
+    // A non-breaking space between the number and its unit: a plain one broke
+    // "every 1" onto one line and "s" onto the next at phone width (#214).
+    await expect(page.getByText(/Modbus TCP · 10\.0\.0\.5:502 · every 1\u00a0s/)).toBeVisible();
     await expect(page.locator("[data-group='gateway-1'] [data-device]")).toHaveCount(3);
 
     await page.getByRole("button", { name: "Edit connection" }).click();

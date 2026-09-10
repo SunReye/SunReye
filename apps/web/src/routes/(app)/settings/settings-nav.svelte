@@ -93,11 +93,22 @@
 </nav>
 
 <!-- Mobile: single-line horizontal scroll of every panel (the group headers
-     only earn their space on the desktop rail). -->
-<nav class="-mx-4 overflow-x-auto px-4 md:hidden" aria-label={m.nav_settings()}>
-	<div class="flex w-max gap-1 pb-1">
-		{#each visible as route (route.id)}
-			{@render navLink(route, 'shrink-0 gap-2 border border-transparent px-3 py-1.5')}
-		{/each}
-	</div>
-</nav>
+     only earn their space on the desktop rail).
+     Scrollbars are never painted app-wide (app.css), so a strip that runs past
+     the right edge simply looked CLIPPED — fifteen panels, and no cue that the
+     last five exist (#214). The fade says the row continues, and the snap makes
+     a swipe land on a whole tab instead of halfway through one. Proximity snap,
+     not mandatory: mandatory fights a scroll that means to reach the end. -->
+<div class="relative -mx-4 md:hidden">
+	<nav class="snap-x overflow-x-auto px-4" aria-label={m.nav_settings()}>
+		<div class="flex w-max gap-1 pb-1">
+			{#each visible as route (route.id)}
+				{@render navLink(route, 'shrink-0 snap-start gap-2 border border-transparent px-3 py-1.5')}
+			{/each}
+		</div>
+	</nav>
+	<div
+		aria-hidden="true"
+		class="pointer-events-none absolute inset-y-0 right-0 w-6 bg-linear-to-l from-background to-transparent"
+	></div>
+</div>

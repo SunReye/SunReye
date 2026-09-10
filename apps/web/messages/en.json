@@ -994,7 +994,7 @@
   "settings_tab_plant": "Plant",
   "settings_sub_plant": "Where the plant is, what is on the roof, and how its days are bucketed.",
   "devices_group_no_connection": "No connection",
-  "devices_group_caption": "{transport} · {host}:{port} · every {seconds} s",
+  "devices_group_caption": "{transport} · {host}:{port} · every {seconds} s",
   "devices_action_edit": "Edit",
   "devices_edit_connection": "Edit connection",
   "devices_connection_dialog_title": "Edit connection",

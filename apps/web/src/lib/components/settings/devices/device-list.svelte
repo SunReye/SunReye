@@ -1,6 +1,7 @@
 <script lang="ts">
 	import EmptyState from '$lib/components/layout/empty-state.svelte';
 	import * as m from '$lib/paraglide/messages';
+	import { SECTION_GAP } from '$lib/layout/tokens';
 	import { groupByConnection } from './add-device-logic';
 	import DeviceGroupCard from './device-group.svelte';
 	import type { ConnectionView, DeviceRoster, DeviceView } from './device-types';
@@ -33,7 +34,7 @@
 {:else if empty}
 	<EmptyState message={m.devices_empty()} />
 {:else}
-	<div class="flex flex-col gap-4">
+	<div class="flex flex-col {SECTION_GAP}">
 		{#each groups as group (group.key)}
 			<DeviceGroupCard {group} {busyId} {onEditConnection} {onEdit} {onRetire} {onRestore} />
 		{/each}

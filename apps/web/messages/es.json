@@ -994,7 +994,7 @@
   "settings_tab_plant": "Planta",
   "settings_sub_plant": "Dónde está la planta, qué hay en el tejado y cómo se agrupan sus días.",
   "devices_group_no_connection": "Sin conexión",
-  "devices_group_caption": "{transport} · {host}:{port} · cada {seconds} s",
+  "devices_group_caption": "{transport} · {host}:{port} · cada {seconds} s",
   "devices_action_edit": "Editar",
   "devices_edit_connection": "Editar conexión",
   "devices_connection_dialog_title": "Editar conexión",

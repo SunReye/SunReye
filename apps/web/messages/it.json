@@ -994,7 +994,7 @@
   "settings_tab_plant": "Impianto",
   "settings_sub_plant": "Dove si trova l'impianto, cosa c'è sul tetto e come vengono raggruppati i suoi giorni.",
   "devices_group_no_connection": "Nessuna connessione",
-  "devices_group_caption": "{transport} · {host}:{port} · ogni {seconds} s",
+  "devices_group_caption": "{transport} · {host}:{port} · ogni {seconds} s",
   "devices_action_edit": "Modifica",
   "devices_edit_connection": "Modifica connessione",
   "devices_connection_dialog_title": "Modifica connessione",
