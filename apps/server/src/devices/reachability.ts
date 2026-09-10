@@ -68,14 +68,20 @@ const mqttDial: BrokerDial = (params) =>
         // forever behind an HTTP request that has already timed out.
         reconnectPeriod: 0,
       });
+      // Disarmed on the way out. Left armed, it held a handle for a second
+      // past the client's own `connectTimeout` — which always settles first, so
+      // it could never legitimately fire — and then called `end` on a client
+      // that had already ended.
+      let watchdog: ReturnType<typeof setTimeout> | undefined;
       const done = (error?: Error) => {
+        if (watchdog !== undefined) clearTimeout(watchdog);
         client.end(true, () => {});
         if (error) reject(error);
         else resolve();
       };
       client.once("connect", () => done());
       client.once("error", (error) => done(error));
-      setTimeout(() => done(new Error("connection timed out")), PROBE_TIMEOUT_MS + 1000);
+      watchdog = setTimeout(() => done(new Error("connection timed out")), PROBE_TIMEOUT_MS + 1000);
     });
   });
 

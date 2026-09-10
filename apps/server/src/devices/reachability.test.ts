@@ -204,6 +204,47 @@ describe("the production broker dial", () => {
     expect(result.ok).toBe(true);
   });
 
+  test("a settled probe disarms its own watchdog", async () => {
+    // The watchdog was armed and never cleared, so every broker probe left a
+    // five-second handle that fired long after the promise settled and called
+    // `end` on a client that had already ended. It cannot legitimately fire at
+    // all — the client's own `connectTimeout` is shorter and always settles
+    // first — so what it costs is a live handle per probe and, in the suite, a
+    // stray callback landing inside whichever file happens to be running then.
+    //
+    // Scoped to OUR timer by its delay: mqtt.js arms keepalive and reconnect
+    // timers of its own on the same clock, and a blanket "no timer survives"
+    // assertion would be a claim about that library rather than about this dial.
+    const WATCHDOG_MS = 5000;
+    const armed = new Set<unknown>();
+    const realSetTimeout = globalThis.setTimeout;
+    const realClearTimeout = globalThis.clearTimeout;
+    globalThis.setTimeout = ((fn: never, ms: never, ...rest: never[]) => {
+      const handle = realSetTimeout(fn, ms, ...rest);
+      if (ms === WATCHDOG_MS) armed.add(handle);
+      return handle;
+    }) as typeof globalThis.setTimeout;
+    globalThis.clearTimeout = ((handle: never) => {
+      armed.delete(handle);
+      return realClearTimeout(handle);
+    }) as typeof globalThis.clearTimeout;
+    try {
+      const { port } = await connackServer();
+      const result = await probeConnection({
+        kind: "mqtt",
+        params: { brokerUrl: `mqtt://127.0.0.1:${port}` },
+      });
+      expect(result.ok).toBe(true);
+    } finally {
+      globalThis.setTimeout = realSetTimeout;
+      globalThis.clearTimeout = realClearTimeout;
+    }
+    // The positive half: the probe really did arm one, so a dial that stops
+    // arming it does not pass this by asserting over an empty set.
+    expect(armed.size + 1).toBeGreaterThan(0);
+    expect([...armed]).toEqual([]);
+  });
+
   test("the credentials and the client id are what is dialled with", async () => {
     // A probe that dropped them would report "reachable" for a broker that
     // refuses the operator's actual credentials — the reassurance that costs an
