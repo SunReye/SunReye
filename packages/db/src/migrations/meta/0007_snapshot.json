@@ -1356,7 +1356,7 @@
           "columnsTo": [
             "id"
           ],
-          "onDelete": "cascade",
+          "onDelete": "restrict",
           "onUpdate": "no action"
         },
         "integrations_connection_id_connections_id_fk": {

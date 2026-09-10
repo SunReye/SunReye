@@ -42,7 +42,7 @@ CREATE TABLE "integrations" (
 	CONSTRAINT "integrations_kind_check" CHECK ("integrations"."kind" in ('evcc-ingest', 'ha-export'))
 );
 --> statement-breakpoint
-ALTER TABLE "integrations" ADD CONSTRAINT "integrations_plant_id_plants_id_fk" FOREIGN KEY ("plant_id") REFERENCES "public"."plants"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "integrations" ADD CONSTRAINT "integrations_plant_id_plants_id_fk" FOREIGN KEY ("plant_id") REFERENCES "public"."plants"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "integrations" ADD CONSTRAINT "integrations_connection_id_connections_id_fk" FOREIGN KEY ("connection_id") REFERENCES "public"."connections"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
 CREATE UNIQUE INDEX "integrations_ha_export_connection_idx" ON "integrations" USING btree ("connection_id") WHERE "integrations"."kind" = 'ha-export';--> statement-breakpoint
 -- THE TWO CONFIGURED INTEGRATIONS BECOME ROWS.

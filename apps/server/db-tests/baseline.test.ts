@@ -250,21 +250,18 @@ suite("the 2.0.0 baseline schema", () => {
       // devices / metric_keys / plants would let one delete renumber history's
       // meaning. `c` is CASCADE, `n` is SET NULL, `d` is SET DEFAULT.
       //
-      // THE ONE EXCEPTION, and it is named rather than pattern-matched so that
-      // adding a second one is a deliberate edit here: `integrations.plant_id`
-      // (migration 0007). An integration is CONFIGURATION — no reading is keyed
-      // by it and nothing was ever measured through it — so there is no history
-      // whose meaning a cascade could renumber; restricting would only make a
-      // plant undeletable for the sake of a row that means nothing without it.
-      // The invariant still holds for everything it was written about: the
-      // reading dimensions, and `integrations.connection_id`, which RESTRICTs.
+      // NO EXCEPTIONS, and `integrations` (0007) is the one that asked for one:
+      // it is configuration, nothing is keyed by it, and cascading it with its
+      // plant would lose nothing. It RESTRICTs anyway — an invariant with a
+      // named exception is a list, and the second entry is always easier to
+      // argue than the first.
       const bad = await rows<{ conname: string; confdeltype: string }>(sql`
         select conname, confdeltype from pg_constraint
         where contype = 'f'
           and confrelid in ('devices'::regclass, 'metric_keys'::regclass, 'plants'::regclass)
           and confdeltype in ('c', 'n', 'd')
         order by conname`);
-      expect(bad).toEqual([{ conname: "integrations_plant_id_plants_id_fk", confdeltype: "c" }]);
+      expect(bad).toEqual([]);
     });
 
     test("the FK is enforced from inside a chunk", async () => {

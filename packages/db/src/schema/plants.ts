@@ -339,19 +339,19 @@ export const integrations = pgTable(
   {
     id: identityKey(),
     /**
-     * The plant this integration belongs to, `ON DELETE CASCADE` — and the ONE
-     * place in this file that does not use {@link plantRef}.
+     * The plant this integration belongs to — {@link plantRef}, RESTRICT, like
+     * every other table here.
      *
-     * `connections` and `devices` RESTRICT because a reading's meaning dies with
-     * them: `metrics_raw` is keyed by `device_id`, and a cascade would let one
-     * `DELETE` take years of history's interpretation with it. An integration is
-     * CONFIGURATION — nothing is keyed by it, nothing was ever measured by it —
-     * so restricting here would only make a plant undeletable for the sake of a
-     * row that means nothing without it.
+     * A cascade was tempting: an integration is CONFIGURATION, nothing is keyed
+     * by it, so taking it with its plant loses nothing. It was still refused.
+     * Invariant C1 ("no ON DELETE CASCADE anywhere near a dimension",
+     * `../../../apps/server/db-tests/baseline.test.ts`) is worth more absolute
+     * than it is worth correct in this one case: an invariant with a named
+     * exception is a list, and the second entry is always easier to argue than
+     * the first. It costs nothing here — a plant carrying any connection or
+     * device is already undeletable.
      */
-    plantId: smallint("plant_id")
-      .notNull()
-      .references(() => plants.id, { onDelete: "cascade" }),
+    plantId: plantRef(),
     /**
      * The endpoint this integration runs over, or null for a kind that needs
      * none.

@@ -458,11 +458,14 @@ suite("migration 0007: the integrations table", () => {
   });
 
   describe("the plant reference", () => {
-    test("CASCADEs, unlike `connections.plant_id`, which RESTRICTs", async () => {
-      // An integration is CONFIGURATION, not history: nothing in `metrics_raw`
-      // is keyed by it, so deleting a plant should take its integrations rather
-      // than making the plant undeletable. `devices` and `connections` restrict
-      // because a reading's meaning dies with them.
+    test("RESTRICTs, like every other plant reference in the schema", async () => {
+      // An integration is CONFIGURATION, not history — nothing in `metrics_raw`
+      // is keyed by it — so a CASCADE here would lose nothing, and it was still
+      // refused. Invariant C1 ("no ON DELETE CASCADE anywhere near a
+      // dimension", `./baseline.test.ts`) is worth more absolute than correct
+      // in one case: an invariant with a named exception is a list. It costs
+      // nothing — a plant carrying any connection or device is already
+      // undeletable, and one carrying only integrations is a plant nobody set up.
       const { db, url } = await seeded({ mqtt: null, evcc: null });
       await migrate(url);
       const spare = (
@@ -474,8 +477,9 @@ suite("migration 0007: the integrations table", () => {
       ).id;
       await db.execute(sql`
         insert into integrations (plant_id, kind) values (${spare}, 'evcc-ingest')`);
-      await db.execute(sql`delete from plants where id = ${spare}`);
-      expect(await integrations(db)).toEqual([]);
+      const message = await failure(db, sql`delete from plants where id = ${spare}`);
+      expect(message).toMatch(/foreign key|violates/i);
+      expect((await integrations(db)).length).toBe(1);
     });
   });
 });
