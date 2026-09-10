@@ -2,12 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type { DischargeSegment } from "./capacity-estimate";
 import { interiorSegments, planWindows } from "./scoring-plan";
 import { startBatteryScoring } from "./scoring";
-import {
-  BACKFILL_WINDOW_MS,
-  ROUTINE_WINDOW_MS,
-  scoreSpan,
-  type ScoringDeps,
-} from "./scoring-walk";
+import { BACKFILL_WINDOW_MS, ROUTINE_WINDOW_MS, scoreSpan, type ScoringDeps } from "./scoring-walk";
 
 /**
  * The background scorer used to read the WHOLE raw retention window in one

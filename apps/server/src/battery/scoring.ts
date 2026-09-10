@@ -22,12 +22,7 @@
 import type { InverterProfile } from "@SunReye/inverter-core";
 import { measureSegments, recordSegments } from "./health";
 import { batteryKeys } from "./keys";
-import {
-  BACKFILL_WINDOW_MS,
-  ROUTINE_WINDOW_MS,
-  scoreSpan,
-  type ScoringDeps,
-} from "./scoring-walk";
+import { BACKFILL_WINDOW_MS, ROUTINE_WINDOW_MS, scoreSpan, type ScoringDeps } from "./scoring-walk";
 
 /** How often to look for new segments. */
 const SCORE_INTERVAL_MS = 6 * 3_600_000;
