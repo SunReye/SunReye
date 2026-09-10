@@ -2,12 +2,72 @@
 
 ## [unreleased]
 
-Unreleased work on `dev` since 3.0.1, shipped in `beta.20260909-65597a0`.
+Unreleased work on `dev` since 3.0.2, shipped in `beta.20260910-d7f2bb4`.
+
+
+### Features
+
+* **web:** only a state worth acting on carries a badge ([7560d18](https://github.com/SunReye/SunReye/commit/7560d18709e910b036b995cd9b0760afa65bb98e))
+* **web:** an integration owns the devices it provides, and has a page of its own ([f3ac572](https://github.com/SunReye/SunReye/commit/f3ac572b99ea488f94428f8014aafa3523010dee))
+* integrations are rows under their connection, and the MQTT tab is gone ([6d3c414](https://github.com/SunReye/SunReye/commit/6d3c414cbc1164e654142f5458208304211df1d1))
+* **server:** a connection owns its client, so integration status is observed ([2984093](https://github.com/SunReye/SunReye/commit/2984093ed7181446ed8397ea8588a0cce7032c82))
+* **web:** the add wizard can create the connection it attaches to ([fa9c896](https://github.com/SunReye/SunReye/commit/fa9c8969f972214d8fdf0188fc2dd8650885fb31))
+* **web:** name the wizard's catalog fields in the viewer's language ([b304f04](https://github.com/SunReye/SunReye/commit/b304f04046c296672264cff9b2f04994836d1856))
+* **web:** one Add, and it is a wizard over the server's catalog ([7f68d91](https://github.com/SunReye/SunReye/commit/7f68d916584680e3b5cb19b07d606ffbd6ca6ff5))
+* **server:** integrations as rows — service, routes and the EVCC topic root ([564baf4](https://github.com/SunReye/SunReye/commit/564baf484842bfde34ed13aa066a7a138d9982f9))
+* **server:** the add-device contract becomes a tier union ([79ee70c](https://github.com/SunReye/SunReye/commit/79ee70c1b63216d14d31a13e16b63f3b03734ee2))
+* **web:** rename and retire a coded or virtual device row ([807d946](https://github.com/SunReye/SunReye/commit/807d94632cc20272b034a1974f83bc33a283caa6))
+* **db:** an integrations table, with the mqtt and evcc settings backfilled in ([40bc74b](https://github.com/SunReye/SunReye/commit/40bc74b15a469807b91a595d555ebeef375a52ae))
+* **server:** an integration catalog keyed by connection kind ([8cdd139](https://github.com/SunReye/SunReye/commit/8cdd1399050aa944e5ff153027a027f822179a64))
+* **web:** the MQTT tab becomes Integrations, over broker connections ([a2fc8d1](https://github.com/SunReye/SunReye/commit/a2fc8d154f329ce1ed663c2a9a8af8900619ea91))
+* **web:** connections get a kind, and loadpoints group under their broker ([c8d0598](https://github.com/SunReye/SunReye/commit/c8d059892541a2515e17685ab1737c85e4ba5a08))
+* **server:** create a connection on its own ([1774605](https://github.com/SunReye/SunReye/commit/177460595eb10b067fae49ead49f535e26776259))
+* **server:** the broker is a connection, and the tier is picked by kind ([cedc749](https://github.com/SunReye/SunReye/commit/cedc749f0b885247900e69d0b8e20061b0e5d2c0))
+* **db:** give connections a kind and params, devices a params ([d8bb1ed](https://github.com/SunReye/SunReye/commit/d8bb1ed33a5284a1c6f386f1f04f9be4c0600a1e))
+* **db:** add the connection-kind discriminated union ([599e8a7](https://github.com/SunReye/SunReye/commit/599e8a7b07b9bf98a97ef774eb5c6b210614bef3))
 
 
 ### Bug Fixes
 
-* **server:** chunk the battery scoring pass and index the power series ([65597a0](https://github.com/SunReye/SunReye/commit/65597a030708f1ebf616bad3f4a755eda7efb8cc))
+* **web:** the integration smoke case proves its payload without the pill ([2939ba7](https://github.com/SunReye/SunReye/commit/2939ba7d1012ce5c3141a5bbdfd4f370511250a0))
+* **web:** the readings row is only as wide as it has readings ([177b1cf](https://github.com/SunReye/SunReye/commit/177b1cf314e9e010e6cf26a84cac4d63ee2d165d))
+* **web:** the wizard's Modbus step asks for a device, not a catalog form ([4d01419](https://github.com/SunReye/SunReye/commit/4d01419381a068a91c38db8401baf98cd5588278))
+* **db:** keep invariant C1 absolute — integrations.plant_id RESTRICTs ([c118136](https://github.com/SunReye/SunReye/commit/c118136c40ea1555dc438fe463154cb90a0f0894))
+* **server:** narrow the coded-device patch gate to topology only ([893ee8e](https://github.com/SunReye/SunReye/commit/893ee8ecdcf9757a54c2d1608d9330fc273a4595))
+* **repo:** make the pre-push hook fail on its own, not on its caller's -e ([e5887a6](https://github.com/SunReye/SunReye/commit/e5887a628c92dcc10c8dbda36debb34554fb33e5))
+* **repo:** a pre-push hook, so a bypassed pre-commit cannot reach the remote ([c395514](https://github.com/SunReye/SunReye/commit/c395514d2730e9de87edf2e277d1c72cd90adade))
+* **ci:** shape the upgrade test from the last 1.x release, not the previous one ([de71425](https://github.com/SunReye/SunReye/commit/de7142504143436db62bdeeda64b2bdac70faa0c))
+* **test:** police every mock.module target, not only the first-party ones ([53feb1e](https://github.com/SunReye/SunReye/commit/53feb1eb8f60358d44d28da0f852ae2c15e6048f))
+* **server:** disarm the broker probe's watchdog when the dial settles ([3189bac](https://github.com/SunReye/SunReye/commit/3189bac1abda36a8b6119b28b54693e271866ece))
+* **ci:** seed a connection by kind and params, not by a dropped column ([fd0f554](https://github.com/SunReye/SunReye/commit/fd0f5540c6c0c9cdcef216e71c29890a652f5797))
+* **db:** carry a connection's kind through the archive, and mask its password ([7b42301](https://github.com/SunReye/SunReye/commit/7b42301ba15711827fd89594b3b1f23ec6c496b6))
+* **server:** mask the broker password on every edge that returns a connection ([6350810](https://github.com/SunReye/SunReye/commit/6350810fa73f16ebc5dc19a3edf19fcbcfeff787))
+* **web:** fetch and append the day on a custom chart too, not the RAM buffer ([5df9430](https://github.com/SunReye/SunReye/commit/5df9430760617ba7345f07a9b8b78d04835c21ce))
+* **web:** show the elapsed day on /history's Day tab, not the live buffer ([a5c0a47](https://github.com/SunReye/SunReye/commit/a5c0a4750aacec6c8c652d34c06d67c9f4e68176))
+* **web:** move the source switcher into the sidebar header ([ef86ea6](https://github.com/SunReye/SunReye/commit/ef86ea65db8adc3faae2b74b606065b9771e5ff9))
+* **web:** make the devices panel and the settings tab strip fit a phone ([7b2d505](https://github.com/SunReye/SunReye/commit/7b2d505ec532ff9d48317d543bb261731bb912b2))
+* **web:** group coded and virtual devices apart from the Modbus gateways ([059dcba](https://github.com/SunReye/SunReye/commit/059dcbaf174023e45ed6500b7f2fa8e116cf6560))
+* **server:** report a device's kind and state, and refuse a Modbus patch on a coded one ([43cf521](https://github.com/SunReye/SunReye/commit/43cf521266c1362722f4ae4dfb7bbc5a0bbf7681))
+
+
+### Code Refactoring
+
+* split the two functions over the complexity ceiling ([d8f02de](https://github.com/SunReye/SunReye/commit/d8f02de3effa5e1bb2d9c027b0c083c792180caf))
+* **db:** one staging-table walk, one common-field decode ([137269c](https://github.com/SunReye/SunReye/commit/137269c37a2d4214735d4db1008aa72cc9c01653))
+* **scripts:** one drop-and-create for the two rehearsal scripts ([06a9a92](https://github.com/SunReye/SunReye/commit/06a9a920b546eda725f1c7aa6bc1869fe118e5c9))
+* **web:** one grouped bar mark for the two statistics bar charts ([3dbdd59](https://github.com/SunReye/SunReye/commit/3dbdd59f079a700081f81d449e6f855e2cc2a0a0))
+* **inverter-core:** one wall-clock reader for the server and the web app ([ed46d12](https://github.com/SunReye/SunReye/commit/ed46d12873f2454a953b519724c32f5d09857613))
+* **inverter-core:** one slugify, shared by the server and the web app ([81452be](https://github.com/SunReye/SunReye/commit/81452be5bb6c8993de3f7c8d97c6e3deb2111d06))
+* **server:** split the battery scoring pass into plan, walk and schedule ([101bb2d](https://github.com/SunReye/SunReye/commit/101bb2d9c33e0fb9aac6f8acab0e46fa96bea54a))
+
+
+### Tests
+
+* **server:** cover the database half of battery health ([90abec6](https://github.com/SunReye/SunReye/commit/90abec6c9a04f11d555c0971c0256290e0199650))
+* **server:** cover the runtime's four uncovered failure seams ([dfa1d6f](https://github.com/SunReye/SunReye/commit/dfa1d6f3b3c6b20638a017afa5f8286f09f37d46))
+* **server:** run the connection probe's real dials against a loopback socket ([33bbeae](https://github.com/SunReye/SunReye/commit/33bbeae0810b00e060baff2db14d4dfbc86da39b))
+* **server:** cover the MQTT broker instance wrappers ([69a4b23](https://github.com/SunReye/SunReye/commit/69a4b23303cb46222a641cf272044dc47ad09a11))
+* **db:** prove migration 0006 against a real Postgres ([159c712](https://github.com/SunReye/SunReye/commit/159c712d2a9bb67e2cdcf5071f27828eb512ab20))
 
 <!--
   This preamble is hand-written and version-independent. release-please owns the
@@ -124,6 +184,13 @@ What to do, if you maintain a shared source:
 changed again. The archive names devices and metrics the way the API and your Home Assistant
 entities already do, and refers to no internal id, which is why an upgrade like this one should not
 be needed again.
+
+## [3.0.2](https://github.com/SunReye/SunReye/compare/addon-v3.0.1...addon-v3.0.2) (2026-09-09)
+
+
+### Bug Fixes
+
+* **server:** chunk the battery scoring pass and index the power series ([65597a0](https://github.com/SunReye/SunReye/commit/65597a030708f1ebf616bad3f4a755eda7efb8cc))
 
 ## [3.0.1](https://github.com/SunReye/SunReye/compare/addon-v3.0.0...addon-v3.0.1) (2026-09-09)
 
