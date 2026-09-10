@@ -202,8 +202,18 @@ const nameSchema = z
   .max(SLUG_MAX, `name must be at most ${SLUG_MAX} characters`)
   .refine((name) => slugify(name) !== "", "name must contain a letter or a digit");
 
-const roleSchema = z.enum(ADDABLE_ROLES as [string, ...string[]]);
-const unitIdSchema = z.number().int().min(UNIT_ID_MIN).max(UNIT_ID_MAX);
+/**
+ * The three fields that address a Modbus device, exported so the wizard's
+ * catalog (`./integration-catalog.ts`) can DESCRIBE the settings step this
+ * module VALIDATES.
+ *
+ * Exported rather than restated there: a second spelling of "unit ids stop at
+ * 247" is a wizard that offers 248 and a route that then refuses it, which is
+ * the same bug as no validation at all — the operator sees a form that lies.
+ */
+export const deviceRoleSchema = z.enum(ADDABLE_ROLES as [string, ...string[]]);
+export const unitIdSchema = z.number().int().min(UNIT_ID_MIN).max(UNIT_ID_MAX);
+export const profileIdSchema = z.string().trim().min(1);
 
 /**
  * The inverter's PV description and pack, as the dialog sends them. Each field
@@ -211,7 +221,7 @@ const unitIdSchema = z.number().int().min(UNIT_ID_MIN).max(UNIT_ID_MAX);
  * mirror `@SunReye/db/weather`'s so a value the forecast schema would refuse is
  * refused here first.
  */
-const inverterFieldsSchema = {
+export const inverterFieldsSchema = {
   arrays: z.array(pvArraySchema).max(8).optional(),
   // The device's coefficients have the ARRAY override's bounds, by construction:
   // the compose step stamps them onto every array that states none of its own.
@@ -227,10 +237,10 @@ const addDeviceSchema = z.object({
     z.object({ id: z.number().int().positive() }),
     z.object({ create: connectionSettingsSchema }),
   ]),
-  role: roleSchema,
+  role: deviceRoleSchema,
   unitId: unitIdSchema,
   name: nameSchema,
-  profileId: z.string().trim().min(1),
+  profileId: profileIdSchema,
 });
 
 type AddDeviceInput = z.infer<typeof addDeviceSchema>;
@@ -248,10 +258,10 @@ const patchDeviceSchema = z
   .object({
     ...inverterFieldsSchema,
     name: nameSchema.optional(),
-    role: roleSchema.optional(),
+    role: deviceRoleSchema.optional(),
     unitId: unitIdSchema.optional(),
     connectionId: z.number().int().positive().optional(),
-    profileId: z.string().trim().min(1).optional(),
+    profileId: profileIdSchema.optional(),
     retired: z.boolean().optional(),
   })
   .refine(nonEmpty, "nothing to change");
