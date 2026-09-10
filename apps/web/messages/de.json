@@ -1074,9 +1074,5 @@
   "mqtt_broker_off": "Aus — es wird nichts veröffentlicht",
   "mqtt_broker_none": "Noch keine MQTT-Verbindung — unter Geräte eine anlegen.",
   "mqtt_topic_prefix": "Topic-Präfix",
-  "mqtt_discovery_prefix": "Discovery-Präfix",
-  "settings_tab_mqtt": "MQTT & Home Assistant",
-  "settings_sub_mqtt": "Messwerte an einen Broker und an Home Assistant senden.",
-  "mqtt_broker_title": "MQTT-Broker",
-  "mqtt_enabled_desc": "Entitäten an einen MQTT-Broker weiterleiten."
+  "mqtt_discovery_prefix": "Discovery-Präfix"
 }

@@ -1074,9 +1074,5 @@
   "mqtt_broker_off": "Disattivato — non viene pubblicato nulla",
   "mqtt_broker_none": "Nessuna connessione MQTT — aggiungine una in Dispositivi.",
   "mqtt_topic_prefix": "Prefisso topic",
-  "mqtt_discovery_prefix": "Prefisso discovery",
-  "settings_tab_mqtt": "MQTT & Home Assistant",
-  "settings_sub_mqtt": "Pubblica le letture su un broker e su Home Assistant.",
-  "mqtt_broker_title": "Broker MQTT",
-  "mqtt_enabled_desc": "Collega le entità a un broker MQTT."
+  "mqtt_discovery_prefix": "Prefisso discovery"
 }

@@ -1,14 +1,15 @@
-// Shapes shared by the MQTT panel and its sub-components.
+// Shapes shared by the Integrations panel and its cards. Mirror the server's
+// records — the web app cannot import from `@SunReye/db`.
 
 /**
- * Form shape: the password is write-only. `hasPassword` (tracked separately)
- * reflects whether one is already stored; the password field stays empty and is
- * only sent when the user types a new value.
+ * The Home Assistant EXPORT config (`packages/db/src/mqtt-config.ts`).
+ *
+ * Holds no broker and no secret since #217: it NAMES a `kind = 'mqtt'`
+ * connection, and a null id IS "off" — there is no `enabled` flag left that
+ * could disagree with it.
  */
-export type MqttForm = {
-  enabled: boolean;
-  brokerUrl: string;
-  username: string;
+export type MqttConfig = {
+  connectionId: number | null;
   topicPrefix: string;
   haDiscoveryEnabled: boolean;
   haDiscoveryPrefix: string;
@@ -20,9 +21,15 @@ export type MqttStatus = {
   lastError: string | null;
 };
 
-/** EVCC rides the same broker, so its knobs live on the MQTT page. */
-export type EvccForm = {
+/**
+ * The EVCC ingest config (`packages/db/src/evcc-config.ts`). Its OWN
+ * `connectionId`: sharing the export's used to mean the ingest silently
+ * followed a change to the Home Assistant broker, and that two EVCC instances
+ * on two brokers were inexpressible.
+ */
+export type EvccConfig = {
   enabled: boolean;
+  connectionId: number | null;
   topicRoot: string;
   subtractFromHome: boolean;
 };

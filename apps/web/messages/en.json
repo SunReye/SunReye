@@ -1074,9 +1074,5 @@
   "mqtt_broker_off": "Off — nothing is published",
   "mqtt_broker_none": "No MQTT connection yet — add one under Devices.",
   "mqtt_topic_prefix": "Topic prefix",
-  "mqtt_discovery_prefix": "Discovery prefix",
-  "settings_tab_mqtt": "MQTT & Home Assistant",
-  "settings_sub_mqtt": "Publish readings to a broker and to Home Assistant.",
-  "mqtt_broker_title": "MQTT broker",
-  "mqtt_enabled_desc": "Bridge entities to an MQTT broker."
+  "mqtt_discovery_prefix": "Discovery prefix"
 }
