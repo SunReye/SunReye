@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.1](https://github.com/SunReye/SunReye/compare/inverter-core-v1.2.0...inverter-core-v1.2.1) (2026-09-10)
+
+
+### Bug Fixes
+
+* **test:** police every mock.module target, not only the first-party ones ([53feb1e](https://github.com/SunReye/SunReye/commit/53feb1eb8f60358d44d28da0f852ae2c15e6048f))
+
 ## [1.2.0](https://github.com/SunReye/SunReye/compare/inverter-core-v1.1.0...inverter-core-v1.2.0) (2026-09-09)
 
 

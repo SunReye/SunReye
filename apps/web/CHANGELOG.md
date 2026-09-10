@@ -1,5 +1,39 @@
 # Changelog
 
+## [3.1.0](https://github.com/SunReye/SunReye/compare/web-v3.0.2...web-v3.1.0) (2026-09-10)
+
+
+### Features
+
+* integrations are rows under their connection, and the MQTT tab is gone ([6d3c414](https://github.com/SunReye/SunReye/commit/6d3c414cbc1164e654142f5458208304211df1d1))
+* **web:** an integration owns the devices it provides, and has a page of its own ([f3ac572](https://github.com/SunReye/SunReye/commit/f3ac572b99ea488f94428f8014aafa3523010dee))
+* **web:** connections get a kind, and loadpoints group under their broker ([c8d0598](https://github.com/SunReye/SunReye/commit/c8d059892541a2515e17685ab1737c85e4ba5a08))
+* **web:** name the wizard's catalog fields in the viewer's language ([b304f04](https://github.com/SunReye/SunReye/commit/b304f04046c296672264cff9b2f04994836d1856))
+* **web:** one Add, and it is a wizard over the server's catalog ([7f68d91](https://github.com/SunReye/SunReye/commit/7f68d916584680e3b5cb19b07d606ffbd6ca6ff5))
+* **web:** only a state worth acting on carries a badge ([7560d18](https://github.com/SunReye/SunReye/commit/7560d18709e910b036b995cd9b0760afa65bb98e))
+* **web:** rename and retire a coded or virtual device row ([807d946](https://github.com/SunReye/SunReye/commit/807d94632cc20272b034a1974f83bc33a283caa6))
+* **web:** the add wizard can create the connection it attaches to ([fa9c896](https://github.com/SunReye/SunReye/commit/fa9c8969f972214d8fdf0188fc2dd8650885fb31))
+* **web:** the MQTT tab becomes Integrations, over broker connections ([a2fc8d1](https://github.com/SunReye/SunReye/commit/a2fc8d154f329ce1ed663c2a9a8af8900619ea91))
+
+
+### Bug Fixes
+
+* **web:** fetch and append the day on a custom chart too, not the RAM buffer ([5df9430](https://github.com/SunReye/SunReye/commit/5df9430760617ba7345f07a9b8b78d04835c21ce))
+* **web:** group coded and virtual devices apart from the Modbus gateways ([059dcba](https://github.com/SunReye/SunReye/commit/059dcbaf174023e45ed6500b7f2fa8e116cf6560))
+* **web:** make the devices panel and the settings tab strip fit a phone ([7b2d505](https://github.com/SunReye/SunReye/commit/7b2d505ec532ff9d48317d543bb261731bb912b2))
+* **web:** move the source switcher into the sidebar header ([ef86ea6](https://github.com/SunReye/SunReye/commit/ef86ea65db8adc3faae2b74b606065b9771e5ff9)), closes [#215](https://github.com/SunReye/SunReye/issues/215)
+* **web:** show the elapsed day on /history's Day tab, not the live buffer ([a5c0a47](https://github.com/SunReye/SunReye/commit/a5c0a4750aacec6c8c652d34c06d67c9f4e68176)), closes [#216](https://github.com/SunReye/SunReye/issues/216)
+* **web:** the integration smoke case proves its payload without the pill ([2939ba7](https://github.com/SunReye/SunReye/commit/2939ba7d1012ce5c3141a5bbdfd4f370511250a0))
+* **web:** the readings row is only as wide as it has readings ([177b1cf](https://github.com/SunReye/SunReye/commit/177b1cf314e9e010e6cf26a84cac4d63ee2d165d))
+* **web:** the wizard's Modbus step asks for a device, not a catalog form ([4d01419](https://github.com/SunReye/SunReye/commit/4d01419381a068a91c38db8401baf98cd5588278))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @SunReye/inverter-core bumped to 1.2.1
+
 ## [3.0.2](https://github.com/SunReye/SunReye/compare/web-v3.0.1...web-v3.0.2) (2026-09-09)
 
 
