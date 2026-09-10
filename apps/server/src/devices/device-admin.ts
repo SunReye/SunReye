@@ -51,7 +51,7 @@ import {
 import { forecastBatterySchema, pvArraySchema } from "@SunReye/db/weather";
 import { z } from "zod";
 
-import { SLUG_MAX, slugify } from "../inverter/provision";
+import { SLUG_MAX, slugify } from "@SunReye/inverter-core/slug";
 
 /** The repository calls this module makes, bound to one client by the caller. */
 export interface DeviceAdminStore {

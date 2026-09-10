@@ -46,7 +46,7 @@ import {
   needsMigrationOnboarding,
 } from "@SunReye/db/upgrade-state";
 
-import { SLUG_MAX, slugify } from "../inverter/provision";
+import { SLUG_MAX, slugify } from "@SunReye/inverter-core/slug";
 
 /**
  * The longest name accepted, which is the longest slug that survives intact.

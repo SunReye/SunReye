@@ -19,7 +19,6 @@ import {
   dbProvisionStore,
   provisionDevice,
   provisionPlantRow,
-  slugify,
 } from "./provision";
 
 /** The `plants` column defaults, as `packages/db/src/schema/plants.ts` declares them. */
@@ -165,25 +164,6 @@ beforeEach(() => {
 const profile = { id: "deye-sun-12k", name: "Deye SUN-12K" };
 const seed = (over: Record<string, unknown> = {}) =>
   inverterConfigSchema.parse({ host: "10.0.0.5", unitId: 1, ...over });
-
-describe("slugify", () => {
-  test("makes a stable machine name out of a typed one", () => {
-    expect(slugify("Haus Müller — Dach Süd")).toBe("haus-muller-dach-sud");
-    expect(slugify("  My Plant  ")).toBe("my-plant");
-    expect(slugify("A/B\\C")).toBe("a-b-c");
-  });
-
-  test("never yields an empty or edge-dashed slug", () => {
-    // The slug becomes an MQTT topic segment and a URL vocabulary word; a
-    // leading dash or an empty string would produce `prefix//topic`.
-    expect(slugify("!!!")).toBe("");
-    expect(slugify("---x---")).toBe("x");
-  });
-
-  test("is bounded, because a topic segment is not a free-text field", () => {
-    expect(slugify("x".repeat(200)).length).toBeLessThanOrEqual(48);
-  });
-});
 
 describe("provisionPlantRow", () => {
   test("creates the plant a fresh install has none of", async () => {

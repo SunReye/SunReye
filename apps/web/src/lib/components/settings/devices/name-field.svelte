@@ -1,14 +1,14 @@
 <script lang="ts">
 	import { Input } from '$lib/components/ui/input';
 	import { Label } from '$lib/components/ui/label';
-	import { SLUG_MAX, slugify } from '$lib/slug';
+	import { SLUG_MAX, slugify } from '@SunReye/inverter-core/slug';
 	import * as m from '$lib/paraglide/messages';
 	import { type Refusal, nameProblem } from './add-device-logic';
 	import type { AddDeviceForm } from './device-types';
 	import FieldProblem from './field-problem.svelte';
 
 	// Step 3: the name, and the slug it freezes into — shown live because this
-	// is the only moment it can be corrected (see `$lib/slug`).
+	// is the only moment it can be corrected (see `@SunReye/inverter-core/slug`).
 	let { form = $bindable(), refusal }: { form: AddDeviceForm; refusal: Refusal | null } =
 		$props();
 

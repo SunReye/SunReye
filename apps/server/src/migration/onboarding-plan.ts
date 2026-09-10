@@ -49,7 +49,7 @@
  * forever on an instance that can never satisfy it.
  */
 
-import { SLUG_MAX, slugify } from "../inverter/provision";
+import { SLUG_MAX, slugify } from "@SunReye/inverter-core/slug";
 import { type NameErrors, type NameInput, validateNames } from "./onboarding";
 
 import type { MigrationRecord } from "@SunReye/db/upgrade-state";

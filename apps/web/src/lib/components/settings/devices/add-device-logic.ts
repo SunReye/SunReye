@@ -10,7 +10,7 @@ import {
   inverterTextsFrom,
   parseInverterFields,
 } from "$lib/settings/inverter-fields";
-import { SLUG_MAX, slugify } from "$lib/slug";
+import { SLUG_MAX, slugify } from "@SunReye/inverter-core/slug";
 import type { RegisteredProfile } from "../profile-types";
 import {
   blankDraft,
