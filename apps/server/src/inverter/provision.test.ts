@@ -317,16 +317,22 @@ describe("provisionDevice", () => {
     expect(devices[0]?.profileId).toBe("sigenergy-hybrid");
   });
 
-  test("a later boot NEVER overwrites the endpoint the spine already holds", async () => {
-    // THE WRITE-BACK, DELETED. Provisioning used to copy the legacy
-    // `app_settings.inverter` document into `connections` and `devices.unit_id`
-    // on every boot, which made that document the authority and silently undid
-    // every edit an operator made to the endpoint. The seed CREATES rows; it
-    // never edits one. `../routes/settings.ts` -> `./endpoint.ts` is the only
-    // writer.
+  /**
+   * THE WRITE-BACK, DELETED — the state it used to destroy.
+   *
+   * Provisioning used to copy the legacy `app_settings.inverter` document into
+   * `connections` and `devices.unit_id` on every boot, which made that document
+   * the authority and silently undid every edit an operator made to the
+   * endpoint. The seed CREATES rows; it never edits one.
+   * `../routes/settings.ts` -> `./endpoint.ts` is the only writer.
+   *
+   * So: provision, let the operator move the gateway (what the settings PUT
+   * does), then boot again with a stale legacy document that says something
+   * else entirely. The two cases below read the two halves of what survives.
+   */
+  async function bootAfterTheOperatorMovedTheGateway() {
     const { store, connections, devices } = memoryStore();
     const first = await provisionDevice({ store, logger, profile, seed: seed() });
-    // The operator moves the gateway (what the settings PUT does).
     await store.ensureConnection(1, {
       name: "Inverter",
       kind: "modbus",
@@ -339,14 +345,23 @@ describe("provisionDevice", () => {
       },
     });
     await store.updateDevice(first?.deviceId ?? -1, { unitId: 3 });
-    // ...and a boot later the stale legacy document says something else entirely.
     await provisionDevice({ store, logger, profile, seed: seed({ host: "10.0.0.5", unitId: 1 }) });
+    return { connections, devices, connectionId: first?.connectionId };
+  }
+
+  test("a later boot NEVER overwrites the endpoint the spine already holds", async () => {
+    const { connections } = await bootAfterTheOperatorMovedTheGateway();
     expect(connections.length).toBe(1);
-    expect((connections[0]?.params as ModbusParams | undefined)?.host).toBe("10.0.0.9");
-    expect((connections[0]?.params as ModbusParams | undefined)?.port).toBe(8899);
-    expect((connections[0]?.params as ModbusParams | undefined)?.pollIntervalMs).toBe(2000);
+    const params = connections[0]!.params as ModbusParams;
+    expect(params.host).toBe("10.0.0.9");
+    expect(params.port).toBe(8899);
+    expect(params.pollIntervalMs).toBe(2000);
+  });
+
+  test("nor the unit id and the connection the device already points at", async () => {
+    const { devices, connectionId } = await bootAfterTheOperatorMovedTheGateway();
     expect(devices[0]?.unitId).toBe(3);
-    expect(devices[0]?.connectionId).toBe(first?.connectionId);
+    expect(devices[0]?.connectionId).toBe(connectionId);
   });
 
   test("the adopt patch names the PROFILE and nothing else about the endpoint", async () => {
