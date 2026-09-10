@@ -618,10 +618,12 @@ class FakeMqttClient extends EventEmitter {
   }
 }
 let mqttClient: FakeMqttClient | null = null;
-// Third-party, so no spread rule applies — but `mqtt` is mocked by the bridge
-// suite too, so this still hands back whatever was in place before when this
-// suite is not the one running.
+// `mqtt` is mocked by the bridge suite too, so this spreads the real module and
+// passes calls through when it is not intercepting. The by-value snapshot is
+// what `afterAll` hands back: the namespace itself is live, so returning
+// `upstreamMqtt` would reinstall this very stub for every later file.
 const upstreamMqtt = await import("mqtt");
+const upstreamMqttExports = { ...upstreamMqtt };
 const upstreamConnect = upstreamMqtt.default.connect;
 mock.module("mqtt", () => ({
   ...upstreamMqtt,
@@ -794,6 +796,7 @@ afterAll(() => {
   // `realInverter.buildSource` is by now the stub, and `() => realInverter`
   // would restore the double instead of the module.
   intercepting = false;
+  mock.module("mqtt", () => ({ ...upstreamMqttExports }));
   mock.module("../settings/config", () => ({ ...realConfigExports }));
   mock.module("./endpoint", () => ({ ...realEndpointExports }));
   mock.module("./mqtt", () => ({ ...realBridgeExports }));

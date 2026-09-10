@@ -71,9 +71,15 @@ describe("violations", () => {
   // Third-party modules are a different situation: a test stubs `mqtt` wholesale
   // precisely so nothing real is reachable, and there is no in-repo import chain
   // to break.
-  test("third-party modules are not checked", () => {
-    expect(at(`mock.module("mqtt", () => ({ default: { connect: () => fake } }));`)).toEqual([]);
-    expect(at(`mock.module("node:fs", () => ({ readFileSync: () => "" }));`)).toEqual([]);
+  // Dependencies and builtins are checked TOO, since #218: `mock.module` is
+  // process-global whatever it names. The scope used to stop at first-party
+  // specifiers, and three suites stubbing `mqtt` partially is what broke the
+  // suite that dials a real broker — in CI only.
+  test("dependencies and builtins are checked as well", () => {
+    expect(at(`mock.module("mqtt", () => ({ default: { connect: () => fake } }));`)).toEqual([
+      "mqtt",
+    ]);
+    expect(at(`mock.module("node:fs", () => ({ readFileSync: () => "" }));`)).toEqual(["node:fs"]);
   });
 
   test("several mocks in one file are reported individually", () => {
@@ -192,6 +198,20 @@ describe("afterAllBodies", () => {
   });
 });
 
+describe("violations, over a dependency", () => {
+  // The same reason as above: a partial factory over `mqtt` deletes every other
+  // export of it for every file that runs afterwards.
+  test("a partial mock of a dependency is a violation", () => {
+    expect(at(`mock.module("mqtt", () => ({ default: { connect: () => fake } }));`)).toEqual([
+      "mqtt",
+    ]);
+  });
+
+  test("spreading the real dependency is fine", () => {
+    expect(at(`mock.module("mqtt", () => ({ ...realMqtt, connect: stub }));`)).toEqual([]);
+  });
+});
+
 describe("unrestored", () => {
   // The defect this encodes: `apps/server/src/prices/spot-price-job.test.ts`
   // stubbed `@SunReye/db/spot-price` with a correct spread — and the stub stayed
@@ -202,6 +222,29 @@ describe("unrestored", () => {
     expect(un(`mock.module("./config", () => ({ ...real, getMqttConfig: stub }));`)).toEqual([
       "./config",
     ]);
+  });
+
+  // `mock.module` is process-global whatever it names, so a DEPENDENCY left
+  // stubbed leaks exactly as far as a workspace module does. This rule used to
+  // stop at first-party specifiers, and the cost was four tests red in CI and
+  // green locally: three suites stub `mqtt` with `{ default: { connect } }`, and
+  // `apps/server/src/devices/reachability.test.ts` — which exists to dial a real
+  // broker — got that stub instead, so `client.end` was undefined. Only the
+  // SERIAL coverage run saw it: `--parallel` hands every file a fresh registry.
+  test("a dependency the file never hands back is a violation too", () => {
+    expect(un(`mock.module("mqtt", () => ({ default: { connect: () => fake } }));`)).toEqual([
+      "mqtt",
+    ]);
+  });
+
+  test("restoring a dependency in afterAll clears it", () => {
+    const source = [
+      `mock.module("mqtt", () => ({ ...realMqtt, connect: stub }));`,
+      `afterAll(() => {`,
+      `  mock.module("mqtt", () => ({ ...realMqttExports }));`,
+      `});`,
+    ].join("\n");
+    expect(un(source)).toEqual([]);
   });
 
   test("restoring the same specifier in afterAll clears it", () => {
@@ -269,9 +312,9 @@ describe("unrestored", () => {
 
   // Third-party modules are exempt exactly as they are from the spread rule:
   // nothing in this repo unit-tests `mqtt`, so nothing downstream can be fooled.
-  test("third-party modules are not checked", () => {
-    expect(un(`mock.module("mqtt", () => ({ connect: fake }));`)).toEqual([]);
-    expect(un(`mock.module("node:fs", () => ({ readFileSync: () => "" }));`)).toEqual([]);
+  test("dependencies and builtins must be handed back as well", () => {
+    expect(un(`mock.module("mqtt", () => ({ connect: fake }));`)).toEqual(["mqtt"]);
+    expect(un(`mock.module("node:fs", () => ({ readFileSync: () => "" }));`)).toEqual(["node:fs"]);
   });
 
   test("workspace packages and their subpaths count as first-party", () => {
@@ -421,12 +464,14 @@ describe("liveRestores", () => {
 
   // Third-party modules are exempt from this rule for the same reason as the
   // other two: no suite here unit-tests `mqtt`, so no later file is fooled.
-  test("third-party restores are not checked", () => {
+  // The live-namespace trap is the same trap over a dependency: `realMqtt` is a
+  // namespace, so handing it back reinstalls the stub.
+  test("a dependency restored from a live namespace is caught too", () => {
     const source = [
       `const realMqtt = await import("mqtt");`,
       `afterAll(() => mock.module("mqtt", () => ({ ...realMqtt })));`,
     ].join("\n");
-    expect(live(source)).toEqual([]);
+    expect(live(source)).toEqual(["mqtt"]);
   });
 
   test("each specifier is judged on its own", () => {
@@ -572,10 +617,13 @@ describe("main", () => {
         `mock.module("./config", () => ({ ...real, getMqttConfig: stub }));`,
         `afterAll(() => mock.module("./config", () => ({ ...realExports })));`,
       ].join("\n"),
-      "apps/web/src/lib/api-payload.test.ts": `mock.module("mqtt", () => ({ connect: fake }));`,
+      "apps/web/src/lib/api-payload.test.ts": [
+        `mock.module("mqtt", () => ({ ...realMqtt, connect: fake }));`,
+        `afterAll(() => mock.module("mqtt", () => ({ ...realMqttExports })));`,
+      ].join("\n"),
     });
     expect(await main(f.io)).toBe(0);
-    expect(f.stdout()).toContain("every workspace-module mock spreads the real module");
+    expect(f.stdout()).toContain("every mock spreads the real module");
     expect(f.err).toEqual([]);
     expect(f.read).toEqual([
       "apps/server/src/evcc.test.ts",
@@ -709,7 +757,7 @@ describe("main", () => {
       "b.test.ts": `mock.module("./b", () => ({ ...realB, y: 2 }));`,
     });
     expect(await main(f.io)).toBe(1);
-    expect(f.stderr()).toContain("Partial mock of a workspace module");
+    expect(f.stderr()).toContain("Partial mock of a module");
     expect(f.stderr()).toContain("a.test.ts:1");
     expect(f.stderr()).toContain("b.test.ts:1");
   });

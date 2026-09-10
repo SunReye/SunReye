@@ -76,11 +76,6 @@ const MOCK_CALL = /\bmock\s*\.\s*module\s*\(\s*['"]([^'"]+)['"]\s*,/g;
  */
 const AFTER_ALL_CALL = /\bafterAll\s*\(/g;
 
-/** Whether a specifier names something in this repo rather than a dependency. */
-function isWorkspaceModule(specifier: string): boolean {
-  return specifier.startsWith(".") || specifier.startsWith("@SunReye/");
-}
-
 /**
  * Escape hatch, for the case the rule genuinely cannot cover: importing the real
  * module runs the initialization the suite mocks it to avoid (`@SunReye/auth`
@@ -91,12 +86,12 @@ const SUPPRESSION = /mock-hygiene-ignore-next-line\s*--\s*\S/;
 
 export type Violation = { file: string; line: number; specifier: string };
 
-/** A `mock.module` call of a first-party module: where it is, and its text. */
+/** A `mock.module` call: where it is, and its text. */
 type MockCall = { specifier: string; line: number; body: string };
 
 /**
  * Every `mock.module` call in `region` that any of the rules could care about:
- * first-party specifier, not suppressed. This is the whole shared preamble, so
+ * any specifier, not suppressed. This is the whole shared preamble, so
  * each rule below is left holding only its own question.
  *
  * `region` is the text being walked and `offset` where that text begins in
@@ -108,14 +103,21 @@ type MockCall = { specifier: string; line: number; body: string };
  * The body runs from the call to its matching close paren, so a multi-line
  * factory is read whole.
  */
-function firstPartyMocks(source: string, region: string = source, offset = 0): MockCall[] {
+function mockedModules(source: string, region: string = source, offset = 0): MockCall[] {
   const calls: MockCall[] = [];
   for (const match of region.matchAll(MOCK_CALL)) {
     const specifier = match[1] as string;
     const before = source.slice(0, offset + match.index);
     const suppressed = SUPPRESSION.test(before.split("\n").at(-2) ?? "");
 
-    if (!isWorkspaceModule(specifier) || suppressed) continue;
+    // EVERY specifier, dependency or not. `mock.module` is process-global
+    // whatever it names, so a stubbed dependency leaks exactly as far as a
+    // stubbed workspace module. Restricting this to first-party specifiers cost
+    // four CI-only failures: three suites stub `mqtt` with `{ default: {
+    // connect } }`, and the suite that dials a REAL broker got that stub, so
+    // `client.end` was undefined. Only the serial coverage run saw it —
+    // `--parallel` hands every file a fresh module registry.
+    if (suppressed) continue;
 
     calls.push({ specifier, line: before.split("\n").length, body: callBody(region, match.index) });
   }
@@ -143,7 +145,7 @@ function mockedSpecifiers(text: string): string[] {
 }
 
 /**
- * Every workspace-module mock in `source` whose factory body has no spread.
+ * Every mock in `source` whose factory body has no spread.
  *
  * Any spread counts — insisting it be the first property would reject legitimate
  * orderings, and the failure mode of being lenient is a missed warning rather
@@ -151,13 +153,13 @@ function mockedSpecifiers(text: string): string[] {
  * partial factory is a defect wherever it is written.
  */
 export function violations(source: string, file: string): Violation[] {
-  return firstPartyMocks(source)
+  return mockedModules(source)
     .filter((call) => !call.body.includes("..."))
     .map(({ specifier, line }) => ({ file, line, specifier }));
 }
 
 /**
- * Every first-party module `source` stubs and never hands back.
+ * Every module `source` stubs and never hands back.
  *
  * A restore is an `afterAll` that calls `mock.module` again with the SAME
  * specifier — matched by specifier, since a file's unrelated teardown proves
@@ -172,7 +174,7 @@ export function violations(source: string, file: string): Violation[] {
  */
 export function unrestored(source: string, file: string): Violation[] {
   const restored = new Set(afterAllBodies(source).flatMap(mockedSpecifiers));
-  const leaked = firstPartyMocks(source).filter((call) => !restored.has(call.specifier));
+  const leaked = mockedModules(source).filter((call) => !restored.has(call.specifier));
   return oncePerSpecifier(leaked, file);
 }
 
@@ -194,7 +196,7 @@ function spreadsNamespace(body: string, namespaces: Set<string>): boolean {
 }
 
 /**
- * Every first-party module `source` "restores" by handing back a live namespace,
+ * Every module `source` "restores" by handing back a live namespace,
  * which restores nothing.
  *
  * This is the trap inside the fix for `unrestored`, and neither of the other two
@@ -213,7 +215,7 @@ export function liveRestores(source: string, file: string): Violation[] {
     [...source.matchAll(NAMESPACE_BINDING)].map((match) => match[1] as string),
   );
   const restores = afterAllCalls(source).flatMap(({ body, offset }) =>
-    firstPartyMocks(source, body, offset),
+    mockedModules(source, body, offset),
   );
   return oncePerSpecifier(
     restores.filter((call) => spreadsNamespace(call.body, namespaces)),
@@ -324,7 +326,7 @@ const RESTORE_EXAMPLE = [
 type Report = { found: Violation[]; heading: string; explanation: string[] };
 
 const PARTIAL_MESSAGE = {
-  heading: "✖ Partial mock of a workspace module:",
+  heading: "✖ Partial mock of a module:",
   explanation: [
     "  mock.module is process-global and permanent, so a factory returning only",
     "  the exports this suite needs deletes the rest for every test file that",
@@ -405,9 +407,7 @@ export async function main(io: HygieneIo = productionIo): Promise<number> {
   ].filter((report) => report.found.length > 0);
 
   if (reports.length === 0) {
-    io.log(
-      "✓ Mock hygiene: every workspace-module mock spreads the real module, and hands it back by value.",
-    );
+    io.log("✓ Mock hygiene: every mock spreads the real module, and hands it back by value.");
     return 0;
   }
 

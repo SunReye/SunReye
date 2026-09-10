@@ -74,7 +74,17 @@ const DEFAULT_EVCC_CONFIG = {
 };
 let evccConfig = { ...DEFAULT_EVCC_CONFIG };
 
-mock.module("mqtt", () => ({ default: { connect: () => fake } }));
+// `mqtt` is a dependency, but `mock.module` is process-global whatever it names:
+// a partial factory deletes its other exports, and the stub outlives this file.
+// Snapshotted BY VALUE and handed back in `afterAll` — the namespace is live, so
+// `() => realMqtt` would reinstall the stub.
+const realMqtt = await import("mqtt");
+const realMqttExports = { ...realMqtt };
+
+mock.module("mqtt", () => ({
+  ...realMqtt,
+  default: { ...realMqtt.default, connect: () => fake },
+}));
 mock.module("../settings/mqtt-broker-instance", () => ({
   ...realBrokerInstance,
   readBroker: async (connectionId: number | null) =>
@@ -171,6 +181,7 @@ afterEach(async () => {
 // `afterAll`, not `afterEach`: this file's own tests need the stubs until the
 // last one has run. From here on the real modules are back for everyone else.
 afterAll(() => {
+  mock.module("mqtt", () => ({ ...realMqttExports }));
   mock.module("../settings/mqtt-broker-instance", () => ({ ...realBrokerInstanceExports }));
   mock.module("../settings/evcc-settings", () => ({ ...realEvccSettingsExports }));
 });

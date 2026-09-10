@@ -1,5 +1,5 @@
 import { EventEmitter } from "node:events";
-import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
 import type { MqttParams } from "@SunReye/db/connection-kinds";
 import type { MqttConfig } from "@SunReye/db/mqtt-config";
 import type {
@@ -268,8 +268,16 @@ class FakeClient extends EventEmitter {
 let clients: FakeClient[] = [];
 let connectCalls: { url: string; opts: Record<string, unknown> }[] = [];
 
+// A dependency, and mocked the same way a workspace module has to be: the real
+// exports spread in so nothing else of `mqtt` is deleted, and snapshotted by
+// value so `afterAll` can hand the real module back to every later file.
+const realMqtt = await import("mqtt");
+const realMqttExports = { ...realMqtt };
+
 mock.module("mqtt", () => ({
+  ...realMqtt,
   default: {
+    ...realMqtt.default,
     connect: (url: string, opts: Record<string, unknown>) => {
       connectCalls.push({ url, opts });
       const client = new FakeClient();
@@ -278,6 +286,13 @@ mock.module("mqtt", () => ({
     },
   },
 }));
+
+// `afterAll`, not `afterEach`: this file's own tests need the double until the
+// last of them has run. From here on `mqtt` is the real module again for every
+// file that loads later — including the one that dials a real broker.
+afterAll(() => {
+  mock.module("mqtt", () => ({ ...realMqttExports }));
+});
 
 const { startMqttBridge } = await import("./mqtt");
 
