@@ -106,6 +106,10 @@ Load the relevant one when matching work:
 - Before digging through Fallow docs, fetch `https://docs.fallow.tools/llms.txt` and use it as page index.
 
 - Frontend work in `apps/web` → follow `apps/web/AGENTS.md`.
+- NixOS appliance work in `nixos/` → read `nixos/README.md` first. `bun run test` does not cover
+  it: the gate is `nix flake check ./nixos` (evaluation plus `tests/assertions.nix`, which proves
+  the refusals still refuse) and the boot test in CI. The `sunreye-setup` CLI is NOT in `nixos/` —
+  its source is `apps/appliance-cli/src`, so the TDD rule above applies to it in full.
 - Env var work anywhere → follow `packages/env/AGENTS.md` first.
 - Env schemas live only in `packages/env`. Do not duplicate env parsing/validation inside apps or feature packages.
 - Env package work in `packages/env` → follow `packages/env/AGENTS.md`.
