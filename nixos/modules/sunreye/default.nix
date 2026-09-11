@@ -178,12 +178,18 @@ in
       enable = mkEnableOption "weekly pg_dump snapshots" // { default = true; };
       keep = mkOption {
         type = types.ints.positive;
-        default = 4;
+        default = 2;
         description = ''
-          Snapshots to retain under {file}`/var/lib/sunreye/backups`. A custom-format
-          `pg_dump` of a compressed hypertable is a small fraction of the datadir,
-          so four is cheap — but it is not free, and the disk guard and the ballast
-          reserve are both sized assuming this exists and is bounded.
+          Snapshots to retain under {file}`/var/lib/sunreye/backups`.
+
+          Two, not a comfortable handful. Under the shipped retention policies raw
+          cannot be excluded from a dump — it is the only second-resolution record
+          past the minute tier's 90-day window, which is the condition
+          `safe_to_exclude_raw` in the addon's `dump.sh` refuses on — and
+          `pg_dump` re-expands compressed rows to their logical width, so a
+          snapshot is comparable to the datadir rather than a fraction of it.
+          Raise it only after measuring a dump on this box, and remember the
+          snapshots share a disk with the database they protect.
         '';
       };
     };

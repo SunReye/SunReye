@@ -22,11 +22,44 @@ the [Home Assistant addon](/deploy/home-assistant/) or [Compose](/deploy/docker/
 | Part | What to get | Why |
 | --- | --- | --- |
 | Mini PC | Intel N100 / N150, 8 GB RAM | Four cores is plenty; 8 GB leaves room for Home Assistant later |
-| Storage | **NVMe or SATA SSD**, 128 GB+ | Not eMMC. Years of 1 Hz ingest on eMMC is a wear problem you will meet |
+| Storage | **NVMe or SATA SSD**, 64 GB+ | Not eMMC, and capacity is about wear headroom, not space — see below |
 | Network | **Wired** Ethernet | There is no Wi-Fi setup path in the image, on purpose: a headless box that loses Wi-Fi is a box someone has to visit |
 | Inverter link | Modbus TCP, or an RS485→Ethernet gateway | Same requirement as every other deployment — see [Requirements](/deploy/requirements/) |
 
-A 256 GB SSD holds about five years of raw readings plus rollups and weekly backups.
+### How much disk it actually needs
+
+Less than people expect, and the reason is worth knowing: SunReye stores **changes, not
+samples**. The number of value changes per day is a property of the signal, not the
+sampler — so polling at 1 Hz for control quality costs the same storage as a 30-second
+logger, and device count scales the footprint while poll rate does not.
+
+Measured, compressed, per inverter:
+
+| | |
+| --- | --- |
+| Raw readings (kept **5 years**) | **361 MB/year** → 1.8 GB at full retention |
+| Minute rollups (90-day resolution window) | ~85 MB/year, so ~21 MB at steady state |
+| Hourly rollups (kept 10 years) | ~4.9 kB/metric/year — tens of MB |
+| Daily rollups | kept forever, negligible |
+
+The system itself is the bigger line item: a **3.2 GiB** NixOS closure (both container
+images included), another ~0.6 GiB once podman unpacks them, and a 2 GiB
+[emergency reserve](#troubleshooting). Call it **~6 GB before a single reading**, ~8 GB
+after five years with one inverter, plus a few generations of update history.
+
+So 64 GB is comfortable and 128 GB is generous. Buy the larger part for endurance — more
+spare area means less write amplification — not because you will run out of room.
+
+:::caution[This assumes your profile authors deadbands]
+Those figures depend on the installed [inverter profile](/profiles/concept/) declaring
+per-metric `deadband` values. Without them the analog registers store every bit of sensor
+noise and raw runs roughly **5.5× heavier** — about 10 GB per inverter over five years
+instead of 1.8. Still fine on a 64 GB disk; not fine on the 32 GB part you might have been
+tempted by.
+:::
+
+Retention, not disk size, is what bounds your history. It is set by the server's
+migrations and is the same on every deployment channel.
 
 ## Flash it
 
@@ -186,13 +219,27 @@ Supervisor backups. If you want the full HAOS experience, run HAOS and use the
 
 ## Backups
 
-A `pg_dump` runs weekly into `/var/lib/sunreye/backups`, keeping the last four. They are
-small, because the raw metrics are compressed — but they are on the same disk as the
-database, so copy them somewhere else if the data matters to you:
+A `pg_dump` runs weekly into `/var/lib/sunreye/backups`, keeping the last two.
+
+**They are not small.** The dump has to include the raw readings — past the minute
+tier's 90-day window they are the only second-resolution record there is — and `pg_dump`
+writes logical rows, so the ~5 bytes a compressed reading occupies on disk expands to
+~227 bytes on the way out before the dump's own compression claws some of it back. A
+snapshot is comparable in size to the database itself, not a fraction of it. That is why
+the default is two, and why the job refuses to run when free space is below the database
+size rather than filling the disk it is supposed to be protecting.
+
+They also live on the same disk as the database, which protects you from very little. Copy
+them off if the history matters:
 
 ```bash
 scp root@sr-xxxx:/var/lib/sunreye/backups/*.dump .
 ```
+
+:::note[Restore serially]
+`pg_restore -j` silently corrupts a TimescaleDB catalog — rows go missing with no error.
+Restore without `-j`.
+:::
 
 ## Health beacon
 

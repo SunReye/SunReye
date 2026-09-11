@@ -52,7 +52,13 @@ lib.mkIf (config.appliance.enable && cfg.enable && cfg.backup.enable) {
       mv "$out.partial" "$out"
       echo "wrote $out ($(du -h "$out" | cut -f1))"
 
-      # Prune by count, newest kept. Partials from a previous failed run go too.
+      # Prune AFTER the new dump is in place, never before: deleting a known-good
+      # snapshot to make room for one that has not been written yet is how a
+      # backup schedule ends up with nothing. The cost is that the disk holds
+      # keep+1 for the length of one dump, which the preflight above accounts for
+      # because it reads free space with the existing snapshots already on disk.
+      #
+      # Partials from a previous failed run go too.
       rm -f ${backupDir}/*.partial
       ls -1t ${backupDir}/sunreye-*.dump 2>/dev/null \
         | tail -n +$((${toString cfg.backup.keep} + 1)) \
