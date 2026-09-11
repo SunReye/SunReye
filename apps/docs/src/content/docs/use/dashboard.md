@@ -49,6 +49,18 @@ Below the KPIs, one card per subsystem present in the profile:
 - **Grid · N-phase** — per-phase voltage / current / power (1- or 3-phase).
 - **Generator** and **Backup load** — shown when the profile has them.
 
+## Install on your phone
+
+The dashboard is a progressive web app: open it in a mobile browser and use **Install app**
+(Chrome / Edge on Android) or **Share → Add to Home Screen** (Safari on iOS) to get a
+full-screen icon on the home screen. There is no offline mode — the app needs the live
+socket — and nothing is cached, so an upgraded server always loads the matching UI.
+
+Install from a URL you can open on its own: a direct port, a reverse-proxy hostname, or the
+compose `web` service. The Home Assistant sidebar embeds the app in an iframe behind an ingress
+session that only the HA frontend keeps alive, so an icon pinned to that URL logs you out — see
+[Direct access](/deploy/home-assistant/#options-worth-knowing) for opening the addon's port.
+
 ## Related
 
 - Dig into any metric over time in [History & Analytics](/use/history/).
