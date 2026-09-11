@@ -1,0 +1,242 @@
+name: NixOS image
+
+# Three jobs, three different questions.
+#
+#  • On a PR that touches nixos/**: does the appliance still evaluate, are its
+#    refusals still refusals, and does it BOOT with the dashboard answering?
+#    Nothing else in the repo executes this deployment channel — the route smoke
+#    runs the server from source, the browser suite fakes the backend, and
+#    compose is a different assembly.
+#  • On a published server release: build the image, attach it to the release,
+#    and only then advance `stable`, which is the ref every box tracks. The
+#    order is the same "images first, then advertise" rule the Home Assistant
+#    addon follows (docker-addon.yml), and for the same reason: a config that
+#    names a container tag GHCR does not have yet is a box whose dashboard
+#    vanishes overnight.
+#  • On demand: an image from any ref, for a bench unit.
+
+on:
+  pull_request:
+    paths:
+      - "nixos/**"
+      - "apps/appliance-cli/**"
+      - ".github/workflows/nixos-image.yml"
+  workflow_run:
+    workflows: ["Docker · server"]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Ref to build the image from"
+        type: string
+        default: ""
+
+permissions:
+  contents: write
+
+concurrency:
+  group: nixos-image-${{ github.event.pull_request.number || github.event.workflow_run.head_branch || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  check:
+    name: NixOS image
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # The GitHub runner has /dev/kvm but it is root-owned, and the VM test runs
+      # as the build user. Without this the boot test silently falls back to TCG
+      # and takes long enough to hit the job timeout.
+      - name: Give the build user the KVM device
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          ls -l /dev/kvm
+
+      - uses: DeterminateSystems/nix-installer-action@main
+        with:
+          extra-conf: |
+            system-features = nixos-test benchmark big-parallel kvm
+            accept-flake-config = true
+
+      # Evaluation and the refusal checks. Cheap, no KVM, and the thing most
+      # likely to be broken by a change — so it runs before the 20-minute boot.
+      - name: Evaluate, and prove the refusals still refuse
+        run: nix flake check ./nixos --print-build-logs
+
+      - name: Build the boot test
+        run: nix build ./nixos#vmTest --print-build-logs
+
+      # `-display none` and a serial console: the report the guest prints is the
+      # only output, so it has to reach stdout. The guest powers itself off after
+      # the report, and 25 minutes is the ceiling for "it hung instead".
+      - name: Boot it
+        id: boot
+        run: |
+          set -o pipefail
+          timeout 25m ./result/bin/run-*-vm \
+            -display none -serial mon:stdio -no-reboot 2>&1 | tee boot.log || true
+          test -s boot.log
+
+      - name: The dashboard has to answer, and the login window has to open
+        run: |
+          sed -n '/VMTEST REPORT/,/END REPORT/p' boot.log
+
+          fail=0
+          # A 200 from /healthz is the whole stack in one fact: the store image
+          # loaded, podman started it, the datadir initialised, the migrations
+          # ran, and the server is serving. Anything less is a box that boots to
+          # a blank page.
+          grep -q '^healthz: 200' boot.log || { echo "::error::/healthz did not answer 200"; fail=1; }
+          # Without this, a published image is one nobody can adopt: there is no
+          # key in it, so the browser login is the ONLY enrolment path.
+          grep -q '^tailscale-web: active' boot.log \
+            || { echo "::error::the Tailscale login window did not open"; fail=1; }
+          grep -q '^setup-show: ok' boot.log || { echo "::error::sunreye-setup show failed"; fail=1; }
+          grep -q '^secrets:   present' boot.log \
+            || { echo "::error::first-boot secrets were not generated"; fail=1; }
+          exit $fail
+
+      - name: Keep the boot log whatever happened
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: appliance-boot-log
+          path: boot.log
+          retention-days: 14
+
+  publish:
+    name: Publish appliance image
+    # Only for a real server release. A nightly or a dispatch of the image
+    # workflow must not move `stable`: boxes track it unattended, and a nightly
+    # is not a version anyone chose to ship.
+    if: >-
+      github.event_name == 'workflow_run' &&
+      github.event.workflow_run.conclusion == 'success' &&
+      startsWith(github.event.workflow_run.head_branch, 'server-v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: master
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: DeterminateSystems/nix-installer-action@main
+
+      - name: Resolve the released version
+        id: v
+        run: |
+          tag='${{ github.event.workflow_run.head_branch }}'
+          echo "version=${tag#server-v}" >> "$GITHUB_OUTPUT"
+
+      # The digest is a pair with the fixed-output hash, and both have to be
+      # rewritten together — a digest bumped alone fails the build with a hash
+      # mismatch, which is the safe direction but still a red release.
+      - name: Repin the server image to the published version
+        run: |
+          version='${{ steps.v.outputs.version }}'
+          image="ghcr.io/sunreye/sunreye-server"
+
+          digest=$(nix run nixpkgs#skopeo -- inspect --raw "docker://$image:$version" \
+            | nix run nixpkgs#coreutils -- sha256sum | cut -d' ' -f1)
+          digest="sha256:$digest"
+          hash=$(nix run nixpkgs#nix-prefetch-docker -- \
+            --image-name "$image" --image-digest "$digest" \
+            --final-image-tag "$version" --arch amd64 --os linux 2>/dev/null \
+            | grep '^-> ImageHash:' | awk '{print $3}')
+          test -n "$hash"
+
+          jq --arg v "$version" '.version = $v' nixos/version.json > nixos/version.json.new
+          mv nixos/version.json.new nixos/version.json
+
+          # Bounded to the server block: the timescaledb pin above it moves only
+          # when docker/timescaledb/Dockerfile does, and rewriting it here would
+          # silently migrate everyone's datadir.
+          python3 - "$digest" "$hash" <<'PY'
+          import re, sys
+          digest, hash_ = sys.argv[1], sys.argv[2]
+          path = "nixos/modules/sunreye/images.nix"
+          text = open(path).read()
+          head, sep, server = text.partition("  server = pkgs.dockerTools.pullImage {")
+          assert sep, "could not find the server image block"
+          server = re.sub(r'imageDigest = "[^"]*";', f'imageDigest = "{digest}";', server, count=1)
+          server = re.sub(r'hash = "[^"]*";', f'hash = "{hash_}";', server, count=1)
+          open(path, "w").write(head + sep + server)
+          PY
+
+          git diff --stat
+
+      - name: Commit to master
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          if git diff --quiet -- nixos/; then
+            echo "nixos/ already names ${{ steps.v.outputs.version }} — nothing to publish"
+            exit 0
+          fi
+          git add nixos/version.json nixos/modules/sunreye/images.nix
+          git commit -m "chore(nixos): publish ${{ steps.v.outputs.version }} [skip ci]"
+          git push origin HEAD:master
+
+      - name: Build the image
+        run: |
+          nix build ./nixos#image --print-build-logs
+          nix path-info -Sh ./result
+
+      - name: Compress and checksum
+        id: artifact
+        run: |
+          name="sunreye-appliance-${{ steps.v.outputs.version }}.img.zst"
+          # The raw image is sparse and mostly zeroes; zstd -19 takes it to a
+          # size someone can download over a domestic connection.
+          nix run nixpkgs#zstd -- -T0 -19 --no-progress \
+            -o "$name" result/nixos.img
+          sha256sum "$name" > "$name.sha256"
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+          ls -lh "$name"
+
+      - name: Attach to the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload '${{ github.event.workflow_run.head_branch }}' \
+            '${{ steps.artifact.outputs.name }}' \
+            '${{ steps.artifact.outputs.name }}.sha256' --clobber
+
+      # LAST. `stable` is what every deployed box's nightly upgrade follows, so
+      # it must only ever point at a commit whose container images AND flashable
+      # image both exist. Fast-forwarding it before the upload would hand boxes a
+      # version whose artifacts are still building.
+      - name: Advance stable
+        run: git push --force origin HEAD:stable
+
+  bench:
+    name: Bench image
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+
+      - uses: DeterminateSystems/nix-installer-action@main
+
+      - name: Build
+        run: nix build ./nixos#image --print-build-logs
+
+      - name: Compress
+        run: |
+          nix run nixpkgs#zstd -- -T0 -19 --no-progress -o bench.img.zst result/nixos.img
+          sha256sum bench.img.zst > bench.img.zst.sha256
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sunreye-appliance-bench
+          path: |
+            bench.img.zst
+            bench.img.zst.sha256
+          retention-days: 90
