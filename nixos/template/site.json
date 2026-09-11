@@ -1,0 +1,22 @@
+{
+  "timeZone": "UTC",
+  "inverter": {
+    "host": null,
+    "port": 502,
+    "unitId": 1,
+    "transport": "tcp",
+    "simulate": true,
+    "profile": null
+  },
+  "lan": {
+    "mode": "none",
+    "siteId": null
+  },
+  "tls": "both",
+  "tailscale": {
+    "enable": true
+  },
+  "ssh": {
+    "authorizedKeys": []
+  }
+}

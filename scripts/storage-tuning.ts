@@ -227,9 +227,15 @@ export function parseComposePgFlags(yaml: string): Record<string, string> {
 export function databaseImages(yaml: string): string[] {
   const refs: string[] = [];
   for (const line of yaml.split("\n")) {
-    const match = /^\s*image:\s*(\S+)\s*$/.exec(line);
-    if (!match?.[1]) continue;
-    if (/timescale|postgres/i.test(match[1])) refs.push(match[1]);
+    // Two syntaxes, one meaning: `image: ref` (YAML — compose and the workflows)
+    // and `image = "ref";` (Nix — the appliance's images.nix). Anchored on the
+    // whole attribute name so `imageFile`, which names a store path and not a
+    // registry ref, is not mistaken for a declaration, and a `#`-commented line
+    // is not one either.
+    const match = /^\s*image\s*(?::\s*(\S+)|=\s*"([^"]+)"\s*;?)\s*$/.exec(line);
+    const ref = match?.[1] ?? match?.[2];
+    if (ref === undefined) continue;
+    if (/timescale|postgres/i.test(ref)) refs.push(ref);
   }
   return refs;
 }
@@ -323,6 +329,10 @@ export const DB_IMAGE_SURFACES = [
   "docker/docker-compose.yml",
   ".github/workflows/ci.yml",
   ".github/workflows/db-restore.yml",
+  // The NixOS appliance bakes the image into a flashed artifact, which makes it
+  // the surface where drift is least recoverable: a compose user pulls a new
+  // tag, a box in someone's house does not.
+  "nixos/modules/sunreye/images.nix",
 ] as const;
 
 /** Compose files that start a postgres with `-c` flags. */

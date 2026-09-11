@@ -333,6 +333,8 @@ const GOOD_FILES: Record<string, string> = {
   "docker-compose.db.yml": TUNED_COMPOSE,
   ".github/workflows/ci.yml": `        image: ${REQUIRED_DB_IMAGE}\n`,
   ".github/workflows/db-restore.yml": `        image: ${REQUIRED_DB_IMAGE}\n`,
+  // Nix, not YAML: the appliance names the image as an attribute.
+  "nixos/modules/sunreye/images.nix": `  image = "${REQUIRED_DB_IMAGE}";\n`,
   ".github/workflows/db-image.yml":
     "  IMAGE: ghcr.io/sunreye/timescaledb\n          file: docker/timescaledb/Dockerfile\n",
   "sunreye/Dockerfile": TUNED_DOCKERFILE,
@@ -974,6 +976,34 @@ describe("one database image across every surface", () => {
       expect(databaseImages(read(surface))).toEqual([REQUIRED_DB_IMAGE]);
     });
   }
+
+  /**
+   * The NixOS appliance is a surface too, and it is a Nix expression rather than
+   * YAML — `image = "…";`, not `image: …`. The parser has to see both, or the one
+   * deployment channel that bakes the image into a flashed artifact is the one
+   * channel nothing checks. That is the worst place for the drift to live: a
+   * compose user can pull a new tag, a flashed box cannot.
+   */
+  test("the parser reads a Nix attribute as well as a YAML key", () => {
+    expect(databaseImages('  image = "ghcr.io/sunreye/timescaledb:pg17-ts2.28.2";')).toEqual([
+      "ghcr.io/sunreye/timescaledb:pg17-ts2.28.2",
+    ]);
+    // With or without the trailing semicolon, and indented as Nix indents.
+    expect(databaseImages('    image = "ghcr.io/sunreye/timescaledb:pg17-ts2.28.2"')).toEqual([
+      "ghcr.io/sunreye/timescaledb:pg17-ts2.28.2",
+    ]);
+  });
+
+  test("a commented-out image is not a declaration", () => {
+    expect(databaseImages('  # image = "ghcr.io/sunreye/timescaledb:pg17-ts2.28.2";')).toEqual([]);
+    expect(databaseImages("  # image: ghcr.io/sunreye/timescaledb:pg17-ts2.28.2")).toEqual([]);
+  });
+
+  test("an unrelated attribute that happens to end in `image` is not one", () => {
+    expect(databaseImages('  imageFile = "ghcr.io/sunreye/timescaledb:pg17-ts2.28.2";')).toEqual(
+      [],
+    );
+  });
 
   test("the gate names the file that drifts", () => {
     const { code, errors } = runShipped(policies);
