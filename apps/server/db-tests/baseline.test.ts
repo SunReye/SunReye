@@ -374,7 +374,16 @@ suite("the 2.0.0 baseline schema", () => {
         await db.execute(sql`call refresh_continuous_aggregate(
           ${sql.raw(`'${tier}'`)}, '2026-01-01Z'::timestamptz, '2026-01-03Z'::timestamptz)`);
       }
-    });
+      // An explicit budget, because 5s is bun's DEFAULT, not a number anyone chose
+      // for materialising continuous aggregates. This test calls
+      // refresh_continuous_aggregate once per tier against an instance that may be
+      // seconds old: the same file measures 734ms against a warm database and 2.0s
+      // against one that has just finished initdb, and on a shared CI runner it
+      // crossed the default twice, failing the branch with `this test timed out
+      // after 5000ms`. The work is IO-bound on a machine that is not ours, so the
+      // ceiling is set to be meaningless in the healthy case while still catching
+      // a genuine hang.
+    }, 60_000);
 
     test("time_weight attributes a midnight-spanning hold to both buckets", async () => {
       // 23:00 bucket: 100 held 23:50 -> 00:00.
