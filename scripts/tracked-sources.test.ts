@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { execFileSync } from "node:child_process";
+import { execFileSync, execSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 
 /**
  * A source file that `.gitignore` swallows is invisible in every direction: the
@@ -81,5 +82,48 @@ describe("tracked sources", () => {
 
   test("no ignore rule matches a source file that is already tracked", () => {
     expect(matchedByIgnoreRule(trackedSources())).toEqual([]);
+  });
+});
+
+/**
+ * `.gitignore` was only half of it.
+ *
+ * The build context has its own ignore file, with its own copy of the same
+ * mistake: a doubled-star `build` (and `dist`) matches at every depth, so a
+ * source directory
+ * that happens to carry the name is dropped before `docker build` ever reads it.
+ * git then tracks the file, every local check passes, and the image build alone
+ * fails — `Cannot find module '../src/lib/build/relativize-fallback'` — which is
+ * the same symptom, one layer further out, and traced back to a different file.
+ *
+ * The rule is about the SHAPE of the pattern: an unanchored bare name matches
+ * everything called that, anywhere. This flags one only when a real source
+ * directory actually carries the name, so node_modules and .turbo stay
+ * quiet while the doubled-star `build` does not.
+ */
+describe("build context", () => {
+  test("no ignore pattern swallows a source directory", () => {
+    const patterns = readFileSync(".dockerignore", "utf8")
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => line && !line.startsWith("#") && !line.startsWith("!"));
+
+    // Directories that exist under a source root, by their bare name.
+    const sourceDirs = new Set(
+      execSync("git ls-files -z", { encoding: "buffer" })
+        .toString("utf8")
+        .split("\0")
+        .filter((path) => SOURCE_ROOT.test(path))
+        .flatMap((path) => path.split("/").slice(0, -1)),
+    );
+
+    const swallowed = patterns
+      .map((pattern) => ({ pattern, name: pattern.replace(/^\*\*\//, "") }))
+      // Anchored (`/build`, `apps/*/build`) and extension patterns are precise by
+      // construction; only a bare name reaches everywhere.
+      .filter(({ name }) => !name.includes("/") && !name.includes("*"))
+      .filter(({ name }) => sourceDirs.has(name));
+
+    expect(swallowed.map(({ pattern }) => pattern)).toEqual([]);
   });
 });
