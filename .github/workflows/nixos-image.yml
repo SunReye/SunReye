@@ -143,10 +143,6 @@ jobs:
           # a bare 502 once, which distinguishes nothing.
           grep -q '^first-boot-down: explains itself' report.txt \
             || { echo "::error::a closed window does not explain itself: $(grep '^first-boot-down:' report.txt)"; fail=1; }
-          # The banner an operator sees on the way in. Every guard on it fails
-          # closed, so "never fires" and "not configured" look identical.
-          grep -q '^login-banner: shown' report.txt \
-            || { echo "::error::the login banner does not appear on an interactive shell"; fail=1; }
           # Somebody standing at the box has to be able to get in. This is the
           # only probe here that is not reachable over the network, and it is the
           # one that was missing while root sat locked for weeks.

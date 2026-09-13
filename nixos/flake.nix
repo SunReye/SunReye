@@ -136,6 +136,13 @@
           guard = self.nixosConfigurations.appliance.config.appliance.sunreye.pgMajorGuardPackage;
         };
 
+        # Does the banner an operator sees actually draw? Its guards all fail
+        # closed, and one of them is added by nixpkgs below our own text.
+        login-banner = import ./tests/login-banner.nix {
+          inherit pkgs;
+          bashrc = self.nixosConfigurations.appliance.config.environment.etc."bashrc".source;
+        };
+
         # Same question, asked of the box's own status report.
         health-report = import ./tests/health-report.nix {
           inherit pkgs;
