@@ -455,11 +455,18 @@ describe("release configuration", () => {
   }
 
   /**
-   * Private workspace libraries whose tags are a changelog anchor rather than a
-   * download. They publish nothing on purpose; the tag is how a consumer of the
-   * monorepo dates a behaviour change in them.
+   * Private workspace libraries that publish nothing under their own name, but
+   * whose CODE ships inside a package that does. `@SunReye/inverter-core` is a
+   * devDependency of the SDK precisely so tsdown inlines it into `dist` — an npm
+   * consumer of `@sunreye/profile-sdk` is running inverter-core's bytes. Its
+   * version therefore describes something real, which is what separates it from
+   * a component like `web` that shipped nowhere at all.
+   *
+   * The entries are checked, not trusted: each must still be a workspace
+   * dependency of a publishable package below. Drop that dependency and the
+   * justification for the tag disappears with it.
    */
-  const VERSION_ONLY = ["packages/inverter-core"];
+  const BUNDLED_INTO_PUBLISHED = ["packages/inverter-core"];
 
   const config = async () => JSON.parse(await read("release-please-config.json")) as ReleaseConfig;
 
@@ -469,7 +476,7 @@ describe("release configuration", () => {
 
     const shipsNothing: string[] = [];
     for (const [path, entry] of Object.entries(packages)) {
-      if (VERSION_ONLY.includes(path)) continue;
+      if (BUNDLED_INTO_PUBLISHED.includes(path)) continue;
 
       // `release-type: simple` components (the addon) carry no package.json at
       // all; their artifact is an image, which the workflow check below covers.
@@ -486,6 +493,27 @@ describe("release configuration", () => {
     }
 
     expect(shipsNothing).toEqual([]);
+  });
+
+  it("a component that publishes nothing is bundled into one that does", async () => {
+    const publishedManifests = await Promise.all(
+      Object.keys((await config()).packages)
+        .filter((path) => !BUNDLED_INTO_PUBLISHED.includes(path))
+        .map(async (path) => {
+          const file = path === "." ? "package.json" : `${path}/package.json`;
+          return existsSync(at(file)) ? await read(file) : "";
+        }),
+    );
+
+    const orphaned: string[] = [];
+    for (const path of BUNDLED_INTO_PUBLISHED) {
+      const { name } = JSON.parse(await read(`${path}/package.json`)) as { name: string };
+      // A workspace dependency is how the code gets into someone else's bundle.
+      const consumed = publishedManifests.some((manifest) => manifest.includes(`"${name}"`));
+      if (!consumed) orphaned.push(`${path} (${name})`);
+    }
+
+    expect(orphaned).toEqual([]);
   });
 
   it("the dashboard counts as a change to the artifact that carries it", async () => {
