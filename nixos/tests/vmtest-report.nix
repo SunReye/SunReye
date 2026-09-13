@@ -186,7 +186,13 @@
       # offline half — the file is there, git can see it (nixos-rebuild ignores
       # what git does not track, which presents as "my setting did nothing"), and
       # the attribute the nightly timer rebuilds is one the flake declares.
-      attr=$(systemctl cat nixos-upgrade.service 2>/dev/null \
+      # The flags are NOT in the unit file: a systemd service with a `script`
+      # gets an ExecStart pointing at a generated start script in the store, and
+      # the command line lives inside that. Reading only `systemctl cat` finds
+      # nothing and reports a broken box that is fine.
+      start=$(systemctl show -p ExecStart --value nixos-upgrade.service 2>/dev/null \
+        | sed -n 's|.*path=\([^ ;]*\).*|\1|p' | head -1)
+      attr=$( { systemctl cat nixos-upgrade.service 2>/dev/null; cat "$start" 2>/dev/null; } \
         | sed -n 's|.*--flake /etc/nixos#\([A-Za-z0-9_-]*\).*|\1|p' | head -1)
       if [ ! -e /etc/nixos/flake.nix ]; then
         echo "config-tree: no flake.nix — this box cannot rebuild itself"
