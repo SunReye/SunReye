@@ -62,7 +62,7 @@ Variables below are marked:
 | `HISTORY_FLUSH_INTERVAL_MS` | number | `5000` | **env-only** | How often buffered history rows are flushed to TimescaleDB in one transaction. Batching cuts SSD write wear (TBW) at 1 Hz; live data is unaffected (served from memory). A crash can lose at most this window of history. Set ≤ poll interval to disable batching. |
 
 Two connection fields are DB-only (no env seed): **transport** (`tcp` / `rtu-over-tcp`) and
-**timeout** (default 2000 ms). Set them from [Settings → Inverter](/use/settings/).
+**timeout** (default 2000 ms). Set them from [Settings → Devices](/use/settings/#devices).
 
 ## Integration API
 

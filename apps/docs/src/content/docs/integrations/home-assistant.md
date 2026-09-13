@@ -9,16 +9,16 @@ select), grouped under one device, with availability wired up. No manual YAML.
 
 ## Prerequisites
 
-- The [MQTT bridge](/integrations/mqtt/) must be enabled and connected to the same broker
-  Home Assistant uses.
+- The [MQTT bridge](/integrations/mqtt/) — the *Home Assistant export* integration — must be
+  enabled on a broker connection, and that broker must be the one Home Assistant uses.
 - Home Assistant's MQTT integration must be configured against that broker.
 
 ## Enabling
 
-From [Settings → MQTT & Home Assistant](/use/settings/), turn on **Home Assistant
-discovery** (this reveals the discovery prefix field, default `homeassistant`). Or seed it
-via `HA_DISCOVERY_ENABLED` / `HA_DISCOVERY_PREFIX` in the
-[environment](/reference/environment/).
+Open [Settings → Devices](/use/settings/#devices), find the **Home Assistant export** row under
+your broker, hit **Edit**, and turn on **Home Assistant discovery** — which reveals the
+discovery prefix field (default `homeassistant`). Or seed it via `HA_DISCOVERY_ENABLED` /
+`HA_DISCOVERY_PREFIX` in the [environment](/reference/environment/).
 
 Discovery configs are (re)published on every broker connect, so they survive broker
 restarts.

@@ -3,9 +3,11 @@ title: Architecture
 description: How the inverter profile drives the dashboard, the API, and the MQTT topics.
 ---
 
-Everything in SunReye derives from one thing: the **active inverter profile**. The profile
-is data — a register map plus semantic metadata — and every surface (the dashboard, the
-REST API, the MQTT topics, Home Assistant discovery) generates itself from it.
+Everything in SunReye derives from one thing: the **inverter profile**. The profile is data —
+a register map plus semantic metadata — and every surface (the dashboard, the REST API, the
+MQTT topics, Home Assistant discovery) generates itself from it. A plant is a roster of
+[devices](/use/settings/#devices), each carrying its own profile, reached through a connection
+and read either one at a time or aggregated by role.
 
 ```
 Inverter (Modbus TCP)  ──►  Core engine (Elysia)  ──►  TimescaleDB (time-series)
@@ -20,11 +22,18 @@ Inverter (Modbus TCP)  ──►  Core engine (Elysia)  ──►  TimescaleDB (
 ## The flow
 
 1. The **core engine** ([`apps/server`](https://github.com/SunReye/SunReye/tree/master/apps/server))
-   polls the inverter over Modbus TCP once a second (the "God loop"). No inverter? A
-   [built-in simulator](/start/quick-start/) generates coherent fake metrics.
-2. Each sample is **broadcast** to browsers over the live WebSocket (`/ws`, topic
-   `metrics`) and
-   **persisted** to TimescaleDB in *narrow* form — one row per metric per tick.
+   polls the device over Modbus at the interval its
+   [gateway](/use/settings/#devices) is configured with — a second or two, as fast as the
+   hardware answers. No inverter? A [built-in simulator](/start/quick-start/) generates
+   coherent fake metrics.
+2. Each sample is **broadcast** to browsers over the live WebSocket (`/ws`, topic `metrics`)
+   in full, and **persisted** to TimescaleDB in *narrow* form — one row per metric, written
+   when the value moves past that metric's deadband. A stored row is therefore an **interval**
+   ("this value held for this long"), not a sample, which is what lets the rollups compute a
+   *time-weighted* mean; every interval is closed at its bucket boundary, so a dead-flat metric
+   still writes one row per bucket and no heartbeat timer has to be armed. The live picture is
+   every tick; the stored history is every *change*, which is what keeps years of telemetry on
+   a modest SSD.
 3. The **manifest** — a capability description built from the profile at boot — drives the
    [SvelteKit dashboard](/use/dashboard/), the auto-generated [REST API](/integrations/rest-api/),
    and the [MQTT bridge](/integrations/mqtt/). Nothing hard-codes vendor register keys.
