@@ -379,6 +379,41 @@ in
         description = "The appliance-health-report program this module builds.";
       };
 
+      loginBanner = mkOption {
+        type = types.bool;
+        default = true;
+        description = ''
+          Print the health report when someone opens an interactive shell.
+
+          A Tailscale SSH session otherwise lands on a bare prompt on a machine
+          nobody has touched in months — no version, no inverter, no sign that
+          anything is wrong. Interactive login shells only, and once per
+          session, so `ssh box 'cmd'` is not a status report with the output
+          buried in it.
+        '';
+      };
+
+      publicTlsPort = mkOption {
+        type = types.nullOr types.port;
+        default = null;
+        example = 443;
+        description = ''
+          Port that is supposed to serve a PUBLICLY-TRUSTED certificate for this
+          box's tailnet name. Null means nothing here claims to.
+
+          Named by the layer that owns the proxy, rather than derived here, for
+          the same reason as {option}`appliance.health.watchUnits`: this module
+          knows nothing about what the box runs.
+
+          The failure it exists for is silent and costs an hour to find.
+          Tailscale issues certificates only when HTTPS Certificates are enabled
+          for the tailnet — off by default — and when they are not, the proxy
+          falls back to its internal CA exactly as designed. The owner sees a
+          browser warning on a URL that is supposed to be clean, with nothing
+          anywhere saying the cause is one toggle in an admin console.
+        '';
+      };
+
       webhook = mkOption {
         type = types.nullOr types.path;
         default = null;

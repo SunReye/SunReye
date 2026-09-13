@@ -51,7 +51,12 @@ pkgs.runCommand "health-report-runs"
 
   # An empty field is the symptom a passing exit code hides, so the fields that
   # do not need a booted system are asserted to carry a value.
-  for field in "uptime:" "disk:" "memory:" "watchdog:"; do
+  # `tailnet-cert:` is the newest of these and the most likely to be a blank:
+  # it shells out to openssl, which is exactly the kind of tool that is missing
+  # from a wrapper's PATH. Unenrolled here, so it reports that and stops — the
+  # branch that actually calls openssl only runs on an enrolled box, and is
+  # verified there rather than pretended at here.
+  for field in "uptime:" "disk:" "memory:" "watchdog:" "tailnet-cert:"; do
     line=$(printf '%s\n' "$printed" | grep -m1 "^$field" || true)
     value=''${line#"$field"}
     if [ -z "$(printf '%s' "$value" | tr -d '[:space:]')" ]; then
@@ -60,6 +65,22 @@ pkgs.runCommand "health-report-runs"
       exit 1
     fi
   done
+
+  # The certificate branch calls openssl, and nothing above reaches it: this
+  # sandbox has no tailnet, so the report stops at "not enrolled". Asserting the
+  # tool is on the SHIPPED program's PATH is the part that can be checked here —
+  # measured, removing openssl from runtimeInputs left every assertion above
+  # green, which is precisely the shape of the `uptime -p` defect this file
+  # exists for.
+  # Anchored to the PATH line, not the file: `grep openssl` over the whole
+  # script matches the command name in the branch itself, so it passes with the
+  # tool absent. Measured — the first version of this assertion was green
+  # against exactly the mutation it was written to catch.
+  if ! grep -m1 '^export PATH=' "$(command -v appliance-health-report)" | grep -q 'openssl'; then
+    echo "openssl is not on the report's PATH, so the certificate branch would" >&2
+    echo "print a blank on every enrolled box and nothing here would notice." >&2
+    exit 1
+  fi
 
   touch "$out"
 ''

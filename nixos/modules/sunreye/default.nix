@@ -587,6 +587,12 @@ in
     # answers for a permitted uid.
     services.tailscale.permitCertUid = lib.mkIf wantsTailscaleTls "caddy";
 
+    # The proxy is what claims to serve a publicly-trusted certificate for the
+    # tailnet name, so the proxy's layer is what tells the health report where to
+    # look. Same shape as `appliance.health.watchUnits`: the generic layer knows
+    # nothing about what this box runs.
+    appliance.health.publicTlsPort = lib.mkIf wantsTailscaleTls 443;
+
     # `sunreye.local`, so the first boot has a name to type that does not depend
     # on finding the box's address in a router's lease table.
     services.avahi = {

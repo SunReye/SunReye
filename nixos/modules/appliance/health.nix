@@ -19,7 +19,7 @@ let
 
   report = pkgs.writeShellApplication {
     name = "appliance-health-report";
-    runtimeInputs = with pkgs; [ systemd coreutils gawk curl procps jq ]
+    runtimeInputs = with pkgs; [ systemd coreutils gawk curl procps jq openssl ]
       ++ lib.optional cfg.tailscale.enable tailscale;
     text = ''
       body=$(
@@ -64,6 +64,39 @@ let
         echo "routes-advertised: $(cat /run/appliance/routes 2>/dev/null | tr '\n' ' ' || echo none)"
         echo "routes-approved:   $(printf '%s' "$status" | jq -r '(.Self.PrimaryRoutes // []) | join(",") | if . == "" then "none" else . end')"
       ''}
+      ${lib.optionalString (cfg.tailscale.enable && cfg.health.publicTlsPort != null) ''
+        # Is the tailnet name actually served a certificate a browser trusts?
+        #
+        # This is the one failure on this box that looks like a bug and is a
+        # setting. Tailscale issues certificates only when HTTPS Certificates
+        # are enabled for the tailnet, which is OFF by default; without them
+        # `get_certificate tailscale` returns nothing and the proxy falls back
+        # to its internal CA, correctly and silently. What the owner sees is a
+        # warning on the URL that was supposed to be the clean one, and nothing
+        # anywhere connects that to a checkbox they have never seen.
+        #
+        # Matched on the internal CA rather than on a list of public issuers: a
+        # box serving Caddy's own certificate for its tailnet name is the
+        # symptom, and enumerating acceptable CAs would go stale the day
+        # Tailscale changes one.
+        name=$(printf '%s' "$status" | jq -r '.Self.DNSName // ""' | sed 's/\.$//')
+        if [ -z "$name" ]; then
+          echo "tailnet-cert: not enrolled"
+        else
+          issuer=$(timeout 10 openssl s_client -connect 127.0.0.1:${toString cfg.health.publicTlsPort} \
+            -servername "$name" </dev/null 2>/dev/null \
+            | timeout 5 openssl x509 -noout -issuer 2>/dev/null || true)
+          case "$issuer" in
+            *"Caddy Local Authority"*)
+              echo "tailnet-cert: INTERNAL — browsers will warn on https://$name"
+              echo "             Enable HTTPS Certificates for this tailnet:"
+              echo "             https://login.tailscale.com/admin/dns  then: systemctl restart caddy"
+              ;;
+            "") echo "tailnet-cert: no certificate served on port ${toString cfg.health.publicTlsPort}" ;;
+            *) echo "tailnet-cert: public (''${issuer#issuer=})" ;;
+          esac
+        fi
+      ''}
       wd=""
       for d in /dev/watchdog*; do [ -e "$d" ] && wd="$wd $d"; done
       echo "watchdog: ''${wd:- NONE}"
@@ -91,6 +124,30 @@ lib.mkIf cfg.enable {
   appliance.health.package = report;
 
   environment.systemPackages = [ report ];
+
+  # What the box looks like, on the way in.
+  #
+  # A Tailscale SSH session drops you at a bare prompt on a machine you may not
+  # have touched in months: no version, no inverter, no idea whether anything is
+  # wrong. The one thing worth printing is the report this module already
+  # builds — so this is a placement decision, not a second status surface, and
+  # there is nothing here that can disagree with the daily beacon.
+  #
+  # `interactiveShellInit`, not `users.motd`: the motd is a static file in the
+  # store and every useful fact here is discovered at runtime.
+  programs.bash.interactiveShellInit = lib.mkIf cfg.health.loginBanner ''
+    # Login shells only, once. Without the guard this runs for every subshell a
+    # script spawns, which turns `ssh box 'cmd'` into a status report with the
+    # output buried in it.
+    if [ -z "''${SUNREYE_BANNER_SHOWN:-}" ] && [ -t 1 ] && [ "''${SHLVL:-1}" = 1 ]; then
+      export SUNREYE_BANNER_SHOWN=1
+      ${lib.getExe report} 2>/dev/null || true
+      echo
+      echo "sunreye-setup show   — this box's configuration"
+      echo "sunreye-setup --help — change it"
+      echo
+    fi
+  '';
 
   systemd.services = lib.mkMerge [
     {
