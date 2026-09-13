@@ -18,6 +18,13 @@ import { readFileSync } from "node:fs";
  */
 const workflow = (name: string) => readFileSync(`.github/workflows/${name}`, "utf8");
 
+/** A step's executable lines: what the runner actually does, without the prose. */
+const executable = (yaml: string) =>
+  yaml
+    .split("\n")
+    .filter((line) => !line.trimStart().startsWith("#"))
+    .join("\n");
+
 describe("the appliance release chain", () => {
   const appliance = workflow("nixos-image.yml");
   const server = workflow("docker-server.yml");
@@ -79,5 +86,43 @@ describe("the appliance release chain", () => {
         job.steps?.some((step) => step.run?.includes("nixos#image")),
       ) ?? [];
     expect(imageJob?.if).toContain("inputs.image");
+  });
+
+  /**
+   * The repin step reads a hash out of another program's output, and it read it
+   * out of the stream it had just thrown away: `-> ImageHash:` is printed on
+   * STDERR by nix-prefetch-docker, while stdout carries the Nix attrset. With
+   * `2>/dev/null` on the pipeline, the grep matched nothing, the hash came out
+   * empty, `test -n` failed, and the discarded stream took the explanation with
+   * it. The step had never run — it was written from the documented output and
+   * gated behind a trigger that could not fire.
+   */
+  test("the repin parses a stream it has not discarded", () => {
+    // Comments stripped, so the assertion is about what the runner executes.
+    // Explaining WHY the old version was wrong has to stay allowed — that prose
+    // is the only thing standing between the next author and rewriting it.
+    const step = executable(
+      appliance.slice(
+        appliance.indexOf("- name: Repin the server image"),
+        appliance.indexOf("- name: Commit to master"),
+      ),
+    );
+
+    // Nothing it parses may be sent to /dev/null.
+    expect(step).not.toContain("2>/dev/null");
+    // And it reads the machine-readable attrset on stdout, not the log line.
+    expect(step).not.toContain("-> ImageHash:");
+    expect(step).toMatch(/hash = /);
+  });
+
+  test("the repin fails loudly when a command in its pipeline does", () => {
+    const step = appliance.slice(
+      appliance.indexOf("- name: Repin the server image"),
+      appliance.indexOf("- name: Commit to master"),
+    );
+
+    // Without pipefail a failed skopeo still yields a plausible-looking digest,
+    // because the exit status belongs to `cut`.
+    expect(step).toContain("set -o pipefail");
   });
 });
