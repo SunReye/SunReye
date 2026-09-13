@@ -18,6 +18,8 @@
   "dynamicallyLoaded": [
     "apps/docs/src/styles/theme.css",
     "scripts/archive-round-trip.ts",
+    "scripts/ci-already-proven.ts",
+    "scripts/ci-surfaces.ts",
     "scripts/db-parity.ts",
     "scripts/fixture-1-2-0.ts",
     "scripts/replay-rehearsal.ts",
@@ -98,6 +100,18 @@
     },
     {
       "file": "scripts/require-tests.ts",
+      "exports": [
+        "*"
+      ]
+    },
+    {
+      "file": "scripts/ci-surfaces.ts",
+      "exports": [
+        "*"
+      ]
+    },
+    {
+      "file": "scripts/ci-already-proven.ts",
       "exports": [
         "*"
       ]
@@ -268,6 +282,20 @@
       "exports": [
         "*"
       ]
+    },
+    {
+      "comment": "The appliance CLI's entry point. Its only non-test consumer is a Nix wrapper (nixos/modules/sunreye/setup-cli.nix), which runs main.ts directly — invisible to a TypeScript import graph.",
+      "file": "apps/appliance-cli/src/main.ts",
+      "exports": [
+        "*"
+      ]
+    },
+    {
+      "comment": "DEFAULT_SITE is the shipped document, asserted against nixos/template/site.json by the suite; nothing imports it at runtime because the box reads the JSON.",
+      "file": "apps/appliance-cli/src/site.ts",
+      "exports": [
+        "DEFAULT_SITE"
+      ]
     }
   ],
   "boundaries": {
@@ -324,6 +352,12 @@
         "name": "profile-sdk",
         "patterns": [
           "packages/profile-sdk/src/**"
+        ]
+      },
+      {
+        "name": "appliance-cli",
+        "patterns": [
+          "apps/appliance-cli/src/**"
         ]
       },
       {
@@ -390,6 +424,10 @@
         ]
       },
       {
+        "from": "appliance-cli",
+        "allow": []
+      },
+      {
         "from": "env",
         "allow": []
       },
@@ -408,7 +446,8 @@
           "env",
           "inverter-core",
           "profile-sdk",
-          "contracts"
+          "contracts",
+          "appliance-cli"
         ]
       }
     ],

@@ -3,9 +3,21 @@ node_modules
 .pnp
 .pnp.js
 
-# Build outputs
-dist
-build
+# Build outputs.
+#
+# ANCHORED ON PURPOSE. A bare `build` or `dist` matches at EVERY depth, so it
+# also swallows a source directory that happens to carry the name — silently,
+# with no error anywhere. `apps/web/src/lib/build/` was written, imported,
+# unit-tested and pushed while git had never been told it existed, and CI went
+# red on an unresolved import for a file nobody could see was missing. Same
+# trap as the bare `core` entry below. Name the real output directory here
+# rather than widening these back to a bare name.
+/dist
+/build
+apps/*/dist
+apps/*/build
+packages/*/dist
+packages/*/build
 *.tsbuildinfo
 
 # Generated files
@@ -52,6 +64,15 @@ test-results
 playwright-report
 blob-report
 .playwright
+
+# Nix (nixos/, see nixos/README.md)
+# `nix build` drops a symlink to the built closure here. Unignored, it is both a
+# 3 GB store path oxlint walks on every push and something git offers to commit.
+result
+result-*
+# `run-*-vm` writes its scratch disk into whatever directory you launch it from,
+# which is normally the repo root. 12 GB, and regenerated on every boot.
+*.qcow2
 
 # Misc
 *.tgz

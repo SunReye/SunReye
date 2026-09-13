@@ -23,10 +23,13 @@ See [Profiles as data](/profiles/concept/) for how this works end to end.
 
 ## What it does today
 
-- **Live monitoring** — 1 Hz polling of the inverter, streamed to the browser over
-  WebSocket. A manifest-driven dashboard renders itself from the active inverter's
-  capabilities (PV strings, battery, grid phases, generator, backup load) with animated
-  KPIs and live sparklines. See [Dashboard](/use/dashboard/).
+- **Live monitoring** — polling streamed to the browser over WebSocket. A manifest-driven
+  dashboard renders itself from the active device's capabilities (PV strings, battery, grid
+  phases, generator, backup load) around a power-flow hero whose nodes open their own
+  readings. See [Dashboard](/use/dashboard/).
+- **A plant of several devices** — inverters, meters, chargers and controllers, each reached
+  through a gateway and each speaking its own profile. Every screen reads the plant as a whole
+  or one device at a time. See [Settings → Devices](/use/settings/#devices).
 - **History & analytics** — every sample persisted to **TimescaleDB**; per-minute / hourly
   / daily continuous-aggregate rollups make multi-week charts cheap, with automatic
   retention cleanup. See [History & Analytics](/use/history/).
@@ -36,6 +39,11 @@ See [Profiles as data](/profiles/concept/) for how this works end to end.
 - **Statistics** — import/export tariffs with time-of-use bands, cost and energy analytics,
   spot price analytics, comparisons and all-time records. See
   [Statistics](/use/statistics/).
+- **Automations** — control loops that steer the battery from live PV, the solar forecast and
+  day-ahead prices: peak shaving, forecast charging, and making room for negative-price
+  windows. See [Automations](/use/automations/).
+- **Portable export & import** — the whole instance as one named, schema-independent file, so
+  a future SunReye can read it. See [Export & Import](/use/export-import/).
 - **Third-party REST API (`/api/v1`)** — an auto-generated integration surface: entity
   catalog, current state, per-entity history, and one *validated* write route per writable
   entity, with OpenAPI docs. API-key authenticated (fails closed in production). See
@@ -53,7 +61,7 @@ See [Profiles as data](/profiles/concept/) for how this works end to end.
 ## Supported inverters
 
 **Deye / Sunsynk** hybrid inverters (≈99 metrics, ≈38 writable) ship as a first-party
-profile. More profiles are added as data — see [Supported Inverters](/profiles/supported/)
+profile in the official profile repository. More profiles are added as data — see [Supported Inverters](/profiles/supported/)
 and the [Roadmap](/reference/roadmap/).
 
 ## Scope

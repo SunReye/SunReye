@@ -29,7 +29,7 @@ A gzipped tar with four members:
 | Member                 | Holds                                                                 |
 | ---------------------- | --------------------------------------------------------------------- |
 | `manifest.json`        | format version, the schema it came from, the time zone, row counts    |
-| `config.json`          | the plant, connections and devices; settings; profiles; custom charts |
+| `config.json`          | the plant, its connections and devices; settings; profiles; custom charts |
 | `config-log.ndjson.gz` | the history of configuration-register changes                          |
 | `readings.ndjson.gz`   | every reading, one JSON object per line                                |
 
@@ -45,6 +45,12 @@ that distinction is what lets one file hold fine-grained recent history *and* co
 history, which is exactly what an instance whose fine-grained retention has expired has.
 
 ### What is deliberately NOT in the file
+
+**No integration rows.** The connections travel, but the
+[integrations](/use/settings/#integrations) riding on them — the Home Assistant export, an EVCC
+ingest — do not yet, so re-add them from Settings → Devices on the far side. Their settings
+still come across inside `config.json`, so it is a couple of clicks rather than a
+reconstruction.
 
 **No accounts, no sessions, no API keys.** Password hashes and live session tokens in a file
 designed to be copied onto a USB stick and emailed are a liability, and recreating the admin
@@ -109,7 +115,7 @@ full and does nothing the second time.
 
 Importing over history the target **already holds** is refused, and it is worth knowing why.
 There is no unique key on the readings table — there cannot be one without slowing down the
-1 Hz write path — so a second import of overlapping history would *duplicate* rather than
+hot write path — so a second import of overlapping history would *duplicate* rather than
 replace it. A duplicated series does not raise an error anywhere; it just quietly reports the
 wrong kWh. So SunReye refuses and tells you how many rows are in the way. `--force` is there
 if you have decided the duplicates are acceptable.

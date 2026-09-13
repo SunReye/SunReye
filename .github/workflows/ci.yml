@@ -13,9 +13,84 @@ permissions:
 
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  # Supersede a PR's own earlier run; never a push's. A run on `dev` or
+  # `master` is the record for that commit, and the next push is a different
+  # commit rather than a newer take on this one.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  # What this change can possibly affect, and whether it has been through here
+  # already. Both questions are answered by tested scripts rather than by YAML
+  # (scripts/ci-surfaces.ts, scripts/ci-already-proven.ts) — a gate that decides
+  # what runs is exactly the logic you cannot afford to get wrong in a place
+  # nothing can test.
+  #
+  # Measured before this job existed: an average run cost ~17 runner-minutes, 13
+  # of them the four browser shards, on every push regardless of what changed —
+  # including docs-only and appliance-only pushes, which cannot move a single
+  # assertion in them.
+  changes:
+    name: What changed
+    runs-on: ubuntu-latest
+    outputs:
+      web: ${{ steps.surfaces.outputs.web }}
+      db: ${{ steps.surfaces.outputs.db }}
+      routes: ${{ steps.surfaces.outputs.routes }}
+      proven: ${{ steps.proven.outputs.proven }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The whole history: the push case needs the merged parent's tree, and
+          # the repo's .git is 31 MB.
+          fetch-depth: 0
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.0
+
+      # An empty list is not "nothing changed", it is "the diff could not be
+      # computed" — a new branch, a force-push past the old tip. The script
+      # treats it as everything, so failing to write this file is safe.
+      - name: Files this change touches
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            git diff --name-only \
+              '${{ github.event.pull_request.base.sha }}...${{ github.event.pull_request.head.sha }}' \
+              > changed.txt || : > changed.txt
+          elif git cat-file -e '${{ github.event.before }}^{commit}' 2>/dev/null; then
+            git diff --name-only '${{ github.event.before }}' '${{ github.sha }}' \
+              > changed.txt || : > changed.txt
+          else
+            : > changed.txt
+          fi
+          echo "$(wc -l < changed.txt) file(s) changed"
+
+      - name: Which layers it can affect
+        id: surfaces
+        run: bun scripts/ci-surfaces.ts < changed.txt | tee -a "$GITHUB_OUTPUT"
+
+      # A merge commit carries a new sha and an old tree. When the tree is
+      # identical to the branch that was merged, and that branch's own run was
+      # green, this push is the same suite over the same bytes for the third or
+      # fourth time.
+      - name: Has this exact tree already passed?
+        id: proven
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          parent=$(git rev-parse -q --verify 'HEAD^2' || true)
+          if [ -z "$parent" ]; then
+            echo "proven=false" | tee -a "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          gh api "repos/${GITHUB_REPOSITORY}/commits/${parent}/check-runs" --paginate \
+            --jq '[.check_runs[] | {name, status, conclusion}]' > checks.json || echo '[]' > checks.json
+          bun scripts/ci-already-proven.ts \
+            --head "$(git rev-parse 'HEAD^{tree}')" \
+            --parent "$(git rev-parse "${parent}^{tree}")" \
+            --checks checks.json | tee -a "$GITHUB_OUTPUT"
   # This project reads and WRITES registers on grid-tied inverters and
   # batteries, so behaviour does not land without the test that proves it. The
   # gate is mechanical: source changed in the PR ⇒ a test changed with it. It
@@ -44,6 +119,10 @@ jobs:
 
   quality:
     name: Lint, type-check & build
+    needs: changes
+    # Lints, type-checks and builds everything, so it is gated only on the
+    # duplicate check — there is no change it cannot be about.
+    if: needs.changes.outputs.proven != 'true'
     runs-on: ubuntu-latest
     env:
       SKIP_ENV_VALIDATION: "1"
@@ -118,6 +197,11 @@ jobs:
   # `vite dev`.
   e2e:
     name: Browser tests (shard ${{ matrix.shard }}/4)
+    needs: changes
+    # The four shards are 13 of the ~17 runner-minutes a full run costs, and the
+    # layer fakes the backend entirely — no server, database, appliance or docs
+    # change can reach an assertion in it.
+    if: needs.changes.outputs.web == 'true' && needs.changes.outputs.proven != 'true'
     runs-on: ubuntu-latest
     # Sharding: four independent runners, each executing a quarter of the specs
     # (`--shard=i/n`). Nothing in this layer holds cross-file state — the backend
@@ -187,6 +271,8 @@ jobs:
   # `ORDER BY` that bound to a UNION instead of its arm).
   db:
     name: Database query tests
+    needs: changes
+    if: needs.changes.outputs.db == 'true' && needs.changes.outputs.proven != 'true'
     runs-on: ubuntu-latest
     env:
       SKIP_ENV_VALIDATION: "1"
@@ -245,6 +331,8 @@ jobs:
   # developer's `bun run test:routes` run the SAME code path.
   routes:
     name: Route smoke
+    needs: changes
+    if: needs.changes.outputs.routes == 'true' && needs.changes.outputs.proven != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -263,6 +351,10 @@ jobs:
 
   test:
     name: Test & coverage
+    needs: changes
+    # The unit suite and the coverage ratchet: like `quality`, gated only on the
+    # duplicate check.
+    if: needs.changes.outputs.proven != 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: write

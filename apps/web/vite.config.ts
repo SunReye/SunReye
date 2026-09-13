@@ -48,10 +48,17 @@ export default defineConfig({
     // under THIS project's `src`, which a dev server rooted in another worktree
     // still refuses.
     fs: { allow: ["e2e"] },
+    //
+    // `changeOrigin: false` (Vite defaults it to true) keeps the browser's own
+    // `Host` on the proxied request. Better Auth trusts a request whose Origin
+    // equals its Host (packages/auth/src/trusted-origins.ts), which is what
+    // lets `vite dev --host` be opened from a phone on the LAN and still sign
+    // in — with the default, Host became `localhost:3000` and every LAN origin
+    // was rejected as "Invalid origin".
     proxy: {
-      "/api": "http://localhost:3000",
-      "/openapi": "http://localhost:3000",
-      "/ws": { target: "ws://localhost:3000", ws: true },
+      "/api": { target: "http://localhost:3000", changeOrigin: false },
+      "/openapi": { target: "http://localhost:3000", changeOrigin: false },
+      "/ws": { target: "ws://localhost:3000", ws: true, changeOrigin: false },
     },
   },
 });
