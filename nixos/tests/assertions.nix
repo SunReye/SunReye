@@ -38,6 +38,14 @@ let
     };
 
   cases = [
+    # A wildcard site address stands for exactly one label, so `*.ts.net` can
+    # never match `<host>.<tailnet>.ts.net`. The request does not fail — it
+    # matches a different site and is served the wrong certificate, which is why
+    # this shipped and enrolled before anyone noticed.
+    (refuses "a Caddy site address no MagicDNS name can ever match" "wildcard" [{
+      services.caddy.virtualHosts."https://*.ts.net".extraConfig = "respond 200";
+    }])
+
     (refuses "an inverter that is neither configured nor simulated" "inverter.host" [{
       appliance.sunreye.inverter.simulate = false;
     }])

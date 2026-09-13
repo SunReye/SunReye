@@ -105,13 +105,30 @@ Then, from any computer on the same network:
 
 3. **Create your account.** The first account you register is the administrator.
 
-4. **Point it at your inverter.** Over Tailscale SSH (`ssh root@sr-xxxx`) or a keyboard on
-   the box:
+4. **Point it at your inverter.** Over Tailscale SSH, using the box's **full tailnet
+   name** — from a device that is itself on the tailnet:
 
    ```bash
+   ssh root@sr-xxxx.<your-tailnet>.ts.net
    sunreye-setup inverter 192.168.1.100
    sunreye-setup timezone Europe/Berlin
    ```
+
+   :::caution[Use the full name, not the short one]
+   `ssh root@sr-xxxx` looks equivalent and usually is not. If your LAN has its own DNS
+   suffix, that resolves first and you reach the box's **LAN** address, where OpenSSH
+   answers instead of Tailscale SSH — and OpenSSH here is key-only with no keys, so you
+   get `Permission denied (publickey)`. Tailscale SSH needs no key; it authenticates
+   through the tailnet, and only the `.ts.net` name routes there.
+   :::
+
+   :::note[There is no local login]
+   A published image ships no password and no key belonging to anyone, so root is locked
+   and a keyboard on the box gets you a login prompt you cannot pass. That is deliberate —
+   the alternative is a credential that is identical on every unit ever flashed — but it
+   means **enrolment is the only way in**. If you are locked out, append `init=/bin/sh` to
+   the kernel command line at the boot menu (press `e`) for a root shell, or re-flash.
+   :::
 
    Each command rebuilds the box, which takes a minute or two and briefly interrupts the
    dashboard. Until you set an inverter the box runs a **simulated** one, so there is

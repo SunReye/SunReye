@@ -223,6 +223,29 @@ in
     appliance.sunreye.pgMajorGuardPackage = pgMajorGuard;
     assertions = [
       {
+        # The bug this exists for shipped, enrolled, and served a browser warning
+        # on the tailnet name while every gate stayed green. A wildcard site
+        # address stands for exactly ONE label, so `*.ts.net` matches `x.ts.net`
+        # and never `<host>.<tailnet>.ts.net` — which is the only shape a real
+        # MagicDNS name has. Nothing downstream can notice: the request simply
+        # matches a different site and gets a certificate from the wrong issuer.
+        assertion = !(lib.any (name: lib.hasInfix "*." name) (
+          lib.attrNames config.services.caddy.virtualHosts
+        ));
+        message = ''
+          A Caddy site address here uses a wildcard, and a wildcard stands for
+          exactly one label: `*.ts.net` matches `foo.ts.net` but NOT
+          `sr-x.tail1234.ts.net`, which is the shape of every Tailscale MagicDNS
+          name. A site that cannot match is not a failure anyone sees — the
+          request falls through to another site and is served the wrong
+          certificate.
+
+          Serve every name from the port-only `:443` site and let the `tls` block
+          decide per SNI: `get_certificate tailscale` first, internal issuance
+          on demand as the fallback.
+        '';
+      }
+      {
         assertion = cfg.inverter.host != null || cfg.inverter.simulate;
         message = ''
           appliance.sunreye.inverter.host is unset and
@@ -461,56 +484,54 @@ in
       # The whole reason for a proxy on a single-container box: HTTPS, and
       # therefore a secure context, and therefore a PWA that installs and cookies
       # that are actually Secure. Caddy also keeps port 3000 off the LAN.
-      virtualHosts = lib.mkMerge [
-        (lib.mkIf wantsTailscaleTls {
-          # Matched on the wildcard rather than a literal name, because the name
-          # depends on which tailnet the owner enrolled the box into and is not
-          # known when this config is built. `get_certificate tailscale` asks
-          # tailscaled for a real, publicly-trusted cert for whatever that name
-          # turned out to be — no CA for anyone to install, and it works on a
-          # phone that has never touched this LAN.
-          "https://*.ts.net" = {
-            extraConfig = ''
-              tls {
-                get_certificate tailscale
-              }
-              reverse_proxy 127.0.0.1:${toString cfg.port}
-            '';
-          };
-        })
-        (lib.mkIf wantsInternalTls {
-          # The LAN door. Caddy's internal CA means a browser warning until
-          # someone installs the root, which nobody does — so this is the
-          # fallback for a box with no tailnet, not the main path. It answers on
-          # the mDNS name, the short hostname and the raw IP, because on a first
-          # boot the owner has whichever of those their router gave them.
-          ":443" = {
-            extraConfig = ''
-              # on_demand, because this site is a PORT with no names. `tls
-              # internal` issues certificates for a site's subjects, and a site
-              # declared as `:443` has none — so Caddy bound the port, read the
-              # ClientHello and had nothing to present: every handshake died with
-              # `tlsv1 alert internal error`, on every box, while `caddy: active`
-              # and the :80 redirect both looked healthy. The names cannot be
-              # listed here: they are the mDNS name, whatever short hostname the
-              # box ended up with, and whichever address the router handed out,
-              # none of which exist when this config is built. Issuing per SNI at
-              # handshake time is the only way to serve all three.
-              tls internal {
+      # ONE site on :443, for every name this box answers to.
+      #
+      # It used to be two, and the tailnet one could never match. Its address was
+      # `https://*.ts.net`, and a Caddy wildcard stands for EXACTLY ONE label —
+      # while every MagicDNS name is `<host>.<tailnet>.ts.net`, which is two. So
+      # `sr-x.tail1234.ts.net` never reached `get_certificate tailscale`; it fell
+      # through to the internal-CA site and was served Caddy's own certificate.
+      # Measured on the first box ever enrolled: a browser warning on the tailnet
+      # name, and therefore no PWA install and no Secure cookies — the entire
+      # reason this proxy exists. Nothing was red. The boot test cannot see it
+      # either: CI has no tailnet, so both configurations look identical there.
+      #
+      # Order matters and is the whole design: Caddy consults `get_certificate`
+      # managers during the handshake, and falls back to on-demand internal
+      # issuance only when they return nothing. A tailnet name therefore gets the
+      # real, publicly-trusted certificate tailscaled holds, and every other name
+      # — the mDNS name, the short hostname, the raw IP the router handed out —
+      # gets an internal one. None of those names can be listed here: not one of
+      # them exists when this config is built.
+      virtualHosts = {
+        ":443" = {
+          extraConfig = ''
+            tls {
+              ${lib.optionalString wantsTailscaleTls "get_certificate tailscale"}
+              ${lib.optionalString wantsInternalTls ''
+                issuer internal {
+                }
+                # on_demand, because this site is a PORT with no names. `tls
+                # internal` issues for a site's SUBJECTS, and `:443` has none —
+                # so Caddy bound the port, read the ClientHello and had nothing
+                # to present: every handshake died with `tlsv1 alert internal
+                # error` while `caddy: active` and the :80 redirect both looked
+                # healthy.
                 on_demand
-              }
-              reverse_proxy 127.0.0.1:${toString cfg.port}
-            '';
-          };
-          # Plain HTTP redirects rather than serving: a dashboard reachable over
-          # http:// is a dashboard whose Secure cookies silently never arrive.
-          ":80" = {
-            extraConfig = ''
-              redir https://{host}{uri} permanent
-            '';
-          };
-        })
-      ];
+              ''}
+            }
+            reverse_proxy 127.0.0.1:${toString cfg.port}
+          '';
+        };
+
+        # Plain HTTP redirects rather than serving: a dashboard reachable over
+        # http:// is a dashboard whose Secure cookies silently never arrive.
+        ":80" = {
+          extraConfig = ''
+            redir https://{host}{uri} permanent
+          '';
+        };
+      };
     };
 
     # Caddy needs to ask tailscaled for a certificate, which tailscaled only
