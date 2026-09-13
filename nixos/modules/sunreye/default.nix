@@ -32,6 +32,9 @@ let
   secretsEnv = "${stateDir}/secrets.env";
   originsEnv = "/run/sunreye/origins.env";
 
+  firstBoot =
+    config.appliance.console.password.enable && config.appliance.console.password.web.enable;
+
   wantsTailscaleTls = cfg.tls == "tailscale" || cfg.tls == "both";
   wantsInternalTls = cfg.tls == "internal" || cfg.tls == "both";
 
@@ -40,6 +43,7 @@ in
 {
   imports = [
     ./seed.nix
+    ./first-boot.nix
     ./backup.nix
     ./setup-cli.nix
   ];
@@ -520,7 +524,21 @@ in
                 on_demand
               ''}
             }
-            reverse_proxy 127.0.0.1:${toString cfg.port}
+            ${lib.optionalString firstBoot ''
+              # The one-shot password window, on the dashboard's own certificate
+              # and listener rather than a second door of its own. `handle`, not
+              # `handle_path`: the server does not care about the prefix, and a
+              # stripped path would make this route indistinguishable from the
+              # dashboard's own root in the access log.
+              handle ${config.appliance.console.password.web.path}* {
+                reverse_proxy 127.0.0.1:${toString config.appliance.console.password.web.port}
+              }
+
+              handle {
+                reverse_proxy 127.0.0.1:${toString cfg.port}
+              }
+            ''}
+            ${lib.optionalString (!firstBoot) "reverse_proxy 127.0.0.1:${toString cfg.port}"}
           '';
         };
 

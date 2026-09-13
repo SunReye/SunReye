@@ -105,6 +105,22 @@ Then, from any computer on the same network:
 
 3. **Create your account.** The first account you register is the administrator.
 
+   :::tip[Take the box's password while you can]
+   Open `https://sr-xxxx/first-boot` in the first few minutes after it boots. It shows
+   this box's root password, **once**, and then closes for good — a reboot does not
+   reopen it.
+
+   Closing on the first read is deliberate. If you see the password, you know nobody
+   else did; if you are told it has already been taken, someone else on that network
+   got there first and you should re-flash. A window that simply expired would leave
+   you with no way to tell.
+
+   You do not need it if enrolment works — Tailscale SSH is the normal way in — but
+   it is the only remote path that does not depend on Tailscale, and you cannot get
+   it back later. The same password is printed on the console login screen if you
+   ever attach a monitor.
+   :::
+
 4. **Point it at your inverter.** Over Tailscale SSH, using the box's **full tailnet
    name** — from a device that is itself on the tailnet:
 
@@ -122,12 +138,21 @@ Then, from any computer on the same network:
    through the tailnet, and only the `.ts.net` name routes there.
    :::
 
-   :::note[There is no local login]
-   A published image ships no password and no key belonging to anyone, so root is locked
-   and a keyboard on the box gets you a login prompt you cannot pass. That is deliberate —
-   the alternative is a credential that is identical on every unit ever flashed — but it
-   means **enrolment is the only way in**. If you are locked out, append `init=/bin/sh` to
-   the kernel command line at the boot menu (press `e`) for a root shell, or re-flash.
+   :::note[Three ways in, for three different situations]
+   A published image ships no key and no shared password — the alternative is a
+   credential identical on every unit ever flashed. So the box makes its own:
+
+   | Situation | Way in |
+   | --- | --- |
+   | Normal | Browser enrolment, then Tailscale SSH on the full `.ts.net` name |
+   | Headless, Tailscale not working | A key you put on the ESP **before** first boot — create `appliance-seed/authorized_keys` on the image's EFI partition, which mounts on any machine. It works on the first boot with no rebuild. |
+   | Monitor and keyboard available | The generated root password, printed on the login screen |
+
+   Plus `https://sr-xxxx/first-boot` above, which is the remote path that needs none of
+   those — but only for the first few minutes, and only once.
+
+   If you are locked out of all of them, append `init=/bin/sh` to the kernel command
+   line at the boot menu (press `e`) for a root shell, or re-flash.
    :::
 
    Each command rebuilds the box, which takes a minute or two and briefly interrupts the

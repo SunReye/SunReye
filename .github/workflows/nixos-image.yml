@@ -131,6 +131,14 @@ jobs:
           grep -q '^tailscale-web: active' report.txt \
             || { echo "::error::the Tailscale login window did not open"; fail=1; }
           grep -q '^setup-show: ok' report.txt || { echo "::error::sunreye-setup show failed"; fail=1; }
+          # The password window, and the property that makes it safe to have at
+          # all: it closes on the first read. A window that stayed open would
+          # hand this box's root password to everyone on the LAN for as long as
+          # the timer ran, with nobody able to tell afterwards.
+          grep -q '^first-boot-window: served' report.txt \
+            || { echo "::error::the first-boot password window served nothing"; fail=1; }
+          grep -q '^first-boot-reread: refused' report.txt \
+            || { echo "::error::the password window stayed open after being read: $(grep '^first-boot-reread:' report.txt)"; fail=1; }
           # Somebody standing at the box has to be able to get in. This is the
           # only probe here that is not reachable over the network, and it is the
           # one that was missing while root sat locked for weeks.

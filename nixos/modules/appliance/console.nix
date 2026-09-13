@@ -25,7 +25,7 @@ let
   cfg = config.appliance;
   console = cfg.console;
   secretsDir = "/var/lib/secrets";
-  passwordFile = "${secretsDir}/console-password";
+  passwordFile = console.password.file;
 in
 lib.mkIf (cfg.enable && console.password.enable) {
   # agetty reads /etc/issue, and NixOS makes it a symlink into the read-only

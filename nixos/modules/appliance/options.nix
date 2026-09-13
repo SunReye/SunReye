@@ -14,6 +14,71 @@ in
   options.appliance = {
     enable = mkEnableOption "the headless appliance profile";
 
+    console.password.web = {
+      enable = mkOption {
+        type = types.bool;
+        default = true;
+        description = ''
+          Also hand the generated password to a browser on the LAN, once, for a
+          few minutes after boot.
+
+          The console banner only helps someone standing at the machine with a
+          monitor, which is the wrong shape for a box in a cupboard. This is the
+          path that works from a laptop on the same network.
+
+          Served behind the same reverse proxy as the dashboard, so it is HTTPS
+          and needs no second listener or firewall rule — but on a first boot
+          that is the internal CA, so the browser warns. It encrypts against
+          passive sniffing on the LAN; it does not authenticate the box.
+        '';
+      };
+
+      openFor = mkOption {
+        type = types.ints.positive;
+        default = 5;
+        description = ''
+          Minutes the window stays open if nobody reads it. It also closes on the
+          FIRST successful read, whichever comes first, and never reopens — a
+          timed window with unlimited reads leaves nobody able to tell afterwards
+          whether someone else looked.
+        '';
+      };
+
+      port = mkOption {
+        type = types.port;
+        default = 5251;
+        description = ''
+          Loopback port the window listens on. The proxy publishes it; nothing
+          binds this on the LAN.
+        '';
+      };
+
+      path = mkOption {
+        type = types.str;
+        default = "/first-boot";
+        description = "Path the reverse proxy serves the window at.";
+      };
+    };
+
+    console.password.file = mkOption {
+      type = types.path;
+      default = "/var/lib/secrets/console-password";
+      readOnly = true;
+      internal = true;
+      description = "Where the generated console password is kept.";
+    };
+
+    console.password.claimFile = mkOption {
+      type = types.path;
+      default = "/var/lib/secrets/console-claimed";
+      readOnly = true;
+      internal = true;
+      description = ''
+        Written once the password has been handed out over the network. Its
+        existence is what stops the window reopening on a later boot.
+      '';
+    };
+
     console.password.enable = mkOption {
       type = types.bool;
       default = true;

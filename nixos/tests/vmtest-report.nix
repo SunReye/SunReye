@@ -173,6 +173,24 @@
       # appliance for a harness that hung.
       echo "proxy-issuer: $(timeout 20 openssl s_client -connect 127.0.0.1:443 -servername "$name" </dev/null 2>/dev/null | timeout 10 openssl x509 -noout -issuer 2>/dev/null || echo NONE)"
 
+      # The one-shot password window, through the proxy that publishes it — and
+      # the property that makes it worth having: the SECOND read must fail. A
+      # timed window with unlimited reads leaves nobody able to tell afterwards
+      # whether anyone else looked, so "closes on first read" is the behaviour,
+      # not an optimisation.
+      first=$(curl -s -k --max-time 20 --resolve "$name:443:127.0.0.1" "https://$name/first-boot" || echo "")
+      second_code=$(curl -s -k -o /dev/null -w '%{http_code}' --max-time 20 \
+        --resolve "$name:443:127.0.0.1" "https://$name/first-boot" || echo 000)
+      case "$first" in
+        *"root / "*) echo "first-boot-window: served" ;;
+        *) echo "first-boot-window: NOTHING SERVED" ;;
+      esac
+      if [ "$second_code" = "410" ]; then
+        echo "first-boot-reread: refused"
+      else
+        echo "first-boot-reread: STILL OPEN ($second_code)"
+      fi
+
       # Can anyone actually log in at the keyboard? The image shipped for weeks
       # with root locked — no password, no key, `allowNoPasswordLogin = false` —
       # while the docs offered "a keyboard on the box" as the fallback. Nothing

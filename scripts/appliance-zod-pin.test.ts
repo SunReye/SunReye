@@ -4,14 +4,14 @@ import { readFileSync } from "node:fs";
 /**
  * The appliance CLI runs from the Nix store, where the workspace's node_modules
  * does not exist — so its one runtime dependency is fetched by Nix against a
- * pinned version and hash (`nixos/modules/sunreye/setup-cli-package.nix`).
+ * pinned version and hash (`nixos/modules/sunreye/cli-tree.nix`).
  *
  * That is a second pin for a package the workspace already pins, and a second
  * pin drifts: bump the catalog, and the box keeps shipping the old zod while
  * every test here runs against the new one. The failure would surface as a
  * runtime error on a box nobody can reach, which is the worst place we have.
  */
-const PACKAGE_NIX = "nixos/modules/sunreye/setup-cli-package.nix";
+const PACKAGE_NIX = "nixos/modules/sunreye/cli-tree.nix";
 
 describe("appliance zod pin", () => {
   const nix = readFileSync(PACKAGE_NIX, "utf8");
