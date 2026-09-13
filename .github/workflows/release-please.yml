@@ -19,8 +19,6 @@ jobs:
       sdk_released: ${{ steps.release.outputs['packages/profile-sdk--release_created'] }}
       server_released: ${{ steps.release.outputs.release_created }}
       server_tag: ${{ steps.release.outputs.tag_name }}
-      web_released: ${{ steps.release.outputs['apps/web--release_created'] }}
-      web_tag: ${{ steps.release.outputs['apps/web--tag_name'] }}
       addon_released: ${{ steps.release.outputs['sunreye--release_created'] }}
       addon_tag: ${{ steps.release.outputs['sunreye--tag_name'] }}
     steps:
@@ -34,8 +32,12 @@ jobs:
   build-images:
     name: Dispatch Docker builds
     needs: release-please
-    # No web condition: the dashboard ships inside the server binary, so a web
-    # release changes what the *server* image contains, not an image of its own.
+    # No web condition, and no web component either: the dashboard is compiled
+    # into the server binary, so a dashboard change bumps the SERVER (it is no
+    # longer excluded from its paths) and ships in the server image. Releasing it
+    # separately produced a `web-v*` tag and a GitHub release beside `server` and
+    # `addon` that no one could install — the `sunreye-web` image has been retired
+    # since the binary absorbed it (docker/README.md).
     if: needs.release-please.outputs.server_released == 'true' || needs.release-please.outputs.addon_released == 'true'
     runs-on: ubuntu-latest
     permissions:

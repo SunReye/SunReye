@@ -434,3 +434,93 @@ describe("the local compile", () => {
     expect(pkg.scripts.compile).toContain("./src/main.ts");
   });
 });
+
+/**
+ * What release-please cuts a release FOR.
+ *
+ * A component that ships nothing still produces a git tag, a GitHub release and
+ * a CHANGELOG entry, which read exactly like an artifact somebody can install.
+ * `web-v3.1.1` was published that way after the dashboard moved inside the
+ * server binary: there is no `sunreye-web` image any more (docker/README.md
+ * calls it retired), release-please.yml deliberately builds none, and the
+ * release still appeared beside `server` and `addon` as though it were one.
+ *
+ * The rule is that a released component must yield something a user can obtain:
+ * an npm package, or an image the release workflow dispatches a build for.
+ */
+describe("release configuration", () => {
+  interface ReleaseConfig {
+    packages: Record<string, { component?: string; "exclude-paths"?: string[] }>;
+    plugins?: ({ type: string; components?: string[] } | string)[];
+  }
+
+  /**
+   * Private workspace libraries that publish nothing under their own name, but
+   * whose CODE ships inside a package that does. `@SunReye/inverter-core` is a
+   * devDependency of the SDK precisely so tsdown inlines it into `dist` — an npm
+   * consumer of `@sunreye/profile-sdk` is running inverter-core's bytes. Its
+   * version therefore describes something real, which is what separates it from
+   * a component like `web` that shipped nowhere at all.
+   *
+   * The entries are checked, not trusted: each must still be a workspace
+   * dependency of a publishable package below. Drop that dependency and the
+   * justification for the tag disappears with it.
+   */
+  const BUNDLED_INTO_PUBLISHED = ["packages/inverter-core"];
+
+  const config = async () => JSON.parse(await read("release-please-config.json")) as ReleaseConfig;
+
+  it("every released component ships an artifact someone can obtain", async () => {
+    const { packages } = await config();
+    const workflow = await read(".github/workflows/release-please.yml");
+
+    const shipsNothing: string[] = [];
+    for (const [path, entry] of Object.entries(packages)) {
+      if (BUNDLED_INTO_PUBLISHED.includes(path)) continue;
+
+      // `release-type: simple` components (the addon) carry no package.json at
+      // all; their artifact is an image, which the workflow check below covers.
+      const manifestPath = path === "." ? "package.json" : `${path}/package.json`;
+      const manifest = existsSync(at(manifestPath))
+        ? (JSON.parse(await read(manifestPath)) as { private?: boolean })
+        : { private: true };
+      const publishable = manifest.private !== true;
+      // The release workflow dispatches a docker build per component that has an
+      // image; a component with neither is a release nobody can install.
+      const hasImage = new RegExp(`outputs\\.${entry.component}_released`).test(workflow);
+
+      if (!publishable && !hasImage) shipsNothing.push(`${path} (${entry.component})`);
+    }
+
+    expect(shipsNothing).toEqual([]);
+  });
+
+  it("a component that publishes nothing is bundled into one that does", async () => {
+    const publishedManifests = await Promise.all(
+      Object.keys((await config()).packages)
+        .filter((path) => !BUNDLED_INTO_PUBLISHED.includes(path))
+        .map(async (path) => {
+          const file = path === "." ? "package.json" : `${path}/package.json`;
+          return existsSync(at(file)) ? await read(file) : "";
+        }),
+    );
+
+    const orphaned: string[] = [];
+    for (const path of BUNDLED_INTO_PUBLISHED) {
+      const { name } = JSON.parse(await read(`${path}/package.json`)) as { name: string };
+      // A workspace dependency is how the code gets into someone else's bundle.
+      const consumed = publishedManifests.some((manifest) => manifest.includes(`"${name}"`));
+      if (!consumed) orphaned.push(`${path} (${name})`);
+    }
+
+    expect(orphaned).toEqual([]);
+  });
+
+  it("the dashboard counts as a change to the artifact that carries it", async () => {
+    const { packages } = await config();
+    // apps/web is compiled INTO the server binary, so excluding it from the
+    // server's paths means a dashboard-only fix cannot bump the only artifact
+    // that delivers the dashboard.
+    expect(packages["."]?.["exclude-paths"] ?? []).not.toContain("apps/web");
+  });
+});

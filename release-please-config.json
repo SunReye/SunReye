@@ -9,7 +9,10 @@
     {
       "type": "linked-versions",
       "groupName": "sunreye-stack",
-      "components": ["server", "web", "addon"]
+      "components": [
+        "server",
+        "addon"
+      ]
     }
   ],
   "packages": {
@@ -17,17 +20,12 @@
       "component": "server",
       "release-type": "node",
       "exclude-paths": [
-        "apps/web",
         "apps/docs",
         "packages/inverter-core",
         "packages/profile-sdk",
         "sunreye",
         "sunreye-beta"
       ]
-    },
-    "apps/web": {
-      "component": "web",
-      "release-type": "node"
     },
     "packages/inverter-core": {
       "component": "inverter-core",
