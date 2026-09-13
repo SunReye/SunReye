@@ -8,13 +8,18 @@ name: Restore test
 # script DOCS.md points at — and diff a full snapshot of both sides per bucket
 # and per metric (`scripts/db-parity.ts`).
 #
-# The gate is the PULL REQUEST, including release-please's own release PR. It
-# used to claim a tag trigger as well — "a red restore blocks the release" — and
-# that trigger never once fired: release-please pushes its tags with
-# GITHUB_TOKEN, and GitHub suppresses workflow runs for token-made events. Across
-# the last twenty runs of this workflow every single one was a pull_request.
-# A backup nobody has ever restored is not a backup, so the gate that does run
-# is the one this comment is now allowed to name.
+# The gate is the PULL REQUEST that brings the change to master — NOT the tag,
+# and NOT release-please's release PR.
+#
+# The tag trigger this used to carry, under the words "a red restore blocks the
+# release", never fired once: release-please pushes its tags with GITHUB_TOKEN
+# and GitHub suppresses runs for token-made events. The release PR is no
+# substitute either — this workflow has never run on one at all, and its sibling
+# `upgrade-test.yml` has 0 successes and 5 zero-job failures there.
+#
+# A backup nobody has ever restored is not a backup, and a gate nobody has
+# watched run is not a gate. The one that does run is the dev→master PR, over
+# the same tree the release ships.
 on:
   pull_request:
     paths:

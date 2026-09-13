@@ -2,9 +2,21 @@
 name: Upgrade test
 
 # Proves the upgrade path end-to-end on the pull request that introduces it —
-# release-please's release PR included, which is where a release is actually
-# gated. A `push: tags` trigger here never fired once: the tags are pushed with
-# GITHUB_TOKEN and GitHub emits no event for them.
+# which, for a release, means the dev→master PR. That PR runs this over exactly
+# the tree that ships: release-please's own PR adds only CHANGELOG entries and
+# version files on top of it.
+#
+# Two triggers that look like release gates and are not:
+#
+#   * `on: push: tags` never fired once. Release-please pushes its tags with
+#     GITHUB_TOKEN and GitHub emits no event for token-made actions.
+#   * The release PR itself does not run this. Measured across every run on
+#     `release-please--branches--master`: 2 action_required, 2 cancelled, 5
+#     failure, 0 success — and all five failures have ZERO jobs, so the run
+#     never started. Five occurrences over weeks is not a flake.
+#
+# So do not let a red-looking release PR stand in for this gate, and do not let
+# a green one reassure you. The dev→master PR is the one that ran.
 #
 # Boot the last
 # published release, let it collect data, swap in freshly built images, and
