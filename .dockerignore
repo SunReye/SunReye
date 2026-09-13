@@ -7,8 +7,21 @@ core
 *.core
 *.tgz
 
-**/dist
-**/build
+# Build outputs.
+#
+# ANCHORED ON PURPOSE, for the reason spelled out in .gitignore: a doubled-star
+# name matches at EVERY depth, so it also drops a SOURCE directory that happens
+# to carry the name — before `docker build` ever sees the context. That is worse
+# than the .gitignore version of this mistake, because git tracks the file and
+# every local check passes: only the image build fails, on an unresolved import,
+# pointing at a file that is plainly right there in the tree.
+# `apps/web/src/lib/build/` was dropped here exactly that way.
+/dist
+/build
+apps/*/dist
+apps/*/build
+packages/*/dist
+packages/*/build
 **/.next
 **/.nuxt
 **/.output

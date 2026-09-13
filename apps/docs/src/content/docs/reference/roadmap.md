@@ -18,9 +18,10 @@ and self-consumption. See [Statistics](/use/statistics/).
 
 ### Configuration in the UI
 
-Inverter connection, poll interval, MQTT/Home-Assistant, and tariff settings are all
-DB-backed and editable from the [Settings](/use/settings/) screen — with "Test connection"
-and live status — instead of `.env` edits and restarts.
+Every endpoint the plant talks to is a **connection**, every thing on one is a device or an
+[integration](/use/settings/#integrations), and all of it is DB-backed and editable from the
+[Settings](/use/settings/) screen — one Add wizard over the server's own catalog, with port
+probes, live reads and observed status, instead of `.env` edits and restarts.
 
 ### Downloadable inverter profiles
 
@@ -29,10 +30,38 @@ plus a [distribution flow](/profiles/distribution/): browse git-hosted repos, do
 install profiles at runtime as validated data, and pick the active profile — no redeploy,
 no code execution.
 
+### Automations
+
+Peak shaving and forecast charging: a control loop that steers the battery's charge current
+from live PV, state of charge and the solar forecast, in an export-maximizing or a
+grid-friendly mode, with a shadow (dry-run) mode and a projected plan. Price-aware charging
+makes room ahead of negative day-ahead windows and can borrow an EVCC charger as a sink. See
+[Automations](/use/automations/).
+
+### A plant of several devices
+
+Devices are a roster, not a single inverter: gateways with inverters, meters, chargers and
+controllers on them, each speaking its own profile, each retirable and restorable. Every
+screen reads the plant as a whole (aggregated by role) or one device at a time. This release
+still *polls* one device — the rest are stored and addressable.
+
+### Amortisation & battery health
+
+What the plant cost against what it has saved over its whole life, read from the lifetime
+counters and seasonally weighted; and a measured pack capacity and health inferred from deep
+discharges, since no supported inverter reports an SOH. See [Statistics](/use/statistics/).
+
+### Portable export & import
+
+The whole instance as one named, schema-independent file — every reading, the setup, the
+settings, profiles and custom charts. See [Export & Import](/use/export-import/).
+
 ### Platform
 
-Admin roles and first-run onboarding, structured logging, TimescaleDB retention and
-compression, RTU-over-TCP transport, and a built-in simulator.
+Admin roles and first-run onboarding, a public read-only dashboard for kiosks, an installable
+[PWA](/use/dashboard/#install-on-your-phone) so the dashboard opens full-screen from a phone's
+home screen, structured logging, TimescaleDB retention and compression, RTU-over-TCP transport,
+and a built-in simulator.
 
 ## Planned
 
@@ -41,14 +70,15 @@ compression, RTU-over-TCP transport, and a built-in simulator.
 - **Threshold alerts & notifications** — low battery SoC, grid outage, fault/alarm status,
   offline inverter — via push, email, webhook, or MQTT.
 - **Scheduled reports & data export** — daily/monthly energy + cost summaries.
-- **Tariff-aware automation** — schedule battery charge/discharge and grid-charge windows
-  around time-of-use tariffs and solar production, through the existing control path.
+- **More automations** — the engine takes one loop today; the index page and the run-state
+  stream are built for several.
 
-### Multi-inverter
+### Polling every device
 
-Run and aggregate several inverters/profiles at once. The narrow metrics schema and
-`inverterId` dimension already accommodate this; the work is generalizing the boot-time
-manifest/routes/topics from "the active profile" to "per configured inverter."
+The roster, the per-device history and the plant-wide aggregates have shipped; what is left is
+the poll loop itself, which still reads a single device. Each device already carries its own
+gateway, address and profile, so the work is running one loop per device rather than one for
+the instance.
 
 ### UX
 

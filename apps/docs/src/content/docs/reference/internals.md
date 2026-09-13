@@ -94,9 +94,17 @@ rather than a sample — a plain `avg` over a change-only series over-weights wh
 most often. Retention and compression policies keep raw bounded while preserving long-range
 trends. A new inverter needs **no migration** because nothing is vendor-columned.
 
-Runtime settings (inverter connection, MQTT, tariff, profile sources, active profile) live
-in an `app_settings` table as JSONB with per-key Zod schemas, hot-reloaded on write (except
-the active profile, which is restart-scoped).
+The **plant graph** is relational, not settings: `plants` → `connections` (each with a `kind`
+and its own params — a Modbus endpoint or an MQTT broker) → `devices` (role, unit id, profile,
+retirement) and `integrations` (the coded services on a connection, such as the Home Assistant
+export or the EVCC ingest). Anything that is an *entity* of the plant lives there so it can be
+referenced, constrained and listed.
+
+What remains in the `app_settings` table is preference-shaped — tariff, display, profile
+sources, the active profile, forecast and access flags — as JSONB with per-key Zod schemas,
+hot-reloaded on write (except the active profile, which is restart-scoped). A malformed
+document parses back to its default, so the schema for one is a flat tagged record rather than
+a discriminated union.
 
 ## Internal dashboard API
 

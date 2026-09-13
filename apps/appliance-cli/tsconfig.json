@@ -1,0 +1,3 @@
+{
+  "extends": "@SunReye/config/tsconfig.base.json"
+}

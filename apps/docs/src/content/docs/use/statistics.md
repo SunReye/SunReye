@@ -11,22 +11,27 @@ the tariff you configure in [Settings → Tariff](/use/settings/).
 This screen used to be **Costs & Tariffs** at `/costs`. That URL redirects here, and old
 `#/costs` bookmarks land on this page.
 
-<!--
-SCREENSHOTS PENDING RETAKE — do not reuse the old ones.
-The page was rebuilt (four sections, per-chart scope switchers, customize mode), so
-`public/screenshots/costs-light.png` and `costs-dark.png` no longer show this screen and are
-deliberately not embedded here. Retake both light and dark against a system that has a spot
-price feed and a battery, save them as `statistics-light.png` / `statistics-dark.png`, embed
-them below this comment with the existing `sr-shot sr-light` / `sr-dark` classes, and delete
-the two stale `costs-*.png` files.
--->
+<img class="sr-shot sr-light" src="/SunReye/screenshots/statistics-light.png" alt="Statistics: the cost and savings tiles above a stacked total-cost chart for the month." />
+<img class="sr-shot sr-dark" src="/SunReye/screenshots/statistics-dark.png" alt="Statistics: the cost and savings tiles above a stacked total-cost chart for the month." />
 
-## Range picker and view scopes
+On a plant with more than one source, the sidebar's
+[source switcher](/use/dashboard/#source-switcher) decides what is being priced: the plant as a
+whole (aggregated by role) or one device on its own. It is the same scope the Overview and
+History screens use.
 
-One range picker at the top drives the whole page: **Today**, **Last 7 days**, **This
-month**, **Last month**, **This year**, or a custom from/to. Two things sit outside it on
-purpose — today's and tomorrow's day-ahead curves (forward-looking) and the all-time records
-(rangeless).
+## Toolbar
+
+The page's toolbar is three controls:
+
+- The **[range navigator](/use/history/#range-navigator)** — the same Day / Week / Month / Year
+  grain tabs and stepper the History screen uses, plus *Last 7 days* and a custom from/to
+  behind the calendar button. Two things sit outside it on purpose: today's and tomorrow's
+  day-ahead curves (forward-looking) and the all-time records (rangeless).
+- **Previous period / Year ago** — what every comparison on the page is measured against. The
+  deltas, the year-over-year chart and the records section all follow this one choice.
+- **Customize** (the sliders icon, admins only) — see [Customize mode](#customize-mode-admins).
+
+### View scopes
 
 Charts additionally carry a **view scope** toggle in their section header:
 
@@ -52,16 +57,17 @@ Nine tiles, each with a headline figure and a sub-line:
 | --- | --- |
 | **Grid cost** | Import cost plus the standing charge. |
 | **Exported for nothing** | §51 only — see [below](#export-that-earned-nothing-51). |
-| **Net cost** | The bill after export earnings (a credit when negative, shown in green). |
+| **Effective cost** | The bill after export earnings (a credit when negative, shown in green). |
 | **Grid import** | Cost and kWh drawn from the grid. |
-| **Export earnings** | Earnings and kWh fed in. |
+| **Grid export** | Earnings and kWh fed in. |
 | **Solar saving** | The kWh solar and the battery served instead of the grid (load − import), at the effective grid price they displaced. |
 | **Total savings** | Solar saving plus export earnings, versus buying everything from the grid. |
 | **Self-sufficiency** | % of load met by solar/battery. |
 | **Self-consumption** | % of production used on-site. |
 
-Below them, **net cost per period** as bars (credit periods in green), and **import by tariff
-band** — kWh and cost per time-of-use band, when bands are configured.
+Below them, **total cost per period** as stacked bars — grid usage, the standing charge and
+export earnings, so a credit period reads as one — and **import by tariff band**: kWh and cost
+per time-of-use band, when bands are configured.
 
 ### Energy analytics
 
@@ -88,7 +94,7 @@ median across every measured discharge, so one odd night cannot move it, and not
 until at least five have been measured.
 
 **Health** compares that against what the pack should hold. If you enter the rated capacity under
-*Settings → Inverter → Battery*, health is measured against the nameplate — the usual meaning of
+*Settings → Devices → the inverter → Battery*, health is measured against the nameplate — the usual meaning of
 "90 % healthy". If you don't, it is measured against this system's own earliest measurements, which
 tracks degradation from the day SunReye met the pack but cannot say how far it already was from
 factory. The tile always states which reference it used, because the two are different claims.
@@ -233,7 +239,7 @@ and cost than the meter did, and the tiles say so consistently across every sect
 
 ## Customize mode (admins)
 
-Admins get a sliders button beside the range picker. It opens a **draft**: the sections gain a
+Admins get a sliders button in the [toolbar](#toolbar). It opens a **draft**: the sections gain a
 dashed outline, each section header an eye toggle (hide it) and a "starts collapsed"
 checkbox, and each tile a checkbox. Hidden items stay visible but dimmed while editing, so
 they can be switched back on. Nothing reaches the server until **Save**; **Cancel** drops the
