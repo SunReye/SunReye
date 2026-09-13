@@ -202,8 +202,15 @@ jobs:
           version='${{ steps.v.outputs.version }}'
           image="ghcr.io/sunreye/sunreye-server"
 
+          # The runner's own sha256sum, not `nix run nixpkgs#coreutils -- sha256sum`:
+          # coreutils is a MULTI-CALL binary, so that form runs `coreutils` with
+          # "sha256sum" as an argument and it exits 1 with "Try '... --help'".
+          # This step had never once executed — 3.2.0's appliance publish was the
+          # `workflow_run` that could not fire — so the first real release to
+          # reach it was the one that found it. pipefail is what turned it into a
+          # failed job rather than a digest pinned to the hash of nothing.
           digest=$(nix run nixpkgs#skopeo -- inspect --raw "docker://$image:$version" \
-            | nix run nixpkgs#coreutils -- sha256sum | cut -d' ' -f1)
+            | sha256sum | cut -d' ' -f1)
           digest="sha256:$digest"
 
           # The attrset on STDOUT, not the `-> ImageHash:` log line: that line is
