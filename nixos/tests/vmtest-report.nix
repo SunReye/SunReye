@@ -28,7 +28,7 @@
       StandardError = "journal+console";
       TimeoutStartSec = "5min";
     };
-    path = with pkgs; [ systemd coreutils podman ];
+    path = with pkgs; [ systemd coreutils podman iproute2 ];
     script = ''
       # Long enough for a ~400 MB image load to have got somewhere, short enough
       # to land well inside any CI timeout.
@@ -41,6 +41,12 @@
         echo
         journalctl -u "$u" --no-pager -n 30 2>&1 | tail -30 || true
       done
+      echo "== caddy: $(systemctl is-active caddy 2>/dev/null || echo inactive) =="
+      journalctl -u caddy --no-pager -n 40 2>&1 | tail -40 || true
+      echo "-- listening --"
+      ss -lntp 2>/dev/null | head -20 || true
+      echo "-- caddy config --"
+      cat /etc/caddy/caddy_config 2>/dev/null | head -40 || true
       echo "-- images --"
       podman images --format '{{.Repository}}:{{.Tag}} {{.Size}}' 2>&1 | head -5 || true
       echo "-- ps --"
@@ -70,7 +76,7 @@
     # podman included because the report asks it what is running: without it the
     # container section was `podman: command not found` and the reader was left
     # to infer the state of the workload from the unit list alone.
-    path = with pkgs; [ systemd util-linux curl coreutils gnugrep podman ];
+    path = with pkgs; [ systemd util-linux curl coreutils gnugrep podman openssl ];
     script = ''
       echo "##### VMTEST REPORT #####"
       echo "rootfs:    $(findmnt -no FSTYPE,OPTIONS /)"
@@ -108,6 +114,23 @@
       # And that the enrolment window is open on a box with no key, which is the
       # only way a published image can ever be adopted.
       echo "tailscale-web: $(systemctl is-active tailscale-web 2>/dev/null || echo inactive)"
+
+      # The FRONT DOOR, which is the only address a household ever types. Until
+      # this existed the test proved the server answers on 127.0.0.1:3000 and
+      # nothing at all about the path in front of it: `caddy: active` says
+      # systemd started a process, not that it terminates TLS or proxies to
+      # anything. A box that boots to a browser error is a broken box however
+      # healthy port 3000 is.
+      #
+      # --resolve, because `tls internal` issues per-name certificates and curl
+      # sends no SNI for a bare IP: the request has to carry the name the box
+      # actually answers to.
+      name=$(hostnamectl --transient 2>/dev/null || echo localhost)
+      echo "proxy-redirect: $(curl -s -o /dev/null -w '%{http_code}' --max-time 15         "http://127.0.0.1/" || echo 000)"
+      echo "proxy-https: $(curl -s -k -o /dev/null -w '%{http_code}' --max-time 30         --resolve "$name:443:127.0.0.1" "https://$name/healthz" || echo 000)"
+      # The certificate the LAN door presents, so a change of issuer is visible
+      # rather than silent.
+      echo "proxy-issuer: $(echo | openssl s_client -connect 127.0.0.1:443         -servername "$name" 2>/dev/null | openssl x509 -noout -issuer 2>/dev/null || echo NONE)"
 
       echo "--- health report ---"
       /run/current-system/sw/bin/appliance-health-report 2>&1 | head -30 || true

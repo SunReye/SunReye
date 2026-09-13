@@ -474,7 +474,19 @@ in
           # boot the owner has whichever of those their router gave them.
           ":443" = {
             extraConfig = ''
-              tls internal
+              # on_demand, because this site is a PORT with no names. `tls
+              # internal` issues certificates for a site's subjects, and a site
+              # declared as `:443` has none — so Caddy bound the port, read the
+              # ClientHello and had nothing to present: every handshake died with
+              # `tlsv1 alert internal error`, on every box, while `caddy: active`
+              # and the :80 redirect both looked healthy. The names cannot be
+              # listed here: they are the mDNS name, whatever short hostname the
+              # box ended up with, and whichever address the router handed out,
+              # none of which exist when this config is built. Issuing per SNI at
+              # handshake time is the only way to serve all three.
+              tls internal {
+                on_demand
+              }
               reverse_proxy 127.0.0.1:${toString cfg.port}
             '';
           };

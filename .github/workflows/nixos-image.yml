@@ -119,6 +119,15 @@ jobs:
           grep -q '^tailscale-web: active' report.txt \
             || { echo "::error::the Tailscale login window did not open"; fail=1; }
           grep -q '^setup-show: ok' report.txt || { echo "::error::sunreye-setup show failed"; fail=1; }
+          # The front door. `healthz` above is the server answering on its own
+          # port; these two are the only address a household ever types. Without
+          # them the suite passed a box whose every HTTPS request died with
+          # `tlsv1 alert internal error` — while port 80 dutifully redirected
+          # each visitor to that dead door, and `caddy: active` looked fine.
+          grep -q '^proxy-redirect: 301' report.txt \
+            || { echo "::error::port 80 does not redirect to HTTPS"; fail=1; }
+          grep -q '^proxy-https: 200' report.txt \
+            || { echo "::error::the dashboard does not answer over HTTPS — no PWA, no Secure cookies"; fail=1; }
           grep -q '^secrets:   present' report.txt \
             || { echo "::error::first-boot secrets were not generated"; fail=1; }
           exit $fail
