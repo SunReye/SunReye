@@ -434,3 +434,65 @@ describe("the local compile", () => {
     expect(pkg.scripts.compile).toContain("./src/main.ts");
   });
 });
+
+/**
+ * What release-please cuts a release FOR.
+ *
+ * A component that ships nothing still produces a git tag, a GitHub release and
+ * a CHANGELOG entry, which read exactly like an artifact somebody can install.
+ * `web-v3.1.1` was published that way after the dashboard moved inside the
+ * server binary: there is no `sunreye-web` image any more (docker/README.md
+ * calls it retired), release-please.yml deliberately builds none, and the
+ * release still appeared beside `server` and `addon` as though it were one.
+ *
+ * The rule is that a released component must yield something a user can obtain:
+ * an npm package, or an image the release workflow dispatches a build for.
+ */
+describe("release configuration", () => {
+  interface ReleaseConfig {
+    packages: Record<string, { component?: string; "exclude-paths"?: string[] }>;
+    plugins?: ({ type: string; components?: string[] } | string)[];
+  }
+
+  /**
+   * Private workspace libraries whose tags are a changelog anchor rather than a
+   * download. They publish nothing on purpose; the tag is how a consumer of the
+   * monorepo dates a behaviour change in them.
+   */
+  const VERSION_ONLY = ["packages/inverter-core"];
+
+  const config = async () => JSON.parse(await read("release-please-config.json")) as ReleaseConfig;
+
+  it("every released component ships an artifact someone can obtain", async () => {
+    const { packages } = await config();
+    const workflow = await read(".github/workflows/release-please.yml");
+
+    const shipsNothing: string[] = [];
+    for (const [path, entry] of Object.entries(packages)) {
+      if (VERSION_ONLY.includes(path)) continue;
+
+      // `release-type: simple` components (the addon) carry no package.json at
+      // all; their artifact is an image, which the workflow check below covers.
+      const manifestPath = path === "." ? "package.json" : `${path}/package.json`;
+      const manifest = existsSync(at(manifestPath))
+        ? (JSON.parse(await read(manifestPath)) as { private?: boolean })
+        : { private: true };
+      const publishable = manifest.private !== true;
+      // The release workflow dispatches a docker build per component that has an
+      // image; a component with neither is a release nobody can install.
+      const hasImage = new RegExp(`outputs\\.${entry.component}_released`).test(workflow);
+
+      if (!publishable && !hasImage) shipsNothing.push(`${path} (${entry.component})`);
+    }
+
+    expect(shipsNothing).toEqual([]);
+  });
+
+  it("the dashboard counts as a change to the artifact that carries it", async () => {
+    const { packages } = await config();
+    // apps/web is compiled INTO the server binary, so excluding it from the
+    // server's paths means a dashboard-only fix cannot bump the only artifact
+    // that delivers the dashboard.
+    expect(packages["."]?.["exclude-paths"] ?? []).not.toContain("apps/web");
+  });
+});
