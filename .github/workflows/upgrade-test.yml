@@ -1,7 +1,12 @@
 ---
 name: Upgrade test
 
-# Proves the upgrade path end-to-end before it reaches a user: boot the last
+# Proves the upgrade path end-to-end on the pull request that introduces it —
+# release-please's release PR included, which is where a release is actually
+# gated. A `push: tags` trigger here never fired once: the tags are pushed with
+# GITHUB_TOKEN and GitHub emits no event for them.
+#
+# Boot the last
 # published release, let it collect data, swap in freshly built images, and
 # assert the migration runner (baseline stamping included — the old release is
 # still push-shaped or journaled at an older point) preserves the data and the
@@ -14,8 +19,6 @@ on:
       - "apps/server/**"
       - "sunreye/**"
       - ".github/workflows/upgrade-test.yml"
-  push:
-    tags: ["server-v*", "addon-v*"]
   workflow_dispatch:
 
 permissions:

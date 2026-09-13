@@ -8,8 +8,13 @@ name: Restore test
 # script DOCS.md points at — and diff a full snapshot of both sides per bucket
 # and per metric (`scripts/db-parity.ts`).
 #
-# A red restore blocks the release: a backup nobody has ever restored is not a
-# backup.
+# The gate is the PULL REQUEST, including release-please's own release PR. It
+# used to claim a tag trigger as well — "a red restore blocks the release" — and
+# that trigger never once fired: release-please pushes its tags with
+# GITHUB_TOKEN, and GitHub suppresses workflow runs for token-made events. Across
+# the last twenty runs of this workflow every single one was a pull_request.
+# A backup nobody has ever restored is not a backup, so the gate that does run
+# is the one this comment is now allowed to name.
 on:
   pull_request:
     paths:
@@ -19,8 +24,6 @@ on:
       - "scripts/db-parity.ts"
       - "scripts/ci/bashio-shim.sh"
       - ".github/workflows/db-restore.yml"
-  push:
-    tags: ["server-v*", "addon-v*"]
   workflow_dispatch:
 
 permissions:
