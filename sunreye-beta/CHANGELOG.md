@@ -2,7 +2,7 @@
 
 ## [unreleased]
 
-Unreleased work on `dev` since 3.1.1, shipped in `beta.20260913-8aa8f47`.
+Unreleased work on `dev` since 3.1.1, shipped in `beta.20260913-c732f00`.
 
 
 ### Features
@@ -17,6 +17,7 @@ Unreleased work on `dev` since 3.1.1, shipped in `beta.20260913-8aa8f47`.
 
 * **docker:** the build context was swallowing the same source directory ([8ae97b2](https://github.com/SunReye/SunReye/commit/8ae97b2d428a2b40099ef6cc81aabc39230839b7))
 * **db-tests:** give the aggregate seeding test a budget of its own ([bf6d0b6](https://github.com/SunReye/SunReye/commit/bf6d0b6ff94aa98a0684ff155b222115843a8407))
+* **release:** stop releasing a component that ships nothing ([41951be](https://github.com/SunReye/SunReye/commit/41951bedb3caa6392db9e5b82c74f8653035e8aa))
 * **nixos:** end the boot test when the report ends ([2887196](https://github.com/SunReye/SunReye/commit/2887196c4307d039ac9dc589b56b8b044a5c6f51))
 * **nixos:** serve HTTPS — the LAN door never presented a certificate ([5572760](https://github.com/SunReye/SunReye/commit/5572760fbf6e0a16d65bd97ce6139d3fe7a5ecb6))
 * **nixos:** the appliance has never had a working database ([fa54688](https://github.com/SunReye/SunReye/commit/fa54688a7801a2b85f2b78ce7ded91fde16b0d00))
@@ -31,6 +32,11 @@ Unreleased work on `dev` since 3.1.1, shipped in `beta.20260913-8aa8f47`.
 * bring the manual up to the 2.0.0 dashboard ([01949c6](https://github.com/SunReye/SunReye/commit/01949c677ee0ca778ad1944ea2bd90b9e4f9b918))
 * the SunReye appliance, and where its gates live ([80982a9](https://github.com/SunReye/SunReye/commit/80982a9ca37d2ecca5272b60c603271069a3bf16))
 * describe installing the dashboard as a PWA ([fe5edff](https://github.com/SunReye/SunReye/commit/fe5edff22491f81b2ebc2966c0cb0c87154a4359))
+
+
+### Tests
+
+* **release:** check the allowlist instead of trusting it ([1ba0cfb](https://github.com/SunReye/SunReye/commit/1ba0cfb0b8c10e1e7506f63c10dbaaf7dc8652bd))
 
 
 ### Continuous Integration
