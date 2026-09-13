@@ -1,5 +1,22 @@
 # Changelog
 
+## [3.2.1](https://github.com/SunReye/SunReye/compare/server-v3.2.0...server-v3.2.1) (2026-09-13)
+
+
+### Bug Fixes
+
+* **ci:** make the gate that decides what runs fail closed ([#242](https://github.com/SunReye/SunReye/issues/242)) ([c6e5b4c](https://github.com/SunReye/SunReye/commit/c6e5b4c185293fdad74ff61f5a31424b66717fb7))
+* **db-tests:** give the layer a budget instead of chasing flakes test by test ([30dc6b0](https://github.com/SunReye/SunReye/commit/30dc6b095144bc416d3faa8ca85080388675c7dc))
+* **db-tests:** give the layer a budget instead of chasing flakes test by test ([d893723](https://github.com/SunReye/SunReye/commit/d893723794051dc07dda6a3d4e32296d6e18f0d0))
+* **nixos:** ship the flake the box rebuilds itself from ([#243](https://github.com/SunReye/SunReye/issues/243)) ([6c8c8cd](https://github.com/SunReye/SunReye/commit/6c8c8cd804f79c59b221ee3117e44f7a7087c00b))
+* **release:** advertise a release without building an image for it ([ba0697d](https://github.com/SunReye/SunReye/commit/ba0697df295ad2b698ec28537a122c158a191512))
+* **release:** hand off to the appliance build instead of waiting for an event that cannot arrive ([2c5e3e2](https://github.com/SunReye/SunReye/commit/2c5e3e24b50fc60458c9dd474322bf03b9bfbe09))
+* **release:** hand off to the appliance build instead of waiting for an event that cannot arrive ([daa1d44](https://github.com/SunReye/SunReye/commit/daa1d44c40e26346836f1251de38fff3c82c0225))
+* **release:** make the appliance chain reachable, and stop paying for an image nobody asked for ([fb4d70f](https://github.com/SunReye/SunReye/commit/fb4d70f7c47bf30b4db935c7fae3de5fc22c336f))
+* **release:** read the hash from the stream that carries it ([2351ae3](https://github.com/SunReye/SunReye/commit/2351ae3cf967679e29c31314fcd2915037622c80))
+* **release:** read the hash from the stream that carries it ([e304c12](https://github.com/SunReye/SunReye/commit/e304c1249c2f4d1f8e144a124348eef9d10252ba))
+* **release:** repin reads the right stream, and the db layer gets a budget ([ee57455](https://github.com/SunReye/SunReye/commit/ee57455474ba278d605a83b28924a2caa6fdb6d0))
+
 ## [3.2.0](https://github.com/SunReye/SunReye/compare/server-v3.1.1...server-v3.2.0) (2026-09-13)
 
 
