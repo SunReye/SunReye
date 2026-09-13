@@ -15,8 +15,7 @@ import { readFileSync } from "node:fs";
  * budget added after each flake is a ratchet that never catches up.
  */
 const scripts = () =>
-  (JSON.parse(readFileSync("package.json", "utf8")) as { scripts: Record<string, string> })
-    .scripts;
+  (JSON.parse(readFileSync("package.json", "utf8")) as { scripts: Record<string, string> }).scripts;
 
 describe("test budgets", () => {
   test("the database layer does not run on bun's default timeout", () => {
