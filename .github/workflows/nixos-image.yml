@@ -31,9 +31,13 @@ on:
   workflow_dispatch:
     inputs:
       release:
-        description: "Released server version to publish an image for, e.g. 3.2.0. Empty builds a bench image."
+        description: "Released server version to pin and advertise, e.g. 3.2.0. Empty skips the pin."
         type: string
         default: ""
+      image:
+        description: "Also build and attach the flashable image (~20 min, 1.6 GB). Only needed to flash NEW boxes."
+        type: boolean
+        default: false
       ref:
         description: "Ref to build a bench image from"
         type: string
@@ -147,9 +151,17 @@ jobs:
           name: appliance-boot-log
           path: boot.log
           retention-days: 14
-
-  publish:
-    name: Publish appliance image
+  # Pin the release, and let every deployed box see it.
+  #
+  # Split from the image build deliberately. A box in the field never needs a
+  # flashable image: it owns /etc/nixos, follows `stable`, and rebuilds nightly,
+  # pulling the new server container by digest. What it DOES need is this —
+  # version.json and the image digest repinned, committed, and `stable` moved.
+  # Those were the first and last steps of a job that also spent ~20 minutes
+  # building and compressing a 1.6 GB artifact, so declining the artifact meant
+  # deployed boxes silently never saw the release at all.
+  pin:
+    name: Pin the release
     # Only for a real server release. A nightly or a bench dispatch must not move
     # `stable`: boxes track it unattended, and a nightly is not a version anyone
     # chose to ship. A non-empty `release` is what distinguishes the two.
@@ -222,6 +234,46 @@ jobs:
           git add nixos/version.json nixos/modules/sunreye/images.nix
           git commit -m "chore(nixos): publish ${{ steps.v.outputs.version }} [skip ci]"
           git push origin HEAD:master
+      # LAST. `stable` is what every deployed box's nightly upgrade follows, so
+      # it must only ever point at a commit whose CONTAINER images exist — which
+      # the handoff guarantees, since this workflow is dispatched by the server
+      # build after its push. The flashable image is cut separately and may lag:
+      # a box flashed from an older image boots fine (its container images are
+      # embedded in it, not pulled) and catches up on its first upgrade.
+      - name: Advance stable
+        run: git push --force origin HEAD:stable
+
+  # The flashable image, cut when it is worth cutting rather than every release.
+  #
+  # ~20 minutes and a 1.6 GB artifact, and it is only ever used to flash a NEW
+  # box. Opt-in, therefore, and independent of the pin above: it builds from
+  # master (which the pin has already brought up to date) and attaches itself to
+  # the release its own version.json names.
+  image:
+    name: Publish appliance image
+    needs: pin
+    if: >-
+      always() && github.event_name == 'workflow_dispatch' && inputs.image &&
+      (needs.pin.result == 'success' || needs.pin.result == 'skipped')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: master
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: DeterminateSystems/nix-installer-action@main
+
+      # The version is whatever master is pinned to rather than an input: an
+      # image built from this tree IS that version, and naming it twice invites
+      # the two to disagree.
+      - name: Read the pinned version
+        id: v
+        run: |
+          version=$(nix run nixpkgs#jq -- -r .version nixos/version.json)
+          test -n "$version"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "building the appliance image for $version"
 
       - name: Build the image
         run: |
@@ -248,16 +300,11 @@ jobs:
             '${{ steps.artifact.outputs.name }}' \
             '${{ steps.artifact.outputs.name }}.sha256' --clobber
 
-      # LAST. `stable` is what every deployed box's nightly upgrade follows, so
-      # it must only ever point at a commit whose container images AND flashable
-      # image both exist. Fast-forwarding it before the upload would hand boxes a
-      # version whose artifacts are still building.
-      - name: Advance stable
-        run: git push --force origin HEAD:stable
-
   bench:
     name: Bench image
-    if: github.event_name == 'workflow_dispatch' && inputs.release == ''
+    if: >-
+      github.event_name == 'workflow_dispatch' && inputs.release == '' &&
+      !inputs.image
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

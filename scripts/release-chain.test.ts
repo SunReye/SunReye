@@ -46,4 +46,38 @@ describe("the appliance release chain", () => {
     );
     expect(inputs).toContain(`${passed}:`);
   });
+
+  /**
+   * A box in the field never needs the flashable image: it owns /etc/nixos,
+   * follows `stable`, and rebuilds nightly. What it needs is the repin and the
+   * `stable` fast-forward — and those used to be the first and last steps of the
+   * same job that spent ~20 minutes building a 1.6 GB artifact. Skipping the
+   * artifact therefore meant deployed boxes silently never saw the release.
+   */
+  test("advertising a release does not depend on building an image", () => {
+    const parsed = Bun.YAML.parse(appliance) as {
+      jobs: Record<string, { if?: string; steps?: { name?: string; run?: string }[] }>;
+    };
+
+    const advancing = Object.entries(parsed.jobs).find(([, job]) =>
+      job.steps?.some((step) => step.run?.includes("HEAD:stable")),
+    );
+    expect(advancing).toBeDefined();
+
+    const [, job] = advancing!;
+    const buildsImage = job.steps?.some((step) => step.run?.includes("nixos#image"));
+    expect(buildsImage).toBeFalsy();
+  });
+
+  test("the image build is opt-in, so it cannot gate updates", () => {
+    const parsed = Bun.YAML.parse(appliance) as {
+      jobs: Record<string, { if?: string; steps?: { run?: string }[] }>;
+    };
+
+    const [, imageJob] =
+      Object.entries(parsed.jobs).find(([, job]) =>
+        job.steps?.some((step) => step.run?.includes("nixos#image")),
+      ) ?? [];
+    expect(imageJob?.if).toContain("inputs.image");
+  });
 });
