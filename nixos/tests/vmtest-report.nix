@@ -210,7 +210,12 @@
       # fails closed, so the banner silently never firing looks exactly like a
       # banner that was never configured. A pty is needed to reach it at all:
       # this unit's stdout is the journal, where `[ -t 1 ]` is false.
-      banner=$(timeout 30 script -qec "bash -i -c true" /dev/null </dev/null 2>/dev/null || true)
+      # `-l`, not just `-i`. NixOS puts interactiveShellInit in /etc/bashrc, which
+      # a LOGIN shell reaches through /etc/profile; a bare `bash -i` is
+      # non-login and reads ~/.bashrc, which root does not have — so the probe
+      # reported MISSING against a banner that works over ssh. The thing being
+      # tested is what `ssh root@box` gets, so the probe has to be that.
+      banner=$(timeout 30 script -qec "bash -lic true" /dev/null </dev/null 2>/dev/null || true)
       case "$banner" in
         *"S U N R E Y E"*) echo "login-banner: shown" ;;
         *) echo "login-banner: MISSING" ;;
