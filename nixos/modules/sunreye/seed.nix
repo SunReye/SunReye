@@ -101,7 +101,7 @@ lib.mkIf (config.appliance.enable && cfg.enable) {
   # vanishes overnight with a podman pull error nobody will read.
   appliance.autoUpgrade = {
     enable = lib.mkDefault true;
-    flake = lib.mkDefault "/etc/nixos";
+    flake = lib.mkDefault "/etc/nixos#appliance";
     flags = lib.mkDefault [ "--update-input" "sunreye" "--commit-lock-file" ];
   };
 }

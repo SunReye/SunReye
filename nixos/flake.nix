@@ -130,10 +130,10 @@
         # something fabricates the file it is looking for.
         pg-major-guard = import ./tests/pg-major-guard.nix {
           inherit pkgs;
-          guard = import ./modules/sunreye/pg-major-guard.nix {
-            inherit pkgs;
-            versionFile = "/var/lib/sunreye/postgres/data/PG_VERSION";
-          };
+          # The guard the appliance ships, not one built here: the defect this
+          # check exists for was the default path, which an instance constructed
+          # with a path passed in cannot possibly show.
+          guard = self.nixosConfigurations.appliance.config.appliance.sunreye.pgMajorGuardPackage;
         };
 
         # Same question, asked of the box's own status report.

@@ -112,7 +112,7 @@
     # podman included because the report asks it what is running: without it the
     # container section was `podman: command not found` and the reader was left
     # to infer the state of the workload from the unit list alone.
-    path = with pkgs; [ systemd util-linux curl coreutils gnugrep podman openssl ];
+    path = with pkgs; [ systemd util-linux curl coreutils gnugrep git podman openssl ];
     script = ''
       echo "##### VMTEST REPORT #####"
       echo "rootfs:    $(findmnt -no FSTYPE,OPTIONS /)"
@@ -172,6 +172,33 @@
       # that runs to its 25-minute ceiling, and a guard that then blames the
       # appliance for a harness that hung.
       echo "proxy-issuer: $(timeout 20 openssl s_client -connect 127.0.0.1:443 -servername "$name" </dev/null 2>/dev/null | timeout 10 openssl x509 -noout -issuer 2>/dev/null || echo NONE)"
+
+      # Can this box rebuild itself at all? Everything above is the system the
+      # IMAGE baked; this is the only question about the system the box will
+      # build NEXT, and for a while the answer was no — `nixos/template/` shipped
+      # a site.json and a local.nix and no flake.nix, so `nixos-rebuild --flake
+      # /etc/nixos` had nothing to evaluate, `sunreye-setup apply` could not
+      # work, and seed.nix's `[ ! -e /etc/nixos/flake.nix ]` guard never became
+      # false — every boot copied the template back over the owner's settings.
+      # Every gate we had was green throughout: the image builds and boots fine.
+      #
+      # Fetching the input needs a network this VM does not have, so this is the
+      # offline half — the file is there, git can see it (nixos-rebuild ignores
+      # what git does not track, which presents as "my setting did nothing"), and
+      # the attribute the nightly timer rebuilds is one the flake declares.
+      attr=$(systemctl cat nixos-upgrade.service 2>/dev/null \
+        | sed -n 's|.*--flake /etc/nixos#\([A-Za-z0-9_-]*\).*|\1|p' | head -1)
+      if [ ! -e /etc/nixos/flake.nix ]; then
+        echo "config-tree: no flake.nix — this box cannot rebuild itself"
+      elif ! git -C /etc/nixos ls-files --error-unmatch flake.nix >/dev/null 2>&1; then
+        echo "config-tree: flake.nix is untracked, so the rebuild cannot see it"
+      elif [ -z "$attr" ]; then
+        echo "config-tree: the nightly upgrade names no flake attribute"
+      elif ! grep -q "nixosConfigurations.$attr" /etc/nixos/flake.nix; then
+        echo "config-tree: nightly rebuilds #$attr, which the flake does not declare"
+      else
+        echo "config-tree: ok (#$attr)"
+      fi
 
       echo "--- health report ---"
       /run/current-system/sw/bin/appliance-health-report 2>&1 | head -30 || true
