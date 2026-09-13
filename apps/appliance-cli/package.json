@@ -5,7 +5,8 @@
   "private": true,
   "type": "module",
   "bin": {
-    "sunreye-setup": "./src/main.ts"
+    "sunreye-setup": "./src/main.ts",
+    "sunreye-first-boot": "./src/first-boot.ts"
   },
   "dependencies": {
     "zod": "catalog:"

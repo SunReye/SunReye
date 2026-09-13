@@ -74,6 +74,7 @@ passwords. Nothing else on this network can read this page now.
  * Pure, because the interesting behaviour is entirely in this decision and a
  * server that wires it to a socket is not where a mistake would hide.
  */
+// fallow-ignore-next-line unused-export -- the decision under test; first-boot.test.ts is its only other consumer and test files are not traced
 export function firstBootResponse(request: FirstBootRequest): FirstBootResponse {
   const { password, elapsedMs, windowMs, claimed } = request;
 
@@ -103,6 +104,7 @@ export interface FirstBootIo {
   now: () => number;
 }
 
+// fallow-ignore-next-line unused-export -- exported for first-boot.test.ts, which exercises the one-shot behaviour against a fake filesystem
 export function firstBootHandler(io: FirstBootIo, openedAt: number, windowMs: number) {
   return async (): Promise<FirstBootResponse> => {
     const password = await io.readPassword();
@@ -145,45 +147,52 @@ function isEntryPoint(): boolean {
   return import.meta.url === pathToFileURL(entry).href;
 }
 
-if (isEntryPoint()) {
-  const passwordFile = process.env.SUNREYE_PASSWORD_FILE ?? "/var/lib/secrets/console-password";
-  const claimFile = process.env.SUNREYE_CLAIM_FILE ?? "/var/lib/secrets/console-claimed";
-  const port = Number(process.env.SUNREYE_FIRST_BOOT_PORT ?? 5251);
-  const windowMs = Number(process.env.SUNREYE_FIRST_BOOT_WINDOW_MS ?? 15 * 60 * 1000);
-
-  const handle = firstBootHandler(
-    {
-      readPassword: async () => {
-        try {
-          return (await readFile(passwordFile, "utf8")).trim();
-        } catch {
-          return null;
-        }
-      },
-      isClaimed: async () => {
-        try {
-          await access(claimFile);
-          return true;
-        } catch {
-          return false;
-        }
-      },
-      // 0600: the marker says a password has been handed out, and on a box where
-      // that is the only credential, its absence is what reopens the window.
-      markClaimed: async () => {
-        await writeFile(claimFile, `${new Date().toISOString()}\n`, { mode: 0o600 });
-      },
-      now: () => Date.now(),
+/**
+ * The real seam, over a pair of paths.
+ *
+ * Parameterised so the suite can exercise it against a temporary directory:
+ * "no password file yet" and "the marker is 0600" are both behaviour, and a
+ * first boot is precisely the case where neither file exists. Untested, they
+ * are the two things that would break on a box and nowhere else.
+ */
+// fallow-ignore-next-line unused-export -- the entry point below and first-boot.test.ts are its consumers; test files are not traced
+export function makeFirstBootIo(paths: { passwordFile: string; claimFile: string }): FirstBootIo {
+  return {
+    readPassword: async () => {
+      try {
+        return (await readFile(paths.passwordFile, "utf8")).trim();
+      } catch {
+        return null;
+      }
     },
-    Date.now(),
-    windowMs,
-  );
+    isClaimed: async () => {
+      try {
+        await access(paths.claimFile);
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    // 0600: the marker records that a password has been handed out, and on a box
+    // where that is the only credential, its absence is what reopens the window.
+    markClaimed: async () => {
+      await writeFile(paths.claimFile, `${new Date().toISOString()}\n`, { mode: 0o600 });
+    },
+    now: () => Date.now(),
+  };
+}
 
-  // node:http, not Bun.serve — see main.ts for why nothing here may depend on
-  // bun. 127.0.0.1 only: Caddy publishes this on the LAN over HTTPS, and a
-  // listener of our own on 0.0.0.0 would be a second door serving the same
-  // secret in clear.
-  createServer((_request, response) => {
+/**
+ * The window as an HTTP server.
+ *
+ * node:http, not Bun.serve — see main.ts for why nothing here may depend on
+ * bun. Returned rather than listened on so a test can bind an ephemeral port
+ * and close it; the one-shot behaviour is only real once it has been through a
+ * socket, and this transport was rewritten wholesale when bun came out.
+ */
+// fallow-ignore-next-line unused-export -- the entry point below and first-boot.test.ts are its consumers; test files are not traced
+export function firstBootServer(handle: () => Promise<FirstBootResponse>) {
+  return createServer((_request, response) => {
     void handle().then(({ status, body }) => {
       response.writeHead(status, {
         "content-type": "text/plain; charset=utf-8",
@@ -193,7 +202,22 @@ if (isEntryPoint()) {
       });
       response.end(body);
     });
-  }).listen(port, "127.0.0.1", () => {
+  });
+}
+
+if (isEntryPoint()) {
+  const port = Number(process.env.SUNREYE_FIRST_BOOT_PORT ?? 5251);
+  const windowMs = Number(process.env.SUNREYE_FIRST_BOOT_WINDOW_MS ?? 15 * 60 * 1000);
+
+  const io = makeFirstBootIo({
+    passwordFile: process.env.SUNREYE_PASSWORD_FILE ?? "/var/lib/secrets/console-password",
+    claimFile: process.env.SUNREYE_CLAIM_FILE ?? "/var/lib/secrets/console-claimed",
+  });
+
+  // 127.0.0.1 only: Caddy publishes this on the LAN over HTTPS, and a listener
+  // of our own on 0.0.0.0 would be a second door serving the same secret in
+  // clear.
+  firstBootServer(firstBootHandler(io, Date.now(), windowMs)).listen(port, "127.0.0.1", () => {
     console.log(`first-boot window open on 127.0.0.1:${port} for ${windowMs / 1000}s`);
   });
 }

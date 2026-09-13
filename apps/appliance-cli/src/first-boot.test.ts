@@ -1,5 +1,13 @@
 import { describe, expect, test } from "bun:test";
-import { firstBootHandler, firstBootResponse } from "./first-boot";
+import { mkdtemp, stat, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import {
+  firstBootHandler,
+  firstBootResponse,
+  firstBootServer,
+  makeFirstBootIo,
+} from "./first-boot";
 
 /**
  * The one-shot window that hands over this box's console password.
@@ -167,5 +175,83 @@ describe("firstBootHandler", () => {
 
     expect(response.status).toBe(410);
     expect(state.marks).toBe(0);
+  });
+});
+
+describe("makeFirstBootIo", () => {
+  const scratch = async () => {
+    const dir = await mkdtemp(join(tmpdir(), "first-boot-"));
+    return { dir, passwordFile: join(dir, "password"), claimFile: join(dir, "claimed") };
+  };
+
+  // A first boot is exactly the case where neither file exists yet, so this is
+  // the state the box is in when it matters most.
+  test("no password file yet reads as null, not as an empty password", async () => {
+    const { passwordFile, claimFile } = await scratch();
+
+    expect(await makeFirstBootIo({ passwordFile, claimFile }).readPassword()).toBeNull();
+  });
+
+  test("it reads the password and strips the trailing newline", async () => {
+    const { passwordFile, claimFile } = await scratch();
+    await writeFile(passwordFile, `${PASSWORD}\n`);
+
+    expect(await makeFirstBootIo({ passwordFile, claimFile }).readPassword()).toBe(PASSWORD);
+  });
+
+  test("the claim marker is absent, then present, and 0600", async () => {
+    const { passwordFile, claimFile } = await scratch();
+    const io = makeFirstBootIo({ passwordFile, claimFile });
+
+    expect(await io.isClaimed()).toBe(false);
+    await io.markClaimed();
+    expect(await io.isClaimed()).toBe(true);
+
+    // The marker is what stops the window reopening, and it sits beside a
+    // password file: world-readable would be a different kind of leak.
+    expect((await stat(claimFile)).mode & 0o777).toBe(0o600);
+  });
+});
+
+/**
+ * The transport, through a real socket.
+ *
+ * This was `Bun.serve` until bun turned out to fault on the CPUs this appliance
+ * ships to, and the rewrite to node:http had no test at all. The one-shot
+ * behaviour is only real once it has been through a socket — everything above
+ * proves a decision, this proves the thing a browser talks to.
+ */
+describe("firstBootServer", () => {
+  const listening = async (handle: () => Promise<ReturnType<typeof firstBootResponse>>) => {
+    const server = firstBootServer(handle);
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const address = server.address();
+    if (address === null || typeof address === "string") throw new Error("no port");
+    return { server, url: `http://127.0.0.1:${address.port}/` };
+  };
+
+  test("it serves the password once, then refuses", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "first-boot-"));
+    const passwordFile = join(dir, "password");
+    await writeFile(passwordFile, PASSWORD);
+    const io = makeFirstBootIo({ passwordFile, claimFile: join(dir, "claimed") });
+
+    const { server, url } = await listening(firstBootHandler(io, Date.now(), WINDOW_MS));
+    try {
+      const first = await fetch(url);
+      const firstBody = await first.text();
+      const second = await fetch(url);
+
+      expect(first.status).toBe(200);
+      expect(firstBody).toContain(PASSWORD);
+      // A password in a proxy or browser cache is the same password available
+      // to whoever opens that browser next.
+      expect(first.headers.get("cache-control")).toBe("no-store");
+
+      expect(second.status).toBe(410);
+      expect(await second.text()).not.toContain(PASSWORD);
+    } finally {
+      server.close();
+    }
   });
 });
