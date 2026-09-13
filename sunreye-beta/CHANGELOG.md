@@ -2,13 +2,19 @@
 
 ## [unreleased]
 
-Unreleased work on `dev` since 3.2.0, shipped in `beta.20260913-fb4d70f`.
+Unreleased work on `dev` since 3.2.0, shipped in `beta.20260913-30dc6b0`.
 
 
 ### Bug Fixes
 
+* **db-tests:** give the layer a budget instead of chasing flakes test by test ([d893723](https://github.com/SunReye/SunReye/commit/d893723794051dc07dda6a3d4e32296d6e18f0d0))
 * **release:** advertise a release without building an image for it ([ba0697d](https://github.com/SunReye/SunReye/commit/ba0697df295ad2b698ec28537a122c158a191512))
 * **release:** hand off to the appliance build instead of waiting for an event that cannot arrive ([daa1d44](https://github.com/SunReye/SunReye/commit/daa1d44c40e26346836f1251de38fff3c82c0225))
+
+
+### Documentation
+
+* **agents:** say where the database layer's timeout lives ([69b2182](https://github.com/SunReye/SunReye/commit/69b2182234b8babaae8efe43cc80c38193bb8d34))
 
 <!--
   This preamble is hand-written and version-independent. release-please owns the
