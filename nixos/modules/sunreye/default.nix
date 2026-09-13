@@ -16,6 +16,19 @@ let
   images = import ./images.nix { inherit pkgs lib; version = cfg.imageTag; };
 
   stateDir = "/var/lib/sunreye";
+
+  # One definition of where the database lives, because the two places that
+  # need it disagreed: the volume mounts <mount> onto /var/lib/postgresql, and
+  # PGDATA is <mount>/data — the image keeps postgres's default data_directory.
+  # The major-version guard was reading <mount>/PG_VERSION, a directory too
+  # high, and therefore never found a file and never refused anything.
+  pgMount = "${stateDir}/postgres";
+  pgData = "${pgMount}/data";
+
+  pgMajorGuard = import ./pg-major-guard.nix {
+    inherit pkgs;
+    versionFile = "${pgData}/PG_VERSION";
+  };
   secretsEnv = "${stateDir}/secrets.env";
   originsEnv = "/run/sunreye/origins.env";
 
@@ -257,7 +270,7 @@ in
         # only reason to publish it at all is that the other two containers reach
         # it over TCP rather than a shared socket.
         ports = [ "127.0.0.1:5432:5432" ];
-        volumes = [ "${stateDir}/postgres:/var/lib/postgresql" ];
+        volumes = [ "${pgMount}:/var/lib/postgresql" ];
         environmentFiles = [ secretsEnv ];
         environment = {
           POSTGRES_DB = "SunReye";
@@ -288,11 +301,23 @@ in
         imageFile = images.server;
         image = "ghcr.io/sunreye/sunreye-server:${cfg.imageTag}";
         dependsOn = [ "sunreye-postgres" ];
-        ports = [ "127.0.0.1:${toString cfg.port}:3000" ];
+        # The host's network namespace, because the database is reached over the
+        # host's loopback: `DATABASE_URL` says 127.0.0.1:5432 (seed.nix), and in
+        # its own namespace that is the CONTAINER's loopback — the server died on
+        # ECONNREFUSED, restarted five times and hit the start limit, on every
+        # image. The migrator already runs this way for the same reason.
+        #
+        # HOST keeps the guarantee the published port used to provide: bound to
+        # loopback, reachable only through Caddy, never on the LAN or the
+        # tailnet. Sharing the namespace makes `ports` meaningless, so the bind
+        # address has to be the server's own.
+        extraOptions = [ "--network=host" ];
         environmentFiles = [ secretsEnv originsEnv ];
         environment = {
           NODE_ENV = "production";
           TZ = cfg.timeZone;
+          HOST = "127.0.0.1";
+          PORT = toString cfg.port;
           # Caddy terminates TLS, so the session cookie is only ever set over
           # HTTPS — and saying so is what stops a browser sending it back over the
           # loopback HTTP hop.
@@ -324,21 +349,7 @@ in
       # a crash — the addon does the same thing for the same reason
       # (sunreye/rootfs/etc/s6-overlay/s6-rc.d/init-postgres/run).
       podman-sunreye-postgres = {
-        serviceConfig.ExecStartPre = [
-          (pkgs.writeShellScript "sunreye-pg-major-guard" ''
-            set -euo pipefail
-            version_file=${stateDir}/postgres/PG_VERSION
-            [ -e "$version_file" ] || exit 0
-            found=$(cat "$version_file")
-            if [ "$found" != "17" ]; then
-              echo "Data directory is PostgreSQL $found, this appliance ships PostgreSQL 17." >&2
-              echo "A migration between PostgreSQL majors needs a dedicated transition" >&2
-              echo "release — do not roll the appliance back; check the SunReye release" >&2
-              echo "notes for the upgrade path." >&2
-              exit 1
-            fi
-          '')
-        ];
+        serviceConfig.ExecStartPre = [ (lib.getExe pgMajorGuard) ];
       };
 
       # The schema migrator, run from the server's OWN image: one artifact means
@@ -512,7 +523,16 @@ in
 
     systemd.tmpfiles.rules = [
       "d ${stateDir} 0750 root root -"
-      "d ${stateDir}/postgres 0700 root root -"
+      # 999:999 is the postgres user inside the database image, which ships
+      # /var/lib/postgresql as 999:999. A bind mount lands ON that path with the
+      # host's ownership, so root:root meant the entrypoint could not create its
+      # datadir: the container died on `mkdir: cannot create directory
+      # '/var/lib/postgresql': Permission denied`, restarted nine times, hit the
+      # start limit, and took the migrations and the server down with it — the
+      # appliance has never had a working database. Compose does not hit this
+      # because a named volume inherits the image's ownership; a bind mount
+      # cannot.
+      "d ${pgMount} 0700 999 999 -"
       "d /run/sunreye 0750 root root -"
     ];
   };

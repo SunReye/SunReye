@@ -99,18 +99,27 @@ jobs:
         run: |
           sed -n '/VMTEST REPORT/,/END REPORT/p' boot.log
 
+          # The report is printed by a systemd unit, so it reaches the console
+          # through the journal: every line arrives as
+          #   [  930.400776] vmtest-report-start[61073]: healthz: 200
+          # and an assertion anchored with ^ can never match one. It did not
+          # match a healthy box either — a run that printed `secrets: present`
+          # and `tailscale-web: active` still reported both as failures. Strip
+          # the prefix once, then the anchors below mean what they say.
+          sed -E 's/^\[[0-9. ]+\] [^:]+: //' boot.log > report.txt
+
           fail=0
           # A 200 from /healthz is the whole stack in one fact: the store image
           # loaded, podman started it, the datadir initialised, the migrations
           # ran, and the server is serving. Anything less is a box that boots to
           # a blank page.
-          grep -q '^healthz: 200' boot.log || { echo "::error::/healthz did not answer 200"; fail=1; }
+          grep -q '^healthz: 200' report.txt || { echo "::error::/healthz did not answer 200"; fail=1; }
           # Without this, a published image is one nobody can adopt: there is no
           # key in it, so the browser login is the ONLY enrolment path.
-          grep -q '^tailscale-web: active' boot.log \
+          grep -q '^tailscale-web: active' report.txt \
             || { echo "::error::the Tailscale login window did not open"; fail=1; }
-          grep -q '^setup-show: ok' boot.log || { echo "::error::sunreye-setup show failed"; fail=1; }
-          grep -q '^secrets:   present' boot.log \
+          grep -q '^setup-show: ok' report.txt || { echo "::error::sunreye-setup show failed"; fail=1; }
+          grep -q '^secrets:   present' report.txt \
             || { echo "::error::first-boot secrets were not generated"; fail=1; }
           exit $fail
 

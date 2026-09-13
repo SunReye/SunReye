@@ -12,6 +12,43 @@
   # takes, so leave it on and assert the login window opened.
   appliance.tailscale.authKeyFile = lib.mkForce null;
 
+  # A second unit, deliberately NOT ordered after the workload.
+  #
+  # `vmtest-report` waits on the containers so its facts are about services that
+  # finished starting — which means that when one of them hangs, the report hangs
+  # with it and the run produces NOTHING. That is how a 25-minute CI job ended
+  # with an empty artifact and four assertions blamed on an appliance whose
+  # actual defect was never printed. This one runs on a clock of its own and
+  # reports whatever is true at that moment, including a unit still activating.
+  systemd.services.vmtest-diagnose = {
+    wantedBy = [ "multi-user.target" ];
+    serviceConfig = {
+      Type = "oneshot";
+      StandardOutput = "journal+console";
+      StandardError = "journal+console";
+      TimeoutStartSec = "5min";
+    };
+    path = with pkgs; [ systemd coreutils podman ];
+    script = ''
+      # Long enough for a ~400 MB image load to have got somewhere, short enough
+      # to land well inside any CI timeout.
+      sleep 120
+      echo "##### VMTEST DIAGNOSE #####"
+      for u in podman-sunreye-postgres sunreye-migrate podman-sunreye-server; do
+        echo "== $u: $(systemctl is-active "$u" 2>/dev/null || echo inactive) =="
+        systemctl show "$u" -p ActiveState -p SubState -p ExecMainStatus -p NRestarts \
+          --no-pager 2>&1 | tr '\n' ' ' || true
+        echo
+        journalctl -u "$u" --no-pager -n 30 2>&1 | tail -30 || true
+      done
+      echo "-- images --"
+      podman images --format '{{.Repository}}:{{.Tag}} {{.Size}}' 2>&1 | head -5 || true
+      echo "-- ps --"
+      podman ps -a --format '{{.Names}} {{.Status}}' 2>&1 | head -5 || true
+      echo "##### END DIAGNOSE #####"
+    '';
+  };
+
   systemd.services.vmtest-report = {
     wantedBy = [ "multi-user.target" ];
     after = [
@@ -30,7 +67,10 @@
       # image from the store and initialise a fresh Postgres datadir first.
       TimeoutStartSec = "20min";
     };
-    path = with pkgs; [ systemd util-linux curl coreutils gnugrep ];
+    # podman included because the report asks it what is running: without it the
+    # container section was `podman: command not found` and the reader was left
+    # to infer the state of the workload from the unit list alone.
+    path = with pkgs; [ systemd util-linux curl coreutils gnugrep podman ];
     script = ''
       echo "##### VMTEST REPORT #####"
       echo "rootfs:    $(findmnt -no FSTYPE,OPTIONS /)"
@@ -74,6 +114,19 @@
 
       echo "--- failed units ---"
       systemctl list-units --state=failed --no-legend --plain || true
+
+      # Why, not just that. A unit line saying `failed` sends whoever reads this
+      # log back to a twenty-minute rebuild to find out what it said; the run
+      # that exposed this had `sunreye-migrate: failed` and no reason anywhere in
+      # the artifact. Anything that did not reach `active` explains itself here.
+      echo "--- why ---"
+      for u in podman-sunreye-postgres sunreye-migrate podman-sunreye-server caddy; do
+        state=$(systemctl is-active "$u" 2>/dev/null || echo inactive)
+        [ "$state" = "active" ] && continue
+        echo "== $u ($state) =="
+        systemctl status "$u" --no-pager --lines=0 2>&1 | sed -n '1,6p' || true
+        journalctl -u "$u" --no-pager -n 40 2>&1 | tail -40 || true
+      done
       echo "##### END REPORT #####"
     '';
   };

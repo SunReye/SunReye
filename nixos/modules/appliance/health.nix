@@ -23,9 +23,16 @@ let
       ++ lib.optional cfg.tailscale.enable tailscale;
     text = ''
       body=$(
-      host=$(cat /run/appliance/hostname 2>/dev/null || hostname)
+      # `uname -n` rather than `hostname`: the latter is not in this wrapper's
+      # PATH, so the fallback died precisely when it was needed — the file is
+      # written by appliance-identity, and the case this branch exists for is
+      # that unit having failed.
+      host=$(cat /run/appliance/hostname 2>/dev/null || uname -n)
       echo "=== appliance health: $host ==="
-      echo "uptime:    $(uptime -p)"
+      # procps by explicit path: coreutils ships an `uptime` of its own, it
+      # comes first in this wrapper's PATH, and it has no -p. The report showed
+      # an empty uptime on every box until `checks.health-report` ran it.
+      echo "uptime:    $(${pkgs.procps}/bin/uptime -p)"
       echo "disk:      $(df -h --output=pcent,avail / | tail -1)"
       echo "memory:    $(free -h | awk '/^Mem:/ {print $3 " used of " $2}')"
       ${lib.concatMapStrings (unit: ''
@@ -81,6 +88,8 @@ let
   };
 in
 lib.mkIf cfg.enable {
+  appliance.health.package = report;
+
   environment.systemPackages = [ report ];
 
   systemd.services = lib.mkMerge [

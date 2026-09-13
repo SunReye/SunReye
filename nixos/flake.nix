@@ -61,6 +61,10 @@
       packages.${system} = {
         default = self.packages.${system}.image;
 
+        # The box's configuration tool. A package of its own so `checks.setup-cli`
+        # can run it without building a system around it.
+        sunreye-setup = import ./modules/sunreye/setup-cli-package.nix { inherit pkgs; };
+
         # The flashable artifact. Pinned through flake.lock, so two units built a
         # month apart are the same system.
         image = nixos-generators.nixosGenerate {
@@ -112,6 +116,30 @@
         assertions = import ./tests/assertions.nix {
           inherit (nixpkgs) lib;
           inherit pkgs mkAppliance;
+        };
+
+        # Does the configuration tool start? Seconds, no KVM — and it is the
+        # gate that would have caught a CLI broken at its first import.
+        setup-cli = import ./tests/setup-cli.nix {
+          inherit pkgs;
+          inherit (self.packages.${system}) sunreye-setup;
+        };
+
+        # The datadir refusal, against a datadir. It reads a path, so it is
+        # exactly the kind of check that passes for the wrong reason unless
+        # something fabricates the file it is looking for.
+        pg-major-guard = import ./tests/pg-major-guard.nix {
+          inherit pkgs;
+          guard = import ./modules/sunreye/pg-major-guard.nix {
+            inherit pkgs;
+            versionFile = "/var/lib/sunreye/postgres/data/PG_VERSION";
+          };
+        };
+
+        # Same question, asked of the box's own status report.
+        health-report = import ./tests/health-report.nix {
+          inherit pkgs;
+          report = self.nixosConfigurations.appliance.config.appliance.health.package;
         };
       };
     };

@@ -246,6 +246,18 @@ in
     };
 
     health = {
+      # The built report, exposed so `checks.health-report` can RUN it without
+      # booting anything. It is a shell script that only ever executed on a box,
+      # which is how `uptime -p` reached an image: coreutils ships its own
+      # `uptime`, it sits ahead of procps in the wrapper's PATH, and it rejects
+      # the flag.
+      package = mkOption {
+        type = types.package;
+        readOnly = true;
+        internal = true;
+        description = "The appliance-health-report program this module builds.";
+      };
+
       webhook = mkOption {
         type = types.nullOr types.path;
         default = null;

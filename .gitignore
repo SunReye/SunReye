@@ -58,6 +58,9 @@ blob-report
 # 3 GB store path oxlint walks on every push and something git offers to commit.
 result
 result-*
+# `run-*-vm` writes its scratch disk into whatever directory you launch it from,
+# which is normally the repo root. 12 GB, and regenerated on every boot.
+*.qcow2
 
 # Misc
 *.tgz
