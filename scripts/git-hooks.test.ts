@@ -40,6 +40,22 @@ function commands(hook: string): string {
     .join("\n");
 }
 
+/**
+ * The package scripts the hook runs, as whole names.
+ *
+ * Substring matching cannot ask this question: `"bun run test:mocks"` contains
+ * `"bun run test"`, so an assertion that the suite runs is satisfied by a hook
+ * that only checks mock hygiene. Deleting the suite from the hook was therefore
+ * invisible to this file.
+ */
+function bunScripts(hook: string): string[] {
+  return [
+    ...commands(hook)
+      .replace(/\\\n/g, " ")
+      .matchAll(/\bbun run ([\w:-]+)/g),
+  ].map(([, script]) => script!);
+}
+
 describe("pre-push carries the whole-repo checks a bypassed pre-commit would miss", () => {
   const hook = () => read(".husky/pre-push");
 
@@ -65,8 +81,11 @@ describe("pre-push carries the whole-repo checks a bypassed pre-commit would mis
   test("it lints, runs the suite, and checks mock hygiene", async () => {
     const run = commands(await hook());
     expect(run).toContain("oxlint");
-    expect(run).toContain("bun run test");
-    expect(run).toContain("test:mocks");
+
+    // Whole script names: see bunScripts above for why `toContain` cannot.
+    const scripts = bunScripts(await hook());
+    expect(scripts).toContain("test");
+    expect(scripts).toContain("test:mocks");
   });
 
   // The hook and CI must ask the same question, or the hook becomes a

@@ -206,9 +206,21 @@ in
         '';
       };
     };
+    pgMajorGuardPackage = mkOption {
+      type = types.package;
+      readOnly = true;
+      internal = true;
+      description = ''
+        The datadir guard this module actually builds, exposed so
+        `checks.pg-major-guard` can run THAT one. A check that constructs its own
+        instance is checking a path it passed in: the original defect was the
+        default path being wrong, and an independently-built guard cannot see it.
+      '';
+    };
   };
 
   config = lib.mkIf (config.appliance.enable && cfg.enable) {
+    appliance.sunreye.pgMajorGuardPackage = pgMajorGuard;
     assertions = [
       {
         assertion = cfg.inverter.host != null || cfg.inverter.simulate;

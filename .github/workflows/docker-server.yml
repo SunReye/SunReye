@@ -3,8 +3,6 @@ name: Docker · server
 # Built when release-please cuts a server release, nightly from master,
 # or manually (optionally promoting the ref to the moving `beta` tag).
 on:
-  push:
-    tags: ["server-v*"]
   schedule:
     - cron: "14 3 * * *"
   workflow_dispatch:

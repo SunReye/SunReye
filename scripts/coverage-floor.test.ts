@@ -110,12 +110,15 @@ describe("checkFloor", () => {
     expect(r.ok).toBe(false);
   });
 
-  // Guards the ratchet against a quiet "just drop it a bit" edit: the floor may
-  // only ever be raised, so a change that lowers it below where it started has
-  // to break this test first.
-  test("the shipped floor never falls below where the ratchet started", () => {
-    expect(FLOOR.line).toBeGreaterThanOrEqual(0.79);
-    expect(FLOOR.function).toBeGreaterThanOrEqual(0.79);
+  // Guards the ratchet against a quiet "just drop it a bit" edit. The numbers
+  // below are the shipped floor, not a slack margin under it: pinned at 0.79
+  // while the floor stood at 0.99/0.98, this test had twenty points of room and
+  // a collapse to 79 % coverage would have passed it. Raising the floor means
+  // raising these too — which is the point, because then lowering it is an edit
+  // to a test that says so, in the diff, rather than one digit in a constant.
+  test("the shipped floor never falls below where the ratchet has reached", () => {
+    expect(FLOOR.line).toBeGreaterThanOrEqual(0.99);
+    expect(FLOOR.function).toBeGreaterThanOrEqual(0.98);
   });
 
   // A counter that is not a number parses to NaN, and every comparison against
