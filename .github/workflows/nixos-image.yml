@@ -187,6 +187,12 @@ jobs:
       - name: Boot it again on a CPU with no AVX
         run: |
           set -o pipefail
+          # A FRESH disk. The generated runner creates its qcow2 in the working
+          # directory and REUSES it, so a second run here is the first boot's box
+          # rebooted — which already handed over its password and correctly
+          # refuses to reopen the window. That failed this step for two commits
+          # while the appliance was behaving exactly as designed.
+          rm -f ./*.qcow2
           QEMU_OPTS="-cpu Nehalem" timeout 25m ./result/bin/run-*-vm -no-reboot 2>&1 \
             | tee boot-noavx.log || true
           grep -q 'VMTEST REPORT' boot-noavx.log || {
