@@ -1,28 +1,6 @@
 # Changelog
 
-## [unreleased]
-
-Unreleased work on `dev` since 3.2.0, shipped in `beta.20260913-6c8c8cd`.
-
-
-### Bug Fixes
-
-* **nixos:** ship the flake the box rebuilds itself from (#243) ([6c8c8cd](https://github.com/SunReye/SunReye/commit/6c8c8cd804f79c59b221ee3117e44f7a7087c00b))
-* **ci:** make the gate that decides what runs fail closed (#242) ([c6e5b4c](https://github.com/SunReye/SunReye/commit/c6e5b4c185293fdad74ff61f5a31424b66717fb7))
-* **db-tests:** give the layer a budget instead of chasing flakes test by test ([d893723](https://github.com/SunReye/SunReye/commit/d893723794051dc07dda6a3d4e32296d6e18f0d0))
-* **release:** read the hash from the stream that carries it ([e304c12](https://github.com/SunReye/SunReye/commit/e304c1249c2f4d1f8e144a124348eef9d10252ba))
-* **release:** advertise a release without building an image for it ([ba0697d](https://github.com/SunReye/SunReye/commit/ba0697df295ad2b698ec28537a122c158a191512))
-* **release:** hand off to the appliance build instead of waiting for an event that cannot arrive ([daa1d44](https://github.com/SunReye/SunReye/commit/daa1d44c40e26346836f1251de38fff3c82c0225))
-
-
-### Documentation
-
-* **agents:** say where the database layer's timeout lives ([69b2182](https://github.com/SunReye/SunReye/commit/69b2182234b8babaae8efe43cc80c38193bb8d34))
-
-
-### Tests
-
-* **release:** stop asserting against a job name that no longer exists (#241) ([1b01ca7](https://github.com/SunReye/SunReye/commit/1b01ca7ef21cc0563611ef8940bf9148f19efa45))
+No unreleased changes on `dev`; `beta.20260913-32b2753` matches the last release.
 
 <!--
   This preamble is hand-written and version-independent. release-please owns the
@@ -139,6 +117,13 @@ What to do, if you maintain a shared source:
 changed again. The archive names devices and metrics the way the API and your Home Assistant
 entities already do, and refers to no internal id, which is why an upgrade like this one should not
 be needed again.
+
+## [3.2.1](https://github.com/SunReye/SunReye/compare/addon-v3.2.0...addon-v3.2.1) (2026-09-13)
+
+
+### Miscellaneous Chores
+
+* **addon:** Synchronize sunreye-stack versions
 
 ## [3.2.0](https://github.com/SunReye/SunReye/compare/addon-v3.1.1...addon-v3.2.0) (2026-09-13)
 
