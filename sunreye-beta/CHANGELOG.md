@@ -2,11 +2,12 @@
 
 ## [unreleased]
 
-Unreleased work on `dev` since 3.2.0, shipped in `beta.20260913-c6e5b4c`.
+Unreleased work on `dev` since 3.2.0, shipped in `beta.20260913-6c8c8cd`.
 
 
 ### Bug Fixes
 
+* **nixos:** ship the flake the box rebuilds itself from (#243) ([6c8c8cd](https://github.com/SunReye/SunReye/commit/6c8c8cd804f79c59b221ee3117e44f7a7087c00b))
 * **ci:** make the gate that decides what runs fail closed (#242) ([c6e5b4c](https://github.com/SunReye/SunReye/commit/c6e5b4c185293fdad74ff61f5a31424b66717fb7))
 * **db-tests:** give the layer a budget instead of chasing flakes test by test ([d893723](https://github.com/SunReye/SunReye/commit/d893723794051dc07dda6a3d4e32296d6e18f0d0))
 * **release:** read the hash from the stream that carries it ([e304c12](https://github.com/SunReye/SunReye/commit/e304c1249c2f4d1f8e144a124348eef9d10252ba))
