@@ -25,7 +25,11 @@ green.
   as "a test changed" for the gate. Never stand a source-text regex over the fix's own text in
   for one — see `apps/web/TESTING.md`, "Which layer does this test belong in".
 - When the behaviour is whether **Postgres accepts the statement**, the test is a database
-  spec: `apps/server/db-tests/*.test.ts`, `bun run test:db`. A SQL-text assertion cannot
+  spec: `apps/server/db-tests/*.test.ts`, `bun run test:db`. That script passes
+  `--timeout 60000`: bun's default is 5s, which is not a budget anyone chose for
+  work that waits on a Postgres container seconds old — measured, a spec file
+  takes 734ms warm and 2.0s straight after initdb, and CI is slower and busier.
+  Do not add per-test budgets to chase a flake; the layer owns this one. A SQL-text assertion cannot
   prove a query runs — two 500s shipped behind a fully green suite that way (an ambiguous
   `time_bucket` overload, an `ORDER BY` that bound to a UNION instead of its arm). Anything
   touching a Timescale hyperfunction, a continuous aggregate, a UNION, `DISTINCT ON`, or a
