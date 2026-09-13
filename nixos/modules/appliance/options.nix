@@ -35,12 +35,22 @@ in
 
       openFor = mkOption {
         type = types.ints.positive;
-        default = 5;
+        default = 15;
         description = ''
           Minutes the window stays open if nobody reads it. It also closes on the
           FIRST successful read, whichever comes first, and never reopens — a
           timed window with unlimited reads leaves nobody able to tell afterwards
           whether someone else looked.
+
+          Counted from when the unit starts, which is early in boot — so the two
+          or three minutes the box spends starting its containers come out of
+          this budget, and so does the time it takes to find its address. Five
+          minutes sounded generous and was not: measured on a real first boot,
+          the window had already shut by the time a browser reached it.
+
+          Since a read closes it anyway, the length only ever bounds the case
+          where nobody comes. A reboot reopens it as long as the password has
+          not been handed out.
         '';
       };
 

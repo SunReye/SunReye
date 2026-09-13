@@ -191,6 +191,20 @@
         echo "first-boot-reread: STILL OPEN ($second_code)"
       fi
 
+      # And when the server is not there at all. This is not hypothetical: the
+      # window used to be killed at its deadline, so a late owner got a bare 502
+      # from Caddy — which says neither "somebody beat you to it" nor "you were
+      # late", and those are the only two things they need to distinguish.
+      # Stopping the unit is the only way to reach that path on purpose.
+      systemctl stop appliance-first-boot 2>/dev/null || true
+      down=$(curl -s -k --max-time 20 -w '\n%{http_code}' \
+        --resolve "$name:443:127.0.0.1" "https://$name/first-boot" || echo "000")
+      case "$down" in
+        *"window closed"*503) echo "first-boot-down: explains itself" ;;
+        *502) echo "first-boot-down: BARE 502" ;;
+        *) echo "first-boot-down: unexpected ($(printf '%s' "$down" | tail -1))" ;;
+      esac
+
       # Can anyone actually log in at the keyboard? The image shipped for weeks
       # with root locked — no password, no key, `allowNoPasswordLogin = false` —
       # while the docs offered "a keyboard on the box" as the fallback. Nothing

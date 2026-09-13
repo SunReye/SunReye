@@ -34,14 +34,18 @@ lib.mkIf (appliance.enable && password.enable && web.enable) {
     path = [ pkgs.bun ];
     serviceConfig = {
       Type = "exec";
-      # The unread deadline. The server also closes itself on the first read;
-      # this is what closes it when nobody ever comes.
-      RuntimeMaxSec = "${toString web.openFor}min";
-      # Hitting that deadline is the normal end of this unit's life, not a
-      # fault. Without this it lands in the health report as a failed unit and
-      # pages daily about a box that did exactly what it was told.
-      SuccessExitStatus = [ "SIGTERM" ];
-      Restart = "no";
+      # NOT RuntimeMaxSec. Killing the process at the deadline is what turned a
+      # closed window into a 502: Caddy had nothing behind the route and the
+      # owner got a bare gateway error instead of being told what happened —
+      # which destroys the one property this whole design exists for. Whether
+      # you were beaten to the password or simply arrived late is the thing you
+      # need to know, and a 502 says neither.
+      #
+      # The server enforces both closures itself (first read, then the
+      # deadline), so the process staying up costs a loopback listener that
+      # answers 410 and hands out nothing.
+      Restart = "on-failure";
+      RestartSec = "10s";
       DynamicUser = false;
       # It reads a 0600 file owned by root and writes the marker beside it.
       User = "root";

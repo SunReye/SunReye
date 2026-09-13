@@ -537,6 +537,37 @@ in
               handle {
                 reverse_proxy 127.0.0.1:${toString cfg.port}
               }
+
+              # A window whose server is gone must still SAY so. It closed as a
+              # 502 once — Caddy had nothing behind the route, and a bare gateway
+              # error tells the owner neither "you were beaten to it" nor "you
+              # were late", which is the one thing this design exists to make
+              # visible.
+              #
+              # Site level, not inside the `handle` above: `handle_errors` is not
+              # an ordered HTTP handler and Caddy refuses it there — caught by
+              # `caddy validate` rather than by a box in a cupboard.
+              handle_errors {
+                @window path ${config.appliance.console.password.web.path}*
+                handle @window {
+                  respond <<CLOSED
+                    SunReye — setup window closed
+
+                    The window that hands over this box's password is not
+                    running. Either it has already been read, or it timed out.
+
+                    If you have NOT read it, someone else on this network may
+                    have. Re-flash the box if that matters to you.
+
+                    A reboot reopens the window if the password was never handed
+                    out. Otherwise: read it off the console with a monitor, or
+                    use Tailscale SSH once the box is enrolled.
+                    CLOSED 503
+                }
+                handle {
+                  respond "{err.status_code} {err.status_text}" {err.status_code}
+                }
+              }
             ''}
             ${lib.optionalString (!firstBoot) "reverse_proxy 127.0.0.1:${toString cfg.port}"}
           '';

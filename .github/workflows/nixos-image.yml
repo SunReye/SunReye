@@ -139,6 +139,10 @@ jobs:
             || { echo "::error::the first-boot password window served nothing"; fail=1; }
           grep -q '^first-boot-reread: refused' report.txt \
             || { echo "::error::the password window stayed open after being read: $(grep '^first-boot-reread:' report.txt)"; fail=1; }
+          # A closed window has to say which kind of closed it is. It shipped as
+          # a bare 502 once, which distinguishes nothing.
+          grep -q '^first-boot-down: explains itself' report.txt \
+            || { echo "::error::a closed window does not explain itself: $(grep '^first-boot-down:' report.txt)"; fail=1; }
           # Somebody standing at the box has to be able to get in. This is the
           # only probe here that is not reachable over the network, and it is the
           # one that was missing while root sat locked for weeks.
