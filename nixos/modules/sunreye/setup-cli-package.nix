@@ -6,12 +6,19 @@
 # it starts at all: the boot test was the first thing to run it, twenty minutes
 # in, and it had been failing at its first import.
 #
-# Wrapped, not compiled. `bun build --compile` downloads the target runtime at
-# build time, which the Nix sandbox forbids — so a compiled binary would need a
-# fixed-output derivation around a downloader that also has to agree with the
-# lockfile. Running the TypeScript directly under `pkgs.bun` costs ~90 MB of
-# closure and no build step at all, and the CLI updates with every
-# `nixos-rebuild` because its sources are part of the flake.
+# Bundled with esbuild and run on node — NOT bun, and not compiled.
+#
+# bun ran the TypeScript directly, which cost no build step at all and was wrong
+# on the hardware this image is for: the bun nixpkgs ships faults with SIGILL on
+# a CPU without AVX, including its `-baseline` build, and that is every
+# Atom-class thin client. On a flashed Futro the symptom was
+# `Illegal instruction (core dumped) sunreye-setup help` — a box whose
+# configuration tool cannot start. See ./cli-tree.nix.
+#
+# Not `bun build --compile` either: it downloads the target runtime at build
+# time, which the Nix sandbox forbids. esbuild strips types and inlines the one
+# dependency in the sandbox with no network, and node from nixpkgs is built from
+# source and assumes no instruction set extension.
 #
 # The sources live in the monorepo (`apps/appliance-cli/src`) rather than here so
 # that `scripts/require-tests.ts` sees them as source: a behaviour change in the
