@@ -6,8 +6,6 @@ name: Docker · addon
 # cuts an addon release, nightly from master, or manually (optionally promoting
 # the ref to the moving `beta` tag).
 on:
-  push:
-    tags: ["addon-v*"]
   schedule:
     - cron: "34 3 * * *"
   workflow_dispatch:
