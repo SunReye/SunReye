@@ -66,9 +66,17 @@ jobs:
           fi
           echo "$(wc -l < changed.txt) file(s) changed"
 
+      # pipefail, because the failure without it is SILENT and it disables three
+      # layers: if the script throws, `tee` still exits 0, the step is green, and
+      # `web`/`db`/`routes` come out empty — so e2e, the database job and the
+      # route smoke all skip on `== 'true'` and the run reports success having
+      # tested a third of what it claims. This is the gate whose own comment says
+      # it is the logic you cannot afford to get wrong.
       - name: Which layers it can affect
         id: surfaces
-        run: bun scripts/ci-surfaces.ts < changed.txt | tee -a "$GITHUB_OUTPUT"
+        run: |
+          set -o pipefail
+          bun scripts/ci-surfaces.ts < changed.txt | tee -a "$GITHUB_OUTPUT"
 
       # A merge commit carries a new sha and an old tree. When the tree is
       # identical to the branch that was merged, and that branch's own run was
@@ -87,6 +95,7 @@ jobs:
           fi
           gh api "repos/${GITHUB_REPOSITORY}/commits/${parent}/check-runs" --paginate \
             --jq '[.check_runs[] | {name, status, conclusion}]' > checks.json || echo '[]' > checks.json
+          set -o pipefail
           bun scripts/ci-already-proven.ts \
             --head "$(git rev-parse 'HEAD^{tree}')" \
             --parent "$(git rev-parse "${parent}^{tree}")" \

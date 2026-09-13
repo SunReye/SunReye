@@ -60,4 +60,22 @@ describe("ci.yml gating", () => {
 
     expect(surfaces).toEqual(Object.keys(surfacesFor([])).sort());
   });
+
+  /**
+   * A step that pipes into $GITHUB_OUTPUT hands its exit status to `tee`, which
+   * succeeds whatever happened upstream. The gate then reports success with
+   * every output empty, and every job gated on one of those outputs skips — a
+   * green run that tested a third of what it claims. The failure is silent in
+   * the direction that matters, so the shell has to be told to fail closed.
+   */
+  test("every gate pipeline fails closed", () => {
+    const steps = (workflow.jobs[GATE]?.steps ?? []) as { name?: string; run?: string }[];
+
+    const unguarded = steps
+      .filter((step) => step.run?.includes("$GITHUB_OUTPUT") && step.run.includes("|"))
+      .filter((step) => !step.run?.includes("set -o pipefail"))
+      .map((step) => step.name ?? "(unnamed)");
+
+    expect(unguarded).toEqual([]);
+  });
 });
