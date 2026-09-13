@@ -2,12 +2,13 @@
 
 ## [unreleased]
 
-Unreleased work on `dev` since 3.2.0, shipped in `beta.20260913-30dc6b0`.
+Unreleased work on `dev` since 3.2.0, shipped in `beta.20260913-2351ae3`.
 
 
 ### Bug Fixes
 
 * **db-tests:** give the layer a budget instead of chasing flakes test by test ([d893723](https://github.com/SunReye/SunReye/commit/d893723794051dc07dda6a3d4e32296d6e18f0d0))
+* **release:** read the hash from the stream that carries it ([e304c12](https://github.com/SunReye/SunReye/commit/e304c1249c2f4d1f8e144a124348eef9d10252ba))
 * **release:** advertise a release without building an image for it ([ba0697d](https://github.com/SunReye/SunReye/commit/ba0697df295ad2b698ec28537a122c158a191512))
 * **release:** hand off to the appliance build instead of waiting for an event that cannot arrive ([daa1d44](https://github.com/SunReye/SunReye/commit/daa1d44c40e26346836f1251de38fff3c82c0225))
 
