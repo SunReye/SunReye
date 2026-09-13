@@ -30,10 +30,26 @@ describe("the appliance release chain", () => {
   const server = workflow("docker-server.yml");
 
   test("publishing does not wait on a token-dispatched workflow_run", () => {
-    const publishBlock = appliance.slice(appliance.indexOf("  publish:"));
-    const condition = publishBlock.slice(0, publishBlock.indexOf("runs-on"));
+    // Parsed, not sliced. The first version of this searched for a job called
+    // `publish:`, which was renamed to `pin` in the very commit it shipped with:
+    // indexOf returned -1, slice(-1) handed it the file's last character, and
+    // the assertion passed on a one-character string. A gate that reads source
+    // text by name is one rename from asserting nothing at all — which is the
+    // failure class this whole file exists to catch.
+    const parsed = Bun.YAML.parse(appliance) as {
+      on?: Record<string, unknown>;
+      jobs: Record<string, { if?: string }>;
+    };
 
-    expect(condition).not.toContain("workflow_run");
+    // The trigger itself must not be a workflow_run …
+    const triggers = Object.keys(parsed.on ?? (parsed as Record<string, never>)[true] ?? {});
+    expect(triggers).not.toContain("workflow_run");
+
+    // … and no job may gate on one either.
+    const gatedOnRun = Object.entries(parsed.jobs)
+      .filter(([, job]) => job.if?.includes("workflow_run"))
+      .map(([id]) => id);
+    expect(gatedOnRun).toEqual([]);
   });
 
   test("the server build hands off to it", () => {
