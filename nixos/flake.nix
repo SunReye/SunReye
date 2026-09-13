@@ -79,7 +79,13 @@
             {
               # Podman loading two images and initialising a datadir needs room
               # and cores that the 1 GB / 1 vCPU default does not have.
-              virtualisation.vmVariant.virtualisation = {
+              #
+              # Set on `virtualisation` directly, NOT `virtualisation.vmVariant`:
+              # the generator evaluates THIS configuration as the VM, so a
+              # vmVariant block is read, type-checked and then never consulted —
+              # it evaluates green and the runner still comes out `-m 1024 -smp 1`
+              # with a 2 GB disk, which is smaller than the images it has to load.
+              virtualisation = {
                 memorySize = 4096;
                 cores = 2;
                 diskSize = 12288;

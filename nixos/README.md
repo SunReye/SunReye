@@ -34,7 +34,7 @@ carries an `origin:` line and, where a decision changed, why. That repo is archi
 nix flake check ./nixos        # evaluate, and prove the refusals still refuse. No KVM.
 nix build ./nixos#image        # the flashable artifact (~3 GB closure)
 nix build ./nixos#vmTest       # the boot test
-./result/bin/run-*-vm -display none -serial mon:stdio -no-reboot   # needs KVM
+./result/bin/run-*-vm -no-reboot   # needs KVM. The script already passes -nographic -serial mon:stdio
 ```
 
 `nix flake check` is the gate that runs on every PR touching `nixos/**`; the boot test runs

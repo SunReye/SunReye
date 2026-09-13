@@ -71,16 +71,29 @@ jobs:
       - name: Build the boot test
         run: nix build ./nixos#vmTest --print-build-logs
 
-      # `-display none` and a serial console: the report the guest prints is the
-      # only output, so it has to reach stdout. The guest powers itself off after
-      # the report, and 25 minutes is the ceiling for "it hung instead".
+      # The report the guest prints is the only output, so it has to reach
+      # stdout — which the generated runner already arranges: it passes
+      # `-nographic -serial mon:stdio` itself. Passing either of those again
+      # makes qemu refuse the command line ("cannot use stdio by multiple
+      # character devices") before the guest ever starts, and the step below
+      # then blames the appliance for four failures the box never had.
+      # The guest powers itself off after the report, and 25 minutes is the
+      # ceiling for "it hung instead".
       - name: Boot it
         id: boot
         run: |
           set -o pipefail
-          timeout 25m ./result/bin/run-*-vm \
-            -display none -serial mon:stdio -no-reboot 2>&1 | tee boot.log || true
+          timeout 25m ./result/bin/run-*-vm -no-reboot 2>&1 | tee boot.log || true
           test -s boot.log
+          # Separate "the harness broke" from "the appliance broke" before any
+          # grep for a result runs. A qemu that never started still writes its
+          # own errors to boot.log, so a non-empty log is not evidence the guest
+          # ran, and the absence of a banner reads as four failed assertions.
+          grep -q 'VMTEST REPORT' boot.log || {
+            echo "::error::the VM never reached its report — the harness failed, not the appliance"
+            tail -40 boot.log
+            exit 1
+          }
 
       - name: The dashboard has to answer, and the login window has to open
         run: |
