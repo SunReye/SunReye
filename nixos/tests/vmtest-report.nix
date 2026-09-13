@@ -12,6 +12,38 @@
   # takes, so leave it on and assert the login window opened.
   appliance.tailscale.authKeyFile = lib.mkForce null;
 
+  # The run is over when both reports have been printed.
+  #
+  # nixos-image.yml has always said "the guest powers itself off after the
+  # report", and nothing ever did: there is no poweroff anywhere in this
+  # configuration. Every boot test therefore ran until the workflow's 25-minute
+  # ceiling and was killed there — passing runs included, since the assertions
+  # read a log the guest had finished writing twenty minutes earlier. A job that
+  # sits silent for 25 minutes is indistinguishable from one that hung, which is
+  # exactly how it was read.
+  #
+  # After BOTH reporting units: `vmtest-report` waits on the workload and
+  # usually finishes first, while `vmtest-diagnose` deliberately runs on its own
+  # 120-second clock. Powering off when the first one ends would cut the other
+  # off mid-sentence. Ordering does not require success, so a failed report
+  # still ends the run rather than stranding it.
+  systemd.services.vmtest-poweroff = {
+    wantedBy = [ "multi-user.target" ];
+    after = [ "vmtest-report.service" "vmtest-diagnose.service" ];
+    wants = [ "vmtest-report.service" "vmtest-diagnose.service" ];
+    path = [ pkgs.systemd ];
+    serviceConfig = {
+      Type = "oneshot";
+      StandardOutput = "journal+console";
+    };
+    # --no-block: a unit that waits for the shutdown transaction it is part of
+    # deadlocks against itself.
+    script = ''
+      echo "##### VMTEST COMPLETE — powering off #####"
+      systemctl --no-block poweroff
+    '';
+  };
+
   # A second unit, deliberately NOT ordered after the workload.
   #
   # `vmtest-report` waits on the containers so its facts are about services that
@@ -70,8 +102,12 @@
       StandardOutput = "journal+console";
       StandardError = "journal+console";
       # The server has to come up through podman, which has to load a ~400 MB
-      # image from the store and initialise a fresh Postgres datadir first.
-      TimeoutStartSec = "20min";
+      # image from the store and initialise a fresh Postgres datadir first — but
+      # this ceiling must also stay INSIDE the workflow's 25-minute boot budget,
+      # or a report that hangs stalls the job silently instead of failing it with
+      # whatever it had managed to print. The healthz retry budget below is 7
+      # minutes, so 10 covers the honest case with room to spare.
+      TimeoutStartSec = "10min";
     };
     # podman included because the report asks it what is running: without it the
     # container section was `podman: command not found` and the reader was left
@@ -108,7 +144,7 @@
       # The two lines the workflow greps. `healthz` round-trips the database, so a
       # 200 proves the image loaded, the datadir initialised, the migrations ran
       # and the server is answering — the whole stack in one fact.
-      code=$(curl -s -o /dev/null -w '%{http_code}' --retry 60 --retry-delay 5 --retry-all-errors \
+      code=$(curl -s -o /dev/null -w '%{http_code}' --retry 60 --retry-delay 5 --retry-all-errors --max-time 420 --connect-timeout 10 \
         http://127.0.0.1:3000/healthz || echo 000)
       echo "healthz: $code"
       # And that the enrolment window is open on a box with no key, which is the
@@ -130,7 +166,12 @@
       echo "proxy-https: $(curl -s -k -o /dev/null -w '%{http_code}' --max-time 30         --resolve "$name:443:127.0.0.1" "https://$name/healthz" || echo 000)"
       # The certificate the LAN door presents, so a change of issuer is visible
       # rather than silent.
-      echo "proxy-issuer: $(echo | openssl s_client -connect 127.0.0.1:443         -servername "$name" 2>/dev/null | openssl x509 -noout -issuer 2>/dev/null || echo NONE)"
+      # `timeout`, because nothing in this report may be able to block it:
+      # s_client has no deadline of its own and does not always return on stdin
+      # EOF, and a report that never ends is a VM that never powers off, a job
+      # that runs to its 25-minute ceiling, and a guard that then blames the
+      # appliance for a harness that hung.
+      echo "proxy-issuer: $(timeout 20 openssl s_client -connect 127.0.0.1:443 -servername "$name" </dev/null 2>/dev/null | timeout 10 openssl x509 -noout -issuer 2>/dev/null || echo NONE)"
 
       echo "--- health report ---"
       /run/current-system/sw/bin/appliance-health-report 2>&1 | head -30 || true
