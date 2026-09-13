@@ -14,6 +14,30 @@ in
   options.appliance = {
     enable = mkEnableOption "the headless appliance profile";
 
+    console.password.enable = mkOption {
+      type = types.bool;
+      default = true;
+      description = ''
+        Generate a random root password on first boot and print it on the console
+        login screen.
+
+        A published image can carry no credential — a baked key belongs to
+        whoever built the image, and a fixed default password is the same on
+        every unit ever flashed. Without this the box has no local login at all:
+        root is locked, so a keyboard on the machine reaches a prompt nobody can
+        pass, and the only ways in are Tailscale SSH and a key a published image
+        does not have.
+
+        Showing it on the login screen is not a leak. The only person who can
+        read it is already at the keyboard, which is exactly what the password
+        grants — and that person could read the unencrypted disk regardless.
+        Console only: sshd refuses password authentication.
+
+        Turn this off for a box built with your own key baked in, where the extra
+        credential buys nothing.
+      '';
+    };
+
     namePrefix = mkOption {
       type = types.strMatching "[A-Za-z0-9]+";
       default = "SR";
@@ -123,12 +147,34 @@ in
             into their own tailnet from a browser, with no key baked into the image
             and no console.
 
-            The unit is deliberately self-limiting: it refuses to start once the
-            backend reports `Running`, and a timer stops it as soon as login
-            succeeds. Nothing reopens the window automatically — re-enrolment is
+            The unit is deliberately self-limiting in three directions: it refuses
+            to start once the backend reports `Running`, a timer stops it as soon
+            as login succeeds, and {option}`openFor` closes it even if nobody
+            ever enrols. Nothing reopens the window automatically — re-enrolment is
             `sunreye-setup tailscale reset` as root, over Tailscale SSH or the
             console. A published image therefore grants its builder nothing: no key,
             no account, no `authorized_keys` entry.
+          '';
+        };
+
+        openFor = mkOption {
+          type = types.ints.positive;
+          default = 30;
+          description = ''
+            Minutes the login window stays open on a box nobody has enrolled,
+            counted from the moment it opens.
+
+            Without a deadline it stays open forever: the unit only closes on the
+            transition to `Running`, so a box that is powered on and never
+            adopted serves an enrolment page to its LAN indefinitely — and
+            anyone who reaches it can enrol the box into THEIR tailnet and own
+            the dashboard. Measured on a real unit, that window stood open for
+            hours.
+
+            A reboot reopens it, so a missed window costs a power cycle rather
+            than a re-flash. Lower this if the box lives on a network you share
+            with people you do not; the useful floor is however long it takes you
+            to find the box's address and click through the login.
           '';
         };
 

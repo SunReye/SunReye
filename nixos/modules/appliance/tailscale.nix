@@ -238,6 +238,26 @@ lib.mkIf (cfg.enable && ts.enable) {
         # the moment Tailscale SSH becomes possible, and on a published image it
         # is the only way anyone will ever reach this box.
         systemctl start --no-block appliance-tailscale-settings
+        exit 0
+      fi
+
+      # Not enrolled. The window is not allowed to stand open forever: this unit
+      # used to close it ONLY on the transition above, so a box that was powered
+      # on and never adopted served an enrolment page to its LAN indefinitely.
+      # Anyone who reached it could enrol the box into their own tailnet and take
+      # the dashboard with it. Measured on a real unit: open for hours.
+      #
+      # Monotonic, not wall clock — the box has no RTC it trusts on a first boot
+      # and NTP stepping the clock must not open or close this window by itself.
+      opened=$(systemctl show tailscale-web -p ActiveEnterTimestampMonotonic --value 2>/dev/null || echo 0)
+      # Shell arithmetic on /proc/uptime rather than awk, which is not on this
+      # unit's path — and a deadline that silently never fires because its clock
+      # command is missing is worse than no deadline at all.
+      read -r uptime _ < /proc/uptime
+      now=$(( ''${uptime%.*} * 1000000 ))
+      if [ "$opened" -gt 0 ] && [ $((now - opened)) -ge $(( ${toString web.openFor} * 60 * 1000000 )) ]; then
+        echo "no enrolment within ${toString web.openFor} minutes; closing the login page. Reboot to reopen it."
+        systemctl stop tailscale-web
       fi
     '';
   };

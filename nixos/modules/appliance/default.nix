@@ -20,6 +20,7 @@
     ./network.nix
     ./identity.nix
     ./ssh.nix
+    ./console.nix
     ./tailscale.nix
     ./health.nix
     ./update.nix

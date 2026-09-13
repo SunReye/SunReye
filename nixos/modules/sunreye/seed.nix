@@ -82,6 +82,30 @@ lib.mkIf (config.appliance.enable && cfg.enable) {
           shred -u /boot/appliance-seed/tailscale-authkey
           echo "took delivery of a tailscale auth key from /boot"
         fi
+        # A public key, dropped on the ESP by whoever flashed the disk. This is
+        # the ONLY way into a headless box that does not depend on Tailscale and
+        # does not require rebuilding the image:
+        #
+        #   * the console password is a physical-access fallback — useless if
+        #     there is no screen on the box;
+        #   * `appliance.ssh.authorizedKeys` is baked at build time, so using it
+        #     means building your own image;
+        #   * a key dropped here lands in /root/.ssh/authorized_keys, which sshd
+        #     reads directly (`authorizedKeysFiles` = %h/.ssh/authorized_keys),
+        #     so it works on the FIRST boot with no rebuild at all.
+        #
+        # The ESP is FAT and mounts on any machine, so this is a file copy on
+        # Windows after flashing. Not shredded, unlike the secrets below: a
+        # public key is not one, and leaving it means the access survives
+        # anything that eats /root. It does not fight `sunreye-setup ssh-key`,
+        # which writes the declarative keys to /etc/ssh/authorized_keys.d/root —
+        # sshd reads both.
+        if [ -s /boot/appliance-seed/authorized_keys ]; then
+          install -d -m 0700 /root/.ssh
+          install -m 0600 /boot/appliance-seed/authorized_keys /root/.ssh/authorized_keys
+          echo "took delivery of $(grep -c . /boot/appliance-seed/authorized_keys) ssh key(s) from /boot"
+        fi
+
         for f in site.nix site.json local.nix; do
           if [ -s "/boot/appliance-seed/$f" ]; then
             install -m 0644 "/boot/appliance-seed/$f" "/etc/nixos/$f"
@@ -89,6 +113,9 @@ lib.mkIf (config.appliance.enable && cfg.enable) {
             echo "took delivery of $f from /boot"
           fi
         done
+        # Only succeeds once every delivered file has been consumed; the
+        # authorized_keys above is deliberately kept, so on a box using that
+        # path this stays and is re-read each boot.
         rmdir /boot/appliance-seed 2>/dev/null || true
       fi
     '';

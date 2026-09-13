@@ -112,7 +112,7 @@
     # podman included because the report asks it what is running: without it the
     # container section was `podman: command not found` and the reader was left
     # to infer the state of the workload from the unit list alone.
-    path = with pkgs; [ systemd util-linux curl coreutils gnugrep git podman openssl ];
+    path = with pkgs; [ systemd util-linux curl coreutils gnugrep gawk git podman openssl ];
     script = ''
       echo "##### VMTEST REPORT #####"
       echo "rootfs:    $(findmnt -no FSTYPE,OPTIONS /)"
@@ -172,6 +172,23 @@
       # that runs to its 25-minute ceiling, and a guard that then blames the
       # appliance for a harness that hung.
       echo "proxy-issuer: $(timeout 20 openssl s_client -connect 127.0.0.1:443 -servername "$name" </dev/null 2>/dev/null | timeout 10 openssl x509 -noout -issuer 2>/dev/null || echo NONE)"
+
+      # Can anyone actually log in at the keyboard? The image shipped for weeks
+      # with root locked — no password, no key, `allowNoPasswordLogin = false` —
+      # while the docs offered "a keyboard on the box" as the fallback. Nothing
+      # noticed, because every other probe here talks to the box over TCP.
+      hash=$(awk -F: '$1 == "root" { print $2 }' /etc/shadow 2>/dev/null || echo "")
+      case "$hash" in
+        ""|"!"*|"*") echo "console-login: LOCKED" ;;
+        *) echo "console-login: usable" ;;
+      esac
+      # …and the one thing that makes a generated password usable: it has to be
+      # on the screen in front of whoever is standing there.
+      if grep -q "root / ." /etc/issue 2>/dev/null; then
+        echo "console-banner: names the password"
+      else
+        echo "console-banner: MISSING"
+      fi
 
       # The unit that makes an enrolled box reachable at all. On THIS box nobody
       # has enrolled anything, so the only thing provable here is the half that
