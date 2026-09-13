@@ -136,10 +136,18 @@ lib.mkIf cfg.enable {
   # `interactiveShellInit`, not `users.motd`: the motd is a static file in the
   # store and every useful fact here is discovered at runtime.
   programs.bash.interactiveShellInit = lib.mkIf cfg.health.loginBanner ''
-    # Login shells only, once. Without the guard this runs for every subshell a
-    # script spawns, which turns `ssh box 'cmd'` into a status report with the
-    # output buried in it.
-    if [ -z "''${SUNREYE_BANNER_SHOWN:-}" ] && [ -t 1 ] && [ "''${SHLVL:-1}" = 1 ]; then
+    # Once per session, and only where someone is looking.
+    #
+    # The exported flag is what makes it once: a subshell inherits it, so a
+    # script that spawns shells does not redraw the banner. `ssh box 'cmd'` runs
+    # a NON-interactive bash, which never sources this file at all.
+    #
+    # There used to be a `SHLVL = 1` test alongside these, and it was one
+    # constraint too many: an interactive shell is at SHLVL 2 whenever anything
+    # wrapped it — tmux, screen, `script`, a nested login — so the banner
+    # silently did not appear. Caught by the boot probe, which reaches an
+    # interactive shell through a pty and is therefore nested by construction.
+    if [ -z "''${SUNREYE_BANNER_SHOWN:-}" ] && [ -t 1 ]; then
       export SUNREYE_BANNER_SHOWN=1
       ${lib.optionalString (cfg.health.bannerHeader != "")
         ''cat ${pkgs.writeText "appliance-banner-header" cfg.health.bannerHeader}''}
