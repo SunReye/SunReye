@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { DEFAULT_SITE, serializeSite, type SiteConfig } from "./site";
 import { type Io, run } from "./main";
+import { FACTORY_RESET_PATHS } from "./factory-reset";
 
 type Recorded = { command: readonly string[]; cwd?: string };
 
@@ -30,6 +31,7 @@ function harness(
     },
     zoneExists: (tz) => ["UTC", "Europe/Berlin"].includes(tz),
     isRoot: true,
+    hostname: () => "sr-abc123",
     log: (line) => out.push(line),
     error: (line) => errs.push(line),
     ...overrides,
@@ -324,5 +326,72 @@ describe("the failure paths a remote box actually hits", () => {
     }));
     expect(run(["tailscale", "reset"], h.io)).toBe(0);
     expect(h.out.join("\n")).toContain("tailscale-web did not start");
+  });
+});
+
+describe("factory-reset", () => {
+  const box = { hostname: () => "sr-abc123" };
+
+  test("without --confirm it destroys nothing and explains what it would", () => {
+    const h = harness(box);
+
+    expect(run(["factory-reset"], h.io)).toBe(1);
+    expect(h.out.concat(h.errs).join("\n")).toContain("measurement history");
+    expect(h.runs).toEqual([]);
+  });
+
+  test("the wrong name destroys nothing", () => {
+    const h = harness(box);
+
+    expect(run(["factory-reset", "--confirm", "sr-other"], h.io)).toBe(1);
+    expect(h.runs).toEqual([]);
+  });
+
+  // The tailnet goes first, so a run that dies partway leaves a box that has
+  // stopped being reachable as its old identity rather than one that comes back
+  // enrolled with an empty database.
+  test("it forgets the tailnet before it erases anything", () => {
+    const h = harness(box);
+    run(["factory-reset", "--confirm", "sr-abc123"], h.io);
+
+    const flat = joined(h.runs);
+    const logout = flat.findIndex((c) => c.includes("tailscale logout"));
+    const firstRm = flat.findIndex((c) => c.startsWith("rm "));
+
+    expect(logout).toBeGreaterThanOrEqual(0);
+    expect(firstRm).toBeGreaterThan(logout);
+  });
+
+  test("it reboots last, and only after erasing", () => {
+    const h = harness(box);
+    run(["factory-reset", "--confirm", "sr-abc123"], h.io);
+
+    const flat = joined(h.runs);
+    const rms = flat.map((c) => c.startsWith("rm "));
+
+    expect(flat[flat.length - 1]).toContain("reboot");
+    expect(rms.lastIndexOf(true)).toBeLessThan(flat.length - 1);
+  });
+
+  test("it erases every path the reset is defined by", () => {
+    const h = harness(box);
+    run(["factory-reset", "--confirm", "sr-abc123"], h.io);
+
+    const removed = h.runs.filter((r) => r.command[0] === "rm").flatMap((r) => r.command.slice(2));
+    for (const path of FACTORY_RESET_PATHS) expect(removed).toContain(path);
+  });
+
+  // A box that cannot be erased must not reboot as if it had: coming back up
+  // with the old database and a half-cleared tailnet is the one outcome worse
+  // than refusing.
+  test("a failed erase does not reboot", () => {
+    const h = harness(box, (command) =>
+      command[0] === "rm"
+        ? { ok: false, output: "read-only file system" }
+        : { ok: true, output: "" },
+    );
+
+    expect(run(["factory-reset", "--confirm", "sr-abc123"], h.io)).toBe(1);
+    expect(joined(h.runs).some((c) => c.includes("reboot"))).toBe(false);
   });
 });

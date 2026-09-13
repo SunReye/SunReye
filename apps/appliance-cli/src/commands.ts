@@ -30,6 +30,7 @@ export type Outcome =
   | { kind: "show" }
   | { kind: "apply" }
   | { kind: "reset" }
+  | { kind: "factory-reset"; confirm: string | undefined }
   | { kind: "error"; message: string };
 
 const SSH_KEY_USAGE = "usage: sunreye-setup ssh-key add <key> | remove <key> | list";
@@ -47,6 +48,11 @@ const HELP = `sunreye-setup — configure this SunReye appliance
   tls tailscale|internal|both
                         how the dashboard is served over HTTPS
   tailscale reset       forget this tailnet and reopen the login window (root)
+  factory-reset --confirm <this box's name>
+                        erase EVERYTHING back to a first boot: the database and
+                        all its history, the tailnet identity, the secrets. Run
+                        it without --confirm first; it prints what it will
+                        destroy and refuses.
   show                  the current configuration and tailnet status
   apply                 commit and rebuild (every command above does this too)
 
@@ -365,6 +371,11 @@ const COMMANDS: Record<
   "ssh-key": (site, rest) => sshKeyCommand(site, rest),
   tls: (site, rest) => tlsCommand(site, rest),
   tailscale: (_site, rest, ctx) => tailscaleCommand(rest, ctx),
+  "factory-reset": (_site, rest) => {
+    const flags = parseFlags(rest, ["--confirm"]);
+    if ("error" in flags) return { kind: "error", message: flags.error };
+    return { kind: "factory-reset", confirm: flags["--confirm"] };
+  },
   show: () => ({ kind: "show" }),
   apply: () => ({ kind: "apply" }),
 };

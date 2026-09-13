@@ -21,7 +21,7 @@ let
   appliance = config.appliance;
   password = appliance.console.password;
   web = password.web;
-  tree = import ./cli-tree.nix { inherit pkgs; };
+  bundle = import ./cli-tree.nix { inherit pkgs; };
 in
 lib.mkIf (appliance.enable && password.enable && web.enable) {
   systemd.services.appliance-first-boot = {
@@ -31,7 +31,7 @@ lib.mkIf (appliance.enable && password.enable && web.enable) {
     # starting up" and has burned part of their window on nothing.
     after = [ "appliance-console-password.service" "network.target" ];
     wants = [ "appliance-console-password.service" ];
-    path = [ pkgs.bun ];
+    path = [ pkgs.nodejs ];
     serviceConfig = {
       Type = "exec";
       # NOT RuntimeMaxSec. Killing the process at the deadline is what turned a
@@ -67,8 +67,6 @@ lib.mkIf (appliance.enable && password.enable && web.enable) {
       SUNREYE_FIRST_BOOT_PORT = toString web.port;
       SUNREYE_FIRST_BOOT_WINDOW_MS = toString (web.openFor * 60 * 1000);
     };
-    # --no-install: bun must never reach the network from a unit on a box whose
-    # whole point is working without it.
-    script = "exec bun run --no-install ${tree}/first-boot.ts";
+    script = "exec node ${bundle}/first-boot.mjs";
   };
 }

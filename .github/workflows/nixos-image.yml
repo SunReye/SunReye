@@ -143,6 +143,10 @@ jobs:
           # a bare 502 once, which distinguishes nothing.
           grep -q '^first-boot-down: explains itself' report.txt \
             || { echo "::error::a closed window does not explain itself: $(grep '^first-boot-down:' report.txt)"; fail=1; }
+          # The banner an operator sees on the way in. Every guard on it fails
+          # closed, so "never fires" and "not configured" look identical.
+          grep -q '^login-banner: shown' report.txt \
+            || { echo "::error::the login banner does not appear on an interactive shell"; fail=1; }
           # Somebody standing at the box has to be able to get in. This is the
           # only probe here that is not reachable over the network, and it is the
           # one that was missing while root sat locked for weeks.
@@ -173,12 +177,45 @@ jobs:
             || { echo "::error::first-boot secrets were not generated"; fail=1; }
           exit $fail
 
+      # The SAME image, on a CPU with no AVX. Every runner and every developer
+      # machine has AVX2, so a dependency that needs it is invisible here and
+      # fails only on the hardware this appliance is actually for: the bun
+      # nixpkgs ships — including its `-baseline` build — faults with SIGILL on
+      # an Atom-class thin client, which took `sunreye-setup` and the first-boot
+      # password window with it while the dashboard stayed up and every gate
+      # stayed green. A flashed Futro is where that was found.
+      #
+      # Nehalem is the floor worth supporting: SSE4.2, no AVX. The report's own
+      # assertions are re-run against it, so anything that needs a newer
+      # instruction set fails here instead of in someone's cupboard.
+      - name: Boot it again on a CPU with no AVX
+        run: |
+          set -o pipefail
+          QEMU_OPTS="-cpu Nehalem" timeout 25m ./result/bin/run-*-vm -no-reboot 2>&1 \
+            | tee boot-noavx.log || true
+          grep -q 'VMTEST REPORT' boot-noavx.log || {
+            echo "::error::the no-AVX VM never reached its report"
+            tail -40 boot-noavx.log
+            exit 1
+          }
+          sed -E 's/^\[[0-9. ]+\] [^:]+: //' boot-noavx.log > report-noavx.txt
+
+          fail=0
+          for want in 'healthz: 200' 'setup-show: ok' 'first-boot-window: served' \
+                      'console-login: usable' 'proxy-https: 200'; do
+            grep -q "^$want" report-noavx.txt \
+              || { echo "::error::without AVX: $want"; fail=1; }
+          done
+          exit $fail
+
       - name: Keep the boot log whatever happened
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: appliance-boot-log
-          path: boot.log
+          path: |
+            boot.log
+            boot-noavx.log
           retention-days: 14
   # Pin the release, and let every deployed box see it.
   #

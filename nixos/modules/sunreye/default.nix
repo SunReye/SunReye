@@ -593,6 +593,29 @@ in
     # nothing about what this box runs.
     appliance.health.publicTlsPort = lib.mkIf wantsTailscaleTls 443;
 
+    # The sun from the dashboard's own logo: a filled disc and eight rays, at
+    # the four cardinals and the four diagonals (apps/web/static/favicon.svg).
+    #
+    # Plain ASCII on purpose — this is the first thing a console getty renders,
+    # and a box-drawing character the console font does not carry is a banner
+    # made of question marks.
+    #
+    # Built from a list rather than an indented string because Nix strips the
+    # COMMON indentation from `''`, which is decided by whichever line happens
+    # to be furthest left — here the horizontal ray — so the whole sun would
+    # hug the terminal edge and the margin could not be set at all.
+    appliance.health.bannerHeader = lib.concatMapStrings (line: "  ${line}\n") [
+      ""
+      "       \\    |    /"
+      "        \\ .---. /"
+      "         /#####\\"
+      "    ---- |#####| ----     S U N R E Y E"
+      "         \\#####/          ${cfg.imageTag}"
+      "        / '---' \\"
+      "       /    |    \\"
+      ""
+    ];
+
     # `sunreye.local`, so the first boot has a name to type that does not depend
     # on finding the box's address in a router's lease table.
     services.avahi = {

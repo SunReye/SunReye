@@ -379,6 +379,19 @@ in
         description = "The appliance-health-report program this module builds.";
       };
 
+      bannerHeader = mkOption {
+        type = types.lines;
+        default = "";
+        description = ''
+          Printed above the report when {option}`appliance.health.loginBanner`
+          shows it. Empty by default.
+
+          Named by the layer that owns the product rather than written here:
+          this module is the generic appliance base and has no business knowing
+          what the box is called or what its logo looks like.
+        '';
+      };
+
       loginBanner = mkOption {
         type = types.bool;
         default = true;

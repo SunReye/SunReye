@@ -14,8 +14,11 @@
  * committing builds the PREVIOUS configuration and reports success. That failure
  * mode is silent and it is the one this order exists to prevent.
  */
+import { spawnSync } from "node:child_process";
+import { pathToFileURL } from "node:url";
 import { existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { applyCommand, type Context } from "./commands";
+import { FACTORY_RESET_PATHS, factoryResetPlan } from "./factory-reset";
 import { parseSite, serializeSite, type SiteConfig } from "./site";
 
 const CONFIG_DIR = "/etc/nixos";
@@ -39,6 +42,14 @@ export type Io = {
   exec: (command: readonly string[], cwd?: string) => ExecResult;
   zoneExists: (timeZone: string) => boolean;
   isRoot: boolean;
+  /**
+   * This box's own name, which is what `factory-reset` confirms against.
+   *
+   * A seam rather than a `hostnamectl` call inside the command: the guard is
+   * the entire safety of an operation that destroys years of measurements, and
+   * it has to be exercisable without a box to destroy.
+   */
+  hostname: () => string;
   log: (line: string) => void;
   error: (line: string) => void;
 };
@@ -50,6 +61,21 @@ export type Io = {
  * differs between nixpkgs revisions. The separator guard matters: a zone name is
  * pasted from a browser, and `../../etc/passwd` would otherwise "exist".
  */
+/**
+ * Whether this module is the program being run.
+ *
+ * `import.meta.main` is a Bun-ism and is `undefined` under node, which would
+ * make the block below dead code and the CLI a silent no-op. The bundle is
+ * built with a single entry point, so comparing argv[1] to this module's own
+ * path is the portable question — and it stays true when the suite imports this
+ * file, which must NOT start anything.
+ */
+function isEntryPoint(): boolean {
+  const entry = process.argv[1];
+  if (entry === undefined) return false;
+  return import.meta.url === pathToFileURL(entry).href;
+}
+
 export function systemZoneExists(timeZone: string): boolean {
   if (timeZone.includes("..") || timeZone.startsWith("/")) return false;
   return ZONEINFO_ROOTS.some((root) => {
@@ -139,6 +165,55 @@ function show(io: Io, site: SiteConfig): number {
  * a state wipe that fails is: everything after it would re-enrol into the tailnet
  * we were trying to leave.
  */
+/**
+ * Erase the box back to a first boot.
+ *
+ * Ordered so a run that dies partway leaves the least bad state: the tailnet
+ * identity goes first, so a half-finished reset is a box that has stopped being
+ * reachable as its old self rather than one that comes back enrolled with an
+ * empty database. The reboot is last and conditional — coming up as if reset,
+ * with the old data still there, is the one outcome worse than refusing.
+ */
+function factoryReset(io: Io, confirm: string | undefined): number {
+  const plan = factoryResetPlan({ hostname: io.hostname(), confirm });
+  io.log(plan.message);
+  if (!plan.proceed) return 1;
+
+  // Best-effort: a box already logged out, or one whose tailscaled is dead,
+  // must not be blocked from being erased.
+  const logout = io.exec(["tailscale", "logout"]);
+  if (!logout.ok) io.log(`tailscale logout: ${logout.output.trim()} — continuing`);
+
+  // Stopped before their state is removed. Postgres with its datadir deleted
+  // underneath it writes into a directory that no longer exists, and the podman
+  // unit restarts it forever.
+  const units = [
+    "podman-sunreye-server",
+    "sunreye-migrate",
+    "podman-sunreye-postgres",
+    "tailscaled",
+  ];
+  for (const unit of units) {
+    const stop = io.exec(["systemctl", "stop", unit]);
+    if (!stop.ok) io.log(`could not stop ${unit}: ${stop.output.trim()} — continuing`);
+  }
+
+  for (const path of FACTORY_RESET_PATHS) {
+    const removed = io.exec(["rm", "-rf", path]);
+    if (!removed.ok) {
+      io.error(`could not erase ${path}: ${removed.output}`);
+      io.error(
+        "Nothing has been rebooted. This box is now partly erased: fix the above and run the command again.",
+      );
+      return 1;
+    }
+  }
+
+  io.log("erased. rebooting into a first boot.");
+  io.exec(["reboot"]);
+  return 0;
+}
+
 function reset(io: Io): number {
   const logout = io.exec(["tailscale", "logout"]);
   if (!logout.ok) io.log(`tailscale logout: ${logout.output.trim()} — continuing`);
@@ -192,6 +267,8 @@ export function run(argv: readonly string[], io: Io): number {
       return show(io, parsed.site);
     case "reset":
       return reset(io);
+    case "factory-reset":
+      return factoryReset(io, outcome.confirm);
     case "apply":
       return commitAndRebuild(io, "apply: rebuild from the current configuration");
     case "update":
@@ -220,21 +297,32 @@ export function makeSystemIo(paths: { siteJson: string; configDir: string }): Io
     // include a time zone and an SSH key someone pasted, and an argv array has
     // no quoting bug available to it.
     exec: (command, cwd) => {
-      // Bun.spawnSync THROWS on ENOENT rather than reporting a non-zero exit,
-      // and `Io.exec` promises never to throw — every caller in run() branches
-      // on `ok` and would otherwise die with a stack trace on a box where a tool
-      // is missing (a partial rebuild leaves exactly that state). Caught here so
-      // "the command is not installed" is just another failed command.
+      // node:child_process, not Bun: this CLI runs on the appliance, and the
+      // bun build nixpkgs ships dies with SIGILL on a CPU without AVX — which
+      // is every Atom-class thin client, the exact hardware this image is for.
+      // Reproduced under `-cpu Nehalem`: `sunreye-setup` and the first-boot
+      // window both failed while the dashboard stayed up, because the server is
+      // a separately compiled binary.
+      //
+      // `Io.exec` promises never to throw — every caller in run() branches on
+      // `ok` and would otherwise die with a stack trace on a box where a tool is
+      // missing (a partial rebuild leaves exactly that state). spawnSync reports
+      // ENOENT through `error` rather than throwing, and the catch covers the
+      // rest.
       try {
-        const spawned = Bun.spawnSync({
-          cmd: [...command],
+        const spawned = spawnSync(command[0] ?? "", command.slice(1), {
           cwd: cwd ?? paths.configDir,
-          stdout: "pipe",
-          stderr: "pipe",
+          encoding: "utf8",
         });
+        if (spawned.error) {
+          return {
+            ok: false,
+            output: `could not run ${command.join(" ")}: ${spawned.error.message}`,
+          };
+        }
         return {
-          ok: spawned.exitCode === 0,
-          output: `${spawned.stdout.toString()}${spawned.stderr.toString()}`,
+          ok: spawned.status === 0,
+          output: `${spawned.stdout ?? ""}${spawned.stderr ?? ""}`,
         };
       } catch (cause) {
         return { ok: false, output: `could not run ${command.join(" ")}: ${String(cause)}` };
@@ -242,6 +330,21 @@ export function makeSystemIo(paths: { siteJson: string; configDir: string }): Io
     },
     zoneExists: systemZoneExists,
     isRoot: process.getuid?.() === 0,
+    // The kernel hostname, read straight from /proc — the same value
+    // `hostnamectl --transient` reports, which is what identity.nix sets and
+    // what the prompt in front of the operator says. A file read rather than a
+    // spawn: this is the guard on an irreversible command, and it must not be
+    // able to fail because a tool is missing from a half-rebuilt box.
+    //
+    // Empty on any error, and factoryResetPlan refuses on empty rather than
+    // treating it as confirmable.
+    hostname: () => {
+      try {
+        return readFileSync("/proc/sys/kernel/hostname", "utf8").trim();
+      } catch {
+        return "";
+      }
+    },
     log: (line) => console.log(line),
     error: (line) => console.error(line),
   };
@@ -249,6 +352,6 @@ export function makeSystemIo(paths: { siteJson: string; configDir: string }): Io
 
 export const systemIo: Io = makeSystemIo({ siteJson: SITE_JSON, configDir: CONFIG_DIR });
 
-if (import.meta.main) {
+if (isEntryPoint()) {
   process.exit(run(process.argv.slice(2), systemIo));
 }

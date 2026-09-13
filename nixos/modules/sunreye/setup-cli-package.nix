@@ -18,15 +18,17 @@
 # tool that reconfigures an unreachable box cannot land without a test.
 { pkgs }:
 let
-  # Sources and vendored dependency in one tree. Shared with ./first-boot.nix,
-  # which runs a different entry point out of the same directory — two copies
-  # would be two zod pins.
-  tree = import ./cli-tree.nix { inherit pkgs; };
+  # The bundled CLI. Shared with ./first-boot.nix, which runs the other entry
+  # point out of the same bundle — two builds would be two zod pins.
+  bundle = import ./cli-tree.nix { inherit pkgs; };
 in
 pkgs.writeShellApplication {
   name = "sunreye-setup";
   runtimeInputs = with pkgs; [
-    bun
+    # node, NOT bun: the bun nixpkgs ships faults with SIGILL on a CPU without
+    # AVX, which is every Atom-class thin client this image targets. See
+    # ./cli-tree.nix.
+    nodejs
     nixos-rebuild
     git
     # `show` reads the tailnet status, and `tailscale reset` is most of what the
@@ -36,8 +38,6 @@ pkgs.writeShellApplication {
     coreutils
   ];
   text = ''
-    # --no-install: bun must never reach the network from a unit on a box whose
-    # whole point is working without it.
-    exec bun run --no-install ${tree}/main.ts "$@"
+    exec node ${bundle}/main.mjs "$@"
   '';
 }

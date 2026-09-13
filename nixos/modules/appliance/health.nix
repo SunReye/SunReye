@@ -141,6 +141,8 @@ lib.mkIf cfg.enable {
     # output buried in it.
     if [ -z "''${SUNREYE_BANNER_SHOWN:-}" ] && [ -t 1 ] && [ "''${SHLVL:-1}" = 1 ]; then
       export SUNREYE_BANNER_SHOWN=1
+      ${lib.optionalString (cfg.health.bannerHeader != "")
+        ''cat ${pkgs.writeText "appliance-banner-header" cfg.health.bannerHeader}''}
       ${lib.getExe report} 2>/dev/null || true
       echo
       echo "sunreye-setup show   — this box's configuration"

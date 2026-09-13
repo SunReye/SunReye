@@ -1,4 +1,8 @@
 #!/usr/bin/env bun
+import { createServer } from "node:http";
+import { access, readFile, writeFile } from "node:fs/promises";
+import { pathToFileURL } from "node:url";
+
 /**
  * Hand this box's console password to whoever set it up, exactly once.
  *
@@ -130,21 +134,44 @@ export function firstBootHandler(io: FirstBootIo, openedAt: number, windowMs: nu
   };
 }
 
-if (import.meta.main) {
+/**
+ * Whether this module is the program being run. See main.ts — `import.meta.main`
+ * is a Bun-ism and is `undefined` under node, which would leave this block dead
+ * and the window silently never opening.
+ */
+function isEntryPoint(): boolean {
+  const entry = process.argv[1];
+  if (entry === undefined) return false;
+  return import.meta.url === pathToFileURL(entry).href;
+}
+
+if (isEntryPoint()) {
   const passwordFile = process.env.SUNREYE_PASSWORD_FILE ?? "/var/lib/secrets/console-password";
   const claimFile = process.env.SUNREYE_CLAIM_FILE ?? "/var/lib/secrets/console-claimed";
   const port = Number(process.env.SUNREYE_FIRST_BOOT_PORT ?? 5251);
-  const windowMs = Number(process.env.SUNREYE_FIRST_BOOT_WINDOW_MS ?? 5 * 60 * 1000);
+  const windowMs = Number(process.env.SUNREYE_FIRST_BOOT_WINDOW_MS ?? 15 * 60 * 1000);
 
   const handle = firstBootHandler(
     {
       readPassword: async () => {
-        const file = Bun.file(passwordFile);
-        return (await file.exists()) ? (await file.text()).trim() : null;
+        try {
+          return (await readFile(passwordFile, "utf8")).trim();
+        } catch {
+          return null;
+        }
       },
-      isClaimed: async () => await Bun.file(claimFile).exists(),
+      isClaimed: async () => {
+        try {
+          await access(claimFile);
+          return true;
+        } catch {
+          return false;
+        }
+      },
+      // 0600: the marker says a password has been handed out, and on a box where
+      // that is the only credential, its absence is what reopens the window.
       markClaimed: async () => {
-        await Bun.write(claimFile, `${new Date().toISOString()}\n`);
+        await writeFile(claimFile, `${new Date().toISOString()}\n`, { mode: 0o600 });
       },
       now: () => Date.now(),
     },
@@ -152,24 +179,21 @@ if (import.meta.main) {
     windowMs,
   );
 
-  // 127.0.0.1 only. Caddy publishes this on the LAN over HTTPS; a listener of
-  // our own on 0.0.0.0 would be a second door serving the same secret in clear.
-  Bun.serve({
-    port,
-    hostname: "127.0.0.1",
-    fetch: async () => {
-      const { status, body } = await handle();
-      return new Response(body, {
-        status,
-        headers: {
-          "content-type": "text/plain; charset=utf-8",
-          // A password in a proxy or browser cache is the same password
-          // available to the next person who opens that browser.
-          "cache-control": "no-store",
-        },
+  // node:http, not Bun.serve — see main.ts for why nothing here may depend on
+  // bun. 127.0.0.1 only: Caddy publishes this on the LAN over HTTPS, and a
+  // listener of our own on 0.0.0.0 would be a second door serving the same
+  // secret in clear.
+  createServer((_request, response) => {
+    void handle().then(({ status, body }) => {
+      response.writeHead(status, {
+        "content-type": "text/plain; charset=utf-8",
+        // A password in a proxy or browser cache is the same password available
+        // to the next person who opens that browser.
+        "cache-control": "no-store",
       });
-    },
+      response.end(body);
+    });
+  }).listen(port, "127.0.0.1", () => {
+    console.log(`first-boot window open on 127.0.0.1:${port} for ${windowMs / 1000}s`);
   });
-
-  console.log(`first-boot window open on 127.0.0.1:${port} for ${windowMs / 1000}s`);
 }

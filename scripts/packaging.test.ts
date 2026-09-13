@@ -524,3 +524,49 @@ describe("release configuration", () => {
     expect(packages["."]?.["exclude-paths"] ?? []).not.toContain("apps/web");
   });
 });
+
+/**
+ * The server shells out to `git` to read a profile repository — that is how an
+ * inverter profile reaches a box — and the runtime stage is `FROM scratch`,
+ * which by design contains "no shell, no package manager, no libc utilities".
+ *
+ * So the feature had never worked on ANY channel. Compose, the Home Assistant
+ * addon and the appliance all run this image, and all of them answered
+ * `Executable not found in $PATH: "git"` the moment someone opened the profile
+ * list. Nothing was red: the failure is caught and reported as a source that
+ * could not be read, which reads like a network problem.
+ *
+ * Asserted against the Dockerfile because that is the only place the runtime
+ * filesystem is decided, and no test that runs the server can see it — the
+ * suite runs on a developer machine where git is simply on PATH.
+ */
+describe("the server image can read a profile repository", () => {
+  it("git is installed in the stage the runtime copies from", async () => {
+    const dockerfile = await folded(SERVER);
+    expect(dockerfile).toMatch(/apk add[^\n]*\bgit\b/);
+  });
+
+  it("the git HTTPS transport ships with it", async () => {
+    // Comments stripped first. `git-remote-https` is named in the Dockerfile's
+    // own explanation of why it is needed, so a plain substring match is
+    // satisfied by the prose that describes the bug — measured, deleting the
+    // copy left this assertion green. Third time tonight.
+    const instructions = (await folded(SERVER))
+      .split("\n")
+      .filter((line) => !line.trimStart().startsWith("#"))
+      .join("\n");
+
+    // `git clone https://…` execs git-remote-https, a SEPARATE binary under
+    // libexec/git-core: copying /usr/bin/git alone gives "Unable to find remote
+    // helper for 'https'", which fails exactly like having no git at all.
+    expect(instructions).toContain("git-remote-https");
+  });
+
+  it("the runtime stage actually receives it", async () => {
+    const dockerfile = await folded(SERVER);
+    // The libraries stage can install anything it likes; only what is copied
+    // into the scratch image exists at runtime.
+    const runtime = dockerfile.slice(dockerfile.lastIndexOf("FROM scratch"));
+    expect(runtime).toMatch(/COPY --from=runtime-libs/);
+  });
+});

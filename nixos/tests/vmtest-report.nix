@@ -205,6 +205,17 @@
         *) echo "first-boot-down: unexpected ($(printf '%s' "$down" | tail -1))" ;;
       esac
 
+      # Does the login banner actually appear? Its guards are the subtle kind —
+      # a tty check, SHLVL, and a once-per-session flag — and every one of them
+      # fails closed, so the banner silently never firing looks exactly like a
+      # banner that was never configured. A pty is needed to reach it at all:
+      # this unit's stdout is the journal, where `[ -t 1 ]` is false.
+      banner=$(timeout 30 script -qec "bash -i -c true" /dev/null </dev/null 2>/dev/null || true)
+      case "$banner" in
+        *"S U N R E Y E"*) echo "login-banner: shown" ;;
+        *) echo "login-banner: MISSING" ;;
+      esac
+
       # Can anyone actually log in at the keyboard? The image shipped for weeks
       # with root locked — no password, no key, `allowNoPasswordLogin = false` —
       # while the docs offered "a keyboard on the box" as the fallback. Nothing
