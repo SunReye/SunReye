@@ -119,9 +119,10 @@ be needed again.
 ## [3.2.2](https://github.com/SunReye/SunReye/compare/addon-v3.2.1...addon-v3.2.2) (2026-09-13)
 
 
-### Miscellaneous Chores
+### Bug Fixes
 
-* **addon:** Synchronize sunreye-stack versions
+* **nixos:** make the appliance reachable — tailnet cert, Tailscale SSH, and a way in ([#248](https://github.com/SunReye/SunReye/issues/248)) ([3a58863](https://github.com/SunReye/SunReye/commit/3a5886371c5584cfe8969ecae60d756522a719a1))
+* **release:** make the appliance pin actually run, and stop claiming a gate that doesn't ([#246](https://github.com/SunReye/SunReye/issues/246)) ([ddb858e](https://github.com/SunReye/SunReye/commit/ddb858e675acc1c3714fd2ae26adc2613da7c35e))
 
 ## [3.2.1](https://github.com/SunReye/SunReye/compare/addon-v3.2.0...addon-v3.2.1) (2026-09-13)
 
