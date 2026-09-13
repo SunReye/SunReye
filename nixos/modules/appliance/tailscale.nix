@@ -47,6 +47,25 @@ lib.mkIf (cfg.enable && ts.enable) {
       '';
     }
     {
+      # The trap this closes cost a real owner their box. nixpkgs runs
+      # `tailscale up` from `tailscaled-autoconnect` and nowhere else, and that
+      # unit is `mkIf (authKeyFile != null)` — so on a keyless box, which every
+      # published image is, extraUpFlags is text nothing executes. It reads as
+      # configured, evaluates green, and silently does nothing.
+      assertion = keyed || config.services.tailscale.extraUpFlags == [ ];
+      message = ''
+        services.tailscale.extraUpFlags is set on a box with no
+        appliance.tailscale.authKeyFile, and those flags will never run: nixpkgs
+        passes them to `tailscale up`, which only happens in
+        `tailscaled-autoconnect`, which only exists when an auth key is set. A
+        box enrolled from the login page would come up without them.
+
+        Anything `tailscale set` can apply belongs in
+        `appliance-tailscale-settings`, which runs on both enrolment paths. Tags
+        are the exception — they are fixed at `up` — and they require a key.
+      '';
+    }
+    {
       assertion = !wantsVia || lan.siteId != null;
       message = ''
         appliance.tailscale.lan.mode = "${lan.mode}" requires
@@ -84,11 +103,75 @@ lib.mkIf (cfg.enable && ts.enable) {
     # hand-rolled `sysctl net.ipv4.ip_forward=1` misses.
     useRoutingFeatures = if routing then "server" else "client";
     authKeyParameters.preauthorized = keyed;
-    extraUpFlags =
+    # ONLY when there is a key. nixpkgs passes extraUpFlags to `tailscale up`,
+    # and it runs `tailscale up` from exactly one place —
+    # `tailscaled-autoconnect`, which is `mkIf (authKeyFile != null)`. On a
+    # keyless box these flags are never executed by anything.
+    #
+    # That is every published image. `--ssh` sat here unconditionally, so a box
+    # enrolled from the login page came up with Tailscale SSH OFF — and since a
+    # published image also has no authorized key and no local login, the owner
+    # had no way to reach `sunreye-setup` at all. Measured on the first unit ever
+    # enrolled: `ssh root@<name>.ts.net` was answered by OpenSSH, not tailscaled,
+    # and refused for want of a key that cannot exist.
+    #
+    # Tags are the one thing that genuinely cannot be set later — they are fixed
+    # at `up` — which is why they stay here and why the assertion above requires
+    # a key alongside them. Everything else is applied by
+    # `appliance-tailscale-settings`, on both enrolment paths.
+    extraUpFlags = lib.optionals keyed (
       [ "--ssh" ]
       ++ lib.optional (ts.tags != [ ]) "--advertise-tags=${lib.concatStringsSep "," ts.tags}"
       ++ lib.optional (!ts.acceptRoutes) "--accept-routes=false"
-      ++ lib.optional ts.acceptRoutes "--accept-routes";
+      ++ lib.optional ts.acceptRoutes "--accept-routes"
+    );
+  };
+
+  # The node settings that must hold however this box was enrolled.
+  #
+  # `tailscale set` applies to an already-enrolled node, which is the difference
+  # that matters: the browser login path never runs `tailscale up` with our
+  # flags, so this is the only thing that configures a box somebody adopted from
+  # the login page. It is also what makes the box administrable at all — without
+  # `--ssh` there is no way in.
+  systemd.services.appliance-tailscale-settings = {
+    description = "Apply this box's Tailscale node settings, however it was enrolled";
+    after = [ "tailscaled.service" ];
+    wants = [ "tailscaled.service" ];
+    wantedBy = [ "multi-user.target" ];
+    # Reconverge: a setting changed in the admin console, or a box that was still
+    # sitting at the login page when this last ran.
+    startAt = "hourly";
+    path = with pkgs; [ tailscale jq ];
+    serviceConfig = {
+      Type = "oneshot";
+      # NOT RemainAfterExit: `systemctl start` on an active oneshot that remains
+      # after exit does nothing, so the hourly timer and the post-enrolment
+      # trigger below would both be silent no-ops.
+      Restart = "on-failure";
+      RestartSec = "15s";
+    };
+    unitConfig = {
+      StartLimitBurst = 10;
+      StartLimitIntervalSec = "10min";
+    };
+    script = ''
+      set -euo pipefail
+
+      # A box that nobody has enrolled yet sits at NeedsLogin indefinitely, and
+      # that is the correct state for it — so this exits 0 rather than failing.
+      # A failed unit here would page about a machine behaving exactly as
+      # intended, and would show up in the health report every day until someone
+      # plugged it in.
+      state=$(tailscale status --json 2>/dev/null | jq -r '.BackendState // "NoState"')
+      if [ "$state" != "Running" ]; then
+        echo "not enrolled yet (BackendState=$state); nothing to configure"
+        exit 0
+      fi
+
+      echo "applying node settings"
+      tailscale set --ssh=true --accept-routes=${lib.boolToString ts.acceptRoutes}
+    '';
   };
 
   # `tailscale web` in login mode: the box serves its own enrolment page on the
@@ -151,6 +234,10 @@ lib.mkIf (cfg.enable && ts.enable) {
       if [ "$state" = "Running" ]; then
         echo "enrolled; stopping the login page"
         systemctl stop tailscale-web
+        # And configure the node NOW rather than up to an hour from now. This is
+        # the moment Tailscale SSH becomes possible, and on a published image it
+        # is the only way anyone will ever reach this box.
+        systemctl start --no-block appliance-tailscale-settings
       fi
     '';
   };

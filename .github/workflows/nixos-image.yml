@@ -131,6 +131,11 @@ jobs:
           grep -q '^tailscale-web: active' report.txt \
             || { echo "::error::the Tailscale login window did not open"; fail=1; }
           grep -q '^setup-show: ok' report.txt || { echo "::error::sunreye-setup show failed"; fail=1; }
+          # The unit that applies `--ssh` after enrolment. It cannot be proven
+          # to enrol here — there is no tailnet — but it must survive a box that
+          # has not enrolled, which is every box on first boot.
+          grep -q '^tailscale-settings: success' report.txt \
+            || { echo "::error::the tailscale settings unit did not succeed: $(grep '^tailscale-settings:' report.txt)"; fail=1; }
           # The box's ability to build its NEXT system. An image that boots
           # perfectly and cannot rebuild itself is a box that can never be
           # updated or configured, and nothing else in this report asks.

@@ -173,6 +173,13 @@
       # appliance for a harness that hung.
       echo "proxy-issuer: $(timeout 20 openssl s_client -connect 127.0.0.1:443 -servername "$name" </dev/null 2>/dev/null | timeout 10 openssl x509 -noout -issuer 2>/dev/null || echo NONE)"
 
+      # The unit that makes an enrolled box reachable at all. On THIS box nobody
+      # has enrolled anything, so the only thing provable here is the half that
+      # regresses silently: it must run and exit 0 on an unenrolled box rather
+      # than failing. A failed unit here pages daily about a machine behaving
+      # exactly as intended, and `Restart=on-failure` would retry it forever.
+      echo "tailscale-settings: $(systemctl show appliance-tailscale-settings -p Result --value 2>/dev/null || echo unknown)"
+
       # Can this box rebuild itself at all? Everything above is the system the
       # IMAGE baked; this is the only question about the system the box will
       # build NEXT, and for a while the answer was no — `nixos/template/` shipped
