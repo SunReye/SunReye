@@ -191,16 +191,25 @@ jobs:
       # mismatch, which is the safe direction but still a red release.
       - name: Repin the server image to the published version
         run: |
+          # pipefail, because without it a failed skopeo leaves `cut` to report
+          # success and the digest below is a plausible-looking hash of nothing.
+          set -o pipefail
           version='${{ steps.v.outputs.version }}'
           image="ghcr.io/sunreye/sunreye-server"
 
           digest=$(nix run nixpkgs#skopeo -- inspect --raw "docker://$image:$version" \
             | nix run nixpkgs#coreutils -- sha256sum | cut -d' ' -f1)
           digest="sha256:$digest"
+
+          # The attrset on STDOUT, not the `-> ImageHash:` log line: that line is
+          # printed on stderr. The previous version of this discarded stderr and
+          # then grepped stdout for it, so the hash was always empty and the
+          # redirect swallowed the explanation. Its stderr is now left alone so a
+          # failure says what happened.
           hash=$(nix run nixpkgs#nix-prefetch-docker -- \
             --image-name "$image" --image-digest "$digest" \
-            --final-image-tag "$version" --arch amd64 --os linux 2>/dev/null \
-            | grep '^-> ImageHash:' | awk '{print $3}')
+            --final-image-tag "$version" --arch amd64 --os linux \
+            | sed -n 's/.*hash = "\(sha256-[^"]*\)";.*/\1/p')
           test -n "$hash"
 
           jq --arg v "$version" '.version = $v' nixos/version.json > nixos/version.json.new
