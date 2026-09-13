@@ -1,13 +1,6 @@
 # Changelog
 
-## [unreleased]
-
-Unreleased work on `dev` since 3.2.1, shipped in `beta.20260913-ddb858e`.
-
-
-### Bug Fixes
-
-* **release:** make the appliance pin actually run, and stop claiming a gate that doesn't (#246) ([ddb858e](https://github.com/SunReye/SunReye/commit/ddb858e675acc1c3714fd2ae26adc2613da7c35e))
+No unreleased changes on `dev`; `beta.20260913-ee46cbf` matches the last release.
 
 <!--
   This preamble is hand-written and version-independent. release-please owns the
@@ -124,6 +117,13 @@ What to do, if you maintain a shared source:
 changed again. The archive names devices and metrics the way the API and your Home Assistant
 entities already do, and refers to no internal id, which is why an upgrade like this one should not
 be needed again.
+
+## [3.2.2](https://github.com/SunReye/SunReye/compare/addon-v3.2.1...addon-v3.2.2) (2026-09-13)
+
+
+### Miscellaneous Chores
+
+* **addon:** Synchronize sunreye-stack versions
 
 ## [3.2.1](https://github.com/SunReye/SunReye/compare/addon-v3.2.0...addon-v3.2.1) (2026-09-13)
 
