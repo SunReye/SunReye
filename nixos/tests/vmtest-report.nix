@@ -178,7 +178,14 @@
       # timed window with unlimited reads leaves nobody able to tell afterwards
       # whether anyone else looked, so "closes on first read" is the behaviour,
       # not an optimisation.
-      first=$(curl -s -k --max-time 20 --resolve "$name:443:127.0.0.1" "https://$name/first-boot" || echo "")
+      # Retry the FIRST request, and only the first. The window is a service
+      # that has to start, and this report is not synchronised with it: measured,
+      # the no-AVX boot reached here at 21s uptime against 30s for the other one
+      # and read Caddy's 503 fallback as "nothing served" — a red CI job for a
+      # box that was working. curl retries 503 and connection failures, and does
+      # NOT retry the 410 below, which is the answer that must come first time.
+      first=$(curl -s -k --max-time 60 --retry 15 --retry-delay 2 --retry-connrefused \
+        --resolve "$name:443:127.0.0.1" "https://$name/first-boot" || echo "")
       second_code=$(curl -s -k -o /dev/null -w '%{http_code}' --max-time 20 \
         --resolve "$name:443:127.0.0.1" "https://$name/first-boot" || echo 000)
       case "$first" in
