@@ -36,10 +36,19 @@ let
       echo "disk:      $(df -h --output=pcent,avail / | tail -1)"
       echo "memory:    $(free -h | awk '/^Mem:/ {print $3 " used of " $2}')"
       ${lib.concatMapStrings (unit: ''
-        echo "${unit}: $(systemctl is-active ${unit} 2>/dev/null || echo absent)" \
-          "(restarts: $(systemctl show ${unit} -p NRestarts --value 2>/dev/null || echo n/a))"
+        # The fallback is applied to the VALUE, not inside the substitution.
+        # `systemctl is-active` exits 3 for an inactive unit — a true answer with
+        # a non-zero status — so `$(systemctl is-active X || echo absent)` ran
+        # BOTH: the substitution became "inactive\nabsent" and the report printed
+        # a headless `absent (restarts: 0)` line beneath the real one. Every
+        # report all evening carried it, on the box and in CI, and a unit line
+        # nobody can identify is the worst thing this file can print.
+        state=$(systemctl is-active ${unit} 2>/dev/null) || true
+        restarts=$(systemctl show ${unit} -p NRestarts --value 2>/dev/null) || true
+        echo "${unit}: ''${state:-absent} (restarts: ''${restarts:-n/a})"
       '') cfg.health.watchUnits}
-      echo "tailscale: $(systemctl is-active tailscaled 2>/dev/null || echo absent)"
+      tsstate=$(systemctl is-active tailscaled 2>/dev/null) || true
+      echo "tailscale: ''${tsstate:-absent}"
       ${lib.optionalString cfg.tailscale.enable ''
         # A tagged node's key expires unless expiry is disabled in the console,
         # and the failure is total and silent: the node simply drops off the

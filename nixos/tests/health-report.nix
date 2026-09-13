@@ -66,6 +66,37 @@ pkgs.runCommand "health-report-runs"
     fi
   done
 
+  # Every unit line has to name its unit. `systemctl is-active` exits 3 for an
+  # inactive unit, so `$(systemctl is-active X || echo absent)` ran the fallback
+  # IN ADDITION to succeeding: the substitution became "inactive\nabsent" and the
+  # report printed a headless `absent (restarts: 0)` line under the real one.
+  # Every report all evening carried it — on the box and in CI — and it reads as
+  # a unit nobody can identify, which is the worst thing a health report can say.
+  # Followed by a space or a bracket, never a colon: `failed:` and `uptime:` are
+  # field LABELS that legitimately begin a line, and a pattern that eats them
+  # fails on a healthy report.
+  orphan=$(printf '%s\n' "$printed" | grep -nE '^(active|inactive|failed|absent|activating|deactivating)( |\()' || true)
+  if [ -n "$orphan" ]; then
+    echo "a unit line in the report does not name its unit:" >&2
+    printf '%s\n' "$orphan" >&2
+    exit 1
+  fi
+
+  # And the shape that caused it, asserted against the shipped program — because
+  # the runtime check above cannot reach it here: this sandbox has no system bus,
+  # so `is-active` prints NOTHING and only the fallback runs. The defect needs a
+  # real systemd, where the command answers truthfully and still exits non-zero.
+  # Comments stripped first. The shipped script explains this defect in prose
+  # that contains the defect's own shape, so an unfiltered grep matches the
+  # warning and fails on a correct program — which it duly did.
+  if grep -vE '^[[:space:]]*#' "$(command -v appliance-health-report)" \
+     | grep -qE 'is-active [^)]*\|\| echo'; then
+    echo "the report applies its fallback inside the substitution:" >&2
+    echo "  \$(systemctl is-active X || echo absent) runs BOTH when X is inactive," >&2
+    echo "  because is-active exits 3 for a true answer. Capture, then default." >&2
+    exit 1
+  fi
+
   # The certificate branch calls openssl, and nothing above reaches it: this
   # sandbox has no tailnet, so the report stops at "not enrolled". Asserting the
   # tool is on the SHIPPED program's PATH is the part that can be checked here —
