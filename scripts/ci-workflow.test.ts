@@ -13,11 +13,17 @@ import { surfacesFor } from "./ci-surfaces";
  * gate should decide is tested in ci-surfaces.test.ts.
  */
 
+interface Step {
+  id?: string;
+  run?: string;
+}
+
 interface Job {
   name?: string;
   needs?: string | string[];
   if?: string;
   outputs?: Record<string, string>;
+  steps?: Step[];
 }
 
 const workflow = Bun.YAML.parse(readFileSync(".github/workflows/ci.yml", "utf8")) as {
@@ -59,5 +65,41 @@ describe("ci.yml gating", () => {
     const surfaces = declared.filter((output) => output !== "proven").sort();
 
     expect(surfaces).toEqual(Object.keys(surfacesFor([])).sort());
+  });
+
+  /*
+   * Asserting that the gate DECLARES `web` says nothing about what `web` is
+   * worth. `web: ${{ steps.surfaces.outputs.wev }}` declares it perfectly and
+   * evaluates to the empty string on every run, so every gated job skips
+   * forever and the workflow is green — the same silent direction the tests
+   * above are here to close, one level further in.
+   */
+  test("each surface output is wired to a step output of the same name", () => {
+    const gate = workflow.jobs[GATE]!;
+    const ids = new Set((gate.steps ?? []).flatMap((step) => (step.id ? [step.id] : [])));
+
+    const broken = Object.entries(gate.outputs ?? {}).flatMap(([name, expression]) => {
+      const wiring = expression.match(/steps\.([\w-]+)\.outputs\.([\w-]+)/);
+      if (!wiring) return [`${name}: reads no step output at all — ${expression}`];
+
+      const [, step, output] = wiring;
+      if (!ids.has(step!))
+        return [`${name}: reads step '${step}', which this job has no step with`];
+      if (output !== name) return [`${name}: reads steps.${step}.outputs.${output}`];
+      return [];
+    });
+
+    expect(broken).toEqual([]);
+  });
+
+  // And the step it reads has to be the one that decides them: the script
+  // prints `name=bool` lines, and only a `tee` into $GITHUB_OUTPUT makes them
+  // outputs. A run that merely prints them leaves every output empty.
+  test("the deciding step writes the script's own lines to GITHUB_OUTPUT", () => {
+    const gate = workflow.jobs[GATE]!;
+    const step = (gate.steps ?? []).find((s) => s.id === "surfaces");
+
+    expect(step?.run).toContain("ci-surfaces.ts");
+    expect(step?.run).toMatch(/tee -a "\$GITHUB_OUTPUT"/);
   });
 });
