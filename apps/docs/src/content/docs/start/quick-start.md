@@ -62,7 +62,7 @@ account. After that, the dashboard renders live simulated data.
 
 ## What next?
 
-- [Point it at a real inverter](/use/settings/) from the Settings screen.
+- [Point it at a real inverter](/use/settings/#devices) under Settings → Devices.
 - [Deploy with Docker Compose](/deploy/docker/) for a persistent install.
 - [Explore the REST API](/integrations/rest-api/) or set up the
   [MQTT bridge](/integrations/mqtt/).

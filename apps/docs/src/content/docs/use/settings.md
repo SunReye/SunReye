@@ -1,62 +1,181 @@
 ---
 title: Settings
-description: Configure the inverter connection, MQTT, tariff, weather/forecast, profiles, and users from the UI.
+description: Configure devices and integrations, the plant, tariff, prices, weather/forecast, profiles, access, and users from the UI.
 ---
 
 The **Settings** screen (`/settings`) is where the deployment is configured at runtime —
-most of it without touching `.env` or restarting. The whole screen is **admin-only**. A
-live status poll keeps the connection badges fresh.
+most of it without touching `.env` or restarting. A live status poll keeps the connection
+badges fresh.
 
-Tabs: **Inverter**, **MQTT & Home Assistant**, **Tariff**, **Weather & Forecast**, **Date &
-Time** (any admin), plus **Profiles**, **Users**, **API Keys**, and **Logs** (admin).
+The panels sit in a nav rail in three groups. Everything on this screen is **admin-only**:
 
-<img class="sr-shot sr-light" src="/SunReye/screenshots/settings-light.png" alt="Settings → Inverter: Modbus connection fields with a live status badge and Test connection." />
-<img class="sr-shot sr-dark" src="/SunReye/screenshots/settings-dark.png" alt="Settings → Inverter: Modbus connection fields with a live status badge and Test connection." />
+| Group | Panels |
+| --- | --- |
+| **Connection** | [Devices](#devices), [Plant](#plant), [Sensors](#sensors) |
+| **Preferences** | [Display](#display), [Tariff](#tariff), [Day-ahead prices](#day-ahead-prices), [Weather & Forecast](#weather--forecast) |
+| **Admin** | [Access](#access), [Automations](#automations), [Profiles](#profiles), [Users](#users), [API Keys](#api-keys), [Logs](#logs), [Danger Zone](#danger-zone) |
 
-## Inverter
+<img class="sr-shot sr-light" src="/SunReye/screenshots/settings-light.png" alt="Settings → Devices: the plant's gateways with the devices reached through each." />
+<img class="sr-shot sr-dark" src="/SunReye/screenshots/settings-dark.png" alt="Settings → Devices: the plant's gateways with the devices reached through each." />
 
-Configure the **Modbus connection**: host, port, transport (**Modbus TCP** or
-**RTU-over-TCP**), unit id, timeout, and poll interval. A status badge shows Connected /
-Disconnected / Simulated.
+:::note[Moved since 1.x]
+The old **Inverter** tab held the connection *and* the plant's physical facts on one page, and
+the old **MQTT & Home Assistant** tab held the broker. All three moved: the connection into
+**Devices** (a gateway is one of several), the site facts into **Plant**, the roof and the pack
+onto the inverter that has them, and the broker into a **connection** of its own with the
+[integrations](#integrations) that ride on it listed underneath. `/settings/inverter` and
+`/settings/integrations` both redirect to Devices, so old bookmarks and the setup wizard still
+land.
+:::
 
-- **Test connection** captures a live snapshot and opens a table (metric / group / value)
-  so you can sanity-check the mapping before saving.
-- **Save** applies the change live — no restart.
-- The **active profile** is shown here read-only; changing it lives on the
-  [Profiles](#profiles) tab and takes effect on restart.
-- If simulation mode is on (`INVERTER_SIMULATE`), a notice explains the settings are saved
-  but unused.
+## Devices
 
-### Plant
+One page for everything this plant talks to, grouped by the **connection** it is reached
+through. A connection is an endpoint, not a protocol tab — it has a **kind**:
 
-Below the connection: what the system physically **is**, as opposed to how SunReye reaches it.
+| Kind | What it is | What attaches to it |
+| --- | --- | --- |
+| **Modbus** | a gateway: transport (**Modbus TCP** or **RTU-over-TCP**), `host:port`, unit timeout and poll interval | devices addressed by unit id, each speaking a [profile](/profiles/concept/) |
+| **MQTT** | a broker: URL, username, a write-only password, and an optional client id | [integrations](#integrations) — coded services, which may in turn provide devices of their own |
+
+Each group's caption states the kind and endpoint; each device row under it shows the name,
+role, address and profile, plus a badge when there is something to act on:
+
+| Badge | Meaning |
+| --- | --- |
+| *(none)* | polling normally — the healthy row says nothing, so the pills that remain are the ones worth reading |
+| **Not polled** | stored and addressable, but not being read; hover says why (see the release note below) |
+| **via MQTT** | provided by an integration rather than polled — an EVCC loadpoint, say |
+| **Internal** | a coded device SunReye provisions itself, such as the optimizer |
+| **Retired** | out of service: no longer polled, history kept, restorable |
+
+### Adding something
+
+**Add device** opens a four-step wizard (`/settings/devices/add`) that asks one question per
+step:
+
+<img class="sr-shot sr-light" src="/SunReye/screenshots/add-wizard-light.png" alt="The Add wizard: four steps — Connection, What to attach, Settings, Confirm." />
+<img class="sr-shot sr-dark" src="/SunReye/screenshots/add-wizard-dark.png" alt="The Add wizard: four steps — Connection, What to attach, Settings, Confirm." />
+
+1. **Connection** — an endpoint that already exists, or *New connection…*, in which case the
+   form for that kind (Modbus gateway or MQTT broker) is filled in here and created with it.
+   You never have to save an endpoint first just to get to the thing you actually wanted.
+2. **What to attach** — the server's **catalog**, keyed by the connection's kind: a *Modbus
+   device* on a gateway; *EVCC* or *Home Assistant export* on a broker. A single-instance
+   entry that the connection already has is shown and marked as taken rather than hidden, so
+   it never looks like a missing feature.
+3. **Settings** — the fields that entry actually needs. A Modbus device asks the device form:
+   **role** (Inverter, Meter, Charger or Controller), **profile**, **unit id**, a **name**
+   (the slug derived from it is previewed, and is what the API, MQTT topics and the source
+   switcher use), and — for an inverter — the roof and the pack below. An integration asks
+   only its own fields, named in your language, with defaults filled in.
+4. **Confirm** — what will be created, in one list, before anything is written.
+
+**Add connection** creates an endpoint on its own, for when you want the broker in place
+before deciding what runs on it.
+
+### Editing what is there
+
+- **Test connection** — a port probe (*Reachable — port open, N ms*) and, with a profile
+  picked, a live read that reports how many metrics came back and how long it took. Sanity-
+  check the mapping before saving.
+- **Edit device** — move it to another gateway, change its address, or swap its profile. The
+  slug and all recorded history stay.
+- **Edit connection** — change host, port, transport or interval for every device on that
+  gateway at once (or the broker URL and credentials for every integration on it). A
+  connection with nothing left on it can be deleted.
+- **Retire / Restore** — a retired device leaves the roster and stops being polled; its
+  readings stay and it can be restored later. Retired devices remain listed, because a device
+  the UI cannot see is a device nobody can restore.
+
+### What an inverter is made of
+
+Only a device with **role = Inverter** carries the physical description, because one
+plant-wide set could not say whose strings were whose once there were two. Its dialog gains:
 
 - **PV arrays** — one row per orientation (**kWp**, **tilt**, **azimuth**; 0° = south,
   −90° = east, 90° = west). Add a row per string group facing a different way.
-- **Temp. coefficient** and **System losses** — from the panel datasheet and install.
-- **Curtailment** — feed-in limit, usable battery, max charge power, reserve and the pack's
-  **nominal voltage**, plus an average **house load** (blank = inferred from history). The
-  voltage is what peak shaving converts power into charge current with when the inverter
-  reports no live battery voltage. It used to live under Automations; an existing system
-  opens this page with its old value already filled in, so nothing changes underfoot.
+- **Temp. coefficient** and **System losses** — from the panel datasheet and the install.
+- **Battery** — usable capacity, max charge power, reserve, and the pack's **nominal
+  voltage**. The voltage is what peak shaving converts power into charge current with when
+  the inverter reports no live battery voltage.
+
+These feed more than the forecast: the battery drives [peak shaving](/use/automations/), and
+the usable capacity is what [battery health](/use/statistics/) is measured against. The
+forecast consumes them; it does not own them.
+
+:::caution[One polled device for now]
+This release polls a single device. The others are stored, addressable and restorable, but
+not yet read — the panel says so on every row it isn't polling.
+:::
+
+### Integrations
+
+An integration is a coded service that rides on a connection rather than a register map. They
+are listed as rows under the connection they run on — because the connection is the thing that
+fails, "what is configured on this plant" is answered in one place instead of on a tab per
+protocol. Each row has a switch (enabled / disabled), **Edit** for its settings, and
+**Remove**; devices an integration provides are nested under it.
+
+| Integration | Runs on | Settings |
+| --- | --- | --- |
+| [Home Assistant export](/integrations/home-assistant/) | an MQTT broker | topic prefix, a **Home Assistant discovery** switch and its discovery prefix. One per broker. |
+| [EVCC](/integrations/evcc/) | an MQTT broker | the EVCC **topic root** (default `evcc`). Each loadpoint it finds appears as a charger device, badged *via MQTT*. |
+| SunReye Optimizer | nothing — it is internal | none. It provisions itself so [automation](/use/automations/) decisions are recorded like any other device's readings. |
+
+Opening a row gives that integration **its own page**:
+
+- **Status** — enabled or not, when it last connected, what has failed since, and a link to
+  the connection it runs on. The state is *observed* from the connection's own client, not
+  guessed from whether settings were saved.
+- **Live readings** — what the integration itself reports for the whole plant (EVCC's total
+  charge power, for instance), when it reports anything.
+- **Devices it provides** — the rows it creates, with their slugs and indices.
+- **Settings** — its own fields, saved live.
+
+<img class="sr-shot sr-light" src="/SunReye/screenshots/integration-light.png" alt="An integration's own page: status, live readings, the devices it provides, and its settings." />
+<img class="sr-shot sr-dark" src="/SunReye/screenshots/integration-dark.png" alt="An integration's own page: status, live readings, the devices it provides, and its settings." />
+
+## Plant
+
+What the **site** is, as opposed to any one box on it:
+
+- **Maximum output / feed-in limit** — what the grid connection will take. Quick buttons set
+  it to 60 / 70 / 100 % of the installed kWp summed across every in-service inverter.
+- **House load** — the household's baseline draw (blank = inferred from history).
 - **Smart meter gateway installed** — the date your iMSys went in, or blank if you don't have
   one. Installing it is what lifts the 60 % feed-in cap, and it marks the plant as one **§51
-  EEG** applies to — so it is also the gate on price-aware charging. Quick buttons set the
-  feed-in limit to 60 / 70 / 100 % of installed kWp.
+  EEG** applies to — so it is also the gate on price-aware charging.
 
-These live here, not under Weather, because more than the forecast reads them: the feed-in
-limit and the battery drive [peak shaving](/use/automations/), the smart-meter date decides
-whether §51 applies at all, and the usable capacity is what
-[battery health](/use/statistics/) is measured against. The forecast consumes them; it does
-not own them.
+The roof and the battery are *not* here; they describe an inverter and are edited on it under
+[Devices](#devices).
 
-## MQTT & Home Assistant
+## Sensors
 
-Configure the [MQTT bridge](/integrations/mqtt/): enable switch, broker URL, topic prefix,
-username, and a write-only password field. A **Home Assistant discovery** switch reveals the
-discovery prefix. A status badge shows Disabled / Connecting… / Connected, with a **Test
-connection** button. Saving applies live.
+**Sensor visibility**: hide sensors you don't use from this dashboard, grouped by role
+(Solar, Battery, Grid, Load, Generator, Inverter). Hidden sensors are still recorded and still
+published to [MQTT](/integrations/mqtt/) and the [API](/integrations/rest-api/) — they only
+disappear from the web app.
 
+## Display
+
+Two halves, with different scopes — the panel says which is which:
+
+- **Appearance** — colour theme (light / dark / system), interface **language**, and the
+  **chart colours** the charts and the power-flow diagram are drawn in. This half applies to
+  **your browser only**; changing the language reloads the page.
+
+### Date & time
+
+How timestamps render across the History charts and stepper: a **clock format**
+(automatic/locale, 24-hour, or 12-hour) and a **time zone** (automatic, i.e. the viewer's, or
+any IANA zone), with a **live preview** of "now". This half is **instance-wide** — it applies
+to everyone using this instance.
+
+:::note
+The display time zone is a rendering choice only. Which day a reading is bucketed into is
+decided by the *plant's* time zone, not by this setting.
+:::
 ## Tariff
 
 Configure pricing for the [Statistics](/use/statistics/) screen: currency, standing charge, feed-in
@@ -117,10 +236,11 @@ from [Open-Meteo](https://open-meteo.com/) (keyless, server-proxied). Set the pl
 **location** (latitude / longitude + a display name) to enable the weather tile.
 
 Turn on **Solar production forecast** and pick the irradiance **source**. What the forecast
-needs to know about the plant itself — the PV arrays, the loss coefficients, the feed-in
-limit, the battery and the smart-meter date — is described under
-[Settings → Inverter](#plant), because the automations and the battery-health figure read the
-same values. This tab keeps the location, the switch and the source.
+needs to know about the plant itself is described elsewhere, because the automations and the
+battery-health figure read the same values: the PV arrays, the loss coefficients and the
+battery belong to the inverter that has them ([Devices](#devices)), while the feed-in limit
+and the smart-meter date belong to the site ([Plant](#plant)). This tab keeps the location,
+the switch and the source.
 
 Those figures curtail the forecast so it doesn't overstate output once the battery is full and
 export is capped. Past hours are reconstructed from the measured battery state at the start of
@@ -150,13 +270,22 @@ which are irreducible.
   nameplate — are excluded from learning, so curtailment (full battery, capped export) isn't
   mistaken for model bias.
 
-## Date & Time
+## Access
 
-How timestamps render across the History charts and stepper. Two controls — a **clock
-format** (automatic/locale, 24-hour, or 12-hour) and a **time zone** (automatic, i.e. the
-viewer's, or any IANA zone) — with a **live preview** of "now". The setting is
-**instance-wide**: it applies to everyone using this instance, and only admins can change it.
+**Public read-only dashboard** — let anyone view the live dashboard without signing in, for
+wall displays and kiosks. It is read-only: changing settings and controlling the inverter
+still require an admin login. A link opens the public view so you can check what a stranger
+sees. Off by default; see [Users & Roles](/use/users/) for what each role may do.
 
+## Automations
+
+The **master switch** that arms the automation engine — automations write inverter settings on
+their own (today: the battery's max charge current). Turning it on requires accepting a
+disclaimer once: the configured limits must match your hardware and grid contract, and you
+remain responsible for the plant. SunReye restores your previous register value whenever an
+automation lets go, and the panel records the day the disclaimer was accepted.
+
+Each automation is configured on its own page — see [Automations](/use/automations/).
 ## Profiles
 
 Manage inverter [profiles](/profiles/concept/) (admin only), in three sections:
@@ -214,44 +343,19 @@ A live view of the server log stream (`/settings/logs`, admin only), streamed ov
 Client-side admin gating is UX only — every mutation is enforced on the server.
 :::
 
-## Automations
+## Danger Zone
 
-Peak shaving is configured under Settings → Automations (master switch) and on the automation's
-own page. Alongside its two modes it has a **negative-price windows** section:
+Destructive operations, each behind its own confirmation:
 
-- **Act on negative prices** — off by default, and locked until a smart meter gateway install
-  date is set. With it on, the battery makes room ahead of a window with a negative day-ahead
-  price and absorbs the surplus during it. Energy exported in those quarter-hours earns nothing
-  under §51 EEG, so storing it is the only way to keep its value.
-- **Hold the battery low before a window** — charges as much as possible, as late as possible,
-  rather than simply stopping: pre-window PV *is* paid for, and the reserve floor still applies.
-- **Use the car as a sink** — borrows connected [EVCC](/integrations/evcc/) chargers for a window.
-  Off by default, and it works in two steps. An idle charger is woken onto **surplus charging**, so
-  it eats what would otherwise be exported for nothing. And while the battery is still too full to
-  make room on its own, SunReye switches on EVCC's **battery boost**, which drains the house battery
-  into the car — the only sink big enough, since a house alone cannot absorb enough in the hours
-  before a window. Boost stops at the **battery boost floor** below, and is switched off again once
-  the window starts: from then on the battery should be *filling* with energy that earns nothing.
-  A charger you left on immediate charging is never touched, and everything borrowed is remembered
-  on disk, so a restart mid-window still hands the car back.
-- **Battery boost floor** — how far the car may empty the house battery while boosting. EVCC holds
-  the battery there rather than letting it oscillate, and the plant's own reserve applies on top, so
-  this can only ever ask for *less* discharge than the inverter already allows.
-- **Charge the battery from the grid** — buys from the grid during a window. Off by default and
-  inert unless your **import** price follows the market (Settings → Tariff): a negative wholesale
-  price does not lower a fixed bill. Even on a spot tariff you still pay grid fees, levies and
-  VAT, so this is about buying at the cheapest hour of the day, not about being paid to consume.
-  Needs an inverter that exposes the grid-charge registers; where it doesn't, the switch simply
-  has no effect.
-- Thresholds for what counts as negative, the shortest window worth acting on, how far ahead to
-  plan, how much feed-in to allow during a window, the grid-charge current, and a reserve margin.
-
-Note that negative prices are usually driven by **wind**, and the deepest ones fall at night. The
-loop normally parks itself when there is no sun and none coming; with price awareness on, a live
-negative window keeps it awake — otherwise the one case grid-charging exists for could never
-fire.
-
-The status panel names what it is doing (*making room*, *absorbing*, *too full*) and reports the
-window, the SOC ceiling in force, how much the window can absorb — and how much **cannot be
-rescued**. That last figure matters: withholding charge often cannot empty a pack in time, and
-shifting flexible load into the window is what closes the gap.
+- **Export everything** — download the whole instance as one portable file: every reading, the
+  plant and device setup, settings, profiles and custom charts, all named rather than numbered
+  so a future SunReye can read it. This is the file to keep before a reset, and the way to move
+  to another machine. Accounts and API keys are deliberately left out. A full history takes a
+  minute or two and is tens of megabytes. See [Export & Import](/use/export-import/).
+- **Reset all data** — permanently delete every recorded measurement, raw and rollups, so the
+  instance starts fresh. Accounts, settings, tariff and profiles are kept. Requires typing the
+  confirmation phrase, and cannot be undone. It also clears what the forecast's
+  [learned correction](#learned-correction) has learned.
+- **Restart the server** — apply boot-time changes, chiefly a newly activated inverter profile,
+  which reshapes the API, manifest and topics that are built once at boot. Polling and live
+  data pause briefly while it comes back.

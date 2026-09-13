@@ -11,7 +11,7 @@ hero:
       link: /start/quick-start/
       icon: right-arrow
     - text: View on GitHub
-      link: https://github.com/ediiiz/SunReye
+      link: https://github.com/SunReye/SunReye
       icon: external
       variant: minimal
 ---
@@ -22,16 +22,16 @@ SunReye polls your inverter over Modbus, stores every reading as time-series dat
 gives you a live dashboard, a typed REST API, and an MQTT bridge with Home Assistant
 auto-discovery — all generated from a single description of the inverter.
 
-<img class="sr-shot sr-light" src="/SunReye/screenshots/dashboard-light.png" alt="The SunReye dashboard showing a live power-flow diagram and KPI cards." />
-<img class="sr-shot sr-dark" src="/SunReye/screenshots/dashboard-dark.png" alt="The SunReye dashboard showing a live power-flow diagram and KPI cards." />
+<img class="sr-shot sr-light" src="/SunReye/screenshots/dashboard-light.png" alt="The SunReye dashboard showing a live power-flow diagram and today's energy tiles." />
+<img class="sr-shot sr-dark" src="/SunReye/screenshots/dashboard-dark.png" alt="The SunReye dashboard showing a live power-flow diagram and today's energy tiles." />
 
 ## What it does
 
 <CardGrid>
   <Card title="Live monitoring" icon="laptop">
-    1 Hz polling streamed to the browser over WebSocket. The dashboard renders itself
-    from the active inverter's capabilities — PV strings, battery, grid phases,
-    generator, backup load.
+    Polling streamed to the browser over WebSocket. The dashboard renders itself from the
+    active device's capabilities — PV strings, battery, grid phases, generator, backup
+    load — and a plant of several devices is read whole or one device at a time.
   </Card>
   <Card title="History & analytics" icon="bars">
     Every sample persisted to TimescaleDB, with per-minute / hourly / daily rollups so
@@ -45,9 +45,13 @@ auto-discovery — all generated from a single description of the inverter.
     Turn energy flows into money and insight: tariffs with time-of-use bands, savings vs.
     grid-only, self-sufficiency, spot price analytics, comparisons and records.
   </Card>
+  <Card title="Automations" icon="approve-check">
+    Control loops that steer the battery from live PV, the solar forecast and day-ahead
+    prices — peak shaving, forecast charging, and making room for negative-price windows.
+  </Card>
   <Card title="Integrations" icon="puzzle">
     An auto-generated REST API (`/api/v1`) with OpenAPI docs, plus an MQTT bridge with
-    Home Assistant MQTT Discovery.
+    Home Assistant MQTT Discovery and an EVCC link in both directions.
   </Card>
   <Card title="Profiles as data" icon="open-book">
     An inverter ships as a *profile* — a description of its register map plus semantic

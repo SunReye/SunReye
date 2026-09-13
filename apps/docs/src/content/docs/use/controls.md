@@ -11,6 +11,13 @@ the [REST API](/integrations/rest-api/) and [MQTT bridge](/integrations/mqtt/).
 <img class="sr-shot sr-light" src="/SunReye/screenshots/controls-light.png" alt="The Controls screen: writable settings rendered as inputs, switches, and selects." />
 <img class="sr-shot sr-dark" src="/SunReye/screenshots/controls-dark.png" alt="The Controls screen: writable settings rendered as inputs, switches, and selects." />
 
+## The lock
+
+The whole editable region starts **locked**: the settings and the schedule editor are dimmed
+and ignore input until you flip the **Controls locked → unlocked** switch at the top. It is a
+guard against the accidental tap, not a permission — the server authorises every command on its
+own regardless — and it resets each time you open the screen.
+
 ## Inverter settings
 
 Each writable metric in the `settings` group renders as a control whose widget is chosen

@@ -108,6 +108,7 @@ export default defineConfig({
             { label: "Dashboard", slug: "use/dashboard" },
             { label: "History & Analytics", slug: "use/history" },
             { label: "Controls", slug: "use/controls" },
+            { label: "Automations", slug: "use/automations" },
             { label: "Statistics", slug: "use/statistics" },
             { label: "Settings", slug: "use/settings" },
             { label: "Export & Import", slug: "use/export-import" },

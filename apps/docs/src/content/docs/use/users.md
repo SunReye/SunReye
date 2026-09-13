@@ -18,21 +18,24 @@ the first account exists, and back to `/login` afterwards.
 
 ## Signing in
 
-The **login** page is a standard email/password form. In development, a "Continue as
-developer" shortcut signs you in as a spoofed admin so you can work without creating an
-account.
+The **login** page is a standard email/password form with a **Keep me signed in** checkbox (on
+by default). Where the admin has switched on the
+[public dashboard](/use/settings/#access), the page also offers a link straight into the
+read-only view, so a wall display never needs an account.
 
 ## Roles
 
-| Capability | Admin | User |
-| --- | --- | --- |
-| View dashboard, history, statistics | ✅ | ✅ |
-| [Controls](/use/controls/) (write settings) | ✅ | — |
-| [Settings](/use/settings/) (all tabs) | ✅ | — |
-| Manage users & profiles | ✅ | — |
+| Capability | Admin | User | Signed out |
+| --- | --- | --- | --- |
+| View dashboard, history, statistics | ✅ | ✅ | only with the [public dashboard](/use/settings/#access) on |
+| [Controls](/use/controls/) (write settings) | ✅ | — | — |
+| [Automations](/use/automations/) | ✅ | — | — |
+| [Settings](/use/settings/) (every panel) | ✅ | — | — |
+| Manage users, devices & profiles | ✅ | — | — |
 
-Non-admins don't see the Controls or Settings nav entries, and hitting those URLs directly
-redirects them home.
+Non-admins don't see the Controls, Automations or Settings nav entries, and hitting those URLs
+directly redirects them home. An anonymous viewer gets the same workspace with a **Log in**
+entry in the sidebar footer.
 
 :::caution[Server-authoritative]
 Role gating in the UI is a convenience. Every mutation — settings writes, control commands,

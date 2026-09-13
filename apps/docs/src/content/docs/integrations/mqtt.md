@@ -9,17 +9,26 @@ other surface, the topic set is generated from the active inverter's manifest.
 
 ## Enabling
 
-Configure MQTT from [Settings → MQTT & Home Assistant](/use/settings/) (recommended), or
-seed it from [environment variables](/reference/environment/) (`MQTT_ENABLED`,
-`MQTT_BROKER_URL`, `MQTT_TOPIC_PREFIX`, `MQTT_USERNAME`, `MQTT_PASSWORD`).
+The broker is a **connection**, exactly like a Modbus gateway, and the bridge is an
+**integration** that runs on it. Both are set up in one place —
+[Settings → Devices](/use/settings/#devices):
 
-The broker itself is a **connection**, like a Modbus gateway: the first boot
-creates one from `MQTT_BROKER_URL` and the export names it by id, so several
-brokers can coexist and the EVCC ingest can subscribe on its own.
+1. **Add device** → step 1: pick the broker, or *New connection…* and fill in its URL,
+   username, password and optional client id.
+2. Step 2: choose **Home Assistant export** — the entry that publishes the inverter to MQTT.
+   One per broker.
+3. Step 3: set the **topic prefix** (default `sunreye`), and turn on
+   [Home Assistant discovery](/integrations/home-assistant/) if you want it.
+4. Confirm.
 
-Enabling, disabling, or changing the config takes effect **live** — the bridge is rebuilt
-without a restart. The Settings tab has a **Test connection** button and a live status
-badge.
+The integration then appears as a row under its broker, with a switch, **Edit**, **Remove**,
+and a page of its own showing when it last connected and what has failed. Enabling, disabling
+or editing takes effect **live** — the bridge is rebuilt without a restart.
+
+A first boot can still seed all of this from [environment variables](/reference/environment/)
+(`MQTT_ENABLED`, `MQTT_BROKER_URL`, `MQTT_TOPIC_PREFIX`, `MQTT_USERNAME`, `MQTT_PASSWORD`): the
+broker becomes a connection row and the export names it by id, so several brokers can coexist
+and the [EVCC](/integrations/evcc/) ingest can subscribe on its own.
 
 ## Topic layout
 

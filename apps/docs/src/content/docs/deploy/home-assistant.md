@@ -53,7 +53,9 @@ database.
   (rate-limited, and ingress grants no elevated trust). Users upgrading from the nginx
   era must re-map: the old port was `8100`.
 - MQTT auto-wires from the Mosquitto addon; `ha_discovery` (default on) makes SunReye
-  entities appear in HA automatically.
+  entities appear in HA automatically. Afterwards the broker is an ordinary **connection** and
+  the bridge an **integration** on it, both editable under
+  [Settings → Devices](/use/settings/#devices).
 
 ## Upgrades & backups
 
