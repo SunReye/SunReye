@@ -1,53 +1,6 @@
 # Changelog
 
-## [unreleased]
-
-Unreleased work on `dev` since 3.1.1, shipped in `beta.20260913-c732f00`.
-
-
-### Features
-
-* **nixos:** run SunReye on the appliance base ([bd64b3b](https://github.com/SunReye/SunReye/commit/bd64b3b33810b7507cfec6e3e8c4bac4b0904c8e))
-* **appliance-cli:** sunreye-setup, the box's configuration CLI ([c3d5810](https://github.com/SunReye/SunReye/commit/c3d58105e2104c86676fa9264f54cf861d453d56))
-* **nixos:** bring the generic appliance base into the repo ([bfeb744](https://github.com/SunReye/SunReye/commit/bfeb744d69f2115ce93b43b1ad40ca2a44ab1d19))
-* **web:** make the dashboard installable as a PWA ([bb700e6](https://github.com/SunReye/SunReye/commit/bb700e6329914c30d39b9bb6abea87dddfe744af))
-
-
-### Bug Fixes
-
-* **docker:** the build context was swallowing the same source directory ([8ae97b2](https://github.com/SunReye/SunReye/commit/8ae97b2d428a2b40099ef6cc81aabc39230839b7))
-* **db-tests:** give the aggregate seeding test a budget of its own ([bf6d0b6](https://github.com/SunReye/SunReye/commit/bf6d0b6ff94aa98a0684ff155b222115843a8407))
-* **release:** stop releasing a component that ships nothing ([41951be](https://github.com/SunReye/SunReye/commit/41951bedb3caa6392db9e5b82c74f8653035e8aa))
-* **nixos:** end the boot test when the report ends ([2887196](https://github.com/SunReye/SunReye/commit/2887196c4307d039ac9dc589b56b8b044a5c6f51))
-* **nixos:** serve HTTPS — the LAN door never presented a certificate ([5572760](https://github.com/SunReye/SunReye/commit/5572760fbf6e0a16d65bd97ce6139d3fe7a5ecb6))
-* **nixos:** the appliance has never had a working database ([fa54688](https://github.com/SunReye/SunReye/commit/fa54688a7801a2b85f2b78ce7ded91fde16b0d00))
-* **web:** commit the source files a bare `build` ignore rule swallowed ([dfd421f](https://github.com/SunReye/SunReye/commit/dfd421fa5b355bb2dce5d5f25bc90d9c71047bb2))
-* **nixos:** boot the VM test instead of handing qemu a command line it refuses ([f2b73ca](https://github.com/SunReye/SunReye/commit/f2b73cab32fe04e4f9b2832197b816582f130820))
-* **nixos:** size the appliance's storage claims and its backups on the measured numbers ([7a94a51](https://github.com/SunReye/SunReye/commit/7a94a51ec1c58e05f356c631217ab2241f120486))
-* **web:** keep the browser Host on the dev proxy so LAN sign-in works ([d90a4cd](https://github.com/SunReye/SunReye/commit/d90a4cd2dfb8a47db5141ea7510808774dc23170))
-
-
-### Documentation
-
-* bring the manual up to the 2.0.0 dashboard ([01949c6](https://github.com/SunReye/SunReye/commit/01949c677ee0ca778ad1944ea2bd90b9e4f9b918))
-* the SunReye appliance, and where its gates live ([80982a9](https://github.com/SunReye/SunReye/commit/80982a9ca37d2ecca5272b60c603271069a3bf16))
-* describe installing the dashboard as a PWA ([fe5edff](https://github.com/SunReye/SunReye/commit/fe5edff22491f81b2ebc2966c0cb0c87154a4359))
-
-
-### Tests
-
-* **release:** check the allowlist instead of trusting it ([1ba0cfb](https://github.com/SunReye/SunReye/commit/1ba0cfb0b8c10e1e7506f63c10dbaaf7dc8652bd))
-
-
-### Continuous Integration
-
-* run only the layers a change can reach, and stop re-proving the same tree ([7e70d8a](https://github.com/SunReye/SunReye/commit/7e70d8aab4ac78d5f4e2f6b994264a34e80fa425))
-* **nixos:** gate the appliance, and publish its image after the containers ([05b5294](https://github.com/SunReye/SunReye/commit/05b5294f16d69d6e56095c0a267b1b292d879b0f))
-
-
-### Miscellaneous Chores
-
-* **nixos:** ignore the symlink `nix build` leaves in the repo root ([a111147](https://github.com/SunReye/SunReye/commit/a1111478e795fd4ad91a3424ce778f4179e5c935))
+No unreleased changes on `dev`; `beta.20260913-f973725` matches the last release.
 
 <!--
   This preamble is hand-written and version-independent. release-please owns the
@@ -164,6 +117,13 @@ What to do, if you maintain a shared source:
 changed again. The archive names devices and metrics the way the API and your Home Assistant
 entities already do, and refers to no internal id, which is why an upgrade like this one should not
 be needed again.
+
+## [3.2.0](https://github.com/SunReye/SunReye/compare/addon-v3.1.1...addon-v3.2.0) (2026-09-13)
+
+
+### Miscellaneous Chores
+
+* **addon:** Synchronize sunreye-stack versions
 
 ## [3.1.1](https://github.com/SunReye/SunReye/compare/addon-v3.1.0...addon-v3.1.1) (2026-09-10)
 
