@@ -55,7 +55,14 @@ RUN case "$TARGETARCH" in \
 # Deliberately NOT pinned to $BUILDPLATFORM: the loader and libraries must be
 # the TARGET architecture's, which is what the default (target platform) gives.
 FROM alpine:3.22 AS runtime-libs
-RUN apk add --no-cache ca-certificates tzdata libstdc++
+# git, because the server SHELLS OUT to it: a profile repository is cloned with
+# `git clone --depth 1` (apps/server/src/inverter/git-source.ts), and without it
+# the official profile list answers `Executable not found in $PATH: "git"` — on
+# compose, on the Home Assistant addon and on the appliance alike. Nothing was
+# red, because the client reports an unreadable source, which reads like a
+# network problem. A box whose profile list is empty is a box nobody can point
+# at their inverter.
+RUN apk add --no-cache ca-certificates tzdata libstdc++ git
 RUN mkdir -p /out/lib /out/etc/ssl/certs /out/usr/share /out/tmp \
     # ld-musl is arch-named (…-x86_64 / …-aarch64), hence the glob.
     && cp /lib/ld-musl-*.so.1 /out/lib/ \
@@ -63,6 +70,12 @@ RUN mkdir -p /out/lib /out/etc/ssl/certs /out/usr/share /out/tmp \
     # Without the trust store every outbound HTTPS call — spot prices, solar
     # forecast, profile updates — fails, and only at runtime.
     && cp /etc/ssl/certs/ca-certificates.crt /out/etc/ssl/certs/ \
+    # AND /etc/ssl/cert.pem, which is where alpine's libcurl looks — a different
+    # path from the one bun reads. With only the first, `git clone https://…`
+    # dies with "error setting certificate file: /etc/ssl/cert.pem" while every
+    # other HTTPS call on the box works. Found by running a real clone against
+    # this stage; no reading of this file would have shown it.
+    && cp -L /etc/ssl/cert.pem /out/etc/ssl/ \
     # Without the zone database TZ resolves to nothing and every day, month and
     # tariff-band boundary is cut in UTC.
     && cp -r /usr/share/zoneinfo /out/usr/share/ \
@@ -71,6 +84,25 @@ RUN mkdir -p /out/lib /out/etc/ssl/certs /out/usr/share /out/tmp \
     # Nor any passwd/group, so a numeric USER would resolve to no name.
     && echo 'sunreye:x:65532:65532::/app:/sbin/nologin' > /out/etc/passwd \
     && echo 'sunreye:x:65532:' > /out/etc/group
+# git and everything it opens, resolved rather than listed.
+#
+# `git-remote-https` is a SEPARATE binary under libexec/git-core, and git execs
+# it by path for any https:// remote — shipping /usr/bin/git alone yields
+# "Unable to find remote helper for 'https'", which fails exactly like having no
+# git at all. The library set is taken from ldd instead of being written out by
+# hand, because that list is alpine's to change and a missing .so is a runtime
+# failure on a box in somebody's cupboard.
+RUN set -eux; \
+    for bin in /usr/bin/git /usr/libexec/git-core/git-remote-https /usr/libexec/git-core/git-remote-http; do \
+      cp -L --parents "$bin" /out/; \
+      ldd "$bin" | awk '/=>/ { print $3 } /ld-musl/ { print $1 }' \
+        | grep '^/' | sort -u | xargs -I{} cp -L --parents {} /out/; \
+    done; \
+    # git refuses to clone without its template directory.
+    cp -r --parents /usr/share/git-core /out/ 2>/dev/null || true; \
+    # HOME is unset for uid 65532 and git writes nothing, but it does read
+    # /etc/gitconfig if present; an empty one keeps it from probing further.
+    : > /out/etc/gitconfig
 
 # ─── Runtime: nothing but the above ─────────────────────────────────────────
 # No shell, no package manager, no libc utilities: nothing to exploit and

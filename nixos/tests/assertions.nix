@@ -38,6 +38,22 @@ let
     };
 
   cases = [
+    # A wildcard site address stands for exactly one label, so `*.ts.net` can
+    # never match `<host>.<tailnet>.ts.net`. The request does not fail — it
+    # matches a different site and is served the wrong certificate, which is why
+    # this shipped and enrolled before anyone noticed.
+    # nixpkgs only ever runs `tailscale up` from `tailscaled-autoconnect`, which
+    # exists only when an auth key is set. On a keyless box these flags are text
+    # nothing executes — which is how a published image shipped with Tailscale
+    # SSH silently off, and therefore with no way in at all.
+    (refuses "up-flags on a box that will never run `tailscale up`" "extraUpFlags" [{
+      services.tailscale.extraUpFlags = [ "--ssh" ];
+    }])
+
+    (refuses "a Caddy site address no MagicDNS name can ever match" "wildcard" [{
+      services.caddy.virtualHosts."https://*.ts.net".extraConfig = "respond 200";
+    }])
+
     (refuses "an inverter that is neither configured nor simulated" "inverter.host" [{
       appliance.sunreye.inverter.simulate = false;
     }])

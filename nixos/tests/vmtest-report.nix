@@ -112,7 +112,7 @@
     # podman included because the report asks it what is running: without it the
     # container section was `podman: command not found` and the reader was left
     # to infer the state of the workload from the unit list alone.
-    path = with pkgs; [ systemd util-linux curl coreutils gnugrep git podman openssl ];
+    path = with pkgs; [ systemd util-linux curl coreutils gnugrep gawk git podman openssl ];
     script = ''
       echo "##### VMTEST REPORT #####"
       echo "rootfs:    $(findmnt -no FSTYPE,OPTIONS /)"
@@ -172,6 +172,69 @@
       # that runs to its 25-minute ceiling, and a guard that then blames the
       # appliance for a harness that hung.
       echo "proxy-issuer: $(timeout 20 openssl s_client -connect 127.0.0.1:443 -servername "$name" </dev/null 2>/dev/null | timeout 10 openssl x509 -noout -issuer 2>/dev/null || echo NONE)"
+
+      # The one-shot password window, through the proxy that publishes it — and
+      # the property that makes it worth having: the SECOND read must fail. A
+      # timed window with unlimited reads leaves nobody able to tell afterwards
+      # whether anyone else looked, so "closes on first read" is the behaviour,
+      # not an optimisation.
+      # Retry the FIRST request, and only the first. The window is a service
+      # that has to start, and this report is not synchronised with it: measured,
+      # the no-AVX boot reached here at 21s uptime against 30s for the other one
+      # and read Caddy's 503 fallback as "nothing served" — a red CI job for a
+      # box that was working. curl retries 503 and connection failures, and does
+      # NOT retry the 410 below, which is the answer that must come first time.
+      first=$(curl -s -k --max-time 60 --retry 15 --retry-delay 2 --retry-connrefused \
+        --resolve "$name:443:127.0.0.1" "https://$name/first-boot" || echo "")
+      second_code=$(curl -s -k -o /dev/null -w '%{http_code}' --max-time 20 \
+        --resolve "$name:443:127.0.0.1" "https://$name/first-boot" || echo 000)
+      case "$first" in
+        *"root / "*) echo "first-boot-window: served" ;;
+        *) echo "first-boot-window: NOTHING SERVED" ;;
+      esac
+      if [ "$second_code" = "410" ]; then
+        echo "first-boot-reread: refused"
+      else
+        echo "first-boot-reread: STILL OPEN ($second_code)"
+      fi
+
+      # And when the server is not there at all. This is not hypothetical: the
+      # window used to be killed at its deadline, so a late owner got a bare 502
+      # from Caddy — which says neither "somebody beat you to it" nor "you were
+      # late", and those are the only two things they need to distinguish.
+      # Stopping the unit is the only way to reach that path on purpose.
+      systemctl stop appliance-first-boot 2>/dev/null || true
+      down=$(curl -s -k --max-time 20 -w '\n%{http_code}' \
+        --resolve "$name:443:127.0.0.1" "https://$name/first-boot" || echo "000")
+      case "$down" in
+        *"window closed"*503) echo "first-boot-down: explains itself" ;;
+        *502) echo "first-boot-down: BARE 502" ;;
+        *) echo "first-boot-down: unexpected ($(printf '%s' "$down" | tail -1))" ;;
+      esac
+
+      # Can anyone actually log in at the keyboard? The image shipped for weeks
+      # with root locked — no password, no key, `allowNoPasswordLogin = false` —
+      # while the docs offered "a keyboard on the box" as the fallback. Nothing
+      # noticed, because every other probe here talks to the box over TCP.
+      hash=$(awk -F: '$1 == "root" { print $2 }' /etc/shadow 2>/dev/null || echo "")
+      case "$hash" in
+        ""|"!"*|"*") echo "console-login: LOCKED" ;;
+        *) echo "console-login: usable" ;;
+      esac
+      # …and the one thing that makes a generated password usable: it has to be
+      # on the screen in front of whoever is standing there.
+      if grep -q "root / ." /etc/issue 2>/dev/null; then
+        echo "console-banner: names the password"
+      else
+        echo "console-banner: MISSING"
+      fi
+
+      # The unit that makes an enrolled box reachable at all. On THIS box nobody
+      # has enrolled anything, so the only thing provable here is the half that
+      # regresses silently: it must run and exit 0 on an unenrolled box rather
+      # than failing. A failed unit here pages daily about a machine behaving
+      # exactly as intended, and `Restart=on-failure` would retry it forever.
+      echo "tailscale-settings: $(systemctl show appliance-tailscale-settings -p Result --value 2>/dev/null || echo unknown)"
 
       # Can this box rebuild itself at all? Everything above is the system the
       # IMAGE baked; this is the only question about the system the box will

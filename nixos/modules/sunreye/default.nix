@@ -32,6 +32,9 @@ let
   secretsEnv = "${stateDir}/secrets.env";
   originsEnv = "/run/sunreye/origins.env";
 
+  firstBoot =
+    config.appliance.console.password.enable && config.appliance.console.password.web.enable;
+
   wantsTailscaleTls = cfg.tls == "tailscale" || cfg.tls == "both";
   wantsInternalTls = cfg.tls == "internal" || cfg.tls == "both";
 
@@ -40,6 +43,7 @@ in
 {
   imports = [
     ./seed.nix
+    ./first-boot.nix
     ./backup.nix
     ./setup-cli.nix
   ];
@@ -222,6 +226,29 @@ in
   config = lib.mkIf (config.appliance.enable && cfg.enable) {
     appliance.sunreye.pgMajorGuardPackage = pgMajorGuard;
     assertions = [
+      {
+        # The bug this exists for shipped, enrolled, and served a browser warning
+        # on the tailnet name while every gate stayed green. A wildcard site
+        # address stands for exactly ONE label, so `*.ts.net` matches `x.ts.net`
+        # and never `<host>.<tailnet>.ts.net` — which is the only shape a real
+        # MagicDNS name has. Nothing downstream can notice: the request simply
+        # matches a different site and gets a certificate from the wrong issuer.
+        assertion = !(lib.any (name: lib.hasInfix "*." name) (
+          lib.attrNames config.services.caddy.virtualHosts
+        ));
+        message = ''
+          A Caddy site address here uses a wildcard, and a wildcard stands for
+          exactly one label: `*.ts.net` matches `foo.ts.net` but NOT
+          `sr-x.tail1234.ts.net`, which is the shape of every Tailscale MagicDNS
+          name. A site that cannot match is not a failure anyone sees — the
+          request falls through to another site and is served the wrong
+          certificate.
+
+          Serve every name from the port-only `:443` site and let the `tls` block
+          decide per SNI: `get_certificate tailscale` first, internal issuance
+          on demand as the fallback.
+        '';
+      }
       {
         assertion = cfg.inverter.host != null || cfg.inverter.simulate;
         message = ''
@@ -461,61 +488,133 @@ in
       # The whole reason for a proxy on a single-container box: HTTPS, and
       # therefore a secure context, and therefore a PWA that installs and cookies
       # that are actually Secure. Caddy also keeps port 3000 off the LAN.
-      virtualHosts = lib.mkMerge [
-        (lib.mkIf wantsTailscaleTls {
-          # Matched on the wildcard rather than a literal name, because the name
-          # depends on which tailnet the owner enrolled the box into and is not
-          # known when this config is built. `get_certificate tailscale` asks
-          # tailscaled for a real, publicly-trusted cert for whatever that name
-          # turned out to be — no CA for anyone to install, and it works on a
-          # phone that has never touched this LAN.
-          "https://*.ts.net" = {
-            extraConfig = ''
-              tls {
-                get_certificate tailscale
-              }
-              reverse_proxy 127.0.0.1:${toString cfg.port}
-            '';
-          };
-        })
-        (lib.mkIf wantsInternalTls {
-          # The LAN door. Caddy's internal CA means a browser warning until
-          # someone installs the root, which nobody does — so this is the
-          # fallback for a box with no tailnet, not the main path. It answers on
-          # the mDNS name, the short hostname and the raw IP, because on a first
-          # boot the owner has whichever of those their router gave them.
-          ":443" = {
-            extraConfig = ''
-              # on_demand, because this site is a PORT with no names. `tls
-              # internal` issues certificates for a site's subjects, and a site
-              # declared as `:443` has none — so Caddy bound the port, read the
-              # ClientHello and had nothing to present: every handshake died with
-              # `tlsv1 alert internal error`, on every box, while `caddy: active`
-              # and the :80 redirect both looked healthy. The names cannot be
-              # listed here: they are the mDNS name, whatever short hostname the
-              # box ended up with, and whichever address the router handed out,
-              # none of which exist when this config is built. Issuing per SNI at
-              # handshake time is the only way to serve all three.
-              tls internal {
+      # ONE site on :443, for every name this box answers to.
+      #
+      # It used to be two, and the tailnet one could never match. Its address was
+      # `https://*.ts.net`, and a Caddy wildcard stands for EXACTLY ONE label —
+      # while every MagicDNS name is `<host>.<tailnet>.ts.net`, which is two. So
+      # `sr-x.tail1234.ts.net` never reached `get_certificate tailscale`; it fell
+      # through to the internal-CA site and was served Caddy's own certificate.
+      # Measured on the first box ever enrolled: a browser warning on the tailnet
+      # name, and therefore no PWA install and no Secure cookies — the entire
+      # reason this proxy exists. Nothing was red. The boot test cannot see it
+      # either: CI has no tailnet, so both configurations look identical there.
+      #
+      # Order matters and is the whole design: Caddy consults `get_certificate`
+      # managers during the handshake, and falls back to on-demand internal
+      # issuance only when they return nothing. A tailnet name therefore gets the
+      # real, publicly-trusted certificate tailscaled holds, and every other name
+      # — the mDNS name, the short hostname, the raw IP the router handed out —
+      # gets an internal one. None of those names can be listed here: not one of
+      # them exists when this config is built.
+      virtualHosts = {
+        ":443" = {
+          extraConfig = ''
+            tls {
+              ${lib.optionalString wantsTailscaleTls "get_certificate tailscale"}
+              ${lib.optionalString wantsInternalTls ''
+                issuer internal {
+                }
+                # on_demand, because this site is a PORT with no names. `tls
+                # internal` issues for a site's SUBJECTS, and `:443` has none —
+                # so Caddy bound the port, read the ClientHello and had nothing
+                # to present: every handshake died with `tlsv1 alert internal
+                # error` while `caddy: active` and the :80 redirect both looked
+                # healthy.
                 on_demand
+              ''}
+            }
+            ${lib.optionalString firstBoot ''
+              # The one-shot password window, on the dashboard's own certificate
+              # and listener rather than a second door of its own. `handle`, not
+              # `handle_path`: the server does not care about the prefix, and a
+              # stripped path would make this route indistinguishable from the
+              # dashboard's own root in the access log.
+              handle ${config.appliance.console.password.web.path}* {
+                reverse_proxy 127.0.0.1:${toString config.appliance.console.password.web.port}
               }
-              reverse_proxy 127.0.0.1:${toString cfg.port}
-            '';
-          };
-          # Plain HTTP redirects rather than serving: a dashboard reachable over
-          # http:// is a dashboard whose Secure cookies silently never arrive.
-          ":80" = {
-            extraConfig = ''
-              redir https://{host}{uri} permanent
-            '';
-          };
-        })
-      ];
+
+              handle {
+                reverse_proxy 127.0.0.1:${toString cfg.port}
+              }
+
+              # A window whose server is gone must still SAY so. It closed as a
+              # 502 once — Caddy had nothing behind the route, and a bare gateway
+              # error tells the owner neither "you were beaten to it" nor "you
+              # were late", which is the one thing this design exists to make
+              # visible.
+              #
+              # Site level, not inside the `handle` above: `handle_errors` is not
+              # an ordered HTTP handler and Caddy refuses it there — caught by
+              # `caddy validate` rather than by a box in a cupboard.
+              handle_errors {
+                @window path ${config.appliance.console.password.web.path}*
+                handle @window {
+                  respond <<CLOSED
+                    SunReye — setup window closed
+
+                    The window that hands over this box's password is not
+                    running. Either it has already been read, or it timed out.
+
+                    If you have NOT read it, someone else on this network may
+                    have. Re-flash the box if that matters to you.
+
+                    A reboot reopens the window if the password was never handed
+                    out. Otherwise: read it off the console with a monitor, or
+                    use Tailscale SSH once the box is enrolled.
+                    CLOSED 503
+                }
+                handle {
+                  respond "{err.status_code} {err.status_text}" {err.status_code}
+                }
+              }
+            ''}
+            ${lib.optionalString (!firstBoot) "reverse_proxy 127.0.0.1:${toString cfg.port}"}
+          '';
+        };
+
+        # Plain HTTP redirects rather than serving: a dashboard reachable over
+        # http:// is a dashboard whose Secure cookies silently never arrive.
+        ":80" = {
+          extraConfig = ''
+            redir https://{host}{uri} permanent
+          '';
+        };
+      };
     };
 
     # Caddy needs to ask tailscaled for a certificate, which tailscaled only
     # answers for a permitted uid.
     services.tailscale.permitCertUid = lib.mkIf wantsTailscaleTls "caddy";
+
+    # The proxy is what claims to serve a publicly-trusted certificate for the
+    # tailnet name, so the proxy's layer is what tells the health report where to
+    # look. Same shape as `appliance.health.watchUnits`: the generic layer knows
+    # nothing about what this box runs.
+    appliance.health.publicTlsPort = lib.mkIf wantsTailscaleTls 443;
+
+    # The sun from the dashboard's own logo: a filled disc and eight rays, at
+    # the four cardinals and the four diagonals (apps/web/static/favicon.svg).
+    #
+    # Plain ASCII on purpose — this is the first thing a console getty renders,
+    # and a box-drawing character the console font does not carry is a banner
+    # made of question marks.
+    #
+    # Built from a list rather than an indented string because Nix strips the
+    # COMMON indentation from `''`, which is decided by whichever line happens
+    # to be furthest left — here the horizontal ray — so the whole sun would
+    # hug the terminal edge and the margin could not be set at all.
+    appliance.health.bannerHeader = lib.concatMapStrings (line: "  ${line}\n") [
+      ""
+      "       \\    |    /"
+      "        \\ .---. /"
+      "         /#####\\"
+      "    ---- |#####| ----     S U N R E Y E"
+      "         \\#####/          ${cfg.imageTag}"
+      "        / '---' \\"
+      "       /    |    \\"
+      ""
+    ];
 
     # `sunreye.local`, so the first boot has a name to type that does not depend
     # on finding the box's address in a router's lease table.

@@ -14,6 +14,105 @@ in
   options.appliance = {
     enable = mkEnableOption "the headless appliance profile";
 
+    console.password.web = {
+      enable = mkOption {
+        type = types.bool;
+        default = true;
+        description = ''
+          Also hand the generated password to a browser on the LAN, once, for a
+          few minutes after boot.
+
+          The console banner only helps someone standing at the machine with a
+          monitor, which is the wrong shape for a box in a cupboard. This is the
+          path that works from a laptop on the same network.
+
+          Served behind the same reverse proxy as the dashboard, so it is HTTPS
+          and needs no second listener or firewall rule — but on a first boot
+          that is the internal CA, so the browser warns. It encrypts against
+          passive sniffing on the LAN; it does not authenticate the box.
+        '';
+      };
+
+      openFor = mkOption {
+        type = types.ints.positive;
+        default = 15;
+        description = ''
+          Minutes the window stays open if nobody reads it. It also closes on the
+          FIRST successful read, whichever comes first, and never reopens — a
+          timed window with unlimited reads leaves nobody able to tell afterwards
+          whether someone else looked.
+
+          Counted from when the unit starts, which is early in boot — so the two
+          or three minutes the box spends starting its containers come out of
+          this budget, and so does the time it takes to find its address. Five
+          minutes sounded generous and was not: measured on a real first boot,
+          the window had already shut by the time a browser reached it.
+
+          Since a read closes it anyway, the length only ever bounds the case
+          where nobody comes. A reboot reopens it as long as the password has
+          not been handed out.
+        '';
+      };
+
+      port = mkOption {
+        type = types.port;
+        default = 5251;
+        description = ''
+          Loopback port the window listens on. The proxy publishes it; nothing
+          binds this on the LAN.
+        '';
+      };
+
+      path = mkOption {
+        type = types.str;
+        default = "/first-boot";
+        description = "Path the reverse proxy serves the window at.";
+      };
+    };
+
+    console.password.file = mkOption {
+      type = types.path;
+      default = "/var/lib/secrets/console-password";
+      readOnly = true;
+      internal = true;
+      description = "Where the generated console password is kept.";
+    };
+
+    console.password.claimFile = mkOption {
+      type = types.path;
+      default = "/var/lib/secrets/console-claimed";
+      readOnly = true;
+      internal = true;
+      description = ''
+        Written once the password has been handed out over the network. Its
+        existence is what stops the window reopening on a later boot.
+      '';
+    };
+
+    console.password.enable = mkOption {
+      type = types.bool;
+      default = true;
+      description = ''
+        Generate a random root password on first boot and print it on the console
+        login screen.
+
+        A published image can carry no credential — a baked key belongs to
+        whoever built the image, and a fixed default password is the same on
+        every unit ever flashed. Without this the box has no local login at all:
+        root is locked, so a keyboard on the machine reaches a prompt nobody can
+        pass, and the only ways in are Tailscale SSH and a key a published image
+        does not have.
+
+        Showing it on the login screen is not a leak. The only person who can
+        read it is already at the keyboard, which is exactly what the password
+        grants — and that person could read the unencrypted disk regardless.
+        Console only: sshd refuses password authentication.
+
+        Turn this off for a box built with your own key baked in, where the extra
+        credential buys nothing.
+      '';
+    };
+
     namePrefix = mkOption {
       type = types.strMatching "[A-Za-z0-9]+";
       default = "SR";
@@ -123,12 +222,34 @@ in
             into their own tailnet from a browser, with no key baked into the image
             and no console.
 
-            The unit is deliberately self-limiting: it refuses to start once the
-            backend reports `Running`, and a timer stops it as soon as login
-            succeeds. Nothing reopens the window automatically — re-enrolment is
+            The unit is deliberately self-limiting in three directions: it refuses
+            to start once the backend reports `Running`, a timer stops it as soon
+            as login succeeds, and {option}`openFor` closes it even if nobody
+            ever enrols. Nothing reopens the window automatically — re-enrolment is
             `sunreye-setup tailscale reset` as root, over Tailscale SSH or the
             console. A published image therefore grants its builder nothing: no key,
             no account, no `authorized_keys` entry.
+          '';
+        };
+
+        openFor = mkOption {
+          type = types.ints.positive;
+          default = 30;
+          description = ''
+            Minutes the login window stays open on a box nobody has enrolled,
+            counted from the moment it opens.
+
+            Without a deadline it stays open forever: the unit only closes on the
+            transition to `Running`, so a box that is powered on and never
+            adopted serves an enrolment page to its LAN indefinitely — and
+            anyone who reaches it can enrol the box into THEIR tailnet and own
+            the dashboard. Measured on a real unit, that window stood open for
+            hours.
+
+            A reboot reopens it, so a missed window costs a power cycle rather
+            than a re-flash. Lower this if the box lives on a network you share
+            with people you do not; the useful floor is however long it takes you
+            to find the box's address and click through the login.
           '';
         };
 
@@ -256,6 +377,54 @@ in
         readOnly = true;
         internal = true;
         description = "The appliance-health-report program this module builds.";
+      };
+
+      bannerHeader = mkOption {
+        type = types.lines;
+        default = "";
+        description = ''
+          Printed above the report when {option}`appliance.health.loginBanner`
+          shows it. Empty by default.
+
+          Named by the layer that owns the product rather than written here:
+          this module is the generic appliance base and has no business knowing
+          what the box is called or what its logo looks like.
+        '';
+      };
+
+      loginBanner = mkOption {
+        type = types.bool;
+        default = true;
+        description = ''
+          Print the health report when someone opens an interactive shell.
+
+          A Tailscale SSH session otherwise lands on a bare prompt on a machine
+          nobody has touched in months — no version, no inverter, no sign that
+          anything is wrong. Interactive login shells only, and once per
+          session, so `ssh box 'cmd'` is not a status report with the output
+          buried in it.
+        '';
+      };
+
+      publicTlsPort = mkOption {
+        type = types.nullOr types.port;
+        default = null;
+        example = 443;
+        description = ''
+          Port that is supposed to serve a PUBLICLY-TRUSTED certificate for this
+          box's tailnet name. Null means nothing here claims to.
+
+          Named by the layer that owns the proxy, rather than derived here, for
+          the same reason as {option}`appliance.health.watchUnits`: this module
+          knows nothing about what the box runs.
+
+          The failure it exists for is silent and costs an hour to find.
+          Tailscale issues certificates only when HTTPS Certificates are enabled
+          for the tailnet — off by default — and when they are not, the proxy
+          falls back to its internal CA exactly as designed. The owner sees a
+          browser warning on a URL that is supposed to be clean, with nothing
+          anywhere saying the cause is one toggle in an admin console.
+        '';
       };
 
       webhook = mkOption {

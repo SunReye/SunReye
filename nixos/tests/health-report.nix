@@ -51,7 +51,12 @@ pkgs.runCommand "health-report-runs"
 
   # An empty field is the symptom a passing exit code hides, so the fields that
   # do not need a booted system are asserted to carry a value.
-  for field in "uptime:" "disk:" "memory:" "watchdog:"; do
+  # `tailnet-cert:` is the newest of these and the most likely to be a blank:
+  # it shells out to openssl, which is exactly the kind of tool that is missing
+  # from a wrapper's PATH. Unenrolled here, so it reports that and stops — the
+  # branch that actually calls openssl only runs on an enrolled box, and is
+  # verified there rather than pretended at here.
+  for field in "uptime:" "disk:" "memory:" "watchdog:" "tailnet-cert:"; do
     line=$(printf '%s\n' "$printed" | grep -m1 "^$field" || true)
     value=''${line#"$field"}
     if [ -z "$(printf '%s' "$value" | tr -d '[:space:]')" ]; then
@@ -60,6 +65,53 @@ pkgs.runCommand "health-report-runs"
       exit 1
     fi
   done
+
+  # Every unit line has to name its unit. `systemctl is-active` exits 3 for an
+  # inactive unit, so `$(systemctl is-active X || echo absent)` ran the fallback
+  # IN ADDITION to succeeding: the substitution became "inactive\nabsent" and the
+  # report printed a headless `absent (restarts: 0)` line under the real one.
+  # Every report all evening carried it — on the box and in CI — and it reads as
+  # a unit nobody can identify, which is the worst thing a health report can say.
+  # Followed by a space or a bracket, never a colon: `failed:` and `uptime:` are
+  # field LABELS that legitimately begin a line, and a pattern that eats them
+  # fails on a healthy report.
+  orphan=$(printf '%s\n' "$printed" | grep -nE '^(active|inactive|failed|absent|activating|deactivating)( |\()' || true)
+  if [ -n "$orphan" ]; then
+    echo "a unit line in the report does not name its unit:" >&2
+    printf '%s\n' "$orphan" >&2
+    exit 1
+  fi
+
+  # And the shape that caused it, asserted against the shipped program — because
+  # the runtime check above cannot reach it here: this sandbox has no system bus,
+  # so `is-active` prints NOTHING and only the fallback runs. The defect needs a
+  # real systemd, where the command answers truthfully and still exits non-zero.
+  # Comments stripped first. The shipped script explains this defect in prose
+  # that contains the defect's own shape, so an unfiltered grep matches the
+  # warning and fails on a correct program — which it duly did.
+  if grep -vE '^[[:space:]]*#' "$(command -v appliance-health-report)" \
+     | grep -qE 'is-active [^)]*\|\| echo'; then
+    echo "the report applies its fallback inside the substitution:" >&2
+    echo "  \$(systemctl is-active X || echo absent) runs BOTH when X is inactive," >&2
+    echo "  because is-active exits 3 for a true answer. Capture, then default." >&2
+    exit 1
+  fi
+
+  # The certificate branch calls openssl, and nothing above reaches it: this
+  # sandbox has no tailnet, so the report stops at "not enrolled". Asserting the
+  # tool is on the SHIPPED program's PATH is the part that can be checked here —
+  # measured, removing openssl from runtimeInputs left every assertion above
+  # green, which is precisely the shape of the `uptime -p` defect this file
+  # exists for.
+  # Anchored to the PATH line, not the file: `grep openssl` over the whole
+  # script matches the command name in the branch itself, so it passes with the
+  # tool absent. Measured — the first version of this assertion was green
+  # against exactly the mutation it was written to catch.
+  if ! grep -m1 '^export PATH=' "$(command -v appliance-health-report)" | grep -q 'openssl'; then
+    echo "openssl is not on the report's PATH, so the certificate branch would" >&2
+    echo "print a blank on every enrolled box and nothing here would notice." >&2
+    exit 1
+  fi
 
   touch "$out"
 ''

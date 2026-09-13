@@ -30,10 +30,17 @@ lib.mkIf cfg.enable {
   users.users.root.openssh.authorizedKeys.keys = cfg.ssh.authorizedKeys;
 
   warnings = lib.optional (noKeys && tailscaled) ''
-    appliance.ssh.authorizedKeys is empty. Remote access therefore depends
-    entirely on Tailscale SSH, and the only local fallback is a keyboard and
-    monitor on the box itself. That is the intended shape of a published image,
-    but if this unit is going somewhere you cannot physically reach, add a key.
+    appliance.ssh.authorizedKeys is empty, so REMOTE access depends entirely on
+    Tailscale SSH. That is the intended shape of a published image.
+
+    The local fallback is a keyboard and monitor plus the per-box password
+    `appliance.console.password.enable` generates and prints on the login screen
+    — which is worth knowing is there, because for a while it was not: root was
+    locked, and this warning promised a keyboard that reached a prompt nobody
+    could pass.
+
+    If this unit is going somewhere you cannot physically reach, that fallback is
+    not one. Add a key.
   '';
 
   assertions = [{

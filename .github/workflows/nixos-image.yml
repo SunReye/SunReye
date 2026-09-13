@@ -131,6 +131,30 @@ jobs:
           grep -q '^tailscale-web: active' report.txt \
             || { echo "::error::the Tailscale login window did not open"; fail=1; }
           grep -q '^setup-show: ok' report.txt || { echo "::error::sunreye-setup show failed"; fail=1; }
+          # The password window, and the property that makes it safe to have at
+          # all: it closes on the first read. A window that stayed open would
+          # hand this box's root password to everyone on the LAN for as long as
+          # the timer ran, with nobody able to tell afterwards.
+          grep -q '^first-boot-window: served' report.txt \
+            || { echo "::error::the first-boot password window served nothing"; fail=1; }
+          grep -q '^first-boot-reread: refused' report.txt \
+            || { echo "::error::the password window stayed open after being read: $(grep '^first-boot-reread:' report.txt)"; fail=1; }
+          # A closed window has to say which kind of closed it is. It shipped as
+          # a bare 502 once, which distinguishes nothing.
+          grep -q '^first-boot-down: explains itself' report.txt \
+            || { echo "::error::a closed window does not explain itself: $(grep '^first-boot-down:' report.txt)"; fail=1; }
+          # Somebody standing at the box has to be able to get in. This is the
+          # only probe here that is not reachable over the network, and it is the
+          # one that was missing while root sat locked for weeks.
+          grep -q '^console-login: usable' report.txt \
+            || { echo "::error::root cannot log in on the console: $(grep '^console-login:' report.txt)"; fail=1; }
+          grep -q '^console-banner: names the password' report.txt \
+            || { echo "::error::the console password is generated but never shown"; fail=1; }
+          # The unit that applies `--ssh` after enrolment. It cannot be proven
+          # to enrol here — there is no tailnet — but it must survive a box that
+          # has not enrolled, which is every box on first boot.
+          grep -q '^tailscale-settings: success' report.txt \
+            || { echo "::error::the tailscale settings unit did not succeed: $(grep '^tailscale-settings:' report.txt)"; fail=1; }
           # The box's ability to build its NEXT system. An image that boots
           # perfectly and cannot rebuild itself is a box that can never be
           # updated or configured, and nothing else in this report asks.
@@ -149,12 +173,51 @@ jobs:
             || { echo "::error::first-boot secrets were not generated"; fail=1; }
           exit $fail
 
+      # The SAME image, on a CPU with no AVX. Every runner and every developer
+      # machine has AVX2, so a dependency that needs it is invisible here and
+      # fails only on the hardware this appliance is actually for: the bun
+      # nixpkgs ships — including its `-baseline` build — faults with SIGILL on
+      # an Atom-class thin client, which took `sunreye-setup` and the first-boot
+      # password window with it while the dashboard stayed up and every gate
+      # stayed green. A flashed Futro is where that was found.
+      #
+      # Nehalem is the floor worth supporting: SSE4.2, no AVX. The report's own
+      # assertions are re-run against it, so anything that needs a newer
+      # instruction set fails here instead of in someone's cupboard.
+      - name: Boot it again on a CPU with no AVX
+        run: |
+          set -o pipefail
+          # A FRESH disk. The generated runner creates its qcow2 in the working
+          # directory and REUSES it, so a second run here is the first boot's box
+          # rebooted — which already handed over its password and correctly
+          # refuses to reopen the window. That failed this step for two commits
+          # while the appliance was behaving exactly as designed.
+          rm -f ./*.qcow2
+          QEMU_OPTS="-cpu Nehalem" timeout 25m ./result/bin/run-*-vm -no-reboot 2>&1 \
+            | tee boot-noavx.log || true
+          grep -q 'VMTEST REPORT' boot-noavx.log || {
+            echo "::error::the no-AVX VM never reached its report"
+            tail -40 boot-noavx.log
+            exit 1
+          }
+          sed -E 's/^\[[0-9. ]+\] [^:]+: //' boot-noavx.log > report-noavx.txt
+
+          fail=0
+          for want in 'healthz: 200' 'setup-show: ok' 'first-boot-window: served' \
+                      'console-login: usable' 'proxy-https: 200'; do
+            grep -q "^$want" report-noavx.txt \
+              || { echo "::error::without AVX: $want"; fail=1; }
+          done
+          exit $fail
+
       - name: Keep the boot log whatever happened
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: appliance-boot-log
-          path: boot.log
+          path: |
+            boot.log
+            boot-noavx.log
           retention-days: 14
   # Pin the release, and let every deployed box see it.
   #

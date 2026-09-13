@@ -59,9 +59,18 @@ only when `docker/timescaledb/Dockerfile` does — `scripts/storage-tuning.ts` a
 `modules/sunreye/images.nix` names the same tag as every other deployment surface.
 
 **`sunreye-setup` is not in this directory.** Its source is `apps/appliance-cli/src`, so the
-repo's TDD gate treats it as source; `modules/sunreye/setup-cli.nix` wraps it with
-`pkgs.bun`. It is not compiled because `bun build --compile` downloads the target runtime at
-build time, which the Nix sandbox forbids.
+repo's TDD gate treats it as source; `modules/sunreye/cli-tree.nix` bundles it with esbuild
+and runs it on `pkgs.nodejs`.
+
+Not bun, and this is not a preference: the bun nixpkgs ships faults with SIGILL on a CPU
+without AVX — including its `-baseline` build — which is every Atom-class thin client, and
+those are the machines this image exists for. `checks.x86_64-linux` cannot see that and
+neither can a developer laptop, so the boot test in CI runs the image a second time under
+`-cpu Nehalem`. Anything that grows an instruction-set dependency fails there instead of in
+somebody's cupboard.
+
+Not `bun build --compile` either: it downloads the target runtime at build time, which the
+Nix sandbox forbids.
 
 ## What is deliberately not here
 

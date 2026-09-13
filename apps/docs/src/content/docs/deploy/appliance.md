@@ -103,15 +103,73 @@ Then, from any computer on the same network:
    certificate — no warning, no CA to install — which is what lets you install it as an app
    on a phone. On the LAN, `https://sunreye.local` also works, with a browser warning.
 
+   :::caution[Turn on HTTPS certificates for your tailnet first]
+   Tailscale issues certificates only when **HTTPS Certificates** is enabled for the
+   tailnet, and it is **off by default**. Without it the box cannot get a real certificate,
+   falls back to its own CA exactly as designed, and your browser warns on the one URL that
+   was supposed to be clean — with nothing to suggest the cause is a setting rather than a
+   broken box.
+
+   Enable it once, at [admin console → DNS](https://login.tailscale.com/admin/dns), then on
+   the box: `systemctl restart caddy`. Caddy caches the failed attempt, so it needs the
+   nudge.
+
+   `sunreye-setup show` and the daily health report both print a `tailnet-cert:` line, which
+   says which certificate the box is actually serving and names this page if it is the
+   internal one.
+   :::
+
 3. **Create your account.** The first account you register is the administrator.
 
-4. **Point it at your inverter.** Over Tailscale SSH (`ssh root@sr-xxxx`) or a keyboard on
-   the box:
+   :::tip[Take the box's password while you can]
+   Open `https://sr-xxxx/first-boot` within **15 minutes** of it booting. It shows this
+   box's root password, **once**, and then closes for good — a reboot reopens it only if
+   the password was never handed out.
+
+   Closing on the first read is deliberate. If you see the password, you know nobody
+   else did; if you are told it has already been taken, someone else on that network
+   got there first and you should re-flash. A window that simply expired would leave
+   you with no way to tell.
+
+   You do not need it if enrolment works — Tailscale SSH is the normal way in — but
+   it is the only remote path that does not depend on Tailscale, and you cannot get
+   it back later. The same password is printed on the console login screen if you
+   ever attach a monitor.
+   :::
+
+4. **Point it at your inverter.** Over Tailscale SSH, using the box's **full tailnet
+   name** — from a device that is itself on the tailnet:
 
    ```bash
+   ssh root@sr-xxxx.<your-tailnet>.ts.net
    sunreye-setup inverter 192.168.1.100
    sunreye-setup timezone Europe/Berlin
    ```
+
+   :::caution[Use the full name, not the short one]
+   `ssh root@sr-xxxx` looks equivalent and usually is not. If your LAN has its own DNS
+   suffix, that resolves first and you reach the box's **LAN** address, where OpenSSH
+   answers instead of Tailscale SSH — and OpenSSH here is key-only with no keys, so you
+   get `Permission denied (publickey)`. Tailscale SSH needs no key; it authenticates
+   through the tailnet, and only the `.ts.net` name routes there.
+   :::
+
+   :::note[Three ways in, for three different situations]
+   A published image ships no key and no shared password — the alternative is a
+   credential identical on every unit ever flashed. So the box makes its own:
+
+   | Situation | Way in |
+   | --- | --- |
+   | Normal | Browser enrolment, then Tailscale SSH on the full `.ts.net` name |
+   | Headless, Tailscale not working | A key you put on the ESP **before** first boot — create `appliance-seed/authorized_keys` on the image's EFI partition, which mounts on any machine. It works on the first boot with no rebuild. |
+   | Monitor and keyboard available | The generated root password, printed on the login screen |
+
+   Plus `https://sr-xxxx/first-boot` above, which is the remote path that needs none of
+   those — but only for the first few minutes, and only once.
+
+   If you are locked out of all of them, append `init=/bin/sh` to the kernel command
+   line at the boot menu (press `e`) for a root shell, or re-flash.
+   :::
 
    Each command rebuilds the box, which takes a minute or two and briefly interrupts the
    dashboard. Until you set an inverter the box runs a **simulated** one, so there is
@@ -129,9 +187,16 @@ sunreye-setup lan-access on [--site-id N] | off
 sunreye-setup ssh-key add <key> | remove <key> | list
 sunreye-setup tls tailscale|internal|both
 sunreye-setup tailscale reset
+sunreye-setup factory-reset --confirm <this box's name>
 sunreye-setup show
 sunreye-setup apply
 ```
+
+`factory-reset` erases the box back to a first boot — the database and every reading in
+it, the tailnet identity, the generated secrets. It keeps `local.nix`, which is yours. Run
+it without `--confirm` first: it prints what it would destroy and refuses. The confirmation
+is the box's own hostname rather than a flag, because `--yes` is one arrow-up in a shell
+history from a command you meant to run on a different box.
 
 `show` prints the current configuration and the tailnet status. Every command that changes
 something validates first, writes `/etc/nixos/site.json`, commits it, and rebuilds — so
