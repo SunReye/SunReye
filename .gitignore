@@ -53,6 +53,12 @@ playwright-report
 blob-report
 .playwright
 
+# Nix (nixos/, see nixos/README.md)
+# `nix build` drops a symlink to the built closure here. Unignored, it is both a
+# 3 GB store path oxlint walks on every push and something git offers to commit.
+result
+result-*
+
 # Misc
 *.tgz
 .cache
