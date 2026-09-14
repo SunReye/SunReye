@@ -1,6 +1,18 @@
 # Changelog
 
-No unreleased changes on `dev`; `beta.20260914-2a58c47` matches the last release.
+## [unreleased]
+
+Unreleased work on `dev` since 3.2.3, shipped in `beta.20260914-c416aa2`.
+
+
+### Features
+
+* **cli:** `sunreye upgrade` ([c416aa2](https://github.com/SunReye/SunReye/commit/c416aa20453ffb06c3a28d8c2e961fb833f843f4))
+
+
+### Miscellaneous Chores
+
+* **nixos:** publish 3.2.3 [skip ci] ([7ba2615](https://github.com/SunReye/SunReye/commit/7ba2615b39d0d71c5cad713973c0dc7cca467bf4))
 
 <!--
   This preamble is hand-written and version-independent. release-please owns the
@@ -121,9 +133,9 @@ be needed again.
 ## [3.2.3](https://github.com/SunReye/SunReye/compare/addon-v3.2.2...addon-v3.2.3) (2026-09-14)
 
 
-### Miscellaneous Chores
+### Bug Fixes
 
-* **addon:** Synchronize sunreye-stack versions
+* the appliance is configurable from the dashboard, and the charts stop inventing a first day ([#249](https://github.com/SunReye/SunReye/issues/249)) ([7a589e2](https://github.com/SunReye/SunReye/commit/7a589e2e3fb386f4c589d67138709b32d66d273e))
 
 ## [3.2.2](https://github.com/SunReye/SunReye/compare/addon-v3.2.1...addon-v3.2.2) (2026-09-13)
 
