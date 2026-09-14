@@ -55,8 +55,32 @@ self-sufficiency, cost, and any record the statistics page thinks was set. A
 lifetime is not a rate, and a box that says a household imported 3.7 MWh before
 breakfast is not one anybody trusts afterwards.
 
-The first read of a cumulative register should establish a BASELINE and emit no
-delta — the same rule the counter-restart handling already needs (a register
-that wraps or resets must not book its whole value again). Worth checking
-whether that path exists and simply misses the first-ever sample, in which case
-this is one `if` and a test, not a feature.
+### Where it is, and why the obvious fix is wrong
+
+`apps/server/src/energy/cost.ts`, `intraBucketBase`. A bucket with no
+predecessor falls back to its own `max - min`. That is right in normal
+operation, and wrong when the bucket holds two incompatible levels.
+
+It already handles one of the two mirror cases — a counter that RESTARTED
+inside the bucket leaves a stale HIGH level in `(min, max]`, and only the rise
+above it was observed. The unhandled mirror is a spurious ZERO: a register a
+real inverter has not populated on its first poll or two, sitting under a
+lifetime reading. `max - 0` then prices the whole odometer into one hour.
+
+**Do not "fix" it by treating `min === 0` as unusable.** Tried: it breaks nine
+existing tests in `cost.test.ts`, because a counter that genuinely starts at
+zero is normal and its first bucket must count. The two cases are
+indistinguishable from `(min, max)` alone.
+
+What would separate them:
+
+  * the counter's UNIT, so "rose 3,755 in an hour" can be judged implausible —
+    but that varies per metric (kWh for most, Wh for some);
+  * the sample COUNT or the first sample's timestamp inside the bucket, which
+    the rollup does not currently carry;
+  * or refusing to record a zero for a cumulative register at the source, in
+    the poll loop, where the profile's metric kind is known.
+
+The third is probably the right one and is a change to the write path, not the
+read path. Needs the raw `metrics_raw` rows from a box's first hour to confirm
+the zero is there at all — everything above is inference from the aggregate.

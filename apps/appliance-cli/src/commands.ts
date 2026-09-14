@@ -33,9 +33,9 @@ export type Outcome =
   | { kind: "factory-reset"; confirm: string | undefined }
   | { kind: "error"; message: string };
 
-const SSH_KEY_USAGE = "usage: sunreye-setup ssh-key add <key> | remove <key> | list";
+const SSH_KEY_USAGE = "usage: sunreye ssh-key add <key> | remove <key> | list";
 
-const HELP = `sunreye-setup — configure this SunReye appliance
+const HELP = `sunreye — configure this SunReye appliance
 
   timezone <zone>       the site's IANA zone, e.g. Europe/Berlin
   lan-access on [--site-id N] | off
@@ -132,7 +132,7 @@ function settle(before: SiteConfig, after: SiteConfig, summary: string): Outcome
 
 function timezoneCommand(site: SiteConfig, rest: readonly string[], ctx: Context): Outcome {
   const zone = rest[0];
-  if (zone === undefined) return error("usage: sunreye-setup timezone <zone>, e.g. Europe/Berlin");
+  if (zone === undefined) return error("usage: sunreye timezone <zone>, e.g. Europe/Berlin");
   if (!ctx.zoneExists(zone)) {
     return error(
       `this system has no time zone '${zone}'. Every day, month and tariff boundary is cut in local time, so a wrong zone is only visible later in the numbers — check the spelling against \`timedatectl list-timezones\`.`,
@@ -144,7 +144,7 @@ function timezoneCommand(site: SiteConfig, rest: readonly string[], ctx: Context
 function lanAccessCommand(site: SiteConfig, rest: readonly string[]): Outcome {
   const [mode, ...flagArgs] = rest;
   if (mode !== "on" && mode !== "off")
-    return error("usage: sunreye-setup lan-access on [--site-id N] | off");
+    return error("usage: sunreye lan-access on [--site-id N] | off");
   const flags = parseFlags(flagArgs, ["--site-id"]);
   if (isFlagError(flags)) return error(flags.error);
   const requested = flags["--site-id"];
@@ -230,7 +230,7 @@ function sshKeyCommand(site: SiteConfig, rest: readonly string[]): Outcome {
 function tlsCommand(site: SiteConfig, rest: readonly string[]): Outcome {
   const mode = rest[0];
   if (mode === undefined || !(TLS_MODES as readonly string[]).includes(mode)) {
-    return error(`usage: sunreye-setup tls ${TLS_MODES.join("|")}`);
+    return error(`usage: sunreye tls ${TLS_MODES.join("|")}`);
   }
   const wanted = mode as TlsMode;
   if ((wanted === "tailscale" || wanted === "both") && !site.tailscale.enable) {
@@ -242,7 +242,7 @@ function tlsCommand(site: SiteConfig, rest: readonly string[]): Outcome {
 }
 
 function tailscaleCommand(rest: readonly string[], ctx: Context): Outcome {
-  if (rest[0] !== "reset") return error("usage: sunreye-setup tailscale reset");
+  if (rest[0] !== "reset") return error("usage: sunreye tailscale reset");
   if (!ctx.isRoot) {
     return error(
       "tailscale reset has to run as root: it stops tailscaled and wipes /var/lib/tailscale. Re-run with sudo.",
@@ -271,9 +271,9 @@ function tailscaleCommand(rest: readonly string[], ctx: Context): Outcome {
  */
 const RETIRED: Record<string, string> = {
   inverter:
-    "`sunreye-setup inverter` is gone: it set a default for a box that had never been configured, and changed nothing on one that had. Set the inverter in the dashboard — Settings → Inverter, or the onboarding wizard on a new box.",
+    "`sunreye inverter` is gone: it set a default for a box that had never been configured, and changed nothing on one that had. Set the inverter in the dashboard — Settings → Inverter, or the onboarding wizard on a new box.",
   simulate:
-    "`sunreye-setup simulate` is gone: simulation is a saved setting now, not an environment variable this tool can reach. Turn it off in the dashboard — Settings → Inverter, where switching it off is also what lets you enter the address.",
+    "`sunreye simulate` is gone: simulation is a saved setting now, not an environment variable this tool can reach. Turn it off in the dashboard — Settings → Inverter, where switching it off is also what lets you enter the address.",
 };
 
 const COMMANDS: Record<
@@ -306,7 +306,7 @@ export function applyCommand(site: SiteConfig, argv: readonly string[], ctx: Con
 
   const handler = COMMANDS[command];
   if (handler === undefined) {
-    return error(`'${command}' is not a sunreye-setup command. Run \`sunreye-setup --help\`.`);
+    return error(`'${command}' is not a sunreye command. Run \`sunreye --help\`.`);
   }
   return handler(site, rest, ctx);
 }

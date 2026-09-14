@@ -164,7 +164,7 @@ describe("the command surface itself", () => {
   test("no arguments prints help rather than doing something", () => {
     const outcome = applyCommand(DEFAULT_SITE, [], ctx);
     if (outcome.kind !== "print") throw new Error("expected a print");
-    expect(outcome.text).toContain("sunreye-setup");
+    expect(outcome.text).toContain("sunreye");
   });
 
   test("--help and help both print it", () => {

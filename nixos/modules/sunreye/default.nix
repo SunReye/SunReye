@@ -1,5 +1,5 @@
 # SunReye as an appliance workload: two podman containers, a reverse proxy in
-# front of them, and the options that a `sunreye-setup` command has to be able to
+# front of them, and the options that a `sunreye` command has to be able to
 # express.
 #
 # The shape mirrors docker/docker-compose.yml deliberately — same images, same

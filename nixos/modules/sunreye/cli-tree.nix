@@ -4,7 +4,7 @@
 # with SIGILL on a CPU without AVX — including the `-baseline` build it already
 # uses — and that is every Atom-class thin client: exactly the cheap mini PCs
 # this image exists for. Reproduced under `-cpu Nehalem` against an otherwise
-# identical image: `sunreye-setup` and the first-boot password window both
+# identical image: `sunreye` and the first-boot password window both
 # failed while the dashboard stayed up, because the server ships as a separately
 # compiled binary. On a real Futro the symptom was
 # `Illegal instruction (core dumped) sunreye-setup help`, and a box whose
@@ -15,7 +15,7 @@
 # no network: it strips types and bundles the one dependency, so nothing is
 # resolved at runtime and there is no node_modules to ship.
 #
-# Two entry points come out of the same tree — `sunreye-setup` and the
+# Two entry points come out of the same tree — `sunreye` and the
 # first-boot window — because building it twice would pin zod twice.
 { pkgs }:
 let

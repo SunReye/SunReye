@@ -45,7 +45,7 @@ describe("run", () => {
   test("help prints and exits 0 without touching the system", () => {
     const h = harness();
     expect(run(["--help"], h.io)).toBe(0);
-    expect(h.out.join("\n")).toContain("sunreye-setup");
+    expect(h.out.join("\n")).toContain("sunreye");
     expect(h.runs).toEqual([]);
     expect(h.writes).toEqual([]);
   });

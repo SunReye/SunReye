@@ -4,7 +4,7 @@
 # The image is built from `nixos/template/` with the flake input overridden to
 # this repo, and on first boot it copies that same template to `/etc/nixos`. So
 # the image and the live box evaluate the same expression — which is what makes
-# `sunreye-setup apply` a safe thing to run on a machine nobody can reach: the
+# `sunreye apply` a safe thing to run on a machine nobody can reach: the
 # rebuild is against a tree whose shape was already proven at image build time.
 { config, lib, pkgs, ... }:
 let
@@ -32,7 +32,7 @@ lib.mkIf (config.appliance.enable && cfg.enable) {
 
       # ── /etc/nixos ──────────────────────────────────────────────────────────
       # Only ever seeded, never updated: after the first boot this tree is the
-      # owner's, and `sunreye-setup` commits to it. Overwriting it on a later
+      # owner's, and `sunreye` commits to it. Overwriting it on a later
       # boot would silently discard their local.nix.
       if [ ! -e /etc/nixos/flake.nix ]; then
         echo "seeding /etc/nixos from the image's own template"
@@ -97,7 +97,7 @@ lib.mkIf (config.appliance.enable && cfg.enable) {
         # The ESP is FAT and mounts on any machine, so this is a file copy on
         # Windows after flashing. Not shredded, unlike the secrets below: a
         # public key is not one, and leaving it means the access survives
-        # anything that eats /root. It does not fight `sunreye-setup ssh-key`,
+        # anything that eats /root. It does not fight `sunreye ssh-key`,
         # which writes the declarative keys to /etc/ssh/authorized_keys.d/root —
         # sshd reads both.
         if [ -s /boot/appliance-seed/authorized_keys ]; then

@@ -114,7 +114,7 @@ Then, from any computer on the same network:
    the box: `systemctl restart caddy`. Caddy caches the failed attempt, so it needs the
    nudge.
 
-   `sunreye-setup show` and the daily health report both print a `tailnet-cert:` line, which
+   `sunreye show` and the daily health report both print a `tailnet-cert:` line, which
    says which certificate the box is actually serving and names this page if it is the
    internal one.
    :::
@@ -147,7 +147,7 @@ Then, from any computer on the same network:
 
    ```bash
    ssh root@sr-xxxx.<your-tailnet>.ts.net
-   sunreye-setup timezone Europe/Berlin
+   sunreye timezone Europe/Berlin
    ```
 
    :::caution[Use the full name, not the short one]
@@ -175,23 +175,23 @@ Then, from any computer on the same network:
    line at the boot menu (press `e`) for a root shell, or re-flash.
    :::
 
-   `sunreye-setup` rebuilds the box, which takes a minute or two and briefly interrupts
+   `sunreye` rebuilds the box, which takes a minute or two and briefly interrupts
    the dashboard. Until you set an inverter the box runs a **simulated** one, so a new
    install has something to look at — the dashboard says so while it is on.
 
-## `sunreye-setup`
+## `sunreye`
 
 Everything an appliance owner needs, without editing any Nix:
 
 ```bash
-sunreye-setup timezone Europe/Berlin
-sunreye-setup lan-access on [--site-id N] | off
-sunreye-setup ssh-key add <key> | remove <key> | list
-sunreye-setup tls tailscale|internal|both
-sunreye-setup tailscale reset
-sunreye-setup factory-reset --confirm <this box's name>
-sunreye-setup show
-sunreye-setup apply
+sunreye timezone Europe/Berlin
+sunreye lan-access on [--site-id N] | off
+sunreye ssh-key add <key> | remove <key> | list
+sunreye tls tailscale|internal|both
+sunreye tailscale reset
+sunreye factory-reset --confirm <this box's name>
+sunreye show
+sunreye apply
 ```
 
 `factory-reset` erases the box back to a first boot — the database and every reading in
@@ -223,7 +223,7 @@ Sharing keeps the MagicDNS name and the certificate, so their phone opens the sa
 and admin.
 
 The other way round works too: let them enrol the box into their own tailnet, and add your
-SSH key (`sunreye-setup ssh-key add ...`) for support. Same image, either way.
+SSH key (`sunreye ssh-key add ...`) for support. Same image, either way.
 
 ## Reaching the rest of the LAN
 
@@ -231,7 +231,7 @@ A box on site can also route you to everything else on that network — the inve
 gateway, a heat pump, the router:
 
 ```bash
-sunreye-setup lan-access on --site-id 1
+sunreye lan-access on --site-id 1
 ```
 
 Then approve the subnet route in the Tailscale console (**Machines → the box → Edit route
@@ -276,7 +276,7 @@ three things people actually add:
   discovery, so the inverter appears with no YAML.
 - Any container at all, via `virtualisation.oci-containers`.
 
-After editing: `sunreye-setup apply`.
+After editing: `sunreye apply`.
 
 :::note
 This is Home Assistant *Core*, not Home Assistant OS — no Supervisor, so no add-ons and no
@@ -320,7 +320,7 @@ install -d -m 0700 /var/lib/secrets
 printf 'https://ntfy.sh/your-secret-topic' > /var/lib/secrets/health-webhook
 chmod 600 /var/lib/secrets/health-webhook
 # then uncomment appliance.health.webhook in /etc/nixos/local.nix and:
-sunreye-setup apply
+sunreye apply
 ```
 
 The report includes disk, memory, both containers and their restart counts, the watchdog,
@@ -333,7 +333,7 @@ shows up before you need it.
 To hand the box to someone else, or re-enrol it into a different tailnet:
 
 ```bash
-sunreye-setup tailscale reset
+sunreye tailscale reset
 ```
 
 It forgets the tailnet and reopens the login page on port 5252. This is the only way that
@@ -351,7 +351,7 @@ lease list, or plug in a monitor — the console shows the hostname and any fail
 and `journalctl -u sunreye-migrate`. On a first boot the database initialises before the
 migrations run, which takes a few minutes.
 
-**No readings.** `sunreye-setup show` — if `simulate` is `true` the box is not talking to
+**No readings.** `sunreye show` — if `simulate` is `true` the box is not talking to
 your inverter yet. If it is `false`, check the address and that nothing else is holding the
 gateway's single TCP slot.
 

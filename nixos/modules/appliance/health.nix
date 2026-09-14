@@ -162,8 +162,8 @@ lib.mkIf cfg.enable {
         ''cat ${pkgs.writeText "appliance-banner-header" cfg.health.bannerHeader}''}
       ${lib.getExe report} 2>/dev/null || true
       echo
-      echo "sunreye-setup show   — this box's configuration"
-      echo "sunreye-setup --help — change it"
+      echo "sunreye show   — this box's configuration"
+      echo "sunreye --help — change it"
       echo
     fi
   '';
