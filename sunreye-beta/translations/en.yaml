@@ -9,11 +9,14 @@ configuration:
   inverter_host:
     name: Inverter host
     description: >-
-      IP address of the inverter's Modbus TCP endpoint (or RS485 gateway).
-      Only seeds the initial configuration; editable in the SunReye UI later.
+      IP address of the inverter's Modbus TCP endpoint, RS485 gateway, or
+      Solarman WiFi logger stick. Only seeds the initial configuration;
+      editable in the SunReye UI later.
   inverter_port:
     name: Inverter port
-    description: Modbus TCP port, typically 502 or 8899.
+    description: >-
+      Modbus TCP port. 502 for a gateway or a native Modbus TCP inverter,
+      8899 for a Solarman/IGEN WiFi logger stick.
   inverter_unit_id:
     name: Modbus unit id
     description: Modbus unit/slave id of the inverter, typically 1.
@@ -21,7 +24,15 @@ configuration:
     name: Modbus transport
     description: >-
       "tcp" for standard Modbus TCP, "rtu-over-tcp" for RTU frames tunneled
-      through an RS485→Ethernet gateway.
+      through an RS485→Ethernet gateway, "solarman-v5" for the Solarman/IGEN
+      WiFi logger stick most hybrids already ship with (port 8899, no extra
+      hardware).
+  inverter_logger_serial:
+    name: Logger serial number
+    description: >-
+      Serial number of the Solarman logger stick, needed only with the
+      "solarman-v5" transport. Normally left empty — SunReye reads it off the
+      stick when you test the connection.
   inverter_simulate:
     name: Simulate inverter
     description: >-

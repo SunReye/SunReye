@@ -57,12 +57,15 @@ Variables below are marked:
 | `INVERTER_HOST` | string | `192.168.1.100` | seed only | Modbus TCP host. |
 | `INVERTER_PORT` | number | `502` | seed only | Modbus TCP port. |
 | `INVERTER_UNIT_ID` | number | `1` | seed only | Modbus unit / slave id. |
+| `INVERTER_TRANSPORT` | `tcp` \| `rtu-over-tcp` \| `solarman-v5` | `tcp` | seed only | Framing on the wire. `solarman-v5` is the Solarman / IGEN WiFi logger stick (port **8899**) most Deye, Sunsynk and Sofar hybrids already carry — no gateway, no RS485. |
+| `INVERTER_LOGGER_SERIAL` | number (uint32) | _(unset)_ | seed only | Serial of the Solarman logger, carried in every v5 request. Normally left unset: the connection test reads it off the stick. Ignored by the other two framings. |
 | `INVERTER_SIMULATE` | boolean | `true` | **env-only** | Generate synthetic telemetry instead of reading real hardware. Deliberately deploy-level, not in DB config. |
 | `POLL_INTERVAL_MS` | number | `1000` | seed only | Poll cadence in ms (floored at 1000). |
 | `HISTORY_FLUSH_INTERVAL_MS` | number | `5000` | **env-only** | How often buffered history rows are flushed to TimescaleDB in one transaction. Batching cuts SSD write wear (TBW) at 1 Hz; live data is unaffected (served from memory). A crash can lose at most this window of history. Set ≤ poll interval to disable batching. |
 
-Two connection fields are DB-only (no env seed): **transport** (`tcp` / `rtu-over-tcp`) and
-**timeout** (default 2000 ms). Set them from [Settings → Devices](/use/settings/#devices).
+One connection field is DB-only (no env seed): **timeout** (default 2000 ms). Set it from
+[Settings → Devices](/use/settings/#devices) — which is also where every field above is
+edited once the first boot is over, because these variables only ever seed.
 
 ## Integration API
 
