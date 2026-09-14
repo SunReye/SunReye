@@ -19,6 +19,7 @@ import {
   connectionParamsOf,
   connectionPatchBody,
   draftFromConnection,
+  withTransport,
 } from "./connection-draft";
 import type { ConnectionView } from "./device-types";
 
@@ -259,5 +260,114 @@ describe("connectionAddress", () => {
     expect(connectionAddress({ ...broker, params: { brokerUrl: "", hasPassword: false } })).toBe(
       "",
     );
+  });
+});
+
+/**
+ * THE SOLARMAN ARM.
+ *
+ * The Solarman/IGEN logger stick that ships in the box with most Deye and
+ * Sunsynk hybrids does not speak Modbus TCP on 502: it wraps Modbus in a vendor
+ * envelope on 8899, addressed by the stick's own serial number. Two of those
+ * three facts belong to the framing, so picking the framing has to carry the
+ * port with it — an operator who picks "Solarman" and is then refused on 502
+ * has been asked to know a number their choice already implies.
+ *
+ * What it must NOT do is overwrite a port somebody typed. A stick behind a port
+ * forward is a real arrangement, and losing that number to a mis-click on a
+ * three-option select is the same loss the two-halved draft exists to prevent.
+ */
+describe("withTransport", () => {
+  test("picking Solarman moves an untouched port to 8899", () => {
+    const next = withTransport(blankDraft("G"), "solarman-v5");
+    expect(next.modbus.transport).toBe("solarman-v5");
+    expect(next.modbus.port).toBe(8899);
+  });
+
+  test("picking a Modbus framing back moves the port back to 502", () => {
+    const solarman = withTransport(blankDraft("G"), "solarman-v5");
+    expect(withTransport(solarman, "tcp").modbus.port).toBe(502);
+    expect(withTransport(solarman, "rtu-over-tcp").modbus.port).toBe(502);
+  });
+
+  test("a hand-typed port survives the switch, in both directions", () => {
+    const draft = blankDraft("G");
+    draft.modbus.port = 5020;
+    const solarman = withTransport(draft, "solarman-v5");
+    expect(solarman.modbus.port).toBe(5020);
+    expect(withTransport(solarman, "tcp").modbus.port).toBe(5020);
+  });
+
+  // The two Modbus framings share a default, so moving between them is not a
+  // port change at all — and must not become one via the Solarman default.
+  test("tcp and rtu-over-tcp leave the port alone in either direction", () => {
+    const draft = blankDraft("G");
+    expect(withTransport(draft, "rtu-over-tcp").modbus.port).toBe(502);
+    expect(withTransport(withTransport(draft, "rtu-over-tcp"), "tcp").modbus.port).toBe(502);
+  });
+
+  test("re-picking the framing already chosen changes nothing", () => {
+    const draft = blankDraft("G");
+    draft.modbus.port = 8899;
+    expect(withTransport(draft, "tcp").modbus.port).toBe(8899);
+  });
+
+  test("it is pure — the draft handed in is not mutated", () => {
+    const draft = blankDraft("G");
+    withTransport(draft, "solarman-v5");
+    expect(draft.modbus.transport).toBe("tcp");
+    expect(draft.modbus.port).toBe(502);
+  });
+
+  test("everything else on the draft rides across untouched", () => {
+    const draft = blankDraft("Keller");
+    draft.modbus.host = "10.0.0.9";
+    draft.mqtt.brokerUrl = "mqtt://b:1883";
+    const next = withTransport(draft, "solarman-v5");
+    expect(next.name).toBe("Keller");
+    expect(next.modbus.host).toBe("10.0.0.9");
+    expect(next.mqtt.brokerUrl).toBe("mqtt://b:1883");
+  });
+});
+
+describe("connectionParamsOf — the logger serial", () => {
+  test("rides along once it is known", () => {
+    const draft = withTransport(blankDraft("G"), "solarman-v5");
+    draft.modbus.host = "10.0.0.9";
+    draft.modbus.loggerSerial = 1234567890;
+    expect(connectionParamsOf(draft)).toEqual({
+      kind: "modbus",
+      params: {
+        host: "10.0.0.9",
+        port: 8899,
+        transport: "solarman-v5",
+        timeoutMs: 2000,
+        pollIntervalMs: 1000,
+        loggerSerial: 1234567890,
+      },
+    });
+  });
+
+  // The server discovers the serial during the probe, so the field is optional
+  // and is normally empty when the body is built. An emptied number input reads
+  // back as undefined or as NaN depending on the browser, and neither is a
+  // number the route will take — ABSENT is the only truthful spelling of "not
+  // known yet", and it is what lets the server go and find out.
+  test.each([
+    ["never filled in", undefined],
+    ["emptied to NaN by the number input", Number.NaN],
+    ["zero, which no logger stick has", 0],
+  ])("is absent when it is %s", (_label, value) => {
+    const draft = withTransport(blankDraft("G"), "solarman-v5");
+    draft.modbus.host = "10.0.0.9";
+    draft.modbus.loggerSerial = value as number | undefined;
+    expect(connectionParamsOf(draft)?.params).not.toHaveProperty("loggerSerial");
+  });
+
+  test("a serial typed under a non-Solarman framing is still sent — the server decides", () => {
+    const draft = blankDraft("G");
+    draft.modbus.host = "10.0.0.9";
+    draft.modbus.loggerSerial = 42;
+    expect(connectionParamsOf(draft)?.params).toMatchObject({ loggerSerial: 42 });
   });
 });

@@ -18,6 +18,7 @@
  */
 
 import { expect, type Page, type Request, test } from "@playwright/test";
+import { SOLARMAN_PORT, SOLARMAN_SERIAL } from "./support/api-fixtures";
 import { openPage } from "./support/open-page";
 
 const open = (page: Page) => openPage(page, "/#/settings/devices/add");
@@ -141,6 +142,96 @@ test("the confirm step summarises the device, and Add posts the body the route a
   ]);
   await expect(page).toHaveURL(/#\/settings\/devices$/);
   expect(opened.consoleErrors).toEqual([]);
+});
+
+/**
+ * THE SOLARMAN ARM of the same create step.
+ *
+ * A browser claim because none of it is a value: the port moving when the
+ * framing does, a field that exists only under one option of a native select,
+ * and a probe answer writing back into an input the operator is looking at.
+ * `connection-draft.test.ts` proves the port rule and the body in milliseconds;
+ * what only exists here is whether the select, the reveal and the probe's write
+ * are wired to them.
+ *
+ * The stick is why the framing exists at all: it ships in the box with most
+ * Deye and Sunsynk hybrids, so for a large share of installs 8899 and a serial
+ * are the only way to reach the inverter — and both are things the operator
+ * should not have to know.
+ */
+test("picking Solarman moves the port, reveals the serial, and the probe fills it in", async ({
+  page,
+}) => {
+  const opened = await open(page);
+  const connectionPosts = recordPosts(page, CONNECTIONS);
+
+  await page.locator("select#wizard-connection").selectOption("new");
+  await page.locator("select#connection-kind").selectOption("modbus");
+  await page.getByLabel("Connection name").fill("Logger stick");
+  await page.getByLabel("Host").fill("10.0.0.8");
+
+  // Before the framing is picked: 502, and no serial to ask about.
+  await expect(page.locator("#connection-port")).toHaveValue("502");
+  await expect(page.locator("#connection-logger-serial")).toHaveCount(0);
+
+  await page.locator("select#connection-transport").selectOption("solarman-v5");
+  await expect(page.locator("#connection-port")).toHaveValue(String(SOLARMAN_PORT));
+  const serial = page.locator("#connection-logger-serial");
+  await expect(serial).toBeVisible();
+  // Empty, and saying so: the operator is not being asked for a number the test
+  // is about to discover for them.
+  await expect(serial).toHaveValue("");
+  await expect(serial).toHaveAttribute("placeholder", /test the connection/i);
+
+  // The probe answers with the stick's own serial, and the field takes it.
+  await page.getByRole("button", { name: "Test connection" }).click();
+  await expect(
+    page.getByText(`Reachable — logger ${SOLARMAN_SERIAL} answered, 12 ms.`),
+  ).toBeVisible();
+  await expect(serial).toHaveValue(String(SOLARMAN_SERIAL));
+
+  // And it rides the whole way to the request, framing and all.
+  await next(page).click();
+  await page.getByRole("button", { name: "Modbus device" }).click();
+  await next(page).click();
+  await describeMeter(page);
+  await next(page).click();
+  await add(page).click();
+  await expect(page.getByText("Added.")).toBeVisible();
+
+  expect(connectionPosts).toEqual([
+    {
+      name: "Logger stick",
+      kind: "modbus",
+      params: {
+        host: "10.0.0.8",
+        port: SOLARMAN_PORT,
+        transport: "solarman-v5",
+        timeoutMs: 2000,
+        pollIntervalMs: 1000,
+        loggerSerial: SOLARMAN_SERIAL,
+      },
+    },
+  ]);
+  expect(opened.consoleErrors).toEqual([]);
+});
+
+test("a hand-typed port survives the framing switch", async ({ page }) => {
+  await open(page);
+  await page.locator("select#wizard-connection").selectOption("new");
+  await page.locator("select#connection-kind").selectOption("modbus");
+  await page.getByLabel("Connection name").fill("Forwarded stick");
+  await page.getByLabel("Host").fill("10.0.0.8");
+
+  // A stick behind a port forward is a real arrangement. Losing that number to
+  // a mis-click on the framing select would be found out at the next poll
+  // failure, by someone sure they filled the field in correctly.
+  await page.locator("#connection-port").fill("5020");
+  await page.locator("select#connection-transport").selectOption("solarman-v5");
+  await expect(page.locator("#connection-port")).toHaveValue("5020");
+  await page.locator("select#connection-transport").selectOption("tcp");
+  await expect(page.locator("#connection-port")).toHaveValue("5020");
+  await expect(page.locator("#connection-logger-serial")).toHaveCount(0);
 });
 
 test("a device on a gateway created in the same wizard is addressed at the id that came back", async ({

@@ -80,6 +80,6 @@
 
 	{#if creating}
 		<NewConnectionFields bind:connection={draft} kind="choose" />
-		<ConnectionProbe {draft} />
+		<ConnectionProbe bind:draft />
 	{/if}
 </div>
