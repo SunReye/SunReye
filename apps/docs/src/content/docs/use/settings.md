@@ -41,9 +41,11 @@ through. A connection is an endpoint, not a protocol tab — it has a **kind**:
 Picking **Solarman logger** points SunReye at the WiFi stick already fitted to most Deye,
 Sunsynk and Sofar hybrids — no gateway, no wiring; the port is **8899**. It adds one field,
 the logger's serial number, and you can leave it empty: **Test connection** asks the stick
-for its serial and fills it in. See [Requirements](/deploy/requirements/) for the one caveat
-worth knowing, which is that the stick only talks to one client at a time and the Solarman
-cloud app wants the same slot.
+for its serial and fills it in. Sharing the stick with the Solarman cloud app is fine — both
+clients stay connected, they simply take turns on the inverter's RS485 line, which makes each
+poll take about twice as long. See [Requirements](/deploy/requirements/) for measured poll
+times and the firmware that was tested; if the stick is slow, a longer poll interval on the
+connection costs nothing but resolution.
 
 Each group's caption states the kind and endpoint; each device row under it shows the name,
 role, address and profile, plus a badge when there is something to act on:

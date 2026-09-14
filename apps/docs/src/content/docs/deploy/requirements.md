@@ -41,14 +41,23 @@ directly:
 
 No gateway to buy, no RS485 pair to pull, no cabinet to open. Reads and writes both work,
 so scheduling and battery control are available over the stick like over any other
-connection. A full 125-register read takes about 430 ms, which is comfortably inside a
-one-second poll.
+connection.
+
+**How fast is it?** Measured end to end on a Deye SG05LP3 — 99 metrics, the whole profile —
+a poll over the stick takes about **0.7 s**. What costs the time is the number of round
+trips, not their size: each transaction runs roughly 100–200 ms whatever it asks for, so
+SunReye plans as few as it can, merging reads that sit close together into one request. That
+profile needs three. A one-second poll fits, with a little room.
 
 Two things to know before you rely on it:
 
-- **The stick accepts one TCP client at a time.** Solarman's own cloud uploader wants that
-  same slot, so the two take turns: SunReye reconnects on its own, and the Solarman app may
-  show gaps. If the vendor app matters to you, use a gateway instead.
+- **You can keep using the Solarman app.** The stick does not hand out a single slot: two
+  clients connect at once, neither is evicted, and neither sees gaps. It serves them in turn
+  over the one RS485 line it shares with the inverter, so the cost is time, not data — with
+  the cloud uploader reading as well, expect a poll to take roughly twice as long. If your
+  stick is slow, or you would rather be a polite second guest on it, give the connection a
+  longer poll interval under **Settings → Devices**; a 5- or 10-second poll costs resolution
+  and nothing else, and storage is change-driven anyway.
 - **Firmware matters.** Verified on `LSW3_32_5406_SS_04_00.00.00.0A`. Older LSW and LSE
   sticks are untested — they may work, they may ignore the port entirely. Trying costs
   nothing but the five minutes.

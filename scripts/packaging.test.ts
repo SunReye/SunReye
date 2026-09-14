@@ -183,6 +183,47 @@ describe("the addon image", () => {
   });
 });
 
+/**
+ * The add-on's options schema is the Configuration tab: whatever it declares,
+ * the Supervisor renders and accepts. A value it accepts and the server then
+ * rejects is the worst shape a setting can have — the operator gets a green
+ * save and a container that will not start, and the error names an environment
+ * variable they never typed.
+ *
+ * So the ranges here are asserted against the schemas that consume them. Both
+ * the stable and the beta add-on are checked: they are copies, and a copy is
+ * exactly the thing that gets fixed once.
+ */
+describe("the addon's options schema", () => {
+  const ADDONS = ["sunreye", "sunreye-beta"] as const;
+
+  const optionsSchema = async (addon: string): Promise<Record<string, string>> =>
+    (Bun.YAML.parse(await read(`${addon}/config.yaml`)) as { schema: Record<string, string> })
+      .schema;
+
+  for (const addon of ADDONS) {
+    // 0 is the DISCOVERY serial on the Solarman v5 wire — what a request carries
+    // while it is still asking the stick who it is — so it is never a logger's
+    // own number, and `INVERTER_LOGGER_SERIAL`, `modbusParamsSchema` and
+    // `inverterConfigSchema` all floor at 1. The add-on advertised `int(0,…)`,
+    // which made 0 the obvious thing to type into a field whose natural "none"
+    // is zero. Empty is how you say none here; 0 is how you say "do not boot".
+    it(`${addon}: floors the logger serial at 1, where every consuming schema does`, async () => {
+      expect((await optionsSchema(addon)).inverter_logger_serial).toBe("int(1,4294967295)?");
+    });
+  }
+
+  it("keeps the env schema's floor and the add-on's in step", async () => {
+    // Read as text on purpose: importing the env module would run its own
+    // validation, and what is under test is the number an operator is offered,
+    // which is a literal in each file. If this line moves, the assertion above
+    // has to move with it.
+    expect(await read("packages/env/src/server.ts")).toContain(
+      "INVERTER_LOGGER_SERIAL: z.coerce.number().int().min(1).max(0xffffffff).optional()",
+    );
+  });
+});
+
 describe("the addon's front door", () => {
   const readText = async (path: string) => await read(path);
   const SVC_SERVER = "sunreye/rootfs/etc/s6-overlay/s6-rc.d/svc-server/run";
