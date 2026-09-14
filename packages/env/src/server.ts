@@ -1,5 +1,9 @@
 import "dotenv/config";
 import { createEnv } from "@t3-oss/env-core";
+// The one home for the framing list — a dependency-free subpath, deliberately
+// NOT `@SunReye/db`: that package depends on this one, so importing it back
+// would be a cycle turbo's `^check-types` graph refuses.
+import { MODBUS_TRANSPORTS } from "@SunReye/inverter-core/transports";
 import { z } from "zod";
 
 export const env = createEnv({
@@ -60,9 +64,17 @@ export const env = createEnv({
     INVERTER_HOST: z.ipv4().or(z.ipv6()).optional(),
     INVERTER_PORT: z.coerce.number().int().positive().optional(),
     INVERTER_UNIT_ID: z.coerce.number().int().min(0).optional(),
-    // Framing over the socket: standard Modbus `tcp`, or `rtu-over-tcp`
-    // (RTU frames tunneled over TCP — common with RS485→Ethernet gateways).
-    INVERTER_TRANSPORT: z.enum(["tcp", "rtu-over-tcp"]).optional(),
+    // Framing over the socket — DERIVED from `MODBUS_TRANSPORTS` rather than
+    // restated, because the hand-written copies drifted: `tcp`, `rtu-over-tcp`
+    // (RTU tunneled over TCP — common with RS485→Ethernet gateways) and
+    // `solarman-v5` (a Solarman logging stick on port 8899). See
+    // `packages/db/src/connection-kinds.ts` for what each one means.
+    INVERTER_TRANSPORT: z.enum(MODBUS_TRANSPORTS).optional(),
+    // The Solarman logging stick's own serial (uint32). Only ever a SEED, like
+    // every other INVERTER_* var here, and optional even for that framing: the
+    // port discovers the real serial from the stick's own reply, so this just
+    // saves a round trip on the first connect.
+    INVERTER_LOGGER_SERIAL: z.coerce.number().int().min(1).max(0xffffffff).optional(),
     // Polling cadence for the 1Hz God-loop (milliseconds)
     POLL_INTERVAL_MS: z.coerce.number().int().positive().default(1000),
     // History rows are buffered in memory and flushed to TimescaleDB in one

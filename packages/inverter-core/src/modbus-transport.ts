@@ -14,6 +14,7 @@ import { getLogger } from "@logtape/logtape";
 import ModbusRTU from "modbus-serial";
 
 import { decode, encodeWord } from "./codec";
+import { SolarmanV5Port } from "./solarman";
 import type {
   DeviceTransport,
   InverterConnection,
@@ -214,6 +215,64 @@ export function splitBlock(block: ReadBlock, metrics: MetricDef[]): ReadBlock[] 
   return splitIntoBlocks(addrs);
 }
 
+/**
+ * A client that has been told where to dial, and the promise that settles when
+ * it is actually connected.
+ */
+interface Dialed {
+  client: ModbusRTU;
+  /** Carries NO deadline of its own — {@link ModbusTransport} races it. */
+  connected: Promise<unknown>;
+  /** Present only for the Solarman framing, which discovers a logger serial. */
+  solarman?: SolarmanV5Port;
+}
+
+/**
+ * Build a client for one framing.
+ *
+ * Extracted from `getClient` so the three framings sit in one exhaustive
+ * `switch` with a `never` on the default arm: a fourth framing added to
+ * {@link InverterTransport} then fails to compile here instead of silently
+ * falling through to plain Modbus TCP and timing out on a customer's roof.
+ */
+function dial(conn: InverterConnection, timeout: number): Dialed {
+  const framing = conn.transport ?? "tcp";
+  const opts = { port: conn.port };
+  switch (framing) {
+    case "tcp": {
+      const client = new ModbusRTU();
+      return { client, connected: client.connectTCP(conn.host, opts) };
+    }
+    case "rtu-over-tcp": {
+      const client = new ModbusRTU();
+      return { client, connected: client.connectTcpRTUBuffered(conn.host, opts) };
+    }
+    case "solarman-v5": {
+      // A port rather than a shorthand: `ModbusRTU` then keeps owning CRC
+      // checking, transaction timeouts and — load-bearing — the exception
+      // mapping onto `err.modbusCode` that `isIllegalDataAddress` reads.
+      const solarman = new SolarmanV5Port({
+        host: conn.host,
+        port: conn.port,
+        timeoutMs: timeout,
+        ...(conn.loggerSerial === undefined ? {} : { loggerSerial: conn.loggerSerial }),
+      });
+      const client = new ModbusRTU(solarman);
+      return {
+        client,
+        solarman,
+        connected: new Promise<void>((resolve, reject) => {
+          client.open((err?: Error) => (err ? reject(err) : resolve()));
+        }),
+      };
+    }
+    default: {
+      const unreachable: never = framing;
+      throw new Error(`unsupported Modbus framing: ${String(unreachable)}`);
+    }
+  }
+}
+
 /** Modbus exception 2 — the device declined the address range itself. */
 function isIllegalDataAddress(err: unknown): boolean {
   return (
@@ -261,6 +320,13 @@ export class ModbusTransport implements DeviceTransport {
    * concurrent poll read (the interleaved responses would mismatch and time
    * out). */
   private lock: Promise<unknown> = Promise.resolve();
+  /**
+   * The Solarman logging stick's serial as the stick itself reported it during
+   * the last connect — which is not necessarily the one that was configured, and
+   * is the only way to learn it for an endpoint that never had one. Undefined for
+   * every other framing, and until the first successful connect.
+   */
+  private discoveredLoggerSerial: number | undefined;
 
   constructor(profile: InverterProfile, conn: InverterConnection) {
     this.profile = profile;
@@ -288,15 +354,8 @@ export class ModbusTransport implements DeviceTransport {
     if (this.client?.isOpen) return this.client;
     if (this.connecting) return this.connecting;
     this.connecting = (async () => {
-      const next = new ModbusRTU();
       const timeout = this.conn.timeoutMs ?? 2000;
-      const opts = { port: this.conn.port };
-      // Modbus TCP (MBAP framing) vs RTU frames tunneled over the socket, the
-      // latter common with RS485→Ethernet gateways.
-      const connect =
-        this.conn.transport === "rtu-over-tcp"
-          ? next.connectTcpRTUBuffered(this.conn.host, opts)
-          : next.connectTCP(this.conn.host, opts);
+      const { client: next, connected: connect, solarman } = dial(this.conn, timeout);
       try {
         // The connect call itself has no timeout, so an unreachable host would
         // hang forever; race it so a bad address fails fast (test-connection,
@@ -317,11 +376,19 @@ export class ModbusTransport implements DeviceTransport {
       }
       next.setID(this.conn.unitId);
       next.setTimeout(timeout);
+      // Only the Solarman framing learns anything during the connect; the other
+      // two leave this as it was so a reader never sees a stale serial.
+      if (solarman) this.discoveredLoggerSerial = solarman.loggerSerial;
       this.client = next;
       this.connecting = null;
       return next;
     })();
     return this.connecting;
+  }
+
+  /** See {@link discoveredLoggerSerial} — reported so the server can show it. */
+  get loggerSerial(): number | undefined {
+    return this.discoveredLoggerSerial;
   }
 
   /** Open the socket (idempotent); reads and writes do this for themselves. */

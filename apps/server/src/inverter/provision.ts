@@ -304,6 +304,13 @@ export interface EndpointSeed {
    * the type the seed always carried in practice.
    */
   transport: ModbusTransport;
+  /**
+   * The Solarman logging stick's serial, when the seed states one. Carried for
+   * the same reason every other field here is: this seed is the ONLY path an
+   * env-only appliance has onto the spine, so a field dropped here is a field
+   * the box can never be configured with.
+   */
+  loggerSerial?: number;
   unitId: number;
   timeoutMs: number;
   pollIntervalMs: number;
@@ -407,6 +414,9 @@ async function endpointFor(
       transport: seed.transport,
       timeoutMs: seed.timeoutMs,
       pollIntervalMs: seed.pollIntervalMs,
+      // Spread, not assigned: `modbusParamsSchema` types this optional, and a
+      // literal `undefined` would land in the jsonb as an explicit null.
+      ...(seed.loggerSerial === undefined ? {} : { loggerSerial: seed.loggerSerial }),
     },
   });
   return connection.id;

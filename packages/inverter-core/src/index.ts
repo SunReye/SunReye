@@ -1,4 +1,8 @@
 export * from "./types";
+// The framing list, hoisted below every package that needs it (see the file).
+// Also its own subpath (`@SunReye/inverter-core/transports`) for the packages
+// that must not pull `modbus-serial` in through this barrel.
+export { MODBUS_TRANSPORTS, narrowTransport } from "./transports";
 export { decode, encodeWord, registerWidth, clampReports, resetClampReports } from "./codec";
 export type { ClampReport } from "./codec";
 export { ModbusInverter } from "./driver";
@@ -6,6 +10,28 @@ export { ModbusTransport, planReads } from "./modbus-transport";
 export type { ReadBlock } from "./modbus-transport";
 export { HttpReadError, HttpTransport } from "./http-transport";
 export type { HttpFailureKind } from "./http-transport";
+// Solarman V5 is a FRAMING under `kind: "modbus"`, not a device kind — the codec
+// and the port are exported so the server can decode a capture, and so tests
+// outside this package can build a frame without restating the envelope. This
+// barrel is already Node-only (it pulls in `modbus-serial`), so the port living
+// here costs nothing new; it must NOT gain a browser-visible entry point.
+export {
+  checksum,
+  decodeFrame,
+  encodeRequest,
+  splitFrames,
+  SolarmanFrameError,
+  SolarmanV5Port,
+} from "./solarman";
+export type {
+  EncodeRequestInput,
+  SolarmanFrame,
+  SolarmanFrameReason,
+  SolarmanSocket,
+  SolarmanSocketFactory,
+  SolarmanSocketHandlers,
+  SolarmanV5PortOptions,
+} from "./solarman";
 export { applyComputed } from "./computed";
 export { SimulatedInverter } from "./simulator";
 export { genericSimulate } from "./generic-sim";

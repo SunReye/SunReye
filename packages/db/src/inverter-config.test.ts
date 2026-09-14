@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
+import { MODBUS_TRANSPORTS } from "./connection-kinds";
 import { INVERTER_KEY, inverterConfigSchema } from "./inverter-config";
 
 /** The issue paths a rejected config reports, in order. */
@@ -137,6 +138,26 @@ describe("the transport framing", () => {
     expect(inverterConfigSchema.parse({ transport: "rtu-over-tcp" }).transport).toBe(
       "rtu-over-tcp",
     );
+  });
+
+  test("accepts the Solarman V5 framing a logging stick speaks", () => {
+    expect(inverterConfigSchema.parse({ transport: "solarman-v5" }).transport).toBe("solarman-v5");
+  });
+
+  test("admits exactly the framings `MODBUS_TRANSPORTS` names, with no restatement", () => {
+    // The list was written out by hand in three places and drifted: this
+    // document accepted two framings while a `connections` row accepted three.
+    for (const transport of MODBUS_TRANSPORTS) {
+      expect(inverterConfigSchema.parse({ transport }).transport).toBe(transport);
+    }
+  });
+
+  test("carries the logging stick's serial, optionally", () => {
+    expect(
+      inverterConfigSchema.parse({ transport: "solarman-v5", loggerSerial: 3168930341 })
+        .loggerSerial,
+    ).toBe(3168930341);
+    expect(inverterConfigSchema.parse({}).loggerSerial).toBeUndefined();
   });
 
   test("rejects an unknown framing rather than guessing one", () => {

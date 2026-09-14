@@ -66,6 +66,7 @@ const ENV_KEYS = [
   "INVERTER_PORT",
   "INVERTER_UNIT_ID",
   "INVERTER_TRANSPORT",
+  "INVERTER_LOGGER_SERIAL",
   "POLL_INTERVAL_MS",
   "MQTT_ENABLED",
   "MQTT_BROKER_URL",
@@ -142,6 +143,25 @@ describe("the inverter connection before anything is saved", () => {
     });
     // Seeding is a read, not a migration: nothing is written until a save.
     expect(writes()).toHaveLength(0);
+  });
+
+  test("a Solarman stick's framing and serial seed from env too", async () => {
+    // The addon and the compose stack configure an appliance entirely through
+    // env on a fresh install; a framing that seeds but a serial that does not
+    // would cost a discovery round trip on every single connect.
+    Object.assign(envOverrides, {
+      INVERTER_HOST: "10.20.0.63",
+      INVERTER_PORT: 8899,
+      INVERTER_TRANSPORT: "solarman-v5",
+      INVERTER_LOGGER_SERIAL: 3168930341,
+    });
+    const { getInverterConfig } = await freshInstance();
+    expect(await getInverterConfig()).toMatchObject({
+      host: "10.20.0.63",
+      port: 8899,
+      transport: "solarman-v5",
+      loggerSerial: 3168930341,
+    });
   });
 
   test("with nothing in env either, the connection is the unconfigured default", async () => {
