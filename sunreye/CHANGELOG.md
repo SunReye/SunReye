@@ -119,9 +119,9 @@ be needed again.
 ## [3.2.3](https://github.com/SunReye/SunReye/compare/addon-v3.2.2...addon-v3.2.3) (2026-09-14)
 
 
-### Miscellaneous Chores
+### Bug Fixes
 
-* **addon:** Synchronize sunreye-stack versions
+* the appliance is configurable from the dashboard, and the charts stop inventing a first day ([#249](https://github.com/SunReye/SunReye/issues/249)) ([7a589e2](https://github.com/SunReye/SunReye/commit/7a589e2e3fb386f4c589d67138709b32d66d273e))
 
 ## [3.2.2](https://github.com/SunReye/SunReye/compare/addon-v3.2.1...addon-v3.2.2) (2026-09-13)
 
