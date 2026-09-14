@@ -73,6 +73,15 @@ let
       appliance.tailscale.lan.mode = "via";
     }])
 
+    # The serial is only ever put on the wire inside a Solarman v5 envelope, so a
+    # box that carries one under `tcp` or `rtu-over-tcp` is a box whose owner
+    # typed the number off the sticker, saw the option accepted, and is now
+    # waiting for readings from a framing that never sends it.
+    (refuses "a logger serial no framing ever puts on the wire" "loggerSerial" [{
+      appliance.sunreye.inverter.transport = "tcp";
+      appliance.sunreye.inverter.loggerSerial = 1234567890;
+    }])
+
     (refuses "a site id that no mode ever reads" "never uses it" [{
       appliance.tailscale.lan.mode = "direct";
       appliance.tailscale.lan.siteId = 3;

@@ -112,12 +112,35 @@ in
         description = "Modbus unit id (slave address) of the inverter.";
       };
       transport = mkOption {
-        type = types.enum [ "tcp" "rtu-over-tcp" ];
+        type = types.enum [ "tcp" "rtu-over-tcp" "solarman-v5" ];
         default = "tcp";
         description = ''
           `tcp` for a native Modbus-TCP inverter or a protocol-converting gateway;
           `rtu-over-tcp` for the common RS485-to-Ethernet gateways that forward raw
           RTU frames.
+
+          `solarman-v5` for the Solarman/IGEN WiFi logger stick already fitted to
+          most Deye, Sunsynk and Sofar hybrids, which serves the inverter's
+          registers on TCP port 8899 inside a vendor envelope. It is the only
+          option here that needs no gateway bought and no RS485 pair pulled, so
+          for most boxes it is the difference between an afternoon of wiring and
+          an address typed in. The stick accepts exactly one TCP client at a time
+          and the Solarman cloud uploader competes for the same slot; SunReye
+          reconnects on its own, but the vendor app will show gaps.
+        '';
+      };
+      loggerSerial = mkOption {
+        # Printed on the stick, and a uint32 on the wire — hence the range rather
+        # than a plain int.
+        type = types.nullOr (types.ints.between 0 4294967295);
+        default = null;
+        example = 1234567890;
+        description = ''
+          Serial number of the Solarman logger, which every v5 request carries.
+
+          Normally left unset: the server discovers it during a connection test
+          and stores it, so nobody has to read a sticker off a stick bolted behind
+          an inverter. Set it only when discovery cannot reach the logger.
         '';
       };
       profile = mkOption {
@@ -261,6 +284,18 @@ in
         '';
       }
       {
+        assertion = cfg.inverter.loggerSerial == null || cfg.inverter.transport == "solarman-v5";
+        message = ''
+          appliance.sunreye.inverter.loggerSerial is set but
+          appliance.sunreye.inverter.transport is "${cfg.inverter.transport}". The
+          serial only ever goes on the wire inside a Solarman v5 envelope, so
+          under any other framing it is a number nothing reads — accepted at
+          rebuild, and then a wait for readings that never explains itself.
+
+          Set transport = "solarman-v5", or drop the serial.
+        '';
+      }
+      {
         assertion = !cfg.mqtt.haDiscovery || cfg.mqtt.enable;
         message = ''
           appliance.sunreye.mqtt.haDiscovery is on but
@@ -369,6 +404,9 @@ in
         }
         // lib.optionalAttrs (cfg.inverter.host != null) { INVERTER_HOST = cfg.inverter.host; }
         // lib.optionalAttrs (cfg.inverter.profile != null) { INVERTER_PROFILE = cfg.inverter.profile; }
+        // lib.optionalAttrs (cfg.inverter.loggerSerial != null) {
+          INVERTER_LOGGER_SERIAL = toString cfg.inverter.loggerSerial;
+        }
         // lib.optionalAttrs cfg.mqtt.enable {
           MQTT_ENABLED = "true";
           MQTT_BROKER_URL = cfg.mqtt.brokerUrl;
