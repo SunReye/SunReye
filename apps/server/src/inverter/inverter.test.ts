@@ -289,8 +289,11 @@ describe("buildSource", () => {
 
   test("carries the Solarman framing AND the stick's serial into the connection", () => {
     // Dropping the serial would not break the poll — the port rediscovers it —
-    // but it would spend a round trip doing so on every reconnect, and a stick
-    // reconnects whenever the Solarman cloud steals its one TCP slot.
+    // but it would spend a round trip doing so on every reconnect, and round
+    // trips are what a poll over this stick costs (~100-200 ms each, whatever
+    // they ask for). Sticks reconnect often enough for that to matter: they
+    // drop idle sockets on their own, and this firmware serves the Solarman
+    // cloud uploader at the same time rather than evicting anyone for it.
     const source = buildSource(
       hydrateProfile(profile),
       config({ transport: "solarman-v5", port: 8899, loggerSerial: 3168930341 }),

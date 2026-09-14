@@ -124,9 +124,13 @@ in
           registers on TCP port 8899 inside a vendor envelope. It is the only
           option here that needs no gateway bought and no RS485 pair pulled, so
           for most boxes it is the difference between an afternoon of wiring and
-          an address typed in. The stick accepts exactly one TCP client at a time
-          and the Solarman cloud uploader competes for the same slot; SunReye
-          reconnects on its own, but the vendor app will show gaps.
+          an address typed in. The stick serves more than one TCP client at
+          once — measured, SunReye and the Solarman cloud uploader coexist, and
+          neither is evicted — but the clients queue behind the one RS485 bus
+          the stick talks to the inverter over, so a second reader roughly
+          doubles poll latency. If that matters, poll less often — the interval
+          is a setting in SunReye itself, and a slower one costs nothing but
+          resolution.
         '';
       };
       loggerSerial = mkOption {

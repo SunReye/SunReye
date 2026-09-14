@@ -26,9 +26,14 @@ Pick the transport that matches what the inverter is plugged into:
   Sunsynk and Sofar hybrids already ship with. Nothing to buy and nothing to
   wire: point `inverter_host` at the stick's IP and set `inverter_port: 8899`.
   Leave `inverter_logger_serial` empty — SunReye reads the serial off the stick
-  when you test the connection. The stick serves **one** TCP client at a time
-  and the Solarman cloud uploader wants the same slot, so expect gaps in the
-  vendor app; SunReye reconnects by itself. Verified on firmware
+  when you test the connection. (Empty, not `0`: on the wire `0` is the
+  "whichever stick answers" serial, not a number a stick has, and the addon
+  refuses it.) You can keep using the Solarman app: the stick takes both
+  clients at once and evicts neither, it just serves them one after the other
+  over the single RS485 line to the inverter. A full poll of a Deye SG05LP3
+  (99 metrics) measures about **0.7 s** on an idle stick, and a second client
+  roughly doubles that. If it is tight, raise `poll_interval_ms` — a slower
+  poll costs resolution and nothing else. Verified on firmware
   `LSW3_32_5406_SS_04_00.00.00.0A`; older LSW/LSE sticks are untested.
 - **`rtu-over-tcp`** — RS485→Ethernet gateways that tunnel raw RTU frames,
   usually on port 502.
