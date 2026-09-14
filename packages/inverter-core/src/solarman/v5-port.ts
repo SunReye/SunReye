@@ -233,9 +233,17 @@ export class SolarmanV5Port extends EventEmitter {
   /** Wrap one RTU frame in a V5 request and send it. */
   write(rtu: Uint8Array): void {
     if (!this.#openFlag || !this.#socket) {
-      // The stick accepts exactly ONE TCP client and the Solarman cloud steals
-      // the slot, so writing into a closed socket is routine, not exceptional:
-      // the pending transaction times out and `ModbusTransport` reconnects.
+      // Writing into a closed socket is routine, not exceptional: the stick
+      // hangs up freely (a reset under load, its own reboot, the network), and
+      // the pending transaction then times out and `ModbusTransport` reconnects.
+      //
+      // Measured on the live stick, correcting an earlier claim that stood here:
+      // a SECOND TCP client does NOT evict the first. Two concurrent
+      // `ModbusTransport` clients each read all 99 metrics (3096/2949/3209 ms
+      // and 3196/2950/3209 ms, against 1441 ms for a single client) — the stick
+      // serialises them on the shared RS485 bus instead. So the Solarman cloud
+      // is not stealing a slot from us; reconnect handling is here because
+      // sockets die, not because we are being evicted.
       log.warn("solarman: dropping a write on a closed port");
       return;
     }
@@ -473,12 +481,39 @@ export class SolarmanV5Port extends EventEmitter {
     if (wasOpen) this.emit("close");
   }
 
+  /**
+   * A socket error. During the connect it fails the open; afterwards it is a
+   * CLOSE, and deliberately not an `"error"` event.
+   *
+   * `ModbusRTU.open()` registers its own `_onError` on the port it was given and
+   * re-emits the error on the CLIENT (`modbus-serial/index.js:629`), where
+   * nothing in this codebase listens — an unhandled `EventEmitter` "error" is a
+   * thrown exception, and the server installs no `uncaughtException` handler, so
+   * one peer reset would take the whole poller down. modbus-serial's own TCP
+   * ports never reach that path (`ports/tcpport.js:157` swallows a socket error
+   * into its callback), which is why this port is the first that can, and why a
+   * bare `"error"` must never leave it once it is open.
+   *
+   * And a reset is the ROUTINE case here: the stick serialises clients on one
+   * RS485 bus and hangs up freely under load. So it is routed through the same
+   * path a FIN takes — `isOpen` goes false, `"close"` is re-emitted, and
+   * `ModbusTransport.getClient()` builds a fresh client on the next poll. The
+   * in-flight transaction is left to modbus-serial's own timeout, which owns it.
+   * The cause is still reported, on `"port-error"`: a name no library listens
+   * for, so an absent listener costs a diagnostic line rather than the process.
+   */
   #handleError(err: Error): void {
     if (this.#openCallback) {
       this.#failOpen(err);
       return;
     }
-    this.#openFlag = false;
-    this.emit("error", err);
+    log.warn("solarman: socket error on an open port, closing for a clean reconnect: {message}", {
+      message: err.message,
+    });
+    this.emit("port-error", err);
+    // Before destroy(), so the "close" re-emit still sees a port that was open;
+    // a second #handleClose from the socket's own close event is a no-op.
+    this.#handleClose();
+    this.#socket?.destroy();
   }
 }

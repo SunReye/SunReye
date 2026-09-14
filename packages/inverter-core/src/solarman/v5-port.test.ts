@@ -148,7 +148,7 @@ class FakeSocket implements SolarmanSocket {
     this.handlers.onData(chunk);
   }
 
-  /** The peer hanging up — routine here: the stick accepts ONE client. */
+  /** The peer hanging up — routine here: the stick hangs up freely under load. */
   peerClose(): void {
     this.handlers.onClose();
   }
@@ -452,9 +452,11 @@ describe("SolarmanV5Port — closing", () => {
     const { port, socket } = await openDiscovering();
     const closes: number[] = [];
     port.on("close", () => closes.push(1));
-    // Routine, not exceptional: the stick accepts exactly one TCP client, and the
-    // Solarman cloud steals the slot. `ModbusTransport.getClient()` builds a
-    // fresh client on the next call once `isOpen` is false.
+    // Routine, not exceptional: the stick hangs up freely (a reset under load,
+    // its own reboot, the network). `ModbusTransport.getClient()` builds a fresh
+    // client on the next call once `isOpen` is false. NOT because a second
+    // client evicts us — measured on the live stick, it does not; two concurrent
+    // clients both read every metric, serialised on the RS485 bus.
     socket().peerClose();
     expect(port.isOpen).toBe(false);
     expect(closes).toHaveLength(1);
@@ -469,13 +471,41 @@ describe("SolarmanV5Port — closing", () => {
     expect(closes).toHaveLength(1);
   });
 
-  test("a socket error after open re-emits and flips isOpen", async () => {
+  /**
+   * No `"error"` listener is attached here, ON PURPOSE. The previous version of
+   * this test attached one, which is precisely what hid the defect: an
+   * `EventEmitter` with a listener does not throw, so the emit looked harmless
+   * here while being fatal in production — modbus-serial re-emits a port
+   * `"error"` on the `ModbusRTU` client, where nobody listens and Node throws.
+   */
+  test("a socket error after open closes the port instead of emitting a fatal `error`", async () => {
     const { port, socket } = await openDiscovering();
-    const errors: Error[] = [];
-    port.on("error", (e: Error) => errors.push(e));
-    socket().fail(new Error("ECONNRESET"));
+    const closes: number[] = [];
+    const reported: Error[] = [];
+    port.on("close", () => closes.push(1));
+    port.on("port-error", (e: Error) => reported.push(e));
+
+    // Unhandled `"error"` on an EventEmitter throws; this would be the crash.
+    expect(() => socket().fail(new Error("read ECONNRESET"))).not.toThrow();
+
     expect(port.isOpen).toBe(false);
-    expect(errors.map((e) => e.message)).toEqual(["ECONNRESET"]);
+    // The signal `ModbusTransport.getClient()` needs to build a fresh client.
+    expect(closes).toHaveLength(1);
+    // The cause is still reported, just not under a name a library re-emits.
+    expect(reported.map((e) => e.message)).toEqual(["read ECONNRESET"]);
+    // The dead socket is torn down rather than left half-open.
+    expect(socket().destroyed).toBe(true);
+  });
+
+  test("the socket's own close after an error does not re-emit close a second time", async () => {
+    const { port, socket } = await openDiscovering();
+    const closes: number[] = [];
+    port.on("close", () => closes.push(1));
+    socket().fail(new Error("read ECONNRESET"));
+    // A real net.Socket emits "close" after "error"; the port must idempotently
+    // ignore the second notification rather than churn the client twice.
+    socket().peerClose();
+    expect(closes).toHaveLength(1);
   });
 
   test("close ends the socket and calls back", async () => {

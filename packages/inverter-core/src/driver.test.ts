@@ -1,4 +1,5 @@
 import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
+import { EventEmitter } from "node:events";
 
 import type {
   DeviceTransport,
@@ -52,7 +53,14 @@ interface InjectedPort {
   loggerSerial: number | undefined;
 }
 
-class FakeModbusRTU {
+/**
+ * An `EventEmitter`, as the real `ModbusRTU` is — and that inheritance is
+ * load-bearing rather than decorative: modbus-serial re-emits any port error on
+ * the CLIENT, and an `EventEmitter` with no `"error"` listener throws. A fake
+ * that was not one would make `dial()`'s listener untestable and let a fatal
+ * emit look harmless.
+ */
+class FakeModbusRTU extends EventEmitter {
   isOpen = false;
   unitId: number | undefined;
   timeoutMs: number | undefined;
@@ -60,6 +68,7 @@ class FakeModbusRTU {
   readonly injectedPort: InjectedPort | undefined;
 
   constructor(port?: InjectedPort) {
+    super();
     this.injectedPort = port;
     wire.instances.push(this);
   }
@@ -394,20 +403,43 @@ describe("ModbusInverter connection", () => {
     });
   });
 
-  test("builds a fresh client after the stick hands its one TCP slot to the cloud", async () => {
+  /**
+   * The previous test here ("builds a fresh client after the stick hands its one
+   * TCP slot to the cloud") could not fail: it constructed no `SolarmanV5Port`,
+   * flipped its OWN fake's `isOpen`, and asserted a framing-agnostic branch of
+   * `getClient` that would pass with the entire solarman arm of `dial()` deleted.
+   * Its premise was wrong too — see the note on reconnect below. The reconnect it
+   * meant to cover is proven where the behaviour actually lives: `v5-port.test.ts`
+   * (a peer close flips `isOpen` and re-emits `"close"`) and `v5-fallback.test.ts`
+   * (a real reset, a real client, and the next poll reads).
+   *
+   * What IS this layer's business, and is tested here instead: a link error
+   * re-emitted on the client must not be fatal.
+   */
+  test("a link error re-emitted on the client is absorbed rather than thrown", async () => {
     const inv = new ModbusInverter(
       profileOf([raw("a", 100)]),
       connection({ transport: "solarman-v5" }),
     );
     await inv.read();
-    // A Solarman stick accepts exactly ONE client, and the Solarman cloud steals
-    // the slot; the port flips `isOpen` on the peer close so the next poll
-    // reconnects instead of writing into a dead socket forever.
+
+    // `ModbusRTU` is an EventEmitter and re-emits port errors on itself
+    // (modbus-serial/index.js:629). With no listener, this emit THROWS, and the
+    // server installs no `uncaughtException` handler — one peer reset would end
+    // the poller process.
+    expect(() => wire.instances[0]!.emit("error", new Error("read ECONNRESET"))).not.toThrow();
+  });
+
+  test("a client that reports itself closed is replaced on the next poll", async () => {
+    const inv = new ModbusInverter(profileOf([raw("a", 100)]), connection());
+    await inv.read();
+    // Framing-agnostic on purpose: every framing's reconnect runs through this
+    // one `isOpen` check in `getClient`.
     wire.instances[0]!.isOpen = false;
     await inv.read();
 
     expect(wire.instances).toHaveLength(2);
-    expect(wire.connects.map((c) => c.framing)).toEqual(["solarman-v5", "solarman-v5"]);
+    expect(wire.connects).toHaveLength(2);
   });
 
   test("falls back to a two second timeout when the connection omits one", async () => {

@@ -113,17 +113,28 @@ class FakeLogger {
   readonly reads: Ask[] = [];
   readonly rejected: Ask[] = [];
   readonly server = net.createServer();
+  /** Every client socket still attached, so a test can reset one from the peer side. */
+  readonly clients: net.Socket[] = [];
   #buffer: Uint8Array<ArrayBufferLike> = new Uint8Array(0);
 
   async listen(): Promise<number> {
     this.server.on("connection", (socket) => {
+      this.clients.push(socket);
       socket.on("data", (chunk: Buffer) => this.#onData(socket, chunk));
-      // The stick accepts exactly one client and hangs up freely; nothing here
-      // needs to model that, but an error must not take the test process down.
+      // The stick hangs up freely; a test models that explicitly with
+      // `resetClients()`, but an error must never take the test process down.
       socket.on("error", () => {});
     });
     await new Promise<void>((resolve) => this.server.listen(0, "127.0.0.1", resolve));
     return (this.server.address() as net.AddressInfo).port;
+  }
+
+  /**
+   * Hang up the way a loaded stick does: an RST rather than a FIN, which
+   * surfaces on the client as `read ECONNRESET` on an already-open socket.
+   */
+  resetClients(): void {
+    for (const socket of this.clients.splice(0)) socket.resetAndDestroy();
   }
 
   async stop(): Promise<void> {
@@ -239,5 +250,52 @@ describe("a Solarman reject drives the split-and-remember fallback end to end", 
     // The probe is answered by the very reject shape this suite is about, so a
     // regression in reject handling would break discovery too.
     expect(t.loggerSerial).toBe(SERIAL);
+  });
+});
+
+/**
+ * The routine failure this framing is the FIRST one able to reach: a peer reset
+ * on an already-open port.
+ *
+ * modbus-serial registers its own `_onError` on whatever port `open()` was given
+ * and re-emits the error on the `ModbusRTU` client (`index.js:629`). Nothing in
+ * this codebase listens for `"error"` on that client, so a bare `"error"` from
+ * the port is an unhandled `EventEmitter` error: Node throws, `apps/server`
+ * installs no `uncaughtException` handler, and the whole poller process exits.
+ * modbus-serial's own TCP ports cannot get here — `ports/tcpport.js:157` folds a
+ * socket error into its callback and never emits it — so this is new with the
+ * Solarman port, and it has to be proven at THIS layer: a real client, a real
+ * socket, and deliberately no `"error"` listener of the test's own to absorb it.
+ *
+ * A reset is the stick's own behaviour under load, so the bar is not "a tidy
+ * error object" but "the next poll reads".
+ */
+describe("a peer reset on an open Solarman port", () => {
+  test("does not raise an unhandled error, and the next poll reconnects and reads", async () => {
+    const t = await connect();
+    await t.read();
+
+    logger!.resetClients();
+    // Let the RST land and the port tear its socket down before polling again.
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    const { values } = await t.read();
+    expect(values["a"]).toBe(100);
+    expect(values["b"]).toBe(110);
+  });
+
+  test("a reset with a transaction in flight fails that poll and leaves the next one healthy", async () => {
+    const t = await connect();
+    const reading = t.read();
+    // The RST arrives while a block's transaction is still outstanding — the
+    // shape that reproduced the crash, since the port is open and modbus-serial
+    // is waiting on it.
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    logger!.resetClients();
+    await reading.catch(() => {});
+
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    const { values } = await t.read();
+    expect(values["a"]).toBe(100);
   });
 });

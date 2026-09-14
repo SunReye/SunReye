@@ -353,16 +353,43 @@ interface Dialed {
  * {@link InverterTransport} then fails to compile here instead of silently
  * falling through to plain Modbus TCP and timing out on a customer's roof.
  */
+/**
+ * Make a client's `"error"` event survivable.
+ *
+ * `ModbusRTU` is an `EventEmitter` and re-emits any port error on itself
+ * (`modbus-serial/index.js:629`). An `EventEmitter` with no `"error"` listener
+ * THROWS, and the server installs no `uncaughtException` handler, so a link-level
+ * error on any framing would end the process rather than a poll. The port-level
+ * fix (`v5-port.ts` never emits a bare `"error"` once open) is the real one; this
+ * is the belt to its braces, and it covers the two socket framings too, whose
+ * behaviour here depends on a third party's internals.
+ *
+ * Nothing recovers here on purpose: `getClient()` already rebuilds a client once
+ * `isOpen` goes false, so this only has to keep the error from being fatal and
+ * keep it in the log.
+ */
+function absorbClientErrors(client: ModbusRTU, conn: InverterConnection): void {
+  client.on("error", (err: unknown) => {
+    log.warn("modbus link error on {host}:{port}: {message}", {
+      host: conn.host,
+      port: conn.port,
+      message: err instanceof Error ? err.message : String(err),
+    });
+  });
+}
+
 function dial(conn: InverterConnection, timeout: number): Dialed {
   const framing = conn.transport ?? "tcp";
   const opts = { port: conn.port };
   switch (framing) {
     case "tcp": {
       const client = new ModbusRTU();
+      absorbClientErrors(client, conn);
       return { client, connected: client.connectTCP(conn.host, opts) };
     }
     case "rtu-over-tcp": {
       const client = new ModbusRTU();
+      absorbClientErrors(client, conn);
       return { client, connected: client.connectTcpRTUBuffered(conn.host, opts) };
     }
     case "solarman-v5": {
@@ -376,6 +403,7 @@ function dial(conn: InverterConnection, timeout: number): Dialed {
         ...(conn.loggerSerial === undefined ? {} : { loggerSerial: conn.loggerSerial }),
       });
       const client = new ModbusRTU(solarman);
+      absorbClientErrors(client, conn);
       return {
         client,
         solarman,
