@@ -83,7 +83,7 @@ describe("encodeRequest", () => {
   test("an empty PDU still frames — the envelope does not depend on its contents", () => {
     const frame = encodeRequest({ serial: SERIAL, seq: 1, pdu: new Uint8Array(0) });
     expect(frame.length).toBe(11 + 15 + 2);
-    expect(checksum(frame)).toBe(frame[frame.length - 2]);
+    expect(checksum(frame)).toBe(frame[frame.length - 2]!);
   });
 });
 
@@ -187,13 +187,13 @@ describe("decodeFrame", () => {
 
     test("a corrupted checksum", () => {
       const raw = bytes(RESPONSE);
-      raw[raw.length - 2] ^= 0xff;
+      raw[raw.length - 2] = raw[raw.length - 2]! ^ 0xff;
       expect(reasonOf(raw)).toBe("bad-checksum");
     });
 
     test("a corrupted payload byte is caught by the checksum, not silently decoded", () => {
       const raw = bytes(RESPONSE);
-      raw[20] ^= 0x01;
+      raw[20] = raw[20]! ^ 0x01;
       expect(reasonOf(raw)).toBe("bad-checksum");
     });
 
@@ -280,7 +280,7 @@ describe("splitFrames", () => {
 
   test("a bad checksum is still framed — splitting is length-prefixed, validating is decode's job", () => {
     const raw = bytes(RESPONSE);
-    raw[raw.length - 2] ^= 0xff;
+    raw[raw.length - 2] = raw[raw.length - 2]! ^ 0xff;
     const { frames, rest } = splitFrames(raw);
     expect(frames).toHaveLength(1);
     expect(rest).toHaveLength(0);

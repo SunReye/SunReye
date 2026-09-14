@@ -30,7 +30,11 @@ const device = {
 /** Everything the fake observed, for assertions about the wire traffic. */
 const wire = {
   instances: [] as FakeModbusRTU[],
-  connects: [] as { framing: "tcp" | "rtu-over-tcp"; host: string; opts: unknown }[],
+  connects: [] as {
+    framing: "tcp" | "rtu-over-tcp" | "solarman-v5";
+    host: string;
+    opts: unknown;
+  }[],
   reads: [] as { start: number; count: number }[],
   writes: [] as { addr: number; values: number[] }[],
   /** Transaction order, for proving a write never interleaves with a poll. */
@@ -38,13 +42,44 @@ const wire = {
   closes: 0,
 };
 
+/**
+ * What a port handed to `new ModbusRTU(port)` looks like from here. Only the
+ * Solarman framing takes that route — the two socket framings dial through
+ * `connectTCP`/`connectTcpRTUBuffered` and construct the client with nothing.
+ */
+interface InjectedPort {
+  endpoint: { host: string; port: number };
+  loggerSerial: number | undefined;
+}
+
 class FakeModbusRTU {
   isOpen = false;
   unitId: number | undefined;
   timeoutMs: number | undefined;
+  /** The port the transport injected, for the framings that inject one. */
+  readonly injectedPort: InjectedPort | undefined;
 
-  constructor() {
+  constructor(port?: InjectedPort) {
+    this.injectedPort = port;
     wire.instances.push(this);
+  }
+
+  /**
+   * The generic open path, used when the client was constructed around a port
+   * rather than dialled through one of the `connect*` shorthands.
+   */
+  open(cb: (err?: Error) => void): void {
+    const endpoint = this.injectedPort?.endpoint;
+    const host = endpoint?.host ?? "";
+    const opts = { port: endpoint?.port };
+    wire.connects.push({ framing: "solarman-v5", host, opts });
+    device.connect(host, opts).then(
+      () => {
+        this.isOpen = true;
+        cb();
+      },
+      (err: Error) => cb(err),
+    );
   }
   async connectTCP(host: string, opts: unknown): Promise<void> {
     wire.connects.push({ framing: "tcp", host, opts });
@@ -337,6 +372,42 @@ describe("ModbusInverter connection", () => {
     await inv.read();
 
     expect(wire.connects[0]!.framing).toBe("rtu-over-tcp");
+  });
+
+  test("dials with Solarman V5 framing through a logging stick", async () => {
+    const inv = new ModbusInverter(
+      profileOf([raw("a", 100)]),
+      // The stick is a FRAMING, not a device kind: the profile, the read plan and
+      // everything above this line is the same as for a plain TCP gateway.
+      connection({ host: "10.20.0.63", port: 8899, transport: "solarman-v5" }),
+    );
+    await inv.read();
+
+    expect(wire.connects).toEqual([
+      { framing: "solarman-v5", host: "10.20.0.63", opts: { port: 8899 } },
+    ]);
+    // FC03/FC16 come from a real `ModbusRTU` wrapped around the V5 port, so the
+    // client is constructed WITH one rather than dialled through a shorthand.
+    expect(wire.instances[0]!.injectedPort?.endpoint).toEqual({
+      host: "10.20.0.63",
+      port: 8899,
+    });
+  });
+
+  test("builds a fresh client after the stick hands its one TCP slot to the cloud", async () => {
+    const inv = new ModbusInverter(
+      profileOf([raw("a", 100)]),
+      connection({ transport: "solarman-v5" }),
+    );
+    await inv.read();
+    // A Solarman stick accepts exactly ONE client, and the Solarman cloud steals
+    // the slot; the port flips `isOpen` on the peer close so the next poll
+    // reconnects instead of writing into a dead socket forever.
+    wire.instances[0]!.isOpen = false;
+    await inv.read();
+
+    expect(wire.instances).toHaveLength(2);
+    expect(wire.connects.map((c) => c.framing)).toEqual(["solarman-v5", "solarman-v5"]);
   });
 
   test("falls back to a two second timeout when the connection omits one", async () => {
