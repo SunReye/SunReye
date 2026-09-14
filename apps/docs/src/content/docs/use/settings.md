@@ -35,8 +35,15 @@ through. A connection is an endpoint, not a protocol tab — it has a **kind**:
 
 | Kind | What it is | What attaches to it |
 | --- | --- | --- |
-| **Modbus** | a gateway: transport (**Modbus TCP** or **RTU-over-TCP**), `host:port`, unit timeout and poll interval | devices addressed by unit id, each speaking a [profile](/profiles/concept/) |
+| **Modbus** | a gateway: transport (**Modbus TCP**, **RTU-over-TCP**, or a **Solarman logger**), `host:port`, unit timeout and poll interval | devices addressed by unit id, each speaking a [profile](/profiles/concept/) |
 | **MQTT** | a broker: URL, username, a write-only password, and an optional client id | [integrations](#integrations) — coded services, which may in turn provide devices of their own |
+
+Picking **Solarman logger** points SunReye at the WiFi stick already fitted to most Deye,
+Sunsynk and Sofar hybrids — no gateway, no wiring; the port is **8899**. It adds one field,
+the logger's serial number, and you can leave it empty: **Test connection** asks the stick
+for its serial and fills it in. See [Requirements](/deploy/requirements/) for the one caveat
+worth knowing, which is that the stick only talks to one client at a time and the Solarman
+cloud app wants the same slot.
 
 Each group's caption states the kind and endpoint; each device row under it shows the name,
 role, address and profile, plus a badge when there is something to act on:

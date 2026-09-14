@@ -22,11 +22,43 @@ An inverter is **not** required to run SunReye. The built-in
 [simulator](/start/quick-start/) (`INVERTER_SIMULATE=true`, the default) generates coherent
 fake telemetry, so you can develop, demo, and evaluate the whole stack with no hardware.
 
-To connect real hardware you need an inverter reachable over **Modbus TCP** (or
-**RTU-over-TCP** via a serial gateway) on your network. Support is profile-driven — see
-[Supported Inverters](/profiles/supported/).
+To connect real hardware you need an inverter reachable over the network. There are three
+ways to get there, and for most people the first one costs nothing and takes five minutes.
+Support is profile-driven — see [Supported Inverters](/profiles/supported/).
 
-### Recommended hardware
+### Start here: the logger stick you already have
+
+Most Deye, Sunsynk and Sofar hybrids ship with a **Solarman / IGEN WiFi logger stick** —
+the little dongle plugged into the side of the inverter that uploads to the Solarman app.
+It serves the inverter's Modbus registers on the local network, and SunReye can poll it
+directly:
+
+- **Connection kind:** Solarman logger (`solarman-v5`)
+- **Host:** the stick's IP address on your LAN — your router's client list will show it
+- **Port:** **8899**
+- **Logger serial:** leave it blank. SunReye reads the serial off the stick when you press
+  **Test connection**; you only ever type it in if that cannot reach the logger.
+
+No gateway to buy, no RS485 pair to pull, no cabinet to open. Reads and writes both work,
+so scheduling and battery control are available over the stick like over any other
+connection. A full 125-register read takes about 430 ms, which is comfortably inside a
+one-second poll.
+
+Two things to know before you rely on it:
+
+- **The stick accepts one TCP client at a time.** Solarman's own cloud uploader wants that
+  same slot, so the two take turns: SunReye reconnects on its own, and the Solarman app may
+  show gaps. If the vendor app matters to you, use a gateway instead.
+- **Firmware matters.** Verified on `LSW3_32_5406_SS_04_00.00.00.0A`. Older LSW and LSE
+  sticks are untested — they may work, they may ignore the port entirely. Trying costs
+  nothing but the five minutes.
+
+If the stick works, you are done and the rest of this section is not for you.
+
+### If the stick is not an option
+
+Then the inverter needs to reach the network some other way: **Modbus TCP** natively, or
+**RTU-over-TCP** through a serial gateway wired to the inverter's RS485 terminals.
 
 These are devices the maintainer runs and can vouch for — they work really well in practice.
 Nothing here is required; any Modbus-TCP-capable gateway will do.

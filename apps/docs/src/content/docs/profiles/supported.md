@@ -42,6 +42,7 @@ There are two ways support grows — both add **data**, never engine forks:
 2. **Author your own** — describe any Modbus inverter with the typed profile SDK and either
    run it locally or publish it to a repo. See [Authoring a Profile](/profiles/authoring/).
 
-If your inverter speaks Modbus TCP (or RTU-over-TCP through a gateway) and you have its
-register map, you can write a profile for it. See the [Roadmap](/reference/roadmap/) for
+If your inverter speaks Modbus TCP — natively, through an RS485 gateway as RTU-over-TCP, or
+through the Solarman/IGEN WiFi logger stick it probably already has (port 8899) — and you
+have its register map, you can write a profile for it. See the [Roadmap](/reference/roadmap/) for
 what's planned around multi-inverter support and community profiles.
