@@ -160,13 +160,24 @@ export interface SourceConnection {
 }
 
 /**
- * Build a live source for a profile + endpoint. Whether it's the simulator or a
- * real Modbus source is a deploy-level choice (`INVERTER_SIMULATE`), not part of
- * the saved connection.
+ * Build a live source for a profile + endpoint.
+ *
+ * `simulate` is passed in rather than read from env. It used to be
+ * `env.INVERTER_SIMULATE` here, which made it a deploy-level choice nothing
+ * could change afterwards — and on an appliance that meant an owner could save
+ * their inverter's address and keep reading the simulator, with no error. It is
+ * now a saved setting (`../settings/config.ts`), and the CALLER decides: the
+ * poll loop passes what the box is configured for, and a connection test passes
+ * false, because testing an address against a simulator answers a question
+ * nobody asked.
  */
-export function buildSource(profile: InverterProfile, config: SourceConnection): InverterSource {
+export function buildSource(
+  profile: InverterProfile,
+  config: SourceConnection,
+  simulate: boolean,
+): InverterSource {
   return createInverter(profile, {
-    simulate: env.INVERTER_SIMULATE,
+    simulate,
     connection: {
       // Empty when the inverter hasn't been configured yet; a real connect then
       // fails (handled by the God-loop), while simulate mode ignores it entirely.

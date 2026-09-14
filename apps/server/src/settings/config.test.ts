@@ -137,6 +137,7 @@ describe("the inverter connection before anything is saved", () => {
       unitId: 3,
       transport: "rtu-over-tcp",
       timeoutMs: 2000,
+      simulate: false,
       pollIntervalMs: 2000,
     });
     // Seeding is a read, not a migration: nothing is written until a save.
@@ -152,7 +153,32 @@ describe("the inverter connection before anything is saved", () => {
       transport: "tcp",
       timeoutMs: 2000,
       pollIntervalMs: 1000,
+      simulate: false,
     });
+  });
+
+  // The seam that makes the dashboard able to turn simulation off at all: the
+  // env var decides a FRESH install and nothing after it. Docker and the addon
+  // keep the behaviour they had; an appliance owner can change it.
+  test("INVERTER_SIMULATE seeds the stored value", async () => {
+    Object.assign(envOverrides, { INVERTER_SIMULATE: true });
+    const { getSimulate } = await freshInstance();
+
+    expect(await getSimulate()).toBe(true);
+  });
+
+  test("a saved value wins over the env var", async () => {
+    Object.assign(envOverrides, { INVERTER_SIMULATE: true });
+    const { getSimulate, setSimulate } = await freshInstance();
+    expect(await getSimulate()).toBe(true);
+
+    await setSimulate(false);
+
+    // The appliance's site.json still says simulate=true in the container's
+    // environment. This is exactly the case that used to be unfixable from the
+    // dashboard: the env var was read on every poll, so turning it off was
+    // impossible without editing site.json over SSH.
+    expect(await getSimulate()).toBe(false);
   });
 
   test("unit id 0 from env is an address, not an unset field", async () => {

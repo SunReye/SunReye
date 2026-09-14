@@ -40,7 +40,10 @@ const HELP = `sunreye-setup — configure this SunReye appliance
   inverter <host> [--port 502] [--unit 1] [--transport tcp|rtu-over-tcp]
                         point the poller at an inverter (turns simulation off)
   timezone <zone>       the site's IANA zone, e.g. Europe/Berlin
-  simulate on|off       run against a fake inverter
+  simulate on|off       run against a fake inverter. SEEDS a box that has never
+                        been configured; once the dashboard has saved an
+                        inverter, that setting wins and this changes nothing —
+                        use Settings → Inverter there
   lan-access on [--site-id N] | off
                         advertise this LAN to the tailnet; --site-id adds the
                         4via6 encoding, which is what lets a second site exist
@@ -232,7 +235,7 @@ function simulateCommand(site: SiteConfig, rest: readonly string[]): Outcome {
   if (mode !== "on" && mode !== "off") return error("usage: sunreye-setup simulate on|off");
   if (mode === "off" && site.inverter.host === null) {
     return error(
-      "there is no inverter configured, so switching simulation off would leave this box polling nothing and recording nothing. Set an address first: sunreye-setup inverter <host>",
+      "there is no inverter configured, so switching simulation off would leave this box polling nothing and recording nothing. Set an address first: sunreye-setup inverter <host> — or, on a box that has already been set up, turn it off in the dashboard under Settings → Inverter, which is where this setting now lives.",
     );
   }
   return settle(

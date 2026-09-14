@@ -8,6 +8,8 @@
  * read and {@link mergeMqttWrite} preserves the stored one when a write omits it.
  */
 
+import { z } from "zod";
+
 import { env } from "@SunReye/env/server";
 import {
   INVERTER_KEY,
@@ -25,6 +27,14 @@ const envInverterConfig = (): InverterConfig =>
     unitId: env.INVERTER_UNIT_ID,
     transport: env.INVERTER_TRANSPORT,
     pollIntervalMs: env.POLL_INTERVAL_MS,
+    // SEEDS the saved config rather than overriding it forever. This is what
+    // keeps Docker and the addon working exactly as before — their env var
+    // still decides a fresh install — while letting the dashboard change it
+    // afterwards. When it was read at every poll instead, an appliance owner
+    // could save their inverter's address and keep seeing fake data, because
+    // site.json had put INVERTER_SIMULATE=true in the container's environment
+    // and nothing in the UI could reach it.
+    simulate: env.INVERTER_SIMULATE,
   });
 
 /**
@@ -76,6 +86,37 @@ let mqttCache: MqttConfig | null = null;
 export async function getInverterConfig(): Promise<InverterConfig> {
   inverterCache ??= await readSetting(INVERTER_KEY, inverterConfigSchema, envInverterConfig());
   return inverterCache;
+}
+
+/**
+ * Whether the poller reads a fake inverter.
+ *
+ * Its OWN `app_settings` key, not a field of the legacy document above and not
+ * a column on a `connections` row. Both would be wrong: the legacy document is
+ * deliberately read-only (see above), and simulation is not a property of an
+ * endpoint — it is the answer to "is there anything real to poll at all", which
+ * is one fact per box.
+ *
+ * `INVERTER_SIMULATE` seeds it and then stops mattering. That is the whole
+ * change: it used to be read on every poll, so an appliance owner could save
+ * their inverter's address in Settings and keep seeing fake data, because
+ * site.json had put the var in the container's environment and no dashboard
+ * control could reach it.
+ */
+const SIMULATE_KEY = "inverter-simulate";
+const simulateSchema = z.object({ simulate: z.boolean() });
+let simulateCache: boolean | null = null;
+
+export async function getSimulate(): Promise<boolean> {
+  simulateCache ??= (
+    await readSetting(SIMULATE_KEY, simulateSchema, { simulate: env.INVERTER_SIMULATE })
+  ).simulate;
+  return simulateCache;
+}
+
+export async function setSimulate(simulate: boolean): Promise<void> {
+  await writeSetting(SIMULATE_KEY, { simulate });
+  simulateCache = simulate;
 }
 
 export async function getMqttConfig(): Promise<MqttConfig> {

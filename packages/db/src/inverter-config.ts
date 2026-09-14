@@ -33,10 +33,25 @@ export const inverterConfigSchema = z
      * a 1 s cadence — faster ticks just get dropped by the in-flight guard.
      */
     pollIntervalMs: z.number().int().min(1000).max(3_600_000).default(1000),
+    /**
+     * Read a fake inverter instead of the endpoint above.
+     *
+     * Part of the SAVED config, not `INVERTER_SIMULATE` alone. It used to be
+     * env-only, which split the inverter settings across two owners: the host
+     * lived here and was editable from the dashboard, simulate lived in the
+     * container's environment and was not. On a freshly flashed appliance that
+     * dead-ended the path almost everyone uses — enter the inverter's address in
+     * Settings, save it successfully, and keep seeing fake data, with no error
+     * and nothing to click. `INVERTER_SIMULATE` now SEEDS this the first time
+     * the config is read, so Docker and the addon are unchanged.
+     */
+    simulate: z.boolean().default(false),
   })
-  // Simulation is a deploy-level concern (env `INVERTER_SIMULATE`), not part of
-  // this saved config, so the connection settings always describe a real target
-  // and are always validated. The defaults are valid, so a fresh config passes.
+  // The connection settings are validated whether or not simulation is on: a
+  // saved host always describes a real target, so turning simulation off is
+  // never a save that can fail. The defaults are valid, so a fresh config
+  // passes — a box with neither a host nor simulation is a real state (nothing
+  // configured yet) and must stay parseable.
   .superRefine((cfg, ctx) => {
     for (const c of CONNECTION_CHECKS) {
       if (c.ok(cfg)) continue;

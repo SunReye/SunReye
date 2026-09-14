@@ -237,8 +237,6 @@
   "inverter_status_simulated": "Simuliert",
   "inverter_status_disconnected": "Getrennt",
   "inverter_test_ok": "Verbindung OK — {count} Messwerte in {ms} ms",
-  "inverter_simulate_pre": "Läuft im Simulationsmodus (festgelegt durch die Umgebungsvariable",
-  "inverter_simulate_post": "). Die untenstehenden Verbindungseinstellungen werden gespeichert, aber erst verwendet, wenn die Simulation deaktiviert ist.",
   "inverter_transport": "Transport",
   "inverter_timeout": "Zeitlimit (ms)",
   "inverter_poll_interval": "Abfrageintervall (ms)",
@@ -1110,5 +1108,8 @@
   "integration_live_plant_wide": "Gilt für die gesamte Integration, nicht pro Gerät.",
   "integration_address_index": "Index {id}",
   "integration_address_internal": "Intern",
-  "integration_open": "Öffnen"
+  "integration_open": "Öffnen",
+  "inverter_simulate_label": "Wechselrichter simulieren",
+  "inverter_simulate_desc": "Zeigt erfundene Messwerte, statt die Adresse unten abzufragen. Bleibt an, bis dieses Gerät auf einen echten Wechselrichter zeigt — damit eine neue Installation überhaupt etwas anzeigt.",
+  "inverter_simulate_on_notice": "Diese Werte stammen nicht aus Ihrer Anlage."
 }

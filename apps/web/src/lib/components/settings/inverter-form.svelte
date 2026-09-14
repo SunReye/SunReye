@@ -6,6 +6,8 @@
 	import FormActions from "./form-actions.svelte";
 	import InverterConnectionFields from "./inverter-connection-fields.svelte";
 	import InverterStatusBadge from "./inverter-status-badge.svelte";
+	import { Label } from "$lib/components/ui/label";
+	import { Switch } from "$lib/components/ui/switch";
 	import Section from '$lib/components/layout/section.svelte';
 	import EmptyState from '$lib/components/layout/empty-state.svelte';
 	import SnapshotDialog from "./snapshot-dialog.svelte";
@@ -82,9 +84,19 @@
 	 * before advancing instead of leaving a tested-but-unsaved config behind.
 	 * Returns whether the write succeeded.
 	 */
+	/**
+	 * Whether this draft is missing the one thing it cannot be saved without.
+	 *
+	 * A host is required only when something real is meant to be polled. While
+	 * simulating there is nothing to dial, and demanding an address made the form
+	 * unsaveable on exactly the box that needs it most: a fresh install with no
+	 * inverter yet could not even turn the simulator off.
+	 */
+	const missingHost = $derived(cfg !== null && !cfg.simulate && !cfg.host.trim());
+
 	export async function save(): Promise<boolean> {
 		if (!cfg) return false;
-		if (!cfg.host.trim()) {
+		if (missingHost) {
 			toast.error(m.inverter_toast_host_required());
 			return false;
 		}
@@ -116,12 +128,34 @@
 			<InverterStatusBadge {status} />
 		{/snippet}
 
-		{#if simulated}
-			<p class="border border-border bg-muted/40 p-2.5 text-xs text-muted-foreground">
-				{m.inverter_simulate_pre()} <code>INVERTER_SIMULATE</code>
-				{m.inverter_simulate_post()}
-			</p>
-		{/if}
+		<!--
+			A control, not a notice. This used to say "set by the INVERTER_SIMULATE
+			environment variable" — true for Docker, useless everywhere else, and on
+			an appliance actively wrong: the owner cannot reach that variable, so the
+			only path most people use dead-ended here. They would save their
+			inverter's address, keep seeing invented readings, and have nothing to
+			click.
+		-->
+		<div class="flex items-start justify-between gap-4 border border-border p-2.5">
+			<div class="flex flex-col gap-1">
+				<Label for="inverter-simulate">{m.inverter_simulate_label()}</Label>
+				<p class="max-w-prose text-xs text-muted-foreground">
+					{m.inverter_simulate_desc()}
+				</p>
+				{#if cfg.simulate}
+					<p class="text-xs font-medium text-muted-foreground">
+						{m.inverter_simulate_on_notice()}
+					</p>
+				{/if}
+			</div>
+			<Switch
+				id="inverter-simulate"
+				checked={cfg.simulate}
+				onCheckedChange={(value) => {
+					if (cfg) cfg.simulate = value;
+				}}
+			/>
+		</div>
 
 		<InverterConnectionFields bind:cfg {status} />
 	</Section>

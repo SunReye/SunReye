@@ -158,10 +158,24 @@ const logger = {
     warnings.push(template);
   },
 };
-const deps = (store: EndpointStore) => ({ store, logger });
+/**
+ * The simulator toggle these tests run against, as a variable rather than a
+ * database. `simulate` rides on the connection settings' shape but is one fact
+ * per box, so the save writes it here and the read answers from here.
+ */
+let simulated = false;
+const deps = (store: EndpointStore) => ({
+  store,
+  logger,
+  readSimulate: async () => simulated,
+  writeSimulate: async (value: boolean) => {
+    simulated = value;
+  },
+});
 
 /** A legacy reader answer, for the fallback paths. */
 const legacyConfig = (over: Record<string, unknown> = {}) => ({
+  simulate: false,
   host: "10.9.9.9",
   port: 1502,
   transport: "tcp" as const,
@@ -458,6 +472,7 @@ describe("readConnectionSettings", () => {
       unitId: 4,
       timeoutMs: 2000,
       pollIntervalMs: 1000,
+      simulate: false,
     });
   });
 
@@ -466,7 +481,7 @@ describe("readConnectionSettings", () => {
     // must still open on the env-seeded defaults it has always shown.
     const { store } = memoryStore({ devices: [], connections: [] });
     const legacy = legacyConfig();
-    expect(await readConnectionSettings({ store, logger, legacy: async () => legacy })).toEqual(
+    expect(await readConnectionSettings({ ...deps(store), legacy: async () => legacy })).toEqual(
       legacy,
     );
   });
@@ -476,8 +491,7 @@ describe("readConnectionSettings", () => {
     // so the device that carries `unit_id` does not exist yet.
     const { store } = memoryStore({ devices: [], connections: [connection()] });
     const read = await readConnectionSettings({
-      store,
-      logger,
+      ...deps(store),
       legacy: async () => legacyConfig({ host: "ignored" }),
     });
     expect(read.host).toBe("10.0.0.5");
@@ -490,8 +504,7 @@ describe("readConnectionSettings", () => {
       connections: [connection()],
     });
     const read = await readConnectionSettings({
-      store,
-      logger,
+      ...deps(store),
       legacy: async () => legacyConfig({ unitId: 0 }),
     });
     expect(read.unitId).toBe(0);
@@ -499,6 +512,7 @@ describe("readConnectionSettings", () => {
 });
 
 const typed = (over: Record<string, unknown> = {}) => ({
+  simulate: false,
   host: "10.0.0.9",
   port: 8899,
   transport: "rtu-over-tcp" as const,
@@ -528,7 +542,7 @@ describe("saveConnectionSettings across kinds", () => {
     // MODBUS endpoint, even though it has a connection.
     const { store } = memoryStore({ connections: [brokerConnection(11)] });
     const fallback = legacyConfig();
-    expect(await readConnectionSettings({ store, logger, legacy: async () => fallback })).toEqual(
+    expect(await readConnectionSettings({ ...deps(store), legacy: async () => fallback })).toEqual(
       fallback,
     );
   });
@@ -678,7 +692,7 @@ describe("applyConnectionSave", () => {
         return store.ensureConnection(plantId, settings);
       },
     };
-    await applyConnectionSave(typed(), recorded.effects, { store: wrapped, logger });
+    await applyConnectionSave(typed(), recorded.effects, { ...deps(wrapped) });
     expect(recorded.order).toEqual(["write", "provision", "reload"]);
     expect((state.connections[0]?.params as ModbusParams | undefined)?.host).toBe("10.0.0.9");
   });
@@ -690,8 +704,7 @@ describe("applyConnectionSave", () => {
     const { store } = memoryStore({ devices: [], connections: [] });
     const recorded = effects();
     const stored = await applyConnectionSave(typed({ host: "  10.0.0.9  " }), recorded.effects, {
-      store,
-      logger,
+      ...deps(store),
     });
     expect(recorded.seeds).toEqual([stored]);
     expect(stored.host).toBe("10.0.0.9");
@@ -709,7 +722,7 @@ describe("applyConnectionSave", () => {
       },
     };
     await expect(
-      applyConnectionSave(typed(), recorded.effects, { store: failing, logger }),
+      applyConnectionSave(typed(), recorded.effects, { ...deps(failing) }),
     ).rejects.toThrow("concurrent update");
     expect(recorded.order).toEqual([]);
   });
@@ -777,6 +790,7 @@ describe("dbEndpointStore", () => {
           transport: "tcp",
           timeoutMs: 2000,
           pollIntervalMs: 1000,
+          simulate: false,
         },
       },
     ]);

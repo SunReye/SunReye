@@ -237,6 +237,7 @@ describe("buildSource", () => {
     unitId: 1,
     timeoutMs: 2000,
     pollIntervalMs: 1000,
+    simulate: false,
     ...over,
   });
 
@@ -251,7 +252,7 @@ describe("buildSource", () => {
   test("binds the source to the profile and the saved connection", () => {
     const hydrated = hydrateProfile(profile);
 
-    const source = buildSource(hydrated, config());
+    const source = buildSource(hydrated, config(), false);
 
     expect(source.profile).toBe(hydrated);
     expect(connectionOf(source)).toMatchObject({
@@ -266,7 +267,7 @@ describe("buildSource", () => {
   test("an unconfigured inverter yields an empty host rather than undefined", () => {
     // Onboarding builds a source before a host is saved; the connect then fails
     // in the poll loop, which is handled — an undefined host would not be.
-    const source = buildSource(hydrateProfile(profile), config({ host: undefined }));
+    const source = buildSource(hydrateProfile(profile), config({ host: undefined }), false);
 
     expect(connectionOf(source).host).toBe("");
   });
@@ -276,6 +277,7 @@ describe("buildSource", () => {
     const source = buildSource(
       hydrateProfile(profile),
       config({ transport: "rtu-over-tcp", unitId: 0, port: 8899 }),
+      false,
     );
 
     expect(connectionOf(source)).toMatchObject({
@@ -285,10 +287,24 @@ describe("buildSource", () => {
     });
   });
 
+  // The whole point of the parameter: this used to be `env.INVERTER_SIMULATE`,
+  // so an appliance with simulate seeded on could never read a real inverter
+  // however the connection was saved.
+  test("the caller decides whether it is the simulator, not the environment", () => {
+    const hydrated = hydrateProfile(profile);
+
+    // A simulated source is a SimulatedInverter, which has no Modbus transport
+    // to carry a connection; a real one is a ModbusInverter that does.
+    expect(connectionOf(buildSource(hydrated, config(), true))).toEqual({});
+    expect(connectionOf(buildSource(hydrated, config(), false))).toMatchObject({
+      host: "10.0.0.5",
+    });
+  });
+
   test("each call yields its own source, so a reconnect never shares a socket", () => {
     const hydrated = hydrateProfile(profile);
 
-    expect(buildSource(hydrated, config())).not.toBe(buildSource(hydrated, config()));
+    expect(buildSource(hydrated, config(), false)).not.toBe(buildSource(hydrated, config(), false));
   });
 });
 

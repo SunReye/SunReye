@@ -237,8 +237,6 @@
   "inverter_status_simulated": "Simulated",
   "inverter_status_disconnected": "Disconnected",
   "inverter_test_ok": "Connection OK — {count} metrics in {ms} ms",
-  "inverter_simulate_pre": "Running in simulation mode (set by the",
-  "inverter_simulate_post": "environment variable). Connection settings below are saved but not used until simulation is turned off.",
   "inverter_transport": "Transport",
   "inverter_timeout": "Timeout (ms)",
   "inverter_poll_interval": "Poll interval (ms)",
@@ -1110,5 +1108,8 @@
   "integration_live_plant_wide": "Reported for the whole integration, not per device.",
   "integration_address_index": "Index {id}",
   "integration_address_internal": "Internal",
-  "integration_open": "Open"
+  "integration_open": "Open",
+  "inverter_simulate_label": "Simulate an inverter",
+  "inverter_simulate_desc": "Show made-up readings instead of polling the address below. On until you point this box at a real inverter, so a new install has something to look at.",
+  "inverter_simulate_on_notice": "These readings are not from your system."
 }

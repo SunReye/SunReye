@@ -237,8 +237,6 @@
   "inverter_status_simulated": "Simulado",
   "inverter_status_disconnected": "Desconectado",
   "inverter_test_ok": "Conexión correcta — {count} métricas en {ms} ms",
-  "inverter_simulate_pre": "Ejecutándose en modo de simulación (establecido por la variable de entorno",
-  "inverter_simulate_post": "). Los ajustes de conexión de abajo se guardan pero no se usan hasta que se desactive la simulación.",
   "inverter_transport": "Transporte",
   "inverter_timeout": "Tiempo de espera (ms)",
   "inverter_poll_interval": "Intervalo de sondeo (ms)",
@@ -1110,5 +1108,8 @@
   "integration_live_plant_wide": "Se informa para toda la integración, no por dispositivo.",
   "integration_address_index": "Índice {id}",
   "integration_address_internal": "Interno",
-  "integration_open": "Abrir"
+  "integration_open": "Abrir",
+  "inverter_simulate_label": "Simular un inversor",
+  "inverter_simulate_desc": "Muestra lecturas inventadas en lugar de consultar la dirección de abajo. Permanece activo hasta que apunte este equipo a un inversor real, para que una instalación nueva tenga algo que mostrar.",
+  "inverter_simulate_on_notice": "Estas lecturas no provienen de su instalación."
 }
