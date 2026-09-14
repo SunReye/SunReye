@@ -20,8 +20,15 @@ import { z } from "zod";
  * SEEDS a box that has never been configured, but nothing outside this file
  * chooses one — the dashboard owns the connection now, and the CLI commands
  * that used to set it are gone.
+ *
+ * `solarman-v5` is the vendor envelope the Solarman/IGEN WiFi stick speaks on
+ * port 8899 — the logger already bolted to most Deye, Sunsynk and Sofar
+ * hybrids. It earns a place in a SEEDING document that the other two do not,
+ * because it is the only one an owner can reach with no gateway bought and no
+ * RS485 wired: a box flashed, plugged in and pointed at the stick polls a real
+ * inverter on its first boot.
  */
-const TRANSPORTS = ["tcp", "rtu-over-tcp"] as const;
+const TRANSPORTS = ["tcp", "rtu-over-tcp", "solarman-v5"] as const;
 
 /**
  * How much of the site LAN is advertised to the tailnet. Not exported: the CLI
