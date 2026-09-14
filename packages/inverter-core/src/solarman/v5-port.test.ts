@@ -134,9 +134,16 @@ class FakeSocket implements SolarmanSocket {
     if (replies.length > 0) queueMicrotask(() => this.deliver(concat(...replies)));
   }
 
+  /**
+   * Whether `end()` reports the close straight away. A real `net.Socket` does
+   * not: `end()` sends a FIN and `"close"` arrives later, or much later if the
+   * peer is slow to answer — which is exactly the window a port must survive.
+   */
+  closeOnEnd = true;
+
   end(): void {
     this.ended = true;
-    this.handlers.onClose();
+    if (this.closeOnEnd) this.handlers.onClose();
   }
 
   destroy(): void {
@@ -513,6 +520,35 @@ describe("SolarmanV5Port — closing", () => {
     await new Promise<void>((resolve) => port.close(() => resolve()));
     expect(socket().ended).toBe(true);
     expect(port.isOpen).toBe(false);
+  });
+
+  /**
+   * `ModbusTransport.getClient()` races the whole connect against a deadline of
+   * its own, which is NOT the discovery probe's deadline. When that race is lost
+   * it calls `close()` on a port whose probe is still outstanding — so a probe
+   * timer left armed by `close()` fires afterwards, falls back to the configured
+   * serial, and declares a CLOSED port open. Every later poll then writes into a
+   * socket nobody is reading.
+   */
+  test("closing while the discovery probe is outstanding disarms it", async () => {
+    const h = makePort({ loggerSerial: SERIAL, timeoutMs: 40 });
+    const opened = new Promise<Error | undefined>((resolve) => h.port.open(resolve));
+    // A logger that says nothing, so the probe is still in flight at close time.
+    h.socket().respond = () => [];
+    // And a socket that does not report its close synchronously, as a real one
+    // does not: `close()` itself has to disarm, not the close event it waits on.
+    h.socket().closeOnEnd = false;
+
+    await new Promise((resolve) => setTimeout(resolve, 15));
+    h.port.close();
+    await new Promise((resolve) => setTimeout(resolve, 60));
+
+    // Past the probe deadline: nothing may have declared this port open.
+    expect(h.port.isOpen).toBe(false);
+    expect(h.port.loggerSerial).toBeUndefined();
+    // The open callback is still owed an answer, and it must be a failure.
+    h.socket().peerClose();
+    expect(await opened).toBeInstanceOf(Error);
   });
 
   test("closing a port that was never opened still calls back", async () => {

@@ -275,7 +275,22 @@ export class SolarmanV5Port extends EventEmitter {
     this.#socket?.write(encodeRequest({ serial: this.#serial ?? PROBE_SERIAL, seq, pdu: rtu }));
   }
 
+  /**
+   * Hang up.
+   *
+   * The disarm is not housekeeping — it is the whole correctness of closing
+   * mid-connect. `ModbusTransport.getClient()` races the entire connect against
+   * a deadline of its own, which is NOT the discovery probe's deadline, and on
+   * losing that race it closes a port whose probe is still outstanding. A timer
+   * left running then fires on a closed port, falls back to the configured
+   * serial and sets `isOpen` — after which every poll writes into a socket
+   * nobody is reading, and the close callback never ran. `#handleClose` disarms
+   * too, but only once the socket reports its close, which for a real
+   * `net.Socket` is some time after `end()` and may be never.
+   */
   close(callback?: () => void): void {
+    this.#disarm();
+    this.#probe = null;
     if (!this.#socket) {
       this.#openFlag = false;
       callback?.();
