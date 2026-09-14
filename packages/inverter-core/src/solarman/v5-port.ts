@@ -395,11 +395,15 @@ export class SolarmanV5Port extends EventEmitter {
       this.#buffer = split.rest;
     } catch (err) {
       // Desynchronised: scanning forward for the next 0xa5 would lock onto a
-      // payload byte. Drop what we hold and let the next read start clean.
+      // payload byte. Drop what we hold and let the next read start clean —
+      // but NOT the frames that were already taken cleanly off the front of this
+      // same chunk. One of them may be the reply the transaction in flight is
+      // waiting for, and it is not made wrong by a stray byte behind it.
       log.warn("solarman: dropping a desynchronised read buffer: {reason}", {
         reason: err instanceof SolarmanFrameError ? err.reason : String(err),
       });
       this.#buffer = new Uint8Array(0);
+      if (err instanceof SolarmanFrameError) for (const raw of err.frames) this.#handleFrame(raw);
       return;
     }
     for (const raw of frames) this.#handleFrame(raw);

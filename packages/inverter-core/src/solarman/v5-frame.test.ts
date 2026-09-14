@@ -337,6 +337,49 @@ describe("splitFrames", () => {
     expect(() => splitFrames(concat(bytes("00 00"), bytes(RESPONSE)))).toThrow(SolarmanFrameError);
   });
 
+  test("frames parsed BEFORE the desync ride along on the error", () => {
+    // The refusal is about the bytes that follow, not about the frames already
+    // taken cleanly off the front. Dropping those costs the transaction one of
+    // them answers its entire timeout, for a fault in a later byte.
+    const err = (() => {
+      try {
+        splitFrames(concat(bytes(RESPONSE), bytes("00 00 00")));
+        return undefined;
+      } catch (e) {
+        return e as SolarmanFrameError;
+      }
+    })();
+    expect(err).toBeInstanceOf(SolarmanFrameError);
+    expect(err!.reason).toBe("bad-start");
+    expect(err!.frames.map(hex)).toEqual([hex(bytes(RESPONSE))]);
+  });
+
+  test("a desync at offset zero carries no salvage, and claims none", () => {
+    const err = (() => {
+      try {
+        splitFrames(concat(bytes("00 00 00"), bytes(RESPONSE)));
+        return undefined;
+      } catch (e) {
+        return e as SolarmanFrameError;
+      }
+    })();
+    // Still no scanning forward: the bytes after a stray byte cannot be trusted
+    // to be a frame boundary just because they look like one.
+    expect(err!.frames).toEqual([]);
+  });
+
+  test("every other frame error carries an empty salvage list", () => {
+    const short = (() => {
+      try {
+        decodeFrame(bytes("a5 01"));
+        return undefined;
+      } catch (e) {
+        return e as SolarmanFrameError;
+      }
+    })();
+    expect(short!.frames).toEqual([]);
+  });
+
   test("the returned rest is a copy — mutating the input cannot corrupt it", () => {
     const partial = bytes(RESPONSE).slice(0, 20);
     const { rest } = splitFrames(partial);

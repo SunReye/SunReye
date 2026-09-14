@@ -406,14 +406,53 @@ describe("SolarmanV5Port — what must never be emitted", () => {
     expect(emitted).toHaveLength(1);
   });
 
-  test("anything at all once the stream has desynchronised — the buffer is dropped", async () => {
+  test("anything in a read that begins mid-frame — there is no safe boundary to find", async () => {
     const { socket, emitted } = await openWithEmissions();
     const frame = v5Reply(SERIAL, 1, withCrc(0x01, 0x03, 0x02, 0x12, 0x34));
+    // Nothing was parsed before the stray bytes, and scanning forward for the
+    // next 0xa5 would lock onto a payload byte just as happily as onto a frame.
     socket().deliver(concat(Uint8Array.from([0x00, 0x00, 0x00]), frame));
     expect(emitted).toEqual([]);
     // …and the dropped buffer must not poison the next, well-formed read.
     socket().deliver(frame);
     expect(emitted).toHaveLength(1);
+  });
+});
+
+/**
+ * The desync rule is "drop the buffer", and it used to drop frames that had
+ * already been parsed out of that buffer cleanly. A chunk shaped
+ * `[complete reply][stray byte]` therefore lost the reply and left the
+ * transaction it answered to burn its entire timeout — for a fault in bytes
+ * that arrived AFTER it.
+ */
+describe("SolarmanV5Port — a good frame in a chunk that later desynchronises", () => {
+  test("the frame is still delivered, and the rest of the buffer still dropped", async () => {
+    const { port, socket } = await openDiscovering();
+    socket().respond = () => [];
+    const emitted: Buffer[] = [];
+    port.on("data", (d: Buffer) => emitted.push(d));
+    port.write(withCrc(0x01, 0x03, 0x00, 0x03, 0x00, 0x06));
+
+    const pdu = withCrc(0x01, 0x03, 0x02, 0x12, 0x34);
+    socket().deliver(concat(v5Reply(SERIAL, 1, pdu), Uint8Array.from([0x00, 0x00, 0x00])));
+
+    expect(emitted.map(hex)).toEqual([hex(pdu)]);
+  });
+
+  test("the trailing garbage does not poison the next read", async () => {
+    const { port, socket } = await openDiscovering();
+    socket().respond = () => [];
+    const emitted: Buffer[] = [];
+    port.on("data", (d: Buffer) => emitted.push(d));
+    port.write(withCrc(0x01, 0x03, 0x00, 0x03, 0x00, 0x06));
+    socket().deliver(
+      concat(v5Heartbeat(), Uint8Array.from([0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff])),
+    );
+
+    const pdu = withCrc(0x01, 0x03, 0x02, 0x12, 0x34);
+    socket().deliver(v5Reply(SERIAL, 1, pdu));
+    expect(emitted.map(hex)).toEqual([hex(pdu)]);
   });
 });
 
