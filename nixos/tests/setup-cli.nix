@@ -1,5 +1,5 @@
 /*
-  `sunreye-setup` has to start.
+  `sunreye` has to start, under every name it answers to.
 
   The CLI is the only way to reconfigure a box that may be behind a NAT on
   someone else's roof, and nothing built it in isolation: the twenty-minute boot
@@ -10,6 +10,10 @@
   `--help` is the whole of the check on purpose. It needs no /etc/nixos, no
   systemd and no tailnet, but it loads every module the tool has, which is where
   a dependency that is not in the closure announces itself.
+
+  Run for `sr` and `sunreye-setup` as well as `sunreye`: those are symlinks, and
+  a symlink that was never created is not an error anyone sees until somebody
+  types the name that is printed on their own console login screen.
 */
 { pkgs, sunreye-setup }:
 pkgs.runCommand "setup-cli-runs"
@@ -18,11 +22,19 @@ pkgs.runCommand "setup-cli-runs"
 } ''
   set -o pipefail
 
-  if ! printed=$(sunreye-setup --help 2>&1); then
-    echo "sunreye-setup --help exited non-zero:" >&2
-    echo "$printed" >&2
-    exit 1
-  fi
+  for name in sunreye sr sunreye-setup; do
+    if ! command -v "$name" >/dev/null; then
+      echo "$name is not on PATH — the CLI answers to three names" >&2
+      exit 1
+    fi
+    if ! "$name" --help >/dev/null 2>&1; then
+      echo "$name --help exited non-zero" >&2
+      "$name" --help >&2 || true
+      exit 1
+    fi
+  done
+
+  printed=$(sunreye --help 2>&1)
 
   # A resolution failure is the specific defect this check exists for, and it is
   # worth naming: bun reports it on stdout and it does not look like a crash.
@@ -35,7 +47,7 @@ pkgs.runCommand "setup-cli-runs"
   esac
 
   case "$printed" in
-    *"sunreye-setup — configure this SunReye appliance"*) ;;
+    *"sunreye — configure this SunReye appliance"*) ;;
     *)
       echo "sunreye-setup --help printed something unexpected:" >&2
       echo "$printed" >&2

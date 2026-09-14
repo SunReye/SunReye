@@ -15,7 +15,7 @@ modules/appliance/     the generic base: boot, hardware, watchdog, identity, net
                        ssh, tailscale, storage, ballast, health, updates.
                        Knows nothing about SunReye.
 modules/sunreye/       the workload: two podman containers, Caddy, first-boot seeding,
-                       backups, and the sunreye-setup wrapper.
+                       backups, and the sunreye CLI wrapper.
 template/              what /etc/nixos becomes on first boot. The image is built from
                        these same files, so the box and the image are one evaluation.
 tests/                 the boot report CI greps, and the refusals asserted as a check.
@@ -58,7 +58,7 @@ The release workflow does this for the server image automatically. The database 
 only when `docker/timescaledb/Dockerfile` does — `scripts/storage-tuning.ts` asserts that
 `modules/sunreye/images.nix` names the same tag as every other deployment surface.
 
-**`sunreye-setup` is not in this directory.** Its source is `apps/appliance-cli/src`, so the
+**`sunreye` is not in this directory.** Its source is `apps/appliance-cli/src`, so the
 repo's TDD gate treats it as source; `modules/sunreye/cli-tree.nix` bundles it with esbuild
 and runs it on `pkgs.nodejs`.
 

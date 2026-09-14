@@ -61,7 +61,7 @@ import {
   updateDevice,
 } from "@SunReye/db/plant-repo";
 
-import { getInverterConfig } from "../settings/config";
+import { getInverterConfig, getSimulate, setSimulate } from "../settings/config";
 import { env } from "@SunReye/env/server";
 import { log } from "../shared/logging";
 import { type ProvisionLogger, dbProvisionStore, provisionPlantRow } from "./provision";
@@ -292,6 +292,14 @@ export interface EndpointDeps {
    * ONLY where the spine has nothing to say yet. Never for the poll path.
    */
   legacy?: () => Promise<InverterConfig>;
+  /**
+   * The simulator toggle, read and written as one fact per box rather than a
+   * field on an endpoint. Seams, so the suite can assert the save writes it
+   * without a database — the whole defect was that this value had a second
+   * owner nobody could see from here.
+   */
+  readSimulate?: () => Promise<boolean>;
+  writeSimulate?: (simulate: boolean) => Promise<void>;
 }
 
 /** Production wiring, built PER CALL — see {@link dbEndpointStore}. */
@@ -301,7 +309,12 @@ export function defaultEndpointDeps(): EndpointDeps {
   // module's exports in place, so it reaches consumers that read `db` when they
   // run and misses consumers that read it at import time — the same reason
   // `./provision-boot.ts`'s `defaultDeps` is a function.
-  return { store: dbEndpointStore(db), logger: log("endpoint") };
+  return {
+    store: dbEndpointStore(db),
+    logger: log("endpoint"),
+    readSimulate: getSimulate,
+    writeSimulate: setSimulate,
+  };
 }
 
 /**
@@ -403,6 +416,10 @@ export async function readConnectionSettings(
     unitId: device ? device.unitId : (await legacy()).unitId,
     timeoutMs: params.timeoutMs,
     pollIntervalMs: pollCadence(params.pollIntervalMs),
+    // Not from the connection: simulation is one fact per box, not a property
+    // of an endpoint. It rides on this shape because the settings form is the
+    // one place an operator changes either.
+    simulate: await (deps.readSimulate ?? getSimulate)(),
   };
 }
 
@@ -498,6 +515,11 @@ export async function saveConnectionSettings(
   const host = config.host?.trim() ?? "";
   const endpointId = await writeEndpoint(deps, plant.id, connection, { ...config, host });
   if (device) await writeUnitId(deps, device, endpointId, config.unitId);
+  // Written in the same save as the address, so "point this at my inverter" and
+  // "stop making data up" are one action. They were two owners before — the
+  // address in the spine, simulation in the container's environment — and an
+  // appliance owner could do the first and not the second, with no way to tell.
+  await (deps.writeSimulate ?? setSimulate)(config.simulate);
   return {
     host,
     port: config.port,
@@ -505,6 +527,7 @@ export async function saveConnectionSettings(
     unitId: config.unitId,
     timeoutMs: config.timeoutMs,
     pollIntervalMs: pollCadence(config.pollIntervalMs),
+    simulate: config.simulate,
   };
 }
 

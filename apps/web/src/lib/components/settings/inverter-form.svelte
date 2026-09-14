@@ -5,6 +5,7 @@
 	import { Button } from "$lib/components/ui/button";
 	import FormActions from "./form-actions.svelte";
 	import InverterConnectionFields from "./inverter-connection-fields.svelte";
+	import InverterSimulateSwitch from "./inverter-simulate-switch.svelte";
 	import InverterStatusBadge from "./inverter-status-badge.svelte";
 	import Section from '$lib/components/layout/section.svelte';
 	import EmptyState from '$lib/components/layout/empty-state.svelte';
@@ -82,9 +83,19 @@
 	 * before advancing instead of leaving a tested-but-unsaved config behind.
 	 * Returns whether the write succeeded.
 	 */
+	/**
+	 * Whether this draft is missing the one thing it cannot be saved without.
+	 *
+	 * A host is required only when something real is meant to be polled. While
+	 * simulating there is nothing to dial, and demanding an address made the form
+	 * unsaveable on exactly the box that needs it most: a fresh install with no
+	 * inverter yet could not even turn the simulator off.
+	 */
+	const missingHost = $derived(cfg !== null && !cfg.simulate && !cfg.host.trim());
+
 	export async function save(): Promise<boolean> {
 		if (!cfg) return false;
-		if (!cfg.host.trim()) {
+		if (missingHost) {
 			toast.error(m.inverter_toast_host_required());
 			return false;
 		}
@@ -100,7 +111,15 @@
 	}
 </script>
 
-<FormActions {result} {testing} {saving} disabled={!cfg} ontest={test} onsave={save}>
+<FormActions
+	{result}
+	{testing}
+	{saving}
+	disabled={!cfg}
+	testDisabled={cfg?.simulate === true}
+	ontest={test}
+	onsave={save}
+>
 	{#if hasSnapshot}
 		<Button variant="ghost" size="sm" onclick={() => (snapshotOpen = true)}>
 			{m.inverter_view_snapshot()}
@@ -116,14 +135,9 @@
 			<InverterStatusBadge {status} />
 		{/snippet}
 
-		{#if simulated}
-			<p class="border border-border bg-muted/40 p-2.5 text-xs text-muted-foreground">
-				{m.inverter_simulate_pre()} <code>INVERTER_SIMULATE</code>
-				{m.inverter_simulate_post()}
-			</p>
-		{/if}
+		<InverterSimulateSwitch bind:simulate={cfg.simulate} />
 
-		<InverterConnectionFields bind:cfg {status} />
+		<InverterConnectionFields bind:cfg {status} disabled={cfg.simulate} />
 	</Section>
 
 	<SnapshotDialog bind:open={snapshotOpen} result={testResult} />

@@ -10,10 +10,17 @@
 	// only shown once the engine has reported its status.
 	let {
 		cfg = $bindable(),
-		status
+		status,
+		disabled = false
 	}: {
 		cfg: InverterConfig;
 		status: InverterStatus | null;
+		/**
+		 * Greyed out because nothing here would be dialled. Set while the box is
+		 * simulating: an address you can type and that is then ignored is how
+		 * someone ends up believing they configured their inverter.
+		 */
+		disabled?: boolean;
 	} = $props();
 
 	const TRANSPORTS: { value: Transport; label: string }[] = [
@@ -33,15 +40,15 @@
 <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
 	<div class="flex flex-col gap-1.5">
 		<Label for="host">Host</Label>
-		<Input id="host" bind:value={cfg.host} />
+		<Input id="host" bind:value={cfg.host} {disabled} />
 	</div>
 	<div class="flex flex-col gap-1.5">
 		<Label for="port">Port</Label>
-		<Input id="port" type="number" bind:value={cfg.port} />
+		<Input id="port" type="number" bind:value={cfg.port} {disabled} />
 	</div>
 	<div class="flex flex-col gap-1.5">
 		<Label>{m.inverter_transport()}</Label>
-		<Select.Root type="single" value={cfg.transport} onValueChange={setTransport}>
+		<Select.Root type="single" value={cfg.transport} onValueChange={setTransport} {disabled}>
 			<Select.Trigger>{transportLabel}</Select.Trigger>
 			<Select.Content>
 				{#each TRANSPORTS as t (t.value)}
@@ -52,15 +59,15 @@
 	</div>
 	<div class="flex flex-col gap-1.5">
 		<Label for="unit">Unit ID</Label>
-		<Input id="unit" type="number" bind:value={cfg.unitId} />
+		<Input id="unit" type="number" bind:value={cfg.unitId} {disabled} />
 	</div>
 	<div class="flex flex-col gap-1.5">
 		<Label for="timeout">{m.inverter_timeout()}</Label>
-		<Input id="timeout" type="number" bind:value={cfg.timeoutMs} />
+		<Input id="timeout" type="number" bind:value={cfg.timeoutMs} {disabled} />
 	</div>
 	<div class="flex flex-col gap-1.5">
 		<Label for="poll">{m.inverter_poll_interval()}</Label>
-		<Input id="poll" type="number" min={1000} step={1000} bind:value={cfg.pollIntervalMs} />
+		<Input id="poll" type="number" min={1000} step={1000} bind:value={cfg.pollIntervalMs} {disabled} />
 	</div>
 	{#if status}
 		<div class="flex flex-col gap-1.5">

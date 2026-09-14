@@ -226,7 +226,7 @@ in
             to start once the backend reports `Running`, a timer stops it as soon
             as login succeeds, and {option}`openFor` closes it even if nobody
             ever enrols. Nothing reopens the window automatically — re-enrolment is
-            `sunreye-setup tailscale reset` as root, over Tailscale SSH or the
+            `sunreye tailscale reset` as root, over Tailscale SSH or the
             console. A published image therefore grants its builder nothing: no key,
             no account, no `authorized_keys` entry.
           '';

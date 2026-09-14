@@ -64,7 +64,7 @@ state this box produced. Delete that yourself if you want it gone.
 
 To go ahead, confirm with this box's own name:
 
-    sunreye-setup factory-reset --confirm ${hostname}
+    sunreye factory-reset --confirm ${hostname}
 `;
 
 /**

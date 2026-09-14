@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * `sunreye-setup` — the appliance's configuration entry point.
+ * `sunreye` — the appliance's configuration entry point.
  *
  * Everything that touches the world is behind {@link Io}, and {@link run} is a
  * pure-ish function of it. That is not test decoration: the alternative is a
@@ -105,7 +105,7 @@ function commitAndRebuild(io: Io, summary: string): number {
   const commit = git(
     io,
     "-c",
-    "user.name=sunreye-setup",
+    "user.name=sunreye",
     "-c",
     "user.email=appliance@localhost",
     "-c",

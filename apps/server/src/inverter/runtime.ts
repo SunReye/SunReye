@@ -33,7 +33,7 @@ import { startAutomations, stopAutomations } from "../automation/automation";
 import { OPTIMIZER_DEVICE_ID, optimizerDeviceSpec } from "../automation/optimizer-device";
 import { type DeviceRowState, createOptimizerRegistrar } from "../automation/optimizer-registrar";
 import { ensureDevice, isRetired, readPlant } from "@SunReye/db/plant-repo";
-import { getMqttConfig } from "../settings/config";
+import { getMqttConfig, getSimulate } from "../settings/config";
 import type { ControlStore } from "./control-expr";
 import { dbControlStore } from "./control-store";
 import { createControlWriter } from "./control-writer";
@@ -51,6 +51,7 @@ import {
   buildSource,
   resolveProfileById,
   type ProfileContext,
+  type SourceConnection,
 } from "./inverter";
 import { runForecastCorrectionLearn } from "../forecast/forecast-correction-job";
 import { log } from "../shared/logging";
@@ -353,7 +354,10 @@ export function createRuntime(deps: RuntimeDeps = {}) {
 
   const inverterStatus = {
     connected: false,
-    simulate: env.INVERTER_SIMULATE,
+    // Corrected by the first rebuildInverter, which is awaited before the loop
+    // starts. False until then rather than the env var: the env var is a seed
+    // for a fresh install now, not the running answer.
+    simulate: false,
     lastError: null as string | null,
     lastSampleAt: null as string | null,
   };
@@ -607,13 +611,15 @@ export function createRuntime(deps: RuntimeDeps = {}) {
     await historyBuffer.flush();
     await configLogBuffer.flush();
     const previous = source;
-    source = buildSource(context().profile, endpoint);
+    const simulate = await getSimulate();
+    source = buildSource(context().profile, endpoint, simulate);
     // The simulator is always "connected"; a real Modbus source only proves it on
     // the first successful read, so start pessimistic and let pollOnce flip it.
-    inverterStatus.connected = env.INVERTER_SIMULATE;
+    inverterStatus.simulate = simulate;
+    inverterStatus.connected = simulate;
     inverterStatus.lastError = null;
     lastPollError = null;
-    connectable = env.INVERTER_SIMULATE || endpoint.host.trim() !== "";
+    connectable = simulate || endpoint.host.trim() !== "";
     if (!connectable) {
       inverterStatus.lastError = "No inverter host configured";
       logger.warn(
@@ -850,7 +856,7 @@ export function createRuntime(deps: RuntimeDeps = {}) {
    */
   async function testInverter(
     profileId: string | null,
-    config: InverterConfig,
+    config: SourceConnection,
   ): Promise<TestInverterResult> {
     const profile = profileId ? await resolveProfileById(profileId) : devices.primaryProfile();
     if (!profile) {
@@ -860,7 +866,11 @@ export function createRuntime(deps: RuntimeDeps = {}) {
       };
     }
     const testCtx = buildProfileContext(profile);
-    const probe = buildSource(profile, config);
+    // Never the simulator. A connection test exists to answer "does this
+    // address speak Modbus", and with INVERTER_SIMULATE set it used to answer
+    // yes by reading a fake inverter — a green test against an address nothing
+    // had dialled.
+    const probe = buildSource(profile, config, false);
     try {
       const started = performance.now();
       const sample = await probe.read();

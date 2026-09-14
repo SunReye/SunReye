@@ -266,7 +266,18 @@ mock.module("../settings/config", () => ({
     return realGetInverterConfig();
   },
   getMqttConfig: async () => (intercepting ? mqttConfig : realGetMqttConfig()),
+  // The simulator toggle, which the poll loop reads on every rebuild. A stub
+  // rather than the real reader: that one goes to `app_settings`, and these
+  // tests have no database — the loop asking for it is new, and without this
+  // every rebuild in this file dies inside drizzle.
+  getSimulate: async () => simulated,
 }));
+
+/** What the stubbed toggle answers; flipped by the tests that care. */
+let simulated = false;
+
+/** The `simulate` each buildSource call received, newest last. */
+const builtSimulated: boolean[] = [];
 
 /**
  * The spine's answer, stubbed at the resolver rather than at the database.
@@ -627,9 +638,12 @@ const realResolveProfileById = realInverter.resolveProfileById;
 const { buildProfileContext } = realInverter;
 mock.module("./inverter", () => ({
   ...realInverter,
-  buildSource: (profile: InverterProfile, config: SourceConnection) => {
-    if (!intercepting) return realBuildSource(profile, config);
+  buildSource: (profile: InverterProfile, config: SourceConnection, simulate: boolean) => {
+    if (!intercepting) return realBuildSource(profile, config, simulate);
     const built = new FakeSource(profile, config);
+    // What the loop asked for, so a test can assert the runtime passes the
+    // SAVED setting rather than reading the environment behind its back.
+    builtSimulated.push(simulate);
     sources.push(built);
     return built;
   },
@@ -1893,7 +1907,10 @@ describe("swapping the live source", () => {
   });
 
   test("a simulated inverter is connected before it has read anything, host or not", async () => {
-    process.env.INVERTER_SIMULATE = "true";
+    // The SAVED setting, not the env var. Simulation moved out of env so a box
+    // can be told to stop making data up from the dashboard; the env var now
+    // only seeds a fresh install.
+    simulated = true;
     try {
       await boot();
       await moveEndpoint({ host: "" });
@@ -1905,8 +1922,9 @@ describe("swapping the live source", () => {
       await poll();
       expect(published).toHaveLength(1);
     } finally {
-      if (originalSimulate === undefined) delete process.env.INVERTER_SIMULATE;
-      else process.env.INVERTER_SIMULATE = originalSimulate;
+      // Restored, because the stub is module-level and every later test in this
+      // file would otherwise run against a simulator.
+      simulated = false;
     }
   });
 

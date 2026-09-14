@@ -111,7 +111,7 @@ lib.mkIf (cfg.enable && ts.enable) {
     # That is every published image. `--ssh` sat here unconditionally, so a box
     # enrolled from the login page came up with Tailscale SSH OFF — and since a
     # published image also has no authorized key and no local login, the owner
-    # had no way to reach `sunreye-setup` at all. Measured on the first unit ever
+    # had no way to reach `sunreye` at all. Measured on the first unit ever
     # enrolled: `ssh root@<name>.ts.net` was answered by OpenSSH, not tailscaled,
     # and refused for want of a key that cannot exist.
     #
@@ -183,7 +183,7 @@ lib.mkIf (cfg.enable && ts.enable) {
   # not reopen a login page on its LAN; and the timer below stops the unit as
   # soon as login succeeds, so the window is open for minutes on a first boot,
   # not forever. Re-enrolment is an explicit root action
-  # (`sunreye-setup tailscale reset`), never something the box decides.
+  # (`sunreye tailscale reset`), never something the box decides.
   systemd.services.tailscale-web = lib.mkIf web.enable {
     description = "Tailscale login page for first enrolment (LAN only)";
     after = [ "tailscaled.service" "network-online.target" ];

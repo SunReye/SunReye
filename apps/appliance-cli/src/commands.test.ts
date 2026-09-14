@@ -21,72 +21,6 @@ function failure(argv: readonly string[], site: SiteConfig = DEFAULT_SITE, conte
   return outcome.message;
 }
 
-describe("inverter", () => {
-  test("sets the address and stops simulating", () => {
-    const { site } = updated(["inverter", "192.168.1.100"]);
-    expect(site.inverter.host).toBe("192.168.1.100");
-    expect(site.inverter.simulate).toBe(false);
-  });
-
-  test("keeps the transport defaults when only an address is given", () => {
-    const { site } = updated(["inverter", "192.168.1.100"]);
-    expect(site.inverter.port).toBe(502);
-    expect(site.inverter.unitId).toBe(1);
-    expect(site.inverter.transport).toBe("tcp");
-  });
-
-  test("accepts the gateway flags", () => {
-    const { site } = updated([
-      "inverter",
-      "10.0.0.5",
-      "--port",
-      "8899",
-      "--unit",
-      "3",
-      "--transport",
-      "rtu-over-tcp",
-    ]);
-    expect(site.inverter).toMatchObject({
-      host: "10.0.0.5",
-      port: 8899,
-      unitId: 3,
-      transport: "rtu-over-tcp",
-    });
-  });
-
-  test("a hostname is accepted — plenty of gateways are reached by name", () => {
-    expect(updated(["inverter", "deye.lan"]).site.inverter.host).toBe("deye.lan");
-  });
-
-  test("rejects an address that is neither an IP nor a hostname", () => {
-    expect(failure(["inverter", "192.168.1."])).toContain("not an address");
-    expect(failure(["inverter", "192.168.1.300"])).toContain("not an address");
-    expect(failure(["inverter", "not a host"])).toContain("not an address");
-  });
-
-  test("rejects a port or unit id outside the protocol's range", () => {
-    expect(failure(["inverter", "10.0.0.5", "--port", "0"])).toContain("--port");
-    expect(failure(["inverter", "10.0.0.5", "--port", "seven"])).toContain("--port");
-    expect(failure(["inverter", "10.0.0.5", "--unit", "248"])).toContain("--unit");
-  });
-
-  test("rejects an unknown transport by name", () => {
-    expect(failure(["inverter", "10.0.0.5", "--transport", "udp"])).toContain("--transport");
-  });
-
-  test("rejects a flag with no value, rather than reading the next flag as one", () => {
-    expect(failure(["inverter", "10.0.0.5", "--port"])).toContain("--port");
-  });
-
-  test("rejects an unknown flag instead of ignoring it", () => {
-    expect(failure(["inverter", "10.0.0.5", "--unitid", "3"])).toContain("--unitid");
-  });
-
-  test("needs an address", () => {
-    expect(failure(["inverter"])).toContain("usage");
-  });
-});
-
 describe("timezone", () => {
   test("sets a zone the system knows", () => {
     expect(updated(["timezone", "Europe/Berlin"]).site.timeZone).toBe("Europe/Berlin");
@@ -98,28 +32,6 @@ describe("timezone", () => {
 
   test("needs a zone", () => {
     expect(failure(["timezone"])).toContain("usage");
-  });
-});
-
-describe("simulate", () => {
-  test("on and off both work", () => {
-    const wired: SiteConfig = {
-      ...DEFAULT_SITE,
-      inverter: { ...DEFAULT_SITE.inverter, host: "10.0.0.5", simulate: false },
-    };
-    expect(updated(["simulate", "on"], wired).site.inverter.simulate).toBe(true);
-    expect(
-      updated(["simulate", "off"], { ...wired, inverter: { ...wired.inverter, simulate: true } })
-        .site.inverter.simulate,
-    ).toBe(false);
-  });
-
-  test("refuses to switch simulation off with no inverter to poll instead", () => {
-    expect(failure(["simulate", "off"])).toContain("no inverter");
-  });
-
-  test("rejects anything but on and off", () => {
-    expect(failure(["simulate", "yes"])).toContain("usage");
   });
 });
 
@@ -252,7 +164,7 @@ describe("the command surface itself", () => {
   test("no arguments prints help rather than doing something", () => {
     const outcome = applyCommand(DEFAULT_SITE, [], ctx);
     if (outcome.kind !== "print") throw new Error("expected a print");
-    expect(outcome.text).toContain("sunreye-setup");
+    expect(outcome.text).toContain("sunreye");
   });
 
   test("--help and help both print it", () => {
@@ -268,21 +180,15 @@ describe("the command surface itself", () => {
   });
 
   test("every update carries a one-line summary of what changed", () => {
-    const wired: SiteConfig = {
-      ...DEFAULT_SITE,
-      inverter: { ...DEFAULT_SITE.inverter, host: "10.0.0.5", simulate: false },
-    };
     expect(updated(["timezone", "Europe/Berlin"]).summary).toContain("Europe/Berlin");
-    expect(updated(["inverter", "10.0.0.5"]).summary).toContain("10.0.0.5");
     expect(updated(["lan-access", "on"]).summary.length).toBeGreaterThan(0);
     expect(updated(["tls", "internal"]).summary).toContain("internal");
-    expect(updated(["simulate", "on"], wired).summary.length).toBeGreaterThan(0);
     expect(updated(["ssh-key", "add", "ssh-rsa AAAAB3 a@b"]).summary).toContain("key");
   });
 
   test("an update never mutates the document it was given", () => {
     const before = structuredClone(DEFAULT_SITE);
-    updated(["inverter", "10.0.0.5"]);
+    updated(["timezone", "Europe/Berlin"]);
     updated(["ssh-key", "add", "ssh-rsa AAAAB3 a@b"]);
     expect(DEFAULT_SITE).toEqual(before);
   });
@@ -293,7 +199,34 @@ describe("the command surface itself", () => {
   test("a command that changes nothing reports it instead of rebuilding", () => {
     expect(applyCommand(DEFAULT_SITE, ["timezone", "UTC"], ctx)).toMatchObject({ kind: "print" });
     expect(applyCommand(DEFAULT_SITE, ["tls", "both"], ctx)).toMatchObject({ kind: "print" });
-    expect(applyCommand(DEFAULT_SITE, ["simulate", "on"], ctx)).toMatchObject({ kind: "print" });
     expect(applyCommand(DEFAULT_SITE, ["lan-access", "off"], ctx)).toMatchObject({ kind: "print" });
+  });
+});
+
+/**
+ * `inverter` and `simulate` are gone from this tool deliberately.
+ *
+ * Both wrote `site.json`, which becomes the container's environment — and env
+ * only SEEDS the runtime config the first time it is read. Once the dashboard
+ * has saved an inverter the database is the authority, so on a running box
+ * those commands changed nothing while reporting success. The inverter is set
+ * during onboarding now, where the simulate switch also greys out the
+ * connection fields it would have no use for.
+ */
+describe("the removed inverter commands", () => {
+  test("`inverter` is refused, not silently accepted", () => {
+    expect(applyCommand(DEFAULT_SITE, ["inverter", "192.168.1.100"], ctx).kind).toBe("error");
+  });
+
+  test("`simulate` is refused too", () => {
+    expect(applyCommand(DEFAULT_SITE, ["simulate", "off"], ctx).kind).toBe("error");
+  });
+
+  // A bare "not a command" reads as a broken tool to someone following an older
+  // doc or their own shell history. The refusal has to say where it went.
+  test("the refusal says where the setting lives now", () => {
+    const outcome = applyCommand(DEFAULT_SITE, ["inverter", "192.168.1.100"], ctx);
+
+    expect(outcome.kind === "error" && outcome.message).toMatch(/dashboard|onboarding/i);
   });
 });

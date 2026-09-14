@@ -1,4 +1,4 @@
-# `sunreye-setup` on the box, as a package.
+# `sunreye` on the box, as a package.
 #
 # A package rather than an inline derivation inside the module so the flake can
 # BUILD AND RUN it (`checks.setup-cli`) without evaluating a whole NixOS system.
@@ -28,23 +28,39 @@ let
   # The bundled CLI. Shared with ./first-boot.nix, which runs the other entry
   # point out of the same bundle — two builds would be two zod pins.
   bundle = import ./cli-tree.nix { inherit pkgs; };
+
+  app = pkgs.writeShellApplication {
+    name = "sunreye";
+    runtimeInputs = with pkgs; [
+      # node, NOT bun: the bun nixpkgs ships faults with SIGILL on a CPU without
+      # AVX, which is every Atom-class thin client this image targets. See
+      # ./cli-tree.nix.
+      nodejs
+      nixos-rebuild
+      git
+      # `show` reads the tailnet status, and `tailscale reset` is most of what
+      # the command does.
+      tailscale
+      systemd
+      coreutils
+    ];
+    text = ''
+      exec node ${bundle}/main.mjs "$@"
+    '';
+  };
 in
-pkgs.writeShellApplication {
-  name = "sunreye-setup";
-  runtimeInputs = with pkgs; [
-    # node, NOT bun: the bun nixpkgs ships faults with SIGILL on a CPU without
-    # AVX, which is every Atom-class thin client this image targets. See
-    # ./cli-tree.nix.
-    nodejs
-    nixos-rebuild
-    git
-    # `show` reads the tailnet status, and `tailscale reset` is most of what the
-    # command does.
-    tailscale
-    systemd
-    coreutils
-  ];
-  text = ''
-    exec node ${bundle}/main.mjs "$@"
-  '';
-}
+# `sr` and `sunreye-setup` are the same program, as SYMLINKS rather than shell
+# aliases: an alias exists only in an interactive shell, so `ssh box
+# sunreye-setup show` — which is how a script, or a half-remembered command,
+# arrives — would answer "command not found".
+#
+# `sunreye-setup` is kept because it is printed on the console login screen of
+# every box already flashed, in the login banner, in the docs and in people's
+# shell history. A rename that breaks all of those to save seven characters
+# costs more than it saves.
+pkgs.runCommand "sunreye-cli" { } ''
+  mkdir -p "$out/bin"
+  for name in sunreye sr sunreye-setup; do
+    ln -s ${app}/bin/sunreye "$out/bin/$name"
+  done
+''

@@ -1,11 +1,13 @@
 /**
  * Cost engine: turns stored energy flows into money using the active tariff.
  *
- * Energy comes from the hourly TimescaleDB rollups of the inverter's monotonic
- * lifetime counters (imported/exported/load/production kWh): energy in a bucket
- * is the counter's rise since the *previous* bucket (`max_value` delta), clamped
- * ≥0 so a reset costs one bucket, not the whole lifetime total. The pricing
- * arithmetic is pure
+ * Energy comes from the TimescaleDB rollups of the inverter's monotonic energy
+ * counters (imported/exported/load/production kWh): energy in a bucket is the
+ * counter's rise since the *previous* bucket (`max_value` delta), clamped ≥0 so
+ * a reset costs one bucket, not the whole total. WHICH counter is
+ * {@link energyKeyFor}'s decision — the device's daily `*.today` register where
+ * the profile maps one and the bucket is an hour, the lifetime `*.total`
+ * odometer otherwise. The pricing arithmetic is pure
  * and unit-tested in {@link ./cost-calc}. Metrics are resolved by canonical
  * role, never vendor keys, so any profile exposing the standard energy roles
  * gets cost tracking for free.
@@ -92,7 +94,10 @@ type EnergyDerivation = "counter" | "integral";
  * All six reported roles are counter-derived: {@link fetchBucketEnergy} and
  * {@link fetchCounterDeltaMatrix} read only `max_value` / `min_value`, never
  * `avg_value`, and the live current-day override ({@link liveTodayTotals}) reads
- * the device's own `*.today` registers. Nothing in this layer integrates power.
+ * the device's own `*.today` registers. Which register an hourly bucket
+ * differences ({@link energyKeyFor}) does not change the verdict: a difference of
+ * readings is a difference of readings either way. Nothing in this layer
+ * integrates power.
  * The one integrated energy figure in the product is the browser-side
  * reconstruction in
  * `apps/web/src/lib/components/inverter/_shared/measured-day.ts`.
@@ -130,16 +135,6 @@ const MAX_GAP_MS: Record<RollupView, number> = {
   daily_rollups: 2 * 86_400_000,
 };
 
-/** Metric key → the HourEnergy field it feeds, for the roles this profile has. */
-function resolveEnergyKeys(profile: InverterProfile): Map<string, EnergyField> {
-  const fieldByKey = new Map<string, EnergyField>();
-  for (const [field, role] of Object.entries(ENERGY_FIELDS)) {
-    const key = keyForRole(profile, role);
-    if (key) fieldByKey.set(key, field as EnergyField);
-  }
-  return fieldByKey;
-}
-
 /**
  * The live `*.today` register roles — the current-day twins of the cumulative
  * `*.total` counters in {@link ENERGY_FIELDS}. All OPTIONAL: a profile may map
@@ -156,6 +151,56 @@ const ENERGY_TODAY_FIELDS = {
   batteryDischarge: "battery.energy.discharged.today",
   batteryCharge: "battery.energy.charged.today",
 } as const satisfies Record<EnergyField, CanonicalRole>;
+
+/**
+ * The register a field's bucket deltas are differenced from, and whether it is
+ * the kind that resets every day.
+ *
+ * The `*.today` twin wins wherever the profile maps one and the view is hourly,
+ * because differencing a LIFETIME odometer has an unbounded worst case: a bucket
+ * with no usable predecessor falls back to its own `max − min`, and on a freshly
+ * booted appliance the first poll of the first hour answers 0 for a register it
+ * has not read yet while the next answers the whole odometer — 3 755.7 kWh of
+ * imported energy billed to 05:00 on day one, with the chart, the split,
+ * self-sufficiency and the bill downstream of it. From `(min, max)` alone that
+ * bucket is indistinguishable from a counter that genuinely starts at zero, so
+ * the rule cannot tell them apart; the register can. A day counter bounds the
+ * worst case at one day, and on a first boot holds no odometer to book.
+ *
+ * A day/month view keeps the odometer: a counter that resets at midnight says
+ * nothing about the rise across a bucket a day or longer ({@link RollupView}).
+ */
+function energyKeyFor(
+  profile: InverterProfile,
+  field: EnergyField,
+  view: RollupView,
+): { key: string; resetsDaily: boolean } | undefined {
+  const dayKey =
+    view === "hourly_rollups" ? keyForRole(profile, ENERGY_TODAY_FIELDS[field]) : undefined;
+  if (dayKey) return { key: dayKey, resetsDaily: true };
+  const key = keyForRole(profile, ENERGY_FIELDS[field]);
+  return key ? { key, resetsDaily: false } : undefined;
+}
+
+/**
+ * Metric key → the HourEnergy field it feeds, for the roles this profile has,
+ * plus the subset of those keys that reset daily. One key per field: the two
+ * derivations coexist across fields, never within one.
+ */
+function resolveEnergyKeys(
+  profile: InverterProfile,
+  view: RollupView,
+): { fieldByKey: Map<string, EnergyField>; dailyKeys: Set<string> } {
+  const fieldByKey = new Map<string, EnergyField>();
+  const dailyKeys = new Set<string>();
+  for (const field of Object.keys(ENERGY_FIELDS) as EnergyField[]) {
+    const found = energyKeyFor(profile, field, view);
+    if (!found) continue;
+    fieldByKey.set(found.key, field);
+    if (found.resetsDaily) dailyKeys.add(found.key);
+  }
+  return { fieldByKey, dailyKeys };
+}
 
 /**
  * Whether the plant meters house consumption as energy at all.
@@ -319,7 +364,7 @@ export async function fetchLatestCounterLevels(
  * parameterized.
  */
 function rollupQueryParts(profile: InverterProfile, view: RollupView, target: SeriesTarget) {
-  const fieldByKey = resolveEnergyKeys(profile);
+  const { fieldByKey, dailyKeys } = resolveEnergyKeys(profile, view);
   const keys = [...fieldByKey.keys()];
   const scope = deviceScope(target, "r");
   // A counter is a `sum` role (see `plantAggregateOf`), so the plant's counter
@@ -340,7 +385,7 @@ function rollupQueryParts(profile: InverterProfile, view: RollupView, target: Se
       where ${scope}
         and r.metric_id in ${metricIdsOf(keys)}
     ) src`;
-  return { fieldByKey, srcSql };
+  return { fieldByKey, dailyKeys, srcSql };
 }
 
 /**
@@ -365,6 +410,32 @@ function intraBucketBase(min: number, max: number, staleMax: number | undefined)
 }
 
 /**
+ * Whether a bucket may price itself as the rise since the predecessor it has.
+ *
+ * Two ways it may not. A predecessor further back than {@link MAX_GAP_MS} never
+ * watched the rise, and a DAILY-resetting register's predecessor in another
+ * plant-local day watched a counter that has since gone back to zero — the drop
+ * looks exactly like a counter reset, and chaining through it would clamp the
+ * first hour of every day to nothing. Either way the bucket falls back to what
+ * it can vouch for by itself ({@link intraBucketBase}).
+ *
+ * The day boundary is the PLANT's ({@link getPlantTimeZone}), not the host's and
+ * not the viewer's — the device resets on local midnight where it stands.
+ *
+ * Mirrored by the `case` in {@link fetchCounterDeltaMatrix}'s SQL.
+ */
+function chainsTo(
+  before: { max: number; at: number },
+  bucket: Date,
+  maxGap: number,
+  resetsDaily: boolean,
+  tz: string,
+): boolean {
+  if (bucket.getTime() - before.at > maxGap) return false;
+  return !resetsDaily || isSameLocalDay(new Date(before.at), bucket, tz);
+}
+
+/**
  * Read per-bucket energy for the energy roles this profile exposes, over
  * [from, to). Energy in a bucket is the monotonic counter's rise since the
  * previous bucket — `max_value − prior max_value`, clamped ≥0. `max_value` is
@@ -378,7 +449,10 @@ function intraBucketBase(min: number, max: number, staleMax: number | undefined)
  * falls back to its own `max − min`.
  *
  * `view` selects the rollup granularity (hourly for cost banding, daily for long
- * windows); both continuous aggregates share the same column shape.
+ * windows); both continuous aggregates share the same column shape — and, via
+ * {@link energyKeyFor}, which register each field is read from. `tz` is the
+ * plant zone the day registers reset in; it defaults to the host's only for
+ * callers that predate the plant zone (issues #46, #52).
  */
 export async function fetchBucketEnergy(
   profile: InverterProfile,
@@ -386,8 +460,9 @@ export async function fetchBucketEnergy(
   from: Date,
   to: Date,
   view: RollupView,
+  tz: string = hostTimeZone(),
 ): Promise<HourEnergy[]> {
-  const { fieldByKey, srcSql } = rollupQueryParts(profile, view, inverterId);
+  const { fieldByKey, dailyKeys, srcSql } = rollupQueryParts(profile, view, inverterId);
   if (fieldByKey.size === 0) return [];
 
   // Cumulative counter level entering the window, per metric (last bucket before
@@ -432,12 +507,13 @@ export async function fetchBucketEnergy(
     if (!field) continue;
     const max = Number(r.max_value);
     const time = new Date(r.bucket);
-    // No predecessor (the counter's very first bucket) or one on the far side of
-    // a recording gap → use this bucket's own intra-bucket delta; otherwise the
-    // rise since the previous bucket's high.
+    // No predecessor (the counter's very first bucket), one on the far side of a
+    // recording gap, or — for a day register — one on the far side of midnight →
+    // use this bucket's own intra-bucket delta; otherwise the rise since the
+    // previous bucket's high.
     const before = prev.get(r.metric);
     const prior =
-      before && time.getTime() - before.at <= maxGap
+      before && chainsTo(before, time, maxGap, dailyKeys.has(r.metric), tz)
         ? before.max
         : intraBucketBase(Number(r.min_value), max, before?.max);
     prev.set(r.metric, { max, at: time.getTime() });
@@ -464,8 +540,9 @@ function fetchHourlyEnergy(
   inverterId: SeriesTarget,
   from: Date,
   to: Date,
+  tz: string,
 ): Promise<HourEnergy[]> {
-  return fetchBucketEnergy(profile, inverterId, from, to, "hourly_rollups");
+  return fetchBucketEnergy(profile, inverterId, from, to, "hourly_rollups", tz);
 }
 
 /** Granularity of a {@link computeCostSeries} bar. */
@@ -665,11 +742,15 @@ export async function fetchCounterDeltaMatrix(
   // Plant zone so SQL wall-clock and the JS zero-fill keys agree, and neither
   // depends on the host process zone (issues #46, #52).
   const tz = opts.tz ?? hostTimeZone();
-  const { fieldByKey, srcSql } = rollupQueryParts(profile, view, inverterId);
+  const { fieldByKey, dailyKeys, srcSql } = rollupQueryParts(profile, view, inverterId);
   const periods = periodKeysInRange(from, to, bucket, tz);
   if (fieldByKey.size === 0) return { rows: [], fieldByKey, periods };
 
   const { unit, mask } = PERIOD_FORMAT[bucket];
+  // The `resetsDaily` half of `chainsTo`, as a predicate over the row's metric.
+  // Never `metric in ()`, which is a syntax error — a profile mapping no day
+  // twin at all simply has no daily-resetting metric.
+  const resetsDaily = dailyKeys.size === 0 ? sql`false` : sql`metric in ${[...dailyKeys]}`;
 
   const rows = await db.execute<{
     period: string;
@@ -712,8 +793,10 @@ export async function fetchCounterDeltaMatrix(
         (bucket at time zone ${tz}) as local_bucket,
         metric,
         -- Rise since the previous bucket's high, clamped ≥0. No predecessor (the
-        -- very first bucket in history) or one on the far side of a recording gap
-        -- → fall back to this bucket's own min, matching fetchBucketEnergy —
+        -- very first bucket in history), one on the far side of a recording gap,
+        -- or — for a register that resets every day — one on the far side of the
+        -- plant's midnight → fall back to this bucket's own min, matching
+        -- fetchBucketEnergy's chainsTo —
         -- except when a stale level lies strictly inside (min, max], the
         -- signature of a counter restart INSIDE this bucket, where max − min
         -- would bill the whole lifetime total to one bucket (intraBucketBase).
@@ -722,6 +805,11 @@ export async function fetchCounterDeltaMatrix(
           max_value - case
             when prev_bucket is not null
               and bucket - prev_bucket <= make_interval(secs => ${MAX_GAP_MS[view] / 1000})
+              and not (
+                ${resetsDaily}
+                and date_trunc('day', bucket at time zone ${tz})
+                  <> date_trunc('day', prev_bucket at time zone ${tz})
+              )
               then prev_max
             when prev_max is not null and prev_max > min_value and prev_max <= max_value
               then prev_max
@@ -957,7 +1045,7 @@ export async function computeCost(
   const inverterId = opts.inverterId ?? profile.id;
   const tariff = await getTariff();
   const tz = await getPlantTimeZone();
-  const hours = await fetchHourlyEnergy(profile, inverterId, opts.from, opts.to);
+  const hours = await fetchHourlyEnergy(profile, inverterId, opts.from, opts.to, tz);
   const rangeDays = Math.max(0, (opts.to.getTime() - opts.from.getTime()) / 86_400_000);
   const zeroValueShare = await zeroValueShareFor(tariff, opts.from, opts.to);
   const totals = allocateCost(hours, tariff, rangeDays, zeroValueShare, tz);

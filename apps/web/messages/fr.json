@@ -237,8 +237,6 @@
   "inverter_status_simulated": "Simulé",
   "inverter_status_disconnected": "Déconnecté",
   "inverter_test_ok": "Connexion OK — {count} métriques en {ms} ms",
-  "inverter_simulate_pre": "Fonctionne en mode simulation (défini par la variable d'environnement",
-  "inverter_simulate_post": "). Les paramètres de connexion ci-dessous sont enregistrés mais non utilisés tant que la simulation n'est pas désactivée.",
   "inverter_transport": "Transport",
   "inverter_timeout": "Délai (ms)",
   "inverter_poll_interval": "Intervalle d'interrogation (ms)",
@@ -1110,5 +1108,8 @@
   "integration_live_plant_wide": "Remontée pour l'intégration entière, pas par appareil.",
   "integration_address_index": "Index {id}",
   "integration_address_internal": "Interne",
-  "integration_open": "Ouvrir"
+  "integration_open": "Ouvrir",
+  "inverter_simulate_label": "Simuler un onduleur",
+  "inverter_simulate_desc": "Affiche des relevés fictifs au lieu d'interroger l'adresse ci-dessous. Reste activé jusqu'à ce que vous pointiez ce boîtier vers un onduleur réel, afin qu'une nouvelle installation ait quelque chose à afficher.",
+  "inverter_simulate_on_notice": "Ces relevés ne proviennent pas de votre installation."
 }

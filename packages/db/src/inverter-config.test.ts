@@ -21,6 +21,7 @@ describe("schema totality", () => {
   test("an unconfigured instance parses to the Modbus TCP defaults", () => {
     expect(inverterConfigSchema.parse({})).toEqual({
       port: 502,
+      simulate: false,
       transport: "tcp",
       unitId: 0,
       timeoutMs: 2000,
@@ -34,6 +35,7 @@ describe("schema totality", () => {
     expect(inverterConfigSchema.parse(stored)).toEqual({
       host: "192.168.1.40",
       port: 8899,
+      simulate: false,
       unitId: 1,
       transport: "tcp",
       timeoutMs: 2000,
@@ -139,5 +141,40 @@ describe("the transport framing", () => {
 
   test("rejects an unknown framing rather than guessing one", () => {
     expect(issuePaths({ transport: "serial" })).toEqual(["transport"]);
+  });
+});
+
+/**
+ * Simulation is part of the SAVED config, not a deploy-level env var.
+ *
+ * It used to be `INVERTER_SIMULATE` and nothing else, which split the inverter
+ * settings across two owners: the host lived in this document and was editable
+ * from the dashboard, while simulate lived in the container's environment and
+ * was not. On a freshly flashed appliance that dead-ended the only path most
+ * people use — enter your inverter's address in Settings, save it successfully,
+ * and keep seeing fake data, with no error and nothing to click.
+ */
+describe("simulate is part of the saved config", () => {
+  test("defaults to off, so a saved config describes a real target", () => {
+    expect(inverterConfigSchema.parse({}).simulate).toBe(false);
+  });
+
+  test("round-trips when set", () => {
+    expect(inverterConfigSchema.parse({ simulate: true }).simulate).toBe(true);
+  });
+
+  // The whole point: a host and simulation are expressible together, because
+  // the transition between them is a save the user makes deliberately.
+  test("accepts a host alongside simulation", () => {
+    const cfg = inverterConfigSchema.parse({ host: "192.168.1.100", simulate: true });
+
+    expect(cfg.host).toBe("192.168.1.100");
+    expect(cfg.simulate).toBe(true);
+  });
+
+  // A fresh install has neither. Rejecting that would make the default document
+  // unparseable and take down every box that has never been configured.
+  test("still accepts a config with no host and no simulation", () => {
+    expect(() => inverterConfigSchema.parse({})).not.toThrow();
   });
 });
