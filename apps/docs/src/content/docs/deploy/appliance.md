@@ -189,6 +189,7 @@ sunreye lan-access on [--site-id N] | off
 sunreye ssh-key add <key> | remove <key> | list
 sunreye tls tailscale|internal|both
 sunreye tailscale reset
+sunreye upgrade
 sunreye factory-reset --confirm <this box's name>
 sunreye show
 sunreye apply
@@ -249,14 +250,23 @@ which is fine for exactly one site.
 
 ## Updates
 
-The box checks nightly (~04:20 local, jittered) for a new SunReye release and stages it into
-the next boot. It never reboots itself — a box that reboots unattended is a box that
-reboots during someone's evening peak.
+The box checks nightly (~04:20 local, jittered) for a new SunReye release and switches to
+it. The new system is live straight away — only a kernel change needs a reboot, and the box
+never reboots itself, because a box that reboots unattended is a box that reboots during
+someone's evening peak.
 
 ```bash
-nixos-rebuild switch --flake /etc/nixos     # apply a staged update now
+sunreye upgrade                             # pull the current release now
 nixos-rebuild switch --rollback             # go back one generation
 ```
+
+:::caution[`apply` is not an upgrade]
+`sunreye apply` and a bare `nixos-rebuild switch --flake /etc/nixos` rebuild against the
+lock file the box already has, so they reproduce the system you are already running. What
+moves the lock is `--update-input`, which lives in the nightly unit — and `sunreye upgrade`
+runs that unit rather than spelling out a rebuild of its own, so there is one definition of
+what an upgrade is.
+:::
 
 Updates follow the `stable` branch, which only ever advances after **both** the container
 images and the flashable image for that version are published. A box can never pull a

@@ -30,6 +30,7 @@ export type Outcome =
   | { kind: "show" }
   | { kind: "apply" }
   | { kind: "reset" }
+  | { kind: "upgrade" }
   | { kind: "factory-reset"; confirm: string | undefined }
   | { kind: "error"; message: string };
 
@@ -45,6 +46,9 @@ const HELP = `sunreye — configure this SunReye appliance
   tls tailscale|internal|both
                         how the dashboard is served over HTTPS
   tailscale reset       forget this tailnet and reopen the login window (root)
+  upgrade               pull the current release now instead of waiting for the
+                        nightly timer (root). Not 'apply', which rebuilds the
+                        system you already have
   factory-reset --confirm <this box's name>
                         erase EVERYTHING back to a first boot: the database and
                         all its history, the tailnet identity, the secrets. Run
@@ -241,6 +245,24 @@ function tlsCommand(site: SiteConfig, rest: readonly string[]): Outcome {
   return settle(site, { ...site, tls: wanted }, `TLS mode ${wanted}`);
 }
 
+/**
+ * Run the nightly upgrade now.
+ *
+ * Hands off to `nixos-upgrade.service` rather than spelling out a
+ * `nixos-rebuild` of its own: that unit is where the appliance decides what an
+ * upgrade IS — which input moves, that the lock is committed, that the box does
+ * not reboot itself — and a second copy of that decision here would drift from
+ * it silently.
+ */
+function upgradeCommand(ctx: Context): Outcome {
+  if (!ctx.isRoot) {
+    return error(
+      "upgrade has to run as root: it switches the system generation and restarts the containers. Re-run with sudo.",
+    );
+  }
+  return { kind: "upgrade" };
+}
+
 function tailscaleCommand(rest: readonly string[], ctx: Context): Outcome {
   if (rest[0] !== "reset") return error("usage: sunreye tailscale reset");
   if (!ctx.isRoot) {
@@ -290,6 +312,7 @@ const COMMANDS: Record<
     if ("error" in flags) return { kind: "error", message: flags.error };
     return { kind: "factory-reset", confirm: flags["--confirm"] };
   },
+  upgrade: (_site, _rest, ctx) => upgradeCommand(ctx),
   show: () => ({ kind: "show" }),
   apply: () => ({ kind: "apply" }),
 };

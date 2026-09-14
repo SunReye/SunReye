@@ -214,6 +214,35 @@ function factoryReset(io: Io, confirm: string | undefined): number {
   return 0;
 }
 
+/**
+ * Pull the current release now, by starting the unit the nightly timer starts.
+ *
+ * `--wait`, so this command's exit status is the upgrade's: without it
+ * systemctl returns the moment the job is queued, and the CLI would report
+ * success for an upgrade that had not begun. It blocks for minutes, which is
+ * the same bargain `apply` already makes.
+ */
+function upgrade(io: Io): number {
+  io.log(
+    "upgrading from the current release. This takes a few minutes and the dashboard will blip.",
+  );
+
+  const started = io.exec(["systemctl", "start", "--wait", "nixos-upgrade.service"]);
+  if (!started.ok) {
+    io.error(`upgrade failed: ${started.output.trim()}`);
+    // A failed switch leaves the running generation alone, and saying so is the
+    // difference between "try again later" and "I have bricked a box I cannot
+    // reach". The journal is where the reason is — usually no network.
+    io.error(
+      "This box is unchanged and still running its old generation. The reason is in: journalctl -u nixos-upgrade",
+    );
+    return 1;
+  }
+
+  io.log("upgraded. The new generation is live; a reboot is only needed for a kernel change.");
+  return 0;
+}
+
 function reset(io: Io): number {
   const logout = io.exec(["tailscale", "logout"]);
   if (!logout.ok) io.log(`tailscale logout: ${logout.output.trim()} — continuing`);
@@ -267,6 +296,8 @@ export function run(argv: readonly string[], io: Io): number {
       return show(io, parsed.site);
     case "reset":
       return reset(io);
+    case "upgrade":
+      return upgrade(io);
     case "factory-reset":
       return factoryReset(io, outcome.confirm);
     case "apply":

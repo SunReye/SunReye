@@ -230,3 +230,35 @@ describe("the removed inverter commands", () => {
     expect(outcome.kind === "error" && outcome.message).toMatch(/dashboard|onboarding/i);
   });
 });
+
+/**
+ * Pulling a release without waiting for the nightly timer.
+ *
+ * The box already knows how to upgrade itself — `nixos-upgrade.service`, at
+ * 04:20 plus jitter. What it had no way to say was "now". The answer was
+ * `systemctl start nixos-upgrade.service`, which is not something a tool whose
+ * entire job is configuring this box should make someone find out elsewhere.
+ *
+ * `apply` is NOT that command and never was: it rebuilds against the existing
+ * flake.lock, so it reproduces the system you already have. Moving the lock is
+ * `--update-input`, and that lives in the unit.
+ */
+describe("upgrade", () => {
+  test("it asks for the unit the timer already runs", () => {
+    expect(applyCommand(DEFAULT_SITE, ["upgrade"], ctx)).toEqual({ kind: "upgrade" });
+  });
+
+  // It stops containers and switches the system generation.
+  test("it refuses without root, and says why", () => {
+    const outcome = applyCommand(DEFAULT_SITE, ["upgrade"], { ...ctx, isRoot: false });
+
+    expect(outcome.kind).toBe("error");
+    expect(outcome.kind === "error" && outcome.message).toMatch(/root|sudo/i);
+  });
+
+  test("it is in the help, or nobody will find it", () => {
+    const printed = applyCommand(DEFAULT_SITE, ["--help"], ctx);
+
+    expect(printed.kind === "print" && printed.text).toContain("upgrade");
+  });
+});

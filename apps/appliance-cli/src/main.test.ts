@@ -399,3 +399,40 @@ describe("factory-reset", () => {
     expect(joined(h.runs).some((c) => c.includes("reboot"))).toBe(false);
   });
 });
+
+describe("upgrade", () => {
+  const box = { hostname: () => "sr-abc123" };
+
+  // `--wait`, so the command's exit status is the upgrade's. Without it
+  // systemctl returns the moment the job is queued and the CLI would report
+  // success for an upgrade that had not started, let alone finished.
+  test("it runs the nightly unit and waits for it", () => {
+    const h = harness(box);
+
+    expect(run(["upgrade"], h.io)).toBe(0);
+
+    const flat = joined(h.runs);
+    expect(flat).toContain("systemctl start --wait nixos-upgrade.service");
+  });
+
+  test("a failed upgrade exits non-zero and points at the journal", () => {
+    const h = harness(box, (command) =>
+      command.includes("nixos-upgrade.service")
+        ? { ok: false, output: "Job failed" }
+        : { ok: true, output: "" },
+    );
+
+    expect(run(["upgrade"], h.io)).toBe(1);
+    expect(h.errs.join("\n")).toContain("journalctl");
+  });
+
+  // The running system is untouched by a failed switch, and saying so is the
+  // difference between "try again" and "I have bricked the box in a cupboard".
+  test("the failure says the box is still on its old generation", () => {
+    const h = harness(box, () => ({ ok: false, output: "boom" }));
+
+    run(["upgrade"], h.io);
+
+    expect(h.errs.join("\n")).toMatch(/unchanged|still running|old generation/i);
+  });
+});
