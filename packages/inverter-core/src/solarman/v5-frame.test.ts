@@ -28,6 +28,19 @@ const RESPONSE =
 /** The reply to a request that carried the WRONG logger serial. */
 const STATUS =
   "a5 10 00 10 15 01 39 25 0a e2 bc 02 01 ab 0b 18 01 19 03 00 00 31 34 90 69 06 00 8e 15";
+/**
+ * The reply to a request the inverter would not answer — captured from register
+ * address 60000, from address 9000, and from a 200-register read, all three
+ * identical in shape. Status `05`, where the wrong-serial reject says `06`.
+ */
+const REJECT_UNANSWERED =
+  "a5 10 00 10 15 02 6c 25 0a e2 bc 02 01 87 12 18 01 f6 09 00 00 32 34 90 69 05 00 88 15";
+/**
+ * An unsolicited frame the stick sends on an idle socket. Control code 0x4710
+ * rather than 0x1510, and a one-byte payload — the only unprompted frame we have
+ * actually observed, and it must never reach the Modbus parser.
+ */
+const HEARTBEAT = "a5 01 00 10 47 04 6f 25 0a e2 bc 00 98 15";
 const REQUEST_PDU = "01 03 00 03 00 06 35 c8";
 const RESPONSE_PDU = "01 03 0c 32 35 31 30 32 33 34 35 37 38 00 00 47 07";
 const SERIAL = 0xbce20a25;
@@ -114,6 +127,37 @@ describe("decodeFrame", () => {
     // logger told us who it actually is in the header it replied with.
     expect(frame.serial).toBe(SERIAL);
     expect(hex(frame.payload)).toBe("06 00");
+    // The status byte is what separates "wrong serial" from "the inverter would
+    // not answer", and the sequence is what ties the reject to the request it
+    // refuses — without both, a reject can only be dropped.
+    expect(frame.status).toBe(0x06);
+    expect(frame.seq & 0xff).toBe(0x01);
+  });
+
+  test("the unanswered-request reject carries status 05 and its own sequence", () => {
+    const frame = decodeFrame(bytes(REJECT_UNANSWERED));
+    expect(frame.kind).toBe("status");
+    if (frame.kind !== "status") throw new Error("unreachable");
+    expect(frame.serial).toBe(SERIAL);
+    expect(frame.status).toBe(0x05);
+    expect(frame.seq & 0xff).toBe(0x02);
+  });
+
+  test("a status frame with no payload at all reports status 0 rather than NaN", () => {
+    const raw = bytes(STATUS);
+    raw[1] = 14;
+    const trimmed = raw.slice(0, 11 + 14 + 2);
+    trimmed[trimmed.length - 1] = 0x15;
+    trimmed[trimmed.length - 2] = checksum(trimmed);
+    const frame = decodeFrame(trimmed);
+    if (frame.kind !== "status") throw new Error("unreachable");
+    expect(frame.status).toBe(0);
+  });
+
+  test("the captured heartbeat decodes as `other`, never as a reply", () => {
+    // Golden vector, not a synthesised one: this is the frame that actually
+    // arrives unbidden on a socket nobody is talking on.
+    expect(decodeFrame(bytes(HEARTBEAT))).toEqual({ kind: "other", controlCode: 0x4710 });
   });
 
   test("a request frame decodes as `other`, tagged with its control code", () => {

@@ -23,9 +23,63 @@ import net from "node:net";
 
 import { getLogger } from "@logtape/logtape";
 
+import { rtuException } from "./rtu";
 import { decodeFrame, encodeRequest, splitFrames, SolarmanFrameError } from "./v5-frame";
 
 const log = getLogger(["inverter-core", "solarman"]);
+
+/**
+ * How a V5 reject is reported to modbus-serial, and why each mapping is the
+ * faithful one.
+ *
+ * A Solarman logger NEVER forwards a real Modbus exception PDU. On a live Deye
+ * every in-range read was answered with data — singles at 200/300/400/500/700/
+ * 800/1000, blocks 0..119, 100..119, 600..719, 690..710 — and the only requests
+ * that came back refused came back as a V5 reject, never as `01 83 02`. So the
+ * exception the transport above needs has to be MADE here or it does not exist,
+ * and a dropped reject leaves the transaction to burn its whole timeout.
+ *
+ * This is a translation, not a pretence: {@link SolarmanV5Port} reports the raw
+ * V5 status alongside every frame it synthesizes, so the logs still say what the
+ * wire actually carried.
+ */
+const EXCEPTION_FOR_STATUS: Readonly<Record<number, { code: number; meaning: string }>> = {
+  /**
+   * Measured: the inverter did not answer this request. Produced by register
+   * address 60000, by address 9000, and by a 200-register read (over the
+   * 125-register Modbus cap) — i.e. exactly the cases a device that DID speak
+   * Modbus would answer with exception 2. Mapping it there is what lets
+   * `isIllegalDataAddress` in `modbus-transport.ts` split the spanning block,
+   * remember the split, and carry on.
+   */
+  0x05: { code: 0x02, meaning: "the inverter did not answer this request" },
+  /**
+   * Measured: the request named the wrong or an unknown logger serial (sent as
+   * 1, 0, 0xFFFFFFFF and serial+1 — identical every time). This is an ADDRESSING
+   * failure, not a register one. Reporting it as exception 2 would have the
+   * transport quietly amputate registers from the read plan because a serial is
+   * stale, so it maps to 10 — gateway path unavailable, which is literally what
+   * a logging stick that cannot route the request is saying.
+   */
+  0x06: { code: 0x0a, meaning: "wrong or unknown logger serial" },
+};
+
+/**
+ * Any status we have never seen. 11 — gateway target device failed to respond —
+ * because the one thing we do know is that the gateway refused and the inverter
+ * said nothing. Never 2: only the one measured meaning earns the split.
+ */
+const EXCEPTION_UNKNOWN = { code: 0x0b, meaning: "unrecognised V5 status" } as const;
+
+/** What a synthesized exception needs that only the REQUEST can supply. */
+interface Outstanding {
+  /** Low byte of the sequence; the logger echoes no more than that. */
+  seq: number;
+  /** Unit id from the request's own RTU frame — not necessarily 1. */
+  unitId: number;
+  /** Function code as sent; the exception reply is this with 0x80 set. */
+  fn: number;
+}
 
 /** What the port needs to hear from its socket. */
 export interface SolarmanSocketHandlers {
@@ -122,8 +176,8 @@ export class SolarmanV5Port extends EventEmitter {
   #buffer: Uint8Array<ArrayBufferLike> = new Uint8Array(0);
   /** Next sequence to send. A byte, because only the low byte is echoed back. */
   #seq = 0;
-  /** Sequence of the request still waiting for a reply, or null. */
-  #outstanding: number | null = null;
+  /** The request still waiting for a reply, or null. */
+  #outstanding: Outstanding | null = null;
   #serial: number | undefined;
   /** Set only while the discovery probe is in flight. */
   #probe: ((serial: number | undefined) => void) | null = null;
@@ -186,7 +240,10 @@ export class SolarmanV5Port extends EventEmitter {
       return;
     }
     const seq = this.#nextSeq();
-    this.#outstanding = seq;
+    // The unit id and function code are remembered HERE because a reject frame
+    // carries no PDU at all: without them the exception reply it is translated
+    // into could not be addressed to the transaction it answers.
+    this.#outstanding = { seq, unitId: rtu[0] ?? 0, fn: rtu[1] ?? 0 };
     this.#socket.write(encodeRequest({ serial: this.#serial ?? PROBE_SERIAL, seq, pdu: rtu }));
   }
 
@@ -321,18 +378,30 @@ export class SolarmanV5Port extends EventEmitter {
       if (frame.kind !== "other") this.#probe(frame.serial);
       return;
     }
+    if (frame.kind === "status") {
+      this.#handleReject(frame);
+      return;
+    }
     if (frame.kind !== "response") {
+      // The one unsolicited frame we have actually observed — the stick's
+      // heartbeat, control code 0x4710 — lands here and must stay a silent drop:
+      // it answers nothing, so there is no transaction for it to fail.
       log.debug("solarman: dropping a non-response frame ({kind})", { kind: frame.kind });
       return;
     }
+    this.#handleResponse(frame);
+  }
+
+  /** A frame carrying a real PDU: hand it to modbus-serial if it is ours. */
+  #handleResponse(frame: { serial: number; seq: number; pdu: Uint8Array }): void {
     if (frame.serial !== this.#serial) {
       log.warn("solarman: dropping a frame from logger {serial}", { serial: frame.serial });
       return;
     }
-    if ((frame.seq & 0xff) !== this.#outstanding) {
+    if ((frame.seq & 0xff) !== this.#outstanding?.seq) {
       log.warn("solarman: dropping a reply for sequence {seq}, expected {expected}", {
         seq: frame.seq & 0xff,
-        expected: this.#outstanding,
+        expected: this.#outstanding?.seq,
       });
       return;
     }
@@ -342,6 +411,48 @@ export class SolarmanV5Port extends EventEmitter {
     // A Buffer, not a Uint8Array: modbus-serial's parser calls `readUInt16LE` on
     // what it receives. CRC included — see the header on why nothing is stripped.
     this.emit("data", Buffer.from(frame.pdu));
+  }
+
+  /**
+   * Turn a reject that answers the outstanding request into a failure
+   * modbus-serial can see.
+   *
+   * The serial in the header is NOT checked against ours here, unlike on a real
+   * reply: a `06` reject says the serial we asked with is wrong, so demanding a
+   * match would drop the single frame that explains the problem. One TCP socket
+   * is one logger, so the header is the truth either way.
+   *
+   * Emitting `"reject"` before `"data"` puts the real cause in front of a
+   * listener before modbus-serial turns the synthesized frame into its own
+   * generic exception message. `"reject"` rather than `"error"` on purpose:
+   * modbus-serial forwards a port `"error"` onto the client, where an absent
+   * listener would take the process down.
+   */
+  #handleReject(frame: { serial: number; seq: number; status: number }): void {
+    const pending = this.#outstanding;
+    if (!pending || (frame.seq & 0xff) !== pending.seq) {
+      // Nothing outstanding, or a reject for a transaction that already
+      // settled: failing the request currently in flight would blame it for
+      // someone else's refusal.
+      log.debug("solarman: dropping an unsolicited reject (V5 status {status})", {
+        status: frame.status,
+      });
+      return;
+    }
+    // Cleared before emitting, so a duplicate reject — or a late real reply for
+    // the same sequence — cannot run the transaction callback a second time.
+    this.#outstanding = null;
+    const { code, meaning } = EXCEPTION_FOR_STATUS[frame.status] ?? EXCEPTION_UNKNOWN;
+    const status = `0x${frame.status.toString(16).padStart(2, "0")}`;
+    const message =
+      `solarman: logger ${frame.serial} rejected the request with V5 status ${status} ` +
+      `(${meaning}); reported to Modbus as exception ${code}`;
+    // Warn, not debug: for status 0x06 this is the only place the operator is
+    // told that the configured serial is wrong, and for 0x05 it is the record of
+    // which register the profile declares that this inverter will not serve.
+    log.warn(message);
+    this.emit("reject", new Error(message));
+    this.emit("data", Buffer.from(rtuException(pending.unitId, pending.fn, code)));
   }
 
   #handleClose(): void {
