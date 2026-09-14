@@ -679,6 +679,84 @@ describe("ModbusInverter read", () => {
   });
 });
 
+// --- gap-merged reads over a Solarman stick --------------------------------
+//
+// Merging two blocks across the unmapped registers between them is a bet: this
+// device will answer for addresses no metric is bound to. The bet is only
+// acceptable because losing it is recoverable — the device says Modbus
+// exception 2, the block is narrowed back to what the profile actually maps, and
+// the narrowing is remembered. That recovery is the safety argument for gap
+// tolerance existing at all, so it is proved here rather than asserted in a
+// comment. (Phase 2 is what makes it reachable over V5: the stick's reject frame
+// is translated into a Modbus exception 2 — see `solarman/v5-fallback.test.ts`.)
+
+describe("ModbusInverter gap-merged reads", () => {
+  /** Two metrics 19 unmapped registers apart — inside the Solarman tolerance. */
+  const spread = () => [def({ key: "a", addresses: [100] }), def({ key: "b", addresses: [120] })];
+
+  test("merges across the gap on a stick and leaves a socket framing alone", async () => {
+    const merged = new ModbusInverter(
+      profileOf(spread()),
+      connection({ transport: "solarman-v5" }),
+    );
+    device.read = bank({ 100: 1, 120: 2 });
+    await merged.read();
+    const overStick = wire.reads.slice();
+
+    wire.reads.length = 0;
+    const plain = new ModbusInverter(profileOf(spread()), connection({ transport: "tcp" }));
+    await plain.read();
+
+    expect(overStick).toEqual([{ start: 100, count: 21 }]);
+    expect(wire.reads).toEqual([
+      { start: 100, count: 1 },
+      { start: 120, count: 1 },
+    ]);
+  });
+
+  test("a rejected gap-merged block splits, recovers this very poll, and stays split", async () => {
+    const inv = new ModbusInverter(profileOf(spread()), connection({ transport: "solarman-v5" }));
+    device.read = async (start, count) => {
+      // The stick refuses the merged range; the mapped addresses answer.
+      if (start === 100 && count === 21) throw illegalDataAddress();
+      return bank({ 100: 1, 120: 2 })(start, count);
+    };
+
+    const first = await inv.read();
+    wire.reads.length = 0;
+    const second = await inv.read();
+
+    // Recovered in place: the poll that was refused still returns both values.
+    expect(first.metrics).toEqual({ a: 1, b: 2 });
+    // …and the narrowing is remembered, so the refused range is never re-probed.
+    expect(wire.reads).toEqual([
+      { start: 100, count: 1 },
+      { start: 120, count: 1 },
+    ]);
+    expect(second.metrics).toEqual({ a: 1, b: 2 });
+    // NOT degraded: un-merging costs round trips, not coherence. Nothing here
+    // was ever promised a shared snapshot — that promise belongs to atomic
+    // compute groups, and this plan has none.
+    expect(first.degraded).toBeUndefined();
+    expect(second.degraded).toBeUndefined();
+  });
+
+  test("exception 2 on an unmerged plain block still propagates — no gap to blame", async () => {
+    // The mirror case: with no merge and no span, a refusal is a real fault and
+    // must not be swallowed by a fallback that has nothing to narrow.
+    const inv = new ModbusInverter(
+      profileOf([def({ key: "a", addresses: [100] })]),
+      connection({ transport: "solarman-v5" }),
+    );
+    device.read = async () => {
+      throw illegalDataAddress();
+    };
+
+    await expect(inv.read()).rejects.toThrow("Illegal data address");
+    expect(wire.reads).toHaveLength(1);
+  });
+});
+
 describe("ModbusInverter write", () => {
   const writable = (over: Partial<MetricDef> & { key: string }) =>
     def({ access: "rw", addresses: [200], ...over });
