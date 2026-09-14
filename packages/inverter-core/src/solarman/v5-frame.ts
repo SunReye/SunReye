@@ -71,11 +71,23 @@ export type SolarmanFrameReason =
 /** A buffer that is not a well-formed V5 frame, tagged with why. */
 export class SolarmanFrameError extends Error {
   readonly reason: SolarmanFrameReason;
+  /**
+   * Complete frames that {@link splitFrames} had already taken off the front of
+   * the buffer before it hit the fault. Empty for everything else.
+   *
+   * They ride on the error rather than being thrown away because the refusal is
+   * about the bytes that FOLLOW them: a chunk shaped `[complete reply][stray
+   * byte]` is a desynchronised stream AND a perfectly good answer to a
+   * transaction that is waiting right now, and dropping the second to punish the
+   * first costs that transaction its entire timeout.
+   */
+  readonly frames: readonly Uint8Array[];
 
-  constructor(reason: SolarmanFrameReason, message: string) {
+  constructor(reason: SolarmanFrameReason, message: string, frames: Uint8Array[] = []) {
     super(message);
     this.name = "SolarmanFrameError";
     this.reason = reason;
+    this.frames = frames;
   }
 }
 
@@ -270,7 +282,10 @@ export function decodeFrame(buf: Uint8Array): SolarmanFrame {
  * A buffer that does not START on a frame boundary throws `bad-start`: scanning
  * forward for the next 0xA5 would cheerfully lock onto a payload byte and
  * produce plausible nonsense, so the only safe response is for the caller to
- * drop its buffer and let the reconnect handle it.
+ * drop its buffer and let the reconnect handle it. Whatever WAS parsed cleanly
+ * before that point is handed back on the error's `frames` — those frames are
+ * not implicated by a fault in the bytes after them, and one of them may be the
+ * reply a transaction is waiting on.
  */
 export function splitFrames(buf: Uint8Array): { frames: Uint8Array[]; rest: Uint8Array } {
   const frames: Uint8Array[] = [];
@@ -282,6 +297,7 @@ export function splitFrames(buf: Uint8Array): { frames: Uint8Array[]; rest: Uint
       throw new SolarmanFrameError(
         "bad-start",
         `stream desynchronised at offset ${at}: expected 0xa5, got 0x${byte(buf[at])}`,
+        frames,
       );
     }
     const total = HEADER + (buf[at + 1]! | (buf[at + 2]! << 8)) + TRAILER;

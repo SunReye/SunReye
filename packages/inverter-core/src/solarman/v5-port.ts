@@ -79,6 +79,13 @@ interface Outstanding {
   unitId: number;
   /** Function code as sent; the exception reply is this with 0x80 set. */
   fn: number;
+  /**
+   * The RTU frame exactly as it was handed to us, kept so a transient refusal
+   * can be asked again byte-for-byte rather than guessed at.
+   */
+  rtu: Uint8Array;
+  /** Whether this request has already spent its one retry. */
+  retried: boolean;
 }
 
 /** What the port needs to hear from its socket. */
@@ -233,21 +240,57 @@ export class SolarmanV5Port extends EventEmitter {
   /** Wrap one RTU frame in a V5 request and send it. */
   write(rtu: Uint8Array): void {
     if (!this.#openFlag || !this.#socket) {
-      // The stick accepts exactly ONE TCP client and the Solarman cloud steals
-      // the slot, so writing into a closed socket is routine, not exceptional:
-      // the pending transaction times out and `ModbusTransport` reconnects.
+      // Writing into a closed socket is routine, not exceptional: the stick
+      // hangs up freely (a reset under load, its own reboot, the network), and
+      // the pending transaction then times out and `ModbusTransport` reconnects.
+      //
+      // Measured on the live stick, correcting an earlier claim that stood here:
+      // a SECOND TCP client does NOT evict the first. Two concurrent
+      // `ModbusTransport` clients each read all 99 metrics (3096/2949/3209 ms
+      // and 3196/2950/3209 ms, against 1441 ms for a single client) — the stick
+      // serialises them on the shared RS485 bus instead. So the Solarman cloud
+      // is not stealing a slot from us; reconnect handling is here because
+      // sockets die, not because we are being evicted.
       log.warn("solarman: dropping a write on a closed port");
       return;
     }
-    const seq = this.#nextSeq();
-    // The unit id and function code are remembered HERE because a reject frame
-    // carries no PDU at all: without them the exception reply it is translated
-    // into could not be addressed to the transaction it answers.
-    this.#outstanding = { seq, unitId: rtu[0] ?? 0, fn: rtu[1] ?? 0 };
-    this.#socket.write(encodeRequest({ serial: this.#serial ?? PROBE_SERIAL, seq, pdu: rtu }));
+    this.#send(Uint8Array.from(rtu), false);
   }
 
+  /**
+   * Put one RTU frame on the wire and remember what it will take to answer it.
+   *
+   * The unit id and function code are remembered HERE because a reject frame
+   * carries no PDU at all: without them the exception reply it is translated
+   * into could not be addressed to the transaction it answers. The frame itself
+   * is kept for the same reason a retry needs it — the request is the only copy.
+   *
+   * Every attempt gets a FRESH sequence, retries included, so a late answer to
+   * the attempt that was already refused stays recognisable as stale instead of
+   * being mistaken for this one's.
+   */
+  #send(rtu: Uint8Array, retried: boolean): void {
+    const seq = this.#nextSeq();
+    this.#outstanding = { seq, unitId: rtu[0] ?? 0, fn: rtu[1] ?? 0, rtu, retried };
+    this.#socket?.write(encodeRequest({ serial: this.#serial ?? PROBE_SERIAL, seq, pdu: rtu }));
+  }
+
+  /**
+   * Hang up.
+   *
+   * The disarm is not housekeeping — it is the whole correctness of closing
+   * mid-connect. `ModbusTransport.getClient()` races the entire connect against
+   * a deadline of its own, which is NOT the discovery probe's deadline, and on
+   * losing that race it closes a port whose probe is still outstanding. A timer
+   * left running then fires on a closed port, falls back to the configured
+   * serial and sets `isOpen` — after which every poll writes into a socket
+   * nobody is reading, and the close callback never ran. `#handleClose` disarms
+   * too, but only once the socket reports its close, which for a real
+   * `net.Socket` is some time after `end()` and may be never.
+   */
   close(callback?: () => void): void {
+    this.#disarm();
+    this.#probe = null;
     if (!this.#socket) {
       this.#openFlag = false;
       callback?.();
@@ -352,11 +395,15 @@ export class SolarmanV5Port extends EventEmitter {
       this.#buffer = split.rest;
     } catch (err) {
       // Desynchronised: scanning forward for the next 0xa5 would lock onto a
-      // payload byte. Drop what we hold and let the next read start clean.
+      // payload byte. Drop what we hold and let the next read start clean —
+      // but NOT the frames that were already taken cleanly off the front of this
+      // same chunk. One of them may be the reply the transaction in flight is
+      // waiting for, and it is not made wrong by a stray byte behind it.
       log.warn("solarman: dropping a desynchronised read buffer: {reason}", {
         reason: err instanceof SolarmanFrameError ? err.reason : String(err),
       });
       this.#buffer = new Uint8Array(0);
+      if (err instanceof SolarmanFrameError) for (const raw of err.frames) this.#handleFrame(raw);
       return;
     }
     for (const raw of frames) this.#handleFrame(raw);
@@ -439,6 +486,7 @@ export class SolarmanV5Port extends EventEmitter {
       });
       return;
     }
+    if (this.#retryTransient(frame.status, pending)) return;
     // Cleared before emitting, so a duplicate reject — or a late real reply for
     // the same sequence — cannot run the transaction callback a second time.
     this.#outstanding = null;
@@ -453,6 +501,53 @@ export class SolarmanV5Port extends EventEmitter {
     log.warn(message);
     this.emit("reject", new Error(message));
     this.emit("data", Buffer.from(rtuException(pending.unitId, pending.fn, code)));
+  }
+
+  /**
+   * Ask a `05`-refused request ONE more time, and say whether that happened.
+   *
+   * V5 status `05` is ambiguous in a way that matters more than any other
+   * mapping in this file. In the stick's own measured behaviour it means "the
+   * inverter did not answer this request" — which is as true of a
+   * logger-to-inverter RS485 round trip that timed out under load (TRANSIENT) as
+   * of an address the inverter will never serve (STRUCTURAL). Nothing else on
+   * the wire separates them.
+   *
+   * The costs are not symmetric. The structural reading feeds
+   * `ModbusTransport.narrow()`, whose splice of the read plan and `degraded`
+   * flag are PERMANENT — `this.blocks` is built once, in the constructor, and
+   * nothing ever restores it. So believing a transient refusal splits an atomic
+   * compute group and marks every later sample degraded for the life of the
+   * process, from one busy moment. And busy moments are expected here: 96-215 ms
+   * per round trip, 3.2 s for a full poll under cloud contention.
+   *
+   * Asking again is the cheapest honest discriminator, and effectively the only
+   * one — a condition that clears between two round trips was transient, and one
+   * that does not is structural enough to act on. Answered on retry ⇒ serve the
+   * data; refused twice ⇒ exception 2, and the split-and-remember fallback (also
+   * the safety net for gap-merged blocks) still gets its signal.
+   *
+   * One retry, not more: the transaction's deadline is modbus-serial's, and a
+   * genuinely out-of-map register is read once per poll forever until the plan
+   * is narrowed, so an unbounded retry would trade a permanent amputation for a
+   * permanent doubling of every poll.
+   *
+   * Only `05` qualifies. A `06` says the logger serial we asked with is wrong,
+   * which cannot change between two round trips; retrying it would buy a second
+   * identical refusal.
+   */
+  #retryTransient(status: number, pending: Outstanding): boolean {
+    if (status !== 0x05 || pending.retried) return false;
+    // No socket to ask on: fail the transaction now rather than leave it waiting
+    // on a request that never went out.
+    if (!this.#openFlag || !this.#socket) return false;
+    log.debug(
+      "solarman: V5 status 0x05 on unit {unitId} fn {fn}; asking once more before " +
+        "reporting it as an address the inverter will not serve",
+      { unitId: pending.unitId, fn: pending.fn },
+    );
+    this.#send(pending.rtu, true);
+    return true;
   }
 
   #handleClose(): void {
@@ -473,12 +568,39 @@ export class SolarmanV5Port extends EventEmitter {
     if (wasOpen) this.emit("close");
   }
 
+  /**
+   * A socket error. During the connect it fails the open; afterwards it is a
+   * CLOSE, and deliberately not an `"error"` event.
+   *
+   * `ModbusRTU.open()` registers its own `_onError` on the port it was given and
+   * re-emits the error on the CLIENT (`modbus-serial/index.js:629`), where
+   * nothing in this codebase listens — an unhandled `EventEmitter` "error" is a
+   * thrown exception, and the server installs no `uncaughtException` handler, so
+   * one peer reset would take the whole poller down. modbus-serial's own TCP
+   * ports never reach that path (`ports/tcpport.js:157` swallows a socket error
+   * into its callback), which is why this port is the first that can, and why a
+   * bare `"error"` must never leave it once it is open.
+   *
+   * And a reset is the ROUTINE case here: the stick serialises clients on one
+   * RS485 bus and hangs up freely under load. So it is routed through the same
+   * path a FIN takes — `isOpen` goes false, `"close"` is re-emitted, and
+   * `ModbusTransport.getClient()` builds a fresh client on the next poll. The
+   * in-flight transaction is left to modbus-serial's own timeout, which owns it.
+   * The cause is still reported, on `"port-error"`: a name no library listens
+   * for, so an absent listener costs a diagnostic line rather than the process.
+   */
   #handleError(err: Error): void {
     if (this.#openCallback) {
       this.#failOpen(err);
       return;
     }
-    this.#openFlag = false;
-    this.emit("error", err);
+    log.warn("solarman: socket error on an open port, closing for a clean reconnect: {message}", {
+      message: err.message,
+    });
+    this.emit("port-error", err);
+    // Before destroy(), so the "close" re-emit still sees a port that was open;
+    // a second #handleClose from the socket's own close event is a no-op.
+    this.#handleClose();
+    this.#socket?.destroy();
   }
 }
