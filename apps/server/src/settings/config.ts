@@ -26,6 +26,10 @@ const envInverterConfig = (): InverterConfig =>
     port: env.INVERTER_PORT,
     unitId: env.INVERTER_UNIT_ID,
     transport: env.INVERTER_TRANSPORT,
+    // The Solarman stick's serial. Only a seed, like everything else here — the
+    // V5 port rediscovers it on every connect — but an appliance configured
+    // entirely from env would otherwise pay that round trip forever.
+    loggerSerial: env.INVERTER_LOGGER_SERIAL,
     pollIntervalMs: env.POLL_INTERVAL_MS,
     // SEEDS the saved config rather than overriding it forever. This is what
     // keeps Docker and the addon working exactly as before — their env var

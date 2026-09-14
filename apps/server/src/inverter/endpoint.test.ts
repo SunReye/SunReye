@@ -206,9 +206,14 @@ describe("pollCadence", () => {
 });
 
 describe("transportOf", () => {
-  test("only the two framings the Modbus client implements", () => {
+  test("every framing the Modbus client implements survives", () => {
     expect(transportOf("tcp")).toBe("tcp");
     expect(transportOf("rtu-over-tcp")).toBe("rtu-over-tcp");
+    // This arm narrowed by hand and only knew two framings, so a stored
+    // Solarman endpoint polled as plain Modbus TCP — which on a logging stick's
+    // port 8899 answers nothing at all. The device is configured, the UI shows
+    // it bound to a connection, and the plant is simply dark.
+    expect(transportOf("solarman-v5")).toBe("solarman-v5");
   });
 
   test("anything else reads as tcp rather than as a framing that never polls", () => {
@@ -243,6 +248,21 @@ describe("endpointOf", () => {
     const resolved = endpointOf(device({ connectionId: null, unitId: 3 }), null);
     expect(resolved.host).toBe("");
     expect(resolved.unitId).toBe(3);
+  });
+
+  test("carries the logging stick's serial from the connection row", () => {
+    const resolved = endpointOf(
+      device(),
+      connection({ transport: "solarman-v5", loggerSerial: 3168930341 }),
+    );
+    expect(resolved.transport).toBe("solarman-v5");
+    expect(resolved.loggerSerial).toBe(3168930341);
+  });
+
+  test("an endpoint with no stored serial leaves it unset, for the port to discover", () => {
+    // Absent is the NORMAL case: the serial is printed inside the dongle's
+    // shell, and the port asks the stick for it on connect.
+    expect(endpointOf(device(), connection()).loggerSerial).toBeUndefined();
   });
 
   test("clamps the stored cadence and narrows the stored framing", () => {

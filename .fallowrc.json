@@ -429,7 +429,9 @@
       },
       {
         "from": "env",
-        "allow": []
+        "allow": [
+          "inverter-core"
+        ]
       },
       {
         "from": "docs",
