@@ -32,7 +32,9 @@ configuration:
     description: >-
       Serial number of the Solarman logger stick, needed only with the
       "solarman-v5" transport. Normally left empty — SunReye reads it off the
-      stick when you test the connection.
+      stick when you test the connection. Leave it empty rather than entering 0:
+      on the wire 0 means "whichever stick answers", so it is not a serial and
+      the server will refuse to start with it.
   inverter_simulate:
     name: Simulate inverter
     description: >-

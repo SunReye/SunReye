@@ -132,7 +132,18 @@ in
       loggerSerial = mkOption {
         # Printed on the stick, and a uint32 on the wire — hence the range rather
         # than a plain int.
-        type = types.nullOr (types.ints.between 0 4294967295);
+        #
+        # The floor is 1, not 0, and that is deliberate: 0 is the DISCOVERY
+        # serial the v5 framing puts on a request that is still asking the stick
+        # who it is, so it is never a logger's own number. Every schema that
+        # consumes this value floors at 1 too (`INVERTER_LOGGER_SERIAL` in
+        # packages/env, `modbusParamsSchema`, `inverterConfigSchema`). While this
+        # option accepted 0, a box that set it passed `nix flake check` and
+        # `nixos-rebuild switch` and then ran a server that refused to start,
+        # complaining about an environment variable nobody had typed. `null` —
+        # leaving it unset — is how you say "none"; that is the setting that
+        # makes SunReye discover the serial.
+        type = types.nullOr (types.ints.between 1 4294967295);
         default = null;
         example = 1234567890;
         description = ''
@@ -141,6 +152,9 @@ in
           Normally left unset: the server discovers it during a connection test
           and stores it, so nobody has to read a sticker off a stick bolted behind
           an inverter. Set it only when discovery cannot reach the logger.
+
+          There is no "none" value to type here — 0 is the discovery serial on
+          the wire, not a serial, and is refused. Leave the option unset instead.
         '';
       };
       profile = mkOption {
