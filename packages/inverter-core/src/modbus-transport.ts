@@ -15,6 +15,7 @@ import ModbusRTU from "modbus-serial";
 
 import { decode, encodeWord } from "./codec";
 import { SolarmanV5Port } from "./solarman";
+import type { InverterTransport } from "./transports";
 import type {
   DeviceTransport,
   InverterConnection,
@@ -42,6 +43,18 @@ export interface ReadBlock {
    * unmapped "gap" registers between the inputs.
    */
   grouped?: boolean;
+  /**
+   * Two or more otherwise-separate blocks that were folded into one across the
+   * unmapped registers between them, because a round trip on this framing costs
+   * far more than the wasted registers do (see {@link GAP_TOLERANCE}).
+   *
+   * Recorded rather than inferred because it decides recoverability: a merged
+   * block is the only PLAIN block that can legitimately be refused with Modbus
+   * exception 2, and {@link ModbusTransport} splits it back apart instead of
+   * failing the poll. An unmerged plain block has no unmapped register to blame,
+   * so exception 2 on one is a real fault and still propagates.
+   */
+  merged?: boolean;
 }
 
 /**
@@ -76,6 +89,98 @@ function splitIntoBlocks(sorted: number[]): ReadBlock[] {
     }
   }
   return blocks;
+}
+
+/**
+ * How many unmapped registers it is worth reading to save one round trip, per
+ * framing. Zero means "split on every gap" — literally today's planner, so the
+ * two socket framings are untouched by any of this.
+ *
+ * `solarman-v5` is the outlier the number exists for. The Solarman stick is not
+ * a gateway; it takes the whole Modbus RTU frame, relays it to the inverter over
+ * the internal serial link, waits, and relays the answer back inside its own
+ * envelope. That fixed relay cost dwarfs the per-register cost, which is why a
+ * plan reading MORE registers in FEWER transactions is faster.
+ *
+ * Measured end to end on the stick at 10.20.0.63 (Deye SG05LP3 behind it), each
+ * plan twice under a busy stick and twice under an idle one:
+ *
+ * |  plan                       | reads | registers | busy        | idle      |
+ * |-----------------------------|-------|-----------|-------------|-----------|
+ * | split on every gap          |    15 |       153 | 3268/3119ms | 1456/1430 |
+ * | gap-merged (98/500/586)     |     3 |       227 | 1010/1107ms |  691/950  |
+ *
+ * Fit `total = perRead * reads + perRegister * registers` to each pair:
+ *
+ * - busy: 199 ms per read, 1.82 ms per register
+ * - idle:  78 ms per read, 2.04 ms per register
+ *
+ * A gap pays for itself while `gap * perRegister < perRead`, i.e. up to ~109
+ * registers busy and ~38 registers idle. The idle figure is the one that binds,
+ * because it is the cheapest a round trip is ever observed to be — choose a
+ * tolerance below it and the merge is profitable in every condition measured.
+ *
+ * 32 is that number, and it is not rounded to a decade on purpose:
+ *
+ * - it is comfortably under the ~38-register idle break-even, so no merge it
+ *   makes can ever be a net loss on this hardware;
+ * - it is comfortably over 18, the widest gap the real `deye-sg05lp3` plan
+ *   actually needs merged (110→128), so the whole win is taken;
+ * - it stops at 33 — the gap from 553 to 586 — which is exactly where the
+ *   profile's three natural register regions are, so the plan collapses to the
+ *   three blocks measured above and not to one enormous read of 580 registers
+ *   that would spend ~1.2 s of register time to save two round trips.
+ *
+ * It is a per-framing constant rather than a per-profile one because it is a
+ * property of the LINK, not of the register map: the same profile behind a local
+ * RS485 gateway wants zero.
+ */
+const GAP_TOLERANCE: Record<InverterTransport, number> = {
+  tcp: 0,
+  "rtu-over-tcp": 0,
+  "solarman-v5": 32,
+};
+
+/** See {@link GAP_TOLERANCE}. Exported so the choice is testable on its own. */
+export function gapToleranceFor(framing: InverterTransport): number {
+  return GAP_TOLERANCE[framing];
+}
+
+/**
+ * Whether `next` may be folded into `last`.
+ *
+ * `tolerance === 0` short-circuits to `false` for every pair, which is what
+ * makes tolerance zero byte-identical to the planner before gap merging existed.
+ */
+function mergeable(last: ReadBlock, next: ReadBlock, tolerance: number): boolean {
+  if (tolerance === 0) return false;
+  const gap = next.start - (last.start + last.count);
+  const span = next.start + next.count - last.start;
+  return gap <= tolerance && span <= MAX_BLOCK;
+}
+
+/**
+ * Fold neighbouring blocks (given ascending and disjoint) across gaps no wider
+ * than `tolerance`, still respecting {@link MAX_BLOCK}.
+ *
+ * A merge always swallows its neighbour WHOLE, so an atomic group's spanning
+ * block survives intact inside the result and its registers still share one
+ * transaction. That is why merging into a `grouped` block is safe and the flag
+ * is carried over rather than dropped.
+ */
+function mergeAcrossGaps(blocks: ReadBlock[], tolerance: number): ReadBlock[] {
+  const out: ReadBlock[] = [];
+  for (const block of blocks) {
+    const last = out[out.length - 1];
+    if (last && mergeable(last, block, tolerance)) {
+      last.count = block.start + block.count - last.start;
+      last.merged = true;
+      if (block.grouped) last.grouped = true;
+    } else {
+      out.push({ ...block });
+    }
+  }
+  return out;
 }
 
 /** Raw wire addresses a metric transitively depends on (through computed deps). */
@@ -188,23 +293,36 @@ function resolveAtomicGroups(metrics: MetricDef[]): ReadBlock[] {
  * remaining address is collapsed into contiguous blocks, split on gaps and the
  * per-request register cap.
  *
+ * `gapTolerance` then folds neighbouring blocks back together across gaps no
+ * wider than it, because on some framings a round trip costs far more than the
+ * unmapped registers it saves reading — see {@link GAP_TOLERANCE}. It defaults
+ * to 0, which is "split on every gap" and leaves the plan exactly as it was
+ * before gap merging existed.
+ *
  * Caveats: a spanning block also reads the unmapped registers between its
  * inputs — devices that reject that (Modbus exception 2) are detected at read
- * time and the block falls back to plain split reads. Inputs further apart
- * than {@link MAX_BLOCK} registers can never share a transaction, so those
- * computed metrics keep the transient-skew behavior.
+ * time and the block falls back to plain split reads. The same fallback is what
+ * makes a merge across a gap safe to attempt at all: a device that refuses the
+ * wider range narrows it back, once, and remembers. Inputs further apart than
+ * {@link MAX_BLOCK} registers can never share a transaction, so those computed
+ * metrics keep the transient-skew behavior.
  */
-export function planReads(metrics: MetricDef[]): ReadBlock[] {
+export function planReads(metrics: MetricDef[], gapTolerance = 0): ReadBlock[] {
   const groups = resolveAtomicGroups(metrics);
   const covered = (a: number) => groups.some((g) => a >= g.start && a < g.start + g.count);
   const rest = [...readableAddresses(metrics)].filter((a) => !covered(a)).sort((a, b) => a - b);
-  return [...groups, ...splitIntoBlocks(rest)].sort((a, b) => a.start - b.start);
+  const plan = [...groups, ...splitIntoBlocks(rest)].sort((a, b) => a.start - b.start);
+  return mergeAcrossGaps(plan, gapTolerance);
 }
 
 /**
- * Re-plan a spanning group block into the plain gap-split blocks of the
- * profile addresses it covers — the fallback when a device rejects reading the
- * unmapped registers inside the span.
+ * Re-plan a spanning block into the plain gap-split blocks of the profile
+ * addresses it covers — the fallback when a device rejects reading the unmapped
+ * registers inside the span, whether the span came from an atomic compute group
+ * or from gap merging.
+ *
+ * Always at tolerance 0: re-merging would hand the device back a range it has
+ * just refused, and the poll would never recover.
  *
  * @internal
  */
@@ -273,6 +391,11 @@ function dial(conn: InverterConnection, timeout: number): Dialed {
   }
 }
 
+/** Fold one block's response into the poll's address → word map. */
+function store(acc: Map<number, number>, block: ReadBlock, res: { data: number[] }): void {
+  res.data.forEach((word, i) => acc.set(block.start + i, word));
+}
+
 /** Modbus exception 2 — the device declined the address range itself. */
 function isIllegalDataAddress(err: unknown): boolean {
   return (
@@ -331,7 +454,10 @@ export class ModbusTransport implements DeviceTransport {
   constructor(profile: InverterProfile, conn: InverterConnection) {
     this.profile = profile;
     this.conn = conn;
-    this.blocks = planReads(profile.metrics);
+    // The tolerance is a property of the link, not of the register map: a stick
+    // pays ~78-199 ms per round trip and ~2 ms per register, a socket framing
+    // pays neither, and gets 0 — the plan it has always had.
+    this.blocks = planReads(profile.metrics, gapToleranceFor(conn.transport ?? "tcp"));
     this.degraded = hasUnplannableGroup(profile.metrics);
     log.info(
       `modbus read plan for ${profile.id}: ` +
@@ -428,33 +554,47 @@ export class ModbusTransport implements DeviceTransport {
   /** Every planned block, in order, into one address → word map. */
   private async readBlocks(client: ModbusRTU): Promise<Map<number, number>> {
     const acc = new Map<number, number>();
-    // Snapshot: a grouped-block fallback splices this.blocks mid-iteration.
+    // Snapshot: the fallback below splices this.blocks mid-iteration.
     for (const block of this.blocks.slice()) {
       try {
-        const { data } = await client.readHoldingRegisters(block.start, block.count);
-        data.forEach((word, i) => acc.set(block.start + i, word));
+        store(acc, block, await client.readHoldingRegisters(block.start, block.count));
       } catch (err) {
-        // A device may reject a spanning group read because it covers
-        // unmapped gap registers (exception 2). Permanently fall back to the
-        // plain split blocks for this group; anything else propagates.
-        if (!block.grouped || !isIllegalDataAddress(err)) throw err;
-        const subBlocks = splitBlock(block, this.profile.metrics);
-        log.warn(
-          `${this.profile.id}: device rejected atomic read ${block.start}+${block.count}; ` +
-            `splitting into ${subBlocks.map((b) => `${b.start}+${b.count}`).join(", ")} — ` +
-            `computed values may show transient skew on fast power swings`,
-        );
-        this.blocks.splice(this.blocks.indexOf(block), 1, ...subBlocks);
-        // The warning above is no longer the only record: every sample from here
-        // on is assembled from transactions milliseconds apart, and says so.
-        this.degraded = true;
-        for (const sub of subBlocks) {
-          const { data } = await client.readHoldingRegisters(sub.start, sub.count);
-          data.forEach((word, i) => acc.set(sub.start + i, word));
+        // Rethrows unless the block is one this transport may narrow, so the
+        // retry loop below only ever runs for a span that was refused.
+        for (const sub of this.narrow(block, err)) {
+          store(acc, sub, await client.readHoldingRegisters(sub.start, sub.count));
         }
       }
     }
     return acc;
+  }
+
+  /**
+   * Permanently replace a refused spanning block with the plain split blocks of
+   * the addresses the profile actually maps, and hand those back to be read.
+   *
+   * A device may reject a spanning read because it covers unmapped gap registers
+   * (Modbus exception 2) — either an atomic compute group's span or a gap-merged
+   * block. Anything else, including exception 2 on a block with no unmapped
+   * register in it to blame, is a real fault and is rethrown untouched: callers
+   * branch their retry/backoff on the original error.
+   */
+  private narrow(block: ReadBlock, err: unknown): ReadBlock[] {
+    if (!(block.grouped || block.merged) || !isIllegalDataAddress(err)) throw err;
+    const subBlocks = splitBlock(block, this.profile.metrics);
+    // Only an ATOMIC span losing its single transaction is a degraded sample.
+    // Un-merging a gap-merged block costs round trips, not coherence: every
+    // value in it was already read on its own terms.
+    const cost = block.grouped
+      ? "computed values may show transient skew on fast power swings"
+      : "more round trips per poll";
+    if (block.grouped) this.degraded = true;
+    log.warn(
+      `${this.profile.id}: device rejected read ${block.start}+${block.count}; ` +
+        `splitting into ${subBlocks.map((b) => `${b.start}+${b.count}`).join(", ")} — ${cost}`,
+    );
+    this.blocks.splice(this.blocks.indexOf(block), 1, ...subBlocks);
+    return subBlocks;
   }
 
   async write(key: string, value: number): Promise<void> {
