@@ -36,9 +36,53 @@ const v5Reply = (serial: number, seq: number, payload: Uint8Array): Uint8Array =
   return frame;
 };
 
+/** A V5 reject: a two-byte `<status> 00` payload, real serial in the header. */
+const v5Reject = (serial: number, seq: number, status: number): Uint8Array =>
+  v5Reply(serial, seq, Uint8Array.from([status, 0x00]));
+
 /** The wrong-serial reject: the two-byte `06 00` payload, real serial in the header. */
-const v5Status = (serial: number, seq: number): Uint8Array =>
-  v5Reply(serial, seq, Uint8Array.from([0x06, 0x00]));
+const v5Status = (serial: number, seq: number): Uint8Array => v5Reject(serial, seq, 0x06);
+
+/** Hex text (spaces optional) → bytes, so the golden vectors stay readable. */
+const bytes = (text: string): Uint8Array =>
+  Uint8Array.from(
+    text
+      .trim()
+      .split(/\s+/)
+      .map((b) => Number.parseInt(b, 16)),
+  );
+
+/**
+ * Captured verbatim from the stick (logger serial 3168930341 = 0xBCE20A25).
+ * Sequence low byte 0x02, so a test has to burn one transaction before this
+ * vector answers the outstanding one — which is the point of using the real
+ * bytes rather than a synthesised frame with a convenient sequence.
+ *
+ * Produced identically by register address 60000, by address 9000 and by a
+ * 200-register read: the inverter would not answer, and the logger says so
+ * ITSELF rather than forwarding a Modbus exception. That is the defect this
+ * whole translation exists for.
+ */
+const CAPTURED_REJECT_05 = bytes(
+  "a5 10 00 10 15 02 6c 25 0a e2 bc 02 01 87 12 18 01 f6 09 00 00 32 34 90 69 05 00 88 15",
+);
+
+/**
+ * Captured verbatim: the reply to a request that named the wrong logger serial.
+ * Sent with serial 1, 0, 0xFFFFFFFF and serial+1, all four identical in shape.
+ * Sequence low byte 0x01.
+ */
+const CAPTURED_REJECT_06 = bytes(
+  "a5 10 00 10 15 01 39 25 0a e2 bc 02 01 ab 0b 18 01 19 03 00 00 31 34 90 69 06 00 8e 15",
+);
+
+/**
+ * Captured verbatim: the heartbeat the stick emits unprompted on an idle socket.
+ * Control code 0x4710 and a one-byte payload — the only unsolicited frame we
+ * have actually observed, and the reason "nothing outstanding" must stay a
+ * silent drop rather than becoming an error of its own.
+ */
+const CAPTURED_HEARTBEAT = bytes("a5 01 00 10 47 04 6f 25 0a e2 bc 00 98 15");
 
 /** A logger heartbeat — a control code we have no business acting on. */
 const v5Heartbeat = (): Uint8Array => {
@@ -324,9 +368,11 @@ describe("SolarmanV5Port — what must never be emitted", () => {
     expect(emitted).toEqual([]);
   });
 
-  test("a status/reject frame — `06 00` is not a PDU", async () => {
+  test("a status/reject frame for a sequence nobody is waiting on", async () => {
     const { socket, emitted } = await openWithEmissions();
-    socket().deliver(v5Status(SERIAL, 1));
+    // Outstanding is 1; this reject answers 9. Translating it would fail the
+    // wrong transaction — the one still legitimately in flight.
+    socket().deliver(v5Status(SERIAL, 9));
     expect(emitted).toEqual([]);
   });
 
@@ -540,5 +586,219 @@ describe("SolarmanV5Port — driven by a real ModbusRTU client", () => {
     // (which notably does not extend Error) rather than anything we invented.
     expect((err as { name?: string }).name).toBe("TransactionTimedOutError");
     expect((err as { errno?: string }).errno).toBe("ETIMEDOUT");
+  });
+});
+
+/**
+ * The defect this suite pins: a Solarman logger NEVER forwards a real Modbus
+ * exception PDU. Every in-range read we probed on a live Deye came back with
+ * data; only out-of-map and oversize requests came back at all, and they came
+ * back as a V5-level reject (`05 00`) rather than as `01 83 02`. Dropped, that
+ * reject leaves modbus-serial with no reply, so every poll burns the FULL
+ * transaction timeout — forever, for any profile that declares one register this
+ * inverter will not serve — and `isIllegalDataAddress` can never fire, so the
+ * atomic-group fallback never narrows the block it should.
+ */
+describe("SolarmanV5Port — a refused request fails fast instead of hanging", () => {
+  /** Open, then send one request so there is an outstanding transaction. */
+  const openWithOutstanding = async (rtu?: Uint8Array) => {
+    const h = await openDiscovering();
+    h.socket().respond = () => [];
+    const emitted: Buffer[] = [];
+    const rejects: Error[] = [];
+    h.port.on("data", (d: Buffer) => emitted.push(d));
+    h.port.on("reject", (e: Error) => rejects.push(e));
+    h.port.write(rtu ?? withCrc(0x01, 0x03, 0x00, 0x03, 0x00, 0x06));
+    return { ...h, emitted, rejects };
+  };
+
+  test("the captured `05` reject becomes the exception-2 frame for the outstanding FC03", async () => {
+    const h = await openWithOutstanding();
+    // The capture's sequence low byte is 0x02, so burn sequence 1 first: these
+    // are the stick's real bytes, not bytes chosen to be convenient.
+    h.port.write(withCrc(0x01, 0x03, 0x00, 0x03, 0x00, 0x06));
+    h.socket().deliver(CAPTURED_REJECT_05);
+    // `01 83 02` + CRC16 — well-formed, so modbus-serial parses it instead of
+    // discarding it as noise, and the caller gets modbusCode 2.
+    expect(h.emitted.map(hex)).toEqual(["01 83 02 c0 f1"]);
+  });
+
+  test("the synthesized exception carries the OUTSTANDING request's unit id and function code", async () => {
+    // Unit 5, FC16: neither value can come from the reject frame, which carries
+    // no PDU at all — both have to be remembered from the request.
+    const h = await openWithOutstanding(
+      withCrc(0x05, 0x10, 0x00, 0x6c, 0x00, 0x01, 0x02, 0x00, 0x95),
+    );
+    h.socket().deliver(v5Reject(SERIAL, 1, 0x05));
+    expect(h.emitted.map(hex)).toEqual(["05 90 02 8c 00"]);
+  });
+
+  test("a `05` reject is still reported as itself, naming the raw V5 status", async () => {
+    const h = await openWithOutstanding();
+    h.socket().deliver(v5Reject(SERIAL, 1, 0x05));
+    // The translation is deliberate, not a pretence: the record has to still say
+    // what the wire actually carried, or a real diagnosis is impossible.
+    expect(h.rejects).toHaveLength(1);
+    expect(h.rejects[0]!.message).toContain("0x05");
+  });
+
+  test("the captured `06` reject is an ADDRESSING failure, never exception 2", async () => {
+    const h = await openWithOutstanding();
+    h.socket().deliver(CAPTURED_REJECT_06);
+    const frame = h.emitted[0]!;
+    // Exception 2 here would have `ModbusTransport` quietly amputate registers
+    // from the read plan because the configured logger serial is wrong.
+    expect(frame[2]).not.toBe(0x02);
+    expect(hex(frame)).toBe("01 83 0a c1 37");
+  });
+
+  test("a `06` reject names the logger's REAL serial, which its own header carries", async () => {
+    const h = await openWithOutstanding();
+    h.socket().deliver(CAPTURED_REJECT_06);
+    expect(h.rejects).toHaveLength(1);
+    // Decimal: that is how the serial is printed on the sticker and shown in the UI.
+    expect(h.rejects[0]!.message).toContain("3168930341");
+    expect(h.rejects[0]!.message).toContain("0x06");
+  });
+
+  test("a `06` reject carrying a different serial than ours is still acted on", async () => {
+    const h = await openWithOutstanding();
+    // The mismatch IS the report. Dropping it as "not our logger" would turn the
+    // one frame that explains the problem into silence.
+    h.socket().deliver(v5Reject(OTHER_SERIAL, 1, 0x06));
+    expect(h.emitted).toHaveLength(1);
+    expect(h.rejects[0]!.message).toContain(String(OTHER_SERIAL));
+  });
+
+  test("an unknown status code fails the transaction rather than hanging", async () => {
+    const h = await openWithOutstanding();
+    h.socket().deliver(v5Reject(SERIAL, 1, 0x09));
+    expect(h.emitted).toHaveLength(1);
+    // Not 2: only the one measured meaning earns the split-and-remember path.
+    expect(h.emitted[0]![2]).toBe(0x0b);
+    expect(h.rejects[0]!.message).toContain("0x09");
+  });
+
+  test("a reject with NO request outstanding is dropped", async () => {
+    const h = await openDiscovering();
+    h.socket().respond = () => [];
+    const emitted: Buffer[] = [];
+    const rejects: Error[] = [];
+    h.port.on("data", (d: Buffer) => emitted.push(d));
+    h.port.on("reject", (e: Error) => rejects.push(e));
+    h.socket().deliver(CAPTURED_REJECT_05);
+    expect(emitted).toEqual([]);
+    expect(rejects).toEqual([]);
+  });
+
+  test("the captured heartbeat with nothing outstanding is dropped silently", async () => {
+    const h = await openDiscovering();
+    h.socket().respond = () => [];
+    const emitted: Buffer[] = [];
+    const rejects: Error[] = [];
+    h.port.on("data", (d: Buffer) => emitted.push(d));
+    h.port.on("reject", (e: Error) => rejects.push(e));
+    h.socket().deliver(CAPTURED_HEARTBEAT);
+    expect(emitted).toEqual([]);
+    expect(rejects).toEqual([]);
+  });
+
+  test("the captured heartbeat does not disturb a request in flight", async () => {
+    const h = await openWithOutstanding();
+    h.socket().deliver(CAPTURED_HEARTBEAT);
+    expect(h.emitted).toEqual([]);
+    expect(h.rejects).toEqual([]);
+    // …and the real reply still lands afterwards.
+    const pdu = withCrc(0x01, 0x03, 0x02, 0x12, 0x34);
+    h.socket().deliver(v5Reply(SERIAL, 0x0d01, pdu));
+    expect(h.emitted.map(hex)).toEqual([hex(pdu)]);
+  });
+
+  test("a duplicate reject is translated once — the transaction is already failed", async () => {
+    const h = await openWithOutstanding();
+    h.socket().deliver(v5Reject(SERIAL, 1, 0x05));
+    h.socket().deliver(v5Reject(SERIAL, 1, 0x05));
+    expect(h.emitted).toHaveLength(1);
+  });
+
+  test("a real reply arriving after a reject for the same sequence is ignored", async () => {
+    const h = await openWithOutstanding();
+    h.socket().deliver(v5Reject(SERIAL, 1, 0x05));
+    h.socket().deliver(v5Reply(SERIAL, 1, withCrc(0x01, 0x03, 0x02, 0x12, 0x34)));
+    expect(h.emitted.map(hex)).toEqual(["01 83 02 c0 f1"]);
+  });
+
+  test("a reject answering the discovery probe still only names the logger", async () => {
+    // The probe deliberately asks with serial 0 and is answered by a `06`
+    // reject; translating that into an exception during `open` would fail a
+    // transaction that does not exist.
+    const h = makePort();
+    const opened = new Promise<Error | undefined>((resolve) => h.port.open(resolve));
+    const emitted: Buffer[] = [];
+    h.port.on("data", (d: Buffer) => emitted.push(d));
+    h.socket().respond = () => [CAPTURED_REJECT_06];
+    expect(await opened).toBeUndefined();
+    expect(h.port.loggerSerial).toBe(SERIAL);
+    expect(emitted).toEqual([]);
+  });
+});
+
+/**
+ * The half that proves the translation is worth anything: a synthesized
+ * exception has to survive modbus-serial's own parser — length, CRC and the
+ * `0x80 | nextCode` check — and reach the caller as `err.modbusCode`, or
+ * `isIllegalDataAddress` in `modbus-transport.ts` never fires.
+ */
+describe("SolarmanV5Port — a reject reaching a real ModbusRTU client", () => {
+  const openRejecting = async (status: number) => {
+    let socket: FakeSocket | undefined;
+    const port = new SolarmanV5Port({
+      host: "10.20.0.63",
+      port: 8899,
+      timeoutMs: 100,
+      createSocket: (handlers) => {
+        socket = new FakeSocket(handlers);
+        socket.respond = (req) => [v5Status(SERIAL, req[5]! | (req[6]! << 8))];
+        return socket;
+      },
+    });
+    const client = new ModbusRTU(port);
+    await new Promise<void>((resolve, reject) =>
+      client.open((err?: Error) => (err ? reject(err) : resolve())),
+    );
+    client.setID(1);
+    client.setTimeout(400);
+    socket!.respond = (req) => [v5Reject(SERIAL, req[5]!, status)];
+    return { client, port };
+  };
+
+  const codeOf = async (status: number): Promise<{ code: unknown; ms: number }> => {
+    const { client } = await openRejecting(status);
+    const started = performance.now();
+    const err: unknown = await client.readHoldingRegisters(60000, 2).then(
+      () => undefined,
+      (e: unknown) => e,
+    );
+    return { code: (err as { modbusCode?: number }).modbusCode, ms: performance.now() - started };
+  };
+
+  test("a `05` reject arrives as modbusCode 2, the signal the split fallback reads", async () => {
+    const { code, ms } = await codeOf(0x05);
+    expect(code).toBe(2);
+    // Fast, not at timeout speed (400ms above): the whole point is that a poll
+    // no longer spends its entire budget waiting for a reply that already came.
+    expect(ms).toBeLessThan(200);
+  });
+
+  test("a `06` reject arrives as a failure that is NOT modbusCode 2", async () => {
+    const { code } = await codeOf(0x06);
+    expect(code).not.toBe(2);
+    expect(code).toBe(10);
+  });
+
+  test("an unknown status arrives as a failure that is NOT modbusCode 2", async () => {
+    const { code } = await codeOf(0x7f);
+    expect(code).not.toBe(2);
+    expect(code).toBe(11);
   });
 });

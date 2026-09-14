@@ -164,6 +164,22 @@ export type SolarmanFrame =
        * one, which is the entire auto-discovery mechanism.
        */
       serial: number;
+      /**
+       * The RAW sequence word, same caveat as on a response: match on
+       * `seq & 0xff`. A reject echoes the sequence of the request it refuses,
+       * which is the only thing that ties it to an outstanding transaction —
+       * without it a reject can only ever be dropped, and the transaction it
+       * answers burns its full timeout.
+       */
+      seq: number;
+      /**
+       * The first payload byte, the V5 status code. Measured on the captured
+       * stick: `05` means the inverter did not answer this request (an address
+       * outside its map, or a read over the 125-register cap), `06` means the
+       * request named the wrong or an unknown logger serial. Zero when the
+       * payload is empty, which no stick has been seen to send.
+       */
+      status: number;
       /** Whatever sat where a PDU would: `06 00` on a wrong-serial reject. */
       payload: Uint8Array;
     }
@@ -224,7 +240,15 @@ export function decodeFrame(buf: Uint8Array): SolarmanFrame {
   const serial = view.getUint32(7, true);
   const payload = buf.slice(HEADER + RESPONSE_BUSINESS, HEADER + payloadLength);
   // Too short to be an RTU frame ⇒ this is a status/reject payload, not a PDU.
-  if (payload.length < MIN_RTU_FRAME) return { kind: "status", serial, payload };
+  if (payload.length < MIN_RTU_FRAME) {
+    return {
+      kind: "status",
+      serial,
+      seq: view.getUint16(5, true),
+      status: payload[0] ?? 0,
+      payload,
+    };
+  }
   return {
     kind: "response",
     serial,
