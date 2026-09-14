@@ -112,6 +112,18 @@ interface Ask {
 class FakeLogger {
   readonly reads: Ask[] = [];
   readonly rejected: Ask[] = [];
+  /**
+   * Refuse a span this many times and then serve it — the TRANSIENT refusal the
+   * real stick produces when its own RS485 round trip to the inverter times out
+   * under load, which is a different thing from an address it will never serve.
+   */
+  transientRejects = 0;
+  /**
+   * The register this inverter will never serve. Set to `undefined` for a device
+   * whose whole map is readable, so a transient refusal can be studied without a
+   * structural one underneath it.
+   */
+  hole: number | undefined = HOLE;
   readonly server = net.createServer();
   /** Every client socket still attached, so a test can reset one from the peer side. */
   readonly clients: net.Socket[] = [];
@@ -160,7 +172,12 @@ class FakeLogger {
     const unit = pdu[0]!;
     const start = (pdu[2]! << 8) | pdu[3]!;
     const count = (pdu[4]! << 8) | pdu[5]!;
-    if (start <= HOLE && HOLE < start + count) {
+    if (this.transientRejects > 0) {
+      this.transientRejects--;
+      this.rejected.push({ start, count });
+      return v5Reply(seq, [0x05, 0x00]);
+    }
+    if (this.hole !== undefined && start <= this.hole && this.hole < start + count) {
       this.rejected.push({ start, count });
       return v5Reply(seq, [0x05, 0x00]);
     }
@@ -197,14 +214,77 @@ const connect = async (): Promise<ModbusTransport> => {
   return transport;
 };
 
+/**
+ * V5 status `05` means, in the stick's own measured behaviour, "the inverter did
+ * not answer this request". That covers BOTH an address the inverter will never
+ * serve AND a logger-to-inverter RS485 round trip that simply timed out under
+ * load — and the wire carries nothing that tells them apart.
+ *
+ * The consequences are wildly asymmetric. A structural refusal must reach the
+ * split-and-remember fallback; a transient one must not, because that fallback
+ * is PERMANENT: it splices `this.blocks` and sets `degraded`, neither of which
+ * is ever undone, so one busy-stick refusal would split the atomic group and
+ * flag every later sample degraded for the life of the process. With the stick
+ * measured at 96-215 ms per round trip and 3.2 s for a full poll under cloud
+ * contention, a transient refusal is expected, not exotic.
+ *
+ * So the port retries the identical request ONCE before concluding anything:
+ * answered on retry ⇒ transient, serve the data; refused twice ⇒ structural,
+ * synthesize exception 2. One extra round trip is the cheapest honest
+ * discriminator available — the only alternative that distinguishes them is
+ * asking again.
+ */
+describe("a transient refusal costs one poll, not the process lifetime", () => {
+  test("a single `05` is retried and the answer is served, with no degradation", async () => {
+    const t = await connect();
+    // A device with no unreadable register at all, so the ONLY refusal in this
+    // run is the transient one — otherwise the retry meets the structural hole
+    // and proves nothing.
+    logger!.hole = undefined;
+    // Refuse the very first read of the atomic span once, then behave.
+    logger!.transientRejects = 1;
+
+    const { values, degraded } = await t.read();
+
+    expect(values["a"]).toBe(100);
+    expect(values["b"]).toBe(110);
+    // Not degraded: the group kept its single transaction, on the retry.
+    expect(degraded).toBeUndefined();
+    // Refused once, then served the SAME span rather than two split halves.
+    expect(logger!.rejected).toEqual([{ start: 100, count: 11 }]);
+    expect(logger!.reads).toEqual([{ start: 100, count: 11 }]);
+  });
+
+  test("the read plan is left intact, so the next poll still asks for the span", async () => {
+    const t = await connect();
+    logger!.hole = undefined;
+    logger!.transientRejects = 1;
+    await t.read();
+    logger!.reads.length = 0;
+    logger!.rejected.length = 0;
+
+    const { degraded } = await t.read();
+
+    // The defect this pins: `narrow()` splices `this.blocks` permanently, so a
+    // single transient refusal used to amputate the atomic group forever.
+    expect(logger!.reads).toEqual([{ start: 100, count: 11 }]);
+    expect(logger!.rejected).toEqual([]);
+    expect(degraded).toBeUndefined();
+  });
+});
+
 describe("a Solarman reject drives the split-and-remember fallback end to end", () => {
   test("the atomic block is refused, split, and both halves are then read", async () => {
     const t = await connect();
     const { values, degraded } = await t.read();
 
     // The refusal arrived as a V5 reject — there is no Modbus exception anywhere
-    // on this wire — and still reached `isIllegalDataAddress`.
-    expect(logger!.rejected).toEqual([{ start: 100, count: 11 }]);
+    // on this wire — and still reached `isIllegalDataAddress`. Twice, because a
+    // refusal only counts as structural once asking again has been refused too.
+    expect(logger!.rejected).toEqual([
+      { start: 100, count: 11 },
+      { start: 100, count: 11 },
+    ]);
     expect(logger!.reads).toEqual([
       { start: 100, count: 1 },
       { start: 110, count: 1 },

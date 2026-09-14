@@ -79,6 +79,13 @@ interface Outstanding {
   unitId: number;
   /** Function code as sent; the exception reply is this with 0x80 set. */
   fn: number;
+  /**
+   * The RTU frame exactly as it was handed to us, kept so a transient refusal
+   * can be asked again byte-for-byte rather than guessed at.
+   */
+  rtu: Uint8Array;
+  /** Whether this request has already spent its one retry. */
+  retried: boolean;
 }
 
 /** What the port needs to hear from its socket. */
@@ -247,12 +254,25 @@ export class SolarmanV5Port extends EventEmitter {
       log.warn("solarman: dropping a write on a closed port");
       return;
     }
+    this.#send(Uint8Array.from(rtu), false);
+  }
+
+  /**
+   * Put one RTU frame on the wire and remember what it will take to answer it.
+   *
+   * The unit id and function code are remembered HERE because a reject frame
+   * carries no PDU at all: without them the exception reply it is translated
+   * into could not be addressed to the transaction it answers. The frame itself
+   * is kept for the same reason a retry needs it — the request is the only copy.
+   *
+   * Every attempt gets a FRESH sequence, retries included, so a late answer to
+   * the attempt that was already refused stays recognisable as stale instead of
+   * being mistaken for this one's.
+   */
+  #send(rtu: Uint8Array, retried: boolean): void {
     const seq = this.#nextSeq();
-    // The unit id and function code are remembered HERE because a reject frame
-    // carries no PDU at all: without them the exception reply it is translated
-    // into could not be addressed to the transaction it answers.
-    this.#outstanding = { seq, unitId: rtu[0] ?? 0, fn: rtu[1] ?? 0 };
-    this.#socket.write(encodeRequest({ serial: this.#serial ?? PROBE_SERIAL, seq, pdu: rtu }));
+    this.#outstanding = { seq, unitId: rtu[0] ?? 0, fn: rtu[1] ?? 0, rtu, retried };
+    this.#socket?.write(encodeRequest({ serial: this.#serial ?? PROBE_SERIAL, seq, pdu: rtu }));
   }
 
   close(callback?: () => void): void {
@@ -447,6 +467,7 @@ export class SolarmanV5Port extends EventEmitter {
       });
       return;
     }
+    if (this.#retryTransient(frame.status, pending)) return;
     // Cleared before emitting, so a duplicate reject — or a late real reply for
     // the same sequence — cannot run the transaction callback a second time.
     this.#outstanding = null;
@@ -461,6 +482,53 @@ export class SolarmanV5Port extends EventEmitter {
     log.warn(message);
     this.emit("reject", new Error(message));
     this.emit("data", Buffer.from(rtuException(pending.unitId, pending.fn, code)));
+  }
+
+  /**
+   * Ask a `05`-refused request ONE more time, and say whether that happened.
+   *
+   * V5 status `05` is ambiguous in a way that matters more than any other
+   * mapping in this file. In the stick's own measured behaviour it means "the
+   * inverter did not answer this request" — which is as true of a
+   * logger-to-inverter RS485 round trip that timed out under load (TRANSIENT) as
+   * of an address the inverter will never serve (STRUCTURAL). Nothing else on
+   * the wire separates them.
+   *
+   * The costs are not symmetric. The structural reading feeds
+   * `ModbusTransport.narrow()`, whose splice of the read plan and `degraded`
+   * flag are PERMANENT — `this.blocks` is built once, in the constructor, and
+   * nothing ever restores it. So believing a transient refusal splits an atomic
+   * compute group and marks every later sample degraded for the life of the
+   * process, from one busy moment. And busy moments are expected here: 96-215 ms
+   * per round trip, 3.2 s for a full poll under cloud contention.
+   *
+   * Asking again is the cheapest honest discriminator, and effectively the only
+   * one — a condition that clears between two round trips was transient, and one
+   * that does not is structural enough to act on. Answered on retry ⇒ serve the
+   * data; refused twice ⇒ exception 2, and the split-and-remember fallback (also
+   * the safety net for gap-merged blocks) still gets its signal.
+   *
+   * One retry, not more: the transaction's deadline is modbus-serial's, and a
+   * genuinely out-of-map register is read once per poll forever until the plan
+   * is narrowed, so an unbounded retry would trade a permanent amputation for a
+   * permanent doubling of every poll.
+   *
+   * Only `05` qualifies. A `06` says the logger serial we asked with is wrong,
+   * which cannot change between two round trips; retrying it would buy a second
+   * identical refusal.
+   */
+  #retryTransient(status: number, pending: Outstanding): boolean {
+    if (status !== 0x05 || pending.retried) return false;
+    // No socket to ask on: fail the transaction now rather than leave it waiting
+    // on a request that never went out.
+    if (!this.#openFlag || !this.#socket) return false;
+    log.debug(
+      "solarman: V5 status 0x05 on unit {unitId} fn {fn}; asking once more before " +
+        "reporting it as an address the inverter will not serve",
+      { unitId: pending.unitId, fn: pending.fn },
+    );
+    this.#send(pending.rtu, true);
+    return true;
   }
 
   #handleClose(): void {

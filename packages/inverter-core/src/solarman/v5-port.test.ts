@@ -642,12 +642,19 @@ describe("SolarmanV5Port — a refused request fails fast instead of hanging", (
     return { ...h, emitted, rejects };
   };
 
+  /** The sequence low byte of the request the port most recently sent. */
+  const lastSeq = (socket: FakeSocket): number => socket.writes.at(-1)![5]!;
+
   test("the captured `05` reject becomes the exception-2 frame for the outstanding FC03", async () => {
     const h = await openWithOutstanding();
     // The capture's sequence low byte is 0x02, so burn sequence 1 first: these
     // are the stick's real bytes, not bytes chosen to be convenient.
     h.port.write(withCrc(0x01, 0x03, 0x00, 0x03, 0x00, 0x06));
     h.socket().deliver(CAPTURED_REJECT_05);
+    // Nothing yet: one `05` only means the inverter did not answer THIS time, so
+    // the request is asked again before any verdict is drawn.
+    expect(h.emitted).toEqual([]);
+    h.socket().deliver(v5Reject(SERIAL, lastSeq(h.socket()), 0x05));
     // `01 83 02` + CRC16 — well-formed, so modbus-serial parses it instead of
     // discarding it as noise, and the caller gets modbusCode 2.
     expect(h.emitted.map(hex)).toEqual(["01 83 02 c0 f1"]);
@@ -660,16 +667,105 @@ describe("SolarmanV5Port — a refused request fails fast instead of hanging", (
       withCrc(0x05, 0x10, 0x00, 0x6c, 0x00, 0x01, 0x02, 0x00, 0x95),
     );
     h.socket().deliver(v5Reject(SERIAL, 1, 0x05));
+    h.socket().deliver(v5Reject(SERIAL, lastSeq(h.socket()), 0x05));
     expect(h.emitted.map(hex)).toEqual(["05 90 02 8c 00"]);
   });
 
   test("a `05` reject is still reported as itself, naming the raw V5 status", async () => {
     const h = await openWithOutstanding();
     h.socket().deliver(v5Reject(SERIAL, 1, 0x05));
+    h.socket().deliver(v5Reject(SERIAL, lastSeq(h.socket()), 0x05));
     // The translation is deliberate, not a pretence: the record has to still say
     // what the wire actually carried, or a real diagnosis is impossible.
     expect(h.rejects).toHaveLength(1);
     expect(h.rejects[0]!.message).toContain("0x05");
+  });
+
+  /**
+   * V5 `05` says only "the inverter did not answer this request" — which is as
+   * true of an RS485 round trip that timed out under load as of an address the
+   * inverter will never serve. Treating every `05` as the structural verdict fed
+   * `ModbusTransport.narrow()`, whose splice of the read plan and `degraded`
+   * flag are PERMANENT, so one busy-stick refusal amputated the atomic group for
+   * the life of the process.
+   *
+   * Asking again is the cheapest thing that distinguishes them, and it is the
+   * only one available: the wire carries nothing else. One extra round trip
+   * (96-215 ms measured) buys the difference between costing a poll and costing
+   * every poll thereafter.
+   */
+  describe("a transient `05` is retried before it is believed", () => {
+    test("the identical RTU frame goes out again, under a fresh sequence", async () => {
+      const rtu = withCrc(0x01, 0x03, 0x00, 0x64, 0x00, 0x0b);
+      const h = await openWithOutstanding(rtu);
+      const sentFirst = h.socket().writes.at(-1)!;
+      h.socket().deliver(v5Reject(SERIAL, 1, 0x05));
+
+      const retry = h.socket().writes.at(-1)!;
+      expect(h.socket().writes).toHaveLength(3); // probe, request, retry
+      // Byte-identical payload: a retry that asked something else would prove
+      // nothing about the request that was refused.
+      expect(hex(retry.subarray(11 + 15, retry.length - 2))).toBe(hex(rtu));
+      // A fresh sequence, so a late reply to the first attempt is still
+      // recognisable as stale rather than mistaken for the retry's answer.
+      expect(retry[5]).not.toBe(sentFirst[5]);
+    });
+
+    test("an answer to the retry is served as data, with no exception at all", async () => {
+      const h = await openWithOutstanding();
+      h.socket().deliver(v5Reject(SERIAL, 1, 0x05));
+      const pdu = withCrc(0x01, 0x03, 0x02, 0x12, 0x34);
+      h.socket().deliver(v5Reply(SERIAL, (0x0d << 8) | lastSeq(h.socket()), pdu));
+
+      expect(h.emitted.map(hex)).toEqual([hex(pdu)]);
+      // Nothing was reported as a refusal, because nothing was refused.
+      expect(h.rejects).toEqual([]);
+    });
+
+    test("a second `05` is the structural verdict: exception 2, and no third attempt", async () => {
+      const h = await openWithOutstanding();
+      h.socket().deliver(v5Reject(SERIAL, 1, 0x05));
+      const retrySeq = lastSeq(h.socket());
+      h.socket().deliver(v5Reject(SERIAL, retrySeq, 0x05));
+
+      expect(h.emitted.map(hex)).toEqual(["01 83 02 c0 f1"]);
+      expect(h.socket().writes).toHaveLength(3); // probe, request, retry — no more
+    });
+
+    test("the retry budget is per request, not per port", async () => {
+      const h = await openWithOutstanding();
+      h.socket().deliver(v5Reject(SERIAL, 1, 0x05));
+      h.socket().deliver(v5Reject(SERIAL, lastSeq(h.socket()), 0x05));
+      expect(h.emitted).toHaveLength(1);
+
+      // A later, unrelated transaction gets its own retry rather than inheriting
+      // the previous one's exhaustion.
+      h.port.write(withCrc(0x01, 0x03, 0x00, 0x03, 0x00, 0x06));
+      const before = h.socket().writes.length;
+      h.socket().deliver(v5Reject(SERIAL, lastSeq(h.socket()), 0x05));
+      expect(h.socket().writes).toHaveLength(before + 1);
+      expect(h.emitted).toHaveLength(1);
+    });
+
+    test("only `05` is retried — a `06` addressing failure is answered at once", async () => {
+      const h = await openWithOutstanding();
+      const before = h.socket().writes.length;
+      h.socket().deliver(v5Reject(SERIAL, 1, 0x06));
+      // Asking again with the same wrong serial would be refused identically;
+      // the retry exists for a condition that can change between two round
+      // trips, and a stale serial is not one.
+      expect(h.socket().writes).toHaveLength(before);
+      expect(h.emitted).toHaveLength(1);
+    });
+
+    test("a `05` on a port that has since closed is answered rather than retried", async () => {
+      const h = await openWithOutstanding();
+      h.socket().peerClose();
+      h.socket().deliver(v5Reject(SERIAL, 1, 0x05));
+      // The retry cannot be sent, so the transaction must be failed instead of
+      // left to burn its timeout waiting for a request that never went out.
+      expect(h.emitted.map(hex)).toEqual(["01 83 02 c0 f1"]);
+    });
   });
 
   test("the captured `06` reject is an ADDRESSING failure, never exception 2", async () => {
@@ -746,16 +842,30 @@ describe("SolarmanV5Port — a refused request fails fast instead of hanging", (
 
   test("a duplicate reject is translated once — the transaction is already failed", async () => {
     const h = await openWithOutstanding();
-    h.socket().deliver(v5Reject(SERIAL, 1, 0x05));
-    h.socket().deliver(v5Reject(SERIAL, 1, 0x05));
+    h.socket().deliver(v5Reject(SERIAL, 1, 0x06));
+    h.socket().deliver(v5Reject(SERIAL, 1, 0x06));
+    // A `06` is answered on the spot (no retry), so the second frame answers a
+    // transaction that already settled and must not run its callback again.
     expect(h.emitted).toHaveLength(1);
+  });
+
+  test("a duplicate of a retried `05` names a sequence nobody is waiting on any more", async () => {
+    const h = await openWithOutstanding();
+    h.socket().deliver(v5Reject(SERIAL, 1, 0x05));
+    // The retry carries a fresh sequence, so re-sending the FIRST reject is a
+    // reply to a dead attempt: it must not be mistaken for the retry's refusal.
+    h.socket().deliver(v5Reject(SERIAL, 1, 0x05));
+    expect(h.emitted).toEqual([]);
+    expect(h.socket().writes).toHaveLength(3);
   });
 
   test("a real reply arriving after a reject for the same sequence is ignored", async () => {
     const h = await openWithOutstanding();
     h.socket().deliver(v5Reject(SERIAL, 1, 0x05));
+    // Sequence 1 is the attempt the reject already killed; only the retry's own
+    // sequence can answer the transaction now.
     h.socket().deliver(v5Reply(SERIAL, 1, withCrc(0x01, 0x03, 0x02, 0x12, 0x34)));
-    expect(h.emitted.map(hex)).toEqual(["01 83 02 c0 f1"]);
+    expect(h.emitted).toEqual([]);
   });
 
   test("a reject answering the discovery probe still only names the logger", async () => {
