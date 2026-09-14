@@ -503,12 +503,14 @@ describe("computeCost and the live today registers", () => {
   midnight.setHours(0, 0, 0, 0);
   const at = (offsetHours: number) => new Date(midnight.getTime() + offsetHours * 3_600_000);
 
-  // Yesterday 21:00 → 100 kWh on the clock. Then 2 kWh through the evening and
-  // 1 kWh recorded since midnight: 3 kWh in the month, 1 kWh of it today.
-  const baseline = [{ metric: "imp", bucket: at(-3).toISOString(), last_max: 100 }];
+  // The hourly series differences the DAY register, so the rows carry it: 5 kWh
+  // on yesterday's clock at 21:00, then 2 kWh through the evening, the register
+  // back to 0 at midnight and 1 kWh recorded since — 3 kWh in the month, 1 kWh
+  // of it today.
+  const baseline = [{ metric: "impToday", bucket: at(-3).toISOString(), last_max: 5 }];
   const buckets = [
-    { bucket: at(-2).toISOString(), metric: "imp", min_value: 100, max_value: 102 },
-    { bucket: at(0).toISOString(), metric: "imp", min_value: 102, max_value: 103 },
+    { bucket: at(-2).toISOString(), metric: "impToday", min_value: 5, max_value: 7 },
+    { bucket: at(0).toISOString(), metric: "impToday", min_value: 0, max_value: 1 },
   ];
 
   /** The window's breakdown, over the pre-window baseline and in-window rows the
@@ -525,7 +527,7 @@ describe("computeCost and the live today registers", () => {
   const monthToDate = () =>
     costOver(new Date(midnight.getFullYear(), midnight.getMonth(), 1), baseline, buckets);
   /** Today: only the buckets since midnight, seeded from last evening's high. */
-  const todaySeed = [{ metric: "imp", bucket: at(-2).toISOString(), last_max: 102 }];
+  const todaySeed = [{ metric: "impToday", bucket: at(-2).toISOString(), last_max: 7 }];
   const today = () => costOver(midnight, todaySeed, buckets.slice(1));
 
   /** A poll-cache sample reading `kwh` on the today twin. */
@@ -639,12 +641,14 @@ describe("computeCost — an unmetered house load", () => {
   const clock = new Date();
   const midnight = new Date(clock);
   midnight.setHours(0, 0, 0, 0);
-  const buckets = Object.entries({ imp: 1, exp: 2, prod: 5 }).map(([metric, kwh]) => ({
-    bucket: midnight.toISOString(),
-    metric,
-    min_value: 0,
-    max_value: kwh,
-  }));
+  const buckets = Object.entries({ impToday: 1, expToday: 2, prodToday: 5 }).map(
+    ([metric, kwh]) => ({
+      bucket: midnight.toISOString(),
+      metric,
+      min_value: 0,
+      max_value: kwh,
+    }),
+  );
 
   const todayWith = async (metrics: Record<string, number>) => {
     liveState.latest = { time: clock.toISOString(), inverterId: "inv-1", metrics };
@@ -688,12 +692,14 @@ describe("computeCost — the live registers keep the tiles coherent", () => {
   midnight.setHours(0, 0, 0, 0);
 
   /** One rollup bucket at midnight per metric, counting from zero. */
-  const buckets = Object.entries({ imp: 1, exp: 2, load: 4, prod: 5 }).map(([metric, kwh]) => ({
-    bucket: midnight.toISOString(),
-    metric,
-    min_value: 0,
-    max_value: kwh,
-  }));
+  const buckets = Object.entries({ impToday: 1, expToday: 2, loadToday: 4, prodToday: 5 }).map(
+    ([metric, kwh]) => ({
+      bucket: midnight.toISOString(),
+      metric,
+      min_value: 0,
+      max_value: kwh,
+    }),
+  );
 
   /** Today's breakdown with the given live `*.today` registers on the poll cache. */
   const todayWith = async (metrics: Record<string, number>) => {
@@ -1178,5 +1184,184 @@ describe("counter restart across the bucket boundary", () => {
     // baseline), so the intra-bucket rise is the honest figure.
     const imports = await importsFor(staleBaseline, [bucketRow(hour(0), 0.2, 0.7)]);
     expect(imports[0]).toBeCloseTo(0.5, 6);
+  });
+});
+
+/**
+ * A `*.today` register — the device's own day counter, reset to 0 at its local
+ * midnight — is what the hourly series differences where the profile maps one.
+ *
+ * The defect this describes: on a freshly booted appliance the first hourly
+ * bucket had no predecessor to difference against, so it fell back to its own
+ * `max − min`. The first poll of that hour answers 0 for a register that has
+ * not been read yet, and the next answers the lifetime odometer — so the whole
+ * odometer (3 755.7 kWh imported, on the appliance this was found on) was
+ * booked into one hour, poisoning the chart, the energy split, self-sufficiency
+ * and the bill. `(min, max)` alone cannot tell that apart from a counter that
+ * genuinely starts at zero, which is why the fix is the register, not the rule:
+ * a counter that resets every day bounds the worst case at one day, and on a
+ * first boot has no odometer in it to book.
+ */
+describe("fetchBucketEnergy — the daily-resetting *.today register", () => {
+  // Both registers mapped: the hourly series must read the day twin, and the
+  // daily rollups — which a daily reset cannot drive — the lifetime odometer.
+  const dayProfile = profileWith({
+    "grid.energy.imported.total": "impT",
+    "grid.energy.imported.today": "impD",
+  });
+  const hour = (h: number) => new Date(Date.UTC(2024, 5, 15, h));
+  const row = (at: Date, metric: string, min: number, max: number) => ({
+    bucket: at.toISOString(),
+    metric,
+    min_value: min,
+    max_value: max,
+  });
+  /** The metric keys a read actually asked the database for. */
+  const keysQueried = (): unknown[] => {
+    const first = (execute.mock.calls as unknown as Array<[SQL]>)[0]?.[0];
+    if (!first) throw new Error("no query was issued");
+    return new PgDialect().sqlToQuery(first).params;
+  };
+
+  /** Import kWh per bucket. The plant zone is pinned to UTC so the day boundary
+   *  sits where the fixture's `hour()` puts it, on any runner. */
+  const importsFor = async (
+    baseline: Array<Record<string, unknown>>,
+    rows: Array<Record<string, unknown>>,
+    to = hour(24),
+  ) => {
+    queryResults = [baseline, rows];
+    const buckets = await fetchBucketEnergy(
+      dayProfile,
+      "inv-1",
+      hour(0),
+      to,
+      "hourly_rollups",
+      "UTC",
+    );
+    return buckets.map((b) => b.import);
+  };
+
+  test("the hourly series reads the day twin, not the lifetime counter", async () => {
+    queryResults = [[], []];
+    execute.mockClear();
+    await fetchBucketEnergy(dayProfile, "inv-1", hour(0), hour(24), "hourly_rollups", "UTC");
+    expect(keysQueried()).toContain("impD");
+    expect(keysQueried()).not.toContain("impT");
+  });
+
+  test("a daily rollup cannot difference a register that resets daily", async () => {
+    // A day counter says nothing about a day-or-longer bucket's rise, so the
+    // coarser views stay on the lifetime odometer.
+    queryResults = [[], []];
+    execute.mockClear();
+    await fetchBucketEnergy(dayProfile, "inv-1", hour(0), hour(24), "daily_rollups", "UTC");
+    expect(keysQueried()).toContain("impT");
+    expect(keysQueried()).not.toContain("impD");
+  });
+
+  test("a first boot books the day, never the lifetime odometer", async () => {
+    // 05:00 on day one, no predecessor at all: the hour's first poll answered 0
+    // for both registers, the next the real reading. Differencing the lifetime
+    // counter bills 3 755.7 kWh to that hour.
+    const imports = await importsFor(
+      [],
+      [row(hour(5), "impD", 0, 2.4), row(hour(5), "impT", 0, 3_755.7)],
+    );
+    expect(imports).toEqual([2.4]);
+  });
+
+  test("an hour is the day register's rise since the hour before it", async () => {
+    const imports = await importsFor(
+      [{ metric: "impD", bucket: hour(4).toISOString(), last_max: 2.4 }],
+      [row(hour(5), "impD", 2.4, 3), row(hour(6), "impD", 3, 3.1)],
+    );
+    expect(imports[0]).toBeCloseTo(0.6, 6);
+    expect(imports[1]).toBeCloseTo(0.1, 6);
+  });
+
+  test("the midnight reset is not a lost hour — the day's first bucket counts its own rise", async () => {
+    // The register closes the day at 18 kWh and drops to 0 at the plant's
+    // midnight. Chaining across that boundary would make the new day's first
+    // hour a negative delta, clamped to zero: an hour missing every single day.
+    const imports = await importsFor(
+      [{ metric: "impD", bucket: hour(22).toISOString(), last_max: 17 }],
+      [row(hour(23), "impD", 17, 18), row(hour(24), "impD", 0, 0.4)],
+      hour(25),
+    );
+    expect(imports[0]).toBeCloseTo(1, 6);
+    expect(imports[1]).toBeCloseTo(0.4, 6);
+  });
+
+  test("nor is it a whole day billed to one hour when the reset lands mid-bucket", async () => {
+    // The device's day rolls over inside the bucket rather than on its edge — a
+    // plant zone offset from the device's clock, or a device a few minutes late.
+    // The bucket then holds both yesterday's closing 18 kWh and today's opening
+    // 0.2, so its own max − min is a whole day in one hour: the lifetime defect
+    // in miniature. Only the rise above the last known level was observed.
+    const imports = await importsFor(
+      [{ metric: "impD", bucket: hour(23).toISOString(), last_max: 17.6 }],
+      [row(hour(24), "impD", 0.2, 18)],
+      hour(25),
+    );
+    expect(imports[0]).toBeCloseTo(0.4, 6);
+  });
+
+  test("a field with no day twin keeps the lifetime path, beside one that has", async () => {
+    // Both derivations coexist in the same read: a profile maps the twins it
+    // maps, and the rest are differenced from the odometer as before.
+    const mixed = profileWith({
+      "grid.energy.imported.total": "impT",
+      "grid.energy.imported.today": "impD",
+      "grid.energy.exported.total": "expT",
+    });
+    queryResults = [[], [row(hour(5), "impD", 0, 2.4), row(hour(5), "expT", 900, 901.5)]];
+    const buckets = await fetchBucketEnergy(
+      mixed,
+      "inv-1",
+      hour(0),
+      hour(24),
+      "hourly_rollups",
+      "UTC",
+    );
+    expect(buckets[0]?.import).toBeCloseTo(2.4, 6);
+    expect(buckets[0]?.export).toBeCloseTo(1.5, 6);
+  });
+});
+
+/**
+ * The same rule, in the SQL that mirrors it. `fetchCounterDeltaMatrix` derives
+ * the cost series, the energy split and the heatmap from the same rollups, so a
+ * day register that stopped at `fetchBucketEnergy` would leave those three
+ * reading the lifetime odometer they were poisoned by.
+ *
+ * Text assertions only: that this statement RUNS is `db-tests/day-register.test.ts`.
+ */
+describe("fetchCounterDeltaMatrix — the day register in SQL", () => {
+  const dayProfile = profileWith({
+    "grid.energy.imported.total": "impT",
+    "grid.energy.imported.today": "impD",
+  });
+  const from = new Date(Date.UTC(2024, 5, 15));
+  const to = new Date(Date.UTC(2024, 5, 16));
+
+  /** The matrix statement behind the hourly cost series, flattened, plus its
+   *  parameters. */
+  const statementFor = async () => {
+    queryResults = [[]];
+    execute.mockClear();
+    await computeCostSeries(dayProfile, { from, to, bucket: "hour", inverterId: "inv-1" });
+    const first = (execute.mock.calls as unknown as Array<[SQL]>)[0]?.[0];
+    if (!first) throw new Error("no query was issued");
+    const q = new PgDialect().sqlToQuery(first);
+    return { text: q.sql.replace(/\s+/g, " "), params: q.params };
+  };
+
+  test("the cost series reads the day twin and refuses to chain across the plant's midnight", async () => {
+    const { text, params } = await statementFor();
+    expect(params).toContain("impD");
+    expect(params).not.toContain("impT");
+    // The guard: a predecessor in a different plant-local day is no baseline.
+    expect(text).toContain("date_trunc('day'");
   });
 });

@@ -121,7 +121,7 @@ export async function computeSpotStats(
     getTariff(),
     fetchDailyPriceRows(zone, opts.from, opts.to, tz),
     fetchPriceSlots(zone, rawFrom, opts.to),
-    fetchBucketEnergy(profile, inverterId, rawFrom, opts.to, "hourly_rollups"),
+    fetchBucketEnergy(profile, inverterId, rawFrom, opts.to, "hourly_rollups", tz),
   ]);
 
   const { daily, summary } = spotDailyStats(dailyRows);
