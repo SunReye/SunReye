@@ -3,6 +3,7 @@ import { describe, expect, test } from "bun:test";
 import {
   buildAddDeviceBody,
   connectionOptions,
+  connectionProbeAnswer,
   describeConnectionProbe,
   describeProbe,
   describeRefusal,
@@ -528,6 +529,18 @@ describe("a group's caption", () => {
     ).toBe("Modbus RTU over TCP · 10.0.0.5:502 · every 2.5\u00a0s");
   });
 
+  // The third framing reads as itself, from the same table the select spends —
+  // the caption used to carry its own two-entry copy, so a Solarman gateway
+  // would have been captioned "solarman-v5 · 10.0.0.5:8899".
+  test("a Solarman gateway spells the logger framing, not its wire value", () => {
+    expect(
+      captionOf({
+        ...gateway,
+        params: { ...gateway.params, transport: "solarman-v5", port: 8899 },
+      }),
+    ).toBe("Solarman V5 (logger stick, port 8899) · 10.0.0.5:8899 · every 1 s");
+  });
+
   test("a broker spells MQTT and the broker's host, scheme and port dropped", () => {
     expect(captionOf(brokerConn)).toBe("MQTT · hass.ee.lan");
   });
@@ -573,6 +586,59 @@ describe("describeConnectionProbe", () => {
 
   test("a zero-millisecond success is still a success, not a falsy one", () => {
     expect(describeConnectionProbe("mqtt", { ok: true, ms: 0 }).ok).toBe(true);
+  });
+
+  /**
+   * A Solarman probe learns something a TCP connect cannot: the logger stick
+   * answers its handshake with its own serial, which is the field the operator
+   * would otherwise have to read off a sticker behind the inverter. Saying the
+   * number back is how they know the box found THEIR stick and not a neighbour's
+   * — "reachable" alone is true of any port that is open.
+   */
+  test("a discovered logger serial is said back in the success line", () => {
+    expect(describeConnectionProbe("modbus", { ok: true, ms: 12, serial: 1234567890 })).toEqual({
+      ok: true,
+      message: "Reachable — logger 1234567890 answered, 12 ms.",
+    });
+  });
+
+  test("without one, the plain reachable line stands", () => {
+    expect(describeConnectionProbe("modbus", { ok: true, ms: 12 }).message).toBe(
+      "Reachable — port open, 12 ms.",
+    );
+  });
+});
+
+/**
+ * The probe's answer as the describer takes it. The serial is the Solarman
+ * addition: the server nests it under `logger` because a probe may one day
+ * learn other things about the thing that answered, and a flat `serial` would
+ * have to be renamed the day it does.
+ */
+describe("connectionProbeAnswer — the logger", () => {
+  test("carries the serial the server discovered", () => {
+    expect(connectionProbeAnswer({ ok: true, ms: 8, logger: { serial: 42 } }, "dead")).toEqual({
+      ok: true,
+      ms: 8,
+      serial: 42,
+    });
+  });
+
+  test.each([
+    ["no logger at all — a plain TCP gateway", { ok: true, ms: 8 }],
+    ["a logger block with no serial in it", { ok: true, ms: 8, logger: {} }],
+    ["a serial that is not a number", { ok: true, ms: 8, logger: { serial: "1234" } }],
+    ["a null logger", { ok: true, ms: 8, logger: null }],
+  ])("states no serial for %s", (_label, data) => {
+    expect(connectionProbeAnswer(data, "dead")).toEqual({ ok: true, ms: 8 });
+  });
+
+  test("a failure never carries one, whatever the body said", () => {
+    expect(connectionProbeAnswer({ ok: false, ms: 4000, logger: { serial: 42 } }, "dead")).toEqual({
+      ok: false,
+      ms: 4000,
+      error: "dead",
+    });
   });
 });
 

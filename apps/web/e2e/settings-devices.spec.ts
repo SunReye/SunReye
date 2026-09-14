@@ -10,6 +10,7 @@
  */
 
 import { expect, type Page, test } from "@playwright/test";
+import { SOLARMAN_PORT, SOLARMAN_SERIAL } from "./support/api-fixtures";
 import { openPage } from "./support/open-page";
 
 const open = (page: Page) => openPage(page, "/#/settings/devices");
@@ -60,6 +61,32 @@ test.describe("the roster", () => {
     await expect(panel).toHaveCount(0);
     await expect(page.getByText("Inverter saved.")).toBeVisible();
     expect(opened.backend.unhandled).toEqual([]);
+    expect(opened.consoleErrors).toEqual([]);
+  });
+
+  /**
+   * A STORED Solarman endpoint, which is a state of its own.
+   *
+   * Its caption has to name the framing rather than print `solarman-v5` raw —
+   * the caption kept its own two-entry label table until the third framing
+   * existed — and the edit dialog has to reopen with the serial in the box. An
+   * empty box there is not a cosmetic slip: the save sends the params it can
+   * see, so the serial the stick was addressed by would be dropped by anyone
+   * who opened the dialog to rename the row.
+   */
+  test("a Solarman gateway names its framing, and reopens with its logger serial", async ({
+    page,
+  }) => {
+    const opened = await open(page);
+    await expect(
+      page.getByText(/Solarman V5 \(logger stick, port 8899\) · 10\.0\.0\.8:8899/),
+    ).toBeVisible();
+
+    // The third connection in id order — the stick.
+    await editConnection(page, 2).click();
+    const panel = dialog(page);
+    await expect(panel.locator("#connection-port")).toHaveValue(String(SOLARMAN_PORT));
+    await expect(panel.locator("#connection-logger-serial")).toHaveValue(String(SOLARMAN_SERIAL));
     expect(opened.consoleErrors).toEqual([]);
   });
 
