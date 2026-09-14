@@ -16,12 +16,24 @@ whole stack runs on synthetic data.
 ## Inverter connection
 
 `inverter_host`, `inverter_port`, `inverter_unit_id`, `inverter_transport`,
-and `inverter_profile` only **seed** the configuration on first run. After
-onboarding, the connection is managed in the SunReye UI (Settings) — changing
-the addon options later does not override it.
+`inverter_logger_serial` and `inverter_profile` only **seed** the configuration
+on first run. After onboarding, the connection is managed in the SunReye UI
+(Settings) — changing the addon options later does not override it.
 
-Use `inverter_transport: rtu-over-tcp` for RS485→Ethernet gateways that tunnel
-RTU frames.
+Pick the transport that matches what the inverter is plugged into:
+
+- **`solarman-v5`** — the Solarman/IGEN WiFi logger stick that most Deye,
+  Sunsynk and Sofar hybrids already ship with. Nothing to buy and nothing to
+  wire: point `inverter_host` at the stick's IP and set `inverter_port: 8899`.
+  Leave `inverter_logger_serial` empty — SunReye reads the serial off the stick
+  when you test the connection. The stick serves **one** TCP client at a time
+  and the Solarman cloud uploader wants the same slot, so expect gaps in the
+  vendor app; SunReye reconnects by itself. Verified on firmware
+  `LSW3_32_5406_SS_04_00.00.00.0A`; older LSW/LSE sticks are untested.
+- **`rtu-over-tcp`** — RS485→Ethernet gateways that tunnel raw RTU frames,
+  usually on port 502.
+- **`tcp`** — a native Modbus TCP inverter, or a gateway that converts the
+  protocol itself.
 
 ## MQTT & Home Assistant discovery
 
