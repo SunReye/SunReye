@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.2.3](https://github.com/SunReye/SunReye/compare/server-v3.2.2...server-v3.2.3) (2026-09-14)
+
+
+### Bug Fixes
+
+* the appliance is configurable from the dashboard, and the charts stop inventing a first day ([#249](https://github.com/SunReye/SunReye/issues/249)) ([7a589e2](https://github.com/SunReye/SunReye/commit/7a589e2e3fb386f4c589d67138709b32d66d273e))
+
 ## [3.2.2](https://github.com/SunReye/SunReye/compare/server-v3.2.1...server-v3.2.2) (2026-09-13)
 
 
