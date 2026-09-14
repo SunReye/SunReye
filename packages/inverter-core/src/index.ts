@@ -6,6 +6,17 @@ export { ModbusTransport, planReads } from "./modbus-transport";
 export type { ReadBlock } from "./modbus-transport";
 export { HttpReadError, HttpTransport } from "./http-transport";
 export type { HttpFailureKind } from "./http-transport";
+// Solarman V5 is a FRAMING under `kind: "modbus"`, not a device kind — the
+// codec is exported so the server can decode a capture and so tests outside this
+// package can build a frame without restating the envelope.
+export {
+  checksum,
+  decodeFrame,
+  encodeRequest,
+  splitFrames,
+  SolarmanFrameError,
+} from "./solarman/v5-frame";
+export type { EncodeRequestInput, SolarmanFrame, SolarmanFrameReason } from "./solarman/v5-frame";
 export { applyComputed } from "./computed";
 export { SimulatedInverter } from "./simulator";
 export { genericSimulate } from "./generic-sim";
