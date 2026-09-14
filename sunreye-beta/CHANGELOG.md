@@ -1,6 +1,6 @@
 # Changelog
 
-No unreleased changes on `dev`; `beta.20260913-ee46cbf` matches the last release.
+No unreleased changes on `dev`; `beta.20260914-2a58c47` matches the last release.
 
 <!--
   This preamble is hand-written and version-independent. release-please owns the
@@ -118,12 +118,20 @@ changed again. The archive names devices and metrics the way the API and your Ho
 entities already do, and refers to no internal id, which is why an upgrade like this one should not
 be needed again.
 
-## [3.2.2](https://github.com/SunReye/SunReye/compare/addon-v3.2.1...addon-v3.2.2) (2026-09-13)
+## [3.2.3](https://github.com/SunReye/SunReye/compare/addon-v3.2.2...addon-v3.2.3) (2026-09-14)
 
 
 ### Miscellaneous Chores
 
 * **addon:** Synchronize sunreye-stack versions
+
+## [3.2.2](https://github.com/SunReye/SunReye/compare/addon-v3.2.1...addon-v3.2.2) (2026-09-13)
+
+
+### Bug Fixes
+
+* **nixos:** make the appliance reachable — tailnet cert, Tailscale SSH, and a way in ([#248](https://github.com/SunReye/SunReye/issues/248)) ([3a58863](https://github.com/SunReye/SunReye/commit/3a5886371c5584cfe8969ecae60d756522a719a1))
+* **release:** make the appliance pin actually run, and stop claiming a gate that doesn't ([#246](https://github.com/SunReye/SunReye/issues/246)) ([ddb858e](https://github.com/SunReye/SunReye/commit/ddb858e675acc1c3714fd2ae26adc2613da7c35e))
 
 ## [3.2.1](https://github.com/SunReye/SunReye/compare/addon-v3.2.0...addon-v3.2.1) (2026-09-13)
 
