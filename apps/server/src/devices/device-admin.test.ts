@@ -959,6 +959,51 @@ describe("patchConnection", () => {
     expect(error.status).toBe(400);
   });
 
+  test("a PATCH round-trips the logger serial the probe discovered", async () => {
+    // The dialog writes back the WHOLE params document — including the serial
+    // the probe filled in for it — and `mergedParams` picks the arm from the
+    // ROW's kind. What is proven is that the modbus arm carries the field
+    // through rather than validating it away on a row created before it existed.
+    const { deps, connections } = harness();
+    const updated = await patchConnection(deps, 3, {
+      params: {
+        host: "10.20.0.63",
+        port: 8899,
+        transport: "solarman-v5",
+        timeoutMs: 2000,
+        pollIntervalMs: 1000,
+        loggerSerial: 3168930341,
+      },
+    });
+    expect(updated.kind === "modbus" && updated.params.loggerSerial).toBe(3168930341);
+    expect(connections.find((c) => c.id === 3)?.params).toMatchObject({
+      transport: "solarman-v5",
+      loggerSerial: 3168930341,
+    });
+  });
+
+  test("a PATCH that omits the serial CLEARS it — params are replaced, not merged", async () => {
+    // Stated because the opposite is the broker password's rule two tests down,
+    // and a reader who generalises that rule to the modbus arm would conclude a
+    // stale serial can never be removed. It can: the document is replaced.
+    const { deps } = harness({
+      connections: [{ ...gateway, params: modbusParams({ loggerSerial: 3168930341 }) }],
+    });
+    const updated = await patchConnection(deps, 3, {
+      params: { host: "10.0.0.5", transport: "rtu-over-tcp" },
+    });
+    expect(updated.kind === "modbus" && updated.params).not.toHaveProperty("loggerSerial");
+  });
+
+  test("a serial outside uint32 is a 400, and nothing is written", async () => {
+    const { deps, calls } = harness();
+    const error = await rejection(() =>
+      patchConnection(deps, 3, { params: { host: "h", loggerSerial: 0 } }),
+    );
+    expect(error.status).toBe(400);
+    expect(calls.some((c) => c.startsWith("updateConnection"))).toBe(false);
+  });
+
   test("a broker keeps its password when the write omits one — the masking round trip", async () => {
     const { deps, connections } = harness({ connections: [gateway, broker] });
     const updated = await patchConnection(deps, 5, {
@@ -1204,6 +1249,37 @@ describe("addConnection", () => {
     // The runtime has to be told: an endpoint it does not know about is an
     // endpoint it never opens.
     expect(calls).toContain("reload");
+  });
+
+  test("a solarman-v5 gateway keeps the logger serial it was created with", async () => {
+    // The serial is a FLAT OPTIONAL field on the modbus arm rather than an arm
+    // of its own, so nothing in the create path is switched on the framing — and
+    // a field nothing switches on is exactly the field a `params` rebuild drops
+    // silently. A dropped serial is not a validation error anywhere: the port
+    // simply falls back to discovery, and an endpoint whose discovery the
+    // firmware ignores goes dark with no reason to read.
+    const { deps, connections } = harness();
+    const created = await addConnection(deps, {
+      name: "Loft stick",
+      kind: "modbus",
+      params: {
+        host: "10.20.0.63",
+        port: 8899,
+        transport: "solarman-v5",
+        loggerSerial: 3168930341,
+      },
+    });
+    expect(created.kind === "modbus" && created.params).toEqual(
+      modbusParams({
+        host: "10.20.0.63",
+        port: 8899,
+        transport: "solarman-v5",
+        loggerSerial: 3168930341,
+      }),
+    );
+    expect(connections.find((c) => c.id === 100)?.params).toMatchObject({
+      loggerSerial: 3168930341,
+    });
   });
 
   test("creates a broker, and its password never leaves", async () => {

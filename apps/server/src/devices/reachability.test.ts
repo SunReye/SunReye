@@ -1,8 +1,15 @@
 import { type AddressInfo, createServer } from "node:net";
 
+import type { ModbusParams } from "@SunReye/db/connection-kinds";
 import { afterEach, describe, expect, test } from "bun:test";
 
-import { type BrokerDial, type Dial, probeConnection } from "./reachability";
+import {
+  type BrokerDial,
+  type Dial,
+  type SolarmanDial,
+  probeConnection,
+  solarmanProbeFailure,
+} from "./reachability";
 
 /**
  * The gateway probe is a TCP connect, nothing more — no Modbus, no profile.
@@ -36,8 +43,29 @@ const brokerDialer =
     if (outcome instanceof Error) throw outcome;
   };
 
+/**
+ * The SOLARMAN dial — the one that learns something.
+ *
+ * A stick answers a TCP connect the moment it is powered, so the plain dial
+ * reports "reachable" for a logger that is not a logger, is the wrong logger, or
+ * does not speak V5 at all. This dial does the V5 handshake and answers the
+ * serial the stick named ITSELF with.
+ */
+const handshaking: ModbusParams[] = [];
+const solarmanDialer =
+  (outcome: number | Error): SolarmanDial =>
+  async (params) => {
+    handshaking.push(params);
+    if (outcome instanceof Error) throw outcome;
+    return outcome;
+  };
+
 describe("probeConnection", () => {
-  const dials = { tcp: dialer("open"), broker: brokerDialer("open") };
+  const dials = {
+    tcp: dialer("open"),
+    broker: brokerDialer("open"),
+    solarman: solarmanDialer(3168930341),
+  };
 
   test("a modbus body dials TCP with its host and port", async () => {
     dialing.length = 0;
@@ -50,6 +78,21 @@ describe("probeConnection", () => {
     expect(dialing).toEqual([{ host: "10.0.0.5", port: 8899, timeoutMs: 1500 }]);
     expect(connecting).toEqual([]);
   });
+
+  test.each(["tcp", "rtu-over-tcp"] as const)(
+    "a %s modbus body keeps the bare TCP connect and learns no serial",
+    async (transport) => {
+      dialing.length = 0;
+      handshaking.length = 0;
+      const result = await probeConnection(
+        { kind: "modbus", params: { host: "10.0.0.5", port: 502, transport } },
+        dials,
+      );
+      expect(result).toEqual({ ok: true, ms: expect.any(Number) });
+      expect(dialing).toEqual([{ host: "10.0.0.5", port: 502, timeoutMs: 2000 }]);
+      expect(handshaking).toEqual([]);
+    },
+  );
 
   test("an mqtt body CONNECTS to the broker rather than opening its port", async () => {
     dialing.length = 0;
@@ -93,18 +136,155 @@ describe("probeConnection", () => {
     expect(dialing).toEqual([{ host: "10.0.0.5", port: 502, timeoutMs: 2000 }]);
   });
 
+  test("a solarman-v5 body handshakes and answers the serial the stick named", async () => {
+    dialing.length = 0;
+    handshaking.length = 0;
+    const result = await probeConnection(
+      {
+        kind: "modbus",
+        params: { host: "10.20.0.63", port: 8899, transport: "solarman-v5", timeoutMs: 1500 },
+      },
+      dials,
+    );
+    expect(result).toEqual({
+      ok: true,
+      ms: expect.any(Number),
+      logger: { serial: 3168930341 },
+    });
+    // The V5 handshake REPLACES the bare connect; dialling both would report a
+    // reachable port for a stick that never completed a handshake.
+    expect(dialing).toEqual([]);
+    expect(handshaking).toEqual([
+      expect.objectContaining({ host: "10.20.0.63", port: 8899, timeoutMs: 1500 }),
+    ]);
+  });
+
+  test("a stick that reports a DIFFERENT serial than the one typed is a failure", async () => {
+    // Two sticks on one site is the whole reason this is not a warning: the
+    // operator types the serial off the sticker of the stick they mean, and a
+    // silently ignored mismatch binds the connection to the OTHER inverter.
+    const result = await probeConnection(
+      {
+        kind: "modbus",
+        params: {
+          host: "10.20.0.63",
+          port: 8899,
+          transport: "solarman-v5",
+          loggerSerial: 1234567890,
+        },
+      },
+      dials,
+    );
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error("unreachable");
+    expect(result.error).toContain("3168930341");
+    expect(result.error).toContain("1234567890");
+  });
+
+  test("a stick that reports the serial that was typed is reachable", async () => {
+    const result = await probeConnection(
+      {
+        kind: "modbus",
+        params: {
+          host: "10.20.0.63",
+          port: 8899,
+          transport: "solarman-v5",
+          loggerSerial: 3168930341,
+        },
+      },
+      dials,
+    );
+    expect(result).toEqual({ ok: true, ms: expect.any(Number), logger: { serial: 3168930341 } });
+  });
+
+  test.each([
+    ["a handshake that times out", new Error("connect to 10.20.0.63:8899 timed out")],
+    [
+      "a peer that does not speak V5",
+      new Error("10.20.0.63:8899 accepted the connection but never answered a Solarman V5 frame"),
+    ],
+    ["a socket the stick dropped", new Error("ECONNRESET")],
+  ])("%s answers the reason, not a bare unreachable", async (_label, error) => {
+    const result = await probeConnection(
+      { kind: "modbus", params: { host: "10.20.0.63", port: 8899, transport: "solarman-v5" } },
+      { ...dials, solarman: solarmanDialer(error) },
+    );
+    expect(result).toEqual({ ok: false, ms: expect.any(Number), error: error.message });
+  });
+
+  test("a LEGACY body cannot reach the solarman dial, whatever it carries", async () => {
+    // The legacy arm keeps only the three fields it ever meant, so a stray
+    // `transport` on a bodiless-kind request cannot pick a dial. A pre-#217
+    // client means "connect to this port", and that is what it gets.
+    dialing.length = 0;
+    handshaking.length = 0;
+    const result = await probeConnection(
+      { host: "10.20.0.63", port: 8899, transport: "solarman-v5" },
+      dials,
+    );
+    expect(result).toEqual({ ok: true, ms: expect.any(Number) });
+    expect(dialing).toEqual([{ host: "10.20.0.63", port: 8899, timeoutMs: 2000 }]);
+    expect(handshaking).toEqual([]);
+  });
+
   test.each([
     ["an unknown kind", { kind: "http", params: { host: "h", port: 80 } }],
     ["a modbus body with no host", { kind: "modbus", params: { port: 502 } }],
     ["an mqtt body with no broker URL", { kind: "mqtt", params: {} }],
     ["broker params under the modbus kind", { kind: "modbus", params: { brokerUrl: "mqtt://x" } }],
     ["a non-object", "nope"],
+    [
+      "a logger serial out of uint32 range",
+      {
+        kind: "modbus",
+        params: { host: "h", transport: "solarman-v5", loggerSerial: 0x1_0000_0000 },
+      },
+    ],
   ])("%s is refused before anything dials", async (_label, body) => {
     dialing.length = 0;
     connecting.length = 0;
+    handshaking.length = 0;
     await expect(probeConnection(body, dials)).rejects.toThrow();
     expect(dialing).toEqual([]);
     expect(connecting).toEqual([]);
+    expect(handshaking).toEqual([]);
+  });
+});
+
+/**
+ * The one piece of the production solarman dial that is worth testing without a
+ * socket: what the operator is TOLD when the handshake did not happen.
+ *
+ * The port below reports an unanswered discovery probe with advice about a
+ * sticker inside the dongle, which is the right advice for a configured poll
+ * and the wrong advice here — the operator is standing in the dialog, having
+ * just pointed it at something. So the dial restates that one case, and passes
+ * every other reason (refused, timed out, reset) through untouched.
+ */
+describe("solarmanProbeFailure", () => {
+  const at = { host: "10.20.0.63", port: 8899 };
+
+  test("an unanswered discovery probe is told as 'that is not a V5 logger'", () => {
+    const message = solarmanProbeFailure(
+      at,
+      new Error(
+        "10.20.0.63:8899 did not answer the discovery probe and no logger serial is configured; " +
+          "set one from the sticker inside the dongle",
+      ),
+    ).message;
+    expect(message).toContain("10.20.0.63:8899");
+    expect(message).toContain("Solarman V5");
+    expect(message).not.toContain("sticker");
+  });
+
+  test("every other reason is the system's own, unedited", () => {
+    expect(solarmanProbeFailure(at, new Error("connect ECONNREFUSED")).message).toBe(
+      "connect ECONNREFUSED",
+    );
+  });
+
+  test("a rejection that is not an Error still names itself", () => {
+    expect(solarmanProbeFailure(at, "getaddrinfo ENOTFOUND").message).toBe("getaddrinfo ENOTFOUND");
   });
 });
 
