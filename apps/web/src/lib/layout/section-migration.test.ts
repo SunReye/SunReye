@@ -290,7 +290,6 @@ const CARDS_NOT_YET_MIGRATED = [
   "lib/components/prices/negative-window-day.svelte",
   "lib/components/settings/display-form.svelte",
   "lib/components/settings/installed-profiles-list.svelte",
-  "lib/components/settings/inverter-form.svelte",
   "lib/components/settings/tariff-form.svelte",
   "lib/components/setup/profile-step.svelte",
   "routes/(app)/controls/controls-panel.svelte",

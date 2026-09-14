@@ -8,7 +8,7 @@
  * minutes of downtime and a generation on a flash device, so a command that
  * cannot be fully validated must be refused BEFORE anything is written.
  */
-import { TLS_MODES, TRANSPORTS, type SiteConfig, type TlsMode, type Transport } from "./site";
+import { TLS_MODES, type SiteConfig, type TlsMode } from "./site";
 
 /** Facts about the machine the CLI is running on, injected so tests are hermetic. */
 export type Context = {
@@ -37,13 +37,7 @@ const SSH_KEY_USAGE = "usage: sunreye-setup ssh-key add <key> | remove <key> | l
 
 const HELP = `sunreye-setup — configure this SunReye appliance
 
-  inverter <host> [--port 502] [--unit 1] [--transport tcp|rtu-over-tcp]
-                        point the poller at an inverter (turns simulation off)
   timezone <zone>       the site's IANA zone, e.g. Europe/Berlin
-  simulate on|off       run against a fake inverter. SEEDS a box that has never
-                        been configured; once the dashboard has saved an
-                        inverter, that setting wins and this changes nothing —
-                        use Settings → Inverter there
   lan-access on [--site-id N] | off
                         advertise this LAN to the tailnet; --site-id adds the
                         4via6 encoding, which is what lets a second site exist
@@ -63,19 +57,6 @@ Anything not listed here goes in /etc/nixos/local.nix, which this tool never
 touches — evcc, Home Assistant, your own containers. See the SunReye docs.
 `;
 
-/** Only used to tell an address apart from a typo. Resolution is the box's job. */
-function isAddress(value: string): boolean {
-  if (/^\d+(\.\d+){3}$/.test(value)) {
-    return value.split(".").every((octet) => Number(octet) <= 255);
-  }
-  // A hostname, optionally qualified. Deliberately permissive about what a
-  // household router will answer for, strict about what is obviously not a name.
-  return /^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?)*$/.test(
-    value,
-  );
-}
-
-/** An `ssh-ed25519 AAAA… comment` line, as it appears in authorized_keys. */
 function isPublicKey(value: string): boolean {
   return /^(ssh-(rsa|ed25519|dss)|ecdsa-sha2-nistp(256|384|521)|sk-(ssh-ed25519|ecdsa-sha2-nistp256)@openssh\.com)\s+[A-Za-z0-9+/=]+(\s|$)/.test(
     value,
@@ -149,76 +130,6 @@ function settle(before: SiteConfig, after: SiteConfig, summary: string): Outcome
   return { kind: "update", site: after, summary };
 }
 
-/**
- * The bounded integer flags, as data.
- *
- * A spec table rather than three near-identical blocks: each one is "read the
- * flag if present, refuse if it is out of range, otherwise keep what is already
- * configured", and written out three times that is where a copied bound goes
- * unnoticed. Modbus addresses a slave in one byte and reserves 248–255; 0 is the
- * broadcast address, which some gateways do answer on.
- */
-const INVERTER_INT_FLAGS = [
-  { flag: "--port", key: "port", min: 1, max: 65535 },
-  { flag: "--unit", key: "unitId", min: 0, max: 247 },
-] as const;
-
-type InverterNumbers = { port: number; unitId: number };
-
-function inverterNumbers(
-  current: InverterNumbers,
-  flags: Flags,
-): InverterNumbers | { error: string } {
-  const resolved = { ...current };
-  for (const spec of INVERTER_INT_FLAGS) {
-    const raw = flags[spec.flag];
-    if (raw === undefined) continue;
-    const parsed = boundedInt(spec.flag, raw, spec.min, spec.max);
-    if (isIntError(parsed)) return parsed;
-    resolved[spec.key] = parsed;
-  }
-  return resolved;
-}
-
-function inverterTransport(current: Transport, flags: Flags): Transport | { error: string } {
-  const requested = flags["--transport"];
-  if (requested === undefined) return current;
-  if (!(TRANSPORTS as readonly string[]).includes(requested)) {
-    return { error: `--transport must be one of ${TRANSPORTS.join(", ")}, not '${requested}'.` };
-  }
-  return requested as Transport;
-}
-
-function inverterCommand(site: SiteConfig, rest: readonly string[]): Outcome {
-  const [host, ...flagArgs] = rest;
-  if (host === undefined) {
-    return error(
-      "usage: sunreye-setup inverter <host> [--port 502] [--unit 1] [--transport tcp|rtu-over-tcp]",
-    );
-  }
-  if (!isAddress(host)) return error(`'${host}' is not an address or a hostname.`);
-
-  const flags = parseFlags(flagArgs, ["--port", "--unit", "--transport"]);
-  if (isFlagError(flags)) return error(flags.error);
-
-  // Narrowed explicitly rather than handing over `site.inverter`: structural
-  // typing would accept the whole object, and spreading the result back would
-  // then carry its `host` and `simulate` along and undo this very command.
-  const numbers = inverterNumbers(
-    { port: site.inverter.port, unitId: site.inverter.unitId },
-    flags,
-  );
-  if ("error" in numbers) return error(numbers.error);
-  const transport = inverterTransport(site.inverter.transport, flags);
-  if (typeof transport !== "string") return error(transport.error);
-
-  return settle(
-    site,
-    { ...site, inverter: { ...site.inverter, host, ...numbers, transport, simulate: false } },
-    `inverter ${host}:${numbers.port} unit ${numbers.unitId} over ${transport}`,
-  );
-}
-
 function timezoneCommand(site: SiteConfig, rest: readonly string[], ctx: Context): Outcome {
   const zone = rest[0];
   if (zone === undefined) return error("usage: sunreye-setup timezone <zone>, e.g. Europe/Berlin");
@@ -228,21 +139,6 @@ function timezoneCommand(site: SiteConfig, rest: readonly string[], ctx: Context
     );
   }
   return settle(site, { ...site, timeZone: zone }, `time zone ${zone}`);
-}
-
-function simulateCommand(site: SiteConfig, rest: readonly string[]): Outcome {
-  const mode = rest[0];
-  if (mode !== "on" && mode !== "off") return error("usage: sunreye-setup simulate on|off");
-  if (mode === "off" && site.inverter.host === null) {
-    return error(
-      "there is no inverter configured, so switching simulation off would leave this box polling nothing and recording nothing. Set an address first: sunreye-setup inverter <host> — or, on a box that has already been set up, turn it off in the dashboard under Settings → Inverter, which is where this setting now lives.",
-    );
-  }
-  return settle(
-    site,
-    { ...site, inverter: { ...site.inverter, simulate: mode === "on" } },
-    `simulation ${mode}`,
-  );
 }
 
 function lanAccessCommand(site: SiteConfig, rest: readonly string[]): Outcome {
@@ -363,13 +259,28 @@ function tailscaleCommand(rest: readonly string[], ctx: Context): Outcome {
  * makes the surface enumerable, which is what `help` and the "not a command"
  * message should have been reading all along.
  */
+/**
+ * Commands that used to live here, and where they went.
+ *
+ * Both wrote `site.json`, which becomes the container's environment — and env
+ * only SEEDS the runtime config the first time it is read. Once the dashboard
+ * had saved an inverter the database was the authority, so on a running box
+ * these changed nothing while reporting success. A bare "not a command" reads
+ * as a broken tool to anyone following an older doc or their own shell history,
+ * so they answer for themselves.
+ */
+const RETIRED: Record<string, string> = {
+  inverter:
+    "`sunreye-setup inverter` is gone: it set a default for a box that had never been configured, and changed nothing on one that had. Set the inverter in the dashboard — Settings → Inverter, or the onboarding wizard on a new box.",
+  simulate:
+    "`sunreye-setup simulate` is gone: simulation is a saved setting now, not an environment variable this tool can reach. Turn it off in the dashboard — Settings → Inverter, where switching it off is also what lets you enter the address.",
+};
+
 const COMMANDS: Record<
   string,
   (site: SiteConfig, rest: readonly string[], ctx: Context) => Outcome
 > = {
-  inverter: (site, rest) => inverterCommand(site, rest),
   timezone: (site, rest, ctx) => timezoneCommand(site, rest, ctx),
-  simulate: (site, rest) => simulateCommand(site, rest),
   "lan-access": (site, rest) => lanAccessCommand(site, rest),
   "ssh-key": (site, rest) => sshKeyCommand(site, rest),
   tls: (site, rest) => tlsCommand(site, rest),
@@ -390,6 +301,9 @@ export function applyCommand(site: SiteConfig, argv: readonly string[], ctx: Con
   if (command === undefined || (HELP_WORDS as readonly string[]).includes(command)) {
     return { kind: "print", text: HELP };
   }
+  const retired = RETIRED[command];
+  if (retired !== undefined) return error(retired);
+
   const handler = COMMANDS[command];
   if (handler === undefined) {
     return error(`'${command}' is not a sunreye-setup command. Run \`sunreye-setup --help\`.`);

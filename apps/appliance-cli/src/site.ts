@@ -13,9 +13,15 @@
  */
 import { z } from "zod";
 
-/** Transports the inverter poller understands. */
-export const TRANSPORTS = ["tcp", "rtu-over-tcp"] as const;
-export type Transport = (typeof TRANSPORTS)[number];
+/**
+ * Transports the inverter poller understands.
+ *
+ * Not exported any more: `site.json` still carries a transport, because it
+ * SEEDS a box that has never been configured, but nothing outside this file
+ * chooses one — the dashboard owns the connection now, and the CLI commands
+ * that used to set it are gone.
+ */
+const TRANSPORTS = ["tcp", "rtu-over-tcp"] as const;
 
 /**
  * How much of the site LAN is advertised to the tailnet. Not exported: the CLI

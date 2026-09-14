@@ -137,12 +137,16 @@ Then, from any computer on the same network:
    ever attach a monitor.
    :::
 
-4. **Point it at your inverter.** Over Tailscale SSH, using the box's **full tailnet
-   name** — from a device that is itself on the tailnet:
+4. **Point it at your inverter — in the browser.** The setup wizard asks for it after
+   you create your account. Turn **Simulate an inverter** off, enter the address, and
+   save; with the switch on, the connection fields are greyed out because nothing
+   there would be dialled.
+
+   The time zone is the one thing still set from the shell, over Tailscale SSH using
+   the box's **full tailnet name**, from a device that is itself on the tailnet:
 
    ```bash
    ssh root@sr-xxxx.<your-tailnet>.ts.net
-   sunreye-setup inverter 192.168.1.100
    sunreye-setup timezone Europe/Berlin
    ```
 
@@ -171,18 +175,16 @@ Then, from any computer on the same network:
    line at the boot menu (press `e`) for a root shell, or re-flash.
    :::
 
-   Each command rebuilds the box, which takes a minute or two and briefly interrupts the
-   dashboard. Until you set an inverter the box runs a **simulated** one, so there is
-   always something to look at.
+   `sunreye-setup` rebuilds the box, which takes a minute or two and briefly interrupts
+   the dashboard. Until you set an inverter the box runs a **simulated** one, so a new
+   install has something to look at — the dashboard says so while it is on.
 
 ## `sunreye-setup`
 
 Everything an appliance owner needs, without editing any Nix:
 
 ```bash
-sunreye-setup inverter <host> [--port 502] [--unit 1] [--transport tcp|rtu-over-tcp]
 sunreye-setup timezone Europe/Berlin
-sunreye-setup simulate on|off
 sunreye-setup lan-access on [--site-id N] | off
 sunreye-setup ssh-key add <key> | remove <key> | list
 sunreye-setup tls tailscale|internal|both

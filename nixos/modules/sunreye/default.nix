@@ -255,7 +255,8 @@ in
           appliance.sunreye.inverter.host is unset and
           appliance.sunreye.inverter.simulate is false, so this box would poll
           nothing and record nothing — a dashboard with no data and no error to
-          explain it. Set the inverter's address (`sunreye-setup inverter <ip>`),
+          explain it. Set the inverter's address in the dashboard (Settings →
+          Inverter, or the onboarding wizard on a new box),
           or leave simulate on.
         '';
       }

@@ -5,9 +5,8 @@
 	import { Button } from "$lib/components/ui/button";
 	import FormActions from "./form-actions.svelte";
 	import InverterConnectionFields from "./inverter-connection-fields.svelte";
+	import InverterSimulateSwitch from "./inverter-simulate-switch.svelte";
 	import InverterStatusBadge from "./inverter-status-badge.svelte";
-	import { Label } from "$lib/components/ui/label";
-	import { Switch } from "$lib/components/ui/switch";
 	import Section from '$lib/components/layout/section.svelte';
 	import EmptyState from '$lib/components/layout/empty-state.svelte';
 	import SnapshotDialog from "./snapshot-dialog.svelte";
@@ -112,7 +111,15 @@
 	}
 </script>
 
-<FormActions {result} {testing} {saving} disabled={!cfg} ontest={test} onsave={save}>
+<FormActions
+	{result}
+	{testing}
+	{saving}
+	disabled={!cfg}
+	testDisabled={cfg?.simulate === true}
+	ontest={test}
+	onsave={save}
+>
 	{#if hasSnapshot}
 		<Button variant="ghost" size="sm" onclick={() => (snapshotOpen = true)}>
 			{m.inverter_view_snapshot()}
@@ -128,36 +135,9 @@
 			<InverterStatusBadge {status} />
 		{/snippet}
 
-		<!--
-			A control, not a notice. This used to say "set by the INVERTER_SIMULATE
-			environment variable" — true for Docker, useless everywhere else, and on
-			an appliance actively wrong: the owner cannot reach that variable, so the
-			only path most people use dead-ended here. They would save their
-			inverter's address, keep seeing invented readings, and have nothing to
-			click.
-		-->
-		<div class="flex items-start justify-between gap-4 border border-border p-2.5">
-			<div class="flex flex-col gap-1">
-				<Label for="inverter-simulate">{m.inverter_simulate_label()}</Label>
-				<p class="max-w-prose text-xs text-muted-foreground">
-					{m.inverter_simulate_desc()}
-				</p>
-				{#if cfg.simulate}
-					<p class="text-xs font-medium text-muted-foreground">
-						{m.inverter_simulate_on_notice()}
-					</p>
-				{/if}
-			</div>
-			<Switch
-				id="inverter-simulate"
-				checked={cfg.simulate}
-				onCheckedChange={(value) => {
-					if (cfg) cfg.simulate = value;
-				}}
-			/>
-		</div>
+		<InverterSimulateSwitch bind:simulate={cfg.simulate} />
 
-		<InverterConnectionFields bind:cfg {status} />
+		<InverterConnectionFields bind:cfg {status} disabled={cfg.simulate} />
 	</Section>
 
 	<SnapshotDialog bind:open={snapshotOpen} result={testResult} />

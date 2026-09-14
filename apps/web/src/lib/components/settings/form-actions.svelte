@@ -13,6 +13,7 @@
 		testing,
 		saving,
 		disabled = false,
+		testDisabled = false,
 		ontest,
 		onsave,
 		children
@@ -21,13 +22,19 @@
 		testing: boolean;
 		saving: boolean;
 		disabled?: boolean;
+		/**
+		 * Blocks only the test, not the save. Set while the box is simulating:
+		 * there is no address to dial, and a green "connected" from a simulator is
+		 * the answer to a question nobody asked.
+		 */
+		testDisabled?: boolean;
 		ontest: () => void;
 		onsave: () => void;
 		children?: Snippet;
 	} = $props();
 
 	const resultClass = $derived(result?.ok ? 'text-emerald-500' : 'text-destructive');
-	const testBlocked = $derived(disabled || testing);
+	const testBlocked = $derived(disabled || testDisabled || testing);
 	const testLabel = $derived(testing ? m.conn_testing() : m.conn_test());
 	const saveBlocked = $derived(disabled || saving);
 	const saveLabel = $derived(saving ? m.action_saving() : m.action_save());

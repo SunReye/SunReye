@@ -52,8 +52,8 @@ describe("run", () => {
 
   test("a validation failure exits 1, writes nothing and rebuilds nothing", () => {
     const h = harness();
-    expect(run(["inverter", "nope!"], h.io)).toBe(1);
-    expect(h.errs.join("\n")).toContain("not an address");
+    expect(run(["timezone", "Mars/Olympus"], h.io)).toBe(1);
+    expect(h.errs.join("\n")).toContain("Mars/Olympus");
     expect(h.writes).toEqual([]);
     expect(h.runs).toEqual([]);
   });
@@ -183,10 +183,14 @@ describe("run", () => {
 
   test("the written document is what the next run parses", () => {
     const h = harness();
-    run(["inverter", "192.168.1.100"], h.io);
+    run(["timezone", "Europe/Berlin"], h.io);
     const written = h.writes[0] ?? "";
+
+    // Re-running the same change against the document just written must be a
+    // no-op: a rebuild on an appliance costs minutes of dashboard downtime and a
+    // generation on a flash device.
     const second = harness({ readSite: () => written });
-    expect(run(["simulate", "off"], second.io)).toBe(0);
+    expect(run(["timezone", "Europe/Berlin"], second.io)).toBe(0);
     expect(second.out.join("\n")).toContain("Nothing to rebuild");
   });
 });
