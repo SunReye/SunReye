@@ -119,9 +119,10 @@ be needed again.
 ## [3.3.3](https://github.com/SunReye/SunReye/compare/addon-v3.3.2...addon-v3.3.3) (2026-09-15)
 
 
-### Miscellaneous Chores
+### Bug Fixes
 
-* **addon:** Synchronize sunreye-stack versions
+* **nixos:** let the server see the host's DNS, not a copy made at creation ([2ba83c7](https://github.com/SunReye/SunReye/commit/2ba83c7dd3c61ae35b4ecceda9e9925365d2878b))
+* **nixos:** the server container's DNS was frozen at creation ([9fa84d6](https://github.com/SunReye/SunReye/commit/9fa84d6082afdf2cffe5e1228dd2c42972b349d0))
 
 ## [3.3.2](https://github.com/SunReye/SunReye/compare/addon-v3.3.1...addon-v3.3.2) (2026-09-15)
 
