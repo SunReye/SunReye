@@ -21,6 +21,7 @@
     ./identity.nix
     ./ssh.nix
     ./console.nix
+    ./efi-boot-entry.nix
     ./tailscale.nix
     ./health.nix
     ./update.nix

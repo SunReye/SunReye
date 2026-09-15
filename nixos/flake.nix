@@ -143,6 +143,13 @@
           bashrc = self.nixosConfigurations.appliance.config.environment.etc."bashrc".source;
         };
 
+        # The NVRAM entry a flashed disk needs to boot from a slot rather than
+        # a USB port. Fabricated, because no sandbox has firmware.
+        efi-boot-entry = import ./tests/efi-boot-entry.nix {
+          inherit pkgs;
+          ensure = self.nixosConfigurations.appliance.config.appliance.efiBootEntry.package;
+        };
+
         # Same question, asked of the box's own status report.
         health-report = import ./tests/health-report.nix {
           inherit pkgs;

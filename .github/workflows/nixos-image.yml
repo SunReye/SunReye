@@ -143,6 +143,11 @@ jobs:
           # a bare 502 once, which distinguishes nothing.
           grep -q '^first-boot-down: explains itself' report.txt \
             || { echo "::error::a closed window does not explain itself: $(grep '^first-boot-down:' report.txt)"; fail=1; }
+          # The NVRAM unit on a guest with no EFI firmware: it must decide
+          # there is nothing to do, not fail. A unit that fails on every
+          # BIOS-booted box would sit in the health report forever.
+          grep -q '^efi-boot-entry: success' report.txt \
+            || { echo "::error::the EFI boot-entry unit did not succeed: $(grep '^efi-boot-entry:' report.txt)"; fail=1; }
           # Somebody standing at the box has to be able to get in. This is the
           # only probe here that is not reachable over the network, and it is the
           # one that was missing while root sat locked for weeks.
