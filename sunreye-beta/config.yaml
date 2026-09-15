@@ -9,7 +9,7 @@
 # connection at a time, so stop the stable addon (or set inverter_simulate)
 # before starting this one.
 name: SunReye (beta)
-version: beta.20260914-c416aa2
+version: beta.20260915-6300c16
 slug: sunreye-beta
 description: >-
   Self-hosted solar / hybrid inverter monitoring, control, and integration —
@@ -92,7 +92,8 @@ schema:
   inverter_host: str?
   inverter_port: port?
   inverter_unit_id: int(0,255)?
-  inverter_transport: list(tcp|rtu-over-tcp)?
+  inverter_transport: list(tcp|rtu-over-tcp|solarman-v5)?
+  inverter_logger_serial: int(1,4294967295)?
   inverter_simulate: bool
   poll_interval_ms: int(100,60000)
   log_level: list(trace|debug|info|warning|error|fatal)

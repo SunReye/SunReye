@@ -2,12 +2,41 @@
 
 ## [unreleased]
 
-Unreleased work on `dev` since 3.2.3, shipped in `beta.20260914-c416aa2`.
+Unreleased work on `dev` since 3.2.3, shipped in `beta.20260915-6300c16`.
 
 
 ### Features
 
+* **server:** probe a solarman stick by its own handshake ([ff86e27](https://github.com/SunReye/SunReye/commit/ff86e2735a2e21aaf79dad1dbb15579f9a7d783b))
+* **db,env,server:** widen the modbus framing union to solarman-v5 ([fa55e82](https://github.com/SunReye/SunReye/commit/fa55e822960e659c9a2a4eb0ceaafd03b26bced2))
+* **inverter-core:** solarman v5 modbus port and transport framing ([ca28143](https://github.com/SunReye/SunReye/commit/ca28143f6cdfb36b68584189556f04615eeb4a6f))
+* **web:** offer the Solarman logger framing when adding a connection ([2547619](https://github.com/SunReye/SunReye/commit/2547619d5ba846df410f23fe59e2fd06aa4b8dbb))
+* **inverter-core:** solarman v5 frame codec ([7544d88](https://github.com/SunReye/SunReye/commit/7544d88b1fec1d7e60ee7097adcec5010c0cd7d0))
+* **addon:** offer the Solarman logger as a connection ([4d2b29c](https://github.com/SunReye/SunReye/commit/4d2b29ccd9e458431392a5428b54c100fbcd0a48))
+* **nixos:** solarman-v5 transport and logger serial ([8abb25d](https://github.com/SunReye/SunReye/commit/8abb25d8812605ef87e2b7e6dfcba0110543bb21))
+* **cli:** accept the solarman-v5 framing in site.json ([86d7b7b](https://github.com/SunReye/SunReye/commit/86d7b7b1fc0dbce57df885e4dd136be6646dcf09))
 * **cli:** `sunreye upgrade` ([c416aa2](https://github.com/SunReye/SunReye/commit/c416aa20453ffb06c3a28d8c2e961fb833f843f4))
+
+
+### Bug Fixes
+
+* **inverter-core:** keep the frames splitFrames already parsed when a chunk desynchronises ([7ed879f](https://github.com/SunReye/SunReye/commit/7ed879fe3a18ab8084b8089a8b83179496a75946))
+* **inverter-core:** disarm the discovery probe when the Solarman port closes ([06bbf62](https://github.com/SunReye/SunReye/commit/06bbf6204e0748c3192c0fff21d8b976a2ebdd9f))
+* **inverter-core:** retry a Solarman `05` once before believing it is structural ([8ae284f](https://github.com/SunReye/SunReye/commit/8ae284fe950af1139a217f13c6e466b0db0dcea7))
+* **appliance:** floor the logger serial at 1, where every schema does ([0ea966f](https://github.com/SunReye/SunReye/commit/0ea966f04261d040b818c9a2f82cfffffc8d4f22))
+* **inverter-core:** a peer reset must not kill the poller process ([fc31d5b](https://github.com/SunReye/SunReye/commit/fc31d5ba4005e86f4d19eed99f4069564ba95422))
+* **inverter-core:** translate a Solarman V5 reject into a Modbus failure ([73d9432](https://github.com/SunReye/SunReye/commit/73d9432b1aac6a9413861a754c82bd44db0bd56f))
+
+
+### Performance Improvements
+
+* **inverter-core:** merge read blocks across small register gaps ([8e13101](https://github.com/SunReye/SunReye/commit/8e13101307d2447e7803cbf15ae3281fc11d27ed))
+
+
+### Documentation
+
+* correct two Solarman claims that live measurement disproves ([0a0949c](https://github.com/SunReye/SunReye/commit/0a0949c2337fcf5497b42ddb59559f6020394989))
+* lead with the Solarman logger stick as the no-hardware path ([c901fe4](https://github.com/SunReye/SunReye/commit/c901fe43fe28ddec9b55b171b3429f4227a29799))
 
 
 ### Miscellaneous Chores
