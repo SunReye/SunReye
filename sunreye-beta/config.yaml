@@ -9,7 +9,7 @@
 # connection at a time, so stop the stable addon (or set inverter_simulate)
 # before starting this one.
 name: SunReye (beta)
-version: beta.20260915-f76a4fa
+version: beta.20260915-35d9fb4
 slug: sunreye-beta
 description: >-
   Self-hosted solar / hybrid inverter monitoring, control, and integration —
