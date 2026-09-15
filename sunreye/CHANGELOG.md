@@ -116,6 +116,20 @@ changed again. The archive names devices and metrics the way the API and your Ho
 entities already do, and refers to no internal id, which is why an upgrade like this one should not
 be needed again.
 
+## [3.3.0](https://github.com/SunReye/SunReye/compare/addon-v3.2.3...addon-v3.3.0) (2026-09-15)
+
+
+### Features
+
+* **addon:** offer the Solarman logger as a connection ([4d2b29c](https://github.com/SunReye/SunReye/commit/4d2b29ccd9e458431392a5428b54c100fbcd0a48))
+* read and write Deye inverters through the Solarman WiFi logger (no gateway) ([c25a73c](https://github.com/SunReye/SunReye/commit/c25a73cb860a24777344285ba9d8ab1ff3d9cc3d))
+* read and write Deye inverters through the Solarman WiFi logger (no gateway) ([6300c16](https://github.com/SunReye/SunReye/commit/6300c16c1ba7437db36f639b5db4ac71edb19c51))
+
+
+### Bug Fixes
+
+* **appliance:** floor the logger serial at 1, where every schema does ([0ea966f](https://github.com/SunReye/SunReye/commit/0ea966f04261d040b818c9a2f82cfffffc8d4f22))
+
 ## [3.2.3](https://github.com/SunReye/SunReye/compare/addon-v3.2.2...addon-v3.2.3) (2026-09-14)
 
 

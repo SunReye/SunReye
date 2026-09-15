@@ -1,5 +1,14 @@
 # Changelog
 
+## [3.1.2](https://github.com/SunReye/SunReye/compare/profile-sdk-v3.1.1...profile-sdk-v3.1.2) (2026-09-15)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @SunReye/inverter-core bumped to 1.3.0
+
 ## [3.1.1](https://github.com/SunReye/SunReye/compare/profile-sdk-v3.1.0...profile-sdk-v3.1.1) (2026-09-10)
 
 
