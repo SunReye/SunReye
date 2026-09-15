@@ -83,6 +83,40 @@ The image grows to fill the disk on first boot, so the size you write does not m
 `dd` does exactly what you tell it. `of=/dev/sda` on the wrong machine erases that machine.
 :::
 
+### If the machine offers no boot entry for the disk
+
+Put the disk in the box and turn it on. Almost every machine boots it, and there is nothing
+further to do — skip to [First boot](#first-boot).
+
+Some do not, and it looks alarming: the BIOS drive diagnostic lists the disk perfectly, but
+the boot menu has no entry for it, while the *same disk in a USB enclosure* boots first
+time. Nothing is wrong with the disk. A flashed image installs its bootloader at the
+removable-media path (`\EFI\BOOT\BOOTX64.EFI`) because an image built in a sandbox has
+never seen your firmware and cannot write a variable into it. Firmware is obliged to honour
+that path for *removable* devices only; for a fixed disk it expects an NVRAM boot entry, and
+corporate thin clients — Fujitsu Futro and friends, the exact hardware this appliance suits
+— tend to hold that line. Enabling "boot from removable media" does not help: that setting
+governs the removable device class, not the internal slot.
+
+SunReye writes the missing entry itself, but it has to be running to do it. So boot it once
+the way that works:
+
+1. Put the flashed disk in a USB enclosure and plug it into **that machine**.
+2. Boot it and let it reach the login prompt. On the way it registers the disk in NVRAM.
+3. Power off, move the disk to the internal slot, boot again.
+
+An EFI boot entry identifies its partition by GPT GUID rather than by which port it was
+plugged into, so the entry written over USB still resolves once the disk is internal.
+
+If the machine still will not boot it, add the entry by hand — once, permanently. In the
+BIOS boot menu choose **Add Boot Option**, select the disk's EFI partition, and enter the
+loader path `\EFI\BOOT\BOOTX64.EFI`. Give it any name you like and move it to the top of
+the boot order.
+
+Either way the box checks on every boot afterwards and re-creates the entry if firmware
+loses it — after a CMOS reset or a battery change, say. Run
+`journalctl -u appliance-efi-boot-entry` to see what it found.
+
 ## First boot
 
 Plug the box into your router and power it on. It takes a couple of minutes the first time:
@@ -364,6 +398,10 @@ migrations run, which takes a few minutes.
 **No readings.** `sunreye show` — if `simulate` is `true` the box is not talking to
 your inverter yet. If it is `false`, check the address and that nothing else is holding the
 gateway's single TCP slot.
+
+**No boot entry for the internal disk.** The boot menu ignores a disk the drive
+diagnostic can see. Not a flashing failure — see
+[If the machine offers no boot entry for the disk](#if-the-machine-offers-no-boot-entry-for-the-disk).
 
 **Disk filling up.** `appliance-ballast release` instantly frees a 2 GB reserve, which is
 enough room to investigate and fix the cause over SSH. Restore it afterwards with
