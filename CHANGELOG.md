@@ -1,5 +1,14 @@
 # Changelog
 
+## [3.3.2](https://github.com/SunReye/SunReye/compare/server-v3.3.1...server-v3.3.2) (2026-09-15)
+
+
+### Bug Fixes
+
+* **nixos:** put efibootmgr and the boot-entry unit on the system PATH ([4c7d980](https://github.com/SunReye/SunReye/commit/4c7d980897f6102dd8b4fe67b9171e7f3154fd93))
+* **nixos:** stop deferring to the firmware's own USB-bound boot entry ([a0bc856](https://github.com/SunReye/SunReye/commit/a0bc85610e2b4b199fb8d6c5eb047d38abc779af))
+* **nixos:** the firmware's USB boot entry was suppressing ours ([9abaa7a](https://github.com/SunReye/SunReye/commit/9abaa7a289782d9c8256166d810a2ab687173862))
+
 ## [3.3.1](https://github.com/SunReye/SunReye/compare/server-v3.3.0...server-v3.3.1) (2026-09-15)
 
 
