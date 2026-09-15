@@ -10,6 +10,8 @@
 
 import { z } from "zod";
 
+import { MODBUS_TRANSPORTS } from "./connection-kinds";
+
 /** `app_settings.key` under which the inverter config is stored. */
 export const INVERTER_KEY = "inverter";
 
@@ -19,10 +21,18 @@ export const inverterConfigSchema = z
     host: z.string().optional(),
     port: z.number().int().default(502),
     /**
-     * Framing over the socket: standard Modbus `tcp`, or `rtu-over-tcp` (RTU
-     * frames tunneled over TCP — common with RS485→Ethernet gateways).
+     * Framing over the socket — see {@link MODBUS_TRANSPORTS} for what each one
+     * means. Derived from that list rather than restated: the two were written
+     * out by hand and drifted, so this document accepted two framings while a
+     * `connections` row accepted three.
      */
-    transport: z.enum(["tcp", "rtu-over-tcp"]).default("tcp"),
+    transport: z.enum(MODBUS_TRANSPORTS).default("tcp"),
+    /**
+     * The Solarman logging stick's own serial (uint32); ignored by the other
+     * framings. Optional because the port discovers it from the stick's own
+     * reply — see the field of the same name in `./connection-kinds.ts`.
+     */
+    loggerSerial: z.number().int().min(1).max(0xffffffff).optional(),
     /** Modbus unit / slave id. */
     unitId: z.number().int().default(0),
     /** Per-request Modbus timeout, ms. */

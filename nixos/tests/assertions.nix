@@ -37,6 +37,51 @@ let
       detail = if result.success then result.value else "configuration was accepted";
     };
 
+  # Some settings are refused by the option's *type* rather than by an assertion
+  # — a number outside a declared range, say. The module system raises those with
+  # `throw`, and `builtins.tryEval` reports that it fired but not what it said,
+  # so there is no message left to match on. "It failed" on its own is a weak
+  # test: it passes just as happily when the configuration is broken for some
+  # reason that has nothing to do with the option under test. So a type refusal
+  # is always asserted as a PAIR — the bad value rejected by `rejectsByType`,
+  # the neighbouring good value accepted by `accepts`. Together they say the
+  # boundary sits exactly where we think it does.
+  evaluateStrict = modules:
+    let
+      system = mkAppliance { modules = [ { appliance.enable = true; } ] ++ modules; };
+    in
+    builtins.tryEval (
+      builtins.deepSeq (map (a: a.assertion) system.config.assertions) "evaluated"
+    );
+
+  rejectsByType = name: modules:
+    let result = evaluateStrict modules; in
+    {
+      inherit name;
+      ok = !result.success;
+      detail = "configuration was accepted";
+    };
+
+  # The other half of that pair: this configuration must evaluate AND raise no
+  # assertion. Without it, tightening a range until it refuses everything —
+  # including the values operators are supposed to type — would read as progress.
+  accepts = name: modules:
+    let
+      system = mkAppliance { modules = [ { appliance.enable = true; } ] ++ modules; };
+      result = builtins.tryEval (
+        lib.concatMapStringsSep "\n" (a: a.message)
+          (lib.filter (a: !a.assertion) system.config.assertions)
+      );
+    in
+    {
+      inherit name;
+      ok = result.success && result.value == "";
+      detail =
+        if result.success
+        then "refused with: ${result.value}"
+        else "configuration did not evaluate at all";
+    };
+
   cases = [
     # A wildcard site address stands for exactly one label, so `*.ts.net` can
     # never match `<host>.<tailnet>.ts.net`. The request does not fail — it
@@ -73,6 +118,45 @@ let
       appliance.tailscale.lan.mode = "via";
     }])
 
+    # The serial is only ever put on the wire inside a Solarman v5 envelope, so a
+    # box that carries one under `tcp` or `rtu-over-tcp` is a box whose owner
+    # typed the number off the sticker, saw the option accepted, and is now
+    # waiting for readings from a framing that never sends it.
+    (refuses "a logger serial no framing ever puts on the wire" "loggerSerial" [{
+      appliance.sunreye.inverter.transport = "tcp";
+      appliance.sunreye.inverter.loggerSerial = 1234567890;
+    }])
+
+    # 0 is not a serial. It is the DISCOVERY serial on the Solarman v5 wire —
+    # the value a request carries while it is still asking the stick who it is —
+    # so every schema that consumes this number floors at 1: the server's
+    # `INVERTER_LOGGER_SERIAL`, `modbusParamsSchema` and `inverterConfigSchema`
+    # all do. This option accepted 0 anyway, and 0 is the obvious "none" to type
+    # into a field whose documented range starts there. The result was a clean
+    # `nix flake check`, a clean `nixos-rebuild switch`, and then a server that
+    # refused to start over an environment variable the operator never set by
+    # hand. Leaving the option unset is how you say "none" — that is what makes
+    # SunReye discover the serial off the stick.
+    (rejectsByType "a logger serial of 0, which is the discovery serial and not a serial" [{
+      appliance.sunreye.inverter.transport = "solarman-v5";
+      appliance.sunreye.inverter.loggerSerial = 0;
+    }])
+
+    (accepts "the lowest logger serial the server will actually boot on" [{
+      appliance.sunreye.inverter.transport = "solarman-v5";
+      appliance.sunreye.inverter.loggerSerial = 1;
+    }])
+
+    (accepts "the highest logger serial the uint32 wire field can carry" [{
+      appliance.sunreye.inverter.transport = "solarman-v5";
+      appliance.sunreye.inverter.loggerSerial = 4294967295;
+    }])
+
+    (rejectsByType "a logger serial one past the uint32 wire field" [{
+      appliance.sunreye.inverter.transport = "solarman-v5";
+      appliance.sunreye.inverter.loggerSerial = 4294967296;
+    }])
+
     (refuses "a site id that no mode ever reads" "never uses it" [{
       appliance.tailscale.lan.mode = "direct";
       appliance.tailscale.lan.siteId = 3;
@@ -106,11 +190,11 @@ pkgs.runCommand "appliance-assertions"
 } (
   if broken == [ ]
   then ''
-    ${lib.concatMapStringsSep "\n" (c: "echo 'refused: ${c.name}'") cases}
+    ${lib.concatMapStringsSep "\n" (c: "echo 'checked: ${c.name}'") cases}
     touch $out
   ''
   else throw ''
-    These configurations were not refused as expected:
+    These configurations did not behave as expected:
     ${lib.concatMapStringsSep "\n" (c: "  • ${c.name}: ${c.detail}") broken}
   ''
 )

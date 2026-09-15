@@ -40,6 +40,7 @@
  * add-connection dialog, which switches its fields on `kind`).
  */
 
+import { MODBUS_TRANSPORTS } from "@SunReye/inverter-core/transports";
 import { z } from "zod";
 
 /**
@@ -59,11 +60,17 @@ export type ConnectionKind = (typeof CONNECTION_KINDS)[number];
  *
  * This used to be a CHECK on `connections.transport`. It is not expressible as
  * one on a jsonb field worth the trouble, so the constraint is HERE and the
- * repository refuses a write that fails it — a third value is not a validation
- * nicety, the client has no branch for it and the endpoint simply never polls.
+ * repository refuses a write that fails it — a value off this list is not a
+ * validation nicety, the client has no branch for it and the endpoint simply
+ * never polls.
+ *
+ * RE-EXPORTED, not declared: the list's one home is
+ * `@SunReye/inverter-core/transports`, below both this package and
+ * `@SunReye/env` — which needs it too and cannot import it from here, because
+ * this package depends on `@SunReye/env` and turbo's `^check-types` graph
+ * refuses a cycle. Every importer keeps reaching it through this name.
  */
-// fallow-ignore-next-line unused-export -- the framing list the add-connection dialog renders; the web app restates it (it does not depend on @SunReye/db) and this is the constraint the repository enforces.
-export const MODBUS_TRANSPORTS = ["tcp", "rtu-over-tcp"] as const;
+export { MODBUS_TRANSPORTS };
 export type ModbusTransport = (typeof MODBUS_TRANSPORTS)[number];
 
 /**
@@ -78,6 +85,19 @@ export const modbusParamsSchema = z.object({
   timeoutMs: z.number().int().min(100).max(60_000).default(2000),
   /** Poll cadence for this endpoint, ms. Floored at 1000, as the runtime floors it. */
   pollIntervalMs: z.number().int().min(1000).max(3_600_000).default(1000),
+  /**
+   * The Solarman logging stick's own serial (uint32), which every V5 request
+   * must carry. Meaningless to the other two framings, which ignore it.
+   *
+   * A FLAT OPTIONAL FIELD, not a `z.discriminatedUnion` over `transport`. The
+   * union would be the tidier model and it is the wrong trade here: these params
+   * are read back through code paths that safe-parse to a default, and a
+   * document that silently resets because one arm drifted is the
+   * settings-schema-silent-reset defect all over again. Optional also because
+   * the serial is printed INSIDE the dongle's shell — the port discovers it from
+   * the stick's own reply, so this is a cache, never a prerequisite.
+   */
+  loggerSerial: z.number().int().min(1).max(0xffffffff).optional(),
 });
 export type ModbusParams = z.infer<typeof modbusParamsSchema>;
 

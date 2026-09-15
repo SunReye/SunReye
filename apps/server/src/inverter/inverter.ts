@@ -1,6 +1,7 @@
 import { db } from "@SunReye/db";
 import { ACTIVE_PROFILE_KEY, activeProfileSchema } from "@SunReye/db/profiles";
 import { installedProfiles } from "@SunReye/db/schema/settings";
+import type { ModbusTransport } from "@SunReye/db/connection-kinds";
 import { env } from "@SunReye/env/server";
 import { eq } from "drizzle-orm";
 import {
@@ -154,7 +155,13 @@ export async function configuredProfile(): Promise<InverterProfile | null> {
 export interface SourceConnection {
   host?: string;
   port: number;
-  transport: "tcp" | "rtu-over-tcp";
+  transport: ModbusTransport;
+  /**
+   * The Solarman logging stick's own serial, when either producer states one.
+   * Optional the whole way down: the V5 port discovers it from the stick's own
+   * reply, so an absent value costs a round trip on connect and nothing else.
+   */
+  loggerSerial?: number;
   unitId: number;
   timeoutMs: number;
 }
@@ -186,6 +193,10 @@ export function buildSource(
       unitId: config.unitId,
       timeoutMs: config.timeoutMs,
       transport: config.transport,
+      // Passed through as-is, INCLUDING when it is undefined: 0 is the discovery
+      // serial on the wire, so substituting one would turn every request into a
+      // reject.
+      loggerSerial: config.loggerSerial,
     },
   });
 }

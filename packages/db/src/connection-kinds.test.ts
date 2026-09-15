@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 
 import {
   CONNECTION_KINDS,
+  MODBUS_TRANSPORTS,
   type ConnectionParams,
   connectionParamsSchema,
   connectionSettingsSchema,
@@ -30,6 +31,36 @@ describe("the modbus arm", () => {
       timeoutMs: 2000,
       pollIntervalMs: 1000,
     });
+  });
+
+  test("admits every framing the client implements, and only those", () => {
+    // One home for the list: `inverter-config.ts`, `archive-config.ts`,
+    // `packages/env` and the poll loop all derive from it rather than restate it.
+    expect([...MODBUS_TRANSPORTS]).toEqual(["tcp", "rtu-over-tcp", "solarman-v5"]);
+    for (const transport of MODBUS_TRANSPORTS) {
+      expect(modbusParamsSchema.parse({ host: "h", transport }).transport).toBe(transport);
+    }
+  });
+
+  test("carries an optional logger serial for the Solarman framing", () => {
+    // A FLAT optional field, deliberately not a discriminated union: this repo
+    // has been burned by a `z.discriminatedUnion` in a settings document
+    // silently resetting to defaults when one arm drifted.
+    expect(
+      modbusParamsSchema.parse({ host: "h", transport: "solarman-v5", loggerSerial: 3168930341 })
+        .loggerSerial,
+    ).toBe(3168930341);
+    expect(modbusParamsSchema.parse({ host: "h" }).loggerSerial).toBeUndefined();
+  });
+
+  test("refuses a logger serial outside uint32, or a fractional one", () => {
+    const bad = (loggerSerial: unknown) =>
+      modbusParamsSchema.safeParse({ host: "h", loggerSerial }).success;
+    expect(bad(0)).toBe(false);
+    expect(bad(-1)).toBe(false);
+    expect(bad(0x1_0000_0000)).toBe(false);
+    expect(bad(1.5)).toBe(false);
+    expect(bad(0xffffffff)).toBe(true);
   });
 
   test("refuses a transport the Modbus client has no branch for", () => {

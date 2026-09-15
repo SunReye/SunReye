@@ -175,6 +175,7 @@
       "name": "@SunReye/env",
       "version": "0.0.0",
       "dependencies": {
+        "@SunReye/inverter-core": "workspace:*",
         "@t3-oss/env-core": "^0.13.1",
         "dotenv": "catalog:",
         "zod": "catalog:",

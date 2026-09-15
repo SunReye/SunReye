@@ -32,6 +32,7 @@ const SCHEMA_KEYS = [
   "INVERTER_PORT",
   "INVERTER_UNIT_ID",
   "INVERTER_TRANSPORT",
+  "INVERTER_LOGGER_SERIAL",
   "POLL_INTERVAL_MS",
   "HISTORY_FLUSH_INTERVAL_MS",
   "INVERTER_SIMULATE",
@@ -133,6 +134,7 @@ describe("booting with the bare minimum", () => {
     expect(env.INVERTER_PORT).toBeUndefined();
     expect(env.INVERTER_UNIT_ID).toBeUndefined();
     expect(env.INVERTER_TRANSPORT).toBeUndefined();
+    expect(env.INVERTER_LOGGER_SERIAL).toBeUndefined();
     expect(env.LOG_LEVEL).toBeUndefined();
     expect(env.LOG_LEVEL_MQTT).toBeUndefined();
   });
@@ -303,12 +305,26 @@ describe("the inverter address", () => {
     await rejects({ INVERTER_HOST: "999.1.1.1" });
   });
 
-  test("the framing is one of the two supported transports", async () => {
-    expect((await validated({ INVERTER_TRANSPORT: "rtu-over-tcp" })).INVERTER_TRANSPORT).toBe(
-      "rtu-over-tcp",
-    );
-    expect((await validated({ INVERTER_TRANSPORT: "tcp" })).INVERTER_TRANSPORT).toBe("tcp");
+  test("the framing is one the Modbus client implements", async () => {
+    // Derived from `MODBUS_TRANSPORTS`, so this list cannot drift from the one
+    // the connection row and the poll loop enforce.
+    for (const transport of ["tcp", "rtu-over-tcp", "solarman-v5"] as const) {
+      expect((await validated({ INVERTER_TRANSPORT: transport })).INVERTER_TRANSPORT).toBe(
+        transport,
+      );
+    }
     await rejects({ INVERTER_TRANSPORT: "serial" });
+  });
+
+  test("the Solarman logger serial is an optional uint32", async () => {
+    expect((await validated({ INVERTER_LOGGER_SERIAL: "3168930341" })).INVERTER_LOGGER_SERIAL).toBe(
+      3168930341,
+    );
+    // Seeding is the only job here: the port discovers the real serial anyway,
+    // so a value out of range must stop the boot rather than be coerced.
+    await rejects({ INVERTER_LOGGER_SERIAL: "0" });
+    await rejects({ INVERTER_LOGGER_SERIAL: "4294967296" });
+    await rejects({ INVERTER_LOGGER_SERIAL: "not-a-number" });
   });
 });
 

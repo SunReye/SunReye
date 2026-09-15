@@ -1111,5 +1111,12 @@
   "integration_open": "Apri",
   "inverter_simulate_label": "Simula un inverter",
   "inverter_simulate_desc": "Mostra letture inventate invece di interrogare l'indirizzo qui sotto. Resta attivo finché non punti questo dispositivo a un inverter reale, così una nuova installazione ha qualcosa da mostrare.",
-  "inverter_simulate_on_notice": "Queste letture non provengono dal tuo impianto."
+  "inverter_simulate_on_notice": "Queste letture non provengono dal tuo impianto.",
+  "inverter_transport_tcp": "Modbus TCP",
+  "inverter_transport_rtu_over_tcp": "Modbus RTU su TCP",
+  "inverter_transport_solarman_v5": "Solarman V5 (chiavetta logger, porta 8899)",
+  "devices_field_logger_serial": "Numero di serie del logger",
+  "devices_logger_serial_placeholder": "Rilevato quando provi la connessione",
+  "devices_logger_serial_help": "Il numero di serie della chiavetta Wi-Fi Solarman/IGEN. Lascia il campo vuoto: il test della connessione lo legge direttamente dalla chiavetta. È riportato anche sull'etichetta della chiavetta.",
+  "devices_ping_ok_logger": "Raggiungibile — il logger {serial} ha risposto, {ms} ms."
 }

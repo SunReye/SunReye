@@ -46,6 +46,9 @@ bashio::config.has_value 'inverter_host' && set_env INVERTER_HOST "$(bashio::con
 bashio::config.has_value 'inverter_port' && set_env INVERTER_PORT "$(bashio::config 'inverter_port')"
 bashio::config.has_value 'inverter_unit_id' && set_env INVERTER_UNIT_ID "$(bashio::config 'inverter_unit_id')"
 bashio::config.has_value 'inverter_transport' && set_env INVERTER_TRANSPORT "$(bashio::config 'inverter_transport')"
+# Solarman loggers only. Usually absent: the connection test reads the serial
+# off the stick, so nobody has to go and look at the sticker behind the inverter.
+bashio::config.has_value 'inverter_logger_serial' && set_env INVERTER_LOGGER_SERIAL "$(bashio::config 'inverter_logger_serial')"
 if bashio::config.true 'inverter_simulate'; then
     set_env INVERTER_SIMULATE true
 fi

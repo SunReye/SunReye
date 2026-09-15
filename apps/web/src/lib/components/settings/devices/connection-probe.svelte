@@ -14,7 +14,13 @@
 	// No unit id, no profile, no register read: an address can answer nothing
 	// more, and the register read lives on the device dialog, which knows what to
 	// read with. The wording is decided in `./add-device-logic.ts`.
-	let { draft }: { draft: ConnectionDraft } = $props();
+	//
+	// BINDABLE because a Solarman probe brings something BACK. The logger stick
+	// names itself in its handshake, and that serial is a field the operator
+	// would otherwise read off a sticker behind the inverter — so the probe fills
+	// it in. It writes that one field and nothing else: everything in the draft
+	// was typed by somebody, and a test is not permission to overwrite it.
+	let { draft = $bindable() }: { draft: ConnectionDraft } = $props();
 
 	let probing = $state(false);
 	let outcome = $state<{ ok: boolean; message: string } | null>(null);
@@ -35,10 +41,9 @@
 		outcome = null;
 		const { data, error } = await api.api.connections.probe.post(target);
 		probing = false;
-		outcome = describeConnectionProbe(
-			target.kind,
-			connectionProbeAnswer(data, failureText(error))
-		);
+		const answer = connectionProbeAnswer(data, failureText(error));
+		if (answer.ok && answer.serial !== undefined) draft.modbus.loggerSerial = answer.serial;
+		outcome = describeConnectionProbe(target.kind, answer);
 	}
 </script>
 

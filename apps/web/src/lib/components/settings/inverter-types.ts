@@ -1,6 +1,19 @@
 // Shapes shared by the inverter connection panel and its sub-components.
 
-export type Transport = "tcp" | "rtu-over-tcp";
+/**
+ * How Modbus is framed on the wire.
+ *
+ * `solarman-v5` is not a Modbus framing in the same sense as the other two: it
+ * is the vendor envelope the Solarman/IGEN WiFi logger stick wraps a Modbus PDU
+ * in, on port 8899 rather than 502 and addressed by the stick's own serial
+ * number. It is here because it is picked in the same select — that stick ships
+ * in the box with most Deye and Sunsynk hybrids, so for a large share of
+ * installs it is the ONLY way to reach the inverter at all.
+ *
+ * The web app cannot import `@SunReye/db`, so this restates the server's union
+ * and the CHECK constraint there is what decides.
+ */
+export type Transport = "tcp" | "rtu-over-tcp" | "solarman-v5";
 
 export type InverterConfig = {
   host: string;

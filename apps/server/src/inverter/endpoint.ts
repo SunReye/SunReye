@@ -43,6 +43,7 @@
  */
 
 import { db } from "@SunReye/db";
+import { MODBUS_TRANSPORTS, narrowTransport } from "@SunReye/inverter-core/transports";
 import type { InverterConfig } from "@SunReye/db/inverter-config";
 import {
   type ConnectionRecord,
@@ -66,8 +67,14 @@ import { env } from "@SunReye/env/server";
 import { log } from "../shared/logging";
 import { type ProvisionLogger, dbProvisionStore, provisionPlantRow } from "./provision";
 
-/** The framings the Modbus client actually implements. */
-export type Transport = "tcp" | "rtu-over-tcp";
+/**
+ * The framings the Modbus client actually implements.
+ *
+ * Derived from the shared list rather than restated: this hand-written copy knew
+ * only two framings while the connection row accepted three, and a third value
+ * was therefore narrowed away below.
+ */
+export type Transport = (typeof MODBUS_TRANSPORTS)[number];
 
 /**
  * One machine's full address, as the source builder and the loop need it.
@@ -84,6 +91,12 @@ export interface PollEndpoint {
   host: string;
   port: number;
   transport: Transport;
+  /**
+   * The Solarman logging stick's own serial, when the row states one. Absent is
+   * the normal case — the serial is printed inside the dongle's shell, and the
+   * V5 port asks the stick for it on connect — so this only saves a round trip.
+   */
+  loggerSerial?: number;
   /** The Modbus slave id — a DEVICE fact, not an endpoint one. */
   unitId: number;
   timeoutMs: number;
@@ -139,7 +152,7 @@ export function pollCadence(ms: number): number {
  */
 // fallow-ignore-next-line unused-export -- the framing narrowing, unit-tested in endpoint.test.ts against the values the archive import and the 1.2.0 upgrade can leave in the column.
 export function transportOf(value: string): Transport {
-  return value === "rtu-over-tcp" ? "rtu-over-tcp" : "tcp";
+  return narrowTransport(value);
 }
 
 /**
@@ -185,6 +198,7 @@ export function endpointOf(
     host: params.host,
     port: params.port,
     transport: transportOf(params.transport),
+    loggerSerial: params.loggerSerial,
     unitId: device.unitId,
     timeoutMs: params.timeoutMs,
     pollIntervalMs: pollCadence(params.pollIntervalMs),
