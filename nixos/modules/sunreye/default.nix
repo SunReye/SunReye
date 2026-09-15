@@ -404,7 +404,21 @@ in
         # loopback, reachable only through Caddy, never on the LAN or the
         # tailnet. Sharing the namespace makes `ports` meaningless, so the bind
         # address has to be the server's own.
-        extraOptions = [ "--network=host" ];
+        #
+        # And the host's resolv.conf as a LIVE file, not the copy podman would
+        # otherwise bake in at creation. Podman writes the host's resolvers into
+        # the container when it is created; the host's then change — enrolling
+        # into a tailnet replaces them outright — and the container keeps the
+        # stale file for as long as it lives. A box whose host resolved
+        # github.com perfectly had a server inside that could not, and the
+        # profile catalogue failed to clone with a DNS error three layers from
+        # its cause. Sharing the host's network stack and not its resolvers is
+        # a distinction nothing upstream of here can act on.
+        extraOptions = [
+          "--network=host"
+          "--volume"
+          "/etc/resolv.conf:/etc/resolv.conf:ro"
+        ];
         environmentFiles = [ secretsEnv originsEnv ];
         environment = {
           NODE_ENV = "production";
