@@ -174,6 +174,13 @@
             self.nixosConfigurations.appliance.config.systemd.services.podman-sunreye-postgres.serviceConfig.ExecStart);
         };
 
+        # Can the nightly upgrade commit the lock it writes? Without a git
+        # identity it cannot, and it fails only on the nights it has work.
+        upgrade-commit = import ./tests/upgrade-commit.nix {
+          inherit pkgs;
+          upgradeUnit = self.nixosConfigurations.appliance.config.systemd.units."nixos-upgrade.service".unit + "/nixos-upgrade.service";
+        };
+
         # Same question, asked of the box's own status report.
         health-report = import ./tests/health-report.nix {
           inherit pkgs;

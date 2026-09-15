@@ -29,6 +29,31 @@ lib.mkIf (cfg.enable && au.enable) {
     allowReboot = false;
   };
 
+  # An identity for the lock commit, because git refuses to make one without it:
+  #
+  #   fatal: unable to auto-detect email address (got 'root@sr-…(none)')
+  #   error: program "git" failed with exit code 128
+  #
+  # `--commit-lock-file` shells out to `git commit`, and a flashed box has no
+  # identity to auto-detect — so every upgrade that actually had a new revision
+  # to lock died at the commit. The lock is WRITTEN before the commit is
+  # attempted, so the next run found nothing to update, committed nothing and
+  # succeeded: the timer failed every night it had work and passed every night it
+  # did not, which is indistinguishable from a box that is simply up to date.
+  #
+  # On the unit rather than in /etc/gitconfig: this identity exists for one
+  # commit made by one service, and a system-wide one would silently author an
+  # operator's own commits in /etc/nixos as the appliance.
+  #
+  # `.invalid` is reserved by RFC 2606 and can never be delivered to — the commit
+  # needs a syntactically valid address, not a reachable one.
+  systemd.services.nixos-upgrade.environment = {
+    GIT_AUTHOR_NAME = "SunReye appliance";
+    GIT_AUTHOR_EMAIL = "appliance@sunreye.invalid";
+    GIT_COMMITTER_NAME = "SunReye appliance";
+    GIT_COMMITTER_EMAIL = "appliance@sunreye.invalid";
+  };
+
   # Keep enough generations that --rollback is a real option, and not so many that
   # the store outgrows the disk.
   nix.gc.options = lib.mkForce "--delete-older-than 30d";
