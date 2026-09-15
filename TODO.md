@@ -84,3 +84,25 @@ What would separate them:
 The third is probably the right one and is a change to the write path, not the
 read path. Needs the raw `metrics_raw` rows from a box's first hour to confirm
 the zero is there at all — everything above is inference from the aggregate.
+
+## A flashed image cannot boot from a fixed disk on strict firmware
+
+The ESP contains only `\EFI\BOOT\BOOTX64.EFI`, and the image is built with
+`boot.loader.grub` + `canTouchEfiVariables = false` — so it writes no NVRAM
+`Boot####` entry. It cannot: NVRAM lives in the target machine's firmware, and
+the image is built in a sandbox that has never seen it.
+
+`\EFI\BOOT\BOOTX64.EFI` is the UEFI removable-media fallback. Firmware must
+honour it for removable devices and is only *expected* to for fixed ones. Many
+boards do; corporate thin clients often do not.
+
+Measured on a Fujitsu Futro S740: the same disk boots first time in a USB
+enclosure and offers **no boot entry at all** in the internal M.2 slot, while
+the BIOS drive diagnostic lists the drive. That is the whole SKU class this
+appliance targets, and the workaround is a manual "Add Boot Option" in BIOS —
+which is not something to ask of someone who just flashed an appliance.
+
+Worth considering: a first-boot unit that registers an NVRAM entry with
+`efibootmgr` when the ESP is on a fixed disk and no entry names it. It would fix
+every box that boots the fallback once, which is most of them; a box that never
+boots still needs the BIOS step, so the docs need it either way.
