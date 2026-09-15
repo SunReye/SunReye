@@ -1,6 +1,6 @@
 # Changelog
 
-No unreleased changes on `dev`; `beta.20260915-5f2aef3` matches the last release.
+No unreleased changes on `dev`; `beta.20260915-00a5f3b` matches the last release.
 
 <!--
   This preamble is hand-written and version-independent. release-please owns the
@@ -118,12 +118,21 @@ changed again. The archive names devices and metrics the way the API and your Ho
 entities already do, and refers to no internal id, which is why an upgrade like this one should not
 be needed again.
 
-## [3.3.1](https://github.com/SunReye/SunReye/compare/addon-v3.3.0...addon-v3.3.1) (2026-09-15)
+## [3.3.2](https://github.com/SunReye/SunReye/compare/addon-v3.3.1...addon-v3.3.2) (2026-09-15)
 
 
 ### Miscellaneous Chores
 
 * **addon:** Synchronize sunreye-stack versions
+
+## [3.3.1](https://github.com/SunReye/SunReye/compare/addon-v3.3.0...addon-v3.3.1) (2026-09-15)
+
+
+### Bug Fixes
+
+* **nixos:** boot fixes — NVRAM entry for a flashed disk, and the server/migration race ([738dac6](https://github.com/SunReye/SunReye/commit/738dac66457db68d347be1873d27c46d33df91b6))
+* **nixos:** stop the server racing the schema, and losing the race for good ([05360b7](https://github.com/SunReye/SunReye/commit/05360b7c4d0f1814fb929f083bc7df138dfd4563))
+* **nixos:** write the NVRAM entry a flashed disk cannot ship with ([30c2f13](https://github.com/SunReye/SunReye/commit/30c2f13dc6193fd2ffb4a7ea2b0924ed15a19b76))
 
 ## [3.3.0](https://github.com/SunReye/SunReye/compare/addon-v3.2.3...addon-v3.3.0) (2026-09-15)
 
