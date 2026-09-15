@@ -826,6 +826,18 @@ export async function mockBackend(page: Page, options: BackendOptions = {}): Pro
         return json(route, { ok: true, ms: 12, logger: { serial: fixture.SOLARMAN_SERIAL } });
       return json(route, { ok: true, ms: 12 });
     }
+    // WHICH UNIT ID IS HOME. The real route probes the endpoint per candidate
+    // and stops at the first that answers; the fake answers the id the fixture
+    // says is home, so the dialog's "fill the field in" half is what a spec
+    // exercises. A scan of an address the fixture knows nothing about finds
+    // nothing, which is the other line the operator can meet.
+    if (at("connections/scan-units")) {
+      const params = body().params as { host?: string } | undefined;
+      const scanned = [1, 0, 2, 3, 4, 5];
+      if (params?.host === fixture.SCANNABLE_HOST)
+        return json(route, { scanned: [1], found: { unitId: 1, ms: 82 } });
+      return json(route, { scanned, found: null });
+    }
     if (at("connections")) {
       // A connection created ON ITS OWN — the only way to add a broker, which
       // never has a device to be created alongside (#217).

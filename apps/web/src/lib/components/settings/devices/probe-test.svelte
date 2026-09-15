@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { api } from '$lib/api';
+	import { apiErrorText } from '$lib/api-error';
 	import { Button } from '$lib/components/ui/button';
 	import * as m from '$lib/paraglide/messages';
 	import type { TestResult } from '../inverter-types';
@@ -31,7 +32,7 @@
 
 	async function probe(t: ProbeTarget): Promise<TestResult> {
 		const { data, error } = await api.api.settings.inverter.test.post({ ...t, host: t.host.trim() });
-		return data ?? { ok: false, error: error ? String(error.value) : m.conn_request_failed() };
+		return data ?? { ok: false, error: apiErrorText(error?.value, m.conn_request_failed()) };
 	}
 
 	async function test() {

@@ -22,6 +22,18 @@ export type InverterConfig = {
   unitId: number;
   timeoutMs: number;
   pollIntervalMs: number;
+  /**
+   * The Solarman stick's own serial, when one is configured. Optional because
+   * the port discovers it from the stick's own reply — see `inverterConfigSchema`
+   * in `@SunReye/db/inverter-config`, which this restates.
+   */
+  loggerSerial?: number;
+  /**
+   * Read a fake inverter instead of the address above. Part of the SAVED config
+   * since it stopped being env-only, and bound by `inverter-simulate-switch.svelte`
+   * — which svelte-check refused on every build while this type omitted it.
+   */
+  simulate: boolean;
 };
 
 export type InverterStatus = {

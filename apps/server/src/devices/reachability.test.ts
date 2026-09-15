@@ -127,6 +127,25 @@ describe("probeConnection", () => {
     expect(result).toMatchObject({ ok: false, error: "getaddrinfo ENOTFOUND" });
   });
 
+  test("a modbus-serial failure, which is not an Error, still names itself", async () => {
+    // `TransactionTimedOutError` is a plain constructor that sets name/message/
+    // errno on `this` and never calls Error, so `instanceof Error` is false for
+    // it and `String(…)` renders the reason as "[object Object]".
+    const result = await probeConnection(
+      { host: "10.0.0.5", port: 502 },
+      {
+        ...dials,
+        tcp: () =>
+          Promise.reject({
+            name: "TransactionTimedOutError",
+            message: "Timed out",
+            errno: "ETIMEDOUT",
+          }),
+      },
+    );
+    expect(result).toMatchObject({ ok: false, error: "Timed out" });
+  });
+
   test("the LEGACY body — a bare host and port — is still a modbus probe", async () => {
     // A client older than the kind column — a stale tab, a script — sends no
     // `kind` at all, and is dialled rather than answered 400.

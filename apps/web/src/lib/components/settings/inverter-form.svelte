@@ -2,6 +2,7 @@
 	import { onMount } from "svelte";
 	import { toast } from "svelte-sonner";
 	import { api } from "$lib/api";
+	import { apiErrorText } from '$lib/api-error';
 	import { Button } from "$lib/components/ui/button";
 	import FormActions from "./form-actions.svelte";
 	import InverterConnectionFields from "./inverter-connection-fields.svelte";
@@ -62,7 +63,7 @@
 
 	async function runTest(body: InverterConfig & { profileId?: string }): Promise<TestResult> {
 		const { data, error } = await api.api.settings.inverter.test.post(body);
-		return data ?? { ok: false, error: error ? String(error.value) : m.conn_request_failed() };
+		return data ?? { ok: false, error: apiErrorText(error?.value, m.conn_request_failed()) };
 	}
 
 	async function test() {
@@ -137,7 +138,7 @@
 
 		<InverterSimulateSwitch bind:simulate={cfg.simulate} />
 
-		<InverterConnectionFields bind:cfg {status} disabled={cfg.simulate} />
+		<InverterConnectionFields bind:cfg {status} {profileId} disabled={cfg.simulate} />
 	</Section>
 
 	<SnapshotDialog bind:open={snapshotOpen} result={testResult} />

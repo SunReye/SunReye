@@ -6,7 +6,7 @@
 	import { Input } from '$lib/components/ui/input';
 	import { Label } from '$lib/components/ui/label';
 	import RestartButton from './restart-button.svelte';
-	import { apiErrorText } from './api-error';
+	import { apiErrorText } from '$lib/api-error';
 	import WarningIcon from 'phosphor-svelte/lib/Warning';
 	import DownloadIcon from 'phosphor-svelte/lib/DownloadSimple';
 	import { serverUrl } from '$lib/server-url';

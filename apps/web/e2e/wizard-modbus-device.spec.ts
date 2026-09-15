@@ -275,3 +275,65 @@ test("a device on a gateway created in the same wizard is addressed at the id th
     },
   ]);
 });
+
+/**
+ * FINDING THE UNIT ID, which is the one field on this screen nobody can read off
+ * a label — and which does not mean the same thing on every framing. Measured on
+ * one plant's two paths to ONE inverter: the Modbus-TCP gateway answers unit 0
+ * and times out on 1, while the Solarman stick answers 1 and times out on 0.
+ *
+ * A browser claim because the whole feature is wiring: the request body, the
+ * disabled state and the two lines are proven in `unit-scan-logic.test.ts`, and
+ * what only exists in a running document is whether the answer reaches the
+ * picker — the scan is worthless if it prints the id instead of selecting it.
+ */
+test.describe("finding the unit id", () => {
+  test("a scan of the logger stick fills the picker in with the id that answered", async ({
+    page,
+  }) => {
+    const opened = await open(page);
+    // Step 1 on the stick's own row — the fake answers a scan of its address.
+    await page.locator("select#wizard-connection").selectOption("3");
+    await next(page).click();
+    await page.getByRole("button", { name: "Modbus device" }).click();
+    await next(page).click();
+
+    const scan = page.getByRole("button", { name: "Find it" });
+    // Nothing to ask with yet: a scan needs a register map, and step 3's profile
+    // picker is still empty.
+    await expect(scan).toBeDisabled();
+    await expect(page.getByText(/Pick a gateway and a profile/)).toBeVisible();
+
+    await page.locator("select#device-profile").selectOption("sungrow-sh10rt");
+    await expect(scan).toBeEnabled();
+    await scan.click();
+
+    await expect(page.getByText(/Unit 1 answered in 82 ms/)).toBeVisible();
+    await expect(page.locator("select#device-unit")).toHaveValue("1");
+    expect(opened.consoleErrors).toEqual([]);
+  });
+
+  test("a scan that finds nothing names every id it ruled out, and changes no field", async ({
+    page,
+  }) => {
+    const opened = await open(page);
+    await reachDeviceStep(page);
+    await page.locator("select#device-profile").selectOption("sungrow-sh10rt");
+
+    await page.getByRole("button", { name: "Find it" }).click();
+
+    await expect(page.getByText(/No answer on 1, 0, 2, 3, 4, 5/)).toBeVisible();
+    // Still the lowest free id on that gateway — a failed scan must not "tidy"
+    // the field it could not answer.
+    await expect(page.locator("select#device-unit")).toHaveValue("0");
+    expect(opened.consoleErrors).toEqual([]);
+  });
+
+  test("the help text says what the number addresses on THIS framing", async ({ page }) => {
+    await open(page);
+    await reachDeviceStep(page);
+    // The fixture's gateway is plain Modbus TCP: the gateway decides.
+    await expect(page.getByText(/The gateway decides what this addresses/)).toBeVisible();
+    await expect(page.getByText(/inverter's own slave address/)).toHaveCount(0);
+  });
+});

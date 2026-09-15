@@ -14,6 +14,7 @@ import { getLogger } from "@logtape/logtape";
 import ModbusRTU from "modbus-serial";
 
 import { decode, encodeWord } from "./codec";
+import { errorMessage } from "./error-message";
 import { SolarmanV5Port } from "./solarman";
 import type { InverterTransport } from "./transports";
 import type {
@@ -373,7 +374,7 @@ function absorbClientErrors(client: ModbusRTU, conn: InverterConnection): void {
     log.warn("modbus link error on {host}:{port}: {message}", {
       host: conn.host,
       port: conn.port,
-      message: err instanceof Error ? err.message : String(err),
+      message: errorMessage(err),
     });
   });
 }
@@ -417,6 +418,24 @@ function dial(conn: InverterConnection, timeout: number): Dialed {
       throw new Error(`unsupported Modbus framing: ${String(unreachable)}`);
     }
   }
+}
+
+/**
+ * The register a UNIT-ID SCAN asks for: the first one this profile plans to
+ * read, or undefined when it plans none.
+ *
+ * NOT a fixed address, and not register 0. A Modbus device answers nothing at
+ * all for a register it does not map, so a scan that asked for an arbitrary one
+ * would report "no answer" for the unit id that actually works — measured
+ * against a Deye behind a Solarman stick, where register 3 timed out on the same
+ * unit id that read 107 metrics from register 98 in 171 ms.
+ *
+ * One register, not the whole block: the scan asks "is anything home", and a
+ * 120-register read costs ~2 ms per register on a stick for an answer the first
+ * word already gave.
+ */
+export function probeAddressOf(profile: InverterProfile): number | undefined {
+  return planReads(profile.metrics, 0)[0]?.start;
 }
 
 /** Fold one block's response into the poll's address → word map. */
@@ -647,6 +666,46 @@ export class ModbusTransport implements DeviceTransport {
       value,
       register,
       word,
+    });
+  }
+
+  /**
+   * Does ONE unit id answer on this endpoint? Used by the unit-id SCAN, never by
+   * the poll loop.
+   *
+   * On the client this transport already holds, deliberately: a scan that dialled
+   * per candidate would pay a fresh Solarman handshake each time, and a stick
+   * that serialises clients on one RS485 bus would be asked to hold several at
+   * once. Measured on a live stick, one client and `setID` per candidate: a hit
+   * costs 1-384 ms and a miss costs the full timeout, on every framing — no
+   * device and no gateway sends a fast refusal, which is why the caller bounds
+   * the candidate list rather than sweeping 1..247.
+   *
+   * The unit id and timeout are RESTORED before returning, so the transport is
+   * left addressing what it was built to address.
+   */
+  async probeUnit(unitId: number, timeoutMs: number): Promise<boolean> {
+    const address = probeAddressOf(this.profile);
+    if (address === undefined) {
+      throw new Error(`${this.profile.id} maps no readable register to scan with`);
+    }
+    const client = await this.getClient();
+    return this.locked(async () => {
+      client.setID(unitId);
+      client.setTimeout(timeoutMs);
+      try {
+        await client.readHoldingRegisters(address, 1);
+        return true;
+      } catch {
+        // Every failure is the same answer here: nothing is home at this id. A
+        // timeout, a reject and an exception all mean "ask the next one", and the
+        // endpoint's own failures (a dead socket) surface on the next probe's
+        // `getClient`, which does throw.
+        return false;
+      } finally {
+        client.setID(this.conn.unitId);
+        client.setTimeout(this.conn.timeoutMs ?? 2000);
+      }
     });
   }
 

@@ -47,6 +47,11 @@
 		registered: RegisteredProfile[];
 		onInstalled: (id: string) => void;
 	} = $props();
+
+	// The draft only describes the endpoint while step 1 is CREATING one; on the
+	// "attach to an existing gateway" arm it is a leftover, and handing it to the
+	// scan would dial an address the operator abandoned.
+	const scanDraft = $derived(chosen?.mode === 'create' ? draft : null);
 </script>
 
 {#if step === 'connection'}
@@ -54,7 +59,7 @@
 {:else if step === 'attach'}
 	<AttachStep {options} bind:entryId />
 {:else if step === 'settings'}
-	<SettingsStep {entry} bind:answers {devices} {registered} {onInstalled} />
+	<SettingsStep {entry} bind:answers {devices} {connections} draft={scanDraft} {registered} {onInstalled} />
 {:else}
 	<ConfirmStep {entry} connection={chosenConnection} {answers} {registered} />
 {/if}

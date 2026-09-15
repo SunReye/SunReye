@@ -2,6 +2,7 @@
 	import { onMount } from "svelte";
 	import { toast } from "svelte-sonner";
 	import { api } from "$lib/api";
+	import { apiErrorText } from '$lib/api-error';
 	import { Button } from "$lib/components/ui/button";
 	import * as Dialog from "$lib/components/ui/dialog";
 	import ExternalProfilesManager from "./external-profiles-manager.svelte";
@@ -45,7 +46,7 @@
 		const { error } = await api.api.profiles.install.post({ source: u.source, id: u.id });
 		busyId = null;
 		if (error) {
-			toast.error(m.profiles_toast_update_failed({ error: String(error.value) }));
+			toast.error(m.profiles_toast_update_failed({ error: apiErrorText(error.value, m.conn_request_failed()) }));
 			return;
 		}
 		toast.success(m.profiles_toast_updated({ name: u.name, version: u.latestVersion }));
@@ -59,7 +60,7 @@
 		const { error } = await api.api.profiles({ id: p.id }).delete();
 		busyId = null;
 		if (error) {
-			toast.error(m.profiles_toast_uninstall_failed({ error: String(error.value) }));
+			toast.error(m.profiles_toast_uninstall_failed({ error: apiErrorText(error.value, m.conn_request_failed()) }));
 			return;
 		}
 		toast.success(m.profiles_toast_uninstalled({ name: p.name }));

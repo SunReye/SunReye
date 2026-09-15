@@ -8,6 +8,7 @@
     ".": "./src/index.ts",
     "./optimizer": "./src/optimizer-vocabulary.ts",
     "./transports": "./src/transports.ts",
+    "./error-message": "./src/error-message.ts",
     "./device-class": "./src/device-class.ts",
     "./plant-aggregate": "./src/plant-aggregate.ts",
     "./slug": "./src/slug.ts",

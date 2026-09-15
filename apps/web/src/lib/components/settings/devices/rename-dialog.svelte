@@ -6,7 +6,7 @@
 	import { Label } from '$lib/components/ui/label';
 	import * as m from '$lib/paraglide/messages';
 	import { SLUG_MAX } from '@SunReye/inverter-core/slug';
-	import { apiErrorText } from '../api-error';
+	import { apiErrorText } from '$lib/api-error';
 	import { type Refusal, describeRefusal, nameProblem } from './add-device-logic';
 	import { renameBlock } from './rename-logic';
 	import DialogShell from './device-dialog-shell.svelte';

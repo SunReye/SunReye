@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { api } from '$lib/api';
+	import { apiErrorText } from '$lib/api-error';
 	import { Button } from '$lib/components/ui/button';
 	import * as m from '$lib/paraglide/messages';
 	import { connectionProbeAnswer, describeConnectionProbe } from './add-device-logic';
@@ -31,7 +32,7 @@
 
 	/** What to say when the REQUEST failed, so there is no answer body to read. */
 	function failureText(error: { value: unknown } | null): string {
-		return error ? String(error.value) : m.conn_request_failed();
+		return apiErrorText(error?.value, m.conn_request_failed());
 	}
 
 	async function probe() {

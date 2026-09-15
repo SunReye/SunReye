@@ -1,6 +1,7 @@
 <script lang="ts">
 	import AddressFields from '../devices/address-fields.svelte';
-	import type { AddDeviceForm, DeviceView } from '../devices/device-types';
+	import type { ConnectionDraft } from '../devices/connection-draft';
+	import type { AddDeviceForm, ConnectionView, DeviceView } from '../devices/device-types';
 	import InverterSection from '../devices/inverter-section.svelte';
 	import NameField from '../devices/name-field.svelte';
 	import ProfileField from '../devices/profile-field.svelte';
@@ -22,12 +23,17 @@
 	let {
 		form = $bindable(),
 		devices,
+		connections,
+		draft,
 		registered,
 		onInstalled
 	}: {
 		form: AddDeviceForm;
 		/** The roster, so the unit-id picker can disable the ids already taken. */
 		devices: DeviceView[];
+		/** The endpoints, and the one step 1 is creating: what the unit-id scan dials. */
+		connections: readonly ConnectionView[];
+		draft: ConnectionDraft | null;
 		registered: RegisteredProfile[];
 		onInstalled: (id: string) => void;
 	} = $props();
@@ -36,7 +42,7 @@
 </script>
 
 <div class="flex flex-col gap-4">
-	<AddressFields bind:form {devices} refusal={null} />
+	<AddressFields bind:form {devices} refusal={null} {connections} {draft} />
 	<NameField bind:form refusal={null} />
 	<ProfileField bind:form {registered} refusal={null} {onInstalled} />
 	{#if isInverter}

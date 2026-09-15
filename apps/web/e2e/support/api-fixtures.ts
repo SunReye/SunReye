@@ -983,6 +983,15 @@ export function profiles(manifest: FixtureManifest) {
 export const SOLARMAN_PORT = 8899;
 export const SOLARMAN_SERIAL = 1912345678;
 
+/**
+ * The address the fake unit-id scan finds something at: the logger stick's.
+ *
+ * Exported so a spec asserts against the endpoint the fake actually answers
+ * for, rather than against a host retyped beside the assertion — the two drift,
+ * and then the spec proves the scan works by scanning nothing.
+ */
+export const SCANNABLE_HOST = "10.0.0.8";
+
 export const CONNECTIONS = [
   {
     id: 1,
@@ -1017,7 +1026,7 @@ export const CONNECTIONS = [
     name: "Logger stick",
     kind: "modbus",
     params: {
-      host: "10.0.0.8",
+      host: SCANNABLE_HOST,
       port: SOLARMAN_PORT,
       transport: "solarman-v5",
       timeoutMs: 2000,

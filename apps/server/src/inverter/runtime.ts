@@ -27,6 +27,7 @@ import {
   type InverterSample,
   type InverterSource,
   entityConstraint,
+  errorMessage,
 } from "@SunReye/inverter-core";
 import mqtt from "mqtt";
 import { startAutomations, stopAutomations } from "../automation/automation";
@@ -556,7 +557,7 @@ export function createRuntime(deps: RuntimeDeps = {}) {
       await controlWriter.injectState(sample);
       fanOut(sample);
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
+      const message = errorMessage(error);
       inverterStatus.connected = false;
       inverterStatus.lastError = message;
       // A dead inverter fails every tick with the same error; log the message (not
@@ -891,7 +892,7 @@ export function createRuntime(deps: RuntimeDeps = {}) {
         .sort((a, b) => a.group.localeCompare(b.group) || a.label.localeCompare(b.label));
       return { ok: true, metricCount: metrics.length, durationMs, metrics };
     } catch (error) {
-      return { ok: false, error: error instanceof Error ? error.message : String(error) };
+      return { ok: false, error: errorMessage(error) };
     } finally {
       await probe.close();
     }
