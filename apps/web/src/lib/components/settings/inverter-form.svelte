@@ -138,7 +138,7 @@
 
 		<InverterSimulateSwitch bind:simulate={cfg.simulate} />
 
-		<InverterConnectionFields bind:cfg {status} disabled={cfg.simulate} />
+		<InverterConnectionFields bind:cfg {status} {profileId} disabled={cfg.simulate} />
 	</Section>
 
 	<SnapshotDialog bind:open={snapshotOpen} result={testResult} />

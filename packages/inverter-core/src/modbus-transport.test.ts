@@ -1,6 +1,12 @@
 import { describe, expect, test } from "bun:test";
 
-import { gapToleranceFor, ModbusTransport, planReads, splitBlock } from "./modbus-transport";
+import {
+  gapToleranceFor,
+  ModbusTransport,
+  planReads,
+  probeAddressOf,
+  splitBlock,
+} from "./modbus-transport";
 import type { DeviceTransport, InverterConnection, InverterProfile, MetricDef } from "./types";
 
 const connection: InverterConnection = { host: "10.0.0.5", port: 502, unitId: 1 };
@@ -227,5 +233,25 @@ describe("gap tolerance per framing", () => {
       { start: 500, count: 53, merged: true },
       { start: 586, count: 94, merged: true },
     ]);
+  });
+});
+
+describe("the register a unit-id scan asks for", () => {
+  test("is the first one the profile plans to read", () => {
+    // Not a fixed address: a scan that asked for register 0 or 3 would time out
+    // against a device that answers perfectly, because the inverter ignores a
+    // request for a register it does not map. Measured on a Deye behind a
+    // Solarman stick — register 3 timed out on the unit id that reads 107
+    // metrics, and the profile's own first planned register (98) answered in
+    // 171 ms.
+    const metrics = [at("b", 300), at("a", 98)];
+
+    expect(probeAddressOf(profileOf(metrics))).toBe(98);
+  });
+
+  test("is undefined for a profile that maps no register at all", () => {
+    // A push-only profile has nothing to ask for, so a scan cannot run at all —
+    // the caller says that rather than probing a made-up address.
+    expect(probeAddressOf(profileOf([over("derived", ["a"])]))).toBeUndefined();
   });
 });

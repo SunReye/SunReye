@@ -1,5 +1,6 @@
 <script lang="ts">
-	import type { DeviceView } from '../devices/device-types';
+	import type { ConnectionDraft } from '../devices/connection-draft';
+	import type { ConnectionView, DeviceView } from '../devices/device-types';
 	import type { RegisteredProfile } from '../profile-types';
 	import type { CatalogEntryView, WizardAnswers } from './add-wizard';
 	import CatalogFields from './catalog-fields.svelte';
@@ -18,6 +19,8 @@
 		entry,
 		answers = $bindable(),
 		devices,
+		connections,
+		draft,
 		registered,
 		onInstalled
 	}: {
@@ -26,13 +29,16 @@
 		entry: CatalogEntryView | null;
 		answers: WizardAnswers;
 		devices: DeviceView[];
+		/** Passed through to the device arm's unit-id scan — see `device-step.svelte`. */
+		connections: readonly ConnectionView[];
+		draft: ConnectionDraft | null;
 		registered: RegisteredProfile[];
 		onInstalled: (id: string) => void;
 	} = $props();
 </script>
 
 {#if answers.via === 'profile'}
-	<DeviceStep bind:form={answers.form} {devices} {registered} {onInstalled} />
+	<DeviceStep bind:form={answers.form} {devices} {connections} {draft} {registered} {onInstalled} />
 {:else}
 	<CatalogFields {entry} bind:values={answers.values} />
 {/if}

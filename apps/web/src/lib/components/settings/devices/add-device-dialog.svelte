@@ -122,7 +122,7 @@
 
 <DialogShell {open} {title} {description} onClose={() => (open = false)} onsubmit={submit}>
 	<ConnectionField bind:form {connections} {refusal} allowNew={!editing} />
-	<AddressFields bind:form devices={others} {refusal} />
+	<AddressFields bind:form devices={others} {refusal} {connections} />
 	<NameField bind:form {refusal} />
 	<ProfileField bind:form {registered} {refusal} {onInstalled} />
 	<ProbeTest target={probe} nothing={m.devices_probe_needs_profile()} />

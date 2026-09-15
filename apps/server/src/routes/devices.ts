@@ -29,7 +29,9 @@ import { reopenPlantRuntime } from "../devices/plant-reload";
 import { resolveCoded } from "../devices/coded";
 import { plantFacts } from "../settings/plant-facts-instance";
 import { probeConnection } from "../devices/reachability";
+import { scanUnitIds } from "../devices/unit-scan";
 import { deviceRegistry } from "../devices/registry-instance";
+import { errorMessage } from "@SunReye/inverter-core/error-message";
 import { resolveProfileById } from "../inverter/inverter";
 import { plantClient } from "../shared/plant-client";
 import { adminResponder, byId, byIdWrite } from "./admin-refusal";
@@ -109,6 +111,21 @@ export const deviceRoutes = new Elysia({ name: "device-routes" })
           error: error instanceof Error ? error.message : "invalid probe",
           field: null,
         });
+      }
+    },
+  )
+  // WHICH UNIT ID IS HOME. The one endpoint field nobody can read off a
+  // label, and it means different things on different framings — see
+  // `../devices/unit-scan.ts`. So the dialog measures it instead of asking.
+  // Bounded by that module: at most 16 candidates, one probe timeout each.
+  .post(
+    "/api/connections/scan-units",
+    { requireAdmin: true, body: t.Unknown() },
+    async ({ body, status }) => {
+      try {
+        return await scanUnitIds(body);
+      } catch (error) {
+        return status(400, { error: errorMessage(error), field: null });
       }
     },
   )
