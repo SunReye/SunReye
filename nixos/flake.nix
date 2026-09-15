@@ -164,6 +164,16 @@
           migrateUnit = self.nixosConfigurations.appliance.config.systemd.units."sunreye-migrate.service".unit + "/sunreye-migrate.service";
         };
 
+        # WHERE THE DATABASE LIVES. A mount one level above PGDATA is shadowed
+        # by the image's own declared VOLUME, and an anonymous volume dies with
+        # the container — so the cluster was disposable and nothing said so.
+        pg-datadir = import ./tests/pg-datadir.nix {
+          inherit pkgs;
+          pgData = "/var/lib/sunreye/postgres/data";
+          postgresStart = nixpkgs.lib.head (nixpkgs.lib.splitString " "
+            self.nixosConfigurations.appliance.config.systemd.services.podman-sunreye-postgres.serviceConfig.ExecStart);
+        };
+
         # Same question, asked of the box's own status report.
         health-report = import ./tests/health-report.nix {
           inherit pkgs;

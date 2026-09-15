@@ -216,6 +216,17 @@
       # provable here is the half that regresses silently: it must decide there
       # is nothing to do and SUCCEED. A unit that fails on every box without EFI
       # firmware would sit in the health report for the life of the machine.
+      # IS THE DATABASE ON THE DISK? The whole stack answering proves only that a
+      # cluster exists SOMEWHERE — and for weeks it existed in an anonymous
+      # volume that podman deleted with the container, so every upgrade came up
+      # on an empty one. healthz returned 200 throughout. The only fact that
+      # distinguishes the two is a cluster the HOST can see.
+      if [ -s /var/lib/sunreye/postgres/data/PG_VERSION ]; then
+        echo "pg-datadir: on disk (PG $(cat /var/lib/sunreye/postgres/data/PG_VERSION))"
+      else
+        echo "pg-datadir: NOT ON DISK — the cluster dies with the container"
+      fi
+
       echo "efi-boot-entry: $(systemctl show appliance-efi-boot-entry -p Result --value 2>/dev/null || echo unknown)"
 
       # And the tools to see what it did. The unit's own copy of efibootmgr lives
