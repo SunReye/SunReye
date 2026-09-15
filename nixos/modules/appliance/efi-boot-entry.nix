@@ -26,7 +26,7 @@ let
 
   ensure = pkgs.writeShellApplication {
     name = "appliance-efi-boot-entry";
-    runtimeInputs = with pkgs; [ efibootmgr util-linux coreutils gnugrep ];
+    runtimeInputs = with pkgs; [ efibootmgr util-linux coreutils gnugrep gawk ];
     text = ''
       # Every input has a discovery default and an override. The overrides are a
       # test seam, and deliberately so: the decisions below — "is there already
@@ -60,13 +60,28 @@ let
         exit 0
       fi
 
-      # Matched on the partition GUID, not on the label: a label match would skip
-      # a box whose entry names the same thing on a DIFFERENT disk, and would
-      # write a duplicate every boot for one that had been renamed. The GUID is
-      # what firmware resolves the entry by, so it is what "already present"
-      # means.
+      # Matched on the partition GUID AND on the shape of the device path.
+      #
+      # The GUID alone is not enough, which cost a box its whole reason for
+      # existing: booting the flashed disk in a USB enclosure makes firmware
+      # write its own entry, and that entry carries this same ESP GUID. A GUID
+      # match called it "already present" and wrote nothing — leaving the box
+      # with the one entry that cannot survive the disk moving, because its
+      # device path pins the USB hardware ahead of the partition.
+      #
+      # So the entry also has to be one that resolves by PARTITION: its device
+      # path begins with HD(. A path beginning PciRoot(...)/USB(...) names a
+      # port, and a disk in another port is a different device to firmware.
+      #
+      # Still not matched on the label — a label match would skip a box whose
+      # entry names the same thing on a DIFFERENT disk, and would write a
+      # duplicate every boot for one that had been renamed.
       existing=$("$efibootmgr_cmd" -v 2>/dev/null || true)
-      if printf '%s' "$existing" | grep -qiF "$partuuid"; then
+      if printf '%s\n' "$existing" \
+        | awk -F'\t' -v id="$partuuid" '
+            index(tolower($0), tolower(id)) && $2 ~ /^HD\(/ { found = 1 }
+            END { exit !found }
+          '; then
         echo "NVRAM already has an entry for $partuuid"
         exit 0
       fi
@@ -81,6 +96,14 @@ lib.mkIf (cfg.enable && cfg.efiBootEntry.enable) {
   # Exposed so `checks.efi-boot-entry` can run the shipped program rather than a
   # copy built beside it — the defect this exists for is in what the box runs.
   appliance.efiBootEntry.package = ensure;
+
+  # Both on PATH, because the failure this module addresses is diagnosed by hand
+  # or not at all. `efibootmgr` lives inside the wrapper above, which is on no
+  # one's PATH: an owner whose box would not boot from its own slot, following
+  # the docs to run `efibootmgr -v`, got "command not found" from a box that
+  # ships it. The unit is here too so its decision can be re-run and read
+  # directly instead of inferred from a reboot.
+  environment.systemPackages = [ ensure pkgs.efibootmgr ];
 
   systemd.services.appliance-efi-boot-entry = {
     description = "Register this disk in NVRAM so firmware will boot it";
