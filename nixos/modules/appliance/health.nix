@@ -19,7 +19,9 @@ let
 
   report = pkgs.writeShellApplication {
     name = "appliance-health-report";
-    runtimeInputs = with pkgs; [ systemd coreutils gawk curl procps jq openssl ]
+    # glibc.bin for `getent`: the DNS line below is a resolution check, and the
+    # wrapper's PATH is the only PATH this script ever has.
+    runtimeInputs = with pkgs; [ systemd coreutils gawk curl procps jq openssl glibc.bin ]
       ++ lib.optional cfg.tailscale.enable tailscale;
     text = ''
       body=$(
@@ -106,6 +108,24 @@ let
           esac
         fi
       ''}
+      # PUBLIC DNS, stated rather than left to be inferred.
+      #
+      # A box can have a healthy tailnet, a valid certificate and a dashboard
+      # that answers, and still resolve nothing outside the tailnet. Everything
+      # that needs the internet then fails in its own dialect: the profile
+      # catalogue reports a git clone error, and the unattended upgrade re-locks
+      # to its CACHED revision and exits 0, reporting success for a box that
+      # never moved. Three such failures in one day and not one of them said
+      # "DNS".
+      #
+      # `getent` rather than a ping or a fetch: resolution is the thing that
+      # breaks, it answers without a route to the internet, and it is the same
+      # lookup nix makes when it fetches the release.
+      if getent ahosts api.github.com >/dev/null 2>&1; then
+        echo "dns:       ok"
+      else
+        echo "dns:       CANNOT RESOLVE api.github.com — upgrades and profiles will fail silently"
+      fi
       wd=""
       for d in /dev/watchdog*; do [ -e "$d" ] && wd="$wd $d"; done
       echo "watchdog: ''${wd:- NONE}"

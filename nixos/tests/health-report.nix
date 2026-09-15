@@ -27,6 +27,27 @@ pkgs.runCommand "health-report-runs"
     exit 1
   fi
 
+  # PUBLIC DNS, stated rather than inferred.
+  #
+  # Three separate failures in one day traced back to a box that could not
+  # resolve public names while every other sign said the network was healthy —
+  # tailnet up, certificate valid, dashboard answering. The profile catalogue
+  # failed to clone with a git error, the server container kept a stale
+  # resolv.conf, and the unattended upgrade re-locked to its CACHED revision and
+  # exited 0. Not one of them said "DNS".
+  #
+  # The sandbox has no network, so what is asserted is that the report SAYS
+  # something about resolution either way — not that it resolves. A report that
+  # silently omits the field on the boxes that need it is the bug.
+  case "$printed" in
+    *"dns:"*) ;;
+    *)
+      echo "the report says nothing about public DNS:" >&2
+      echo "$printed" >&2
+      exit 1
+      ;;
+  esac
+
   # Every tool it calls is on its PATH and accepts the flags it is given. This is
   # the whole defect class: the report keeps going and hands back a blank.
   case "$printed" in
@@ -94,6 +115,16 @@ pkgs.runCommand "health-report-runs"
     echo "the report applies its fallback inside the substitution:" >&2
     echo "  \$(systemctl is-active X || echo absent) runs BOTH when X is inactive," >&2
     echo "  because is-active exits 3 for a true answer. Capture, then default." >&2
+    exit 1
+  fi
+
+  # Same trap, one field down: `getent` absent does not make the DNS line absent,
+  # it makes it say CANNOT RESOLVE — forever, on a box whose DNS is fine. The
+  # line-exists assertion above is green against that mutation; measured.
+  # Anchored to the PATH line for the reason the openssl note below gives.
+  if ! grep -m1 '^export PATH=' "$(command -v appliance-health-report)" | grep -q 'glibc'; then
+    echo "getent is not on the report's PATH, so the DNS line would report a" >&2
+    echo "resolution failure on every box regardless of whether one exists." >&2
     exit 1
   fi
 
