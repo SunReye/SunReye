@@ -12,6 +12,7 @@ import {
 } from "$lib/settings/inverter-fields";
 import { SLUG_MAX, slugify } from "@SunReye/inverter-core/slug";
 import type { RegisteredProfile } from "../profile-types";
+import { transportLabel } from "../transport-label";
 import {
   blankDraft,
   brokerHost,
@@ -515,11 +516,6 @@ export function nestIntegrations(group: DeviceGroup): NestedGroup {
   return { devices: group.devices.filter((device) => !claimed.has(device.id)), integrations };
 }
 
-const TRANSPORT_LABELS: Record<string, string> = {
-  tcp: "Modbus TCP",
-  "rtu-over-tcp": "Modbus RTU over TCP",
-};
-
 /**
  * The words under a connection's name, PER KIND (#217).
  *
@@ -534,7 +530,7 @@ function connectionCaption(connection: ConnectionView): string {
   }
   const { transport, host, port, pollIntervalMs } = connection.params;
   return m.devices_group_caption({
-    transport: TRANSPORT_LABELS[transport] ?? transport,
+    transport: transportLabel(transport),
     host,
     port,
     seconds: pollIntervalMs / 1000,
@@ -626,16 +622,36 @@ export function describeProbe(
   return { ok: false, message: words.failed(answer.error ?? "") };
 }
 
-/** What a connection probe answers with: reachable and how long it took, or why not. */
+/**
+ * What a connection probe answers with: reachable, how long it took and — for a
+ * Solarman logger stick — the serial it announced itself with, or why not.
+ *
+ * The serial is optional on the success arm and not on the failure one: a probe
+ * that did not get an answer learned nothing about what is at the address.
+ */
 export type ConnectionProbeAnswer =
-  | { ok: true; ms: number }
+  | { ok: true; ms: number; serial?: number }
   | { ok: false; ms: number; error: string };
 
-type RawProbe = { ok?: unknown; ms?: unknown; error?: unknown };
+type RawProbe = { ok?: unknown; ms?: unknown; error?: unknown; logger?: unknown };
 
 /** The elapsed millisecond count an answer states, or 0 when it states none. */
 function probeMs(value: unknown): number {
   return typeof value === "number" ? value : 0;
+}
+
+/**
+ * The serial the thing that answered named itself with, or undefined.
+ *
+ * Nested under `logger` on the wire because a probe may one day learn other
+ * things about what answered — a firmware string, a model — and a flat `serial`
+ * would have to be renamed the day it does. Every shape that is not a number is
+ * "no serial": a plain TCP gateway announces nothing at all, and a build one
+ * version ahead may send a field this one cannot read.
+ */
+function probeSerial(value: unknown): number | undefined {
+  const serial = (value as { serial?: unknown } | null | undefined)?.serial;
+  return typeof serial === "number" ? serial : undefined;
 }
 
 /**
@@ -645,7 +661,12 @@ function probeMs(value: unknown): number {
  */
 export function connectionProbeAnswer(data: unknown, fallback: string): ConnectionProbeAnswer {
   const raw = (data ?? {}) as RawProbe;
-  if (raw.ok === true) return { ok: true, ms: probeMs(raw.ms) };
+  if (raw.ok === true) {
+    const serial = probeSerial(raw.logger);
+    return serial === undefined
+      ? { ok: true, ms: probeMs(raw.ms) }
+      : { ok: true, ms: probeMs(raw.ms), serial };
+  }
   return {
     ok: false,
     ms: probeMs(raw.ms),
@@ -672,8 +693,16 @@ export function describeConnectionProbe(
   kind: ConnectionKind,
   answer: ConnectionProbeAnswer,
 ): ProbeOutcome {
-  if (answer.ok) return { ok: true, message: PROBE_OK[kind]({ ms: answer.ms }) };
-  return { ok: false, message: m.devices_ping_failed({ error: answer.error }) };
+  if (!answer.ok) return { ok: false, message: m.devices_ping_failed({ error: answer.error }) };
+  // A discovered serial outranks the kind's own line. "Reachable" is true of
+  // any open port; naming the stick that answered is how the operator knows the
+  // box found THEIR logger and not a neighbour's on the same subnet.
+  if (answer.serial !== undefined)
+    return {
+      ok: true,
+      message: m.devices_ping_ok_logger({ serial: answer.serial, ms: answer.ms }),
+    };
+  return { ok: true, message: PROBE_OK[kind]({ ms: answer.ms }) };
 }
 
 /** What a test-read needs: a Modbus address, a slave id, and the driver to read with. */

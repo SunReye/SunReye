@@ -23,6 +23,7 @@
  * parses `params` against the kind it already has.
  */
 
+import type { Transport } from "../inverter-types";
 import type { ConnectionKind, ConnectionView, ModbusParams } from "./device-types";
 
 /** The Modbus half of the draft — the five endpoint fields, as the form holds them. */
@@ -59,6 +60,41 @@ const MODBUS_DEFAULTS: ModbusDraft = {
 };
 
 const MQTT_DEFAULTS: MqttDraft = { brokerUrl: "", username: "", password: "", clientId: "" };
+
+/**
+ * The port each framing is reached on when nobody has said otherwise.
+ *
+ * Solarman is the reason this table exists: the logger stick listens on 8899,
+ * not 502, and an operator who picks "Solarman V5" and is then refused on 502
+ * has been asked to know a number their own choice already implies.
+ */
+const DEFAULT_PORT: Record<Transport, number> = {
+  tcp: 502,
+  "rtu-over-tcp": 502,
+  "solarman-v5": 8899,
+};
+
+/**
+ * The draft with a different framing chosen — and the port moved with it, BUT
+ * ONLY while the port is still the framing it is leaving behind's default.
+ *
+ * The condition is the whole point. A stick behind a port forward is a real
+ * arrangement, and silently overwriting a hand-typed 5020 because someone
+ * brushed a three-option select is the same loss the two-halved draft exists to
+ * prevent — one the operator would find out about at the next poll failure,
+ * looking at a field they are sure they filled in correctly.
+ *
+ * Pure, and out of the component, so `bun test` can hold the rule rather than a
+ * browser having to.
+ */
+export function withTransport(draft: ConnectionDraft, transport: Transport): ConnectionDraft {
+  const { modbus } = draft;
+  const atDefault = modbus.port === DEFAULT_PORT[modbus.transport];
+  return {
+    ...draft,
+    modbus: { ...modbus, transport, port: atDefault ? DEFAULT_PORT[transport] : modbus.port },
+  };
+}
 
 /** An empty draft, on the kind the dialog opens on. */
 export function blankDraft(name = "", kind: ConnectionKind = "modbus"): ConnectionDraft {
@@ -110,6 +146,22 @@ function optional(value: string): string | undefined {
   return trimmed === "" ? undefined : trimmed;
 }
 
+/**
+ * The logger serial worth sending, or `undefined` for every way of not having
+ * one yet.
+ *
+ * Three of them, and none is a number the route would take: the field was never
+ * filled in, the number input was emptied (which reads back as `undefined` or
+ * as `NaN`, depending on the browser), or it holds a 0 no stick has. Absent is
+ * the only truthful spelling of "not known yet" — and the spelling that lets
+ * the probe go and discover it.
+ */
+function loggerSerial(params: ModbusDraft): number | undefined {
+  const serial = params.loggerSerial;
+  if (serial === undefined || !Number.isFinite(serial) || serial <= 0) return undefined;
+  return serial;
+}
+
 /** Drop the keys whose value is `undefined`, so the body is exactly what was typed. */
 function defined<T extends object>(params: T): T {
   return Object.fromEntries(Object.entries(params).filter(([, v]) => v !== undefined)) as T;
@@ -126,7 +178,11 @@ function defined<T extends object>(params: T): T {
 export function connectionParamsOf(draft: ConnectionDraft): ConnectionParamsBody | null {
   if (draft.kind === "modbus") {
     const host = draft.modbus.host.trim();
-    return host === "" ? null : { kind: "modbus", params: { ...draft.modbus, host } };
+    if (host === "") return null;
+    return {
+      kind: "modbus",
+      params: defined({ ...draft.modbus, host, loggerSerial: loggerSerial(draft.modbus) }),
+    };
   }
   const brokerUrl = draft.mqtt.brokerUrl.trim();
   if (brokerUrl === "") return null;

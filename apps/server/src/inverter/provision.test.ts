@@ -267,6 +267,28 @@ describe("provisionDevice", () => {
     expect(result?.deviceId).toBe(devices[0]?.id ?? -1);
   });
 
+  test("a Solarman seed lands its framing AND its stick serial on the connection row", async () => {
+    // The seed is the only path an env-only appliance has onto the spine, so a
+    // field it drops here is a field the box can never be configured with.
+    const { store, connections } = memoryStore();
+    await provisionDevice({
+      store,
+      logger,
+      profile,
+      seed: seed({ port: 8899, transport: "solarman-v5", loggerSerial: 3168930341 }),
+    });
+    expect(connections[0]?.params).toMatchObject({
+      transport: "solarman-v5",
+      loggerSerial: 3168930341,
+    });
+  });
+
+  test("a seed with no stick serial writes none, leaving it for the port to discover", async () => {
+    const { store, connections } = memoryStore();
+    await provisionDevice({ store, logger, profile, seed: seed() });
+    expect((connections[0]?.params as ModbusParams | undefined)?.loggerSerial).toBeUndefined();
+  });
+
   test("the device is named from the profile and slugged from its ROLE", async () => {
     // The slug becomes `<prefix>/<plant-slug>/<device-slug>/<topic>` in a later
     // wave, so it must not be the profile id: a profile swap would move every

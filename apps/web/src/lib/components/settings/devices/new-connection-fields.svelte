@@ -43,7 +43,7 @@
 	{/if}
 
 	{#if connection.kind === 'modbus'}
-		<ModbusFields bind:params={connection.modbus} />
+		<ModbusFields bind:connection />
 	{:else}
 		<MqttFields bind:params={connection.mqtt} hasPassword={connection.hasPassword} />
 	{/if}

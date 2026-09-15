@@ -101,6 +101,46 @@ describe("synthesiseSpine — the 1.x path", () => {
     ["plant", { timeZone: "Europe/Berlin" }],
   ]);
 
+  test("a Solarman endpoint survives the synthesis instead of being downgraded to tcp", () => {
+    // This arm narrowed by hand — `=== "rtu-over-tcp" ? … : "tcp"` — so a third
+    // framing silently became plain Modbus TCP, which on a logging stick's port
+    // 8899 answers nothing at all: a restored plant that has simply gone quiet.
+    const plant = synthesiseSpine({
+      settings: new Map<string, unknown>([
+        [
+          "inverter",
+          {
+            host: "10.20.0.63",
+            port: 8899,
+            unitId: 1,
+            transport: "solarman-v5",
+            loggerSerial: 3168930341,
+          },
+        ],
+      ]),
+      profileId: "deye-sg05lp3",
+    });
+    expect(plant.connections[0]).toMatchObject({
+      kind: "modbus",
+      params: {
+        host: "10.20.0.63",
+        port: 8899,
+        transport: "solarman-v5",
+        loggerSerial: 3168930341,
+      },
+    });
+  });
+
+  test("a framing this build has no branch for still degrades to tcp", () => {
+    const plant = synthesiseSpine({
+      settings: new Map<string, unknown>([
+        ["inverter", { host: "h", transport: "carrier-pigeon" }],
+      ]),
+      profileId: "deye-sg05lp3",
+    });
+    expect(plant.connections[0]).toMatchObject({ params: { transport: "tcp" } });
+  });
+
   test("one connection and one device, from the one settings row", () => {
     const plant = synthesiseSpine({ settings, profileId: "deye-sg05lp3" });
     expect(plant.connections).toHaveLength(1);

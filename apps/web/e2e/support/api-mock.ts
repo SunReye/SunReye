@@ -816,7 +816,16 @@ export async function mockBackend(page: Page, options: BackendOptions = {}): Pro
     // ── Devices ─────────────────────────────────────────────────────────────
     // One probe for both kinds: a TCP connect for a gateway, an MQTT CONNECT for
     // a broker. The answer shape is the same either way.
-    if (at("connections/probe")) return json(route, { ok: true, ms: 12 });
+    if (at("connections/probe")) {
+      // A Solarman probe brings back what the OTHER two cannot: the logger
+      // stick names itself in its handshake, so the answer carries the serial
+      // and the dialog fills the field in. The server nests it under `logger`
+      // because a probe may learn other things about what answered.
+      const params = body().params as { transport?: string } | undefined;
+      if (params?.transport === "solarman-v5")
+        return json(route, { ok: true, ms: 12, logger: { serial: fixture.SOLARMAN_SERIAL } });
+      return json(route, { ok: true, ms: 12 });
+    }
     if (at("connections")) {
       // A connection created ON ITS OWN — the only way to add a broker, which
       // never has a device to be created alongside (#217).

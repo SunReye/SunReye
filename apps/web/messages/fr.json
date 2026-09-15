@@ -1111,5 +1111,12 @@
   "integration_open": "Ouvrir",
   "inverter_simulate_label": "Simuler un onduleur",
   "inverter_simulate_desc": "Affiche des relevés fictifs au lieu d'interroger l'adresse ci-dessous. Reste activé jusqu'à ce que vous pointiez ce boîtier vers un onduleur réel, afin qu'une nouvelle installation ait quelque chose à afficher.",
-  "inverter_simulate_on_notice": "Ces relevés ne proviennent pas de votre installation."
+  "inverter_simulate_on_notice": "Ces relevés ne proviennent pas de votre installation.",
+  "inverter_transport_tcp": "Modbus TCP",
+  "inverter_transport_rtu_over_tcp": "Modbus RTU sur TCP",
+  "inverter_transport_solarman_v5": "Solarman V5 (clé enregistreur, port 8899)",
+  "devices_field_logger_serial": "Numéro de série de l'enregistreur",
+  "devices_logger_serial_placeholder": "Détecté lors du test de connexion",
+  "devices_logger_serial_help": "Le numéro de série de la clé Wi-Fi Solarman/IGEN. Laissez le champ vide : le test de connexion le lit directement sur la clé. Il figure aussi sur l'étiquette de la clé.",
+  "devices_ping_ok_logger": "Joignable — l'enregistreur {serial} a répondu, {ms} ms."
 }

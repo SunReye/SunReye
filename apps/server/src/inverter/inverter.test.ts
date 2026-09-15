@@ -287,6 +287,38 @@ describe("buildSource", () => {
     });
   });
 
+  test("carries the Solarman framing AND the stick's serial into the connection", () => {
+    // Dropping the serial would not break the poll — the port rediscovers it —
+    // but it would spend a round trip doing so on every reconnect, and round
+    // trips are what a poll over this stick costs (~100-200 ms each, whatever
+    // they ask for). Sticks reconnect often enough for that to matter: they
+    // drop idle sockets on their own, and this firmware serves the Solarman
+    // cloud uploader at the same time rather than evicting anyone for it.
+    const source = buildSource(
+      hydrateProfile(profile),
+      config({ transport: "solarman-v5", port: 8899, loggerSerial: 3168930341 }),
+      false,
+    );
+
+    expect(connectionOf(source)).toMatchObject({
+      transport: "solarman-v5",
+      port: 8899,
+      loggerSerial: 3168930341,
+    });
+  });
+
+  test("an endpoint with no stored serial passes none, rather than inventing a zero", () => {
+    // Zero is the DISCOVERY serial on the wire; sending it as a real one would
+    // make every request a reject.
+    const source = buildSource(
+      hydrateProfile(profile),
+      config({ transport: "solarman-v5" }),
+      false,
+    );
+
+    expect(connectionOf(source).loggerSerial).toBeUndefined();
+  });
+
   // The whole point of the parameter: this used to be `env.INVERTER_SIMULATE`,
   // so an appliance with simulate seeded on could never read a real inverter
   // however the connection was saved.

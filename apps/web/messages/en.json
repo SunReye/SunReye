@@ -1111,5 +1111,12 @@
   "integration_open": "Open",
   "inverter_simulate_label": "Simulate an inverter",
   "inverter_simulate_desc": "Show made-up readings instead of polling the address below. On until you point this box at a real inverter, so a new install has something to look at.",
-  "inverter_simulate_on_notice": "These readings are not from your system."
+  "inverter_simulate_on_notice": "These readings are not from your system.",
+  "inverter_transport_tcp": "Modbus TCP",
+  "inverter_transport_rtu_over_tcp": "Modbus RTU over TCP",
+  "inverter_transport_solarman_v5": "Solarman V5 (logger stick, port 8899)",
+  "devices_field_logger_serial": "Logger serial number",
+  "devices_logger_serial_placeholder": "Discovered when you test the connection",
+  "devices_logger_serial_help": "The serial number of the Solarman/IGEN WiFi stick. Leave it empty — testing the connection reads it off the stick. It is also printed on the stick's own label.",
+  "devices_ping_ok_logger": "Reachable — logger {serial} answered, {ms} ms."
 }

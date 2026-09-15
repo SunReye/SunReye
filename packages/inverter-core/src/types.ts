@@ -10,6 +10,7 @@
 
 import type { ComputeExpr, ControlExpr } from "./profile-data";
 import type { CanonicalRole } from "./roles";
+import type { InverterTransport } from "./transports";
 
 /**
  * Modbus register encodings we support.
@@ -316,13 +317,12 @@ export interface InverterManifest {
 }
 
 /**
- * Modbus framing over a TCP socket:
- * - `tcp`          standard Modbus TCP (MBAP header, no CRC).
- * - `rtu-over-tcp` RTU frames (with CRC) tunneled over TCP — what many
- *                  RS485→Ethernet gateways (USR, Waveshare, PUSR) and some
- *                  inverter loggers actually speak.
+ * Modbus framing over a TCP socket — defined in `./transports`, which is where
+ * the list lives so `@SunReye/env` can reach it without depending on
+ * `@SunReye/db` (that would be a package cycle). Re-exported here because this
+ * is the type every consumer already imports.
  */
-export type InverterTransport = "tcp" | "rtu-over-tcp";
+export type { InverterTransport };
 
 export interface InverterConnection {
   host: string;
@@ -332,6 +332,17 @@ export interface InverterConnection {
   timeoutMs?: number;
   /** Framing over the socket; defaults to `tcp`. */
   transport?: InverterTransport;
+  /**
+   * The Solarman logging stick's own serial (uint32), which every V5 request
+   * must carry. Ignored by the other two framings.
+   *
+   * Optional because requiring it would make the framing unusable: the serial is
+   * printed on a sticker INSIDE the dongle's shell. The port discovers it
+   * instead — a request carrying a serial the stick does not have is rejected
+   * with a reply that still names the stick's real serial — so this field is a
+   * cache and a fallback, never the source of truth.
+   */
+  loggerSerial?: number;
 }
 
 /**

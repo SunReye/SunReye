@@ -1111,5 +1111,12 @@
   "integration_open": "Abrir",
   "inverter_simulate_label": "Simular un inversor",
   "inverter_simulate_desc": "Muestra lecturas inventadas en lugar de consultar la dirección de abajo. Permanece activo hasta que apunte este equipo a un inversor real, para que una instalación nueva tenga algo que mostrar.",
-  "inverter_simulate_on_notice": "Estas lecturas no provienen de su instalación."
+  "inverter_simulate_on_notice": "Estas lecturas no provienen de su instalación.",
+  "inverter_transport_tcp": "Modbus TCP",
+  "inverter_transport_rtu_over_tcp": "Modbus RTU sobre TCP",
+  "inverter_transport_solarman_v5": "Solarman V5 (llave registradora, puerto 8899)",
+  "devices_field_logger_serial": "Número de serie del registrador",
+  "devices_logger_serial_placeholder": "Se detecta al probar la conexión",
+  "devices_logger_serial_help": "El número de serie de la llave WiFi Solarman/IGEN. Déjelo vacío: la prueba de conexión lo lee de la propia llave. También figura en la etiqueta de la llave.",
+  "devices_ping_ok_logger": "Accesible — el registrador {serial} respondió, {ms} ms."
 }

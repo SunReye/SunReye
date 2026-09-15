@@ -26,6 +26,14 @@ export type ModbusParams = {
   transport: Transport;
   timeoutMs: number;
   pollIntervalMs: number;
+  /**
+   * The Solarman logger stick's own serial number, which its envelope addresses
+   * every frame by. OPTIONAL, and optional on purpose: the stick states it in
+   * its handshake, so the connection probe discovers it and the field is filled
+   * in for the operator rather than copied off a sticker behind the inverter.
+   * Absent on every other framing, which has nothing to address.
+   */
+  loggerSerial?: number;
 };
 
 /**

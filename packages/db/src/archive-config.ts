@@ -36,6 +36,8 @@
  * Pure: no database, no filesystem (`./archive-config.test.ts`).
  */
 
+import { narrowTransport } from "@SunReye/inverter-core/transports";
+
 import { type ConnectionParams, connectionParamsSchema } from "./connection-kinds";
 
 /**
@@ -329,6 +331,7 @@ function requireProfileId(
 function synthesiseConnections(connectionConfig: Record<string, unknown>): ArchiveConnection[] {
   const host = asOptionalString(connectionConfig.host);
   if (!host) return [];
+  const loggerSerial = asOptionalNumber(connectionConfig.loggerSerial);
   return [
     {
       name: SYNTHESISED_CONNECTION,
@@ -336,10 +339,18 @@ function synthesiseConnections(connectionConfig: Record<string, unknown>): Archi
       params: {
         host,
         port: asNumber(connectionConfig.port, 502),
-        transport:
-          asString(connectionConfig.transport, "tcp") === "rtu-over-tcp" ? "rtu-over-tcp" : "tcp",
+        // Narrowed against the shared list, not by hand: this read
+        // `=== "rtu-over-tcp" ? … : "tcp"`, which became a silent DOWNGRADE the
+        // moment a third framing existed — a restored Solarman endpoint came
+        // back as plain Modbus TCP, which on port 8899 answers nothing at all.
+        transport: narrowTransport(connectionConfig.transport),
         timeoutMs: asNumber(connectionConfig.timeoutMs, 2000),
         pollIntervalMs: asNumber(connectionConfig.pollIntervalMs, 1000),
+        // Absent on every genuine 1.x document — the framing did not exist —
+        // but the same synthesis reads a 2.x `app_settings.inverter`, which can
+        // carry one. Dropping it would only cost a rediscovery round trip, but
+        // there is no reason to drop it.
+        ...(loggerSerial === null ? {} : { loggerSerial }),
       },
     },
   ];

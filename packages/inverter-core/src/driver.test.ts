@@ -1,4 +1,5 @@
 import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
+import { EventEmitter } from "node:events";
 
 import type {
   DeviceTransport,
@@ -30,7 +31,11 @@ const device = {
 /** Everything the fake observed, for assertions about the wire traffic. */
 const wire = {
   instances: [] as FakeModbusRTU[],
-  connects: [] as { framing: "tcp" | "rtu-over-tcp"; host: string; opts: unknown }[],
+  connects: [] as {
+    framing: "tcp" | "rtu-over-tcp" | "solarman-v5";
+    host: string;
+    opts: unknown;
+  }[],
   reads: [] as { start: number; count: number }[],
   writes: [] as { addr: number; values: number[] }[],
   /** Transaction order, for proving a write never interleaves with a poll. */
@@ -38,13 +43,52 @@ const wire = {
   closes: 0,
 };
 
-class FakeModbusRTU {
+/**
+ * What a port handed to `new ModbusRTU(port)` looks like from here. Only the
+ * Solarman framing takes that route — the two socket framings dial through
+ * `connectTCP`/`connectTcpRTUBuffered` and construct the client with nothing.
+ */
+interface InjectedPort {
+  endpoint: { host: string; port: number };
+  loggerSerial: number | undefined;
+}
+
+/**
+ * An `EventEmitter`, as the real `ModbusRTU` is — and that inheritance is
+ * load-bearing rather than decorative: modbus-serial re-emits any port error on
+ * the CLIENT, and an `EventEmitter` with no `"error"` listener throws. A fake
+ * that was not one would make `dial()`'s listener untestable and let a fatal
+ * emit look harmless.
+ */
+class FakeModbusRTU extends EventEmitter {
   isOpen = false;
   unitId: number | undefined;
   timeoutMs: number | undefined;
+  /** The port the transport injected, for the framings that inject one. */
+  readonly injectedPort: InjectedPort | undefined;
 
-  constructor() {
+  constructor(port?: InjectedPort) {
+    super();
+    this.injectedPort = port;
     wire.instances.push(this);
+  }
+
+  /**
+   * The generic open path, used when the client was constructed around a port
+   * rather than dialled through one of the `connect*` shorthands.
+   */
+  open(cb: (err?: Error) => void): void {
+    const endpoint = this.injectedPort?.endpoint;
+    const host = endpoint?.host ?? "";
+    const opts = { port: endpoint?.port };
+    wire.connects.push({ framing: "solarman-v5", host, opts });
+    device.connect(host, opts).then(
+      () => {
+        this.isOpen = true;
+        cb();
+      },
+      (err: Error) => cb(err),
+    );
   }
   async connectTCP(host: string, opts: unknown): Promise<void> {
     wire.connects.push({ framing: "tcp", host, opts });
@@ -339,6 +383,65 @@ describe("ModbusInverter connection", () => {
     expect(wire.connects[0]!.framing).toBe("rtu-over-tcp");
   });
 
+  test("dials with Solarman V5 framing through a logging stick", async () => {
+    const inv = new ModbusInverter(
+      profileOf([raw("a", 100)]),
+      // The stick is a FRAMING, not a device kind: the profile, the read plan and
+      // everything above this line is the same as for a plain TCP gateway.
+      connection({ host: "10.20.0.63", port: 8899, transport: "solarman-v5" }),
+    );
+    await inv.read();
+
+    expect(wire.connects).toEqual([
+      { framing: "solarman-v5", host: "10.20.0.63", opts: { port: 8899 } },
+    ]);
+    // FC03/FC16 come from a real `ModbusRTU` wrapped around the V5 port, so the
+    // client is constructed WITH one rather than dialled through a shorthand.
+    expect(wire.instances[0]!.injectedPort?.endpoint).toEqual({
+      host: "10.20.0.63",
+      port: 8899,
+    });
+  });
+
+  /**
+   * The previous test here ("builds a fresh client after the stick hands its one
+   * TCP slot to the cloud") could not fail: it constructed no `SolarmanV5Port`,
+   * flipped its OWN fake's `isOpen`, and asserted a framing-agnostic branch of
+   * `getClient` that would pass with the entire solarman arm of `dial()` deleted.
+   * Its premise was wrong too — see the note on reconnect below. The reconnect it
+   * meant to cover is proven where the behaviour actually lives: `v5-port.test.ts`
+   * (a peer close flips `isOpen` and re-emits `"close"`) and `v5-fallback.test.ts`
+   * (a real reset, a real client, and the next poll reads).
+   *
+   * What IS this layer's business, and is tested here instead: a link error
+   * re-emitted on the client must not be fatal.
+   */
+  test("a link error re-emitted on the client is absorbed rather than thrown", async () => {
+    const inv = new ModbusInverter(
+      profileOf([raw("a", 100)]),
+      connection({ transport: "solarman-v5" }),
+    );
+    await inv.read();
+
+    // `ModbusRTU` is an EventEmitter and re-emits port errors on itself
+    // (modbus-serial/index.js:629). With no listener, this emit THROWS, and the
+    // server installs no `uncaughtException` handler — one peer reset would end
+    // the poller process.
+    expect(() => wire.instances[0]!.emit("error", new Error("read ECONNRESET"))).not.toThrow();
+  });
+
+  test("a client that reports itself closed is replaced on the next poll", async () => {
+    const inv = new ModbusInverter(profileOf([raw("a", 100)]), connection());
+    await inv.read();
+    // Framing-agnostic on purpose: every framing's reconnect runs through this
+    // one `isOpen` check in `getClient`.
+    wire.instances[0]!.isOpen = false;
+    await inv.read();
+
+    expect(wire.instances).toHaveLength(2);
+    expect(wire.connects).toHaveLength(2);
+  });
+
   test("falls back to a two second timeout when the connection omits one", async () => {
     const inv = new ModbusInverter(profileOf([raw("a", 100)]), connection());
     await inv.read();
@@ -605,6 +708,84 @@ describe("ModbusInverter read", () => {
     device.read = bank({ 100: 5 });
 
     expect((await inv.read()).metrics).toEqual({ a: 5 });
+  });
+});
+
+// --- gap-merged reads over a Solarman stick --------------------------------
+//
+// Merging two blocks across the unmapped registers between them is a bet: this
+// device will answer for addresses no metric is bound to. The bet is only
+// acceptable because losing it is recoverable — the device says Modbus
+// exception 2, the block is narrowed back to what the profile actually maps, and
+// the narrowing is remembered. That recovery is the safety argument for gap
+// tolerance existing at all, so it is proved here rather than asserted in a
+// comment. (Phase 2 is what makes it reachable over V5: the stick's reject frame
+// is translated into a Modbus exception 2 — see `solarman/v5-fallback.test.ts`.)
+
+describe("ModbusInverter gap-merged reads", () => {
+  /** Two metrics 19 unmapped registers apart — inside the Solarman tolerance. */
+  const spread = () => [def({ key: "a", addresses: [100] }), def({ key: "b", addresses: [120] })];
+
+  test("merges across the gap on a stick and leaves a socket framing alone", async () => {
+    const merged = new ModbusInverter(
+      profileOf(spread()),
+      connection({ transport: "solarman-v5" }),
+    );
+    device.read = bank({ 100: 1, 120: 2 });
+    await merged.read();
+    const overStick = wire.reads.slice();
+
+    wire.reads.length = 0;
+    const plain = new ModbusInverter(profileOf(spread()), connection({ transport: "tcp" }));
+    await plain.read();
+
+    expect(overStick).toEqual([{ start: 100, count: 21 }]);
+    expect(wire.reads).toEqual([
+      { start: 100, count: 1 },
+      { start: 120, count: 1 },
+    ]);
+  });
+
+  test("a rejected gap-merged block splits, recovers this very poll, and stays split", async () => {
+    const inv = new ModbusInverter(profileOf(spread()), connection({ transport: "solarman-v5" }));
+    device.read = async (start, count) => {
+      // The stick refuses the merged range; the mapped addresses answer.
+      if (start === 100 && count === 21) throw illegalDataAddress();
+      return bank({ 100: 1, 120: 2 })(start, count);
+    };
+
+    const first = await inv.read();
+    wire.reads.length = 0;
+    const second = await inv.read();
+
+    // Recovered in place: the poll that was refused still returns both values.
+    expect(first.metrics).toEqual({ a: 1, b: 2 });
+    // …and the narrowing is remembered, so the refused range is never re-probed.
+    expect(wire.reads).toEqual([
+      { start: 100, count: 1 },
+      { start: 120, count: 1 },
+    ]);
+    expect(second.metrics).toEqual({ a: 1, b: 2 });
+    // NOT degraded: un-merging costs round trips, not coherence. Nothing here
+    // was ever promised a shared snapshot — that promise belongs to atomic
+    // compute groups, and this plan has none.
+    expect(first.degraded).toBeUndefined();
+    expect(second.degraded).toBeUndefined();
+  });
+
+  test("exception 2 on an unmerged plain block still propagates — no gap to blame", async () => {
+    // The mirror case: with no merge and no span, a refusal is a real fault and
+    // must not be swallowed by a fallback that has nothing to narrow.
+    const inv = new ModbusInverter(
+      profileOf([def({ key: "a", addresses: [100] })]),
+      connection({ transport: "solarman-v5" }),
+    );
+    device.read = async () => {
+      throw illegalDataAddress();
+    };
+
+    await expect(inv.read()).rejects.toThrow("Illegal data address");
+    expect(wire.reads).toHaveLength(1);
   });
 });
 

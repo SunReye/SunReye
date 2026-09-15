@@ -68,6 +68,26 @@ describe("parseSite", () => {
     expect(parseSite(JSON.stringify({ inverter: { port: 70000 } })).ok).toBe(false);
   });
 
+  /**
+   * A Solarman/IGEN WiFi stick is the logger most hybrids already ship with, so
+   * it is the transport a box is most likely to be seeded with — and the one
+   * whose absence from this enum would be reported as "invalid site document" on
+   * a first boot, with the dashboard the owner would use to fix it not yet up.
+   */
+  test("the Solarman logger framing is a transport a document may name", () => {
+    const parsed = parseSite(JSON.stringify({ inverter: { transport: "solarman-v5" } }));
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+    expect(parsed.site.inverter.transport).toBe("solarman-v5");
+  });
+
+  test("a transport this build does not speak is still rejected with its path", () => {
+    const parsed = parseSite(JSON.stringify({ inverter: { transport: "solarman" } }));
+    expect(parsed.ok).toBe(false);
+    if (parsed.ok) return;
+    expect(parsed.message).toContain("transport");
+  });
+
   test("a site id outside the 4via6 range is rejected", () => {
     expect(parseSite(JSON.stringify({ lan: { mode: "via", siteId: 0 } })).ok).toBe(false);
     expect(parseSite(JSON.stringify({ lan: { mode: "via", siteId: 65536 } })).ok).toBe(false);

@@ -118,7 +118,7 @@
 
 <DialogShell {open} {title} {description} onClose={close} onsubmit={save}>
 	<NewConnectionFields bind:connection={draft} kind={editing ? 'locked' : 'choose'} />
-	<ConnectionProbe {draft} />
+	<ConnectionProbe bind:draft />
 	<Dialog.Footer class="sm:justify-between">
 		<div>
 			{#if canDelete}

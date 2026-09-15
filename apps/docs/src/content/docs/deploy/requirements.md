@@ -22,11 +22,52 @@ An inverter is **not** required to run SunReye. The built-in
 [simulator](/start/quick-start/) (`INVERTER_SIMULATE=true`, the default) generates coherent
 fake telemetry, so you can develop, demo, and evaluate the whole stack with no hardware.
 
-To connect real hardware you need an inverter reachable over **Modbus TCP** (or
-**RTU-over-TCP** via a serial gateway) on your network. Support is profile-driven — see
-[Supported Inverters](/profiles/supported/).
+To connect real hardware you need an inverter reachable over the network. There are three
+ways to get there, and for most people the first one costs nothing and takes five minutes.
+Support is profile-driven — see [Supported Inverters](/profiles/supported/).
 
-### Recommended hardware
+### Start here: the logger stick you already have
+
+Most Deye, Sunsynk and Sofar hybrids ship with a **Solarman / IGEN WiFi logger stick** —
+the little dongle plugged into the side of the inverter that uploads to the Solarman app.
+It serves the inverter's Modbus registers on the local network, and SunReye can poll it
+directly:
+
+- **Connection kind:** Solarman logger (`solarman-v5`)
+- **Host:** the stick's IP address on your LAN — your router's client list will show it
+- **Port:** **8899**
+- **Logger serial:** leave it blank. SunReye reads the serial off the stick when you press
+  **Test connection**; you only ever type it in if that cannot reach the logger.
+
+No gateway to buy, no RS485 pair to pull, no cabinet to open. Reads and writes both work,
+so scheduling and battery control are available over the stick like over any other
+connection.
+
+**How fast is it?** Measured end to end on a Deye SG05LP3 — 99 metrics, the whole profile —
+a poll over the stick takes about **0.7 s**. What costs the time is the number of round
+trips, not their size: each transaction runs roughly 100–200 ms whatever it asks for, so
+SunReye plans as few as it can, merging reads that sit close together into one request. That
+profile needs three. A one-second poll fits, with a little room.
+
+Two things to know before you rely on it:
+
+- **You can keep using the Solarman app.** The stick does not hand out a single slot: two
+  clients connect at once, neither is evicted, and neither sees gaps. It serves them in turn
+  over the one RS485 line it shares with the inverter, so the cost is time, not data — with
+  the cloud uploader reading as well, expect a poll to take roughly twice as long. If your
+  stick is slow, or you would rather be a polite second guest on it, give the connection a
+  longer poll interval under **Settings → Devices**; a 5- or 10-second poll costs resolution
+  and nothing else, and storage is change-driven anyway.
+- **Firmware matters.** Verified on `LSW3_32_5406_SS_04_00.00.00.0A`. Older LSW and LSE
+  sticks are untested — they may work, they may ignore the port entirely. Trying costs
+  nothing but the five minutes.
+
+If the stick works, you are done and the rest of this section is not for you.
+
+### If the stick is not an option
+
+Then the inverter needs to reach the network some other way: **Modbus TCP** natively, or
+**RTU-over-TCP** through a serial gateway wired to the inverter's RS485 terminals.
 
 These are devices the maintainer runs and can vouch for — they work really well in practice.
 Nothing here is required; any Modbus-TCP-capable gateway will do.

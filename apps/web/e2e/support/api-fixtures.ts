@@ -971,6 +971,18 @@ export function profiles(manifest: FixtureManifest) {
  * under a `kind`, and the broker credential is masked to `hasPassword` on the
  * way out exactly as `app_settings.mqtt`'s was.
  */
+/**
+ * The port a Solarman logger stick listens on, and the serial it names itself
+ * with in its handshake — the two facts the third framing carries.
+ *
+ * Exported so a spec asserts against THESE and not against numbers retyped
+ * beside the assertion: the probe reply in `./api-mock.ts` answers with this
+ * serial, so a spec that watches it auto-fill is watching the value the fake
+ * server actually sent.
+ */
+export const SOLARMAN_PORT = 8899;
+export const SOLARMAN_SERIAL = 1912345678;
+
 export const CONNECTIONS = [
   {
     id: 1,
@@ -989,6 +1001,29 @@ export const CONNECTIONS = [
     name: "Home broker",
     kind: "mqtt",
     params: { brokerUrl: "mqtt://hass.ee.lan:1883", username: "mqtt", hasPassword: true },
+  },
+  /**
+   * A Solarman/IGEN logger stick — the third framing, on the port and with the
+   * serial its envelope addresses every frame by.
+   *
+   * A row rather than only a probe reply, because a STORED Solarman endpoint is
+   * a state of its own: its caption has to name the framing (not print
+   * `solarman-v5` raw), and its edit dialog has to reopen with the serial in the
+   * box rather than empty, which is how a saved serial would quietly be dropped
+   * on the next save.
+   */
+  {
+    id: 3,
+    name: "Logger stick",
+    kind: "modbus",
+    params: {
+      host: "10.0.0.8",
+      port: SOLARMAN_PORT,
+      transport: "solarman-v5",
+      timeoutMs: 2000,
+      pollIntervalMs: 1000,
+      loggerSerial: SOLARMAN_SERIAL,
+    },
   },
 ];
 

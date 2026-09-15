@@ -3,6 +3,7 @@
 	import { Label } from "$lib/components/ui/label";
 	import * as Select from "$lib/components/ui/select";
 	import type { InverterConfig, InverterStatus, Transport } from "./inverter-types";
+	import { transportLabel, transportOptions } from "./transport-label";
 	import * as m from "$lib/paraglide/messages";
 
 	// The Modbus connection fields. The active profile is read-only here — it is
@@ -23,13 +24,11 @@
 		disabled?: boolean;
 	} = $props();
 
-	const TRANSPORTS: { value: Transport; label: string }[] = [
-		{ value: "tcp", label: "Modbus TCP" },
-		{ value: "rtu-over-tcp", label: "Modbus RTU over TCP" }
-	];
-	const transportLabel = $derived(
-		TRANSPORTS.find((x) => x.value === cfg.transport)?.label ?? "Modbus TCP"
-	);
+	// Framing names come from `./transport-label.ts`, which every surface that
+	// shows one reads: three copies of the pair meant a German operator read
+	// "Modbus RTU over TCP" on a page whose every other word was translated.
+	const TRANSPORTS = transportOptions();
+	const chosenLabel = $derived(transportLabel(cfg.transport));
 	const activeProfile = $derived(status?.profile ?? "—");
 
 	function setTransport(v: string) {
@@ -49,7 +48,7 @@
 	<div class="flex flex-col gap-1.5">
 		<Label>{m.inverter_transport()}</Label>
 		<Select.Root type="single" value={cfg.transport} onValueChange={setTransport} {disabled}>
-			<Select.Trigger>{transportLabel}</Select.Trigger>
+			<Select.Trigger>{chosenLabel}</Select.Trigger>
 			<Select.Content>
 				{#each TRANSPORTS as t (t.value)}
 					<Select.Item value={t.value}>{t.label}</Select.Item>
