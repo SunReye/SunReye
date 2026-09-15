@@ -155,6 +155,11 @@
         # dashboard, and nothing about the failure looks transient.
         boot-ordering = import ./tests/boot-ordering.nix {
           inherit pkgs;
+          # The generated start script, not the unit: podman's own arguments are
+          # in there, and an assertion aimed at the unit's ExecStart line can
+          # only ever see the path of the script that holds them.
+          serverStart = nixpkgs.lib.head (nixpkgs.lib.splitString " "
+            self.nixosConfigurations.appliance.config.systemd.services.podman-sunreye-server.serviceConfig.ExecStart);
           serverUnit = self.nixosConfigurations.appliance.config.systemd.units."podman-sunreye-server.service".unit + "/podman-sunreye-server.service";
           migrateUnit = self.nixosConfigurations.appliance.config.systemd.units."sunreye-migrate.service".unit + "/sunreye-migrate.service";
         };

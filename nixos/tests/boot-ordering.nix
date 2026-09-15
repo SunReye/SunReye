@@ -19,10 +19,11 @@
 # Asserted against the generated unit FILES rather than the options that produce
 # them: `after = [ ... ]` in a module is an input, and the question here is what
 # systemd is handed.
-{ pkgs, serverUnit, migrateUnit }:
+{ pkgs, serverUnit, migrateUnit, serverStart }:
 pkgs.runCommand "boot-ordering" { } ''
   server=${serverUnit}
   migrate=${migrateUnit}
+  start=${serverStart}
 
   fail=0
   note() { echo "  ✖ $1"; fail=1; }
@@ -56,6 +57,24 @@ pkgs.runCommand "boot-ordering" { } ''
   # with it, the two together are the recovery.
   has "$server" 'RestartSec=' \
     || note "no RestartSec — restarts land back to back instead of outlasting the migrator"
+
+  # The container's view of DNS must TRACK the host's, not snapshot it.
+  #
+  # Podman writes /etc/resolv.conf into a container when it is created, copying
+  # whatever the host had at that moment. The host's resolvers then change —
+  # enrolling into a tailnet replaces them outright — and the container keeps the
+  # stale file for as long as it lives. Measured on a box whose host resolved
+  # github.com perfectly while the server inside could not, so the profile
+  # catalogue failed to clone with a DNS error three layers from its cause.
+  #
+  # A bind mount makes the file live, which is the whole fix: --network=host
+  # already means the container shares the host's stack, so it should share the
+  # host's idea of who answers queries too.
+  # The mount SPEC alone: podman's arguments are rendered one per line, so a
+  # pattern joining the flag to its value matches nothing even when the mount is
+  # there. It did exactly that first.
+  grep -qF -- '/etc/resolv.conf:/etc/resolv.conf:ro' "$start" \
+    || note "does not bind-mount the host's /etc/resolv.conf — the container's DNS is frozen at creation"
 
   echo "== sunreye-migrate.service =="
   has "$migrate" 'After=.*\bpodman-sunreye-postgres\.service\b' \
