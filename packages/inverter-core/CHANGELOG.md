@@ -1,5 +1,29 @@
 # Changelog
 
+## [1.3.0](https://github.com/SunReye/SunReye/compare/inverter-core-v1.2.1...inverter-core-v1.3.0) (2026-09-15)
+
+
+### Features
+
+* **inverter-core:** solarman v5 frame codec ([7544d88](https://github.com/SunReye/SunReye/commit/7544d88b1fec1d7e60ee7097adcec5010c0cd7d0))
+* **inverter-core:** solarman v5 modbus port and transport framing ([ca28143](https://github.com/SunReye/SunReye/commit/ca28143f6cdfb36b68584189556f04615eeb4a6f))
+* read and write Deye inverters through the Solarman WiFi logger (no gateway) ([c25a73c](https://github.com/SunReye/SunReye/commit/c25a73cb860a24777344285ba9d8ab1ff3d9cc3d))
+* read and write Deye inverters through the Solarman WiFi logger (no gateway) ([6300c16](https://github.com/SunReye/SunReye/commit/6300c16c1ba7437db36f639b5db4ac71edb19c51))
+
+
+### Bug Fixes
+
+* **inverter-core:** a peer reset must not kill the poller process ([fc31d5b](https://github.com/SunReye/SunReye/commit/fc31d5ba4005e86f4d19eed99f4069564ba95422))
+* **inverter-core:** disarm the discovery probe when the Solarman port closes ([06bbf62](https://github.com/SunReye/SunReye/commit/06bbf6204e0748c3192c0fff21d8b976a2ebdd9f))
+* **inverter-core:** keep the frames splitFrames already parsed when a chunk desynchronises ([7ed879f](https://github.com/SunReye/SunReye/commit/7ed879fe3a18ab8084b8089a8b83179496a75946))
+* **inverter-core:** retry a Solarman `05` once before believing it is structural ([8ae284f](https://github.com/SunReye/SunReye/commit/8ae284fe950af1139a217f13c6e466b0db0dcea7))
+* **inverter-core:** translate a Solarman V5 reject into a Modbus failure ([73d9432](https://github.com/SunReye/SunReye/commit/73d9432b1aac6a9413861a754c82bd44db0bd56f))
+
+
+### Performance Improvements
+
+* **inverter-core:** merge read blocks across small register gaps ([8e13101](https://github.com/SunReye/SunReye/commit/8e13101307d2447e7803cbf15ae3281fc11d27ed))
+
 ## [1.2.1](https://github.com/SunReye/SunReye/compare/inverter-core-v1.2.0...inverter-core-v1.2.1) (2026-09-10)
 
 
