@@ -218,6 +218,21 @@
       # firmware would sit in the health report for the life of the machine.
       echo "efi-boot-entry: $(systemctl show appliance-efi-boot-entry -p Result --value 2>/dev/null || echo unknown)"
 
+      # And the tools to see what it did. The unit's own copy of efibootmgr lives
+      # inside its wrapper, on no one's PATH: the docs sent an owner whose box
+      # would not boot from its own slot to run `efibootmgr -v`, and the box
+      # answered "command not found". A diagnosis that needs a /nix/store glob is
+      # not one.
+      # Against /run/current-system/sw/bin, NOT `command -v`: this unit sets its
+      # own PATH (`path = with pkgs` below), which deliberately excludes
+      # systemPackages — so `command -v` answers MISSING for a tool the box
+      # ships, and every other probe here uses the absolute path for that reason.
+      for t in efibootmgr appliance-efi-boot-entry; do
+        test -x "/run/current-system/sw/bin/$t" \
+          && echo "efi-tool $t: installed" \
+          || echo "efi-tool $t: MISSING"
+      done
+
       # Can anyone actually log in at the keyboard? The image shipped for weeks
       # with root locked — no password, no key, `allowNoPasswordLogin = false` —
       # while the docs offered "a keyboard on the box" as the fallback. Nothing
