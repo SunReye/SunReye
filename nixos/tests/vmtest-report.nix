@@ -212,6 +212,12 @@
         *) echo "first-boot-down: unexpected ($(printf '%s' "$down" | tail -1))" ;;
       esac
 
+      # The NVRAM entry unit. This guest boots via BIOS, so the only thing
+      # provable here is the half that regresses silently: it must decide there
+      # is nothing to do and SUCCEED. A unit that fails on every box without EFI
+      # firmware would sit in the health report for the life of the machine.
+      echo "efi-boot-entry: $(systemctl show appliance-efi-boot-entry -p Result --value 2>/dev/null || echo unknown)"
+
       # Can anyone actually log in at the keyboard? The image shipped for weeks
       # with root locked — no password, no key, `allowNoPasswordLogin = false` —
       # while the docs offered "a keyboard on the box" as the fallback. Nothing

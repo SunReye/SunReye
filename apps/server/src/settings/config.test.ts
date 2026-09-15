@@ -67,6 +67,7 @@ const ENV_KEYS = [
   "INVERTER_UNIT_ID",
   "INVERTER_TRANSPORT",
   "INVERTER_LOGGER_SERIAL",
+  "INVERTER_SIMULATE",
   "POLL_INTERVAL_MS",
   "MQTT_ENABLED",
   "MQTT_BROKER_URL",
@@ -76,6 +77,10 @@ const ENV_KEYS = [
   "HA_DISCOVERY_ENABLED",
   "HA_DISCOVERY_PREFIX",
 ] as const;
+
+/** `config.ts`'s own key for the simulation switch — deliberately not a field of
+ * either document, so it is spelled out here rather than imported from a schema. */
+const SIMULATE_KEY = "inverter-simulate";
 
 const selects = () => queries.filter((q) => q.sql.startsWith("select"));
 const writes = () => queries.filter((q) => q.sql.startsWith("insert"));
@@ -394,24 +399,37 @@ describe("saving the MQTT export", () => {
   // Deliberately the last test in the file: bun attributes a file's coverage to
   // the last instance of it loaded in the process, so the final instance loaded
   // here is the one that has to exercise the whole module.
-  test("the two configs are cached independently, and only MQTT is written", async () => {
-    // The asymmetry is the point: saving the broker must not touch the legacy
-    // inverter row, and there is no path here that could — the endpoint is
-    // written into the spine by `../inverter/endpoint.ts` instead.
+  test("all three configs are cached independently, and the inverter row is never written", async () => {
+    // The asymmetry is the point: saving the broker or the simulation switch
+    // must not touch the legacy inverter row, and there is no path here that
+    // could — the endpoint is written into the spine by
+    // `../inverter/endpoint.ts` instead.
+    //
+    // Simulation is exercised here as well as in its own tests above because
+    // this instance is the one the coverage report follows: an accessor only
+    // the fresh copies ever call reads as dead code, which is how `getSimulate`
+    // and `setSimulate` — the seam the dashboard's off switch runs through —
+    // shipped without this instance ever executing them.
     envOverrides.INVERTER_HOST = "10.0.0.7";
+    envOverrides.INVERTER_SIMULATE = true;
     table.set(INVERTER_KEY, { host: "192.168.1.50", unitId: 1 });
     const config = await freshInstance();
 
     expect((await config.getInverterConfig()).host).toBe("192.168.1.50");
     expect((await config.getMqttConfig()).connectionId).toBeNull();
+    expect(await config.getSimulate()).toBe(true);
 
     const mqtt = await config.setMqttConfig({ connectionId: 3 });
     expect(mqtt.connectionId).toBe(3);
     expect(new Set(writes().map((w) => w.params[0]))).toEqual(new Set([MQTT_KEY]));
 
+    await config.setSimulate(false);
+    expect(new Set(writes().map((w) => w.params[0]))).toEqual(new Set([MQTT_KEY, SIMULATE_KEY]));
+
     queries.length = 0;
     expect((await config.getInverterConfig()).host).toBe("192.168.1.50");
     expect((await config.getMqttConfig()).connectionId).toBe(3);
+    expect(await config.getSimulate()).toBe(false);
     expect(selects()).toHaveLength(0);
   });
 });

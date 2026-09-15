@@ -14,6 +14,34 @@ in
   options.appliance = {
     enable = mkEnableOption "the headless appliance profile";
 
+    efiBootEntry = {
+      enable = mkOption {
+        type = types.bool;
+        default = true;
+        description = ''
+          Write an NVRAM boot entry for this box's own disk when none exists.
+
+          A flashed image installs its bootloader at the removable-media fallback
+          path and can write no NVRAM variable — the image is built in a sandbox
+          that has never seen the target firmware. Firmware is only obliged to
+          honour that fallback for REMOVABLE devices, so on a machine that takes
+          the rule strictly a perfectly good internal disk offers no boot entry
+          at all. Measured on a Fujitsu Futro S740, which is the class of thin
+          client this appliance exists for.
+
+          Turn it off for a box whose boot order is managed centrally, where an
+          entry appearing on its own is a surprise rather than a rescue.
+        '';
+      };
+
+      package = mkOption {
+        type = types.package;
+        readOnly = true;
+        internal = true;
+        description = "The program this module builds, exposed so a check can run THAT one.";
+      };
+    };
+
     console.password.web = {
       enable = mkOption {
         type = types.bool;

@@ -143,6 +143,22 @@
           bashrc = self.nixosConfigurations.appliance.config.environment.etc."bashrc".source;
         };
 
+        # The NVRAM entry a flashed disk needs to boot from a slot rather than
+        # a USB port. Fabricated, because no sandbox has firmware.
+        efi-boot-entry = import ./tests/efi-boot-entry.nix {
+          inherit pkgs;
+          ensure = self.nixosConfigurations.appliance.config.appliance.efiBootEntry.package;
+        };
+
+        # What order the box starts in. A first boot that loses the race
+        # between the migrator and the server leaves a running box with no
+        # dashboard, and nothing about the failure looks transient.
+        boot-ordering = import ./tests/boot-ordering.nix {
+          inherit pkgs;
+          serverUnit = self.nixosConfigurations.appliance.config.systemd.units."podman-sunreye-server.service".unit + "/podman-sunreye-server.service";
+          migrateUnit = self.nixosConfigurations.appliance.config.systemd.units."sunreye-migrate.service".unit + "/sunreye-migrate.service";
+        };
+
         # Same question, asked of the box's own status report.
         health-report = import ./tests/health-report.nix {
           inherit pkgs;
