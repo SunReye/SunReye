@@ -57,8 +57,8 @@ in
 
   server = pkgs.dockerTools.pullImage {
     imageName = "ghcr.io/sunreye/sunreye-server";
-    imageDigest = "sha256:5bfedbd40886dbc9da6e663b79cb97314c54d34a5a3f6bf4113b381fe017bc40";
-    hash = "sha256-wpfrQVd2ejVKfYT7IFDOPfas83pmztXXaF8lvSwlv3k=";
+    imageDigest = "sha256:6bc528d8447002ba33b7a444bf3bfd2349f2669eaaf8634185069f115e854312";
+    hash = "sha256-Njr1ltZID010hQpjdBOiFAvzf6oP06jCRMuBumklMwQ=";
     finalImageName = "ghcr.io/sunreye/sunreye-server";
     finalImageTag = version;
     os = "linux";
