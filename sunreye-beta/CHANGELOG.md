@@ -1,6 +1,24 @@
 # Changelog
 
-No unreleased changes on `dev`; `beta.20260915-d053951` matches the last release.
+## [unreleased]
+
+Unreleased work on `dev` since 3.4.0, shipped in `beta.20260915-f76a4fa`.
+
+
+### Features
+
+* **nixos:** state public DNS in the health report instead of leaving it inferred ([a88d223](https://github.com/SunReye/SunReye/commit/a88d2233bcc223a01695f79eb332b3550e912119))
+
+
+### Bug Fixes
+
+* **cli:** refuse to report success for an upgrade that cannot reach the release ([672b551](https://github.com/SunReye/SunReye/commit/672b5514c653cebaefe2870371e0f3ae5c610de0))
+* **nixos:** give the unattended upgrade an identity to commit its lock with ([3a98c71](https://github.com/SunReye/SunReye/commit/3a98c71022b546f6f60cc0425645be412ddc2912))
+
+
+### Miscellaneous Chores
+
+* **nixos:** publish 3.4.0 [skip ci] ([dc4ebb4](https://github.com/SunReye/SunReye/commit/dc4ebb4f30f4f131ae2123f505382884fd504590))
 
 <!--
   This preamble is hand-written and version-independent. release-please owns the
@@ -121,9 +139,22 @@ be needed again.
 ## [3.4.0](https://github.com/SunReye/SunReye/compare/addon-v3.3.3...addon-v3.4.0) (2026-09-15)
 
 
-### Miscellaneous Chores
+### Features
 
-* **addon:** Synchronize sunreye-stack versions
+* **devices:** measure the unit id instead of asking for it ([fe3b2b8](https://github.com/SunReye/SunReye/commit/fe3b2b89c2be3e291ca6ae2588a196e4f1a17137))
+
+
+### Bug Fixes
+
+* **devices:** name the failure, and measure the unit id instead of asking for it ([58af184](https://github.com/SunReye/SunReye/commit/58af18467ae141fd39204eb66dda18fd7d307cbf))
+* **inverter:** name the failure instead of "[object Object]" ([c0e1719](https://github.com/SunReye/SunReye/commit/c0e17197ec43f4ab2dabcdad434fbea8b26c0061))
+* **nixos:** put the database on the disk — it was in a disposable volume ([c98ddf5](https://github.com/SunReye/SunReye/commit/c98ddf5dd64af272244c47bb9fdf51ec46866df0))
+* **nixos:** the database lived in a volume podman deletes on every upgrade ([0d03983](https://github.com/SunReye/SunReye/commit/0d03983d3569cf0f9e91cfe024e340956f02bb4c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
 
 ## [3.3.3](https://github.com/SunReye/SunReye/compare/addon-v3.3.2...addon-v3.3.3) (2026-09-15)
 
