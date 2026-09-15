@@ -84,6 +84,38 @@ SH
     exit 1
   fi
 
+  # ── The firmware's OWN entry for the USB boot is not a usable entry ───────
+  # Measured on a Futro S740: booting the flashed disk in a USB enclosure made
+  # the firmware write its own NVRAM entry, and that entry carries this ESP's
+  # GPT GUID. Matching on the GUID alone therefore concluded "already handled"
+  # and wrote nothing — so the box was left with the one entry that CANNOT
+  # survive the disk moving to the internal slot, because its device path pins
+  # the USB hardware ahead of the partition.
+  #
+  # The discriminator is the device path: an entry that resolves by partition
+  # alone begins with HD(. One that begins with PciRoot(...)/USB(...) names a
+  # port, and a disk in a different port is a different device to firmware.
+  printf 'Boot0005* UEFI: SanDisk\tPciRoot(0x0)/Pci(0x14,0x0)/USB(0x5,0x0)/HD(1,GPT,%s,0x800,0x100000)\n' \
+    "$ESP_PARTUUID" > "$NVRAM"
+  : > "$CALLS"
+  appliance-efi-boot-entry >/dev/null
+  if [ ! -s "$CALLS" ]; then
+    echo "deferred to the firmware's USB-bound entry; the disk will not boot from its own slot" >&2
+    exit 1
+  fi
+
+  # And having written ours, a later boot must recognise it and stop — the
+  # USB-bound entry is still there, so this is the mixed state a real box is in.
+  printf 'Boot0005* UEFI: SanDisk\tPciRoot(0x0)/Pci(0x14,0x0)/USB(0x5,0x0)/HD(1,GPT,%s,0x800,0x100000)\nBoot0006* SunReye\tHD(1,GPT,%s,0x800,0x100000)/File(\\EFI\\BOOT\\BOOTX64.EFI)\n' \
+    "$ESP_PARTUUID" "$ESP_PARTUUID" > "$NVRAM"
+  : > "$CALLS"
+  appliance-efi-boot-entry >/dev/null
+  if [ -s "$CALLS" ]; then
+    echo "collected a duplicate entry on a box that already has a usable one:" >&2
+    cat "$CALLS" >&2
+    exit 1
+  fi
+
   # ── An entry for a different disk is not this disk's entry ────────────────
   printf 'Boot0001* SunReye\tHD(1,GPT,ffffffff-0000-0000-0000-000000000000,0x800,0x100000)\n' > "$NVRAM"
   : > "$CALLS"

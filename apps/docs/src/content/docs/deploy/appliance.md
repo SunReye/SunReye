@@ -108,13 +108,28 @@ the way that works:
 An EFI boot entry identifies its partition by GPT GUID rather than by which port it was
 plugged into, so the entry written over USB still resolves once the disk is internal.
 
-If the machine still will not boot it, add the entry by hand — once, permanently. In the
-BIOS boot menu choose **Add Boot Option**, select the disk's EFI partition, and enter the
-loader path `\EFI\BOOT\BOOTX64.EFI`. Give it any name you like and move it to the top of
-the boot order.
+If the entry is still missing after that, write it from the running box — while it is
+booted over USB, so the disk is present:
 
-Either way the box checks on every boot afterwards and re-creates the entry if firmware
-loses it — after a CMOS reset or a battery change, say. Run
+```bash
+L='\EFI\BOOT\BOOTX64.EFI'
+dev=$(findmnt -no SOURCE /boot)          # e.g. /dev/sda1
+efibootmgr -c -d /dev/sda -p 1 -L SunReye -l "$L"
+efibootmgr -v | grep -i sunreye
+```
+
+The result must read `SunReye  HD(1,GPT,…)/\EFI\BOOT\BOOTX64.EFI`. A path with
+`PciRoot(…)/USB(…)` in front of `HD(` names the USB **port** rather than the partition and
+will not survive the move — that is the firmware's own entry, not this one.
+
+:::note[Do not count on a BIOS "Add Boot Option"]
+Plenty of guides suggest adding the entry from the firmware setup screen. Many thin clients
+have no such item — the Futro S740 does not — so treat it as a bonus if your machine offers
+it, never as the fallback.
+:::
+
+The box checks on every boot afterwards and re-creates the entry if firmware loses it —
+after a CMOS reset or a battery change, say. Run
 `journalctl -u appliance-efi-boot-entry` to see what it found.
 
 ## First boot
