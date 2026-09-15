@@ -121,14 +121,25 @@ be needed again.
 
 ### Features
 
-* **addon:** offer the Solarman logger as a connection ([4d2b29c](https://github.com/SunReye/SunReye/commit/4d2b29ccd9e458431392a5428b54c100fbcd0a48))
+* **cli:** `sunreye upgrade` ([c416aa2](https://github.com/SunReye/SunReye/commit/c416aa20453ffb06c3a28d8c2e961fb833f843f4))
+* **cli:** accept the solarman-v5 framing in site.json ([86d7b7b](https://github.com/SunReye/SunReye/commit/86d7b7b1fc0dbce57df885e4dd136be6646dcf09))
+* **db,env,server:** widen the modbus framing union to solarman-v5 ([fa55e82](https://github.com/SunReye/SunReye/commit/fa55e822960e659c9a2a4eb0ceaafd03b26bced2))
+* **nixos:** solarman-v5 transport and logger serial ([8abb25d](https://github.com/SunReye/SunReye/commit/8abb25d8812605ef87e2b7e6dfcba0110543bb21))
 * read and write Deye inverters through the Solarman WiFi logger (no gateway) ([c25a73c](https://github.com/SunReye/SunReye/commit/c25a73cb860a24777344285ba9d8ab1ff3d9cc3d))
 * read and write Deye inverters through the Solarman WiFi logger (no gateway) ([6300c16](https://github.com/SunReye/SunReye/commit/6300c16c1ba7437db36f639b5db4ac71edb19c51))
+* **server:** probe a solarman stick by its own handshake ([ff86e27](https://github.com/SunReye/SunReye/commit/ff86e2735a2e21aaf79dad1dbb15579f9a7d783b))
+* **web:** offer the Solarman logger framing when adding a connection ([2547619](https://github.com/SunReye/SunReye/commit/2547619d5ba846df410f23fe59e2fd06aa4b8dbb))
+* **addon:** offer the Solarman logger as a connection ([4d2b29c](https://github.com/SunReye/SunReye/commit/4d2b29ccd9e458431392a5428b54c100fbcd0a48))
 
 
 ### Bug Fixes
 
 * **appliance:** floor the logger serial at 1, where every schema does ([0ea966f](https://github.com/SunReye/SunReye/commit/0ea966f04261d040b818c9a2f82cfffffc8d4f22))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
 
 ## [3.2.3](https://github.com/SunReye/SunReye/compare/addon-v3.2.2...addon-v3.2.3) (2026-09-14)
 
