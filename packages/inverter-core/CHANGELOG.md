@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.4.0](https://github.com/SunReye/SunReye/compare/inverter-core-v1.3.0...inverter-core-v1.4.0) (2026-09-15)
+
+
+### Features
+
+* **devices:** measure the unit id instead of asking for it ([fe3b2b8](https://github.com/SunReye/SunReye/commit/fe3b2b89c2be3e291ca6ae2588a196e4f1a17137))
+
+
+### Bug Fixes
+
+* **devices:** name the failure, and measure the unit id instead of asking for it ([58af184](https://github.com/SunReye/SunReye/commit/58af18467ae141fd39204eb66dda18fd7d307cbf))
+* **inverter:** name the failure instead of "[object Object]" ([c0e1719](https://github.com/SunReye/SunReye/commit/c0e17197ec43f4ab2dabcdad434fbea8b26c0061))
+
 ## [1.3.0](https://github.com/SunReye/SunReye/compare/inverter-core-v1.2.1...inverter-core-v1.3.0) (2026-09-15)
 
 

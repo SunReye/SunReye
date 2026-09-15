@@ -1,5 +1,27 @@
 # Changelog
 
+## [3.4.0](https://github.com/SunReye/SunReye/compare/server-v3.3.3...server-v3.4.0) (2026-09-15)
+
+
+### Features
+
+* **devices:** measure the unit id instead of asking for it ([fe3b2b8](https://github.com/SunReye/SunReye/commit/fe3b2b89c2be3e291ca6ae2588a196e4f1a17137))
+
+
+### Bug Fixes
+
+* **devices:** name the failure, and measure the unit id instead of asking for it ([58af184](https://github.com/SunReye/SunReye/commit/58af18467ae141fd39204eb66dda18fd7d307cbf))
+* **inverter:** name the failure instead of "[object Object]" ([c0e1719](https://github.com/SunReye/SunReye/commit/c0e17197ec43f4ab2dabcdad434fbea8b26c0061))
+* **nixos:** put the database on the disk — it was in a disposable volume ([c98ddf5](https://github.com/SunReye/SunReye/commit/c98ddf5dd64af272244c47bb9fdf51ec46866df0))
+* **nixos:** the database lived in a volume podman deletes on every upgrade ([0d03983](https://github.com/SunReye/SunReye/commit/0d03983d3569cf0f9e91cfe024e340956f02bb4c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @SunReye/inverter-core bumped to 1.4.0
+
 ## [3.3.3](https://github.com/SunReye/SunReye/compare/server-v3.3.2...server-v3.3.3) (2026-09-15)
 
 
