@@ -1,6 +1,24 @@
 # Changelog
 
-No unreleased changes on `dev`; `beta.20260915-795a705` matches the last release.
+## [unreleased]
+
+Unreleased work on `dev` since 3.3.3, shipped in `beta.20260915-58af184`.
+
+
+### Features
+
+* **devices:** measure the unit id instead of asking for it ([fe3b2b8](https://github.com/SunReye/SunReye/commit/fe3b2b89c2be3e291ca6ae2588a196e4f1a17137))
+
+
+### Bug Fixes
+
+* **nixos:** put the database on the disk — it was in a disposable volume ([c98ddf5](https://github.com/SunReye/SunReye/commit/c98ddf5dd64af272244c47bb9fdf51ec46866df0))
+* **inverter:** name the failure instead of "[object Object]" ([c0e1719](https://github.com/SunReye/SunReye/commit/c0e17197ec43f4ab2dabcdad434fbea8b26c0061))
+
+
+### Miscellaneous Chores
+
+* **nixos:** publish 3.3.3 [skip ci] ([8176213](https://github.com/SunReye/SunReye/commit/81762130cfe83df236c419692799aa4f1e50f232))
 
 <!--
   This preamble is hand-written and version-independent. release-please owns the
@@ -121,9 +139,10 @@ be needed again.
 ## [3.3.3](https://github.com/SunReye/SunReye/compare/addon-v3.3.2...addon-v3.3.3) (2026-09-15)
 
 
-### Miscellaneous Chores
+### Bug Fixes
 
-* **addon:** Synchronize sunreye-stack versions
+* **nixos:** let the server see the host's DNS, not a copy made at creation ([2ba83c7](https://github.com/SunReye/SunReye/commit/2ba83c7dd3c61ae35b4ecceda9e9925365d2878b))
+* **nixos:** the server container's DNS was frozen at creation ([9fa84d6](https://github.com/SunReye/SunReye/commit/9fa84d6082afdf2cffe5e1228dd2c42972b349d0))
 
 ## [3.3.2](https://github.com/SunReye/SunReye/compare/addon-v3.3.1...addon-v3.3.2) (2026-09-15)
 
