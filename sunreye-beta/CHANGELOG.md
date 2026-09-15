@@ -1,24 +1,6 @@
 # Changelog
 
-## [unreleased]
-
-Unreleased work on `dev` since 3.3.3, shipped in `beta.20260915-58af184`.
-
-
-### Features
-
-* **devices:** measure the unit id instead of asking for it ([fe3b2b8](https://github.com/SunReye/SunReye/commit/fe3b2b89c2be3e291ca6ae2588a196e4f1a17137))
-
-
-### Bug Fixes
-
-* **nixos:** put the database on the disk — it was in a disposable volume ([c98ddf5](https://github.com/SunReye/SunReye/commit/c98ddf5dd64af272244c47bb9fdf51ec46866df0))
-* **inverter:** name the failure instead of "[object Object]" ([c0e1719](https://github.com/SunReye/SunReye/commit/c0e17197ec43f4ab2dabcdad434fbea8b26c0061))
-
-
-### Miscellaneous Chores
-
-* **nixos:** publish 3.3.3 [skip ci] ([8176213](https://github.com/SunReye/SunReye/commit/81762130cfe83df236c419692799aa4f1e50f232))
+No unreleased changes on `dev`; `beta.20260915-d053951` matches the last release.
 
 <!--
   This preamble is hand-written and version-independent. release-please owns the
@@ -135,6 +117,13 @@ What to do, if you maintain a shared source:
 changed again. The archive names devices and metrics the way the API and your Home Assistant
 entities already do, and refers to no internal id, which is why an upgrade like this one should not
 be needed again.
+
+## [3.4.0](https://github.com/SunReye/SunReye/compare/addon-v3.3.3...addon-v3.4.0) (2026-09-15)
+
+
+### Miscellaneous Chores
+
+* **addon:** Synchronize sunreye-stack versions
 
 ## [3.3.3](https://github.com/SunReye/SunReye/compare/addon-v3.3.2...addon-v3.3.3) (2026-09-15)
 
