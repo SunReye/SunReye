@@ -3,6 +3,7 @@ export * from "./types";
 // Also its own subpath (`@SunReye/inverter-core/transports`) for the packages
 // that must not pull `modbus-serial` in through this barrel.
 export { MODBUS_TRANSPORTS, narrowTransport } from "./transports";
+export { errorMessage } from "./error-message";
 export { decode, encodeWord, registerWidth, clampReports, resetClampReports } from "./codec";
 export type { ClampReport } from "./codec";
 export { ModbusInverter } from "./driver";

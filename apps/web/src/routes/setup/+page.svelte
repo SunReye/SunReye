@@ -4,6 +4,7 @@
 	import { onMount } from 'svelte';
 	import { toast } from 'svelte-sonner';
 	import { api } from '$lib/api';
+	import { apiErrorText } from '$lib/api-error';
 	import Logo from '$lib/components/logo.svelte';
 	import { Button } from '$lib/components/ui/button';
 	import InverterForm from '$lib/components/settings/inverter-form.svelte';
@@ -66,7 +67,7 @@
 		const { error } = await api.api.settings['active-profile'].put({ id: selectedId });
 		activating = false;
 		if (error) {
-			toast.error(m.setup_activate_failed({ error: String(error.value) }));
+			toast.error(m.setup_activate_failed({ error: apiErrorText(error.value, m.conn_request_failed()) }));
 			return;
 		}
 		activated = true;

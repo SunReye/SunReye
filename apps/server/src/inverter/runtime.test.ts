@@ -1677,6 +1677,21 @@ describe("when the inverter stops answering", () => {
     expect(published).toHaveLength(1);
   });
 
+  // The poll loop meets modbus-serial's own failures, which are not Errors (see
+  // the connection-test case below). `/api/status` carries this string to the
+  // dashboard's inverter badge, where "[object Object]" tells the operator
+  // nothing about a stick that is timing out.
+  test("a modbus-serial timeout reaches the status badge as its message", async () => {
+    await boot();
+    readResult = async () => {
+      throw { name: "TransactionTimedOutError", message: "Timed out", errno: "ETIMEDOUT" };
+    };
+
+    await poll();
+
+    expect(status().inverter.lastError).toBe("Timed out");
+  });
+
   test("the same failure repeating every second is logged once, not once per tick", async () => {
     await boot();
     readResult = async () => {
@@ -2502,6 +2517,23 @@ describe("testing a connection before saving it", () => {
     await expect(testInverter(null, baseEndpoint())).resolves.toEqual({
       ok: false,
       error: "gateway timeout",
+    });
+  });
+
+  // The failure an operator actually meets: a Solarman stick relays the request
+  // to a unit id nothing answers on, and modbus-serial times the transaction
+  // out. Its `TransactionTimedOutError` is NOT an Error — a plain constructor
+  // that sets name/message/errno on `this` — so `String(error)` reported the
+  // reason as "[object Object]".
+  test("a modbus-serial timeout, which is not an Error, still names itself", async () => {
+    registryProfile = mainProfile();
+    readResult = async () => {
+      throw { name: "TransactionTimedOutError", message: "Timed out", errno: "ETIMEDOUT" };
+    };
+
+    await expect(testInverter(null, baseEndpoint())).resolves.toEqual({
+      ok: false,
+      error: "Timed out",
     });
   });
 });

@@ -15,6 +15,7 @@ import {
   modbusParamsSchema,
   mqttParamsSchema,
 } from "@SunReye/db/connection-kinds";
+import { errorMessage } from "@SunReye/inverter-core/error-message";
 import { z } from "zod";
 
 /** Open a connection and close it, or throw with the reason. Injected so the probe is testable without a socket. */
@@ -129,7 +130,7 @@ export type SolarmanDial = (params: ModbusParams) => Promise<number>;
  */
 // fallow-ignore-next-line unused-export -- the wording the operator reads, held to it by reachability.test.ts; test files aren't traced as consumers, and the only other way to reach it is a real socket
 export function solarmanProbeFailure(at: { host: string; port: number }, error: unknown): Error {
-  const message = error instanceof Error ? error.message : String(error);
+  const message = errorMessage(error);
   if (!message.includes("did not answer the discovery probe")) return new Error(message);
   return new Error(
     `${at.host}:${at.port} accepted the connection but did not answer a Solarman V5 frame — ` +
@@ -238,7 +239,7 @@ export async function probeConnection(
     return {
       ok: false,
       ms: Math.round(performance.now() - started),
-      error: error instanceof Error ? error.message : String(error),
+      error: errorMessage(error),
     };
   }
 }

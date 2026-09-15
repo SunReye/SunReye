@@ -56,6 +56,7 @@
  */
 
 import { type ConnectionKind } from "@SunReye/db/connection-kinds";
+import { errorMessage } from "@SunReye/inverter-core/error-message";
 import { type ConnectionRecord, type DeviceRecord, activeDevices } from "@SunReye/db/plant-repo";
 
 /** One device, with the connection it is reached through already resolved. */
@@ -201,7 +202,7 @@ async function guarded(
   try {
     await run();
   } catch (error) {
-    failures.push({ ...where, error: error instanceof Error ? error.message : String(error) });
+    failures.push({ ...where, error: errorMessage(error) });
   }
 }
 

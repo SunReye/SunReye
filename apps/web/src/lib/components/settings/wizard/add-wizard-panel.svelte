@@ -7,7 +7,7 @@
 	import SetupStepper from '$lib/components/setup/setup-stepper.svelte';
 	import * as m from '$lib/paraglide/messages';
 	import { resolve } from '$lib/resolve';
-	import { apiErrorText } from '../api-error';
+	import { apiErrorText } from '$lib/api-error';
 	import {
 		type ConnectionDraft,
 		blankDraft,

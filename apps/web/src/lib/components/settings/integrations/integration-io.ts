@@ -16,7 +16,7 @@
 import { api } from "$lib/api";
 import * as m from "$lib/paraglide/messages";
 import { toast } from "svelte-sonner";
-import { apiErrorText } from "../api-error";
+import { apiErrorText } from "$lib/api-error";
 import type { IntegrationView } from "../devices/device-types";
 import type { Catalog } from "../wizard/add-wizard";
 

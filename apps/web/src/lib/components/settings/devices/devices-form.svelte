@@ -6,7 +6,7 @@
 	import Section from '$lib/components/layout/section.svelte';
 	import * as m from '$lib/paraglide/messages';
 	import { resolve } from '$lib/resolve';
-	import { apiErrorText } from '../api-error';
+	import { apiErrorText } from '$lib/api-error';
 	import { readCatalog, readIntegrations, refuseIntegration } from '../integrations/integration-io';
 	import InverterStatusBadge from '../inverter-status-badge.svelte';
 	import type { InverterStatus } from '../inverter-types';

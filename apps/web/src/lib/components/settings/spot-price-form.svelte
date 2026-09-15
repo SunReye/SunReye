@@ -7,7 +7,7 @@
 	import Section from '$lib/components/layout/section.svelte';
 	import SaveBar from './save-bar.svelte';
 	import OptionSelect from './option-select.svelte';
-	import { apiErrorText } from './api-error';
+	import { apiErrorText } from '$lib/api-error';
 	import { api } from '$lib/api';
 	import { useAppSession } from '$lib/session';
 	import * as m from '$lib/paraglide/messages';

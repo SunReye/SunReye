@@ -9,7 +9,7 @@
 	import { Input } from '$lib/components/ui/input';
 	import { Label } from '$lib/components/ui/label';
 	import * as Table from '$lib/components/ui/table';
-	import { apiMessageText } from './api-error';
+	import { apiMessageText } from '$lib/api-error';
 	import CreateRowForm from './create-row-form.svelte';
 	import DataTable from './data-table.svelte';
 	import OptionSelect from './option-select.svelte';

@@ -5,7 +5,7 @@
 	import * as m from '$lib/paraglide/messages';
 	import AvailableProfilesBrowser from './available-profiles-browser.svelte';
 	import ProfileSourcesEditor from './profile-sources-editor.svelte';
-	import { apiErrorMessage } from './api-error';
+	import { apiErrorText } from '$lib/api-error';
 	import type { AvailableProfile, Source } from './profile-types';
 
 	// Self-contained "add an external profile" surface: manage git repo sources,
@@ -41,7 +41,7 @@
 		if (error) {
 			sources = prev;
 			toast.error(
-				m.profiles_toast_save_failed({ error: apiErrorMessage(error.value, m.error_unknown()) })
+				m.profiles_toast_save_failed({ error: apiErrorText(error.value, m.error_unknown()) })
 			);
 		}
 	}
@@ -73,7 +73,7 @@
 		const { error } = await api.api.profiles.install.post({ source: p.source, id: p.id });
 		busyId = null;
 		if (error) {
-			toast.error(m.profiles_toast_install_failed({ error: String(error.value) }));
+			toast.error(m.profiles_toast_install_failed({ error: apiErrorText(error.value, m.conn_request_failed()) }));
 			return;
 		}
 		toast.success(m.profiles_toast_download_success({ name: p.name }));

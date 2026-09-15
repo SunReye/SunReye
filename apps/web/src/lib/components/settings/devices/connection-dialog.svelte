@@ -4,7 +4,7 @@
 	import { Button } from '$lib/components/ui/button';
 	import * as Dialog from '$lib/components/ui/dialog';
 	import * as m from '$lib/paraglide/messages';
-	import { apiErrorText } from '../api-error';
+	import { apiErrorText } from '$lib/api-error';
 	import ConnectionDeleteDialog from './connection-delete-dialog.svelte';
 	import DialogShell from './device-dialog-shell.svelte';
 	import ConnectionProbe from './connection-probe.svelte';

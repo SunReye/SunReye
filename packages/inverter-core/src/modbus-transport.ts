@@ -14,6 +14,7 @@ import { getLogger } from "@logtape/logtape";
 import ModbusRTU from "modbus-serial";
 
 import { decode, encodeWord } from "./codec";
+import { errorMessage } from "./error-message";
 import { SolarmanV5Port } from "./solarman";
 import type { InverterTransport } from "./transports";
 import type {
@@ -373,7 +374,7 @@ function absorbClientErrors(client: ModbusRTU, conn: InverterConnection): void {
     log.warn("modbus link error on {host}:{port}: {message}", {
       host: conn.host,
       port: conn.port,
-      message: err instanceof Error ? err.message : String(err),
+      message: errorMessage(err),
     });
   });
 }
