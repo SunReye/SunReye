@@ -17,11 +17,20 @@ let
 
   stateDir = "/var/lib/sunreye";
 
-  # One definition of where the database lives, because the two places that
-  # need it disagreed: the volume mounts <mount> onto /var/lib/postgresql, and
-  # PGDATA is <mount>/data — the image keeps postgres's default data_directory.
-  # The major-version guard was reading <mount>/PG_VERSION, a directory too
-  # high, and therefore never found a file and never refused anything.
+  # One definition of where the database lives.
+  #
+  # PGDATA is <mount>/data — the image keeps postgres's default data_directory —
+  # and the MOUNT HAS TO LAND THERE, not on the parent. The image declares
+  # `VOLUME /var/lib/postgresql/data`; a bind mount one level above leaves that
+  # declaration uncovered, podman fills it with an ANONYMOUS volume, and the
+  # anonymous volume shadows the parent. Postgres then wrote its cluster into a
+  # volume that podman deletes with the container — and `--rm` is how these units
+  # stop, so every upgrade started from an empty cluster with the host's
+  # postgres/data still sitting there at 4 KB, correctly dated and never written.
+  #
+  # From the outside that read as the database "resetting itself" after an
+  # upgrade: admin account gone, onboarding asking again. Nothing failed and
+  # nothing was logged. Measured on a box that did it twice.
   pgMount = "${stateDir}/postgres";
   pgData = "${pgMount}/data";
 
@@ -363,7 +372,9 @@ in
         # only reason to publish it at all is that the other two containers reach
         # it over TCP rather than a shared socket.
         ports = [ "127.0.0.1:5432:5432" ];
-        volumes = [ "${pgMount}:/var/lib/postgresql" ];
+        # On PGDATA itself. See the note beside `pgData` — a mount on the parent
+        # is shadowed by the image's own declared VOLUME and silently disposable.
+        volumes = [ "${pgData}:/var/lib/postgresql/data" ];
         environmentFiles = [ secretsEnv ];
         environment = {
           POSTGRES_DB = "SunReye";
@@ -754,6 +765,9 @@ in
       # because a named volume inherits the image's ownership; a bind mount
       # cannot.
       "d ${pgMount} 0700 999 999 -"
+      # PGDATA itself, because it is now the mount point: podman would create it
+      # root-owned, and initdb refuses a datadir it does not own.
+      "d ${pgData} 0700 999 999 -"
       "d /run/sunreye 0750 root root -"
     ];
   };
