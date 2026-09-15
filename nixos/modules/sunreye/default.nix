@@ -448,6 +448,33 @@ in
         serviceConfig.ExecStartPre = [ (lib.getExe pgMajorGuard) ];
       };
 
+      # The server must not race the schema, and must survive losing that race.
+      #
+      # It used to depend on the DATABASE CONTAINER only, which is a different
+      # fact: Postgres accepting connections says nothing about whether the
+      # tables exist. On a first boot the migrator can find the datadir still
+      # initialising, exit, and schedule its retry 30 s out (see its RestartSec
+      # below) — and the server would start into that gap, meet a database with
+      # no `app_settings`, and crash. Not slowly: with no RestartSec it burned
+      # ten restarts inside one second, hit systemd's default start limit, and
+      # was never restarted again. Migrations completed on the retry, the box
+      # came up healthy, and the dashboard was gone until someone SSHed in.
+      #
+      # WANTS, not requires. `Requires` would order it just as well and make the
+      # failure permanent in the other direction: a failed migrator takes the
+      # server's start job down with it, and nothing re-triggers that job when
+      # the retry succeeds. The server would sit inactive with a good schema in
+      # front of it.
+      podman-sunreye-server = {
+        wants = [ "sunreye-migrate.service" ];
+        after = [ "sunreye-migrate.service" ];
+        serviceConfig.RestartSec = "5s";
+        # No rate limit at all. The only thing the limit can do here is convert
+        # a transient, self-healing condition into one that needs a human, and
+        # the unit has nothing expensive to retry — it is a container start.
+        unitConfig.StartLimitIntervalSec = 0;
+      };
+
       # The schema migrator, run from the server's OWN image: one artifact means
       # the schema can never be a version the code that queries it does not
       # expect. `podman run --rm` under a oneshot unit rather than an
