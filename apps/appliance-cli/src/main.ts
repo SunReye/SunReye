@@ -222,7 +222,33 @@ function factoryReset(io: Io, confirm: string | undefined): number {
  * success for an upgrade that had not begun. It blocks for minutes, which is
  * the same bargain `apply` already makes.
  */
+/**
+ * The host the release is fetched from. A literal, because the flake input in
+ * the box's own `/etc/nixos/flake.nix` is a `github:` ref and that is what nix
+ * resolves — the point is to fail on the same name nix will fail on.
+ */
+const RELEASE_SOURCE_HOST = "api.github.com";
+
 function upgrade(io: Io): number {
+  // BEFORE the unit, because nix treats an unreachable source as a SOFT failure.
+  // It warns "Could not resolve host: api.github.com; using cached version",
+  // re-locks to the revision it already had, rebuilds the identical closure and
+  // exits 0 — so the unit succeeds, this command reported "upgraded", and the
+  // box stayed on the release it booted. Measured on an appliance that sat on
+  // 3.3.3 across three "successful" upgrades while 3.4.0 was published.
+  //
+  // `getent` rather than a ping or a fetch: name resolution is the thing that
+  // actually broke, it needs no route to the internet to answer, and it is the
+  // same lookup nix makes.
+  if (!io.exec(["getent", "ahosts", RELEASE_SOURCE_HOST]).ok) {
+    io.error(`cannot resolve ${RELEASE_SOURCE_HOST}, so there is no release to pull.`);
+    io.error(
+      "This box is unchanged and still running its current generation — the fault is name resolution, not the upgrade. Check: getent ahosts " +
+        `${RELEASE_SOURCE_HOST}   and, on a tailnet box: tailscale set --accept-dns=false && tailscale set --accept-dns=true`,
+    );
+    return 1;
+  }
+
   io.log(
     "upgrading from the current release. This takes a few minutes and the dashboard will blip.",
   );

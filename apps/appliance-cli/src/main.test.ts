@@ -415,6 +415,40 @@ describe("upgrade", () => {
     expect(flat).toContain("systemctl start --wait nixos-upgrade.service");
   });
 
+  // THE FAILURE THAT REPORTED SUCCESS.
+  //
+  // nix treats an unreachable flake source as a SOFT failure: it warns
+  // "Could not resolve host: api.github.com; using cached version", re-locks to
+  // the revision it already had, rebuilds the identical closure and exits 0.
+  // `nixos-upgrade.service` then succeeds, and this command printed "upgraded.
+  // The new generation is live" at a box still running the release it booted.
+  // Measured on an appliance that stayed on 3.3.3 across three "successful"
+  // upgrades while 3.4.0 was published and `stable` had moved.
+  test("it refuses when the release source cannot be resolved", () => {
+    const h = harness(box, (command) =>
+      command.includes("getent") ? { ok: false, output: "" } : { ok: true, output: "" },
+    );
+
+    expect(run(["upgrade"], h.io)).toBe(1);
+    // And must not have started the unit: a run that cannot see the source can
+    // only produce a silent no-op with a success message on the end of it.
+    expect(joined(h.runs)).not.toContain("nixos-upgrade.service");
+  });
+
+  test("the refusal names DNS rather than blaming the upgrade", () => {
+    const h = harness(box, (command) =>
+      command.includes("getent") ? { ok: false, output: "" } : { ok: true, output: "" },
+    );
+
+    run(["upgrade"], h.io);
+
+    const errs = h.errs.join("\n");
+    expect(errs).toContain("resolve");
+    // The operator needs to know the box is FINE and the network is not, or the
+    // next step is a reflash instead of a DNS fix.
+    expect(errs).toContain("still running");
+  });
+
   test("a failed upgrade exits non-zero and points at the journal", () => {
     const h = harness(box, (command) =>
       command.includes("nixos-upgrade.service")
