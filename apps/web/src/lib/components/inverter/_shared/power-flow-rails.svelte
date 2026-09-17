@@ -24,7 +24,7 @@
 	// draws — see power-graph.ts for the routing. `flowing` is pre-filtered to the
 	// non-idle segments so the two passes stay a plain pair of loops.
 	import { fade } from 'svelte/transition';
-	import { MediaQuery } from 'svelte/reactivity';
+	import { motion } from '$lib/motion/tier.svelte';
 	import type { Flow } from '$lib/inverter/power-graph';
 	import type { RailPulse } from '$lib/inverter/flow-pulse';
 	import PowerFlowCharge from './power-flow-charge.svelte';
@@ -44,10 +44,34 @@
 	// A rail that reverses is a different group (the key carries the flow), so the
 	// old charges fade out while the new ones fade in at their own phase instead
 	// of teleporting to the mirrored point. SMIL is not reachable from CSS, so
-	// reduced motion is answered in the markup: no movers at all, and a plain
-	// coloured overlay on the cable that still carries the magnitude.
-	const reduceMotion = new MediaQuery('(prefers-reduced-motion: reduce)');
-	const fadeMs = $derived(reduceMotion.current ? 0 : 300);
+	// both degraded pictures are answered in the MARKUP rather than in a media
+	// query — see `$lib/motion/tier` for what the tiers mean and why a wall
+	// tablet ends up on one:
+	//
+	//   full  — the comet chains, blur bloom and all.
+	//   lite  — one dashed cable per rail, travelling. Same direction, same
+	//           speed, same magnitude (stroke width), at the cost of a thin
+	//           stroke repaint instead of a bead chain under a filter. Measured
+	//           on the idle overview at 6× CPU throttle, the comet chains'
+	//           SVG subtree cost ~6.5 ms of every frame's style/paint/composite.
+	//   still — nothing moves: a plain overlay that still states the magnitude.
+	const fadeMs = $derived(motion.still ? 0 : 300);
+
+	// Both degraded tiers draw ONE overlay path per lit rail, and differ only in
+	// what is on it: `lite` gets the travelling dash (direction is the datum, so
+	// the reverse class carries it), `still` gets nothing that moves. Resolved
+	// here rather than as a second template branch — the markup is at the repo's
+	// complexity ceiling, and an overlay that two branches had to keep in step
+	// is exactly the kind of drift the ceiling exists to prevent.
+	const overlayClass = (flow: Flow): string => {
+		if (motion.still) return '';
+		return flow === 'out' ? 'lite-flow lite-flow-out' : 'lite-flow';
+	};
+	/** The dash's period, and nothing at all when nothing moves. */
+	const overlayStyle = (pulse: RailPulse): string =>
+		motion.still ? '' : `--flow-dur:${pulse.dur}s`;
+	/** A lit rail states its magnitude even when it is standing still. */
+	const overlayOpacity = (pulse: RailPulse): number => 0.4 + pulse.share * 0.48;
 
 	// Cable ids the movers' <mpath> points at. Scoped to this instance so two
 	// diagrams on one page (a dashboard and a dialog) cannot capture each other's.
@@ -94,21 +118,60 @@
 	{/each}
 	{#each flowing as l (`${l.id}-${l.flow}`)}
 		<g class={l.color} transition:fade={{ duration: fadeMs }}>
-			{#if reduceMotion.current}
-				<!-- Motion off: the rail states its magnitude as a still overlay
-				     rather than a frozen row of sprites, which would read as debris
-				     left on the wire. -->
+			{#if motion.tier === 'full'}
+				<PowerFlowCharge pulse={l.pulse} flow={l.flow} cable={cableId(l.id)} />
+			{:else}
+				<!-- One overlay on the cable's own `d`, so it bends with the wire like
+				     the beads do. At `lite` its dash travels; at `still` it is a plain
+				     coloured rail rather than a frozen row of sprites, which would read
+				     as debris left on the wire. -->
 				<path
+					class={overlayClass(l.flow)}
 					d={l.d}
 					fill="none"
 					stroke="currentColor"
 					stroke-linecap="round"
 					stroke-width={l.pulse.width}
-					stroke-opacity={0.35 + l.pulse.share * 0.5}
+					stroke-opacity={overlayOpacity(l.pulse)}
+					style={overlayStyle(l.pulse)}
 				/>
-			{:else}
-				<PowerFlowCharge pulse={l.pulse} flow={l.flow} cable={cableId(l.id)} />
 			{/if}
 		</g>
 	{/each}
 </svg>
+
+<style>
+	/* One thin stroke per rail, repainted along its own path — no filter, no
+	   per-bead SMIL attribute writes, so the frame costs a dash pattern rather
+	   than a bead chain under a blur. The dash CYCLE is 24 user units, which is
+	   what the keyframe translates by: any other offset makes the pattern jump
+	   at the loop point instead of repeating seamlessly. */
+	.lite-flow {
+		stroke-dasharray: 10 14;
+		/* STEPPED, not linear. A continuous dash repaints the stroke on every one
+		   of the ~60 frames a second the browser offers; in 12 steps it repaints
+		   12 times a crossing and still reads as travel — a chase light rather
+		   than a glide. That is the difference between this tier costing a
+		   fraction of the comet chains and costing most of them. */
+		animation: flow-dash var(--flow-dur, 2s) steps(12, end) infinite;
+	}
+	/* Direction is the datum, so it is answered here rather than by negating the
+	   duration (a negative `dur` is not a thing an animation accepts). */
+	.lite-flow-out {
+		animation-direction: reverse;
+	}
+	@keyframes flow-dash {
+		to {
+			stroke-dashoffset: -24;
+		}
+	}
+	/* The tier already answers this — `motion.still` renders no `.lite-flow` at
+	   all — but a viewer who flips the OS switch mid-frame gets the still picture
+	   on the very next paint rather than on the next sample. */
+	@media (prefers-reduced-motion: reduce) {
+		.lite-flow,
+		.lite-flow-out {
+			animation: none;
+		}
+	}
+</style>

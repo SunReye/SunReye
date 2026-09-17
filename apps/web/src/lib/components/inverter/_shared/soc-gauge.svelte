@@ -7,8 +7,16 @@
 	// footprint as every other node. The perimeter drives the dash fill the way a
 	// circumference would on a round gauge.
 	import { socColor } from '$lib/inverter/sign-colors';
+	import { motion } from '$lib/motion/tier.svelte';
 
 	let { soc }: { soc: number | undefined } = $props();
+
+	// The fill glides toward each new reading at `full`, and steps to it below.
+	// A transition on `stroke-dashoffset` repaints the whole traced rect on every
+	// frame it runs, and there is one of these per gauged node.
+	const ease = $derived(
+		motion.tier === 'full' ? 'transition:stroke-dashoffset 500ms linear, stroke 500ms linear' : ''
+	);
 
 	const INSET = 2;
 	const SIZE = 56 - INSET * 2;
@@ -37,7 +45,7 @@
 			stroke-width="2.5"
 			stroke-dasharray={PERIMETER}
 			stroke-dashoffset={PERIMETER * (1 - soc / 100)}
-			style="transition:stroke-dashoffset 500ms linear, stroke 500ms linear"
+			style={ease}
 		/>
 	</svg>
 	<span

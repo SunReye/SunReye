@@ -3,7 +3,6 @@
 	import { resolve, routePath } from '$lib/resolve';
 	import { page } from '$app/state';
 	import { fade } from 'svelte/transition';
-	import { MediaQuery } from 'svelte/reactivity';
 	import * as Sidebar from '$lib/components/ui/sidebar';
 	import AppSidebar from '$lib/components/app-sidebar.svelte';
 	import { useAppSession } from '$lib/session';
@@ -14,6 +13,7 @@
 	import { chartPalette } from '$lib/chart-palette.svelte';
 	import { pageHeader } from '$lib/page-header.svelte';
 	import { migration } from '$lib/migration.svelte';
+	import { motion } from '$lib/motion/tier.svelte';
 	import HistoryNoticeBanner from '$lib/components/migration/history-notice-banner.svelte';
 	import { resolveView } from './app-view';
 
@@ -133,14 +133,22 @@
 		}
 	});
 
+	// Watch this device's frame budget for as long as the workspace is on screen.
+	// On `auto` (the default) a device that cannot hold its frames is stepped down
+	// a motion tier — the wall tablets run the same dashboard as the desktops and
+	// do not have the same budget. Leased here, once, rather than per card: the
+	// loop is per device, not per component.
+	$effect(() => motion.watch());
+
 	// Re-stamp whenever either half of the palette changes, so switching it in
 	// settings re-hues the whole app without a reload.
 	$effect(() => chartPalette.stamp());
 
 	// Subtle route-to-route motion: the shell (sidebar) stays put while the inner
-	// content cross-fades up on each navigation. Honour reduced-motion.
-	const reduceMotion = new MediaQuery('prefers-reduced-motion: reduce');
-	const contentIn = $derived(reduceMotion.current ? { duration: 0 } : { duration: 200 });
+	// content cross-fades up on each navigation. Through the motion tier, which
+	// already folds the OS's reduced-motion request in — a device that cannot
+	// hold its frames should not spend them fading a page it is about to paint.
+	const contentIn = $derived(motion.still ? { duration: 0 } : { duration: 200 });
 
 	// Workspace vs status message, in access-then-gate precedence order.
 	const view = $derived(

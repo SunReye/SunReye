@@ -14,6 +14,7 @@
 	import type { GraphNode, NodeKind } from '$lib/inverter/power-graph';
 	import type { NodeDetail } from '$lib/inverter/node-details';
 	import { nodeGlow } from '$lib/inverter/flow-pulse';
+	import { motion } from '$lib/motion/tier.svelte';
 
 	let {
 		node,
@@ -59,6 +60,23 @@
 
 	const iconColor = $derived(active ? node.accent : 'var(--muted-foreground)');
 
+	/**
+	 * The node box's transitions, at `full` only.
+	 *
+	 * Each of them is cheap to declare and expensive to run: the box-shadow is a
+	 * 34 px blur that repaints for every frame of its 500 ms, the tint is a
+	 * `color-mix` background, and there is one box per node. On the tablets this
+	 * tier exists for, a plant whose load wanders across a `pulseShare` bucket
+	 * leaves a wave of them running most of the time — measured on the idle
+	 * overview, 43 transitions were running at once. Below `full` the box takes
+	 * the same colours in one step.
+	 */
+	const boxTransition = $derived(
+		motion.tier === 'full' ? 'transition-[box-shadow,border-color,background] duration-500' : ''
+	);
+	/** Same, for the fade an idle node takes. */
+	const fadeTransition = $derived(motion.tier === 'full' ? 'transition-opacity duration-500' : '');
+
 	/** The node box, shared by the plain and the tappable variant so the two can
 	 *  never drift apart in size — the anchors are computed against this box. */
 	const BOX_CLASS = 'relative block size-14 sm:size-16 2xl:size-20';
@@ -90,13 +108,13 @@
 </script>
 
 <div
-	class="absolute -translate-x-1/2 -translate-y-1/2 transition-opacity duration-500"
+	class="absolute -translate-x-1/2 -translate-y-1/2 {fadeTransition}"
 	style={`left:${node.at.x * 100}%;top:${node.at.y * 100}%`}
 	class:opacity-70={!active}
 >
 	{#snippet box()}
 		<div
-			class="flex size-full items-center justify-center border-2 transition-[box-shadow,border-color,background] duration-500"
+			class="flex size-full items-center justify-center border-2 {boxTransition}"
 			style={circleStyle}
 		>
 			<Icon class="size-7 sm:size-8 2xl:size-10" weight="duotone" style={`color:${iconColor}`} />
