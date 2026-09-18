@@ -168,12 +168,37 @@
 		     itself and the overview's `100svh - header` viewport grid. It used to be
 		     an `h-14` here and a hand-copied `3.5rem` in a calc two files away, with
 		     nothing connecting them: changing the header silently made the kiosk
-		     screen scroll. -->
+		     screen scroll.
+
+		     ── The shell's stacking order, in one place ──────────────────────────
+		     A z-index only competes with the other boxes in the SAME stacking
+		     context, and this shell has no isolating ancestor between the header
+		     and a card's affordances — so a `z-20` written four components deep
+		     really does outrank the header's `z-10`, which is how the settings
+		     save bar came to drag its backdrop-blur across the title. Four tiers,
+		     and nothing in `apps/web` may invent a fifth:
+
+		       50  a chart holding the whole screen  (`OVERLAY_SECTION`, tokens.ts)
+		       40  the shell header                  (below)
+		       30  a section's own sticky nav        (settings tab strip)
+		       20  a sticky in-page bar              (settings action bar)
+		       10  an in-card affordance             (plot corner ⤢, zoom chips,
+		                                              sensor-group header)
+
+		     ── Where sticky page chrome starts ──────────────────────────────────
+		     `--sticky-top` is the first y a sticky bar inside the page may claim.
+		     It exists because the DOCUMENT is what scrolls, not `main`: the
+		     sidebar wrapper is `min-h-svh`, never `h-svh`, so `main` is always
+		     exactly as tall as its content. A `top-0` written in a panel was
+		     therefore both dead (its nearest scroll container never scrolls) and,
+		     had it worked, aimed at the header's own pixels. A nested area that
+		     adds sticky chrome of its own redefines this for its children — the
+		     settings panel adds the tab strip's height. -->
 		<Sidebar.Inset class="[--app-header-h:3.5rem]">
 			<!-- Persistent top header on every viewport: sidebar trigger + the active
 			     page's title/subtitle (set by each page via the page-header store). -->
 			<header
-				class="sticky top-0 z-10 flex h-[var(--app-header-h)] shrink-0 items-center gap-3 border-b border-border bg-background px-4"
+				class="sticky top-0 z-40 flex h-[var(--app-header-h)] shrink-0 items-center gap-3 border-b border-border bg-background px-4"
 			>
 				<Sidebar.Trigger />
 				<div class="flex min-w-0 flex-col">
@@ -195,12 +220,20 @@
 			     one viewer who most needs it — somebody reading a wall display — never
 			     sees. Renders nothing at all when there is nothing to say. -->
 			<HistoryNoticeBanner {isAdmin} />
-			<!-- `overflow-x-clip`, not `auto`: at 412px /automations ran past the
-			     viewport and the whole page could be dragged sideways. A sideways
-			     scrollbar on the page is never the fix — anything genuinely too wide
-			     (a table, a chart, a code block) scrolls inside its own box, so
-			     clipping here only ever hides an accident. -->
-			<main class="min-h-0 flex-1 overflow-y-auto overflow-x-clip">
+			<!-- No `overflow-y` here, deliberately. It used to be `overflow-y-auto`,
+			     which made this a scroll container that never scrolls (the wrapper
+			     above is `min-h-svh`, so this box is always its content's height) —
+			     and a scroll container that never scrolls is where `position:
+			     sticky` goes to die: every sticky bar in every settings panel was
+			     resolving against it and so never stuck at all. Leaving `overflow-y`
+			     visible hands them the viewport, which is what actually scrolls.
+			     `overflow-x-clip` stays, and stays on its own: `clip` is not a
+			     scroll container, so it keeps the sideways-drag fix (at 412px
+			     /automations ran past the viewport and the page could be dragged
+			     sideways) without taking the scrollport back. A sideways scrollbar
+			     on the page is never the fix — anything genuinely too wide scrolls
+			     inside its own box, so clipping here only ever hides an accident. -->
+			<main class="min-h-0 flex-1 overflow-x-clip [--sticky-top:var(--app-header-h)]">
 				{#key topSegment}
 					<div in:fade={contentIn}>
 						{@render children()}

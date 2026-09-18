@@ -14,6 +14,14 @@
 
 	const { children } = $props();
 
+	/**
+	 * The phone tab strip's measured height, and 0 from `md:` where the strip is
+	 * not rendered. The panel column advances `--sticky-top` by it, so a panel's
+	 * own sticky chrome (the save bar, a sensor group header) parks under the
+	 * strip instead of behind it. See `(app)/+layout.svelte` for the contract.
+	 */
+	let stripHeight = $state(0);
+
 	const session = useAppSession();
 	const isAdmin = $derived($session.data?.user.role === 'admin');
 
@@ -70,12 +78,15 @@
 	     and `lg:` (1024px) leaves tablets stacked with half the width unused.
 	     There is no token pair that lands the rail where this does. -->
 	<div class="flex flex-col gap-6 md:grid md:grid-cols-[13rem_minmax(0,1fr)] md:gap-10">
-		<SettingsNav {isAdmin} {current} />
+		<SettingsNav {isAdmin} {current} bind:stripHeight />
 
 		<!-- Wide shell, narrow panel: the shell measure has to cover rail + panel,
 		     but the panel itself is forms and prose and is capped at the reading
 		     measure so it does not run to 60rem of input fields. -->
-		<div class="min-w-0 max-w-3xl">
+		<div
+			class="min-w-0 max-w-3xl"
+			style="--sticky-top: calc(var(--app-header-h, 0px) + {stripHeight}px)"
+		>
 			{#key current}
 				<div class="flex flex-col gap-6" in:fly={panelIn}>
 					{@render children()}

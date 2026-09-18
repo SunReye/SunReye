@@ -95,7 +95,10 @@
 		<!-- The catalog scrolls inside its own box so long profiles don't push the
 		     page (and the Save action) out of reach; group headers stick to the top
 		     of the box until the next group scrolls up to replace them. -->
-		<div class="max-h-[60vh] overflow-y-auto rounded-md border border-border">
+		<div
+			data-slot="sensor-catalog"
+			class="max-h-[60svh] overflow-y-auto rounded-md border border-border"
+		>
 			{#each groups as group (group.id)}
 				<SensorGroup
 					label={group.label}
