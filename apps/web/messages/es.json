@@ -694,6 +694,8 @@
   "automations_subtitle": "Bucles de control ligeros basados en datos en vivo y la previsión solar",
   "settings_tab_automations": "Automatizaciones",
   "automations_master_desc": "Las automatizaciones permiten a SunReye escribir ajustes del inversor por sí mismo — hoy: recorte de picos mediante la corriente de carga de la batería. El interruptor principal las arma; cada automatización se configura en la página Automatizaciones.",
+  "badge_experimental": "Experimental",
+  "automations_experimental_note": "Las automatizaciones son experimentales. Escriben ajustes en un inversor conectado a la red en su nombre — pruébelas en una instalación que pueda vigilar y mantenga el modo sombra activado hasta que confíe en lo que deciden. Mientras el interruptor principal esté apagado, las automatizaciones no aparecen en la navegación.",
   "automations_master_enable": "Activar automatizaciones",
   "automations_disclaimer_title": "¿Activar escrituras automáticas de registros?",
   "automations_disclaimer_body": "Las automatizaciones escriben ajustes del inversor (corriente máxima de carga de la batería) automáticamente. Asegúrate de que los límites configurados coinciden con tu hardware y tu contrato de red — sigues siendo responsable de tu instalación. SunReye restaura tu valor anterior cuando una automatización se libera.",

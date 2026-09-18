@@ -3,6 +3,7 @@
 	import { automationStream } from '$lib/components/automations/stream.svelte';
 	import { setPageHeader } from '$lib/page-header.svelte';
 	import PageShell from '$lib/components/layout/page-shell.svelte';
+	import { Badge } from '$lib/components/ui/badge';
 	import * as m from '$lib/paraglide/messages';
 
 	// Index of the automations, one card each with its live run state. Kept as a
@@ -39,7 +40,16 @@
 	visible symptom of the measure drift this shell exists to end. Same measure
 	both sides; the cards keep their own width inside it.
 -->
-<PageShell width="wide">
+{#snippet experimental()}
+	<Badge variant="outline">{m.badge_experimental()}</Badge>
+{/snippet}
+
+<PageShell width="wide" toolbar={experimental}>
+	<!-- The feature is reachable from the nav only once an admin has armed it in
+	     Settings, but somebody who arrives by URL or bookmark gets the same
+	     caveat: this page's subject is software writing registers on a
+	     grid-tied inverter. -->
+	<p class="text-sm text-muted-foreground">{m.automations_experimental_note()}</p>
 	{#each automations as automation (automation.id)}
 		<AutomationCard
 			href={automation.href}

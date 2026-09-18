@@ -694,6 +694,8 @@
   "automations_subtitle": "Light control loops driven by live data and the solar forecast",
   "settings_tab_automations": "Automations",
   "automations_master_desc": "Automations let SunReye write inverter settings on its own — today: peak shaving via the battery charge current. The master switch arms them; each automation is configured on the Automations page.",
+  "badge_experimental": "Experimental",
+  "automations_experimental_note": "Automations are experimental. They write settings to a grid-tied inverter on your behalf — try them on a plant you can watch, and keep shadow mode on until you trust what they decide. While the master switch is off, Automations stays out of the navigation.",
   "automations_master_enable": "Enable automations",
   "automations_disclaimer_title": "Enable automatic register writes?",
   "automations_disclaimer_body": "Automations write inverter settings (battery max charge current) automatically. Make sure the configured limits match your hardware and grid contract — you remain responsible for your plant. SunReye restores your previous value whenever an automation lets go.",

@@ -694,6 +694,8 @@
   "automations_subtitle": "Leichte Regelkreise auf Basis von Livedaten und Solarprognose",
   "settings_tab_automations": "Automationen",
   "automations_master_desc": "Automationen erlauben SunReye, Wechselrichter-Einstellungen selbst zu schreiben — aktuell: Spitzenkappung über den Batterieladestrom. Der Hauptschalter aktiviert sie; jede Automation wird auf der Automationen-Seite konfiguriert.",
+  "badge_experimental": "Experimentell",
+  "automations_experimental_note": "Automationen sind experimentell. Sie schreiben in Ihrem Namen Einstellungen in einen netzgekoppelten Wechselrichter — probieren Sie sie an einer Anlage aus, die Sie beobachten können, und lassen Sie den Schattenmodus an, bis Sie den Entscheidungen trauen. Solange der Hauptschalter aus ist, erscheinen Automationen nicht in der Navigation.",
   "automations_master_enable": "Automationen aktivieren",
   "automations_disclaimer_title": "Automatische Registerschreibungen aktivieren?",
   "automations_disclaimer_body": "Automationen schreiben Wechselrichter-Einstellungen (max. Batterieladestrom) automatisch. Stelle sicher, dass die konfigurierten Grenzen zu deiner Hardware und deinem Netzvertrag passen — du bleibst für deine Anlage verantwortlich. SunReye stellt deinen vorherigen Wert wieder her, sobald eine Automation loslässt.",

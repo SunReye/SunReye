@@ -694,6 +694,8 @@
   "automations_subtitle": "Boucles de régulation légères basées sur les données en direct et la prévision solaire",
   "settings_tab_automations": "Automatisations",
   "automations_master_desc": "Les automatisations permettent à SunReye d'écrire lui-même des réglages de l'onduleur — aujourd'hui : écrêtage des pics via le courant de charge de la batterie. L'interrupteur principal les arme ; chaque automatisation se configure sur la page Automatisations.",
+  "badge_experimental": "Expérimental",
+  "automations_experimental_note": "Les automatisations sont expérimentales. Elles écrivent des réglages dans un onduleur raccordé au réseau en votre nom — essayez-les sur une installation que vous pouvez surveiller, et gardez le mode ombre actif jusqu'à ce que vous ayez confiance dans leurs décisions. Tant que l'interrupteur principal est éteint, les automatisations n'apparaissent pas dans la navigation.",
   "automations_master_enable": "Activer les automatisations",
   "automations_disclaimer_title": "Activer les écritures automatiques de registres ?",
   "automations_disclaimer_body": "Les automatisations écrivent automatiquement des réglages de l'onduleur (courant de charge max de la batterie). Vérifiez que les limites configurées correspondent à votre matériel et à votre contrat réseau — vous restez responsable de votre installation. SunReye restaure votre valeur précédente dès qu'une automatisation se retire.",
