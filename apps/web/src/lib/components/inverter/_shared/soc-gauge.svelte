@@ -1,7 +1,14 @@
 <script lang="ts">
-	// Square state-of-charge gauge traced just inside a power-flow node box, plus the
-	// percentage badge on its lower edge. Renders nothing without a reading, so the
-	// caller can hand it an optional SoC directly.
+	// Square state-of-charge gauge traced just inside a power-flow node box.
+	// Renders nothing without a reading, so the caller can hand it an optional SoC
+	// directly.
+	//
+	// The RING only: the percentage itself is the node box's content
+	// (`power-flow-node.svelte`), not a badge on this gauge's lower edge. It was
+	// one, at 0.62rem and tinted with the ramp below — under the repo's 12 px
+	// phone floor, and `--sign-warn` on the light theme's white is 2.2:1. What
+	// the ramp is good at is colouring a 2.5 px stroke; what it is bad at is
+	// colouring 10 px digits.
 	//
 	// Geometry: viewBox 56×56 scaled with the box, so a gauged node keeps the same
 	// footprint as every other node. The perimeter drives the dash fill the way a
@@ -48,10 +55,4 @@
 			style={ease}
 		/>
 	</svg>
-	<span
-		class="absolute bottom-0 left-1/2 -translate-x-1/2 translate-y-1/2 border border-border bg-background px-1.5 text-[0.62rem] font-semibold tabular-nums leading-tight"
-		style={`color:${socColor(soc)}`}
-	>
-		{Math.round(soc)}%
-	</span>
 {/if}

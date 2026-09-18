@@ -10,6 +10,7 @@
 	import ArrowUp from 'phosphor-svelte/lib/ArrowUp';
 	import AnimatedNumber from './animated-number.svelte';
 	import SocGauge from './_shared/soc-gauge.svelte';
+	import SocReadout from './_shared/soc-readout.svelte';
 	import NodeDetailDialog from './node-detail-dialog.svelte';
 	import type { GraphNode, NodeKind } from '$lib/inverter/power-graph';
 	import type { NodeDetail } from '$lib/inverter/node-details';
@@ -57,6 +58,30 @@
 	const hasSoc = $derived(gauged && soc !== undefined);
 	/** SoC handed to the gauge: `undefined` on nodes that don't show one. */
 	const ringSoc = $derived(gauged ? soc : undefined);
+
+	/**
+	 * The percentage, whole, or `undefined` on a node that carries none.
+	 *
+	 * It is the one figure on this hero anybody reads from across a room, so it
+	 * is the CONTENT of the node box rather than a badge pinned to its edge — it
+	 * used to be a 0.62rem chip on the bottom border, under the repo's own 12 px
+	 * phone floor and tinted with the SoC ramp, which puts `--sign-warn`
+	 * (`#f59e0b`) on the light theme's white at 2.2:1. The ramp still says what
+	 * the number MEANS — on the ring, where a 2.5 px stroke can carry a hue —
+	 * while the digits take the surface's own foreground and its full contrast.
+	 */
+	const socLabel = $derived(hasSoc ? Math.round(soc as number) : undefined);
+
+	/**
+	 * The node's icon steps down on a gauged node so the number can lead.
+	 *
+	 * Both cannot be dominant in a 56 px box, and on a battery the icon is the
+	 * redundant one: the caption underneath already names the node. The geometry
+	 * gives way to the type rather than the other way round.
+	 */
+	const iconClass = $derived(
+		hasSoc ? 'size-4 sm:size-4.5 2xl:size-6' : 'size-7 sm:size-8 2xl:size-10'
+	);
 
 	const iconColor = $derived(active ? node.accent : 'var(--muted-foreground)');
 
@@ -114,10 +139,11 @@
 >
 	{#snippet box()}
 		<div
-			class="flex size-full items-center justify-center border-2 {boxTransition}"
+			class="power-node-box flex size-full flex-col items-center justify-center border-2 leading-none {boxTransition}"
 			style={circleStyle}
 		>
-			<Icon class="size-7 sm:size-8 2xl:size-10" weight="duotone" style={`color:${iconColor}`} />
+			<Icon class={iconClass} weight="duotone" style={`color:${iconColor}`} />
+			<SocReadout soc={socLabel} />
 		</div>
 		<SocGauge soc={ringSoc} />
 	{/snippet}
