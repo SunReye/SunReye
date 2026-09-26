@@ -4,7 +4,12 @@
 	import { SECTION_GAP } from '$lib/layout/tokens';
 	import { groupByConnection } from './add-device-logic';
 	import DeviceGroupCard from './device-group.svelte';
-	import type { ConnectionView, DeviceRoster, DeviceView, IntegrationView } from './device-types';
+	import type {
+		ConnectionView,
+		DeviceHandlers,
+		DeviceRoster,
+		IntegrationHandlers
+	} from './device-types';
 
 	// The roster's three states — failed to load, empty, groups — and the groups.
 	let {
@@ -13,26 +18,16 @@
 		busyId,
 		busyIntegrationId,
 		onEditConnection,
-		onEdit,
-		onRename,
-		onRetire,
-		onRestore,
-		onEditIntegration,
-		onToggleIntegration,
-		onRemoveIntegration
+		handlers,
+		integrationHandlers
 	}: {
 		roster: DeviceRoster | null;
 		loadFailed: boolean;
 		busyId: number | null;
 		busyIntegrationId: number | null;
 		onEditConnection: (connection: ConnectionView) => void;
-		onEdit: (device: DeviceView) => void;
-		onRename: (device: DeviceView) => void;
-		onRetire: (device: DeviceView) => void;
-		onRestore: (device: DeviceView) => void;
-		onEditIntegration: (integration: IntegrationView) => void;
-		onToggleIntegration: (integration: IntegrationView, enabled: boolean) => void;
-		onRemoveIntegration: (integration: IntegrationView) => void;
+		handlers: DeviceHandlers;
+		integrationHandlers: IntegrationHandlers;
 	} = $props();
 
 	const groups = $derived(roster ? groupByConnection(roster) : []);
@@ -51,13 +46,8 @@
 				{busyId}
 				{busyIntegrationId}
 				{onEditConnection}
-				{onEdit}
-				{onRename}
-				{onRetire}
-				{onRestore}
-				{onEditIntegration}
-				{onToggleIntegration}
-				{onRemoveIntegration}
+				{handlers}
+				{integrationHandlers}
 			/>
 		{/each}
 	</div>

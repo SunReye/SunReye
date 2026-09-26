@@ -14,10 +14,13 @@
 	import AddDeviceDialog from './add-device-dialog.svelte';
 	import ConnectionDialog from './connection-dialog.svelte';
 	import DeviceList from './device-list.svelte';
+	import DeviceDeleteDialog from './device-delete-dialog.svelte';
 	import type {
 		ConnectionView,
+		DeviceHandlers,
 		DeviceRoster,
 		DeviceView,
+		IntegrationHandlers,
 		IntegrationPatchBody,
 		IntegrationView
 	} from './device-types';
@@ -53,6 +56,8 @@
 	/** The row the name-only dialog is open on, or null. A coded or virtual row
 	    has no addressing to edit; #219 left `name` as the one thing it may set. */
 	let renaming = $state<DeviceView | null>(null);
+	/** The row the delete dialog is open on, or null. */
+	let deleting = $state<DeviceView | null>(null);
 	let configuring = $state<IntegrationView | null>(null);
 	let removing = $state<IntegrationView | null>(null);
 
@@ -129,6 +134,20 @@
 	const saveParams = (row: IntegrationView, params: Record<string, unknown>) =>
 		patch(row, { params }, m.devices_integration_toast_saved({ label: row.label }));
 
+	const handlers: DeviceHandlers = {
+		edit: openDialog,
+		rename: (d) => (renaming = d),
+		retire: (d) => (retiring = d),
+		restore: (d) => setRetired(d, false),
+		delete: (d) => (deleting = d)
+	};
+
+	const integrationHandlers: IntegrationHandlers = {
+		edit: (i) => (configuring = i),
+		toggle,
+		remove: (i) => (removing = i)
+	};
+
 	async function confirmRemove() {
 		const row = removing;
 		removing = null;
@@ -171,13 +190,8 @@
 		{busyId}
 		{busyIntegrationId}
 		onEditConnection={(c) => (connection = c)}
-		onEdit={openDialog}
-		onRename={(d) => (renaming = d)}
-		onRetire={(d) => (retiring = d)}
-		onRestore={(d) => setRetired(d, false)}
-		onEditIntegration={(i) => (configuring = i)}
-		onToggleIntegration={toggle}
-		onRemoveIntegration={(i) => (removing = i)}
+		{handlers}
+		{integrationHandlers}
 	/>
 </Section>
 
@@ -193,6 +207,8 @@
 {/if}
 
 <RenameDialog bind:device={renaming} onSaved={load} />
+
+<DeviceDeleteDialog bind:device={deleting} onDeleted={load} onRetire={(d) => (retiring = d)} />
 
 <RetireDialog device={retiring} onCancel={() => (retiring = null)} onConfirm={confirmRetire} />
 

@@ -205,3 +205,24 @@ export type AddDeviceForm = {
 
 /** The `<select>` value that means "create a connection". Never a real id. */
 export const NEW_CONNECTION = "new";
+
+/**
+ * What the roster's device rows can ask the panel to do. ONE object handed down
+ * the tree rather than a prop per verb: the group → list → entry → rows → row
+ * chain threaded six callbacks through five components, and adding Delete meant
+ * editing every one of them.
+ */
+export type DeviceHandlers = {
+  edit: (device: DeviceView) => void;
+  rename: (device: DeviceView) => void;
+  retire: (device: DeviceView) => void;
+  restore: (device: DeviceView) => void;
+  delete: (device: DeviceView) => void;
+};
+
+/** The same, for an integration row. */
+export type IntegrationHandlers = {
+  edit: (integration: IntegrationView) => void;
+  toggle: (integration: IntegrationView, enabled: boolean) => void;
+  remove: (integration: IntegrationView) => void;
+};

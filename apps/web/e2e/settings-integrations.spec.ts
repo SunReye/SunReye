@@ -220,10 +220,9 @@ test("the export's own fields come from the catalog, and the row it edits is its
  */
 test("Remove names the devices it retires, and only then deletes", async ({ page }) => {
   const opened = await open(page);
-  await page
-    .locator("[data-integration='evcc-ingest']")
-    .getByRole("button", { name: "Remove" })
-    .click();
+  // Remove is destructive, so it sits behind the row's menu, not beside Edit.
+  await page.locator("[data-integration='evcc-ingest'] [data-row-menu]").click();
+  await page.getByRole("menuitem", { name: "Remove" }).click();
   const panel = dialog(page);
   await expect(panel.getByRole("heading", { name: "Remove EVCC?" })).toBeVisible();
 
@@ -246,10 +245,9 @@ test("Remove names the devices it retires, and only then deletes", async ({ page
 // would be promising a retirement that will not happen.
 test("an integration that provisions nothing warns about nothing", async ({ page }) => {
   await open(page);
-  await page
-    .locator("[data-integration='ha-export']")
-    .getByRole("button", { name: "Remove" })
-    .click();
+  // Remove is destructive, so it sits behind the row's menu, not beside Edit.
+  await page.locator("[data-integration='ha-export'] [data-row-menu]").click();
+  await page.getByRole("menuitem", { name: "Remove" }).click();
   const panel = dialog(page);
   await expect(panel.getByRole("heading", { name: "Remove Home Assistant export?" })).toBeVisible();
   await expect(panel.locator("[data-retires]")).toHaveCount(0);

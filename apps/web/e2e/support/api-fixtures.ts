@@ -703,6 +703,9 @@ export const INVERTER_CONFIG = {
   unitId: 0,
   timeoutMs: 2000,
   pollIntervalMs: 1000,
+  // Always present on the real answer (`inverterConfigSchema` defaults it); the
+  // form binds it to a switch, which throws on `undefined`.
+  simulate: false,
 };
 
 /**
@@ -1035,6 +1038,13 @@ export const CONNECTIONS = [
     },
   },
 ];
+
+/**
+ * The roster ids `DELETE /api/devices/:id` refuses as having readings. The
+ * meter (2) never recorded any — it is stored but not polled — so it is the
+ * one a spec can actually delete.
+ */
+export const DEVICES_WITH_HISTORY: ReadonlySet<number> = new Set([1, 3, 4, 5, 6]);
 
 /**
  * `GET /api/devices` — `DeviceRoster` (`apps/server/src/devices/device-admin.ts`):
