@@ -797,6 +797,43 @@ export async function createDevice(db: PlantDb, spec: DeviceSpec): Promise<Devic
 
 /** SQLSTATE for `unique_violation`. */
 const UNIQUE_VIOLATION = "23505";
+/** SQLSTATE for `foreign_key_violation`. */
+const FOREIGN_KEY_VIOLATION = "23503";
+
+/** Whether `error`, or a cause up to four levels down, carries `code`. */
+function hasSqlState(error: unknown, code: string): boolean {
+  for (let current = error, depth = 0; current instanceof Error && depth < 4; depth += 1) {
+    if ((current as Error & { code?: unknown }).code === code) return true;
+    current = current.cause;
+  }
+  return false;
+}
+
+/** What {@link deleteDevice} did. */
+export type DeletedDevice = "deleted" | "has-history" | "missing";
+
+/**
+ * Delete a device and its pack, in ONE statement.
+ *
+ * The readings reference `devices` `ON DELETE RESTRICT` (see
+ * `./schema/metrics.ts`), and so do the battery-health, forecast-correction and
+ * replay tables. That constraint IS the history check: a device that wrote a
+ * single row is refused by the engine, and because the pack's delete is a
+ * sibling CTE of the same statement, the refusal takes it back too — no
+ * half-deleted device with its battery gone. `db-tests/plant-spine.test.ts`
+ * proves both halves against a real Postgres.
+ */
+export async function deleteDevice(db: PlantDb, id: number): Promise<DeletedDevice> {
+  try {
+    const { rows } = await db.execute(sql`
+      with pack as (delete from batteries where device_id = ${id})
+      delete from devices where id = ${id} returning id`);
+    return rows.length > 0 ? "deleted" : "missing";
+  } catch (error) {
+    if (hasSqlState(error, FOREIGN_KEY_VIOLATION)) return "has-history";
+    throw error;
+  }
+}
 
 /**
  * The constraint a unique violation names, or null when `error` is not one.
