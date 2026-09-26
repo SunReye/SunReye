@@ -15,12 +15,10 @@
 	let {
 		profiles,
 		selectedId = $bindable(),
-		onContinue,
 		onExternalInstalled
 	}: {
 		profiles: RegisteredProfile[];
 		selectedId: string | null;
-		onContinue: () => void;
 		onExternalInstalled: (id: string) => void;
 	} = $props();
 
@@ -39,7 +37,7 @@
 			<Button
 				variant={selectVariant(selected)}
 				size="sm"
-				class="min-w-24 flex-1 sm:flex-none"
+				class="h-9 min-w-24 sm:h-8"
 				aria-pressed={selected}
 				onclick={() => (selectedId = p.id)}
 			>
@@ -83,7 +81,4 @@
 		</Collapsible.Content>
 	</Collapsible.Root>
 
-	<div class="flex justify-end">
-		<Button disabled={!selectedId} onclick={onContinue}>{m.action_continue()}</Button>
-	</div>
 </Section>
