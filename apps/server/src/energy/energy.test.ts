@@ -1,6 +1,10 @@
 import type { CanonicalRole, InverterProfile, InverterSample } from "@SunReye/inverter-core";
 import { afterAll, describe, expect, mock, test } from "bun:test";
 
+/** The zone these host-local fixtures were written in — the plant zone the
+ *  mocked `getPlantTimeZone` also answers with. */
+const HOST_TZ = Intl.DateTimeFormat().resolvedOptions().timeZone;
+
 // energy.ts → cost.ts imports the DB singleton (which eagerly validates server
 // env) and reads the live poll cache + plant-zone setting. Mock those so the
 // pure orchestration can run without a database or populated .env.
@@ -123,7 +127,7 @@ describe("energySeries — which day periods get a bar", () => {
     const m = String(now.getMonth() + 1).padStart(2, "0");
     expect(points.at(-1)?.bucket).toBe(`${y}-${m}-${String(days).padStart(2, "0")}`);
     // Today is present and is NOT the last bar unless today IS month-end.
-    expect(points.map((p) => p.bucket)).toContain(currentPeriodKey("day", now));
+    expect(points.map((p) => p.bucket)).toContain(currentPeriodKey("day", now, HOST_TZ));
   });
 
   test("a plant with no load counter gets a consumption bar anyway", async () => {
@@ -137,7 +141,7 @@ describe("energySeries — which day periods get a bar", () => {
       "grid.energy.exported.total": "exp",
       "production.total": "prod",
     });
-    const period = currentPeriodKey("day", from);
+    const period = currentPeriodKey("day", from, HOST_TZ);
     queryResults = [
       [
         { period, hod: 12, dow: 1, metric: "prod", kwh: 10 },
@@ -161,7 +165,7 @@ describe("energySeries — which day periods get a bar", () => {
       "grid.energy.imported.total": "imp",
       "load.energy.total": "load",
     });
-    const period = currentPeriodKey("day", from);
+    const period = currentPeriodKey("day", from, HOST_TZ);
     queryResults = [
       [
         { period, hod: 20, dow: 1, metric: "imp", kwh: 4 },
@@ -200,7 +204,7 @@ describe("energySeries — which day periods get a bar", () => {
         bucket: "day",
         inverterId: "inv-1",
       });
-      const todayKey = currentPeriodKey("day", now);
+      const todayKey = currentPeriodKey("day", now, HOST_TZ);
       const todayBar = points.find((p) => p.bucket === todayKey);
       expect(todayBar?.loadKwh).toBeCloseTo(8.6, 6);
       expect(todayBar?.productionKwh).toBeCloseTo(5.5, 6);

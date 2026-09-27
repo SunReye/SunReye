@@ -7,6 +7,10 @@ import { afterAll, afterEach, beforeEach, describe, expect, mock, test } from "b
 import type { SQL } from "drizzle-orm";
 import { PgDialect } from "drizzle-orm/pg-core";
 
+/** The zone these host-local fixtures were written in — the plant zone the
+ *  mocked `getPlantTimeZone` also answers with. */
+const HOST_TZ = Intl.DateTimeFormat().resolvedOptions().timeZone;
+
 /** How an energy figure is derived from stored data — see `ENERGY_ROLE_DERIVATION`. */
 type EnergyDerivation = "counter" | "integral";
 
@@ -141,7 +145,7 @@ const overlayFor = (
   sample: InverterSample | null,
   inverterId: string,
   now: Date,
-) => liveTodayTotals(profile, inverterId, now, sample);
+) => liveTodayTotals(profile, inverterId, HOST_TZ, now, sample);
 
 /** Minimal profile mapping the given canonical roles → metric keys. */
 const profileWith = (roleKeys: Partial<Record<CanonicalRole, string>>): InverterProfile =>
@@ -295,10 +299,22 @@ describe("liveTodayTotals", () => {
     expect(overlayFor(fullProfile, s, "inv-1", now)).toEqual({});
   });
 
+  test("the day boundary is the PLANT's, not the host's", () => {
+    // 21:30Z and 22:30Z share a UTC day, but straddle Berlin's midnight (23:30 → 00:30).
+    const s: InverterSample = {
+      time: "2026-08-15T21:30:00Z",
+      inverterId: "inv-1",
+      metrics: liveMetrics,
+    };
+    const at = new Date("2026-08-15T22:30:00Z");
+    expect(liveTodayTotals(fullProfile, "inv-1", "Europe/Berlin", at, s)).toEqual({});
+    expect(liveTodayTotals(fullProfile, "inv-1", "UTC", at, s).importKwh).toBe(1.1);
+  });
+
   test("a plant of ONE member is spoken for by that member's sample", () => {
     const s = sample(today, liveMetrics, "inv-1");
     const plant = { plant: [{ id: 1, slug: "inv-1", weight: 1 }] };
-    expect(liveTodayTotals(fullProfile, plant, now, s)).toEqual({
+    expect(liveTodayTotals(fullProfile, plant, HOST_TZ, now, s)).toEqual({
       importKwh: 1.1,
       exportKwh: 2.2,
       loadKwh: 8.6,
@@ -314,7 +330,7 @@ describe("liveTodayTotals", () => {
         { id: 2, slug: "inv-2", weight: 1 },
       ],
     };
-    expect(liveTodayTotals(fullProfile, plant, now, s)).toEqual({});
+    expect(liveTodayTotals(fullProfile, plant, HOST_TZ, now, s)).toEqual({});
   });
 
   test("all guards pass → every mapped, finite field is returned", () => {
@@ -406,6 +422,7 @@ describe("fetchBucketEnergy", () => {
       hour(0),
       hour(23),
       "hourly_rollups",
+      HOST_TZ,
     );
     return buckets.map((b) => b.import);
   };
@@ -427,7 +444,14 @@ describe("fetchBucketEnergy", () => {
         { bucket: hour(20).toISOString(), metric: "imp", min_value: 0, max_value: 1.5 },
       ],
     ];
-    const buckets = await fetchBucketEnergy(gridTied, "inv-1", hour(0), hour(23), "hourly_rollups");
+    const buckets = await fetchBucketEnergy(
+      gridTied,
+      "inv-1",
+      hour(0),
+      hour(23),
+      "hourly_rollups",
+      HOST_TZ,
+    );
     expect(buckets.map((b) => b.load)).toEqual([1, 1.5]);
   });
 
@@ -443,7 +467,14 @@ describe("fetchBucketEnergy", () => {
         { bucket: hour(20).toISOString(), metric: "load", min_value: 0, max_value: 2 },
       ],
     ];
-    const buckets = await fetchBucketEnergy(metered, "inv-1", hour(0), hour(23), "hourly_rollups");
+    const buckets = await fetchBucketEnergy(
+      metered,
+      "inv-1",
+      hour(0),
+      hour(23),
+      "hourly_rollups",
+      HOST_TZ,
+    );
     // 2, not the 5 the surrounding flows would imply — a measured counter wins.
     expect(buckets.map((b) => b.load)).toEqual([2]);
   });
@@ -913,21 +944,21 @@ describe("§51 EEG — export that earned nothing", () => {
 describe("currentPeriodKey", () => {
   test("names the period a moment falls in, at each granularity", () => {
     const at = new Date(2024, 5, 15, 9, 45);
-    expect(currentPeriodKey("hour", at)).toBe("2024-06-15T09");
-    expect(currentPeriodKey("day", at)).toBe("2024-06-15");
-    expect(currentPeriodKey("month", at)).toBe("2024-06");
+    expect(currentPeriodKey("hour", at, HOST_TZ)).toBe("2024-06-15T09");
+    expect(currentPeriodKey("day", at, HOST_TZ)).toBe("2024-06-15");
+    expect(currentPeriodKey("month", at, HOST_TZ)).toBe("2024-06");
   });
 
   test("pads single-digit months, days and hours", () => {
     const at = new Date(2024, 0, 5, 3, 0);
-    expect(currentPeriodKey("hour", at)).toBe("2024-01-05T03");
-    expect(currentPeriodKey("day", at)).toBe("2024-01-05");
-    expect(currentPeriodKey("month", at)).toBe("2024-01");
+    expect(currentPeriodKey("hour", at, HOST_TZ)).toBe("2024-01-05T03");
+    expect(currentPeriodKey("day", at, HOST_TZ)).toBe("2024-01-05");
+    expect(currentPeriodKey("month", at, HOST_TZ)).toBe("2024-01");
   });
 
   test("midnight belongs to the day that starts, not the one that ended", () => {
-    expect(currentPeriodKey("hour", new Date(2024, 5, 15, 0, 0, 0))).toBe("2024-06-15T00");
-    expect(currentPeriodKey("day", new Date(2024, 5, 15, 23, 59, 59))).toBe("2024-06-15");
+    expect(currentPeriodKey("hour", new Date(2024, 5, 15, 0, 0, 0), HOST_TZ)).toBe("2024-06-15T00");
+    expect(currentPeriodKey("day", new Date(2024, 5, 15, 23, 59, 59), HOST_TZ)).toBe("2024-06-15");
   });
 
   test("an explicit plant zone decides the key, independent of the host zone", () => {
@@ -955,7 +986,7 @@ describe("currentPeriodKey", () => {
       bucket: "day",
       inverterId: "inv-1",
     });
-    expect(points.map((p) => p.bucket)).toContain(currentPeriodKey("day", now));
+    expect(points.map((p) => p.bucket)).toContain(currentPeriodKey("day", now, HOST_TZ));
   });
 });
 
@@ -1091,6 +1122,7 @@ describe("energy derivation per role (issue #115)", () => {
       hour(0),
       hour(HOURS),
       "hourly_rollups",
+      HOST_TZ,
     );
     return buckets.reduce((sum, b) => sum + b[field], 0);
   };
@@ -1153,6 +1185,7 @@ describe("counter restart across the bucket boundary", () => {
       hour(0),
       hour(23),
       "hourly_rollups",
+      HOST_TZ,
     );
     return buckets.map((b) => b.import);
   };

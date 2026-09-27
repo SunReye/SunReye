@@ -58,7 +58,7 @@ function overrideTodayPeriod(
   tz: string,
 ): void {
   const now = new Date();
-  const liveToday = liveTodayTotals(profile, inverterId, now);
+  const liveToday = liveTodayTotals(profile, inverterId, tz, now);
   // The key is cut in the SAME plant zone the matrix bucketed in, so the live
   // registers land on the in-progress day's bar — not, across a server/browser
   // midnight mismatch, on a future one (issues #46, #52).

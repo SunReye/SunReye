@@ -1,11 +1,10 @@
 import { describe, expect, test } from "bun:test";
+import { dayStart, nextDayStart } from "@SunReye/inverter-core/zoned-calendar";
 import {
   SLOT_MINUTES,
   type SpotPriceSeries,
   buildSpotSlice,
   expectedSlotCount,
-  localDayStartMs,
-  nextLocalDayStartMs,
   toSpotRows,
   zoneTimeZone,
 } from "./spot-price";
@@ -53,36 +52,12 @@ describe("market calendar", () => {
     expect(zoneTimeZone("ZZ")).toBe(BERLIN);
   });
 
-  test("local day start resolves the offset at midnight, not at now", () => {
-    // Spring-forward day: midnight is still CET (+1) while noon is CEST (+2), so
-    // a single-offset calculation would land an hour out.
-    expect(localDayStartMs(BERLIN, Date.parse("2026-03-29T10:00:00Z"))).toBe(
-      Date.parse("2026-03-28T23:00:00Z"),
-    );
-    // Autumn: midnight is CEST (+2), the afternoon is CET (+1).
-    expect(localDayStartMs(BERLIN, Date.parse("2026-10-25T09:00:00Z"))).toBe(
-      Date.parse("2026-10-24T22:00:00Z"),
-    );
-    expect(localDayStartMs(BERLIN, Date.parse("2026-06-10T22:30:00Z"))).toBe(
-      Date.parse("2026-06-10T22:00:00Z"),
-    );
-  });
-
-  test("next local day start crosses a DST seam", () => {
-    expect(nextLocalDayStartMs(BERLIN, Date.parse("2026-03-29T10:00:00Z"))).toBe(
-      Date.parse("2026-03-29T22:00:00Z"),
-    );
-    expect(nextLocalDayStartMs(BERLIN, Date.parse("2026-10-25T09:00:00Z"))).toBe(
-      Date.parse("2026-10-25T23:00:00Z"),
-    );
-  });
-
   test("expected slot count is DST-aware with no special case", () => {
     const day = (isoNow: string, resolution = SLOT_MINUTES) => {
       const now = Date.parse(isoNow);
       return expectedSlotCount(
-        localDayStartMs(BERLIN, now),
-        nextLocalDayStartMs(BERLIN, now),
+        dayStart(now, BERLIN).getTime(),
+        nextDayStart(now, BERLIN).getTime(),
         resolution,
       );
     };
@@ -95,7 +70,7 @@ describe("market calendar", () => {
 
 describe("ingest onto the quarter-hour grid", () => {
   const now = Date.parse("2026-06-10T09:00:00Z");
-  const todayStart = localDayStartMs(BERLIN, now);
+  const todayStart = dayStart(now, BERLIN).getTime();
 
   test("a quarter-hourly series is stored slot for slot", () => {
     const out = toSpotRows(
@@ -163,8 +138,8 @@ describe("ingest onto the quarter-hour grid", () => {
 
 describe("buildSpotSlice", () => {
   const now = Date.parse("2026-06-10T09:00:00Z");
-  const todayStart = localDayStartMs(BERLIN, now);
-  const tomorrowStart = nextLocalDayStartMs(BERLIN, now);
+  const todayStart = dayStart(now, BERLIN).getTime();
+  const tomorrowStart = nextDayStart(now, BERLIN).getTime();
 
   test("a full two days is complete and plannable", () => {
     const slice = buildSpotSlice(
@@ -180,7 +155,7 @@ describe("buildSpotSlice", () => {
 
   test("winter carries the standard-time offset", () => {
     const winter = Date.parse("2026-01-15T09:00:00Z");
-    const slice = buildSpotSlice(rows(localDayStartMs(BERLIN, winter), 4), "DE-LU", winter);
+    const slice = buildSpotSlice(rows(dayStart(winter, BERLIN).getTime(), 4), "DE-LU", winter);
     expect(slice.utcOffsetSeconds).toBe(3600);
   });
 
@@ -225,7 +200,7 @@ describe("buildSpotSlice", () => {
 
   test("a 23-hour day is complete at 92 slots", () => {
     const spring = Date.parse("2026-03-29T10:00:00Z");
-    const slice = buildSpotSlice(rows(localDayStartMs(BERLIN, spring), 92), "DE-LU", spring);
+    const slice = buildSpotSlice(rows(dayStart(spring, BERLIN).getTime(), 92), "DE-LU", spring);
     expect(slice.coverage.today).toBe("complete");
   });
 
