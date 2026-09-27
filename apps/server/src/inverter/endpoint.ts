@@ -66,6 +66,7 @@ import { getInverterConfig, getSimulate, setSimulate } from "../settings/config"
 import { env } from "@SunReye/env/server";
 import { log } from "../shared/logging";
 import { type ProvisionLogger, dbProvisionStore, provisionPlantRow } from "./provision";
+import { afterDeviceWrite } from "../devices/after-device-write";
 
 /**
  * The framings the Modbus client actually implements.
@@ -449,8 +450,17 @@ export interface ConnectionSaveEffects {
    * id. Adopts an existing device untouched.
    */
   provision: (seed: InverterConfig) => Promise<unknown>;
-  /** Ask the poll loop to RE-READ the spine (never to accept these values). */
-  reload: () => Promise<void>;
+  /**
+   * The cached plant facts, dropped after the write: provisioning may have just
+   * created the device whose rows they compose (`../devices/after-device-write.ts`).
+   */
+  facts: { invalidate(): void };
+  /**
+   * Re-open the connections and ask the poll loop to RE-READ the spine (never to
+   * accept these values) — `../devices/plant-reload.ts`, the reload every other
+   * plant write runs, because provisioning can create a device and a connection.
+   */
+  reopen: () => Promise<void>;
 }
 
 /**
@@ -463,6 +473,7 @@ export interface ConnectionSaveEffects {
  *     second one from the same values, and so the device it may create is bound
  *     to it.
  *  3. RELOAD last, so the loop re-resolves against the final state of both rows.
+ *     The full plant after-write, not just the loop: see {@link ConnectionSaveEffects}.
  *
  * A failed write does not reload and does not provision: the exception reaches
  * the route, which answers 400 with the reason. Telling the loop to re-read after
@@ -477,7 +488,7 @@ export async function applyConnectionSave(
 ): Promise<InverterConfig> {
   const stored = await saveConnectionSettings(config, deps);
   await effects.provision(stored);
-  await effects.reload();
+  await afterDeviceWrite(effects.facts, effects.reopen);
   return stored;
 }
 

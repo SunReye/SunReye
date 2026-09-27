@@ -32,6 +32,8 @@ import { fetchWeather } from "../forecast/weather";
 import { getWeatherConfig, setWeatherConfig } from "../settings/weather-settings";
 import { adminGuard } from "./admin-guard";
 import { attempt } from "./write-attempt";
+import { reopenPlantRuntime } from "../devices/plant-reload";
+import { plantFacts } from "../settings/plant-facts-instance";
 
 /** Shared route options for an admin write of an unvalidated (schema-checked) body. */
 const adminWrite = { requireAdmin: true, body: t.Unknown() } as const;
@@ -138,7 +140,8 @@ export const settingsRoutes = new Elysia({ name: "settings-routes" })
               ...defaultDeps(),
               seed: async () => seed,
             }),
-          reload: () => runtime.reloadEndpoint(),
+          facts: plantFacts,
+          reopen: reopenPlantRuntime,
         }),
       "Invalid config",
     );
