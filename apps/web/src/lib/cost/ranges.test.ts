@@ -357,3 +357,38 @@ describe("the plant's zone, not the viewer's", () => {
     expect(resolveCostPreset("7d", now, PLANT).timeZone).toBe(PLANT);
   });
 });
+
+describe("resolveCostPreset — seven plant-calendar days across a DST night", () => {
+  // `now - 6 × 24h` is not "six days ago" when one of those nights is 23 or 25
+  // hours long: late in the evening after a spring-forward it lands on the day
+  // before (eight days), early in the morning after a fall-back on the day after
+  // (six). The window is counted in calendar days on the plant's clock.
+  const PLANT = "Europe/Berlin";
+  const days = (from: Date, to: Date) =>
+    new Intl.DateTimeFormat("en-CA", { timeZone: PLANT }).format(from) +
+    " → " +
+    new Intl.DateTimeFormat("en-CA", { timeZone: PLANT }).format(to);
+
+  it("is seven days just after the spring-forward week", () => {
+    // 2026-04-01 00:30 CEST; the week behind it holds the 23-hour 29 March.
+    const now = new Date("2026-03-31T22:30:00Z");
+    const range = resolveCostPreset("7d", now, PLANT);
+    expect(days(range.from, range.to)).toBe("2026-03-26 → 2026-04-02");
+    expect(range.from.toISOString()).toBe("2026-03-25T23:00:00.000Z");
+  });
+
+  it("is seven days late on the evening of the fall-back week", () => {
+    // 2026-10-27 23:30 CET; the week behind it holds the 25-hour 25 October.
+    const now = new Date("2026-10-27T22:30:00Z");
+    const range = resolveCostPreset("7d", now, PLANT);
+    expect(days(range.from, range.to)).toBe("2026-10-21 → 2026-10-28");
+    expect(range.from.toISOString()).toBe("2026-10-20T22:00:00.000Z");
+  });
+
+  it("is seven days on the DST day itself, both nights", () => {
+    const spring = resolveCostPreset("7d", new Date("2026-03-29T21:30:00Z"), PLANT);
+    expect(days(spring.from, spring.to)).toBe("2026-03-23 → 2026-03-30");
+    const autumn = resolveCostPreset("7d", new Date("2026-10-25T22:30:00Z"), PLANT);
+    expect(days(autumn.from, autumn.to)).toBe("2026-10-19 → 2026-10-26");
+  });
+});

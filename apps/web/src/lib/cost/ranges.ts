@@ -26,8 +26,6 @@ import {
   type Period,
 } from "$lib/time/period";
 
-const DAY = 86_400_000;
-
 /** Bar granularity of a statistics chart. */
 export type CostBucket = "hour" | "day" | "month";
 
@@ -170,17 +168,7 @@ export function periodKeyLabel(key: string, bucket: CostBucket): string {
     : monthShort(new Date(`${key}-01T00:00:00`));
 }
 
-/**
- * Midnight starting the civil day `d` falls in, in `timeZone` — the same
- * primitive {@link customCostRange} bounds its window with, rather than a second
- * local-midnight helper that could drift from it.
- *
- * NOTE: this does not rescue the `7d` preset, which asks for
- * `startOfDay(now - 6 * DAY)`. Across a spring-forward that subtraction lands on
- * the day before the one intended and the window covers eight days — the same
- * defect family, left alone here on purpose.
- */
-const startOfDay = (d: Date, timeZone: string): Date => startOfPeriod(d, "day", { timeZone });
+/** Midnight starting the calendar month `d` falls in, in `timeZone`. */
 const startOfMonth = (d: Date, timeZone: string): Date => startOfPeriod(d, "month", { timeZone });
 
 /** The first midnight of the month `months` before the one `d` falls in, in `timeZone`. */
@@ -194,10 +182,24 @@ function monthsBefore(d: Date, months: number, timeZone: string): Date {
 }
 
 /**
+ * The midnight starting the civil day `days` before the one `d` falls in, in
+ * `timeZone`. By date parts: `d - days × 24h` lands a day off whenever one of
+ * those nights is a 23- or 25-hour DST night.
+ */
+function daysBefore(d: Date, days: number, timeZone: string): Date {
+  const { year, month, day } = calendarDate(d, timeZone);
+  const back = new Date(Date.UTC(year, month - 1, day - days));
+  return startOfDate(
+    { year: back.getUTCFullYear(), month: back.getUTCMonth() + 1, day: back.getUTCDate() },
+    timeZone,
+  );
+}
+
+/**
  * The exclusive midnight ENDING the civil day `d` falls in — where a
  * now-inclusive window stops.
  *
- * Not `startOfDay(d) + DAY`: the same 23/25-hour argument {@link customCostRange}
+ * Not the day's start plus 86_400_000: the same 23/25-hour argument {@link customCostRange}
  * spells out. Through `periodWindow`, so there is one implementation of "the
  * next civil midnight" in the app.
  */
@@ -308,7 +310,7 @@ export function costRangeFor(
  * to come are genuinely empty rather than cheap.
  */
 function rollingWeek(now: Date, timeZone: string): CostRange {
-  const from = startOfDay(new Date(now.getTime() - 6 * DAY), timeZone);
+  const from = daysBefore(now, 6, timeZone);
   const to = endOfDay(now, timeZone);
   return {
     id: "7d",
