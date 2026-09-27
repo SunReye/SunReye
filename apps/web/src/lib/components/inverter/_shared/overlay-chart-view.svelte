@@ -18,7 +18,13 @@
 	import { inverter } from '$lib/inverter/store.svelte';
 	import { tooltipLabel, xTick } from '$lib/inverter/chart-format';
 	import { resolveAxes, seriesConfig } from '$lib/components/inverter/_shared/chart-series';
-	import { overlayDatums, overlaySeries, resolveMetrics } from '$lib/inverter/overlay-chart';
+	import {
+		overlayDatums,
+		overlaySeries,
+		resolveMetrics,
+		seriesScope
+	} from '$lib/inverter/overlay-chart';
+	import { source } from '$lib/source.svelte';
 	import { liveRollup } from '$lib/inverter/live-rollup.svelte';
 	import { CHART_BOX } from '$lib/layout/tokens';
 	import type { HistoryRange } from '$lib/inverter/ranges';
@@ -26,6 +32,7 @@
 	let {
 		metrics,
 		colors = {},
+		devices = {},
 		range,
 		height = CHART_BOX,
 		onZoom,
@@ -37,6 +44,9 @@
 		metrics: string[];
 		/** Per-series colour overrides, keyed by metric key. A draft has none. */
 		colors?: Record<string, string>;
+		/** The device each series is pinned to, keyed by metric key. Unpinned
+		 *  keys follow the header's source switcher. A draft has none. */
+		devices?: Record<string, string>;
 		range: HistoryRange;
 		/** Plot box height class. A draft fills its full-screen card. */
 		height?: string;
@@ -74,13 +84,13 @@
 	// merged into each key's rows; closed live buckets past each key's last
 	// fetched one are spliced per key. All of it is `liveRollup`'s.
 	//
-	// Unscoped, as it always was: an overlay sends no `source`, so it reads the
-	// plant whatever the switcher says — unlike the metric card, which does.
-	// Passing `scope` here is a behaviour change, not a refactor.
+	// Each series reads the device the chart names for it, else the header's
+	// source — the scope the metric card beside it reads. It used to send no
+	// `source` at all, so an overlay showed the plant whatever the switcher said.
 	const rollup = liveRollup({
 		keys: () => metrics,
 		range: () => range,
-		scope: () => ({}),
+		scope: () => seriesScope(devices, source.query),
 		enabled: () => true,
 		live: (key) => inverter.series(key)
 	});

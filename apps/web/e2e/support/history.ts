@@ -128,6 +128,8 @@ export interface RollupCall {
   from: string;
   to: string;
   bucket: string;
+  /** `null` when the call named no source at all. */
+  source: string | null;
 }
 
 /** Every rollup call the backend has seen, in order. */
@@ -140,5 +142,6 @@ export function rollupCalls(backend: MockBackend): RollupCall[] {
       from: q.get("from") ?? "",
       to: q.get("to") ?? "",
       bucket: q.get("bucket") ?? "",
+      source: q.get("source"),
     }));
 }
