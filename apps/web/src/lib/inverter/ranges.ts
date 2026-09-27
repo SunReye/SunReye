@@ -6,7 +6,15 @@
 // one from `bucketForSpan`, so a 12-month chart stays cheap while an hour chart
 // stays detailed.
 import { browserTimeZone } from "$lib/time/browser-zone";
-import { containsNow, periodLabel, periodWindow, type Grain, type Period } from "$lib/time/period";
+import {
+  containsNow,
+  periodLabel,
+  periodWindow,
+  rezonePeriod,
+  type Grain,
+  type Period,
+  type PeriodOptions,
+} from "$lib/time/period";
 import type { ManifestMetric } from "./types";
 
 export type RollupBucket = "minute" | "hour" | "day";
@@ -242,6 +250,26 @@ export function historyPeriodRange(
 ): HistoryRange {
   const range = historyRangeFor(period, timeZone);
   return period.grain === "day" && containsNow(period, now) ? { ...range, live: true } : range;
+}
+
+/**
+ * The period /history stands on, re-read on `opts.timeZone`'s calendar — what
+ * the page does once the PLANT's zone lands, since its rollups are plant days.
+ *
+ * The current period stays the current one: the page opens on "today", and by
+ * name the viewer's today can be a day the plant has already finished. Any
+ * other period is the same-named one (`rezonePeriod`), never the one an instant
+ * falls in — zones hours apart disagree on that.
+ */
+export function rezoneHistoryPeriod(
+  period: Period,
+  fromZone: string,
+  now: Date,
+  opts: PeriodOptions,
+): Period {
+  return containsNow(period, now)
+    ? periodWindow(now, period.grain, opts)
+    : rezonePeriod(period, fromZone, opts);
 }
 
 /**
