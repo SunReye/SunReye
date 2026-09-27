@@ -12,6 +12,7 @@ import {
 } from "./spot-stats-calc";
 
 const MINUTE_MS = 60_000;
+const PLANT_TZ = "Europe/Berlin";
 
 /** A quarter-hour slot chain starting at `startMs`, one entry per price. */
 function slots(startMs: number, minutes: number, prices: number[]): SpotPriceSlot[] {
@@ -188,7 +189,12 @@ describe("spotWhatIf", () => {
   });
 
   test("prices the same import under both models", () => {
-    const result = spotWhatIf([hour(new Date(start), 2)], tariff, new Map([[start, 100]]));
+    const result = spotWhatIf(
+      [hour(new Date(start), 2)],
+      tariff,
+      new Map([[start, 100]]),
+      PLANT_TZ,
+    );
     // Landed: (100/1000 + 0.02 + 0.08) × 1.19 = 0.238 per kWh.
     expect(result?.staticCost).toBeCloseTo(0.6, 10);
     expect(result?.spotCost).toBeCloseTo(0.476, 10);
@@ -203,6 +209,7 @@ describe("spotWhatIf", () => {
       [hour(new Date(start), 2), hour(unpriced, 10)],
       tariff,
       new Map([[start, 100]]),
+      PLANT_TZ,
     );
     // The 10 kWh hour adds 3.00 to BOTH totals; the delta is unchanged.
     expect(result?.delta).toBeCloseTo(-0.124, 10);
@@ -211,13 +218,42 @@ describe("spotWhatIf", () => {
 
   test("bare wholesale is flagged so the UI can caption it", () => {
     const bare = tariffConfigSchema.parse({ import: { defaultPricePerKwh: 0.3 } });
-    const result = spotWhatIf([hour(new Date(start), 1)], bare, new Map([[start, 100]]));
+    const result = spotWhatIf([hour(new Date(start), 1)], bare, new Map([[start, 100]]), PLANT_TZ);
     expect(result?.spotComponentsConfigured).toBe(false);
     expect(result?.spotCost).toBeCloseTo(0.1, 10);
   });
 
   test("null without prices, and null when nothing was imported", () => {
-    expect(spotWhatIf([hour(new Date(start), 5)], tariff, new Map())).toBeNull();
-    expect(spotWhatIf([hour(new Date(start), 0)], tariff, new Map([[start, 100]]))).toBeNull();
+    expect(spotWhatIf([hour(new Date(start), 5)], tariff, new Map(), PLANT_TZ)).toBeNull();
+    expect(
+      spotWhatIf([hour(new Date(start), 0)], tariff, new Map([[start, 100]]), PLANT_TZ),
+    ).toBeNull();
+  });
+
+  test("bands on the PLANT's wall clock, not the host's", () => {
+    // 16:00Z is 18:00 in Berlin (CEST): inside the 17–20 peak band. A host on
+    // UTC reads hour 16 and prices it at the default instead.
+    const peak = tariffConfigSchema.parse({
+      import: {
+        defaultPricePerKwh: 0.3,
+        bands: [{ name: "Peak", pricePerKwh: 0.5, startHour: 17, endHour: 20 }],
+      },
+    });
+    const at = Date.UTC(2025, 5, 1, 16, 0, 0);
+    const result = spotWhatIf([hour(new Date(at), 1)], peak, new Map([[at, 100]]), PLANT_TZ);
+    expect(result?.staticCost).toBeCloseTo(0.5, 10);
+  });
+
+  test("a band's ISO weekday is the plant's, across the host's midnight", () => {
+    // Sunday 23:00Z is Monday 01:00 in Berlin; the band applies Mondays only.
+    const monday = tariffConfigSchema.parse({
+      import: {
+        defaultPricePerKwh: 0.3,
+        bands: [{ name: "Mon night", pricePerKwh: 0.1, startHour: 0, endHour: 6, days: [1] }],
+      },
+    });
+    const at = Date.UTC(2025, 5, 1, 23, 0, 0); // Sun Jun 1 23:00Z = Mon 01:00 CEST
+    const result = spotWhatIf([hour(new Date(at), 1)], monday, new Map([[at, 100]]), PLANT_TZ);
+    expect(result?.staticCost).toBeCloseTo(0.1, 10);
   });
 });
