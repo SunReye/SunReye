@@ -11,6 +11,7 @@
 
 import { type WeatherConfig, forecastReady } from "@SunReye/db/weather";
 import type { DeviceInstance, InverterSample, RoleKey } from "@SunReye/inverter-core";
+import { dayStart, nextDayStart } from "@SunReye/inverter-core/zoned-calendar";
 import { HOUR_MS, flowStep } from "../energy/energy-flow";
 import { type CorrectionModel, correctionFactor, hourOf, monthOf } from "./forecast-correction";
 import { log } from "../shared/logging";
@@ -162,6 +163,8 @@ export interface SolarForecast extends ForecastView {
   stepMinutes: number;
   /** Offset of the `series` local times from UTC, seconds — for offset-aware export. */
   utcOffsetSeconds: number;
+  /** The plant's IANA zone the daily sums were bucketed by (not the fixed offset). */
+  timeZone: string;
   /**
    * The top-level view is the **usable** output: raw PV after the feed-in cap and
    * battery model curtail it (what the plant can actually use/export). `raw` is the
@@ -450,18 +453,27 @@ function clipSeries(raw: SolarForecastPoint[], grid: SlotGrid, run: ClipRun): So
 const slotKwh = (series: SolarForecastPoint[], grid: SlotGrid, i: number): number =>
   ((series[i]?.watts ?? 0) * (grid.widthMs[i] ?? 0)) / HOUR_MS / 1000;
 
-/** The plant-local calendar days the daily sums bucket into. */
+/**
+ * The plant-local calendar days the daily sums bucket into, as instant bounds:
+ * today is `[todayMs, tomorrowMs)`, tomorrow `[tomorrowMs, afterMs)`.
+ */
 interface LocalDays {
-  today: string;
-  tomorrow: string;
+  todayMs: number;
+  tomorrowMs: number;
+  afterMs: number;
 }
 
-/** The plant-local `today`/`tomorrow` date keys at `nowMs`. */
-function localDays(nowMs: number, utcOffsetSeconds: number): LocalDays {
-  const localMs = nowMs + utcOffsetSeconds * 1000;
+/**
+ * The plant-local days around `nowMs`, from the plant zone. The series' labels
+ * carry one fixed offset for the whole run, so on a DST-change day their date
+ * prefix is an hour off the plant's wall-clock midnight.
+ */
+function localDays(nowMs: number, timeZone: string): LocalDays {
+  const tomorrow = nextDayStart(nowMs, timeZone);
   return {
-    today: new Date(localMs).toISOString().slice(0, 10),
-    tomorrow: new Date(localMs + 24 * HOUR_MS).toISOString().slice(0, 10),
+    todayMs: dayStart(nowMs, timeZone).getTime(),
+    tomorrowMs: tomorrow.getTime(),
+    afterMs: nextDayStart(tomorrow, timeZone).getTime(),
   };
 }
 
@@ -477,21 +489,25 @@ function viewOf(
   nowMs: number,
   days: LocalDays,
 ): ForecastView {
-  const dayKwh = (day: string): number =>
+  const within = (i: number, fromMs: number, toMs: number): boolean => {
+    const startMs = grid.startMs[i] ?? Number.NaN;
+    return startMs >= fromMs && startMs < toMs;
+  };
+  const dayKwh = (fromMs: number, toMs: number): number =>
     series.reduce(
-      (sum, p, i) => (p.time.startsWith(day) ? sum + slotKwh(series, grid, i) : sum),
+      (sum, _p, i) => (within(i, fromMs, toMs) ? sum + slotKwh(series, grid, i) : sum),
       0,
     );
   return {
     series,
-    todayKwh: dayKwh(days.today),
-    remainingTodayKwh: series.reduce((sum, p, i) => {
-      if (!p.time.startsWith(days.today)) return sum;
+    todayKwh: dayKwh(days.todayMs, days.tomorrowMs),
+    remainingTodayKwh: series.reduce((sum, _p, i) => {
+      if (!within(i, days.todayMs, days.tomorrowMs)) return sum;
       const width = grid.widthMs[i] ?? 0;
       const left = Math.min((grid.startMs[i] ?? 0) + width - nowMs, width);
       return left <= 0 ? sum : sum + slotKwh(series, grid, i) * (left / width);
     }, 0),
-    tomorrowKwh: dayKwh(days.tomorrow),
+    tomorrowKwh: dayKwh(days.tomorrowMs, days.afterMs),
     next15: computeNext15(series, grid.startMs, grid.widthMs, nowMs),
   };
 }
@@ -518,6 +534,7 @@ export function buildSolarForecast(
   config: WeatherConfig["forecast"],
   data: IrradianceForecast,
   provider: string,
+  timeZone: string,
   nowMs = Date.now(),
   sim?: ForecastSimInputs,
   correction?: CorrectionModel,
@@ -534,11 +551,12 @@ export function buildSolarForecast(
     ? clipSeries(rawSeries, grid, clipRun(config, caps, sim, nowMs))
     : rawSeries;
 
-  const days = localDays(nowMs, data.utcOffsetSeconds);
+  const days = localDays(nowMs, timeZone);
   return {
     provider,
     stepMinutes: Math.round(Math.min(...grid.widthMs, HOUR_MS) / 60_000),
     utcOffsetSeconds: data.utcOffsetSeconds,
+    timeZone,
     ...viewOf(usableSeries, grid, nowMs, days),
     raw: viewOf(rawSeries, grid, nowMs, days),
   };
@@ -567,7 +585,8 @@ export function toForecastExport(
   forecast: SolarForecast,
   variant: ForecastVariant,
 ): SolarForecastExport {
-  const { provider, stepMinutes, utcOffsetSeconds, raw, ...usable } = forecast;
+  // `timeZone` is how the sums were bucketed, not part of the published shape.
+  const { provider, stepMinutes, utcOffsetSeconds, timeZone: _zone, raw, ...usable } = forecast;
   const view: ForecastView = variant === "raw" ? raw : usable;
   const offset = isoOffset(utcOffsetSeconds);
   return {
@@ -721,7 +740,18 @@ async function buildWithDayStartSoc(
     sim && config.forecast.battery != null
       ? { ...sim, dayStartSocPct: await resolveDayStartSoc(data) }
       : sim;
-  return buildSolarForecast(config.forecast, data, provider, Date.now(), simInputs, correction);
+  // The plant's day, not the display's: today/tomorrow sums bucket by it.
+  const { getPlantTimeZone } = await import("../settings/display-settings");
+  const timeZone = await getPlantTimeZone();
+  return buildSolarForecast(
+    config.forecast,
+    data,
+    provider,
+    timeZone,
+    Date.now(),
+    simInputs,
+    correction,
+  );
 }
 
 /**

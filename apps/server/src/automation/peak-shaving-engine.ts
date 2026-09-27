@@ -751,6 +751,7 @@ function decisionInputs(args: {
           series: forecast.raw.series,
           stepMinutes: forecast.stepMinutes,
           utcOffsetSeconds: forecast.utcOffsetSeconds,
+          timeZone: forecast.timeZone,
         }
       : null,
     nowMs: live.nowMs,

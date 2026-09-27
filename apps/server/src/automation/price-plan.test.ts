@@ -61,6 +61,7 @@ function forecast(watts: number | ((hour: number) => number)): ForecastSlice {
   return {
     stepMinutes: 15,
     utcOffsetSeconds: 7200,
+    timeZone: "Europe/Berlin",
     series: Array.from({ length: 96 }, (_, i) => ({
       time: at15(i),
       watts: typeof watts === "number" ? watts : watts((i * 15) / 60),
