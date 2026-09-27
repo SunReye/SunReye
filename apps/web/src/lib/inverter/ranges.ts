@@ -6,7 +6,15 @@
 // one from `bucketForSpan`, so a 12-month chart stays cheap while an hour chart
 // stays detailed.
 import { browserTimeZone } from "$lib/time/browser-zone";
-import { containsNow, periodLabel, periodWindow, type Grain, type Period } from "$lib/time/period";
+import {
+  containsNow,
+  periodLabel,
+  periodWindow,
+  rezoneStandingPeriod,
+  type Grain,
+  type Period,
+  type PeriodOptions,
+} from "$lib/time/period";
 import type { ManifestMetric } from "./types";
 
 export type RollupBucket = "minute" | "hour" | "day";
@@ -242,6 +250,42 @@ export function historyPeriodRange(
 ): HistoryRange {
   const range = historyRangeFor(period, timeZone);
   return period.grain === "day" && containsNow(period, now) ? { ...range, live: true } : range;
+}
+
+/**
+ * What /history holds: the period it stands on, the window showing instead of
+ * it (`override`, null while a period is showing), the range every chart
+ * renders, and the window a zoom resets to.
+ */
+export interface HistoryView<O extends { id: string }> {
+  period: Period;
+  override: O | null;
+  range: HistoryRange;
+  beforeZoom: { range: HistoryRange; override: O | null } | null;
+}
+
+/**
+ * `view` once the plant's zone lands, `fromZone` being the one it was built in.
+ *
+ * Only a calendar period is re-read ({@link rezoneStandingPeriod}) — the one on
+ * screen, or the one a zoom resets to, which would otherwise return the reader
+ * to the browser's day. Kept presets are rolling hours and a custom span is days
+ * already picked, so those views come back untouched.
+ */
+export function rezoneHistoryView<O extends { id: string }>(
+  view: HistoryView<O>,
+  fromZone: string,
+  now: Date,
+  opts: PeriodOptions,
+): HistoryView<O> {
+  const onPeriod = view.override === null;
+  const zoomedFromPeriod = view.beforeZoom !== null && view.beforeZoom.override === null;
+  if (!onPeriod && !zoomedFromPeriod) return view;
+  const period = rezoneStandingPeriod(view.period, fromZone, now, opts);
+  const range = historyPeriodRange(period, now, opts.timeZone);
+  return onPeriod
+    ? { ...view, period, range }
+    : { ...view, period, beforeZoom: { range, override: null } };
 }
 
 /**

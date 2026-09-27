@@ -18,13 +18,14 @@
 		customRange,
 		historyPeriodRange,
 		resolvePreset,
+		rezoneHistoryView,
 		type HistoryRange
 	} from '$lib/inverter/ranges';
 	import { historyPresetLabel, historyPresets } from '$lib/inverter/range-labels';
 	import { getLocale } from '$lib/paraglide/runtime';
 	import { source } from '$lib/source.svelte';
 	import { liveClock } from '$lib/time/live-clock.svelte';
-	import { periodWindow, rezoneStandingPeriod, weekStartFor, type Period } from '$lib/time/period';
+	import { periodWindow, weekStartFor, type Period } from '$lib/time/period';
 	import { untrack } from 'svelte';
 
 	// THE PAGE HOLDS THREE THINGS, NOT ONE.
@@ -44,7 +45,7 @@
 	// Every window is built on the PLANT's calendar: the daily and monthly
 	// rollups the cards draw are plant days. Until the source list lands the
 	// viewer's zone stands in, and the effect below re-reads the period the
-	// reader is on (`rezoneStandingPeriod`) once the real zone is known. It runs
+	// reader is on (`rezoneHistoryView`) once the real zone is known. It runs
 	// on a ZONE change only — never on the clock, which is what keeps a reader
 	// left open past midnight on the day they were looking at.
 	const zone = $derived(source.plantZone);
@@ -67,24 +68,27 @@
 	let override = $state<RangeOverride | null>(null);
 	let range = $state<HistoryRange>(historyPeriodRange(first, new Date(), builtZone));
 
-	// Kept presets are rolling hours and a custom span or a zoom is days the
-	// reader already picked, so only a calendar period is re-read.
+	// The window a zoom was taken FROM, so the reset control has somewhere to go
+	// back to — with the navigator state that produced it, or the trigger would
+	// come back reading the zoomed span it just left.
+	let beforeZoom = $state<{ range: HistoryRange; override: RangeOverride | null } | null>(null);
+
+	// The zone landing re-reads the calendar period on screen, or the one a zoom
+	// resets to — see `rezoneHistoryView`.
 	$effect(() => {
 		const next = zone;
 		if (next === builtZone) return;
 		const from = builtZone;
 		builtZone = next;
 		untrack(() => {
-			if (override !== null) return;
 			const opts = { timeZone: next, weekStartsOn: weekStartFor(getLocale()) };
-			pickPeriod(rezoneStandingPeriod(period, from, new Date(), opts));
+			const view = rezoneHistoryView({ period, override, range, beforeZoom }, from, new Date(), opts);
+			period = view.period;
+			override = view.override;
+			range = view.range;
+			beforeZoom = view.beforeZoom;
 		});
 	});
-
-	// The window a zoom was taken FROM, so the reset control has somewhere to go
-	// back to — with the navigator state that produced it, or the trigger would
-	// come back reading the zoomed span it just left.
-	let beforeZoom = $state<{ range: HistoryRange; override: RangeOverride | null } | null>(null);
 
 	/** The reader moved to a calendar period: a grain tab, or an arrow. */
 	function pickPeriod(next: Period) {
