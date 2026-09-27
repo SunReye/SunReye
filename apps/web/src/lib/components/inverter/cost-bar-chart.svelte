@@ -1,4 +1,5 @@
 <script lang="ts">
+	import type { CostSeriesPoint } from '@SunReye/contracts/energy';
 	import { BarChart } from 'layerchart';
 	import * as Chart from '$lib/components/ui/chart';
 	import * as m from '$lib/paraglide/messages';
@@ -10,15 +11,9 @@
 	import PlotFrame from '$lib/components/layout/plot-frame.svelte';
 	import { periodKeyLabel, type CostBucket } from '$lib/cost/ranges';
 
-	// One diverging stack per period. Mirrors the server's CostSeriesPoint
-	// (apps/server/src/energy/cost.ts): net = importCost − exportEarnings + standingCharge.
-	type Point = {
-		bucket: string;
-		importCost: number;
-		exportEarnings: number;
-		standingCharge: number;
-		net: number;
-	};
+	// One diverging stack per period: net = importCost − exportEarnings + standingCharge.
+	// The chart reads only the money fields, so it asks for no more of the wire shape.
+	type Point = Pick<CostSeriesPoint, 'bucket' | 'importCost' | 'exportEarnings' | 'standingCharge' | 'net'>;
 
 	let {
 		points,

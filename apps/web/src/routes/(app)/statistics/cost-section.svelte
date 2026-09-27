@@ -1,4 +1,5 @@
 <script lang="ts">
+	import type { CostSeriesPoint } from '@SunReye/contracts/energy';
 	import { source } from '$lib/source.svelte';
 	import * as m from '$lib/paraglide/messages';
 	import CostBarChart from '$lib/components/inverter/cost-bar-chart.svelte';
@@ -13,15 +14,6 @@
 	import ChartPanel from './chart-panel.svelte';
 	import StatTiles from './stat-tiles.svelte';
 	import BandBreakdown from './band-breakdown.svelte';
-
-	// One bar of the contextual chart. Mirrors the server's CostSeriesPoint.
-	type SeriesPoint = {
-		bucket: string;
-		importCost: number;
-		exportEarnings: number;
-		standingCharge: number;
-		net: number;
-	};
 
 	// Content of the cost section: registry tiles, the cost bars at the viewer's
 	// chosen scope, and the tariff-band breakdown. The tiles payload is fetched by
@@ -41,7 +33,7 @@
 
 	// Points + the granularity they were fetched at, updated together so the
 	// chart never labels stale points with a freshly-picked bucket.
-	let series = $state<{ points: SeriesPoint[]; bucket: CostBucket }>({
+	let series = $state<{ points: CostSeriesPoint[]; bucket: CostBucket }>({
 		points: [],
 		bucket: 'day'
 	});
@@ -57,7 +49,7 @@
 		let cancelled = false;
 		api.api.cost.series.get({ query }).then(({ data: payload }) => {
 			if (cancelled) return;
-			series = { points: (payload ?? []) as SeriesPoint[], bucket: query.bucket };
+			series = { points: (payload ?? []) as CostSeriesPoint[], bucket: query.bucket };
 		});
 		return () => {
 			cancelled = true;

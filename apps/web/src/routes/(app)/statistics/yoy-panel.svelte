@@ -8,7 +8,7 @@
 	import PanelReadoutRow from '$lib/components/layout/panel-readout-row.svelte';
 	import type { CostFormatters } from '$lib/cost/format';
 	import { groupYoy, hasYoyData, type MonthlyValue } from '$lib/statistics/yoy';
-	import type { CostPoint } from '$lib/statistics/sections';
+	import type { CostSeriesPoint } from '@SunReye/contracts/energy';
 	import { statisticsPrefs } from '$lib/statistics-prefs.svelte';
 	import { getCustomizeSession } from '$lib/statistics/customize.svelte';
 
@@ -53,7 +53,7 @@
 			api.api.energy.series.get({ query: { ...seriesWindow, ...source.query } })
 		]).then(([cost, energy]) => {
 			if (cancelled) return;
-			const costPoints = (cost.data ?? []) as CostPoint[];
+			const costPoints = (cost.data ?? []) as CostSeriesPoint[];
 			const energyPoints = (energy.data ?? []) as { bucket: string; productionKwh: number }[];
 			netByMonth = costPoints.map((p) => ({ bucket: p.bucket, value: p.net }));
 			productionByMonth = energyPoints.map((p) => ({

@@ -133,6 +133,27 @@ export interface CostBreakdown extends CostTotals {
   to: string;
 }
 
+/** One bar of the cost time-series (`GET /api/cost/series`): total money in a period. */
+export interface CostSeriesPoint {
+  /** Local period key: `YYYY-MM-DDTHH` (hour) | `YYYY-MM-DD` (day) | `YYYY-MM` (month). */
+  bucket: string;
+  importCost: number;
+  exportEarnings: number;
+  /**
+   * Exported energy in this period that earned nothing under §51 EEG, and the
+   * feed-in revenue that cost. ALWAYS present — 0 unless the tariff is in spot
+   * mode with the `eegFeedIn` marketing model — so the chart can decide whether
+   * to shade the period without a second request.
+   */
+  zeroValueExportKwh: number;
+  zeroValueExportEur: number;
+  /** Standing charge prorated to this period's overlap with the window. */
+  standingCharge: number;
+  /** `importCost − exportEarnings + standingCharge` — the all-in cost of the
+   *  period, matching the headline Net cost tile. */
+  net: number;
+}
+
 /** One measured capacity estimate — a point on the degradation series. */
 export interface BatteryCapacityPoint {
   /** ISO instant the discharge segment ended. */
