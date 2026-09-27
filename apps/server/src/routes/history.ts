@@ -17,6 +17,7 @@ import type { CostBucket } from "../energy/period-keys";
 import { queryRecentBuckets, queryRollup } from "../shared/history";
 import type { HistoryTier } from "../shared/history-horizon";
 import { refuseIncompleteRange } from "../shared/history-horizon-live";
+import { getPlantTimeZone } from "../settings/display-settings";
 import { deviceScope, metricIdOf } from "../shared/identity-sql";
 import type { AggregateOf } from "../shared/plant-fold";
 import { type plantFoldFor, isRefusal, targetOf } from "../shared/plant-read";
@@ -106,9 +107,9 @@ async function guardRange(
 }
 
 /** The `[from, to)` a cost read covers: an explicit window, else a named range. */
-function costWindow(q: { from?: string; to?: string; range?: "today" | "month" | "year" }) {
+async function costWindow(q: { from?: string; to?: string; range?: "today" | "month" | "year" }) {
   if (q.from && q.to) return { from: new Date(q.from), to: new Date(q.to) };
-  return resolveRange(q.range ?? "month");
+  return resolveRange(q.range ?? "month", await getPlantTimeZone());
 }
 
 export function historyRoutes({
@@ -291,7 +292,7 @@ export function historyRoutes({
         },
         async ({ query, status }) => {
           if (!profile) return status(503, ONBOARDING_REQUIRED);
-          const { from, to } = costWindow(query);
+          const { from, to } = await costWindow(query);
           // The named ranges are exactly the hazard: `month` and `year` open at a
           // boundary that can precede the cutover, and the answer would be a real
           // partial number labelled "month to date".
