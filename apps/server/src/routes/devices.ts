@@ -2,6 +2,7 @@ import {
   createConnection,
   createDevice,
   deleteConnection,
+  deleteDevice,
   deleteDeviceBattery,
   readConnections,
   readDevices,
@@ -23,6 +24,7 @@ import {
   patchConnection,
   patchDevice,
   removeConnection,
+  removeDevice,
 } from "../devices/device-admin";
 import { resolveCoded } from "../devices/coded";
 import { probeConnection } from "../devices/reachability";
@@ -64,6 +66,7 @@ function defaultDeps(plant: PlantWrites): DeviceAdminDeps {
       updateDevice: (id, patch) => updateDevice(client, id, patch),
       updateConnection: (id, patch) => updateConnection(client, id, patch),
       deleteConnection: (id) => deleteConnection(client, id),
+      deleteDevice: (id) => deleteDevice(client, id),
       readPlantBatteries: (plantId) => readPlantBatteries(client, plantId),
       upsertDeviceBattery: (deviceId, battery) => upsertDeviceBattery(client, deviceId, battery),
       deleteDeviceBattery: (deviceId) => deleteDeviceBattery(client, deviceId),
@@ -136,6 +139,15 @@ export const deviceRoutes = (plant: PlantWrites) =>
     )
     .patch("/api/connections/:id", byIdWrite, ({ params, body, status }) =>
       withId(status, params.id, (id) => patchConnection(defaultDeps(plant), id, body)),
+    )
+    // Only a device that never recorded a reading: the history references it
+    // `ON DELETE RESTRICT`, and a refusal names `field: "history"` so the page
+    // can offer retiring instead (`../devices/device-admin.ts`, `removeDevice`).
+    .delete("/api/devices/:id", byId, ({ params, status }) =>
+      withId(status, params.id, async (id) => {
+        await removeDevice(defaultDeps(plant), id);
+        return { ok: true, id };
+      }),
     )
     .delete("/api/connections/:id", byId, ({ params, status }) =>
       withId(status, params.id, async (id) => {

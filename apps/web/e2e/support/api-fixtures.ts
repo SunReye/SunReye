@@ -52,6 +52,7 @@
  */
 
 import type { AutomationStreamMessage, PeakShavingStatus } from "@SunReye/contracts/automation";
+import type { ConnectionView, DeviceRoster, IntegrationView } from "@SunReye/contracts/devices";
 import type { CostBreakdown, CostSeriesPoint, PeriodEnergy } from "@SunReye/contracts/energy";
 import type { EvccState } from "@SunReye/contracts/evcc";
 import type { LogEntry } from "@SunReye/contracts/logs";
@@ -683,10 +684,13 @@ export const TARIFF = {
 export const INVERTER_CONFIG = {
   host: "10.0.0.5",
   port: 502,
-  transport: "tcp",
+  transport: "tcp" as const,
   unitId: 0,
   timeoutMs: 2000,
   pollIntervalMs: 1000,
+  // Always present on the real answer (`inverterConfigSchema` defaults it); the
+  // form binds it to a switch, which throws on `undefined`.
+  simulate: false,
 };
 
 /**
@@ -745,7 +749,7 @@ export const INTEGRATIONS = [
       lastConnectedAt: null,
     },
   },
-];
+] satisfies IntegrationView[];
 
 /**
  * `GET /api/integrations/catalog` — `catalogViewFor` per connection kind
@@ -1018,7 +1022,14 @@ export const CONNECTIONS = [
       loggerSerial: SOLARMAN_SERIAL,
     },
   },
-];
+] satisfies ConnectionView[];
+
+/**
+ * The roster ids `DELETE /api/devices/:id` refuses as having readings. The
+ * meter (2) never recorded any — it is stored but not polled — so it is the
+ * one a spec can actually delete.
+ */
+export const DEVICES_WITH_HISTORY: ReadonlySet<number> = new Set([1, 3, 4, 5, 6]);
 
 /**
  * `GET /api/devices` — `DeviceRoster` (`apps/server/src/devices/device-admin.ts`):
@@ -1030,7 +1041,7 @@ export const CONNECTIONS = [
  * roster that only ever held Modbus rows reported them as Modbus hardware that
  * is not answering.
  */
-export function devices(manifest: FixtureManifest) {
+export function devices(manifest: FixtureManifest): DeviceRoster {
   const connection = CONNECTIONS[0]!;
   const brokerConnection = CONNECTIONS[1]!;
   return {
@@ -1044,6 +1055,7 @@ export function devices(manifest: FixtureManifest) {
         role: "inverter",
         unitId: 1,
         connectionId: connection.id,
+        params: {},
         retiredAt: null,
         connection,
         arrays: [{ kwp: 8.4, tilt: 35, azimuth: 0 }],
@@ -1064,6 +1076,7 @@ export function devices(manifest: FixtureManifest) {
         role: "meter",
         unitId: 2,
         connectionId: connection.id,
+        params: {},
         retiredAt: null,
         connection,
         arrays: [],
@@ -1084,6 +1097,7 @@ export function devices(manifest: FixtureManifest) {
         role: "inverter",
         unitId: 3,
         connectionId: connection.id,
+        params: {},
         retiredAt: "2026-01-01T00:00:00.000Z",
         connection,
         arrays: [],
@@ -1109,6 +1123,7 @@ export function devices(manifest: FixtureManifest) {
         role: "charger",
         unitId: 0,
         connectionId: brokerConnection.id,
+        params: {},
         retiredAt: null,
         connection: brokerConnection,
         arrays: [],
@@ -1129,6 +1144,7 @@ export function devices(manifest: FixtureManifest) {
         role: "charger",
         unitId: 1,
         connectionId: brokerConnection.id,
+        params: {},
         retiredAt: null,
         connection: brokerConnection,
         arrays: [],
@@ -1149,6 +1165,7 @@ export function devices(manifest: FixtureManifest) {
         role: "optimizer",
         unitId: 0,
         connectionId: null,
+        params: {},
         retiredAt: null,
         connection: null,
         arrays: [],

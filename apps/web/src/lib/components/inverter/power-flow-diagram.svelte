@@ -16,6 +16,7 @@
 		type Pt
 	} from '$lib/inverter/power-graph';
 	import { nodeDetail } from '$lib/inverter/node-details';
+	import { motion } from '$lib/motion/tier.svelte';
 	import NodeDetailDialog from './node-detail-dialog.svelte';
 
 	function power(role: CanonicalRole, index?: number): number | undefined {
@@ -132,6 +133,16 @@
 	 *  re-resolve style every second. */
 	const plantLevel = $derived(pulseShare(throughputWatts(graph.segments), ceiling));
 
+	// Only `full` pays for the two animations in this file: the wash's 900 ms
+	// opacity glide and the hub ring's beat. Both still show the plant's load at
+	// every tier — they just step to it. Resolved here rather than in the markup
+	// so the template stays inside the repo's complexity ceiling.
+	const washClass = $derived(motion.tier === 'full' ? '' : 'wash-still');
+	// The ring keeps its class at every tier — it is the hub's outline as well as
+	// its beat, and `--plant-level` is painted on it either way. What a degraded
+	// tier adds is the parking class.
+	const ringClass = $derived(motion.tier === 'full' ? '' : 'hub-still');
+
 	const lines = $derived.by<RailLine[]>(() => {
 		if (!measured) return [];
 		return graph.segments.map((s) => {
@@ -179,7 +190,7 @@
 	     competing with the flow lines. Its strength follows the plant: the layer's
 	     own opacity fades, so the gradient itself is painted once. -->
 	<div
-		class="wash pointer-events-none absolute inset-0"
+		class="wash pointer-events-none absolute inset-0 {washClass}"
 		style={`--plant-level:${plantLevel};background:radial-gradient(60% 55% at 50% ${graph.hub.y * 100}%, color-mix(in oklab, var(--primary) 8%, transparent), transparent 75%)`}
 	></div>
 
@@ -200,7 +211,7 @@
 		<HubMetrics {efficiency} {selfUse} {dcInput} />
 		{#snippet hubBox()}
 			<span
-				class="hub-ring absolute -inset-1 border border-primary/50"
+				class="hub-ring {ringClass} absolute -inset-1 border border-primary/50"
 				style={`--plant-level:${plantLevel}`}
 			></span>
 			<CpuIcon class="size-7 text-primary sm:size-8 2xl:size-10" weight="duotone" />
@@ -243,9 +254,25 @@
 		opacity: calc(0.4 + 0.6 * var(--plant-level));
 		transition: opacity 900ms linear;
 	}
+	/* Below `full` the wash still tracks the plant — it just steps to each value
+	   instead of compositing a 900 ms fade toward it once a second. */
+	.wash-still {
+		transition: none;
+	}
 
+	/* The ring beats only at `full`. Below it the class is not applied at all
+	   (see the markup) — an animation that recomputes `calc()` against a
+	   registered custom property is style work on every frame, and on a device
+	   that has already been measured short of frames it is the first thing to go.
+	   The ring itself stays: it is the hub's outline, not the animation. */
 	.hub-ring {
 		animation: hub-pulse 2.6s ease-in-out infinite;
+	}
+	/* Below `full`: the outline stays, the beat stops. A keyframe recomputing
+	   `calc()` against a registered custom property is style work on every frame,
+	   and on a device already measured short of frames it is the first to go. */
+	.hub-still {
+		animation: none;
 	}
 	/* Same period at every load — a timing property is never a datum here. What
 	   the plant changes is the AMPLITUDE: at night the ring barely ticks, at noon
@@ -262,7 +289,8 @@
 		}
 	}
 	@media (prefers-reduced-motion: reduce) {
-		.hub-ring {
+		.hub-ring,
+		.hub-still {
 			animation: none;
 		}
 		/* A 900 ms fade is motion too, however soft. */

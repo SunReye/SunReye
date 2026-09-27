@@ -119,7 +119,7 @@
 </script>
 
 <Dialog.Root bind:open>
-	<Dialog.Content class="max-h-[90vh] gap-0 overflow-hidden sm:max-w-lg">
+	<Dialog.Content class="sm:max-w-lg" bodyClass="gap-0">
 		<Dialog.Header>
 			<Dialog.Title>{title}</Dialog.Title>
 			<Dialog.Description>

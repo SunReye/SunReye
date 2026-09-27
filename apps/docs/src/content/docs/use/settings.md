@@ -94,8 +94,17 @@ before deciding what runs on it.
   gateway at once (or the broker URL and credentials for every integration on it). A
   connection with nothing left on it can be deleted.
 - **Retire / Restore** — a retired device leaves the roster and stops being polled; its
-  readings stay and it can be restored later. Retired devices remain listed, because a device
-  the UI cannot see is a device nobody can restore.
+  readings stay and it can be restored later. Retired devices fold under a **Retired (n)**
+  disclosure at the end of their connection's card, because a device the UI cannot see is a
+  device nobody can restore.
+- **Delete** — removes a device and its settings for good. Only possible for a device that
+  never recorded a reading (one added by mistake, say): history is never deleted along with
+  its device. For a device with history the dialog offers **Retire instead**. The device
+  being polled and the internal optimizer cannot be deleted.
+
+Each row shows one button — **Edit** for a Modbus device, **Rename** for one fed by an
+integration — and keeps Retire and Delete behind its **⋯** menu, so a phone shows the whole
+roster rather than a column of buttons.
 
 ### What an inverter is made of
 

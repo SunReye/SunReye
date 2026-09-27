@@ -1,8 +1,9 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
-	import { Tween, prefersReducedMotion } from 'svelte/motion';
+	import { Tween } from 'svelte/motion';
 	import { linear } from 'svelte/easing';
 	import { bus } from '$lib/ws/bus.svelte';
+	import { motion } from '$lib/motion/tier.svelte';
 	import { readoutGlideMs } from './_shared/glide';
 	import { createNumberDisplay, resolveDecimals } from './animated-number';
 
@@ -59,10 +60,19 @@
 		// rAF loop to animate a number from itself to itself, on every card, on
 		// every scroll. The next sample picks up the new policy, which is the
 		// same "takes effect on the next sample" rule the cadence follows.
-		// The motion preference IS read tracked, so toggling it takes effect on the
-		// next sample rather than at the next mount.
+		// The motion tier IS read tracked, so changing it takes effect on the next
+		// sample rather than at the next mount. It folds the OS's reduced-motion
+		// request in, and adds the one this device measured for itself.
+		//
+		// Anything but `full` SNAPS: the Tween jumps to each sample and starts no
+		// rAF loop. That is the readout storm gone — measured on the idle overview,
+		// 3349 text-node writes per 10 s gliding against 100 snapping, each of them
+		// a style and layout invalidation on a page that is already short of
+		// frames. The drift is an affordance, not information; the number itself is
+		// unchanged either way. `lite` keeps the motion that IS information (the
+		// rails' direction and speed) and drops this.
 		void tween.set(v, {
-			duration: readoutGlideMs(cadence, prefersReducedMotion.current, untrack(() => animate)),
+			duration: readoutGlideMs(cadence, motion.tier !== 'full', untrack(() => animate)),
 			easing: linear
 		});
 	});

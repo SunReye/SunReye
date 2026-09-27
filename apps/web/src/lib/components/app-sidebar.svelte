@@ -9,6 +9,8 @@
 	import { authClient } from '$lib/auth-client';
 	import { useAppSession } from '$lib/session';
 	import { inverter } from '$lib/inverter/store.svelte';
+	import { automationsGate } from '$lib/automations-gate.svelte';
+	import { navItemIds, type NavItemId } from '$lib/components/nav-items';
 	import * as m from '$lib/paraglide/messages';
 	import GaugeIcon from 'phosphor-svelte/lib/Gauge';
 	import ChartLineIcon from 'phosphor-svelte/lib/ChartLine';
@@ -34,17 +36,31 @@
 
 	type NavItem = { href: Pathname; label: string; icon: Component };
 
-	const items = $derived<NavItem[]>([
-		{ href: '/', label: m.nav_overview(), icon: GaugeIcon },
-		{ href: '/history', label: m.nav_history(), icon: ChartLineIcon },
-		{ href: '/statistics', label: m.nav_statistics(), icon: ChartBarIcon },
-		...(isAdmin && (inverter.capabilities?.controls.length ?? 0) > 0
-			? ([{ href: '/controls', label: m.nav_controls(), icon: SlidersIcon }] satisfies NavItem[])
-			: []),
-		...(isAdmin
-			? ([{ href: '/automations', label: m.nav_automations(), icon: RobotIcon }] satisfies NavItem[])
-			: [])
-	]);
+	// Automations are experimental and write inverter registers, so the entry
+	// stays out of the nav until an admin has switched the master gate on in
+	// Settings -> Automations. The read is admin-only and off-by-default; see
+	// `$lib/automations-gate`.
+	$effect(() => {
+		void automationsGate.load(isAdmin);
+	});
+
+	// WHICH areas to offer is policy and lives in `nav-items.ts` (unit-tested);
+	// what each one LOOKS like is the only thing decided here.
+	const CHROME: Record<NavItemId, () => NavItem> = {
+		overview: () => ({ href: '/', label: m.nav_overview(), icon: GaugeIcon }),
+		history: () => ({ href: '/history', label: m.nav_history(), icon: ChartLineIcon }),
+		statistics: () => ({ href: '/statistics', label: m.nav_statistics(), icon: ChartBarIcon }),
+		controls: () => ({ href: '/controls', label: m.nav_controls(), icon: SlidersIcon }),
+		automations: () => ({ href: '/automations', label: m.nav_automations(), icon: RobotIcon })
+	};
+
+	const items = $derived<NavItem[]>(
+		navItemIds({
+			isAdmin,
+			controlCount: inverter.capabilities?.controls.length ?? 0,
+			automationsEnabled: automationsGate.enabled
+		}).map((id) => CHROME[id]())
+	);
 
 	// The sidebar is an overlay on every viewport, so dismiss it as soon as the
 	// user picks a destination.

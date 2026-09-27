@@ -5,7 +5,8 @@
 	import { resolve } from '$lib/resolve';
 	import StatusBadge from '../status-badge.svelte';
 	import { integrationStatus } from '../integrations/integration-detail';
-	import type { IntegrationView } from './device-types';
+	import type { IntegrationHandlers, IntegrationView } from './device-types';
+	import RowOverflowMenu from './row-overflow-menu.svelte';
 
 	// ONE integration's own line: what it is on the left, its controls on the
 	// right. What it PROVIDES hangs below it, rendered by the parent — the
@@ -24,24 +25,30 @@
 	let {
 		integration,
 		busy,
-		onEdit,
-		onToggle,
-		onRemove
+		handlers
 	}: {
 		integration: IntegrationView;
 		busy: boolean;
-		onEdit: (integration: IntegrationView) => void;
-		onToggle: (integration: IntegrationView, enabled: boolean) => void;
-		onRemove: (integration: IntegrationView) => void;
+		handlers: IntegrationHandlers;
 	} = $props();
 
 	const switchId = $derived(`integration-enabled-${integration.id}`);
 	const status = $derived(integrationStatus(integration));
 	const href = $derived(resolve(`/settings/integrations/${integration.id}`));
+	// Remove is the destructive one, so it sits behind the row's menu like a
+	// device's Delete — never a bare button next to Edit, one mis-tap away.
+	const menu = $derived([
+		{
+			id: 'remove',
+			label: m.devices_integration_action_remove(),
+			destructive: true,
+			onSelect: () => handlers.remove(integration)
+		}
+	]);
 </script>
 
 <div
-	class="flex flex-col gap-3 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4"
+	class="flex items-center justify-between gap-3 py-3 sm:gap-4"
 	class:opacity-60={!integration.enabled}
 	data-integration={integration.kind}
 >
@@ -61,31 +68,27 @@
 			<span class="text-xs text-muted-foreground">{status.label}</span>
 		{/if}
 	</div>
-	<div class="flex shrink-0 flex-wrap items-center gap-2">
+	<div class="flex shrink-0 items-center gap-1 sm:gap-2">
 		<Switch
 			id={switchId}
 			checked={integration.enabled}
 			disabled={busy}
 			aria-label={integration.label}
-			onCheckedChange={(v) => onToggle(integration, v === true)}
+			onCheckedChange={(v) => handlers.toggle(integration, v === true)}
 		/>
 		<Button
 			variant="outline"
 			size="sm"
-			class="flex-1 sm:flex-none"
+			class="ml-1 h-9 sm:h-8"
 			disabled={busy}
-			onclick={() => onEdit(integration)}
+			onclick={() => handlers.edit(integration)}
 		>
 			{m.devices_action_edit()}
 		</Button>
-		<Button
-			variant="ghost"
-			size="sm"
-			class="flex-1 sm:flex-none"
+		<RowOverflowMenu
+			label={m.devices_more_actions({ name: integration.label })}
+			items={menu}
 			disabled={busy}
-			onclick={() => onRemove(integration)}
-		>
-			{m.devices_integration_action_remove()}
-		</Button>
+		/>
 	</div>
 </div>

@@ -29,6 +29,13 @@
 	import { canvasHighlight } from '$lib/components/inverter/_shared/canvas-highlight.svelte';
 	import { CURVE, MARK_STYLE, type ChartKind } from '$lib/charts/house-style';
 	import { chartPaddingFor, xTickSpacingFor } from '$lib/cost/ranges';
+	import {
+		axisValueLabels,
+		fittedAxisPadding,
+		fittedTickSpacing,
+		seriesValues,
+		withFittedAxes
+	} from './axis-fit';
 	import { CHART_BOX } from '$lib/layout/tokens';
 	import PlotFrame from '$lib/components/layout/plot-frame.svelte';
 	import { chartZoom } from '$lib/charts/zoom.svelte';
@@ -91,11 +98,26 @@
 	// colour the hovered band gets an opaque slab over it.
 	const highlight = canvasHighlight();
 
+	// What the two axes will actually DRAW — the one input the measured width
+	// cannot supply. The gutter clamp is a constant, and at 360px it left 34px
+	// for a "30 kWh" label the browser draws 36px wide: the leading digit landed
+	// outside the canvas. The same estimate widens the x tick spacing until the
+	// labels cannot touch, which is a tick COUNT decision rather than a rotation.
+	//
+	// A pinned `yDomain` is also a promise that no tick can round past the data
+	// (the ratio charts' [0, 1]), so those do not reserve a character for a
+	// round-up that cannot happen. See ./axis-fit.
+	const rounded = $derived(yDomain === undefined);
+	const yLabels = $derived(axisValueLabels(seriesValues(data, series), format));
+	const axisLabels = $derived({ yLabels, xLabels: labels, rounded });
+	const plotPadding = $derived(fittedAxisPadding(chartPaddingFor(plotWidth), plotWidth, yLabels, { rounded }));
+	const tickSpacing = $derived(fittedTickSpacing(xTickSpacingFor(plotWidth), labels));
+
 	// The grouped-bar layout, plus the value axis' own formatter — the shared
 	// helper owns the band fractions and the gutters, this adds the one prop that
 	// belongs to the series rather than to the layout.
 	const barProps = $derived.by(() => {
-		const base = groupedBarProps(data.length, plotWidth);
+		const base = withFittedAxes(groupedBarProps(data.length, plotWidth), plotWidth, axisLabels);
 		return { ...base, props: { ...base.props, yAxis: { format } } };
 	});
 
@@ -114,7 +136,12 @@
      outside the drawing layer, so capturing here adds no mark of its own. -->
 {#snippet belowContext({ context }: { context: ChartState<Row> })}{zoom.capture(context)}{/snippet}
 
-<div class="flex min-w-0 flex-col gap-3" bind:this={highlight.el} bind:clientWidth={plotWidth}>
+<div
+	class="flex min-w-0 flex-col gap-3"
+	data-slot="statistics-plot"
+	bind:this={highlight.el}
+	bind:clientWidth={plotWidth}
+>
 	<!-- The plot's own box: `PlotFrame` is the `relative` ancestor the zoom chips
 	     have always positioned against, and it is also what draws full screen in
 	     the opposite corner. The height stays the container's (`CHART_BOX`) — the
@@ -142,9 +169,9 @@
 					{yDomain}
 					{...zoom.props}
 					{belowContext}
-					padding={chartPaddingFor(plotWidth)}
+					padding={plotPadding}
 					props={{
-						xAxis: { tickSpacing: xTickSpacingFor(plotWidth) },
+						xAxis: { tickSpacing },
 						yAxis: { format },
 						spline: {
 							// The house curve for the kind ($lib/charts/house-style). Left to

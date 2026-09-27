@@ -1,7 +1,7 @@
 <script lang="ts">
 	import * as m from '$lib/paraglide/messages';
-	import type { IntegrationWithDevices } from './add-device-logic';
-	import type { DeviceView, IntegrationView } from './device-types';
+	import type { IntegrationWithDevices } from './roster-groups';
+	import type { DeviceHandlers, IntegrationHandlers } from './device-types';
 	import IntegrationEntry from './integration-entry.svelte';
 
 	// The integrations half of a connection's card, under the devices read
@@ -21,26 +21,16 @@
 		entries,
 		busyId,
 		busyIntegrationId,
-		onEdit,
-		onRename,
-		onRetire,
-		onRestore,
-		onEditIntegration,
-		onToggleIntegration,
-		onRemoveIntegration
+		handlers,
+		integrationHandlers
 	}: {
 		entries: readonly IntegrationWithDevices[];
 		/** The device id a request is in flight for, or null. */
 		busyId: number | null;
 		/** The integration id a request is in flight for, or null. */
 		busyIntegrationId: number | null;
-		onEdit: (device: DeviceView) => void;
-		onRename: (device: DeviceView) => void;
-		onRetire: (device: DeviceView) => void;
-		onRestore: (device: DeviceView) => void;
-		onEditIntegration: (integration: IntegrationView) => void;
-		onToggleIntegration: (integration: IntegrationView, enabled: boolean) => void;
-		onRemoveIntegration: (integration: IntegrationView) => void;
+		handlers: DeviceHandlers;
+		integrationHandlers: IntegrationHandlers;
 	} = $props();
 </script>
 
@@ -55,13 +45,8 @@
 					{entry}
 					{busyId}
 					{busyIntegrationId}
-					{onEdit}
-					{onRename}
-					{onRetire}
-					{onRestore}
-					{onEditIntegration}
-					{onToggleIntegration}
-					{onRemoveIntegration}
+					{handlers}
+					{integrationHandlers}
 				/>
 			{/each}
 		</div>

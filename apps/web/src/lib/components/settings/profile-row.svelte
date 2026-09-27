@@ -24,7 +24,10 @@
 	const version = $derived(profile.version ? ` · v${profile.version}` : '');
 </script>
 
-<div class="flex flex-col gap-3 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+<!-- Side by side at every width: the controls are one button or one icon, and
+     stacking them under the name left a lone trash icon on a line of its own
+     on a phone. The name wraps instead. -->
+<div class="flex items-center justify-between gap-3 py-3 sm:gap-4">
 	<div class="flex min-w-0 flex-col gap-1">
 		<span class="flex flex-wrap items-center gap-1.5 text-sm font-medium">
 			<span class="wrap-break-word">{profile.name}</span>

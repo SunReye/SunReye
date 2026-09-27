@@ -16,13 +16,16 @@
 
 	let {
 		status = null,
-		profileId = undefined
+		profileId = undefined,
+		wizard = false
 	}: {
 		status?: InverterStatus | null;
 		// When set (onboarding), test-reads run against this chosen profile instead
 		// of the active one. Omitted on the settings page, where the server falls
 		// back to the active profile.
 		profileId?: string;
+		/** Inside the setup wizard: its Continue saves, so the form offers no Save of its own. */
+		wizard?: boolean;
 	} = $props();
 
 	let cfg = $state<InverterConfig | null>(null);
@@ -118,6 +121,7 @@
 	{saving}
 	disabled={!cfg}
 	testDisabled={cfg?.simulate === true}
+	showSave={!wizard}
 	ontest={test}
 	onsave={save}
 >

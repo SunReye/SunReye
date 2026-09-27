@@ -370,6 +370,45 @@ This carve-out is for a status display, and it is not a licence to loop an anima
 If a new one is proposed, it has to meet all four constraints — and be the reading, not a
 decoration on top of one.
 
+### …and the device has to be able to afford it
+
+The carve-out is also the most expensive thing this app paints. Measured on the idle overview at
+6× CPU throttle, before the tiers existed: **577 ms of renderer work per wall-clock second** —
+the comet chains' `blur()` + double `drop-shadow()` and their per-frame SMIL attribute writes, one
+500 ms `box-shadow` transition per node box, a `stroke-dashoffset` transition per gauge, and the
+readouts' glide mutating ~335 text nodes a second. A desktop absorbs it. A wall tablet does not:
+it lags, and eventually the browser stops answering.
+
+So motion is a **tier**, resolved in `$lib/motion/tier` and read as `motion.tier`:
+
+| Tier    | The hero                                   | The readouts | Measured cost |
+| ------- | ------------------------------------------ | ------------ | ------------- |
+| `full`  | comet chains, ring beat, wash fade          | glide        | 589 ms/s      |
+| `lite`  | one dash per rail, travelling in 12 steps   | snap         | 74 ms/s       |
+| `still` | plain overlays, nothing moves               | snap         | 10 ms/s       |
+
+`lite` is the interesting one: it keeps the motion that **is the reading** — direction, speed and
+magnitude, against the same remembered plant — and drops the motion that is an affordance. The
+readout drift is the clearest example of the difference: the number is the same either way.
+
+Which tier a device gets comes from three inputs, in this order:
+
+1. the OS's `prefers-reduced-motion`, which is an accessibility instruction and outranks
+   everything (→ `still`);
+2. a **per-device** setting (Settings → Display → Animation), stored in `localStorage` because the
+   wall tablet and the laptop read the same plant and do not have the same frame budget;
+3. on `auto` (the default), what the device has been **measured** to manage — no static signal
+   identifies the tablets this exists for (a Fire HD 10 reports eight cores and no
+   `deviceMemory`), so what is measured is the one thing that is actually wrong: it drops frames.
+
+Two properties of the measurement are load-bearing and easy to break. It only ever **downgrades**
+— a device that holds its frames *because* it was downgraded would otherwise oscillate — and it is
+**bounded**, because a pending `requestAnimationFrame` makes the browser produce frames it would
+otherwise skip, so an endless watch would hold a still kiosk at 60 Hz for the sake of measuring it.
+
+Anything added to the hero answers the tier. `e2e/motion-tier.spec.ts` is what proves each one
+renders what it claims; `power-flow-pulse-wiring.test.ts` pins the branches.
+
 ---
 
 ## Gestures on a chart

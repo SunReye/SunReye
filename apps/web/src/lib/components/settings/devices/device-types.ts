@@ -1,153 +1,36 @@
-// Row shapes shared by the devices settings panel and its dialog. Mirrors the
-// server's `DeviceView` (`apps/server/src/devices/device-admin.ts`); the Eden
-// treaty carries the same shape, these names exist so components can type a
-// prop without reaching into the treaty's inferred response.
+// Row shapes shared by the devices settings panel, its dialogs and the add
+// wizard. The WIRE shapes are `@SunReye/contracts/devices`, which the server
+// builds its answers from; this module re-exports them under the names the
+// components already use, and adds the request bodies and form state that
+// exist only on this side.
 
+import type {
+  ConnectionKind as WireConnectionKind,
+  ConnectionView,
+  DeviceRoster as WireRoster,
+  DeviceView,
+  IntegrationView,
+} from "@SunReye/contracts/devices";
 import type { InverterFields, InverterTexts } from "$lib/settings/inverter-fields";
 import type { ConnectionCreate, ConnectionDraft } from "./connection-draft";
 
-// One spelling of the wire transport for both settings surfaces.
-export type { Transport } from "../inverter-types";
-import type { Transport } from "../inverter-types";
+export type { ConnectionView, DeviceView, IntegrationView } from "@SunReye/contracts/devices";
 
 /**
- * Every connection kind this build can open. Mirrors `CONNECTION_KINDS` in
- * `@SunReye/db/connection-kinds` — the web app cannot import from `@SunReye/db`
- * (it is not a dependency of this package), so the list is restated and the
- * server's CHECK constraint is the one that decides.
+ * Every connection kind this build can open, as a VALUE the kind picker loops
+ * over. The list's home is `CONNECTION_KINDS` in `@SunReye/db/connection-kinds`
+ * — the web app cannot import from `@SunReye/db`, so it is restated, and
+ * `satisfies` plus the exhaustiveness check in `./connection-draft.test.ts` hold
+ * it to the contract's `ConnectionKind` in both directions.
  */
-export const CONNECTION_KINDS = ["modbus", "mqtt"] as const;
+export const CONNECTION_KINDS = ["modbus", "mqtt"] as const satisfies readonly WireConnectionKind[];
 export type ConnectionKind = (typeof CONNECTION_KINDS)[number];
-
-/** A Modbus endpoint's addressing — the five columns `params` replaced (#217). */
-export type ModbusParams = {
-  host: string;
-  port: number;
-  transport: Transport;
-  timeoutMs: number;
-  pollIntervalMs: number;
-  /**
-   * The Solarman logger stick's own serial number, which its envelope addresses
-   * every frame by. OPTIONAL, and optional on purpose: the stick states it in
-   * its handshake, so the connection probe discovers it and the field is filled
-   * in for the operator rather than copied off a sticker behind the inverter.
-   * Absent on every other framing, which has nothing to address.
-   */
-  loggerSerial?: number;
-};
-
-/**
- * An MQTT broker's endpoint AS THE API RETURNS IT.
- *
- * The password is write-only, exactly as `app_settings.mqtt`'s was: the server
- * strips it and answers `hasPassword` instead, and a write that omits it keeps
- * the stored one.
- */
-export type MqttParamsMasked = {
-  brokerUrl: string;
-  username?: string;
-  clientId?: string;
-  hasPassword: boolean;
-};
-
-/**
- * A connection as `/api/connections` returns it: the label, plus the params of
- * its kind. Mirrors the server's `ConnectionView`
- * (`{ id, name } & ConnectionParamsMasked`).
- *
- * Discriminated on `kind` rather than one flat row with optional fields: the two
- * arms share NOT ONE field, and every reader switches on the kind — a group
- * caption, the option label, the probe, the dialog's field set.
- */
-export type ConnectionView = { id: number; name: string } & (
-  | { kind: "modbus"; params: ModbusParams }
-  | { kind: "mqtt"; params: MqttParamsMasked }
-);
 
 /** A connection narrowed to the kind a Modbus device can be addressed on. */
 export type ModbusConnectionView = Extract<ConnectionView, { kind: "modbus" }>;
 
-export type DeviceView = {
-  id: number;
-  slug: string;
-  name: string;
-  profileId: string;
-  role: string;
-  unitId: number;
-  connectionId: number | null;
-  /** ISO timestamp while retired, null in service. */
-  retiredAt: string | null;
-  connection: ConnectionView | null;
-  /** The inverter's roof and pack; empty/defaults/null on every other role. */
-  arrays: InverterFields["arrays"];
-  tempCoefficient: number;
-  systemLoss: number;
-  battery: InverterFields["battery"];
-  profileName: string | null;
-  profileKnown: boolean;
-  /** How the device is fed: a Modbus endpoint, a coded integration, or nothing. */
-  kind: DeviceKind;
-  /** Why it is, or is not, being read. */
-  state: DeviceState;
-  /** The integration a coded device belongs to (`evcc`), or null. */
-  integration: string | null;
-};
-
-/** Mirrors the server's `DeviceKind`. */
-export type DeviceKind = "modbus" | "coded" | "virtual";
-
-/**
- * Mirrors the server's `DeviceState`. One word per reason a device is not being
- * read — a `polled` boolean reported an MQTT-fed loadpoint and a computation as
- * broken Modbus hardware (#213).
- */
-export type DeviceState = "polling" | "idle" | "provided" | "virtual" | "retired";
-
-/**
- * An integration as `/api/integrations` returns it. Mirrors the server's
- * `IntegrationView` (`apps/server/src/integrations/integration-admin.ts`).
- *
- * `label`, `addable` and `multiInstance` are DERIVED per response from the
- * catalog entry the row's kind resolves to — they are not stored, so a build
- * that renames "EVCC" is not contradicted by every row written before it. A row
- * this build has no entry for still comes back, labelled with its raw kind: it
- * is configured and running, and a page that hid it would leave the operator
- * nothing to turn off.
- */
-export type IntegrationView = {
-  id: number;
-  kind: string;
-  /** The endpoint it runs over, or null for a coded thing that needs none. */
-  connectionId: number | null;
-  enabled: boolean;
-  params: Record<string, unknown>;
-  label: string;
-  addable: boolean;
-  multiInstance: boolean;
-  /** Live socket health, or null — read {@link ConnectionStatus} before using it. */
-  status: ConnectionStatus | null;
-};
-
-/**
- * What the broker pool observed of one connection at the moment of the request.
- * Mirrors `ConnectionStatus` in `apps/server/src/devices/connection-tier.ts`.
- *
- * Whoever renders this owes the reader three separate answers, not two. A
- * `false` here is a socket that is shut; a null on the field above is a socket
- * this build never held — a Modbus row the poll loop still owns, an integration
- * bound to no endpoint, a process that has opened nothing yet — and drawing
- * that as a fault reports a measurement nobody made. `lastConnectedAt: null`
- * splits the shut case again, into "dropped" and "never once opened", which
- * send an operator to two different places.
- */
-export type ConnectionStatus = {
-  connected: boolean;
-  lastError: string | null;
-  /** ISO-8601 of that failure; null while nothing has failed. */
-  lastErrorAt: string | null;
-  /** ISO-8601 of the newest completed connect; null when there has been none. */
-  lastConnectedAt: string | null;
-};
+/** A Modbus endpoint's addressing — the five columns `params` replaced (#217). */
+export type ModbusParams = ModbusConnectionView["params"];
 
 /** What `PATCH /api/integrations/:id` takes. Never `kind` or `connectionId`:
     those are the row's identity and the server answers 409 for either. */
@@ -156,14 +39,14 @@ export type IntegrationPatchBody = {
   params?: Record<string, unknown>;
 };
 
-export type DeviceRoster = {
-  devices: DeviceView[];
-  connections: ConnectionView[];
-  /**
-   * Optional because it arrives from a SECOND request. The page renders the
-   * roster as soon as `/api/devices` answers, and `/api/integrations` lands
-   * after it — an absent list is "not yet", never "none configured".
-   */
+/**
+ * `GET /api/devices`, with the integration rows folded in once they arrive.
+ *
+ * `integrations` is optional because it comes from a SECOND request. The page
+ * renders the roster as soon as `/api/devices` answers, and `/api/integrations`
+ * lands after it — an absent list is "not yet", never "none configured".
+ */
+export type GroupedRoster = WireRoster & {
   integrations?: readonly IntegrationView[];
 };
 
@@ -205,3 +88,24 @@ export type AddDeviceForm = {
 
 /** The `<select>` value that means "create a connection". Never a real id. */
 export const NEW_CONNECTION = "new";
+
+/**
+ * What the roster's device rows can ask the panel to do. ONE object handed down
+ * the tree rather than a prop per verb: the group → list → entry → rows → row
+ * chain threaded six callbacks through five components, and adding Delete meant
+ * editing every one of them.
+ */
+export type DeviceHandlers = {
+  edit: (device: DeviceView) => void;
+  rename: (device: DeviceView) => void;
+  retire: (device: DeviceView) => void;
+  restore: (device: DeviceView) => void;
+  delete: (device: DeviceView) => void;
+};
+
+/** The same, for an integration row. */
+export type IntegrationHandlers = {
+  edit: (integration: IntegrationView) => void;
+  toggle: (integration: IntegrationView, enabled: boolean) => void;
+  remove: (integration: IntegrationView) => void;
+};

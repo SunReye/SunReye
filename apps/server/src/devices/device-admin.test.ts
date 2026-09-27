@@ -20,6 +20,7 @@ import {
   patchConnection,
   patchDevice,
   removeConnection,
+  removeDevice,
 } from "./device-admin";
 
 /**
@@ -88,6 +89,8 @@ function harness(
     coded?: Record<string, { integration: string; name?: string; addable?: boolean }>;
     createDevice?: DeviceAdminStore["createDevice"];
     batteries?: DeviceBatteryRecord[];
+    /** Device ids that have recorded readings — the store refuses to delete those. */
+    withHistory?: number[];
   } = {},
 ) {
   const connections = [...(over.connections ?? [gateway])];
@@ -159,6 +162,14 @@ function harness(
       calls.push(`deleteBattery:${deviceId}`);
       const index = batteries.findIndex((b) => b.deviceId === deviceId);
       if (index >= 0) batteries.splice(index, 1);
+    },
+    async deleteDevice(id) {
+      calls.push(`deleteDevice:${id}`);
+      if (over.withHistory?.includes(id)) return "has-history";
+      const index = devices.findIndex((d) => d.id === id);
+      if (index < 0) return "missing";
+      devices.splice(index, 1);
+      return "deleted";
     },
     async deleteConnection(id) {
       calls.push(`deleteConnection:${id}`);
@@ -1067,6 +1078,71 @@ describe("removeConnection", () => {
     const { deps } = harness();
     const error = await rejection(() => removeConnection(deps, 99));
     expect(error.status).toBe(404);
+  });
+});
+
+describe("removeDevice", () => {
+  const meter: DeviceRecord = {
+    ...inverter,
+    id: 2,
+    slug: "meter",
+    name: "Meter",
+    profileId: "sdm630",
+    role: "meter",
+    unitId: 2,
+  };
+
+  test("deletes a device that never recorded a reading, then reloads once", async () => {
+    const { deps, calls, devices } = harness({ devices: [inverter, meter] });
+    await removeDevice(deps, 2);
+    expect(devices.map((d) => d.id)).toEqual([1]);
+    expect(calls).toContain("deleteDevice:2");
+    expect(calls.filter((c) => c === "reload")).toHaveLength(1);
+    expect(calls.indexOf("deleteDevice:2")).toBeLessThan(calls.indexOf("reload"));
+  });
+
+  test("a retired device can be deleted too", async () => {
+    const retired = { ...meter, retiredAt: new Date() };
+    const { deps, devices } = harness({ devices: [inverter, retired] });
+    await removeDevice(deps, 2);
+    expect(devices.map((d) => d.id)).toEqual([1]);
+  });
+
+  test("a device with history is refused with 409 on the `history` field, and nothing reloads", async () => {
+    const { deps, calls, devices } = harness({ devices: [inverter, meter], withHistory: [2] });
+    const error = await rejection(() => removeDevice(deps, 2));
+    expect(error.status).toBe(409);
+    expect(error.field).toBe("history");
+    expect(devices.map((d) => d.id)).toEqual([1, 2]);
+    expect(calls).not.toContain("reload");
+  });
+
+  test("the polled device is refused before the store is asked", async () => {
+    const { deps, calls } = harness({ devices: [inverter, meter] });
+    const error = await rejection(() => removeDevice(deps, 1));
+    expect(error.status).toBe(409);
+    expect(calls.some((c) => c.startsWith("deleteDevice"))).toBe(false);
+  });
+
+  test("the optimizer is refused: it registers itself and would come straight back", async () => {
+    const { deps, calls } = harness({ devices: [inverter, optimizer] });
+    const error = await rejection(() => removeDevice(deps, optimizer.id));
+    expect(error.status).toBe(409);
+    expect(calls.some((c) => c.startsWith("deleteDevice"))).toBe(false);
+  });
+
+  test("a device the plant does not have is a 404", async () => {
+    const { deps } = harness();
+    const error = await rejection(() => removeDevice(deps, 99));
+    expect(error.status).toBe(404);
+  });
+
+  test("a row that vanished between the read and the delete is a 404, not a success", async () => {
+    const { deps, calls } = harness({ devices: [inverter, meter] });
+    deps.store.deleteDevice = async () => "missing";
+    const error = await rejection(() => removeDevice(deps, 2));
+    expect(error.status).toBe(404);
+    expect(calls).not.toContain("reload");
   });
 });
 

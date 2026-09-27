@@ -2,11 +2,12 @@
 	import { Label } from '$lib/components/ui/label';
 	import * as NativeSelect from '$lib/components/ui/native-select';
 	import * as m from '$lib/paraglide/messages';
-	import { type Refusal, UNIT_IDS, takenUnitIds } from './add-device-logic';
+	import { UNIT_IDS, takenUnitIds } from './device-form';
+	import type { Refusal } from './device-roster';
 	import type { ConnectionDraft } from './connection-draft';
 	import { ADDABLE_ROLES, type AddDeviceForm, type ConnectionView, type DeviceView } from './device-types';
 	import FieldProblem from './field-problem.svelte';
-	import { roleLabel } from './role-label';
+	import { roleLabel } from './device-words';
 	import UnitScan from './unit-scan.svelte';
 	import { chosenModbusParams, scanTargetOf, unitIdHelp } from './unit-scan-logic';
 
