@@ -3,6 +3,7 @@ import { describe, expect, test } from "bun:test";
 
 import type { DeviceRegistry } from "../devices/registry";
 import { getMqttConfig, getSimulate } from "../settings/config";
+import { getPlantTimeZone } from "../settings/display-settings";
 import { getSpotPriceConfig } from "../settings/spot-price-settings";
 import { getWeatherConfig } from "../settings/weather-settings";
 import { runForecastCorrectionLearn } from "../forecast/forecast-correction-job";
@@ -30,6 +31,7 @@ describe("productionRuntimeDeps", () => {
     expect(deps.settings).toEqual({
       getMqttConfig,
       getSimulate,
+      getPlantTimeZone,
       getWeatherConfig,
       getSpotPriceConfig,
     });

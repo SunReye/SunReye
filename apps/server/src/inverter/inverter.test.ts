@@ -7,6 +7,7 @@ import {
   tryGetProfile,
   unregisterProfile,
   type ProfileData,
+  type SimContext,
 } from "@SunReye/inverter-core";
 import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
 
@@ -331,6 +332,16 @@ describe("buildSource", () => {
     expect(connectionOf(buildSource(hydrated, config(), false))).toMatchObject({
       host: "10.0.0.5",
     });
+  });
+
+  test("a simulated source runs on the zone it is handed", async () => {
+    const seen: (string | undefined)[] = [];
+    const zoned = {
+      ...hydrateProfile(profile),
+      simulate: (ctx: SimContext) => (seen.push(ctx.timeZone), {}),
+    };
+    await buildSource(zoned, config(), true, "Europe/Berlin").read();
+    expect(seen).toEqual(["Europe/Berlin"]);
   });
 
   test("each call yields its own source, so a reconnect never shares a socket", () => {

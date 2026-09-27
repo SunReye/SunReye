@@ -317,6 +317,14 @@ describe("createInverter", () => {
     expect(createInverter(p, { simulate: true, connection }).profile.id).toBe("not-registered");
   });
 
+  test("hands the simulator the plant's zone, so its sun runs on the plant's clock", async () => {
+    const seen: (string | undefined)[] = [];
+    const p = profile("zoned", { simulate: (ctx) => (seen.push(ctx.timeZone), {}) });
+    await createInverter(p, { simulate: true, connection, timeZone: "Europe/Berlin" }).read();
+    await createInverter(p, { simulate: true, connection }).read();
+    expect(seen).toEqual(["Europe/Berlin", undefined]);
+  });
+
   test("each call yields an independent source for the same profile", () => {
     const p = profile("deye-sg05lp3");
 
