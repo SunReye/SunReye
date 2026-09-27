@@ -1,5 +1,6 @@
 import type { CanonicalRole } from "./roles";
 import type { InverterProfile, MetricDef, MetricValues, SimContext } from "./types";
+import { wallClockAsUtc } from "./zone-parts";
 
 /**
  * Generic, profile-agnostic coherent simulator.
@@ -54,9 +55,16 @@ const round = (v: number, d = 0): number => {
 };
 const jitter = (spread: number): number => 1 + (Math.random() - 0.5) * spread;
 
-/** 0 at night, smooth bell peaking near solar noon (~13:00). */
-function irradiance(now: Date): number {
-  const h = now.getHours() + now.getMinutes() / 60 + now.getSeconds() / 3600;
+/**
+ * `now`'s wall clock in the plant's zone, as the UTC instant of those digits —
+ * UTC itself when no zone is given, so the output never depends on the host.
+ */
+const wallClock = (now: Date, timeZone: string | undefined): Date =>
+  new Date(timeZone ? wallClockAsUtc(timeZone, now.getTime()) : now.getTime());
+
+/** 0 at night, smooth bell peaking near solar noon (~13:00) on the plant's clock. */
+function irradiance(wall: Date): number {
+  const h = wall.getUTCHours() + wall.getUTCMinutes() / 60 + wall.getUTCSeconds() / 3600;
   const day = (h - 6) / 14; // sunrise ~06:00, sunset ~20:00
   if (day <= 0 || day >= 1) return 0;
   return Math.sin(Math.PI * day) ** 1.3;
@@ -76,8 +84,9 @@ function initState(s: PlantState): void {
   s.dayKey = -1;
 }
 
-function resetDaily(s: PlantState, now: Date): void {
-  const dayKey = Math.floor((now.getTime() - now.getTimezoneOffset() * 60000) / 86400000);
+/** Zeroes the `*Day` counters when the plant's calendar day changes. */
+function resetDaily(s: PlantState, wall: Date): void {
+  const dayKey = Math.floor(wall.getTime() / 86400000);
   if (s.dayKey === dayKey) return;
   s.dayKey = dayKey;
   s.productionDay = 0;
@@ -228,11 +237,12 @@ function integrateEnergy(
 
 export function genericSimulate(
   profile: InverterProfile,
-  { now, dtSec, state }: SimContext,
+  { now, dtSec, state, timeZone }: SimContext,
 ): MetricValues {
   const s = state as unknown as PlantState;
+  const wall = wallClock(now, timeZone);
   initState(s);
-  resetDaily(s, now);
+  resetDaily(s, wall);
 
   const out: MetricValues = {};
   const t: PlantTick = {
@@ -241,7 +251,7 @@ export function genericSimulate(
     set: (role, value, d = 0) => {
       for (const m of byRole(profile, role)) out[m.key] = round(value, d);
     },
-    irr: irradiance(now),
+    irr: irradiance(wall),
     dtSec,
     state: s,
   };

@@ -25,8 +25,10 @@ const profile: InverterProfile = {
   ],
 };
 
-const NOON = new Date("2026-07-01T13:00:00");
-const NIGHT = new Date("2026-07-01T02:00:00");
+// UTC instants: with no zone handed in, the sun runs on UTC — never on the
+// host's clock, so a run in CI and a run on a laptop see the same sky.
+const NOON = new Date("2026-07-01T13:00:00Z");
+const NIGHT = new Date("2026-07-01T02:00:00Z");
 
 describe("genericSimulate", () => {
   test("produces PV at noon and none at night", () => {
@@ -135,5 +137,58 @@ describe("genericSimulate", () => {
     const out = genericSimulate(pvOnly, { now: NOON, dtSec: 0, state: {} });
     expect(out.soc).toBeUndefined();
     expect(Math.abs(out.gp! - (out.lp! - out.pvtot!))).toBeLessThan(3);
+  });
+});
+
+describe("genericSimulate — the plant's clock", () => {
+  // The sun rises on the PLANT's wall clock, and the daily counters roll over at
+  // the plant's midnight: those are what the server buckets the samples into.
+  const KIRITIMATI = "Pacific/Kiritimati"; // UTC+14
+  const BERLIN = "Europe/Berlin";
+
+  test("puts the sun on the plant's wall clock when handed a zone", () => {
+    const utcNoon = new Date("2026-07-01T12:00:00Z"); // 02:00 on the 2nd in Kiritimati
+    expect(genericSimulate(profile, { now: utcNoon, dtSec: 0, state: {} }).pvtot).toBeGreaterThan(
+      0,
+    );
+    expect(
+      genericSimulate(profile, { now: utcNoon, dtSec: 0, state: {}, timeZone: KIRITIMATI }).pvtot,
+    ).toBe(0);
+    const kiritimatiNoon = new Date("2026-07-01T23:00:00Z"); // 13:00 on the 2nd there, 23:00 UTC
+    expect(genericSimulate(profile, { now: kiritimatiNoon, dtSec: 0, state: {} }).pvtot).toBe(0);
+    expect(
+      genericSimulate(profile, { now: kiritimatiNoon, dtSec: 0, state: {}, timeZone: KIRITIMATI })
+        .pvtot,
+    ).toBeGreaterThan(0);
+  });
+
+  /** A day of load already on the counters at 23:30 Berlin, 21:30 UTC. */
+  function dayOfLoad(timeZone?: string): SimState {
+    const state: SimState = {};
+    const lateEvening = new Date("2026-07-01T21:30:00Z");
+    genericSimulate(profile, { now: lateEvening, dtSec: 0, state, timeZone });
+    genericSimulate(profile, { now: lateEvening, dtSec: 3600, state, timeZone });
+    expect(state.loadDay!).toBeGreaterThan(0);
+    return state;
+  }
+
+  test("rolls the daily counters over at the plant's midnight", () => {
+    const state = dayOfLoad(BERLIN);
+    // 00:30 on the 2nd in Berlin, still the 1st in UTC.
+    genericSimulate(profile, {
+      now: new Date("2026-07-01T22:30:00Z"),
+      dtSec: 0,
+      state,
+      timeZone: BERLIN,
+    });
+    expect(state.loadDay).toBe(0);
+  });
+
+  test("rolls them over at UTC midnight when no zone is given", () => {
+    const state = dayOfLoad();
+    genericSimulate(profile, { now: new Date("2026-07-01T22:30:00Z"), dtSec: 0, state });
+    expect(state.loadDay!).toBeGreaterThan(0);
+    genericSimulate(profile, { now: new Date("2026-07-02T00:30:00Z"), dtSec: 0, state });
+    expect(state.loadDay).toBe(0);
   });
 });
