@@ -221,6 +221,19 @@ describe("the delta on a minute tick", () => {
       [iso(24 * 60 - 1), TODAY.to.toISOString()],
     ]);
   });
+
+  test("a window the clock has left is re-asked once, then never again", async () => {
+    // The day's last bucket stays the newest held, so every minute past
+    // midnight used to look due: ~60 cards re-asked for 23:59 once a minute
+    // until the reader navigated away.
+    const { feed, calls, answer } = await landed(["pv"], rows(0, 24 * 60 - 2));
+    feed.append(["pv"], TODAY, {}, at(24 * 60 + 1));
+    answer("pv", rows(24 * 60 - 2, 24 * 60 - 1));
+    await flush();
+    expect(calls).toHaveLength(1);
+    for (const minute of [2, 3, 60, 600]) feed.append(["pv"], TODAY, {}, at(24 * 60 + minute));
+    expect(calls).toHaveLength(1);
+  });
 });
 
 describe("what a chart draws", () => {

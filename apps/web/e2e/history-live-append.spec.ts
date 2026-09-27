@@ -64,3 +64,35 @@ test("a minute tick asks each live chart for its delta once, and never the whole
   // would keep climbing with no further tick.
   expect(perMetric(deltas)).toEqual(perMetric(loaded));
 });
+
+/** Two minutes before midnight, in the browser's own zone — the page's zone. */
+const BEFORE_MIDNIGHT = new Date(2026, 7, 20, 23, 58);
+
+test("past midnight, yesterday's window is not re-asked once a minute", async ({ page }) => {
+  // The day's last bucket stays the newest a chart holds, so every minute past
+  // midnight looked due: each live chart re-asked for 23:59 once a minute until
+  // the reader navigated — ~60 requests a minute on /history.
+  await page.clock.install({ time: BEFORE_MIDNIGHT });
+  const backend = await openHistory(page, {
+    feedIntervalMs: 0,
+    customCharts: [{ id: "chart-1", name: "PV strings", metrics: OVERLAY }],
+  });
+  await expect(mountedCharts(page).first()).toBeVisible();
+  await page.waitForTimeout(SETTLE_MS);
+  const dayEnd = rollupCalls(backend)[0]!.to;
+
+  // Across midnight, then one tick to let anything still owed land.
+  await page.clock.fastForward("03:00");
+  await backend.pushMetrics();
+  await page.waitForTimeout(SETTLE_MS);
+
+  backend.resetRequests();
+  for (let minute = 0; minute < 3; minute++) {
+    await page.clock.fastForward("01:00");
+    await backend.pushMetrics();
+    await page.waitForTimeout(300);
+  }
+  await page.waitForTimeout(SETTLE_MS);
+
+  expect(rollupCalls(backend).filter((c) => c.to === dayEnd)).toEqual([]);
+});
