@@ -164,13 +164,40 @@ describe("start", () => {
 });
 
 describe("afterPlantWrite", () => {
-  test("drops the plant facts, re-opens the connections, THEN re-reads the endpoint", async () => {
+  test("drops the facts, re-opens the connections, re-reads the endpoint, THEN rebuilds EVCC", async () => {
     // Facts first, so nothing the reload triggers reads the stale PV arrays.
     // Connections before the endpoint, because the endpoint reload rebuilds the
-    // Home Assistant export, which takes its client FROM a connection.
+    // Home Assistant export, which takes its client FROM a connection. EVCC
+    // last, as at boot: it joins a client the tier already opened. An edit to
+    // the `evcc-ingest` row's topic root or connection is a plant write like
+    // any other, and without this last step the ingest kept its old binding.
     const { order, deps } = recorder();
     await createPlantRuntime(deps).afterPlantWrite();
-    expect(order).toEqual(["facts.invalidate", "connections.reload", "runtime.reloadEndpoint"]);
+    expect(order).toEqual([
+      "facts.invalidate",
+      "connections.reload",
+      "runtime.reloadEndpoint",
+      "evcc.rebuild",
+    ]);
+  });
+
+  test("the EVCC rebuild is awaited, so the write answers after the new binding", async () => {
+    let resolveRebuild = (): void => {};
+    const { deps } = recorder({
+      evcc: {
+        rebuild: () => new Promise<void>((resolve) => (resolveRebuild = resolve)),
+        stop: async () => {},
+      },
+    });
+    let settled = false;
+    const written = createPlantRuntime(deps)
+      .afterPlantWrite()
+      .then(() => void (settled = true));
+    await Bun.sleep(0);
+    expect(settled).toBe(false);
+    resolveRebuild();
+    await written;
+    expect(settled).toBe(true);
   });
 
   test("a failing reload still leaves the facts dropped", async () => {
