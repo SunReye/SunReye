@@ -213,6 +213,7 @@ describe("priceSeriesRows", () => {
     kwh,
   });
   const standing = new Map([["2024-01-01", 1]]);
+  const BERLIN = "Europe/Berlin";
 
   test("bands the import, pays the export, and adds the standing charge", () => {
     // 2024-01-01 is a Monday: 10:00 is peak (0.40), 02:00 off-peak (0.10).
@@ -227,6 +228,7 @@ describe("priceSeriesRows", () => {
       ["2024-01-01"],
       tariff,
       standing,
+      BERLIN,
     );
     expect(point?.importCost).toBeCloseTo(1.1, 10);
     expect(point?.exportEarnings).toBeCloseTo(0.2, 10);
@@ -235,7 +237,14 @@ describe("priceSeriesRows", () => {
   });
 
   test("periods with no rows are zero-filled at their standing charge", () => {
-    const points = priceSeriesRows([], fieldByKey, ["2024-01-01", "2024-01-02"], tariff, standing);
+    const points = priceSeriesRows(
+      [],
+      fieldByKey,
+      ["2024-01-01", "2024-01-02"],
+      tariff,
+      standing,
+      BERLIN,
+    );
     expect(points.map((p) => p.bucket)).toEqual(["2024-01-01", "2024-01-02"]);
     expect(points[0]?.net).toBe(1);
     expect(points[1]?.net).toBe(0);
@@ -249,13 +258,15 @@ describe("priceSeriesRows", () => {
       ["2024-01-01"],
       tariff,
       standing,
+      BERLIN,
       (h) => {
         seen.push(h);
         return 0.5;
       },
     );
-    // (period, hod) resolves to the real local hour the export happened in.
-    expect(seen.map((d) => d.getTime())).toEqual([new Date(2024, 0, 1, 13).getTime()]);
+    // (period, hod) resolves to the plant-local hour the export happened in:
+    // 13:00 CET is 12:00Z.
+    expect(seen.map((d) => d.toISOString())).toEqual(["2024-01-01T12:00:00.000Z"]);
     expect(point?.exportEarnings).toBeCloseTo(2 * 0.05, 10);
     expect(point?.zeroValueExportKwh).toBeCloseTo(2, 10);
     expect(point?.zeroValueExportEur).toBeCloseTo(2 * 0.05, 10);
@@ -271,12 +282,41 @@ describe("priceSeriesRows", () => {
       ["2024-01-01T07"],
       tariff,
       new Map(),
+      BERLIN,
       (h) => {
         seen.push(h);
         return 1;
       },
     );
-    expect(seen.map((d) => d.getTime())).toEqual([new Date(2024, 0, 1, 7).getTime()]);
+    expect(seen.map((d) => d.toISOString())).toEqual(["2024-01-01T06:00:00.000Z"]);
+  });
+
+  test("§51 in a half-hour zone: the row is the UTC-aligned rollup hour it came from", () => {
+    // Rollup hours are UTC-aligned; in Kolkata the one whose local start hour is
+    // 13 starts at 13:30 IST = 08:00Z; in Adelaide (ACDT, +10:30) at 13:30 = 03:00Z.
+    const seen: Date[] = [];
+    const share = (h: Date) => {
+      seen.push(h);
+      return 0;
+    };
+    const one = (period: string, tz: string) =>
+      priceSeriesRows(
+        [row(period, "grid.out", 1, 13, 1)],
+        fieldByKey,
+        [period],
+        tariff,
+        new Map(),
+        tz,
+        share,
+      );
+    one("2024-01-01", "Asia/Kolkata");
+    one("2024-01-01", "Australia/Adelaide");
+    one("2024-01-01T13", "Asia/Kolkata");
+    expect(seen.map((d) => d.toISOString())).toEqual([
+      "2024-01-01T08:00:00.000Z",
+      "2024-01-01T03:00:00.000Z",
+      "2024-01-01T08:00:00.000Z",
+    ]);
   });
 
   test("rows for a period outside the zero-filled window are ignored", () => {
@@ -286,6 +326,7 @@ describe("priceSeriesRows", () => {
       ["2024-01-01"],
       tariff,
       standing,
+      BERLIN,
     );
     expect(points).toHaveLength(1);
     expect(points[0]?.importCost).toBe(0);
