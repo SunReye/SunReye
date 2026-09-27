@@ -5,7 +5,9 @@
 
 import type { CostBreakdown } from "@SunReye/contracts/energy";
 import type { CompareMode, ComparisonResponse } from "@SunReye/contracts/statistics";
+import { calendarDate } from "@SunReye/inverter-core/zoned-calendar";
 import * as m from "$lib/paraglide/messages";
+import { browserTimeZone } from "$lib/time/browser-zone";
 
 /**
  * Signed relative change from `previous` to `current`, as a fraction
@@ -99,9 +101,11 @@ export function baselineLabel(mode: CompareMode, days: number): string {
     : m.statistics_baseline_previous_days({ days });
 }
 
-/** Midnight starting the civil day `d` falls in, in the viewer's own zone — the
- *  zone `rangeSpan`'s dates are already formatted in. */
-const startOfCivilDay = (d: Date): Date => new Date(d.getFullYear(), d.getMonth(), d.getDate());
+/** The civil day `t` falls on in `timeZone`, as a day number (UTC ms of its date). */
+const civilDay = (t: number, timeZone: string): number => {
+  const { year, month, day } = calendarDate(t, timeZone);
+  return Date.UTC(year, month - 1, day);
+};
 
 /**
  * Civil days the window `[from, to)` TOUCHES, at least 1 — the "vs previous {n}
@@ -125,8 +129,8 @@ const startOfCivilDay = (d: Date): Date => new Date(d.getFullYear(), d.getMonth(
  * a window ending at midnight stops on the previous day, not on the empty one
  * that starts there.
  */
-export function windowDays(from: Date, to: Date): number {
-  const lastCovered = startOfCivilDay(new Date(to.getTime() - 1));
-  const days = (lastCovered.getTime() - startOfCivilDay(from).getTime()) / 86_400_000;
-  return Math.max(1, Math.round(days) + 1);
+export function windowDays(from: Date, to: Date, timeZone: string = browserTimeZone()): number {
+  const days =
+    (civilDay(to.getTime() - 1, timeZone) - civilDay(from.getTime(), timeZone)) / 86_400_000;
+  return Math.max(1, days + 1);
 }

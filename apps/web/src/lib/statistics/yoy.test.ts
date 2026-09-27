@@ -1,5 +1,16 @@
 import { describe, expect, test } from "bun:test";
-import { groupYoy, hasYoyData } from "./yoy";
+import { groupYoy, hasYoyData, yoyWindow } from "./yoy";
+
+describe("yoyWindow", () => {
+  test("is the trailing 24 months of the PLANT's calendar", () => {
+    // 23:30 UTC on New Year's Eve is already 2026 in Berlin: the plant's
+    // current year is 2026, and the window opens on a Berlin month start.
+    const w = yoyWindow(new Date("2025-12-31T23:30:00Z"), "Europe/Berlin");
+    expect(w.year).toBe(2026);
+    expect(w.from.toISOString()).toBe("2024-01-31T23:00:00.000Z"); // Berlin Feb 1 2024
+    expect(w.to.toISOString()).toBe("2025-12-31T23:30:00.000Z");
+  });
+});
 
 const rows = [
   { bucket: "2025-01", value: 10 },

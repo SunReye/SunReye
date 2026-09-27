@@ -134,7 +134,7 @@ export interface BackendOptions {
    * header's source switcher renders nothing; `fixture.SOURCES_TWO` is the
    * two-inverter plant that shows it.
    */
-  sources?: typeof fixture.SOURCES;
+  sources?: typeof fixture.SOURCES & { plant: { timeZone?: string } };
   /**
    * `/api/weather`. `"reading"` (default) is a full, readable reading;
    * `null` is weather switched off, which the server answers with an EMPTY

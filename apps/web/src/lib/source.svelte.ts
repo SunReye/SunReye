@@ -9,6 +9,7 @@
 import { browser } from "$app/environment";
 import { api } from "$lib/api";
 import { payloadOrNull } from "$lib/api-payload";
+import { browserTimeZone } from "$lib/time/browser-zone";
 import {
   PLANT,
   STORAGE_KEY,
@@ -16,6 +17,7 @@ import {
   type SourcesResponse,
   acceptsMetricsFrame,
   offersChoice,
+  plantTimeZone,
   resolveSaved,
   shownUnder,
   sourceQuery,
@@ -62,6 +64,11 @@ class SourceStore {
 
   get isPlant(): boolean {
     return this.current === PLANT;
+  }
+
+  /** The zone the server buckets the plant's periods in; the viewer's until the list loads. */
+  get plantZone(): string {
+    return plantTimeZone(this.sources, browserTimeZone());
   }
 
   /** Whether the switcher has anything to switch. */
