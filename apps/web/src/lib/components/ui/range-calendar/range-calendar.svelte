@@ -21,6 +21,7 @@
 		yearFormat = "numeric",
 		day,
 		disableDaysOutsideMonth = false,
+		timeZone,
 		...restProps
 	}: WithoutChildrenOrChild<RangeCalendarPrimitive.RootProps> & {
 		buttonVariant?: ButtonVariant;
@@ -30,6 +31,8 @@
 		monthFormat?: RangeCalendarPrimitive.MonthSelectProps["monthFormat"];
 		yearFormat?: RangeCalendarPrimitive.YearSelectProps["yearFormat"];
 		day?: Snippet<[{ day: DateValue; outsideMonth: boolean }]>;
+		/** The zone the picked range is built in; the caption names months there. */
+		timeZone?: string;
 	} = $props();
 
 	const monthFormat = $derived.by(() => {
@@ -73,6 +76,7 @@
 							bind:placeholder
 							{locale}
 							{monthIndex}
+							{timeZone}
 						/>
 					</RangeCalendar.Header>
 

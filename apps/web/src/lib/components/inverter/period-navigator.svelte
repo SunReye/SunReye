@@ -213,8 +213,15 @@
 			</div>
 		{/if}
 		<!-- bits-ui defaults the calendar to en-US: without the app locale a German
-		     UI shows "Su Mo Tu" and English day names in the aria labels. -->
-		<RangeCalendar bind:value={custom} numberOfMonths={1} {locale} class="w-full sm:w-auto" />
+		     UI shows "Su Mo Tu" and English day names in the aria labels. The zone
+		     is the one `applyCustom` reads the picked days in. -->
+		<RangeCalendar
+			bind:value={custom}
+			numberOfMonths={1}
+			{locale}
+			{timeZone}
+			class="w-full sm:w-auto"
+		/>
 	</div>
 {/snippet}
 
