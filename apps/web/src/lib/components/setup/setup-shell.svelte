@@ -34,6 +34,18 @@
 	const steps = $derived(SETUP_STEPS.map((s) => ({ key: s.key, label: s.label() })));
 	const current = $derived(stepIndex(step));
 	const measure = $derived(narrow ? 'max-w-md' : 'max-w-2xl');
+
+	// The footer publishes its measured height as `--pinned-bottom` on the root,
+	// where the app-wide Toaster (`ui/sonner`) lifts its stack by it: a toast in
+	// the footer's band won the hit-test, and Back could not be pressed until it
+	// timed out. Measured, because the footer's height moves with its buttons'
+	// wrapping and the safe-area inset.
+	let footerHeight = $state(0);
+	$effect(() => {
+		const root = document.documentElement;
+		root.style.setProperty('--pinned-bottom', `${footerHeight}px`);
+		return () => root.style.removeProperty('--pinned-bottom');
+	});
 </script>
 
 <div class="relative flex min-h-svh flex-col bg-background">
@@ -62,6 +74,7 @@
 		<div
 			class="sticky bottom-0 z-20 border-t border-border bg-background/90 backdrop-blur supports-backdrop-filter:bg-background/75"
 			data-setup-footer
+			bind:offsetHeight={footerHeight}
 		>
 			<div
 				class="mx-auto flex w-full {measure} items-center justify-between gap-2 px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]"
