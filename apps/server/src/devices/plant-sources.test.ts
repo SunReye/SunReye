@@ -23,6 +23,7 @@ const store = (
   batteries: Array<{ deviceId: number; usableKwh: number }> = [],
 ): PlantSourcesStore => ({
   readPlant: async () => ({ id: 1 }) as never,
+  readPlantTimeZone: async () => "Europe/Berlin",
   readDevices: async () => devices,
   readPlantBatteries: async () =>
     batteries.map((b) => ({ ...b, maxChargeW: null, minSoc: 10, nominalV: null })),
@@ -58,10 +59,24 @@ describe("listSources", () => {
   test("no plant yet is an empty answer, never a throw", async () => {
     const empty: PlantSourcesStore = {
       readPlant: async () => null,
+      readPlantTimeZone: async () => "Europe/Berlin",
       readDevices: async () => [],
       readPlantBatteries: async () => [],
     };
-    expect(await listSources(empty)).toEqual({ plant: { members: [] }, devices: [] });
+    expect(await listSources(empty)).toEqual({
+      plant: { members: [], timeZone: "Europe/Berlin" },
+      devices: [],
+    });
+  });
+
+  test("carries the zone the plant's days are bucketed in, for every viewer", async () => {
+    // The plant settings GET is admin-only; a dashboard needs the zone to ask
+    // for the same days the server sums.
+    const out = await listSources({
+      ...store([device(1, "inverter")]),
+      readPlantTimeZone: async () => "Pacific/Auckland",
+    });
+    expect(out.plant.timeZone).toBe("Pacific/Auckland");
   });
 });
 
