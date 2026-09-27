@@ -256,6 +256,46 @@ test.describe("the roster", () => {
   });
 
   /**
+   * The rename dialog has ONE field. A refusal naming another one (or none)
+   * used to be kept as field state that nothing rendered: Save did nothing
+   * visible. It is a toast; a refusal naming `name` still lands under the box.
+   */
+  test("a rename refused for anything but the name says so in a toast", async ({ page }) => {
+    const opened = await open(page);
+    let refusal: { error: string; field?: string } = { error: "role is fixed", field: "role" };
+    // Registered after the fake backend, so this handler is the one that runs.
+    await page.route(
+      (url) => /\/api\/devices\/\d+$/.test(url.pathname),
+      async (route) => {
+        if (route.request().method() !== "PATCH") return await route.fallback();
+        await route.fulfill({
+          status: 409,
+          contentType: "application/json",
+          body: JSON.stringify(refusal),
+        });
+      },
+    );
+
+    await page
+      .locator("[data-device='evcc-loadpoint-1']")
+      .getByRole("button", { name: "Rename" })
+      .click();
+    const panel = dialog(page);
+    await panel.getByLabel("Name", { exact: true }).fill("Garage");
+    await panel.getByRole("button", { name: "Save" }).click();
+    await expect(page.getByText("Updating the device failed: role is fixed")).toBeVisible();
+    // Still open: nothing was renamed.
+    await expect(panel).toBeVisible();
+
+    refusal = { error: "name already taken", field: "name" };
+    await panel.getByRole("button", { name: "Save" }).click();
+    await expect(panel.getByText("name already taken")).toBeVisible();
+    // Chromium logs every 409 it is handed; that line is the browser's, not the app's.
+    const own = opened.consoleErrors.filter((e) => !/status of 409/.test(e));
+    expect(own).toEqual([]);
+  });
+
+  /**
    * #217: a broker is added HERE, on its own.
    *
    * `POST /api/devices`'s `connection: { create }` arm can only make a
