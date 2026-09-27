@@ -205,7 +205,7 @@ export async function computeCostSeries(
     src.now(),
     tz,
   );
-  const points = priceSeriesRows(rows, fieldByKey, periods, tariff, standing, zeroValueShare);
+  const points = priceSeriesRows(rows, fieldByKey, periods, tariff, standing, tz, zeroValueShare);
   return rollUp ? rollUpToMonths(points) : points;
 }
 
@@ -289,6 +289,9 @@ function reportLiveTodayTotals(
   };
 }
 
+const HOUR_MS = 3_600_000;
+const utcHourStart = (t: Date): number => Math.floor(new Date(t).getTime() / HOUR_MS) * HOUR_MS;
+
 /**
  * How much of each hour cleared at a negative day-ahead price, for §51 pricing.
  *
@@ -296,7 +299,11 @@ function reportLiveTodayTotals(
  * actually in spot mode under the `eegFeedIn` marketing model. A plant that
  * never opted in pays for no price lookup and its figures are unchanged.
  *
- * Keyed by real wall-clock hour, which is what every caller must supply.
+ * Keyed by the UTC hour. The rollup hours it is asked about are
+ * `time_bucket('1 hour')` — UTC-aligned, so 13:30–14:30 local in Kolkata or
+ * Adelaide — and the stored day-ahead slots are UTC quarter-hours (or hours),
+ * so a UTC floor groups exactly the slots inside the hour asked about. A
+ * host-local floor split that hour across two groups in a half-hour zone.
  * The counter-delta matrix groups by (period, hour-of-day, weekday), and at
  * the MONTH bucket that collapses "14:00 on the 3rd" and "14:00 on the 17th"
  * into one row — there is no single spot price to apply to that, and the error
@@ -320,14 +327,14 @@ async function zeroValueShareFor(
   // contributes nothing: unknown is not "negative".
   const byHour = new Map<number, { negative: number; total: number }>();
   for (const row of rows) {
-    const hourStart = new Date(row.slotStart).setMinutes(0, 0, 0);
+    const hourStart = utcHourStart(row.slotStart);
     const seen = byHour.get(hourStart) ?? { negative: 0, total: 0 };
     seen.total += 1;
     if (row.eurPerMwh < 0) seen.negative += 1;
     byHour.set(hourStart, seen);
   }
   return (hour: Date) => {
-    const seen = byHour.get(new Date(hour).setMinutes(0, 0, 0));
+    const seen = byHour.get(utcHourStart(hour));
     return seen ? seen.negative / seen.total : 0;
   };
 }
