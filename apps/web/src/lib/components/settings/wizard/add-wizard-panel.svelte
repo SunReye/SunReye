@@ -2,22 +2,19 @@
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { toast } from 'svelte-sonner';
-	import { api } from '$lib/api';
 	import Section from '$lib/components/layout/section.svelte';
 	import SetupStepper from '$lib/components/setup/setup-stepper.svelte';
 	import * as m from '$lib/paraglide/messages';
 	import { resolve } from '$lib/resolve';
-	import { apiErrorText } from '$lib/api-error';
 	import {
 		type ConnectionDraft,
 		blankDraft,
 		connectionCreateBody
 	} from '../devices/connection-draft';
-	import type { ConnectionView, DeviceRoster, DeviceView } from '../devices/device-types';
-	import type { RegisteredProfile } from '../profile-types';
+	import { failureText } from '../devices/device-roster';
+	import { deviceRoster } from '../devices/device-roster.svelte';
+	import type { ConnectionView } from '../devices/device-types';
 	import {
-		type Catalog,
-		type ExistingIntegration,
 		type Submission,
 		type SubmitPlan,
 		WIZARD_STEPS,
@@ -38,20 +35,23 @@
 	// a modal holds at 400px, the browser's Back has to mean "the previous
 	// screen", and the path is linkable from a support thread. The rules live in
 	// `./add-wizard.ts` and the step bodies render themselves; this file owns the
-	// two things neither can: what is loaded, and what is sent.
+	// two things neither can: what is loaded, and what is sent — both through the
+	// roster, the same `add()` the devices panel's dialog uses. `leave`: a
+	// finished wizard navigates away, so nothing is re-read after a write.
+	const roster = deviceRoster({ afterWrite: 'leave' });
 	let wizard = $state(emptyWizard());
 	// The endpoint step 1 is creating, when it is creating one. Held here rather
 	// than in the step body because THIS file is what sends it, and because a
 	// step body is unmounted the moment the operator walks forward.
 	let draft = $state<ConnectionDraft>(blankDraft());
-	let connections = $state<ConnectionView[]>([]);
+	const connections = $derived(roster.connections);
 	// The roster and the installed profiles: what step 3 needs when the picked
 	// entry is a DEVICE — which unit ids are taken on the chosen gateway, and
 	// which register maps this install can speak.
-	let devices = $state<DeviceView[]>([]);
-	let registered = $state<RegisteredProfile[]>([]);
-	let integrations = $state<ExistingIntegration[]>([]);
-	let catalog = $state<Catalog>({ modbus: [], mqtt: [], internal: [] });
+	const devices = $derived(roster.devices);
+	const registered = $derived(roster.profiles);
+	const integrations = $derived(roster.integrations);
+	const catalog = $derived(roster.catalog);
 	let submitting = $state(false);
 
 	const STEP_LABEL = {
@@ -76,24 +76,7 @@
 	onMount(load);
 
 	async function load() {
-		const [roster, rows, shelf] = await Promise.all([
-			api.api.devices.get(),
-			api.api.integrations.get(),
-			api.api.integrations.catalog.get(),
-			loadRegistered()
-		]);
-		if (roster.data) {
-			const loaded = roster.data as DeviceRoster;
-			connections = loaded.connections;
-			devices = loaded.devices;
-		}
-		if (rows.data) integrations = (rows.data as { integrations: ExistingIntegration[] }).integrations;
-		if (shelf.data) catalog = shelf.data as Catalog;
-	}
-
-	async function loadRegistered() {
-		const { data } = await api.api.profiles.get();
-		if (data) registered = data as RegisteredProfile[];
+		await Promise.all([roster.load(), roster.loadProfiles()]);
 	}
 
 	/**
@@ -102,7 +85,7 @@
 	 * at one; the guard is the narrowing, not a defensive check.
 	 */
 	async function onInstalled(id: string) {
-		await loadRegistered();
+		await roster.loadProfiles();
 		if (wizard.answers.via === 'profile') wizard.answers.form.profileId = id;
 	}
 
@@ -144,19 +127,18 @@
 	/** The FIRST request: the endpoint the operator described in step 1. */
 	async function createConnection(): Promise<string | null> {
 		if (createBody === null) return m.wizard_connection_incomplete();
-		const answer = await api.api.connections.post(createBody);
-		if (!answer.data) return apiErrorText(answer.error?.value, m.error_unknown());
-		return await attachTo(answer.data as ConnectionView);
+		const outcome = await roster.addConnection(createBody);
+		if (outcome.kind !== 'ok') return failureText(outcome);
+		return await attachTo(outcome.value);
 	}
 
 	/**
 	 * The endpoint exists now — so say so in the state before the second request,
-	 * whatever that one does. A failure here is a HALF-SUCCESS, and re-creating
-	 * the same connection on the next press is exactly the duplicate the operator
-	 * would then have to find and delete by hand.
+	 * whatever that one does (the roster already lists the row). A failure here
+	 * is a HALF-SUCCESS, and re-creating the same connection on the next press is
+	 * exactly the duplicate the operator would then have to find and delete by hand.
 	 */
 	async function attachTo(row: ConnectionView): Promise<string | null> {
-		connections = [...connections, row];
 		wizard = withSavedConnection(wizard, row.id);
 		const submission = submissionOf(wizard, connections, catalog);
 		if (submission === null) return m.wizard_half_saved({ name: row.name, error: m.error_unknown() });
@@ -165,12 +147,9 @@
 
 	/** The request, and what it leaves behind: an error to show, or nothing. */
 	async function send(submission: Submission, created: string | null): Promise<string | null> {
-		const answer =
-			submission.target === 'integration'
-				? await api.api.integrations.post(submission.body)
-				: await api.api.devices.post(submission.body);
-		if (answer.data) return added();
-		return refusal(apiErrorText(answer.error?.value, m.error_unknown()), created);
+		const outcome = await roster.add(submission);
+		if (outcome.kind === 'ok') return added();
+		return refusal(failureText(outcome), created);
 	}
 
 	/**

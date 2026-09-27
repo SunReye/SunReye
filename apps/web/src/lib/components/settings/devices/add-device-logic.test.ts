@@ -6,7 +6,6 @@ import {
   connectionProbeAnswer,
   describeConnectionProbe,
   describeProbe,
-  describeRefusal,
   devicePatch,
   formFromDevice,
   groupByConnection,
@@ -341,35 +340,6 @@ describe("buildAddDeviceBody", () => {
 
   test("with no connections at all the empty form starts on 'new'", () => {
     expect(emptyForm([]).connectionChoice).toBe(NEW_CONNECTION);
-  });
-});
-
-describe("describeRefusal", () => {
-  test("carries the server's reason under the field it named", () => {
-    expect(describeRefusal({ error: "unit id: taken", field: "unitId" }, "?")).toEqual({
-      field: "unitId",
-      message: "unit id: taken",
-    });
-  });
-
-  test("only the fields the dialog has are honoured", () => {
-    expect(describeRefusal({ error: "x", field: "name" }, "?").field).toBe("name");
-    expect(describeRefusal({ error: "x", field: "bogus" }, "?").field).toBeNull();
-    expect(describeRefusal("plain string", "?")).toEqual({
-      field: null,
-      message: "?",
-    });
-  });
-
-  test("a reason with no field goes to a toast; a body with no reason gets the fallback", () => {
-    expect(describeRefusal({ error: "no plant yet", field: null }, "?")).toEqual({
-      field: null,
-      message: "no plant yet",
-    });
-    expect(describeRefusal(undefined, "Unknown")).toEqual({
-      field: null,
-      message: "Unknown",
-    });
   });
 });
 

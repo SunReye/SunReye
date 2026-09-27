@@ -46,7 +46,7 @@ export type IntegrationPatchBody = {
  * renders the roster as soon as `/api/devices` answers, and `/api/integrations`
  * lands after it — an absent list is "not yet", never "none configured".
  */
-export type DeviceRoster = WireRoster & {
+export type GroupedRoster = WireRoster & {
   integrations?: readonly IntegrationView[];
 };
 

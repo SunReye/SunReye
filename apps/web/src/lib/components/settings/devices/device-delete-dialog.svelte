@@ -1,10 +1,9 @@
 <script lang="ts">
 	import { toast } from 'svelte-sonner';
-	import { api } from '$lib/api';
 	import { Button } from '$lib/components/ui/button';
 	import * as Dialog from '$lib/components/ui/dialog';
 	import * as m from '$lib/paraglide/messages';
-	import { type DeleteOutcome, deleteOutcome } from './device-lifecycle';
+	import { type DeviceRoster, type WriteOutcome, statedReason } from './device-roster';
 	import type { DeviceView } from './device-types';
 
 	// Deleting a device, and the answer when the server says no.
@@ -17,12 +16,12 @@
 	// stays that way.
 	let {
 		device = $bindable(null),
-		onDeleted,
+		roster,
 		onRetire
 	}: {
 		/** Open while set; cleared on close. */
 		device?: DeviceView | null;
-		onDeleted: () => void;
+		roster: DeviceRoster;
 		onRetire: (device: DeviceView) => void;
 	} = $props();
 
@@ -49,27 +48,26 @@
 	}
 
 	/** What happens after the server answered — everything but the history case closes. */
-	function settle(target: DeviceView, outcome: DeleteOutcome) {
-		if (outcome.kind === 'history') {
+	function settle(target: DeviceView, outcome: WriteOutcome<unknown>) {
+		if (outcome.kind === 'has-history') {
 			hasHistory = true;
 			return;
 		}
 		close();
-		if (outcome.kind === 'refused') {
-			toast.error(m.devices_toast_delete_failed({ error: outcome.reason ?? m.error_unknown() }));
+		if (outcome.kind !== 'ok') {
+			toast.error(m.devices_toast_delete_failed({ error: statedReason(outcome) }));
 			return;
 		}
 		toast.success(m.devices_toast_deleted({ name: target.name }));
-		onDeleted();
 	}
 
 	async function confirm() {
 		const target = device;
 		if (!target) return;
 		busy = true;
-		const answer = await api.api.devices({ id: String(target.id) }).delete();
+		const outcome = await roster.delete(target.id);
 		busy = false;
-		settle(target, deleteOutcome(answer));
+		settle(target, outcome);
 	}
 
 	function retireInstead() {

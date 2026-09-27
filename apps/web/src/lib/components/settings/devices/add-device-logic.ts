@@ -26,7 +26,7 @@ import {
   type ConnectionKind,
   type ConnectionView,
   type DevicePatchBody,
-  type DeviceRoster,
+  type GroupedRoster,
   type DeviceView,
   type IntegrationView,
   type ModbusConnectionView,
@@ -248,24 +248,12 @@ const REFUSED_FIELDS: ReadonlySet<string> = new Set<RefusedField>([
 ]);
 
 /** Which field a `{ error, field }` refusal points at, so the message lands under it. */
-function refusedField(value: unknown): RefusedField | null {
+export function refusedField(value: unknown): RefusedField | null {
   const field = (value as { field?: unknown } | null | undefined)?.field;
   return typeof field === "string" && REFUSED_FIELDS.has(field) ? (field as RefusedField) : null;
 }
 
 export type Refusal = { field: RefusedField | null; message: string };
-
-/**
- * A failed `POST /api/devices` as the dialog shows it: the server's reason,
- * and the field it belongs under — null when it belongs in a toast instead.
- */
-export function describeRefusal(value: unknown, fallback: string): Refusal {
-  const error = (value as { error?: unknown } | null | undefined)?.error;
-  return {
-    field: refusedField(value),
-    message: typeof error === "string" ? error : fallback,
-  };
-}
 
 /**
  * One card of the roster: a gateway and its devices, an integration and its
@@ -342,7 +330,7 @@ function integrationLabel(integration: string): string {
  * deleted, and a gateway the operator cannot see is one they cannot delete. An
  * integration with no devices is not: nothing is registered under it.
  */
-export function groupByConnection(roster: DeviceRoster): DeviceGroup[] {
+export function groupByConnection(roster: GroupedRoster): DeviceGroup[] {
   const rows = roster.integrations ?? [];
   const gateways: DeviceGroup[] = [...roster.connections]
     .sort((a, b) => a.id - b.id)
