@@ -11,8 +11,8 @@
 	import { getCustomizeSession } from '$lib/statistics/customize.svelte';
 
 	// This year against last, month by month. Rangeless like the records above
-	// it: one trailing 24-month window is fetched once, and switching metric
-	// only re-folds what is already here.
+	// it: one trailing 24-month window, re-read on a live push (this month is
+	// still filling in), and switching metric only re-folds what is already here.
 	let { formatters }: { formatters: CostFormatters } = $props();
 
 	const customize = getCustomizeSession();

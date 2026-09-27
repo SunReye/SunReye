@@ -294,21 +294,26 @@ describe("live invalidation", () => {
   const dayAhead = (q: StatisticsQuery) => q.dayAheadPrices();
   const health = (q: StatisticsQuery) => q.batteryHealth();
 
+  // Every read the window's energy feeds — records, the heatmap, the monthly
+  // year-over-year and the spot what-if included, since each is priced or
+  // folded from the same counters.
   test.each([
     ["cost series", costSeries],
     ["energy series", energySeries],
     ["amortisation", amortisation],
     ["comparison", comparison],
+    ["records", records],
+    ["heatmap", heatmap],
+    ["year-over-year", yoy],
+    ["spot statistics", spotStats],
   ])("a live push makes the %s stale", async (_, read) => {
     const { first, again } = await requestsAround(read, revision);
     expect(again).toBe(first);
   });
 
+  // Neither is derived from the household's energy: the day-ahead curve is the
+  // market's, and pack health is a property of the battery.
   test.each([
-    ["records", records],
-    ["heatmap", heatmap],
-    ["year-over-year", yoy],
-    ["spot statistics", spotStats],
     ["day-ahead prices", dayAhead],
     ["battery health", health],
   ])("a live push leaves the %s cached", async (_, read) => {

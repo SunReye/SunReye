@@ -64,9 +64,7 @@ test("a settled page asks for nothing more", async ({ page }) => {
   });
 });
 
-test("a live push on a now-inclusive window refetches the energy reads once each", async ({
-  page,
-}) => {
+test("a live push on a now-inclusive window refreshes every section once", async ({ page }) => {
   const { backend } = await openStatistics(page);
   // The feed ignores a push inside a minute of the lease: the page has just
   // fetched this window.
@@ -81,10 +79,12 @@ test("a live push on a now-inclusive window refetches the energy reads once each
     costBars: 1,
     energyPeriods: 1,
     amortisation: 1,
-    records: 0,
-    heatmap: 0,
-    yoy: 0,
-    spotStats: 0,
+    records: 1,
+    heatmap: 1,
+    // Two requests: the monthly cost and energy series.
+    yoy: 2,
+    // One request for two readers: the section list's gate and the section body.
+    spotStats: 1,
     dayAhead: 0,
   });
 });

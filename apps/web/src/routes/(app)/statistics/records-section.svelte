@@ -21,7 +21,7 @@
 	// baseline a second time, as a control row.
 
 	// Rangeless: records cover all recorded history and are cached per day
-	// server-side, so this is read once with the section.
+	// server-side. Today can still set one, so a live push re-reads them.
 	const reads = useStatisticsQuery();
 	const allTime = queried(() => reads.records(), null);
 	const records = $derived(allTime.value);

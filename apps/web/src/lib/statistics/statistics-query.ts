@@ -240,7 +240,7 @@ export function statisticsQuery(deps: StatisticsQueryDeps) {
       const query = { ...window, bucket: "month" as const, ...source.query };
       return read({
         id: "yoy",
-        channels: [],
+        channels: ["revision"],
         query,
         fetch: async () => {
           const [cost, energy] = await Promise.all([
@@ -260,12 +260,15 @@ export function statisticsQuery(deps: StatisticsQueryDeps) {
       });
     },
 
-    /** All-time per-day records — rangeless, cached per day server-side. */
+    /**
+     * All-time per-day records — rangeless and cached per day server-side, but
+     * today can set a record, so a live push re-reads it.
+     */
     records(): StatisticsRead<RecordsResponse | null> {
       const query = { ...source.query };
       return read({
         id: "records",
-        channels: [],
+        channels: ["revision"],
         query,
         fetch: one(
           () => api.records(query),
@@ -295,7 +298,7 @@ export function statisticsQuery(deps: StatisticsQueryDeps) {
       const query = { from: from.toISOString(), to: to.toISOString(), ...source.query };
       return read({
         id: "heatmap",
-        channels: [],
+        channels: ["revision"],
         query,
         fetch: one(
           () => api.heatmap(query),
@@ -304,12 +307,16 @@ export function statisticsQuery(deps: StatisticsQueryDeps) {
       });
     },
 
-    /** Spot-market analytics for the window; null when no feed is configured. */
+    /**
+     * Spot-market analytics for the window; null when no feed is configured.
+     * Stale on a price sync, and on a live push too: its what-if reprices the
+     * window's own energy.
+     */
     spotStats(from: Date, to: Date): StatisticsRead<SpotStats | null> {
       const query = { from: from.toISOString(), to: to.toISOString(), ...source.query };
       return read({
         id: "spotStats",
-        channels: ["price"],
+        channels: ["revision", "price"],
         query,
         fetch: one(
           () => api.spotStats(query),
