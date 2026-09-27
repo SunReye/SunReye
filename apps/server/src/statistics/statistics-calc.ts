@@ -43,12 +43,11 @@ const HOUR_MS = 3_600_000;
 /** Map key for a (hod, dow) slot. */
 const slotKey = (hod: number, dow: number): string => `${dow}:${hod}`;
 
-/** Start of the first local hour at or after `d` (hour slots starting before
- *  `from` are outside the window, matching the SQL `bucket >= from` filter). */
+/** First UTC hour at or after `d`: `hourly_rollups` is `time_bucket('1 hour')`,
+ *  so its buckets start on UTC hours (on :30 or :45 of a wall clock in a
+ *  half-hour zone), and a slot starting before `from` fails `bucket >= from`. */
 function nextHourStart(d: Date): number {
-  const t = new Date(d);
-  t.setMinutes(0, 0, 0);
-  return t.getTime() < d.getTime() ? t.getTime() + HOUR_MS : t.getTime();
+  return Math.ceil(d.getTime() / HOUR_MS) * HOUR_MS;
 }
 
 /**

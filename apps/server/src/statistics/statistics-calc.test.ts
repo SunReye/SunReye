@@ -140,6 +140,19 @@ describe("hodDowOccurrences", () => {
     );
     expect([...m.keys()].sort()).toEqual(["1:11", "1:12"]);
   });
+
+  test("steps the rollup's UTC hours, whatever the host or plant offset", () => {
+    // hourly_rollups is time_bucket('1 hour') — UTC hours, which sit at :30 on
+    // an Indian wall clock. Only the 11:00Z bucket starts inside the window
+    // (16:30 IST, Mon). A host-local ceil lands on :30 UTC under a +05:30 host
+    // and counts 16:00 and 17:00 IST, neither of which is a bucket.
+    const m = hodDowOccurrences(
+      new Date("2026-03-02T10:15:00Z"),
+      new Date("2026-03-02T12:00:00Z"),
+      "Asia/Kolkata",
+    );
+    expect([...m.entries()]).toEqual([["1:16", 1]]);
+  });
 });
 
 describe("heatmapCells", () => {
