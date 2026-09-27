@@ -158,3 +158,12 @@ describe("chartCaption — the reason a period is composed and not tabled", () =
     locale = "en";
   });
 });
+
+describe("chartCaption — on the plant's calendar", () => {
+  test("names a plant month by the plant's calendar, not the viewer's", () => {
+    // Berlin May 2026 starts Apr 30 22:00 UTC: read on a UTC clock, "Apr 2026".
+    const BERLIN = "Europe/Berlin";
+    const may = periodWindow(new Date("2026-05-14T12:00:00Z"), "month", { timeZone: BERLIN });
+    expect(chartCaption(costRangeFor(may, NOW, BERLIN), "detail")).toBe("May 2026, by day");
+  });
+});

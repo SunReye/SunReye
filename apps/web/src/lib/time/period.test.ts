@@ -6,6 +6,7 @@ import {
   periodOf,
   periodTitle,
   periodWindow,
+  rezonePeriod,
   startOfPeriod,
   stepPeriod,
   switchGrain,
@@ -178,6 +179,30 @@ describe("startOfPeriod — ambiguous and skipped midnights", () => {
     const second = startOfPeriod(new Date("2026-10-25T01:30:00Z"), "day", { timeZone: BERLIN });
     expect(second.toISOString()).toBe(first.toISOString());
     expect(wall(first, BERLIN)).toBe("2026-10-25 00:00");
+  });
+});
+
+describe("rezonePeriod — the same named period on another zone's calendar", () => {
+  // The statistics page opens on the viewer's zone and learns the plant's a
+  // moment later: the period the reader is on must keep its NAME.
+  it("keeps the calendar day, even where the midpoint would cross it", () => {
+    // New York May 14 re-read on Auckland's calendar (16h ahead) is Auckland May 14.
+    const ny = periodWindow(new Date("2026-05-14T16:00:00Z"), "day", {
+      timeZone: "America/New_York",
+    });
+    const nz = rezonePeriod(ny, "America/New_York", { timeZone: "Pacific/Auckland" });
+    expect(nz.start.toISOString()).toBe("2026-05-13T12:00:00.000Z");
+    expect(nz.end.toISOString()).toBe("2026-05-14T12:00:00.000Z");
+  });
+
+  it("keeps the grain and lands on the target zone's month", () => {
+    const ny = periodWindow(new Date("2026-05-14T16:00:00Z"), "month", {
+      timeZone: "America/New_York",
+    });
+    const berlin = rezonePeriod(ny, "America/New_York", { timeZone: BERLIN });
+    expect(berlin.grain).toBe("month");
+    expect(berlin.start.toISOString()).toBe("2026-04-30T22:00:00.000Z");
+    expect(berlin.end.toISOString()).toBe("2026-05-31T22:00:00.000Z");
   });
 });
 

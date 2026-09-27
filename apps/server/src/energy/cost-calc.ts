@@ -12,7 +12,12 @@ import { type TariffConfig, importBandForHour, importPriceForHour } from "@SunRe
 import type { CostSeriesPoint } from "./cost";
 import type { CounterDeltaRow } from "./rollup-reader";
 import { zoneParts } from "@SunReye/inverter-core/zone-parts";
-import { dateKey, isoWeekday, wallInstant } from "@SunReye/inverter-core/zoned-calendar";
+import {
+  dateKey,
+  isoWeekday,
+  periodStart,
+  wallInstant,
+} from "@SunReye/inverter-core/zoned-calendar";
 
 /**
  * Share of an hour that fell in quarter-hours with a negative day-ahead price,
@@ -343,16 +348,17 @@ export function rollUpToMonths(days: readonly CostSeriesPoint[]): CostSeriesPoin
 }
 
 /**
- * Named reporting ranges, resolved to [from, now) in local time. Named with the
+ * Named reporting ranges, resolved to [from, now) on the plant's wall clock. Named with the
  * `Key` suffix to stay distinct from the web app's `CostRange` window object,
  * which the Costs page type-imports from this module's neighbours.
  */
 export type CostRangeKey = "today" | "month" | "year";
 
-export function resolveRange(range: CostRangeKey, now = new Date()): { from: Date; to: Date } {
-  const from = new Date(now);
-  from.setHours(0, 0, 0, 0);
-  if (range === "month") from.setDate(1);
-  if (range === "year") from.setMonth(0, 1);
-  return { from, to: now };
+export function resolveRange(
+  range: CostRangeKey,
+  timeZone: string,
+  now = new Date(),
+): { from: Date; to: Date } {
+  const grain = range === "today" ? "day" : range;
+  return { from: periodStart(now, timeZone, grain), to: now };
 }

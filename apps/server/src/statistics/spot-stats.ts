@@ -136,6 +136,6 @@ export async function computeSpotStats(
     negativeWindows: groupNegativeWindows(slots),
     negativeWindowsTruncated: rawFrom.getTime() > opts.from.getTime(),
     paidVsMarket: paidVsMarket(hours, priceByHour),
-    whatIf: spotWhatIf(hours, tariff, priceByHour),
+    whatIf: spotWhatIf(hours, tariff, priceByHour, tz),
   };
 }

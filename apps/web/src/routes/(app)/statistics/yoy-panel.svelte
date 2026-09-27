@@ -5,8 +5,9 @@
 	import Section from '$lib/components/layout/section.svelte';
 	import PanelReadoutRow from '$lib/components/layout/panel-readout-row.svelte';
 	import type { CostFormatters } from '$lib/cost/format';
-	import { groupYoy, hasYoyData } from '$lib/statistics/yoy';
+	import { groupYoy, hasYoyData, yoyWindow } from '$lib/statistics/yoy';
 	import { queried, useStatisticsQuery } from '$lib/statistics/statistics-query.svelte';
+	import { source } from '$lib/source.svelte';
 	import { statisticsPrefs } from '$lib/statistics-prefs.svelte';
 	import { getCustomizeSession } from '$lib/statistics/customize.svelte';
 
@@ -32,13 +33,12 @@
 		if (customize.active) customize.draft.records.yoyMetric = next;
 	}
 
-	// Trailing 24 calendar months so both charted years are complete.
+	// Trailing 24 calendar months so both charted years are complete — the
+	// PLANT's months, which the server keys the series by.
 	const now = new Date();
-	const year = now.getFullYear();
-	const seriesWindow = {
-		from: new Date(year, now.getMonth() - 23, 1).toISOString(),
-		to: now.toISOString()
-	};
+	const yoy = $derived(yoyWindow(now, source.plantZone));
+	const year = $derived(yoy.year);
+	const seriesWindow = $derived({ from: yoy.from.toISOString(), to: yoy.to.toISOString() });
 
 	const reads = useStatisticsQuery();
 	const byMonth = queried(() => reads.yoy(seriesWindow), { net: [], production: [] });

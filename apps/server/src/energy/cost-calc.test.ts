@@ -143,19 +143,29 @@ describe("allocateCost", () => {
 });
 
 describe("resolveRange", () => {
-  test("month starts at the first of the month, local midnight", () => {
-    const now = new Date("2024-03-15T13:37:00");
-    const { from, to } = resolveRange("month", now);
-    expect(from.getDate()).toBe(1);
-    expect(from.getMonth()).toBe(2);
-    expect(from.getHours()).toBe(0);
+  // Auckland (NZDT, +13) is already on Mar 16 while UTC reads 13:37 on Mar 15:
+  // the range starts on the PLANT's midnight, whatever the host zone.
+  const now = new Date("2024-03-15T13:37:00Z");
+  const TZ = "Pacific/Auckland";
+
+  test("today starts at the plant's midnight", () => {
+    const { from, to } = resolveRange("today", TZ, now);
+    expect(from.toISOString()).toBe("2024-03-15T11:00:00.000Z");
     expect(to).toBe(now);
   });
 
-  test("year starts on Jan 1", () => {
-    const { from } = resolveRange("year", new Date("2024-03-15T13:37:00"));
-    expect(from.getMonth()).toBe(0);
-    expect(from.getDate()).toBe(1);
+  test("month starts at the plant's midnight on the first", () => {
+    expect(resolveRange("month", TZ, now).from.toISOString()).toBe("2024-02-29T11:00:00.000Z");
+  });
+
+  test("year starts at the plant's midnight on Jan 1", () => {
+    expect(resolveRange("year", TZ, now).from.toISOString()).toBe("2023-12-31T11:00:00.000Z");
+  });
+
+  test("a DST seam inside the range does not move its start", () => {
+    // Berlin sprang forward Mar 30 2025: the month still starts on CET midnight.
+    const r = resolveRange("month", "Europe/Berlin", new Date("2025-03-31T10:00:00Z"));
+    expect(r.from.toISOString()).toBe("2025-02-28T23:00:00.000Z");
   });
 });
 

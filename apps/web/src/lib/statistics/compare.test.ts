@@ -176,6 +176,15 @@ describe("windowDays", () => {
     expect(windowDays(day, day)).toBe(1);
     expect(windowDays(new Date(2026, 7, 1), new Date(2026, 6, 1))).toBe(1);
   });
+
+  test("counts the PLANT's days when given its zone, not the viewer's", () => {
+    // Berlin Aug 1 00:00 → Aug 21 03:00 touches 21 Berlin days. Read on a UTC
+    // clock (a UTC browser) it runs Jul 31 → Aug 21 and would caption 22.
+    const from = new Date("2026-07-31T22:00:00Z");
+    const to = new Date("2026-08-21T01:00:00Z");
+    expect(windowDays(from, to, "Europe/Berlin")).toBe(21);
+    expect(windowDays(from, to, "UTC")).toBe(22);
+  });
 });
 
 describe("pricedWindow", () => {

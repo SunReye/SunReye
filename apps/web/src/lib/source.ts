@@ -6,24 +6,22 @@
  * plant view can show. Plain TS so it runs under `bun test`.
  */
 
+import type { SourcesResponse } from "@SunReye/contracts/sources";
 import { plantAggregateOf } from "@SunReye/inverter-core/plant-aggregate";
 
 /** `plant`, or a `devices.slug`. */
 export type SourceId = string;
 export const PLANT: SourceId = "plant";
 
-/** `GET /api/sources` — what may be read from. */
-export interface SourcesResponse {
-  plant: { members: string[] };
-  devices: Array<{
-    slug: string;
-    name: string;
-    /** The id a live `metrics` frame carries for this device — the profile id, today. */
-    profileId?: string;
-    role: string;
-    retired: boolean;
-    member: boolean;
-  }>;
+export type { SourcesResponse };
+
+/**
+ * The zone the plant's days, weeks and months are bucketed in — what every
+ * statistics window must be built on. `fallback` (the viewer's zone) stands in
+ * only until the list has loaded.
+ */
+export function plantTimeZone(sources: SourcesResponse | null, fallback: string): string {
+  return sources?.plant.timeZone ?? fallback;
 }
 
 export const STORAGE_KEY = "sunreye.source";
