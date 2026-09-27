@@ -107,6 +107,14 @@ export interface BackendOptions {
    */
   rollupRows?: number;
   /**
+   * Answer `/api/history/rollup` only up to the present, as the real continuous
+   * aggregate does. Off by default: the default body spans the WHOLE window,
+   * future included, so a live chart's minute-tick delta never finds anything
+   * missing — which is what the refetch-storm specs rely on. On, a live chart
+   * has a real hole to fill on every tick, and the delta path runs.
+   */
+  rollupUntilNow?: boolean;
+  /**
    * Seconds between points in the `/api/history/recent` backfill. The real
    * plant stores a sample every ten seconds, which is what puts the payload at
    * the measured ~54 KB for a hundred-odd metrics.
@@ -668,7 +676,8 @@ export async function mockBackend(page: Page, options: BackendOptions = {}): Pro
     if (at("history/rollup")) {
       const metric = url.searchParams.get("metric") ?? "";
       const from = Date.parse(url.searchParams.get("from") ?? "") || Date.now() - 3600_000;
-      const to = Date.parse(url.searchParams.get("to") ?? "") || Date.now();
+      const asked = Date.parse(url.searchParams.get("to") ?? "") || Date.now();
+      const to = options.rollupUntilNow ? Math.min(asked, Date.now()) : asked;
       // Eight distinct series, shared out by metric key: enough that the page
       // does not look like one chart repeated, cheap enough to cache.
       const seed = hash(metric) % 8;
