@@ -65,7 +65,7 @@
 	/**
 	 * An arbitrary span, both ends inclusive calendar days.
 	 *
-	 * This is why `referenceWindow`, `windowDays` and `baselineLabel` are
+	 * This is why the reference window, `windowDays` and `baselineLabel` are
 	 * span-driven rather than a table of preset ids: "vs the previous 17 days"
 	 * only exists because a reader can pick 17 days.
 	 */

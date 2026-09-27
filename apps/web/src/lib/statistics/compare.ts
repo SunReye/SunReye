@@ -1,7 +1,7 @@
 // Period-over-period math for the statistics page: the signed change a delta
-// chip renders, and the reference window the server compared against (mirrors
-// `previousWindow` in apps/server/src/statistics/statistics-calc.ts) so the page can tell
-// when that window predates recorded history and the delta would be fiction.
+// chip renders, and whether the reference window the server priced (echoed in
+// the payload — its year-ago shift runs on the plant's calendar, which this
+// browser does not know) predates recorded history, making the delta fiction.
 
 import type { CostBreakdown } from "@SunReye/contracts/energy";
 import type { CompareMode, ComparisonResponse } from "@SunReye/contracts/statistics";
@@ -47,9 +47,9 @@ export function formatDelta(delta: number | null): string {
  * against thirty-one and every delta chip reads as a collapse that never
  * happened.
  *
- * `windowDays` and {@link referenceWindow} both take their span from the clamped
- * window, so the caption ("vs the previous 2 days") and the reference the server
- * priced cannot disagree.
+ * `windowDays` and the server's reference window both take their span from the
+ * clamped window, so the caption ("vs the previous 2 days") and the reference
+ * the server priced cannot disagree.
  *
  * A window that has not STARTED is returned untouched: clamping it would put
  * `to` before `from` and hand the server a negative-length reference.
@@ -63,31 +63,14 @@ export function pricedWindow(
 }
 
 /**
- * The window the comparison endpoint priced as the reference for `[from, to)`:
- * the adjacent same-length window, or the same calendar window a year back.
- */
-export function referenceWindow(from: Date, to: Date, mode: CompareMode): { from: Date; to: Date } {
-  if (mode === "yearAgo") {
-    const shift = (d: Date) => {
-      const shifted = new Date(d);
-      shifted.setFullYear(shifted.getFullYear() - 1);
-      return shifted;
-    };
-    return { from: shift(from), to: shift(to) };
-  }
-  const length = to.getTime() - from.getTime();
-  return { from: new Date(from.getTime() - length), to: new Date(from) };
-}
-
-/**
  * Whether the reference window is fully covered by recorded history. Without
  * this check a household's first month shows a fake −100% against a window
  * that simply has no data; `dataFrom` is the earliest daily rollup the server
  * reports.
  */
-function referenceCovered(reference: { from: Date }, dataFrom: string | null): boolean {
+function referenceCovered(reference: { from: string }, dataFrom: string | null): boolean {
   if (!dataFrom) return false;
-  return reference.from.getTime() >= new Date(dataFrom).getTime();
+  return new Date(reference.from).getTime() >= new Date(dataFrom).getTime();
 }
 
 /**
@@ -95,12 +78,12 @@ function referenceCovered(reference: { from: Date }, dataFrom: string | null): b
  * worth comparing against — the latter drops to null when its window predates
  * recorded history, which suppresses the delta chips instead of inventing one.
  */
-export function usableComparison(
-  payload: ComparisonResponse | null,
-  reference: { from: Date },
-): { current: CostBreakdown | null; previous: CostBreakdown | null } {
+export function usableComparison(payload: ComparisonResponse | null): {
+  current: CostBreakdown | null;
+  previous: CostBreakdown | null;
+} {
   if (!payload) return { current: null, previous: null };
-  const covered = referenceCovered(reference, payload.coverage.dataFrom);
+  const covered = referenceCovered(payload.reference, payload.coverage.dataFrom);
   return { current: payload.current, previous: covered ? payload.previous : null };
 }
 

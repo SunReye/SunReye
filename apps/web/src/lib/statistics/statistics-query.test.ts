@@ -141,6 +141,8 @@ describe("fetching", () => {
     const payload = {
       current,
       previous,
+      // The window the server priced the reference over: before recorded history.
+      reference: { from: "2026-07-17T12:00:00.000Z", to: "2026-08-01T00:00:00.000Z" },
       coverage: { dataFrom: "2026-08-01T00:00:00.000Z" },
     } as unknown as ComparisonResponse;
     calls[0]!.settle({ data: payload });

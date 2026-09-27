@@ -158,3 +158,35 @@ export function periodWindow(
     end: wallInstant(wallNextStart(start, grain), timeZone),
   };
 }
+
+/**
+ * Wall clock (as UTC ms) `w` moved by `years`, same month, day and time of day.
+ * A day the target year lacks (Feb 29) clamps to the month's last day. An END
+ * edge at midnight is the end of the day before it, so it shifts that day and
+ * steps one wall day on: [Feb 28, Feb 29) and [Feb 29, Mar 1) both become
+ * [Feb 28, Mar 1) a year back — a day, never an empty window.
+ */
+function shiftWallYears(w: number, years: number, edge: "from" | "to"): number {
+  const d = new Date(w);
+  const tod = w - Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+  if (edge === "to" && tod === 0) return shiftWallYears(w - DAY, years, "from") + DAY;
+  const year = d.getUTCFullYear() + years;
+  const lastDay = new Date(Date.UTC(year, d.getUTCMonth() + 1, 0)).getUTCDate();
+  return Date.UTC(year, d.getUTCMonth(), Math.min(d.getUTCDate(), lastDay)) + tod;
+}
+
+/**
+ * The window `[from, to)` moved by `years` on `timeZone`'s calendar: each edge
+ * keeps its wall clock and takes that year's offset, so a year-ago window
+ * starts on the same local midnight even when the DST seam moved in between.
+ * Leap-day rule: see {@link shiftWallYears}.
+ */
+export function shiftWindowYears(
+  window: { from: Instant; to: Instant },
+  years: number,
+  timeZone: string,
+): { from: Date; to: Date } {
+  const edge = (t: Instant, which: "from" | "to") =>
+    wallInstant(shiftWallYears(wallClockAsUtc(timeZone, msOf(t)), years, which), timeZone);
+  return { from: edge(window.from, "from"), to: edge(window.to, "to") };
+}

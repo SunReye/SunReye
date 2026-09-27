@@ -22,7 +22,7 @@ import type {
 import { payloadOrNull } from "$lib/api-payload";
 import { specQuery, type ChartSpec, type CostBucket, type CostRange } from "$lib/cost/ranges";
 import type { SourceId } from "$lib/source";
-import { pricedWindow, referenceWindow, usableComparison } from "./compare";
+import { pricedWindow, usableComparison } from "./compare";
 import type { MonthlyValue } from "./yoy";
 
 /** An Eden answer, as far as this module reads one. */
@@ -187,7 +187,6 @@ export function statisticsQuery(deps: StatisticsQueryDeps) {
       // in ends in the future, and comparing this month so far against the
       // whole of last month reads as a collapse that never happened.
       const window = pricedWindow(range, now());
-      const reference = referenceWindow(window.from, window.to, mode);
       const query = {
         from: window.from.toISOString(),
         to: window.to.toISOString(),
@@ -202,7 +201,7 @@ export function statisticsQuery(deps: StatisticsQueryDeps) {
         // first-month household never reads a fake −100%.
         fetch: one(
           () => api.comparison(query),
-          (data) => usableComparison(payloadOrNull<ComparisonResponse>(data), reference),
+          (data) => usableComparison(payloadOrNull<ComparisonResponse>(data)),
         ),
       });
     },

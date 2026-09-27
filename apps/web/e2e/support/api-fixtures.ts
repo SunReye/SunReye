@@ -344,6 +344,7 @@ export function comparison(from: string, to: string, mode: string): ComparisonRe
     mode: mode === "yearAgo" ? "yearAgo" : "previous",
     current: costBreakdown(from, to),
     previous: costBreakdown(prev.from, prev.to, 1.18),
+    reference: prev,
     coverage: { dataFrom: ago(900 * DAY_MS) },
   };
 }

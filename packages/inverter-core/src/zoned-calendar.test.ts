@@ -15,12 +15,14 @@ import {
   nextDayStart,
   periodStart,
   periodWindow,
+  shiftWindowYears,
 } from "./zoned-calendar";
 
 const BERLIN = "Europe/Berlin";
 const NEW_YORK = "America/New_York";
 const LOS_ANGELES = "America/Los_Angeles";
 const KOLKATA = "Asia/Kolkata";
+const AUCKLAND = "Pacific/Auckland";
 const HOUR = 3_600_000;
 
 const at = (iso: string): number => Date.parse(iso);
@@ -173,5 +175,90 @@ describe("periodStart / periodWindow", () => {
     const w = periodWindow(t, BERLIN, "day");
     expect(w.start.getTime()).toBe(dayStart(t, BERLIN).getTime());
     expect(w.end.getTime()).toBe(nextDayStart(t, BERLIN).getTime());
+  });
+});
+
+describe("shiftWindowYears", () => {
+  const shifted = (from: string, to: string, zone: string, years = -1) => {
+    const w = shiftWindowYears({ from: at(from), to: at(to) }, years, zone);
+    return [isoOf(w.from), isoOf(w.to)];
+  };
+
+  test("keeps both edges on the same wall clock, a year back", () => {
+    // Berlin July 2026 → Berlin July 2025, both summer time.
+    expect(shifted("2026-06-30T22:00:00Z", "2026-07-31T22:00:00Z", BERLIN)).toEqual([
+      "2025-06-30T22:00:00.000Z",
+      "2025-07-31T22:00:00.000Z",
+    ]);
+  });
+
+  test("re-resolves the offset: the DST seam moved between the two years", () => {
+    // Auckland NZDT began 2026-09-27 but 2025-09-28 02:00, so midnight on the
+    // 28th is +13 this year and still +12 a year ago. Holding the UTC offset
+    // (what host-local Date math does on any host but Auckland) lands at 23:00
+    // on the 27th.
+    expect(shifted("2026-09-27T11:00:00Z", "2026-09-28T11:00:00Z", AUCKLAND)).toEqual([
+      "2025-09-27T12:00:00.000Z",
+      "2025-09-28T11:00:00.000Z",
+    ]);
+  });
+
+  test("an edge on a wall clock skipped a year back resolves past the gap", () => {
+    // Berlin 2027-03-29 02:30 CEST exists; 2026-03-29 02:30 was skipped
+    // (spring forward that night), so it resolves to 03:00 CEST = 01:00Z.
+    expect(shifted("2027-03-29T00:30:00Z", "2027-03-29T02:00:00Z", BERLIN)).toEqual([
+      "2026-03-29T01:00:00.000Z",
+      "2026-03-29T02:00:00.000Z",
+    ]);
+  });
+
+  test("leap day: a Feb 29 day compares against Feb 28", () => {
+    // Rule: a start on the missing Feb 29 clamps to Feb 28; an end at midnight
+    // is the end of the day before it, shifted. [Feb 29, Mar 1) → [Feb 28, Mar 1).
+    expect(shifted("2028-02-28T11:00:00Z", "2028-02-29T11:00:00Z", AUCKLAND)).toEqual([
+      "2027-02-27T11:00:00.000Z",
+      "2027-02-28T11:00:00.000Z",
+    ]);
+  });
+
+  test("leap day: Feb 28 still compares against Feb 28, never an empty window", () => {
+    // [Feb 28, Feb 29) ends at midnight on the missing day — the end of Feb 28.
+    expect(shifted("2028-02-27T11:00:00Z", "2028-02-28T11:00:00Z", AUCKLAND)).toEqual([
+      "2027-02-27T11:00:00.000Z",
+      "2027-02-28T11:00:00.000Z",
+    ]);
+  });
+
+  test("leap day: a partial Feb 29 (priced up to now) keeps its time of day", () => {
+    // Auckland Feb 29 2028 00:00–14:00 NZDT → Feb 28 2027 00:00–14:00 NZDT.
+    expect(shifted("2028-02-28T11:00:00Z", "2028-02-29T01:00:00Z", AUCKLAND)).toEqual([
+      "2027-02-27T11:00:00.000Z",
+      "2027-02-28T01:00:00.000Z",
+    ]);
+  });
+
+  test("a whole February shifts to the whole shorter February", () => {
+    expect(shifted("2028-01-31T23:00:00Z", "2028-02-29T23:00:00Z", BERLIN)).toEqual([
+      "2027-01-31T23:00:00.000Z",
+      "2027-02-28T23:00:00.000Z",
+    ]);
+  });
+
+  test("a half-hour zone keeps its half-hour midnights", () => {
+    expect(shifted("2026-06-30T18:30:00Z", "2026-07-01T18:30:00Z", KOLKATA)).toEqual([
+      "2025-06-30T18:30:00.000Z",
+      "2025-07-01T18:30:00.000Z",
+    ]);
+  });
+
+  test("shifts forward too, and zero years is the identity", () => {
+    expect(shifted("2027-02-27T11:00:00Z", "2027-02-28T11:00:00Z", AUCKLAND, 1)).toEqual([
+      "2028-02-27T11:00:00.000Z",
+      "2028-02-28T11:00:00.000Z",
+    ]);
+    expect(shifted("2026-03-29T00:30:00Z", "2026-03-29T05:00:00Z", BERLIN, 0)).toEqual([
+      "2026-03-29T00:30:00.000Z",
+      "2026-03-29T05:00:00.000Z",
+    ]);
   });
 });
