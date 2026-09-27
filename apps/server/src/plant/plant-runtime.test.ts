@@ -133,19 +133,33 @@ describe("start", () => {
     expect(order).toEqual(["runtime.armStorage", "connections.reload", "evcc.rebuild"]);
   });
 
-  test("does not wait for the poll loop's first connect before opening the tier", async () => {
-    // Pinned as it ships: `runtime.start` is fired, not awaited, so a gateway
-    // that is slow to answer never holds up the brokers or the EVCC ingest.
+  test("opens the connection tier only once the poll loop's start has resolved", async () => {
+    // The export takes its client — and declares its last will, which is
+    // connect-time — inside `runtime.start`. Fired and not awaited, the tier
+    // could dial that row first and the will would never be set. Safe to wait
+    // on: `runtime.start` reads the database and arms timers; the first poll,
+    // the only thing that talks to the inverter, runs on the loop's interval.
+    let resolveStart = (): void => {};
     const { order, deps } = recorder({
       runtime: {
         ...recorder().deps.runtime,
-        start: () => new Promise<void>(() => {}),
+        start: () =>
+          new Promise<void>((resolve) => {
+            resolveStart = () => {
+              order.push("runtime.start");
+              resolve();
+            };
+          }),
       },
     });
     const booted = await createPlantRuntime(deps).boot();
     order.length = 0;
-    await booted.start(() => false);
-    expect(order).toEqual(["connections.reload", "evcc.rebuild"]);
+    const started = booted.start(() => false);
+    await Bun.sleep(0);
+    expect(order).toEqual([]);
+    resolveStart();
+    await started;
+    expect(order).toEqual(["runtime.start", "connections.reload", "evcc.rebuild"]);
   });
 });
 

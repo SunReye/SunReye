@@ -90,10 +90,12 @@ export function createPlantRuntime(deps: PlantRuntimeDeps): PlantRuntime {
     ctx: ProfileContext | null,
     automationsWatched: () => boolean,
   ): Promise<void> {
-    // 7. THE POLL LOOP — fired, not awaited, as it always was: a gateway slow
-    //    to answer must not hold up the brokers. With no profile only the flush
-    //    cadence is armed, so rows the EVCC ingest writes still drain.
-    if (ctx) void deps.runtime.start(ctx, automationsWatched);
+    // 7. THE POLL LOOP — awaited, because the export takes its client (and its
+    //    last will) inside it. Cannot hang on the inverter: it reads the
+    //    database and arms timers, and the first poll runs on the interval.
+    //    With no profile only the flush cadence is armed, so rows the EVCC
+    //    ingest writes still drain.
+    if (ctx) await deps.runtime.start(ctx, automationsWatched);
     else deps.runtime.armStorage();
     // 8. THE CONNECTION TIER — after the loop took the export's client with its
     //    last will (an LWT is connect-time), before EVCC joins a client.

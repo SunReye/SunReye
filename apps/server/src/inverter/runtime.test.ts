@@ -1403,6 +1403,15 @@ describe("the poll loop", () => {
     expect(inserted).toHaveLength(0);
   });
 
+  test("start resolves without reading the inverter — an unreachable one cannot hold up boot", async () => {
+    // The plant runtime AWAITS start, so the connection tier waits on it. That
+    // is only safe while the first read belongs to the loop's interval.
+    readResult = () => new Promise(() => {});
+    await boot();
+
+    expect(latestSource().reads).toBe(0);
+  });
+
   test("a tick is skipped while the previous read is still in flight", async () => {
     await boot();
     const gate = deferred();
