@@ -25,17 +25,19 @@ import type { ChartPadding } from "$lib/charts/plot-padding";
 /**
  * Width of one character of an axis label, in CSS px.
  *
- * Measured: every statistics axis label in Chromium at the axis' own size came
- * out at exactly 6.0px per character ("30 kWh" 36px, "Sep 13" 36px, "100%"
- * 24px, "09-17 00:00" 66px). Held above that so a proportional font that draws
- * a wider glyph than the sample still fits.
+ * Measured in Chromium at the house axis size (`text-xs`, 12px Geist Mono —
+ * pinned for canvas charts in `app.css`): 7.0px per character ("10" 14px,
+ * "09-27 00:00" 77px). An earlier 6.0px was layerchart's 10px default, which a
+ * canvas drew only when the first chart to mount sat outside a
+ * `Chart.Container`. Held at 0.6em, a monospace advance, just above that.
  */
 // fallow-ignore-next-line unused-export -- the calibration IS the contract: stated once here and pinned against the browser's own measurement by axis-fit.test.ts
-export const AXIS_CHAR_PX = 6.6;
+export const AXIS_CHAR_PX = 7.2;
 
-/** Room between a y-axis label and the axis it labels (measured: 4px). */
+/** Room between a y-axis label and the axis it labels (measured: 4px). One
+ *  pixel over, now the glyph estimate is taken at the size actually drawn. */
 // fallow-ignore-next-line unused-export -- as above: the gap the fit reserves is asserted against a measured one rather than restated
-export const AXIS_TICK_GAP_PX = 6;
+export const AXIS_TICK_GAP_PX = 5;
 
 /**
  * A tick sits at a round number at or above the data's maximum, so an axis over
@@ -96,6 +98,25 @@ export function fittedAxisPadding(
   const slack = rounded ? AXIS_ROUNDUP_SLACK_CHARS * AXIS_CHAR_PX : 0;
   const widest = widestLabelPx(yLabels) + slack;
   const wanted = Math.ceil(widest + AXIS_TICK_GAP_PX);
+  const ceiling = plotWidth * MAX_GUTTER_SHARE;
+  return { ...base, left: Math.min(Math.max(base.left, wanted), Math.max(base.left, ceiling)) };
+}
+
+/**
+ * `base` with a left gutter that holds half of `leadingLabel`.
+ *
+ * A band axis centres each label on its band and always draws the first one,
+ * so that label hangs half its width left of the plot. A gutter sized for the
+ * y labels alone clips a first x label wider than twice itself — the price
+ * curve's day-start `MM-DD HH:mm`. Same growth rules as {@link fittedAxisPadding}.
+ */
+export function fittedLeadingLabel(
+  base: ChartPadding,
+  plotWidth: number,
+  leadingLabel: string | undefined,
+): ChartPadding {
+  if (!(plotWidth > 0) || !leadingLabel) return base;
+  const wanted = Math.ceil(labelWidthPx(leadingLabel) / 2);
   const ceiling = plotWidth * MAX_GUTTER_SHARE;
   return { ...base, left: Math.min(Math.max(base.left, wanted), Math.max(base.left, ceiling)) };
 }

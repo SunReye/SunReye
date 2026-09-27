@@ -16,6 +16,7 @@ import {
   axisValueLabels,
   defaultAxisLabel,
   fittedAxisPadding,
+  fittedLeadingLabel,
   fittedTickSpacing,
   labelWidthPx,
   MAX_GUTTER_SHARE,
@@ -35,11 +36,14 @@ describe("label width", () => {
   });
 
   // The estimate stands in for `measureText`, which a rune component cannot
-  // call before the canvas exists. Measured in Chromium at the axis' own size,
-  // every glyph the statistics axes draw came out at 6.0px; the estimate must
-  // sit ABOVE that or the gutter it sizes is a clip waiting to happen.
+  // call before the canvas exists. Measured in Chromium at the house axis size
+  // (`text-xs`, 12px Geist Mono): "10" 14px, "09-27 00:00" 77px — 7.0px a
+  // glyph. The 6.0px once measured here was layerchart's 10px default, drawn
+  // only when the first chart to mount sat outside a `Chart.Container`. The
+  // estimate must sit ABOVE the real size or the gutter it sizes is a clip
+  // waiting to happen.
   test("is never under what the browser actually measured", () => {
-    expect(AXIS_CHAR_PX).toBeGreaterThan(6);
+    expect(AXIS_CHAR_PX).toBeGreaterThan(7);
   });
 
   test("the widest of a list wins, and an empty list has no width", () => {
@@ -102,6 +106,40 @@ describe("the left gutter fits the widest label the axis will draw", () => {
       right: base.right,
       bottom: base.bottom,
     });
+  });
+});
+
+// A band axis centres each label on its band, so the FIRST label hangs half its
+// width left of the first band — into the gutter, and past the canvas once it is
+// wider than twice the gutter. The price curve's day-start "09-27 00:00" is the
+// case: 77px drawn against a 34px phone gutter, 3px outside the canvas.
+describe("the left gutter holds the first x label's overhang", () => {
+  const base = chartPaddingFor(PHONE_PLOT);
+
+  test("a long first label widens the gutter to half its width", () => {
+    expect(base.left).toBeLessThan(labelWidthPx("09-27 00:00") / 2);
+    const fitted = fittedLeadingLabel(base, PHONE_PLOT, "09-27 00:00");
+    expect(fitted.left).toBeGreaterThanOrEqual(labelWidthPx("09-27 00:00") / 2);
+  });
+
+  test("a label that already fits keeps the gutter it had", () => {
+    expect(fittedLeadingLabel(base, PHONE_PLOT, "00:00")).toEqual(base);
+  });
+
+  test("the gutter never eats the plot, however long the label", () => {
+    const absurd = fittedLeadingLabel(base, PHONE_PLOT, "x".repeat(200));
+    expect(absurd.left).toBeLessThanOrEqual(PHONE_PLOT * MAX_GUTTER_SHARE);
+  });
+
+  test("no label, or no measured plot, leaves the base alone", () => {
+    expect(fittedLeadingLabel(base, PHONE_PLOT, undefined)).toEqual(base);
+    expect(fittedLeadingLabel(base, PHONE_PLOT, "")).toEqual(base);
+    expect(fittedLeadingLabel(base, 0, "09-27 00:00")).toEqual(base);
+  });
+
+  test("only the left side moves", () => {
+    const fitted = fittedLeadingLabel(base, PHONE_PLOT, "09-27 00:00");
+    expect({ ...fitted, left: base.left }).toEqual(base);
   });
 });
 
