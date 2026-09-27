@@ -24,6 +24,7 @@ const device = (over: Partial<DeviceView> = {}): DeviceView => ({
   role: "inverter",
   unitId: 2,
   connectionId: 3,
+  params: {},
   retiredAt: null,
   connection: null,
   arrays: [],

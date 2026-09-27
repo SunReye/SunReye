@@ -15,7 +15,7 @@ import {
   integrationReadings,
   integrationStatus,
 } from "./integration-detail";
-import type { ConnectionStatus, DeviceView, IntegrationView } from "../devices/device-types";
+import type { ConnectionStatus, DeviceView, IntegrationView } from "@SunReye/contracts/devices";
 
 const integration = (over: Partial<IntegrationView> = {}): IntegrationView => ({
   id: 1,
@@ -46,6 +46,7 @@ const device = (over: Partial<DeviceView> = {}): DeviceView => ({
   role: "charger",
   unitId: 0,
   connectionId: 2,
+  params: {},
   retiredAt: null,
   connection: null,
   arrays: [],

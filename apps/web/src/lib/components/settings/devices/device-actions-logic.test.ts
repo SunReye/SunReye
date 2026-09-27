@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import { type DeviceActionId, actionsFor } from "./device-actions-logic";
-import type { DeviceKind, DeviceState, DeviceView } from "./device-types";
+import type { DeviceKind, DeviceState, DeviceView } from "@SunReye/contracts/devices";
 
 const device = (over: Partial<DeviceView>): DeviceView =>
   ({

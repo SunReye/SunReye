@@ -22,10 +22,16 @@
  * stored, registered and listed but not read; {@link DeviceView.state} says so.
  */
 
+import type {
+  ConnectionView,
+  DeviceKind,
+  DeviceRoster,
+  DeviceState,
+  DeviceView,
+} from "@SunReye/contracts/devices";
 import type { DeviceBattery } from "@SunReye/db/batteries";
 import {
   type ConnectionParams,
-  type ConnectionParamsMasked,
   connectionSettingsSchema,
   maskConnectionParams,
   mergeConnectionParams,
@@ -103,30 +109,6 @@ export interface CodedInfo {
   addable?: boolean;
 }
 
-/**
- * How a device is fed. NOT a capability and not a branch anything downstream
- * takes: it is what the roster has to say out loud, because the three are
- * indistinguishable on a row that only knows "polled: false".
- */
-export type DeviceKind = "modbus" | "coded" | "virtual";
-
-/**
- * What the roster reports about a device, one word per reason it is not being
- * read. Replaces a `polled` boolean, which reported an MQTT-fed loadpoint and a
- * computation as broken Modbus hardware.
- *
- * `polling` is the one device the loop reads today; #204 extends it to many and
- * does not change this enum.
- *
- * `provided` was called `integration` until integrations became ROWS of their
- * own (`../integrations/integration-admin.ts`). One list then held both — a
- * loadpoint badged "integration", and a few lines above it the EVCC ingest that
- * provides it, also an integration — so the state says what is true of the
- * DEVICE: something else provides its readings, rather than this server polling
- * for them.
- */
-export type DeviceState = "polling" | "idle" | "provided" | "virtual" | "retired";
-
 export interface DeviceAdminDeps {
   store: DeviceAdminStore;
   /** The display name of a registered profile, or null when the id names none. */
@@ -139,52 +121,9 @@ export interface DeviceAdminDeps {
   reload(): Promise<void>;
 }
 
-/**
- * A device as the settings page shows it: the row, its endpoint, and the two
- * facts the row alone cannot answer.
- *
- * `retiredAt` is an ISO string rather than a `Date` because this shape crosses
- * the HTTP edge; the repository's `Date` would arrive as a string anyway, and
- * naming that here keeps the web type honest.
- */
-export interface DeviceView extends Omit<DeviceRecord, "retiredAt"> {
-  retiredAt: string | null;
-  connection: ConnectionView | null;
-  /** The pack this inverter carries, or null — every other role has none. */
-  battery: DeviceBattery | null;
-  profileName: string | null;
-  /** Whether the name above resolved — an installed profile, or a coded declaration. */
-  profileKnown: boolean;
-  /** How this device is fed. */
-  kind: DeviceKind;
-  /** Why it is, or is not, being read. */
-  state: DeviceState;
-  /**
-   * The integration a coded device belongs to (`evcc`), or null. Provenance for
-   * the roster's grouping and nothing else.
-   */
-  integration: string | null;
-}
-
-/**
- * A connection AS THE API RETURNS IT — every write-only field stripped.
- *
- * The masking follows the secret. It used to live on `app_settings.mqtt`
- * (`maskMqttConfig`), and since #217 the broker credential lives on a
- * `kind = 'mqtt'` row — which both `/api/connections` and the device roster
- * return, and which the archive export reads. `maskConnectionParams` owns the
- * rule for every kind, so a third kind with a secret cannot forget it.
- */
-export type ConnectionView = { id: number; name: string } & ConnectionParamsMasked;
-
 /** One row as the API returns it: masked, and still carrying its identity. */
 function toConnectionView(connection: ConnectionRecord): ConnectionView {
   return { id: connection.id, name: connection.name, ...maskConnectionParams(connection) };
-}
-
-export interface DeviceRoster {
-  devices: DeviceView[];
-  connections: ConnectionView[];
 }
 
 /** A refusal the route turns into its status, with the field it concerns. */

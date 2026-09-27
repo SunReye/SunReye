@@ -21,7 +21,21 @@ import {
   draftFromConnection,
   withTransport,
 } from "./connection-draft";
-import type { ConnectionView } from "./device-types";
+import type { ConnectionKind as WireConnectionKind } from "@SunReye/contracts/devices";
+import { CONNECTION_KINDS, type ConnectionView } from "./device-types";
+
+describe("CONNECTION_KINDS", () => {
+  // Restated from `@SunReye/db` because this package cannot import it. The
+  // `satisfies` beside the list refuses a kind the contract does not know; this
+  // refuses the other drift — a kind the server opens and the picker never offers.
+  test("offers every kind the contract names", () => {
+    const exhaustive: [WireConnectionKind] extends [(typeof CONNECTION_KINDS)[number]]
+      ? true
+      : false = true;
+    expect(exhaustive).toBe(true);
+    expect([...CONNECTION_KINDS]).toEqual(["modbus", "mqtt"]);
+  });
+});
 
 const gateway = {
   id: 3,

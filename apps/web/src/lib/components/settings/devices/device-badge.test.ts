@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import { deviceBadge } from "./device-badge";
-import type { DeviceState, DeviceView } from "./device-types";
+import type { DeviceState, DeviceView } from "@SunReye/contracts/devices";
 
 const device = (state: DeviceState): DeviceView =>
   ({
