@@ -1,15 +1,11 @@
 <script lang="ts">
-	import type { CostSeriesPoint } from '@SunReye/contracts/energy';
-	import { source } from '$lib/source.svelte';
 	import * as m from '$lib/paraglide/messages';
 	import CostBarChart from '$lib/components/inverter/cost-bar-chart.svelte';
-	import { api } from '$lib/api';
 	import { costFormatters } from '$lib/cost/format';
-	import { specQuery, type CostBucket } from '$lib/cost/ranges';
 	import type { SectionData } from '$lib/statistics/sections';
 	import { sectionScope } from '$lib/statistics/chart-scope.svelte';
+	import { queried, useStatisticsQuery } from '$lib/statistics/statistics-query.svelte';
 	import { baselineLabel, deltaFor } from '$lib/statistics/compare';
-	import { statisticsLive } from '$lib/statistics-live.svelte';
 	import { COST_TILES } from '$lib/statistics/tiles';
 	import ChartPanel from './chart-panel.svelte';
 	import StatTiles from './stat-tiles.svelte';
@@ -31,30 +27,12 @@
 	// Ephemeral per-viewer choice, seeded from the saved preference.
 	const view = sectionScope('cost', () => range);
 
-	// Points + the granularity they were fetched at, updated together so the
-	// chart never labels stale points with a freshly-picked bucket.
-	let series = $state<{ points: CostSeriesPoint[]; bucket: CostBucket }>({
-		points: [],
-		bucket: 'day'
-	});
-
-	// `cancelled` guards against an earlier request resolving after a later one
-	// and clobbering fresher data.
-	// fallow-ignore-next-line code-duplication -- dup:61e6ac8e — the cost and energy sections fetch their series the same way (invalidation signal, source-scoped query, cancel-on-rerun) but into two differently typed results; a shared effect helper would need a generic rune wrapper for two call sites.
-	$effect(() => {
-		// Shared invalidation signal: a live push on a now-inclusive wider range
-		// bumps it (at most once a minute), which refetches these bars in place.
-		void statisticsLive.revision;
-		const query = { ...specQuery(view.spec), ...source.query };
-		let cancelled = false;
-		api.api.cost.series.get({ query }).then(({ data: payload }) => {
-			if (cancelled) return;
-			series = { points: (payload ?? []) as CostSeriesPoint[], bucket: query.bucket };
-		});
-		return () => {
-			cancelled = true;
-		};
-	});
+	// Points + the granularity they were fetched at, landing together so the
+	// chart never labels stale points with a freshly-picked bucket. A live push on
+	// a now-inclusive wider range (at most once a minute) refetches them in place.
+	const reads = useStatisticsQuery();
+	const costSeries = queried(() => reads.costSeries(view.spec), { points: [], bucket: 'day' });
+	const series = $derived(costSeries.value);
 
 	const formatters = $derived(costFormatters(cost.currency));
 

@@ -1,11 +1,8 @@
 <script lang="ts">
-	import type { SpotPriceView } from '@SunReye/contracts/prices';
-	import { api } from '$lib/api';
 	import { costFormatters } from '$lib/cost/format';
 	import type { SectionData } from '$lib/statistics/sections';
+	import { queried, useStatisticsQuery } from '$lib/statistics/statistics-query.svelte';
 	import { historySince, historyWindows } from '$lib/statistics/price-history';
-	import { spotStats } from '$lib/statistics/spot-stats.svelte';
-	import { statisticsLive } from '$lib/statistics-live.svelte';
 	import { statisticsPrefs } from '$lib/statistics-prefs.svelte';
 	import { PRICE_TILES } from '$lib/statistics/tiles';
 	import NegativeWindowHistory from './negative-window-history.svelte';
@@ -16,30 +13,24 @@
 	const DAY_MS = 86_400_000;
 
 	// Spot price analytics. Two sources, deliberately: the market's *behaviour*
-	// over the picked window comes from /api/statistics/prices (fetched by the
-	// section list, which also needs it to decide this section exists at all),
+	// over the picked window comes from /api/statistics/prices (read by the
+	// section list too, which needs it to decide this section exists at all),
 	// while the curves at the top are the forward-looking day-ahead slice from
 	// /api/prices — today and tomorrow, whatever range the page is on.
 	let { data }: { data: SectionData } = $props();
 	const range = $derived(data.range);
+	const reads = useStatisticsQuery();
 
-	const stats = $derived(spotStats.stats);
+	// The same read the section list gated this section on — one request, shared.
+	const spot = queried(() => reads.spotStats(range.from, range.to), null);
+	const stats = $derived(spot.value);
 
 	// The day-ahead window is always "today and tomorrow", so unlike the analytics
 	// above there is no range to re-fetch on — the only thing that changes the
 	// answer is a spot-price sync, which the live stream signals. Without that
 	// signal this is the one-shot load it looks like.
-	let view = $state<SpotPriceView | null>(null);
-	$effect(() => {
-		void statisticsLive.priceRevision;
-		let cancelled = false;
-		void api.api.prices.get().then(({ data: payload }) => {
-			if (!cancelled) view = (payload as SpotPriceView | null) ?? null;
-		});
-		return () => {
-			cancelled = true;
-		};
-	});
+	const dayAhead = queried(() => reads.dayAheadPrices(), null);
+	const view = $derived(dayAhead.value);
 
 	// How far back the history list reaches: the saved preference, clamped to the
 	// picked window so the list never claims to cover time the window excludes.

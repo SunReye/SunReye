@@ -240,6 +240,8 @@ export interface MockBackend {
   pushEvcc(state?: unknown): Promise<void>;
   pushAutomations(message?: unknown): Promise<void>;
   pushLogs(entries?: unknown[]): Promise<void>;
+  /** One `statistics` frame — a `today` snapshot by default, or `{ type: "prices" }`. */
+  pushStatistics(message?: unknown): Promise<void>;
   /** Topics the socket refused, as the ack reported them. */
   readonly deniedTopics: readonly string[];
   /** Stop the automatic feed (idempotent; also runs at test end). */
@@ -1046,6 +1048,9 @@ export async function mockBackend(page: Page, options: BackendOptions = {}): Pro
     },
     pushLogs(entries = fixture.logBatch()) {
       return push("logs", entries);
+    },
+    pushStatistics(message = fixture.statisticsToday()) {
+      return push("statistics", message);
     },
     get deniedTopics() {
       return denied;

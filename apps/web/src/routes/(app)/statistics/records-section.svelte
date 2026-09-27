@@ -1,10 +1,8 @@
 <script lang="ts">
-	import { source } from '$lib/source.svelte';
-	import type { RecordsResponse } from '@SunReye/contracts/statistics';
-	import { api } from '$lib/api';
 	import * as m from '$lib/paraglide/messages';
 	import { costFormatters } from '$lib/cost/format';
 	import type { SectionData } from '$lib/statistics/sections';
+	import { queried, useStatisticsQuery } from '$lib/statistics/statistics-query.svelte';
 	import { COMPARISON_TILES, RECORD_TILES } from '$lib/statistics/tiles';
 	import StatTiles from './stat-tiles.svelte';
 	import YoyPanel from './yoy-panel.svelte';
@@ -23,17 +21,10 @@
 	// baseline a second time, as a control row.
 
 	// Rangeless: records cover all recorded history and are cached per day
-	// server-side, so this fetch runs once with the section.
-	let records = $state<RecordsResponse | null>(null);
-	$effect(() => {
-		let cancelled = false;
-		void api.api.statistics.records.get({ query: source.query }).then(({ data: payload }) => {
-			if (!cancelled) records = (payload as RecordsResponse) ?? null;
-		});
-		return () => {
-			cancelled = true;
-		};
-	});
+	// server-side, so this is read once with the section.
+	const reads = useStatisticsQuery();
+	const allTime = queried(() => reads.records(), null);
+	const records = $derived(allTime.value);
 </script>
 
 <StatTiles defs={COMPARISON_TILES} data={data.cost} previous={data.previous} {formatters} />

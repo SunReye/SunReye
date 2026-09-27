@@ -483,7 +483,8 @@ describe("a zoom on /statistics narrows the section's own spec", () => {
     const handler = code.match(/onZoom=\{(\w+)\}/)?.[1];
     expect(handler).toBeDefined();
     expect(declaration(code, handler!)).toContain("view.zoomTo(");
-    expect(code).toContain("specQuery(view.spec)");
+    // The read is keyed by the spec (statistics-query.test.ts pins what it asks for).
+    expect(code).toContain("reads.energySeries(view.spec)");
   });
 
   test("the zoom is ephemeral, like the scope pick beside it", async () => {

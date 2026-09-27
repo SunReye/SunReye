@@ -1,13 +1,9 @@
 <script lang="ts">
-	import { source } from '$lib/source.svelte';
-	import type { AmortisationResponse } from '@SunReye/contracts/statistics';
-	import { api } from '$lib/api';
-	import { payloadOrNull } from '$lib/api-payload';
 	import * as m from '$lib/paraglide/messages';
 	import { costFormatters } from '$lib/cost/format';
 	import type { SectionData } from '$lib/statistics/sections';
+	import { queried, useStatisticsQuery } from '$lib/statistics/statistics-query.svelte';
 	import { AMORTISATION_TILES } from '$lib/statistics/tiles';
-	import { statisticsLive } from '$lib/statistics-live.svelte';
 	import InvestmentPrompt from './investment-prompt.svelte';
 	import PaybackBar from './payback-bar.svelte';
 	import SeasonalNote from './seasonal-note.svelte';
@@ -20,19 +16,11 @@
 	// paint.
 	let { data }: { data: SectionData } = $props();
 
-	let result = $state<AmortisationResponse | null>(null);
 	// The lifetime counters tick with every poll; the live signal (throttled to
 	// a minute) is enough to keep the savings figure moving on a wall display.
-	$effect(() => {
-		void statisticsLive.revision;
-		let cancelled = false;
-		void api.api.statistics.amortisation.get({ query: source.query }).then(({ data: payload }) => {
-			if (!cancelled) result = payloadOrNull<AmortisationResponse>(payload);
-		});
-		return () => {
-			cancelled = true;
-		};
-	});
+	const reads = useStatisticsQuery();
+	const payback = queried(() => reads.amortisation(), null);
+	const result = $derived(payback.value);
 
 	const formatters = $derived(costFormatters(result?.currency ?? data.cost.currency));
 </script>
