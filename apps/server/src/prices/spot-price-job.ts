@@ -34,11 +34,10 @@ import {
   SLOT_MINUTES,
   SpotPriceUnpublished,
   expectedSlotCount,
-  localDayStartMs,
-  nextLocalDayStartMs,
   toSpotRows,
   zoneTimeZone,
 } from "./spot-price";
+import { dayStart, nextDayStart } from "@SunReye/inverter-core/zoned-calendar";
 import { invalidateSpotSlice, loadSpotSlice } from "./spot-price-store";
 import { awattarPrices } from "./providers/awattar";
 import { energyChartsPrices } from "./providers/energy-charts";
@@ -79,9 +78,9 @@ function syncWindow(
   nowMs: number,
 ): { todayMs: number; tomorrowMs: number; endMs: number } {
   const tz = zoneTimeZone(zone);
-  const todayMs = localDayStartMs(tz, nowMs);
-  const tomorrowMs = nextLocalDayStartMs(tz, nowMs);
-  return { todayMs, tomorrowMs, endMs: nextLocalDayStartMs(tz, tomorrowMs) };
+  const todayMs = dayStart(nowMs, tz).getTime();
+  const tomorrowMs = nextDayStart(nowMs, tz).getTime();
+  return { todayMs, tomorrowMs, endMs: nextDayStart(tomorrowMs, tz).getTime() };
 }
 
 /** Stored-vs-expected coverage for one delivery day. */
@@ -189,7 +188,7 @@ export async function getSpotPriceView(
   if (slice.series.length === 0) return null;
 
   const tz = zoneTimeZone(config.zone);
-  const tomorrowMs = nextLocalDayStartMs(tz, nowMs);
+  const tomorrowMs = nextDayStart(nowMs, tz).getTime();
   const prices = slice.series.map((p) => p.eurPerMwh);
   const series = priceSlots(slice, await getTariff());
 

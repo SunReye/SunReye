@@ -1,31 +1,25 @@
 /**
  * Cost engine: turns stored energy flows into money using the active tariff.
  *
- * Energy comes from the TimescaleDB rollups of the inverter's monotonic energy
- * counters (imported/exported/load/production kWh): energy in a bucket is the
- * counter's rise since the *previous* bucket (`max_value` delta), clamped ≥0 so
- * a reset costs one bucket, not the whole total. WHICH counter is
- * {@link energyKeyFor}'s decision — the device's daily `*.today` register where
- * the profile maps one and the bucket is an hour, the lifetime `*.total`
- * odometer otherwise. The pricing arithmetic is pure
- * and unit-tested in {@link ./cost-calc}. Metrics are resolved by canonical
- * role, never vendor keys, so any profile exposing the standard energy roles
- * gets cost tracking for free.
+ * Energy comes from the rollup reader ({@link ./rollup-reader}), which owns the
+ * counter deltas, the register choice and their SQL. This module owns pricing
+ * orchestration only: the window's hours priced per tariff band, the standing
+ * charge prorated per period, the live `*.today` registers swapped into today's
+ * slice, and §51's worthless export. The arithmetic itself is pure and
+ * unit-tested in {@link ./cost-calc}.
  */
 
 import type {
   CostBreakdown,
   CostTotals,
-  EnergyField,
   EnergyTotals,
   HourEnergy,
 } from "@SunReye/contracts/energy";
-import { db } from "@SunReye/db";
 import { type TariffConfig, importPriceForHour } from "@SunReye/db/tariff";
-import type { CanonicalRole, InverterProfile, InverterSample } from "@SunReye/inverter-core";
-import { sql } from "drizzle-orm";
-import { deviceScope, metricIdsOf, metricKeyColumn, metricKeyJoin } from "../shared/identity-sql";
-import { type SeriesTarget, isPlantTarget } from "../shared/plant-source";
+import type { InverterProfile, InverterSample } from "@SunReye/inverter-core";
+import { zoneParts } from "@SunReye/inverter-core/zone-parts";
+import { dateKey, dayStart, isoWeekday } from "@SunReye/inverter-core/zoned-calendar";
+import type { SeriesTarget } from "../shared/plant-source";
 import {
   type FallbackRates,
   type ZeroValueShare,
@@ -34,519 +28,85 @@ import {
   repriceTodaySlice,
   rollUpToMonths,
 } from "./cost-calc";
-import { emptyTotals, impliedLoadKwh, replaceTodaySlice, withImpliedHourLoad } from "./energy-calc";
+import { impliedLoadKwh, replaceTodaySlice } from "./energy-calc";
+import { type CostBucket, eachPeriod } from "./period-keys";
+import {
+  type RollupReader,
+  dbRollupReader,
+  liveTodayTotals,
+  metersLoadEnergy,
+} from "./rollup-reader";
 import { getPlantTimeZone } from "../settings/display-settings";
 import { getTariff } from "../settings/settings";
 import { liveState } from "../shared/state";
-import { startOfZonedDay, zonedFields, zonedInstant, zonedIsoWeekday } from "./zoned-time";
 
 const clamp01 = (n: number): number => Math.min(1, Math.max(0, n));
 
-const HOUR_MS = 3_600_000;
-
-/**
- * The host process zone — the back-compatible default for the period helpers
- * when no plant zone is threaded in. Read live (not cached) so tests that flip
- * `process.env.TZ` at runtime still see the change. Production paths pass the
- * configured plant zone from {@link getPlantTimeZone}; the host is only the
- * fallback for an unconfigured instance (issues #46, #52).
- */
-const hostTimeZone = (): string => Intl.DateTimeFormat().resolvedOptions().timeZone;
-
 export { resolveRange } from "./cost-calc";
 
-/** The energy-counter metric key for a role in this profile, if present. */
-function keyForRole(p: InverterProfile, role: CanonicalRole): string | undefined {
-  return p.metrics.find((m) => m.role === role)?.key;
+/**
+ * What a request prices against, resolved ONCE per request: the plant zone that
+ * buckets it (never `display.timeZone`, which only renders), the tariff, and the
+ * device or plant being priced.
+ */
+export interface PlantContext {
+  tz: string;
+  tariff: TariffConfig;
+  target: SeriesTarget;
 }
 
-/** The {@link HourEnergy} fields we price, and the role backing each. */
-export const ENERGY_FIELDS = {
-  import: "grid.energy.imported.total",
-  export: "grid.energy.exported.total",
-  load: "load.energy.total",
-  production: "production.total",
-  batteryDischarge: "battery.energy.discharged.total",
-  batteryCharge: "battery.energy.charged.total",
-} as const satisfies Record<keyof Omit<HourEnergy, "time">, CanonicalRole>;
+/** The {@link PlantContext} for `target` (the profile's own device when absent). */
+export async function resolvePlantContext(
+  profile: InverterProfile,
+  target?: SeriesTarget,
+): Promise<PlantContext> {
+  const [tz, tariff] = await Promise.all([getPlantTimeZone(), getTariff()]);
+  return { tz, tariff, target: target ?? profile.id };
+}
 
-/** How an energy figure is derived from stored data. */
-type EnergyDerivation = "counter" | "integral";
+/** One stored day-ahead slot, as far as §51 reads it. */
+export interface SpotSlot {
+  slotStart: Date;
+  eurPerMwh: number;
+}
 
-/**
- * Where each energy role's kWh figure actually comes from — issue #115's answer,
- * kept next to the code it describes.
- *
- * This is not documentation. `cost.test.ts` ("energy derivation per role")
- * MEASURES the derivation from the running code and compares it against this
- * table, so flipping a role from a counter read to an integral (or back) without
- * updating the table turns the suite red.
- *
- * Why it matters: milestone 8 stores only *changes* to a metric instead of a
- * sample per poll. Thinning the raw series leaves a bucket's `max_value` /
- * `min_value` untouched (a counter's change points are exactly the samples
- * change-only storage keeps) but moves its unweighted `avg_value` and its sample
- * count a long way. So a `"counter"` figure — a difference of monotonic counter
- * readings — is invariant under thinning and the storage change is safe for it,
- * while an `"integral"` figure (Σ power·Δt over the recorded samples) moves with
- * the sample density and needs time-weighting first (issues #116 / #117).
- *
- * All six reported roles are counter-derived: {@link fetchBucketEnergy} and
- * {@link fetchCounterDeltaMatrix} read only `max_value` / `min_value`, never
- * `avg_value`, and the live current-day override ({@link liveTodayTotals}) reads
- * the device's own `*.today` registers. Which register an hourly bucket
- * differences ({@link energyKeyFor}) does not change the verdict: a difference of
- * readings is a difference of readings either way. Nothing in this layer
- * integrates power.
- * The one integrated energy figure in the product is the browser-side
- * reconstruction in
- * `apps/web/src/lib/components/inverter/_shared/measured-day.ts`.
- */
-// fallow-ignore-next-line unused-export -- the verdict cost.test.ts measures the code against; test files aren't traced as consumers
-export const ENERGY_ROLE_DERIVATION = {
-  import: "counter",
-  export: "counter",
-  load: "counter",
-  production: "counter",
-  batteryDischarge: "counter",
-  batteryCharge: "counter",
-} as const satisfies Record<EnergyField, EnergyDerivation>;
+/** Everything pricing reads besides the {@link PlantContext}. Each has a live default. */
+export interface CostSources {
+  reader: RollupReader;
+  /** Stored day-ahead slots in `[from, to)` for the plant's bidding zone. */
+  spotSlots(from: Date, to: Date): Promise<SpotSlot[]>;
+  /** The poll cache's latest sample. */
+  liveSample(): InverterSample | null;
+  now(): Date;
+}
 
-/** The continuous-aggregate views we can read counter deltas from. */
-export type RollupView = "hourly_rollups" | "daily_rollups";
+/** Stored slots through the price store, in the plant's configured bidding zone. */
+async function storedSpotSlots(from: Date, to: Date): Promise<SpotSlot[]> {
+  const [{ getSpotPrices }, { getSpotPriceConfig }] = await Promise.all([
+    import("@SunReye/db/spot-price"),
+    import("../settings/spot-price-settings"),
+  ]);
+  return getSpotPrices((await getSpotPriceConfig()).zone, from, to);
+}
 
-/**
- * Longest hole in the record a counter delta may bridge, per view.
- *
- * A cumulative counter keeps rising while the recorder is down, so the first
- * bucket after a gap sees the whole gap's rise. Attributing it to that bucket
- * puts energy in the wrong hour, the wrong tariff band, and — when the gap
- * spans midnight or a month boundary — the wrong window entirely: a three-day
- * outage would bill Monday's kWh to Thursday lunchtime. Past this tolerance the
- * rise is unattributable, so the bucket falls back to the intra-bucket
- * `max − min` it can actually vouch for and the gap's energy is dropped.
- *
- * Short holes (a restart, a few missed polls) stay bridged: misplacing an hour
- * within the same day is a rounding error against the banding, and dropping it
- * would under-report a bill for every service restart.
- */
-const MAX_GAP_MS: Record<RollupView, number> = {
-  hourly_rollups: 3 * 3_600_000,
-  daily_rollups: 2 * 86_400_000,
+const liveSources: CostSources = {
+  reader: dbRollupReader,
+  spotSlots: storedSpotSlots,
+  liveSample: () => liveState.latest,
+  now: () => new Date(),
 };
 
-/**
- * The live `*.today` register roles — the current-day twins of the cumulative
- * `*.total` counters in {@link ENERGY_FIELDS}. All OPTIONAL: a profile may map
- * some, none, or all. When a twin is mapped and present in the live sample it
- * gives the in-progress day's energy directly, ahead of the coarser
- * cross-bucket `*.total` delta the rollups derive (which lags the live register
- * for the current day) — so the chart/KPIs match the dashboard headline.
- */
-const ENERGY_TODAY_FIELDS = {
-  import: "grid.energy.imported.today",
-  export: "grid.energy.exported.today",
-  load: "load.energy.today",
-  production: "production.today",
-  batteryDischarge: "battery.energy.discharged.today",
-  batteryCharge: "battery.energy.charged.today",
-} as const satisfies Record<EnergyField, CanonicalRole>;
+/** A request's context and sources; anything absent is resolved live. */
+export type CostDeps = Partial<CostSources> & { context?: PlantContext };
 
-/**
- * The register a field's bucket deltas are differenced from, and whether it is
- * the kind that resets every day.
- *
- * The `*.today` twin wins wherever the profile maps one and the view is hourly,
- * because differencing a LIFETIME odometer has an unbounded worst case: a bucket
- * with no usable predecessor falls back to its own `max − min`, and on a freshly
- * booted appliance the first poll of the first hour answers 0 for a register it
- * has not read yet while the next answers the whole odometer — 3 755.7 kWh of
- * imported energy billed to 05:00 on day one, with the chart, the split,
- * self-sufficiency and the bill downstream of it. From `(min, max)` alone that
- * bucket is indistinguishable from a counter that genuinely starts at zero, so
- * the rule cannot tell them apart; the register can. A day counter bounds the
- * worst case at one day, and on a first boot holds no odometer to book.
- *
- * A day/month view keeps the odometer: a counter that resets at midnight says
- * nothing about the rise across a bucket a day or longer ({@link RollupView}).
- */
-function energyKeyFor(
+async function resolveDeps(
   profile: InverterProfile,
-  field: EnergyField,
-  view: RollupView,
-): { key: string; resetsDaily: boolean } | undefined {
-  const dayKey =
-    view === "hourly_rollups" ? keyForRole(profile, ENERGY_TODAY_FIELDS[field]) : undefined;
-  if (dayKey) return { key: dayKey, resetsDaily: true };
-  const key = keyForRole(profile, ENERGY_FIELDS[field]);
-  return key ? { key, resetsDaily: false } : undefined;
+  target: SeriesTarget | undefined,
+  deps: CostDeps,
+): Promise<{ ctx: PlantContext; src: CostSources }> {
+  const ctx = deps.context ?? (await resolvePlantContext(profile, target));
+  return { ctx, src: { ...liveSources, ...deps } };
 }
-
-/**
- * Metric key → the HourEnergy field it feeds, for the roles this profile has,
- * plus the subset of those keys that reset daily. One key per field: the two
- * derivations coexist across fields, never within one.
- */
-function resolveEnergyKeys(
-  profile: InverterProfile,
-  view: RollupView,
-): { fieldByKey: Map<string, EnergyField>; dailyKeys: Set<string> } {
-  const fieldByKey = new Map<string, EnergyField>();
-  const dailyKeys = new Set<string>();
-  for (const field of Object.keys(ENERGY_FIELDS) as EnergyField[]) {
-    const found = energyKeyFor(profile, field, view);
-    if (!found) continue;
-    fieldByKey.set(found.key, field);
-    if (found.resetsDaily) dailyKeys.add(found.key);
-  }
-  return { fieldByKey, dailyKeys };
-}
-
-/**
- * Whether the plant meters house consumption as energy at all.
- *
- * False for most non-hybrid installs — a grid-tied inverter reports production
- * and a meter reports grid flow, and nothing counts the house. Those plants have
- * their consumption implied from the surrounding flows
- * ({@link withImpliedHourLoad}); a plant that does meter it always keeps the
- * measured figure, including a genuine zero.
- */
-export function metersLoadEnergy(profile: InverterProfile): boolean {
-  // Either counter counts: a profile may map the cumulative total, the
-  // current-day twin, or both. Checking only the total would overwrite a live
-  // `load.energy.today` register with a derived figure.
-  return (
-    keyForRole(profile, ENERGY_FIELDS.load) !== undefined ||
-    keyForRole(profile, ENERGY_TODAY_FIELDS.load) !== undefined
-  );
-}
-
-/** {@link EnergyField} → the {@link EnergyTotals} kWh key it feeds. Shared with
- *  the energy-split accumulator in {@link ./energy}. */
-export const TOTALS_KEY_BY_FIELD = {
-  import: "importKwh",
-  export: "exportKwh",
-  load: "loadKwh",
-  production: "productionKwh",
-  batteryDischarge: "batteryDischargeKwh",
-  batteryCharge: "batteryChargeKwh",
-} as const satisfies Record<EnergyField, keyof EnergyTotals>;
-
-/** Whether two Dates fall on the same calendar day in zone `tz`. */
-function isSameLocalDay(a: Date, b: Date, tz: string = hostTimeZone()): boolean {
-  const fa = zonedFields(a, tz);
-  const fb = zonedFields(b, tz);
-  return fa.year === fb.year && fa.month === fb.month && fa.day === fb.day;
-}
-
-/**
- * The live current-day energy totals, as a partial {@link EnergyTotals} carrying
- * only the fields safe to trust. `now` and `sample` default to the live clock and
- * the poll cache, and are injectable so the guards below are unit-testable
- * without a running poll loop (see cost.test.ts). Returns `{}` (no override)
- * unless ALL hold:
- *  - a sample exists;
- *  - `sample.inverterId` matches the query's effective `inverterId`;
- *  - the sample is from TODAY in server-local time — a stale sample carried
- *    across midnight must not override the fresh day.
- * A field is included only when its `*.today` twin role is mapped by the profile
- * AND the sample carries a finite value for that role's metric key; every other
- * field is left to the caller's `*.total`-delta value.
- */
-/**
- * Whether the poll cache's one sample is the target's own reading. It holds ONE
- * device's sample, which speaks for the plant only when that device is the
- * plant's sole member; a two-inverter plant keeps the counter delta, which is
- * at least the whole plant's.
- */
-function speaksFor(sample: InverterSample, target: SeriesTarget): boolean {
-  if (!isPlantTarget(target)) return sample.inverterId === target;
-  return target.plant.length === 1 && target.plant[0]?.slug === sample.inverterId;
-}
-
-export function liveTodayTotals(
-  profile: InverterProfile,
-  target: SeriesTarget,
-  now: Date = new Date(),
-  sample: InverterSample | null = liveState.latest,
-): Partial<EnergyTotals> {
-  if (!sample || !speaksFor(sample, target)) return {};
-  if (!isSameLocalDay(new Date(sample.time), now)) return {};
-
-  const out: Partial<EnergyTotals> = {};
-  for (const field of Object.keys(ENERGY_TODAY_FIELDS) as EnergyField[]) {
-    const key = keyForRole(profile, ENERGY_TODAY_FIELDS[field]);
-    if (!key) continue; // profile doesn't map this today-twin → keep the delta value
-    const value = sample.metrics[key];
-    if (typeof value === "number" && Number.isFinite(value)) {
-      out[TOTALS_KEY_BY_FIELD[field]] = value;
-    }
-  }
-  return out;
-}
-
-/**
- * The plant's LIFETIME counters as the poll cache last saw them: every field of
- * {@link ENERGY_FIELDS} the profile maps, read straight off the `*.total`
- * registers. Unlike {@link liveTodayTotals} the sample's age is irrelevant — a
- * lifetime counter read yesterday is still the lifetime counter.
- *
- * `null` when the sample cannot answer: none at all, one that does not speak for
- * the target (a plant of several members), or one missing a mapped register —
- * a partial set would price the missing counter as 0 kWh, "the plant never
- * bought anything". Unmapped fields are zero, which IS the right answer for a
- * role the plant does not have.
- */
-export function liveCounterLevels(
-  profile: InverterProfile,
-  target: SeriesTarget,
-  sample: InverterSample | null = liveState.latest,
-): EnergyTotals | null {
-  if (!sample || !speaksFor(sample, target)) return null;
-  const out = emptyTotals();
-  for (const field of Object.keys(ENERGY_FIELDS) as EnergyField[]) {
-    const key = keyForRole(profile, ENERGY_FIELDS[field]);
-    if (!key) continue;
-    const value = sample.metrics[key];
-    if (typeof value !== "number" || !Number.isFinite(value)) return null;
-    out[TOTALS_KEY_BY_FIELD[field]] = value;
-  }
-  return out;
-}
-
-/**
- * The lifetime counters from the forever-retained daily tier: each mapped
- * metric's high in its newest bucket (real-time aggregation includes today's).
- * The fallback for {@link liveCounterLevels} — a plant of several members has
- * no single sample, and a device that has not polled since boot has none.
- * A plant target reads the members' levels summed per bucket, like every other
- * rollup read. `null` when nothing has ever been recorded.
- */
-export async function fetchLatestCounterLevels(
-  profile: InverterProfile,
-  target: SeriesTarget,
-): Promise<EnergyTotals | null> {
-  const { fieldByKey, srcSql } = rollupQueryParts(profile, "daily_rollups", target);
-  if (fieldByKey.size === 0) return null;
-  const res = await db.execute<{ metric: string; max_value: number | string }>(sql`
-    select distinct on (metric) metric, max_value
-    from ${srcSql}
-    order by metric, bucket desc
-  `);
-  if (res.rows.length === 0) return null;
-  const out = emptyTotals();
-  for (const row of res.rows) {
-    const field = fieldByKey.get(row.metric);
-    if (field) out[TOTALS_KEY_BY_FIELD[field]] = Number(row.max_value);
-  }
-  return out;
-}
-
-/**
- * Shared scaffolding for queries against the rollup views: the profile's
- * energy-key map plus the source fragment both readers select `from`.
- *
- * `srcSql` is a DERIVED TABLE, not a bare relation name, and that is the whole
- * identity boundary for this module. 2.0.0 keys the aggregates by
- * `(device_id int2, metric_id int2)`, but every query below reads a `metric`
- * COLUMN and dispatches on it (`fieldByKey.get(r.metric)`), and the profile hands
- * this module metric KEYS. So the sub-select resolves the identity on the way in
- * (`device_id in`, `metric_id in`) and joins `metric_keys` back on the way out,
- * exposing exactly the four columns the callers already read — `bucket`, `metric`,
- * `max_value`, `min_value`. Nothing downstream of here sees an integer.
- *
- * Both predicates are pushed INSIDE the sub-select rather than left to the outer
- * query: a derived table filtered only on its output columns would read the whole
- * aggregate for every device and every metric, then throw most of it away.
- *
- * `view` is a fixed internal literal (not user input), so it is safe to
- * interpolate as a raw identifier; the metric keys and the source id stay
- * parameterized.
- */
-function rollupQueryParts(profile: InverterProfile, view: RollupView, target: SeriesTarget) {
-  const { fieldByKey, dailyKeys } = resolveEnergyKeys(profile, view);
-  const keys = [...fieldByKey.keys()];
-  const scope = deviceScope(target, "r");
-  // A counter is a `sum` role (see `plantAggregateOf`), so the plant's counter
-  // level is the members' levels added per bucket. A member with no row in a
-  // bucket contributes nothing to it; the clamp downstream absorbs the dip.
-  const srcSql = isPlantTarget(target)
-    ? sql`(
-      select r.bucket, ${metricKeyColumn("mk")},
-             sum(r.max_value) as max_value, sum(r.min_value) as min_value
-      from ${sql.raw(view)} r ${metricKeyJoin("r", "mk")}
-      where ${scope}
-        and r.metric_id in ${metricIdsOf(keys)}
-      group by r.bucket, mk.key
-    ) src`
-    : sql`(
-      select r.bucket, ${metricKeyColumn("mk")}, r.max_value, r.min_value
-      from ${sql.raw(view)} r ${metricKeyJoin("r", "mk")}
-      where ${scope}
-        and r.metric_id in ${metricIdsOf(keys)}
-    ) src`;
-  return { fieldByKey, dailyKeys, srcSql };
-}
-
-/**
- * Baseline for a bucket that cannot chain to a predecessor (none at all, or one
- * on the far side of a recording gap): normally the bucket's own `min`, the rise
- * it can vouch for by itself.
- *
- * Unless the counter RESTARTED inside it. Recording resumes on the old counter,
- * the device is swapped or reflashed mid-bucket, and the bucket then holds both
- * the old lifetime level and the new near-zero one — so `max − min` is the whole
- * lifetime total billed to one hour. The stale level sitting strictly inside
- * `(min, max]` is exactly that signature (a bucket recorded wholly after the
- * restart has `max` BELOW the stale level, and one recorded wholly before it has
- * `min` at or above it), and in that case only the rise above the last known
- * level was actually observed. It is also the safe reading of a merely spurious
- * low sample: the figure can only come out smaller, never larger.
- *
- * Mirrored by the `case` in {@link fetchCounterDeltaMatrix}'s SQL.
- */
-function intraBucketBase(min: number, max: number, staleMax: number | undefined): number {
-  return staleMax !== undefined && staleMax > min && staleMax <= max ? staleMax : min;
-}
-
-/**
- * Whether a bucket may price itself as the rise since the predecessor it has.
- *
- * Two ways it may not. A predecessor further back than {@link MAX_GAP_MS} never
- * watched the rise, and a DAILY-resetting register's predecessor in another
- * plant-local day watched a counter that has since gone back to zero — the drop
- * looks exactly like a counter reset, and chaining through it would clamp the
- * first hour of every day to nothing. Either way the bucket falls back to what
- * it can vouch for by itself ({@link intraBucketBase}).
- *
- * The day boundary is the PLANT's ({@link getPlantTimeZone}), not the host's and
- * not the viewer's — the device resets on local midnight where it stands.
- *
- * Mirrored by the `case` in {@link fetchCounterDeltaMatrix}'s SQL.
- */
-function chainsTo(
-  before: { max: number; at: number },
-  bucket: Date,
-  maxGap: number,
-  resetsDaily: boolean,
-  tz: string,
-): boolean {
-  if (bucket.getTime() - before.at > maxGap) return false;
-  return !resetsDaily || isSameLocalDay(new Date(before.at), bucket, tz);
-}
-
-/**
- * Read per-bucket energy for the energy roles this profile exposes, over
- * [from, to). Energy in a bucket is the monotonic counter's rise since the
- * previous bucket — `max_value − prior max_value`, clamped ≥0. `max_value` is
- * the bucket's high-water counter reading; using the cross-bucket delta (not the
- * intra-bucket `max − min`) means a spurious low read or a counter reset costs
- * at most a single bucket instead of pricing the entire lifetime total.
- *
- * The bucket immediately before `from` is read first as a baseline so the first
- * in-range bucket is a delta from real prior state; without a usable baseline —
- * no data before `from`, or a hole longer than {@link MAX_GAP_MS} — the bucket
- * falls back to its own `max − min`.
- *
- * `view` selects the rollup granularity (hourly for cost banding, daily for long
- * windows); both continuous aggregates share the same column shape — and, via
- * {@link energyKeyFor}, which register each field is read from. `tz` is the
- * plant zone the day registers reset in; it defaults to the host's only for
- * callers that predate the plant zone (issues #46, #52).
- */
-export async function fetchBucketEnergy(
-  profile: InverterProfile,
-  inverterId: SeriesTarget,
-  from: Date,
-  to: Date,
-  view: RollupView,
-  tz: string = hostTimeZone(),
-): Promise<HourEnergy[]> {
-  const { fieldByKey, dailyKeys, srcSql } = rollupQueryParts(profile, view, inverterId);
-  if (fieldByKey.size === 0) return [];
-
-  // Cumulative counter level entering the window, per metric (last bucket before
-  // `from`). Seeds the delta chain so the first in-range bucket is priced as a
-  // rise from prior state rather than from its own intra-bucket minimum.
-  const baselineRows = await db.execute<{
-    metric: string;
-    bucket: string | Date;
-    last_max: number;
-  }>(
-    sql`
-      select distinct on (metric) metric, bucket, max_value as last_max
-      from ${srcSql}
-      where bucket < ${from}
-      order by metric, bucket desc
-    `,
-  );
-  // Carries the predecessor's bucket time too: a delta is only meaningful when
-  // the two readings are close enough in time to have observed the rise.
-  const prev = new Map<string, { max: number; at: number }>();
-  for (const r of baselineRows.rows) {
-    prev.set(r.metric, { max: Number(r.last_max), at: new Date(r.bucket).getTime() });
-  }
-  const maxGap = MAX_GAP_MS[view];
-
-  const rows = await db.execute<{
-    bucket: string | Date;
-    metric: string;
-    max_value: number;
-    min_value: number;
-  }>(sql`
-    select bucket, metric, max_value, min_value
-    from ${srcSql}
-    where bucket >= ${from}
-      and bucket < ${to}
-    order by bucket asc
-  `);
-
-  const byBucket = new Map<number, HourEnergy>();
-  for (const r of rows.rows) {
-    const field = fieldByKey.get(r.metric);
-    if (!field) continue;
-    const max = Number(r.max_value);
-    const time = new Date(r.bucket);
-    // No predecessor (the counter's very first bucket), one on the far side of a
-    // recording gap, or — for a day register — one on the far side of midnight →
-    // use this bucket's own intra-bucket delta; otherwise the rise since the
-    // previous bucket's high.
-    const before = prev.get(r.metric);
-    const prior =
-      before && chainsTo(before, time, maxGap, dailyKeys.has(r.metric), tz)
-        ? before.max
-        : intraBucketBase(Number(r.min_value), max, before?.max);
-    prev.set(r.metric, { max, at: time.getTime() });
-
-    const hour = byBucket.get(time.getTime()) ?? {
-      time,
-      import: 0,
-      export: 0,
-      load: 0,
-      production: 0,
-      batteryDischarge: 0,
-      batteryCharge: 0,
-    };
-    hour[field] += Math.max(0, max - prior);
-    byBucket.set(time.getTime(), hour);
-  }
-  const hours = [...byBucket.values()];
-  return metersLoadEnergy(profile) ? hours : withImpliedHourLoad(hours);
-}
-
-/** Read hourly energy for cost banding. Thin wrapper over {@link fetchBucketEnergy}. */
-function fetchHourlyEnergy(
-  profile: InverterProfile,
-  inverterId: SeriesTarget,
-  from: Date,
-  to: Date,
-  tz: string,
-): Promise<HourEnergy[]> {
-  return fetchBucketEnergy(profile, inverterId, from, to, "hourly_rollups", tz);
-}
-
-/** Granularity of a {@link computeCostSeries} bar. */
-export type CostBucket = "hour" | "day" | "month";
 
 /** One bar of the cost time-series: total money in a period. */
 export interface CostSeriesPoint {
@@ -573,264 +133,6 @@ export interface CostSeriesPoint {
 const AVG_DAYS_PER_MONTH = 30.4375;
 const DAY_MS = 86_400_000;
 
-/** SQL date_trunc unit + the `to_char` mask that renders its local period key. */
-const PERIOD_FORMAT: Record<CostBucket, { unit: string; mask: string }> = {
-  hour: { unit: "hour", mask: 'YYYY-MM-DD"T"HH24' },
-  day: { unit: "day", mask: "YYYY-MM-DD" },
-  month: { unit: "month", mask: "YYYY-MM" },
-};
-
-const pad2 = (n: number): string => String(n).padStart(2, "0");
-
-/**
- * Plant-local period key for a Date in zone `tz`, matching the SQL `to_char`
- * masks above. `tz` defaults to the host zone so callers that predate the plant
- * zone behave unchanged; the analytics entry points pass the configured plant
- * zone so the JS zero-fill/override keys line up with the SQL `at time zone $tz`
- * bucketing (issues #46, #52).
- */
-function periodKey(d: Date, bucket: CostBucket, tz: string = hostTimeZone()): string {
-  const { year, month, day, hour } = zonedFields(d, tz);
-  const ymd = `${year}-${pad2(month)}-${pad2(day)}`;
-  if (bucket === "month") return `${year}-${pad2(month)}`;
-  if (bucket === "day") return ymd;
-  return `${ymd}T${pad2(hour)}`;
-}
-
-/**
- * The local period key `now` occupies at `bucket` granularity — i.e. the key of
- * the current, in-progress period in {@link fetchCounterDeltaMatrix}'s output.
- * Reuses {@link periodKey} so a live-register override lands on the exact same
- * key the matrix produced for today. `tz` must be the same plant zone the matrix
- * was bucketed in, or the override lands on the wrong bar.
- */
-export function currentPeriodKey(
-  bucket: CostBucket,
-  now: Date = new Date(),
-  tz: string = hostTimeZone(),
-): string {
-  return periodKey(now, bucket, tz);
-}
-
-/**
- * Each period in `[from, to)` at `bucket` granularity, oldest first: its local
- * key plus `[start, end)` bounds. Stepping uses local calendar fields so month
- * lengths and DST are handled by the Date arithmetic itself. Shared by the
- * zero-fill key list and per-period standing-charge proration.
- *
- * A period the window merely clips is left out. Callers pick calendar-aligned
- * windows, so a period only ends up part-covered when the caller's clock and
- * this server's disagree — a browser on Europe/Berlin asking for "this month"
- * sends 22:00 on the 31st, and the server would open the chart with a bar for
- * the previous month holding two hours of it. The cut-off is half a period, or
- * the whole window where that is shorter (today-by-day at 02:00 is two hours of
- * a day and still the only bar there is).
- */
-/** The plant-local start instant of the period `instant` falls in, at `bucket`. */
-function periodStartInstant(instant: Date, bucket: CostBucket, tz: string): Date {
-  const f = zonedFields(instant, tz);
-  if (bucket === "month") return zonedInstant(f.year, f.month, 1, 0, tz);
-  if (bucket === "day") return zonedInstant(f.year, f.month, f.day, 0, tz);
-  return zonedInstant(f.year, f.month, f.day, f.hour, tz);
-}
-
-/** The start of the period after the one beginning at `cur`, at `bucket`. */
-function nextPeriodStart(cur: Date, bucket: CostBucket, tz: string): Date {
-  const c = zonedFields(cur, tz);
-  const next =
-    bucket === "month"
-      ? zonedInstant(c.year, c.month + 1, 1, 0, tz)
-      : bucket === "day"
-        ? zonedInstant(c.year, c.month, c.day + 1, 0, tz)
-        : zonedInstant(c.year, c.month, c.day, c.hour + 1, tz);
-  // A fall-back DST hour can resolve the next wall-clock boundary at or before
-  // `cur`; force forward progress so the loop always terminates.
-  return next.getTime() > cur.getTime() ? next : new Date(cur.getTime() + HOUR_MS);
-}
-
-function eachPeriod(
-  from: Date,
-  to: Date,
-  bucket: CostBucket,
-  tz: string = hostTimeZone(),
-): Array<{ key: string; start: Date; end: Date }> {
-  const out: Array<{ key: string; start: Date; end: Date }> = [];
-  const windowMs = to.getTime() - from.getTime();
-  // Boundaries are plant-local period starts resolved to real UTC instants in
-  // `tz`, so month lengths and DST (23h/25h days) come from the zone rules, not
-  // the host clock.
-  let cur = periodStartInstant(from, bucket, tz);
-  while (cur < to) {
-    const next = nextPeriodStart(cur, bucket, tz);
-    const covered =
-      Math.min(next.getTime(), to.getTime()) - Math.max(cur.getTime(), from.getTime());
-    if (covered >= Math.min((next.getTime() - cur.getTime()) / 2, windowMs)) {
-      out.push({ key: periodKey(cur, bucket, tz), start: new Date(cur), end: new Date(next) });
-    }
-    cur = next;
-  }
-  return out;
-}
-
-/**
- * Every local period key in `[from, to)` at `bucket` granularity, oldest first.
- * Drives zero-fill so the chart x-axis is stable and gap-free regardless of
- * which periods actually have data.
- */
-function periodKeysInRange(
-  from: Date,
-  to: Date,
-  bucket: CostBucket,
-  tz: string = hostTimeZone(),
-): string[] {
-  return eachPeriod(from, to, bucket, tz).map((p) => p.key);
-}
-
-/** One row of {@link fetchCounterDeltaMatrix}: energy (kWh) for a metric within a
- *  period, further split by the local hour-of-day and ISO weekday it fell on. */
-export interface CounterDeltaRow {
-  period: string;
-  /** Local hour-of-day 0–23 (meaningful only for sub-daily source views). */
-  hod: number;
-  /** Local ISO weekday 1 (Mon) – 7 (Sun). */
-  dow: number;
-  metric: string;
-  kwh: number;
-}
-
-/** Result of {@link fetchCounterDeltaMatrix}. */
-export interface CounterDeltaMatrix {
-  rows: CounterDeltaRow[];
-  /** metric key → the energy field it feeds, for the roles this profile exposes. */
-  fieldByKey: Map<string, EnergyField>;
-  /** Zero-fill period keys in `[from, to)`, oldest first. */
-  periods: string[];
-}
-
-/**
- * Bounded counter-delta matrix over `[from, to)`: per-metric energy (the
- * `max_value` rise since the previous rollup bucket, clamped ≥0) aggregated to
- * `(period, hour-of-day, ISO-weekday)`. The row count is fixed by the calendar
- * shape (≤ periods·24·7·metrics), never by how many rollup buckets the window
- * spans — the delta and the rollup both happen in SQL, so nothing ships every
- * bucket across the wire.
- *
- * `view` picks the source granularity: hourly keeps the hour-of-day detail
- * time-of-use pricing needs; daily is cheaper for long windows that only care
- * about per-period totals. Local wall-clock (server tz) drives the
- * period/hour/weekday so downstream banding matches the per-hour path. A
- * per-metric baseline bucket from just before the window seeds the delta chain,
- * so the first in-window bucket is a real rise (not dropped by a null `lag`);
- * only the first bucket in a metric's entire history falls back to its own
- * intra-bucket min.
- */
-export async function fetchCounterDeltaMatrix(
-  profile: InverterProfile,
-  opts: {
-    from: Date;
-    to: Date;
-    bucket: CostBucket;
-    inverterId?: SeriesTarget;
-    view?: RollupView;
-    /** Plant IANA zone for period/hour bucketing; defaults to the host zone. */
-    tz?: string;
-  },
-): Promise<CounterDeltaMatrix> {
-  const { from, to, bucket } = opts;
-  const inverterId = opts.inverterId ?? profile.id;
-  const view = opts.view ?? "hourly_rollups";
-  // Plant zone so SQL wall-clock and the JS zero-fill keys agree, and neither
-  // depends on the host process zone (issues #46, #52).
-  const tz = opts.tz ?? hostTimeZone();
-  const { fieldByKey, dailyKeys, srcSql } = rollupQueryParts(profile, view, inverterId);
-  const periods = periodKeysInRange(from, to, bucket, tz);
-  if (fieldByKey.size === 0) return { rows: [], fieldByKey, periods };
-
-  const { unit, mask } = PERIOD_FORMAT[bucket];
-  // The `resetsDaily` half of `chainsTo`, as a predicate over the row's metric.
-  // Never `metric in ()`, which is a syntax error — a profile mapping no day
-  // twin at all simply has no daily-resetting metric.
-  const resetsDaily = dailyKeys.size === 0 ? sql`false` : sql`metric in ${[...dailyKeys]}`;
-
-  const rows = await db.execute<{
-    period: string;
-    hod: number;
-    dow: number;
-    metric: string;
-    kwh: number;
-  }>(sql`
-    with src as (
-      -- Buckets inside the window.
-      select bucket, metric, max_value, min_value
-      from ${srcSql}
-      where bucket >= ${from}
-        and bucket < ${to}
-      union all
-      -- Baseline: last bucket strictly before the window, per metric. Seeds the
-      -- delta chain so the first in-window bucket is a rise from prior state, not
-      -- dropped by a null lag(). Filtered back out after the window fn runs.
-      select bucket, metric, max_value, min_value
-      from (
-        select distinct on (metric) bucket, metric, max_value, min_value
-        from ${srcSql}
-        where bucket < ${from}
-        order by metric, bucket desc
-      ) baseline
-    ),
-    chained as (
-      select
-        bucket,
-        metric,
-        max_value,
-        min_value,
-        lag(max_value) over (partition by metric order by bucket) as prev_max,
-        lag(bucket) over (partition by metric order by bucket) as prev_bucket
-      from src
-    ),
-    deltas as (
-      select
-        bucket,
-        (bucket at time zone ${tz}) as local_bucket,
-        metric,
-        -- Rise since the previous bucket's high, clamped ≥0. No predecessor (the
-        -- very first bucket in history), one on the far side of a recording gap,
-        -- or — for a register that resets every day — one on the far side of the
-        -- plant's midnight → fall back to this bucket's own min, matching
-        -- fetchBucketEnergy's chainsTo —
-        -- except when a stale level lies strictly inside (min, max], the
-        -- signature of a counter restart INSIDE this bucket, where max − min
-        -- would bill the whole lifetime total to one bucket (intraBucketBase).
-        greatest(
-          0,
-          max_value - case
-            when prev_bucket is not null
-              and bucket - prev_bucket <= make_interval(secs => ${MAX_GAP_MS[view] / 1000})
-              and not (
-                ${resetsDaily}
-                and date_trunc('day', bucket at time zone ${tz})
-                  <> date_trunc('day', prev_bucket at time zone ${tz})
-              )
-              then prev_max
-            when prev_max is not null and prev_max > min_value and prev_max <= max_value
-              then prev_max
-            else min_value
-          end
-        ) as kwh
-      from chained
-    )
-    select
-      to_char(date_trunc(${unit}, local_bucket), ${mask}) as period,
-      extract(hour from local_bucket)::int as hod,
-      extract(isodow from local_bucket)::int as dow,
-      metric,
-      sum(kwh) as kwh
-    from deltas
-    where bucket >= ${from}
-    group by 1, 2, 3, 4
-  `);
-  return { rows: rows.rows, fieldByKey, periods };
-}
-
 /**
  * Prorated standing charge per period key: the monthly standing charge split
  * across `[from, to)` by each period's overlap with the window (partial first/
@@ -847,8 +149,8 @@ function standingByPeriod(
   to: Date,
   bucket: CostBucket,
   monthly: number,
-  now: Date = new Date(),
-  tz: string = hostTimeZone(),
+  now: Date,
+  tz: string,
 ): Map<string, number> {
   const perDay = monthly / AVG_DAYS_PER_MONTH;
   const charged = Math.min(to.getTime(), now.getTime());
@@ -864,7 +166,7 @@ function standingByPeriod(
 
 /**
  * Total cost per period ([from, to), one point per `bucket`), tariff-band
- * accurate and zero-filled. Reads the bounded {@link fetchCounterDeltaMatrix}
+ * accurate and zero-filled. Reads the bounded counter-delta matrix
  * from the hourly rollups (hour-of-day is needed for time-of-use banding), then
  * prices the groups in JS via {@link priceSeriesRows} — exactly as
  * {@link allocateCost} would per hour, without shipping every hour across the
@@ -879,15 +181,18 @@ function standingByPeriod(
 export async function computeCostSeries(
   profile: InverterProfile,
   opts: { from: Date; to: Date; bucket: CostBucket; inverterId?: SeriesTarget },
+  deps: CostDeps = {},
 ): Promise<CostSeriesPoint[]> {
-  const tariff = await getTariff();
-  const tz = await getPlantTimeZone();
-  const zeroValueShare = await zeroValueShareFor(tariff, opts.from, opts.to);
+  const { ctx, src } = await resolveDeps(profile, opts.inverterId, deps);
+  const { tariff, tz } = ctx;
+  const zeroValueShare = await zeroValueShareFor(tariff, opts.from, opts.to, src.spotSlots);
   const rollUp = zeroValueShare !== undefined && opts.bucket === "month";
   const bucket = rollUp ? "day" : opts.bucket;
 
-  const { rows, fieldByKey, periods } = await fetchCounterDeltaMatrix(profile, {
-    ...opts,
+  const { rows, fieldByKey, periods } = await src.reader.counterDeltaMatrix(profile, {
+    from: opts.from,
+    to: opts.to,
+    inverterId: ctx.target,
     bucket,
     view: "hourly_rollups",
     tz,
@@ -897,16 +202,11 @@ export async function computeCostSeries(
     opts.to,
     bucket,
     tariff.standingChargeMonthly,
-    new Date(),
+    src.now(),
     tz,
   );
   const points = priceSeriesRows(rows, fieldByKey, periods, tariff, standing, zeroValueShare);
   return rollUp ? rollUpToMonths(points) : points;
-}
-
-/** The plant-local day's midnight (as a UTC instant), in zone `tz`. */
-function startOfLocalDay(now: Date, tz: string = hostTimeZone()): Date {
-  return startOfZonedDay(now, tz);
 }
 
 /**
@@ -920,9 +220,11 @@ function startOfLocalDay(now: Date, tz: string = hostTimeZone()): Date {
  * the presets resolve `to` to their caller's `now`, which is a few milliseconds
  * behind the one asked here, and that is a clock artefact, not a past window.
  */
-function coversTodaySoFar(from: Date, to: Date, now: Date, tz: string = hostTimeZone()): boolean {
-  const midnight = startOfLocalDay(now, tz);
-  return from.getTime() <= midnight.getTime() && (to >= now || isSameLocalDay(to, now, tz));
+function coversTodaySoFar(from: Date, to: Date, now: Date, tz: string): boolean {
+  const midnight = dayStart(now, tz);
+  return (
+    from.getTime() <= midnight.getTime() && (to >= now || dateKey(to, tz) === dateKey(now, tz))
+  );
 }
 
 /** The hours of a window that fall on or after `midnight` — today's slice. */
@@ -934,7 +236,7 @@ function hoursSince(hours: HourEnergy[], midnight: Date): HourEnergy[] {
  *  deltas have not seen yet (see {@link repriceTodaySlice}). */
 function fallbackRatesAt(tariff: TariffConfig, now: Date, tz: string): FallbackRates {
   return {
-    importPrice: importPriceForHour(tariff, zonedFields(now, tz).hour, zonedIsoWeekday(now, tz)),
+    importPrice: importPriceForHour(tariff, zoneParts(tz, now.getTime()).hour, isoWeekday(now, tz)),
     exportPrice: tariff.export.feedInPerKwh,
   };
 }
@@ -995,7 +297,7 @@ function reportLiveTodayTotals(
  * never opted in pays for no price lookup and its figures are unchanged.
  *
  * Keyed by real wall-clock hour, which is what every caller must supply.
- * `fetchCounterDeltaMatrix` groups by (period, hour-of-day, weekday), and at
+ * The counter-delta matrix groups by (period, hour-of-day, weekday), and at
  * the MONTH bucket that collapses "14:00 on the 3rd" and "14:00 on the 17th"
  * into one row — there is no single spot price to apply to that, and the error
  * would be unbounded rather than a rounding. At the hour and day buckets the
@@ -1006,15 +308,12 @@ async function zeroValueShareFor(
   tariff: TariffConfig,
   from: Date,
   to: Date,
+  spotSlots: CostSources["spotSlots"],
 ): Promise<ZeroValueShare | undefined> {
   if (tariff.export.mode !== "spot" || tariff.export.spot.marketingModel !== "eegFeedIn") {
     return undefined;
   }
-  const [{ getSpotPrices }, { getSpotPriceConfig }] = await Promise.all([
-    import("@SunReye/db/spot-price"),
-    import("../settings/spot-price-settings"),
-  ]);
-  const rows = await getSpotPrices((await getSpotPriceConfig()).zone, from, to);
+  const rows = await spotSlots(from, to);
   if (rows.length === 0) return undefined;
 
   // Slots per hour, and how many were negative. An hour with no stored price
@@ -1041,13 +340,20 @@ export async function computeCost(
     to: Date;
     inverterId?: SeriesTarget;
   },
+  deps: CostDeps = {},
 ): Promise<CostBreakdown> {
-  const inverterId = opts.inverterId ?? profile.id;
-  const tariff = await getTariff();
-  const tz = await getPlantTimeZone();
-  const hours = await fetchHourlyEnergy(profile, inverterId, opts.from, opts.to, tz);
+  const { ctx, src } = await resolveDeps(profile, opts.inverterId, deps);
+  const { tariff, tz, target } = ctx;
+  const hours = await src.reader.bucketEnergy(
+    profile,
+    target,
+    opts.from,
+    opts.to,
+    "hourly_rollups",
+    tz,
+  );
   const rangeDays = Math.max(0, (opts.to.getTime() - opts.from.getTime()) / 86_400_000);
-  const zeroValueShare = await zeroValueShareFor(tariff, opts.from, opts.to);
+  const zeroValueShare = await zeroValueShareFor(tariff, opts.from, opts.to, src.spotSlots);
   const totals = allocateCost(hours, tariff, rangeDays, zeroValueShare, tz);
 
   // Any window running up to now — today, month-to-date, year-to-date — reports
@@ -1056,14 +362,14 @@ export async function computeCost(
   // headline; the ratios are recomputed from the result and today's money moves
   // with its kWh (see reportLiveTodayTotals). The slice is exchanged, not the
   // total, so a month can never report less energy than the day inside it.
-  const now = new Date();
+  const now = src.now();
   const reported = coversTodaySoFar(opts.from, opts.to, now, tz)
     ? reportLiveTodayTotals(
         totals,
-        liveTodayTotals(profile, inverterId, now),
+        liveTodayTotals(profile, target, tz, now, src.liveSample()),
         // Today's slice priced exactly as the window priced it (no standing
         // charge: that is the window's, prorated once).
-        allocateCost(hoursSince(hours, startOfLocalDay(now, tz)), tariff, 0, zeroValueShare, tz),
+        allocateCost(hoursSince(hours, dayStart(now, tz)), tariff, 0, zeroValueShare, tz),
         !metersLoadEnergy(profile),
         fallbackRatesAt(tariff, now, tz),
       )

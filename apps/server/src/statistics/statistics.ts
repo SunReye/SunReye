@@ -21,20 +21,18 @@ import type { InverterProfile } from "@SunReye/inverter-core";
 import { sql } from "drizzle-orm";
 import { deviceScope } from "../shared/identity-sql";
 import { type SeriesTarget, targetKey } from "../shared/plant-source";
+import { computeCost, computeCostSeries, resolvePlantContext, resolveRange } from "../energy/cost";
+import { currentPeriodKey } from "../energy/period-keys";
 import {
   ENERGY_FIELDS,
-  computeCost,
-  computeCostSeries,
-  currentPeriodKey,
   fetchCounterDeltaMatrix,
   fetchLatestCounterLevels,
   liveCounterLevels,
   metersLoadEnergy,
-  resolveRange,
-} from "../energy/cost";
+} from "../energy/rollup-reader";
 import { accumulateTotals, derivePeriods, emptyTotals, energySeries } from "../energy/energy";
 import { derivePeriodEnergy } from "../energy/energy-calc";
-import { startOfZonedDay } from "../energy/zoned-time";
+import { dayStart } from "@SunReye/inverter-core/zoned-calendar";
 import { getPlantTimeZone } from "../settings/display-settings";
 import { getInvestment } from "../settings/investment-settings";
 import { getTariff } from "../settings/settings";
@@ -117,9 +115,10 @@ export async function computeComparison(
 ): Promise<ComparisonResponse> {
   const inverterId = opts.inverterId ?? profile.id;
   const prev = previousWindow(opts.from, opts.to, opts.mode);
+  const context = await resolvePlantContext(profile, inverterId);
   const [current, previous, dataFrom] = await Promise.all([
-    computeCost(profile, { from: opts.from, to: opts.to, inverterId }),
-    computeCost(profile, { from: prev.from, to: prev.to, inverterId }),
+    computeCost(profile, { from: opts.from, to: opts.to, inverterId }, { context }),
+    computeCost(profile, { from: prev.from, to: prev.to, inverterId }, { context }),
     earliestDailyBucket(inverterId),
   ]);
   return {
@@ -128,11 +127,6 @@ export async function computeComparison(
     previous,
     coverage: { dataFrom: dataFrom?.toISOString() ?? null },
   };
-}
-
-/** Midnight starting the current plant-local day (as a UTC instant), in zone `tz`. */
-function startOfLocalDay(now: Date, tz: string): Date {
-  return startOfZonedDay(now, tz);
 }
 
 // Records deliberately exclude the in-progress day, so a result only changes
@@ -163,7 +157,7 @@ async function buildRecords(
   tz: string,
 ): Promise<RecordsResponse> {
   const firstDay = await earliestDailyBucket(inverterId);
-  const to = startOfLocalDay(new Date(), tz);
+  const to = dayStart(new Date(), tz);
   if (!firstDay || firstDay >= to) return { energy: null, money: null };
   const [energy, money] = await Promise.all([
     energyRecords(profile, inverterId, firstDay, to, tz),

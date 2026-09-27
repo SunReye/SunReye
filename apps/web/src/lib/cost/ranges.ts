@@ -14,6 +14,7 @@
 // buffer / rollup granularity for entity charts — different concern, different
 // shape.
 
+import { calendarDate, startOfDate } from "@SunReye/inverter-core/zoned-calendar";
 import { fittedPadding, isNarrowPlot, type ChartPadding } from "$lib/charts/plot-padding";
 import { dayMonth, monthShort } from "$lib/format/date";
 import { browserTimeZone } from "$lib/time/browser-zone";
@@ -177,7 +178,18 @@ export function periodKeyLabel(key: string, bucket: CostBucket): string {
  * defect family, left alone here on purpose.
  */
 const startOfDay = (d: Date): Date => startOfPeriod(d, "day", { timeZone: browserTimeZone() });
-const startOfMonth = (d: Date): Date => new Date(d.getFullYear(), d.getMonth(), 1);
+const startOfMonth = (d: Date): Date => startOfPeriod(d, "month", { timeZone: browserTimeZone() });
+
+/** The first midnight of the month `months` before the one `d` falls in, in the viewer's zone. */
+function monthsBefore(d: Date, months: number): Date {
+  const timeZone = browserTimeZone();
+  const { year, month } = calendarDate(d, timeZone);
+  const first = new Date(Date.UTC(year, month - 1 - months, 1));
+  return startOfDate(
+    { year: first.getUTCFullYear(), month: first.getUTCMonth() + 1, day: 1 },
+    timeZone,
+  );
+}
 
 /**
  * The exclusive midnight ENDING the civil day `d` falls in — where a
@@ -193,7 +205,7 @@ const endOfDay = (d: Date): Date => periodWindow(d, "day", { timeZone: browserTi
  *  monthlyEnergy's window. */
 function trailingMonths(now: Date, months: number): ChartSpec {
   return {
-    from: new Date(now.getFullYear(), now.getMonth() - (months - 1), 1),
+    from: monthsBefore(now, months - 1),
     to: now,
     bucket: "month",
     caption: `Last ${months} months`,
