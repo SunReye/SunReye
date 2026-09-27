@@ -93,7 +93,7 @@ export interface LoadpointRegistrar {
   /**
    * Forget which devices are registered WITHOUT retiring them.
    *
-   * The teardown path (`stopEvcc`, a settings save that rebuilds the client).
+   * The teardown path (the ingest's `stop`, a settings save that rebuilds the client).
    * The loadpoints have not gone anywhere — the subscription has — so their
    * devices keep their rows, their history and their open intervals, and the
    * next snapshot re-registers them.

@@ -46,7 +46,7 @@ import { deviceRegistry } from "../devices/registry-instance";
 import { createIdentifiedCommit, createRowIdentifier } from "./storage-identity";
 import { type IdentityResolver, createIdentityResolver } from "../shared/identity";
 import { type JobScheduler, type ScheduledJob, createJobScheduler } from "./job-scheduler";
-import { evccOnLoadSample } from "../evcc/evcc";
+import { evccOnLoadSample } from "../evcc/evcc-instance";
 import {
   buildProfileContext,
   buildSource,

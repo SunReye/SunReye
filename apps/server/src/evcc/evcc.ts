@@ -4,7 +4,7 @@
  *
  * EVCC publishes its full state as individual *retained* leaf topics under a
  * root (default `evcc`), so a fresh subscription receives a complete snapshot
- * immediately. This module SUBSCRIBES ON THE CLIENT ITS CONNECTION OWNS
+ * immediately. The ingest SUBSCRIBES ON THE CLIENT ITS CONNECTION OWNS
  * (`evcc.connectionId`, #217 + #221) — it no longer dials one. The lifetime, the
  * reconnect backoff and the observed status all belong to
  * `../devices/broker-pool.ts`, so the ingest works whether or not the Home
@@ -37,11 +37,11 @@
  * {@link ./evcc-topics}, which is pure and unit-tested.
  */
 
-import { evccReady } from "@SunReye/db/evcc-config";
-import type { BrokerLink } from "../devices/broker-pool";
-import { brokerPool } from "../devices/broker-pool-instance";
-import { readBroker } from "../settings/mqtt-broker-instance";
+import { type EvccConfig, evccReady } from "@SunReye/db/evcc-config";
+import type { MqttParams } from "@SunReye/db/connection-kinds";
 import type { EvccLoadpoint, EvccState } from "@SunReye/contracts/evcc";
+import type { BrokerLink, BrokerPool } from "../devices/broker-pool";
+import type { Streams } from "../shared/streams";
 import {
   createEvPowerEstimator,
   type LiveChargePower,
@@ -58,12 +58,6 @@ import {
   type LoadpointRegistrarDeps,
   createLoadpointRegistrar,
 } from "./evcc-registrar";
-import { readEvccTopicRoot } from "../integrations/evcc-topic-root";
-import { getEvccConfig } from "../settings/evcc-settings";
-import { log } from "../shared/logging";
-import type { Streams } from "../shared/streams";
-
-const logger = log("evcc");
 
 /**
  * Writable loadpoint commands.
@@ -132,140 +126,12 @@ function toLoadpoint(
 }
 
 /**
- * This ingest's hold on its connection's client, or null when it is off.
- *
- * A LINK, not a client: the socket underneath can be re-dialled by a broker edit
- * or a reconnect without the ingest noticing, and the subscription registered
- * below travels with it.
- */
-let link: BrokerLink | null = null;
-let topicRoot = "evcc";
-/** Snapshot of the config flag, refreshed on each rebuild (see rebuildEvcc). */
-let subtractFromHome = false;
-let connected = false;
-/** Last value of `<root>/status` ("online"/"offline"); null until seen. */
-let evccStatus: string | null = null;
-const loadpoints = new Map<number, Map<string, EvccValue>>();
-/**
- * Ingested `<root>/vehicles/<name>/…` state, keyed by config slug. Two jobs: it
- * tells {@link limitSocTopic} which vehicles EVCC actually knows, so a limit
- * write can be persisted on the right one, and it carries the pack size the
- * loadpoint snapshot folds in as
- * {@link EvccLoadpoint.vehicleCapacityKwh}.
- */
-const vehicles = new Map<string, Map<string, EvccValue>>();
-const estimator = createEvPowerEstimator();
-
-/**
- * The read-side bus each fresh snapshot is emitted onto, injected by
- * {@link rebuildEvcc}. Null until the first (boot) rebuild wires it; the socket
- * layer fans one emit out to every subscriber of the `evcc` topic.
- */
-let stream: Streams | null = null;
-let emitTimer: ReturnType<typeof setTimeout> | null = null;
-
-/**
- * The path from a loadpoint to `metrics_raw`, injected by {@link rebuildEvcc} on
- * the boot call. Null until then, and null forever in a build that has no
- * runtime to write through (a test of the ingest alone) — the live feed is
- * unaffected either way.
- */
-let registrar: LoadpointRegistrar | null = null;
-
-/**
  * Coalesce a burst of topic updates into a single push. EVCC delivers its full
  * retained state as ~dozens of individual leaf messages on (re)subscribe, and
  * live changes often touch several related topics at once; a short debounce
  * collapses each burst into one snapshot emit with negligible added latency.
  */
 const EMIT_DEBOUNCE_MS = 200;
-
-/**
- * One snapshot, out to both destinations: the read-side bus, and — through the
- * registrar — the plant's history.
- *
- * The SAME snapshot for both, deliberately. What the dashboard paints live and
- * what `metrics_raw` records are then the same reading by construction, and the
- * one thing that must differ (a fed-forward figure is painted but is not
- * history) is stated as provenance on the sample rather than as a second code
- * path here. See `./evcc-devices.ts`.
- */
-function publish(): void {
-  const snap = evccSnapshot();
-  if (!snap) return;
-  stream?.emit("evcc", snap);
-  // Fire-and-forget: storing readings must never delay painting them, and the
-  // registrar drops a snapshot that overlaps one still in flight.
-  void registrar?.sync(snap.loadpoints, new Date());
-}
-
-function scheduleEmit(): void {
-  if (emitTimer) return;
-  emitTimer = setTimeout(() => {
-    emitTimer = null;
-    publish();
-  }, EMIT_DEBOUNCE_MS);
-}
-
-/**
- * Emit synchronously, superseding any debounced emit. Used for feed-forward
- * predictions, where the whole point is sub-poll latency — a command's
- * expected effect should paint immediately, not 200 ms later.
- */
-function emitNow(): void {
-  if (emitTimer) {
-    clearTimeout(emitTimer);
-    emitTimer = null;
-  }
-  publish();
-}
-
-/** Current EVCC state for `GET /api/evcc` and WS pushes, or `null` when off. */
-export function evccSnapshot(): EvccState | null {
-  if (!link) return null;
-  return {
-    reachable: connected && evccStatus === "online",
-    loadpoints: [...loadpoints.entries()]
-      .sort(([a], [b]) => a - b)
-      .map(([index, values]) => toLoadpoint(index, values, estimator.live(index), vehicles)),
-    subtractFromHome,
-  };
-}
-
-/**
- * Where a charge-limit write belongs.
- *
- * EVCC keeps the limit in three layers: the durable per-vehicle `limitSoc`, a
- * per-session loadpoint `limitSoc` override, and the loadpoint's
- * `effectiveLimitSoc` resolving the two. Writing the loadpoint override only
- * sticks until EVCC clears the session (vehicle unplug, EVCC restart), after
- * which the limit silently reverts — so whenever the loadpoint reports a vehicle
- * we have actually ingested, persist the limit on that vehicle, exactly as
- * EVCC's own UI does. The loadpoint override remains the fallback for an
- * unidentified car (guest vehicle, no vehicle configured).
- */
-function limitSocTopic(loadpoint: number): string {
-  const vehicleName = str(loadpoints.get(loadpoint)?.get("vehicleName"));
-  if (vehicleName !== null && vehicles.has(vehicleName)) {
-    return `${topicRoot}/vehicles/${vehicleName}/limitSoc/set`;
-  }
-  return `${topicRoot}/loadpoints/${loadpoint}/limitSoc/set`;
-}
-
-/**
- * Publish a command to EVCC (`.../<action>/set`). EVCC applies it and
- * republishes the state topic, so the UI converges via the normal ingest.
- * `mode` is always loadpoint-scoped; `limitSoc` is routed by
- * {@link limitSocTopic}.
- */
-export function evccControl(loadpoint: number, action: EvccAction, value: string): void {
-  if (!link || !connected) throw new Error("EVCC MQTT is not connected");
-  const topic =
-    action === "limitSoc"
-      ? limitSocTopic(loadpoint)
-      : `${topicRoot}/loadpoints/${loadpoint}/${action}/set`;
-  link.publish(topic, value);
-}
 
 /**
  * The loadpoint state topics the estimator mirrors, and the parameter each one
@@ -278,17 +144,6 @@ const ESTIMATOR_PARAM_BY_KEY: Record<string, (value: EvccValue) => Partial<Loadp
   phasesActive: (v) => ({ phasesActive: num(v) }),
   effectiveMaxCurrent: (v) => ({ maxCurrentA: num(v) }),
 };
-
-/** Mirror the estimator-relevant state keys into it as they stream in. */
-function trackEstimator(index: number, key: string, value: EvccValue): void {
-  // `chargePower` is EVCC's own measurement, not a parameter — it re-anchors.
-  if (key === "chargePower") {
-    if (typeof value === "number") estimator.anchorPower(index, value);
-    return;
-  }
-  const toParams = ESTIMATOR_PARAM_BY_KEY[key];
-  if (toParams) estimator.updateParams(index, toParams(value));
-}
 
 /**
  * Record one coerced leaf value in an entity's flat topic map, creating the map
@@ -312,134 +167,287 @@ function storeValue<K>(
   return value;
 }
 
-function handleMessage(topic: string, payload: Buffer): void {
-  if (topic === `${topicRoot}/status`) {
-    evccStatus = payload.toString().trim();
-    scheduleEmit(); // reachability changed
-    return;
+/** What the ingest logs through: the subscribe, and a subscribe refusal. */
+export interface EvccLogger {
+  info(template: string, values?: Record<string, unknown>): void;
+  error(template: string, values?: Record<string, unknown>): void;
+}
+
+/**
+ * Everything the ingest reaches outside itself, injected so a test drives it
+ * against an in-memory broker with no module mocked.
+ */
+export interface EvccIngestDeps {
+  /** The read-side bus each fresh snapshot is emitted onto (`evcc` topic). */
+  streams: Pick<Streams, "emit">;
+  /**
+   * The path from a loadpoint to `metrics_raw` (`./evcc-storage.ts`). Absent in
+   * a build with no runtime to write through — the live feed is unaffected.
+   */
+  storage?: LoadpointRegistrarDeps;
+  readConfig(): Promise<EvccConfig>;
+  readBroker(connectionId: number | null): Promise<MqttParams | null>;
+  /** The `evcc-ingest` row's topic root, else `fallback` (the setting). */
+  readTopicRoot(fallback: string): Promise<string>;
+  pool: Pick<BrokerPool, "acquire">;
+  logger: EvccLogger;
+}
+
+/** The ingest's interface: the live state, the write path, and its lifecycle. */
+export interface EvccIngest {
+  /** Current EVCC state for `GET /api/evcc` and WS pushes, or `null` when off. */
+  snapshot(): EvccState | null;
+  /**
+   * Publish a command to EVCC (`.../<action>/set`). EVCC applies it and
+   * republishes the state topic, so the UI converges via the normal ingest.
+   * `mode` is always loadpoint-scoped; `limitSoc` goes to the vehicle when one
+   * is known (see `limitSocTopic`).
+   */
+  control(loadpoint: number, action: EvccAction, value: string): void;
+  /**
+   * Feed one house-load sample (W) from the inverter poll loop into the charge-
+   * power estimator; `null` when the load metric is unavailable. Gated on the
+   * `subtractFromHome` flag: it asserts the charger sits behind the house-load
+   * meter, which is exactly the precondition for residual attribution — without
+   * it the charger never shows in the load signal and steps would be misread.
+   */
+  onLoadSample(loadW: number | null): void;
+  /**
+   * (Re)build the subscriber from the current EVCC settings. Called at boot and
+   * whenever either config is saved; tears down to "off" when disabled.
+   * Reconnect and backoff belong to the CONNECTION (`../devices/broker-pool.ts`),
+   * so a rebuild is a re-subscription and not a re-dial — and a broker shared
+   * with the Home Assistant export is not flapped by an EVCC settings save.
+   */
+  rebuild(): Promise<void>;
+  /** Release the client (graceful shutdown). */
+  stop(): Promise<void>;
+}
+
+export function createEvccIngest(deps: EvccIngestDeps): EvccIngest {
+  const { logger } = deps;
+  /**
+   * This ingest's hold on its connection's client, or null when it is off.
+   *
+   * A LINK, not a client: the socket underneath can be re-dialled by a broker
+   * edit or a reconnect without the ingest noticing, and the subscription
+   * registered below travels with it.
+   */
+  let link: BrokerLink | null = null;
+  let topicRoot = "evcc";
+  /** Snapshot of the config flag, refreshed on each rebuild. */
+  let subtractFromHome = false;
+  let connected = false;
+  /** Last value of `<root>/status` ("online"/"offline"); null until seen. */
+  let evccStatus: string | null = null;
+  const loadpoints = new Map<number, Map<string, EvccValue>>();
+  /**
+   * Ingested `<root>/vehicles/<name>/…` state, keyed by config slug. Two jobs:
+   * it tells {@link limitSocTopic} which vehicles EVCC actually knows, so a
+   * limit write can be persisted on the right one, and it carries the pack size
+   * the loadpoint snapshot folds in as {@link EvccLoadpoint.vehicleCapacityKwh}.
+   */
+  const vehicles = new Map<string, Map<string, EvccValue>>();
+  const estimator = createEvPowerEstimator();
+  let emitTimer: ReturnType<typeof setTimeout> | null = null;
+  const registrar: LoadpointRegistrar | null = deps.storage
+    ? createLoadpointRegistrar(deps.storage)
+    : null;
+
+  function snapshot(): EvccState | null {
+    if (!link) return null;
+    return {
+      reachable: connected && evccStatus === "online",
+      loadpoints: [...loadpoints.entries()]
+        .sort(([a], [b]) => a - b)
+        .map(([index, values]) => toLoadpoint(index, values, estimator.live(index), vehicles)),
+      subtractFromHome,
+    };
   }
-  // `.../set` command echoes (our own writes and any external controller's on
-  // this broker) are the feed-forward signal: the expected effect is known now,
-  // one EVCC loop before its state topics confirm it. Only loadpoint commands
-  // predict anything — vehicle-scoped echoes (our own limit writes) resolve to
-  // no command here and are dropped.
-  if (topic.endsWith("/set")) {
-    const command = parseLoadpointTopic(topicRoot, topic.slice(0, -"/set".length));
-    if (command && estimator.feedForward(command.index, command.key, payload.toString().trim())) {
-      emitNow();
+
+  /**
+   * One snapshot, out to both destinations: the read-side bus, and — through
+   * the registrar — the plant's history.
+   *
+   * The SAME snapshot for both, deliberately. What the dashboard paints live
+   * and what `metrics_raw` records are then the same reading by construction,
+   * and the one thing that must differ (a fed-forward figure is painted but is
+   * not history) is stated as provenance on the sample rather than as a second
+   * code path here. See `./evcc-devices.ts`.
+   */
+  function publish(): void {
+    const snap = snapshot();
+    if (!snap) return;
+    deps.streams.emit("evcc", snap);
+    // Fire-and-forget: storing readings must never delay painting them, and the
+    // registrar drops a snapshot that overlaps one still in flight.
+    void registrar?.sync(snap.loadpoints, new Date());
+  }
+
+  function scheduleEmit(): void {
+    if (emitTimer) return;
+    emitTimer = setTimeout(() => {
+      emitTimer = null;
+      publish();
+    }, EMIT_DEBOUNCE_MS);
+  }
+
+  /**
+   * Emit synchronously, superseding any debounced emit. Used for feed-forward
+   * predictions, where the whole point is sub-poll latency — a command's
+   * expected effect should paint immediately, not 200 ms later.
+   */
+  function emitNow(): void {
+    if (emitTimer) {
+      clearTimeout(emitTimer);
+      emitTimer = null;
     }
-    return;
+    publish();
   }
-  const parsed = parseLoadpointTopic(topicRoot, topic);
-  if (parsed) {
-    const value = storeValue(loadpoints, parsed.index, parsed.key, payload);
-    trackEstimator(parsed.index, parsed.key, value);
-    scheduleEmit();
-    return;
+
+  /**
+   * Where a charge-limit write belongs.
+   *
+   * EVCC keeps the limit in three layers: the durable per-vehicle `limitSoc`, a
+   * per-session loadpoint `limitSoc` override, and the loadpoint's
+   * `effectiveLimitSoc` resolving the two. Writing the loadpoint override only
+   * sticks until EVCC clears the session (vehicle unplug, EVCC restart), after
+   * which the limit silently reverts — so whenever the loadpoint reports a
+   * vehicle we have actually ingested, persist the limit on that vehicle,
+   * exactly as EVCC's own UI does. The loadpoint override remains the fallback
+   * for an unidentified car (guest vehicle, no vehicle configured).
+   */
+  function limitSocTopic(loadpoint: number): string {
+    const vehicleName = str(loadpoints.get(loadpoint)?.get("vehicleName"));
+    if (vehicleName !== null && vehicles.has(vehicleName)) {
+      return `${topicRoot}/vehicles/${vehicleName}/limitSoc/set`;
+    }
+    return `${topicRoot}/loadpoints/${loadpoint}/limitSoc/set`;
   }
-  const vehicle = parseVehicleTopic(topicRoot, topic);
-  if (!vehicle) return;
-  // No emit: vehicle state is write-routing input only (see the vehicles map),
-  // never part of the snapshot, so a push here would repeat the last one. EVCC
-  // mirrors every limit change onto the loadpoint's own topics anyway, and that
-  // branch above emits.
-  storeValue(vehicles, vehicle.name, vehicle.key, payload);
-}
 
-/**
- * Feed one house-load sample (W) from the inverter poll loop into the charge-
- * power estimator; `null` when the load metric is unavailable. Gated on the
- * `subtractFromHome` flag: it asserts the charger sits behind the house-load
- * meter, which is exactly the precondition for residual attribution — without
- * it the charger never shows in the load signal and steps would be misread.
- */
-export function evccOnLoadSample(loadW: number | null): void {
-  if (!link || !subtractFromHome) return;
-  if (estimator.onLoadSample(loadW)) scheduleEmit();
-}
-
-async function stopClient(): Promise<void> {
-  const previous = link;
-  link = null;
-  connected = false;
-  evccStatus = null;
-  loadpoints.clear();
-  vehicles.clear();
-  estimator.reset();
-  // SUSPEND, never retire: the subscription is going away, the chargers are not.
-  // Their rows, their history and the intervals they hold open all stay, and the
-  // next snapshot re-registers them.
-  registrar?.suspend();
-  if (emitTimer) {
-    clearTimeout(emitTimer);
-    emitTimer = null;
+  function control(loadpoint: number, action: EvccAction, value: string): void {
+    if (!link || !connected) throw new Error("EVCC MQTT is not connected");
+    const topic =
+      action === "limitSoc"
+        ? limitSocTopic(loadpoint)
+        : `${topicRoot}/loadpoints/${loadpoint}/${action}/set`;
+    link.publish(topic, value);
   }
-  // RELEASE, not close: the connection may carry the Home Assistant export too,
-  // and the pool closes the socket only when its last holder lets go.
-  if (previous) await previous.release();
-}
 
-/**
- * (Re)build the EVCC subscriber from the current EVCC + MQTT settings. Called
- * at boot and whenever either config is saved; tears down to "off" when
- * disabled. Reconnect and backoff belong to the CONNECTION now
- * (`../devices/broker-pool.ts`), so a rebuild is a re-subscription and not a
- * re-dial — and a broker shared with the Home Assistant export is not flapped
- * by an EVCC settings save.
- *
- * `streamBus` wires the read-side bus and is passed only on the boot call; the
- * settings-save rebuilds omit it and keep the bus wired at boot.
- */
-export async function rebuildEvcc(
-  streamBus?: Streams,
-  storage?: LoadpointRegistrarDeps,
-): Promise<void> {
-  if (streamBus) stream = streamBus;
-  if (storage) registrar = createLoadpointRegistrar(storage);
-  const config = await getEvccConfig();
-  const broker = await readBroker(config.connectionId);
-  await stopClient();
-  subtractFromHome = config.subtractFromHome;
-  if (!evccReady(config, broker) || !broker) return;
+  /** Mirror the estimator-relevant state keys into it as they stream in. */
+  function trackEstimator(index: number, key: string, value: EvccValue): void {
+    // `chargePower` is EVCC's own measurement, not a parameter — it re-anchors.
+    if (key === "chargePower") {
+      if (typeof value === "number") estimator.anchorPower(index, value);
+      return;
+    }
+    const toParams = ESTIMATOR_PARAM_BY_KEY[key];
+    if (toParams) estimator.updateParams(index, toParams(value));
+  }
 
-  // THE ROW, not the setting (#217 follow-up). The topic root is the grammar of
-  // every topic below — subscriptions and `/set` writes both — and it lives on
-  // the `evcc-ingest` integration row now. Read AFTER the readiness check so an
-  // install with the ingest switched off pays no query for it, and falling back
-  // to the setting so an install that has not written a row yet keeps
-  // subscribing under the root its operator chose.
-  topicRoot = await readEvccTopicRoot(config.topicRoot);
-  // THE CONNECTION'S CLIENT, not one of ours (#221). `connectionId` is non-null
-  // whenever `readBroker` resolved a broker, which is what `evccReady` gated on
-  // above; the guard is what tells the compiler so.
-  if (config.connectionId === null) return;
-  const next = brokerPool.acquire(config.connectionId, broker);
-  link = next;
-  next.subscribe({
-    topics: [`${topicRoot}/status`, `${topicRoot}/loadpoints/#`, `${topicRoot}/vehicles/#`],
-    onConnect: () => {
-      connected = true;
-      logger.info('subscribed on {brokerUrl} (root "{root}")', {
-        brokerUrl: broker.brokerUrl,
-        root: topicRoot,
-      });
-    },
-    onClose: () => {
-      connected = false;
-      scheduleEmit(); // dropped connection → push reachable:false
-    },
-    onMessage: handleMessage,
-    // Reported to US rather than logged by the pool: a refused subtree means
-    // this ingest goes silent while its writes keep working, which is a
-    // different failure from the export losing its command path on the same
-    // broker. The client stays up — a broker ACL may be fixed a second later.
-    onSubscribeError: (error) => {
-      logger.error("subscribe failed: {error}", { error });
-    },
-  });
-}
+  function handleMessage(topic: string, payload: Buffer): void {
+    if (topic === `${topicRoot}/status`) {
+      evccStatus = payload.toString().trim();
+      scheduleEmit(); // reachability changed
+      return;
+    }
+    // `.../set` command echoes (our own writes and any external controller's on
+    // this broker) are the feed-forward signal: the expected effect is known
+    // now, one EVCC loop before its state topics confirm it. Only loadpoint
+    // commands predict anything — vehicle-scoped echoes (our own limit writes)
+    // resolve to no command here and are dropped.
+    if (topic.endsWith("/set")) {
+      const command = parseLoadpointTopic(topicRoot, topic.slice(0, -"/set".length));
+      if (command && estimator.feedForward(command.index, command.key, payload.toString().trim())) {
+        emitNow();
+      }
+      return;
+    }
+    const parsed = parseLoadpointTopic(topicRoot, topic);
+    if (parsed) {
+      const value = storeValue(loadpoints, parsed.index, parsed.key, payload);
+      trackEstimator(parsed.index, parsed.key, value);
+      scheduleEmit();
+      return;
+    }
+    const vehicle = parseVehicleTopic(topicRoot, topic);
+    if (!vehicle) return;
+    // No emit: vehicle state is write-routing input only (see the vehicles
+    // map), never part of the snapshot, so a push here would repeat the last
+    // one. EVCC mirrors every limit change onto the loadpoint's own topics
+    // anyway, and that branch above emits.
+    storeValue(vehicles, vehicle.name, vehicle.key, payload);
+  }
 
-/** Release the client (graceful shutdown). */
-export async function stopEvcc(): Promise<void> {
-  await stopClient();
+  function onLoadSample(loadW: number | null): void {
+    if (!link || !subtractFromHome) return;
+    if (estimator.onLoadSample(loadW)) scheduleEmit();
+  }
+
+  async function stop(): Promise<void> {
+    const previous = link;
+    link = null;
+    connected = false;
+    evccStatus = null;
+    loadpoints.clear();
+    vehicles.clear();
+    estimator.reset();
+    // SUSPEND, never retire: the subscription is going away, the chargers are
+    // not. Their rows, their history and the intervals they hold open all stay,
+    // and the next snapshot re-registers them.
+    registrar?.suspend();
+    if (emitTimer) {
+      clearTimeout(emitTimer);
+      emitTimer = null;
+    }
+    // RELEASE, not close: the connection may carry the Home Assistant export
+    // too, and the pool closes the socket only when its last holder lets go.
+    if (previous) await previous.release();
+  }
+
+  async function rebuild(): Promise<void> {
+    const config = await deps.readConfig();
+    const broker = await deps.readBroker(config.connectionId);
+    await stop();
+    subtractFromHome = config.subtractFromHome;
+    if (!evccReady(config, broker) || !broker) return;
+
+    // THE ROW, not the setting (#217 follow-up). The topic root is the grammar
+    // of every topic below — subscriptions and `/set` writes both — and it lives
+    // on the `evcc-ingest` integration row now. Read AFTER the readiness check
+    // so an install with the ingest switched off pays no query for it, and
+    // falling back to the setting so an install that has not written a row yet
+    // keeps subscribing under the root its operator chose.
+    topicRoot = await deps.readTopicRoot(config.topicRoot);
+    // THE CONNECTION'S CLIENT, not one of ours (#221). `connectionId` is
+    // non-null whenever the broker resolved, which is what `evccReady` gated on
+    // above; the guard is what tells the compiler so.
+    if (config.connectionId === null) return;
+    const next = deps.pool.acquire(config.connectionId, broker);
+    link = next;
+    next.subscribe({
+      topics: [`${topicRoot}/status`, `${topicRoot}/loadpoints/#`, `${topicRoot}/vehicles/#`],
+      onConnect: () => {
+        connected = true;
+        logger.info('subscribed on {brokerUrl} (root "{root}")', {
+          brokerUrl: broker.brokerUrl,
+          root: topicRoot,
+        });
+      },
+      onClose: () => {
+        connected = false;
+        scheduleEmit(); // dropped connection → push reachable:false
+      },
+      onMessage: handleMessage,
+      // Reported to US rather than logged by the pool: a refused subtree means
+      // this ingest goes silent while its writes keep working, which is a
+      // different failure from the export losing its command path on the same
+      // broker. The client stays up — a broker ACL may be fixed a second later.
+      onSubscribeError: (error) => {
+        logger.error("subscribe failed: {error}", { error });
+      },
+    });
+  }
+
+  return { snapshot, control, onLoadSample, rebuild, stop };
 }

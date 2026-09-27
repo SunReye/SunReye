@@ -7,8 +7,6 @@ import {
 import { readConnections, readDevices, readPlant, updateDevice } from "@SunReye/db/plant-repo";
 import { Elysia, t } from "elysia";
 
-import { afterDeviceWrite } from "../devices/after-device-write";
-import { reopenPlantRuntime } from "../devices/plant-reload";
 import { connectionStatus } from "../devices/connection-runtime";
 import { catalogFor, catalogViewFor } from "../devices/integration-catalog";
 import {
@@ -19,8 +17,8 @@ import {
   listIntegrations,
   patchIntegration,
 } from "../integrations/integration-admin";
+import type { PlantWrites } from "../plant/plant-runtime";
 import { plantClient } from "../shared/plant-client";
-import { plantFacts } from "../settings/plant-facts-instance";
 import { adminResponder, byId, byIdWrite } from "./admin-refusal";
 import { adminGuard } from "./admin-guard";
 
@@ -37,8 +35,11 @@ import { adminGuard } from "./admin-guard";
  * nothing about who may call it (`scripts/route-smoke-plan.ts`).
  */
 
-/** Production wiring, built PER CALL so `mock.module` on `@SunReye/db` reaches it. */
-function defaultDeps(): IntegrationAdminDeps {
+/**
+ * Production wiring, built PER CALL so `mock.module` on `@SunReye/db` reaches it.
+ * Every write is followed by the plant's one after-write (`../plant/plant-runtime.ts`).
+ */
+function defaultDeps(plant: PlantWrites): IntegrationAdminDeps {
   const client = plantClient();
   return {
     store: {
@@ -58,33 +59,34 @@ function defaultDeps(): IntegrationAdminDeps {
     // OBSERVED, not derived (#221): the process's broker pool is asked whether
     // the row's client is up right now.
     connectionStatus,
-    reload: () => afterDeviceWrite(plantFacts, reopenPlantRuntime),
+    reload: () => plant.afterPlantWrite(),
   };
 }
 
 const { respond, withId } = adminResponder((error) => error instanceof IntegrationAdminError);
 
-export const integrationRoutes = new Elysia({ name: "integration-routes" })
-  .use(adminGuard)
-  .get("/api/integrations", { requireAdmin: true }, () => listIntegrations(defaultDeps()))
-  // WHAT MAY BE ADDED, keyed by connection kind — the wizard renders this and
-  // knows no kind by name. `internal` is the catalog's null arm: the coded
-  // things that run over no connection at all (the optimizer today, #197's
-  // weather device next), which is why it is a third key rather than an absence.
-  .get("/api/integrations/catalog", { requireAdmin: true }, () => ({
-    modbus: catalogViewFor("modbus"),
-    mqtt: catalogViewFor("mqtt"),
-    internal: catalogViewFor(null),
-  }))
-  .post("/api/integrations", { requireAdmin: true, body: t.Unknown() }, ({ body, status }) =>
-    respond(status, () => addIntegration(defaultDeps(), body)),
-  )
-  .patch("/api/integrations/:id", byIdWrite, ({ params, body, status }) =>
-    withId(status, params.id, (id) => patchIntegration(defaultDeps(), id, body)),
-  )
-  .delete("/api/integrations/:id", byId, ({ params, status }) =>
-    withId(status, params.id, async (id) => {
-      await deleteIntegration(defaultDeps(), id);
-      return { ok: true, id };
-    }),
-  );
+export const integrationRoutes = (plant: PlantWrites) =>
+  new Elysia({ name: "integration-routes" })
+    .use(adminGuard)
+    .get("/api/integrations", { requireAdmin: true }, () => listIntegrations(defaultDeps(plant)))
+    // WHAT MAY BE ADDED, keyed by connection kind — the wizard renders this and
+    // knows no kind by name. `internal` is the catalog's null arm: the coded
+    // things that run over no connection at all (the optimizer today, #197's
+    // weather device next), which is why it is a third key rather than an absence.
+    .get("/api/integrations/catalog", { requireAdmin: true }, () => ({
+      modbus: catalogViewFor("modbus"),
+      mqtt: catalogViewFor("mqtt"),
+      internal: catalogViewFor(null),
+    }))
+    .post("/api/integrations", { requireAdmin: true, body: t.Unknown() }, ({ body, status }) =>
+      respond(status, () => addIntegration(defaultDeps(plant), body)),
+    )
+    .patch("/api/integrations/:id", byIdWrite, ({ params, body, status }) =>
+      withId(status, params.id, (id) => patchIntegration(defaultDeps(plant), id, body)),
+    )
+    .delete("/api/integrations/:id", byId, ({ params, status }) =>
+      withId(status, params.id, async (id) => {
+        await deleteIntegration(defaultDeps(plant), id);
+        return { ok: true, id };
+      }),
+    );

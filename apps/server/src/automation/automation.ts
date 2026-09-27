@@ -253,7 +253,7 @@ export async function buildProductionIO(deps: PlantDeps): Promise<AutomationIO> 
     import("../settings/weather-settings"),
     import("../settings/plant-facts-instance"),
     import("../forecast/solar-forecast"),
-    import("../evcc/evcc"),
+    import("../evcc/evcc-instance"),
     import("../shared/state"),
     import("../settings/settings"),
     import("../settings/app-settings"),

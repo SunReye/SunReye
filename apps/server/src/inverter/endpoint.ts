@@ -66,7 +66,6 @@ import { getInverterConfig, getSimulate, setSimulate } from "../settings/config"
 import { env } from "@SunReye/env/server";
 import { log } from "../shared/logging";
 import { type ProvisionLogger, dbProvisionStore, provisionPlantRow } from "./provision";
-import { afterDeviceWrite } from "../devices/after-device-write";
 
 /**
  * The framings the Modbus client actually implements.
@@ -451,16 +450,12 @@ export interface ConnectionSaveEffects {
    */
   provision: (seed: InverterConfig) => Promise<unknown>;
   /**
-   * The cached plant facts, dropped after the write: provisioning may have just
-   * created the device whose rows they compose (`../devices/after-device-write.ts`).
+   * The plant's one after-write (`../plant/plant-runtime.ts`): drop the cached
+   * facts, re-open the connections, and ask the poll loop to RE-READ the spine
+   * (never to accept these values). The whole of it, not just the loop, because
+   * provisioning can create a device and a connection.
    */
-  facts: { invalidate(): void };
-  /**
-   * Re-open the connections and ask the poll loop to RE-READ the spine (never to
-   * accept these values) — `../devices/plant-reload.ts`, the reload every other
-   * plant write runs, because provisioning can create a device and a connection.
-   */
-  reopen: () => Promise<void>;
+  afterWrite: () => Promise<void>;
 }
 
 /**
@@ -488,7 +483,7 @@ export async function applyConnectionSave(
 ): Promise<InverterConfig> {
   const stored = await saveConnectionSettings(config, deps);
   await effects.provision(stored);
-  await afterDeviceWrite(effects.facts, effects.reopen);
+  await effects.afterWrite();
   return stored;
 }
 

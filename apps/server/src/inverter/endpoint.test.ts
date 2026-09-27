@@ -689,13 +689,8 @@ describe("applyConnectionSave", () => {
           order.push("provision");
           seeds.push(seed);
         },
-        facts: {
-          invalidate: () => {
-            order.push("invalidate");
-          },
-        },
-        reopen: async () => {
-          order.push("reopen");
+        afterWrite: async () => {
+          order.push("afterWrite");
         },
       },
     };
@@ -708,9 +703,10 @@ describe("applyConnectionSave", () => {
     //
     // And the reload is the SAME one every other plant write runs, not just the
     // poll loop's: provisioning can create the device and its connection, so the
-    // cached plant facts must be dropped and the connection tier re-opened too.
-    // Reloading only the endpoint left a first save's new device invisible to
-    // the forecast until a restart.
+    // cached plant facts must be dropped and the connection tier re-opened too
+    // (`../plant/plant-runtime.ts` owns and tests that sequence). Reloading only
+    // the endpoint left a first save's new device invisible to the forecast
+    // until a restart.
     const { store, state } = memoryStore({ devices: [device()], connections: [connection()] });
     const recorded = effects();
     const wrapped = {
@@ -724,7 +720,7 @@ describe("applyConnectionSave", () => {
       },
     };
     await applyConnectionSave(typed(), recorded.effects, { ...deps(wrapped) });
-    expect(recorded.order).toEqual(["write", "provision", "invalidate", "reopen"]);
+    expect(recorded.order).toEqual(["write", "provision", "afterWrite"]);
     expect((state.connections[0]?.params as ModbusParams | undefined)?.host).toBe("10.0.0.9");
   });
 
