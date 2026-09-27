@@ -17,6 +17,7 @@
 
 import { expect, type Locator, type Page, test } from "@playwright/test";
 import { SOURCES_TWO } from "./support/api-fixtures";
+import { openHistory, rollupCalls } from "./support/history";
 import { openPage } from "./support/open-page";
 
 /** A phone narrow enough that the old segmented switcher ran off it. */
@@ -99,6 +100,43 @@ test("a two-inverter plant opens a menu, and choosing a device re-scopes the rea
   await reopened.click();
   await expect(page.getByRole("menuitemradio", { checked: true })).toHaveText(["West roof"]);
   expect(opened.consoleErrors).toEqual([]);
+});
+
+test("a saved custom chart follows the source, except where a series names its device", async ({
+  page,
+}) => {
+  // The overlay renderer sent no `source` at all, so a custom chart read the
+  // plant while the metric card beside it read whatever the switcher said.
+  const FOLLOWS = "dc.pv2.power";
+  const PINNED = "battery.soc";
+  const backend = await openHistory(page, {
+    sources: SOURCES_TWO,
+    customCharts: [
+      { id: "chart-1", name: "Follows", metrics: [FOLLOWS] },
+      { id: "chart-2", name: "Pinned", metrics: [PINNED], devices: { [PINNED]: "east" } },
+    ],
+  });
+  const callsFor = (metric: string) => rollupCalls(backend).filter((c) => c.metric === metric);
+
+  await expect.poll(() => callsFor(FOLLOWS).length).toBeGreaterThan(0);
+  // Every overlay read names a source — the plant, until something else is chosen.
+  expect(callsFor(FOLLOWS).every((c) => c.source === "plant")).toBe(true);
+  await expect.poll(() => callsFor(PINNED).length).toBeGreaterThan(0);
+  expect(callsFor(PINNED).every((c) => c.source === "east")).toBe(true);
+  backend.resetRequests();
+
+  const button = await openSidebar(page);
+  await button.click();
+  await page.getByRole("menuitemradio", { name: "West roof" }).click();
+
+  await expect
+    .poll(() => callsFor(FOLLOWS).filter((c) => c.source === "west").length)
+    .toBeGreaterThan(0);
+  expect(callsFor(FOLLOWS).filter((c) => c.source !== "west")).toEqual([]);
+  // The pinned series is still read from the device the chart names.
+  await expect
+    .poll(() => callsFor(PINNED).filter((c) => c.source === "east").length)
+    .toBeGreaterThan(0);
 });
 
 test("a 400px phone with three sources does not scroll sideways", async ({ page }) => {

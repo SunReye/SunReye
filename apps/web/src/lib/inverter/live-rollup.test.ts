@@ -77,6 +77,31 @@ describe("the window, fetched once", () => {
     expect(calls[0]!.query).not.toHaveProperty("source");
   });
 
+  test("a per-series scope reads each key under its own source", () => {
+    const { feed, calls } = harness();
+    const scopeOf = (metric: string) => ({ source: metric === "pv" ? "inverter-2" : "plant" });
+    feed.load(["pv", "load"], TODAY, scopeOf, at(600));
+    expect(calls.map((c) => [c.query.metric, c.query.source])).toEqual([
+      ["pv", "inverter-2"],
+      ["load", "plant"],
+    ]);
+  });
+
+  test("the delta keeps each key's own source", async () => {
+    const { feed, calls, tick, answer } = harness();
+    const scopeOf = (metric: string) => ({ source: metric === "pv" ? "inverter-2" : "plant" });
+    feed.load(["pv", "load"], TODAY, scopeOf, at(600));
+    answer("pv", rows(0, 599));
+    answer("load", rows(0, 599));
+    await flush();
+    tick(at(602));
+    feed.append(["pv", "load"], TODAY, scopeOf, at(602));
+    expect(calls.slice(2).map((c) => [c.query.metric, c.query.source])).toEqual([
+      ["pv", "inverter-2"],
+      ["load", "plant"],
+    ]);
+  });
+
   test("lands every key's rows together, and only then stops loading", async () => {
     const { feed, seen, answer } = harness();
     feed.load(["pv", "load"], TODAY, {}, at(600));

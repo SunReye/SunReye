@@ -14,7 +14,7 @@ import {
   type HeldRows,
   type RollupApi,
   type RollupFeed,
-  type RollupScope,
+  type ScopeOf,
 } from "./live-rollup";
 import { fetchWindow, type LiveWindow } from "./live-tail";
 import type { HistoryRange } from "./ranges";
@@ -37,8 +37,8 @@ export type LiveRollup = {
 export type LiveRollupInputs = {
   keys: () => readonly string[];
   range: () => HistoryRange;
-  /** The source a read is made under — `() => ({})` for a plant-wide read. */
-  scope: () => RollupScope;
+  /** The source a read is made under — `() => ({})` for a plant-wide read, or one per key. */
+  scope: () => ScopeOf;
   /** Gates the fetch: a lazily-mounted card fetches nothing until it is near
    *  the viewport. `() => true` for a chart that is always drawn. */
   enabled: () => boolean;

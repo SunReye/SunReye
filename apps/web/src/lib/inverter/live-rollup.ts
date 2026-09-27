@@ -16,6 +16,12 @@ export type HeldRows = Readonly<Record<string, RollupRow[]>>;
 /** What a chart reads under: the selected source, or nothing for a plant-wide read. */
 export type RollupScope = { source?: SourceId };
 
+/** One scope for every key, or one per key — an overlay's series can each name a device. */
+export type ScopeOf = RollupScope | ((metric: string) => RollupScope);
+
+const scopeFor = (scope: ScopeOf, metric: string): RollupScope =>
+  typeof scope === "function" ? scope(metric) : scope;
+
 export type RollupQuery = RollupScope & {
   metric: string;
   from: string;
@@ -80,7 +86,7 @@ export function rollupFeed(deps: {
   async function fetchRows(
     keys: readonly string[],
     span: { from: Date; to: Date; bucket: LiveWindow["bucket"] },
-    scope: RollupScope,
+    scope: ScopeOf,
   ): Promise<HeldRows> {
     const answers = await Promise.all(
       keys.map((metric) =>
@@ -91,7 +97,7 @@ export function rollupFeed(deps: {
             to: span.to.toISOString(),
             bucket: span.bucket,
             limit: LIMIT,
-            ...scope,
+            ...scopeFor(scope, metric),
           })
           .then(({ data }) => [metric, (data ?? []) as RollupRow[]] as const),
       ),
@@ -105,7 +111,7 @@ export function rollupFeed(deps: {
     },
 
     /** Fetch `window` in full. `tickMs` is the minute it was asked in. */
-    load(keys: readonly string[], window: LiveWindow, scope: RollupScope, tickMs: number) {
+    load(keys: readonly string[], window: LiveWindow, scope: ScopeOf, tickMs: number) {
       syncedTick = tickMs;
       let cancelled = false;
       setLoading(true);
@@ -127,7 +133,7 @@ export function rollupFeed(deps: {
      * Returns nothing when there is nothing to ask for, which is every minute a
      * window is already up to date: ~60 cards ask this once a minute.
      */
-    append(keys: readonly string[], window: LiveWindow, scope: RollupScope, tickMs: number) {
+    append(keys: readonly string[], window: LiveWindow, scope: ScopeOf, tickMs: number) {
       if (loading) return undefined;
       const feeds = keys.map((key) => ({ key, rows: rows[key] ?? [], live: [] }));
       const delta = overlayDelta(feeds, window, tickMs, syncedTick);

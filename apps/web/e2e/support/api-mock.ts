@@ -175,7 +175,13 @@ export interface BackendOptions {
    * mounts for a SAVED chart or a full-screen draft. One entry here puts the
    * custom-chart section at the top of `/history` (#216).
    */
-  customCharts?: { id: string; name: string; metrics: string[] }[];
+  customCharts?: {
+    id: string;
+    name: string;
+    metrics: string[];
+    /** Per-series device pins, as `CustomChart.devices` carries them. */
+    devices?: Record<string, string>;
+  }[];
 }
 
 /** The migration status payload, as `apps/server/src/routes/migration.ts` sends it. */
