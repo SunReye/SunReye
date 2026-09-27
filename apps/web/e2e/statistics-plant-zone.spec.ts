@@ -114,5 +114,11 @@ test("a New York evening opens on the plant's CURRENT month, not the one it name
   const nav = periodNavigator(page);
   await expect(nav.trigger).toContainText("Live");
   await expect(nav.forward).toBeDisabled();
+
+  // The calendar behind the trigger opens on the plant's month too — its days
+  // are read in the plant's zone, so August is a month the plant has left.
+  await nav.trigger.click();
+  const inMonth = page.locator("[data-bits-day]:not([data-outside-month])");
+  await expect(inMonth.first()).toHaveAttribute("data-value", "2026-09-01");
   expect(opened.consoleErrors).toEqual([]);
 });
