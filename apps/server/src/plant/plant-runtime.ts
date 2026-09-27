@@ -111,6 +111,10 @@ export function createPlantRuntime(deps: PlantRuntimeDeps): PlantRuntime {
     // integration added on a brand-new broker would come up silent.
     await deps.connections.reload();
     await deps.runtime.reloadEndpoint();
+    // EVCC last, as at boot: it joins a client the tier just opened. Its topic
+    // root and connection live on the `evcc-ingest` integration row, so an
+    // integration write can re-bind it as surely as a settings save.
+    await deps.evcc.rebuild();
   }
 
   async function stop(): Promise<void> {
