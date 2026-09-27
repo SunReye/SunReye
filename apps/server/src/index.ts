@@ -10,8 +10,7 @@ import { setupStaticTypebox } from "./shared/typebox-static";
 import { Elysia, t } from "elysia";
 import { autoHead } from "elysia/auto-head";
 import { entitiesApi } from "./inverter/entities";
-import { aggregateOfMetric, plantFoldFor, targetOf } from "./shared/plant-read";
-import { type SeriesSourceRequest, parseSeriesSource } from "./shared/plant-source";
+import { createSourceResolution } from "./shared/source-resolution";
 import { historyMembers, sourcesRoutes } from "./routes/sources";
 import { isPublicDashboard } from "./settings/access-settings";
 import { initProfiles } from "./inverter/inverter";
@@ -126,51 +125,17 @@ const booted = await plant.boot();
 const ctx = booted.ctx;
 const manifest = ctx?.manifest ?? null;
 
-/**
- * The device a history read means when the request names none.
- *
- * The registry's primary inverter, by `devices.slug` — the id every row is
- * written under. It used to be `profile.id`, which worked only because both
- * resolvers carry a transitional `profile_id` arm; a plant with two inverters
- * has no answer in that spelling at all.
- */
-const defaultSourceId = (): string | null => deviceRegistry.primary()?.id ?? null;
-
-/**
- * WHERE a read is from: `source=plant`, `source=<slug>`, the `inverterId` alias,
- * or — nothing named — the primary device, which is what every request meant
- * before the plant had a spelling (#202). A single-device plant reads the same
- * either way; the web chooses `plant` when there is more than one member.
- */
-const sourceRequest = (q: { source?: string; inverterId?: string }): SeriesSourceRequest | null => {
-  const named = parseSeriesSource(q);
-  if (named) return named;
-  const slug = defaultSourceId();
-  return slug ? { kind: "device", slug } : null;
-};
-
-/**
- * The energy readers' target for a request. Nothing named → the primary device
- * by SLUG, which is also what the live sample is stamped with, so the live
- * `*.today` override keeps matching; the profile-id default is only the
- * fallback of an install with no device row yet.
- */
-const energyTarget = async (q: { source?: string; inverterId?: string }) => {
-  const req = sourceRequest(q);
-  if (!req) return q.inverterId;
-  return targetOf(req, req.kind === "plant" ? await historyMembers() : []);
-};
+// WHERE a stored-data read is from: the named source, else the primary device.
+// See ./shared/source-resolution.
+const sources = createSourceResolution({
+  primarySlug: () => deviceRegistry.primary()?.id ?? null,
+  members: historyMembers,
+  metaByKey: ctx?.metaByKey ?? new Map(),
+});
 
 /** Today's statistics for the primary device — the slug the live sample carries. */
 const todayStatisticsForPrimary = (p: Parameters<typeof todayStatistics>[0]) =>
-  todayStatistics(p, defaultSourceId() ?? undefined);
-
-/** The role-derived aggregate of a metric key, through the plant's manifest. */
-const aggregateOf = aggregateOfMetric(ctx?.metaByKey ?? new Map());
-
-/** The metric readers' arguments for a request, or the plant-level refusal. */
-const metricReadArgs = async (req: SeriesSourceRequest, metric: string) =>
-  plantFoldFor(req, req.kind === "plant" ? await historyMembers() : [], metric, aggregateOf);
+  todayStatistics(p, sources.defaultSourceId() ?? undefined);
 
 /**
  * The two topics whose producers ask "is anyone actually watching" before doing
@@ -311,7 +276,7 @@ const app = new Elysia()
   )
   // Stored-data reads: raw history, the live-buffer backfill, chart rollups,
   // and the cost / energy series — see ./routes/history.
-  .use(historyRoutes({ profile, sourceRequest, energyTarget, metricReadArgs, aggregateOf }))
+  .use(historyRoutes({ profile, sources }))
   // Internal write pipeline for the (session-authed) web app. The write funnel
   // validates the key and value against the entity's metadata before touching
   // the inverter — the external `/api/v1` surface travels the same funnel.
@@ -377,7 +342,7 @@ const app = new Elysia()
   // Automations config + live engine status (peak shaving).
   .use(automationRoutes)
   // Statistics-page aggregates (hour×weekday heatmap, …) over the same rollups.
-  .use(statisticsRoutes({ profile, target: energyTarget }))
+  .use(statisticsRoutes({ profile, target: sources.energyTarget }))
   .use(sourcesRoutes)
   // Profile management: registered list, repo sources, browse/install/activate.
   .use(batteryRoutes({ profile }))

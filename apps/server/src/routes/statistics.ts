@@ -24,7 +24,7 @@ const windowQuery = t.Object({
   inverterId: t.Optional(t.String()),
 });
 
-/** The two spellings of where a read is from — see index.ts's `energyTarget`. */
+/** The two spellings of where a read is from — see ../shared/source-resolution's `energyTarget`. */
 const sourceQuery = { source: t.Optional(t.String()), inverterId: t.Optional(t.String()) };
 type SourceQuery = { source?: string; inverterId?: string };
 
