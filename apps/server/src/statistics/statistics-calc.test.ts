@@ -25,19 +25,102 @@ describe("previousWindow", () => {
     expect(prev.from.toISOString()).toBe("2025-03-02T23:00:00.000Z"); // Berlin Mar 3
   });
 
-  test("previous: preserves millisecond length across a DST boundary", () => {
-    // Berlin spring-forward day: [Mar 30, Mar 31) is only 23 real hours. Bounds
-    // are the Berlin-midnight instants in UTC, so the length is 23h regardless
-    // of the host process zone.
-    const from = new Date("2025-03-29T23:00:00Z"); // Berlin Mar 30 00:00 (CET, +1)
-    const to = new Date("2025-03-30T22:00:00Z"); // Berlin Mar 31 00:00 (CEST, +2)
-    const len = to.getTime() - from.getTime();
-    expect(len).toBe(23 * 3_600_000);
+  test("previous: a 23h spring-forward day compares against the whole day before", () => {
+    // Berlin Mar 30 2025 is 23 real hours; the day before is 24. The reference
+    // is that calendar day, not the 23h ending at Mar 30 00:00 (Mar 29 01:00 on).
+    const prev = previousWindow(
+      new Date("2025-03-29T23:00:00Z"), // Berlin Mar 30 00:00 (CET, +1)
+      new Date("2025-03-30T22:00:00Z"), // Berlin Mar 31 00:00 (CEST, +2)
+      "previous",
+      PLANT_TZ,
+    );
+    expect(prev.from.toISOString()).toBe("2025-03-28T23:00:00.000Z"); // Berlin Mar 29
+    expect(prev.to.toISOString()).toBe("2025-03-29T23:00:00.000Z");
+  });
+
+  test("previous: the 24h day after spring-forward starts its reference at midnight", () => {
+    // Copying 24h back from Berlin Mar 31 00:00 would land on Mar 29 23:00.
+    const prev = previousWindow(
+      new Date("2025-03-30T22:00:00Z"), // Berlin Mar 31 00:00
+      new Date("2025-03-31T22:00:00Z"), // Berlin Apr 1 00:00
+      "previous",
+      PLANT_TZ,
+    );
+    expect(prev.from.toISOString()).toBe("2025-03-29T23:00:00.000Z"); // Berlin Mar 30
+    expect(prev.to.toISOString()).toBe("2025-03-30T22:00:00.000Z");
+  });
+
+  test("previous: a week across a DST seam steps back seven calendar days", () => {
+    const prev = previousWindow(
+      new Date("2025-03-30T22:00:00Z"), // Berlin Mon Mar 31
+      new Date("2025-04-06T22:00:00Z"), // Berlin Mon Apr 7
+      "previous",
+      PLANT_TZ,
+    );
+    expect(prev.from.toISOString()).toBe("2025-03-23T23:00:00.000Z"); // Berlin Mon Mar 24
+  });
+
+  test("previous: a month steps back as many whole days, starting on a midnight", () => {
+    // Berlin March 2025 is 31 days less the DST hour. The reference is the 31
+    // days before (Jan 29 → Mar 1), not 31 days less an hour (Jan 29 01:00),
+    // and not February, which is shorter and would skew every total.
+    const prev = previousWindow(
+      new Date("2025-02-28T23:00:00Z"), // Berlin Mar 1
+      new Date("2025-03-31T22:00:00Z"), // Berlin Apr 1
+      "previous",
+      PLANT_TZ,
+    );
+    expect(prev.from.toISOString()).toBe("2025-01-28T23:00:00.000Z"); // Berlin Jan 29
+    expect(prev.to.toISOString()).toBe("2025-02-28T23:00:00.000Z");
+  });
+
+  test("previous: whole days are counted across a year edge", () => {
+    // Berlin Jan 1 → Apr 1 2025 is 90 days: the reference opens Oct 3 2024 (CEST).
+    const prev = previousWindow(
+      new Date("2024-12-31T23:00:00Z"), // Berlin Jan 1 2025
+      new Date("2025-03-31T22:00:00Z"), // Berlin Apr 1
+      "previous",
+      PLANT_TZ,
+    );
+    expect(prev.from.toISOString()).toBe("2024-10-02T22:00:00.000Z");
+  });
+
+  test("previous: midnight-aligned but not month-aligned steps back calendar days", () => {
+    // [Mar 1, Mar 15) is 14 days → [Feb 15, Mar 1).
+    const prev = previousWindow(
+      new Date("2025-02-28T23:00:00Z"),
+      new Date("2025-03-14T23:00:00Z"),
+      "previous",
+      PLANT_TZ,
+    );
+    expect(prev.from.toISOString()).toBe("2025-02-14T23:00:00.000Z");
+  });
+
+  test("previous: a window off the plant's midnights keeps its millisecond length", () => {
+    // Berlin Mar 30 10:30 → Mar 31 10:30 spans the seam: 23 real hours, copied.
+    const from = new Date("2025-03-30T08:30:00Z");
+    const to = new Date("2025-03-31T08:30:00Z");
     const prev = previousWindow(from, to, "previous", PLANT_TZ);
-    expect(prev.to.getTime()).toBe(from.getTime());
-    expect(prev.to.getTime() - prev.from.getTime()).toBe(len);
-    // 23h before Berlin Mar 30 00:00 is Berlin Mar 29 01:00 = 2025-03-29T00:00Z.
-    expect(prev.from.getTime()).toBe(new Date("2025-03-29T00:00:00Z").getTime());
+    expect(prev.to.toISOString()).toBe(from.toISOString());
+    expect(prev.to.getTime() - prev.from.getTime()).toBe(to.getTime() - from.getTime());
+  });
+
+  test("previous: an empty window stays empty", () => {
+    const at = new Date("2025-02-28T23:00:00Z");
+    const prev = previousWindow(at, at, "previous", PLANT_TZ);
+    expect(prev.from.toISOString()).toBe(at.toISOString());
+    expect(prev.to.toISOString()).toBe(at.toISOString());
+  });
+
+  test("previous: day alignment is judged on the plant's clock, not UTC's", () => {
+    // UTC midnights are 01:00 in Berlin winter: not aligned, so ms length.
+    const prev = previousWindow(
+      new Date("2025-03-01T00:00:00Z"),
+      new Date("2025-04-01T00:00:00Z"),
+      "previous",
+      PLANT_TZ,
+    );
+    expect(prev.from.toISOString()).toBe("2025-01-29T00:00:00.000Z");
   });
 
   test("yearAgo: the same plant-local calendar window one year back", () => {
