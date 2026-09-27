@@ -128,6 +128,7 @@ export async function computeComparison(
     mode: opts.mode,
     current,
     previous,
+    reference: { from: prev.from.toISOString(), to: prev.to.toISOString() },
     coverage: { dataFrom: dataFrom?.toISOString() ?? null },
   };
 }

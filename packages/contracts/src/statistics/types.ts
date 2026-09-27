@@ -61,6 +61,10 @@ export interface ComparisonResponse {
   mode: CompareMode;
   current: CostBreakdown;
   previous: CostBreakdown;
+  /** The window `previous` was priced over (ISO `[from, to)`). Echoed because
+   *  a year-ago shift runs on the PLANT's calendar, which a viewer's browser
+   *  does not know — the page's coverage check must test this window. */
+  reference: { from: string; to: string };
   coverage: {
     /** Earliest daily-rollup bucket for this inverter (ISO), null with no data
      *  at all — lets the UI suppress fake deltas when the reference window
