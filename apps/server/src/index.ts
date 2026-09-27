@@ -24,10 +24,7 @@ import type { HistoryTier } from "./shared/history-horizon";
 import { refuseIncompleteRange } from "./shared/history-horizon-live";
 import { isPublicDashboard } from "./settings/access-settings";
 import { initProfiles } from "./inverter/inverter";
-import { installEvccIngest } from "./evcc/evcc-instance";
-import { createPlantEvccIngest } from "./evcc/evcc-storage";
-import { createPlantRuntime } from "./plant/plant-runtime";
-import { plantRuntimeDeps } from "./plant/plant-wiring";
+import { composePlant } from "./plant/plant-wiring";
 import { deviceRegistry } from "./devices/registry-instance";
 import { WriteRejectedError } from "./inverter/control-writer";
 import { log, recentLogs, setupLogging } from "./shared/logging";
@@ -54,7 +51,6 @@ import { createTopicBackfill } from "./routes/ws-backfill";
 import { publishLiveTopics } from "./routes/ws-publish";
 import { topicAccessFrom } from "./routes/ws-subscribe";
 import { todayStatistics } from "./statistics/statistics";
-import * as runtime from "./inverter/runtime";
 import { loadAssets } from "./web/loaded";
 import { webRoutes } from "./web/static";
 import { compression } from "./shared/compression";
@@ -201,23 +197,14 @@ const profile = await initProfiles();
 // 503 payload for a profile-dependent surface hit before onboarding is done.
 const ONBOARDING_REQUIRED = { error: "No active inverter profile — onboarding required" } as const;
 
-// The EVCC ingest: its own subscription on its connection's client
-// (./evcc/evcc.ts). Built here because it needs the bus, and installed for the
-// modules still wired at import time (the poll loop, the automation IO); the
-// plant runtime below rebuilds it at boot and releases it on shutdown.
-const evcc = createPlantEvccIngest({
-  streams,
-  registry: deviceRegistry,
-  writer: { commit: runtime.commit, forgetDevice: runtime.forgetDevice },
-});
-installEvccIngest(evcc);
-
-// The plant's lifecycle — provisioning, the broker seed, the roster, the
-// transports' context, the live fold and the Home Assistant discovery gate, in
-// that order — is ./plant/plant-runtime.ts's, where the order is tested. Its
-// first half runs here, before any route is built from the context it returns;
-// `booted.start` runs the second once the server is listening.
-const plant = createPlantRuntime(plantRuntimeDeps({ profile, streams, evcc }));
+// The poll loop, the EVCC ingest, the connection probes and the plant runtime
+// over them, built once the bus exists (./plant/plant-wiring.ts). The plant's
+// lifecycle — provisioning, the broker seed, the roster, the transports'
+// context, the live fold and the Home Assistant discovery gate, in that order —
+// is ./plant/plant-runtime.ts's, where the order is tested. Its first half runs
+// here, before any route is built from the context it returns; `booted.start`
+// runs the second once the server is listening.
+const { plant, runtime, evcc, probes } = composePlant({ profile, streams });
 const booted = await plant.boot();
 const ctx = booted.ctx;
 const manifest = ctx?.manifest ?? null;
@@ -600,7 +587,7 @@ const app = new Elysia()
     },
   )
   // Runtime configuration (tariff, inverter, MQTT) + connection status.
-  .use(settingsRoutes({ plant, evcc }))
+  .use(settingsRoutes({ plant, evcc, runtime, probes }))
   // Automations config + live engine status (peak shaving).
   .use(automationRoutes)
   // Cost breakdown over a named range (today / month-to-date / year-to-date) or
@@ -674,7 +661,7 @@ const app = new Elysia()
   // correction, and "migrate history now / later".
   .use(migrationRoutes({ manifest }))
   // Admin-only maintenance: data reset + API-key administration.
-  .use(adminRoutes)
+  .use(adminRoutes(runtime))
   // The live socket: one connection carrying every topic, gated per subscribe
   // frame rather than per URL. It replaced five single-purpose /ws/* routes
   // (metrics, evcc, statistics, logs, automations), whose upgrade guards became

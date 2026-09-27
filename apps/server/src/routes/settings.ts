@@ -17,7 +17,8 @@ import { getEvccConfig, setEvccConfig } from "../settings/evcc-settings";
 import { getCorrectionView } from "../forecast/forecast-correction-job";
 import { configuredProfile } from "../inverter/inverter";
 import { defaultDeps, syncProvisioning } from "../inverter/provision-boot";
-import * as runtime from "../inverter/runtime";
+import type { ConnectionProbes } from "../inverter/connection-probes";
+import type { Runtime } from "../inverter/runtime";
 import { getTariff, setTariff } from "../settings/settings";
 import { getInvestment, setInvestment } from "../settings/investment-settings";
 import {
@@ -51,9 +52,11 @@ const brokerTestSchema = z.object({ connectionId: z.number().int().positive() })
 export interface SettingsRoutesDeps {
   plant: PlantWrites;
   evcc: Pick<EvccIngest, "rebuild" | "snapshot">;
+  runtime: Pick<Runtime, "applyMqttConfig" | "status" | "syncSpotPricesNow">;
+  probes: ConnectionProbes;
 }
 
-export const settingsRoutes = ({ plant, evcc }: SettingsRoutesDeps) => {
+export const settingsRoutes = ({ plant, evcc, runtime, probes }: SettingsRoutesDeps) => {
   /** A save, then the EVCC ingest re-subscribed against what it stored. */
   const thenRebuildEvcc =
     <T>(save: () => Promise<T>) =>
@@ -168,7 +171,7 @@ export const settingsRoutes = ({ plant, evcc }: SettingsRoutesDeps) => {
       .post("/api/settings/inverter/test", adminWrite, async ({ body, status }) => {
         const tested = await attempt(() => {
           const profileId = (body as { profileId?: unknown }).profileId;
-          return runtime.testInverter(
+          return probes.testInverter(
             typeof profileId === "string" ? profileId : null,
             inverterConfigSchema.parse(body),
           );
@@ -208,7 +211,7 @@ export const settingsRoutes = ({ plant, evcc }: SettingsRoutesDeps) => {
               error: `connection ${connectionId} is not an MQTT broker`,
             };
           }
-          return runtime.testMqtt(broker);
+          return probes.testMqtt(broker);
         }, "Invalid config");
         return tested.ok ? tested.value : status(400, { error: tested.error });
       })

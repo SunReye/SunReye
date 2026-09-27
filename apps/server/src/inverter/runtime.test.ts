@@ -3,24 +3,15 @@
  * of the live source and the MQTT bridge, the register-write funnel, and the two
  * "try it without disturbing production" probes.
  *
- * Nothing here talks to a socket or a database. Every collaborator the module
- * imports is replaced with an in-memory double, so the assertions are about the
+ * Nothing here talks to a socket or a database. Every collaborator is injected
+ * through `RuntimeDeps` as an in-memory double, so the assertions are about the
  * controller's own decisions — when it polls, what it buffers, what it drops,
- * what it closes, and what it writes to a register.
+ * what it closes, and what it writes to a register — and no module is mocked.
  *
  * Two mechanics are worth reading before the tests:
  *
- * 1. `mock.module` is process-global and permanent — it is live for every test
- *    file in the process, whichever order the runner walked them in. So every
- *    factory below does two things. It spreads the real module, because a
- *    factory returning only the exports this suite needs would *delete* the
- *    rest for everyone downstream. And each stub delegates to the real export
- *    unless `intercepting` is set, which is true only while this file's own
- *    tests run: the suites that exercise these modules for real (the MQTT
- *    bridge, the automation loop, the price job) must never end up talking to
- *    the fakes below. And `afterAll` re-registers every first-party module from
- *    a by-value snapshot taken at load time, so the real exports — not merely
- *    delegating wrappers — are what the rest of the process imports.
+ * 1. `intercepting` gates the one shared thing still tapped: LogTape's cached
+ *    `runtime` logger, whose lines are recorded only while this file runs.
  *
  * 2. Timers are captured rather than waited on. `setInterval`/`setTimeout` are
  *    wrapped for the length of the file: each armed timer is recorded (callback,
@@ -40,7 +31,6 @@ import {
   beforeEach,
   describe,
   expect,
-  mock,
   setSystemTime,
   test,
 } from "bun:test";
@@ -65,14 +55,17 @@ import { OPTIMIZER_DEVICE_ID, OPTIMIZER_METRICS } from "../automation/optimizer-
 import type { DeviceRowState } from "../automation/optimizer-registrar";
 import { initialStatus } from "../automation/peak-shaving-engine";
 
+import type { SpotPriceConfig } from "@SunReye/db/spot-price-config";
+import type { WeatherConfig } from "@SunReye/db/weather";
+import { createJobScheduler } from "./job-scheduler";
+import type { RuntimeDeps } from "./runtime";
 import type { StorageRow } from "./storage-policy";
 
 // --- doubles ---------------------------------------------------------------
 
 /**
- * Whether this file's doubles are in charge. Set for the length of this suite
- * only (see `beforeAll`/`afterAll`); everywhere else the stubs below hand
- * straight back to the real implementation.
+ * Whether this file's logger tap records. Set for the length of this suite only
+ * (see `beforeAll`/`afterAll`).
  */
 let intercepting = false;
 
@@ -245,58 +238,23 @@ const baseBroker = (over: Partial<MqttParams> = {}): MqttParams => ({
   ...over,
 });
 
-const realConfig = await import("../settings/config");
-const realConfigExports = { ...realConfig };
-const realGetMqttConfig = realConfig.getMqttConfig;
-const realGetInverterConfig = realConfig.getInverterConfig;
-/**
- * How often the LEGACY `app_settings.inverter` reader was consulted.
- *
- * Counted rather than merely stubbed: "the poll loop no longer polls from the
- * JSONB document" is the defect this release closes, and the only way to state it
- * as a test is that nothing on the boot or reload path asks for that document at
- * all. A value-based assertion would pass just as well if the runtime read both
- * and happened to prefer the right one.
- */
-let legacyConfigReads = 0;
-mock.module("../settings/config", () => ({
-  ...realConfig,
-  getInverterConfig: async () => {
-    legacyConfigReads++;
-    return realGetInverterConfig();
-  },
-  getMqttConfig: async () => (intercepting ? mqttConfig : realGetMqttConfig()),
-  // The simulator toggle, which the poll loop reads on every rebuild. A stub
-  // rather than the real reader: that one goes to `app_settings`, and these
-  // tests have no database — the loop asking for it is new, and without this
-  // every rebuild in this file dies inside drizzle.
-  getSimulate: async () => simulated,
-}));
-
-/** What the stubbed toggle answers; flipped by the tests that care. */
+/** What the injected simulator toggle answers; flipped by the tests that care. */
 let simulated = false;
 
 /** The `simulate` each buildSource call received, newest last. */
 const builtSimulated: boolean[] = [];
 
-/**
- * The spine's answer, stubbed at the resolver rather than at the database.
+/*
+ * The spine's answer (`pollEndpoint` above), injected at the resolver rather
+ * than at the database.
  *
  * The rules INSIDE that resolution — which device, whose endpoint, what a
  * retired row means — are `endpoint.test.ts`'s subject and are proved against an
  * in-memory spine there. What this file is responsible for is what the loop does
  * with the answer, and that it re-reads it rather than being handed values.
- */
-const realEndpoint = await import("./endpoint");
-const realEndpointExports = { ...realEndpoint };
-const realLoadPollEndpoint = realEndpoint.loadPollEndpoint;
-mock.module("./endpoint", () => ({
-  ...realEndpoint,
-  loadPollEndpoint: async () => (intercepting ? pollEndpoint : realLoadPollEndpoint()),
-}));
-
-/**
- * The broker resolution, stubbed at the RESOLVER rather than at the database.
+ *
+ * The broker resolution (`mqttBroker` above), injected at the RESOLVER rather
+ * than at the database.
  *
  * `readBroker` is a plant read (`../settings/mqtt-broker-instance.ts`), and the
  * rules inside it — a dangling id, a connection of another kind — are
@@ -304,15 +262,6 @@ mock.module("./endpoint", () => ({
  * is what the runtime does with the answer, and that it re-reads it per rebuild
  * rather than being handed a broker once at boot.
  */
-const realBrokerModule = await import("../settings/mqtt-broker-instance");
-const realBrokerExports = { ...realBrokerModule };
-const realReadBroker = realBrokerModule.readBroker;
-mock.module("../settings/mqtt-broker-instance", () => ({
-  ...realBrokerModule,
-  readBroker: async (connectionId: number | null) =>
-    intercepting ? mqttBroker : realReadBroker(connectionId),
-}));
-
 /**
  * The process's broker pool, doubled (#221).
  *
@@ -328,16 +277,10 @@ class InertClient extends EventEmitter {
   async endAsync(): Promise<void> {}
 }
 
-const realBrokerPoolModule = await import("../devices/broker-pool-instance");
-const realBrokerPoolExports = { ...realBrokerPoolModule };
 const testBrokerPool = createBrokerPool({
   dial: () => new InertClient() as unknown as BrokerClient,
   schedule: () => () => {},
 });
-mock.module("../devices/broker-pool-instance", () => ({
-  ...realBrokerPoolModule,
-  brokerPool: testBrokerPool,
-}));
 
 /** Stands in for the MQTT bridge: records everything the runtime publishes. */
 class FakeBridge {
@@ -374,30 +317,21 @@ let bridgeWrite: ((key: string, value: number) => Promise<void>) | null = null;
 let bridgeCtx: { profile: { id: string }; plantSlug?: string; deviceSlug?: string } | null = null;
 const latestBridge = () => bridges.at(-1) as FakeBridge;
 
-const realBridgeModule = await import("./mqtt");
-const realBridgeExports = { ...realBridgeModule };
-const realStartMqttBridge = realBridgeModule.startMqttBridge;
-mock.module("./mqtt", () => ({
-  ...realBridgeModule,
-  startMqttBridge: (
-    config: MqttConfig,
-    deps: Parameters<typeof realBridgeModule.startMqttBridge>[1],
-  ) => {
-    if (!intercepting) return realStartMqttBridge(config, deps);
-    // The real bridge's own rule: no client, no bridge. That is what the retired
-    // `enabled` flag became — and since #221 it is the CONNECTION that answers,
-    // so the fake takes its link the same way the real one does.
-    const link = deps.acquire({
-      will: { topic: "test/status", payload: "offline", qos: 0, retain: true },
-    });
-    if (!link) return null;
-    bridgeWrite = deps.write;
-    bridgeCtx = deps.ctx;
-    const built = new FakeBridge(config, link);
-    bridges.push(built);
-    return built;
-  },
-}));
+/** Stands in for `./mqtt`'s `startMqttBridge`, injected as the runtime's. */
+const fakeStartMqttBridge: RuntimeDeps["startMqttBridge"] = (config, deps) => {
+  // The real bridge's own rule: no client, no bridge. That is what the retired
+  // `enabled` flag became — and since #221 it is the CONNECTION that answers,
+  // so the fake takes its link the same way the real one does.
+  const link = deps.acquire({
+    will: { topic: "test/status", payload: "offline", qos: 0, retain: true },
+  });
+  if (!link) return null;
+  bridgeWrite = deps.write;
+  bridgeCtx = deps.ctx;
+  const built = new FakeBridge(config, link);
+  bridges.push(built);
+  return built as unknown as ReturnType<RuntimeDeps["startMqttBridge"]>;
+};
 
 const automation = {
   started: 0,
@@ -428,30 +362,19 @@ const automation = {
     | ((status: PeakShavingStatus, localSinkW: number, at: Date) => Promise<void>)
     | null,
 };
-const realAutomation = await import("../automation/automation");
-const realAutomationExports = { ...realAutomation };
-const realStartAutomations = realAutomation.startAutomations;
-const realStopAutomations = realAutomation.stopAutomations;
-mock.module("../automation/automation", () => ({
-  ...realAutomation,
-  startAutomations: async (
-    deps: Parameters<typeof realAutomation.startAutomations>[0],
-    streamBus: Parameters<typeof realAutomation.startAutomations>[1],
-    buildIO: Parameters<typeof realAutomation.startAutomations>[2],
-    watching: Parameters<typeof realAutomation.startAutomations>[3],
-  ) => {
-    if (!intercepting) return realStartAutomations(deps, streamBus, buildIO, watching);
+/** Stands in for `../automation/automation`'s loop, injected as the runtime's. */
+const fakeAutomations: RuntimeDeps["automations"] = {
+  start: async (deps, _streamBus, _buildIO, watching) => {
     automation.started++;
     automation.deviceId = deps.device.id;
     automation.watching = watching ?? null;
     automation.recordDecision = deps.recordDecision ?? null;
   },
-  stopAutomations: async () => {
-    if (!intercepting) return realStopAutomations();
+  stop: async () => {
     automation.stopped++;
     automation.clearedAtStop = cleared.length;
   },
-}));
+};
 
 /**
  * House-load values handed to the EV charge-power estimator, in poll order.
@@ -464,18 +387,6 @@ let loadSamples: (number | null)[] = [];
 
 /** Sentinel handed back by `getWeatherConfig`, to prove it is threaded through. */
 const WEATHER_CONFIG = { marker: "weather" };
-const realWeatherSettings = await import("../settings/weather-settings");
-const realWeatherSettingsExports = { ...realWeatherSettings };
-const realGetWeatherConfig = realWeatherSettings.getWeatherConfig;
-mock.module("../settings/weather-settings", () => ({
-  ...realWeatherSettings,
-  getWeatherConfig: async () =>
-    intercepting
-      ? (WEATHER_CONFIG as unknown as Awaited<
-          ReturnType<typeof realWeatherSettings.getWeatherConfig>
-        >)
-      : realGetWeatherConfig(),
-}));
 
 /** A two-slot forecast; `toForecastExport` (real) shapes it for publication. */
 const forecastFixture = () => ({
@@ -506,72 +417,34 @@ type Forecast = ReturnType<typeof forecastFixture>;
 let forecastResult: Forecast | null = null;
 let forecastError: string | null = null;
 let forecastConfigSeen: unknown = null;
-const realSolarForecast = await import("../forecast/solar-forecast");
-const realSolarForecastExports = { ...realSolarForecast };
-const realFetchSolarForecast = realSolarForecast.fetchSolarForecast;
-mock.module("../forecast/solar-forecast", () => ({
-  ...realSolarForecast,
-  fetchSolarForecast: async (
-    config: Parameters<typeof realSolarForecast.fetchSolarForecast>[0],
-  ) => {
-    if (!intercepting) return realFetchSolarForecast(config);
-    forecastConfigSeen = config;
-    if (forecastError) throw new Error(forecastError);
-    return forecastResult as unknown as Awaited<
-      ReturnType<typeof realSolarForecast.fetchSolarForecast>
-    >;
-  },
-}));
+const fakeFetchSolarForecast: RuntimeDeps["fetchSolarForecast"] = async (config) => {
+  forecastConfigSeen = config;
+  if (forecastError) throw new Error(forecastError);
+  return forecastResult as unknown as Awaited<ReturnType<RuntimeDeps["fetchSolarForecast"]>>;
+};
 
 let learnRuns = 0;
 let learnError: string | null = null;
 let learnConfigSeen: unknown = null;
-const realLearnJob = await import("../forecast/forecast-correction-job");
-const realLearnJobExports = { ...realLearnJob };
-const realRunLearn = realLearnJob.runForecastCorrectionLearn;
-mock.module("../forecast/forecast-correction-job", () => ({
-  ...realLearnJob,
-  runForecastCorrectionLearn: async (
-    config: Parameters<typeof realLearnJob.runForecastCorrectionLearn>[0],
-  ) => {
-    if (!intercepting) return realRunLearn(config);
-    learnRuns++;
-    learnConfigSeen = config;
-    if (learnError) throw new Error(learnError);
-    return { learnedDays: 0 } as unknown as Awaited<
-      ReturnType<typeof realLearnJob.runForecastCorrectionLearn>
-    >;
-  },
-}));
+const fakeLearn: RuntimeDeps["learnCorrection"] = async (config) => {
+  learnRuns++;
+  learnConfigSeen = config;
+  if (learnError) throw new Error(learnError);
+  return { learnedDays: 0 } as unknown as Awaited<ReturnType<RuntimeDeps["learnCorrection"]>>;
+};
 
 const SPOT_CONFIG = { marker: "spot" };
-const realSpotSettings = await import("../settings/spot-price-settings");
-const realSpotSettingsExports = { ...realSpotSettings };
-const realGetSpotPriceConfig = realSpotSettings.getSpotPriceConfig;
-mock.module("../settings/spot-price-settings", () => ({
-  ...realSpotSettings,
-  getSpotPriceConfig: async () =>
-    intercepting
-      ? (SPOT_CONFIG as unknown as Awaited<ReturnType<typeof realSpotSettings.getSpotPriceConfig>>)
-      : realGetSpotPriceConfig(),
-}));
-
 let spotRuns = 0;
 let spotError: string | null = null;
 let spotOutcome: "stored" | "complete" | "disabled" = "complete";
 let spotStored = 0;
-const realSpotJob = await import("../prices/spot-price-job");
-const realSpotJobExports = { ...realSpotJob };
-const realRunSpotPriceSync = realSpotJob.runSpotPriceSync;
-mock.module("../prices/spot-price-job", () => ({
-  ...realSpotJob,
-  runSpotPriceSync: async (...args: Parameters<typeof realSpotJob.runSpotPriceSync>) => {
-    if (!intercepting) return realRunSpotPriceSync(...args);
-    spotRuns++;
-    if (spotError) throw new Error(spotError);
-    return { outcome: spotOutcome, stored: spotStored };
-  },
-}));
+const fakeSpotSync: RuntimeDeps["syncSpotPrices"] = async () => {
+  spotRuns++;
+  if (spotError) throw new Error(spotError);
+  return { outcome: spotOutcome, stored: spotStored } as Awaited<
+    ReturnType<RuntimeDeps["syncSpotPrices"]>
+  >;
+};
 
 /**
  * Composite-control state, in memory instead of `app_settings`. It is injected
@@ -630,29 +503,17 @@ let resolveOverride: ((id: string) => InverterProfile | null) | null = null;
  */
 let registryProfile: InverterProfile | null = null;
 
-const realInverter = await import("./inverter");
-type SourceConnection = Parameters<typeof realInverter.buildSource>[1];
-const realInverterExports = { ...realInverter };
-const realBuildSource = realInverter.buildSource;
-const realResolveProfileById = realInverter.resolveProfileById;
-const { buildProfileContext } = realInverter;
-mock.module("./inverter", () => ({
-  ...realInverter,
-  buildSource: (profile: InverterProfile, config: SourceConnection, simulate: boolean) => {
-    if (!intercepting) return realBuildSource(profile, config, simulate);
-    const built = new FakeSource(profile, config);
-    // What the loop asked for, so a test can assert the runtime passes the
-    // SAVED setting rather than reading the environment behind its back.
-    builtSimulated.push(simulate);
-    sources.push(built);
-    return built;
-  },
-  // Both profile lookups fall through to the real implementation unless a test
-  // has taken them over, so a later test file that imports this module keeps
-  // production behaviour.
-  resolveProfileById: async (id: string) =>
-    resolveOverride ? resolveOverride(id) : realResolveProfileById(id),
-}));
+const { buildProfileContext } = await import("./inverter");
+type SourceConnection = Parameters<RuntimeDeps["buildSource"]>[1];
+/** Stands in for `./inverter`'s `buildSource`, for the loop and the probes alike. */
+const fakeBuildSource = (profile: InverterProfile, config: SourceConnection, simulate: boolean) => {
+  const built = new FakeSource(profile, config);
+  // What the loop asked for, so a test can assert the runtime passes the
+  // SAVED setting rather than reading the environment behind its back.
+  builtSimulated.push(simulate);
+  sources.push(built);
+  return built;
+};
 
 /** Stands in for `mqtt`'s client in the broker probe. */
 class FakeMqttClient extends EventEmitter {
@@ -669,24 +530,6 @@ class FakeMqttClient extends EventEmitter {
   }
 }
 let mqttClient: FakeMqttClient | null = null;
-// `mqtt` is mocked by the bridge suite too, so this spreads the real module and
-// passes calls through when it is not intercepting. The by-value snapshot is
-// what `afterAll` hands back: the namespace itself is live, so returning
-// `upstreamMqtt` would reinstall this very stub for every later file.
-const upstreamMqtt = await import("mqtt");
-const upstreamMqttExports = { ...upstreamMqtt };
-const upstreamConnect = upstreamMqtt.default.connect;
-mock.module("mqtt", () => ({
-  ...upstreamMqtt,
-  default: {
-    ...upstreamMqtt.default,
-    connect: (url: string, options: Record<string, unknown>) => {
-      if (!intercepting) return upstreamConnect(url, options);
-      mqttClient = new FakeMqttClient(url, options);
-      return mqttClient;
-    },
-  },
-}));
 
 // --- profiles --------------------------------------------------------------
 
@@ -807,15 +650,9 @@ async function fire(ms: number, kind: Armed["kind"] = "interval"): Promise<void>
   await settle();
 }
 
-const originalFlushInterval = process.env.HISTORY_FLUSH_INTERVAL_MS;
-const originalSimulate = process.env.INVERTER_SIMULATE;
-
 beforeAll(() => {
   intercepting = true;
   tapRuntimeLogger();
-  // `env` is `process.env` itself under SKIP_ENV_VALIDATION, so the flush
-  // cadence can be pinned to something that never fires on its own.
-  process.env.HISTORY_FLUSH_INTERVAL_MS = String(FLUSH_MS);
   globalThis.setInterval = ((fn: () => unknown, ms?: number, ...rest: unknown[]) => {
     const handle = timers.setInterval(fn, ms, ...rest);
     armed.push({ kind: "interval", ms: Number(ms), fn, handle });
@@ -838,28 +675,7 @@ beforeAll(() => {
 });
 
 afterAll(() => {
-  // Hand every doubled module back to its real implementation. Dropping
-  // `intercepting` makes the stubs delegate, but a delegating stub is still a
-  // different function object installed in place of the real export for every
-  // file that loads after this one — `dbControlStore` above is not even the same
-  // shape as the real handle. So the modules are re-registered outright, from
-  // the snapshots taken by value at load time: a namespace is live, so
-  // `realInverter.buildSource` is by now the stub, and `() => realInverter`
-  // would restore the double instead of the module.
   intercepting = false;
-  mock.module("mqtt", () => ({ ...upstreamMqttExports }));
-  mock.module("../settings/config", () => ({ ...realConfigExports }));
-  mock.module("./endpoint", () => ({ ...realEndpointExports }));
-  mock.module("./mqtt", () => ({ ...realBridgeExports }));
-  mock.module("../settings/mqtt-broker-instance", () => ({ ...realBrokerExports }));
-  mock.module("../devices/broker-pool-instance", () => ({ ...realBrokerPoolExports }));
-  mock.module("../automation/automation", () => ({ ...realAutomationExports }));
-  mock.module("../settings/weather-settings", () => ({ ...realWeatherSettingsExports }));
-  mock.module("../forecast/solar-forecast", () => ({ ...realSolarForecastExports }));
-  mock.module("../forecast/forecast-correction-job", () => ({ ...realLearnJobExports }));
-  mock.module("../settings/spot-price-settings", () => ({ ...realSpotSettingsExports }));
-  mock.module("../prices/spot-price-job", () => ({ ...realSpotJobExports }));
-  mock.module("./inverter", () => ({ ...realInverterExports }));
   untapRuntimeLogger();
   registryProfile = null;
   registryDevice = null;
@@ -867,18 +683,14 @@ afterAll(() => {
   rosterReadFails = false;
   resolveOverride = null;
   Object.assign(globalThis, timers);
-  if (originalFlushInterval === undefined) delete process.env.HISTORY_FLUSH_INTERVAL_MS;
-  else process.env.HISTORY_FLUSH_INTERVAL_MS = originalFlushInterval;
-  if (originalSimulate === undefined) delete process.env.INVERTER_SIMULATE;
-  else process.env.INVERTER_SIMULATE = originalSimulate;
   setSystemTime();
 });
 
-// The history buffer and the control-state store are constructor-injected
-// collaborators, so this suite drives its own runtime instance with the
-// in-memory doubles above rather than the module's default instance — which is
-// why no `@SunReye/db` and no `./control-store` mock is needed.
+// Every collaborator is constructor-injected, so this suite drives its own
+// runtime instance with the in-memory doubles above — importing the module wires
+// nothing, and no module is mocked.
 const { constraintOf, createRuntime } = await import("./runtime");
+const { createConnectionProbes } = await import("./connection-probes");
 const { deviceInstance, instanceFromProfile } = await import("@SunReye/inverter-core");
 /**
  * The plant's roster, as the registry answers it.
@@ -998,6 +810,25 @@ const identityDouble: IdentityResolver = {
  */
 const newRuntime = () =>
   createRuntime({
+    settings: {
+      getMqttConfig: async () => mqttConfig,
+      // The simulator toggle, which the poll loop reads on every rebuild.
+      getSimulate: async () => simulated,
+      getWeatherConfig: async () => WEATHER_CONFIG as unknown as WeatherConfig,
+      getSpotPriceConfig: async () => SPOT_CONFIG as unknown as SpotPriceConfig,
+    },
+    loadPollEndpoint: async () => pollEndpoint,
+    buildSource: fakeBuildSource,
+    startMqttBridge: fakeStartMqttBridge,
+    readBroker: async () => mqttBroker,
+    brokerPool: testBrokerPool,
+    automations: fakeAutomations,
+    fetchSolarForecast: fakeFetchSolarForecast,
+    learnCorrection: fakeLearn,
+    syncSpotPrices: fakeSpotSync,
+    // Pinned to something that never fires on its own.
+    flushIntervalMs: () => FLUSH_MS,
+    scheduler: createJobScheduler(),
     devices: devicesDouble,
     history: historyDouble,
     configLog: configDouble,
@@ -1036,9 +867,20 @@ const start: Runtime["start"] = (bus, ctx, watched) => runtime.start(bus, ctx, w
 const status: Runtime["status"] = () => runtime.status();
 const stop: Runtime["stop"] = () => runtime.stop();
 const syncSpotPricesNow: Runtime["syncSpotPricesNow"] = () => runtime.syncSpotPricesNow();
-const testInverter: Runtime["testInverter"] = (profileId, config) =>
-  runtime.testInverter(profileId, config);
-const testMqtt: Runtime["testMqtt"] = (config) => runtime.testMqtt(config);
+/**
+ * The throwaway probes over the same doubles: the source they build is a
+ * {@link FakeSource}, the profile is the registry's or {@link resolveOverride}'s.
+ */
+const { testInverter, testMqtt } = createConnectionProbes({
+  resolveProfile: async (id) => resolveOverride?.(id) ?? null,
+  primaryProfile: () => devicesDouble.primaryProfile(),
+  buildContext: (profile) => buildProfileContext(profile),
+  buildSource: fakeBuildSource,
+  connectMqtt: (url, options) => {
+    mqttClient = new FakeMqttClient(url, options);
+    return mqttClient;
+  },
+});
 const write: Runtime["write"] = (...args) => runtime.write(...args);
 const { liveState } = await import("../shared/state");
 const { createStreams } = await import("../shared/streams");
@@ -1104,7 +946,6 @@ async function moveEndpoint(over: Partial<PollEndpoint> = {}): Promise<void> {
 beforeEach(() => {
   runtime = newRuntime();
   pollEndpoint = baseEndpoint();
-  legacyConfigReads = 0;
   registeredSpecs = [];
   mqttConfig = baseMqttConfig();
   mqttBroker = baseBroker();
@@ -1280,11 +1121,11 @@ describe("where the endpoint comes from", () => {
     // provisioning copied that same document into `connections` and
     // `devices.unit_id` on every boot, so the JSONB one won and editing the
     // endpoint row did nothing. The document is a one-way legacy reader now —
-    // used by the upgrade seed, never by the loop.
+    // used by the upgrade seed, never by the loop, whose `RuntimeSettings` has no
+    // reader for it at all.
     pollEndpoint = baseEndpoint({ host: "10.1.2.3", unitId: 7, port: 8899 });
     await boot();
     expect(latestSource().config).toMatchObject({ host: "10.1.2.3", unitId: 7, port: 8899 });
-    expect(legacyConfigReads).toBe(0);
   });
 
   test("a reload RE-READS the spine instead of being handed the values", async () => {
@@ -1294,7 +1135,6 @@ describe("where the endpoint comes from", () => {
     await boot();
     await moveEndpoint({ host: "10.4.5.6", unitId: 9 });
     expect(latestSource().config).toMatchObject({ host: "10.4.5.6", unitId: 9 });
-    expect(legacyConfigReads).toBe(0);
   });
 
   test("the cadence the loop arms is the ENDPOINT's, not the process default", async () => {

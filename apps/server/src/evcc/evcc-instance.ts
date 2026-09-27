@@ -1,8 +1,8 @@
 /**
- * The process's one EVCC ingest, reached by the modules still built at import
- * time (`../inverter/runtime.ts`'s per-poll load sample, `../automation/automation.ts`'s
- * IO). `../index.ts` builds the ingest once the bus exists and installs it here;
- * before that every call answers exactly as an ingest that is switched off.
+ * The process's one EVCC ingest, reached by the one consumer still built from
+ * an import (`../automation/automation.ts`'s IO). `../plant/plant-wiring.ts`
+ * builds the ingest once the bus exists and installs it here; before that every
+ * call answers exactly as an ingest that is switched off.
  */
 
 import type { EvccAction, EvccIngest } from "./evcc";
@@ -23,8 +23,4 @@ export function evccSnapshot(): ReturnType<EvccIngest["snapshot"]> {
 export function evccControl(loadpoint: number, action: EvccAction, value: string): void {
   if (!installed) throw new Error("EVCC MQTT is not connected");
   installed.control(loadpoint, action, value);
-}
-
-export function evccOnLoadSample(loadW: number | null): void {
-  installed?.onLoadSample(loadW);
 }

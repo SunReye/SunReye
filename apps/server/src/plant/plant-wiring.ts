@@ -1,8 +1,9 @@
 /**
- * The plant runtime's collaborators, bound to the real process: the database,
- * the one poll loop, the connection tier. Wiring only — the ORDER lives in
- * `./plant-runtime.ts`, where it is tested; importing this module pulls in
- * `@SunReye/env` and the database client, which is why the two are separate.
+ * The plant's composition: the one poll loop, the EVCC ingest, the connection
+ * probes and the plant runtime over them, bound to the real process. Wiring
+ * only — the ORDER lives in `./plant-runtime.ts`, where it is tested; importing
+ * this module pulls in `@SunReye/env` and the database client, which is why the
+ * two are separate.
  */
 
 import type { InverterProfile } from "@SunReye/inverter-core";
@@ -10,16 +11,20 @@ import type { InverterProfile } from "@SunReye/inverter-core";
 import { reloadConnections, stopConnections } from "../devices/connection-runtime";
 import { deviceRegistry } from "../devices/registry-instance";
 import type { EvccIngest } from "../evcc/evcc";
+import { installEvccIngest } from "../evcc/evcc-instance";
+import { createPlantEvccIngest } from "../evcc/evcc-storage";
+import type { ConnectionProbes } from "../inverter/connection-probes";
 import { buildProfileContext } from "../inverter/inverter";
 import { startPlantLive } from "../inverter/plant-live";
 import { syncProvisioning } from "../inverter/provision-boot";
-import * as runtime from "../inverter/runtime";
+import { type Runtime, createRuntime } from "../inverter/runtime";
+import { productionConnectionProbes, productionRuntimeDeps } from "../inverter/runtime-wiring";
 import { liveMembers } from "../routes/sources";
 import { seedMqttBroker } from "../settings/mqtt-broker-instance";
 import { plantFacts } from "../settings/plant-facts-instance";
 import { log } from "../shared/logging";
 import type { Streams } from "../shared/streams";
-import type { PlantRuntimeDeps } from "./plant-runtime";
+import { type PlantRuntime, type PlantRuntimeDeps, createPlantRuntime } from "./plant-runtime";
 
 /**
  * HOLD HOME ASSISTANT DISCOVERY when a 1.x -> 2.0.0 migration has not been
@@ -54,12 +59,13 @@ async function gateDiscovery(): Promise<void> {
 }
 
 /** The real collaborators, for the process's one plant runtime. */
-export function plantRuntimeDeps(wiring: {
+function plantRuntimeDeps(wiring: {
   profile: InverterProfile | null;
   streams: Streams;
+  runtime: Runtime;
   evcc: Pick<EvccIngest, "rebuild" | "stop">;
 }): PlantRuntimeDeps {
-  const { streams } = wiring;
+  const { runtime, streams } = wiring;
   return {
     profile: wiring.profile,
     provision: (profile) => syncProvisioning(profile),
@@ -81,4 +87,41 @@ export function plantRuntimeDeps(wiring: {
     evcc: wiring.evcc,
     facts: plantFacts,
   };
+}
+
+/** Everything the HTTP layer is built over, composed once per process. */
+export interface ComposedPlant {
+  plant: PlantRuntime;
+  runtime: Runtime;
+  evcc: EvccIngest;
+  probes: ConnectionProbes;
+}
+
+/**
+ * Build the process's one poll loop, EVCC ingest and plant runtime.
+ *
+ * The runtime and the ingest need each other — the poll loop feeds the ingest
+ * its house load, the ingest stores its loadpoints through the runtime's write
+ * seam — so each reaches the other through a closure, read only once the
+ * process is running and both exist.
+ */
+export function composePlant(wiring: {
+  profile: InverterProfile | null;
+  streams: Streams;
+}): ComposedPlant {
+  const { streams } = wiring;
+  const runtime = createRuntime(
+    productionRuntimeDeps({
+      devices: deviceRegistry,
+      onLoadSample: (watts) => evcc.onLoadSample(watts),
+    }),
+  );
+  const evcc = createPlantEvccIngest({ streams, registry: deviceRegistry, writer: runtime });
+  // The automation IO is still built from a dynamic import, so it reaches the
+  // ingest through this one installed instance.
+  installEvccIngest(evcc);
+  const plant = createPlantRuntime(
+    plantRuntimeDeps({ profile: wiring.profile, streams, runtime, evcc }),
+  );
+  return { plant, runtime, evcc, probes: productionConnectionProbes(deviceRegistry) };
 }
