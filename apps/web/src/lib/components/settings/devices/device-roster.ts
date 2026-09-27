@@ -91,8 +91,12 @@ export interface RosterTransport {
 
 /** How a write that failed failed. */
 export type WriteFailure =
-  /** The server named a field this UI has a place for. */
-  | { kind: "refused"; field: RefusedField; reason: string }
+  /**
+   * The server named a field this UI has a place for. `reason` is what goes
+   * UNDER the field — the server's `error` sentence, else "unknown"; `text` is
+   * the whole body read for a toast (`apiErrorText`), which may say more.
+   */
+  | { kind: "refused"; field: RefusedField; reason: string; text: string }
   /** `DELETE /api/devices/:id` on a device with readings: offer retiring instead. */
   | { kind: "has-history" }
   /**
@@ -106,8 +110,7 @@ export type WriteOutcome<T> = { kind: "ok"; value: T } | WriteFailure;
 
 /** The one sentence a failure is, for a view that has no field to put it under. */
 export function failureText(failure: WriteFailure): string {
-  if (failure.kind === "refused") return failure.reason;
-  if (failure.kind === "error") return failure.text;
+  if (failure.kind === "refused" || failure.kind === "error") return failure.text;
   return m.error_unknown();
 }
 
@@ -125,11 +128,17 @@ const fieldOf = (value: unknown, key: string): unknown =>
 function failureOf(error: unknown): WriteFailure {
   if (fieldOf(error, "field") === "history") return { kind: "has-history" };
   const said = fieldOf(error, "error");
+  const text = apiErrorText(error, m.error_unknown());
   const field = refusedField(error);
   if (field !== null)
-    return { kind: "refused", field, reason: typeof said === "string" ? said : m.error_unknown() };
+    return {
+      kind: "refused",
+      field,
+      reason: typeof said === "string" ? said : m.error_unknown(),
+      text,
+    };
   const stated = typeof said === "string" && said !== "" ? said : null;
-  return { kind: "error", text: apiErrorText(error, m.error_unknown()), stated };
+  return { kind: "error", text, stated };
 }
 
 /** The reactive half — a `$state` proxy in the app, a plain object in a test. */
