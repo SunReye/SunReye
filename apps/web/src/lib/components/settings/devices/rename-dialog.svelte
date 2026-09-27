@@ -74,7 +74,8 @@
 	async function rename(target: DeviceView, to: string): Promise<Refusal | null> {
 		const outcome = await roster.patch(target.id, { name: to });
 		if (outcome.kind === 'ok') return saved(outcome.value);
-		if (outcome.kind === 'refused') return { field: outcome.field, message: outcome.reason };
+		// The field message has always fallen back to the whole body here, not to "unknown".
+		if (outcome.kind === 'refused') return { field: outcome.field, message: failureText(outcome) };
 		return { field: null, message: failureText(outcome) };
 	}
 

@@ -203,7 +203,12 @@ describe("device writes", () => {
     const { transport, roster } = await loaded();
     transport.script.patchDevice = no({ error: "unit id 1 is taken", field: "unitId" });
     const outcome = await roster.patch(1, { unitId: 1 });
-    expect(outcome).toEqual({ kind: "refused", field: "unitId", reason: "unit id 1 is taken" });
+    expect(outcome).toEqual({
+      kind: "refused",
+      field: "unitId",
+      reason: "unit id 1 is taken",
+      text: "unit id 1 is taken",
+    });
     expect(transport.names()).toEqual(["patchDevice"]);
   });
 
@@ -214,7 +219,24 @@ describe("device writes", () => {
       kind: "refused",
       field: "name",
       reason: m.error_unknown(),
+      text: '{"field":"name"}',
     });
+  });
+
+  test("a field refusal with no `error` still reads as the body says, for a toast", async () => {
+    // The toasts read the whole body (`apiErrorText`); only the field message
+    // under the input falls back to "unknown". Both were so before the roster.
+    const { transport, roster } = await loaded();
+    transport.script.patchDevice = no({ field: "name", summary: "Expected string" });
+    const outcome = await roster.patch(1, { name: "x" });
+    expect(outcome).toEqual({
+      kind: "refused",
+      field: "name",
+      reason: m.error_unknown(),
+      text: "Expected string",
+    });
+    expect(outcome.kind !== "ok" && failureText(outcome)).toBe("Expected string");
+    expect(outcome.kind !== "ok" && statedReason(outcome)).toBe(m.error_unknown());
   });
 
   test("a refusal naming no field it knows is an error with the server's words", async () => {
@@ -331,6 +353,7 @@ describe("add — the one path both add flows take", () => {
       kind: "refused",
       field: "name",
       reason: "name is taken",
+      text: "name is taken",
     });
   });
 });
@@ -422,13 +445,17 @@ describe("integration writes", () => {
 
 describe("the words a failure is", () => {
   test("failureText says the readable reason of every arm", () => {
-    expect(failureText({ kind: "refused", field: "name", reason: "taken" })).toBe("taken");
+    expect(failureText({ kind: "refused", field: "name", reason: "taken", text: "taken" })).toBe(
+      "taken",
+    );
     expect(failureText({ kind: "error", text: "{}", stated: null })).toBe("{}");
     expect(failureText({ kind: "has-history" })).toBe(m.error_unknown());
   });
 
   test("statedReason says only the server's own sentence, else 'unknown'", () => {
-    expect(statedReason({ kind: "refused", field: "name", reason: "taken" })).toBe("taken");
+    expect(statedReason({ kind: "refused", field: "name", reason: "taken", text: "taken" })).toBe(
+      "taken",
+    );
     expect(statedReason({ kind: "error", text: "down", stated: "down" })).toBe("down");
     expect(statedReason({ kind: "error", text: "{}", stated: null })).toBe(m.error_unknown());
     expect(statedReason({ kind: "has-history" })).toBe(m.error_unknown());
