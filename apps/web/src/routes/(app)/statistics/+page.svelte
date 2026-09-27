@@ -1,11 +1,7 @@
 <script lang="ts">
-	import { source } from '$lib/source.svelte';
-	import type { CostBreakdown } from '@SunReye/contracts/energy';
-	import type { CompareMode, ComparisonResponse } from '@SunReye/contracts/statistics';
+	import type { CompareMode } from '@SunReye/contracts/statistics';
 	import { onMount } from 'svelte';
 	import SlidersHorizontal from 'phosphor-svelte/lib/SlidersHorizontal';
-	import { api } from '$lib/api';
-	import { payloadOrNull } from '$lib/api-payload';
 	import * as m from '$lib/paraglide/messages';
 	import { Button } from '$lib/components/ui/button';
 	import PeriodNavigator from '$lib/components/inverter/period-navigator.svelte';
@@ -19,12 +15,7 @@
 	import type { CostRange } from '$lib/cost/ranges';
 	import { presetLabel, statisticsPresets } from '$lib/cost/labels';
 	import { SECTIONS, type SectionData } from '$lib/statistics/sections';
-	import {
-		pricedWindow,
-		referenceWindow,
-		usableComparison,
-		windowDays
-	} from '$lib/statistics/compare';
+	import { pricedWindow, windowDays } from '$lib/statistics/compare';
 	import { compareModes } from '$lib/statistics/compare-modes';
 	import { statisticsPrefs } from '$lib/statistics-prefs.svelte';
 	import { statisticsLive } from '$lib/statistics-live.svelte';
@@ -33,6 +24,7 @@
 	import { liveClock } from '$lib/time/live-clock.svelte';
 	import { periodWindow, type Period } from '$lib/time/period';
 	import { setCustomizeSession } from '$lib/statistics/customize.svelte';
+	import { provideStatisticsQuery, queried } from '$lib/statistics/statistics-query.svelte';
 	import StatisticsBody from './statistics-body.svelte';
 	import CustomizeBar from './customize-bar.svelte';
 
@@ -83,10 +75,6 @@
 		override = { id: next.id, label: next.label };
 	}
 
-	let cost = $state<CostBreakdown | null>(null);
-	let previous = $state<CostBreakdown | null>(null);
-	let loading = $state(true);
-
 	// Reference window for the comparison. Ephemeral for every viewer, with the
 	// saved preference as its default; an admin's current pick is what the
 	// customize draft stores when they save the layout.
@@ -113,43 +101,21 @@
 
 	// Headline tiles: the picked [from, to) priced beside its reference window,
 	// in one request so a §51 spot-price load happens once per window server-side.
-	// `current` is exactly the breakdown the old /api/cost call returned.
-	// `cancelled` guards against an earlier request resolving after a later one
-	// and clobbering fresher data. Every section's own charts fetch their own
-	// series, because only that section's scope switcher moves them.
-	$effect(() => {
-		// A live push on a wider now-inclusive range invalidates this window
-		// (throttled to a minute by the store); the Day tab standing on today
-		// patches below instead and never bumps the signal.
-		void statisticsLive.revision;
-		// The PRICED window, not the picked one. A calendar period the reader is
-		// standing in ends in the future on purpose (the detail chart wants a
-		// settled axis, and the live lease has to hold), and comparing this month
-		// so far against the whole of last month reads as a collapse that never
-		// happened.
-		const window = pricedWindow(range);
-		const query = {
-			from: window.from.toISOString(),
-			to: window.to.toISOString(),
-			mode,
-			...source.query
-		};
-		const reference = referenceWindow(window.from, window.to, mode);
-		let cancelled = false;
-		loading = true;
-		api.api.statistics.comparison.get({ query }).then(({ data }) => {
-			if (cancelled) return;
-			// usableComparison also drops a reference window that predates recorded
-			// history, so a first-month household never reads a fake −100%.
-			const pair = usableComparison(payloadOrNull<ComparisonResponse>(data), reference);
-			cost = pair.current;
-			previous = pair.previous;
-			loading = false;
-		});
-		return () => {
-			cancelled = true;
-		};
+	// `current` is exactly the breakdown the old /api/cost call returned. A live
+	// push on a wider now-inclusive range makes it stale (throttled to a minute by
+	// the store); the Day tab standing on today patches below instead and never
+	// bumps the signal. Every section's own charts read their own series, because
+	// only that section's scope switcher moves them.
+	const reads = provideStatisticsQuery();
+	const comparison = queried(() => reads.comparison(range, mode), {
+		current: null,
+		previous: null
 	});
+	const cost = $derived(comparison.value.current);
+	const previous = $derived(comparison.value.previous);
+	// The loading panel stands until the first answer, as it did before any
+	// request had been issued.
+	const loading = $derived(comparison.loading || !comparison.loaded);
 
 	// Live figures, but only while the picked window actually moves: a past-only
 	// range (a stepped-back month, a historical custom range) takes no lease, so

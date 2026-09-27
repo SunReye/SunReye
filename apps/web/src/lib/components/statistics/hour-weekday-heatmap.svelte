@@ -1,7 +1,5 @@
 <script lang="ts">
-	import { source } from '$lib/source.svelte';
 	import type { HeatmapCell } from '@SunReye/contracts/statistics';
-	import { api } from '$lib/api';
 	import Section from '$lib/components/layout/section.svelte';
 	import PanelReadoutRow from '$lib/components/layout/panel-readout-row.svelte';
 	import RangeSwitcher from '$lib/components/inverter/range-switcher.svelte';
@@ -13,8 +11,9 @@
 	// one week of hours. Every cell is an AVERAGE (the window's sum for that slot
 	// divided by how many times the slot occurred), so a 3-day and a 90-day window
 	// are read the same way. The grid itself is HeatGrid; this owns the metric
-	// choice and the two ways the panel can be empty.
-	let { from, to }: { from: Date; to: Date } = $props();
+	// choice and the two ways the panel can be empty. The cells are the energy
+	// section's read of the picked window — this panel only draws them.
+	let { cells }: { cells: readonly HeatmapCell[] } = $props();
 
 	/** Metrics the server ships on every cell, so switching costs no request. */
 	const METRICS = [
@@ -26,19 +25,6 @@
 	type MetricId = (typeof METRICS)[number]['id'];
 
 	let metric = $state<MetricId>('loadKwh');
-	let cells = $state<HeatmapCell[]>([]);
-
-	$effect(() => {
-		const query = { from: from.toISOString(), to: to.toISOString(), ...source.query };
-		let cancelled = false;
-		api.api.statistics.heatmap.get({ query }).then(({ data }) => {
-			if (cancelled) return;
-			cells = (data ?? []) as HeatmapCell[];
-		});
-		return () => {
-			cancelled = true;
-		};
-	});
 
 	/** One cell's average kWh for the selected metric. */
 	const average = (c: HeatmapCell): number => (c.occurrences > 0 ? c[metric] / c.occurrences : 0);

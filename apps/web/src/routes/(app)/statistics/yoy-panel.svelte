@@ -1,20 +1,18 @@
 <script lang="ts">
-	import { source } from '$lib/source.svelte';
-	import { api } from '$lib/api';
 	import * as m from '$lib/paraglide/messages';
 	import RangeSwitcher from '$lib/components/inverter/range-switcher.svelte';
 	import YoyChart from '$lib/components/statistics/yoy-chart.svelte';
 	import Section from '$lib/components/layout/section.svelte';
 	import PanelReadoutRow from '$lib/components/layout/panel-readout-row.svelte';
 	import type { CostFormatters } from '$lib/cost/format';
-	import { groupYoy, hasYoyData, type MonthlyValue } from '$lib/statistics/yoy';
-	import type { CostPoint } from '$lib/statistics/sections';
+	import { groupYoy, hasYoyData } from '$lib/statistics/yoy';
+	import { queried, useStatisticsQuery } from '$lib/statistics/statistics-query.svelte';
 	import { statisticsPrefs } from '$lib/statistics-prefs.svelte';
 	import { getCustomizeSession } from '$lib/statistics/customize.svelte';
 
 	// This year against last, month by month. Rangeless like the records above
-	// it: one trailing 24-month window is fetched once, and switching metric
-	// only re-folds what is already here.
+	// it: one trailing 24-month window, re-read on a live push (this month is
+	// still filling in), and switching metric only re-folds what is already here.
 	let { formatters }: { formatters: CostFormatters } = $props();
 
 	const customize = getCustomizeSession();
@@ -34,39 +32,18 @@
 		if (customize.active) customize.draft.records.yoyMetric = next;
 	}
 
-	let netByMonth = $state<MonthlyValue[]>([]);
-	let productionByMonth = $state<MonthlyValue[]>([]);
-
 	// Trailing 24 calendar months so both charted years are complete.
 	const now = new Date();
 	const year = now.getFullYear();
 	const seriesWindow = {
 		from: new Date(year, now.getMonth() - 23, 1).toISOString(),
-		to: now.toISOString(),
-		bucket: 'month' as const
+		to: now.toISOString()
 	};
 
-	$effect(() => {
-		let cancelled = false;
-		void Promise.all([
-			api.api.cost.series.get({ query: { ...seriesWindow, ...source.query } }),
-			api.api.energy.series.get({ query: { ...seriesWindow, ...source.query } })
-		]).then(([cost, energy]) => {
-			if (cancelled) return;
-			const costPoints = (cost.data ?? []) as CostPoint[];
-			const energyPoints = (energy.data ?? []) as { bucket: string; productionKwh: number }[];
-			netByMonth = costPoints.map((p) => ({ bucket: p.bucket, value: p.net }));
-			productionByMonth = energyPoints.map((p) => ({
-				bucket: p.bucket,
-				value: p.productionKwh
-			}));
-		});
-		return () => {
-			cancelled = true;
-		};
-	});
+	const reads = useStatisticsQuery();
+	const byMonth = queried(() => reads.yoy(seriesWindow), { net: [], production: [] });
 
-	const rows = $derived(groupYoy(metric === 'net' ? netByMonth : productionByMonth, year));
+	const rows = $derived(groupYoy(metric === 'net' ? byMonth.value.net : byMonth.value.production, year));
 	const format = $derived(metric === 'net' ? formatters.money : formatters.kwh);
 	// Cost keeps the grid hue it carries elsewhere on the page; production the
 	// solar one.

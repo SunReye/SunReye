@@ -248,7 +248,7 @@ const ROUTES: readonly SmokeRoute[] = [
       await expect(bands).toContainText("8.4 kWh");
       await expect(bands).toContainText("€2.52");
       await expect(sectionNamed(page, "Total cost")).toBeVisible();
-      // Prices body: capability-gated on `spotStats.available`, so a broken
+      // Prices body: capability-gated on the spot-stats read answering with a payload, so a broken
       // /api/statistics/prices deletes the whole section silently — asserting
       // its tiles is the only thing that notices.
       await heading(page, "Spot prices");

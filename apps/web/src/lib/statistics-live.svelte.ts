@@ -17,8 +17,8 @@ class StatisticsLiveStore {
   /** Latest pushed snapshot while a `today` lease is held; null otherwise. */
   #snapshot = $state<StatisticsTodayMessage | null>(null);
   /**
-   * Bumped when the range-wide reads (comparison + the sections' series) should
-   * refetch. Read it inside a fetch `$effect` to opt that fetch in.
+   * Bumped when every energy-derived statistics read (see statistics-query) should
+   * refetch.
    */
   revision = $state(0);
   /** Bumped when a spot-price sync stored fresh slots. Everything price-derived
