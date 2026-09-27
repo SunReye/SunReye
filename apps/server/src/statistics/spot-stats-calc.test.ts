@@ -1,5 +1,5 @@
 import type { HourEnergy } from "@SunReye/contracts/energy";
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { type TariffConfig, tariffConfigSchema } from "@SunReye/db/tariff";
 import {
   type SpotDailyRow,
@@ -10,17 +10,6 @@ import {
   spotDailyStats,
   spotWhatIf,
 } from "./spot-stats-calc";
-
-// The what-if reads local hour/weekday for band matching; pin the zone so the
-// band assertions don't depend on the machine. Bun applies TZ at runtime.
-const ORIGINAL_TZ = process.env.TZ;
-beforeAll(() => {
-  process.env.TZ = "Europe/Berlin";
-});
-afterAll(() => {
-  if (ORIGINAL_TZ === undefined) delete process.env.TZ;
-  else process.env.TZ = ORIGINAL_TZ;
-});
 
 const MINUTE_MS = 60_000;
 
