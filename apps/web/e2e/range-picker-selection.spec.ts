@@ -101,7 +101,7 @@ test("a one-day pick paints one day: today is not dressed as the selection", asy
   // A plain day: not today, not picked, not focused. The two guards below stop
   // the cheap wrong fixes — unpainting the selection, or unmarking today.
   const plain = picker.days
-    .and(page.locator(":not([data-today])"))
+    .and(page.locator(":not([data-plant-today])"))
     .and(page.locator(":not([data-selected])"))
     .and(page.locator(":not([data-outside-month])"))
     .first();

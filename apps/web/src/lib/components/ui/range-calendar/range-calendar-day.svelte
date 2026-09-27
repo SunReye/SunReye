@@ -24,8 +24,10 @@
 		// Pinned by `src/lib/components/ui/calendar-marker-tokens.test.ts` and
 		// `e2e/range-picker-selection.spec.ts` — this file is vendored, and a
 		// future `shadcn-svelte add` would otherwise restore the collision.
-		"[&[data-today]:not([data-selected])]:bg-muted [&[data-today]:not([data-selected])]:text-foreground [&[data-today]:not([data-selected])]:inset-ring-2 [&[data-today]:not([data-selected])]:inset-ring-primary",
-		"[&[data-today][data-disabled]]:text-muted-foreground data-[range-middle]:rounded-none",
+		// Keyed on `data-plant-today`, not bits-ui's `data-today`: the root marks
+		// today in the range's zone (the plant's), bits-ui in the browser's.
+		"[&[data-plant-today]:not([data-selected])]:bg-muted [&[data-plant-today]:not([data-selected])]:text-foreground [&[data-plant-today]:not([data-selected])]:inset-ring-2 [&[data-plant-today]:not([data-selected])]:inset-ring-primary",
+		"[&[data-plant-today][data-disabled]]:text-muted-foreground data-[range-middle]:rounded-none",
 		// range Start
 		"data-[range-start]:bg-primary data-[range-start]:text-primary-foreground data-[range-start]:hover:text-foreground",
 		// range End

@@ -232,7 +232,7 @@ function walk(dir: string, prefix = ""): string[] {
 export interface OpenedRangePicker {
   /** One day cell, by ISO date (`2026-08-16`). */
   day(isoDate: string): Locator;
-  /** The day bits-ui marked `data-today`. Exactly one per grid. */
+  /** The day the calendar rings as today (`data-plant-today`, in its zone). Exactly one per grid. */
   readonly today: Locator;
   /** Every day cell in the visible grid, outside-month days included. */
   readonly days: Locator;
@@ -242,7 +242,7 @@ export function rangePicker(page: Page): OpenedRangePicker {
   const days = page.locator("[data-bits-day]");
   return {
     day: (isoDate) => page.locator(`[data-bits-day][data-value="${isoDate}"]`),
-    today: days.and(page.locator("[data-today]")),
+    today: days.and(page.locator("[data-plant-today]")),
     days,
   };
 }
