@@ -9,6 +9,7 @@
 	} from '$lib/components/inverter/energy-split-block.svelte';
 	import type { PeriodEnergy } from '@SunReye/contracts/energy';
 	import { periodKeyLabel, type CostBucket } from '$lib/cost/ranges';
+	import { windowRatios } from '$lib/statistics/energy-split-ratios';
 
 	// One period of energy, split for the two stacked bars.
 	type Period = PeriodEnergy;
@@ -48,14 +49,12 @@
 	const data = $derived(periods.map((p) => ({ ...p, label: periodKeyLabel(p.bucket, bucket) })));
 	const hasData = $derived(periods.some((p) => p.loadKwh > 0 || p.productionKwh > 0));
 
-	// Window-average ratio (mean over periods that have the relevant flow), shown
-	// beside each chart so they tie back to the headline tiles above.
-	const avg = (vals: (number | null)[]) => {
-		const present = vals.filter((v): v is number => v !== null);
-		return present.length ? present.reduce((a, b) => a + b, 0) / present.length : null;
-	};
-	const avgSelfSufficiency = $derived(avg(periods.map((m) => m.selfSufficiency)));
-	const avgSelfConsumption = $derived(avg(periods.map((m) => m.selfConsumption)));
+	// The window's ratios — sums first, then one division — shown beside each
+	// chart so they tie back to the headline tiles above. A mean of per-period
+	// ratios did not: it weighed a quiet night like a busy day.
+	const ratios = $derived(windowRatios(periods));
+	const avgSelfSufficiency = $derived(ratios.selfSufficiency);
+	const avgSelfConsumption = $derived(ratios.selfConsumption);
 
 	// Resolved once: an undefined delta means "no chip", which is what a chart
 	// plotting something other than the picked window wants.
