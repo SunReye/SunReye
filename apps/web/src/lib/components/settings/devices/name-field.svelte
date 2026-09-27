@@ -3,7 +3,8 @@
 	import { Label } from '$lib/components/ui/label';
 	import { SLUG_MAX, slugify } from '@SunReye/inverter-core/slug';
 	import * as m from '$lib/paraglide/messages';
-	import { type Refusal, nameProblem } from './add-device-logic';
+	import { nameProblem } from './device-form';
+	import type { Refusal } from './device-roster';
 	import type { AddDeviceForm } from './device-types';
 	import FieldProblem from './field-problem.svelte';
 

@@ -2,7 +2,7 @@
 	import { Badge } from '$lib/components/ui/badge';
 	import DeviceStateBadge from './device-state-badge.svelte';
 	import type { DeviceView } from './device-types';
-	import { roleLabel } from './role-label';
+	import { roleLabel } from './device-words';
 
 	// WHAT A DEVICE IS, in one wrapping line: its name, its role, and why it is
 	// or is not being read.

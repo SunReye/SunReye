@@ -2,7 +2,7 @@
 	import EmptyState from '$lib/components/layout/empty-state.svelte';
 	import * as m from '$lib/paraglide/messages';
 	import { SECTION_GAP } from '$lib/layout/tokens';
-	import type { DeviceGroup } from './add-device-logic';
+	import type { DeviceGroup } from './roster-groups';
 	import DeviceGroupCard from './device-group.svelte';
 	import type { ConnectionView, DeviceHandlers, IntegrationHandlers } from './device-types';
 

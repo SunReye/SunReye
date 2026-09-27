@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { deviceMetaParts } from './device-meta-parts';
+	import { deviceMetaParts } from './device-words';
 	import type { DeviceView } from './device-types';
 
 	// Where the device lives. WHICH parts those are is `deviceMetaParts`' decision

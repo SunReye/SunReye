@@ -6,7 +6,7 @@
 	import Section from '$lib/components/layout/section.svelte';
 	import * as m from '$lib/paraglide/messages';
 	import { resolve } from '$lib/resolve';
-	import { providedBy } from '../devices/add-device-logic';
+	import { providedBy } from '../devices/roster-groups';
 	import { type WriteOutcome, failureText } from '../devices/device-roster';
 	import { deviceRoster } from '../devices/device-roster.svelte';
 	import type { IntegrationPatchBody, IntegrationView } from '../devices/device-types';

@@ -12,12 +12,7 @@ import { apiErrorText } from "$lib/api-error";
 import * as m from "$lib/paraglide/messages";
 import type { RegisteredProfile } from "../profile-types";
 import type { Catalog } from "../wizard/add-wizard";
-import {
-  type DeviceGroup,
-  type RefusedField,
-  groupByConnection,
-  refusedField,
-} from "./add-device-logic";
+import { type DeviceGroup, groupByConnection } from "./roster-groups";
 import type { ConnectionCreate, MqttParamsBody } from "./connection-draft";
 import type {
   AddDeviceBody,
@@ -28,6 +23,33 @@ import type {
   IntegrationView,
   ModbusParams,
 } from "./device-types";
+
+/** The form fields a server refusal can name, so its message lands under one. */
+export type RefusedField =
+  | "name"
+  | "unitId"
+  | "connection"
+  | "connectionId"
+  | "role"
+  | "profileId"
+  | "host";
+const REFUSED_FIELDS: ReadonlySet<string> = new Set<RefusedField>([
+  "name",
+  "unitId",
+  "connection",
+  "connectionId",
+  "role",
+  "profileId",
+  "host",
+]);
+
+/** Which field a `{ error, field }` refusal points at, so the message lands under it. */
+function refusedField(value: unknown): RefusedField | null {
+  const field = (value as { field?: unknown } | null | undefined)?.field;
+  return typeof field === "string" && REFUSED_FIELDS.has(field) ? (field as RefusedField) : null;
+}
+
+export type Refusal = { field: RefusedField | null; message: string };
 
 /** A request's answer: the body, or the failure body (undefined when there was none). */
 export type Answer<T> = { ok: true; data: T } | { ok: false; error: unknown };

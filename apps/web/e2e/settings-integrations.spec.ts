@@ -12,7 +12,7 @@
  * on change, a dialog seeded from the ROW's stored settings rather than the
  * catalog's defaults, and a confirm that has to name devices it works out from
  * two separately-fetched lists. What each function decides
- * (`add-device-logic.test.ts`) is proven in milliseconds; what only exists here
+ * (`roster-groups.test.ts`) is proven in milliseconds; what only exists here
  * is whether the bindings wire them to the controls, and what actually goes on
  * the wire.
  */
@@ -46,7 +46,7 @@ const rows = (page: Page) => page.locator("[data-integrations] [data-integration
  *
  * A browser claim rather than a unit one because the nesting is a resolved
  * document: `nestIntegrations` decides which device belongs to which row (in
- * milliseconds, in `add-device-logic.test.ts`), and what only exists here is
+ * milliseconds, in `roster-groups.test.ts`), and what only exists here is
  * whether the card actually draws it that way.
  */
 test("the broker's loadpoints hang UNDER the ingest that provided them", async ({ page }) => {

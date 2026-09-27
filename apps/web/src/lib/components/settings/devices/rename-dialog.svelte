@@ -5,10 +5,9 @@
 	import { Label } from '$lib/components/ui/label';
 	import * as m from '$lib/paraglide/messages';
 	import { SLUG_MAX } from '@SunReye/inverter-core/slug';
-	import { type Refusal, nameProblem } from './add-device-logic';
-	import { renameBlock } from './rename-logic';
+	import { nameProblem, renameBlock } from './device-form';
 	import DialogShell from './device-dialog-shell.svelte';
-	import { type DeviceRoster, failureText } from './device-roster';
+	import { type DeviceRoster, type Refusal, failureText } from './device-roster';
 	import type { DeviceView } from './device-types';
 	import FieldProblem from './field-problem.svelte';
 
@@ -49,7 +48,7 @@
 
 	const trimmed = $derived(name.trim());
 	const problem = $derived(trimmed === '' ? null : nameProblem(name));
-	// Why Save is refused, decided in `./rename-logic.ts`.
+	// Why Save is refused, decided in `./device-form.ts`.
 	const blocked = $derived(
 		renameBlock({ typed: name, current: device?.name ?? null, submitting }) !== null
 	);

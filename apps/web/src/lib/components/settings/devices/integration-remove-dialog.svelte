@@ -2,7 +2,7 @@
 	import { Button } from '$lib/components/ui/button';
 	import * as Dialog from '$lib/components/ui/dialog';
 	import * as m from '$lib/paraglide/messages';
-	import { retiredByRemoving } from './add-device-logic';
+	import { retiredByRemoving } from './roster-groups';
 	import type { DeviceView, IntegrationView } from './device-types';
 
 	// The confirmation before an integration is un-configured. Same shape as

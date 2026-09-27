@@ -2,7 +2,7 @@
 	import CaretDown from 'phosphor-svelte/lib/CaretDown';
 	import * as Collapsible from '$lib/components/ui/collapsible';
 	import * as m from '$lib/paraglide/messages';
-	import { splitRetired } from './device-lifecycle';
+	import { splitRetired } from './roster-groups';
 	import DeviceRow from './device-row.svelte';
 	import type { DeviceHandlers, DeviceView } from './device-types';
 

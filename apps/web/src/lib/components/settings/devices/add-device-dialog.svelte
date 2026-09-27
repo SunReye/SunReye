@@ -4,18 +4,17 @@
 	import { Button } from '$lib/components/ui/button';
 	import * as Dialog from '$lib/components/ui/dialog';
 	import * as m from '$lib/paraglide/messages';
-	import {
-		type Refusal,
-		buildAddDeviceBody,
-		devicePatch,
-		emptyForm,
-		formFromDevice,
-		probeTargetOf
-	} from './add-device-logic';
+	import { buildAddDeviceBody, devicePatch, emptyForm, formFromDevice } from './device-form';
+	import { probeTargetOf } from './probe-logic';
 	import AddressFields from './address-fields.svelte';
 	import ConnectionField from './connection-field.svelte';
 	import DialogShell from './device-dialog-shell.svelte';
-	import { type DeviceRoster, type WriteFailure, statedReason } from './device-roster';
+	import {
+		type DeviceRoster,
+		type Refusal,
+		type WriteFailure,
+		statedReason
+	} from './device-roster';
 	import type { AddDeviceBody, DeviceView } from './device-types';
 	import InverterSection from './inverter-section.svelte';
 	import NameField from './name-field.svelte';
@@ -26,7 +25,7 @@
 	// gateway, address the device on it, name it, pick the profile that speaks to
 	// it. Every choice is a NATIVE select — the operator is on a phone in a cellar
 	// as often as at a desk, and the platform picker is the one that works there.
-	// The rules live in `./add-device-logic.ts`; each field is its own component;
+	// The rules live in `./device-form.ts`; each field is its own component;
 	// this file holds the form state; the request is the roster's. An edit sends
 	// only what changed, and cannot create a gateway — that is the connection's
 	// own dialog.
