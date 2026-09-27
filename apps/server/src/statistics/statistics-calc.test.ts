@@ -31,7 +31,7 @@ describe("previousWindow", () => {
   test("previous: adjacent same-length window ending at from", () => {
     const from = new Date(2025, 2, 10); // Mon Mar 10
     const to = new Date(2025, 2, 17);
-    const prev = previousWindow(from, to, "previous");
+    const prev = previousWindow(from, to, "previous", HOST_TZ);
     expect(prev.to.getTime()).toBe(from.getTime());
     expect(prev.from.getTime()).toBe(new Date(2025, 2, 3).getTime());
   });
@@ -44,23 +44,62 @@ describe("previousWindow", () => {
     const to = new Date("2025-03-30T22:00:00Z"); // Berlin Mar 31 00:00 (CEST, +2)
     const len = to.getTime() - from.getTime();
     expect(len).toBe(23 * 3_600_000);
-    const prev = previousWindow(from, to, "previous");
+    const prev = previousWindow(from, to, "previous", HOST_TZ);
     expect(prev.to.getTime()).toBe(from.getTime());
     expect(prev.to.getTime() - prev.from.getTime()).toBe(len);
     // 23h before Berlin Mar 30 00:00 is Berlin Mar 29 01:00 = 2025-03-29T00:00Z.
     expect(prev.from.getTime()).toBe(new Date("2025-03-29T00:00:00Z").getTime());
   });
 
-  test("yearAgo: calendar shift by one year", () => {
-    const prev = previousWindow(new Date(2025, 5, 1), new Date(2025, 6, 1), "yearAgo");
-    expect(prev.from.getTime()).toBe(new Date(2024, 5, 1).getTime());
-    expect(prev.to.getTime()).toBe(new Date(2024, 6, 1).getTime());
+  test("yearAgo: the same plant-local calendar window one year back", () => {
+    // Berlin July 2026 (bounds are Berlin midnights) → Berlin July 2025.
+    const prev = previousWindow(
+      new Date("2026-06-30T22:00:00Z"),
+      new Date("2026-07-31T22:00:00Z"),
+      "yearAgo",
+      HOST_TZ,
+    );
+    expect(prev.from.toISOString()).toBe("2025-06-30T22:00:00.000Z");
+    expect(prev.to.toISOString()).toBe("2025-07-31T22:00:00.000Z");
   });
 
-  test("yearAgo: Feb 29 normalizes to Mar 1 (Date semantics)", () => {
-    const prev = previousWindow(new Date(2024, 1, 29), new Date(2024, 2, 1), "yearAgo");
-    expect(prev.from.getTime()).toBe(new Date(2023, 2, 1).getTime());
-    expect(prev.to.getTime()).toBe(new Date(2023, 2, 1).getTime()); // collapses to empty
+  test("yearAgo: shifts on the PLANT's wall clock, not the host's", () => {
+    // Plant in Auckland, host in Berlin. NZDT began 2026-09-27 but 2025-09-28
+    // 02:00, so Auckland midnight on the 28th is +13 now and +12 a year back.
+    // Host-local setFullYear keeps the offset and lands at 23:00 on the 27th.
+    const prev = previousWindow(
+      new Date("2026-09-27T11:00:00Z"),
+      new Date("2026-09-28T11:00:00Z"),
+      "yearAgo",
+      "Pacific/Auckland",
+    );
+    expect(prev.from.toISOString()).toBe("2025-09-27T12:00:00.000Z");
+    expect(prev.to.toISOString()).toBe("2025-09-28T11:00:00.000Z");
+  });
+
+  test("yearAgo: the DST seam moved between the years (Berlin fall-back)", () => {
+    // Berlin fell back 2026-10-25 but 2025-10-26: midnight on Oct 26 is CET
+    // (+1) now and still CEST (+2) a year back.
+    const prev = previousWindow(
+      new Date("2026-10-25T23:00:00Z"),
+      new Date("2026-10-26T23:00:00Z"),
+      "yearAgo",
+      HOST_TZ,
+    );
+    expect(prev.from.toISOString()).toBe("2025-10-25T22:00:00.000Z");
+    expect(prev.to.toISOString()).toBe("2025-10-26T23:00:00.000Z");
+  });
+
+  test("yearAgo: a leap day compares against Feb 28, never an empty window", () => {
+    // Auckland 2028-02-29 (NZDT) → 2027-02-28 (see zoned-calendar shiftWindowYears).
+    const prev = previousWindow(
+      new Date("2028-02-28T11:00:00Z"),
+      new Date("2028-02-29T11:00:00Z"),
+      "yearAgo",
+      "Pacific/Auckland",
+    );
+    expect(prev.from.toISOString()).toBe("2027-02-27T11:00:00.000Z");
+    expect(prev.to.toISOString()).toBe("2027-02-28T11:00:00.000Z");
   });
 });
 

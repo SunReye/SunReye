@@ -17,23 +17,23 @@ import type {
 import type { CostSeriesPoint } from "../energy/cost";
 import type { CounterDeltaRow } from "../energy/rollup-reader";
 import { zoneParts } from "@SunReye/inverter-core/zone-parts";
-import { isoWeekday } from "@SunReye/inverter-core/zoned-calendar";
+import { isoWeekday, shiftWindowYears } from "@SunReye/inverter-core/zoned-calendar";
 
 /**
  * The reference window to compare `[from, to)` against:
  * - `previous` — the adjacent window of the same millisecond length, ending
  *   exactly where the current one starts: `[from − len, from)`.
- * - `yearAgo` — the same calendar window one year earlier (`setFullYear(−1)`
- *   on both edges; Feb 29 normalizes to Mar 1 per Date semantics).
+ * - `yearAgo` — the same calendar window one year earlier on the PLANT's wall
+ *   clock (`timeZone`), never the host's; a Feb 29 day compares against Feb 28
+ *   (rule in `shiftWindowYears`).
  */
-export function previousWindow(from: Date, to: Date, mode: CompareMode): { from: Date; to: Date } {
-  if (mode === "yearAgo") {
-    const f = new Date(from);
-    f.setFullYear(f.getFullYear() - 1);
-    const t = new Date(to);
-    t.setFullYear(t.getFullYear() - 1);
-    return { from: f, to: t };
-  }
+export function previousWindow(
+  from: Date,
+  to: Date,
+  mode: CompareMode,
+  timeZone: string,
+): { from: Date; to: Date } {
+  if (mode === "yearAgo") return shiftWindowYears({ from, to }, -1, timeZone);
   const len = to.getTime() - from.getTime();
   return { from: new Date(from.getTime() - len), to: new Date(from) };
 }
