@@ -57,7 +57,7 @@ const liveState: { latest: InverterSample | null } = { latest: null };
 mock.module("../shared/state", () => ({ ...realState, liveState }));
 
 const { derivePeriods, energySeries } = await import("./energy");
-const { currentPeriodKey } = await import("./cost");
+const { currentPeriodKey } = await import("./period-keys");
 
 /** Minimal profile mapping the given canonical roles → metric keys. */
 const profileWith = (roleKeys: Partial<Record<CanonicalRole, string>>): InverterProfile =>

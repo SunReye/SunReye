@@ -21,17 +21,15 @@ import type { InverterProfile } from "@SunReye/inverter-core";
 import { sql } from "drizzle-orm";
 import { deviceScope } from "../shared/identity-sql";
 import { type SeriesTarget, targetKey } from "../shared/plant-source";
+import { computeCost, computeCostSeries, resolvePlantContext, resolveRange } from "../energy/cost";
+import { currentPeriodKey } from "../energy/period-keys";
 import {
   ENERGY_FIELDS,
-  computeCost,
-  computeCostSeries,
-  currentPeriodKey,
   fetchCounterDeltaMatrix,
   fetchLatestCounterLevels,
   liveCounterLevels,
   metersLoadEnergy,
-  resolveRange,
-} from "../energy/cost";
+} from "../energy/rollup-reader";
 import { accumulateTotals, derivePeriods, emptyTotals, energySeries } from "../energy/energy";
 import { derivePeriodEnergy } from "../energy/energy-calc";
 import { dayStart } from "@SunReye/inverter-core/zoned-calendar";
@@ -117,9 +115,10 @@ export async function computeComparison(
 ): Promise<ComparisonResponse> {
   const inverterId = opts.inverterId ?? profile.id;
   const prev = previousWindow(opts.from, opts.to, opts.mode);
+  const context = await resolvePlantContext(profile, inverterId);
   const [current, previous, dataFrom] = await Promise.all([
-    computeCost(profile, { from: opts.from, to: opts.to, inverterId }),
-    computeCost(profile, { from: prev.from, to: prev.to, inverterId }),
+    computeCost(profile, { from: opts.from, to: opts.to, inverterId }, { context }),
+    computeCost(profile, { from: prev.from, to: prev.to, inverterId }, { context }),
     earliestDailyBucket(inverterId),
   ]);
   return {

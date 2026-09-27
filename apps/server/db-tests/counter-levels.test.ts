@@ -2,7 +2,7 @@
  * `fetchLatestCounterLevels` against a real TimescaleDB — the amortisation
  * reader's fallback for a target the poll cache cannot speak for.
  *
- * `apps/server/src/energy/cost.test.ts` pins the statement's shape (DISTINCT ON
+ * `apps/server/src/energy/rollup-reader.test.ts` pins the statement's shape (DISTINCT ON
  * over the daily tier, newest bucket per metric, members summed per bucket). It
  * cannot prove the statement RUNS: `distinct on` over a derived table that
  * groups a continuous aggregate is exactly the class of query the unit layer
@@ -30,7 +30,7 @@ const suite = reachable ? describe : describe.skip;
 const TIERS = ["minute_rollups", "hourly_rollups", "daily_rollups"] as const;
 
 suite("fetchLatestCounterLevels against a real TimescaleDB", () => {
-  let fetchLatestCounterLevels: typeof import("../src/energy/cost").fetchLatestCounterLevels;
+  let fetchLatestCounterLevels: typeof import("../src/energy/rollup-reader").fetchLatestCounterLevels;
   let raw: ReturnType<typeof realDbExports.createDbAt>;
   const IMPORT = "levels.import.total";
   const EXPORT = "levels.export.total";
@@ -49,7 +49,7 @@ suite("fetchLatestCounterLevels against a real TimescaleDB", () => {
     const url = await resetTestDatabase();
     raw = realDbExports.createDbAt(url);
     mock.module("@SunReye/db", () => ({ ...realDbExports, db: raw }));
-    ({ fetchLatestCounterLevels } = await import("../src/energy/cost"));
+    ({ fetchLatestCounterLevels } = await import("../src/energy/rollup-reader"));
 
     await raw.execute(sql`
       insert into plants (name, slug, time_zone) values ('levels', 'counter-levels', 'UTC')`);

@@ -3,21 +3,20 @@
  * summarizes each period into the grid-vs-solar and self-consumed-vs-exported
  * splits used by the Costs page energy chart. Pure math lives in
  * {@link ./energy-calc}; the bounded delta read is shared with the cost engine
- * ({@link ./cost}).
+ * ({@link ./rollup-reader}).
  */
 
 import type { EnergyField, EnergyTotals, PeriodEnergy } from "@SunReye/contracts/energy";
 import type { SeriesTarget } from "../shared/plant-source";
 import type { InverterProfile } from "@SunReye/inverter-core";
+import { type CostBucket, currentPeriodKey } from "./period-keys";
 import {
-  type CostBucket,
   type CounterDeltaRow,
   TOTALS_KEY_BY_FIELD,
-  currentPeriodKey,
   fetchCounterDeltaMatrix,
   liveTodayTotals,
   metersLoadEnergy,
-} from "./cost";
+} from "./rollup-reader";
 import { applyTodayOverride, derivePeriodEnergy, emptyTotals } from "./energy-calc";
 import { getPlantTimeZone } from "../settings/display-settings";
 

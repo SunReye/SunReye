@@ -14,7 +14,8 @@ import type {
   HeatmapCell,
   MoneyRecords,
 } from "@SunReye/contracts/statistics";
-import type { CostSeriesPoint, CounterDeltaRow } from "../energy/cost";
+import type { CostSeriesPoint } from "../energy/cost";
+import type { CounterDeltaRow } from "../energy/rollup-reader";
 import { zoneParts } from "@SunReye/inverter-core/zone-parts";
 import { isoWeekday } from "@SunReye/inverter-core/zoned-calendar";
 

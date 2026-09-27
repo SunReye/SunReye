@@ -1,6 +1,7 @@
 import type { EnergyField, EnergyTotals } from "@SunReye/contracts/energy";
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import type { CostSeriesPoint, CounterDeltaRow } from "../energy/cost";
+import type { CostSeriesPoint } from "../energy/cost";
+import type { CounterDeltaRow } from "../energy/rollup-reader";
 import { derivePeriodEnergy } from "../energy/energy-calc";
 import {
   heatmapCells,
