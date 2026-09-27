@@ -5,7 +5,7 @@
  * A viewer in New York looking at a Berlin plant used to get New York
  * midnights — every "day" was the evening of one plant day and most of the
  * next. The plant's zone rides on `GET /api/sources`; the page re-reads the
- * period it stands on once that lands (`rezoneHistoryPeriod`).
+ * period it stands on once that lands (`rezoneStandingPeriod`).
  *
  * The clock is pinned to 20:00 in New York, which is already 02:00 tomorrow in
  * Berlin: the day the reader opened on is the live one, so it has to become

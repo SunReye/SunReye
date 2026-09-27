@@ -18,14 +18,13 @@
 		customRange,
 		historyPeriodRange,
 		resolvePreset,
-		rezoneHistoryPeriod,
 		type HistoryRange
 	} from '$lib/inverter/ranges';
 	import { historyPresetLabel, historyPresets } from '$lib/inverter/range-labels';
 	import { getLocale } from '$lib/paraglide/runtime';
 	import { source } from '$lib/source.svelte';
 	import { liveClock } from '$lib/time/live-clock.svelte';
-	import { periodWindow, weekStartFor, type Period } from '$lib/time/period';
+	import { periodWindow, rezoneStandingPeriod, weekStartFor, type Period } from '$lib/time/period';
 	import { untrack } from 'svelte';
 
 	// THE PAGE HOLDS THREE THINGS, NOT ONE.
@@ -45,7 +44,7 @@
 	// Every window is built on the PLANT's calendar: the daily and monthly
 	// rollups the cards draw are plant days. Until the source list lands the
 	// viewer's zone stands in, and the effect below re-reads the period the
-	// reader is on (`rezoneHistoryPeriod`) once the real zone is known. It runs
+	// reader is on (`rezoneStandingPeriod`) once the real zone is known. It runs
 	// on a ZONE change only — never on the clock, which is what keeps a reader
 	// left open past midnight on the day they were looking at.
 	const zone = $derived(source.plantZone);
@@ -78,7 +77,7 @@
 		untrack(() => {
 			if (override !== null) return;
 			const opts = { timeZone: next, weekStartsOn: weekStartFor(getLocale()) };
-			pickPeriod(rezoneHistoryPeriod(period, from, new Date(), opts));
+			pickPeriod(rezoneStandingPeriod(period, from, new Date(), opts));
 		});
 	});
 

@@ -22,7 +22,7 @@
 	import { statisticsLive } from '$lib/statistics-live.svelte';
 	import { includesNow, liveModeFor } from '$lib/statistics/live';
 	import { liveClock } from '$lib/time/live-clock.svelte';
-	import { periodWindow, rezonePeriod, weekStartFor, type Period } from '$lib/time/period';
+	import { periodWindow, rezoneStandingPeriod, weekStartFor, type Period } from '$lib/time/period';
 	import { getLocale } from '$lib/paraglide/runtime';
 	import { setCustomizeSession } from '$lib/statistics/customize.svelte';
 	import { provideStatisticsQuery, queried } from '$lib/statistics/statistics-query.svelte';
@@ -47,7 +47,8 @@
 	// days, and a viewer in New York asking for New York midnights of a Berlin
 	// plant gets bars that straddle two of its days. Until the source list lands
 	// the viewer's zone stands in, and the effect below re-reads the period the
-	// reader is on by name once the real zone is known.
+	// reader is on once the real zone is known — the current one stays current,
+	// any other keeps its name (`rezoneStandingPeriod`).
 	const zone = $derived(source.plantZone);
 	let builtZone = source.plantZone;
 	const first = periodWindow(new Date(), 'month', { timeZone: builtZone });
@@ -63,7 +64,7 @@
 		builtZone = next;
 		untrack(() => {
 			if (override === null) {
-				pickPeriod(rezonePeriod(period, from, { timeZone: next, weekStartsOn: weekStartFor(getLocale()) }));
+				pickPeriod(rezoneStandingPeriod(period, from, new Date(), { timeZone: next, weekStartsOn: weekStartFor(getLocale()) }));
 			} else if (override.id !== 'custom') pickPreset(override.id);
 		});
 	});

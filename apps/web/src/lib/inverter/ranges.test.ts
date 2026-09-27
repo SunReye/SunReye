@@ -11,7 +11,6 @@ import {
   isChartable,
   KEPT_PRESETS,
   resolvePreset,
-  rezoneHistoryPeriod,
 } from "./ranges";
 
 const HOUR = 3_600_000;
@@ -433,47 +432,5 @@ describe("historyPeriodRange — what /history renders for a calendar period", (
     expect(historyPeriodRange(today, today.start, BERLIN).live).toBe(true);
     expect(historyPeriodRange(today, new Date(today.end.getTime() - 1), BERLIN).live).toBe(true);
     expect(historyPeriodRange(today, today.end, BERLIN).live).toBe(false);
-  });
-});
-
-describe("rezoneHistoryPeriod — the page's period once the plant's zone lands", () => {
-  // /history opens before `/api/sources` answers, so its first period is built
-  // on the browser's calendar. The rollups it draws are PLANT days, so once the
-  // plant's zone is known the period is re-read on that calendar.
-  const NY = "America/New_York";
-  const onBerlin = { timeZone: BERLIN, weekStartsOn: 1 as const };
-  const now = new Date("2026-08-21T00:00:00Z"); // 20:00 NY on the 20th, 02:00 Berlin on the 21st
-
-  it("keeps the reader on the CURRENT period when they stood on it", () => {
-    // The page opened on "today". By name that is 20 Aug, which Berlin has
-    // already finished; the reader asked for the live day, so they get the
-    // plant's live day.
-    const opened = periodWindow(now, "day", { timeZone: NY });
-    const next = rezoneHistoryPeriod(opened, NY, now, onBerlin);
-    expect(next.grain).toBe("day");
-    expect(wall(next.start, BERLIN)).toBe("2026-08-21 00:00");
-    expect(wall(next.end, BERLIN)).toBe("2026-08-22 00:00");
-    expect(historyPeriodRange(next, now, BERLIN).live).toBe(true);
-  });
-
-  it("re-reads a PAST period by name, not by instant", () => {
-    const past = periodWindow(new Date("2026-08-10T12:00:00Z"), "day", { timeZone: NY });
-    const next = rezoneHistoryPeriod(past, NY, now, onBerlin);
-    expect(wall(next.start, BERLIN)).toBe("2026-08-10 00:00");
-    expect(wall(next.end, BERLIN)).toBe("2026-08-11 00:00");
-  });
-
-  it("keeps the grain, on the week start it is handed", () => {
-    const week = periodWindow(now, "week", { timeZone: NY, weekStartsOn: 7 });
-    const next = rezoneHistoryPeriod(week, NY, now, { timeZone: BERLIN, weekStartsOn: 7 });
-    expect(next.grain).toBe("week");
-    // Sunday 16 Aug — the week holding Berlin's 21 Aug.
-    expect(wall(next.start, BERLIN)).toBe("2026-08-16 00:00");
-    expect(wall(next.end, BERLIN)).toBe("2026-08-23 00:00");
-  });
-
-  it("is the identity when the zone did not change", () => {
-    const day = periodWindow(now, "day", onBerlin);
-    expect(rezoneHistoryPeriod(day, BERLIN, now, onBerlin)).toEqual(day);
   });
 });
