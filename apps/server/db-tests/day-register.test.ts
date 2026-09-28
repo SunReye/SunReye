@@ -2,7 +2,7 @@
  * The daily-resetting `*.today` register, differenced against a real
  * TimescaleDB — both readers, across the plant's midnight.
  *
- * `apps/server/src/energy/cost.test.ts` pins the rule twice over: once in
+ * `apps/server/src/energy/rollup-reader.test.ts` pins the rule twice over: once in
  * TypeScript (`chainsTo`) and once as SQL text (the `case` in
  * `fetchCounterDeltaMatrix`). Neither proves Postgres accepts the statement, and
  * the day guard adds a `date_trunc … at time zone` over a `lag()` inside a
@@ -35,8 +35,9 @@ if (!reachable) {
 const suite = reachable ? describe : describe.skip;
 
 suite("the *.today register across midnight, against a real TimescaleDB", () => {
-  let cost: typeof import("../src/energy/cost");
+  let reader: typeof import("../src/energy/rollup-reader");
   let raw: ReturnType<typeof realDbExports.createDbAt>;
+  let deviceId = 0;
   const TODAY_KEY = "day.import.today";
   const TOTAL_KEY = "day.import.total";
 
@@ -58,7 +59,7 @@ suite("the *.today register across midnight, against a real TimescaleDB", () => 
     const url = await resetTestDatabase();
     raw = realDbExports.createDbAt(url);
     mock.module("@SunReye/db", () => ({ ...realDbExports, db: raw }));
-    cost = await import("../src/energy/cost");
+    reader = await import("../src/energy/rollup-reader");
 
     await raw.execute(sql`
       insert into plants (name, slug, time_zone) values ('day', 'day-register', 'UTC')`);
@@ -67,7 +68,7 @@ suite("the *.today register across midnight, against a real TimescaleDB", () => 
       select id, null, 1, 'day-reg', 'day-reg', 'day-profile', 'inverter'
       from plants where slug = 'day-register'
       returning id`);
-    const deviceId = Number((device.rows[0] as { id: number }).id);
+    deviceId = Number((device.rows[0] as { id: number }).id);
     const metricId = async (key: string) => {
       const row = await raw.execute<{ id: number }>(sql`
         insert into metric_keys (key, is_counter) values (${key}, true)
@@ -109,7 +110,7 @@ suite("the *.today register across midnight, against a real TimescaleDB", () => 
   });
 
   test("fetchBucketEnergy prices the first hour of the new day, not zero", async () => {
-    const buckets = await cost.fetchBucketEnergy(
+    const buckets = await reader.fetchBucketEnergy(
       profile,
       "day-reg",
       from,
@@ -130,7 +131,7 @@ suite("the *.today register across midnight, against a real TimescaleDB", () => 
   });
 
   test("fetchCounterDeltaMatrix agrees, day for day", async () => {
-    const { rows, fieldByKey } = await cost.fetchCounterDeltaMatrix(profile, {
+    const { rows, fieldByKey } = await reader.fetchCounterDeltaMatrix(profile, {
       from,
       to,
       bucket: "day",
@@ -154,7 +155,7 @@ suite("the *.today register across midnight, against a real TimescaleDB", () => 
   test("a day or longer bucket still reads the lifetime odometer", async () => {
     // A counter that resets at midnight cannot describe a bucket a day wide, so
     // the daily tier keeps the `*.total` key it always had.
-    const { fieldByKey } = await cost.fetchCounterDeltaMatrix(profile, {
+    const { fieldByKey } = await reader.fetchCounterDeltaMatrix(profile, {
       from: new Date("2026-03-01T00:00:00Z"),
       to: new Date("2026-03-03T00:00:00Z"),
       bucket: "day",
@@ -163,5 +164,32 @@ suite("the *.today register across midnight, against a real TimescaleDB", () => 
       tz: "UTC",
     });
     expect([...fieldByKey.keys()]).toEqual([TOTAL_KEY]);
+  });
+
+  test("a plant target runs the members-summed statement through both readers", async () => {
+    const plant = { plant: [{ id: deviceId, slug: "day-reg", weight: 1 }] };
+    const buckets = await reader.fetchBucketEnergy(
+      profile,
+      plant,
+      from,
+      to,
+      "hourly_rollups",
+      "UTC",
+    );
+    expect(buckets.map((b) => Number(b.import.toFixed(6)))).toEqual([1, 0.3, 0.1]);
+    // Berlin is UTC+1 in March, so the three hours land on 00, 01 and 02 of the 2nd.
+    const { rows } = await reader.fetchCounterDeltaMatrix(profile, {
+      from,
+      to,
+      bucket: "hour",
+      inverterId: plant,
+      view: "hourly_rollups",
+      tz: "Europe/Berlin",
+    });
+    expect(rows.map((r) => r.period).sort()).toEqual([
+      "2026-03-02T00",
+      "2026-03-02T01",
+      "2026-03-02T02",
+    ]);
   });
 });

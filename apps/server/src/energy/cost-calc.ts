@@ -9,7 +9,8 @@ import { type TariffConfig, importBandForHour, importPriceForHour } from "@SunRe
 // Type-only, so the cost.ts ⇄ cost-calc.ts pairing stays a one-way runtime
 // dependency: cost.ts owns the shapes the SQL layer produces, this module owns
 // the arithmetic over them.
-import type { CostSeriesPoint, CounterDeltaRow } from "./cost";
+import type { CostSeriesPoint } from "./cost";
+import type { CounterDeltaRow } from "./rollup-reader";
 import { zoneParts } from "@SunReye/inverter-core/zone-parts";
 import { dateKey, isoWeekday } from "@SunReye/inverter-core/zoned-calendar";
 
