@@ -1,6 +1,92 @@
 # Changelog
 
-No unreleased changes on `dev`; `beta.20260915-35d9fb4` matches the last release.
+## [unreleased]
+
+Unreleased work on `dev` since 3.5.0, shipped in `beta.20260928-71aa9a0`.
+
+
+### Features
+
+* **server:** tell every session the plant's zone on /api/sources ([8fd74ce](https://github.com/SunReye/SunReye/commit/8fd74cec6df01619e964aa382f3aacbad0d33f07))
+* **inverter-core:** shift a window by whole years on a zone's calendar ([eb4a634](https://github.com/SunReye/SunReye/commit/eb4a634e725a58966ce5ed31b5c9bbef6b8767b5))
+* **inverter-core:** add one zoned-calendar module for period boundaries ([7de307d](https://github.com/SunReye/SunReye/commit/7de307d7f0363cf7b5834b13e1e830311d7bff12))
+* **web:** walk first run on one rail, with its actions pinned ([55d1561](https://github.com/SunReye/SunReye/commit/55d15611579872764d5f93f4538516a04772465f))
+* **web:** let the device roster delete a device, and fit a phone ([a07b5ac](https://github.com/SunReye/SunReye/commit/a07b5acc082c2561d434c1076f892208a4fb3f54))
+* **server:** delete a device that never recorded a reading ([b115f26](https://github.com/SunReye/SunReye/commit/b115f269c35ba5b832425e95a5386bc2caa5f96d))
+* **web:** mark automations experimental, and hide them until armed ([00bf901](https://github.com/SunReye/SunReye/commit/00bf9015fd66258f83cdc19f4b56bc1da913c24a))
+* **web:** tier the dashboard's motion to what the device can afford ([017a1a4](https://github.com/SunReye/SunReye/commit/017a1a4667f30893047234cb2a29ccd70151a140))
+
+
+### Bug Fixes
+
+* **web:** lift toasts above the pinned setup footer ([5a7601b](https://github.com/SunReye/SunReye/commit/5a7601b74a2f1afb9fe138e061f1f01cf63983fd))
+* **web:** ring the range calendar's today in the plant's zone ([89a030b](https://github.com/SunReye/SunReye/commit/89a030b700a0ad0cee98e278e1d5cc3123eaca2e))
+* **web:** open the range calendar on the plant's month ([c6469d2](https://github.com/SunReye/SunReye/commit/c6469d29964bf2295360ddc57ddc1b4a7409586e))
+* **web:** rezone the window a /history zoom resets to ([4da7bef](https://github.com/SunReye/SunReye/commit/4da7bef90d6a41e8d006d058c69569bbafa200aa))
+* **server:** hand the simulator the plant's zone ([ec9c787](https://github.com/SunReye/SunReye/commit/ec9c7877fea8e7d9330913eb70d32f0757f90542))
+* **web:** keep /statistics on the plant's current period when the zone lands ([614e35f](https://github.com/SunReye/SunReye/commit/614e35f18fd8b75c288be37aee8b291ce0553c6d))
+* **web:** room for the price curve's day-start label at the left edge ([d35fe61](https://github.com/SunReye/SunReye/commit/d35fe61231a4722edd6a439a846e5104557dbd70))
+* **web:** resolve canvas chart styles under the house style, always ([9068d9a](https://github.com/SunReye/SunReye/commit/9068d9ab152446b7c0b000b61fd2a4b3237555d5))
+* **inverter-core:** run the simulated sun on the plant's clock ([bf806af](https://github.com/SunReye/SunReye/commit/bf806af7165a3143e1d4789eba2b5b5c7acb4582))
+* **web:** name the range calendar's months in the range's zone ([05a7377](https://github.com/SunReye/SunReye/commit/05a7377fb80a936aae26b68047c93944df9210b7))
+* **web:** count the rolling week in plant-calendar days ([910b4c6](https://github.com/SunReye/SunReye/commit/910b4c64be6b7aae7bf154fb46238c190ac370db))
+* **web:** build /history windows on the plant's calendar ([a71fd60](https://github.com/SunReye/SunReye/commit/a71fd6010f606bdda46bfc2d4c1449f439ee8a1c))
+* **web:** build statistics windows on the plant's calendar ([79594c3](https://github.com/SunReye/SunReye/commit/79594c38348795e49eda53624e43af71dccd3dba))
+* **server:** band the spot what-if on the plant's wall clock ([feba41e](https://github.com/SunReye/SunReye/commit/feba41e34dad119829a6cb8d6bb2a69497ddbbad))
+* **server:** step the previous comparison back by plant calendar days ([9dc297e](https://github.com/SunReye/SunReye/commit/9dc297e412324e2692d21ce58bfc5cdadb1ac960))
+* **server:** open named cost ranges on the plant's midnight ([c062e71](https://github.com/SunReye/SunReye/commit/c062e71a164008d39c2b98e78801381a8ca7428e))
+* **server:** count heatmap hour slots on the rollup's UTC hours ([de61d7b](https://github.com/SunReye/SunReye/commit/de61d7b29973fed17f20e34c5adb126b6e81a397))
+* **web:** make the energy split's averages the window's ratios ([17f21a6](https://github.com/SunReye/SunReye/commit/17f21a6908b95d62938a0cf41b2dc1656923153b))
+* **server:** key the §51 zero-value share by the UTC rollup hour ([f9719ba](https://github.com/SunReye/SunReye/commit/f9719ba02092b1043e1c05499e9f38097fb7f909))
+* **web:** stop re-asking a live window the clock has left ([efe5716](https://github.com/SunReye/SunReye/commit/efe571664e1abfef3aec702fc83c3731d75548b0))
+* **web:** judge comparison coverage by the window the server priced ([8463e4e](https://github.com/SunReye/SunReye/commit/8463e4e44774cbfc9a2f85fd29f18510770e8c47))
+* **web:** read an overlay under the selected source ([e7a4bae](https://github.com/SunReye/SunReye/commit/e7a4baeca3c1e23471500de8e7e5af95754c4a98))
+* **web:** say every rename refusal, not only one naming the name ([95c85d0](https://github.com/SunReye/SunReye/commit/95c85d00bdb53515d0ca39d0df17423f870e336f))
+* **server:** shift the year-ago comparison on the plant's calendar ([92f1c0a](https://github.com/SunReye/SunReye/commit/92f1c0ab0b649f58e296e21eeb2492fed5fdbb5e))
+* **server:** rebuild the evcc ingest after every plant write ([c7499d9](https://github.com/SunReye/SunReye/commit/c7499d9c61eb677d1002dd80a9b57c189f1f3fc0))
+* **server:** await the poll loop's start before opening the connection tier ([131f546](https://github.com/SunReye/SunReye/commit/131f546f80458e7da8d07fd620d977804bcae22f))
+* **web:** keep the toast wording of a field refusal with no reason ([1c7e24e](https://github.com/SunReye/SunReye/commit/1c7e24e730dc390b6e9fee4759f27fa6f3c66871))
+* **automation:** take the plant-day boundary from the plant zone ([3466b82](https://github.com/SunReye/SunReye/commit/3466b829012398a0e409805dc31015c548eb2157))
+* **web:** refresh every statistics section on a live push ([812db93](https://github.com/SunReye/SunReye/commit/812db9360555c46bece3b0c1dc4b366d1ff51c13))
+* **server:** run the full plant after-write on an inverter save ([333372c](https://github.com/SunReye/SunReye/commit/333372c72c69641d50dd71c6a126bd59462543c7))
+* **web:** point the dev proxy at 127.0.0.1, not localhost ([57ce8c8](https://github.com/SunReye/SunReye/commit/57ce8c8bed556d324890efd2a014c51eb997edd1))
+* **web:** fit statistics axes to the labels they actually draw ([a62466d](https://github.com/SunReye/SunReye/commit/a62466d058388ca6de65caf30acf9e2cc65cce0b))
+* **web:** give the shell one stacking order, and stick the phone tab strip ([3f3be5c](https://github.com/SunReye/SunReye/commit/3f3be5c6014969b88b771f50f8db228d33d0fa71))
+* **web:** make the state of charge readable across a room ([09b5640](https://github.com/SunReye/SunReye/commit/09b56402cca08d72ca2c7176f6eb391fa115b852))
+* **web:** let a dialog's body scroll, and keep its header in reach ([615b1aa](https://github.com/SunReye/SunReye/commit/615b1aaa7a8982787e4d78711a6580f60d78aa91))
+
+
+### Documentation
+
+* **adr:** record why AutomationIO stays wide ([7cfdd75](https://github.com/SunReye/SunReye/commit/7cfdd75ed91f14d7f661f1e39f126140971fb78f))
+* add a domain glossary ([f7138a9](https://github.com/SunReye/SunReye/commit/f7138a974f3a58b64a925a84148487e3c9238f71))
+
+
+### Code Refactoring
+
+* **web:** split add-device-logic by concept, fold the pass-throughs ([04d97e9](https://github.com/SunReye/SunReye/commit/04d97e9ae66111e464c64cb2e2de3ed70aaace84))
+* **web:** hold a history chart's rollup in one live-rollup module ([4371ce9](https://github.com/SunReye/SunReye/commit/4371ce9d1cbfedd7495a1431588690a2ce4851cb))
+* **web:** route every device-roster read and write through one module ([08b8481](https://github.com/SunReye/SunReye/commit/08b8481cf43c28f0e36c5659f3451ef48cafbaa5))
+* **server:** resolve a read's source in one module ([45c12c7](https://github.com/SunReye/SunReye/commit/45c12c7c286d10f0e2e66ff395d03b9265474b2a))
+* **server:** build the runtime explicitly, and wire nothing on import ([9e261a5](https://github.com/SunReye/SunReye/commit/9e261a5c1ff62fcdfd74f9e74d90d6e648e7aeec))
+* **server:** move the history and cost reads into routes/history ([2d8f7be](https://github.com/SunReye/SunReye/commit/2d8f7beda60e0ca9946793cdfb1cefd8de1bb970))
+* **web:** read every statistics dataset through one query module ([57e2904](https://github.com/SunReye/SunReye/commit/57e2904569e8af06f5d85eb623da03c5a8a16264))
+* **server:** move every rollup read behind one RollupReader module ([fc492ca](https://github.com/SunReye/SunReye/commit/fc492cac73f1bb9c78bc9ef31373681cd6e29a85))
+* **contracts:** define the device roster's wire shapes once ([37fba41](https://github.com/SunReye/SunReye/commit/37fba41be65173bb90f34ace4976f640e151e9e5))
+* **server:** own the plant's lifecycle in one PlantRuntime module ([8df4911](https://github.com/SunReye/SunReye/commit/8df49115693af3ba6bba41213747e37f663d5d47))
+* **server:** bucket every rollup on the zoned calendar, zone required ([7a6e7c7](https://github.com/SunReye/SunReye/commit/7a6e7c7775031fa45ceefd9a7a5f20172a65e141))
+* **contracts:** define CostSeriesPoint once, in contracts ([911c593](https://github.com/SunReye/SunReye/commit/911c5931c16c3890b8b095ee42bd8ab35c0ddf8f))
+
+
+### Tests
+
+* **web:** pin that canvas series resolve their theme colour ([b96e36f](https://github.com/SunReye/SunReye/commit/b96e36ff75bcd7b4ea2717690de9d2d707fe7beb))
+* **server:** pin statistics fixtures to explicit zones, not process.env.TZ ([59248a9](https://github.com/SunReye/SunReye/commit/59248a94fbd4160831194f341e83748f55e9249c))
+
+
+### Miscellaneous Chores
+
+* **nixos:** publish 3.5.0 [skip ci] ([20c8ad3](https://github.com/SunReye/SunReye/commit/20c8ad32f973349126c6ac33d9cb0f414ae97861))
 
 <!--
   This preamble is hand-written and version-independent. release-please owns the
@@ -121,9 +207,17 @@ be needed again.
 ## [3.5.0](https://github.com/SunReye/SunReye/compare/addon-v3.4.0...addon-v3.5.0) (2026-09-15)
 
 
-### Miscellaneous Chores
+### Features
 
-* **addon:** Synchronize sunreye-stack versions
+* **nixos:** state public DNS in the health report instead of leaving it inferred ([a88d223](https://github.com/SunReye/SunReye/commit/a88d2233bcc223a01695f79eb332b3550e912119))
+
+
+### Bug Fixes
+
+* **cli:** refuse to report success for an upgrade that cannot reach the release ([672b551](https://github.com/SunReye/SunReye/commit/672b5514c653cebaefe2870371e0f3ae5c610de0))
+* make a box that cannot resolve public DNS say so, instead of failing three different ways ([f76a4fa](https://github.com/SunReye/SunReye/commit/f76a4fa8623e957ab4a4af238b24004cf2126dcf))
+* **nixos:** give the unattended upgrade an identity to commit its lock with ([3a98c71](https://github.com/SunReye/SunReye/commit/3a98c71022b546f6f60cc0425645be412ddc2912))
+* **nixos:** the nightly upgrade could never commit its own lock file ([9262a68](https://github.com/SunReye/SunReye/commit/9262a6868802e24e108cfd15c380839dca2fb65b))
 
 ## [3.4.0](https://github.com/SunReye/SunReye/compare/addon-v3.3.3...addon-v3.4.0) (2026-09-15)
 
