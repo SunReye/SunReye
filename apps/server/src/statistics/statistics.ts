@@ -202,11 +202,11 @@ export async function todayStatistics(
   profile: InverterProfile,
   inverterId?: SeriesTarget,
 ): Promise<StatisticsTodayMessage> {
-  const { from, to } = resolveRange("today");
-  const [cost, periods, tz] = await Promise.all([
+  const tz = await getPlantTimeZone();
+  const { from, to } = resolveRange("today", tz);
+  const [cost, periods] = await Promise.all([
     computeCost(profile, { from, to, inverterId }),
     energySeries(profile, { from, to, bucket: "day", inverterId }),
-    getPlantTimeZone(),
   ]);
   return {
     type: "today",

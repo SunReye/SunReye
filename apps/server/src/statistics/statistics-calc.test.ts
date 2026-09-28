@@ -1,5 +1,5 @@
 import type { EnergyField, EnergyTotals } from "@SunReye/contracts/energy";
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import type { CostSeriesPoint } from "../energy/cost";
 import type { CounterDeltaRow } from "../energy/rollup-reader";
 import { derivePeriodEnergy } from "../energy/energy-calc";
@@ -11,44 +11,116 @@ import {
   previousWindow,
 } from "./statistics-calc";
 
-/** The zone the `beforeAll` below pins the host to, so host-local fixtures and
- *  the explicit plant zone agree. */
-const HOST_TZ = "Europe/Berlin";
-
-// DST-sensitive math (occurrence counting, previous-window length) is pinned
-// to a known zone. Bun applies process.env.TZ changes at runtime; restore the
-// original so other test files in the process are unaffected.
-const ORIGINAL_TZ = process.env.TZ;
-beforeAll(() => {
-  process.env.TZ = "Europe/Berlin";
-});
-afterAll(() => {
-  if (ORIGINAL_TZ === undefined) delete process.env.TZ;
-  else process.env.TZ = ORIGINAL_TZ;
-});
+/** The plant zone every fixture below is written in. Bounds are UTC instants of
+ *  its wall clock, never host-local constructors: the suite must not ride on,
+ *  or mutate, the process zone. */
+const PLANT_TZ = "Europe/Berlin";
 
 describe("previousWindow", () => {
   test("previous: adjacent same-length window ending at from", () => {
-    const from = new Date(2025, 2, 10); // Mon Mar 10
-    const to = new Date(2025, 2, 17);
-    const prev = previousWindow(from, to, "previous", HOST_TZ);
+    const from = new Date("2025-03-09T23:00:00Z"); // Berlin Mon Mar 10 00:00
+    const to = new Date("2025-03-16T23:00:00Z"); // Berlin Mon Mar 17 00:00
+    const prev = previousWindow(from, to, "previous", PLANT_TZ);
     expect(prev.to.getTime()).toBe(from.getTime());
-    expect(prev.from.getTime()).toBe(new Date(2025, 2, 3).getTime());
+    expect(prev.from.toISOString()).toBe("2025-03-02T23:00:00.000Z"); // Berlin Mar 3
   });
 
-  test("previous: preserves millisecond length across a DST boundary", () => {
-    // Berlin spring-forward day: [Mar 30, Mar 31) is only 23 real hours. Bounds
-    // are the Berlin-midnight instants in UTC, so the length is 23h regardless
-    // of the host process zone (this suite runs order-sensitively otherwise).
-    const from = new Date("2025-03-29T23:00:00Z"); // Berlin Mar 30 00:00 (CET, +1)
-    const to = new Date("2025-03-30T22:00:00Z"); // Berlin Mar 31 00:00 (CEST, +2)
-    const len = to.getTime() - from.getTime();
-    expect(len).toBe(23 * 3_600_000);
-    const prev = previousWindow(from, to, "previous", HOST_TZ);
-    expect(prev.to.getTime()).toBe(from.getTime());
-    expect(prev.to.getTime() - prev.from.getTime()).toBe(len);
-    // 23h before Berlin Mar 30 00:00 is Berlin Mar 29 01:00 = 2025-03-29T00:00Z.
-    expect(prev.from.getTime()).toBe(new Date("2025-03-29T00:00:00Z").getTime());
+  test("previous: a 23h spring-forward day compares against the whole day before", () => {
+    // Berlin Mar 30 2025 is 23 real hours; the day before is 24. The reference
+    // is that calendar day, not the 23h ending at Mar 30 00:00 (Mar 29 01:00 on).
+    const prev = previousWindow(
+      new Date("2025-03-29T23:00:00Z"), // Berlin Mar 30 00:00 (CET, +1)
+      new Date("2025-03-30T22:00:00Z"), // Berlin Mar 31 00:00 (CEST, +2)
+      "previous",
+      PLANT_TZ,
+    );
+    expect(prev.from.toISOString()).toBe("2025-03-28T23:00:00.000Z"); // Berlin Mar 29
+    expect(prev.to.toISOString()).toBe("2025-03-29T23:00:00.000Z");
+  });
+
+  test("previous: the 24h day after spring-forward starts its reference at midnight", () => {
+    // Copying 24h back from Berlin Mar 31 00:00 would land on Mar 29 23:00.
+    const prev = previousWindow(
+      new Date("2025-03-30T22:00:00Z"), // Berlin Mar 31 00:00
+      new Date("2025-03-31T22:00:00Z"), // Berlin Apr 1 00:00
+      "previous",
+      PLANT_TZ,
+    );
+    expect(prev.from.toISOString()).toBe("2025-03-29T23:00:00.000Z"); // Berlin Mar 30
+    expect(prev.to.toISOString()).toBe("2025-03-30T22:00:00.000Z");
+  });
+
+  test("previous: a week across a DST seam steps back seven calendar days", () => {
+    const prev = previousWindow(
+      new Date("2025-03-30T22:00:00Z"), // Berlin Mon Mar 31
+      new Date("2025-04-06T22:00:00Z"), // Berlin Mon Apr 7
+      "previous",
+      PLANT_TZ,
+    );
+    expect(prev.from.toISOString()).toBe("2025-03-23T23:00:00.000Z"); // Berlin Mon Mar 24
+  });
+
+  test("previous: a month steps back as many whole days, starting on a midnight", () => {
+    // Berlin March 2025 is 31 days less the DST hour. The reference is the 31
+    // days before (Jan 29 → Mar 1), not 31 days less an hour (Jan 29 01:00),
+    // and not February, which is shorter and would skew every total.
+    const prev = previousWindow(
+      new Date("2025-02-28T23:00:00Z"), // Berlin Mar 1
+      new Date("2025-03-31T22:00:00Z"), // Berlin Apr 1
+      "previous",
+      PLANT_TZ,
+    );
+    expect(prev.from.toISOString()).toBe("2025-01-28T23:00:00.000Z"); // Berlin Jan 29
+    expect(prev.to.toISOString()).toBe("2025-02-28T23:00:00.000Z");
+  });
+
+  test("previous: whole days are counted across a year edge", () => {
+    // Berlin Jan 1 → Apr 1 2025 is 90 days: the reference opens Oct 3 2024 (CEST).
+    const prev = previousWindow(
+      new Date("2024-12-31T23:00:00Z"), // Berlin Jan 1 2025
+      new Date("2025-03-31T22:00:00Z"), // Berlin Apr 1
+      "previous",
+      PLANT_TZ,
+    );
+    expect(prev.from.toISOString()).toBe("2024-10-02T22:00:00.000Z");
+  });
+
+  test("previous: midnight-aligned but not month-aligned steps back calendar days", () => {
+    // [Mar 1, Mar 15) is 14 days → [Feb 15, Mar 1).
+    const prev = previousWindow(
+      new Date("2025-02-28T23:00:00Z"),
+      new Date("2025-03-14T23:00:00Z"),
+      "previous",
+      PLANT_TZ,
+    );
+    expect(prev.from.toISOString()).toBe("2025-02-14T23:00:00.000Z");
+  });
+
+  test("previous: a window off the plant's midnights keeps its millisecond length", () => {
+    // Berlin Mar 30 10:30 → Mar 31 10:30 spans the seam: 23 real hours, copied.
+    const from = new Date("2025-03-30T08:30:00Z");
+    const to = new Date("2025-03-31T08:30:00Z");
+    const prev = previousWindow(from, to, "previous", PLANT_TZ);
+    expect(prev.to.toISOString()).toBe(from.toISOString());
+    expect(prev.to.getTime() - prev.from.getTime()).toBe(to.getTime() - from.getTime());
+  });
+
+  test("previous: an empty window stays empty", () => {
+    const at = new Date("2025-02-28T23:00:00Z");
+    const prev = previousWindow(at, at, "previous", PLANT_TZ);
+    expect(prev.from.toISOString()).toBe(at.toISOString());
+    expect(prev.to.toISOString()).toBe(at.toISOString());
+  });
+
+  test("previous: day alignment is judged on the plant's clock, not UTC's", () => {
+    // UTC midnights are 01:00 in Berlin winter: not aligned, so ms length.
+    const prev = previousWindow(
+      new Date("2025-03-01T00:00:00Z"),
+      new Date("2025-04-01T00:00:00Z"),
+      "previous",
+      PLANT_TZ,
+    );
+    expect(prev.from.toISOString()).toBe("2025-01-29T00:00:00.000Z");
   });
 
   test("yearAgo: the same plant-local calendar window one year back", () => {
@@ -57,7 +129,7 @@ describe("previousWindow", () => {
       new Date("2026-06-30T22:00:00Z"),
       new Date("2026-07-31T22:00:00Z"),
       "yearAgo",
-      HOST_TZ,
+      PLANT_TZ,
     );
     expect(prev.from.toISOString()).toBe("2025-06-30T22:00:00.000Z");
     expect(prev.to.toISOString()).toBe("2025-07-31T22:00:00.000Z");
@@ -84,7 +156,7 @@ describe("previousWindow", () => {
       new Date("2026-10-25T23:00:00Z"),
       new Date("2026-10-26T23:00:00Z"),
       "yearAgo",
-      HOST_TZ,
+      PLANT_TZ,
     );
     expect(prev.from.toISOString()).toBe("2025-10-25T22:00:00.000Z");
     expect(prev.to.toISOString()).toBe("2025-10-26T23:00:00.000Z");
@@ -107,7 +179,11 @@ const totalSlots = (m: Map<string, number>): number => [...m.values()].reduce((a
 
 describe("hodDowOccurrences", () => {
   test("plain full week: every (hod, dow) slot exactly once", () => {
-    const m = hodDowOccurrences(new Date(2025, 5, 2), new Date(2025, 5, 9), HOST_TZ); // Mon→Mon
+    const m = hodDowOccurrences(
+      new Date("2025-06-01T22:00:00Z"), // Berlin Mon Jun 2 00:00
+      new Date("2025-06-08T22:00:00Z"), // Berlin Mon Jun 9 00:00
+      PLANT_TZ,
+    );
     expect(m.size).toBe(168);
     expect(totalSlots(m)).toBe(168);
     expect(m.get("1:0")).toBe(1);
@@ -140,8 +216,25 @@ describe("hodDowOccurrences", () => {
   });
 
   test("mid-hour from: only full hour slots at or after from count", () => {
-    const m = hodDowOccurrences(new Date(2025, 5, 2, 10, 30), new Date(2025, 5, 2, 13), HOST_TZ); // Mon
+    const m = hodDowOccurrences(
+      new Date("2025-06-02T08:30:00Z"), // Berlin Mon 10:30
+      new Date("2025-06-02T11:00:00Z"), // Berlin Mon 13:00
+      PLANT_TZ,
+    );
     expect([...m.keys()].sort()).toEqual(["1:11", "1:12"]);
+  });
+
+  test("steps the rollup's UTC hours, whatever the host or plant offset", () => {
+    // hourly_rollups is time_bucket('1 hour') — UTC hours, which sit at :30 on
+    // an Indian wall clock. Only the 11:00Z bucket starts inside the window
+    // (16:30 IST, Mon). A host-local ceil lands on :30 UTC under a +05:30 host
+    // and counts 16:00 and 17:00 IST, neither of which is a bucket.
+    const m = hodDowOccurrences(
+      new Date("2026-03-02T10:15:00Z"),
+      new Date("2026-03-02T12:00:00Z"),
+      "Asia/Kolkata",
+    );
+    expect([...m.entries()]).toEqual([["1:16", 1]]);
   });
 });
 

@@ -17,12 +17,23 @@ import type {
 import type { CostSeriesPoint } from "../energy/cost";
 import type { CounterDeltaRow } from "../energy/rollup-reader";
 import { zoneParts } from "@SunReye/inverter-core/zone-parts";
-import { isoWeekday, shiftWindowYears } from "@SunReye/inverter-core/zoned-calendar";
+import {
+  calendarDate,
+  dayStart,
+  isoWeekday,
+  shiftWindowYears,
+  startOfDate,
+} from "@SunReye/inverter-core/zoned-calendar";
 
 /**
  * The reference window to compare `[from, to)` against:
- * - `previous` — the adjacent window of the same millisecond length, ending
- *   exactly where the current one starts: `[from − len, from)`.
+ * - `previous` — the adjacent window ending exactly where the current one
+ *   starts. When both edges are PLANT midnights (`timeZone`) it is the same
+ *   number of calendar days before, so a day compares against the whole day
+ *   before even across a DST night. Days, not months: February against
+ *   January would move every total by three days of length alone, and the
+ *   web's caption reads "the previous N days". Any other window keeps its
+ *   millisecond length: `[from − len, from)`.
  * - `yearAgo` — the same calendar window one year earlier on the PLANT's wall
  *   clock (`timeZone`), never the host's; a Feb 29 day compares against Feb 28
  *   (rule in `shiftWindowYears`).
@@ -34,8 +45,25 @@ export function previousWindow(
   timeZone: string,
 ): { from: Date; to: Date } {
   if (mode === "yearAgo") return shiftWindowYears({ from, to }, -1, timeZone);
+  const calendar = previousCalendarStart(from, to, timeZone);
+  if (calendar) return { from: calendar, to: new Date(from) };
   const len = to.getTime() - from.getTime();
   return { from: new Date(from.getTime() - len), to: new Date(from) };
+}
+
+const DAY_MS = 86_400_000;
+
+/** Start of the calendar-aligned `previous` window, or null when either edge
+ *  is not a plant midnight. */
+function previousCalendarStart(from: Date, to: Date, timeZone: string): Date | null {
+  const isMidnight = (t: Date) => dayStart(t, timeZone).getTime() === t.getTime();
+  if (!isMidnight(from) || !isMidnight(to)) return null;
+  const f = calendarDate(from, timeZone);
+  const t = calendarDate(to, timeZone);
+  const days = Math.round(
+    (Date.UTC(t.year, t.month - 1, t.day) - Date.UTC(f.year, f.month - 1, f.day)) / DAY_MS,
+  );
+  return startOfDate({ year: f.year, month: f.month, day: f.day - days }, timeZone);
 }
 
 const HOUR_MS = 3_600_000;
@@ -43,12 +71,11 @@ const HOUR_MS = 3_600_000;
 /** Map key for a (hod, dow) slot. */
 const slotKey = (hod: number, dow: number): string => `${dow}:${hod}`;
 
-/** Start of the first local hour at or after `d` (hour slots starting before
- *  `from` are outside the window, matching the SQL `bucket >= from` filter). */
+/** First UTC hour at or after `d`: `hourly_rollups` is `time_bucket('1 hour')`,
+ *  so its buckets start on UTC hours (on :30 or :45 of a wall clock in a
+ *  half-hour zone), and a slot starting before `from` fails `bucket >= from`. */
 function nextHourStart(d: Date): number {
-  const t = new Date(d);
-  t.setMinutes(0, 0, 0);
-  return t.getTime() < d.getTime() ? t.getTime() + HOUR_MS : t.getTime();
+  return Math.ceil(d.getTime() / HOUR_MS) * HOUR_MS;
 }
 
 /**
