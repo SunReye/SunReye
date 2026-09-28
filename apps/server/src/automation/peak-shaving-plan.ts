@@ -26,12 +26,11 @@
  * {@link projectPeakShavingDays} chains two of them for the today/tomorrow view.
  */
 
+import { nextDayStart } from "@SunReye/inverter-core/zoned-calendar";
 import type { PeakShavingPlan, PeakShavingPlans, PlanSlot } from "@SunReye/contracts/automation";
 import { HOUR_MS, type SlotFlows, flowStep } from "../energy/energy-flow";
 import { type DecisionInputs, NEAR_FULL_KWH, decideTargetA } from "./peak-shaving";
 import { type ForecastSlice, type ForecastSlot, remainingSlotsToday } from "./slot-window";
-
-const DAY_MS = 86_400_000;
 
 /** Absorption below this doesn't count as "charging starts here", W. */
 const CHARGING_FLOOR_W = 50;
@@ -44,12 +43,6 @@ export interface PlanLimits {
    * config's `minSoc`). 0 (the default) lets the pack drain fully.
    */
   reserveSocPct?: number;
-}
-
-/** Plant-local midnight after `nowMs` — the instant tomorrow starts. */
-function startOfNextLocalDay(nowMs: number, utcOffsetSeconds: number): number {
-  const offsetMs = utcOffsetSeconds * 1000;
-  return (Math.floor((nowMs + offsetMs) / DAY_MS) + 1) * DAY_MS - offsetMs;
 }
 
 /**
@@ -70,7 +63,9 @@ export function projectPeakShavingDays(
       socPct: today.endSocPct,
       evChargeW: 0,
       evRemainingKwh: 0,
-      nowMs: startOfNextLocalDay(base.nowMs, base.forecast.utcOffsetSeconds),
+      // The plant zone's midnight, not the series' fixed offset: on a DST-change
+      // day the two are an hour apart.
+      nowMs: nextDayStart(base.nowMs, base.forecast.timeZone).getTime(),
     },
     limits,
   );

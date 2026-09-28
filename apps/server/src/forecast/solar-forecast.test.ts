@@ -37,6 +37,9 @@ import {
   toForecastExport,
 } from "./solar-forecast";
 
+/** Every fixture labels its series at +02:00, Berlin's summer offset. */
+const ZONE = "Europe/Berlin";
+
 const config = (over: object = {}) =>
   solarForecastConfigSchema.parse({
     enabled: true,
@@ -122,7 +125,7 @@ describe("buildSolarForecast", () => {
   const nowMs = Date.parse("2026-07-18T10:00:00Z");
 
   test("buckets kWh into today / remaining / tomorrow by local day", () => {
-    const f = buildSolarForecast(config(), data, "test", nowMs);
+    const f = buildSolarForecast(config(), data, "test", ZONE, nowMs);
     expect(f.provider).toBe("test");
     expect(f.series).toHaveLength(3);
     expect(f.todayKwh).toBeGreaterThan(f.remainingTodayKwh);
@@ -131,9 +134,48 @@ describe("buildSolarForecast", () => {
     expect(f.tomorrowKwh).toBeCloseTo((f.series[2]?.watts ?? -1) / 1000, 6);
   });
 
+  test("fall-back day: today/tomorrow split at the plant's CET midnight", () => {
+    // The series carries one fixed +02:00 for the whole run (Open-Meteo's
+    // utc_offset_seconds), so on 25 October the 22:00Z hour is labelled
+    // "2026-10-26T00:00" while Berlin's wall clock reads 23:00 on the 25th.
+    const fallBack: IrradianceForecast = {
+      times: ["2026-10-25T23:00", "2026-10-26T00:00", "2026-10-26T01:00"],
+      utcOffsetSeconds: 7200,
+      location: { latitude: 48, longitude: 9 },
+      temperature: [10, 10, 10],
+      gti: [[0, 800, 400]],
+    };
+    const at = Date.parse("2026-10-25T21:00:00Z");
+    const f = buildSolarForecast(config(), fallBack, "test", ZONE, at);
+    const kwh = (i: number) => (f.series[i]?.watts ?? -1) / 1000;
+    expect(f.todayKwh).toBeCloseTo(kwh(0) + kwh(1), 6);
+    expect(f.tomorrowKwh).toBeCloseTo(kwh(2), 6);
+  });
+
+  test("spring-forward day: tomorrow starts at the plant's CEST midnight", () => {
+    // Series fixed at +01:00; Berlin's 30 March starts at 22:00Z, labelled 23:00.
+    const spring: IrradianceForecast = {
+      times: ["2026-03-29T22:00", "2026-03-29T23:00", "2026-03-30T00:00"],
+      utcOffsetSeconds: 3600,
+      location: { latitude: 48, longitude: 9 },
+      temperature: [10, 10, 10],
+      gti: [[400, 800, 400]],
+    };
+    const at = Date.parse("2026-03-29T20:00:00Z");
+    const f = buildSolarForecast(config(), spring, "test", ZONE, at);
+    const kwh = (i: number) => (f.series[i]?.watts ?? -1) / 1000;
+    expect(f.todayKwh).toBeCloseTo(kwh(0), 6);
+    expect(f.remainingTodayKwh).toBeCloseTo(kwh(0), 6);
+    expect(f.tomorrowKwh).toBeCloseTo(kwh(1) + kwh(2), 6);
+  });
+
+  test("carries the plant zone it bucketed by", () => {
+    expect(buildSolarForecast(config(), data, "test", ZONE, nowMs).timeZone).toBe(ZONE);
+  });
+
   test("prorates the running hour by the fraction still ahead", () => {
     // Local 12:30 → half of the 12:00 slot remains.
-    const f = buildSolarForecast(config(), data, "test", Date.parse("2026-07-18T10:30:00Z"));
+    const f = buildSolarForecast(config(), data, "test", ZONE, Date.parse("2026-07-18T10:30:00Z"));
     expect(f.remainingTodayKwh).toBeCloseTo(((f.series[1]?.watts ?? -1) / 1000) * 0.5, 6);
   });
 
@@ -151,11 +193,12 @@ describe("buildSolarForecast", () => {
         [50, 400, 200],
       ],
     };
-    const f = buildSolarForecast(two, twoPlanes, "test", nowMs);
+    const f = buildSolarForecast(two, twoPlanes, "test", ZONE, nowMs);
     const single = buildSolarForecast(
       config({ arrays: [{ kwp: 5, tilt: 30, azimuth: -45 }] }),
       data,
       "test",
+      ZONE,
       nowMs,
     );
     expect(f.series[1]?.watts ?? 0).toBeGreaterThan(single.series[1]?.watts ?? Infinity);
@@ -163,12 +206,12 @@ describe("buildSolarForecast", () => {
 
   test("missing gti entries count as zero rather than crashing", () => {
     const sparse: IrradianceForecast = { ...data, gti: [] };
-    const f = buildSolarForecast(config(), sparse, "test", nowMs);
+    const f = buildSolarForecast(config(), sparse, "test", ZONE, nowMs);
     expect(f.todayKwh).toBe(0);
   });
 
   test("next15 reports the running hour's power and its quarter-hour energy", () => {
-    const f = buildSolarForecast(config(), data, "test", nowMs);
+    const f = buildSolarForecast(config(), data, "test", ZONE, nowMs);
     const noon = f.series[1]?.watts ?? 0;
     expect(f.next15.maxPowerW).toBeCloseTo(noon, 6);
     expect(f.next15.energyKwh).toBeCloseTo(noon / 1000 / 4, 6);
@@ -184,7 +227,7 @@ describe("buildSolarForecast", () => {
       gti: [[800, 400, 100, 0]],
     };
     const before = Date.parse("2026-07-18T13:00:00Z"); // local 15:00, ahead of the limb
-    const f = buildSolarForecast(config(), ramp, "test", before);
+    const f = buildSolarForecast(config(), ramp, "test", ZONE, before);
     const p = (g: number) => pvPowerW({ gtiWm2: g, ambientC: 25 }, 10, -0.4, 14);
     // Each hour is the mean of its two endpoints; the last has no successor.
     expect(f.series[0]?.watts).toBeCloseTo((p(800) + p(400)) / 2, 6);
@@ -199,7 +242,7 @@ describe("buildSolarForecast", () => {
   test("non-adjacent samples are not averaged across the gap", () => {
     // The default `data` fixture is sparse (4 h / 24 h gaps): each hour must keep
     // its own instantaneous estimate rather than trapezoid across the gap.
-    const f = buildSolarForecast(config(), data, "test", nowMs);
+    const f = buildSolarForecast(config(), data, "test", ZONE, nowMs);
     const p = (g: number, t: number) => pvPowerW({ gtiWm2: g, ambientC: t }, 10, -0.4, 14);
     expect(f.series[1]?.watts).toBeCloseTo(p(800, 25), 6);
   });
@@ -215,8 +258,8 @@ describe("buildSolarForecast", () => {
       gti: [[300]],
     };
     const at = Date.parse("2026-07-18T16:00:00Z"); // local 18:00, hour is ahead
-    const plain = buildSolarForecast(config(), evening, "test", at);
-    const withDni = buildSolarForecast(config(), { ...evening, dni: [500] }, "test", at);
+    const plain = buildSolarForecast(config(), evening, "test", ZONE, at);
+    const withDni = buildSolarForecast(config(), { ...evening, dni: [500] }, "test", ZONE, at);
     expect(withDni.series[0]?.watts ?? Infinity).toBeLessThan(plain.series[0]?.watts ?? 0);
   });
 
@@ -225,9 +268,16 @@ describe("buildSolarForecast", () => {
       config(),
       { ...data, windSpeed: [0.5, 0.5, 0.5] },
       "test",
+      ZONE,
       nowMs,
     );
-    const windy = buildSolarForecast(config(), { ...data, windSpeed: [8, 8, 8] }, "test", nowMs);
+    const windy = buildSolarForecast(
+      config(),
+      { ...data, windSpeed: [8, 8, 8] },
+      "test",
+      ZONE,
+      nowMs,
+    );
     expect(windy.series[1]?.watts ?? 0).toBeGreaterThan(calm.series[1]?.watts ?? Infinity);
   });
 });
@@ -252,7 +302,7 @@ describe("buildSolarForecast 15-minute grid", () => {
   const p = (g: number) => pvPowerW({ gtiWm2: g, ambientC: 25 }, 10, -0.4, 14);
 
   test("reports the grid's step and weights energy by slot width", () => {
-    const f = buildSolarForecast(config(), quarter, "test", at);
+    const f = buildSolarForecast(config(), quarter, "test", ZONE, at);
     expect(f.stepMinutes).toBe(15);
     // Every slot is a quarter hour (the last inherits the preceding width).
     const sum = f.series.reduce((s, x) => s + x.watts, 0) / 4 / 1000;
@@ -260,14 +310,14 @@ describe("buildSolarForecast 15-minute grid", () => {
   });
 
   test("per-slot watts is the trapezoid mean, peak the larger endpoint", () => {
-    const f = buildSolarForecast(config(), quarter, "test", at);
+    const f = buildSolarForecast(config(), quarter, "test", ZONE, at);
     expect(f.series[0]?.watts).toBeCloseTo((p(800) + p(900)) / 2, 6);
     expect(f.series[0]?.peakWatts).toBeCloseTo(p(900), 6);
     expect(f.series[1]?.peakWatts).toBeCloseTo(p(900), 6);
   });
 
   test("next15 covers exactly the first quarter-hour slot", () => {
-    const f = buildSolarForecast(config(), quarter, "test", at);
+    const f = buildSolarForecast(config(), quarter, "test", ZONE, at);
     expect(f.next15.energyKwh).toBeCloseTo((f.series[0]?.watts ?? 0) / 4 / 1000, 6);
     expect(f.next15.maxPowerW).toBeCloseTo(f.series[0]?.peakWatts ?? 0, 6);
     // The tile draws the AVERAGE, so tile kW × 0.25 h must equal tile kWh, and
@@ -280,7 +330,13 @@ describe("buildSolarForecast 15-minute grid", () => {
 
   test("remaining prorates the running quarter-hour slot", () => {
     // Local 12:20 → 10 of the 12:15 slot's 15 minutes remain.
-    const f = buildSolarForecast(config(), quarter, "test", Date.parse("2026-07-18T10:20:00Z"));
+    const f = buildSolarForecast(
+      config(),
+      quarter,
+      "test",
+      ZONE,
+      Date.parse("2026-07-18T10:20:00Z"),
+    );
     const rest = f.series.slice(2).reduce((s, x) => s + x.watts, 0);
     const expected = ((f.series[1]?.watts ?? 0) * (10 / 15) + rest) / 4 / 1000;
     expect(f.remainingTodayKwh).toBeCloseTo(expected, 6);
@@ -299,10 +355,10 @@ describe("buildSolarForecast clipping", () => {
     gti: [[1000, 1000, 1000, 1000]],
   };
   const now = Date.parse("2026-07-18T08:00:00Z"); // local 10:00
-  const raw = buildSolarForecast(config(), sun, "test", now).series.map((h) => h.watts);
+  const raw = buildSolarForecast(config(), sun, "test", ZONE, now).series.map((h) => h.watts);
 
   test("no clipping config leaves output identical to the raw estimate", () => {
-    const f = buildSolarForecast(config(), sun, "test", now, {
+    const f = buildSolarForecast(config(), sun, "test", ZONE, now, {
       startSocPct: 40,
       houseLoadW: 500,
     });
@@ -311,13 +367,13 @@ describe("buildSolarForecast clipping", () => {
 
   test("battery soaks up surplus, then output clips to the feed-in cap", () => {
     const clip = config({ maxOutputW: 3000, battery: { usableKwh: 5, minSoc: 0 } });
-    const f = buildSolarForecast(clip, sun, "test", now, { startSocPct: 0, houseLoadW: 0 });
+    const f = buildSolarForecast(clip, sun, "test", ZONE, now, { startSocPct: 0, houseLoadW: 0 });
     // Hour 1: 5 kWh headroom absorbs the above-cap surplus → no curtailment.
     expect(f.series[0]?.watts).toBeCloseTo(raw[0] ?? 0, 6);
     // Battery now full + no load → later hours clip to the 3 kW export cap.
     expect(f.series[1]?.watts).toBeCloseTo(3000, 6);
     expect(f.series[2]?.watts).toBeCloseTo(3000, 6);
-    expect(f.todayKwh).toBeLessThan(buildSolarForecast(config(), sun, "test", now).todayKwh);
+    expect(f.todayKwh).toBeLessThan(buildSolarForecast(config(), sun, "test", ZONE, now).todayKwh);
   });
 
   test("a bigger battery curtails less (more headroom for surplus)", () => {
@@ -325,6 +381,7 @@ describe("buildSolarForecast clipping", () => {
       config({ maxOutputW: 3000, battery: { usableKwh: 3, minSoc: 0 } }),
       sun,
       "test",
+      ZONE,
       now,
       { startSocPct: 0, houseLoadW: 0 },
     );
@@ -332,6 +389,7 @@ describe("buildSolarForecast clipping", () => {
       config({ maxOutputW: 3000, battery: { usableKwh: 15, minSoc: 0 } }),
       sun,
       "test",
+      ZONE,
       now,
       { startSocPct: 0, houseLoadW: 0 },
     );
@@ -340,8 +398,11 @@ describe("buildSolarForecast clipping", () => {
 
   test("house load is served before the cap, lifting usable output", () => {
     const clip = config({ maxOutputW: 3000, battery: { usableKwh: 5, minSoc: 0 } });
-    const noLoad = buildSolarForecast(clip, sun, "test", now, { startSocPct: 100, houseLoadW: 0 });
-    const withLoad = buildSolarForecast(clip, sun, "test", now, {
+    const noLoad = buildSolarForecast(clip, sun, "test", ZONE, now, {
+      startSocPct: 100,
+      houseLoadW: 0,
+    });
+    const withLoad = buildSolarForecast(clip, sun, "test", ZONE, now, {
       startSocPct: 100, // battery starts full → clipping bites immediately
       houseLoadW: 2000,
     });
@@ -356,7 +417,7 @@ describe("buildSolarForecast clipping", () => {
 
   test("without a day-start SOC, past slots keep the raw estimate", () => {
     const clip = config({ maxOutputW: 3000, battery: { usableKwh: 5, minSoc: 0 } });
-    const f = buildSolarForecast(clip, sun, "test", laterNow, {
+    const f = buildSolarForecast(clip, sun, "test", ZONE, laterNow, {
       startSocPct: 100,
       houseLoadW: 0,
     });
@@ -366,7 +427,7 @@ describe("buildSolarForecast clipping", () => {
 
   test("a day-start SOC lets the sim clip past slots too (no seam at now)", () => {
     const clip = config({ maxOutputW: 3000, battery: { usableKwh: 5, minSoc: 0 } });
-    const f = buildSolarForecast(clip, sun, "test", laterNow, {
+    const f = buildSolarForecast(clip, sun, "test", ZONE, laterNow, {
       startSocPct: 100,
       houseLoadW: 0,
       dayStartSocPct: 100,
@@ -379,7 +440,7 @@ describe("buildSolarForecast clipping", () => {
     // Huge battery from empty: the sim alone would never fill it today, but the
     // live reading says it is full now — future slots must clip immediately.
     const clip = config({ maxOutputW: 3000, battery: { usableKwh: 50, minSoc: 0 } });
-    const f = buildSolarForecast(clip, sun, "test", laterNow, {
+    const f = buildSolarForecast(clip, sun, "test", ZONE, laterNow, {
       startSocPct: 100,
       houseLoadW: 0,
       dayStartSocPct: 0,
@@ -389,7 +450,7 @@ describe("buildSolarForecast clipping", () => {
   });
 
   test("a cap-only plant clips past slots without any SOC", () => {
-    const f = buildSolarForecast(config({ maxOutputW: 3000 }), sun, "test", laterNow, {
+    const f = buildSolarForecast(config({ maxOutputW: 3000 }), sun, "test", ZONE, laterNow, {
       startSocPct: null,
       houseLoadW: 0,
     });
@@ -407,8 +468,11 @@ describe("buildSolarForecast clipping", () => {
     };
     const at = Date.parse("2026-07-18T10:00:00Z"); // local noon on day 1
     const clip = config({ maxOutputW: 3000, battery: { usableKwh: 5, minSoc: 0 } });
-    const f = buildSolarForecast(clip, twoDay, "test", at, { startSocPct: 100, houseLoadW: 2000 });
-    const rawNoon = buildSolarForecast(config(), twoDay, "test", at).series[3]?.watts ?? 0;
+    const f = buildSolarForecast(clip, twoDay, "test", ZONE, at, {
+      startSocPct: 100,
+      houseLoadW: 2000,
+    });
+    const rawNoon = buildSolarForecast(config(), twoDay, "test", ZONE, at).series[3]?.watts ?? 0;
     // Battery started full but 4 kWh drained overnight, so day-2 noon has headroom
     // again and its usable output beats a full-battery (immediately clipping) day.
     expect(f.series[1]?.watts).toBe(0); // dark hour, all load from battery
@@ -428,7 +492,7 @@ describe("toForecastExport", () => {
   const nowMs = Date.parse("2026-07-18T10:00:00Z");
 
   test("mirrors the series into an offset-aware Solcast-style curve", () => {
-    const f = buildSolarForecast(config(), data, "test", nowMs);
+    const f = buildSolarForecast(config(), data, "test", ZONE, nowMs);
     const exported = toForecastExport(f, "raw");
     expect(exported.detailedForecast).toHaveLength(f.raw.series.length);
     expect(exported.detailedForecast[0]).toEqual({
@@ -442,14 +506,22 @@ describe("toForecastExport", () => {
     expect("raw" in exported).toBe(false);
   });
 
+  test("both variants share one key set: the bucketing zone stays internal", () => {
+    const f = buildSolarForecast(config(), data, "test", ZONE, nowMs);
+    const raw = Object.keys(toForecastExport(f, "raw")).sort();
+    const usable = Object.keys(toForecastExport(f, "usable")).sort();
+    expect(usable).toEqual(raw);
+    expect(usable).not.toContain("timeZone");
+  });
+
   test("emits Z for a UTC plant and a negative offset west of UTC", () => {
     const utc = toForecastExport(
-      buildSolarForecast(config(), { ...data, utcOffsetSeconds: 0 }, "t", nowMs),
+      buildSolarForecast(config(), { ...data, utcOffsetSeconds: 0 }, "t", ZONE, nowMs),
       "raw",
     );
     expect(utc.detailedForecast[0]?.period_start).toBe("2026-07-18T08:00:00Z");
     const west = toForecastExport(
-      buildSolarForecast(config(), { ...data, utcOffsetSeconds: -18_000 }, "t", nowMs),
+      buildSolarForecast(config(), { ...data, utcOffsetSeconds: -18_000 }, "t", ZONE, nowMs),
       "raw",
     );
     expect(west.detailedForecast[0]?.period_start).toBe("2026-07-18T08:00:00-05:00");
@@ -459,7 +531,10 @@ describe("toForecastExport", () => {
     // 10 kWp plant, 3 kW export cap, no battery, no house load: the sunny slot's
     // raw potential sits well above 3 kW, but the usable view is curtailed to it.
     const capped = config({ maxOutputW: 3000 });
-    const f = buildSolarForecast(capped, data, "test", nowMs, { startSocPct: null, houseLoadW: 0 });
+    const f = buildSolarForecast(capped, data, "test", ZONE, nowMs, {
+      startSocPct: null,
+      houseLoadW: 0,
+    });
     const raw = toForecastExport(f, "raw");
     const usable = toForecastExport(f, "usable");
     const noonRaw = raw.detailedForecast[1]?.watts ?? 0;
@@ -480,11 +555,13 @@ describe("buildSolarForecast correction", () => {
     gti: [[100, 800, 400]],
   };
   const nowMs = Date.parse("2026-07-18T10:00:00Z");
-  const baseline = buildSolarForecast(config(), data, "test", nowMs).series.map((s) => s.watts);
+  const baseline = buildSolarForecast(config(), data, "test", ZONE, nowMs).series.map(
+    (s) => s.watts,
+  );
 
   test("an empty model leaves the forecast identical", () => {
     const empty: CorrectionModel = new Map();
-    const f = buildSolarForecast(config(), data, "test", nowMs, undefined, empty);
+    const f = buildSolarForecast(config(), data, "test", ZONE, nowMs, undefined, empty);
     expect(f.series.map((s) => s.watts)).toEqual(baseline);
   });
 
@@ -493,7 +570,7 @@ describe("buildSolarForecast correction", () => {
     const factor = correctionFactor(model, 7, 12);
     expect(factor).toBeGreaterThan(1);
 
-    const f = buildSolarForecast(config(), data, "test", nowMs, undefined, model);
+    const f = buildSolarForecast(config(), data, "test", ZONE, nowMs, undefined, model);
     // The 08:00 slot has no matching cell → untouched.
     expect(f.series[0]?.watts).toBeCloseTo(baseline[0] ?? -1, 6);
     // Both noon slots (month 7, hour 12) scale by the applied factor.
@@ -580,9 +657,19 @@ const realDb = await import("@SunReye/db");
 const realRegistry = await import("../devices/registry-instance");
 const realState = await import("../shared/state");
 
+const realDisplaySettings = await import("../settings/display-settings");
+
 const realDbExports = { ...realDb };
 const realRegistryExports = { ...realRegistry };
 const realStateExports = { ...realState };
+const realDisplaySettingsExports = { ...realDisplaySettings };
+
+// The plant zone the daily sums bucket by — pinned, so the result never depends
+// on the host zone (the energy/cost suites stub the same seam).
+mock.module("../settings/display-settings", () => ({
+  ...realDisplaySettings,
+  getPlantTimeZone: async () => ZONE,
+}));
 
 /** Every statement `db.execute` was handed, flattened for substring matching. */
 const queries: { sql: string; params: unknown[] }[] = [];
@@ -668,6 +755,7 @@ afterAll(() => {
   mock.module("@SunReye/db", () => ({ ...realDbExports }));
   mock.module("../devices/registry-instance", () => ({ ...realRegistryExports }));
   mock.module("../shared/state", () => ({ ...realStateExports }));
+  mock.module("../settings/display-settings", () => ({ ...realDisplaySettingsExports }));
 });
 
 const HOUR = 3_600_000;
@@ -1379,7 +1467,7 @@ describe("buildSolarForecast array orientation", () => {
     };
     const at = Date.parse(`${localTime}:00Z`) - 7200_000;
     const cfg = config({ arrays: [{ kwp: 10, tilt, azimuth }], tempCoefficient });
-    return buildSolarForecast(cfg, data, "test", at).series[0]?.watts ?? 0;
+    return buildSolarForecast(cfg, data, "test", ZONE, at).series[0]?.watts ?? 0;
   };
 
   test("an east array leads in the morning and a west array in the afternoon", () => {
@@ -1447,7 +1535,7 @@ describe("buildSolarForecast per-array overrides", () => {
     };
     const at = Date.parse(`${AT}:00Z`) - 7200_000;
     const cfg = config({ arrays, ...plant });
-    return buildSolarForecast(cfg, data, "test", at).series[0]?.watts ?? 0;
+    return buildSolarForecast(cfg, data, "test", ZONE, at).series[0]?.watts ?? 0;
   };
 
   /** What the model says one array should make, given the pair it was handed. */
