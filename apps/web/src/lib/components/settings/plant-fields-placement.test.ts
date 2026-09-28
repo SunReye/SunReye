@@ -20,7 +20,7 @@ const read = async (file: string) => await Bun.file(new URL(file, import.meta.ur
 
 const weatherForm = await read("./weather-form.svelte");
 const plantForm = await read("./plant-form.svelte");
-const deviceLogic = await read("./devices/add-device-logic.ts");
+const deviceLogic = await read("./devices/device-form.ts");
 const blockerAlert = await read("../automations/blocker-alert.svelte");
 const peakShavingForm = await read("../automations/peak-shaving-form.svelte");
 

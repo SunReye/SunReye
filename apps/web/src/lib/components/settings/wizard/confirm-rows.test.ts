@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { emptyForm } from "../devices/add-device-logic";
+import { emptyForm } from "../devices/device-form";
 import type { AddDeviceForm } from "../devices/device-types";
 import { answerRows } from "./confirm-rows";
 

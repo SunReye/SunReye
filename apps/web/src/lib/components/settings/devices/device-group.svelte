@@ -3,7 +3,7 @@
 	import Section from '$lib/components/layout/section.svelte';
 	import { resolve } from '$lib/resolve';
 	import * as m from '$lib/paraglide/messages';
-	import { type DeviceGroup, groupIsEmpty, nestIntegrations } from './add-device-logic';
+	import { type DeviceGroup, groupIsEmpty, nestIntegrations } from './roster-groups';
 	import DeviceRows from './device-rows.svelte';
 	import type { ConnectionView, DeviceHandlers, IntegrationHandlers } from './device-types';
 	import IntegrationList from './integration-list.svelte';
@@ -38,7 +38,7 @@
 	} = $props();
 
 	const connection = $derived(group.connection);
-	// The caption is decided in `add-device-logic.ts`, per KIND: a gateway says
+	// The caption is decided in `roster-groups.ts`, per KIND: a gateway says
 	// how it is framed and how often it is read, a broker says which broker it is.
 	const caption = $derived(group.caption ?? undefined);
 	// Empty means BOTH halves empty — a broker whose EVCC ingest is configured and

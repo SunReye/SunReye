@@ -1,5 +1,5 @@
 <script lang="ts">
-	import type { IntegrationWithDevices } from './add-device-logic';
+	import type { IntegrationWithDevices } from './roster-groups';
 	import DeviceRows from './device-rows.svelte';
 	import type { DeviceHandlers, IntegrationHandlers } from './device-types';
 	import IntegrationRow from './integration-row.svelte';

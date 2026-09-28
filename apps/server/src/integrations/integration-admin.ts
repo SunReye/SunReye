@@ -27,6 +27,11 @@
  * an entry, and adding a kind is an entry rather than an edit here.
  */
 
+import type {
+  ConnectionStatus,
+  IntegrationList,
+  IntegrationView,
+} from "@SunReye/contracts/devices";
 import type { ConnectionKind } from "@SunReye/db/connection-kinds";
 import {
   INTEGRATION_KINDS,
@@ -47,7 +52,6 @@ import type {
 import { isRetired } from "@SunReye/db/plant-repo";
 import { z } from "zod";
 
-import type { ConnectionStatus } from "../devices/connection-tier";
 import type { CatalogEntry } from "../devices/integration-catalog";
 import { EVCC_LOADPOINT_PROFILE } from "../evcc/evcc-devices";
 import { parseBody } from "../shared/zod-field";
@@ -87,37 +91,6 @@ export interface IntegrationAdminDeps {
    * {@link IntegrationView.status}.
    */
   connectionStatus?(connectionId: number | null): ConnectionStatus | null;
-}
-
-/**
- * An integration as the settings page shows it: the row, plus the three facts
- * the row alone cannot answer, all read from the catalog entry for its kind.
- *
- * `label`, `addable` and `multiInstance` are DERIVED per response rather than
- * stored: a build that renames "EVCC" or makes the export multi-instance would
- * otherwise be contradicted by every row written before it.
- */
-export interface IntegrationView {
-  id: number;
-  kind: string;
-  connectionId: number | null;
-  enabled: boolean;
-  params: Record<string, unknown>;
-  /** From the catalog entry; falls back to the raw kind when this build has none. */
-  label: string;
-  addable: boolean;
-  multiInstance: boolean;
-  /**
-   * What is OBSERVED of the connection this integration runs over, or null when
-   * nothing in this process holds a client for it (#221).
-   *
-   * NULL IS NOT "DOWN". It is "not known here" — an integration on no
-   * connection at all, a `modbus` row the poll loop still owns, or a boot that
-   * has not opened anything yet. A settings page that painted it red would be
-   * making a measurement up, which is worse than the config-derived status this
-   * replaces, because it looks like one.
-   */
-  status: ConnectionStatus | null;
 }
 
 /** A refusal the route turns into its status, with the field it concerns. */
@@ -234,9 +207,7 @@ async function requirePlant(deps: IntegrationAdminDeps): Promise<PlantRecord> {
 }
 
 /** Everything configured on the plant, in row order. */
-export async function listIntegrations(
-  deps: IntegrationAdminDeps,
-): Promise<{ integrations: IntegrationView[] }> {
+export async function listIntegrations(deps: IntegrationAdminDeps): Promise<IntegrationList> {
   const plant = await deps.store.readPlant();
   if (!plant) return { integrations: [] };
   const [rows, connections] = await Promise.all([

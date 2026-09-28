@@ -2,7 +2,8 @@
 	import { Label } from '$lib/components/ui/label';
 	import * as NativeSelect from '$lib/components/ui/native-select';
 	import * as m from '$lib/paraglide/messages';
-	import { type Refusal, connectionOptions } from './add-device-logic';
+	import { connectionOptions } from './device-form';
+	import type { Refusal } from './device-roster';
 	import { type AddDeviceForm, type ConnectionView, NEW_CONNECTION } from './device-types';
 	import FieldProblem from './field-problem.svelte';
 	import NewConnectionFields from './new-connection-fields.svelte';

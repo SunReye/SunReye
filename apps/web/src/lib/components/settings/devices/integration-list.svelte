@@ -1,6 +1,6 @@
 <script lang="ts">
 	import * as m from '$lib/paraglide/messages';
-	import type { IntegrationWithDevices } from './add-device-logic';
+	import type { IntegrationWithDevices } from './roster-groups';
 	import type { DeviceHandlers, IntegrationHandlers } from './device-types';
 	import IntegrationEntry from './integration-entry.svelte';
 

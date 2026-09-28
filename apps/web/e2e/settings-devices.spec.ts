@@ -5,7 +5,7 @@
  * bound to form state, a "new connection" branch that appears on one option,
  * a submit button whose `disabled` follows a derived body, and a server
  * refusal that has to land under the field it names. The rules themselves
- * (`add-device-logic.test.ts`) are proven in milliseconds; what only exists
+ * (`device-form.test.ts`, `roster-groups.test.ts`, `device-roster.test.ts`) are proven in milliseconds; what only exists
  * here is whether the bindings wire them to the controls.
  */
 

@@ -1,12 +1,12 @@
 <script lang="ts">
 	import { resolve } from '$lib/resolve';
 	import StatusBadge from '../status-badge.svelte';
-	import { deviceBadge } from './device-badge';
+	import { deviceBadge } from './device-words';
 	import type { DeviceView } from './device-types';
 
 	// The one badge a device carries, or NOTHING — the device being read has no
 	// badge at all, because a row with nothing to say is a row that is fine.
-	// Which badge is `device-badge.ts`'s decision (and its test's); what is left
+	// Which badge is `device-words.ts`'s decision (and its test's); what is left
 	// here is whether it is a link, a hover hint or neither.
 	let { device }: { device: DeviceView } = $props();
 

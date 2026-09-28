@@ -6,7 +6,8 @@
 	import * as m from '$lib/paraglide/messages';
 	import ExternalProfilesManager from '../external-profiles-manager.svelte';
 	import type { RegisteredProfile } from '../profile-types';
-	import { type Refusal, profileGroups } from './add-device-logic';
+	import { profileGroups } from './device-form';
+	import type { Refusal } from './device-roster';
 	import type { AddDeviceForm } from './device-types';
 	import FieldProblem from './field-problem.svelte';
 

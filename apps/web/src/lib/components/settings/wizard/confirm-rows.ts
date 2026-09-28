@@ -10,7 +10,7 @@
 
 import * as m from "$lib/paraglide/messages";
 import type { AddDeviceForm } from "../devices/device-types";
-import { roleLabel } from "../devices/role-label";
+import { roleLabel } from "../devices/device-words";
 import type { RegisteredProfile } from "../profile-types";
 import type { WizardAnswers } from "./add-wizard";
 import { fieldLabel } from "./field-label";
