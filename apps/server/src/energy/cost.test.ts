@@ -324,20 +324,29 @@ describe("§51 EEG — export that earned nothing", () => {
     export: { mode: "spot", feedInPerKwh: 0.08, spot: { marketingModel: "eegFeedIn" } },
   });
 
-  const day = (h: number) => new Date(2024, 5, 15, h);
-  /** `kwh` exported in the local hour `h`. */
+  // UTC instants priced for a UTC plant, so no host zone can split an hour
+  // (a half-hour host would, against local-hour fixtures that no rollup emits).
+  const day = (h: number) => new Date(Date.UTC(2024, 5, 15, h));
+  const utcDeps = (): CostDeps => ({ ...deps(), context: { tz: "UTC", tariff, target: "inv-1" } });
+  /** `kwh` exported in the UTC hour `h`. */
   const exportedAt = (h: number, kwh: number) => hourOf(day(h), { export: kwh });
-  /** Quarter-hourly day-ahead prices for one local hour, in €/MWh. */
+  /** Quarter-hourly day-ahead prices for one UTC hour, in €/MWh. */
   const slotsAt = (h: number, prices: number[], date = day(h)) =>
     prices.map((eurPerMwh, i) => ({
-      slotStart: new Date(date.getFullYear(), date.getMonth(), date.getDate(), h, i * 15),
+      slotStart: new Date(
+        Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate(), h, i * 15),
+      ),
       eurPerMwh,
     }));
 
   /** The day's breakdown over the given hours. */
   const costOverDay = (read: HourEnergy[]) => {
     hours = read;
-    return computeCost(exportProfile, { from: day(0), to: day(23), inverterId: "inv-1" }, deps());
+    return computeCost(
+      exportProfile,
+      { from: day(0), to: day(23), inverterId: "inv-1" },
+      utcDeps(),
+    );
   };
 
   afterEach(() => {
@@ -425,7 +434,7 @@ describe("§51 EEG — export that earned nothing", () => {
     // A month bucket alone cannot say which 13:00 a row belongs to, so the
     // series drops to day granularity and rolls the priced days up.
     tariff = eegTariff;
-    spotSlots = slotsAt(13, [-5, -5, -5, -5], new Date(2024, 5, 15));
+    spotSlots = slotsAt(13, [-5, -5, -5, -5], day(0));
     matrixRows = [
       { period: "2024-06-15", hod: 13, dow: 6, metric: "exp", kwh: 4 },
       { period: "2024-06-16", hod: 13, dow: 7, metric: "exp", kwh: 4 },
@@ -433,12 +442,12 @@ describe("§51 EEG — export that earned nothing", () => {
     const points = await computeCostSeries(
       exportProfile,
       {
-        from: new Date(2024, 5, 1),
-        to: new Date(2024, 6, 1),
+        from: new Date(Date.UTC(2024, 5, 1)),
+        to: new Date(Date.UTC(2024, 6, 1)),
         bucket: "month",
         inverterId: "inv-1",
       },
-      deps(),
+      utcDeps(),
     );
     expect(points.map((p) => p.bucket)).toEqual(["2024-06"]);
     // The 15th's export earned nothing; the 16th's — unpriced — was paid.
@@ -452,16 +461,129 @@ describe("§51 EEG — export that earned nothing", () => {
     const points = await computeCostSeries(
       exportProfile,
       {
-        from: new Date(2024, 5, 1),
-        to: new Date(2024, 6, 1),
+        from: new Date(Date.UTC(2024, 5, 1)),
+        to: new Date(Date.UTC(2024, 6, 1)),
         bucket: "month",
         inverterId: "inv-1",
       },
-      deps(),
+      utcDeps(),
     );
     expect(points.map((p) => p.bucket)).toEqual(["2024-06"]);
     expect(points[0]?.exportEarnings).toBeCloseTo(0.32, 10);
     expect(points[0]?.zeroValueExportKwh).toBe(0);
+  });
+});
+
+describe("§51 hours in the plant zone, whatever the host's", () => {
+  // Rollup hours are `time_bucket('1 hour')`: UTC-aligned, so in a half-hour
+  // zone an hour runs 13:30–14:30 local. Day-ahead slots are UTC quarter-hours
+  // too, so a share is keyed by the UTC hour. Every fixture below is an explicit
+  // UTC instant priced for an explicit plant zone; the host's zone never enters.
+  const exportProfile = profileWith({ "grid.energy.exported.total": "exp" });
+  const eegTariff: TariffConfig = tariffConfigSchema.parse({
+    currency: "EUR",
+    standingChargeMonthly: 0,
+    import: { defaultPricePerKwh: 0.3 },
+    export: { mode: "spot", feedInPerKwh: 0.08, spot: { marketingModel: "eegFeedIn" } },
+  });
+  const depsIn = (tz: string): CostDeps => ({
+    ...deps(),
+    context: { tz, tariff: eegTariff, target: "inv-1" },
+  });
+  /** Four negative quarter-hours starting at the UTC instant `iso`. */
+  const negativeHourAt = (iso: string) =>
+    [0, 1, 2, 3].map((i) => ({
+      slotStart: new Date(Date.parse(iso) + i * 15 * 60_000),
+      eurPerMwh: -5,
+    }));
+
+  /** The day-bucket series point for plant-local `2024-06-15`, one export row at `hod`. */
+  const seriesDay = async (tz: string, hod: number, bucket: "day" | "hour" = "day") => {
+    matrixRows = [
+      {
+        period: bucket === "day" ? "2024-06-15" : `2024-06-15T${String(hod).padStart(2, "0")}`,
+        hod,
+        dow: 6,
+        metric: "exp",
+        kwh: 4,
+      },
+    ];
+    const points = await computeCostSeries(
+      exportProfile,
+      {
+        from: new Date("2024-06-14T00:00:00Z"),
+        to: new Date("2024-06-17T00:00:00Z"),
+        bucket,
+        inverterId: "inv-1",
+      },
+      depsIn(tz),
+    );
+    return points.find(
+      (p) => p.bucket.startsWith("2024-06-15") && p.exportEarnings + p.zeroValueExportKwh > 0,
+    );
+  };
+
+  test("Kolkata: a UTC-aligned rollup hour meets its own four slots", async () => {
+    // 08:00Z is 13:30 IST. A host-local hour floor on an Indian host keys it
+    // 07:30Z, half in the paid hour before, and zeroes only half the export.
+    spotSlots = [
+      ...[0, 1, 2, 3].map((i) => ({
+        slotStart: new Date(Date.parse("2024-06-15T07:00:00Z") + i * 15 * 60_000),
+        eurPerMwh: 20,
+      })),
+      ...negativeHourAt("2024-06-15T08:00:00Z"),
+    ];
+    hours = [hourOf(new Date("2024-06-15T08:00:00Z"), { export: 4 })];
+    const totals = await computeCost(
+      exportProfile,
+      {
+        from: new Date("2024-06-14T18:30:00Z"),
+        to: new Date("2024-06-15T18:30:00Z"),
+        inverterId: "inv-1",
+      },
+      depsIn("Asia/Kolkata"),
+    );
+    expect(totals.zeroValueExportKwh).toBeCloseTo(4, 10);
+    expect(totals.exportEarnings).toBe(0);
+  });
+
+  test("Kolkata: a day-bucket row at 13h is the rollup hour starting 13:30 IST", async () => {
+    spotSlots = negativeHourAt("2024-06-15T08:00:00Z");
+    const point = await seriesDay("Asia/Kolkata", 13);
+    expect(point?.zeroValueExportKwh).toBeCloseTo(4, 10);
+    expect(point?.exportEarnings).toBe(0);
+  });
+
+  test("Kolkata: an hour-bucket row prices the same hour", async () => {
+    spotSlots = negativeHourAt("2024-06-15T08:00:00Z");
+    const point = await seriesDay("Asia/Kolkata", 13, "hour");
+    expect(point?.zeroValueExportKwh).toBeCloseTo(4, 10);
+  });
+
+  test("Adelaide: a day-bucket row at 13h is the rollup hour starting 13:30 ACST", async () => {
+    // June is standard time, +09:30: 13:30 ACST = 04:00Z.
+    spotSlots = negativeHourAt("2024-06-15T04:00:00Z");
+    const point = await seriesDay("Australia/Adelaide", 13);
+    expect(point?.zeroValueExportKwh).toBeCloseTo(4, 10);
+  });
+
+  test("a plant zone apart from the host: New York 13:00 EDT is 17:00Z", async () => {
+    spotSlots = negativeHourAt("2024-06-15T17:00:00Z");
+    const point = await seriesDay("America/New_York", 13);
+    expect(point?.zeroValueExportKwh).toBeCloseTo(4, 10);
+  });
+
+  test("the neighbouring UTC hour's negative slots do not leak in", async () => {
+    // Kolkata 13h is 08:00Z; slots from 07:30Z straddle it: two of four count.
+    spotSlots = [
+      ...negativeHourAt("2024-06-15T07:30:00Z"),
+      ...[0, 1].map((i) => ({
+        slotStart: new Date(Date.parse("2024-06-15T08:30:00Z") + i * 15 * 60_000),
+        eurPerMwh: 20,
+      })),
+    ];
+    const point = await seriesDay("Asia/Kolkata", 13);
+    expect(point?.zeroValueExportKwh).toBeCloseTo(2, 10);
   });
 });
 

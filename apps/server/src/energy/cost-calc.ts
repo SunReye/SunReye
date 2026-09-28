@@ -12,7 +12,7 @@ import { type TariffConfig, importBandForHour, importPriceForHour } from "@SunRe
 import type { CostSeriesPoint } from "./cost";
 import type { CounterDeltaRow } from "./rollup-reader";
 import { zoneParts } from "@SunReye/inverter-core/zone-parts";
-import { dateKey, isoWeekday } from "@SunReye/inverter-core/zoned-calendar";
+import { dateKey, isoWeekday, wallInstant } from "@SunReye/inverter-core/zoned-calendar";
 
 /**
  * Share of an hour that fell in quarter-hours with a negative day-ahead price,
@@ -224,20 +224,27 @@ export function repriceTodaySlice(
   };
 }
 
+const HOUR_MS = 3_600_000;
+
 /**
- * The local wall-clock hour a delta-matrix row describes: the calendar date of
- * its period key plus the row's hour-of-day. Sound for the hour and day buckets
- * — there `(period, hod)` pins exactly one real hour — but NOT for month, where
- * one hod covers every day of the month. Callers needing a real hour run month
- * windows at day granularity instead (see {@link ./cost}.computeCostSeries).
+ * The rollup hour a delta-matrix row describes: the UTC-aligned
+ * `time_bucket('1 hour')` whose plant-local (`tz`) start falls on the period
+ * key's date at hour-of-day `hod`. That is the first UTC hour at or after the
+ * local wall clock `hod:00` — the same instant in a whole-hour zone, half an
+ * hour later in Kolkata or Adelaide. Sound for the hour and day buckets — there
+ * `(period, hod)` pins one real hour (a fall-back's repeated hod resolves to the
+ * first) — but NOT for month, where one hod covers every day of the month.
+ * Callers needing a real hour run month windows at day granularity instead (see
+ * {@link ./cost}.computeCostSeries).
  */
-function hourFromPeriodKey(period: string, hod: number): Date {
-  return new Date(
+function hourFromPeriodKey(period: string, hod: number, tz: string): Date {
+  const wall = Date.UTC(
     Number(period.slice(0, 4)),
     Number(period.slice(5, 7)) - 1,
     Number(period.slice(8, 10)),
     hod,
   );
+  return new Date(Math.ceil(wallInstant(wall, tz).getTime() / HOUR_MS) * HOUR_MS);
 }
 
 const emptySeriesPoint = (bucket: string, standingCharge: number): CostSeriesPoint => ({
@@ -256,10 +263,11 @@ function addExportRow(
   point: CostSeriesPoint,
   row: CounterDeltaRow,
   tariff: TariffConfig,
+  tz: string,
   zeroValueShare?: ZeroValueShare,
 ): void {
   const kwh = Number(row.kwh);
-  const share = clamp01(zeroValueShare?.(hourFromPeriodKey(row.period, Number(row.hod))) ?? 0);
+  const share = clamp01(zeroValueShare?.(hourFromPeriodKey(row.period, Number(row.hod), tz)) ?? 0);
   const lostKwh = kwh * share;
   point.exportEarnings += (kwh - lostKwh) * tariff.export.feedInPerKwh;
   point.zeroValueExportKwh += lostKwh;
@@ -273,13 +281,14 @@ function addSeriesRow(
   row: CounterDeltaRow,
   field: EnergyField | undefined,
   tariff: TariffConfig,
+  tz: string,
   zeroValueShare?: ZeroValueShare,
 ): void {
   if (field === "import") {
     point.importCost +=
       Number(row.kwh) * importPriceForHour(tariff, Number(row.hod), Number(row.dow));
   } else if (field === "export") {
-    addExportRow(point, row, tariff, zeroValueShare);
+    addExportRow(point, row, tariff, tz, zeroValueShare);
   }
 }
 
@@ -289,6 +298,7 @@ function addSeriesRow(
  * zero-value share, plus the period's prorated standing charge. The pure
  * counterpart of {@link allocateCost} for rows SQL has already grouped; rows
  * for a period outside the zero-filled window (edge rounding) are ignored.
+ * `tz` is the plant zone the rows' `(period, hod)` were bucketed in.
  */
 export function priceSeriesRows(
   rows: readonly CounterDeltaRow[],
@@ -296,6 +306,7 @@ export function priceSeriesRows(
   periods: readonly string[],
   tariff: TariffConfig,
   standing: ReadonlyMap<string, number>,
+  tz: string,
   zeroValueShare?: ZeroValueShare,
 ): CostSeriesPoint[] {
   const byKey = new Map<string, CostSeriesPoint>(
@@ -303,7 +314,7 @@ export function priceSeriesRows(
   );
   for (const r of rows) {
     const point = byKey.get(r.period);
-    if (point) addSeriesRow(point, r, fieldByKey.get(r.metric), tariff, zeroValueShare);
+    if (point) addSeriesRow(point, r, fieldByKey.get(r.metric), tariff, tz, zeroValueShare);
   }
   const points = [...byKey.values()];
   for (const p of points) p.net = p.importCost - p.exportEarnings + p.standingCharge;
