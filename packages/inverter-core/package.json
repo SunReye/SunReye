@@ -12,7 +12,8 @@
     "./device-class": "./src/device-class.ts",
     "./plant-aggregate": "./src/plant-aggregate.ts",
     "./slug": "./src/slug.ts",
-    "./zone-parts": "./src/zone-parts.ts"
+    "./zone-parts": "./src/zone-parts.ts",
+    "./zoned-calendar": "./src/zoned-calendar.ts"
   },
   "scripts": {
     "test": "bun test ./src",

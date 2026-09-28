@@ -10,7 +10,8 @@ import { type TariffConfig, importBandForHour, importPriceForHour } from "@SunRe
 // dependency: cost.ts owns the shapes the SQL layer produces, this module owns
 // the arithmetic over them.
 import type { CostSeriesPoint, CounterDeltaRow } from "./cost";
-import { zonedDateKey, zonedFields, zonedIsoWeekday } from "./zoned-time";
+import { zoneParts } from "@SunReye/inverter-core/zone-parts";
+import { dateKey, isoWeekday } from "@SunReye/inverter-core/zoned-calendar";
 
 /**
  * Share of an hour that fell in quarter-hours with a negative day-ahead price,
@@ -31,9 +32,6 @@ export type ZeroValueShare = (hour: Date) => number;
 
 const AVG_DAYS_PER_MONTH = 30.4375;
 const clamp01 = (n: number): number => Math.min(1, Math.max(0, n));
-
-/** The host process zone — back-compatible default when no plant zone is given. */
-const hostTimeZone = (): string => Intl.DateTimeFormat().resolvedOptions().timeZone;
 
 /**
  * Price a list of hourly energy figures against a tariff. `rangeDays` prorates
@@ -79,8 +77,8 @@ export function allocateCost(
   hours: HourEnergy[],
   tariff: TariffConfig,
   rangeDays: number,
-  zeroValueShare?: ZeroValueShare,
-  tz: string = hostTimeZone(),
+  zeroValueShare: ZeroValueShare | undefined,
+  tz: string,
 ): CostTotals {
   let importKwh = 0;
   let exportKwh = 0;
@@ -101,8 +99,8 @@ export function allocateCost(
     // mis-zoned host no longer bands a Berlin evening as afternoon (issue #46).
     const band = importBandForHour(
       tariff,
-      zonedFields(h.time, tz).hour,
-      zonedIsoWeekday(h.time, tz),
+      zoneParts(tz, h.time.getTime()).hour,
+      isoWeekday(h.time, tz),
     );
     const price = band?.pricePerKwh ?? tariff.import.defaultPricePerKwh;
     const bandName = band?.name ?? "Standard";
@@ -124,7 +122,7 @@ export function allocateCost(
     exportEarnings += hourEarnings;
     gridOnlyCost += h.load * price;
 
-    addToDay(days, h, zonedDateKey(h.time, tz), {
+    addToDay(days, h, dateKey(h.time, tz), {
       importCost: hourImportCost,
       exportEarnings: hourEarnings,
     });

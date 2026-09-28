@@ -10,6 +10,10 @@ import {
   previousWindow,
 } from "./statistics-calc";
 
+/** The zone the `beforeAll` below pins the host to, so host-local fixtures and
+ *  the explicit plant zone agree. */
+const HOST_TZ = "Europe/Berlin";
+
 // DST-sensitive math (occurrence counting, previous-window length) is pinned
 // to a known zone. Bun applies process.env.TZ changes at runtime; restore the
 // original so other test files in the process are unaffected.
@@ -63,7 +67,7 @@ const totalSlots = (m: Map<string, number>): number => [...m.values()].reduce((a
 
 describe("hodDowOccurrences", () => {
   test("plain full week: every (hod, dow) slot exactly once", () => {
-    const m = hodDowOccurrences(new Date(2025, 5, 2), new Date(2025, 5, 9)); // Mon→Mon
+    const m = hodDowOccurrences(new Date(2025, 5, 2), new Date(2025, 5, 9), HOST_TZ); // Mon→Mon
     expect(m.size).toBe(168);
     expect(totalSlots(m)).toBe(168);
     expect(m.get("1:0")).toBe(1);
@@ -96,7 +100,7 @@ describe("hodDowOccurrences", () => {
   });
 
   test("mid-hour from: only full hour slots at or after from count", () => {
-    const m = hodDowOccurrences(new Date(2025, 5, 2, 10, 30), new Date(2025, 5, 2, 13)); // Mon
+    const m = hodDowOccurrences(new Date(2025, 5, 2, 10, 30), new Date(2025, 5, 2, 13), HOST_TZ); // Mon
     expect([...m.keys()].sort()).toEqual(["1:11", "1:12"]);
   });
 });

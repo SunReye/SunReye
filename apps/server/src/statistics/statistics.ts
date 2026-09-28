@@ -34,7 +34,7 @@ import {
 } from "../energy/cost";
 import { accumulateTotals, derivePeriods, emptyTotals, energySeries } from "../energy/energy";
 import { derivePeriodEnergy } from "../energy/energy-calc";
-import { startOfZonedDay } from "../energy/zoned-time";
+import { dayStart } from "@SunReye/inverter-core/zoned-calendar";
 import { getPlantTimeZone } from "../settings/display-settings";
 import { getInvestment } from "../settings/investment-settings";
 import { getTariff } from "../settings/settings";
@@ -130,11 +130,6 @@ export async function computeComparison(
   };
 }
 
-/** Midnight starting the current plant-local day (as a UTC instant), in zone `tz`. */
-function startOfLocalDay(now: Date, tz: string): Date {
-  return startOfZonedDay(now, tz);
-}
-
 // Records deliberately exclude the in-progress day, so a result only changes
 // at local midnight (or when history is reset) — cache one result per
 // inverter, keyed by the local day it was computed on.
@@ -163,7 +158,7 @@ async function buildRecords(
   tz: string,
 ): Promise<RecordsResponse> {
   const firstDay = await earliestDailyBucket(inverterId);
-  const to = startOfLocalDay(new Date(), tz);
+  const to = dayStart(new Date(), tz);
   if (!firstDay || firstDay >= to) return { energy: null, money: null };
   const [energy, money] = await Promise.all([
     energyRecords(profile, inverterId, firstDay, to, tz),

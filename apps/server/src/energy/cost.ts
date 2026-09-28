@@ -23,6 +23,8 @@ import type {
 import { db } from "@SunReye/db";
 import { type TariffConfig, importPriceForHour } from "@SunReye/db/tariff";
 import type { CanonicalRole, InverterProfile, InverterSample } from "@SunReye/inverter-core";
+import { zoneParts } from "@SunReye/inverter-core/zone-parts";
+import { dateKey, dayStart, isoWeekday, periodWindow } from "@SunReye/inverter-core/zoned-calendar";
 import { sql } from "drizzle-orm";
 import { deviceScope, metricIdsOf, metricKeyColumn, metricKeyJoin } from "../shared/identity-sql";
 import { type SeriesTarget, isPlantTarget } from "../shared/plant-source";
@@ -38,20 +40,8 @@ import { emptyTotals, impliedLoadKwh, replaceTodaySlice, withImpliedHourLoad } f
 import { getPlantTimeZone } from "../settings/display-settings";
 import { getTariff } from "../settings/settings";
 import { liveState } from "../shared/state";
-import { startOfZonedDay, zonedFields, zonedInstant, zonedIsoWeekday } from "./zoned-time";
 
 const clamp01 = (n: number): number => Math.min(1, Math.max(0, n));
-
-const HOUR_MS = 3_600_000;
-
-/**
- * The host process zone — the back-compatible default for the period helpers
- * when no plant zone is threaded in. Read live (not cached) so tests that flip
- * `process.env.TZ` at runtime still see the change. Production paths pass the
- * configured plant zone from {@link getPlantTimeZone}; the host is only the
- * fallback for an unconfigured instance (issues #46, #52).
- */
-const hostTimeZone = (): string => Intl.DateTimeFormat().resolvedOptions().timeZone;
 
 export { resolveRange } from "./cost-calc";
 
@@ -233,10 +223,8 @@ export const TOTALS_KEY_BY_FIELD = {
 } as const satisfies Record<EnergyField, keyof EnergyTotals>;
 
 /** Whether two Dates fall on the same calendar day in zone `tz`. */
-function isSameLocalDay(a: Date, b: Date, tz: string = hostTimeZone()): boolean {
-  const fa = zonedFields(a, tz);
-  const fb = zonedFields(b, tz);
-  return fa.year === fb.year && fa.month === fb.month && fa.day === fb.day;
+function isSameLocalDay(a: Date, b: Date, tz: string): boolean {
+  return dateKey(a, tz) === dateKey(b, tz);
 }
 
 /**
@@ -247,7 +235,7 @@ function isSameLocalDay(a: Date, b: Date, tz: string = hostTimeZone()): boolean 
  * unless ALL hold:
  *  - a sample exists;
  *  - `sample.inverterId` matches the query's effective `inverterId`;
- *  - the sample is from TODAY in server-local time — a stale sample carried
+ *  - the sample is from TODAY in the plant zone `tz` — a stale sample carried
  *    across midnight must not override the fresh day.
  * A field is included only when its `*.today` twin role is mapped by the profile
  * AND the sample carries a finite value for that role's metric key; every other
@@ -267,11 +255,12 @@ function speaksFor(sample: InverterSample, target: SeriesTarget): boolean {
 export function liveTodayTotals(
   profile: InverterProfile,
   target: SeriesTarget,
+  tz: string,
   now: Date = new Date(),
   sample: InverterSample | null = liveState.latest,
 ): Partial<EnergyTotals> {
   if (!sample || !speaksFor(sample, target)) return {};
-  if (!isSameLocalDay(new Date(sample.time), now)) return {};
+  if (!isSameLocalDay(new Date(sample.time), now, tz)) return {};
 
   const out: Partial<EnergyTotals> = {};
   for (const field of Object.keys(ENERGY_TODAY_FIELDS) as EnergyField[]) {
@@ -451,8 +440,7 @@ function chainsTo(
  * `view` selects the rollup granularity (hourly for cost banding, daily for long
  * windows); both continuous aggregates share the same column shape — and, via
  * {@link energyKeyFor}, which register each field is read from. `tz` is the
- * plant zone the day registers reset in; it defaults to the host's only for
- * callers that predate the plant zone (issues #46, #52).
+ * plant zone the day registers reset in (issues #46, #52).
  */
 export async function fetchBucketEnergy(
   profile: InverterProfile,
@@ -460,7 +448,7 @@ export async function fetchBucketEnergy(
   from: Date,
   to: Date,
   view: RollupView,
-  tz: string = hostTimeZone(),
+  tz: string,
 ): Promise<HourEnergy[]> {
   const { fieldByKey, dailyKeys, srcSql } = rollupQueryParts(profile, view, inverterId);
   if (fieldByKey.size === 0) return [];
@@ -584,13 +572,11 @@ const pad2 = (n: number): string => String(n).padStart(2, "0");
 
 /**
  * Plant-local period key for a Date in zone `tz`, matching the SQL `to_char`
- * masks above. `tz` defaults to the host zone so callers that predate the plant
- * zone behave unchanged; the analytics entry points pass the configured plant
- * zone so the JS zero-fill/override keys line up with the SQL `at time zone $tz`
- * bucketing (issues #46, #52).
+ * masks above, in the plant zone `tz` so the JS zero-fill/override keys line up
+ * with the SQL `at time zone $tz` bucketing (issues #46, #52).
  */
-function periodKey(d: Date, bucket: CostBucket, tz: string = hostTimeZone()): string {
-  const { year, month, day, hour } = zonedFields(d, tz);
+function periodKey(d: Date, bucket: CostBucket, tz: string): string {
+  const { year, month, day, hour } = zoneParts(tz, d.getTime());
   const ymd = `${year}-${pad2(month)}-${pad2(day)}`;
   if (bucket === "month") return `${year}-${pad2(month)}`;
   if (bucket === "day") return ymd;
@@ -604,11 +590,7 @@ function periodKey(d: Date, bucket: CostBucket, tz: string = hostTimeZone()): st
  * key the matrix produced for today. `tz` must be the same plant zone the matrix
  * was bucketed in, or the override lands on the wrong bar.
  */
-export function currentPeriodKey(
-  bucket: CostBucket,
-  now: Date = new Date(),
-  tz: string = hostTimeZone(),
-): string {
+export function currentPeriodKey(bucket: CostBucket, now: Date, tz: string): string {
   return periodKey(now, bucket, tz);
 }
 
@@ -626,42 +608,20 @@ export function currentPeriodKey(
  * the whole window where that is shorter (today-by-day at 02:00 is two hours of
  * a day and still the only bar there is).
  */
-/** The plant-local start instant of the period `instant` falls in, at `bucket`. */
-function periodStartInstant(instant: Date, bucket: CostBucket, tz: string): Date {
-  const f = zonedFields(instant, tz);
-  if (bucket === "month") return zonedInstant(f.year, f.month, 1, 0, tz);
-  if (bucket === "day") return zonedInstant(f.year, f.month, f.day, 0, tz);
-  return zonedInstant(f.year, f.month, f.day, f.hour, tz);
-}
-
-/** The start of the period after the one beginning at `cur`, at `bucket`. */
-function nextPeriodStart(cur: Date, bucket: CostBucket, tz: string): Date {
-  const c = zonedFields(cur, tz);
-  const next =
-    bucket === "month"
-      ? zonedInstant(c.year, c.month + 1, 1, 0, tz)
-      : bucket === "day"
-        ? zonedInstant(c.year, c.month, c.day + 1, 0, tz)
-        : zonedInstant(c.year, c.month, c.day, c.hour + 1, tz);
-  // A fall-back DST hour can resolve the next wall-clock boundary at or before
-  // `cur`; force forward progress so the loop always terminates.
-  return next.getTime() > cur.getTime() ? next : new Date(cur.getTime() + HOUR_MS);
-}
-
 function eachPeriod(
   from: Date,
   to: Date,
   bucket: CostBucket,
-  tz: string = hostTimeZone(),
+  tz: string,
 ): Array<{ key: string; start: Date; end: Date }> {
   const out: Array<{ key: string; start: Date; end: Date }> = [];
   const windowMs = to.getTime() - from.getTime();
   // Boundaries are plant-local period starts resolved to real UTC instants in
   // `tz`, so month lengths and DST (23h/25h days) come from the zone rules, not
   // the host clock.
-  let cur = periodStartInstant(from, bucket, tz);
+  let cur = periodWindow(from, tz, bucket).start;
   while (cur < to) {
-    const next = nextPeriodStart(cur, bucket, tz);
+    const next = periodWindow(cur, tz, bucket).end;
     const covered =
       Math.min(next.getTime(), to.getTime()) - Math.max(cur.getTime(), from.getTime());
     if (covered >= Math.min((next.getTime() - cur.getTime()) / 2, windowMs)) {
@@ -677,12 +637,7 @@ function eachPeriod(
  * Drives zero-fill so the chart x-axis is stable and gap-free regardless of
  * which periods actually have data.
  */
-function periodKeysInRange(
-  from: Date,
-  to: Date,
-  bucket: CostBucket,
-  tz: string = hostTimeZone(),
-): string[] {
+function periodKeysInRange(from: Date, to: Date, bucket: CostBucket, tz: string): string[] {
   return eachPeriod(from, to, bucket, tz).map((p) => p.key);
 }
 
@@ -717,7 +672,7 @@ export interface CounterDeltaMatrix {
  *
  * `view` picks the source granularity: hourly keeps the hour-of-day detail
  * time-of-use pricing needs; daily is cheaper for long windows that only care
- * about per-period totals. Local wall-clock (server tz) drives the
+ * about per-period totals. Plant wall-clock (`tz`) drives the
  * period/hour/weekday so downstream banding matches the per-hour path. A
  * per-metric baseline bucket from just before the window seeds the delta chain,
  * so the first in-window bucket is a real rise (not dropped by a null `lag`);
@@ -732,8 +687,8 @@ export async function fetchCounterDeltaMatrix(
     bucket: CostBucket;
     inverterId?: SeriesTarget;
     view?: RollupView;
-    /** Plant IANA zone for period/hour bucketing; defaults to the host zone. */
-    tz?: string;
+    /** Plant IANA zone for period/hour bucketing. */
+    tz: string;
   },
 ): Promise<CounterDeltaMatrix> {
   const { from, to, bucket } = opts;
@@ -741,7 +696,7 @@ export async function fetchCounterDeltaMatrix(
   const view = opts.view ?? "hourly_rollups";
   // Plant zone so SQL wall-clock and the JS zero-fill keys agree, and neither
   // depends on the host process zone (issues #46, #52).
-  const tz = opts.tz ?? hostTimeZone();
+  const { tz } = opts;
   const { fieldByKey, dailyKeys, srcSql } = rollupQueryParts(profile, view, inverterId);
   const periods = periodKeysInRange(from, to, bucket, tz);
   if (fieldByKey.size === 0) return { rows: [], fieldByKey, periods };
@@ -847,8 +802,8 @@ function standingByPeriod(
   to: Date,
   bucket: CostBucket,
   monthly: number,
-  now: Date = new Date(),
-  tz: string = hostTimeZone(),
+  now: Date,
+  tz: string,
 ): Map<string, number> {
   const perDay = monthly / AVG_DAYS_PER_MONTH;
   const charged = Math.min(to.getTime(), now.getTime());
@@ -904,11 +859,6 @@ export async function computeCostSeries(
   return rollUp ? rollUpToMonths(points) : points;
 }
 
-/** The plant-local day's midnight (as a UTC instant), in zone `tz`. */
-function startOfLocalDay(now: Date, tz: string = hostTimeZone()): Date {
-  return startOfZonedDay(now, tz);
-}
-
 /**
  * Whether `[from, to)` contains all of today so far — today, month-to-date,
  * year-to-date, a custom range running to the present. These windows take the
@@ -920,8 +870,8 @@ function startOfLocalDay(now: Date, tz: string = hostTimeZone()): Date {
  * the presets resolve `to` to their caller's `now`, which is a few milliseconds
  * behind the one asked here, and that is a clock artefact, not a past window.
  */
-function coversTodaySoFar(from: Date, to: Date, now: Date, tz: string = hostTimeZone()): boolean {
-  const midnight = startOfLocalDay(now, tz);
+function coversTodaySoFar(from: Date, to: Date, now: Date, tz: string): boolean {
+  const midnight = dayStart(now, tz);
   return from.getTime() <= midnight.getTime() && (to >= now || isSameLocalDay(to, now, tz));
 }
 
@@ -934,7 +884,7 @@ function hoursSince(hours: HourEnergy[], midnight: Date): HourEnergy[] {
  *  deltas have not seen yet (see {@link repriceTodaySlice}). */
 function fallbackRatesAt(tariff: TariffConfig, now: Date, tz: string): FallbackRates {
   return {
-    importPrice: importPriceForHour(tariff, zonedFields(now, tz).hour, zonedIsoWeekday(now, tz)),
+    importPrice: importPriceForHour(tariff, zoneParts(tz, now.getTime()).hour, isoWeekday(now, tz)),
     exportPrice: tariff.export.feedInPerKwh,
   };
 }
@@ -1060,10 +1010,10 @@ export async function computeCost(
   const reported = coversTodaySoFar(opts.from, opts.to, now, tz)
     ? reportLiveTodayTotals(
         totals,
-        liveTodayTotals(profile, inverterId, now),
+        liveTodayTotals(profile, inverterId, tz, now),
         // Today's slice priced exactly as the window priced it (no standing
         // charge: that is the window's, prorated once).
-        allocateCost(hoursSince(hours, startOfLocalDay(now, tz)), tariff, 0, zeroValueShare, tz),
+        allocateCost(hoursSince(hours, dayStart(now, tz)), tariff, 0, zeroValueShare, tz),
         !metersLoadEnergy(profile),
         fallbackRatesAt(tariff, now, tz),
       )

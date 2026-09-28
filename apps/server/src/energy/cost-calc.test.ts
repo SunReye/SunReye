@@ -10,6 +10,10 @@ import {
   rollUpToMonths,
 } from "./cost-calc";
 
+/** The zone these host-local fixtures were written in — the plant zone the
+ *  mocked `getPlantTimeZone` also answers with. */
+const HOST_TZ = Intl.DateTimeFormat().resolvedOptions().timeZone;
+
 /** A tariff: 0.40 peak (08–20 weekdays), 0.10 off-peak default, 0.05 feed-in. */
 const tariff: TariffConfig = tariffConfigSchema.parse({
   currency: "EUR",
@@ -40,7 +44,7 @@ describe("allocateCost", () => {
       hour("2024-01-01T10:00:00", { import: 2 }), // 2 kWh * 0.40 = 0.80
       hour("2024-01-01T02:00:00", { import: 3 }), // 3 kWh * 0.10 = 0.30
     ];
-    const r = allocateCost(hours, tariff, 1);
+    const r = allocateCost(hours, tariff, 1, undefined, HOST_TZ);
     expect(r.importKwh).toBe(5);
     expect(r.importCost).toBeCloseTo(1.1, 6);
     expect(r.byBand.find((b) => b.name === "Peak")?.cost).toBeCloseTo(0.8, 6);
@@ -49,7 +53,13 @@ describe("allocateCost", () => {
 
   test("weekend falls back to default rate (band is weekday-only)", () => {
     // 2024-01-06 is a Saturday → 10:00 is off-peak despite being 08–20.
-    const r = allocateCost([hour("2024-01-06T10:00:00", { import: 1 })], tariff, 1);
+    const r = allocateCost(
+      [hour("2024-01-06T10:00:00", { import: 1 })],
+      tariff,
+      1,
+      undefined,
+      HOST_TZ,
+    );
     expect(r.importCost).toBeCloseTo(0.1, 6);
   });
 
@@ -79,7 +89,7 @@ describe("allocateCost", () => {
 
   test("export earnings, net, savings and ratios", () => {
     const hours = [hour("2024-01-01T10:00:00", { import: 1, export: 4, load: 5, production: 10 })];
-    const r = allocateCost(hours, tariff, 1);
+    const r = allocateCost(hours, tariff, 1, undefined, HOST_TZ);
     expect(r.exportEarnings).toBeCloseTo(0.2, 6); // 4 * 0.05
     expect(r.importCost).toBeCloseTo(0.4, 6); // 1 * 0.40
     expect(r.standingCharge).toBeCloseTo(1.0, 6); // 1 day
@@ -92,18 +102,26 @@ describe("allocateCost", () => {
   });
 
   test("clamps ratios and handles no data", () => {
-    const r = allocateCost([], tariff, 0);
+    const r = allocateCost([], tariff, 0, undefined, HOST_TZ);
     expect(r.importCost).toBe(0);
     expect(r.selfSufficiency).toBeNull();
     expect(r.selfConsumption).toBeNull();
   });
 
   test("battery flows are carried but never priced (money unchanged)", () => {
-    const base = allocateCost([hour("2024-01-01T10:00:00", { import: 2 })], tariff, 1);
+    const base = allocateCost(
+      [hour("2024-01-01T10:00:00", { import: 2 })],
+      tariff,
+      1,
+      undefined,
+      HOST_TZ,
+    );
     const withBattery = allocateCost(
       [hour("2024-01-01T10:00:00", { import: 2, batteryDischarge: 5, batteryCharge: 3 })],
       tariff,
       1,
+      undefined,
+      HOST_TZ,
     );
     expect(withBattery.batteryDischargeKwh).toBe(5);
     expect(withBattery.batteryChargeKwh).toBe(3);
@@ -117,6 +135,8 @@ describe("allocateCost", () => {
       [hour("2024-01-01T10:00:00", { import: 1 }), hour("2024-01-02T10:00:00", { import: 2 })],
       tariff,
       2,
+      undefined,
+      HOST_TZ,
     );
     expect(r.byDay.map((d) => d.date)).toEqual(["2024-01-01", "2024-01-02"]);
   });
@@ -152,7 +172,7 @@ describe("§51 zero-value export", () => {
   const tariff = tariffConfigSchema.parse({ export: { feedInPerKwh: 0.08 } });
 
   test("a fully negative hour earns nothing and is reported as such", () => {
-    const totals = allocateCost([hour("2026-08-02T13:00:00", 4)], tariff, 1, () => 1);
+    const totals = allocateCost([hour("2026-08-02T13:00:00", 4)], tariff, 1, () => 1, HOST_TZ);
     expect(totals.exportEarnings).toBe(0);
     expect(totals.zeroValueExportKwh).toBeCloseTo(4, 10);
     // And says what that cost: 4 kWh that would have earned 8 ct each.
@@ -161,20 +181,20 @@ describe("§51 zero-value export", () => {
 
   test("a partly negative hour is prorated", () => {
     // Two of four quarter-hours negative: half the export earns the tariff.
-    const totals = allocateCost([hour("2026-08-02T13:00:00", 4)], tariff, 1, () => 0.5);
+    const totals = allocateCost([hour("2026-08-02T13:00:00", 4)], tariff, 1, () => 0.5, HOST_TZ);
     expect(totals.exportEarnings).toBeCloseTo(2 * 0.08, 10);
     expect(totals.zeroValueExportKwh).toBeCloseTo(2, 10);
   });
 
   test("without the share, pricing is exactly as before", () => {
-    const totals = allocateCost([hour("2026-08-02T13:00:00", 4)], tariff, 1);
+    const totals = allocateCost([hour("2026-08-02T13:00:00", 4)], tariff, 1, undefined, HOST_TZ);
     expect(totals.exportEarnings).toBeCloseTo(4 * 0.08, 10);
     expect(totals.zeroValueExportKwh).toBe(0);
   });
 
   test("the net figure rises by exactly the lost earnings", () => {
-    const paid = allocateCost([hour("2026-08-02T13:00:00", 4)], tariff, 1);
-    const unpaid = allocateCost([hour("2026-08-02T13:00:00", 4)], tariff, 1, () => 1);
+    const paid = allocateCost([hour("2026-08-02T13:00:00", 4)], tariff, 1, undefined, HOST_TZ);
+    const unpaid = allocateCost([hour("2026-08-02T13:00:00", 4)], tariff, 1, () => 1, HOST_TZ);
     expect(unpaid.net - paid.net).toBeCloseTo(4 * 0.08, 10);
   });
 });

@@ -15,7 +15,8 @@ import type {
   MoneyRecords,
 } from "@SunReye/contracts/statistics";
 import type { CostSeriesPoint, CounterDeltaRow } from "../energy/cost";
-import { zonedFields, zonedIsoWeekday } from "../energy/zoned-time";
+import { zoneParts } from "@SunReye/inverter-core/zone-parts";
+import { isoWeekday } from "@SunReye/inverter-core/zoned-calendar";
 
 /**
  * The reference window to compare `[from, to)` against:
@@ -54,19 +55,14 @@ function nextHourStart(d: Date): number {
  * `[from, to)`, keyed by {@link slotKey}. Steps real time hour by hour and reads
  * each step's wall-clock fields in `tz`, so it is DST-consistent with the SQL
  * side's `bucket at time zone $tz`: the spring-forward day contributes no 02:00
- * slot and the fall-back day contributes 02:00 twice. `tz` defaults to the host
- * zone for callers that predate the plant zone (issue #46).
+ * slot and the fall-back day contributes 02:00 twice. `tz` is the plant zone
+ * (issue #46).
  */
-export function hodDowOccurrences(
-  from: Date,
-  to: Date,
-  tz: string = Intl.DateTimeFormat().resolvedOptions().timeZone,
-): Map<string, number> {
+export function hodDowOccurrences(from: Date, to: Date, tz: string): Map<string, number> {
   const out = new Map<string, number>();
   const end = to.getTime();
   for (let t = nextHourStart(from); t < end; t += HOUR_MS) {
-    const d = new Date(t);
-    const key = slotKey(zonedFields(d, tz).hour, zonedIsoWeekday(d, tz));
+    const key = slotKey(zoneParts(tz, t).hour, isoWeekday(t, tz));
     out.set(key, (out.get(key) ?? 0) + 1);
   }
   return out;
