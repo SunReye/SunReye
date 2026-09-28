@@ -39,6 +39,7 @@ import {
   DEVICE_ROLES,
   type DeviceBatteryRecord,
   type DevicePatch,
+  type DeletedDevice as DeleteDeviceOutcome,
   type DevicePv,
   type DeviceRecord,
   type DeviceSpec,
@@ -66,6 +67,11 @@ export interface DeviceAdminStore {
   updateConnection(id: number, patch: ConnectionPatch): Promise<ConnectionRecord>;
   /** True when a row went; a bound connection is refused by the engine's FK. */
   deleteConnection(id: number): Promise<boolean>;
+  /**
+   * Delete a device and its pack, or refuse because readings reference it.
+   * The history check and the delete are one transaction in the repository.
+   */
+  deleteDevice(id: number): Promise<DeleteDeviceOutcome>;
   readPlantBatteries(plantId: number): Promise<DeviceBatteryRecord[]>;
   upsertDeviceBattery(deviceId: number, battery: DeviceBattery): Promise<void>;
   deleteDeviceBattery(deviceId: number): Promise<void>;
@@ -200,7 +206,8 @@ export class DeviceAdminError extends Error {
       | "arrays"
       | "tempCoefficient"
       | "systemLoss"
-      | "battery",
+      | "battery"
+      | "history",
   ) {
     super(message);
     this.name = "DeviceAdminError";
@@ -967,5 +974,44 @@ export async function removeConnection(deps: DeviceAdminDeps, id: number): Promi
     );
   }
   await deps.store.deleteConnection(id);
+  await deps.reload();
+}
+
+/**
+ * Delete a device outright — the "added by mistake" case retiring does not
+ * cover, because a retired row stays on the roster for good.
+ *
+ * ONLY A DEVICE WITH NO HISTORY. Every reading references its device
+ * `ON DELETE RESTRICT`, deliberately (`@SunReye/db/schema/metrics.ts`): a
+ * cascade would let one click erase years of history. So a device that ever
+ * recorded anything is refused with `field: "history"`, which is what tells the
+ * settings page to offer retiring it instead.
+ *
+ * The polled device is refused for the reason retiring it is, and the
+ * optimizer because it registers itself on boot and would simply reappear.
+ */
+export async function removeDevice(deps: DeviceAdminDeps, id: number): Promise<void> {
+  const plant = await requirePlant(deps);
+  const devices = await deps.store.readDevices(plant.id);
+  const current = devices.find((d) => d.id === id);
+  if (!current) throw new DeviceAdminError(404, `device ${id} does not exist`);
+  if (current.slug === deps.primarySlug()) {
+    throw new DeviceAdminError(
+      409,
+      "this device is the one being polled; change the inverter connection first",
+    );
+  }
+  if (isVirtualDevice(current)) {
+    throw new DeviceAdminError(409, "an internal device registers itself and cannot be deleted");
+  }
+  const outcome = await deps.store.deleteDevice(id);
+  if (outcome === "missing") throw new DeviceAdminError(404, `device ${id} does not exist`);
+  if (outcome === "has-history") {
+    throw new DeviceAdminError(
+      409,
+      "this device has recorded history; retire it instead to keep that history",
+      "history",
+    );
+  }
   await deps.reload();
 }

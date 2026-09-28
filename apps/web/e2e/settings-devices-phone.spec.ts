@@ -77,14 +77,26 @@ test("the settings tab strip scrolls to its last tab instead of clipping it", as
   expect(box!.x + box!.width).toBeLessThanOrEqual(stripBox!.x + stripBox!.width + 1);
 });
 
-test("a device row stacks its identity above its controls", async ({ page }) => {
+/**
+ * The row used to stack below `sm`: identity, then two full-width buttons, which
+ * put three devices on a phone screen. With one visible control and a "⋯" menu
+ * the two halves share the line — and the controls must still land inside the
+ * screen rather than pushing it sideways.
+ */
+test("a device row keeps its identity and its controls on one line", async ({ page }) => {
   await openDevices(page);
-  const boxes = await page
-    .locator("[data-device='inverter'] > *")
-    .evaluateAll((els) => els.map((el) => el.getBoundingClientRect().top));
-  expect(boxes.length).toBe(2);
-  // Two rows, not two columns squeezed side by side.
-  expect(boxes[1]).toBeGreaterThan(boxes[0]);
+  const [identity, controls] = await page
+    .locator("[data-device='meter'] > *")
+    .evaluateAll((els) => els.map((el) => el.getBoundingClientRect().toJSON() as DOMRect));
+  expect(identity).toBeDefined();
+  expect(controls).toBeDefined();
+  // Side by side: the controls start right of where the identity ends...
+  expect(controls!.left).toBeGreaterThanOrEqual(identity!.right - 1);
+  // ...and inside the viewport.
+  expect(controls!.right).toBeLessThanOrEqual(PHONE.width);
+  // The row's one button and its menu trigger both reach the 36px phone floor.
+  const trigger = await page.locator("[data-device='meter'] [data-row-menu]").boundingBox();
+  expect(trigger!.height).toBeGreaterThanOrEqual(36);
 });
 
 test("a meta line never ends with a dangling separator", async ({ page }) => {

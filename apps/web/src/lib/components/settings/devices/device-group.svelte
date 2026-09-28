@@ -1,11 +1,11 @@
 <script lang="ts">
 	import { Button } from '$lib/components/ui/button';
 	import Section from '$lib/components/layout/section.svelte';
-	import EmptyState from '$lib/components/layout/empty-state.svelte';
+	import { resolve } from '$lib/resolve';
 	import * as m from '$lib/paraglide/messages';
 	import { type DeviceGroup, groupIsEmpty, nestIntegrations } from './add-device-logic';
 	import DeviceRows from './device-rows.svelte';
-	import type { ConnectionView, DeviceView, IntegrationView } from './device-types';
+	import type { ConnectionView, DeviceHandlers, IntegrationHandlers } from './device-types';
 	import IntegrationList from './integration-list.svelte';
 
 	// One group of the roster as a collapsible card: a gateway and the devices
@@ -26,25 +26,15 @@
 		busyId,
 		busyIntegrationId,
 		onEditConnection,
-		onEdit,
-		onRename,
-		onRetire,
-		onRestore,
-		onEditIntegration,
-		onToggleIntegration,
-		onRemoveIntegration
+		handlers,
+		integrationHandlers
 	}: {
 		group: DeviceGroup;
 		busyId: number | null;
 		busyIntegrationId: number | null;
 		onEditConnection: (connection: ConnectionView) => void;
-		onEdit: (device: DeviceView) => void;
-		onRename: (device: DeviceView) => void;
-		onRetire: (device: DeviceView) => void;
-		onRestore: (device: DeviceView) => void;
-		onEditIntegration: (integration: IntegrationView) => void;
-		onToggleIntegration: (integration: IntegrationView, enabled: boolean) => void;
-		onRemoveIntegration: (integration: IntegrationView) => void;
+		handlers: DeviceHandlers;
+		integrationHandlers: IntegrationHandlers;
 	} = $props();
 
 	const connection = $derived(group.connection);
@@ -64,34 +54,39 @@
 <Section title={group.title} {caption} nested collapsible open>
 	{#snippet actions()}
 		{#if connection}
-			<Button size="sm" variant="outline" onclick={() => onEditConnection(connection)}>
-				{m.devices_edit_connection()}
+			<Button
+				size="sm"
+				variant="outline"
+				class="h-9 sm:h-8"
+				aria-label={m.devices_edit_connection()}
+				onclick={() => onEditConnection(connection)}
+			>
+				<!-- "Edit" alone on a phone: the card's title already names the
+				     connection, and the long label squeezed its caption into a
+				     three-line column. -->
+				<span class="sm:hidden">{m.devices_action_edit()}</span>
+				<span class="hidden sm:inline">{m.devices_edit_connection()}</span>
 			</Button>
 		{/if}
 	{/snippet}
 	{#if empty}
-		<EmptyState message={m.devices_empty()} />
+		<!-- One line, not the page-sized EmptyState: an endpoint with nothing on
+		     it yet is a normal step of adding one, and a 128px box per connection
+		     pushed the rest of the roster off a phone screen. -->
+		<p class="text-sm text-muted-foreground" data-group-empty>
+			{m.devices_group_empty()}
+			<a class="font-medium text-foreground underline underline-offset-4" href={resolve('/settings/devices/add')}>
+				{m.devices_group_empty_add()}
+			</a>
+		</p>
 	{:else}
-		<DeviceRows
-			devices={nested.devices}
-			{busyId}
-			groupKey={group.key}
-			{onEdit}
-			{onRename}
-			{onRetire}
-			{onRestore}
-		/>
+		<DeviceRows devices={nested.devices} {busyId} groupKey={group.key} {handlers} />
 		<IntegrationList
 			entries={nested.integrations}
 			{busyId}
 			{busyIntegrationId}
-			{onEdit}
-			{onRename}
-			{onRetire}
-			{onRestore}
-			{onEditIntegration}
-			{onToggleIntegration}
-			{onRemoveIntegration}
+			{handlers}
+			{integrationHandlers}
 		/>
 	{/if}
 </Section>

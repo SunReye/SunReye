@@ -14,6 +14,7 @@
 		saving,
 		disabled = false,
 		testDisabled = false,
+		showSave = true,
 		ontest,
 		onsave,
 		children
@@ -28,6 +29,11 @@
 		 * the answer to a question nobody asked.
 		 */
 		testDisabled?: boolean;
+		/**
+		 * False inside the setup wizard, whose Continue is the save: a second
+		 * Save beside it asked the operator to press two buttons for one step.
+		 */
+		showSave?: boolean;
 		ontest: () => void;
 		onsave: () => void;
 		children?: Snippet;
@@ -50,7 +56,9 @@
 	<Button variant="outline" onclick={ontest} disabled={testBlocked}>
 		{testLabel}
 	</Button>
-	<Button onclick={onsave} disabled={saveBlocked}>
-		{saveLabel}
-	</Button>
+	{#if showSave}
+		<Button onclick={onsave} disabled={saveBlocked}>
+			{saveLabel}
+		</Button>
+	{/if}
 </ActionBar>

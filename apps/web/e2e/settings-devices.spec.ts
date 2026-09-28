@@ -158,14 +158,22 @@ test.describe("the roster", () => {
     // working is the state nobody acts on. Every state that is not the healthy
     // one still speaks, which the meter and the retired row below prove.
     await expect(inverter.getByText("Polling")).toHaveCount(0);
-    // The polled device cannot be retired from here.
-    await expect(inverter.getByRole("button", { name: "Retire" })).toBeDisabled();
+    // The polled device cannot be retired from here: the entry is in its menu,
+    // refused, and says why rather than vanishing.
+    await inverter.locator("[data-row-menu]").click();
+    const retire = page.getByRole("menuitem", { name: /Retire/ });
+    await expect(retire).toHaveAttribute("aria-disabled", "true");
+    await expect(retire).toContainText("being polled");
+    await page.keyboard.press("Escape");
 
     const meter = page.locator("[data-device='meter']");
     await expect(meter.getByText("Not polled")).toBeVisible();
     await expect(meter.getByText("Unit 2")).toBeVisible();
 
+    // A retired device folds under its own disclosure, closed.
     const old = page.locator("[data-device='old-inverter']");
+    await expect(old).toBeHidden();
+    await page.getByRole("button", { name: "Retired (1)" }).click();
     await expect(old.getByText("Retired")).toBeVisible();
     await expect(old.getByText(/Profile not installed/)).toBeVisible();
     await expect(old.getByRole("button", { name: "Restore" })).toBeVisible();
@@ -226,7 +234,9 @@ test.describe("the roster", () => {
     // refused and the row offered a link and nothing else.
     await expect(carport.getByRole("button", { name: "Edit" })).toHaveCount(0);
     await expect(carport.getByRole("button", { name: "Rename" })).toBeVisible();
-    await expect(carport.getByRole("button", { name: "Retire" })).toBeVisible();
+    await carport.locator("[data-row-menu]").click();
+    await expect(page.getByRole("menuitem", { name: "Retire" })).toBeVisible();
+    await page.keyboard.press("Escape");
     // No "Configure" link on the row: what provides this loadpoint is the
     // integration the row now hangs UNDER, whose own name is the link into it.
     // `settings-integrations.spec.ts` is that half.
@@ -238,6 +248,8 @@ test.describe("the roster", () => {
     await expect(optimizer.getByText("Optimizer", { exact: true }).first()).toBeVisible();
     await expect(optimizer.getByRole("button", { name: "Edit" })).toHaveCount(0);
     await expect(optimizer.getByRole("button", { name: "Retire" })).toHaveCount(0);
+    // Rename is all it offers, so there is no menu to open at all.
+    await expect(optimizer.locator("[data-row-menu]")).toHaveCount(0);
     // Nothing to configure: it is this server's own control loop.
     await expect(optimizer.getByRole("link", { name: "Configure" })).toHaveCount(0);
     expect(opened.consoleErrors).toEqual([]);

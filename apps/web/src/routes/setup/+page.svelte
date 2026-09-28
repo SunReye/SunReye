@@ -5,13 +5,12 @@
 	import { toast } from 'svelte-sonner';
 	import { api } from '$lib/api';
 	import { apiErrorText } from '$lib/api-error';
-	import Logo from '$lib/components/logo.svelte';
-	import { Button } from '$lib/components/ui/button';
 	import InverterForm from '$lib/components/settings/inverter-form.svelte';
 	import type { RegisteredProfile } from '$lib/components/settings/profile-types';
 	import ActivateStep from '$lib/components/setup/activate-step.svelte';
 	import ProfileStep from '$lib/components/setup/profile-step.svelte';
-	import SetupStepper from '$lib/components/setup/setup-stepper.svelte';
+	import SetupFooter from '$lib/components/setup/setup-footer.svelte';
+	import SetupShell from '$lib/components/setup/setup-shell.svelte';
 	import { firstRunGate } from '$lib/setup';
 	import * as m from '$lib/paraglide/messages';
 	import { useAppSession } from '$lib/session';
@@ -37,10 +36,15 @@
 
 	// The connection step's Continue must *save* the config: the form's own Save
 	// button is easy to walk past after a successful test, and an unsaved host
-	// means the post-activation restart boots polling against nothing.
+	// means the post-activation restart boots polling against nothing. So the
+	// form offers no Save of its own here (`wizard`) — Continue is the save.
 	let connectForm = $state<ReturnType<typeof InverterForm> | null>(null);
+	let saving = $state(false);
 	async function continueFromConnect() {
-		if (await connectForm?.save()) step = 'activate';
+		saving = true;
+		const saved = await connectForm?.save();
+		saving = false;
+		if (saved) step = 'activate';
 	}
 
 	let registered = $state<RegisteredProfile[]>([]);
@@ -73,60 +77,32 @@
 		activated = true;
 	}
 
-	const steps: { key: Step; label: () => string }[] = [
-		{ key: 'profile', label: m.setup_step_profile },
-		{ key: 'connect', label: m.setup_step_connection },
-		{ key: 'activate', label: m.setup_step_activate }
-	];
-	const currentStep = $derived(steps.findIndex((s) => s.key === step));
-	const stepItems = $derived(steps.map((s) => ({ key: s.key, label: s.label() })));
-
 	// The connection form test-reads against the chosen profile; `undefined`
 	// lets the server fall back to the active one.
 	const testProfileId = $derived(selectedId ?? undefined);
 	const selectedName = $derived(selected?.name);
 </script>
 
-<div class="relative min-h-svh overflow-y-auto bg-background p-4">
-	<div
-		class="pointer-events-none absolute inset-0 opacity-[0.35] bg-[linear-gradient(to_right,var(--color-border)_1px,transparent_1px),linear-gradient(to_bottom,var(--color-border)_1px,transparent_1px)] bg-size-[44px_44px] mask-[radial-gradient(ellipse_at_center,black,transparent_75%)]"
-		aria-hidden="true"
-	></div>
+<SetupShell title={m.setup_title()} subtitle={m.setup_subtitle()} {step}>
+	{#if step === 'profile'}
+		<ProfileStep profiles={registered} bind:selectedId {onExternalInstalled} />
+	{:else if step === 'connect'}
+		<InverterForm bind:this={connectForm} profileId={testProfileId} wizard />
+	{:else}
+		<ActivateStep profileName={selectedName} {activated} />
+	{/if}
 
-	<div class="relative mx-auto flex w-full max-w-2xl flex-col gap-6 py-8">
-		<div class="flex flex-col items-center gap-3 text-center">
-			<Logo class="size-12 text-primary" />
-			<div>
-				<h1 class="text-xl font-semibold tracking-tight">{m.setup_title()}</h1>
-				<p class="text-sm text-muted-foreground">
-					{m.setup_subtitle()}
-				</p>
-			</div>
-		</div>
-
-		<SetupStepper steps={stepItems} current={currentStep} />
-
-		{#if step === 'profile'}
-			<ProfileStep
-				profiles={registered}
-				bind:selectedId
-				onContinue={() => (step = 'connect')}
-				{onExternalInstalled}
-			/>
-		{:else if step === 'connect'}
-			<InverterForm bind:this={connectForm} profileId={testProfileId} />
-			<div class="flex justify-between">
-				<Button variant="ghost" onclick={() => (step = 'profile')}>{m.action_back()}</Button>
-				<Button onclick={continueFromConnect}>{m.action_continue()}</Button>
-			</div>
-		{:else}
-			<ActivateStep
-				profileName={selectedName}
-				{activating}
-				{activated}
-				onActivate={activate}
-				onBack={() => (step = 'connect')}
-			/>
-		{/if}
-	</div>
-</div>
+	{#snippet footer()}
+		<SetupFooter
+			{step}
+			{selectedName}
+			canContinue={selectedId !== null}
+			{saving}
+			{activating}
+			{activated}
+			onStep={(next) => (step = next)}
+			onSaveConnection={continueFromConnect}
+			onActivate={activate}
+		/>
+	{/snippet}
+</SetupShell>

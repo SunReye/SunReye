@@ -244,7 +244,7 @@ const HEADINGS_NOT_YET_MIGRATED = [
   // never become a Section — Section is a card in the content column.
   "components/AuthShell.svelte",
   "routes/(app)/+layout.svelte",
-  "routes/setup/+page.svelte",
+  "lib/components/setup/setup-shell.svelte",
   // The one survivor of the phase-2.4 backlog, and it is a deliberate one.
   // `Section` frames with `border border-border` and heads with a muted
   // uppercase title STRING; the danger zone frames with `border-destructive/50`

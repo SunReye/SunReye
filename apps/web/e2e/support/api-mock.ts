@@ -911,6 +911,18 @@ export async function mockBackend(page: Page, options: BackendOptions = {}): Pro
       }
       return json(route, fixture.devices(MANIFEST));
     }
+    // `removeDevice`: only a device with no readings goes; the rest are the
+    // RESTRICT refusal the delete dialog answers with "retire instead".
+    if (under("devices") && method === "DELETE") {
+      if (fixture.DEVICES_WITH_HISTORY.has(Number(id))) {
+        return json(
+          route,
+          { error: "this device has recorded history; retire it instead", field: "history" },
+          409,
+        );
+      }
+      return json(route, { ok: true, id: Number(id) });
+    }
     if (under("devices") && method === "PATCH") {
       const current = fixture.devices(MANIFEST).devices.find((d) => String(d.id) === id);
       const { retired, ...fields } = body();
