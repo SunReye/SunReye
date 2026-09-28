@@ -114,8 +114,11 @@ export async function computeComparison(
   opts: { from: Date; to: Date; mode: CompareMode; inverterId?: SeriesTarget },
 ): Promise<ComparisonResponse> {
   const inverterId = opts.inverterId ?? profile.id;
-  const prev = previousWindow(opts.from, opts.to, opts.mode);
-  const context = await resolvePlantContext(profile, inverterId);
+  const [tz, context] = await Promise.all([
+    getPlantTimeZone(),
+    resolvePlantContext(profile, inverterId),
+  ]);
+  const prev = previousWindow(opts.from, opts.to, opts.mode, tz);
   const [current, previous, dataFrom] = await Promise.all([
     computeCost(profile, { from: opts.from, to: opts.to, inverterId }, { context }),
     computeCost(profile, { from: prev.from, to: prev.to, inverterId }, { context }),
@@ -125,6 +128,7 @@ export async function computeComparison(
     mode: opts.mode,
     current,
     previous,
+    reference: { from: prev.from.toISOString(), to: prev.to.toISOString() },
     coverage: { dataFrom: dataFrom?.toISOString() ?? null },
   };
 }

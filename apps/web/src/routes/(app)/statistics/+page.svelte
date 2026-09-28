@@ -21,7 +21,6 @@
 	import { SECTIONS, type SectionData } from '$lib/statistics/sections';
 	import {
 		pricedWindow,
-		referenceWindow,
 		usableComparison,
 		windowDays
 	} from '$lib/statistics/compare';
@@ -73,7 +72,7 @@
 	/**
 	 * An arbitrary span, both ends inclusive calendar days.
 	 *
-	 * This is why `referenceWindow`, `windowDays` and `baselineLabel` are
+	 * This is why the reference window, `windowDays` and `baselineLabel` are
 	 * span-driven rather than a table of preset ids: "vs the previous 17 days"
 	 * only exists because a reader can pick 17 days.
 	 */
@@ -134,14 +133,13 @@
 			mode,
 			...source.query
 		};
-		const reference = referenceWindow(window.from, window.to, mode);
 		let cancelled = false;
 		loading = true;
 		api.api.statistics.comparison.get({ query }).then(({ data }) => {
 			if (cancelled) return;
 			// usableComparison also drops a reference window that predates recorded
 			// history, so a first-month household never reads a fake −100%.
-			const pair = usableComparison(payloadOrNull<ComparisonResponse>(data), reference);
+			const pair = usableComparison(payloadOrNull<ComparisonResponse>(data));
 			cost = pair.current;
 			previous = pair.previous;
 			loading = false;
