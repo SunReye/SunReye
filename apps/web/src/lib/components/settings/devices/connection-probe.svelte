@@ -3,7 +3,7 @@
 	import { apiErrorText } from '$lib/api-error';
 	import { Button } from '$lib/components/ui/button';
 	import * as m from '$lib/paraglide/messages';
-	import { connectionProbeAnswer, describeConnectionProbe } from './add-device-logic';
+	import { connectionProbeAnswer, describeConnectionProbe } from './probe-logic';
 	import { type ConnectionDraft, connectionParamsOf } from './connection-draft';
 
 	// Is the endpoint there? PER KIND (#217): a Modbus gateway answers a TCP
@@ -14,7 +14,7 @@
 	//
 	// No unit id, no profile, no register read: an address can answer nothing
 	// more, and the register read lives on the device dialog, which knows what to
-	// read with. The wording is decided in `./add-device-logic.ts`.
+	// read with. The wording is decided in `./probe-logic.ts`.
 	//
 	// BINDABLE because a Solarman probe brings something BACK. The logger stick
 	// names itself in its handshake, and that serial is a field the operator

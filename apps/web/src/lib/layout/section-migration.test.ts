@@ -244,7 +244,7 @@ const HEADINGS_NOT_YET_MIGRATED = [
   // never become a Section — Section is a card in the content column.
   "components/AuthShell.svelte",
   "routes/(app)/+layout.svelte",
-  "routes/setup/+page.svelte",
+  "lib/components/setup/setup-shell.svelte",
   // The one survivor of the phase-2.4 backlog, and it is a deliberate one.
   // `Section` frames with `border border-border` and heads with a muted
   // uppercase title STRING; the danger zone frames with `border-destructive/50`
@@ -278,14 +278,13 @@ const HEADINGS_NOT_YET_MIGRATED = [
  */
 const CARDS_NOT_YET_MIGRATED = [
   // Chrome, not cards. Each is a bordered thing SMALLER than a section: the
-  // diagram's charger and battery badges, a price pill, a note paragraph, the
+  // diagram's charger badge, a price pill, a note paragraph, the
   // pinned-profile strip, the timezone preview readout, one tariff band row,
   // one time-of-use slot row, the dashed "no inverter?" disclosure inside the
   // now-migrated profile step, and the lock banner that already sits inside
   // controls-panel's Section. Framing them as Sections would be wrong, so they
   // are listed rather than migrated.
   "lib/components/inverter/_shared/ev-charger-body.svelte",
-  "lib/components/inverter/_shared/soc-gauge.svelte",
   "lib/components/inverter/tou-slot-editor.svelte",
   "lib/components/prices/negative-window-day.svelte",
   "lib/components/settings/display-form.svelte",

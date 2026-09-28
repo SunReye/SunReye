@@ -1,20 +1,20 @@
 <script lang="ts">
 	import { toast } from 'svelte-sonner';
-	import { api } from '$lib/api';
 	import { Button } from '$lib/components/ui/button';
 	import * as Dialog from '$lib/components/ui/dialog';
 	import * as m from '$lib/paraglide/messages';
-	import { apiErrorText } from '$lib/api-error';
 	import ConnectionDeleteDialog from './connection-delete-dialog.svelte';
 	import DialogShell from './device-dialog-shell.svelte';
 	import ConnectionProbe from './connection-probe.svelte';
 	import {
+		type ConnectionCreate,
 		type ConnectionDraft,
 		blankDraft,
 		connectionCreateBody,
 		connectionPatchBody,
 		draftFromConnection
 	} from './connection-draft';
+	import { type DeviceRoster, type WriteFailure, failureText } from './device-roster';
 	import type { ConnectionView, DeviceView } from './device-types';
 	import NewConnectionFields from './new-connection-fields.svelte';
 
@@ -30,15 +30,13 @@
 	let {
 		target = $bindable(null),
 		devices,
-		onSaved,
-		onDeleted
+		roster
 	}: {
 		/** The connection being edited, `'new'` to add one, or null to close. */
 		target?: ConnectionView | 'new' | null;
 		/** The devices on it — the delete guard. */
 		devices: DeviceView[];
-		onSaved: () => void;
-		onDeleted: () => void;
+		roster: DeviceRoster;
 	} = $props();
 
 	let draft = $state<ConnectionDraft>(blankDraft());
@@ -73,15 +71,16 @@
 		target = null;
 	}
 
-	/** The failure toast for either write, from the treaty's error shape. */
-	function failed(template: (args: { error: string }) => string, error: { value: unknown } | null) {
-		toast.error(template({ error: apiErrorText(error?.value, m.error_unknown()) }));
+	/** The failure toast for either write. */
+	function failed(template: (args: { error: string }) => string, failure: WriteFailure) {
+		toast.error(template({ error: failureText(failure) }));
 	}
 
-	/** The one write, addressed at the row when there is one. */
+	/** The one write, addressed at the row when there is one. With no row the
+	    body is `connectionCreateBody`'s — `editing` chose it above. */
 	function write(sending: NonNullable<typeof body>, row: ConnectionView | null) {
-		if (row) return api.api.connections({ id: String(row.id) }).patch(sending);
-		return api.api.connections.post(sending);
+		if (row) return roster.patchConnection(row.id, sending);
+		return roster.addConnection(sending as ConnectionCreate);
 	}
 
 	function announce(name: string, row: ConnectionView | null) {
@@ -95,11 +94,10 @@
 		if (!sendable || !sending) return;
 		const row = existing;
 		busy = true;
-		const result = await write(sending, row);
+		const outcome = await write(sending, row);
 		busy = false;
-		if (!result.data) return failed(m.devices_toast_connection_failed, result.error);
-		announce((result.data as ConnectionView).name, row);
-		onSaved();
+		if (outcome.kind !== 'ok') return failed(m.devices_toast_connection_failed, outcome);
+		announce(outcome.value.name, row);
 		close();
 	}
 
@@ -107,11 +105,10 @@
 		const row = existing;
 		if (!row) return;
 		busy = true;
-		const result = await api.api.connections({ id: String(row.id) }).delete();
+		const outcome = await roster.deleteConnection(row.id);
 		busy = false;
-		if (!result.data) return failed(m.devices_toast_connection_delete_failed, result.error);
+		if (outcome.kind !== 'ok') return failed(m.devices_toast_connection_delete_failed, outcome);
 		toast.success(m.devices_toast_connection_deleted({ name: row.name }));
-		onDeleted();
 		close();
 	}
 </script>

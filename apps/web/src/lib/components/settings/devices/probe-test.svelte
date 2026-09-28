@@ -5,7 +5,7 @@
 	import * as m from '$lib/paraglide/messages';
 	import type { TestResult } from '../inverter-types';
 	import SnapshotDialog from '../snapshot-dialog.svelte';
-	import { type ProbeTarget, describeProbe } from './add-device-logic';
+	import { type ProbeTarget, describeProbe } from './probe-logic';
 
 	// One test-read against a target — an address, a slave id, a profile — and
 	// the same snapshot the inverter form always offered on success: the first

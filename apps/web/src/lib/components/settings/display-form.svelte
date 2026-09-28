@@ -13,6 +13,7 @@
 	import * as m from '$lib/paraglide/messages';
 	import { useAppSession } from '$lib/session';
 	import { setMode, userPrefersMode } from 'mode-watcher';
+	import MotionPicker from './motion-picker.svelte';
 
 	const session = useAppSession();
 	const isAdmin = $derived($session.data?.user.role === 'admin');
@@ -130,6 +131,8 @@
 		/>
 	</div>
 </Section>
+
+<MotionPicker />
 
 <Section title={m.palette_title()}>
 	<p class="text-sm text-muted-foreground">{m.palette_desc()}</p>

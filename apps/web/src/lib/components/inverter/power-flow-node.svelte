@@ -10,10 +10,12 @@
 	import ArrowUp from 'phosphor-svelte/lib/ArrowUp';
 	import AnimatedNumber from './animated-number.svelte';
 	import SocGauge from './_shared/soc-gauge.svelte';
+	import SocReadout from './_shared/soc-readout.svelte';
 	import NodeDetailDialog from './node-detail-dialog.svelte';
 	import type { GraphNode, NodeKind } from '$lib/inverter/power-graph';
 	import type { NodeDetail } from '$lib/inverter/node-details';
 	import { nodeGlow } from '$lib/inverter/flow-pulse';
+	import { motion } from '$lib/motion/tier.svelte';
 
 	let {
 		node,
@@ -57,7 +59,48 @@
 	/** SoC handed to the gauge: `undefined` on nodes that don't show one. */
 	const ringSoc = $derived(gauged ? soc : undefined);
 
+	/**
+	 * The percentage, whole, or `undefined` on a node that carries none.
+	 *
+	 * It is the one figure on this hero anybody reads from across a room, so it
+	 * is the CONTENT of the node box rather than a badge pinned to its edge — it
+	 * used to be a 0.62rem chip on the bottom border, under the repo's own 12 px
+	 * phone floor and tinted with the SoC ramp, which puts `--sign-warn`
+	 * (`#f59e0b`) on the light theme's white at 2.2:1. The ramp still says what
+	 * the number MEANS — on the ring, where a 2.5 px stroke can carry a hue —
+	 * while the digits take the surface's own foreground and its full contrast.
+	 */
+	const socLabel = $derived(hasSoc ? Math.round(soc as number) : undefined);
+
+	/**
+	 * The node's icon steps down on a gauged node so the number can lead.
+	 *
+	 * Both cannot be dominant in a 56 px box, and on a battery the icon is the
+	 * redundant one: the caption underneath already names the node. The geometry
+	 * gives way to the type rather than the other way round.
+	 */
+	const iconClass = $derived(
+		hasSoc ? 'size-4 sm:size-4.5 2xl:size-6' : 'size-7 sm:size-8 2xl:size-10'
+	);
+
 	const iconColor = $derived(active ? node.accent : 'var(--muted-foreground)');
+
+	/**
+	 * The node box's transitions, at `full` only.
+	 *
+	 * Each of them is cheap to declare and expensive to run: the box-shadow is a
+	 * 34 px blur that repaints for every frame of its 500 ms, the tint is a
+	 * `color-mix` background, and there is one box per node. On the tablets this
+	 * tier exists for, a plant whose load wanders across a `pulseShare` bucket
+	 * leaves a wave of them running most of the time — measured on the idle
+	 * overview, 43 transitions were running at once. Below `full` the box takes
+	 * the same colours in one step.
+	 */
+	const boxTransition = $derived(
+		motion.tier === 'full' ? 'transition-[box-shadow,border-color,background] duration-500' : ''
+	);
+	/** Same, for the fade an idle node takes. */
+	const fadeTransition = $derived(motion.tier === 'full' ? 'transition-opacity duration-500' : '');
 
 	/** The node box, shared by the plain and the tappable variant so the two can
 	 *  never drift apart in size — the anchors are computed against this box. */
@@ -90,16 +133,17 @@
 </script>
 
 <div
-	class="absolute -translate-x-1/2 -translate-y-1/2 transition-opacity duration-500"
+	class="absolute -translate-x-1/2 -translate-y-1/2 {fadeTransition}"
 	style={`left:${node.at.x * 100}%;top:${node.at.y * 100}%`}
 	class:opacity-70={!active}
 >
 	{#snippet box()}
 		<div
-			class="flex size-full items-center justify-center border-2 transition-[box-shadow,border-color,background] duration-500"
+			class="power-node-box flex size-full flex-col items-center justify-center border-2 leading-none {boxTransition}"
 			style={circleStyle}
 		>
-			<Icon class="size-7 sm:size-8 2xl:size-10" weight="duotone" style={`color:${iconColor}`} />
+			<Icon class={iconClass} weight="duotone" style={`color:${iconColor}`} />
+			<SocReadout soc={socLabel} />
 		</div>
 		<SocGauge soc={ringSoc} />
 	{/snippet}

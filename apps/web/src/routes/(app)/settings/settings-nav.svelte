@@ -18,7 +18,23 @@
 	import RobotIcon from 'phosphor-svelte/lib/Robot';
 	import WarningIcon from 'phosphor-svelte/lib/Warning';
 
-	let { isAdmin, current }: { isAdmin: boolean; current: string } = $props();
+	let {
+		isAdmin,
+		current,
+		stripHeight = $bindable(0)
+	}: {
+		isAdmin: boolean;
+		current: string;
+		/**
+		 * The phone tab strip's laid-out height, handed back to the settings
+		 * layout so the panel below can push its own sticky chrome clear of it.
+		 * Measured rather than declared: the strip is `display: none` from `md:`,
+		 * where the browser reports 0 and the panel's save bar correctly sticks
+		 * straight under the header. A hard-coded `2.5rem` would have been wrong
+		 * on the desktop and wrong again the first time a tab grew a second line.
+		 */
+		stripHeight?: number;
+	} = $props();
 
 	// Routes, labels and grouping come from `nav-routes.ts` — the same table the
 	// shell header reads, so a panel cannot appear in the rail with no title.
@@ -76,7 +92,11 @@
 
 <!-- Desktop: grouped vertical menu. -->
 <nav class="hidden md:block" aria-label={m.nav_settings()}>
-	<div class="sticky top-6 flex flex-col gap-6">
+	<!-- `--sticky-top` is the shell's contract (see `(app)/+layout.svelte`): the
+	     first y a sticky box may claim, because the DOCUMENT is what scrolls and
+	     the header owns the band above it. `top-6` alone parked the rail's first
+	     group under the header. -->
+	<div class="sticky top-[calc(var(--sticky-top,0px)+1.5rem)] flex flex-col gap-6">
 		{#each groups as group (group.group)}
 			<div class="flex flex-col gap-1">
 				<p class="px-2 pb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground/70">
@@ -96,8 +116,19 @@
      the right edge simply looked CLIPPED — fifteen panels, and no cue that the
      last five exist (#214). The fade says the row continues, and the snap makes
      a swipe land on a whole tab instead of halfway through one. Proximity snap,
-     not mandatory: mandatory fights a scroll that means to reach the end. -->
-<div class="relative -mx-4 md:hidden">
+     not mandatory: mandatory fights a scroll that means to reach the end.
+
+     Sticky, directly under the header (`--sticky-top`, see
+     `(app)/+layout.svelte`): a settings panel is a long form, and a strip that
+     scrolls away turns "switch panel" into "scroll all the way back up first".
+     Opaque, because the form scrolls underneath it. `z-30` is the shell's tier
+     for a section's own sticky nav — above the panel's save bar, below the
+     header. The wrapper is the sticky box AND the fade's positioning context
+     (sticky is positioned), so the fade cannot travel with the scrolled row. -->
+<div
+	bind:clientHeight={stripHeight}
+	class="sticky top-[var(--sticky-top,0px)] z-30 -mx-4 bg-background md:hidden"
+>
 	<nav class="snap-x overflow-x-auto px-4" aria-label={m.nav_settings()}>
 		<div class="flex w-max gap-1 pb-1">
 			{#each visible as route (route.id)}

@@ -147,7 +147,7 @@ function forecastAt(watts: number[]): SolarForecast {
     tomorrowKwh: 0,
     next15: { maxPowerW: watts[0] ?? 0, avgPowerW: watts[0] ?? 0, energyKwh: 0 },
   };
-  return { provider: "test", stepMinutes: 15, utcOffsetSeconds: 0, ...raw, raw };
+  return { provider: "test", stepMinutes: 15, utcOffsetSeconds: 0, timeZone: "UTC", ...raw, raw };
 }
 
 // --- Fake clock + timers -------------------------------------------------------

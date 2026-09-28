@@ -1,23 +1,21 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
 	import { toast } from 'svelte-sonner';
-	import { api } from '$lib/api';
 	import { Button } from '$lib/components/ui/button';
 	import * as Dialog from '$lib/components/ui/dialog';
 	import * as m from '$lib/paraglide/messages';
-	import type { RegisteredProfile } from '../profile-types';
-	import {
-		type Refusal,
-		buildAddDeviceBody,
-		describeRefusal,
-		devicePatch,
-		emptyForm,
-		formFromDevice,
-		probeTargetOf
-	} from './add-device-logic';
+	import { buildAddDeviceBody, devicePatch, emptyForm, formFromDevice } from './device-form';
+	import { probeTargetOf } from './probe-logic';
 	import AddressFields from './address-fields.svelte';
 	import ConnectionField from './connection-field.svelte';
 	import DialogShell from './device-dialog-shell.svelte';
-	import type { ConnectionView, DeviceView } from './device-types';
+	import {
+		type DeviceRoster,
+		type Refusal,
+		type WriteFailure,
+		statedReason
+	} from './device-roster';
+	import type { AddDeviceBody, DeviceView } from './device-types';
 	import InverterSection from './inverter-section.svelte';
 	import NameField from './name-field.svelte';
 	import ProbeTest from './probe-test.svelte';
@@ -27,28 +25,28 @@
 	// gateway, address the device on it, name it, pick the profile that speaks to
 	// it. Every choice is a NATIVE select — the operator is on a phone in a cellar
 	// as often as at a desk, and the platform picker is the one that works there.
-	// The rules live in `./add-device-logic.ts`; each field is its own component;
-	// this file holds the form state and the request. An edit sends only what
-	// changed, and cannot create a gateway — that is the connection's own dialog.
+	// The rules live in `./device-form.ts`; each field is its own component;
+	// this file holds the form state; the request is the roster's. An edit sends
+	// only what changed, and cannot create a gateway — that is the connection's
+	// own dialog.
 	let {
 		open = $bindable(false),
 		device = null,
-		connections,
-		devices,
-		onSaved
+		roster
 	}: {
 		open?: boolean;
 		/** The device being edited, or null to add one. */
 		device?: DeviceView | null;
-		connections: ConnectionView[];
-		devices: DeviceView[];
-		onSaved: (device: DeviceView) => void;
+		roster: DeviceRoster;
 	} = $props();
+
+	const connections = $derived(roster.connections);
+	const devices = $derived(roster.devices);
+	const registered = $derived(roster.profiles);
 
 	// Seeded empty and filled by the open effect below, which is the one place
 	// the current connection list is read.
 	let form = $state(emptyForm([]));
-	let registered = $state<RegisteredProfile[]>([]);
 	let submitting = $state(false);
 	/** The server's refusal, shown under the field it named. */
 	let refusal = $state<Refusal | null>(null);
@@ -66,38 +64,37 @@
 	/** The other devices, so an edit's own unit id is not shown as taken. */
 	const others = $derived(devices.filter((d) => d.id !== device?.id));
 
-	async function loadRegistered() {
-		const { data } = await api.api.profiles.get();
-		if (data) registered = data as RegisteredProfile[];
-	}
-
 	// A fresh form each time the dialog opens: the previous device's values are
 	// the wrong defaults for the next one, and the connection list may have grown.
+	// The lists are read UNTRACKED: a save re-reads the roster before the dialog
+	// closes, and that must not reseed the form or fetch the profiles again.
 	$effect(() => {
-		if (open) {
-			form = device ? formFromDevice(device, connections) : emptyForm(connections, devices);
+		if (!open) return;
+		const row = device;
+		untrack(() => {
+			form = row ? formFromDevice(row, connections) : emptyForm(connections, devices);
 			refusal = null;
-			void loadRegistered();
-		}
+			void roster.loadProfiles();
+		});
 	});
 
 	async function onInstalled(id: string) {
-		await loadRegistered();
+		await roster.loadProfiles();
 		form.profileId = id;
 	}
 
-	function report(error: { value: unknown } | null) {
-		const described = describeRefusal(error?.value, m.error_unknown());
-		if (described.field) refusal = described;
+	/** A refusal naming a field lands under it; anything else is a toast. */
+	function report(failure: WriteFailure) {
+		if (failure.kind === 'refused') refusal = { field: failure.field, message: failure.reason };
 		else toast.error(
-				(editing ? m.devices_toast_update_failed : m.devices_toast_add_failed)({ error: described.message })
+				(editing ? m.devices_toast_update_failed : m.devices_toast_add_failed)({ error: statedReason(failure) })
 			);
 	}
 
-	/** The one request an add or an edit makes; the treaty types each arm. */
-	function send() {
-		if (device) return api.api.devices({ id: String(device.id) }).patch(body ?? {});
-		return api.api.devices.post(body ?? {});
+	/** The one request an add or an edit makes. */
+	function send(sending: NonNullable<typeof body>) {
+		if (device) return roster.patch(device.id, sending);
+		return roster.add({ target: 'device', body: sending as AddDeviceBody });
 	}
 
 	// `submitting` is not re-checked here: the submit button is disabled while it
@@ -107,15 +104,14 @@
 		if (!body) return;
 		submitting = true;
 		refusal = null;
-		const result = await send();
+		const outcome = await send(body);
 		submitting = false;
-		if (!result.data) {
-			report(result.error);
+		if (outcome.kind !== 'ok') {
+			report(outcome);
 			return;
 		}
-		const saved = result.data as DeviceView;
+		const saved = outcome.value;
 		toast.success(editing ? m.devices_toast_updated({ name: saved.name }) : m.devices_toast_added({ name: saved.name }));
-		onSaved(saved);
 		open = false;
 	}
 </script>

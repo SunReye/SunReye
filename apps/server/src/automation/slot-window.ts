@@ -12,6 +12,7 @@
  * Pure: no DB, no clock of its own.
  */
 
+import { dayStart, nextDayStart } from "@SunReye/inverter-core/zoned-calendar";
 import { HOUR_MS } from "../energy/energy-flow";
 import type { SolarForecastPoint } from "../forecast/solar-forecast";
 
@@ -20,6 +21,12 @@ export interface ForecastSlice {
   series: SolarForecastPoint[];
   stepMinutes: number;
   utcOffsetSeconds: number;
+  /**
+   * The plant's IANA zone. `series` labels carry ONE fixed offset for the whole
+   * run, so they decode to exact instants but stop matching the wall clock on a
+   * DST-change day — the plant-local day boundary comes from here instead.
+   */
+  timeZone: string;
 }
 
 /** A forecast slot, with the part of it inside the caller's window. */
@@ -51,26 +58,33 @@ function slotWidthMs(
 /** Absolute start instant of a series point. */
 const startOf = (time: string, offsetMs: number): number => Date.parse(`${time}:00Z`) - offsetMs;
 
+/** Every series point as an absolute span: start instant, width, power. */
+function spansOf(view: ForecastSlice): { startMs: number; widthMs: number; watts: number }[] {
+  const offsetMs = view.utcOffsetSeconds * 1000;
+  const fallbackWidth = view.stepMinutes * 60_000;
+  return view.series.map((point, i) => {
+    const startMs = startOf(point.time, offsetMs);
+    const widthMs = slotWidthMs(startMs, view.series[i + 1]?.time, offsetMs, fallbackWidth);
+    return { startMs, widthMs, watts: point.watts };
+  });
+}
+
 /**
  * Slots overlapping `[fromMs, toMs)`, oldest first, each carrying only the part
  * inside the window — so the first and last are prorated exactly like the
  * running slot in {@link remainingSlotsToday}.
  *
  * The sibling of `remainingSlotsToday` for an *arbitrary* window: that one
- * filters by the plant-local date string, so it cannot integrate over a window
+ * is bounded to the plant-local day, so it cannot integrate over a window
  * that crosses midnight or lies in tomorrow, which is precisely what a planner
  * looking ahead to tomorrow's prices needs.
  */
 export function slotsBetween(view: ForecastSlice, fromMs: number, toMs: number): ForecastSlot[] {
-  const offsetMs = view.utcOffsetSeconds * 1000;
-  const fallbackWidth = view.stepMinutes * 60_000;
   const slots: ForecastSlot[] = [];
-  for (const [i, point] of view.series.entries()) {
-    const startMs = startOf(point.time, offsetMs);
-    const width = slotWidthMs(startMs, view.series[i + 1]?.time, offsetMs, fallbackWidth);
-    const overlapMs = Math.min(startMs + width, toMs) - Math.max(startMs, fromMs);
+  for (const { startMs, widthMs, watts } of spansOf(view)) {
+    const overlapMs = Math.min(startMs + widthMs, toMs) - Math.max(startMs, fromMs);
     if (overlapMs <= 0) continue;
-    slots.push({ startMs, remainingMs: overlapMs, watts: point.watts });
+    slots.push({ startMs, remainingMs: overlapMs, watts });
   }
   return slots;
 }
@@ -82,17 +96,16 @@ export function slotsBetween(view: ForecastSlice, fromMs: number, toMs: number):
  * projection walk the day through this.
  */
 export function remainingSlotsToday(view: ForecastSlice, fromMs: number): ForecastSlot[] {
-  const offsetMs = view.utcOffsetSeconds * 1000;
-  const today = new Date(fromMs + offsetMs).toISOString().slice(0, 10);
-  const fallbackWidth = view.stepMinutes * 60_000;
+  // The plant zone's midnights, not the labels' date prefix: the labels carry
+  // one fixed offset, an hour off the wall clock on a DST-change day.
+  const todayStartMs = dayStart(fromMs, view.timeZone).getTime();
+  const tomorrowStartMs = nextDayStart(fromMs, view.timeZone).getTime();
   const slots: ForecastSlot[] = [];
-  for (const [i, point] of view.series.entries()) {
-    if (!point.time.startsWith(today)) continue;
-    const startMs = startOf(point.time, offsetMs);
-    const width = slotWidthMs(startMs, view.series[i + 1]?.time, offsetMs, fallbackWidth);
-    const remainingMs = Math.min(startMs + width - fromMs, width);
+  for (const { startMs, widthMs, watts } of spansOf(view)) {
+    if (startMs < todayStartMs || startMs >= tomorrowStartMs) continue;
+    const remainingMs = Math.min(startMs + widthMs - fromMs, widthMs);
     if (remainingMs <= 0) continue;
-    slots.push({ startMs, remainingMs, watts: point.watts });
+    slots.push({ startMs, remainingMs, watts });
   }
   return slots;
 }

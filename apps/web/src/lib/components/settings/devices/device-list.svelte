@@ -2,41 +2,34 @@
 	import EmptyState from '$lib/components/layout/empty-state.svelte';
 	import * as m from '$lib/paraglide/messages';
 	import { SECTION_GAP } from '$lib/layout/tokens';
-	import { groupByConnection } from './add-device-logic';
+	import type { DeviceGroup } from './roster-groups';
 	import DeviceGroupCard from './device-group.svelte';
-	import type { ConnectionView, DeviceRoster, DeviceView, IntegrationView } from './device-types';
+	import type { ConnectionView, DeviceHandlers, IntegrationHandlers } from './device-types';
 
 	// The roster's three states — failed to load, empty, groups — and the groups.
 	let {
-		roster,
+		groups,
+		loaded,
 		loadFailed,
 		busyId,
 		busyIntegrationId,
 		onEditConnection,
-		onEdit,
-		onRename,
-		onRetire,
-		onRestore,
-		onEditIntegration,
-		onToggleIntegration,
-		onRemoveIntegration
+		handlers,
+		integrationHandlers
 	}: {
-		roster: DeviceRoster | null;
+		/** The roster's cards, integrations folded in (`DeviceRoster.groups`). */
+		groups: DeviceGroup[];
+		/** Whether the roster has answered — no cards before it is "not yet", not "empty". */
+		loaded: boolean;
 		loadFailed: boolean;
 		busyId: number | null;
 		busyIntegrationId: number | null;
 		onEditConnection: (connection: ConnectionView) => void;
-		onEdit: (device: DeviceView) => void;
-		onRename: (device: DeviceView) => void;
-		onRetire: (device: DeviceView) => void;
-		onRestore: (device: DeviceView) => void;
-		onEditIntegration: (integration: IntegrationView) => void;
-		onToggleIntegration: (integration: IntegrationView, enabled: boolean) => void;
-		onRemoveIntegration: (integration: IntegrationView) => void;
+		handlers: DeviceHandlers;
+		integrationHandlers: IntegrationHandlers;
 	} = $props();
 
-	const groups = $derived(roster ? groupByConnection(roster) : []);
-	const empty = $derived(roster !== null && groups.length === 0);
+	const empty = $derived(loaded && groups.length === 0);
 </script>
 
 {#if loadFailed}
@@ -51,13 +44,8 @@
 				{busyId}
 				{busyIntegrationId}
 				{onEditConnection}
-				{onEdit}
-				{onRename}
-				{onRetire}
-				{onRestore}
-				{onEditIntegration}
-				{onToggleIntegration}
-				{onRemoveIntegration}
+				{handlers}
+				{integrationHandlers}
 			/>
 		{/each}
 	</div>

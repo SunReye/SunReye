@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { emptyForm } from "./add-device-logic";
+import { emptyForm } from "./device-form";
 import { NEW_CONNECTION, type ConnectionView } from "./device-types";
 import { blankDraft } from "./connection-draft";
 import {

@@ -1,15 +1,13 @@
 <script lang="ts">
 	import { toast } from 'svelte-sonner';
-	import { api } from '$lib/api';
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
 	import { Label } from '$lib/components/ui/label';
 	import * as m from '$lib/paraglide/messages';
 	import { SLUG_MAX } from '@SunReye/inverter-core/slug';
-	import { apiErrorText } from '$lib/api-error';
-	import { type Refusal, describeRefusal, nameProblem } from './add-device-logic';
-	import { renameBlock } from './rename-logic';
+	import { nameProblem, renameBlock } from './device-form';
 	import DialogShell from './device-dialog-shell.svelte';
+	import { type DeviceRoster, type Refusal, placeFailure } from './device-roster';
 	import type { DeviceView } from './device-types';
 	import FieldProblem from './field-problem.svelte';
 
@@ -24,11 +22,11 @@
 	// would promise the URL changes with the name.
 	let {
 		device = $bindable(null),
-		onSaved
+		roster
 	}: {
 		/** The row being renamed, or null when the dialog is closed. */
 		device?: DeviceView | null;
-		onSaved: () => void;
+		roster: DeviceRoster;
 	} = $props();
 
 	let name = $state('');
@@ -50,7 +48,7 @@
 
 	const trimmed = $derived(name.trim());
 	const problem = $derived(trimmed === '' ? null : nameProblem(name));
-	// Why Save is refused, decided in `./rename-logic.ts`.
+	// Why Save is refused, decided in `./device-form.ts`.
 	const blocked = $derived(
 		renameBlock({ typed: name, current: device?.name ?? null, submitting }) !== null
 	);
@@ -69,18 +67,23 @@
 		submitting = false;
 	}
 
-	/** The request, and what it leaves behind: a refusal to show, or nothing. */
+	/**
+	 * The request, and what it leaves behind: a refusal to show under the name,
+	 * or nothing. Any other failure has no place on this one-field form, so it is
+	 * a toast — kept as field state, nothing would render it.
+	 */
 	async function rename(target: DeviceView, to: string): Promise<Refusal | null> {
-		const result = await api.api.devices({ id: String(target.id) }).patch({ name: to });
-		if (result.data) return saved(result.data as DeviceView);
-		const error = result.error?.value;
-		return describeRefusal(error, apiErrorText(error, m.error_unknown()));
+		const outcome = await roster.patch(target.id, { name: to });
+		if (outcome.kind === 'ok') return saved(outcome.value);
+		const place = placeFailure(outcome, ['name']);
+		if (place.kind === 'field') return place.refusal;
+		toast.error(m.devices_toast_update_failed({ error: place.text }));
+		return null;
 	}
 
 	function saved(device: DeviceView): null {
 		toast.success(m.devices_toast_updated({ name: device.name }));
 		close();
-		onSaved();
 		return null;
 	}
 

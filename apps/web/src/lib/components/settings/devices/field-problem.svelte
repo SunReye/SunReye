@@ -2,7 +2,7 @@
 	// The one-line message under a field: the server's refusal when it named
 	// this field, else the client-side hint, else nothing. One component so the
 	// precedence is decided once rather than in every field.
-	import type { Refusal, RefusedField } from './add-device-logic';
+	import type { Refusal, RefusedField } from './device-roster';
 
 	let {
 		field,

@@ -143,10 +143,16 @@ const config = (over: object = {}, psOver: object = {}): AutomationConfig =>
 const NOON = Date.parse("2026-07-25T12:00:00Z");
 
 /** 15-min slots from `startHour`, one entry per watts value. */
-function slice(startHour: number, watts: number[], utcOffsetSeconds = 0): ForecastSlice {
+function slice(
+  startHour: number,
+  watts: number[],
+  utcOffsetSeconds = 0,
+  timeZone = "UTC",
+): ForecastSlice {
   return {
     stepMinutes: 15,
     utcOffsetSeconds,
+    timeZone,
     series: watts.map((w, i) => {
       const totalMin = startHour * 60 + i * 15;
       const hh = String(Math.floor(totalMin / 60)).padStart(2, "0");
@@ -175,6 +181,7 @@ function asForecast(view: ForecastSlice, next15MaxW?: number): SolarForecast {
     provider: "test",
     stepMinutes: view.stepMinutes,
     utcOffsetSeconds: view.utcOffsetSeconds,
+    timeZone: view.timeZone,
     ...raw,
     raw,
   };
@@ -288,6 +295,7 @@ describe("remaining-today surplus above the export limit", () => {
     const view: ForecastSlice = {
       stepMinutes: 15,
       utcOffsetSeconds: 0,
+      timeZone: "UTC",
       series: [
         { time: "2026-07-25T10:00", watts: 20_000, peakWatts: 20_000 }, // past
         { time: "2026-07-26T12:00", watts: 20_000, peakWatts: 20_000 }, // tomorrow
@@ -303,6 +311,7 @@ describe("remaining-today surplus above the export limit", () => {
     const view: ForecastSlice = {
       stepMinutes: 15,
       utcOffsetSeconds: 0,
+      timeZone: "UTC",
       series: [
         { time: "2026-07-25T13:00", watts: 9000, peakWatts: 9000 },
         { time: "2026-07-25T15:00", watts: 9000, peakWatts: 9000 },
@@ -311,10 +320,10 @@ describe("remaining-today surplus above the export limit", () => {
     expect(surplusAbove(view, 8000, NOON)).toBeCloseTo(0.5, 6);
   });
 
-  test("respects the plant's UTC offset when bucketing the local day", () => {
+  test("respects the plant's zone when bucketing the local day", () => {
     // Plant at UTC+2: local 23:45 of the 25th is 21:45 UTC. At 21:00 UTC the
     // slot is still "today" locally and future — it must count.
-    const view = slice(23, [9000], 2 * 3600);
+    const view = slice(23, [9000], 2 * 3600, "Europe/Berlin");
     view.series[0]!.time = "2026-07-25T23:45";
     const nowMs = Date.parse("2026-07-25T21:00:00Z");
     expect(surplusAbove(view, 8000, nowMs)).toBeCloseTo(0.25, 6);
@@ -2164,6 +2173,7 @@ describe("peak-shaving engine — plan", () => {
       asForecast({
         stepMinutes: 60,
         utcOffsetSeconds: 0,
+        timeZone: "UTC",
         series: [
           { time: "2026-07-25T12:00", watts: 9000, peakWatts: 9000 },
           { time: "2026-07-26T11:00", watts: 12_000, peakWatts: 12_000 },
@@ -2369,6 +2379,7 @@ describe("price-aware charging", () => {
   const flatForecast = (watts: number): ForecastSlice => ({
     stepMinutes: 15,
     utcOffsetSeconds: 0,
+    timeZone: "UTC",
     series: Array.from({ length: 96 }, (_, i) => {
       const minutes = i * 15;
       const hh = String(Math.floor(minutes / 60)).padStart(2, "0");

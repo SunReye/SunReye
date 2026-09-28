@@ -5,7 +5,7 @@
  * bound to form state, a "new connection" branch that appears on one option,
  * a submit button whose `disabled` follows a derived body, and a server
  * refusal that has to land under the field it names. The rules themselves
- * (`add-device-logic.test.ts`) are proven in milliseconds; what only exists
+ * (`device-form.test.ts`, `roster-groups.test.ts`, `device-roster.test.ts`) are proven in milliseconds; what only exists
  * here is whether the bindings wire them to the controls.
  */
 
@@ -158,14 +158,22 @@ test.describe("the roster", () => {
     // working is the state nobody acts on. Every state that is not the healthy
     // one still speaks, which the meter and the retired row below prove.
     await expect(inverter.getByText("Polling")).toHaveCount(0);
-    // The polled device cannot be retired from here.
-    await expect(inverter.getByRole("button", { name: "Retire" })).toBeDisabled();
+    // The polled device cannot be retired from here: the entry is in its menu,
+    // refused, and says why rather than vanishing.
+    await inverter.locator("[data-row-menu]").click();
+    const retire = page.getByRole("menuitem", { name: /Retire/ });
+    await expect(retire).toHaveAttribute("aria-disabled", "true");
+    await expect(retire).toContainText("being polled");
+    await page.keyboard.press("Escape");
 
     const meter = page.locator("[data-device='meter']");
     await expect(meter.getByText("Not polled")).toBeVisible();
     await expect(meter.getByText("Unit 2")).toBeVisible();
 
+    // A retired device folds under its own disclosure, closed.
     const old = page.locator("[data-device='old-inverter']");
+    await expect(old).toBeHidden();
+    await page.getByRole("button", { name: "Retired (1)" }).click();
     await expect(old.getByText("Retired")).toBeVisible();
     await expect(old.getByText(/Profile not installed/)).toBeVisible();
     await expect(old.getByRole("button", { name: "Restore" })).toBeVisible();
@@ -226,7 +234,9 @@ test.describe("the roster", () => {
     // refused and the row offered a link and nothing else.
     await expect(carport.getByRole("button", { name: "Edit" })).toHaveCount(0);
     await expect(carport.getByRole("button", { name: "Rename" })).toBeVisible();
-    await expect(carport.getByRole("button", { name: "Retire" })).toBeVisible();
+    await carport.locator("[data-row-menu]").click();
+    await expect(page.getByRole("menuitem", { name: "Retire" })).toBeVisible();
+    await page.keyboard.press("Escape");
     // No "Configure" link on the row: what provides this loadpoint is the
     // integration the row now hangs UNDER, whose own name is the link into it.
     // `settings-integrations.spec.ts` is that half.
@@ -238,9 +248,51 @@ test.describe("the roster", () => {
     await expect(optimizer.getByText("Optimizer", { exact: true }).first()).toBeVisible();
     await expect(optimizer.getByRole("button", { name: "Edit" })).toHaveCount(0);
     await expect(optimizer.getByRole("button", { name: "Retire" })).toHaveCount(0);
+    // Rename is all it offers, so there is no menu to open at all.
+    await expect(optimizer.locator("[data-row-menu]")).toHaveCount(0);
     // Nothing to configure: it is this server's own control loop.
     await expect(optimizer.getByRole("link", { name: "Configure" })).toHaveCount(0);
     expect(opened.consoleErrors).toEqual([]);
+  });
+
+  /**
+   * The rename dialog has ONE field. A refusal naming another one (or none)
+   * used to be kept as field state that nothing rendered: Save did nothing
+   * visible. It is a toast; a refusal naming `name` still lands under the box.
+   */
+  test("a rename refused for anything but the name says so in a toast", async ({ page }) => {
+    const opened = await open(page);
+    let refusal: { error: string; field?: string } = { error: "role is fixed", field: "role" };
+    // Registered after the fake backend, so this handler is the one that runs.
+    await page.route(
+      (url) => /\/api\/devices\/\d+$/.test(url.pathname),
+      async (route) => {
+        if (route.request().method() !== "PATCH") return await route.fallback();
+        await route.fulfill({
+          status: 409,
+          contentType: "application/json",
+          body: JSON.stringify(refusal),
+        });
+      },
+    );
+
+    await page
+      .locator("[data-device='evcc-loadpoint-1']")
+      .getByRole("button", { name: "Rename" })
+      .click();
+    const panel = dialog(page);
+    await panel.getByLabel("Name", { exact: true }).fill("Garage");
+    await panel.getByRole("button", { name: "Save" }).click();
+    await expect(page.getByText("Updating the device failed: role is fixed")).toBeVisible();
+    // Still open: nothing was renamed.
+    await expect(panel).toBeVisible();
+
+    refusal = { error: "name already taken", field: "name" };
+    await panel.getByRole("button", { name: "Save" }).click();
+    await expect(panel.getByText("name already taken")).toBeVisible();
+    // Chromium logs every 409 it is handed; that line is the browser's, not the app's.
+    const own = opened.consoleErrors.filter((e) => !/status of 409/.test(e));
+    expect(own).toEqual([]);
   });
 
   /**

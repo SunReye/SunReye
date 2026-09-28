@@ -1031,6 +1031,42 @@ suite("the dimension spine", () => {
       expect(await failure(sql`delete from devices where id = ${device.id}`)).toContain("violates");
     });
 
+    test("deleteDevice removes a device that never recorded anything, its pack with it", async () => {
+      const { plant, device } = await retiredFixture("delete-clean");
+      await repo.upsertDeviceBattery(db, device.id, {
+        usableKwh: 10,
+        maxChargeW: null,
+        minSoc: 10,
+        nominalV: null,
+      });
+      expect(await repo.deleteDevice(db, device.id)).toBe("deleted");
+      expect(await repo.readDevices(db, plant.id)).toHaveLength(0);
+      const { rows } = await db.execute(sql`
+        select count(*)::int as n from batteries where device_id = ${device.id}`);
+      expect(Number((rows[0] as { n: number }).n)).toBe(0);
+      expect(await repo.deleteDevice(db, device.id)).toBe("missing");
+    });
+
+    test("deleteDevice refuses a device with readings, and the refusal leaves its pack in place", async () => {
+      const { plant, device } = await retiredFixture("delete-history");
+      await repo.upsertDeviceBattery(db, device.id, {
+        usableKwh: 7,
+        maxChargeW: null,
+        minSoc: 10,
+        nominalV: null,
+      });
+      const { ensureMetricKeys } = await import("@SunReye/db/metric-keys");
+      const ids = await ensureMetricKeys(db, [{ key: "delete.history", isCounter: false }]);
+      await db.execute(sql`
+        insert into metrics_raw (time, value, dur_ms, device_id, metric_id)
+        values (now(), 1, 1000, ${device.id}, ${ids.get("delete.history") ?? 0})`);
+      expect(await repo.deleteDevice(db, device.id)).toBe("has-history");
+      expect(await repo.readDevices(db, plant.id)).toHaveLength(1);
+      const { rows } = await db.execute(sql`
+        select usable_kwh as kwh from batteries where device_id = ${device.id}`);
+      expect(Number((rows[0] as { kwh: number }).kwh)).toBe(7);
+    });
+
     test("un-retiring is an UPDATE back to NULL, and the device returns to the active list", async () => {
       const { plant, device } = await retiredFixture("retire-return");
       await repo.updateDevice(db, device.id, { retiredAt: new Date() });
