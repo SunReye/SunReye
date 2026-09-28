@@ -40,12 +40,15 @@ export function listProfiles(): InverterProfile[] {
   return [...profiles.values()];
 }
 
-/** Build a live source for a profile: simulator or real Modbus TCP. */
+/**
+ * Build a live source for a profile: simulator or real Modbus TCP. `timeZone`
+ * is the plant's, and only the simulator reads it — its sun runs on that clock.
+ */
 export function createInverter(
   profile: InverterProfile,
-  opts: { simulate: boolean; connection: InverterConnection },
+  opts: { simulate: boolean; connection: InverterConnection; timeZone?: string },
 ): InverterSource {
   return opts.simulate
-    ? new SimulatedInverter(profile)
+    ? new SimulatedInverter(profile, { timeZone: opts.timeZone })
     : new ModbusInverter(profile, opts.connection);
 }

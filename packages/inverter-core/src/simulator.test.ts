@@ -33,6 +33,16 @@ const profileOf = (metrics: MetricDef[], simulate?: (ctx: SimContext) => MetricV
     simulate,
   }) satisfies InverterProfile;
 
+describe("the plant's zone", () => {
+  test("reaches the simulate hook when the simulator is given one", async () => {
+    const seen: (string | undefined)[] = [];
+    const hook = (ctx: SimContext) => (seen.push(ctx.timeZone), {});
+    await new SimulatedInverter(profileOf([], hook), { timeZone: "Europe/Berlin" }).read();
+    await new SimulatedInverter(profileOf([], hook)).read();
+    expect(seen).toEqual(["Europe/Berlin", undefined]);
+  });
+});
+
 describe("the profile's own simulate hook", () => {
   test("supplies the values it models and the sample is stamped with the profile id", async () => {
     const sim = new SimulatedInverter(

@@ -177,14 +177,18 @@ export interface SourceConnection {
  * poll loop passes what the box is configured for, and a connection test passes
  * false, because testing an address against a simulator answers a question
  * nobody asked.
+ *
+ * `timeZone` is the plant's; the simulator runs its sun on it (UTC without one).
  */
 export function buildSource(
   profile: InverterProfile,
   config: SourceConnection,
   simulate: boolean,
+  timeZone?: string,
 ): InverterSource {
   return createInverter(profile, {
     simulate,
+    timeZone,
     connection: {
       // Empty when the inverter hasn't been configured yet; a real connect then
       // fails (handled by the God-loop), while simulate mode ignores it entirely.

@@ -11,6 +11,8 @@ import {
   isChartable,
   KEPT_PRESETS,
   resolvePreset,
+  rezoneHistoryView,
+  type HistoryRange,
 } from "./ranges";
 
 const HOUR = 3_600_000;
@@ -432,5 +434,72 @@ describe("historyPeriodRange — what /history renders for a calendar period", (
     expect(historyPeriodRange(today, today.start, BERLIN).live).toBe(true);
     expect(historyPeriodRange(today, new Date(today.end.getTime() - 1), BERLIN).live).toBe(true);
     expect(historyPeriodRange(today, today.end, BERLIN).live).toBe(false);
+  });
+});
+
+describe("rezoneHistoryView — what /history re-reads when the plant's zone lands", () => {
+  const NY = "America/New_York";
+  const opts = { timeZone: BERLIN, weekStartsOn: 1 as const };
+  const now = new Date("2026-08-21T00:00:00Z"); // 20:00 NY on the 20th, 02:00 Berlin on the 21st
+  const opened = periodWindow(now, "day", { timeZone: NY });
+  const openedRange = historyPeriodRange(opened, now, NY);
+  const zoom: HistoryRange = {
+    id: "zoom",
+    label: "zoom",
+    live: false,
+    from: new Date("2026-08-20T15:00:00Z"),
+    to: new Date("2026-08-20T16:00:00Z"),
+    bucket: "minute",
+  };
+
+  it("rebuilds the period the page stands on, and the range it renders", () => {
+    const next = rezoneHistoryView(
+      { period: opened, override: null, range: openedRange, beforeZoom: null },
+      NY,
+      now,
+      opts,
+    );
+    expect(wall(next.period.start, BERLIN)).toBe("2026-08-21 00:00");
+    expect(next.range.from).toEqual(next.period.start);
+    expect(next.range.live).toBe(true);
+    expect(next.override).toBeNull();
+  });
+
+  it("leaves a zoom on screen but rebuilds the period it will reset to", () => {
+    // A zoom taken before the source list landed holds a BROWSER-zone window
+    // as its way back; resetting would otherwise return to New York's day.
+    const zoomed = {
+      period: opened,
+      override: { id: "zoom", label: "zoom" },
+      range: zoom,
+      beforeZoom: { range: openedRange, override: null },
+    };
+    const next = rezoneHistoryView(zoomed, NY, now, opts);
+    expect(next.range).toBe(zoom);
+    expect(next.override).toBe(zoomed.override);
+    expect(wall(next.period.start, BERLIN)).toBe("2026-08-21 00:00");
+    expect(next.beforeZoom?.override).toBeNull();
+    expect(next.beforeZoom?.range.from).toEqual(next.period.start);
+    expect(next.beforeZoom?.range.live).toBe(true);
+  });
+
+  it("leaves a zoom taken from a preset or a custom span alone", () => {
+    const fromPreset = {
+      period: opened,
+      override: { id: "zoom", label: "zoom" },
+      range: zoom,
+      beforeZoom: { range: resolvePreset("6h", now), override: { id: "6h", label: "6 hours" } },
+    };
+    expect(rezoneHistoryView(fromPreset, NY, now, opts)).toBe(fromPreset);
+  });
+
+  it("leaves a preset or a custom span alone: rolling hours and days already picked", () => {
+    const preset = {
+      period: opened,
+      override: { id: "6h", label: "6 hours" },
+      range: resolvePreset("6h", now),
+      beforeZoom: null,
+    };
+    expect(rezoneHistoryView(preset, NY, now, opts)).toBe(preset);
   });
 });

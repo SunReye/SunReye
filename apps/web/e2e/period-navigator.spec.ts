@@ -244,7 +244,7 @@ test("reopening the calendar after a custom range shows no stale selection", asy
   await openCalendar(navigator);
   // bits-ui writes the ISO date on every day cell; the visible number is not
   // unique — a neighbouring month bleeds into the grid.
-  const today = navigator.days.and(page.locator("[data-today]"));
+  const today = navigator.days.and(page.locator("[data-plant-today]"));
   const todayIso = await today.getAttribute("data-value");
   expect(todayIso).toMatch(/^\d{4}-\d{2}-\d{2}$/);
   const first = neighbourOf(todayIso ?? "");

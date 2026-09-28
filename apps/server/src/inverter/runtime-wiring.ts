@@ -20,6 +20,7 @@ import { runForecastCorrectionLearn } from "../forecast/forecast-correction-job"
 import { fetchSolarForecast } from "../forecast/solar-forecast";
 import { runSpotPriceSync } from "../prices/spot-price-job";
 import { getMqttConfig, getSimulate } from "../settings/config";
+import { getPlantTimeZone } from "../settings/display-settings";
 import { readBroker } from "../settings/mqtt-broker-instance";
 import { getSpotPriceConfig } from "../settings/spot-price-settings";
 import { getWeatherConfig } from "../settings/weather-settings";
@@ -93,7 +94,13 @@ export function productionRuntimeDeps(wiring: {
       insert: (values) => db.insert(table).values(values),
     });
   return {
-    settings: { getMqttConfig, getSimulate, getWeatherConfig, getSpotPriceConfig },
+    settings: {
+      getMqttConfig,
+      getSimulate,
+      getPlantTimeZone,
+      getWeatherConfig,
+      getSpotPriceConfig,
+    },
     loadPollEndpoint,
     buildSource,
     startMqttBridge,

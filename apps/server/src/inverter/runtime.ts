@@ -115,6 +115,8 @@ export interface RuntimeSettings {
   getMqttConfig(): Promise<MqttConfig>;
   /** The simulator toggle, one fact per box — read on every source rebuild. */
   getSimulate(): Promise<boolean>;
+  /** The zone the plant's days run on — the simulator's clock. */
+  getPlantTimeZone(): Promise<string>;
   getWeatherConfig(): Promise<WeatherConfig>;
   getSpotPriceConfig(): Promise<SpotPriceConfig>;
 }
@@ -128,7 +130,12 @@ export interface RuntimeDeps {
   /** The endpoint the spine resolves (`./endpoint.ts`), re-read on every reload. */
   loadPollEndpoint(): Promise<PollEndpoint>;
   /** A live source for the profile at the endpoint (`./inverter.ts`). */
-  buildSource(profile: InverterProfile, endpoint: PollEndpoint, simulate: boolean): InverterSource;
+  buildSource(
+    profile: InverterProfile,
+    endpoint: PollEndpoint,
+    simulate: boolean,
+    timeZone?: string,
+  ): InverterSource;
   /** The Home Assistant export: its bridge, and the connection it takes a client from. */
   startMqttBridge: typeof startMqttBridge;
   readBroker(connectionId: number | null): Promise<MqttParams | null>;
@@ -555,7 +562,9 @@ export function createRuntime(deps: RuntimeDeps) {
     await configLogBuffer.flush();
     const previous = source;
     const simulate = await settings.getSimulate();
-    source = deps.buildSource(context().profile, endpoint, simulate);
+    // Only a simulator has a clock of its own; a real source is never handed one.
+    const timeZone = simulate ? await settings.getPlantTimeZone() : undefined;
+    source = deps.buildSource(context().profile, endpoint, simulate, timeZone);
     // The simulator is always "connected"; a real Modbus source only proves it on
     // the first successful read, so start pessimistic and let pollOnce flip it.
     inverterStatus.simulate = simulate;

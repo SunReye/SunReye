@@ -15,6 +15,7 @@
 
 import { expect, test, type Page } from "@playwright/test";
 import * as fixture from "./support/api-fixtures";
+import { periodNavigator } from "./support/history";
 import { openPage } from "./support/open-page";
 
 test.use({ timezoneId: "America/New_York" });
@@ -76,5 +77,56 @@ test("statistics windows open on the plant's midnights, not the browser's", asyn
         .map((f) => wallTime(f, PLANT)),
     )
     .toContain("00:00");
+  expect(opened.consoleErrors).toEqual([]);
+});
+
+/** `YYYY-MM-DD HH:MM` of `iso` in `timeZone`. */
+function wallDate(iso: string, timeZone: string): string {
+  return new Intl.DateTimeFormat("sv-SE", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).format(new Date(iso));
+}
+
+test("a New York evening opens on the plant's CURRENT month, not the one it names", async ({
+  page,
+}) => {
+  // 20:00 on 31 Aug in New York is 02:00 on 1 Sep in Berlin. The page opens on
+  // "this month" — New York's August. Re-read by name that is Berlin's August,
+  // which has already ended: the reader asked for live and got last month.
+  await page.clock.install({ time: new Date("2026-09-01T00:00:00Z") });
+  const opened = await openPage(page, "/#/statistics", {
+    sources: { ...fixture.SOURCES, plant: { ...fixture.SOURCES.plant, timeZone: PLANT } },
+  });
+  const { backend } = opened;
+
+  await expect
+    .poll(() => fromsOf(backend.requests, "statistics/comparison").at(-1) ?? "")
+    .not.toBe("");
+  await expect
+    .poll(() => wallDate(fromsOf(backend.requests, "statistics/comparison").at(-1)!, PLANT))
+    .toBe("2026-09-01 00:00");
+  const nav = periodNavigator(page);
+  await expect(nav.trigger).toContainText("Live");
+  await expect(nav.forward).toBeDisabled();
+
+  // The calendar behind the trigger opens on the plant's month too — its days
+  // are read in the plant's zone, so August is a month the plant has left.
+  await nav.trigger.click();
+  const inMonth = page.locator("[data-bits-day]:not([data-outside-month])");
+  await expect(inMonth.first()).toHaveAttribute("data-value", "2026-09-01");
+
+  // …and the today ring sits on the PLANT's today. The browser's is 31 Aug.
+  const ringed = page.locator("[data-bits-day][data-plant-today]");
+  await expect(ringed).toHaveCount(1);
+  await expect(ringed).toHaveAttribute("data-value", "2026-09-01");
+  await expect(ringed).toHaveCSS("box-shadow", /inset/);
+  const browserToday = page.locator("[data-bits-day][data-value='2026-08-31']");
+  await expect(browserToday).not.toHaveCSS("box-shadow", /inset/);
   expect(opened.consoleErrors).toEqual([]);
 });

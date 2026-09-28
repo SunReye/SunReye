@@ -216,6 +216,11 @@ export interface SimContext {
   dtSec: number;
   /** Mutable state the profile may read and update across samples. */
   state: SimState;
+  /**
+   * The plant's IANA zone: its wall clock is what the sun and the daily
+   * counters run on. Absent means UTC — never the host's zone.
+   */
+  timeZone?: string;
 }
 
 /**

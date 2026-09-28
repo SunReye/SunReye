@@ -3,7 +3,8 @@
 	import CalendarBlank from 'phosphor-svelte/lib/CalendarBlank';
 	import CaretLeft from 'phosphor-svelte/lib/CaretLeft';
 	import CaretRight from 'phosphor-svelte/lib/CaretRight';
-	import type { DateValue } from '@internationalized/date';
+	import { today, type DateValue } from '@internationalized/date';
+	import { untrack } from 'svelte';
 	import type { DateRange } from 'bits-ui';
 	import { Button } from '$lib/components/ui/button';
 	import * as Popover from '$lib/components/ui/popover';
@@ -169,8 +170,15 @@
 	// restarts it, the effect below sees an incomplete range, and the selection
 	// the user could see a moment ago silently disappears. Every open starts from
 	// nothing. Pinned by `e2e/period-navigator.spec.ts`.
+	//
+	// It also opens on TODAY'S MONTH IN `timeZone`. bits-ui seeds its month from
+	// the browser's today, and a New York evening is already the next month on a
+	// Berlin plant's calendar — the calendar the picked days are read in.
+	let placeholder = $state<DateValue | undefined>(undefined);
 	$effect(() => {
-		if (open) custom = { start: undefined, end: undefined };
+		if (!open) return;
+		custom = { start: undefined, end: undefined };
+		placeholder = today(untrack(() => timeZone));
 	});
 
 	// Fire once the user has picked both ends.
@@ -213,8 +221,16 @@
 			</div>
 		{/if}
 		<!-- bits-ui defaults the calendar to en-US: without the app locale a German
-		     UI shows "Su Mo Tu" and English day names in the aria labels. -->
-		<RangeCalendar bind:value={custom} numberOfMonths={1} {locale} class="w-full sm:w-auto" />
+		     UI shows "Su Mo Tu" and English day names in the aria labels. The zone
+		     is the one `applyCustom` reads the picked days in. -->
+		<RangeCalendar
+			bind:value={custom}
+			bind:placeholder
+			numberOfMonths={1}
+			{locale}
+			{timeZone}
+			class="w-full sm:w-auto"
+		/>
 	</div>
 {/snippet}
 

@@ -244,6 +244,10 @@ let simulated = false;
 /** The `simulate` each buildSource call received, newest last. */
 const builtSimulated: boolean[] = [];
 
+/** The plant zone the injected settings answer, and the zone each buildSource call received. */
+const PLANT_ZONE = "Pacific/Kiritimati";
+const builtZones: (string | undefined)[] = [];
+
 /*
  * The spine's answer (`pollEndpoint` above), injected at the resolver rather
  * than at the database.
@@ -506,11 +510,17 @@ let registryProfile: InverterProfile | null = null;
 const { buildProfileContext } = await import("./inverter");
 type SourceConnection = Parameters<RuntimeDeps["buildSource"]>[1];
 /** Stands in for `./inverter`'s `buildSource`, for the loop and the probes alike. */
-const fakeBuildSource = (profile: InverterProfile, config: SourceConnection, simulate: boolean) => {
+const fakeBuildSource = (
+  profile: InverterProfile,
+  config: SourceConnection,
+  simulate: boolean,
+  timeZone?: string,
+) => {
   const built = new FakeSource(profile, config);
   // What the loop asked for, so a test can assert the runtime passes the
   // SAVED setting rather than reading the environment behind its back.
   builtSimulated.push(simulate);
+  builtZones.push(timeZone);
   sources.push(built);
   return built;
 };
@@ -814,6 +824,7 @@ const newRuntime = () =>
       getMqttConfig: async () => mqttConfig,
       // The simulator toggle, which the poll loop reads on every rebuild.
       getSimulate: async () => simulated,
+      getPlantTimeZone: async () => PLANT_ZONE,
       getWeatherConfig: async () => WEATHER_CONFIG as unknown as WeatherConfig,
       getSpotPriceConfig: async () => SPOT_CONFIG as unknown as SpotPriceConfig,
     },
@@ -1790,6 +1801,22 @@ describe("swapping the live source", () => {
       // file would otherwise run against a simulator.
       simulated = false;
     }
+  });
+
+  test("a simulator is built on the plant's zone, so its sun runs on the plant's clock", async () => {
+    simulated = true;
+    try {
+      await boot();
+      expect(builtZones.at(-1)).toBe(PLANT_ZONE);
+    } finally {
+      simulated = false;
+    }
+  });
+
+  test("a real source is handed no zone — the wire has no clock", async () => {
+    await boot();
+    expect(builtSimulated.at(-1)).toBe(false);
+    expect(builtZones.at(-1)).toBeUndefined();
   });
 
   test("a stale poll error is cleared by the swap, not carried into the new source", async () => {

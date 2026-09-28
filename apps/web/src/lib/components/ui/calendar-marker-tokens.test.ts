@@ -111,8 +111,12 @@ function utilitiesOf(source: string): { variants: string; base: string }[] {
     .map(splitUtility);
 }
 
-/** A variant chain that puts the rule on today's cell. */
-const TARGETS_TODAY = /data-today/;
+/**
+ * A variant chain that puts the rule on today's cell: bits-ui's `data-today`
+ * on the single-date calendar, `data-plant-today` on the range calendar, whose
+ * root marks today in the range's zone rather than the browser's.
+ */
+const TARGETS_TODAY = /data-(plant-)?today/;
 /**
  * A variant chain that puts the rule on a day the user picked — the range ends
  * for the range calendar, `data-selected` for the single-date one. `range-middle`
@@ -180,6 +184,16 @@ describe("calendar day markers", () => {
       "calendar/calendar-day.svelte",
       "range-calendar/range-calendar-day.svelte",
     ]);
+  });
+
+  it("the range calendar never paints bits-ui's browser-zone today", () => {
+    // `data-today` is the BROWSER's date; a New York evening would ring a day
+    // the Berlin plant has already left. Only the root's zoned mark is styled.
+    const utilities = utilitiesOf(
+      readFileSync(`${UI_DIR}range-calendar/range-calendar-day.svelte`, "utf8"),
+    );
+    expect(utilities.filter(({ variants }) => /data-today/.test(variants))).toEqual([]);
+    expect(utilities.some(({ variants }) => /data-plant-today/.test(variants))).toBe(true);
   });
 
   for (const component of components) {

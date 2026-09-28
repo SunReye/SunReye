@@ -4,7 +4,13 @@
 	import { cn, type WithoutChildrenOrChild } from "$lib/utils.js";
 	import type { ButtonVariant } from "$lib/components/ui/button/index.js";
 	import type { Snippet } from "svelte";
-	import { isEqualMonth, type DateValue } from "@internationalized/date";
+	import {
+		getLocalTimeZone,
+		isEqualMonth,
+		isSameDay,
+		today,
+		type DateValue,
+	} from "@internationalized/date";
 
 	let {
 		ref = $bindable(null),
@@ -21,6 +27,7 @@
 		yearFormat = "numeric",
 		day,
 		disableDaysOutsideMonth = false,
+		timeZone,
 		...restProps
 	}: WithoutChildrenOrChild<RangeCalendarPrimitive.RootProps> & {
 		buttonVariant?: ButtonVariant;
@@ -30,6 +37,8 @@
 		monthFormat?: RangeCalendarPrimitive.MonthSelectProps["monthFormat"];
 		yearFormat?: RangeCalendarPrimitive.YearSelectProps["yearFormat"];
 		day?: Snippet<[{ day: DateValue; outsideMonth: boolean }]>;
+		/** The zone the picked range is built in; the caption names months there. */
+		timeZone?: string;
 	} = $props();
 
 	const monthFormat = $derived.by(() => {
@@ -37,6 +46,11 @@
 		if (captionLayout.startsWith("dropdown")) return "short";
 		return "long";
 	});
+
+	// Today in the zone the range is built in. bits-ui's own `data-today` is the
+	// BROWSER's today (it calls `getLocalTimeZone()` and merges its props over
+	// ours), so the day cell is marked and styled by `data-plant-today` instead.
+	const zoneToday = $derived(today(timeZone ?? getLocalTimeZone()));
 </script>
 
 <RangeCalendarPrimitive.Root
@@ -73,6 +87,7 @@
 							bind:placeholder
 							{locale}
 							{monthIndex}
+							{timeZone}
 						/>
 					</RangeCalendar.Header>
 
@@ -97,7 +112,9 @@
 													outsideMonth: !isEqualMonth(date, month.value),
 												})}
 											{:else}
-												<RangeCalendar.Day />
+												<RangeCalendar.Day
+													data-plant-today={isSameDay(date, zoneToday) ? "" : undefined}
+												/>
 											{/if}
 										</RangeCalendar.Cell>
 									{/each}

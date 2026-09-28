@@ -71,9 +71,28 @@ export function periodWindow(instant: Date, grain: Grain, opts: PeriodOptions): 
  * in `fromZone` — on `opts.timeZone`'s calendar. By date parts, never by an
  * instant: zones 16 hours apart disagree on which day an instant is.
  */
-export function rezonePeriod(period: Period, fromZone: string, opts: PeriodOptions): Period {
+function rezonePeriod(period: Period, fromZone: string, opts: PeriodOptions): Period {
   const start = midnightOf(dateIn(period.start, fromZone), opts.timeZone);
   return periodWindow(start, period.grain, opts);
+}
+
+/**
+ * The period a page STANDS ON, re-read on `opts.timeZone`'s calendar — what
+ * /history and /statistics do once the plant's zone lands.
+ *
+ * The current period stays the current one: a page opens on "today" or "this
+ * month", and by name the viewer's can be one the plant has already finished.
+ * Any other period keeps its name ({@link rezonePeriod}).
+ */
+export function rezoneStandingPeriod(
+  period: Period,
+  fromZone: string,
+  now: Date,
+  opts: PeriodOptions,
+): Period {
+  return containsNow(period, now)
+    ? periodWindow(now, period.grain, opts)
+    : rezonePeriod(period, fromZone, opts);
 }
 
 /**
