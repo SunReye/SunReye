@@ -38,7 +38,7 @@
 	     which clips its topmost y-axis label. 576px of dialog leaves the plot
 	     ~528px, so the chart gets its real gutters. A phone falls back to the
 	     clamp, as every narrow plot in the app does. -->
-	<Dialog.Content class="max-h-[85svh] overflow-y-auto sm:max-w-xl">
+	<Dialog.Content class="sm:max-w-xl">
 		<Dialog.Header>
 			<Dialog.Title>{detail.title}</Dialog.Title>
 		</Dialog.Header>

@@ -119,9 +119,17 @@ be needed again.
 ## [3.5.0](https://github.com/SunReye/SunReye/compare/addon-v3.4.0...addon-v3.5.0) (2026-09-15)
 
 
-### Miscellaneous Chores
+### Features
 
-* **addon:** Synchronize sunreye-stack versions
+* **nixos:** state public DNS in the health report instead of leaving it inferred ([a88d223](https://github.com/SunReye/SunReye/commit/a88d2233bcc223a01695f79eb332b3550e912119))
+
+
+### Bug Fixes
+
+* **cli:** refuse to report success for an upgrade that cannot reach the release ([672b551](https://github.com/SunReye/SunReye/commit/672b5514c653cebaefe2870371e0f3ae5c610de0))
+* make a box that cannot resolve public DNS say so, instead of failing three different ways ([f76a4fa](https://github.com/SunReye/SunReye/commit/f76a4fa8623e957ab4a4af238b24004cf2126dcf))
+* **nixos:** give the unattended upgrade an identity to commit its lock with ([3a98c71](https://github.com/SunReye/SunReye/commit/3a98c71022b546f6f60cc0425645be412ddc2912))
+* **nixos:** the nightly upgrade could never commit its own lock file ([9262a68](https://github.com/SunReye/SunReye/commit/9262a6868802e24e108cfd15c380839dca2fb65b))
 
 ## [3.4.0](https://github.com/SunReye/SunReye/compare/addon-v3.3.3...addon-v3.4.0) (2026-09-15)
 

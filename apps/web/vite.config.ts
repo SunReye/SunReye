@@ -55,10 +55,20 @@ export default defineConfig({
     // lets `vite dev --host` be opened from a phone on the LAN and still sign
     // in — with the default, Host became `localhost:3000` and every LAN origin
     // was rejected as "Invalid origin".
+    //
+    // `127.0.0.1`, never `localhost`: the core server binds IPv4 only
+    // (`0.0.0.0:3000`), while `localhost` resolves to `::1` first on any host
+    // with IPv6 loopback — so a proxy aimed at the name gets ECONNREFUSED on
+    // port 3000 while the server is up and answering on the address. The
+    // failure looks like a dead backend and is not one.
+    //
+    // This does not weaken the `changeOrigin: false` note above: the browser's
+    // own `Host` is still what reaches the server, so a LAN origin still signs
+    // in.
     proxy: {
-      "/api": { target: "http://localhost:3000", changeOrigin: false },
-      "/openapi": { target: "http://localhost:3000", changeOrigin: false },
-      "/ws": { target: "ws://localhost:3000", ws: true, changeOrigin: false },
+      "/api": { target: "http://127.0.0.1:3000", changeOrigin: false },
+      "/openapi": { target: "http://127.0.0.1:3000", changeOrigin: false },
+      "/ws": { target: "ws://127.0.0.1:3000", ws: true, changeOrigin: false },
     },
   },
 });

@@ -8,6 +8,7 @@
 	import { groupedBarProps, seriesConfig } from '$lib/components/inverter/_shared/chart-series';
 	import { canvasHighlight } from '$lib/components/inverter/_shared/canvas-highlight.svelte';
 	import { periodKeyLabel } from '$lib/cost/ranges';
+	import { axisValueLabels, defaultAxisLabel, seriesValues, withFittedAxes } from './axis-fit';
 	import { CHART_BOX } from '$lib/layout/tokens';
 	import PlotFrame from '$lib/components/layout/plot-frame.svelte';
 	import { chartZoom } from '$lib/charts/zoom.svelte';
@@ -70,9 +71,24 @@
 	// finer year-over-year series to fetch, so a zoom here narrows the domain in
 	// place rather than telling an owner to refetch.
 	const zoom = chartZoom();
+
+	// Both axes are fitted to the labels they will draw, the same policy the
+	// period charts spend (./axis-fit). The y labels are sampled with the PLAIN
+	// formatter, not this chart's `format`: that one is handed to the tooltip
+	// and the axis is left numeric, so sizing the gutter with it would reserve
+	// room for a unit the axis never draws.
+	const axisLabels = $derived({
+		yLabels: axisValueLabels(seriesValues(data, series), defaultAxisLabel),
+		xLabels: data.map((d) => d.label)
+	});
 </script>
 
-<div class="flex min-w-0 flex-col gap-3" bind:this={highlight.el} bind:clientWidth={plotWidth}>
+<div
+	class="flex min-w-0 flex-col gap-3"
+	data-slot="statistics-plot"
+	bind:this={highlight.el}
+	bind:clientWidth={plotWidth}
+>
 	<!-- The plot's own box: the same `relative` ancestor the zoom chips were
 	     already positioned against, now also the anchor for full screen in the
 	     opposite corner. The height stays the container's (`CHART_BOX`). -->
@@ -84,7 +100,7 @@
 				{format}
 				{highlight}
 				{zoom}
-				layout={groupedBarProps(data.length, plotWidth)}
+				layout={withFittedAxes(groupedBarProps(data.length, plotWidth), plotWidth, axisLabels)}
 			/>
 		</Chart.Container>
 	</PlotFrame>
