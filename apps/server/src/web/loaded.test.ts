@@ -2,7 +2,7 @@ import { describe, expect, it } from "bun:test";
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { diskBuildDir, resolveAssets } from "./loaded";
+import { diskBuildDir, loadAssets, resolveAssets } from "./loaded";
 
 const bytes = (s: string) => new TextEncoder().encode(s);
 const text = (u: Uint8Array | undefined) => (u ? new TextDecoder().decode(u) : undefined);
@@ -121,5 +121,15 @@ describe("resolveAssets from the build on disk", () => {
   // there is deliberately no disk to fall back to.
   it("reads no disk at all when offered none", async () => {
     expect((await resolveAssets([], null)).size).toBe(0);
+  });
+});
+
+describe("loadAssets", () => {
+  it("resolves once at boot and hands every later request the same map", async () => {
+    // Whatever this checkout holds (a built dashboard or none), the second call
+    // must not walk the disk again: every request reads this map.
+    const first = await loadAssets();
+    expect(first).toBeInstanceOf(Map);
+    expect(await loadAssets()).toBe(first);
   });
 });

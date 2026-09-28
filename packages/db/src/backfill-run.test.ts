@@ -63,11 +63,19 @@ interface Responses {
   coverage?: Rows;
   /** Configuration rows that leaked into the hypertable. */
   configInRaw?: number;
+  /** The legacy source ids and the first bucket each holds. Absent: the old single-id answer. */
+  sourceIds?: { id: string; first: string }[];
   failOn?: RegExp;
 }
 
 /** The relation a legacy-side statement reads from, for a per-tier answer. */
 const relationOf = (text: string): string => text.match(/from\s+([a-z_][a-z0-9_]*)\s+b/)?.[1] ?? "";
+
+/** A relation's legacy bucket span, or an empty one. */
+function windowOf(r: Responses, text: string): Rows {
+  const window = r.windows?.[relationOf(text)];
+  return window ? [{ from: window.from, to: window.to }] : [{ from: null, to: null }];
+}
 
 /**
  * Which answer each statement gets, as a TABLE rather than a chain of `if`s: the
@@ -75,14 +83,9 @@ const relationOf = (text: string): string => text.match(/from\s+([a-z_][a-z0-9_]
  * more complex than the code it tests.
  */
 const ROUTES: [RegExp, (r: Responses, text: string, values: unknown[]) => Rows][] = [
+  [/as first/, (r, text) => r.sourceIds ?? windowOf(r, text)],
   [/select value from app_settings/, (r) => (r.record === undefined ? [] : [{ value: r.record }])],
-  [
-    /min\(b\./,
-    (r, text) => {
-      const window = r.windows?.[relationOf(text)];
-      return window ? [{ from: window.from, to: window.to }] : [{ from: null, to: null }];
-    },
-  ],
+  [/min\(b\./, windowOf],
   [/not exists/, (r) => (r.unregistered ?? []).map((metric) => ({ metric }))],
   [/select chunk_start/, (r) => (r.completed ?? []).map((chunk_start) => ({ chunk_start }))],
   [/insert into metrics_raw/, (r) => [{ n: String(r.seriesRows ?? 0) }]],
@@ -352,6 +355,52 @@ describe("runBackfill stages", () => {
     const { client } = fake({ record: record(), written: null });
     const result = await runBackfill(client, input);
     expect(result?.elapsedMs).toBeGreaterThanOrEqual(0);
+  });
+});
+
+describe("runBackfill over several legacy source ids", () => {
+  test("replays every id onto the one device, says so once, and reports the sum", async () => {
+    const { logger, log } = lines();
+    const { client, calls } = fake({
+      record: record(),
+      windows: { legacy_minute_rollups: ONE_DAY },
+      sourceIds: [
+        { id: "profile-b", first: "2026-06-01T04:00:00.000Z" },
+        { id: "profile-a", first: "2026-06-01T00:00:00.000Z" },
+      ],
+      seriesRows: 10,
+      written: null,
+    });
+
+    const result = await runBackfill(client, { ...input, logger });
+
+    expect(log).toContain(
+      "legacy history carries 2 source ids — profile-a, profile-b — all replaying onto device 7",
+    );
+    const single = await runBackfill(
+      fake({
+        record: record(),
+        windows: { legacy_minute_rollups: ONE_DAY },
+        seriesRows: 10,
+        written: null,
+      }).client,
+      input,
+    );
+    expect(result?.replayed?.seriesRows).toBe(2 * (single?.replayed?.seriesRows ?? 0));
+    expect(result?.replayed?.chunks).toHaveLength(2 * (single?.replayed?.chunks?.length ?? 0));
+    expect(stages(calls)).toEqual(["backfilled"]);
+  });
+
+  test("one id says nothing about source ids", async () => {
+    const { logger, log } = lines();
+    const { client } = fake({
+      record: record(),
+      windows: { legacy_minute_rollups: ONE_DAY },
+      sourceIds: [{ id: "profile-a", first: "2026-06-01T00:00:00.000Z" }],
+      written: null,
+    });
+    await runBackfill(client, { ...input, logger });
+    expect(log.some((line) => line.includes("source ids"))).toBe(false);
   });
 });
 

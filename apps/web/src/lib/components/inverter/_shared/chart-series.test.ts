@@ -11,7 +11,8 @@
 
 import { describe, expect, test } from "bun:test";
 import { MARK_STYLE } from "$lib/charts/house-style";
-import { groupedBarProps, stackedBarProps } from "./chart-series";
+import type { AxisSeries } from "$lib/inverter/chart-axes";
+import { groupedBarProps, resolveAxes, seriesConfig, stackedBarProps } from "./chart-series";
 
 describe("grouped bars over a period axis", () => {
   test("a one- or two-bucket window is not drawn as slabs", () => {
@@ -57,5 +58,53 @@ describe("grouped bars over a period axis", () => {
     // segments that do not exist.
     expect("stackPadding" in groupedBarProps(12, 800)).toBe(false);
     expect("stackPadding" in stackedBarProps(12, 800)).toBe(true);
+  });
+});
+
+describe("series plumbing", () => {
+  test("the chart config keys each series' label and colour by its key", () => {
+    expect(
+      seriesConfig([
+        { key: "pv", label: "Solar", color: "gold" },
+        { key: "grid", label: "Grid", color: "grey" },
+      ]),
+    ).toEqual({ pv: { label: "Solar", color: "gold" }, grid: { label: "Grid", color: "grey" } });
+  });
+
+  const series = (key: string, unit: string): AxisSeries => ({
+    key,
+    label: key,
+    color: "red",
+    unit,
+    value: (d) => (typeof d[key] === "number" ? (d[key] as number) : null),
+  });
+  const rows = [
+    { pv: 0, load: 2000, soc: 20 },
+    { pv: 4000, load: 1000, soc: 80 },
+  ];
+
+  test("one unit passes the series through untouched, with no right axis", () => {
+    const input = [series("pv", "W"), series("load", "W")];
+    const axes = resolveAxes(rows, input);
+    expect(axes.rightDomain).toBeNull();
+    expect(axes.plotSeries).toBe(input);
+    expect(axes.leftDomain[0]).toBeLessThanOrEqual(0);
+    expect(axes.leftDomain[1]).toBeGreaterThanOrEqual(4000);
+  });
+
+  test("a second unit gets its own domain, and every series is normalised onto [0,1]", () => {
+    const axes = resolveAxes(rows, [series("pv", "W"), series("load", "W"), series("soc", "%")]);
+    expect(axes.grouping.dualAxis).toBe(true);
+    expect(axes.rightDomain).not.toBeNull();
+    const [, , soc] = axes.plotSeries;
+    expect(soc?.key).toBe("soc");
+    for (const s of axes.plotSeries) {
+      for (const row of rows) {
+        const v = s.value(row);
+        expect(v).not.toBeNull();
+        expect(v as number).toBeGreaterThanOrEqual(0);
+        expect(v as number).toBeLessThanOrEqual(1);
+      }
+    }
   });
 });
