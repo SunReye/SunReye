@@ -114,6 +114,20 @@ export function failureText(failure: WriteFailure): string {
   return m.error_unknown();
 }
 
+/** Where a failure is said: under a field the form has, else a toast — never nowhere. */
+export type FailurePlace = { kind: "field"; refusal: Refusal } | { kind: "toast"; text: string };
+
+/**
+ * Place a failure on a form that renders only `fields`. A refusal naming any
+ * other field has no place on it, and kept as field state it would show nothing.
+ */
+export function placeFailure(failure: WriteFailure, fields: readonly RefusedField[]): FailurePlace {
+  const text = failureText(failure);
+  if (failure.kind === "refused" && fields.includes(failure.field))
+    return { kind: "field", refusal: { field: failure.field, message: text } };
+  return { kind: "toast", text };
+}
+
 /** The server's own sentence for a failure, else "unknown" — never a serialised body. */
 export function statedReason(failure: WriteFailure): string {
   if (failure.kind === "refused") return failure.reason;

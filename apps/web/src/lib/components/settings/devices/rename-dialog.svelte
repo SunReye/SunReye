@@ -7,7 +7,7 @@
 	import { SLUG_MAX } from '@SunReye/inverter-core/slug';
 	import { nameProblem, renameBlock } from './device-form';
 	import DialogShell from './device-dialog-shell.svelte';
-	import { type DeviceRoster, type Refusal, failureText } from './device-roster';
+	import { type DeviceRoster, type Refusal, placeFailure } from './device-roster';
 	import type { DeviceView } from './device-types';
 	import FieldProblem from './field-problem.svelte';
 
@@ -68,15 +68,17 @@
 	}
 
 	/**
-	 * The request, and what it leaves behind: a refusal to show, or nothing. Only
-	 * a refusal naming `name` has a place on this form (see FieldProblem below).
+	 * The request, and what it leaves behind: a refusal to show under the name,
+	 * or nothing. Any other failure has no place on this one-field form, so it is
+	 * a toast — kept as field state, nothing would render it.
 	 */
 	async function rename(target: DeviceView, to: string): Promise<Refusal | null> {
 		const outcome = await roster.patch(target.id, { name: to });
 		if (outcome.kind === 'ok') return saved(outcome.value);
-		// The field message has always fallen back to the whole body here, not to "unknown".
-		if (outcome.kind === 'refused') return { field: outcome.field, message: failureText(outcome) };
-		return { field: null, message: failureText(outcome) };
+		const place = placeFailure(outcome, ['name']);
+		if (place.kind === 'field') return place.refusal;
+		toast.error(m.devices_toast_update_failed({ error: place.text }));
+		return null;
 	}
 
 	function saved(device: DeviceView): null {

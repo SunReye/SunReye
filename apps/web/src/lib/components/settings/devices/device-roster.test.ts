@@ -9,6 +9,7 @@ import {
   type RosterTransport,
   emptyRosterState,
   failureText,
+  placeFailure,
   statedReason,
 } from "./device-roster";
 import type { ConnectionView, DeviceView, IntegrationView } from "./device-types";
@@ -466,5 +467,50 @@ describe("the words a failure is", () => {
     transport.script.deleteDevice = no({ error: "" });
     const outcome = await roster.delete(1);
     expect(outcome.kind === "error" && outcome.stated).toBeNull();
+  });
+});
+
+/**
+ * Where a failed write is said. A dialog with one field (the rename) used to
+ * keep a refusal naming any OTHER field, or none, in state nothing rendered —
+ * the Save did nothing visible. Every failure has to land somewhere.
+ */
+describe("where a failure is said", () => {
+  const refused = (field: "name" | "role") =>
+    ({ kind: "refused", field, reason: "taken", text: "taken, pick another" }) as const;
+
+  test("a refusal naming a field the form has goes under it, in its readable words", () => {
+    expect(placeFailure(refused("name"), ["name"])).toEqual({
+      kind: "field",
+      refusal: { field: "name", message: "taken, pick another" },
+    });
+  });
+
+  test("a refusal naming a field the form does NOT have is a toast", () => {
+    expect(placeFailure(refused("role"), ["name"])).toEqual({
+      kind: "toast",
+      text: "taken, pick another",
+    });
+  });
+
+  test("a failure naming no field is a toast", () => {
+    expect(placeFailure({ kind: "error", text: "gateway down", stated: null }, ["name"])).toEqual({
+      kind: "toast",
+      text: "gateway down",
+    });
+  });
+
+  test("a history refusal on a form that cannot offer retiring is a toast saying 'unknown'", () => {
+    expect(placeFailure({ kind: "has-history" }, ["name"])).toEqual({
+      kind: "toast",
+      text: m.error_unknown(),
+    });
+  });
+
+  test("a form with no fields toasts every refusal", () => {
+    expect(placeFailure(refused("name"), [])).toEqual({
+      kind: "toast",
+      text: "taken, pick another",
+    });
   });
 });
