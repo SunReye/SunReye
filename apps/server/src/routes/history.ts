@@ -2,7 +2,8 @@
  * The dashboard's stored-data reads: raw history, the live-buffer backfill,
  * chart rollups, and the cost / energy series. Session-gated like every other
  * dashboard read. Where a read is FROM (`source=plant`, a slug, the primary
- * device) is resolved by index.ts and handed in as {@link HistoryRoutesDeps}.
+ * device) is resolved by ../shared/source-resolution and handed in as
+ * {@link HistoryRoutesDeps}.
  */
 
 import { db } from "@SunReye/db";
@@ -19,34 +20,19 @@ import type { HistoryTier } from "../shared/history-horizon";
 import { refuseIncompleteRange } from "../shared/history-horizon-live";
 import { getPlantTimeZone } from "../settings/display-settings";
 import { deviceScope, metricIdOf } from "../shared/identity-sql";
-import type { AggregateOf } from "../shared/plant-fold";
-import { type plantFoldFor, isRefusal, targetOf } from "../shared/plant-read";
-import {
-  type SeriesSourceRequest,
-  type SeriesTarget,
-  parseSeriesSource,
-} from "../shared/plant-source";
+import { isRefusal, targetOf } from "../shared/plant-read";
+import { parseSeriesSource } from "../shared/plant-source";
+import type { SourceResolution } from "../shared/source-resolution";
 import { adminGuard } from "./admin-guard";
 import { historyMembers } from "./sources";
 
 const ONBOARDING_REQUIRED = { error: "No active inverter profile — onboarding required" } as const;
 
-type SourceQuery = { source?: string; inverterId?: string };
-
 export interface HistoryRoutesDeps {
   /** Active inverter profile — `null` in onboarding-only boot (the cost reads 503). */
   profile: InverterProfile | null;
-  /** WHERE a read is from, or `null` before any device exists. */
-  sourceRequest: (q: SourceQuery) => SeriesSourceRequest | null;
-  /** The energy readers' target for a request. */
-  energyTarget: (q: SourceQuery) => Promise<SeriesTarget | string | undefined>;
-  /** The metric readers' arguments for a request, or the plant-level refusal. */
-  metricReadArgs: (
-    req: SeriesSourceRequest,
-    metric: string,
-  ) => Promise<ReturnType<typeof plantFoldFor>>;
-  /** The role-derived aggregate of a metric key. */
-  aggregateOf: AggregateOf;
+  /** WHERE a read is from — see ../shared/source-resolution. */
+  sources: SourceResolution;
 }
 
 // Shared query for the per-period series endpoints (cost + energy): an explicit
@@ -112,13 +98,8 @@ async function costWindow(q: { from?: string; to?: string; range?: "today" | "mo
   return resolveRange(q.range ?? "month", await getPlantTimeZone());
 }
 
-export function historyRoutes({
-  profile,
-  sourceRequest,
-  energyTarget,
-  metricReadArgs,
-  aggregateOf,
-}: HistoryRoutesDeps) {
+export function historyRoutes({ profile, sources }: HistoryRoutesDeps) {
+  const { sourceRequest, energyTarget, metricReadArgs, aggregateOf } = sources;
   const seriesArgs = async (q: {
     from: string;
     to: string;

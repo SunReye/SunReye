@@ -449,8 +449,13 @@ export interface ConnectionSaveEffects {
    * id. Adopts an existing device untouched.
    */
   provision: (seed: InverterConfig) => Promise<unknown>;
-  /** Ask the poll loop to RE-READ the spine (never to accept these values). */
-  reload: () => Promise<void>;
+  /**
+   * The plant's one after-write (`../plant/plant-runtime.ts`): drop the cached
+   * facts, re-open the connections, and ask the poll loop to RE-READ the spine
+   * (never to accept these values). The whole of it, not just the loop, because
+   * provisioning can create a device and a connection.
+   */
+  afterWrite: () => Promise<void>;
 }
 
 /**
@@ -463,6 +468,7 @@ export interface ConnectionSaveEffects {
  *     second one from the same values, and so the device it may create is bound
  *     to it.
  *  3. RELOAD last, so the loop re-resolves against the final state of both rows.
+ *     The full plant after-write, not just the loop: see {@link ConnectionSaveEffects}.
  *
  * A failed write does not reload and does not provision: the exception reaches
  * the route, which answers 400 with the reason. Telling the loop to re-read after
@@ -477,7 +483,7 @@ export async function applyConnectionSave(
 ): Promise<InverterConfig> {
   const stored = await saveConnectionSettings(config, deps);
   await effects.provision(stored);
-  await effects.reload();
+  await effects.afterWrite();
   return stored;
 }
 

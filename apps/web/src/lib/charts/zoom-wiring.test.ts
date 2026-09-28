@@ -343,16 +343,18 @@ describe("the resting gesture follows the pointer", () => {
   });
 });
 
-describe("the page still scrolls under a chart", () => {
-  const container = "lib/components/ui/chart/chart-container.svelte";
+// The house overrides every `Chart.Container` wears, kept in one list so the
+// canvas style resolver can wear them too (`canvas-style-host.svelte`).
+const houseStyleCode = await read("lib/components/ui/chart/chart-house-style.ts");
 
+describe("the page still scrolls under a chart", () => {
   test("the brush layer hands the vertical axis back to the browser", () => {
     // LayerChart ships `.lc-brush-context { touch-action: none }`. On /history
     // and /statistics — tall stacks of full-width charts — that means a swipe
     // which happens to start on a chart stops scrolling the page. `pan-y` is
     // the decision: vertical scrolls, horizontal brushes. Neither `touch-none`
     // nor `touch-auto` is that, so the value is pinned, not its presence.
-    const utility = svelte(container).match(/\[&_\.lc-brush-context\]:([\w-]+)/);
+    const utility = houseStyleCode.match(/\[&_\.lc-brush-context\]:([\w-]+)/);
     expect(utility, "no brush touch-action override").not.toBeNull();
     expect(utility![1]).toBe("touch-pan-y");
   });
@@ -360,7 +362,7 @@ describe("the page still scrolls under a chart", () => {
   test("and the selection wears the app's own palette", () => {
     // The shipped default paints off `--color-surface-content`, which this
     // theme does not define — the selection came out as a colourless smear.
-    const code = svelte(container);
+    const code = houseStyleCode;
     expect(code).toMatch(/\[&_\.lc-brush-range\]:bg-primary\//);
     expect(code).toMatch(/\[&_\.lc-brush-handle\]:bg-primary\//);
   });
@@ -483,7 +485,8 @@ describe("a zoom on /statistics narrows the section's own spec", () => {
     const handler = code.match(/onZoom=\{(\w+)\}/)?.[1];
     expect(handler).toBeDefined();
     expect(declaration(code, handler!)).toContain("view.zoomTo(");
-    expect(code).toContain("specQuery(view.spec)");
+    // The read is keyed by the spec (statistics-query.test.ts pins what it asks for).
+    expect(code).toContain("reads.energySeries(view.spec)");
   });
 
   test("the zoom is ephemeral, like the scope pick beside it", async () => {

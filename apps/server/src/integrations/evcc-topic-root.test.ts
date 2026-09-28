@@ -57,7 +57,7 @@ describe("evccTopicRootFrom", () => {
   });
 
   test("a DISABLED ingest row still names the root", () => {
-    // `enabled` is the ingest's own off switch and `rebuildEvcc` reads it from
+    // `enabled` is the ingest's own off switch and the ingest's `rebuild` reads it from
     // the setting; the row is still where the operator's topic root lives, and
     // ignoring it here would silently subscribe under a stale one when they
     // switch the integration back on.

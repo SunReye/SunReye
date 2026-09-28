@@ -15,6 +15,7 @@ import { colorVar, isSeriesColor, paletteColor } from "./chart-palette";
 import { dueRefresh, liveTailPoints, rollupPoints } from "./live-tail";
 import type { AxisSeries, Datum } from "./chart-axes";
 import type { LiveWindow, RollupRow } from "./live-tail";
+import type { RollupScope } from "./live-rollup";
 import type { LivePoint, ManifestMetric } from "./types";
 
 /** One metric's points, as either feed hands them over. */
@@ -155,4 +156,19 @@ export function overlayDatums(feeds: readonly OverlayFeed[], window: LiveWindow)
       })),
     })),
   );
+}
+
+/**
+ * The source each overlaid series is read under: the device a saved chart
+ * names for it (`CustomChart.devices`), else `fallback` — the header's
+ * switcher, the same scope the metric card beside it reads.
+ */
+export function seriesScope(
+  pins: Readonly<Record<string, string>>,
+  fallback: RollupScope,
+): (metric: string) => RollupScope {
+  return (metric) => {
+    const pinned = pins[metric];
+    return pinned ? { source: pinned } : fallback;
+  };
 }

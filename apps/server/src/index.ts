@@ -10,23 +10,14 @@ import { setupStaticTypebox } from "./shared/typebox-static";
 import { Elysia, t } from "elysia";
 import { autoHead } from "elysia/auto-head";
 import { entitiesApi } from "./inverter/entities";
-import { ensureDevice, isRetired, readPlant } from "@SunReye/db/plant-repo";
-import { evccControl, evccSnapshot, rebuildEvcc, stopEvcc } from "./evcc/evcc";
-import { getEvccConfig } from "./settings/evcc-settings";
-import { loadpointDeviceSpec } from "./evcc/evcc-devices";
-import { aggregateOfMetric, plantFoldFor, targetOf } from "./shared/plant-read";
-import { type SeriesSourceRequest, parseSeriesSource } from "./shared/plant-source";
-import { historyMembers, liveMembers, sourcesRoutes } from "./routes/sources";
-import { startPlantLive } from "./inverter/plant-live";
+import { createSourceResolution } from "./shared/source-resolution";
+import { historyMembers, sourcesRoutes } from "./routes/sources";
 import { isPublicDashboard } from "./settings/access-settings";
-import { buildProfileContext, initProfiles } from "./inverter/inverter";
+import { initProfiles } from "./inverter/inverter";
+import { composePlant } from "./plant/plant-wiring";
 import { deviceRegistry } from "./devices/registry-instance";
-import { syncProvisioning } from "./inverter/provision-boot";
-import { reloadConnections, stopConnections } from "./devices/connection-runtime";
-import { seedMqttBroker } from "./settings/mqtt-broker-instance";
 import { WriteRejectedError } from "./inverter/control-writer";
 import { log, recentLogs, setupLogging } from "./shared/logging";
-import { plantClient } from "./shared/plant-client";
 import { requestLogger } from "./shared/request-log";
 import { createStreams } from "./shared/streams";
 import { initLogLevel } from "./settings/logging-settings";
@@ -51,7 +42,6 @@ import { createTopicBackfill } from "./routes/ws-backfill";
 import { publishLiveTopics } from "./routes/ws-publish";
 import { topicAccessFrom } from "./routes/ws-subscribe";
 import { todayStatistics } from "./statistics/statistics";
-import * as runtime from "./inverter/runtime";
 import { loadAssets } from "./web/loaded";
 import { webRoutes } from "./web/static";
 import { compression } from "./shared/compression";
@@ -123,145 +113,29 @@ const profile = await initProfiles();
 // 503 payload for a profile-dependent surface hit before onboarding is done.
 const ONBOARDING_REQUIRED = { error: "No active inverter profile — onboarding required" } as const;
 
-// Provision the dimension spine: the plant, and — once a profile is active — its
-// connection and the device every reading is FROM.
-//
-// This is what makes the write path able to store anything. `metrics_raw.device_id`
-// is a NOT NULL foreign key, so the writer resolves a device before inserting and,
-// finding none, drops the batch with one warning per source (see
-// ./inverter/storage-identity.ts). Until this call existed a fresh 2.0.0 install
-// recorded no history whatsoever.
-//
-// Before `runtime.start` below, deliberately: the first poll can land within a
-// second of boot, and a device that appears only after it would have cost that
-// sample. Idempotent, so every later boot adopts the same rows — never a second
-// plant, and never a renumbered device id, which would rebind five years of
-// readings to a different machine. Never throws.
-await syncProvisioning(profile);
-
-// The broker, carried from env into the spine ONCE — the MQTT counterpart of the
-// endpoint seed above (#217).
-//
-// `MQTT_BROKER_URL` / `MQTT_USERNAME` / `MQTT_PASSWORD` are documented
-// "seed only" env vars, and until now they seeded a FIELD of `app_settings.mqtt`.
-// The endpoint is a `connections` row now, so without this a docker install that
-// has always set `MQTT_BROKER_URL` would come up with the Home Assistant export
-// silently off. It creates rows this install has none of and never edits one it
-// has: a plant that already carries a broker — the one migration 0006 made — is
-// adopted, and a setting that already names a resolvable broker is untouched.
-//
-// AFTER provisioning, because the connection needs a plant to belong to, and
-// BEFORE `runtime.start` reads the export config to build its bridge.
-await seedMqttBroker();
-
-// The device roster, read AFTER provisioning created the rows and before any
-// route can serve a history read from it. `runtime.start` reloads it again (it
-// is idempotent) so a boot that never reaches the runtime — onboarding-only —
-// still has one.
-await deviceRegistry.reload();
-
-// The transports' context, built AFTER the roster exists — the one reason this
-// moved down from beside `initProfiles`.
-//
-// `/api/profile` serves a capability block, and that block now describes the
-// registered DEVICE (`deriveCapabilities` over the roles it binds) rather than
-// the boot profile object. For the only tier that exists today the two are the
-// same expression over the same metric list, which is the parity this step is
-// here to prove; what changes is that a tier with no register map at all (#88,
-// #172) has something to serve, and that a device binding less than its profile
-// describes stops claiming its profile's hardware.
-//
-// Identity and the metric catalog stay the profile's: a `ManifestMetric` carries
-// a topic, a label, a range and enum labels, and only an authored register map
-// states those. The primary inverter is the Phase 2b seam (`registry.primary`) —
-// one manifest for the plant is the answer this deliverable deliberately does
-// not revisit. It falls back to the profile when nothing registered, which is
-// the pre-registry answer unchanged.
-const ctx = profile ? buildProfileContext(profile, deviceRegistry.primary() ?? profile) : null;
+// The poll loop, the EVCC ingest, the connection probes and the plant runtime
+// over them, built once the bus exists (./plant/plant-wiring.ts). The plant's
+// lifecycle — provisioning, the broker seed, the roster, the transports'
+// context, the live fold and the Home Assistant discovery gate, in that order —
+// is ./plant/plant-runtime.ts's, where the order is tested. Its first half runs
+// here, before any route is built from the context it returns; `booted.start`
+// runs the second once the server is listening.
+const { plant, runtime, evcc, probes } = composePlant({ profile, streams });
+const booted = await plant.boot();
+const ctx = booted.ctx;
 const manifest = ctx?.manifest ?? null;
 
-/**
- * The device a history read means when the request names none.
- *
- * The registry's primary inverter, by `devices.slug` — the id every row is
- * written under. It used to be `profile.id`, which worked only because both
- * resolvers carry a transitional `profile_id` arm; a plant with two inverters
- * has no answer in that spelling at all.
- */
-const defaultSourceId = (): string | null => deviceRegistry.primary()?.id ?? null;
-
-/**
- * WHERE a read is from: `source=plant`, `source=<slug>`, the `inverterId` alias,
- * or — nothing named — the primary device, which is what every request meant
- * before the plant had a spelling (#202). A single-device plant reads the same
- * either way; the web chooses `plant` when there is more than one member.
- */
-const sourceRequest = (q: { source?: string; inverterId?: string }): SeriesSourceRequest | null => {
-  const named = parseSeriesSource(q);
-  if (named) return named;
-  const slug = defaultSourceId();
-  return slug ? { kind: "device", slug } : null;
-};
-
-/**
- * The energy readers' target for a request. Nothing named → the primary device
- * by SLUG, which is also what the live sample is stamped with, so the live
- * `*.today` override keeps matching; the profile-id default is only the
- * fallback of an install with no device row yet.
- */
-const energyTarget = async (q: { source?: string; inverterId?: string }) => {
-  const req = sourceRequest(q);
-  if (!req) return q.inverterId;
-  return targetOf(req, req.kind === "plant" ? await historyMembers() : []);
-};
+// WHERE a stored-data read is from: the named source, else the primary device.
+// See ./shared/source-resolution.
+const sources = createSourceResolution({
+  primarySlug: () => deviceRegistry.primary()?.id ?? null,
+  members: historyMembers,
+  metaByKey: ctx?.metaByKey ?? new Map(),
+});
 
 /** Today's statistics for the primary device — the slug the live sample carries. */
 const todayStatisticsForPrimary = (p: Parameters<typeof todayStatistics>[0]) =>
-  todayStatistics(p, defaultSourceId() ?? undefined);
-
-/** The role-derived aggregate of a metric key, through the plant's manifest. */
-const aggregateOf = aggregateOfMetric(ctx?.metaByKey ?? new Map());
-
-/** The metric readers' arguments for a request, or the plant-level refusal. */
-const metricReadArgs = async (req: SeriesSourceRequest, metric: string) =>
-  plantFoldFor(req, req.kind === "plant" ? await historyMembers() : [], metric, aggregateOf);
-
-// The plant's live reading, folded from every member's latest sample. Wired
-// before any `/ws` connection can subscribe, so the snapshot table below has
-// something to replay by the time the first dashboard asks.
-const plantLive = startPlantLive({ streams, members: liveMembers, aggregateOf });
-
-// HOLD HOME ASSISTANT DISCOVERY when a 1.x -> 2.0.0 migration has not been
-// through onboarding yet. Before the MQTT bridge starts, necessarily: the
-// announcement goes out inside MQTT's synchronous `connect` handler, which cannot
-// await a database read, so the flag has to be set before anything dials.
-//
-// A discovery announcement is retained and Home Assistant keys its entities on
-// `unique_id`. Announcing under the placeholder identity the migration
-// synthesises is therefore not something a later rename can take back, so it
-// waits for the operator's names — see ./migration/onboarding.ts. A no-op on
-// every install that never ran a 1.x upgrade, which is the important half: a gate
-// that engaged by accident looks exactly like a broken MQTT bridge.
-//
-// Never throws. A migration record that cannot be read must not stop the server
-// booting; the gate simply stays open, which is the state every healthy install
-// is in anyway.
-try {
-  const { readMigrationRecord } = await import("./migration/record");
-  const { migrationGateReason } = await import("./migration/onboarding");
-  const { holdDiscovery } = await import("./migration/discovery-gate");
-  const { log } = await import("./shared/logging");
-  const reason = migrationGateReason(await readMigrationRecord());
-  if (reason !== null) {
-    holdDiscovery(reason);
-    log("migration").warn("Home Assistant discovery is held: {reason}", { reason });
-  }
-} catch (error) {
-  const { log } = await import("./shared/logging");
-  log("migration").warn("could not read the migration record; discovery is not held: {error}", {
-    error: (error as Error).message,
-  });
-}
+  todayStatistics(p, sources.defaultSourceId() ?? undefined);
 
 /**
  * The two topics whose producers ask "is anyone actually watching" before doing
@@ -402,7 +276,7 @@ const app = new Elysia()
   )
   // Stored-data reads: raw history, the live-buffer backfill, chart rollups,
   // and the cost / energy series — see ./routes/history.
-  .use(historyRoutes({ profile, sourceRequest, energyTarget, metricReadArgs, aggregateOf }))
+  .use(historyRoutes({ profile, sources }))
   // Internal write pipeline for the (session-authed) web app. The write funnel
   // validates the key and value against the entity's metadata before touching
   // the inverter — the external `/api/v1` surface travels the same funnel.
@@ -456,7 +330,7 @@ const app = new Elysia()
     ({ body, status }) => {
       if (unknownEvccMode(body)) return status(400, { error: `Invalid mode "${body.value}"` });
       try {
-        evccControl(body.loadpoint, body.action, String(body.value));
+        evcc.control(body.loadpoint, body.action, String(body.value));
       } catch (err) {
         return status(503, { error: messageOf(err) });
       }
@@ -464,21 +338,21 @@ const app = new Elysia()
     },
   )
   // Runtime configuration (tariff, inverter, MQTT) + connection status.
-  .use(settingsRoutes)
+  .use(settingsRoutes({ plant, evcc, runtime, probes }))
   // Automations config + live engine status (peak shaving).
   .use(automationRoutes)
   // Statistics-page aggregates (hour×weekday heatmap, …) over the same rollups.
-  .use(statisticsRoutes({ profile, target: energyTarget }))
+  .use(statisticsRoutes({ profile, target: sources.energyTarget }))
   .use(sourcesRoutes)
   // Profile management: registered list, repo sources, browse/install/activate.
   .use(batteryRoutes({ profile }))
   .use(profileRoutes)
   // The device roster: list, add on an existing or new gateway, rename, retire.
-  .use(deviceRoutes)
+  .use(deviceRoutes(plant))
   // The other half of the same page: what RUNS over those endpoints — the EVCC
   // ingest and the Home Assistant export as rows, plus the catalog the wizard
   // renders its add step from.
-  .use(integrationRoutes)
+  .use(integrationRoutes(plant))
   // User-defined custom charts for the history page (multi-metric overlays).
   .use(customChartsRoutes({ ctx }))
   // The 1.2.0 -> 2.0.0 migration's onboarding surface: the status every page load
@@ -486,7 +360,7 @@ const app = new Elysia()
   // correction, and "migrate history now / later".
   .use(migrationRoutes({ manifest }))
   // Admin-only maintenance: data reset + API-key administration.
-  .use(adminRoutes)
+  .use(adminRoutes(runtime))
   // The live socket: one connection carrying every topic, gated per subscribe
   // frame rather than per URL. It replaced five single-purpose /ws/* routes
   // (metrics, evcc, statistics, logs, automations), whose upgrade guards became
@@ -509,11 +383,11 @@ const app = new Elysia()
       // omission.
       backfill: createTopicBackfill({
         profile,
-        evccSnapshot,
+        evccSnapshot: evcc.snapshot,
         todayStatistics: todayStatisticsForPrimary,
         automationStreamSnapshot,
         recentLogs,
-        plantSnapshot: () => plantLive.snapshot(),
+        plantSnapshot: () => booted.plantLive.snapshot(),
       }),
     }),
   )
@@ -541,37 +415,12 @@ const app = new Elysia()
 // `.listen()` resolves.
 publishLiveTopics({ streams, publisher: () => app.server ?? undefined });
 
-// Start the runtime controller: it owns the poll loop, the live source, and the
-// MQTT bridge (all hot-reconfigurable). Each sample is emitted on the `metrics`
-// topic; persistence + MQTT publishing happen inside the controller. Skipped in
-// onboarding-only boot — there's no profile to poll yet.
-if (ctx) {
-  // The audience predicate: the engine's per-tick broadcast (and the plan
-  // projection built only for it) is skipped while no `/ws` connection holds
-  // the `automations` topic. Read per tick, never captured — a page opened an
-  // hour from now must start receiving frames on the very next tick.
-  runtime.start(streams, ctx, audience.automations);
-} else {
-  // No profile to poll — but the plant row exists (`syncProvisioning` creates it
-  // either way) and the EVCC registrar below is wired unconditionally, so rows
-  // still reach the write seam. `start` is what arms the flush cadence, so
-  // without this they would sit in the buffer until shutdown.
-  runtime.armStorage();
-}
-
-// THE CONNECTION TIER (#221): one client per `kind = 'mqtt'` row, owned by the
-// connection rather than by whatever happens to publish on it.
-//
-// AFTER `runtime.start`, and that order is deliberate. The Home Assistant export
-// declares a LAST WILL when it takes its client, and an LWT is a connect-time
-// property — a pass that had already opened the broker without one would have to
-// re-dial to add it, flapping a live broker on every boot. The export opens the
-// row it uses; this opens whatever is left, so a broker an operator has added but
-// not yet bound to anything can still be reported as reachable or not.
-//
-// BEFORE `rebuildEvcc`, so the ingest joins a client that already exists instead
-// of opening a second one on the same row. Never throws.
-await reloadConnections();
+// The second half of the plant's boot: the poll loop (or, with no profile, the
+// flush cadence alone), then the connection tier, then the EVCC ingest — see
+// ./plant/plant-runtime.ts for why in that order. The audience predicate lets
+// the engine skip its per-tick broadcast while no `/ws` connection holds the
+// `automations` topic; it is read per tick, never captured.
+await booted.start(audience.automations);
 
 // Measure the battery's usable capacity from the discharge segments in raw
 // history — one catch-up pass over the retention window, then a slow tick.
@@ -582,51 +431,6 @@ const stopBatteryScoring = startBatteryScoring(profile);
 // surface "update available" without the admin manually browsing. Independent
 // of the poll loop — runs even in onboarding-only boot.
 startUpdateChecks();
-
-// EVCC ingest (own MQTT client on the shared broker). Independent of the
-// inverter runtime — starts even in onboarding-only boot; no-op when disabled.
-// Each coalesced snapshot is emitted on the `evcc` topic (the bus is wired on
-// this boot rebuild); late/new subscribers get the current snapshot from the
-// socket's `open` handler instead.
-//
-// The second argument is the path from a loadpoint to `metrics_raw`: a device
-// row per loadpoint, then the runtime's ONE wired writer. Before it, nothing
-// under `src/evcc/` wrote to the hypertable at all — charge power and session
-// energy were live-feed only, with no history, no rollups and no statistics.
-// Assembled here because it is composition: the ingest owns none of these.
-void rebuildEvcc(streams, {
-  async ensureDevice(_id, index, title) {
-    const client = plantClient();
-    const plant = await readPlant(client);
-    // Onboarding-only boot: EVCC ingest starts before there is a plant to hang a
-    // device on. The live feed runs; storage starts on the next snapshot after
-    // provisioning.
-    if (!plant) return "absent";
-    // The loadpoint is bound to EVCC's OWN broker connection (#217), and its
-    // topic root travels onto the row. Read here rather than captured at boot
-    // because a settings save may have re-pointed either one, and a row created
-    // against the previous broker would sit on an endpoint nothing subscribes to.
-    const config = await getEvccConfig();
-    const row = await ensureDevice(
-      client,
-      loadpointDeviceSpec(plant.id, index, title, {
-        connectionId: config.connectionId,
-        topicRoot: config.topicRoot,
-      }),
-    );
-    // RETIRED IS NOT REGISTERED. `ensureDevice` is `ON CONFLICT DO NOTHING` +
-    // SELECT, so it answers "the row is there" for a row the operator retired
-    // in Settings → Devices — while the roster read excludes retired rows. The
-    // registrar has to be told the difference or it waits for an instance that
-    // is never coming.
-    return isRetired(row) ? "retired" : "ready";
-  },
-  reloadRegistry: async () => void (await deviceRegistry.reload()),
-  device: (id) => deviceRegistry.get(id),
-  commit: runtime.commit,
-  forgetDevice: runtime.forgetDevice,
-  logger: log("evcc"),
-});
 
 // Statistics stream: republish today's figures on a slow tick; the runtime
 // signals the same topic whenever a price sync stores fresh slots. The tick
@@ -648,12 +452,8 @@ for (const signal of ["SIGINT", "SIGTERM"] as const) {
   process.on(signal, async () => {
     stopBatteryScoring();
     stopUpdateChecks();
-    await stopEvcc();
-    await runtime.stop();
-    // LAST: both consumers release their hold first, so this closes the sockets
-    // that are genuinely left rather than yanking one out from under a bridge
-    // still publishing its "offline" availability.
-    await stopConnections();
+    // EVCC, the poll loop, then the connection tier — ./plant/plant-runtime.ts.
+    await plant.stop();
     process.exit(0);
   });
 }

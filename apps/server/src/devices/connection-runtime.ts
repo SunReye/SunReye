@@ -3,7 +3,7 @@
  * the connection tier.
  *
  * Called at boot and after every write that can change what a connection is
- * (`./after-device-write.ts`'s reload chain). Reading the rows and re-applying
+ * (`../plant/plant-runtime.ts`'s `afterPlantWrite`). Reading the rows and re-applying
  * them is the whole job: `./mqtt-tier.ts` turns the answer into opens,
  * re-opens and releases, and `./broker-pool.ts` holds the clients.
  *

@@ -24,15 +24,6 @@ export const SECTIONS: readonly SectionDef[] = [
   { id: "amortisation", label: m.statistics_section_amortisation },
 ];
 
-/** One bar of the contextual cost chart. Mirrors the server's CostSeriesPoint. */
-export type CostPoint = {
-  bucket: string;
-  importCost: number;
-  exportEarnings: number;
-  standingCharge: number;
-  net: number;
-};
-
 /**
  * Everything the page has already fetched, handed to whichever section bodies
  * are mounted. One bag rather than per-section prop lists so adding a section

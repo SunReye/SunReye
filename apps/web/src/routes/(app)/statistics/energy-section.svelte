@@ -1,7 +1,4 @@
 <script lang="ts">
-	import { source } from '$lib/source.svelte';
-	import type { BatteryHealth, PeriodEnergy } from '@SunReye/contracts/energy';
-	import { api } from '$lib/api';
 	import * as m from '$lib/paraglide/messages';
 	import { inverter } from '$lib/inverter/store.svelte';
 	import EnergySplitChart from '$lib/components/inverter/energy-split-chart.svelte';
@@ -9,13 +6,12 @@
 	import RatioTrendChart from '$lib/components/statistics/ratio-trend-chart.svelte';
 	import HourWeekdayHeatmap from '$lib/components/statistics/hour-weekday-heatmap.svelte';
 	import { costFormatters } from '$lib/cost/format';
-	import { specQuery, type CostBucket } from '$lib/cost/ranges';
 	import { zoomedChartSpec } from '$lib/charts/zoom-range';
 	import { zoomLabelOptions } from '$lib/charts/zoom.svelte';
 	import type { SectionData } from '$lib/statistics/sections';
 	import { sectionScope } from '$lib/statistics/chart-scope.svelte';
+	import { queried, useStatisticsQuery } from '$lib/statistics/statistics-query.svelte';
 	import { baselineLabel, deltaFor } from '$lib/statistics/compare';
-	import { statisticsLive } from '$lib/statistics-live.svelte';
 	import { ENERGY_TILES, type EnergyTileData } from '$lib/statistics/tiles';
 	import BatteryHealthPanel from './battery-health-panel.svelte';
 	import ChartPanel from './chart-panel.svelte';
@@ -41,32 +37,19 @@
 	// paired with the granularity they were fetched at, updated together (as in
 	// cost-section). Switching scope changes the spec before the response lands,
 	// and labelling day-keyed periods as months threw on an invalid date.
-	let series = $state<{ periods: PeriodEnergy[]; bucket: CostBucket }>({
+	const reads = useStatisticsQuery();
+	const energySeries = queried(() => reads.energySeries(view.spec), {
 		periods: [],
 		bucket: view.spec.bucket
 	});
-	// fallow-ignore-next-line code-duplication -- dup:61e6ac8e — the cost and energy sections fetch their series the same way (invalidation signal, source-scoped query, cancel-on-rerun) but into two differently typed results; a shared effect helper would need a generic rune wrapper for two call sites.
-	$effect(() => {
-		// Shared invalidation signal: a live push on a now-inclusive wider range
-		// bumps it (at most once a minute), which refetches the series in place.
-		void statisticsLive.revision;
-		const query = { ...specQuery(view.spec), ...source.query };
-		let cancelled = false;
-		api.api.energy.series.get({ query }).then(({ data: payload }) => {
-			if (cancelled) return;
-			series = { periods: (payload ?? []) as PeriodEnergy[], bucket: query.bucket };
-		});
-		return () => {
-			cancelled = true;
-		};
-	});
+	const series = $derived(energySeries.value);
 
 	// The period keys the plotted rows were built from, in the order the bands
 	// sit in. A drag hands back POSITIONS (a 24-month axis repeats "Aug"), and
 	// these are what turn a position back into a window.
 	const periodKeys = $derived(series.periods.map((p) => p.bucket));
 
-	// A zoom narrows the spec the effect above fetches, so selecting a week of a
+	// A zoom narrows the spec the read above fetches, so selecting a week of a
 	// month chart comes back BY HOUR rather than as six magnified daily bars.
 	const zoomTo = (indices: [number, number]) =>
 		view.zoomTo(zoomedChartSpec(view.spec, periodKeys, indices, zoomLabelOptions()));
@@ -82,23 +65,17 @@
 
 	const hasBattery = $derived(inverter.capabilities?.battery ?? false);
 
+	// The heatmap panel only draws; the window it folds is read here.
+	const heatmap = queried(() => reads.heatmap(range.from, range.to), []);
+
 	// Measured pack capacity and SOH. Fetched ONCE, not per window: these are
 	// properties of the battery, not of the picked range, and re-fetching them on
 	// every zoom would issue a query per drag for two numbers that cannot have
 	// changed. Null until it arrives — and null is also the answer on a plant the
 	// server cannot measure (no SOC role, too few deep discharges), which the
 	// tiles render as absent rather than as a healthy-looking placeholder.
-	let health = $state<BatteryHealth | null>(null);
-	$effect(() => {
-		if (!hasBattery) return;
-		let cancelled = false;
-		void api.api.battery.health.get().then(({ data: got }) => {
-			if (!cancelled) health = got ?? null;
-		});
-		return () => {
-			cancelled = true;
-		};
-	});
+	const batteryHealth = queried(() => (hasBattery ? reads.batteryHealth() : null), null);
+	const health = $derived(batteryHealth.value);
 
 	const tileData = $derived<EnergyTileData>({
 		current: cost,
@@ -199,4 +176,4 @@
 
 <!-- Rangeless-by-scope: the heatmap always folds the PICKED window (not the
      chart scope) onto one week, and hides itself when that window has no data. -->
-<HourWeekdayHeatmap from={range.from} to={range.to} />
+<HourWeekdayHeatmap cells={heatmap.value} />

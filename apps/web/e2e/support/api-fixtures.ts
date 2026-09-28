@@ -53,7 +53,7 @@
 
 import type { AutomationStreamMessage, PeakShavingStatus } from "@SunReye/contracts/automation";
 import type { ConnectionView, DeviceRoster, IntegrationView } from "@SunReye/contracts/devices";
-import type { CostBreakdown, PeriodEnergy } from "@SunReye/contracts/energy";
+import type { CostBreakdown, CostSeriesPoint, PeriodEnergy } from "@SunReye/contracts/energy";
 import type { EvccState } from "@SunReye/contracts/evcc";
 import type { LogEntry } from "@SunReye/contracts/logs";
 import type { PricedSlot, SpotPriceView, SpotStats } from "@SunReye/contracts/prices";
@@ -258,28 +258,12 @@ function buckets(from: string, to: string, bucket: string): Date[] {
 }
 
 /**
- * One bar of the cost chart — `CostSeriesPoint` in `apps/server/src/energy/cost.ts`.
- *
- * Restated rather than imported: the type is assembled in the server app, not in
- * `@SunReye/contracts`, and `statistics/cost-section.svelte` restates it too.
- */
-export interface CostSeriesPointFixture {
-  bucket: string;
-  importCost: number;
-  exportEarnings: number;
-  zeroValueExportKwh: number;
-  zeroValueExportEur: number;
-  standingCharge: number;
-  net: number;
-}
-
-/**
  * `GET /api/cost/series` — `CostSeriesPoint[]`.
  *
  * Never `[]`: `costHasData` in `statistics/cost-section.svelte` self-hides the
  * chart on an empty series, and a hidden chart passes any assertion about it.
  */
-export function costSeries(from: string, to: string, bucket: string): CostSeriesPointFixture[] {
+export function costSeries(from: string, to: string, bucket: string): CostSeriesPoint[] {
   return buckets(from, to, bucket).map((at, i) => {
     const swing = Math.sin(i / 5) * 0.6 + 1;
     const importCost = Math.round(2.52 * swing * 100) / 100;
@@ -292,7 +276,7 @@ export function costSeries(from: string, to: string, bucket: string): CostSeries
       zeroValueExportEur: 0,
       standingCharge: 0.42,
       net: Math.round((importCost + 0.42 - exportEarnings) * 100) / 100,
-    };
+    } satisfies CostSeriesPoint;
   });
 }
 

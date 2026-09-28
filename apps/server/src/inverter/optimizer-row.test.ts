@@ -87,7 +87,7 @@ afterAll(() => {
   mock.module("@SunReye/db/plant-repo", () => ({ ...realRepoExports }));
 });
 
-const { ensureOptimizerRow } = await import("./runtime");
+const { ensureOptimizerRow } = await import("./runtime-wiring");
 const { OPTIMIZER_DEVICE_ID, OPTIMIZER_PROFILE } = await import("../automation/optimizer-device");
 
 beforeEach(() => {

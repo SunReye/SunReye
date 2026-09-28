@@ -1,8 +1,20 @@
 import { inverterConfigSchema } from "@SunReye/db/inverter-config";
 import { hydrateProfile, registerProfile, type ProfileData } from "@SunReye/inverter-core";
 import { describe, expect, test } from "bun:test";
-import { resolveProfileById } from "./inverter";
-import { testInverter } from "./runtime";
+import { createConnectionProbes } from "./connection-probes";
+import { buildProfileContext, buildSource, resolveProfileById } from "./inverter";
+
+// The probes over the REAL profile resolution, with no device registered: the
+// state an onboarding boot is in before its first profile is activated.
+const { testInverter } = createConnectionProbes({
+  resolveProfile: resolveProfileById,
+  primaryProfile: () => null,
+  buildContext: (profile) => buildProfileContext(profile),
+  buildSource,
+  connectMqtt: () => {
+    throw new Error("no broker is dialled by an inverter test");
+  },
+});
 
 // Onboarding runs before any profile is active, so the test-read path must
 // resolve a *chosen* profile independently of the (unstarted) runtime. No

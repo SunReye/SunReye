@@ -14,6 +14,7 @@ import {
   overlayDelta,
   overlaySeries,
   resolveMetrics,
+  seriesScope,
 } from "./overlay-chart";
 import type { Datum } from "./chart-axes";
 import type { ManifestMetric } from "./types";
@@ -342,5 +343,27 @@ describe("overlay windows that are still filling in", () => {
       expect(overlayDatums([], window)).toEqual([]);
       expect(overlayDatums([{ key: "a", rows: [], live: [] }], window)).toEqual([]);
     });
+  });
+});
+
+describe("which source each series reads", () => {
+  // A saved chart may name a device per series (`CustomChart.devices`). Where it
+  // does, that is what the operator asked for; where it does not, the series
+  // follows the header's switcher like the metric card beside it. An overlay
+  // used to send no source at all, and so read the plant whatever it said.
+  const switcher = { source: "inverter-1" };
+
+  test("an unpinned series follows the switcher", () => {
+    expect(seriesScope({}, switcher)("ac.load.power")).toEqual({ source: "inverter-1" });
+  });
+
+  test("a pinned series reads the device it names, whatever the switcher says", () => {
+    const scopeOf = seriesScope({ "dc.pv1.power": "inverter-2" }, switcher);
+    expect(scopeOf("dc.pv1.power")).toEqual({ source: "inverter-2" });
+    expect(scopeOf("ac.load.power")).toEqual({ source: "inverter-1" });
+  });
+
+  test("an empty slug is no pin", () => {
+    expect(seriesScope({ "dc.pv1.power": "" }, switcher)("dc.pv1.power")).toEqual(switcher);
   });
 });

@@ -1,16 +1,20 @@
 /**
  * EVCC ingest + write path. The MQTT client, the broker config and the EVCC
- * config are mocked, so the whole module runs against an in-memory broker: no
- * network, no DB.
+ * config are injected, so the ingest runs against an in-memory broker: no
+ * network, no DB, and no module mocked.
  */
 
 import { EventEmitter } from "node:events";
-import { afterAll, afterEach, describe, expect, mock, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
+import type { MqttParams } from "@SunReye/db/connection-kinds";
+import type { EvccConfig } from "@SunReye/db/evcc-config";
+import { type BrokerClient, createBrokerPool } from "../devices/broker-pool";
 import { createStreams } from "../shared/streams";
+import { createEvccIngest } from "./evcc";
 
 /**
- * The bus each fresh snapshot is emitted onto. `connectEvcc` wires it into the
- * ingest; the push tests subscribe to its `evcc` topic to count snapshots.
+ * The bus each fresh snapshot is emitted onto, injected into the ingest below;
+ * the push tests subscribe to its `evcc` topic to count snapshots.
  */
 const streams = createStreams();
 
@@ -42,39 +46,17 @@ class FakeClient extends EventEmitter {
 
 let fake = new FakeClient();
 
-// `mock.module` is PROCESS-GLOBAL and permanent: every test file that runs
-// after this one sees these modules too. A mock that returns only the exports
-// this suite happens to need therefore DELETES the rest for everyone — a later
-// file importing ./runtime died with "Export named 'getInverterConfig' not
-// found in module config.ts", which also took down that file's own mock
-// registrations and failed four unrelated tests. Spread the real module and
-// override only what this suite stubs.
-const realBrokerInstance = await import("../settings/mqtt-broker-instance");
-const realEvccSettings = await import("../settings/evcc-settings");
-const realTopicRoot = await import("../integrations/evcc-topic-root");
-
-// ...and the spread is only half of it: the stub itself is permanent too, so
-// `readBroker`/`getEvccConfig` would stay installed for every later file —
-// including the suites that unit-test those very modules, which would then
-// assert against this double (red in the full run, green alone). The `afterAll`
-// below hands the modules back. A namespace is LIVE, so once the mock is
-// installed `realBrokerInstance.readBroker` IS the stub: snapshot by value here,
-// before any mock exists, or the restore restores the stub.
-const realBrokerInstanceExports = { ...realBrokerInstance };
-const realEvccSettingsExports = { ...realEvccSettings };
-const realTopicRootExports = { ...realTopicRoot };
-
 /**
  * What the `evcc-ingest` INTEGRATION ROW says the topic root is, or null when
  * this install has no row and the setting still answers.
  *
- * The reader is stubbed rather than the database, because that is the whole
- * seam under test: `rebuildEvcc` must subscribe under the ROW's root and fall
+ * The reader is injected rather than the database stubbed, because that is the
+ * whole seam under test: a rebuild must subscribe under the ROW's root and fall
  * back to `app_settings.evcc` only when there is none.
  */
 let topicRootRow: string | null = null;
 
-/** The EVCC config the next `rebuildEvcc` reads; restored after every test. */
+/** The EVCC config the next rebuild reads; restored after every test. */
 // `connectionId` since #217: EVCC dials its OWN broker connection rather than
 // reusing the Home Assistant export's, so the ingest and the export can be on
 // two brokers and two EVCC instances are two rows.
@@ -86,63 +68,52 @@ const DEFAULT_EVCC_CONFIG = {
 };
 let evccConfig = { ...DEFAULT_EVCC_CONFIG };
 
-// `mqtt` is a dependency, but `mock.module` is process-global whatever it names:
-// a partial factory deletes its other exports, and the stub outlives this file.
-// Snapshotted BY VALUE and handed back in `afterAll` — the namespace is live, so
-// `() => realMqtt` would reinstall the stub.
-const realMqtt = await import("mqtt");
-const realMqttExports = { ...realMqtt };
+/** Every warn/error line the ingest logged, captured by {@link loggedDuring}. */
+let logTap: { template: string; values: Record<string, unknown> }[] | null = null;
 
-mock.module("mqtt", () => ({
-  ...realMqtt,
-  default: { ...realMqtt.default, connect: () => fake },
-}));
-mock.module("../settings/mqtt-broker-instance", () => ({
-  ...realBrokerInstance,
-  readBroker: async (connectionId: number | null) =>
-    connectionId === null ? null : { brokerUrl: "mqtt://broker.test:1883" },
-}));
-mock.module("../settings/evcc-settings", () => ({
-  ...realEvccSettings,
-  getEvccConfig: async () => evccConfig,
-}));
-mock.module("../integrations/evcc-topic-root", () => ({
-  ...realTopicRoot,
-  readEvccTopicRoot: async (fallback: string) => topicRootRow ?? fallback,
-}));
+// A REAL pool over the fake client: the ingest's lifetime rules (acquire,
+// release, a fresh dial after the last holder lets go) are the pool's, and
+// faking the pool too would stop proving the ingest honours them.
+const pool = createBrokerPool({
+  dial: () => fake as unknown as BrokerClient,
+  schedule: () => () => {},
+});
 
-const { evccControl, evccOnLoadSample, evccSnapshot, rebuildEvcc, stopEvcc } =
-  await import("./evcc");
+const ingest = createEvccIngest({
+  streams,
+  readConfig: async () => evccConfig as EvccConfig,
+  readBroker: async (connectionId) =>
+    connectionId === null ? null : ({ brokerUrl: "mqtt://broker.test:1883" } as MqttParams),
+  readTopicRoot: async (fallback) => topicRootRow ?? fallback,
+  pool,
+  logger: {
+    info: () => {},
+    error: (template, values = {}) => void logTap?.push({ template, values }),
+  },
+});
+const evccControl = ingest.control;
+const evccOnLoadSample = ingest.onLoadSample;
+const evccSnapshot = ingest.snapshot;
+const rebuildEvcc = ingest.rebuild;
+const stopEvcc = ingest.stop;
 
 /** Comfortably past the ingest's emit debounce, so a due push has landed. */
 const EMIT_WAIT_MS = 300;
 
 /**
- * Capture what `evcc.ts` logs while `run` executes. Two tests below are named
+ * Capture what the ingest logs while `run` executes. Two tests below are named
  * "…is logged, not thrown"; `not.toThrow()` alone only ever proved the second
  * half, and would stay green if the error were swallowed silently — which is
  * the actual failure mode worth catching, because a dropped broker error is
- * invisible in production. LogTape caches one logger per category, and evcc.ts
- * binds its own at import time, so the tap goes on that shared instance: an own
- * property shadows the prototype method, forwards to LogTape, and is deleted
- * again immediately.
+ * invisible in production.
  */
-const { log: evccLog } = await import("../shared/logging");
 function loggedDuring(run: () => void): { template: string; values: Record<string, unknown> }[] {
-  const logger = evccLog("evcc") as unknown as Record<string, unknown>;
   const captured: { template: string; values: Record<string, unknown> }[] = [];
-  const levels = ["warn", "error"] as const;
-  for (const level of levels) {
-    const emit = (logger[level] as (t: string, v?: Record<string, unknown>) => void).bind(logger);
-    logger[level] = (template: string, values: Record<string, unknown> = {}) => {
-      captured.push({ template, values });
-      emit(template, values);
-    };
-  }
+  logTap = captured;
   try {
     run();
   } finally {
-    for (const level of levels) delete logger[level];
+    logTap = null;
   }
   return captured;
 }
@@ -150,7 +121,7 @@ function loggedDuring(run: () => void): { template: string; values: Record<strin
 /** Build the subscriber against a fresh fake client and complete its handshake. */
 async function connectEvcc(): Promise<void> {
   fake = new FakeClient();
-  await rebuildEvcc(streams);
+  await rebuildEvcc();
   fake.emit("connect");
   send("evcc/status", "online");
 }
@@ -193,15 +164,6 @@ afterEach(async () => {
   await stopEvcc();
   evccConfig = { ...DEFAULT_EVCC_CONFIG };
   topicRootRow = null;
-});
-
-// `afterAll`, not `afterEach`: this file's own tests need the stubs until the
-// last one has run. From here on the real modules are back for everyone else.
-afterAll(() => {
-  mock.module("mqtt", () => ({ ...realMqttExports }));
-  mock.module("../settings/mqtt-broker-instance", () => ({ ...realBrokerInstanceExports }));
-  mock.module("../settings/evcc-settings", () => ({ ...realEvccSettingsExports }));
-  mock.module("../integrations/evcc-topic-root", () => ({ ...realTopicRootExports }));
 });
 
 describe("subscriptions", () => {

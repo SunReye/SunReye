@@ -47,6 +47,8 @@ interface DrawnLabel {
   y: number;
   canvas: number;
   canvasWidth: number;
+  /** The context's `font` at the call — the size the label was drawn at. */
+  font: string;
   panel: string;
   /** Is this one of the statistics charts, rather than a chart this page
    *  merely hosts? Set by `data-slot=statistics-plot` on the chart's own box. */
@@ -90,6 +92,7 @@ async function recordCanvasText(page: Page) {
           y: (y * t.d + t.f) / scale,
           canvas: canvas.__id,
           canvasWidth: canvas.clientWidth,
+          font: this.font,
           panel: canvas.closest("section")?.querySelector("h2")?.textContent?.trim() ?? "?",
           statistics: canvas.closest("[data-slot=statistics-plot]") !== null,
         });
@@ -132,6 +135,26 @@ async function labelsOn(page: Page): Promise<DrawnLabel[]> {
   // filter that hides the worst case from the spec written to catch it is the
   // one thing this file must not do.
   return [...latest.values()].filter((label) => label.statistics);
+}
+
+/**
+ * Plant layerchart's canvas style resolver in `<body>` before any chart mounts.
+ *
+ * Canvas text has no element to style, so layerchart resolves its classes on
+ * ONE hidden `<svg>` (by this id), created after whichever canvas draws first
+ * and inheriting from THERE. Every page state where the first canvas sits
+ * outside a `Chart.Container` (the heatmap, once the sections loaded in that
+ * order) put it in this position — this makes that order the fixture's.
+ */
+async function resolverOutsideContainer(page: Page) {
+  await page.addInitScript(() => {
+    document.addEventListener("DOMContentLoaded", () => {
+      const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+      svg.id = "__layerchart_canvas_styles_id";
+      svg.style.display = "none";
+      document.body.append(svg);
+    });
+  });
 }
 
 /** Open /statistics with the viewport set BEFORE the first layout. */
@@ -186,3 +209,21 @@ for (const viewport of [PHONE_SMALL, PHONE, LAPTOP]) {
     expect(collisions).toEqual([]);
   });
 }
+
+// The house axis size is `text-xs` (12px), and `axis-fit.ts` is calibrated at
+// it. It used to hold only when the first canvas to draw sat inside a
+// `Chart.Container` — otherwise every canvas label on the page fell back to
+// layerchart's own 10px, the fit's estimate was taken at the wrong size, and
+// which of the two a reader got depended on which section's data came back
+// first.
+test("every statistics axis label draws at the house size, wherever the first chart mounted", async ({
+  page,
+}) => {
+  await resolverOutsideContainer(page);
+  const labels = await openStatistics(page, PHONE);
+
+  const offSize = labels
+    .filter((l) => !l.font.startsWith("12px"))
+    .map((l) => `${name(l)}: ${l.font}`);
+  expect(offSize).toEqual([]);
+});

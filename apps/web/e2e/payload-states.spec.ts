@@ -60,7 +60,7 @@ test("EVCC off sends no evcc frame at all, and the card stays away", async ({ pa
 });
 
 test("no price feed drops the whole spot-prices section", async ({ page }) => {
-  // `section-list.svelte` gates the section on `spotStats.available`, so this
+  // `section-list.svelte` gates the section on the spot-stats read answering with a payload, so this
   // is capability gating rather than a preference: the section, its charts and
   // its customize toggle all go together.
   const opened = await openPage(page, "/#/statistics", { prices: null });
