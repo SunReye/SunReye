@@ -3,7 +3,7 @@
 	import CalendarBlank from 'phosphor-svelte/lib/CalendarBlank';
 	import CaretLeft from 'phosphor-svelte/lib/CaretLeft';
 	import CaretRight from 'phosphor-svelte/lib/CaretRight';
-	import { getLocalTimeZone, type DateValue } from '@internationalized/date';
+	import type { DateValue } from '@internationalized/date';
 	import type { DateRange } from 'bits-ui';
 	import { Button } from '$lib/components/ui/button';
 	import * as Popover from '$lib/components/ui/popover';
@@ -179,8 +179,9 @@
 	});
 
 	function applyCustom(start: DateValue, end: DateValue) {
-		const zone = getLocalTimeZone();
-		onCustomRange(start.toDate(zone), end.toDate(zone));
+		// The picked days are days of the calendar this control is read in —
+		// the caller's zone (the plant's on /statistics), not the browser's.
+		onCustomRange(start.toDate(timeZone), end.toDate(timeZone));
 		open = false;
 	}
 

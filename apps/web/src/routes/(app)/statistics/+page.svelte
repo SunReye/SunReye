@@ -2,7 +2,7 @@
 	import { source } from '$lib/source.svelte';
 	import type { CostBreakdown } from '@SunReye/contracts/energy';
 	import type { CompareMode, ComparisonResponse } from '@SunReye/contracts/statistics';
-	import { onMount } from 'svelte';
+	import { onMount, untrack } from 'svelte';
 	import SlidersHorizontal from 'phosphor-svelte/lib/SlidersHorizontal';
 	import { api } from '$lib/api';
 	import { payloadOrNull } from '$lib/api-payload';
@@ -28,9 +28,9 @@
 	import { statisticsPrefs } from '$lib/statistics-prefs.svelte';
 	import { statisticsLive } from '$lib/statistics-live.svelte';
 	import { includesNow, liveModeFor } from '$lib/statistics/live';
-	import { browserTimeZone } from '$lib/time/browser-zone';
 	import { liveClock } from '$lib/time/live-clock.svelte';
-	import { periodWindow, type Period } from '$lib/time/period';
+	import { periodWindow, rezonePeriod, weekStartFor, type Period } from '$lib/time/period';
+	import { getLocale } from '$lib/paraglide/runtime';
 	import { setCustomizeSession } from '$lib/statistics/customize.svelte';
 	import StatisticsBody from './statistics-body.svelte';
 	import CustomizeBar from './customize-bar.svelte';
@@ -48,12 +48,31 @@
 	// a period boundary stops claiming to be live and offers the arrow that
 	// reaches the new one. `range` is deliberately not clock-driven — every
 	// section fetches from it.
-	const zone = browserTimeZone();
-	const first = periodWindow(new Date(), 'month', { timeZone: zone });
+	//
+	// Every window is built on the PLANT's calendar: the server sums the plant's
+	// days, and a viewer in New York asking for New York midnights of a Berlin
+	// plant gets bars that straddle two of its days. Until the source list lands
+	// the viewer's zone stands in, and the effect below re-reads the period the
+	// reader is on by name once the real zone is known.
+	const zone = $derived(source.plantZone);
+	let builtZone = source.plantZone;
+	const first = periodWindow(new Date(), 'month', { timeZone: builtZone });
 
 	let period = $state<Period>(first);
 	let override = $state<RangeOverride | null>(null);
-	let range = $state<CostRange>(costRangeFor(first, new Date(), zone));
+	let range = $state<CostRange>(costRangeFor(first, new Date(), builtZone));
+
+	$effect(() => {
+		const next = zone;
+		if (next === builtZone) return;
+		const from = builtZone;
+		builtZone = next;
+		untrack(() => {
+			if (override === null) {
+				pickPeriod(rezonePeriod(period, from, { timeZone: next, weekStartsOn: weekStartFor(getLocale()) }));
+			} else if (override.id !== 'custom') pickPreset(override.id);
+		});
+	});
 
 	/** A grain tab or an arrow: the reader moved to a calendar period. */
 	function pickPeriod(next: Period) {
@@ -64,7 +83,7 @@
 
 	/** The one kept preset — a rolling seven days is not a calendar week. */
 	function pickPreset(id: string) {
-		const next = resolveCostPreset(id);
+		const next = resolveCostPreset(id, new Date(), zone);
 		range = next;
 		override = { id, label: presetLabel(id, next.label) };
 	}
@@ -107,7 +126,7 @@
 	/** Whole days of `range` that have happened — the comparison caption's span. */
 	function pricedDays(of: CostRange): number {
 		const window = pricedWindow(of);
-		return windowDays(window.from, window.to);
+		return windowDays(window.from, window.to, of.timeZone);
 	}
 
 	// Headline tiles: the picked [from, to) priced beside its reference window,

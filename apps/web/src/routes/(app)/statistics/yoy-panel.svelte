@@ -7,7 +7,7 @@
 	import Section from '$lib/components/layout/section.svelte';
 	import PanelReadoutRow from '$lib/components/layout/panel-readout-row.svelte';
 	import type { CostFormatters } from '$lib/cost/format';
-	import { groupYoy, hasYoyData, type MonthlyValue } from '$lib/statistics/yoy';
+	import { groupYoy, hasYoyData, yoyWindow, type MonthlyValue } from '$lib/statistics/yoy';
 	import type { CostPoint } from '$lib/statistics/sections';
 	import { statisticsPrefs } from '$lib/statistics-prefs.svelte';
 	import { getCustomizeSession } from '$lib/statistics/customize.svelte';
@@ -37,14 +37,16 @@
 	let netByMonth = $state<MonthlyValue[]>([]);
 	let productionByMonth = $state<MonthlyValue[]>([]);
 
-	// Trailing 24 calendar months so both charted years are complete.
+	// Trailing 24 calendar months so both charted years are complete — the
+	// PLANT's months, which the server keys the series by.
 	const now = new Date();
-	const year = now.getFullYear();
-	const seriesWindow = {
-		from: new Date(year, now.getMonth() - 23, 1).toISOString(),
-		to: now.toISOString(),
+	const yoy = $derived(yoyWindow(now, source.plantZone));
+	const year = $derived(yoy.year);
+	const seriesWindow = $derived({
+		from: yoy.from.toISOString(),
+		to: yoy.to.toISOString(),
 		bucket: 'month' as const
-	};
+	});
 
 	$effect(() => {
 		let cancelled = false;

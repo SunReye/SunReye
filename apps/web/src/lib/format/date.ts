@@ -14,7 +14,8 @@ const format = (date: Date, options: Intl.DateTimeFormatOptions): string =>
   formatter(options).format(date);
 
 /** "Aug 1" — chart buckets and compact range labels. */
-export const dayMonth = (date: Date): string => format(date, { day: "numeric", month: "short" });
+export const dayMonth = (date: Date, timeZone?: string): string =>
+  format(date, { day: "numeric", month: "short", timeZone });
 
 /** "Aug" — monthly chart buckets. */
 export const monthShort = (date: Date): string => format(date, { month: "short" });

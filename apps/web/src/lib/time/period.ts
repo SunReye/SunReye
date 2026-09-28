@@ -67,6 +67,16 @@ export function periodWindow(instant: Date, grain: Grain, opts: PeriodOptions): 
 }
 
 /**
+ * The period of the same name — the day, week, month or year `period` starts on
+ * in `fromZone` — on `opts.timeZone`'s calendar. By date parts, never by an
+ * instant: zones 16 hours apart disagree on which day an instant is.
+ */
+export function rezonePeriod(period: Period, fromZone: string, opts: PeriodOptions): Period {
+  const start = midnightOf(dateIn(period.start, fromZone), opts.timeZone);
+  return periodWindow(start, period.grain, opts);
+}
+
+/**
  * `date` shifted by whole calendar months, CLAMPED to the target month's last
  * day. `new Date(2026, 1, 31)` overflows to 3 March, so a naive month step from
  * an anchor on the 31st lands back in the month it started in and the arrow

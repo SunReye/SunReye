@@ -2,6 +2,8 @@
 // series arrives as flat period keys, and the chart wants twelve calendar
 // months each carrying this year's and last year's figure.
 
+import { calendarDate, startOfDate } from "@SunReye/inverter-core/zoned-calendar";
+
 /** One monthly period of whatever metric is being compared. */
 export type MonthlyValue = {
   /** Local period key `YYYY-MM`. */
@@ -36,6 +38,15 @@ export function groupYoy(rows: readonly MonthlyValue[], year: number): YoyRow[] 
       previous: byBucket.get(`${year - 1}-${month}`) ?? null,
     };
   });
+}
+
+/**
+ * The trailing 24 calendar months ending at `now`, and the year `now` falls in,
+ * on `timeZone`'s calendar — the plant's, whose months the series is keyed by.
+ */
+export function yoyWindow(now: Date, timeZone: string): { from: Date; to: Date; year: number } {
+  const { year, month } = calendarDate(now, timeZone);
+  return { from: startOfDate({ year, month: month - 23, day: 1 }, timeZone), to: now, year };
 }
 
 /** True when there is anything at all to chart. */

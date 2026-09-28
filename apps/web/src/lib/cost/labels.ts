@@ -25,9 +25,9 @@ export const statisticsPresets = (): readonly { id: string; label: string }[] =>
 
 /** The picked window as dates — "Aug 1 – 31", or one date for a single day.
  *  `to` is exclusive, so the label reads the last covered instant. */
-function rangeSpan(window: { from: Date; to: Date }): string {
-  const first = dayMonth(window.from);
-  const last = dayMonth(new Date(window.to.getTime() - 1));
+function rangeSpan(window: { from: Date; to: Date }, timeZone: string): string {
+  const first = dayMonth(window.from, timeZone);
+  const last = dayMonth(new Date(window.to.getTime() - 1), timeZone);
   return first === last ? first : `${first} – ${last}`;
 }
 
@@ -48,7 +48,8 @@ export const rangeCaption = (
 ): string => {
   const window = pricedWindow(range, now);
   return m.statistics_caption_range({
-    span: rangeSpan(window),
-    baseline: baselineLabel(mode, windowDays(window.from, window.to)),
+    // The range's own zone (the plant's): the days the server summed.
+    span: rangeSpan(window, range.timeZone),
+    baseline: baselineLabel(mode, windowDays(window.from, window.to, range.timeZone)),
   });
 };
