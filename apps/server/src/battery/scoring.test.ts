@@ -204,3 +204,14 @@ describe("startBatteryScoring", () => {
     expect(ROUTINE_WINDOW_MS).toBeLessThanOrEqual(7 * DAY);
   });
 });
+
+describe("the production wiring", () => {
+  test("a profile that maps no battery gets no database deps, and a no-op stop", () => {
+    const noBattery = { id: "meter", metrics: [] } as unknown as Parameters<
+      typeof startBatteryScoring
+    >[0];
+    const stop = startBatteryScoring(noBattery, () => {});
+    expect(typeof stop).toBe("function");
+    stop();
+  });
+});

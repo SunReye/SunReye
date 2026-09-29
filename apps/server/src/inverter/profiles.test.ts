@@ -125,12 +125,13 @@ afterAll(() => {
   mock.module("../settings/app-settings", () => ({ ...realAppSettingsExports }));
 });
 
-// `inverter.test.ts` permanently stubs this module's `dropLegacyDefaultSource`
-// (mock.module is global and there is no unmock), so a plain `./profiles` import
-// yields that stub whenever this file runs after it. The query suffix resolves
-// to a fresh, unstubbed instance of the same file — coverage still attributes to
-// it, and nothing else in the process shares its module state.
-const profilesModule = "./profiles?unstubbed";
+// A PLAIN import, deliberately. This used to load `./profiles?unstubbed` to dodge
+// a stub `inverter.test.ts` left installed; it restores the real exports in
+// `afterAll` now, and a second instance of the file cost more than it saved:
+// bun credits both instances to one path and reports whichever ran last, so in
+// CI's file order the barely-exercised plain instance (loaded by
+// `onboarding.test.ts`) replaced this suite's cover — 14 % for the file, and
+// the whole repo under its 99 % floor.
 const {
   browseAvailable,
   dropLegacyDefaultSource,
@@ -143,7 +144,7 @@ const {
   startUpdateChecks,
   stopUpdateChecks,
   uninstallProfile,
-} = (await import(profilesModule)) as typeof import("./profiles");
+} = await import("./profiles");
 
 // ---------------------------------------------------------------------------
 // Fixtures: real git repositories, reached over https without a network.

@@ -6,14 +6,11 @@
  */
 
 import { db } from "@SunReye/db";
-import { ensureDevice, isRetired, readPlant } from "@SunReye/db/plant-repo";
 import { metricsConfigLog, metricsRaw } from "@SunReye/db/schema/metrics";
 import { env } from "@SunReye/env/server";
 import mqtt from "mqtt";
 
 import { startAutomations, stopAutomations } from "../automation/automation";
-import { optimizerDeviceSpec } from "../automation/optimizer-device";
-import type { DeviceRowState } from "../automation/optimizer-registrar";
 import { brokerPool } from "../devices/broker-pool-instance";
 import type { DeviceRegistry } from "../devices/registry";
 import { runForecastCorrectionLearn } from "../forecast/forecast-correction-job";
@@ -26,6 +23,7 @@ import { getSpotPriceConfig } from "../settings/spot-price-settings";
 import { getWeatherConfig } from "../settings/weather-settings";
 import { createIdentityResolver } from "../shared/identity";
 import { log } from "../shared/logging";
+import { plantClient } from "../shared/plant-client";
 import {
   type ConnectionProbes,
   type ProbeMqttClient,
@@ -37,35 +35,13 @@ import { createHistoryBuffer } from "./history-buffer";
 import { buildProfileContext, buildSource, resolveProfileById } from "./inverter";
 import { createJobScheduler } from "./job-scheduler";
 import { startMqttBridge } from "./mqtt";
+import { ensureOptimizerRow } from "./optimizer-row";
 import { readMqttNamespace } from "./mqtt-namespace";
 import type { RuntimeDeps } from "./runtime";
 import { createIdentifiedCommit, createRowIdentifier } from "./storage-identity";
 import type { StorageRow } from "./storage-policy";
 
 const logger = log("runtime");
-
-/**
- * The optimizer's `devices` row, over the real plant spine.
- *
- * RETIRED IS NOT REGISTERED. `ensureDevice` is `ON CONFLICT DO NOTHING` +
- * SELECT, so it answers "the row is there" for a row the operator retired in
- * Settings → Devices — while the roster read excludes exactly that row. The
- * registrar has to be told the difference or it waits for an instance that is
- * never coming.
- *
- * `"absent"` is a legal answer: the automation loop can be armed on a boot that
- * has no plant yet, and taking it down over a missing device row would be worse
- * than storing nothing until the next tick.
- */
-// fallow-ignore-next-line unused-export -- the production `RuntimeDeps.ensureOptimizerDevice`, also asserted against a stubbed spine in `./optimizer-row.test.ts`; test files aren't traced as consumers.
-export async function ensureOptimizerRow(): Promise<DeviceRowState> {
-  const plantDb = { execute: (query: Parameters<typeof db.execute>[0]) => db.execute(query) };
-  const plant = await readPlant(plantDb);
-  if (!plant) return "absent";
-  return isRetired(await ensureDevice(plantDb, optimizerDeviceSpec(plant.id)))
-    ? "retired"
-    : "ready";
-}
 
 /** The runtime's collaborators, bound to the real database and settings. */
 export function productionRuntimeDeps(wiring: {
@@ -120,7 +96,7 @@ export function productionRuntimeDeps(wiring: {
     mqttNamespace: readMqttNamespace,
     controlStore: dbControlStore,
     onLoadSample: wiring.onLoadSample,
-    ensureOptimizerDevice: ensureOptimizerRow,
+    ensureOptimizerDevice: () => ensureOptimizerRow(plantClient()),
     identity,
     devices: wiring.devices,
   };

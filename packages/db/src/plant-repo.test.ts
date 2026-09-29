@@ -10,6 +10,7 @@ import {
   createDevice,
   createPlant,
   deleteConnection,
+  deleteDevice,
   deleteDeviceBattery,
   ensureConnection,
   ensureDevice,
@@ -23,6 +24,7 @@ import {
   isVirtualDevice,
   physicalDevices,
   readRawSetting,
+  reslugForMigrationOnboarding,
   updateDevice,
   uniqueViolation,
   updateConnection,
@@ -508,6 +510,26 @@ describe("devices", () => {
     expect(devices[0]?.retiredAt?.toISOString()).toBe("2026-08-01T10:00:00.000Z");
   });
 
+  test("a params column that is not an object reads as no params", async () => {
+    const { client } = fakeClient([
+      [deviceRow({ params: null }), deviceRow({ params: [1, 2] }), deviceRow({ params: 7 })],
+    ]);
+    const devices = await readDevices(client, 7);
+    expect(devices.map((d) => d.params)).toEqual([{}, {}, {}]);
+  });
+
+  test("a params object survives the read", async () => {
+    const { client } = fakeClient([[deviceRow({ params: { topic: "evcc" } })]]);
+    const [device] = await readDevices(client, 7);
+    expect(device?.params).toEqual({ topic: "evcc" });
+  });
+
+  test("updateDevice writes params cast to jsonb", async () => {
+    const { client, executed } = fakeClient([[], [deviceRow()]]);
+    await updateDevice(client, 4, { params: { topic: "evcc" } });
+    expect(rendered(executed[0])).toMatch(/params = \$\d+::jsonb/);
+  });
+
   test("readDevices lists retired devices by DEFAULT — their history is the point", async () => {
     const { client, executed } = fakeClient([[deviceRow({ retiredAt: new Date() })]]);
     const devices = await readDevices(client, 7);
@@ -902,5 +924,99 @@ describe("uniqueViolation", () => {
     expect(uniqueViolation(new Error("boom"))).toBeNull();
     expect(uniqueViolation("boom")).toBeNull();
     expect(uniqueViolation(null)).toBeNull();
+  });
+});
+
+describe("deleteDevice", () => {
+  /** A client whose one statement fails with `error`. */
+  const failing = (error: unknown) => ({
+    async execute(): Promise<{ rows: Array<Record<string, unknown>> }> {
+      throw error;
+    },
+  });
+  const withCode = (code: string, message = "boom") => Object.assign(new Error(message), { code });
+
+  test("a row returned is a delete", async () => {
+    const { client } = fakeClient([[{ id: 4 }]]);
+    expect(await deleteDevice(client, 4)).toBe("deleted");
+  });
+
+  test("no row returned is a device that was never there", async () => {
+    const { client } = fakeClient([[]]);
+    expect(await deleteDevice(client, 4)).toBe("missing");
+  });
+
+  test("the pack goes in the SAME statement as the device", async () => {
+    const { client, executed } = fakeClient([[{ id: 4 }]]);
+    await deleteDevice(client, 4);
+    expect(executed).toHaveLength(1);
+    const text = rendered(executed[0]);
+    expect(text).toContain("delete from batteries");
+    expect(text).toContain("delete from devices");
+  });
+
+  test("a foreign-key refusal is history, not an error", async () => {
+    expect(await deleteDevice(failing(withCode("23503")), 4)).toBe("has-history");
+  });
+
+  test("the refusal is found through the driver's cause chain", async () => {
+    const wrapped = new Error("query failed", {
+      cause: new Error("pool", { cause: withCode("23503") }),
+    });
+    expect(await deleteDevice(failing(wrapped), 4)).toBe("has-history");
+  });
+
+  test("a cause buried past four levels is not trusted as the refusal", async () => {
+    let error: Error = withCode("23503");
+    for (let i = 0; i < 4; i += 1) error = new Error(`level ${i}`, { cause: error });
+    await expect(deleteDevice(failing(error), 4)).rejects.toBe(error);
+  });
+
+  test("any other failure propagates unchanged", async () => {
+    const unique = withCode("23505");
+    await expect(deleteDevice(failing(unique), 4)).rejects.toBe(unique);
+    await expect(deleteDevice(failing("not an Error"), 4)).rejects.toBe("not an Error");
+  });
+});
+
+describe("reslugForMigrationOnboarding", () => {
+  test("naming neither slug executes nothing", async () => {
+    const { client, executed } = fakeClient();
+    await reslugForMigrationOnboarding(client, { plantId: 1, deviceId: 4 });
+    expect(executed).toEqual([]);
+  });
+
+  test("a plant slug alone updates only the plant", async () => {
+    const { client, executed } = fakeClient();
+    await reslugForMigrationOnboarding(client, { plantId: 1, plantSlug: "home", deviceId: null });
+    expect(executed).toHaveLength(1);
+    expect(rendered(executed[0])).toContain("update plants set slug =");
+  });
+
+  test("a device slug updates the device, in place", async () => {
+    const { client, executed } = fakeClient();
+    await reslugForMigrationOnboarding(client, { plantId: 1, deviceId: 4, deviceSlug: "deye" });
+    expect(executed).toHaveLength(1);
+    expect(rendered(executed[0])).toContain("update devices set slug =");
+  });
+
+  test("a device slug with no device to carry it executes nothing", async () => {
+    const { client, executed } = fakeClient();
+    await reslugForMigrationOnboarding(client, { plantId: 1, deviceId: null, deviceSlug: "deye" });
+    expect(executed).toEqual([]);
+  });
+
+  test("both slugs move both rows", async () => {
+    const { client, executed } = fakeClient();
+    await reslugForMigrationOnboarding(client, {
+      plantId: 1,
+      plantSlug: "home",
+      deviceId: 4,
+      deviceSlug: "deye",
+    });
+    expect(executed.map(rendered).map((t) => t.split(" set ")[0])).toEqual([
+      "update plants",
+      "update devices",
+    ]);
   });
 });
