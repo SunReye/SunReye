@@ -116,6 +116,13 @@ changed again. The archive names devices and metrics the way the API and your Ho
 entities already do, and refers to no internal id, which is why an upgrade like this one should not
 be needed again.
 
+## [3.6.0](https://github.com/SunReye/SunReye/compare/addon-v3.5.0...addon-v3.6.0) (2026-09-29)
+
+
+### Features
+
+* **web:** tier dashboard motion to the device, and tablet/phone layout fixes ([851a800](https://github.com/SunReye/SunReye/commit/851a800e42a1916739b929f3f8bcb59de7113efa))
+
 ## [3.5.0](https://github.com/SunReye/SunReye/compare/addon-v3.4.0...addon-v3.5.0) (2026-09-15)
 
 
