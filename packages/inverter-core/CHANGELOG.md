@@ -1,5 +1,24 @@
 # Changelog
 
+## [1.5.0](https://github.com/SunReye/SunReye/compare/inverter-core-v1.4.0...inverter-core-v1.5.0) (2026-09-29)
+
+
+### Features
+
+* **inverter-core:** add one zoned-calendar module for period boundaries ([7de307d](https://github.com/SunReye/SunReye/commit/7de307d7f0363cf7b5834b13e1e830311d7bff12))
+* **inverter-core:** shift a window by whole years on a zone's calendar ([eb4a634](https://github.com/SunReye/SunReye/commit/eb4a634e725a58966ce5ed31b5c9bbef6b8767b5))
+
+
+### Bug Fixes
+
+* **automation:** take the plant-day boundary from the plant zone ([e9be76e](https://github.com/SunReye/SunReye/commit/e9be76eb238265a56d78bbc4bcb7e7f84b07765c))
+* build /history, range calendar and simulator on the plant's clock ([88ce467](https://github.com/SunReye/SunReye/commit/88ce467687d908692a5dde74762a9ac5a429a601))
+* build statistics windows on the plant's calendar ([a121364](https://github.com/SunReye/SunReye/commit/a121364a759fd302ba16e6de8cf13276c4c22310))
+* **inverter-core:** run the simulated sun on the plant's clock ([bf806af](https://github.com/SunReye/SunReye/commit/bf806af7165a3143e1d4789eba2b5b5c7acb4582))
+* **server:** hand the simulator the plant's zone ([ec9c787](https://github.com/SunReye/SunReye/commit/ec9c7877fea8e7d9330913eb70d32f0757f90542))
+* **server:** key the §51 zero-value share by the UTC rollup hour ([b832156](https://github.com/SunReye/SunReye/commit/b83215621565b14fa7c37a2d12ac76c2e79800ef))
+* shift the year-ago comparison on the plant's calendar ([dd40233](https://github.com/SunReye/SunReye/commit/dd40233e2318fbe69c0c626db73fa46e7f9b9846))
+
 ## [1.4.0](https://github.com/SunReye/SunReye/compare/inverter-core-v1.3.0...inverter-core-v1.4.0) (2026-09-15)
 
 
