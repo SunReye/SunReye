@@ -19,7 +19,7 @@
  * one. The component owns the requests.
  */
 
-import { buildAddDeviceBody, deviceFieldsOf, emptyForm } from "../devices/add-device-logic";
+import { buildAddDeviceBody, deviceFieldsOf, emptyForm } from "../devices/device-form";
 import {
   type AddDeviceBody,
   type AddDeviceForm,

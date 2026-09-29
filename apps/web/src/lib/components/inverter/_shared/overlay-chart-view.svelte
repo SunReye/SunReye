@@ -10,30 +10,29 @@
 	// full-screened card, that no server has seen) render through exactly the
 	// same path as a saved chart. Two renderers would have been two things to
 	// keep in step.
-	import { untrack } from 'svelte';
 	import { fade } from 'svelte/transition';
 	import * as msg from '$lib/paraglide/messages';
 	import ChartLegend from '$lib/components/inverter/chart-legend.svelte';
 	import CustomChartPlot from '$lib/components/inverter/_shared/custom-chart-plot.svelte';
 	import ChartStateView from '$lib/components/inverter/_shared/chart-state-view.svelte';
-	import { api } from '$lib/api';
 	import { inverter } from '$lib/inverter/store.svelte';
 	import { tooltipLabel, xTick } from '$lib/inverter/chart-format';
 	import { resolveAxes, seriesConfig } from '$lib/components/inverter/_shared/chart-series';
 	import {
 		overlayDatums,
-		overlayDelta,
 		overlaySeries,
-		resolveMetrics
+		resolveMetrics,
+		seriesScope
 	} from '$lib/inverter/overlay-chart';
-	import { fetchWindow, mergeRollup, type RollupRow } from '$lib/inverter/live-tail';
-	import { liveClock } from '$lib/time/live-clock.svelte';
+	import { source } from '$lib/source.svelte';
+	import { liveRollup } from '$lib/inverter/live-rollup.svelte';
 	import { CHART_BOX } from '$lib/layout/tokens';
 	import type { HistoryRange } from '$lib/inverter/ranges';
 
 	let {
 		metrics,
 		colors = {},
+		devices = {},
 		range,
 		height = CHART_BOX,
 		onZoom,
@@ -45,6 +44,9 @@
 		metrics: string[];
 		/** Per-series colour overrides, keyed by metric key. A draft has none. */
 		colors?: Record<string, string>;
+		/** The device each series is pinned to, keyed by metric key. Unpinned
+		 *  keys follow the header's source switcher. A draft has none. */
+		devices?: Record<string, string>;
 		range: HistoryRange;
 		/** Plot box height class. A draft fills its full-screen card. */
 		height?: string;
@@ -77,109 +79,23 @@
 	// top of the page showed the last two minutes above a grid of full-day cards
 	// (#216). `live` now means only "the right edge is the future, keep
 	// appending", the same as it does for a single-metric card.
-	/** Fetched rows per metric key — the keys are asked for together. */
-	let rows = $state<Record<string, RollupRow[]>>({});
-	let loading = $state(true);
-	/** The clock minute those rows were last brought up to. */
-	let syncedTick = 0;
-	const span = $derived(fetchWindow(range));
-
-	const rollupQuery = (metric: string, from: Date, to: Date) => ({
-		metric,
-		from: from.toISOString(),
-		to: to.toISOString(),
-		bucket: range.bucket,
-		limit: 12000
+	//
+	// One delta query per tick, sized for the key that lags furthest behind,
+	// merged into each key's rows; closed live buckets past each key's last
+	// fetched one are spliced per key. All of it is `liveRollup`'s.
+	//
+	// Each series reads the device the chart names for it, else the header's
+	// source — the scope the metric card beside it reads. It used to send no
+	// `source` at all, so an overlay showed the plant whatever the switcher said.
+	const rollup = liveRollup({
+		keys: () => metrics,
+		range: () => range,
+		scope: () => seriesScope(devices, source.query),
+		enabled: () => true,
+		live: (key) => inverter.series(key)
 	});
-
-	async function fetchRows(
-		keys: readonly string[],
-		from: Date,
-		to: Date
-	): Promise<Record<string, RollupRow[]>> {
-		const answers = await Promise.all(
-			keys.map((metric) =>
-				api.api.history.rollup
-					.get({ query: rollupQuery(metric, from, to) })
-					.then(({ data }) => [metric, (data ?? []) as RollupRow[]] as const)
-			)
-		);
-		return Object.fromEntries(answers);
-	}
-
-	$effect(() => {
-		const keys = [...metrics];
-		const from = range.from;
-		const to = range.to;
-		// Untracked: bookkeeping for the delta effect below. A tracked read of the
-		// clock here would refetch the whole window every minute.
-		syncedTick = untrack(() => liveClock.now.getTime());
-		let cancelled = false;
-		loading = true;
-		void fetchRows(keys, from, to).then((answer) => {
-			if (cancelled) return;
-			rows = answer;
-			loading = false;
-			syncedTick = liveClock.now.getTime();
-		});
-		return () => {
-			cancelled = true;
-		};
-	});
-
-	// ── Keeping a still-running window up to date ────────────────────────────────
-	// One delta query per tick, sized for the key that lags furthest behind
-	// (`overlayDelta`), merged into each key's rows. `liveClock` is the TICK and
-	// never the window: re-deriving `range` from it is the PR #60 refetch loop —
-	// see the comment on `range` in /history's `+page.svelte`. `rows` is read
-	// through `untrack` because this effect writes it, and `syncedTick` gates the
-	// first run so landing the initial fetch cannot trigger a second request.
-	const appending = $derived(range.live && !loading);
-
-	$effect(() => {
-		if (!appending) return;
-		const tick = liveClock.now.getTime();
-		const held = untrack(() => rows);
-		const keys = [...metrics];
-		const delta = overlayDelta(
-			keys.map((key) => ({ key, rows: held[key] ?? [], live: [] })),
-			span,
-			tick,
-			syncedTick
-		);
-		if (!delta) return;
-		syncedTick = tick;
-		let cancelled = false;
-		void fetchRows(keys, delta.from, delta.to).then((fresh) => {
-			if (cancelled) return;
-			rows = Object.fromEntries(
-				keys.map((key) => [key, mergeRollup(held[key] ?? [], fresh[key] ?? [])])
-			);
-		});
-		return () => {
-			cancelled = true;
-		};
-	});
-
-	// Live frames past each key's last fetched bucket, so the lines reach the
-	// present between deltas even while the server's continuous aggregate lags.
-	// Keyed on the minute tick and on `rows`, with the buffers read UNTRACKED:
-	// re-deriving a day of points on every ~1 Hz frame is the cost the lazy-mount
-	// queue exists to avoid.
-	const chartData = $derived.by(() => {
-		const held = rows;
-		if (range.live) void liveClock.now;
-		return untrack(() =>
-			overlayDatums(
-				metrics.map((key) => ({
-					key,
-					rows: held[key] ?? [],
-					live: range.live ? inverter.series(key) : []
-				})),
-				span
-			)
-		);
-	});
+	const loading = $derived(rollup.loading);
+	const chartData = $derived(overlayDatums(rollup.feeds, rollup.span));
 
 	// Pin the x-axis to the whole selected window so a partial day (e.g. "Today"
 	// before the day is over) still spans the full range instead of stretching to

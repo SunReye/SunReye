@@ -1,7 +1,7 @@
 <script lang="ts">
-	import type { IntegrationWithDevices } from './add-device-logic';
+	import type { IntegrationWithDevices } from './roster-groups';
 	import DeviceRows from './device-rows.svelte';
-	import type { DeviceView, IntegrationView } from './device-types';
+	import type { DeviceHandlers, IntegrationHandlers } from './device-types';
 	import IntegrationRow from './integration-row.svelte';
 
 	// ONE integration, and under it the devices it provides.
@@ -19,24 +19,14 @@
 		entry,
 		busyId,
 		busyIntegrationId,
-		onEdit,
-		onRename,
-		onRetire,
-		onRestore,
-		onEditIntegration,
-		onToggleIntegration,
-		onRemoveIntegration
+		handlers,
+		integrationHandlers
 	}: {
 		entry: IntegrationWithDevices;
 		busyId: number | null;
 		busyIntegrationId: number | null;
-		onEdit: (device: DeviceView) => void;
-		onRename: (device: DeviceView) => void;
-		onRetire: (device: DeviceView) => void;
-		onRestore: (device: DeviceView) => void;
-		onEditIntegration: (integration: IntegrationView) => void;
-		onToggleIntegration: (integration: IntegrationView, enabled: boolean) => void;
-		onRemoveIntegration: (integration: IntegrationView) => void;
+		handlers: DeviceHandlers;
+		integrationHandlers: IntegrationHandlers;
 	} = $props();
 </script>
 
@@ -44,9 +34,7 @@
 	<IntegrationRow
 		integration={entry.integration}
 		busy={busyIntegrationId === entry.integration.id}
-		onEdit={onEditIntegration}
-		onToggle={onToggleIntegration}
-		onRemove={onRemoveIntegration}
+		handlers={integrationHandlers}
 	/>
 	<!-- `pl-3 sm:pl-4` with a rule down the left: the indent has to survive
 	     400px, where a deeper one would leave a device name a word wide. The
@@ -57,10 +45,7 @@
 			devices={entry.devices}
 			{busyId}
 			groupKey={`integration-${entry.integration.id}`}
-			{onEdit}
-			{onRename}
-			{onRetire}
-			{onRestore}
+			{handlers}
 		/>
 	</div>
 </div>

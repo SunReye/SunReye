@@ -9,8 +9,15 @@ import { type TariffConfig, importBandForHour, importPriceForHour } from "@SunRe
 // Type-only, so the cost.ts ⇄ cost-calc.ts pairing stays a one-way runtime
 // dependency: cost.ts owns the shapes the SQL layer produces, this module owns
 // the arithmetic over them.
-import type { CostSeriesPoint, CounterDeltaRow } from "./cost";
-import { zonedDateKey, zonedFields, zonedIsoWeekday } from "./zoned-time";
+import type { CostSeriesPoint } from "./cost";
+import type { CounterDeltaRow } from "./rollup-reader";
+import { zoneParts } from "@SunReye/inverter-core/zone-parts";
+import {
+  dateKey,
+  isoWeekday,
+  periodStart,
+  wallInstant,
+} from "@SunReye/inverter-core/zoned-calendar";
 
 /**
  * Share of an hour that fell in quarter-hours with a negative day-ahead price,
@@ -31,9 +38,6 @@ export type ZeroValueShare = (hour: Date) => number;
 
 const AVG_DAYS_PER_MONTH = 30.4375;
 const clamp01 = (n: number): number => Math.min(1, Math.max(0, n));
-
-/** The host process zone — back-compatible default when no plant zone is given. */
-const hostTimeZone = (): string => Intl.DateTimeFormat().resolvedOptions().timeZone;
 
 /**
  * Price a list of hourly energy figures against a tariff. `rangeDays` prorates
@@ -79,8 +83,8 @@ export function allocateCost(
   hours: HourEnergy[],
   tariff: TariffConfig,
   rangeDays: number,
-  zeroValueShare?: ZeroValueShare,
-  tz: string = hostTimeZone(),
+  zeroValueShare: ZeroValueShare | undefined,
+  tz: string,
 ): CostTotals {
   let importKwh = 0;
   let exportKwh = 0;
@@ -101,8 +105,8 @@ export function allocateCost(
     // mis-zoned host no longer bands a Berlin evening as afternoon (issue #46).
     const band = importBandForHour(
       tariff,
-      zonedFields(h.time, tz).hour,
-      zonedIsoWeekday(h.time, tz),
+      zoneParts(tz, h.time.getTime()).hour,
+      isoWeekday(h.time, tz),
     );
     const price = band?.pricePerKwh ?? tariff.import.defaultPricePerKwh;
     const bandName = band?.name ?? "Standard";
@@ -124,7 +128,7 @@ export function allocateCost(
     exportEarnings += hourEarnings;
     gridOnlyCost += h.load * price;
 
-    addToDay(days, h, zonedDateKey(h.time, tz), {
+    addToDay(days, h, dateKey(h.time, tz), {
       importCost: hourImportCost,
       exportEarnings: hourEarnings,
     });
@@ -225,20 +229,27 @@ export function repriceTodaySlice(
   };
 }
 
+const HOUR_MS = 3_600_000;
+
 /**
- * The local wall-clock hour a delta-matrix row describes: the calendar date of
- * its period key plus the row's hour-of-day. Sound for the hour and day buckets
- * — there `(period, hod)` pins exactly one real hour — but NOT for month, where
- * one hod covers every day of the month. Callers needing a real hour run month
- * windows at day granularity instead (see {@link ./cost}.computeCostSeries).
+ * The rollup hour a delta-matrix row describes: the UTC-aligned
+ * `time_bucket('1 hour')` whose plant-local (`tz`) start falls on the period
+ * key's date at hour-of-day `hod`. That is the first UTC hour at or after the
+ * local wall clock `hod:00` — the same instant in a whole-hour zone, half an
+ * hour later in Kolkata or Adelaide. Sound for the hour and day buckets — there
+ * `(period, hod)` pins one real hour (a fall-back's repeated hod resolves to the
+ * first) — but NOT for month, where one hod covers every day of the month.
+ * Callers needing a real hour run month windows at day granularity instead (see
+ * {@link ./cost}.computeCostSeries).
  */
-function hourFromPeriodKey(period: string, hod: number): Date {
-  return new Date(
+function hourFromPeriodKey(period: string, hod: number, tz: string): Date {
+  const wall = Date.UTC(
     Number(period.slice(0, 4)),
     Number(period.slice(5, 7)) - 1,
     Number(period.slice(8, 10)),
     hod,
   );
+  return new Date(Math.ceil(wallInstant(wall, tz).getTime() / HOUR_MS) * HOUR_MS);
 }
 
 const emptySeriesPoint = (bucket: string, standingCharge: number): CostSeriesPoint => ({
@@ -257,10 +268,11 @@ function addExportRow(
   point: CostSeriesPoint,
   row: CounterDeltaRow,
   tariff: TariffConfig,
+  tz: string,
   zeroValueShare?: ZeroValueShare,
 ): void {
   const kwh = Number(row.kwh);
-  const share = clamp01(zeroValueShare?.(hourFromPeriodKey(row.period, Number(row.hod))) ?? 0);
+  const share = clamp01(zeroValueShare?.(hourFromPeriodKey(row.period, Number(row.hod), tz)) ?? 0);
   const lostKwh = kwh * share;
   point.exportEarnings += (kwh - lostKwh) * tariff.export.feedInPerKwh;
   point.zeroValueExportKwh += lostKwh;
@@ -274,13 +286,14 @@ function addSeriesRow(
   row: CounterDeltaRow,
   field: EnergyField | undefined,
   tariff: TariffConfig,
+  tz: string,
   zeroValueShare?: ZeroValueShare,
 ): void {
   if (field === "import") {
     point.importCost +=
       Number(row.kwh) * importPriceForHour(tariff, Number(row.hod), Number(row.dow));
   } else if (field === "export") {
-    addExportRow(point, row, tariff, zeroValueShare);
+    addExportRow(point, row, tariff, tz, zeroValueShare);
   }
 }
 
@@ -290,6 +303,7 @@ function addSeriesRow(
  * zero-value share, plus the period's prorated standing charge. The pure
  * counterpart of {@link allocateCost} for rows SQL has already grouped; rows
  * for a period outside the zero-filled window (edge rounding) are ignored.
+ * `tz` is the plant zone the rows' `(period, hod)` were bucketed in.
  */
 export function priceSeriesRows(
   rows: readonly CounterDeltaRow[],
@@ -297,6 +311,7 @@ export function priceSeriesRows(
   periods: readonly string[],
   tariff: TariffConfig,
   standing: ReadonlyMap<string, number>,
+  tz: string,
   zeroValueShare?: ZeroValueShare,
 ): CostSeriesPoint[] {
   const byKey = new Map<string, CostSeriesPoint>(
@@ -304,7 +319,7 @@ export function priceSeriesRows(
   );
   for (const r of rows) {
     const point = byKey.get(r.period);
-    if (point) addSeriesRow(point, r, fieldByKey.get(r.metric), tariff, zeroValueShare);
+    if (point) addSeriesRow(point, r, fieldByKey.get(r.metric), tariff, tz, zeroValueShare);
   }
   const points = [...byKey.values()];
   for (const p of points) p.net = p.importCost - p.exportEarnings + p.standingCharge;
@@ -333,16 +348,17 @@ export function rollUpToMonths(days: readonly CostSeriesPoint[]): CostSeriesPoin
 }
 
 /**
- * Named reporting ranges, resolved to [from, now) in local time. Named with the
+ * Named reporting ranges, resolved to [from, now) on the plant's wall clock. Named with the
  * `Key` suffix to stay distinct from the web app's `CostRange` window object,
  * which the Costs page type-imports from this module's neighbours.
  */
 export type CostRangeKey = "today" | "month" | "year";
 
-export function resolveRange(range: CostRangeKey, now = new Date()): { from: Date; to: Date } {
-  const from = new Date(now);
-  from.setHours(0, 0, 0, 0);
-  if (range === "month") from.setDate(1);
-  if (range === "year") from.setMonth(0, 1);
-  return { from, to: now };
+export function resolveRange(
+  range: CostRangeKey,
+  timeZone: string,
+  now = new Date(),
+): { from: Date; to: Date } {
+  const grain = range === "today" ? "day" : range;
+  return { from: periodStart(now, timeZone, grain), to: now };
 }

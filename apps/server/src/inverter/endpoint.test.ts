@@ -689,17 +689,24 @@ describe("applyConnectionSave", () => {
           order.push("provision");
           seeds.push(seed);
         },
-        reload: async () => {
-          order.push("reload");
+        afterWrite: async () => {
+          order.push("afterWrite");
         },
       },
     };
   }
 
-  test("writes the spine, THEN provisions, THEN asks the loop to re-read", async () => {
+  test("writes the spine, THEN provisions, THEN runs the whole plant after-write", async () => {
     // The order is load-bearing. Provisioning before the write would seed a
     // second endpoint from the same values; reloading before either would have
     // the loop re-resolve against the rows as they were.
+    //
+    // And the reload is the SAME one every other plant write runs, not just the
+    // poll loop's: provisioning can create the device and its connection, so the
+    // cached plant facts must be dropped and the connection tier re-opened too
+    // (`../plant/plant-runtime.ts` owns and tests that sequence). Reloading only
+    // the endpoint left a first save's new device invisible to the forecast
+    // until a restart.
     const { store, state } = memoryStore({ devices: [device()], connections: [connection()] });
     const recorded = effects();
     const wrapped = {
@@ -713,7 +720,7 @@ describe("applyConnectionSave", () => {
       },
     };
     await applyConnectionSave(typed(), recorded.effects, { ...deps(wrapped) });
-    expect(recorded.order).toEqual(["write", "provision", "reload"]);
+    expect(recorded.order).toEqual(["write", "provision", "afterWrite"]);
     expect((state.connections[0]?.params as ModbusParams | undefined)?.host).toBe("10.0.0.9");
   });
 

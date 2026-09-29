@@ -15,7 +15,13 @@
  * re-conflate the two zones #46 exists to keep apart.
  */
 
-import { wallClockAsUtc } from "@SunReye/inverter-core/zone-parts";
+import {
+  calendarDate,
+  periodStart,
+  periodWindow as zonedPeriodWindow,
+  startOfDate,
+  type CalendarDate,
+} from "@SunReye/inverter-core/zoned-calendar";
 
 /** Granularity of a calendar period. */
 export type Grain = "day" | "week" | "month" | "year";
@@ -30,67 +36,15 @@ export interface PeriodOptions {
   weekStartsOn?: 1 | 7;
 }
 
-/** A wall-clock calendar date, month 1-12. */
-interface CalendarDate {
-  year: number;
-  month: number;
-  day: number;
-}
-
-const MINUTE = 60_000;
-const DAY = 86_400_000;
-
-/** Signed offset (ms) of `timeZone` from UTC at `ms` — positive east of Greenwich. */
-function offsetAt(ms: number, timeZone: string): number {
-  return wallClockAsUtc(timeZone, ms) - ms;
-}
-
 /** The calendar date `instant` falls on in `timeZone`. */
-function dateIn(instant: Date, timeZone: string): CalendarDate {
-  const wall = wallClockAsUtc(timeZone, instant.getTime());
-  const d = new Date(wall);
-  return { year: d.getUTCFullYear(), month: d.getUTCMonth() + 1, day: d.getUTCDate() };
-}
+const dateIn = (instant: Date, timeZone: string): CalendarDate => calendarDate(instant, timeZone);
 
 /**
- * The instant a skipped wall clock resolves to: the transition itself, i.e. the
- * first instant whose wall clock is past the gap. Found by bisecting to the
- * minute, since zone transitions land on whole minutes.
+ * Midnight starting `date` in `timeZone`. A repeated midnight (Havana) resolves
+ * to its first occurrence, a skipped one (Santiago) to the transition — the
+ * rules live in `@SunReye/inverter-core/zoned-calendar`.
  */
-function transitionBetween(before: number, after: number, timeZone: string): Date {
-  const target = offsetAt(after, timeZone);
-  let lo = before;
-  let hi = after;
-  while (hi - lo > MINUTE) {
-    const mid = lo + Math.floor((hi - lo) / 2 / MINUTE) * MINUTE;
-    if (offsetAt(mid, timeZone) === target) hi = mid;
-    else lo = mid;
-  }
-  return new Date(hi);
-}
-
-/**
- * Midnight starting `date` in `timeZone`, as an instant.
- *
- * The two zones-are-not-lines cases are resolved deliberately:
- *  - REPEATED midnight (Havana falls back 01:00 → 00:00): the FIRST occurrence,
- *    so the hour that happens twice sits inside the day, not before it.
- *  - SKIPPED midnight (Santiago springs forward 00:00 → 01:00): the transition,
- *    so the day starts at the first instant it actually has (01:00).
- *
- * Offsets are probed a day either side rather than at the wall clock read as
- * UTC: east of Greenwich that provisional instant already sits past a nearby
- * transition, and the earlier of two identical wall clocks would never be
- * generated.
- */
-function midnightOf(date: CalendarDate, timeZone: string): Date {
-  const wall = Date.UTC(date.year, date.month - 1, date.day);
-  const offsets = [offsetAt(wall - DAY, timeZone), offsetAt(wall + DAY, timeZone)];
-  const candidates = [...new Set(offsets.map((o) => wall - o))];
-  const resolves = candidates.filter((c) => wallClockAsUtc(timeZone, c) === wall);
-  if (resolves.length > 0) return new Date(Math.min(...resolves));
-  return transitionBetween(Math.min(...candidates), Math.max(...candidates), timeZone);
-}
+const midnightOf = (date: CalendarDate, timeZone: string): Date => startOfDate(date, timeZone);
 
 /** `date` shifted by whole calendar days, carrying month and year over. */
 function shiftDays(date: CalendarDate, days: number): CalendarDate {
@@ -98,38 +52,9 @@ function shiftDays(date: CalendarDate, days: number): CalendarDate {
   return { year: d.getUTCFullYear(), month: d.getUTCMonth() + 1, day: d.getUTCDate() };
 }
 
-/** The first of the month `months` away from `date`'s month. */
-function shiftMonths(date: CalendarDate, months: number): CalendarDate {
-  const d = new Date(Date.UTC(date.year, date.month - 1 + months, 1));
-  return { year: d.getUTCFullYear(), month: d.getUTCMonth() + 1, day: 1 };
-}
-
-/** ISO weekday of a calendar date: 1 = Monday … 7 = Sunday. */
-function isoWeekday(date: CalendarDate): number {
-  const dow = new Date(Date.UTC(date.year, date.month - 1, date.day)).getUTCDay(); // 0 = Sunday
-  return ((dow + 6) % 7) + 1;
-}
-
-/** The calendar date each grain's period begins on. */
-const PERIOD_START: Record<Grain, (date: CalendarDate, weekStartsOn: 1 | 7) => CalendarDate> = {
-  day: (date) => date,
-  week: (date, weekStartsOn) => shiftDays(date, -((isoWeekday(date) - weekStartsOn + 7) % 7)),
-  month: (date) => ({ year: date.year, month: date.month, day: 1 }),
-  year: (date) => ({ year: date.year, month: 1, day: 1 }),
-};
-
-/** The calendar date the period AFTER the one starting at `start` begins on. */
-const NEXT_PERIOD_START: Record<Grain, (start: CalendarDate) => CalendarDate> = {
-  day: (start) => shiftDays(start, 1),
-  week: (start) => shiftDays(start, 7),
-  month: (start) => shiftMonths(start, 1),
-  year: (start) => ({ year: start.year + 1, month: 1, day: 1 }),
-};
-
 /** Start of the `grain` period containing `instant`, in `opts.timeZone`. */
 export function startOfPeriod(instant: Date, grain: Grain, opts: PeriodOptions): Date {
-  const date = dateIn(instant, opts.timeZone);
-  return midnightOf(PERIOD_START[grain](date, opts.weekStartsOn ?? 1), opts.timeZone);
+  return periodStart(instant, opts.timeZone, grain, opts.weekStartsOn ?? 1);
 }
 
 /**
@@ -138,12 +63,36 @@ export function startOfPeriod(instant: Date, grain: Grain, opts: PeriodOptions):
  * an overlap even across a DST transition.
  */
 export function periodWindow(instant: Date, grain: Grain, opts: PeriodOptions): Period {
-  const startDate = PERIOD_START[grain](dateIn(instant, opts.timeZone), opts.weekStartsOn ?? 1);
-  return {
-    grain,
-    start: midnightOf(startDate, opts.timeZone),
-    end: midnightOf(NEXT_PERIOD_START[grain](startDate), opts.timeZone),
-  };
+  return { grain, ...zonedPeriodWindow(instant, opts.timeZone, grain, opts.weekStartsOn ?? 1) };
+}
+
+/**
+ * The period of the same name — the day, week, month or year `period` starts on
+ * in `fromZone` — on `opts.timeZone`'s calendar. By date parts, never by an
+ * instant: zones 16 hours apart disagree on which day an instant is.
+ */
+function rezonePeriod(period: Period, fromZone: string, opts: PeriodOptions): Period {
+  const start = midnightOf(dateIn(period.start, fromZone), opts.timeZone);
+  return periodWindow(start, period.grain, opts);
+}
+
+/**
+ * The period a page STANDS ON, re-read on `opts.timeZone`'s calendar — what
+ * /history and /statistics do once the plant's zone lands.
+ *
+ * The current period stays the current one: a page opens on "today" or "this
+ * month", and by name the viewer's can be one the plant has already finished.
+ * Any other period keeps its name ({@link rezonePeriod}).
+ */
+export function rezoneStandingPeriod(
+  period: Period,
+  fromZone: string,
+  now: Date,
+  opts: PeriodOptions,
+): Period {
+  return containsNow(period, now)
+    ? periodWindow(now, period.grain, opts)
+    : rezonePeriod(period, fromZone, opts);
 }
 
 /**

@@ -248,11 +248,28 @@ describe("no reading can reach a timing property", () => {
   });
 
   test("nothing else in these components animates on a datum", () => {
-    // Everything except that one dur stays a constant of the design.
-    // The rails are pure structure now — the charge owns the only stylesheet.
-    expect(rails).not.toContain("<style>");
+    // Everything except that one dur stays a constant of the design. The rails
+    // now carry a stylesheet of their own — the `lite` tier's travelling dash —
+    // and its duration is the SAME quantized `pulse.dur`, handed over as a
+    // custom property rather than recomputed from watts.
     expect(css(charge)).not.toContain("animation-duration");
     for (const code of [rails, charge, diagram]) expect(code).not.toContain("animation-delay");
+    expect(declaration(rails, "overlayStyle")).toContain("`--flow-dur:${pulse.dur}s`");
+    expect(ruleFor(css(rails), ".lite-flow")).toContain("var(--flow-dur");
+  });
+
+  test("the lite tier's dash may remap on a step, because its pattern has no phase", () => {
+    // The comet is keyed on `pulse.dur` because SMIL remaps a running animation
+    // and the head visibly teleports. A dash pattern is periodic and uniform:
+    // every dash is every other dash, so a remap has nothing to teleport. That
+    // is the reason the lite branch is NOT keyed, stated once — and it holds
+    // only while the pattern stays uniform, which is what this pins.
+    const rule = ruleFor(css(rails), ".lite-flow");
+    expect(rule).toContain("stroke-dasharray: 10 14");
+    expect(rule).not.toContain("animation-delay");
+    // The keyframe translates by exactly one dash cycle (10 + 14), or the
+    // pattern jumps at the loop point instead of repeating seamlessly.
+    expect(css(rails)).toContain("stroke-dashoffset: -24");
   });
 
   test("a quantized duration really does absorb a 1 Hz wobble", () => {
@@ -321,14 +338,14 @@ describe("a reversal fades instead of mirroring", () => {
     expect(key).toContain("l.flow");
   });
 
-  test("the replacement crosses over, and holds still under reduced motion", () => {
+  test("the replacement crosses over, and holds still at the still tier", () => {
     // A Svelte transition cannot be gated in CSS, so this is the one JS reader
-    // of the media query in the file.
+    // of the motion tier the fade goes through. The tier — not the media query
+    // directly: it already folds `prefers-reduced-motion` in, and adds the
+    // downgrade a device measured for itself (`$lib/motion/tier`).
     expect(rails).toContain("transition:fade={{ duration: fadeMs }}");
-    const query = /const\s+(\w+)\s*=\s*new MediaQuery\(/.exec(rails)?.[1] ?? "";
-    expect(query).not.toBe("");
-    expect(rails).toContain("prefers-reduced-motion: reduce");
-    expect(declaration(rails, "fadeMs")).toMatch(new RegExp(`${query}\\.current \\? 0 :`));
+    expect(rails).toContain("from '$lib/motion/tier.svelte'");
+    expect(declaration(rails, "fadeMs")).toMatch(/motion\.still \? 0 :/);
   });
 });
 
@@ -336,7 +353,10 @@ describe("reduced motion stops everything these files start", () => {
   // The rails animate through SMIL, which no @media block can stop; their guard
   // is in the markup and has its own case below. This one covers the components
   // that animate in CSS.
-  test.each([[DIAGRAM, () => diagram]])("%s parks every class it animates", (_file, code) => {
+  test.each([
+    [DIAGRAM, () => diagram],
+    [RAILS, () => rails],
+  ])("%s parks every class it animates", (_file, code) => {
     const sheet = css(code());
     const animated = animatedClasses(sheet);
     expect(animated).not.toEqual([]);
@@ -351,27 +371,42 @@ describe("reduced motion stops everything these files start", () => {
     expect(parked).toContain("transition: none");
   });
 
-  test("the rails animate in SMIL, so they have no CSS animation to park", () => {
-    // Stated rather than assumed: if a CSS animation is ever added to this file
+  test("the charge animates in SMIL, so it has no CSS animation to park", () => {
+    // Stated rather than assumed: if a CSS animation is ever added to that file
     // it needs a reduced-motion rule, and the case above will not cover it.
     expect(animatedClasses(css(charge))).toEqual([]);
   });
 
-  test("the rails render no mover at all under reduced motion", () => {
+  test("only the full tier reaches the comet, and the others reach an overlay", () => {
     // SMIL is not reachable from CSS: a `@media` block cannot stop an
-    // <animateMotion>. So the guard has to be in the markup, and the still it
-    // falls back to is a plain overlay carrying the magnitude — not a frozen
-    // sprite, which reads as debris left on the wire.
-    const query = /const\s+(\w+)\s*=\s*new MediaQuery\(/.exec(rails)?.[1] ?? "";
-    const guard = new RegExp(`\\{#if ${query}\\.current\\}`);
-    expect(rails).toMatch(guard);
-    const still = rails.slice(rails.search(guard), rails.indexOf("{:else}", rails.search(guard)));
-    expect(still).not.toContain("PowerFlowCharge");
-    expect(still).toContain("stroke-width={l.pulse.width}");
-    // …and the charge — the only thing that animates — is on the other branch.
-    const moving = rails.slice(rails.indexOf("{:else}", rails.search(guard)));
+    // <animateMotion>. So the guard has to be in the markup — and it is a guard
+    // on the TIER, not on the media query, because a device measured short of
+    // frames has the same problem as a viewer who asked for less motion.
+    const at = rails.search(/\{#if motion\.tier === 'full'\}/);
+    expect(at).toBeGreaterThan(0);
+    const moving = rails.slice(at, rails.indexOf("{:else}", at));
     expect(moving).toContain("<PowerFlowCharge");
     expect(charge).toContain("animateMotion");
+    // The degraded branch draws a rail, not a frozen row of sprites, and it
+    // still carries the magnitude.
+    const degraded = rails.slice(rails.indexOf("{:else}", at));
+    expect(degraded).not.toContain("PowerFlowCharge");
+    expect(degraded).toContain("stroke-width={l.pulse.width}");
+  });
+
+  test("the lite tier keeps the motion and the still tier drops it", () => {
+    // The point of the middle tier: a device short of frames still learns
+    // direction, speed and magnitude — it just does not pay for a bead chain
+    // under a blur to learn them. Both tiers share one element, so what
+    // separates them is these two resolvers and nothing else.
+    const cls = declaration(rails, "overlayClass");
+    expect(cls).toContain("motion.still");
+    // Direction is carried, or the dash says the opposite of the truth.
+    expect(cls).toContain("flow === 'out'");
+    expect(cls).toContain("lite-flow-out");
+    expect(ruleFor(css(rails), ".lite-flow-out")).toContain("reverse");
+    // …and nothing moves at `still`: no dash class, no period.
+    expect(declaration(rails, "overlayStyle")).toContain("motion.still");
   });
 });
 

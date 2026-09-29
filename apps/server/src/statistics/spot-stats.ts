@@ -12,7 +12,7 @@ import { getSpotPrices } from "@SunReye/db/spot-price";
 import { spotPricesReady } from "@SunReye/db/spot-price-config";
 import type { InverterProfile } from "@SunReye/inverter-core";
 import { sql } from "drizzle-orm";
-import { fetchBucketEnergy } from "../energy/cost";
+import { fetchBucketEnergy } from "../energy/rollup-reader";
 import { getPlantTimeZone } from "../settings/display-settings";
 import { getTariff } from "../settings/settings";
 import { getSpotPriceConfig } from "../settings/spot-price-settings";
@@ -136,6 +136,6 @@ export async function computeSpotStats(
     negativeWindows: groupNegativeWindows(slots),
     negativeWindowsTruncated: rawFrom.getTime() > opts.from.getTime(),
     paidVsMarket: paidVsMarket(hours, priceByHour),
-    whatIf: spotWhatIf(hours, tariff, priceByHour),
+    whatIf: spotWhatIf(hours, tariff, priceByHour, tz),
   };
 }

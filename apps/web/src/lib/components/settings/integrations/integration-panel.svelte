@@ -2,26 +2,22 @@
 	import { onMount } from 'svelte';
 	import { toast } from 'svelte-sonner';
 	import { goto } from '$app/navigation';
-	import { api } from '$lib/api';
 	import EmptyState from '$lib/components/layout/empty-state.svelte';
 	import Section from '$lib/components/layout/section.svelte';
 	import * as m from '$lib/paraglide/messages';
 	import { resolve } from '$lib/resolve';
-	import { providedBy } from '../devices/add-device-logic';
-	import type {
-		DeviceRoster,
-		IntegrationPatchBody,
-		IntegrationView
-	} from '../devices/device-types';
+	import { providedBy } from '../devices/roster-groups';
+	import { type WriteOutcome, failureText } from '../devices/device-roster';
+	import { deviceRoster } from '../devices/device-roster.svelte';
+	import type { IntegrationPatchBody, IntegrationView } from '../devices/device-types';
 	import IntegrationRemoveDialog from '../devices/integration-remove-dialog.svelte';
-	import { type Catalog, catalogEntryFor } from '../wizard/add-wizard';
+	import { catalogEntryFor } from '../wizard/add-wizard';
 	import IntegrationControls from './integration-controls.svelte';
 	import IntegrationDevices from './integration-devices.svelte';
 	import IntegrationLive from './integration-live.svelte';
 	import IntegrationSettings from './integration-settings.svelte';
 	import IntegrationSummary from './integration-summary.svelte';
 	import { findIntegration } from './integration-detail';
-	import { readCatalog, readIntegrations, refuseIntegration } from './integration-io';
 
 	// ONE integration's page — the "inside" an integration did not have.
 	//
@@ -40,9 +36,7 @@
 	// Every write is here. The children render.
 	let { id }: { id: string | undefined } = $props();
 
-	let rows = $state<IntegrationView[]>([]);
-	let roster = $state<DeviceRoster | null>(null);
-	let catalog = $state<Catalog>({ modbus: [], mqtt: [], internal: [] });
+	const roster = deviceRoster({ afterWrite: 'reload' });
 	/** False until the integration list has answered once — "not yet" is not "gone". */
 	let loaded = $state(false);
 	let busy = $state(false);
@@ -52,32 +46,20 @@
 	/** The row the form was last seeded from, so a reload reseeds exactly once. */
 	let seeded: number | null = null;
 
-	const integration = $derived(findIntegration(rows, id));
+	const integration = $derived(findIntegration(roster.integrations, id));
 	const connection = $derived(
-		roster?.connections.find((c) => c.id === integration?.connectionId) ?? null
+		roster.connections.find((c) => c.id === integration?.connectionId) ?? null
 	);
 	// Retired rows INCLUDED: a device nobody can see is a device nobody can
 	// restore, and this page is the one place a retired loadpoint is explicable.
-	const devices = $derived(integration && roster ? providedBy(integration, roster.devices) : []);
-	const entry = $derived(catalogEntryFor(catalog, integration?.kind));
+	const devices = $derived(integration ? providedBy(integration, roster.devices) : []);
+	const entry = $derived(catalogEntryFor(roster.catalog, integration?.kind));
 	/** The empty state's words, or none at all while the list is still in flight. */
 	const missing = $derived(loaded ? m.integration_not_found() : '');
 
-	async function loadRows() {
-		const fetched = await readIntegrations();
-		if (fetched) rows = fetched;
-		loaded = true;
-	}
-
-	async function loadRoster() {
-		const { data } = await api.api.devices.get();
-		if (data) roster = data as DeviceRoster;
-	}
-
 	onMount(async () => {
-		const shelf = await readCatalog();
-		if (shelf) catalog = shelf;
-		await Promise.all([loadRows(), loadRoster()]);
+		await roster.load();
+		loaded = true;
 	});
 
 	// The ROW's stored settings, not the catalog's defaults: this is an edit, and
@@ -89,15 +71,18 @@
 		values = { ...row.params };
 	});
 
+	/** A refused write, in the operator's language, with the server's own reason. */
+	function refused(outcome: Exclude<WriteOutcome<unknown>, { kind: 'ok' }>) {
+		toast.error(m.devices_integration_toast_failed({ error: failureText(outcome) }));
+	}
+
 	/** Both writes are the same PATCH with a different body, and end the same way. */
 	async function patch(row: IntegrationView, body: IntegrationPatchBody) {
 		busy = true;
-		const result = await api.api.integrations({ id: String(row.id) }).patch(body);
+		const outcome = await roster.patchIntegration(row.id, body);
 		busy = false;
-		if (!result.data) return refuseIntegration(result.error?.value);
+		if (outcome.kind !== 'ok') return refused(outcome);
 		toast.success(m.devices_integration_toast_saved({ label: row.label }));
-		// The roster too: settings can change which devices the integration yields.
-		await Promise.all([loadRows(), loadRoster()]);
 	}
 
 	/**
@@ -111,9 +96,9 @@
 		removing = null;
 		if (!row) return;
 		busy = true;
-		const result = await api.api.integrations({ id: String(row.id) }).delete();
+		const outcome = await roster.removeIntegration(row.id, 'leave');
 		busy = false;
-		if (!result.data) return refuseIntegration(result.error?.value);
+		if (outcome.kind !== 'ok') return refused(outcome);
 		toast.success(m.devices_integration_toast_removed({ label: row.label }));
 		await goto(resolve('/settings/devices'), { replaceState: true });
 	}
@@ -163,7 +148,7 @@
 
 <IntegrationRemoveDialog
 	integration={removing}
-	devices={roster?.devices ?? []}
+	devices={roster.devices}
 	{busy}
 	onCancel={() => (removing = null)}
 	onConfirm={confirmRemove}

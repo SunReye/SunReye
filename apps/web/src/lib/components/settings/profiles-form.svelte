@@ -17,6 +17,15 @@
 	let restartRequired = $state(false);
 	let busyId = $state<string | null>(null);
 	let restartOpen = $state(false);
+	/** The profile the remove confirm is open on — the trash icon used to delete on first tap. */
+	let removing = $state<RegisteredProfile | null>(null);
+	const removingName = $derived(removing?.name ?? '');
+
+	async function confirmUninstall() {
+		const target = removing;
+		removing = null;
+		if (target) await uninstall(target);
+	}
 
 	async function loadRegistered() {
 		const { data } = await api.api.profiles.get();
@@ -95,11 +104,24 @@
 	<InstalledProfilesList
 		profiles={registered}
 		{busyId}
-		onUninstall={uninstall}
+		onUninstall={(p) => (removing = p)}
 	/>
 
 	<ExternalProfilesManager onInstalled={onExternalInstalled} />
 </div>
+
+<Dialog.Root open={removing !== null} onOpenChange={(v) => !v && (removing = null)}>
+	<Dialog.Content>
+		<Dialog.Header>
+			<Dialog.Title>{m.profiles_uninstall_title({ name: removingName })}</Dialog.Title>
+			<Dialog.Description>{m.profiles_uninstall_body()}</Dialog.Description>
+		</Dialog.Header>
+		<Dialog.Footer>
+			<Button variant="outline" onclick={() => (removing = null)}>{m.action_cancel()}</Button>
+			<Button variant="destructive" onclick={confirmUninstall}>{m.action_remove()}</Button>
+		</Dialog.Footer>
+	</Dialog.Content>
+</Dialog.Root>
 
 <Dialog.Root bind:open={restartOpen}>
 	<Dialog.Content>

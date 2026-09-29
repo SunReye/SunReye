@@ -9,64 +9,48 @@
  * `/api/status` endpoint.
  *
  * The controller is a {@link createRuntime} factory: every field it owns is
- * closure-local, so a second instance shares nothing with the first. The
- * module keeps a single default instance and re-exports its methods, so no
- * call site changes.
+ * closure-local, so a second instance shares nothing with the first, and every
+ * collaborator is injected ({@link RuntimeDeps}). Importing this module wires
+ * nothing: the process's one instance is built by the plant's composition
+ * (`../plant/plant-wiring.ts`) from `./runtime-wiring.ts`'s production deps.
  */
 
-import { db } from "@SunReye/db";
-import type { InverterConfig } from "@SunReye/db/inverter-config";
-import { type PollEndpoint, loadPollEndpoint } from "./endpoint";
 import type { MqttParams } from "@SunReye/db/connection-kinds";
 import type { MqttConfig } from "@SunReye/db/mqtt-config";
-import { metricsConfigLog, metricsRaw } from "@SunReye/db/schema/metrics";
-import { env } from "@SunReye/env/server";
+import type { SpotPriceConfig } from "@SunReye/db/spot-price-config";
 import {
   type DeviceInstance,
   type EntityConstraint,
+  type InverterProfile,
   type InverterSample,
   type InverterSource,
   entityConstraint,
   errorMessage,
 } from "@SunReye/inverter-core";
-import mqtt from "mqtt";
-import { startAutomations, stopAutomations } from "../automation/automation";
-import { OPTIMIZER_DEVICE_ID, optimizerDeviceSpec } from "../automation/optimizer-device";
+import type { startAutomations, stopAutomations } from "../automation/automation";
+import { OPTIMIZER_DEVICE_ID } from "../automation/optimizer-device";
 import { type DeviceRowState, createOptimizerRegistrar } from "../automation/optimizer-registrar";
-import { ensureDevice, isRetired, readPlant } from "@SunReye/db/plant-repo";
-import { getMqttConfig, getSimulate } from "../settings/config";
-import type { ControlStore } from "./control-expr";
-import { dbControlStore } from "./control-store";
-import { createControlWriter } from "./control-writer";
-import { type HistoryBuffer, createHistoryBuffer } from "./history-buffer";
-import type { StorageRow } from "./storage-policy";
-import { createDeviceWriter } from "./device-writer";
+import type { BrokerPool } from "../devices/broker-pool";
 import type { DeviceRegistry } from "../devices/registry";
-import { deviceRegistry } from "../devices/registry-instance";
-import { createIdentifiedCommit, createRowIdentifier } from "./storage-identity";
-import { type IdentityResolver, createIdentityResolver } from "../shared/identity";
-import { type JobScheduler, type ScheduledJob, createJobScheduler } from "./job-scheduler";
-import { evccOnLoadSample } from "../evcc/evcc";
-import {
-  buildProfileContext,
-  buildSource,
-  resolveProfileById,
-  type ProfileContext,
-  type SourceConnection,
-} from "./inverter";
-import { runForecastCorrectionLearn } from "../forecast/forecast-correction-job";
+import type { runForecastCorrectionLearn } from "../forecast/forecast-correction-job";
+import { type fetchSolarForecast, toForecastExport } from "../forecast/solar-forecast";
+import type { runSpotPriceSync } from "../prices/spot-price-job";
+import type { WeatherConfig } from "@SunReye/db/weather";
+import type { IdentityResolver } from "../shared/identity";
 import { log } from "../shared/logging";
-import { type MqttBridge, startMqttBridge } from "./mqtt";
-import type { MqttNamespace } from "./mqtt-discovery";
-import { MissingMqttNamespaceError, readMqttNamespace } from "./mqtt-namespace";
-import { fetchSolarForecast, toForecastExport } from "../forecast/solar-forecast";
-import { runSpotPriceSync } from "../prices/spot-price-job";
-import { getSpotPriceConfig } from "../settings/spot-price-settings";
-import { brokerPool } from "../devices/broker-pool-instance";
-import { readBroker } from "../settings/mqtt-broker-instance";
 import { liveState } from "../shared/state";
-import { getWeatherConfig } from "../settings/weather-settings";
 import type { Streams } from "../shared/streams";
+import type { ControlStore } from "./control-expr";
+import { createControlWriter } from "./control-writer";
+import { createDeviceWriter } from "./device-writer";
+import type { PollEndpoint } from "./endpoint";
+import type { HistoryBuffer } from "./history-buffer";
+import type { ProfileContext } from "./inverter";
+import type { JobScheduler, ScheduledJob } from "./job-scheduler";
+import type { MqttBridge, startMqttBridge } from "./mqtt";
+import type { MqttNamespace } from "./mqtt-discovery";
+import { MissingMqttNamespaceError } from "./mqtt-namespace";
+import type { StorageRow } from "./storage-policy";
 
 const logger = log("runtime");
 
@@ -86,29 +70,6 @@ const logger = log("runtime");
 export function constraintOf(profileCtx: ProfileContext, key: string): EntityConstraint | null {
   const def = profileCtx.defByKey.get(key);
   return def ? entityConstraint(def) : null;
-}
-
-/**
- * The optimizer's `devices` row, over the real plant spine.
- *
- * RETIRED IS NOT REGISTERED. `ensureDevice` is `ON CONFLICT DO NOTHING` +
- * SELECT, so it answers "the row is there" for a row the operator retired in
- * Settings → Devices — while the roster read excludes exactly that row. The
- * registrar has to be told the difference or it waits for an instance that is
- * never coming.
- *
- * `"absent"` is a legal answer: the automation loop can be armed on a boot that
- * has no plant yet, and taking it down over a missing device row would be worse
- * than storing nothing until the next tick.
- */
-// fallow-ignore-next-line unused-export -- the default behind `RuntimeDeps.ensureOptimizerDevice`, asserted against a stubbed spine in `./optimizer-row.test.ts`; test files aren't traced as consumers.
-export async function ensureOptimizerRow(): Promise<DeviceRowState> {
-  const plantDb = { execute: (query: Parameters<typeof db.execute>[0]) => db.execute(query) };
-  const plant = await readPlant(plantDb);
-  if (!plant) return "absent";
-  return isRetired(await ensureDevice(plantDb, optimizerDeviceSpec(plant.id)))
-    ? "retired"
-    : "ready";
 }
 
 /** Re-log an unchanged, ongoing poll failure at most this often. */
@@ -146,31 +107,49 @@ const LEARN_KICK_DELAY_MS = 2 * 60_000;
 const SPOT_INTERVAL_MS = 30 * 60_000;
 const SPOT_KICK_DELAY_MS = 30_000;
 
-/** One captured value from a test read, enriched for a plausibility check. */
-export interface TestSnapshotMetric {
-  key: string;
-  label: string;
-  unit: string | null;
-  group: string;
-  value: number;
-  /** Enum label for the raw value, when the metric is an enum/status. */
-  display?: string;
+/**
+ * The settings the runtime reads, per use rather than captured — each is hot:
+ * a save takes effect on the next rebuild or tick without a restart.
+ */
+export interface RuntimeSettings {
+  getMqttConfig(): Promise<MqttConfig>;
+  /** The simulator toggle, one fact per box — read on every source rebuild. */
+  getSimulate(): Promise<boolean>;
+  /** The zone the plant's days run on — the simulator's clock. */
+  getPlantTimeZone(): Promise<string>;
+  getWeatherConfig(): Promise<WeatherConfig>;
+  getSpotPriceConfig(): Promise<SpotPriceConfig>;
 }
 
-export interface TestInverterResult {
-  ok: boolean;
-  error?: string;
-  metricCount?: number;
-  /** Wall-clock duration of the single test read, ms. */
-  durationMs?: number;
-  /** Full snapshot of captured values, sorted by group then label. */
-  metrics?: TestSnapshotMetric[];
-}
-
-/** Collaborators injected into a runtime; each defaults to its production wiring. */
+/**
+ * Collaborators injected into a runtime. All of them: the production set is
+ * `./runtime-wiring.ts`'s, and a test hands in doubles without a module mocked.
+ */
 export interface RuntimeDeps {
+  settings: RuntimeSettings;
+  /** The endpoint the spine resolves (`./endpoint.ts`), re-read on every reload. */
+  loadPollEndpoint(): Promise<PollEndpoint>;
+  /** A live source for the profile at the endpoint (`./inverter.ts`). */
+  buildSource(
+    profile: InverterProfile,
+    endpoint: PollEndpoint,
+    simulate: boolean,
+    timeZone?: string,
+  ): InverterSource;
+  /** The Home Assistant export: its bridge, and the connection it takes a client from. */
+  startMqttBridge: typeof startMqttBridge;
+  readBroker(connectionId: number | null): Promise<MqttParams | null>;
+  brokerPool: Pick<BrokerPool, "acquire">;
+  /** The automation loop (`../automation/automation.ts`), started once a device exists. */
+  automations: { start: typeof startAutomations; stop: typeof stopAutomations };
+  /** The background jobs' work; the scheduler below owns their cadence. */
+  fetchSolarForecast: typeof fetchSolarForecast;
+  learnCorrection: typeof runForecastCorrectionLearn;
+  syncSpotPrices: typeof runSpotPriceSync;
+  /** The flush cadence, read at arm time (`env` is dynamic). */
+  flushIntervalMs(): number;
   /**
-   * The batched history writer. Defaults to one committing to the real db — the
+   * The batched history writer, committing to the real db in production — the
    * only collaborator the runtime holds mutable buffer state for, lifted out so
    * it owns its own cap/drop/re-queue boundaries and is tested without a runtime.
    *
@@ -178,7 +157,7 @@ export interface RuntimeDeps {
    * produces — and the id translation happens inside the commit. See
    * `./storage-identity.ts` for why the boundary is there and not in the policy.
    */
-  history?: HistoryBuffer<StorageRow>;
+  history: HistoryBuffer<StorageRow>;
   /**
    * The batched writer for the configuration change-log — the second
    * destination the storage policy routes to. Same batching contract as
@@ -186,7 +165,7 @@ export interface RuntimeDeps {
    * timeseries, and rewriting them into the hypertable every poll was 34 % of
    * every row this app wrote.
    */
-  configLog?: HistoryBuffer<StorageRow>;
+  configLog: HistoryBuffer<StorageRow>;
   /**
    * The background job scheduler. Defaults to one arming the process globals; it
    * owns the arm/teardown of the flush, forecast, learn and price schedules (and
@@ -194,7 +173,7 @@ export interface RuntimeDeps {
    * handle. The poll loop is not one of its jobs — its cadence is re-armed on
    * every source rebuild, so the runtime keeps it.
    */
-  scheduler?: JobScheduler;
+  scheduler: JobScheduler;
   /**
    * Resolves the plant/device slugs the MQTT bridge and every Home Assistant
    * `unique_id` are named after. Defaults to the real read.
@@ -205,21 +184,20 @@ export interface RuntimeDeps {
    * worse, it would fail identically whether the bridge was named correctly or
    * not.
    */
-  mqttNamespace?: (profileId: string) => Promise<MqttNamespace>;
+  mqttNamespace: (profileId: string) => Promise<MqttNamespace>;
   /**
    * Persistent state for composite (`controlExpr`) controls, consumed by both
    * the write funnel and the per-poll state injection. Defaults to the
    * `app_settings`-backed store; injected so a test drives the funnel against an
    * in-memory double and this module no longer needs the store mocked.
    */
-  controlStore?: ControlStore;
+  controlStore: ControlStore;
   /**
    * The EV charge-power estimator's house-load hook, fed one sample (W, or null
-   * when the profile maps no load) per poll. Defaults to the real EVCC ingest's
-   * {@link evccOnLoadSample} (a no-op when EVCC is off); injected so a test
-   * records the per-poll load through a spy rather than mocking `../evcc/evcc`.
+   * when the profile maps no load) per poll: the EVCC ingest's `onLoadSample`
+   * (a no-op when EVCC is off).
    */
-  onLoadSample?: (watts: number | null) => void;
+  onLoadSample: (watts: number | null) => void;
   /**
    * Create the optimizer's `devices` row if absent, and say what the table now
    * holds for it (#172). Defaults to the real plant read + upsert.
@@ -228,7 +206,7 @@ export interface RuntimeDeps {
    * queries the plant spine, so a unit test that did not stub it would fail on a
    * missing database client rather than on the behaviour it names.
    */
-  ensureOptimizerDevice?: () => Promise<DeviceRowState>;
+  ensureOptimizerDevice: () => Promise<DeviceRowState>;
   /**
    * The name → int2 resolver both commits and the eager metric registration go
    * through. Defaults to one bound to the real database; injected so a test can
@@ -236,7 +214,7 @@ export interface RuntimeDeps {
    * `void`-ed promise whose rejection is swallowed, so a spec that never arrived
    * is indistinguishable from one that did.
    */
-  identity?: IdentityResolver;
+  identity: IdentityResolver;
   /**
    * The plant's registered devices. Defaults to the process registry; injected
    * so a test drives the loop against a roster it states rather than against
@@ -247,48 +225,19 @@ export interface RuntimeDeps {
    * `./device-writer.ts`, which is keyed by the INSTANCE and has no idea a poll
    * loop exists.
    */
-  devices?: DeviceRegistry;
+  devices: DeviceRegistry;
 }
 
 /**
- * Build a runtime controller. Every collaborator is a module import captured by
- * the closure below (or injected via {@link RuntimeDeps}), and every mutable
- * field is closure-local — no module-level state, so a second instance is
- * independent.
+ * Build a runtime controller. Every collaborator is injected via
+ * {@link RuntimeDeps}, and every mutable field is closure-local — no
+ * module-level state, so a second instance is independent.
  */
-// fallow-ignore-next-line unused-export -- the injection seam exercised by runtime.test.ts (which builds its own instance with a fake history buffer); test files aren't traced as consumers
-export function createRuntime(deps: RuntimeDeps = {}) {
-  /**
-   * The name -> int2 resolution both commits go through. One resolver for both
-   * buffers, so a device or metric id is looked up once per process rather than
-   * once per table, and closure-local like every other field here.
-   */
-  const identity = deps.identity ?? createIdentityResolver({ db });
-  const mqttNamespaceOf = deps.mqttNamespace ?? readMqttNamespace;
-  const rowIdentifier = createRowIdentifier({ resolver: identity, logger });
-  /**
-   * Commit one batch to `table`, resolving the identity first.
-   *
-   * These two commits are the ONLY INSERTs into the timeseries and the config
-   * change-log, which is exactly why the translation belongs on this path: one
-   * place, on the way out, with the in-memory routing above it still keyed by
-   * name. The resolve-then-insert step itself lives in `./storage-identity.ts`,
-   * where it is reachable by a test — this suite injects both buffers, so a
-   * closure built here never runs under test.
-   */
-  const commitIdentified = (table: typeof metricsRaw | typeof metricsConfigLog) =>
-    createIdentifiedCommit({
-      identify: (rows) => rowIdentifier.identify(rows),
-      insert: (values) => db.insert(table).values(values),
-    });
-  const historyBuffer =
-    deps.history ??
-    createHistoryBuffer<StorageRow>({ commit: commitIdentified(metricsRaw), logger });
-  const configLogBuffer =
-    deps.configLog ??
-    createHistoryBuffer<StorageRow>({ commit: commitIdentified(metricsConfigLog), logger });
-  const scheduler = deps.scheduler ?? createJobScheduler();
-  const devices = deps.devices ?? deviceRegistry;
+export function createRuntime(deps: RuntimeDeps) {
+  const { settings, devices, identity, scheduler } = deps;
+  const historyBuffer = deps.history;
+  const configLogBuffer = deps.configLog;
+  const mqttNamespaceOf = deps.mqttNamespace;
   /**
    * THE WRITE SEAM. Every stored reading — this loop's and, from #88 and #172
    * on, every other integration's — goes through here, keyed by the device
@@ -307,7 +256,7 @@ export function createRuntime(deps: RuntimeDeps = {}) {
       });
     },
   });
-  const onLoadSample = deps.onLoadSample ?? evccOnLoadSample;
+  const { onLoadSample } = deps;
   /**
    * The optimizer's path to the write seam above — one device, ensured once,
    * committed to on every tick that decided something.
@@ -318,7 +267,7 @@ export function createRuntime(deps: RuntimeDeps = {}) {
    * it is armed until a decision arrives.
    */
   const optimizer = createOptimizerRegistrar({
-    ensureDevice: deps.ensureOptimizerDevice ?? ensureOptimizerRow,
+    ensureDevice: deps.ensureOptimizerDevice,
     reloadRegistry: () => reloadDevices(),
     device: () => devices.get(OPTIMIZER_DEVICE_ID),
     commit: writer.commit,
@@ -371,7 +320,7 @@ export function createRuntime(deps: RuntimeDeps = {}) {
   async function publishForecastNow(): Promise<void> {
     if (!bridge) return;
     try {
-      const forecast = await fetchSolarForecast(await getWeatherConfig());
+      const forecast = await deps.fetchSolarForecast(await settings.getWeatherConfig());
       bridge.publishForecast(
         forecast
           ? { raw: toForecastExport(forecast, "raw"), usable: toForecastExport(forecast, "usable") }
@@ -385,7 +334,7 @@ export function createRuntime(deps: RuntimeDeps = {}) {
   /** Fold newly-settled days into the forecast correction grid (no-op if disabled). */
   async function learnCorrectionNow(): Promise<void> {
     try {
-      await runForecastCorrectionLearn(await getWeatherConfig());
+      await deps.learnCorrection(await settings.getWeatherConfig());
     } catch (error) {
       logger.warn("forecast correction learn failed: {error}", { error });
     }
@@ -398,7 +347,7 @@ export function createRuntime(deps: RuntimeDeps = {}) {
    */
   async function syncSpotPricesNow(): Promise<void> {
     try {
-      const result = await runSpotPriceSync(await getSpotPriceConfig());
+      const result = await deps.syncSpotPrices(await settings.getSpotPriceConfig());
       // Only a real upsert changes what price-derived views show; the no-op tick
       // (both delivery days already complete) must not make every open page refetch.
       // A `prices` signal on the statistics topic tells open dashboards their
@@ -590,7 +539,7 @@ export function createRuntime(deps: RuntimeDeps = {}) {
   const controlWriter = createControlWriter({
     getSource: () => source,
     getContext: context,
-    store: deps.controlStore ?? dbControlStore,
+    store: deps.controlStore,
     readLive: (target) => liveState.latest?.metrics[target],
   });
   const { write } = controlWriter;
@@ -612,8 +561,10 @@ export function createRuntime(deps: RuntimeDeps = {}) {
     await historyBuffer.flush();
     await configLogBuffer.flush();
     const previous = source;
-    const simulate = await getSimulate();
-    source = buildSource(context().profile, endpoint, simulate);
+    const simulate = await settings.getSimulate();
+    // Only a simulator has a clock of its own; a real source is never handed one.
+    const timeZone = simulate ? await settings.getPlantTimeZone() : undefined;
+    source = deps.buildSource(context().profile, endpoint, simulate, timeZone);
     // The simulator is always "connected"; a real Modbus source only proves it on
     // the first successful read, so start pessimistic and let pollOnce flip it.
     inverterStatus.simulate = simulate;
@@ -661,7 +612,7 @@ export function createRuntime(deps: RuntimeDeps = {}) {
     // reason the namespace is: a settings save may have re-pointed it, and a
     // bridge holding the previous broker with this config's prefix would publish
     // into a namespace nobody is watching.
-    const broker = await readBroker(config.connectionId);
+    const broker = await deps.readBroker(config.connectionId);
     const ctx = context();
     let namespace: MqttNamespace | null = null;
     try {
@@ -684,7 +635,7 @@ export function createRuntime(deps: RuntimeDeps = {}) {
     bridge =
       namespace === null
         ? null
-        : startMqttBridge(config, {
+        : deps.startMqttBridge(config, {
             ctx: { ...ctx, ...namespace },
             write,
             // THE CONNECTION'S CLIENT (#221). Null when the setting names no
@@ -693,7 +644,7 @@ export function createRuntime(deps: RuntimeDeps = {}) {
             // own last will, because the availability topic is its namespace's.
             acquire: ({ will }) =>
               broker && config.connectionId !== null
-                ? brokerPool.acquire(config.connectionId, broker, { will })
+                ? deps.brokerPool.acquire(config.connectionId, broker, { will })
                 : null,
           });
     if (previous) await previous.close();
@@ -715,7 +666,7 @@ export function createRuntime(deps: RuntimeDeps = {}) {
         void historyBuffer.flush();
         void configLogBuffer.flush();
       },
-      intervalMs: env.HISTORY_FLUSH_INTERVAL_MS,
+      intervalMs: deps.flushIntervalMs(),
     };
   }
 
@@ -774,8 +725,8 @@ export function createRuntime(deps: RuntimeDeps = {}) {
         kickMs: SPOT_KICK_DELAY_MS,
       },
     ]);
-    await rebuildInverter(await loadPollEndpoint());
-    await rebuildBridge(await getMqttConfig());
+    await rebuildInverter(await deps.loadPollEndpoint());
+    await rebuildBridge(await settings.getMqttConfig());
     // Automations write through the same funnel as every other path, and steer
     // the registry's primary inverter. They push their tick outcomes onto the
     // same injected bus.
@@ -791,7 +742,7 @@ export function createRuntime(deps: RuntimeDeps = {}) {
       );
       return;
     }
-    await startAutomations(
+    await deps.automations.start(
       {
         device: steered,
         constraint: (key) => constraintOf(profileCtx, key),
@@ -825,7 +776,7 @@ export function createRuntime(deps: RuntimeDeps = {}) {
     // loop polling the new endpoint under the old roster would key its readings
     // to a device that is no longer there.
     await reloadDevices();
-    await rebuildInverter(await loadPollEndpoint());
+    await rebuildInverter(await deps.loadPollEndpoint());
   }
 
   /** Rebuild the MQTT bridge for updated broker/discovery settings. */
@@ -844,94 +795,11 @@ export function createRuntime(deps: RuntimeDeps = {}) {
     };
   }
 
-  /**
-   * Try a config against a throwaway source without disturbing the live one.
-   * Times the read and returns the full captured snapshot so the operator can
-   * eyeball every value for plausibility before saving.
-   *
-   * The profile is resolved independent of the running runtime ({@link resolveProfileById}),
-   * so this works during onboarding — before any device is registered — against
-   * the chosen (built-in or freshly-installed) profile. A null `profileId` falls
-   * back to the profile of the registry's primary device, for the ordinary
-   * settings-page re-test.
-   */
-  async function testInverter(
-    profileId: string | null,
-    config: SourceConnection,
-  ): Promise<TestInverterResult> {
-    const profile = profileId ? await resolveProfileById(profileId) : devices.primaryProfile();
-    if (!profile) {
-      return {
-        ok: false,
-        error: profileId ? `Unknown profile "${profileId}"` : "No profile selected",
-      };
-    }
-    const testCtx = buildProfileContext(profile);
-    // Never the simulator. A connection test exists to answer "does this
-    // address speak Modbus", and with INVERTER_SIMULATE set it used to answer
-    // yes by reading a fake inverter — a green test against an address nothing
-    // had dialled.
-    const probe = buildSource(profile, config, false);
-    try {
-      const started = performance.now();
-      const sample = await probe.read();
-      const durationMs = Math.round(performance.now() - started);
-      const metrics = Object.entries(sample.metrics)
-        .map(([key, value]) => {
-          const meta = testCtx.metaByKey.get(key);
-          const display = meta?.enumLabels?.[value];
-          return {
-            key,
-            label: meta?.label ?? key,
-            unit: meta?.unit ?? null,
-            group: meta?.group ?? "other",
-            value,
-            ...(display ? { display } : {}),
-          };
-        })
-        .sort((a, b) => a.group.localeCompare(b.group) || a.label.localeCompare(b.label));
-      return { ok: true, metricCount: metrics.length, durationMs, metrics };
-    } catch (error) {
-      return { ok: false, error: errorMessage(error) };
-    } finally {
-      await probe.close();
-    }
-  }
-
-  /**
-   * Try connecting to a broker without disturbing the live bridge.
-   *
-   * Takes the BROKER, not the export config: since #217 the endpoint is a
-   * connection, and what an operator tests is a broker — one they may not have
-   * bound to the export yet. The caller resolves it
-   * (`../settings/mqtt-broker.ts`).
-   */
-  function testMqtt(broker: MqttParams): Promise<{ ok: boolean; error?: string }> {
-    return new Promise((resolve) => {
-      const client = mqtt.connect(broker.brokerUrl, {
-        username: broker.username,
-        password: broker.password,
-        connectTimeout: 4000,
-        reconnectPeriod: 0, // one shot — don't loop retrying a bad broker
-      });
-      let settled = false;
-      const done = (result: { ok: boolean; error?: string }) => {
-        if (settled) return;
-        settled = true;
-        client.end(true, () => {});
-        resolve(result);
-      };
-      client.once("connect", () => done({ ok: true }));
-      client.once("error", (err) => done({ ok: false, error: err.message }));
-      setTimeout(() => done({ ok: false, error: "connection timed out" }), 5000);
-    });
-  }
-
   /** Stop polling and release the source + bridge (graceful shutdown). */
   async function stop(): Promise<void> {
     // Stops the tick only — deliberately no register restore, so a reboot with
     // the automation enabled resumes seamlessly (its snapshot is persisted).
-    await stopAutomations();
+    await deps.automations.stop();
     // The optimizer's device is NOT retired by a stop — the plant still has one,
     // its row, its history and its open intervals stay exactly as they are, and
     // `closeSeriesIntervals` below writes out what it was holding. Forgetting the
@@ -986,37 +854,9 @@ export function createRuntime(deps: RuntimeDeps = {}) {
     stop,
     reloadEndpoint,
     applyMqttConfig,
-    testInverter,
-    testMqtt,
     syncSpotPricesNow,
   };
 }
 
-/**
- * The single default instance the process runs. The module re-exports its
- * methods so every existing `import * as runtime` call site is unchanged.
- */
-const defaultRuntime = createRuntime();
-
-export const start = defaultRuntime.start;
-// Wired in `../index.ts` for the boot that has no profile to poll (#88).
-export const armStorage = defaultRuntime.armStorage;
-export const write = defaultRuntime.write;
-// The write seam, on the process's one runtime — the whole point of it being on
-// the runtime at all (see `commit` above). Wired in `../index.ts` for EVCC's
-// loadpoints (#88); #172's optimizer is the second caller.
-export const commit = defaultRuntime.commit;
-export const forgetDevice = defaultRuntime.forgetDevice;
-export const status = defaultRuntime.status;
-export const stop = defaultRuntime.stop;
-export const reloadEndpoint = defaultRuntime.reloadEndpoint;
-export const applyMqttConfig = defaultRuntime.applyMqttConfig;
-// Annotated (rather than inferred) so the wire type `TestInverterResult` stays
-// a directly-referenced export: it flows into the Eden-inferred `app` type, so
-// tsc needs it exported, and the explicit signature keeps it reachable.
-export const testInverter: (
-  profileId: string | null,
-  config: InverterConfig,
-) => Promise<TestInverterResult> = defaultRuntime.testInverter;
-export const testMqtt = defaultRuntime.testMqtt;
-export const syncSpotPricesNow = defaultRuntime.syncSpotPricesNow;
+/** The runtime controller's interface. */
+export type Runtime = ReturnType<typeof createRuntime>;

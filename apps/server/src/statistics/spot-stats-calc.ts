@@ -17,6 +17,8 @@ import type {
   SpotWhatIf,
 } from "@SunReye/contracts/prices";
 import { type TariffConfig, importPriceForHour, landedImportPrice } from "@SunReye/db/tariff";
+import { zoneParts } from "@SunReye/inverter-core/zone-parts";
+import { isoWeekday } from "@SunReye/inverter-core/zoned-calendar";
 
 const HOUR_MS = 3_600_000;
 const MINUTE_MS = 60_000;
@@ -164,9 +166,6 @@ export function paidVsMarket(
   };
 }
 
-/** ISO weekday (1=Mon … 7=Sun) from a Date's local day. */
-const isoWeekday = (d: Date): number => ((d.getDay() + 6) % 7) + 1;
-
 const hasSpotComponents = (tariff: TariffConfig): boolean => {
   const s = tariff.import.spot;
   return (
@@ -189,6 +188,7 @@ export function spotWhatIf(
   hours: readonly HourEnergy[],
   tariff: TariffConfig,
   priceByHour: ReadonlyMap<number, number>,
+  timeZone: string,
 ): SpotWhatIf | null {
   if (priceByHour.size === 0) return null;
   let staticCost = 0;
@@ -196,7 +196,12 @@ export function spotWhatIf(
   let importKwh = 0;
   let pricedKwh = 0;
   for (const h of hours) {
-    const band = importPriceForHour(tariff, h.time.getHours(), isoWeekday(h.time));
+    // The plant's wall clock picks the band, as on the cost path (issue #46).
+    const band = importPriceForHour(
+      tariff,
+      zoneParts(timeZone, h.time.getTime()).hour,
+      isoWeekday(h.time, timeZone),
+    );
     const price = priceByHour.get(hourStartMs(h.time.getTime()));
     importKwh += h.import;
     staticCost += h.import * band;

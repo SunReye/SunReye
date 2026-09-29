@@ -286,7 +286,9 @@ async function collectObservations(
   const data = await archiveOrNull(io, config, startDate, endDate);
   if (!data) return null; // fetch failed — the caller retries without advancing
 
-  const expected = buildSolarForecast(config.forecast, data, "open-meteo-archive").raw.series;
+  // Only the per-slot series is read; the zone just satisfies the daily sums.
+  const expected = buildSolarForecast(config.forecast, data, "open-meteo-archive", "UTC").raw
+    .series;
   if (expected.length === 0) return [];
 
   const toUtcMs = (localTime: string): number =>

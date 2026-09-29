@@ -2,6 +2,7 @@ import { Elysia } from "elysia";
 import { db } from "@SunReye/db";
 import { readDevices, readPlant, readPlantBatteries } from "@SunReye/db/plant-repo";
 import { type PlantSourcesStore, listSources, readPlantMembers } from "../devices/plant-sources";
+import { getPlantTimeZone } from "../settings/display-settings";
 import { adminGuard } from "./admin-guard";
 
 /** Production wiring, built PER CALL so `mock.module` on `@SunReye/db` reaches it. */
@@ -9,6 +10,7 @@ function sourcesStore(): PlantSourcesStore {
   const client = { execute: (query: Parameters<typeof db.execute>[0]) => db.execute(query) };
   return {
     readPlant: () => readPlant(client),
+    readPlantTimeZone: getPlantTimeZone,
     // History keeps retired devices; `plantMembers` decides per read.
     readDevices: (plantId) => readDevices(client, plantId, { includeRetired: true }),
     readPlantBatteries: (plantId) => readPlantBatteries(client, plantId),

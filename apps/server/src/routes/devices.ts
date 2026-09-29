@@ -2,6 +2,7 @@ import {
   createConnection,
   createDevice,
   deleteConnection,
+  deleteDevice,
   deleteDeviceBattery,
   readConnections,
   readDevices,
@@ -23,16 +24,15 @@ import {
   patchConnection,
   patchDevice,
   removeConnection,
+  removeDevice,
 } from "../devices/device-admin";
-import { afterDeviceWrite } from "../devices/after-device-write";
-import { reopenPlantRuntime } from "../devices/plant-reload";
 import { resolveCoded } from "../devices/coded";
-import { plantFacts } from "../settings/plant-facts-instance";
 import { probeConnection } from "../devices/reachability";
 import { scanUnitIds } from "../devices/unit-scan";
 import { deviceRegistry } from "../devices/registry-instance";
 import { errorMessage } from "@SunReye/inverter-core/error-message";
 import { resolveProfileById } from "../inverter/inverter";
+import type { PlantWrites } from "../plant/plant-runtime";
 import { plantClient } from "../shared/plant-client";
 import { adminResponder, byId, byIdWrite } from "./admin-refusal";
 import { adminGuard } from "./admin-guard";
@@ -50,8 +50,11 @@ import { adminGuard } from "./admin-guard";
  * nothing about who may call it (`scripts/route-smoke-plan.ts`).
  */
 
-/** Production wiring, built PER CALL so `mock.module` on `@SunReye/db` reaches it. */
-function defaultDeps(): DeviceAdminDeps {
+/**
+ * Production wiring, built PER CALL so `mock.module` on `@SunReye/db` reaches it.
+ * Every write is followed by the plant's one after-write (`../plant/plant-runtime.ts`).
+ */
+function defaultDeps(plant: PlantWrites): DeviceAdminDeps {
   const client = plantClient();
   return {
     store: {
@@ -63,6 +66,7 @@ function defaultDeps(): DeviceAdminDeps {
       updateDevice: (id, patch) => updateDevice(client, id, patch),
       updateConnection: (id, patch) => updateConnection(client, id, patch),
       deleteConnection: (id) => deleteConnection(client, id),
+      deleteDevice: (id) => deleteDevice(client, id),
       readPlantBatteries: (plantId) => readPlantBatteries(client, plantId),
       upsertDeviceBattery: (deviceId, battery) => upsertDeviceBattery(client, deviceId, battery),
       deleteDeviceBattery: (deviceId) => deleteDeviceBattery(client, deviceId),
@@ -72,72 +76,82 @@ function defaultDeps(): DeviceAdminDeps {
     // declaration table before reporting a device's profile as missing (#213).
     coded: (id) => resolveCoded(id),
     primarySlug: () => deviceRegistry.primary()?.id ?? null,
-    reload: () => afterDeviceWrite(plantFacts, reopenPlantRuntime),
+    reload: () => plant.afterPlantWrite(),
   };
 }
 
 const { respond, withId } = adminResponder((error) => error instanceof DeviceAdminError);
 
-export const deviceRoutes = new Elysia({ name: "device-routes" })
-  .use(adminGuard)
-  .get("/api/devices", { requireAdmin: true }, () => listDevices(defaultDeps()))
-  // MASKED: a `kind = 'mqtt'` row carries a broker password, and the masking
-  // follows the secret (#217). `listConnections` is the service call rather than
-  // a store read spelled here, so this route cannot forget it.
-  .get("/api/connections", { requireAdmin: true }, () => listConnections(defaultDeps()))
-  // A connection ON ITS OWN (#217). The `connection: { create }` arm of
-  // `POST /api/devices` can only make one alongside a device, and a broker never
-  // has one at creation time — its loadpoints appear after the ingest is bound
-  // to it and its first message lands.
-  .post("/api/connections", { requireAdmin: true, body: t.Unknown() }, ({ body, status }) =>
-    respond(status, () => addConnection(defaultDeps(), body)),
-  )
-  .post("/api/devices", { requireAdmin: true, body: t.Unknown() }, ({ body, status }) =>
-    respond(status, () => addDevice(defaultDeps(), body)),
-  )
-  // Is the endpoint there? PER KIND (#217): a Modbus gateway answers a TCP
-  // connect to host:port, a broker answers an MQTT CONNECT. No unit id, no
-  // profile, no register read — the device dialog's test is the one that reads
-  // registers. A bare `{ host, port }` body is still a Modbus probe, so the
-  // current add-connection dialog keeps working until the web half lands.
-  .post(
-    "/api/connections/probe",
-    { requireAdmin: true, body: t.Unknown() },
-    async ({ body, status }) => {
-      try {
-        return await probeConnection(body);
-      } catch (error) {
-        return status(400, {
-          error: error instanceof Error ? error.message : "invalid probe",
-          field: null,
-        });
-      }
-    },
-  )
-  // WHICH UNIT ID IS HOME. The one endpoint field nobody can read off a
-  // label, and it means different things on different framings — see
-  // `../devices/unit-scan.ts`. So the dialog measures it instead of asking.
-  // Bounded by that module: at most 16 candidates, one probe timeout each.
-  .post(
-    "/api/connections/scan-units",
-    { requireAdmin: true, body: t.Unknown() },
-    async ({ body, status }) => {
-      try {
-        return await scanUnitIds(body);
-      } catch (error) {
-        return status(400, { error: errorMessage(error), field: null });
-      }
-    },
-  )
-  .patch("/api/devices/:id", byIdWrite, ({ params, body, status }) =>
-    withId(status, params.id, (id) => patchDevice(defaultDeps(), id, body)),
-  )
-  .patch("/api/connections/:id", byIdWrite, ({ params, body, status }) =>
-    withId(status, params.id, (id) => patchConnection(defaultDeps(), id, body)),
-  )
-  .delete("/api/connections/:id", byId, ({ params, status }) =>
-    withId(status, params.id, async (id) => {
-      await removeConnection(defaultDeps(), id);
-      return { ok: true, id };
-    }),
-  );
+export const deviceRoutes = (plant: PlantWrites) =>
+  new Elysia({ name: "device-routes" })
+    .use(adminGuard)
+    .get("/api/devices", { requireAdmin: true }, () => listDevices(defaultDeps(plant)))
+    // MASKED: a `kind = 'mqtt'` row carries a broker password, and the masking
+    // follows the secret (#217). `listConnections` is the service call rather than
+    // a store read spelled here, so this route cannot forget it.
+    .get("/api/connections", { requireAdmin: true }, () => listConnections(defaultDeps(plant)))
+    // A connection ON ITS OWN (#217). The `connection: { create }` arm of
+    // `POST /api/devices` can only make one alongside a device, and a broker never
+    // has one at creation time — its loadpoints appear after the ingest is bound
+    // to it and its first message lands.
+    .post("/api/connections", { requireAdmin: true, body: t.Unknown() }, ({ body, status }) =>
+      respond(status, () => addConnection(defaultDeps(plant), body)),
+    )
+    .post("/api/devices", { requireAdmin: true, body: t.Unknown() }, ({ body, status }) =>
+      respond(status, () => addDevice(defaultDeps(plant), body)),
+    )
+    // Is the endpoint there? PER KIND (#217): a Modbus gateway answers a TCP
+    // connect to host:port, a broker answers an MQTT CONNECT. No unit id, no
+    // profile, no register read — the device dialog's test is the one that reads
+    // registers. A bare `{ host, port }` body is still a Modbus probe, so the
+    // current add-connection dialog keeps working until the web half lands.
+    .post(
+      "/api/connections/probe",
+      { requireAdmin: true, body: t.Unknown() },
+      async ({ body, status }) => {
+        try {
+          return await probeConnection(body);
+        } catch (error) {
+          return status(400, {
+            error: error instanceof Error ? error.message : "invalid probe",
+            field: null,
+          });
+        }
+      },
+    )
+    // WHICH UNIT ID IS HOME. The one endpoint field nobody can read off a
+    // label, and it means different things on different framings — see
+    // `../devices/unit-scan.ts`. So the dialog measures it instead of asking.
+    // Bounded by that module: at most 16 candidates, one probe timeout each.
+    .post(
+      "/api/connections/scan-units",
+      { requireAdmin: true, body: t.Unknown() },
+      async ({ body, status }) => {
+        try {
+          return await scanUnitIds(body);
+        } catch (error) {
+          return status(400, { error: errorMessage(error), field: null });
+        }
+      },
+    )
+    .patch("/api/devices/:id", byIdWrite, ({ params, body, status }) =>
+      withId(status, params.id, (id) => patchDevice(defaultDeps(plant), id, body)),
+    )
+    .patch("/api/connections/:id", byIdWrite, ({ params, body, status }) =>
+      withId(status, params.id, (id) => patchConnection(defaultDeps(plant), id, body)),
+    )
+    // Only a device that never recorded a reading: the history references it
+    // `ON DELETE RESTRICT`, and a refusal names `field: "history"` so the page
+    // can offer retiring instead (`../devices/device-admin.ts`, `removeDevice`).
+    .delete("/api/devices/:id", byId, ({ params, status }) =>
+      withId(status, params.id, async (id) => {
+        await removeDevice(defaultDeps(plant), id);
+        return { ok: true, id };
+      }),
+    )
+    .delete("/api/connections/:id", byId, ({ params, status }) =>
+      withId(status, params.id, async (id) => {
+        await removeConnection(defaultDeps(plant), id);
+        return { ok: true, id };
+      }),
+    );

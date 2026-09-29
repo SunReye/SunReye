@@ -85,3 +85,16 @@ describe("rangeCaption", () => {
     expect(rangeCaption(range, "previous", now)).toBe("Jul 17 – Aug 2 · vs the previous 17 days");
   });
 });
+
+describe("rangeCaption — on the plant's calendar", () => {
+  test("names the plant's days and counts them, whatever the viewer's zone", () => {
+    // Berlin July 2026 [Jul 1, Aug 1). On a UTC clock its first instant is
+    // Jun 30 22:00, so a viewer-zone caption read "Jun 30 – Jul 31 · 32 days".
+    const BERLIN = "Europe/Berlin";
+    const july = periodWindow(new Date("2026-07-15T12:00:00Z"), "month", { timeZone: BERLIN });
+    const now = new Date("2026-08-02T17:30:00Z");
+    expect(rangeCaption(costRangeFor(july, now, BERLIN), "previous", now)).toBe(
+      "Jul 1 – Jul 31 · vs the previous 31 days",
+    );
+  });
+});

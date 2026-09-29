@@ -13,7 +13,8 @@
 
 import type { SpotSlice } from "@SunReye/contracts/prices";
 import { getSpotPrices } from "@SunReye/db/spot-price";
-import { buildSpotSlice, localDayStartMs, nextLocalDayStartMs, zoneTimeZone } from "./spot-price";
+import { dayStart, nextDayStart } from "@SunReye/inverter-core/zoned-calendar";
+import { buildSpotSlice, zoneTimeZone } from "./spot-price";
 
 const CACHE_TTL_MS = 60_000;
 
@@ -28,8 +29,8 @@ let cache: { zone: string; at: number; slice: SpotSlice } | null = null;
 export async function loadSpotSlice(zone: string, nowMs: number = Date.now()): Promise<SpotSlice> {
   if (cache && cache.zone === zone && nowMs - cache.at < CACHE_TTL_MS) return cache.slice;
   const tz = zoneTimeZone(zone);
-  const from = localDayStartMs(tz, nowMs);
-  const to = nextLocalDayStartMs(tz, nextLocalDayStartMs(tz, nowMs));
+  const from = dayStart(nowMs, tz).getTime();
+  const to = nextDayStart(nextDayStart(nowMs, tz).getTime(), tz).getTime();
   const rows = await getSpotPrices(zone, new Date(from), new Date(to));
   const slice = buildSpotSlice(rows, zone, nowMs);
   cache = { zone, at: nowMs, slice };

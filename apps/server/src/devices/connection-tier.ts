@@ -55,6 +55,7 @@
  * transports are injected.
  */
 
+import type { ConnectionStatus } from "@SunReye/contracts/devices";
 import { type ConnectionKind } from "@SunReye/db/connection-kinds";
 import { errorMessage } from "@SunReye/inverter-core/error-message";
 import { type ConnectionRecord, type DeviceRecord, activeDevices } from "@SunReye/db/plant-repo";
@@ -97,24 +98,9 @@ export interface ConnectionTier {
   close(): Promise<void> | void;
 }
 
-/**
- * What is OBSERVED of a connection right now — the answer #221 exists to make
- * possible.
- *
- * Every field is a fact about the SOCKET, never about the row: "a broker id is
- * set" is what the settings page could say before, and it stayed cheerfully true
- * through a wrong password, a renamed host and a broker that had been off for a
- * week. `lastConnectedAt` is when the endpoint was last actually seen, which is
- * the difference between "never came up" and "dropped a minute ago".
- */
-export interface ConnectionStatus {
-  connected: boolean;
-  lastError: string | null;
-  /** ISO-8601, or null when nothing has failed yet. */
-  lastErrorAt: string | null;
-  /** ISO-8601 of the last completed CONNECT, or null when there has been none. */
-  lastConnectedAt: string | null;
-}
+// What is OBSERVED of a connection right now (#221) — a wire shape, so it is
+// defined in the contract and re-exported under the name this module's readers use.
+export type { ConnectionStatus };
 
 /** A connection nothing in this build can open. */
 export interface UnsupportedConnection {

@@ -107,10 +107,11 @@ function lastBucketEnd(rows: readonly RollupRow[], bucket: RollupBucket): Date |
  * and has to be re-answered rather than left frozen. `mergeRollup` is what
  * makes re-answering it cheap.
  *
- * Null is the important half, and there are three ways to reach it — the clock
+ * Null is the important half, and there are four ways to reach it — the clock
  * has not moved past the minute the rows were last brought up to
- * (`syncedTickMs`), the rows already cover the bucket the clock is in, or the
- * window has closed behind them. This is asked once a minute of every mounted
+ * (`syncedTickMs`), the rows were last brought up to a minute past the window's
+ * end, the rows already cover the bucket the clock is in, or the window has
+ * closed behind them. This is asked once a minute of every mounted
  * card, of which there are ~60, so a window already up to date must produce NO
  * request: otherwise the fix for a chart showing too little becomes a request
  * storm, the failure this page has already shipped once (PR #60).
@@ -126,6 +127,10 @@ export function dueRefresh(
   syncedTickMs: number,
 ): { from: Date; to: Date } | null {
   if (tickMs <= syncedTickMs) return null;
+  // Brought up to a minute past the window's end: the last answer covered its
+  // final bucket closed. Without this the newest held bucket stays "behind" the
+  // clock forever after midnight, and every minute re-asks for it.
+  if (syncedTickMs >= window.to.getTime()) return null;
   const start = lastBucketStart(rows);
   const width = BUCKET_MS[window.bucket];
   // Already covering the bucket the clock is in (or running past it — a

@@ -21,6 +21,7 @@
 		type HeatPoint
 	} from '$lib/statistics/heatmap';
 	import { heatPaddingFor, xTickSpacingFor } from '$lib/cost/ranges';
+	import { fittedAxisPadding, fittedTickSpacing } from './axis-fit';
 	import * as m from '$lib/paraglide/messages';
 
 	let {
@@ -50,6 +51,14 @@
 	// the element knows how much room it got. 0 until it is in the document,
 	// which heatPaddingFor reads as the desktop case.
 	let plotWidth = $state(0);
+
+	// …and the gutters are then fitted to the labels those axes will actually
+	// draw, the same policy every statistics chart spends (./axis-fit). A
+	// weekday abbreviation fits the clamp today; a locale whose abbreviation is
+	// longer gets the room instead of a clipped row label. The domain is the
+	// fixed 24 hours by 7 days, so no tick can round past it.
+	const yLabels = $derived(weekdays.map(weekdayLabel));
+	const xLabels = $derived(hours.map(hourLabel));
 </script>
 
 <!-- The frame sits OUTSIDE the grid box, and outside is the only place it can
@@ -67,6 +76,7 @@
 	<div
 		style="height: {gridHeight}px"
 		class="[&_.lc-tooltip-rect:hover]:fill-foreground/10"
+		data-slot="statistics-plot"
 		bind:clientWidth={plotWidth}
 		aria-hidden="true"
 	>
@@ -78,7 +88,7 @@
 			y="dow"
 			yScale={scaleBand()}
 			yDomain={weekdays}
-			padding={heatPaddingFor(plotWidth)}
+			padding={fittedAxisPadding(heatPaddingFor(plotWidth), plotWidth, yLabels, { rounded: false })}
 			tooltipContext={{ mode: 'band' }}
 		>
 			<Canvas>
@@ -91,7 +101,12 @@
 					fillOpacity={(d: HeatPoint) => heatOpacity(d.avg / peak)}
 					{...houseCell()}
 				/>
-				<Axis placement="bottom" tickSpacing={xTickSpacingFor(plotWidth)} format={hourLabel} rule={false} />
+				<Axis
+					placement="bottom"
+					tickSpacing={fittedTickSpacing(xTickSpacingFor(plotWidth), xLabels)}
+					format={hourLabel}
+					rule={false}
+				/>
 				<Axis placement="left" format={weekdayLabel} rule={false} />
 			</Canvas>
 

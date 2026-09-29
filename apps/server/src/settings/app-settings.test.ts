@@ -370,6 +370,17 @@ describe("writeSetting", () => {
 });
 
 describe("cachedSetting", () => {
+  test("patch merges onto the stored record and serves the merge from memory", async () => {
+    seed("pricing", { currency: "GBP", pricePerKwh: 0.32 });
+    const setting = cachedSetting("pricing", pricingSchema, neutralPricing);
+    expect(await setting.patch({ pricePerKwh: 0.4 })).toEqual({
+      currency: "GBP",
+      pricePerKwh: 0.4,
+    });
+    expect(await setting.get()).toEqual({ currency: "GBP", pricePerKwh: 0.4 });
+    expect(table.get("pricing")?.value).toEqual({ currency: "GBP", pricePerKwh: 0.4 });
+  });
+
   test("reads the row once and serves every later read from memory", async () => {
     seed("pricing", { pricePerKwh: 0.32 });
     const setting = cachedSetting("pricing", pricingSchema, neutralPricing);

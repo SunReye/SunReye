@@ -365,4 +365,21 @@ describe("a failed read is never cached as a value", () => {
     expect(await accessor.battery()).toBeNull();
     expect(attempts).toBe(2);
   });
+
+  test("the device read is retried after a failure too", async () => {
+    let attempts = 0;
+    const memory = memoryStore();
+    const flaky = {
+      ...memory.store,
+      async readDevices(plantId: number) {
+        attempts++;
+        if (attempts === 1) throw new Error("devices unavailable");
+        return memory.store.readDevices(plantId);
+      },
+    };
+    const accessor = createPlantFacts({ store: flaky, logger });
+    await expect(accessor.devices()).rejects.toThrow("devices unavailable");
+    expect(await accessor.devices()).toEqual([]);
+    expect(attempts).toBe(2);
+  });
 });

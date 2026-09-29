@@ -151,6 +151,11 @@
 		<ZoomControls {zoom} {resettable} />
 	{/if}
 	{#if showsCorner}
+		<!-- `z-10` is the shell's bottom tier — an in-card affordance
+		     (`(app)/+layout.svelte` writes the four tiers down). It has to stay
+		     BELOW the header's: this button is not sticky, it travels up through
+		     the header band on every scroll, and at the header's old `z-10` the
+		     later element won and a ⤢ slid across the page title. -->
 		<div class="absolute bottom-1 right-1 z-10">
 			<FullscreenTrigger screen={source!.box} class="bg-background/70 backdrop-blur-sm" />
 		</div>

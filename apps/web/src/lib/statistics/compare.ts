@@ -1,11 +1,13 @@
 // Period-over-period math for the statistics page: the signed change a delta
-// chip renders, and the reference window the server compared against (mirrors
-// `previousWindow` in apps/server/src/statistics/statistics-calc.ts) so the page can tell
-// when that window predates recorded history and the delta would be fiction.
+// chip renders, and whether the reference window the server priced (echoed in
+// the payload — its year-ago shift runs on the plant's calendar, which this
+// browser does not know) predates recorded history, making the delta fiction.
 
 import type { CostBreakdown } from "@SunReye/contracts/energy";
 import type { CompareMode, ComparisonResponse } from "@SunReye/contracts/statistics";
+import { calendarDate } from "@SunReye/inverter-core/zoned-calendar";
 import * as m from "$lib/paraglide/messages";
+import { browserTimeZone } from "$lib/time/browser-zone";
 
 /**
  * Signed relative change from `previous` to `current`, as a fraction
@@ -47,9 +49,9 @@ export function formatDelta(delta: number | null): string {
  * against thirty-one and every delta chip reads as a collapse that never
  * happened.
  *
- * `windowDays` and {@link referenceWindow} both take their span from the clamped
- * window, so the caption ("vs the previous 2 days") and the reference the server
- * priced cannot disagree.
+ * `windowDays` and the server's reference window both take their span from the
+ * clamped window, so the caption ("vs the previous 2 days") and the reference
+ * the server priced cannot disagree.
  *
  * A window that has not STARTED is returned untouched: clamping it would put
  * `to` before `from` and hand the server a negative-length reference.
@@ -63,31 +65,14 @@ export function pricedWindow(
 }
 
 /**
- * The window the comparison endpoint priced as the reference for `[from, to)`:
- * the adjacent same-length window, or the same calendar window a year back.
- */
-export function referenceWindow(from: Date, to: Date, mode: CompareMode): { from: Date; to: Date } {
-  if (mode === "yearAgo") {
-    const shift = (d: Date) => {
-      const shifted = new Date(d);
-      shifted.setFullYear(shifted.getFullYear() - 1);
-      return shifted;
-    };
-    return { from: shift(from), to: shift(to) };
-  }
-  const length = to.getTime() - from.getTime();
-  return { from: new Date(from.getTime() - length), to: new Date(from) };
-}
-
-/**
  * Whether the reference window is fully covered by recorded history. Without
  * this check a household's first month shows a fake −100% against a window
  * that simply has no data; `dataFrom` is the earliest daily rollup the server
  * reports.
  */
-function referenceCovered(reference: { from: Date }, dataFrom: string | null): boolean {
+function referenceCovered(reference: { from: string }, dataFrom: string | null): boolean {
   if (!dataFrom) return false;
-  return reference.from.getTime() >= new Date(dataFrom).getTime();
+  return new Date(reference.from).getTime() >= new Date(dataFrom).getTime();
 }
 
 /**
@@ -95,12 +80,12 @@ function referenceCovered(reference: { from: Date }, dataFrom: string | null): b
  * worth comparing against — the latter drops to null when its window predates
  * recorded history, which suppresses the delta chips instead of inventing one.
  */
-export function usableComparison(
-  payload: ComparisonResponse | null,
-  reference: { from: Date },
-): { current: CostBreakdown | null; previous: CostBreakdown | null } {
+export function usableComparison(payload: ComparisonResponse | null): {
+  current: CostBreakdown | null;
+  previous: CostBreakdown | null;
+} {
   if (!payload) return { current: null, previous: null };
-  const covered = referenceCovered(reference, payload.coverage.dataFrom);
+  const covered = referenceCovered(payload.reference, payload.coverage.dataFrom);
   return { current: payload.current, previous: covered ? payload.previous : null };
 }
 
@@ -116,9 +101,11 @@ export function baselineLabel(mode: CompareMode, days: number): string {
     : m.statistics_baseline_previous_days({ days });
 }
 
-/** Midnight starting the civil day `d` falls in, in the viewer's own zone — the
- *  zone `rangeSpan`'s dates are already formatted in. */
-const startOfCivilDay = (d: Date): Date => new Date(d.getFullYear(), d.getMonth(), d.getDate());
+/** The civil day `t` falls on in `timeZone`, as a day number (UTC ms of its date). */
+const civilDay = (t: number, timeZone: string): number => {
+  const { year, month, day } = calendarDate(t, timeZone);
+  return Date.UTC(year, month - 1, day);
+};
 
 /**
  * Civil days the window `[from, to)` TOUCHES, at least 1 — the "vs previous {n}
@@ -142,8 +129,8 @@ const startOfCivilDay = (d: Date): Date => new Date(d.getFullYear(), d.getMonth(
  * a window ending at midnight stops on the previous day, not on the empty one
  * that starts there.
  */
-export function windowDays(from: Date, to: Date): number {
-  const lastCovered = startOfCivilDay(new Date(to.getTime() - 1));
-  const days = (lastCovered.getTime() - startOfCivilDay(from).getTime()) / 86_400_000;
-  return Math.max(1, Math.round(days) + 1);
+export function windowDays(from: Date, to: Date, timeZone: string = browserTimeZone()): number {
+  const days =
+    (civilDay(to.getTime() - 1, timeZone) - civilDay(from.getTime(), timeZone)) / 86_400_000;
+  return Math.max(1, days + 1);
 }

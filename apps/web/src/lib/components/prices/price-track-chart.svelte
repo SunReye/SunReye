@@ -11,6 +11,12 @@
 	import { seriesConfig } from '$lib/components/inverter/_shared/chart-series';
 	import { canvasHighlight } from '$lib/components/inverter/_shared/canvas-highlight.svelte';
 	import { chartPaddingFor, xTickSpacingFor } from '$lib/cost/ranges';
+	import {
+		axisValueLabels,
+		fittedAxisPadding,
+		fittedLeadingLabel,
+		fittedTickSpacing
+	} from '$lib/components/statistics/axis-fit';
 	import { CHART_BOX } from '$lib/layout/tokens';
 	import { bandSpan, negativeBandRuns, type PriceRow } from '$lib/prices/price-series';
 	import PlotFrame from '$lib/components/layout/plot-frame.svelte';
@@ -59,6 +65,7 @@
 
 	const config = seriesConfig(series);
 
+
 	// Canvas can't read the `.lc-highlight-area` CSS wash; see canvasHighlight.
 	const highlight = canvasHighlight();
 
@@ -74,6 +81,31 @@
 	// the element knows how much room it got. 0 until it is in the document,
 	// which chartPaddingFor reads as the desktop case.
 	let plotWidth = $state(0);
+
+	// Fit both axes to the text actually drawn, the same way the statistics
+	// charts do (`statistics/axis-fit.ts`).
+	//
+	// This chart is the worst case on the page and was the one left out: its
+	// day-boundary label is an 11-character `MM-DD HH:mm` (`price-series.ts`)
+	// against a 48px narrow tick spacing, so at 412px "09-18 00:00" and the
+	// next tick overlapped by 2.5px. Fewer ticks, not a rotation — hovering
+	// still exposes every slot, the axis only carries anchors.
+	const yLabels = $derived(
+		axisValueLabels(
+			rows.flatMap((row) => [row.positiveCt ?? 0, row.negativeCt ?? 0]),
+			(value) => `${Math.round(value)}`
+		)
+	);
+	const xLabels = $derived(rows.map((row) => row.label));
+
+	// One line on purpose: `mobile-density.test.ts` closes the padding set from
+	// the other side by matching the binding a `padding={…}` identifier resolves
+	// to, and that match stops at the newline. Wrapping this hides the clamp
+	// from the scan that exists to prove every chart reaches it. The leading-label
+	// fit is the day-start `MM-DD HH:mm`: centred on the first band, it hangs half
+	// its width left of the plot, past a gutter sized for "13" alone.
+	const plotPadding = $derived(fittedLeadingLabel(fittedAxisPadding(chartPaddingFor(plotWidth), plotWidth, yLabels, { rounded: false }), plotWidth, xLabels[0]));
+	const tickSpacing = $derived(fittedTickSpacing(xTickSpacingFor(plotWidth), xLabels));
 
 	// Quarter-hour bands are ~2px wide across today+tomorrow on a phone, which is
 	// exactly the chart worth zooming — and there is nothing finer to fetch, so
@@ -124,7 +156,12 @@
 	{/if}
 {/snippet}
 
-<div class="flex min-w-0 flex-col gap-3" bind:this={highlight.el} bind:clientWidth={plotWidth}>
+<div
+	data-slot="statistics-plot"
+	class="flex min-w-0 flex-col gap-3"
+	bind:this={highlight.el}
+	bind:clientWidth={plotWidth}
+>
 	<!-- The plot's own box: the same `relative` ancestor the zoom chips were
 	     already positioned against, now also the anchor for full screen in the
 	     opposite corner. The height stays the container's (`CHART_BOX`). -->
@@ -136,8 +173,8 @@
 				{series}
 				seriesLayout="stackDiverging"
 				bandPadding={0.1}
-				padding={chartPaddingFor(plotWidth)}
-				props={{ xAxis: { tickSpacing: xTickSpacingFor(plotWidth) } }}
+				padding={plotPadding}
+				props={{ xAxis: { tickSpacing: tickSpacing } }}
 				highlight={highlight.props}
 				{...zoom.props}
 				{belowContext}

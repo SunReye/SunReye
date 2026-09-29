@@ -120,6 +120,7 @@ function measuredOf(
     config.forecast,
     archiveOf(samples, declaredOffset),
     "open-meteo-archive",
+    "UTC",
   ).raw;
   const rows = new Map<number, number>();
   series.forEach((point, i) => {
@@ -140,6 +141,7 @@ function expectedAt(
     config.forecast,
     archiveOf(samples, declaredOffset),
     "open-meteo-archive",
+    "UTC",
   ).raw;
   return series.find((p) => p.time === local)?.watts ?? 0;
 }

@@ -38,9 +38,12 @@ export class SimulatedInverter implements InverterSource {
   private readonly state: SimState = {};
   private readonly overrides: MetricValues = {};
   private lastTime: number | null = null;
+  private readonly timeZone: string | undefined;
 
-  constructor(profile: InverterProfile) {
+  /** `timeZone` is the plant's: the simulated sun runs on it (UTC when absent). */
+  constructor(profile: InverterProfile, options: { timeZone?: string } = {}) {
     this.profile = profile;
+    this.timeZone = options.timeZone;
   }
 
   read(): Promise<InverterSample> {
@@ -48,7 +51,7 @@ export class SimulatedInverter implements InverterSource {
     const dtSec = this.lastTime === null ? 0 : (now.getTime() - this.lastTime) / 1000;
     this.lastTime = now.getTime();
 
-    const ctx = { now, dtSec, state: this.state };
+    const ctx = { now, dtSec, state: this.state, timeZone: this.timeZone };
     const modeled = this.profile.simulate?.(ctx) ?? genericSimulate(this.profile, ctx);
 
     const metrics: MetricValues = {};

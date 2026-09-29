@@ -1,11 +1,8 @@
 <script lang="ts">
 	import { source } from '$lib/source.svelte';
-	import type { CostBreakdown } from '@SunReye/contracts/energy';
-	import type { CompareMode, ComparisonResponse } from '@SunReye/contracts/statistics';
-	import { onMount } from 'svelte';
+	import type { CompareMode } from '@SunReye/contracts/statistics';
+	import { onMount, untrack } from 'svelte';
 	import SlidersHorizontal from 'phosphor-svelte/lib/SlidersHorizontal';
-	import { api } from '$lib/api';
-	import { payloadOrNull } from '$lib/api-payload';
 	import * as m from '$lib/paraglide/messages';
 	import { Button } from '$lib/components/ui/button';
 	import PeriodNavigator from '$lib/components/inverter/period-navigator.svelte';
@@ -19,20 +16,16 @@
 	import type { CostRange } from '$lib/cost/ranges';
 	import { presetLabel, statisticsPresets } from '$lib/cost/labels';
 	import { SECTIONS, type SectionData } from '$lib/statistics/sections';
-	import {
-		pricedWindow,
-		referenceWindow,
-		usableComparison,
-		windowDays
-	} from '$lib/statistics/compare';
+	import { pricedWindow, windowDays } from '$lib/statistics/compare';
 	import { compareModes } from '$lib/statistics/compare-modes';
 	import { statisticsPrefs } from '$lib/statistics-prefs.svelte';
 	import { statisticsLive } from '$lib/statistics-live.svelte';
 	import { includesNow, liveModeFor } from '$lib/statistics/live';
-	import { browserTimeZone } from '$lib/time/browser-zone';
 	import { liveClock } from '$lib/time/live-clock.svelte';
-	import { periodWindow, type Period } from '$lib/time/period';
+	import { periodWindow, rezoneStandingPeriod, weekStartFor, type Period } from '$lib/time/period';
+	import { getLocale } from '$lib/paraglide/runtime';
 	import { setCustomizeSession } from '$lib/statistics/customize.svelte';
+	import { provideStatisticsQuery, queried } from '$lib/statistics/statistics-query.svelte';
 	import StatisticsBody from './statistics-body.svelte';
 	import CustomizeBar from './customize-bar.svelte';
 
@@ -49,12 +42,32 @@
 	// a period boundary stops claiming to be live and offers the arrow that
 	// reaches the new one. `range` is deliberately not clock-driven — every
 	// section fetches from it.
-	const zone = browserTimeZone();
-	const first = periodWindow(new Date(), 'month', { timeZone: zone });
+	//
+	// Every window is built on the PLANT's calendar: the server sums the plant's
+	// days, and a viewer in New York asking for New York midnights of a Berlin
+	// plant gets bars that straddle two of its days. Until the source list lands
+	// the viewer's zone stands in, and the effect below re-reads the period the
+	// reader is on once the real zone is known — the current one stays current,
+	// any other keeps its name (`rezoneStandingPeriod`).
+	const zone = $derived(source.plantZone);
+	let builtZone = source.plantZone;
+	const first = periodWindow(new Date(), 'month', { timeZone: builtZone });
 
 	let period = $state<Period>(first);
 	let override = $state<RangeOverride | null>(null);
-	let range = $state<CostRange>(costRangeFor(first, new Date(), zone));
+	let range = $state<CostRange>(costRangeFor(first, new Date(), builtZone));
+
+	$effect(() => {
+		const next = zone;
+		if (next === builtZone) return;
+		const from = builtZone;
+		builtZone = next;
+		untrack(() => {
+			if (override === null) {
+				pickPeriod(rezoneStandingPeriod(period, from, new Date(), { timeZone: next, weekStartsOn: weekStartFor(getLocale()) }));
+			} else if (override.id !== 'custom') pickPreset(override.id);
+		});
+	});
 
 	/** A grain tab or an arrow: the reader moved to a calendar period. */
 	function pickPeriod(next: Period) {
@@ -65,7 +78,7 @@
 
 	/** The one kept preset — a rolling seven days is not a calendar week. */
 	function pickPreset(id: string) {
-		const next = resolveCostPreset(id);
+		const next = resolveCostPreset(id, new Date(), zone);
 		range = next;
 		override = { id, label: presetLabel(id, next.label) };
 	}
@@ -73,7 +86,7 @@
 	/**
 	 * An arbitrary span, both ends inclusive calendar days.
 	 *
-	 * This is why `referenceWindow`, `windowDays` and `baselineLabel` are
+	 * This is why the reference window, `windowDays` and `baselineLabel` are
 	 * span-driven rather than a table of preset ids: "vs the previous 17 days"
 	 * only exists because a reader can pick 17 days.
 	 */
@@ -82,10 +95,6 @@
 		range = next;
 		override = { id: next.id, label: next.label };
 	}
-
-	let cost = $state<CostBreakdown | null>(null);
-	let previous = $state<CostBreakdown | null>(null);
-	let loading = $state(true);
 
 	// Reference window for the comparison. Ephemeral for every viewer, with the
 	// saved preference as its default; an admin's current pick is what the
@@ -108,48 +117,26 @@
 	/** Whole days of `range` that have happened — the comparison caption's span. */
 	function pricedDays(of: CostRange): number {
 		const window = pricedWindow(of);
-		return windowDays(window.from, window.to);
+		return windowDays(window.from, window.to, of.timeZone);
 	}
 
 	// Headline tiles: the picked [from, to) priced beside its reference window,
 	// in one request so a §51 spot-price load happens once per window server-side.
-	// `current` is exactly the breakdown the old /api/cost call returned.
-	// `cancelled` guards against an earlier request resolving after a later one
-	// and clobbering fresher data. Every section's own charts fetch their own
-	// series, because only that section's scope switcher moves them.
-	$effect(() => {
-		// A live push on a wider now-inclusive range invalidates this window
-		// (throttled to a minute by the store); the Day tab standing on today
-		// patches below instead and never bumps the signal.
-		void statisticsLive.revision;
-		// The PRICED window, not the picked one. A calendar period the reader is
-		// standing in ends in the future on purpose (the detail chart wants a
-		// settled axis, and the live lease has to hold), and comparing this month
-		// so far against the whole of last month reads as a collapse that never
-		// happened.
-		const window = pricedWindow(range);
-		const query = {
-			from: window.from.toISOString(),
-			to: window.to.toISOString(),
-			mode,
-			...source.query
-		};
-		const reference = referenceWindow(window.from, window.to, mode);
-		let cancelled = false;
-		loading = true;
-		api.api.statistics.comparison.get({ query }).then(({ data }) => {
-			if (cancelled) return;
-			// usableComparison also drops a reference window that predates recorded
-			// history, so a first-month household never reads a fake −100%.
-			const pair = usableComparison(payloadOrNull<ComparisonResponse>(data), reference);
-			cost = pair.current;
-			previous = pair.previous;
-			loading = false;
-		});
-		return () => {
-			cancelled = true;
-		};
+	// `current` is exactly the breakdown the old /api/cost call returned. A live
+	// push on a wider now-inclusive range makes it stale (throttled to a minute by
+	// the store); the Day tab standing on today patches below instead and never
+	// bumps the signal. Every section's own charts read their own series, because
+	// only that section's scope switcher moves them.
+	const reads = provideStatisticsQuery();
+	const comparison = queried(() => reads.comparison(range, mode), {
+		current: null,
+		previous: null
 	});
+	const cost = $derived(comparison.value.current);
+	const previous = $derived(comparison.value.previous);
+	// The loading panel stands until the first answer, as it did before any
+	// request had been issued.
+	const loading = $derived(comparison.loading || !comparison.loaded);
 
 	// Live figures, but only while the picked window actually moves: a past-only
 	// range (a stepped-back month, a historical custom range) takes no lease, so

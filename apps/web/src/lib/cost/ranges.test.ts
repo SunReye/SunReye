@@ -161,7 +161,8 @@ describe("customCostRange — the exclusive end is the next civil midnight", () 
     );
     expect(range.chart.caption).toBe("Last 12 months");
     expect(range.chart.to).toBe(NOW);
-    expect(range.chart.from.toISOString()).toBe(local(2025, 5, 1));
+    // A Berlin midnight: the context chart is built in the range's zone too.
+    expect(range.chart.from.toISOString()).toBe("2025-05-31T22:00:00.000Z");
   });
 });
 
@@ -273,13 +274,20 @@ describe("costRangeFor — a calendar period as a statistics range", () => {
   it("zooms the context chart one level out from the period, as the presets do", () => {
     const context = (grain: Grain) => costRangeFor(period(NOW, grain), NOW, BERLIN).chart;
     // A day or a week reads against the month it sits in…
-    expect(at(context("day"))).toEqual({ from: local(2026, 4, 1), to: NOW.toISOString() });
+    // Every boundary is a BERLIN midnight: the zone the period was built in,
+    // never the host's (these once read host-local midnights).
+    const may = "2026-04-30T22:00:00.000Z";
+    expect(at(context("day"))).toEqual({ from: may, to: NOW.toISOString() });
     expect(context("day").bucket).toBe("day");
-    expect(at(context("week"))).toEqual({ from: local(2026, 4, 1), to: NOW.toISOString() });
+    expect(at(context("week"))).toEqual({ from: may, to: NOW.toISOString() });
     // …a month against the trailing twelve, a year against the trailing 24.
-    expect(at(context("month"))).toEqual({ from: local(2025, 5, 1), to: NOW.toISOString() });
+    const june2025 = "2025-05-31T22:00:00.000Z";
+    expect(at(context("month"))).toEqual({ from: june2025, to: NOW.toISOString() });
     expect(context("month").bucket).toBe("month");
-    expect(at(context("year"))).toEqual({ from: local(2024, 5, 1), to: NOW.toISOString() });
+    expect(at(context("year"))).toEqual({
+      from: "2024-05-31T22:00:00.000Z",
+      to: NOW.toISOString(),
+    });
   });
 
   it("captions the detail chart with the period it is plotting", () => {
@@ -308,5 +316,79 @@ describe("costRangeFor — a calendar period as a statistics range", () => {
     expect(custom.id).toBe("custom");
     expect(custom.chart.from.toISOString()).toBe(local(2025, 5, 1));
     expect(custom.detail.bucket).toBe("day");
+  });
+});
+
+describe("the plant's zone, not the viewer's", () => {
+  // The server buckets in the plant zone. A viewer in New York looking at a
+  // Berlin plant must ask for Berlin midnights, or every day bar straddles two
+  // of the plant's days. The zone is passed; the host zone (UTC in CI) is not.
+  const PLANT = "Europe/Berlin";
+  const now = new Date("2026-05-14T17:37:00Z"); // 13:37 in New York, 19:37 in Berlin
+  const berlinDay = periodWindow(now, "day", { timeZone: PLANT });
+
+  it("builds the day tab and its month context on Berlin midnights", () => {
+    const range = costRangeFor(berlinDay, now, PLANT);
+    expect(range.from.toISOString()).toBe("2026-05-13T22:00:00.000Z");
+    expect(range.to.toISOString()).toBe("2026-05-14T22:00:00.000Z");
+    expect(range.chart.from.toISOString()).toBe("2026-04-30T22:00:00.000Z");
+  });
+
+  it("builds the rolling seven days on Berlin midnights", () => {
+    const range = resolveCostPreset("7d", now, PLANT);
+    expect(range.from.toISOString()).toBe("2026-05-07T22:00:00.000Z");
+    expect(range.to.toISOString()).toBe("2026-05-14T22:00:00.000Z");
+    expect(range.chart.from.toISOString()).toBe("2026-04-30T22:00:00.000Z");
+  });
+
+  it("names a custom span by the plant's days", () => {
+    // Berlin Mar 3 00:00 is Mar 2 in UTC and in New York.
+    const range = customCostRange(
+      new Date("2026-03-02T23:00:00Z"),
+      new Date("2026-03-08T23:00:00Z"),
+      now,
+      PLANT,
+    );
+    expect(range.label).toBe("Mar 3 – Mar 9");
+  });
+
+  it("carries the zone it was built in, for captions and day counts", () => {
+    expect(costRangeFor(berlinDay, now, PLANT).timeZone).toBe(PLANT);
+    expect(resolveCostPreset("7d", now, PLANT).timeZone).toBe(PLANT);
+  });
+});
+
+describe("resolveCostPreset — seven plant-calendar days across a DST night", () => {
+  // `now - 6 × 24h` is not "six days ago" when one of those nights is 23 or 25
+  // hours long: late in the evening after a spring-forward it lands on the day
+  // before (eight days), early in the morning after a fall-back on the day after
+  // (six). The window is counted in calendar days on the plant's clock.
+  const PLANT = "Europe/Berlin";
+  const days = (from: Date, to: Date) =>
+    new Intl.DateTimeFormat("en-CA", { timeZone: PLANT }).format(from) +
+    " → " +
+    new Intl.DateTimeFormat("en-CA", { timeZone: PLANT }).format(to);
+
+  it("is seven days just after the spring-forward week", () => {
+    // 2026-04-01 00:30 CEST; the week behind it holds the 23-hour 29 March.
+    const now = new Date("2026-03-31T22:30:00Z");
+    const range = resolveCostPreset("7d", now, PLANT);
+    expect(days(range.from, range.to)).toBe("2026-03-26 → 2026-04-02");
+    expect(range.from.toISOString()).toBe("2026-03-25T23:00:00.000Z");
+  });
+
+  it("is seven days late on the evening of the fall-back week", () => {
+    // 2026-10-27 23:30 CET; the week behind it holds the 25-hour 25 October.
+    const now = new Date("2026-10-27T22:30:00Z");
+    const range = resolveCostPreset("7d", now, PLANT);
+    expect(days(range.from, range.to)).toBe("2026-10-21 → 2026-10-28");
+    expect(range.from.toISOString()).toBe("2026-10-20T22:00:00.000Z");
+  });
+
+  it("is seven days on the DST day itself, both nights", () => {
+    const spring = resolveCostPreset("7d", new Date("2026-03-29T21:30:00Z"), PLANT);
+    expect(days(spring.from, spring.to)).toBe("2026-03-23 → 2026-03-30");
+    const autumn = resolveCostPreset("7d", new Date("2026-10-25T22:30:00Z"), PLANT);
+    expect(days(autumn.from, autumn.to)).toBe("2026-10-19 → 2026-10-26");
   });
 });

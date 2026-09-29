@@ -6,6 +6,7 @@ import {
   periodOf,
   periodTitle,
   periodWindow,
+  rezoneStandingPeriod,
   startOfPeriod,
   stepPeriod,
   switchGrain,
@@ -178,6 +179,79 @@ describe("startOfPeriod — ambiguous and skipped midnights", () => {
     const second = startOfPeriod(new Date("2026-10-25T01:30:00Z"), "day", { timeZone: BERLIN });
     expect(second.toISOString()).toBe(first.toISOString());
     expect(wall(first, BERLIN)).toBe("2026-10-25 00:00");
+  });
+});
+
+describe("rezoneStandingPeriod — a past period keeps its name on another zone's calendar", () => {
+  const LATER = new Date("2027-01-01T00:00:00Z");
+  // The statistics page opens on the viewer's zone and learns the plant's a
+  // moment later: the period the reader is on must keep its NAME.
+  it("keeps the calendar day, even where the midpoint would cross it", () => {
+    // New York May 14 re-read on Auckland's calendar (16h ahead) is Auckland May 14.
+    const ny = periodWindow(new Date("2026-05-14T16:00:00Z"), "day", {
+      timeZone: "America/New_York",
+    });
+    const nz = rezoneStandingPeriod(ny, "America/New_York", LATER, {
+      timeZone: "Pacific/Auckland",
+    });
+    expect(nz.start.toISOString()).toBe("2026-05-13T12:00:00.000Z");
+    expect(nz.end.toISOString()).toBe("2026-05-14T12:00:00.000Z");
+  });
+
+  it("keeps the grain and lands on the target zone's month", () => {
+    const ny = periodWindow(new Date("2026-05-14T16:00:00Z"), "month", {
+      timeZone: "America/New_York",
+    });
+    const berlin = rezoneStandingPeriod(ny, "America/New_York", LATER, { timeZone: BERLIN });
+    expect(berlin.grain).toBe("month");
+    expect(berlin.start.toISOString()).toBe("2026-04-30T22:00:00.000Z");
+    expect(berlin.end.toISOString()).toBe("2026-05-31T22:00:00.000Z");
+  });
+});
+
+describe("rezoneStandingPeriod — the period a page stands on, once the plant's zone lands", () => {
+  // /history and /statistics open before `/api/sources` answers, on the
+  // browser's calendar, and re-read the period on the plant's once it does.
+  const NY = "America/New_York";
+  const onBerlin = { timeZone: BERLIN, weekStartsOn: 1 as const };
+  const now = new Date("2026-09-01T00:00:00Z"); // 20:00 NY on 31 Aug, 02:00 Berlin on 1 Sep
+
+  it("keeps the reader on the CURRENT day when they stood on it", () => {
+    // By name New York's today is 31 Aug, a day Berlin has already finished.
+    const opened = periodWindow(now, "day", { timeZone: NY });
+    const next = rezoneStandingPeriod(opened, NY, now, onBerlin);
+    expect(next.grain).toBe("day");
+    expect(wall(next.start, BERLIN)).toBe("2026-09-01 00:00");
+    expect(wall(next.end, BERLIN)).toBe("2026-09-02 00:00");
+    expect(containsNow(next, now)).toBe(true);
+  });
+
+  it("keeps the reader on the CURRENT month — the /statistics default", () => {
+    const opened = periodWindow(now, "month", { timeZone: NY });
+    const next = rezoneStandingPeriod(opened, NY, now, onBerlin);
+    expect(wall(next.start, BERLIN)).toBe("2026-09-01 00:00");
+    expect(wall(next.end, BERLIN)).toBe("2026-10-01 00:00");
+  });
+
+  it("re-reads a PAST period by name, not by instant", () => {
+    const past = periodWindow(new Date("2026-08-10T12:00:00Z"), "day", { timeZone: NY });
+    const next = rezoneStandingPeriod(past, NY, now, onBerlin);
+    expect(wall(next.start, BERLIN)).toBe("2026-08-10 00:00");
+    expect(wall(next.end, BERLIN)).toBe("2026-08-11 00:00");
+  });
+
+  it("keeps the grain, on the week start it is handed", () => {
+    const week = periodWindow(now, "week", { timeZone: NY, weekStartsOn: 7 });
+    const next = rezoneStandingPeriod(week, NY, now, { timeZone: BERLIN, weekStartsOn: 7 });
+    expect(next.grain).toBe("week");
+    // Sunday 30 Aug — the week holding Berlin's 1 Sep.
+    expect(wall(next.start, BERLIN)).toBe("2026-08-30 00:00");
+    expect(wall(next.end, BERLIN)).toBe("2026-09-06 00:00");
+  });
+
+  it("is the identity when the zone did not change", () => {
+    const day = periodWindow(now, "day", onBerlin);
+    expect(rezoneStandingPeriod(day, BERLIN, now, onBerlin)).toEqual(day);
   });
 });
 

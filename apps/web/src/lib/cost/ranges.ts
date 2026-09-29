@@ -14,6 +14,7 @@
 // buffer / rollup granularity for entity charts — different concern, different
 // shape.
 
+import { calendarDate, startOfDate } from "@SunReye/inverter-core/zoned-calendar";
 import { fittedPadding, isNarrowPlot, type ChartPadding } from "$lib/charts/plot-padding";
 import { dayMonth, monthShort } from "$lib/format/date";
 import { browserTimeZone } from "$lib/time/browser-zone";
@@ -24,8 +25,6 @@ import {
   type Grain,
   type Period,
 } from "$lib/time/period";
-
-const DAY = 86_400_000;
 
 /** Bar granularity of a statistics chart. */
 export type CostBucket = "hour" | "day" | "month";
@@ -57,6 +56,9 @@ export interface CostRange {
   chart: ChartSpec;
   /** Buckets inside the picked window. */
   detail: ChartSpec;
+  /** The zone every boundary above was built in — the PLANT's, once known, so
+   *  captions and day counts read the same calendar the server summed. */
+  timeZone: string;
 }
 
 /** The window one chart should plot for `range` at the requested scope. */
@@ -166,34 +168,48 @@ export function periodKeyLabel(key: string, bucket: CostBucket): string {
     : monthShort(new Date(`${key}-01T00:00:00`));
 }
 
+/** Midnight starting the calendar month `d` falls in, in `timeZone`. */
+const startOfMonth = (d: Date, timeZone: string): Date => startOfPeriod(d, "month", { timeZone });
+
+/** The first midnight of the month `months` before the one `d` falls in, in `timeZone`. */
+function monthsBefore(d: Date, months: number, timeZone: string): Date {
+  const { year, month } = calendarDate(d, timeZone);
+  const first = new Date(Date.UTC(year, month - 1 - months, 1));
+  return startOfDate(
+    { year: first.getUTCFullYear(), month: first.getUTCMonth() + 1, day: 1 },
+    timeZone,
+  );
+}
+
 /**
- * Midnight starting the civil day `d` falls in, in the viewer's zone — the same
- * primitive {@link customCostRange} bounds its window with, rather than a second
- * local-midnight helper that could drift from it.
- *
- * NOTE: this does not rescue the `7d` preset, which asks for
- * `startOfDay(now - 6 * DAY)`. Across a spring-forward that subtraction lands on
- * the day before the one intended and the window covers eight days — the same
- * defect family, left alone here on purpose.
+ * The midnight starting the civil day `days` before the one `d` falls in, in
+ * `timeZone`. By date parts: `d - days × 24h` lands a day off whenever one of
+ * those nights is a 23- or 25-hour DST night.
  */
-const startOfDay = (d: Date): Date => startOfPeriod(d, "day", { timeZone: browserTimeZone() });
-const startOfMonth = (d: Date): Date => new Date(d.getFullYear(), d.getMonth(), 1);
+function daysBefore(d: Date, days: number, timeZone: string): Date {
+  const { year, month, day } = calendarDate(d, timeZone);
+  const back = new Date(Date.UTC(year, month - 1, day - days));
+  return startOfDate(
+    { year: back.getUTCFullYear(), month: back.getUTCMonth() + 1, day: back.getUTCDate() },
+    timeZone,
+  );
+}
 
 /**
  * The exclusive midnight ENDING the civil day `d` falls in — where a
  * now-inclusive window stops.
  *
- * Not `startOfDay(d) + DAY`: the same 23/25-hour argument {@link customCostRange}
+ * Not the day's start plus 86_400_000: the same 23/25-hour argument {@link customCostRange}
  * spells out. Through `periodWindow`, so there is one implementation of "the
  * next civil midnight" in the app.
  */
-const endOfDay = (d: Date): Date => periodWindow(d, "day", { timeZone: browserTimeZone() }).end;
+const endOfDay = (d: Date, timeZone: string): Date => periodWindow(d, "day", { timeZone }).end;
 
 /** Trailing N calendar months → monthly bars. The 12-month form matches
  *  monthlyEnergy's window. */
-function trailingMonths(now: Date, months: number): ChartSpec {
+function trailingMonths(now: Date, months: number, timeZone: string): ChartSpec {
   return {
-    from: new Date(now.getFullYear(), now.getMonth() - (months - 1), 1),
+    from: monthsBefore(now, months - 1, timeZone),
     to: now,
     bucket: "month",
     caption: `Last ${months} months`,
@@ -202,8 +218,13 @@ function trailingMonths(now: Date, months: number): ChartSpec {
 
 /** The calendar month `now` falls in, by day — the context one level out from a
  *  single day or a week. */
-function thisMonthByDay(now: Date): ChartSpec {
-  return { from: startOfMonth(now), to: now, bucket: "day", caption: "This month, by day" };
+function thisMonthByDay(now: Date, timeZone: string): ChartSpec {
+  return {
+    from: startOfMonth(now, timeZone),
+    to: now,
+    bucket: "day",
+    caption: "This month, by day",
+  };
 }
 
 /** Bar granularity INSIDE each calendar period — one level finer than itself. */
@@ -220,11 +241,11 @@ const PERIOD_DETAIL_BUCKET: Record<Grain, CostBucket> = {
  * month against the trailing twelve; a year against the trailing 24, so this
  * year reads against the whole of the last one.
  */
-const PERIOD_CONTEXT: Record<Grain, (now: Date) => ChartSpec> = {
+const PERIOD_CONTEXT: Record<Grain, (now: Date, timeZone: string) => ChartSpec> = {
   day: thisMonthByDay,
   week: thisMonthByDay,
-  month: (now) => trailingMonths(now, 12),
-  year: (now) => trailingMonths(now, 24),
+  month: (now, timeZone) => trailingMonths(now, 12, timeZone),
+  year: (now, timeZone) => trailingMonths(now, 24, timeZone),
 };
 
 /**
@@ -264,7 +285,8 @@ export function costRangeFor(
       bucket,
       caption: `${label}, by ${bucket}`,
     },
-    chart: PERIOD_CONTEXT[period.grain](now),
+    chart: PERIOD_CONTEXT[period.grain](now, timeZone),
+    timeZone,
   };
 }
 
@@ -287,25 +309,32 @@ export function costRangeFor(
  * The server prorates no standing charge past `now`, so the hours of today still
  * to come are genuinely empty rather than cheap.
  */
-function rollingWeek(now: Date): CostRange {
-  const from = startOfDay(new Date(now.getTime() - 6 * DAY));
-  const to = endOfDay(now);
+function rollingWeek(now: Date, timeZone: string): CostRange {
+  const from = daysBefore(now, 6, timeZone);
+  const to = endOfDay(now, timeZone);
   return {
     id: "7d",
     label: "Last 7 days",
     from,
     to,
     detail: { from, to, bucket: "day", caption: "Last 7 days, by day" },
-    chart: thisMonthByDay(now),
+    chart: thisMonthByDay(now, timeZone),
+    timeZone,
   };
 }
 
 /** Selectable presets: id → concrete range anchored at `now`. */
-const PRESET_BUILDERS: Record<string, (now: Date) => CostRange> = { "7d": rollingWeek };
+const PRESET_BUILDERS: Record<string, (now: Date, timeZone: string) => CostRange> = {
+  "7d": rollingWeek,
+};
 
-/** Resolve a preset id into a concrete range anchored at `now`. */
-export function resolveCostPreset(id: string, now: Date = new Date()): CostRange {
-  return (PRESET_BUILDERS[id] ?? rollingWeek)(now);
+/** Resolve a preset id into a concrete range anchored at `now`, on `timeZone`'s days. */
+export function resolveCostPreset(
+  id: string,
+  now: Date = new Date(),
+  timeZone: string = browserTimeZone(),
+): CostRange {
+  return (PRESET_BUILDERS[id] ?? rollingWeek)(now, timeZone);
 }
 
 /**
@@ -330,10 +359,11 @@ export function customCostRange(
   const to = periodWindow(toInclusive, "day", { timeZone }).end;
   return {
     id: "custom",
-    label: `${dayMonth(from)} – ${dayMonth(toInclusive)}`,
+    label: `${dayMonth(from, timeZone)} – ${dayMonth(toInclusive, timeZone)}`,
     from,
     to,
     detail: { from, to, bucket: "day", caption: "Custom range, by day" },
-    chart: trailingMonths(now, 12),
+    chart: trailingMonths(now, 12, timeZone),
+    timeZone,
   };
 }

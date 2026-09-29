@@ -47,6 +47,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Page, Route, WebSocketRoute } from "@playwright/test";
+import type { ConnectionView, DeviceView, IntegrationList } from "@SunReye/contracts/devices";
 import * as fixture from "./api-fixtures";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -107,6 +108,14 @@ export interface BackendOptions {
    */
   rollupRows?: number;
   /**
+   * Answer `/api/history/rollup` only up to the present, as the real continuous
+   * aggregate does. Off by default: the default body spans the WHOLE window,
+   * future included, so a live chart's minute-tick delta never finds anything
+   * missing — which is what the refetch-storm specs rely on. On, a live chart
+   * has a real hole to fill on every tick, and the delta path runs.
+   */
+  rollupUntilNow?: boolean;
+  /**
    * Seconds between points in the `/api/history/recent` backfill. The real
    * plant stores a sample every ten seconds, which is what puts the payload at
    * the measured ~54 KB for a hundred-odd metrics.
@@ -134,7 +143,7 @@ export interface BackendOptions {
    * header's source switcher renders nothing; `fixture.SOURCES_TWO` is the
    * two-inverter plant that shows it.
    */
-  sources?: typeof fixture.SOURCES;
+  sources?: typeof fixture.SOURCES & { plant: { timeZone?: string } };
   /**
    * `/api/weather`. `"reading"` (default) is a full, readable reading;
    * `null` is weather switched off, which the server answers with an EMPTY
@@ -166,7 +175,13 @@ export interface BackendOptions {
    * mounts for a SAVED chart or a full-screen draft. One entry here puts the
    * custom-chart section at the top of `/history` (#216).
    */
-  customCharts?: { id: string; name: string; metrics: string[] }[];
+  customCharts?: {
+    id: string;
+    name: string;
+    metrics: string[];
+    /** Per-series device pins, as `CustomChart.devices` carries them. */
+    devices?: Record<string, string>;
+  }[];
 }
 
 /** The migration status payload, as `apps/server/src/routes/migration.ts` sends it. */
@@ -240,6 +255,8 @@ export interface MockBackend {
   pushEvcc(state?: unknown): Promise<void>;
   pushAutomations(message?: unknown): Promise<void>;
   pushLogs(entries?: unknown[]): Promise<void>;
+  /** One `statistics` frame — a `today` snapshot by default, or `{ type: "prices" }`. */
+  pushStatistics(message?: unknown): Promise<void>;
   /** Topics the socket refused, as the ack reported them. */
   readonly deniedTopics: readonly string[];
   /** Stop the automatic feed (idempotent; also runs at test end). */
@@ -666,7 +683,8 @@ export async function mockBackend(page: Page, options: BackendOptions = {}): Pro
     if (at("history/rollup")) {
       const metric = url.searchParams.get("metric") ?? "";
       const from = Date.parse(url.searchParams.get("from") ?? "") || Date.now() - 3600_000;
-      const to = Date.parse(url.searchParams.get("to") ?? "") || Date.now();
+      const asked = Date.parse(url.searchParams.get("to") ?? "") || Date.now();
+      const to = options.rollupUntilNow ? Math.min(asked, Date.now()) : asked;
       // Eight distinct series, shared out by metric key: enough that the page
       // does not look like one chart repeated, cheap enough to cache.
       const seed = hash(metric) % 8;
@@ -842,7 +860,9 @@ export async function mockBackend(page: Page, options: BackendOptions = {}): Pro
       // A connection created ON ITS OWN — the only way to add a broker, which
       // never has a device to be created alongside (#217).
       if (method === "POST") return json(route, { id: 9, ...body() });
-      return json(route, { connections: fixture.CONNECTIONS });
+      return json(route, { connections: fixture.CONNECTIONS } satisfies {
+        connections: ConnectionView[];
+      });
     }
     if (under("connections") && method === "PATCH") {
       const current = fixture.CONNECTIONS.find((c) => String(c.id) === id);
@@ -865,7 +885,7 @@ export async function mockBackend(page: Page, options: BackendOptions = {}): Pro
       // A coded thing bound to a connection. The wizard posts this SECOND, after
       // the endpoint exists, so the `connectionId` it carries is a real row's.
       if (method === "POST") return json(route, { id: 9, enabled: true, ...body() });
-      return json(route, { integrations: fixture.INTEGRATIONS });
+      return json(route, { integrations: fixture.INTEGRATIONS } satisfies IntegrationList);
     }
     if (under("integrations") && method === "PATCH") {
       const current = fixture.INTEGRATIONS.find((i) => String(i.id) === id);
@@ -883,33 +903,47 @@ export async function mockBackend(page: Page, options: BackendOptions = {}): Pro
         // name's, the connection is resolved (an existing id) or created.
         const b = body();
         const choice = b.connection as { id?: number; create?: Record<string, unknown> };
+        // The created arm is the body's own `{ name, kind, params }`, echoed.
         const connection = choice.create
-          ? { id: 9, ...choice.create }
+          ? ({ id: 9, ...choice.create } as ConnectionView)
           : (fixture.CONNECTIONS.find((c) => c.id === choice.id) ?? null);
         return json(route, {
           id: 42,
           slug: String(b.name)
             .toLowerCase()
             .replace(/[^a-z0-9]+/g, "-"),
-          name: b.name,
-          profileId: b.profileId,
-          role: b.role,
-          unitId: b.unitId,
+          name: String(b.name),
+          profileId: String(b.profileId),
+          role: String(b.role),
+          unitId: Number(b.unitId),
           connectionId: connection?.id ?? null,
+          params: {},
           retiredAt: null,
           connection,
-          arrays: b.arrays ?? [],
-          tempCoefficient: b.tempCoefficient ?? -0.4,
-          systemLoss: b.systemLoss ?? 14,
-          battery: b.battery ?? null,
+          arrays: (b.arrays ?? []) as DeviceView["arrays"],
+          tempCoefficient: (b.tempCoefficient as number | undefined) ?? -0.4,
+          systemLoss: (b.systemLoss as number | undefined) ?? 14,
+          battery: (b.battery ?? null) as DeviceView["battery"],
           profileName: String(b.profileId),
           profileKnown: true,
           kind: "modbus",
           state: "idle",
           integration: null,
-        });
+        } satisfies DeviceView);
       }
       return json(route, fixture.devices(MANIFEST));
+    }
+    // `removeDevice`: only a device with no readings goes; the rest are the
+    // RESTRICT refusal the delete dialog answers with "retire instead".
+    if (under("devices") && method === "DELETE") {
+      if (fixture.DEVICES_WITH_HISTORY.has(Number(id))) {
+        return json(
+          route,
+          { error: "this device has recorded history; retire it instead", field: "history" },
+          409,
+        );
+      }
+      return json(route, { ok: true, id: Number(id) });
     }
     if (under("devices") && method === "PATCH") {
       const current = fixture.devices(MANIFEST).devices.find((d) => String(d.id) === id);
@@ -1046,6 +1080,9 @@ export async function mockBackend(page: Page, options: BackendOptions = {}): Pro
     },
     pushLogs(entries = fixture.logBatch()) {
       return push("logs", entries);
+    },
+    pushStatistics(message = fixture.statisticsToday()) {
+      return push("statistics", message);
     },
     get deniedTopics() {
       return denied;

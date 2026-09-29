@@ -6,7 +6,6 @@
 import type { ChartScope, CostBucket, CostRange } from "$lib/cost/ranges";
 import * as m from "$lib/paraglide/messages";
 import { getLocale } from "$lib/paraglide/runtime";
-import { browserTimeZone } from "$lib/time/browser-zone";
 import { periodTitle, type Grain } from "$lib/time/period";
 
 /** Statistics sections whose default scope is a stored preference, read by
@@ -72,7 +71,7 @@ function periodCaption(range: CostRange, scope: ChartScope): string {
 function periodName(range: CostRange): string {
   return periodTitle(
     { grain: range.id as Grain, start: range.from, end: range.to },
-    { timeZone: browserTimeZone(), locale: getLocale() },
+    { timeZone: range.timeZone, locale: getLocale() },
     { today: m.range_today, weekOf: m.range_week_of },
   );
 }

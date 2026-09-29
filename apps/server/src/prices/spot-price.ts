@@ -23,11 +23,11 @@
 import type { SlotCoverage, SpotAvailability, SpotSlice } from "@SunReye/contracts/prices";
 import type { SpotPriceInsert, SpotPriceRow } from "@SunReye/db/schema/spot-price";
 import { zoneParts } from "@SunReye/inverter-core/zone-parts";
+import { dayStart, nextDayStart } from "@SunReye/inverter-core/zoned-calendar";
 
 const MINUTE_MS = 60_000;
 const HOUR_MS = 3_600_000;
 const QUARTER_MS = 900_000;
-const DAY_MS = 86_400_000;
 
 /** The grid every stored row sits on, minutes. Hourly sources are fanned out to it. */
 export const SLOT_MINUTES = 15;
@@ -100,26 +100,6 @@ function zoneOffsetMs(timeZone: string, atMs: number): number {
     Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute) -
     Math.floor(atMs / MINUTE_MS) * MINUTE_MS
   );
-}
-
-/**
- * Instant of local midnight starting the local day that contains `atMs`.
- *
- * Two passes: the first uses the offset at `atMs`, the second re-resolves at the
- * candidate instant, which is what makes it correct on the two days a year when
- * the offset changes between midnight and now.
- */
-export function localDayStartMs(timeZone: string, atMs: number): number {
-  const first = zoneOffsetMs(timeZone, atMs);
-  const localMidnight = Math.floor((atMs + first) / DAY_MS) * DAY_MS;
-  const candidate = localMidnight - first;
-  const second = zoneOffsetMs(timeZone, candidate);
-  return second === first ? candidate : localMidnight - second;
-}
-
-/** Instant of the next local midnight after the local day containing `atMs`. */
-export function nextLocalDayStartMs(timeZone: string, atMs: number): number {
-  return localDayStartMs(timeZone, localDayStartMs(timeZone, atMs) + DAY_MS + 6 * HOUR_MS);
 }
 
 /** Local wall-clock label, `YYYY-MM-DDTHH:mm` — the shape `SolarForecastPoint.time` uses. */
@@ -227,9 +207,9 @@ export function buildSpotSlice(
   nowMs: number,
 ): SpotSlice {
   const tz = zoneTimeZone(zone);
-  const todayStart = localDayStartMs(tz, nowMs);
-  const tomorrowStart = nextLocalDayStartMs(tz, nowMs);
-  const dayAfter = nextLocalDayStartMs(tz, tomorrowStart);
+  const todayStart = dayStart(nowMs, tz).getTime();
+  const tomorrowStart = nextDayStart(nowMs, tz).getTime();
+  const dayAfter = nextDayStart(tomorrowStart, tz).getTime();
 
   const series = rows
     .map((r) => {

@@ -55,7 +55,7 @@
 	import { liveClock } from '$lib/time/live-clock.svelte';
 	import { periodWindow, type Period } from '$lib/time/period';
 
-	// The zone is the browser's own, so "Today" and the calendar's `data-today`
+	// The zone is the browser's own, so "Today" and the calendar's `data-plant-today`
 	// cell agree about which day it is.
 	const timeZone = browserTimeZone();
 

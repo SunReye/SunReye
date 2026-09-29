@@ -10,6 +10,10 @@ import {
   rollUpToMonths,
 } from "./cost-calc";
 
+/** The zone these host-local fixtures were written in — the plant zone the
+ *  mocked `getPlantTimeZone` also answers with. */
+const HOST_TZ = Intl.DateTimeFormat().resolvedOptions().timeZone;
+
 /** A tariff: 0.40 peak (08–20 weekdays), 0.10 off-peak default, 0.05 feed-in. */
 const tariff: TariffConfig = tariffConfigSchema.parse({
   currency: "EUR",
@@ -40,7 +44,7 @@ describe("allocateCost", () => {
       hour("2024-01-01T10:00:00", { import: 2 }), // 2 kWh * 0.40 = 0.80
       hour("2024-01-01T02:00:00", { import: 3 }), // 3 kWh * 0.10 = 0.30
     ];
-    const r = allocateCost(hours, tariff, 1);
+    const r = allocateCost(hours, tariff, 1, undefined, HOST_TZ);
     expect(r.importKwh).toBe(5);
     expect(r.importCost).toBeCloseTo(1.1, 6);
     expect(r.byBand.find((b) => b.name === "Peak")?.cost).toBeCloseTo(0.8, 6);
@@ -49,7 +53,13 @@ describe("allocateCost", () => {
 
   test("weekend falls back to default rate (band is weekday-only)", () => {
     // 2024-01-06 is a Saturday → 10:00 is off-peak despite being 08–20.
-    const r = allocateCost([hour("2024-01-06T10:00:00", { import: 1 })], tariff, 1);
+    const r = allocateCost(
+      [hour("2024-01-06T10:00:00", { import: 1 })],
+      tariff,
+      1,
+      undefined,
+      HOST_TZ,
+    );
     expect(r.importCost).toBeCloseTo(0.1, 6);
   });
 
@@ -79,7 +89,7 @@ describe("allocateCost", () => {
 
   test("export earnings, net, savings and ratios", () => {
     const hours = [hour("2024-01-01T10:00:00", { import: 1, export: 4, load: 5, production: 10 })];
-    const r = allocateCost(hours, tariff, 1);
+    const r = allocateCost(hours, tariff, 1, undefined, HOST_TZ);
     expect(r.exportEarnings).toBeCloseTo(0.2, 6); // 4 * 0.05
     expect(r.importCost).toBeCloseTo(0.4, 6); // 1 * 0.40
     expect(r.standingCharge).toBeCloseTo(1.0, 6); // 1 day
@@ -92,18 +102,26 @@ describe("allocateCost", () => {
   });
 
   test("clamps ratios and handles no data", () => {
-    const r = allocateCost([], tariff, 0);
+    const r = allocateCost([], tariff, 0, undefined, HOST_TZ);
     expect(r.importCost).toBe(0);
     expect(r.selfSufficiency).toBeNull();
     expect(r.selfConsumption).toBeNull();
   });
 
   test("battery flows are carried but never priced (money unchanged)", () => {
-    const base = allocateCost([hour("2024-01-01T10:00:00", { import: 2 })], tariff, 1);
+    const base = allocateCost(
+      [hour("2024-01-01T10:00:00", { import: 2 })],
+      tariff,
+      1,
+      undefined,
+      HOST_TZ,
+    );
     const withBattery = allocateCost(
       [hour("2024-01-01T10:00:00", { import: 2, batteryDischarge: 5, batteryCharge: 3 })],
       tariff,
       1,
+      undefined,
+      HOST_TZ,
     );
     expect(withBattery.batteryDischargeKwh).toBe(5);
     expect(withBattery.batteryChargeKwh).toBe(3);
@@ -117,25 +135,37 @@ describe("allocateCost", () => {
       [hour("2024-01-01T10:00:00", { import: 1 }), hour("2024-01-02T10:00:00", { import: 2 })],
       tariff,
       2,
+      undefined,
+      HOST_TZ,
     );
     expect(r.byDay.map((d) => d.date)).toEqual(["2024-01-01", "2024-01-02"]);
   });
 });
 
 describe("resolveRange", () => {
-  test("month starts at the first of the month, local midnight", () => {
-    const now = new Date("2024-03-15T13:37:00");
-    const { from, to } = resolveRange("month", now);
-    expect(from.getDate()).toBe(1);
-    expect(from.getMonth()).toBe(2);
-    expect(from.getHours()).toBe(0);
+  // Auckland (NZDT, +13) is already on Mar 16 while UTC reads 13:37 on Mar 15:
+  // the range starts on the PLANT's midnight, whatever the host zone.
+  const now = new Date("2024-03-15T13:37:00Z");
+  const TZ = "Pacific/Auckland";
+
+  test("today starts at the plant's midnight", () => {
+    const { from, to } = resolveRange("today", TZ, now);
+    expect(from.toISOString()).toBe("2024-03-15T11:00:00.000Z");
     expect(to).toBe(now);
   });
 
-  test("year starts on Jan 1", () => {
-    const { from } = resolveRange("year", new Date("2024-03-15T13:37:00"));
-    expect(from.getMonth()).toBe(0);
-    expect(from.getDate()).toBe(1);
+  test("month starts at the plant's midnight on the first", () => {
+    expect(resolveRange("month", TZ, now).from.toISOString()).toBe("2024-02-29T11:00:00.000Z");
+  });
+
+  test("year starts at the plant's midnight on Jan 1", () => {
+    expect(resolveRange("year", TZ, now).from.toISOString()).toBe("2023-12-31T11:00:00.000Z");
+  });
+
+  test("a DST seam inside the range does not move its start", () => {
+    // Berlin sprang forward Mar 30 2025: the month still starts on CET midnight.
+    const r = resolveRange("month", "Europe/Berlin", new Date("2025-03-31T10:00:00Z"));
+    expect(r.from.toISOString()).toBe("2025-02-28T23:00:00.000Z");
   });
 });
 
@@ -152,7 +182,7 @@ describe("§51 zero-value export", () => {
   const tariff = tariffConfigSchema.parse({ export: { feedInPerKwh: 0.08 } });
 
   test("a fully negative hour earns nothing and is reported as such", () => {
-    const totals = allocateCost([hour("2026-08-02T13:00:00", 4)], tariff, 1, () => 1);
+    const totals = allocateCost([hour("2026-08-02T13:00:00", 4)], tariff, 1, () => 1, HOST_TZ);
     expect(totals.exportEarnings).toBe(0);
     expect(totals.zeroValueExportKwh).toBeCloseTo(4, 10);
     // And says what that cost: 4 kWh that would have earned 8 ct each.
@@ -161,20 +191,20 @@ describe("§51 zero-value export", () => {
 
   test("a partly negative hour is prorated", () => {
     // Two of four quarter-hours negative: half the export earns the tariff.
-    const totals = allocateCost([hour("2026-08-02T13:00:00", 4)], tariff, 1, () => 0.5);
+    const totals = allocateCost([hour("2026-08-02T13:00:00", 4)], tariff, 1, () => 0.5, HOST_TZ);
     expect(totals.exportEarnings).toBeCloseTo(2 * 0.08, 10);
     expect(totals.zeroValueExportKwh).toBeCloseTo(2, 10);
   });
 
   test("without the share, pricing is exactly as before", () => {
-    const totals = allocateCost([hour("2026-08-02T13:00:00", 4)], tariff, 1);
+    const totals = allocateCost([hour("2026-08-02T13:00:00", 4)], tariff, 1, undefined, HOST_TZ);
     expect(totals.exportEarnings).toBeCloseTo(4 * 0.08, 10);
     expect(totals.zeroValueExportKwh).toBe(0);
   });
 
   test("the net figure rises by exactly the lost earnings", () => {
-    const paid = allocateCost([hour("2026-08-02T13:00:00", 4)], tariff, 1);
-    const unpaid = allocateCost([hour("2026-08-02T13:00:00", 4)], tariff, 1, () => 1);
+    const paid = allocateCost([hour("2026-08-02T13:00:00", 4)], tariff, 1, undefined, HOST_TZ);
+    const unpaid = allocateCost([hour("2026-08-02T13:00:00", 4)], tariff, 1, () => 1, HOST_TZ);
     expect(unpaid.net - paid.net).toBeCloseTo(4 * 0.08, 10);
   });
 });
@@ -193,6 +223,7 @@ describe("priceSeriesRows", () => {
     kwh,
   });
   const standing = new Map([["2024-01-01", 1]]);
+  const BERLIN = "Europe/Berlin";
 
   test("bands the import, pays the export, and adds the standing charge", () => {
     // 2024-01-01 is a Monday: 10:00 is peak (0.40), 02:00 off-peak (0.10).
@@ -207,6 +238,7 @@ describe("priceSeriesRows", () => {
       ["2024-01-01"],
       tariff,
       standing,
+      BERLIN,
     );
     expect(point?.importCost).toBeCloseTo(1.1, 10);
     expect(point?.exportEarnings).toBeCloseTo(0.2, 10);
@@ -215,7 +247,14 @@ describe("priceSeriesRows", () => {
   });
 
   test("periods with no rows are zero-filled at their standing charge", () => {
-    const points = priceSeriesRows([], fieldByKey, ["2024-01-01", "2024-01-02"], tariff, standing);
+    const points = priceSeriesRows(
+      [],
+      fieldByKey,
+      ["2024-01-01", "2024-01-02"],
+      tariff,
+      standing,
+      BERLIN,
+    );
     expect(points.map((p) => p.bucket)).toEqual(["2024-01-01", "2024-01-02"]);
     expect(points[0]?.net).toBe(1);
     expect(points[1]?.net).toBe(0);
@@ -229,13 +268,15 @@ describe("priceSeriesRows", () => {
       ["2024-01-01"],
       tariff,
       standing,
+      BERLIN,
       (h) => {
         seen.push(h);
         return 0.5;
       },
     );
-    // (period, hod) resolves to the real local hour the export happened in.
-    expect(seen.map((d) => d.getTime())).toEqual([new Date(2024, 0, 1, 13).getTime()]);
+    // (period, hod) resolves to the plant-local hour the export happened in:
+    // 13:00 CET is 12:00Z.
+    expect(seen.map((d) => d.toISOString())).toEqual(["2024-01-01T12:00:00.000Z"]);
     expect(point?.exportEarnings).toBeCloseTo(2 * 0.05, 10);
     expect(point?.zeroValueExportKwh).toBeCloseTo(2, 10);
     expect(point?.zeroValueExportEur).toBeCloseTo(2 * 0.05, 10);
@@ -251,12 +292,41 @@ describe("priceSeriesRows", () => {
       ["2024-01-01T07"],
       tariff,
       new Map(),
+      BERLIN,
       (h) => {
         seen.push(h);
         return 1;
       },
     );
-    expect(seen.map((d) => d.getTime())).toEqual([new Date(2024, 0, 1, 7).getTime()]);
+    expect(seen.map((d) => d.toISOString())).toEqual(["2024-01-01T06:00:00.000Z"]);
+  });
+
+  test("§51 in a half-hour zone: the row is the UTC-aligned rollup hour it came from", () => {
+    // Rollup hours are UTC-aligned; in Kolkata the one whose local start hour is
+    // 13 starts at 13:30 IST = 08:00Z; in Adelaide (ACDT, +10:30) at 13:30 = 03:00Z.
+    const seen: Date[] = [];
+    const share = (h: Date) => {
+      seen.push(h);
+      return 0;
+    };
+    const one = (period: string, tz: string) =>
+      priceSeriesRows(
+        [row(period, "grid.out", 1, 13, 1)],
+        fieldByKey,
+        [period],
+        tariff,
+        new Map(),
+        tz,
+        share,
+      );
+    one("2024-01-01", "Asia/Kolkata");
+    one("2024-01-01", "Australia/Adelaide");
+    one("2024-01-01T13", "Asia/Kolkata");
+    expect(seen.map((d) => d.toISOString())).toEqual([
+      "2024-01-01T08:00:00.000Z",
+      "2024-01-01T03:00:00.000Z",
+      "2024-01-01T08:00:00.000Z",
+    ]);
   });
 
   test("rows for a period outside the zero-filled window are ignored", () => {
@@ -266,6 +336,7 @@ describe("priceSeriesRows", () => {
       ["2024-01-01"],
       tariff,
       standing,
+      BERLIN,
     );
     expect(points).toHaveLength(1);
     expect(points[0]?.importCost).toBe(0);

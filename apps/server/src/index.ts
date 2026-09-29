@@ -2,40 +2,22 @@ import { cors } from "@elysia/cors";
 import { openapi } from "@elysia/openapi";
 import { auth } from "@SunReye/auth";
 import { db } from "@SunReye/db";
-import { metricsRaw } from "@SunReye/db/schema/metrics";
-import { devices, metricKeys } from "@SunReye/db/schema/plants";
 import { user } from "@SunReye/db/schema/auth";
 import { env } from "@SunReye/env/server";
-import { and, count, desc, eq, getTableName, gte, sql } from "drizzle-orm";
+import { count, sql } from "drizzle-orm";
 import { CORS_METHODS } from "./shared/cors-methods";
 import { setupStaticTypebox } from "./shared/typebox-static";
 import { Elysia, t } from "elysia";
 import { autoHead } from "elysia/auto-head";
-import { type CostBucket, computeCost, computeCostSeries, resolveRange } from "./energy/cost";
-import { energySeries } from "./energy/energy";
 import { entitiesApi } from "./inverter/entities";
-import { ensureDevice, isRetired, readPlant } from "@SunReye/db/plant-repo";
-import { evccControl, evccSnapshot, rebuildEvcc, stopEvcc } from "./evcc/evcc";
-import { getEvccConfig } from "./settings/evcc-settings";
-import { loadpointDeviceSpec } from "./evcc/evcc-devices";
-import { metricIdOf } from "./shared/identity-sql";
-import { queryRecentBuckets, queryRollup } from "./shared/history";
-import { aggregateOfMetric, isRefusal, plantFoldFor, targetOf } from "./shared/plant-read";
-import { deviceScope } from "./shared/identity-sql";
-import { type SeriesSourceRequest, parseSeriesSource } from "./shared/plant-source";
-import { historyMembers, liveMembers, sourcesRoutes } from "./routes/sources";
-import { startPlantLive } from "./inverter/plant-live";
-import type { HistoryTier } from "./shared/history-horizon";
-import { refuseIncompleteRange } from "./shared/history-horizon-live";
+import { createSourceResolution } from "./shared/source-resolution";
+import { historyMembers, sourcesRoutes } from "./routes/sources";
 import { isPublicDashboard } from "./settings/access-settings";
-import { buildProfileContext, initProfiles } from "./inverter/inverter";
+import { initProfiles } from "./inverter/inverter";
+import { composePlant } from "./plant/plant-wiring";
 import { deviceRegistry } from "./devices/registry-instance";
-import { syncProvisioning } from "./inverter/provision-boot";
-import { reloadConnections, stopConnections } from "./devices/connection-runtime";
-import { seedMqttBroker } from "./settings/mqtt-broker-instance";
 import { WriteRejectedError } from "./inverter/control-writer";
 import { log, recentLogs, setupLogging } from "./shared/logging";
-import { plantClient } from "./shared/plant-client";
 import { requestLogger } from "./shared/request-log";
 import { createStreams } from "./shared/streams";
 import { initLogLevel } from "./settings/logging-settings";
@@ -52,6 +34,7 @@ import { profileRoutes } from "./routes/profiles";
 import { automationStreamSnapshot } from "./automation/automation";
 import { automationRoutes } from "./routes/automations";
 import { settingsRoutes } from "./routes/settings";
+import { historyRoutes } from "./routes/history";
 import { statisticsRoutes } from "./routes/statistics";
 import { wsRoutes } from "./routes/ws";
 import { createTopicAudience, publishTodayStatistics } from "./routes/ws-audience";
@@ -59,85 +42,9 @@ import { createTopicBackfill } from "./routes/ws-backfill";
 import { publishLiveTopics } from "./routes/ws-publish";
 import { topicAccessFrom } from "./routes/ws-subscribe";
 import { todayStatistics } from "./statistics/statistics";
-import * as runtime from "./inverter/runtime";
 import { loadAssets } from "./web/loaded";
 import { webRoutes } from "./web/static";
 import { compression } from "./shared/compression";
-
-// Shared query for the per-period series endpoints (cost + energy): an explicit
-// [from, to) window at a chosen bucket, plus an optional inverter override.
-const seriesQuery = t.Object({
-  from: t.String(),
-  to: t.String(),
-  bucket: t.Union([t.Literal("hour"), t.Literal("day"), t.Literal("month")]),
-  source: t.Optional(t.String()),
-  inverterId: t.Optional(t.String()),
-});
-const seriesArgs = async (q: {
-  from: string;
-  to: string;
-  bucket: CostBucket;
-  source?: string;
-  inverterId?: string;
-}) => ({
-  from: new Date(q.from),
-  to: new Date(q.to),
-  bucket: q.bucket,
-  inverterId: await energyTarget(q),
-});
-
-/** Default span of a rollup read without an explicit window, hours (one week). */
-const ROLLUP_DEFAULT_HOURS = 168;
-
-/**
- * The window a history read covers: an explicit `[from, to)` when the custom
- * date-range picker sent both bounds (a range ending in the past can't be
- * expressed as an hours-ago offset), else the open-ended hours-ago offset.
- */
-function historyWindow(q: { from?: string; to?: string; hours?: number }) {
-  if (q.from && q.to) return { from: new Date(q.from), to: new Date(q.to) };
-  return { since: new Date(Date.now() - (q.hours ?? ROLLUP_DEFAULT_HOURS) * 60 * 60 * 1000) };
-}
-
-/**
- * The tier a `bucket` query parameter reads. `month` is derived from the daily
- * tier, so it inherits the daily horizon.
- */
-const TIER_OF: Record<string, HistoryTier> = {
-  minute: "minute",
-  hour: "hour",
-  day: "day",
-  month: "day",
-};
-
-/**
- * Refuse a range this instance cannot answer COMPLETELY, or `undefined`.
- *
- * Applied to every range-taking read. The hazard is not the empty answer, it is
- * the PARTIAL one: a month-to-date figure whose window opens before the
- * retention horizon — or before a pending 1.2.0 migration's cutover — is a real
- * number computed over a fraction of the range it claims, rendered exactly like a
- * complete one. See `./shared/history-horizon.ts`; issue #154 is the same defect
- * with a different cause, and both are decided there.
- *
- * `422`, not `404` or `503`: the request is well-formed and the instance is
- * healthy — the RANGE is unanswerable, and the body carries the oldest instant
- * that is not, so a client can offer to clamp to it.
- */
-async function guardRange(
-  tier: HistoryTier,
-  range: { from: Date; to: Date },
-  status: (code: 422, body: unknown) => unknown,
-): Promise<unknown | undefined> {
-  const refusal = await refuseIncompleteRange(tier, range);
-  return refusal === null ? undefined : status(422, refusal);
-}
-
-/** The `[from, to)` a cost read covers: an explicit window, else a named range. */
-function costWindow(q: { from?: string; to?: string; range?: "today" | "month" | "year" }) {
-  if (q.from && q.to) return { from: new Date(q.from), to: new Date(q.to) };
-  return resolveRange(q.range ?? "month");
-}
 
 /** Charge modes EVCC accepts on a `mode/set` command. */
 const EVCC_MODES = ["off", "pv", "minpv", "now"];
@@ -206,145 +113,29 @@ const profile = await initProfiles();
 // 503 payload for a profile-dependent surface hit before onboarding is done.
 const ONBOARDING_REQUIRED = { error: "No active inverter profile — onboarding required" } as const;
 
-// Provision the dimension spine: the plant, and — once a profile is active — its
-// connection and the device every reading is FROM.
-//
-// This is what makes the write path able to store anything. `metrics_raw.device_id`
-// is a NOT NULL foreign key, so the writer resolves a device before inserting and,
-// finding none, drops the batch with one warning per source (see
-// ./inverter/storage-identity.ts). Until this call existed a fresh 2.0.0 install
-// recorded no history whatsoever.
-//
-// Before `runtime.start` below, deliberately: the first poll can land within a
-// second of boot, and a device that appears only after it would have cost that
-// sample. Idempotent, so every later boot adopts the same rows — never a second
-// plant, and never a renumbered device id, which would rebind five years of
-// readings to a different machine. Never throws.
-await syncProvisioning(profile);
-
-// The broker, carried from env into the spine ONCE — the MQTT counterpart of the
-// endpoint seed above (#217).
-//
-// `MQTT_BROKER_URL` / `MQTT_USERNAME` / `MQTT_PASSWORD` are documented
-// "seed only" env vars, and until now they seeded a FIELD of `app_settings.mqtt`.
-// The endpoint is a `connections` row now, so without this a docker install that
-// has always set `MQTT_BROKER_URL` would come up with the Home Assistant export
-// silently off. It creates rows this install has none of and never edits one it
-// has: a plant that already carries a broker — the one migration 0006 made — is
-// adopted, and a setting that already names a resolvable broker is untouched.
-//
-// AFTER provisioning, because the connection needs a plant to belong to, and
-// BEFORE `runtime.start` reads the export config to build its bridge.
-await seedMqttBroker();
-
-// The device roster, read AFTER provisioning created the rows and before any
-// route can serve a history read from it. `runtime.start` reloads it again (it
-// is idempotent) so a boot that never reaches the runtime — onboarding-only —
-// still has one.
-await deviceRegistry.reload();
-
-// The transports' context, built AFTER the roster exists — the one reason this
-// moved down from beside `initProfiles`.
-//
-// `/api/profile` serves a capability block, and that block now describes the
-// registered DEVICE (`deriveCapabilities` over the roles it binds) rather than
-// the boot profile object. For the only tier that exists today the two are the
-// same expression over the same metric list, which is the parity this step is
-// here to prove; what changes is that a tier with no register map at all (#88,
-// #172) has something to serve, and that a device binding less than its profile
-// describes stops claiming its profile's hardware.
-//
-// Identity and the metric catalog stay the profile's: a `ManifestMetric` carries
-// a topic, a label, a range and enum labels, and only an authored register map
-// states those. The primary inverter is the Phase 2b seam (`registry.primary`) —
-// one manifest for the plant is the answer this deliverable deliberately does
-// not revisit. It falls back to the profile when nothing registered, which is
-// the pre-registry answer unchanged.
-const ctx = profile ? buildProfileContext(profile, deviceRegistry.primary() ?? profile) : null;
+// The poll loop, the EVCC ingest, the connection probes and the plant runtime
+// over them, built once the bus exists (./plant/plant-wiring.ts). The plant's
+// lifecycle — provisioning, the broker seed, the roster, the transports'
+// context, the live fold and the Home Assistant discovery gate, in that order —
+// is ./plant/plant-runtime.ts's, where the order is tested. Its first half runs
+// here, before any route is built from the context it returns; `booted.start`
+// runs the second once the server is listening.
+const { plant, runtime, evcc, probes } = composePlant({ profile, streams });
+const booted = await plant.boot();
+const ctx = booted.ctx;
 const manifest = ctx?.manifest ?? null;
 
-/**
- * The device a history read means when the request names none.
- *
- * The registry's primary inverter, by `devices.slug` — the id every row is
- * written under. It used to be `profile.id`, which worked only because both
- * resolvers carry a transitional `profile_id` arm; a plant with two inverters
- * has no answer in that spelling at all.
- */
-const defaultSourceId = (): string | null => deviceRegistry.primary()?.id ?? null;
-
-/**
- * WHERE a read is from: `source=plant`, `source=<slug>`, the `inverterId` alias,
- * or — nothing named — the primary device, which is what every request meant
- * before the plant had a spelling (#202). A single-device plant reads the same
- * either way; the web chooses `plant` when there is more than one member.
- */
-const sourceRequest = (q: { source?: string; inverterId?: string }): SeriesSourceRequest | null => {
-  const named = parseSeriesSource(q);
-  if (named) return named;
-  const slug = defaultSourceId();
-  return slug ? { kind: "device", slug } : null;
-};
-
-/**
- * The energy readers' target for a request. Nothing named → the primary device
- * by SLUG, which is also what the live sample is stamped with, so the live
- * `*.today` override keeps matching; the profile-id default is only the
- * fallback of an install with no device row yet.
- */
-const energyTarget = async (q: { source?: string; inverterId?: string }) => {
-  const req = sourceRequest(q);
-  if (!req) return q.inverterId;
-  return targetOf(req, req.kind === "plant" ? await historyMembers() : []);
-};
+// WHERE a stored-data read is from: the named source, else the primary device.
+// See ./shared/source-resolution.
+const sources = createSourceResolution({
+  primarySlug: () => deviceRegistry.primary()?.id ?? null,
+  members: historyMembers,
+  metaByKey: ctx?.metaByKey ?? new Map(),
+});
 
 /** Today's statistics for the primary device — the slug the live sample carries. */
 const todayStatisticsForPrimary = (p: Parameters<typeof todayStatistics>[0]) =>
-  todayStatistics(p, defaultSourceId() ?? undefined);
-
-/** The role-derived aggregate of a metric key, through the plant's manifest. */
-const aggregateOf = aggregateOfMetric(ctx?.metaByKey ?? new Map());
-
-/** The metric readers' arguments for a request, or the plant-level refusal. */
-const metricReadArgs = async (req: SeriesSourceRequest, metric: string) =>
-  plantFoldFor(req, req.kind === "plant" ? await historyMembers() : [], metric, aggregateOf);
-
-// The plant's live reading, folded from every member's latest sample. Wired
-// before any `/ws` connection can subscribe, so the snapshot table below has
-// something to replay by the time the first dashboard asks.
-const plantLive = startPlantLive({ streams, members: liveMembers, aggregateOf });
-
-// HOLD HOME ASSISTANT DISCOVERY when a 1.x -> 2.0.0 migration has not been
-// through onboarding yet. Before the MQTT bridge starts, necessarily: the
-// announcement goes out inside MQTT's synchronous `connect` handler, which cannot
-// await a database read, so the flag has to be set before anything dials.
-//
-// A discovery announcement is retained and Home Assistant keys its entities on
-// `unique_id`. Announcing under the placeholder identity the migration
-// synthesises is therefore not something a later rename can take back, so it
-// waits for the operator's names — see ./migration/onboarding.ts. A no-op on
-// every install that never ran a 1.x upgrade, which is the important half: a gate
-// that engaged by accident looks exactly like a broken MQTT bridge.
-//
-// Never throws. A migration record that cannot be read must not stop the server
-// booting; the gate simply stays open, which is the state every healthy install
-// is in anyway.
-try {
-  const { readMigrationRecord } = await import("./migration/record");
-  const { migrationGateReason } = await import("./migration/onboarding");
-  const { holdDiscovery } = await import("./migration/discovery-gate");
-  const { log } = await import("./shared/logging");
-  const reason = migrationGateReason(await readMigrationRecord());
-  if (reason !== null) {
-    holdDiscovery(reason);
-    log("migration").warn("Home Assistant discovery is held: {reason}", { reason });
-  }
-} catch (error) {
-  const { log } = await import("./shared/logging");
-  log("migration").warn("could not read the migration record; discovery is not held: {error}", {
-    error: (error as Error).message,
-  });
-}
+  todayStatistics(p, sources.defaultSourceId() ?? undefined);
 
 /**
  * The two topics whose producers ask "is anyone actually watching" before doing
@@ -483,140 +274,9 @@ const app = new Elysia()
     },
     ({ status }) => manifest ?? status(503, ONBOARDING_REQUIRED),
   )
-  // Historical data (long form). Filter by metric / inverter; rollups live in
-  // TimescaleDB continuous aggregates, this reads the raw hypertable. The
-  // 720-hour cap is no longer the raw retention window — raw is kept 1825 days
-  // — it is a bound on the RESPONSE: this returns individual rows, and a span
-  // wide enough to matter is a rollup query. Longer spans go through
-  // /api/history/rollup, whose minute tier now reads the same raw rows,
-  // bucketed and time-weighted (apps/server/src/shared/rollup-sql.ts).
-  .get(
-    "/api/history",
-    {
-      requireSession: true,
-      query: t.Object({
-        hours: t.Number({ default: 24, minimum: 1, maximum: 720 }),
-        limit: t.Number({ default: 5000, minimum: 1, maximum: 50000 }),
-        metric: t.Optional(t.String()),
-        source: t.Optional(t.String()),
-        inverterId: t.Optional(t.String()),
-      }),
-    },
-    async ({ query, status }) => {
-      const since = new Date(Date.now() - query.hours * 60 * 60 * 1000);
-      const refused = await guardRange("raw", { from: since, to: new Date() }, status);
-      if (refused !== undefined) return refused;
-      const filters = [gte(metricsRaw.time, since)];
-      // Filtered BY id, resolved from the name the caller sent. `metric` and
-      // `source` stay the query vocabulary: the int2 is a storage detail, and an
-      // integer in a URL would be renumbered by a database restore. Absent, this
-      // route means EVERY device; `source=plant` narrows to the members' own rows
-      // (unfolded — the raw rows are per device by construction).
-      if (query.metric) filters.push(eq(metricsRaw.metricId, metricIdOf(query.metric)));
-      const req = parseSeriesSource(query);
-      if (req) {
-        const target = targetOf(req, req.kind === "plant" ? await historyMembers() : []);
-        filters.push(deviceScope(target, getTableName(metricsRaw)));
-      }
-      // An EXPLICIT projection, joining the two dimensions back to their names.
-      // This was `select *`, which after the 2.0.0 re-key would have started
-      // returning `deviceId: 3, metricId: 41` to every client of a documented
-      // endpoint — a silent wire-shape break, and two integers no consumer could
-      // interpret. The response keeps the field names it always had.
-      return db
-        .select({
-          time: metricsRaw.time,
-          inverterId: devices.slug,
-          metric: metricKeys.key,
-          value: metricsRaw.value,
-          durMs: metricsRaw.durMs,
-        })
-        .from(metricsRaw)
-        .innerJoin(devices, eq(devices.id, metricsRaw.deviceId))
-        .innerJoin(metricKeys, eq(metricKeys.id, metricsRaw.metricId))
-        .where(and(...filters))
-        .orderBy(desc(metricsRaw.time))
-        .limit(query.limit);
-    },
-  )
-  // Recent samples across all metrics, bucketed server-side and returned in the
-  // compact `{ t0, step, metrics: { key: { o, v } } }` form — used to backfill
-  // the client's in-memory live buffers so sparklines are populated immediately
-  // on page load instead of rebuilding over several minutes.
-  //
-  // There is no `limit` parameter by design. The row count is bounded
-  // structurally by the GROUP BY (`metricCount × (ceil(seconds / step) + 1)` —
-  // the `+ 1` because `time_bucket` is epoch-aligned, so an N-second window
-  // starting mid-bucket touches one bucket more than N/step). The old
-  // client-supplied cap sat on a global `order by time desc`, so it truncated
-  // the OLDEST samples of every metric at once — which is why the caller had to
-  // send 200000 to reach back five minutes at all.
-  .get(
-    "/api/history/recent",
-    {
-      requireSession: true,
-      query: t.Object({
-        seconds: t.Number({ default: 300, minimum: 1, maximum: 3600 }),
-        stepSeconds: t.Number({ default: 1, minimum: 1, maximum: 60 }),
-        source: t.Optional(t.String()),
-        inverterId: t.Optional(t.String()),
-      }),
-    },
-    async ({ query, status }) => {
-      const req = sourceRequest(query);
-      if (!req) return status(503, ONBOARDING_REQUIRED);
-      // The plant's backfill carries only the metrics that HAVE a plant value;
-      // a per-device metric is simply absent from it, the way it is absent from
-      // the plant's live reading.
-      const plant =
-        req.kind === "plant" ? { members: await historyMembers(), aggregateOf } : undefined;
-      return queryRecentBuckets({
-        inverterId: req.kind === "device" ? req.slug : "plant",
-        seconds: query.seconds,
-        stepSeconds: query.stepSeconds,
-        ...(plant ? { plant } : {}),
-      });
-    },
-  )
-  // Downsampled history for charts. Reads TimescaleDB continuous aggregates
-  // (`hourly_rollups` / `daily_rollups`) — pre-computed avg/max/min per
-  // (inverter, metric) bucket — so a multi-week chart stays cheap. Returns
-  // ascending time order (what charts expect). The views are created/refreshed
-  // by raw SQL in packages/db (timescale.sql), so they're queried via `sql`
-  // rather than a drizzle table.
-  .get(
-    "/api/history/rollup",
-    {
-      requireSession: true,
-      query: t.Object({
-        metric: t.String(),
-        source: t.Optional(t.String()),
-        inverterId: t.Optional(t.String()),
-        bucket: t.Optional(t.Union([t.Literal("minute"), t.Literal("hour"), t.Literal("day")])),
-        hours: t.Optional(t.Number({ minimum: 1 })),
-        from: t.Optional(t.String()),
-        to: t.Optional(t.String()),
-        limit: t.Number({ default: 5000, minimum: 1, maximum: 50000 }),
-      }),
-    },
-    async ({ query, status }) => {
-      const req = sourceRequest(query);
-      if (!req) return status(503, ONBOARDING_REQUIRED);
-      const bucket = query.bucket ?? "hour";
-      const window = historyWindow(query);
-      const refused = await guardRange(
-        TIER_OF[bucket] ?? "hour",
-        { from: window.from ?? window.since ?? new Date(), to: window.to ?? new Date() },
-        status,
-      );
-      if (refused !== undefined) return refused;
-      const args = await metricReadArgs(req, query.metric);
-      // A voltage, a phase, a status word: one machine's own state. The plant
-      // has no such value, and an empty series would draw as a flat zero.
-      if (isRefusal(args)) return status(422, args);
-      return queryRollup({ metric: query.metric, limit: query.limit, bucket, ...window, ...args });
-    },
-  )
+  // Stored-data reads: raw history, the live-buffer backfill, chart rollups,
+  // and the cost / energy series — see ./routes/history.
+  .use(historyRoutes({ profile, sources }))
   // Internal write pipeline for the (session-authed) web app. The write funnel
   // validates the key and value against the entity's metadata before touching
   // the inverter — the external `/api/v1` surface travels the same funnel.
@@ -670,7 +330,7 @@ const app = new Elysia()
     ({ body, status }) => {
       if (unknownEvccMode(body)) return status(400, { error: `Invalid mode "${body.value}"` });
       try {
-        evccControl(body.loadpoint, body.action, String(body.value));
+        evcc.control(body.loadpoint, body.action, String(body.value));
       } catch (err) {
         return status(503, { error: messageOf(err) });
       }
@@ -678,73 +338,21 @@ const app = new Elysia()
     },
   )
   // Runtime configuration (tariff, inverter, MQTT) + connection status.
-  .use(settingsRoutes)
+  .use(settingsRoutes({ plant, evcc, runtime, probes }))
   // Automations config + live engine status (peak shaving).
   .use(automationRoutes)
-  // Cost breakdown over a named range (today / month-to-date / year-to-date) or
-  // an explicit [from, to) window. Prices stored energy with the active tariff.
-  .get(
-    "/api/cost",
-    {
-      requireSession: true,
-      query: t.Object({
-        range: t.Optional(t.Union([t.Literal("today"), t.Literal("month"), t.Literal("year")])),
-        from: t.Optional(t.String()),
-        to: t.Optional(t.String()),
-        source: t.Optional(t.String()),
-        // fallow-ignore-next-line code-duplication -- dup:639f0435 — this is Elysia's handler preamble (an inverterId query field, then the onboarding-only 503 guard), shared with routes/battery.ts. Abstracting a route's signature to remove six lines would cost more clarity than the repetition does, and the guard is deliberately visible at every route that needs a profile.
-        inverterId: t.Optional(t.String()),
-      }),
-    },
-    async ({ query, status }) => {
-      if (!profile) return status(503, ONBOARDING_REQUIRED);
-      const { from, to } = costWindow(query);
-      // The named ranges are exactly the hazard: `month` and `year` open at a
-      // boundary that can precede the cutover, and the answer would be a real
-      // partial number labelled "month to date".
-      const refused = await guardRange("hour", { from, to }, status);
-      if (refused !== undefined) return refused;
-      return computeCost(profile, { from, to, inverterId: await energyTarget(query) });
-    },
-  )
-  // Net-cost time-series over an explicit [from, to) window, one point per
-  // `bucket` (hour / day / month). Feeds the Costs page's range-driven bar chart;
-  // band-accurate and cheap (delta + rollup done in SQL, bounded matrix returned).
-  .get(
-    "/api/cost/series",
-    { requireSession: true, query: seriesQuery },
-    async ({ query, status }) => {
-      if (!profile) return status(503, ONBOARDING_REQUIRED);
-      const args = await seriesArgs(query);
-      const refused = await guardRange(TIER_OF[query.bucket] ?? "day", args, status);
-      return refused ?? computeCostSeries(profile, args);
-    },
-  )
-  // Per-period energy split (grid-vs-solar consumption, self-consumed-vs-exported
-  // production) over the same window/bucket. Feeds the Costs page energy chart;
-  // derived at query time from the rollups, zero-filled so the x-axis stays stable.
-  .get(
-    "/api/energy/series",
-    { requireSession: true, query: seriesQuery },
-    async ({ query, status }) => {
-      if (!profile) return status(503, ONBOARDING_REQUIRED);
-      const args = await seriesArgs(query);
-      const refused = await guardRange(TIER_OF[query.bucket] ?? "day", args, status);
-      return refused ?? energySeries(profile, args);
-    },
-  )
   // Statistics-page aggregates (hour×weekday heatmap, …) over the same rollups.
-  .use(statisticsRoutes({ profile, target: energyTarget }))
+  .use(statisticsRoutes({ profile, target: sources.energyTarget }))
   .use(sourcesRoutes)
   // Profile management: registered list, repo sources, browse/install/activate.
   .use(batteryRoutes({ profile }))
   .use(profileRoutes)
   // The device roster: list, add on an existing or new gateway, rename, retire.
-  .use(deviceRoutes)
+  .use(deviceRoutes(plant))
   // The other half of the same page: what RUNS over those endpoints — the EVCC
   // ingest and the Home Assistant export as rows, plus the catalog the wizard
   // renders its add step from.
-  .use(integrationRoutes)
+  .use(integrationRoutes(plant))
   // User-defined custom charts for the history page (multi-metric overlays).
   .use(customChartsRoutes({ ctx }))
   // The 1.2.0 -> 2.0.0 migration's onboarding surface: the status every page load
@@ -752,7 +360,7 @@ const app = new Elysia()
   // correction, and "migrate history now / later".
   .use(migrationRoutes({ manifest }))
   // Admin-only maintenance: data reset + API-key administration.
-  .use(adminRoutes)
+  .use(adminRoutes(runtime))
   // The live socket: one connection carrying every topic, gated per subscribe
   // frame rather than per URL. It replaced five single-purpose /ws/* routes
   // (metrics, evcc, statistics, logs, automations), whose upgrade guards became
@@ -775,11 +383,11 @@ const app = new Elysia()
       // omission.
       backfill: createTopicBackfill({
         profile,
-        evccSnapshot,
+        evccSnapshot: evcc.snapshot,
         todayStatistics: todayStatisticsForPrimary,
         automationStreamSnapshot,
         recentLogs,
-        plantSnapshot: () => plantLive.snapshot(),
+        plantSnapshot: () => booted.plantLive.snapshot(),
       }),
     }),
   )
@@ -807,37 +415,12 @@ const app = new Elysia()
 // `.listen()` resolves.
 publishLiveTopics({ streams, publisher: () => app.server ?? undefined });
 
-// Start the runtime controller: it owns the poll loop, the live source, and the
-// MQTT bridge (all hot-reconfigurable). Each sample is emitted on the `metrics`
-// topic; persistence + MQTT publishing happen inside the controller. Skipped in
-// onboarding-only boot — there's no profile to poll yet.
-if (ctx) {
-  // The audience predicate: the engine's per-tick broadcast (and the plan
-  // projection built only for it) is skipped while no `/ws` connection holds
-  // the `automations` topic. Read per tick, never captured — a page opened an
-  // hour from now must start receiving frames on the very next tick.
-  runtime.start(streams, ctx, audience.automations);
-} else {
-  // No profile to poll — but the plant row exists (`syncProvisioning` creates it
-  // either way) and the EVCC registrar below is wired unconditionally, so rows
-  // still reach the write seam. `start` is what arms the flush cadence, so
-  // without this they would sit in the buffer until shutdown.
-  runtime.armStorage();
-}
-
-// THE CONNECTION TIER (#221): one client per `kind = 'mqtt'` row, owned by the
-// connection rather than by whatever happens to publish on it.
-//
-// AFTER `runtime.start`, and that order is deliberate. The Home Assistant export
-// declares a LAST WILL when it takes its client, and an LWT is a connect-time
-// property — a pass that had already opened the broker without one would have to
-// re-dial to add it, flapping a live broker on every boot. The export opens the
-// row it uses; this opens whatever is left, so a broker an operator has added but
-// not yet bound to anything can still be reported as reachable or not.
-//
-// BEFORE `rebuildEvcc`, so the ingest joins a client that already exists instead
-// of opening a second one on the same row. Never throws.
-await reloadConnections();
+// The second half of the plant's boot: the poll loop (or, with no profile, the
+// flush cadence alone), then the connection tier, then the EVCC ingest — see
+// ./plant/plant-runtime.ts for why in that order. The audience predicate lets
+// the engine skip its per-tick broadcast while no `/ws` connection holds the
+// `automations` topic; it is read per tick, never captured.
+await booted.start(audience.automations);
 
 // Measure the battery's usable capacity from the discharge segments in raw
 // history — one catch-up pass over the retention window, then a slow tick.
@@ -848,51 +431,6 @@ const stopBatteryScoring = startBatteryScoring(profile);
 // surface "update available" without the admin manually browsing. Independent
 // of the poll loop — runs even in onboarding-only boot.
 startUpdateChecks();
-
-// EVCC ingest (own MQTT client on the shared broker). Independent of the
-// inverter runtime — starts even in onboarding-only boot; no-op when disabled.
-// Each coalesced snapshot is emitted on the `evcc` topic (the bus is wired on
-// this boot rebuild); late/new subscribers get the current snapshot from the
-// socket's `open` handler instead.
-//
-// The second argument is the path from a loadpoint to `metrics_raw`: a device
-// row per loadpoint, then the runtime's ONE wired writer. Before it, nothing
-// under `src/evcc/` wrote to the hypertable at all — charge power and session
-// energy were live-feed only, with no history, no rollups and no statistics.
-// Assembled here because it is composition: the ingest owns none of these.
-void rebuildEvcc(streams, {
-  async ensureDevice(_id, index, title) {
-    const client = plantClient();
-    const plant = await readPlant(client);
-    // Onboarding-only boot: EVCC ingest starts before there is a plant to hang a
-    // device on. The live feed runs; storage starts on the next snapshot after
-    // provisioning.
-    if (!plant) return "absent";
-    // The loadpoint is bound to EVCC's OWN broker connection (#217), and its
-    // topic root travels onto the row. Read here rather than captured at boot
-    // because a settings save may have re-pointed either one, and a row created
-    // against the previous broker would sit on an endpoint nothing subscribes to.
-    const config = await getEvccConfig();
-    const row = await ensureDevice(
-      client,
-      loadpointDeviceSpec(plant.id, index, title, {
-        connectionId: config.connectionId,
-        topicRoot: config.topicRoot,
-      }),
-    );
-    // RETIRED IS NOT REGISTERED. `ensureDevice` is `ON CONFLICT DO NOTHING` +
-    // SELECT, so it answers "the row is there" for a row the operator retired
-    // in Settings → Devices — while the roster read excludes retired rows. The
-    // registrar has to be told the difference or it waits for an instance that
-    // is never coming.
-    return isRetired(row) ? "retired" : "ready";
-  },
-  reloadRegistry: async () => void (await deviceRegistry.reload()),
-  device: (id) => deviceRegistry.get(id),
-  commit: runtime.commit,
-  forgetDevice: runtime.forgetDevice,
-  logger: log("evcc"),
-});
 
 // Statistics stream: republish today's figures on a slow tick; the runtime
 // signals the same topic whenever a price sync stores fresh slots. The tick
@@ -914,12 +452,8 @@ for (const signal of ["SIGINT", "SIGTERM"] as const) {
   process.on(signal, async () => {
     stopBatteryScoring();
     stopUpdateChecks();
-    await stopEvcc();
-    await runtime.stop();
-    // LAST: both consumers release their hold first, so this closes the sockets
-    // that are genuinely left rather than yanking one out from under a bridge
-    // still publishing its "offline" availability.
-    await stopConnections();
+    // EVCC, the poll loop, then the connection tier — ./plant/plant-runtime.ts.
+    await plant.stop();
     process.exit(0);
   });
 }

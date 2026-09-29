@@ -5,7 +5,6 @@ import {
   deltaFor,
   formatDelta,
   pricedWindow,
-  referenceWindow,
   usableComparison,
   windowDays,
 } from "./compare";
@@ -78,109 +77,56 @@ describe("baselineLabel", () => {
   });
 });
 
-describe("referenceWindow", () => {
-  test("previous is the adjacent same-length window", () => {
-    const from = new Date("2026-07-01T00:00:00.000Z");
-    const to = new Date("2026-07-08T00:00:00.000Z");
-    const ref = referenceWindow(from, to, "previous");
-    expect(ref.from.toISOString()).toBe("2026-06-24T00:00:00.000Z");
-    expect(ref.to.toISOString()).toBe(from.toISOString());
-  });
-
-  test("yearAgo shifts the calendar window back one year", () => {
-    const from = new Date(2026, 6, 1);
-    const to = new Date(2026, 7, 1);
-    const ref = referenceWindow(from, to, "yearAgo");
-    expect(ref.from.getFullYear()).toBe(2025);
-    expect(ref.from.getMonth()).toBe(6);
-    expect(ref.to.getFullYear()).toBe(2025);
-  });
-
-  test("previous keeps the length of a window that starts mid-day", () => {
-    // The range picker hands over local midnights, but a "last 24 h" style
-    // window can start at any hour — the reference has to be the same length,
-    // not the same calendar day.
-    const from = new Date(2026, 6, 3, 14, 30);
-    const to = new Date(2026, 6, 4, 6, 15);
-    const ref = referenceWindow(from, to, "previous");
-    expect(ref.to.getTime()).toBe(from.getTime());
-    expect(ref.to.getTime() - ref.from.getTime()).toBe(to.getTime() - from.getTime());
-    expect(ref.from.getHours()).toBe(22);
-  });
-
-  test("previous of a single day is the day before it", () => {
-    const from = new Date(2026, 6, 3);
-    const to = new Date(2026, 6, 4);
-    const ref = referenceWindow(from, to, "previous");
-    expect(ref.from.getDate()).toBe(2);
-    expect(ref.to.getDate()).toBe(3);
-  });
-
-  test("leaves the picked range untouched", () => {
-    // Both branches build new Dates; shifting the caller's own range in place
-    // would move the window the page is showing.
-    const from = new Date(2026, 6, 1);
-    const to = new Date(2026, 7, 1);
-    referenceWindow(from, to, "yearAgo");
-    referenceWindow(from, to, "previous");
-    expect(from.getFullYear()).toBe(2026);
-    expect(to.getFullYear()).toBe(2026);
-  });
-
-  test("a leap day a year back lands on March 1, exactly as the server prices it", () => {
-    // Mirrors `previousWindow` in statistics-calc.ts: 2024-02-29 has no 2023
-    // counterpart, so the shift rolls into March. What matters is that both
-    // sides roll the same way — the client's coverage check must be testing the
-    // window the server actually compared against.
-    const ref = referenceWindow(new Date(2024, 1, 29), new Date(2024, 2, 1), "yearAgo");
-    expect(ref.from.getFullYear()).toBe(2023);
-    expect(ref.from.getMonth()).toBe(2);
-    expect(ref.from.getDate()).toBe(1);
-  });
-});
-
 describe("usableComparison", () => {
-  const reference = { from: new Date("2026-06-01T00:00:00.000Z") };
-  const payload = (dataFrom: string | null) =>
+  // The reference window is the one the SERVER priced, echoed in the payload:
+  // it shifts a year on the plant's calendar, which this browser cannot know.
+  const payload = (dataFrom: string | null, referenceFrom = "2026-06-01T00:00:00.000Z") =>
     ({
       mode: "previous",
       current: { net: 20 },
       previous: { net: 30 },
+      reference: { from: referenceFrom, to: "2026-06-08T00:00:00.000Z" },
       coverage: { dataFrom },
     }) as unknown as ComparisonResponse;
 
   test("keeps the reference once history starts at or before it", () => {
-    expect(usableComparison(payload("2026-05-01T00:00:00.000Z"), reference).previous).toMatchObject(
-      { net: 30 },
-    );
-    expect(
-      usableComparison(payload("2026-06-01T00:00:00.000Z"), reference).previous,
-    ).not.toBeNull();
+    expect(usableComparison(payload("2026-05-01T00:00:00.000Z")).previous).toMatchObject({
+      net: 30,
+    });
+    expect(usableComparison(payload("2026-06-01T00:00:00.000Z")).previous).not.toBeNull();
   });
 
   test("drops a reference window that predates recorded history", () => {
-    expect(usableComparison(payload("2026-06-15T00:00:00.000Z"), reference)).toMatchObject({
+    expect(usableComparison(payload("2026-06-15T00:00:00.000Z"))).toMatchObject({
       current: { net: 20 },
       previous: null,
     });
-    expect(usableComparison(payload(null), reference).previous).toBeNull();
+    expect(usableComparison(payload(null)).previous).toBeNull();
+  });
+
+  test("judges coverage by the window the server priced, not one the page derives", () => {
+    // A year-ago window on an Auckland plant starts at 12:00Z, an hour after
+    // what browser-local Date math gives. History starting at 11:30Z covers
+    // the server's window and must keep the chips.
+    const auckland = payload("2025-09-27T11:30:00.000Z", "2025-09-27T12:00:00.000Z");
+    expect(usableComparison(auckland).previous).not.toBeNull();
   });
 
   test("has nothing at all without a payload", () => {
-    expect(usableComparison(null, reference)).toEqual({ current: null, previous: null });
+    expect(usableComparison(null)).toEqual({ current: null, previous: null });
   });
 
   test("drops the reference when history starts a single millisecond too late", () => {
-    expect(usableComparison(payload("2026-06-01T00:00:00.001Z"), reference).previous).toBeNull();
+    expect(usableComparison(payload("2026-06-01T00:00:00.001Z")).previous).toBeNull();
   });
 
   test("keeps the current window even when the reference is unusable", () => {
     // The window the reader picked is real data; only the chips go away.
-    expect(usableComparison(payload(null), reference).current).toMatchObject({ net: 20 });
+    expect(usableComparison(payload(null)).current).toMatchObject({ net: 20 });
   });
 
   test("suppresses the chips on an unreadable history start", () => {
-    expect(usableComparison(payload("not-a-date"), reference).previous).toBeNull();
+    expect(usableComparison(payload("not-a-date")).previous).toBeNull();
   });
 });
 
@@ -230,6 +176,15 @@ describe("windowDays", () => {
     expect(windowDays(day, day)).toBe(1);
     expect(windowDays(new Date(2026, 7, 1), new Date(2026, 6, 1))).toBe(1);
   });
+
+  test("counts the PLANT's days when given its zone, not the viewer's", () => {
+    // Berlin Aug 1 00:00 → Aug 21 03:00 touches 21 Berlin days. Read on a UTC
+    // clock (a UTC browser) it runs Jul 31 → Aug 21 and would caption 22.
+    const from = new Date("2026-07-31T22:00:00Z");
+    const to = new Date("2026-08-21T01:00:00Z");
+    expect(windowDays(from, to, "Europe/Berlin")).toBe(21);
+    expect(windowDays(from, to, "UTC")).toBe(22);
+  });
 });
 
 describe("pricedWindow", () => {
@@ -251,18 +206,9 @@ describe("pricedWindow", () => {
     expect(pricedWindow(july, now)).toEqual(july);
   });
 
-  test("keeps the reference window length-matched to what was actually priced", () => {
-    // The two have to be derived from the SAME window or the comparison is
-    // between windows of different lengths — which is the bug above, one layer
-    // down.
-    const priced = pricedWindow({ from: new Date(2026, 7, 1), to: new Date(2026, 8, 1) }, now);
-    const reference = referenceWindow(priced.from, priced.to, "previous");
-    expect(windowDays(reference.from, reference.to)).toBe(windowDays(priced.from, priced.to));
-  });
-
   test("does not invert a window that has not started yet", () => {
     // A custom range picked entirely in the future would otherwise come back
-    // with `to` before `from`, and `referenceWindow` would hand the server a
+    // with `to` before `from`, and the server would price a
     // negative-length reference.
     const future = { from: new Date(2026, 7, 10), to: new Date(2026, 7, 12) };
     expect(pricedWindow(future, now)).toEqual(future);

@@ -1,46 +1,53 @@
 <script lang="ts">
-	import { type DeviceActionId, actionsFor } from './device-actions-logic';
+	import * as m from '$lib/paraglide/messages';
+	import { ACTION_LABEL, type DeviceActionId, actionsFor } from './device-actions-logic';
 	import DeviceActionButton from './device-action-button.svelte';
-	import type { DeviceView } from './device-types';
+	import type { DeviceHandlers, DeviceView } from './device-types';
+	import RowOverflowMenu, { type OverflowItem } from './row-overflow-menu.svelte';
 
-	// The controls a row offers. WHICH ones, and in what order, is decided in
-	// `./device-actions-logic.ts` — a rule with boundaries (a retired row, the
-	// polled row, an integration with no page of its own) belongs somewhere a
-	// test can reach it, not in an `{#if}` chain. Each control renders itself.
+	// The controls a row offers. WHICH ones, in what order and which one is
+	// visible is decided in `./device-actions-logic.ts`; this renders the primary
+	// one as a button and the rest into the row's overflow menu.
 	//
 	// The split that matters: EDIT opens the addressing dialog (gateway, unit id,
 	// profile) and only a Modbus row has any of those; RENAME opens the name-only
 	// dialog, which is exactly what the narrowed server gate allows on a coded or
-	// a virtual row (#219). Before that narrowing those rows offered a link and
-	// nothing else — an EVCC loadpoint could not be renamed at all.
+	// a virtual row (#219).
 	let {
 		device,
 		busy,
-		onEdit,
-		onRename,
-		onRetire,
-		onRestore
+		handlers
 	}: {
 		device: DeviceView;
 		busy: boolean;
-		onEdit: (device: DeviceView) => void;
-		onRename: (device: DeviceView) => void;
-		onRetire: (device: DeviceView) => void;
-		onRestore: (device: DeviceView) => void;
+		handlers: DeviceHandlers;
 	} = $props();
 
-	const RUN: Record<DeviceActionId, (device: DeviceView) => void> = {
-		restore: onRestore,
-		edit: onEdit,
-		rename: onRename,
-		retire: onRetire
-	};
+	const run = (id: DeviceActionId) => handlers[id](device);
 
 	const actions = $derived(actionsFor(device));
+	const primary = $derived(actions.find((a) => a.placement === 'primary'));
+	const menu = $derived<OverflowItem[]>(
+		actions
+			.filter((a) => a.placement === 'menu')
+			.map((a) => ({
+				id: a.id,
+				label: ACTION_LABEL[a.id](),
+				destructive: a.id === 'delete',
+				disabled: a.blocked,
+				hint: a.blocked ? m.devices_polled_blocked_hint() : undefined,
+				onSelect: () => run(a.id)
+			}))
+	);
 </script>
 
-<div class="flex shrink-0 flex-wrap items-center gap-2">
-	{#each actions as action (action.id)}
-		<DeviceActionButton {action} {busy} onclick={() => RUN[action.id](device)} />
-	{/each}
+<div class="flex shrink-0 items-center gap-1">
+	{#if primary}
+		<DeviceActionButton action={primary} {busy} onclick={() => run(primary.id)} />
+	{/if}
+	<RowOverflowMenu
+		label={m.devices_more_actions({ name: device.name })}
+		items={menu}
+		disabled={busy}
+	/>
 </div>

@@ -4,6 +4,7 @@ import {
   type SourcesResponse,
   acceptsMetricsFrame,
   offersChoice,
+  plantTimeZone,
   resolveSaved,
   shownUnder,
   sourceMenu,
@@ -12,18 +13,21 @@ import {
 } from "./source";
 
 const two: SourcesResponse = {
-  plant: { members: ["a", "b"] },
+  plant: { members: ["a", "b"], timeZone: "Europe/Berlin" },
   devices: [
-    { slug: "a", name: "East", role: "inverter", retired: false, member: true },
-    { slug: "b", name: "West", role: "inverter", retired: false, member: true },
+    { slug: "a", name: "East", profileId: "p", role: "inverter", retired: false, member: true },
+    { slug: "b", name: "West", profileId: "p", role: "inverter", retired: false, member: true },
   ],
 };
-const one: SourcesResponse = { plant: { members: ["a"] }, devices: [two.devices[0]!] };
+const one: SourcesResponse = {
+  plant: { members: ["a"], timeZone: "Europe/Berlin" },
+  devices: [two.devices[0]!],
+};
 const retiredTwin: SourcesResponse = {
-  plant: { members: ["a", "old"] },
+  plant: { members: ["a", "old"], timeZone: "Europe/Berlin" },
   devices: [
     two.devices[0]!,
-    { slug: "old", name: "Old", role: "inverter", retired: true, member: true },
+    { slug: "old", name: "Old", profileId: "p", role: "inverter", retired: true, member: true },
   ],
 };
 
@@ -142,11 +146,21 @@ describe("acceptsMetricsFrame", () => {
 
   test("a frame stamped with the device's PROFILE id — what the driver sends — counts too", () => {
     const sources: SourcesResponse = {
-      plant: { members: ["a"] },
+      plant: { members: ["a"], timeZone: "Europe/Berlin" },
       devices: [{ ...two.devices[0]!, profileId: "deye-sun" }],
     };
     expect(acceptsMetricsFrame("a", "deye-sun", sources)).toBe(true);
     expect(acceptsMetricsFrame("a", "other-profile", sources)).toBe(false);
     expect(acceptsMetricsFrame("a", "deye-sun", null)).toBe(false);
+  });
+});
+
+describe("plantTimeZone", () => {
+  test("is the zone the server buckets the plant's days in", () => {
+    expect(plantTimeZone(two, "America/New_York")).toBe("Europe/Berlin");
+  });
+
+  test("falls back to the viewer's zone only while the list is unknown", () => {
+    expect(plantTimeZone(null, "America/New_York")).toBe("America/New_York");
   });
 });
