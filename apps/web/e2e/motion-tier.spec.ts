@@ -32,6 +32,33 @@ async function withMotion(page: import("@playwright/test").Page, value: string):
   }, value);
 }
 
+/**
+ * Make the page a device that holds its frames, BY CONSTRUCTION.
+ *
+ * Every real frame hands its rAF callbacks a timestamp exactly one 60 Hz frame
+ * after the previous one, however long the runner actually took to produce it;
+ * callbacks in the same real frame share it, as in a browser. The frame watch
+ * reads nothing else. Without this, "a machine that can afford the diagram" was
+ * whatever machine ran the spec, and a CI shard contended by its neighbours is
+ * not one: it dropped frames, the watch rightly stepped down, and the spec went
+ * red on a heuristic doing its job.
+ */
+async function withSteadyFrames(page: import("@playwright/test").Page): Promise<void> {
+  await page.addInitScript(() => {
+    const real = window.requestAnimationFrame.bind(window);
+    let lastReal: number | null = null;
+    let steady = 0;
+    window.requestAnimationFrame = (callback) =>
+      real((ts) => {
+        if (ts !== lastReal) {
+          steady = lastReal === null ? ts : steady + 1000 / 60;
+          lastReal = ts;
+        }
+        callback(steady);
+      });
+  });
+}
+
 const comets = (page: import("@playwright/test").Page) => page.locator("animateMotion");
 const dashes = (page: import("@playwright/test").Page) => page.locator("path.lite-flow");
 
@@ -131,6 +158,7 @@ test("auto leaves a device that IS holding its frames alone", async ({ page }) =
   // fail: a machine that can afford the diagram keeps it. An unasked-for
   // downgrade is as much a bug as the stutter it was meant to remove.
   await withMotion(page, "auto");
+  await withSteadyFrames(page);
   await openPage(page, "/");
   // Past the settle delay and several windows — the watch has judged and given
   // up by now (it is bounded, so a quiet kiosk is not held at 60 Hz forever).
