@@ -2,7 +2,7 @@
 
 ## [unreleased]
 
-Unreleased work on `dev` since 3.5.0, shipped in `beta.20260928-71aa9a0`.
+Unreleased work on `dev` since 3.5.0, shipped in `beta.20260929-258982b`.
 
 
 ### Features
@@ -19,6 +19,8 @@ Unreleased work on `dev` since 3.5.0, shipped in `beta.20260928-71aa9a0`.
 
 ### Bug Fixes
 
+* **e2e:** prove the healthy-device motion case on a steady frame clock ([cf31f09](https://github.com/SunReye/SunReye/commit/cf31f09fe3f8a1549ba9b613b7689e5fb0ce94f1))
+* **test:** keep profiles.ts coverage independent of file order ([9cae53c](https://github.com/SunReye/SunReye/commit/9cae53c8e6ac51839519e73c78957caedf46b04c))
 * **web:** lift toasts above the pinned setup footer ([5a7601b](https://github.com/SunReye/SunReye/commit/5a7601b74a2f1afb9fe138e061f1f01cf63983fd))
 * **web:** ring the range calendar's today in the plant's zone ([89a030b](https://github.com/SunReye/SunReye/commit/89a030b700a0ad0cee98e278e1d5cc3123eaca2e))
 * **web:** open the range calendar on the plant's month ([c6469d2](https://github.com/SunReye/SunReye/commit/c6469d29964bf2295360ddc57ddc1b4a7409586e))
@@ -60,6 +62,7 @@ Unreleased work on `dev` since 3.5.0, shipped in `beta.20260928-71aa9a0`.
 
 * **adr:** record why AutomationIO stays wide ([7cfdd75](https://github.com/SunReye/SunReye/commit/7cfdd75ed91f14d7f661f1e39f126140971fb78f))
 * add a domain glossary ([f7138a9](https://github.com/SunReye/SunReye/commit/f7138a974f3a58b64a925a84148487e3c9238f71))
+* record that a flashed image writes no NVRAM boot entry ([6363936](https://github.com/SunReye/SunReye/commit/636393625c6a8dae0844427e682ae718a375b34c))
 
 
 ### Code Refactoring
@@ -80,6 +83,7 @@ Unreleased work on `dev` since 3.5.0, shipped in `beta.20260928-71aa9a0`.
 
 ### Tests
 
+* bring line coverage back over the 99 % floor ([75ddfeb](https://github.com/SunReye/SunReye/commit/75ddfebab8aa2cca0063344aaa88c0202f762c6d))
 * **web:** pin that canvas series resolve their theme colour ([b96e36f](https://github.com/SunReye/SunReye/commit/b96e36ff75bcd7b4ea2717690de9d2d707fe7beb))
 * **server:** pin statistics fixtures to explicit zones, not process.env.TZ ([59248a9](https://github.com/SunReye/SunReye/commit/59248a94fbd4160831194f341e83748f55e9249c))
 
