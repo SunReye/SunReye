@@ -116,6 +116,13 @@ changed again. The archive names devices and metrics the way the API and your Ho
 entities already do, and refers to no internal id, which is why an upgrade like this one should not
 be needed again.
 
+## [3.6.1](https://github.com/SunReye/SunReye/compare/addon-v3.6.0...addon-v3.6.1) (2026-09-30)
+
+
+### Miscellaneous Chores
+
+* **addon:** Synchronize sunreye-stack versions
+
 ## [3.6.0](https://github.com/SunReye/SunReye/compare/addon-v3.5.0...addon-v3.6.0) (2026-09-29)
 
 

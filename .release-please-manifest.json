@@ -1,6 +1,6 @@
 {
-  ".": "3.6.0",
+  ".": "3.6.1",
   "packages/inverter-core": "1.5.0",
   "packages/profile-sdk": "3.1.4",
-  "sunreye": "3.6.0"
+  "sunreye": "3.6.1"
 }
