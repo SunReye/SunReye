@@ -231,10 +231,12 @@ function loadBottom(
 ): BottomSpec | null {
   if (!loadVisible(has)) return null;
   const { value, label } = homeBottom(power("load.power"), charger);
+  // Negative when an unmetered producer on the house net (a micro-inverter behind
+  // the grid CT) outweighs consumption: the house is net exporting.
   const s = sense(
     value,
     { flow: "out", state: m.flow_consuming() },
-    { flow: "out", state: m.flow_consuming() },
+    { flow: "in", state: m.flow_exporting() },
   );
   return {
     id: "load",
