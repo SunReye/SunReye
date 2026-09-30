@@ -1,13 +1,6 @@
 # Changelog
 
-## [unreleased]
-
-Unreleased work on `dev` since 3.6.0, shipped in `beta.20260930-ca3f8e5`.
-
-
-### Bug Fixes
-
-* **web:** show a negative house load as exporting ([76e65ff](https://github.com/SunReye/SunReye/commit/76e65ff45f88a3121a5cce443cc19673585cf27f))
+No unreleased changes on `dev`; `beta.20260930-711e902` matches the last release.
 
 <!--
   This preamble is hand-written and version-independent. release-please owns the
@@ -124,6 +117,14 @@ What to do, if you maintain a shared source:
 changed again. The archive names devices and metrics the way the API and your Home Assistant
 entities already do, and refers to no internal id, which is why an upgrade like this one should not
 be needed again.
+
+## [3.6.1](https://github.com/SunReye/SunReye/compare/addon-v3.6.0...addon-v3.6.1) (2026-09-30)
+
+
+### Bug Fixes
+
+* **web:** show a negative house load as exporting ([ca3f8e5](https://github.com/SunReye/SunReye/commit/ca3f8e5d10e6a74879de2c6967bb834c9e31c4ed))
+* **web:** show a negative house load as exporting ([76e65ff](https://github.com/SunReye/SunReye/commit/76e65ff45f88a3121a5cce443cc19673585cf27f))
 
 ## [3.6.0](https://github.com/SunReye/SunReye/compare/addon-v3.5.0...addon-v3.6.0) (2026-09-29)
 
