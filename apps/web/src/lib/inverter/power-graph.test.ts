@@ -170,6 +170,25 @@ describe("buildPowerGraph", () => {
     expect(g.nodes.map((n) => n.kind)).toContain("load");
   });
 
+  test("a negative house load reads as exporting, flowing into the hub", () => {
+    // An unmetered producer between the inverter and the grid CT (a micro-inverter
+    // on the house net) outweighs consumption: Deye reports load as the net.
+    const g = buildPowerGraph(caps({}), powerFrom({ "load.power": -640 }));
+    const load = g.nodes.find((n) => n.kind === "load");
+    expect(load?.value).toBe(-640);
+    expect(load?.flow).toBe("in");
+    expect(load?.state).toBe("Exporting");
+    expect(g.segments.find((s) => s.id === "load-hub")?.flow).toBe("in");
+  });
+
+  test("a positive house load still reads as consuming", () => {
+    const load = buildPowerGraph(caps({}), powerFrom({ "load.power": 640 })).nodes.find(
+      (n) => n.kind === "load",
+    );
+    expect(load?.flow).toBe("out");
+    expect(load?.state).toBe("Consuming");
+  });
+
   test("no load metric, no home node — the capability never stood in for one", () => {
     const g = buildPowerGraph(
       caps({ backupLoad: true, grid: true }),
