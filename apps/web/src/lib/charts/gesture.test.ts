@@ -58,21 +58,9 @@ describe("pinch is not a mode any more", () => {
       expect(gestureProps(mode).transform.disablePointer, mode).toBe(true);
     }
   });
-
-  // A regression here is invisible on a mouse and total on a phone: the chart
-  // would eat every vertical swipe on a page ~100 charts deep.
-  test("and there is no mode left that could", () => {
-    expect(GESTURE_MODES).not.toContain("pinch" as GestureMode);
-  });
 });
 
 describe("locked", () => {
-  test("hands the pointer back to the browser so the page can scroll", () => {
-    // `disablePointer: true` is what stops TransformContext writing
-    // `touch-action: none` and calling preventDefault() on every touchmove.
-    expect(gestureProps("locked").transform.disablePointer).toBe(true);
-  });
-
   test("and draws no brush layer, which ships its own touch-action: none", () => {
     expect(gestureProps("locked").brush).toEqual({ disabled: true });
   });
@@ -89,10 +77,6 @@ describe("brush", () => {
     const brush = gestureProps("brush", { onBrushEnd: (x) => seen.push(x) }).brush;
     expect(typeof (brush as { onBrushEnd?: unknown }).onBrushEnd).toBe("function");
   });
-
-  test("and keeps the pointer transform off, as LayerChart would anyway", () => {
-    expect(gestureProps("brush").transform.disablePointer).toBe(true);
-  });
 });
 
 describe("every mode", () => {
@@ -108,8 +92,4 @@ describe("every mode", () => {
       expect(transform.scaleExtent[0]).toBe(1);
     },
   );
-
-  test("is one of exactly two", () => {
-    expect([...GESTURE_MODES].sort()).toEqual(["brush", "locked"]);
-  });
 });

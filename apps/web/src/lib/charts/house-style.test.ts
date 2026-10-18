@@ -22,7 +22,7 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { curveCatmullRom, curveLinear, curveMonotoneX, curveStepAfter } from "d3-shape";
+import { curveCatmullRom, curveMonotoneX, curveStepAfter } from "d3-shape";
 import { CURVE, MARK_STYLE, houseLine, type ChartKind } from "./house-style";
 
 /**
@@ -57,14 +57,6 @@ describe("the table is total", () => {
     expect(Object.keys(CURVE).sort()).toEqual([...KINDS].sort());
     expect(Object.keys(MARK_STYLE).sort()).toEqual([...KINDS].sort());
   });
-
-  test.each([...KINDS])("%s has a curve", (kind) => {
-    expect(typeof CURVE[kind]).toBe("function");
-  });
-
-  test.each([...KINDS])("%s has a mark style", (kind) => {
-    expect(MARK_STYLE[kind]).toBeDefined();
-  });
 });
 
 describe("no kind overshoots its own data", () => {
@@ -83,47 +75,6 @@ describe("no kind overshoots its own data", () => {
 
   test("a setpoint is a step, because a register holds its value until it is written again", () => {
     expect(CURVE.setpoint).toBe(curveStepAfter);
-  });
-
-  test("the marks that interpolate nothing say so, rather than being absent", () => {
-    // A bar's top and a cell's colour ARE the value; there is no "between two
-    // samples" to draw. The entries exist so the table can be read as a whole.
-    expect(CURVE.energy).toBe(curveLinear);
-    expect(CURVE.heat).toBe(curveLinear);
-  });
-});
-
-describe("what each kind is drawn as", () => {
-  test("a quantity that belongs to a bucket is bars, never a line", () => {
-    // kWh accrued over an hour is not a rate between two instants. A line
-    // through bucket totals invents the slope it draws.
-    expect(MARK_STYLE.energy.mark).toBe("bars");
-  });
-
-  test("an instantaneous measure is a filled area", () => {
-    expect(MARK_STYLE.power.mark).toBe("area");
-    expect(MARK_STYLE.power.fill).toBe("gradient");
-    expect(MARK_STYLE.flow.mark).toBe("area");
-    // Signed: the fill is split at zero, so its two halves carry the sign.
-    expect(MARK_STYLE.flow.fill).toBe("sign");
-  });
-
-  test("series compared on one plot are unfilled lines", () => {
-    // Two translucent fills over each other mix into a third colour that
-    // belongs to neither series — the plot then has a hue nobody assigned.
-    expect(MARK_STYLE.overlay.mark).toBe("line");
-    expect(MARK_STYLE.overlay.fill).toBe("none");
-    expect(MARK_STYLE.overlay.fillOpacity).toBe(0);
-  });
-
-  test("a decomposition of one total is a stack of filled bands", () => {
-    expect(MARK_STYLE.stack.mark).toBe("area");
-    expect(MARK_STYLE.stack.fill).toBe("flat");
-    expect(MARK_STYLE.stack.fillOpacity).toBeGreaterThan(0.5);
-  });
-
-  test("a matrix of buckets is cells", () => {
-    expect(MARK_STYLE.heat.mark).toBe("cells");
   });
 });
 

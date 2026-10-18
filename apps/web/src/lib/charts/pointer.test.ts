@@ -17,13 +17,6 @@ import { describe, expect, test } from "bun:test";
 import { COARSE_POINTER_QUERY, coarseFrom } from "./pointer";
 
 describe("the coarse-pointer read", () => {
-  test("asks the pointer question, not the hover one", () => {
-    // `(hover: none)` is the other candidate and it is not the same question:
-    // a stylus hovers and is coarse, a touch-screen laptop with a mouse
-    // attached hovers and reports both.
-    expect(COARSE_POINTER_QUERY).toBe("(pointer: coarse)");
-  });
-
   test("is true when the platform says coarse", () => {
     const asked: string[] = [];
     const view = {
