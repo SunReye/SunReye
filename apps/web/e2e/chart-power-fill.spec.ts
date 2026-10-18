@@ -10,11 +10,9 @@
  * The previous pass converged them by hand, and `fallow dupes` then reported the
  * two blocks as character-for-character identical — which is what "converged by
  * hand" means: one decision living in two files, waiting to drift back. They now
- * render one component (`power-area.svelte`); the census in
- * `src/lib/charts/house-style-wiring.test.ts` is what holds that.
+ * render one component (`power-area.svelte`).
  *
- * This is the half that census cannot see. Source text says which component the
- * charts render; only a browser says what came out of it — that the gradient is
+ * Source text can say which component the charts render; only a browser says what came out of it — that the gradient is
  * really vertical, really fades to nothing, and that the numbers the table names
  * are the ones on the element. Both plots draw through layerchart's SVG context
  * (not the canvas one the statistics charts use), so their marks are real DOM and

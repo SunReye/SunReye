@@ -17,8 +17,7 @@
  * The 1.x record was one JSONB document edited by two settings pages. A JSONB
  * save is a read-modify-write of the whole document, so saving a location wrote
  * back whatever arrays that page had loaded and the other page's edit vanished.
- * `apps/web/src/lib/components/settings/plant-fields-placement.test.ts` existed
- * to police which form was allowed to name which field, because no type could.
+ * A source-text placement test (since deleted) existed to police which form was allowed to name which field, because no type could.
  *
  * Now each fact is a column and {@link setWeatherConfig} emits an `UPDATE`
  * naming ONLY the fields the incoming patch mentioned

@@ -190,11 +190,11 @@ export async function expectHeading(opened: OpenedPage, title: string): Promise<
 /**
  * Every `+page.svelte` under `src/routes`, relative to it and sorted.
  *
- * The WHOLE tree, not just `(app)`: `routes/(app)/page-shells.test.ts` roots at
- * `(app)` and therefore has no opinion about /login, /onboarding and /setup —
- * which is exactly why those three had no coverage of any kind. Two callers
- * need this list and must not disagree: the smoke census (a page with no case
- * fails) and the Vite warm-up (a page nobody warmed pays a dep-optimizer full
+ * The WHOLE tree, not just `(app)`: the source-text shell census (since
+ * deleted) rooted at `(app)` and so had no opinion about /login, /onboarding
+ * and /setup — which is exactly why those three had no coverage of any kind.
+ * Two callers need this list and must not disagree: the smoke census (a page
+ * with no case fails) and the Vite warm-up (a page nobody warmed pays a dep-optimizer full
  * reload inside someone's measured run).
  *
  * A plain recursive walk rather than `fs.globSync`, which is still flagged

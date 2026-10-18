@@ -95,7 +95,8 @@ describe("isTestFile", () => {
   // browser and nowhere else. While the gate counted `*.test.ts` alone, fixing
   // one of those and covering it in `e2e/` still read as "source changed, no
   // test changed" — and the way through was to write a source-text regex
-  // instead. That is how `store-backfill-wiring.test.ts` came to exist.
+  // instead. That is how a store-backfill source-text test
+  // (since deleted) came to exist.
   test("a Playwright spec counts — for a rune shell it is the only test there is", () => {
     expect(isTestFile("apps/web/e2e/shell-lease-loop.spec.ts")).toBe(true);
     expect(isTestFile("apps/web/e2e/history-scroll-mounts.spec.ts")).toBe(true);

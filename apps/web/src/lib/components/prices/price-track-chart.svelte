@@ -98,12 +98,9 @@
 	);
 	const xLabels = $derived(rows.map((row) => row.label));
 
-	// One line on purpose: `mobile-density.test.ts` closes the padding set from
-	// the other side by matching the binding a `padding={…}` identifier resolves
-	// to, and that match stops at the newline. Wrapping this hides the clamp
-	// from the scan that exists to prove every chart reaches it. The leading-label
-	// fit is the day-start `MM-DD HH:mm`: centred on the first band, it hangs half
-	// its width left of the plot, past a gutter sized for "13" alone.
+	// The leading-label fit is the day-start `MM-DD HH:mm`: centred on the first
+	// band, it hangs half its width left of the plot, past a gutter sized for
+	// "13" alone.
 	const plotPadding = $derived(fittedLeadingLabel(fittedAxisPadding(chartPaddingFor(plotWidth), plotWidth, yLabels, { rounded: false }), plotWidth, xLabels[0]));
 	const tickSpacing = $derived(fittedTickSpacing(xTickSpacingFor(plotWidth), xLabels));
 

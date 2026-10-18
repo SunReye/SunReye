@@ -147,7 +147,7 @@ export type RailPulse = {
 /**
  * Share → crossing time. Inverted: more power is less time on the wire.
  */
-// fallow-ignore-next-line unused-export -- railPulse calls it internally; it is exported so the quantization contract is asserted directly in flow-pulse.test.ts and power-flow-pulse-wiring.test.ts, and web test files are not traced as consumers
+// fallow-ignore-next-line unused-export -- railPulse calls it internally; it is exported so the quantization contract is asserted directly in flow-pulse.test.ts, and web test files are not traced as consumers
 export function crossingSeconds(share: number): number {
   const s = Number.isFinite(share) ? Math.min(1, Math.max(0, share)) : 0;
   const raw = CROSS_SLOWEST_S + (CROSS_FASTEST_S - CROSS_SLOWEST_S) * s;

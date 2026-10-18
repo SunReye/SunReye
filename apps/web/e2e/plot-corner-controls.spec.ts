@@ -12,8 +12,7 @@
  * down inside whatever chart the card happens to render. Nothing in the source
  * says where that lands on screen: the corner resolves against the nearest
  * positioned ancestor, and which element that is depends on a chain of wrappers
- * each chart owns. `charts/fullscreen-coverage.test.ts` proves the control EXISTS
- * for every card that offers it; only a laid-out document says where.
+ * each chart owns. Only a laid-out document says where.
  *
  * Both claims below fail on the layout this replaced — the header ⤢ is in the
  * header row, nowhere near a plot's lower edge, and the energy-split card drew

@@ -3,16 +3,16 @@
  *
  * ## Why this exists
  *
- * `routes/(app)/page-shells.test.ts` reads every `+page.svelte` from disk and
- * asserts each one declares a shell shape. That is a claim about markup. It
- * says nothing about whether the page RENDERS — whether its payloads arrive,
+ * A source-text census (since deleted) read every `+page.svelte` from disk and
+ * asserted each one declared a shell shape. That was a claim about markup. It
+ * said nothing about whether the page RENDERS — whether its payloads arrive,
  * whether its `$effect`s settle, whether it throws on the way. Twenty-three of
  * the twenty-six pages had never been opened by a test at all: the browser
  * layer covered `/` and `/history` and nothing else, so a settings panel could
  * sit on "Loading…" forever, or a page could boot straight into a console
  * error, and the suite stayed green.
  *
- * So this is the second census: discovered from the same disk scan, one case
+ * So this is a census in a browser: discovered from a disk scan, one case
  * per page, and four assertions each.
  *
  *  1. the shell `<h1>` reads what the route's `setPageHeader` says it should
@@ -27,9 +27,8 @@
  *
  * ## Adding a page
  *
- * A new `+page.svelte` fails TWO suites: `page-shells.test.ts` (undeclared
- * shape) and the first case here (uncovered by smoke). The second is the one
- * that forces someone to name a mock state and a surface worth asserting.
+ * A new `+page.svelte` fails the first case here (uncovered by smoke), which
+ * forces someone to name a mock state and a surface worth asserting.
  *
  * ## First run, before the mock was extended (recorded on purpose)
  *
@@ -124,7 +123,7 @@ import {
 type SmokeRoute = {
   /**
    * The page file, relative to `src/routes` — the same key
-   * `page-shells.test.ts` uses, so the two tables diff against each other.
+   * `discoverPageFiles` returns, so the table diffs against the disk.
    * The URL is DERIVED from it; storing both would let them disagree.
    */
   file: string;

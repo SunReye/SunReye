@@ -14,9 +14,8 @@
  * the next chart added would silently ship without the control.
  *
  * Context instead: the card publishes, `plot-frame.svelte` consumes, and nothing
- * in between has to know. `charts/fullscreen-coverage.test.ts` still detects the
- * offer at the `<Section fullscreen>` end, so the sweep that keeps every chart
- * expandable is unaffected.
+ * in between has to know. `components/layout/section.svelte.test.ts` mounts the
+ * pair and presses the control.
  */
 
 import { getContext, setContext } from "svelte";

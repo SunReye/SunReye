@@ -20,7 +20,7 @@ import { periodTitle, type Grain, type Period, type PeriodLabelOptions } from "$
  * for the state they are already in, and it would have to answer what "Live"
  * means at month granularity.
  */
-// fallow-ignore-next-line unused-export -- the tab ORDER is the claim, and `period-navigator.test.ts` derives `grid-cols-${GRAIN_TABS.length}` from it rather than restating 4; `grainTabs` is the only in-module caller and hides the count
+// fallow-ignore-next-line unused-export -- the tab ORDER is the claim, and `period-navigator.test.ts` walks the tabs in that order; `grainTabs` is the only in-module caller and hides the list
 export const GRAIN_TABS: readonly Grain[] = ["day", "week", "month", "year"];
 
 /**
@@ -94,8 +94,7 @@ export function grainTabs(messages: GrainMessages): readonly { id: Grain; label:
  *
  * The base column count is stated for the phone, not deferred to a breakpoint:
  * `sm:grid-cols-4` alone is one column below `sm` by accident rather than by
- * decision, which is the rule `lib/layout/mobile-density.test.ts` holds the
- * whole tree to.
+ * decision. `period-navigator.svelte.test.ts` mounts the row at phone width.
  */
 export const GRAIN_ROW = "grid grid-cols-4 sm:flex";
 

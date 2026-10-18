@@ -15,10 +15,10 @@
  * latching, and every reading on the dashboard rendering as an em dash while the
  * server was perfectly healthy.
  *
- * `lib/inverter/store-backfill-wiring.test.ts` pins the literal `untrack(...)`
- * token, because runes do not run under `bun test`. That test passes for any
- * OTHER reactive read that reintroduces the loop, and fails for a rename that
- * changes nothing. This file is the real coverage: it asserts the four symptoms
+ * A source-text test (since deleted) pinned the literal `untrack(...)` token,
+ * because runes do not run under `bun test`. It passed for any OTHER reactive
+ * read that reintroduced the loop, and failed for a rename that changed
+ * nothing. This file is the real coverage: it asserts the four symptoms
  * a user actually saw, and it does not care how the fix is spelled.
  *
  * Deliberately on `/#/` (the overview) rather than `/history`: the loop lives in

@@ -10,8 +10,7 @@
  * with the weather tile's own preferences. Two settings pages edited two halves
  * of that row, and a JSONB save is a read-modify-write of the whole document, so
  * saving a location wrote back whatever arrays that page had loaded. That is the
- * bug `apps/web/src/lib/components/settings/plant-fields-placement.test.ts` was
- * written to guard, and guarding it needed a rule about which form is allowed to
+ * bug a web placement test (since deleted) was written to guard, and guarding it needed a rule about which form is allowed to
  * name which field — a rule no type could enforce.
  *
  * `packages/db/src/schema/plants.ts` gives each of those facts a column. An

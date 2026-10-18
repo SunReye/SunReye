@@ -15,8 +15,7 @@
  * and was silently overwritten on the next boot.
  *
  * It is the same shape as the `app_settings.weather` read-modify-write clobber
- * that `apps/web/src/lib/components/settings/plant-fields-placement.test.ts`
- * exists for, and which moving the plant facts into COLUMNS was supposed to have
+ * that a web placement test (since deleted) once policed, and which moving the plant facts into COLUMNS was supposed to have
  * ended.
  *
  * WHY IT MATTERED BEYOND TIDINESS

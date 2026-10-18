@@ -58,9 +58,8 @@
 			     /history (it was the only child, so `w-full` meant "as wide as
 			     itself"). Same markup, same component, two widths.
 
-			     Phone-only, and it does relax the row's one-line rule there — see
-			     the amended block in routes/(app)/page-shells.test.ts. At 390px the
-			     line was never holding anyway: /statistics already spent two rows,
+			     Phone-only, and it does relax the row's one-line rule there. At
+			     390px the line was never holding anyway: /statistics already spent two rows,
 			     and a back link plus a period navigator do not share 390px. -->
 			<div class="ml-auto flex max-sm:w-full flex-wrap items-center justify-end {CLUSTER_GAP}">
 				{@render toolbar?.()}
