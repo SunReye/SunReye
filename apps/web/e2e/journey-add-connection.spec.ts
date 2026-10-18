@@ -7,7 +7,7 @@
  * device in the list the wizard returns to.
  *
  * The wizard's individual rules are `wizard-modbus-device.spec.ts`'s subject
- * (seeded unit id, Next gating, the Solarman arm). What only this one proves is
+ * (seeded unit id, role-dependent fields, the Solarman arm). What this one proves is
  * the round trip a user takes: that the Settings entry reaches the panel, the
  * panel's Add reaches the wizard, and the wizard's Add leaves the operator
  * looking at a list that CONTAINS what they made. The fake backend lists a
@@ -16,7 +16,7 @@
  */
 
 import { expect, type Page, test } from "@playwright/test";
-import { mockBackend } from "./support/api-mock";
+import { openPage } from "./support/open-page";
 
 const next = (page: Page) => page.getByRole("button", { name: "Next" });
 
@@ -26,9 +26,7 @@ const deviceRow = (page: Page, name: string) =>
 
 test.describe("journey: add a device", () => {
   test("Settings → Devices → Add → wizard → the new device is in the list", async ({ page }) => {
-    const backend = await mockBackend(page);
-    await page.goto("/#/");
-    await backend.waitForLive();
+    const { backend, consoleErrors } = await openPage(page, "/#/");
     await expect(page.getByRole("heading", { level: 1 })).toHaveText("Overview");
 
     // ── 1. Settings, from the navigation, opens on Devices ──────────────────
@@ -42,9 +40,14 @@ test.describe("journey: add a device", () => {
     expect(before).toBeGreaterThan(0);
 
     // ── 2. Add device opens the wizard ──────────────────────────────────────
+    // A LINK, not a button: a button would need its own navigation call, and
+    // under the hash router a raw one escapes the ingress prefix and 404s.
+    await expect(page.getByRole("button", { name: "Add device" })).toHaveCount(0);
     await page.getByRole("link", { name: "Add device" }).click();
     await expect(page).toHaveURL(/#\/settings\/devices\/add$/);
     await expect(page.getByRole("heading", { name: "Add to this plant" })).toBeVisible();
+    // The wizard IS the screen — no dialog opened on the way.
+    await expect(page.getByRole("dialog")).toHaveCount(0);
 
     // ── 3. Step 1: on the gateway the inverter already answers on ───────────
     await expect(next(page)).toBeDisabled();
@@ -72,6 +75,8 @@ test.describe("journey: add a device", () => {
     // ── 6. Confirm: the summary names what will be added ────────────────────
     await expect(page.getByText("Cellar meter")).toBeVisible();
     await expect(page.getByText("Sungrow SH10RT")).toBeVisible();
+    // Named, not dumped: the old step ran `String()` over the answers bag.
+    await expect(page.getByText("[object Object]")).toHaveCount(0);
     // Nothing written before the operator says Add.
     expect(backend.writes).toEqual([]);
     await page.getByRole("button", { name: "Add", exact: true }).click();
@@ -98,5 +103,6 @@ test.describe("journey: add a device", () => {
       },
     ]);
     expect(backend.unhandled).toEqual([]);
+    expect(consoleErrors).toEqual([]);
   });
 });

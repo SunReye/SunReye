@@ -18,8 +18,10 @@
  * A source-text test (since deleted) pinned the literal `untrack(...)` token,
  * because runes do not run under `bun test`. It passed for any OTHER reactive
  * read that reintroduced the loop, and failed for a rename that changed
- * nothing. This file is the real coverage: it asserts the four symptoms
- * a user actually saw, and it does not care how the fix is spelled.
+ * nothing. This file is the real coverage: it counts the request storm and the
+ * socket churn, and it does not care how the fix is spelled. The fourth symptom
+ * — every reading an em dash — is `journey-dashboard-live.spec.ts`, which needs
+ * all eleven power-flow readouts holding digits.
  *
  * Deliberately on `/#/` (the overview) rather than `/history`: the loop lives in
  * the app SHELL, so it is on every route, and the overview is the cheap page
@@ -28,7 +30,6 @@
 
 import { expect, test } from "@playwright/test";
 import { mockBackend } from "./support/api-mock";
-import { POWER_FLOW_READOUTS, powerFlowReadouts } from "./support/open-page";
 import { countRequests } from "./support/perf";
 
 /** `{t:"sub"|"unsub", topics}` frames the client sent for a given topic. */
@@ -90,35 +91,4 @@ test("the live socket is opened once and the metrics lease is never dropped", as
   // workspace is on screen. A re-leasing shell emits a matched pair per cycle.
   expect(topicFrames(backend.clientFrames, "sub")).toBe(1);
   expect(topicFrames(backend.clientFrames, "unsub")).toBe(0);
-});
-
-test("live frames reach the screen instead of every reading showing an em dash", async ({
-  page,
-}) => {
-  // The symptom users reported. `#consuming` only latches once a lease survives
-  // long enough to consume a frame, so in the broken build no frame was ever
-  // applied and the dashboard read "—" against a perfectly healthy server.
-  const backend = await mockBackend(page, { feedIntervalMs: 0 });
-  await page.goto("/#/");
-  await backend.waitForLive();
-
-  // Every power-flow node on the overview renders a literal `—` when its value
-  // is `undefined` (`power-flow-node.svelte`) — the reported symptom verbatim.
-  //
-  // Scoped to the DIAGRAM, and an exact count rather than a floor. The bare
-  // `span.font-semibold.tabular-nums` locator is worn by sixteen components,
-  // and now that the weather, energy and EVCC payloads are all mocked it also
-  // sweeps their readouts — none of which the metrics feed owns. A floor of
-  // three was then met without a single node recovering, and `first()` pointed
-  // at a node only because the overview happens to place the diagram first.
-  const readouts = powerFlowReadouts(page);
-  await expect(readouts.first()).toBeVisible();
-
-  for (let i = 0; i < 5; i++) await backend.pushMetrics();
-
-  // Not "the first one recovered": every node the shell feeds must have a
-  // number in it. In the broken build not one frame was ever applied.
-  await expect(readouts.first()).toHaveText(/\d/, { timeout: 5000 });
-  await expect(readouts).toHaveCount(POWER_FLOW_READOUTS);
-  for (const text of await readouts.allTextContents()) expect(text).toMatch(/\d/);
 });
