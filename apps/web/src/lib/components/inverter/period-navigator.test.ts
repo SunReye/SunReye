@@ -1,22 +1,20 @@
 /**
- * The period navigator's decisions, and the one convention that only exists as
- * markup.
+ * The period navigator's decisions. What the mounted control does with them —
+ * which tab is lit, which arrow is dead, what a click reports — is
+ * `period-navigator.svelte.test.ts`.
  *
  * The navigator replaces every range control on the dashboard with two rows:
  * four grain tabs, and a back/calendar/forward line where the DISABLED FORWARD
  * ARROW is the live indicator. The arrows' arithmetic, the live predicate and
  * the period title all live in `$lib/time/period` and are proven there; what is
- * decided here is which four tabs there are, what the header prints when the
- * reader is not standing on a calendar period at all, and how a four-option row
- * survives 390px.
+ * decided here is which four tabs there are and what the header prints when the
+ * reader is not standing on a calendar period at all.
  */
 
 import { describe, expect, it } from "bun:test";
-import { SEGMENTED_MAX_OPTIONS } from "$lib/layout/tokens";
 import { periodWindow, type Grain, type Period } from "$lib/time/period";
 import {
   activeGrain,
-  GRAIN_ROW,
   GRAIN_TABS,
   grainTabs,
   navigatorTitle,
@@ -54,13 +52,6 @@ const MESSAGES: GrainMessages = {
 };
 
 describe("GRAIN_TABS — four tabs, and no fifth", () => {
-  it("is day, week, month, year in that order", () => {
-    // Finest first, so the row reads left to right as zooming out. There is
-    // deliberately no "Live" tab: standing on the current period IS live, and
-    // the disabled forward arrow is what says so.
-    expect(GRAIN_TABS).toEqual(["day", "week", "month", "year"]);
-  });
-
   it("labels each tab from the catalogue, in the same order", () => {
     expect(grainTabs(MESSAGES)).toEqual([
       { id: "day", label: "Day" },
@@ -68,29 +59,6 @@ describe("GRAIN_TABS — four tabs, and no fifth", () => {
       { id: "month", label: "Month" },
       { id: "year", label: "Year" },
     ]);
-  });
-});
-
-describe("the grain row's phone form", () => {
-  // `SEGMENTED_MAX_OPTIONS` is 3 and governs `RangeSwitcher`, which offers a
-  // Select on a phone past it: its options are a WRAPPING flex row, and a
-  // fourth chip landing on a second line reads as a separate control. This row
-  // is four options by design and must not bend that token, so it is not a
-  // wrapping row at all — it is an equal-column grid, which cannot wrap.
-  it("carries more options than a wrapping segmented row may", () => {
-    expect(GRAIN_TABS.length).toBeGreaterThan(SEGMENTED_MAX_OPTIONS);
-  });
-
-  it("gives every tab its own column instead of letting the row wrap", () => {
-    expect(GRAIN_ROW).toContain(`grid-cols-${GRAIN_TABS.length}`);
-    expect(GRAIN_ROW).toContain("grid");
-    expect(GRAIN_ROW).not.toContain("wrap");
-  });
-
-  it("states the column count for the phone, not only from a breakpoint", () => {
-    // The rule `lib/layout/mobile-density.test.ts` holds the whole tree to: a
-    // bare `sm:grid-cols-4` is one column below sm by accident, not by decision.
-    expect(GRAIN_ROW).not.toMatch(/(?:^|\s)(?:sm|lg|xl|2xl):grid-cols-/);
   });
 });
 
@@ -167,43 +135,5 @@ describe("navigatorTitle — what the calendar button prints", () => {
     // `$lib/cost/labels`), so they pass through rather than being re-derived.
     expect(title(period("day"), { id: "6h", label: "6 hours" })).toBe("6 hours");
     expect(title(period("day"), { id: "custom", label: "Aug 2 – Aug 19" })).toBe("Aug 2 – Aug 19");
-  });
-});
-
-/** The component's own source — the only place a markup convention can be read. */
-const code = await Bun.file(new URL("./period-navigator.svelte", import.meta.url)).text();
-
-describe("the component spends the decisions rather than restating them", () => {
-  /** The opening tag of the element that renders the grain tabs. */
-  const grainRowTag = code.match(/<div[^>]*\{GRAIN_ROW\}[^>]*>/)?.[0] ?? "";
-
-  it("renders the tab row through GRAIN_ROW, not a hand-typed grid", () => {
-    expect(grainRowTag).not.toBe("");
-    expect(code).not.toMatch(/class="[^"]*grid-cols-4/);
-  });
-
-  it("draws one tab per GRAIN_TABS entry rather than four literal buttons", () => {
-    // Four hand-written buttons would drift from GRAIN_TABS silently — the row
-    // would keep four tabs while the model grew or lost a grain.
-    expect(code).toMatch(/\{#each grainTabs\(|\{#each tabs as/);
-    expect(code).toContain("grainTabs(");
-  });
-
-  it("keeps its tabs and arrows thumb-height on a phone", () => {
-    // The 44px floor: interactive rows gain a step below sm and hand it back.
-    // `h-8 sm:h-7` here would be a 32px tab under a thumb. The `sm` half is
-    // `h-full` now — from sm the navigator is one row of a fixed height and both
-    // halves fill it — so what is pinned here is the phone number.
-    expect(code).toMatch(/h-9 sm:h-full/);
-    expect(code).not.toMatch(/(?:^|\s)h-8 sm:h-7/);
-  });
-
-  it("disables the forward arrow through canStepForward, not a hand-rolled compare", () => {
-    // The live rule — false at BOTH ends of the current period, false for a
-    // period wholly ahead of now — is proven in `$lib/time/period`. A local
-    // `period.end < now` here is the one-token version of it that is wrong at
-    // the instant the period closes.
-    expect(code).toContain("canStepForward(");
-    expect(code).not.toMatch(/\.end(?:\.getTime\(\))?\s*<[^=]/);
   });
 });
