@@ -209,6 +209,8 @@ Web work additionally:
 cd apps/web
 bun run check          # compile i18n, svelte-kit sync, svelte-check
 bun run i18n:lint      # every locale must match en.json key-for-key
+bun run test:components  # *.svelte.test.ts: components mounted in Chromium (Vitest)
+bun run e2e e2e/journey-*.spec.ts  # the user journeys; CI runs the full browser suite
 ```
 
 Schema work additionally:

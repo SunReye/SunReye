@@ -20,10 +20,14 @@ green.
   payloads, stale readings across midnight, partial windows, counter restarts.
 - If logic is hard to test because it lives inside a component, extract it. That extraction
   is part of the change, not a follow-up.
-- When the behaviour only exists in a running document (a reactive loop, a request storm, an
-  animation), the test is a browser spec: `apps/web/e2e/*.spec.ts`, `bun run e2e`. Those count
+- When the behaviour is what ONE component renders or how it reacts (a fold, a 44px target, a
+  390px row, a tween settling), the test is a component test: `apps/web/src/**/*.svelte.test.ts`,
+  Vitest browser mode in Chromium, `bun run test:components`. Runes run there; they do not under
+  `bun test`, which skips the suffix.
+- When the behaviour only exists in a running app (a reactive loop, a request storm, a user
+  journey across pages), the test is a browser spec: `apps/web/e2e/*.spec.ts`, `bun run e2e`. Those count
   as "a test changed" for the gate. Never stand a source-text regex over the fix's own text in
-  for one — see `apps/web/TESTING.md`, "Which layer does this test belong in".
+  for one — see `apps/web/TESTING.md`, "Three layers".
 - When the behaviour is whether **Postgres accepts the statement**, the test is a database
   spec: `apps/server/db-tests/*.test.ts`, `bun run test:db`. That script passes
   `--timeout 60000`: bun's default is 5s, which is not a budget anyone chose for
@@ -92,7 +96,7 @@ Load the relevant one when matching work:
 - Tailwind class work → load `tailwind-best-practices`.
 - SvelteKit work → load `sveltekit-best-practices`.
 - Any `.svelte` file in `apps/web` (page, card, grid, chart box, live reading) → load
-  `layout-system`. The layout vocabulary is test-enforced; the skill is the short version.
+  `layout-system`. The skill holds the layout vocabulary; component tests hold what it renders.
 - AI SDK work → load `ai-sdk`.
 - Starter repo initialization / post-clone customization → load `project-init`.
 - Similar domain-specific work → load matching skill when available.

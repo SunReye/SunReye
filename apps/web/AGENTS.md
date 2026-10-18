@@ -8,17 +8,16 @@ If adding, reading, validating, or renaming env vars, also follow `packages/env/
 
 Before editing any `.svelte` file here — a page, a card, a grid, a chart box, a live reading — load
 the `layout-system` skill. Measure, gutter, rhythm, columns, chart heights and value ownership are
-decided in `src/lib/layout/tokens.ts` and `src/lib/live/ownership.ts`, and five test files reject a
-hand-rolled alternative.
+decided in `src/lib/layout/tokens.ts` and `src/lib/live/ownership.ts`, and the `layout-system` skill is
+the short version.
 
 For frontend UI/UX work, also read `apps/web/DESIGN.md`.
 Anything that animates — especially in the power-flow hero — answers the motion tier
 (`$lib/motion/tier`, read as `motion.tier`): the dashboard runs on wall tablets that cannot afford
 the full picture, and `auto` measures the device and steps it down. See DESIGN.md, "…and the device
 has to be able to afford it", before adding an animation, a transition or a filter there.
-For frontend testing work, and after adding/changing pages or user-visible components, also read `apps/web/TESTING.md` — start at "Which layer does this test belong in", which picks between a unit test, a browser spec and (rarely) a source-text test.
-For anything that only exists in a running document — a reactive loop, a request storm, scroll cost, an animation that never settles — use the browser layer in `apps/web/e2e` (`bun run e2e`) instead of a source-text test. It fakes the whole backend, so it needs no server, database or inverter, and `scripts/require-tests.ts` counts an `e2e/*.spec.ts` as a test changing, so a fix covered only there satisfies the TDD gate. See "Adding a spec" in `TESTING.md`.
-A source-text test is the last resort and is not coverage: it passes for broken code and fails for a rename. `src/lib/inverter/store-backfill-wiring.test.ts` documents that trade-off at the top of the file, and `e2e/shell-lease-loop.spec.ts` is what actually proves the bug it names is gone.
+For frontend testing work, and after adding/changing pages or user-visible components, also read `apps/web/TESTING.md` — start at "Three layers", which picks between a unit test (`*.test.ts`, logic), a component test (`*.svelte.test.ts`, one component mounted in Chromium via Vitest browser mode, `bun run test:components`) and a browser spec (`e2e/*.spec.ts`, routes, socket, user journeys, `bun run e2e`). The e2e layer fakes the whole backend, so it needs no server, database or inverter. `scripts/require-tests.ts` counts all three as a test changing.
+Never write a test that regexes over a `.svelte`/`.ts` source file: it passes for broken code and fails for a rename. Those were deleted; assert the rendered behaviour instead.
 
 <!-- ShadCN-Svelte:BEGIN -->
 

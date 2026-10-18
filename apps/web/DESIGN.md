@@ -111,8 +111,7 @@ apps/web/src/routes/(app)/
 - the **settings layout** owns the rail and the shell its panels share
 - the **child pages** stay small and focused
 
-`routes/(app)/page-shells.test.ts` discovers these pages from disk and fails on a new one until its
-shape is declared, so the tree above cannot silently go stale.
+Keep the tree above current when a page is added; `e2e/page-smoke.spec.ts` visits every route.
 
 ---
 
@@ -197,8 +196,7 @@ Three more distinctions this app has already had to make:
 
 ## Layout patterns by screen type
 
-Every screen picks one of four shapes, and `routes/(app)/page-shells.test.ts` holds it to the choice
-— along with the two shapes that are not screens at all, a nested settings panel and a redirect stub.
+Every screen picks one of four shapes — along with the two shapes that are not screens at all, a nested settings panel and a redirect stub.
 The measure is always stated on the tag, even when it matches the default — an unstated width is a
 width nobody chose.
 
@@ -407,7 +405,7 @@ Two properties of the measurement are load-bearing and easy to break. It only ev
 otherwise skip, so an endless watch would hold a still kiosk at 60 Hz for the sake of measuring it.
 
 Anything added to the hero answers the tier. `e2e/motion-tier.spec.ts` is what proves each one
-renders what it claims; `power-flow-pulse-wiring.test.ts` pins the branches.
+renders what it claims; `power-flow-rails.svelte.test.ts` mounts the rails and pins the branches.
 
 ---
 
@@ -416,7 +414,7 @@ renders what it claims; `power-flow-pulse-wiring.test.ts` pins the branches.
 Four charts zoom — the /history metric charts, /statistics' period chart, the price track and the
 year-over-year bars. The gesture is a design decision with a cost on a phone, not a library
 default: `lib/charts/zoom.svelte.ts` holds the state, `lib/charts/zoom-range.ts` holds what a
-selection *means*, and `lib/charts/zoom-wiring.test.ts` holds every chart to both.
+selection *means* (`zoom-range.test.ts`).
 
 - **A horizontal drag selects a range; a vertical swipe still scrolls the page.** LayerChart's
   brush layer covers the whole plot and declares `touch-action: none` on itself, and /history and
@@ -561,8 +559,7 @@ charts drag-select with, and a button there swallows the start of a drag.
   of those plots already has in the scrolling page. A card's tiles, nested panel headers and legends
   keep their content height; the plots divide whatever is left, and on that page nothing is left. A
   control that makes the plot smaller than not pressing it is not a saving.
-  `lib/charts/fullscreen-coverage.test.ts` pins both ends now: every chart has a control, and the
-  statistics section cards do not offer one.
+  Both ends hold: every chart has a control, and the statistics section cards do not offer one.
 - **A control over a box with no plot in it** is the same defect from the other side. The
   negative-price-window history is a grouped list, height-unconstrained and already fully visible;
   it went through `ChartPanel` and inherited an expand button that promised a bigger view of a list.
@@ -658,8 +655,7 @@ where it reads as the plot's headline instead of as a button.
 
 ## Styling and spacing guidance
 
-Everything in this section is a constant in `src/lib/layout/tokens.ts` and a case in
-`tokens.test.ts`. Read the numbers here, spend the token in the code — a literal that happens to
+Everything in this section is a constant in `src/lib/layout/tokens.ts`. Read the numbers here, spend the token in the code — a literal that happens to
 match today is a literal that drifts tomorrow.
 
 ### The three measures
@@ -711,8 +707,7 @@ column past the viewport.
 ### Breakpoints
 
 **`sm` / `lg` / `xl` / `2xl` only.** A token that changes twice between a phone and a laptop
-produces the in-between states nobody designed, so `tokens.test.ts` fails on any `md:` in the
-vocabulary.
+produces the in-between states nobody designed, so the vocabulary has no `md:`.
 
 The one grandfathered `md:` in first-party layout code is the settings nav rail
 (`settings/+layout.svelte`, `settings-nav.svelte`): a 13rem rail plus a usable panel does not fit
@@ -725,7 +720,7 @@ and the census test checks that it still does. Vendored shadcn components under
 One frame: `border border-border`, square, drawn by `Section` and nothing else. Hierarchy comes from
 spacing and typography, not from stacked outlines — which is why a card inside a card gives up its
 frame on a phone. An element outside `lib/components/layout/` that combines `border border-border`
-with a pad is a hand-rolled card, and `section-migration.test.ts` treats it as one.
+with a pad is a hand-rolled card; use `Section`.
 
 ---
 
@@ -750,9 +745,9 @@ meaning; the type around them exists to say which number this is.
 
 ## Responsive strategy
 
-The app is designed at 412x961 first. Everything below is a floor, enforced by
-`lib/layout/mobile-density.test.ts` over the whole `src` tree — so a rule broken in a component
-written next year fails too.
+The app is designed at 412x961 first. Everything below is a floor. A component with phone
+behaviour proves its floor in a component test at `page.viewport(390, 844)` (see
+`section.svelte.test.ts`, `stat-tiles.svelte.test.ts`).
 
 ### Mobile floors
 
@@ -817,8 +812,6 @@ Say why the screen is empty and what to do next. "No data." is not an empty stat
 — the inverter has not been polled since 14:02" is. The copy goes through paraglide like every other
 user-visible string.
 
-`section-migration.test.ts` fails on a re-copy of the old hand-rolled empty-state block.
-
 ---
 
 ## Final rule of thumb
@@ -831,9 +824,6 @@ user-visible string.
   already exists.
 - **Animations** should guide attention, never compete with the content.
 
-The design decisions above are executable: `lib/layout/tokens.test.ts`,
-`lib/layout/mobile-density.test.ts`, `lib/layout/section-migration.test.ts`,
-`lib/layout/primitives.test.ts`, `lib/components/layout/header-and-toolbar-rows.test.ts`,
-`routes/(app)/page-shells.test.ts`, `lib/live/wiring.test.ts` and `lib/charts/zoom-wiring.test.ts`
-run in `bun run test`. Read the
-`layout-system` skill before writing a page; read the failing test when one of them rejects you.
+What these decisions render is proven by the component tests (`*.svelte.test.ts`, `bun run
+test:components`) and the user journeys in `e2e/journey-*.spec.ts`. Read the `layout-system` skill
+before writing a page.
