@@ -204,6 +204,22 @@ describe("the values an axis will be asked to label", () => {
 });
 
 describe("a bar chart's layout spread carries the same fit", () => {
+  test("the final date label fits inside the right canvas edge", () => {
+    const layout = {
+      padding: chartPaddingFor(354),
+      props: { xAxis: { tickSpacing: 48 } },
+    };
+    const labels = { yLabels: ["0%", "100%"], xLabels: ["Oct 1", "Oct 31"] };
+    const fitted = withFittedAxes(layout, 354, labels);
+    expect(fitted.padding.right).toBeGreaterThanOrEqual(labelWidthPx("Oct 31") / 2);
+    expect(withFittedAxes(layout, 0, labels).padding).toEqual(layout.padding);
+    expect(withFittedAxes(layout, 354, { yLabels: [], xLabels: [] }).padding).toEqual(
+      layout.padding,
+    );
+    const absurd = withFittedAxes(layout, 354, { yLabels: [], xLabels: ["x".repeat(200)] });
+    expect(absurd.padding.right).toBeLessThanOrEqual(354 * MAX_GUTTER_SHARE);
+  });
+
   test("the fitted padding and spacing replace the ones the base props chose", () => {
     const layout = {
       bandPadding: 0.2,

@@ -110,7 +110,7 @@
 	const rounded = $derived(yDomain === undefined);
 	const yLabels = $derived(axisValueLabels(seriesValues(data, series), format));
 	const axisLabels = $derived({ yLabels, xLabels: labels, rounded });
-	const plotPadding = $derived(fittedAxisPadding(chartPaddingFor(plotWidth), plotWidth, yLabels, { rounded }));
+	const plotPadding = $derived(fittedAxisPadding(chartPaddingFor(plotWidth), plotWidth, yLabels, axisLabels));
 	const tickSpacing = $derived(fittedTickSpacing(xTickSpacingFor(plotWidth), labels));
 
 	// The grouped-bar layout, plus the value axis' own formatter — the shared

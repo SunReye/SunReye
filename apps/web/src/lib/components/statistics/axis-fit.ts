@@ -54,6 +54,8 @@ const MIN_X_LABEL_GAP_PX = 10;
 
 /** How an axis' own domain changes what its labels may grow into. */
 export interface AxisFitOptions {
+  /** Labels centred on x ticks need room beyond the final tick, too. */
+  xLabels?: readonly string[];
   /**
    * May a tick land past the data's own maximum? True for a chart whose domain
    * follows its data (a kWh axis over 98 draws a "100" tick); false when the
@@ -79,7 +81,8 @@ export function widestLabelPx(labels: Iterable<string>): number {
 }
 
 /**
- * `base` with a left gutter that fits `yLabels`.
+ * `base` with a left gutter that fits `yLabels` and, when supplied, a right
+ * gutter that holds half the widest x label beyond its tick.
  *
  * Only ever GROWS the gutter, and only up to {@link MAX_GUTTER_SHARE} of the
  * plot: a chart whose labels fit the fitted clamp keeps the clamp's value, so
@@ -92,14 +95,21 @@ export function fittedAxisPadding(
   base: ChartPadding,
   plotWidth: number,
   yLabels: readonly string[],
-  { rounded = true }: AxisFitOptions = {},
+  { rounded = true, xLabels = [] }: AxisFitOptions = {},
 ): ChartPadding {
-  if (!(plotWidth > 0) || yLabels.length === 0) return base;
+  if (!(plotWidth > 0)) return base;
   const slack = rounded ? AXIS_ROUNDUP_SLACK_CHARS * AXIS_CHAR_PX : 0;
   const widest = widestLabelPx(yLabels) + slack;
-  const wanted = Math.ceil(widest + AXIS_TICK_GAP_PX);
+  const wanted = yLabels.length ? Math.ceil(widest + AXIS_TICK_GAP_PX) : base.left;
   const ceiling = plotWidth * MAX_GUTTER_SHARE;
-  return { ...base, left: Math.min(Math.max(base.left, wanted), Math.max(base.left, ceiling)) };
+  return {
+    ...base,
+    left: Math.min(Math.max(base.left, wanted), Math.max(base.left, ceiling)),
+    right: Math.min(
+      Math.max(base.right, Math.ceil(widestLabelPx(xLabels) / 2)),
+      Math.max(base.right, ceiling),
+    ),
+  };
 }
 
 /**
@@ -213,6 +223,7 @@ export function withFittedAxes<Layout extends BarLayout>(
     ...layout,
     padding: fittedAxisPadding(layout.padding, plotWidth, labels.yLabels, {
       rounded: labels.rounded,
+      xLabels: labels.xLabels,
     }),
     props: {
       ...layout.props,
