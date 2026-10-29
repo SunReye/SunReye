@@ -17,14 +17,11 @@ import * as m from "$lib/paraglide/messages";
 import { SETTINGS_ROUTES, settingsHeaderFor } from "./nav-routes";
 
 const DIR = fileURLToPath(new URL(".", import.meta.url));
-const source = async (file: string) => await Bun.file(DIR + file).text();
 
 const messages = (await Bun.file(
   fileURLToPath(new URL("../../../../messages/en.json", import.meta.url)),
 ).json()) as Record<string, string>;
 const bundles = m as unknown as Record<string, unknown>;
-const navSource = await source("settings-nav.svelte");
-const layoutSource = await source("+layout.svelte");
 
 /** Panel directories on disk — the ground truth the table is checked against. */
 const panelDirs = readdirSync(DIR, { withFileTypes: true })
@@ -97,29 +94,5 @@ describe("settingsHeaderFor", () => {
   // A deeper path under a panel is still that panel, not a miss.
   test("matches a panel's own subroutes to the panel", () => {
     expect(settingsHeaderFor("/settings/users/42")?.title()).toBe(messages.settings_tab_users!);
-  });
-});
-
-describe("wiring", () => {
-  const nav = navSource;
-  const layout = layoutSource;
-
-  // The nav rail used to BE the table. If it still holds its own hrefs, the
-  // headers above are checked against a copy nobody renders.
-  test("the nav rail renders the shared table, holding no route list of its own", () => {
-    expect(nav).toContain("SETTINGS_ROUTES");
-    expect(nav).not.toMatch(/["']\/settings\//);
-  });
-
-  test("the layout drives the shell header off the active route", () => {
-    expect(layout).toContain("settingsHeaderFor(current)");
-    expect(layout).toMatch(/setPageHeader\(\s*header/);
-  });
-
-  // The fallback matters: it is what /settings shows for the instant before the
-  // redirect lands, and what a panel added without a table entry would show.
-  test("and falls back to the area header when the route has none", () => {
-    expect(layout).toContain("m.nav_settings()");
-    expect(layout).toContain("m.settings_subtitle()");
   });
 });

@@ -12,7 +12,7 @@
 	// scrolling page — one of the nine expand buttons on this page that had
 	// nothing to expand. `nested` for the same reason the panels are: this
 	// renders inside a statistics section, and a phone cannot afford a second
-	// frame. Pinned by `lib/charts/fullscreen-coverage.test.ts`.
+	// frame.
 	//
 	// FOLLOW-UP: a row click should drill into that day's price curve.
 	// Deliberately not built — it needs a day-scoped price read, and /api/prices

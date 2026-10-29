@@ -15,7 +15,6 @@
  */
 
 import { describe, expect, it } from "bun:test";
-import { readFileSync } from "node:fs";
 import { downsample, pointBudget } from "./downsample";
 
 /** The chart rows as `metric-history-chart` holds them. */
@@ -161,45 +160,5 @@ describe("pointBudget", () => {
     // A collapsing card can measure a handful of pixels for a frame; a cap of 3
     // there would throw the series away for good on a memoised derivation.
     expect(pointBudget(2, 1)).toBeGreaterThanOrEqual(64);
-  });
-});
-
-/**
- * The reducer being correct says nothing about it being CALLED, and a rune
- * shell cannot run under `bun test` (apps/web/TESTING.md). So the wiring is
- * read off disk, the way `mobile-density.test.ts` pins the gutter clamp: both
- * of these charts drew ~1876 rows into a ~450px box, and both of them built
- * every path twice — once at `plotWidth = 0` and once for real.
- */
-describe("the chart bodies that draw a measured plot", () => {
-  const PLOTS = ["../live-area.svelte", "./metric-history-chart.svelte"];
-
-  const source = (file: string) => readFileSync(new URL(file, import.meta.url).pathname, "utf8");
-
-  it.each(PLOTS)("%s waits for the measurement before it builds a plot", (file) => {
-    const code = source(file);
-    expect(code).toContain("shouldRenderPlot(plotWidth)");
-    // Gating the PADDING alone would keep both renders and change nothing: the
-    // plot itself has to sit inside the branch.
-    expect(code).toMatch(/\{#if\s+!?shouldRenderPlot\(plotWidth\)\}/);
-    expect(code).toContain("<Chart.Container");
-  });
-
-  it.each(PLOTS)("%s reduces its series to the plot's own budget", (file) => {
-    const code = source(file);
-    expect(code).toContain("downsample(");
-    // The cap is a PROP with the measured budget as its default, not a
-    // constant: the overview's wider sparklines have to be able to keep more,
-    // and a hard-coded number would silently cap them too.
-    expect(code).toMatch(/maxPoints \?\? pointBudget\(plotWidth, dpr\)/);
-    expect(code).toContain("maxPoints?: number;");
-  });
-
-  it("draws the rows it reduced, not the rows it was handed", () => {
-    // The reduction is worthless if the chart still receives `data`. This is
-    // the one-character regression the browser budget would catch a day later.
-    const code = source("./metric-history-chart.svelte");
-    const chart = code.slice(code.indexOf("<AreaChart"));
-    expect(chart).toContain("data={plotted}");
   });
 });

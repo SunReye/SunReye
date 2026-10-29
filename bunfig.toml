@@ -5,6 +5,9 @@ linker = "isolated"
 # Root test runs from the repo root, so the per-app bunfig preload does not
 # apply. Load the web test-setup (Paraglide localStorage stub) here too.
 preload = ["./apps/web/src/test-setup.ts"]
+# `*.svelte.test.ts` is the component layer (apps/web/vitest.config.ts): it
+# mounts components in Chromium under Vitest and cannot run under bun.
+pathIgnorePatterns = ["**/*.svelte.test.ts"]
 # TDD floor, in bun's own summary metric (99.67 % funcs / 100.00 % lines when the
 # suite was taken to full coverage). Note that bun only COLOURS the summary when a
 # threshold is missed — it still exits 0 — so this is a reading aid. The gate that

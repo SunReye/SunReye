@@ -12,8 +12,8 @@
 
 <!-- A block inside the dialog's card, not a card of its own: `Section` heads
      with an uppercase title string and frames a second box, and the two blocks
-     below already label themselves (see `section-migration.test.ts`, "Sub-
-     headings one level BELOW a card title"). What was hand-drawn here is the
+     below already label themselves (sub-headings sit one level BELOW a card
+     title). What was hand-drawn here is the
      RHYTHM, and that comes from the token now. -->
 <div class="flex flex-col {SECTION_GAP} border-t border-border pt-4">
 	<PvFields

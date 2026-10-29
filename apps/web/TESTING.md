@@ -6,28 +6,101 @@ half — what that means when the thing you changed is a Svelte component.
 
 ```bash
 cd apps/web
-bun run test        # bun test ./src  — seconds, runs on every commit
-bun run check       # svelte-check (types, unused props, a11y)
-bun run e2e         # Playwright: a real browser, a faked backend (see below)
+bun run test             # bun test ./src — logic, seconds, runs on every commit
+bun run test:components  # Vitest browser mode — one component mounted in Chromium
+bun run check            # svelte-check (types, unused props, a11y)
+bun run e2e              # Playwright: the whole app, a faked backend (see below)
 ```
 
-## Two layers, and what each is for
+## Three layers, and what each is for
 
-`bun test` proves **decisions**. Playwright proves **behaviour in a document** — the things that
-only exist once there is a scheduler, a compositor and a socket: a reactive loop, a scroll that
-mounts sixty charts, a tween that never settles, a request storm.
+| The claim is about…                                              | Write a…           | Where                         |
+| ---------------------------------------------------------------- | ------------------ | ----------------------------- |
+| a value, a branch, a boundary — "what does this return"           | **unit test**      | `src/**/*.test.ts`            |
+| one component — "what does it render, how does it react"          | **component test** | `src/**/*.svelte.test.ts`     |
+| a user journey or the running shell — routes, socket, scheduler   | **browser spec**   | `e2e/*.spec.ts`               |
 
-The browser layer lives in `e2e/`, deliberately outside the `./src` glob `bun test` is pointed
-at, so bun never tries to import `@playwright/test` (it cannot run it) and the unit suite stays
-seconds long. It is a separate CI job for the same reason.
+There is no fourth row. **Do not write a test that reads a `.svelte`/`.ts` file as text and
+regexes over it.** The suite used to hold ~30 of them (~8k lines): they passed for broken code,
+failed for a rename, and contributed nothing to coverage. They were deleted, and what they guarded
+that a user could actually see broken is now asserted in a rendered document. A convention with no
+runtime consequence (which class name a grid spends) is a review and skill matter
+(`layout-system`), not a test. A test may still read a DATA file — a manifest, a message catalogue,
+`app.css` token values — because that is input, not the code under test.
+
+`scripts/require-tests.ts` counts all three layers as "a test changed".
+
+### Unit tests — decisions
+
+**Default here.** Milliseconds, every commit, and the only layer the coverage floor measures. If
+the logic is hard to reach because it lives in a component, extracting it into a plain `.ts` is part
+of the change (see "The one rule" below). Don't write a case that restates a constant — test the
+boundary the constant decides.
+
+### Component tests — one component, really rendered
+
+`vitest.config.ts` runs Vitest in **browser mode**: the component is compiled by the real Svelte
+plugin, mounted with `vitest-browser-svelte`'s `render`, in headless Chromium, with Tailwind and
+`app.css` loaded. Runes run, effects run, layout is real — so a 44px tap target, a 390px row that
+must not wrap, a caret that unmounts a body, a tween that settles on the exact value are all
+assertable directly.
+
+```ts
+import { expect, test } from "vitest";
+import { page } from "vitest/browser";
+import { render } from "vitest-browser-svelte";
+import FieldInfo from "./field-info.svelte";
+
+test("keeps the explanation behind a tap", async () => {
+  render(FieldInfo, { label: "Feed-in limit", info: "Caps export at the meter." });
+  await expect.element(page.getByText("Caps export at the meter.")).not.toBeInTheDocument();
+  await page.getByRole("button", { name: /Feed-in limit/ }).click();
+  await expect.element(page.getByText("Caps export at the meter.")).toBeVisible();
+});
+```
+
+- **Name it `*.svelte.test.ts`, next to the component.** `bun test` ignores that suffix
+  (`pathIgnorePatterns` in both bunfigs); Vitest picks up nothing else.
+- **Phone width:** `await page.viewport(390, 844)` before `render`.
+- **Context, snippets, slots:** mount a small `*.fixture.svelte` beside the test that sets the
+  context or passes the snippet (`section.fixture.svelte`, `stat-tiles.fixture.svelte`).
+- **Modules that reach the network or `$env`:** `vi.mock("$lib/api")`,
+  `vi.mock("$env/dynamic/public", () => ({ env: {} }))`. Vitest mocks are per file — the bun
+  `mock.module` hygiene rules do not apply here.
+- **Hidden elements:** `getByRole` skips them unless `{ includeHidden: true }`.
+- **A pseudo-element hit area** (`TAP`) is invisible to `getBoundingClientRect`; ask
+  `document.elementFromPoint` what a tap off the icon lands on (`field-info.svelte.test.ts`).
+- If the component needs the app shell (stores booted, socket, routes) to mount, it belongs in
+  `e2e/` instead.
+
+### Browser specs — the app and its journeys
+
+Playwright proves **behaviour in a running app** — the things that only exist once there is a
+router, a scheduler and a socket: a reactive loop, a scroll that mounts sixty charts, a request
+storm, and the user journeys that cross pages. The `journey-*.spec.ts` files walk the four paths a
+user cannot afford to have broken, like a user (roles, labels, clicks), asserting what they see:
+
+| Journey                              | Spec                               |
+| ------------------------------------ | ---------------------------------- |
+| boot → live dashboard → History      | `journey-dashboard-live.spec.ts`   |
+| browse History by day/week/month     | `journey-history-browse.spec.ts`   |
+| Settings → Add device wizard → listed| `journey-add-connection.spec.ts`   |
+| session expires → sign in → resume   | `journey-session-expiry.spec.ts`   |
+
+A new user-facing flow gets a journey; a bug in the shell gets a focused spec.
+
+The layer lives in `e2e/`, outside the `./src` glob `bun test` is pointed at, so bun never tries to
+import `@playwright/test` and the unit suite stays seconds long. It is a separate CI job for the
+same reason.
 
 Nothing in it needs the engine, Postgres/TimescaleDB or an inverter. `e2e/support/api-mock.ts`
 answers every `/api/*` call with `page.route` and serves the multiplexed live socket with
 `page.routeWebSocket`, off a committed 105-metric Deye manifest
-(`e2e/fixtures/manifest.json`). A run is one command with no setup:
+(`e2e/fixtures/manifest.json`). It records every write (`backend.writes`) so a journey can assert
+the body the UI sent. A run is one command with no setup:
 
 ```bash
-bun run e2e:install          # once: downloads Chromium
+bun run e2e:install          # once: downloads Chromium (the component layer uses it too)
 bun run e2e                  # the suite
 bun run e2e e2e/x.spec.ts    # one spec — prefer this while iterating
 bun run e2e -- --shard=1/4   # what CI runs, four ways in parallel
@@ -37,47 +110,13 @@ The suite runs **fully parallel**: every file, and every test within a file, can
 different worker. CI shards it across four runners. Nothing here holds cross-file state — the
 backend is faked per page — so any split is valid.
 
-**This layer no longer measures performance.** It used to: frame rates, mount cost and CPU-throttled
-scroll sweeps, which is why it ran one worker with no sharding — a measured fps is only comparable
-when nothing else is running. Those specs cost ten minutes a run and were removed. What is left
+**This layer does not measure performance.** Frame rates, mount cost and CPU-throttled scroll
+sweeps were removed: a measured fps is only comparable when nothing else is running. What is left
 asserts what a contended machine cannot change: layout, request counts, mount counts, socket
-lifecycle.
+lifecycle. The instruments are in `e2e/support/perf.ts` — `countRequests`, `countChartMounts`,
+`countTextMutations`, `measureScroll`, `throttleCpu`; the counting ones are contention-independent.
 
-If you add a timing budget back, it needs a serial home of its own; under these settings it would
-measure the other workers. The instruments are still in `e2e/support/perf.ts` — `countRequests`,
-`countChartMounts`, `countTextMutations`, `measureScroll`, `throttleCpu` — so no spec writes its own
-`page.evaluate`, and the counting ones (requests, mounts, mutations) are contention-independent and
-safe to use as they are.
-
-## Which layer does this test belong in
-
-Ask what kind of claim you are making. There are three answers, and only the first two are
-real coverage.
-
-| The claim is about…                                          | Write a…             | Where            |
-| ------------------------------------------------------------ | -------------------- | ---------------- |
-| a value, a branch, a boundary — "what does this return"       | **unit test**        | `src/**/*.test.ts` |
-| the running app — "what does it do once there is a scheduler" | **browser spec**     | `e2e/*.spec.ts`  |
-| a convention that only exists as markup                       | source-text test     | `src/**/*.test.ts` |
-
-**Default to the unit test.** It runs in milliseconds on every commit, and if the logic is
-hard to reach because it lives in a component, extracting it is part of the change (see the
-next section).
-
-**Reach for a browser spec when the thing that breaks is not a value.** Anything with a
-scheduler, a compositor, a socket or an observer in it: a reactive loop, a lease taken twice,
-a request storm, sixty charts mounting on a scroll, a tween that never settles, an intersection
-gate. Runes do not run under `bun test`, so for this class the browser is not a nicer option —
-it is the only one. `scripts/require-tests.ts` counts an `e2e/*.spec.ts` as a test changing, so
-a fix covered only there satisfies the TDD gate.
-
-**Source-text tests are a last resort, and they are not coverage.** They pin a convention that
-genuinely has no runtime value to assert — the layout vocabulary, the live-value ownership rule.
-Everything else they touch, they get wrong in both directions: they pass for broken code and
-fail for a rename. The technique and its rules are below; the honest example of its limits is
-`lib/inverter/store-backfill-wiring.test.ts`.
-
-### The worked example, both ways
+### The worked example
 
 An `$effect` in `routes/(app)/+layout.svelte` took a reactive dependency on the `SvelteMap` of
 live buffers that its own backfill then wrote. The effect invalidated on its own write, its
@@ -86,15 +125,14 @@ cycles a second of `/api/profile` + `/api/history/recent`, a WebSocket closed be
 finish opening 2708 times, and every reading on the dashboard rendering as an em dash while the
 server was healthy.
 
-The first attempt was `store-backfill-wiring.test.ts`, a regex asserting the fix's own text
-(`untrack(() => this.#live.newestHeldMs())`) is still in the file. It passes for any *other*
-reactive read that reintroduces the loop, and fails for a rename that changes nothing.
+The first "test" was a regex asserting the fix's own text (`untrack(() =>
+this.#live.newestHeldMs())`) was still in the file. It passed for any *other* reactive read that
+reintroduced the loop, and failed for a rename that changed nothing. It is gone.
 
 The coverage that actually exists is `e2e/shell-lease-loop.spec.ts`, which boots the app and
 counts: boot calls in a settled 3s window (0 — the pre-fix build scores ~400), socket opens (1 —
-pre-fix, hundreds), `unsub` frames (0), and a power-flow readout holding a digit rather than an
-em dash. It has been watched fail against the reverted fix and it does not care how the fix is
-spelled. The regex is kept as a fast canary, with its limits written at the top of the file.
+pre-fix, hundreds), `unsub` frames (0). It has been watched fail against the reverted fix and it
+does not care how the fix is spelled.
 
 ### Adding a spec
 
@@ -136,12 +174,9 @@ guess.
 
 ## The one rule that decides where a unit test goes
 
-A component is a rendering of a decision. **Test the decision, not the rendering.**
-
-The dashboard has no component-rendering harness, and adding one would not have caught either
-of the bugs that motivated these gates. Runes (`$state`/`$derived`) do not run under `bun test`
-either, so a `.svelte.ts` store is testable only in the parts that are plain functions. What
-catches the bugs is moving the decision into a plain module the suite can call directly:
+A component is a rendering of a decision. **Test the decision in a unit test, the rendering in a
+component test.** Runes do not run under `bun test`, so the decision has to live in a plain module
+the unit suite can call directly:
 
 | Decision                                    | Lives in                        | Proven by                        |
 | ------------------------------------------- | ------------------------------- | -------------------------------- |
@@ -154,94 +189,12 @@ is more than a null check, that condition is the unit. Lift it into a `.ts` next
 component (or into `_shared/`), export it, test it, and let the component call it. The
 extraction is part of the change.
 
-What stays in the component: markup, class strings, prop wiring, `$effect` plumbing. "Stays in the
-component" is not "is untestable" — `$effect` plumbing is what the PR #60 outage was made of, and
-that is a browser spec, not a regex. Rendering is
-still not unit-tested — but a **convention** that lives in markup is, by reading the source. The
-layout vocabulary, the mobile floors, the live-value ownership rule and the chart zoom gestures are
-all conventions of that kind, and seven files pin them by reading `.svelte` sources:
+What stays in the component: markup, class strings, prop wiring, `$effect` plumbing. That is
+what the component layer is for — mount it and assert what renders — and `$effect` plumbing that
+spans the shell (the PR #60 outage) is a browser spec.
 
-- `lib/layout/primitives.test.ts` — the primitives spend the tokens
-- `lib/layout/mobile-density.test.ts` — grids, tap targets, chart boxes and gutters, tree-wide
-- `lib/layout/section-migration.test.ts` — one section recipe, with an exact offender list
-- `lib/components/layout/header-and-toolbar-rows.test.ts` — the shell's header and toolbar rows
-- `routes/(app)/page-shells.test.ts` — every page's shell shape, discovered from disk
-- `lib/live/wiring.test.ts` — one owner per live value
-- `lib/charts/zoom-wiring.test.ts` — which charts zoom, and that the gesture reaches a refetch
-
-A page that hand-rolls its own shell is not a visual bug you catch in the browser; it is a decision
-nobody made, and it fails the suite.
-
-## Writing a source-text test
-
-The technique has one rule, learned the expensive way: **pin the structure, or pin the identifier
-that is actually passed. Never pin that a string appears somewhere in the file.**
-
-A `toContain` over the whole file passes on a comment, on a dead branch, on the class sitting on
-the wrong element, and on the right helper called with the wrong argument. Every one of those is a
-shipped bug with a green test.
-
-Bad — every chart in `mobile-density.test.ts` measures its plot width, and this says so:
-
-```ts
-expect(code).toContain("bind:clientWidth");
-expect(code).toContain("chartPaddingFor(");
-```
-
-That stays green for `bind:clientWidth={plotWidth}` next to `chartPaddingFor(0)` — and every gutter
-helper reads `0` as the desktop case, so every phone chart quietly keeps its 60px gutter.
-
-Good — capture the bound identifier and require every gutter call in the file to spend *that
-variable* as its width argument, rather than to exist.
-
-The zoom work made this exact mistake seven times, and the sharpest one is worth copying out.
-`zoomedHistoryRangeFrom` is what turns a brush selection into a refetch — it re-derives the
-*bucket*, which is the whole feature — so the chart was pinned like this:
-
-```ts
-expect(svelte(chart)).toContain("zoomedHistoryRangeFrom(");
-```
-
-That stays green while the chart calls the mapper, discards the range it returned, and emits its
-own object with the current rollup: `onZoom?.({ ...next, bucket })`. The gesture then narrows the
-axis over data already fetched — four hourly bars, magnified — which is the one thing a zoom must
-not do. Green test, shipped bug, one token of difference.
-
-The fix (`lib/charts/zoom-wiring.test.ts`) captures what the mapper was assigned to and requires
-*that identifier* to be the thing handed on:
-
-```ts
-const emitted = /const\s+(\w+)\s*=\s*zoomedHistoryRangeFrom\(/.exec(code)?.[1] ?? "";
-expect(emitted).not.toBe("");
-const [handed] = argumentsOf(code, "onZoom?.");
-expect(handed).toBe(emitted);
-```
-
-Do not re-derive the parsers for this. `zoom-wiring.test.ts` carries `argumentsOf` (an argument
-list split at depth-0 commas), `declaration` (a whole `const x = …`, to the `;` that ends it rather
-than the first one inside it), `methodBody` and `openTagOf`; `page-shells.test.ts` carries `rootTag`
-and `enclosingTags`; `mobile-density.test.ts` carries `classValues` and `classValuesOn`. Each one is
-a claim about structure that a substring cannot make.
-
-The same discipline in its other forms:
-
-- **Parse a bounded opening tag** when the claim is about an element: `openTagOf()` in
-  `section-migration.test.ts` and `rootTag()` in `page-shells.test.ts` consume attribute values as
-  units so a `>` in a string or the `=>` in `onOpenChange={(v) => …}` does not end the tag early.
-  `<Section nested>` is a claim about a tag; "the file mentions nested" is not.
-- **Assert the branch, not the operands.** `wiring.test.ts` matches the whole ternary, because
-  swapping its two arms is a one-token merge slip that inverts the behaviour while both strings are
-  still present.
-- **Discover the file set from disk, and assert an exact set.** `page-shells.test.ts` globs
-  `**/+page.svelte`; `section-migration.test.ts` compares the offender list to an explicit
-  allowlist. A new violation is a new entry, so it fails until someone migrates it or writes down
-  why it belongs.
-- **Derive the expectation from the token** rather than restating it beside the assertion —
-  `tapTargetPx(16)` is `{44, 44}` because the token says so, so a shrunk inset is red instead of
-  silent.
-
-And prove the test discriminates before you believe it: apply the exact regression it names, watch
-it go red, then restore.
+**Prove every test discriminates.** Apply the exact regression it names, watch it go red, restore.
+A test nobody has watched fail is a guess.
 
 ## What to cover
 

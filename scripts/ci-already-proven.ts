@@ -46,6 +46,7 @@ export const CI_JOB_NAMES = [
   "Browser tests (shard 2/4)",
   "Browser tests (shard 3/4)",
   "Browser tests (shard 4/4)",
+  "Component tests",
   "Database query tests",
   "Route smoke",
   "Test & coverage",

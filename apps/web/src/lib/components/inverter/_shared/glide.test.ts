@@ -6,8 +6,7 @@
  * charts, holding the same numbers with nothing pinning them together. The
  * numbers are not a coincidence: the readouts and the plot drift side by side on
  * the same page against the same feed, so a tweak to one that missed the other
- * would desynchronise them visibly. `live-glide-wiring.test.ts` asserts that
- * neither module defines them any more.
+ * would desynchronise them visibly.
  */
 
 import { describe, expect, test } from "bun:test";

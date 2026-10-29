@@ -21,7 +21,7 @@
 		// endpoint and a one-day pick on /statistics read as a two-day range.
 		// Fixed here rather than in `app.css` because `--accent` is spent as a
 		// hover/muted surface by about a dozen other components.
-		// Pinned by `src/lib/components/ui/calendar-marker-tokens.test.ts` and
+		// Pinned by `src/lib/components/ui/calendar-markers.svelte.test.ts` and
 		// `e2e/range-picker-selection.spec.ts` — this file is vendored, and a
 		// future `shadcn-svelte add` would otherwise restore the collision.
 		// Keyed on `data-plant-today`, not bits-ui's `data-today`: the root marks

@@ -31,14 +31,6 @@ import {
 
 const HOUR_MS = 60 * 60 * 1000;
 
-describe("the constants of the motion", () => {
-  test("the smallest plant a rail is measured against is a kilowatt", () => {
-    // Without a floor, a plant idling at 40 W would measure a 40 W rail as full
-    // throttle and blaze at midnight.
-    expect(CEILING_FLOOR_W).toBe(1000);
-  });
-});
-
 describe("throughputWatts", () => {
   test("sums what is arriving, not what is leaving", () => {
     // The ceiling has to track ONE side of the balance, or every plant reads

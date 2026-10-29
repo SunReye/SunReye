@@ -6,8 +6,9 @@ description: The SunReye dashboard's layout vocabulary — page shells, section 
 # SunReye layout system
 
 Measure, gutter, rhythm, columns and chart heights are decided once, in
-`apps/web/src/lib/layout/tokens.ts`. Compose the primitives; do not type the literals. Five test
-files enforce this over the whole `src` tree — see the last section.
+`apps/web/src/lib/layout/tokens.ts`. Compose the primitives; do not type the literals. Nothing greps for a
+hand-rolled literal any more — review and this skill hold the vocabulary; component tests hold what
+it renders (see the last section).
 
 ## Tokens (`$lib/layout/tokens`)
 
@@ -51,8 +52,7 @@ do not import them directly.
 
 ### Charts
 
-Every chart gets a full-screen control, and `lib/charts/fullscreen-coverage.test.ts` finds new ones
-on disk. Put the control on the **plot**, not on a card holding several plots. The expanded classes
+Every chart gets a full-screen control. Put the control on the **plot**, not on a card holding several plots. The expanded classes
 live in `expandedSectionClass` / `expandedChartClass` and are written out **literally** — Tailwind
 scans source text, so a class name built with `map`/`join` reaches the DOM with no rule behind it
 and silently does nothing.
@@ -134,21 +134,23 @@ feed that decided it. No consumer merges the two.**
   from the glide.
 - Adding a value means adding it to `OWNERSHIP` under exactly one topic. Two owners throws.
 
-## The tests that will reject you
+## The tests that prove the layout
 
-All run in `bun run test` from the repo root.
+The vocabulary itself (which token a grid spends) is not tested — a regex over `.svelte` source
+passed for broken layouts and failed for renames, and those tests were deleted. What a user sees
+is tested by mounting the component in Chromium (`bun run test:components`,
+`*.svelte.test.ts`; `apps/web/TESTING.md`):
 
-| File | Rejects |
-| ---- | ------- |
-| `lib/layout/tokens.test.ts` | a changed token value, a fourth measure, any `md:` in the vocabulary |
-| `routes/(app)/page-shells.test.ts` | a new `(app)` page with no declared shape, a hand-rolled shell, an unstated measure |
-| `lib/layout/section-migration.test.ts` | any component outside the primitives that writes a section heading or frames its own card |
-| `lib/layout/mobile-density.test.ts` | a grid with no base column count, a literal chart height, a shrunk tap target, a broken reading order |
-| `lib/live/wiring.test.ts` | a cross-topic fallback, a peeled `Reading`, an unleased feed |
-| `lib/charts/fullscreen-coverage.test.ts` | a new chart with no way to take it full screen |
+| File | Proves |
+| ---- | ------ |
+| `lib/layout/tokens.test.ts` | the class builders compose; `tapTargetPx`, `tileContentWidthPx`, the compact-switcher boundary |
+| `components/layout/section.svelte.test.ts` | fold/unfold, 44px caret, a long German title wraps at 390px with controls hard right, fullscreen fills the viewport |
+| `components/layout/section-header.svelte.test.ts`, `page-shell.svelte.test.ts`, `panel-readout-row.svelte.test.ts` | header and toolbar rows: chrome stays on the right edge, stacks on a phone |
+| `components/layout/chart-fullscreen.svelte.test.ts` | a chart in a transformed dialog still takes the whole screen, exit is reachable |
+| `routes/(app)/statistics/stat-tiles.svelte.test.ts` | 2 tiles per row at 390px, 4 at lg, a long total cannot widen its column, 44px info target |
+| `components/inverter/range-switcher.svelte.test.ts`, `period-navigator.svelte.test.ts` | phone switchers fit one row, select ↔ buttons drive one value |
 
-They read sources, because runes do not run under `bun test` and there is no render harness. When
-you add one, pin the structure or the identifier that is actually passed — never that a string
-appears somewhere in the file (`apps/web/TESTING.md`, "Writing a source-text test").
+A new card, grid or switcher with phone behaviour gets a component test that sets
+`page.viewport(390, 844)` and measures it.
 
 Full rationale: `apps/web/DESIGN.md`.

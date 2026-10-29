@@ -10,7 +10,7 @@
 	//
 	// The lease is what makes any of it arrive: without it the store subscribes
 	// to nothing and every value here is a permanent em dash on a perfectly
-	// healthy plant (`$lib/live/wiring.test.ts` is what holds this file to it).
+	// healthy plant.
 	//
 	// The readings are the INTEGRATION'S, not each device's, and the caption says
 	// so out loud. `$lib/live/ownership.ts` names plant-wide ids only —

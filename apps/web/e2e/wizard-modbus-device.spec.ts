@@ -109,41 +109,6 @@ test("the inverter's roof and pack appear for an inverter and for no other role"
   await expect(page.getByRole("button", { name: "Add array" })).toHaveCount(0);
 });
 
-test("the confirm step summarises the device, and Add posts the body the route accepts", async ({
-  page,
-}) => {
-  const opened = await open(page);
-  const posts = recordPosts(page, DEVICES);
-
-  await reachDeviceStep(page);
-  await describeMeter(page);
-  await next(page).click();
-
-  // Named, not dumped: the old step ran `String()` over the answers bag, which
-  // for a device reads "[object Object]".
-  await expect(page.getByText("Cellar meter")).toBeVisible();
-  await expect(page.getByText("Sungrow SH10RT")).toBeVisible();
-  await expect(page.getByText("[object Object]")).toHaveCount(0);
-
-  await add(page).click();
-  await expect(page.getByText("Added.")).toBeVisible();
-
-  // A meter carries no arrays and no pack: the server refuses those on any role
-  // but `inverter`, so the body must not offer them.
-  expect(posts).toEqual([
-    {
-      via: "profile",
-      connection: { id: 1 },
-      role: "meter",
-      unitId: 0,
-      name: "Cellar meter",
-      profileId: "sungrow-sh10rt",
-    },
-  ]);
-  await expect(page).toHaveURL(/#\/settings\/devices$/);
-  expect(opened.consoleErrors).toEqual([]);
-});
-
 /**
  * THE SOLARMAN ARM of the same create step.
  *

@@ -22,9 +22,9 @@
  * For the same reason the assertions name no class and no token. A fix that
  * spells today's treatment differently — ring, outline, muted fill — is still a
  * fix; a fix that leaves the two indistinguishable is not. The token collision
- * itself is pinned separately and cheaply by
- * `src/lib/components/ui/calendar-marker-tokens.test.ts`, which exists because
- * these are vendored files a future `shadcn-svelte add` regenerates.
+ * itself is pinned separately, on the bare components, by
+ * `src/lib/components/ui/calendar-markers.svelte.test.ts`, because these are
+ * vendored files a future `shadcn-svelte add` regenerates.
  */
 
 import { expect, type Locator, test } from "@playwright/test";

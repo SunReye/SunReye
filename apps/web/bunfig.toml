@@ -2,3 +2,6 @@
 # Stub browser globals (localStorage for the Paraglide locale) before any
 # module under test loads — see src/test-setup.ts.
 preload = ["./src/test-setup.ts"]
+# `*.svelte.test.ts` is the component layer (apps/web/vitest.config.ts): it
+# mounts components in Chromium under Vitest and cannot run under bun.
+pathIgnorePatterns = ["**/*.svelte.test.ts"]

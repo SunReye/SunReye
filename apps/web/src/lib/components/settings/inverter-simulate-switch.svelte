@@ -15,7 +15,7 @@
 	// Its own component because the form's template is at the repo's complexity
 	// ceiling, and because a switch that owns a piece of copy is a thing on its
 	// own. No border: the Section around it is the frame, and a component that
-	// draws its own card is what `section-migration.test.ts` exists to stop.
+	// draws its own card inside another is a frame the page did not ask for.
 	let { simulate = $bindable() }: { simulate: boolean } = $props();
 </script>
 

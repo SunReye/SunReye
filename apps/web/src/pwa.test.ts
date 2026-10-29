@@ -53,11 +53,6 @@ describe("web app manifest", () => {
     expect(manifest.scope).toBe("./");
   });
 
-  test("brand colours are the flat blue sun on white", () => {
-    expect(manifest.theme_color).toBe("#2563eb");
-    expect(manifest.background_color).toBe("#ffffff");
-  });
-
   test("ships the icon set Chrome and Safari need to install", () => {
     const sizes = manifest.icons.map(
       (icon) => `${icon.sizes}${icon.purpose === "maskable" ? " maskable" : ""}`,

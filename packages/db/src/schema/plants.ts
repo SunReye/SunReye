@@ -19,8 +19,7 @@
  * azimuth, the export cap, the battery pack, the smart-meter date, the tariff,
  * the bidding zone — were scattered across the `weather`, `tariff` and
  * `spot-prices` keys of the same table.
- * `apps/web/src/lib/components/settings/plant-fields-placement.test.ts` exists
- * only because of that: two settings pages writing two halves of the `weather`
+ * A web placement test (since deleted) existed only because of that: two settings pages writing two halves of the `weather`
  * record read-modify-write over each other, and the loser's edit vanishes. With
  * each fact a COLUMN, an `UPDATE` touches only what it names, so that class of
  * bug is gone rather than guarded.

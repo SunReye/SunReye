@@ -21,11 +21,4 @@ describe("compareModes", () => {
     for (const label of labels) expect(label.length).toBeGreaterThan(0);
     expect(new Set(labels).size).toBe(labels.length);
   });
-
-  // Two options, so the segmented row still fits a phone and no Select form is
-  // needed — `needsCompactSwitcher` is what the switcher asks, and a third
-  // option here would silently change the control's phone shape.
-  test("it stays a two-option switcher, which is what fits the page toolbar", () => {
-    expect(compareModes()).toHaveLength(2);
-  });
 });

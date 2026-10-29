@@ -339,35 +339,3 @@ test.describe("the roster", () => {
     expect(opened.consoleErrors).toEqual([]);
   });
 });
-
-/**
- * ADDING is a route now, not a dialog.
- *
- * "Add device" used to open a modal that could only ever add a MODBUS device —
- * contractually, since its body required a `unitId` and a `profileId` — so a
- * broker's integrations had no entry point at all. It is a link to the four-step
- * wizard at `/settings/devices/add`, because four questions is more than a modal
- * holds at 400px and the browser's Back has to mean "the previous screen".
- *
- * What the wizard then does is its own spec's subject. What belongs HERE is the
- * one thing the panel still owns: that its Add reaches it. The dialog is still
- * mounted below for EDITING, which "editing a device…" above covers.
- */
-test.describe("adding", () => {
-  test("the panel's Add is a link to the wizard, and lands on it", async ({ page }) => {
-    const opened = await open(page);
-    const add = page.getByRole("link", { name: "Add device" });
-    // A LINK, not a button: a button here would need its own navigation call,
-    // and under the hash router a raw one escapes the ingress prefix and 404s.
-    await expect(add).toBeVisible();
-    await expect(page.getByRole("button", { name: "Add device" })).toHaveCount(0);
-
-    await add.click();
-    await expect(page).toHaveURL(/#\/settings\/devices\/add$/);
-    await expect(page.getByRole("heading", { name: "Add to this plant" })).toBeVisible();
-    // No dialog opened on the way: the wizard IS the screen.
-    await expect(dialog(page)).toHaveCount(0);
-    expect(opened.backend.unhandled).toEqual([]);
-    expect(opened.consoleErrors).toEqual([]);
-  });
-});

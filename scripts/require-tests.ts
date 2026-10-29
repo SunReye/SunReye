@@ -69,7 +69,7 @@ const SOURCE_EXT = /\.(ts|tsx|js|jsx|mjs|cjs|svelte|svelte\.ts|rs)$/;
  * those and covering it in `e2e/` still read as "source changed, no test
  * changed", and the cheapest way past that was a source-text regex over the
  * fix's own text. That is a green test for broken code, and it is how
- * `apps/web/src/lib/inverter/store-backfill-wiring.test.ts` came to exist.
+ * a store-backfill source-text test (since deleted) came to exist.
  *
  * Scoped to an `e2e/` segment rather than the bare `.spec.ts` suffix: nothing
  * else in this repo uses that suffix, and an unscoped rule would let a

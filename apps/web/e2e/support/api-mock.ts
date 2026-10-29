@@ -218,6 +218,14 @@ const NO_MIGRATION: MigrationStatusFixture = {
   backfillRunning: false,
 };
 
+/** One non-GET request, as {@link MockBackend.writes} records it. */
+export interface RecordedWrite {
+  method: string;
+  path: string;
+  /** The parsed JSON body; `null` when the request carried none. */
+  body: unknown;
+}
+
 export interface MockBackend {
   /** The manifest this instance serves. */
   readonly manifest: FixtureManifest;
@@ -225,6 +233,12 @@ export interface MockBackend {
   readonly requests: readonly string[];
   /** API paths no stub answered — must stay empty. */
   readonly unhandled: readonly string[];
+  /**
+   * Every write (any method but GET) the app sent, in order, with its parsed
+   * body — so a journey can assert the payload the UI produced without
+   * registering its own `page.on("request")` listener before the click.
+   */
+  readonly writes: readonly RecordedWrite[];
   /** Control frames the client wrote to the live socket, parsed. */
   readonly clientFrames: readonly unknown[];
   /**
@@ -275,6 +289,9 @@ export interface MockBackend {
    * it is the state a real expired or revoked session produces (the query cache
    * still believes it is signed in), and the only one in which the Eden
    * `onResponse` bounce is what redirects rather than the shell's own gate.
+   *
+   * A later `POST /api/auth/sign-in/email` restores it, as signing in again
+   * does on the real server.
    */
   expireSession(): void;
 }
@@ -418,6 +435,13 @@ export async function mockBackend(page: Page, options: BackendOptions = {}): Pro
   const requests: string[] = [];
   const unhandled: string[] = [];
   const clientFrames: unknown[] = [];
+  const writes: RecordedWrite[] = [];
+  /**
+   * Devices `POST /api/devices` created this session. Listed after the fixture
+   * roster by `GET /api/devices`, so a page that refetches after an add shows
+   * the row the operator just made — as the real server would.
+   */
+  const createdDevices: DeviceView[] = [];
   let sockets: WebSocketRoute[] = [];
   let socketOpens = 0;
   /** Set by {@link MockBackend.expireSession}: every non-auth read 401s after it. */
@@ -568,6 +592,15 @@ export async function mockBackend(page: Page, options: BackendOptions = {}): Pro
     const path = url.pathname;
     const query = Object.fromEntries(url.searchParams);
     requests.push(path + url.search);
+    if (method !== "GET") {
+      let sent: unknown = null;
+      try {
+        sent = request.postDataJSON();
+      } catch {
+        sent = request.postData();
+      }
+      writes.push({ method, path, body: sent });
+    }
     /** The request body, for the routes that echo what they were given. */
     const body = (): Record<string, unknown> =>
       (request.postDataJSON() as Record<string, unknown> | null) ?? {};
@@ -604,6 +637,8 @@ export async function mockBackend(page: Page, options: BackendOptions = {}): Pro
     }
     if (at("auth/admin/remove-user")) return json(route, { success: true });
     if (at("auth/sign-in/email") || at("auth/sign-up/email")) {
+      // Signing in again is how a user recovers from an expired session.
+      sessionExpired = false;
       return json(route, { user: { ...SESSION_USER, role: role ?? "admin" }, token: "e2e" });
     }
     if (at("auth/sign-out")) return json(route, { success: true });
@@ -907,8 +942,8 @@ export async function mockBackend(page: Page, options: BackendOptions = {}): Pro
         const connection = choice.create
           ? ({ id: 9, ...choice.create } as ConnectionView)
           : (fixture.CONNECTIONS.find((c) => c.id === choice.id) ?? null);
-        return json(route, {
-          id: 42,
+        const created: DeviceView = {
+          id: 42 + createdDevices.length,
           slug: String(b.name)
             .toLowerCase()
             .replace(/[^a-z0-9]+/g, "-"),
@@ -929,9 +964,12 @@ export async function mockBackend(page: Page, options: BackendOptions = {}): Pro
           kind: "modbus",
           state: "idle",
           integration: null,
-        } satisfies DeviceView);
+        };
+        createdDevices.push(created);
+        return json(route, created);
       }
-      return json(route, fixture.devices(MANIFEST));
+      const roster = fixture.devices(MANIFEST);
+      return json(route, { ...roster, devices: [...roster.devices, ...createdDevices] });
     }
     // `removeDevice`: only a device with no readings goes; the rest are the
     // RESTRICT refusal the delete dialog answers with "retire instead".
@@ -1029,6 +1067,9 @@ export async function mockBackend(page: Page, options: BackendOptions = {}): Pro
     },
     get unhandled() {
       return unhandled;
+    },
+    get writes() {
+      return writes;
     },
     get clientFrames() {
       return clientFrames;

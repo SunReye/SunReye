@@ -15,8 +15,7 @@ import { updatedAtTz } from "./columns";
  * `./plants.ts`. They had been scattered across the `weather`, `tariff` and
  * `spot-prices` keys HERE, and two settings pages writing two halves of one
  * JSONB document read-modify-wrote over each other so the loser's edit vanished
- * (`apps/web/src/lib/components/settings/plant-fields-placement.test.ts` exists
- * only because of that). With each fact a column an `UPDATE` touches only what
+ * (a web placement test, since deleted, existed only because of that). With each fact a column an `UPDATE` touches only what
  * it names, so the whole bug class is gone rather than guarded.
  *
  * The rule that follows: a fact that DESCRIBES THE PLANT OR ITS HARDWARE belongs
