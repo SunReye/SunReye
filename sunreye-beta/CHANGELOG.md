@@ -1,6 +1,40 @@
 # Changelog
 
-No unreleased changes on `dev`; `beta.20260930-711e902` matches the last release.
+## [unreleased]
+
+Unreleased work on `dev` since 3.6.1, shipped in `beta.20261029-ee71679`.
+
+
+### Bug Fixes
+
+* **web:** reserve room for final statistics axis label ([0f06b33](https://github.com/SunReye/SunReye/commit/0f06b337a47deb88247adc2e718a682e52bf3061))
+* **web:** let sign-in finish when a stale session is still cached ([63a0e24](https://github.com/SunReye/SunReye/commit/63a0e244045b34657be216265338b55b0db66787))
+
+
+### Documentation
+
+* **web:** describe three test layers and drop the source-text guidance ([f9ac1f1](https://github.com/SunReye/SunReye/commit/f9ac1f17458610f99f1c8829610c45b7a68497f0))
+
+
+### Tests
+
+* **web:** drop e2e cases the user journeys now repeat ([651d421](https://github.com/SunReye/SunReye/commit/651d421c8492bbf0c4e878f9aca640a1cbe50555))
+* **web:** drop the live-wiring regexes and repoint comments at real tests ([533b009](https://github.com/SunReye/SunReye/commit/533b009e1f7ecf273747ad3c9273663aee8f68e0))
+* **web:** drop cases that restate a constant another case already pins ([ab42f91](https://github.com/SunReye/SunReye/commit/ab42f9145bfeaf76a471452a6a7cba649a983c5b))
+* **web:** delete the remaining source-text canaries ([3c859d1](https://github.com/SunReye/SunReye/commit/3c859d1768d54497f483e0ef4d3531d7ecd1dfd8))
+* **web:** run the plant-ceiling fold inside a real effect ([9cee60f](https://github.com/SunReye/SunReye/commit/9cee60fdf37c92ff167793c6ba5af872adc18890))
+* **web:** ask the rendered calendar whether today looks picked ([20f42ca](https://github.com/SunReye/SunReye/commit/20f42cadd222c3eb555935aaa0f3e3583ea7ced2))
+* **web:** measure the card and shell rows instead of grepping them ([5184de1](https://github.com/SunReye/SunReye/commit/5184de1a23bd8d69a4383b982b9be14461b1832b))
+* **web:** mount the readout, navigator and rails instead of reading them ([1997b2b](https://github.com/SunReye/SunReye/commit/1997b2be09c90ec689af38b2bf4dbdc1e5e615c8))
+* **web:** drop chart and PWA tests that restate constants ([804a978](https://github.com/SunReye/SunReye/commit/804a9788009110346116bc72fd430e2a3da07fd4))
+* **web:** drop source-text layout, chart and route tests ([4c984e3](https://github.com/SunReye/SunReye/commit/4c984e391e2006c091f992de862ca409a080b402))
+* **web:** prove the phone layout claims in real Chromium ([78912b1](https://github.com/SunReye/SunReye/commit/78912b186edbb63500c820d388a276840b0c0cd2))
+* **web:** mount the section card and chart frame in a component test ([eea655c](https://github.com/SunReye/SunReye/commit/eea655ce9350b51b8fa9fee12917166943d598db))
+* **web:** add add-device user journey ([ef3856e](https://github.com/SunReye/SunReye/commit/ef3856e7a37eae9d1d4cc47b7fb1738676e3043c))
+* **web:** add history-browse user journey ([8a5a0c4](https://github.com/SunReye/SunReye/commit/8a5a0c4f34009b72fa3dba384cffbb1dab667b3f))
+* **web:** add dashboard-live user journey ([57420eb](https://github.com/SunReye/SunReye/commit/57420eb32667226e4c14fc5ae7fac831a706d9b6))
+* **web:** record writes and created devices in the e2e mock backend ([a6e0462](https://github.com/SunReye/SunReye/commit/a6e0462f51c9378faedb90728121df51b2fec51a))
+* **web:** add a component layer on Vitest browser mode ([f53a99f](https://github.com/SunReye/SunReye/commit/f53a99fe3fb51a551487bd744f905000668170d2))
 
 <!--
   This preamble is hand-written and version-independent. release-please owns the
