@@ -1,0 +1,107 @@
+{
+  "repo": "SunReye/SunReye",
+  "host": "github.com",
+  "base": "v3",
+  "slots": {
+    "impl": 3,
+    "merge": 1
+  },
+  "slot_node_modules_cap_gb": 4,
+  "disk_pause_free_gb": 10,
+  "disk_critical_free_gb": 5,
+  "max_attempts": 3,
+  "max_pr_files": 50,
+  "max_pr_lines": 3000,
+  "generated_paths": [
+    "*.gen.ts",
+    "*_snapshot.json",
+    "bun.lock",
+    "Cargo.lock"
+  ],
+  "max_waiting_prs": 3,
+  "max_train_prs": 5,
+  "slot_nice": 10,
+  "max_parallel_reviews": 4,
+  "require_ci": true,
+  "golden_paths": [
+    "golden",
+    "/fixtures/",
+    "/oracle/cases/"
+  ],
+  "vitest_workers_per_slot": 2,
+  "playwright_workers_per_slot": 2,
+  "ui_epic": null,
+  "protected_branches": [
+    "main",
+    "master",
+    "stable"
+  ],
+  "clean_paths": [],
+  "generated_conflict_paths": [
+    "bun.lock",
+    "*.gen.ts"
+  ],
+  "commands": {
+    "install": [
+      [
+        "bun",
+        "install",
+        "--frozen-lockfile"
+      ]
+    ],
+    "prepare": [],
+    "regenerate": [
+      [
+        "bun",
+        "install"
+      ]
+    ],
+    "gate": [
+      [
+        "bun",
+        "run",
+        "test"
+      ],
+      [
+        "bun",
+        "run",
+        "test:mocks"
+      ],
+      [
+        "bun",
+        "run",
+        "test:factory"
+      ],
+      [
+        "bunx",
+        "fallow",
+        "--quiet"
+      ],
+      [
+        "bunx",
+        "oxlint"
+      ],
+      [
+        "bunx",
+        "oxfmt",
+        "--check"
+      ],
+      [
+        "env",
+        "SKIP_ENV_VALIDATION=1",
+        "bun",
+        "run",
+        "check-types"
+      ]
+    ],
+    "train_gate": [
+      [
+        "env",
+        "SKIP_ENV_VALIDATION=1",
+        "bun",
+        "run",
+        "build"
+      ]
+    ]
+  }
+}

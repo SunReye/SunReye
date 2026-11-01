@@ -1,0 +1,3 @@
+# Append-only note files: two PRs that each add lines land together.
+/apps/*/AGENTS.md merge=union
+/apps/web/TESTING.md merge=union

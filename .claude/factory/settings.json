@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "env": {
+    "CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH": "1"
+  },
+  "permissions": {
+    "allow": [
+      "Bash",
+      "Read",
+      "Edit",
+      "Write",
+      "Glob",
+      "Grep",
+      "Agent",
+      "Skill",
+      "ScheduleWakeup",
+      "mcp__svelte__svelte-autofixer",
+      "mcp__svelte__get-documentation",
+      "mcp__svelte__list-sections",
+      "WebFetch(domain:code.claude.com)",
+      "WebFetch(domain:docs.fallow.tools)"
+    ],
+    "deny": [
+      "Edit(/.env)",
+      "Write(/.env)",
+      "Bash(sudo *)",
+      "Bash(git push --force *)",
+      "Edit(/**/.env)",
+      "Write(/**/.env)",
+      "Edit(/**/.env.local)",
+      "Write(/**/.env.local)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/factory-guard.py"
+          }
+        ]
+      }
+    ]
+  }
+}

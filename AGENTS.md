@@ -113,6 +113,7 @@ Load the relevant one when matching work:
 - For agent workflows, prefer structured output with `--format json`.
 - Before digging through Fallow docs, fetch `https://docs.fallow.tools/llms.txt` and use it as page index.
 
+- Agent factory work (`/loop /factory`, `scripts/factory`, `.claude/agents/factory-*`) → follow `docs/factory.md`.
 - Frontend work in `apps/web` → follow `apps/web/AGENTS.md`.
 - NixOS appliance work in `nixos/` → read `nixos/README.md` first. `bun run test` does not cover
   it: the gate is `nix flake check ./nixos` (evaluation plus `tests/assertions.nix`, which proves

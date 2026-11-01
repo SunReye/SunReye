@@ -95,3 +95,7 @@ core
 scripts/fixtures/parity-1-2-0.*.json
 scripts/fixtures/ground-truth-1-2-0.*.recheck.json
 sunreye_2026-08-27_16.27_30079104.tar
+
+# Agent factory runtime state and Python bytecode
+/.factory/
+__pycache__/

@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+# Fails when an agent doc and the dispatcher's result table disagree on a result-line format.
+set -euo pipefail
+
+cd "$(git rev-parse --show-toplevel)"
+
+skill=.agents/skills/factory/SKILL.md
+agents=.claude/agents
+
+# agent@doc literal@dispatcher literal result line, as written in the agent doc and in the dispatcher table
+checks=(
+  'factory-implementer@`RESULT pr=<number>`@`RESULT pr=<n>`'
+  'factory-implementer@`RESULT failed: split needed — <why>`@`RESULT failed: split needed …`'
+  'factory-implementer@`RESULT failed: <reason>`@`RESULT failed: …`'
+  'factory-implementer@`RESULT human: <question>`@`RESULT human: …`'
+  'factory-integrator@`RESULT train changes=<pr>,<pr>`@`RESULT train changes=<prs>`'
+  'factory-integrator@`RESULT human: #<pr> <question>`@`RESULT human: #<pr> …`'
+  'factory-reviewer-spec@`VERDICT approve`@`VERDICT …`'
+  'factory-reviewer-spec@`VERDICT changes`@`VERDICT …`'
+  'factory-reviewer-standards@`VERDICT approve`@`VERDICT …`'
+  'factory-reviewer-standards@`VERDICT changes`@`VERDICT …`'
+  'factory-splitter@`SPLIT <issue> -> #a, #b[, …]`@`SPLIT …`'
+  'factory-triage@`ROUTE std|deep|split: <one-sentence reason>`@`ROUTE <route>: …`'
+)
+
+fail=0
+for check in "${checks[@]}"; do
+  IFS='@' read -r agent doc_line skill_line <<<"$check"
+  grep -qF -- "$doc_line" "$agents/$agent.md" || { echo "$agent.md: missing $doc_line" >&2; fail=1; }
+  grep -qF -- "$skill_line" "$skill" || { echo "$skill: missing $skill_line" >&2; fail=1; }
+done
+
+for agent in "$agents"/factory-*.md; do
+  grep -q 'at most 12 lines' "$agent" || { echo "$agent: missing the 12-line limit" >&2; fail=1; }
+  grep -qF '`Recommendation:`' "$agent" || { echo "$agent: missing the Recommendation line" >&2; fail=1; }
+done
+
+exit "$fail"
