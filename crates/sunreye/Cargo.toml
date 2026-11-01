@@ -15,7 +15,23 @@ clap = { version = "4", default-features = false, features = [
   "usage",
   "error-context",
 ] }
-tokio = { version = "1", default-features = false, features = ["macros", "rt", "signal"] }
+serde = { version = "1", features = ["derive", "rc"] }
+serde_json = { version = "1", features = ["float_roundtrip"] }
+sqlx = { version = "0.8", default-features = false, features = [
+  "macros",
+  "migrate",
+  "runtime-tokio",
+  "sqlite",
+] }
+tokio = { version = "1", default-features = false, features = [
+  "macros",
+  "net",
+  "rt",
+  "signal",
+  "sync",
+  "time",
+] }
+thiserror = "2"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", default-features = false, features = [
   "fmt",
@@ -25,3 +41,6 @@ tracing-subscriber = { version = "0.3", default-features = false, features = [
 
 [lints]
 workspace = true
+
+[dev-dependencies]
+sunreye-sim = { path = "../sim" }

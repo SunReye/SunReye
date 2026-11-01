@@ -40,6 +40,7 @@ same C library, synchronous API); targets do not split.
 - Every query is proven twice: at compile time against the schema, and by a unit test against an
   in-memory SQLite. Never by asserting SQL text.
 - A schema or query change without a regenerated `.sqlx` cache fails `scripts/ci` with the command to run.
+  `scripts/ci` needs `cargo-sqlx`: `cargo install sqlx-cli --locked`.
 - Postgres leaves every edition, including the add-on's bundled server and its dump-based backups.
 - Backups leave the device automatically, in the archive format every target imports; the device's own
   storage is treated as disposable.

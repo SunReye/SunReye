@@ -4,12 +4,29 @@
 
 use std::io::{BufRead, BufReader};
 use std::process::{Child, ChildStderr, Command, ExitStatus, Stdio};
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 const BIN: &str = env!("CARGO_BIN_EXE_sunreye");
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
+/// A store directory of its own, so no test writes into the working directory or shares a file.
+fn fresh_data_dir() -> std::path::PathBuf {
+    static NEXT: AtomicUsize = AtomicUsize::new(0);
+    let dir = std::path::Path::new(env!("CARGO_TARGET_TMPDIR"))
+        .join(format!("cli-{}", NEXT.fetch_add(1, Ordering::Relaxed)));
+    drop(std::fs::remove_dir_all(&dir));
+    dir
+}
+
 fn spawn(args: &[&str]) -> Child {
-    Command::new(BIN).args(args).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn().expect("spawn sunreye")
+    Command::new(BIN)
+        .args(args)
+        .arg("--data-dir")
+        .arg(fresh_data_dir())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn sunreye")
 }
 
 /// Waits for the startup line, which is logged after the signal handlers exist.
@@ -91,4 +108,13 @@ fn log_level_error_silences_the_startup_line() {
     }
     assert!(status.success());
     assert!(logged.is_empty(), "unexpected output: {logged}");
+}
+
+#[test]
+fn an_unusable_data_dir_exits_non_zero_and_says_why() {
+    let file = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join("not-a-directory");
+    std::fs::write(&file, b"x").expect("write");
+    let out = Command::new(BIN).arg("--data-dir").arg(&file).output().expect("run");
+    assert!(!out.status.success());
+    assert!(String::from_utf8_lossy(&out.stderr).contains("data directory"));
 }
