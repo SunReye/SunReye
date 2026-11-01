@@ -16,18 +16,6 @@ name: NixOS image
 #  • On demand: an image from any ref, for a bench unit.
 
 on:
-  pull_request:
-    paths:
-      - "nixos/**"
-      - "apps/appliance-cli/**"
-      - ".github/workflows/nixos-image.yml"
-  # NOT workflow_run. GitHub suppresses runs for events made by GITHUB_TOKEN,
-  # and `Docker · server` is itself dispatched by release-please with that token
-  # — so its completion emits no event and this workflow never woke up. 3.2.0
-  # shipped both container images and no appliance image exactly that way, with
-  # nothing failing, because there was no run at all. The server build now hands
-  # off explicitly (a token MAY dispatch), at the default branch so the file that
-  # runs is the current one rather than whatever the tag froze.
   workflow_dispatch:
     inputs:
       release:

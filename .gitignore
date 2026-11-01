@@ -99,3 +99,7 @@ sunreye_2026-08-27_16.27_30079104.tar
 # Agent factory runtime state and Python bytecode
 /.factory/
 __pycache__/
+
+# Rust build output
+/target
+**/target/

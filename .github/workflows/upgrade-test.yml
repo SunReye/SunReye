@@ -24,13 +24,6 @@ name: Upgrade test
 # still push-shaped or journaled at an older point) preserves the data and the
 # server comes back healthy.
 on:
-  pull_request:
-    paths:
-      - "packages/db/**"
-      - "docker/**"
-      - "apps/server/**"
-      - "sunreye/**"
-      - ".github/workflows/upgrade-test.yml"
   workflow_dispatch:
 
 permissions:

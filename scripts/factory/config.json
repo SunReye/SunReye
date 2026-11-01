@@ -7,8 +7,9 @@
     "merge": 1
   },
   "slot_node_modules_cap_gb": 4,
-  "disk_pause_free_gb": 10,
-  "disk_critical_free_gb": 5,
+  "cargo_build_jobs": 2,
+  "disk_pause_free_gb": 30,
+  "disk_critical_free_gb": 15,
   "max_attempts": 3,
   "max_pr_files": 50,
   "max_pr_lines": 3000,
@@ -22,7 +23,7 @@
   "max_train_prs": 5,
   "slot_nice": 10,
   "max_parallel_reviews": 4,
-  "require_ci": true,
+  "require_ci": false,
   "golden_paths": [
     "golden",
     "/fixtures/",
@@ -36,7 +37,9 @@
     "master",
     "stable"
   ],
-  "clean_paths": [],
+  "clean_paths": [
+    "target"
+  ],
   "generated_conflict_paths": [
     "bun.lock",
     "*.gen.ts"
@@ -58,49 +61,19 @@
     ],
     "gate": [
       [
-        "bun",
-        "run",
-        "test"
-      ],
-      [
-        "bun",
-        "run",
-        "test:mocks"
-      ],
-      [
-        "bun",
-        "run",
-        "test:factory"
-      ],
-      [
-        "bunx",
-        "fallow",
-        "--quiet"
-      ],
-      [
-        "bunx",
-        "oxlint"
-      ],
-      [
-        "bunx",
-        "oxfmt",
-        "--check"
-      ],
-      [
-        "env",
-        "SKIP_ENV_VALIDATION=1",
-        "bun",
-        "run",
-        "check-types"
+        "scripts/ci"
       ]
     ],
     "train_gate": [
       [
-        "env",
-        "SKIP_ENV_VALIDATION=1",
         "bun",
         "run",
-        "build"
+        "e2e:types"
+      ],
+      [
+        "bun",
+        "run",
+        "e2e"
       ]
     ]
   }

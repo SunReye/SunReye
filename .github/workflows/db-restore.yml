@@ -21,14 +21,6 @@ name: Restore test
 # watched run is not a gate. The one that does run is the dev→master PR, over
 # the same tree the release ships.
 on:
-  pull_request:
-    paths:
-      - "packages/db/**"
-      - "sunreye/rootfs/usr/lib/sunreye/dump.sh"
-      - "scripts/db-restore.sh"
-      - "scripts/db-parity.ts"
-      - "scripts/ci/bashio-shim.sh"
-      - ".github/workflows/db-restore.yml"
   workflow_dispatch:
 
 permissions:
@@ -216,7 +208,7 @@ jobs:
           # exported explicitly — SOURCE_URL is this workflow's name for it.
           for mode in excluded full; do
             full=false; [ "$mode" = full ] && full=true
-            DATABASE_URL="$SOURCE_URL" bash -c "source scripts/ci/bashio-shim.sh
+            DATABASE_URL="$SOURCE_URL" bash -c "source scripts/lib/bashio-shim.sh
                      BACKUP_FULL=$full BACKUPS_KEEP=5 . sunreye/rootfs/usr/lib/sunreye/dump.sh $mode"
           done
           ls -l "$BACKUP_DIR"
@@ -268,7 +260,7 @@ jobs:
           psql -d "$SOURCE_URL" -v ON_ERROR_STOP=1 -tAc \
             "SELECT remove_retention_policy('metrics_raw', if_exists => TRUE);
              SELECT add_retention_policy('metrics_raw', INTERVAL '90 days')" > /dev/null
-          DATABASE_URL="$SOURCE_URL" bash -c "source scripts/ci/bashio-shim.sh
+          DATABASE_URL="$SOURCE_URL" bash -c "source scripts/lib/bashio-shim.sh
                    BACKUP_FULL=false BACKUPS_KEEP=5 . sunreye/rootfs/usr/lib/sunreye/dump.sh thinned"
           ls -l "$BACKUP_DIR"
           [ "$(stat -c%s "$BACKUP_DIR/thinned.dump")" -lt "$(stat -c%s "$BACKUP_DIR/full.dump")" ]
@@ -343,7 +335,7 @@ jobs:
           psql -d postgres -c "CREATE DATABASE zero"
           zero="postgresql://postgres:restore-test@localhost:5432/zero"
           DATABASE_URL="$zero" bun run --cwd packages/db db:migrate
-          DATABASE_URL="$zero" bash -c "source scripts/ci/bashio-shim.sh
+          DATABASE_URL="$zero" bash -c "source scripts/lib/bashio-shim.sh
             BACKUP_FULL=true BACKUPS_KEEP=5 . sunreye/rootfs/usr/lib/sunreye/dump.sh zero"
           psql -d "$zero" -tAf /tmp/snapshot.sql > /tmp/zero.json
 
@@ -359,13 +351,13 @@ jobs:
       # against the real backup directory.
       - name: backups_keep of 0 and of a non-numeric value
         run: |
-          DATABASE_URL="$SOURCE_URL" bash -c "source scripts/ci/bashio-shim.sh
+          DATABASE_URL="$SOURCE_URL" bash -c "source scripts/lib/bashio-shim.sh
             BACKUP_FULL=false BACKUPS_KEEP=nonsense . sunreye/rootfs/usr/lib/sunreye/dump.sh keep-bad"
           echo "after a non-numeric keep (defaults to 3):"
           ls -1 "$BACKUP_DIR"
           [ "$(ls -1 "$BACKUP_DIR"/*.dump | wc -l)" = "3" ]
 
-          DATABASE_URL="$SOURCE_URL" bash -c "source scripts/ci/bashio-shim.sh
+          DATABASE_URL="$SOURCE_URL" bash -c "source scripts/lib/bashio-shim.sh
             BACKUP_FULL=false BACKUPS_KEEP=0 . sunreye/rootfs/usr/lib/sunreye/dump.sh keep-zero"
           echo "after keep=0:"
           ls -1 "$BACKUP_DIR" || true

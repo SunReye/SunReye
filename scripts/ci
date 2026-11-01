@@ -1,0 +1,138 @@
+#!/usr/bin/env bash
+# The merge gate. Hosted workflows run only on manual dispatch: implementers, the integrator and
+# people run this locally, and `scripts/factory/factory merge` trusts their green run.
+#
+# Usage: scripts/ci [--e2e]
+#   --e2e  also run the Playwright browser suite (~10 min).
+#
+# Base: `base` in scripts/factory/config.json, compared against origin/<base>.
+# Heavy steps hold one of CI_HEAVY_CAP (2) machine-wide locks, so factory slots queue instead of
+# fighting for cores and disk. The database and route-smoke steps also hold one exclusive lock: both
+# start throwaway TimescaleDB containers on fixed ports.
+set -euo pipefail
+
+cd "$(git rev-parse --show-toplevel)"
+
+e2e=0
+for arg in "$@"; do
+  case $arg in
+    --e2e) e2e=1 ;;
+    *) echo "usage: scripts/ci [--e2e]" >&2; exit 2 ;;
+  esac
+done
+
+base=origin/$(python3 -c 'import json; print(json.load(open("scripts/factory/config.json"))["base"])')
+locks=$(git rev-parse --path-format=absolute --git-common-dir)/ci-locks
+mkdir -p "$locks"
+cap=${CI_HEAVY_CAP:-2}
+
+export db_container=sunreye-ci-db db_port=${CI_DB_PORT:-5434} image=ghcr.io/sunreye/timescaledb:pg17-ts2.28.2
+
+timings=() current="" started=$SECONDS begun=$SECONDS
+finish() {
+  if [[ -n $current ]]; then
+    timings+=("$(printf '%5ds  %s' $((SECONDS - started)) "$current")")
+  fi
+  current=""
+}
+report() {
+  finish
+  printf '\n== timings\n'
+  printf '%s\n' "${timings[@]}"
+  printf '%5ds  total\n' $((SECONDS - begun))
+}
+trap report EXIT
+step() { finish; current=$*; started=$SECONDS; printf '\n== %s\n' "$*"; }
+
+# db_tests: TimescaleDB on $db_port (host network: bridged containers fail on the LXC host), then the
+# database suite with CI=1 so an unreachable database fails instead of skipping.
+db_tests() {
+  docker rm -f "$db_container" >/dev/null 2>&1 || true
+  docker run -d --name "$db_container" --network host -e POSTGRES_PASSWORD=db-test "$image" \
+    postgres -c "port=$db_port" -c fsync=off -c synchronous_commit=off >/dev/null
+  local tries=0
+  until docker exec "$db_container" pg_isready -U postgres -p "$db_port" >/dev/null 2>&1; do
+    ((++tries < 180)) || { docker logs --tail 15 "$db_container" >&2; return 1; }
+    sleep 0.5
+  done
+  local code=0
+  CI=1 DB_TEST_URL="postgresql://postgres:db-test@localhost:$db_port/postgres" bun run test:db || code=$?
+  docker rm -f "$db_container" >/dev/null
+  return "$code"
+}
+
+# heavy <command…>: runs the command holding a free heavy lock, waiting for one.
+heavy() {
+  local slot code waited=0
+  while :; do
+    for slot in $(seq 1 "$cap"); do
+      code=0
+      flock -n -E 200 "$locks/heavy-$slot" "$@" || code=$?
+      ((code == 200)) || return "$code"
+    done
+    ((waited)) || { echo "waiting for a heavy lock ($cap in use)"; waited=1; }
+    sleep 2
+  done
+}
+
+step "agent guides"
+# AGENTS.md files hold routing and rules, set by a person: AGENTS_EDIT=1 allows a deliberate edit.
+git fetch -q origin "${base#origin/}"
+if [[ -z ${AGENTS_EDIT:-} ]] && git diff --name-only "$base"...HEAD | grep -E '(^|/)AGENTS\.md$'; then
+  echo "AGENTS.md changed: feature notes do not belong there. Revert it (a deliberate edit sets AGENTS_EDIT=1)." >&2
+  exit 1
+fi
+
+step install
+bun install --frozen-lockfile
+
+step "tests required"
+bun scripts/require-tests.ts "$(git merge-base "$base" HEAD)"
+
+step "lint and format"
+bunx oxlint
+bunx oxfmt --check
+bunx fallow --quiet
+
+step typecheck
+SKIP_ENV_VALIDATION=1 bun run check-types
+bun run --cwd apps/web i18n:lint
+
+step "migration drift"
+(
+  cd packages/db
+  bunx drizzle-kit check
+  bunx drizzle-kit generate
+  if [[ -n $(git status --porcelain src/migrations) ]]; then
+    echo "schema changed without a committed migration: run 'bun run db:generate' in packages/db" >&2
+    exit 1
+  fi
+)
+
+step "unit tests and coverage"
+bun run test:mocks
+heavy bun run test:coverage
+bun run test:floor
+
+step "factory scripts"
+bun run test:factory
+
+step build
+heavy env SKIP_ENV_VALIDATION=1 bun run build
+
+step "component tests"
+bun run e2e:install
+heavy bun run test:components
+
+step "database and route smoke"
+export -f db_tests
+heavy flock "$locks/database" bash -c db_tests
+heavy flock "$locks/database" bun run test:routes
+
+if ((e2e)); then
+  step e2e
+  bun run e2e:types
+  heavy bun run e2e
+fi
+
+step "ci green"
