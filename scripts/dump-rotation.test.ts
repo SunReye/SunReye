@@ -123,7 +123,7 @@ describe("dump.sh rotation", () => {
 });
 
 describe("CI bashio shim", () => {
-  const SHIM = join(import.meta.dir, "ci/bashio-shim.sh");
+  const SHIM = join(import.meta.dir, "lib/bashio-shim.sh");
 
   async function shim(script: string, env: Record<string, string> = {}): Promise<string> {
     const proc = Bun.spawn(["bash", "-c", `source ${SHIM}\n${script}`], {
@@ -203,7 +203,7 @@ describe("dump.sh dump modes", () => {
     const script = join(dir, "dump.sh");
     writeFileSync(script, DUMP_SH.replaceAll("/data/backups", dir));
     const proc = Bun.spawn(
-      ["bash", "-c", `source ${join(import.meta.dir, "ci/bashio-shim.sh")}\n. ${script} probe`],
+      ["bash", "-c", `source ${join(import.meta.dir, "lib/bashio-shim.sh")}\n. ${script} probe`],
       {
         env: {
           PATH: `${bin}:${process.env.PATH}`,

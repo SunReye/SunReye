@@ -8,7 +8,7 @@
 # 127 rather than being skipped, which is how the missing `log.warning` was
 # found — so the shim has to grow with the script.
 #
-#   source scripts/ci/bashio-shim.sh
+#   source scripts/lib/bashio-shim.sh
 #   BACKUP_FULL=true . sunreye/rootfs/usr/lib/sunreye/dump.sh my-dump
 #
 # Options come from env vars named after them (BACKUP_FULL, BACKUPS_KEEP), so a
