@@ -8,6 +8,10 @@ echo "== cargo fmt"
 cargo fmt --check
 # The query! macros read the committed .sqlx cache; a stale one names `cargo sqlx prepare` as the fix.
 echo "== sqlx cache"
+cargo sqlx --version >/dev/null 2>&1 || {
+  echo "cargo-sqlx missing: cargo install sqlx-cli --locked" >&2
+  exit 1
+}
 scratch=$(mktemp -d)
 trap 'rm -rf "$scratch"' EXIT
 (
