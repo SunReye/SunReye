@@ -4,7 +4,7 @@ Status: accepted (2026-11-01)
 
 ## Context
 
-The Rust core (ADR 0002) replaces Postgres with its own store (ADR 0004) and ships without control
+The Rust core (ADR 0002) replaces Postgres with one SQLite file (ADR 0004) and ships without control
 (ADR 0005). Existing installs hold years of history in TimescaleDB, and some have automation writing
 inverter registers. 3.x shutdown deliberately does not restore the user's register values, so an
 install upgraded with automation on would stay on SunReye's last write.
