@@ -405,70 +405,52 @@ const FRAMINGS: InverterTransport[] = ["tcp", "rtu-over-tcp", "solarman-v5"];
 
 const device = (units: number[], registers = PLAIN_REGISTERS): Device => ({ registers, units });
 
+/** A scenario with the defaults most share: unit 1 answering, a plain read. */
+const scenario = (
+  framing: InverterTransport,
+  name: string,
+  doc: string,
+  over: Partial<Scenario> = {},
+): Scenario => ({
+  framing,
+  name,
+  doc,
+  metrics: "plain",
+  unitId: 1,
+  device: device([1]),
+  operation: { op: "read" },
+  ...over,
+});
+
 /** Cases every framing shares. */
-function common(framing: InverterTransport): Scenario[] {
-  const base = { framing, metrics: "plain" as const };
-  const read = { op: "read" as const };
+function common(f: InverterTransport): Scenario[] {
   return [
-    {
-      ...base,
-      name: "read-unit-1",
-      doc: "FC03 500 x4 of unit 1; scale, sign, low-word-first double word",
-      unitId: 1,
-      device: device([1]),
-      operation: read,
-    },
-    {
-      ...base,
-      name: "read-unit-0",
-      doc: "the same read addressed to unit 0 (a gateway that answers 0)",
+    scenario(f, "read-unit-1", "FC03 500 x5 of unit 1; scale, sign, low-word-first double word"),
+    scenario(f, "read-unit-0", "the same read addressed to unit 0 (a gateway that answers 0)", {
       unitId: 0,
       device: device([0]),
-      operation: read,
-    },
-    {
-      ...base,
-      name: "write-register",
-      doc: "FC16 of one word, never FC06: 14.9 at scale 0.1 is word 149",
-      unitId: 1,
-      device: device([1]),
+    }),
+    scenario(f, "write-register", "FC16 of one word, never FC06: 14.9 at scale 0.1 is word 149", {
       operation: { op: "write", key: "x.limit", value: 14.9 },
-    },
-    {
-      ...base,
-      name: "probe-unit",
-      doc: "unit-id scan: unit 0 is silent (timeout), unit 1 answers",
-      unitId: 1,
-      device: device([1]),
+    }),
+    scenario(f, "probe-unit", "unit-id scan: unit 0 is silent (timeout), unit 1 answers", {
       operation: { op: "probe-unit", units: [0, 1], timeoutMs: 250 },
-    },
-    {
-      ...base,
-      name: "fragmented-reply",
-      doc: "the reply arrives in two TCP reads, split inside the header",
-      unitId: 1,
-      device: device([1]),
-      operation: read,
+    }),
+    scenario(f, "fragmented-reply", "the reply arrives in two TCP reads, split inside the header", {
       tweak: (frame) => [frame.slice(0, 5), frame.slice(5)],
-    },
-    {
-      ...base,
-      name: "leading-junk",
-      doc: "three stray bytes precede the reply in the same TCP read; a buffered reader resynchronises",
-      unitId: 1,
-      device: device([1]),
-      operation: read,
-      tweak: (frame) => [concat([Uint8Array.from([0xde, 0xad, 0xbe]), frame])],
-    },
-    {
-      ...base,
-      name: "exception-2-split",
-      doc: "an atomic group spans 500..520; the device refuses the gap with exception 2; the plan splits and stays split",
-      metrics: "grouped",
-      unitId: 1,
-      device: { registers: GROUPED_REGISTERS, units: [1] },
-      operation: read,
-    },
+    }),
+    scenario(
+      f,
+      "leading-junk",
+      "three stray bytes precede the reply in one TCP read; a buffered reader resynchronises",
+      { tweak: (frame) => [concat([Uint8Array.from([0xde, 0xad, 0xbe]), frame])] },
+    ),
+    scenario(
+      f,
+      "exception-2-split",
+      "an atomic group spans 500..520; the device refuses the gap with exception 2; the plan splits and stays split",
+      { metrics: "grouped", device: { registers: GROUPED_REGISTERS, units: [1] } },
+    ),
   ];
 }
 
@@ -484,53 +466,47 @@ const concat = (parts: Uint8Array[]): Uint8Array => Uint8Array.from(parts.flatMa
 
 /** Cases only the Solarman stick has: its own status codes, heartbeats and serial discovery. */
 function solarmanOnly(): Scenario[] {
-  const base = {
-    framing: "solarman-v5" as const,
-    metrics: "plain" as const,
-    unitId: 1,
-    device: device([1]),
-  };
-  const read = { op: "read" as const };
+  const f = "solarman-v5";
+  const reject =
+    (status: number): Tweak =>
+    (_frame, r) => [v5Reject(r.serial, r.seq, status)];
   return [
-    {
-      ...base,
-      name: "logger-serial-discovery",
-      doc: "a wrong configured serial is replaced by the one the stick's reject names; requests carry the real one",
-      operation: read,
-      configuredSerial: 0x11223344,
-    },
-    {
-      ...base,
-      name: "transient-05-retried",
-      doc: "status 05 on the first request is retried once, byte-identical RTU frame, fresh sequence; the retry is answered",
-      operation: read,
-      tweak: (frame, r) => (r.real === 0 ? [v5Reject(r.serial, r.seq, 0x05)] : [frame]),
-    },
-    {
-      ...base,
-      name: "persistent-05-is-exception-2",
-      doc: "status 05 twice is the structural verdict: a synthesised Modbus exception 2, no third attempt",
-      operation: read,
-      tweak: (_frame, r) => [v5Reject(r.serial, r.seq, 0x05)],
-    },
-    {
-      ...base,
-      name: "wrong-serial-06",
-      doc: "status 06 (wrong logger serial) is an addressing failure: Modbus exception 10, not 2",
-      operation: read,
-      tweak: (_frame, r) => [v5Reject(r.serial, r.seq, 0x06)],
-    },
-    {
-      ...base,
-      name: "heartbeat-and-stray-frames",
-      doc: "one TCP read holds a heartbeat, a reply to another sequence, a reply with a bad checksum and the real reply; only the real one answers",
-      operation: read,
-      tweak: (frame, r) => {
-        const corrupt = frame.slice();
-        corrupt[corrupt.length - 2] = (corrupt[corrupt.length - 2]! + 1) & 0xff;
-        return [concat([HEARTBEAT, restamp(frame, echoSeq((r.seq + 1) & 0xff)), corrupt, frame])];
+    scenario(
+      f,
+      "logger-serial-discovery",
+      "a wrong configured serial is replaced by the one the stick's reject names; requests carry the real one",
+      { configuredSerial: 0x11223344 },
+    ),
+    scenario(
+      f,
+      "transient-05-retried",
+      "status 05 on the first request is retried once, byte-identical RTU frame, fresh sequence; the retry is answered",
+      { tweak: (frame, r) => (r.real === 0 ? reject(0x05)(frame, r) : [frame]) },
+    ),
+    scenario(
+      f,
+      "persistent-05-is-exception-2",
+      "status 05 twice is the structural verdict: a synthesised Modbus exception 2, no third attempt",
+      { tweak: reject(0x05) },
+    ),
+    scenario(
+      f,
+      "wrong-serial-06",
+      "status 06 (wrong logger serial) is an addressing failure: Modbus exception 10, not 2",
+      { tweak: reject(0x06) },
+    ),
+    scenario(
+      f,
+      "heartbeat-and-stray-frames",
+      "one TCP read holds a heartbeat, a reply to another sequence, a reply with a bad checksum and the real reply; only the real one answers",
+      {
+        tweak: (frame, r) => {
+          const corrupt = frame.slice();
+          corrupt[corrupt.length - 2] = (corrupt[corrupt.length - 2]! + 1) & 0xff;
+          return [concat([HEARTBEAT, restamp(frame, echoSeq((r.seq + 1) & 0xff)), corrupt, frame])];
+        },
       },
-    },
+    ),
   ];
 }
 

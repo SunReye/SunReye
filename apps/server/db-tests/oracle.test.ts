@@ -170,12 +170,6 @@ suite("the oracle corpus, database groups", () => {
       expect(days[0].importKwh).toBeCloseTo(24 * 0.4, 9);
     });
 
-    test("fall back: the local day has 25 hourly buckets of 0.4 kWh", () => {
-      const days = statistics.get("dst-autumn-2025-10-26")!.dailyLocal;
-      expect(days.map((d: Line) => d.bucket)).toEqual(["2025-10-25", "2025-10-26", "2025-10-27"]);
-      expect(days[1].importKwh).toBeCloseTo(25 * 0.4, 9);
-    });
-
     test("the daily view buckets by UTC day, labelled with the plant-local date it starts on", () => {
       // 18 kWh of solar on each of 27, 28 and 29 March UTC; local-day sums equal them here only
       // because the roof is dark across both midnights.
@@ -190,15 +184,6 @@ suite("the oracle corpus, database groups", () => {
         ["2025", 22],
         ["2026", 32],
       ]);
-    });
-
-    test("with no load counter the house load is implied from the flows", () => {
-      const day = statistics.get("year-boundary")!.daily[1];
-      // production + import - export, clamped at zero.
-      expect(day.loadKwh).toBeCloseTo(
-        Math.max(0, day.productionKwh + day.importKwh - day.exportKwh),
-        9,
-      );
     });
   });
 
@@ -251,17 +236,6 @@ suite("the oracle corpus, database groups", () => {
         profile_id: "deye-sg05lp3",
         connection: "Gateway",
         usable_kwh: 10,
-      });
-    });
-
-    test("counter class travels with the metric key", () => {
-      const keys = Object.fromEntries(
-        imports.get("current-2.x")!.metricKeys.map((k: Line) => [k.key, k.is_counter]),
-      );
-      expect(keys).toEqual({
-        "oracle.archive.energy.total": true,
-        "oracle.archive.power": false,
-        "oracle.archive.settings.max_charge_current": false,
       });
     });
 

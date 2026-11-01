@@ -274,7 +274,7 @@ const LEGACY: ArchiveSpec = {
 // ---------------------------------------------------------------------------
 // Assembly, import and read-back
 
-const text = (value: unknown): string => `${JSON.stringify(value, null, 2)}\n`;
+const text = (value: unknown): string => `${JSON.stringify(value)}\n`;
 const gz = (lines: string[]): Uint8Array => gzipSync(lines.map((l) => `${l}\n`).join(""));
 
 /** The real container, plus its members as readable text. */

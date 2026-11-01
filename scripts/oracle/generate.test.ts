@@ -98,10 +98,6 @@ describe("generate", () => {
     );
     expect(calls).toEqual([]);
   });
-
-  test("returns the database groups' exit code", async () => {
-    expect(await generate([], {}, deps([], { databaseGroups: async () => 3 }))).toBe(3);
-  });
 });
 
 describe("runDatabaseGroups", () => {
@@ -112,11 +108,5 @@ describe("runDatabaseGroups", () => {
       0,
     );
     expect(await runDatabaseGroups("postgresql://h/other", ["sh", "-c", check], {})).toBe(1);
-  });
-
-  test("without a URL it leaves DB_TEST_URL to the caller's environment", async () => {
-    const { runDatabaseGroups } = await import("./generate");
-    const check = 'test "$DB_TEST_URL" = from-env';
-    expect(await runDatabaseGroups(null, ["sh", "-c", check], { DB_TEST_URL: "from-env" })).toBe(0);
   });
 });

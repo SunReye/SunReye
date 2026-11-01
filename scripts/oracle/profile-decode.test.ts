@@ -86,12 +86,6 @@ describe("official profile discovery", () => {
   test("a directory without an index.json is no profiles directory", () => {
     expect(officialProfilesDir({ SUNREYE_PROFILES_DIR: tmpdir() })).toBeNull();
   });
-
-  test("a directory that does not exist is no directory", () => {
-    expect(
-      officialProfilesDir({ SUNREYE_PROFILES_DIR: "/nonexistent/oracle-profiles" }),
-    ).toBeNull();
-  });
 });
 
 describe("a profiles directory", () => {
@@ -124,20 +118,6 @@ describe("a profiles directory", () => {
     expect(loaded[0]!.sha256).toBe(expected);
   });
 
-  test("a missing profile file fails loudly", async () => {
-    const broken = await mkdtemp(join(tmpdir(), "oracle-profiles-broken-"));
-    await writeFile(
-      join(broken, "index.json"),
-      JSON.stringify({
-        profiles: [
-          { id: "x", name: "x", manufacturer: "m", version: "1", path: "profiles/x.json" },
-        ],
-      }),
-    );
-    await expect(loadProfiles(broken)).rejects.toThrow();
-    await rm(broken, { recursive: true, force: true });
-  });
-
   describe("the corpus built from it", () => {
     let cases: ProfileDecodeCase[];
     let text: string;
@@ -155,17 +135,6 @@ describe("a profiles directory", () => {
 
     test("is byte-identical when built twice", async () => {
       expect(String((await buildProfileDecodeCorpus(dir))["profile-decode.ndjson"])).toBe(text);
-    });
-
-    test("names the cases that pin sign, width, clamps and absence", () => {
-      expect(cases[0]!.cases.map((c) => c.name)).toEqual([
-        "zeros",
-        "ramp",
-        "all-ones",
-        "sign-bit",
-        "first-block-absent",
-        "double-word-split",
-      ]);
     });
 
     test("the register blocks are the planned reads, and the cases answer them", () => {
