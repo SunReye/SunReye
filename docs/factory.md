@@ -23,7 +23,8 @@ scripts/factory/factory config
 | `commands.regenerate` | Runs on request after merges; area guides cover migrations and other generated artifacts |
 | `commands.gate` | Required local checks; must contain at least one command |
 | `commands.train_gate` | Additional checks for the combined train, after the regular gate |
-| `clean_paths` | Slot-relative disposable directories deleted on release; empty for SunReye |
+| `clean_paths` | Slot-relative disposable directories deleted on release; `target` for SunReye |
+| `cargo_build_jobs` | `CARGO_BUILD_JOBS` in each slot; keep slots × jobs ≈ cores |
 | `generated_paths` | Filename patterns excluded from PR size counting |
 | `generated_conflict_paths` | Full repo-relative glob patterns whose conflicts may keep the train's side, pending regeneration |
 | `ui_epic` | Optional parent ticket for `factory gap`; `null` disables that command before any tracker request |
@@ -62,7 +63,20 @@ Tracker labels (`factory:*`) and `.factory/state.json` in the main checkout are 
 
 The frontier contains unassigned open `ready-for-agent` issues with a milestone, closed `Blocked by` dependencies, no active factory state and no open PR. It is ordered by milestone and issue number. Approved plus merging PRs above `max_waiting_prs` pause new claims; reviews and fixes continue.
 
-Slot release removes configured disposable directories and `node_modules` above `slot_node_modules_cap_gb`. Disk below `disk_pause_free_gb` pauses new tickets; below `disk_critical_free_gb` pauses builds and triggers aggressive cleanup. `factory gc` cleans idle slots and merged factory branches. Implementer shells are reniced using `slot_nice`; the merge slot keeps normal priority.
+Implementer shells are reniced using `slot_nice`; the merge slot keeps normal priority.
+
+### Disk
+
+| Control | Setting |
+| --- | --- |
+| Rust builds in a slot | `CARGO_INCREMENTAL=0`, `CARGO_PROFILE_{DEV,TEST}_DEBUG=line-tables-only`, `CARGO_BUILD_JOBS=cargo_build_jobs`, `CARGO_TARGET_DIR=<slot>/target` (never shared across slots) |
+| Checkout | `git clean` keeps `target/` and `node_modules` |
+| After every agent | `factory release` deletes `clean_paths` (`target/`), and `node_modules` above `slot_node_modules_cap_gb` |
+| Each tick | free disk below `disk_pause_free_gb` (30): `gc`, no new tickets · below `disk_critical_free_gb` (15): `gc --aggressive`, no build work |
+| `gc` | cleans idle slots, removes slot dirs outside the configured pool, prunes worktrees, deletes merged `factory/*` branches, `docker image prune` |
+| `scripts/ci` | heavy steps hold one of `CI_HEAVY_CAP` (2) machine-wide locks; database and route smoke share one exclusive lock |
+
+Never deleted: your own checkouts and their `target/`. Budget about 15 GB free disk per extra implementer slot.
 
 ## Integration
 

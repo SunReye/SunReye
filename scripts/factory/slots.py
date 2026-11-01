@@ -6,6 +6,7 @@ come from configuration. Reuse bounds disk to (slots × cap)."""
 import contextlib
 import fcntl
 import json
+import re
 import shutil
 import subprocess
 import time
@@ -61,7 +62,13 @@ class Store:
         n = (self.slot_ids("impl") + self.slot_ids("merge")).index(slot) + 1
         return {"FACTORY_SLOT": slot, "WORKER_PORT": 8787 + n, "WEB_PORT": 4173 + n,
                 "VITEST_MAX_WORKERS": self.cfg["vitest_workers_per_slot"],
-                "PW_WORKERS": self.cfg["playwright_workers_per_slot"]}
+                "PW_WORKERS": self.cfg["playwright_workers_per_slot"],
+                # Rust: no incremental cache, line tables only, and never a target dir shared across slots.
+                "CARGO_INCREMENTAL": "0",
+                "CARGO_PROFILE_DEV_DEBUG": "line-tables-only",
+                "CARGO_PROFILE_TEST_DEBUG": "line-tables-only",
+                "CARGO_BUILD_JOBS": str(self.cfg["cargo_build_jobs"]),
+                "CARGO_TARGET_DIR": str(self.slot_path(slot) / "target")}
 
 
 def env_file_text(env, nice):
@@ -90,7 +97,7 @@ def prepare(store, slot, branch, new_branch=False):
         path.parent.mkdir(parents=True, exist_ok=True)
         sh("git", "worktree", "add", "-q", "--detach", str(path), f"origin/{base}", cwd=store.root)
     sh("git", "reset", "-q", "--hard", cwd=path)
-    sh("git", "clean", "-qfd", "-e", "node_modules", cwd=path)
+    sh("git", "clean", "-qfd", "-e", "target", "-e", "node_modules", cwd=path)
     if new_branch:
         sh("git", "switch", "-q", "-C", branch, f"origin/{base}", cwd=path)
     else:
@@ -136,8 +143,21 @@ def clean_slot(store, slot, aggressive=False):
     return {"slot": slot, "node_modules_gb": round(size / GB, 1), "action": "kept"}
 
 
+def remove_orphan_slots(store):
+    """Remove slot dirs outside the configured pool (left behind when the pool shrinks)."""
+    pool = set(store.slot_ids("impl") + store.slot_ids("merge"))
+    removed = []
+    for path in sorted((store.dir / "slots").glob("*-*")):
+        if path.is_dir() and re.fullmatch(r"(impl|merge)-\d+", path.name) and path.name not in pool:
+            sh("git", "worktree", "remove", "--force", str(path), cwd=store.root, check=False)
+            shutil.rmtree(path, ignore_errors=True)
+            removed.append(path.name)
+    return removed
+
+
 def gc(store, state, aggressive=False):
     report = []
+    orphans = remove_orphan_slots(store)
     for slot in store.slot_ids("impl") + store.slot_ids("merge"):
         if slot not in state["slots"] and store.slot_path(slot).exists():
             report.append(clean_slot(store, slot, aggressive))
@@ -148,4 +168,5 @@ def gc(store, state, aggressive=False):
     for branch in (b.strip(" *+") for b in merged.splitlines()):
         if branch and branch not in busy:
             sh("git", "branch", "-q", "-D", branch, check=False)
-    return {"slots": report, "disk": disk(store), "at": int(time.time())}
+    sh("docker", "image", "prune", "-f", check=False)
+    return {"slots": report, "orphans": orphans, "disk": disk(store), "at": int(time.time())}

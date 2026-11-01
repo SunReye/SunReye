@@ -115,6 +115,10 @@ class RepositoryConfig(unittest.TestCase):
         self.assertFalse(factory.CFG["require_ci"])
         self.assertEqual(factory.CFG["commands"]["gate"], [["scripts/ci"]])
 
+    def test_slots_drop_rust_output_and_pause_before_the_disk_is_tight(self):
+        self.assertIn("target", factory.CFG["clean_paths"])
+        self.assertEqual((factory.CFG["disk_pause_free_gb"], factory.CFG["disk_critical_free_gb"]), (30, 15))
+
 
 class SlotEnv(unittest.TestCase):
     def test_sourcing_the_env_file_nices_the_shell_and_its_children(self):
@@ -130,6 +134,17 @@ class SlotEnv(unittest.TestCase):
 
     def test_the_merge_slot_env_is_not_reniced(self):
         self.assertNotIn("renice", slots.env_file_text({"FACTORY_SLOT": "merge-1"}, 10))
+
+    def test_slot_env_keeps_rust_builds_small_and_inside_the_slot(self):
+        with tempfile.TemporaryDirectory() as tmp, \
+                mock.patch.object(slots, "main_root", return_value=Path(tmp)):
+            store = slots.Store(factory.CFG)
+            env = store.env("impl-2")
+        self.assertEqual(env["CARGO_INCREMENTAL"], "0")
+        self.assertEqual(env["CARGO_PROFILE_DEV_DEBUG"], "line-tables-only")
+        self.assertEqual(env["CARGO_PROFILE_TEST_DEBUG"], "line-tables-only")
+        self.assertEqual(env["CARGO_BUILD_JOBS"], str(factory.CFG["cargo_build_jobs"]))
+        self.assertEqual(env["CARGO_TARGET_DIR"], str(store.slot_path("impl-2") / "target"))
 
     def test_a_failing_renice_does_not_fail_sourcing(self):
         text = slots.env_file_text({"FACTORY_SLOT": "impl-1"}, 20)
@@ -612,6 +627,51 @@ class SlotPreparation(unittest.TestCase):
             self.assertTrue((path / "node_modules").is_dir())
             self.assertFalse((path / "installed").exists())  # clean removes untracked output
             self.assertEqual((path / "prepared").read_text(), "ready")
+
+    def test_checkout_keeps_the_slot_target_dir(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            origin = Origin(tmp)
+            cfg = {**factory.CFG, "base": "staging", "commands": {"install": [], "prepare": []}}
+            with mock.patch.object(slots, "main_root", return_value=origin.work):
+                store = slots.Store(cfg)
+            path = Path(slots.prepare(store, "impl-1", "factory/1", new_branch=True)["path"])
+            (path / "target" / "debug").mkdir(parents=True)
+            slots.prepare(store, "impl-1", "factory/2", new_branch=True)
+            self.assertTrue((path / "target" / "debug").is_dir())
+
+
+class Gc(unittest.TestCase):
+    def test_orphan_slots_left_by_a_smaller_pool_are_removed(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            origin = Origin(tmp)
+            cfg = {**factory.CFG, "base": "staging", "slots": {"impl": 2, "merge": 1},
+                   "commands": {"install": [], "prepare": []}}
+            with mock.patch.object(slots, "main_root", return_value=origin.work):
+                store = slots.Store(cfg)
+            slots.prepare(store, "impl-1", "factory/1", new_branch=True)
+            slots.prepare(store, "impl-2", "factory/2", new_branch=True)
+            store.cfg = {**cfg, "slots": {"impl": 1, "merge": 1}}
+            (store.dir / "slots" / "impl-5" / "target").mkdir(parents=True)
+            removed = slots.remove_orphan_slots(store)
+            self.assertEqual(sorted(removed), ["impl-2", "impl-5"])
+            self.assertTrue(store.slot_path("impl-1").is_dir())
+            self.assertFalse(store.slot_path("impl-2").exists())
+            self.assertFalse(store.slot_path("impl-5").exists())
+            self.assertTrue((store.dir / "slots" / "impl-1.env").exists())
+            self.assertNotIn("impl-2", git(origin.work, "worktree", "list"))
+
+    def test_gc_prunes_dangling_docker_images_without_failing_on_docker(self):
+        calls = []
+
+        def fake_sh(*args, cwd=None, check=True):
+            calls.append((args, check))
+            return ""
+
+        with tempfile.TemporaryDirectory() as tmp, mock.patch.object(slots, "sh", side_effect=fake_sh):
+            store = FakeStore(tmp)
+            store.slot_path = lambda slot: store.dir / "slots" / slot
+            slots.gc(store, {"slots": {}})
+        self.assertIn((("docker", "image", "prune", "-f"), False), calls)
 
 
 class StateStore:

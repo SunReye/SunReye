@@ -7,8 +7,9 @@
     "merge": 1
   },
   "slot_node_modules_cap_gb": 4,
-  "disk_pause_free_gb": 10,
-  "disk_critical_free_gb": 5,
+  "cargo_build_jobs": 2,
+  "disk_pause_free_gb": 30,
+  "disk_critical_free_gb": 15,
   "max_attempts": 3,
   "max_pr_files": 50,
   "max_pr_lines": 3000,
@@ -36,7 +37,9 @@
     "master",
     "stable"
   ],
-  "clean_paths": [],
+  "clean_paths": [
+    "target"
+  ],
   "generated_conflict_paths": [
     "bun.lock",
     "*.gen.ts"

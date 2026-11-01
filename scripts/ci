@@ -6,8 +6,9 @@
 #   --e2e  also run the Playwright browser suite (~10 min).
 #
 # Base: `base` in scripts/factory/config.json, compared against origin/<base>.
-# The database and route-smoke steps hold one machine-wide lock: both start throwaway TimescaleDB
-# containers on fixed ports, so factory slots queue instead of colliding.
+# Heavy steps hold one of CI_HEAVY_CAP (2) machine-wide locks, so factory slots queue instead of
+# fighting for cores and disk. The database and route-smoke steps also hold one exclusive lock: both
+# start throwaway TimescaleDB containers on fixed ports.
 set -euo pipefail
 
 cd "$(git rev-parse --show-toplevel)"
@@ -23,6 +24,7 @@ done
 base=origin/$(python3 -c 'import json; print(json.load(open("scripts/factory/config.json"))["base"])')
 locks=$(git rev-parse --path-format=absolute --git-common-dir)/ci-locks
 mkdir -p "$locks"
+cap=${CI_HEAVY_CAP:-2}
 
 export db_container=sunreye-ci-db db_port=${CI_DB_PORT:-5434} image=ghcr.io/sunreye/timescaledb:pg17-ts2.28.2
 
@@ -57,6 +59,20 @@ db_tests() {
   CI=1 DB_TEST_URL="postgresql://postgres:db-test@localhost:$db_port/postgres" bun run test:db || code=$?
   docker rm -f "$db_container" >/dev/null
   return "$code"
+}
+
+# heavy <command…>: runs the command holding a free heavy lock, waiting for one.
+heavy() {
+  local slot code waited=0
+  while :; do
+    for slot in $(seq 1 "$cap"); do
+      code=0
+      flock -n -E 200 "$locks/heavy-$slot" "$@" || code=$?
+      ((code == 200)) || return "$code"
+    done
+    ((waited)) || { echo "waiting for a heavy lock ($cap in use)"; waited=1; }
+    sleep 2
+  done
 }
 
 step "agent guides"
@@ -95,28 +111,28 @@ step "migration drift"
 
 step "unit tests and coverage"
 bun run test:mocks
-bun run test:coverage
+heavy bun run test:coverage
 bun run test:floor
 
 step "factory scripts"
 bun run test:factory
 
 step build
-SKIP_ENV_VALIDATION=1 bun run build
+heavy env SKIP_ENV_VALIDATION=1 bun run build
 
 step "component tests"
 bun run e2e:install
-bun run test:components
+heavy bun run test:components
 
 step "database and route smoke"
 export -f db_tests
-flock "$locks/database" bash -c db_tests
-flock "$locks/database" bun run test:routes
+heavy flock "$locks/database" bash -c db_tests
+heavy flock "$locks/database" bun run test:routes
 
 if ((e2e)); then
   step e2e
   bun run e2e:types
-  bun run e2e
+  heavy bun run e2e
 fi
 
 step "ci green"
