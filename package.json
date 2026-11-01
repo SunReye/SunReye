@@ -49,6 +49,8 @@
     "test:floor": "bun scripts/coverage-floor.ts coverage/lcov.info",
     "test:floor:rust": "bun scripts/coverage-floor.ts --rust",
     "test:db": "SKIP_ENV_VALIDATION=1 bun test --timeout 60000 apps/server/db-tests",
+    "test:oracle": "SKIP_ENV_VALIDATION=1 bun test --timeout 120000 scripts/oracle",
+    "oracle:generate": "bun scripts/oracle/generate.ts",
     "test:routes": "bun scripts/route-smoke.ts",
     "replay:rehearse": "bun scripts/replay-rehearsal.ts",
     "test:mocks": "bun scripts/mock-hygiene.ts",

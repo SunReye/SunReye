@@ -1,0 +1,2 @@
+{"time":"2026-04-30T06:00:00.000Z","device_slug":"oracle-archive-inverter","metric_key":"oracle.archive.settings.max_charge_current","value":60}
+{"time":"2026-05-01T09:30:00.000Z","device_slug":"oracle-archive-inverter","metric_key":"oracle.archive.settings.max_charge_current","value":40}
