@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# Builds every workspace crate for Android (ADR 0006); the Linux build is scripts/rust-gate.
+# A missing toolchain fails here, naming scripts/setup-targets.
+set -euo pipefail
+
+cd "$(git rev-parse --show-toplevel)"
+# shellcheck source=lib/targets.sh
+source scripts/lib/targets.sh
+
+missing=$(missing_pieces)
+if [[ -n $missing ]]; then
+  echo "missing for the Android build: $(echo "$missing" | tr '\n' ' ')" >&2
+  echo "run scripts/setup-targets" >&2
+  exit 1
+fi
+use_targets
+
+started=$SECONDS
+echo "== $ANDROID_TARGET"
+cargo ndk -t arm64-v8a build --workspace
+echo "$ANDROID_TARGET: built in $((SECONDS - started))s"
