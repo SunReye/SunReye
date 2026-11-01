@@ -21,6 +21,7 @@ fn fresh_data_dir() -> std::path::PathBuf {
 fn spawn(args: &[&str]) -> Child {
     Command::new(BIN)
         .args(args)
+        .args(["--listen", "127.0.0.1:0"])
         .arg("--data-dir")
         .arg(fresh_data_dir())
         .stdout(Stdio::piped())
@@ -84,6 +85,35 @@ fn logs_its_version_and_exits_zero_on_sigterm() {
     assert!(line.contains(VERSION), "startup line lacks the version: {line}");
     assert!(signal(&child, "TERM").success());
     assert!(child.wait().expect("wait").success());
+}
+
+#[test]
+fn logs_the_address_it_listens_on() {
+    let mut child = spawn(&[]);
+    let (_line, mut stderr) = started(&mut child);
+    let mut line = String::new();
+    stderr.read_line(&mut line).expect("a listening line");
+    assert!(line.contains("sunreye listening"), "{line}");
+    let bound = line.split("127.0.0.1:").nth(1).expect("an address in the line");
+    assert!(
+        !bound.starts_with("0 ") && !bound.starts_with('0'),
+        "the bound port, not the requested one: {line}"
+    );
+    assert!(signal(&child, "TERM").success());
+    assert!(child.wait().expect("wait").success());
+}
+
+#[test]
+fn a_listen_address_already_served_exits_non_zero_and_says_so() {
+    let taken = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
+    let addr = taken.local_addr().expect("addr").to_string();
+    let out = Command::new(BIN)
+        .args(["--listen", &addr, "--data-dir"])
+        .arg(fresh_data_dir())
+        .output()
+        .expect("run");
+    assert!(!out.status.success());
+    assert!(String::from_utf8_lossy(&out.stderr).contains("cannot listen"));
 }
 
 #[test]

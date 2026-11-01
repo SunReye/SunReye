@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE device SET profile_id = ?, unit_id = ? WHERE id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "506b4ea23b552a15fac73b4b0d3005b64b072de425b424ba37ea19a992bb5e61"
+}

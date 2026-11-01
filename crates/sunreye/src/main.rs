@@ -2,6 +2,7 @@ use std::process::ExitCode;
 
 use clap::Parser;
 use sunreye::Cli;
+use tokio::net::TcpListener;
 use tokio::signal::unix::{SignalKind, signal};
 
 #[tokio::main(flavor = "current_thread")]
@@ -27,6 +28,16 @@ async fn main() -> ExitCode {
         data_dir = %cli.data_dir.display(),
         "sunreye starting"
     );
+    let listener = match TcpListener::bind(cli.listen).await {
+        Ok(listener) => listener,
+        Err(error) => {
+            tracing::error!(%error, listen = %cli.listen, "cannot listen");
+            return ExitCode::FAILURE;
+        }
+    };
+    if let Ok(addr) = listener.local_addr() {
+        tracing::info!(%addr, "sunreye listening");
+    }
     let stop = async {
         let received = tokio::select! {
             _ = int.recv() => "SIGINT",
@@ -34,7 +45,7 @@ async fn main() -> ExitCode {
         };
         tracing::info!(signal = received, "sunreye stopping");
     };
-    match sunreye::run(&cli.data_dir, stop).await {
+    match sunreye::run(&cli.data_dir, listener, stop).await {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
             tracing::error!(%error, "sunreye cannot run");
