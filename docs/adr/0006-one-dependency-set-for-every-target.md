@@ -19,15 +19,15 @@ Kotlin/JNI shell.
   spawning.
 - HTTPS: `reqwest` + `rustls` + `ring` + `webpki-roots` everywhere. If `ring` cannot build for ESP-IDF,
   every target moves to `rustls-rustcrypto`; targets do not split.
-- `scripts/ci` and GitHub Actions build every crate for all three targets from the first commit, with a
+- `scripts/ci`, the local merge gate, builds every crate for all three targets from the first commit, with a
   nightly pinned before rust-lang/rust#164555.
-- Budgets in CI: ESP32 ≤ 8 MB PSRAM and ≤ 256 KB SRAM steady with no heap growth over 72 h;
+- Budgets in `scripts/ci`: ESP32 ≤ 8 MB PSRAM and ≤ 256 KB SRAM steady with no heap growth over 72 h;
   Linux/Android ≤ 32 MB resident; binary ≤ 25 MB including the SPA. Re-set once after the first real
   build, then held.
 
 ## Consequences
 
 - A dependency that does not build for ESP-IDF fails the PR that adds it.
-- CI carries an ESP-IDF toolchain (~1–2 GB, cached) and a pinned nightly.
+- Every machine running `scripts/ci` carries an ESP-IDF toolchain (~1–2 GB) and a pinned nightly.
 - `ring` on ESP-IDF needs `less-safe-getrandom-espidf`; on-device entropy is verified when ESP32 work
   starts.
