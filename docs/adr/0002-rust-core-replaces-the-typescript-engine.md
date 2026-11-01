@@ -25,8 +25,8 @@ the ESP32-P4 (ESP-IDF `std`, 32 MB PSRAM). The Svelte web app, `profile-sdk` and
 TypeScript; the SPA is embedded in the binary.
 
 The TypeScript engine (`apps/server`, `packages/db`, `packages/inverter-core`, `packages/auth`,
-`packages/env`) is feature-frozen from this date. Fixes ship from `release/2.x`; the engine is deleted
-from `dev` when the Rust core reaches beta.
+`packages/env`) is feature-frozen from this date. 2.x fixes keep landing on `dev`. The rework lives on
+`v3`, branched from `dev`; the engine is deleted on `v3` when the Rust core reaches beta.
 
 ## Consequences
 
