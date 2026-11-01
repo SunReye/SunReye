@@ -4,6 +4,9 @@
 
 Keep this root `AGENTS.md` routing-only.
 
+Every `AGENTS.md` holds routing and rules only: no per-feature notes, route or endpoint catalogs, or
+layout tables. The code, `GLOSSARY.md` and `docs/adr/` carry feature detail.
+
 ## TDD is mandatory
 
 This code writes registers on grid-tied inverters and batteries. Behaviour ships with the
@@ -100,6 +103,25 @@ Load the relevant one when matching work:
 - AI SDK work → load `ai-sdk`.
 - Starter repo initialization / post-clone customization → load `project-init`.
 - Similar domain-specific work → load matching skill when available.
+
+## YAGNI
+
+- Build what the current task needs. No speculative options, extension points, config flags, generic
+  layers, or "for later" code.
+- No abstraction until the second real use. Delete unused code instead of keeping it around.
+- A spec item not yet scheduled is not a reason to add code now.
+
+## Prose: docs, diagnostics, UI copy, code comments, reports
+
+- Minimum words. No subtext, no restating what the name or code already says, no reassurance or
+  marketing tone.
+- Diagnostics and CLI output: name the location and the fix; no apology, no filler.
+- UI copy: label over sentence; descriptions only when they add a fact or next step.
+- Code comments: only the why, a constraint, or a non-obvious invariant. One line where possible. No
+  narrating the code, no history ("was", "now", "changed from").
+- Reports, PR bodies and agent replies: findings first, one line each; end with `Recommendation:` and
+  one concrete next action, or `none`. No preamble, no recap.
+- When in doubt, delete the string or comment.
 
 ## Fallow
 
