@@ -82,14 +82,14 @@ _Avoid_: backup file, dump, export
 
 **Core**:
 The Rust program that polls devices, stores readings, computes rollups and serves the web app; the same program on every target.
-_Avoid_: server, backend, engine (the 2.x TypeScript program)
+_Avoid_: server, backend, engine (the 3.x TypeScript program)
 
 **Target**:
-A platform the core is built for: Linux, Android or ESP-IDF.
+A platform the core is built for: Linux or Android.
 _Avoid_: platform, host
 
 **Edition**:
-A way SunReye ships to a user: the Home Assistant add-on, the Docker image, the NixOS appliance, the Android app or the ESP32 firmware.
+A way SunReye ships to a user: the Home Assistant add-on, the Docker image, the NixOS appliance or the Android app.
 _Avoid_: flavour, distribution, variant
 
 **Capability**:
@@ -109,9 +109,9 @@ A long, unattended, read-only run against a plant that proves the core stays wit
 _Avoid_: burn-in, endurance test
 
 **Oracle fixture**:
-A recorded input together with the output the 2.x engine produced for it; the only source of golden values.
+A recorded input together with the output the 3.x engine produced for it; the only source of golden values.
 _Avoid_: golden file, snapshot, test vector
 
 **Control**:
-Writing registers to change how a device behaves. Not part of 3.0.
-_Avoid_: steering, automation (the 2.x feature that used it)
+Writing registers to change how a device behaves. Not part of 4.0.
+_Avoid_: steering, automation (the 3.x feature that used it)
