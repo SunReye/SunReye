@@ -1,6 +1,9 @@
-//! Modbus TCP client, read path only: the one request it can encode is function 3, read holding
-//! registers. 4.0 never writes (ADR 0005), so there is no write function to call.
+//! Modbus client over a TCP stream, read path only: the one request either framing can encode is
+//! function 3, read holding registers. 4.0 never writes (ADR 0005), so there is no write function to call.
 
+mod rtu;
+
+use std::str::FromStr;
 use std::time::Duration;
 
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -12,6 +15,40 @@ const EXCEPTION_FLAG: u8 = 0x80;
 const MAX_WORDS: u16 = 125;
 /// Header bytes: transaction (2), protocol (2), length (2), unit (1).
 const HEADER_LEN: usize = 7;
+
+/// The framing a connection speaks.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Transport {
+    /// Modbus TCP: an MBAP header in front of the PDU.
+    Tcp,
+    /// Modbus RTU over TCP: the RTU frame, unit id in front and CRC behind, on a TCP stream.
+    RtuOverTcp,
+}
+
+impl Transport {
+    /// The value stored in `connection.transport`.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Tcp => "tcp",
+            Self::RtuOverTcp => "rtu_over_tcp",
+        }
+    }
+}
+
+impl FromStr for Transport {
+    type Err = UnknownTransport;
+
+    fn from_str(name: &str) -> Result<Self, Self::Err> {
+        [Self::Tcp, Self::RtuOverTcp]
+            .into_iter()
+            .find(|transport| transport.as_str() == name)
+            .ok_or_else(|| UnknownTransport(name.to_owned()))
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[error("unknown transport {0:?}")]
+pub struct UnknownTransport(String);
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum Error {
@@ -34,6 +71,7 @@ impl From<std::io::Error> for Error {
 
 #[derive(Debug)]
 pub struct Client {
+    transport: Transport,
     stream: TcpStream,
     transaction: u16,
     timeout: Duration,
@@ -41,12 +79,17 @@ pub struct Client {
 
 impl Client {
     /// `timeout` bounds the connect and every later read.
-    pub async fn connect(host: &str, port: u16, timeout: Duration) -> Result<Self, Error> {
+    pub async fn connect(
+        transport: Transport,
+        host: &str,
+        port: u16,
+        timeout: Duration,
+    ) -> Result<Self, Error> {
         let stream = tokio::time::timeout(timeout, TcpStream::connect((host, port)))
             .await
             .map_err(|_| Error::Timeout)??;
         stream.set_nodelay(true)?;
-        Ok(Self { stream, transaction: 0, timeout })
+        Ok(Self { transport, stream, transaction: 0, timeout })
     }
 
     /// Reads `count` holding registers from `start` of `unit`. After any error but
@@ -55,20 +98,24 @@ impl Client {
         if !(1..=MAX_WORDS).contains(&count) {
             return Err(Error::Protocol("count out of range"));
         }
-        self.transaction = self.transaction.wrapping_add(1);
-        let transaction = self.transaction;
         let timeout = self.timeout;
-        let exchange = self.exchange(transaction, unit, start, count);
+        let exchange = async {
+            match self.transport {
+                Transport::Tcp => self.exchange_tcp(unit, start, count).await,
+                Transport::RtuOverTcp => self.exchange_rtu(unit, start, count).await,
+            }
+        };
         tokio::time::timeout(timeout, exchange).await.map_err(|_| Error::Timeout)?
     }
 
-    async fn exchange(
-        &mut self,
-        transaction: u16,
-        unit: u8,
-        start: u16,
-        count: u16,
-    ) -> Result<Vec<u16>, Error> {
+    async fn exchange_rtu(&mut self, unit: u8, start: u16, count: u16) -> Result<Vec<u16>, Error> {
+        self.stream.write_all(&rtu::read_request(unit, start, count)).await?;
+        rtu::read_reply(&mut self.stream, unit, count).await
+    }
+
+    async fn exchange_tcp(&mut self, unit: u8, start: u16, count: u16) -> Result<Vec<u16>, Error> {
+        self.transaction = self.transaction.wrapping_add(1);
+        let transaction = self.transaction;
         self.stream.write_all(&read_request(transaction, unit, start, count)).await?;
         let mut header = [0_u8; HEADER_LEN];
         self.stream.read_exact(&mut header).await?;
@@ -103,7 +150,7 @@ fn check_header(header: [u8; HEADER_LEN], transaction: u16, unit: u8) -> Result<
     }
 }
 
-fn parse_pdu(pdu: &[u8], count: u16) -> Result<Vec<u16>, Error> {
+pub(crate) fn parse_pdu(pdu: &[u8], count: u16) -> Result<Vec<u16>, Error> {
     let Some((&function, data)) = pdu.split_first() else {
         return Err(Error::Protocol("empty reply"));
     };
@@ -127,9 +174,79 @@ fn parse_pdu(pdu: &[u8], count: u16) -> Result<Vec<u16>, Error> {
 
 #[cfg(test)]
 mod tests {
-    use sunreye_sim::{Registers, Simulator};
+    use sunreye_sim::{Framing, Registers, Simulator};
+    use tokio::net::TcpListener;
 
     use super::*;
+
+    async fn rtu_client(registers: Registers, units: &[u8]) -> (Simulator, Client) {
+        let sim = Simulator::start_with(Framing::RtuOverTcp, registers, units).await.expect("sim");
+        let client =
+            Client::connect(Transport::RtuOverTcp, "127.0.0.1", sim.addr.port(), Duration::from_millis(300))
+                .await
+                .expect("connect");
+        (sim, client)
+    }
+
+    #[test]
+    fn a_transport_is_stored_as_its_name_and_only_its_name_is_read_back() {
+        for transport in [Transport::Tcp, Transport::RtuOverTcp] {
+            assert_eq!(transport.as_str().parse(), Ok(transport));
+        }
+        assert_eq!(Transport::Tcp.as_str(), "tcp");
+        assert_eq!(Transport::RtuOverTcp.as_str(), "rtu_over_tcp");
+        for bad in ["", "TCP", "rtu-over-tcp", "solarman", " tcp"] {
+            assert_eq!(bad.parse::<Transport>(), Err(UnknownTransport(bad.into())), "{bad:?}");
+        }
+    }
+
+    #[tokio::test]
+    async fn an_rtu_read_returns_the_words_and_survives_a_refusal() {
+        let (sim, mut client) = rtu_client(Registers::from_runs([(10, vec![1, 2, 3])]), &[1]).await;
+        assert_eq!(client.read_holding(1, 10, 3).await, Ok(vec![1, 2, 3]));
+        assert_eq!(client.read_holding(1, 11, 1).await, Ok(vec![2]));
+        assert_eq!(client.read_holding(1, 99, 1).await, Err(Error::Exception(2)), "the stream stays usable");
+        assert_eq!(client.read_holding(1, 12, 1).await, Ok(vec![3]));
+        assert!(sim.requests().iter().all(|r| r.function == 3), "reads only");
+    }
+
+    #[tokio::test]
+    async fn an_rtu_count_outside_one_to_125_is_refused_before_anything_is_sent() {
+        let (sim, mut client) = rtu_client(Registers::default(), &[1]).await;
+        for count in [0, 126] {
+            assert_eq!(client.read_holding(1, 0, count).await, Err(Error::Protocol("count out of range")));
+        }
+        assert_eq!(sim.requests(), []);
+    }
+
+    #[tokio::test]
+    async fn an_rtu_unit_that_does_not_answer_times_out() {
+        let (_sim, mut client) = rtu_client(Registers::from_runs([(1, vec![1])]), &[1]).await;
+        assert_eq!(client.read_holding(0, 1, 1).await, Err(Error::Timeout));
+    }
+
+    #[tokio::test]
+    async fn an_rtu_reply_that_stops_halfway_times_out_and_one_that_ends_halfway_is_an_i_o_error() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
+        let port = listener.local_addr().expect("addr").port();
+        let device = tokio::spawn(async move {
+            let (mut first, _) = listener.accept().await.expect("accept");
+            first.write_all(&[1, 3, 2, 0]).await.expect("half a reply");
+            let (mut second, _) = listener.accept().await.expect("accept");
+            second.write_all(&[1, 3, 2, 0]).await.expect("half a reply");
+            drop(second);
+            tokio::time::sleep(Duration::from_millis(600)).await;
+            drop(first);
+        });
+        let timeout = Duration::from_millis(200);
+        let mut silent =
+            Client::connect(Transport::RtuOverTcp, "127.0.0.1", port, timeout).await.expect("connect");
+        assert_eq!(silent.read_holding(1, 0, 1).await, Err(Error::Timeout));
+        let mut closed =
+            Client::connect(Transport::RtuOverTcp, "127.0.0.1", port, timeout).await.expect("connect");
+        assert!(matches!(closed.read_holding(1, 0, 1).await, Err(Error::Io(_))));
+        device.await.expect("device");
+    }
 
     #[test]
     fn a_read_request_is_the_recorded_frame() {
@@ -186,7 +303,9 @@ mod tests {
     async fn a_read_returns_the_words_and_numbers_transactions_from_one() {
         let sim = Simulator::start(Registers::from_runs([(10, vec![1, 2, 3])]), &[1]).await.expect("sim");
         let mut client =
-            Client::connect("127.0.0.1", sim.addr.port(), Duration::from_secs(5)).await.expect("connect");
+            Client::connect(Transport::Tcp, "127.0.0.1", sim.addr.port(), Duration::from_secs(5))
+                .await
+                .expect("connect");
         assert_eq!(client.read_holding(1, 10, 3).await, Ok(vec![1, 2, 3]));
         assert_eq!(client.read_holding(1, 11, 1).await, Ok(vec![2]));
         assert_eq!(client.read_holding(1, 99, 1).await, Err(Error::Exception(2)), "the stream stays usable");
@@ -197,7 +316,9 @@ mod tests {
     async fn a_count_outside_one_to_125_is_refused_before_anything_is_sent() {
         let sim = Simulator::start(Registers::default(), &[1]).await.expect("sim");
         let mut client =
-            Client::connect("127.0.0.1", sim.addr.port(), Duration::from_secs(5)).await.expect("connect");
+            Client::connect(Transport::Tcp, "127.0.0.1", sim.addr.port(), Duration::from_secs(5))
+                .await
+                .expect("connect");
         for count in [0, 126] {
             assert_eq!(client.read_holding(1, 0, count).await, Err(Error::Protocol("count out of range")));
         }

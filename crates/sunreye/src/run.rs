@@ -136,10 +136,14 @@ impl DeviceTask {
     async fn poll_once(&mut self) -> Result<Vec<(String, f64)>, crate::modbus::Error> {
         let client = match &mut self.client {
             Some(client) => client,
-            none => none.insert(Client::connect(&self.device.host, self.device.port, REQUEST_TIMEOUT).await?),
+            none => none.insert(connect(&self.device).await?),
         };
         self.poller.poll(client).await
     }
+}
+
+async fn connect(device: &DeviceRow) -> Result<Client, crate::modbus::Error> {
+    Client::connect(device.transport, &device.host, device.port, REQUEST_TIMEOUT).await
 }
 
 async fn save(store: &Store, device_id: i64, closed: &ClosedMinute) {
@@ -161,6 +165,7 @@ mod tests {
     use sunreye_sim::{FC_READ_HOLDING, Simulator, profile_case};
 
     use super::*;
+    use crate::modbus::Transport;
     use crate::store::{NewConnection, NewDevice};
 
     fn dir(name: &str) -> PathBuf {
@@ -170,10 +175,14 @@ mod tests {
     }
 
     async fn seed(dir: &Path, port: u16, profile: &str, interval: &str) -> i64 {
+        seed_over(Transport::Tcp, dir, port, profile, interval).await
+    }
+
+    async fn seed_over(transport: Transport, dir: &Path, port: u16, profile: &str, interval: &str) -> i64 {
         let store = Store::open(dir).await.expect("store");
         store.set_setting(INTERVAL_SETTING, interval).await.expect("interval");
         let connection = store
-            .add_connection(&NewConnection { transport: "tcp".into(), host: "127.0.0.1".into(), port })
+            .add_connection(&NewConnection { transport, host: "127.0.0.1".into(), port })
             .await
             .expect("connection");
         let device = NewDevice { connection_id: connection, profile_id: profile.into(), unit_id: 1 };

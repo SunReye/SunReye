@@ -1,4 +1,4 @@
-//! A Modbus TCP server for tests, fed by the oracle fixtures in `fixtures/oracle`.
+//! A Modbus server (TCP or RTU over TCP) for tests, fed by the oracle fixtures in `fixtures/oracle`.
 //!
 //! [`Simulator`] answers function code 3 from a register map ([`profile_case`] builds one from the
 //! profile-decode corpus) and records every request it receives, so a test can assert what the core
@@ -9,8 +9,8 @@ mod replay;
 mod server;
 
 pub use fixture::{
-    Exchange, FixtureError, FixtureMetric, ProfileCase, Registers, TransportCase, profile_case,
+    Exchange, FixtureError, FixtureMetric, ProfileCase, Registers, TransportCase, profile_case, rtu_cases,
     transport_cases,
 };
 pub use replay::{Replay, replay};
-pub use server::{FC_READ_HOLDING, Request, Simulator};
+pub use server::{FC_READ_HOLDING, Framing, Request, Simulator};
