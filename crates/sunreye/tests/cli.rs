@@ -148,3 +148,43 @@ fn an_unusable_data_dir_exits_non_zero_and_says_why() {
     assert!(!out.status.success());
     assert!(String::from_utf8_lossy(&out.stderr).contains("data directory"));
 }
+
+/// Startup lines up to and including "sunreye listening".
+fn startup_lines(listen: &str) -> Vec<String> {
+    let mut child = Command::new(BIN)
+        .args(["--listen", listen, "--data-dir"])
+        .arg(fresh_data_dir())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn sunreye");
+    let mut reader = BufReader::new(child.stderr.take().expect("piped stderr"));
+    let mut lines = Vec::new();
+    loop {
+        let mut line = String::new();
+        assert!(reader.read_line(&mut line).expect("a startup line") > 0, "exited early: {lines:?}");
+        let listening = line.contains("sunreye listening");
+        lines.push(line);
+        if listening {
+            break;
+        }
+    }
+    assert!(signal(&child, "TERM").success());
+    assert!(child.wait().expect("wait").success());
+    lines
+}
+
+#[test]
+fn a_non_loopback_listen_address_logs_a_warning_naming_it() {
+    let lines = startup_lines("0.0.0.0:0");
+    let warning =
+        lines.iter().find(|l| l.contains("WARN")).unwrap_or_else(|| panic!("no warning: {lines:?}"));
+    assert!(warning.contains("0.0.0.0:0"), "{warning}");
+    assert!(warning.contains("not loopback"), "{warning}");
+}
+
+#[test]
+fn a_loopback_listen_address_logs_no_warning() {
+    let lines = startup_lines("127.0.0.1:0");
+    assert!(lines.iter().all(|l| !l.contains("WARN")), "{lines:?}");
+}

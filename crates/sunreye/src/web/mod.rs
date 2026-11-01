@@ -43,6 +43,9 @@ pub fn openapi() -> Document {
     api().1
 }
 
+/// Protection: none in the router. Every route, including the settings writes and the device probe, is
+/// open to whoever reaches the socket. `--listen` defaults to loopback and warns at startup otherwise;
+/// session gating arrives with #315.
 pub fn router(core: Arc<Core>) -> Router {
     let (routes, document) = api();
     let document = Arc::new(document);
