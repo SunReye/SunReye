@@ -4,7 +4,7 @@ Status: accepted (2026-11-01)
 
 ## Context
 
-2.x computes rollups inside TimescaleDB: a `metrics_raw` hypertable, three continuous aggregates, toolkit
+3.x computes rollups inside TimescaleDB: a `metrics_raw` hypertable, three continuous aggregates, toolkit
 hyperfunctions (`time_weight`, `counter_agg`, `interpolated_average`) and compression and retention
 policy jobs. None of it runs on Android or ESP-IDF. PGlite has no TimescaleDB and does not support mobile;
 SQLite on ESP32 exists only as community ports. A storage trait with one backend per target would write

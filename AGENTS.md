@@ -149,7 +149,7 @@ Load the relevant one when matching work:
 
 ## Branching & CI
 
-- 3.0 work lands on `v3` (spec #302): open PRs into `v3`. `dev` takes 2.x fixes only.
+- 4.0 work lands on `v3` (spec #302): open PRs into `v3`. `dev` takes 3.x fixes only.
 - No hosted CI: `scripts/ci` is the merge gate, run locally; `scripts/ci --e2e` adds the browser suite.
   Workflows run only on manual dispatch. Do not add CI triggers without asking.
 
