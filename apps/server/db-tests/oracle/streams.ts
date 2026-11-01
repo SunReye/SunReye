@@ -77,6 +77,11 @@ function energyDay(from: string, to: string, stepMin = 60): Record<string, Readi
   };
 }
 
+/**
+ * Every case lies before 2026-06-01. Refreshing a continuous aggregate moves its watermark for the
+ * whole database, and baseline.test.ts reads a row at 2026-06-01 through real-time aggregation,
+ * which only works while nothing has been materialised past it.
+ */
 export const CASES: OracleCase[] = [
   {
     id: "dst-spring-2026-03-29",
@@ -86,11 +91,11 @@ export const CASES: OracleCase[] = [
     readings: energyDay("2026-03-27T21:00:00Z", "2026-03-30T03:00:00Z"),
   },
   {
-    id: "dst-autumn-2026-10-25",
-    doc: "Europe/Berlin falls back on 25 October: the local day is 25 hours, 24 October 22:00Z to 25 October 23:00Z",
-    window: { from: "2026-10-23T00:00:00Z", to: "2026-10-27T00:00:00Z" },
-    stat: { from: "2026-10-23T22:00:00Z", to: "2026-10-26T23:00:00Z" },
-    readings: energyDay("2026-10-23T21:00:00Z", "2026-10-26T03:00:00Z"),
+    id: "dst-autumn-2025-10-26",
+    doc: "Europe/Berlin falls back on 26 October 2025: the local day is 25 hours, 25 October 22:00Z to 26 October 23:00Z",
+    window: { from: "2025-10-24T00:00:00Z", to: "2025-10-28T00:00:00Z" },
+    stat: { from: "2025-10-24T22:00:00Z", to: "2025-10-27T23:00:00Z" },
+    readings: energyDay("2025-10-24T21:00:00Z", "2025-10-27T03:00:00Z"),
   },
   {
     id: "midnight-crossing",
@@ -121,14 +126,14 @@ export const CASES: OracleCase[] = [
   {
     id: "counter-restart",
     doc: "the production counter restarts from 5004 to 2 inside the 12:00Z hour and keeps rising from there",
-    window: { from: "2026-06-10T00:00:00Z", to: "2026-06-11T00:00:00Z" },
-    stat: { from: "2026-06-09T22:00:00Z", to: "2026-06-10T22:00:00Z" },
+    window: { from: "2026-05-10T00:00:00Z", to: "2026-05-11T00:00:00Z" },
+    stat: { from: "2026-05-09T22:00:00Z", to: "2026-05-10T22:00:00Z" },
     readings: {
-      [KEYS.power]: instants("2026-06-10T08:00:00Z", "2026-06-10T15:30:00Z", 30).map((t) => [
+      [KEYS.power]: instants("2026-05-10T08:00:00Z", "2026-05-10T15:30:00Z", 30).map((t) => [
         new Date(t).toISOString(),
         1000,
       ]),
-      [KEYS.production]: instants("2026-06-10T08:00:00Z", "2026-06-10T15:30:00Z", 30).map(
+      [KEYS.production]: instants("2026-05-10T08:00:00Z", "2026-05-10T15:30:00Z", 30).map(
         (t, i) => [new Date(t).toISOString(), i < 9 ? 5000 + i * 0.5 : 2 + (i - 9) * 0.5],
       ),
     },
@@ -193,48 +198,48 @@ export const CASES: OracleCase[] = [
   {
     id: "stale-across-midnight",
     doc: "the last reading of the evening (19:30Z, 250 W) is the only one until 05:15Z the next morning, past Berlin's midnight at 22:00Z",
-    window: { from: "2026-08-12T00:00:00Z", to: "2026-08-14T00:00:00Z" },
-    stat: { from: "2026-08-11T22:00:00Z", to: "2026-08-13T22:00:00Z" },
+    window: { from: "2026-04-12T00:00:00Z", to: "2026-04-14T00:00:00Z" },
+    stat: { from: "2026-04-11T22:00:00Z", to: "2026-04-13T22:00:00Z" },
     readings: {
       [KEYS.power]: stamp([
-        ["2026-08-12T18:30:00Z", 400],
-        ["2026-08-12T19:00:00Z", 300],
-        ["2026-08-12T19:30:00Z", 250],
-        ["2026-08-13T05:15:00Z", 100],
-        ["2026-08-13T05:45:00Z", 600],
+        ["2026-04-12T18:30:00Z", 400],
+        ["2026-04-12T19:00:00Z", 300],
+        ["2026-04-12T19:30:00Z", 250],
+        ["2026-04-13T05:15:00Z", 100],
+        ["2026-04-13T05:45:00Z", 600],
       ]),
       [KEYS.import]: stamp([
-        ["2026-08-12T18:30:00Z", 700],
-        ["2026-08-12T19:00:00Z", 700.2],
-        ["2026-08-12T19:30:00Z", 700.4],
-        ["2026-08-13T05:15:00Z", 704.1],
-        ["2026-08-13T05:45:00Z", 704.3],
+        ["2026-04-12T18:30:00Z", 700],
+        ["2026-04-12T19:00:00Z", 700.2],
+        ["2026-04-12T19:30:00Z", 700.4],
+        ["2026-04-13T05:15:00Z", 704.1],
+        ["2026-04-13T05:45:00Z", 704.3],
       ]),
     },
   },
   {
     id: "day-register-reset",
     doc: "a production.today register falls to 0 at Berlin's midnight (22:00Z in summer); its lifetime twin keeps rising",
-    window: { from: "2026-09-09T00:00:00Z", to: "2026-09-11T00:00:00Z" },
-    stat: { from: "2026-09-08T22:00:00Z", to: "2026-09-10T22:00:00Z" },
+    window: { from: "2026-04-09T00:00:00Z", to: "2026-04-11T00:00:00Z" },
+    stat: { from: "2026-04-08T22:00:00Z", to: "2026-04-10T22:00:00Z" },
     readings: {
       [KEYS.productionToday]: stamp([
-        ["2026-09-09T19:00:00Z", 15],
-        ["2026-09-09T20:00:00Z", 16.5],
-        ["2026-09-09T21:00:00Z", 17.8],
-        ["2026-09-09T22:00:00Z", 0],
-        ["2026-09-09T23:00:00Z", 0.4],
-        ["2026-09-10T00:00:00Z", 0.9],
-        ["2026-09-10T01:00:00Z", 1.5],
+        ["2026-04-09T19:00:00Z", 15],
+        ["2026-04-09T20:00:00Z", 16.5],
+        ["2026-04-09T21:00:00Z", 17.8],
+        ["2026-04-09T22:00:00Z", 0],
+        ["2026-04-09T23:00:00Z", 0.4],
+        ["2026-04-10T00:00:00Z", 0.9],
+        ["2026-04-10T01:00:00Z", 1.5],
       ]),
       [KEYS.production]: stamp([
-        ["2026-09-09T19:00:00Z", 3000],
-        ["2026-09-09T20:00:00Z", 3001.5],
-        ["2026-09-09T21:00:00Z", 3002.8],
-        ["2026-09-09T22:00:00Z", 3002.8],
-        ["2026-09-09T23:00:00Z", 3003.2],
-        ["2026-09-10T00:00:00Z", 3003.7],
-        ["2026-09-10T01:00:00Z", 3004.3],
+        ["2026-04-09T19:00:00Z", 3000],
+        ["2026-04-09T20:00:00Z", 3001.5],
+        ["2026-04-09T21:00:00Z", 3002.8],
+        ["2026-04-09T22:00:00Z", 3002.8],
+        ["2026-04-09T23:00:00Z", 3003.2],
+        ["2026-04-10T00:00:00Z", 3003.7],
+        ["2026-04-10T01:00:00Z", 3004.3],
       ]),
     },
   },

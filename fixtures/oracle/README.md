@@ -82,7 +82,7 @@ aggregates after `refresh_continuous_aggregate`.
 | case | boundary |
 | --- | --- |
 | `dst-spring-2026-03-29` | local day of 23 hours |
-| `dst-autumn-2026-10-25` | local day of 25 hours |
+| `dst-autumn-2025-10-26` | local day of 25 hours |
 | `midnight-crossing` | value held across Berlin midnight |
 | `counter-restart` | lifetime counter restarts inside an hour |
 | `partial-window` | readings cover part of the day |
@@ -100,7 +100,7 @@ Same case names and inputs as rollups. Per case: `window` (local-day aligned), `
 from `hourly_rollups`), `monthly`, `yearly` (`PeriodEnergy`; load implied from the flows, the profile maps no load
 counter). Producers: `fetchBucketEnergy`, `fetchCounterDeltaMatrix` + `accumulateTotals` + `derivePeriods` (the
 composition `energySeries` runs; `apps/server/src/energy/`), and `derivePeriodEnergy` over summed months for `yearly`.
-Cases: `dst-spring-2026-03-29` `dst-autumn-2026-10-25` `midnight-crossing` `counter-restart` `partial-window`
+Cases: `dst-spring-2026-03-29` `dst-autumn-2025-10-26` `midnight-crossing` `counter-restart` `partial-window`
 `zero-and-negative` `absent-readings` `stale-across-midnight` `day-register-reset` `year-boundary` `spurious-low-read`.
 
 ## 5. `archives/`: archives

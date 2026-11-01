@@ -72,6 +72,14 @@ suite("the oracle corpus, database groups", () => {
     },
   );
 
+  test("no case reaches the instant baseline.test.ts reads through real-time aggregation", () => {
+    for (const c of CASES) {
+      expect(Date.parse(c.window.to) + 86_400_000, c.id).toBeLessThanOrEqual(
+        Date.parse("2026-06-01T12:00:00Z"),
+      );
+    }
+  });
+
   test("every boundary the ticket lists has a case", () => {
     const ids = CASES.map((c) => c.id).join(" ");
     for (const boundary of [
@@ -122,7 +130,7 @@ suite("the oracle corpus, database groups", () => {
     test("the daily tier holds one bucket per UTC day with the counter's high and low", () => {
       const days = rollups.get("counter-restart")!.tiers["oracle.production.total"].day;
       expect(days).toHaveLength(1);
-      expect(days[0]).toMatchObject({ time: "2026-06-10T00:00:00.000Z", max: 5004, min: 2 });
+      expect(days[0]).toMatchObject({ time: "2026-05-10T00:00:00.000Z", max: 5004, min: 2 });
     });
   });
 
@@ -163,8 +171,8 @@ suite("the oracle corpus, database groups", () => {
     });
 
     test("fall back: the local day has 25 hourly buckets of 0.4 kWh", () => {
-      const days = statistics.get("dst-autumn-2026-10-25")!.dailyLocal;
-      expect(days.map((d: Line) => d.bucket)).toEqual(["2026-10-24", "2026-10-25", "2026-10-26"]);
+      const days = statistics.get("dst-autumn-2025-10-26")!.dailyLocal;
+      expect(days.map((d: Line) => d.bucket)).toEqual(["2025-10-25", "2025-10-26", "2025-10-27"]);
       expect(days[1].importKwh).toBeCloseTo(25 * 0.4, 9);
     });
 
