@@ -84,7 +84,7 @@
   "lint-staged": {
     "**/*.{ts,tsx,js,jsx,mjs,cjs}": [
       "oxlint",
-      "oxfmt --write"
+      "oxfmt --write --no-error-on-unmatched-pattern"
     ],
     "**/*.svelte": [
       "oxlint"

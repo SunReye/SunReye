@@ -1,240 +1,71 @@
 ---
-name: frontend-skill
-description: Use when the task asks for a visually strong landing page, website, app, prototype, demo, or game UI. This skill enforces restrained composition, image-led hierarchy, cohesive content structure, and tasteful motion while avoiding generic cards, weak branding, and UI clutter.
+name: frontend-design
+description: Guidance for distinctive, intentional visual design when building new UI or reshaping an existing one. Helps with aesthetic direction, typography, and making choices that don't read as templated defaults.
+license: Complete terms in LICENSE.txt
 ---
 
-# Frontend Skill
+# Frontend Design
 
-Use this skill when the quality of the work depends on art direction, hierarchy, restraint, imagery, and motion rather than component count.
+Approach this as the design lead at a design studio known for giving every client a distinct visual identity that is not mistaken for anyone else's. This client has already rejected proposals that felt cliché or templated, and is paying for a distinctive point of view: make deliberate, opinionated choices about palette, typography, and layout that are specific to this brief, and take aesthetic risk if justified.
 
-Goal: ship interfaces that feel deliberate, premium, and current. Default toward award-level composition: one big idea, strong imagery, sparse copy, rigorous spacing, and a small number of memorable motions.
+## Ground your designs in the subject matter
 
-## Working Model
+If the brief does not identify what the product or subject matter is, identify it yourself before designing, and confirm with the client. You can come up with one concrete subject, the design's audience, and the design's primary job, as a proposal. If there's any information in your memory about the client's preferences or context about what they're building, use that as a hint. The subject's industry, subject matter, materials, and vernacular are where distinctive visual choices come from — a design for a toy for girls aged 8–11 will be very aesthetically different from a dashboard for financial analysts. Build with the brief's real content and subject matter throughout.
 
-Before building, write three things:
+## Design principles
 
-- visual thesis: one sentence describing mood, material, and energy
-- content plan: hero, support, detail, final CTA
-- interaction thesis: 2-3 motion ideas that change the feel of the page
+For web designs, the hero is the first thing viewers will see. Open with the most characteristic thing in the subject's world, in the form that is most appropriate: a headline, an image, an animation, a live demo, an interactive moment, or other treatments. Be deliberate with your choice: a big number with a small label, supporting stats, and a gradient accent is the default treatment, so only use it if that's truly the best option.
 
-Each section gets one job, one dominant visual idea, and one primary takeaway or action.
+Typography carries the personality of the page. You don't need a different typeface for display or headline text and body content: use one family or two, and if two, make them clearly distinct.
 
-## Beautiful Defaults
+Choose your typefaces deliberately, not the default families you would reach for on any other project, and set a clear type scale following the default guidance of The Elements of Typographic Style with intentional weights, widths, and spacing. When type is used as a headline or visual element, use the type treatment itself as an active part of the design, not a neutral delivery vehicle for the content.
 
-- Start with composition, not components.
-- Prefer a full-bleed hero or full-canvas visual anchor.
-- Make the brand or product name the loudest text.
-- Keep copy short enough to scan in seconds.
-- Use whitespace, alignment, scale, cropping, and contrast before adding chrome.
-- Limit the system: two typefaces max, one accent color by default.
-- Default to cardless layouts. Use sections, columns, dividers, lists, and media blocks instead.
-- Treat the first viewport as a poster, not a document.
+Default to line lengths of less than 80 characters. Serif typefaces can have slightly longer line lengths; give serif body text slightly more line-height than a sans-serif.
 
-## Landing Pages
+Avoid these default typographic treatments; they are the commonest tells of a generated page:
+- Accenting just a single word or phrase in a headline, like putting one word in italic/bold or a different color.
+- Using all caps for labels.
+- Adding unnecessary typographic labels above content.
 
-Default sequence:
+Visual structure is information. Structural devices like outlines, borders, numbering, eyebrows, dividers, labels, etc., encode useful information about the content rather than decorate it. Many generic designs use numbered markers (01 / 02 / 03), but that's only appropriate if the content actually is a sequence — like a stepped process or a timeline. Before adding numbered markers, check the content really is a sequence.
 
-1. Hero: brand or product, promise, CTA, and one dominant visual
-2. Support: one concrete feature, offer, or proof point
-3. Detail: atmosphere, workflow, product depth, or story
-4. Final CTA: convert, start, visit, or contact
+Use non-user-triggered motion sparingly and deliberately, only to draw attention. A single orchestrated moment — one page-load sequence or one reveal — lands better than scattered effects; fade-and-slide-up entrances on each section and hover transitions on every card are the generic default and read as AI-generated. Motion that answers a person's action (opening, expanding, confirming) is welcome when it shows what changed.
 
-Hero rules:
+Consider written content carefully. Often a design brief may not contain real content, and it's up to you to come up with copy and placeholder content. Copy can make a design feel as templated as the design itself. See the below section on writing for more guidance.
 
-- One composition only.
-- Full-bleed image or dominant visual plane.
-- Canonical full-bleed rule: on branded landing pages, the hero itself must run edge-to-edge with no inherited page gutters, framed container, or shared max-width; constrain only the inner text/action column.
-- Brand first, headline second, body third, CTA fourth.
-- No hero cards, stat strips, logo clouds, pill soup, or floating dashboards by default.
-- Keep headlines to roughly 2-3 lines on desktop and readable in one glance on mobile.
-- Keep the text column narrow and anchored to a calm area of the image.
-- All text over imagery must maintain strong contrast and clear tap targets.
+## Process: plan, review against the brief, build, critique
 
-If the first viewport still works after removing the image, the image is too weak. If the brand disappears after hiding the nav, the hierarchy is too weak.
+For calibration, AI-generated design right now clusters around some traits:
+1. a warm cream background (near #F4F1EA) with a high-contrast serif display and a terracotta or warm-clay accent (often near #D97757 — Anthropic's own Claude-interaction accent, so on a user's brief it reads as a tell);
+2. a near-black background with a single bright acid-green or vermilion accent;
+3. a broadsheet-style layout with hairline rules, zero border-radius, and dense newspaper-like columns;
+4. the SaaS-card kit: content chopped into identical rounded cards, one border-radius on everything regardless of hierarchy, the same soft grey shadow (rgba(0,0,0,.1)) under each, and gradient washes as decoration;
+5. template chrome that appears whatever the subject: a tracked-out ALL-CAPS eyebrow label above every heading; meta strings joined with middle dots ('A · B · C'); labels built as 'WORD — fragment' with a spaced em dash; tinted near-black (#0B0B0B, #111) standing in for black; a monospace face for small data labels; a '→' appended to link and button text.
 
-Viewport budget:
+All traits are legitimate for some briefs, but they are defaults rather than choices, and they appear regardless of subject. Where the brief pins down a visual direction, follow it exactly — the brief's own words always win, including when it asks for one of these looks. Where it leaves an axis free, don't spend that freedom on one of these defaults. As with a hired human designer, there's often a careful balance between doing what you're good at and taking each project as a chance to experiment and learn.
 
-- If the first screen includes a sticky/fixed header, that header counts against the hero. The combined header + hero content must fit within the initial viewport at common desktop and mobile sizes.
-- When using `100vh`/`100svh` heroes, subtract persistent UI chrome (`calc(100svh - header-height)`) or overlay the header instead of stacking it in normal flow.
+Work in two passes. First, brainstorm a short design plan based on the client's design brief: create a compact token system with color, type, layout, and principles.
+- Color: describe the core base palette as 4–6 named hex values.
+- Type: the typefaces and their roles.
+- Layout: a layout concept, using one-sentence prose descriptions and ASCII wireframes to ideate and compare. Include alignment guidance; should the content be left aligned, center aligned, justified?
+- Principles: the high-level guidance for what makes this page unique.
 
-## Apps
+Then review that plan against the brief before building: if any part of it reads like the generic default you would produce for any similar page (work through a similar prompt to see if you arrive somewhere similar) rather than a choice made for this specific brief — revise that part, say what you changed and why. Only after you've confirmed the relative uniqueness of your design plan should you start to write the code, following the revised plan.
 
-Default to Linear-style restraint:
+When writing the code, be careful of structuring your CSS selector specificities. It's easy to generate CSS classes that cancel each other out (especially with a type-based selector like .section and an element-based selector like .cta). This can happen often with padding/margin between sections.
 
-- calm surface hierarchy
-- strong typography and spacing
-- few colors
-- dense but readable information
-- minimal chrome
-- cards only when the card is the interaction
+## Restraint and self-critique
 
-For app UI, organize around:
+Spend your boldness in one place. Let one element be the memorable thing, keep everything around it quiet and disciplined, and cut any decoration that does not serve the brief. Build to a quality floor without announcing it: responsive down to mobile, visible keyboard focus, reduced motion respected, visually accessible, harmonious color palettes. Critique your own work as you build, taking screenshots to review if your environment supports it — a picture is worth 1000 tokens. Consider Chanel's advice: before leaving the house, take a look in the mirror and remove one accessory. Human creatives have memory and always try to do something new, so if you have a space to quickly jot down notes about what you've tried, it can help you in future passes.
 
-- primary workspace
-- navigation
-- secondary context or inspector
-- one clear accent for action or state
+## More on writing in design
 
-Avoid:
+Words appear in a design for one reason: to make it easier to understand and use. They are design content, not decoration. Bring the same intentionality and minimalism to copywriting that you would bring to spacing and color. Before writing anything, ask what the design needs to say, and how it can best be said to help the person navigate the experience.
 
-- dashboard-card mosaics
-- thick borders on every region
-- decorative gradients behind routine product UI
-- multiple competing accent colors
-- ornamental icons that do not improve scanning
+Write from the end user's perspective. Name things by what users will understand in simple language, not by how the system is built. A user manages notifications, not webhook config. Describe what something is or does in plain terms rather than selling it. Being specific and legible to new users is always better than being clever.
 
-If a panel can become plain layout without losing meaning, remove the card treatment.
+Use active voice as default. A CTA says exactly what happens when it is used: "Save changes," not "Submit." An action keeps the same name through the whole flow, so the button that says "Publish" produces a toast that says "Published." The vocabulary of an interface is the signposting for someone navigating the product. Cohesion and consistency are how people learn their way around.
 
-## Svelte Shadcn Components
+Treat failure and emptiness as moments for direction, not mood. Explain what went wrong and how to fix it, in the interface's voice rather than a person's. Errors don't apologize, and they are never vague about what happened. An empty screen is an invitation to act.
 
-This repo is **shadcn-svelte-first**. Always prefer composing UI from existing shadcn-svelte components in `apps/web/src/lib/components/ui/`.
-
-### Core Rules
-
-- **Check First**: Before building custom UI, check if an existing shadcn component or subcomponent covers the need.
-- **Install Upstream**: If a matching shadcn component does not exist yet, install/add the canonical shadcn component first:
-  ```bash
-  bun x shadcn-svelte@latest add -y -o ${ComponentName}
-  ```
-- **Build Reusable**: If no upstream shadcn component exists, build a local reusable component instead of duplicating ad-hoc styled markup.
-- **No Raw HTML Replacements**: Do not replace available shadcn surfaces, inputs, dialogs, navigation, or form primitives with raw HTML. Limit raw HTML to semantic structure and content nested inside composed shadcn components.
-
-### Svelte 5 & Shadcn Idiomatic Patterns
-
-- **Props & Runes**: Use Svelte 5 runes (`$props()`, `$state`, `$derived`, `$effect`) in all components.
-- **Child Snippet Composition**: When a shadcn component supports `child`/render snippet composition, prefer that over replacing it with raw custom elements or adding extra wrapper elements.
-  ```svelte
-  <Sidebar.MenuButton isActive={isActive}>
-  	{#snippet child({ props })}
-  		<a href="/dashboard" {...props}>
-  			<LayoutDashboard class="mr-2 h-4 w-4" />
-  			<span>Dashboard</span>
-  		</a>
-  	{/snippet}
-  </Sidebar.MenuButton>
-  ```
-- **Children Snippet**: Use the `children` snippet for rendering children:
-  ```svelte
-  <script lang="ts">
-  	let { children } = $props();
-  </script>
-  {@render children?.()}
-  ```
-- **Element References**: Use `ref` bindable prop for element references:
-  ```svelte
-  <script lang="ts">
-  	let { ref = $bindable(null) } = $props();
-  </script>
-  <button bind:this={ref}>Click</button>
-  ```
-- **Class Merging**: Use the `cn` utility for class merging:
-  ```svelte
-  <div class={cn("bg-background text-foreground", className)}></div>
-  ```
-
-### Navigation & Layout Patterns
-
-- **Sidebar**: Use `sidebar` for dense workspace navigation.
-- **Breadcrumb**: Use `breadcrumb` for deep drill-in paths.
-- **Tabs vs Subroutes**:
-  - Use `tabs` for **local content switching inside a route** (e.g., switching between Overview, Action items, and Risks).
-  - Use SvelteKit **subroutes** for major views that deserve their own URL (e.g., Summary, Timeline, Speakers, and Files). Style normal links like tabs if they should look like tabs.
-
-## Imagery
-
-Imagery must do narrative work.
-
-- Use at least one strong, real-looking image for brands, venues, editorial pages, and lifestyle products.
-- Prefer in-situ photography over abstract gradients or fake 3D objects.
-- Choose or crop images with a stable tonal area for text.
-- Do not use images with embedded signage, logos, or typographic clutter fighting the UI.
-- Do not generate images with built-in UI frames, splits, cards, or panels.
-- If multiple moments are needed, use multiple images, not one collage.
-
-The first viewport needs a real visual anchor. Decorative texture is not enough.
-
-## Copy
-
-- Write in product language, not design commentary.
-- Let the headline carry the meaning.
-- Supporting copy should usually be one short sentence.
-- Cut repetition between sections.
-- Do not include prompt language or design commentary into the UI.
-- Give every section one responsibility: explain, prove, deepen, or convert.
-
-If deleting 30 percent of the copy improves the page, keep deleting.
-
-## Utility Copy For Product UI
-
-When the work is a dashboard, app surface, admin tool, or operational workspace, default to utility copy over marketing copy.
-
-- Prioritize orientation, status, and action over promise, mood, or brand voice.
-- Start with the working surface itself: KPIs, charts, filters, tables, status, or task context. Do not introduce a hero section unless the user explicitly asks for one.
-- Section headings should say what the area is or what the user can do there.
-- Good: "Selected KPIs", "Plan status", "Search metrics", "Top segments", "Last sync".
-- Avoid aspirational hero lines, metaphors, campaign-style language, and executive-summary banners on product surfaces unless specifically requested.
-- Supporting text should explain scope, behavior, freshness, or decision value in one sentence.
-- If a sentence could appear in a homepage hero or ad, rewrite it until it sounds like product UI.
-- If a section does not help someone operate, monitor, or decide, remove it.
-- Litmus check: if an operator scans only headings, labels, and numbers, can they understand the page immediately?
-
-## Motion
-
-Use motion to create presence and hierarchy, not noise.
-
-Ship at least 2-3 intentional motions for visually led work:
-
-- one entrance sequence in the hero
-- one scroll-linked, sticky, or depth effect
-- one hover, reveal, or layout transition that sharpens affordance
-
-Prefer native Svelte transitions and animations:
-
-- `transition:fade` for subtle appearance/disappearance
-- `transition:fly` for small contextual movement
-- `transition:slide` for expanding/collapsing sections
-- `transition:scale` for compact overlays or popovers
-- `animate:flip` for reordering lists (sorting, filtering)
-- `Spring` or `Tween` classes for value motion (progress meters, resize indicators)
-- Always respect reduced motion (`prefersReducedMotion.current`)
-
-Motion rules:
-
-- noticeable in a quick recording
-- smooth on mobile
-- fast and restrained
-- consistent across the page
-- removed if ornamental only
-
-## Hard Rules
-
-- No cards by default.
-- No hero cards by default.
-- No boxed or center-column hero when the brief calls for full bleed.
-- No more than one dominant idea per section.
-- No section should need many tiny UI devices to explain itself.
-- No headline should overpower the brand on branded pages.
-- No filler copy.
-- No split-screen hero unless text sits on a calm, unified side.
-- No more than two typefaces without a clear reason.
-- No more than one accent color unless the product already has a strong system.
-
-## Reject These Failures
-
-- Generic SaaS card grid as the first impression
-- Beautiful image with weak brand presence
-- Strong headline with no clear action
-- Busy imagery behind text
-- Sections that repeat the same mood statement
-- Carousel with no narrative purpose
-- App UI made of stacked cards instead of layout
-
-## Litmus Checks
-
-- Is the brand or product unmistakable in the first screen?
-- Is there one strong visual anchor?
-- Can the page be understood by scanning headlines only?
-- Does each section have one job?
-- Are cards actually necessary?
-- Does motion improve hierarchy or atmosphere?
-- Would the design still feel premium if all decorative shadows were removed?
+Keep the tone conversational: plain verbs, sentence case, no filler, with tone matched to the brand and the audience. Let each written element do exactly one job.
