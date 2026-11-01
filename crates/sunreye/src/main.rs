@@ -27,10 +27,18 @@ async fn main() -> ExitCode {
         data_dir = %cli.data_dir.display(),
         "sunreye starting"
     );
-    let received = tokio::select! {
-        _ = int.recv() => "SIGINT",
-        _ = term.recv() => "SIGTERM",
+    let stop = async {
+        let received = tokio::select! {
+            _ = int.recv() => "SIGINT",
+            _ = term.recv() => "SIGTERM",
+        };
+        tracing::info!(signal = received, "sunreye stopping");
     };
-    tracing::info!(signal = received, "sunreye stopping");
-    ExitCode::SUCCESS
+    match sunreye::run(&cli.data_dir, stop).await {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(error) => {
+            tracing::error!(%error, "sunreye cannot run");
+            ExitCode::FAILURE
+        }
+    }
 }
