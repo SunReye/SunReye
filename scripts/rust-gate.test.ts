@@ -16,7 +16,7 @@ beforeEach(async () => {
   const cargo = join(dir, "cargo");
   await writeFile(
     cargo,
-    '#!/usr/bin/env bash\necho "$*" >> "$CARGO_LOG"\n[[ "$1" == "${FAIL_ON:-}" ]] && exit 7\nexit 0\n',
+    '#!/usr/bin/env bash\necho "$*" >> "$CARGO_LOG"\n[[ -n "${FAIL_ON:-}" && "$*" == "$FAIL_ON"* ]] && exit 7\nexit 0\n',
   );
   await chmod(cargo, 0o755);
 });
@@ -44,14 +44,23 @@ async function gate(failOn?: string) {
 }
 
 describe("scripts/rust-gate", () => {
-  test("runs fmt, clippy and test, in that order, with the gate's flags", async () => {
+  test("runs fmt, the sqlx cache check, clippy and test, in that order, with the gate's flags", async () => {
     const { code, calls } = await gate();
     expect(code).toBe(0);
     expect(calls).toEqual([
       "fmt --check",
+      "sqlx database setup --source crates/sunreye/migrations",
+      "sqlx prepare --check --workspace -- --all-targets",
       "clippy --workspace --all-targets -- -D warnings",
       "test --workspace",
     ]);
+  });
+
+  test("a stale sqlx cache fails the gate and skips clippy", async () => {
+    const { code, calls } = await gate("sqlx prepare");
+    expect(code).not.toBe(0);
+    expect(calls).toHaveLength(3);
+    expect(calls[2]).toBe("sqlx prepare --check --workspace -- --all-targets");
   });
 
   test("a failing fmt check fails the gate and stops it", async () => {
@@ -63,12 +72,14 @@ describe("scripts/rust-gate", () => {
   test("a clippy warning fails the gate and skips the tests", async () => {
     const { code, calls } = await gate("clippy");
     expect(code).not.toBe(0);
-    expect(calls).toEqual(["fmt --check", "clippy --workspace --all-targets -- -D warnings"]);
+    expect(calls).toHaveLength(4);
+    expect(calls[3]).toBe("clippy --workspace --all-targets -- -D warnings");
   });
 
   test("a failing test fails the gate", async () => {
     const { code, calls } = await gate("test");
     expect(code).not.toBe(0);
-    expect(calls).toHaveLength(3);
+    expect(calls).toHaveLength(5);
+    expect(calls[4]).toBe("test --workspace");
   });
 });

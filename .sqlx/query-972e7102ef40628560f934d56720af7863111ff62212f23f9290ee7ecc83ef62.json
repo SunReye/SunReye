@@ -1,0 +1,50 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT device.id AS \"id!\", device.profile_id, device.unit_id, connection.transport, connection.host,\n                      connection.port\n               FROM device JOIN connection ON connection.id = device.connection_id\n               ORDER BY device.id",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!",
+        "ordinal": 0,
+        "type_info": "Integer"
+      },
+      {
+        "name": "profile_id",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "unit_id",
+        "ordinal": 2,
+        "type_info": "Integer"
+      },
+      {
+        "name": "transport",
+        "ordinal": 3,
+        "type_info": "Text"
+      },
+      {
+        "name": "host",
+        "ordinal": 4,
+        "type_info": "Text"
+      },
+      {
+        "name": "port",
+        "ordinal": 5,
+        "type_info": "Integer"
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "972e7102ef40628560f934d56720af7863111ff62212f23f9290ee7ecc83ef62"
+}

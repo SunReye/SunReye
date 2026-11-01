@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO metric (key) VALUES (?) ON CONFLICT (key) DO UPDATE SET key = excluded.key RETURNING id AS \"id!\"",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!",
+        "ordinal": 0,
+        "type_info": "Integer"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "f99f8e761bb9fcf7bfaf53ec07f9bd12acbace37c05a4bfd92274cb537025002"
+}

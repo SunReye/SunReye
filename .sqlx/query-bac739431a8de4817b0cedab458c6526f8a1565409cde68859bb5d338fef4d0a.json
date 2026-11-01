@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT minute, samples FROM reading_minute WHERE device_id = ? AND minute BETWEEN ? AND ? ORDER BY minute",
+  "describe": {
+    "columns": [
+      {
+        "name": "minute",
+        "ordinal": 0,
+        "type_info": "Integer"
+      },
+      {
+        "name": "samples",
+        "ordinal": 1,
+        "type_info": "Blob"
+      }
+    ],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "bac739431a8de4817b0cedab458c6526f8a1565409cde68859bb5d338fef4d0a"
+}
