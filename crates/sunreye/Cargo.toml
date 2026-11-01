@@ -38,9 +38,14 @@ tracing-subscriber = { version = "0.3", default-features = false, features = [
   "std",
   "ansi",
 ] }
+axum = { version = "0.8", default-features = false, features = ["http1", "json", "query", "tokio"] }
+utoipa = "6"
+utoipa-axum = "0.3"
+rust-embed = { version = "8", features = ["interpolate-folder-path", "mime-guess"] }
 
 [lints]
 workspace = true
 
 [dev-dependencies]
 sunreye-sim = { path = "../sim" }
+tower = { version = "0.5", default-features = false, features = ["util"] }

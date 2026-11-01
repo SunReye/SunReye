@@ -1,0 +1,530 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "SunReye Core API",
+    "description": "Monitoring core: onboarding and capabilities.",
+    "license": {
+      "name": "AGPL-3.0-only",
+      "identifier": "AGPL-3.0-only"
+    },
+    "version": "0.0.0"
+  },
+  "paths": {
+    "/api/capabilities": {
+      "get": {
+        "operationId": "capabilities",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Capabilities"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/profile-status": {
+      "get": {
+        "operationId": "profileStatus",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileStatus"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/profiles": {
+      "get": {
+        "operationId": "listProfiles",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ProfileEntry"
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/settings/active-profile": {
+      "put": {
+        "operationId": "chooseProfile",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ActiveProfileRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActiveProfile"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/settings/inverter": {
+      "get": {
+        "operationId": "readInverter",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InverterConfig"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "summary": "Saving polls the device as soon as a profile is chosen too.",
+        "operationId": "saveInverter",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InverterConfig"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InverterConfig"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/settings/inverter/test": {
+      "post": {
+        "summary": "A device that cannot be reached is a result (`ok: false`), not an error of the request.",
+        "operationId": "testInverter",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TestRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TestResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/setup-status": {
+      "get": {
+        "operationId": "setupStatus",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SetupStatus"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "ActiveProfile": {
+        "type": "object",
+        "required": [
+          "id",
+          "restartRequired"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "restartRequired": {
+            "type": "boolean",
+            "description": "Always false: the device is polled with the new profile at once."
+          }
+        }
+      },
+      "ActiveProfileRequest": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          }
+        }
+      },
+      "Capabilities": {
+        "type": "object",
+        "description": "The SPA areas this core serves; the SPA hides every area that reads false.",
+        "required": [
+          "history",
+          "statistics",
+          "controls",
+          "automations",
+          "restart",
+          "profileSources"
+        ],
+        "properties": {
+          "automations": {
+            "type": "boolean"
+          },
+          "controls": {
+            "type": "boolean"
+          },
+          "history": {
+            "type": "boolean"
+          },
+          "profileSources": {
+            "type": "boolean"
+          },
+          "restart": {
+            "type": "boolean"
+          },
+          "statistics": {
+            "type": "boolean"
+          }
+        }
+      },
+      "ErrorBody": {
+        "type": "object",
+        "description": "What a failed request answers: `{\"error\": \"...\"}` with the status that names the fault.",
+        "required": [
+          "error"
+        ],
+        "properties": {
+          "error": {
+            "type": "string"
+          }
+        }
+      },
+      "InverterConfig": {
+        "type": "object",
+        "description": "The inverter connection as the onboarding form edits it.",
+        "required": [
+          "host",
+          "port",
+          "transport",
+          "unitId",
+          "timeoutMs",
+          "pollIntervalMs",
+          "simulate"
+        ],
+        "properties": {
+          "host": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Null until a connection is saved."
+          },
+          "pollIntervalMs": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "port": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "simulate": {
+            "type": "boolean",
+            "description": "Always false: the core has no fake device."
+          },
+          "timeoutMs": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Bounds the connect and every read of one poll."
+          },
+          "transport": {
+            "$ref": "#/components/schemas/Transport"
+          },
+          "unitId": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "ProfileEntry": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "manufacturer",
+          "active",
+          "installed",
+          "builtin"
+        ],
+        "properties": {
+          "active": {
+            "type": "boolean"
+          },
+          "builtin": {
+            "type": "boolean",
+            "description": "Compiled into the binary."
+          },
+          "id": {
+            "type": "string"
+          },
+          "installed": {
+            "type": "boolean",
+            "description": "Downloaded from a profile source. The compiled-in profiles are not."
+          },
+          "manufacturer": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        }
+      },
+      "ProfileStatus": {
+        "type": "object",
+        "required": [
+          "needsProfile",
+          "activeProfileId"
+        ],
+        "properties": {
+          "activeProfileId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "needsProfile": {
+            "type": "boolean"
+          }
+        }
+      },
+      "SetupStatus": {
+        "type": "object",
+        "required": [
+          "needsSetup"
+        ],
+        "properties": {
+          "needsSetup": {
+            "type": "boolean",
+            "description": "Always false: the core has no accounts yet, so there is no first account to create."
+          }
+        }
+      },
+      "SnapshotMetric": {
+        "type": "object",
+        "description": "One decoded value of a test read.",
+        "required": [
+          "key",
+          "label",
+          "unit",
+          "group",
+          "value"
+        ],
+        "properties": {
+          "group": {
+            "type": "string"
+          },
+          "key": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "unit": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "value": {
+            "type": "number",
+            "format": "double"
+          }
+        }
+      },
+      "TestRequest": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/InverterConfig"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "profileId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            }
+          }
+        ],
+        "description": "A connection to test, with the profile to read it with. Without one the active profile is used."
+      },
+      "TestResult": {
+        "type": "object",
+        "description": "The outcome of a test read: an error, or the captured snapshot.",
+        "required": [
+          "ok"
+        ],
+        "properties": {
+          "durationMs": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "error": {
+            "type": "string"
+          },
+          "metricCount": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "metrics": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SnapshotMetric"
+            }
+          },
+          "ok": {
+            "type": "boolean"
+          }
+        }
+      },
+      "Transport": {
+        "type": "string",
+        "description": "How the connection is framed on the wire. Only `tcp` is polled so far.",
+        "enum": [
+          "tcp",
+          "rtu-over-tcp",
+          "solarman-v5"
+        ]
+      }
+    }
+  }
+}
