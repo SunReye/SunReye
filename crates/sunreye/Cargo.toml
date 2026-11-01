@@ -1,0 +1,27 @@
+[package]
+name = "sunreye"
+description = "SunReye core: polls devices, stores readings and serves the web app"
+version = "0.0.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+clap = { version = "4", default-features = false, features = [
+  "std",
+  "derive",
+  "help",
+  "usage",
+  "error-context",
+] }
+tokio = { version = "1", default-features = false, features = ["macros", "rt", "signal"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", default-features = false, features = [
+  "fmt",
+  "std",
+  "ansi",
+] }
+
+[lints]
+workspace = true

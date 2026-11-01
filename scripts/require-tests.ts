@@ -16,7 +16,12 @@
  */
 
 /** Workspace source trees. Nothing outside these is behaviour we own. */
-const SOURCE_ROOTS = [/^apps\/[^/]+\/src\//, /^packages\/[^/]+\/src\//, /^scripts\//];
+const SOURCE_ROOTS = [
+  /^apps\/[^/]+\/src\//,
+  /^packages\/[^/]+\/src\//,
+  /^crates\/[^/]+\/src\//,
+  /^scripts\//,
+];
 
 /**
  * Paths inside a source tree that carry no testable behaviour. Every entry is a
@@ -53,7 +58,7 @@ const EXEMPT = [
  * `src/main.rs` is the same argument in Rust: the binary's composition root.
  * The `mod.rs` barrel exemption above must never be read as covering it.
  */
-const NEVER_EXEMPT = [/^apps\/[^/]+\/src\/index\.ts$/, /^apps\/[^/]+\/src\/main\.rs$/];
+const NEVER_EXEMPT = [/^apps\/[^/]+\/src\/index\.ts$/, /^(?:apps|crates)\/[^/]+\/src\/main\.rs$/];
 
 /** Extensions that can hold behaviour. Docs, JSON and SQL cannot. */
 const SOURCE_EXT = /\.(ts|tsx|js|jsx|mjs|cjs|svelte|svelte\.ts|rs)$/;

@@ -114,6 +114,11 @@ bun run test:mocks
 heavy bun run test:coverage
 bun run test:floor
 
+step "rust"
+heavy scripts/rust-gate
+heavy bun run test:coverage:rust
+bun run test:floor:rust
+
 step "factory scripts"
 bun run test:factory
 
