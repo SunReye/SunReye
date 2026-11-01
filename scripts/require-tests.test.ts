@@ -402,6 +402,77 @@ describe("Rust sources", () => {
   });
 });
 
+// Cargo workspace members live in `crates/*` (root Cargo.toml). Without the root
+// in SOURCE_ROOTS every change there reads as "no behaviour changed".
+describe("crates/ workspace members", () => {
+  test("a crate source counts as behaviour", () => {
+    expect(isSourceFile("crates/sunreye/src/lib.rs")).toBe(true);
+    expect(isSourceFile("crates/sunreye/src/store/rollup.rs")).toBe(true);
+  });
+
+  test("a crate's main.rs is never exempt", () => {
+    expect(isSourceFile("crates/sunreye/src/main.rs")).toBe(true);
+  });
+
+  test("a nested mod.rs, a build script and generated output are exempt", () => {
+    expect(isSourceFile("crates/sunreye/src/store/mod.rs")).toBe(false);
+    expect(isSourceFile("crates/sunreye/build.rs")).toBe(false);
+    expect(isSourceFile("crates/sunreye/src/generated/registers.rs")).toBe(false);
+  });
+
+  test("an integration test under crates/*/tests/ is a test, not a source", () => {
+    expect(isTestFile("crates/sunreye/tests/cli.rs")).toBe(true);
+    expect(isSourceFile("crates/sunreye/tests/cli.rs")).toBe(false);
+  });
+
+  test("a .rs change with no test change fails", () => {
+    const v = verdict(["crates/sunreye/src/lib.rs"]);
+    expect(v.ok).toBe(false);
+    expect(v.sources).toEqual(["crates/sunreye/src/lib.rs"]);
+  });
+
+  test("a change under the same crate's tests/ passes", () => {
+    expect(verdict(["crates/sunreye/src/lib.rs", "crates/sunreye/tests/cli.rs"]).ok).toBe(true);
+  });
+
+  test("another crate's tests/ do not pay for this crate", () => {
+    expect(verdict(["crates/sunreye/src/lib.rs", "crates/other/tests/cli.rs"]).ok).toBe(false);
+  });
+
+  test("a change inside the file's own #[cfg(test)] module passes", () => {
+    const body = [
+      "pub fn f() -> i32 {", // 1
+      "    1", // 2
+      "}", // 3
+      "#[cfg(test)]", // 4
+      "mod tests {", // 5
+      "    #[test]", // 6
+      "    fn works() {", // 7
+      "        assert_eq!(super::f(), 1);", // 8
+      "    }", // 9
+      "}", // 10
+    ].join("\n");
+    const run = (patch: string) => {
+      const io: GateIo = {
+        run: (cmd) => ({
+          exitCode: 0,
+          stdout:
+            cmd[1] === "show" ? body : cmd.includes("--") ? patch : "crates/sunreye/src/lib.rs\n",
+          stderr: "",
+        }),
+        log: () => {},
+      };
+      return main([], io);
+    };
+    expect(
+      run(["@@ -7,2 +7,3 @@", "     fn works() {", "+        assert!(super::f() > 0);"].join("\n")),
+    ).toBe(0);
+    expect(
+      run(["@@ -1,3 +1,3 @@", " pub fn f() -> i32 {", "-    1", "+    2", " }"].join("\n")),
+    ).toBe(1);
+  });
+});
+
 describe("cfgTestRanges", () => {
   test("finds the line span of an inline test module", () => {
     const src = [
