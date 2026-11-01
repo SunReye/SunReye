@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO readings_minute (device_id, minute, samples) VALUES (?, ?, ?)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "6637e549228f4bb64c91fcb945017a5ef2edfe2685d84c56895b36659b19ff6c"
+}

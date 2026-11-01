@@ -15,6 +15,12 @@ clap = { version = "4", default-features = false, features = [
   "usage",
   "error-context",
 ] }
+sqlx = { version = "0.9", default-features = false, features = [
+  "runtime-tokio",
+  "sqlite",
+  "migrate",
+  "macros",
+] }
 tokio = { version = "1", default-features = false, features = ["macros", "rt", "signal"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", default-features = false, features = [
@@ -22,6 +28,9 @@ tracing-subscriber = { version = "0.3", default-features = false, features = [
   "std",
   "ansi",
 ] }
+
+[dev-dependencies]
+tempfile = "3"
 
 [lints]
 workspace = true

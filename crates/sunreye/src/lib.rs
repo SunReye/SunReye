@@ -5,6 +5,8 @@ use std::path::PathBuf;
 
 use clap::{Parser, ValueEnum};
 
+pub mod store;
+
 /// Startup flags. `--version` is absent on purpose: the version is the first log line.
 #[derive(Debug, Parser, PartialEq, Eq)]
 #[command(name = "sunreye", about = "SunReye core", disable_version_flag = true)]

@@ -118,6 +118,7 @@ step "rust"
 heavy scripts/rust-gate
 heavy bun run test:coverage:rust
 bun run test:floor:rust
+heavy scripts/sqlx-cache --check
 
 step "android build"
 heavy scripts/target-gate
