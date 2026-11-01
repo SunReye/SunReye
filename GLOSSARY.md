@@ -85,11 +85,11 @@ The Rust program that polls devices, stores readings, computes rollups and serve
 _Avoid_: server, backend, engine (the 3.x TypeScript program)
 
 **Target**:
-A platform the core is built for: Linux, Android or ESP-IDF.
+A platform the core is built for: Linux or Android.
 _Avoid_: platform, host
 
 **Edition**:
-A way SunReye ships to a user: the Home Assistant add-on, the Docker image, the NixOS appliance, the Android app or the ESP32 firmware.
+A way SunReye ships to a user: the Home Assistant add-on, the Docker image, the NixOS appliance or the Android app.
 _Avoid_: flavour, distribution, variant
 
 **Capability**:
