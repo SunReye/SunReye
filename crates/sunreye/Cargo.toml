@@ -15,6 +15,9 @@ clap = { version = "4", default-features = false, features = [
   "usage",
   "error-context",
 ] }
+reqwest = { version = "0.13", default-features = false, features = ["rustls-no-provider"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+thiserror = "2"
 tokio = { version = "1", default-features = false, features = ["macros", "rt", "signal"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", default-features = false, features = [
@@ -22,6 +25,13 @@ tracing-subscriber = { version = "0.3", default-features = false, features = [
   "std",
   "ansi",
 ] }
+webpki-roots = "1"
+
+[dev-dependencies]
+http = "1"
+rcgen = { version = "0.14", default-features = false, features = ["crypto", "ring"] }
+tokio = { version = "1", default-features = false, features = ["io-util", "net", "time"] }
+tokio-rustls = { version = "0.26", default-features = false, features = ["ring", "tls12"] }
 
 [lints]
 workspace = true
