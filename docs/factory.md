@@ -2,7 +2,7 @@
 
 The factory takes labelled GitHub tickets through implementation, review and integration. One Claude Code session runs `/loop /factory`; deterministic scripts own slots, tracker state and merges. It opens and merges real PRs when running. Copying or configuring it does not start it.
 
-SunReye's profile targets `v3` (the 3.0 rework branch), requires hosted CI, and uses the existing Bun commands. Root and area `AGENTS.md` instructions govern TDD, required test layers, hardware safety and review. The factory does not relax those requirements.
+SunReye's profile targets `v3` (the 3.0 rework branch). There is no hosted CI: the gate is `scripts/ci`, run in the slot; the train gate adds the browser suite. `factory merge` trusts that green run (`require_ci` is false). Root and area `AGENTS.md` instructions govern TDD, required test layers, hardware safety and review. The factory does not relax those requirements.
 
 ## Configuration
 
@@ -40,7 +40,7 @@ scripts/factory/factory gate
 scripts/factory/factory gate --train
 ```
 
-These commands do not authenticate to GitHub. They execute project commands and can modify generated files as those commands normally do. Neither gate replaces additional checks required by root or area instructions: component, browser, database, route, Nix and other checks apply to the areas changed. Hosted CI remains required before landing. Database tests must use the guarded scratch harness; coordinate tests using shared ports or scratch databases across slots. Factory work must never use live inverter connections or a production database.
+These commands do not authenticate to GitHub. They execute project commands and can modify generated files as those commands normally do. Neither gate replaces additional checks required by root or area instructions: component, browser, database, route, Nix and other checks apply to the areas changed. Database tests must use the guarded scratch harness; coordinate tests using shared ports or scratch databases across slots. Factory work must never use live inverter connections or a production database.
 
 Migrations are deliberately absent from SunReye's automatic conflict patterns. Reconcile schema changes and regenerate through the database package's documented workflow.
 
@@ -100,4 +100,4 @@ bun run test:factory
 bun run test
 ```
 
-Factory tests use temporary Git repositories and a GitHub stand-in: they exercise setup, reuse, cleanup, command failure, CI waiting, train tree equality, stale bases and heads, and the real hook's stdin/exit-code contract. They do not call GitHub or start app servers. CI runs the factory tests alongside existing repo checks. `check-result-lines` checks the agent/dispatcher reporting contract; it does not replace behavioral tests.
+Factory tests use temporary Git repositories and a GitHub stand-in: they exercise setup, reuse, cleanup, command failure, CI waiting, train tree equality, stale bases and heads, and the real hook's stdin/exit-code contract. They do not call GitHub or start app servers. `scripts/ci` runs the factory tests alongside the other repo checks. `check-result-lines` checks the agent/dispatcher reporting contract; it does not replace behavioral tests.

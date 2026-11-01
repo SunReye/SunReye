@@ -21,14 +21,6 @@ name: Restore test
 # watched run is not a gate. The one that does run is the dev→master PR, over
 # the same tree the release ships.
 on:
-  pull_request:
-    paths:
-      - "packages/db/**"
-      - "sunreye/rootfs/usr/lib/sunreye/dump.sh"
-      - "scripts/db-restore.sh"
-      - "scripts/db-parity.ts"
-      - "scripts/lib/bashio-shim.sh"
-      - ".github/workflows/db-restore.yml"
   workflow_dispatch:
 
 permissions:

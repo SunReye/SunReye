@@ -14,8 +14,8 @@ green.
 
 - Never write implementation before the test that names the behaviour.
 - Never mark work done on an unrun suite: `bun run test` (whole repo, seconds).
-- A commit is blocked by a red suite; a PR is blocked when source changed and no test did
-  (CI job **Tests required**) or when coverage falls (`scripts/coverage-floor.ts`).
+- A commit is blocked by a red suite; a merge is blocked when source changed and no test did
+  (`scripts/ci` step "tests required") or when coverage falls (`scripts/coverage-floor.ts`).
 - Cover boundaries, not just the happy path: zero and negative values, absent and empty
   payloads, stale readings across midnight, partial windows, counter restarts.
 - If logic is hard to test because it lives inside a component, extract it. That extraction
@@ -56,7 +56,7 @@ green.
   OpenAPI schema, because Elysia validates a declared body *before* the guard: a write answered 422
   proves nothing about its gate, so the run reports it UNPROVEN and fails. Nothing else executes a route handler: the unit suite stops below
   `apps/server/src/routes/*` and the browser suite fakes the backend. Run it for route-layer
-  work; CI runs it on every PR (job **Route smoke**).
+  work; `scripts/ci` runs it before every merge.
 - Exemptions to the "a test changed with it" rule live in `scripts/require-tests.ts` and are
   themselves tested. There is no skip flag.
 - `bun run test` passes `--parallel`, which gives every test file a fresh global
@@ -124,6 +124,12 @@ Load the relevant one when matching work:
 - Env package work in `packages/env` → follow `packages/env/AGENTS.md`.
 - Shared config work in `packages/config` → follow `packages/config/AGENTS.md`.
 - Task spans multiple areas → read + apply each relevant file. More specific package-level instructions win.
+
+## Branching & CI
+
+- 3.0 work lands on `v3` (spec #302): open PRs into `v3`. `dev` takes 2.x fixes only.
+- No hosted CI: `scripts/ci` is the merge gate, run locally; `scripts/ci --e2e` adds the browser suite.
+  Workflows run only on manual dispatch. Do not add CI triggers without asking.
 
 ## Commit style
 

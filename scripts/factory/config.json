@@ -22,7 +22,7 @@
   "max_train_prs": 5,
   "slot_nice": 10,
   "max_parallel_reviews": 4,
-  "require_ci": true,
+  "require_ci": false,
   "golden_paths": [
     "golden",
     "/fixtures/",
@@ -58,49 +58,19 @@
     ],
     "gate": [
       [
-        "bun",
-        "run",
-        "test"
-      ],
-      [
-        "bun",
-        "run",
-        "test:mocks"
-      ],
-      [
-        "bun",
-        "run",
-        "test:factory"
-      ],
-      [
-        "bunx",
-        "fallow",
-        "--quiet"
-      ],
-      [
-        "bunx",
-        "oxlint"
-      ],
-      [
-        "bunx",
-        "oxfmt",
-        "--check"
-      ],
-      [
-        "env",
-        "SKIP_ENV_VALIDATION=1",
-        "bun",
-        "run",
-        "check-types"
+        "scripts/ci"
       ]
     ],
     "train_gate": [
       [
-        "env",
-        "SKIP_ENV_VALIDATION=1",
         "bun",
         "run",
-        "build"
+        "e2e:types"
+      ],
+      [
+        "bun",
+        "run",
+        "e2e"
       ]
     ]
   }

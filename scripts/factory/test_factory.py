@@ -112,7 +112,8 @@ class RepositoryConfig(unittest.TestCase):
     def test_factory_targets_sunreye(self):
         self.assertEqual(factory.CFG["repo"], "SunReye/SunReye")
         self.assertEqual(factory.CFG["base"], "v3")
-        self.assertTrue(factory.CFG["require_ci"])
+        self.assertFalse(factory.CFG["require_ci"])
+        self.assertEqual(factory.CFG["commands"]["gate"], [["scripts/ci"]])
 
 
 class SlotEnv(unittest.TestCase):
@@ -466,7 +467,7 @@ class Train(unittest.TestCase):
 
 class ConfiguredTrain(unittest.TestCase):
     def test_train_waits_for_ci_and_lands_with_correct_merge_titles(self):
-        with tempfile.TemporaryDirectory() as tmp:
+        with tempfile.TemporaryDirectory() as tmp, mock.patch.dict(factory.CFG, {"require_ci": True}):
             origin = Origin(tmp, base=factory.CFG["base"])
             prs = [origin.pr(n, {f"{n}.txt": f"{n}\n"}) for n in (1, 2)]
             forge = GitForge(origin, prs)

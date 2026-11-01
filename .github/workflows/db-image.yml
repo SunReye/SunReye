@@ -13,15 +13,6 @@ name: Docker · database image
 # tag. Nothing here is triggered by a release — the image only changes when its
 # own Dockerfile does.
 on:
-  push:
-    branches: [master, dev]
-    paths:
-      - "docker/timescaledb/**"
-      - ".github/workflows/db-image.yml"
-  pull_request:
-    paths:
-      - "docker/timescaledb/**"
-      - ".github/workflows/db-image.yml"
   workflow_dispatch:
 
 permissions:
