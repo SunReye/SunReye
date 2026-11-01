@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount } from "svelte";
 	import { toast } from "svelte-sonner";
-	import { api } from "$lib/api";
+	import { core } from "$lib/core-api";
 	import { apiErrorText } from '$lib/api-error';
 	import { Button } from "$lib/components/ui/button";
 	import FormActions from "./form-actions.svelte";
@@ -52,7 +52,7 @@
 	const simulated = $derived(status?.simulate === true);
 
 	onMount(async () => {
-		const { data } = await api.api.settings.inverter.get();
+		const { data } = await core.GET("/api/settings/inverter");
 		// host may be empty when the inverter isn't configured yet; keep it a
 		// string so the bound Input stays controlled.
 		if (data) cfg = { ...data, host: data.host ?? "" };
@@ -65,8 +65,8 @@
 	}
 
 	async function runTest(body: InverterConfig & { profileId?: string }): Promise<TestResult> {
-		const { data, error } = await api.api.settings.inverter.test.post(body);
-		return data ?? { ok: false, error: apiErrorText(error?.value, m.conn_request_failed()) };
+		const { data, error } = await core.POST("/api/settings/inverter/test", { body });
+		return data ?? { ok: false, error: apiErrorText(error, m.conn_request_failed()) };
 	}
 
 	async function test() {
@@ -104,7 +104,7 @@
 			return false;
 		}
 		saving = true;
-		const { error } = await api.api.settings.inverter.put(cfg);
+		const { error } = await core.PUT("/api/settings/inverter", { body: cfg });
 		saving = false;
 		if (error) {
 			toast.error(m.inverter_toast_error());

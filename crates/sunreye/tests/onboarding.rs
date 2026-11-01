@@ -1,0 +1,145 @@
+//! A device is onboarded over HTTP against the simulator; the saved settings and the readings survive
+//! a restart of the binary.
+
+#![allow(clippy::expect_used, reason = "helpers outside #[test] fns may panic like the tests")]
+
+use std::io::{BufRead, BufReader, Read, Write};
+use std::net::{SocketAddr, TcpStream};
+use std::path::{Path, PathBuf};
+use std::process::{Child, Command, Stdio};
+use std::time::{Duration, Instant};
+
+use serde_json::{Value, json};
+use sunreye::store::Store;
+use sunreye_sim::{FC_READ_HOLDING, Simulator, profile_case};
+
+const BIN: &str = env!("CARGO_BIN_EXE_sunreye");
+const PROFILE: &str = "deye-sg01hp3";
+
+/// The port in a "sunreye listening" log line, through the colour codes around it.
+fn listening_port(line: &str) -> u16 {
+    let after = line.split("127.0.0.1:").nth(1).expect("an address in the line");
+    let digits: String = after.chars().take_while(char::is_ascii_digit).collect();
+    digits.parse().expect("a port")
+}
+
+/// One request with `connection: close`: the status and the body.
+fn http(addr: SocketAddr, method: &str, path: &str, body: Option<&str>) -> (u16, String) {
+    let mut stream = TcpStream::connect(addr).expect("connect");
+    let body = body.unwrap_or_default();
+    let request = format!(
+        "{method} {path} HTTP/1.1\r\nhost: sunreye\r\nconnection: close\r\ncontent-type: application/json\r\ncontent-length: {}\r\n\r\n{body}",
+        body.len()
+    );
+    stream.write_all(request.as_bytes()).expect("send");
+    let mut reply = String::new();
+    stream.read_to_string(&mut reply).expect("reply");
+    let status = reply.split_whitespace().nth(1).and_then(|code| code.parse().ok()).expect("a status");
+    let body = reply.split_once("\r\n\r\n").map(|(_, body)| body.to_owned()).unwrap_or_default();
+    (status, body)
+}
+
+struct Running {
+    child: Child,
+    addr: SocketAddr,
+}
+
+fn start(dir: &Path) -> Running {
+    let mut child = Command::new(BIN)
+        .args(["--listen", "127.0.0.1:0", "--log-level", "info", "--data-dir"])
+        .arg(dir)
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn sunreye");
+    let mut lines = BufReader::new(child.stderr.take().expect("piped stderr")).lines();
+    let listening = lines
+        .by_ref()
+        .map(|line| line.expect("readable"))
+        .find(|line| line.contains("sunreye listening"))
+        .expect("a listening line");
+    // The pipe stays open under the process: its reader is parked, not dropped.
+    std::thread::spawn(move || lines.for_each(drop));
+    let addr = SocketAddr::from(([127, 0, 0, 1], listening_port(&listening)));
+    Running { child, addr }
+}
+
+fn stop(mut running: Running) {
+    let pid = running.child.id().to_string();
+    assert!(Command::new("kill").args(["-TERM", &pid]).status().expect("kill").success());
+    assert!(running.child.wait().expect("wait").success(), "SIGTERM is a clean exit");
+}
+
+fn data_dir() -> PathBuf {
+    let dir = Path::new(env!("CARGO_TARGET_TMPDIR")).join("onboarding");
+    drop(std::fs::remove_dir_all(&dir));
+    dir
+}
+
+/// The request runs off the runtime thread: the simulator it talks to lives on it.
+async fn call(
+    addr: SocketAddr,
+    method: &'static str,
+    path: &'static str,
+    body: Option<&Value>,
+) -> (u16, Value) {
+    let body = body.map(Value::to_string);
+    let (status, text) = tokio::task::spawn_blocking(move || http(addr, method, path, body.as_deref()))
+        .await
+        .expect("request task");
+    (status, serde_json::from_str(&text).expect("a json body"))
+}
+
+#[tokio::test]
+async fn an_onboarded_device_is_polled_and_everything_survives_a_restart() {
+    let oracle = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/oracle");
+    let case = profile_case(&oracle, PROFILE, "ramp").expect("fixture case");
+    let sim = Simulator::start(case.registers.clone(), &[1]).await.expect("simulator");
+    let dir = data_dir();
+    let connection = json!({
+        "host": "127.0.0.1", "port": sim.addr.port(), "transport": "tcp", "unitId": 1,
+        "timeoutMs": 500, "pollIntervalMs": 1000, "simulate": false
+    });
+    let mut test_body = connection.clone();
+    test_body["profileId"] = json!(PROFILE);
+
+    let running = start(&dir);
+    let addr = running.addr;
+    let (status, tested) = call(addr, "POST", "/api/settings/inverter/test", Some(&test_body)).await;
+    assert_eq!((status, &tested["ok"]), (200, &json!(true)), "{tested}");
+    let one_read = sim.requests().len();
+    assert!(one_read > 0, "the test read the simulator");
+    let (status, saved) = call(addr, "PUT", "/api/settings/inverter", Some(&connection)).await;
+    assert_eq!((status, &saved), (200, &connection));
+    let chosen = json!({"id": PROFILE});
+    let (status, _) = call(addr, "PUT", "/api/settings/active-profile", Some(&chosen)).await;
+    assert_eq!(status, 200);
+
+    let deadline = Instant::now() + Duration::from_secs(20);
+    while sim.requests().len() < 2 * one_read {
+        assert!(Instant::now() < deadline, "saving did not start polling");
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    stop(running);
+
+    let second = start(&dir);
+    let (_, inverter) = call(second.addr, "GET", "/api/settings/inverter", None).await;
+    assert_eq!(inverter, connection, "the saved connection is read back");
+    let (_, profile) = call(second.addr, "GET", "/api/profile-status", None).await;
+    assert_eq!(profile, json!({"needsProfile": false, "activeProfileId": PROFILE}));
+    stop(second);
+
+    let store = Store::open(&dir).await.expect("store");
+    let device = store.devices().await.expect("devices")[0].id;
+    let stored = store.readings(device, 0, i64::MAX).await.expect("readings");
+    store.close().await;
+    assert!(!stored.is_empty(), "the polled readings are stored");
+    let want: Vec<(String, f64)> = case.readings.iter().map(|(k, v)| (k.clone(), *v)).collect();
+    for sample in &stored {
+        let mut got = sample.values.clone();
+        got.sort_by(|a, b| a.0.cmp(&b.0));
+        assert_eq!(got, want);
+    }
+    assert!(sim.requests().iter().all(|r| r.function == FC_READ_HOLDING), "onboarding only reads");
+    drop(std::fs::remove_dir_all(&dir));
+}

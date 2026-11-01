@@ -4,10 +4,13 @@
 pub mod decode;
 pub mod modbus;
 pub mod poll;
+pub mod probe;
 pub mod profile;
 pub mod run;
 pub mod samples;
+pub mod settings;
 pub mod store;
+pub mod web;
 
 use std::net::SocketAddr;
 use std::path::PathBuf;

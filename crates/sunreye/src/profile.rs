@@ -40,6 +40,9 @@ pub struct Profile {
 #[derive(Debug, Deserialize)]
 pub struct Metric {
     pub key: String,
+    pub label: Option<String>,
+    pub unit: Option<String>,
+    pub group: Option<String>,
     pub scale: f64,
     pub offset: Option<f64>,
     pub range: Option<Range>,
@@ -77,6 +80,13 @@ pub enum RegisterType {
     UDword,
     #[serde(rename = "RAW")]
     Raw,
+}
+
+impl Metric {
+    /// Read from a device register, as opposed to derived from other metrics.
+    pub const fn is_register(&self) -> bool {
+        matches!(self.binding, Binding::Modbus { .. })
+    }
 }
 
 /// A derived value; keys name other metrics, and a key without a value reads as 0.

@@ -6,7 +6,8 @@
 	import * as Sidebar from '$lib/components/ui/sidebar';
 	import AppSidebar from '$lib/components/app-sidebar.svelte';
 	import { useAppSession } from '$lib/session';
-	import { firstRunGate, publicDashboardEnabled, type FirstRunGate } from '$lib/setup';
+	import { publicDashboardEnabled } from '$lib/engine-admin';
+	import { firstRunGate, type FirstRunGate } from '$lib/setup';
 	import { inverter } from '$lib/inverter/store.svelte';
 	import { bus } from '$lib/ws/bus.svelte';
 	import { display } from '$lib/display.svelte';

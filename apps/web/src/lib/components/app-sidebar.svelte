@@ -8,6 +8,7 @@
 	import SourceMenu from '$lib/components/layout/source-menu.svelte';
 	import { authClient } from '$lib/auth-client';
 	import { useAppSession } from '$lib/session';
+	import { coreCapabilities } from '$lib/capabilities.svelte';
 	import { inverter } from '$lib/inverter/store.svelte';
 	import { automationsGate } from '$lib/automations-gate.svelte';
 	import { navItemIds, type NavItemId } from '$lib/components/nav-items';
@@ -57,6 +58,7 @@
 	const items = $derived<NavItem[]>(
 		navItemIds({
 			isAdmin,
+			offers: (area) => coreCapabilities.has(area),
 			controlCount: inverter.capabilities?.controls.length ?? 0,
 			automationsEnabled: automationsGate.enabled
 		}).map((id) => CHROME[id]())

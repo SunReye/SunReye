@@ -1,7 +1,8 @@
 <script lang="ts">
 	import { toast } from 'svelte-sonner';
+	import { coreCapabilities } from '$lib/capabilities.svelte';
 	import { Button } from '$lib/components/ui/button';
-	import { restartServer } from '$lib/setup';
+	import { restartServer } from '$lib/engine-admin';
 	import * as m from '$lib/paraglide/messages';
 
 	// Triggers a supervised server restart and waits for it to come back (then the
@@ -28,6 +29,8 @@
 	}
 </script>
 
-<Button {variant} {size} disabled={restarting} onclick={restart}>
-	{restarting ? m.settings_restart_restarting() : label}
-</Button>
+{#if coreCapabilities.has('restart')}
+	<Button {variant} {size} disabled={restarting} onclick={restart}>
+		{restarting ? m.settings_restart_restarting() : label}
+	</Button>
+{/if}
