@@ -11,7 +11,8 @@
  * means a behaviour lost its proof, which on a system that writes inverter
  * registers is exactly the thing that must not merge quietly.
  *
- * Usage: `bun scripts/coverage-floor.ts [coverage/lcov.info]`.
+ * Usage: `bun scripts/coverage-floor.ts [--rust] [report]`. `--rust` reads the cargo-llvm-cov
+ * report (`coverage/rust-lcov.info`) against its own floor.
  */
 
 import { readFileSync } from "node:fs";
@@ -30,6 +31,12 @@ import { readFileSync } from "node:fs";
  * test now moves the needle enough to fail here.
  */
 export const FLOOR = { line: 0.99, function: 0.98 } as const;
+
+/**
+ * The Rust ratchet. Measured 95.6 % lines / 100 % functions on the first crate; the one
+ * uncovered branch is a signal-handler install failure. Raise it as crates land.
+ */
+export const RUST_FLOOR = { line: 0.94, function: 0.9 } as const;
 
 export type Totals = {
   linesFound: number;
@@ -126,23 +133,24 @@ export const productionIo: FloorIo = {
 };
 
 /**
- * The gate itself: read the report named by `argv` (default `coverage/lcov.info`),
- * compare it against `floor`, explain the outcome and return the process exit code.
+ * The gate itself: read the report named by `argv` (default `coverage/lcov.info`, or
+ * `coverage/rust-lcov.info` with `--rust`), compare it against `floor` (default: that suite's own),
+ * explain the outcome and return the process exit code.
  */
-export function main(
-  argv: string[] = [],
-  io: FloorIo = productionIo,
-  floor: Floor = FLOOR,
-): number {
-  const path = argv[0] ?? "coverage/lcov.info";
+export function main(argv: string[] = [], io: FloorIo = productionIo, floor?: Floor): number {
+  const rust = argv.includes("--rust");
+  const path =
+    argv.find((a) => !a.startsWith("--")) ??
+    (rust ? "coverage/rust-lcov.info" : "coverage/lcov.info");
   let report: string;
   try {
     report = io.readReport(path);
   } catch {
-    io.error(`✖ Coverage floor: cannot read ${path} — run \`bun run test:coverage\` first.`);
+    const command = rust ? "test:coverage:rust" : "test:coverage";
+    io.error(`✖ Coverage floor: cannot read ${path} — run \`bun run ${command}\` first.`);
     return 1;
   }
-  const result = checkFloor(totalsFromLcov(report), floor);
+  const result = checkFloor(totalsFromLcov(report), floor ?? (rust ? RUST_FLOOR : FLOOR));
   if (result.ok) {
     io.log(
       `✓ Coverage floor: ${result.lines.toFixed(2)} % lines, ${result.functions.toFixed(2)} % functions.`,

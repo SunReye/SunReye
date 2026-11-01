@@ -5,6 +5,7 @@ import { describe, expect, test } from "bun:test";
 import {
   type FloorIo,
   FLOOR,
+  RUST_FLOOR,
   checkFloor,
   main,
   productionIo,
@@ -275,6 +276,62 @@ describe("main", () => {
     const report = (hit: number) => `LF:100\nLH:${hit}\nFNF:100\nFNH:${hit}`;
     expect(main([], fakeIo({ "coverage/lcov.info": report(onFloor) }).io)).toBe(0);
     expect(main([], fakeIo({ "coverage/lcov.info": report(under) }).io)).toBe(1);
+  });
+});
+
+// The Rust suite writes its own lcov (cargo-llvm-cov) and has its own ratchet: the TypeScript
+// floor must not mask a Rust drop, nor the reverse.
+describe("main --rust", () => {
+  const rustReport = (hit: number) => `LF:100\nLH:${hit}\nFNF:100\nFNH:${hit}`;
+  const rustPath = "coverage/rust-lcov.info";
+
+  test("reads the Rust report by default", () => {
+    const f = fakeIo({ [rustPath]: rustReport(100) });
+    expect(main(["--rust"], f.io)).toBe(0);
+    expect(f.asked).toEqual([rustPath]);
+  });
+
+  test("a named report still wins over the default", () => {
+    const f = fakeIo({ "x.info": rustReport(100) });
+    expect(main(["--rust", "x.info"], f.io)).toBe(0);
+    expect(f.asked).toEqual(["x.info"]);
+  });
+
+  test("fails when line coverage drops below the recorded Rust floor", () => {
+    const under = Math.ceil(RUST_FLOOR.line * 100) - 1;
+    const f = fakeIo({ [rustPath]: `LF:100\nLH:${under}\nFNF:100\nFNH:100` });
+    expect(main(["--rust"], f.io)).toBe(1);
+    expect(f.stderr()).toContain("line coverage");
+  });
+
+  test("passes exactly on the recorded Rust floor", () => {
+    const on = Math.ceil(Math.max(RUST_FLOOR.line, RUST_FLOOR.function) * 100);
+    expect(main(["--rust"], fakeIo({ [rustPath]: rustReport(on) }).io)).toBe(0);
+    expect(main(["--rust"], fakeIo({ [rustPath]: rustReport(on - 1) }).io)).toBe(1);
+  });
+
+  test("the Rust floor is not the TypeScript floor", () => {
+    // 95 % lines clears the Rust ratchet and would breach the TypeScript one.
+    expect(main(["--rust"], fakeIo({ [rustPath]: rustReport(95) }).io)).toBe(0);
+    expect(main([], fakeIo({ "coverage/lcov.info": rustReport(95) }).io)).toBe(1);
+  });
+
+  test("a missing report names the Rust coverage command", () => {
+    const f = fakeIo({});
+    expect(main(["--rust"], f.io)).toBe(1);
+    expect(f.stderr()).toContain(`cannot read ${rustPath}`);
+    expect(f.stderr()).toContain("bun run test:coverage:rust");
+  });
+
+  test("an empty report fails rather than reading as 100 %", () => {
+    const f = fakeIo({ [rustPath]: "" });
+    expect(main(["--rust"], f.io)).toBe(1);
+    expect(f.stderr()).toContain("the suite did not run");
+  });
+
+  test("the shipped Rust floor never falls below where it was recorded", () => {
+    expect(RUST_FLOOR.line).toBeGreaterThanOrEqual(0.94);
+    expect(RUST_FLOOR.function).toBeGreaterThanOrEqual(0.9);
   });
 });
 
