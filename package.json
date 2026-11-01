@@ -41,6 +41,7 @@
     "docker:down": "docker compose down",
     "docker:logs": "docker compose logs -f",
     "test": "SKIP_ENV_VALIDATION=1 bun test --parallel apps/*/src packages/*/src ./scripts",
+    "test:factory": "python3 -B -m unittest discover -s scripts/factory -p 'test_*.py' && scripts/factory/check-result-lines",
     "test:coverage": "SKIP_ENV_VALIDATION=1 bun test --coverage --coverage-reporter=lcov --coverage-reporter=text --coverage-dir=coverage apps/*/src packages/*/src ./scripts",
     "test:components": "bun run --cwd apps/web test:components",
     "test:required": "bun scripts/require-tests.ts",
@@ -84,7 +85,7 @@
   "lint-staged": {
     "**/*.{ts,tsx,js,jsx,mjs,cjs}": [
       "oxlint",
-      "oxfmt --write"
+      "oxfmt --write --no-error-on-unmatched-pattern"
     ],
     "**/*.svelte": [
       "oxlint"

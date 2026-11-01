@@ -4,6 +4,7 @@
     "**/*.mdx",
     "**/*.json",
     "**/*.jsonc",
-    "bunfig.toml"
+    "bunfig.toml",
+    ".agents/skills/**"
   ]
 }

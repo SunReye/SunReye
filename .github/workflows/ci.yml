@@ -426,6 +426,9 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
+      - name: Factory control plane and guards
+        run: bun run test:factory
+
       # A partial mock.module of a workspace module deletes the other exports
       # for every test file that runs after it, breaking them at import in an
       # order-dependent way — it passed locally and failed here.
