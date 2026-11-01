@@ -1,0 +1,95 @@
+{
+  "plant": {
+    "name": "Imported plant",
+    "slug": "oracle-legacy",
+    "timeZone": "Europe/Berlin",
+    "latitude": null,
+    "longitude": null,
+    "label": "",
+    "arrays": [],
+    "tempCoefficient": null,
+    "systemLoss": null,
+    "maxOutputW": null,
+    "houseLoadW": null,
+    "smartMeterSince": null,
+    "biddingZone": null,
+    "tariffKey": null,
+    "connections": [
+      {
+        "name": "Modbus",
+        "kind": "modbus",
+        "params": {
+          "host": "192.168.1.50",
+          "port": 502,
+          "transport": "tcp",
+          "timeoutMs": 2000,
+          "pollIntervalMs": 1000
+        }
+      }
+    ],
+    "devices": [
+      {
+        "slug": "oracle-legacy-profile",
+        "name": "Inverter",
+        "profileId": "oracle-legacy-profile",
+        "serial": null,
+        "role": "inverter",
+        "retiredAt": null,
+        "unitId": 1,
+        "connection": "Modbus",
+        "battery": null,
+        "arrays": null,
+        "tempCoefficient": null,
+        "systemLoss": null
+      }
+    ]
+  },
+  "appSettings": [
+    {
+      "key": "inverter",
+      "value": {
+        "host": "192.168.1.50",
+        "port": 502,
+        "unitId": 1
+      }
+    },
+    {
+      "key": "weather",
+      "value": {
+        "label": "Limburg-Weilburg",
+        "latitude": 50.4,
+        "longitude": 8.3
+      }
+    },
+    {
+      "key": "plant",
+      "value": {
+        "timeZone": "Europe/Berlin",
+        "slug": "oracle-legacy"
+      }
+    }
+  ],
+  "installedProfiles": [
+    {
+      "id": "oracle-legacy-profile",
+      "source": "repo",
+      "version": "1.0.17",
+      "data": {
+        "id": "oracle-legacy-profile",
+        "name": "Oracle legacy"
+      }
+    }
+  ],
+  "customCharts": [],
+  "metricKeys": [
+    {
+      "key": "oracle.legacy.power",
+      "isCounter": false
+    },
+    {
+      "key": "oracle.legacy.energy.total",
+      "isCounter": true
+    }
+  ],
+  "configKeys": []
+}

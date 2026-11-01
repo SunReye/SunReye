@@ -1,0 +1,14 @@
+{"time":"2026-04-28T00:00:00.000Z","device_slug":"oracle-archive-inverter","metric_key":"oracle.archive.power","value":400,"dur_ms":86400000,"source_tier":"daily"}
+{"time":"2026-04-28T00:00:00.000Z","device_slug":"oracle-archive-inverter","metric_key":"oracle.archive.energy.total","value":4950,"dur_ms":86400000,"source_tier":"daily"}
+{"time":"2026-04-29T00:00:00.000Z","device_slug":"oracle-archive-inverter","metric_key":"oracle.archive.power","value":500,"dur_ms":86400000,"source_tier":"daily"}
+{"time":"2026-04-29T00:00:00.000Z","device_slug":"oracle-archive-inverter","metric_key":"oracle.archive.energy.total","value":4970,"dur_ms":86400000,"source_tier":"daily"}
+{"time":"2026-04-30T10:00:00.000Z","device_slug":"oracle-archive-inverter","metric_key":"oracle.archive.power","value":800,"dur_ms":3600000,"source_tier":"hourly"}
+{"time":"2026-04-30T10:00:00.000Z","device_slug":"oracle-archive-inverter","metric_key":"oracle.archive.energy.total","value":4990,"dur_ms":3600000,"source_tier":"hourly"}
+{"time":"2026-04-30T11:00:00.000Z","device_slug":"oracle-archive-inverter","metric_key":"oracle.archive.power","value":1200,"dur_ms":3600000,"source_tier":"hourly"}
+{"time":"2026-04-30T11:00:00.000Z","device_slug":"oracle-archive-inverter","metric_key":"oracle.archive.energy.total","value":4991.5,"dur_ms":3600000,"source_tier":"hourly"}
+{"time":"2026-05-01T12:00:00.000Z","device_slug":"oracle-archive-inverter","metric_key":"oracle.archive.power","value":1000,"dur_ms":600000,"source_tier":"raw"}
+{"time":"2026-05-01T12:00:00.000Z","device_slug":"oracle-archive-inverter","metric_key":"oracle.archive.energy.total","value":5000,"dur_ms":600000,"source_tier":"raw"}
+{"time":"2026-05-01T12:10:00.000Z","device_slug":"oracle-archive-inverter","metric_key":"oracle.archive.power","value":2000,"dur_ms":600000,"source_tier":"raw"}
+{"time":"2026-05-01T12:10:00.000Z","device_slug":"oracle-archive-inverter","metric_key":"oracle.archive.energy.total","value":5000.2,"dur_ms":600000,"source_tier":"raw"}
+{"time":"2026-05-01T12:20:00.000Z","device_slug":"oracle-archive-inverter","metric_key":"oracle.archive.power","value":0,"dur_ms":600000,"source_tier":"raw"}
+{"time":"2026-05-01T12:20:00.000Z","device_slug":"oracle-archive-inverter","metric_key":"oracle.archive.energy.total","value":5000.3,"dur_ms":600000,"source_tier":"raw"}

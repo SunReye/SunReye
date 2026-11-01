@@ -1,0 +1,34 @@
+{
+  "format": "sunreye-archive",
+  "formatVersion": 1,
+  "createdAt": "2026-05-02T00:00:00.000Z",
+  "source": {
+    "app": "2.0.0-oracle",
+    "drizzleTag": "0008_bind_evcc_ingest",
+    "drizzleWhen": 1790000000000,
+    "timescaleFiles": [
+      "0000_baseline.sql"
+    ]
+  },
+  "plantTimeZone": "Europe/Berlin",
+  "streams": {
+    "raw": 6,
+    "minute": 0,
+    "hourly": 4,
+    "daily": 4,
+    "configLog": 2
+  },
+  "rows": 14,
+  "span": {
+    "from": "2026-04-28T00:00:00.000Z",
+    "to": "2026-05-01T12:20:00.000Z"
+  },
+  "devices": [
+    "oracle-archive-inverter"
+  ],
+  "metrics": [
+    "oracle.archive.energy.total",
+    "oracle.archive.power",
+    "oracle.archive.settings.max_charge_current"
+  ]
+}

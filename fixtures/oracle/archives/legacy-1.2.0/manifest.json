@@ -1,0 +1,31 @@
+{
+  "format": "sunreye-archive",
+  "formatVersion": 1,
+  "createdAt": "2026-05-02T00:00:00.000Z",
+  "source": {
+    "app": "1.2.0-legacy",
+    "drizzleTag": null,
+    "drizzleWhen": null,
+    "timescaleFiles": []
+  },
+  "plantTimeZone": "Europe/Berlin",
+  "streams": {
+    "raw": 8,
+    "minute": 6,
+    "hourly": 24,
+    "daily": 6,
+    "configLog": 0
+  },
+  "rows": 44,
+  "span": {
+    "from": "2026-02-06T00:00:00.000Z",
+    "to": "2026-02-11T09:30:00.000Z"
+  },
+  "devices": [
+    "oracle-legacy-profile"
+  ],
+  "metrics": [
+    "oracle.legacy.energy.total",
+    "oracle.legacy.power"
+  ]
+}

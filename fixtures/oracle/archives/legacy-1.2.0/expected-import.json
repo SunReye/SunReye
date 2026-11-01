@@ -1,0 +1,428 @@
+{
+  "archive": "legacy-1.2.0",
+  "doc": "what a 2.x export writes from an addon-1.2.0 database: a spine synthesised from 1.x settings, one device named by its profile id, minute, hourly and daily buckets plus the retained raw days",
+  "result": {
+    "skipped": null,
+    "inserted": {
+      "raw": 8,
+      "minute": 6,
+      "hourly": 24,
+      "daily": 6,
+      "configLog": 0
+    },
+    "replays": [
+      {
+        "seriesRows": 30,
+        "configRows": 0,
+        "gaps": [
+          {
+            "start": "2026-02-10T00:00:00.000Z",
+            "end": "2026-02-10T08:03:00.000Z"
+          }
+        ]
+      }
+    ],
+    "problems": [
+      "no tier covered 2026-02-10T00:00:00.000Z..2026-02-10T08:03:00.000Z for device oracle-legacy-profile — those days are not in the archive"
+    ]
+  },
+  "plant": {
+    "name": "Imported plant",
+    "slug": "oracle-legacy",
+    "time_zone": "Europe/Berlin",
+    "latitude": null,
+    "longitude": null,
+    "label": "",
+    "max_output_w": null,
+    "house_load_w": null,
+    "bidding_zone": null,
+    "temp_coefficient": -0.4,
+    "system_loss": 14
+  },
+  "connections": [
+    {
+      "name": "Modbus",
+      "kind": "modbus",
+      "params": {
+        "host": "192.168.1.50",
+        "port": 502,
+        "timeoutMs": 2000,
+        "transport": "tcp",
+        "pollIntervalMs": 1000
+      }
+    }
+  ],
+  "devices": [
+    {
+      "slug": "oracle-legacy-profile",
+      "name": "Inverter",
+      "profile_id": "oracle-legacy-profile",
+      "role": "inverter",
+      "unit_id": 1,
+      "serial": null,
+      "retired_at": null,
+      "connection": "Modbus",
+      "usable_kwh": null,
+      "max_charge_w": null,
+      "min_soc": null,
+      "nominal_v": null
+    }
+  ],
+  "settings": {
+    "inverter": {
+      "host": "192.168.1.50",
+      "port": 502,
+      "unitId": 1
+    },
+    "plant": {
+      "slug": "oracle-legacy",
+      "timeZone": "Europe/Berlin"
+    },
+    "weather": {
+      "label": "Limburg-Weilburg",
+      "latitude": 50.4,
+      "longitude": 8.3
+    }
+  },
+  "installedProfiles": [
+    {
+      "id": "oracle-legacy-profile",
+      "source": "repo",
+      "version": "1.0.17",
+      "data": {
+        "id": "oracle-legacy-profile",
+        "name": "Oracle legacy"
+      }
+    }
+  ],
+  "metricKeys": [
+    {
+      "key": "oracle.legacy.energy.total",
+      "is_counter": true
+    },
+    {
+      "key": "oracle.legacy.power",
+      "is_counter": false
+    }
+  ],
+  "raw": [
+    {
+      "device": "oracle-legacy-profile",
+      "metric": "oracle.legacy.energy.total",
+      "time": "2026-02-06T00:00:00.000Z",
+      "value": 40850,
+      "dur_ms": 86400000
+    },
+    {
+      "device": "oracle-legacy-profile",
+      "metric": "oracle.legacy.energy.total",
+      "time": "2026-02-07T00:00:00.000Z",
+      "value": 40900,
+      "dur_ms": 86400000
+    },
+    {
+      "device": "oracle-legacy-profile",
+      "metric": "oracle.legacy.energy.total",
+      "time": "2026-02-08T00:00:00.000Z",
+      "value": 40950,
+      "dur_ms": 86400000
+    },
+    {
+      "device": "oracle-legacy-profile",
+      "metric": "oracle.legacy.energy.total",
+      "time": "2026-02-09T00:00:00.000Z",
+      "value": 40990,
+      "dur_ms": 3600000
+    },
+    {
+      "device": "oracle-legacy-profile",
+      "metric": "oracle.legacy.energy.total",
+      "time": "2026-02-09T01:00:00.000Z",
+      "value": 40990.1,
+      "dur_ms": 3600000
+    },
+    {
+      "device": "oracle-legacy-profile",
+      "metric": "oracle.legacy.energy.total",
+      "time": "2026-02-09T02:00:00.000Z",
+      "value": 40990.2,
+      "dur_ms": 3600000
+    },
+    {
+      "device": "oracle-legacy-profile",
+      "metric": "oracle.legacy.energy.total",
+      "time": "2026-02-09T03:00:00.000Z",
+      "value": 40990.3,
+      "dur_ms": 3600000
+    },
+    {
+      "device": "oracle-legacy-profile",
+      "metric": "oracle.legacy.energy.total",
+      "time": "2026-02-09T04:00:00.000Z",
+      "value": 40990.4,
+      "dur_ms": 3600000
+    },
+    {
+      "device": "oracle-legacy-profile",
+      "metric": "oracle.legacy.energy.total",
+      "time": "2026-02-09T05:00:00.000Z",
+      "value": 40990.5,
+      "dur_ms": 3600000
+    },
+    {
+      "device": "oracle-legacy-profile",
+      "metric": "oracle.legacy.energy.total",
+      "time": "2026-02-09T06:00:00.000Z",
+      "value": 40990.6,
+      "dur_ms": 3600000
+    },
+    {
+      "device": "oracle-legacy-profile",
+      "metric": "oracle.legacy.energy.total",
+      "time": "2026-02-09T07:00:00.000Z",
+      "value": 40990.7,
+      "dur_ms": 3600000
+    },
+    {
+      "device": "oracle-legacy-profile",
+      "metric": "oracle.legacy.energy.total",
+      "time": "2026-02-09T08:00:00.000Z",
+      "value": 40990.8,
+      "dur_ms": 3600000
+    },
+    {
+      "device": "oracle-legacy-profile",
+      "metric": "oracle.legacy.energy.total",
+      "time": "2026-02-09T09:00:00.000Z",
+      "value": 40990.9,
+      "dur_ms": 3600000
+    },
+    {
+      "device": "oracle-legacy-profile",
+      "metric": "oracle.legacy.energy.total",
+      "time": "2026-02-09T10:00:00.000Z",
+      "value": 40991,
+      "dur_ms": 3600000
+    },
+    {
+      "device": "oracle-legacy-profile",
+      "metric": "oracle.legacy.energy.total",
+      "time": "2026-02-09T11:00:00.000Z",
+      "value": 40991.1,
+      "dur_ms": 3600000
+    },
+    {
+      "device": "oracle-legacy-profile",
+      "metric": "oracle.legacy.energy.total",
+      "time": "2026-02-09T12:00:00.000Z",
+      "value": 40991.2,
+      "dur_ms": 3600000
+    },
+    {
+      "device": "oracle-legacy-profile",
+      "metric": "oracle.legacy.energy.total",
+      "time": "2026-02-09T13:00:00.000Z",
+      "value": 40991.3,
+      "dur_ms": 3600000
+    },
+    {
+      "device": "oracle-legacy-profile",
+      "metric": "oracle.legacy.energy.total",
+      "time": "2026-02-09T14:00:00.000Z",
+      "value": 40991.4,
+      "dur_ms": 3600000
+    },
+    {
+      "device": "oracle-legacy-profile",
+      "metric": "oracle.legacy.energy.total",
+      "time": "2026-02-09T15:00:00.000Z",
+      "value": 40991.5,
+      "dur_ms": 3600000
+    },
+    {
+      "device": "oracle-legacy-profile",
+      "metric": "oracle.legacy.energy.total",
+      "time": "2026-02-09T16:00:00.000Z",
+      "value": 40991.6,
+      "dur_ms": 3600000
+    },
+    {
+      "device": "oracle-legacy-profile",
+      "metric": "oracle.legacy.energy.total",
+      "time": "2026-02-09T17:00:00.000Z",
+      "value": 40991.7,
+      "dur_ms": 3600000
+    },
+    {
+      "device": "oracle-legacy-profile",
+      "metric": "oracle.legacy.energy.total",
+      "time": "2026-02-09T18:00:00.000Z",
+      "value": 40991.8,
+      "dur_ms": 3600000
+    },
+    {
+      "device": "oracle-legacy-profile",
+      "metric": "oracle.legacy.energy.total",
+      "time": "2026-02-09T19:00:00.000Z",
+      "value": 40991.9,
+      "dur_ms": 3600000
+    },
+    {
+      "device": "oracle-legacy-profile",
+      "metric": "oracle.legacy.energy.total",
+      "time": "2026-02-09T20:00:00.000Z",
+      "value": 40992,
+      "dur_ms": 3600000
+    },
+    {
+      "device": "oracle-legacy-profile",
+      "metric": "oracle.legacy.energy.total",
+      "time": "2026-02-09T21:00:00.000Z",
+      "value": 40992.1,
+      "dur_ms": 3600000
+    },
+    {
+      "device": "oracle-legacy-profile",
+      "metric": "oracle.legacy.energy.total",
+      "time": "2026-02-09T22:00:00.000Z",
+      "value": 40992.2,
+      "dur_ms": 3600000
+    },
+    {
+      "device": "oracle-legacy-profile",
+      "metric": "oracle.legacy.energy.total",
+      "time": "2026-02-09T23:00:00.000Z",
+      "value": 40992.3,
+      "dur_ms": 3600000
+    },
+    {
+      "device": "oracle-legacy-profile",
+      "metric": "oracle.legacy.energy.total",
+      "time": "2026-02-11T09:00:00.000Z",
+      "value": 41000.2,
+      "dur_ms": 60000
+    },
+    {
+      "device": "oracle-legacy-profile",
+      "metric": "oracle.legacy.energy.total",
+      "time": "2026-02-11T09:10:00.000Z",
+      "value": 41000.6,
+      "dur_ms": 60000
+    },
+    {
+      "device": "oracle-legacy-profile",
+      "metric": "oracle.legacy.energy.total",
+      "time": "2026-02-11T09:20:00.000Z",
+      "value": 0.1,
+      "dur_ms": 60000
+    },
+    {
+      "device": "oracle-legacy-profile",
+      "metric": "oracle.legacy.energy.total",
+      "time": "2026-02-11T09:30:00.000Z",
+      "value": 0.5,
+      "dur_ms": 60000
+    },
+    {
+      "device": "oracle-legacy-profile",
+      "metric": "oracle.legacy.power",
+      "time": "2026-02-06T00:00:00.000Z",
+      "value": 280,
+      "dur_ms": 86400000
+    },
+    {
+      "device": "oracle-legacy-profile",
+      "metric": "oracle.legacy.power",
+      "time": "2026-02-07T00:00:00.000Z",
+      "value": 300,
+      "dur_ms": 86400000
+    },
+    {
+      "device": "oracle-legacy-profile",
+      "metric": "oracle.legacy.power",
+      "time": "2026-02-08T00:00:00.000Z",
+      "value": 350,
+      "dur_ms": 86400000
+    },
+    {
+      "device": "oracle-legacy-profile",
+      "metric": "oracle.legacy.power",
+      "time": "2026-02-11T09:00:00.000Z",
+      "value": 700,
+      "dur_ms": 60000
+    },
+    {
+      "device": "oracle-legacy-profile",
+      "metric": "oracle.legacy.power",
+      "time": "2026-02-11T09:10:00.000Z",
+      "value": 800,
+      "dur_ms": 60000
+    },
+    {
+      "device": "oracle-legacy-profile",
+      "metric": "oracle.legacy.power",
+      "time": "2026-02-11T09:20:00.000Z",
+      "value": 750,
+      "dur_ms": 60000
+    },
+    {
+      "device": "oracle-legacy-profile",
+      "metric": "oracle.legacy.power",
+      "time": "2026-02-11T09:30:00.000Z",
+      "value": 900,
+      "dur_ms": 60000
+    }
+  ],
+  "energyPerDay": [
+    {
+      "metric": "oracle.legacy.energy.total",
+      "day": "2026-02-07",
+      "energy": 50,
+      "naive": 0,
+      "resets": 0
+    },
+    {
+      "metric": "oracle.legacy.energy.total",
+      "day": "2026-02-08",
+      "energy": 50,
+      "naive": 0,
+      "resets": 0
+    },
+    {
+      "metric": "oracle.legacy.energy.total",
+      "day": "2026-02-09",
+      "energy": 42.30000000000291,
+      "naive": 2.3000000000029104,
+      "resets": 0
+    },
+    {
+      "metric": "oracle.legacy.energy.total",
+      "day": "2026-02-11",
+      "energy": 8.799999999995634,
+      "naive": 41000.5,
+      "resets": 1
+    },
+    {
+      "metric": "oracle.legacy.power",
+      "day": "2026-02-07",
+      "energy": 20,
+      "naive": 0,
+      "resets": 0
+    },
+    {
+      "metric": "oracle.legacy.power",
+      "day": "2026-02-08",
+      "energy": 50,
+      "naive": 0,
+      "resets": 0
+    },
+    {
+      "metric": "oracle.legacy.power",
+      "day": "2026-02-11",
+      "energy": 1350,
+      "naive": 200,
+      "resets": 1
+    }
+  ],
+  "configLog": []
+}
