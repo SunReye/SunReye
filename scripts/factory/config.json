@@ -1,7 +1,7 @@
 {
   "repo": "SunReye/SunReye",
   "host": "github.com",
-  "base": "v3",
+  "base": "v4",
   "slots": {
     "impl": 3,
     "merge": 1

@@ -21,7 +21,7 @@ The Svelte web app, `profile-sdk` and the docs stay in TypeScript; the SPA is em
 
 The TypeScript engine (`apps/server`, `packages/db`, `packages/inverter-core`, `packages/auth`,
 `packages/env`) is feature-frozen from this date. 3.x fixes keep landing on `dev`. The rework lives on
-`v3`, branched from `dev`; the engine is deleted on `v3` when the Rust core reaches beta.
+`v4`, branched from `dev`; the engine is deleted on `v4` when the Rust core reaches beta.
 
 ## Consequences
 

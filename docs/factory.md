@@ -2,7 +2,7 @@
 
 The factory takes labelled GitHub tickets through implementation, review and integration. One Claude Code session runs `/loop /factory`; deterministic scripts own slots, tracker state and merges. It opens and merges real PRs when running. Copying or configuring it does not start it.
 
-SunReye's profile targets `v3` (the 4.0 rework branch). There is no hosted CI: the gate is `scripts/ci`, run in the slot; the train gate adds the browser suite. `factory merge` trusts that green run (`require_ci` is false). Root and area `AGENTS.md` instructions govern TDD, required test layers, hardware safety and review. The factory does not relax those requirements.
+SunReye's profile targets `v4` (the 4.0 rework branch). There is no hosted CI: the gate is `scripts/ci`, run in the slot; the train gate adds the browser suite. `factory merge` trusts that green run (`require_ci` is false). Root and area `AGENTS.md` instructions govern TDD, required test layers, hardware safety and review. The factory does not relax those requirements.
 
 ## Configuration
 

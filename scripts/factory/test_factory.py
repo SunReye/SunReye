@@ -111,7 +111,7 @@ class RepositoryConfig(unittest.TestCase):
 
     def test_factory_targets_sunreye(self):
         self.assertEqual(factory.CFG["repo"], "SunReye/SunReye")
-        self.assertEqual(factory.CFG["base"], "v3")
+        self.assertEqual(factory.CFG["base"], "v4")
         self.assertFalse(factory.CFG["require_ci"])
         self.assertEqual(factory.CFG["commands"]["gate"], [["scripts/ci"]])
 
