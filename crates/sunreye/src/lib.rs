@@ -1,7 +1,5 @@
 //! Startup flags of the core. Everything else is a setting the core stores.
 
-pub mod shutdown;
-
 use std::net::SocketAddr;
 use std::path::PathBuf;
 

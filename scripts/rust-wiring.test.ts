@@ -50,7 +50,7 @@ describe("scripts/ci", () => {
     expect(at("bun run test:coverage:rust")).toBeLessThan(at("bun run test:floor:rust"));
   });
 
-  test("builds for Android and ESP-IDF after the Rust gate, unforgiven", () => {
+  test("builds for Android after the Rust gate, unforgiven", () => {
     const at = (command: string) => ciCommands.findIndex((l) => l.includes(command));
     const line = ciCommands[at("scripts/target-gate")];
     expect(line, "scripts/target-gate").toBeDefined();

@@ -9,9 +9,6 @@ import { join } from "node:path";
  * that has everything installs nothing.
  */
 
-const NIGHTLY = "nightly-2026-07-29";
-const GCC_DIR = "espressif/tools/riscv32-esp-elf/esp-14.2.0_20241119/riscv32-esp-elf/bin";
-
 let dir: string;
 let bin: string;
 let home: string;
@@ -33,12 +30,10 @@ beforeEach(async () => {
     "rustup",
     `${record}\n` +
       'case "$*" in\n' +
-      `  "toolchain list") [[ $PRESENT == all ]] && echo "${NIGHTLY}-x86_64-unknown-linux-gnu" ;;\n` +
       '  "target list --installed") [[ $PRESENT == all ]] && echo "aarch64-linux-android" ;;\n' +
-      '  "component list --installed --toolchain"*) [[ $PRESENT == all ]] && echo "rust-src" ;;\n' +
       "esac\nexit 0",
   );
-  for (const name of ["cargo", "curl", "git", "python3"]) await stub(name, `${record}`);
+  for (const name of ["cargo", "curl"]) await stub(name, `${record}`);
   // unzip creates what the real archive holds, so the NDK check can see it.
   await stub("unzip", `${record}\nmkdir -p "$4/android-ndk-r27c"`);
 });
@@ -48,10 +43,7 @@ afterEach(() => rm(dir, { recursive: true, force: true }));
 async function setup(present: "all" | "none") {
   if (present === "all") {
     await stub("cargo-ndk", "exit 0");
-    await stub("ldproxy", "exit 0");
     await mkdir(join(home, "android-ndk-r27c"), { recursive: true });
-    await mkdir(join(home, GCC_DIR), { recursive: true });
-    await writeFile(join(home, GCC_DIR, "riscv32-esp-elf-gcc"), "");
   }
   const log = join(dir, "log");
   await writeFile(log, "");
@@ -75,37 +67,18 @@ describe("scripts/setup-targets", () => {
   test("installs every missing piece", async () => {
     const { code, calls } = await setup("none");
     expect(code).toBe(0);
-    expect(calls).toContain(
-      `rustup toolchain install ${NIGHTLY} --profile minimal --component rust-src`,
-    );
     expect(calls).toContain("rustup target add aarch64-linux-android");
     expect(calls).toContain("cargo install cargo-ndk --locked");
-    expect(calls).toContain("cargo install ldproxy --locked");
     expect(
       calls.some((c) => c.startsWith("curl") && c.includes("android-ndk-r27c-linux.zip")),
     ).toBe(true);
-    expect(calls.some((c) => c.startsWith("git clone") && c.includes("--branch v5.4.3"))).toBe(
-      true,
-    );
-    expect(calls.some((c) => c.includes("idf_tools.py install") && c.includes("esp32p4"))).toBe(
-      true,
-    );
-  });
-
-  test("installs the nightly once when it and rust-src are both missing", async () => {
-    const { calls } = await setup("none");
-    expect(calls.filter((c) => c.startsWith("rustup toolchain install"))).toHaveLength(1);
   });
 
   test("a machine that has everything installs nothing", async () => {
     const { code, calls } = await setup("all");
     expect(code).toBe(0);
-    expect(
-      calls.filter((c) =>
-        /^(rustup (toolchain install|target add)|cargo install|git clone|curl|unzip|python3)/.test(
-          c,
-        ),
-      ),
-    ).toEqual([]);
+    expect(calls.filter((c) => /^(rustup target add|cargo install|curl|unzip)/.test(c))).toEqual(
+      [],
+    );
   });
 });

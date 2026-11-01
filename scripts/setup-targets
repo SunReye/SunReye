@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Installs what scripts/target-gate needs for the Android and ESP-IDF builds (ADR 0006). Idempotent:
-# only what is missing is fetched. Needs about 3 GB under $SUNREYE_TARGETS_HOME (default
-# ~/.cache/sunreye-targets) plus the nightly toolchain and two cargo-installed tools.
+# Installs what scripts/target-gate needs for the Android build (ADR 0006). Idempotent: only what is
+# missing is fetched. Needs about 2 GB under $SUNREYE_TARGETS_HOME (default ~/.cache/sunreye-targets)
+# plus the Android rustup target and cargo-ndk.
 set -euo pipefail
 
 cd "$(git rev-parse --show-toplevel)"
@@ -17,27 +17,12 @@ install_ndk() {
   rm -f "$zip"
 }
 
-# Shallow clone without submodules: idf_tools.py only needs tools/. It installs the riscv32 compiler
-# that C-compiling crates (ring) use, for the esp32p4 (riscv32imafc).
-install_esp_gcc() {
-  local idf=$IDF_TOOLS_PATH/esp-idf
-  [[ -d $idf ]] || git clone --depth 1 --branch "$IDF_VERSION" https://github.com/espressif/esp-idf "$idf"
-  python3 "$idf/tools/idf_tools.py" install --targets esp32p4 riscv32-esp-elf
-}
-
-nightly_done=0
 for piece in $(missing_pieces); do
   echo "== $piece"
   case $piece in
-    nightly | rust-src)
-      ((nightly_done)) || rustup toolchain install "$NIGHTLY" --profile minimal --component rust-src
-      nightly_done=1
-      ;;
     android-target) rustup target add "$ANDROID_TARGET" ;;
     cargo-ndk) cargo install cargo-ndk --locked ;;
-    ldproxy) cargo install ldproxy --locked ;;
     ndk) install_ndk ;;
-    gcc) install_esp_gcc ;;
   esac
 done
 echo "targets ready: scripts/target-gate"

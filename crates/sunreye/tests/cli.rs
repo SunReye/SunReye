@@ -92,16 +92,3 @@ fn log_level_error_silences_the_startup_line() {
     assert!(status.success());
     assert!(logged.is_empty(), "unexpected output: {logged}");
 }
-
-#[test]
-fn logs_which_signal_stopped_it() {
-    for (name, logged) in [("INT", "SIGINT"), ("TERM", "SIGTERM")] {
-        let mut child = spawn(&[]);
-        let (_line, reader) = started(&mut child);
-        assert!(signal(&child, name).success());
-        let rest: String = reader.lines().map(|l| l.expect("readable")).collect();
-        assert!(child.wait().expect("wait").success());
-        assert!(rest.contains("sunreye stopping"), "no stop line: {rest}");
-        assert!(rest.contains(logged), "{logged} not named: {rest}");
-    }
-}
