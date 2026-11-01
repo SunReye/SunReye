@@ -2,7 +2,7 @@ use std::process::ExitCode;
 
 use clap::Parser;
 use sunreye::Cli;
-use tokio::signal::unix::{SignalKind, signal};
+use sunreye::shutdown::StopSignals;
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> ExitCode {
@@ -13,9 +13,9 @@ async fn main() -> ExitCode {
         .init();
 
     // Installed before the first log line: whoever sees the line may signal us.
-    let (mut int, mut term) = match (signal(SignalKind::interrupt()), signal(SignalKind::terminate())) {
-        (Ok(int), Ok(term)) => (int, term),
-        (Err(error), _) | (_, Err(error)) => {
+    let mut stop = match StopSignals::install() {
+        Ok(stop) => stop,
+        Err(error) => {
             tracing::error!(%error, "cannot install signal handlers");
             return ExitCode::FAILURE;
         }
@@ -27,10 +27,7 @@ async fn main() -> ExitCode {
         data_dir = %cli.data_dir.display(),
         "sunreye starting"
     );
-    let received = tokio::select! {
-        _ = int.recv() => "SIGINT",
-        _ = term.recv() => "SIGTERM",
-    };
+    let received = stop.recv().await;
     tracing::info!(signal = received, "sunreye stopping");
     ExitCode::SUCCESS
 }

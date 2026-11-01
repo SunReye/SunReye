@@ -15,13 +15,17 @@ clap = { version = "4", default-features = false, features = [
   "usage",
   "error-context",
 ] }
-tokio = { version = "1", default-features = false, features = ["macros", "rt", "signal"] }
+tokio = { version = "1", default-features = false, features = ["macros", "rt"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", default-features = false, features = [
   "fmt",
   "std",
   "ansi",
 ] }
+
+# signal-hook-registry does not build for ESP-IDF.
+[target.'cfg(not(target_os = "espidf"))'.dependencies]
+tokio = { version = "1", default-features = false, features = ["signal"] }
 
 [lints]
 workspace = true

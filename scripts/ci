@@ -119,6 +119,9 @@ heavy scripts/rust-gate
 heavy bun run test:coverage:rust
 bun run test:floor:rust
 
+step "android and esp-idf builds"
+heavy scripts/target-gate
+
 step "factory scripts"
 bun run test:factory
 

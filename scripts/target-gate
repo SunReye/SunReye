@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+# Builds every workspace crate for Android and type-checks it for ESP-IDF (ADR 0006); the Linux build is scripts/rust-gate.
+# A missing toolchain fails here, naming scripts/setup-targets.
+set -euo pipefail
+
+cd "$(git rev-parse --show-toplevel)"
+# shellcheck source=lib/targets.sh
+source scripts/lib/targets.sh
+
+missing=$(missing_pieces)
+if [[ -n $missing ]]; then
+  echo "missing for the Android and ESP-IDF builds: $(echo "$missing" | tr '\n' ' ')" >&2
+  echo "run scripts/setup-targets" >&2
+  exit 1
+fi
+use_targets
+
+timed() {
+  local target=$1 started=$SECONDS
+  shift
+  echo "== $target"
+  "$@"
+  echo "$target: built in $((SECONDS - started))s"
+}
+
+timed "$ANDROID_TARGET" cargo ndk -t arm64-v8a build --workspace
+# check, not build: a binary cannot link for ESP-IDF without esp-idf-sys, which no crate depends on yet.
+# Build scripts still run, so C crates compile with riscv32-esp-elf-gcc.
+timed "$ESP_TARGET" cargo "+$NIGHTLY" check --workspace --target "$ESP_TARGET" -Zbuild-std=std,panic_abort

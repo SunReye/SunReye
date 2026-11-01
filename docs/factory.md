@@ -70,6 +70,7 @@ Implementer shells are reniced using `slot_nice`; the merge slot keeps normal pr
 | Control | Setting |
 | --- | --- |
 | Rust builds in a slot | `CARGO_INCREMENTAL=0`, `CARGO_PROFILE_{DEV,TEST}_DEBUG=line-tables-only`, `CARGO_BUILD_JOBS=cargo_build_jobs`, `CARGO_TARGET_DIR=<slot>/target` (never shared across slots) |
+| Android and ESP-IDF toolchains | machine-wide under `~/.cache/sunreye-targets` (about 5 GB), installed once by `scripts/setup-targets`; `scripts/ci` fails naming it when they are missing |
 | Checkout | `git clean` keeps `target/` and `node_modules` |
 | After every agent | `factory release` deletes `clean_paths` (`target/`), and `node_modules` above `slot_node_modules_cap_gb` |
 | Each tick | free disk below `disk_pause_free_gb` (30): `gc`, no new tickets · below `disk_critical_free_gb` (15): `gc --aggressive`, no build work |
