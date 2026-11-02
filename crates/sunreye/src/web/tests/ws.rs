@@ -182,6 +182,31 @@ async fn a_new_subscriber_gets_the_last_plant_fold_and_no_metrics_snapshot() {
     core.stop().await;
 }
 
+/// A `sub` frame for `metrics`, padded to `len` bytes.
+fn sub_frame_of(len: usize) -> String {
+    let head = r#"{"t":"sub","topics":["metrics"],"pad":""#;
+    let tail = r#""}"#;
+    format!("{head}{}{tail}", "x".repeat(len - head.len() - tail.len()))
+}
+
+#[tokio::test]
+async fn a_client_frame_over_16_kib_closes_the_socket_and_one_at_16_kib_is_answered() {
+    let (core, admin) = open(&dir("ws-inbound-cap")).await;
+    let addr = serve(&core, &Config::default()).await;
+    let mut socket = connect(addr, &admin).await;
+    send_text(&mut socket, &sub_frame_of(16 * 1024)).await;
+    assert_eq!(next_json(&mut socket).await["data"]["subscribed"], json!(["metrics"]));
+
+    send_text(&mut socket, &sub_frame_of(16 * 1024 + 1)).await;
+    let after = tokio::time::timeout(Duration::from_secs(2), socket.next()).await.expect("closed within 2 s");
+    assert!(
+        matches!(after, None | Some(Err(_) | Ok(Message::Close(_)))),
+        "an oversized frame was answered: {after:?}"
+    );
+    drop(admin);
+    core.stop().await;
+}
+
 #[tokio::test]
 async fn many_subscribers_each_get_every_frame() {
     let (core, admin) = open(&dir("ws-many")).await;
