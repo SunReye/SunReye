@@ -6,6 +6,7 @@ use std::collections::BTreeMap;
 
 use jiff::Timestamp;
 use sqlx::SqliteConnection;
+use sqlx::sqlite::SqliteQueryResult;
 
 use super::{Store, StoreError};
 use crate::rollup::{Bucket, Partial, Tier, close, days, partials};
@@ -14,6 +15,8 @@ use crate::samples::{MINUTE_MS, Sample, decode};
 const MINUTES_PER_HOUR: i64 = 60;
 const MINUTES_PER_DAY: i64 = 24 * MINUTES_PER_HOUR;
 const US_PER_MS: i64 = 1_000;
+/// Rows one retention statement deletes; bounds how long a poll waits behind the pass.
+const DROP_BATCH: i64 = 1_000;
 
 const fn code(tier: Tier) -> i64 {
     match tier {
@@ -46,13 +49,54 @@ impl Store {
     }
 
     /// Drops every `tier` bucket that ended at or before `ended_by`, for every device; returns how many.
+    /// Deletes in batches and frees the connection between them, so a poll waits for one batch only.
     pub async fn drop_buckets(&self, tier: Tier, ended_by: Timestamp) -> Result<u64, StoreError> {
         let last_start = ended_by.as_microsecond().saturating_sub(tier.width_us());
         let tier = code(tier);
-        let done = sqlx::query!("DELETE FROM rollup WHERE tier = ? AND start_us <= ?", tier, last_start)
-            .execute(&self.pool)
+        let series =
+            sqlx::query!(r#"SELECT device.id AS "device!", metric.id AS "metric!" FROM device, metric"#)
+                .fetch_all(&self.pool)
+                .await?;
+        let pool = &self.pool;
+        let mut dropped = 0;
+        for row in series {
+            let (device, metric) = (row.device, row.metric);
+            dropped += in_batches(|| async move {
+                sqlx::query!(
+                    "DELETE FROM rollup WHERE device_id = ? AND metric_id = ? AND tier = ? AND start_us IN
+                       (SELECT start_us FROM rollup WHERE device_id = ? AND metric_id = ? AND tier = ? AND start_us <= ? LIMIT ?)",
+                    device,
+                    metric,
+                    tier,
+                    device,
+                    metric,
+                    tier,
+                    last_start,
+                    DROP_BATCH
+                )
+                .execute(pool)
+                .await
+            })
             .await?;
-        Ok(done.rows_affected())
+        }
+        Ok(dropped)
+    }
+}
+
+/// Runs `delete` until a run removes fewer than [`DROP_BATCH`] rows, yielding between runs; returns the total.
+async fn in_batches<F, Run>(mut delete: F) -> Result<u64, StoreError>
+where
+    F: FnMut() -> Run,
+    Run: Future<Output = Result<SqliteQueryResult, sqlx::Error>>,
+{
+    let mut dropped = 0;
+    loop {
+        let done = delete().await?.rows_affected();
+        dropped += done;
+        tokio::task::yield_now().await;
+        if done < DROP_BATCH.unsigned_abs() {
+            return Ok(dropped);
+        }
     }
 }
 
@@ -322,10 +366,40 @@ mod tests {
                  WHERE device_id = ? AND metric_id = ? AND tier = ? AND start_us BETWEEN ? AND ? ORDER BY start_us",
                 device_metric,
             ),
+            (
+                "DELETE FROM rollup WHERE device_id = ? AND metric_id = ? AND tier = ? AND start_us IN
+                   (SELECT start_us FROM rollup WHERE device_id = ? AND metric_id = ? AND tier = ? AND start_us <= ? LIMIT ?)",
+                device_metric,
+            ),
         ] {
             let plan = plan(&store, query).await;
             assert!(plan.contains(uses) && !plan.contains("SCAN "), "{query}\n{plan}");
         }
+    }
+
+    async fn rows_before(store: &Store, start_us: i64) -> i64 {
+        sqlx::query_scalar("SELECT count(*) FROM rollup WHERE start_us < ?")
+            .bind(start_us)
+            .fetch_one(&store.pool)
+            .await
+            .expect("count")
+    }
+
+    #[tokio::test]
+    async fn an_append_during_a_large_drop_of_one_series_waits_for_one_batch_not_the_whole_drop() {
+        let (store, device) = with_device().await;
+        append(&store, device, &[("2026-05-10T12:00:00Z", 1.0)]).await;
+        fill_minutes(&store, device, 4_000).await;
+        let cutoff = Timestamp::from_millisecond(4_000 * MINUTE_MS).expect("cutoff");
+        let appended = async {
+            tokio::task::yield_now().await;
+            append(&store, device, &[("2026-05-10T12:01:00Z", 1.0)]).await;
+            rows_before(&store, cutoff.as_microsecond()).await
+        };
+        let (dropped, left) = tokio::join!(store.drop_buckets(Tier::Minute, cutoff), appended);
+        assert_eq!(dropped.expect("drop"), 4_000);
+        assert!(left > 0, "the append waited for the whole drop");
+        assert_eq!(rows_before(&store, cutoff.as_microsecond()).await, 0);
     }
 
     #[tokio::test]
