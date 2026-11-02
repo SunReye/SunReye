@@ -13,12 +13,12 @@
  *     port 0, reading the port from its "sunreye listening" line, so slots
  *     running this at once never collide.
  *  2. the admin, through the first sign-up.
- *  3. a PLAIN account, written straight into the core's SQLite file: the core
- *     has no account administration over HTTP yet (#375). Without it,
- *     over-gating is invisible: every other pass carries an admin session.
- *  4. the three sweeps over whatever `/openapi/json` lists.
+ *  3. a PLAIN account, created by the admin. Without it, over-gating is
+ *     invisible: every other pass carries an admin session.
+ *  4. an API key for the admin, which only the admin pass carries: `/api/v1`
+ *     answers a key, never a session.
+ *  5. the three sweeps over whatever `/openapi/json` lists.
  */
-import { Database } from "bun:sqlite";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -114,20 +114,16 @@ async function signIn(base: string, path: string, body: object, what: string): P
   return sessionCookie(response, what);
 }
 
-/** The plain account, beside the admin in the core's own file. Argon2id, as the core hashes. */
-async function addMember(dataDir: string) {
-  const hash = await Bun.password.hash(MEMBER.password, { algorithm: "argon2id" });
-  const db = new Database(join(dataDir, "sunreye.db"));
-  try {
-    db.exec("PRAGMA busy_timeout = 5000");
-    db.query("INSERT INTO account (email, name, password_hash, admin) VALUES (?, ?, ?, 0)").run(
-      MEMBER.email,
-      MEMBER.name,
-      hash,
-    );
-  } finally {
-    db.close();
-  }
+/** An admin request on the core's own origin; throws unless it answered 2xx. */
+async function asAdmin(base: string, cookie: string, path: string, body: object, what: string) {
+  const response = await fetch(`${base}${path}`, {
+    method: "POST",
+    headers: { cookie, origin: base, "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok)
+    throw new Error(`${what} failed (${response.status}): ${await response.text()}`);
+  return (await response.json()) as Record<string, unknown>;
 }
 
 async function probeOnce(base: string, probe: Probe, headers: HeadersInit): Promise<ProbeResponse> {
@@ -203,7 +199,7 @@ async function accessPass(
  * disturb the state the admin pass then reads. Within a pass, ending the
  * session sorts last (a DELETE), so no probe after it loses its cookie.
  */
-async function sweep(base: string, adminCookie: string, memberCookie: string) {
+async function sweep(base: string, adminCookie: string, memberCookie: string, apiKey: string) {
   const doc = (await fetch(`${base}/openapi/json`).then((r) => r.json())) as OpenApiDoc;
   const probes = planProbes(doc, Date.now());
   const access: { mode: AuthMode; results: ProbeResult[] }[] = [];
@@ -217,7 +213,10 @@ async function sweep(base: string, adminCookie: string, memberCookie: string) {
   const member = await accessPass(base, probes, "member", memberCookie);
   access.push({ mode: "member", results: report(member) });
   log(`probing ${probes.length} routes as the admin session`);
-  const admin = await passOver(base, probes, asBrowser(base, adminCookie));
+  const admin = await passOver(base, probes, {
+    ...asBrowser(base, adminCookie),
+    "x-api-key": apiKey,
+  });
   const adminAccess = admin.map((a) => classifyAuth(a.probe, a.response, "authenticated"));
   access.push({ mode: "authenticated", results: report(adminAccess) });
 
@@ -233,9 +232,24 @@ export async function run(): Promise<number> {
     core = booted.core;
     const { base } = booted;
     const adminCookie = await signIn(base, "/api/auth/sign-up", ADMIN, "admin sign-up");
-    await addMember(dataDir);
+    await asAdmin(
+      base,
+      adminCookie,
+      "/api/admin/users",
+      { ...MEMBER, admin: false },
+      "plain account",
+    );
     const memberCookie = await signIn(base, "/api/auth/login", MEMBER, "plain account login");
-    const swept = await sweep(base, adminCookie, memberCookie);
+    const me = await fetch(`${base}/api/auth/session`, { headers: { cookie: adminCookie } });
+    const { id } = (await me.json()) as { id: number };
+    const key = await asAdmin(
+      base,
+      adminCookie,
+      "/api/admin/api-keys",
+      { userId: id, name: "route smoke" },
+      "API key",
+    );
+    const swept = await sweep(base, adminCookie, memberCookie, String(key.key));
     // Every verdict is printed before any of them decides the exit code.
     const verdicts = [
       summarize(swept.execution),

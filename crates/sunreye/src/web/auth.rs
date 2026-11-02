@@ -52,6 +52,11 @@ impl Accounts {
     pub fn new(store: Arc<Store>) -> Self {
         Self { store, passwords: Passwords::new() }
     }
+
+    /// The one hashing cap every password goes through.
+    pub fn passwords(&self) -> &Passwords {
+        &self.passwords
+    }
 }
 
 #[allow(missing_debug_implementations, reason = "holds a password")]
@@ -148,18 +153,23 @@ pub struct LoginRequest {
 
 impl SignUpRequest {
     fn validate(&self) -> Result<(), ApiError> {
-        let email = self.email.trim();
-        if email.is_empty() || !email.contains('@') {
-            return Err(ApiError::bad_request("Email is invalid"));
-        }
-        if self.name.trim().is_empty() {
-            return Err(ApiError::bad_request("Name is required"));
-        }
-        if !PASSWORD_CHARS.contains(&self.password.chars().count()) {
-            return Err(ApiError::bad_request("Password must be 8–128 characters"));
-        }
-        Ok(())
+        validate_account(&self.email, &self.name, &self.password)
     }
+}
+
+/// The checks every new account passes, from sign-up or from an admin.
+pub fn validate_account(email: &str, name: &str, password: &str) -> Result<(), ApiError> {
+    let email = email.trim();
+    if email.is_empty() || !email.contains('@') {
+        return Err(ApiError::bad_request("Email is invalid"));
+    }
+    if name.trim().is_empty() {
+        return Err(ApiError::bad_request("Name is required"));
+    }
+    if !PASSWORD_CHARS.contains(&password.chars().count()) {
+        return Err(ApiError::bad_request("Password must be 8–128 characters"));
+    }
+    Ok(())
 }
 
 /// Always under a fresh session id, whatever id the browser arrived with.

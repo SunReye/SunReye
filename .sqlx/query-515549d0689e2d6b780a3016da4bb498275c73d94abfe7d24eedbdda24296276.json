@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO api_key (account_id, name, start, key_hash, created_at)\n               SELECT id, ?, ?, ?, strftime('%Y-%m-%dT%H:%M:%fZ', 'now') FROM account WHERE id = ?\n               RETURNING id AS \"id!\"",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!",
+        "ordinal": 0,
+        "type_info": "Integer"
+      }
+    ],
+    "parameters": {
+      "Right": 4
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "515549d0689e2d6b780a3016da4bb498275c73d94abfe7d24eedbdda24296276"
+}

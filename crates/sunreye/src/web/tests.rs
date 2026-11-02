@@ -412,7 +412,14 @@ async fn unknown_api_paths_and_missing_files_are_404_and_other_methods_on_the_sh
     core.stop().await;
 }
 
-const SERVED: [(&str, &str); 12] = [
+const SERVED: [(&str, &str); 20] = [
+    ("get", "/api/admin/api-keys"),
+    ("post", "/api/admin/api-keys"),
+    ("post", "/api/admin/api-keys/revoke"),
+    ("get", "/api/admin/users"),
+    ("post", "/api/admin/users"),
+    ("delete", "/api/admin/users/{id}"),
+    ("put", "/api/admin/users/{id}/role"),
     ("delete", "/api/auth/session"),
     ("get", "/api/auth/session"),
     ("post", "/api/auth/login"),
@@ -422,6 +429,7 @@ const SERVED: [(&str, &str); 12] = [
     ("get", "/api/profiles"),
     ("get", "/api/settings/inverter"),
     ("get", "/api/setup-status"),
+    ("get", "/api/v1/entities"),
     ("post", "/api/settings/inverter/test"),
     ("put", "/api/settings/active-profile"),
     ("put", "/api/settings/inverter"),
@@ -477,12 +485,19 @@ fn the_committed_openapi_json_is_the_document_the_core_serves() {
     );
 }
 
-const ADMIN_ROUTES: [(&str, &str); 5] = [
+const ADMIN_ROUTES: [(&str, &str); 12] = [
     ("GET", "/api/profiles"),
     ("PUT", "/api/settings/active-profile"),
     ("GET", "/api/settings/inverter"),
     ("PUT", "/api/settings/inverter"),
     ("POST", "/api/settings/inverter/test"),
+    ("GET", "/api/admin/users"),
+    ("POST", "/api/admin/users"),
+    ("PUT", "/api/admin/users/1/role"),
+    ("DELETE", "/api/admin/users/1"),
+    ("GET", "/api/admin/api-keys"),
+    ("POST", "/api/admin/api-keys"),
+    ("POST", "/api/admin/api-keys/revoke"),
 ];
 
 const SESSION_ROUTES: [(&str, &str); 3] =
@@ -676,7 +691,7 @@ async fn a_plain_user_reaches_the_session_routes_and_is_refused_on_admin_routes(
         name: "User".into(),
         password_hash: password::Passwords::new().hash(ADMIN_PASSWORD.into()).await.expect("hash"),
     };
-    core.store.add_plain_account(&account).await.expect("plain account");
+    core.store.add_account(&account, false).await.expect("plain account");
     let signed_in = login(&admin.anonymous(), "user@example.org", ADMIN_PASSWORD, false).await;
     assert_eq!(signed_in.json()["admin"], false);
     let user = admin.with_cookie(&signed_in.session_cookie());
@@ -752,3 +767,6 @@ async fn the_session_cookie_is_secure_when_configured() {
     drop(api);
     core.stop().await;
 }
+
+mod api_keys;
+mod users;
