@@ -9,6 +9,7 @@
 	import type { RegisteredProfile } from '$lib/components/settings/profile-types';
 	import ActivateStep from '$lib/components/setup/activate-step.svelte';
 	import ProfileStep from '$lib/components/setup/profile-step.svelte';
+	import { keptSelection } from '$lib/components/setup/profile-selection';
 	import SetupFooter from '$lib/components/setup/setup-footer.svelte';
 	import SetupShell from '$lib/components/setup/setup-shell.svelte';
 	import { firstRunGate } from '$lib/setup';
@@ -67,7 +68,7 @@
 
 	async function onExternalRemoved() {
 		await loadRegistered();
-		if (!registered.some((p) => p.id === selectedId)) selectedId = null;
+		selectedId = keptSelection(registered, selectedId);
 	}
 
 	async function activate() {
