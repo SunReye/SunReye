@@ -319,6 +319,14 @@ mod tests {
         serde_json::from_str(text).expect("json")
     }
 
+    /// `feed.next()` that fails instead of hanging when no frame was published.
+    async fn next(feed: &mut Subscription) -> Frame {
+        tokio::time::timeout(std::time::Duration::from_secs(5), feed.next())
+            .await
+            .expect("a frame within 5 s")
+            .expect("the feed is open")
+    }
+
     fn sample(at_ms: i64, values: &[(&str, f64)]) -> Sample {
         Sample { at_ms, values: values.iter().map(|(k, v)| ((*k).to_owned(), *v)).collect() }
     }
@@ -471,9 +479,8 @@ mod tests {
         live.roster(&[2]);
         let mut feed = live.subscribe();
         live.publish(2, &sample(AT_MS, &[("pv_power", 2.0)]));
-        let metrics = feed.next().await.expect("metrics");
-        assert_eq!(metrics.topic, Topic::Metrics);
-        let plant = feed.next().await.expect("plant");
+        assert_eq!(next(&mut feed).await.topic, Topic::Metrics);
+        let plant = next(&mut feed).await;
         assert_eq!(
             parsed(plant.text.as_str())["data"],
             parsed(
@@ -490,6 +497,45 @@ mod tests {
             parsed(
                 r#"{"topic":"metrics","data":{"time":"1970-01-01T00:00:00.000Z","inverterId":"1",
                     "metrics":{"c":-0.5}}}"#
+            )
+        );
+    }
+
+    #[tokio::test]
+    async fn a_subscription_that_falls_behind_resumes_at_the_oldest_of_the_last_16_frames() {
+        let live = Live::default();
+        let mut feed = live.subscribe();
+        for at_ms in 0..10 {
+            live.publish(1, &sample(at_ms, &[("pv_power", 1.0)]));
+        }
+        let mut held = Vec::new();
+        for _ in 0..16 {
+            let frame = next(&mut feed).await;
+            held.push((frame.topic, parsed(frame.text.as_str())["data"]["time"].clone()));
+        }
+        let want: Vec<(Topic, Value)> = (2..10)
+            .flat_map(|ms| {
+                let time = json!(format!("1970-01-01T00:00:00.00{ms}Z"));
+                [(Topic::Metrics, time.clone()), (Topic::Plant, time)]
+            })
+            .collect();
+        assert_eq!(held, want, "20 frames published unread: frames 4 to 19 are held, in order");
+        let past_newest = tokio::time::timeout(std::time::Duration::from_millis(50), feed.next()).await;
+        assert!(past_newest.is_err(), "nothing past the newest frame: {past_newest:?}");
+    }
+
+    #[test]
+    fn a_zero_reading_is_a_value_not_a_gap() {
+        let reading = sample(AT_MS, &[("battery_power", 0.0), ("pv_power", 0.0)]);
+        assert_eq!(
+            parsed(&metrics_frame(7, &reading))["data"]["metrics"],
+            parsed(r#"{"battery_power":0.0,"pv_power":0.0}"#)
+        );
+        assert_eq!(
+            parsed(&plant_frame(&[(7, Some(&reading))], AT_MS))["data"],
+            parsed(
+                r#"{"time":"2026-08-15T10:00:00.123Z","metrics":{"battery_power":0.0,"pv_power":0.0},
+                    "members":["7"],"stale":[]}"#
             )
         );
     }
