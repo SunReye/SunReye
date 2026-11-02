@@ -54,8 +54,8 @@
 	<!-- Grid column two is ONE cell, and this is it: a third child of the grid
 	     would be auto-placed onto a second row. So the cell is drawn here and its
 	     occupants — the caller's chrome and the caret — render into it without
-	     boxes of their own. `data-slot` is on the cell for the same reason: it is
-	     what a layout measurement compares against the header row, and a nested
+	     boxes of their own. `data-slot` is on the cell for the same reason:
+	     `section.svelte.test.ts` measures it against the card, and a nested
 	     wrapper would make it measure against itself.
 
 	     DOM order is now the reading order at every width (title … controls,
