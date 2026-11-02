@@ -135,6 +135,12 @@ impl Store {
         Self::connect(options).await
     }
 
+    /// Takes the one connection, so every other use of the store waits until it is dropped.
+    #[cfg(test)]
+    pub(crate) async fn hold(&self) -> sqlx::pool::PoolConnection<Sqlite> {
+        self.pool.acquire().await.expect("connection")
+    }
+
     #[cfg(test)]
     pub(crate) async fn in_memory() -> Result<Self, StoreError> {
         Self::connect(SqliteConnectOptions::new().in_memory(true)).await

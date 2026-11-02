@@ -14,9 +14,10 @@
 //! ```
 //!
 //! A steady metric costs one byte per sample after its first value. A power cut loses at most the
-//! minute in progress, because a row is written when its minute closes ([`MinuteBuffer`]).
+//! minute in progress, because a row is written when its minute closes ([`Unstored`]).
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::sync::{Mutex, MutexGuard, PoisonError};
 
 pub const MINUTE_MS: i64 = 60_000;
 const VERSION: u8 = 1;
@@ -184,27 +185,60 @@ pub struct ClosedMinute {
     pub samples: Vec<Sample>,
 }
 
-/// Collects samples until a sample from another minute arrives, then hands the finished minute back.
+/// Each device's readings polled but not yet stored: the open minute, and a closed minute until its row
+/// is written. Shared by the device tasks and the readers, so a reader never misses a reading between
+/// the poll and the write.
 #[derive(Debug, Default)]
-pub struct MinuteBuffer {
-    open: Vec<Sample>,
+pub struct Unstored {
+    held: Mutex<BTreeMap<i64, Vec<Sample>>>,
 }
 
-impl MinuteBuffer {
-    pub fn push(&mut self, sample: Sample) -> Option<ClosedMinute> {
-        let closed = match self.open.first() {
-            Some(first) if minute_of(first.at_ms) != minute_of(sample.at_ms) => self.take(),
+impl Unstored {
+    fn lock(&self) -> MutexGuard<'_, BTreeMap<i64, Vec<Sample>>> {
+        self.held.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    /// Holds `sample`; returns the minute it closes, which stays held until [`Unstored::release`].
+    pub fn push(&self, device_id: i64, sample: Sample) -> Option<ClosedMinute> {
+        let mut held = self.lock();
+        let samples = held.entry(device_id).or_default();
+        let closed = match samples.last() {
+            Some(last) if minute_of(last.at_ms) != minute_of(sample.at_ms) => {
+                Some(minute_in(samples, minute_of(last.at_ms)))
+            }
             _ => None,
         };
-        self.open.push(sample);
+        samples.push(sample);
         closed
     }
 
-    /// The open minute, if it holds anything; the buffer is empty afterwards.
-    pub fn take(&mut self) -> Option<ClosedMinute> {
-        let minute = minute_of(self.open.first()?.at_ms);
-        Some(ClosedMinute { minute, samples: std::mem::take(&mut self.open) })
+    /// The device's newest held minute, for storing when its task stops; holds it until released.
+    pub fn newest(&self, device_id: i64) -> Option<ClosedMinute> {
+        let held = self.lock();
+        let samples = held.get(&device_id)?;
+        Some(minute_in(samples, minute_of(samples.last()?.at_ms)))
     }
+
+    /// The device's held readings, oldest first; a copy, at most two minutes of them.
+    pub fn held(&self, device_id: i64) -> Vec<Sample> {
+        self.lock().get(&device_id).cloned().unwrap_or_default()
+    }
+
+    /// Drops the device's readings of `minute`, once its row is written or the write failed.
+    pub fn release(&self, device_id: i64, minute: i64) {
+        let mut held = self.lock();
+        if let Some(samples) = held.get_mut(&device_id) {
+            samples.retain(|sample| minute_of(sample.at_ms) != minute);
+            if samples.is_empty() {
+                held.remove(&device_id);
+            }
+        }
+    }
+}
+
+fn minute_in(samples: &[Sample], minute: i64) -> ClosedMinute {
+    let samples = samples.iter().filter(|s| minute_of(s.at_ms) == minute).cloned().collect();
+    ClosedMinute { minute, samples }
 }
 
 #[cfg(test)]
@@ -332,16 +366,37 @@ mod tests {
         assert_eq!(decode(MINUTE, &blob, &keys()), Err(SampleError::Corrupt("offset outside the minute")));
     }
 
+    fn times(samples: &[Sample]) -> Vec<i64> {
+        samples.iter().map(|s| s.at_ms - MINUTE * MINUTE_MS).collect()
+    }
+
     #[test]
-    fn the_buffer_closes_a_minute_when_the_next_one_starts() {
-        let mut buffer = MinuteBuffer::default();
-        assert!(buffer.push(at(0, &[("a", 1.0)])).is_none());
-        assert!(buffer.push(at(59_999, &[("a", 2.0)])).is_none());
-        let closed = buffer.push(Sample { at_ms: (MINUTE + 1) * MINUTE_MS, values: vec![] }).expect("closed");
-        assert_eq!(closed.minute, MINUTE);
-        assert_eq!(closed.samples.len(), 2);
-        let rest = buffer.take().expect("the new minute is open");
-        assert_eq!((rest.minute, rest.samples.len()), (MINUTE + 1, 1));
-        assert!(buffer.take().is_none(), "taking empties the buffer");
+    fn a_minute_closes_when_the_next_one_starts_and_stays_held_until_released() {
+        let unstored = Unstored::default();
+        assert!(unstored.push(1, at(0, &[("a", 1.0)])).is_none());
+        assert!(unstored.push(1, at(59_999, &[("a", 2.0)])).is_none());
+        let closed = unstored.push(1, at(MINUTE_MS, &[])).expect("closed");
+        assert_eq!((closed.minute, times(&closed.samples)), (MINUTE, vec![0, 59_999]));
+        assert_eq!(times(&unstored.held(1)), [0, 59_999, MINUTE_MS], "unwritten, so still readable");
+        unstored.release(1, MINUTE);
+        assert_eq!(times(&unstored.held(1)), [MINUTE_MS]);
+        let open = unstored.newest(1).expect("the new minute is open");
+        assert_eq!((open.minute, times(&open.samples)), (MINUTE + 1, vec![MINUTE_MS]));
+        unstored.release(1, MINUTE + 1);
+        assert_eq!(unstored.held(1), []);
+        assert!(unstored.newest(1).is_none());
+    }
+
+    #[test]
+    fn each_device_holds_its_own_minute() {
+        let unstored = Unstored::default();
+        unstored.push(1, at(0, &[("a", 1.0)]));
+        unstored.push(2, at(10, &[("a", 2.0)]));
+        assert!(unstored.push(2, at(MINUTE_MS, &[])).is_some());
+        assert_eq!(times(&unstored.held(1)), [0], "device 2's minute closes nothing of device 1");
+        unstored.release(2, MINUTE);
+        assert_eq!(times(&unstored.held(1)), [0]);
+        assert_eq!(times(&unstored.held(2)), [MINUTE_MS]);
+        assert_eq!(unstored.held(3), []);
     }
 }
