@@ -63,13 +63,8 @@ in (`ln -s ../../.agents/skills/<name> .claude/skills/<name>`) — two copies dr
 
 Load the relevant one when matching work:
 
-- TypeScript work → load `typescript-best-practices`.
-- Tailwind class work → load `tailwind-best-practices`.
-- SvelteKit work → load `sveltekit-best-practices`.
 - Any `.svelte` file in `apps/web` (page, card, grid, chart box, live reading) → load
   `layout-system`. The skill holds the layout vocabulary; component tests hold what it renders.
-- AI SDK work → load `ai-sdk`.
-- Similar domain-specific work → load matching skill when available.
 
 ## YAGNI
 

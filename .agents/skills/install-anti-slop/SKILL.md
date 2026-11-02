@@ -1,6 +1,7 @@
 ---
 name: install-anti-slop
 description: Install, configure, update, or upgrade vendored anti-slop Oxlint plugins. Use when adding anti-slop, picking up upstream rules or fixes, or migrating an existing installation while preserving local customizations.
+disable-model-invocation: true
 ---
 
 # Install or update anti-slop

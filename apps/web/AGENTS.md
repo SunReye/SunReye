@@ -15,7 +15,6 @@ Work in `apps/web`. Route by task:
 - Env vars → `packages/env/AGENTS.md`. Import the shared env exports; no app-local schemas.
 - Svelte or SvelteKit questions → the `svelte` MCP: `list-sections` first, `svelte-autofixer` on
   Svelte code until it returns nothing.
-- shadcn-svelte questions → the `shadcn-svelte-components` MCP.
 
 ## UI components
 

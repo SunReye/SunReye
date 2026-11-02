@@ -4,30 +4,6 @@
       "type": "http",
       "url": "https://mcp.svelte.dev/mcp"
     },
-    "shadcn-svelte-components": {
-      "command": "uvx",
-      "args": [
-        "--from",
-        "mcpdoc",
-        "mcpdoc",
-        "--urls",
-        "ShadcnSvelte:https://shadcn-svelte.com/llms.txt",
-        "--transport",
-        "stdio"
-      ]
-    },
-    "layerchart-v2-next-documentation": {
-      "command": "uvx",
-      "args": [
-        "--from",
-        "mcpdoc",
-        "mcpdoc",
-        "--urls",
-        "layerchart-v2-next:https://next.layerchart.com/llms.txt",
-        "--transport",
-        "stdio"
-      ]
-    },
     "chrome-devtools": {
       "command": "bunx",
       "args": [
