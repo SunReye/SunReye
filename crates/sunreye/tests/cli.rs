@@ -171,8 +171,9 @@ fn request(port: u16, head: &str, body: &str) -> String {
     answer.lines().next().unwrap_or_default().to_owned()
 }
 
-/// Everything logged by a run on `listen` and `data_dir` that served one request, then `then` on its port.
-fn log_of_a_run(listen: &str, data_dir: &std::path::Path, then: impl FnOnce(u16)) -> String {
+/// Everything logged by a run on `listen` and `data_dir` that served one request, then `then` on its port
+/// and process id.
+fn log_of_a_run(listen: &str, data_dir: &std::path::Path, then: impl FnOnce(u16, u32)) -> String {
     let mut child = Command::new(BIN)
         .args(["--listen", listen, "--data-dir"])
         .arg(data_dir)
@@ -193,7 +194,7 @@ fn log_of_a_run(listen: &str, data_dir: &std::path::Path, then: impl FnOnce(u16)
     let port = port(&listening);
     // Answered only once the store is open, so every startup warning is logged by then.
     assert!(request(port, "GET /api/setup-status", "").contains("200"));
-    then(port);
+    then(port, child.id());
     assert!(signal(&child, "TERM").success());
     assert!(child.wait().expect("wait").success());
     reader.read_to_string(&mut log).expect("the rest of the log");
@@ -206,26 +207,56 @@ fn warnings(log: &str) -> Vec<&str> {
 
 #[test]
 fn a_non_loopback_listen_address_warns_while_sign_up_is_open() {
-    let log = log_of_a_run("0.0.0.0:0", &fresh_data_dir(), |_| {});
+    let log = log_of_a_run("0.0.0.0:0", &fresh_data_dir(), |_, _| {});
     let warnings = warnings(&log);
     assert_eq!(warnings.len(), 1, "{log}");
     assert!(warnings[0].contains("0.0.0.0:"), "{log}");
     assert!(warnings[0].contains("sign-up"), "{log}");
+    assert!(warnings[0].contains("--listen 127.0.0.1"), "names the fix: {log}");
 }
 
 #[test]
 fn a_loopback_listen_address_logs_no_warning() {
-    let log = log_of_a_run("127.0.0.1:0", &fresh_data_dir(), |_| {});
+    let log = log_of_a_run("127.0.0.1:0", &fresh_data_dir(), |_, _| {});
     assert_eq!(warnings(&log), Vec::<&str>::new(), "{log}");
 }
 
 #[test]
 fn a_non_loopback_listen_address_logs_no_warning_once_the_admin_exists() {
     let dir = fresh_data_dir();
-    log_of_a_run("127.0.0.1:0", &dir, |port| {
+    log_of_a_run("127.0.0.1:0", &dir, |port, _| {
         let body = r#"{"email":"admin@example.org","name":"Admin","password":"correct horse battery"}"#;
         assert!(request(port, "POST /api/auth/sign-up", body).contains("200"));
     });
-    let log = log_of_a_run("0.0.0.0:0", &dir, |_| {});
+    let log = log_of_a_run("0.0.0.0:0", &dir, |_, _| {});
     assert_eq!(warnings(&log), Vec::<&str>::new(), "{log}");
+}
+
+/// `VmRSS` of process `pid`, in KiB.
+#[cfg(target_os = "linux")]
+fn resident_kib(pid: u32) -> u64 {
+    let status = std::fs::read_to_string(format!("/proc/{pid}/status")).expect("proc status");
+    let line = status.lines().find(|l| l.starts_with("VmRSS:")).expect("a VmRSS line");
+    line.split_whitespace().nth(1).and_then(|kib| kib.parse().ok()).expect("a KiB count")
+}
+
+/// ADR 0006: no growth. Each check needs Argon2's 19 MiB; freed per login, the allocator keeps it resident.
+#[cfg(target_os = "linux")]
+#[test]
+fn sequential_logins_hold_resident_memory_level() {
+    log_of_a_run("127.0.0.1:0", &fresh_data_dir(), |port, pid| {
+        let account = r#""email":"admin@example.org","password":"correct horse battery""#;
+        let sign_up = format!(r#"{{{account},"name":"Admin"}}"#);
+        assert!(request(port, "POST /api/auth/sign-up", &sign_up).contains("200"));
+        let login = |n: usize| {
+            for _ in 0..n {
+                assert!(request(port, "POST /api/auth/login", &format!("{{{account}}}")).contains("200"));
+            }
+        };
+        login(2);
+        let settled = resident_kib(pid);
+        login(20);
+        let grown = resident_kib(pid).saturating_sub(settled);
+        assert!(grown < 4 * 1024, "resident memory grew {grown} KiB over 20 logins");
+    });
 }
