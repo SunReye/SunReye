@@ -61,7 +61,7 @@
 	}
 
 	/** The core's refusal of the removal, if any. A dead connection throws. */
-	async function refusal(source: Source) {
+	async function refusalOf(source: Source) {
 		const { error } = await core.DELETE('/api/settings/profile-sources', { params: { query: source } });
 		return error === undefined ? null : apiErrorText(error, m.conn_request_failed());
 	}
@@ -70,7 +70,7 @@
 		failure = null;
 		busy = true;
 		try {
-			const refused = await refusal(source);
+			const refused = await refusalOf(source);
 			if (refused !== null) {
 				failure = m.sources_remove_failed({ error: refused });
 				return;
