@@ -166,3 +166,41 @@ test("the last admin cannot be removed: the core's reason is shown", async () =>
   );
   expect(toast.success).not.toHaveBeenCalled();
 });
+
+// The core counts characters for the minimum, UTF-8 bytes for the maximum (bcrypt reads 72)
+// and refuses NUL, all in English: the form refuses first.
+test.each([
+  ["7 characters", "x".repeat(7), () => m.auth_password_min()],
+  ["four emoji (8 UTF-16 units)", "😀".repeat(4), () => m.auth_password_min()],
+  ["73 bytes", "x".repeat(73), () => m.auth_password_max()],
+  ["37 two-byte characters (74 bytes)", "é".repeat(37), () => m.auth_password_max()],
+  ["a NUL inside", "abcdefgh\0abcdefgh", () => m.auth_password_nul()],
+])("a password of %s is refused before anything is sent", async (_, password, message) => {
+  render(UsersForm);
+  await expect.element(row("bob@example.com")).toBeVisible();
+
+  await page.getByLabelText(m.auth_field_name(), { exact: true }).fill("Cy Turing");
+  await page.getByLabelText(m.auth_field_email(), { exact: true }).fill("cy@example.com");
+  await page.getByLabelText(m.auth_field_password(), { exact: true }).fill(password);
+  await page.getByRole("button", { name: m.action_add() }).click();
+
+  await vi.waitFor(() => expect(toast.error).toHaveBeenCalledWith(message()));
+  expect(post).not.toHaveBeenCalled();
+});
+
+test("a password of exactly 72 bytes is sent", async () => {
+  post.mockResolvedValue({ data: bob });
+  render(UsersForm);
+  await expect.element(row("bob@example.com")).toBeVisible();
+
+  await page.getByLabelText(m.auth_field_name(), { exact: true }).fill("Cy Turing");
+  await page.getByLabelText(m.auth_field_email(), { exact: true }).fill("cy@example.com");
+  await page.getByLabelText(m.auth_field_password(), { exact: true }).fill("é".repeat(36));
+  await page.getByRole("button", { name: m.action_add() }).click();
+
+  await vi.waitFor(() =>
+    expect(post).toHaveBeenCalledWith("/api/admin/users", {
+      body: { name: "Cy Turing", email: "cy@example.com", password: "é".repeat(36), admin: false },
+    }),
+  );
+});
