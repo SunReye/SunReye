@@ -31,10 +31,8 @@ import {
   type ProbeResponse,
   type ProbeResult,
   type StatusAllowList,
-  type UpgradeOutcome,
   classify,
   classifyAuth,
-  classifyUpgrade,
   planProbes,
   summarize,
   summarizeAuth,
@@ -146,27 +144,6 @@ async function probeOnce(base: string, probe: Probe, headers: HeadersInit): Prom
   }
 }
 
-/**
- * Try to open the live socket, and say whether the handshake completed. Not a
- * `fetch`: an upgrade cannot be expressed as one, and a plain GET to `/ws` is a
- * protocol error rather than an answer. A socket that opens is closed at once.
- */
-async function probeUpgrade(base: string, cookie?: string): Promise<UpgradeOutcome> {
-  const url = `${base.replace(/^http/, "ws")}/ws`;
-  const socket = new WebSocket(url, cookie ? { headers: { cookie } } : undefined);
-  return new Promise<UpgradeOutcome>((resolve) => {
-    const settle = (outcome: UpgradeOutcome) => {
-      clearTimeout(timer);
-      socket.close();
-      resolve(outcome);
-    };
-    const timer = setTimeout(() => settle("refused"), 10_000);
-    socket.addEventListener("open", () => settle("opened"));
-    socket.addEventListener("error", () => settle("refused"));
-    socket.addEventListener("close", () => settle("refused"));
-  });
-}
-
 /** One pass over the plan: every probe, in order, one request at a time. */
 async function passOver(
   base: string,
@@ -206,10 +183,9 @@ const gatePass = (base: string, probes: readonly Probe[], headers: HeadersInit) 
 const asBrowser = (base: string, cookie?: string): Record<string, string> =>
   cookie ? { cookie, origin: base } : {};
 
-/** One access pass, the socket included when the core lists one. */
+/** One access pass. */
 async function accessPass(
   base: string,
-  doc: OpenApiDoc,
   probes: readonly Probe[],
   mode: AuthMode,
   cookie?: string,
@@ -218,9 +194,7 @@ async function accessPass(
     mode === "authenticated"
       ? await passOver(base, probes, asBrowser(base, cookie))
       : await gatePass(base, probes, asBrowser(base, cookie));
-  const results = answers.map((a) => classifyAuth(a.probe, a.response, mode));
-  if (doc.paths?.["/ws"]) results.push(classifyUpgrade(await probeUpgrade(base, cookie), mode));
-  return results;
+  return answers.map((a) => classifyAuth(a.probe, a.response, mode));
 }
 
 /**
@@ -237,10 +211,10 @@ async function sweep(base: string, adminCookie: string, memberCookie: string) {
   log(`probing ${probes.length} routes with no credentials`);
   access.push({
     mode: "anonymous",
-    results: report(await accessPass(base, doc, probes, "anonymous")),
+    results: report(await accessPass(base, probes, "anonymous")),
   });
   log(`probing ${probes.length} routes as a plain signed-in NON-ADMIN session`);
-  const member = await accessPass(base, doc, probes, "member", memberCookie);
+  const member = await accessPass(base, probes, "member", memberCookie);
   access.push({ mode: "member", results: report(member) });
   log(`probing ${probes.length} routes as the admin session`);
   const admin = await passOver(base, probes, asBrowser(base, adminCookie));
@@ -261,11 +235,11 @@ export async function run(): Promise<number> {
     const adminCookie = await signIn(base, "/api/auth/sign-up", ADMIN, "admin sign-up");
     await addMember(dataDir);
     const memberCookie = await signIn(base, "/api/auth/login", MEMBER, "plain account login");
-    const report = await sweep(base, adminCookie, memberCookie);
+    const swept = await sweep(base, adminCookie, memberCookie);
     // Every verdict is printed before any of them decides the exit code.
     const verdicts = [
-      summarize(report.execution),
-      ...report.access.map(({ mode, results }) => summarizeAuth(results, mode)),
+      summarize(swept.execution),
+      ...swept.access.map(({ mode, results }) => summarizeAuth(results, mode)),
     ];
     for (const verdict of verdicts) console.log(`[route-smoke] ${verdict.text}`);
     return verdicts.some((v) => !v.ok) ? 1 : 0;

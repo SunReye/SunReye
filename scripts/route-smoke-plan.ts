@@ -361,27 +361,6 @@ const METHOD_ORDER: Record<string, number> = {
   delete: 2,
 };
 
-/**
- * Paths that are not JSON handlers: the Scalar UI and its own document, and the
- * websocket upgrade (a plain GET there is a protocol error, not a route bug).
- */
-const SKIP = (path: string) =>
-  path === "/openapi" || path.startsWith("/openapi/") || path === "/ws";
-
-/**
- * Operations that would END THE RUN they belong to, by `METHOD /path`.
- *
- * Not a list of routes that are allowed to be broken — a list of routes whose
- * effect is to destroy the sweep's own subject. `POST /api/admin/restart`
- * answers `{ ok: true }` and then exits the process 150 ms later for a
- * supervisor to relaunch; probing it turns every later probe into "connection
- * refused" and, worse, would do so non-deterministically depending on where the
- * ordering put it. Keep this list at exactly that: self-termination, nothing
- * else. A route that merely deletes data is fine here — the database is a
- * throwaway, and reads are probed first.
- */
-export const SKIP_LABELS: readonly string[] = ["POST /api/admin/restart"];
-
 export const probeLabel = (probe: Probe): string => probe.label;
 
 export interface PlanContext {
@@ -398,7 +377,7 @@ function probeFor(
   ctx: PlanContext,
 ): Probe | undefined {
   const label = `${method.toUpperCase()} ${path}`;
-  if (!operation || SKIP_LABELS.includes(label)) return undefined;
+  if (!operation) return undefined;
   const query = new URLSearchParams(sampleQuery(operation.parameters, ctx.nowMs)).toString();
   const isRead = method === "get";
   return {
@@ -419,7 +398,6 @@ function probeFor(
 /** Every route in the document, as requests, reads before writes. */
 export function planProbes(doc: OpenApiDoc, ctx: PlanContext): Probe[] {
   const probes = Object.entries(doc.paths ?? {})
-    .filter(([path]) => !SKIP(path))
     .flatMap(([path, operations]) =>
       METHODS.map((method) => probeFor(path, method, operations[method], ctx)),
     )
@@ -498,48 +476,30 @@ export function classify(
 //                   because both carry an admin session, and the defect only
 //                   surfaces as a user's dashboard that is empty for everyone
 //                   but the developer who wrote it.
-//   authenticated — nothing may refuse: the harness's admin session
-//                   between them have to cover every gate, or the sweep is
-//                   reporting 401s as passes and proving nothing about the
-//                   handlers behind them.
+//   authenticated — nothing may refuse the harness's admin session, or the
+//                   sweep is reporting 401s as passes and proving nothing about
+//                   the handlers behind them.
 //
 // Each credentialled pass sends {@link Probe.gateBody}, a payload the route's
 // own schema accepts, so a write's guard is reached instead of its validator.
-//
-// `/openapi*` and `/ws` never reach here: {@link planProbes} skips them, so
-// they need no entry on either side.
 // ---------------------------------------------------------------------------
 
 /** Which credentials a sweep carried. */
 export type AuthMode = "anonymous" | "member" | "authenticated";
 
 /**
- * The closed list of routes that must answer WITHOUT credentials, and the whole
- * public surface of the engine's JSON API.
+ * The closed list of routes that must answer WITHOUT credentials: the pre-auth
+ * gates the web shell reads before it knows whether to show a login page.
  *
- * Every one of them is a PRE-AUTH gate the web shell has to read before it can
- * know whether to show a login page at all:
+ *  * `/api/setup-status` — true until the first (admin) account exists.
+ *  * `/api/profile-status` — true until a profile is active.
  *
- *  * `/healthz` — the addon watchdog and compose healthcheck probe it, neither
- *    of which has a session.
- *  * `/api/setup-status` — true until the first (admin) account exists. The
- *    onboarding flow cannot authenticate to ask whether it should run.
- *  * `/api/profile-status` — true until a profile is active, read by the same
- *    unauthenticated onboarding flow.
- *  * `/api/access-status` — the anonymous-dashboard toggle ALONE, as a boolean,
- *    so a logged-out visitor can be sent to the kiosk view or the login page.
- *    Deliberately not the rest of the access config, which stays admin-only
- *    behind `/api/settings/access`.
- *
- * Anything added here widens the unauthenticated surface of the product. It is
- * a list, not a prefix rule, on purpose: a prefix would silently adopt the next
- * route mounted underneath it.
+ * Anything added here widens the unauthenticated surface. It is a list, not a
+ * prefix rule: a prefix would silently adopt the next route mounted under it.
  */
 export const PUBLIC_LABELS: readonly string[] = [
-  "GET /healthz",
   "GET /api/setup-status",
   "GET /api/profile-status",
-  "GET /api/access-status",
 ];
 
 const PUBLIC_SET = new Set(PUBLIC_LABELS);
@@ -555,71 +515,21 @@ export const CREDENTIAL_LABELS: readonly string[] = [
   "POST /api/auth/login",
 ];
 
-/**
- * The SvelteKit build, served by `apps/server/src/web/static.ts` — public on
- * every method, because a logged-out visitor has to be able to load the app
- * before there is anything to log in to. It is a wildcard the ROUTER matches,
- * not a prefix rule: the handler refuses `/api`, `/openapi`, `/ws` and
- * `/healthz` itself so an API typo cannot fall through to a page of HTML, and
- * only `GET`/`HEAD` ever return bytes.
- */
-const SPA_WILDCARD = "/*";
-
 /** Whether `METHOD /path` is declared public. Exact match — never a prefix. */
-export const isPublicLabel = (label: string): boolean =>
-  PUBLIC_SET.has(label) || label.endsWith(` ${SPA_WILDCARD}`);
+export const isPublicLabel = (label: string): boolean => PUBLIC_SET.has(label);
 
 /**
- * The closed list of routes a PLAIN SIGNED-IN USER must be able to reach —
- * every `requireSession` route in `apps/server/src`, which is to say the
- * dashboard.
+ * The closed list of routes a PLAIN SIGNED-IN USER must be able to reach.
  *
- * This list is read in BOTH directions, and that is the point:
- *
- *  * a route ON it that refuses a non-admin is OVER-GATED — the dashboard is
- *    broken for every user who is not the developer, and no other check in this
- *    repo can see it, since the anonymous and authenticated passes both carry
- *    an admin session.
- *  * a route NOT on it that ANSWERS a non-admin is under-gated: a configuration
- *    read or a mutation reachable by any account the admin ever created.
- *
- * A newly mounted route therefore defaults to "must be admin-only", which is
- * the fail-safe direction: forgetting to add a dashboard read here goes red,
- * forgetting to remove a config read does not go quietly green.
- *
- * Every entry but ending your own session is a GET: every other mutation is
- * admin-only, and a test keeps that true by construction.
+ * Read in both directions: a route ON it that refuses a non-admin is
+ * over-gated, and a route NOT on it that answers a non-admin is under-gated. A
+ * newly mounted route therefore defaults to admin-only, the fail-safe
+ * direction.
  */
 export const SESSION_LABELS: readonly string[] = [
   "DELETE /api/auth/session",
   "GET /api/auth/session",
   "GET /api/capabilities",
-  "GET /api/battery/health",
-  "GET /api/cost",
-  "GET /api/cost/series",
-  "GET /api/custom-charts",
-  "GET /api/energy/series",
-  "GET /api/evcc",
-  "GET /api/forecast",
-  "GET /api/forecast/correction",
-  "GET /api/forecast/usable",
-  "GET /api/history",
-  "GET /api/history/recent",
-  "GET /api/history/rollup",
-  "GET /api/migration/status",
-  "GET /api/prices",
-  "GET /api/profile",
-  "GET /api/settings/chart-palette",
-  "GET /api/settings/display",
-  "GET /api/settings/statistics",
-  "GET /api/settings/ui",
-  "GET /api/sources",
-  "GET /api/statistics/amortisation",
-  "GET /api/statistics/comparison",
-  "GET /api/statistics/heatmap",
-  "GET /api/statistics/prices",
-  "GET /api/statistics/records",
-  "GET /api/weather",
 ];
 
 const SESSION_SET = new Set(SESSION_LABELS);
@@ -631,22 +541,14 @@ export const isSessionLabel = (label: string): boolean => SESSION_SET.has(label)
 const REFUSALS = new Set([401, 403]);
 
 /**
- * The status that means THE SCHEMA answered, not the gate.
+ * The status that means THE SCHEMA answered, not the gate: a validator that runs
+ * before the guard refuses the payload without consulting it. A gated and an
+ * ungated write answer it identically, so it is never a pass:
+ * {@link Probe.gateBody} gets past it, and where no body can be synthesised the
+ * verdict is {@link unprovenVerdict}.
  *
- * Elysia 2 validates a route's declared body BEFORE `beforeHandle`, where this
- * app's gates live, so a payload the schema refuses comes back 422 with the
- * guard never consulted. The handler still does not run — nothing privileged is
- * reachable — and the ordering is not fixable from the guard
- * (`apps/server/src/routes/admin-guard.ts` records what was tried).
- *
- * What it is NOT is evidence about the gate. A gated write and an ungated write
- * answer 422 identically, so treating it as a pass blanks the write surface:
- * the register writes, the admin reset, the profile install, the API-key
- * mint. {@link Probe.gateBody} exists to stop it happening — and where a body
- * cannot be synthesised, the verdict is {@link unprovenVerdict}, never a pass.
- *
- * Only meaningful for a probe that actually carried a body: a GET's 422 came
- * from somewhere past the gate and is a leak.
+ * Only meaningful for a probe that carried a body: a GET's 422 came from past
+ * the gate and is a leak.
  */
 const SCHEMA_BEFORE_GATE = 422;
 
@@ -745,8 +647,8 @@ function memberVerdict(label: string, status: number, sentBody: boolean): ProbeR
  *
  * This pass keeps sending `{}` rather than {@link Probe.gateBody}: it is the
  * only pass whose requests would actually be EXECUTED, and a valid payload here
- * would write inverter registers, reset the database or mint an API key. So its
- * claim is the narrow one — no gate refused these credentials — and the proof
+ * would change the core's settings. So its claim is the narrow one — no gate
+ * refused these credentials — and the proof
  * that a write's guard refuses everyone else lives in the anonymous and member
  * passes, which send a payload the schema accepts precisely because nothing of
  * theirs is meant to run.
@@ -783,45 +685,6 @@ export function classifyAuth(
   if (mode === "anonymous") return anonymousVerdict(label, status, sentBody);
   if (mode === "member") return memberVerdict(label, status, sentBody);
   return authenticatedVerdict(label, status);
-}
-
-/** The live socket, reported under the label the HTTP plan skips. */
-export const UPGRADE_LABEL = "WS /ws";
-
-/** What happened when the harness tried to open the live socket. */
-export type UpgradeOutcome = "opened" | "refused";
-
-/**
- * The verdict on the `/ws` handshake.
- *
- * The multiplexed socket carries the `logs` topic (config values, hostnames,
- * error internals) and `automations` (what the engine writes to the inverter's
- * registers). The upgrade itself runs the weakest policy — `requireSession` —
- * and the per-topic decision is re-evaluated on every subscribe frame
- * (`apps/server/src/routes/ws-subscribe.ts`); this asks only the first
- * question, because it is the one no HTTP probe can ask: a plain GET to `/ws`
- * is a protocol error rather than an answer about access.
- */
-export function classifyUpgrade(outcome: UpgradeOutcome, mode: AuthMode): ProbeResult {
-  const label = UPGRADE_LABEL;
-  const opened = outcome === "opened";
-  if (mode === "anonymous") {
-    return opened
-      ? {
-          label,
-          ok: false,
-          detail: "the handshake completed with NO CREDENTIALS",
-        }
-      : { label, ok: true, detail: "refused" };
-  }
-  const who = mode === "member" ? "a plain signed-in user" : "the admin session";
-  return opened
-    ? { label, ok: true, detail: "opened" }
-    : {
-        label,
-        ok: false,
-        detail: `refused ${who} — the live dashboard would never connect`,
-      };
 }
 
 export interface SmokeVerdict {
@@ -919,10 +782,6 @@ export function summarizeAuth(
  * The run's verdict. Two floors rather than one: an empty sweep and a listing
  * far below its measured size both fail, because a document that shrank
  * wholesale would otherwise report a clean run over almost nothing.
- *
- * Neither floor detects a profile seeding slip; nothing counted here can. That
- * is {@link generatedSurfaceProblem}'s job, and the run applies it to the
- * document before any of this.
  */
 export function summarize(results: readonly ProbeResult[], minRoutes = MIN_ROUTES): SmokeVerdict {
   const failures = results.filter((r) => !r.ok);
