@@ -2,10 +2,12 @@
 //! stores.
 
 pub mod decode;
+pub mod manifest;
 pub mod modbus;
 pub mod poll;
 pub mod probe;
 pub mod profile;
+pub mod recent;
 pub mod rollup;
 pub mod run;
 pub mod samples;
