@@ -97,4 +97,4 @@ jobs:
           docker exec dbimage psql -U postgres -tAc \
             "SELECT extversion FROM pg_extension WHERE extname = 'timescaledb';" \
             | grep -qx "${{ steps.pin.outputs.version }}"
-          docker rm -f dbimage
+          docker rm -fv dbimage
