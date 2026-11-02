@@ -65,13 +65,29 @@ impl Core {
 /// `shutdown` resolves, in-flight requests are answered and each device's open minute is stored.
 pub async fn run(
     data_dir: &Path,
+    web: &crate::web::Config,
     listener: TcpListener,
     shutdown: impl Future<Output = ()>,
 ) -> Result<(), RunError> {
     let core = Core::open(data_dir).await?;
-    let served = serve(listener, crate::web::router(Arc::clone(&core)), shutdown).await;
+    warn_if_sign_up_is_exposed(&core, &listener).await;
+    let served = serve(listener, crate::web::router(Arc::clone(&core), web), shutdown).await;
     core.stop().await;
     Ok(served?)
+}
+
+/// Until the admin exists, whoever reaches sign-up first becomes it.
+async fn warn_if_sign_up_is_exposed(core: &Core, listener: &TcpListener) {
+    let Ok(listen) = listener.local_addr() else { return };
+    let admin_exists = matches!(core.store.has_accounts().await, Ok(true));
+    if listen.ip().is_loopback() || admin_exists {
+        return;
+    }
+    tracing::warn!(
+        %listen,
+        "listen address is not loopback and sign-up is open: anyone who reaches it first becomes the admin; \
+         sign up the admin now, or restart with --listen 127.0.0.1:<port>"
+    );
 }
 
 async fn serve(
@@ -80,6 +96,7 @@ async fn serve(
     shutdown: impl Future<Output = ()>,
 ) -> std::io::Result<()> {
     let (signal, signalled) = oneshot::channel::<()>();
+    let app = app.into_make_service_with_connect_info::<std::net::SocketAddr>();
     let server = axum::serve(listener, app).with_graceful_shutdown(async { drop(signalled.await) });
     let mut server = std::pin::pin!(server.into_future());
     tokio::select! {
@@ -239,6 +256,7 @@ mod tests {
     use crate::samples::Sample;
     use crate::settings::INTERVAL_KEY;
     use crate::store::{NewConnection, NewDevice};
+    use crate::web::Config;
 
     fn dir(name: &str) -> PathBuf {
         let dir = std::env::temp_dir().join(format!("sunreye-run-{name}-{}", std::process::id()));
@@ -294,7 +312,7 @@ mod tests {
         let dir = dir("stop");
         let device = seed(&dir, sim.addr.port(), "deye-sg05lp3", "50").await;
 
-        run(&dir, listener().await, wait_for_requests(&sim, 40)).await.expect("run");
+        run(&dir, &Config::default(), listener().await, wait_for_requests(&sim, 40)).await.expect("run");
 
         assert!(sim.requests().iter().all(|r| r.function == FC_READ_HOLDING), "the core only reads");
         let samples = stored(&dir, device).await;
@@ -316,7 +334,9 @@ mod tests {
         drop(free);
         let dir = dir("unreachable");
         let device = seed(&dir, port, "deye-sg05lp3", "20").await;
-        run(&dir, listener().await, tokio::time::sleep(Duration::from_millis(200))).await.expect("run");
+        run(&dir, &Config::default(), listener().await, tokio::time::sleep(Duration::from_millis(200)))
+            .await
+            .expect("run");
         assert_eq!(stored(&dir, device).await, []);
         drop(std::fs::remove_dir_all(&dir));
     }
@@ -325,7 +345,9 @@ mod tests {
     async fn a_device_with_an_unknown_profile_is_skipped() {
         let dir = dir("unknown");
         let device = seed(&dir, 1, "no-such-profile", "20").await;
-        run(&dir, listener().await, tokio::time::sleep(Duration::from_millis(100))).await.expect("run");
+        run(&dir, &Config::default(), listener().await, tokio::time::sleep(Duration::from_millis(100)))
+            .await
+            .expect("run");
         assert_eq!(stored(&dir, device).await, []);
         drop(std::fs::remove_dir_all(&dir));
     }
@@ -336,7 +358,7 @@ mod tests {
         let listener = listener().await;
         let addr = listener.local_addr().expect("addr");
         let (stop, stopped) = oneshot::channel::<()>();
-        let core = tokio::spawn(async move { run(&dir, listener, wait(stopped)).await });
+        let core = tokio::spawn(async move { run(&dir, &Config::default(), listener, wait(stopped)).await });
         let mut stream = tokio::net::TcpStream::connect(addr).await.expect("connect");
         let request = "GET /api/profile-status HTTP/1.1\r\nhost: sunreye\r\nconnection: close\r\n\r\n";
         stream.write_all(request.as_bytes()).await.expect("send");

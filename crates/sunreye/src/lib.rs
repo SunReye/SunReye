@@ -34,6 +34,25 @@ pub struct Cli {
     /// Most verbose level that is logged.
     #[arg(long, value_enum, default_value_t = LogLevel::Info)]
     pub log_level: LogLevel,
+    /// Origin besides the core's own host allowed to change state, e.g. `https://ha.example`. Repeatable.
+    #[arg(long = "trusted-origin", value_parser = trusted_origin)]
+    pub trusted_origins: Vec<String>,
+    /// Send the session cookie only over HTTPS.
+    #[arg(long)]
+    pub secure_cookies: bool,
+}
+
+impl Cli {
+    pub fn web(&self) -> web::Config {
+        web::Config { trusted_origins: self.trusted_origins.clone(), secure_cookies: self.secure_cookies }
+    }
+}
+
+fn trusted_origin(origin: &str) -> Result<String, String> {
+    match web::origin_authority(origin) {
+        Some(_) => Ok(origin.to_owned()),
+        None => Err("an origin is http(s)://host[:port], with no path".into()),
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
@@ -71,6 +90,31 @@ mod tests {
         assert_eq!(cli.listen, "127.0.0.1:8099".parse().unwrap());
         assert_eq!(cli.data_dir, PathBuf::from("data"));
         assert_eq!(cli.log_level, LogLevel::Info);
+        assert_eq!(cli.web(), web::Config::default());
+    }
+
+    #[test]
+    fn trusted_origins_repeat_and_secure_cookies_is_a_switch() {
+        let cli = parse(&[
+            "--trusted-origin",
+            "https://ha.example",
+            "--trusted-origin",
+            "http://10.0.0.2:8123",
+            "--secure-cookies",
+        ])
+        .unwrap();
+        let want = web::Config {
+            trusted_origins: vec!["https://ha.example".into(), "http://10.0.0.2:8123".into()],
+            secure_cookies: true,
+        };
+        assert_eq!(cli.web(), want);
+    }
+
+    #[test]
+    fn a_trusted_origin_with_a_path_or_without_a_scheme_is_refused() {
+        for origin in ["https://ha.example/", "ha.example", "null"] {
+            assert!(parse(&["--trusted-origin", origin]).is_err(), "{origin}");
+        }
     }
 
     #[test]

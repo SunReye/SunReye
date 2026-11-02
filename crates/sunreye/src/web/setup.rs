@@ -15,7 +15,7 @@ use crate::settings::{active_profile, set_active_profile};
 #[derive(Debug, Serialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct SetupStatus {
-    /// Always false: the core has no accounts yet, so there is no first account to create.
+    /// No account exists yet: the first sign-up creates the admin.
     pub needs_setup: bool,
 }
 
@@ -52,10 +52,14 @@ impl Capabilities {
     };
 }
 
-#[utoipa::path(get, path = "/api/setup-status",
-    operation_id = "setupStatus", responses((status = 200, body = SetupStatus)))]
-pub async fn setup_status() -> Json<SetupStatus> {
-    Json(SetupStatus { needs_setup: false })
+#[utoipa::path(
+    get,
+    path = "/api/setup-status",
+    operation_id = "setupStatus",
+    responses((status = 200, body = SetupStatus), (status = 500, body = ErrorBody))
+)]
+pub async fn setup_status(State(core): State<Arc<Core>>) -> Result<Json<SetupStatus>, ApiError> {
+    Ok(Json(SetupStatus { needs_setup: !core.store.has_accounts().await? }))
 }
 
 #[utoipa::path(
@@ -70,7 +74,7 @@ pub async fn profile_status(State(core): State<Arc<Core>>) -> Result<Json<Profil
 }
 
 #[utoipa::path(get, path = "/api/capabilities",
-    operation_id = "capabilities", responses((status = 200, body = Capabilities)))]
+    operation_id = "capabilities", responses((status = 200, body = Capabilities), (status = 401, body = ErrorBody)))]
 pub async fn capabilities() -> Json<Capabilities> {
     Json(Capabilities::SERVED)
 }
@@ -104,7 +108,12 @@ pub struct ActiveProfile {
     get,
     path = "/api/profiles",
     operation_id = "listProfiles",
-    responses((status = 200, body = Vec<ProfileEntry>), (status = 500, body = ErrorBody))
+    responses(
+        (status = 200, body = Vec<ProfileEntry>),
+        (status = 401, body = ErrorBody),
+        (status = 403, body = ErrorBody),
+        (status = 500, body = ErrorBody)
+    )
 )]
 pub async fn list_profiles(State(core): State<Arc<Core>>) -> Result<Json<Vec<ProfileEntry>>, ApiError> {
     let active = active_profile(&core.store).await?;
@@ -132,7 +141,13 @@ pub async fn list_profiles(State(core): State<Arc<Core>>) -> Result<Json<Vec<Pro
     path = "/api/settings/active-profile",
     operation_id = "chooseProfile",
     request_body = ActiveProfileRequest,
-    responses((status = 200, body = ActiveProfile), (status = 400, body = ErrorBody), (status = 500, body = ErrorBody))
+    responses(
+        (status = 200, body = ActiveProfile),
+        (status = 400, body = ErrorBody),
+        (status = 401, body = ErrorBody),
+        (status = 403, body = ErrorBody),
+        (status = 500, body = ErrorBody)
+    )
 )]
 pub async fn choose_profile(
     State(core): State<Arc<Core>>,
