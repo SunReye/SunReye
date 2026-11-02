@@ -9,10 +9,11 @@ use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
 use super::{ApiError, ApiJson, ErrorBody};
+use crate::manifest::{InverterManifest, manifest as manifest_of};
 use crate::profile::Profile;
 use crate::run::Core;
 use crate::settings::{active_profile, set_active_profile};
-use crate::sources::installed;
+use crate::sources::{Installed, installed};
 
 #[derive(Debug, Serialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
@@ -81,6 +82,27 @@ pub async fn capabilities() -> Json<Capabilities> {
     Json(Capabilities::SERVED)
 }
 
+/// The active profile as the dashboard builds itself from it.
+#[utoipa::path(
+    get,
+    path = "/api/profile",
+    operation_id = "profileManifest",
+    responses(
+        (status = 200, body = InverterManifest),
+        (status = 401, body = ErrorBody),
+        (status = 404, body = ErrorBody),
+        (status = 500, body = ErrorBody)
+    )
+)]
+pub async fn manifest(State(core): State<Arc<Core>>) -> Result<Json<InverterManifest>, ApiError> {
+    let profile = match active_profile(&core.store).await? {
+        Some(id) => core.profile(&id).await?,
+        None => None,
+    };
+    let Some(profile) = profile else { return Err(ApiError::not_found("No active profile")) };
+    Ok(Json(manifest_of(&profile)))
+}
+
 #[derive(Debug, Serialize, ToSchema)]
 pub struct ProfileEntry {
     pub id: String,
@@ -129,8 +151,9 @@ pub async fn list_profiles(State(core): State<Arc<Core>>) -> Result<Json<Vec<Pro
     };
     let compiled_in = core.bundle.profiles.iter().map(|pinned| entry(&pinned.profile, true));
     let sourced = installed(&core.store).await?;
-    let sourced = sourced.iter().filter(|p| core.bundle.profile(&p.profile.id).is_none());
-    Ok(Json(compiled_in.chain(sourced.map(|p| entry(&p.profile, false))).collect()))
+    let sourced = sourced.iter().filter(|p| core.bundle.profile(&p.id).is_none());
+    let sourced = sourced.filter_map(Installed::profile).map(|profile| entry(&profile, false));
+    Ok(Json(compiled_in.chain(sourced).collect()))
 }
 
 #[utoipa::path(

@@ -428,6 +428,8 @@ export const SESSION_LABELS: readonly string[] = [
   "DELETE /api/auth/session",
   "GET /api/auth/session",
   "GET /api/capabilities",
+  "GET /api/history/recent",
+  "GET /api/profile",
 ];
 
 const SESSION_SET = new Set(SESSION_LABELS);
@@ -583,6 +585,38 @@ export function classifyAuth(
   if (mode === "anonymous") return anonymousVerdict(label, status, sentBody);
   if (mode === "member") return memberVerdict(label, status, sentBody);
   return authenticatedVerdict(label, status);
+}
+
+/**
+ * `/ws` is not in the OpenAPI listing, so the sweep asks for it by name: a real
+ * upgrade request, once per credential set. A stranger must be refused; any
+ * session, plain or admin, must get `101 Switching Protocols`.
+ */
+export const UPGRADE_LABEL = "GET /ws";
+
+const SWITCHING_PROTOCOLS = 101;
+
+const MODE_TEXT_SHORT: Record<Exclude<AuthMode, "anonymous">, string> = {
+  member: "a plain signed-in session",
+  authenticated: "the admin session",
+};
+
+export function classifyUpgrade(response: ProbeResponse, mode: AuthMode): ProbeResult {
+  const status = response.status;
+  if (status === undefined) {
+    return fail(UPGRADE_LABEL, `no response: ${response.error ?? "unknown error"}`);
+  }
+  if (mode === "anonymous") {
+    return REFUSALS.has(status)
+      ? pass(UPGRADE_LABEL, `${status}`)
+      : fail(UPGRADE_LABEL, `${status} — upgraded a request with NO CREDENTIALS`);
+  }
+  return status === SWITCHING_PROTOCOLS
+    ? pass(UPGRADE_LABEL, `${status}`)
+    : fail(
+        UPGRADE_LABEL,
+        `${status} — refused ${MODE_TEXT_SHORT[mode]}; any session must be upgraded`,
+      );
 }
 
 export interface SmokeVerdict {

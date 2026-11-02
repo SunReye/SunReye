@@ -101,6 +101,8 @@
   "auth_name_min": "El nombre debe tener al menos 2 caracteres",
   "auth_email_invalid": "Dirección de correo no válida",
   "auth_password_min": "La contraseña debe tener al menos 8 caracteres",
+  "auth_password_max": "La contraseña debe tener como máximo 72 bytes (las letras acentuadas y los emoji ocupan más de uno)",
+  "auth_password_nul": "La contraseña no debe contener un carácter NUL",
   "auth_password_required": "La contraseña es obligatoria",
   "auth_error_generic": "Algo salió mal. Inténtelo de nuevo.",
   "auth_create_account": "Crear cuenta",
@@ -1149,5 +1151,9 @@
   "setup_step_account": "Cuenta",
   "action_close": "Cerrar",
   "profiles_uninstall_title": "¿Quitar {name}?",
-  "profiles_uninstall_body": "El perfil descargado se elimina de este servidor. Puedes volver a descargarlo de su repositorio cuando quieras."
+  "profiles_uninstall_body": "El perfil descargado se elimina de este servidor. Puedes volver a descargarlo de su repositorio cuando quieras.",
+  "profile_import_title": "Importar un archivo de perfil",
+  "profile_import_label": "Archivo de perfil (.json)",
+  "profile_import_success": "{id} importado",
+  "profile_import_failed": "Error al importar: {error}"
 }

@@ -11,6 +11,7 @@ use tokio::sync::{Mutex, oneshot, watch};
 use tokio::task::JoinSet;
 use tokio::time::MissedTickBehavior;
 
+use crate::live::Live;
 use crate::modbus::Client;
 use crate::poll::DevicePoller;
 use crate::profile::{Bundle, Profile};
@@ -36,6 +37,10 @@ pub struct Core {
     pub bundle: Bundle,
     /// Certificate authorities trusted besides the built-in store when a profile source is fetched.
     pub roots: Vec<CertificateDer<'static>>,
+    /// Every decoded reading, as the `/ws` frames.
+    pub live: Arc<Live>,
+    /// Unix milliseconds now; a field so a test can stand the clock where its readings are.
+    now: fn() -> i64,
     polling: Polling,
 }
 
@@ -50,11 +55,30 @@ impl Core {
         data_dir: &Path,
         roots: Vec<CertificateDer<'static>>,
     ) -> Result<Arc<Self>, RunError> {
+        Self::open_clocked(data_dir, roots, now_ms).await
+    }
+
+    /// [`Core::open`] with the clock standing where `now` says.
+    #[cfg(test)]
+    pub(crate) async fn open_at(data_dir: &Path, now: fn() -> i64) -> Result<Arc<Self>, RunError> {
+        Self::open_clocked(data_dir, Vec::new(), now).await
+    }
+
+    async fn open_clocked(
+        data_dir: &Path,
+        roots: Vec<CertificateDer<'static>>,
+        now: fn() -> i64,
+    ) -> Result<Arc<Self>, RunError> {
         let store = Arc::new(Store::open(data_dir).await?);
         let bundle = Bundle::official().map_err(RunError::Profiles)?;
-        let core = Arc::new(Self { store, bundle, roots, polling: Polling::default() });
+        let live = Arc::default();
+        let core = Arc::new(Self { store, bundle, roots, live, now, polling: Polling::default() });
         core.apply().await?;
         Ok(core)
+    }
+
+    pub fn now_ms(&self) -> i64 {
+        (self.now)()
     }
 
     /// The compiled-in profile `id`, else the one a profile source supplied.
@@ -65,7 +89,7 @@ impl Core {
 
     /// Polls the devices the store describes now; called after every settings change.
     pub async fn apply(&self) -> Result<(), StoreError> {
-        self.polling.restart(&self.store, &self.bundle).await
+        self.polling.restart(&self.store, &self.bundle, &self.live).await
     }
 
     /// Stops the device tasks, each storing its open minute, and closes the store.
@@ -140,10 +164,15 @@ struct Running {
 
 impl Polling {
     /// Stops the running tasks, each storing its open minute, then polls every device in the store.
-    pub async fn restart(&self, store: &Arc<Store>, bundle: &Bundle) -> Result<(), StoreError> {
+    pub async fn restart(
+        &self,
+        store: &Arc<Store>,
+        bundle: &Bundle,
+        live: &Arc<Live>,
+    ) -> Result<(), StoreError> {
         let mut running = self.running.lock().await;
         stop(running.take()).await;
-        *running = Some(spawn_devices(store, bundle).await?);
+        *running = Some(spawn_devices(store, bundle, live).await?);
         Ok(())
     }
 
@@ -159,21 +188,24 @@ async fn stop(running: Option<Running>) {
     while tasks.join_next().await.is_some() {}
 }
 
-async fn spawn_devices(store: &Arc<Store>, bundle: &Bundle) -> Result<Running, StoreError> {
+async fn spawn_devices(store: &Arc<Store>, bundle: &Bundle, live: &Arc<Live>) -> Result<Running, StoreError> {
     let interval = poll_interval(store.setting(INTERVAL_KEY).await?.as_deref());
     let timeout = poll_timeout(store.setting(TIMEOUT_KEY).await?.as_deref());
     let (stop, stopped) = watch::channel(false);
     let mut tasks = JoinSet::new();
     let installed = installed(store).await?;
+    let mut polled = Vec::new();
     for device in store.devices().await? {
         match find_profile(bundle, &installed, &device.profile_id) {
             Some(profile) => {
-                let task = DeviceTask::new(Arc::clone(store), device, profile, timeout);
+                polled.push(device.id);
+                let task = DeviceTask::new(Arc::clone(store), Arc::clone(live), device, profile, timeout);
                 tasks.spawn(task.run(interval, stopped.clone()));
             }
             None => log_unknown_profile(&device),
         }
     }
+    live.roster(&polled);
     Ok(Running { stop, tasks })
 }
 
@@ -184,6 +216,7 @@ fn log_unknown_profile(device: &DeviceRow) {
 /// One device's polling state: its connection, its plan and the minute in progress.
 struct DeviceTask {
     store: Arc<Store>,
+    live: Arc<Live>,
     device: DeviceRow,
     poller: DevicePoller,
     buffer: MinuteBuffer,
@@ -192,9 +225,15 @@ struct DeviceTask {
 }
 
 impl DeviceTask {
-    fn new(store: Arc<Store>, device: DeviceRow, profile: Arc<Profile>, timeout: Duration) -> Self {
+    fn new(
+        store: Arc<Store>,
+        live: Arc<Live>,
+        device: DeviceRow,
+        profile: Arc<Profile>,
+        timeout: Duration,
+    ) -> Self {
         let poller = DevicePoller::new(profile, device.unit_id);
-        Self { store, device, poller, buffer: MinuteBuffer::default(), client: None, timeout }
+        Self { store, live, device, poller, buffer: MinuteBuffer::default(), client: None, timeout }
     }
 
     /// Polls every `interval` until `stopped` changes, then stores the minute in progress.
@@ -222,6 +261,7 @@ impl DeviceTask {
     }
 
     async fn record(&mut self, sample: Sample) {
+        self.live.publish(self.device.id, &sample);
         if let Some(closed) = self.buffer.push(sample) {
             save(&self.store, self.device.id, &closed).await;
         }

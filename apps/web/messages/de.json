@@ -101,6 +101,8 @@
   "auth_name_min": "Der Name muss mindestens 2 Zeichen lang sein",
   "auth_email_invalid": "Ungültige E-Mail-Adresse",
   "auth_password_min": "Das Passwort muss mindestens 8 Zeichen lang sein",
+  "auth_password_max": "Das Passwort darf höchstens 72 Byte lang sein (Umlaute und Emoji belegen mehr als eines)",
+  "auth_password_nul": "Das Passwort darf kein NUL-Zeichen enthalten",
   "auth_password_required": "Passwort erforderlich",
   "auth_error_generic": "Etwas ist schiefgelaufen. Bitte versuchen Sie es erneut.",
   "auth_create_account": "Konto erstellen",
@@ -1149,5 +1151,9 @@
   "setup_step_account": "Konto",
   "action_close": "Schließen",
   "profiles_uninstall_title": "{name} entfernen?",
-  "profiles_uninstall_body": "Das heruntergeladene Profil wird von diesem Server gelöscht. Du kannst es jederzeit erneut aus seinem Repository herunterladen."
+  "profiles_uninstall_body": "Das heruntergeladene Profil wird von diesem Server gelöscht. Du kannst es jederzeit erneut aus seinem Repository herunterladen.",
+  "profile_import_title": "Profildatei importieren",
+  "profile_import_label": "Profildatei (.json)",
+  "profile_import_success": "{id} importiert",
+  "profile_import_failed": "Import fehlgeschlagen: {error}"
 }

@@ -2,10 +2,12 @@
 //! stores.
 
 pub mod decode;
+pub mod manifest;
 pub mod modbus;
 pub mod poll;
 pub mod probe;
 pub mod profile;
+pub mod recent;
 pub mod rollup;
 pub mod run;
 pub mod samples;
@@ -15,6 +17,7 @@ pub mod store;
 pub mod web;
 
 pub mod https;
+pub mod live;
 
 use std::net::SocketAddr;
 use std::path::PathBuf;

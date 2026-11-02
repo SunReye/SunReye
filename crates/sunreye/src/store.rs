@@ -374,15 +374,10 @@ impl Store {
         Ok(())
     }
 
-    /// The device's samples with `from_ms <= at_ms < to_ms`, oldest first.
-    pub async fn readings(
-        &self,
-        device_id: i64,
-        from_ms: i64,
-        to_ms: i64,
-    ) -> Result<Vec<Sample>, StoreError> {
+    /// The device's stored minutes that can hold a sample with `from_ms <= at_ms < to_ms`, undecoded.
+    pub async fn minutes(&self, device_id: i64, from_ms: i64, to_ms: i64) -> Result<Minutes, StoreError> {
         if to_ms <= from_ms {
-            return Ok(Vec::new());
+            return Ok(Minutes::default());
         }
         let (first, last) = (minute_of(from_ms), minute_of(to_ms - 1));
         let rows = sqlx::query!(
@@ -393,14 +388,42 @@ impl Store {
         )
         .fetch_all(&self.pool)
         .await?;
-        let keys: BTreeMap<u32, String> =
-            metric_ids(&self.pool).await?.into_iter().map(|(key, id)| (id, key)).collect();
-        let mut out = Vec::new();
-        for row in rows {
-            let samples = decode(row.minute, &row.samples, &keys)?;
-            out.extend(samples.into_iter().filter(|s| (from_ms..to_ms).contains(&s.at_ms)));
-        }
-        Ok(out)
+        let keys = metric_ids(&self.pool).await?.into_iter().map(|(key, id)| (id, key)).collect();
+        Ok(Minutes { keys, rows: rows.into_iter().map(|row| (row.minute, row.samples)).collect() })
+    }
+
+    /// The device's samples with `from_ms <= at_ms < to_ms`, oldest first.
+    pub async fn readings(
+        &self,
+        device_id: i64,
+        from_ms: i64,
+        to_ms: i64,
+    ) -> Result<Vec<Sample>, StoreError> {
+        let minutes = self.minutes(device_id, from_ms, to_ms).await?;
+        Ok(minutes.samples(from_ms, to_ms).collect::<Result<_, _>>()?)
+    }
+}
+
+/// Stored minute rows of one device, kept encoded: the blobs are small, the samples they hold are not.
+#[derive(Debug, Default)]
+pub struct Minutes {
+    keys: BTreeMap<u32, String>,
+    /// Minute and blob, oldest first.
+    rows: Vec<(i64, Vec<u8>)>,
+}
+
+impl Minutes {
+    /// Samples with `from_ms <= at_ms < to_ms`, oldest first, each minute decoded when reached. A
+    /// damaged minute is an `Err` item at its place.
+    pub fn samples(&self, from_ms: i64, to_ms: i64) -> impl Iterator<Item = Result<Sample, SampleError>> {
+        self.rows.iter().flat_map(move |(minute, blob)| match decode(*minute, blob, &self.keys) {
+            Ok(samples) => samples
+                .into_iter()
+                .filter(|sample| (from_ms..to_ms).contains(&sample.at_ms))
+                .map(Ok)
+                .collect(),
+            Err(error) => vec![Err(error)],
+        })
     }
 }
 
@@ -952,6 +975,35 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn minutes_hold_only_the_rows_of_the_span_and_decode_one_minute_at_a_time() {
+        let (store, device) = with_device().await;
+        let base = MINUTE * MINUTE_MS;
+        for (minute, value) in [(MINUTE - 1, 1.0), (MINUTE, 2.0), (MINUTE + 1, 3.0), (MINUTE + 2, 4.0)] {
+            let at = sample((minute - MINUTE) * MINUTE_MS + 5, &[("a", value)]);
+            store.append_minute(device, &closed(minute, vec![at])).await.expect("append");
+        }
+        sqlx::query("UPDATE reading_minute SET samples = x'09' WHERE minute = ?")
+            .bind(MINUTE + 2)
+            .execute(&store.pool)
+            .await
+            .expect("corrupt");
+
+        let minutes = store.minutes(device, base, base + MINUTE_MS + 6).await.expect("minutes");
+        let seen: Vec<f64> =
+            minutes.samples(base, base + MINUTE_MS + 6).map(|s| s.expect("sample").values[0].1).collect();
+        assert_eq!(seen, [2.0, 3.0], "the row before and the row after are not read");
+
+        let reaching = store.minutes(device, base, base + 3 * MINUTE_MS).await.expect("minutes");
+        let items: Vec<_> = reaching.samples(base, base + 3 * MINUTE_MS).collect();
+        assert!(items[..2].iter().all(Result::is_ok), "the undamaged minutes come first");
+        assert!(items[2].is_err(), "the damaged one is an item, not a failure of the read");
+        assert_eq!(items.len(), 3);
+
+        let none = store.minutes(device, base + 5, base).await.expect("minutes");
+        assert_eq!(none.samples(0, i64::MAX).count(), 0);
+    }
+
+    #[tokio::test]
     async fn a_sample_outside_its_minute_is_refused_and_nothing_is_stored() {
         let (store, device) = with_device().await;
         let stray = Sample { at_ms: (MINUTE + 5) * MINUTE_MS, values: vec![("a".into(), 1.0)] };
@@ -1040,7 +1092,7 @@ mod tests {
     }
 
     fn account(email: &str) -> NewAccount {
-        NewAccount { email: email.into(), name: "Ada".into(), password_hash: "$argon2id$hash".into() }
+        NewAccount { email: email.into(), name: "Ada".into(), password_hash: "$2b$12$hash".into() }
     }
 
     #[test]
@@ -1055,7 +1107,7 @@ mod tests {
         };
         for printed in [format!("{new:?}"), format!("{row:?}"), format!("{new:#?}")] {
             assert!(printed.contains("ada@example.org"), "{printed}");
-            assert!(!printed.contains("argon2"), "{printed}");
+            assert!(!printed.contains("$2b$"), "{printed}");
         }
     }
 
@@ -1070,7 +1122,7 @@ mod tests {
             id,
             email: "ada@example.org".into(),
             name: "Ada".into(),
-            password_hash: "$argon2id$hash".into(),
+            password_hash: "$2b$12$hash".into(),
             admin: true,
         };
         assert_eq!(store.account(id).await.expect("by id"), Some(want));

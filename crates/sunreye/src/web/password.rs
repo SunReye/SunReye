@@ -1,90 +1,49 @@
-//! Argon2id password hashing within the target's memory budget (ADR 0003, ADR 0006).
+//! bcrypt password hashing (ADR 0003): CPU-bound, so checks run capped on the blocking pool.
 
 use std::sync::{Arc, OnceLock};
 
-use argon2::{Algorithm, Argon2, Block, Params, Version};
-use password_hash::rand_core::OsRng;
-use password_hash::{Output, ParamsString, PasswordHash, SaltString};
-use tokio::sync::Mutex;
+use tokio::sync::Semaphore;
 
-/// OWASP's 19 MiB, t=2 profile.
-const LINUX_COST: (u32, u32) = (19 * 1024, 2);
-/// OWASP's equivalent 12 MiB, t=3 profile.
-const ANDROID_COST: (u32, u32) = (12 * 1024, 3);
+/// One cost on every target (ADR 0003).
+const COST: u32 = 12;
 
-const COST: (u32, u32) = if cfg!(target_os = "android") { ANDROID_COST } else { LINUX_COST };
+/// bcrypt reads no further; a longer password is refused, never truncated.
+const MAX_PASSWORD_BYTES: usize = 72;
 
-#[allow(clippy::panic, reason = "evaluated at compile time")]
-const fn params((m_cost, t_cost): (u32, u32)) -> Params {
-    match Params::new(m_cost, t_cost, 1, None) {
-        Ok(params) => params,
-        Err(_) => panic!("invalid Argon2 parameters"),
+/// Checks running at once; each holds a blocking thread for about 0.3 s.
+const CHECKS: usize = 1;
+
+/// Why bcrypt cannot take `password` whole: it reads 72 bytes and stops at a NUL, so either would
+/// let a shorter password match.
+pub fn unhashable(password: &str) -> Option<&'static str> {
+    if password.len() > MAX_PASSWORD_BYTES {
+        return Some("Password must be at most 72 bytes");
     }
+    password.contains('\0').then_some("Password must not contain a NUL character")
 }
 
-const PARAMS: Params = params(COST);
-
-/// Argon2's working memory, reused by every check so resident memory holds one check's blocks.
-type Blocks = Vec<Block>;
-
-/// Fills `out` with `argon2` of `password`, sizing `blocks` to its parameters.
-fn fill(
-    blocks: &mut Blocks,
-    argon2: &Argon2<'_>,
-    password: &str,
-    salt: &[u8],
-    out: &mut [u8],
-) -> password_hash::Result<()> {
-    blocks.resize(argon2.params().block_count(), Block::default());
-    Ok(argon2.hash_password_into_with_memory(password.as_bytes(), salt, out, blocks.as_mut_slice())?)
+fn hash_with(password: &str) -> Option<String> {
+    if unhashable(password).is_some() {
+        return None;
+    }
+    bcrypt::hash(password, COST).inspect_err(|error| tracing::error!(%error, "hashing failed")).ok()
 }
 
-fn hash_with(blocks: &mut Blocks, params: &Params, password: &str) -> Option<String> {
-    let salt = SaltString::generate(&mut OsRng);
-    let mut raw = [0; 64];
-    let salt_bytes = salt.decode_b64(&mut raw).ok()?;
-    let (algorithm, version) = (Algorithm::Argon2id, Version::V0x13);
-    let argon2 = Argon2::new(algorithm, version, params.clone());
-    let output =
-        Output::init_with(Params::DEFAULT_OUTPUT_LEN, |out| fill(blocks, &argon2, password, salt_bytes, out))
-            .ok()?;
-    let hash = PasswordHash {
-        algorithm: algorithm.ident(),
-        version: Some(version.into()),
-        params: ParamsString::try_from(params).ok()?,
-        salt: Some(salt.as_salt()),
-        hash: Some(output),
-    };
-    Some(hash.to_string())
-}
-
-/// Reads the parameters from `hash`, so a hash stored under other parameters still verifies.
-fn verify_with(blocks: &mut Blocks, password: &str, hash: &str) -> bool {
-    let Ok(hash) = PasswordHash::new(hash) else { return false };
-    let (Some(expected), Some(salt)) = (hash.hash, hash.salt) else { return false };
-    let (Ok(algorithm), Ok(params)) = (Algorithm::try_from(hash.algorithm), Params::try_from(&hash)) else {
-        return false;
-    };
-    let Ok(version) = hash.version.map_or(Ok(Version::default()), Version::try_from) else { return false };
-    let mut raw = [0; 64];
-    let Ok(salt) = salt.decode_b64(&mut raw) else { return false };
-    let argon2 = Argon2::new(algorithm, version, params);
-    let output = Output::init_with(expected.len(), |out| fill(blocks, &argon2, password, salt, out));
-    // `Output` compares in constant time.
-    output.is_ok_and(|output| output == expected)
+/// Reads the cost from `hash`, so a hash stored under another cost still verifies.
+fn verify_with(password: &str, hash: &str) -> bool {
+    unhashable(password).is_none() && bcrypt::verify(password, hash).unwrap_or(false)
 }
 
 /// Checked for an unknown account; built on first use, inside a check.
 static UNKNOWN_ACCOUNT: OnceLock<Option<String>> = OnceLock::new();
 
-/// Hashes and checks passwords; clones share one cap on concurrent checks and its memory.
+/// Hashes and checks passwords; clones share one cap on concurrent checks.
 #[derive(Clone)]
 pub struct Passwords {
-    /// One check at a time, so parallel logins stay inside the resident budget in `scripts/budgets.json`.
-    gate: Arc<Mutex<Blocks>>,
+    gate: Arc<Semaphore>,
 }
 
-/// Field-less: the blocks hold password-derived memory.
+/// Field-less, so no printed state ever carries password-derived data.
 impl std::fmt::Debug for Passwords {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Passwords").finish_non_exhaustive()
@@ -93,34 +52,35 @@ impl std::fmt::Debug for Passwords {
 
 impl Passwords {
     pub fn new() -> Self {
-        Self { gate: Arc::new(Mutex::new(Vec::new())) }
+        Self { gate: Arc::new(Semaphore::new(CHECKS)) }
     }
 
-    /// The cap stays taken until `work` returns, even when the caller is dropped first.
-    async fn capped<T: Send + 'static>(
-        &self,
-        work: impl FnOnce(&mut Blocks) -> T + Send + 'static,
-    ) -> Option<T> {
-        let mut blocks = Arc::clone(&self.gate).lock_owned().await;
-        let done = tokio::task::spawn_blocking(move || work(&mut blocks)).await;
-        done.inspect_err(|error| tracing::error!(%error, "password task failed")).ok()
+    /// The permit stays taken until `work` returns, even when the caller is dropped first.
+    async fn capped<T: Send + 'static>(&self, work: impl FnOnce() -> T + Send + 'static) -> Option<T> {
+        let permit = Arc::clone(&self.gate).acquire_owned().await.ok()?;
+        let done = tokio::task::spawn_blocking(move || {
+            let out = work();
+            drop(permit);
+            out
+        });
+        done.await.inspect_err(|error| tracing::error!(%error, "password task failed")).ok()
     }
 
-    /// `None` when hashing failed.
+    /// `None` when hashing failed or the password is `unhashable`.
     pub async fn hash(&self, password: String) -> Option<String> {
-        self.capped(move |blocks| hash_with(blocks, &PARAMS, &password)).await.flatten()
+        self.capped(move || hash_with(&password)).await.flatten()
     }
 
     /// Checks `password` against `hash`; without a hash, against a dummy of the same cost, so an unknown
     /// account takes as long as a wrong password.
     pub async fn verify(&self, password: String, hash: Option<String>) -> bool {
-        let checked = self.capped(move |blocks| {
+        let checked = self.capped(move || {
             if let Some(hash) = hash {
-                return verify_with(blocks, &password, &hash);
+                return verify_with(&password, &hash);
             }
-            let dummy = UNKNOWN_ACCOUNT.get_or_init(|| hash_with(blocks, &PARAMS, "no such account"));
+            let dummy = UNKNOWN_ACCOUNT.get_or_init(|| hash_with("no such account"));
             if let Some(dummy) = dummy.as_deref() {
-                std::hint::black_box(verify_with(blocks, &password, dummy));
+                std::hint::black_box(verify_with(&password, dummy));
             }
             false
         });
@@ -130,6 +90,7 @@ impl Passwords {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::atomic::{AtomicUsize, Ordering};
     use std::time::Duration;
 
     use tokio::task::JoinHandle;
@@ -150,43 +111,57 @@ mod tests {
     async fn a_hash_checks_only_its_password_and_the_dummy_matches_nothing() {
         let passwords = Passwords::new();
         let hash = passwords.hash("correct horse battery".into()).await.expect("hash");
-        assert!(hash.starts_with(&format!("$argon2id$v=19$m={},t={},p=1$", COST.0, COST.1)), "{hash}");
+        assert!(hash.starts_with("$2b$12$") && hash.len() == 60, "{hash}");
         assert!(passwords.verify("correct horse battery".into(), Some(hash.clone())).await);
         assert!(!passwords.verify("wrong horse battery".into(), Some(hash.clone())).await);
         assert!(!passwords.verify(String::new(), Some(hash)).await);
         assert!(!passwords.verify("no such account".into(), None).await, "the dummy matches nothing");
     }
 
-    /// Both targets' parameters, checked on the host against the `argon2` crate's own PHC hasher and verifier.
-    #[test]
-    fn each_targets_parameters_hash_and_verify_like_the_reference_implementation() {
-        use argon2::{PasswordHasher, PasswordVerifier};
-        let cases = [
-            (LINUX_COST, "$argon2id$v=19$m=19456,t=2,p=1$"),
-            (ANDROID_COST, "$argon2id$v=19$m=12288,t=3,p=1$"),
+    /// Openwall `crypt_blowfish`'s published vectors, so the hash is bcrypt and not only self-consistent.
+    #[tokio::test]
+    async fn a_reference_bcrypt_hash_verifies() {
+        let passwords = Passwords::new();
+        let vectors = [
+            ("U*U", "$2a$05$CCCCCCCCCCCCCCCCCCCCC.E5YPO9kmyuRGyh0XouQYb4YMJKvyOeW"),
+            ("", "$2a$06$DCq7YPn5Rq63x1Lad4cll.TV4S6ytwfsfvkgY8jIucDrjc8deX1s."),
         ];
-        let mut blocks = Blocks::new();
-        for (cost, prefix) in cases {
-            let ours = hash_with(&mut blocks, &params(cost), "correct horse battery").expect("hash");
-            assert!(ours.starts_with(prefix), "{ours}");
-            let reference = Argon2::new(Algorithm::Argon2id, Version::V0x13, params(cost));
-            let parsed = PasswordHash::new(&ours).expect("phc");
-            assert!(reference.verify_password(b"correct horse battery", &parsed).is_ok(), "{prefix}");
-            assert!(reference.verify_password(b"wrong horse battery", &parsed).is_err(), "{prefix}");
-
-            let salt = SaltString::generate(&mut OsRng);
-            let theirs = reference.hash_password(b"correct horse battery", &salt).expect("hash").to_string();
-            assert!(verify_with(&mut blocks, "correct horse battery", &theirs), "{prefix}");
-            assert!(!verify_with(&mut blocks, "wrong horse battery", &theirs), "{prefix}");
+        for (password, hash) in vectors {
+            assert!(passwords.verify(password.into(), Some(hash.into())).await, "{password:?}");
+            assert!(!passwords.verify("U*V".into(), Some(hash.into())).await, "{password:?}");
         }
     }
 
+    /// bcrypt reads 72 bytes; a longer password is refused, never cut to a prefix that would match.
     #[tokio::test]
-    async fn passwords_print_without_the_argon2_memory_after_a_hash() {
+    async fn a_password_hashes_up_to_72_bytes_and_a_longer_one_never_matches() {
+        let passwords = Passwords::new();
+        let longest = "é".repeat(36);
+        assert_eq!(longest.len(), 72);
+        let hash = passwords.hash(longest.clone()).await.expect("72 bytes hash");
+        assert!(passwords.verify(longest.clone(), Some(hash.clone())).await);
+        assert!(!passwords.verify(format!("{longest}x"), Some(hash)).await, "73 bytes, same first 72");
+        assert_eq!(passwords.hash("x".repeat(73)).await, None);
+    }
+
+    /// bcrypt stops at a NUL, so a password holding one would match its prefix.
+    #[tokio::test]
+    async fn a_password_holding_a_nul_never_hashes_or_matches_its_prefix() {
+        let passwords = Passwords::new();
+        assert_eq!(passwords.hash("abcdefgh\0abcdefgh".into()).await, None);
+        let hash = passwords.hash("abcdefgh".into()).await.expect("hash");
+        assert!(!passwords.verify("abcdefgh\0abcdefgh".into(), Some(hash)).await, "NUL inside");
+        let prefix = "x".repeat(71);
+        let hash = passwords.hash(prefix.clone()).await.expect("hash");
+        assert!(!passwords.verify(format!("{prefix}\0"), Some(hash)).await, "72 bytes ending in NUL");
+    }
+
+    #[tokio::test]
+    async fn passwords_print_without_any_hash() {
         let passwords = Passwords::new();
         passwords.hash("correct horse battery".into()).await.expect("hash");
-        let printed = format!("{passwords:?}");
-        assert!(printed.len() < 64 && !printed.contains("Block"), "{} bytes", printed.len());
+        assert!(!passwords.verify("correct horse battery".into(), None).await);
+        assert_eq!(format!("{passwords:?}"), "Passwords { .. }");
     }
 
     #[tokio::test]
@@ -198,11 +173,38 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_stored_hash_that_is_not_phc_never_verifies() {
+    async fn a_stored_hash_that_is_not_bcrypt_never_verifies() {
         let passwords = Passwords::new();
-        for hash in ["", "correct horse battery", "$argon2id$"] {
+        let argon2 = "$argon2id$v=19$m=19456,t=2,p=1$c2FsdHNhbHQ$aGFzaGhhc2hoYXNoaGFzaA";
+        for hash in ["", "correct horse battery", "$2b$12$", argon2] {
             assert!(!passwords.verify("correct horse battery".into(), Some(hash.into())).await, "{hash:?}");
         }
+    }
+
+    /// A capped check that counts the checks running beside it, recording the most seen.
+    fn spawn_counted(
+        passwords: &Passwords,
+        running: &Arc<AtomicUsize>,
+        most: &Arc<AtomicUsize>,
+    ) -> JoinHandle<Option<()>> {
+        let (passwords, running, most) = (passwords.clone(), Arc::clone(running), Arc::clone(most));
+        let check = move || {
+            most.fetch_max(running.fetch_add(1, Ordering::SeqCst) + 1, Ordering::SeqCst);
+            std::thread::sleep(Duration::from_millis(50));
+            running.fetch_sub(1, Ordering::SeqCst);
+        };
+        tokio::spawn(async move { passwords.capped(check).await })
+    }
+
+    #[tokio::test]
+    async fn parallel_checks_never_run_past_the_cap() {
+        let passwords = Passwords::new();
+        let (running, most) = (Arc::new(AtomicUsize::new(0)), Arc::new(AtomicUsize::new(0)));
+        let checks: Vec<_> = (0..6).map(|_| spawn_counted(&passwords, &running, &most)).collect();
+        for check in checks {
+            check.await.expect("join").expect("ran");
+        }
+        assert_eq!(most.load(Ordering::SeqCst), CHECKS);
     }
 
     /// A client that disconnects drops its check's future; the hash already running keeps the cap.
@@ -211,7 +213,7 @@ mod tests {
         let passwords = Passwords::new();
         let (started, running) = std::sync::mpsc::channel::<()>();
         let (finish, finished) = std::sync::mpsc::channel::<()>();
-        let hash_until_released = move |_: &mut Blocks| {
+        let hash_until_released = move || {
             started.send(()).expect("test waits");
             finished.recv().expect("test releases");
         };
@@ -230,22 +232,10 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn parallel_checks_leave_one_checks_blocks_held() {
-        let passwords = Passwords::new();
-        let stored = passwords.hash("correct horse battery".into()).await.expect("hash");
-        let checks: Vec<_> =
-            (0..4).map(|_| spawn_verify(&passwords, "correct horse battery", Some(stored.clone()))).collect();
-        for check in checks {
-            assert!(check.await.expect("join"));
-        }
-        assert_eq!(passwords.gate.lock().await.len(), PARAMS.block_count());
-    }
-
-    #[tokio::test]
     async fn every_check_waits_for_the_cap_including_an_unknown_account() {
         let passwords = Passwords::new();
         let stored = passwords.hash("correct horse battery".into()).await.expect("hash");
-        let taken = Arc::clone(&passwords.gate).lock_owned().await;
+        let taken = Arc::clone(&passwords.gate).acquire_many_owned(cap()).await.expect("open");
 
         let hash = spawn_hash(&passwords, "another long password");
         let known = spawn_verify(&passwords, "correct horse battery", Some(stored));
@@ -257,6 +247,10 @@ mod tests {
         assert!(hash.await.expect("join").is_some());
         assert!(known.await.expect("join"));
         assert!(!unknown.await.expect("join"));
-        assert!(passwords.gate.try_lock().is_ok(), "the cap is returned");
+        assert_eq!(passwords.gate.available_permits(), CHECKS, "the cap is returned");
+    }
+
+    fn cap() -> u32 {
+        u32::try_from(CHECKS).expect("small")
     }
 }

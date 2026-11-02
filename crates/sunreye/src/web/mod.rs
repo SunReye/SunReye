@@ -3,6 +3,7 @@
 mod api_keys;
 mod assets;
 mod auth;
+mod history;
 mod inverter;
 mod origin;
 mod password;
@@ -10,11 +11,12 @@ mod profile_sources;
 mod setup;
 mod users;
 mod v1;
+mod ws;
 
 use std::sync::Arc;
 
-use axum::extract::rejection::{JsonRejection, PathRejection};
-use axum::extract::{FromRequest, FromRequestParts, Path, Request};
+use axum::extract::rejection::{JsonRejection, PathRejection, QueryRejection};
+use axum::extract::{FromRequest, FromRequestParts, Path, Query, Request};
 use axum::http::StatusCode;
 use axum::http::request::Parts;
 use axum::response::{IntoResponse, Response};
@@ -64,10 +66,14 @@ fn api() -> (Router<Arc<Core>>, Document) {
         .split_for_parts()
 }
 
+/// Any session, user or admin. `/ws` is gated here too, outside the `OpenAPI` document.
 fn signed_in() -> OpenApiRouter<Arc<Core>> {
     OpenApiRouter::new()
         .routes(routes!(setup::capabilities))
+        .routes(routes!(setup::manifest))
+        .routes(routes!(history::recent))
         .routes(routes!(auth::current, auth::logout))
+        .route("/ws", get(ws::upgrade))
         .route_layer(login_required!(Accounts))
         .route_layer(middleware::map_response(auth::guard_body))
 }
@@ -88,6 +94,7 @@ fn settings() -> OpenApiRouter<Arc<Core>> {
         .routes(routes!(inverter::read, inverter::save))
         .routes(routes!(inverter::test))
         .routes(routes!(profile_sources::list, profile_sources::add))
+        .routes(routes!(profile_sources::import))
 }
 
 fn accounts() -> OpenApiRouter<Arc<Core>> {
@@ -152,6 +159,10 @@ impl ApiError {
         Self { status: StatusCode::NOT_FOUND, message: message.into() }
     }
 
+    pub fn payload_too_large(message: impl Into<String>) -> Self {
+        Self { status: StatusCode::PAYLOAD_TOO_LARGE, message: message.into() }
+    }
+
     pub fn conflict(message: impl Into<String>) -> Self {
         Self { status: StatusCode::CONFLICT, message: message.into() }
     }
@@ -208,6 +219,25 @@ where
     async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
         match Path::<T>::from_request_parts(parts, state).await {
             Ok(Path(value)) => Ok(Self(value)),
+            Err(rejection) => Err(ApiError::bad_request(rejection.body_text())),
+        }
+    }
+}
+
+/// `Query` whose rejection is a 400 in the shape above.
+#[derive(Debug)]
+pub struct ApiQuery<T>(pub T);
+
+impl<T, S> FromRequestParts<S> for ApiQuery<T>
+where
+    Query<T>: FromRequestParts<S, Rejection = QueryRejection>,
+    S: Send + Sync,
+{
+    type Rejection = ApiError;
+
+    async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
+        match Query::<T>::from_request_parts(parts, state).await {
+            Ok(Query(value)) => Ok(Self(value)),
             Err(rejection) => Err(ApiError::bad_request(rejection.body_text())),
         }
     }

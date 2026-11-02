@@ -9,7 +9,7 @@ The installation at one site: its devices and the figures they add up to.
 _Avoid_: site, system, installation
 
 **Device**:
-One inverter, battery, meter or other unit SunReye reads, described by a profile.
+One inverter, battery, meter or other unit SunReye reads, described by a profile. Named by a slug: in the 4.0 core, the device id as a decimal string.
 _Avoid_: inverter (for any device), unit
 
 **Connection**:

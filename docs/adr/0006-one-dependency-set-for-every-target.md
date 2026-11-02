@@ -27,7 +27,7 @@ network bring-up and the Android Kotlin/JNI shell.
   first commit.
 - Budgets live in `scripts/budgets.json`: resident memory and its growth per login and per poll cycle, and
   binary size including the SPA. `scripts/ci` fails a Linux build over any of them. "No growth over 72 h" is
-  proved by the 72 h soak (#323), not by `scripts/ci`. Re-set once after the first real build, then held.
+  proved by the 72 h soak (#323), not by `scripts/ci`. Re-set once after the first real build, then held. Password hashing is bcrypt, not Argon2id, to fit the resident budget (ADR 0003, #402).
 
 ## Consequences
 

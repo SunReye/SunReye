@@ -17,9 +17,11 @@
  *     invisible: every other pass carries an admin session.
  *  4. an API key for the admin, which only the admin pass carries: `/api/v1`
  *     answers a key, never a session.
- *  5. the three sweeps over whatever `/openapi/json` lists.
+ *  5. the three sweeps over whatever `/openapi/json` lists, plus the `/ws`
+ *     upgrade, which the listing does not carry.
  */
 import { mkdtempSync, rmSync } from "node:fs";
+import { connect } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -32,8 +34,10 @@ import {
   type ProbeResponse,
   type ProbeResult,
   type StatusAllowList,
+  UPGRADE_LABEL,
   classify,
   classifyAuth,
+  classifyUpgrade,
   planProbes,
   summarize,
   summarizeAuth,
@@ -98,6 +102,42 @@ async function probeOnce(base: string, probe: Probe, headers: HeadersInit): Prom
   }
 }
 
+/**
+ * A WebSocket upgrade on a raw socket: `fetch` cannot send one, and a
+ * WebSocket client hides the refusal's status. Resolves to the status line's code.
+ */
+function probeUpgrade(base: string, headers: Record<string, string>): Promise<ProbeResponse> {
+  const { hostname, port, host } = new URL(base);
+  const lines = [
+    "GET /ws HTTP/1.1",
+    `host: ${host}`,
+    "connection: Upgrade",
+    "upgrade: websocket",
+    "sec-websocket-version: 13",
+    "sec-websocket-key: dGhlIHNhbXBsZSBub25jZQ==",
+    `origin: ${base}`,
+    ...Object.entries(headers)
+      .filter(([name]) => name !== "origin")
+      .map(([name, value]) => `${name}: ${value}`),
+  ];
+  return new Promise((resolve) => {
+    const socket = connect(Number(port), hostname);
+    let seen = "";
+    const done = (response: ProbeResponse) => {
+      socket.destroy();
+      resolve(response);
+    };
+    socket.setTimeout(30_000, () => done({ error: "timed out" }));
+    socket.on("error", (error) => done({ error: error.message }));
+    socket.on("data", (chunk) => {
+      seen += chunk.toString("latin1");
+      const status = /^HTTP\/1\.1 (\d{3})/.exec(seen)?.[1];
+      if (status) done({ status: Number(status), body: seen });
+    });
+    socket.write(`${lines.join("\r\n")}\r\n\r\n`);
+  });
+}
+
 /** One pass over the plan: every probe, in order, one request at a time. */
 async function passOver(
   base: string,
@@ -144,11 +184,13 @@ async function accessPass(
   mode: AuthMode,
   cookie?: string,
 ): Promise<ProbeResult[]> {
+  // Before the pass: its last probe ends the session.
+  const upgrade = classifyUpgrade(await probeUpgrade(base, asBrowser(base, cookie)), mode);
   const answers =
     mode === "authenticated"
       ? await passOver(base, probes, asBrowser(base, cookie))
       : await gatePass(base, probes, asBrowser(base, cookie));
-  return answers.map((a) => classifyAuth(a.probe, a.response, mode));
+  return [...answers.map((a) => classifyAuth(a.probe, a.response, mode)), upgrade];
 }
 
 /**
@@ -162,7 +204,7 @@ async function sweep(base: string, adminCookie: string, memberCookie: string, ap
   const probes = planProbes(doc, Date.now());
   const access: { mode: AuthMode; results: ProbeResult[] }[] = [];
 
-  log(`probing ${probes.length} routes with no credentials`);
+  log(`probing ${probes.length} routes and ${UPGRADE_LABEL} with no credentials`);
   access.push({
     mode: "anonymous",
     results: report(await accessPass(base, probes, "anonymous")),
@@ -171,11 +213,15 @@ async function sweep(base: string, adminCookie: string, memberCookie: string, ap
   const member = await accessPass(base, probes, "member", memberCookie);
   access.push({ mode: "member", results: report(member) });
   log(`probing ${probes.length} routes as the admin session`);
+  const adminUpgrade = await probeUpgrade(base, asBrowser(base, adminCookie));
   const admin = await passOver(base, probes, {
     ...asBrowser(base, adminCookie),
     "x-api-key": apiKey,
   });
-  const adminAccess = admin.map((a) => classifyAuth(a.probe, a.response, "authenticated"));
+  const adminAccess = [
+    ...admin.map((a) => classifyAuth(a.probe, a.response, "authenticated")),
+    classifyUpgrade(adminUpgrade, "authenticated"),
+  ];
   access.push({ mode: "authenticated", results: report(adminAccess) });
 
   return { execution: report(admin.map((a) => classify(a.probe, a.response, ALLOW))), access };
