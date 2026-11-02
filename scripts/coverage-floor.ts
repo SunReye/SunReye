@@ -120,7 +120,6 @@ export const COVERAGE_EXEMPT: ReadonlyArray<
     paths: [
       "apps/server/src/admin/api-keys.ts",
       "apps/server/src/charts/custom-charts.ts",
-      "apps/server/src/devices/connection-runtime.ts",
       "apps/server/src/migration/onboarding-apply.ts",
       "apps/server/src/settings/logging-settings.ts",
       "apps/server/src/statistics/spot-stats.ts",
