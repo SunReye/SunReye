@@ -50,6 +50,7 @@ argon2 = { version = "0.5", default-features = false, features = ["alloc", "pass
 password-hash = { version = "0.5", default-features = false, features = ["getrandom"] }
 tower-sessions = "0.14"
 tower-sessions-sqlx-store = { version = "0.15", features = ["sqlite"] }
+ring = { version = "0.17", default-features = false }
 
 [lints]
 workspace = true

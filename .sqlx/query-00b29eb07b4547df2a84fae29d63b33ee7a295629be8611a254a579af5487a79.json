@@ -1,0 +1,56 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT k.id AS \"id!\", k.name, k.start, k.created_at,\n                      a.id AS \"account_id!\", a.email AS account_email, a.name AS account_name\n               FROM api_key k JOIN account a ON a.id = k.account_id\n               ORDER BY k.id DESC",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!",
+        "ordinal": 0,
+        "type_info": "Integer"
+      },
+      {
+        "name": "name",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "start",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "created_at",
+        "ordinal": 3,
+        "type_info": "Text"
+      },
+      {
+        "name": "account_id!",
+        "ordinal": 4,
+        "type_info": "Integer"
+      },
+      {
+        "name": "account_email",
+        "ordinal": 5,
+        "type_info": "Text"
+      },
+      {
+        "name": "account_name",
+        "ordinal": 6,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "00b29eb07b4547df2a84fae29d63b33ee7a295629be8611a254a579af5487a79"
+}
