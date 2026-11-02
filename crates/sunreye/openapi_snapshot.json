@@ -1455,7 +1455,7 @@
     },
     "/api/settings/profiles/{id}": {
       "delete": {
-        "summary": "Removes an imported profile, or one a source supplied, and stops polling devices by it. A compiled-in\nprofile and the active one stay.",
+        "summary": "Removes an imported profile, or one a source supplied. A compiled-in profile and the active one stay;\ndevices poll only the active one, so polling is untouched.",
         "operationId": "removeProfile",
         "parameters": [
           {

@@ -121,8 +121,8 @@ impl From<RemoveError> for ApiError {
     }
 }
 
-/// Removes an imported profile, or one a source supplied, and stops polling devices by it. A compiled-in
-/// profile and the active one stay.
+/// Removes an imported profile, or one a source supplied. A compiled-in profile and the active one stay;
+/// devices poll only the active one, so polling is untouched.
 #[utoipa::path(
     delete,
     path = "/api/settings/profiles/{id}",
@@ -146,7 +146,6 @@ pub async fn remove(
         return Err(ApiError::bad_request("a compiled-in profile cannot be removed"));
     }
     remove_profile(&core.store, &id, active_profile(&core.store).await?.as_deref()).await?;
-    core.apply().await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -185,6 +184,5 @@ pub async fn remove_source_by_url(
         .normalised()
         .map_err(|error| ApiError::bad_request(error.to_string()))?;
     remove_source(&core.store, &source, active_profile(&core.store).await?.as_deref()).await?;
-    core.apply().await?;
     Ok(StatusCode::NO_CONTENT)
 }

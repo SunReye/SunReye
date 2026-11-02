@@ -332,8 +332,8 @@ export interface paths {
         put?: never;
         post?: never;
         /**
-         * Removes an imported profile, or one a source supplied, and stops polling devices by it. A compiled-in
-         *     profile and the active one stay.
+         * Removes an imported profile, or one a source supplied. A compiled-in profile and the active one stay;
+         *     devices poll only the active one, so polling is untouched.
          */
         delete: operations["removeProfile"];
         options?: never;
