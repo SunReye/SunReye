@@ -106,13 +106,14 @@ fn the_recorded_mbap_frames_are_reframed_as_rtu_with_the_unit_first_and_the_crc_
 }
 
 #[test]
-fn a_reply_the_recording_split_stays_split_and_leading_junk_is_not_replayed() {
+fn a_reply_the_recording_split_stays_split_and_leading_junk_stays_in_front_of_the_reframed_reply() {
     let cases = rtu_cases(&oracle()).expect("corpus");
     let fragmented = cases.iter().find(|c| c.name == "rtu-over-tcp/fragmented-reply").expect("case");
     let Exchange::Send(chunks) = &fragmented.exchanges[1] else { panic!("a reply") };
     assert_eq!(chunks.len(), 2);
     assert_eq!(chunks.concat(), hex("01030a0901fc181234000100954d00"));
-    assert!(cases.iter().all(|c| !c.name.ends_with("leading-junk")));
+    let junk = cases.iter().find(|c| c.name == "rtu-over-tcp/leading-junk").expect("case");
+    assert_eq!(junk.exchanges[1], Exchange::Send(vec![hex("deadbe01030a0901fc181234000100954d00")]));
 }
 
 #[tokio::test]

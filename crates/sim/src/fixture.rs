@@ -165,11 +165,9 @@ pub fn transport_cases(dir: &Path, framing: &str) -> Result<Vec<TransportCase>, 
 
 /// Every `rtu-over-tcp` case with its wire bytes re-framed as RTU. The corpus recorded 2.x writing MBAP
 /// frames on that transport (`fixtures/oracle/README.md`); PDUs, registers and decoded values carry over,
-/// the bytes around them become unit id, PDU and CRC. `leading-junk` is left out: 2.x resynchronises on
-/// junk before a reply, the core does not.
+/// the bytes around them become unit id, PDU and CRC; stray bytes before a reply stay as recorded.
 pub fn rtu_cases(dir: &Path) -> Result<Vec<TransportCase>, FixtureError> {
     let mut cases = transport_cases(dir, "rtu-over-tcp")?;
-    cases.retain(|case| !case.name.ends_with("leading-junk"));
     for case in &mut cases {
         case.exchanges = case.exchanges.iter().map(reframe).collect::<Result<_, _>>()?;
     }
@@ -180,8 +178,11 @@ fn reframe(step: &Exchange) -> Result<Exchange, FixtureError> {
     Ok(match step {
         Exchange::Expect(mbap) => Exchange::Expect(mbap_to_rtu(mbap)?),
         Exchange::Send(chunks) => {
-            let rtu = mbap_to_rtu(&chunks.concat())?;
-            Exchange::Send(resplit(&rtu, chunks))
+            let wire = chunks.concat();
+            let framed = (0..wire.len())
+                .find_map(|junk| Some([&wire[..junk], &mbap_to_rtu(&wire[junk..]).ok()?].concat()))
+                .ok_or_else(|| FixtureError::BadFrame(format!("{wire:02x?}")))?;
+            Exchange::Send(resplit(&framed, chunks))
         }
     })
 }
@@ -206,6 +207,9 @@ fn mbap_to_rtu(bytes: &[u8]) -> Result<Vec<u8>, FixtureError> {
     let mut rest = bytes;
     while !rest.is_empty() {
         let bad = || FixtureError::BadFrame(format!("{rest:02x?}"));
+        if rest.get(2..4) != Some(&[0, 0]) {
+            return Err(bad());
+        }
         let length = rest.get(4..6).map(|b| usize::from(u16::from_be_bytes([b[0], b[1]]))).ok_or_else(bad)?;
         let frame = rest.get(6..6 + length).ok_or_else(bad)?;
         out.extend_from_slice(frame);
@@ -277,6 +281,21 @@ mod tests {
         assert_eq!(mbap_to_rtu(&[]).ok(), Some(vec![]));
         assert!(mbap_to_rtu(&mbap[..11]).is_err(), "a frame shorter than its length field");
         assert!(mbap_to_rtu(&mbap[..5]).is_err(), "a header cut short");
+    }
+
+    #[test]
+    fn stray_bytes_before_a_recorded_reply_stay_in_front_of_the_reframed_one() {
+        let mbap = [0, 1, 0, 0, 0, 6, 1, 3, 0, 0, 0, 10];
+        let rtu = vec![1, 3, 0, 0, 0, 10, 0xc5, 0xcd];
+        let step = |bytes: Vec<u8>| reframe(&Exchange::Send(vec![bytes])).ok();
+        assert_eq!(step(mbap.to_vec()), Some(Exchange::Send(vec![rtu.clone()])));
+        let junk = [0xde, 0xad, 0xbe];
+        assert_eq!(
+            step([junk.as_slice(), &mbap].concat()),
+            Some(Exchange::Send(vec![[&junk[..], &rtu].concat()]))
+        );
+        assert_eq!(step(junk.to_vec()), None, "stray bytes and no frame");
+        assert_eq!(step([0, 1, 0, 9, 0, 6, 1, 3, 0, 0, 0, 10].to_vec()), None, "not the Modbus protocol id");
     }
 
     #[test]

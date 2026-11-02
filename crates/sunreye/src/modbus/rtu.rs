@@ -20,6 +20,7 @@ pub(super) fn read_request(unit: u8, start: u16, count: u16) -> [u8; 8] {
 
 /// Reads one reply frame, checks it and returns its words. An RTU frame carries no length: it is read
 /// by the function code and byte count it opens with, so a frame that opens otherwise is not read on.
+/// Bytes before the frame are skipped one at a time until a unit id or a read function code opens it.
 pub(super) async fn read_reply<R: AsyncRead + Unpin>(
     stream: &mut R,
     unit: u8,
@@ -27,6 +28,10 @@ pub(super) async fn read_reply<R: AsyncRead + Unpin>(
 ) -> Result<Vec<u16>, Error> {
     let mut frame = vec![0_u8; 2];
     stream.read_exact(&mut frame).await?;
+    while !opens_a_reply(&frame, unit) {
+        frame[0] = frame[1];
+        frame[1] = stream.read_u8().await?;
+    }
     let rest = match frame[1] {
         FC_READ_HOLDING => {
             let bytes = stream.read_u8().await?;
@@ -44,6 +49,11 @@ pub(super) async fn read_reply<R: AsyncRead + Unpin>(
     stream.read_exact(&mut frame[opened..]).await?;
     check_frame(&frame, unit)?;
     parse_pdu(&frame[1..frame.len() - CRC_LEN], count)
+}
+
+/// Whether `head` can be the first two bytes of a reply: the unit asked, or a read or its exception.
+fn opens_a_reply(head: &[u8], unit: u8) -> bool {
+    head[0] == unit || head[1] == FC_READ_HOLDING || head[1] == FC_READ_HOLDING | EXCEPTION_FLAG
 }
 
 /// The CRC and the unit id of a whole frame.
@@ -134,7 +144,7 @@ mod tests {
         let protocol = |why| Err(Error::Protocol(why));
         assert_eq!(reply("0103020000b844", 2, 1).await, protocol("unit id mismatch"));
         assert_eq!(reply("0103020000b844", 1, 2).await, protocol("byte count mismatch"));
-        assert_eq!(reply("01040200003bb8", 1, 1).await, protocol("unexpected function"));
+        assert_eq!(reply("0104020000b930", 1, 1).await, protocol("unexpected function"));
     }
 
     #[tokio::test]
@@ -148,7 +158,28 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn bytes_before_a_reply_are_not_a_misread() {
-        assert!(matches!(reply("deadbe0103020000b844", 1, 1).await, Err(Error::Protocol(_))));
+    async fn bytes_before_a_reply_are_skipped() {
+        let words = Ok(vec![0]);
+        assert_eq!(reply("deadbe0103020000b844", 1, 1).await, words);
+        assert_eq!(reply("ff0103020000b844", 1, 1).await, words, "one stray byte");
+        assert_eq!(reply("0000ffee0103020000b844", 1, 1).await, words, "a stray unit-less run");
+        assert_eq!(reply("deadbe018302c0f1", 1, 1).await, Err(Error::Exception(2)), "before an exception");
+        assert_eq!(reply("deadbe00030200008584", 0, 1).await, words, "unit 0");
+    }
+
+    #[tokio::test]
+    async fn a_reply_after_stray_bytes_is_still_checked() {
+        let protocol = |why| Err(Error::Protocol(why));
+        assert_eq!(reply("deadbe0103020000b845", 1, 1).await, protocol("crc mismatch"));
+        assert_eq!(reply("deadbe0103020000b844", 2, 1).await, protocol("unit id mismatch"));
+        assert_eq!(reply("deadbe0103020000b844", 1, 2).await, protocol("byte count mismatch"));
+    }
+
+    #[tokio::test]
+    async fn stray_bytes_and_no_reply_end_in_an_i_o_error() {
+        for wire in ["deadbe", "de", "deadbe0103", "deadbe010302"] {
+            let got = reply(wire, 1, 1).await;
+            assert!(matches!(got, Err(Error::Io(_))), "{wire}: {got:?}");
+        }
     }
 }

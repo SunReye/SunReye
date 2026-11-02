@@ -194,7 +194,8 @@ async fn an_rtu_reply_cut_short_ends_the_poll_at_every_cut_point() {
 }
 
 #[tokio::test]
-async fn bytes_before_an_rtu_reply_are_a_protocol_error_not_a_misread() {
-    let result = damaged_reply(|reply| [&[0xde, 0xad, 0xbe], reply.as_slice()].concat()).await;
-    assert!(matches!(result, Err(Error::Protocol(_))), "{result:?}");
+async fn bytes_before_an_rtu_reply_are_skipped_as_2x_resynchronised() {
+    let (result, _, wire) = play("rtu-over-tcp/leading-junk").await;
+    assert_eq!(wire, Ok(()));
+    assert_values(&result.expect("poll"), &expected_values("rtu-over-tcp/leading-junk"));
 }

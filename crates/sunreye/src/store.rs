@@ -550,6 +550,19 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn a_failing_migration_is_an_error_and_still_puts_the_keys_back_on() {
+        let pool = populated_at_the_first_schema().await;
+        let mut broken = sqlx::migrate!("./migrations");
+        let second = broken.migrations.iter().position(|m| m.version == 2).expect("migration 2");
+        broken.migrations.to_mut()[second].sql = "NOT SQL".into();
+        assert!(matches!(migrate(&pool, &broken).await, Err(StoreError::Migrate(_))));
+
+        let enforced: i64 = sqlx::query_scalar("PRAGMA foreign_keys").fetch_one(&pool).await.expect("pragma");
+        assert_eq!(enforced, 1, "keys are back on after a failed migration");
+        assert_eq!(count(&pool, "connection").await, 2, "nothing of the failed migration is kept");
+    }
+
+    #[tokio::test]
     async fn a_stored_transport_reads_back_as_itself() {
         let store = Store::in_memory().await.expect("store");
         for transport in [Transport::Tcp, Transport::RtuOverTcp] {

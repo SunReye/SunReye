@@ -201,7 +201,8 @@ impl DeviceTask {
         let client = match &mut self.client {
             Some(client) => client,
             none => none.insert(
-                Client::connect(self.device.transport, &self.device.host, self.device.port, self.timeout).await?,
+                Client::connect(self.device.transport, &self.device.host, self.device.port, self.timeout)
+                    .await?,
             ),
         };
         self.poller.poll(client).await

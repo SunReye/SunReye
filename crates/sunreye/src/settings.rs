@@ -127,11 +127,7 @@ pub async fn save_inverter(store: &Store, config: &InverterConfig) -> Result<(),
     let Some(transport) = config.transport.wire() else {
         return Err(UnknownTransport(config.transport.name().to_owned()).into());
     };
-    let connection = NewConnection {
-        transport,
-        host: config.host().to_owned(),
-        port: config.port(),
-    };
+    let connection = NewConnection { transport, host: config.host().to_owned(), port: config.port() };
     store.save_connection(&connection).await?;
     store.set_setting(UNIT_KEY, &config.unit().to_string()).await?;
     store.set_setting(TIMEOUT_KEY, &config.timeout_ms.to_string()).await?;
