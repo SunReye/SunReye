@@ -81,6 +81,21 @@ test("issuing a key posts the owner and name, then shows the secret once", async
   expect(get).toHaveBeenCalledTimes(3);
 });
 
+test("Done discards the secret: the dialog closes and the key is gone", async () => {
+  post.mockResolvedValue({
+    data: { ...grafana, id: 4, name: "Backup", key: "sunreye_secretvalue" },
+  });
+  render(ApiKeysForm);
+  await expect.element(row("Grafana")).toBeVisible();
+  await issue("Backup");
+  await expect.element(page.getByRole("dialog")).toBeVisible();
+
+  await page.getByRole("button", { name: m.apikeys_done() }).click();
+
+  await expect.element(page.getByRole("dialog")).not.toBeInTheDocument();
+  expect(document.body.textContent).not.toContain("sunreye_secretvalue");
+});
+
 test("issuing without an owner is refused before anything is sent", async () => {
   render(ApiKeysForm);
   await expect.element(row("Grafana")).toBeVisible();

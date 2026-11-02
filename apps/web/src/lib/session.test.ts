@@ -55,6 +55,9 @@ describe("useAppSession", () => {
   });
 
   test("a core that cannot be reached settles as anonymous", async () => {
+    answer = () => ({ data: ada });
+    await session.signIn({ email: "ada@example.com", password: "pw" });
+    expect(get(session.useAppSession()).data).toEqual({ user: ada });
     answer = () => Promise.reject(new TypeError("Failed to fetch"));
     await session.refreshSession();
     expect(get(session.useAppSession())).toEqual(signedOut);
@@ -117,9 +120,25 @@ describe("signOut", () => {
     await session.signIn({ email: "ada@example.com", password: "pw" });
     calls.length = 0;
     answer = () => ({});
-    await session.signOut();
+    expect(await session.signOut()).toEqual({ ok: true });
     expect(calls[0]).toMatchObject({ verb: "DELETE", path: "/api/auth/session" });
     expect(get(session.useAppSession())).toEqual(signedOut);
+  });
+
+  test("a refused sign-out keeps the account and reports why", async () => {
+    answer = () => ({ data: ada });
+    await session.signIn({ email: "ada@example.com", password: "pw" });
+    answer = () => ({ error: { error: "Origin not allowed" } });
+    expect(await session.signOut()).toEqual({ ok: false, message: "Origin not allowed" });
+    expect(get(session.useAppSession()).data).toEqual({ user: ada });
+  });
+
+  test("a refusal with no body still keeps the account", async () => {
+    answer = () => ({ data: ada });
+    await session.signIn({ email: "ada@example.com", password: "pw" });
+    answer = () => ({ error: "" });
+    expect(await session.signOut()).toEqual({ ok: false, message: "" });
+    expect(get(session.useAppSession()).data).toEqual({ user: ada });
   });
 
   test("clears the session even when the core cannot be reached", async () => {

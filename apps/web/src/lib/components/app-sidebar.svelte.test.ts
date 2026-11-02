@@ -10,6 +10,8 @@ const del = vi.fn();
 vi.mock("$lib/core-api", () => ({ core: { GET: get, POST: vi.fn(), DELETE: del } }));
 const goto = vi.fn();
 vi.mock("$app/navigation", () => ({ goto }));
+const toast = { error: vi.fn() };
+vi.mock("svelte-sonner", () => ({ toast }));
 vi.mock("$app/state", () => ({ page: { url: new URL("http://localhost/#/") } }));
 vi.mock("$lib/automations-gate.svelte", () => ({
   automationsGate: { load: vi.fn(), enabled: false },
@@ -25,7 +27,7 @@ const bob: Account = { id: 2, name: "Bob Babbage", email: "bob@example.com", adm
 afterEach(async () => {
   del.mockResolvedValue({ response: { status: 204 } });
   await signOut();
-  for (const fn of [get, del, goto]) fn.mockReset();
+  for (const fn of [get, del, goto, toast.error]) fn.mockReset();
 });
 
 /** Mount the sidebar for whoever the core says is signed in; `null` is a 401. */
@@ -62,6 +64,17 @@ test("signing out ends the session at the core and returns to login", async () =
   );
   await expect.element(page.getByRole("link", { name: m.nav_log_in() })).toBeVisible();
   await expect.element(page.getByText("Ada Lovelace")).not.toBeInTheDocument();
+});
+
+test("a refused sign-out keeps the account, stays put and says why", async () => {
+  del.mockResolvedValue({ error: { error: "Origin not allowed" } });
+  await mountAs(ada);
+
+  await page.getByRole("button", { name: m.nav_sign_out() }).click();
+
+  await vi.waitFor(() => expect(toast.error).toHaveBeenCalledWith("Origin not allowed"));
+  expect(goto).not.toHaveBeenCalled();
+  await expect.element(page.getByText("Ada Lovelace")).toBeVisible();
 });
 
 test("a visitor with no session is offered the way in", async () => {

@@ -3,6 +3,7 @@
 	import type { Pathname } from '$app/types';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
+	import { toast } from 'svelte-sonner';
 	import { resolve, routePath } from '$lib/resolve';
 	import * as Sidebar from '$lib/components/ui/sidebar';
 	import SourceMenu from '$lib/components/layout/source-menu.svelte';
@@ -94,7 +95,11 @@
 	);
 
 	async function signOut() {
-		await endSession();
+		const result = await endSession();
+		if (!result.ok) {
+			toast.error(result.message || m.error_unknown());
+			return;
+		}
 		goto(resolve('/login'));
 	}
 </script>

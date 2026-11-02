@@ -13,7 +13,7 @@ import { env } from "$env/dynamic/public";
  *    the app is served at `https://<ha>/api/hassio_ingress/<token>/`, and both
  *    fetch and the ws(s):// URL Eden derives must stay under that prefix.
  *
- * The trailing slash is stripped because Eden treaty and Better Auth join
+ * The trailing slash is stripped because Eden treaty and openapi-fetch join
  * paths with a leading `/`.
  */
 function resolveServerUrl(): string {

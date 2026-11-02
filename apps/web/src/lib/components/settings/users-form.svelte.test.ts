@@ -74,6 +74,31 @@ test("adding a user posts the new account and reloads the list", async () => {
   expect(get).toHaveBeenCalledTimes(2);
 });
 
+test("adding an admin posts the admin flag", async () => {
+  get.mockResolvedValue({ data: [ada] });
+  post.mockResolvedValue({ data: bob });
+  render(UsersForm);
+  await expect.element(row("ada@example.com")).toBeVisible();
+
+  await page.getByLabelText(m.auth_field_name(), { exact: true }).fill("Cy Turing");
+  await page.getByLabelText(m.auth_field_email(), { exact: true }).fill("cy@example.com");
+  await page.getByLabelText(m.auth_field_password(), { exact: true }).fill("enigma-machine");
+  await page.getByRole("button", { name: m.users_role_user(), exact: true }).click();
+  await page.getByRole("option", { name: m.users_role_admin() }).click();
+  await page.getByRole("button", { name: m.action_add() }).click();
+
+  await vi.waitFor(() =>
+    expect(post).toHaveBeenCalledWith("/api/admin/users", {
+      body: {
+        name: "Cy Turing",
+        email: "cy@example.com",
+        password: "enigma-machine",
+        admin: true,
+      },
+    }),
+  );
+});
+
 test("a refused account shows the core's reason", async () => {
   post.mockResolvedValue({ error: { error: "Email already registered" } });
   render(UsersForm);

@@ -20,7 +20,7 @@ const PUBLIC_ROUTES = new Set(["/login", "/onboarding", "/setup"]);
  * callback and never touches the transport.
  */
 export const api = treaty<App>(serverUrl, {
-  // Send the Better Auth session cookie so the server can enforce admin-only
+  // Send the core's session cookie so the server can enforce admin-only
   // mutations (see the `requireAdmin` macro in apps/server/src/index.ts).
   fetch: { credentials: "include" },
   // Eden's date auto-coercion turns any `YYYY-MM-DD`-shaped string in a JSON

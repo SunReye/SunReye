@@ -59,12 +59,14 @@ export function signUp(body: components["schemas"]["SignUpRequest"]): Promise<Au
   return start(core.POST("/api/auth/sign-up", { body }));
 }
 
-/** The client forgets the account whether or not the core could be told. */
-export async function signOut(): Promise<void> {
+/** A core that refuses leaves the account signed in, since its session is still live. */
+export async function signOut(): Promise<AuthResult> {
   try {
-    await core.DELETE("/api/auth/session");
+    const { error } = await core.DELETE("/api/auth/session");
+    if (error !== undefined) return { ok: false, message: apiErrorText(error, "") };
   } catch {
     // Unreachable core: the cookie expires on its own.
   }
   hold(null);
+  return { ok: true };
 }
