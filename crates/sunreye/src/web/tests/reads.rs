@@ -269,14 +269,19 @@ async fn a_minute_written_and_released_while_the_window_is_read_is_served() {
     assert!(core.unstored.push(device, pv(minute_start - 5_000, 1.0)).is_none());
     let closed = core.unstored.push(device, pv(NOW - 1_000, 3.0)).expect("a closed minute");
 
-    let mut held = core.unstored.hold();
+    let mut held = core.unstored.locked();
+    let before = core.unstored.lock_requests();
     // Its own thread blocks on the held lock while the test writes; worker threads hand back the store's
     // connection the read let go of.
     let request = std::thread::spawn(move || {
         let runtime = tokio::runtime::Builder::new_multi_thread().enable_all().build().expect("runtime");
         runtime.block_on(get(&admin, "/api/history/recent?seconds=60&stepSeconds=1"))
     });
-    tokio::time::sleep(Duration::from_millis(300)).await;
+    let deadline = Instant::now() + Duration::from_secs(20);
+    while core.unstored.lock_requests() == before {
+        assert!(Instant::now() < deadline, "the request never asked for the held readings");
+        tokio::task::yield_now().await;
+    }
     core.store.append_minute(device, &closed).await.expect("append");
     held.get_mut(&device).expect("held").retain(|s| minute_of(s.at_ms) != closed.minute);
     drop(held);

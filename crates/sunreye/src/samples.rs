@@ -191,10 +191,14 @@ pub struct ClosedMinute {
 #[derive(Debug, Default)]
 pub struct Unstored {
     held: Mutex<BTreeMap<i64, Vec<Sample>>>,
+    #[cfg(test)]
+    locks: std::sync::atomic::AtomicUsize,
 }
 
 impl Unstored {
     fn lock(&self) -> MutexGuard<'_, BTreeMap<i64, Vec<Sample>>> {
+        #[cfg(test)]
+        self.locks.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         self.held.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
@@ -239,8 +243,13 @@ impl Unstored {
 #[cfg(test)]
 impl Unstored {
     /// The held map under its lock, so a test can write and release between a reader's two reads.
-    pub(crate) fn hold(&self) -> MutexGuard<'_, BTreeMap<i64, Vec<Sample>>> {
+    pub(crate) fn locked(&self) -> MutexGuard<'_, BTreeMap<i64, Vec<Sample>>> {
         self.lock()
+    }
+
+    /// How often the lock was asked for, waits included, so a test can tell a caller reached it.
+    pub(crate) fn lock_requests(&self) -> usize {
+        self.locks.load(std::sync::atomic::Ordering::SeqCst)
     }
 }
 

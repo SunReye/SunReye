@@ -401,6 +401,15 @@ mod tests {
         }
     }
 
+    /// Yields until `done`, failing after 20 s.
+    async fn until(done: impl Fn() -> bool) {
+        let deadline = Instant::now() + Duration::from_secs(20);
+        while !done() {
+            assert!(Instant::now() < deadline, "condition not reached");
+            tokio::task::yield_now().await;
+        }
+    }
+
     async fn wait(signal: oneshot::Receiver<()>) {
         signal.await.ok();
     }
@@ -487,14 +496,17 @@ mod tests {
         let dir = dir("held-while-writing");
         let device = seed(&dir, port, "deye-sg05lp3", "20").await;
         let core = Core::open(&dir).await.expect("core");
-        let at_ms = 1_772_323_350_000;
+        // Now, so the retention pass started by `open` keeps it.
+        let at_ms = core.now_ms();
         core.unstored.push(device, Sample { at_ms, values: vec![("pv".into(), 1.0)] });
-        // The store's one connection, taken: a WAL write from a second connection fails at once, not waits.
+        // The pool's one connection, taken: the stopping task's write waits for it.
         let connection = core.store.hold().await;
 
+        let before = core.unstored.lock_requests();
         let restarting = Arc::clone(&core);
         let restart = tokio::spawn(async move { restarting.apply().await });
-        tokio::time::sleep(Duration::from_millis(300)).await;
+        // The stopping task takes its minute, then first yields inside the write.
+        until(|| core.unstored.lock_requests() > before).await;
         let held: Vec<i64> = core.unstored.held(device).iter().map(|s| s.at_ms).collect();
         assert_eq!(held, [at_ms], "a minute not yet written stays readable");
 
