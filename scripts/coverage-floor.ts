@@ -142,9 +142,11 @@ export const COVERAGE_EXEMPT: ReadonlyArray<
   },
   {
     reason:
-      "harness for test:routes and the upgrade rehearsal: drives Docker, a throwaway TimescaleDB and the 1.2.0 fixture",
+      "harness for test:routes, test:budgets and the upgrade rehearsal: drives cargo, Docker, a booted core and the 1.2.0 fixture",
     paths: [
       "scripts/route-smoke-run.ts",
+      "scripts/budgets-run.ts",
+      "scripts/core-boot.ts",
       "scripts/upgrade-phases.ts",
       "scripts/upgrade-rehearsal.ts",
     ],
