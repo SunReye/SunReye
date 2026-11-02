@@ -3,7 +3,7 @@
 use std::sync::Arc;
 
 use crate::decode::{Block, Words, decode, plan_reads, split_block};
-use crate::modbus::{Client, Error};
+use crate::modbus::{Client, Error, ILLEGAL_DATA_ADDRESS};
 use crate::profile::Profile;
 
 #[derive(Debug)]
@@ -26,8 +26,9 @@ impl DevicePoller {
 
     /// Reads every block and decodes the registers that answered.
     ///
-    /// A refused spanning block is replaced by its mapped registers and read again; a refused plain
-    /// block leaves its registers absent. Any other error ends the poll: the caller drops the client.
+    /// A spanning block the device refuses with exception 2 (illegal data address) is replaced by its
+    /// mapped registers and read again; a plain block refused so leaves its registers absent. Any other
+    /// error, another exception included, ends the poll: the caller drops the client.
     pub async fn poll(&mut self, client: &mut Client) -> Result<Vec<(String, f64)>, Error> {
         let mut words = Words::new();
         let mut index = 0;
@@ -49,9 +50,11 @@ impl DevicePoller {
     async fn read_block(&self, client: &mut Client, block: Block) -> Result<Read, Error> {
         match client.read_holding(self.unit, block.start, block.count).await {
             Ok(words) => Ok(Read::Words(words)),
-            Err(Error::Exception(_)) if block.grouped => Ok(Read::Split(split_block(&self.profile, block))),
-            Err(Error::Exception(code)) => {
-                log_refused(block, code);
+            Err(Error::Exception(ILLEGAL_DATA_ADDRESS)) if block.grouped => {
+                Ok(Read::Split(split_block(&self.profile, block)))
+            }
+            Err(Error::Exception(ILLEGAL_DATA_ADDRESS)) => {
+                log_refused(block);
                 Ok(Read::Refused)
             }
             Err(error) => Err(error),
@@ -59,8 +62,8 @@ impl DevicePoller {
     }
 }
 
-fn log_refused(block: Block, code: u8) {
-    tracing::warn!(start = block.start, count = block.count, code, "device refused a read");
+fn log_refused(block: Block) {
+    tracing::warn!(start = block.start, count = block.count, "device does not serve the registers of a read");
 }
 
 enum Read {
@@ -89,7 +92,7 @@ mod tests {
         let fixture = profile_case(&oracle, profile_id, case).expect("fixture");
         let sim = Simulator::start(fixture.registers, &[1]).await.expect("sim");
         let mut client =
-            Client::connect(Transport::Tcp, "127.0.0.1", sim.addr.port(), Duration::from_secs(5))
+            Client::connect(Transport::Tcp, "127.0.0.1", sim.addr.port(), None, Duration::from_secs(5))
                 .await
                 .expect("connect");
         let profile = Bundle::official().expect("bundle").profile(profile_id).expect("profile").clone();
@@ -115,7 +118,7 @@ mod tests {
     async fn a_silent_device_ends_the_poll_with_a_timeout() {
         let sim = Simulator::start(sunreye_sim::Registers::default(), &[]).await.expect("sim");
         let mut client =
-            Client::connect(Transport::Tcp, "127.0.0.1", sim.addr.port(), Duration::from_millis(100))
+            Client::connect(Transport::Tcp, "127.0.0.1", sim.addr.port(), None, Duration::from_millis(100))
                 .await
                 .expect("connect");
         let profile = Bundle::official().expect("bundle").profile("deye-sg05lp3").expect("profile").clone();

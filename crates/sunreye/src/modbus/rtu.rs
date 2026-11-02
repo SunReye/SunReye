@@ -6,6 +6,8 @@ use tokio::io::{AsyncRead, AsyncReadExt};
 use super::{EXCEPTION_FLAG, Error, FC_READ_HOLDING, parse_pdu};
 
 const CRC_LEN: usize = 2;
+/// Unit id, function code, one byte of body, CRC: an exception reply.
+const MIN_FRAME: usize = 5;
 
 /// Unit, function, start, count, CRC.
 pub(super) fn read_request(unit: u8, start: u16, count: u16) -> [u8; 8] {
@@ -47,7 +49,15 @@ pub(super) async fn read_reply<R: AsyncRead + Unpin>(
     let opened = frame.len();
     frame.resize(opened + rest, 0);
     stream.read_exact(&mut frame[opened..]).await?;
-    check_frame(&frame, unit)?;
+    parse_frame(&frame, unit, count)
+}
+
+/// Checks a whole reply frame and returns its words.
+pub(super) fn parse_frame(frame: &[u8], unit: u8, count: u16) -> Result<Vec<u16>, Error> {
+    if frame.len() < MIN_FRAME {
+        return Err(Error::Protocol("short reply"));
+    }
+    check_frame(frame, unit)?;
     parse_pdu(&frame[1..frame.len() - CRC_LEN], count)
 }
 
@@ -69,7 +79,7 @@ fn check_frame(frame: &[u8], unit: u8) -> Result<(), Error> {
 }
 
 /// CRC-16/Modbus: reflected polynomial 0xA001, seed 0xFFFF.
-fn crc16(bytes: &[u8]) -> u16 {
+pub(super) fn crc16(bytes: &[u8]) -> u16 {
     bytes.iter().fold(0xFFFF, |mut crc, byte| {
         crc ^= u16::from(*byte);
         for _ in 0..8 {
@@ -114,6 +124,27 @@ mod tests {
     fn the_only_function_the_encoder_can_send_is_a_read() {
         for (unit, start, count) in [(0, 0, 1), (1, 500, 5), (255, 65535, 125)] {
             assert_eq!(read_request(unit, start, count)[1], 3);
+        }
+    }
+
+    #[test]
+    fn a_whole_frame_is_checked_and_yields_its_words() {
+        let protocol = |why| Err(Error::Protocol(why));
+        assert_eq!(parse_frame(&hex("0103020000b844"), 1, 1), Ok(vec![0]));
+        assert_eq!(parse_frame(&hex("018302c0f1"), 1, 1), Err(Error::Exception(2)));
+        assert_eq!(parse_frame(&hex("0103020000b845"), 1, 1), protocol("crc mismatch"));
+        assert_eq!(parse_frame(&hex("0103020000b844"), 2, 1), protocol("unit id mismatch"));
+        assert_eq!(parse_frame(&hex("0103020000b844"), 1, 2), protocol("byte count mismatch"));
+    }
+
+    #[test]
+    fn a_frame_shorter_than_an_exception_reply_is_refused_not_indexed() {
+        for cut in 0..5 {
+            assert_eq!(
+                parse_frame(&hex("018302c0f1")[..cut], 1, 1),
+                Err(Error::Protocol("short reply")),
+                "{cut}"
+            );
         }
     }
 

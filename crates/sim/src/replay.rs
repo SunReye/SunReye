@@ -12,6 +12,8 @@ use crate::Exchange;
 const STEP_TIMEOUT: Duration = Duration::from_secs(5);
 /// Pause between the chunks of one reply, so each reaches the client as its own TCP read.
 const CHUNK_GAP: Duration = Duration::from_millis(20);
+/// How long after the last step the replay still listens for a request the recording does not have.
+const TRAILING_GRACE: Duration = Duration::from_millis(200);
 
 #[derive(Debug)]
 pub struct Replay {
@@ -39,9 +41,19 @@ pub async fn replay(steps: Vec<Exchange>) -> std::io::Result<Replay> {
                 Exchange::Send(chunks) => send(&mut stream, &chunks).await?,
             }
         }
-        Ok(())
+        no_more_requests(&mut stream).await
     });
     Ok(Replay { addr, done })
+}
+
+/// The recording is everything 2.x sent: a request past its end is a retry or a read the client should
+/// not make. A client that hangs up ends the wait early.
+async fn no_more_requests(stream: &mut TcpStream) -> Result<(), String> {
+    let mut extra = [0_u8; 1];
+    match tokio::time::timeout(TRAILING_GRACE, stream.read(&mut extra)).await {
+        Ok(Ok(read)) if read > 0 => Err("the client sent a request after the recording ended".to_owned()),
+        _ => Ok(()),
+    }
 }
 
 async fn expect(stream: &mut TcpStream, want: &[u8]) -> Result<(), String> {

@@ -13,6 +13,8 @@ use sunreye_sim::{FC_READ_HOLDING, Framing, Simulator, profile_case};
 
 const BIN: &str = env!("CARGO_BIN_EXE_sunreye");
 const PROFILE: &str = "deye-sg01hp3";
+/// The serial of the stick the oracle recorded.
+const STICK: u32 = 3_168_930_341;
 
 fn oracle() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/oracle")
@@ -60,19 +62,29 @@ async fn stored(dir: &Path) -> Vec<Sample> {
 
 #[tokio::test]
 async fn polled_readings_survive_a_restart_over_modbus_tcp() {
-    survives_a_restart(Transport::Tcp, Framing::Tcp).await;
+    survives_a_restart(Transport::Tcp, Framing::Tcp, None).await;
 }
 
 #[tokio::test]
 async fn polled_readings_survive_a_restart_over_rtu_over_tcp() {
-    survives_a_restart(Transport::RtuOverTcp, Framing::RtuOverTcp).await;
+    survives_a_restart(Transport::RtuOverTcp, Framing::RtuOverTcp, None).await;
 }
 
-async fn seed(dir: &Path, transport: Transport, port: u16) {
+#[tokio::test]
+async fn polled_readings_survive_a_restart_over_solarman_v5_with_the_serial_discovered() {
+    survives_a_restart(Transport::SolarmanV5, Framing::SolarmanV5(STICK), None).await;
+}
+
+#[tokio::test]
+async fn polled_readings_survive_a_restart_over_solarman_v5_whatever_serial_is_configured() {
+    survives_a_restart(Transport::SolarmanV5, Framing::SolarmanV5(STICK), Some(0x1122_3344)).await;
+}
+
+async fn seed(dir: &Path, transport: Transport, port: u16, logger_serial: Option<u32>) {
     let store = Store::open(dir).await.expect("open store");
     store.set_setting("poll.interval_ms", "100").await.expect("interval");
     let connection = store
-        .add_connection(&NewConnection { transport, host: "127.0.0.1".into(), port })
+        .add_connection(&NewConnection { transport, host: "127.0.0.1".into(), port, logger_serial })
         .await
         .expect("connection");
     store
@@ -99,11 +111,11 @@ async fn run_for(dir: &Path, sim: &Simulator, requests: usize) -> Vec<Sample> {
     stored(dir).await
 }
 
-async fn survives_a_restart(transport: Transport, framing: Framing) {
+async fn survives_a_restart(transport: Transport, framing: Framing, logger_serial: Option<u32>) {
     let case = profile_case(&oracle(), PROFILE, "ramp").expect("fixture case");
     let sim = Simulator::start_with(framing, case.registers.clone(), &[1]).await.expect("simulator");
-    let dir = data_dir(transport.as_str());
-    seed(&dir, transport, sim.addr.port()).await;
+    let dir = data_dir(&format!("{}-{logger_serial:?}", transport.as_str()));
+    seed(&dir, transport, sim.addr.port(), logger_serial).await;
 
     let first = run_for(&dir, &sim, 60).await;
     assert!(first.len() >= 3, "{} samples after the first run", first.len());

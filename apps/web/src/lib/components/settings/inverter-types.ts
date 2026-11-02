@@ -27,7 +27,7 @@ export type InverterConfig = {
    * the port discovers it from the stick's own reply — see `inverterConfigSchema`
    * in `@SunReye/db/inverter-config`, which this restates.
    */
-  loggerSerial?: number;
+  loggerSerial?: number | null;
   /**
    * Read a fake inverter instead of the address above. Part of the SAVED config
    * since it stopped being env-only, and bound by `inverter-simulate-switch.svelte`

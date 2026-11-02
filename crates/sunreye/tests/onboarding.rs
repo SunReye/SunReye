@@ -98,7 +98,8 @@ async fn an_onboarded_device_is_polled_and_everything_survives_a_restart() {
     let dir = data_dir();
     let connection = json!({
         "host": "127.0.0.1", "port": sim.addr.port(), "transport": "tcp", "unitId": 1,
-        "timeoutMs": 500, "pollIntervalMs": 1000, "simulate": false
+        "timeoutMs": 500, "pollIntervalMs": 1000, "simulate": false,
+        "loggerSerial": null
     });
     let mut test_body = connection.clone();
     test_body["profileId"] = json!(PROFILE);
