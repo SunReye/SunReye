@@ -132,7 +132,7 @@ async function addMember(dataDir: string) {
 
 async function probeOnce(base: string, probe: Probe, headers: HeadersInit): Promise<ProbeResponse> {
   try {
-    const response = await fetch(`${base}${probe.url}`, {
+    const response = await fetch(`${base}${probe.path}`, {
       method: probe.method,
       headers: probe.body ? { ...headers, "content-type": "application/json" } : headers,
       body: probe.body,
@@ -205,7 +205,7 @@ async function accessPass(
  */
 async function sweep(base: string, adminCookie: string, memberCookie: string) {
   const doc = (await fetch(`${base}/openapi/json`).then((r) => r.json())) as OpenApiDoc;
-  const probes = planProbes(doc, { samples: {}, nowMs: Date.now() });
+  const probes = planProbes(doc, Date.now());
   const access: { mode: AuthMode; results: ProbeResult[] }[] = [];
 
   log(`probing ${probes.length} routes with no credentials`);

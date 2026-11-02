@@ -13,8 +13,8 @@
  *
  * **Does the route execute** ({@link classify}): a 5xx fails, and so does a
  * request that never came back. Nothing else — a 4xx means the handler RAN and
- * refused the input, which is exactly what a probe carrying an empty body and a
- * placeholder id should get. Response shapes are out of scope by design;
+ * refused the input, which is exactly what a probe carrying an empty body
+ * should get. Response shapes are out of scope by design;
  * correctness stays in the core's own tests.
  *
  * **Was the caller allowed to make it execute** ({@link classifyAuth}): the
@@ -45,9 +45,6 @@
  * mount. Measured 2026-11-02 against the core: 12 operations.
  */
 export const MIN_ROUTES = 12;
-
-/** A path parameter the run could not discover a real value for. */
-export const MISSING_SAMPLE = "route-smoke-absent";
 
 export interface SmokeOptions {
   help: boolean;
@@ -84,13 +81,6 @@ export interface SchemaLike {
   oneOf?: SchemaLike[];
 }
 
-export interface OpenApiParameter {
-  name: string;
-  in: string;
-  required?: boolean;
-  schema?: SchemaLike;
-}
-
 /** The slice of a JSON Schema a request BODY is described by. */
 export interface BodySchema extends SchemaLike {
   properties?: Record<string, BodySchema>;
@@ -106,7 +96,6 @@ export interface RequestBodyLike {
 }
 
 export interface OpenApiOperation {
-  parameters?: OpenApiParameter[];
   requestBody?: RequestBodyLike;
 }
 
@@ -116,10 +105,7 @@ export interface OpenApiDoc {
 
 export interface Probe {
   method: string;
-  /** The templated path, as the document spells it. */
   path: string;
-  /** The path actually requested: parameters filled, query appended. */
-  url: string;
   /**
    * The payload the EXECUTION pass sends: `{}` for every write. Deliberately
    * not a valid one — that pass carries an admin session and would otherwise
@@ -139,57 +125,6 @@ export interface Probe {
 
 const HOUR_MS = 3_600_000;
 
-/** One attempt at a value; `undefined` means "not my kind of parameter". */
-type SampleRule = (name: string, schema: SchemaLike, nowMs: number) => string | undefined;
-
-/**
- * The rules that pick a value for a required query parameter, IN ORDER. Each
- * answers for the shapes it recognises and passes otherwise, so the precedence
- * is the list itself rather than a chain of conditions.
- *
- * The route's own vocabulary comes first: a declared enum member or default is
- * a value the handler is documented to accept, and anything invented here is a
- * guess. `!== undefined` throughout — `0` and `false` are values, not absences.
- */
-const SAMPLE_RULES: readonly SampleRule[] = [
-  (_name, schema) => stringOrUndefined(schema.enum?.[0] ?? schema.const),
-  (_name, schema) => stringOrUndefined(schema.default),
-  (name, schema, nowMs) =>
-    isInstant(name, schema) ? new Date(instantFor(name, nowMs)).toISOString() : undefined,
-  (_name, schema) =>
-    schema.type === "number" || schema.type === "integer" ? String(schema.minimum ?? 1) : undefined,
-  (_name, schema) => (schema.type === "boolean" ? "false" : undefined),
-];
-
-const stringOrUndefined = (value: unknown) => (value === undefined ? undefined : String(value));
-
-/**
- * One value for a required query parameter, chosen so the route ACCEPTS it — a
- * rejected value would turn every probe into a 422 and prove nothing beyond
- * validation. A parameter no rule recognises still gets a value: dropping it
- * would silently change the request into one the route never sees.
- */
-function sampleValue(param: OpenApiParameter, nowMs: number): string {
-  const schema = flatten(param.schema ?? {});
-  for (const rule of SAMPLE_RULES) {
-    const value = rule(param.name, schema, nowMs);
-    if (value !== undefined) return value;
-  }
-  return "route-smoke";
-}
-
-/** Collapse a `t.Union` (`anyOf`/`oneOf`) onto its first branch. */
-function flatten(schema: SchemaLike): SchemaLike {
-  const branches = schema.anyOf ?? schema.oneOf;
-  const first = branches?.[0];
-  if (!first) return schema;
-  return {
-    ...first,
-    enum: schema.enum ?? first.enum,
-    default: schema.default ?? first.default,
-  };
-}
-
 const INSTANT_NAMES = new Set(["from", "to", "start", "end", "since", "until", "at"]);
 const isInstant = (name: string, schema: SchemaLike) =>
   schema.format === "date-time" || INSTANT_NAMES.has(name);
@@ -197,23 +132,6 @@ const isInstant = (name: string, schema: SchemaLike) =>
 /** A window that is ordered and non-empty: openers look back a day, closers are now. */
 const instantFor = (name: string, nowMs: number) =>
   name === "from" || name === "start" || name === "since" ? nowMs - 24 * HOUR_MS : nowMs;
-
-/**
- * The query string for one operation: every REQUIRED query parameter, and
- * nothing else. An optional parameter left out is the route's default path,
- * which is the one worth smoking.
- */
-export function sampleQuery(
-  parameters: readonly OpenApiParameter[] | undefined,
-  nowMs: number,
-): Record<string, string> {
-  const query: Record<string, string> = {};
-  for (const param of parameters ?? []) {
-    if (param.in !== "query" || !param.required) continue;
-    query[param.name] = sampleValue(param, nowMs);
-  }
-  return query;
-}
 
 // ---------------------------------------------------------------------------
 // SYNTHESISING A BODY, and why the sweep is worthless without one.
@@ -255,8 +173,7 @@ const sampleString = (name: string, schema: BodySchema, nowMs: number) =>
   isInstant(name, schema) ? new Date(instantFor(name, nowMs)).toISOString() : "route-smoke";
 
 /**
- * The rules that pick one body value, IN ORDER — the same shape as
- * {@link SAMPLE_RULES}, and for the same reason: the route's own vocabulary
+ * The rules that pick one body value, IN ORDER: the route's own vocabulary
  * (an enum member, a literal, a declared default) beats anything invented here.
  */
 const BODY_RULES: readonly BodyRule[] = [
@@ -337,18 +254,6 @@ export function sampleBody(operation: OpenApiOperation, nowMs: number): string |
   return built === undefined ? undefined : JSON.stringify(built);
 }
 
-/**
- * Fill `{param}` segments from the values the run discovered. A parameter with
- * no sample gets {@link MISSING_SAMPLE} rather than an empty string: an empty
- * substitution silently changes WHICH route is hit, while a placeholder asks
- * the handler for something that does not exist — which must be a 404.
- */
-export function fillPath(path: string, samples: Record<string, string>): string {
-  return path.replace(/\{([^}]+)\}/g, (_, name: string) =>
-    encodeURIComponent(samples[name] ?? MISSING_SAMPLE),
-  );
-}
-
 /** Methods worth probing. HEAD and OPTIONS mirror routes already covered. */
 const METHODS = ["get", "post", "put", "patch", "delete"] as const;
 
@@ -363,43 +268,35 @@ const METHOD_ORDER: Record<string, number> = {
 
 export const probeLabel = (probe: Probe): string => probe.label;
 
-export interface PlanContext {
-  /** Real ids discovered from the booted server, by path-parameter name. */
-  samples: Record<string, string>;
-  nowMs: number;
-}
-
 /** One operation as a request, or `undefined` when it is not to be probed. */
 function probeFor(
   path: string,
   method: (typeof METHODS)[number],
   operation: OpenApiOperation | undefined,
-  ctx: PlanContext,
+  nowMs: number,
 ): Probe | undefined {
   const label = `${method.toUpperCase()} ${path}`;
   if (!operation) return undefined;
-  const query = new URLSearchParams(sampleQuery(operation.parameters, ctx.nowMs)).toString();
   const isRead = method === "get";
   return {
     method: method.toUpperCase(),
     path,
-    url: fillPath(path, ctx.samples) + (query ? `?${query}` : ""),
     // An empty object for the EXECUTION pass: a 4xx from validation is a pass
     // there, and that pass carries an admin session — a valid payload would
     // write real registers through a command route.
     body: isRead ? undefined : "{}",
     // A payload the schema accepts for the CREDENTIALS passes, where the point
     // is to get past validation and make the gate answer for itself.
-    gateBody: isRead ? undefined : sampleBody(operation, ctx.nowMs),
+    gateBody: isRead ? undefined : sampleBody(operation, nowMs),
     label,
   };
 }
 
 /** Every route in the document, as requests, reads before writes. */
-export function planProbes(doc: OpenApiDoc, ctx: PlanContext): Probe[] {
+export function planProbes(doc: OpenApiDoc, nowMs: number): Probe[] {
   const probes = Object.entries(doc.paths ?? {})
     .flatMap(([path, operations]) =>
-      METHODS.map((method) => probeFor(path, method, operations[method], ctx)),
+      METHODS.map((method) => probeFor(path, method, operations[method], nowMs)),
     )
     .filter((probe): probe is Probe => probe !== undefined);
   return probes.sort((a, b) => order(a) - order(b));
@@ -437,7 +334,7 @@ const EXCERPT = 300;
  * The verdict for one response. A 5xx fails; so does silence, which is what a
  * server that died mid-sweep looks like. Everything else passes: a 4xx means
  * the handler ran and refused, which is the expected answer to a probe carrying
- * an empty body and a placeholder id.
+ * an empty body.
  */
 export function classify(
   probe: Pick<Probe, "label">,

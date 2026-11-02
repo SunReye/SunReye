@@ -8,14 +8,12 @@ import {
   SESSION_LABELS,
   classify,
   classifyAuth,
-  fillPath,
   isPublicLabel,
   isSessionLabel,
   parseArgs,
   planProbes,
   sampleBody,
   probeLabel,
-  sampleQuery,
   summarize,
   summarizeAuth,
   type OpenApiDoc,
@@ -27,8 +25,7 @@ const NOW = Date.UTC(2026, 7, 30, 12, 0, 0);
 
 const doc = (paths: OpenApiDoc["paths"]): OpenApiDoc => ({ paths });
 
-const plan = (paths: OpenApiDoc["paths"], samples: Record<string, string> = {}) =>
-  planProbes(doc(paths), { samples, nowMs: NOW });
+const plan = (paths: OpenApiDoc["paths"]) => planProbes(doc(paths), NOW);
 
 describe("argument parsing", () => {
   test("--help is the only flag", () => {
@@ -39,154 +36,6 @@ describe("argument parsing", () => {
   test("rejects an unknown flag, including the database flags of the 3.x harness", () => {
     expect(() => parseArgs(["--nope"])).toThrow();
     expect(() => parseArgs(["--db-port=5433"])).toThrow();
-  });
-});
-
-describe("filling path parameters", () => {
-  test("substitutes a discovered sample", () => {
-    expect(fillPath("/api/v1/entities/{key}/history", { key: "dc.pv1.power" })).toBe(
-      "/api/v1/entities/dc.pv1.power/history",
-    );
-  });
-
-  test("URL-encodes the sample so a dotted or slashed id cannot escape the path", () => {
-    expect(fillPath("/api/x/{id}", { id: "a/b c" })).toBe("/api/x/a%2Fb%20c");
-  });
-
-  test("a parameter with no sample gets a placeholder that reads as absent, not empty", () => {
-    // An empty substitution silently changes which route is hit; a placeholder
-    // asks the handler for something that does not exist, which must be a 404.
-    const filled = fillPath("/api/automations/{id}", {});
-    expect(filled).not.toBe("/api/automations/");
-    expect(filled.startsWith("/api/automations/")).toBe(true);
-    expect(filled.length).toBeGreaterThan("/api/automations/".length);
-  });
-
-  test("substitutes every parameter, not just the first", () => {
-    expect(fillPath("/a/{x}/b/{y}", { x: "1", y: "2" })).toBe("/a/1/b/2");
-  });
-
-  test("leaves a path with no parameters alone", () => {
-    expect(fillPath("/healthz", {})).toBe("/healthz");
-  });
-});
-
-describe("sampling query parameters", () => {
-  const sample = (parameters: Parameters<typeof sampleQuery>[0]) => sampleQuery(parameters, NOW);
-
-  test("omits an optional parameter", () => {
-    expect(sample([{ name: "metric", in: "query", schema: { type: "string" } }])).toEqual({});
-  });
-
-  test("omits path, header and cookie parameters — only the query is built here", () => {
-    expect(
-      sample([
-        { name: "id", in: "path", required: true, schema: { type: "string" } },
-        {
-          name: "x-key",
-          in: "header",
-          required: true,
-          schema: { type: "string" },
-        },
-      ]),
-    ).toEqual({});
-  });
-
-  test("a required enum takes its first member, so the value is one the route accepts", () => {
-    expect(
-      sample([
-        {
-          name: "bucket",
-          in: "query",
-          required: true,
-          schema: { enum: ["hour", "day", "month"] },
-        },
-      ]),
-    ).toEqual({ bucket: "hour" });
-  });
-
-  test("a union of literals is read like an enum", () => {
-    expect(
-      sample([
-        {
-          name: "range",
-          in: "query",
-          required: true,
-          schema: { anyOf: [{ const: "today" }, { const: "month" }] },
-        },
-      ]),
-    ).toEqual({ range: "today" });
-  });
-
-  test("a declared default is preferred over an invented value", () => {
-    expect(
-      sample([
-        {
-          name: "hours",
-          in: "query",
-          required: true,
-          schema: { type: "number", default: 24 },
-        },
-      ]),
-    ).toEqual({ hours: "24" });
-  });
-
-  test("zero is a default, not a missing one", () => {
-    expect(
-      sample([
-        {
-          name: "offset",
-          in: "query",
-          required: true,
-          schema: { type: "number", default: 0 },
-        },
-      ]),
-    ).toEqual({ offset: "0" });
-  });
-
-  test("false is a default, not a missing one", () => {
-    expect(
-      sample([
-        {
-          name: "raw",
-          in: "query",
-          required: true,
-          schema: { type: "boolean", default: false },
-        },
-      ]),
-    ).toEqual({ raw: "false" });
-  });
-
-  test("a window is a real, ordered [from, to) around now", () => {
-    const q = sample([
-      { name: "from", in: "query", required: true, schema: { type: "string" } },
-      { name: "to", in: "query", required: true, schema: { type: "string" } },
-    ]);
-    expect(Date.parse(q.from as string)).toBeLessThan(Date.parse(q.to as string));
-    expect(Date.parse(q.to as string)).toBe(NOW);
-  });
-
-  test("a number with only a minimum takes the minimum, never a value the route rejects", () => {
-    expect(
-      sample([
-        {
-          name: "limit",
-          in: "query",
-          required: true,
-          schema: { type: "integer", minimum: 5 },
-        },
-      ]),
-    ).toEqual({ limit: "5" });
-  });
-
-  test("an unrecognised required parameter still gets a value rather than being dropped", () => {
-    const q = sample([{ name: "mystery", in: "query", required: true, schema: {} }]);
-    expect(q.mystery).toBeTruthy();
-  });
-
-  test("no parameters at all is an empty query, not a stray '?'", () => {
-    expect(sample(undefined)).toEqual({});
-    expect(sample([])).toEqual({});
   });
 });
 
@@ -229,31 +78,8 @@ describe("planning the probes", () => {
   });
 
   test("an empty document plans nothing rather than inventing a route", () => {
-    expect(planProbes({}, { samples: {}, nowMs: NOW })).toEqual([]);
+    expect(planProbes({}, NOW)).toEqual([]);
     expect(plan({})).toEqual([]);
-  });
-
-  test("carries the sampled query into the URL", () => {
-    const [probe] = plan({
-      "/api/history/rollup": {
-        get: {
-          parameters: [
-            {
-              name: "bucket",
-              in: "query",
-              required: true,
-              schema: { enum: ["hour", "day"] },
-            },
-          ],
-        },
-      },
-    });
-    expect(probe?.url).toBe("/api/history/rollup?bucket=hour");
-  });
-
-  test("path parameters are filled from the samples the run discovered", () => {
-    const [probe] = plan({ "/api/v1/entities/{key}": { get: {} } }, { key: "battery.soc" });
-    expect(probe?.url).toBe("/api/v1/entities/battery.soc");
   });
 
   test("a write carries a JSON body — an empty one, since a 4xx is a pass here", () => {
@@ -270,7 +96,7 @@ describe("planning the probes", () => {
 });
 
 describe("classifying one response", () => {
-  const probe = { method: "GET", path: "/a", url: "/a", label: "GET /a" };
+  const probe = { method: "GET", path: "/a", label: "GET /a" };
 
   test("a 5xx is the failure this harness exists to catch", () => {
     expect(classify(probe, { status: 500 }).ok).toBe(false);
