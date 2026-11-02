@@ -16,6 +16,7 @@ mod accounts;
 mod tiers;
 
 pub use self::accounts::{ApiKeyRow, NewApiKey, Refusal};
+pub use self::tiers::BucketWindow;
 use crate::modbus::{Transport, UnknownTransport};
 pub use crate::samples::Sample;
 use crate::samples::{ClosedMinute, SampleError, decode, encode, minute_of};

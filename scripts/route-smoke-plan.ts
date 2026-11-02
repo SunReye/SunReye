@@ -429,6 +429,7 @@ export const SESSION_LABELS: readonly string[] = [
   "GET /api/auth/session",
   "GET /api/capabilities",
   "GET /api/history/recent",
+  "GET /api/history/rollup",
   "GET /api/profile",
 ];
 

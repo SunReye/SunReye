@@ -7,14 +7,14 @@ use crate::store::{NewConnection, NewDevice};
 const NOW: i64 = 1_772_323_350_000;
 const MIDNIGHT: i64 = 1_772_323_200_000;
 
-fn oracle(file: &str) -> Vec<Value> {
+pub(super) fn oracle(file: &str) -> Vec<Value> {
     let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/oracle").join(file);
     let text = std::fs::read_to_string(path).expect("corpus");
     text.lines().map(|line| serde_json::from_str(line).expect("json")).collect()
 }
 
 /// A signed-in account that is not an admin.
-async fn plain_user(admin: &Api) -> Api {
+pub(super) async fn plain_user(admin: &Api) -> Api {
     let body =
         json!({"email": "user@example.org", "name": "User", "password": ADMIN_PASSWORD, "admin": false});
     assert_eq!(post(admin, "/api/admin/users", &body).await.status, StatusCode::OK);
