@@ -6,7 +6,7 @@ use std::time::Instant;
 use serde::Serialize;
 use utoipa::ToSchema;
 
-use crate::modbus::Client;
+use crate::modbus::{Client, Error};
 use crate::poll::DevicePoller;
 use crate::profile::Profile;
 use crate::settings::InverterConfig;
@@ -52,7 +52,8 @@ impl TestResult {
 pub async fn test_connection(profile: &Arc<Profile>, config: &InverterConfig) -> TestResult {
     let started = Instant::now();
     let read = async {
-        let mut client = Client::connect(config.host(), config.port(), config.timeout()).await?;
+        let transport = config.transport.wire().ok_or(Error::Protocol("transport not supported"))?;
+        let mut client = Client::connect(transport, config.host(), config.port(), config.timeout()).await?;
         DevicePoller::new(Arc::clone(profile), config.unit()).poll(&mut client).await
     };
     match read.await {
