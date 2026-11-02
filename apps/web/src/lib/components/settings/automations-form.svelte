@@ -16,7 +16,7 @@
 	import type { AutomationConfig } from '$lib/automations';
 
 	const session = useAppSession();
-	const isAdmin = $derived($session.data?.user.role === 'admin');
+	const isAdmin = $derived($session.data?.user.admin === true);
 
 	let draft = $state<AutomationConfig | null>(null);
 	let saving = $state(false);

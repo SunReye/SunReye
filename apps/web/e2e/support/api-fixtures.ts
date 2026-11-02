@@ -1237,16 +1237,12 @@ export const AVAILABLE_PROFILES = {
 // ─── Admin ──────────────────────────────────────────────────────────────────
 
 /** `GET /api/admin/api-keys` — `[]` is legal and renders the empty state. */
-export function apiKeys(user: { id: string; email: string; name: string }) {
+export function apiKeys(user: { id: number; email: string; name: string }) {
   return [
     {
-      id: "key-1",
+      id: 1,
       name: "Home Assistant",
-      prefix: "sr",
-      start: "sr_abcd",
-      enabled: true,
-      expiresAt: null,
-      lastRequest: null,
+      start: "sunreye_ab",
       createdAt: new Date(0).toISOString(),
       userId: user.id,
       userEmail: user.email,

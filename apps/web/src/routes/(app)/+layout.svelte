@@ -37,7 +37,7 @@
 	// + the live stream anonymously, so we show a read-only workspace instead.
 	// `anonAllowed` is null until we've probed the public flag, so the shell shows a
 	// loading state rather than flashing a login redirect.
-	const isAdmin = $derived($sessionQuery.data?.user?.role === 'admin');
+	const isAdmin = $derived($sessionQuery.data?.user.admin === true);
 	let anonAllowed = $state<boolean | null>(null);
 	const isAnon = $derived(!$sessionQuery.isPending && !$sessionQuery.data && anonAllowed === true);
 

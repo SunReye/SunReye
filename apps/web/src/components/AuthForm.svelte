@@ -1,9 +1,8 @@
 <script lang="ts">
 	import { z } from 'zod';
-	import { authClient } from '$lib/auth-client';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$lib/resolve';
-	import { settleWhen } from '$lib/settle-when';
+	import { signIn, signUp } from '$lib/session';
 	import { Button } from '$lib/components/ui/button';
 	import { Checkbox } from '$lib/components/ui/checkbox';
 	import * as m from '$lib/paraglide/messages';
@@ -30,9 +29,8 @@
 	let name = $state('');
 	let email = $state('');
 	let password = $state('');
-	// Persist the session across browser restarts (paired with the server's long
-	// session lifetime). When unchecked the session cookie is browser-scoped and
-	// ends when the browser closes. Sign-in only; irrelevant to sign-up.
+	// Keep the session for a year; unchecked, the cookie ends when the browser closes.
+	// Sign-in only; irrelevant to sign-up.
 	let rememberMe = $state(true);
 	let errors = $state<{ name?: string; email?: string; password?: string }>({});
 	let formError = $state('');
@@ -55,8 +53,8 @@
 
 	/** Create the account or sign in, depending on the form's mode. */
 	function submitCredentials() {
-		if (mode === 'signup') return authClient.signUp.email({ name, email, password });
-		return authClient.signIn.email({ email, password, rememberMe });
+		if (mode === 'signup') return signUp({ name, email, password });
+		return signIn({ email, password, rememberMe });
 	}
 
 	/** Surface a failed attempt and re-enable the form. */
@@ -75,26 +73,13 @@
 		}
 		errors = {};
 		submitting = true;
-		const { error } = await submitCredentials();
-		if (error) {
-			failWith(error.message);
+		const result = await submitCredentials();
+		if (!result.ok) {
+			failWith(result.message);
 			return;
 		}
-		// Wait until the reactive session store reflects the new cookie before
-		// navigating. Better Auth refreshes `useSession()` asynchronously (a delayed
-		// signal after sign-in), so navigating immediately races that refresh: the
-		// `(app)` guard reads a stale `data: null` and bounces straight back here,
-		// which is why the first login used to need a second try or a reload.
-		await waitForSession();
 		goto(resolve('/'));
 		submitting = false;
-	}
-
-	/** Resolve once `useSession()` reports an authenticated session (or we time out). */
-	function waitForSession(timeoutMs = 3000): Promise<void> {
-		// Kick a fresh fetch (updates the shared store) and settle as soon as it lands.
-		void authClient.getSession({ query: { disableCookieCache: true } });
-		return settleWhen(authClient.useSession(), (s) => Boolean(s.data), timeoutMs);
 	}
 </script>
 

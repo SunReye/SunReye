@@ -19,7 +19,7 @@
 	// only the fields it owns (the server merges, and refuses the inverter's).
 
 	const session = useAppSession();
-	const isAdmin = $derived($session.data?.user.role === 'admin');
+	const isAdmin = $derived($session.data?.user.admin === true);
 
 	let loaded = $state(false);
 	let saving = $state(false);
