@@ -47,7 +47,7 @@ pub async fn switch(
     State(core): State<Arc<Core>>,
     ApiJson(kiosk): ApiJson<Kiosk>,
 ) -> Result<Json<Kiosk>, ApiError> {
-    settings::set_kiosk(&core.store, kiosk.enabled).await?;
+    core.switch_kiosk(kiosk.enabled).await?;
     tracing::info!(enabled = kiosk.enabled, "kiosk view switched");
     Ok(Json(kiosk))
 }

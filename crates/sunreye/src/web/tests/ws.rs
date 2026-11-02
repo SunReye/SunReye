@@ -146,6 +146,44 @@ async fn with_the_kiosk_view_on_a_stranger_is_upgraded_and_fed_and_with_it_off_r
     core.stop().await;
 }
 
+/// The server closes `socket` within two seconds.
+async fn closed(socket: &mut Socket) {
+    let until = Instant::now() + Duration::from_secs(2);
+    loop {
+        let next = tokio::time::timeout_at(until.into(), socket.next()).await.expect("closed within 2 s");
+        match next {
+            Some(Ok(Message::Close(_)) | Err(_)) | None => return,
+            Some(Ok(_)) => {}
+        }
+    }
+}
+
+#[tokio::test]
+async fn switching_the_kiosk_view_off_closes_a_strangers_open_socket_and_keeps_a_session_open() {
+    let (core, admin) = open(&dir("ws-kiosk-off")).await;
+    let addr = serve(&core, &Config::default()).await;
+    core.live.roster(&[7]);
+    put(&admin, "/api/settings/kiosk", &json!({"enabled": true})).await;
+    let mut stranger = connect(addr, &admin.anonymous()).await;
+    let mut session = connect(addr, &admin).await;
+    for socket in [&mut stranger, &mut session] {
+        subscribe(socket, r#"["metrics"]"#).await;
+    }
+    put(&admin, "/api/settings/kiosk", &json!({"enabled": true})).await;
+    core.live.publish(7, &reading(1_786_788_000_000, 41.0));
+    for socket in [&mut stranger, &mut session] {
+        assert_eq!(next_json(socket).await["data"]["metrics"]["pv_power"], 41.0, "on again keeps it open");
+    }
+
+    put(&admin, "/api/settings/kiosk", &json!({"enabled": false})).await;
+    closed(&mut stranger).await;
+    connections(&core, 1).await;
+    core.live.publish(7, &reading(1_786_788_000_123, 42.0));
+    assert_eq!(next_json(&mut session).await["data"]["metrics"]["pv_power"], 42.0);
+    drop(admin);
+    core.stop().await;
+}
+
 /// Pings every 100 ms and closes a connection silent for 300 ms.
 fn quick() -> Config {
     let live =

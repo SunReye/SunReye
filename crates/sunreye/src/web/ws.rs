@@ -7,9 +7,11 @@ use axum::Extension;
 use axum::extract::State;
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::response::{IntoResponse, Response};
+use tokio::sync::watch;
 use tokio::time::{Instant, MissedTickBehavior, interval_at, sleep_until, timeout_at};
 
 use super::ApiError;
+use super::auth::AuthSession;
 use crate::live::{
     ClientFrame, Frame, Subscription, Topic, ack_frame, parse_client_frame, resolve_subscribe,
     resolve_unsubscribe,
@@ -42,9 +44,11 @@ const READ_BUFFER: usize = 4 * 1024;
 pub async fn upgrade(
     State(core): State<Arc<Core>>,
     Extension(limits): Extension<Limits>,
+    auth: AuthSession,
     upgrade: WebSocketUpgrade,
 ) -> Response {
     let subscription = core.live.subscribe();
+    let kiosk = auth.user.is_none().then(|| core.watch_kiosk());
     if core.live.connections() > limits.connections {
         tracing::warn!(cap = limits.connections, "live connection refused at the cap");
         return ApiError::unavailable("Too many live connections").into_response();
@@ -54,19 +58,29 @@ pub async fn upgrade(
         .max_frame_size(MAX_CLIENT_MESSAGE)
         .read_buffer_size(READ_BUFFER)
         .write_buffer_size(0)
-        .on_upgrade(move |socket| serve(Peer::new(socket, limits.idle), subscription, limits.ping))
+        .on_upgrade(move |socket| serve(Peer::new(socket, limits.idle, kiosk), subscription, limits.ping))
 }
 
-/// The socket and the instant it is closed unless the client speaks first.
+/// The socket, the instant it is closed unless the client speaks first and, for a stranger, the
+/// kiosk view it came in on.
 struct Peer {
     socket: WebSocket,
     idle: Duration,
     deadline: Instant,
+    kiosk: Option<watch::Receiver<bool>>,
 }
 
 impl Peer {
-    fn new(socket: WebSocket, idle: Duration) -> Self {
-        Self { socket, idle, deadline: Instant::now() + idle }
+    fn new(socket: WebSocket, idle: Duration, kiosk: Option<watch::Receiver<bool>>) -> Self {
+        Self { socket, idle, deadline: Instant::now() + idle, kiosk }
+    }
+
+    /// Resolves once a stranger's kiosk view is off; never for a session.
+    async fn revoked(kiosk: Option<&mut watch::Receiver<bool>>) {
+        let Some(kiosk) = kiosk else { return std::future::pending().await };
+        if kiosk.wait_for(|on| !on).await.is_err() {
+            std::future::pending::<()>().await;
+        }
     }
 
     fn heard(&mut self) {
@@ -90,6 +104,7 @@ async fn serve(mut peer: Peer, mut feed: Subscription, ping: Duration) {
             frame = feed.next() => Step::Feed(frame),
             _ = pings.tick() => Step::Ping,
             () = sleep_until(peer.deadline) => Step::Idle,
+            () = Peer::revoked(peer.kiosk.as_mut()) => Step::Revoked,
         };
         if !take(&mut peer, &feed, &mut held, step).await {
             return;
@@ -102,6 +117,7 @@ enum Step {
     Feed(Option<Frame>),
     Ping,
     Idle,
+    Revoked,
 }
 
 /// `false` once the connection is done.
@@ -111,6 +127,10 @@ async fn take(peer: &mut Peer, feed: &Subscription, held: &mut Vec<Topic>, step:
         Step::Client(Some(Err(_)) | None) | Step::Idle => false,
         Step::Feed(frame) => forward(peer, held, frame).await,
         Step::Ping => peer.send(Message::Ping(Vec::new().into())).await,
+        Step::Revoked => {
+            peer.send(Message::Close(None)).await;
+            false
+        }
     }
 }
 
