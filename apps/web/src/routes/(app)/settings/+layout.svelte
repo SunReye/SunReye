@@ -23,7 +23,7 @@
 	let stripHeight = $state(0);
 
 	const session = useAppSession();
-	const isAdmin = $derived($session.data?.user.role === 'admin');
+	const isAdmin = $derived($session.data?.user.admin === true);
 
 	// The hash router pins `page.url.pathname` to the served document, so the
 	// active route has to be read from the hash (see `routePath`).

@@ -1,24 +1,74 @@
-import { derived, type Readable } from "svelte/store";
-import { authClient } from "$lib/auth-client";
+import { type Readable, writable } from "svelte/store";
+import { apiErrorText } from "$lib/api-error";
+import { core } from "$lib/core-api";
+import type { components } from "$lib/core-api.gen";
 
-export type AppUser = {
-  id: string;
-  name?: string | null;
-  email?: string | null;
-  role?: string | null;
-};
+export type AppUser = components["schemas"]["Account"];
 export type AppSession = { data: { user: AppUser } | null; isPending: boolean };
 
+export type AuthResult = { ok: true } | { ok: false; message?: string };
+
+const store = writable<AppSession>({ data: null, isPending: true });
+let loading = false;
+
+function hold(account: AppUser | null): void {
+  loading = true;
+  store.set({ data: account ? { user: account } : null, isPending: false });
+}
+
+/** Ask the core who the cookie belongs to; a 401 or an unreachable core is anonymous. */
+// fallow-ignore-next-line unused-export -- the load `useAppSession` starts, called directly by session.test.ts and app-sidebar.svelte.test.ts to reload between cases; test files aren't traced as consumers
+export async function refreshSession(): Promise<void> {
+  try {
+    const { data } = await core.GET("/api/auth/session");
+    hold(data ?? null);
+  } catch {
+    hold(null);
+  }
+}
+
 /**
- * Session source used by the workspace shell + sidebar — a thin projection of
- * Better Auth's `useSession()`. An unauthenticated visitor has `data: null`, so
- * the app-shell gate routes them to `/login` (and on to `/onboarding` when no
- * admin exists yet).
+ * The signed-in account, shared by the shell and the sidebar. An unauthenticated visitor has
+ * `data: null`, so the app-shell gate routes them to `/login`. The first caller loads it.
  */
 export function useAppSession(): Readable<AppSession> {
-  const real = authClient.useSession();
-  return derived(real, ($s): AppSession => {
-    if ($s.data) return { data: { user: $s.data.user }, isPending: false };
-    return { data: null, isPending: $s.isPending };
-  });
+  if (!loading) {
+    loading = true;
+    void refreshSession();
+  }
+  return { subscribe: store.subscribe };
+}
+
+/** Sign-in and sign-up both answer the account and start its session. */
+async function start(request: Promise<{ data?: AppUser; error?: unknown }>): Promise<AuthResult> {
+  try {
+    const { data, error } = await request;
+    if (!data) return { ok: false, message: apiErrorText(error, "") };
+    hold(data);
+    return { ok: true };
+  } catch {
+    return { ok: false };
+  }
+}
+
+export function signIn(body: components["schemas"]["LoginRequest"]): Promise<AuthResult> {
+  return start(core.POST("/api/auth/login", { body }));
+}
+
+export function signUp(body: components["schemas"]["SignUpRequest"]): Promise<AuthResult> {
+  return start(core.POST("/api/auth/sign-up", { body }));
+}
+
+/** A 401 means no session is left to end; any other refusal leaves the session live, so the account stays. */
+export async function signOut(): Promise<AuthResult> {
+  try {
+    const { response, error } = await core.DELETE("/api/auth/session");
+    if (!response.ok && response.status !== 401) {
+      return { ok: false, message: apiErrorText(error, "") };
+    }
+  } catch {
+    // Unreachable core: the cookie expires on its own.
+  }
+  hold(null);
+  return { ok: true };
 }

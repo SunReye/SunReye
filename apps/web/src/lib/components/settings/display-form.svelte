@@ -16,7 +16,7 @@
 	import MotionPicker from './motion-picker.svelte';
 
 	const session = useAppSession();
-	const isAdmin = $derived($session.data?.user.role === 'admin');
+	const isAdmin = $derived($session.data?.user.admin === true);
 
 	// Language is a per-browser preference (localStorage). Switching calls
 	// setLocale, which reloads the page (Paraglide default) so every message

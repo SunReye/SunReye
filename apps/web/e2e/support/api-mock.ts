@@ -292,7 +292,7 @@ export interface MockBackend {
    * still believes it is signed in), and the only one in which the Eden
    * `onResponse` bounce is what redirects rather than the shell's own gate.
    *
-   * A later `POST /api/auth/sign-in/email` restores it, as signing in again
+   * A later `POST /api/auth/login` restores it, as signing in again
    * does on the real server.
    */
   expireSession(): void;
@@ -416,15 +416,7 @@ function rollupRows(from: number, to: number, rows: number, seed: number) {
   return out;
 }
 
-const SESSION_USER = {
-  id: "e2e-user",
-  name: "E2E Admin",
-  email: "e2e@example.com",
-  emailVerified: true,
-  image: null,
-  createdAt: new Date(0).toISOString(),
-  updatedAt: new Date(0).toISOString(),
-};
+const SESSION_USER = { id: 1, name: "E2E Admin", email: "e2e@example.com" };
 
 /**
  * Install the fake backend on `page`. Call it BEFORE `page.goto` — the routes
@@ -616,40 +608,46 @@ export async function mockBackend(page: Page, initial: BackendOptions = {}): Pro
     const under = (prefix: string): boolean => path.includes(`/api/${prefix}/`);
 
     // ── Auth ────────────────────────────────────────────────────────────────
-    if (at("auth/get-session")) {
-      if (!role) return json(route, null);
-      return json(route, {
-        session: { id: "e2e-session", userId: SESSION_USER.id, token: "e2e" },
-        user: { ...SESSION_USER, role },
-      });
+    // The core's accounts: `admin` is a flag, ids are numbers.
+    const account = (admin: boolean, over: Record<string, unknown> = {}) => ({
+      ...SESSION_USER,
+      admin,
+      ...over,
+    });
+    if (at("auth/session")) {
+      if (method === "DELETE") {
+        options = { ...options, role: null };
+        return route.fulfill({ status: 204 });
+      }
+      if (!role) return json(route, { error: "Not signed in" }, 401);
+      return json(route, account(role === "admin"));
     }
-    // Better Auth's admin plugin. These used to be swallowed by the `/api/auth/`
-    // catch-all below, which answers `null` — so /#/settings/users and
-    // /#/settings/api-keys rendered a load-error toast over an empty table and
-    // any assertion on either page was vacuous.
-    if (at("auth/admin/list-users")) {
-      return json(route, {
-        users: [{ ...SESSION_USER, role: role ?? "user", banned: false }],
-        total: 1,
-        limit: Number(query.limit ?? 100),
-        offset: 0,
-      });
-    }
-    if (at("auth/admin/create-user")) {
-      return json(route, { user: { ...SESSION_USER, id: "new-user", role: body().role } });
-    }
-    if (at("auth/admin/set-role")) {
-      return json(route, { user: { ...SESSION_USER, role: body().role } });
-    }
-    if (at("auth/admin/remove-user")) return json(route, { success: true });
-    if (at("auth/sign-in/email") || at("auth/sign-up/email")) {
+    if (at("auth/login")) {
       // Signing in again is how a user recovers from an expired session.
       sessionExpired = false;
-      return json(route, { user: { ...SESSION_USER, role: role ?? "admin" }, token: "e2e" });
+      options = { ...options, role: role ?? "admin" };
+      return json(route, account(roleNow() === "admin"));
     }
-    if (at("auth/sign-out")) return json(route, { success: true });
-    if (path.includes("/api/auth/")) return json(route, null);
-
+    if (at("auth/sign-up")) {
+      // The first account is the admin, and registration closes behind it.
+      if (!(options.needsSetup ?? false)) return json(route, { error: "Sign-up is closed" }, 403);
+      options = { ...options, needsSetup: false, role: "admin" };
+      return json(route, account(true, { name: String(body().name), email: String(body().email) }));
+    }
+    // Admin user management. These used to be swallowed by a catch-all that
+    // answered `null`, so /#/settings/users rendered a load-error toast over an
+    // empty table and any assertion on it was vacuous.
+    if (at("admin/users")) {
+      if (method === "POST") {
+        const b = body();
+        return json(route, account(b.admin === true, { id: 2, name: b.name, email: b.email }));
+      }
+      return json(route, [account(role === "admin")]);
+    }
+    if (under("admin/users") && method === "PUT") {
+      return json(route, account(body().admin === true));
+    }
+    if (under("admin/users") && method === "DELETE") return route.fulfill({ status: 204 });
     // A session revoked or expired server-side. Below the auth block on
     // purpose: the client keeps the session it already cached, so the shell's
     // own gate is satisfied and the 401 is the ONLY thing that can redirect.
@@ -1026,11 +1024,11 @@ export async function mockBackend(page: Page, initial: BackendOptions = {}): Pro
     if (at("commands/evcc")) return json(route, { ok: true });
 
     // ── Admin ───────────────────────────────────────────────────────────────
-    if (at("admin/api-keys/revoke")) return json(route, { success: true });
+    if (at("admin/api-keys/revoke")) return route.fulfill({ status: 204 });
     if (at("admin/api-keys")) {
       if (method === "POST") {
-        // The form reads only `data.key`; the real body is a Better Auth key.
-        return json(route, { id: "key-2", name: body().name, key: "sr_live_e2e_generated_key" });
+        const [key] = fixture.apiKeys(SESSION_USER);
+        return json(route, { ...key, id: 2, name: body().name, key: "sunreye_e2e_generated_key" });
       }
       return json(route, fixture.apiKeys(SESSION_USER));
     }

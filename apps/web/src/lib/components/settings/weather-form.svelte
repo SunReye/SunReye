@@ -16,7 +16,7 @@
 	import * as m from '$lib/paraglide/messages';
 
 	const session = useAppSession();
-	const isAdmin = $derived($session.data?.user.role === 'admin');
+	const isAdmin = $derived($session.data?.user.admin === true);
 
 	type PvArray = { kwp: number; tilt: number; azimuth: number };
 	type ForecastBattery = { usableKwh: number; maxChargeW: number | null; minSoc: number };
