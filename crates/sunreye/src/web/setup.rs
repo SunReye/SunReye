@@ -51,7 +51,7 @@ impl Capabilities {
         controls: false,
         automations: false,
         restart: false,
-        profile_sources: false,
+        profile_sources: true,
     };
 }
 

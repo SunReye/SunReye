@@ -1,102 +1,79 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { toast } from 'svelte-sonner';
-	import { api } from '$lib/api';
-	import * as m from '$lib/paraglide/messages';
-	import AvailableProfilesBrowser from './available-profiles-browser.svelte';
-	import ProfileSourcesEditor from './profile-sources-editor.svelte';
 	import { apiErrorText } from '$lib/api-error';
-	import type { AvailableProfile, Source } from './profile-types';
+	import { core } from '$lib/core-api';
+	import * as m from '$lib/paraglide/messages';
+	import ProfileImport from './profile-import.svelte';
+	import ProfileSourcesEditor from './profile-sources-editor.svelte';
+	import type { Skipped, Source, StoredSource } from './profile-types';
 
-	// Self-contained "add an external profile" surface: manage git repo sources,
-	// browse them, and download a profile. Shared by the settings profiles form
-	// and the first-run setup wizard so the source/browse/install flow lives once.
-	// `onInstalled` fires with the downloaded id so the parent can refresh its
-	// registered list (and, in settings, flag a required restart).
+	// Self-contained "add an external profile" surface: sources fetched by URL and single-file import.
+	// Shared by the settings profiles form, the device dialogs and the first-run setup wizard.
+	// `onInstalled` fires with one stored id (the first a source supplied, or the imported one) so the
+	// parent can refresh its registered list and offer that profile.
 	let { onInstalled }: { onInstalled?: (id: string) => void } = $props();
 
-	let sources = $state<Source[]>([]);
-	let available = $state<AvailableProfile[] | null>(null);
-	let browseErrors = $state<{ source: string; error: string }[]>([]);
-	let savingSources = $state(false);
-	let browsing = $state(false);
-	let busyId = $state<string | null>(null);
+	let sources = $state<StoredSource[]>([]);
+	let skipped = $state<Skipped[]>([]);
+	let failure = $state<string | null>(null);
+	let busy = $state(false);
 
 	onMount(loadSources);
 
 	async function loadSources() {
-		const { data } = await api.api.settings['profile-sources'].get();
-		if (data) sources = data.sources;
-	}
-
-	// Persist optimistically: apply `next` locally, save, and roll back to the
-	// previous set if the server rejects it — so add/remove/toggle each save
-	// without a manual button.
-	async function persist(next: Source[]) {
-		const prev = sources;
-		sources = next;
-		savingSources = true;
-		const { error } = await api.api.settings['profile-sources'].put({ sources: next });
-		savingSources = false;
-		if (error) {
-			sources = prev;
-			toast.error(
-				m.profiles_toast_save_failed({ error: apiErrorText(error.value, m.error_unknown()) })
-			);
+		try {
+			const { data } = await core.GET('/api/settings/profile-sources');
+			if (data) sources = data;
+		} catch {
+			// The list stays as it was; adding a source reports an unreachable core itself.
 		}
 	}
 
-	function addSource(url: string) {
-		void persist([...sources, { url, enabled: true }]);
+	/** The core's report of the add, or why it refused. A dead connection throws. */
+	async function send(source: Source) {
+		const { data, error } = await core.POST('/api/settings/profile-sources', { body: source });
+		return data ?? { reason: apiErrorText(error, m.conn_request_failed()) };
 	}
-	function removeSource(url: string) {
-		void persist(sources.filter((s) => s.url !== url));
-	}
-	function toggleSource(url: string, enabled: boolean) {
-		void persist(sources.map((s) => (s.url === url ? { ...s, enabled } : s)));
-	}
-	async function browse() {
-		browsing = true;
-		available = null;
-		browseErrors = [];
-		const { data, error } = await api.api.profiles.available.get();
-		browsing = false;
-		if (error || !data) {
-			toast.error(m.profiles_toast_browse_failed());
-			return;
+
+	async function add(source: Source) {
+		failure = null;
+		skipped = [];
+		busy = true;
+		try {
+			const sent = await send(source);
+			if ('reason' in sent) {
+				failure = m.sources_add_failed({ error: sent.reason });
+				return;
+			}
+			skipped = sent.skipped;
+			await loadSources();
+			const [first] = sent.profileIds;
+			if (first === undefined) return;
+			toast.success(m.sources_added({ count: sent.profileIds.length }));
+			onInstalled?.(first);
+		} catch {
+			failure = m.sources_add_failed({ error: m.conn_request_failed() });
+		} finally {
+			busy = false;
 		}
-		available = data.profiles as AvailableProfile[];
-		browseErrors = data.errors;
-	}
-	async function install(p: AvailableProfile) {
-		busyId = p.id;
-		const { error } = await api.api.profiles.install.post({ source: p.source, id: p.id });
-		busyId = null;
-		if (error) {
-			toast.error(m.profiles_toast_install_failed({ error: apiErrorText(error.value, m.conn_request_failed()) }));
-			return;
-		}
-		toast.success(m.profiles_toast_download_success({ name: p.name }));
-		onInstalled?.(p.id);
-		await browse();
 	}
 </script>
 
 <div class="flex flex-col gap-4">
-	<ProfileSourcesEditor
-		{sources}
-		saving={savingSources}
-		onAdd={addSource}
-		onRemove={removeSource}
-		onToggle={toggleSource}
-	/>
-	<AvailableProfilesBrowser
-		{available}
-		{sources}
-		errors={browseErrors}
-		{browsing}
-		{busyId}
-		onBrowse={browse}
-		onInstall={install}
-	/>
+	<ProfileSourcesEditor {sources} {busy} onAdd={add} />
+	{#if failure}
+		<p role="alert" class="text-sm text-destructive">{failure}</p>
+	{/if}
+	{#if skipped.length > 0}
+		<div class="flex flex-col gap-1 text-sm">
+			<p class="font-medium">{m.sources_skipped_title()}</p>
+			<ul class="flex flex-col gap-0.5 text-muted-foreground">
+				{#each skipped as file (file.path)}
+					<li class="break-words">{m.sources_skipped_item({ path: file.path, reason: file.reason })}</li>
+				{/each}
+			</ul>
+		</div>
+	{/if}
+	<ProfileImport onImported={onInstalled} />
 </div>
