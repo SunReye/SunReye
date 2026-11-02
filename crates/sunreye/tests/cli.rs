@@ -2,7 +2,7 @@
 
 #![allow(clippy::expect_used, reason = "helpers outside #[test] fns may panic like the tests")]
 
-use std::io::{BufRead, BufReader};
+use std::io::{BufRead, BufReader, Read, Write};
 use std::process::{Child, ChildStderr, Command, ExitStatus, Stdio};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -150,4 +150,82 @@ fn an_unusable_data_dir_exits_non_zero_and_says_why() {
     let out = Command::new(BIN).arg("--data-dir").arg(&file).output().expect("run");
     assert!(!out.status.success());
     assert!(String::from_utf8_lossy(&out.stderr).contains("data directory"));
+}
+
+/// The bound port at the end of the "sunreye listening" line.
+fn port(listening: &str) -> u16 {
+    let digits: String = listening.trim_end().chars().rev().take_while(char::is_ascii_digit).collect();
+    digits.chars().rev().collect::<String>().parse().expect("a port")
+}
+
+/// One HTTP/1.1 request over loopback; the answer's status line.
+fn request(port: u16, head: &str, body: &str) -> String {
+    let mut stream = std::net::TcpStream::connect(("127.0.0.1", port)).expect("connect");
+    let request = format!(
+        "{head} HTTP/1.1\r\nhost: sunreye\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
+        body.len()
+    );
+    stream.write_all(request.as_bytes()).expect("send");
+    let mut answer = String::new();
+    stream.read_to_string(&mut answer).expect("answer");
+    answer.lines().next().unwrap_or_default().to_owned()
+}
+
+/// Everything logged by a run on `listen` and `data_dir` that served one request, then `then` on its port.
+fn log_of_a_run(listen: &str, data_dir: &std::path::Path, then: impl FnOnce(u16)) -> String {
+    let mut child = Command::new(BIN)
+        .args(["--listen", listen, "--data-dir"])
+        .arg(data_dir)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn sunreye");
+    let mut reader = BufReader::new(child.stderr.take().expect("piped stderr"));
+    let mut log = String::new();
+    let listening = loop {
+        let mut line = String::new();
+        assert!(reader.read_line(&mut line).expect("a startup line") > 0, "exited early: {log}");
+        log.push_str(&line);
+        if line.contains("sunreye listening") {
+            break line;
+        }
+    };
+    let port = port(&listening);
+    // Answered only once the store is open, so every startup warning is logged by then.
+    assert!(request(port, "GET /api/setup-status", "").contains("200"));
+    then(port);
+    assert!(signal(&child, "TERM").success());
+    assert!(child.wait().expect("wait").success());
+    reader.read_to_string(&mut log).expect("the rest of the log");
+    log
+}
+
+fn warnings(log: &str) -> Vec<&str> {
+    log.lines().filter(|l| l.contains("WARN")).collect()
+}
+
+#[test]
+fn a_non_loopback_listen_address_warns_while_sign_up_is_open() {
+    let log = log_of_a_run("0.0.0.0:0", &fresh_data_dir(), |_| {});
+    let warnings = warnings(&log);
+    assert_eq!(warnings.len(), 1, "{log}");
+    assert!(warnings[0].contains("0.0.0.0:"), "{log}");
+    assert!(warnings[0].contains("sign-up"), "{log}");
+}
+
+#[test]
+fn a_loopback_listen_address_logs_no_warning() {
+    let log = log_of_a_run("127.0.0.1:0", &fresh_data_dir(), |_| {});
+    assert_eq!(warnings(&log), Vec::<&str>::new(), "{log}");
+}
+
+#[test]
+fn a_non_loopback_listen_address_logs_no_warning_once_the_admin_exists() {
+    let dir = fresh_data_dir();
+    log_of_a_run("127.0.0.1:0", &dir, |port| {
+        let body = r#"{"email":"admin@example.org","name":"Admin","password":"correct horse battery"}"#;
+        assert!(request(port, "POST /api/auth/sign-up", body).contains("200"));
+    });
+    let log = log_of_a_run("0.0.0.0:0", &dir, |_| {});
+    assert_eq!(warnings(&log), Vec::<&str>::new(), "{log}");
 }

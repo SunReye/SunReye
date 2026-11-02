@@ -70,9 +70,23 @@ pub async fn run(
     shutdown: impl Future<Output = ()>,
 ) -> Result<(), RunError> {
     let core = Core::open(data_dir).await?;
+    warn_if_sign_up_is_exposed(&core, &listener).await;
     let served = serve(listener, crate::web::router(Arc::clone(&core), web), shutdown).await;
     core.stop().await;
     Ok(served?)
+}
+
+/// Until the admin exists, whoever reaches sign-up first becomes it.
+async fn warn_if_sign_up_is_exposed(core: &Core, listener: &TcpListener) {
+    let Ok(listen) = listener.local_addr() else { return };
+    let admin_exists = matches!(core.store.has_accounts().await, Ok(true));
+    if listen.ip().is_loopback() || admin_exists {
+        return;
+    }
+    tracing::warn!(
+        %listen,
+        "listen address is not loopback and sign-up is open: anyone who reaches it first becomes the admin"
+    );
 }
 
 async fn serve(
