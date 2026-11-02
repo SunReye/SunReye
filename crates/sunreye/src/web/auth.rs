@@ -262,3 +262,16 @@ pub async fn logout(mut auth: AuthSession) -> Result<StatusCode, ApiError> {
     auth.logout().await?;
     Ok(StatusCode::NO_CONTENT)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn accounts_print_without_the_password_memory_after_a_hash() {
+        let accounts = Accounts::new(Arc::new(Store::in_memory().await.expect("store")));
+        accounts.passwords.hash("correct horse battery".into()).await.expect("hash");
+        let printed = format!("{accounts:?}");
+        assert!(printed.len() < 1024 && !printed.contains("Block"), "{} bytes", printed.len());
+    }
+}

@@ -79,10 +79,17 @@ fn verify_with(blocks: &mut Blocks, password: &str, hash: &str) -> bool {
 static UNKNOWN_ACCOUNT: OnceLock<Option<String>> = OnceLock::new();
 
 /// Hashes and checks passwords; clones share one cap on concurrent checks and its memory.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct Passwords {
     /// One check at a time, so parallel logins stay inside the 32 MB resident budget (ADR 0006).
     gate: Arc<Mutex<Blocks>>,
+}
+
+/// Field-less: the blocks hold password-derived memory.
+impl std::fmt::Debug for Passwords {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Passwords").finish_non_exhaustive()
+    }
 }
 
 impl Passwords {
@@ -174,6 +181,14 @@ mod tests {
             assert!(verify_with(&mut blocks, "correct horse battery", &theirs), "{prefix}");
             assert!(!verify_with(&mut blocks, "wrong horse battery", &theirs), "{prefix}");
         }
+    }
+
+    #[tokio::test]
+    async fn passwords_print_without_the_argon2_memory_after_a_hash() {
+        let passwords = Passwords::new();
+        passwords.hash("correct horse battery".into()).await.expect("hash");
+        let printed = format!("{passwords:?}");
+        assert!(printed.len() < 64 && !printed.contains("Block"), "{} bytes", printed.len());
     }
 
     #[tokio::test]
