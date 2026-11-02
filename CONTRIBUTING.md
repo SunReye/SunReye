@@ -211,7 +211,7 @@ Run what is relevant to the area you changed — this is what CI runs:
 
 ```bash
 bun run check          # oxlint + oxfmt --write
-bun run check-types    # tsrs across the monorepo (tsc stays installed for tsdown, svelte-check, fallow)
+bun run check-types    # tsrs across the monorepo (tsc stays installed for tsdown, fallow)
 bun run test           # bun test, all workspaces
 bun run test:coverage && bun run test:floor              # the coverage ratchet CI enforces
 bun run test:required  # source changed ⇒ a test changed (diffs against origin/dev)
@@ -223,7 +223,7 @@ Web work additionally:
 
 ```bash
 cd apps/web
-bun run check          # compile i18n, svelte-kit sync, svelte-check
+bun run check          # compile i18n, svelte-kit sync, rsvelte-check on tsrs
 bun run i18n:lint      # every locale must match en.json key-for-key
 bun run test:components  # *.svelte.test.ts: components mounted in Chromium (Vitest)
 bun run e2e e2e/journey-*.spec.ts  # the user journeys; CI runs the full browser suite

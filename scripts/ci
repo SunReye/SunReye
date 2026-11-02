@@ -97,6 +97,7 @@ bunx fallow --quiet
 step typecheck
 SKIP_ENV_VALIDATION=1 bun run check-types
 bun run --cwd apps/web i18n:lint
+SKIP_ENV_VALIDATION=1 bun run --cwd apps/web check
 
 step "migration drift"
 (

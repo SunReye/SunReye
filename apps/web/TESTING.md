@@ -8,7 +8,7 @@ half — what that means when the thing you changed is a Svelte component.
 cd apps/web
 bun run test             # bun test ./src — logic, seconds, runs on every commit
 bun run test:components  # Vitest browser mode — one component mounted in Chromium
-bun run check            # svelte-check (types, unused props, a11y)
+bun run check            # rsvelte-check on tsrs (types, unused props, a11y)
 bun run e2e              # Playwright: the whole app, a faked backend (see below)
 ```
 
