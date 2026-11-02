@@ -1,6 +1,4 @@
-//! Rollup tiers (ADR 0004), rolled up in the transaction that appends a minute. A minute's bucket is
-//! rolled up on every append; an hour and its day once the device's next stored minute is in a later one.
-//! Until then the readings are their only record.
+//! Rollup tiers (ADR 0004): a minute rolls up on append; its hour and day once a later minute or retention closes them.
 
 use std::collections::BTreeMap;
 
@@ -117,9 +115,8 @@ impl Store {
         Ok(dropped)
     }
 
-    /// Drops every device's minutes of readings that ended at or before `ended_by`; returns how many.
-    /// Batched as [`Store::drop_buckets`]. A device whose last minute goes gets its open hour and day first;
-    /// a device's open hour keeps every reading until it is stored.
+    /// Drops every device's minutes of readings that ended at or before `ended_by`, keeping an open hour whole
+    /// until it is rolled up; returns how many. Batched as [`Store::drop_buckets`].
     pub async fn drop_readings(&self, ended_by: Timestamp) -> Result<u64, StoreError> {
         let cutoff = ended_by.as_millisecond().div_euclid(MINUTE_MS);
         let devices = sqlx::query_scalar!("SELECT id FROM device").fetch_all(&self.pool).await?;
@@ -144,10 +141,8 @@ impl Store {
         Ok(dropped)
     }
 
-    /// Rolls up the hour and day of the device's last minute when that hour ended by `first_kept`: no later
-    /// minute is left to close them once that minute is dropped. Returns the device's first minute to keep:
-    /// an hour still open at `first_kept` keeps all its readings, since it rolls up from all of them.
-    async fn close_last_before(&self, device_id: i64, first_kept: i64) -> Result<i64, StoreError> {
+    /// Rolls up the device's last hour and day once the hour ends by `cutoff`; returns the first minute to keep.
+    async fn close_last_before(&self, device_id: i64, cutoff: i64) -> Result<i64, StoreError> {
         let mut tx = self.pool.begin().await?;
         let last = sqlx::query_scalar!(
             r#"SELECT max(minute) AS "minute: i64" FROM reading_minute WHERE device_id = ?"#,
@@ -155,16 +150,16 @@ impl Store {
         )
         .fetch_one(&mut *tx)
         .await?;
-        let Some(last) = last else { return Ok(first_kept) };
+        let Some(last) = last else { return Ok(cutoff) };
         let hour = last.div_euclid(MINUTES_PER_HOUR) * MINUTES_PER_HOUR;
-        if hour + MINUTES_PER_HOUR > first_kept {
-            return Ok(first_kept.min(hour));
+        if hour + MINUTES_PER_HOUR > cutoff {
+            return Ok(cutoff.min(hour));
         }
         let ids = super::metric_ids(&mut *tx).await?;
         roll_up_hour(&mut tx, device_id, hour, &ids).await?;
         roll_up_day(&mut tx, device_id, last.div_euclid(MINUTES_PER_DAY) * MINUTES_PER_DAY, &ids).await?;
         tx.commit().await?;
-        Ok(first_kept)
+        Ok(cutoff)
     }
 }
 
@@ -693,7 +688,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn an_offline_devices_last_hour_starting_before_the_cutoff_is_stored_from_all_its_readings() {
+    async fn an_offline_devices_last_hour_starting_before_the_cutoff_is_rolled_up_from_all_its_readings() {
         // 4 from 23:00 to 23:30, then 10 to midnight: (4·30 + 10·30) / 60.
         let (store, device) = with_device().await;
         append(&store, device, &[("2026-05-10T23:00:00Z", 4.0)]).await;
@@ -765,7 +760,6 @@ mod tests {
         let (store, device) = with_device().await;
         append(&store, device, &[("2026-05-10T23:00:00Z", 4.0)]).await;
         drop_readings(&store, "2026-05-10T23:15:00Z").await;
-        // Started again in the same hour.
         append(&store, device, &[("2026-05-10T23:30:00Z", 10.0)]).await;
         drop_readings(&store, WEEK_LATER).await;
         assert_eq!(power(&store, Tier::Hour, device).await, [bucket("2026-05-10T23:00:00Z", 7.0, 10.0, 4.0)]);
