@@ -88,6 +88,7 @@ fn settings() -> OpenApiRouter<Arc<Core>> {
         .routes(routes!(inverter::read, inverter::save))
         .routes(routes!(inverter::test))
         .routes(routes!(profile_sources::list, profile_sources::add))
+        .routes(routes!(profile_sources::import))
 }
 
 fn accounts() -> OpenApiRouter<Arc<Core>> {
@@ -150,6 +151,10 @@ impl ApiError {
 
     pub fn not_found(message: impl Into<String>) -> Self {
         Self { status: StatusCode::NOT_FOUND, message: message.into() }
+    }
+
+    pub fn payload_too_large(message: impl Into<String>) -> Self {
+        Self { status: StatusCode::PAYLOAD_TOO_LARGE, message: message.into() }
     }
 
     pub fn conflict(message: impl Into<String>) -> Self {

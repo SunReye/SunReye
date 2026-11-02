@@ -3,10 +3,12 @@
 	import { toast } from "svelte-sonner";
 	import { api } from "$lib/api";
 	import { apiErrorText } from '$lib/api-error';
+	import { coreCapabilities } from '$lib/capabilities.svelte';
 	import { Button } from "$lib/components/ui/button";
 	import * as Dialog from "$lib/components/ui/dialog";
 	import ExternalProfilesManager from "./external-profiles-manager.svelte";
 	import InstalledProfilesList from "./installed-profiles-list.svelte";
+	import ProfileImport from "./profile-import.svelte";
 	import ProfileUpdatesBanner from "./profile-updates-banner.svelte";
 	import RestartButton from "./restart-button.svelte";
 	import type { ProfileUpdate, RegisteredProfile } from "./profile-types";
@@ -108,6 +110,10 @@
 	/>
 
 	<ExternalProfilesManager onInstalled={onExternalInstalled} />
+
+	{#if coreCapabilities.has('profileSources')}
+		<ProfileImport onImported={onExternalInstalled} />
+	{/if}
 </div>
 
 <Dialog.Root open={removing !== null} onOpenChange={(v) => !v && (removing = null)}>

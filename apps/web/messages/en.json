@@ -1155,5 +1155,9 @@
   "setup_step_account": "Account",
   "action_close": "Close",
   "profiles_uninstall_title": "Remove {name}?",
-  "profiles_uninstall_body": "The downloaded profile is deleted from this server. You can download it again from its repository at any time."
+  "profiles_uninstall_body": "The downloaded profile is deleted from this server. You can download it again from its repository at any time.",
+  "profile_import_title": "Import a profile file",
+  "profile_import_label": "Profile file (.json)",
+  "profile_import_success": "Imported {id}",
+  "profile_import_failed": "Import failed: {error}"
 }

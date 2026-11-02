@@ -450,7 +450,7 @@ async fn a_skip_reason_never_repeats_what_the_server_sent() {
         let fetched = fetch_from(&ca, served.clone()).await.expect("fetched");
         let reason = &fetched.skipped[0].reason;
         assert!(!reason.contains(SECRET), "{broken}: {reason}");
-        assert!(reason.starts_with("invalid") || reason.starts_with("unknown"), "{reason}");
+        assert!(reason.contains("invalid") || reason.contains("unknown"), "{reason}");
     }
     served.insert(path, format!("{SECRET} not json").into_bytes());
     let fetched = fetch_from(&ca, served).await.expect("fetched");

@@ -18,6 +18,9 @@ use crate::store::{Store, StoreError};
 
 pub const SOURCES_KEY: &str = "profile.sources";
 
+/// Why a profile whose id a compiled-in profile holds is not taken.
+pub const RESERVED_ID: &str = "the id belongs to a compiled-in profile";
+
 /// Where a source's profile files live. No credentials: a URL with userinfo, a query or a fragment is
 /// refused, so nothing secret is stored or logged.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
@@ -89,15 +92,23 @@ pub struct Installed {
 }
 
 impl Installed {
-    /// Validates `text` against the profile schema.
+    /// Validates `text` against the profile schema. A rejection names the field path, never a value.
     pub fn validate(text: impl Into<Arc<str>>) -> Result<Self, String> {
         let text = text.into();
-        let profile: Profile = serde_json::from_str(&text).map_err(|e| match e.classify() {
-            Category::Data => describe(&e),
-            _ => format!("not JSON: {}", describe(&e)),
-        })?;
+        let mut reader = serde_json::Deserializer::from_str(&text);
+        let profile: Profile = serde_path_to_error::deserialize(&mut reader).map_err(|e| rejection(&e))?;
+        reader.end().map_err(|e| format!("not JSON: {}", describe(&e)))?;
         Ok(Self { profile: Arc::new(profile), text })
     }
+}
+
+fn rejection(error: &serde_path_to_error::Error<serde_json::Error>) -> String {
+    let reason = describe(error.inner());
+    if error.inner().classify() != Category::Data {
+        return format!("not JSON: {reason}");
+    }
+    let path = error.path().to_string();
+    if path == "." { reason } else { format!("{path}: {reason}") }
 }
 
 /// serde's message without the values it quotes: the source is untrusted and its text must not come back
@@ -179,7 +190,7 @@ pub async fn fetch(
         let loaded = if let Some(reason) = over_budget(budget, position, spent, left) {
             Err(reason)
         } else if is_reserved(&entry.id) {
-            Err("the id belongs to a compiled-in profile".into())
+            Err(RESERVED_ID.into())
         } else if seen.contains(&entry.id) {
             Err("the index lists this id twice".into())
         } else {
@@ -243,9 +254,10 @@ fn validated(body: &[u8], entry: &Entry) -> Result<Installed, String> {
 /// A source with the profiles it supplied, as stored.
 #[derive(Debug, Serialize, Deserialize)]
 struct Saved {
+    /// None for the profiles imported one by one.
     #[serde(flatten)]
-    source: Source,
-    /// Each profile's text, as fetched.
+    source: Option<Source>,
+    /// Each profile's text, as fetched or uploaded.
     profiles: Vec<Arc<str>>,
 }
 
@@ -263,13 +275,42 @@ static SAVING: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 pub async fn save_source(store: &Store, source: &Source, profiles: &[Installed]) -> Result<(), StoreError> {
     let _one_writer = SAVING.lock().await;
     let mut saved = read_saved(store).await?;
-    saved.retain(|s| s.source != *source);
+    saved.retain(|s| s.source.as_ref() != Some(source));
     saved.push(Saved {
-        source: source.clone(),
+        source: Some(source.clone()),
         profiles: profiles.iter().map(|p| Arc::clone(&p.text)).collect(),
     });
     let text = serde_json::to_string(&saved).map_err(|_| StoreError::Corrupt("profile sources"))?;
     store.set_setting(SOURCES_KEY, &text).await
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum ImportError {
+    #[error("{0}")]
+    Refused(String),
+    #[error(transparent)]
+    Store(#[from] StoreError),
+}
+
+/// Stores `profile` as an imported one, replacing an earlier import of its id. Imports come before every
+/// source, so an imported id is never shadowed by a fetched one.
+pub async fn import_profile(store: &Store, profile: &Installed) -> Result<(), ImportError> {
+    let _one_writer = SAVING.lock().await;
+    let mut saved = read_saved(store).await?;
+    let held = saved.iter().position(|s| s.source.is_none()).map(|at| saved.remove(at));
+    let mut imports = held.unwrap_or(Saved { source: None, profiles: Vec::new() });
+    let replaced = |text: &Arc<str>| {
+        Installed::validate(Arc::clone(text)).is_ok_and(|old| old.profile.id == profile.profile.id)
+    };
+    imports.profiles.retain(|text| !replaced(text));
+    let held: usize = imports.profiles.iter().map(|text| text.len()).sum();
+    if held + profile.text.len() > BUDGET.bytes {
+        return Err(ImportError::Refused(format!("imported profiles are limited to {} bytes", BUDGET.bytes)));
+    }
+    imports.profiles.push(Arc::clone(&profile.text));
+    saved.insert(0, imports);
+    let text = serde_json::to_string(&saved).map_err(|_| StoreError::Corrupt("profile sources"))?;
+    Ok(store.set_setting(SOURCES_KEY, &text).await?)
 }
 
 /// A stored source with the ids of the profiles it supplied.
@@ -285,9 +326,9 @@ pub async fn list_sources(store: &Store) -> Result<Vec<Listed>, StoreError> {
     let saved = read_saved(store).await?;
     Ok(saved
         .into_iter()
-        .map(|s| {
+        .filter_map(|s| {
             let profile_ids = valid(&s.profiles).into_iter().map(|p| p.profile.id.clone()).collect();
-            Listed { source: s.source, profile_ids }
+            Some(Listed { source: s.source?, profile_ids })
         })
         .collect())
 }
@@ -456,6 +497,77 @@ mod tests {
         assert_eq!(found.name, bundle.profiles[0].profile.name);
         assert_eq!(find_profile(&bundle, &all, "acme").expect("found").id, "acme");
         assert!(find_profile(&bundle, &all, "nobody").is_none());
+    }
+
+    #[test]
+    fn a_rejected_profile_names_the_field_and_never_quotes_its_value() {
+        let metric = json!({
+            "key": "k", "scale": "SECRET", "binding": {"via": "modbus", "addr": [1], "type": "U_WORD"}
+        });
+        let broken =
+            json!({"id": "a", "name": "A", "manufacturer": "M", "version": "1", "metrics": [metric]});
+        let reason = Installed::validate(broken.to_string()).expect_err("scale is a string");
+        assert!(reason.starts_with("metrics[0].scale: "), "{reason}");
+        assert!(!reason.contains("SECRET"), "{reason}");
+
+        let no_binding = json!({"id": "a", "name": "A", "manufacturer": "M", "version": "1",
+            "metrics": [{"key": "k", "scale": 1.0}]});
+        let reason = Installed::validate(no_binding.to_string()).expect_err("binding is missing");
+        assert!(reason.starts_with("metrics[0]: ") && reason.contains("binding"), "{reason}");
+
+        let reason = Installed::validate(r#"{"id": "a", "name": 7}"#).expect_err("name is a number");
+        assert!(reason.starts_with("name: "), "{reason}");
+        let reason = Installed::validate(format!("{} trailing", json_of("a", "A"))).expect_err("trailing");
+        assert!(reason.starts_with("not JSON: "), "{reason}");
+    }
+
+    #[tokio::test]
+    async fn an_imported_profile_is_stored_beside_the_sources_and_importing_again_replaces_it() {
+        let store = Store::in_memory().await.expect("store");
+        save_source(&store, &source("https://a.example/"), &[profile("fetched")]).await.expect("save");
+        import_profile(&store, &named("mine", "first")).await.expect("import");
+        import_profile(&store, &profile("other")).await.expect("import");
+        import_profile(&store, &named("mine", "second")).await.expect("import again");
+        let all = installed(&store).await.expect("installed");
+        let names: Vec<_> = all.iter().map(|p| (p.profile.id.as_str(), p.profile.name.as_str())).collect();
+        assert_eq!(names, [("other", "other"), ("mine", "second"), ("fetched", "fetched")]);
+        assert_eq!(list_sources(&store).await.expect("list").len(), 1, "an import is not a source");
+        save_source(&store, &source("https://a.example/"), &[profile("fetched")]).await.expect("save");
+        assert_eq!(installed(&store).await.expect("installed").len(), 3, "fetching leaves imports alone");
+    }
+
+    #[tokio::test]
+    async fn an_imported_profile_wins_over_a_source_profile_of_the_same_id() {
+        let store = Store::in_memory().await.expect("store");
+        save_source(&store, &source("https://a.example/"), &[named("shared", "fetched")])
+            .await
+            .expect("save");
+        import_profile(&store, &named("shared", "imported")).await.expect("import");
+        let all = installed(&store).await.expect("installed");
+        assert_eq!(all[0].profile.name, "imported");
+        save_source(&store, &source("https://b.example/"), &[named("shared", "later")]).await.expect("save");
+        assert_eq!(installed(&store).await.expect("installed")[0].profile.name, "imported");
+    }
+
+    #[tokio::test]
+    async fn imports_stop_at_the_budget_and_a_replacement_frees_its_old_text() {
+        let store = Store::in_memory().await.expect("store");
+        let big = |id: &str| Installed::validate(padded(id, BUDGET.bytes * 3 / 20)).expect("valid");
+        for n in 0..3 {
+            import_profile(&store, &big(&format!("p{n}"))).await.expect("within the budget");
+        }
+        let refused = import_profile(&store, &big("p3")).await;
+        assert!(matches!(refused, Err(ImportError::Refused(_))), "{refused:?}");
+        assert_eq!(installed(&store).await.expect("installed").len(), 3);
+        import_profile(&store, &big("p0")).await.expect("replacing p0 fits");
+    }
+
+    #[tokio::test]
+    async fn a_damaged_setting_is_not_overwritten_by_an_import() {
+        let store = Store::in_memory().await.expect("store");
+        store.set_setting(SOURCES_KEY, "not json").await.expect("set");
+        assert!(matches!(import_profile(&store, &profile("x")).await, Err(ImportError::Store(_))));
+        assert_eq!(store.setting(SOURCES_KEY).await.expect("read").as_deref(), Some("not json"));
     }
 
     async fn save_numbered(store: Arc<Store>, n: usize) -> Result<(), StoreError> {
