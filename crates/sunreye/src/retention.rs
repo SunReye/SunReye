@@ -7,6 +7,8 @@ use crate::settings::positive;
 use crate::store::{Store, StoreError};
 
 const TIERS: [Tier; 3] = [Tier::Minute, Tier::Hour, Tier::Day];
+const RAW_KEY: &str = "retention.raw_days";
+const RAW_DAYS: u64 = 7;
 
 fn key(tier: Tier) -> &'static str {
     match tier {
@@ -24,13 +26,20 @@ const fn default_days(tier: Tier) -> Option<u64> {
     }
 }
 
+/// Days raw readings are kept. A missing, malformed or non-positive setting is the default.
+pub fn raw_days(setting: Option<&str>) -> u64 {
+    positive(RAW_KEY, setting, "days").unwrap_or(RAW_DAYS)
+}
+
 /// Days `tier` is kept; none keeps it forever. A missing, malformed or non-positive setting is the default.
 pub fn retention_days(tier: Tier, setting: Option<&str>) -> Option<u64> {
     positive(key(tier), setting, "days").or(default_days(tier))
 }
 
-/// Drops each tier's buckets that ended before its retention reaches back from `now`.
+/// Drops the raw readings and each tier's buckets that ended before their retention reaches back from `now`.
 pub async fn retain(store: &Store, now: Timestamp) -> Result<(), StoreError> {
+    let raw = raw_days(store.setting(RAW_KEY).await?.as_deref());
+    store.drop_readings(days_before(now, raw)).await?;
     for tier in TIERS {
         let Some(days) = retention_days(tier, store.setting(key(tier)).await?.as_deref()) else { continue };
         store.drop_buckets(tier, days_before(now, days)).await?;
@@ -55,7 +64,8 @@ mod tests {
     }
 
     #[test]
-    fn minutes_keep_90_days_hours_10_years_and_days_forever_by_default() {
+    fn raw_keeps_7_days_minutes_90_days_hours_10_years_and_days_forever_by_default() {
+        assert_eq!(raw_days(None), 7);
         assert_eq!(retention_days(Tier::Minute, None), Some(90));
         assert_eq!(retention_days(Tier::Hour, None), Some(3650));
         assert_eq!(retention_days(Tier::Day, None), None);
@@ -65,9 +75,11 @@ mod tests {
     fn a_positive_setting_replaces_the_default_and_anything_else_falls_back() {
         assert_eq!(retention_days(Tier::Minute, Some("7")), Some(7));
         assert_eq!(retention_days(Tier::Day, Some("1")), Some(1));
+        assert_eq!(raw_days(Some("30")), 30);
         for bad in ["0", "-3", "a week", "", "1.5"] {
             assert_eq!(retention_days(Tier::Minute, Some(bad)), Some(90), "{bad:?}");
             assert_eq!(retention_days(Tier::Day, Some(bad)), None, "{bad:?}");
+            assert_eq!(raw_days(Some(bad)), 7, "{bad:?}");
         }
     }
 
@@ -94,16 +106,26 @@ mod tests {
     async fn a_pass_drops_each_tier_past_its_own_retention() {
         let (store, device) =
             with_readings(&["2026-05-07T22:00:00Z", "2026-05-08T06:00:00Z", "2026-05-10T00:10:00Z"]).await;
-        for (tier, days) in [(Tier::Minute, "1"), (Tier::Hour, "2"), (Tier::Day, "3")] {
-            store.set_setting(key(tier), days).await.expect("setting");
+        for (key, days) in [
+            ("retention.raw_days", "2"),
+            ("retention.minute_days", "1"),
+            ("retention.hour_days", "3"),
+            ("retention.day_days", "2"),
+        ] {
+            store.set_setting(key, days).await.expect("setting");
         }
         retain(&store, at("2026-05-10T00:30:00Z")).await.expect("retain");
-        assert_eq!(starts(&store, Tier::Minute, device).await, [at("2026-05-10T00:10:00Z")]);
-        assert_eq!(starts(&store, Tier::Hour, device).await, [at("2026-05-08T06:00:00Z")]);
+        let readings = store.readings(device, 0, i64::MAX).await.expect("readings");
         assert_eq!(
-            starts(&store, Tier::Day, device).await,
-            [at("2026-05-07T00:00:00Z"), at("2026-05-08T00:00:00Z")]
+            readings.iter().map(|s| s.at_ms).collect::<Vec<_>>(),
+            [at("2026-05-08T06:00:00Z"), at("2026-05-10T00:10:00Z")].map(Timestamp::as_millisecond)
         );
+        assert_eq!(starts(&store, Tier::Minute, device).await, [at("2026-05-10T00:10:00Z")]);
+        assert_eq!(
+            starts(&store, Tier::Hour, device).await,
+            [at("2026-05-07T22:00:00Z"), at("2026-05-08T06:00:00Z")]
+        );
+        assert_eq!(starts(&store, Tier::Day, device).await, [at("2026-05-08T00:00:00Z")]);
     }
 
     #[tokio::test]
@@ -111,6 +133,7 @@ mod tests {
         let (store, device) =
             with_readings(&["2026-05-07T22:00:00Z", "2026-05-08T06:00:00Z", "2026-05-10T00:10:00Z"]).await;
         retain(&store, at("2026-08-05T23:00:00Z")).await.expect("retain");
+        assert_eq!(store.readings(device, 0, i64::MAX).await.expect("readings"), [], "raw keeps 7 days");
         assert_eq!(starts(&store, Tier::Minute, device).await.len(), 2, "the 7 May minute is 90 days old");
         assert_eq!(starts(&store, Tier::Hour, device).await.len(), 2);
         assert_eq!(starts(&store, Tier::Day, device).await.len(), 2);

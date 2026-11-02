@@ -81,6 +81,31 @@ impl Store {
         }
         Ok(dropped)
     }
+
+    /// Drops every device's minutes of readings that ended at or before `ended_by`; returns how many.
+    /// Batched as [`Store::drop_buckets`].
+    pub async fn drop_readings(&self, ended_by: Timestamp) -> Result<u64, StoreError> {
+        let first_kept = ended_by.as_millisecond().div_euclid(MINUTE_MS);
+        let devices = sqlx::query_scalar!("SELECT id FROM device").fetch_all(&self.pool).await?;
+        let pool = &self.pool;
+        let mut dropped = 0;
+        for device in devices {
+            dropped += in_batches(|| async move {
+                sqlx::query!(
+                    "DELETE FROM reading_minute WHERE device_id = ? AND minute IN
+                       (SELECT minute FROM reading_minute WHERE device_id = ? AND minute < ? LIMIT ?)",
+                    device,
+                    device,
+                    first_kept,
+                    DROP_BATCH
+                )
+                .execute(pool)
+                .await
+            })
+            .await?;
+        }
+        Ok(dropped)
+    }
 }
 
 /// Runs `delete` until a run removes fewer than [`DROP_BATCH`] rows, yielding between runs; returns the total.
@@ -349,7 +374,7 @@ mod tests {
     async fn every_tier_query_searches_a_key_and_scans_no_table() {
         let (store, _) = with_device().await;
         let device_metric = "USING PRIMARY KEY (device_id=? AND metric_id=? AND tier=?";
-        // The text of each `rollup` query in this file.
+        // The text of each `rollup` query and of the reading drop in this file.
         for (query, uses) in [
             (
                 "SELECT last FROM rollup WHERE tier = ? AND device_id = ? AND metric_id = ? AND start_us < ?
@@ -370,6 +395,11 @@ mod tests {
                 "DELETE FROM rollup WHERE device_id = ? AND metric_id = ? AND tier = ? AND start_us IN
                    (SELECT start_us FROM rollup WHERE device_id = ? AND metric_id = ? AND tier = ? AND start_us <= ? LIMIT ?)",
                 device_metric,
+            ),
+            (
+                "DELETE FROM reading_minute WHERE device_id = ? AND minute IN
+                   (SELECT minute FROM reading_minute WHERE device_id = ? AND minute < ? LIMIT ?)",
+                "USING PRIMARY KEY (device_id=? AND minute<?)",
             ),
         ] {
             let plan = plan(&store, query).await;
@@ -400,6 +430,69 @@ mod tests {
         assert_eq!(dropped.expect("drop"), 4_000);
         assert!(left > 0, "the append waited for the whole drop");
         assert_eq!(rows_before(&store, cutoff.as_microsecond()).await, 0);
+    }
+
+    #[tokio::test]
+    async fn dropping_readings_keeps_every_tier_and_the_minutes_after_the_cutoff() {
+        let (store, first) = with_device().await;
+        let connection =
+            NewConnection { transport: Transport::Tcp, host: "g".into(), port: 502, logger_serial: None };
+        let connection = store.add_connection(&connection).await.expect("connection");
+        let device = NewDevice { connection_id: connection, profile_id: "p".into(), unit_id: 2 };
+        let second = store.add_device(&device).await.expect("device");
+        let instants = ["2026-05-10T12:00:30Z", "2026-05-10T12:01:30Z", "2026-05-10T13:00:30Z"];
+        for (device, instant) in [first, second].into_iter().flat_map(|device| instants.map(|i| (device, i)))
+        {
+            append(&store, device, &[(instant, 1.0)]).await;
+        }
+        let mut tiers = Vec::new();
+        for tier in [Tier::Minute, Tier::Hour, Tier::Day] {
+            tiers.push(power(&store, tier, first).await);
+        }
+        assert_eq!(store.drop_readings(at("2026-05-10T12:01:00Z")).await.expect("drop"), 2);
+        assert_eq!(store.drop_readings(at("2026-05-10T12:01:59.999Z")).await.expect("drop"), 0);
+        for device in [first, second] {
+            let left: Vec<i64> = store
+                .readings(device, 0, i64::MAX)
+                .await
+                .expect("readings")
+                .iter()
+                .map(|s| s.at_ms)
+                .collect();
+            let kept =
+                [at("2026-05-10T12:01:30Z"), at("2026-05-10T13:00:30Z")].map(Timestamp::as_millisecond);
+            assert_eq!(left, kept);
+        }
+        for (tier, kept) in [Tier::Minute, Tier::Hour, Tier::Day].into_iter().zip(tiers) {
+            assert_eq!(power(&store, tier, first).await, kept, "{tier:?}");
+        }
+    }
+
+    #[tokio::test]
+    async fn an_append_during_a_large_reading_drop_waits_for_one_batch_not_the_whole_drop() {
+        let (store, device) = with_device().await;
+        sqlx::query(
+            "WITH RECURSIVE n(i) AS (SELECT 0 UNION ALL SELECT i + 1 FROM n WHERE i + 1 < 20000)
+             INSERT INTO reading_minute (device_id, minute, samples) SELECT ?, i, x'010000' FROM n",
+        )
+        .bind(device)
+        .execute(&store.pool)
+        .await
+        .expect("fill");
+        let cutoff = Timestamp::from_millisecond(20_000 * MINUTE_MS).expect("cutoff");
+        let count = || {
+            sqlx::query_scalar::<_, i64>("SELECT count(*) FROM reading_minute WHERE minute < 20000")
+                .fetch_one(&store.pool)
+        };
+        let append = async {
+            tokio::task::yield_now().await;
+            store.append_minute(device, &poll(30_000 * MINUTE_MS)).await.expect("append");
+            count().await.expect("count")
+        };
+        let (dropped, left) = tokio::join!(store.drop_readings(cutoff), append);
+        assert_eq!(dropped.expect("drop"), 20_000);
+        assert!(left > 0, "the append waited for the whole drop");
+        assert_eq!(count().await.expect("count"), 0);
     }
 
     #[tokio::test]

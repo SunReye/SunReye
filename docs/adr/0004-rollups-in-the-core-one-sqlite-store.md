@@ -2,7 +2,9 @@
 
 Status: accepted (2026-11-01); amended the same day: store from a custom append-only format to SQLite,
 ESP32 parts removed (ADR 0006); amended 2026-11-02: rollup buckets are UTC and counters
-keep high and low, reopening "bucketed in the plant time zone" and "counter deltas" (2.x evidence below)
+keep high and low, reopening "bucketed in the plant time zone" and "counter deltas" (2.x evidence below);
+amended 2026-11-02: "retention defaults, set from measured bytes per day" gets its measurements and a raw
+retention (Retention below)
 
 ## Context
 
@@ -38,6 +40,27 @@ One SQLite database file per install (`sqlx` with its SQLite driver), in WAL mod
 
 If `sqlx`'s SQLite driver cannot build for `aarch64-linux-android`, every target moves to `rusqlite` (the
 same C library, synchronous API); targets do not split.
+
+## Retention
+
+Measured 2026-11-02 on x86-64, release build, 4 KiB pages: one device, 50 metrics polled every 5 s, three
+days appended. Rows per device per day: 1,440 raw, 72,000 minute, 1,200 hourly, 50 daily.
+
+| Tier | Bytes per day, every value changing | Half the values steady | Default | Kept, every value changing |
+| --- | --- | --- | --- | --- |
+| Raw | 12.6 MB | 6.7 MB | 7 days | 88 MB |
+| Minute | 7.2 MB (100 B a row) | 6.1 MB (85 B a row) | 90 days | 650 MB |
+| Hourly | 120 KB | 102 KB | 3650 days | 440 MB |
+| Daily | 5 KB | 4 KB | forever | 1.8 MB a year |
+
+- Raw keeps 7 days, not 2.0.0's 1825 (23 GB a device): the store sits on an SD card or phone storage. Raw
+  adds only sub-minute detail over the minute tier, and the open hour and day it feeds close within a day.
+  A device offline longer than raw retention loses its last open hour's bucket; its minutes stay.
+- Minute, hourly and daily keep 3.x's 90 days, 10 years and forever: about 1.2 GB a device after 10 years.
+- Settings `retention.raw_days`, `retention.minute_days`, `retention.hour_days` and `retention.day_days`
+  override the defaults. The pass runs at start and hourly, deleting at most 1,000 rows a statement, so a
+  poll waits behind one batch, not the whole pass: dropping 6.5 M rows on x86-64 under load, a poll waited
+  21 ms at p99 and 106 ms at worst.
 
 ## Consequences
 
