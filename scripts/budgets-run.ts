@@ -11,9 +11,10 @@
  *  3. the simulator replaying an oracle case, the core on a scratch data directory, the admin, a
  *     saved connection to the simulator.
  *  4. `logins` sign-ins, one at a time, each followed by a read of `/proc/<pid>/status`.
- *  5. a hold until the simulator has answered `POLL_READINGS` more poll cycles, one read of
- *     `/proc/<pid>/status` as each begins. The hold ends on the simulator's request count, never
- *     on a clock, so the poll path is exercised however fast the logins ran.
+ *  5. a hold until the simulator has answered `POLL_SAMPLES` more poll cycles, one read of
+ *     `/proc/<pid>/status` as each begins; the first `POLL_WARMUP` are not fitted. The hold ends
+ *     on the simulator's request count, never on a clock, so the poll path is exercised however
+ *     fast the logins ran.
  */
 import { mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -23,11 +24,14 @@ import { fileURLToPath } from "node:url";
 import {
   CycleCounter,
   POLL_READINGS,
+  POLL_SAMPLES,
+  POLL_WARMUP,
   WARMUP_LOGINS,
   judge,
   parseBudgets,
   parseProcStatus,
   parseSimLine,
+  pollPhase,
   render,
   trendOf,
 } from "./budgets-plan";
@@ -43,7 +47,7 @@ const SPA = join(TARGET, "budgets-spa");
 const ADMIN = { name: "Budgets", email: "budgets@soak.invalid", password: "budgets-soak-pw-1" };
 const PROFILE = "deye-sg05lp3";
 
-/** Fails a hold whose simulator stopped being polled; never part of a verdict. */
+/** Fails a hold in which no poll cycle ended for this long; never part of a verdict. */
 const STALL_MS = 60_000;
 
 const log = (message: string) => console.log(`[budgets] ${message}`);
@@ -136,32 +140,40 @@ async function login(base: string) {
   if (!response.ok) throw new Error(`login failed (${response.status})`);
 }
 
+/** What each soak step sends. Add a request here and every step sends it, in order. */
+const SOAK_REQUESTS: ((base: string) => Promise<void>)[] = [login];
+
 const readStatus = (pid: number) => parseProcStatus(readFileSync(`/proc/${pid}/status`, "utf8"));
 
 async function soakLogins(base: string, pid: number, logins: number) {
   const readings: number[] = [];
   for (let i = 0; i < logins; i++) {
-    await login(base);
+    for (const request of SOAK_REQUESTS) await request(base);
     readings.push(readStatus(pid).rssBytes);
   }
   return readings;
 }
 
-/** One reading as each of the next `POLL_READINGS` poll cycles begins. */
+/** One reading as each of the next `POLL_SAMPLES` poll cycles begins. */
 function soakPolls(sim: { onCycle: (() => void) | undefined }, pid: number) {
   return new Promise<number[]>((resolve, reject) => {
     const readings: number[] = [];
-    const stalled = setTimeout(() => {
-      sim.onCycle = undefined;
-      reject(
-        new Error(
-          `${readings.length} of ${POLL_READINGS} poll cycles ended in ${STALL_MS} ms: the core is not polling the simulator`,
-        ),
-      );
-    }, STALL_MS);
+    let stalled: ReturnType<typeof setTimeout>;
+    const arm = () => {
+      clearTimeout(stalled);
+      stalled = setTimeout(() => {
+        sim.onCycle = undefined;
+        reject(
+          new Error(
+            `${readings.length} of ${POLL_SAMPLES} poll cycles ended, none in the last ${STALL_MS} ms: the core is not polling the simulator`,
+          ),
+        );
+      }, STALL_MS);
+    };
+    arm();
     sim.onCycle = () => {
       readings.push(readStatus(pid).rssBytes);
-      if (readings.length < POLL_READINGS) return;
+      if (readings.length < POLL_SAMPLES) return arm();
       clearTimeout(stalled);
       sim.onCycle = undefined;
       resolve(readings);
@@ -182,16 +194,18 @@ export async function run(logins: number): Promise<number> {
     await setUp(base, sim.sim.port);
     log(`signing in ${logins} times`);
     const loginTrend = trendOf(await soakLogins(base, core.pid, logins), WARMUP_LOGINS);
-    log(`holding for ${POLL_READINGS} poll cycles`);
+    log(
+      `holding for ${POLL_SAMPLES} poll cycles, fitting the last ${POLL_READINGS} after ${POLL_WARMUP}`,
+    );
     const pollReadings = await soakPolls(sim.sim, core.pid);
-    const pollTrend = trendOf(pollReadings, 0);
+    const pollTrend = pollPhase(pollReadings);
     const measured = {
       binaryBytes: statSync(CORE).size,
       steadyBytes: Math.max(loginTrend.steadyBytes, pollTrend.steadyBytes),
       peakBytes: readStatus(core.pid).peakBytes,
       logins,
       loginBytesPerOp: loginTrend.bytesPerOp,
-      polls: pollReadings.length,
+      polls: pollTrend.polls,
       pollBytesPerOp: pollTrend.bytesPerOp,
     };
     console.log(render(measured, budgets));

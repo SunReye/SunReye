@@ -13,20 +13,29 @@ const KIB = 1024;
 /** Logins before readings count: the first one allocates the Argon2 buffer. */
 export const WARMUP_LOGINS = 10;
 /**
- * Resident readings, one per poll cycle, the soak holds for after the logins. The fit over n
- * readings reads a leak of L bytes per poll as L, and a leak is only caught when L is over the
- * per-poll budget plus the allocator's noise on the slope. 8 readings span 7 cycles; a 128 KiB
- * leak climbs 896 KiB across them against a 32 KiB/poll budget, 4 times over it. A reading is
- * one cycle, about a second at the shortest poll interval, so the count sets the soak's length.
+ * Poll cycles read and thrown away before the fit: the core keeps growing for the first minutes
+ * after boot (allocator arenas, SQLite pages, lazily built tables), in steps of 0.3 to 1 MiB.
+ * Over 8 runs of 130 to 300 cycles the last step came at cycle 105 and none after 117, so 120
+ * puts the fit past all of them. The cycle is about a second: this count is most of the soak.
  */
-export const POLL_READINGS = 8;
+export const POLL_WARMUP = 120;
+/**
+ * Resident readings, one per poll cycle, fitted after the warm-up. A step of S bytes inside n
+ * readings reads as at most 3S/(2n) per poll, so a late 350 KiB step reads as 16 KiB over 32
+ * readings and as 66 KiB over 8, which is how the budget flipped. A 128 KiB leak climbs 4 MiB
+ * across 32 readings against a 32 KiB/poll budget, 4 times over it, and a leak that began in
+ * the warm-up is still a slope.
+ */
+export const POLL_READINGS = 32;
+/** Readings the poll phase takes in all. */
+export const POLL_SAMPLES = POLL_WARMUP + POLL_READINGS;
 /** The soak `scripts/ci` runs; a long soak passes `--logins`. */
 const DEFAULT_LOGINS = 60;
 
 export const HELP = `usage: bun scripts/budget-gate.ts [--logins <n>]
 
 Builds the release binary, fails when it is over its size budget, signs in <n> times (default
-${DEFAULT_LOGINS}) and then holds for ${POLL_READINGS} poll cycles of the simulator. Fails when resident memory,
+${DEFAULT_LOGINS}) and then holds for ${POLL_SAMPLES} poll cycles of the simulator. Fails when resident memory,
 or its growth per login or per poll cycle, is over budget. A long soak: --logins 100000.`;
 
 export type Args = { help: boolean; logins: number };
@@ -123,6 +132,11 @@ export function trendOf(readings: number[], warmup: number): Trend {
   });
   const size = Math.max(1, after.length >> 2);
   return { steadyBytes: median(after.slice(-size)), bytesPerOp: covariance / variance };
+}
+
+/** The poll phase: the fit over the readings after `POLL_WARMUP`, and how many it covered. */
+export function pollPhase(readings: number[]): Trend & { polls: number } {
+  return { ...trendOf(readings, POLL_WARMUP), polls: readings.length - POLL_WARMUP };
 }
 
 /** A line of `sunreye-sim` stdout: the port it listens on, or the start address of a request. */

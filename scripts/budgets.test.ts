@@ -6,12 +6,15 @@ import { main } from "./budget-gate";
 import {
   CycleCounter,
   POLL_READINGS,
+  POLL_SAMPLES,
+  POLL_WARMUP,
   WARMUP_LOGINS,
   judge,
   parseArgs,
   parseBudgets,
   parseProcStatus,
   parseSimLine,
+  pollPhase,
   render,
   trendOf,
   type Measured,
@@ -227,6 +230,53 @@ describe("judging a run against the budgets", () => {
 
   test("the peak alone is reported, never judged", () => {
     expect(judge(measured({ peakBytes: 90 * MIB }), budgets)).toEqual([]);
+  });
+});
+
+/** The poll phase as the soak reads it: `POLL_WARMUP` readings, then `POLL_READINGS` that are fitted. */
+const pollSeries = (warm: (i: number) => number, fitted: (i: number) => number) =>
+  Array.from({ length: POLL_SAMPLES }, (_, i) =>
+    i < POLL_WARMUP ? warm(i) : fitted(i - POLL_WARMUP),
+  );
+
+describe("the poll phase", () => {
+  const verdict = (rss: number[]) => {
+    const phase = pollPhase(rss);
+    return judge(measured({ polls: phase.polls, pollBytesPerOp: phase.bytesPerOp }), budgets);
+  };
+
+  test("a one-time step on the last warm-up reading is not a per-poll leak", () => {
+    const rss = pollSeries(
+      (i) => (i === POLL_WARMUP - 1 ? 31 * MIB : 30 * MIB),
+      () => 31 * MIB,
+    );
+    expect(pollPhase(rss).bytesPerOp).toBe(0);
+    expect(verdict(rss)).toEqual([]);
+  });
+
+  test("a steady leak of 128 KiB per poll after the step still fails", () => {
+    const rss = pollSeries(
+      (i) => (i < POLL_WARMUP - 1 ? 30 * MIB : 31 * MIB),
+      (i) => 31 * MIB + i * 128 * KIB,
+    );
+    expect(verdict(rss)).toEqual([expect.stringContaining("+128.0 KiB/poll")]);
+  });
+
+  test("a leak that runs through the warm-up too still fails", () => {
+    const rss = Array.from({ length: POLL_SAMPLES }, (_, i) => 30 * MIB + i * 128 * KIB);
+    expect(verdict(rss)).toEqual([expect.stringContaining("+128.0 KiB/poll")]);
+  });
+
+  test("the fit covers the readings after the warm-up, and the steady value is theirs", () => {
+    const rss = pollSeries(
+      () => 40 * MIB,
+      () => 29 * MIB,
+    );
+    expect(pollPhase(rss)).toEqual({ polls: POLL_READINGS, bytesPerOp: 0, steadyBytes: 29 * MIB });
+  });
+
+  test("a soak that ended inside the warm-up is refused, not read as no growth", () => {
+    expect(() => pollPhase(Array<number>(POLL_WARMUP + 1).fill(30 * MIB))).toThrow(/readings/);
   });
 });
 
