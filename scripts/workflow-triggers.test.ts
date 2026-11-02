@@ -12,10 +12,10 @@ import { readFileSync, readdirSync } from "node:fs";
  * one was a `pull_request` — not one `push`. The releases they claimed to gate
  * went out ungated by them, and nothing ever went red, because nothing ever ran.
  *
- * The release IS gated, by the release PR: release-please opens one, and these
- * workflows run on it. That is the honest version of the same guarantee. This
- * test keeps the dead spelling from coming back under a comment that says
- * otherwise.
+ * The release is gated by the dev→master PR, over the tree that ships. Not by
+ * release-please's own PR: it is opened with the same token, so nothing runs on
+ * it (#297 and #300 carry zero checks). This test keeps the dead spelling from
+ * coming back under a comment that says otherwise.
  */
 const DIR = `${import.meta.dir}/../.github/workflows`;
 

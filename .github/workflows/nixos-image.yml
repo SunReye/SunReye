@@ -314,6 +314,8 @@ jobs:
 
           git diff --stat
 
+      # Rebases before pushing: the addon publish for the same release pushes
+      # to master in the same minutes, and a lost push skips `Advance stable`.
       - name: Commit to master
         run: |
           git config user.name 'github-actions[bot]'
@@ -324,15 +326,30 @@ jobs:
           fi
           git add nixos/version.json nixos/modules/sunreye/images.nix
           git commit -m "chore(nixos): publish ${{ steps.v.outputs.version }} [skip ci]"
-          git push origin HEAD:master
+
+          for attempt in 1 2 3; do
+            git pull --rebase --quiet origin master || {
+              echo "rebase onto master failed"
+              exit 1
+            }
+            if git push origin HEAD:master; then
+              exit 0
+            fi
+            echo "push rejected (master moved) — retrying ($attempt/3)"
+          done
+          echo "could not publish after 3 attempts"
+          exit 1
       # LAST. `stable` is what every deployed box's nightly upgrade follows, so
       # it must only ever point at a commit whose CONTAINER images exist — which
       # the handoff guarantees, since this workflow is dispatched by the server
       # build after its push. The flashable image is cut separately and may lag:
       # a box flashed from an older image boots fine (its container images are
       # embedded in it, not pulled) and catches up on its first upgrade.
+      #
+      # Fast-forward only: a pin for an older release that finishes later must
+      # fail rather than move every box back.
       - name: Advance stable
-        run: git push --force origin HEAD:stable
+        run: git push origin HEAD:stable
 
   # The flashable image, cut when it is worth cutting rather than every release.
   #
