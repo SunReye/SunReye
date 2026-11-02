@@ -354,6 +354,17 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn zero_and_negative_readings_are_readings() {
+        // 0 for 30 s, then -20 for 30 s.
+        let (store, device) = with_device().await;
+        append(&store, device, &[("2026-05-10T12:00:00Z", 0.0), ("2026-05-10T12:00:30Z", -20.0)]).await;
+        assert_eq!(
+            power(&store, Tier::Minute, device).await,
+            [bucket("2026-05-10T12:00:00Z", -10.0, 0.0, -20.0)]
+        );
+    }
+
+    #[tokio::test]
     async fn a_minute_appended_twice_counts_each_reading_once() {
         let (store, device) = with_device().await;
         let twice = [("2026-05-10T12:00:10Z", 10.0), ("2026-05-10T12:00:40Z", 40.0)];
